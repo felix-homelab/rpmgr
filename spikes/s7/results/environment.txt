@@ -1,0 +1,5 @@
+go version go1.27.1 linux/amd64
+Linux 6.18.33.2-microsoft-standard-WSL2 x86_64
+linux
+amd64
+auto

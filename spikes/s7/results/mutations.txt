@@ -1,0 +1,8 @@
+killed    deny-list not checked in VerifyConnection: --- FAIL: TestResumptionRunsVerifyConnection (0.02s) --- FAIL: TestResumptionRunsVerifyConnection/connector_revoked_after_the_first_handshake (0.00s) --- FAIL: 
+killed    SPIFFE ID not checked in VerifyConnection: --- FAIL: TestServerNamePerPeer (0.04s) --- FAIL: TestServerNamePerPeer/right_DNS_name,_wrong_SPIFFE_ID (0.00s) 
+killed    Reauth endpoint issues and accepts tickets: --- FAIL: TestReauth (0.06s) --- FAIL: TestReauth/reauth_sessions_issue_and_accept_no_tickets (0.00s) 
+killed    Reauth without the database checks: --- FAIL: TestReauth (0.06s) --- FAIL: TestReauth/grace_boundary (0.01s) --- FAIL: TestReauth/grace_0_disables_Reauth_for_expired_certificates (0.00s) --- FAIL:
+killed    Reauth verifier never selected by SNI: --- FAIL: TestReauth (0.04s) --- FAIL: TestReauth/expired_29_days_ago:_normal_SNI_refuses,_reauth_SNI_re-issues (0.01s) --- FAIL: TestReauth/grace_boundary (0.0
+killed    intermediate without name constraints: --- FAIL: TestNameConstraintsEnforced (0.01s) --- FAIL: TestNameConstraintsEnforced/URI_in_another_trust_domain (0.00s) --- FAIL: TestNameConstraintsEnforced/UR
+killed    CSR binding not compared: --- FAIL: TestCSRBinding (0.04s) --- FAIL: TestCSRBinding/CSR_replayed_on_another_connection (0.01s) --- FAIL: TestCSRBinding/altered_binding,_re-signed_by_the_
+killed    renewal accepts the same key: --- FAIL: TestLeafIssueAndRenew (0.00s) 
