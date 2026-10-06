@@ -10,6 +10,9 @@ here=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 port=${1:?postgres port}
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
+mkdir -p "$here/results"
+exec > >(tee "$here/results/apply-check.txt") 2>&1
+echo "# apply-check.sh ($(go version); $(docker exec rpmgr-s5-pg18 postgres --version))"
 go -C "$here" build -o "$work/s5" ./cmd/s5
 s5() { "$work/s5" "$@" -dir "$here/migrations"; }
 

@@ -1,0 +1,134 @@
+# go test -race -count=1 -v ./...   (go version go1.27.1 linux/amd64; PostgreSQL 18)
+?   	github.com/felix-homelab/rpmgr/spikes/s5/authz	[no test files]
+?   	github.com/felix-homelab/rpmgr/spikes/s5/cmd/s5	[no test files]
+?   	github.com/felix-homelab/rpmgr/spikes/s5/ent	[no test files]
+?   	github.com/felix-homelab/rpmgr/spikes/s5/ent/connector	[no test files]
+?   	github.com/felix-homelab/rpmgr/spikes/s5/ent/enttest	[no test files]
+?   	github.com/felix-homelab/rpmgr/spikes/s5/ent/gatewaygroup	[no test files]
+?   	github.com/felix-homelab/rpmgr/spikes/s5/ent/healthcheck	[no test files]
+?   	github.com/felix-homelab/rpmgr/spikes/s5/ent/hook	[no test files]
+?   	github.com/felix-homelab/rpmgr/spikes/s5/ent/intercept	[no test files]
+?   	github.com/felix-homelab/rpmgr/spikes/s5/ent/migrate	[no test files]
+?   	github.com/felix-homelab/rpmgr/spikes/s5/ent/org	[no test files]
+?   	github.com/felix-homelab/rpmgr/spikes/s5/ent/predicate	[no test files]
+?   	github.com/felix-homelab/rpmgr/spikes/s5/ent/privacy	[no test files]
+?   	github.com/felix-homelab/rpmgr/spikes/s5/ent/route	[no test files]
+?   	github.com/felix-homelab/rpmgr/spikes/s5/ent/routetarget	[no test files]
+?   	github.com/felix-homelab/rpmgr/spikes/s5/ent/runtime	[no test files]
+?   	github.com/felix-homelab/rpmgr/spikes/s5/ent/schema	[no test files]
+=== RUN   TestNew_FormatAndOrder
+--- PASS: TestNew_FormatAndOrder (0.01s)
+=== RUN   TestEncode_Boundaries
+--- PASS: TestEncode_Boundaries (0.00s)
+PASS
+ok  	github.com/felix-homelab/rpmgr/spikes/s5/ids	1.020s
+?   	github.com/felix-homelab/rpmgr/spikes/s5/migrations	[no test files]
+=== RUN   TestCompositeFK_CrossOrgReferenceRejectedThroughEnt
+=== RUN   TestCompositeFK_CrossOrgReferenceRejectedThroughEnt/sqlite
+=== RUN   TestCompositeFK_CrossOrgReferenceRejectedThroughEnt/postgres
+--- PASS: TestCompositeFK_CrossOrgReferenceRejectedThroughEnt (0.60s)
+    --- PASS: TestCompositeFK_CrossOrgReferenceRejectedThroughEnt/sqlite (0.16s)
+    --- PASS: TestCompositeFK_CrossOrgReferenceRejectedThroughEnt/postgres (0.44s)
+=== RUN   TestCompositeFK_RawSQLCannotCrossOrgs
+=== RUN   TestCompositeFK_RawSQLCannotCrossOrgs/sqlite
+=== RUN   TestCompositeFK_RawSQLCannotCrossOrgs/postgres
+--- PASS: TestCompositeFK_RawSQLCannotCrossOrgs (0.56s)
+    --- PASS: TestCompositeFK_RawSQLCannotCrossOrgs/sqlite (0.13s)
+    --- PASS: TestCompositeFK_RawSQLCannotCrossOrgs/postgres (0.42s)
+=== RUN   TestCompositeFK_SharedGatewayGroupAllowed
+=== RUN   TestCompositeFK_SharedGatewayGroupAllowed/sqlite
+=== RUN   TestCompositeFK_SharedGatewayGroupAllowed/postgres
+--- PASS: TestCompositeFK_SharedGatewayGroupAllowed (0.56s)
+    --- PASS: TestCompositeFK_SharedGatewayGroupAllowed/sqlite (0.15s)
+    --- PASS: TestCompositeFK_SharedGatewayGroupAllowed/postgres (0.41s)
+=== RUN   TestSQLite_ForeignKeysMustBeOn
+--- PASS: TestSQLite_ForeignKeysMustBeOn (0.16s)
+=== RUN   TestSQLite_PragmaForeignKeysIgnoredInTransaction
+    compositefk_test.go:131: SQLite 3.53.4 (modernc.org/sqlite)
+--- PASS: TestSQLite_PragmaForeignKeysIgnoredInTransaction (0.01s)
+=== RUN   TestRewriteForeignKeys
+--- PASS: TestRewriteForeignKeys (0.00s)
+=== RUN   TestMigrate_FromEmptyMatchesEnt
+=== RUN   TestMigrate_FromEmptyMatchesEnt/sqlite
+=== RUN   TestMigrate_FromEmptyMatchesEnt/postgres
+--- PASS: TestMigrate_FromEmptyMatchesEnt (0.57s)
+    --- PASS: TestMigrate_FromEmptyMatchesEnt/sqlite (0.20s)
+    --- PASS: TestMigrate_FromEmptyMatchesEnt/postgres (0.37s)
+=== RUN   TestMigrate_IncrementalKeepsData
+=== RUN   TestMigrate_IncrementalKeepsData/sqlite
+=== RUN   TestMigrate_IncrementalKeepsData/postgres
+--- PASS: TestMigrate_IncrementalKeepsData (0.92s)
+    --- PASS: TestMigrate_IncrementalKeepsData/sqlite (0.27s)
+    --- PASS: TestMigrate_IncrementalKeepsData/postgres (0.66s)
+=== RUN   TestMigrate_ChecksumMismatchRefused
+=== RUN   TestMigrate_ChecksumMismatchRefused/sqlite
+=== RUN   TestMigrate_ChecksumMismatchRefused/postgres
+--- PASS: TestMigrate_ChecksumMismatchRefused (0.18s)
+    --- PASS: TestMigrate_ChecksumMismatchRefused/sqlite (0.01s)
+    --- PASS: TestMigrate_ChecksumMismatchRefused/postgres (0.17s)
+=== RUN   TestMigrate_FailingFileRollsBack
+=== RUN   TestMigrate_FailingFileRollsBack/sqlite
+=== RUN   TestMigrate_FailingFileRollsBack/postgres
+--- PASS: TestMigrate_FailingFileRollsBack (0.73s)
+    --- PASS: TestMigrate_FailingFileRollsBack/sqlite (0.20s)
+    --- PASS: TestMigrate_FailingFileRollsBack/postgres (0.52s)
+=== RUN   TestMigrate_SQLiteRebuildViolationRefused
+--- PASS: TestMigrate_SQLiteRebuildViolationRefused (0.19s)
+=== RUN   TestMigrate_DirectoryUpToDate
+=== RUN   TestMigrate_DirectoryUpToDate/sqlite
+=== RUN   TestMigrate_DirectoryUpToDate/postgres
+--- PASS: TestMigrate_DirectoryUpToDate (1.88s)
+    --- PASS: TestMigrate_DirectoryUpToDate/sqlite (0.25s)
+    --- PASS: TestMigrate_DirectoryUpToDate/postgres (1.63s)
+=== RUN   TestCheck_DetectsMissingCompositeKey
+=== RUN   TestCheck_DetectsMissingCompositeKey/sqlite
+=== RUN   TestCheck_DetectsMissingCompositeKey/postgres
+--- PASS: TestCheck_DetectsMissingCompositeKey (0.88s)
+    --- PASS: TestCheck_DetectsMissingCompositeKey/sqlite (0.27s)
+    --- PASS: TestCheck_DetectsMissingCompositeKey/postgres (0.61s)
+=== RUN   TestScope_NoScopeDenied
+=== RUN   TestScope_NoScopeDenied/sqlite
+=== RUN   TestScope_NoScopeDenied/postgres
+--- PASS: TestScope_NoScopeDenied (0.98s)
+    --- PASS: TestScope_NoScopeDenied/sqlite (0.18s)
+    --- PASS: TestScope_NoScopeDenied/postgres (0.81s)
+=== RUN   TestScope_DecisionContextDoesNotBypass
+=== RUN   TestScope_DecisionContextDoesNotBypass/sqlite
+=== RUN   TestScope_DecisionContextDoesNotBypass/postgres
+--- PASS: TestScope_DecisionContextDoesNotBypass (0.70s)
+    --- PASS: TestScope_DecisionContextDoesNotBypass/sqlite (0.17s)
+    --- PASS: TestScope_DecisionContextDoesNotBypass/postgres (0.53s)
+=== RUN   TestScope_OtherOrgIDsAreNotFound
+=== RUN   TestScope_OtherOrgIDsAreNotFound/sqlite
+=== RUN   TestScope_OtherOrgIDsAreNotFound/postgres
+--- PASS: TestScope_OtherOrgIDsAreNotFound (0.63s)
+    --- PASS: TestScope_OtherOrgIDsAreNotFound/sqlite (0.15s)
+    --- PASS: TestScope_OtherOrgIDsAreNotFound/postgres (0.47s)
+=== RUN   TestScope_ListsAndTraversalsSeeOwnOrgOnly
+=== RUN   TestScope_ListsAndTraversalsSeeOwnOrgOnly/sqlite
+=== RUN   TestScope_ListsAndTraversalsSeeOwnOrgOnly/postgres
+--- PASS: TestScope_ListsAndTraversalsSeeOwnOrgOnly (0.66s)
+    --- PASS: TestScope_ListsAndTraversalsSeeOwnOrgOnly/sqlite (0.15s)
+    --- PASS: TestScope_ListsAndTraversalsSeeOwnOrgOnly/postgres (0.51s)
+=== RUN   TestScope_BulkMutationsTouchOwnOrgOnly
+=== RUN   TestScope_BulkMutationsTouchOwnOrgOnly/sqlite
+=== RUN   TestScope_BulkMutationsTouchOwnOrgOnly/postgres
+--- PASS: TestScope_BulkMutationsTouchOwnOrgOnly (0.77s)
+    --- PASS: TestScope_BulkMutationsTouchOwnOrgOnly/sqlite (0.20s)
+    --- PASS: TestScope_BulkMutationsTouchOwnOrgOnly/postgres (0.57s)
+=== RUN   TestScope_CreateInOtherOrgDenied
+=== RUN   TestScope_CreateInOtherOrgDenied/sqlite
+=== RUN   TestScope_CreateInOtherOrgDenied/postgres
+--- PASS: TestScope_CreateInOtherOrgDenied (0.63s)
+    --- PASS: TestScope_CreateInOtherOrgDenied/sqlite (0.16s)
+    --- PASS: TestScope_CreateInOtherOrgDenied/postgres (0.48s)
+=== RUN   TestScope_SystemScopeIsAudited
+=== RUN   TestScope_SystemScopeIsAudited/sqlite
+=== RUN   TestScope_SystemScopeIsAudited/postgres
+--- PASS: TestScope_SystemScopeIsAudited (0.76s)
+    --- PASS: TestScope_SystemScopeIsAudited/sqlite (0.24s)
+    --- PASS: TestScope_SystemScopeIsAudited/postgres (0.53s)
+=== RUN   TestAuthz_ScopeOnlyFromAuthz
+--- PASS: TestAuthz_ScopeOnlyFromAuthz (0.00s)
+PASS
+ok  	github.com/felix-homelab/rpmgr/spikes/s5/store	13.404s

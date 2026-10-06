@@ -1,0 +1,205 @@
+# Atlas CLI community edition, built from ariga/atlas v1.3.0 cmd/atlas (go version go1.27.1 linux/amd64)
+
+$ atlas version
+  atlas community version - development
+  https://github.com/ariga/atlas/releases/latest
+  To download an official version, visit: https://atlasgo.io/getting-started#installation
+  → exit 0
+
+## Generate a migration from the Ent schema (ent://)
+$ atlas migrate diff probe --dir file:///tmp/tmp.y6XnsUS7sQ/sqlite --to ent://ent/schema --dev-url sqlite://dev?mode=memory
+  Error: ent:// scheme is not supported by the community version of Atlas.
+  
+  Install the non-community version instead:
+  
+  	curl -sSf https://atlasgo.sh | sh
+  
+  For more installtion options, see: https://atlasgo.io/docs#installation
+  → exit 1
+
+## Re-hash the directories generated through Ent's Go API (must leave atlas.sum unchanged)
+$ atlas migrate hash --dir file:///tmp/tmp.y6XnsUS7sQ/sqlite
+  → exit 0
+
+$ atlas migrate hash --dir file:///tmp/tmp.y6XnsUS7sQ/postgres
+  → exit 0
+
+atlas.sum unchanged (sqlite):   yes
+atlas.sum unchanged (postgres): yes
+
+## Validate and lint
+$ atlas migrate validate --dir file:///tmp/tmp.y6XnsUS7sQ/sqlite --dev-url sqlite://dev?mode=memory
+  → exit 0
+
+$ atlas migrate lint --dir file:///tmp/tmp.y6XnsUS7sQ/sqlite --dev-url sqlite://dev?mode=memory --latest 2
+  Analyzing changes until version 20261006122725 (2 migrations in total):
+  
+    -- analyzing version 20261006122528
+      -- no diagnostics found
+    -- ok (4.253µs)
+  
+    -- analyzing version 20261006122725
+      -- no diagnostics found
+    -- ok (23.315µs)
+  
+    -------------------------
+    -- 22.762029ms
+    -- 2 versions ok
+    -- 12 schema changes
+  → exit 0
+
+$ atlas migrate lint --dir file:///tmp/tmp.y6XnsUS7sQ/postgres --dev-url postgres://s5:s5@127.0.0.1:32768/s5clidev?sslmode=disable --latest 2
+  Analyzing changes until version 20261006122728 (2 migrations in total):
+  
+    -- analyzing version 20261006122528
+      -- no diagnostics found
+    -- ok (6.251µs)
+  
+    -- analyzing version 20261006122728
+      -- no diagnostics found
+    -- ok (13.592µs)
+  
+    -------------------------
+    -- 249.928177ms
+    -- 2 versions ok
+    -- 9 schema changes
+  → exit 0
+
+## Lint must flag a destructive change (negative control, on a copy)
+$ atlas migrate lint --dir file:///tmp/tmp.y6XnsUS7sQ/sqlite-bad --dev-url sqlite://dev?mode=memory --latest 1
+  Analyzing changes from version 20261006122725 to 20991231000000 (1 migration in total):
+  
+    -- analyzing version 20991231000000
+      -- destructive changes detected:
+        -- L1: Dropping table "health_checks" https://atlasgo.io/lint/analyzers#DS102
+      -- suggested fix:
+        -> Add a pre-migration check to ensure table "health_checks" is empty before dropping it
+    -- ok (9.968µs)
+  
+    -------------------------
+    -- 7.152209ms
+    -- 1 version with errors
+    -- 1 schema change
+    -- 1 diagnostic
+  → exit 1
+
+## Apply
+$ atlas migrate apply --dir file:///tmp/tmp.y6XnsUS7sQ/sqlite --url sqlite:///tmp/tmp.y6XnsUS7sQ/cli.db
+  Migrating to version 20261006122725 (2 migrations in total):
+  
+    -- migrating version 20261006122528
+      -> CREATE TABLE `connectors` (`id` text NOT NULL, `org_id` text NOT NULL, `name` text NOT NULL, PRIMARY KEY (`id`), CONSTRAINT `connectors_orgs` FOREIGN KEY (`org_id`) REFERENCES `orgs` (`id`) ON UPDATE NO ACTION ON DELETE NO ACTION);
+      -> CREATE UNIQUE INDEX `connector_org_id_id` ON `connectors` (`org_id`, `id`);
+      -> CREATE UNIQUE INDEX `connector_org_id_name` ON `connectors` (`org_id`, `name`);
+      -> CREATE TABLE `gateway_groups` (`id` text NOT NULL, `org_id` text NOT NULL, `name` text NOT NULL, PRIMARY KEY (`id`), CONSTRAINT `gateway_groups_orgs` FOREIGN KEY (`org_id`) REFERENCES `orgs` (`id`) ON UPDATE NO ACTION ON DELETE NO ACTION);
+      -> CREATE UNIQUE INDEX `gatewaygroup_org_id_id` ON `gateway_groups` (`org_id`, `id`);
+      -> CREATE UNIQUE INDEX `gatewaygroup_org_id_name` ON `gateway_groups` (`org_id`, `name`);
+      -> CREATE TABLE `orgs` (`id` text NOT NULL, `name` text NOT NULL, `slug` text NOT NULL, PRIMARY KEY (`id`));
+      -> CREATE UNIQUE INDEX `orgs_slug_key` ON `orgs` (`slug`);
+      -> CREATE TABLE `routes` (`id` text NOT NULL, `org_id` text NOT NULL, `name` text NOT NULL, `type` text NOT NULL, `enabled` bool NOT NULL DEFAULT (true), `gateway_group_id` text NOT NULL, PRIMARY KEY (`id`), CONSTRAINT `routes_gateway_groups_routes` FOREIGN KEY (`gateway_group_id`) REFERENCES `gateway_groups` (`id`) ON DELETE NO ACTION, CONSTRAINT `routes_orgs` FOREIGN KEY (`org_id`) REFERENCES `orgs` (`id`) ON UPDATE NO ACTION ON DELETE NO ACTION);
+      -> CREATE UNIQUE INDEX `route_org_id_id` ON `routes` (`org_id`, `id`);
+      -> CREATE UNIQUE INDEX `route_org_id_name` ON `routes` (`org_id`, `name`);
+      -> CREATE TABLE `route_targets` (`id` text NOT NULL, `org_id` text NOT NULL, `host` text NOT NULL, `port` integer NOT NULL, `connector_id` text NOT NULL, `route_id` text NOT NULL, PRIMARY KEY (`id`), CONSTRAINT `route_targets_connectors_targets` FOREIGN KEY (`org_id`, `connector_id`) REFERENCES `connectors` (`org_id`, `id`) ON UPDATE NO ACTION ON DELETE NO ACTION, CONSTRAINT `route_targets_routes_targets` FOREIGN KEY (`org_id`, `route_id`) REFERENCES `routes` (`org_id`, `id`) ON UPDATE NO ACTION ON DELETE NO ACTION, CONSTRAINT `route_targets_orgs` FOREIGN KEY (`org_id`) REFERENCES `orgs` (`id`) ON UPDATE NO ACTION ON DELETE NO ACTION);
+      -> CREATE UNIQUE INDEX `routetarget_org_id_id` ON `route_targets` (`org_id`, `id`);
+    -- ok (4.047545ms)
+  
+    -- migrating version 20261006122725
+      -> PRAGMA foreign_keys = off;
+      -> CREATE TABLE `new_routes` (`id` text NOT NULL, `org_id` text NOT NULL, `name` text NOT NULL, `type` text NOT NULL, `enabled` bool NOT NULL DEFAULT (true), `description` text NOT NULL DEFAULT (''), `gateway_group_id` text NOT NULL, PRIMARY KEY (`id`), CONSTRAINT `routes_gateway_groups_routes` FOREIGN KEY (`gateway_group_id`) REFERENCES `gateway_groups` (`id`) ON DELETE NO ACTION, CONSTRAINT `routes_orgs` FOREIGN KEY (`org_id`) REFERENCES `orgs` (`id`) ON UPDATE NO ACTION ON DELETE NO ACTION);
+      -> INSERT INTO `new_routes` (`id`, `org_id`, `name`, `type`, `enabled`, `gateway_group_id`) SELECT `id`, `org_id`, `name`, `type`, `enabled`, `gateway_group_id` FROM `routes`;
+      -> DROP TABLE `routes`;
+      -> ALTER TABLE `new_routes` RENAME TO `routes`;
+      -> CREATE UNIQUE INDEX `route_org_id_id` ON `routes` (`org_id`, `id`);
+      -> CREATE UNIQUE INDEX `route_org_id_name` ON `routes` (`org_id`, `name`);
+      -> CREATE TABLE `new_route_targets` (`id` text NOT NULL, `org_id` text NOT NULL, `host` text NOT NULL, `port` integer NOT NULL, `connector_id` text NOT NULL, `health_check_id` text NULL, `route_id` text NOT NULL, PRIMARY KEY (`id`), CONSTRAINT `route_targets_connectors_targets` FOREIGN KEY (`org_id`, `connector_id`) REFERENCES `connectors` (`org_id`, `id`) ON UPDATE NO ACTION ON DELETE NO ACTION, CONSTRAINT `route_targets_health_checks_targets` FOREIGN KEY (`org_id`, `health_check_id`) REFERENCES `health_checks` (`org_id`, `id`) ON UPDATE NO ACTION ON DELETE NO ACTION, CONSTRAINT `route_targets_routes_targets` FOREIGN KEY (`org_id`, `route_id`) REFERENCES `routes` (`org_id`, `id`) ON UPDATE NO ACTION ON DELETE NO ACTION, CONSTRAINT `route_targets_orgs` FOREIGN KEY (`org_id`) REFERENCES `orgs` (`id`) ON UPDATE NO ACTION ON DELETE NO ACTION);
+      -> INSERT INTO `new_route_targets` (`id`, `org_id`, `host`, `port`, `connector_id`, `route_id`) SELECT `id`, `org_id`, `host`, `port`, `connector_id`, `route_id` FROM `route_targets`;
+      -> DROP TABLE `route_targets`;
+      -> ALTER TABLE `new_route_targets` RENAME TO `route_targets`;
+      -> CREATE UNIQUE INDEX `routetarget_org_id_id` ON `route_targets` (`org_id`, `id`);
+      -> CREATE TABLE `health_checks` (`id` text NOT NULL, `org_id` text NOT NULL, `type` text NOT NULL, `interval_seconds` integer NOT NULL DEFAULT (10), PRIMARY KEY (`id`), CONSTRAINT `health_checks_orgs` FOREIGN KEY (`org_id`) REFERENCES `orgs` (`id`) ON UPDATE NO ACTION ON DELETE NO ACTION);
+      -> CREATE UNIQUE INDEX `healthcheck_org_id_id` ON `health_checks` (`org_id`, `id`);
+      -> PRAGMA foreign_keys = on;
+    -- ok (2.456949ms)
+  
+    -------------------------
+    -- 7.748638ms
+    -- 2 migrations
+    -- 28 sql statements
+  → exit 0
+
+$ atlas migrate apply --dir file:///tmp/tmp.y6XnsUS7sQ/postgres --url postgres://s5:s5@127.0.0.1:32768/s5cli?sslmode=disable
+  Migrating to version 20261006122728 (2 migrations in total):
+  
+    -- migrating version 20261006122528
+      -> CREATE TABLE "orgs" ("id" character varying NOT NULL, "name" character varying NOT NULL, "slug" character varying NOT NULL, PRIMARY KEY ("id"));
+      -> CREATE UNIQUE INDEX "orgs_slug_key" ON "orgs" ("slug");
+      -> CREATE TABLE "connectors" ("id" character varying NOT NULL, "org_id" character varying NOT NULL, "name" character varying NOT NULL, PRIMARY KEY ("id"), CONSTRAINT "connectors_orgs" FOREIGN KEY ("org_id") REFERENCES "orgs" ("id") ON UPDATE NO ACTION ON DELETE NO ACTION);
+      -> CREATE UNIQUE INDEX "connector_org_id_id" ON "connectors" ("org_id", "id");
+      -> CREATE UNIQUE INDEX "connector_org_id_name" ON "connectors" ("org_id", "name");
+      -> CREATE TABLE "gateway_groups" ("id" character varying NOT NULL, "org_id" character varying NOT NULL, "name" character varying NOT NULL, PRIMARY KEY ("id"), CONSTRAINT "gateway_groups_orgs" FOREIGN KEY ("org_id") REFERENCES "orgs" ("id") ON UPDATE NO ACTION ON DELETE NO ACTION);
+      -> CREATE UNIQUE INDEX "gatewaygroup_org_id_id" ON "gateway_groups" ("org_id", "id");
+      -> CREATE UNIQUE INDEX "gatewaygroup_org_id_name" ON "gateway_groups" ("org_id", "name");
+      -> CREATE TABLE "routes" ("id" character varying NOT NULL, "org_id" character varying NOT NULL, "name" character varying NOT NULL, "type" character varying NOT NULL, "enabled" boolean NOT NULL DEFAULT true, "gateway_group_id" character varying NOT NULL, PRIMARY KEY ("id"), CONSTRAINT "routes_gateway_groups_routes" FOREIGN KEY ("gateway_group_id") REFERENCES "gateway_groups" ("id") ON UPDATE NO ACTION ON DELETE NO ACTION, CONSTRAINT "routes_orgs" FOREIGN KEY ("org_id") REFERENCES "orgs" ("id") ON UPDATE NO ACTION ON DELETE NO ACTION);
+      -> CREATE UNIQUE INDEX "route_org_id_id" ON "routes" ("org_id", "id");
+      -> CREATE UNIQUE INDEX "route_org_id_name" ON "routes" ("org_id", "name");
+      -> CREATE TABLE "route_targets" ("id" character varying NOT NULL, "org_id" character varying NOT NULL, "host" character varying NOT NULL, "port" bigint NOT NULL, "connector_id" character varying NOT NULL, "route_id" character varying NOT NULL, PRIMARY KEY ("id"), CONSTRAINT "route_targets_connectors_targets" FOREIGN KEY ("org_id", "connector_id") REFERENCES "connectors" ("org_id", "id") ON UPDATE NO ACTION ON DELETE NO ACTION, CONSTRAINT "route_targets_routes_targets" FOREIGN KEY ("org_id", "route_id") REFERENCES "routes" ("org_id", "id") ON UPDATE NO ACTION ON DELETE NO ACTION, CONSTRAINT "route_targets_orgs" FOREIGN KEY ("org_id") REFERENCES "orgs" ("id") ON UPDATE NO ACTION ON DELETE NO ACTION);
+      -> CREATE UNIQUE INDEX "routetarget_org_id_id" ON "route_targets" ("org_id", "id");
+    -- ok (31.312166ms)
+  
+    -- migrating version 20261006122728
+      -> ALTER TABLE "routes" ADD COLUMN "description" character varying NOT NULL DEFAULT '';
+      -> CREATE TABLE "health_checks" ("id" character varying NOT NULL, "org_id" character varying NOT NULL, "type" character varying NOT NULL, "interval_seconds" bigint NOT NULL DEFAULT 10, PRIMARY KEY ("id"), CONSTRAINT "health_checks_orgs" FOREIGN KEY ("org_id") REFERENCES "orgs" ("id") ON UPDATE NO ACTION ON DELETE NO ACTION);
+      -> CREATE UNIQUE INDEX "healthcheck_org_id_id" ON "health_checks" ("org_id", "id");
+      -> ALTER TABLE "route_targets" ADD COLUMN "health_check_id" character varying NULL, ADD CONSTRAINT "route_targets_health_checks_targets" FOREIGN KEY ("org_id", "health_check_id") REFERENCES "health_checks" ("org_id", "id") ON UPDATE NO ACTION ON DELETE NO ACTION;
+    -- ok (9.976356ms)
+  
+    -------------------------
+    -- 74.924442ms
+    -- 2 migrations
+    -- 17 sql statements
+  → exit 0
+
+$ atlas migrate status --dir file:///tmp/tmp.y6XnsUS7sQ/postgres --url postgres://s5:s5@127.0.0.1:32768/s5cli?sslmode=disable
+  Migration Status: OK
+    -- Current Version: 20261006122728
+    -- Next Version:    Already at latest version
+    -- Executed Files:  2
+    -- Pending Files:   0
+  → exit 0
+
+## Inspect the result
+$ atlas schema inspect --url sqlite:///tmp/tmp.y6XnsUS7sQ/cli.db --format {{ sql . }}
+  -- Create "atlas_schema_revisions" table
+  CREATE TABLE `atlas_schema_revisions` (`version` text NOT NULL, `description` text NOT NULL, `type` integer NOT NULL DEFAULT 2, `applied` integer NOT NULL DEFAULT 0, `total` integer NOT NULL DEFAULT 0, `executed_at` datetime NOT NULL, `execution_time` integer NOT NULL, `error` text NULL, `error_stmt` text NULL, `hash` text NOT NULL, `partial_hashes` json NULL, `operator_version` text NOT NULL, PRIMARY KEY (`version`));
+  -- Create "connectors" table
+  CREATE TABLE `connectors` (`id` text NOT NULL, `org_id` text NOT NULL, `name` text NOT NULL, PRIMARY KEY (`id`), CONSTRAINT `connectors_orgs` FOREIGN KEY (`org_id`) REFERENCES `orgs` (`id`) ON UPDATE NO ACTION ON DELETE NO ACTION);
+  -- Create index "connector_org_id_id" to table: "connectors"
+  CREATE UNIQUE INDEX `connector_org_id_id` ON `connectors` (`org_id`, `id`);
+  -- Create index "connector_org_id_name" to table: "connectors"
+  CREATE UNIQUE INDEX `connector_org_id_name` ON `connectors` (`org_id`, `name`);
+  -- Create "gateway_groups" table
+  CREATE TABLE `gateway_groups` (`id` text NOT NULL, `org_id` text NOT NULL, `name` text NOT NULL, PRIMARY KEY (`id`), CONSTRAINT `gateway_groups_orgs` FOREIGN KEY (`org_id`) REFERENCES `orgs` (`id`) ON UPDATE NO ACTION ON DELETE NO ACTION);
+  -- Create index "gatewaygroup_org_id_id" to table: "gateway_groups"
+  CREATE UNIQUE INDEX `gatewaygroup_org_id_id` ON `gateway_groups` (`org_id`, `id`);
+  -- Create index "gatewaygroup_org_id_name" to table: "gateway_groups"
+  CREATE UNIQUE INDEX `gatewaygroup_org_id_name` ON `gateway_groups` (`org_id`, `name`);
+  -- Create "orgs" table
+  CREATE TABLE `orgs` (`id` text NOT NULL, `name` text NOT NULL, `slug` text NOT NULL, PRIMARY KEY (`id`));
+  -- Create index "orgs_slug_key" to table: "orgs"
+  CREATE UNIQUE INDEX `orgs_slug_key` ON `orgs` (`slug`);
+  -- Create "routes" table
+  CREATE TABLE `routes` (`id` text NOT NULL, `org_id` text NOT NULL, `name` text NOT NULL, `type` text NOT NULL, `enabled` bool NOT NULL DEFAULT true, `description` text NOT NULL DEFAULT '', `gateway_group_id` text NOT NULL, PRIMARY KEY (`id`), CONSTRAINT `routes_orgs` FOREIGN KEY (`org_id`) REFERENCES `orgs` (`id`) ON UPDATE NO ACTION ON DELETE NO ACTION, CONSTRAINT `routes_gateway_groups_routes` FOREIGN KEY (`gateway_group_id`) REFERENCES `gateway_groups` (`id`) ON UPDATE NO ACTION ON DELETE NO ACTION);
+  -- Create index "route_org_id_id" to table: "routes"
+  CREATE UNIQUE INDEX `route_org_id_id` ON `routes` (`org_id`, `id`);
+  -- Create index "route_org_id_name" to table: "routes"
+  CREATE UNIQUE INDEX `route_org_id_name` ON `routes` (`org_id`, `name`);
+  -- Create "route_targets" table
+  CREATE TABLE `route_targets` (`id` text NOT NULL, `org_id` text NOT NULL, `host` text NOT NULL, `port` integer NOT NULL, `connector_id` text NOT NULL, `health_check_id` text NULL, `route_id` text NOT NULL, PRIMARY KEY (`id`), CONSTRAINT `route_targets_orgs` FOREIGN KEY (`org_id`) REFERENCES `orgs` (`id`) ON UPDATE NO ACTION ON DELETE NO ACTION, CONSTRAINT `route_targets_routes_targets` FOREIGN KEY (`org_id`, `route_id`) REFERENCES `routes` (`org_id`, `id`) ON UPDATE NO ACTION ON DELETE NO ACTION, CONSTRAINT `route_targets_health_checks_targets` FOREIGN KEY (`org_id`, `health_check_id`) REFERENCES `health_checks` (`org_id`, `id`) ON UPDATE NO ACTION ON DELETE NO ACTION, CONSTRAINT `route_targets_connectors_targets` FOREIGN KEY (`org_id`, `connector_id`) REFERENCES `connectors` (`org_id`, `id`) ON UPDATE NO ACTION ON DELETE NO ACTION);
+  -- Create index "routetarget_org_id_id" to table: "route_targets"
+  CREATE UNIQUE INDEX `routetarget_org_id_id` ON `route_targets` (`org_id`, `id`);
+  -- Create "health_checks" table
+  CREATE TABLE `health_checks` (`id` text NOT NULL, `org_id` text NOT NULL, `type` text NOT NULL, `interval_seconds` integer NOT NULL DEFAULT 10, PRIMARY KEY (`id`), CONSTRAINT `health_checks_orgs` FOREIGN KEY (`org_id`) REFERENCES `orgs` (`id`) ON UPDATE NO ACTION ON DELETE NO ACTION);
+  -- Create index "healthcheck_org_id_id" to table: "health_checks"
+  CREATE UNIQUE INDEX `healthcheck_org_id_id` ON `health_checks` (`org_id`, `id`);
+  → exit 0
+

@@ -1,0 +1,9 @@
+# apply-check.sh (go version go1.27.1 linux/amd64; postgres (PostgreSQL) 18.6)
+== sqlite: apply from empty
+== sqlite: apply again (no pending files)
+== sqlite: live schema vs Ent schema
+equal
+== postgres: apply from empty
+== postgres: apply again (no pending files)
+== postgres: live schema vs Ent schema
+equal

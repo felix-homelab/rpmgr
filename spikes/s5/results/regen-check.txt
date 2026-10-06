@@ -1,0 +1,4 @@
+# regen-check.sh (go version go1.27.1 linux/amd64; ariga.io/atlas v1.3.0)
+NOTICE:  database "s5regen" does not exist, skipping
+sqlite: regenerated 20261006122725_health_checks.sql is byte-identical
+postgres: regenerated 20261006122728_health_checks.sql is byte-identical
