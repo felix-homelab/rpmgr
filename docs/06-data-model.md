@@ -239,19 +239,36 @@ Every configuration table carries `org_id NOT NULL`. Isolation is enforced at th
 1. **API**: the authorization interceptor resolves the target resource's org and checks the caller's
    membership and role ([04](04-security.md#one-enforcement-point-with-defence-in-depth)).
 2. **Store**: Ent queries on org-owned tables require an `OrgScope` that only the authorization
-   layer can construct, implemented as an interceptor plus a deny-by-default privacy rule [V S5].
-   System jobs use an explicit, audited system scope.
+   layer can construct (unexported fields, unexported context key). System jobs use an explicit
+   system scope, granted only together with an audit record. A mixin on every org-owned table
+   implements it in three parts ([S5](spikes/S5.md)):
+   - a **deny-by-default privacy policy**: without a scope, every query and mutation fails;
+   - an **interceptor** that adds `org_id = <scope>` to every query, edge traversal and eager
+     load, so another org's IDs yield `NotFound`, not a permission error;
+   - a **mutation hook** that adds the same condition to every update and delete and refuses a
+     create in another org.
+
+   Ent skips its policies when a caller sets `privacy.DecisionContext(ctx, privacy.Allow)`, and
+   allows when no rule decides; the interceptor and the hook ignore both, and lint bans
+   `privacy.DecisionContext` outside `internal/store`
+   ([12](12-testing-and-quality.md#security-testing)).
 3. **Database**: foreign keys between org-owned tables are **composite** — for example
    `route_targets (org_id, route_id) REFERENCES routes (org_id, id)` and
    `route_targets (org_id, connector_id) REFERENCES connectors (org_id, id)` — so a route can never
-   point at another org's connector, even through a bug in the layers above. This works on both
-   SQLite and PostgreSQL.
+   point at another org's connector, even through a bug in the layers above or plain SQL. Every
+   org-owned table has `UNIQUE (org_id, id)` for them to reference, and `org_id REFERENCES
+   orgs (id)`. Ent cannot declare composite keys, so a diff hook adds them when migrations are
+   generated ([Migrations](#migrations)). They keep `ON DELETE NO ACTION`: a parent that still has
+   children cannot be deleted, and no row can move to another org under its children. This works
+   on both SQLite and PostgreSQL ([S5](spikes/S5.md)).
 
 Exceptions, each explicit:
 
 - `users` are global (a person can belong to several orgs); access is always through `memberships`.
 - Shared **gateway groups** belong to the system org; other orgs reference them through
   `gateway_group_grants`, and their routes on that group are still owned by their own org.
+  `routes.gateway_group_id` and `port_allocations.gateway_group_id` are therefore single-column
+  foreign keys; the grant is checked above the database.
 - Names under the instance base domain that are delegated to an org
   ([D23](14-open-decisions.md#tenancy-and-data)) are published in the system org's zone. The DNS
   job writes those records under the audited system scope; the ledger rows belong to the system
@@ -282,11 +299,23 @@ method, list filter or search returns or modifies the other org's data
 
 ## Migrations
 
-- [R] Schema defined in **Ent**; **Atlas** generates versioned, forward-only SQL migrations, one
-  directory per dialect, with a checksum file and Atlas lint in CI
-  ([ADR-0011](adr/0011-sqlite-postgres-ent-atlas.md)) [V S5].
-- Migrations are embedded in the binary. Single node: applied at startup under a database lock.
-  HA: applied explicitly with `rpmgr migrate` before upgrading the replicas.
+- [R] Schema defined in **Ent**; versioned, forward-only SQL migrations, one directory per dialect,
+  with an `atlas.sum` checksum file ([ADR-0011](adr/0011-sqlite-postgres-ent-atlas.md)).
+  - **Generated** by rpmgr code on Ent's Go API and the `ariga.io/atlas` library, replaying the
+    directory on a clean dev database, with the composite-key diff hook
+    ([Tenancy enforcement](#tenancy-enforcement)). The Atlas CLI's Apache-2.0 build cannot read Ent
+    schemas, so it is not used for generation ([S5](spikes/S5.md)).
+  - **Checked in CI:** regenerating yields no new migration; Atlas lint (community CLI); every
+    migration applied on both dialects; the resulting schema equals the Ent schema.
+- Migrations are embedded in the binary and applied by it with Atlas's migration executor and a
+  revision table of its own. An edited or unlisted migration file is refused before anything runs.
+  Single node: applied at startup under a database lock. HA: applied explicitly with
+  `rpmgr migrate` before upgrading the replicas.
+- **One transaction per file.** A file that fails leaves no change and no revision. On SQLite,
+  Atlas changes a table by rebuilding it between `PRAGMA foreign_keys = off` and `= on`, a pragma
+  SQLite ignores inside a transaction; the controller therefore switches foreign keys off on the
+  migrating connection, runs the file in a transaction and `PRAGMA foreign_key_check` before the
+  commit, which fails the file on any violation ([S5](spikes/S5.md)).
 - **No down migrations.** Rollback means restoring the pre-upgrade backup. On SQLite, the controller
   takes a `VACUUM INTO` copy before migrating [V S8].
 - **SQLite → PostgreSQL** (Phase 2): `rpmgr migrate-db --from <sqlite path> --to <postgres DSN>`
@@ -300,6 +329,6 @@ method, list filter or search returns or modifies the other org's data
 
 | Engine | Use | Notes |
 |---|---|---|
-| **SQLite** (pure Go, `modernc.org/sqlite`) | Default; single controller | Needed for `CGO_ENABLED=0` static builds. WAL mode, `busy_timeout`, one writer connection. Pinned to a current version [V S8] |
+| **SQLite** (pure Go, `modernc.org/sqlite`) | Default; single controller | Needed for `CGO_ENABLED=0` static builds. WAL mode, `busy_timeout`, one writer connection. `PRAGMA foreign_keys = 1` on every connection: SQLite enforces no foreign key without it, and the controller refuses a connection on which it is off ([S5](spikes/S5.md)). Pinned to a current version [V S8] |
 | **PostgreSQL** | HA, larger installations | Required for more than one controller replica. Existing SQLite installations move with `rpmgr migrate-db` ([Migrations](#migrations)) |
 | MySQL | **Dropped** | A third dialect multiplies migration and test cost. The importer still reads MySQL source databases ([11](11-migration.md)) |

@@ -28,6 +28,12 @@ in the change description.
 - **Dual-dialect migrations.** Every migration is applied on SQLite and PostgreSQL, from an empty
   database and from the schema of every supported previous release with fixture data; the resulting
   schema must equal the Ent schema, and fixture data must survive ([06](06-data-model.md)).
+  Regenerating the migrations from the Ent schema must yield no new file, a changed `atlas.sum` must
+  be refused, and on SQLite a file that leaves a foreign-key violation must be rolled back
+  ([06](06-data-model.md#migrations)).
+- **Store scoping.** Without a scope, with a forged scope and with `privacy.DecisionContext` set,
+  no row is reachable; plain SQL cannot make a row reference another org's row
+  ([06](06-data-model.md#tenancy-enforcement)).
 - **Cross-tenant leak suite.** Two orgs with identical resources. Generated from the service
   registry: every `Get`, `List`, `Update`, `Delete` and every streaming method is called by a user
   of org B with IDs from org A. Expected: `NotFound` (not `PermissionDenied`, so existence does not
@@ -116,7 +122,7 @@ recorded, not hidden.
 
 | Control | How it is tested |
 |---|---|
-| **Static analysis** | `golangci-lint` with `gosec`, plus `forbidigo` rules that fail the build on: `InsecureSkipVerify` anywhere outside test helpers (tests use a generated test CA instead), `math/rand` in packages handling keys, tokens or nonces, `secret.Value.Reveal()` outside an allow-listed set of packages ([04](04-security.md#secrets-at-rest-and-in-logs)). |
+| **Static analysis** | `golangci-lint` with `gosec`, plus `forbidigo` rules that fail the build on: `InsecureSkipVerify` anywhere outside test helpers (tests use a generated test CA instead), `math/rand` in packages handling keys, tokens or nonces, `secret.Value.Reveal()` outside an allow-listed set of packages ([04](04-security.md#secrets-at-rest-and-in-logs)), `privacy.DecisionContext` outside `internal/store`, because it skips Ent's privacy policies ([06](06-data-model.md#tenancy-enforcement)). |
 | **Dependencies** | `govulncheck` on every PR and nightly; dependency updates via Dependabot with the same CI gates. |
 | **Repository hygiene** | OpenSSF Scorecard; CI actions pinned by commit SHA; protected default branch. |
 | **Secret scanning** | gitleaks in CI (and as an optional pre-commit hook), with custom rules for the token prefixes `rpmgr_enr_`, `rpmgr_pat_`, `rpmgr_sat_`, `rpmgr_ses_` (checksum makes matches reliable, [04](04-security.md#tokens)) and for private keys. |
