@@ -1,0 +1,10 @@
+# docker-dryrun 2026-10-06T13:28:51Z
+## client: Linux 6.18.33.2-microsoft-standard-WSL2 x86_64
+20
+4194304 4194304 
+## gateway: Linux 6.18.33.2-microsoft-standard-WSL2 x86_64
+20
+4194304 4194304 
+## connector: Linux 6.18.33.2-microsoft-standard-WSL2 x86_64
+20
+4194304 4194304 
