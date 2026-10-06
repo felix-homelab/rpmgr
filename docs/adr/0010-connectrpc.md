@@ -84,6 +84,7 @@ design principle P7 together with goal 4 ([00](../00-vision-and-scope.md#goals))
 - cancellation propagation;
 - message-size limits (4 MiB control, [03](../03-connections.md#framing));
 - HTTP/2 PING liveness with `ReadIdleTimeout` 20 s / `PingTimeout` 10 s;
+- 10 000 concurrent idle sessions, with the memory per session recorded;
 - behaviour behind a TLS-passthrough route.
 
 **Rule** ([D20](../14-open-decisions.md#engineering)): if any check fails, grpc-go carries the

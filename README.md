@@ -81,9 +81,11 @@ documents link to them.
 | `cf-api:` | [cloudflare/api-schemas](https://github.com/cloudflare/api-schemas), `openapi.json` on `main` | retrieved 2026-10-06 |
 
 Library facts without a line (for example "`google/uuid` v1.6.0 has `NewV7`") name the version
-instead. Line numbers refer to the versions above; later versions may differ. Documentation
-citations (`cf:`, `cf-api:`) describe the vendor's documented behaviour on the retrieval date;
-behaviour the documentation does not guarantee is tagged [V].
+instead. Line numbers refer to the versions above; later versions may differ. A fact re-checked
+at a later version, for example by a Phase 0 spike, cites that version inline, as in
+`[F quic-go v0.63.0 stream.go:183]` ([D39](docs/14-open-decisions.md#project-and-process)).
+Documentation citations (`cf:`, `cf-api:`) describe the vendor's documented behaviour on the
+retrieval date; behaviour the documentation does not guarantee is tagged [V].
 
 ## Changing the design
 

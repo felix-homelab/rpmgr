@@ -64,6 +64,9 @@ images, the packages and the release manifest. It follows
   ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-(alpha|beta|rc)\.[1-9][0-9]*)?$
   ```
 
+- The only other tags are the archive tags `spike/sx` of Phase 0 spikes
+  ([CONTRIBUTING.md](CONTRIBUTING.md#spikes)); they are immutable too and never trigger a build.
+
 ## Changelog
 
 [CHANGELOG.md](CHANGELOG.md) at the repository root is the release history for the people who run
