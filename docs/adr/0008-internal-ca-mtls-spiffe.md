@@ -1,6 +1,6 @@
 # ADR-0008: Internal CA, mutual TLS everywhere, SPIFFE identities
 
-Status: Proposed (design phase) · Date: 2026-10-06
+Status: Accepted (spike S7, 2026-10-06) · Date: 2026-10-06
 
 ## Context
 
@@ -30,7 +30,7 @@ dependency on a public CA for internal traffic.
   `<connector-id>.connector.<td>`, `<gateway-id>.gateway.<td>`, and for controller nodes
   `<node-id>.controller.<td>` plus the shared `controller.<td>` and `reauth.controller.<td>`. This is
   needed because Go's `crypto/tls` refuses a client handshake without `ServerName` unless
-  `InsecureSkipVerify` is set [F Go 1.25.14 `crypto/tls/handshake_client.go:47`], and with a
+  `InsecureSkipVerify` is set [F Go 1.27.1 `crypto/tls/handshake_client.go:47`], and with a
   `ServerName` it matches DNS/IP SANs only.
 - Controller node certificates carry **clientAuth as well as serverAuth**, for controller-to-controller
   mutual TLS in HA; a `controller_nodes` table records `node_id`, `internal_address` and `last_seen`.
@@ -41,7 +41,9 @@ dependency on a public CA for internal traffic.
 **CA hierarchy** ([04](../04-security.md#ca-hierarchy))
 - Root: ECDSA P-256, 10 years, KEK-encrypted online by default, optionally offline.
 - One issuing intermediate: 1 year, rotated at 6 months, name-constrained to the trust domain
-  (`PermittedURIDomains` and `PermittedDNSDomains` = [`<td>`]) [V S7].
+  (`PermittedURIDomains` and `PermittedDNSDomains` = [`<td>`], critical). Go enforces both; the URI
+  constraint also admits sub-domains of `<td>`, so `VerifyConnection` requires the trust domain
+  exactly ([S7](../spikes/S7.md)).
 
 **Leaf certificates**
 - Key: ECDSA P-256, **generated on the agent**, never leaving it.
@@ -57,7 +59,9 @@ dependency on a public CA for internal traffic.
   `Renew`); supersession marks are also written to the revocation log. This still survives a lost
   `Renew` response (the newer serial was never used) and restores (marks are re-applied from the
   log), but an old leaked key or a cloned VM image can no longer obtain a fresh identity. A CSR with
-  a new key yields a new certificate [V S7].
+  a new key yields a new certificate. The Reauth configuration verifies the chain itself in
+  `VerifyConnection` and disables session tickets, because a configuration returned by
+  `GetConfigForClient` shares its parent's ticket keys ([S7](../spikes/S7.md)).
 
 **Mutual TLS everywhere**
 - Every internal connection uses mutual TLS 1.3 against the **pinned root**, never the system trust
@@ -67,6 +71,9 @@ dependency on a public CA for internal traffic.
   come from the snapshot), so the key of a gateway in another group or org cannot impersonate it;
   the gateway SNI router matches the `.gateway.<td>` suffix.
 - Authorization reads the URI SAN in `VerifyConnection`. The certificate CN is never used.
+- Every check runs in `VerifyConnection`, which Go also calls on resumed sessions, never in
+  `VerifyPeerCertificate`, which resumption skips; TLS session resumption therefore stays on
+  ([03](../03-connections.md#properties-common-to-all-rpmgr-internal-sessions)).
 
 **Enrollment** ([04](../04-security.md#enrollment))
 - The enrollment token is **1 h, single use**, and only its hash is stored.
@@ -77,6 +84,9 @@ dependency on a public CA for internal traffic.
   - `Enroll` runs over TLS with RootCAs = {pinned root} and `ServerName` `controller.<td>`;
   - the authenticated `Enroll` response returns the trust bundle; additional roots are accepted only
     if cross-signed by an already-trusted root (this is also how root rotation works).
+- The CSR of `Enroll`, `Renew` and `Reauth` carries the connection's `tls-exporter` value
+  (RFC 9266); a CSR without it, or bound to another connection, is refused
+  ([04](../04-security.md#flow)).
 - Root rotation drops the old root only after the longest leaf lifetime **plus** the Reauth grace
   period (7 + 30 days), so agents that were offline in between can still re-authenticate.
 
@@ -150,3 +160,8 @@ dependency on a public CA for internal traffic.
   all rpmgr-internal sessions.
 - If CSR binding works, it is mandatory for `Enroll`, `Renew` and `Reauth`; otherwise it is not
   used.
+
+**Result** ([S7](../spikes/S7.md), 2026-10-06, Go 1.27.1): every check passed. Go enforces both name
+constraints, so they stay; `VerifyConnection` runs on resumed sessions and refuses an identity
+revoked after the first handshake, so resumption stays allowed; CSR binding works, so it is
+mandatory for `Enroll`, `Renew` and `Reauth`. The ADR moved to *Accepted*.

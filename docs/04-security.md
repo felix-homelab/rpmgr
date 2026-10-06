@@ -71,18 +71,25 @@ What the design does **not** protect against, stated plainly:
 
 - Every certificate also carries a **DNS SAN derived from its identity**, because Go's TLS client
   verifies a server by DNS name and refuses to handshake without a `ServerName` unless verification
-  is disabled [F Go 1.25.14 `crypto/tls/handshake_client.go:47`]:
+  is disabled [F Go 1.27.1 `crypto/tls/handshake_client.go:47`]:
 
 | Principal | DNS SAN |
 |---|---|
 | Connector | `<connector-id>.connector.<td>` (used when it is the TLS server in `rpmgr-e2e`/`rpmgr-p2p`) |
 | Gateway | `<gateway-id>.gateway.<td>` |
-| Controller node | `<node-id>.controller.<td>` and the shared `controller.<td>` |
+| Controller node | `<node-id>.controller.<td>` and the shared `controller.<td>` and `reauth.controller.<td>` |
 
+- IDs keep their form in DNS SANs (`gw_01JA…`): `_` and upper-case letters are valid there
+  [F Go 1.27.1 `crypto/x509/parser.go:1411-1415`], and names match `ServerName` case-insensitively.
 - Clients always set `ServerName` to the **expected** peer's DNS name (a connector knows each
-  gateway's ID from its snapshot), and `VerifyConnection` additionally checks the SPIFFE URI. A
-  gateway of another group or org therefore cannot impersonate this connector's gateway, even with a
-  valid certificate. `InsecureSkipVerify` is never used.
+  gateway's ID from its snapshot), and `VerifyConnection` additionally checks the SPIFFE URI:
+  exactly one URI SAN, scheme `spiffe`, a host **equal** to `<td>` (the name constraint below also
+  admits sub-domains of `<td>`), and the expected role and ID. A gateway of another group or org
+  therefore cannot impersonate this connector's gateway, even with a valid certificate
+  ([S7](spikes/S7.md)). `InsecureSkipVerify` is never used.
+- Every rpmgr check runs in `VerifyConnection`, which Go calls on full and resumed handshakes alike;
+  never in `VerifyPeerCertificate`, which resumed connections skip
+  ([03](03-connections.md#properties-common-to-all-rpmgr-internal-sessions)).
 - Authorization always parses the URI path; the certificate CN is never used.
 
 ### CA hierarchy
@@ -90,7 +97,7 @@ What the design does **not** protect against, stated plainly:
 | Key | Algorithm | Lifetime | Storage | Use |
 |---|---|---|---|---|
 | **Root CA** | ECDSA P-256 | 10 years | Controller DB, envelope-encrypted under the KEK (default); or offline (`rpmgr ca offline-root`) | Signs intermediates only (`pathlen=1`) |
-| **Issuing intermediate** | ECDSA P-256 | 1 year, rotated at 6 months with overlap | Controller DB, envelope-encrypted | Signs leaf certificates (`pathlen=0`), name-constrained to URI domain and DNS domain `<td>` [V S7] |
+| **Issuing intermediate** | ECDSA P-256 | 1 year, rotated at 6 months with overlap | Controller DB, envelope-encrypted | Signs leaf certificates (`pathlen=0`), name-constrained (critical) to URI domain and DNS domain `<td>`; Go enforces both [F Go 1.27.1 `crypto/x509/constraints.go:525`] ([S7](spikes/S7.md)) |
 | **Config-signing key** | ECDSA P-256 | rotated yearly | Controller DB, envelope-encrypted | Signs snapshots (agents verify last-known-good on disk) |
 | **Audit-checkpoint key** | ECDSA P-256 | rotated yearly | Controller DB, envelope-encrypted | Signs audit checkpoints |
 
@@ -115,17 +122,27 @@ later.
   serial for the same identity has been seen in an authenticated session (control session or
   `Renew`), and the mark is also written to the revocation log. An old leaked key or a cloned VM
   image therefore cannot obtain a fresh identity, while a lost `Renew` response (the newer serial
-  was never used) and a restore (marks are re-applied from the log) still work. The controller then issues a
-  new certificate for a CSR with a new key. No signed application messages are involved, so nothing
-  can be replayed [V S7]. [R] 0 disables the
-  grace period. After it, the agent must re-enroll.
+  was never used) and a restore (marks are re-applied from the log) still work. The controller then
+  issues a new certificate for a CSR with a new key, bound to the connection ([Flow](#flow)). No
+  signed application messages are involved, so nothing can be replayed. [R] 0 disables the grace
+  period. After it, the agent must re-enroll.
+- **The Reauth verifier** ([S7](spikes/S7.md)). `GetConfigForClient` selects it for SNI
+  `reauth.controller.<td>`. It requests any client certificate and verifies the chain itself, in
+  `VerifyConnection`, at a time inside the certificate's validity; crypto/tls still checks the
+  client's CertificateVerify, its proof of possession of the key. It **disables session tickets**:
+  a configuration returned by `GetConfigForClient` shares the ticket keys of its parent, so a ticket
+  from `controller.<td>` would otherwise resume there, and a Reauth session never yields a ticket.
+  The normal endpoint never accepts an expired certificate.
 - **Clock skew.** The 5-minute backdating absorbs ordinary skew. Agents compare their clock with
   `Welcome.server_time` and warn above 30 s ([03](03-connections.md#failure-modes)).
 - **Settings.** The agent leaf lifetime and the grace period are instance settings in
   **Settings → PKI** (Instance Admin): lifetime 1–30 days (default 7), grace 0–90 days (default 30,
   0 disables). Renewal stays at 50 % of the lifetime ([14](14-open-decisions.md) D8).
 - **TLS session tickets.** Session-ticket keys for rpmgr-internal sessions rotate **daily**
-  ([03](03-connections.md#properties-common-to-all-rpmgr-internal-sessions)).
+  ([03](03-connections.md#properties-common-to-all-rpmgr-internal-sessions)). A ticket never
+  outlives its certificates: on resumption the server re-checks the client certificate's expiry and
+  stored chain [F Go 1.27.1 `crypto/tls/handshake_server_tls13.go:362-381`], and the client the
+  server's [F Go 1.27.1 `crypto/tls/handshake_client.go:405-429`].
 
 ### Revocation
 
@@ -238,9 +255,18 @@ Shown in [03-connections.md](03-connections.md#enrollment). Security-relevant ru
 - The root certificate carries the trust domain as its URI SAN (`spiffe://<td>`). After selecting
   the root by pin, the agent reads `<td>` from it, so the trust domain is authenticated by the pin
   and needs no separate parameter.
-- The CSR is bound to the TLS session by an exported keying material value. This binding is
-  **mandatory** for `Enroll`, `Renew` and `Reauth` if S7 confirms that it works; otherwise it is not
-  used [V S7].
+- The CSR is **bound to the TLS connection** that carries it; the binding is **mandatory** for
+  `Enroll`, `Renew` and `Reauth` ([S7](spikes/S7.md)). The agent exports the connection's
+  `tls-exporter` value (RFC 9266, Section 2: label `EXPORTER-Channel-Binding`, empty context,
+  32 bytes) and puts it into a non-critical CSR extension, which its key signs; EST binds requests
+  the same way (RFC 7030, Section 3.5). The controller compares it with its own value for that
+  connection and refuses a CSR without it or with another connection's value, so a captured CSR
+  cannot be replayed. Consequences:
+  - the agent sends the CSR on the connection it computed the value on (its control-session
+    connection, not a pool); if that connection was replaced meanwhile, the request is refused and
+    the agent builds a new CSR;
+  - the extension's OID lies under an IANA Private Enterprise Number registered for rpmgr before
+    Phase 1 [V VB-17] (the spike used 32473, the number reserved for documentation, RFC 5612).
 
 ### Lifecycle
 

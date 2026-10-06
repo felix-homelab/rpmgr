@@ -40,13 +40,20 @@ Design goals, in priority order:
   Every certificate carries a SPIFFE URI SAN (the identity) and a DNS SAN derived from it
   (`<id>.connector.<td>`, `<id>.gateway.<td>`, `controller.<td>`). The TLS client always sets
   `ServerName` to the **expected peer's** DNS name — Go's TLS client refuses to handshake without
-  one unless verification is disabled [F Go 1.25.14 `crypto/tls/handshake_client.go:47`] — and
+  one unless verification is disabled [F Go 1.27.1 `crypto/tls/handshake_client.go:47`] — and
   `tls.Config.VerifyConnection` additionally checks the SPIFFE ID against the deny-list and the
   agent's snapshot ([04](04-security.md#pki-and-identity)). `InsecureSkipVerify` is never used.
 - **0-RTT is disabled** (no `Allow0RTT`, no `ListenEarly`/`DialEarly`), because 0-RTT data can be
-  replayed. TLS session resumption is allowed. Revocation is re-checked on resumed connections by
-  `VerifyConnection` [V S7]; if S7 shows it is not, resumption is disabled for internal sessions.
-  Session-ticket key rotation is defined in [04](04-security.md#leaf-certificates).
+  replayed. TLS session resumption is allowed: Go runs `VerifyConnection` on resumed TLS 1.3
+  connections on both sides [F Go 1.27.1 `crypto/tls/handshake_client_tls13.go:595-604`]
+  [F Go 1.27.1 `crypto/tls/handshake_server_tls13.go:1033-1042`], so a revoked identity is refused
+  on resumption too ([S7](spikes/S7.md)). `VerifyPeerCertificate` is not called on resumed
+  connections [F Go 1.27.1 `crypto/tls/common.go:675-678`], so every rpmgr check lives in
+  `VerifyConnection`. Session-ticket key rotation is defined in
+  [04](04-security.md#leaf-certificates).
+- **No renegotiation.** `tls.Config.Renegotiation` is never set: it would disable exported keying
+  material [F Go 1.27.1 `crypto/tls/conn.go:1643-1649`], which binds CSRs to their connection
+  ([04](04-security.md#flow)).
 - **No application-layer secrets on the wire.** After the TLS handshake, the peer identity is
   known; no message carries a password, token or signature for authentication.
 - **Every stream has exactly one writer goroutine** behind a bounded queue. Every request has a
