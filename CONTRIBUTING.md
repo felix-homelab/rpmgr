@@ -19,6 +19,7 @@ are covered in [RELEASING.md](RELEASING.md).
 - [Reviews](#reviews)
 - [Documenting features](#documenting-features)
 - [Architecture decision records](#architecture-decision-records)
+- [Spikes](#spikes)
 - [Definition of done](#definition-of-done)
 - [Security-sensitive changes](#security-sensitive-changes)
 - [License, sign-off and third-party code](#license-sign-off-and-third-party-code)
@@ -89,8 +90,7 @@ branch fails CI, because `tmp/` branches are never merged.
 - Keep branches short-lived: merge within about a week. Rebase on `main` (or merge `main` in) at
   least every two working days while the branch is open.
 - Branches are deleted when their PR is merged or closed. A `tmp/` branch is deleted when its
-  result is written down (for spikes: `docs/spikes/Sx.md`,
-  [13](docs/13-roadmap.md#phase-0--spikes)).
+  result is written down; a spike's branch is first tagged ([Spikes](#spikes)).
 - Force-pushing your own unmerged branch is fine; force-pushing `main` or `release/*` is never
   allowed.
 
@@ -306,6 +306,29 @@ document table, and, if it defines timers or limits, a "single source of truth" 
   old one; the old one only gets its status line updated. Typos and links may be fixed anytime.
 - Closing an open decision is recorded in [14](docs/14-open-decisions.md).
 
+## Spikes
+
+A spike answers one Phase 0 question with a throw-away prototype and applies the rule agreed
+before it runs ([13](docs/13-roadmap.md#phase-0--spikes),
+[D36](docs/14-open-decisions.md#project-and-process)):
+
+1. **Issue** from the *Spike* issue template, titled `Spike Sx: <question>`, labelled `type:docs`,
+   `phase:p0`, `needs-adr` and the area.
+2. **Code** on `tmp/sx-<desc>`, in `spikes/sx/` as its own Go module, with SPDX headers and a
+   `README.md` that says how to repeat every run. Raw results are committed next to the code in
+   `spikes/sx/results/`. The branch is never merged, and CI does not run on it.
+3. **Result** in one PR from `feature/<issue>-sx-<desc>`, titled `docs(adr): …`, labelled
+   `no-changelog`, with `Closes #<issue>`: `docs/spikes/Sx.md` from the
+   [template](docs/spikes/TEMPLATE.md), the ADR moved to *Accepted* or to the fallback the rule
+   names, and every document the result affects.
+4. **Archive.** After that PR is merged, the last commit of the spike branch is tagged with an
+   annotated tag `spike/sx` (immutable, protected by a ruleset), the tag is pushed, and the branch
+   is deleted. `docs/spikes/Sx.md` links to the tag, so the code behind the numbers stays
+   available.
+
+A spike pins the current releases of the libraries it tests and re-checks, at those versions,
+every `[F]` fact its decision rests on ([D39](docs/14-open-decisions.md#project-and-process)).
+
 ## Definition of done
 
 A change is done when:
@@ -378,7 +401,8 @@ the rules above are enforced, not just written down:
   force pushes and deletion blocked. There is no CODEOWNERS file, and no linear-history rule,
   because PRs are merged with merge commits.
 - **`release/*` ruleset:** the same as `main`.
-- **Tag ruleset for `v*`:** only the maintainer creates tags; tags cannot be updated or deleted.
+- **Tag rulesets for `v*` and `spike/*`:** only the maintainer creates tags; tags cannot be
+  updated or deleted.
 - **Merge settings:** GitHub's defaults: merge commits, squash and rebase merges allowed, the
   default merge commit message; merge commits are the method used ([Pull requests](#pull-requests)).
   Head branches are deleted automatically.
