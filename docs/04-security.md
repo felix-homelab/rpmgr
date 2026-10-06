@@ -84,8 +84,8 @@ What the design does **not** protect against, stated plainly:
 - Clients always set `ServerName` to the **expected** peer's DNS name (a connector knows each
   gateway's ID from its snapshot), and `VerifyConnection` additionally checks the SPIFFE URI:
   exactly one URI SAN, scheme `spiffe`, a host **equal** to `<td>` (the name constraint below also
-  admits sub-domains of `<td>`), and the expected role and ID. A gateway of another group or org therefore
-  cannot impersonate this connector's gateway, even with a valid certificate
+  admits sub-domains of `<td>`), and the expected role and ID. A gateway of another group or org
+  therefore cannot impersonate this connector's gateway, even with a valid certificate
   ([S7](spikes/S7.md)). `InsecureSkipVerify` is never used.
 - Every rpmgr check runs in `VerifyConnection`, which Go calls on full and resumed handshakes alike;
   never in `VerifyPeerCertificate`, which resumed connections skip
@@ -265,8 +265,8 @@ Shown in [03-connections.md](03-connections.md#enrollment). Security-relevant ru
   - the agent sends the CSR on the connection it computed the value on (its control-session
     connection, not a pool); if that connection was replaced meanwhile, the request is refused and
     the agent builds a new CSR;
-  - [R] the extension's OID lies under an IANA Private Enterprise Number registered for rpmgr
-    before Phase 1 (the spike used 32473, the number reserved for documentation, RFC 5612).
+  - the extension's OID lies under an IANA Private Enterprise Number registered for rpmgr before
+    Phase 1 [V VB-17] (the spike used 32473, the number reserved for documentation, RFC 5612).
 
 ### Lifecycle
 

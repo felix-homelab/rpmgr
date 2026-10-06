@@ -191,6 +191,7 @@ implemented, and the result recorded in the PR.
 | VB-14 | The package name `rpmgr` is free in Debian, Fedora, Homebrew, winget and GHCR | [ADR-0001](adr/0001-name-rpmgr.md) |
 | VB-15 | `/install.sh` verification chain (root key → signing-key statement → manifest → SHA-256) with OpenSSL ≥ 3.0 (Ed25519 `pkeyutl -rawin`, BLAKE2b-512 prehash) on the supported distributions | [04](04-security.md#install-scripts) |
 | VB-16 | protovalidate-es maturity as the react-hook-form resolver; fallback: hand-written zod schemas | [09](09-web-ui.md), [08](08-software-stack.md#frontend) |
+| VB-17 | An IANA Private Enterprise Number registered for rpmgr before Phase 1, for the OID of the CSR-binding extension; S7 used 32473, the number reserved for documentation (RFC 5612) | [04](04-security.md#flow), [S7](spikes/S7.md) |
 
 ## Risks
 
