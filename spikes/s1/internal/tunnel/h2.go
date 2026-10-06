@@ -33,7 +33,7 @@ func H2Server() *http2.Server {
 
 // H2Transport is the gateway's HTTP/2 client transport. x/net reads the client's receive
 // windows only from net/http's HTTP2Config of the wrapped http.Transport
-// [F x/net v0.59.0 http2/config.go: fillNetHTTPConfig], so the windows are set there and the
+// [F x/net v0.59.0 http2/config.go:88,150-155], so the windows are set there and the
 // http2.Transport is derived with ConfigureTransports.
 func H2Transport() (*http2.Transport, error) {
 	t1 := &http.Transport{HTTP2: &http.HTTP2Config{
