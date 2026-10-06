@@ -113,6 +113,10 @@ congestion control. "QUIC is faster" is therefore a **hypothesis**, not a premis
   {0, 1} %, with a direct connection (no tunnel) as the reference; the rule above decides. The full
   benchmark matrix (RTT {1, 20, 80, 200} ms × loss {0, 0.5, 1, 2} %) runs on the same testbed
   before every release ([12](../12-testing-and-quality.md#benchmarks)).
+  The harness, how the rule's four metrics are computed (cells, medians, a geometric mean per
+  metric over cells and testbeds, a 5 % margin for a win) and a local dry run are in
+  [S1](../spikes/S1.md); only the reference-testbed run decides (D37), so this ADR stays
+  *Proposed* until then.
 - **S3**: dispatching on a shared UDP/443 listener (`h3` + `rpmgr-tunnel/1`). If one listener
   cannot serve both well, tunnels move to a separate UDP port (gateway boot-file key
   `listen.tunnel_udp`, [10](../10-operations.md#configuration)).
