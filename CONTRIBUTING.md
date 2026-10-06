@@ -387,6 +387,9 @@ not in a public PR ([SECURITY.md](SECURITY.md)).
   assistant.
 - Facts produced by an assistant are tagged `[F]` only after the citation was checked; otherwise
   they are `[V]`.
+- [CLAUDE.md](CLAUDE.md) at the repository root summarises these rules for AI coding assistants.
+  It changes in the same PR as the rules it summarises. Personal assistant settings stay out of the
+  repository (`CLAUDE.local.md` and `.claude/settings.local.json` are ignored).
 
 ## Repository settings
 
