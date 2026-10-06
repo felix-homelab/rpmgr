@@ -80,7 +80,8 @@ description is 2–5 words in kebab case; the whole name is at most 60 character
 ^release/[0-9]+\.[0-9]+$
 ```
 
-Branches created by the dependency bot (`dependabot/…`) are exempt.
+Branches created by the dependency bot (`dependabot/…`) are exempt. A pull request from a `tmp/`
+branch fails CI, because `tmp/` branches are never merged.
 
 **Lifetime**
 
@@ -137,8 +138,8 @@ Commit messages follow [Conventional Commits 1.0.0](https://www.conventionalcomm
   are regenerated in the same PR; CI fails if regeneration produces a diff.
 
 Because PRs are squash-merged ([Pull requests](#pull-requests)), the **PR title becomes the commit
-on `main`** and is what CI lints. Commits on the branch should follow the same format, so the
-squashed body stays readable, but are not enforced.
+on `main`** and is what CI lints. Commits on the branch follow the same format, so the squashed
+body stays readable; CI checks their headers too.
 
 ## Size of changes
 
@@ -337,7 +338,8 @@ not in a public PR ([SECURITY.md](SECURITY.md)).
   ([D1](docs/14-open-decisions.md#product-and-project)). Contributions are accepted under the
   same license.
 - **Developer Certificate of Origin.** Every commit is signed off (`git commit -s`); CI fails a PR
-  with a commit that lacks `Signed-off-by:`. There is no contributor license agreement.
+  with a commit that lacks a `Signed-off-by:` line of its author. Commits of the dependency bot
+  are exempt. There is no contributor license agreement.
 - **License headers.** Every source file starts with an SPDX identifier in its language's comment
   syntax, e.g. `// SPDX-License-Identifier: Apache-2.0`; CI checks it. Markdown documents need none.
 - The [dependency policy](docs/08-software-stack.md#dependency-policy) applies: every new
@@ -362,6 +364,7 @@ the rules above are enforced, not just written down:
 
 - **`main` ruleset:** pull request required, with **no required approval**
   ([Reviews](#reviews)); conversations resolved; required status checks (all per-PR CI stages,
+  currently `pr-rules`, `lint`, `docs` and `secrets`,
   [12](docs/12-testing-and-quality.md#continuous-integration)); branch up to date before merge;
   linear history; force pushes and deletion blocked. There is no CODEOWNERS file.
 - **`release/*` ruleset:** the same as `main`.

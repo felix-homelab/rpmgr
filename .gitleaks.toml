@@ -1,0 +1,16 @@
+# gitleaks configuration: the default rules (private keys, cloud and provider tokens, …) plus
+# rpmgr's own token formats (docs/04-security.md, "Tokens"; docs/12-testing-and-quality.md,
+# "Security testing"). Run locally with .github/scripts/check-secrets.sh.
+
+title = "rpmgr"
+
+[extend]
+useDefault = true
+
+# rpmgr_<kind>_<base62 of 32 random bytes>_<6-character CRC32 checksum>. The checksum makes
+# matches reliable, so the rule needs no entropy threshold.
+[[rules]]
+id = "rpmgr-token"
+description = "rpmgr enrollment, personal API, service-account or session token"
+regex = '''\brpmgr_(?:enr|pat|sat|ses)_[0-9A-Za-z]{40,46}_[0-9A-Za-z]{6}\b'''
+keywords = ["rpmgr_enr_", "rpmgr_pat_", "rpmgr_sat_", "rpmgr_ses_"]
