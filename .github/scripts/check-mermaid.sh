@@ -12,7 +12,9 @@ source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 root=${1:-$(repo_root)}
 image='minlag/mermaid-cli:12.0.0@sha256:fa995339034aae7e5cd4f61482248b7f5c51be355b1a6f6eda11a2bbf8401f5f'
 work=$(mktemp -d)
-trap 'rm -rf "$work"' EXIT
+# Only files are created in $work (<n>.mmd, <n>.svg, <n>.log, index.txt), so they are removed by
+# name and the directory with rmdir; nothing here deletes a tree.
+trap 'rm "$work"/* 2>/dev/null; rmdir "$work"' EXIT
 chmod 0777 "$work" # the image runs as its own unprivileged user
 
 # Extract each block into <n>.mmd and record "<n> <file>:<line>" in index.txt.

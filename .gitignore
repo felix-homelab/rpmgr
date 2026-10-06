@@ -69,4 +69,5 @@ desktop.ini
 # --- Local AI-assistant state ---------------------------------------------------------------------
 .serena/
 .claude/settings.local.json
+.claude/worktrees/
 CLAUDE.local.md
