@@ -14,6 +14,7 @@ import (
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"github.com/felix-homelab/rpmgr/spikes/s5/ent/connector"
 	"github.com/felix-homelab/rpmgr/spikes/s5/ent/gatewaygroup"
+	"github.com/felix-homelab/rpmgr/spikes/s5/ent/healthcheck"
 	"github.com/felix-homelab/rpmgr/spikes/s5/ent/org"
 	"github.com/felix-homelab/rpmgr/spikes/s5/ent/route"
 	"github.com/felix-homelab/rpmgr/spikes/s5/ent/routetarget"
@@ -79,6 +80,7 @@ func checkColumn(t, c string) error {
 		columnCheck = sql.NewColumnCheck(map[string]func(string) bool{
 			connector.Table:    connector.ValidColumn,
 			gatewaygroup.Table: gatewaygroup.ValidColumn,
+			healthcheck.Table:  healthcheck.ValidColumn,
 			org.Table:          org.ValidColumn,
 			route.Table:        route.ValidColumn,
 			routetarget.Table:  routetarget.ValidColumn,

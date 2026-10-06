@@ -5,6 +5,7 @@
 //	s5 diff  -dialect sqlite|postgres -dev <dsn> -name <name>   write the next migration file
 //	s5 apply -dialect sqlite|postgres -db <dsn> [-n N]          apply pending migrations
 //	s5 check -dialect sqlite|postgres -db <dsn>                 compare the live schema with Ent
+//	s5 hash  -dialect sqlite|postgres                           rewrite atlas.sum
 //
 // For SQLite the dev database is in memory unless -dev is given; for PostgreSQL -dev must name an
 // empty database. Migration directories: migrations/sqlite and migrations/postgres.
@@ -70,6 +71,12 @@ func run(ctx context.Context, cmd, dialectName, dev, dsn, name, root string, n i
 			return nil
 		}
 		return err
+	case "hash":
+		sum, err := dir.Checksum()
+		if err != nil {
+			return err
+		}
+		return migrate.WriteSumFile(dir, sum)
 	case "apply", "check":
 		conn, err := store.OpenDB(ctx, d, dsn)
 		if err != nil {

@@ -59,6 +59,20 @@ func (_c *RouteCreate) SetNillableEnabled(v *bool) *RouteCreate {
 	return _c
 }
 
+// SetDescription sets the "description" field.
+func (_c *RouteCreate) SetDescription(v string) *RouteCreate {
+	_c.mutation.SetDescription(v)
+	return _c
+}
+
+// SetNillableDescription sets the "description" field if the given value is not nil.
+func (_c *RouteCreate) SetNillableDescription(v *string) *RouteCreate {
+	if v != nil {
+		_c.SetDescription(*v)
+	}
+	return _c
+}
+
 // SetID sets the "id" field.
 func (_c *RouteCreate) SetID(v string) *RouteCreate {
 	_c.mutation.SetID(v)
@@ -134,6 +148,10 @@ func (_c *RouteCreate) defaults() error {
 		v := route.DefaultEnabled
 		_c.mutation.SetEnabled(v)
 	}
+	if _, ok := _c.mutation.Description(); !ok {
+		v := route.DefaultDescription
+		_c.mutation.SetDescription(v)
+	}
 	if _, ok := _c.mutation.ID(); !ok {
 		if route.DefaultID == nil {
 			return fmt.Errorf("ent: uninitialized route.DefaultID (forgotten import ent/runtime?)")
@@ -180,6 +198,9 @@ func (_c *RouteCreate) check() error {
 	}
 	if _, ok := _c.mutation.Enabled(); !ok {
 		return &ValidationError{Name: "enabled", err: errors.New(`ent: missing required field "Route.enabled"`)}
+	}
+	if _, ok := _c.mutation.Description(); !ok {
+		return &ValidationError{Name: "description", err: errors.New(`ent: missing required field "Route.description"`)}
 	}
 	if v, ok := _c.mutation.ID(); ok {
 		if err := route.IDValidator(v); err != nil {
@@ -239,6 +260,10 @@ func (_c *RouteCreate) createSpec() (*Route, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.Enabled(); ok {
 		_spec.SetField(route.FieldEnabled, field.TypeBool, value)
 		_node.Enabled = value
+	}
+	if value, ok := _c.mutation.Description(); ok {
+		_spec.SetField(route.FieldDescription, field.TypeString, value)
+		_node.Description = value
 	}
 	if nodes := _c.mutation.GatewayGroupIDs(); len(nodes) > 0 {
 		edge := &sqlgraph.EdgeSpec{

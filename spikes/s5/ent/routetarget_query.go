@@ -13,6 +13,7 @@ import (
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
 	"github.com/felix-homelab/rpmgr/spikes/s5/ent/connector"
+	"github.com/felix-homelab/rpmgr/spikes/s5/ent/healthcheck"
 	"github.com/felix-homelab/rpmgr/spikes/s5/ent/predicate"
 	"github.com/felix-homelab/rpmgr/spikes/s5/ent/route"
 	"github.com/felix-homelab/rpmgr/spikes/s5/ent/routetarget"
@@ -21,12 +22,13 @@ import (
 // RouteTargetQuery is the builder for querying RouteTarget entities.
 type RouteTargetQuery struct {
 	config
-	ctx           *QueryContext
-	order         []routetarget.OrderOption
-	inters        []Interceptor
-	predicates    []predicate.RouteTarget
-	withRoute     *RouteQuery
-	withConnector *ConnectorQuery
+	ctx             *QueryContext
+	order           []routetarget.OrderOption
+	inters          []Interceptor
+	predicates      []predicate.RouteTarget
+	withRoute       *RouteQuery
+	withConnector   *ConnectorQuery
+	withHealthCheck *HealthCheckQuery
 	// intermediate query (i.e. traversal path).
 	sql  *sql.Selector
 	path func(context.Context) (*sql.Selector, error)
@@ -100,6 +102,28 @@ func (_q *RouteTargetQuery) QueryConnector() *ConnectorQuery {
 			sqlgraph.From(routetarget.Table, routetarget.FieldID, selector),
 			sqlgraph.To(connector.Table, connector.FieldID),
 			sqlgraph.Edge(sqlgraph.M2O, true, routetarget.ConnectorTable, routetarget.ConnectorColumn),
+		)
+		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
+		return fromU, nil
+	}
+	return query
+}
+
+// QueryHealthCheck chains the current query on the "health_check" edge.
+func (_q *RouteTargetQuery) QueryHealthCheck() *HealthCheckQuery {
+	query := (&HealthCheckClient{config: _q.config}).Query()
+	query.path = func(ctx context.Context) (fromU *sql.Selector, err error) {
+		if err := _q.prepareQuery(ctx); err != nil {
+			return nil, err
+		}
+		selector := _q.sqlQuery(ctx)
+		if err := selector.Err(); err != nil {
+			return nil, err
+		}
+		step := sqlgraph.NewStep(
+			sqlgraph.From(routetarget.Table, routetarget.FieldID, selector),
+			sqlgraph.To(healthcheck.Table, healthcheck.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, true, routetarget.HealthCheckTable, routetarget.HealthCheckColumn),
 		)
 		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
 		return fromU, nil
@@ -294,13 +318,14 @@ func (_q *RouteTargetQuery) Clone() *RouteTargetQuery {
 		return nil
 	}
 	return &RouteTargetQuery{
-		config:        _q.config,
-		ctx:           _q.ctx.Clone(),
-		order:         append([]routetarget.OrderOption{}, _q.order...),
-		inters:        append([]Interceptor{}, _q.inters...),
-		predicates:    append([]predicate.RouteTarget{}, _q.predicates...),
-		withRoute:     _q.withRoute.Clone(),
-		withConnector: _q.withConnector.Clone(),
+		config:          _q.config,
+		ctx:             _q.ctx.Clone(),
+		order:           append([]routetarget.OrderOption{}, _q.order...),
+		inters:          append([]Interceptor{}, _q.inters...),
+		predicates:      append([]predicate.RouteTarget{}, _q.predicates...),
+		withRoute:       _q.withRoute.Clone(),
+		withConnector:   _q.withConnector.Clone(),
+		withHealthCheck: _q.withHealthCheck.Clone(),
 		// clone intermediate query.
 		sql:  _q.sql.Clone(),
 		path: _q.path,
@@ -326,6 +351,17 @@ func (_q *RouteTargetQuery) WithConnector(opts ...func(*ConnectorQuery)) *RouteT
 		opt(query)
 	}
 	_q.withConnector = query
+	return _q
+}
+
+// WithHealthCheck tells the query-builder to eager-load the nodes that are connected to
+// the "health_check" edge. The optional arguments are used to configure the query builder of the edge.
+func (_q *RouteTargetQuery) WithHealthCheck(opts ...func(*HealthCheckQuery)) *RouteTargetQuery {
+	query := (&HealthCheckClient{config: _q.config}).Query()
+	for _, opt := range opts {
+		opt(query)
+	}
+	_q.withHealthCheck = query
 	return _q
 }
 
@@ -413,9 +449,10 @@ func (_q *RouteTargetQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*
 	var (
 		nodes       = []*RouteTarget{}
 		_spec       = _q.querySpec()
-		loadedTypes = [2]bool{
+		loadedTypes = [3]bool{
 			_q.withRoute != nil,
 			_q.withConnector != nil,
+			_q.withHealthCheck != nil,
 		}
 	)
 	_spec.ScanValues = func(columns []string) ([]any, error) {
@@ -445,6 +482,12 @@ func (_q *RouteTargetQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*
 	if query := _q.withConnector; query != nil {
 		if err := _q.loadConnector(ctx, query, nodes, nil,
 			func(n *RouteTarget, e *Connector) { n.Edges.Connector = e }); err != nil {
+			return nil, err
+		}
+	}
+	if query := _q.withHealthCheck; query != nil {
+		if err := _q.loadHealthCheck(ctx, query, nodes, nil,
+			func(n *RouteTarget, e *HealthCheck) { n.Edges.HealthCheck = e }); err != nil {
 			return nil, err
 		}
 	}
@@ -509,6 +552,38 @@ func (_q *RouteTargetQuery) loadConnector(ctx context.Context, query *ConnectorQ
 	}
 	return nil
 }
+func (_q *RouteTargetQuery) loadHealthCheck(ctx context.Context, query *HealthCheckQuery, nodes []*RouteTarget, init func(*RouteTarget), assign func(*RouteTarget, *HealthCheck)) error {
+	ids := make([]string, 0, len(nodes))
+	nodeids := make(map[string][]*RouteTarget)
+	for i := range nodes {
+		if nodes[i].HealthCheckID == nil {
+			continue
+		}
+		fk := *nodes[i].HealthCheckID
+		if _, ok := nodeids[fk]; !ok {
+			ids = append(ids, fk)
+		}
+		nodeids[fk] = append(nodeids[fk], nodes[i])
+	}
+	if len(ids) == 0 {
+		return nil
+	}
+	query.Where(healthcheck.IDIn(ids...))
+	neighbors, err := query.All(ctx)
+	if err != nil {
+		return err
+	}
+	for _, n := range neighbors {
+		nodes, ok := nodeids[n.ID]
+		if !ok {
+			return fmt.Errorf(`unexpected foreign-key "health_check_id" returned %v`, n.ID)
+		}
+		for i := range nodes {
+			assign(nodes[i], n)
+		}
+	}
+	return nil
+}
 
 func (_q *RouteTargetQuery) sqlCount(ctx context.Context) (int, error) {
 	_spec := _q.querySpec()
@@ -540,6 +615,9 @@ func (_q *RouteTargetQuery) querySpec() *sqlgraph.QuerySpec {
 		}
 		if _q.withConnector != nil {
 			_spec.Node.AddColumnOnce(routetarget.FieldConnectorID)
+		}
+		if _q.withHealthCheck != nil {
+			_spec.Node.AddColumnOnce(routetarget.FieldHealthCheckID)
 		}
 	}
 	if ps := _q.predicates; len(ps) > 0 {

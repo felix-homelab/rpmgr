@@ -5,6 +5,7 @@ package ent
 import (
 	"github.com/felix-homelab/rpmgr/spikes/s5/ent/connector"
 	"github.com/felix-homelab/rpmgr/spikes/s5/ent/gatewaygroup"
+	"github.com/felix-homelab/rpmgr/spikes/s5/ent/healthcheck"
 	"github.com/felix-homelab/rpmgr/spikes/s5/ent/org"
 	"github.com/felix-homelab/rpmgr/spikes/s5/ent/predicate"
 	"github.com/felix-homelab/rpmgr/spikes/s5/ent/route"
@@ -18,7 +19,7 @@ import (
 
 // schemaGraph holds a representation of ent/schema at runtime.
 var schemaGraph = func() *sqlgraph.Schema {
-	graph := &sqlgraph.Schema{Nodes: make([]*sqlgraph.Node, 5)}
+	graph := &sqlgraph.Schema{Nodes: make([]*sqlgraph.Node, 6)}
 	graph.Nodes[0] = &sqlgraph.Node{
 		NodeSpec: sqlgraph.NodeSpec{
 			Table:   connector.Table,
@@ -51,6 +52,22 @@ var schemaGraph = func() *sqlgraph.Schema {
 	}
 	graph.Nodes[2] = &sqlgraph.Node{
 		NodeSpec: sqlgraph.NodeSpec{
+			Table:   healthcheck.Table,
+			Columns: healthcheck.Columns,
+			ID: &sqlgraph.FieldSpec{
+				Type:   field.TypeString,
+				Column: healthcheck.FieldID,
+			},
+		},
+		Type: "HealthCheck",
+		Fields: map[string]*sqlgraph.FieldSpec{
+			healthcheck.FieldOrgID:           {Type: field.TypeString, Column: healthcheck.FieldOrgID},
+			healthcheck.FieldType:            {Type: field.TypeEnum, Column: healthcheck.FieldType},
+			healthcheck.FieldIntervalSeconds: {Type: field.TypeInt, Column: healthcheck.FieldIntervalSeconds},
+		},
+	}
+	graph.Nodes[3] = &sqlgraph.Node{
+		NodeSpec: sqlgraph.NodeSpec{
 			Table:   org.Table,
 			Columns: org.Columns,
 			ID: &sqlgraph.FieldSpec{
@@ -64,7 +81,7 @@ var schemaGraph = func() *sqlgraph.Schema {
 			org.FieldSlug: {Type: field.TypeString, Column: org.FieldSlug},
 		},
 	}
-	graph.Nodes[3] = &sqlgraph.Node{
+	graph.Nodes[4] = &sqlgraph.Node{
 		NodeSpec: sqlgraph.NodeSpec{
 			Table:   route.Table,
 			Columns: route.Columns,
@@ -80,9 +97,10 @@ var schemaGraph = func() *sqlgraph.Schema {
 			route.FieldType:           {Type: field.TypeEnum, Column: route.FieldType},
 			route.FieldGatewayGroupID: {Type: field.TypeString, Column: route.FieldGatewayGroupID},
 			route.FieldEnabled:        {Type: field.TypeBool, Column: route.FieldEnabled},
+			route.FieldDescription:    {Type: field.TypeString, Column: route.FieldDescription},
 		},
 	}
-	graph.Nodes[4] = &sqlgraph.Node{
+	graph.Nodes[5] = &sqlgraph.Node{
 		NodeSpec: sqlgraph.NodeSpec{
 			Table:   routetarget.Table,
 			Columns: routetarget.Columns,
@@ -93,11 +111,12 @@ var schemaGraph = func() *sqlgraph.Schema {
 		},
 		Type: "RouteTarget",
 		Fields: map[string]*sqlgraph.FieldSpec{
-			routetarget.FieldOrgID:       {Type: field.TypeString, Column: routetarget.FieldOrgID},
-			routetarget.FieldRouteID:     {Type: field.TypeString, Column: routetarget.FieldRouteID},
-			routetarget.FieldConnectorID: {Type: field.TypeString, Column: routetarget.FieldConnectorID},
-			routetarget.FieldHost:        {Type: field.TypeString, Column: routetarget.FieldHost},
-			routetarget.FieldPort:        {Type: field.TypeInt, Column: routetarget.FieldPort},
+			routetarget.FieldOrgID:         {Type: field.TypeString, Column: routetarget.FieldOrgID},
+			routetarget.FieldRouteID:       {Type: field.TypeString, Column: routetarget.FieldRouteID},
+			routetarget.FieldConnectorID:   {Type: field.TypeString, Column: routetarget.FieldConnectorID},
+			routetarget.FieldHost:          {Type: field.TypeString, Column: routetarget.FieldHost},
+			routetarget.FieldPort:          {Type: field.TypeInt, Column: routetarget.FieldPort},
+			routetarget.FieldHealthCheckID: {Type: field.TypeString, Column: routetarget.FieldHealthCheckID},
 		},
 	}
 	graph.MustAddE(
@@ -123,6 +142,18 @@ var schemaGraph = func() *sqlgraph.Schema {
 		},
 		"GatewayGroup",
 		"Route",
+	)
+	graph.MustAddE(
+		"targets",
+		&sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   healthcheck.TargetsTable,
+			Columns: []string{healthcheck.TargetsColumn},
+			Bidi:    false,
+		},
+		"HealthCheck",
+		"RouteTarget",
 	)
 	graph.MustAddE(
 		"gateway_group",
@@ -171,6 +202,18 @@ var schemaGraph = func() *sqlgraph.Schema {
 		},
 		"RouteTarget",
 		"Connector",
+	)
+	graph.MustAddE(
+		"health_check",
+		&sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2O,
+			Inverse: true,
+			Table:   routetarget.HealthCheckTable,
+			Columns: []string{routetarget.HealthCheckColumn},
+			Bidi:    false,
+		},
+		"RouteTarget",
+		"HealthCheck",
 	)
 	return graph
 }()
@@ -310,6 +353,75 @@ func (f *GatewayGroupFilter) WhereHasRoutesWith(preds ...predicate.Route) {
 }
 
 // addPredicate implements the predicateAdder interface.
+func (_q *HealthCheckQuery) addPredicate(pred func(s *sql.Selector)) {
+	_q.predicates = append(_q.predicates, pred)
+}
+
+// Filter returns a Filter implementation to apply filters on the HealthCheckQuery builder.
+func (_q *HealthCheckQuery) Filter() *HealthCheckFilter {
+	return &HealthCheckFilter{config: _q.config, predicateAdder: _q}
+}
+
+// addPredicate implements the predicateAdder interface.
+func (m *HealthCheckMutation) addPredicate(pred func(s *sql.Selector)) {
+	m.predicates = append(m.predicates, pred)
+}
+
+// Filter returns an entql.Where implementation to apply filters on the HealthCheckMutation builder.
+func (m *HealthCheckMutation) Filter() *HealthCheckFilter {
+	return &HealthCheckFilter{config: m.config, predicateAdder: m}
+}
+
+// HealthCheckFilter provides a generic filtering capability at runtime for HealthCheckQuery.
+type HealthCheckFilter struct {
+	predicateAdder
+	config
+}
+
+// Where applies the entql predicate on the query filter.
+func (f *HealthCheckFilter) Where(p entql.P) {
+	f.addPredicate(func(s *sql.Selector) {
+		if err := schemaGraph.EvalP(schemaGraph.Nodes[2].Type, p, s); err != nil {
+			s.AddError(err)
+		}
+	})
+}
+
+// WhereID applies the entql string predicate on the id field.
+func (f *HealthCheckFilter) WhereID(p entql.StringP) {
+	f.Where(p.Field(healthcheck.FieldID))
+}
+
+// WhereOrgID applies the entql string predicate on the org_id field.
+func (f *HealthCheckFilter) WhereOrgID(p entql.StringP) {
+	f.Where(p.Field(healthcheck.FieldOrgID))
+}
+
+// WhereType applies the entql string predicate on the type field.
+func (f *HealthCheckFilter) WhereType(p entql.StringP) {
+	f.Where(p.Field(healthcheck.FieldType))
+}
+
+// WhereIntervalSeconds applies the entql int predicate on the interval_seconds field.
+func (f *HealthCheckFilter) WhereIntervalSeconds(p entql.IntP) {
+	f.Where(p.Field(healthcheck.FieldIntervalSeconds))
+}
+
+// WhereHasTargets applies a predicate to check if query has an edge targets.
+func (f *HealthCheckFilter) WhereHasTargets() {
+	f.Where(entql.HasEdge("targets"))
+}
+
+// WhereHasTargetsWith applies a predicate to check if query has an edge targets with a given conditions (other predicates).
+func (f *HealthCheckFilter) WhereHasTargetsWith(preds ...predicate.RouteTarget) {
+	f.Where(entql.HasEdgeWith("targets", sqlgraph.WrapFunc(func(s *sql.Selector) {
+		for _, p := range preds {
+			p(s)
+		}
+	})))
+}
+
+// addPredicate implements the predicateAdder interface.
 func (_q *OrgQuery) addPredicate(pred func(s *sql.Selector)) {
 	_q.predicates = append(_q.predicates, pred)
 }
@@ -338,7 +450,7 @@ type OrgFilter struct {
 // Where applies the entql predicate on the query filter.
 func (f *OrgFilter) Where(p entql.P) {
 	f.addPredicate(func(s *sql.Selector) {
-		if err := schemaGraph.EvalP(schemaGraph.Nodes[2].Type, p, s); err != nil {
+		if err := schemaGraph.EvalP(schemaGraph.Nodes[3].Type, p, s); err != nil {
 			s.AddError(err)
 		}
 	})
@@ -388,7 +500,7 @@ type RouteFilter struct {
 // Where applies the entql predicate on the query filter.
 func (f *RouteFilter) Where(p entql.P) {
 	f.addPredicate(func(s *sql.Selector) {
-		if err := schemaGraph.EvalP(schemaGraph.Nodes[3].Type, p, s); err != nil {
+		if err := schemaGraph.EvalP(schemaGraph.Nodes[4].Type, p, s); err != nil {
 			s.AddError(err)
 		}
 	})
@@ -422,6 +534,11 @@ func (f *RouteFilter) WhereGatewayGroupID(p entql.StringP) {
 // WhereEnabled applies the entql bool predicate on the enabled field.
 func (f *RouteFilter) WhereEnabled(p entql.BoolP) {
 	f.Where(p.Field(route.FieldEnabled))
+}
+
+// WhereDescription applies the entql string predicate on the description field.
+func (f *RouteFilter) WhereDescription(p entql.StringP) {
+	f.Where(p.Field(route.FieldDescription))
 }
 
 // WhereHasGatewayGroup applies a predicate to check if query has an edge gateway_group.
@@ -481,7 +598,7 @@ type RouteTargetFilter struct {
 // Where applies the entql predicate on the query filter.
 func (f *RouteTargetFilter) Where(p entql.P) {
 	f.addPredicate(func(s *sql.Selector) {
-		if err := schemaGraph.EvalP(schemaGraph.Nodes[4].Type, p, s); err != nil {
+		if err := schemaGraph.EvalP(schemaGraph.Nodes[5].Type, p, s); err != nil {
 			s.AddError(err)
 		}
 	})
@@ -517,6 +634,11 @@ func (f *RouteTargetFilter) WherePort(p entql.IntP) {
 	f.Where(p.Field(routetarget.FieldPort))
 }
 
+// WhereHealthCheckID applies the entql string predicate on the health_check_id field.
+func (f *RouteTargetFilter) WhereHealthCheckID(p entql.StringP) {
+	f.Where(p.Field(routetarget.FieldHealthCheckID))
+}
+
 // WhereHasRoute applies a predicate to check if query has an edge route.
 func (f *RouteTargetFilter) WhereHasRoute() {
 	f.Where(entql.HasEdge("route"))
@@ -539,6 +661,20 @@ func (f *RouteTargetFilter) WhereHasConnector() {
 // WhereHasConnectorWith applies a predicate to check if query has an edge connector with a given conditions (other predicates).
 func (f *RouteTargetFilter) WhereHasConnectorWith(preds ...predicate.Connector) {
 	f.Where(entql.HasEdgeWith("connector", sqlgraph.WrapFunc(func(s *sql.Selector) {
+		for _, p := range preds {
+			p(s)
+		}
+	})))
+}
+
+// WhereHasHealthCheck applies a predicate to check if query has an edge health_check.
+func (f *RouteTargetFilter) WhereHasHealthCheck() {
+	f.Where(entql.HasEdge("health_check"))
+}
+
+// WhereHasHealthCheckWith applies a predicate to check if query has an edge health_check with a given conditions (other predicates).
+func (f *RouteTargetFilter) WhereHasHealthCheckWith(preds ...predicate.HealthCheck) {
+	f.Where(entql.HasEdgeWith("health_check", sqlgraph.WrapFunc(func(s *sql.Selector) {
 		for _, p := range preds {
 			p(s)
 		}

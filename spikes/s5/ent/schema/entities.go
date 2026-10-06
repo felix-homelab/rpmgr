@@ -77,6 +77,7 @@ func (Route) Fields() []ent.Field {
 		field.Enum("type").Values("http", "tcp", "udp", "tls_passthrough"),
 		field.String("gateway_group_id").NotEmpty(),
 		field.Bool("enabled").Default(true),
+		field.String("description").Default(""), // added in migration 2
 	}
 }
 
@@ -105,6 +106,9 @@ func (RouteTarget) Fields() []ent.Field {
 		field.String("connector_id").NotEmpty(),
 		field.String("host").NotEmpty(),
 		field.Int("port").Range(1, 65535),
+		// Added in migration 2: an optional composite foreign key on an existing table, which
+		// SQLite can only add by rebuilding the table.
+		field.String("health_check_id").Optional().Nillable(),
 	}
 }
 
@@ -112,5 +116,23 @@ func (RouteTarget) Edges() []ent.Edge {
 	return []ent.Edge{
 		edge.From("route", Route.Type).Ref("targets").Field("route_id").Unique().Required(),
 		edge.From("connector", Connector.Type).Ref("targets").Field("connector_id").Unique().Required(),
+		edge.From("health_check", HealthCheck.Type).Ref("targets").Field("health_check_id").Unique(),
 	}
+}
+
+// HealthCheck is org-owned (added in migration 2).
+type HealthCheck struct{ ent.Schema }
+
+func (HealthCheck) Mixin() []ent.Mixin { return []ent.Mixin{OrgMixin{}} }
+
+func (HealthCheck) Fields() []ent.Field {
+	return []ent.Field{
+		idField("hck"),
+		field.Enum("type").Values("tcp", "http"),
+		field.Int("interval_seconds").Positive().Default(10),
+	}
+}
+
+func (HealthCheck) Edges() []ent.Edge {
+	return []ent.Edge{edge.To("targets", RouteTarget.Type)}
 }

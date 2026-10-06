@@ -27,6 +27,8 @@ type Route struct {
 	GatewayGroupID string `json:"gateway_group_id,omitempty"`
 	// Enabled holds the value of the "enabled" field.
 	Enabled bool `json:"enabled,omitempty"`
+	// Description holds the value of the "description" field.
+	Description string `json:"description,omitempty"`
 	// Edges holds the relations/edges for other nodes in the graph.
 	// The values are being populated by the RouteQuery when eager-loading is set.
 	Edges        RouteEdges `json:"edges"`
@@ -71,7 +73,7 @@ func (*Route) scanValues(columns []string) ([]any, error) {
 		switch columns[i] {
 		case route.FieldEnabled:
 			values[i] = new(sql.NullBool)
-		case route.FieldID, route.FieldOrgID, route.FieldName, route.FieldType, route.FieldGatewayGroupID:
+		case route.FieldID, route.FieldOrgID, route.FieldName, route.FieldType, route.FieldGatewayGroupID, route.FieldDescription:
 			values[i] = new(sql.NullString)
 		default:
 			values[i] = new(sql.UnknownType)
@@ -123,6 +125,12 @@ func (_m *Route) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field enabled", values[i])
 			} else if value.Valid {
 				_m.Enabled = value.Bool
+			}
+		case route.FieldDescription:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field description", values[i])
+			} else if value.Valid {
+				_m.Description = value.String
 			}
 		default:
 			_m.selectValues.Set(columns[i], values[i])
@@ -184,6 +192,9 @@ func (_m *Route) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("enabled=")
 	builder.WriteString(fmt.Sprintf("%v", _m.Enabled))
+	builder.WriteString(", ")
+	builder.WriteString("description=")
+	builder.WriteString(_m.Description)
 	builder.WriteByte(')')
 	return builder.String()
 }

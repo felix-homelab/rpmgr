@@ -10,6 +10,7 @@ import (
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
 	"github.com/felix-homelab/rpmgr/spikes/s5/ent/connector"
+	"github.com/felix-homelab/rpmgr/spikes/s5/ent/healthcheck"
 	"github.com/felix-homelab/rpmgr/spikes/s5/ent/route"
 	"github.com/felix-homelab/rpmgr/spikes/s5/ent/routetarget"
 )
@@ -51,6 +52,20 @@ func (_c *RouteTargetCreate) SetPort(v int) *RouteTargetCreate {
 	return _c
 }
 
+// SetHealthCheckID sets the "health_check_id" field.
+func (_c *RouteTargetCreate) SetHealthCheckID(v string) *RouteTargetCreate {
+	_c.mutation.SetHealthCheckID(v)
+	return _c
+}
+
+// SetNillableHealthCheckID sets the "health_check_id" field if the given value is not nil.
+func (_c *RouteTargetCreate) SetNillableHealthCheckID(v *string) *RouteTargetCreate {
+	if v != nil {
+		_c.SetHealthCheckID(*v)
+	}
+	return _c
+}
+
 // SetID sets the "id" field.
 func (_c *RouteTargetCreate) SetID(v string) *RouteTargetCreate {
 	_c.mutation.SetID(v)
@@ -73,6 +88,11 @@ func (_c *RouteTargetCreate) SetRoute(v *Route) *RouteTargetCreate {
 // SetConnector sets the "connector" edge to the Connector entity.
 func (_c *RouteTargetCreate) SetConnector(v *Connector) *RouteTargetCreate {
 	return _c.SetConnectorID(v.ID)
+}
+
+// SetHealthCheck sets the "health_check" edge to the HealthCheck entity.
+func (_c *RouteTargetCreate) SetHealthCheck(v *HealthCheck) *RouteTargetCreate {
+	return _c.SetHealthCheckID(v.ID)
 }
 
 // Mutation returns the RouteTargetMutation object of the builder.
@@ -254,6 +274,23 @@ func (_c *RouteTargetCreate) createSpec() (*RouteTarget, *sqlgraph.CreateSpec) {
 			edge.Target.Nodes = append(edge.Target.Nodes, k)
 		}
 		_node.ConnectorID = nodes[0]
+		_spec.Edges = append(_spec.Edges, edge)
+	}
+	if nodes := _c.mutation.HealthCheckIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2O,
+			Inverse: true,
+			Table:   routetarget.HealthCheckTable,
+			Columns: []string{routetarget.HealthCheckColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(healthcheck.FieldID, field.TypeString),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_node.HealthCheckID = &nodes[0]
 		_spec.Edges = append(_spec.Edges, edge)
 	}
 	return _node, _spec

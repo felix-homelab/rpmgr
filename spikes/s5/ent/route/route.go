@@ -25,6 +25,8 @@ const (
 	FieldGatewayGroupID = "gateway_group_id"
 	// FieldEnabled holds the string denoting the enabled field in the database.
 	FieldEnabled = "enabled"
+	// FieldDescription holds the string denoting the description field in the database.
+	FieldDescription = "description"
 	// EdgeGatewayGroup holds the string denoting the gateway_group edge name in mutations.
 	EdgeGatewayGroup = "gateway_group"
 	// EdgeTargets holds the string denoting the targets edge name in mutations.
@@ -55,6 +57,7 @@ var Columns = []string{
 	FieldType,
 	FieldGatewayGroupID,
 	FieldEnabled,
+	FieldDescription,
 }
 
 // ValidColumn reports if the column name is valid (part of the table columns).
@@ -84,6 +87,8 @@ var (
 	GatewayGroupIDValidator func(string) error
 	// DefaultEnabled holds the default value on creation for the "enabled" field.
 	DefaultEnabled bool
+	// DefaultDescription holds the default value on creation for the "description" field.
+	DefaultDescription string
 	// DefaultID holds the default value on creation for the "id" field.
 	DefaultID func() string
 	// IDValidator is a validator for the "id" field. It is called by the builders before save.
@@ -146,6 +151,11 @@ func ByGatewayGroupID(opts ...sql.OrderTermOption) OrderOption {
 // ByEnabled orders the results by the enabled field.
 func ByEnabled(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldEnabled, opts...).ToFunc()
+}
+
+// ByDescription orders the results by the description field.
+func ByDescription(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldDescription, opts...).ToFunc()
 }
 
 // ByGatewayGroupField orders the results by gateway_group field.

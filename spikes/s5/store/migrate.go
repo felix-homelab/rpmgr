@@ -19,10 +19,15 @@ import (
 const RevisionTable = "rpmgr_schema_revisions"
 
 // Migrate applies the pending migrations of dir to db, at most n of them (n <= 0: all). Each
-// migration file runs in its own transaction on PostgreSQL. On SQLite a file runs outside a
-// transaction, because Atlas's table rebuilds switch PRAGMA foreign_keys off and on, which SQLite
-// ignores inside a transaction; the rebuild checks foreign keys itself (PRAGMA foreign_key_check).
-// Migrate refuses a directory whose atlas.sum does not match its files.
+// migration file runs in its own transaction, so a failing file leaves no partial change and no
+// revision. Migrate refuses a directory whose atlas.sum does not match its files.
+//
+// SQLite: Atlas adds a foreign key or reorders columns by rebuilding the table between
+// "PRAGMA foreign_keys = off" and "= on" in the migration file. SQLite ignores that pragma inside a
+// transaction, and the file contains no "PRAGMA foreign_key_check". Migrate therefore follows
+// SQLite's documented procedure for such changes on one pinned connection: foreign keys off, the
+// file in a transaction, "PRAGMA foreign_key_check" (any row fails the file), commit, foreign keys
+// on again.
 func Migrate(ctx context.Context, d string, db *sql.DB, dir migrate.Dir, n int) error {
 	if err := migrate.Validate(dir); err != nil {
 		return fmt.Errorf("store: migration directory: %w", err)
@@ -50,44 +55,83 @@ func Migrate(ctx context.Context, d string, db *sql.DB, dir migrate.Dir, n int) 
 		n = len(pending)
 	}
 	for _, f := range pending[:n] {
-		if err := applyFile(ctx, d, db, dir, rrw, f); err != nil {
+		if err := applyFile(ctx, d, db, dir, f); err != nil {
 			return fmt.Errorf("store: migration %s: %w", f.Name(), err)
 		}
 	}
 	return nil
 }
 
-func applyFile(ctx context.Context, d string, db *sql.DB, dir migrate.Dir, rrw *revisions, f migrate.File) error {
-	if d == SQLite {
-		drv, err := atlasDriver(d, db)
-		if err != nil {
-			return err
-		}
-		ex, err := migrate.NewExecutor(drv, dir, rrw, migrate.WithOperatorVersion("rpmgr-s5"))
-		if err != nil {
-			return err
-		}
-		return ex.Execute(ctx, f)
-	}
-	tx, err := db.BeginTx(ctx, nil)
+func applyFile(ctx context.Context, d string, db *sql.DB, dir migrate.Dir, f migrate.File) (err error) {
+	conn, err := db.Conn(ctx)
 	if err != nil {
 		return err
 	}
+	defer conn.Close()
+	if d == SQLite {
+		if _, err := conn.ExecContext(ctx, "PRAGMA foreign_keys = off"); err != nil {
+			return err
+		}
+		defer func() {
+			if _, perr := conn.ExecContext(ctx, "PRAGMA foreign_keys = on"); perr != nil && err == nil {
+				err = perr
+			}
+		}()
+	}
+	tx, err := conn.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if err != nil {
+			tx.Rollback()
+		}
+	}()
 	drv, err := atlasDriver(d, tx)
 	if err != nil {
-		tx.Rollback()
 		return err
 	}
 	ex, err := migrate.NewExecutor(drv, dir, &revisions{db: tx, dialect: d}, migrate.WithOperatorVersion("rpmgr-s5"))
 	if err != nil {
-		tx.Rollback()
 		return err
 	}
 	if err := ex.Execute(ctx, f); err != nil {
-		tx.Rollback()
 		return err
 	}
+	if d == SQLite {
+		if err := foreignKeyCheck(ctx, tx); err != nil {
+			return err
+		}
+	}
 	return tx.Commit()
+}
+
+// foreignKeyCheck fails if any row violates a foreign key (SQLite only).
+func foreignKeyCheck(ctx context.Context, tx *sql.Tx) error {
+	rows, err := tx.QueryContext(ctx, "PRAGMA foreign_key_check")
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	var violations []string
+	for rows.Next() {
+		var (
+			table, parent string
+			rowid         sql.NullInt64
+			fkid          int
+		)
+		if err := rows.Scan(&table, &rowid, &parent, &fkid); err != nil {
+			return err
+		}
+		violations = append(violations, fmt.Sprintf("%s row %d → %s", table, rowid.Int64, parent))
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	if len(violations) > 0 {
+		return fmt.Errorf("foreign key violations after the migration: %s", strings.Join(violations, "; "))
+	}
+	return nil
 }
 
 // execQuerier is satisfied by *sql.DB and *sql.Tx.

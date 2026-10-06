@@ -33,6 +33,18 @@ func (f GatewayGroupFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.GatewayGroupMutation", m)
 }
 
+// The HealthCheckFunc type is an adapter to allow the use of ordinary
+// function as HealthCheck mutator.
+type HealthCheckFunc func(context.Context, *ent.HealthCheckMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f HealthCheckFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.HealthCheckMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.HealthCheckMutation", m)
+}
+
 // The OrgFunc type is an adapter to allow the use of ordinary
 // function as Org mutator.
 type OrgFunc func(context.Context, *ent.OrgMutation) (ent.Value, error)

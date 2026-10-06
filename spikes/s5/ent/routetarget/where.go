@@ -88,6 +88,11 @@ func Port(v int) predicate.RouteTarget {
 	return predicate.RouteTarget(sql.FieldEQ(FieldPort, v))
 }
 
+// HealthCheckID applies equality check predicate on the "health_check_id" field. It's identical to HealthCheckIDEQ.
+func HealthCheckID(v string) predicate.RouteTarget {
+	return predicate.RouteTarget(sql.FieldEQ(FieldHealthCheckID, v))
+}
+
 // OrgIDEQ applies the EQ predicate on the "org_id" field.
 func OrgIDEQ(v string) predicate.RouteTarget {
 	return predicate.RouteTarget(sql.FieldEQ(FieldOrgID, v))
@@ -388,6 +393,81 @@ func PortLTE(v int) predicate.RouteTarget {
 	return predicate.RouteTarget(sql.FieldLTE(FieldPort, v))
 }
 
+// HealthCheckIDEQ applies the EQ predicate on the "health_check_id" field.
+func HealthCheckIDEQ(v string) predicate.RouteTarget {
+	return predicate.RouteTarget(sql.FieldEQ(FieldHealthCheckID, v))
+}
+
+// HealthCheckIDNEQ applies the NEQ predicate on the "health_check_id" field.
+func HealthCheckIDNEQ(v string) predicate.RouteTarget {
+	return predicate.RouteTarget(sql.FieldNEQ(FieldHealthCheckID, v))
+}
+
+// HealthCheckIDIn applies the In predicate on the "health_check_id" field.
+func HealthCheckIDIn(vs ...string) predicate.RouteTarget {
+	return predicate.RouteTarget(sql.FieldIn(FieldHealthCheckID, vs...))
+}
+
+// HealthCheckIDNotIn applies the NotIn predicate on the "health_check_id" field.
+func HealthCheckIDNotIn(vs ...string) predicate.RouteTarget {
+	return predicate.RouteTarget(sql.FieldNotIn(FieldHealthCheckID, vs...))
+}
+
+// HealthCheckIDGT applies the GT predicate on the "health_check_id" field.
+func HealthCheckIDGT(v string) predicate.RouteTarget {
+	return predicate.RouteTarget(sql.FieldGT(FieldHealthCheckID, v))
+}
+
+// HealthCheckIDGTE applies the GTE predicate on the "health_check_id" field.
+func HealthCheckIDGTE(v string) predicate.RouteTarget {
+	return predicate.RouteTarget(sql.FieldGTE(FieldHealthCheckID, v))
+}
+
+// HealthCheckIDLT applies the LT predicate on the "health_check_id" field.
+func HealthCheckIDLT(v string) predicate.RouteTarget {
+	return predicate.RouteTarget(sql.FieldLT(FieldHealthCheckID, v))
+}
+
+// HealthCheckIDLTE applies the LTE predicate on the "health_check_id" field.
+func HealthCheckIDLTE(v string) predicate.RouteTarget {
+	return predicate.RouteTarget(sql.FieldLTE(FieldHealthCheckID, v))
+}
+
+// HealthCheckIDContains applies the Contains predicate on the "health_check_id" field.
+func HealthCheckIDContains(v string) predicate.RouteTarget {
+	return predicate.RouteTarget(sql.FieldContains(FieldHealthCheckID, v))
+}
+
+// HealthCheckIDHasPrefix applies the HasPrefix predicate on the "health_check_id" field.
+func HealthCheckIDHasPrefix(v string) predicate.RouteTarget {
+	return predicate.RouteTarget(sql.FieldHasPrefix(FieldHealthCheckID, v))
+}
+
+// HealthCheckIDHasSuffix applies the HasSuffix predicate on the "health_check_id" field.
+func HealthCheckIDHasSuffix(v string) predicate.RouteTarget {
+	return predicate.RouteTarget(sql.FieldHasSuffix(FieldHealthCheckID, v))
+}
+
+// HealthCheckIDIsNil applies the IsNil predicate on the "health_check_id" field.
+func HealthCheckIDIsNil() predicate.RouteTarget {
+	return predicate.RouteTarget(sql.FieldIsNull(FieldHealthCheckID))
+}
+
+// HealthCheckIDNotNil applies the NotNil predicate on the "health_check_id" field.
+func HealthCheckIDNotNil() predicate.RouteTarget {
+	return predicate.RouteTarget(sql.FieldNotNull(FieldHealthCheckID))
+}
+
+// HealthCheckIDEqualFold applies the EqualFold predicate on the "health_check_id" field.
+func HealthCheckIDEqualFold(v string) predicate.RouteTarget {
+	return predicate.RouteTarget(sql.FieldEqualFold(FieldHealthCheckID, v))
+}
+
+// HealthCheckIDContainsFold applies the ContainsFold predicate on the "health_check_id" field.
+func HealthCheckIDContainsFold(v string) predicate.RouteTarget {
+	return predicate.RouteTarget(sql.FieldContainsFold(FieldHealthCheckID, v))
+}
+
 // HasRoute applies the HasEdge predicate on the "route" edge.
 func HasRoute() predicate.RouteTarget {
 	return predicate.RouteTarget(func(s *sql.Selector) {
@@ -426,6 +506,29 @@ func HasConnector() predicate.RouteTarget {
 func HasConnectorWith(preds ...predicate.Connector) predicate.RouteTarget {
 	return predicate.RouteTarget(func(s *sql.Selector) {
 		step := newConnectorStep()
+		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
+			for _, p := range preds {
+				p(s)
+			}
+		})
+	})
+}
+
+// HasHealthCheck applies the HasEdge predicate on the "health_check" edge.
+func HasHealthCheck() predicate.RouteTarget {
+	return predicate.RouteTarget(func(s *sql.Selector) {
+		step := sqlgraph.NewStep(
+			sqlgraph.From(Table, FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, true, HealthCheckTable, HealthCheckColumn),
+		)
+		sqlgraph.HasNeighbors(s, step)
+	})
+}
+
+// HasHealthCheckWith applies the HasEdge predicate on the "health_check" edge with a given conditions (other predicates).
+func HasHealthCheckWith(preds ...predicate.HealthCheck) predicate.RouteTarget {
+	return predicate.RouteTarget(func(s *sql.Selector) {
+		step := newHealthCheckStep()
 		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
 			for _, p := range preds {
 				p(s)

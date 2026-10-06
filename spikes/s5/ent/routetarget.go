@@ -9,6 +9,7 @@ import (
 	"entgo.io/ent"
 	"entgo.io/ent/dialect/sql"
 	"github.com/felix-homelab/rpmgr/spikes/s5/ent/connector"
+	"github.com/felix-homelab/rpmgr/spikes/s5/ent/healthcheck"
 	"github.com/felix-homelab/rpmgr/spikes/s5/ent/route"
 	"github.com/felix-homelab/rpmgr/spikes/s5/ent/routetarget"
 )
@@ -28,6 +29,8 @@ type RouteTarget struct {
 	Host string `json:"host,omitempty"`
 	// Port holds the value of the "port" field.
 	Port int `json:"port,omitempty"`
+	// HealthCheckID holds the value of the "health_check_id" field.
+	HealthCheckID *string `json:"health_check_id,omitempty"`
 	// Edges holds the relations/edges for other nodes in the graph.
 	// The values are being populated by the RouteTargetQuery when eager-loading is set.
 	Edges        RouteTargetEdges `json:"edges"`
@@ -40,9 +43,11 @@ type RouteTargetEdges struct {
 	Route *Route `json:"route,omitempty"`
 	// Connector holds the value of the connector edge.
 	Connector *Connector `json:"connector,omitempty"`
+	// HealthCheck holds the value of the health_check edge.
+	HealthCheck *HealthCheck `json:"health_check,omitempty"`
 	// loadedTypes holds the information for reporting if a
 	// type was loaded (or requested) in eager-loading or not.
-	loadedTypes [2]bool
+	loadedTypes [3]bool
 }
 
 // RouteOrErr returns the Route value or an error if the edge
@@ -67,6 +72,17 @@ func (e RouteTargetEdges) ConnectorOrErr() (*Connector, error) {
 	return nil, &NotLoadedError{edge: "connector"}
 }
 
+// HealthCheckOrErr returns the HealthCheck value or an error if the edge
+// was not loaded in eager-loading, or loaded but was not found.
+func (e RouteTargetEdges) HealthCheckOrErr() (*HealthCheck, error) {
+	if e.HealthCheck != nil {
+		return e.HealthCheck, nil
+	} else if e.loadedTypes[2] {
+		return nil, &NotFoundError{label: healthcheck.Label}
+	}
+	return nil, &NotLoadedError{edge: "health_check"}
+}
+
 // scanValues returns the types for scanning values from sql.Rows.
 func (*RouteTarget) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
@@ -74,7 +90,7 @@ func (*RouteTarget) scanValues(columns []string) ([]any, error) {
 		switch columns[i] {
 		case routetarget.FieldPort:
 			values[i] = new(sql.NullInt64)
-		case routetarget.FieldID, routetarget.FieldOrgID, routetarget.FieldRouteID, routetarget.FieldConnectorID, routetarget.FieldHost:
+		case routetarget.FieldID, routetarget.FieldOrgID, routetarget.FieldRouteID, routetarget.FieldConnectorID, routetarget.FieldHost, routetarget.FieldHealthCheckID:
 			values[i] = new(sql.NullString)
 		default:
 			values[i] = new(sql.UnknownType)
@@ -127,6 +143,13 @@ func (_m *RouteTarget) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.Port = int(value.Int64)
 			}
+		case routetarget.FieldHealthCheckID:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field health_check_id", values[i])
+			} else if value.Valid {
+				_m.HealthCheckID = new(string)
+				*_m.HealthCheckID = value.String
+			}
 		default:
 			_m.selectValues.Set(columns[i], values[i])
 		}
@@ -148,6 +171,11 @@ func (_m *RouteTarget) QueryRoute() *RouteQuery {
 // QueryConnector queries the "connector" edge of the RouteTarget entity.
 func (_m *RouteTarget) QueryConnector() *ConnectorQuery {
 	return NewRouteTargetClient(_m.config).QueryConnector(_m)
+}
+
+// QueryHealthCheck queries the "health_check" edge of the RouteTarget entity.
+func (_m *RouteTarget) QueryHealthCheck() *HealthCheckQuery {
+	return NewRouteTargetClient(_m.config).QueryHealthCheck(_m)
 }
 
 // Update returns a builder for updating this RouteTarget.
@@ -187,6 +215,11 @@ func (_m *RouteTarget) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("port=")
 	builder.WriteString(fmt.Sprintf("%v", _m.Port))
+	builder.WriteString(", ")
+	if v := _m.HealthCheckID; v != nil {
+		builder.WriteString("health_check_id=")
+		builder.WriteString(*v)
+	}
 	builder.WriteByte(')')
 	return builder.String()
 }

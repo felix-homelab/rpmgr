@@ -17,6 +17,7 @@ import (
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"github.com/felix-homelab/rpmgr/spikes/s5/ent/connector"
 	"github.com/felix-homelab/rpmgr/spikes/s5/ent/gatewaygroup"
+	"github.com/felix-homelab/rpmgr/spikes/s5/ent/healthcheck"
 	"github.com/felix-homelab/rpmgr/spikes/s5/ent/org"
 	"github.com/felix-homelab/rpmgr/spikes/s5/ent/route"
 	"github.com/felix-homelab/rpmgr/spikes/s5/ent/routetarget"
@@ -33,6 +34,8 @@ type Client struct {
 	Connector *ConnectorClient
 	// GatewayGroup is the client for interacting with the GatewayGroup builders.
 	GatewayGroup *GatewayGroupClient
+	// HealthCheck is the client for interacting with the HealthCheck builders.
+	HealthCheck *HealthCheckClient
 	// Org is the client for interacting with the Org builders.
 	Org *OrgClient
 	// Route is the client for interacting with the Route builders.
@@ -52,6 +55,7 @@ func (c *Client) init() {
 	c.Schema = migrate.NewSchema(c.driver)
 	c.Connector = NewConnectorClient(c.config)
 	c.GatewayGroup = NewGatewayGroupClient(c.config)
+	c.HealthCheck = NewHealthCheckClient(c.config)
 	c.Org = NewOrgClient(c.config)
 	c.Route = NewRouteClient(c.config)
 	c.RouteTarget = NewRouteTargetClient(c.config)
@@ -149,6 +153,7 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		config:       cfg,
 		Connector:    NewConnectorClient(cfg),
 		GatewayGroup: NewGatewayGroupClient(cfg),
+		HealthCheck:  NewHealthCheckClient(cfg),
 		Org:          NewOrgClient(cfg),
 		Route:        NewRouteClient(cfg),
 		RouteTarget:  NewRouteTargetClient(cfg),
@@ -173,6 +178,7 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		config:       cfg,
 		Connector:    NewConnectorClient(cfg),
 		GatewayGroup: NewGatewayGroupClient(cfg),
+		HealthCheck:  NewHealthCheckClient(cfg),
 		Org:          NewOrgClient(cfg),
 		Route:        NewRouteClient(cfg),
 		RouteTarget:  NewRouteTargetClient(cfg),
@@ -204,21 +210,21 @@ func (c *Client) Close() error {
 // Use adds the mutation hooks to all the entity clients.
 // In order to add hooks to a specific client, call: `client.Node.Use(...)`.
 func (c *Client) Use(hooks ...Hook) {
-	c.Connector.Use(hooks...)
-	c.GatewayGroup.Use(hooks...)
-	c.Org.Use(hooks...)
-	c.Route.Use(hooks...)
-	c.RouteTarget.Use(hooks...)
+	for _, n := range []interface{ Use(...Hook) }{
+		c.Connector, c.GatewayGroup, c.HealthCheck, c.Org, c.Route, c.RouteTarget,
+	} {
+		n.Use(hooks...)
+	}
 }
 
 // Intercept adds the query interceptors to all the entity clients.
 // In order to add interceptors to a specific client, call: `client.Node.Intercept(...)`.
 func (c *Client) Intercept(interceptors ...Interceptor) {
-	c.Connector.Intercept(interceptors...)
-	c.GatewayGroup.Intercept(interceptors...)
-	c.Org.Intercept(interceptors...)
-	c.Route.Intercept(interceptors...)
-	c.RouteTarget.Intercept(interceptors...)
+	for _, n := range []interface{ Intercept(...Interceptor) }{
+		c.Connector, c.GatewayGroup, c.HealthCheck, c.Org, c.Route, c.RouteTarget,
+	} {
+		n.Intercept(interceptors...)
+	}
 }
 
 // Mutate implements the ent.Mutator interface.
@@ -228,6 +234,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.Connector.mutate(ctx, m)
 	case *GatewayGroupMutation:
 		return c.GatewayGroup.mutate(ctx, m)
+	case *HealthCheckMutation:
+		return c.HealthCheck.mutate(ctx, m)
 	case *OrgMutation:
 		return c.Org.mutate(ctx, m)
 	case *RouteMutation:
@@ -538,6 +546,157 @@ func (c *GatewayGroupClient) mutate(ctx context.Context, m *GatewayGroupMutation
 		return (&GatewayGroupDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
 	default:
 		return nil, fmt.Errorf("ent: unknown GatewayGroup mutation op: %q", m.Op())
+	}
+}
+
+// HealthCheckClient is a client for the HealthCheck schema.
+type HealthCheckClient struct {
+	config
+}
+
+// NewHealthCheckClient returns a client for the HealthCheck from the given config.
+func NewHealthCheckClient(c config) *HealthCheckClient {
+	return &HealthCheckClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `healthcheck.Hooks(f(g(h())))`.
+func (c *HealthCheckClient) Use(hooks ...Hook) {
+	c.hooks.HealthCheck = append(c.hooks.HealthCheck, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `healthcheck.Intercept(f(g(h())))`.
+func (c *HealthCheckClient) Intercept(interceptors ...Interceptor) {
+	c.inters.HealthCheck = append(c.inters.HealthCheck, interceptors...)
+}
+
+// Create returns a builder for creating a HealthCheck entity.
+func (c *HealthCheckClient) Create() *HealthCheckCreate {
+	mutation := newHealthCheckMutation(c.config, OpCreate)
+	return &HealthCheckCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of HealthCheck entities.
+func (c *HealthCheckClient) CreateBulk(builders ...*HealthCheckCreate) *HealthCheckCreateBulk {
+	return &HealthCheckCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *HealthCheckClient) MapCreateBulk(slice any, setFunc func(*HealthCheckCreate, int)) *HealthCheckCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &HealthCheckCreateBulk{err: fmt.Errorf("calling to HealthCheckClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*HealthCheckCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &HealthCheckCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for HealthCheck.
+func (c *HealthCheckClient) Update() *HealthCheckUpdate {
+	mutation := newHealthCheckMutation(c.config, OpUpdate)
+	return &HealthCheckUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *HealthCheckClient) UpdateOne(_m *HealthCheck) *HealthCheckUpdateOne {
+	mutation := newHealthCheckMutation(c.config, OpUpdateOne, withHealthCheck(_m))
+	return &HealthCheckUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *HealthCheckClient) UpdateOneID(id string) *HealthCheckUpdateOne {
+	mutation := newHealthCheckMutation(c.config, OpUpdateOne, withHealthCheckID(id))
+	return &HealthCheckUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for HealthCheck.
+func (c *HealthCheckClient) Delete() *HealthCheckDelete {
+	mutation := newHealthCheckMutation(c.config, OpDelete)
+	return &HealthCheckDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *HealthCheckClient) DeleteOne(_m *HealthCheck) *HealthCheckDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *HealthCheckClient) DeleteOneID(id string) *HealthCheckDeleteOne {
+	builder := c.Delete().Where(healthcheck.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &HealthCheckDeleteOne{builder}
+}
+
+// Query returns a query builder for HealthCheck.
+func (c *HealthCheckClient) Query() *HealthCheckQuery {
+	return &HealthCheckQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeHealthCheck},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a HealthCheck entity by its id.
+func (c *HealthCheckClient) Get(ctx context.Context, id string) (*HealthCheck, error) {
+	return c.Query().Where(healthcheck.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *HealthCheckClient) GetX(ctx context.Context, id string) *HealthCheck {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// QueryTargets queries the targets edge of a HealthCheck.
+func (c *HealthCheckClient) QueryTargets(_m *HealthCheck) *RouteTargetQuery {
+	query := (&RouteTargetClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(healthcheck.Table, healthcheck.FieldID, id),
+			sqlgraph.To(routetarget.Table, routetarget.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, healthcheck.TargetsTable, healthcheck.TargetsColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// Hooks returns the client hooks.
+func (c *HealthCheckClient) Hooks() []Hook {
+	hooks := c.hooks.HealthCheck
+	return append(hooks[:len(hooks):len(hooks)], healthcheck.Hooks[:]...)
+}
+
+// Interceptors returns the client interceptors.
+func (c *HealthCheckClient) Interceptors() []Interceptor {
+	inters := c.inters.HealthCheck
+	return append(inters[:len(inters):len(inters)], healthcheck.Interceptors[:]...)
+}
+
+func (c *HealthCheckClient) mutate(ctx context.Context, m *HealthCheckMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&HealthCheckCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&HealthCheckUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&HealthCheckUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&HealthCheckDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown HealthCheck mutation op: %q", m.Op())
 	}
 }
 
@@ -983,6 +1142,22 @@ func (c *RouteTargetClient) QueryConnector(_m *RouteTarget) *ConnectorQuery {
 	return query
 }
 
+// QueryHealthCheck queries the health_check edge of a RouteTarget.
+func (c *RouteTargetClient) QueryHealthCheck(_m *RouteTarget) *HealthCheckQuery {
+	query := (&HealthCheckClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(routetarget.Table, routetarget.FieldID, id),
+			sqlgraph.To(healthcheck.Table, healthcheck.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, true, routetarget.HealthCheckTable, routetarget.HealthCheckColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
 // Hooks returns the client hooks.
 func (c *RouteTargetClient) Hooks() []Hook {
 	hooks := c.hooks.RouteTarget
@@ -1013,10 +1188,10 @@ func (c *RouteTargetClient) mutate(ctx context.Context, m *RouteTargetMutation) 
 // hooks and interceptors per client, for fast access.
 type (
 	hooks struct {
-		Connector, GatewayGroup, Org, Route, RouteTarget []ent.Hook
+		Connector, GatewayGroup, HealthCheck, Org, Route, RouteTarget []ent.Hook
 	}
 	inters struct {
-		Connector, GatewayGroup, Org, Route, RouteTarget []ent.Interceptor
+		Connector, GatewayGroup, HealthCheck, Org, Route, RouteTarget []ent.Interceptor
 	}
 )
 

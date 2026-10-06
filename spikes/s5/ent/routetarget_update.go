@@ -11,6 +11,7 @@ import (
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
 	"github.com/felix-homelab/rpmgr/spikes/s5/ent/connector"
+	"github.com/felix-homelab/rpmgr/spikes/s5/ent/healthcheck"
 	"github.com/felix-homelab/rpmgr/spikes/s5/ent/predicate"
 	"github.com/felix-homelab/rpmgr/spikes/s5/ent/route"
 	"github.com/felix-homelab/rpmgr/spikes/s5/ent/routetarget"
@@ -92,6 +93,26 @@ func (_u *RouteTargetUpdate) AddPort(v int) *RouteTargetUpdate {
 	return _u
 }
 
+// SetHealthCheckID sets the "health_check_id" field.
+func (_u *RouteTargetUpdate) SetHealthCheckID(v string) *RouteTargetUpdate {
+	_u.mutation.SetHealthCheckID(v)
+	return _u
+}
+
+// SetNillableHealthCheckID sets the "health_check_id" field if the given value is not nil.
+func (_u *RouteTargetUpdate) SetNillableHealthCheckID(v *string) *RouteTargetUpdate {
+	if v != nil {
+		_u.SetHealthCheckID(*v)
+	}
+	return _u
+}
+
+// ClearHealthCheckID clears the value of the "health_check_id" field.
+func (_u *RouteTargetUpdate) ClearHealthCheckID() *RouteTargetUpdate {
+	_u.mutation.ClearHealthCheckID()
+	return _u
+}
+
 // SetRoute sets the "route" edge to the Route entity.
 func (_u *RouteTargetUpdate) SetRoute(v *Route) *RouteTargetUpdate {
 	return _u.SetRouteID(v.ID)
@@ -100,6 +121,11 @@ func (_u *RouteTargetUpdate) SetRoute(v *Route) *RouteTargetUpdate {
 // SetConnector sets the "connector" edge to the Connector entity.
 func (_u *RouteTargetUpdate) SetConnector(v *Connector) *RouteTargetUpdate {
 	return _u.SetConnectorID(v.ID)
+}
+
+// SetHealthCheck sets the "health_check" edge to the HealthCheck entity.
+func (_u *RouteTargetUpdate) SetHealthCheck(v *HealthCheck) *RouteTargetUpdate {
+	return _u.SetHealthCheckID(v.ID)
 }
 
 // Mutation returns the RouteTargetMutation object of the builder.
@@ -116,6 +142,12 @@ func (_u *RouteTargetUpdate) ClearRoute() *RouteTargetUpdate {
 // ClearConnector clears the "connector" edge to the Connector entity.
 func (_u *RouteTargetUpdate) ClearConnector() *RouteTargetUpdate {
 	_u.mutation.ClearConnector()
+	return _u
+}
+
+// ClearHealthCheck clears the "health_check" edge to the HealthCheck entity.
+func (_u *RouteTargetUpdate) ClearHealthCheck() *RouteTargetUpdate {
+	_u.mutation.ClearHealthCheck()
 	return _u
 }
 
@@ -256,6 +288,35 @@ func (_u *RouteTargetUpdate) sqlSave(ctx context.Context) (_node int, err error)
 		}
 		_spec.Edges.Add = append(_spec.Edges.Add, edge)
 	}
+	if _u.mutation.HealthCheckCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2O,
+			Inverse: true,
+			Table:   routetarget.HealthCheckTable,
+			Columns: []string{routetarget.HealthCheckColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(healthcheck.FieldID, field.TypeString),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.HealthCheckIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2O,
+			Inverse: true,
+			Table:   routetarget.HealthCheckTable,
+			Columns: []string{routetarget.HealthCheckColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(healthcheck.FieldID, field.TypeString),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
 	if _node, err = sqlgraph.UpdateNodes(ctx, _u.driver, _spec); err != nil {
 		if _, ok := err.(*sqlgraph.NotFoundError); ok {
 			err = &NotFoundError{routetarget.Label}
@@ -339,6 +400,26 @@ func (_u *RouteTargetUpdateOne) AddPort(v int) *RouteTargetUpdateOne {
 	return _u
 }
 
+// SetHealthCheckID sets the "health_check_id" field.
+func (_u *RouteTargetUpdateOne) SetHealthCheckID(v string) *RouteTargetUpdateOne {
+	_u.mutation.SetHealthCheckID(v)
+	return _u
+}
+
+// SetNillableHealthCheckID sets the "health_check_id" field if the given value is not nil.
+func (_u *RouteTargetUpdateOne) SetNillableHealthCheckID(v *string) *RouteTargetUpdateOne {
+	if v != nil {
+		_u.SetHealthCheckID(*v)
+	}
+	return _u
+}
+
+// ClearHealthCheckID clears the value of the "health_check_id" field.
+func (_u *RouteTargetUpdateOne) ClearHealthCheckID() *RouteTargetUpdateOne {
+	_u.mutation.ClearHealthCheckID()
+	return _u
+}
+
 // SetRoute sets the "route" edge to the Route entity.
 func (_u *RouteTargetUpdateOne) SetRoute(v *Route) *RouteTargetUpdateOne {
 	return _u.SetRouteID(v.ID)
@@ -347,6 +428,11 @@ func (_u *RouteTargetUpdateOne) SetRoute(v *Route) *RouteTargetUpdateOne {
 // SetConnector sets the "connector" edge to the Connector entity.
 func (_u *RouteTargetUpdateOne) SetConnector(v *Connector) *RouteTargetUpdateOne {
 	return _u.SetConnectorID(v.ID)
+}
+
+// SetHealthCheck sets the "health_check" edge to the HealthCheck entity.
+func (_u *RouteTargetUpdateOne) SetHealthCheck(v *HealthCheck) *RouteTargetUpdateOne {
+	return _u.SetHealthCheckID(v.ID)
 }
 
 // Mutation returns the RouteTargetMutation object of the builder.
@@ -363,6 +449,12 @@ func (_u *RouteTargetUpdateOne) ClearRoute() *RouteTargetUpdateOne {
 // ClearConnector clears the "connector" edge to the Connector entity.
 func (_u *RouteTargetUpdateOne) ClearConnector() *RouteTargetUpdateOne {
 	_u.mutation.ClearConnector()
+	return _u
+}
+
+// ClearHealthCheck clears the "health_check" edge to the HealthCheck entity.
+func (_u *RouteTargetUpdateOne) ClearHealthCheck() *RouteTargetUpdateOne {
+	_u.mutation.ClearHealthCheck()
 	return _u
 }
 
@@ -526,6 +618,35 @@ func (_u *RouteTargetUpdateOne) sqlSave(ctx context.Context) (_node *RouteTarget
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(connector.FieldID, field.TypeString),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.HealthCheckCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2O,
+			Inverse: true,
+			Table:   routetarget.HealthCheckTable,
+			Columns: []string{routetarget.HealthCheckColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(healthcheck.FieldID, field.TypeString),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.HealthCheckIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2O,
+			Inverse: true,
+			Table:   routetarget.HealthCheckTable,
+			Columns: []string{routetarget.HealthCheckColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(healthcheck.FieldID, field.TypeString),
 			},
 		}
 		for _, k := range nodes {

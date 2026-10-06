@@ -23,10 +23,14 @@ const (
 	FieldHost = "host"
 	// FieldPort holds the string denoting the port field in the database.
 	FieldPort = "port"
+	// FieldHealthCheckID holds the string denoting the health_check_id field in the database.
+	FieldHealthCheckID = "health_check_id"
 	// EdgeRoute holds the string denoting the route edge name in mutations.
 	EdgeRoute = "route"
 	// EdgeConnector holds the string denoting the connector edge name in mutations.
 	EdgeConnector = "connector"
+	// EdgeHealthCheck holds the string denoting the health_check edge name in mutations.
+	EdgeHealthCheck = "health_check"
 	// Table holds the table name of the routetarget in the database.
 	Table = "route_targets"
 	// RouteTable is the table that holds the route relation/edge.
@@ -43,6 +47,13 @@ const (
 	ConnectorInverseTable = "connectors"
 	// ConnectorColumn is the table column denoting the connector relation/edge.
 	ConnectorColumn = "connector_id"
+	// HealthCheckTable is the table that holds the health_check relation/edge.
+	HealthCheckTable = "route_targets"
+	// HealthCheckInverseTable is the table name for the HealthCheck entity.
+	// It exists in this package in order to avoid circular dependency with the "healthcheck" package.
+	HealthCheckInverseTable = "health_checks"
+	// HealthCheckColumn is the table column denoting the health_check relation/edge.
+	HealthCheckColumn = "health_check_id"
 )
 
 // Columns holds all SQL columns for routetarget fields.
@@ -53,6 +64,7 @@ var Columns = []string{
 	FieldConnectorID,
 	FieldHost,
 	FieldPort,
+	FieldHealthCheckID,
 }
 
 // ValidColumn reports if the column name is valid (part of the table columns).
@@ -123,6 +135,11 @@ func ByPort(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldPort, opts...).ToFunc()
 }
 
+// ByHealthCheckID orders the results by the health_check_id field.
+func ByHealthCheckID(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldHealthCheckID, opts...).ToFunc()
+}
+
 // ByRouteField orders the results by route field.
 func ByRouteField(field string, opts ...sql.OrderTermOption) OrderOption {
 	return func(s *sql.Selector) {
@@ -134,6 +151,13 @@ func ByRouteField(field string, opts ...sql.OrderTermOption) OrderOption {
 func ByConnectorField(field string, opts ...sql.OrderTermOption) OrderOption {
 	return func(s *sql.Selector) {
 		sqlgraph.OrderByNeighborTerms(s, newConnectorStep(), sql.OrderByField(field, opts...))
+	}
+}
+
+// ByHealthCheckField orders the results by health_check field.
+func ByHealthCheckField(field string, opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newHealthCheckStep(), sql.OrderByField(field, opts...))
 	}
 }
 func newRouteStep() *sqlgraph.Step {
@@ -148,5 +172,12 @@ func newConnectorStep() *sqlgraph.Step {
 		sqlgraph.From(Table, FieldID),
 		sqlgraph.To(ConnectorInverseTable, FieldID),
 		sqlgraph.Edge(sqlgraph.M2O, true, ConnectorTable, ConnectorColumn),
+	)
+}
+func newHealthCheckStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(HealthCheckInverseTable, FieldID),
+		sqlgraph.Edge(sqlgraph.M2O, true, HealthCheckTable, HealthCheckColumn),
 	)
 }

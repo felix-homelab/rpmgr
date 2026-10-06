@@ -85,6 +85,20 @@ func (_u *RouteUpdate) SetNillableEnabled(v *bool) *RouteUpdate {
 	return _u
 }
 
+// SetDescription sets the "description" field.
+func (_u *RouteUpdate) SetDescription(v string) *RouteUpdate {
+	_u.mutation.SetDescription(v)
+	return _u
+}
+
+// SetNillableDescription sets the "description" field if the given value is not nil.
+func (_u *RouteUpdate) SetNillableDescription(v *string) *RouteUpdate {
+	if v != nil {
+		_u.SetDescription(*v)
+	}
+	return _u
+}
+
 // SetGatewayGroup sets the "gateway_group" edge to the GatewayGroup entity.
 func (_u *RouteUpdate) SetGatewayGroup(v *GatewayGroup) *RouteUpdate {
 	return _u.SetGatewayGroupID(v.ID)
@@ -207,6 +221,9 @@ func (_u *RouteUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if value, ok := _u.mutation.Enabled(); ok {
 		_spec.SetField(route.FieldEnabled, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.Description(); ok {
+		_spec.SetField(route.FieldDescription, field.TypeString, value)
 	}
 	if _u.mutation.GatewayGroupCleared() {
 		edge := &sqlgraph.EdgeSpec{
@@ -354,6 +371,20 @@ func (_u *RouteUpdateOne) SetEnabled(v bool) *RouteUpdateOne {
 func (_u *RouteUpdateOne) SetNillableEnabled(v *bool) *RouteUpdateOne {
 	if v != nil {
 		_u.SetEnabled(*v)
+	}
+	return _u
+}
+
+// SetDescription sets the "description" field.
+func (_u *RouteUpdateOne) SetDescription(v string) *RouteUpdateOne {
+	_u.mutation.SetDescription(v)
+	return _u
+}
+
+// SetNillableDescription sets the "description" field if the given value is not nil.
+func (_u *RouteUpdateOne) SetNillableDescription(v *string) *RouteUpdateOne {
+	if v != nil {
+		_u.SetDescription(*v)
 	}
 	return _u
 }
@@ -510,6 +541,9 @@ func (_u *RouteUpdateOne) sqlSave(ctx context.Context) (_node *Route, err error)
 	}
 	if value, ok := _u.mutation.Enabled(); ok {
 		_spec.SetField(route.FieldEnabled, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.Description(); ok {
+		_spec.SetField(route.FieldDescription, field.TypeString, value)
 	}
 	if _u.mutation.GatewayGroupCleared() {
 		edge := &sqlgraph.EdgeSpec{

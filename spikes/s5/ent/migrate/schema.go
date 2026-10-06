@@ -56,6 +56,26 @@ var (
 			},
 		},
 	}
+	// HealthChecksColumns holds the columns for the "health_checks" table.
+	HealthChecksColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeString},
+		{Name: "org_id", Type: field.TypeString},
+		{Name: "type", Type: field.TypeEnum, Enums: []string{"tcp", "http"}},
+		{Name: "interval_seconds", Type: field.TypeInt, Default: 10},
+	}
+	// HealthChecksTable holds the schema information for the "health_checks" table.
+	HealthChecksTable = &schema.Table{
+		Name:       "health_checks",
+		Columns:    HealthChecksColumns,
+		PrimaryKey: []*schema.Column{HealthChecksColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "healthcheck_org_id_id",
+				Unique:  true,
+				Columns: []*schema.Column{HealthChecksColumns[1], HealthChecksColumns[0]},
+			},
+		},
+	}
 	// OrgsColumns holds the columns for the "orgs" table.
 	OrgsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeString},
@@ -75,6 +95,7 @@ var (
 		{Name: "name", Type: field.TypeString},
 		{Name: "type", Type: field.TypeEnum, Enums: []string{"http", "tcp", "udp", "tls_passthrough"}},
 		{Name: "enabled", Type: field.TypeBool, Default: true},
+		{Name: "description", Type: field.TypeString, Default: ""},
 		{Name: "gateway_group_id", Type: field.TypeString},
 	}
 	// RoutesTable holds the schema information for the "routes" table.
@@ -85,7 +106,7 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "routes_gateway_groups_routes",
-				Columns:    []*schema.Column{RoutesColumns[5]},
+				Columns:    []*schema.Column{RoutesColumns[6]},
 				RefColumns: []*schema.Column{GatewayGroupsColumns[0]},
 				OnDelete:   schema.NoAction,
 			},
@@ -110,6 +131,7 @@ var (
 		{Name: "host", Type: field.TypeString},
 		{Name: "port", Type: field.TypeInt},
 		{Name: "connector_id", Type: field.TypeString},
+		{Name: "health_check_id", Type: field.TypeString, Nullable: true},
 		{Name: "route_id", Type: field.TypeString},
 	}
 	// RouteTargetsTable holds the schema information for the "route_targets" table.
@@ -125,8 +147,14 @@ var (
 				OnDelete:   schema.NoAction,
 			},
 			{
-				Symbol:     "route_targets_routes_targets",
+				Symbol:     "route_targets_health_checks_targets",
 				Columns:    []*schema.Column{RouteTargetsColumns[5]},
+				RefColumns: []*schema.Column{HealthChecksColumns[0]},
+				OnDelete:   schema.SetNull,
+			},
+			{
+				Symbol:     "route_targets_routes_targets",
+				Columns:    []*schema.Column{RouteTargetsColumns[6]},
 				RefColumns: []*schema.Column{RoutesColumns[0]},
 				OnDelete:   schema.NoAction,
 			},
@@ -143,6 +171,7 @@ var (
 	Tables = []*schema.Table{
 		ConnectorsTable,
 		GatewayGroupsTable,
+		HealthChecksTable,
 		OrgsTable,
 		RoutesTable,
 		RouteTargetsTable,
@@ -152,5 +181,6 @@ var (
 func init() {
 	RoutesTable.ForeignKeys[0].RefTable = GatewayGroupsTable
 	RouteTargetsTable.ForeignKeys[0].RefTable = ConnectorsTable
-	RouteTargetsTable.ForeignKeys[1].RefTable = RoutesTable
+	RouteTargetsTable.ForeignKeys[1].RefTable = HealthChecksTable
+	RouteTargetsTable.ForeignKeys[2].RefTable = RoutesTable
 }

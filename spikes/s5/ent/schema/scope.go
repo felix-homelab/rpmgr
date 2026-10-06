@@ -10,6 +10,7 @@ import (
 	"entgo.io/ent/privacy"
 
 	"github.com/felix-homelab/rpmgr/spikes/s5/authz"
+	"github.com/felix-homelab/rpmgr/spikes/s5/ent/intercept"
 )
 
 // The store enforces tenancy in three parts, all bound to the authz.OrgScope in the context:
@@ -46,9 +47,12 @@ type wherer interface {
 	WhereP(...func(*sql.Selector))
 }
 
-// filterInterceptor adds "<column> = <scope org>" to every query.
+// filterInterceptor adds "<column> = <scope org>" to every query. Generated query types have no
+// untyped WhereP; the generated intercept package wraps them (intercept.NewQuery), so the schema
+// imports it. A fresh checkout therefore generates in two passes (README.md); the generated code
+// is committed, so regeneration is one pass.
 func filterInterceptor(column string) ent.Interceptor {
-	return ent.TraverseFunc(func(ctx context.Context, q ent.Query) error {
+	return intercept.TraverseFunc(func(ctx context.Context, q intercept.Query) error {
 		s, ok := authz.FromContext(ctx)
 		if !ok {
 			return errNoScope()
@@ -56,11 +60,7 @@ func filterInterceptor(column string) ent.Interceptor {
 		if s.System() {
 			return nil
 		}
-		w, ok := q.(wherer)
-		if !ok {
-			return privacy.Denyf("store: query %T cannot be scoped", q)
-		}
-		w.WhereP(sql.FieldEQ(column, s.OrgID()))
+		q.WhereP(sql.FieldEQ(column, s.OrgID()))
 		return nil
 	})
 }

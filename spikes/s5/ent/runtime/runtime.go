@@ -7,6 +7,7 @@ import (
 
 	"github.com/felix-homelab/rpmgr/spikes/s5/ent/connector"
 	"github.com/felix-homelab/rpmgr/spikes/s5/ent/gatewaygroup"
+	"github.com/felix-homelab/rpmgr/spikes/s5/ent/healthcheck"
 	"github.com/felix-homelab/rpmgr/spikes/s5/ent/org"
 	"github.com/felix-homelab/rpmgr/spikes/s5/ent/route"
 	"github.com/felix-homelab/rpmgr/spikes/s5/ent/routetarget"
@@ -86,6 +87,41 @@ func init() {
 	gatewaygroup.DefaultID = gatewaygroupDescID.Default.(func() string)
 	// gatewaygroup.IDValidator is a validator for the "id" field. It is called by the builders before save.
 	gatewaygroup.IDValidator = gatewaygroupDescID.Validators[0].(func(string) error)
+	healthcheckMixin := schema.HealthCheck{}.Mixin()
+	healthcheck.Policy = privacy.NewPolicies(healthcheckMixin[0], schema.HealthCheck{})
+	healthcheck.Hooks[0] = func(next ent.Mutator) ent.Mutator {
+		return ent.MutateFunc(func(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+			if err := healthcheck.Policy.EvalMutation(ctx, m); err != nil {
+				return nil, err
+			}
+			return next.Mutate(ctx, m)
+		})
+	}
+	healthcheckMixinHooks0 := healthcheckMixin[0].Hooks()
+
+	healthcheck.Hooks[1] = healthcheckMixinHooks0[0]
+	healthcheckMixinInters0 := healthcheckMixin[0].Interceptors()
+	healthcheck.Interceptors[0] = healthcheckMixinInters0[0]
+	healthcheckMixinFields0 := healthcheckMixin[0].Fields()
+	_ = healthcheckMixinFields0
+	healthcheckFields := schema.HealthCheck{}.Fields()
+	_ = healthcheckFields
+	// healthcheckDescOrgID is the schema descriptor for org_id field.
+	healthcheckDescOrgID := healthcheckMixinFields0[0].Descriptor()
+	// healthcheck.OrgIDValidator is a validator for the "org_id" field. It is called by the builders before save.
+	healthcheck.OrgIDValidator = healthcheckDescOrgID.Validators[0].(func(string) error)
+	// healthcheckDescIntervalSeconds is the schema descriptor for interval_seconds field.
+	healthcheckDescIntervalSeconds := healthcheckFields[2].Descriptor()
+	// healthcheck.DefaultIntervalSeconds holds the default value on creation for the interval_seconds field.
+	healthcheck.DefaultIntervalSeconds = healthcheckDescIntervalSeconds.Default.(int)
+	// healthcheck.IntervalSecondsValidator is a validator for the "interval_seconds" field. It is called by the builders before save.
+	healthcheck.IntervalSecondsValidator = healthcheckDescIntervalSeconds.Validators[0].(func(int) error)
+	// healthcheckDescID is the schema descriptor for id field.
+	healthcheckDescID := healthcheckFields[0].Descriptor()
+	// healthcheck.DefaultID holds the default value on creation for the id field.
+	healthcheck.DefaultID = healthcheckDescID.Default.(func() string)
+	// healthcheck.IDValidator is a validator for the "id" field. It is called by the builders before save.
+	healthcheck.IDValidator = healthcheckDescID.Validators[0].(func(string) error)
 	orgMixin := schema.Org{}.Mixin()
 	org.Policy = privacy.NewPolicies(orgMixin[0], schema.Org{})
 	org.Hooks[0] = func(next ent.Mutator) ent.Mutator {
@@ -152,6 +188,10 @@ func init() {
 	routeDescEnabled := routeFields[4].Descriptor()
 	// route.DefaultEnabled holds the default value on creation for the enabled field.
 	route.DefaultEnabled = routeDescEnabled.Default.(bool)
+	// routeDescDescription is the schema descriptor for description field.
+	routeDescDescription := routeFields[5].Descriptor()
+	// route.DefaultDescription holds the default value on creation for the description field.
+	route.DefaultDescription = routeDescDescription.Default.(string)
 	// routeDescID is the schema descriptor for id field.
 	routeDescID := routeFields[0].Descriptor()
 	// route.DefaultID holds the default value on creation for the id field.

@@ -18,6 +18,8 @@ type Tx struct {
 	Connector *ConnectorClient
 	// GatewayGroup is the client for interacting with the GatewayGroup builders.
 	GatewayGroup *GatewayGroupClient
+	// HealthCheck is the client for interacting with the HealthCheck builders.
+	HealthCheck *HealthCheckClient
 	// Org is the client for interacting with the Org builders.
 	Org *OrgClient
 	// Route is the client for interacting with the Route builders.
@@ -157,6 +159,7 @@ func (tx *Tx) Client() *Client {
 func (tx *Tx) init() {
 	tx.Connector = NewConnectorClient(tx.config)
 	tx.GatewayGroup = NewGatewayGroupClient(tx.config)
+	tx.HealthCheck = NewHealthCheckClient(tx.config)
 	tx.Org = NewOrgClient(tx.config)
 	tx.Route = NewRouteClient(tx.config)
 	tx.RouteTarget = NewRouteTargetClient(tx.config)

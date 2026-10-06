@@ -12,6 +12,9 @@ type Connector func(*sql.Selector)
 // GatewayGroup is the predicate function for gatewaygroup builders.
 type GatewayGroup func(*sql.Selector)
 
+// HealthCheck is the predicate function for healthcheck builders.
+type HealthCheck func(*sql.Selector)
+
 // Org is the predicate function for org builders.
 type Org func(*sql.Selector)
 
