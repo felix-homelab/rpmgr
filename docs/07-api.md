@@ -1,0 +1,291 @@
+# 07 — API
+
+> Status: design, not implemented. Tags: [F] fact · [R] recommendation · [T] target · [V] verify at
+> implementation ([README](../README.md#how-to-read-these-documents)).
+
+## Overview
+
+| API | Package | Clients | Protocol |
+|---|---|---|---|
+| **Public API** | `rpmgr.v1` | Web UI, `rpmgr` CLI, scripts, Terraform provider (later) | ConnectRPC: Connect protocol (JSON or binary) over HTTP/1.1 or HTTP/2; gRPC and gRPC-Web on the same endpoints |
+| **Agent protocol** | `rpmgr.agent.v1` | Gateways, connectors | gRPC protocol over HTTP/2 with mutual TLS ([03](03-connections.md#control-session)) |
+
+Both are defined in protobuf and managed with `buf` (lint, breaking-change detection, code
+generation for Go and TypeScript) ([ADR-0010](adr/0010-connectrpc.md)). The web UI uses exactly the
+public API; there are no private UI endpoints.
+
+The Connect protocol is plain HTTP: every unary method is `POST /<package>.<Service>/<Method>` with
+a JSON body, so `curl` works without special tooling:
+
+```sh
+curl -s https://panel.example.com/rpmgr.v1.RouteService/GetRoute \
+  -H "Authorization: Bearer $RPMGR_TOKEN" -H "Content-Type: application/json" \
+  -d '{"id":"rte_01JA2Z8Q6W7Y3V9K4M5N6P7Q8R"}'
+```
+
+## Authentication
+
+| Client | Credential | Transport |
+|---|---|---|
+| Browser | `__Host-rpmgr_session` cookie | Same origin only; CSRF rules in [04](04-security.md#human-authentication-and-sessions) |
+| CLI, scripts, integrations | API token: personal `rpmgr_pat_…` (Phase 1), service-account `rpmgr_sat_…` (Phase 2) | `Authorization: Bearer` header only |
+| Agents | Client certificate | Mutual TLS; never a token |
+
+Administrative commands run on the controller host itself (`rpmgr ca …`, `kek …`, `backup`,
+`restore …`, `user reset-password`, `migrate`, `migrate-db`) do not use the API: they are
+authorised by host access and audited as `local-cli` ([04](04-security.md#roles)).
+
+Every method carries an `(rpmgr.v1.authz)` option naming the permission it needs and the request field
+that identifies the target resource; an unannotated method fails closed
+([04](04-security.md#one-enforcement-point-with-defence-in-depth)).
+
+## Resource design
+
+[R] Resource-oriented, in the style of Google's API Improvement Proposals:
+
+| Method | Request | Notes |
+|---|---|---|
+| `Get<Resource>` | `id` | |
+| `List<Resources>` | typed filter fields, `page_size` (default 50, max 500), `page_token` | Opaque, stable page tokens; ordered by ID (time-ordered) unless `order_by` is given |
+| `Create<Resource>` | resource, `request_id` | `request_id` makes retries idempotent (deduplication window in [03](03-connections.md#timeouts-keepalive-and-backoff)) |
+| `Update<Resource>` | resource, `update_mask`, `etag` | Field mask lists exactly the fields to change; untouched fields are never reset |
+| `Delete<Resource>` | `id`, optional `etag`, `cascade` | Refuses when dependants exist unless `cascade` is set |
+
+Field masks matter: a form that replaces the whole stored configuration silently deletes keys the
+form does not model. With typed resources and explicit masks, an update can only change what it
+names.
+
+### Services
+
+| Service | Main methods | Phase |
+|---|---|---|
+| `AuthService` | `Login`, `Logout`, `GetSession`, `StepUp`, `BeginWebAuthn`/`FinishWebAuthn`, `StartOIDC`/`FinishOIDC`, `ListSessions`, `RevokeSession`, `RequestPasswordReset` (only with SMTP configured), `CompletePasswordReset` | 1 (WebAuthn, OIDC: 2) |
+| `UserService` | `GetMe`, `UpdateMe`, `ChangePassword`, `EnrollTOTP`, `ListUsers` (instance admin), `CreatePasswordResetLink` (one-time link; Owner/Admin for members, Instance Admin for any user) | 1 |
+| `OrgService` | `GetOrg`, `UpdateOrg`, `ListMembers`, `UpdateMember`, `RemoveMember`, `CreateInvitation` (returns a one-time link; also e-mailed if SMTP is configured), `AcceptInvitation` | 1 (multi-org UI: 2) |
+| `TokenService` | `CreateAPIToken`, `ListAPITokens`, `RevokeAPIToken`, `CreateServiceAccount`, … | Personal API tokens: 1; service accounts: 2 |
+| `EnrollmentService` | `CreateEnrollmentToken`, `ListEnrollmentTokens`, `RevokeEnrollmentToken`, `GetInstallCommand` | 1 |
+| `ConnectorService` | `ListConnectors`, `GetConnector`, `UpdateConnector`, `DecommissionConnector`, `GetConnectorStatus` | 1 |
+| `GatewayService` | gateways, gateway groups, port pools, port quotas, shared-group grants | 1 (shared-group grants: 2) |
+| `RouteService` | CRUD on routes and targets, `PreviewRoute` (compile without saving) | 1 |
+| `DomainService` | `CreateDomain`, `VerifyDomain`, `ListDomains`, `DeleteDomain`, `MarkDomainTrusted` (Instance Admin, step-up), `DelegateDomain` and `ApproveDomainClaim` (Instance Admin, step-up) | 1 (`DelegateDomain`, `ApproveDomainClaim`: 2) |
+| `CertificateService` | `ListCertificates`, `UploadCertificate`, `RenewCertificate` | 1 |
+| `PkiService` | `GetPkiStatus`, `RotateIntermediate` (Instance Admin, step-up) | 1 |
+| `DnsProviderService` | `ConnectDnsProvider`, `ListDnsProviders`, `UpdateDnsProvider` (rename, rotate token), `DeleteDnsProvider`, `ListProviderZones` | 2 |
+| `DnsZoneService` | `ImportZone`, `ListZones`, `UpdateZone` (gates), `RemoveZone` (keep or remove records), `PlanZoneSync`, `ApproveZonePlan` (plan hash), `SyncZone`, `ListZoneRecords` (owned and foreign, read live; Owner/Admin), `AdoptRecords`, `ReleaseRecord` (optionally restore the original) | 2 |
+| `DnsNameService` | `CreateDnsName`, `GetDnsName`, `ListDnsNames`, `UpdateDnsName`, `DeleteDnsName` | 2 |
+| `PolicyService` | access policies and rules, health checks | 2 (basic auth, IP rules: 1) |
+| `PrivateServiceService` | private services and visitor grants | 2 |
+| `StatusService` | `GetApplyStatus`, `WatchApplyStatus` (stream), `WatchEvents` (stream) | 1 |
+| `LogService` | `StreamLogs` (server stream from an agent via an imperative operation) | 2 |
+| `MetricsService` | `GetRouteTraffic`, `GetOverview` (rollups) | 1 |
+| `AuditService` | `ListAuditEntries`, `ExportAudit`, `VerifyAuditChain` | 1 (export: 2) |
+| `SettingsService` | `GetInstanceSettings`, `UpdateInstanceSettings`, `GetOrgSettings`, `UpdateOrgSettings` | 1 |
+| `ReleaseService` | `ListReleases`, `UploadRelease` (air-gapped installs), `CreateRollout`, `GetRollout`, `PauseRollout`; the release check and update channel are instance settings (`SettingsService`) | 2 |
+| `ManifestService` | `Plan`, `Apply` (declarative manifests) | 2 |
+| `WebhookService` | webhook endpoints and deliveries | 2 |
+| `VirtualNetworkService`, `FunctionService`, `ShellService` | — | 3 |
+
+### Example: a route
+
+```protobuf
+// rpmgr/v1/route.proto (sketch)
+message Route {
+  string id = 1;                       // rte_…, output only
+  string name = 2;                     // unique per org
+  string gateway_group_id = 3;
+  bool enabled = 4;                    // the only desired on/off switch
+  map<string, string> labels = 5;
+  oneof spec {
+    HttpRouteSpec http = 10;
+    TcpRouteSpec tcp = 11;
+    UdpRouteSpec udp = 12;
+    TlsPassthroughRouteSpec tls_passthrough = 13;
+  }
+  repeated Target targets = 20;
+  repeated string policy_ids = 21;
+  RouteLimits limits = 22;
+  string etag = 30;                    // output only; send back on update
+  RouteStatus status = 31;             // output only; derived from observed state (see 06-data-model)
+  repeated HostnameDnsStatus dns_status = 32;  // output only; per hostname, not part of status
+}
+
+message HttpRouteSpec {
+  repeated string hostnames = 1 [(buf.validate.field).repeated = {min_items: 1, max_items: 100}];
+  string path_prefix = 2;              // longest prefix wins among routes sharing a hostname
+  TlsMode tls_mode = 3;                // ACME or an uploaded certificate
+  Port80Mode port80 = 4;               // REDIRECT (default), SERVE or OFF; ACME HTTP-01 always works
+  map<string, string> request_headers_set = 5;
+  map<string, string> response_headers_set = 6;
+  bool dns_proxied = 7;                // Phase 2: opt into Cloudflare's proxy (15-dns)
+}
+
+message Target {
+  string id = 1;
+  string connector_id = 2;
+  oneof address { HostPort host_port = 3; string unix_path = 4; }
+  UpstreamProtocol upstream_protocol = 5;   // TCP, HTTP, HTTPS (verified), H2C
+  ProxyProtocol proxy_protocol = 6;         // NONE, V1, V2
+  uint32 weight = 7;
+  uint32 priority = 8;                      // lower = preferred; higher priorities are failover
+  string health_check_id = 9;
+  bool enabled = 10;
+}
+```
+
+```protobuf
+// rpmgr/v1/dns.proto (sketch)
+message DnsProvider {
+  string id = 1;                       // dnp_…, output only
+  string name = 2;                     // unique per org
+  oneof kind { CloudflareProvider cloudflare = 10; }
+  ProviderStatus status = 30;          // output only: OK, INVALID
+  google.protobuf.Timestamp token_expires_at = 31;  // output only
+  string etag = 32;                    // output only
+}
+
+message CloudflareProvider {
+  string api_token = 1 [(rpmgr.v1.sensitive) = true];  // write-only, never returned
+  string account_id = 2;               // set only for account-owned tokens
+}
+```
+
+## Writes and apply status
+
+Saving a configuration change and the change being active on agents are two different events; the
+API reports both ([03](03-connections.md#configuration-reconciliation)).
+
+- Every mutating response contains `revision` and `apply_status`:
+
+```json
+{ "route": { "id": "rte_…", "etag": "7" },
+  "revision": { "db_epoch": "0192f6a4-7c3e-7b1a-9f2d-3c4b5a6d7e8f", "seq": 4211 },
+  "apply_status": { "state": "PENDING", "agents_total": 3, "agents_applied": 0 } }
+```
+
+- `apply_status.state` is `PENDING`, `APPLIED`, `REJECTED` (with per-agent structured reasons) or
+  `APPLY_TIMEOUT` (an agent did not answer within the apply acknowledgement period,
+  [03](03-connections.md#timeouts-keepalive-and-backoff)). Offline agents are listed separately and
+  do not hold the state at `PENDING` forever.
+- A caller may set `wait = APPLIED` with a timeout (max 30 s) on any mutation; the response then
+  returns once the revision is applied or rejected, or the timeout passes. The CLI does this by
+  default.
+- `StatusService.WatchApplyStatus(revision)` streams progress; the UI uses it to show
+  "pending → applied" live after every save.
+- DNS configuration (managed zones, DNS names, `dns_target`, `dns_proxied`) is written in ordinary
+  configuration transactions with a revision. Publication at the DNS provider is **not** part of
+  `apply_status` and `wait = APPLIED` does not wait for it; it is reported as `dns_status` per
+  hostname and streamed by `WatchEvents` ([15](15-dns.md#publication-rules)).
+
+## Concurrency
+
+- Every mutable resource has a `version` counter, exposed as `etag`.
+- `Update…` and `Delete…` from the UI always send the `etag` they read. If the stored version
+  differs, the request fails with `FAILED_PRECONDITION` (`reason = ETAG_MISMATCH`) and the current
+  resource, so the UI can show a merge view instead of overwriting someone else's change.
+- The CLI sends the etag from its last read; `--force` omits it.
+
+## Errors
+
+- Connect/gRPC status codes, with structured details:
+
+| Situation | Code | Detail |
+|---|---|---|
+| Validation failed | `INVALID_ARGUMENT` | List of field violations (`field`, `rule`, `message`) from protovalidate |
+| Not found, or exists in another org | `NOT_FOUND` | — (no existence oracle across orgs) |
+| Permission missing | `PERMISSION_DENIED` | Missing permission name |
+| Step-up required | `UNAUTHENTICATED` | `reason = STEP_UP_REQUIRED` |
+| Etag mismatch, dependants exist, domain not verified, port taken | `FAILED_PRECONDITION` | `reason` + metadata |
+| DNS (Phase 2): zone not managed or not `active`, proxied or wildcard name not allowed by the zone, plan changed since it was shown, provider refuses the token for this zone | `FAILED_PRECONDITION` | `reason` = `ZONE_NOT_MANAGED`, `ZONE_NOT_ACTIVE`, `PROXY_NOT_ALLOWED`, `WILDCARD_NOT_ALLOWED`, `PLAN_CHANGED`, `PROVIDER_PERMISSION_DENIED` |
+| Rate limited | `RESOURCE_EXHAUSTED` | retry-after |
+| Agent unreachable for an imperative operation; DNS provider unreachable for a live call (`ListProviderZones`, `ListZoneRecords`, `PlanZoneSync`) | `UNAVAILABLE` | — |
+| Operation exceeded its deadline | `DEADLINE_EXCEEDED` | — |
+
+- Error messages never contain secrets or other orgs' data.
+- **Validation is server-authoritative** (protovalidate annotations in the protos). The UI runs its
+  own checks for responsiveness only ([09](09-web-ui.md)).
+
+## Events and streaming
+
+- `StatusService.WatchEvents` is a server stream of resource changes and status changes for the
+  caller's org (filtered by the caller's permissions). It carries a resume token so a reconnecting
+  UI misses nothing. The UI uses it instead of polling.
+- `LogService.StreamLogs(connector_id, filter)` opens an imperative log operation on the agent
+  ([03](03-connections.md#control-session)) and streams lines. Log lines pass through the agent's
+  redaction before they leave the host.
+- Server streams work over HTTP/1.1 and HTTP/2 with the Connect protocol, so no WebSocket is needed
+  except for the Phase 3 terminal.
+
+## Declarative manifests
+
+[R] `rpmgr apply -f` accepts YAML manifests whose schema is the protobuf JSON mapping of the public
+resources, plus `kind` and `metadata.name`:
+
+```yaml
+kind: Route
+metadata: { name: nas-web, labels: { site: home } }
+spec:
+  gatewayGroup: eu
+  http:
+    hostnames: [nas.example.com]
+    tlsMode: ACME
+  targets:
+    - connector: home-connector
+      hostPort: { host: 192.168.10.20, port: 5000 }
+      upstreamProtocol: HTTP
+  policies: [office-ip-only]
+```
+
+- `ManifestService.Plan` returns the diff against the current state; `Apply` performs it in **one
+  transaction** (one revision). Manifests reference other resources by name; the server resolves
+  names to IDs.
+- The same format is used by the UI's per-resource YAML view and export, and by the importer's
+  output ([11](11-migration.md)).
+- DNS (Phase 2): `kind: DnsName` and the route field `dnsProxied` are manifest resources. Managed
+  zones are referenced by name but never created by a manifest, because importing a zone calls the
+  provider and cannot happen inside the `Apply` transaction. DNS providers never appear in
+  manifests: they carry a secret.
+
+## Webhooks (Phase 2)
+
+- Event types: route status changes, agent connect/disconnect, apply rejected, certificate expiring
+  or failed, enrollment, security events; DNS conflict, DNS zone held, DNS sync failing,
+  DNS-provider token invalid or expiring.
+- Delivery: `POST` with JSON, `Rpmgr-Signature: t=<unix>,v1=<HMAC-SHA256(secret, t.body)>`, a
+  delivery timeout ([03](03-connections.md#timeouts-keepalive-and-backoff)), TLS verification on,
+  retries with backoff, delivery log in the UI. Receivers should reject signatures older than the
+  maximum signature age defined in [04](04-security.md#audit-log). (Timestamps are used here
+  because webhook receivers are third-party HTTP endpoints without mutual TLS; rpmgr-internal
+  authentication never uses them.)
+
+## Agent protocol catalogue
+
+Defined in [03-connections.md](03-connections.md); summarised here for reference.
+
+| Channel | Message | Direction | Purpose |
+|---|---|---|---|
+| Enrollment | `Enroll` | agent → controller | Token + CSR → certificate, trust bundle |
+| Control `Session` | `Hello` / `Welcome` | both | Identity, last applied revision, capabilities, versions, clocks |
+| | `Snapshot` | controller → agent | Desired state at a revision, signed |
+| | `Applied` / `Rejected` | agent → controller | Result of applying a revision |
+| | `Status` | agent → controller | Health, route readiness, counters |
+| | `Open` | controller → agent | Start an imperative operation (logs, diagnostics, shell) |
+| | `Drain` / `Goodbye` | controller → agent | Reconnect elsewhere / session ends (superseded, revoked, upgrade required) |
+| | `DenyListUpdate` | controller → agent | Revocations; applied unconditionally, independent of snapshots |
+| Control unary | `Renew`, `FetchResource` | agent → controller | Certificate renewal; large resources by hash |
+| `Reauth` (SNI `reauth.controller.<td>`) | `Reauth` | agent → controller | New certificate for an agent whose certificate expired within the grace period; mutual TLS with the expired certificate |
+| Control `Attach` | `AttachFrame` | both | Data of an imperative operation |
+| Data session control stream | `SessionHello` / `SessionWelcome`, `Ping`/`Pong`, `RouteHealth`, `OpenRequest` / `OpenRejected`, `Drain`, `P2PCandidates`, `Goodbye` | both | Data-session control; `OpenRequest` asks the gateway to open a stream (TCP transport) |
+| Data user/relay stream | `StreamOpen` / `StreamResult` | opener → other side / back | Per-connection preamble; the opener is the gateway, or the connector for `RELAY_OUT` and `CONTROL_PASSTHROUGH` on QUIC ([03](03-connections.md#framing)) |
+
+## Versioning and compatibility
+
+- Packages are versioned: `rpmgr.v1`, `rpmgr.agent.v1`. Within a version, changes are **additive only**
+  (new fields, new methods, new enum values); `buf breaking` enforces this in CI.
+- Removing or changing anything requires `v2`. Adding `rpmgr.v2` is additive, so it ships in a
+  MINOR release, served alongside `v1`, with deprecation warnings for `v1` in responses and in the
+  UI. Removing `v1` is a MAJOR release, at least two minor releases after `v2` appeared
+  ([RELEASING](../RELEASING.md#versioning)).
+- Clients must ignore unknown fields and treat unknown enum values as "unspecified".
+- The agent protocol's compatibility rules (ALPN major version, capability strings,
+  `min_agent_version`) are in [03](03-connections.md#versioning-and-capabilities) and
+  [10](10-operations.md#upgrades-and-version-skew).

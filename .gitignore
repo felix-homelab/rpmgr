@@ -1,0 +1,72 @@
+# rpmgr — files that never belong in the repository.
+# Generated files that the toolchain requires (e.g. Atlas migration files) are committed on
+# purpose and are not listed here (CONTRIBUTING.md, "Commits").
+
+# --- Build output ---------------------------------------------------------------------------------
+/bin/
+/dist/
+/build/
+/out/
+*.exe
+*.dll
+*.so
+*.dylib
+
+# --- Go -------------------------------------------------------------------------------------------
+*.test
+*.prof
+*.pprof
+cover.out
+coverage.out
+coverage.html
+/vendor/
+go.work
+go.work.sum
+
+# --- Web UI (web/, Vite + React) ------------------------------------------------------------------
+node_modules/
+/web/dist/
+/web/.vite/
+*.tsbuildinfo
+.eslintcache
+npm-debug.log*
+/web/test-results/
+/web/playwright-report/
+/web/blob-report/
+/web/playwright/.cache/
+
+# --- Local runtime data (rpmgr run on a developer machine) ----------------------------------------
+# Test fixtures live under testdata/ and are not affected.
+/data/
+/var/
+/*.db
+/*.db-wal
+/*.db-shm
+*.log
+
+# --- Secrets: never commit them (CONTRIBUTING.md, "Commits") --------------------------------------
+.env
+.env.*
+*.key
+/secrets/
+*.kek
+
+# --- Benchmark and spike scratch output -----------------------------------------------------------
+# Results worth keeping go into docs/spikes/ or the ADRs, not raw output files.
+/bench/results/
+*.pcap
+
+# --- Editors and operating systems ----------------------------------------------------------------
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# --- Local AI-assistant state ---------------------------------------------------------------------
+.serena/
+.claude/settings.local.json
+CLAUDE.local.md

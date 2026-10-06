@@ -1,0 +1,216 @@
+# 09 — Web UI
+
+> Status: design, not implemented. Tags: [F] fact · [R] recommendation · [T] target · [V] verify at
+> implementation ([README](../README.md#how-to-read-these-documents)).
+
+The web UI is the main way most operators use rpmgr. It is a single-page application embedded in the
+`rpmgr` binary and served by the Controller on the same origin as the API. Everything the UI can do
+is also possible through the public API and `rpmgr apply` ([07](07-api.md)). The UI has no private
+endpoints.
+
+## UX principles
+
+| # | Principle | What it means in practice |
+|---|---|---|
+| U1 | **Forms are the model** | Every form maps 1:1 to a protobuf message of the public API. A form submits the complete typed resource, with an etag. It never merges over a stored blob, because there is no blob. A field the form does not show cannot exist. |
+| U2 | **Saved ≠ applied, and the UI says which** | After every save, the UI shows the new revision and the per-agent apply status: `pending` → `applied` / `rejected` / `apply_timeout` ([07](07-api.md#writes-and-apply-status), [03](03-connections.md#configuration-reconciliation)). A rejection lists the agent and the structured reasons. |
+| U3 | **Desired and observed, side by side** | Each resource shows what was configured (desired) next to what the agents report (observed): enabled vs the route status `disabled` / `pending` / `ready` / `degraded` / `unavailable` / `error`, and per target the connector's readiness `ready` / `not_ready (reason)` ([06](06-data-model.md#desired-vs-observed-state)). There is never a second "enabled" switch. |
+| U4 | **Every error says what to do** | A route blocked by a connector's local policy shows the exact host command with a copy button, e.g. `sudo rpmgr policy allow-target 10.0.0.5:5432` ([04](04-security.md#connector-local-policy)). An unverified domain shows the TXT record to create. A DNS conflict names the foreign record that occupies the hostname and offers **Adopt** ([15](15-dns.md#conflicts)). |
+| U5 | **YAML instead of raw JSON editors** | Every resource has a *YAML* tab: view, copy, download, edit, and import. The YAML is the same document `rpmgr apply -f` accepts. It is validated by the same server-side rules as the form, and the result is shown as a diff before saving. |
+| U6 | **No lost updates** | Every write carries the etag of the version the user started from. On a conflict, the UI shows "changed by *alice* 2 min ago" with a field-level diff and lets the user reapply their change on top or discard it. |
+| U7 | **Dangerous actions are deliberate** | Deleting, revoking, minting enrollment tokens, granting roles, opening a shell, adopting or releasing DNS records and approving a held DNS zone's plan need a confirmation that names the object. Where [04](04-security.md#human-authentication-and-sessions) requires step-up re-authentication, the UI asks for it inline and keeps the user's place. |
+| U8 | **Accessible** | [T] WCAG 2.2 AA: full keyboard operation, visible focus, labels on every control, ARIA live regions for apply-status changes, contrast in both themes, no information carried by colour alone (status chips have an icon and text). |
+| U9 | **Fast to navigate** | A command palette (`Ctrl/⌘ K`) jumps to any resource by name or ID and runs common actions ("create route", "enroll connector"). Lists are paginated on the server, filterable and sortable, and keep their filter state in the URL. |
+| U10 | **Light, dark and system themes** | Follows the OS preference by default; the user's choice is stored server-side in their profile. |
+| U11 | **Localised** | English is the source language. Translations use i18next with the same keys. Missing keys fall back to **English**, so a partial translation never shows raw keys or another language. Phase 1 ships English only ([D32](14-open-decisions.md#project-and-process)); every string is keyed from the start, so further languages are translation files without code changes. |
+
+## Information architecture
+
+```mermaid
+flowchart LR
+  ROOT[rpmgr] --> OV[Overview]
+  ROOT --> RT[Routes]
+  ROOT --> PS[Private services]
+  ROOT --> CO[Connectors]
+  ROOT --> GW[Gateways]
+  ROOT --> DC[Domains & certificates]
+  ROOT --> AP[Access policies]
+  ROOT --> AU[Audit log]
+  ROOT --> ORG[Organisation]
+  ROOT --> SET[Settings]
+  ROOT --> P3[Phase 3]
+  RT --> RT1[List] & RT2[Create wizard per type] & RT3[Route detail]
+  RT3 --> RT3a[Targets & health] & RT3b[Traffic] & RT3c[Policies] & RT3d[Apply status] & RT3e[YAML] & RT3f[History]
+  PS --> PS1[Services] & PS2[Visitor grants]
+  CO --> CO1[List] & CO2[Enroll dialog] & CO3[Connector detail]
+  CO3 --> CO3a[Sessions] & CO3b[Routes] & CO3c[Local-policy status] & CO3d[Live logs] & CO3e[Version & upgrade]
+  GW --> GW1[Gateway groups] & GW2[Gateways] & GW3[Port pools]
+  DC --> DC1[Domains & verification] & DC2[Certificates & ACME status] & DC3[DNS providers & zones] & DC4[DNS names]
+  ORG --> ORG1[Members & roles] & ORG2[Invitations] & ORG3[API tokens] & ORG4[Service accounts] & ORG5[SSO & MFA policy] & ORG6[Webhooks - Phase 2]
+  SET --> SET1[Org settings] & SET2[Instance settings - Instance Admin] & SET4[PKI - Instance Admin] & SET5[Updates - Instance Admin] & SET3[Account]
+  P3 --> P3a[Virtual networks] & P3b[Functions] & P3c[Shell - gated]
+```
+
+| Area | Contents | Minimum role to view / change ([04](04-security.md#roles)) |
+|---|---|---|
+| **Overview** | Health of agents, sessions and certificates; routes not `ready`; pending, rejected or timed-out applies; expiring certificates and tokens; unverified domains; DNS conflicts, held DNS zones and expiring DNS-provider tokens; agents below `min_agent_version`; a traffic summary | Viewer |
+| **Routes** | List; create wizard per type (`http`, `tls_passthrough`, `tcp`, `udp`); detail with targets, health checks, traffic, access policies, per-agent apply status, YAML, change history | Viewer / Operator |
+| **Private services** | Services, visitor grants, relay vs P2P state per grant | Viewer / Operator |
+| **Connectors** | List with status, version, transport, RTT, last seen; enroll dialog; detail with data and control sessions, served routes, local-policy status, live logs, version and staged upgrade | Viewer / Admin to enroll or revoke (Operator if the org allows it) |
+| **Gateways** | Gateway groups (region, public hostnames for route traffic, DNS target for managed DNS records, port pools), gateways (own tunnel endpoints — address/port and, for WSS, the gateway's own hostname — status, version, sessions, listeners), drain action. Connectors dial each gateway at its own tunnel endpoints; group-level DNS or anycast names are for public traffic only ([03](03-connections.md#establishment)) | Viewer / Admin |
+| **Domains & certificates** | Domain claims with the verification flow (TXT record or HTTP token, a "check now" button, status), certificates with source (ACME/uploaded), SANs, expiry, last ACME error. Phase 2: DNS providers (connect, rotate token, status, token expiry), managed zones (import, gates, plan approval, records, conflicts, adopt and release) and DNS names ([15](15-dns.md)) | Viewer / Admin; foreign records of a zone: Admin |
+| **Access policies** | IP allow/deny lists, basic auth, OIDC forward-auth, rate limits; where each policy is used | Viewer / Operator |
+| **Audit log** | Searchable by actor, action, target and time; entry detail with the redacted diff; chain-verification status; export (step-up) | Admin |
+| **Organisation** | Members and roles; invitations as copyable one-time links, also e-mailed when SMTP is configured; API tokens (personal tokens in Phase 1, service accounts and their tokens in Phase 2: list, create with mandatory expiry, revoke); SSO and MFA policy; Phase 2: webhooks (endpoints and delivery log) | Admin; SSO and MFA policy are Owner-only |
+| **Settings** | **Org settings**, and **instance settings** for the Instance Admin. Both are runtime settings stored in the database and editable here, with validation, a description and the default for each field. Boot settings (listen addresses, database DSN, KEK source) are shown read-only with the file they come from ([10](10-operations.md#configuration)). Two instance-level pages: **PKI** (CA and intermediate status, intermediate rotation with step-up, leaf-certificate lifetime and grace period, password-hash profile, [04](04-security.md#pki-and-identity)) and **Updates** (release check, on by default; update channel; manifest upload for air-gapped installs; staged rollouts in Phase 2, [04](04-security.md#over-the-air-updates)). | Owner (org settings) / Instance Admin (instance settings, PKI, Updates) |
+| **Account** | Profile, password, MFA (TOTP, passkeys, recovery codes), active sessions with revoke, personal API tokens, theme and language | Any user |
+| **Restore review** (only after a fail-closed restore) | A full-width banner and a per-org checklist: each org stays read-only until its Owner (or the Instance Admin) re-confirms that org's memberships and roles; API tokens and service accounts are listed as suspended with a per-item re-enable action; users are forced through password reset and MFA re-verification at login. The banner explains that the instance-wide review is ended by the Instance Admin with `rpmgr restore confirm` on the controller host — not from the UI, because restored Owner memberships are exactly what is in doubt ([10](10-operations.md#backup-and-restore)) | Org Owner (own org); Instance Admin |
+| **Phase 3: Virtual networks** | Networks (CIDR, ACL), members, endpoints, topology graph with measured links | Operator |
+| **Phase 3: Functions** | Function code and versions, deployments to connectors, ingress routes | Operator |
+| **Phase 3: Shell** | A tab in the connector detail. It appears only when the connector's local policy allows it and the user has an explicit `connector.shell` grant. Opening it needs step-up re-authentication. | Explicit grant |
+
+## Key screens
+
+### Routes list
+
+```
+┌ Routes ──────────────────────────────────────────────────────────────── [+ Create route] ┐
+│ Search: [ app.example.com            ]  Type: [All ▾]  Status: [All ▾]  Group: [eu ▾]    │
+├──────────────────────┬────────┬───────────────┬────────────┬──────────────┬─────────────┤
+│ Name / hostnames     │ Type   │ Gateway group │ Targets    │ Status       │ Applied     │
+├──────────────────────┼────────┼───────────────┼────────────┼──────────────┼─────────────┤
+│ wiki                 │ http   │ eu            │ 2/2 ready  │ ● ready      │ ✓ rev 1042  │
+│  wiki.example.com    │        │               │            │              │             │
+│ postgres             │ tcp    │ eu  :25432    │ 0/1 ready  │ ▲ unavailable │ ✓ rev 1040 │
+│                      │        │               │ 1 blocked by local policy                 │
+│ grafana              │ http   │ eu            │ 1/1 ready  │ ○ disabled   │ ⧗ pending   │
+│  grafana.example.com │        │               │            │              │  2/3 agents │
+├──────────────────────┴────────┴───────────────┴────────────┴──────────────┴─────────────┤
+│ 3 of 27   ◂ 1 2 3 ▸                                       Export YAML  ·  Import YAML   │
+└─────────────────────────────────────────────────────────────────────────────────────────┘
+```
+
+### Route detail
+
+```
+┌ Route: postgres (tcp)                      [Enabled ●━]  [Edit]  [YAML]  [⋯ Delete]   ┐
+│ Desired: enabled · gateway group eu · port 25432          Observed: ▲ unavailable      │
+├ Targets & health ─────────────────────────────────────────────────────────────────────┤
+│ Connector   Address          Weight  Health       Status                                │
+│ db-host-1   10.0.0.5:5432    100     tcp / 10 s   ▲ not_ready: blocked by local policy  │
+│             Run on db-host-1:  sudo rpmgr policy allow-target 10.0.0.5:5432   [Copy]    │
+├ Apply status (revision 1040) ─────────────────────────────────────────────────────────┤
+│ gw-eu-1 ✓ applied    gw-eu-2 ✓ applied    db-host-1 ✓ applied (target not_ready)      │
+├ Traffic (24 h) ──────────────────────────── Policies ──────────────────────────────────┤
+│ ▁▂▃▅▇▅▃▂▁  in 1.2 GB · out 310 MB          IP allow-list "office" · rate limit 50/s    │
+├ History ──────────────────────────────────────────────────────────────────────────────┤
+│ rev 1040  alice  changed target port 5433 → 5432           2026-10-06 09:12  [diff]    │
+└─────────────────────────────────────────────────────────────────────────────────────────┘
+```
+
+### Enroll connector dialog
+
+```
+┌ Enroll a connector ─────────────────────────────────────────────────────────── [×] ┐
+│ Name         [ db-host-1          ]   Labels  [ site=office ] [+]                  │
+│ Gateway group[ eu ▾ ]                Type    (●) permanent  ( ) ephemeral           │
+│ Token valid  [ 1 hour ▾ ]   Uses: 1                                                │
+│ Allow targets on the host (written into the local policy by the installer;        │
+│ none listed = the connector may reach nothing until a target is allowed):         │
+│ [ 10.0.0.5:5432 ] [+]                                                              │
+├────────────────────────────────────────────────────────────────────────────────────┤
+│ 1. On the host, run:                                                       [Copy]  │
+│   curl -fsSL https://panel.example.com/install.sh | sudo sh -s -- \                │
+│     --controller https://panel.example.com --ca-pin sha256:3q2+7w… \               │
+│     --allow-target 10.0.0.5:5432                                                   │
+│ 2. When the installer asks for it, paste this token (shown once):          [Copy]  │
+│   rpmgr_enr_•••••••••••••••••••••••••••••••••••••••••••••_8f2k1a          [Show]     │
+│                                                                                    │
+│ The token is never part of the command line, and it expires in 1 hour.            │
+│ Waiting for the connector to enroll …  ⧗                                           │
+└────────────────────────────────────────────────────────────────────────────────────┘
+```
+
+- The token is shown once, masked by default, and is never put into the command. This keeps it out
+  of argv, unit files and shell history ([04](04-security.md#join-command)). Because `curl … | sh`
+  occupies the script's standard input, the install script reads the token from the terminal
+  (`/dev/tty`) with echo off. Unattended installs use `--token-file`, or `RPMGR_ENROLL_TOKEN`
+  passed through explicitly (`sudo --preserve-env=RPMGR_ENROLL_TOKEN …`).
+- Targets entered in the dialog become `--allow-target` flags. Without any, the default local
+  policy is `allow_targets: []` ([04](04-security.md#connector-local-policy)).
+- The dialog waits on the enrollment event and switches to the new connector's detail page when it
+  connects.
+
+### Managed DNS zone (Phase 2)
+
+```
+┌ Zone: example.com · Cloudflare account "home" ───────────────── ▲ held: first plan  [Sync now] ┐
+│ Gates: publish route hostnames ✓ · proxied ✗ · wildcards ✗ · delete threshold 10    [Edit]     │
+├ Plan 9f3c…e1 (approve to publish) ─────────────────────────────────────────────────────────────┤
+│ + CNAME  wiki.example.com                  → eu.gw.example.net    route wiki                   │
+│ + CNAME  nas.example.com                   → eu.gw.example.net    route nas                    │
+│ ! A      grafana.example.com               203.0.113.5 (foreign)  conflict: route grafana      │
+│                                                                   [Adopt → eu]                 │
+│ ~ wiki.example.com no longer follows the foreign *.example.com                                 │
+│                                               [Discard]  [Approve plan · step-up]              │
+├ Records (read live from Cloudflare) ───────────────────────────────────────────────────────────┤
+│ Name                     Type   Content               Owner             Status                 │
+│ example.com              A      203.0.113.5           foreign           —                      │
+│ grafana.example.com      A      203.0.113.5           foreign           ! conflict             │
+│ *.example.com            CNAME  example.com           foreign           —                      │
+│ mail.example.com         MX     10 mx.example.net     foreign           —                      │
+└────────────────────────────────────────────────────────────────────────────────────────────────┘
+```
+
+- **Import** is a short flow: connect a Cloudflare account (API token, step-up), choose zones (only
+  `active`, `full` zones can be selected; the others say why), review the first plan, approve it
+  ([15](15-dns.md#connecting-importing-and-disconnecting)).
+- **Approve** is bound to the plan's hash. If anything changed since the plan was shown, the new
+  plan replaces it and the approval has to be repeated.
+- **Foreign records** are shown only to Owners and Admins, read live from Cloudflare and never
+  stored. Adopting one shows its current content, which is kept for a later "release and restore".
+- **Route detail** shows one DNS line per hostname: `dns_status`, the published records and, for
+  `http` routes, the proxy toggle. When the zone does not allow proxied names the toggle is
+  disabled and says so.
+
+## Frontend architecture
+
+| Concern | Choice | Notes |
+|---|---|---|
+| Application | **Vite + React + TypeScript** single-page app, built to static assets and embedded with `embed.FS` | Nothing needs server rendering; a static export of a server framework cannot use its SSR, middleware or API routes, so a plain SPA is simpler ([08](08-software-stack.md#frontend)) |
+| Routing | TanStack Router, with typed routes and URL search params for list filters | — |
+| Server state | TanStack Query through **connect-query**, with generated clients for `rpmgr.v1` | One generated client; no hand-written API layer |
+| Live updates | Connect **server streaming** for events (apply status, agent status) and live logs | WebSockets only for the Phase 3 shell |
+| Components | shadcn/ui on Radix primitives, styled with Tailwind | — |
+| Forms | react-hook-form with **protovalidate-es** as its resolver, so the form checks the same proto rules the server enforces, for immediate feedback only [V VB-16]. **The server's protovalidate result is authoritative**, and the server's field errors are mapped back onto form fields | Forms submit the full typed resource (U1). Fallback if VB-16 fails: hand-written zod schemas, which then must not strip unknown keys |
+| YAML editing | CodeMirror 6 with a YAML mode and schema-driven completion | Smaller than Monaco ([08](08-software-stack.md#frontend)) |
+| Terminal (Phase 3) | xterm.js over a WebSocket with a single-use ticket ([04](04-security.md#human-authentication-and-sessions)) | — |
+| Charts | Recharts, through the shadcn/ui chart components, for traffic and latency | Same component system as the rest of the UI ([08](08-software-stack.md#frontend)) |
+| i18n | i18next, English source, English fallback; Phase 1 ships English only | See U11 |
+
+**Security of the frontend**
+
+- **No credentials in browser storage.** The session is an `HttpOnly` `__Host-` cookie. The SPA
+  never sees a token and stores none in `localStorage` or `sessionStorage`, where any XSS could
+  read it.
+- **Strict Content Security Policy:**
+  `default-src 'self'; script-src 'self'; style-src 'self' 'nonce-<per-response>'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'`.
+  CodeMirror injects style elements and must receive the nonce [V VB-07].
+  Also: no inline scripts, no `eval`, no third-party origins (fonts and icons are bundled).
+- **Cross-origin protection.** The SPA calls the API on the same origin. CSRF and WebSocket
+  protections are described in [04](04-security.md#human-authentication-and-sessions).
+- **Rendering untrusted data.** Hostnames, labels, log lines and audit diffs are rendered as text;
+  `dangerouslySetInnerHTML` is banned by lint.
+
+## Testing the UI
+
+- Component and unit tests for form ↔ proto mapping: every form must round-trip a full resource
+  without losing fields. This is the regression test for U1.
+- End-to-end tests (Playwright) for the main flows: first-run setup, enroll a connector, create an
+  HTTP route through to `applied`, a local-policy block (`not_ready`, snapshot still `applied`) shown
+  with its command, etag conflict,
+  step-up prompt, token creation and revocation.
+- Accessibility checks (axe) in CI on every page, plus manual keyboard and screen-reader passes per
+  release.
+- Security checks (CSP present, no tokens in storage, `dangerouslySetInnerHTML` lint) are part of
+  [12](12-testing-and-quality.md#security-testing).
