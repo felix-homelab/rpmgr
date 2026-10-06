@@ -1,0 +1,50 @@
+# Repository rules for pull requests (CONTRIBUTING.md; docs/12-testing-and-quality.md,
+# "Continuous integration"). Separate from ci.yml because it must re-run when the title or the
+# labels change, without re-running the slower checks.
+name: pr-rules
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened, labeled, unlabeled, ready_for_review]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pr-rules-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  pr-rules:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    env:
+      BASE_SHA: ${{ github.event.pull_request.base.sha }}
+      HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: PR title
+        if: ${{ !cancelled() }}
+        env:
+          TITLE: ${{ github.event.pull_request.title }}
+        run: .github/scripts/check-pr-title.sh "$TITLE"
+      - name: Branch names
+        if: ${{ !cancelled() }}
+        env:
+          HEAD_REF: ${{ github.head_ref }}
+          BASE_REF: ${{ github.base_ref }}
+        run: .github/scripts/check-branch-name.sh "$HEAD_REF" "$BASE_REF"
+      - name: Commit headers
+        if: ${{ !cancelled() }}
+        run: .github/scripts/check-commits.sh "$BASE_SHA" "$HEAD_SHA"
+      - name: DCO sign-off
+        if: ${{ !cancelled() }}
+        run: .github/scripts/check-dco.sh "$BASE_SHA" "$HEAD_SHA"
+      - name: Changelog
+        if: ${{ !cancelled() }}
+        env:
+          LABELS: ${{ join(github.event.pull_request.labels.*.name, ' ') }}
+        run: .github/scripts/check-changelog.sh "$BASE_SHA" "$HEAD_SHA" "$LABELS"

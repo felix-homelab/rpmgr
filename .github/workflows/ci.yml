@@ -1,0 +1,62 @@
+# Per-PR checks and checks on main (docs/12-testing-and-quality.md, "Continuous integration").
+# Phase 0 has no product code on main, so this covers repository files, documents, workflows and
+# secrets; the Go, protobuf and web stages are added with the first code in Phase 1. Every step
+# is a script in .github/scripts/ that runs the same way locally.
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  lint:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: SPDX headers
+        if: ${{ !cancelled() }}
+        run: .github/scripts/check-spdx.sh
+      - name: Workflows
+        if: ${{ !cancelled() }}
+        run: .github/scripts/check-workflows.sh
+      - name: Tests of the repository checks
+        if: ${{ !cancelled() }}
+        env:
+          REQUIRE_DOCKER: "1"
+        run: .github/scripts/test-checks.sh
+
+  docs:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Links and anchors
+        if: ${{ !cancelled() }}
+        run: .github/scripts/check-links.sh
+      - name: Mermaid diagrams
+        if: ${{ !cancelled() }}
+        run: .github/scripts/check-mermaid.sh
+
+  secrets:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: gitleaks (full history)
+        run: .github/scripts/check-secrets.sh

@@ -226,12 +226,28 @@ the reference testbed ([Benchmarks](#benchmarks)).
   ([04](04-security.md#supply-chain-and-updates)).
 - **Docs**: link check and Mermaid rendering for `docs/`, so design documents stay valid as they
   evolve.
-- **Repository rules** ([CONTRIBUTING](../CONTRIBUTING.md)): the PR title is a valid Conventional
-  Commit header of at most 72 characters; the branch name matches the allowed patterns; a PR
-  changes `CHANGELOG.md` or carries the `no-changelog` label
+- **Repository rules** ([CONTRIBUTING](../CONTRIBUTING.md)): the PR title and the header of every
+  commit in the PR are valid Conventional Commit headers of at most 72 characters, and no fix-up
+  commit is left; the branch name matches the allowed patterns, and a PR from a `tmp/` branch fails;
+  a PR changes `CHANGELOG.md` or carries the `no-changelog` label
   ([RELEASING](../RELEASING.md#changelog)); a PR above the size limits gets a warning label; every
-  commit carries a DCO `Signed-off-by:` line; every source file starts with an
-  `SPDX-License-Identifier: Apache-2.0` header; on release tags, the tag matches the release pattern
-  and the changelog has a section for it.
+  commit carries a DCO `Signed-off-by:` line of its author (commits of the dependency bot are
+  exempt); every source file starts with an `SPDX-License-Identifier: Apache-2.0` header; on
+  release tags, the tag matches the release pattern and the changelog has a section for it.
 - **Gate**: nothing merges to `main` unless all per-PR stages pass; nightly failures open an issue
   automatically.
+
+**Implemented so far.** Phase 0 has no product code on `main`, so CI covers the repository itself.
+Each check is a script in `.github/scripts/` that runs the same way on a developer machine (the
+Docker-based ones need Docker), and `test-checks.sh` tests the checks with valid and invalid input.
+
+| Workflow and job | Checks | Script |
+|---|---|---|
+| `pr-rules` / `pr-rules` | PR title, branch names, commit headers, DCO sign-off, changelog or `no-changelog`; re-runs when the title or labels change | `check-pr-title.sh`, `check-branch-name.sh`, `check-commits.sh`, `check-dco.sh`, `check-changelog.sh` |
+| `ci` / `lint` | SPDX headers; actionlint (with shellcheck) and actions pinned by commit SHA; tests of the checks | `check-spdx.sh`, `check-workflows.sh`, `test-checks.sh` |
+| `ci` / `docs` | Relative links and heading anchors in all Markdown files (lychee, offline); every Mermaid diagram renders (mermaid-cli) | `check-links.sh`, `check-mermaid.sh` |
+| `ci` / `secrets` | gitleaks over the full history, with the rules in `.gitleaks.toml` | `check-secrets.sh` |
+
+The four jobs are required status checks of the `main` ruleset. Tool images are pinned by digest
+in the scripts and actions by commit SHA; Dependabot updates the actions. The Go, protobuf, web,
+migration and build stages, and the size-limit label, are added with the first code in Phase 1.
