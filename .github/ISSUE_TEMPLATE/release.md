@@ -10,7 +10,7 @@ Process: `RELEASING.md`, section "Release process".
 - [ ] Milestone `vX.Y.Z` closed or remaining issues moved
 - [ ] `main` (or `release/X.Y`) green, including the last nightly run
 - [ ] Benchmark matrix run on the reference testbed; no regression > 10 % against the last release
-- [ ] `Unreleased` complete and checked against `git log --oneline vPREVIOUS..HEAD`
+- [ ] `Unreleased` complete and checked against `git log --oneline --no-merges vPREVIOUS..HEAD`
 - [ ] Upgrade notes for breaking changes and long migrations
 - [ ] Release candidate tagged and tested: fresh install, upgrade from the previous minor with live traffic
 - [ ] Release PR `chore(release): vX.Y.Z` merged on green CI

@@ -100,7 +100,7 @@ behaviour the documentation does not guarantee is tagged [V].
 | File | What it covers |
 |---|---|
 | [LICENSE](LICENSE) | Apache License 2.0 |
-| [CONTRIBUTING.md](CONTRIBUTING.md) | Issues, branch names, Conventional Commits, size of changes, pull requests and squash merging, reviews, how features are documented, ADRs, definition of done |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | Issues, branch names, Conventional Commits, size of changes, pull requests and merge commits, reviews, how features are documented, ADRs, definition of done |
 | [RELEASING.md](RELEASING.md) | Semantic versioning, tags, changelog rules, the release process, patch and security releases, supported versions, withdrawing a release |
 | [CHANGELOG.md](CHANGELOG.md) | The release history for operators and API users |
 | [SECURITY.md](SECURITY.md) | How to report a vulnerability privately |

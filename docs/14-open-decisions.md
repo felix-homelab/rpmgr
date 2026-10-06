@@ -2,7 +2,7 @@
 
 > Status: design, not implemented. **No decision is open as of 2026-10-06.** Each row records a
 > decision that was open, the options, the outcome and where the outcome is written down. A new
-> open question gets the next free number (D35, …) and a recommended default, which the other
+> open question gets the next free number and a recommended default, which the other
 > documents then assume; it is closed by recording its outcome here
 > ([CONTRIBUTING](../CONTRIBUTING.md#feature-documentation-checklist)).
 >
@@ -70,6 +70,7 @@ Decided on 2026-10-06, when the remaining questions were cleared.
 | D32 | UI languages in Phase 1 | English only; English and German | **English only.** Strings are i18next keys from day one; further languages are translation files | [09](09-web-ui.md#ux-principles) |
 | D33 | References to other projects | keep comparisons with other tunnel products; remove them except where a feature needs them; remove every project name | **The documents name no other tunnel products.** The one exception is the importer ([11](11-migration.md)), which has to name the formats it reads. Libraries, standards and design references that rpmgr uses or evaluated (quic-go, yamux, Envoy xDS, TUF, Next.js, …) stay. The former document 01 and its defect IDs were removed; the security controls they motivated stay, with their regression tests | [README](../README.md), [12](12-testing-and-quality.md#security-testing) |
 | D34 | Baseline of the performance targets | another tunnel product; a direct connection; no comparative targets | **A direct connection on the same path**: single-stream throughput ≥ 80 % of direct TCP for each transport; 32-stream goodput at 1 % loss: QUIC ≥ 1.5 × TCP + h2; CPU per Gbit/s recorded as a baseline under the release regression gate. S1 compares QUIC and TCP + h2 head-to-head (D19) | [03](03-connections.md#targets-t), [12](12-testing-and-quality.md#benchmarks), [ADR-0004](adr/0004-quic-default-transport-policy.md) |
+| D35 | Merge method for pull requests | squash merge only; merge commit; rebase merge | **Merge commit**, with GitHub's default merge settings kept (squash and rebase stay enabled but are not used), so that no commit is lost. Every commit of a PR therefore follows the commit rules and is signed off; CI checks every commit header and refuses `fixup!` commits; fix-ups are folded in before merging. No linear-history rule. Replaces the squash-only rule of the first set of contribution rules | [CONTRIBUTING](../CONTRIBUTING.md#pull-requests), [RELEASING](../RELEASING.md#release-process), [12](12-testing-and-quality.md#continuous-integration) |
 
 ## Resolved inconsistencies and gaps
 
@@ -117,6 +118,6 @@ Recorded so they are not re-opened by accident:
 - How the project works ([CONTRIBUTING](../CONTRIBUTING.md), [RELEASING](../RELEASING.md)):
   branch names carry GitHub issue numbers (`feature/42-…`), with `release/<major>.<minor>`
   maintenance branches; commit messages
-  and PR titles follow Conventional Commits and are signed off (DCO); pull requests are
-  squash-merged on green CI; releases use Semantic Versioning with signed, immutable `v` tags; the
-  changelog follows Keep a Changelog and is written in the same PR as the change.
+  and PR titles follow Conventional Commits and are signed off (DCO); pull requests are merged
+  with a merge commit on green CI (D35); releases use Semantic Versioning with signed, immutable
+  `v` tags; the changelog follows Keep a Changelog and is written in the same PR as the change.
