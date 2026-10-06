@@ -33,7 +33,16 @@ Every additional SQL dialect multiplies migration and test work.
   ([06](../06-data-model.md#tenancy-enforcement)).
 - **Atlas** produces versioned, forward-only migrations from the Ent schema: one directory per
   dialect, linted, with an `atlas.sum` integrity file. Migrations are embedded in the binary.
+  - They are generated through **Ent's Go API with the Apache-2.0 `ariga.io/atlas` library**,
+    because the Atlas CLI's community build cannot read Ent schemas (S5). An Ent diff hook adds
+    the composite `(org_id, …)` foreign keys, which Ent cannot declare
+    ([06](../06-data-model.md#tenancy-enforcement)).
+  - The binary applies them itself with Atlas's migration executor; no Atlas CLI and no Atlas
+    account are needed. The community CLI's `lint`, `validate` and `hash` may run in CI.
 - Migrations run under a database lock at startup, or explicitly with `rpmgr migrate` in HA mode.
+  Each migration file runs in one transaction; on SQLite with foreign keys switched off around it
+  and `PRAGMA foreign_key_check` before the commit, because Atlas rebuilds SQLite tables to change
+  them ([06](../06-data-model.md#migrations)).
 - SQLite takes a `VACUUM INTO` backup before migrating.
 - CI applies every migration on both dialects ([12](../12-testing-and-quality.md)).
 
@@ -47,8 +56,10 @@ Every additional SQL dialect multiplies migration and test work.
 
 **Negative**
 
-- Ent and Atlas are significant dependencies. Atlas's open-source feature set and licensing must be
-  checked before committing [V S5].
+- Ent and Atlas are significant dependencies. The Apache-2.0 parts suffice, but the community CLI
+  cannot generate from an Ent schema, so generation is rpmgr code on Ent's Go API (S5).
+- Ent's generator and Ent's required Atlas version lag Go: `golang.org/x/tools` and
+  `ariga.io/atlas` are pinned above Ent's own requirements (S5).
 - Two dialects still need two migration directories and CI on both.
 - Moving SQLite → PostgreSQL needs a supported export/import path (`rpmgr backup` /
   `rpmgr restore` across dialects) ([10](../10-operations.md#high-availability)).
@@ -79,3 +90,9 @@ Every additional SQL dialect multiplies migration and test work.
   data layer uses **bun** with hand-written versioned migrations, and this ADR is superseded.
 - The Controller ships only on the platforms where S8 passes; the others are documented as
   unsupported.
+
+**Result of S5** (2026-10-06, [S5](../spikes/S5.md)): passed on SQLite and on PostgreSQL 16 and 18.
+Ent's scoping denies by default, and no cross-org access is possible through the store or, thanks
+to the composite keys, with plain SQL. Migrations apply cleanly from empty and incrementally. The
+community CLI lacks `ent://`, so the rule's first branch applies: migrations are generated through
+Ent's Go API (Decision above). Bun is not needed.

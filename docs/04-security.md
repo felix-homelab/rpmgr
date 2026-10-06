@@ -337,11 +337,15 @@ provider and never stored.
    is annotated ([12](12-testing-and-quality.md#security-testing)), so no method can exist
    without an enforced permission check.
 2. **Store layer.** Queries on org-owned tables require an `OrgScope` value that only the
-   authorization layer can construct (Ent interceptor plus a deny-by-default privacy rule [V S5]).
-   System jobs use an explicit, audited system scope.
+   authorization layer can construct: a deny-by-default Ent privacy policy, an interceptor that
+   filters every query by the scope's org, and a hook that does the same for every update and
+   delete ([06](06-data-model.md#tenancy-enforcement), [S5](spikes/S5.md)). Because Ent's policies
+   can be skipped with `privacy.DecisionContext`, the filtering is in the interceptor and the hook,
+   and lint bans `privacy.DecisionContext` outside `internal/store`. System jobs use an explicit
+   system scope that is granted only together with an audit record.
 3. **Database.** Every org-owned table has `org_id NOT NULL`, and foreign keys between org-owned
-   tables are composite `(org_id, id)`, so a row cannot reference another org's row — on SQLite and
-   on PostgreSQL ([06](06-data-model.md#tenancy-enforcement)).
+   tables are composite `(org_id, id)`, so a row cannot reference another org's row, not even with
+   plain SQL — on SQLite and on PostgreSQL ([06](06-data-model.md#tenancy-enforcement)).
 4. [R] **PostgreSQL row-level security: not in v1.** SQLite, the default, has none, and correct RLS
    with connection pooling (`SET LOCAL` per transaction) is easy to get wrong. The schema keeps it
    possible later.
