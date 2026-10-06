@@ -120,7 +120,7 @@ recorded, not hidden.
 | **Dependencies** | `govulncheck` on every PR and nightly; dependency updates via Dependabot with the same CI gates. |
 | **Repository hygiene** | OpenSSF Scorecard; CI actions pinned by commit SHA; protected default branch. |
 | **Secret scanning** | gitleaks in CI (and as an optional pre-commit hook), with custom rules for the token prefixes `rpmgr_enr_`, `rpmgr_pat_`, `rpmgr_sat_`, `rpmgr_ses_` (checksum makes matches reliable, [04](04-security.md#tokens)) and for private keys. |
-| **TLS configuration** | Every `tls.Config` and `quic.Config` is built by a small set of constructors; tests assert TLS 1.3 only for internal sessions, client certificates required where specified, no `InsecureSkipVerify`, `Allow0RTT` false and no `ListenEarly`/`DialEarly` ([03](03-connections.md#properties-common-to-all-rpmgr-internal-sessions)). |
+| **TLS configuration** | Every `tls.Config` and `quic.Config` is built by a small set of constructors; tests assert TLS 1.3 only for internal sessions, client certificates required where specified, no `InsecureSkipVerify`, `Allow0RTT` false and no `ListenEarly`/`DialEarly`, `Renegotiation` never set, and every rpmgr check in `VerifyConnection`, none in `VerifyPeerCertificate` ([03](03-connections.md#properties-common-to-all-rpmgr-internal-sessions)). |
 | **Security regression tests** | One test per security control listed below, named after the control. Examples below. |
 | **Fuzzing** | See [Test strategy](#test-strategy); crashers are committed as regression inputs. |
 | **Authorization** | Cross-tenant leak suite and annotation completeness test ([Database tests](#database-tests)). |
@@ -193,6 +193,10 @@ Regression tests for design-review findings:
 | `TestRevocationLog_SingleNodeWithoutSink` | On a single node without a sink, every revocation is enforced and appended to the local `revocations.log`; the UI shows the standing hardening warning and the "not yet off-host" alert never fires; a second controller replica refuses to start while no sink is configured ([04](04-security.md#revocation-log)) |
 | `TestGatewayGroup_MaxFourGateways` | Adding a fifth gateway to a gateway group is refused by the store ([03](03-connections.md#multiple-gateways)) |
 | `TestDomain_TrustedOnlyByInstanceAdmin` | Only the Instance Admin, with step-up, can mark a domain `trusted`; an org Owner cannot; a trusted domain still obeys global uniqueness ([04](04-security.md#route-and-hostname-ownership)) |
+| `TestTLS_VerifyConnectionOnResumption` | A resumed TLS 1.3 session runs `VerifyConnection` on both sides; an identity revoked after the first handshake is refused on resumption; a ticket is not resumed after its certificate expired ([S7](spikes/S7.md)) |
+| `TestSPIFFE_TrustDomainExact` | A certificate whose URI SAN host is a sub-domain of the trust domain, which the name constraint admits, is refused by `VerifyConnection`; a URI or DNS name outside the trust domain is refused by the name constraints ([S7](spikes/S7.md)) |
+| `TestReauth_NoSessionTickets` | The `reauth.controller.<td>` configuration issues no session ticket and resumes none, not even a ticket from `controller.<td>` ([S7](spikes/S7.md)) |
+| `TestCSR_BoundToConnection` | `Enroll`, `Renew` and `Reauth` refuse a CSR without the connection's `tls-exporter` value, with an altered value, or captured on another connection ([S7](spikes/S7.md)) |
 
 ## Continuous integration
 
