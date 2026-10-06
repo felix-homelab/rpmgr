@@ -86,7 +86,7 @@ an opaque blob: no foreign system's configuration is embedded, and every field i
 | Table | Key fields | Notes |
 |---|---|---|
 | `ca_keys` | id, kind (`root`, `intermediate`, `config_signing`, `audit_checkpoint`), algorithm, public_key, certificate, key_enc, not_before, not_after, status (`next`, `active`, `retired`) | Instance-level keys of [04](04-security.md#ca-hierarchy). `key_enc` is envelope-encrypted under the KEK, and null for an offline root (`rpmgr ca offline-root`) |
-| `acme_storage` | key, value_enc, modified_at | certmagic's storage (account keys, orders, certificates in progress); locks use `leases` [V S6] |
+| `acme_storage` | key, value_enc, modified_at | certmagic's storage (account keys, orders, certificates in progress); locks use `leases` (holder, expiry, fencing token), so replicas never order the same certificate twice ([S6](spikes/S6.md)) |
 | `ca_bundles` | id, org_id, name, pem | Custom CAs for verifying HTTPS upstreams, referenced by `route_targets.tls_ca_bundle_id` |
 
 ### Routing
