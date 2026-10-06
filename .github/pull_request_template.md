@@ -1,6 +1,6 @@
 <!--
 Title: a Conventional Commit header, at most 72 characters, e.g. `feat(dns): publish route hostnames`.
-It becomes the squash commit on main. Rules: CONTRIBUTING.md.
+The merge commit on main records it. Rules: CONTRIBUTING.md.
 -->
 
 ## What and why

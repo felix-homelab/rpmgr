@@ -150,8 +150,8 @@ For a minor or major release. A patch release is the same, starting from the bra
    - The benchmark matrix has run on the reference testbed, with no regression of more than 10 %
      against the last release ([12](docs/12-testing-and-quality.md#benchmarks)).
    - Every issue in the `vX.Y.0` milestone is closed or moved out.
-   - `Unreleased` is complete: compare it with `git log --oneline vPREVIOUS..main` (every `feat`
-     and `fix` commit maps to an entry or was labelled `no-changelog` deliberately).
+   - `Unreleased` is complete: compare it with `git log --oneline --no-merges vPREVIOUS..main`
+     (every `feat` and `fix` commit maps to an entry or was labelled `no-changelog` deliberately).
    - Breaking changes and long-running database migrations have upgrade notes.
 3. **Pre-release (recommended for minor and major releases).** Tag `vX.Y.0-rc.1` on `main`,
    publish it to the pre-release channel, and test:
@@ -166,8 +166,8 @@ For a minor or major release. A patch release is the same, starting from the bra
    - update the compare links at the bottom;
    - update version references in documentation, if any.
 
-   Green CI ([CONTRIBUTING.md](CONTRIBUTING.md#reviews)), then squash merge.
-5. **Tag** the squash commit: `git tag -s vX.Y.0` with the changelog section as the message, and
+   Green CI ([CONTRIBUTING.md](CONTRIBUTING.md#reviews)), then merge it with a merge commit.
+5. **Tag** the merge commit: `git tag -s vX.Y.0` with the changelog section as the message, and
    push the tag.
 6. **Build** runs on the tag in CI ([12](docs/12-testing-and-quality.md#continuous-integration)):
    - two independent, reproducible builds whose SHA-256 must match;
@@ -202,7 +202,8 @@ For a minor or major release. A patch release is the same, starting from the bra
 - `release/<major>.<minor>` is created from the latest tag of that minor when its first backport is
   needed: `git switch -c release/1.4 v1.4.2`. It has the same protection as `main`.
 - **Fix `main` first.** A fix is merged to `main` through a normal `bugfix/` PR. It is then
-  backported by cherry-pick in a PR that targets the release branch, from a branch like
+  backported by cherry-picking the PR's commits (`git cherry-pick -x <first>^..<last>`) in a PR
+  that targets the release branch, from a branch like
   `bugfix/57-etag-mismatch-on-retry-1.4`. The title repeats the original title, and the body says
   `Backport of #<PR>`.
 - A fix only goes directly to a release branch when the code no longer exists on `main`. The PR

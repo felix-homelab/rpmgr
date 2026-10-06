@@ -33,7 +33,7 @@ flowchart LR
   B --> C[Commits]
   C --> P[Pull request<br/>title = Conventional Commit<br/>docs + CHANGELOG in the same PR]
   P --> R[Green CI]
-  R --> S[Squash merge into main<br/>branch deleted]
+  R --> S[Merge commit into main<br/>branch deleted]
   S --> T[Release tag<br/>see RELEASING.md]
 ```
 
@@ -132,19 +132,23 @@ Commit messages follow [Conventional Commits 1.0.0](https://www.conventionalcomm
 - **Sign-off.** Every commit carries a `Signed-off-by:` trailer (`git commit -s`), which certifies
   the [Developer Certificate of Origin 1.1](https://developercertificate.org/) for the change. CI
   checks it ([License, sign-off and third-party code](#license-sign-off-and-third-party-code)).
+  Merge commits, which add no content of their own, need none.
 - Every commit leaves the tree buildable; nothing is committed that the commit then fixes.
+  Fix-ups made during review are folded into the commit they fix before merging
+  (`git commit --fixup <commit>`, then `git rebase --autosquash main`); CI refuses `fixup!`
+  commits.
 - Never commit secrets, credentials, private keys, real customer data, or build output. Generated
   files are committed only where the toolchain requires it (for example Atlas migration files) and
   are regenerated in the same PR; CI fails if regeneration produces a diff.
 
-Because PRs are squash-merged ([Pull requests](#pull-requests)), the **PR title becomes the commit
-on `main`** and is what CI lints. Commits on the branch follow the same format, so the squashed
-body stays readable; CI checks their headers too.
+PRs are merged with a **merge commit** ([Pull requests](#pull-requests)), so every commit of the
+branch reaches `main` unchanged and no commit is lost. These rules therefore apply to each commit,
+not only to the PR title, and CI checks every commit header.
 
 ## Size of changes
 
-One PR is **one logical change**, and becomes one commit on `main`. Small changes are reviewed
-better, reverted more safely and released more predictably.
+One PR is **one logical change**, and becomes one merge commit on `main`. Small changes are
+reviewed better, reverted more safely and released more predictably.
 
 | Kind of change | Limit |
 |---|---|
@@ -166,8 +170,8 @@ How to split:
 
 ## Pull requests
 
-- **Title** is a Conventional Commit header, at most 72 characters; it becomes the squash commit's
-  subject. CI lints it.
+- **Title** is a Conventional Commit header, at most 72 characters; the merge commit records it
+  in its message, and the release notes are written from it. CI lints it.
 - **Description** follows the [PR template](.github/pull_request_template.md): what and why, the
   issue, how it was tested, what was not verified, breaking changes and upgrade notes, security
   impact, screenshots for UI changes.
@@ -176,13 +180,18 @@ How to split:
 - Open a **draft** PR early for feedback on direction; mark it ready when it meets the
   [Definition of done](#definition-of-done).
 - Before merging, the branch must be up to date with `main` and CI must be green.
-- **Merge method: squash merge only.** Merge commits and rebase merges are disabled. The squash
-  commit keeps the PR title as subject; edit the body to a clean summary (not a list of "fix
-  review" commits) and keep `Closes #…`, `BREAKING CHANGE:`, `Co-Authored-By:` and
-  `Signed-off-by:` footers.
+- **Merge method: merge commit** ("Create a merge commit", GitHub's default,
+  [D35](docs/14-open-decisions.md#project-and-process)). The branch's commits reach `main`
+  unchanged, with their `Closes #…`, `BREAKING CHANGE:`, `Co-Authored-By:` and `Signed-off-by:`
+  footers; the merge commit keeps GitHub's default message (`Merge pull request #N from …`, with
+  the PR title as its body). Squash and rebase merges stay enabled, as in GitHub's default
+  settings, but are not used: a squash merge drops the branch's commits, and a rebase merge
+  rewrites them.
 - The **author merges** once CI is green ([Reviews](#reviews)); for an external contribution the
-  maintainer merges. The branch is deleted automatically.
-- Reverting is a new PR (`revert: …`) through the same process.
+  maintainer merges. The branch is deleted automatically; its commits stay reachable from the merge
+  commit.
+- Reverting is a new PR (`revert: …`) through the same process; it reverts the merge commit
+  (`git revert -m 1 <merge commit>`).
 
 ## Reviews
 
@@ -366,14 +375,15 @@ the rules above are enforced, not just written down:
   ([Reviews](#reviews)); conversations resolved; required status checks (all per-PR CI stages,
   currently `pr-rules`, `lint`, `docs` and `secrets`,
   [12](docs/12-testing-and-quality.md#continuous-integration)); branch up to date before merge;
-  linear history; force pushes and deletion blocked. There is no CODEOWNERS file.
+  force pushes and deletion blocked. There is no CODEOWNERS file, and no linear-history rule,
+  because PRs are merged with merge commits.
 - **`release/*` ruleset:** the same as `main`.
 - **Tag ruleset for `v*`:** only the maintainer creates tags; tags cannot be updated or deleted.
-- **Merge settings:** squash merge only, default commit message "pull request title and
-  description", automatic deletion of head branches.
+- **Merge settings:** GitHub's defaults: merge commits, squash and rebase merges allowed, the
+  default merge commit message; merge commits are the method used ([Pull requests](#pull-requests)).
+  Head branches are deleted automatically.
 - **Security:** private vulnerability reporting enabled; secret scanning and push protection on.
 - **CI and dependencies:** GitHub Actions; Dependabot for Go modules, npm, GitHub Actions and
   container base images.
 
-These rules apply from 2026-10-06. Two merge commits on `main` from before that date (`ab27506`,
-`ba84b14`) stay, because history on `main` is never rewritten.
+These rules apply from 2026-10-06.
