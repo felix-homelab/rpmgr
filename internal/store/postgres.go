@@ -25,7 +25,8 @@ func OpenPostgres(ctx context.Context, dsn string) (*DB, error) {
 		_ = pool.Close()
 		return nil, fmt.Errorf("store: open PostgreSQL: %w", err)
 	}
-	return &DB{Dialect: Postgres, Writer: pool, Reader: pool, unlock: func() error { return nil }}, nil
+	c := NewClient(Postgres, pool)
+	return &DB{Dialect: Postgres, Writer: pool, Reader: pool, unlock: func() error { return nil }, client: c, readClient: c}, nil
 }
 
 // atlasDriver opens Atlas's migration driver for d on conn.

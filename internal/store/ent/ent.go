@@ -12,7 +12,10 @@ import (
 	"entgo.io/ent"
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/configrevision"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/configseq"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/gatewaygroup"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/instance"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/org"
 )
 
@@ -74,8 +77,11 @@ var (
 func checkColumn(t, c string) error {
 	initCheck.Do(func() {
 		columnCheck = sql.NewColumnCheck(map[string]func(string) bool{
-			gatewaygroup.Table: gatewaygroup.ValidColumn,
-			org.Table:          org.ValidColumn,
+			configrevision.Table: configrevision.ValidColumn,
+			configseq.Table:      configseq.ValidColumn,
+			gatewaygroup.Table:   gatewaygroup.ValidColumn,
+			instance.Table:       instance.ValidColumn,
+			org.Table:            org.ValidColumn,
 		})
 	})
 	return columnCheck(t, c)

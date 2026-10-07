@@ -8,7 +8,10 @@ import (
 
 	"entgo.io/ent/dialect/sql"
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/configrevision"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/configseq"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/gatewaygroup"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/instance"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/org"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/predicate"
 )
@@ -69,6 +72,60 @@ func (f TraverseFunc) Traverse(ctx context.Context, q ent.Query) error {
 	return f(ctx, query)
 }
 
+// The ConfigRevisionFunc type is an adapter to allow the use of ordinary function as a Querier.
+type ConfigRevisionFunc func(context.Context, *ent.ConfigRevisionQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f ConfigRevisionFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.ConfigRevisionQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.ConfigRevisionQuery", q)
+}
+
+// The TraverseConfigRevision type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseConfigRevision func(context.Context, *ent.ConfigRevisionQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseConfigRevision) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseConfigRevision) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.ConfigRevisionQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.ConfigRevisionQuery", q)
+}
+
+// The ConfigSeqFunc type is an adapter to allow the use of ordinary function as a Querier.
+type ConfigSeqFunc func(context.Context, *ent.ConfigSeqQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f ConfigSeqFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.ConfigSeqQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.ConfigSeqQuery", q)
+}
+
+// The TraverseConfigSeq type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseConfigSeq func(context.Context, *ent.ConfigSeqQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseConfigSeq) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseConfigSeq) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.ConfigSeqQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.ConfigSeqQuery", q)
+}
+
 // The GatewayGroupFunc type is an adapter to allow the use of ordinary function as a Querier.
 type GatewayGroupFunc func(context.Context, *ent.GatewayGroupQuery) (ent.Value, error)
 
@@ -94,6 +151,33 @@ func (f TraverseGatewayGroup) Traverse(ctx context.Context, q ent.Query) error {
 		return f(ctx, q)
 	}
 	return fmt.Errorf("unexpected query type %T. expect *ent.GatewayGroupQuery", q)
+}
+
+// The InstanceFunc type is an adapter to allow the use of ordinary function as a Querier.
+type InstanceFunc func(context.Context, *ent.InstanceQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f InstanceFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.InstanceQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.InstanceQuery", q)
+}
+
+// The TraverseInstance type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseInstance func(context.Context, *ent.InstanceQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseInstance) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseInstance) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.InstanceQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.InstanceQuery", q)
 }
 
 // The OrgFunc type is an adapter to allow the use of ordinary function as a Querier.
@@ -126,8 +210,14 @@ func (f TraverseOrg) Traverse(ctx context.Context, q ent.Query) error {
 // NewQuery returns the generic Query interface for the given typed query.
 func NewQuery(q ent.Query) (Query, error) {
 	switch q := q.(type) {
+	case *ent.ConfigRevisionQuery:
+		return &query[*ent.ConfigRevisionQuery, predicate.ConfigRevision, configrevision.OrderOption]{typ: ent.TypeConfigRevision, tq: q}, nil
+	case *ent.ConfigSeqQuery:
+		return &query[*ent.ConfigSeqQuery, predicate.ConfigSeq, configseq.OrderOption]{typ: ent.TypeConfigSeq, tq: q}, nil
 	case *ent.GatewayGroupQuery:
 		return &query[*ent.GatewayGroupQuery, predicate.GatewayGroup, gatewaygroup.OrderOption]{typ: ent.TypeGatewayGroup, tq: q}, nil
+	case *ent.InstanceQuery:
+		return &query[*ent.InstanceQuery, predicate.Instance, instance.OrderOption]{typ: ent.TypeInstance, tq: q}, nil
 	case *ent.OrgQuery:
 		return &query[*ent.OrgQuery, predicate.Org, org.OrderOption]{typ: ent.TypeOrg, tq: q}, nil
 	default:

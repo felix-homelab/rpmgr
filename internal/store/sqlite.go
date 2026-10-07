@@ -14,6 +14,8 @@ import (
 
 	"modernc.org/sqlite"
 	sqlite3 "modernc.org/sqlite/lib"
+
+	"github.com/felix-homelab/rpmgr/internal/store/ent"
 )
 
 // The DSN is built from the path in the boot file, so a _pragma that the path smuggled in must not
@@ -40,7 +42,15 @@ type DB struct {
 	Writer  *sql.DB
 	Reader  *sql.DB
 	unlock  func() error
+
+	client, readClient *ent.Client
 }
+
+// Client returns the Ent client for writes, on the writer connection.
+func (db *DB) Client() *ent.Client { return db.client }
+
+// ReadClient returns the Ent client of the read-only pool.
+func (db *DB) ReadClient() *ent.Client { return db.readClient }
 
 // ErrLocked is returned when another controller holds the database.
 var ErrLocked = errors.New("store: another controller is using this database")
@@ -74,6 +84,7 @@ func OpenSQLite(ctx context.Context, path string, o SQLiteOptions) (*DB, error) 
 		_ = db.Close()
 		return nil, err
 	}
+	db.client, db.readClient = NewClient(SQLite, db.Writer), NewClient(SQLite, db.Reader)
 	return db, nil
 }
 
