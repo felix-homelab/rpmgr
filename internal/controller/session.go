@@ -7,6 +7,7 @@ import (
 	"crypto/rand"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"math/big"
 	"strconv"
 	"strings"
@@ -24,6 +25,7 @@ import (
 	agentv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/agent/v1"
 	"github.com/felix-homelab/rpmgr/internal/pki"
 	"github.com/felix-homelab/rpmgr/internal/ratelimit"
+	"github.com/felix-homelab/rpmgr/internal/snapshot"
 	"github.com/felix-homelab/rpmgr/internal/store"
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
 )
@@ -44,12 +46,14 @@ type Sessions struct {
 	agentv1.UnimplementedControlServer
 
 	db      *store.DB
+	ca      *pki.CA
 	signing [][]byte // DER of the config-signing certificates and their intermediates
 	node    string   // this controller node's ID
 	version string   // this controller's version
 	now     func() time.Time
 	admit   *ratelimit.Limiter
 	sys     context.Context // the audited system scope of the session handlers
+	push    *pusher         // nil without a compiler
 
 	mu       sync.Mutex
 	active   map[string]*session // by agent ID
@@ -65,6 +69,11 @@ type SessionsOptions struct {
 	Sys       context.Context // a context with the system scope, granted and audited by the caller
 	Now       func() time.Time
 	Admission int // sessions per second; 0 is AdmissionPerSec
+	// Compiler compiles the agents' snapshots; nil sends none.
+	Compiler *snapshot.Compiler
+	// RevisionCheck is how often Run looks for a new revision; 0 is RevisionCheck.
+	RevisionCheck time.Duration
+	Logger        *slog.Logger
 }
 
 // NewSessions returns the control-session server.
@@ -75,13 +84,33 @@ func NewSessions(o SessionsOptions) *Sessions {
 	if o.Admission == 0 {
 		o.Admission = AdmissionPerSec
 	}
+	if o.RevisionCheck == 0 {
+		o.RevisionCheck = RevisionCheck
+	}
+	if o.Logger == nil {
+		o.Logger = slog.New(slog.DiscardHandler)
+	}
 	signer := o.CA.ConfigSigner()
-	return &Sessions{
-		db: o.DB, node: o.Node, version: o.Version, now: o.Now, sys: o.Sys,
+	s := &Sessions{
+		db: o.DB, ca: o.CA, node: o.Node, version: o.Version, now: o.Now, sys: o.Sys,
 		signing: [][]byte{signer.Cert.Raw, o.CA.Intermediate().Raw},
 		admit:   ratelimit.New(time.Second/time.Duration(o.Admission), o.Admission, o.Now),
 		active:  map[string]*session{},
 	}
+	if o.Compiler != nil {
+		s.push = newPusher(s, o.Compiler, o.RevisionCheck, o.Logger)
+	}
+	return s
+}
+
+// Run pushes snapshots until ctx ends: to each agent whose session starts, and to every agent with
+// a session here when the revision changes. Without a compiler it only waits for ctx.
+func (s *Sessions) Run(ctx context.Context) {
+	if s.push == nil {
+		<-ctx.Done()
+		return
+	}
+	s.push.run(ctx)
 }
 
 // session is one agent's control session.
@@ -130,6 +159,10 @@ func (s *Sessions) Session(st grpc.BidiStreamingServer[agentv1.AgentMessage, age
 	if d := s.drainDeadline(); d != nil {
 		sess.out <- &agentv1.ControllerMessage{Msg: &agentv1.ControllerMessage_Drain{Drain: &agentv1.Drain{Deadline: timestamppb.New(*d)}}}
 	}
+	if s.push != nil {
+		s.push.start(sess, hello)
+		defer s.push.stop(sess)
+	}
 	recvErr := make(chan error, 1)
 	go func() { recvErr <- s.receive(ctx, st, sess) }()
 	for {
@@ -159,8 +192,7 @@ func (s *Sessions) Session(st grpc.BidiStreamingServer[agentv1.AgentMessage, age
 	}
 }
 
-// receive reads the agent's messages until the session ends. The kinds of message are handled by
-// the slices that need them (snapshots, status); here they only keep the session alive.
+// receive reads the agent's messages until the session ends.
 func (s *Sessions) receive(ctx context.Context, st grpc.BidiStreamingServer[agentv1.AgentMessage, agentv1.ControllerMessage], sess *session) error {
 	for {
 		m, err := st.Recv()
@@ -170,8 +202,13 @@ func (s *Sessions) receive(ctx context.Context, st grpc.BidiStreamingServer[agen
 			}
 			return err
 		}
-		if m.GetHello() != nil {
+		switch {
+		case m.GetHello() != nil:
 			return status.Error(codes.InvalidArgument, "Hello may come only first")
+		case m.GetApplied() != nil && s.push != nil:
+			s.push.applied(sess, m.GetApplied())
+		case m.GetRejected() != nil && s.push != nil:
+			s.push.rejected(sess, m.GetRejected())
 		}
 	}
 }
@@ -245,7 +282,13 @@ func (s *Sessions) register(ctx context.Context, agent Agent, hello *agentv1.Hel
 			return err
 		}
 		dbEpoch = inst.DbEpoch
-		return nil
+		offset := int64(0)
+		if hello.GetAgentTime() != nil {
+			offset = hello.GetAgentTime().AsTime().Sub(now).Milliseconds()
+		}
+		return updateState(s.sys, tx, agent.Identity.Org, agent.Identity.ID, func(u *ent.AgentStateUpdateOne) {
+			u.SetBootID(clip(hello.GetBootId())).SetClockOffsetMs(offset)
+		})
 	})
 	return epoch, dbEpoch, err
 }
@@ -285,6 +328,23 @@ func (s *Sessions) Send(agentID string, m *agentv1.ControllerMessage) bool {
 	sess := s.active[agentID]
 	s.mu.Unlock()
 	if sess == nil {
+		return false
+	}
+	select {
+	case sess.out <- m:
+		return true
+	default:
+		sess.cancel()
+		return false
+	}
+}
+
+// sendTo is Send to the session with the given epoch only.
+func (s *Sessions) sendTo(agentID string, epoch int64, m *agentv1.ControllerMessage) bool {
+	s.mu.Lock()
+	sess := s.active[agentID]
+	s.mu.Unlock()
+	if sess == nil || sess.epoch != epoch {
 		return false
 	}
 	select {

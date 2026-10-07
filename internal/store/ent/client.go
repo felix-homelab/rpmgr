@@ -16,9 +16,11 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/agentsession"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/agentstate"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/auditentry"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/audithead"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/cakey"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/compiledsnapshot"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/configrevision"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/configseq"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/connector"
@@ -43,12 +45,16 @@ type Client struct {
 	Schema *migrate.Schema
 	// AgentSession is the client for interacting with the AgentSession builders.
 	AgentSession *AgentSessionClient
+	// AgentState is the client for interacting with the AgentState builders.
+	AgentState *AgentStateClient
 	// AuditEntry is the client for interacting with the AuditEntry builders.
 	AuditEntry *AuditEntryClient
 	// AuditHead is the client for interacting with the AuditHead builders.
 	AuditHead *AuditHeadClient
 	// CAKey is the client for interacting with the CAKey builders.
 	CAKey *CAKeyClient
+	// CompiledSnapshot is the client for interacting with the CompiledSnapshot builders.
+	CompiledSnapshot *CompiledSnapshotClient
 	// ConfigRevision is the client for interacting with the ConfigRevision builders.
 	ConfigRevision *ConfigRevisionClient
 	// ConfigSeq is the client for interacting with the ConfigSeq builders.
@@ -87,9 +93,11 @@ func NewClient(opts ...Option) *Client {
 func (c *Client) init() {
 	c.Schema = migrate.NewSchema(c.driver)
 	c.AgentSession = NewAgentSessionClient(c.config)
+	c.AgentState = NewAgentStateClient(c.config)
 	c.AuditEntry = NewAuditEntryClient(c.config)
 	c.AuditHead = NewAuditHeadClient(c.config)
 	c.CAKey = NewCAKeyClient(c.config)
+	c.CompiledSnapshot = NewCompiledSnapshotClient(c.config)
 	c.ConfigRevision = NewConfigRevisionClient(c.config)
 	c.ConfigSeq = NewConfigSeqClient(c.config)
 	c.Connector = NewConnectorClient(c.config)
@@ -196,9 +204,11 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		ctx:               ctx,
 		config:            cfg,
 		AgentSession:      NewAgentSessionClient(cfg),
+		AgentState:        NewAgentStateClient(cfg),
 		AuditEntry:        NewAuditEntryClient(cfg),
 		AuditHead:         NewAuditHeadClient(cfg),
 		CAKey:             NewCAKeyClient(cfg),
+		CompiledSnapshot:  NewCompiledSnapshotClient(cfg),
 		ConfigRevision:    NewConfigRevisionClient(cfg),
 		ConfigSeq:         NewConfigSeqClient(cfg),
 		Connector:         NewConnectorClient(cfg),
@@ -232,9 +242,11 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		ctx:               ctx,
 		config:            cfg,
 		AgentSession:      NewAgentSessionClient(cfg),
+		AgentState:        NewAgentStateClient(cfg),
 		AuditEntry:        NewAuditEntryClient(cfg),
 		AuditHead:         NewAuditHeadClient(cfg),
 		CAKey:             NewCAKeyClient(cfg),
+		CompiledSnapshot:  NewCompiledSnapshotClient(cfg),
 		ConfigRevision:    NewConfigRevisionClient(cfg),
 		ConfigSeq:         NewConfigSeqClient(cfg),
 		Connector:         NewConnectorClient(cfg),
@@ -277,10 +289,10 @@ func (c *Client) Close() error {
 // In order to add hooks to a specific client, call: `client.Node.Use(...)`.
 func (c *Client) Use(hooks ...Hook) {
 	for _, n := range []interface{ Use(...Hook) }{
-		c.AgentSession, c.AuditEntry, c.AuditHead, c.CAKey, c.ConfigRevision,
-		c.ConfigSeq, c.Connector, c.EnrollmentToken, c.Gateway, c.GatewayGroup,
-		c.Instance, c.InstanceSetting, c.IssuedCertificate, c.Lease, c.Org,
-		c.OrgSetting, c.SecretMeta,
+		c.AgentSession, c.AgentState, c.AuditEntry, c.AuditHead, c.CAKey,
+		c.CompiledSnapshot, c.ConfigRevision, c.ConfigSeq, c.Connector,
+		c.EnrollmentToken, c.Gateway, c.GatewayGroup, c.Instance, c.InstanceSetting,
+		c.IssuedCertificate, c.Lease, c.Org, c.OrgSetting, c.SecretMeta,
 	} {
 		n.Use(hooks...)
 	}
@@ -290,10 +302,10 @@ func (c *Client) Use(hooks ...Hook) {
 // In order to add interceptors to a specific client, call: `client.Node.Intercept(...)`.
 func (c *Client) Intercept(interceptors ...Interceptor) {
 	for _, n := range []interface{ Intercept(...Interceptor) }{
-		c.AgentSession, c.AuditEntry, c.AuditHead, c.CAKey, c.ConfigRevision,
-		c.ConfigSeq, c.Connector, c.EnrollmentToken, c.Gateway, c.GatewayGroup,
-		c.Instance, c.InstanceSetting, c.IssuedCertificate, c.Lease, c.Org,
-		c.OrgSetting, c.SecretMeta,
+		c.AgentSession, c.AgentState, c.AuditEntry, c.AuditHead, c.CAKey,
+		c.CompiledSnapshot, c.ConfigRevision, c.ConfigSeq, c.Connector,
+		c.EnrollmentToken, c.Gateway, c.GatewayGroup, c.Instance, c.InstanceSetting,
+		c.IssuedCertificate, c.Lease, c.Org, c.OrgSetting, c.SecretMeta,
 	} {
 		n.Intercept(interceptors...)
 	}
@@ -304,12 +316,16 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 	switch m := m.(type) {
 	case *AgentSessionMutation:
 		return c.AgentSession.mutate(ctx, m)
+	case *AgentStateMutation:
+		return c.AgentState.mutate(ctx, m)
 	case *AuditEntryMutation:
 		return c.AuditEntry.mutate(ctx, m)
 	case *AuditHeadMutation:
 		return c.AuditHead.mutate(ctx, m)
 	case *CAKeyMutation:
 		return c.CAKey.mutate(ctx, m)
+	case *CompiledSnapshotMutation:
+		return c.CompiledSnapshot.mutate(ctx, m)
 	case *ConfigRevisionMutation:
 		return c.ConfigRevision.mutate(ctx, m)
 	case *ConfigSeqMutation:
@@ -473,6 +489,141 @@ func (c *AgentSessionClient) mutate(ctx context.Context, m *AgentSessionMutation
 		return (&AgentSessionDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
 	default:
 		return nil, fmt.Errorf("ent: unknown AgentSession mutation op: %q", m.Op())
+	}
+}
+
+// AgentStateClient is a client for the AgentState schema.
+type AgentStateClient struct {
+	config
+}
+
+// NewAgentStateClient returns a client for the AgentState from the given config.
+func NewAgentStateClient(c config) *AgentStateClient {
+	return &AgentStateClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `agentstate.Hooks(f(g(h())))`.
+func (c *AgentStateClient) Use(hooks ...Hook) {
+	c.hooks.AgentState = append(c.hooks.AgentState, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `agentstate.Intercept(f(g(h())))`.
+func (c *AgentStateClient) Intercept(interceptors ...Interceptor) {
+	c.inters.AgentState = append(c.inters.AgentState, interceptors...)
+}
+
+// Create returns a builder for creating a AgentState entity.
+func (c *AgentStateClient) Create() *AgentStateCreate {
+	mutation := newAgentStateMutation(c.config, OpCreate)
+	return &AgentStateCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of AgentState entities.
+func (c *AgentStateClient) CreateBulk(builders ...*AgentStateCreate) *AgentStateCreateBulk {
+	return &AgentStateCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *AgentStateClient) MapCreateBulk(slice any, setFunc func(*AgentStateCreate, int)) *AgentStateCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &AgentStateCreateBulk{err: fmt.Errorf("calling to AgentStateClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*AgentStateCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &AgentStateCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for AgentState.
+func (c *AgentStateClient) Update() *AgentStateUpdate {
+	mutation := newAgentStateMutation(c.config, OpUpdate)
+	return &AgentStateUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *AgentStateClient) UpdateOne(_m *AgentState) *AgentStateUpdateOne {
+	mutation := newAgentStateMutation(c.config, OpUpdateOne, withAgentState(_m))
+	return &AgentStateUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *AgentStateClient) UpdateOneID(id string) *AgentStateUpdateOne {
+	mutation := newAgentStateMutation(c.config, OpUpdateOne, withAgentStateID(id))
+	return &AgentStateUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for AgentState.
+func (c *AgentStateClient) Delete() *AgentStateDelete {
+	mutation := newAgentStateMutation(c.config, OpDelete)
+	return &AgentStateDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *AgentStateClient) DeleteOne(_m *AgentState) *AgentStateDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *AgentStateClient) DeleteOneID(id string) *AgentStateDeleteOne {
+	builder := c.Delete().Where(agentstate.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &AgentStateDeleteOne{builder}
+}
+
+// Query returns a query builder for AgentState.
+func (c *AgentStateClient) Query() *AgentStateQuery {
+	return &AgentStateQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeAgentState},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a AgentState entity by its id.
+func (c *AgentStateClient) Get(ctx context.Context, id string) (*AgentState, error) {
+	return c.Query().Where(agentstate.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *AgentStateClient) GetX(ctx context.Context, id string) *AgentState {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *AgentStateClient) Hooks() []Hook {
+	hooks := c.hooks.AgentState
+	return append(hooks[:len(hooks):len(hooks)], agentstate.Hooks[:]...)
+}
+
+// Interceptors returns the client interceptors.
+func (c *AgentStateClient) Interceptors() []Interceptor {
+	inters := c.inters.AgentState
+	return append(inters[:len(inters):len(inters)], agentstate.Interceptors[:]...)
+}
+
+func (c *AgentStateClient) mutate(ctx context.Context, m *AgentStateMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&AgentStateCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&AgentStateUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&AgentStateUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&AgentStateDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown AgentState mutation op: %q", m.Op())
 	}
 }
 
@@ -878,6 +1029,141 @@ func (c *CAKeyClient) mutate(ctx context.Context, m *CAKeyMutation) (Value, erro
 		return (&CAKeyDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
 	default:
 		return nil, fmt.Errorf("ent: unknown CAKey mutation op: %q", m.Op())
+	}
+}
+
+// CompiledSnapshotClient is a client for the CompiledSnapshot schema.
+type CompiledSnapshotClient struct {
+	config
+}
+
+// NewCompiledSnapshotClient returns a client for the CompiledSnapshot from the given config.
+func NewCompiledSnapshotClient(c config) *CompiledSnapshotClient {
+	return &CompiledSnapshotClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `compiledsnapshot.Hooks(f(g(h())))`.
+func (c *CompiledSnapshotClient) Use(hooks ...Hook) {
+	c.hooks.CompiledSnapshot = append(c.hooks.CompiledSnapshot, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `compiledsnapshot.Intercept(f(g(h())))`.
+func (c *CompiledSnapshotClient) Intercept(interceptors ...Interceptor) {
+	c.inters.CompiledSnapshot = append(c.inters.CompiledSnapshot, interceptors...)
+}
+
+// Create returns a builder for creating a CompiledSnapshot entity.
+func (c *CompiledSnapshotClient) Create() *CompiledSnapshotCreate {
+	mutation := newCompiledSnapshotMutation(c.config, OpCreate)
+	return &CompiledSnapshotCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of CompiledSnapshot entities.
+func (c *CompiledSnapshotClient) CreateBulk(builders ...*CompiledSnapshotCreate) *CompiledSnapshotCreateBulk {
+	return &CompiledSnapshotCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *CompiledSnapshotClient) MapCreateBulk(slice any, setFunc func(*CompiledSnapshotCreate, int)) *CompiledSnapshotCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &CompiledSnapshotCreateBulk{err: fmt.Errorf("calling to CompiledSnapshotClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*CompiledSnapshotCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &CompiledSnapshotCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for CompiledSnapshot.
+func (c *CompiledSnapshotClient) Update() *CompiledSnapshotUpdate {
+	mutation := newCompiledSnapshotMutation(c.config, OpUpdate)
+	return &CompiledSnapshotUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *CompiledSnapshotClient) UpdateOne(_m *CompiledSnapshot) *CompiledSnapshotUpdateOne {
+	mutation := newCompiledSnapshotMutation(c.config, OpUpdateOne, withCompiledSnapshot(_m))
+	return &CompiledSnapshotUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *CompiledSnapshotClient) UpdateOneID(id int) *CompiledSnapshotUpdateOne {
+	mutation := newCompiledSnapshotMutation(c.config, OpUpdateOne, withCompiledSnapshotID(id))
+	return &CompiledSnapshotUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for CompiledSnapshot.
+func (c *CompiledSnapshotClient) Delete() *CompiledSnapshotDelete {
+	mutation := newCompiledSnapshotMutation(c.config, OpDelete)
+	return &CompiledSnapshotDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *CompiledSnapshotClient) DeleteOne(_m *CompiledSnapshot) *CompiledSnapshotDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *CompiledSnapshotClient) DeleteOneID(id int) *CompiledSnapshotDeleteOne {
+	builder := c.Delete().Where(compiledsnapshot.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &CompiledSnapshotDeleteOne{builder}
+}
+
+// Query returns a query builder for CompiledSnapshot.
+func (c *CompiledSnapshotClient) Query() *CompiledSnapshotQuery {
+	return &CompiledSnapshotQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeCompiledSnapshot},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a CompiledSnapshot entity by its id.
+func (c *CompiledSnapshotClient) Get(ctx context.Context, id int) (*CompiledSnapshot, error) {
+	return c.Query().Where(compiledsnapshot.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *CompiledSnapshotClient) GetX(ctx context.Context, id int) *CompiledSnapshot {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *CompiledSnapshotClient) Hooks() []Hook {
+	hooks := c.hooks.CompiledSnapshot
+	return append(hooks[:len(hooks):len(hooks)], compiledsnapshot.Hooks[:]...)
+}
+
+// Interceptors returns the client interceptors.
+func (c *CompiledSnapshotClient) Interceptors() []Interceptor {
+	inters := c.inters.CompiledSnapshot
+	return append(inters[:len(inters):len(inters)], compiledsnapshot.Interceptors[:]...)
+}
+
+func (c *CompiledSnapshotClient) mutate(ctx context.Context, m *CompiledSnapshotMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&CompiledSnapshotCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&CompiledSnapshotUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&CompiledSnapshotUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&CompiledSnapshotDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown CompiledSnapshot mutation op: %q", m.Op())
 	}
 }
 
@@ -2714,14 +3000,16 @@ func (c *SecretMetaClient) mutate(ctx context.Context, m *SecretMetaMutation) (V
 // hooks and interceptors per client, for fast access.
 type (
 	hooks struct {
-		AgentSession, AuditEntry, AuditHead, CAKey, ConfigRevision, ConfigSeq,
-		Connector, EnrollmentToken, Gateway, GatewayGroup, Instance, InstanceSetting,
-		IssuedCertificate, Lease, Org, OrgSetting, SecretMeta []ent.Hook
+		AgentSession, AgentState, AuditEntry, AuditHead, CAKey, CompiledSnapshot,
+		ConfigRevision, ConfigSeq, Connector, EnrollmentToken, Gateway, GatewayGroup,
+		Instance, InstanceSetting, IssuedCertificate, Lease, Org, OrgSetting,
+		SecretMeta []ent.Hook
 	}
 	inters struct {
-		AgentSession, AuditEntry, AuditHead, CAKey, ConfigRevision, ConfigSeq,
-		Connector, EnrollmentToken, Gateway, GatewayGroup, Instance, InstanceSetting,
-		IssuedCertificate, Lease, Org, OrgSetting, SecretMeta []ent.Interceptor
+		AgentSession, AgentState, AuditEntry, AuditHead, CAKey, CompiledSnapshot,
+		ConfigRevision, ConfigSeq, Connector, EnrollmentToken, Gateway, GatewayGroup,
+		Instance, InstanceSetting, IssuedCertificate, Lease, Org, OrgSetting,
+		SecretMeta []ent.Interceptor
 	}
 )
 

@@ -7,9 +7,11 @@ import (
 	"time"
 
 	"github.com/felix-homelab/rpmgr/internal/store/ent/agentsession"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/agentstate"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/auditentry"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/audithead"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/cakey"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/compiledsnapshot"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/configrevision"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/configseq"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/connector"
@@ -84,6 +86,71 @@ func init() {
 	agentsessionDescID := agentsessionFields[0].Descriptor()
 	// agentsession.IDValidator is a validator for the "id" field. It is called by the builders before save.
 	agentsession.IDValidator = agentsessionDescID.Validators[0].(func(string) error)
+	agentstateMixin := schema.AgentState{}.Mixin()
+	agentstate.Policy = privacy.NewPolicies(agentstateMixin[0], schema.AgentState{})
+	agentstate.Hooks[0] = func(next ent.Mutator) ent.Mutator {
+		return ent.MutateFunc(func(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+			if err := agentstate.Policy.EvalMutation(ctx, m); err != nil {
+				return nil, err
+			}
+			return next.Mutate(ctx, m)
+		})
+	}
+	agentstateMixinHooks0 := agentstateMixin[0].Hooks()
+
+	agentstate.Hooks[1] = agentstateMixinHooks0[0]
+	agentstateMixinInters0 := agentstateMixin[0].Interceptors()
+	agentstate.Interceptors[0] = agentstateMixinInters0[0]
+	agentstateMixinFields0 := agentstateMixin[0].Fields()
+	_ = agentstateMixinFields0
+	agentstateFields := schema.AgentState{}.Fields()
+	_ = agentstateFields
+	// agentstateDescOrgID is the schema descriptor for org_id field.
+	agentstateDescOrgID := agentstateMixinFields0[0].Descriptor()
+	// agentstate.OrgIDValidator is a validator for the "org_id" field. It is called by the builders before save.
+	agentstate.OrgIDValidator = agentstateDescOrgID.Validators[0].(func(string) error)
+	// agentstateDescBootID is the schema descriptor for boot_id field.
+	agentstateDescBootID := agentstateFields[1].Descriptor()
+	// agentstate.DefaultBootID holds the default value on creation for the boot_id field.
+	agentstate.DefaultBootID = agentstateDescBootID.Default.(string)
+	// agentstateDescClockOffsetMs is the schema descriptor for clock_offset_ms field.
+	agentstateDescClockOffsetMs := agentstateFields[2].Descriptor()
+	// agentstate.DefaultClockOffsetMs holds the default value on creation for the clock_offset_ms field.
+	agentstate.DefaultClockOffsetMs = agentstateDescClockOffsetMs.Default.(int64)
+	// agentstateDescAppliedDbEpoch is the schema descriptor for applied_db_epoch field.
+	agentstateDescAppliedDbEpoch := agentstateFields[3].Descriptor()
+	// agentstate.DefaultAppliedDbEpoch holds the default value on creation for the applied_db_epoch field.
+	agentstate.DefaultAppliedDbEpoch = agentstateDescAppliedDbEpoch.Default.(string)
+	// agentstateDescAppliedSeq is the schema descriptor for applied_seq field.
+	agentstateDescAppliedSeq := agentstateFields[4].Descriptor()
+	// agentstate.DefaultAppliedSeq holds the default value on creation for the applied_seq field.
+	agentstate.DefaultAppliedSeq = agentstateDescAppliedSeq.Default.(int64)
+	// agentstate.AppliedSeqValidator is a validator for the "applied_seq" field. It is called by the builders before save.
+	agentstate.AppliedSeqValidator = agentstateDescAppliedSeq.Validators[0].(func(int64) error)
+	// agentstateDescPushedDbEpoch is the schema descriptor for pushed_db_epoch field.
+	agentstateDescPushedDbEpoch := agentstateFields[7].Descriptor()
+	// agentstate.DefaultPushedDbEpoch holds the default value on creation for the pushed_db_epoch field.
+	agentstate.DefaultPushedDbEpoch = agentstateDescPushedDbEpoch.Default.(string)
+	// agentstateDescPushedSeq is the schema descriptor for pushed_seq field.
+	agentstateDescPushedSeq := agentstateFields[8].Descriptor()
+	// agentstate.DefaultPushedSeq holds the default value on creation for the pushed_seq field.
+	agentstate.DefaultPushedSeq = agentstateDescPushedSeq.Default.(int64)
+	// agentstate.PushedSeqValidator is a validator for the "pushed_seq" field. It is called by the builders before save.
+	agentstate.PushedSeqValidator = agentstateDescPushedSeq.Validators[0].(func(int64) error)
+	// agentstateDescRejectedDbEpoch is the schema descriptor for rejected_db_epoch field.
+	agentstateDescRejectedDbEpoch := agentstateFields[11].Descriptor()
+	// agentstate.DefaultRejectedDbEpoch holds the default value on creation for the rejected_db_epoch field.
+	agentstate.DefaultRejectedDbEpoch = agentstateDescRejectedDbEpoch.Default.(string)
+	// agentstateDescRejectedSeq is the schema descriptor for rejected_seq field.
+	agentstateDescRejectedSeq := agentstateFields[12].Descriptor()
+	// agentstate.DefaultRejectedSeq holds the default value on creation for the rejected_seq field.
+	agentstate.DefaultRejectedSeq = agentstateDescRejectedSeq.Default.(int64)
+	// agentstate.RejectedSeqValidator is a validator for the "rejected_seq" field. It is called by the builders before save.
+	agentstate.RejectedSeqValidator = agentstateDescRejectedSeq.Validators[0].(func(int64) error)
+	// agentstateDescID is the schema descriptor for id field.
+	agentstateDescID := agentstateFields[0].Descriptor()
+	// agentstate.IDValidator is a validator for the "id" field. It is called by the builders before save.
+	agentstate.IDValidator = agentstateDescID.Validators[0].(func(string) error)
 	auditentry.Policy = privacy.NewPolicies(schema.AuditEntry{})
 	auditentry.Hooks[0] = func(next ent.Mutator) ent.Mutator {
 		return ent.MutateFunc(func(ctx context.Context, m ent.Mutation) (ent.Value, error) {
@@ -241,6 +308,61 @@ func init() {
 			return nil
 		}
 	}()
+	compiledsnapshotMixin := schema.CompiledSnapshot{}.Mixin()
+	compiledsnapshot.Policy = privacy.NewPolicies(compiledsnapshotMixin[0], schema.CompiledSnapshot{})
+	compiledsnapshot.Hooks[0] = func(next ent.Mutator) ent.Mutator {
+		return ent.MutateFunc(func(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+			if err := compiledsnapshot.Policy.EvalMutation(ctx, m); err != nil {
+				return nil, err
+			}
+			return next.Mutate(ctx, m)
+		})
+	}
+	compiledsnapshotMixinHooks0 := compiledsnapshotMixin[0].Hooks()
+
+	compiledsnapshot.Hooks[1] = compiledsnapshotMixinHooks0[0]
+	compiledsnapshotMixinInters0 := compiledsnapshotMixin[0].Interceptors()
+	compiledsnapshot.Interceptors[0] = compiledsnapshotMixinInters0[0]
+	compiledsnapshotMixinFields0 := compiledsnapshotMixin[0].Fields()
+	_ = compiledsnapshotMixinFields0
+	compiledsnapshotFields := schema.CompiledSnapshot{}.Fields()
+	_ = compiledsnapshotFields
+	// compiledsnapshotDescOrgID is the schema descriptor for org_id field.
+	compiledsnapshotDescOrgID := compiledsnapshotMixinFields0[0].Descriptor()
+	// compiledsnapshot.OrgIDValidator is a validator for the "org_id" field. It is called by the builders before save.
+	compiledsnapshot.OrgIDValidator = compiledsnapshotDescOrgID.Validators[0].(func(string) error)
+	// compiledsnapshotDescAgentID is the schema descriptor for agent_id field.
+	compiledsnapshotDescAgentID := compiledsnapshotFields[0].Descriptor()
+	// compiledsnapshot.AgentIDValidator is a validator for the "agent_id" field. It is called by the builders before save.
+	compiledsnapshot.AgentIDValidator = compiledsnapshotDescAgentID.Validators[0].(func(string) error)
+	// compiledsnapshotDescDbEpoch is the schema descriptor for db_epoch field.
+	compiledsnapshotDescDbEpoch := compiledsnapshotFields[1].Descriptor()
+	// compiledsnapshot.DbEpochValidator is a validator for the "db_epoch" field. It is called by the builders before save.
+	compiledsnapshot.DbEpochValidator = compiledsnapshotDescDbEpoch.Validators[0].(func(string) error)
+	// compiledsnapshotDescSeq is the schema descriptor for seq field.
+	compiledsnapshotDescSeq := compiledsnapshotFields[2].Descriptor()
+	// compiledsnapshot.SeqValidator is a validator for the "seq" field. It is called by the builders before save.
+	compiledsnapshot.SeqValidator = compiledsnapshotDescSeq.Validators[0].(func(int64) error)
+	// compiledsnapshotDescHash is the schema descriptor for hash field.
+	compiledsnapshotDescHash := compiledsnapshotFields[3].Descriptor()
+	// compiledsnapshot.HashValidator is a validator for the "hash" field. It is called by the builders before save.
+	compiledsnapshot.HashValidator = compiledsnapshotDescHash.Validators[0].(func([]byte) error)
+	// compiledsnapshotDescSizeBytes is the schema descriptor for size_bytes field.
+	compiledsnapshotDescSizeBytes := compiledsnapshotFields[4].Descriptor()
+	// compiledsnapshot.SizeBytesValidator is a validator for the "size_bytes" field. It is called by the builders before save.
+	compiledsnapshot.SizeBytesValidator = compiledsnapshotDescSizeBytes.Validators[0].(func(int) error)
+	// compiledsnapshotDescSignature is the schema descriptor for signature field.
+	compiledsnapshotDescSignature := compiledsnapshotFields[6].Descriptor()
+	// compiledsnapshot.SignatureValidator is a validator for the "signature" field. It is called by the builders before save.
+	compiledsnapshot.SignatureValidator = compiledsnapshotDescSignature.Validators[0].(func([]byte) error)
+	// compiledsnapshotDescKeyID is the schema descriptor for key_id field.
+	compiledsnapshotDescKeyID := compiledsnapshotFields[7].Descriptor()
+	// compiledsnapshot.KeyIDValidator is a validator for the "key_id" field. It is called by the builders before save.
+	compiledsnapshot.KeyIDValidator = compiledsnapshotDescKeyID.Validators[0].(func(string) error)
+	// compiledsnapshotDescCreatedAt is the schema descriptor for created_at field.
+	compiledsnapshotDescCreatedAt := compiledsnapshotFields[8].Descriptor()
+	// compiledsnapshot.DefaultCreatedAt holds the default value on creation for the created_at field.
+	compiledsnapshot.DefaultCreatedAt = compiledsnapshotDescCreatedAt.Default.(func() time.Time)
 	configrevisionMixin := schema.ConfigRevision{}.Mixin()
 	configrevision.Policy = privacy.NewPolicies(configrevisionMixin[0], schema.ConfigRevision{})
 	configrevision.Hooks[0] = func(next ent.Mutator) ent.Mutator {

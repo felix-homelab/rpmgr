@@ -13,9 +13,11 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/agentsession"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/agentstate"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/auditentry"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/audithead"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/cakey"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/compiledsnapshot"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/configrevision"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/configseq"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/connector"
@@ -90,9 +92,11 @@ func checkColumn(t, c string) error {
 	initCheck.Do(func() {
 		columnCheck = sql.NewColumnCheck(map[string]func(string) bool{
 			agentsession.Table:      agentsession.ValidColumn,
+			agentstate.Table:        agentstate.ValidColumn,
 			auditentry.Table:        auditentry.ValidColumn,
 			audithead.Table:         audithead.ValidColumn,
 			cakey.Table:             cakey.ValidColumn,
+			compiledsnapshot.Table:  compiledsnapshot.ValidColumn,
 			configrevision.Table:    configrevision.ValidColumn,
 			configseq.Table:         configseq.ValidColumn,
 			connector.Table:         connector.ValidColumn,
