@@ -231,6 +231,9 @@ kek:
   source: systemd-credential  # systemd-credential | file; kms (Vault/OpenBao Transit) from Phase 2; never env
   name: rpmgr-kek             # systemd-credential: the credential name
   # path: /etc/rpmgr/kek      # file: base64 of 32 random bytes, mode 0600 or 0400
+tls:                          # the certificate of public_url from files; without them, ACME
+  cert_file: /etc/rpmgr/tls/panel.crt   # PEM chain; re-read within a minute after a change
+  key_file: /etc/rpmgr/tls/panel.key
 log:
   level: info                 # debug | info | warn | error
   format: json
@@ -272,7 +275,11 @@ Rules for every boot file:
   of the wrong type stops the process with the line at fault.
 - An omitted key takes the value shown above, except `public_url` (controller) and
   `controller.endpoints` (agents), which are required. `listen.http: ""` disables port 80; the
-  other listeners cannot be disabled.
+  other listeners cannot be disabled. `tls.cert_file` and `tls.key_file` go together; a pair that
+  does not load at a re-read keeps the certificate in use. Without them, the controller serves a
+  self-signed certificate for the public URL's host and warns; obtaining it with ACME comes with a
+  later version. `rpmgr enroll` downloads the trust bundle from the public URL, so enrollment needs
+  a certificate the agent host trusts ([04](04-security.md#join-command)).
 - URLs are `https://<host>[:<port>]` without user, path, query or fragment; listen addresses are
   `[host]:port`; paths are absolute. `database.driver: postgres` and `kek.source: kms` are refused
   until Phase 2.
