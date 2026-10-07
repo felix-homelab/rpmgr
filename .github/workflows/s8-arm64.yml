@@ -1,0 +1,62 @@
+# Spike S8 on real arm64 hardware (D46): GitHub's arm64 runners stand in for the Raspberry Pi 5
+# of the reference testbed. Runs only on this never-merged spike branch.
+name: s8-arm64
+
+on:
+  push:
+    branches: [tmp/s8-arm64-hardware]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  arm64:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 300
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: 1.27.1
+          cache: false
+      - name: Host
+        run: |
+          mkdir -p spikes/s8/results
+          { uname -a; nproc; lscpu; go version; } | tee spikes/s8/results/hw-arm64-host.txt
+      - name: Build (arm64 and armv7)
+        working-directory: spikes/s8
+        run: ./run.sh build arm64 arm
+      - name: Spike tests, arm64 native
+        if: ${{ !cancelled() }}
+        working-directory: spikes/s8
+        env:
+          EMULATE: ""
+        run: ./run.sh own arm64
+      - name: Driver suite, arm64 native
+        if: ${{ !cancelled() }}
+        working-directory: spikes/s8
+        env:
+          EMULATE: ""
+        run: ./run.sh suite arm64
+      - name: Spike tests, armv7 native (needs AArch32 support in the CPU)
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        working-directory: spikes/s8
+        env:
+          EMULATE: ""
+        run: ./run.sh own arm
+      - name: Driver suite, armv7 native
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        working-directory: spikes/s8
+        env:
+          EMULATE: ""
+        run: ./run.sh suite arm
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: ${{ !cancelled() }}
+        with:
+          name: s8-arm64-results
+          path: spikes/s8/results/
