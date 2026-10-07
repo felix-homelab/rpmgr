@@ -97,7 +97,7 @@ func serve(t *testing.T, in *installation, agentCA *installation) (string, *http
 	}
 	roots := x509.NewCertPool()
 	roots.AddCert(in.ca.Root())
-	cfg := pki.AgentEndpointConfig(node, roots, pki.Expect{TrustDomain: in.td, Kinds: []pki.Kind{pki.KindConnector, pki.KindGateway}}, nil, pki.Reauth{})
+	cfg := pki.AgentEndpointConfig(pki.NewHolder(node), roots, pki.Expect{TrustDomain: in.td, Kinds: []pki.Kind{pki.KindConnector, pki.KindGateway}}, nil, pki.Reauth{})
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)

@@ -108,12 +108,14 @@ type Reauth struct {
 // interceptor allows a connection without one nothing but Enroll. For SNI reauth.controller.<td> a
 // verifier also accepts a client certificate that expired at most the grace period ago. The Reauth
 // configuration neither issues nor accepts session tickets: it shares the parent's ticket keys,
-// so a ticket from controller.<td> would otherwise resume there and skip the verifier.
-func AgentEndpointConfig(own tls.Certificate, roots *x509.CertPool, e Expect, now func() time.Time, r Reauth) *tls.Config {
+// so a ticket from controller.<td> would otherwise resume there and skip the verifier. Every
+// handshake presents own's current certificate, so a renewed node certificate takes effect at once.
+func AgentEndpointConfig(own *Holder, roots *x509.CertPool, e Expect, now func() time.Time, r Reauth) *tls.Config {
 	if now == nil {
 		now = time.Now
 	}
-	base := ServerConfig(own, roots, e, now)
+	base := ServerConfig(tls.Certificate{}, roots, e, now)
+	base.Certificates, base.GetCertificate = nil, own.GetCertificate
 	base.ClientAuth = tls.VerifyClientCertIfGiven
 	base.VerifyConnection = func(cs tls.ConnectionState) error {
 		if len(cs.PeerCertificates) == 0 {

@@ -73,7 +73,7 @@ func startSessionsWith(t *testing.T, db *store.DB, opt func(*controller.Sessions
 	o := controller.SessionsOptions{DB: db, CA: ca, Node: "ctn_test", Sys: sys}
 	opt(&o)
 	e.sessions = controller.NewSessions(o)
-	cfg := pki.AgentEndpointConfig(node, roots, pki.Expect{TrustDomain: td, Kinds: []pki.Kind{pki.KindConnector, pki.KindGateway},
+	cfg := pki.AgentEndpointConfig(pki.NewHolder(node), roots, pki.Expect{TrustDomain: td, Kinds: []pki.Kind{pki.KindConnector, pki.KindGateway},
 		Denied: e.sessions.Denied}, nil, controller.ReauthChecks(db, sys))
 	srv := controller.NewAgentServer(cfg, td)
 	agentv1.RegisterReauthServer(srv, controller.NewReauthService(e.sessions))

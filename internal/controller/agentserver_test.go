@@ -134,7 +134,7 @@ func startController(t *testing.T) *controllerEnv {
 	t.Helper()
 	e := &controllerEnv{ca: newTestCA(t), services: &fakeAgentServices{}}
 	node := e.ca.cert(t, pki.Identity{TrustDomain: td, Kind: pki.KindController, ID: ids.New("ctn")}, pki.ControllerLifetime, e.ca.now)
-	cfg := pki.AgentEndpointConfig(node, e.ca.roots,
+	cfg := pki.AgentEndpointConfig(pki.NewHolder(node), e.ca.roots,
 		pki.Expect{TrustDomain: td, Kinds: []pki.Kind{pki.KindConnector, pki.KindGateway}}, nil,
 		pki.Reauth{Grace: func() time.Duration { return 30 * 24 * time.Hour }, Check: func(*x509.Certificate) error { return nil }})
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
