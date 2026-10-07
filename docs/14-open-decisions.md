@@ -83,7 +83,7 @@ follows; the documents named hold the details.
 
 | Topic | Resolution | Recorded in |
 |---|---|---|
-| ADR status | Accepted by the product owner: ADR-0002, 0003, 0006, 0007, 0009, 0012, 0013, 0014, 0015. Accepted by their spikes: ADR-0008 (S7). Proposed until their spikes apply the pre-agreed rules: ADR-0004 (S1; S3 passed, tunnels share UDP/443), 0005 (S2), 0010 (S4), 0011 (S5 passed; S8) | [adr](adr/) |
+| ADR status | Accepted by the product owner: ADR-0002, 0003, 0006, 0007, 0009, 0012, 0013, 0014, 0015. Accepted by their spikes: ADR-0008 (S7), 0011 (S5, S8). Proposed until their spikes apply the pre-agreed rules: ADR-0004 (S1; S3 passed, tunnels share UDP/443), 0005 (S2), 0010 (S4) | [adr](adr/) |
 | Update channels and build variants | The signed manifest carries `channel` (`stable`, `prerelease`) and a `variant` per artifact (`full`, `connector`); the policy file's `update_channel` (default `stable`) and the recorded install variant are enforced by the root updater | [04](04-security.md#release-signing) |
 | Install script | `/install.sh` (Linux) verifies root key → signing-key statement → manifest → SHA-256 with OpenSSL ≥ 3.0 and refuses without it | [04](04-security.md#install-scripts) |
 | Revocation-log sink | S3-compatible object storage or a filesystem path; optional on a single node (standing warning), required with more than one controller replica | [04](04-security.md#revocation-log), [10](10-operations.md#backup-and-restore) |

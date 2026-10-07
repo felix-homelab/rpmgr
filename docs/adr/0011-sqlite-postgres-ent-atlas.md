@@ -1,6 +1,6 @@
 # ADR-0011: SQLite by default, PostgreSQL for HA, Ent with Atlas migrations
 
-Status: Proposed (design phase) · Date: 2026-10-06
+Status: Accepted (spikes S5 and S8, 2026-10-06) · Date: 2026-10-06
 
 ## Context
 
@@ -20,8 +20,8 @@ Every additional SQL dialect multiplies migration and test work.
 - **SQLite** is the default, using **`modernc.org/sqlite`** (pure Go, so no cgo). It is
   single-node only.
   - Pin a current release at implementation.
-  - Confirm platform coverage for every Controller target OS/arch [V S8]. Only the Controller role
-    needs the database driver.
+  - It covers every Controller target: linux/amd64, arm64, armv7 and riscv64 (S8). Only the
+    Controller role needs the database driver.
 - **PostgreSQL** is used for HA and larger installs. Several controllers share it, and singleton
   jobs run under database leases ([10](../10-operations.md#high-availability)).
 - **MySQL/MariaDB is dropped.** The importer still **reads** source databases in all three
@@ -96,3 +96,12 @@ Ent's scoping denies by default, and no cross-org access is possible through the
 to the composite keys, with plain SQL. Migrations apply cleanly from empty and incrementally. The
 community CLI lacks `ent://`, so the rule's first branch applies: migrations are generated through
 Ent's Go API (Decision above). Bun is not needed.
+
+**Result of S8** (2026-10-06, [S8](../spikes/S8.md)): passed on linux/amd64 natively and on arm64,
+armv7 and riscv64 under QEMU user-mode emulation (D38), with `modernc.org/sqlite` v1.60.1. The
+driver's own test suite passes except one test that QEMU's arm and aarch64 user mode cannot run (a
+SIGBUS without fault address); the controller's access pattern (WAL, one writer with concurrent
+readers, `busy_timeout`, revisions under contention, crash recovery, `VACUUM INTO`, composite
+foreign keys) passes everywhere. The rule documents no platform as unsupported; support levels
+stay as in [05](../05-features.md#platform-support). The arm64 and armv7 runs are repeated on the
+Raspberry Pi 5 of the reference testbed.

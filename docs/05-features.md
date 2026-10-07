@@ -167,7 +167,7 @@
 
 | Role | Linux amd64/arm64 | Linux armv7, riscv64 | Windows | macOS | Notes |
 |---|:-:|:-:|:-:|:-:|---|
-| Controller | ✓ | best effort | — | dev only | Needs a supported SQLite build [V S8] or PostgreSQL |
+| Controller | ✓ | best effort | — | dev only | The pure-Go SQLite driver works on all four Linux architectures ([S8](spikes/S8.md)); PostgreSQL is the alternative |
 | Gateway | ✓ | best effort | — | — | Needs public ports; Linux for GSO/ECN performance |
 | Connector | ✓ | ✓ | ✓ (P2) | ✓ (P2) | Virtual networks (P3): Linux first |
 
