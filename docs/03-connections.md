@@ -253,8 +253,9 @@ sequenceDiagram
 
 Rules:
 
-1. **Validate before touching anything.** Schema, semantic checks, the snapshot signature and
-   certificate parsing are evaluated against the whole snapshot first.
+1. **Validate before touching anything.** Schema, semantic checks, the snapshot signature, each
+   resource's hash against its content, and certificate parsing are evaluated against the whole
+   snapshot first.
 2. **Prepare, then swap.** New listeners and handlers are built next to the running ones. The swap
    is one atomic pointer exchange of the route table.
 3. **Unchanged resources are never touched.** Every resource carries a content hash, the SHA-256 of
@@ -278,9 +279,12 @@ Rules:
    - When the host's local policy file changes (`rpmgr policy …` triggers a reload; the connector
      also watches the file), the connector re-evaluates the current snapshot and reports the new
      readiness. No new revision is needed ([04](04-security.md#connector-local-policy)).
-6. **Last-known-good is persisted.** Agents store the newest applied snapshot on disk, signed by the
-   controller's configuration-signing key, and verify the signature when loading it after a restart.
-   An agent can therefore restart while the controller is unreachable.
+6. **Last-known-good is persisted.** Agents store the newest applied snapshot on disk, as it was
+   signed by the controller's configuration-signing key, and verify it like a new one when loading
+   it after a restart, before any session; a copy that does not verify is not run. An agent can
+   therefore restart while the controller is unreachable. The config-signing certificates of every
+   `Welcome` replace the stored ones, so a copy signed by the next key still verifies
+   ([10](10-operations.md#filesystem-layout)).
 7. **"Saved" and "applied" are different states.** The API returns the revision immediately and
    tracks `apply_status` per agent (`pending`, `applied`, `rejected`, `apply_timeout`); callers may
    wait for it ([07](07-api.md#writes-and-apply-status)). Success is never reported before the
@@ -318,7 +322,8 @@ Rules:
   the same agent and revision. Each resource kind has its own compiler, which sees the agent's
   capabilities and leaves out what the agent cannot run.
 - Agents apply a snapshot only if its revision is greater than the last applied one. If several
-  arrive while one is being applied, only the newest is applied next ("latest wins").
+  arrive while one is being applied, only the newest is applied next ("latest wins"). A snapshot
+  that is not newer is ignored, except the one the agent runs, which it acknowledges again.
 - `db_epoch` is a fresh random UUIDv7, generated at initialisation and again on **every** restore
   from a backup (revisions could otherwise go backwards, and restoring the same backup twice must
   still yield a new epoch). An agent accepts a lower revision only together with a new `db_epoch`

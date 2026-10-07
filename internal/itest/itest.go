@@ -14,6 +14,7 @@ import (
 	"math/big"
 	"net"
 	"net/http"
+	"sync"
 	"testing"
 	"time"
 
@@ -24,6 +25,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/ids"
 	"github.com/felix-homelab/rpmgr/internal/pki"
 	"github.com/felix-homelab/rpmgr/internal/secret"
+	"github.com/felix-homelab/rpmgr/internal/snapshot"
 	"github.com/felix-homelab/rpmgr/internal/store"
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
 	"github.com/felix-homelab/rpmgr/internal/store/storetest"
@@ -35,6 +37,8 @@ type Options struct {
 	Version   string           // the controller's version; "" is "dev"
 	Now       func() time.Time // the controller's clock; nil is time.Now
 	Admission int              // control sessions per second; 0 is the default
+	// Sources compile the agents' snapshots; without any, no snapshot is sent.
+	Sources []snapshot.Source
 }
 
 // Controller is a running test controller: its first replica, and those StartReplica adds.
@@ -47,6 +51,7 @@ type Controller struct {
 	Sys      context.Context
 	opts     Options
 	web      *http.Client
+	stops    []func()
 }
 
 // StartController starts a controller on a loopback port; t's cleanup stops it.
@@ -110,8 +115,15 @@ func (c *Controller) StartReplica(t testing.TB) (string, *controller.Sessions) {
 		nil, pki.Reauth{})
 	split := controller.NewSplitter(td, ln.Addr())
 	agents := controller.NewAgentServer(cfg, td)
-	sessions := controller.NewSessions(controller.SessionsOptions{DB: c.DB, CA: c.CA, Node: nodeID, Version: c.opts.Version,
-		Sys: c.Sys, Now: c.opts.Now, Admission: c.opts.Admission})
+	so := controller.SessionsOptions{DB: c.DB, CA: c.CA, Node: nodeID, Version: c.opts.Version,
+		Sys: c.Sys, Now: c.opts.Now, Admission: c.opts.Admission, RevisionCheck: 50 * time.Millisecond}
+	if len(c.opts.Sources) > 0 {
+		so.Compiler = &snapshot.Compiler{Sources: c.opts.Sources, Endpoints: func() []string { return []string{url} }}
+	}
+	sessions := controller.NewSessions(so)
+	runCtx, stopRun := context.WithCancel(context.Background())
+	running := make(chan struct{})
+	go func() { sessions.Run(runCtx); close(running) }()
 	agentv1.RegisterControlServer(agents, sessions)
 	agentv1.RegisterEnrollmentServer(agents, enroll.NewService(c.DB, c.CA, []string{url}, nil))
 	mux := http.NewServeMux()
@@ -123,12 +135,21 @@ func (c *Controller) StartReplica(t testing.TB) (string, *controller.Sessions) {
 		_ = web.Serve(tls.NewListener(split.Web(), &tls.Config{MinVersion: tls.VersionTLS13, Certificates: []tls.Certificate{uiCert}}))
 	}()
 	go func() { _ = split.Serve(ln) }()
-	t.Cleanup(func() { agents.Stop(); _ = web.Close(); _ = ln.Close() })
+	stop := sync.OnceFunc(func() { agents.Stop(); _ = web.Close(); _ = ln.Close(); stopRun(); <-running })
+	c.stops = append(c.stops, stop)
+	t.Cleanup(stop)
 	if c.web == nil {
 		c.web = &http.Client{Timeout: 10 * time.Second, Transport: &http.Transport{
 			TLSClientConfig: &tls.Config{RootCAs: uiRoots, MinVersion: tls.VersionTLS13}}}
 	}
 	return url, sessions
+}
+
+// Stop stops every replica, as a controller outage does; the database stays.
+func (c *Controller) Stop() {
+	for _, stop := range c.stops {
+		stop()
+	}
 }
 
 // EnrollConnector enrolls a connector into dir through the controller and loads its identity.
