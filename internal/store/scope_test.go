@@ -17,36 +17,36 @@ import (
 
 	"entgo.io/ent/privacy"
 	_ "github.com/jackc/pgx/v5/stdlib" // registers "pgx"
-	_ "modernc.org/sqlite"             // registers "sqlite"
 
 	"github.com/felix-homelab/rpmgr/internal/authz"
 	"github.com/felix-homelab/rpmgr/internal/store"
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/gatewaygroup"
+	"github.com/felix-homelab/rpmgr/internal/store/migrations"
 )
 
 // The PostgreSQL runs need RPMGR_TEST_PG, an admin DSN such as
 // postgres://rpmgr:rpmgr@127.0.0.1:5432/postgres?sslmode=disable; without it they are skipped,
 // unless RPMGR_TEST_REQUIRE_PG=1 (as in CI).
-func forEachDialect(t *testing.T, f func(t *testing.T, c *ent.Client)) {
+func forEachDialect(t *testing.T, f func(t *testing.T, c *ent.Client, db *store.DB)) {
 	t.Helper()
 	for _, d := range []string{store.SQLite, store.Postgres} {
 		t.Run(d, func(t *testing.T) {
-			f(t, store.NewClient(d, emptyDB(t, d)))
+			db := migratedDB(t, d)
+			f(t, store.NewClient(d, db.Writer), db)
 		})
 	}
 }
 
-// emptyDB returns a fresh database with the current schema. Until migrations exist, the schema
-// is created by Ent directly.
-func emptyDB(t *testing.T, d string) *sql.DB {
+// migratedDB returns a fresh database of dialect d with every embedded migration applied.
+func migratedDB(t *testing.T, d string) *store.DB {
 	t.Helper()
 	ctx := context.Background()
-	var db *sql.DB
+	var db *store.DB
 	var err error
 	switch d {
 	case store.SQLite:
-		db, err = sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "t.db")+"?_pragma=foreign_keys(1)")
+		db, err = store.OpenSQLite(ctx, filepath.Join(t.TempDir(), "t.db"), store.SQLiteOptions{})
 	case store.Postgres:
 		admin := os.Getenv("RPMGR_TEST_PG")
 		if admin == "" {
@@ -55,20 +55,20 @@ func emptyDB(t *testing.T, d string) *sql.DB {
 			}
 			t.Skip("RPMGR_TEST_PG not set")
 		}
-		db, err = pgDatabase(t, admin)
+		db, err = store.OpenPostgres(ctx, newPGDatabase(t, admin))
 	}
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = db.Close() })
-	if err := store.NewClient(d, db).Schema.Create(ctx); err != nil {
+	dir, err := migrations.Dir(d)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.Migrate(ctx, db, dir); err != nil {
 		t.Fatal(err)
 	}
 	return db
-}
-
-func pgDatabase(t *testing.T, adminDSN string) (*sql.DB, error) {
-	return sql.Open("pgx", newPGDatabase(t, adminDSN))
 }
 
 // newPGDatabase creates an empty PostgreSQL database, dropped after the test, and returns its DSN.
@@ -171,7 +171,7 @@ func wantNotFound(t *testing.T, what string, err error) {
 }
 
 func TestScope_NoScopeDenied(t *testing.T) {
-	forEachDialect(t, func(t *testing.T, c *ent.Client) {
+	forEachDialect(t, func(t *testing.T, c *ent.Client, _ *store.DB) {
 		a, _ := seed(t, c)
 		ctx := context.Background()
 		_, err := c.GatewayGroup.Query().All(ctx)
@@ -195,7 +195,7 @@ func TestScope_NoScopeDenied(t *testing.T) {
 }
 
 func TestScope_DecisionContextDoesNotBypass(t *testing.T) {
-	forEachDialect(t, func(t *testing.T, c *ent.Client) {
+	forEachDialect(t, func(t *testing.T, c *ent.Client, _ *store.DB) {
 		a, b := seed(t, c)
 		bare := privacy.DecisionContext(context.Background(), privacy.Allow)
 		_, err := c.GatewayGroup.Query().All(bare)
@@ -219,7 +219,7 @@ func TestScope_DecisionContextDoesNotBypass(t *testing.T) {
 }
 
 func TestScope_OtherOrgIDsAreNotFound(t *testing.T) {
-	forEachDialect(t, func(t *testing.T, c *ent.Client) {
+	forEachDialect(t, func(t *testing.T, c *ent.Client, _ *store.DB) {
 		a, b := seed(t, c)
 		ctxB := orgCtx(t, b.org)
 		_, err := c.GatewayGroup.Get(ctxB, a.gwg)
@@ -239,7 +239,7 @@ func TestScope_OtherOrgIDsAreNotFound(t *testing.T) {
 }
 
 func TestScope_ListsSeeOwnOrgOnly(t *testing.T) {
-	forEachDialect(t, func(t *testing.T, c *ent.Client) {
+	forEachDialect(t, func(t *testing.T, c *ent.Client, _ *store.DB) {
 		_, b := seed(t, c)
 		ctxB := orgCtx(t, b.org)
 		if n := c.GatewayGroup.Query().CountX(ctxB); n != 1 {
@@ -256,7 +256,7 @@ func TestScope_ListsSeeOwnOrgOnly(t *testing.T) {
 }
 
 func TestScope_BulkMutationsTouchOwnOrgOnly(t *testing.T) {
-	forEachDialect(t, func(t *testing.T, c *ent.Client) {
+	forEachDialect(t, func(t *testing.T, c *ent.Client, _ *store.DB) {
 		a, b := seed(t, c)
 		ctxB := orgCtx(t, b.org)
 		if n := c.GatewayGroup.Update().SetName("renamed").SaveX(ctxB); n != 1 {
@@ -272,7 +272,7 @@ func TestScope_BulkMutationsTouchOwnOrgOnly(t *testing.T) {
 }
 
 func TestScope_CreateInOtherOrgDenied(t *testing.T) {
-	forEachDialect(t, func(t *testing.T, c *ent.Client) {
+	forEachDialect(t, func(t *testing.T, c *ent.Client, _ *store.DB) {
 		a, b := seed(t, c)
 		ctxB := orgCtx(t, b.org)
 		_, err := c.GatewayGroup.Create().SetOrgID(a.org).SetName("planted").Save(ctxB)
@@ -295,7 +295,7 @@ func TestScope_CreateInOtherOrgDenied(t *testing.T) {
 }
 
 func TestScope_SystemScopeIsAudited(t *testing.T) {
-	forEachDialect(t, func(t *testing.T, c *ent.Client) {
+	forEachDialect(t, func(t *testing.T, c *ent.Client, _ *store.DB) {
 		seed(t, c)
 		log := &auditLog{}
 		ctx, err := authz.System(context.Background(), "ephemeral-purge", "purge disconnected ephemeral connectors", log.record)
@@ -312,7 +312,7 @@ func TestScope_SystemScopeIsAudited(t *testing.T) {
 }
 
 func TestSchema_Validation(t *testing.T) {
-	forEachDialect(t, func(t *testing.T, c *ent.Client) {
+	forEachDialect(t, func(t *testing.T, c *ent.Client, _ *store.DB) {
 		ctx := systemCtx(t)
 		if _, err := c.Org.Create().SetName("x").SetSlug("Not A Slug").Save(ctx); err == nil {
 			t.Error("org slug with spaces and capitals accepted")

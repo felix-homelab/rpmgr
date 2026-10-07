@@ -305,6 +305,9 @@ method, list filter or search returns or modifies the other org's data
     directory on a clean dev database, with the composite-key diff hook
     ([Tenancy enforcement](#tenancy-enforcement)). The Atlas CLI's Apache-2.0 build cannot read Ent
     schemas, so it is not used for generation ([S5](spikes/S5.md)).
+  - **How:** `go run ./tools/storemigrate diff -dialect sqlite -name <name>`, and for PostgreSQL
+    with `-dev <empty database>`; the files go to `internal/store/migrations/{sqlite,postgres}` and
+    are embedded in the binary.
   - **Checked in CI:** regenerating yields no new migration; Atlas lint (community CLI); every
     migration applied on both dialects; the resulting schema equals the Ent schema.
 - Migrations are embedded in the binary and applied by it with Atlas's migration executor and a

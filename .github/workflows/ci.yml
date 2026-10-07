@@ -94,6 +94,41 @@ jobs:
       - name: buf lint, breaking, generated code
         run: .github/scripts/check-buf.sh
 
+  store:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    services:
+      pg16:
+        image: postgres:16@sha256:65b16a8b326e0cfbdf33fa7e783f2a0cb352a61448616ccccfd616ef42aa0f65
+        env:
+          POSTGRES_USER: rpmgr
+          POSTGRES_PASSWORD: rpmgr # a throw-away test database
+        ports: ["5416:5432"]
+        options: --health-cmd "pg_isready -U rpmgr" --health-interval 2s --health-timeout 5s --health-retries 30
+      pg18:
+        image: postgres:18@sha256:fc973eb97c9fd04bfa1840e0f510719a584ccb3be8debfe6a4144637a9dfe8cf
+        env:
+          POSTGRES_USER: rpmgr
+          POSTGRES_PASSWORD: rpmgr # a throw-away test database
+          POSTGRES_DB: lintdev # empty development database for atlas migrate lint
+        ports: ["5418:5432"]
+        options: --health-cmd "pg_isready -U rpmgr" --health-interval 2s --health-timeout 5s --health-retries 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - name: Store tests on SQLite, PostgreSQL 16 and 18; migrations linted
+        env:
+          RPMGR_TEST_PG_URLS: >-
+            postgres://rpmgr:rpmgr@127.0.0.1:5416/postgres?sslmode=disable
+            postgres://rpmgr:rpmgr@127.0.0.1:5418/postgres?sslmode=disable
+          RPMGR_LINT_PG_DEV: postgres://rpmgr:rpmgr@127.0.0.1:5418/lintdev?sslmode=disable
+          REQUIRE_PG: "1"
+        run: .github/scripts/check-store.sh
+
   build:
     runs-on: ubuntu-24.04
     timeout-minutes: 15

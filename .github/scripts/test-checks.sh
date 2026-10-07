@@ -392,6 +392,17 @@ else
   printf 'token = "%s_%s_%s_%s"\n' rpmgr enr "$(printf 'k7Q2%.0s' {1..10})Zx9" "aB3dE5" >"$r/leak.txt"
   expect fail "rpmgr token detected" "$dir/check-secrets.sh" "$r" dir
 
+  # Atlas lint: generated migrations pass, a destructive change is reported.
+  r=$(mktemp -d "$tmproot/dir.XXXXXX")
+  cp "$dir/../../internal/store/migrations/sqlite/"* "$r/"
+  expect pass "atlas lint of the SQLite migrations" "$dir/check-atlas-lint.sh" "$r" "sqlite://dev?mode=memory"
+  printf 'DROP TABLE `gateway_groups`;\n' >"$r/20991231000000_drop.sql"
+  rm "$r/atlas.sum"
+  docker run --rm -u "$(id -u):$(id -g)" -v "$r:/m" \
+    arigaio/atlas:1.3.3-community@sha256:9c9958f5b8d26d404ab2e28098c8629526eb4bec647f790278611e58a0b19839 \
+    migrate hash --dir file:///m >/dev/null 2>&1
+  expect fail "atlas lint reports a destructive change" "$dir/check-atlas-lint.sh" "$r" "sqlite://dev?mode=memory"
+
   # Workflows: pinned actions pass, a tag fails.
   r=$(new_repo)
   mkdir -p "$r/.github/workflows"
