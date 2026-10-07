@@ -191,7 +191,7 @@ implemented, and the result recorded in the PR.
 | VB-14 | The package name `rpmgr` is free in Debian, Fedora, Homebrew, winget and GHCR | [ADR-0001](adr/0001-name-rpmgr.md) |
 | VB-15 | `/install.sh` verification chain (root key → signing-key statement → manifest → SHA-256) with OpenSSL ≥ 3.0 (Ed25519 `pkeyutl -rawin`, BLAKE2b-512 prehash) on the supported distributions | [04](04-security.md#install-scripts) |
 | VB-16 | protovalidate-es maturity as the react-hook-form resolver; fallback: hand-written zod schemas | [09](09-web-ui.md), [08](08-software-stack.md#frontend) |
-| VB-17 | An IANA Private Enterprise Number registered for rpmgr before Phase 1, for the OID of the CSR-binding extension; S7 used 32473, the number reserved for documentation (RFC 5612) | [04](04-security.md#flow), [S7](spikes/S7.md) |
+| VB-17 | ~~An IANA Private Enterprise Number registered for rpmgr before Phase 1, for the OID of the CSR-binding extension; S7 used 32473, the number reserved for documentation (RFC 5612)~~ **Resolved:** a UUID-based OID under 2.25 needs no registration (D47) | [04](04-security.md#flow), [S7](spikes/S7.md) |
 | VB-18 | A session whose stream writers have been blocked for more than 200 ms is deprioritised for new streams: check that the signal works on QUIC and on reverse HTTP/2 under load, with the benchmark harness (formerly part of S1) | [03](03-connections.md#multiple-gateways), [ADR-0004](adr/0004-quic-default-transport-policy.md), [ADR-0005](adr/0005-reverse-http2-fallback.md) |
 
 ## Risks
