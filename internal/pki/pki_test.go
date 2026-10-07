@@ -439,6 +439,13 @@ func TestNameConstraints(t *testing.T) {
 // or a stolen intermediate key could produce.
 func forgeLeaf(t *testing.T, inter pki.KeyPair, uris, dns []string) *x509.Certificate {
 	t.Helper()
+	cert, _ := forgeLeafWithKey(t, inter, uris, dns)
+	return cert
+}
+
+// forgeLeafWithKey is forgeLeaf, and also returns the leaf's key.
+func forgeLeafWithKey(t *testing.T, inter pki.KeyPair, uris, dns []string) (*x509.Certificate, *ecdsa.PrivateKey) {
+	t.Helper()
 	k := newKey(t)
 	tmpl := &x509.Certificate{SerialNumber: serial(), NotBefore: t0.Add(-time.Hour), NotAfter: t0.Add(time.Hour),
 		KeyUsage: x509.KeyUsageDigitalSignature, DNSNames: dns,
@@ -458,7 +465,7 @@ func forgeLeaf(t *testing.T, inter pki.KeyPair, uris, dns []string) *x509.Certif
 	if err != nil {
 		t.Fatal(err)
 	}
-	return cert
+	return cert, k
 }
 
 // TestSigner: a signing certificate verifies only for its purpose, chained to the pinned root; a

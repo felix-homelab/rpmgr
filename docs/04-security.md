@@ -148,10 +148,12 @@ later.
   **Settings → PKI** (Instance Admin): lifetime 1–30 days (default 7), grace 0–90 days (default 30,
   0 disables). Renewal stays at 50 % of the lifetime ([14](14-open-decisions.md) D8).
 - **TLS session tickets.** Session-ticket keys for rpmgr-internal sessions rotate **daily**
-  ([03](03-connections.md#properties-common-to-all-rpmgr-internal-sessions)). A ticket never
-  outlives its certificates: on resumption the server re-checks the client certificate's expiry and
-  stored chain [F Go 1.27.1 `crypto/tls/handshake_server_tls13.go:362-381`], and the client the
-  server's [F Go 1.27.1 `crypto/tls/handshake_client.go:405-429`].
+  ([03](03-connections.md#properties-common-to-all-rpmgr-internal-sessions)). rpmgr sets no ticket
+  key: crypto/tls rotates its automatic keys every 24 h and drops them after 7 days
+  [F Go 1.27.1 `crypto/tls/common.go:964-970`]. A ticket never outlives its certificates: on
+  resumption the server re-checks the client certificate's expiry and stored chain
+  [F Go 1.27.1 `crypto/tls/handshake_server_tls13.go:362-381`], and the client the server's
+  [F Go 1.27.1 `crypto/tls/handshake_client.go:405-429`].
 
 ### Revocation
 
