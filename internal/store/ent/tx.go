@@ -16,12 +16,16 @@ type Tx struct {
 	config
 	// AgentSession is the client for interacting with the AgentSession builders.
 	AgentSession *AgentSessionClient
+	// AgentState is the client for interacting with the AgentState builders.
+	AgentState *AgentStateClient
 	// AuditEntry is the client for interacting with the AuditEntry builders.
 	AuditEntry *AuditEntryClient
 	// AuditHead is the client for interacting with the AuditHead builders.
 	AuditHead *AuditHeadClient
 	// CAKey is the client for interacting with the CAKey builders.
 	CAKey *CAKeyClient
+	// CompiledSnapshot is the client for interacting with the CompiledSnapshot builders.
+	CompiledSnapshot *CompiledSnapshotClient
 	// ConfigRevision is the client for interacting with the ConfigRevision builders.
 	ConfigRevision *ConfigRevisionClient
 	// ConfigSeq is the client for interacting with the ConfigSeq builders.
@@ -180,9 +184,11 @@ func (tx *Tx) Client() *Client {
 
 func (tx *Tx) init() {
 	tx.AgentSession = NewAgentSessionClient(tx.config)
+	tx.AgentState = NewAgentStateClient(tx.config)
 	tx.AuditEntry = NewAuditEntryClient(tx.config)
 	tx.AuditHead = NewAuditHeadClient(tx.config)
 	tx.CAKey = NewCAKeyClient(tx.config)
+	tx.CompiledSnapshot = NewCompiledSnapshotClient(tx.config)
 	tx.ConfigRevision = NewConfigRevisionClient(tx.config)
 	tx.ConfigSeq = NewConfigSeqClient(tx.config)
 	tx.Connector = NewConnectorClient(tx.config)

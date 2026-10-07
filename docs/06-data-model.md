@@ -178,7 +178,7 @@ erDiagram
 | `instance` | id (single row), trust_domain, db_epoch, created_at | The installation's trust domain, which never changes, and its database epoch, a random UUIDv7 that is new at init and at every restore ([03](03-connections.md#revisions-and-ordering)) |
 | `config_seq` | id (single row), seq | Incremented with a row lock inside every configuration transaction, so commit order equals revision order ([03](03-connections.md#revisions-and-ordering)) |
 | `config_revisions` | seq, db_epoch, created_at, actor, changed_resources | One row per configuration transaction. `db_epoch` is a random UUIDv7, new at init and on every restore |
-| `compiled_snapshots` | agent_id, revision, hash, size_bytes, signature, created_at | Last 5 per agent; for diffing and support |
+| `compiled_snapshots` | agent_id, db_epoch, seq, hash, size_bytes, payload, signature, key_id, created_at | The last 5 sent to each agent, as signed; for diffing and support |
 | `audit_log` | id, org_id (null: the instance chain), seq, prev_hash, hash, ts, actor_type (`user`, `agent`, `system`, `anonymous`), actor_id, credential_id (session or token ID), auth_method, ip, user_agent, request_id, action, target_type, target_id, result (`success`, `failure`, `denied`), diff (redacted), reason | A hash chain per org and one for the instance ([04](04-security.md#audit-log)); seq is unique within a chain. Text is stored as valid UTF-8 without NUL. Fields a client controls are truncated, never refused, so an over-long header cannot keep an event out of the log: user_agent at 512 bytes, request_id at 128 |
 | `audit_heads` | chain (org ID or `instance`), seq, hash | The last entry of each audit chain; every append locks and increments it first |
 | `audit_checkpoints` | org_id, seq, head_hash, signature, exported_at, sink | |
@@ -210,7 +210,7 @@ flowchart LR
 | Table | Key fields |
 |---|---|
 | `agent_sessions` | agent_id, session_epoch, controller_node, remote_addr, agent_version, capabilities, connected_at, last_seen_at (one row per agent; each new session raises `session_epoch` in the statement that records it, so two replicas never hand out the same epoch) |
-| `agent_state` | agent_id, applied_revision, applied_hash, last_ack_at, last_rejected_revision, last_rejection (structured errors), boot_id, clock_offset_ms |
+| `agent_state` | agent_id, boot_id, clock_offset_ms; the snapshot applied last (applied_db_epoch, applied_seq, applied_hash, last_ack_at), sent last (pushed_db_epoch, pushed_seq, pushed_hash, pushed_at) and rejected last (rejected_db_epoch, rejected_seq, rejected_hash, last_rejection: the structured errors). The apply status is derived from it ([03](03-connections.md#configuration-reconciliation)) |
 | `resource_status` | agent_id, resource_type, resource_id, state, reason, since |
 | `data_sessions` | gateway_id, connector_id, transport (`quic`, `h2`, `wss`), rtt_ms, established_at |
 | `route_traffic_hourly`, `route_traffic_daily` | route_id, bucket, bytes_in, bytes_out, connections, errors |

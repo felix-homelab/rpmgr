@@ -21,6 +21,18 @@ func (f AgentSessionFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.AgentSessionMutation", m)
 }
 
+// The AgentStateFunc type is an adapter to allow the use of ordinary
+// function as AgentState mutator.
+type AgentStateFunc func(context.Context, *ent.AgentStateMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f AgentStateFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.AgentStateMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.AgentStateMutation", m)
+}
+
 // The AuditEntryFunc type is an adapter to allow the use of ordinary
 // function as AuditEntry mutator.
 type AuditEntryFunc func(context.Context, *ent.AuditEntryMutation) (ent.Value, error)
@@ -55,6 +67,18 @@ func (f CAKeyFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error
 		return f(ctx, mv)
 	}
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.CAKeyMutation", m)
+}
+
+// The CompiledSnapshotFunc type is an adapter to allow the use of ordinary
+// function as CompiledSnapshot mutator.
+type CompiledSnapshotFunc func(context.Context, *ent.CompiledSnapshotMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f CompiledSnapshotFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.CompiledSnapshotMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.CompiledSnapshotMutation", m)
 }
 
 // The ConfigRevisionFunc type is an adapter to allow the use of ordinary

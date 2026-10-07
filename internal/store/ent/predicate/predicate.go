@@ -9,6 +9,9 @@ import (
 // AgentSession is the predicate function for agentsession builders.
 type AgentSession func(*sql.Selector)
 
+// AgentState is the predicate function for agentstate builders.
+type AgentState func(*sql.Selector)
+
 // AuditEntry is the predicate function for auditentry builders.
 type AuditEntry func(*sql.Selector)
 
@@ -17,6 +20,9 @@ type AuditHead func(*sql.Selector)
 
 // CAKey is the predicate function for cakey builders.
 type CAKey func(*sql.Selector)
+
+// CompiledSnapshot is the predicate function for compiledsnapshot builders.
+type CompiledSnapshot func(*sql.Selector)
 
 // ConfigRevision is the predicate function for configrevision builders.
 type ConfigRevision func(*sql.Selector)

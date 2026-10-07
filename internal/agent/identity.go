@@ -159,13 +159,24 @@ func parseCerts(bundle []byte) ([]*x509.Certificate, error) {
 // Loaded is an identity read from its directory.
 type Loaded struct {
 	Identity
+	Dir         string
 	Certificate tls.Certificate
 	Roots       *x509.CertPool
+	Root        *x509.Certificate   // the pinned root, the first of roots.pem
+	Signing     []*x509.Certificate // the config-signing certificates and their intermediates
+}
+
+// SPIFFE returns the agent's SPIFFE ID, from its certificate.
+func (l Loaded) SPIFFE() string {
+	if l.Certificate.Leaf == nil || len(l.Certificate.Leaf.URIs) != 1 {
+		return ""
+	}
+	return l.Certificate.Leaf.URIs[0].String()
 }
 
 // Load reads the identity in dir. The key file must be closed to the group and other users.
 func Load(dir string) (Loaded, error) {
-	var l Loaded
+	l := Loaded{Dir: dir}
 	b, err := os.ReadFile(filepath.Join(dir, AgentFile)) //nolint:gosec // G304: the configured identity directory
 	if err != nil {
 		return l, err
@@ -192,9 +203,16 @@ func Load(dir string) (Loaded, error) {
 	if err != nil {
 		return l, err
 	}
-	l.Roots = x509.NewCertPool()
+	l.Roots, l.Root = x509.NewCertPool(), roots[0]
 	for _, r := range roots {
 		l.Roots.AddCert(r)
+	}
+	signingPEM, err := os.ReadFile(filepath.Join(dir, SigningFile)) //nolint:gosec // G304: the configured identity directory
+	if err != nil {
+		return l, err
+	}
+	if l.Signing, err = parseCerts(signingPEM); err != nil {
+		return l, fmt.Errorf("agent: %s: %w", SigningFile, err)
 	}
 	return l, nil
 }

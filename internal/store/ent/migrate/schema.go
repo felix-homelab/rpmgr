@@ -34,6 +34,38 @@ var (
 			},
 		},
 	}
+	// AgentStateColumns holds the columns for the "agent_state" table.
+	AgentStateColumns = []*schema.Column{
+		{Name: "agent_id", Type: field.TypeString},
+		{Name: "org_id", Type: field.TypeString},
+		{Name: "boot_id", Type: field.TypeString, Default: ""},
+		{Name: "clock_offset_ms", Type: field.TypeInt64, Default: 0},
+		{Name: "applied_db_epoch", Type: field.TypeString, Default: ""},
+		{Name: "applied_seq", Type: field.TypeInt64, Default: 0},
+		{Name: "applied_hash", Type: field.TypeBytes, Nullable: true},
+		{Name: "last_ack_at", Type: field.TypeTime, Nullable: true},
+		{Name: "pushed_db_epoch", Type: field.TypeString, Default: ""},
+		{Name: "pushed_seq", Type: field.TypeInt64, Default: 0},
+		{Name: "pushed_hash", Type: field.TypeBytes, Nullable: true},
+		{Name: "pushed_at", Type: field.TypeTime, Nullable: true},
+		{Name: "rejected_db_epoch", Type: field.TypeString, Default: ""},
+		{Name: "rejected_seq", Type: field.TypeInt64, Default: 0},
+		{Name: "rejected_hash", Type: field.TypeBytes, Nullable: true},
+		{Name: "last_rejection", Type: field.TypeJSON, Nullable: true},
+	}
+	// AgentStateTable holds the schema information for the "agent_state" table.
+	AgentStateTable = &schema.Table{
+		Name:       "agent_state",
+		Columns:    AgentStateColumns,
+		PrimaryKey: []*schema.Column{AgentStateColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "agentstate_org_id_agent_id",
+				Unique:  true,
+				Columns: []*schema.Column{AgentStateColumns[1], AgentStateColumns[0]},
+			},
+		},
+	}
 	// AuditLogColumns holds the columns for the "audit_log" table.
 	AuditLogColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeString},
@@ -106,6 +138,38 @@ var (
 		Name:       "ca_keys",
 		Columns:    CaKeysColumns,
 		PrimaryKey: []*schema.Column{CaKeysColumns[0]},
+	}
+	// CompiledSnapshotsColumns holds the columns for the "compiled_snapshots" table.
+	CompiledSnapshotsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt, Increment: true},
+		{Name: "org_id", Type: field.TypeString},
+		{Name: "agent_id", Type: field.TypeString},
+		{Name: "db_epoch", Type: field.TypeString},
+		{Name: "seq", Type: field.TypeInt64},
+		{Name: "hash", Type: field.TypeBytes},
+		{Name: "size_bytes", Type: field.TypeInt},
+		{Name: "payload", Type: field.TypeBytes},
+		{Name: "signature", Type: field.TypeBytes},
+		{Name: "key_id", Type: field.TypeString},
+		{Name: "created_at", Type: field.TypeTime},
+	}
+	// CompiledSnapshotsTable holds the schema information for the "compiled_snapshots" table.
+	CompiledSnapshotsTable = &schema.Table{
+		Name:       "compiled_snapshots",
+		Columns:    CompiledSnapshotsColumns,
+		PrimaryKey: []*schema.Column{CompiledSnapshotsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "compiledsnapshot_org_id_id",
+				Unique:  true,
+				Columns: []*schema.Column{CompiledSnapshotsColumns[1], CompiledSnapshotsColumns[0]},
+			},
+			{
+				Name:    "compiledsnapshot_agent_id_id",
+				Unique:  false,
+				Columns: []*schema.Column{CompiledSnapshotsColumns[2], CompiledSnapshotsColumns[0]},
+			},
+		},
 	}
 	// ConfigRevisionsColumns holds the columns for the "config_revisions" table.
 	ConfigRevisionsColumns = []*schema.Column{
@@ -442,9 +506,11 @@ var (
 	// Tables holds all the tables in the schema.
 	Tables = []*schema.Table{
 		AgentSessionsTable,
+		AgentStateTable,
 		AuditLogTable,
 		AuditHeadsTable,
 		CaKeysTable,
+		CompiledSnapshotsTable,
 		ConfigRevisionsTable,
 		ConfigSeqTable,
 		ConnectorsTable,
@@ -465,6 +531,9 @@ func init() {
 	AgentSessionsTable.Annotation = &entsql.Annotation{
 		Table: "agent_sessions",
 	}
+	AgentStateTable.Annotation = &entsql.Annotation{
+		Table: "agent_state",
+	}
 	AuditLogTable.Annotation = &entsql.Annotation{
 		Table: "audit_log",
 	}
@@ -473,6 +542,9 @@ func init() {
 	}
 	CaKeysTable.Annotation = &entsql.Annotation{
 		Table: "ca_keys",
+	}
+	CompiledSnapshotsTable.Annotation = &entsql.Annotation{
+		Table: "compiled_snapshots",
 	}
 	ConfigSeqTable.Annotation = &entsql.Annotation{
 		Table: "config_seq",

@@ -253,8 +253,9 @@ sequenceDiagram
 
 Rules:
 
-1. **Validate before touching anything.** Schema, semantic checks, the snapshot signature and
-   certificate parsing are evaluated against the whole snapshot first.
+1. **Validate before touching anything.** Schema, semantic checks, the snapshot signature, each
+   resource's hash against its content, and certificate parsing are evaluated against the whole
+   snapshot first.
 2. **Prepare, then swap.** New listeners and handlers are built next to the running ones. The swap
    is one atomic pointer exchange of the route table.
 3. **Unchanged resources are never touched.** Every resource carries a content hash, the SHA-256 of
@@ -278,16 +279,28 @@ Rules:
    - When the host's local policy file changes (`rpmgr policy …` triggers a reload; the connector
      also watches the file), the connector re-evaluates the current snapshot and reports the new
      readiness. No new revision is needed ([04](04-security.md#connector-local-policy)).
-6. **Last-known-good is persisted.** Agents store the newest applied snapshot on disk, signed by the
-   controller's configuration-signing key, and verify the signature when loading it after a restart.
-   An agent can therefore restart while the controller is unreachable.
+6. **Last-known-good is persisted.** Agents store the newest applied snapshot on disk, as it was
+   signed by the controller's configuration-signing key, and verify it like a new one when loading
+   it after a restart, before any session; a copy that does not verify is not run. An agent can
+   therefore restart while the controller is unreachable. The config-signing certificates of every
+   `Welcome` replace the stored ones, so a copy signed by the next key still verifies
+   ([10](10-operations.md#filesystem-layout)).
 7. **"Saved" and "applied" are different states.** The API returns the revision immediately and
    tracks `apply_status` per agent (`pending`, `applied`, `rejected`, `apply_timeout`); callers may
    wait for it ([07](07-api.md#writes-and-apply-status)). Success is never reported before the
-   agent has applied the change.
+   agent has applied the change. A snapshot that the agent has neither applied nor rejected within
+   the apply acknowledgement time (see the timeout table) is `apply_timeout`.
 8. **Snapshots are full, resources are hashed.** [R] v1 sends the complete snapshot for an agent;
    large resources are references. A delta protocol is only worth adding if snapshots routinely
    exceed the control message limit (4 MiB, see [Framing](#framing)).
+9. **When a snapshot is sent.** The controller compiles an agent's snapshot when its session starts
+   and at every new revision. It looks for new revisions at the revision check interval (see the
+   timeout table), so a revision that another process wrote, such as an admin command, reaches the
+   agents too. A snapshot whose hash equals the one the agent named in `Hello`, or the one it was
+   sent last, is not sent again. `Applied` and `Rejected` count only for a snapshot that the same
+   session was sent; of a rejection the controller keeps at most 32 reasons of at most 512 bytes
+   each. The last 5 snapshots sent to each agent are kept for support
+   ([06](06-data-model.md#desired-vs-observed-state)).
 
 ### Revisions and ordering
 
@@ -309,7 +322,8 @@ Rules:
   the same agent and revision. Each resource kind has its own compiler, which sees the agent's
   capabilities and leaves out what the agent cannot run.
 - Agents apply a snapshot only if its revision is greater than the last applied one. If several
-  arrive while one is being applied, only the newest is applied next ("latest wins").
+  arrive while one is being applied, only the newest is applied next ("latest wins"). A snapshot
+  that is not newer is ignored, except the one the agent runs, which it acknowledges again.
 - `db_epoch` is a fresh random UUIDv7, generated at initialisation and again on **every** restore
   from a backup (revisions could otherwise go backwards, and restoring the same backup twice must
   still yield a new epoch). An agent accepts a lower revision only together with a new `db_epoch`
@@ -804,6 +818,7 @@ sequenceDiagram
 | Idle TCP route connection | 1 h (per route; 0 disables) | Reclaim half-open connections |
 | Idle UDP flow | 60 s | Typical UDP NAT behaviour |
 | Apply acknowledgement | 30 s → `apply_timeout` | Visible instead of silent |
+| Revision check | every 1 s | A revision written by another process reaches the agents without a notification channel |
 | Route drain | 30 s | Finish in-flight requests |
 | Gateway drain | 60 s | Time for connectors to re-home |
 | Revocation, tightened access policy | immediate | Security beats continuity |

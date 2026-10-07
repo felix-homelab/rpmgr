@@ -40,6 +40,12 @@ type sessionEnv struct {
 
 func startSessions(t *testing.T, db *store.DB, version string, admission int) *sessionEnv {
 	t.Helper()
+	return startSessionsWith(t, db, func(o *controller.SessionsOptions) { o.Version, o.Admission = version, admission })
+}
+
+// startSessionsWith starts the env with options that opt adjusts, and runs Sessions.Run.
+func startSessionsWith(t *testing.T, db *store.DB, opt func(*controller.SessionsOptions)) *sessionEnv {
+	t.Helper()
 	rev := storetest.Init(t, db)
 	sys := storetest.SystemCtx(t)
 	raw := make([]byte, 32)
@@ -63,8 +69,13 @@ func startSessions(t *testing.T, db *store.DB, version string, admission int) *s
 	cfg := pki.AgentEndpointConfig(node, roots, pki.Expect{TrustDomain: td, Kinds: []pki.Kind{pki.KindConnector, pki.KindGateway}}, nil, pki.Reauth{})
 	srv := controller.NewAgentServer(cfg, td)
 	e := &sessionEnv{db: db, ca: ca, org: storetest.Org(t, db, "org-a"), dbEpoch: rev.DBEpoch}
-	e.sessions = controller.NewSessions(controller.SessionsOptions{DB: db, CA: ca, Node: "ctn_test", Version: version,
-		Sys: sys, Admission: admission})
+	o := controller.SessionsOptions{DB: db, CA: ca, Node: "ctn_test", Sys: sys}
+	opt(&o)
+	e.sessions = controller.NewSessions(o)
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() { e.sessions.Run(ctx); close(done) }()
+	t.Cleanup(func() { cancel(); <-done })
 	agentv1.RegisterControlServer(srv, e.sessions)
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {

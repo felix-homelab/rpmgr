@@ -12,9 +12,11 @@ import (
 	"entgo.io/ent"
 	"entgo.io/ent/dialect/sql"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/agentsession"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/agentstate"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/auditentry"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/audithead"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/cakey"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/compiledsnapshot"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/configrevision"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/configseq"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/connector"
@@ -41,9 +43,11 @@ const (
 
 	// Node types.
 	TypeAgentSession      = "AgentSession"
+	TypeAgentState        = "AgentState"
 	TypeAuditEntry        = "AuditEntry"
 	TypeAuditHead         = "AuditHead"
 	TypeCAKey             = "CAKey"
+	TypeCompiledSnapshot  = "CompiledSnapshot"
 	TypeConfigRevision    = "ConfigRevision"
 	TypeConfigSeq         = "ConfigSeq"
 	TypeConnector         = "Connector"
@@ -842,6 +846,1363 @@ func (m *AgentSessionMutation) ClearEdge(name string) error {
 // It returns an error if the edge is not defined in the schema.
 func (m *AgentSessionMutation) ResetEdge(name string) error {
 	return fmt.Errorf("unknown AgentSession edge %s", name)
+}
+
+// AgentStateMutation represents an operation that mutates the AgentState nodes in the graph.
+type AgentStateMutation struct {
+	config
+	op                   Op
+	typ                  string
+	id                   *string
+	org_id               *string
+	boot_id              *string
+	clock_offset_ms      *int64
+	addclock_offset_ms   *int64
+	applied_db_epoch     *string
+	applied_seq          *int64
+	addapplied_seq       *int64
+	applied_hash         *[]byte
+	last_ack_at          *time.Time
+	pushed_db_epoch      *string
+	pushed_seq           *int64
+	addpushed_seq        *int64
+	pushed_hash          *[]byte
+	pushed_at            *time.Time
+	rejected_db_epoch    *string
+	rejected_seq         *int64
+	addrejected_seq      *int64
+	rejected_hash        *[]byte
+	last_rejection       *[]map[string]string
+	appendlast_rejection []map[string]string
+	clearedFields        map[string]struct{}
+	done                 bool
+	oldValue             func(context.Context) (*AgentState, error)
+	predicates           []predicate.AgentState
+}
+
+var _ ent.Mutation = (*AgentStateMutation)(nil)
+
+// agentstateOption allows management of the mutation configuration using functional options.
+type agentstateOption func(*AgentStateMutation)
+
+// newAgentStateMutation creates new mutation for the AgentState entity.
+func newAgentStateMutation(c config, op Op, opts ...agentstateOption) *AgentStateMutation {
+	m := &AgentStateMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeAgentState,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withAgentStateID sets the ID field of the mutation.
+func withAgentStateID(id string) agentstateOption {
+	return func(m *AgentStateMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *AgentState
+		)
+		m.oldValue = func(ctx context.Context) (*AgentState, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().AgentState.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withAgentState sets the old AgentState of the mutation.
+func withAgentState(node *AgentState) agentstateOption {
+	return func(m *AgentStateMutation) {
+		m.oldValue = func(context.Context) (*AgentState, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m AgentStateMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m AgentStateMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// SetID sets the value of the id field. Note that this
+// operation is only accepted on creation of AgentState entities.
+func (m *AgentStateMutation) SetID(id string) {
+	m.id = &id
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *AgentStateMutation) ID() (id string, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *AgentStateMutation) IDs(ctx context.Context) ([]string, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []string{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().AgentState.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetOrgID sets the "org_id" field.
+func (m *AgentStateMutation) SetOrgID(s string) {
+	m.org_id = &s
+}
+
+// OrgID returns the value of the "org_id" field in the mutation.
+func (m *AgentStateMutation) OrgID() (r string, exists bool) {
+	v := m.org_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldOrgID returns the old "org_id" field's value of the AgentState entity.
+// If the AgentState object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AgentStateMutation) OldOrgID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldOrgID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldOrgID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldOrgID: %w", err)
+	}
+	return oldValue.OrgID, nil
+}
+
+// ResetOrgID resets all changes to the "org_id" field.
+func (m *AgentStateMutation) ResetOrgID() {
+	m.org_id = nil
+}
+
+// SetBootID sets the "boot_id" field.
+func (m *AgentStateMutation) SetBootID(s string) {
+	m.boot_id = &s
+}
+
+// BootID returns the value of the "boot_id" field in the mutation.
+func (m *AgentStateMutation) BootID() (r string, exists bool) {
+	v := m.boot_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldBootID returns the old "boot_id" field's value of the AgentState entity.
+// If the AgentState object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AgentStateMutation) OldBootID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldBootID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldBootID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldBootID: %w", err)
+	}
+	return oldValue.BootID, nil
+}
+
+// ResetBootID resets all changes to the "boot_id" field.
+func (m *AgentStateMutation) ResetBootID() {
+	m.boot_id = nil
+}
+
+// SetClockOffsetMs sets the "clock_offset_ms" field.
+func (m *AgentStateMutation) SetClockOffsetMs(i int64) {
+	m.clock_offset_ms = &i
+	m.addclock_offset_ms = nil
+}
+
+// ClockOffsetMs returns the value of the "clock_offset_ms" field in the mutation.
+func (m *AgentStateMutation) ClockOffsetMs() (r int64, exists bool) {
+	v := m.clock_offset_ms
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldClockOffsetMs returns the old "clock_offset_ms" field's value of the AgentState entity.
+// If the AgentState object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AgentStateMutation) OldClockOffsetMs(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldClockOffsetMs is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldClockOffsetMs requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldClockOffsetMs: %w", err)
+	}
+	return oldValue.ClockOffsetMs, nil
+}
+
+// AddClockOffsetMs adds i to the "clock_offset_ms" field.
+func (m *AgentStateMutation) AddClockOffsetMs(i int64) {
+	if m.addclock_offset_ms != nil {
+		*m.addclock_offset_ms += i
+	} else {
+		m.addclock_offset_ms = &i
+	}
+}
+
+// AddedClockOffsetMs returns the value that was added to the "clock_offset_ms" field in this mutation.
+func (m *AgentStateMutation) AddedClockOffsetMs() (r int64, exists bool) {
+	v := m.addclock_offset_ms
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetClockOffsetMs resets all changes to the "clock_offset_ms" field.
+func (m *AgentStateMutation) ResetClockOffsetMs() {
+	m.clock_offset_ms = nil
+	m.addclock_offset_ms = nil
+}
+
+// SetAppliedDbEpoch sets the "applied_db_epoch" field.
+func (m *AgentStateMutation) SetAppliedDbEpoch(s string) {
+	m.applied_db_epoch = &s
+}
+
+// AppliedDbEpoch returns the value of the "applied_db_epoch" field in the mutation.
+func (m *AgentStateMutation) AppliedDbEpoch() (r string, exists bool) {
+	v := m.applied_db_epoch
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAppliedDbEpoch returns the old "applied_db_epoch" field's value of the AgentState entity.
+// If the AgentState object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AgentStateMutation) OldAppliedDbEpoch(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAppliedDbEpoch is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAppliedDbEpoch requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAppliedDbEpoch: %w", err)
+	}
+	return oldValue.AppliedDbEpoch, nil
+}
+
+// ResetAppliedDbEpoch resets all changes to the "applied_db_epoch" field.
+func (m *AgentStateMutation) ResetAppliedDbEpoch() {
+	m.applied_db_epoch = nil
+}
+
+// SetAppliedSeq sets the "applied_seq" field.
+func (m *AgentStateMutation) SetAppliedSeq(i int64) {
+	m.applied_seq = &i
+	m.addapplied_seq = nil
+}
+
+// AppliedSeq returns the value of the "applied_seq" field in the mutation.
+func (m *AgentStateMutation) AppliedSeq() (r int64, exists bool) {
+	v := m.applied_seq
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAppliedSeq returns the old "applied_seq" field's value of the AgentState entity.
+// If the AgentState object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AgentStateMutation) OldAppliedSeq(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAppliedSeq is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAppliedSeq requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAppliedSeq: %w", err)
+	}
+	return oldValue.AppliedSeq, nil
+}
+
+// AddAppliedSeq adds i to the "applied_seq" field.
+func (m *AgentStateMutation) AddAppliedSeq(i int64) {
+	if m.addapplied_seq != nil {
+		*m.addapplied_seq += i
+	} else {
+		m.addapplied_seq = &i
+	}
+}
+
+// AddedAppliedSeq returns the value that was added to the "applied_seq" field in this mutation.
+func (m *AgentStateMutation) AddedAppliedSeq() (r int64, exists bool) {
+	v := m.addapplied_seq
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetAppliedSeq resets all changes to the "applied_seq" field.
+func (m *AgentStateMutation) ResetAppliedSeq() {
+	m.applied_seq = nil
+	m.addapplied_seq = nil
+}
+
+// SetAppliedHash sets the "applied_hash" field.
+func (m *AgentStateMutation) SetAppliedHash(b []byte) {
+	m.applied_hash = &b
+}
+
+// AppliedHash returns the value of the "applied_hash" field in the mutation.
+func (m *AgentStateMutation) AppliedHash() (r []byte, exists bool) {
+	v := m.applied_hash
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAppliedHash returns the old "applied_hash" field's value of the AgentState entity.
+// If the AgentState object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AgentStateMutation) OldAppliedHash(ctx context.Context) (v []byte, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAppliedHash is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAppliedHash requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAppliedHash: %w", err)
+	}
+	return oldValue.AppliedHash, nil
+}
+
+// ClearAppliedHash clears the value of the "applied_hash" field.
+func (m *AgentStateMutation) ClearAppliedHash() {
+	m.applied_hash = nil
+	m.clearedFields[agentstate.FieldAppliedHash] = struct{}{}
+}
+
+// AppliedHashCleared returns if the "applied_hash" field was cleared in this mutation.
+func (m *AgentStateMutation) AppliedHashCleared() bool {
+	_, ok := m.clearedFields[agentstate.FieldAppliedHash]
+	return ok
+}
+
+// ResetAppliedHash resets all changes to the "applied_hash" field.
+func (m *AgentStateMutation) ResetAppliedHash() {
+	m.applied_hash = nil
+	delete(m.clearedFields, agentstate.FieldAppliedHash)
+}
+
+// SetLastAckAt sets the "last_ack_at" field.
+func (m *AgentStateMutation) SetLastAckAt(t time.Time) {
+	m.last_ack_at = &t
+}
+
+// LastAckAt returns the value of the "last_ack_at" field in the mutation.
+func (m *AgentStateMutation) LastAckAt() (r time.Time, exists bool) {
+	v := m.last_ack_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldLastAckAt returns the old "last_ack_at" field's value of the AgentState entity.
+// If the AgentState object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AgentStateMutation) OldLastAckAt(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldLastAckAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldLastAckAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldLastAckAt: %w", err)
+	}
+	return oldValue.LastAckAt, nil
+}
+
+// ClearLastAckAt clears the value of the "last_ack_at" field.
+func (m *AgentStateMutation) ClearLastAckAt() {
+	m.last_ack_at = nil
+	m.clearedFields[agentstate.FieldLastAckAt] = struct{}{}
+}
+
+// LastAckAtCleared returns if the "last_ack_at" field was cleared in this mutation.
+func (m *AgentStateMutation) LastAckAtCleared() bool {
+	_, ok := m.clearedFields[agentstate.FieldLastAckAt]
+	return ok
+}
+
+// ResetLastAckAt resets all changes to the "last_ack_at" field.
+func (m *AgentStateMutation) ResetLastAckAt() {
+	m.last_ack_at = nil
+	delete(m.clearedFields, agentstate.FieldLastAckAt)
+}
+
+// SetPushedDbEpoch sets the "pushed_db_epoch" field.
+func (m *AgentStateMutation) SetPushedDbEpoch(s string) {
+	m.pushed_db_epoch = &s
+}
+
+// PushedDbEpoch returns the value of the "pushed_db_epoch" field in the mutation.
+func (m *AgentStateMutation) PushedDbEpoch() (r string, exists bool) {
+	v := m.pushed_db_epoch
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldPushedDbEpoch returns the old "pushed_db_epoch" field's value of the AgentState entity.
+// If the AgentState object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AgentStateMutation) OldPushedDbEpoch(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPushedDbEpoch is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPushedDbEpoch requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPushedDbEpoch: %w", err)
+	}
+	return oldValue.PushedDbEpoch, nil
+}
+
+// ResetPushedDbEpoch resets all changes to the "pushed_db_epoch" field.
+func (m *AgentStateMutation) ResetPushedDbEpoch() {
+	m.pushed_db_epoch = nil
+}
+
+// SetPushedSeq sets the "pushed_seq" field.
+func (m *AgentStateMutation) SetPushedSeq(i int64) {
+	m.pushed_seq = &i
+	m.addpushed_seq = nil
+}
+
+// PushedSeq returns the value of the "pushed_seq" field in the mutation.
+func (m *AgentStateMutation) PushedSeq() (r int64, exists bool) {
+	v := m.pushed_seq
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldPushedSeq returns the old "pushed_seq" field's value of the AgentState entity.
+// If the AgentState object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AgentStateMutation) OldPushedSeq(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPushedSeq is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPushedSeq requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPushedSeq: %w", err)
+	}
+	return oldValue.PushedSeq, nil
+}
+
+// AddPushedSeq adds i to the "pushed_seq" field.
+func (m *AgentStateMutation) AddPushedSeq(i int64) {
+	if m.addpushed_seq != nil {
+		*m.addpushed_seq += i
+	} else {
+		m.addpushed_seq = &i
+	}
+}
+
+// AddedPushedSeq returns the value that was added to the "pushed_seq" field in this mutation.
+func (m *AgentStateMutation) AddedPushedSeq() (r int64, exists bool) {
+	v := m.addpushed_seq
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetPushedSeq resets all changes to the "pushed_seq" field.
+func (m *AgentStateMutation) ResetPushedSeq() {
+	m.pushed_seq = nil
+	m.addpushed_seq = nil
+}
+
+// SetPushedHash sets the "pushed_hash" field.
+func (m *AgentStateMutation) SetPushedHash(b []byte) {
+	m.pushed_hash = &b
+}
+
+// PushedHash returns the value of the "pushed_hash" field in the mutation.
+func (m *AgentStateMutation) PushedHash() (r []byte, exists bool) {
+	v := m.pushed_hash
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldPushedHash returns the old "pushed_hash" field's value of the AgentState entity.
+// If the AgentState object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AgentStateMutation) OldPushedHash(ctx context.Context) (v []byte, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPushedHash is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPushedHash requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPushedHash: %w", err)
+	}
+	return oldValue.PushedHash, nil
+}
+
+// ClearPushedHash clears the value of the "pushed_hash" field.
+func (m *AgentStateMutation) ClearPushedHash() {
+	m.pushed_hash = nil
+	m.clearedFields[agentstate.FieldPushedHash] = struct{}{}
+}
+
+// PushedHashCleared returns if the "pushed_hash" field was cleared in this mutation.
+func (m *AgentStateMutation) PushedHashCleared() bool {
+	_, ok := m.clearedFields[agentstate.FieldPushedHash]
+	return ok
+}
+
+// ResetPushedHash resets all changes to the "pushed_hash" field.
+func (m *AgentStateMutation) ResetPushedHash() {
+	m.pushed_hash = nil
+	delete(m.clearedFields, agentstate.FieldPushedHash)
+}
+
+// SetPushedAt sets the "pushed_at" field.
+func (m *AgentStateMutation) SetPushedAt(t time.Time) {
+	m.pushed_at = &t
+}
+
+// PushedAt returns the value of the "pushed_at" field in the mutation.
+func (m *AgentStateMutation) PushedAt() (r time.Time, exists bool) {
+	v := m.pushed_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldPushedAt returns the old "pushed_at" field's value of the AgentState entity.
+// If the AgentState object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AgentStateMutation) OldPushedAt(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPushedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPushedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPushedAt: %w", err)
+	}
+	return oldValue.PushedAt, nil
+}
+
+// ClearPushedAt clears the value of the "pushed_at" field.
+func (m *AgentStateMutation) ClearPushedAt() {
+	m.pushed_at = nil
+	m.clearedFields[agentstate.FieldPushedAt] = struct{}{}
+}
+
+// PushedAtCleared returns if the "pushed_at" field was cleared in this mutation.
+func (m *AgentStateMutation) PushedAtCleared() bool {
+	_, ok := m.clearedFields[agentstate.FieldPushedAt]
+	return ok
+}
+
+// ResetPushedAt resets all changes to the "pushed_at" field.
+func (m *AgentStateMutation) ResetPushedAt() {
+	m.pushed_at = nil
+	delete(m.clearedFields, agentstate.FieldPushedAt)
+}
+
+// SetRejectedDbEpoch sets the "rejected_db_epoch" field.
+func (m *AgentStateMutation) SetRejectedDbEpoch(s string) {
+	m.rejected_db_epoch = &s
+}
+
+// RejectedDbEpoch returns the value of the "rejected_db_epoch" field in the mutation.
+func (m *AgentStateMutation) RejectedDbEpoch() (r string, exists bool) {
+	v := m.rejected_db_epoch
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRejectedDbEpoch returns the old "rejected_db_epoch" field's value of the AgentState entity.
+// If the AgentState object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AgentStateMutation) OldRejectedDbEpoch(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRejectedDbEpoch is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRejectedDbEpoch requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRejectedDbEpoch: %w", err)
+	}
+	return oldValue.RejectedDbEpoch, nil
+}
+
+// ResetRejectedDbEpoch resets all changes to the "rejected_db_epoch" field.
+func (m *AgentStateMutation) ResetRejectedDbEpoch() {
+	m.rejected_db_epoch = nil
+}
+
+// SetRejectedSeq sets the "rejected_seq" field.
+func (m *AgentStateMutation) SetRejectedSeq(i int64) {
+	m.rejected_seq = &i
+	m.addrejected_seq = nil
+}
+
+// RejectedSeq returns the value of the "rejected_seq" field in the mutation.
+func (m *AgentStateMutation) RejectedSeq() (r int64, exists bool) {
+	v := m.rejected_seq
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRejectedSeq returns the old "rejected_seq" field's value of the AgentState entity.
+// If the AgentState object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AgentStateMutation) OldRejectedSeq(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRejectedSeq is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRejectedSeq requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRejectedSeq: %w", err)
+	}
+	return oldValue.RejectedSeq, nil
+}
+
+// AddRejectedSeq adds i to the "rejected_seq" field.
+func (m *AgentStateMutation) AddRejectedSeq(i int64) {
+	if m.addrejected_seq != nil {
+		*m.addrejected_seq += i
+	} else {
+		m.addrejected_seq = &i
+	}
+}
+
+// AddedRejectedSeq returns the value that was added to the "rejected_seq" field in this mutation.
+func (m *AgentStateMutation) AddedRejectedSeq() (r int64, exists bool) {
+	v := m.addrejected_seq
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetRejectedSeq resets all changes to the "rejected_seq" field.
+func (m *AgentStateMutation) ResetRejectedSeq() {
+	m.rejected_seq = nil
+	m.addrejected_seq = nil
+}
+
+// SetRejectedHash sets the "rejected_hash" field.
+func (m *AgentStateMutation) SetRejectedHash(b []byte) {
+	m.rejected_hash = &b
+}
+
+// RejectedHash returns the value of the "rejected_hash" field in the mutation.
+func (m *AgentStateMutation) RejectedHash() (r []byte, exists bool) {
+	v := m.rejected_hash
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRejectedHash returns the old "rejected_hash" field's value of the AgentState entity.
+// If the AgentState object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AgentStateMutation) OldRejectedHash(ctx context.Context) (v []byte, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRejectedHash is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRejectedHash requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRejectedHash: %w", err)
+	}
+	return oldValue.RejectedHash, nil
+}
+
+// ClearRejectedHash clears the value of the "rejected_hash" field.
+func (m *AgentStateMutation) ClearRejectedHash() {
+	m.rejected_hash = nil
+	m.clearedFields[agentstate.FieldRejectedHash] = struct{}{}
+}
+
+// RejectedHashCleared returns if the "rejected_hash" field was cleared in this mutation.
+func (m *AgentStateMutation) RejectedHashCleared() bool {
+	_, ok := m.clearedFields[agentstate.FieldRejectedHash]
+	return ok
+}
+
+// ResetRejectedHash resets all changes to the "rejected_hash" field.
+func (m *AgentStateMutation) ResetRejectedHash() {
+	m.rejected_hash = nil
+	delete(m.clearedFields, agentstate.FieldRejectedHash)
+}
+
+// SetLastRejection sets the "last_rejection" field.
+func (m *AgentStateMutation) SetLastRejection(value []map[string]string) {
+	m.last_rejection = &value
+	m.appendlast_rejection = nil
+}
+
+// LastRejection returns the value of the "last_rejection" field in the mutation.
+func (m *AgentStateMutation) LastRejection() (r []map[string]string, exists bool) {
+	v := m.last_rejection
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldLastRejection returns the old "last_rejection" field's value of the AgentState entity.
+// If the AgentState object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AgentStateMutation) OldLastRejection(ctx context.Context) (v []map[string]string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldLastRejection is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldLastRejection requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldLastRejection: %w", err)
+	}
+	return oldValue.LastRejection, nil
+}
+
+// AppendLastRejection adds value to the "last_rejection" field.
+func (m *AgentStateMutation) AppendLastRejection(value []map[string]string) {
+	m.appendlast_rejection = append(m.appendlast_rejection, value...)
+}
+
+// AppendedLastRejection returns the list of values that were appended to the "last_rejection" field in this mutation.
+func (m *AgentStateMutation) AppendedLastRejection() ([]map[string]string, bool) {
+	if len(m.appendlast_rejection) == 0 {
+		return nil, false
+	}
+	return m.appendlast_rejection, true
+}
+
+// ClearLastRejection clears the value of the "last_rejection" field.
+func (m *AgentStateMutation) ClearLastRejection() {
+	m.last_rejection = nil
+	m.appendlast_rejection = nil
+	m.clearedFields[agentstate.FieldLastRejection] = struct{}{}
+}
+
+// LastRejectionCleared returns if the "last_rejection" field was cleared in this mutation.
+func (m *AgentStateMutation) LastRejectionCleared() bool {
+	_, ok := m.clearedFields[agentstate.FieldLastRejection]
+	return ok
+}
+
+// ResetLastRejection resets all changes to the "last_rejection" field.
+func (m *AgentStateMutation) ResetLastRejection() {
+	m.last_rejection = nil
+	m.appendlast_rejection = nil
+	delete(m.clearedFields, agentstate.FieldLastRejection)
+}
+
+// Where appends a list predicates to the AgentStateMutation builder.
+func (m *AgentStateMutation) Where(ps ...predicate.AgentState) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the AgentStateMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *AgentStateMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.AgentState, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *AgentStateMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *AgentStateMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (AgentState).
+func (m *AgentStateMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *AgentStateMutation) Fields() []string {
+	fields := make([]string, 0, 15)
+	if m.org_id != nil {
+		fields = append(fields, agentstate.FieldOrgID)
+	}
+	if m.boot_id != nil {
+		fields = append(fields, agentstate.FieldBootID)
+	}
+	if m.clock_offset_ms != nil {
+		fields = append(fields, agentstate.FieldClockOffsetMs)
+	}
+	if m.applied_db_epoch != nil {
+		fields = append(fields, agentstate.FieldAppliedDbEpoch)
+	}
+	if m.applied_seq != nil {
+		fields = append(fields, agentstate.FieldAppliedSeq)
+	}
+	if m.applied_hash != nil {
+		fields = append(fields, agentstate.FieldAppliedHash)
+	}
+	if m.last_ack_at != nil {
+		fields = append(fields, agentstate.FieldLastAckAt)
+	}
+	if m.pushed_db_epoch != nil {
+		fields = append(fields, agentstate.FieldPushedDbEpoch)
+	}
+	if m.pushed_seq != nil {
+		fields = append(fields, agentstate.FieldPushedSeq)
+	}
+	if m.pushed_hash != nil {
+		fields = append(fields, agentstate.FieldPushedHash)
+	}
+	if m.pushed_at != nil {
+		fields = append(fields, agentstate.FieldPushedAt)
+	}
+	if m.rejected_db_epoch != nil {
+		fields = append(fields, agentstate.FieldRejectedDbEpoch)
+	}
+	if m.rejected_seq != nil {
+		fields = append(fields, agentstate.FieldRejectedSeq)
+	}
+	if m.rejected_hash != nil {
+		fields = append(fields, agentstate.FieldRejectedHash)
+	}
+	if m.last_rejection != nil {
+		fields = append(fields, agentstate.FieldLastRejection)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *AgentStateMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case agentstate.FieldOrgID:
+		return m.OrgID()
+	case agentstate.FieldBootID:
+		return m.BootID()
+	case agentstate.FieldClockOffsetMs:
+		return m.ClockOffsetMs()
+	case agentstate.FieldAppliedDbEpoch:
+		return m.AppliedDbEpoch()
+	case agentstate.FieldAppliedSeq:
+		return m.AppliedSeq()
+	case agentstate.FieldAppliedHash:
+		return m.AppliedHash()
+	case agentstate.FieldLastAckAt:
+		return m.LastAckAt()
+	case agentstate.FieldPushedDbEpoch:
+		return m.PushedDbEpoch()
+	case agentstate.FieldPushedSeq:
+		return m.PushedSeq()
+	case agentstate.FieldPushedHash:
+		return m.PushedHash()
+	case agentstate.FieldPushedAt:
+		return m.PushedAt()
+	case agentstate.FieldRejectedDbEpoch:
+		return m.RejectedDbEpoch()
+	case agentstate.FieldRejectedSeq:
+		return m.RejectedSeq()
+	case agentstate.FieldRejectedHash:
+		return m.RejectedHash()
+	case agentstate.FieldLastRejection:
+		return m.LastRejection()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *AgentStateMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case agentstate.FieldOrgID:
+		return m.OldOrgID(ctx)
+	case agentstate.FieldBootID:
+		return m.OldBootID(ctx)
+	case agentstate.FieldClockOffsetMs:
+		return m.OldClockOffsetMs(ctx)
+	case agentstate.FieldAppliedDbEpoch:
+		return m.OldAppliedDbEpoch(ctx)
+	case agentstate.FieldAppliedSeq:
+		return m.OldAppliedSeq(ctx)
+	case agentstate.FieldAppliedHash:
+		return m.OldAppliedHash(ctx)
+	case agentstate.FieldLastAckAt:
+		return m.OldLastAckAt(ctx)
+	case agentstate.FieldPushedDbEpoch:
+		return m.OldPushedDbEpoch(ctx)
+	case agentstate.FieldPushedSeq:
+		return m.OldPushedSeq(ctx)
+	case agentstate.FieldPushedHash:
+		return m.OldPushedHash(ctx)
+	case agentstate.FieldPushedAt:
+		return m.OldPushedAt(ctx)
+	case agentstate.FieldRejectedDbEpoch:
+		return m.OldRejectedDbEpoch(ctx)
+	case agentstate.FieldRejectedSeq:
+		return m.OldRejectedSeq(ctx)
+	case agentstate.FieldRejectedHash:
+		return m.OldRejectedHash(ctx)
+	case agentstate.FieldLastRejection:
+		return m.OldLastRejection(ctx)
+	}
+	return nil, fmt.Errorf("unknown AgentState field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *AgentStateMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case agentstate.FieldOrgID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetOrgID(v)
+		return nil
+	case agentstate.FieldBootID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetBootID(v)
+		return nil
+	case agentstate.FieldClockOffsetMs:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetClockOffsetMs(v)
+		return nil
+	case agentstate.FieldAppliedDbEpoch:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAppliedDbEpoch(v)
+		return nil
+	case agentstate.FieldAppliedSeq:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAppliedSeq(v)
+		return nil
+	case agentstate.FieldAppliedHash:
+		v, ok := value.([]byte)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAppliedHash(v)
+		return nil
+	case agentstate.FieldLastAckAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetLastAckAt(v)
+		return nil
+	case agentstate.FieldPushedDbEpoch:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetPushedDbEpoch(v)
+		return nil
+	case agentstate.FieldPushedSeq:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetPushedSeq(v)
+		return nil
+	case agentstate.FieldPushedHash:
+		v, ok := value.([]byte)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetPushedHash(v)
+		return nil
+	case agentstate.FieldPushedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetPushedAt(v)
+		return nil
+	case agentstate.FieldRejectedDbEpoch:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRejectedDbEpoch(v)
+		return nil
+	case agentstate.FieldRejectedSeq:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRejectedSeq(v)
+		return nil
+	case agentstate.FieldRejectedHash:
+		v, ok := value.([]byte)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRejectedHash(v)
+		return nil
+	case agentstate.FieldLastRejection:
+		v, ok := value.([]map[string]string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetLastRejection(v)
+		return nil
+	}
+	return fmt.Errorf("unknown AgentState field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *AgentStateMutation) AddedFields() []string {
+	var fields []string
+	if m.addclock_offset_ms != nil {
+		fields = append(fields, agentstate.FieldClockOffsetMs)
+	}
+	if m.addapplied_seq != nil {
+		fields = append(fields, agentstate.FieldAppliedSeq)
+	}
+	if m.addpushed_seq != nil {
+		fields = append(fields, agentstate.FieldPushedSeq)
+	}
+	if m.addrejected_seq != nil {
+		fields = append(fields, agentstate.FieldRejectedSeq)
+	}
+	return fields
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *AgentStateMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case agentstate.FieldClockOffsetMs:
+		return m.AddedClockOffsetMs()
+	case agentstate.FieldAppliedSeq:
+		return m.AddedAppliedSeq()
+	case agentstate.FieldPushedSeq:
+		return m.AddedPushedSeq()
+	case agentstate.FieldRejectedSeq:
+		return m.AddedRejectedSeq()
+	}
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *AgentStateMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	case agentstate.FieldClockOffsetMs:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddClockOffsetMs(v)
+		return nil
+	case agentstate.FieldAppliedSeq:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddAppliedSeq(v)
+		return nil
+	case agentstate.FieldPushedSeq:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddPushedSeq(v)
+		return nil
+	case agentstate.FieldRejectedSeq:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddRejectedSeq(v)
+		return nil
+	}
+	return fmt.Errorf("unknown AgentState numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *AgentStateMutation) ClearedFields() []string {
+	var fields []string
+	if m.FieldCleared(agentstate.FieldAppliedHash) {
+		fields = append(fields, agentstate.FieldAppliedHash)
+	}
+	if m.FieldCleared(agentstate.FieldLastAckAt) {
+		fields = append(fields, agentstate.FieldLastAckAt)
+	}
+	if m.FieldCleared(agentstate.FieldPushedHash) {
+		fields = append(fields, agentstate.FieldPushedHash)
+	}
+	if m.FieldCleared(agentstate.FieldPushedAt) {
+		fields = append(fields, agentstate.FieldPushedAt)
+	}
+	if m.FieldCleared(agentstate.FieldRejectedHash) {
+		fields = append(fields, agentstate.FieldRejectedHash)
+	}
+	if m.FieldCleared(agentstate.FieldLastRejection) {
+		fields = append(fields, agentstate.FieldLastRejection)
+	}
+	return fields
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *AgentStateMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *AgentStateMutation) ClearField(name string) error {
+	switch name {
+	case agentstate.FieldAppliedHash:
+		m.ClearAppliedHash()
+		return nil
+	case agentstate.FieldLastAckAt:
+		m.ClearLastAckAt()
+		return nil
+	case agentstate.FieldPushedHash:
+		m.ClearPushedHash()
+		return nil
+	case agentstate.FieldPushedAt:
+		m.ClearPushedAt()
+		return nil
+	case agentstate.FieldRejectedHash:
+		m.ClearRejectedHash()
+		return nil
+	case agentstate.FieldLastRejection:
+		m.ClearLastRejection()
+		return nil
+	}
+	return fmt.Errorf("unknown AgentState nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *AgentStateMutation) ResetField(name string) error {
+	switch name {
+	case agentstate.FieldOrgID:
+		m.ResetOrgID()
+		return nil
+	case agentstate.FieldBootID:
+		m.ResetBootID()
+		return nil
+	case agentstate.FieldClockOffsetMs:
+		m.ResetClockOffsetMs()
+		return nil
+	case agentstate.FieldAppliedDbEpoch:
+		m.ResetAppliedDbEpoch()
+		return nil
+	case agentstate.FieldAppliedSeq:
+		m.ResetAppliedSeq()
+		return nil
+	case agentstate.FieldAppliedHash:
+		m.ResetAppliedHash()
+		return nil
+	case agentstate.FieldLastAckAt:
+		m.ResetLastAckAt()
+		return nil
+	case agentstate.FieldPushedDbEpoch:
+		m.ResetPushedDbEpoch()
+		return nil
+	case agentstate.FieldPushedSeq:
+		m.ResetPushedSeq()
+		return nil
+	case agentstate.FieldPushedHash:
+		m.ResetPushedHash()
+		return nil
+	case agentstate.FieldPushedAt:
+		m.ResetPushedAt()
+		return nil
+	case agentstate.FieldRejectedDbEpoch:
+		m.ResetRejectedDbEpoch()
+		return nil
+	case agentstate.FieldRejectedSeq:
+		m.ResetRejectedSeq()
+		return nil
+	case agentstate.FieldRejectedHash:
+		m.ResetRejectedHash()
+		return nil
+	case agentstate.FieldLastRejection:
+		m.ResetLastRejection()
+		return nil
+	}
+	return fmt.Errorf("unknown AgentState field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *AgentStateMutation) AddedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *AgentStateMutation) AddedIDs(name string) []ent.Value {
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *AgentStateMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *AgentStateMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *AgentStateMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *AgentStateMutation) EdgeCleared(name string) bool {
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *AgentStateMutation) ClearEdge(name string) error {
+	return fmt.Errorf("unknown AgentState unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *AgentStateMutation) ResetEdge(name string) error {
+	return fmt.Errorf("unknown AgentState edge %s", name)
 }
 
 // AuditEntryMutation represents an operation that mutates the AuditEntry nodes in the graph.
@@ -3304,6 +4665,887 @@ func (m *CAKeyMutation) ClearEdge(name string) error {
 // It returns an error if the edge is not defined in the schema.
 func (m *CAKeyMutation) ResetEdge(name string) error {
 	return fmt.Errorf("unknown CAKey edge %s", name)
+}
+
+// CompiledSnapshotMutation represents an operation that mutates the CompiledSnapshot nodes in the graph.
+type CompiledSnapshotMutation struct {
+	config
+	op            Op
+	typ           string
+	id            *int
+	org_id        *string
+	agent_id      *string
+	db_epoch      *string
+	seq           *int64
+	addseq        *int64
+	hash          *[]byte
+	size_bytes    *int
+	addsize_bytes *int
+	payload       *[]byte
+	signature     *[]byte
+	key_id        *string
+	created_at    *time.Time
+	clearedFields map[string]struct{}
+	done          bool
+	oldValue      func(context.Context) (*CompiledSnapshot, error)
+	predicates    []predicate.CompiledSnapshot
+}
+
+var _ ent.Mutation = (*CompiledSnapshotMutation)(nil)
+
+// compiledsnapshotOption allows management of the mutation configuration using functional options.
+type compiledsnapshotOption func(*CompiledSnapshotMutation)
+
+// newCompiledSnapshotMutation creates new mutation for the CompiledSnapshot entity.
+func newCompiledSnapshotMutation(c config, op Op, opts ...compiledsnapshotOption) *CompiledSnapshotMutation {
+	m := &CompiledSnapshotMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeCompiledSnapshot,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withCompiledSnapshotID sets the ID field of the mutation.
+func withCompiledSnapshotID(id int) compiledsnapshotOption {
+	return func(m *CompiledSnapshotMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *CompiledSnapshot
+		)
+		m.oldValue = func(ctx context.Context) (*CompiledSnapshot, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().CompiledSnapshot.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withCompiledSnapshot sets the old CompiledSnapshot of the mutation.
+func withCompiledSnapshot(node *CompiledSnapshot) compiledsnapshotOption {
+	return func(m *CompiledSnapshotMutation) {
+		m.oldValue = func(context.Context) (*CompiledSnapshot, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m CompiledSnapshotMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m CompiledSnapshotMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *CompiledSnapshotMutation) ID() (id int, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *CompiledSnapshotMutation) IDs(ctx context.Context) ([]int, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []int{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().CompiledSnapshot.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetOrgID sets the "org_id" field.
+func (m *CompiledSnapshotMutation) SetOrgID(s string) {
+	m.org_id = &s
+}
+
+// OrgID returns the value of the "org_id" field in the mutation.
+func (m *CompiledSnapshotMutation) OrgID() (r string, exists bool) {
+	v := m.org_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldOrgID returns the old "org_id" field's value of the CompiledSnapshot entity.
+// If the CompiledSnapshot object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CompiledSnapshotMutation) OldOrgID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldOrgID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldOrgID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldOrgID: %w", err)
+	}
+	return oldValue.OrgID, nil
+}
+
+// ResetOrgID resets all changes to the "org_id" field.
+func (m *CompiledSnapshotMutation) ResetOrgID() {
+	m.org_id = nil
+}
+
+// SetAgentID sets the "agent_id" field.
+func (m *CompiledSnapshotMutation) SetAgentID(s string) {
+	m.agent_id = &s
+}
+
+// AgentID returns the value of the "agent_id" field in the mutation.
+func (m *CompiledSnapshotMutation) AgentID() (r string, exists bool) {
+	v := m.agent_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAgentID returns the old "agent_id" field's value of the CompiledSnapshot entity.
+// If the CompiledSnapshot object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CompiledSnapshotMutation) OldAgentID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAgentID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAgentID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAgentID: %w", err)
+	}
+	return oldValue.AgentID, nil
+}
+
+// ResetAgentID resets all changes to the "agent_id" field.
+func (m *CompiledSnapshotMutation) ResetAgentID() {
+	m.agent_id = nil
+}
+
+// SetDbEpoch sets the "db_epoch" field.
+func (m *CompiledSnapshotMutation) SetDbEpoch(s string) {
+	m.db_epoch = &s
+}
+
+// DbEpoch returns the value of the "db_epoch" field in the mutation.
+func (m *CompiledSnapshotMutation) DbEpoch() (r string, exists bool) {
+	v := m.db_epoch
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldDbEpoch returns the old "db_epoch" field's value of the CompiledSnapshot entity.
+// If the CompiledSnapshot object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CompiledSnapshotMutation) OldDbEpoch(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDbEpoch is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDbEpoch requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDbEpoch: %w", err)
+	}
+	return oldValue.DbEpoch, nil
+}
+
+// ResetDbEpoch resets all changes to the "db_epoch" field.
+func (m *CompiledSnapshotMutation) ResetDbEpoch() {
+	m.db_epoch = nil
+}
+
+// SetSeq sets the "seq" field.
+func (m *CompiledSnapshotMutation) SetSeq(i int64) {
+	m.seq = &i
+	m.addseq = nil
+}
+
+// Seq returns the value of the "seq" field in the mutation.
+func (m *CompiledSnapshotMutation) Seq() (r int64, exists bool) {
+	v := m.seq
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSeq returns the old "seq" field's value of the CompiledSnapshot entity.
+// If the CompiledSnapshot object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CompiledSnapshotMutation) OldSeq(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSeq is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSeq requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSeq: %w", err)
+	}
+	return oldValue.Seq, nil
+}
+
+// AddSeq adds i to the "seq" field.
+func (m *CompiledSnapshotMutation) AddSeq(i int64) {
+	if m.addseq != nil {
+		*m.addseq += i
+	} else {
+		m.addseq = &i
+	}
+}
+
+// AddedSeq returns the value that was added to the "seq" field in this mutation.
+func (m *CompiledSnapshotMutation) AddedSeq() (r int64, exists bool) {
+	v := m.addseq
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetSeq resets all changes to the "seq" field.
+func (m *CompiledSnapshotMutation) ResetSeq() {
+	m.seq = nil
+	m.addseq = nil
+}
+
+// SetHash sets the "hash" field.
+func (m *CompiledSnapshotMutation) SetHash(b []byte) {
+	m.hash = &b
+}
+
+// Hash returns the value of the "hash" field in the mutation.
+func (m *CompiledSnapshotMutation) Hash() (r []byte, exists bool) {
+	v := m.hash
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldHash returns the old "hash" field's value of the CompiledSnapshot entity.
+// If the CompiledSnapshot object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CompiledSnapshotMutation) OldHash(ctx context.Context) (v []byte, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldHash is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldHash requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldHash: %w", err)
+	}
+	return oldValue.Hash, nil
+}
+
+// ResetHash resets all changes to the "hash" field.
+func (m *CompiledSnapshotMutation) ResetHash() {
+	m.hash = nil
+}
+
+// SetSizeBytes sets the "size_bytes" field.
+func (m *CompiledSnapshotMutation) SetSizeBytes(i int) {
+	m.size_bytes = &i
+	m.addsize_bytes = nil
+}
+
+// SizeBytes returns the value of the "size_bytes" field in the mutation.
+func (m *CompiledSnapshotMutation) SizeBytes() (r int, exists bool) {
+	v := m.size_bytes
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSizeBytes returns the old "size_bytes" field's value of the CompiledSnapshot entity.
+// If the CompiledSnapshot object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CompiledSnapshotMutation) OldSizeBytes(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSizeBytes is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSizeBytes requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSizeBytes: %w", err)
+	}
+	return oldValue.SizeBytes, nil
+}
+
+// AddSizeBytes adds i to the "size_bytes" field.
+func (m *CompiledSnapshotMutation) AddSizeBytes(i int) {
+	if m.addsize_bytes != nil {
+		*m.addsize_bytes += i
+	} else {
+		m.addsize_bytes = &i
+	}
+}
+
+// AddedSizeBytes returns the value that was added to the "size_bytes" field in this mutation.
+func (m *CompiledSnapshotMutation) AddedSizeBytes() (r int, exists bool) {
+	v := m.addsize_bytes
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetSizeBytes resets all changes to the "size_bytes" field.
+func (m *CompiledSnapshotMutation) ResetSizeBytes() {
+	m.size_bytes = nil
+	m.addsize_bytes = nil
+}
+
+// SetPayload sets the "payload" field.
+func (m *CompiledSnapshotMutation) SetPayload(b []byte) {
+	m.payload = &b
+}
+
+// Payload returns the value of the "payload" field in the mutation.
+func (m *CompiledSnapshotMutation) Payload() (r []byte, exists bool) {
+	v := m.payload
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldPayload returns the old "payload" field's value of the CompiledSnapshot entity.
+// If the CompiledSnapshot object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CompiledSnapshotMutation) OldPayload(ctx context.Context) (v []byte, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPayload is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPayload requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPayload: %w", err)
+	}
+	return oldValue.Payload, nil
+}
+
+// ResetPayload resets all changes to the "payload" field.
+func (m *CompiledSnapshotMutation) ResetPayload() {
+	m.payload = nil
+}
+
+// SetSignature sets the "signature" field.
+func (m *CompiledSnapshotMutation) SetSignature(b []byte) {
+	m.signature = &b
+}
+
+// Signature returns the value of the "signature" field in the mutation.
+func (m *CompiledSnapshotMutation) Signature() (r []byte, exists bool) {
+	v := m.signature
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSignature returns the old "signature" field's value of the CompiledSnapshot entity.
+// If the CompiledSnapshot object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CompiledSnapshotMutation) OldSignature(ctx context.Context) (v []byte, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSignature is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSignature requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSignature: %w", err)
+	}
+	return oldValue.Signature, nil
+}
+
+// ResetSignature resets all changes to the "signature" field.
+func (m *CompiledSnapshotMutation) ResetSignature() {
+	m.signature = nil
+}
+
+// SetKeyID sets the "key_id" field.
+func (m *CompiledSnapshotMutation) SetKeyID(s string) {
+	m.key_id = &s
+}
+
+// KeyID returns the value of the "key_id" field in the mutation.
+func (m *CompiledSnapshotMutation) KeyID() (r string, exists bool) {
+	v := m.key_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldKeyID returns the old "key_id" field's value of the CompiledSnapshot entity.
+// If the CompiledSnapshot object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CompiledSnapshotMutation) OldKeyID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldKeyID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldKeyID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldKeyID: %w", err)
+	}
+	return oldValue.KeyID, nil
+}
+
+// ResetKeyID resets all changes to the "key_id" field.
+func (m *CompiledSnapshotMutation) ResetKeyID() {
+	m.key_id = nil
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *CompiledSnapshotMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *CompiledSnapshotMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the CompiledSnapshot entity.
+// If the CompiledSnapshot object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CompiledSnapshotMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *CompiledSnapshotMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// Where appends a list predicates to the CompiledSnapshotMutation builder.
+func (m *CompiledSnapshotMutation) Where(ps ...predicate.CompiledSnapshot) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the CompiledSnapshotMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *CompiledSnapshotMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.CompiledSnapshot, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *CompiledSnapshotMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *CompiledSnapshotMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (CompiledSnapshot).
+func (m *CompiledSnapshotMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *CompiledSnapshotMutation) Fields() []string {
+	fields := make([]string, 0, 10)
+	if m.org_id != nil {
+		fields = append(fields, compiledsnapshot.FieldOrgID)
+	}
+	if m.agent_id != nil {
+		fields = append(fields, compiledsnapshot.FieldAgentID)
+	}
+	if m.db_epoch != nil {
+		fields = append(fields, compiledsnapshot.FieldDbEpoch)
+	}
+	if m.seq != nil {
+		fields = append(fields, compiledsnapshot.FieldSeq)
+	}
+	if m.hash != nil {
+		fields = append(fields, compiledsnapshot.FieldHash)
+	}
+	if m.size_bytes != nil {
+		fields = append(fields, compiledsnapshot.FieldSizeBytes)
+	}
+	if m.payload != nil {
+		fields = append(fields, compiledsnapshot.FieldPayload)
+	}
+	if m.signature != nil {
+		fields = append(fields, compiledsnapshot.FieldSignature)
+	}
+	if m.key_id != nil {
+		fields = append(fields, compiledsnapshot.FieldKeyID)
+	}
+	if m.created_at != nil {
+		fields = append(fields, compiledsnapshot.FieldCreatedAt)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *CompiledSnapshotMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case compiledsnapshot.FieldOrgID:
+		return m.OrgID()
+	case compiledsnapshot.FieldAgentID:
+		return m.AgentID()
+	case compiledsnapshot.FieldDbEpoch:
+		return m.DbEpoch()
+	case compiledsnapshot.FieldSeq:
+		return m.Seq()
+	case compiledsnapshot.FieldHash:
+		return m.Hash()
+	case compiledsnapshot.FieldSizeBytes:
+		return m.SizeBytes()
+	case compiledsnapshot.FieldPayload:
+		return m.Payload()
+	case compiledsnapshot.FieldSignature:
+		return m.Signature()
+	case compiledsnapshot.FieldKeyID:
+		return m.KeyID()
+	case compiledsnapshot.FieldCreatedAt:
+		return m.CreatedAt()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *CompiledSnapshotMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case compiledsnapshot.FieldOrgID:
+		return m.OldOrgID(ctx)
+	case compiledsnapshot.FieldAgentID:
+		return m.OldAgentID(ctx)
+	case compiledsnapshot.FieldDbEpoch:
+		return m.OldDbEpoch(ctx)
+	case compiledsnapshot.FieldSeq:
+		return m.OldSeq(ctx)
+	case compiledsnapshot.FieldHash:
+		return m.OldHash(ctx)
+	case compiledsnapshot.FieldSizeBytes:
+		return m.OldSizeBytes(ctx)
+	case compiledsnapshot.FieldPayload:
+		return m.OldPayload(ctx)
+	case compiledsnapshot.FieldSignature:
+		return m.OldSignature(ctx)
+	case compiledsnapshot.FieldKeyID:
+		return m.OldKeyID(ctx)
+	case compiledsnapshot.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	}
+	return nil, fmt.Errorf("unknown CompiledSnapshot field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *CompiledSnapshotMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case compiledsnapshot.FieldOrgID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetOrgID(v)
+		return nil
+	case compiledsnapshot.FieldAgentID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAgentID(v)
+		return nil
+	case compiledsnapshot.FieldDbEpoch:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetDbEpoch(v)
+		return nil
+	case compiledsnapshot.FieldSeq:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSeq(v)
+		return nil
+	case compiledsnapshot.FieldHash:
+		v, ok := value.([]byte)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetHash(v)
+		return nil
+	case compiledsnapshot.FieldSizeBytes:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSizeBytes(v)
+		return nil
+	case compiledsnapshot.FieldPayload:
+		v, ok := value.([]byte)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetPayload(v)
+		return nil
+	case compiledsnapshot.FieldSignature:
+		v, ok := value.([]byte)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSignature(v)
+		return nil
+	case compiledsnapshot.FieldKeyID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetKeyID(v)
+		return nil
+	case compiledsnapshot.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	}
+	return fmt.Errorf("unknown CompiledSnapshot field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *CompiledSnapshotMutation) AddedFields() []string {
+	var fields []string
+	if m.addseq != nil {
+		fields = append(fields, compiledsnapshot.FieldSeq)
+	}
+	if m.addsize_bytes != nil {
+		fields = append(fields, compiledsnapshot.FieldSizeBytes)
+	}
+	return fields
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *CompiledSnapshotMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case compiledsnapshot.FieldSeq:
+		return m.AddedSeq()
+	case compiledsnapshot.FieldSizeBytes:
+		return m.AddedSizeBytes()
+	}
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *CompiledSnapshotMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	case compiledsnapshot.FieldSeq:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddSeq(v)
+		return nil
+	case compiledsnapshot.FieldSizeBytes:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddSizeBytes(v)
+		return nil
+	}
+	return fmt.Errorf("unknown CompiledSnapshot numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *CompiledSnapshotMutation) ClearedFields() []string {
+	return nil
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *CompiledSnapshotMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *CompiledSnapshotMutation) ClearField(name string) error {
+	return fmt.Errorf("unknown CompiledSnapshot nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *CompiledSnapshotMutation) ResetField(name string) error {
+	switch name {
+	case compiledsnapshot.FieldOrgID:
+		m.ResetOrgID()
+		return nil
+	case compiledsnapshot.FieldAgentID:
+		m.ResetAgentID()
+		return nil
+	case compiledsnapshot.FieldDbEpoch:
+		m.ResetDbEpoch()
+		return nil
+	case compiledsnapshot.FieldSeq:
+		m.ResetSeq()
+		return nil
+	case compiledsnapshot.FieldHash:
+		m.ResetHash()
+		return nil
+	case compiledsnapshot.FieldSizeBytes:
+		m.ResetSizeBytes()
+		return nil
+	case compiledsnapshot.FieldPayload:
+		m.ResetPayload()
+		return nil
+	case compiledsnapshot.FieldSignature:
+		m.ResetSignature()
+		return nil
+	case compiledsnapshot.FieldKeyID:
+		m.ResetKeyID()
+		return nil
+	case compiledsnapshot.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown CompiledSnapshot field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *CompiledSnapshotMutation) AddedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *CompiledSnapshotMutation) AddedIDs(name string) []ent.Value {
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *CompiledSnapshotMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *CompiledSnapshotMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *CompiledSnapshotMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *CompiledSnapshotMutation) EdgeCleared(name string) bool {
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *CompiledSnapshotMutation) ClearEdge(name string) error {
+	return fmt.Errorf("unknown CompiledSnapshot unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *CompiledSnapshotMutation) ResetEdge(name string) error {
+	return fmt.Errorf("unknown CompiledSnapshot edge %s", name)
 }
 
 // ConfigRevisionMutation represents an operation that mutates the ConfigRevision nodes in the graph.
