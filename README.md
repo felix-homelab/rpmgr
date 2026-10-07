@@ -40,7 +40,7 @@ every role.
 | [13 — Roadmap](docs/13-roadmap.md) | Phase 0 spikes, MVP, production, advanced; exit criteria; verification backlog; risks |
 | [14 — Open decisions](docs/14-open-decisions.md) | Every decision that was open, with its outcome; currently none is open |
 | [15 — DNS automation](docs/15-dns.md) | Cloudflare integration: managed zones, records for route hostnames, ownership and conflicts, plan approval, DNS-01, proxied routes |
-| [ADRs](docs/adr/) | One record per load-bearing decision (0001–0015) |
+| [ADRs](docs/adr/) | One record per load-bearing decision (0001–0016) |
 | [Spikes](docs/spikes/) | Phase 0 spike results, written from the [template](docs/spikes/TEMPLATE.md) |
 
 Suggested reading order: 00 → 02 → 03 → 04, then whatever you need.
