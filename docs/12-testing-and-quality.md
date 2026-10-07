@@ -286,9 +286,13 @@ Docker-based ones need Docker), and `test-checks.sh` tests the checks with valid
 | `ci` / `docs` | Relative links and heading anchors in all Markdown files (lychee, offline); every Mermaid diagram renders (mermaid-cli) | `check-links.sh`, `check-mermaid.sh` |
 | `ci` / `secrets` | gitleaks over the full history, with the rules in `.gitleaks.toml` | `check-secrets.sh` |
 | `ci` / `go` | gofmt, a tidy `go.mod`, `go vet`, the banned TLS and QUIC settings (`InsecureSkipVerify`, `VerifyPeerCertificate`, `Renegotiation`, 0-RTT; also as composite-literal keys, which forbidigo does not see), `go test -race`; a 10 s run of every fuzz target; golangci-lint with gosec, errorlint, bodyclose, depguard (`math/rand` and `math/rand/v2` in `internal/{authz,pki,secret,token,tunnel}`) and forbidigo (`secret.Value.Reveal` outside its allow-list, `privacy.DecisionContext` outside `internal/store`) | `check-go.sh` (with `tools/bannedapi`), `check-fuzz.sh`, `check-golangci.sh`, `.golangci.yml` |
+| `ci` / `build` | `go build` and `go vet` of every package, tests included, with `CGO_ENABLED=0` for linux/{amd64,arm64,armv7,riscv64}, windows/amd64 and darwin/{amd64,arm64} | `check-build.sh` |
+| `ci` / `go-arm64` | Every test natively on a GitHub-hosted arm64 runner, with the race detector, and again for armv7 on the same host | `check-test-arch.sh` |
+| `nightly` / `riscv64` | Every test for riscv64 under QEMU user-mode emulation; also started by hand | `check-test-arch.sh` |
 
-The jobs `pr-rules`, `lint`, `docs`, `secrets` and `go` are required status checks of the `main`
-ruleset; each new job is added to the ruleset by the maintainer once its PR is merged. Tool images are pinned by digest in the scripts and actions by commit SHA; Dependabot
+The jobs `pr-rules`, `lint`, `docs`, `secrets`, `go`, `build` and `go-arm64` are required status
+checks of the `main` ruleset; each new job is added to the ruleset by the maintainer once its PR is
+merged. Tool images are pinned by digest in the scripts and actions by commit SHA; Dependabot
 updates the actions. The race detector needs cgo for its runtime; release builds stay
-`CGO_ENABLED=0`. The protobuf, web, migration and build stages and the size check are added by
-their Phase 1 slices.
+`CGO_ENABLED=0`. The protobuf, web and migration stages and the size check are added by their
+Phase 1 slices.

@@ -228,6 +228,21 @@ func FuzzCrash(f *testing.F) {
 EOF
   git -C "$r" add -A
   expect fail "fuzz target that crashes" "$dir/check-fuzz.sh" 2s "$r"
+  git -C "$r" rm -q -f p/crash_test.go
+
+  # Builds for every platform; tests per architecture.
+  expect pass "build and vet on every platform" "$dir/check-build.sh" "$r"
+  expect pass "tests on this machine's architecture" "$dir/check-test-arch.sh" "$(go env GOARCH)" "$r"
+  expect fail "unknown architecture" "$dir/check-test-arch.sh" mips "$r"
+  # Without cgo the go command drops a file that imports "C"; code that needs it no longer builds.
+  printf 'package p\n\n// #include <stdlib.h>\nimport "C"\n\n// One comes from C.\nfunc One() int { return int(C.int(1)) }\n' >"$r/p/cgo.go"
+  printf 'package p\n\n// Two needs the cgo file.\nfunc Two() int { return One() + 1 }\n' >"$r/p/two.go"
+  git -C "$r" add -A
+  expect fail "package that needs cgo" "$dir/check-build.sh" "$r"
+  git -C "$r" rm -q -f p/cgo.go p/two.go
+  printf 'package p\n\nimport "syscall"\n\n// Winch only compiles on Unix.\nfunc Winch() syscall.Signal { return syscall.SIGWINCH }\n' >"$r/p/unix.go"
+  git -C "$r" add -A
+  expect fail "Unix-only code without a Windows stub" "$dir/check-build.sh" "$r"
 fi
 
 # --- Docker-based checks -------------------------------------------------------------------
