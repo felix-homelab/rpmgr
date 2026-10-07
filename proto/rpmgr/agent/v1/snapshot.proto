@@ -1,0 +1,87 @@
+// SPDX-License-Identifier: Apache-2.0
+
+syntax = "proto3";
+
+package rpmgr.agent.v1;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/felix-homelab/rpmgr/gen/rpmgr/agent/v1;agentv1";
+
+// Revision identifies a configuration state: seq orders revisions within one database epoch, and a
+// restore starts a new epoch (docs/03-connections.md, "Revisions and ordering").
+message Revision {
+  // The database epoch, a UUIDv7.
+  string db_epoch = 1;
+  // The revision within the epoch.
+  uint64 seq = 2;
+}
+
+// Signed carries a signed message as the exact bytes that were signed, so agents verify and
+// persist those bytes and nothing is re-encoded (R14). The signer is the controller's
+// config-signing key, whose certificate chains to the pinned root (docs/04-security.md, "CA
+// hierarchy").
+message Signed {
+  // The serialized message: a Snapshot or a DenyList.
+  bytes payload = 1;
+  // ECDSA P-256 with SHA-256 over payload, ASN.1 encoded.
+  bytes signature = 2;
+  // The signer: the lower-case hexadecimal SHA-256 of its certificate's SubjectPublicKeyInfo.
+  string key_id = 3;
+}
+
+// Snapshot is everything one agent runs at one revision (docs/03-connections.md, "Configuration
+// reconciliation"). Its hash is the SHA-256 of the signed payload.
+message Snapshot {
+  // The revision it was compiled from.
+  Revision revision = 1;
+  // The SPIFFE ID of the agent it was compiled for; an agent refuses a snapshot for another.
+  string agent = 2;
+  // The controller endpoints, in the order the agent tries them.
+  repeated string controller_endpoints = 3;
+  // The resources, each with its content hash, so unchanged resources stay untouched.
+  repeated Resource resources = 4;
+}
+
+// Resource is one item of a snapshot. The kinds are added by the slices that implement them.
+message Resource {
+  // The resource's ID, with its type prefix (docs/06-data-model.md, "Identifiers").
+  string id = 1;
+  // SHA-256 of the resource's content.
+  bytes hash = 2;
+  // The content.
+  oneof kind {
+    // A large item the agent fetches by hash with Control.FetchResource.
+    ResourceReference reference = 15;
+  }
+}
+
+// ResourceReference points to content fetched with Control.FetchResource.
+message ResourceReference {
+  // Its size in bytes.
+  uint64 size = 1;
+}
+
+// DenyList is the set of revoked certificates and identities (docs/04-security.md, "Revocation").
+// Agents merge it by union and drop an entry only after its not_after.
+message DenyList {
+  // The epoch and number of this version.
+  Revision version = 1;
+  // Whether entries is the full set; otherwise it is a delta, sent only above 1 MiB.
+  bool full = 2;
+  // The entries.
+  repeated DenyEntry entries = 3;
+}
+
+// DenyEntry is one revoked certificate or identity.
+message DenyEntry {
+  // What is revoked.
+  oneof subject {
+    // A serial number, lower-case hexadecimal.
+    string serial = 1;
+    // A SPIFFE ID.
+    string identity = 2;
+  }
+  // When the covered certificates expire; the entry is dropped after it.
+  google.protobuf.Timestamp not_after = 3;
+}

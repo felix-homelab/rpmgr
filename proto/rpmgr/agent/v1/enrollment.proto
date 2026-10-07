@@ -1,0 +1,73 @@
+// SPDX-License-Identifier: Apache-2.0
+
+syntax = "proto3";
+
+package rpmgr.agent.v1;
+
+import "rpmgr/v1/options.proto";
+
+option go_package = "github.com/felix-homelab/rpmgr/gen/rpmgr/agent/v1;agentv1";
+
+// Enrollment is reached at SNI controller.<td> without a client certificate: its only method
+// (docs/03-connections.md, "Enrollment").
+service Enrollment {
+  // Enroll consumes a single-use token and issues the agent's first certificate.
+  rpc Enroll(EnrollRequest) returns (EnrollResponse);
+}
+
+// Reauth is reached at SNI reauth.controller.<td> with a certificate that expired at most the
+// grace period ago (docs/04-security.md, "Leaf certificates").
+service Reauth {
+  // Reauth issues a new certificate for a CSR with a new key, bound to this connection.
+  rpc Reauth(ReauthRequest) returns (ReauthResponse);
+}
+
+// EnrollRequest enrolls an agent.
+message EnrollRequest {
+  // The enrollment token, rpmgr_enr_….
+  string token = 1 [(rpmgr.v1.sensitive) = true];
+  // A DER CSR for the agent's key, bound to this connection; its subject and SANs are ignored.
+  bytes csr = 2;
+  // Facts about the host, shown in the UI.
+  HostFacts host = 3;
+  // The agent's version.
+  string version = 4;
+}
+
+// HostFacts describe the host of an agent.
+message HostFacts {
+  // The host name.
+  string hostname = 1;
+  // GOOS, for example "linux".
+  string os = 2;
+  // GOARCH, for example "arm64".
+  string arch = 3;
+}
+
+// EnrollResponse carries the agent's identity and certificate.
+message EnrollResponse {
+  // The agent's ID, con_… or gw_….
+  string agent_id = 1;
+  // The leaf and its intermediates, DER, leaf first.
+  repeated bytes chain = 2;
+  // The trust bundle: the pinned root, and further roots only if cross-signed by a trusted root.
+  repeated bytes trust_bundle = 3;
+  // DER certificates of the config-signing keys and their intermediates.
+  repeated bytes signing_certificates = 4;
+  // The controller endpoints, in the order the agent tries them.
+  repeated string controller_endpoints = 5;
+  // Whether the agent is ephemeral: removed 30 minutes after its last disconnect.
+  bool ephemeral = 6;
+}
+
+// ReauthRequest asks for a new certificate after expiry.
+message ReauthRequest {
+  // A DER CSR for a new key, bound to this connection.
+  bytes csr = 1;
+}
+
+// ReauthResponse carries the new certificate.
+message ReauthResponse {
+  // The leaf and its intermediates, DER, leaf first.
+  repeated bytes chain = 1;
+}
