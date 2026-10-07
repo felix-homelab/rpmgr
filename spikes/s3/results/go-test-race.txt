@@ -1,0 +1,117 @@
+?   	github.com/felix-homelab/rpmgr/spikes/s3/cmd/s3gw	[no test files]
+?   	github.com/felix-homelab/rpmgr/spikes/s3/cmd/s3probe	[no test files]
+?   	github.com/felix-homelab/rpmgr/spikes/s3/cmd/s3summary	[no test files]
+=== RUN   TestPeek_GoClientDefaultsSendHybridPQKeyShare
+    peek_test.go:39: Go 1.27 ClientHello: 1533 bytes, 1 record(s), 1 read(s), key shares 1248 bytes
+--- PASS: TestPeek_GoClientDefaultsSendHybridPQKeyShare (0.02s)
+=== RUN   TestPeek_ReplayCompletesHandshake
+--- PASS: TestPeek_ReplayCompletesHandshake (0.02s)
+=== RUN   TestPeek_SpansRecordsAndSegments
+=== RUN   TestPeek_SpansRecordsAndSegments/one_record,_one_write
+    peek_test.go:96: one record, one write: 1 records, 1 reads
+=== RUN   TestPeek_SpansRecordsAndSegments/three_records
+    peek_test.go:96: three records: 3 records, 1 reads
+=== RUN   TestPeek_SpansRecordsAndSegments/MSS-sized_segments
+    peek_test.go:96: MSS-sized segments: 1 records, 3 reads
+=== RUN   TestPeek_SpansRecordsAndSegments/one-byte_segments
+    peek_test.go:96: one-byte segments: 3 records, 3015 reads
+--- PASS: TestPeek_SpansRecordsAndSegments (3.74s)
+    --- PASS: TestPeek_SpansRecordsAndSegments/one_record,_one_write (0.00s)
+    --- PASS: TestPeek_SpansRecordsAndSegments/three_records (0.00s)
+    --- PASS: TestPeek_SpansRecordsAndSegments/MSS-sized_segments (0.00s)
+    --- PASS: TestPeek_SpansRecordsAndSegments/one-byte_segments (3.73s)
+=== RUN   TestPeek_SizeLimitBoundary
+--- PASS: TestPeek_SizeLimitBoundary (0.00s)
+=== RUN   TestPeek_TooLargeDetectedFromLengthField
+--- PASS: TestPeek_TooLargeDetectedFromLengthField (0.00s)
+=== RUN   TestPeek_SlowlorisTimesOut
+--- PASS: TestPeek_SlowlorisTimesOut (0.30s)
+=== RUN   TestPeek_SlowlorisRealFiveSecondLimit
+=== PAUSE TestPeek_SlowlorisRealFiveSecondLimit
+=== RUN   TestPeek_RejectsNonTLSAndMalformed
+=== RUN   TestPeek_RejectsNonTLSAndMalformed/HTTP_request
+=== RUN   TestPeek_RejectsNonTLSAndMalformed/HTTP/2_preface
+=== RUN   TestPeek_RejectsNonTLSAndMalformed/SSLv2-style_hello
+=== RUN   TestPeek_RejectsNonTLSAndMalformed/alert_record
+=== RUN   TestPeek_RejectsNonTLSAndMalformed/record_length_zero
+=== RUN   TestPeek_RejectsNonTLSAndMalformed/record_length_above_2^14
+=== RUN   TestPeek_RejectsNonTLSAndMalformed/ServerHello_instead_of_ClientHello
+=== RUN   TestPeek_RejectsNonTLSAndMalformed/truncated,_then_EOF
+=== RUN   TestPeek_RejectsNonTLSAndMalformed/extensions_length_beyond_the_message
+=== RUN   TestPeek_RejectsNonTLSAndMalformed/trailing_handshake_data
+--- PASS: TestPeek_RejectsNonTLSAndMalformed (0.01s)
+    --- PASS: TestPeek_RejectsNonTLSAndMalformed/HTTP_request (0.00s)
+    --- PASS: TestPeek_RejectsNonTLSAndMalformed/HTTP/2_preface (0.00s)
+    --- PASS: TestPeek_RejectsNonTLSAndMalformed/SSLv2-style_hello (0.00s)
+    --- PASS: TestPeek_RejectsNonTLSAndMalformed/alert_record (0.00s)
+    --- PASS: TestPeek_RejectsNonTLSAndMalformed/record_length_zero (0.00s)
+    --- PASS: TestPeek_RejectsNonTLSAndMalformed/record_length_above_2^14 (0.00s)
+    --- PASS: TestPeek_RejectsNonTLSAndMalformed/ServerHello_instead_of_ClientHello (0.00s)
+    --- PASS: TestPeek_RejectsNonTLSAndMalformed/truncated,_then_EOF (0.00s)
+    --- PASS: TestPeek_RejectsNonTLSAndMalformed/extensions_length_beyond_the_message (0.00s)
+    --- PASS: TestPeek_RejectsNonTLSAndMalformed/trailing_handshake_data (0.00s)
+=== RUN   TestPeekWithTLS_AgreesAndWritesNothing
+--- PASS: TestPeekWithTLS_AgreesAndWritesNothing (0.22s)
+=== RUN   TestRouter_Controller
+2026/10/06 15:10:33 http: TLS handshake error from 127.0.0.1:38224: tls: client didn't provide a certificate
+2026/10/06 15:10:33 http: TLS handshake error from 127.0.0.1:38236: tls: client offered only unsupported versions: [303]
+2026/10/06 15:10:33 http: TLS handshake error from 127.0.0.1:38252: remote error: tls: bad certificate
+--- PASS: TestRouter_Controller (0.08s)
+=== RUN   TestRouter_TunnelH2
+=== RUN   TestRouter_TunnelH2/tunnel_name_without_the_tunnel_ALPN
+=== RUN   TestRouter_TunnelH2/tunnel_name_without_any_ALPN
+=== RUN   TestRouter_TunnelH2/another_gateway's_name
+=== RUN   TestRouter_TunnelH2/no_client_certificate
+=== RUN   TestRouter_TunnelH2/a_gateway_certificate_instead_of_a_connector's
+--- PASS: TestRouter_TunnelH2 (0.12s)
+    --- PASS: TestRouter_TunnelH2/tunnel_name_without_the_tunnel_ALPN (0.01s)
+    --- PASS: TestRouter_TunnelH2/tunnel_name_without_any_ALPN (0.01s)
+    --- PASS: TestRouter_TunnelH2/another_gateway's_name (0.01s)
+    --- PASS: TestRouter_TunnelH2/no_client_certificate (0.01s)
+    --- PASS: TestRouter_TunnelH2/a_gateway_certificate_instead_of_a_connector's (0.01s)
+=== RUN   TestRouter_PassthroughNeverTerminates
+--- PASS: TestRouter_PassthroughNeverTerminates (0.04s)
+=== RUN   TestRouter_HTTPPerSNICertificates
+--- PASS: TestRouter_HTTPPerSNICertificates (0.06s)
+=== RUN   TestRouter_UnknownAndMissingSNI
+--- PASS: TestRouter_UnknownAndMissingSNI (0.04s)
+=== RUN   TestRouter_NotTLSSlowAndOversize
+2026/10/06 15:10:34 http: TLS handshake error from 127.0.0.1:57538: read tcp 127.0.0.1:40247->127.0.0.1:57538: read: connection reset by peer
+--- PASS: TestRouter_NotTLSSlowAndOversize (0.43s)
+=== RUN   TestRouter_SegmentedDelivery
+    router_test.go:372: ClientHello of 1547 bytes peeked in 1552 reads
+--- PASS: TestRouter_SegmentedDelivery (1.07s)
+=== RUN   TestRouter_ConcurrentMixedTraffic
+--- PASS: TestRouter_ConcurrentMixedTraffic (1.05s)
+=== RUN   TestUDP_OneListenerServesH3AndTunnelConcurrently
+    udp_test.go:164: budgets after mixed load: map[h3:{Limit:536870912 Used:4718592 Granted:4 Denied:0} pending:{Limit:0 Used:0 Granted:0 Denied:0} rpmgr-tunnel/1:{Limit:1073741824 Used:786432 Granted:2 Denied:0}]
+--- PASS: TestUDP_OneListenerServesH3AndTunnelConcurrently (5.97s)
+=== RUN   TestUDP_H3BudgetCannotTakeTunnelShare
+    udp_test.go:216: budgets: map[h3:{Limit:262144 Used:0 Granted:0 Denied:150} pending:{Limit:0 Used:0 Granted:0 Denied:0} rpmgr-tunnel/1:{Limit:1073741824 Used:2359296 Granted:2 Denied:0}]
+--- PASS: TestUDP_H3BudgetCannotTakeTunnelShare (5.94s)
+=== RUN   TestUDP_Refusals
+=== RUN   TestUDP_Refusals/unknown_ALPN_only
+=== RUN   TestUDP_Refusals/tunnel_ALPN_on_a_route_hostname
+=== RUN   TestUDP_Refusals/tunnel_without_client_certificate
+=== RUN   TestUDP_Refusals/tunnel_with_a_gateway_certificate
+--- PASS: TestUDP_Refusals (0.07s)
+    --- PASS: TestUDP_Refusals/unknown_ALPN_only (0.01s)
+    --- PASS: TestUDP_Refusals/tunnel_ALPN_on_a_route_hostname (0.01s)
+    --- PASS: TestUDP_Refusals/tunnel_without_client_certificate (0.02s)
+    --- PASS: TestUDP_Refusals/tunnel_with_a_gateway_certificate (0.02s)
+=== RUN   TestUDP_OneListenerPerTransport
+--- PASS: TestUDP_OneListenerPerTransport (0.01s)
+=== RUN   TestUDP_FactsAboutQuicGo
+--- PASS: TestUDP_FactsAboutQuicGo (0.00s)
+=== CONT  TestPeek_SlowlorisRealFiveSecondLimit
+--- PASS: TestPeek_SlowlorisRealFiveSecondLimit (5.00s)
+=== RUN   FuzzParseClientHello
+=== RUN   FuzzParseClientHello/seed#0
+=== RUN   FuzzParseClientHello/seed#1
+=== RUN   FuzzParseClientHello/seed#2
+--- PASS: FuzzParseClientHello (0.00s)
+    --- PASS: FuzzParseClientHello/seed#0 (0.00s)
+    --- PASS: FuzzParseClientHello/seed#1 (0.00s)
+    --- PASS: FuzzParseClientHello/seed#2 (0.00s)
+PASS
+ok  	github.com/felix-homelab/rpmgr/spikes/s3/mux	25.298s

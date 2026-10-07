@@ -1,0 +1,24 @@
+firefox 155.0
+== https://app.example.test:18443/
+http-route host=app.example.test:18443 proto=HTTP/2.0 [200]
+== https://api.example.test:18443/
+http-route host=api.example.test:18443 proto=HTTP/2.0 [200]
+== https://pass.example.test:18443/
+passthrough-backend sni=pass.example.test proto=HTTP/2.0 [200]
+== https://panel.example.test:18443/
+controller endpoint=ui peer= proto=HTTP/2.0 [200]
+== https://unknown.example.test:18443/
+(no page: page.goto: NS_ERROR_NET_RESET)
+== https://app.example.test:18444/
+http-route host=app.example.test:18444 proto=HTTP/2.0 [200]
+== https://api.example.test:18444/
+http-route host=api.example.test:18444 proto=HTTP/2.0 [200]
+== https://pass.example.test:18444/
+passthrough-backend sni=pass.example.test proto=HTTP/2.0 [200]
+== https://panel.example.test:18444/
+controller endpoint=ui peer= proto=HTTP/2.0 [200]
+== https://unknown.example.test:18444/
+(no page: page.goto: NS_ERROR_NET_RESET)
+firefox 155.0 (h3 via testing Alt-Svc mapping)
+== https://app.example.test:18443/
+http-route host=app.example.test:18443 proto=HTTP/2.0 [200]

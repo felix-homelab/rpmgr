@@ -1,0 +1,46 @@
+Google Chrome for Testing 153.0.8010.12 
+Google Chrome for Testing 153.0.8010.12
+== chrome https://app.example.test:18443/ --ignore-certificate-errors
+(no page printed; exit 124)
+== chrome https://api.example.test:18443/ --ignore-certificate-errors
+(no page printed; exit 124)
+== chrome https://pass.example.test:18443/ --ignore-certificate-errors
+(no page printed; exit 124)
+== chrome https://panel.example.test:18443/ --ignore-certificate-errors
+(no page printed; exit 124)
+== chrome https://unknown.example.test:18443/ --ignore-certificate-errors
+(no page printed; exit 124)
+== chrome https://app.example.test:18444/ --ignore-certificate-errors
+(no page printed; exit 124)
+== chrome https://api.example.test:18444/ --ignore-certificate-errors
+(no page printed; exit 124)
+== chrome https://pass.example.test:18444/ --ignore-certificate-errors
+(no page printed; exit 124)
+== chrome https://panel.example.test:18444/ --ignore-certificate-errors
+(no page printed; exit 124)
+== chrome https://unknown.example.test:18444/ --ignore-certificate-errors
+(no page printed; exit 124)
+== chrome https://app.example.test:18443/ --enable-quic --origin-to-force-quic-on=app.example.test:18443 --ignore-certificate-errors-spki-list=VIc1C5lMVI2ZKDmlwxZD00lhN31Aqgbrd/a2SkRenQQ=,4eDhxTkpPQLPUxDGYEruVMI7NRxkf0CdBUcQNNtxB2Y=
+(no page printed; exit 124)
+== chrome-headless-shell https://app.example.test:18443/ --ignore-certificate-errors
+http-route host=app.example.test:18443 proto=HTTP/2.0
+== chrome-headless-shell https://api.example.test:18443/ --ignore-certificate-errors
+http-route host=api.example.test:18443 proto=HTTP/2.0
+== chrome-headless-shell https://pass.example.test:18443/ --ignore-certificate-errors
+passthrough-backend sni=pass.example.test proto=HTTP/2.0
+== chrome-headless-shell https://panel.example.test:18443/ --ignore-certificate-errors
+controller endpoint=ui peer= proto=HTTP/2.0
+== chrome-headless-shell https://unknown.example.test:18443/ --ignore-certificate-errors
+(no page printed; exit 0)
+== chrome-headless-shell https://app.example.test:18444/ --ignore-certificate-errors
+http-route host=app.example.test:18444 proto=HTTP/2.0
+== chrome-headless-shell https://api.example.test:18444/ --ignore-certificate-errors
+http-route host=api.example.test:18444 proto=HTTP/2.0
+== chrome-headless-shell https://pass.example.test:18444/ --ignore-certificate-errors
+passthrough-backend sni=pass.example.test proto=HTTP/2.0
+== chrome-headless-shell https://panel.example.test:18444/ --ignore-certificate-errors
+controller endpoint=ui peer= proto=HTTP/2.0
+== chrome-headless-shell https://unknown.example.test:18444/ --ignore-certificate-errors
+(no page printed; exit 0)
+== chrome-headless-shell https://app.example.test:18443/ --enable-quic --origin-to-force-quic-on=app.example.test:18443 --ignore-certificate-errors-spki-list=VIc1C5lMVI2ZKDmlwxZD00lhN31Aqgbrd/a2SkRenQQ=,4eDhxTkpPQLPUxDGYEruVMI7NRxkf0CdBUcQNNtxB2Y=
+h3 host=app.example.test:18443 proto=HTTP/3.0

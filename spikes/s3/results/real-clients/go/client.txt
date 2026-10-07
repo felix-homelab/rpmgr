@@ -1,0 +1,18 @@
+client: Go go1.27.1 crypto/tls, quic-go v0.63.0
+tcp-direct app.example.test                                        ERROR Get "https://app.example.test/": dial tcp 127.0.0.1:18443: connect: connection refused Get "https://app.example.test/": dial tcp 127.0.0.1:18443: connect: connection refused
+tcp-direct api.example.test                                        ok                     http-route host=api.example.test proto=HTTP/2.0
+tcp-direct pass.example.test                                       ok                     passthrough-backend sni=pass.example.test proto=HTTP/2.0
+tcp-direct panel.example.test                                      ok                     controller endpoint=ui peer= proto=HTTP/2.0
+tcp-direct controller.rpmgr-s3test01                               ok                     controller endpoint=agent peer=spiffe://rpmgr-s3test01/org/org_01JA2Z8Q6W7Y3V9K4M5N6P7Q8R/connector/con_01JA2Z8Q6W7Y3V9K4M5N6P7Q8T proto=HTTP/2.0
+tcp-direct unknown.example.test                                    refused-as-expected    Get "https://unknown.example.test/": tls: failed to verify certificate: x509: certificate is valid for default.invalid, not unknown.example.test
+tcp-direct gw_01JA2Z8Q6W7Y3V9K4M5N6P7Q8S.gateway.rpmgr-s3test01 [rpmgr-tunnel-h2/1] ok                     tunnel-h2 peer=spiffe://rpmgr-s3test01/org/org_01JA2Z8Q6W7Y3V9K4M5N6P7Q8R/connector/con_01JA2Z8Q6W7Y3V9K4M5N6P7Q8T alpn=rpmgr-tunnel-h2/1 got=hello
+tcp-relay  app.example.test                                        ok                     http-route host=app.example.test proto=HTTP/2.0
+tcp-relay  api.example.test                                        ok                     http-route host=api.example.test proto=HTTP/2.0
+tcp-relay  pass.example.test                                       ok                     passthrough-backend sni=pass.example.test proto=HTTP/2.0
+tcp-relay  panel.example.test                                      ok                     controller endpoint=ui peer= proto=HTTP/2.0
+tcp-relay  controller.rpmgr-s3test01                               ok                     controller endpoint=agent peer=spiffe://rpmgr-s3test01/org/org_01JA2Z8Q6W7Y3V9K4M5N6P7Q8R/connector/con_01JA2Z8Q6W7Y3V9K4M5N6P7Q8T proto=HTTP/2.0
+tcp-relay  unknown.example.test                                    refused-as-expected    Get "https://unknown.example.test/": tls: failed to verify certificate: x509: certificate is valid for default.invalid, not unknown.example.test
+tcp-relay  gw_01JA2Z8Q6W7Y3V9K4M5N6P7Q8S.gateway.rpmgr-s3test01 [rpmgr-tunnel-h2/1] ok                     tunnel-h2 peer=spiffe://rpmgr-s3test01/org/org_01JA2Z8Q6W7Y3V9K4M5N6P7Q8R/connector/con_01JA2Z8Q6W7Y3V9K4M5N6P7Q8T alpn=rpmgr-tunnel-h2/1 got=hello
+udp        app.example.test [h3]                                   ok                     h3 host=app.example.test proto=HTTP/3.0
+udp        api.example.test [h3]                                   ok                     h3 host=api.example.test proto=HTTP/3.0
+udp        gw_01JA2Z8Q6W7Y3V9K4M5N6P7Q8S.gateway.rpmgr-s3test01 [rpmgr-tunnel/1] ok                     tunnel-quic peer=spiffe://rpmgr-s3test01/org/org_01JA2Z8Q6W7Y3V9K4M5N6P7Q8R/connector/con_01JA2Z8Q6W7Y3V9K4M5N6P7Q8T

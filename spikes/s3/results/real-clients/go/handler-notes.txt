@@ -1,0 +1,14 @@
+http-route served host=api.example.test proto=HTTP/2.0 ua="Go-http-client/2.0"
+passthrough-backend served sni=pass.example.test proto=HTTP/2.0 ua="Go-http-client/2.0"
+controller served endpoint=ui peer= proto=HTTP/2.0 ua="Go-http-client/2.0"
+controller served endpoint=agent peer=spiffe://rpmgr-s3test01/org/org_01JA2Z8Q6W7Y3V9K4M5N6P7Q8R/connector/con_01JA2Z8Q6W7Y3V9K4M5N6P7Q8T proto=HTTP/2.0 ua="Go-http-client/2.0"
+tunnel-h2 session alpn=rpmgr-tunnel-h2/1 peer=spiffe://rpmgr-s3test01/org/org_01JA2Z8Q6W7Y3V9K4M5N6P7Q8R/connector/con_01JA2Z8Q6W7Y3V9K4M5N6P7Q8T
+http-route served host=app.example.test proto=HTTP/2.0 ua="Go-http-client/2.0"
+http-route served host=api.example.test proto=HTTP/2.0 ua="Go-http-client/2.0"
+passthrough-backend served sni=pass.example.test proto=HTTP/2.0 ua="Go-http-client/2.0"
+controller served endpoint=ui peer= proto=HTTP/2.0 ua="Go-http-client/2.0"
+controller served endpoint=agent peer=spiffe://rpmgr-s3test01/org/org_01JA2Z8Q6W7Y3V9K4M5N6P7Q8R/connector/con_01JA2Z8Q6W7Y3V9K4M5N6P7Q8T proto=HTTP/2.0 ua="Go-http-client/2.0"
+tunnel-h2 session alpn=rpmgr-tunnel-h2/1 peer=spiffe://rpmgr-s3test01/org/org_01JA2Z8Q6W7Y3V9K4M5N6P7Q8R/connector/con_01JA2Z8Q6W7Y3V9K4M5N6P7Q8T
+h3 served host=app.example.test proto=HTTP/3.0 ua="quic-go HTTP/3"
+h3 served host=api.example.test proto=HTTP/3.0 ua="quic-go HTTP/3"
+tunnel-quic session alpn=rpmgr-tunnel/1 peer=spiffe://rpmgr-s3test01/org/org_01JA2Z8Q6W7Y3V9K4M5N6P7Q8R/connector/con_01JA2Z8Q6W7Y3V9K4M5N6P7Q8T

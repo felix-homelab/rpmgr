@@ -1,0 +1,49 @@
+curl 8.22.0 (x86_64-pc-linux-musl) libcurl/8.22.0 OpenSSL/3.5.8 zlib/1.3.2 brotli/1.2.0 zstd/1.5.7 libidn2/2.3.8 libpsl/0.21.5 libssh2/1.11.1 nghttp2/1.69.0 mit-krb5/1.22.2
+== https://app.example.test:18443/
+* SSL connection using TLSv1.3 / TLS_AES_128_GCM_SHA256 / X25519MLKEM768 / id-ecPublicKey
+* ALPN: server accepted h2
+http-route host=app.example.test:18443 proto=HTTP/2.0
+== https://api.example.test:18443/
+* SSL connection using TLSv1.3 / TLS_AES_128_GCM_SHA256 / X25519MLKEM768 / id-ecPublicKey
+* ALPN: server accepted h2
+http-route host=api.example.test:18443 proto=HTTP/2.0
+== https://pass.example.test:18443/
+* SSL connection using TLSv1.3 / TLS_AES_128_GCM_SHA256 / X25519MLKEM768 / id-ecPublicKey
+* ALPN: server accepted h2
+passthrough-backend sni=pass.example.test proto=HTTP/2.0
+== https://panel.example.test:18443/
+* SSL connection using TLSv1.3 / TLS_AES_128_GCM_SHA256 / X25519MLKEM768 / id-ecPublicKey
+* ALPN: server accepted h2
+controller endpoint=ui peer= proto=HTTP/2.0
+== https://unknown.example.test:18443/
+* SSL connection using TLSv1.3 / TLS_AES_128_GCM_SHA256 / X25519MLKEM768 / id-ecPublicKey
+* ALPN: server did not agree on a protocol. Uses default.
+curl: (60) SSL: no alternative certificate subject name matches target hostname 'unknown.example.test'
+== https://controller.rpmgr-s3test01:18443/ (client certificate)
+* SSL connection using TLSv1.3 / TLS_AES_128_GCM_SHA256 / X25519MLKEM768 / id-ecPublicKey
+* ALPN: server accepted h2
+controller endpoint=agent peer=spiffe://rpmgr-s3test01/org/org_01JA2Z8Q6W7Y3V9K4M5N6P7Q8R/connector/con_01JA2Z8Q6W7Y3V9K4M5N6P7Q8T proto=HTTP/2.0
+== https://app.example.test:18444/
+* SSL connection using TLSv1.3 / TLS_AES_128_GCM_SHA256 / X25519MLKEM768 / id-ecPublicKey
+* ALPN: server accepted h2
+http-route host=app.example.test:18444 proto=HTTP/2.0
+== https://api.example.test:18444/
+* SSL connection using TLSv1.3 / TLS_AES_128_GCM_SHA256 / X25519MLKEM768 / id-ecPublicKey
+* ALPN: server accepted h2
+http-route host=api.example.test:18444 proto=HTTP/2.0
+== https://pass.example.test:18444/
+* SSL connection using TLSv1.3 / TLS_AES_128_GCM_SHA256 / X25519MLKEM768 / id-ecPublicKey
+* ALPN: server accepted h2
+passthrough-backend sni=pass.example.test proto=HTTP/2.0
+== https://panel.example.test:18444/
+* SSL connection using TLSv1.3 / TLS_AES_128_GCM_SHA256 / X25519MLKEM768 / id-ecPublicKey
+* ALPN: server accepted h2
+controller endpoint=ui peer= proto=HTTP/2.0
+== https://unknown.example.test:18444/
+* SSL connection using TLSv1.3 / TLS_AES_128_GCM_SHA256 / X25519MLKEM768 / id-ecPublicKey
+* ALPN: server did not agree on a protocol. Uses default.
+curl: (60) SSL: no alternative certificate subject name matches target hostname 'unknown.example.test'
+== https://controller.rpmgr-s3test01:18444/ (client certificate)
+* SSL connection using TLSv1.3 / TLS_AES_128_GCM_SHA256 / X25519MLKEM768 / id-ecPublicKey
+* ALPN: server accepted h2
+controller endpoint=agent peer=spiffe://rpmgr-s3test01/org/org_01JA2Z8Q6W7Y3V9K4M5N6P7Q8R/connector/con_01JA2Z8Q6W7Y3V9K4M5N6P7Q8T proto=HTTP/2.0
