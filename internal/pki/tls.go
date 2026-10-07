@@ -102,9 +102,11 @@ type Reauth struct {
 	Check func(leaf *x509.Certificate) error
 }
 
-// AgentEndpointConfig returns the controller's configuration for the agent names on one listener:
-// mutual TLS as ServerConfig for controller.<td>, and for SNI reauth.controller.<td> a verifier
-// that also accepts a client certificate that expired at most the grace period ago. The Reauth
+// AgentEndpointConfig returns the controller's configuration for the agent names on one listener.
+// For controller.<td> a client certificate is optional, because Enroll comes from agents that have
+// none yet; a certificate that is presented is verified as by ServerConfig, and the controller's
+// interceptor allows a connection without one nothing but Enroll. For SNI reauth.controller.<td> a
+// verifier also accepts a client certificate that expired at most the grace period ago. The Reauth
 // configuration neither issues nor accepts session tickets: it shares the parent's ticket keys,
 // so a ticket from controller.<td> would otherwise resume there and skip the verifier.
 func AgentEndpointConfig(own tls.Certificate, roots *x509.CertPool, e Expect, now func() time.Time, r Reauth) *tls.Config {
@@ -112,6 +114,13 @@ func AgentEndpointConfig(own tls.Certificate, roots *x509.CertPool, e Expect, no
 		now = time.Now
 	}
 	base := ServerConfig(own, roots, e, now)
+	base.ClientAuth = tls.VerifyClientCertIfGiven
+	base.VerifyConnection = func(cs tls.ConnectionState) error {
+		if len(cs.PeerCertificates) == 0 {
+			return nil // only Enroll; see above
+		}
+		return e.VerifyConnection(cs)
+	}
 	reauth := base.Clone()
 	// crypto/tls would refuse the expired certificate, so the chain is verified in
 	// VerifyConnection; crypto/tls still checks CertificateVerify, the proof of possession.

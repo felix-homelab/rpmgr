@@ -633,6 +633,9 @@ func TestConfigs(t *testing.T) {
 	if srv.ClientAuth != tls.RequireAndVerifyClientCert || !srv.ClientCAs.Equal(c.pool()) {
 		t.Errorf("server: client auth %v", srv.ClientAuth)
 	}
+	if ep.ClientAuth != tls.VerifyClientCertIfGiven || !ep.ClientCAs.Equal(c.pool()) {
+		t.Errorf("agent endpoint: client auth %v", ep.ClientAuth)
+	}
 	for sni, wantReauth := range map[string]bool{"reauth.controller." + td: true, "Reauth.Controller." + td: true, "controller." + td: false, "": false} {
 		got, err := ep.GetConfigForClient(&tls.ClientHelloInfo{ServerName: sni})
 		if err != nil || (got != nil) != wantReauth {
@@ -643,5 +646,40 @@ func TestConfigs(t *testing.T) {
 			got.MinVersion != tls.VersionTLS13 || got.GetConfigForClient != nil) {
 			t.Errorf("reauth configuration: tickets disabled %v, client auth %v", got.SessionTicketsDisabled, got.ClientAuth)
 		}
+	}
+}
+
+// TestAgentEndpoint_CertificateOptional: at controller.<td> an agent without a certificate (one
+// that enrolls) completes the handshake, a presented certificate is still verified, and the Reauth
+// name requires one.
+func TestAgentEndpoint_CertificateOptional(t *testing.T) {
+	c := newCA(t, td)
+	ctl := c.agent(t, node(ctn1), pki.ControllerLifetime)
+	e := pki.Expect{TrustDomain: td, Kinds: []pki.Kind{pki.KindConnector, pki.KindGateway}}
+	srv := pki.AgentEndpointConfig(ctl.tls, c.pool(), e, c.clock, pki.Reauth{
+		Grace: func() time.Duration { return 30 * 24 * time.Hour }, Check: func(*x509.Certificate) error { return nil }})
+	want := pki.Expect{TrustDomain: td, Kinds: []pki.Kind{pki.KindController}}
+	client := func(sni string, own *agent) *tls.Config {
+		cfg := pki.ClientConfig(tls.Certificate{}, c.pool(), sni, want, c.clock, nil)
+		cfg.Certificates = nil
+		if own != nil {
+			cfg.Certificates = []tls.Certificate{own.tls}
+		}
+		return cfg
+	}
+	r := run(t, srv.Clone(), client("controller."+td, nil))
+	if !r.ok() || len(r.srv.PeerCertificates) != 0 {
+		t.Fatalf("without a certificate: server %v, client %v", r.srvErr, r.cliErr)
+	}
+	con := c.agent(t, connector(orgA, con1), pki.DefaultLeafLifetime)
+	if r := run(t, srv.Clone(), client("controller."+td, &con)); !r.ok() || len(r.srv.PeerCertificates) == 0 {
+		t.Fatalf("with a certificate: server %v, client %v", r.srvErr, r.cliErr)
+	}
+	foreign := newCA(t, td).agent(t, connector(orgA, con1), pki.DefaultLeafLifetime)
+	if r := run(t, srv.Clone(), client("controller."+td, &foreign)); r.srvErr == nil {
+		t.Error("a certificate of another CA was accepted")
+	}
+	if r := run(t, srv.Clone(), client("reauth.controller."+td, nil)); r.srvErr == nil {
+		t.Error("Reauth without a certificate was accepted")
 	}
 }
