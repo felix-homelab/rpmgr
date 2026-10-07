@@ -43,7 +43,8 @@ with exit code 2 until its implementation lands.
 | `rpmgr leave` | Revoke this agent's identity and remove it from the host | agent host | not yet |
 | `rpmgr status` | Show the state of the agent on this host | agent host | not yet |
 | `rpmgr diag transport`, `diag clock` | Test the data-session transports to a gateway; compare clocks | agent host | not yet |
-| `rpmgr policy show`, `allow-target`, `remove-target` | Show or change the connector-local policy ([04](04-security.md#connector-local-policy)) | connector host, as root | not yet |
+| `rpmgr policy show [--file <file>]` | Print the effective connector-local policy: the allowed targets and the update keys, or that the file is missing (the defaults apply) or invalid (nothing is allowed) ([04](04-security.md#connector-local-policy)) | connector host | available |
+| `rpmgr policy allow-target [--file <file>] [--no-reload] <ip>:<port> \| <socket path>`, `… remove-target …` | Allow, or stop allowing, one target in the policy file (default `/etc/rpmgr/policy.yaml`), keeping its comments and other keys; a missing file is created with the update keys written explicitly. Then `systemctl reload rpmgr-connector.service`, unless `--no-reload`; the connector also notices the change within 2 s. A port that only a port range allows is not split | connector host, as root | available |
 | `rpmgr backup`, `restore`, `restore confirm` | Back up or restore the controller; end the restore review ([10](10-operations.md#backup-and-restore)) | controller host | not yet |
 | `rpmgr migrate` | Apply database migrations | controller host | not yet |
 | `rpmgr ca status`, `ca rotate-intermediate` | Administer the internal CA ([04](04-security.md#ca-rotation)) | controller host | not yet |

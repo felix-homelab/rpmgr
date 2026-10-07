@@ -294,3 +294,30 @@ func (p *Policy) Check(hostport string) error {
 	}
 	return nil
 }
+
+// Describe returns the policy in the form `rpmgr policy show` prints.
+func (p *Policy) Describe() string {
+	var b strings.Builder
+	if len(p.targets) == 0 {
+		b.WriteString("allowed targets: none\n")
+	} else {
+		b.WriteString("allowed targets:\n")
+	}
+	for _, t := range p.targets {
+		if t.unix != "" {
+			fmt.Fprintf(&b, "  unix %s\n", t.unix)
+			continue
+		}
+		ports := make([]string, 0, len(t.ports))
+		for _, r := range t.ports {
+			if r.lo == r.hi {
+				ports = append(ports, strconv.Itoa(int(r.lo)))
+			} else {
+				ports = append(ports, fmt.Sprintf("%d-%d", r.lo, r.hi))
+			}
+		}
+		fmt.Fprintf(&b, "  %s ports %s\n", t.prefix, strings.Join(ports, ", "))
+	}
+	fmt.Fprintf(&b, "auto_update: %s\nupdate_channel: %s\n", p.AutoUpdate, p.UpdateChannel)
+	return b.String()
+}
