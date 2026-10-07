@@ -324,6 +324,8 @@ EOF
   # the code generators are the tool dependencies pinned there.
   r=$(new_repo)
   cp "$dir/../../go.mod" "$dir/../../go.sum" "$dir/../../buf.yaml" "$dir/../../buf.gen.yaml" "$r/"
+  # The type exclusions name rpmgr's packages, which the fixture lacks, and buf refuses those.
+  sed -i '/exclude_types:/d' "$r/buf.gen.yaml"
   mkdir -p "$r/proto/fixture/v1"
   cat >"$r/proto/fixture/v1/fixture.proto" <<'EOF'
 syntax = "proto3";

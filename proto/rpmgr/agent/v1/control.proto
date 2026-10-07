@@ -1,0 +1,306 @@
+// SPDX-License-Identifier: Apache-2.0
+
+syntax = "proto3";
+
+// Package rpmgr.agent.v1 is the protocol between the controller and its gateways and connectors
+// (docs/03-connections.md, "Control session"). grpc-go serves it at both ends over mutual TLS; the
+// peer's identity always comes from its certificate, never from a message.
+package rpmgr.agent.v1;
+
+import "google/protobuf/duration.proto";
+import "google/protobuf/timestamp.proto";
+import "rpmgr/agent/v1/snapshot.proto";
+
+option go_package = "github.com/felix-homelab/rpmgr/gen/rpmgr/agent/v1;agentv1";
+
+// Control is the service of agents with a valid certificate, at SNI controller.<td>.
+service Control {
+  // The control session, one per agent: the agent sends AgentMessage, the controller sends
+  // ControllerMessage.
+  rpc Session(stream AgentMessage) returns (stream ControllerMessage);
+  // Renew issues a new certificate for a CSR with a new key, bound to this connection.
+  rpc Renew(RenewRequest) returns (RenewResponse);
+  // FetchResource returns a large snapshot item by its hash; only items of the caller's snapshot.
+  rpc FetchResource(FetchResourceRequest) returns (FetchResourceResponse);
+  // Leave revokes the caller's own identity (R37); `rpmgr leave` then wipes it from the host.
+  rpc Leave(LeaveRequest) returns (LeaveResponse);
+}
+
+// AgentMessage is what an agent sends on its control session.
+message AgentMessage {
+  // The message.
+  oneof msg {
+    // The first message of every session.
+    Hello hello = 1;
+    // A snapshot was applied.
+    Applied applied = 2;
+    // A snapshot was rejected as a whole; the last-known-good keeps running.
+    Rejected rejected = 3;
+    // Readiness changes at once, counters every 60 s.
+    Status status = 4;
+    // The answer to an operation that needs no stream, such as an ACME challenge.
+    OpResult op_result = 5;
+  }
+}
+
+// ControllerMessage is what the controller sends on a control session.
+message ControllerMessage {
+  // Open (imperative operations) comes with live logs in Phase 2.
+  reserved 3;
+  reserved "open";
+
+  // The message.
+  oneof msg {
+    // The answer to Hello.
+    Welcome welcome = 1;
+    // A signed Snapshot.
+    Signed snapshot = 2;
+    // Reconnect to another endpoint before the deadline.
+    Drain drain = 4;
+    // The session ends.
+    Goodbye goodbye = 5;
+    // A signed DenyList, applied unconditionally.
+    Signed deny_list = 6;
+    // Gateways: add or remove an ACME challenge, answered with OpResult.
+    AcmeChallenge acme_challenge = 7;
+  }
+}
+
+// Hello opens a session.
+message Hello {
+  // The revision last applied, and the hash of its snapshot; unset after enrollment.
+  Revision last_applied = 1;
+  // SHA-256 of the last applied snapshot's payload.
+  bytes last_applied_hash = 2;
+  // The capability strings of the agent (docs/03-connections.md, "Versioning and capabilities").
+  repeated string capabilities = 3;
+  // The agent's version, for example "0.1.0".
+  string version = 4;
+  // The minor version of the protocol.
+  uint32 protocol_minor = 5;
+  // A random ID that is new at every start of the agent process.
+  string boot_id = 6;
+  // The agent's clock, to warn about skew.
+  google.protobuf.Timestamp agent_time = 7;
+  // SHA-256 over the agent's deny-list; on a mismatch the controller sends it again.
+  bytes deny_list_digest = 8;
+}
+
+// Welcome answers Hello.
+message Welcome {
+  // The number of this session; a newer session of the same agent supersedes it.
+  uint64 session_epoch = 1;
+  // The current database epoch: a lower revision is accepted only with a new epoch.
+  string db_epoch = 2;
+  // The controller's clock.
+  google.protobuf.Timestamp server_time = 3;
+  // The oldest agent version the controller accepts.
+  string min_agent_version = 4;
+  // DER certificates of the config-signing keys and their intermediates, the next key included,
+  // so the agent can verify snapshots before a key rotation takes effect.
+  repeated bytes signing_certificates = 5;
+}
+
+// Applied reports a snapshot that was applied.
+message Applied {
+  // The revision.
+  Revision revision = 1;
+  // SHA-256 of the snapshot's payload.
+  bytes hash = 2;
+  // Resources that are not ready; the others are.
+  repeated ResourceStatus not_ready = 3;
+}
+
+// Rejected reports a snapshot that was rejected as a whole.
+message Rejected {
+  // The revision.
+  Revision revision = 1;
+  // SHA-256 of the snapshot's payload.
+  bytes hash = 2;
+  // Why, at least one entry.
+  repeated SnapshotError errors = 3;
+}
+
+// SnapshotError is one reason to reject a snapshot.
+message SnapshotError {
+  // The resource at fault; empty for the snapshot as a whole.
+  string resource_id = 1;
+  // A message for the operator.
+  string message = 2;
+}
+
+// ResourceStatus is the readiness of one resource.
+message ResourceStatus {
+  // The resource.
+  string resource_id = 1;
+  // Why it is not ready; unspecified when it is ready.
+  NotReadyReason reason = 2;
+  // Details for the operator, for example the target "10.0.0.5:5432" a local policy blocks.
+  string detail = 3;
+}
+
+// NotReadyReason is why a resource is not ready (docs/03-connections.md, "Configuration
+// reconciliation").
+enum NotReadyReason {
+  // Ready, or not set.
+  NOT_READY_REASON_UNSPECIFIED = 0;
+  // The connector's local policy does not allow the target.
+  NOT_READY_REASON_BLOCKED_BY_LOCAL_POLICY = 1;
+  // A listener's port is taken on the host.
+  NOT_READY_REASON_PORT_IN_USE = 2;
+  // The pinned transport is not available.
+  NOT_READY_REASON_TRANSPORT_UNAVAILABLE = 3;
+  // An environmental error that is retried with backoff (upstream, DNS).
+  NOT_READY_REASON_ENVIRONMENT = 4;
+}
+
+// Status reports readiness and counters.
+message Status {
+  // Resources whose readiness changed, or all of them in the first Status of a session.
+  repeated ResourceStatus readiness = 1;
+  // Per-route counters since the agent started.
+  repeated RouteCounters counters = 2;
+  // Gateways: the data sessions of connectors.
+  repeated DataSession data_sessions = 3;
+}
+
+// RouteCounters are cumulative counters of one route on one agent.
+message RouteCounters {
+  // The route.
+  string route_id = 1;
+  // Bytes from clients to the target.
+  uint64 bytes_in = 2;
+  // Bytes from the target to clients.
+  uint64 bytes_out = 3;
+  // Connections or UDP flows since the agent started.
+  uint64 connections_total = 4;
+  // Connections or UDP flows open now.
+  uint64 connections_active = 5;
+}
+
+// DataSession is one connector's data session to a gateway.
+message DataSession {
+  // The connector.
+  string connector_id = 1;
+  // The transport.
+  Transport transport = 2;
+  // The smoothed round-trip time.
+  google.protobuf.Duration rtt = 3;
+}
+
+// Transport is a data-session transport (docs/03-connections.md, "Transports and fallback").
+enum Transport {
+  // Not set.
+  TRANSPORT_UNSPECIFIED = 0;
+  // QUIC.
+  TRANSPORT_QUIC = 1;
+  // TLS and reverse HTTP/2 over TCP.
+  TRANSPORT_H2 = 2;
+}
+
+// OpResult answers an operation that needs no stream.
+message OpResult {
+  // The operation.
+  string op_id = 1;
+  // Empty on success.
+  string error = 2;
+}
+
+// Drain asks the agent to reconnect to another controller endpoint.
+message Drain {
+  // Reconnect before this time.
+  google.protobuf.Timestamp deadline = 1;
+}
+
+// Goodbye ends a session.
+message Goodbye {
+  // Why.
+  GoodbyeReason reason = 1;
+  // Reconnect no earlier than this (admission control).
+  google.protobuf.Duration retry_after = 2;
+}
+
+// GoodbyeReason is why a session ends.
+enum GoodbyeReason {
+  // Not set.
+  GOODBYE_REASON_UNSPECIFIED = 0;
+  // A newer session of the same agent took over.
+  GOODBYE_REASON_SUPERSEDED = 1;
+  // The agent's certificate or identity was revoked.
+  GOODBYE_REASON_REVOKED = 2;
+  // The agent is older than min_agent_version.
+  GOODBYE_REASON_UPGRADE_REQUIRED = 3;
+  // The controller shuts down.
+  GOODBYE_REASON_SHUTDOWN = 4;
+  // Too many new sessions; retry after retry_after.
+  GOODBYE_REASON_OVERLOADED = 5;
+}
+
+// AcmeChallenge adds or removes a challenge a gateway answers (docs/03-connections.md, "Service
+// sketch").
+message AcmeChallenge {
+  // The operation, acknowledged with OpResult.
+  string op_id = 1;
+  // Add or remove.
+  AcmeAction action = 2;
+  // The challenge type.
+  AcmeChallengeType type = 3;
+  // The DNS name.
+  string identifier = 4;
+  // The challenge token.
+  string token = 5;
+  // The key authorization the gateway answers with.
+  string key_authorization = 6;
+}
+
+// AcmeAction adds or removes a challenge.
+enum AcmeAction {
+  // Not set.
+  ACME_ACTION_UNSPECIFIED = 0;
+  // Start answering the challenge.
+  ACME_ACTION_ADD = 1;
+  // Stop answering it.
+  ACME_ACTION_REMOVE = 2;
+}
+
+// AcmeChallengeType is a challenge a gateway answers.
+enum AcmeChallengeType {
+  // Not set.
+  ACME_CHALLENGE_TYPE_UNSPECIFIED = 0;
+  // HTTP-01 on port 80.
+  ACME_CHALLENGE_TYPE_HTTP_01 = 1;
+  // TLS-ALPN-01 with ALPN acme-tls/1 on port 443.
+  ACME_CHALLENGE_TYPE_TLS_ALPN_01 = 2;
+}
+
+// RenewRequest asks for a new certificate.
+message RenewRequest {
+  // A DER CSR for a new key, bound to this connection (docs/04-security.md, "Flow").
+  bytes csr = 1;
+}
+
+// RenewResponse carries the new certificate.
+message RenewResponse {
+  // The leaf and its intermediates, DER, leaf first.
+  repeated bytes chain = 1;
+}
+
+// FetchResourceRequest names a large snapshot item.
+message FetchResourceRequest {
+  // The resource.
+  string id = 1;
+  // Its content hash from the snapshot.
+  bytes hash = 2;
+}
+
+// FetchResourceResponse carries the item.
+message FetchResourceResponse {
+  // The content; its SHA-256 equals the requested hash.
+  bytes content = 1;
+}
+
+// LeaveRequest revokes the caller.
+message LeaveRequest {}
+
+// LeaveResponse confirms the revocation.
+message LeaveResponse {}
