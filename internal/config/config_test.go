@@ -118,6 +118,9 @@ func TestRefused(t *testing.T) {
 		{"relative identity dir", "gateway", agent + "identity_dir: identity\n", "identity_dir"},
 		{"bad tunnel port", "gateway", agent + "listen: {tunnel_udp: \":x\"}\n", "listen.tunnel_udp"},
 		{"relative policy file", "connector", agent + "policy_file: policy.yaml\n", "policy_file"},
+		{"admin on all interfaces", "controller", ctl + "listen: {admin: \"0.0.0.0:7381\"}\n", "listen.admin"},
+		{"admin on a public address", "gateway", agent + "listen: {admin: \"203.0.113.5:7382\"}\n", "listen.admin"},
+		{"admin on a host name", "connector", agent + "listen: {admin: \"admin.example:7383\"}\n", "listen.admin"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -163,5 +166,16 @@ func TestLoadAndPath(t *testing.T) {
 	}
 	if got := config.Path("", "gateway", func(string) string { return "" }); got != "/etc/rpmgr/gateway.yaml" {
 		t.Errorf("default: %s", got)
+	}
+}
+
+// TestAdminPrivateAddress: the admin listener may be bound to a private interface, for scrapers and
+// load-balancer checks.
+func TestAdminPrivateAddress(t *testing.T) {
+	for _, addr := range []string{"10.0.0.5:7381", "[fd00::5]:7381", "localhost:7381"} {
+		var c config.Controller
+		if err := config.Parse([]byte("version: 1\npublic_url: https://panel.example.com\nlisten: {admin: \""+addr+"\"}\n"), &c); err != nil {
+			t.Errorf("%s: %v", addr, err)
+		}
 	}
 }

@@ -135,7 +135,7 @@ var portRe = regexp.MustCompile(`^[1-9][0-9]{0,4}$`)
 func (c *Controller) validate() error {
 	errs := []error{checkVersion(c.Version), checkURL("public_url", c.PublicURL),
 		checkAddr("listen.https", c.Listen.HTTPS, false), checkAddr("listen.http", *c.Listen.HTTP, true),
-		checkAddr("listen.admin", c.Listen.Admin, false), checkLog(c.Log)}
+		checkAdmin(c.Listen.Admin), checkLog(c.Log)}
 	switch c.Database.Driver {
 	case "sqlite":
 		if !filepath.IsAbs(c.Database.DSN) || strings.ContainsAny(c.Database.DSN, "?#%") {
@@ -214,7 +214,7 @@ func (g *Gateway) defaults() {
 func (g *Gateway) validate() error {
 	return errors.Join(g.Agent.validate(), checkAddr("listen.tcp", g.Listen.TCP, false),
 		checkAddr("listen.udp", g.Listen.UDP, false), checkAddr("listen.tunnel_udp", g.Listen.TunnelUDP, true),
-		checkAddr("listen.http", *g.Listen.HTTP, true), checkAddr("listen.admin", g.Listen.Admin, false))
+		checkAddr("listen.http", *g.Listen.HTTP, true), checkAdmin(g.Listen.Admin))
 }
 
 // Connector is /etc/rpmgr/connector.yaml.
@@ -234,7 +234,7 @@ func (c *Connector) defaults() {
 
 func (c *Connector) validate() error {
 	return errors.Join(c.Agent.validate(), checkAbs("policy_file", c.PolicyFile),
-		checkAddr("listen.admin", c.Listen.Admin, false))
+		checkAdmin(c.Listen.Admin))
 }
 
 func setDefault(s *string, v string) {
@@ -274,6 +274,17 @@ func checkAddr(key, addr string, mayBeEmpty bool) error {
 	_, port, err := net.SplitHostPort(addr)
 	if n, perr := strconv.Atoi(port); err != nil || perr != nil || !portRe.MatchString(port) || n < 1 || n > 65535 {
 		return fmt.Errorf("%s %q: want [host]:port", key, addr)
+	}
+	return nil
+}
+
+// checkAdmin checks the admin listener's address: [host]:port, and never public.
+func checkAdmin(addr string) error {
+	if err := checkAddr("listen.admin", addr, false); err != nil {
+		return err
+	}
+	if err := telemetry.CheckAdminAddr(addr); err != nil {
+		return fmt.Errorf("listen.admin: %w", err)
 	}
 	return nil
 }

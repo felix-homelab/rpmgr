@@ -73,6 +73,7 @@ type Client struct {
 	// the current session, for Send, Renew and Reconnect
 	sendMu sync.Mutex
 	stream agentv1.Control_SessionClient
+	live   bool // the controller welcomed the current session
 	conn   *grpc.ClientConn
 	creds  *stateCreds
 	end    context.CancelFunc
@@ -183,7 +184,7 @@ func (c *Client) session(ctx context.Context, endpoint string) (outcome, error) 
 	c.sendMu.Unlock()
 	defer func() {
 		c.sendMu.Lock()
-		c.stream, c.conn, c.creds, c.end = nil, nil, nil, nil
+		c.stream, c.conn, c.creds, c.end, c.live = nil, nil, nil, nil, false
 		c.sendMu.Unlock()
 	}()
 	for {
@@ -195,6 +196,9 @@ func (c *Client) session(ctx context.Context, endpoint string) (outcome, error) 
 		case m.GetWelcome() != nil:
 			out.welcomed = true
 			c.welcome(endpoint, m.GetWelcome())
+			c.sendMu.Lock()
+			c.live = true
+			c.sendMu.Unlock()
 			if c.o.OnWelcome != nil {
 				c.o.OnWelcome(m.GetWelcome())
 			}
@@ -226,6 +230,13 @@ func (c *Client) welcome(endpoint string, w *agentv1.Welcome) {
 	if skew > MaxSkew || -skew > MaxSkew {
 		c.o.Logger.Warn("clock skew to the controller; TLS and certificate checks may fail", "skew", skew.Round(time.Second))
 	}
+}
+
+// Connected reports whether the client has a control session that the controller welcomed.
+func (c *Client) Connected() bool {
+	c.sendMu.Lock()
+	defer c.sendMu.Unlock()
+	return c.live
 }
 
 // Send sends m on the current session; it reports false if there is none or the send failed, in

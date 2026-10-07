@@ -184,7 +184,7 @@ In Phase 1, CI only builds these targets; end-to-end tests on Windows and macOS 
 | Gateway | port pools (e.g. 20000–20999) | TCP and/or UDP | `tcp`/`udp` routes; ranges are gateway-group settings, allocated per [04](04-security.md#route-and-hostname-ownership) | Public, only the configured ranges |
 | Controller | 443 | TCP | UI, public API, enrollment, agent control sessions (SNI `controller.<td>`), `Reauth` for expired agent certificates (SNI `reauth.controller.<td>`), `/install.sh`, `/dl/` mirror | Reachable by browsers and agents (directly or via a gateway passthrough route for both agent names, [03](03-connections.md#reaching-a-private-controller)) |
 | Controller | 80 | TCP | Optional: ACME HTTP-01 and redirect, if the controller obtains its own UI certificate | Public, optional |
-| Every role | 127.0.0.1:7381 (controller, all-in-one), 127.0.0.1:7382 (gateway), 127.0.0.1:7383 (connector) | TCP | Admin listener: `/metrics`, `/healthz`, `/readyz`, pprof (off unless enabled). One port per role, so roles on the same host never collide, and none is 9090, Prometheus's own port. If the default is taken, the installer picks the next free port and writes it to the boot file. The ports are registered in Prometheus's port registry once public code exists | Localhost by default; may be bound to a private interface for scrapers and load-balancer checks, **never** public |
+| Every role | 127.0.0.1:7381 (controller, all-in-one), 127.0.0.1:7382 (gateway), 127.0.0.1:7383 (connector) | TCP | Admin listener: `/metrics`, `/healthz`, `/readyz`, pprof (off unless enabled). One port per role, so roles on the same host never collide, and none is 9090, Prometheus's own port. If the default is taken, the installer picks the next free port and writes it to the boot file. The ports are registered in Prometheus's port registry once public code exists | Localhost by default; may be bound to a private interface for scrapers and load-balancer checks, **never** public: a boot file that binds it to all interfaces, a public address or a host name is refused |
 | Connector | — | — | No inbound ports. Outbound: 443/TCP+UDP to gateways, 443/TCP to the controller | — |
 | Connector | per `allow_listen` | TCP/UDP | Visitor listeners for private services | Local or LAN, as the policy allows |
 | All-in-one | 80, 443/TCP, 443/UDP, port pools, admin | | Gateway ports; the controller is reached through the gateway's SNI router in-process | Public (except admin) |
@@ -477,9 +477,11 @@ followed gateway → connector → service. [R] Head sampling at 1 % by default,
 ### Health
 
 - `/healthz`: process is alive.
-- `/readyz`: controller — database reachable and migrations current; gateway — control session
-  established, snapshot applied and listeners bound; connector — control session established and a
-  snapshot applied (data-session state is reported separately and does not affect readiness). The
+- `/readyz`: controller — database reachable and migrations current (checked at most once a
+  minute); gateway — control session established (welcomed), snapshot applied and listeners bound;
+  connector — control session established and a snapshot applied (data-session state is reported
+  separately and does not affect readiness). A check answers within 5 s or counts as not ready;
+  a 503 names the reason. The
   root updater uses the agents' `/readyz` as its health check after an update
   ([Hardened systemd units](#hardened-systemd-units)).
 - UI status pages: per agent (version, session, transport, RTT, applied revision, apply status and
