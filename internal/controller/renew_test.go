@@ -222,9 +222,9 @@ func TestRenew_Binding(t *testing.T) {
 
 // TestReauth_ExpiredWithinGrace: a certificate expired within the grace period is re-issued
 // through reauth.controller.<td>, also when a newer certificate was issued but its Renew response
-// was lost; one expired longer, one with grace 0 and a revoked serial are refused at the TLS layer,
-// and the normal control endpoint never accepts an expired certificate. (After a restore: 11.6; a
-// revoked identity: 3.13.)
+// was lost; one expired longer, one with grace 0, a revoked serial and a revoked identity are
+// refused at the TLS layer, and the normal control endpoint never accepts an expired certificate.
+// (After a restore: 11.6.)
 func TestReauth_ExpiredWithinGrace(t *testing.T) {
 	storetest.ForEachDialect(t, func(t *testing.T, db *store.DB) {
 		e := startSessions(t, db, "0.1.0", 0)
@@ -269,6 +269,16 @@ func TestReauth_ExpiredWithinGrace(t *testing.T) {
 		revoked := e.certAt(t, e.newIdentity(), time.Now().Add(-8*24*time.Hour))
 		e.db.Client().IssuedCertificate.UpdateOneID(pki.SerialHex(revoked.Leaf.SerialNumber)).SetRevokedAt(time.Now()).ExecX(e.sys)
 		refused("revoked serial", revoked)
+
+		gone := e.newIdentity()
+		ofRevokedIdentity := e.certAt(t, gone, time.Now().Add(-8*24*time.Hour))
+		if err := store.WriteTx(e.sys, e.db, func(tx *ent.Tx) error {
+			_, _, err := pki.RevokeIdentity(e.sys, tx, gone, "decommissioned", time.Now())
+			return err
+		}); err != nil {
+			t.Fatal(err)
+		}
+		refused("revoked identity", ofRevokedIdentity)
 
 		if _, err := settings.UpdateInstance(e.sys, e.db, &rpmgrv1.InstanceSettings{ExpiredCertificateGrace: durationpb.New(0)},
 			&fieldmaskpb.FieldMask{Paths: []string{"expired_certificate_grace"}}, 0); err != nil {

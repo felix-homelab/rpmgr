@@ -14,6 +14,7 @@ import (
 	"math/big"
 	"net"
 	"net/http"
+	"path/filepath"
 	"sync"
 	"testing"
 	"time"
@@ -24,6 +25,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/enroll"
 	"github.com/felix-homelab/rpmgr/internal/ids"
 	"github.com/felix-homelab/rpmgr/internal/pki"
+	"github.com/felix-homelab/rpmgr/internal/revlog"
 	"github.com/felix-homelab/rpmgr/internal/secret"
 	"github.com/felix-homelab/rpmgr/internal/snapshot"
 	"github.com/felix-homelab/rpmgr/internal/store"
@@ -47,6 +49,7 @@ type Controller struct {
 	CA       *pki.CA
 	Sessions *controller.Sessions // of the first replica
 	URL      string               // https://127.0.0.1:<port> of the first replica
+	RevLog   *revlog.Log          // the replicas' revocation log
 	Org      string
 	Sys      context.Context
 	opts     Options
@@ -93,7 +96,11 @@ func StartController(t testing.TB, o Options) *Controller {
 	if err != nil {
 		t.Fatal(err)
 	}
-	c := &Controller{DB: db, CA: ca, Org: storetest.Org(t, db, "org-a"), Sys: sys, opts: o, sealer: sealer}
+	rl, err := revlog.Open(filepath.Join(t.TempDir(), "revocations.log"), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := &Controller{DB: db, CA: ca, Org: storetest.Org(t, db, "org-a"), Sys: sys, opts: o, sealer: sealer, RevLog: rl}
 	c.URL, c.Sessions = c.StartReplica(t)
 	return c
 }
@@ -115,21 +122,21 @@ func (c *Controller) StartReplica(t testing.TB) (string, *controller.Sessions) {
 	}
 	roots := x509.NewCertPool()
 	roots.AddCert(c.CA.Root())
-	cfg := pki.AgentEndpointConfig(node, roots, pki.Expect{TrustDomain: td, Kinds: []pki.Kind{pki.KindConnector, pki.KindGateway}},
-		nil, controller.ReauthChecks(c.DB, c.Sys))
-	split := controller.NewSplitter(td, ln.Addr())
-	agents := controller.NewAgentServer(cfg, td)
 	so := controller.SessionsOptions{DB: c.DB, CA: c.CA, Node: nodeID, Version: c.opts.Version,
-		Sys: c.Sys, Now: c.opts.Now, Admission: c.opts.Admission, RevisionCheck: 50 * time.Millisecond}
+		Sys: c.Sys, Now: c.opts.Now, Admission: c.opts.Admission, RevisionCheck: 50 * time.Millisecond, RevLog: c.RevLog}
 	if len(c.opts.Sources) > 0 {
 		so.Compiler = &snapshot.Compiler{Sources: c.opts.Sources, Endpoints: func() []string { return []string{url} }}
 	}
 	sessions := controller.NewSessions(so)
+	cfg := pki.AgentEndpointConfig(node, roots, pki.Expect{TrustDomain: td, Kinds: []pki.Kind{pki.KindConnector, pki.KindGateway},
+		Denied: sessions.Denied}, nil, controller.ReauthChecks(c.DB, c.Sys))
+	split := controller.NewSplitter(td, ln.Addr())
+	agents := controller.NewAgentServer(cfg, td)
 	runCtx, stopRun := context.WithCancel(context.Background())
 	running := make(chan struct{})
 	go func() { sessions.Run(runCtx); close(running) }()
 	agentv1.RegisterControlServer(agents, sessions)
-	agentv1.RegisterReauthServer(agents, controller.NewReauthService(c.DB, c.CA, c.Sys, c.opts.Now))
+	agentv1.RegisterReauthServer(agents, controller.NewReauthService(sessions))
 	agentv1.RegisterEnrollmentServer(agents, enroll.NewService(c.DB, c.CA, []string{url}, nil))
 	mux := http.NewServeMux()
 	mux.Handle("/.well-known/rpmgr/trust-bundle", enroll.TrustBundleHandler(c.CA.Root()))

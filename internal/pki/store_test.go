@@ -299,7 +299,7 @@ func TestMarkSeenAndCheckRenewable(t *testing.T) {
 			return cert
 		}
 		seen := func(cert *x509.Certificate, at time.Time) {
-			if err := store.WriteTx(sys, db, func(tx *ent.Tx) error { return pki.MarkSeen(sys, tx, cert, at) }); err != nil {
+			if err := store.WriteTx(sys, db, func(tx *ent.Tx) error { _, err := pki.MarkSeen(sys, tx, cert, at); return err }); err != nil {
 				t.Fatal(err)
 			}
 		}

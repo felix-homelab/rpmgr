@@ -30,6 +30,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/lease"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/org"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/orgsetting"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/revokedidentity"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/secretmeta"
 )
 
@@ -109,6 +110,7 @@ func checkColumn(t, c string) error {
 			lease.Table:             lease.ValidColumn,
 			org.Table:               org.ValidColumn,
 			orgsetting.Table:        orgsetting.ValidColumn,
+			revokedidentity.Table:   revokedidentity.ValidColumn,
 			secretmeta.Table:        secretmeta.ValidColumn,
 		})
 	})

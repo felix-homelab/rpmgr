@@ -219,7 +219,11 @@ message Signed { bytes payload = 1; bytes signature = 2; string key_id = 3; }
 - **Revocations travel separately from snapshots.** `DenyListUpdate` carries the full current set
   (deltas above 1 MiB) and is applied unconditionally, merged by union; an entry is removed only
   after the covered certificate's `NotAfter`. An agent that rejects a snapshot still receives every
-  revocation ([04](04-security.md#revocation)).
+  revocation ([04](04-security.md#revocation)). The controller sends the list after `Welcome` when
+  the digest in `Hello` differs from its own, and to every session when the list changes. The
+  digest is the SHA-256 over the distinct entries, sorted, each written as `1 serial <serial>` or
+  `2 identity <SPIFFE ID>` and a newline; an empty list has an empty digest, and expiry times are
+  not part of it.
 
 ### Configuration reconciliation
 
@@ -819,7 +823,7 @@ sequenceDiagram
 | Idle UDP flow | 60 s | Typical UDP NAT behaviour |
 | Apply acknowledgement | 30 s → `apply_timeout` | Visible instead of silent |
 | Certificate renewal | a failed attempt is retried with full jitter, base 1 s, cap 5 min; at most one renewal per 10 min | A controller outage delays renewal without a retry storm; a clock far ahead cannot make the agent renew in a loop ([04](04-security.md#leaf-certificates)) |
-| Revision check | every 1 s | A revision written by another process reaches the agents without a notification channel |
+| Revision and deny-list check | every 1 s | A revision or a revocation written by another process reaches the agents without a notification channel |
 | Route drain | 30 s | Finish in-flight requests |
 | Gateway drain | 60 s | Time for connectors to re-home |
 | Revocation, tightened access policy | immediate | Security beats continuity |

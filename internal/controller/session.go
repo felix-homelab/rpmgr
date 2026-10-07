@@ -3,6 +3,7 @@
 package controller
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/json"
@@ -12,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"golang.org/x/mod/semver"
@@ -25,6 +27,7 @@ import (
 	agentv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/agent/v1"
 	"github.com/felix-homelab/rpmgr/internal/pki"
 	"github.com/felix-homelab/rpmgr/internal/ratelimit"
+	"github.com/felix-homelab/rpmgr/internal/revlog"
 	"github.com/felix-homelab/rpmgr/internal/snapshot"
 	"github.com/felix-homelab/rpmgr/internal/store"
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
@@ -54,6 +57,10 @@ type Sessions struct {
 	admit   *ratelimit.Limiter
 	sys     context.Context // the audited system scope of the session handlers
 	push    *pusher         // nil without a compiler
+	revlog  *revlog.Log     // nil keeps no revocation log (tests)
+	log     *slog.Logger
+	every   time.Duration
+	deny    atomic.Pointer[denyState]
 
 	mu       sync.Mutex
 	active   map[string]*session // by agent ID
@@ -73,7 +80,9 @@ type SessionsOptions struct {
 	Compiler *snapshot.Compiler
 	// RevisionCheck is how often Run looks for a new revision; 0 is RevisionCheck.
 	RevisionCheck time.Duration
-	Logger        *slog.Logger
+	// RevLog receives superseded certificates; nil keeps no revocation log, for tests only.
+	RevLog *revlog.Log
+	Logger *slog.Logger
 }
 
 // NewSessions returns the control-session server.
@@ -92,7 +101,8 @@ func NewSessions(o SessionsOptions) *Sessions {
 	}
 	signer := o.CA.ConfigSigner()
 	s := &Sessions{
-		db: o.DB, ca: o.CA, node: o.Node, version: o.Version, now: o.Now, sys: o.Sys,
+		db: o.DB, ca: o.CA, node: o.Node, version: o.Version, now: o.Now, sys: o.Sys, revlog: o.RevLog,
+		log: o.Logger, every: o.RevisionCheck,
 		signing: [][]byte{signer.Cert.Raw, o.CA.Intermediate().Raw},
 		admit:   ratelimit.New(time.Second/time.Duration(o.Admission), o.Admission, o.Now),
 		active:  map[string]*session{},
@@ -100,17 +110,22 @@ func NewSessions(o SessionsOptions) *Sessions {
 	if o.Compiler != nil {
 		s.push = newPusher(s, o.Compiler, o.RevisionCheck, o.Logger)
 	}
+	if _, err := s.refreshDeny(); err != nil {
+		s.log.Error("cannot load the deny-list; checking the database at each handshake", "error", err)
+	}
 	return s
 }
 
-// Run pushes snapshots until ctx ends: to each agent whose session starts, and to every agent with
-// a session here when the revision changes. Without a compiler it only waits for ctx.
+// Run keeps the deny-list current and pushes snapshots until ctx ends: it reloads the deny-list at
+// every revision check and sends a changed one to every session; with a compiler it also pushes
+// snapshots to each agent whose session starts, and to every agent when the revision changes.
 func (s *Sessions) Run(ctx context.Context) {
-	if s.push == nil {
-		<-ctx.Done()
-		return
+	var wg sync.WaitGroup
+	if s.push != nil {
+		wg.Go(func() { s.push.run(ctx) })
 	}
-	s.push.run(ctx)
+	wg.Go(func() { s.denyLoop(ctx) })
+	wg.Wait()
 }
 
 // session is one agent's control session.
@@ -158,6 +173,9 @@ func (s *Sessions) Session(st grpc.BidiStreamingServer[agentv1.AgentMessage, age
 	}
 	if d := s.drainDeadline(); d != nil {
 		sess.out <- &agentv1.ControllerMessage{Msg: &agentv1.ControllerMessage_Drain{Drain: &agentv1.Drain{Deadline: timestamppb.New(*d)}}}
+	}
+	if d := s.deny.Load(); d != nil && !bytes.Equal(hello.GetDenyListDigest(), d.digest) {
+		sess.out <- &agentv1.ControllerMessage{Msg: &agentv1.ControllerMessage_DenyList{DenyList: d.signed}}
 	}
 	if s.push != nil {
 		s.push.start(sess, hello)
@@ -282,9 +300,11 @@ func (s *Sessions) register(ctx context.Context, agent Agent, hello *agentv1.Hel
 			return err
 		}
 		dbEpoch = inst.DbEpoch
-		if err := pki.MarkSeen(s.sys, tx, agent.Certificate, now); err != nil {
+		superseded, err := pki.MarkSeen(s.sys, tx, agent.Certificate, now)
+		if err != nil {
 			return err
 		}
+		s.logSuperseded(superseded, agent.Identity.String())
 		offset := int64(0)
 		if hello.GetAgentTime() != nil {
 			offset = hello.GetAgentTime().AsTime().Sub(now).Milliseconds()

@@ -24,7 +24,7 @@ import (
 // Renew issues the caller a new certificate for a CSR with a new key, bound to this connection
 // (docs/04-security.md, "Leaf certificates", "Flow").
 func (s *Sessions) Renew(ctx context.Context, req *agentv1.RenewRequest) (*agentv1.RenewResponse, error) {
-	chain, err := renew(ctx, s.db, s.ca, s.sys, s.now, req.GetCsr())
+	chain, err := renew(ctx, s.db, s.ca, s.sys, s.now, req.GetCsr(), s.logSuperseded)
 	if err != nil {
 		return nil, err
 	}
@@ -35,23 +35,17 @@ func (s *Sessions) Renew(ctx context.Context, req *agentv1.RenewRequest) (*agent
 // certificate that expired at most the grace period ago (ReauthChecks).
 type ReauthService struct {
 	agentv1.UnimplementedReauthServer
-	db  *store.DB
-	ca  *pki.CA
-	sys context.Context
-	now func() time.Time
+	s *Sessions
 }
 
-// NewReauthService returns the Reauth service; sys is the audited system scope it works in.
-func NewReauthService(db *store.DB, ca *pki.CA, sys context.Context, now func() time.Time) *ReauthService {
-	if now == nil {
-		now = time.Now
-	}
-	return &ReauthService{db: db, ca: ca, sys: sys, now: now}
-}
+// NewReauthService returns the Reauth service, which shares the database, CA, scope and
+// revocation log of s.
+func NewReauthService(s *Sessions) *ReauthService { return &ReauthService{s: s} }
 
 // Reauth issues a new certificate for an agent whose certificate expired within the grace period.
 func (r *ReauthService) Reauth(ctx context.Context, req *agentv1.ReauthRequest) (*agentv1.ReauthResponse, error) {
-	chain, err := renew(ctx, r.db, r.ca, r.sys, r.now, req.GetCsr())
+	s := r.s
+	chain, err := renew(ctx, s.db, s.ca, s.sys, s.now, req.GetCsr(), s.logSuperseded)
 	if err != nil {
 		return nil, err
 	}
@@ -77,7 +71,8 @@ func ReauthChecks(db *store.DB, sys context.Context) pki.Reauth {
 // renew checks that the CSR is bound to the caller's connection and that the presented
 // certificate may be renewed, records that it was seen, and issues the new leaf, all in one
 // transaction.
-func renew(ctx context.Context, db *store.DB, ca *pki.CA, sys context.Context, now func() time.Time, der []byte) ([][]byte, error) {
+func renew(ctx context.Context, db *store.DB, ca *pki.CA, sys context.Context, now func() time.Time, der []byte,
+	superseded func([]*ent.IssuedCertificate, string)) ([][]byte, error) {
 	agent, ok := AgentFrom(ctx)
 	if !ok {
 		return nil, status.Error(codes.Unauthenticated, "client certificate required")
@@ -102,9 +97,11 @@ func renew(ctx context.Context, db *store.DB, ca *pki.CA, sys context.Context, n
 		if err := pki.CheckRenewable(sys, tx.Client(), agent.Certificate); err != nil {
 			return err
 		}
-		if err := pki.MarkSeen(sys, tx, agent.Certificate, now()); err != nil {
+		rows, err := pki.MarkSeen(sys, tx, agent.Certificate, now())
+		if err != nil {
 			return err
 		}
+		superseded(rows, agent.Identity.String())
 		inst, _, err := settings.Instance(sys, tx.Client())
 		if err != nil {
 			return err
@@ -113,7 +110,8 @@ func renew(ctx context.Context, db *store.DB, ca *pki.CA, sys context.Context, n
 		return err
 	})
 	switch {
-	case errors.Is(err, pki.ErrNotIssued), errors.Is(err, pki.ErrCertRevoked), errors.Is(err, pki.ErrSuperseded):
+	case errors.Is(err, pki.ErrNotIssued), errors.Is(err, pki.ErrCertRevoked), errors.Is(err, pki.ErrSuperseded),
+		errors.Is(err, pki.ErrIdentityRevoked):
 		return nil, status.Error(codes.PermissionDenied, err.Error())
 	case errors.Is(err, pki.ErrSameKey), errors.Is(err, pki.ErrBadCSR):
 		return nil, status.Error(codes.InvalidArgument, err.Error())
