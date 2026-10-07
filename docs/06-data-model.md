@@ -317,7 +317,9 @@ method, list filter or search returns or modifies the other org's data
   migrating connection, runs the file in a transaction and `PRAGMA foreign_key_check` before the
   commit, which fails the file on any violation ([S5](spikes/S5.md)).
 - **No down migrations.** Rollback means restoring the pre-upgrade backup. On SQLite, the controller
-  takes a `VACUUM INTO` copy before migrating [V S8].
+  takes a `VACUUM INTO` copy before migrating. `VACUUM INTO` writes a consistent copy while readers
+  and the writer keep working; it needs an ordinary connection, because a `query_only` connection
+  refuses it, but it takes no write lock ([S8](spikes/S8.md)).
 - **SQLite → PostgreSQL** (Phase 2): `rpmgr migrate-db --from <sqlite path> --to <postgres DSN>`
   copies a stopped controller's database into an empty, fully migrated PostgreSQL database. It runs
   offline (all controllers stopped), keeps secrets envelope-encrypted under the same KEK, and keeps
@@ -329,6 +331,6 @@ method, list filter or search returns or modifies the other org's data
 
 | Engine | Use | Notes |
 |---|---|---|
-| **SQLite** (pure Go, `modernc.org/sqlite`) | Default; single controller | Needed for `CGO_ENABLED=0` static builds. WAL mode, `busy_timeout`, one writer connection. `PRAGMA foreign_keys = 1` on every connection: SQLite enforces no foreign key without it, and the controller refuses a connection on which it is off ([S5](spikes/S5.md)). Pinned to a current version [V S8] |
+| **SQLite** (pure Go, `modernc.org/sqlite`) | Default; single controller | Needed for `CGO_ENABLED=0` static builds. WAL mode, `busy_timeout`, one writer connection. `PRAGMA foreign_keys = 1` on every connection: SQLite enforces no foreign key without it, and the controller refuses a connection on which it is off ([S5](spikes/S5.md)). Works on linux/amd64, arm64, armv7 and riscv64 ([S8](spikes/S8.md)). Every setting is part of the DSN, so each pooled connection has it; [R] `synchronous = FULL`, `busy_timeout` 5 s, and readers in a separate `query_only` pool. `sqlite.StrictPragmas(true)` is set at start, because the DSN comes from the boot file and a `_pragma` value otherwise also runs whatever follows a `;` [F modernc.org/sqlite v1.60.1 `strictpragma.go:20-43`]. An `ON DELETE RESTRICT` violation carries the extended code `SQLITE_CONSTRAINT_TRIGGER`, not `SQLITE_CONSTRAINT_FOREIGNKEY`; the store maps both to the same error ([S8](spikes/S8.md)). Pinned to a current version |
 | **PostgreSQL** | HA, larger installations | Required for more than one controller replica. Existing SQLite installations move with `rpmgr migrate-db` ([Migrations](#migrations)) |
 | MySQL | **Dropped** | A third dialect multiplies migration and test cost. The importer still reads MySQL source databases ([11](11-migration.md)) |

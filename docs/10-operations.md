@@ -304,8 +304,9 @@ affect agents take effect through reconciliation and show apply status like any 
 ## Backup and restore
 
 - `rpmgr backup --out <file>` writes a **consistent** copy of the controller database: `VACUUM INTO`
-  on SQLite [V S8], `pg_dump` on PostgreSQL (or the operator's own PostgreSQL backups). Secrets in
-  the backup stay envelope-encrypted.
+  on SQLite, which runs while the controller keeps reading and writing
+  ([S8](spikes/S8.md)), `pg_dump` on PostgreSQL (or the operator's own PostgreSQL backups).
+  Secrets in the backup stay envelope-encrypted.
 - **The KEK is backed up separately** and stored apart from database backups. A database backup
   without its KEK cannot be used to recover CA keys, ACME keys or other secrets; a KEK stored next
   to the backup defeats the encryption.

@@ -33,7 +33,7 @@ flowchart TB
 
 | Choice | Rationale | Rejected |
 |---|---|---|
-| **Go**, the latest stable minor at the first commit, pinned with the `toolchain` directive in `go.mod`; the `go` directive is at least 1.25, which quic-go v0.61 requires [F quic-go:go.mod:3] | The ecosystem rpmgr needs is Go: quic-go, wireguard-go, gVisor netstack, certmagic, `crypto/tls`. Static, cross-compiled binaries; good networking performance; one language for all three roles | Rust: technically a good fit (QUIC, TLS, userspace WireGuard and ACME libraries exist). [R] Rejected because the maintainer's existing work is Go and rpmgr reuses Go components (quic-go, wireguard-go, gVisor netstack, certmagic) directly. Java/.NET: runtime size and cross-compiling agents |
+| **Go**, the latest stable minor at the first commit, pinned with the `toolchain` directive in `go.mod`; the `go` directive is at least 1.26, which `modernc.org/sqlite` v1.60.1 requires [F modernc.org/sqlite v1.60.1 `go.mod:3`] (quic-go v0.61 requires 1.25 [F quic-go:go.mod:3]) | The ecosystem rpmgr needs is Go: quic-go, wireguard-go, gVisor netstack, certmagic, `crypto/tls`. Static, cross-compiled binaries; good networking performance; one language for all three roles | Rust: technically a good fit (QUIC, TLS, userspace WireGuard and ACME libraries exist). [R] Rejected because the maintainer's existing work is Go and rpmgr reuses Go components (quic-go, wireguard-go, gVisor netstack, certmagic) directly. Java/.NET: runtime size and cross-compiling agents |
 | Standard library first: `net/http` (method-and-pattern routing), `log/slog`, `crypto/tls`, `crypto/x509`, `embed` | Fewer dependencies, fewer supply-chain risks, long-term stability | gin (adds surface for little gain over `net/http` routing); logrus (superseded by `slog`) |
 | `CGO_ENABLED=0` everywhere | Fully static binaries, trivial cross-compilation, distroless images | — |
 
@@ -61,7 +61,7 @@ flowchart TB
 
 | Choice | Rationale | Rejected |
 |---|---|---|
-| **SQLite** via `modernc.org/sqlite` (pure Go) as default | Zero-ops single-node installs; works with `CGO_ENABLED=0` [V S8] | `mattn/go-sqlite3` (needs cgo) |
+| **SQLite** via `modernc.org/sqlite` (pure Go) as default | Zero-ops single-node installs; works with `CGO_ENABLED=0` on linux/amd64, arm64, armv7 and riscv64 ([S8](spikes/S8.md)) | `mattn/go-sqlite3` (needs cgo) |
 | **PostgreSQL** for HA | Multiple controller replicas, leases, notifications | MySQL (dropped: a third dialect multiplies migration and test cost; [ADR-0011](adr/0011-sqlite-postgres-ent-atlas.md)) |
 | **Ent** (schema as code, typed queries, interceptors, privacy rules) + **Atlas** (versioned migrations, lint) | One schema for both dialects; tenancy enforcement in one place ([06](06-data-model.md#tenancy-enforcement)). Only Apache-2.0 parts: migrations are generated through Ent's Go API with the `ariga.io/atlas` library and applied by the binary with Atlas's executor; the community Atlas CLI cannot read Ent schemas and is used in CI for lint only ([S5](spikes/S5.md)). Ent's generator is pinned as a `go.mod` tool, with `golang.org/x/tools` and `ariga.io/atlas` pinned above Ent's own requirements | sqlc + goose (two query sets for two dialects; tenancy only by convention); bun (viable fallback, not needed after S5); GORM (`AutoMigrate` without versioned migrations) |
 | `google/uuid` `NewV7` for IDs | Time-ordered IDs on both dialects [F google/uuid v1.6.0] | Auto-increment integers (leak counts, clash across orgs and restores) |
