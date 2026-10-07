@@ -273,8 +273,10 @@ Shown in [03-connections.md](03-connections.md#enrollment). Security-relevant ru
   - the agent sends the CSR on the connection it computed the value on (its control-session
     connection, not a pool); if that connection was replaced meanwhile, the request is refused and
     the agent builds a new CSR;
-  - the extension's OID lies under an IANA Private Enterprise Number registered for rpmgr before
-    Phase 1 [V VB-17] (the spike used 32473, the number reserved for documentation, RFC 5612).
+  - the extension's OID is `2.25.330347968250229846689170632254339943880`: an OID under the arc 2.25, which ITU-T X.667
+    (ISO/IEC 9834-8) assigns to UUIDs, formed from the random UUID `f886b454-5949-4333-85f5-cd88690c0dc8`. It is unique
+    without any registration ([D47](14-open-decisions.md#engineering)); the spike used an OID under
+    32473, the enterprise number reserved for documentation (RFC 5612).
 
 ### Lifecycle
 
