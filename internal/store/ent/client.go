@@ -27,6 +27,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/instance"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/instancesetting"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/issuedcertificate"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/lease"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/org"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/orgsetting"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/secretmeta"
@@ -63,6 +64,8 @@ type Client struct {
 	InstanceSetting *InstanceSettingClient
 	// IssuedCertificate is the client for interacting with the IssuedCertificate builders.
 	IssuedCertificate *IssuedCertificateClient
+	// Lease is the client for interacting with the Lease builders.
+	Lease *LeaseClient
 	// Org is the client for interacting with the Org builders.
 	Org *OrgClient
 	// OrgSetting is the client for interacting with the OrgSetting builders.
@@ -92,6 +95,7 @@ func (c *Client) init() {
 	c.Instance = NewInstanceClient(c.config)
 	c.InstanceSetting = NewInstanceSettingClient(c.config)
 	c.IssuedCertificate = NewIssuedCertificateClient(c.config)
+	c.Lease = NewLeaseClient(c.config)
 	c.Org = NewOrgClient(c.config)
 	c.OrgSetting = NewOrgSettingClient(c.config)
 	c.SecretMeta = NewSecretMetaClient(c.config)
@@ -199,6 +203,7 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		Instance:          NewInstanceClient(cfg),
 		InstanceSetting:   NewInstanceSettingClient(cfg),
 		IssuedCertificate: NewIssuedCertificateClient(cfg),
+		Lease:             NewLeaseClient(cfg),
 		Org:               NewOrgClient(cfg),
 		OrgSetting:        NewOrgSettingClient(cfg),
 		SecretMeta:        NewSecretMetaClient(cfg),
@@ -233,6 +238,7 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		Instance:          NewInstanceClient(cfg),
 		InstanceSetting:   NewInstanceSettingClient(cfg),
 		IssuedCertificate: NewIssuedCertificateClient(cfg),
+		Lease:             NewLeaseClient(cfg),
 		Org:               NewOrgClient(cfg),
 		OrgSetting:        NewOrgSettingClient(cfg),
 		SecretMeta:        NewSecretMetaClient(cfg),
@@ -267,7 +273,7 @@ func (c *Client) Use(hooks ...Hook) {
 	for _, n := range []interface{ Use(...Hook) }{
 		c.AuditEntry, c.AuditHead, c.CAKey, c.ConfigRevision, c.ConfigSeq, c.Connector,
 		c.EnrollmentToken, c.Gateway, c.GatewayGroup, c.Instance, c.InstanceSetting,
-		c.IssuedCertificate, c.Org, c.OrgSetting, c.SecretMeta,
+		c.IssuedCertificate, c.Lease, c.Org, c.OrgSetting, c.SecretMeta,
 	} {
 		n.Use(hooks...)
 	}
@@ -279,7 +285,7 @@ func (c *Client) Intercept(interceptors ...Interceptor) {
 	for _, n := range []interface{ Intercept(...Interceptor) }{
 		c.AuditEntry, c.AuditHead, c.CAKey, c.ConfigRevision, c.ConfigSeq, c.Connector,
 		c.EnrollmentToken, c.Gateway, c.GatewayGroup, c.Instance, c.InstanceSetting,
-		c.IssuedCertificate, c.Org, c.OrgSetting, c.SecretMeta,
+		c.IssuedCertificate, c.Lease, c.Org, c.OrgSetting, c.SecretMeta,
 	} {
 		n.Intercept(interceptors...)
 	}
@@ -312,6 +318,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.InstanceSetting.mutate(ctx, m)
 	case *IssuedCertificateMutation:
 		return c.IssuedCertificate.mutate(ctx, m)
+	case *LeaseMutation:
+		return c.Lease.mutate(ctx, m)
 	case *OrgMutation:
 		return c.Org.mutate(ctx, m)
 	case *OrgSettingMutation:
@@ -2003,6 +2011,141 @@ func (c *IssuedCertificateClient) mutate(ctx context.Context, m *IssuedCertifica
 	}
 }
 
+// LeaseClient is a client for the Lease schema.
+type LeaseClient struct {
+	config
+}
+
+// NewLeaseClient returns a client for the Lease from the given config.
+func NewLeaseClient(c config) *LeaseClient {
+	return &LeaseClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `lease.Hooks(f(g(h())))`.
+func (c *LeaseClient) Use(hooks ...Hook) {
+	c.hooks.Lease = append(c.hooks.Lease, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `lease.Intercept(f(g(h())))`.
+func (c *LeaseClient) Intercept(interceptors ...Interceptor) {
+	c.inters.Lease = append(c.inters.Lease, interceptors...)
+}
+
+// Create returns a builder for creating a Lease entity.
+func (c *LeaseClient) Create() *LeaseCreate {
+	mutation := newLeaseMutation(c.config, OpCreate)
+	return &LeaseCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of Lease entities.
+func (c *LeaseClient) CreateBulk(builders ...*LeaseCreate) *LeaseCreateBulk {
+	return &LeaseCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *LeaseClient) MapCreateBulk(slice any, setFunc func(*LeaseCreate, int)) *LeaseCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &LeaseCreateBulk{err: fmt.Errorf("calling to LeaseClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*LeaseCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &LeaseCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for Lease.
+func (c *LeaseClient) Update() *LeaseUpdate {
+	mutation := newLeaseMutation(c.config, OpUpdate)
+	return &LeaseUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *LeaseClient) UpdateOne(_m *Lease) *LeaseUpdateOne {
+	mutation := newLeaseMutation(c.config, OpUpdateOne, withLease(_m))
+	return &LeaseUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *LeaseClient) UpdateOneID(id string) *LeaseUpdateOne {
+	mutation := newLeaseMutation(c.config, OpUpdateOne, withLeaseID(id))
+	return &LeaseUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for Lease.
+func (c *LeaseClient) Delete() *LeaseDelete {
+	mutation := newLeaseMutation(c.config, OpDelete)
+	return &LeaseDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *LeaseClient) DeleteOne(_m *Lease) *LeaseDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *LeaseClient) DeleteOneID(id string) *LeaseDeleteOne {
+	builder := c.Delete().Where(lease.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &LeaseDeleteOne{builder}
+}
+
+// Query returns a query builder for Lease.
+func (c *LeaseClient) Query() *LeaseQuery {
+	return &LeaseQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeLease},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a Lease entity by its id.
+func (c *LeaseClient) Get(ctx context.Context, id string) (*Lease, error) {
+	return c.Query().Where(lease.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *LeaseClient) GetX(ctx context.Context, id string) *Lease {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *LeaseClient) Hooks() []Hook {
+	hooks := c.hooks.Lease
+	return append(hooks[:len(hooks):len(hooks)], lease.Hooks[:]...)
+}
+
+// Interceptors returns the client interceptors.
+func (c *LeaseClient) Interceptors() []Interceptor {
+	inters := c.inters.Lease
+	return append(inters[:len(inters):len(inters)], lease.Interceptors[:]...)
+}
+
+func (c *LeaseClient) mutate(ctx context.Context, m *LeaseMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&LeaseCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&LeaseUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&LeaseUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&LeaseDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown Lease mutation op: %q", m.Op())
+	}
+}
+
 // OrgClient is a client for the Org schema.
 type OrgClient struct {
 	config
@@ -2412,12 +2555,12 @@ type (
 	hooks struct {
 		AuditEntry, AuditHead, CAKey, ConfigRevision, ConfigSeq, Connector,
 		EnrollmentToken, Gateway, GatewayGroup, Instance, InstanceSetting,
-		IssuedCertificate, Org, OrgSetting, SecretMeta []ent.Hook
+		IssuedCertificate, Lease, Org, OrgSetting, SecretMeta []ent.Hook
 	}
 	inters struct {
 		AuditEntry, AuditHead, CAKey, ConfigRevision, ConfigSeq, Connector,
 		EnrollmentToken, Gateway, GatewayGroup, Instance, InstanceSetting,
-		IssuedCertificate, Org, OrgSetting, SecretMeta []ent.Interceptor
+		IssuedCertificate, Lease, Org, OrgSetting, SecretMeta []ent.Interceptor
 	}
 )
 

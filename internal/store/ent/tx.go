@@ -38,6 +38,8 @@ type Tx struct {
 	InstanceSetting *InstanceSettingClient
 	// IssuedCertificate is the client for interacting with the IssuedCertificate builders.
 	IssuedCertificate *IssuedCertificateClient
+	// Lease is the client for interacting with the Lease builders.
+	Lease *LeaseClient
 	// Org is the client for interacting with the Org builders.
 	Org *OrgClient
 	// OrgSetting is the client for interacting with the OrgSetting builders.
@@ -187,6 +189,7 @@ func (tx *Tx) init() {
 	tx.Instance = NewInstanceClient(tx.config)
 	tx.InstanceSetting = NewInstanceSettingClient(tx.config)
 	tx.IssuedCertificate = NewIssuedCertificateClient(tx.config)
+	tx.Lease = NewLeaseClient(tx.config)
 	tx.Org = NewOrgClient(tx.config)
 	tx.OrgSetting = NewOrgSettingClient(tx.config)
 	tx.SecretMeta = NewSecretMetaClient(tx.config)

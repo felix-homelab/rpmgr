@@ -23,6 +23,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/instance"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/instancesetting"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/issuedcertificate"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/lease"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/org"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/orgsetting"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/predicate"
@@ -50,6 +51,7 @@ const (
 	TypeInstance          = "Instance"
 	TypeInstanceSetting   = "InstanceSetting"
 	TypeIssuedCertificate = "IssuedCertificate"
+	TypeLease             = "Lease"
 	TypeOrg               = "Org"
 	TypeOrgSetting        = "OrgSetting"
 	TypeSecretMeta        = "SecretMeta"
@@ -9506,6 +9508,515 @@ func (m *IssuedCertificateMutation) ClearEdge(name string) error {
 // It returns an error if the edge is not defined in the schema.
 func (m *IssuedCertificateMutation) ResetEdge(name string) error {
 	return fmt.Errorf("unknown IssuedCertificate edge %s", name)
+}
+
+// LeaseMutation represents an operation that mutates the Lease nodes in the graph.
+type LeaseMutation struct {
+	config
+	op               Op
+	typ              string
+	id               *string
+	holder           *string
+	fencing_token    *int64
+	addfencing_token *int64
+	expires_at       *int64
+	addexpires_at    *int64
+	clearedFields    map[string]struct{}
+	done             bool
+	oldValue         func(context.Context) (*Lease, error)
+	predicates       []predicate.Lease
+}
+
+var _ ent.Mutation = (*LeaseMutation)(nil)
+
+// leaseOption allows management of the mutation configuration using functional options.
+type leaseOption func(*LeaseMutation)
+
+// newLeaseMutation creates new mutation for the Lease entity.
+func newLeaseMutation(c config, op Op, opts ...leaseOption) *LeaseMutation {
+	m := &LeaseMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeLease,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withLeaseID sets the ID field of the mutation.
+func withLeaseID(id string) leaseOption {
+	return func(m *LeaseMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *Lease
+		)
+		m.oldValue = func(ctx context.Context) (*Lease, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().Lease.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withLease sets the old Lease of the mutation.
+func withLease(node *Lease) leaseOption {
+	return func(m *LeaseMutation) {
+		m.oldValue = func(context.Context) (*Lease, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m LeaseMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m LeaseMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// SetID sets the value of the id field. Note that this
+// operation is only accepted on creation of Lease entities.
+func (m *LeaseMutation) SetID(id string) {
+	m.id = &id
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *LeaseMutation) ID() (id string, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *LeaseMutation) IDs(ctx context.Context) ([]string, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []string{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().Lease.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetHolder sets the "holder" field.
+func (m *LeaseMutation) SetHolder(s string) {
+	m.holder = &s
+}
+
+// Holder returns the value of the "holder" field in the mutation.
+func (m *LeaseMutation) Holder() (r string, exists bool) {
+	v := m.holder
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldHolder returns the old "holder" field's value of the Lease entity.
+// If the Lease object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *LeaseMutation) OldHolder(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldHolder is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldHolder requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldHolder: %w", err)
+	}
+	return oldValue.Holder, nil
+}
+
+// ResetHolder resets all changes to the "holder" field.
+func (m *LeaseMutation) ResetHolder() {
+	m.holder = nil
+}
+
+// SetFencingToken sets the "fencing_token" field.
+func (m *LeaseMutation) SetFencingToken(i int64) {
+	m.fencing_token = &i
+	m.addfencing_token = nil
+}
+
+// FencingToken returns the value of the "fencing_token" field in the mutation.
+func (m *LeaseMutation) FencingToken() (r int64, exists bool) {
+	v := m.fencing_token
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldFencingToken returns the old "fencing_token" field's value of the Lease entity.
+// If the Lease object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *LeaseMutation) OldFencingToken(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldFencingToken is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldFencingToken requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldFencingToken: %w", err)
+	}
+	return oldValue.FencingToken, nil
+}
+
+// AddFencingToken adds i to the "fencing_token" field.
+func (m *LeaseMutation) AddFencingToken(i int64) {
+	if m.addfencing_token != nil {
+		*m.addfencing_token += i
+	} else {
+		m.addfencing_token = &i
+	}
+}
+
+// AddedFencingToken returns the value that was added to the "fencing_token" field in this mutation.
+func (m *LeaseMutation) AddedFencingToken() (r int64, exists bool) {
+	v := m.addfencing_token
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetFencingToken resets all changes to the "fencing_token" field.
+func (m *LeaseMutation) ResetFencingToken() {
+	m.fencing_token = nil
+	m.addfencing_token = nil
+}
+
+// SetExpiresAt sets the "expires_at" field.
+func (m *LeaseMutation) SetExpiresAt(i int64) {
+	m.expires_at = &i
+	m.addexpires_at = nil
+}
+
+// ExpiresAt returns the value of the "expires_at" field in the mutation.
+func (m *LeaseMutation) ExpiresAt() (r int64, exists bool) {
+	v := m.expires_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldExpiresAt returns the old "expires_at" field's value of the Lease entity.
+// If the Lease object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *LeaseMutation) OldExpiresAt(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldExpiresAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldExpiresAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldExpiresAt: %w", err)
+	}
+	return oldValue.ExpiresAt, nil
+}
+
+// AddExpiresAt adds i to the "expires_at" field.
+func (m *LeaseMutation) AddExpiresAt(i int64) {
+	if m.addexpires_at != nil {
+		*m.addexpires_at += i
+	} else {
+		m.addexpires_at = &i
+	}
+}
+
+// AddedExpiresAt returns the value that was added to the "expires_at" field in this mutation.
+func (m *LeaseMutation) AddedExpiresAt() (r int64, exists bool) {
+	v := m.addexpires_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetExpiresAt resets all changes to the "expires_at" field.
+func (m *LeaseMutation) ResetExpiresAt() {
+	m.expires_at = nil
+	m.addexpires_at = nil
+}
+
+// Where appends a list predicates to the LeaseMutation builder.
+func (m *LeaseMutation) Where(ps ...predicate.Lease) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the LeaseMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *LeaseMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.Lease, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *LeaseMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *LeaseMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (Lease).
+func (m *LeaseMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *LeaseMutation) Fields() []string {
+	fields := make([]string, 0, 3)
+	if m.holder != nil {
+		fields = append(fields, lease.FieldHolder)
+	}
+	if m.fencing_token != nil {
+		fields = append(fields, lease.FieldFencingToken)
+	}
+	if m.expires_at != nil {
+		fields = append(fields, lease.FieldExpiresAt)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *LeaseMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case lease.FieldHolder:
+		return m.Holder()
+	case lease.FieldFencingToken:
+		return m.FencingToken()
+	case lease.FieldExpiresAt:
+		return m.ExpiresAt()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *LeaseMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case lease.FieldHolder:
+		return m.OldHolder(ctx)
+	case lease.FieldFencingToken:
+		return m.OldFencingToken(ctx)
+	case lease.FieldExpiresAt:
+		return m.OldExpiresAt(ctx)
+	}
+	return nil, fmt.Errorf("unknown Lease field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *LeaseMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case lease.FieldHolder:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetHolder(v)
+		return nil
+	case lease.FieldFencingToken:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetFencingToken(v)
+		return nil
+	case lease.FieldExpiresAt:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetExpiresAt(v)
+		return nil
+	}
+	return fmt.Errorf("unknown Lease field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *LeaseMutation) AddedFields() []string {
+	var fields []string
+	if m.addfencing_token != nil {
+		fields = append(fields, lease.FieldFencingToken)
+	}
+	if m.addexpires_at != nil {
+		fields = append(fields, lease.FieldExpiresAt)
+	}
+	return fields
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *LeaseMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case lease.FieldFencingToken:
+		return m.AddedFencingToken()
+	case lease.FieldExpiresAt:
+		return m.AddedExpiresAt()
+	}
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *LeaseMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	case lease.FieldFencingToken:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddFencingToken(v)
+		return nil
+	case lease.FieldExpiresAt:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddExpiresAt(v)
+		return nil
+	}
+	return fmt.Errorf("unknown Lease numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *LeaseMutation) ClearedFields() []string {
+	return nil
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *LeaseMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *LeaseMutation) ClearField(name string) error {
+	return fmt.Errorf("unknown Lease nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *LeaseMutation) ResetField(name string) error {
+	switch name {
+	case lease.FieldHolder:
+		m.ResetHolder()
+		return nil
+	case lease.FieldFencingToken:
+		m.ResetFencingToken()
+		return nil
+	case lease.FieldExpiresAt:
+		m.ResetExpiresAt()
+		return nil
+	}
+	return fmt.Errorf("unknown Lease field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *LeaseMutation) AddedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *LeaseMutation) AddedIDs(name string) []ent.Value {
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *LeaseMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *LeaseMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *LeaseMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *LeaseMutation) EdgeCleared(name string) bool {
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *LeaseMutation) ClearEdge(name string) error {
+	return fmt.Errorf("unknown Lease unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *LeaseMutation) ResetEdge(name string) error {
+	return fmt.Errorf("unknown Lease edge %s", name)
 }
 
 // OrgMutation represents an operation that mutates the Org nodes in the graph.

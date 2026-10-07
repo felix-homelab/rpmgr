@@ -399,6 +399,30 @@ func (f IssuedCertificateMutationRuleFunc) EvalMutation(ctx context.Context, m e
 	return Denyf("ent/privacy: unexpected mutation type %T, expect *ent.IssuedCertificateMutation", m)
 }
 
+// The LeaseQueryRuleFunc type is an adapter to allow the use of ordinary
+// functions as a query rule.
+type LeaseQueryRuleFunc func(context.Context, *ent.LeaseQuery) error
+
+// EvalQuery return f(ctx, q).
+func (f LeaseQueryRuleFunc) EvalQuery(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.LeaseQuery); ok {
+		return f(ctx, q)
+	}
+	return Denyf("ent/privacy: unexpected query type %T, expect *ent.LeaseQuery", q)
+}
+
+// The LeaseMutationRuleFunc type is an adapter to allow the use of ordinary
+// functions as a mutation rule.
+type LeaseMutationRuleFunc func(context.Context, *ent.LeaseMutation) error
+
+// EvalMutation calls f(ctx, m).
+func (f LeaseMutationRuleFunc) EvalMutation(ctx context.Context, m ent.Mutation) error {
+	if m, ok := m.(*ent.LeaseMutation); ok {
+		return f(ctx, m)
+	}
+	return Denyf("ent/privacy: unexpected mutation type %T, expect *ent.LeaseMutation", m)
+}
+
 // The OrgQueryRuleFunc type is an adapter to allow the use of ordinary
 // functions as a query rule.
 type OrgQueryRuleFunc func(context.Context, *ent.OrgQuery) error
@@ -530,6 +554,8 @@ func queryFilter(q ent.Query) (Filter, error) {
 		return q.Filter(), nil
 	case *ent.IssuedCertificateQuery:
 		return q.Filter(), nil
+	case *ent.LeaseQuery:
+		return q.Filter(), nil
 	case *ent.OrgQuery:
 		return q.Filter(), nil
 	case *ent.OrgSettingQuery:
@@ -566,6 +592,8 @@ func mutationFilter(m ent.Mutation) (Filter, error) {
 	case *ent.InstanceSettingMutation:
 		return m.Filter(), nil
 	case *ent.IssuedCertificateMutation:
+		return m.Filter(), nil
+	case *ent.LeaseMutation:
 		return m.Filter(), nil
 	case *ent.OrgMutation:
 		return m.Filter(), nil
