@@ -273,3 +273,68 @@ func TestSeal_RecordsKEKVersion(t *testing.T) {
 		}
 	})
 }
+
+// TestMarkSeenAndCheckRenewable: using a certificate supersedes the older certificates of its
+// identity but not a newer one, records its first use once, and leaves other identities alone;
+// unknown, revoked and superseded certificates are not renewable.
+func TestMarkSeenAndCheckRenewable(t *testing.T) {
+	withCA(t, func(t *testing.T, db *store.DB, kek secret.KEK, _ *pki.CA) {
+		sys := storetest.SystemCtx(t)
+		org := storetest.Org(t, db, "org-a")
+		now := t0
+		ca, err := pki.LoadCA(sys, db, sealer(t, kek), func() time.Time { return now })
+		if err != nil {
+			t.Fatal(err)
+		}
+		issueAt := func(id pki.Identity, at time.Time) *x509.Certificate {
+			now = at
+			var cert *x509.Certificate
+			if err := store.WriteTx(sys, db, func(tx *ent.Tx) error {
+				var err error
+				cert, err = ca.Issue(sys, tx, csrFor(t, newKey(t), nil), id, pki.DefaultLeafLifetime)
+				return err
+			}); err != nil {
+				t.Fatal(err)
+			}
+			return cert
+		}
+		seen := func(cert *x509.Certificate, at time.Time) {
+			if err := store.WriteTx(sys, db, func(tx *ent.Tx) error { return pki.MarkSeen(sys, tx, cert, at) }); err != nil {
+				t.Fatal(err)
+			}
+		}
+		check := func(cert *x509.Certificate) error { return pki.CheckRenewable(sys, db.Client(), cert) }
+		id, other := connector(org, ids.New("con")), connector(org, ids.New("con"))
+		a := issueAt(id, t0)
+		b := issueAt(id, t0.Add(time.Hour))
+		c := issueAt(id, t0.Add(2*time.Hour)) // issued, never used: a lost Renew response
+		o := issueAt(other, t0)
+
+		seen(b, t0.Add(3*time.Hour))
+		if err := check(a); !errors.Is(err, pki.ErrSuperseded) {
+			t.Errorf("an older certificate: %v", err)
+		}
+		for name, cert := range map[string]*x509.Certificate{"the one used": b, "a newer one": c, "another identity": o} {
+			if err := check(cert); err != nil {
+				t.Errorf("%s: %v", name, err)
+			}
+		}
+		seen(b, t0.Add(4*time.Hour))
+		if row := db.Client().IssuedCertificate.GetX(sys, pki.SerialHex(b.SerialNumber)); row.FirstSeenAt == nil ||
+			!row.FirstSeenAt.Equal(t0.Add(3*time.Hour)) {
+			t.Errorf("first use %v, want the first time it was seen", row.FirstSeenAt)
+		}
+
+		db.Client().IssuedCertificate.UpdateOneID(pki.SerialHex(c.SerialNumber)).SetRevokedAt(t0).ExecX(sys)
+		if err := check(c); !errors.Is(err, pki.ErrCertRevoked) {
+			t.Errorf("a revoked certificate: %v", err)
+		}
+
+		// A certificate without a record: not renewable, and nothing to mark.
+		foreign, _ := newCA(t, td).leaf(t, connector(org, ids.New("con")))
+		if err := check(foreign); !errors.Is(err, pki.ErrNotIssued) {
+			t.Errorf("a certificate without a record: %v", err)
+		}
+		seen(foreign, t0)
+	})
+}

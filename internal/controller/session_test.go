@@ -36,6 +36,8 @@ type sessionEnv struct {
 	addr     string
 	org      string
 	dbEpoch  string
+	sealer   *secret.Sealer
+	sys      context.Context
 }
 
 func startSessions(t *testing.T, db *store.DB, version string, admission int) *sessionEnv {
@@ -53,7 +55,8 @@ func startSessionsWith(t *testing.T, db *store.DB, opt func(*controller.Sessions
 	kek, _ := secret.NewKEK(raw)
 	s, _ := secret.NewSealer(kek)
 	td := "rpmgr-teststor"
-	if err := store.WriteTx(sys, db, func(tx *ent.Tx) error { return pki.InitCA(sys, tx, s, td, time.Now()) }); err != nil {
+	// The CA starts 60 days ago, so tests can issue certificates that have expired since.
+	if err := store.WriteTx(sys, db, func(tx *ent.Tx) error { return pki.InitCA(sys, tx, s, td, time.Now().Add(-60*24*time.Hour)) }); err != nil {
 		t.Fatal(err)
 	}
 	ca, err := pki.LoadCA(sys, db, s, time.Now)
@@ -66,9 +69,11 @@ func startSessionsWith(t *testing.T, db *store.DB, opt func(*controller.Sessions
 	}
 	roots := x509.NewCertPool()
 	roots.AddCert(ca.Root())
-	cfg := pki.AgentEndpointConfig(node, roots, pki.Expect{TrustDomain: td, Kinds: []pki.Kind{pki.KindConnector, pki.KindGateway}}, nil, pki.Reauth{})
+	cfg := pki.AgentEndpointConfig(node, roots, pki.Expect{TrustDomain: td, Kinds: []pki.Kind{pki.KindConnector, pki.KindGateway}},
+		nil, controller.ReauthChecks(db, sys))
 	srv := controller.NewAgentServer(cfg, td)
-	e := &sessionEnv{db: db, ca: ca, org: storetest.Org(t, db, "org-a"), dbEpoch: rev.DBEpoch}
+	agentv1.RegisterReauthServer(srv, controller.NewReauthService(db, ca, sys, nil))
+	e := &sessionEnv{db: db, ca: ca, org: storetest.Org(t, db, "org-a"), dbEpoch: rev.DBEpoch, sealer: s, sys: sys}
 	o := controller.SessionsOptions{DB: db, CA: ca, Node: "ctn_test", Sys: sys}
 	opt(&o)
 	e.sessions = controller.NewSessions(o)

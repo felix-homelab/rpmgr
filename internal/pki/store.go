@@ -3,6 +3,7 @@
 package pki
 
 import (
+	"bytes"
 	"context"
 	"crypto/ecdsa"
 	"crypto/rand"
@@ -280,4 +281,53 @@ func record(ctx context.Context, tx *ent.Tx, cert *x509.Certificate, id Identity
 func PublicKeyHash(spki []byte) string {
 	sum := sha256.Sum256(spki)
 	return hex.EncodeToString(sum[:])
+}
+
+// Why a certificate may not be renewed.
+var (
+	ErrCertRevoked = errors.New("pki: the certificate is revoked")
+	ErrSuperseded  = errors.New("pki: the certificate is superseded by a newer one of the same identity")
+)
+
+// CheckRenewable checks in issued_certificates that cert was issued by this controller and is
+// neither revoked nor superseded (docs/04-security.md, "Leaf certificates").
+func CheckRenewable(ctx context.Context, c *ent.Client, cert *x509.Certificate) error {
+	row, err := c.IssuedCertificate.Get(ctx, SerialHex(cert.SerialNumber))
+	switch {
+	case ent.IsNotFound(err):
+		return ErrNotIssued
+	case err != nil:
+		return err
+	case !bytes.Equal(row.Certificate, cert.Raw):
+		return ErrNotIssued
+	case row.RevokedAt != nil:
+		return ErrCertRevoked
+	case row.SupersededAt != nil:
+		return ErrSuperseded
+	}
+	return nil
+}
+
+// MarkSeen records that cert was presented in an authenticated session at now: its first use,
+// and that every older certificate of the same identity is superseded, so that it can no longer
+// be renewed or re-authenticated. A newer certificate that was issued but never used, such as one
+// whose Renew response was lost, stays renewable. A certificate without a record, as after a
+// restore from a backup older than the certificate, has nothing to mark.
+func MarkSeen(ctx context.Context, tx *ent.Tx, cert *x509.Certificate, now time.Time) error {
+	serial := SerialHex(cert.SerialNumber)
+	row, err := tx.IssuedCertificate.Get(ctx, serial)
+	if ent.IsNotFound(err) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if row.FirstSeenAt == nil {
+		if err := tx.IssuedCertificate.UpdateOneID(serial).SetFirstSeenAt(now).Exec(ctx); err != nil {
+			return err
+		}
+	}
+	return tx.IssuedCertificate.Update().Where(issuedcertificate.SubjectID(row.SubjectID), issuedcertificate.IDNEQ(serial),
+		issuedcertificate.NotBeforeLTE(row.NotBefore), issuedcertificate.SupersededAtIsNil()).
+		SetSupersededAt(now).Exec(ctx)
 }
