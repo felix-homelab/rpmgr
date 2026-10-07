@@ -1,0 +1,89 @@
+# 2026-10-06T13:04:32Z linux/arm64 sqlite_arm64.test -test.v -test.run='^TestSEHTruncatedShm$' 
+# host: Linux 6.18.33.2-microsoft-standard-WSL2 x86_64; emulator: qemu-aarch64-static
+qemu-aarch64 version 10.0.13 (Debian 1:10.0.13+ds-0+deb13u1)
+test binary compiled for linux/arm64
+=== RUN   TestSEHTruncatedShm
+--- FAIL: TestSEHTruncatedShm (0.24s)
+panic: runtime error: invalid memory address or nil pointer dereference [recovered, repanicked]
+[signal SIGBUS: bus error code=0x2 addr=0x0 pc=0x356270]
+
+goroutine 22 [running]:
+testing.tRunner.func1.2({0x9215d0, 0x9b02e0})
+	/home/fmoehlenhoff/.local/go1.27.1/src/testing/testing.go:2123 +0x1a0
+testing.tRunner.func1()
+	/home/fmoehlenhoff/.local/go1.27.1/src/testing/testing.go:2126 +0x2c8
+panic({0x9215d0?, 0x9b02e0?})
+	/home/fmoehlenhoff/.local/go1.27.1/src/runtime/panic.go:859 +0x120
+modernc.org/sqlite/lib._modernc_seh_try.func1()
+	/home/fmoehlenhoff/go/pkg/mod/modernc.org/sqlite@v1.60.1/lib/seh.go:103 +0xd0
+panic({0x9215d0?, 0x9b02e0?})
+	/home/fmoehlenhoff/.local/go1.27.1/src/runtime/panic.go:859 +0x120
+modernc.org/libc.Xmemcpy(...)
+	/home/fmoehlenhoff/go/pkg/mod/modernc.org/libc@v1.77.1/native_musl.go:40
+modernc.org/sqlite/lib._walIndexTryHdr(0x4eb4a7c1c0b0, 0x7cc645470428, 0x7cc6454a0020)
+	/home/fmoehlenhoff/go/pkg/mod/modernc.org/sqlite@v1.60.1/lib/sqlite_g_000000000001fea8.go:17116 +0x100
+modernc.org/sqlite/lib._walIndexReadHdr(0x4eb4a7c1c0b0, 0x7cc645470428, 0x7cc6454a0020)
+	/home/fmoehlenhoff/go/pkg/mod/modernc.org/sqlite@v1.60.1/lib/sqlite_g_000000000001ffff.go:13117 +0x114
+modernc.org/sqlite/lib._walTryBeginRead(0x4eb4a7c1c0b0, 0x7cc645470428, 0x7cc6454a0020, 0x0, 0x4eb4a7c33b40?)
+	/home/fmoehlenhoff/go/pkg/mod/modernc.org/sqlite@v1.60.1/lib/sqlite_g_000000000001feab.go:24986 +0x108
+modernc.org/sqlite/lib._walBeginReadTransaction(0x4eb4a7c1c0b0, 0x7cc645470428, 0x7cc6454a0020)
+	/home/fmoehlenhoff/go/pkg/mod/modernc.org/sqlite@v1.60.1/lib/sqlite_g_000000000003fea8.go:2584 +0x12c
+modernc.org/sqlite/lib._walSehBeginReadTransaction(0x4eb4a7c1c0b0?, 0x7cc6454c0560?, 0x4eb4a7c33c08?)
+	/home/fmoehlenhoff/go/pkg/mod/modernc.org/sqlite@v1.60.1/lib/sqlite.go:39802 +0x1c
+modernc.org/sqlite/lib._modernc_seh_try(0x4eb4a7c1c0b0, 0x7cc645470428, 0x9607e8, 0x7cc6454a0020, 0x9607e0)
+	/home/fmoehlenhoff/go/pkg/mod/modernc.org/sqlite@v1.60.1/lib/seh.go:115 +0xa8
+modernc.org/sqlite/lib._walSehTry(...)
+	/home/fmoehlenhoff/go/pkg/mod/modernc.org/sqlite@v1.60.1/lib/sqlite.go:39842
+modernc.org/sqlite/lib._sqlite3WalBeginReadTransaction(0x4eb4a7c33d98?, 0x2ca494?, 0x4eb4a7c1c0b0?)
+	/home/fmoehlenhoff/go/pkg/mod/modernc.org/sqlite@v1.60.1/lib/sqlite.go:38178 +0x54
+modernc.org/sqlite/lib._pagerBeginReadTransaction(0x4eb4a7c1c0b0, 0x7cc6454c0428)
+	/home/fmoehlenhoff/go/pkg/mod/modernc.org/sqlite@v1.60.1/lib/sqlite_g_0000000000063fff.go:38 +0x88
+modernc.org/sqlite/lib._sqlite3PagerSharedLock(0x4eb4a7c1c0b0, 0x7cc6454c0428)
+	/home/fmoehlenhoff/go/pkg/mod/modernc.org/sqlite@v1.60.1/lib/sqlite_g_0000000000003a20.go:189 +0x4ec
+modernc.org/sqlite/lib._lockBtree(0x4eb4a7c1c0b0, 0x7cc6454f0628)
+	/home/fmoehlenhoff/go/pkg/mod/modernc.org/sqlite@v1.60.1/lib/sqlite_g_0000000000003e80.go:7474 +0x84
+modernc.org/sqlite/lib._btreeBeginTrans(0x4eb4a7c1c0b0, 0x7cc6454d01a8, 0x0, 0x7cc6454c0c88)
+	/home/fmoehlenhoff/go/pkg/mod/modernc.org/sqlite@v1.60.1/lib/sqlite_g_000000000001feab.go:1944 +0x2d0
+modernc.org/sqlite/lib._sqlite3BtreeBeginTrans(0x0?, 0x1000000?, 0xa7c34478?, 0x100320294?)
+	/home/fmoehlenhoff/go/pkg/mod/modernc.org/sqlite@v1.60.1/lib/sqlite_g_000000000001ffff.go:6535 +0x3c
+modernc.org/sqlite/lib._sqlite3VdbeExec(0x4eb4a7c1c0b0, 0x7cc645487558)
+	/home/fmoehlenhoff/go/pkg/mod/modernc.org/sqlite@v1.60.1/lib/sqlite_g_0000000000001a00.go:11533 +0x988
+modernc.org/sqlite/lib._sqlite3Step(0x4eb4a7c1c0b0, 0x7cc645487558)
+	/home/fmoehlenhoff/go/pkg/mod/modernc.org/sqlite@v1.60.1/lib/sqlite_g_000000000001deab.go:3968 +0x68
+modernc.org/sqlite/lib.Xsqlite3_step(0x4eb4a7c1c0b0, 0x7cc645487558)
+	/home/fmoehlenhoff/go/pkg/mod/modernc.org/sqlite@v1.60.1/lib/sqlite.go:12110 +0xc8
+modernc.org/sqlite.(*conn).step(0x4eb4a7b64120, 0x7cc645487558)
+	/home/fmoehlenhoff/go/pkg/mod/modernc.org/sqlite@v1.60.1/conn.go:435 +0x34
+modernc.org/sqlite.(*stmt).query(0x4eb4a7a040a8, {0x95ca48, 0x9e73a0}, {0x9e73a0, 0x0, 0x0})
+	/home/fmoehlenhoff/go/pkg/mod/modernc.org/sqlite@v1.60.1/stmt.go:337 +0x13c
+modernc.org/sqlite.(*conn).query(0x4eb4a7c35938?, {0x95ca48, 0x9e73a0}, {0x4d90d9?, 0x4eb4a7a04060?}, {0x9e73a0, 0x0, 0x0})
+	/home/fmoehlenhoff/go/pkg/mod/modernc.org/sqlite@v1.60.1/conn.go:1210 +0x5c
+modernc.org/sqlite.(*conn).QueryContext(0x95a860?, {0x95ca48?, 0x9e73a0?}, {0x4d90d9?, 0x4eb4a7c359b8?}, {0x9e73a0?, 0x4eb4a7c12340?, 0x4eb4a7b35600?})
+	/home/fmoehlenhoff/go/pkg/mod/modernc.org/sqlite@v1.60.1/conn.go:1436 +0x2c
+database/sql.ctxDriverQuery({0x95ca48?, 0x9e73a0?}, {0x7cc698031c00?, 0x4eb4a7b64120?}, {0x0?, 0x0?}, {0x4d90d9?, 0x4eb4a7c12360?}, {0x9e73a0?, 0x4024d4?, ...})
+	/home/fmoehlenhoff/.local/go1.27.1/src/database/sql/ctxutil.go:48 +0xa8
+database/sql.(*DB).queryDC.func1()
+	/home/fmoehlenhoff/.local/go1.27.1/src/database/sql/sql.go:1791 +0xe0
+database/sql.withLock({0x95b9c0, 0x4eb4a7b35600}, 0x4eb4a7c35b98)
+	/home/fmoehlenhoff/.local/go1.27.1/src/database/sql/sql.go:3621 +0x74
+database/sql.(*DB).queryDC(0x10?, {0x95ca48, 0x9e73a0}, {0x0, 0x0}, 0x4eb4a7b35600, 0x4eb4a7a12140, {0x4d90d9, 0x16}, {0x0, ...})
+	/home/fmoehlenhoff/.local/go1.27.1/src/database/sql/sql.go:1786 +0x104
+database/sql.(*DB).query(0x4eb4a7c12340, {0x95ca48, 0x9e73a0}, {0x4d90d9, 0x16}, {0x0, 0x0, 0x0}, 0x8?)
+	/home/fmoehlenhoff/.local/go1.27.1/src/database/sql/sql.go:1769 +0xbc
+database/sql.(*DB).QueryContext.func1(0x78?)
+	/home/fmoehlenhoff/.local/go1.27.1/src/database/sql/sql.go:1747 +0x40
+database/sql.(*DB).retry(0x0?, 0x4eb4a7c35d90)
+	/home/fmoehlenhoff/.local/go1.27.1/src/database/sql/sql.go:1581 +0x4c
+database/sql.(*DB).QueryContext(0x4eb4a7c35e28?, {0x95ca48?, 0x9e73a0?}, {0x4d90d9?, 0x2d?}, {0x0?, 0x4eb4a7c35e58?, 0x49315c?})
+	/home/fmoehlenhoff/.local/go1.27.1/src/database/sql/sql.go:1746 +0x64
+database/sql.(*DB).QueryRowContext(...)
+	/home/fmoehlenhoff/.local/go1.27.1/src/database/sql/sql.go:1847
+database/sql.(*DB).QueryRow(0x4eb4a7a100c0?, {0x4d90d9?, 0x0?}, {0x0?, 0x4eb4a7c200f0?, 0x0?})
+	/home/fmoehlenhoff/.local/go1.27.1/src/database/sql/sql.go:1861 +0x48
+modernc.org/sqlite.TestSEHTruncatedShm(0x4eb4a7b4c6c8)
+	/home/fmoehlenhoff/go/pkg/mod/modernc.org/sqlite@v1.60.1/seh_test.go:95 +0x1e0
+testing.tRunner(0x4eb4a7b4c6c8, 0x95dde8)
+	/home/fmoehlenhoff/.local/go1.27.1/src/testing/testing.go:2193 +0xc4
+created by testing.(*T).Run in goroutine 1
+	/home/fmoehlenhoff/.local/go1.27.1/src/testing/testing.go:2258 +0x3b8
+# exit 2 after 1 s
