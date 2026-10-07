@@ -120,3 +120,8 @@ congestion control. "QUIC is faster" is therefore a **hypothesis**, not a premis
 - **S3**: dispatching on a shared UDP/443 listener (`h3` + `rpmgr-tunnel/1`). If one listener
   cannot serve both well, tunnels move to a separate UDP port (gateway boot-file key
   `listen.tunnel_udp`, [10](../10-operations.md#configuration)).
+  **Result (2026-10-06, [S3](../spikes/S3.md)): passed; the rule is not triggered.** One quic-go
+  v0.63.0 listener served both ALPNs on one socket under concurrent load, with per-ALPN TLS
+  settings through `GetConfigForClient` and per-ALPN window budgets; tunnels share UDP/443 by
+  default, and `listen.tunnel_udp` remains the option for tunnel transport parameters that differ
+  from public HTTP/3. This ADR stays *Proposed* until S1 decides the default transport.

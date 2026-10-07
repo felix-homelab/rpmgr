@@ -35,7 +35,10 @@ Design goals, in priority order:
 ## Properties common to all rpmgr-internal sessions
 
 - **TLS 1.3 only** (`MinVersion = MaxVersion = tls.VersionTLS13`). Key exchange uses the Go
-  `crypto/tls` defaults, which include a hybrid post-quantum group in recent Go releases [V S3].
+  `crypto/tls` defaults, which enable the hybrid post-quantum groups X25519MLKEM768,
+  SecP256r1MLKEM768 and SecP384r1MLKEM1024, X25519MLKEM768 first
+  [F Go 1.27.1 `crypto/tls/defaults.go:23-42`]; a client sends an X25519MLKEM768 key share with an
+  X25519 share next to it ([S3](spikes/S3.md)).
 - **Certificates chain to the installation's pinned root CA**, never to the system trust store.
   Every certificate carries a SPIFFE URI SAN (the identity) and a DNS SAN derived from it
   (`<id>.connector.<td>`, `<id>.gateway.<td>`, `controller.<td>`). The TLS client always sets
@@ -469,37 +472,52 @@ Gateways serve everything on **443** (TCP and UDP) so that only standard ports n
 tunnel traffic looks like ordinary HTTPS.
 
 **TCP/443** — the gateway peeks at the TLS ClientHello without consuming it (read full TLS records,
-at most **16 KiB** within **5 s**; ClientHellos with post-quantum key shares are about 1.5 KB and
-often span several TCP segments [V S3]), then decides:
+at most **16 KiB** within **5 s**), then decides. ClientHellos with post-quantum key shares are
+1.5–2.2 KB (Go 1 533, curl with OpenSSL 1 562, Firefox 1 893, Chromium up to 2 177 bytes), so on a
+path with a 1500-byte MTU they arrive in two TCP segments ([S3](spikes/S3.md)).
 
 | Condition | Action |
 |---|---|
 | SNI = `controller.<td>`, `reauth.controller.<td>` or a controller UI hostname | All-in-one: hand to the in-process controller. Otherwise: TLS-passthrough route to the controller |
-| SNI ends in `.gateway.<td>` and ALPN `rpmgr-tunnel-h2/1` | Data session over TLS + reverse HTTP/2 (mutual TLS; the certificate for `<this-gateway-id>.gateway.<td>`) |
+| SNI = this gateway's `<gateway-id>.gateway.<td>` and the client offers ALPN `rpmgr-tunnel-h2/1` | Data session over TLS + reverse HTTP/2 (mutual TLS with the certificate for that name). Any other name under `.gateway.<td>` is handled like an unknown SNI |
 | SNI = this gateway's WSS tunnel hostname | HTTP engine; `/.rpmgr/tunnel` upgrades to the WSS transport (Phase 2) |
 | SNI matches a TLS-passthrough route | Splice raw bytes to a connector |
 | SNI matches an HTTP route hostname | Terminate TLS (ACME or uploaded certificate), hand to HTTP engine |
 | No SNI, unknown SNI | Complete the handshake with the default certificate and close; there is no configurable fallback route |
 | Not TLS | Close |
 
-The ClientHello can be parsed with `golang.org/x/crypto/cryptobyte`, or by running
-`crypto/tls` on a read-only recording connection and aborting in `GetConfigForClient`; either way
-the recorded bytes are replayed to the chosen handler [V S3].
+The ClientHello is parsed with `golang.org/x/crypto/cryptobyte` from the recorded records, which
+are then replayed to the chosen handler. The parser also reports the key-share groups, depends on
+no `crypto/tls` internals and never writes to the client; running `crypto/tls` on a recording
+connection and aborting in `GetConfigForClient` works too, but sends an alert unless the connection
+swallows writes ([S3](spikes/S3.md)). SNI is compared case-insensitively: gateway IDs contain
+upper-case letters and `_`, which Go accepts in DNS SANs and matches case-insensitively
+([S7](spikes/S7.md)). Each terminating TLS stack is one `tls.Config` whose `GetConfigForClient`
+picks the certificate per SNI, and for the controller also the client-certificate requirement.
 
 **UDP/443** — one quic-go `Transport` per socket supports exactly one listener
-[F quic-go:transport.go:169-206]. rpmgr uses one listener with `NextProtos = {"h3", "rpmgr-tunnel/1"}`
-and dispatches each connection on its negotiated ALPN: `h3` (public HTTP/3, Phase 3) to an `http3.Server` via
-`ServeQUICConn`, `rpmgr-tunnel/1` to the data-session manager. Do **not** call
-`http3.ConfigureTLSConfig`: it replaces `NextProtos` with `["h3"]`
-[F quic-go:http3/server.go:47-62].
+[F quic-go v0.63.0 `transport.go:173-175,209`]. rpmgr uses one listener with
+`NextProtos = {"h3", "rpmgr-tunnel/1"}` and dispatches each connection on its negotiated ALPN: `h3`
+(public HTTP/3, Phase 3) to an `http3.Server` via `ServeQUICConn`, `rpmgr-tunnel/1` to the
+data-session manager. The TLS settings differ per ALPN: the listener's `GetConfigForClient` sees SNI
+and the offered ALPNs [F Go 1.27.1 `crypto/tls/common.go:444-478`] and returns mutual TLS with the
+gateway certificate for this gateway's tunnel name and `rpmgr-tunnel/1`, the route's certificate
+without a client-certificate request for `h3`, and an error otherwise. Do **not** call
+`http3.ConfigureTLSConfig`: it replaces `NextProtos` with `["h3"]`, also in configurations returned
+by `GetConfigForClient` [F quic-go v0.63.0 `http3/server.go:48-71`].
 
-Caveat: a quic-go listener has a single `quic.Config` (windows, stream limits, datagrams); its
-`GetConfigForClient` only sees the remote address. Public HTTP/3 clients and tunnel sessions
+Caveat: a quic-go listener has a single `quic.Config` (windows, stream limits, idle timeout,
+datagrams); its `GetConfigForClient` sees only the remote address
+[F quic-go v0.63.0 `interface.go:103-105,189-197`]. Public HTTP/3 clients and tunnel sessions
 therefore share transport parameters. Memory is protected by separate window budgets per ALPN in
-`AllowConnectionWindowIncrease` (public `h3` cannot consume the tunnels' share); a gateway can move
-tunnels to a separate UDP port with the boot-file key `listen.tunnel_udp` (empty = share 443) when
-other tuning must differ ([10](10-operations.md#configuration)). The separate port is also the
-fallback if S3 shows that one listener cannot serve both ALPNs well.
+`AllowConnectionWindowIncrease`, so public `h3` cannot consume the tunnels' share. The callback must
+not call methods of the connection [F quic-go v0.63.0 `interface.go:145-151`]; the accept loop
+records each connection's ALPN, and the callback looks it up. S3 showed one listener serving both
+ALPNs under concurrent load, with refused `h3` window increases leaving the tunnels unaffected
+([S3](spikes/S3.md)), so tunnels share 443 by default. A gateway moves tunnels to a separate UDP
+port with the boot-file key `listen.tunnel_udp` (empty = share 443) when their transport parameters
+must differ from public HTTP/3, which one listener cannot provide
+([10](10-operations.md#configuration)).
 
 ### Transports and fallback
 
@@ -573,7 +591,7 @@ limits head-of-line blocking from packet loss to half the streams.
 | `KeepAlivePeriod` | off | 10 s | Keeps NAT mappings alive; RFC 4787 asks for ≥ 2 min UDP mappings, but shorter ones exist |
 | Stream receive window | 512 KiB → 6 MiB [F quic-go:internal/protocol/params.go:25,31] | 512 KiB → **16 MiB** | Single-stream throughput on high-RTT paths |
 | Connection receive window | 768 KiB → 15 MiB [F quic-go:internal/protocol/params.go:28,34] | → **256 MiB** (≥ 16 × the stream maximum) | Unread data keeps holding connection credit until the application reads it, so a few stalled streams must not be able to exhaust the connection window |
-| Window budget | none | process-wide budget, default 1 GiB, via `AllowConnectionWindowIncrease` [F quic-go:interface.go:151], split per ALPN (`rpmgr-tunnel/1`, `h3`); h2 sessions are admitted against the same budget | Bounds memory under many sessions |
+| Window budget | none | process-wide budget, default 1 GiB, via `AllowConnectionWindowIncrease` [F quic-go v0.63.0 `interface.go:151`], split per ALPN (`rpmgr-tunnel/1`, `h3`; [S3](spikes/S3.md)); h2 sessions are admitted against the same budget | Bounds memory under many sessions |
 | `MaxIncomingStreams` on the connector | 100 [F quic-go:internal/protocol/params.go:40] | **10 000** | Limits concurrent user connections per session; 100 is far too low |
 | `MaxIncomingStreams` on the gateway | 100 | 1 000 | Connectors open few streams (session control, relay) |
 | `EnableDatagrams` | off | on | UDP routes |
