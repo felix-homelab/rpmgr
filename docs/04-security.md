@@ -680,6 +680,13 @@ Checkpoints prove tampering but cannot restore content, so revocations get their
   S3-compatible sink comes with HA in Phase 2 ([D58](14-open-decisions.md#project-and-process)).
 - Sink sequence numbers are allocated by **conditional create** of the object named `<seq>`
   (allocation is the write), so the sink has no gaps; entries are hash-chained.
+- **Local format.** One line of JSON per entry: sequence number from 1, time, kind, org, subject,
+  detail, the covered certificate's `NotAfter` where there is one, actor, the previous entry's hash
+  and its own: the SHA-256 of the entry encoded with an empty hash. Text fields hold at most
+  512 bytes. Appends from several processes on one host, such as an admin command beside the
+  controller, are serialised by a file lock. An append returns after `fsync`; a last line without
+  its newline was never acknowledged and is replaced by the next append. Reading verifies the whole
+  chain: numbering, links and hashes.
 - **Single node**: the sink is optional. Without it, the local log, included in every backup, is the
   only copy; a restore reads it with `--revocation-log <file>`. The "not yet off-host" alert fires
   only when a sink is configured; without one, the UI shows a standing hardening warning instead.
