@@ -786,7 +786,9 @@ sequenceDiagram
 | Control session liveness | grpc-go keepalive at both ends: ping after 20 s without activity, also without an active RPC; close after 10 s without an answer. Controller: `EnforcementPolicy{MinTime: 10 s, PermitWithoutStream: true}` | A dead path is noticed within 30 s; the policy avoids grpc-go's "too many pings" disconnect |
 | Reconnect backoff | full jitter, base 0.5 s, factor 2, cap 30 s (control) / 15 s (data); reset after 60 s healthy; honour `Goodbye.retry_after` | Avoids reconnect storms and synchronised retries |
 | Singleton job lease (controller) | TTL 30 s, renewed every 10 s; another replica tries to take it every 5 s | A dead replica's jobs move within 30 s; renewals have two chances before expiry ([10](10-operations.md#high-availability)) |
-| Controller admission | 50 new control sessions/s per replica, excess gets `Goodbye{retry_after}` | Restart storms |
+| Controller admission | 50 new control sessions/s per replica; excess gets `Goodbye{overloaded}` with a `retry_after` drawn from 1–10 s | Restart storms, spread out again |
+| Control session start | `Hello` within 10 s, as the first message only | A connection that sends nothing holds no session |
+| Controller drain | `Drain{deadline}` to every session, also to sessions that start later; new sessions while draining get `Goodbye{shutdown}` with a `retry_after` | Agents move to another endpoint before the replica stops |
 | ClientHello peek | 16 KiB within 5 s | Slowloris protection |
 | `StreamOpen` → `StreamResult` | 10 s; upstream dial 5 s | Bounded connection setup |
 | HTTP server | header read 10 s; idle 120 s; upstream response header 60 s; no total write timeout | Long downloads and streaming must work |
@@ -833,7 +835,7 @@ sequenceDiagram
 | Event | What happens |
 |---|---|
 | **Controller down** | All agents keep running their last-known-good snapshot; **traffic continues**. No configuration changes, enrollments or renewals; revocations cannot be pushed (bounded by the certificate lifetime). Agents reconnect with backoff; the controller sends a snapshot only if it differs from `last_applied`. |
-| **Database down** | Controller serves reads from memory where possible, rejects writes, keeps sessions. |
+| **Database down** | Controller serves reads from memory where possible, rejects writes, keeps sessions. New control sessions are refused as unavailable, because each needs a session epoch from the database; agents retry with backoff. |
 | **Gateway crashes** | New user connections for its routes go to the other gateways in the group. Public connections in flight on the crashed gateway are lost. With a persisted `StatelessResetKey` and padded session pings, connectors notice the restart within one ping interval (15 s) instead of after the idle timeout. |
 | **Gateway planned restart** | `Drain`, connectors re-home, in-flight connections get the gateway drain period. |
 | **Connector restarts** | Its sessions close; routes with no other ready connector return 503 (HTTP) or refuse (TCP). It restarts from the persisted last-known-good snapshot, reconnects, and reports a new `boot_id`. |

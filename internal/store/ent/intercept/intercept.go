@@ -8,6 +8,7 @@ import (
 
 	"entgo.io/ent/dialect/sql"
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/agentsession"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/auditentry"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/audithead"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/cakey"
@@ -81,6 +82,33 @@ func (f TraverseFunc) Traverse(ctx context.Context, q ent.Query) error {
 		return err
 	}
 	return f(ctx, query)
+}
+
+// The AgentSessionFunc type is an adapter to allow the use of ordinary function as a Querier.
+type AgentSessionFunc func(context.Context, *ent.AgentSessionQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f AgentSessionFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.AgentSessionQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.AgentSessionQuery", q)
+}
+
+// The TraverseAgentSession type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseAgentSession func(context.Context, *ent.AgentSessionQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseAgentSession) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseAgentSession) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.AgentSessionQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.AgentSessionQuery", q)
 }
 
 // The AuditEntryFunc type is an adapter to allow the use of ordinary function as a Querier.
@@ -518,6 +546,8 @@ func (f TraverseSecretMeta) Traverse(ctx context.Context, q ent.Query) error {
 // NewQuery returns the generic Query interface for the given typed query.
 func NewQuery(q ent.Query) (Query, error) {
 	switch q := q.(type) {
+	case *ent.AgentSessionQuery:
+		return &query[*ent.AgentSessionQuery, predicate.AgentSession, agentsession.OrderOption]{typ: ent.TypeAgentSession, tq: q}, nil
 	case *ent.AuditEntryQuery:
 		return &query[*ent.AuditEntryQuery, predicate.AuditEntry, auditentry.OrderOption]{typ: ent.TypeAuditEntry, tq: q}, nil
 	case *ent.AuditHeadQuery:
