@@ -30,6 +30,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/org"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/orgsetting"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/predicate"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/revokedidentity"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/secretmeta"
 )
 
@@ -60,6 +61,7 @@ const (
 	TypeLease             = "Lease"
 	TypeOrg               = "Org"
 	TypeOrgSetting        = "OrgSetting"
+	TypeRevokedIdentity   = "RevokedIdentity"
 	TypeSecretMeta        = "SecretMeta"
 )
 
@@ -14290,6 +14292,630 @@ func (m *OrgSettingMutation) ClearEdge(name string) error {
 // It returns an error if the edge is not defined in the schema.
 func (m *OrgSettingMutation) ResetEdge(name string) error {
 	return fmt.Errorf("unknown OrgSetting edge %s", name)
+}
+
+// RevokedIdentityMutation represents an operation that mutates the RevokedIdentity nodes in the graph.
+type RevokedIdentityMutation struct {
+	config
+	op            Op
+	typ           string
+	id            *string
+	org_id        *string
+	subject_type  *revokedidentity.SubjectType
+	subject_id    *string
+	revoked_at    *time.Time
+	reason        *string
+	not_after     *time.Time
+	clearedFields map[string]struct{}
+	done          bool
+	oldValue      func(context.Context) (*RevokedIdentity, error)
+	predicates    []predicate.RevokedIdentity
+}
+
+var _ ent.Mutation = (*RevokedIdentityMutation)(nil)
+
+// revokedidentityOption allows management of the mutation configuration using functional options.
+type revokedidentityOption func(*RevokedIdentityMutation)
+
+// newRevokedIdentityMutation creates new mutation for the RevokedIdentity entity.
+func newRevokedIdentityMutation(c config, op Op, opts ...revokedidentityOption) *RevokedIdentityMutation {
+	m := &RevokedIdentityMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeRevokedIdentity,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withRevokedIdentityID sets the ID field of the mutation.
+func withRevokedIdentityID(id string) revokedidentityOption {
+	return func(m *RevokedIdentityMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *RevokedIdentity
+		)
+		m.oldValue = func(ctx context.Context) (*RevokedIdentity, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().RevokedIdentity.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withRevokedIdentity sets the old RevokedIdentity of the mutation.
+func withRevokedIdentity(node *RevokedIdentity) revokedidentityOption {
+	return func(m *RevokedIdentityMutation) {
+		m.oldValue = func(context.Context) (*RevokedIdentity, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m RevokedIdentityMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m RevokedIdentityMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// SetID sets the value of the id field. Note that this
+// operation is only accepted on creation of RevokedIdentity entities.
+func (m *RevokedIdentityMutation) SetID(id string) {
+	m.id = &id
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *RevokedIdentityMutation) ID() (id string, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *RevokedIdentityMutation) IDs(ctx context.Context) ([]string, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []string{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().RevokedIdentity.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetOrgID sets the "org_id" field.
+func (m *RevokedIdentityMutation) SetOrgID(s string) {
+	m.org_id = &s
+}
+
+// OrgID returns the value of the "org_id" field in the mutation.
+func (m *RevokedIdentityMutation) OrgID() (r string, exists bool) {
+	v := m.org_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldOrgID returns the old "org_id" field's value of the RevokedIdentity entity.
+// If the RevokedIdentity object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RevokedIdentityMutation) OldOrgID(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldOrgID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldOrgID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldOrgID: %w", err)
+	}
+	return oldValue.OrgID, nil
+}
+
+// ClearOrgID clears the value of the "org_id" field.
+func (m *RevokedIdentityMutation) ClearOrgID() {
+	m.org_id = nil
+	m.clearedFields[revokedidentity.FieldOrgID] = struct{}{}
+}
+
+// OrgIDCleared returns if the "org_id" field was cleared in this mutation.
+func (m *RevokedIdentityMutation) OrgIDCleared() bool {
+	_, ok := m.clearedFields[revokedidentity.FieldOrgID]
+	return ok
+}
+
+// ResetOrgID resets all changes to the "org_id" field.
+func (m *RevokedIdentityMutation) ResetOrgID() {
+	m.org_id = nil
+	delete(m.clearedFields, revokedidentity.FieldOrgID)
+}
+
+// SetSubjectType sets the "subject_type" field.
+func (m *RevokedIdentityMutation) SetSubjectType(rt revokedidentity.SubjectType) {
+	m.subject_type = &rt
+}
+
+// SubjectType returns the value of the "subject_type" field in the mutation.
+func (m *RevokedIdentityMutation) SubjectType() (r revokedidentity.SubjectType, exists bool) {
+	v := m.subject_type
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSubjectType returns the old "subject_type" field's value of the RevokedIdentity entity.
+// If the RevokedIdentity object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RevokedIdentityMutation) OldSubjectType(ctx context.Context) (v revokedidentity.SubjectType, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSubjectType is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSubjectType requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSubjectType: %w", err)
+	}
+	return oldValue.SubjectType, nil
+}
+
+// ResetSubjectType resets all changes to the "subject_type" field.
+func (m *RevokedIdentityMutation) ResetSubjectType() {
+	m.subject_type = nil
+}
+
+// SetSubjectID sets the "subject_id" field.
+func (m *RevokedIdentityMutation) SetSubjectID(s string) {
+	m.subject_id = &s
+}
+
+// SubjectID returns the value of the "subject_id" field in the mutation.
+func (m *RevokedIdentityMutation) SubjectID() (r string, exists bool) {
+	v := m.subject_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSubjectID returns the old "subject_id" field's value of the RevokedIdentity entity.
+// If the RevokedIdentity object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RevokedIdentityMutation) OldSubjectID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSubjectID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSubjectID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSubjectID: %w", err)
+	}
+	return oldValue.SubjectID, nil
+}
+
+// ResetSubjectID resets all changes to the "subject_id" field.
+func (m *RevokedIdentityMutation) ResetSubjectID() {
+	m.subject_id = nil
+}
+
+// SetRevokedAt sets the "revoked_at" field.
+func (m *RevokedIdentityMutation) SetRevokedAt(t time.Time) {
+	m.revoked_at = &t
+}
+
+// RevokedAt returns the value of the "revoked_at" field in the mutation.
+func (m *RevokedIdentityMutation) RevokedAt() (r time.Time, exists bool) {
+	v := m.revoked_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRevokedAt returns the old "revoked_at" field's value of the RevokedIdentity entity.
+// If the RevokedIdentity object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RevokedIdentityMutation) OldRevokedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRevokedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRevokedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRevokedAt: %w", err)
+	}
+	return oldValue.RevokedAt, nil
+}
+
+// ResetRevokedAt resets all changes to the "revoked_at" field.
+func (m *RevokedIdentityMutation) ResetRevokedAt() {
+	m.revoked_at = nil
+}
+
+// SetReason sets the "reason" field.
+func (m *RevokedIdentityMutation) SetReason(s string) {
+	m.reason = &s
+}
+
+// Reason returns the value of the "reason" field in the mutation.
+func (m *RevokedIdentityMutation) Reason() (r string, exists bool) {
+	v := m.reason
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldReason returns the old "reason" field's value of the RevokedIdentity entity.
+// If the RevokedIdentity object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RevokedIdentityMutation) OldReason(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldReason is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldReason requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldReason: %w", err)
+	}
+	return oldValue.Reason, nil
+}
+
+// ResetReason resets all changes to the "reason" field.
+func (m *RevokedIdentityMutation) ResetReason() {
+	m.reason = nil
+}
+
+// SetNotAfter sets the "not_after" field.
+func (m *RevokedIdentityMutation) SetNotAfter(t time.Time) {
+	m.not_after = &t
+}
+
+// NotAfter returns the value of the "not_after" field in the mutation.
+func (m *RevokedIdentityMutation) NotAfter() (r time.Time, exists bool) {
+	v := m.not_after
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldNotAfter returns the old "not_after" field's value of the RevokedIdentity entity.
+// If the RevokedIdentity object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RevokedIdentityMutation) OldNotAfter(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldNotAfter is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldNotAfter requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldNotAfter: %w", err)
+	}
+	return oldValue.NotAfter, nil
+}
+
+// ResetNotAfter resets all changes to the "not_after" field.
+func (m *RevokedIdentityMutation) ResetNotAfter() {
+	m.not_after = nil
+}
+
+// Where appends a list predicates to the RevokedIdentityMutation builder.
+func (m *RevokedIdentityMutation) Where(ps ...predicate.RevokedIdentity) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the RevokedIdentityMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *RevokedIdentityMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.RevokedIdentity, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *RevokedIdentityMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *RevokedIdentityMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (RevokedIdentity).
+func (m *RevokedIdentityMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *RevokedIdentityMutation) Fields() []string {
+	fields := make([]string, 0, 6)
+	if m.org_id != nil {
+		fields = append(fields, revokedidentity.FieldOrgID)
+	}
+	if m.subject_type != nil {
+		fields = append(fields, revokedidentity.FieldSubjectType)
+	}
+	if m.subject_id != nil {
+		fields = append(fields, revokedidentity.FieldSubjectID)
+	}
+	if m.revoked_at != nil {
+		fields = append(fields, revokedidentity.FieldRevokedAt)
+	}
+	if m.reason != nil {
+		fields = append(fields, revokedidentity.FieldReason)
+	}
+	if m.not_after != nil {
+		fields = append(fields, revokedidentity.FieldNotAfter)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *RevokedIdentityMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case revokedidentity.FieldOrgID:
+		return m.OrgID()
+	case revokedidentity.FieldSubjectType:
+		return m.SubjectType()
+	case revokedidentity.FieldSubjectID:
+		return m.SubjectID()
+	case revokedidentity.FieldRevokedAt:
+		return m.RevokedAt()
+	case revokedidentity.FieldReason:
+		return m.Reason()
+	case revokedidentity.FieldNotAfter:
+		return m.NotAfter()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *RevokedIdentityMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case revokedidentity.FieldOrgID:
+		return m.OldOrgID(ctx)
+	case revokedidentity.FieldSubjectType:
+		return m.OldSubjectType(ctx)
+	case revokedidentity.FieldSubjectID:
+		return m.OldSubjectID(ctx)
+	case revokedidentity.FieldRevokedAt:
+		return m.OldRevokedAt(ctx)
+	case revokedidentity.FieldReason:
+		return m.OldReason(ctx)
+	case revokedidentity.FieldNotAfter:
+		return m.OldNotAfter(ctx)
+	}
+	return nil, fmt.Errorf("unknown RevokedIdentity field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *RevokedIdentityMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case revokedidentity.FieldOrgID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetOrgID(v)
+		return nil
+	case revokedidentity.FieldSubjectType:
+		v, ok := value.(revokedidentity.SubjectType)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSubjectType(v)
+		return nil
+	case revokedidentity.FieldSubjectID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSubjectID(v)
+		return nil
+	case revokedidentity.FieldRevokedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRevokedAt(v)
+		return nil
+	case revokedidentity.FieldReason:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetReason(v)
+		return nil
+	case revokedidentity.FieldNotAfter:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetNotAfter(v)
+		return nil
+	}
+	return fmt.Errorf("unknown RevokedIdentity field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *RevokedIdentityMutation) AddedFields() []string {
+	return nil
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *RevokedIdentityMutation) AddedField(name string) (ent.Value, bool) {
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *RevokedIdentityMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	}
+	return fmt.Errorf("unknown RevokedIdentity numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *RevokedIdentityMutation) ClearedFields() []string {
+	var fields []string
+	if m.FieldCleared(revokedidentity.FieldOrgID) {
+		fields = append(fields, revokedidentity.FieldOrgID)
+	}
+	return fields
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *RevokedIdentityMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *RevokedIdentityMutation) ClearField(name string) error {
+	switch name {
+	case revokedidentity.FieldOrgID:
+		m.ClearOrgID()
+		return nil
+	}
+	return fmt.Errorf("unknown RevokedIdentity nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *RevokedIdentityMutation) ResetField(name string) error {
+	switch name {
+	case revokedidentity.FieldOrgID:
+		m.ResetOrgID()
+		return nil
+	case revokedidentity.FieldSubjectType:
+		m.ResetSubjectType()
+		return nil
+	case revokedidentity.FieldSubjectID:
+		m.ResetSubjectID()
+		return nil
+	case revokedidentity.FieldRevokedAt:
+		m.ResetRevokedAt()
+		return nil
+	case revokedidentity.FieldReason:
+		m.ResetReason()
+		return nil
+	case revokedidentity.FieldNotAfter:
+		m.ResetNotAfter()
+		return nil
+	}
+	return fmt.Errorf("unknown RevokedIdentity field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *RevokedIdentityMutation) AddedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *RevokedIdentityMutation) AddedIDs(name string) []ent.Value {
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *RevokedIdentityMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *RevokedIdentityMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *RevokedIdentityMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *RevokedIdentityMutation) EdgeCleared(name string) bool {
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *RevokedIdentityMutation) ClearEdge(name string) error {
+	return fmt.Errorf("unknown RevokedIdentity unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *RevokedIdentityMutation) ResetEdge(name string) error {
+	return fmt.Errorf("unknown RevokedIdentity edge %s", name)
 }
 
 // SecretMetaMutation represents an operation that mutates the SecretMeta nodes in the graph.

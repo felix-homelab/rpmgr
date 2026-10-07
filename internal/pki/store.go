@@ -22,6 +22,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/cakey"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/issuedcertificate"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/revokedidentity"
 )
 
 // The CA's keys live in ca_keys, envelope-encrypted under the KEK, and every certificate the CA
@@ -263,6 +264,9 @@ func (ca *CA) NodeCertificate(ctx context.Context, db *store.DB, nodeID string) 
 func SerialHex(n *big.Int) string { return n.Text(16) }
 
 func record(ctx context.Context, tx *ent.Tx, cert *x509.Certificate, id Identity, tokenID string) error {
+	if err := identityRevoked(ctx, tx.Client(), id.String()); err != nil {
+		return err
+	}
 	c := tx.IssuedCertificate.Create().SetID(SerialHex(cert.SerialNumber)).
 		SetSubjectType(issuedcertificate.SubjectType(id.Kind)).SetSubjectID(id.ID).SetSpiffeID(id.String()).
 		SetPubkeySha256(PublicKeyHash(cert.RawSubjectPublicKeyInfo)).SetNotBefore(cert.NotBefore).
@@ -305,6 +309,18 @@ func CheckRenewable(ctx context.Context, c *ent.Client, cert *x509.Certificate) 
 	case row.SupersededAt != nil:
 		return ErrSuperseded
 	}
+	return identityRevoked(ctx, c, row.SpiffeID)
+}
+
+// identityRevoked returns ErrIdentityRevoked if the identity with SPIFFE ID spiffe is revoked.
+func identityRevoked(ctx context.Context, c *ent.Client, spiffe string) error {
+	revoked, err := c.RevokedIdentity.Query().Where(revokedidentity.ID(spiffe)).Exist(ctx)
+	if err != nil {
+		return err
+	}
+	if revoked {
+		return ErrIdentityRevoked
+	}
 	return nil
 }
 
@@ -312,22 +328,33 @@ func CheckRenewable(ctx context.Context, c *ent.Client, cert *x509.Certificate) 
 // and that every older certificate of the same identity is superseded, so that it can no longer
 // be renewed or re-authenticated. A newer certificate that was issued but never used, such as one
 // whose Renew response was lost, stays renewable. A certificate without a record, as after a
-// restore from a backup older than the certificate, has nothing to mark.
-func MarkSeen(ctx context.Context, tx *ent.Tx, cert *x509.Certificate, now time.Time) error {
+// restore from a backup older than the certificate, has nothing to mark. It returns the
+// certificates it superseded, for the revocation log.
+func MarkSeen(ctx context.Context, tx *ent.Tx, cert *x509.Certificate, now time.Time) ([]*ent.IssuedCertificate, error) {
 	serial := SerialHex(cert.SerialNumber)
 	row, err := tx.IssuedCertificate.Get(ctx, serial)
 	if ent.IsNotFound(err) {
-		return nil
+		return nil, nil
 	}
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if row.FirstSeenAt == nil {
 		if err := tx.IssuedCertificate.UpdateOneID(serial).SetFirstSeenAt(now).Exec(ctx); err != nil {
-			return err
+			return nil, err
 		}
 	}
-	return tx.IssuedCertificate.Update().Where(issuedcertificate.SubjectID(row.SubjectID), issuedcertificate.IDNEQ(serial),
-		issuedcertificate.NotBeforeLTE(row.NotBefore), issuedcertificate.SupersededAtIsNil()).
-		SetSupersededAt(now).Exec(ctx)
+	older, err := tx.IssuedCertificate.Query().Where(issuedcertificate.SubjectID(row.SubjectID), issuedcertificate.IDNEQ(serial),
+		issuedcertificate.NotBeforeLTE(row.NotBefore), issuedcertificate.SupersededAtIsNil()).All(ctx)
+	if err != nil || len(older) == 0 {
+		return nil, err
+	}
+	ids := make([]string, len(older))
+	for i, o := range older {
+		ids[i] = o.ID
+	}
+	if err := tx.IssuedCertificate.Update().Where(issuedcertificate.IDIn(ids...)).SetSupersededAt(now).Exec(ctx); err != nil {
+		return nil, err
+	}
+	return older, nil
 }

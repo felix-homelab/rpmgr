@@ -22,6 +22,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/org"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/orgsetting"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/predicate"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/revokedidentity"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/secretmeta"
 
 	"entgo.io/ent/dialect/sql"
@@ -32,7 +33,7 @@ import (
 
 // schemaGraph holds a representation of ent/schema at runtime.
 var schemaGraph = func() *sqlgraph.Schema {
-	graph := &sqlgraph.Schema{Nodes: make([]*sqlgraph.Node, 19)}
+	graph := &sqlgraph.Schema{Nodes: make([]*sqlgraph.Node, 20)}
 	graph.Nodes[0] = &sqlgraph.Node{
 		NodeSpec: sqlgraph.NodeSpec{
 			Table:   agentsession.Table,
@@ -408,6 +409,25 @@ var schemaGraph = func() *sqlgraph.Schema {
 		},
 	}
 	graph.Nodes[18] = &sqlgraph.Node{
+		NodeSpec: sqlgraph.NodeSpec{
+			Table:   revokedidentity.Table,
+			Columns: revokedidentity.Columns,
+			ID: &sqlgraph.FieldSpec{
+				Type:   field.TypeString,
+				Column: revokedidentity.FieldID,
+			},
+		},
+		Type: "RevokedIdentity",
+		Fields: map[string]*sqlgraph.FieldSpec{
+			revokedidentity.FieldOrgID:       {Type: field.TypeString, Column: revokedidentity.FieldOrgID},
+			revokedidentity.FieldSubjectType: {Type: field.TypeEnum, Column: revokedidentity.FieldSubjectType},
+			revokedidentity.FieldSubjectID:   {Type: field.TypeString, Column: revokedidentity.FieldSubjectID},
+			revokedidentity.FieldRevokedAt:   {Type: field.TypeTime, Column: revokedidentity.FieldRevokedAt},
+			revokedidentity.FieldReason:      {Type: field.TypeString, Column: revokedidentity.FieldReason},
+			revokedidentity.FieldNotAfter:    {Type: field.TypeTime, Column: revokedidentity.FieldNotAfter},
+		},
+	}
+	graph.Nodes[19] = &sqlgraph.Node{
 		NodeSpec: sqlgraph.NodeSpec{
 			Table:   secretmeta.Table,
 			Columns: secretmeta.Columns,
@@ -1985,6 +2005,76 @@ func (f *OrgSettingFilter) WhereUpdatedAt(p entql.TimeP) {
 }
 
 // addPredicate implements the predicateAdder interface.
+func (_q *RevokedIdentityQuery) addPredicate(pred func(s *sql.Selector)) {
+	_q.predicates = append(_q.predicates, pred)
+}
+
+// Filter returns a Filter implementation to apply filters on the RevokedIdentityQuery builder.
+func (_q *RevokedIdentityQuery) Filter() *RevokedIdentityFilter {
+	return &RevokedIdentityFilter{config: _q.config, predicateAdder: _q}
+}
+
+// addPredicate implements the predicateAdder interface.
+func (m *RevokedIdentityMutation) addPredicate(pred func(s *sql.Selector)) {
+	m.predicates = append(m.predicates, pred)
+}
+
+// Filter returns an entql.Where implementation to apply filters on the RevokedIdentityMutation builder.
+func (m *RevokedIdentityMutation) Filter() *RevokedIdentityFilter {
+	return &RevokedIdentityFilter{config: m.config, predicateAdder: m}
+}
+
+// RevokedIdentityFilter provides a generic filtering capability at runtime for RevokedIdentityQuery.
+type RevokedIdentityFilter struct {
+	predicateAdder
+	config
+}
+
+// Where applies the entql predicate on the query filter.
+func (f *RevokedIdentityFilter) Where(p entql.P) {
+	f.addPredicate(func(s *sql.Selector) {
+		if err := schemaGraph.EvalP(schemaGraph.Nodes[18].Type, p, s); err != nil {
+			s.AddError(err)
+		}
+	})
+}
+
+// WhereID applies the entql string predicate on the id field.
+func (f *RevokedIdentityFilter) WhereID(p entql.StringP) {
+	f.Where(p.Field(revokedidentity.FieldID))
+}
+
+// WhereOrgID applies the entql string predicate on the org_id field.
+func (f *RevokedIdentityFilter) WhereOrgID(p entql.StringP) {
+	f.Where(p.Field(revokedidentity.FieldOrgID))
+}
+
+// WhereSubjectType applies the entql string predicate on the subject_type field.
+func (f *RevokedIdentityFilter) WhereSubjectType(p entql.StringP) {
+	f.Where(p.Field(revokedidentity.FieldSubjectType))
+}
+
+// WhereSubjectID applies the entql string predicate on the subject_id field.
+func (f *RevokedIdentityFilter) WhereSubjectID(p entql.StringP) {
+	f.Where(p.Field(revokedidentity.FieldSubjectID))
+}
+
+// WhereRevokedAt applies the entql time.Time predicate on the revoked_at field.
+func (f *RevokedIdentityFilter) WhereRevokedAt(p entql.TimeP) {
+	f.Where(p.Field(revokedidentity.FieldRevokedAt))
+}
+
+// WhereReason applies the entql string predicate on the reason field.
+func (f *RevokedIdentityFilter) WhereReason(p entql.StringP) {
+	f.Where(p.Field(revokedidentity.FieldReason))
+}
+
+// WhereNotAfter applies the entql time.Time predicate on the not_after field.
+func (f *RevokedIdentityFilter) WhereNotAfter(p entql.TimeP) {
+	f.Where(p.Field(revokedidentity.FieldNotAfter))
+}
+
+// addPredicate implements the predicateAdder interface.
 func (_q *SecretMetaQuery) addPredicate(pred func(s *sql.Selector)) {
 	_q.predicates = append(_q.predicates, pred)
 }
@@ -2013,7 +2103,7 @@ type SecretMetaFilter struct {
 // Where applies the entql predicate on the query filter.
 func (f *SecretMetaFilter) Where(p entql.P) {
 	f.addPredicate(func(s *sql.Selector) {
-		if err := schemaGraph.EvalP(schemaGraph.Nodes[18].Type, p, s); err != nil {
+		if err := schemaGraph.EvalP(schemaGraph.Nodes[19].Type, p, s); err != nil {
 			s.AddError(err)
 		}
 	})

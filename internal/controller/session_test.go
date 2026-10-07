@@ -69,14 +69,14 @@ func startSessionsWith(t *testing.T, db *store.DB, opt func(*controller.Sessions
 	}
 	roots := x509.NewCertPool()
 	roots.AddCert(ca.Root())
-	cfg := pki.AgentEndpointConfig(node, roots, pki.Expect{TrustDomain: td, Kinds: []pki.Kind{pki.KindConnector, pki.KindGateway}},
-		nil, controller.ReauthChecks(db, sys))
-	srv := controller.NewAgentServer(cfg, td)
-	agentv1.RegisterReauthServer(srv, controller.NewReauthService(db, ca, sys, nil))
 	e := &sessionEnv{db: db, ca: ca, org: storetest.Org(t, db, "org-a"), dbEpoch: rev.DBEpoch, sealer: s, sys: sys}
 	o := controller.SessionsOptions{DB: db, CA: ca, Node: "ctn_test", Sys: sys}
 	opt(&o)
 	e.sessions = controller.NewSessions(o)
+	cfg := pki.AgentEndpointConfig(node, roots, pki.Expect{TrustDomain: td, Kinds: []pki.Kind{pki.KindConnector, pki.KindGateway},
+		Denied: e.sessions.Denied}, nil, controller.ReauthChecks(db, sys))
+	srv := controller.NewAgentServer(cfg, td)
+	agentv1.RegisterReauthServer(srv, controller.NewReauthService(e.sessions))
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
 	go func() { e.sessions.Run(ctx); close(done) }()

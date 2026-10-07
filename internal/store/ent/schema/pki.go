@@ -99,6 +99,42 @@ func (IssuedCertificate) Interceptors() []ent.Interceptor {
 // org are changed only in the system scope.
 func (IssuedCertificate) Hooks() []ent.Hook { return []ent.Hook{orgMutationHook} }
 
+// RevokedIdentity records a revoked identity (docs/04-security.md, "Revocation"): every
+// certificate of it is refused, also one issued later, and the deny-list names it until its last
+// certificate expires.
+type RevokedIdentity struct{ ent.Schema }
+
+// Annotations name the table as docs/06-data-model.md does.
+func (RevokedIdentity) Annotations() []schema.Annotation {
+	return []schema.Annotation{entsql.Annotation{Table: "revoked_identities"}}
+}
+
+// Fields of a revoked identity; the ID is its SPIFFE ID.
+func (RevokedIdentity) Fields() []ent.Field {
+	return []ent.Field{
+		field.String("id").StorageKey("spiffe_id").NotEmpty().Immutable(),
+		field.String("org_id").Optional().Nillable().Immutable(),
+		field.Enum("subject_type").Values("connector", "gateway", "controller").Immutable(),
+		field.String("subject_id").NotEmpty().Immutable(),
+		field.Time("revoked_at").Immutable(),
+		field.String("reason").Default("").Immutable(),
+		// not_after is the latest expiry of the identity's certificates; the deny-list keeps the
+		// identity until then.
+		field.Time("not_after"),
+	}
+}
+
+// Policy denies every query and mutation without a scope.
+func (RevokedIdentity) Policy() ent.Policy { return scopePolicy() }
+
+// Interceptors show an org scope only its own org's identities.
+func (RevokedIdentity) Interceptors() []ent.Interceptor {
+	return []ent.Interceptor{filterInterceptor("org_id")}
+}
+
+// Hooks scope every mutation to the scope's org.
+func (RevokedIdentity) Hooks() []ent.Hook { return []ent.Hook{orgMutationHook} }
+
 // SecretMeta records which KEK version seals each envelope-encrypted column of a row, so that
 // `rpmgr kek status` lists what a KEK rotation has not re-wrapped yet (docs/04-security.md,
 // "Secrets at rest and in logs").

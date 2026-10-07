@@ -1,0 +1,2 @@
+-- Create "revoked_identities" table
+CREATE TABLE "revoked_identities" ("spiffe_id" character varying NOT NULL, "org_id" character varying NULL, "subject_type" character varying NOT NULL, "subject_id" character varying NOT NULL, "revoked_at" timestamptz NOT NULL, "reason" character varying NOT NULL DEFAULT '', "not_after" timestamptz NOT NULL, PRIMARY KEY ("spiffe_id"), CONSTRAINT "revoked_identities_orgs" FOREIGN KEY ("org_id") REFERENCES "orgs" ("id") ON UPDATE NO ACTION ON DELETE NO ACTION);
