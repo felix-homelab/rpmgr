@@ -1,0 +1,26 @@
+## run 1 failed:
+# 2026-10-06T12:53:47Z linux/arm64 sqlite_arm64.test -test.v -test.run='^TestIssue118$' 
+# host: Linux 6.18.33.2-microsoft-standard-WSL2 x86_64; emulator: qemu-aarch64-static
+qemu-aarch64 version 10.0.13 (Debian 1:10.0.13+ds-0+deb13u1)
+test binary compiled for linux/arm64
+=== RUN   TestIssue118
+    all_test.go:246: Memory leak via libc.NewTLS:
+        syscall.init.func1 (/home/fmoehlenhoff/.local/go1.27.1/src/syscall/env_unix.go:32)
+        sync.OnceFunc.func1.1 (/home/fmoehlenhoff/.local/go1.27.1/src/sync/oncefunc.go:33)
+        sync.(*Once).doSlow (/home/fmoehlenhoff/.local/go1.27.1/src/sync/once.go:78)
+        sync.(*Once).Do (/home/fmoehlenhoff/.local/go1.27.1/src/sync/once.go:69)
+        sync.OnceFunc.func1 (/home/fmoehlenhoff/.local/go1.27.1/src/sync/oncefunc.go:22)
+        syscall.Environ (/home/fmoehlenhoff/.local/go1.27.1/src/syscall/env_unix.go:136)
+        os.Environ (/home/fmoehlenhoff/.local/go1.27.1/src/os/env.go:140)
+        modernc.org/libc.NewTLS.func1 (/home/fmoehlenhoff/go/pkg/mod/modernc.org/libc@v1.77.1/libc_musl.go:296)
+        sync.(*Once).doSlow (/home/fmoehlenhoff/.local/go1.27.1/src/sync/once.go:78)
+        sync.(*Once).Do (/home/fmoehlenhoff/.local/go1.27.1/src/sync/once.go:69)
+        modernc.org/libc.NewTLS (/home/fmoehlenhoff/go/pkg/mod/modernc.org/libc@v1.77.1/libc_musl.go:295)
+        modernc.org/sqlite/vec.init.0 (/home/fmoehlenhoff/go/pkg/mod/modernc.org/sqlite@v1.60.1/vec/patches.go:45)
+        runtime.doInit1 (/home/fmoehlenhoff/.local/go1.27.1/src/runtime/proc.go:8154)
+        runtime.doInit (/home/fmoehlenhoff/.local/go1.27.1/src/runtime/proc.go:8121)
+        runtime.main (/home/fmoehlenhoff/.local/go1.27.1/src/runtime/proc.go:269)
+--- FAIL: TestIssue118 (33.82s)
+FAIL
+# exit 1 after 34 s
+# linux/arm64 TestIssue118: 9 of 10 separate runs passed, 1 failed

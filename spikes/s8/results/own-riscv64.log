@@ -1,0 +1,56 @@
+# 2026-10-06T13:04:09Z linux/riscv64 s8_riscv64.test -test.v -test.count=1 -test.timeout=1h 
+# host: Linux 6.18.33.2-microsoft-standard-WSL2 x86_64; emulator: qemu-riscv64-static
+qemu-riscv64 version 10.0.13 (Debian 1:10.0.13+ds-0+deb13u1)
+=== RUN   TestCrashChild
+    crash_test.go:32: child process only
+--- SKIP: TestCrashChild (0.03s)
+=== RUN   TestCrashRecovery
+=== RUN   TestCrashRecovery/commit
+    crash_test.go:180: commit: killed after commit 39; recovered config_seq=39; WAL 23863072 bytes at reopen
+=== RUN   TestCrashRecovery/checkpoint
+    crash_test.go:180: checkpoint: killed after commit 60; recovered config_seq=60; WAL 94792 bytes at reopen
+--- PASS: TestCrashRecovery (10.64s)
+    --- PASS: TestCrashRecovery/commit (7.79s)
+    --- PASS: TestCrashRecovery/checkpoint (2.83s)
+=== RUN   TestPlatformAndVersion
+    store_test.go:53: platform linux/riscv64, Go go1.27.1, SQLite 3.53.4
+--- PASS: TestPlatformAndVersion (0.15s)
+=== RUN   TestPragmasOnEveryConnection
+=== RUN   TestPragmasOnEveryConnection/FULL
+=== RUN   TestPragmasOnEveryConnection/NORMAL
+--- PASS: TestPragmasOnEveryConnection (0.53s)
+    --- PASS: TestPragmasOnEveryConnection/FULL (0.26s)
+    --- PASS: TestPragmasOnEveryConnection/NORMAL (0.27s)
+=== RUN   TestReadersAreReadOnly
+--- PASS: TestReadersAreReadOnly (0.15s)
+=== RUN   TestInvalidInputRejected
+=== RUN   TestInvalidInputRejected/unknown__txlock
+=== RUN   TestInvalidInputRejected/multi-statement_pragma_runs_by_default
+=== RUN   TestInvalidInputRejected/multi-statement_pragma_rejected_with_StrictPragmas
+=== RUN   TestInvalidInputRejected/missing_directory
+=== RUN   TestInvalidInputRejected/not_a_database
+--- PASS: TestInvalidInputRejected (0.12s)
+    --- PASS: TestInvalidInputRejected/unknown__txlock (0.01s)
+    --- PASS: TestInvalidInputRejected/multi-statement_pragma_runs_by_default (0.02s)
+    --- PASS: TestInvalidInputRejected/multi-statement_pragma_rejected_with_StrictPragmas (0.06s)
+    --- PASS: TestInvalidInputRejected/missing_directory (0.01s)
+    --- PASS: TestInvalidInputRejected/not_a_database (0.01s)
+=== RUN   TestCompositeForeignKeys
+--- PASS: TestCompositeForeignKeys (0.34s)
+=== RUN   TestOneWriterConcurrentReaders
+    store_test.go:323: 7268 consistent read transactions during 40 commits
+--- PASS: TestOneWriterConcurrentReaders (4.07s)
+=== RUN   TestBusyTimeout
+=== RUN   TestBusyTimeout/times_out
+    store_test.go:360: SQLITE_BUSY after 308.872437ms
+=== RUN   TestBusyTimeout/waits_and_succeeds
+--- PASS: TestBusyTimeout (0.74s)
+    --- PASS: TestBusyTimeout/times_out (0.35s)
+    --- PASS: TestBusyTimeout/waits_and_succeeds (0.22s)
+=== RUN   TestTransactionsUnderContention
+--- PASS: TestTransactionsUnderContention (2.80s)
+=== RUN   TestVacuumInto
+    store_test.go:545: backup taken under load in 53.942004ms holds 100 routes
+--- PASS: TestVacuumInto (0.29s)
+PASS
+# exit 0 after 20 s

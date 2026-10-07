@@ -1,0 +1,8 @@
+# 2026-10-06T13:15:06Z linux/arm64 sqlite_arm64.test -test.v -test.run='^TestOFDLockingSetter$' MODERNC_SQLITE_TEST_OFD_SETTER_CHILD=1
+# host: Linux 6.18.33.2-microsoft-standard-WSL2 x86_64; emulator: qemu-aarch64-static
+qemu-aarch64 version 10.0.13 (Debian 1:10.0.13+ds-0+deb13u1)
+test binary compiled for linux/arm64
+=== RUN   TestOFDLockingSetter
+--- PASS: TestOFDLockingSetter (0.20s)
+PASS
+# exit 0 after 1 s

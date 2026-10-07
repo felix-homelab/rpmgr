@@ -1,0 +1,8 @@
+native (x86_64):
+linux/amd64: touched 0x7bf93d24d000, mapping 0x7bf93d24c000, fault address reported 0x7bf93d24d000: correct
+qemu-aarch64-static:
+linux/arm64: no fault address in panic value runtime error: invalid memory address or nil pointer dereference
+qemu-arm-static:
+linux/arm: no fault address in panic value runtime error: invalid memory address or nil pointer dereference
+qemu-riscv64-static:
+linux/riscv64: touched 0x7d332002b000, mapping 0x7d332002a000, fault address reported 0x7d332002b000: correct

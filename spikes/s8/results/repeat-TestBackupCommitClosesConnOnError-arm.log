@@ -1,0 +1,4 @@
+run 1: --- PASS: TestBackupCommitClosesConnOnError (0.24s)
+run 2: --- PASS: TestBackupCommitClosesConnOnError (0.34s)
+run 3: --- PASS: TestBackupCommitClosesConnOnError (0.46s)
+# linux/arm TestBackupCommitClosesConnOnError: 3 of 3 separate runs passed, 0 failed

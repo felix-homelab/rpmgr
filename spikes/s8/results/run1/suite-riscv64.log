@@ -1,0 +1,772 @@
+# 2026-10-06T12:25:51Z linux/riscv64 sqlite_riscv64.test -test.v -test.timeout=8h -test.skip='^TestOFDLock(SurvivesOSClose|InterleavedReadersWrite|ReadOnlyFirstLocker|FailedFirstLock)$|^TestOFDLockingSetter$' 
+# host: Linux 6.18.33.2-microsoft-standard-WSL2 x86_64; emulator: qemu-riscv64-static
+qemu-riscv64 version 10.0.13 (Debian 1:10.0.13+ds-0+deb13u1)
+test binary compiled for linux/riscv64
+=== RUN   TestNamedParameters
+--- PASS: TestNamedParameters (0.13s)
+=== RUN   TestIssue118
+--- PASS: TestIssue118 (54.71s)
+=== RUN   TestIssue100
+--- PASS: TestIssue100 (0.02s)
+=== RUN   TestIssue98
+--- PASS: TestIssue98 (0.06s)
+=== RUN   TestIssue97
+--- PASS: TestIssue97 (0.06s)
+=== RUN   TestScalar
+--- PASS: TestScalar (0.07s)
+=== RUN   TestBlob
+--- PASS: TestBlob (0.07s)
+=== RUN   TestIssue11
+--- PASS: TestIssue11 (1.02s)
+=== RUN   TestMemDB
+--- PASS: TestMemDB (11.66s)
+=== RUN   TestConcurrentGoroutines
+    all_test.go:740: 8 goroutines concurrently inserted 40000 rows in 2.7998557s
+    all_test.go:743: recursively invoking this test with -race
+    all_test.go:762: FAIL err=exec: "go": executable file not found in $PATH out=
+--- FAIL: TestConcurrentGoroutines (3.98s)
+=== RUN   TestSingleConn
+=== RUN   TestSingleConn/single_conn
+    all_test.go:874: 100 goroutines concurrently inserted 500000 rows in 37.809028883s
+=== RUN   TestSingleConn/multiple_conns
+    all_test.go:874: 100 goroutines concurrently inserted 500000 rows in 28.241726746s
+--- PASS: TestSingleConn (98.50s)
+    --- PASS: TestSingleConn/single_conn (52.51s)
+    --- PASS: TestSingleConn/multiple_conns (45.99s)
+=== RUN   TestIssue19
+--- PASS: TestIssue19 (0.13s)
+=== RUN   TestIssue20
+--- PASS: TestIssue20 (2.20s)
+=== RUN   TestNoRows
+--- PASS: TestNoRows (0.02s)
+=== RUN   TestColumns
+--- PASS: TestColumns (0.01s)
+=== RUN   TestColumnsNoRows
+--- PASS: TestColumnsNoRows (0.01s)
+=== RUN   TestIssue28
+--- PASS: TestIssue28 (0.02s)
+=== RUN   TestColumnTypes
+    all_test.go:1255: Col 0: DatabaseTypeName "INTEGER", DecimalSize 0 0 false, Length 0 false, Name "uid", Nullable true true, ScanType "int64"
+        Col 1: DatabaseTypeName "VARCHAR(64)", DecimalSize 0 0 false, Length 9223372036854775807 true, Name "username", Nullable true true, ScanType "string"
+        Col 2: DatabaseTypeName "VARCHAR(64)", DecimalSize 0 0 false, Length 9223372036854775807 true, Name "departname", Nullable true true, ScanType "string"
+        Col 3: DatabaseTypeName "DATE", DecimalSize 0 0 false, Length 9223372036854775807 true, Name "created", Nullable true true, ScanType "string"
+        
+--- PASS: TestColumnTypes (0.06s)
+=== RUN   TestColumnTypesNoRows
+    all_test.go:1318: Col 0: DatabaseTypeName "INTEGER", DecimalSize 0 0 false, Length 0 false, Name "uid", Nullable true true, ScanType %!q(<nil>)
+        Col 1: DatabaseTypeName "VARCHAR(64)", DecimalSize 0 0 false, Length 0 false, Name "username", Nullable true true, ScanType %!q(<nil>)
+        Col 2: DatabaseTypeName "VARCHAR(64)", DecimalSize 0 0 false, Length 0 false, Name "departname", Nullable true true, ScanType %!q(<nil>)
+        Col 3: DatabaseTypeName "DATE", DecimalSize 0 0 false, Length 0 false, Name "created", Nullable true true, ScanType %!q(<nil>)
+        
+--- PASS: TestColumnTypesNoRows (0.02s)
+=== RUN   TestTime
+--- PASS: TestTime (0.05s)
+=== RUN   TestTimeScan
+--- PASS: TestTimeScan (0.20s)
+=== RUN   TestTimeLocaltime
+--- PASS: TestTimeLocaltime (0.01s)
+=== RUN   TestTimeFormat
+=== RUN   TestTimeFormat/#00
+=== RUN   TestTimeFormat/#01
+=== RUN   TestTimeFormat/#02
+--- PASS: TestTimeFormat (0.03s)
+    --- PASS: TestTimeFormat/#00 (0.01s)
+    --- PASS: TestTimeFormat/#01 (0.01s)
+    --- PASS: TestTimeFormat/#02 (0.01s)
+=== RUN   TestIntegerFormat
+=== RUN   TestIntegerFormat/#00
+=== RUN   TestIntegerFormat/#01
+=== RUN   TestIntegerFormat/#02
+=== RUN   TestIntegerFormat/#03
+--- PASS: TestIntegerFormat (0.04s)
+    --- PASS: TestIntegerFormat/#00 (0.01s)
+    --- PASS: TestIntegerFormat/#01 (0.01s)
+    --- PASS: TestIntegerFormat/#02 (0.01s)
+    --- PASS: TestIntegerFormat/#03 (0.01s)
+=== RUN   TestTimeFormatBad
+--- PASS: TestTimeFormatBad (0.00s)
+=== RUN   TestTimezone
+=== RUN   TestTimezone/write
+=== RUN   TestTimezone/write/UTC/sqlite
+=== RUN   TestTimezone/write/America/New_York/sqlite
+=== RUN   TestTimezone/write/UTC/
+=== RUN   TestTimezone/read_with_tz
+=== RUN   TestTimezone/read_with_tz/Z_suffix
+=== RUN   TestTimezone/read_with_tz/explicit_offset
+=== RUN   TestTimezone/read_with_tz/time_string_format
+=== RUN   TestTimezone/read_with_tz/offset_differs_from_target_tz
+=== RUN   TestTimezone/read
+=== RUN   TestTimezone/read_integer
+=== RUN   TestTimezone/roundtrip
+=== RUN   TestTimezone/roundtrip/default_format
+=== RUN   TestTimezone/roundtrip/sqlite_format
+--- PASS: TestTimezone (0.10s)
+    --- PASS: TestTimezone/write (0.03s)
+        --- PASS: TestTimezone/write/UTC/sqlite (0.01s)
+        --- PASS: TestTimezone/write/America/New_York/sqlite (0.01s)
+        --- PASS: TestTimezone/write/UTC/ (0.01s)
+    --- PASS: TestTimezone/read_with_tz (0.02s)
+        --- PASS: TestTimezone/read_with_tz/Z_suffix (0.00s)
+        --- PASS: TestTimezone/read_with_tz/explicit_offset (0.00s)
+        --- PASS: TestTimezone/read_with_tz/time_string_format (0.00s)
+        --- PASS: TestTimezone/read_with_tz/offset_differs_from_target_tz (0.00s)
+    --- PASS: TestTimezone/read (0.01s)
+    --- PASS: TestTimezone/read_integer (0.01s)
+    --- PASS: TestTimezone/roundtrip (0.02s)
+        --- PASS: TestTimezone/roundtrip/default_format (0.01s)
+        --- PASS: TestTimezone/roundtrip/sqlite_format (0.01s)
+=== RUN   TestTimezoneBad
+--- PASS: TestTimezoneBad (0.00s)
+=== RUN   TestIntToTimeDefaultOff
+--- PASS: TestIntToTimeDefaultOff (0.01s)
+=== RUN   TestIntToTimeOptIn
+--- PASS: TestIntToTimeOptIn (0.01s)
+=== RUN   TestIntToTimeOptInBad
+--- PASS: TestIntToTimeOptInBad (0.00s)
+=== RUN   TestTextToTimeScanType
+=== RUN   TestTextToTimeScanType/default
+=== RUN   TestTextToTimeScanType/opt-in
+--- PASS: TestTextToTimeScanType (0.02s)
+    --- PASS: TestTextToTimeScanType/default (0.01s)
+    --- PASS: TestTextToTimeScanType/opt-in (0.01s)
+=== RUN   TestTextToTimeAggregates
+--- PASS: TestTextToTimeAggregates (0.02s)
+=== RUN   TestTextToTimeBad
+--- PASS: TestTextToTimeBad (0.00s)
+=== RUN   TestBinding
+=== RUN   TestBinding/DB
+=== RUN   TestBinding/Prepare
+--- PASS: TestBinding (0.02s)
+    --- PASS: TestBinding/DB (0.01s)
+    --- PASS: TestBinding/Prepare (0.01s)
+=== RUN   TestBindingError
+=== RUN   TestBindingError/DB
+=== RUN   TestBindingError/Prepare
+--- PASS: TestBindingError (0.02s)
+    --- PASS: TestBindingError/DB (0.01s)
+    --- PASS: TestBindingError/Prepare (0.01s)
+=== RUN   TestIssue51
+    all_test.go:2296: cycles: 1933
+    all_test.go:2302: DB records: 1933
+--- PASS: TestIssue51 (60.06s)
+=== RUN   TestIssue53
+--- PASS: TestIssue53 (4.45s)
+=== RUN   TestPersistPragma
+--- PASS: TestPersistPragma (0.09s)
+=== RUN   TestConnectionHook
+--- PASS: TestConnectionHook (0.00s)
+=== RUN   TestInMemory
+--- PASS: TestInMemory (0.02s)
+=== RUN   TestIssue70
+--- PASS: TestIssue70 (0.01s)
+=== RUN   TestIssue66
+    all_test.go:2770: insert 2: database is locked (5) (SQLITE_BUSY)
+--- PASS: TestIssue66 (0.06s)
+=== RUN   TestIssue65
+    all_test.go:2887: writeFunc(true): database is locked (5) (SQLITE_BUSY)
+--- PASS: TestIssue65 (2.72s)
+=== RUN   TestConstraintPrimaryKeyError
+--- PASS: TestConstraintPrimaryKeyError (0.01s)
+=== RUN   TestConstraintUniqueError
+--- PASS: TestConstraintUniqueError (0.01s)
+=== RUN   TestOpenV2FailureErrorMessage
+--- PASS: TestOpenV2FailureErrorMessage (0.01s)
+=== RUN   TestColumnTypeScanType
+--- PASS: TestColumnTypeScanType (0.01s)
+=== RUN   TestBeginMode
+=== RUN   TestBeginMode/delete/deferred
+=== RUN   TestBeginMode/wal/deferred
+=== RUN   TestBeginMode/delete/immediate
+=== RUN   TestBeginMode/wal/immediate
+=== RUN   TestBeginMode/delete/exclusive
+=== RUN   TestBeginMode/wal/exclusive
+--- PASS: TestBeginMode (0.13s)
+    --- PASS: TestBeginMode/delete/deferred (0.01s)
+    --- PASS: TestBeginMode/wal/deferred (0.03s)
+    --- PASS: TestBeginMode/delete/immediate (0.01s)
+    --- PASS: TestBeginMode/wal/immediate (0.04s)
+    --- PASS: TestBeginMode/delete/exclusive (0.01s)
+    --- PASS: TestBeginMode/wal/exclusive (0.03s)
+=== RUN   TestCancelRace
+=== RUN   TestCancelRace/db.ExecContext
+=== RUN   TestCancelRace/db.QueryContext
+=== RUN   TestCancelRace/tx.ExecContext
+=== RUN   TestCancelRace/tx.QueryContext
+--- PASS: TestCancelRace (0.19s)
+    --- PASS: TestCancelRace/db.ExecContext (0.02s)
+    --- PASS: TestCancelRace/db.QueryContext (0.04s)
+    --- PASS: TestCancelRace/tx.ExecContext (0.05s)
+    --- PASS: TestCancelRace/tx.QueryContext (0.06s)
+=== RUN   TestVFS
+    all_test.go:3245: [1 2 3 40 50 60]
+    all_test.go:3267: [123 xyz abc def]
+--- PASS: TestVFS (0.02s)
+=== RUN   TestColumnInfo
+=== RUN   TestColumnInfo/direct_column_refs
+=== RUN   TestColumnInfo/aliased_column_keeps_origin
+=== RUN   TestColumnInfo/expression_has_no_origin
+=== RUN   TestColumnInfo/constant_has_no_origin
+=== RUN   TestColumnInfo/mixed
+=== RUN   TestColumnInfo/view_resolves_to_underlying_table
+=== RUN   TestColumnInfo/select_star
+=== RUN   TestColumnInfo/no_output_columns_(comment_only)
+--- PASS: TestColumnInfo (0.05s)
+    --- PASS: TestColumnInfo/direct_column_refs (0.00s)
+    --- PASS: TestColumnInfo/aliased_column_keeps_origin (0.00s)
+    --- PASS: TestColumnInfo/expression_has_no_origin (0.00s)
+    --- PASS: TestColumnInfo/constant_has_no_origin (0.00s)
+    --- PASS: TestColumnInfo/mixed (0.00s)
+    --- PASS: TestColumnInfo/view_resolves_to_underlying_table (0.01s)
+    --- PASS: TestColumnInfo/select_star (0.00s)
+    --- PASS: TestColumnInfo/no_output_columns_(comment_only) (0.00s)
+=== RUN   TestLimit
+    all_test.go:3825: Default maximum column count: 2000
+    all_test.go:3841: Maximum column count now (should be 100): 100
+--- PASS: TestLimit (0.00s)
+=== RUN   TestIssue152
+=== RUN   TestIssue152/SELECT_1_WHERE_false
+=== RUN   TestIssue152/--_just_a_comment
+=== RUN   TestIssue152/#00
+--- PASS: TestIssue152 (0.02s)
+    --- PASS: TestIssue152/SELECT_1_WHERE_false (0.01s)
+    --- PASS: TestIssue152/--_just_a_comment (0.00s)
+    --- PASS: TestIssue152/#00 (0.00s)
+=== RUN   TestIssue153
+=== RUN   TestIssue153/SELECT_1_WHERE_false
+=== RUN   TestIssue153/--_just_a_comment
+=== RUN   TestIssue153/#00
+--- PASS: TestIssue153 (0.02s)
+    --- PASS: TestIssue153/SELECT_1_WHERE_false (0.01s)
+    --- PASS: TestIssue153/--_just_a_comment (0.00s)
+    --- PASS: TestIssue153/#00 (0.00s)
+=== RUN   TestCollation
+=== RUN   TestCollation/use_TESTCOLLATION
+=== RUN   TestCollation/select_aaa
+=== RUN   TestCollation/select_all_rows_in_order
+--- PASS: TestCollation (0.03s)
+    --- PASS: TestCollation/select_aaa (0.00s)
+    --- PASS: TestCollation/select_all_rows_in_order (0.01s)
+    --- PASS: TestCollation/use_TESTCOLLATION (0.03s)
+=== RUN   TestIssue171
+--- PASS: TestIssue171 (7.11s)
+=== RUN   TestIssue209
+=== RUN   TestIssue209/non-empty-blob
+=== RUN   TestIssue209/empty-blob
+--- PASS: TestIssue209 (0.07s)
+    --- PASS: TestIssue209/non-empty-blob (0.01s)
+    --- PASS: TestIssue209/empty-blob (0.01s)
+=== RUN   TestIsReadOnly
+--- PASS: TestIsReadOnly (0.03s)
+=== RUN   TestTxCommitBusyFix
+--- PASS: TestTxCommitBusyFix (0.04s)
+=== RUN   TestMultiStmtQueryStringRoundtrip
+--- PASS: TestMultiStmtQueryStringRoundtrip (0.01s)
+=== RUN   TestExecReturningMultiRow
+--- PASS: TestExecReturningMultiRow (0.02s)
+=== RUN   TestExecReturningMultiStatement
+--- PASS: TestExecReturningMultiStatement (0.01s)
+=== RUN   TestExecReturningCancelDuringDrain
+--- PASS: TestExecReturningCancelDuringDrain (0.51s)
+=== RUN   TestDBPageVtab
+--- PASS: TestDBPageVtab (0.01s)
+=== RUN   TestInMemoryDBSurvivesContextCancel
+=== RUN   TestInMemoryDBSurvivesContextCancel/in-memory
+=== RUN   TestInMemoryDBSurvivesContextCancel/file-backed_connection_still_discarded_on_interrupt
+--- PASS: TestInMemoryDBSurvivesContextCancel (0.02s)
+    --- PASS: TestInMemoryDBSurvivesContextCancel/in-memory (0.01s)
+    --- PASS: TestInMemoryDBSurvivesContextCancel/file-backed_connection_still_discarded_on_interrupt (0.00s)
+=== RUN   TestBackupCommitClosesConnOnError
+    backup_test.go:81: chmod did not restrict writes on this platform
+    backup_test.go:82: could not provoke backup error on this platform; skipping
+--- SKIP: TestBackupCommitClosesConnOnError (0.03s)
+=== RUN   TestBackupProgress
+--- PASS: TestBackupProgress (0.11s)
+=== RUN   TestArgFinder
+--- PASS: TestArgFinder (1.25s)
+=== RUN   TestBindManyParameters
+=== RUN   TestBindManyParameters/?
+=== RUN   TestBindManyParameters/?N
+=== RUN   TestBindManyParameters/$N
+=== RUN   TestBindManyParameters/:name
+=== RUN   TestBindManyParameters/@name
+=== RUN   TestBindManyParameters/$name
+--- PASS: TestBindManyParameters (3.84s)
+    --- PASS: TestBindManyParameters/? (0.18s)
+    --- PASS: TestBindManyParameters/?N (0.31s)
+    --- PASS: TestBindManyParameters/$N (0.80s)
+    --- PASS: TestBindManyParameters/:name (0.91s)
+    --- PASS: TestBindManyParameters/@name (0.81s)
+    --- PASS: TestBindManyParameters/$name (0.81s)
+=== RUN   TestColumnTextScan
+--- PASS: TestColumnTextScan (0.01s)
+=== RUN   TestColumnTypeDatabaseTypeNameCache
+--- PASS: TestColumnTypeDatabaseTypeNameCache (0.01s)
+=== RUN   TestColumnTypeScanTypeDecltypeCache
+=== RUN   TestColumnTypeScanTypeDecltypeCache/BOOLEAN_INTEGER_default
+=== RUN   TestColumnTypeScanTypeDecltypeCache/BOOLEAN_INTEGER_+__texttotime
+=== RUN   TestColumnTypeScanTypeDecltypeCache/DATE_INTEGER_default
+=== RUN   TestColumnTypeScanTypeDecltypeCache/DATETIME_INTEGER_default
+=== RUN   TestColumnTypeScanTypeDecltypeCache/TIME_INTEGER_default
+=== RUN   TestColumnTypeScanTypeDecltypeCache/TIMESTAMP_INTEGER_default
+=== RUN   TestColumnTypeScanTypeDecltypeCache/plain_INTEGER_default
+=== RUN   TestColumnTypeScanTypeDecltypeCache/unrecognised_INTEGER_decltype
+=== RUN   TestColumnTypeScanTypeDecltypeCache/plain_TEXT_default
+=== RUN   TestColumnTypeScanTypeDecltypeCache/DATETIME_TEXT_default_(no_textToTime)
+=== RUN   TestColumnTypeScanTypeDecltypeCache/DATE_TEXT_+__texttotime
+=== RUN   TestColumnTypeScanTypeDecltypeCache/DATETIME_TEXT_+__texttotime
+=== RUN   TestColumnTypeScanTypeDecltypeCache/TIME_TEXT_+__texttotime
+=== RUN   TestColumnTypeScanTypeDecltypeCache/TIMESTAMP_TEXT_+__texttotime
+=== RUN   TestColumnTypeScanTypeDecltypeCache/plain_TEXT_+__texttotime
+--- PASS: TestColumnTypeScanTypeDecltypeCache (0.12s)
+    --- PASS: TestColumnTypeScanTypeDecltypeCache/BOOLEAN_INTEGER_default (0.01s)
+    --- PASS: TestColumnTypeScanTypeDecltypeCache/BOOLEAN_INTEGER_+__texttotime (0.01s)
+    --- PASS: TestColumnTypeScanTypeDecltypeCache/DATE_INTEGER_default (0.01s)
+    --- PASS: TestColumnTypeScanTypeDecltypeCache/DATETIME_INTEGER_default (0.01s)
+    --- PASS: TestColumnTypeScanTypeDecltypeCache/TIME_INTEGER_default (0.01s)
+    --- PASS: TestColumnTypeScanTypeDecltypeCache/TIMESTAMP_INTEGER_default (0.01s)
+    --- PASS: TestColumnTypeScanTypeDecltypeCache/plain_INTEGER_default (0.01s)
+    --- PASS: TestColumnTypeScanTypeDecltypeCache/unrecognised_INTEGER_decltype (0.01s)
+    --- PASS: TestColumnTypeScanTypeDecltypeCache/plain_TEXT_default (0.01s)
+    --- PASS: TestColumnTypeScanTypeDecltypeCache/DATETIME_TEXT_default_(no_textToTime) (0.01s)
+    --- PASS: TestColumnTypeScanTypeDecltypeCache/DATE_TEXT_+__texttotime (0.01s)
+    --- PASS: TestColumnTypeScanTypeDecltypeCache/DATETIME_TEXT_+__texttotime (0.01s)
+    --- PASS: TestColumnTypeScanTypeDecltypeCache/TIME_TEXT_+__texttotime (0.01s)
+    --- PASS: TestColumnTypeScanTypeDecltypeCache/TIMESTAMP_TEXT_+__texttotime (0.01s)
+    --- PASS: TestColumnTypeScanTypeDecltypeCache/plain_TEXT_+__texttotime (0.01s)
+=== RUN   TestParseTimeFormatCache
+--- PASS: TestParseTimeFormatCache (0.01s)
+=== RUN   TestConnectorOpenDB
+--- PASS: TestConnectorOpenDB (0.01s)
+=== RUN   TestConnectorAppliesGlobalRegistrations
+--- PASS: TestConnectorAppliesGlobalRegistrations (0.01s)
+=== RUN   TestConnectorDriverIsRegisteredDriver
+--- PASS: TestConnectorDriverIsRegisteredDriver (0.00s)
+=== RUN   TestConnectorWrapping
+--- PASS: TestConnectorWrapping (0.01s)
+=== RUN   TestConnectorRejectsMalformedQuery
+--- PASS: TestConnectorRejectsMalformedQuery (0.00s)
+=== RUN   TestConnectorDefersValueValidation
+--- PASS: TestConnectorDefersValueValidation (0.00s)
+=== RUN   TestConnectorContextCanceled
+--- PASS: TestConnectorContextCanceled (0.00s)
+=== RUN   TestConnectorDSNSplitMatchesOpen
+--- PASS: TestConnectorDSNSplitMatchesOpen (0.00s)
+=== RUN   TestDBStatusSchemaUsedGrows
+--- PASS: TestDBStatusSchemaUsedGrows (0.15s)
+=== RUN   TestDBStatusCacheHitReset
+--- PASS: TestDBStatusCacheHitReset (11.49s)
+=== RUN   TestDBStatusLookasideHitInHighwater
+--- PASS: TestDBStatusLookasideHitInHighwater (0.85s)
+=== RUN   TestDBStatusUnknownOpErrors
+--- PASS: TestDBStatusUnknownOpErrors (0.01s)
+=== RUN   TestDefensiveConfigCallVaList
+--- PASS: TestDefensiveConfigCallVaList (0.00s)
+=== RUN   TestDefensiveDSNValidation
+=== RUN   TestDefensiveDSNValidation/invalid
+=== RUN   TestDefensiveDSNValidation/empty
+=== RUN   TestDefensiveDSNValidation/duplicate_same
+=== RUN   TestDefensiveDSNValidation/duplicate_conflicting
+--- PASS: TestDefensiveDSNValidation (0.02s)
+    --- PASS: TestDefensiveDSNValidation/invalid (0.00s)
+    --- PASS: TestDefensiveDSNValidation/empty (0.00s)
+    --- PASS: TestDefensiveDSNValidation/duplicate_same (0.00s)
+    --- PASS: TestDefensiveDSNValidation/duplicate_conflicting (0.00s)
+=== RUN   TestDefensiveModeBlocksDangerousOperations
+--- PASS: TestDefensiveModeBlocksDangerousOperations (0.03s)
+=== RUN   TestDefensiveModeAppliesBeforeUserPragma
+--- PASS: TestDefensiveModeAppliesBeforeUserPragma (0.01s)
+=== RUN   TestDefensiveModeAppliesToEveryPhysicalConnection
+--- PASS: TestDefensiveModeAppliesToEveryPhysicalConnection (0.03s)
+=== RUN   TestDefensiveOffPoolIsANegativeControl
+--- PASS: TestDefensiveOffPoolIsANegativeControl (0.08s)
+=== RUN   TestDefensiveBooleanForms
+=== RUN   TestDefensiveBooleanForms/on_1
+=== RUN   TestDefensiveBooleanForms/on_true
+=== RUN   TestDefensiveBooleanForms/on_TRUE
+=== RUN   TestDefensiveBooleanForms/on_t
+--- PASS: TestDefensiveBooleanForms (0.12s)
+    --- PASS: TestDefensiveBooleanForms/on_1 (0.03s)
+    --- PASS: TestDefensiveBooleanForms/on_true (0.03s)
+    --- PASS: TestDefensiveBooleanForms/on_TRUE (0.02s)
+    --- PASS: TestDefensiveBooleanForms/on_t (0.02s)
+=== RUN   TestDefensiveAbsentOrFalseIsBaseline
+=== RUN   TestDefensiveAbsentOrFalseIsBaseline/#00
+=== RUN   TestDefensiveAbsentOrFalseIsBaseline/?_defensive=0
+=== RUN   TestDefensiveAbsentOrFalseIsBaseline/?_defensive=false
+=== RUN   TestDefensiveAbsentOrFalseIsBaseline/?_defensive=FALSE
+=== RUN   TestDefensiveAbsentOrFalseIsBaseline/?_defensive=f
+--- PASS: TestDefensiveAbsentOrFalseIsBaseline (0.13s)
+    --- PASS: TestDefensiveAbsentOrFalseIsBaseline/#00 (0.03s)
+    --- PASS: TestDefensiveAbsentOrFalseIsBaseline/?_defensive=0 (0.02s)
+    --- PASS: TestDefensiveAbsentOrFalseIsBaseline/?_defensive=false (0.03s)
+    --- PASS: TestDefensiveAbsentOrFalseIsBaseline/?_defensive=FALSE (0.02s)
+    --- PASS: TestDefensiveAbsentOrFalseIsBaseline/?_defensive=f (0.02s)
+=== RUN   TestDefensiveRejectsJournalModeOff
+=== RUN   TestDefensiveRejectsJournalModeOff/?_defensive=1&_journal_mode=OFF
+=== RUN   TestDefensiveRejectsJournalModeOff/?_defensive=1&_journal_mode=off
+=== RUN   TestDefensiveRejectsJournalModeOff/?_defensive=1&_journal=OFF
+=== RUN   TestDefensiveRejectsJournalModeOff/?_defensive=true&_journal_mode=Off
+=== RUN   TestDefensiveRejectsJournalModeOff/?_defensive=0&_journal_mode=OFF
+=== RUN   TestDefensiveRejectsJournalModeOff/?_journal_mode=OFF
+=== RUN   TestDefensiveRejectsJournalModeOff/?_defensive=1&_journal_mode=WAL
+--- PASS: TestDefensiveRejectsJournalModeOff (0.08s)
+    --- PASS: TestDefensiveRejectsJournalModeOff/?_defensive=1&_journal_mode=OFF (0.01s)
+    --- PASS: TestDefensiveRejectsJournalModeOff/?_defensive=1&_journal_mode=off (0.01s)
+    --- PASS: TestDefensiveRejectsJournalModeOff/?_defensive=1&_journal=OFF (0.01s)
+    --- PASS: TestDefensiveRejectsJournalModeOff/?_defensive=true&_journal_mode=Off (0.01s)
+    --- PASS: TestDefensiveRejectsJournalModeOff/?_defensive=0&_journal_mode=OFF (0.01s)
+    --- PASS: TestDefensiveRejectsJournalModeOff/?_journal_mode=OFF (0.01s)
+    --- PASS: TestDefensiveRejectsJournalModeOff/?_defensive=1&_journal_mode=WAL (0.02s)
+=== RUN   TestDefensiveDSNForms
+=== RUN   TestDefensiveDSNForms/path
+=== RUN   TestDefensiveDSNForms/file_uri
+=== RUN   TestDefensiveDSNForms/memory
+=== RUN   TestDefensiveDSNForms/file_memory
+--- PASS: TestDefensiveDSNForms (0.08s)
+    --- PASS: TestDefensiveDSNForms/path (0.03s)
+    --- PASS: TestDefensiveDSNForms/file_uri (0.02s)
+    --- PASS: TestDefensiveDSNForms/memory (0.01s)
+    --- PASS: TestDefensiveDSNForms/file_memory (0.01s)
+=== RUN   TestDefensiveLeavesOrdinaryUseIntact
+--- PASS: TestDefensiveLeavesOrdinaryUseIntact (0.21s)
+=== RUN   TestDefensiveIsPerConnection
+--- PASS: TestDefensiveIsPerConnection (0.05s)
+=== RUN   TestDQSConfigCallVaList
+--- PASS: TestDQSConfigCallVaList (0.00s)
+=== RUN   TestDQSOptIn
+=== RUN   TestDQSOptIn/default
+=== RUN   TestDQSOptIn/explicit_on
+=== RUN   TestDQSOptIn/off
+--- PASS: TestDQSOptIn (0.02s)
+    --- PASS: TestDQSOptIn/default (0.00s)
+    --- PASS: TestDQSOptIn/explicit_on (0.01s)
+    --- PASS: TestDQSOptIn/off (0.01s)
+=== RUN   TestDQSInvalid
+--- PASS: TestDQSInvalid (0.00s)
+=== RUN   TestDriverRegisterOwnFunctions
+--- PASS: TestDriverRegisterOwnFunctions (0.01s)
+=== RUN   TestDriverRegisterDuplicate
+--- PASS: TestDriverRegisterDuplicate (0.00s)
+=== RUN   TestDriverRegisterIsolation
+--- PASS: TestDriverRegisterIsolation (0.01s)
+=== RUN   TestDriverRegisterSameModuleName
+--- PASS: TestDriverRegisterSameModuleName (0.02s)
+=== RUN   TestDriverRegisterConcurrent
+--- PASS: TestDriverRegisterConcurrent (0.00s)
+=== RUN   TestDriverGlobalModulesStillApply
+--- PASS: TestDriverGlobalModulesStillApply (0.01s)
+=== RUN   TestVtabRegisterModuleHonoursDB
+--- PASS: TestVtabRegisterModuleHonoursDB (0.01s)
+=== RUN   TestVtabRegisterModuleValidates
+--- PASS: TestVtabRegisterModuleValidates (0.00s)
+=== RUN   TestDSNPragmas
+=== RUN   TestDSNPragmas/Test__pragma
+=== RUN   TestDSNPragmas/Test__foreign_keys_|__fk
+=== RUN   TestDSNPragmas/Test__busy_timeout_|__timeout
+=== RUN   TestDSNPragmas/Test__journal_mode_|__journal
+=== RUN   TestDSNPragmas/Test__synchronous_|__sync
+=== RUN   TestDSNPragmas/Test__auto_vacuum_|__vacuum
+=== RUN   TestDSNPragmas/Test__query_only
+=== RUN   TestDSNPragmas/Test_combined_DSN
+=== RUN   TestDSNPragmas/Test_empty_alias_suppresses_the_PRAGMA
+=== RUN   TestDSNPragmas/Test_validation_precedes_application
+--- PASS: TestDSNPragmas (0.59s)
+    --- PASS: TestDSNPragmas/Test__pragma (0.02s)
+    --- PASS: TestDSNPragmas/Test__foreign_keys_|__fk (0.07s)
+    --- PASS: TestDSNPragmas/Test__busy_timeout_|__timeout (0.03s)
+    --- PASS: TestDSNPragmas/Test__journal_mode_|__journal (0.05s)
+    --- PASS: TestDSNPragmas/Test__synchronous_|__sync (0.07s)
+    --- PASS: TestDSNPragmas/Test__auto_vacuum_|__vacuum (0.12s)
+    --- PASS: TestDSNPragmas/Test__query_only (0.01s)
+    --- PASS: TestDSNPragmas/Test_combined_DSN (0.05s)
+    --- PASS: TestDSNPragmas/Test_empty_alias_suppresses_the_PRAGMA (0.02s)
+    --- PASS: TestDSNPragmas/Test_validation_precedes_application (0.11s)
+=== RUN   TestErrorRcOpenTimeUnopenable
+=== RUN   TestErrorRcOpenTimeUnopenable/legacy_default
+=== RUN   TestErrorRcOpenTimeUnopenable/explicit_off
+=== RUN   TestErrorRcOpenTimeUnopenable/error_rc_on
+--- PASS: TestErrorRcOpenTimeUnopenable (0.01s)
+    --- PASS: TestErrorRcOpenTimeUnopenable/legacy_default (0.00s)
+    --- PASS: TestErrorRcOpenTimeUnopenable/explicit_off (0.00s)
+    --- PASS: TestErrorRcOpenTimeUnopenable/error_rc_on (0.00s)
+=== RUN   TestErrorRcSyntaxErrorPreservesErrmsg
+=== RUN   TestErrorRcSyntaxErrorPreservesErrmsg/#00
+=== RUN   TestErrorRcSyntaxErrorPreservesErrmsg/_error_rc=0
+=== RUN   TestErrorRcSyntaxErrorPreservesErrmsg/_error_rc=1
+--- PASS: TestErrorRcSyntaxErrorPreservesErrmsg (0.02s)
+    --- PASS: TestErrorRcSyntaxErrorPreservesErrmsg/#00 (0.01s)
+    --- PASS: TestErrorRcSyntaxErrorPreservesErrmsg/_error_rc=0 (0.00s)
+    --- PASS: TestErrorRcSyntaxErrorPreservesErrmsg/_error_rc=1 (0.00s)
+=== RUN   TestErrstrForDBSuppressOnMismatch
+=== RUN   TestErrstrForDBSuppressOnMismatch/legacy_mode_appends_errmsg
+=== RUN   TestErrstrForDBSuppressOnMismatch/error_rc_mode_suppresses_errmsg
+--- PASS: TestErrstrForDBSuppressOnMismatch (0.01s)
+    --- PASS: TestErrstrForDBSuppressOnMismatch/legacy_mode_appends_errmsg (0.00s)
+    --- PASS: TestErrstrForDBSuppressOnMismatch/error_rc_mode_suppresses_errmsg (0.00s)
+=== RUN   TestErrorRcInvalidValue
+--- PASS: TestErrorRcInvalidValue (0.00s)
+=== RUN   TestFcntlDataVersion
+--- PASS: TestFcntlDataVersion (0.06s)
+=== RUN   TestFcntlPersistWAL
+=== RUN   TestFcntlPersistWAL/WAL_is_cleaned_up_without_persist_WAL
+=== RUN   TestFcntlPersistWAL/WAL_is_not_cleaned_up_with_persist_WAL
+--- PASS: TestFcntlPersistWAL (0.10s)
+    --- PASS: TestFcntlPersistWAL/WAL_is_cleaned_up_without_persist_WAL (0.05s)
+    --- PASS: TestFcntlPersistWAL/WAL_is_not_cleaned_up_with_persist_WAL (0.05s)
+=== RUN   TestFunctionContextIdentity
+--- PASS: TestFunctionContextIdentity (0.01s)
+=== RUN   TestFunctionContextConcurrent
+--- PASS: TestFunctionContextConcurrent (0.22s)
+=== RUN   TestFunctionContextNested
+--- PASS: TestFunctionContextNested (0.07s)
+=== RUN   TestFunctionContextPerCall
+--- PASS: TestFunctionContextPerCall (0.03s)
+=== RUN   TestRegisteredFunctions
+=== RUN   TestRegisteredFunctions/int64
+=== RUN   TestRegisteredFunctions/float64
+=== RUN   TestRegisteredFunctions/error
+=== RUN   TestRegisteredFunctions/empty_byte_slice
+=== RUN   TestRegisteredFunctions/nonempty_byte_slice
+=== RUN   TestRegisteredFunctions/empty_string
+=== RUN   TestRegisteredFunctions/nonempty_string
+=== RUN   TestRegisteredFunctions/null
+=== RUN   TestRegisteredFunctions/dates
+=== RUN   TestRegisteredFunctions/md5
+=== RUN   TestRegisteredFunctions/md5_with_blob_input
+=== RUN   TestRegisteredFunctions/regexp_filter
+[foo.* seafood]
+[foo.* fruit]
+=== RUN   TestRegisteredFunctions/regexp_matches
+[foo.* seafood]
+=== RUN   TestRegisteredFunctions/regexp_does_not_match
+[foo.* fruit]
+=== RUN   TestRegisteredFunctions/regexp_errors_on_bad_regexp
+[a(b seafood]
+=== RUN   TestRegisteredFunctions/regexp_errors_on_bad_first_argument
+[a(b 1]
+=== RUN   TestRegisteredFunctions/regexp_errors_on_bad_second_argument
+=== RUN   TestRegisteredFunctions/sumFunction_type_error
+=== RUN   TestRegisteredFunctions/sumFunction_multiple_columns
+=== RUN   TestRegisteredFunctions/sumFunction_as_window_function
+=== RUN   TestRegisteredFunctions/aggregate_function_cannot_be_created
+=== RUN   TestRegisteredFunctions/null_aggregate_function_pointer
+=== RUN   TestRegisteredFunctions/serialize_and_deserialize
+=== RUN   TestRegisteredFunctions/serialize_and_deserialize_allocator
+=== RUN   TestRegisteredFunctions/backup_and_restore
+=== RUN   TestRegisteredFunctions/backup,_commit_and_close
+=== RUN   TestRegisteredFunctions/restore_init_failure_reads_error_from_dest_handle
+=== RUN   TestRegisteredFunctions/backup_init_failure_reads_error_from_dest_handle
+=== RUN   TestRegisteredFunctions/QueryContext_with_context_expired
+=== RUN   TestRegisteredFunctions/QueryContext_with_context_expiring
+=== RUN   TestRegisteredFunctions/QueryContext_with_successful_interruption_should_not_leak_unclosed_Rows
+=== RUN   TestRegisteredFunctions/ExecContext_with_context_expired
+=== RUN   TestRegisteredFunctions/ExecContext_with_context_expiring
+--- PASS: TestRegisteredFunctions (401.18s)
+    --- PASS: TestRegisteredFunctions/int64 (0.00s)
+    --- PASS: TestRegisteredFunctions/float64 (0.00s)
+    --- PASS: TestRegisteredFunctions/error (0.01s)
+    --- PASS: TestRegisteredFunctions/empty_byte_slice (0.00s)
+    --- PASS: TestRegisteredFunctions/nonempty_byte_slice (0.01s)
+    --- PASS: TestRegisteredFunctions/empty_string (0.01s)
+    --- PASS: TestRegisteredFunctions/nonempty_string (0.01s)
+    --- PASS: TestRegisteredFunctions/null (0.01s)
+    --- PASS: TestRegisteredFunctions/dates (0.01s)
+    --- PASS: TestRegisteredFunctions/md5 (0.01s)
+    --- PASS: TestRegisteredFunctions/md5_with_blob_input (0.01s)
+    --- PASS: TestRegisteredFunctions/regexp_filter (0.01s)
+    --- PASS: TestRegisteredFunctions/regexp_matches (0.01s)
+    --- PASS: TestRegisteredFunctions/regexp_does_not_match (0.01s)
+    --- PASS: TestRegisteredFunctions/regexp_errors_on_bad_regexp (0.01s)
+    --- PASS: TestRegisteredFunctions/regexp_errors_on_bad_first_argument (0.01s)
+    --- PASS: TestRegisteredFunctions/regexp_errors_on_bad_second_argument (0.01s)
+    --- PASS: TestRegisteredFunctions/sumFunction_type_error (0.01s)
+    --- PASS: TestRegisteredFunctions/sumFunction_multiple_columns (0.01s)
+    --- PASS: TestRegisteredFunctions/sumFunction_as_window_function (0.01s)
+    --- PASS: TestRegisteredFunctions/aggregate_function_cannot_be_created (0.01s)
+    --- PASS: TestRegisteredFunctions/null_aggregate_function_pointer (0.00s)
+    --- PASS: TestRegisteredFunctions/serialize_and_deserialize (0.02s)
+    --- PASS: TestRegisteredFunctions/serialize_and_deserialize_allocator (0.01s)
+    --- PASS: TestRegisteredFunctions/backup_and_restore (0.05s)
+    --- PASS: TestRegisteredFunctions/backup,_commit_and_close (0.02s)
+    --- PASS: TestRegisteredFunctions/restore_init_failure_reads_error_from_dest_handle (0.04s)
+    --- PASS: TestRegisteredFunctions/backup_init_failure_reads_error_from_dest_handle (0.03s)
+    --- PASS: TestRegisteredFunctions/QueryContext_with_context_expired (0.01s)
+    --- PASS: TestRegisteredFunctions/QueryContext_with_context_expiring (200.40s)
+    --- PASS: TestRegisteredFunctions/QueryContext_with_successful_interruption_should_not_leak_unclosed_Rows (0.11s)
+    --- PASS: TestRegisteredFunctions/ExecContext_with_context_expired (0.01s)
+    --- PASS: TestRegisteredFunctions/ExecContext_with_context_expiring (200.26s)
+=== RUN   TestVolatileArgsScalar
+--- PASS: TestVolatileArgsScalar (0.01s)
+=== RUN   TestVolatileArgsAggregate
+--- PASS: TestVolatileArgsAggregate (0.01s)
+=== RUN   TestOpenV2FailureResourceLeak
+    leak_test.go:44: requires -tags memory.counters
+--- SKIP: TestOpenV2FailureResourceLeak (0.03s)
+=== RUN   TestMultiStmtNopAllocsLeak
+    leak_test.go:110: allocs before=0 after=0 delta=0
+--- PASS: TestMultiStmtNopAllocsLeak (0.52s)
+=== RUN   TestMultiStmtErrorAllocsLeak
+    leak_test.go:168: allocs before=0 after=0 delta=0
+--- PASS: TestMultiStmtErrorAllocsLeak (0.39s)
+=== RUN   TestMultiStmtOrphanedRowsOnError
+    leak_test.go:225: allocs before=0 after=0 delta=0
+--- PASS: TestMultiStmtOrphanedRowsOnError (0.53s)
+=== RUN   TestDummyModuleVtab
+--- PASS: TestDummyModuleVtab (0.01s)
+=== RUN   TestVtabConstraintArgIndex
+--- PASS: TestVtabConstraintArgIndex (0.01s)
+=== RUN   TestVtabOmitConstraintEffect
+--- PASS: TestVtabOmitConstraintEffect (0.01s)
+=== RUN   TestVtabMatchConstraint
+--- PASS: TestVtabMatchConstraint (0.01s)
+=== RUN   TestVtabConstraintOperators
+--- PASS: TestVtabConstraintOperators (0.01s)
+=== RUN   TestVtabIdxNumOverflowError
+--- PASS: TestVtabIdxNumOverflowError (0.01s)
+=== RUN   TestVtabColumnUnsupportedValueErrorMessage
+--- PASS: TestVtabColumnUnsupportedValueErrorMessage (0.01s)
+=== RUN   TestVtabUpdaterInsertUpdateDelete
+--- PASS: TestVtabUpdaterInsertUpdateDelete (0.02s)
+=== RUN   TestVTabVolatileFilter
+--- PASS: TestVTabVolatileFilter (0.01s)
+=== RUN   TestVTabVolatileUpdate
+--- PASS: TestVTabVolatileUpdate (0.01s)
+=== RUN   TestNullBinding
+--- PASS: TestNullBinding (0.01s)
+=== RUN   TestOFDLockingTooLate
+--- PASS: TestOFDLockingTooLate (0.04s)
+=== RUN   TestPcacheBindingPinnedContract
+=== RUN   TestPcacheBindingPinnedContract/retained_while_pinned
+=== RUN   TestPcacheBindingPinnedContract/replaced_while_pinned
+=== RUN   TestPcacheBindingPinnedContract/dropped_while_pinned
+=== RUN   TestPcacheBindingPinnedContract/replaced_after_unpin
+=== RUN   TestPcacheBindingPinnedContract/dropped_after_unpin
+--- PASS: TestPcacheBindingPinnedContract (0.02s)
+    --- PASS: TestPcacheBindingPinnedContract/retained_while_pinned (0.00s)
+    --- PASS: TestPcacheBindingPinnedContract/replaced_while_pinned (0.00s)
+    --- PASS: TestPcacheBindingPinnedContract/dropped_while_pinned (0.00s)
+    --- PASS: TestPcacheBindingPinnedContract/replaced_after_unpin (0.00s)
+    --- PASS: TestPcacheBindingPinnedContract/dropped_after_unpin (0.00s)
+=== RUN   TestPCacheMethods2Layout
+--- PASS: TestPCacheMethods2Layout (0.00s)
+=== RUN   TestRegisterPageCacheNil
+--- PASS: TestRegisterPageCacheNil (0.00s)
+=== RUN   TestRegisterPageCacheLifecycle
+    pagecache_test.go:120: pcacheState already polluted by an earlier test in this run; lifecycle test must run before any sql.Open call
+--- SKIP: TestRegisterPageCacheLifecycle (0.00s)
+=== RUN   TestOpenGateConcurrentReaders
+--- PASS: TestOpenGateConcurrentReaders (0.00s)
+=== RUN   TestPCacheIDGen
+--- PASS: TestPCacheIDGen (0.00s)
+=== RUN   TestSEHTruncatedShm
+--- PASS: TestSEHTruncatedShm (0.09s)
+=== RUN   TestSEHInjectedFault
+    seh_test.go:157: SELECT count(*) FROM t           10 sites
+    seh_test.go:157: INSERT INTO t VALUES(4)          14 sites
+    seh_test.go:157: PRAGMA wal_checkpoint(PASSIVE)   14 sites
+    seh_test.go:157: PRAGMA wal_checkpoint(TRUNCATE)  8 sites
+--- PASS: TestSEHInjectedFault (0.17s)
+=== RUN   TestSingleStatement
+--- PASS: TestSingleStatement (0.00s)
+=== RUN   TestSingleStatementAgainstSQLite
+--- PASS: TestSingleStatementAgainstSQLite (0.01s)
+=== RUN   TestStrictPragmas
+=== RUN   TestStrictPragmas/off
+=== RUN   TestStrictPragmas/rejected
+=== RUN   TestStrictPragmas/accepted
+--- PASS: TestStrictPragmas (0.03s)
+    --- PASS: TestStrictPragmas/off (0.01s)
+    --- PASS: TestStrictPragmas/rejected (0.01s)
+    --- PASS: TestStrictPragmas/accepted (0.01s)
+=== RUN   TestVec
+--- PASS: TestVec (0.03s)
+=== RUN   TestVendorStamp
+--- PASS: TestVendorStamp (4.20s)
+=== RUN   TestPreUpdateHook
+--- PASS: TestPreUpdateHook (0.01s)
+=== RUN   TestPreUpdateHookLargeRowID
+--- PASS: TestPreUpdateHookLargeRowID (0.01s)
+=== RUN   FuzzSingleStatement
+=== RUN   FuzzSingleStatement/seed#0
+=== RUN   FuzzSingleStatement/seed#1
+=== RUN   FuzzSingleStatement/seed#2
+=== RUN   FuzzSingleStatement/seed#3
+=== RUN   FuzzSingleStatement/seed#4
+=== RUN   FuzzSingleStatement/seed#5
+=== RUN   FuzzSingleStatement/seed#6
+=== RUN   FuzzSingleStatement/seed#7
+=== RUN   FuzzSingleStatement/seed#8
+=== RUN   FuzzSingleStatement/seed#9
+=== RUN   FuzzSingleStatement/seed#10
+=== RUN   FuzzSingleStatement/seed#11
+=== RUN   FuzzSingleStatement/seed#12
+=== RUN   FuzzSingleStatement/seed#13
+=== RUN   FuzzSingleStatement/seed#14
+=== RUN   FuzzSingleStatement/seed#15
+=== RUN   FuzzSingleStatement/seed#16
+=== RUN   FuzzSingleStatement/seed#17
+=== RUN   FuzzSingleStatement/seed#18
+=== RUN   FuzzSingleStatement/seed#19
+=== RUN   FuzzSingleStatement/seed#20
+=== RUN   FuzzSingleStatement/seed#21
+=== RUN   FuzzSingleStatement/seed#22
+=== RUN   FuzzSingleStatement/seed#23
+=== RUN   FuzzSingleStatement/seed#24
+=== RUN   FuzzSingleStatement/seed#25
+=== RUN   FuzzSingleStatement/seed#26
+=== RUN   FuzzSingleStatement/seed#27
+=== RUN   FuzzSingleStatement/seed#28
+=== RUN   FuzzSingleStatement/seed#29
+=== RUN   FuzzSingleStatement/seed#30
+=== RUN   FuzzSingleStatement/seed#31
+=== RUN   FuzzSingleStatement/seed#32
+=== RUN   FuzzSingleStatement/seed#33
+=== RUN   FuzzSingleStatement/seed#34
+=== RUN   FuzzSingleStatement/seed#35
+=== RUN   FuzzSingleStatement/seed#36
+=== RUN   FuzzSingleStatement/50d29fd2f250ad3c
+=== RUN   FuzzSingleStatement/74ff4feb3227dc45
+=== RUN   FuzzSingleStatement/d0ac662f47145d4c
+--- PASS: FuzzSingleStatement (0.06s)
+    --- PASS: FuzzSingleStatement/seed#0 (0.00s)
+    --- PASS: FuzzSingleStatement/seed#1 (0.00s)
+    --- PASS: FuzzSingleStatement/seed#2 (0.00s)
+    --- PASS: FuzzSingleStatement/seed#3 (0.00s)
+    --- PASS: FuzzSingleStatement/seed#4 (0.00s)
+    --- PASS: FuzzSingleStatement/seed#5 (0.00s)
+    --- PASS: FuzzSingleStatement/seed#6 (0.00s)
+    --- PASS: FuzzSingleStatement/seed#7 (0.00s)
+    --- PASS: FuzzSingleStatement/seed#8 (0.00s)
+    --- PASS: FuzzSingleStatement/seed#9 (0.00s)
+    --- PASS: FuzzSingleStatement/seed#10 (0.00s)
+    --- PASS: FuzzSingleStatement/seed#11 (0.00s)
+    --- PASS: FuzzSingleStatement/seed#12 (0.00s)
+    --- PASS: FuzzSingleStatement/seed#13 (0.00s)
+    --- PASS: FuzzSingleStatement/seed#14 (0.00s)
+    --- PASS: FuzzSingleStatement/seed#15 (0.00s)
+    --- PASS: FuzzSingleStatement/seed#16 (0.00s)
+    --- PASS: FuzzSingleStatement/seed#17 (0.00s)
+    --- PASS: FuzzSingleStatement/seed#18 (0.00s)
+    --- PASS: FuzzSingleStatement/seed#19 (0.00s)
+    --- PASS: FuzzSingleStatement/seed#20 (0.00s)
+    --- PASS: FuzzSingleStatement/seed#21 (0.00s)
+    --- PASS: FuzzSingleStatement/seed#22 (0.00s)
+    --- PASS: FuzzSingleStatement/seed#23 (0.00s)
+    --- PASS: FuzzSingleStatement/seed#24 (0.00s)
+    --- PASS: FuzzSingleStatement/seed#25 (0.00s)
+    --- PASS: FuzzSingleStatement/seed#26 (0.00s)
+    --- PASS: FuzzSingleStatement/seed#27 (0.00s)
+    --- PASS: FuzzSingleStatement/seed#28 (0.00s)
+    --- PASS: FuzzSingleStatement/seed#29 (0.00s)
+    --- PASS: FuzzSingleStatement/seed#30 (0.00s)
+    --- PASS: FuzzSingleStatement/seed#31 (0.00s)
+    --- PASS: FuzzSingleStatement/seed#32 (0.00s)
+    --- PASS: FuzzSingleStatement/seed#33 (0.00s)
+    --- PASS: FuzzSingleStatement/seed#34 (0.00s)
+    --- PASS: FuzzSingleStatement/seed#35 (0.00s)
+    --- PASS: FuzzSingleStatement/seed#36 (0.00s)
+    --- PASS: FuzzSingleStatement/50d29fd2f250ad3c (0.00s)
+    --- PASS: FuzzSingleStatement/74ff4feb3227dc45 (0.00s)
+    --- PASS: FuzzSingleStatement/d0ac662f47145d4c (0.00s)
+FAIL
+# exit 1 after 677 s
