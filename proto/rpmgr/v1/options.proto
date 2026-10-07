@@ -1,0 +1,35 @@
+// SPDX-License-Identifier: Apache-2.0
+
+syntax = "proto3";
+
+// Package rpmgr.v1 is rpmgr's public API (docs/07-api.md). This file defines the options that
+// every service method and every secret field carries.
+package rpmgr.v1;
+
+import "google/protobuf/descriptor.proto";
+
+option go_package = "github.com/felix-homelab/rpmgr/gen/rpmgr/v1;rpmgrv1";
+
+// Authz is the authorization a method needs. One interceptor enforces it, and the server refuses
+// to start while any method lacks it (docs/04-security.md, "One enforcement point").
+message Authz {
+  // The permission the caller needs, for example "route.update".
+  string permission = 1;
+  // The request field that identifies the target resource, for example "route.id"; empty for
+  // methods without a target resource. The interceptor resolves the resource's org from it.
+  string resource_field = 2;
+  // Whether the caller needs a step-up re-authentication within the step-up window
+  // (docs/04-security.md, "Human authentication and sessions").
+  bool step_up = 3;
+}
+
+extend google.protobuf.MethodOptions {
+  // The authorization of a public API method.
+  Authz authz = 50001;
+}
+
+extend google.protobuf.FieldOptions {
+  // Marks a field that carries a secret: write-only in the API, redacted in logs and audit
+  // diffs (docs/04-security.md, "Secrets at rest and in logs").
+  bool sensitive = 50001;
+}

@@ -258,6 +258,46 @@ EOF
   printf 'package p\n\nimport "golang.org/x/text/language"\n\n// Parse parses.\nfunc Parse(s string) ([]language.Tag, []float32, error) { return language.ParseAcceptLanguage(s) }\n' >"$r/p/p.go"
   (cd "$r" && go mod tidy >/dev/null 2>&1)
   expect fail "govulncheck finds a called vulnerable function" "$dir/check-govulncheck.sh" "$r"
+
+  # buf (needs network on first use): lint, breaking changes against main with and without the
+  # override of D56, and generated code that must match. The fixture uses rpmgr's own go.mod, so
+  # the code generators are the tool dependencies pinned there.
+  r=$(new_repo)
+  cp "$dir/../../go.mod" "$dir/../../go.sum" "$dir/../../buf.yaml" "$dir/../../buf.gen.yaml" "$r/"
+  mkdir -p "$r/proto/fixture/v1"
+  cat >"$r/proto/fixture/v1/fixture.proto" <<'EOF'
+syntax = "proto3";
+
+package fixture.v1;
+
+option go_package = "github.com/felix-homelab/rpmgr/gen/fixture/v1;fixturev1";
+
+// Thing is a fixture.
+message Thing {
+  // The name.
+  string name = 1;
+  // The size.
+  uint32 size = 2;
+}
+EOF
+  (cd "$r" && go run github.com/bufbuild/buf/cmd/buf@v1.73.0 generate >/dev/null 2>&1)
+  git -C "$r" add -A && git -C "$r" commit -q -s -m "feat: fixture"
+  git -C "$r" switch -q -c feature/1-x
+  bc="$dir/check-buf.sh"
+  expect pass "protobuf lint, no breaking change, generated code current" env BUF_BREAKING_AGAINST=main "$bc" "$r"
+  sed -i 's/^message Thing {/message thing_t {/' "$r/proto/fixture/v1/fixture.proto"
+  expect fail "protobuf lint error" env BUF_BREAKING_AGAINST=main "$bc" "$r"
+  git -C "$r" checkout -q HEAD -- proto gen
+  sed -i '/The size/d; /uint32 size = 2;/d' "$r/proto/fixture/v1/fixture.proto"
+  (cd "$r" && go run github.com/bufbuild/buf/cmd/buf@v1.73.0 generate >/dev/null 2>&1)
+  git -C "$r" add -A
+  expect fail "breaking change: a field removed" env BUF_BREAKING_AGAINST=main "$bc" "$r"
+  expect pass "breaking change allowed with the override" env BUF_BREAKING_AGAINST=main ALLOW_BREAKING=1 "$bc" "$r"
+  git -C "$r" checkout -q HEAD -- proto gen
+  sed -i 's|// The name.|// The name of the thing.|' "$r/proto/fixture/v1/fixture.proto"
+  expect fail "generated code older than the .proto file" env BUF_BREAKING_AGAINST=main "$bc" "$r"
+  git -C "$r" checkout -q HEAD -- proto gen
+  expect pass "nothing to compare when the base has no buf.yaml" env BUF_BREAKING_AGAINST=does-not-exist "$bc" "$r"
 fi
 
 # --- Docker-based checks -------------------------------------------------------------------

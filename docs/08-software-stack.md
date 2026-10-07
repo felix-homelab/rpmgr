@@ -106,7 +106,7 @@ flowchart TB
 
 | Area | Choice |
 |---|---|
-| Build | `go build` with `-trimpath`, pinned toolchain, reproducibility check; `buf generate`; Vite build embedded |
+| Build | `go build` with `-trimpath`, pinned toolchain, reproducibility check; `buf generate` with `protoc-gen-go`, `protoc-gen-go-grpc` and `protoc-gen-connect-go` pinned as tool dependencies in `go.mod` (so their versions match the runtime libraries) and buf at a pinned version run through the go command; Vite build embedded |
 | Artifacts | Phase 1: `rpmgr` for linux/{amd64,arm64,armv7,riscv64}. Phase 2: connector builds for windows/amd64 and darwin/{amd64,arm64} (built in CI from Phase 1 on, not released), and the connector-only variant, released as `rpmgr-connector_<version>_<os>_<arch>` and installed as `rpmgr` |
 | Containers | Distroless, non-root OCI images `ghcr.io/felix-homelab/rpmgr` (multi-arch), signed |
 | Packages | Phase 2: `.deb` and `.rpm` built with nfpm, served from a signed apt/yum repository on GitHub Pages; a Homebrew tap (macOS connector) and winget/MSI (Windows connector). `.apk` is not planned; a Helm chart is Phase 3 ([10](10-operations.md#install)) |
