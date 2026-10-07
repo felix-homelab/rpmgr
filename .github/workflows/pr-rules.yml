@@ -44,11 +44,16 @@ jobs:
       - name: DCO sign-off
         if: ${{ !cancelled() }}
         run: .github/scripts/check-dco.sh "$BASE_SHA" "$HEAD_SHA"
-      - name: Changelog
-        if: ${{ !cancelled() }}
+      - name: Labels, read now rather than from the event
         env:
           GH_TOKEN: ${{ github.token }}
           PR: ${{ github.event.pull_request.number }}
         run: |
           labels=$(gh pr view "$PR" --repo "$GITHUB_REPOSITORY" --json labels --jq '[.labels[].name] | join(" ")')
-          .github/scripts/check-changelog.sh "$BASE_SHA" "$HEAD_SHA" "$labels"
+          echo "LABELS=$labels" >>"$GITHUB_ENV"
+      - name: Changelog
+        if: ${{ !cancelled() }}
+        run: .github/scripts/check-changelog.sh "$BASE_SHA" "$HEAD_SHA" "$LABELS"
+      - name: Size of the change
+        if: ${{ !cancelled() }}
+        run: .github/scripts/check-size.sh "$BASE_SHA" "$HEAD_SHA" "$LABELS"
