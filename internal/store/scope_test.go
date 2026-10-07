@@ -68,15 +68,21 @@ func emptyDB(t *testing.T, d string) *sql.DB {
 }
 
 func pgDatabase(t *testing.T, adminDSN string) (*sql.DB, error) {
+	return sql.Open("pgx", newPGDatabase(t, adminDSN))
+}
+
+// newPGDatabase creates an empty PostgreSQL database, dropped after the test, and returns its DSN.
+func newPGDatabase(t *testing.T, adminDSN string) string {
+	t.Helper()
 	admin, err := sql.Open("pgx", adminDSN)
 	if err != nil {
-		return nil, err
+		t.Fatal(err)
 	}
 	b := make([]byte, 6)
 	_, _ = rand.Read(b)
 	name := "rpmgr_t_" + hex.EncodeToString(b)
 	if _, err := admin.Exec("CREATE DATABASE " + name); err != nil {
-		return nil, err
+		t.Fatal(err)
 	}
 	t.Cleanup(func() {
 		_, _ = admin.Exec("DROP DATABASE IF EXISTS " + name + " WITH (FORCE)")
@@ -84,10 +90,10 @@ func pgDatabase(t *testing.T, adminDSN string) (*sql.DB, error) {
 	})
 	u, err := url.Parse(adminDSN)
 	if err != nil {
-		return nil, err
+		t.Fatal(err)
 	}
 	u.Path = "/" + name
-	return sql.Open("pgx", u.String())
+	return u.String()
 }
 
 type auditLog struct {

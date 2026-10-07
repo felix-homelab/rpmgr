@@ -308,9 +308,9 @@ method, list filter or search returns or modifies the other org's data
   - **Checked in CI:** regenerating yields no new migration; Atlas lint (community CLI); every
     migration applied on both dialects; the resulting schema equals the Ent schema.
 - Migrations are embedded in the binary and applied by it with Atlas's migration executor and a
-  revision table of its own. An edited or unlisted migration file is refused before anything runs.
-  Single node: applied at startup under a database lock. HA: applied explicitly with
-  `rpmgr migrate` before upgrading the replicas.
+  revision table of its own, `rpmgr_schema_revisions`. An edited or unlisted migration file is
+  refused before anything runs. Single node: applied at startup under a database lock. HA: applied
+  explicitly with `rpmgr migrate` before upgrading the replicas.
 - **One transaction per file.** A file that fails leaves no change and no revision. On SQLite,
   Atlas changes a table by rebuilding it between `PRAGMA foreign_keys = off` and `= on`, a pragma
   SQLite ignores inside a transaction; the controller therefore switches foreign keys off on the
