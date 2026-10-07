@@ -354,8 +354,6 @@ func init() {
 	enrollmenttoken.DefaultEphemeral = enrollmenttokenDescEphemeral.Default.(bool)
 	// enrollmenttokenDescMaxUses is the schema descriptor for max_uses field.
 	enrollmenttokenDescMaxUses := enrollmenttokenFields[8].Descriptor()
-	// enrollmenttoken.DefaultMaxUses holds the default value on creation for the max_uses field.
-	enrollmenttoken.DefaultMaxUses = enrollmenttokenDescMaxUses.Default.(int)
 	// enrollmenttoken.MaxUsesValidator is a validator for the "max_uses" field. It is called by the builders before save.
 	enrollmenttoken.MaxUsesValidator = enrollmenttokenDescMaxUses.Validators[0].(func(int) error)
 	// enrollmenttokenDescUseCount is the schema descriptor for use_count field.

@@ -8,6 +8,7 @@ import (
 	"entgo.io/ent"
 	"entgo.io/ent/dialect/entsql"
 	"entgo.io/ent/schema"
+	"entgo.io/ent/schema/edge"
 	"entgo.io/ent/schema/field"
 	"entgo.io/ent/schema/index"
 )
@@ -67,12 +68,23 @@ func (IssuedCertificate) Fields() []ent.Field {
 		field.Time("superseded_at").Optional().Nillable(),
 		field.Time("revoked_at").Optional().Nillable(),
 		field.String("revocation_reason").Default(""),
+		// certificate is the DER the agent received, so a retried enrollment gets the same one.
+		field.Bytes("certificate").Optional().Immutable(),
+		// enrollment_token_id is the token an enrollment consumed for this certificate.
+		field.String("enrollment_token_id").Optional().Nillable().Immutable(),
+	}
+}
+
+// Edges of an issued certificate.
+func (IssuedCertificate) Edges() []ent.Edge {
+	return []ent.Edge{
+		edge.To("enrollment_token", EnrollmentToken.Type).Field("enrollment_token_id").Unique().Immutable(),
 	}
 }
 
 // Indexes find the certificates of a subject.
 func (IssuedCertificate) Indexes() []ent.Index {
-	return []ent.Index{index.Fields("subject_id")}
+	return []ent.Index{index.Fields("subject_id"), index.Fields("enrollment_token_id")}
 }
 
 // Policy denies every query and mutation without a scope.

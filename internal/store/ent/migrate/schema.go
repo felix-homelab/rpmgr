@@ -148,7 +148,7 @@ var (
 		{Name: "role", Type: field.TypeEnum, Enums: []string{"connector", "gateway"}},
 		{Name: "labels", Type: field.TypeJSON, Nullable: true},
 		{Name: "ephemeral", Type: field.TypeBool, Default: false},
-		{Name: "max_uses", Type: field.TypeInt, Default: 1},
+		{Name: "max_uses", Type: field.TypeInt, Nullable: true},
 		{Name: "use_count", Type: field.TypeInt, Default: 0},
 		{Name: "expires_at", Type: field.TypeTime},
 		{Name: "created_by", Type: field.TypeString},
@@ -310,17 +310,32 @@ var (
 		{Name: "superseded_at", Type: field.TypeTime, Nullable: true},
 		{Name: "revoked_at", Type: field.TypeTime, Nullable: true},
 		{Name: "revocation_reason", Type: field.TypeString, Default: ""},
+		{Name: "certificate", Type: field.TypeBytes, Nullable: true},
+		{Name: "enrollment_token_id", Type: field.TypeString, Nullable: true},
 	}
 	// IssuedCertificatesTable holds the schema information for the "issued_certificates" table.
 	IssuedCertificatesTable = &schema.Table{
 		Name:       "issued_certificates",
 		Columns:    IssuedCertificatesColumns,
 		PrimaryKey: []*schema.Column{IssuedCertificatesColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "issued_certificates_enrollment_tokens_enrollment_token",
+				Columns:    []*schema.Column{IssuedCertificatesColumns[13]},
+				RefColumns: []*schema.Column{EnrollmentTokensColumns[0]},
+				OnDelete:   schema.SetNull,
+			},
+		},
 		Indexes: []*schema.Index{
 			{
 				Name:    "issuedcertificate_subject_id",
 				Unique:  false,
 				Columns: []*schema.Column{IssuedCertificatesColumns[3]},
+			},
+			{
+				Name:    "issuedcertificate_enrollment_token_id",
+				Unique:  false,
+				Columns: []*schema.Column{IssuedCertificatesColumns[13]},
 			},
 		},
 	}
@@ -443,6 +458,7 @@ func init() {
 	InstanceSettingsTable.Annotation = &entsql.Annotation{
 		Table: "instance_settings",
 	}
+	IssuedCertificatesTable.ForeignKeys[0].RefTable = EnrollmentTokensTable
 	IssuedCertificatesTable.Annotation = &entsql.Annotation{
 		Table: "issued_certificates",
 	}

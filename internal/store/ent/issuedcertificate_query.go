@@ -12,6 +12,7 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/enrollmenttoken"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/issuedcertificate"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/predicate"
 )
@@ -19,10 +20,11 @@ import (
 // IssuedCertificateQuery is the builder for querying IssuedCertificate entities.
 type IssuedCertificateQuery struct {
 	config
-	ctx        *QueryContext
-	order      []issuedcertificate.OrderOption
-	inters     []Interceptor
-	predicates []predicate.IssuedCertificate
+	ctx                 *QueryContext
+	order               []issuedcertificate.OrderOption
+	inters              []Interceptor
+	predicates          []predicate.IssuedCertificate
+	withEnrollmentToken *EnrollmentTokenQuery
 	// intermediate query (i.e. traversal path).
 	sql  *sql.Selector
 	path func(context.Context) (*sql.Selector, error)
@@ -57,6 +59,28 @@ func (_q *IssuedCertificateQuery) Unique(unique bool) *IssuedCertificateQuery {
 func (_q *IssuedCertificateQuery) Order(o ...issuedcertificate.OrderOption) *IssuedCertificateQuery {
 	_q.order = append(_q.order, o...)
 	return _q
+}
+
+// QueryEnrollmentToken chains the current query on the "enrollment_token" edge.
+func (_q *IssuedCertificateQuery) QueryEnrollmentToken() *EnrollmentTokenQuery {
+	query := (&EnrollmentTokenClient{config: _q.config}).Query()
+	query.path = func(ctx context.Context) (fromU *sql.Selector, err error) {
+		if err := _q.prepareQuery(ctx); err != nil {
+			return nil, err
+		}
+		selector := _q.sqlQuery(ctx)
+		if err := selector.Err(); err != nil {
+			return nil, err
+		}
+		step := sqlgraph.NewStep(
+			sqlgraph.From(issuedcertificate.Table, issuedcertificate.FieldID, selector),
+			sqlgraph.To(enrollmenttoken.Table, enrollmenttoken.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, false, issuedcertificate.EnrollmentTokenTable, issuedcertificate.EnrollmentTokenColumn),
+		)
+		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
+		return fromU, nil
+	}
+	return query
 }
 
 // First returns the first IssuedCertificate entity from the query.
@@ -246,15 +270,27 @@ func (_q *IssuedCertificateQuery) Clone() *IssuedCertificateQuery {
 		return nil
 	}
 	return &IssuedCertificateQuery{
-		config:     _q.config,
-		ctx:        _q.ctx.Clone(),
-		order:      append([]issuedcertificate.OrderOption{}, _q.order...),
-		inters:     append([]Interceptor{}, _q.inters...),
-		predicates: append([]predicate.IssuedCertificate{}, _q.predicates...),
+		config:              _q.config,
+		ctx:                 _q.ctx.Clone(),
+		order:               append([]issuedcertificate.OrderOption{}, _q.order...),
+		inters:              append([]Interceptor{}, _q.inters...),
+		predicates:          append([]predicate.IssuedCertificate{}, _q.predicates...),
+		withEnrollmentToken: _q.withEnrollmentToken.Clone(),
 		// clone intermediate query.
 		sql:  _q.sql.Clone(),
 		path: _q.path,
 	}
+}
+
+// WithEnrollmentToken tells the query-builder to eager-load the nodes that are connected to
+// the "enrollment_token" edge. The optional arguments are used to configure the query builder of the edge.
+func (_q *IssuedCertificateQuery) WithEnrollmentToken(opts ...func(*EnrollmentTokenQuery)) *IssuedCertificateQuery {
+	query := (&EnrollmentTokenClient{config: _q.config}).Query()
+	for _, opt := range opts {
+		opt(query)
+	}
+	_q.withEnrollmentToken = query
+	return _q
 }
 
 // GroupBy is used to group vertices by one or more fields/columns.
@@ -339,8 +375,11 @@ func (_q *IssuedCertificateQuery) prepareQuery(ctx context.Context) error {
 
 func (_q *IssuedCertificateQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*IssuedCertificate, error) {
 	var (
-		nodes = []*IssuedCertificate{}
-		_spec = _q.querySpec()
+		nodes       = []*IssuedCertificate{}
+		_spec       = _q.querySpec()
+		loadedTypes = [1]bool{
+			_q.withEnrollmentToken != nil,
+		}
 	)
 	_spec.ScanValues = func(columns []string) ([]any, error) {
 		return (*IssuedCertificate).scanValues(nil, columns)
@@ -348,6 +387,7 @@ func (_q *IssuedCertificateQuery) sqlAll(ctx context.Context, hooks ...queryHook
 	_spec.Assign = func(columns []string, values []any) error {
 		node := &IssuedCertificate{config: _q.config}
 		nodes = append(nodes, node)
+		node.Edges.loadedTypes = loadedTypes
 		return node.assignValues(columns, values)
 	}
 	for i := range hooks {
@@ -359,7 +399,46 @@ func (_q *IssuedCertificateQuery) sqlAll(ctx context.Context, hooks ...queryHook
 	if len(nodes) == 0 {
 		return nodes, nil
 	}
+	if query := _q.withEnrollmentToken; query != nil {
+		if err := _q.loadEnrollmentToken(ctx, query, nodes, nil,
+			func(n *IssuedCertificate, e *EnrollmentToken) { n.Edges.EnrollmentToken = e }); err != nil {
+			return nil, err
+		}
+	}
 	return nodes, nil
+}
+
+func (_q *IssuedCertificateQuery) loadEnrollmentToken(ctx context.Context, query *EnrollmentTokenQuery, nodes []*IssuedCertificate, init func(*IssuedCertificate), assign func(*IssuedCertificate, *EnrollmentToken)) error {
+	ids := make([]string, 0, len(nodes))
+	nodeids := make(map[string][]*IssuedCertificate)
+	for i := range nodes {
+		if nodes[i].EnrollmentTokenID == nil {
+			continue
+		}
+		fk := *nodes[i].EnrollmentTokenID
+		if _, ok := nodeids[fk]; !ok {
+			ids = append(ids, fk)
+		}
+		nodeids[fk] = append(nodeids[fk], nodes[i])
+	}
+	if len(ids) == 0 {
+		return nil
+	}
+	query.Where(enrollmenttoken.IDIn(ids...))
+	neighbors, err := query.All(ctx)
+	if err != nil {
+		return err
+	}
+	for _, n := range neighbors {
+		nodes, ok := nodeids[n.ID]
+		if !ok {
+			return fmt.Errorf(`unexpected foreign-key "enrollment_token_id" returned %v`, n.ID)
+		}
+		for i := range nodes {
+			assign(nodes[i], n)
+		}
+	}
+	return nil
 }
 
 func (_q *IssuedCertificateQuery) sqlCount(ctx context.Context) (int, error) {
@@ -386,6 +465,9 @@ func (_q *IssuedCertificateQuery) querySpec() *sqlgraph.QuerySpec {
 			if fields[i] != issuedcertificate.FieldID {
 				_spec.Node.Columns = append(_spec.Node.Columns, fields[i])
 			}
+		}
+		if _q.withEnrollmentToken != nil {
+			_spec.Node.AddColumnOnce(issuedcertificate.FieldEnrollmentTokenID)
 		}
 	}
 	if ps := _q.predicates; len(ps) > 0 {

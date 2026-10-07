@@ -1984,6 +1984,22 @@ func (c *IssuedCertificateClient) GetX(ctx context.Context, id string) *IssuedCe
 	return obj
 }
 
+// QueryEnrollmentToken queries the enrollment_token edge of a IssuedCertificate.
+func (c *IssuedCertificateClient) QueryEnrollmentToken(_m *IssuedCertificate) *EnrollmentTokenQuery {
+	query := (&EnrollmentTokenClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(issuedcertificate.Table, issuedcertificate.FieldID, id),
+			sqlgraph.To(enrollmenttoken.Table, enrollmenttoken.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, false, issuedcertificate.EnrollmentTokenTable, issuedcertificate.EnrollmentTokenColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
 // Hooks returns the client hooks.
 func (c *IssuedCertificateClient) Hooks() []Hook {
 	hooks := c.hooks.IssuedCertificate
