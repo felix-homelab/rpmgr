@@ -584,7 +584,7 @@ path with a 1500-byte MTU they arrive in two TCP segments ([S3](spikes/S3.md)).
 | SNI = this gateway's WSS tunnel hostname | HTTP engine; `/.rpmgr/tunnel` upgrades to the WSS transport (Phase 2) |
 | SNI matches a TLS-passthrough route | Splice raw bytes to a connector |
 | SNI matches an HTTP route hostname | Terminate TLS (ACME or uploaded certificate), hand to HTTP engine |
-| No SNI, unknown SNI | Complete the handshake with the default certificate and close; there is no configurable fallback route |
+| No SNI, unknown SNI | Complete the handshake with the default certificate (self-signed for `default.invalid`, generated at every start) and close; there is no configurable fallback route |
 | Not TLS | Close |
 
 The ClientHello is parsed with `golang.org/x/crypto/cryptobyte` from the recorded records, which
