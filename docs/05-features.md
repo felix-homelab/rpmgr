@@ -26,7 +26,7 @@
 | Feature | Phase |
 |---|---|
 | Automatic certificates via ACME: HTTP-01, TLS-ALPN-01 | P1 |
-| ACME DNS-01 (needed for wildcard certificates) for hostnames in managed zones, using the zone's DNS-provider credential ([15](15-dns.md#acme-dns-01)) [V S6] | P2 |
+| ACME DNS-01 (needed for wildcard certificates) for hostnames in managed zones, using the zone's DNS-provider credential ([15](15-dns.md#acme-dns-01)) [V VB-19] | P2 |
 | Uploaded certificates | P1 |
 | Domain ownership verification per org (DNS TXT or HTTP token); domains marked trusted by the Instance Admin need no proof ([D13](14-open-decisions.md#tenancy-and-data)) | P1 |
 | Delegated labels under the instance base domain (`<org-slug>.<base>`) and Instance-Admin approval of nested claims ([D23](14-open-decisions.md#tenancy-and-data)) | P2 |
