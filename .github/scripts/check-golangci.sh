@@ -18,12 +18,15 @@ if [[ ! -f $root/go.mod ]]; then
 fi
 modcache=$(go env GOMODCACHE 2>/dev/null || true)
 mounts=(-v "$root:/src")
+env=(-e GOCACHE=/tmp/gocache -e GOLANGCI_LINT_CACHE=/tmp/lintcache -e GOFLAGS=-mod=readonly -e HOME=/tmp)
 if [[ -n $modcache && -d $modcache ]]; then
   mounts+=(-v "$modcache:/gomodcache")
+  env+=(-e GOMODCACHE=/gomodcache)
+else
+  env+=(-e GOMODCACHE=/tmp/gomodcache) # downloaded inside the container
 fi
-if ! docker run --rm -u "$(id -u):$(id -g)" "${mounts[@]}" -w /src \
-  -e GOCACHE=/tmp/gocache -e GOLANGCI_LINT_CACHE=/tmp/lintcache -e GOMODCACHE=/gomodcache \
-  -e GOFLAGS=-mod=readonly -e HOME=/tmp "$image" golangci-lint run ./...; then
+if ! docker run --rm -u "$(id -u):$(id -g)" "${mounts[@]}" -w /src "${env[@]}" \
+  "$image" golangci-lint run ./...; then
   fail "golangci-lint reported problems (see above)"
 fi
 finish
