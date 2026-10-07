@@ -85,6 +85,12 @@ sequenceDiagram
   A->>C: open control session (mutual TLS)
 ```
 
+What the token grants decides the identity, never the request: a connector token creates a
+connector named after the host (`nas`, then `nas-2` if the name is taken in the org), with the
+token's labels and ephemeral flag; a gateway token enrolls the gateway it is bound to, which an
+Admin created first; a re-enrollment token keeps its connector's identity and replaces only the key. The
+`/.well-known/rpmgr/trust-bundle` download is served by the controller's web server as PEM.
+
 The unauthenticated bundle download is only a convenience: the pin selects exactly one root, so an
 attacker who adds roots to the bundle (for example a TLS-intercepting proxy) gains nothing. If the
 `Enroll` response is lost, the agent retries with the same CSR; the controller returns the same

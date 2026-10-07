@@ -26,7 +26,9 @@ import (
 
 const td = "rpmgr-teststor"
 
-var t0 = time.Date(2026, 10, 7, 12, 0, 0, 0, time.UTC)
+// t0 is now, so that the TLS handshakes of the service tests, which check validity against the
+// real clock, see certificates that are valid.
+var t0 = time.Now().UTC().Truncate(time.Second)
 
 // env is an initialised database with a CA and an org.
 type env struct {
