@@ -162,6 +162,74 @@ git -C "$r" rm -q --cached b.go && rm "$r/b.go"
 printf '#!/bin/sh\n\n\n\n\n# SPDX-License-Identifier: Apache-2.0\n' >"$r/late.sh" && git -C "$r" add late.sh
 expect fail "header after line five" "$s" "$r"
 
+# --- Go checks (need the go command) ----------------------------------------------------------
+if ! command -v go >/dev/null 2>&1; then
+  if [[ ${REQUIRE_GO-} == 1 ]]; then
+    echo "FAIL: the go command is required but not available"
+    failed=$((failed + 1))
+  else
+    echo "skipped: Go checks (go not available)"
+  fi
+else
+  # A tiny module with the real tools/bannedapi, so check-go.sh runs exactly as in the repository.
+  r=$(new_repo)
+  printf 'module github.com/felix-homelab/rpmgr\n\ngo 1.26.0\n' >"$r/go.mod"
+  mkdir -p "$r/p" "$r/tools"
+  cp -r "$dir/../../tools/bannedapi" "$r/tools/"
+  printf '// SPDX-License-Identifier: Apache-2.0\n\npackage p\n\n// Add adds.\nfunc Add(a, b int) int { return a + b }\n' >"$r/p/p.go"
+  cat >"$r/p/p_test.go" <<'EOF'
+package p
+
+import "testing"
+
+func TestAdd(t *testing.T) {
+	if Add(1, 2) != 3 {
+		t.Fatal("Add")
+	}
+}
+
+func FuzzAdd(f *testing.F) {
+	f.Add(1, 2)
+	f.Fuzz(func(t *testing.T, a, b int) {
+		if Add(a, b) != Add(b, a) {
+			t.Fatal("not commutative")
+		}
+	})
+}
+EOF
+  git -C "$r" add -A
+  g="$dir/check-go.sh"
+  expect pass "Go module that is formatted, vetted and tested" "$g" "$r"
+  expect pass "fuzz smoke run" "$dir/check-fuzz.sh" 1s "$r"
+  printf 'package p\nfunc  Bad( ) {}\n' >"$r/p/bad.go" && git -C "$r" add -A
+  expect fail "unformatted Go file" "$g" "$r"
+  printf 'package p\n\nimport "fmt"\n\nfunc Bad() { fmt.Printf("%%d\\n", "x") }\n' >"$r/p/bad.go"
+  expect fail "go vet finding" "$g" "$r"
+  printf 'package p\n\nimport "crypto/tls"\n\nvar C = &tls.Config{InsecureSkipVerify: true}\n' >"$r/p/bad.go"
+  expect fail "banned TLS setting in a composite literal" "$g" "$r"
+  git -C "$r" rm -q -f p/bad.go
+  printf 'package p\n\nimport "testing"\n\nfunc TestFails(t *testing.T) { t.Fatal("boom") }\n' >"$r/p/fail_test.go"
+  git -C "$r" add -A
+  expect fail "failing test" "$g" "$r"
+  git -C "$r" rm -q -f p/fail_test.go
+  cat >"$r/p/crash_test.go" <<'EOF'
+package p
+
+import "testing"
+
+func FuzzCrash(f *testing.F) {
+	f.Add(7)
+	f.Fuzz(func(t *testing.T, a int) {
+		if a != 7 {
+			panic("crash")
+		}
+	})
+}
+EOF
+  git -C "$r" add -A
+  expect fail "fuzz target that crashes" "$dir/check-fuzz.sh" 2s "$r"
+fi
+
 # --- Docker-based checks -------------------------------------------------------------------
 if ! docker info >/dev/null 2>&1; then
   if [[ ${REQUIRE_DOCKER-} == 1 ]]; then
@@ -214,6 +282,35 @@ EOF
   expect pass "actions pinned by SHA" "$dir/check-workflows.sh" "$r"
   sed -i 's/@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1/@v7/' "$r/.github/workflows/w.yml"
   expect fail "action pinned by tag" "$dir/check-workflows.sh" "$r"
+  # golangci-lint: the repository's .golangci.yml on a clean module, then one broken rule at a
+  # time. Needs the go command for the module cache it mounts.
+  if command -v go >/dev/null 2>&1; then
+    r=$(new_repo)
+    cp -r "$dir/testdata/golint/." "$r/"
+    cp "$dir/../../.golangci.yml" "$r/"
+    git -C "$r" add -A
+    gl="$dir/check-golangci.sh"
+    expect pass "golangci-lint on a clean module" "$gl" "$r"
+    lint_case() { # lint_case <description> <file> <content>
+      mkdir -p "$r/$(dirname "$2")"
+      printf '%s\n' "$3" >"$r/$2"
+      expect fail "$1" "$gl" "$r"
+      rm "$r/$2"
+    }
+    lint_case "math/rand in internal/pki" internal/pki/rand.go \
+      $'package pki\n\nimport "math/rand"\n\n// N is not random enough.\nfunc N() int { return rand.Int() }'
+    lint_case "math/rand/v2 in internal/token" internal/token/rand.go \
+      $'package token\n\nimport "math/rand/v2"\n\n// N is not random enough.\nfunc N() int { return rand.Int() }'
+    lint_case "Reveal outside the allow-list" internal/other/reveal.go \
+      $'package other\n\nimport "github.com/felix-homelab/rpmgr/internal/secret"\n\n// Show leaks.\nfunc Show(v secret.Value) string { return v.Reveal() }'
+    lint_case "DecisionContext outside internal/store" internal/other/decision.go \
+      $'package other\n\nimport (\n\t"context"\n\n\t"github.com/felix-homelab/rpmgr/internal/privacy"\n)\n\n// Skip skips.\nfunc Skip(ctx context.Context) context.Context { return privacy.DecisionContext(ctx, nil) }'
+    lint_case "InsecureSkipVerify assigned" internal/other/tls.go \
+      $'package other\n\nimport "crypto/tls"\n\n// Weaken weakens.\nfunc Weaken(c *tls.Config) { c.InsecureSkipVerify = true }'
+  elif [[ ${REQUIRE_GO-} == 1 ]]; then
+    echo "FAIL: the go command is required but not available"
+    failed=$((failed + 1))
+  fi
 fi
 
 echo "check tests: $passed passed, $failed failed (test repositories in $tmproot)"
