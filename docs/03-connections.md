@@ -683,7 +683,9 @@ gateway**:
   stream. `open_id` is unique per session. The gateway answers either with
   `OpenRejected{open_id, code}` on the session control stream, or by opening a stream whose
   `StreamOpen` carries the `open_id` **and the result**; the connector writes no `StreamResult` on
-  such a stream. An unanswered `OpenRequest` times out after 10 s.
+  such a stream. An unanswered `OpenRequest` times out after 10 s, and a stream that answers it
+  later is reset. A repeated or zero `open_id`, or a kind not available in the running phase, gets
+  `OpenRejected{PROTOCOL}`; a session at its stream limit gets `OVERLOADED` at once, never a wait.
 - Cost: the connector can send on the new stream **1 RTT** later than on QUIC, where it opens the
   stream itself. `OpenRequest` carries the first chunk when the connector has one (≤ 16 KiB; for a
   relay normally the inner TLS ClientHello), which the gateway forwards at once. S2 measured the
