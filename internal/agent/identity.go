@@ -6,6 +6,7 @@ package agent
 
 import (
 	"crypto/ecdsa"
+	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
 	"encoding/pem"
@@ -153,4 +154,47 @@ func parseCerts(bundle []byte) ([]*x509.Certificate, error) {
 		return nil, errors.New("agent: the trust bundle holds no certificate")
 	}
 	return out, nil
+}
+
+// Loaded is an identity read from its directory.
+type Loaded struct {
+	Identity
+	Certificate tls.Certificate
+	Roots       *x509.CertPool
+}
+
+// Load reads the identity in dir. The key file must be closed to the group and other users.
+func Load(dir string) (Loaded, error) {
+	var l Loaded
+	b, err := os.ReadFile(filepath.Join(dir, AgentFile)) //nolint:gosec // G304: the configured identity directory
+	if err != nil {
+		return l, err
+	}
+	if err := json.Unmarshal(b, &l.Identity); err != nil {
+		return l, fmt.Errorf("agent: %s: %w", AgentFile, err)
+	}
+	keyPath := filepath.Join(dir, KeyFile)
+	st, err := os.Stat(keyPath)
+	if err != nil {
+		return l, err
+	}
+	if st.Mode().Perm()&0o077 != 0 {
+		return l, fmt.Errorf("agent: %s has mode %04o; it must be 0600", keyPath, st.Mode().Perm())
+	}
+	if l.Certificate, err = tls.LoadX509KeyPair(filepath.Join(dir, ChainFile), keyPath); err != nil {
+		return l, err
+	}
+	rootsPEM, err := os.ReadFile(filepath.Join(dir, RootsFile)) //nolint:gosec // G304: the configured identity directory
+	if err != nil {
+		return l, err
+	}
+	roots, err := parseCerts(rootsPEM)
+	if err != nil {
+		return l, err
+	}
+	l.Roots = x509.NewCertPool()
+	for _, r := range roots {
+		l.Roots.AddCert(r)
+	}
+	return l, nil
 }

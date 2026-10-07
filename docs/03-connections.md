@@ -110,6 +110,12 @@ single-use token. Token format, lifetimes and re-enrollment rules are in
   `reauth.controller.<td>` to the grpc-go server; every other name, and a ClientHello without a
   name, goes to its `net/http` server, where browsers and the CLI use ConnectRPC. A connection that
   does not start with a ClientHello within the peek limits is closed without an answer.
+- **Endpoints and failover.** An agent knows its controller endpoints in order: from enrollment,
+  then from every snapshot. It tries them in that order; a failed connection, a `Drain` or
+  `Goodbye{shutdown}` moves it to the next endpoint, and after a whole round failed, or after a
+  session ended, it waits the reconnect backoff, at least a Goodbye's `retry_after`.
+  `Goodbye{revoked}` stops the agent, which must be enrolled again. The agent compares
+  `Welcome.server_time` with its own clock and warns above 30 s ([Failure modes](#failure-modes)).
 - **Who may call what.** One table lists every method of the agent protocol, and a method missing
   from it is refused, so a new method is unreachable until it is listed:
   - `Enrollment.Enroll` at `controller.<td>`, with or without a client certificate (an enrolling
