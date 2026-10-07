@@ -157,6 +157,23 @@ func (r *Runtime) Welcome(w *agentv1.Welcome) {
 	}
 }
 
+// Applied reports whether the agent runs a snapshot.
+func (r *Runtime) Applied() bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.cur != nil
+}
+
+// AppliedSeq returns the revision seq of the running snapshot; 0 before the first.
+func (r *Runtime) AppliedSeq() uint64 {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.cur == nil {
+		return 0
+	}
+	return r.cur.rev.GetSeq()
+}
+
 // Signers returns the config-signing certificates and their intermediates the runtime verifies
 // with.
 func (r *Runtime) Signers() []*x509.Certificate {
