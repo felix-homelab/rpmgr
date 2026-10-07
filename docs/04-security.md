@@ -185,7 +185,7 @@ later.
   only after all of them acknowledged ([03](03-connections.md#service-sketch), D41); gateways
   answer from what was pushed and never read the database. Issued certificates go to the same
   gateways. certmagic supports this through the storage hook of its distributed solving
-  ([S6](spikes/S6.md)); the run against Let's Encrypt staging is pending [V S6].
+  ([S6](spikes/S6.md)); the run against Let's Encrypt staging is pending [V VB-19].
 
 ### CA rotation
 

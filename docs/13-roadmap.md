@@ -41,10 +41,9 @@ How spikes run, also agreed before they start:
   ADR and the affected documents in one PR.
 - **Versions** (D39): a spike pins the current releases of what it tests and re-checks, at those
   versions, every `[F]` fact its decision rests on; a re-checked fact cites the new version inline.
-- **External parts** (D37): S6 needs Let's Encrypt staging and a real test zone. The harness and
-  a local dry run come first; the maintainer runs the external part afterwards. A local dry run
-  never decides a rule: until the external run, the spike stays *Running*. S1 needs no testbed any
-  more, because D45 made the default transport a setting.
+- **External parts** (D37): S1 needed the reference testbed, and S6 Let's Encrypt staging and a
+  real test zone. Neither gates Phase 0 any more: D45 made the default transport a setting (S1),
+  and D46 decided S6 on the local run, with the external run kept as VB-19.
 - **Platforms and clients** (D38): S8 runs arm64, armv7 and riscv64 under QEMU user-mode emulation
   when no such hardware is at hand, and arm64 again on the Raspberry Pi 5 of the reference
   testbed. In S3, "real clients" are headless Chromium and Firefox, whose TLS stacks are those of
@@ -62,9 +61,8 @@ How spikes run, also agreed before they start:
 | **S8** | Does pure-Go SQLite cover the controller's platforms? | Current `modernc.org/sqlite` on linux/amd64, arm64, armv7, riscv64 (QEMU user-mode emulation where no hardware is at hand; arm64 also on the Raspberry Pi 5, D38): test suite, WAL, `VACUUM INTO` | Tests pass on the supported platforms; unsupported ones documented | [ADR-0011](adr/0011-sqlite-postgres-ent-atlas.md) | The controller ships only on platforms that pass; the others are documented as unsupported |
 | **S9** | How do controller replicas share session ownership? (Run at the **start of Phase 2**.) | PostgreSQL `LISTEN/NOTIFY` (or polling-free alternative) for the session registry and push fan-out; controller-to-controller mutual TLS for imperative operations; revocation-log shipping to the shared sink with conditional-create sequencing; kill a replica under load | An agent's push reaches it within 1 s of commit; failover within the reconnect backoff | [10](10-operations.md#high-availability) | If `LISTEN/NOTIFY` is insufficient: push fan-out over controller-to-controller mutual TLS |
 
-**Exit criteria:** S1–S8 have written results, including the maintainer's external run for S6 (D37;
-S1 is decided by D45); every affected ADR is *Accepted* or changed; the documents in this folder are
-updated to match.
+**Exit criteria:** S1–S8 have written results (S1 decided by D45, S6 by D46); every affected ADR
+is *Accepted* or changed; the documents in this folder are updated to match.
 
 ## Phase 1 — MVP
 
@@ -193,6 +191,7 @@ implemented, and the result recorded in the PR.
 | VB-16 | protovalidate-es maturity as the react-hook-form resolver; fallback: hand-written zod schemas | [09](09-web-ui.md), [08](08-software-stack.md#frontend) |
 | VB-17 | ~~An IANA Private Enterprise Number registered for rpmgr before Phase 1, for the OID of the CSR-binding extension; S7 used 32473, the number reserved for documentation (RFC 5612)~~ **Resolved:** a UUID-based OID under 2.25 needs no registration (D47) | [04](04-security.md#flow), [S7](spikes/S7.md) |
 | VB-18 | A session whose stream writers have been blocked for more than 200 ms is deprioritised for new streams: check that the signal works on QUIC and on reverse HTTP/2 under load, with the benchmark harness (formerly part of S1) | [03](03-connections.md#multiple-gateways), [ADR-0004](adr/0004-quic-default-transport-policy.md), [ADR-0005](adr/0005-reverse-http2-fallback.md) |
+| VB-19 | ACME against Let's Encrypt staging and a real Cloudflare zone, before the first release that issues ACME certificates: HTTP-01 and TLS-ALPN-01 answered by real gateways from the internet (multi-perspective validation), DNS-01 through the real Cloudflare API with propagation, the marker comment and TXT removal; run sheet in `spikes/s6/README.md` on the tag `spike/s6` (D46) | [04](04-security.md#controller-certificates), [05](05-features.md#tls-and-domains), [08](08-software-stack.md#networking), [S6](spikes/S6.md) |
 
 ## Risks
 
