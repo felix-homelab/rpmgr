@@ -59,6 +59,9 @@ jobs:
       - name: golangci-lint
         if: ${{ !cancelled() }}
         run: .github/scripts/check-golangci.sh
+      - name: govulncheck
+        if: ${{ !cancelled() }}
+        run: .github/scripts/check-govulncheck.sh
 
   build:
     runs-on: ubuntu-24.04
