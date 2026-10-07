@@ -9,6 +9,18 @@ deps:
 lint:
   use:
     - STANDARD
+  # The agent protocol keeps the names of docs/03 (service Control, AgentMessage,
+  # ControllerMessage), which the STANDARD rules for service and request/response names reject
+  # (docs/spikes/S4.md). The public API follows the rules.
+  ignore_only:
+    SERVICE_SUFFIX:
+      - proto/rpmgr/agent
+    RPC_REQUEST_STANDARD_NAME:
+      - proto/rpmgr/agent
+    RPC_RESPONSE_STANDARD_NAME:
+      - proto/rpmgr/agent
+    RPC_REQUEST_RESPONSE_UNIQUE:
+      - proto/rpmgr/agent
 breaking:
   use:
     - FILE
