@@ -111,6 +111,54 @@ func DenyMutationOperationRule(op ent.Op) MutationRule {
 	return OnMutationOperation(rule, op)
 }
 
+// The AuditEntryQueryRuleFunc type is an adapter to allow the use of ordinary
+// functions as a query rule.
+type AuditEntryQueryRuleFunc func(context.Context, *ent.AuditEntryQuery) error
+
+// EvalQuery return f(ctx, q).
+func (f AuditEntryQueryRuleFunc) EvalQuery(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.AuditEntryQuery); ok {
+		return f(ctx, q)
+	}
+	return Denyf("ent/privacy: unexpected query type %T, expect *ent.AuditEntryQuery", q)
+}
+
+// The AuditEntryMutationRuleFunc type is an adapter to allow the use of ordinary
+// functions as a mutation rule.
+type AuditEntryMutationRuleFunc func(context.Context, *ent.AuditEntryMutation) error
+
+// EvalMutation calls f(ctx, m).
+func (f AuditEntryMutationRuleFunc) EvalMutation(ctx context.Context, m ent.Mutation) error {
+	if m, ok := m.(*ent.AuditEntryMutation); ok {
+		return f(ctx, m)
+	}
+	return Denyf("ent/privacy: unexpected mutation type %T, expect *ent.AuditEntryMutation", m)
+}
+
+// The AuditHeadQueryRuleFunc type is an adapter to allow the use of ordinary
+// functions as a query rule.
+type AuditHeadQueryRuleFunc func(context.Context, *ent.AuditHeadQuery) error
+
+// EvalQuery return f(ctx, q).
+func (f AuditHeadQueryRuleFunc) EvalQuery(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.AuditHeadQuery); ok {
+		return f(ctx, q)
+	}
+	return Denyf("ent/privacy: unexpected query type %T, expect *ent.AuditHeadQuery", q)
+}
+
+// The AuditHeadMutationRuleFunc type is an adapter to allow the use of ordinary
+// functions as a mutation rule.
+type AuditHeadMutationRuleFunc func(context.Context, *ent.AuditHeadMutation) error
+
+// EvalMutation calls f(ctx, m).
+func (f AuditHeadMutationRuleFunc) EvalMutation(ctx context.Context, m ent.Mutation) error {
+	if m, ok := m.(*ent.AuditHeadMutation); ok {
+		return f(ctx, m)
+	}
+	return Denyf("ent/privacy: unexpected mutation type %T, expect *ent.AuditHeadMutation", m)
+}
+
 // The ConfigRevisionQueryRuleFunc type is an adapter to allow the use of ordinary
 // functions as a query rule.
 type ConfigRevisionQueryRuleFunc func(context.Context, *ent.ConfigRevisionQuery) error
@@ -314,6 +362,10 @@ var _ QueryMutationRule = FilterFunc(nil)
 
 func queryFilter(q ent.Query) (Filter, error) {
 	switch q := q.(type) {
+	case *ent.AuditEntryQuery:
+		return q.Filter(), nil
+	case *ent.AuditHeadQuery:
+		return q.Filter(), nil
 	case *ent.ConfigRevisionQuery:
 		return q.Filter(), nil
 	case *ent.ConfigSeqQuery:
@@ -335,6 +387,10 @@ func queryFilter(q ent.Query) (Filter, error) {
 
 func mutationFilter(m ent.Mutation) (Filter, error) {
 	switch m := m.(type) {
+	case *ent.AuditEntryMutation:
+		return m.Filter(), nil
+	case *ent.AuditHeadMutation:
+		return m.Filter(), nil
 	case *ent.ConfigRevisionMutation:
 		return m.Filter(), nil
 	case *ent.ConfigSeqMutation:

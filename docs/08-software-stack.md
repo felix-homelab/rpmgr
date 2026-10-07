@@ -1,7 +1,7 @@
 # 08 — Software stack
 
-> Status: design, not implemented. Tags: [F] fact · [R] recommendation · [T] target · [V] verify at
-> implementation ([README](../README.md#how-to-read-these-documents)).
+> Status: Phase 1, being implemented. Tags: [F] fact · [R] recommendation · [T] target · [V] verify
+> at implementation ([README](../README.md#how-to-read-these-documents)).
 >
 > Versions are **not pinned in this document**; they are pinned in `go.mod`, `package.json` and the
 > toolchain files when implementation starts, and kept current by an automated dependency bot. Where

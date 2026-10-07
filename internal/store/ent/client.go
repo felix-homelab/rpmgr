@@ -14,6 +14,8 @@ import (
 	"entgo.io/ent"
 	"entgo.io/ent/dialect"
 	"entgo.io/ent/dialect/sql"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/auditentry"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/audithead"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/configrevision"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/configseq"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/gatewaygroup"
@@ -30,6 +32,10 @@ type Client struct {
 	config
 	// Schema is the client for creating, migrating and dropping schema.
 	Schema *migrate.Schema
+	// AuditEntry is the client for interacting with the AuditEntry builders.
+	AuditEntry *AuditEntryClient
+	// AuditHead is the client for interacting with the AuditHead builders.
+	AuditHead *AuditHeadClient
 	// ConfigRevision is the client for interacting with the ConfigRevision builders.
 	ConfigRevision *ConfigRevisionClient
 	// ConfigSeq is the client for interacting with the ConfigSeq builders.
@@ -55,6 +61,8 @@ func NewClient(opts ...Option) *Client {
 
 func (c *Client) init() {
 	c.Schema = migrate.NewSchema(c.driver)
+	c.AuditEntry = NewAuditEntryClient(c.config)
+	c.AuditHead = NewAuditHeadClient(c.config)
 	c.ConfigRevision = NewConfigRevisionClient(c.config)
 	c.ConfigSeq = NewConfigSeqClient(c.config)
 	c.GatewayGroup = NewGatewayGroupClient(c.config)
@@ -154,6 +162,8 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 	return &Tx{
 		ctx:             ctx,
 		config:          cfg,
+		AuditEntry:      NewAuditEntryClient(cfg),
+		AuditHead:       NewAuditHeadClient(cfg),
 		ConfigRevision:  NewConfigRevisionClient(cfg),
 		ConfigSeq:       NewConfigSeqClient(cfg),
 		GatewayGroup:    NewGatewayGroupClient(cfg),
@@ -180,6 +190,8 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 	return &Tx{
 		ctx:             ctx,
 		config:          cfg,
+		AuditEntry:      NewAuditEntryClient(cfg),
+		AuditHead:       NewAuditHeadClient(cfg),
 		ConfigRevision:  NewConfigRevisionClient(cfg),
 		ConfigSeq:       NewConfigSeqClient(cfg),
 		GatewayGroup:    NewGatewayGroupClient(cfg),
@@ -193,7 +205,7 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 // Debug returns a new debug-client. It's used to get verbose logging on specific operations.
 //
 //	client.Debug().
-//		ConfigRevision.
+//		AuditEntry.
 //		Query().
 //		Count(ctx)
 func (c *Client) Debug() *Client {
@@ -216,8 +228,8 @@ func (c *Client) Close() error {
 // In order to add hooks to a specific client, call: `client.Node.Use(...)`.
 func (c *Client) Use(hooks ...Hook) {
 	for _, n := range []interface{ Use(...Hook) }{
-		c.ConfigRevision, c.ConfigSeq, c.GatewayGroup, c.Instance, c.InstanceSetting,
-		c.Org, c.OrgSetting,
+		c.AuditEntry, c.AuditHead, c.ConfigRevision, c.ConfigSeq, c.GatewayGroup,
+		c.Instance, c.InstanceSetting, c.Org, c.OrgSetting,
 	} {
 		n.Use(hooks...)
 	}
@@ -227,8 +239,8 @@ func (c *Client) Use(hooks ...Hook) {
 // In order to add interceptors to a specific client, call: `client.Node.Intercept(...)`.
 func (c *Client) Intercept(interceptors ...Interceptor) {
 	for _, n := range []interface{ Intercept(...Interceptor) }{
-		c.ConfigRevision, c.ConfigSeq, c.GatewayGroup, c.Instance, c.InstanceSetting,
-		c.Org, c.OrgSetting,
+		c.AuditEntry, c.AuditHead, c.ConfigRevision, c.ConfigSeq, c.GatewayGroup,
+		c.Instance, c.InstanceSetting, c.Org, c.OrgSetting,
 	} {
 		n.Intercept(interceptors...)
 	}
@@ -237,6 +249,10 @@ func (c *Client) Intercept(interceptors ...Interceptor) {
 // Mutate implements the ent.Mutator interface.
 func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 	switch m := m.(type) {
+	case *AuditEntryMutation:
+		return c.AuditEntry.mutate(ctx, m)
+	case *AuditHeadMutation:
+		return c.AuditHead.mutate(ctx, m)
 	case *ConfigRevisionMutation:
 		return c.ConfigRevision.mutate(ctx, m)
 	case *ConfigSeqMutation:
@@ -253,6 +269,276 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.OrgSetting.mutate(ctx, m)
 	default:
 		return nil, fmt.Errorf("ent: unknown mutation type %T", m)
+	}
+}
+
+// AuditEntryClient is a client for the AuditEntry schema.
+type AuditEntryClient struct {
+	config
+}
+
+// NewAuditEntryClient returns a client for the AuditEntry from the given config.
+func NewAuditEntryClient(c config) *AuditEntryClient {
+	return &AuditEntryClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `auditentry.Hooks(f(g(h())))`.
+func (c *AuditEntryClient) Use(hooks ...Hook) {
+	c.hooks.AuditEntry = append(c.hooks.AuditEntry, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `auditentry.Intercept(f(g(h())))`.
+func (c *AuditEntryClient) Intercept(interceptors ...Interceptor) {
+	c.inters.AuditEntry = append(c.inters.AuditEntry, interceptors...)
+}
+
+// Create returns a builder for creating a AuditEntry entity.
+func (c *AuditEntryClient) Create() *AuditEntryCreate {
+	mutation := newAuditEntryMutation(c.config, OpCreate)
+	return &AuditEntryCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of AuditEntry entities.
+func (c *AuditEntryClient) CreateBulk(builders ...*AuditEntryCreate) *AuditEntryCreateBulk {
+	return &AuditEntryCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *AuditEntryClient) MapCreateBulk(slice any, setFunc func(*AuditEntryCreate, int)) *AuditEntryCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &AuditEntryCreateBulk{err: fmt.Errorf("calling to AuditEntryClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*AuditEntryCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &AuditEntryCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for AuditEntry.
+func (c *AuditEntryClient) Update() *AuditEntryUpdate {
+	mutation := newAuditEntryMutation(c.config, OpUpdate)
+	return &AuditEntryUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *AuditEntryClient) UpdateOne(_m *AuditEntry) *AuditEntryUpdateOne {
+	mutation := newAuditEntryMutation(c.config, OpUpdateOne, withAuditEntry(_m))
+	return &AuditEntryUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *AuditEntryClient) UpdateOneID(id string) *AuditEntryUpdateOne {
+	mutation := newAuditEntryMutation(c.config, OpUpdateOne, withAuditEntryID(id))
+	return &AuditEntryUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for AuditEntry.
+func (c *AuditEntryClient) Delete() *AuditEntryDelete {
+	mutation := newAuditEntryMutation(c.config, OpDelete)
+	return &AuditEntryDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *AuditEntryClient) DeleteOne(_m *AuditEntry) *AuditEntryDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *AuditEntryClient) DeleteOneID(id string) *AuditEntryDeleteOne {
+	builder := c.Delete().Where(auditentry.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &AuditEntryDeleteOne{builder}
+}
+
+// Query returns a query builder for AuditEntry.
+func (c *AuditEntryClient) Query() *AuditEntryQuery {
+	return &AuditEntryQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeAuditEntry},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a AuditEntry entity by its id.
+func (c *AuditEntryClient) Get(ctx context.Context, id string) (*AuditEntry, error) {
+	return c.Query().Where(auditentry.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *AuditEntryClient) GetX(ctx context.Context, id string) *AuditEntry {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *AuditEntryClient) Hooks() []Hook {
+	hooks := c.hooks.AuditEntry
+	return append(hooks[:len(hooks):len(hooks)], auditentry.Hooks[:]...)
+}
+
+// Interceptors returns the client interceptors.
+func (c *AuditEntryClient) Interceptors() []Interceptor {
+	inters := c.inters.AuditEntry
+	return append(inters[:len(inters):len(inters)], auditentry.Interceptors[:]...)
+}
+
+func (c *AuditEntryClient) mutate(ctx context.Context, m *AuditEntryMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&AuditEntryCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&AuditEntryUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&AuditEntryUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&AuditEntryDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown AuditEntry mutation op: %q", m.Op())
+	}
+}
+
+// AuditHeadClient is a client for the AuditHead schema.
+type AuditHeadClient struct {
+	config
+}
+
+// NewAuditHeadClient returns a client for the AuditHead from the given config.
+func NewAuditHeadClient(c config) *AuditHeadClient {
+	return &AuditHeadClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `audithead.Hooks(f(g(h())))`.
+func (c *AuditHeadClient) Use(hooks ...Hook) {
+	c.hooks.AuditHead = append(c.hooks.AuditHead, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `audithead.Intercept(f(g(h())))`.
+func (c *AuditHeadClient) Intercept(interceptors ...Interceptor) {
+	c.inters.AuditHead = append(c.inters.AuditHead, interceptors...)
+}
+
+// Create returns a builder for creating a AuditHead entity.
+func (c *AuditHeadClient) Create() *AuditHeadCreate {
+	mutation := newAuditHeadMutation(c.config, OpCreate)
+	return &AuditHeadCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of AuditHead entities.
+func (c *AuditHeadClient) CreateBulk(builders ...*AuditHeadCreate) *AuditHeadCreateBulk {
+	return &AuditHeadCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *AuditHeadClient) MapCreateBulk(slice any, setFunc func(*AuditHeadCreate, int)) *AuditHeadCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &AuditHeadCreateBulk{err: fmt.Errorf("calling to AuditHeadClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*AuditHeadCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &AuditHeadCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for AuditHead.
+func (c *AuditHeadClient) Update() *AuditHeadUpdate {
+	mutation := newAuditHeadMutation(c.config, OpUpdate)
+	return &AuditHeadUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *AuditHeadClient) UpdateOne(_m *AuditHead) *AuditHeadUpdateOne {
+	mutation := newAuditHeadMutation(c.config, OpUpdateOne, withAuditHead(_m))
+	return &AuditHeadUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *AuditHeadClient) UpdateOneID(id string) *AuditHeadUpdateOne {
+	mutation := newAuditHeadMutation(c.config, OpUpdateOne, withAuditHeadID(id))
+	return &AuditHeadUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for AuditHead.
+func (c *AuditHeadClient) Delete() *AuditHeadDelete {
+	mutation := newAuditHeadMutation(c.config, OpDelete)
+	return &AuditHeadDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *AuditHeadClient) DeleteOne(_m *AuditHead) *AuditHeadDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *AuditHeadClient) DeleteOneID(id string) *AuditHeadDeleteOne {
+	builder := c.Delete().Where(audithead.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &AuditHeadDeleteOne{builder}
+}
+
+// Query returns a query builder for AuditHead.
+func (c *AuditHeadClient) Query() *AuditHeadQuery {
+	return &AuditHeadQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeAuditHead},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a AuditHead entity by its id.
+func (c *AuditHeadClient) Get(ctx context.Context, id string) (*AuditHead, error) {
+	return c.Query().Where(audithead.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *AuditHeadClient) GetX(ctx context.Context, id string) *AuditHead {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *AuditHeadClient) Hooks() []Hook {
+	hooks := c.hooks.AuditHead
+	return append(hooks[:len(hooks):len(hooks)], audithead.Hooks[:]...)
+}
+
+// Interceptors returns the client interceptors.
+func (c *AuditHeadClient) Interceptors() []Interceptor {
+	inters := c.inters.AuditHead
+	return append(inters[:len(inters):len(inters)], audithead.Interceptors[:]...)
+}
+
+func (c *AuditHeadClient) mutate(ctx context.Context, m *AuditHeadMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&AuditHeadCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&AuditHeadUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&AuditHeadUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&AuditHeadDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown AuditHead mutation op: %q", m.Op())
 	}
 }
 
@@ -1200,12 +1486,12 @@ func (c *OrgSettingClient) mutate(ctx context.Context, m *OrgSettingMutation) (V
 // hooks and interceptors per client, for fast access.
 type (
 	hooks struct {
-		ConfigRevision, ConfigSeq, GatewayGroup, Instance, InstanceSetting, Org,
-		OrgSetting []ent.Hook
+		AuditEntry, AuditHead, ConfigRevision, ConfigSeq, GatewayGroup, Instance,
+		InstanceSetting, Org, OrgSetting []ent.Hook
 	}
 	inters struct {
-		ConfigRevision, ConfigSeq, GatewayGroup, Instance, InstanceSetting, Org,
-		OrgSetting []ent.Interceptor
+		AuditEntry, AuditHead, ConfigRevision, ConfigSeq, GatewayGroup, Instance,
+		InstanceSetting, Org, OrgSetting []ent.Interceptor
 	}
 )
 

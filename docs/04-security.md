@@ -1,7 +1,7 @@
 # 04 — Security
 
-> Status: design, not implemented. Tags: [F] fact · [R] recommendation · [T] target · [V] verify at
-> implementation ([README](../README.md#how-to-read-these-documents)).
+> Status: Phase 1, being implemented. Tags: [F] fact · [R] recommendation · [T] target · [V] verify
+> at implementation ([README](../README.md#how-to-read-these-documents)).
 >
 > **This document is the single source of truth for identities, lifetimes, cryptographic parameters
 > and authorization rules.** Connection timeouts and sizes live in
@@ -624,6 +624,20 @@ Phase 3 item ([13](13-roadmap.md#phase-3--advanced)).
   chain of the zone's org, with the record before and after
   ([15](15-dns.md#ownership-ledger)).
 - Entries form a **per-org hash chain** (`hash = SHA-256(prev_hash ‖ canonical entry)`).
+  Instance-level events (system-scope grants, local administration, the Instance Admin's changes to
+  instance resources) form one more chain, the **instance chain**.
+  - The canonical entry is a version label, the seq and the time (microseconds) as signed varints,
+    then every stored field in a fixed order with a length prefix, the chain's name among them. The
+    first entry's `prev_hash` is a genesis hash over the chain's name, so an entry verifies only at
+    its own place in its own chain.
+  - An entry is appended in the transaction of the change it records, so both commit or neither
+    does. Each chain has a head row with its last seq and hash; an append locks and increments it
+    first, so concurrent appends to one chain stay linear.
+  - Verification walks a chain and names the first entry that is missing, out of order, or does not
+    match its own hash or its predecessor's; it compares the last entry with the head row, so a
+    deleted tail is found too. An org scope verifies only its own org's chain.
+  - An org's request appends only to its own chain or the instance chain. Events before any scope
+    exists (a failed login, the grant of a system scope) are appended without one.
 - Signed **checkpoints** (chain head + count, signed with the audit-checkpoint key) are shipped to an
   external sink (syslog, OTLP, webhook, or object storage with retention lock). The external copy
   is what makes tampering evident: anyone with database write access could recompute a chain.
@@ -634,7 +648,9 @@ Phase 3 item ([13](13-roadmap.md#phase-3--advanced)).
   only the database.
 - **Webhook signatures** (Phase 2, [07](07-api.md#webhooks-phase-2)): receivers reject signatures
   older than **5 minutes**.
-- On PostgreSQL, the application role has no `UPDATE`/`DELETE` permission on the audit table.
+- Only the audit package writes the audit tables: the store refuses every create, update and delete
+  through Ent. On PostgreSQL, the application role has no `UPDATE`/`DELETE` permission on the audit
+  table.
 
 ### Revocation log
 

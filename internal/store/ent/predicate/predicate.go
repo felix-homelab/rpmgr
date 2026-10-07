@@ -6,6 +6,12 @@ import (
 	"entgo.io/ent/dialect/sql"
 )
 
+// AuditEntry is the predicate function for auditentry builders.
+type AuditEntry func(*sql.Selector)
+
+// AuditHead is the predicate function for audithead builders.
+type AuditHead func(*sql.Selector)
+
 // ConfigRevision is the predicate function for configrevision builders.
 type ConfigRevision func(*sql.Selector)
 
