@@ -6,6 +6,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/felix-homelab/rpmgr/internal/store/ent/agentsession"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/auditentry"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/audithead"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/cakey"
@@ -32,6 +33,57 @@ import (
 // (default values, validators, hooks and policies) and stitches it
 // to their package variables.
 func init() {
+	agentsessionMixin := schema.AgentSession{}.Mixin()
+	agentsession.Policy = privacy.NewPolicies(agentsessionMixin[0], schema.AgentSession{})
+	agentsession.Hooks[0] = func(next ent.Mutator) ent.Mutator {
+		return ent.MutateFunc(func(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+			if err := agentsession.Policy.EvalMutation(ctx, m); err != nil {
+				return nil, err
+			}
+			return next.Mutate(ctx, m)
+		})
+	}
+	agentsessionMixinHooks0 := agentsessionMixin[0].Hooks()
+
+	agentsession.Hooks[1] = agentsessionMixinHooks0[0]
+	agentsessionMixinInters0 := agentsessionMixin[0].Interceptors()
+	agentsession.Interceptors[0] = agentsessionMixinInters0[0]
+	agentsessionMixinFields0 := agentsessionMixin[0].Fields()
+	_ = agentsessionMixinFields0
+	agentsessionFields := schema.AgentSession{}.Fields()
+	_ = agentsessionFields
+	// agentsessionDescOrgID is the schema descriptor for org_id field.
+	agentsessionDescOrgID := agentsessionMixinFields0[0].Descriptor()
+	// agentsession.OrgIDValidator is a validator for the "org_id" field. It is called by the builders before save.
+	agentsession.OrgIDValidator = agentsessionDescOrgID.Validators[0].(func(string) error)
+	// agentsessionDescSessionEpoch is the schema descriptor for session_epoch field.
+	agentsessionDescSessionEpoch := agentsessionFields[1].Descriptor()
+	// agentsession.SessionEpochValidator is a validator for the "session_epoch" field. It is called by the builders before save.
+	agentsession.SessionEpochValidator = agentsessionDescSessionEpoch.Validators[0].(func(int64) error)
+	// agentsessionDescControllerNode is the schema descriptor for controller_node field.
+	agentsessionDescControllerNode := agentsessionFields[2].Descriptor()
+	// agentsession.ControllerNodeValidator is a validator for the "controller_node" field. It is called by the builders before save.
+	agentsession.ControllerNodeValidator = agentsessionDescControllerNode.Validators[0].(func(string) error)
+	// agentsessionDescRemoteAddr is the schema descriptor for remote_addr field.
+	agentsessionDescRemoteAddr := agentsessionFields[3].Descriptor()
+	// agentsession.DefaultRemoteAddr holds the default value on creation for the remote_addr field.
+	agentsession.DefaultRemoteAddr = agentsessionDescRemoteAddr.Default.(string)
+	// agentsessionDescAgentVersion is the schema descriptor for agent_version field.
+	agentsessionDescAgentVersion := agentsessionFields[4].Descriptor()
+	// agentsession.DefaultAgentVersion holds the default value on creation for the agent_version field.
+	agentsession.DefaultAgentVersion = agentsessionDescAgentVersion.Default.(string)
+	// agentsessionDescConnectedAt is the schema descriptor for connected_at field.
+	agentsessionDescConnectedAt := agentsessionFields[6].Descriptor()
+	// agentsession.DefaultConnectedAt holds the default value on creation for the connected_at field.
+	agentsession.DefaultConnectedAt = agentsessionDescConnectedAt.Default.(func() time.Time)
+	// agentsessionDescLastSeenAt is the schema descriptor for last_seen_at field.
+	agentsessionDescLastSeenAt := agentsessionFields[7].Descriptor()
+	// agentsession.DefaultLastSeenAt holds the default value on creation for the last_seen_at field.
+	agentsession.DefaultLastSeenAt = agentsessionDescLastSeenAt.Default.(func() time.Time)
+	// agentsessionDescID is the schema descriptor for id field.
+	agentsessionDescID := agentsessionFields[0].Descriptor()
+	// agentsession.IDValidator is a validator for the "id" field. It is called by the builders before save.
+	agentsession.IDValidator = agentsessionDescID.Validators[0].(func(string) error)
 	auditentry.Policy = privacy.NewPolicies(schema.AuditEntry{})
 	auditentry.Hooks[0] = func(next ent.Mutator) ent.Mutator {
 		return ent.MutateFunc(func(ctx context.Context, m ent.Mutation) (ent.Value, error) {

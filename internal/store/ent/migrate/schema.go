@@ -9,6 +9,31 @@ import (
 )
 
 var (
+	// AgentSessionsColumns holds the columns for the "agent_sessions" table.
+	AgentSessionsColumns = []*schema.Column{
+		{Name: "agent_id", Type: field.TypeString},
+		{Name: "org_id", Type: field.TypeString},
+		{Name: "session_epoch", Type: field.TypeInt64},
+		{Name: "controller_node", Type: field.TypeString},
+		{Name: "remote_addr", Type: field.TypeString, Default: ""},
+		{Name: "agent_version", Type: field.TypeString, Default: ""},
+		{Name: "capabilities", Type: field.TypeJSON, Nullable: true},
+		{Name: "connected_at", Type: field.TypeTime},
+		{Name: "last_seen_at", Type: field.TypeTime},
+	}
+	// AgentSessionsTable holds the schema information for the "agent_sessions" table.
+	AgentSessionsTable = &schema.Table{
+		Name:       "agent_sessions",
+		Columns:    AgentSessionsColumns,
+		PrimaryKey: []*schema.Column{AgentSessionsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "agentsession_org_id_agent_id",
+				Unique:  true,
+				Columns: []*schema.Column{AgentSessionsColumns[1], AgentSessionsColumns[0]},
+			},
+		},
+	}
 	// AuditLogColumns holds the columns for the "audit_log" table.
 	AuditLogColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeString},
@@ -416,6 +441,7 @@ var (
 	}
 	// Tables holds all the tables in the schema.
 	Tables = []*schema.Table{
+		AgentSessionsTable,
 		AuditLogTable,
 		AuditHeadsTable,
 		CaKeysTable,
@@ -436,6 +462,9 @@ var (
 )
 
 func init() {
+	AgentSessionsTable.Annotation = &entsql.Annotation{
+		Table: "agent_sessions",
+	}
 	AuditLogTable.Annotation = &entsql.Annotation{
 		Table: "audit_log",
 	}

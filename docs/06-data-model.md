@@ -209,7 +209,7 @@ flowchart LR
 
 | Table | Key fields |
 |---|---|
-| `agent_sessions` | agent_id, session_epoch, controller_node, remote_addr, agent_version, capabilities, connected_at, last_seen_at |
+| `agent_sessions` | agent_id, session_epoch, controller_node, remote_addr, agent_version, capabilities, connected_at, last_seen_at (one row per agent; each new session raises `session_epoch` in the statement that records it, so two replicas never hand out the same epoch) |
 | `agent_state` | agent_id, applied_revision, applied_hash, last_ack_at, last_rejected_revision, last_rejection (structured errors), boot_id, clock_offset_ms |
 | `resource_status` | agent_id, resource_type, resource_id, state, reason, since |
 | `data_sessions` | gateway_id, connector_id, transport (`quic`, `h2`, `wss`), rtt_ms, established_at |
