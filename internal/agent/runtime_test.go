@@ -31,6 +31,8 @@ type rtEnv struct {
 	root, inter, config, audit, nextConfig pki.KeyPair
 	id                                     agent.Loaded
 	stateDir                               string
+	is                                     *pki.Issuer
+	ident                                  pki.Identity
 }
 
 func newRTEnv(t *testing.T) *rtEnv {
@@ -69,7 +71,8 @@ func newRTEnv(t *testing.T) *rtEnv {
 	}
 	der, _ := x509.CreateCertificateRequest(rand.Reader, &x509.CertificateRequest{}, key)
 	csr, _ := x509.ParseCertificateRequest(der)
-	leaf, err := is.IssueLeaf(csr, pki.Identity{TrustDomain: td, Org: ids.New("org"), Kind: pki.KindConnector, ID: ids.New("con")}, pki.DefaultLeafLifetime)
+	e.is, e.ident = is, pki.Identity{TrustDomain: td, Org: ids.New("org"), Kind: pki.KindConnector, ID: ids.New("con")}
+	leaf, err := is.IssueLeaf(csr, e.ident, pki.DefaultLeafLifetime)
 	if err != nil {
 		t.Fatal(err)
 	}
