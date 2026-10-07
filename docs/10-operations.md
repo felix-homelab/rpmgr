@@ -185,7 +185,7 @@ In Phase 1, CI only builds these targets; end-to-end tests on Windows and macOS 
 | Destination | Port | Purpose | When |
 |---|---|---|---|
 | The ACME CA (e.g. Let's Encrypt) | 443/TCP | Certificate orders | ACME in use |
-| GitHub Releases of `felix-homelab/rpmgr` | 443/TCP | Daily release check: fetches the signed release manifest (a plain GET, no data sent); artifacts are mirrored to `/dl/` once a rollout is approved ([04](04-security.md#over-the-air-updates)). Only controllers fetch releases; agents download from the controller's mirror | On by default ([D4](14-open-decisions.md#product-and-project)); off in Settings → Updates; air-gapped installs upload the manifest instead |
+| GitHub Releases of `felix-homelab/rpmgr` | 443/TCP | Daily release check: fetches the signed release manifest (a plain GET, no data sent); artifacts are mirrored to `/dl/` once a rollout is approved ([04](04-security.md#over-the-air-updates)); in Phase 1, the artifacts of the controller's own version ([D59](14-open-decisions.md#security-defaults)). Only controllers fetch releases; agents download from the controller's mirror | On by default ([D4](14-open-decisions.md#product-and-project)); off in Settings → Updates; air-gapped installs upload the manifest instead |
 | `api.cloudflare.com` | 443/TCP | DNS provider API, and Cloudflare's IP ranges for proxied routes ([15](15-dns.md#cloudflare-specifics)) | A Cloudflare provider is connected (Phase 2) |
 | The authoritative nameservers of claimed domains | 53/UDP and TCP | Reading `_rpmgr-challenge` TXT records ([04](04-security.md#route-and-hostname-ownership)) | Domains pending verification |
 | Webhook receivers, the external audit sink, the revocation-log sink, OIDC providers, SMTP, KMS | as configured | Integrations configured by an admin | As configured |
@@ -214,7 +214,7 @@ listen:
   http: ":80"                 # ACME HTTP-01 + redirect; "" disables
   admin: "127.0.0.1:7381"
 database:
-  driver: sqlite              # sqlite | postgres
+  driver: sqlite              # sqlite; postgres from Phase 2 (D57)
   dsn: /var/lib/rpmgr/controller.db
 kek:
   source: systemd-credential  # systemd-credential | file; kms (Vault/OpenBao Transit) from Phase 2; never env
@@ -331,7 +331,9 @@ affect agents take effect through reconciliation and show apply status like any 
   - **Sink types**: S3-compatible object storage, where the sequence number is allocated by a
     conditional create (`If-None-Match: *`) of the object named `<seq>`, or a filesystem path (for
     example a file share), where it is allocated by an exclusive create of the file `<seq>`. Either
-    way the allocation is the write, so the sink has no gaps. Entries form a **hash chain**.
+    way the allocation is the write, so the sink has no gaps. Entries form a **hash chain**. Phase 1
+    offers the filesystem sink; the S3-compatible sink comes with HA in Phase 2
+    ([D58](14-open-decisions.md#project-and-process)).
   - A syslog or webhook sink cannot be read back and does not count.
   - **Single node**: the sink is optional. Without one, the local `revocations.log`, which every
     backup includes, is the only copy; the restore reads it with `--revocation-log <file>`. The UI
@@ -559,7 +561,8 @@ Each runbook: **symptoms → steps → done when**.
 ### Root compromise
 
 - **Steps**: treat every certificate as untrusted. Generate a new trust bundle with a new root
-  (`rpmgr ca new-root --compromised`), which publishes a new pin. Re-enroll **every** agent with the
+  (`rpmgr ca new-root --compromised`, Phase 2; in Phase 1, initialise a new controller), which
+  publishes a new pin. Re-enroll **every** agent with the
   new `--ca-pin` (in-band rotation is not possible, [04](04-security.md#ca-rotation)). Investigate
   how the KEK and database were exposed; rotate the KEK.
 - **Done when**: no agent presents a certificate from the old root.

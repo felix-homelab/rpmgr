@@ -74,6 +74,14 @@ restarts, kills and network impairment are real.
 controller database restarts, and clock jumps, while a load generator checks integrity and the
 "0 resets on unchanged routes" invariant.
 
+**Where the cells run.** The in-process integration tests live in `internal/itest`, the container
+tests in `test/e2e` (Docker Compose, `tc netem`, IPv4 and IPv6). Each feature adds its cells to the
+per-PR subset when it is built; the nightly run covers the full cross-product. Cells that need a
+controlled clock (certificate expiry and grace re-authentication, clock skew) run in-process with
+real traffic and a fake clock; clock jumps in chaos tests use the clock-offset hook of the
+`rpmgrtest` build. Before the public API exists, end-to-end tests seed their configuration with the
+`rpmgrtest` seeding command ([D60](14-open-decisions.md#security-defaults)).
+
 ## Benchmarks
 
 The benchmark suite proves or disproves the targets in
@@ -84,7 +92,14 @@ transport itself is a setting ([ADR-0004](adr/0004-quic-default-transport-policy
 **Testbed** (the reference testbed, D30): three short-lived 2-vCPU cloud VMs — **client**,
 **gateway**, **connector + service** — with `tc netem` on the gateway↔connector link, run once on
 x86-64 and once on arm64; plus a **Raspberry Pi 5** as connector for the CPU-constrained case. The
-suite is the harness of spike S1 (tag `spike/s1`, [S1](spikes/S1.md)), moved to `bench/` in Phase 1.
+suite is the harness of spike S1 (tag `spike/s1`, [S1](spikes/S1.md)), moved to `bench/` in Phase 1
+as a load generator that drives real `rpmgr` processes.
+
+**Until the reference testbed runs** (VB-20, before v1.0.0), the suite runs on GitHub-hosted x86-64
+and arm64 runners with `tc netem`, started by hand. Phase 1 measures the targets there; the results
+are recorded as runner measurements, each missed target gets a recorded decision, and the release
+regression check compares runner baselines and is reported, not blocking, for v0.x releases
+([D49](14-open-decisions.md#project-and-process)).
 
 | Axis | Values |
 |---|---|
@@ -127,7 +142,8 @@ a missed target is recorded, not hidden.
 | **Repository hygiene** | OpenSSF Scorecard; CI actions pinned by commit SHA; protected default branch. |
 | **Secret scanning** | gitleaks in CI (and as an optional pre-commit hook), with custom rules for the token prefixes `rpmgr_enr_`, `rpmgr_pat_`, `rpmgr_sat_`, `rpmgr_ses_` (checksum makes matches reliable, [04](04-security.md#tokens)) and for private keys. |
 | **TLS configuration** | Every `tls.Config` and `quic.Config` is built by a small set of constructors; tests assert TLS 1.3 only for internal sessions, client certificates required where specified, no `InsecureSkipVerify`, `Allow0RTT` false and no `ListenEarly`/`DialEarly`, `Renegotiation` never set, and every rpmgr check in `VerifyConnection`, none in `VerifyPeerCertificate` ([03](03-connections.md#properties-common-to-all-rpmgr-internal-sessions)). |
-| **Security regression tests** | One test per security control listed below, named after the control. Examples below. |
+| **Security regression tests** | One test per security control listed below, named after the control. Examples below. A CI check lists every named test below that applies to the current phase, clause by clause, with the clauses of later phases named as deferred, and fails when one is missing from the code ([D61](14-open-decisions.md#project-and-process)). |
+| **Test-only code** | Test root keys, the end-to-end seeding command and fault hooks (an agent that rejects snapshots, a clock offset) exist only under the build tag `rpmgrtest`; release builds refuse it ([D60](14-open-decisions.md#security-defaults)). |
 | **Fuzzing** | See [Test strategy](#test-strategy); crashers are committed as regression inputs. |
 | **Authorization** | Cross-tenant leak suite and annotation completeness test ([Database tests](#database-tests)). |
 | **External review** | Sought before 1.0 (paid or sponsored); not a release gate (D28). Before 1.0 a documented self-review: threat model checked against the code, review of every security-sensitive package, a fuzzing campaign. The v1.0.0 release notes state whether an external review happened; its findings are tracked to closure. |
@@ -230,7 +246,8 @@ the reference testbed ([Benchmarks](#benchmarks)).
 
 - **Protobuf**: `buf lint` and `buf breaking` against the default branch; a breaking change to
   `rpmgr.v1` or `rpmgr.agent.v1` fails CI unless it comes with a new package or ALPN version
-  ([03](03-connections.md#versioning-and-capabilities)).
+  ([03](03-connections.md#versioning-and-capabilities)). Before v1.0.0, a PR labelled `breaking`
+  with `!` in its title may pass ([D56](14-open-decisions.md#engineering)).
 - **Go**: `go vet`, `go test -race` for all packages; `CGO_ENABLED=0` builds for every release
   platform. Windows and macOS connector builds are compiled from Phase 1 on (build only); their
   end-to-end tests start in Phase 2, when those platforms ship
@@ -247,10 +264,14 @@ the reference testbed ([Benchmarks](#benchmarks)).
   commit in the PR are valid Conventional Commit headers of at most 72 characters, and no fix-up
   commit is left; the branch name matches the allowed patterns, and a PR from a `tmp/` branch fails;
   a PR changes `CHANGELOG.md` or carries the `no-changelog` label
-  ([RELEASING](../RELEASING.md#changelog)); a PR above the size limits gets a warning label; every
-  commit carries a DCO `Signed-off-by:` line of its author (commits of the dependency bot are
-  exempt); every source file starts with an `SPDX-License-Identifier: Apache-2.0` header; on
-  release tags, the tag matches the release pattern and the changelog has a section for it.
+  ([RELEASING](../RELEASING.md#changelog)); a PR with 400–800 lines of production code gets a
+  warning, and one above 800 fails unless it is labelled `mechanical`
+  ([D53](14-open-decisions.md#project-and-process)); every commit carries a DCO `Signed-off-by:`
+  line of its author (commits of the dependency bot are exempt); every source file starts with an
+  `SPDX-License-Identifier: Apache-2.0` header; on release tags, the tag matches the release pattern
+  and the changelog has a section for it. The dependency bot groups its updates per ecosystem under
+  the prefix `build(deps)`, so its titles pass the same rules
+  ([D55](14-open-decisions.md#project-and-process)).
 - **Gate**: nothing merges to `main` unless all per-PR stages pass; nightly failures open an issue
   automatically.
 

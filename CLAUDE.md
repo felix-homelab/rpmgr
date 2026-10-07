@@ -10,9 +10,9 @@ authority and win on any conflict. Personal settings belong in the ignored `CLAU
 - **rpmgr** (Reverse Proxy Manager) publishes services on private networks through public gateways,
   managed from one control plane. One Go binary, `rpmgr`, runs every role: controller, gateway,
   connector, all-in-one ([02](docs/02-architecture.md)).
-- **Status:** design phase; **Phase 0** (spikes, [13](docs/13-roadmap.md#phase-0--spikes)) is
-  complete and **Phase 1** (MVP) is next. `main` holds documents and repository tooling only;
-  product code starts in Phase 1.
+- **Status:** **Phase 0** (spikes, [13](docs/13-roadmap.md#phase-0--spikes)) is complete;
+  **Phase 1** (MVP, [13](docs/13-roadmap.md#phase-1--mvp)) is being implemented, slice by slice,
+  along the GitHub milestones `P1-M01` … `P1-M12`; one issue per slice. Decisions for it: D48–D61.
 - A personal open-source project with one maintainer, the product owner, who decides; Apache-2.0.
 - Read first: [README](README.md) → [00](docs/00-vision-and-scope.md) →
   [02](docs/02-architecture.md) → [03](docs/03-connections.md) → [04](docs/04-security.md); phases
@@ -51,6 +51,8 @@ The repository is `github.com/felix-homelab/rpmgr`; use `gh` for issues and PRs.
 - **Never push to `main`** (a ruleset blocks it) and never rewrite `main`, `release/*` or a tag.
 - **Never force-push and never delete a remote branch** (D44): bring a pushed branch up to date by
   merging `main` into it; the maintainer deletes branches. Rebase only branches not yet pushed.
+  Run every check locally before the first push; if a pushed PR's commits must change, push the
+  corrected history to a new branch (`…-v2`), open a new PR and close the old one (D54).
 - **Branches** (CONTRIBUTING, "Branches"): `feature/<issue>-<desc>` and `bugfix/<issue>-<desc>`
   need a GitHub issue; `improvement/<desc>` (tooling, docs, no behaviour change), `merge/<desc>`,
   `tmp/<desc>` (spikes, never merged), `release/<major>.<minor>`. Lowercase, digits, `-`, `.`;
@@ -65,8 +67,11 @@ The repository is `github.com/felix-homelab/rpmgr`; use `gh` for issues and PRs.
   fix-ups in before merging: `git commit --fixup <commit>`, then `git rebase --autosquash main`.
 - **Pull requests:** fill in the [template](.github/pull_request_template.md), including "Not
   verified"; labels `type:…`, `area:…`, `phase:…`, and `no-changelog` when nothing user-visible
-  changes, otherwise a CHANGELOG entry under `## [Unreleased]` in the same PR. Merge only on green
-  CI, with `gh pr merge <n> --merge`. Size: production code should stay below 400 changed lines.
+  changes, otherwise a CHANGELOG entry under `## [Unreleased]` in the same PR; a feature slice that
+  users cannot reach yet carries `no-changelog`, and the PR that makes it reachable writes the
+  entry (D52). Merge only on green CI, with `gh pr merge <n> --merge`. Size: production code should
+  stay below 400 changed lines; CI warns at 400 and fails above 800 unless labelled `mechanical`
+  (D53).
 - **Checks** (all in `.github/scripts/`, the same locally and in CI; Docker needed for some):
   `test-checks.sh`, `check-spdx.sh`, `check-workflows.sh`, `check-links.sh`, `check-mermaid.sh`,
   `check-secrets.sh`, and for PR metadata `check-pr-title.sh "<title>"` and
@@ -95,6 +100,16 @@ Process in CONTRIBUTING, "Spikes"; questions, methods, pass criteria and the pre
 - Go: the latest stable release, pinned with the `toolchain` directive; `CGO_ENABLED=0`.
 - Even spike code follows the security rules of [04](docs/04-security.md): TLS 1.3 only, no
   `InsecureSkipVerify` (tests use a generated test CA), no 0-RTT, `crypto/rand` for keys and tokens.
+
+## Product code
+
+- One Go module, `github.com/felix-homelab/rpmgr` (`go 1.26.0`, `toolchain go1.27.1`), laid out as
+  in [02](docs/02-architecture.md#source-layout-proposed); `CGO_ENABLED=0` everywhere.
+- Spike code is copied from the archive tags (`git show spike/sx:spikes/sx/<file>`), adapted and
+  kept with its tests; the PR names the tag and files.
+- Generated Go code (protobuf, gRPC, ConnectRPC, Ent) is committed and checked for drift by CI.
+- Test keys, seeding and fault hooks live only behind the build tag `rpmgrtest`, which release
+  builds refuse (D60).
 
 ## Definition of done
 

@@ -847,7 +847,7 @@ fallback ([Transport selection](#transport-selection)).
 | Added connection-setup latency through a tunnel, p99 | ≤ 1 × RTT(gateway↔connector) + 2 ms |
 | Single-stream throughput, 0 % loss | ≥ 80 % of a direct TCP connection on the same path, for each transport |
 | Aggregate goodput, 32 parallel streams, 1 % loss | QUIC ≥ 1.5 × the TCP + h2 transport |
-| CPU per Gbit/s | Recorded on the reference testbed as a baseline; a regression of more than 10 % against the last release blocks the release |
+| CPU per Gbit/s | Recorded on the reference testbed as a baseline; a regression of more than 10 % against the last release blocks the release (v0.x: on GitHub-hosted runners, reported only, until VB-20; [D49](14-open-decisions.md#project-and-process)) |
 | Snapshot apply, 1 000 routes, p99 | ≤ 2 s |
 | Connections reset on unchanged routes during configuration changes | 0 |
 

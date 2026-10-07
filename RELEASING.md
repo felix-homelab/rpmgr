@@ -151,7 +151,10 @@ For a minor or major release. A patch release is the same, starting from the bra
    - `main` is green, including the last nightly run: full end-to-end matrix, chaos tests, long
      fuzzing ([12](docs/12-testing-and-quality.md)).
    - The benchmark matrix has run on the reference testbed, with no regression of more than 10 %
-     against the last release ([12](docs/12-testing-and-quality.md#benchmarks)).
+     against the last release ([12](docs/12-testing-and-quality.md#benchmarks)). Until the
+     reference testbed runs (VB-20, before v1.0.0), v0.x releases run the matrix on GitHub-hosted
+     runners and the comparison is reported, not blocking
+     ([D49](docs/14-open-decisions.md#project-and-process)).
    - Every issue in the `vX.Y.0` milestone is closed or moved out.
    - `Unreleased` is complete: compare it with `git log --oneline --no-merges vPREVIOUS..main`
      (every `feat` and `fix` commit maps to an entry or was labelled `no-changelog` deliberately).
@@ -257,4 +260,6 @@ role:
   root alone can sign a signing-key statement) and the current signing key on a third token.
   Signing-key statements are valid for 12 months
   ([D10](docs/14-open-decisions.md#security-defaults), [04](docs/04-security.md#release-signing)).
-  No key ever enters CI.
+  No key ever enters CI. The v0.x releases of Phase 1, which have no OTA, are signed with interim
+  keys kept as encrypted files on offline media; the hardware tokens take over with the first
+  release that has OTA ([D48](docs/14-open-decisions.md#security-defaults)).

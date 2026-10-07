@@ -1,7 +1,7 @@
 # rpmgr — Reverse Proxy Manager
 
-**Status: design. Phase 0 (spikes) is complete; Phase 1 (MVP) is next. Nothing here is implemented
-yet.**
+**Status: Phase 0 (spikes) is complete; Phase 1 (MVP) is being implemented, along the milestones
+`P1-M01` … `P1-M12`. Nothing is released yet.**
 
 rpmgr publishes services that run on private networks — behind NAT, CGNAT or firewalls — through
 public gateways, and manages them from one control plane. It is built as **one product**: one
@@ -56,7 +56,7 @@ checked:
 | **[F]** | **Fact**, verified during the design by reading source code or a library at the cited version and line, or a vendor's published documentation or API schema at the cited retrieval date |
 | **[R]** | **Recommendation**: a design choice with its reasoning; can be changed via [14](docs/14-open-decisions.md) or an ADR |
 | **[T]** | **Target**: a performance or quality goal to be measured, not a claim about current behaviour |
-| **[V Sx]** / **[V VB-xx]** | **Verify at implementation**: an assumption about a library, platform or behaviour that was not verifiable here; tracked as a Phase 0 spike (S1–S9) or in the verification backlog (VB-01–19) in [13](docs/13-roadmap.md) |
+| **[V Sx]** / **[V VB-xx]** | **Verify at implementation**: an assumption about a library, platform or behaviour that was not verifiable here; tracked as a Phase 0 spike (S1–S9) or in the verification backlog (VB-01–20) in [13](docs/13-roadmap.md) |
 
 Untagged statements are the design itself.
 

@@ -106,6 +106,8 @@
 | Desired-state model with revisions, apply status and last-known-good on agents | P1 |
 | Runtime settings editable in the UI (instead of environment variables) | P1 |
 | YAML view and export per resource | P1 |
+| YAML edit and import in the UI ([D58](14-open-decisions.md#project-and-process)) | P2 |
+| Command line for the public API: create, read, update and delete per resource kind, with personal API tokens ([D51](14-open-decisions.md#engineering)) | P1 |
 | Declarative manifests: `rpmgr apply -f`, `Plan`/`Apply` in one revision | P2 |
 | Importer for existing tunnel configurations ([11](11-migration.md)) | P2 |
 | Terraform provider | P3 |
@@ -124,6 +126,7 @@
 | Personal API tokens (scoped, expiring, revocable) | P1 |
 | Service accounts and their tokens | P2 |
 | Multi-org UI (org switcher, shared gateway groups with grants) | P2 |
+| Org deletion with a 30-day grace period ([D58](14-open-decisions.md#project-and-process)) | P2 |
 
 ### Observability
 
@@ -148,6 +151,10 @@
 | Install script (`/install.sh`, Linux) served by the controller from its own signed binary mirror | P1 |
 | Distribution packages (`.deb`, `.rpm`) from a signed repository | P2 |
 | Backup and restore (`rpmgr backup`/`restore`) | P1 |
+| Revocation log with a filesystem sink | P1 |
+| Revocation-log sink on S3-compatible object storage ([D58](14-open-decisions.md#project-and-process)) | P2 |
+| Internal CA online, with automatic rotation of the intermediate and the controller's keys | P1 |
+| Offline root CA (`rpmgr ca offline-root`), planned root rotation by cross-signing, `rpmgr ca new-root --compromised` ([D58](14-open-decisions.md#project-and-process)) | P2 |
 | PostgreSQL and multiple controller replicas (HA) | P2 |
 | `rpmgr migrate-db` (SQLite → PostgreSQL) | P2 |
 | Helm chart | P3 |
