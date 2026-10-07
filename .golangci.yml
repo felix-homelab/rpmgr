@@ -1,0 +1,60 @@
+# golangci-lint configuration (docs/12-testing-and-quality.md, "Security testing"). Run with
+# .github/scripts/check-golangci.sh. Bans that forbidigo cannot see in composite literals (TLS and
+# QUIC settings) are checked by tools/bannedapi, run from .github/scripts/check-go.sh.
+version: "2"
+
+linters:
+  default: standard # errcheck, govet, ineffassign, staticcheck, unused
+  enable:
+    - bodyclose
+    - depguard
+    - errorlint
+    - forbidigo
+    - gosec
+  settings:
+    errcheck:
+      # Writing a message to stdout or stderr has no useful error path.
+      exclude-functions:
+        - fmt.Fprint
+        - fmt.Fprintf
+        - fmt.Fprintln
+    depguard:
+      rules:
+        # Keys, tokens and nonces come from crypto/rand only.
+        crypto-rand:
+          files:
+            - "**/internal/authz/**"
+            - "**/internal/pki/**"
+            - "**/internal/secret/**"
+            - "**/internal/token/**"
+            - "**/internal/tunnel/**"
+          deny:
+            - pkg: math/rand
+              desc: keys, tokens and nonces use crypto/rand
+            - pkg: math/rand/v2
+              desc: keys, tokens and nonces use crypto/rand
+    forbidigo:
+      analyze-types: true
+      forbid:
+        - pattern: '^secret\.Value\.Reveal$'
+          msg: Reveal is allowed only in the packages listed in .golangci.yml (docs/04)
+        - pattern: '^privacy\.DecisionContext$'
+          msg: it skips Ent's privacy policies; allowed only in internal/store (docs/06)
+        - pattern: '^tls\.Config\.(InsecureSkipVerify|Renegotiation|VerifyPeerCertificate)$'
+          msg: banned TLS setting (docs/03); see tools/bannedapi
+  exclusions:
+    rules:
+      # The allow-list for secret.Value.Reveal; every addition is reviewed in this file.
+      - path: internal/secret/
+        text: Reveal
+        linters: [forbidigo]
+      - path: internal/store/
+        text: DecisionContext
+        linters: [forbidigo]
+      # Tests start subprocesses and write fixtures with ordinary modes.
+      - path: _test\.go$
+        text: "G(204|301|306)"
+        linters: [gosec]
+
+run:
+  timeout: 10m

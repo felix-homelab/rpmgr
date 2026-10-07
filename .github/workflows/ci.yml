@@ -1,7 +1,7 @@
-# Per-PR checks and checks on main (docs/12-testing-and-quality.md, "Continuous integration").
-# Phase 0 has no product code on main, so this covers repository files, documents, workflows and
-# secrets; the Go, protobuf and web stages are added with the first code in Phase 1. Every step
-# is a script in .github/scripts/ that runs the same way locally.
+# Per-PR checks and checks on main (docs/12-testing-and-quality.md, "Continuous integration"):
+# repository files, documents, workflows and secrets, and the Go stages; the protobuf, build and
+# web stages are added by their Phase 1 slices. Every step is a script in .github/scripts/ that
+# runs the same way locally.
 name: ci
 
 on:
@@ -19,11 +19,14 @@ concurrency:
 jobs:
   lint:
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
       - name: SPDX headers
         if: ${{ !cancelled() }}
         run: .github/scripts/check-spdx.sh
@@ -34,7 +37,28 @@ jobs:
         if: ${{ !cancelled() }}
         env:
           REQUIRE_DOCKER: "1"
+          REQUIRE_GO: "1"
         run: .github/scripts/test-checks.sh
+
+  go:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - name: Format, tidy, vet, banned settings, race tests
+        if: ${{ !cancelled() }}
+        run: .github/scripts/check-go.sh
+      - name: Fuzz smoke runs
+        if: ${{ !cancelled() }}
+        run: .github/scripts/check-fuzz.sh 10s
+      - name: golangci-lint
+        if: ${{ !cancelled() }}
+        run: .github/scripts/check-golangci.sh
 
   docs:
     runs-on: ubuntu-24.04

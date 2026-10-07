@@ -275,8 +275,8 @@ the reference testbed ([Benchmarks](#benchmarks)).
 - **Gate**: nothing merges to `main` unless all per-PR stages pass; nightly failures open an issue
   automatically.
 
-**Implemented so far.** Phase 0 has no product code on `main`, so CI covers the repository itself.
-Each check is a script in `.github/scripts/` that runs the same way on a developer machine (the
+**Implemented so far.** CI covers the repository itself and, from Phase 1 on, the Go code. Each
+check is a script in `.github/scripts/` that runs the same way on a developer machine (the
 Docker-based ones need Docker), and `test-checks.sh` tests the checks with valid and invalid input.
 
 | Workflow and job | Checks | Script |
@@ -285,7 +285,10 @@ Docker-based ones need Docker), and `test-checks.sh` tests the checks with valid
 | `ci` / `lint` | SPDX headers; actionlint (with shellcheck) and actions pinned by commit SHA; tests of the checks | `check-spdx.sh`, `check-workflows.sh`, `test-checks.sh` |
 | `ci` / `docs` | Relative links and heading anchors in all Markdown files (lychee, offline); every Mermaid diagram renders (mermaid-cli) | `check-links.sh`, `check-mermaid.sh` |
 | `ci` / `secrets` | gitleaks over the full history, with the rules in `.gitleaks.toml` | `check-secrets.sh` |
+| `ci` / `go` | gofmt, a tidy `go.mod`, `go vet`, the banned TLS and QUIC settings (`InsecureSkipVerify`, `VerifyPeerCertificate`, `Renegotiation`, 0-RTT; also as composite-literal keys, which forbidigo does not see), `go test -race`; a 10 s run of every fuzz target; golangci-lint with gosec, errorlint, bodyclose, depguard (`math/rand` and `math/rand/v2` in `internal/{authz,pki,secret,token,tunnel}`) and forbidigo (`secret.Value.Reveal` outside its allow-list, `privacy.DecisionContext` outside `internal/store`) | `check-go.sh` (with `tools/bannedapi`), `check-fuzz.sh`, `check-golangci.sh`, `.golangci.yml` |
 
-The four jobs are required status checks of the `main` ruleset. Tool images are pinned by digest
-in the scripts and actions by commit SHA; Dependabot updates the actions. The Go, protobuf, web,
-migration and build stages, and the size-limit label, are added with the first code in Phase 1.
+The jobs `pr-rules`, `lint`, `docs`, `secrets` and `go` are required status checks of the `main`
+ruleset; each new job is added to the ruleset by the maintainer once its PR is merged. Tool images are pinned by digest in the scripts and actions by commit SHA; Dependabot
+updates the actions. The race detector needs cgo for its runtime; release builds stay
+`CGO_ENABLED=0`. The protobuf, web, migration and build stages and the size check are added by
+their Phase 1 slices.

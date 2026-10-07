@@ -1,0 +1,3 @@
+module github.com/felix-homelab/rpmgr
+
+go 1.26.0
