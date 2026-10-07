@@ -16,6 +16,12 @@ const (
 	FieldOrgID = "org_id"
 	// FieldName holds the string denoting the name field in the database.
 	FieldName = "name"
+	// FieldRegion holds the string denoting the region field in the database.
+	FieldRegion = "region"
+	// FieldPublicHostnames holds the string denoting the public_hostnames field in the database.
+	FieldPublicHostnames = "public_hostnames"
+	// FieldTrustedProxyCidrs holds the string denoting the trusted_proxy_cidrs field in the database.
+	FieldTrustedProxyCidrs = "trusted_proxy_cidrs"
 	// Table holds the table name of the gatewaygroup in the database.
 	Table = "gateway_groups"
 )
@@ -25,6 +31,9 @@ var Columns = []string{
 	FieldID,
 	FieldOrgID,
 	FieldName,
+	FieldRegion,
+	FieldPublicHostnames,
+	FieldTrustedProxyCidrs,
 }
 
 // ValidColumn reports if the column name is valid (part of the table columns).
@@ -50,6 +59,10 @@ var (
 	OrgIDValidator func(string) error
 	// NameValidator is a validator for the "name" field. It is called by the builders before save.
 	NameValidator func(string) error
+	// PublicHostnamesValidator is a validator for the "public_hostnames" field. It is called by the builders before save.
+	PublicHostnamesValidator func([]string) error
+	// TrustedProxyCidrsValidator is a validator for the "trusted_proxy_cidrs" field. It is called by the builders before save.
+	TrustedProxyCidrsValidator func([]string) error
 	// DefaultID holds the default value on creation for the "id" field.
 	DefaultID func() string
 	// IDValidator is a validator for the "id" field. It is called by the builders before save.
@@ -72,4 +85,9 @@ func ByOrgID(opts ...sql.OrderTermOption) OrderOption {
 // ByName orders the results by the name field.
 func ByName(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldName, opts...).ToFunc()
+}
+
+// ByRegion orders the results by the region field.
+func ByRegion(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldRegion, opts...).ToFunc()
 }

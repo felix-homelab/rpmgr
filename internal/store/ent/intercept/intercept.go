@@ -13,6 +13,9 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/cakey"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/configrevision"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/configseq"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/connector"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/enrollmenttoken"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/gateway"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/gatewaygroup"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/instance"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/instancesetting"
@@ -212,6 +215,87 @@ func (f TraverseConfigSeq) Traverse(ctx context.Context, q ent.Query) error {
 		return f(ctx, q)
 	}
 	return fmt.Errorf("unexpected query type %T. expect *ent.ConfigSeqQuery", q)
+}
+
+// The ConnectorFunc type is an adapter to allow the use of ordinary function as a Querier.
+type ConnectorFunc func(context.Context, *ent.ConnectorQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f ConnectorFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.ConnectorQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.ConnectorQuery", q)
+}
+
+// The TraverseConnector type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseConnector func(context.Context, *ent.ConnectorQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseConnector) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseConnector) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.ConnectorQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.ConnectorQuery", q)
+}
+
+// The EnrollmentTokenFunc type is an adapter to allow the use of ordinary function as a Querier.
+type EnrollmentTokenFunc func(context.Context, *ent.EnrollmentTokenQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f EnrollmentTokenFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.EnrollmentTokenQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.EnrollmentTokenQuery", q)
+}
+
+// The TraverseEnrollmentToken type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseEnrollmentToken func(context.Context, *ent.EnrollmentTokenQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseEnrollmentToken) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseEnrollmentToken) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.EnrollmentTokenQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.EnrollmentTokenQuery", q)
+}
+
+// The GatewayFunc type is an adapter to allow the use of ordinary function as a Querier.
+type GatewayFunc func(context.Context, *ent.GatewayQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f GatewayFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.GatewayQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.GatewayQuery", q)
+}
+
+// The TraverseGateway type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseGateway func(context.Context, *ent.GatewayQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseGateway) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseGateway) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.GatewayQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.GatewayQuery", q)
 }
 
 // The GatewayGroupFunc type is an adapter to allow the use of ordinary function as a Querier.
@@ -416,6 +500,12 @@ func NewQuery(q ent.Query) (Query, error) {
 		return &query[*ent.ConfigRevisionQuery, predicate.ConfigRevision, configrevision.OrderOption]{typ: ent.TypeConfigRevision, tq: q}, nil
 	case *ent.ConfigSeqQuery:
 		return &query[*ent.ConfigSeqQuery, predicate.ConfigSeq, configseq.OrderOption]{typ: ent.TypeConfigSeq, tq: q}, nil
+	case *ent.ConnectorQuery:
+		return &query[*ent.ConnectorQuery, predicate.Connector, connector.OrderOption]{typ: ent.TypeConnector, tq: q}, nil
+	case *ent.EnrollmentTokenQuery:
+		return &query[*ent.EnrollmentTokenQuery, predicate.EnrollmentToken, enrollmenttoken.OrderOption]{typ: ent.TypeEnrollmentToken, tq: q}, nil
+	case *ent.GatewayQuery:
+		return &query[*ent.GatewayQuery, predicate.Gateway, gateway.OrderOption]{typ: ent.TypeGateway, tq: q}, nil
 	case *ent.GatewayGroupQuery:
 		return &query[*ent.GatewayGroupQuery, predicate.GatewayGroup, gatewaygroup.OrderOption]{typ: ent.TypeGatewayGroup, tq: q}, nil
 	case *ent.InstanceQuery:

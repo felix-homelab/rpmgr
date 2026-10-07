@@ -31,6 +31,32 @@ func (_c *GatewayGroupCreate) SetName(v string) *GatewayGroupCreate {
 	return _c
 }
 
+// SetRegion sets the "region" field.
+func (_c *GatewayGroupCreate) SetRegion(v string) *GatewayGroupCreate {
+	_c.mutation.SetRegion(v)
+	return _c
+}
+
+// SetNillableRegion sets the "region" field if the given value is not nil.
+func (_c *GatewayGroupCreate) SetNillableRegion(v *string) *GatewayGroupCreate {
+	if v != nil {
+		_c.SetRegion(*v)
+	}
+	return _c
+}
+
+// SetPublicHostnames sets the "public_hostnames" field.
+func (_c *GatewayGroupCreate) SetPublicHostnames(v []string) *GatewayGroupCreate {
+	_c.mutation.SetPublicHostnames(v)
+	return _c
+}
+
+// SetTrustedProxyCidrs sets the "trusted_proxy_cidrs" field.
+func (_c *GatewayGroupCreate) SetTrustedProxyCidrs(v []string) *GatewayGroupCreate {
+	_c.mutation.SetTrustedProxyCidrs(v)
+	return _c
+}
+
 // SetID sets the "id" field.
 func (_c *GatewayGroupCreate) SetID(v string) *GatewayGroupCreate {
 	_c.mutation.SetID(v)
@@ -110,6 +136,16 @@ func (_c *GatewayGroupCreate) check() error {
 			return &ValidationError{Name: "name", err: fmt.Errorf(`ent: validator failed for field "GatewayGroup.name": %w`, err)}
 		}
 	}
+	if v, ok := _c.mutation.PublicHostnames(); ok {
+		if err := gatewaygroup.PublicHostnamesValidator(v); err != nil {
+			return &ValidationError{Name: "public_hostnames", err: fmt.Errorf(`ent: validator failed for field "GatewayGroup.public_hostnames": %w`, err)}
+		}
+	}
+	if v, ok := _c.mutation.TrustedProxyCidrs(); ok {
+		if err := gatewaygroup.TrustedProxyCidrsValidator(v); err != nil {
+			return &ValidationError{Name: "trusted_proxy_cidrs", err: fmt.Errorf(`ent: validator failed for field "GatewayGroup.trusted_proxy_cidrs": %w`, err)}
+		}
+	}
 	if v, ok := _c.mutation.ID(); ok {
 		if err := gatewaygroup.IDValidator(v); err != nil {
 			return &ValidationError{Name: "id", err: fmt.Errorf(`ent: validator failed for field "GatewayGroup.id": %w`, err)}
@@ -157,6 +193,18 @@ func (_c *GatewayGroupCreate) createSpec() (*GatewayGroup, *sqlgraph.CreateSpec)
 	if value, ok := _c.mutation.Name(); ok {
 		_spec.SetField(gatewaygroup.FieldName, field.TypeString, value)
 		_node.Name = value
+	}
+	if value, ok := _c.mutation.Region(); ok {
+		_spec.SetField(gatewaygroup.FieldRegion, field.TypeString, value)
+		_node.Region = value
+	}
+	if value, ok := _c.mutation.PublicHostnames(); ok {
+		_spec.SetField(gatewaygroup.FieldPublicHostnames, field.TypeJSON, value)
+		_node.PublicHostnames = value
+	}
+	if value, ok := _c.mutation.TrustedProxyCidrs(); ok {
+		_spec.SetField(gatewaygroup.FieldTrustedProxyCidrs, field.TypeJSON, value)
+		_node.TrustedProxyCidrs = value
 	}
 	return _node, _spec
 }
