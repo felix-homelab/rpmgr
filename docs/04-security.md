@@ -1,7 +1,7 @@
 # 04 — Security
 
-> Status: design, not implemented. Tags: [F] fact · [R] recommendation · [T] target · [V] verify at
-> implementation ([README](../README.md#how-to-read-these-documents)).
+> Status: Phase 1, being implemented. Tags: [F] fact · [R] recommendation · [T] target · [V] verify
+> at implementation ([README](../README.md#how-to-read-these-documents)).
 >
 > **This document is the single source of truth for identities, lifetimes, cryptographic parameters
 > and authorization rules.** Connection timeouts and sizes live in
@@ -100,6 +100,16 @@ What the design does **not** protect against, stated plainly:
 | **Issuing intermediate** | ECDSA P-256 | 1 year, rotated at 6 months with overlap | Controller DB, envelope-encrypted | Signs leaf certificates (`pathlen=0`), name-constrained (critical) to URI domain and DNS domain `<td>`; Go enforces both [F Go 1.27.1 `crypto/x509/constraints.go:525`] ([S7](spikes/S7.md)) |
 | **Config-signing key** | ECDSA P-256 | rotated yearly | Controller DB, envelope-encrypted | Signs snapshots (agents verify last-known-good on disk) |
 | **Audit-checkpoint key** | ECDSA P-256 | rotated yearly | Controller DB, envelope-encrypted | Signs audit checkpoints |
+
+- **Signing keys.** The config-signing and audit-checkpoint keys get certificates from the issuing
+  intermediate, not the root, so a root that goes offline does not block their yearly rotation. The
+  certificate's only SAN is `spiffe://<td>/controller/config-signing` or
+  `spiffe://<td>/controller/audit-checkpoint`, with key usage digitalSignature and no extended key
+  usage. Agents accept a snapshot or deny-list signature only from a key whose certificate chains
+  to the pinned root with that URI. The URI is not an identity, so the certificate never
+  authenticates a TLS peer.
+- **No certificate outlives its issuer**: `NotAfter` is capped at the issuer's. Serial numbers are
+  128 random bits.
 
 [R] One issuing intermediate per trust domain: per-node intermediates add no isolation, because HA
 replicas share the database and the KEK. **ECDSA P-256** rather than Ed25519 for X.509, because it
