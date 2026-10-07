@@ -256,6 +256,17 @@ log: { level: info, format: json }
 # HTTPS_PROXY / ALL_PROXY / NO_PROXY are honoured for the TCP transports (03-connections.md#transports-and-fallback)
 ```
 
+Rules for every boot file:
+
+- One YAML document of at most 64 KiB with `version: 1`; another version, an unknown key or a value
+  of the wrong type stops the process with the line at fault.
+- An omitted key takes the value shown above, except `public_url` (controller) and
+  `controller.endpoints` (agents), which are required. `listen.http: ""` disables port 80; the
+  other listeners cannot be disabled.
+- URLs are `https://<host>[:<port>]` without user, path, query or fragment; listen addresses are
+  `[host]:port`; paths are absolute. `database.driver: postgres` and `kek.source: kms` are refused
+  until Phase 2.
+
 Port pools, routes, gateway groups and everything else an agent runs come from snapshots, not from
 the boot file.
 
