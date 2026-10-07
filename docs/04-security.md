@@ -185,9 +185,11 @@ later.
 - **UI and public API**: an ACME certificate (certmagic) or one the operator supplies.
 - **Agent endpoint**: the internal certificate for `controller.<td>`, selected by SNI via
   `GetConfigForClient` on the same 443 listener, which also sets the client-certificate requirement
-  per name: mutual TLS against the pinned root for `controller.<td>`, none for the UI hostnames
-  ([S3](spikes/S3.md)). Agents trust **only** the pinned root for this name, never the system trust
-  store.
+  per name ([S3](spikes/S3.md)). For `controller.<td>` a client certificate is optional at the TLS
+  layer, because `Enroll` comes from agents that have none yet; a certificate that is presented must
+  chain to the pinned root and pass the identity checks, and every method except `Enroll` requires
+  one ([03](03-connections.md#transport)). The UI hostnames ask for none. Agents trust **only** the
+  pinned root for this name, never the system trust store.
 - If the controller sits behind a reverse proxy or CDN, the agent hostnames (`controller.<td>` and
   `reauth.controller.<td>`) must be passed through at layer 4 (TLS passthrough), or served on a
   separate port.
