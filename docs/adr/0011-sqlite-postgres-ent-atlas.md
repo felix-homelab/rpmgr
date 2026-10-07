@@ -103,5 +103,6 @@ driver's own test suite passes except one test that QEMU's arm and aarch64 user 
 SIGBUS without fault address); the controller's access pattern (WAL, one writer with concurrent
 readers, `busy_timeout`, revisions under contention, crash recovery, `VACUUM INTO`, composite
 foreign keys) passes everywhere. The rule documents no platform as unsupported; support levels
-stay as in [05](../05-features.md#platform-support). The arm64 and armv7 runs are repeated on the
-Raspberry Pi 5 of the reference testbed.
+stay as in [05](../05-features.md#platform-support). Repeated natively on real arm64 hardware (a
+GitHub-hosted Neoverse-N2 runner, D46), arm64 and armv7 pass every test, including the one QEMU
+could not run.
