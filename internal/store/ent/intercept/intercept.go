@@ -20,6 +20,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/instance"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/instancesetting"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/issuedcertificate"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/lease"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/org"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/orgsetting"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/predicate"
@@ -406,6 +407,33 @@ func (f TraverseIssuedCertificate) Traverse(ctx context.Context, q ent.Query) er
 	return fmt.Errorf("unexpected query type %T. expect *ent.IssuedCertificateQuery", q)
 }
 
+// The LeaseFunc type is an adapter to allow the use of ordinary function as a Querier.
+type LeaseFunc func(context.Context, *ent.LeaseQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f LeaseFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.LeaseQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.LeaseQuery", q)
+}
+
+// The TraverseLease type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseLease func(context.Context, *ent.LeaseQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseLease) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseLease) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.LeaseQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.LeaseQuery", q)
+}
+
 // The OrgFunc type is an adapter to allow the use of ordinary function as a Querier.
 type OrgFunc func(context.Context, *ent.OrgQuery) (ent.Value, error)
 
@@ -514,6 +542,8 @@ func NewQuery(q ent.Query) (Query, error) {
 		return &query[*ent.InstanceSettingQuery, predicate.InstanceSetting, instancesetting.OrderOption]{typ: ent.TypeInstanceSetting, tq: q}, nil
 	case *ent.IssuedCertificateQuery:
 		return &query[*ent.IssuedCertificateQuery, predicate.IssuedCertificate, issuedcertificate.OrderOption]{typ: ent.TypeIssuedCertificate, tq: q}, nil
+	case *ent.LeaseQuery:
+		return &query[*ent.LeaseQuery, predicate.Lease, lease.OrderOption]{typ: ent.TypeLease, tq: q}, nil
 	case *ent.OrgQuery:
 		return &query[*ent.OrgQuery, predicate.Org, org.OrderOption]{typ: ent.TypeOrg, tq: q}, nil
 	case *ent.OrgSettingQuery:

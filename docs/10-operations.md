@@ -412,7 +412,9 @@ affect agents take effect through reconciliation and show apply status like any 
   sink outage never blocks a revocation; it raises an alert until the backlog is shipped.
 - **Singleton jobs** (ACME orders, CA rotation, ephemeral purge, metric rollups, audit
   checkpoints, the DNS job) run under a database **lease with a fencing token**: a replica that lost
-  its lease cannot commit work started under it.
+  its lease cannot commit work started under it. Each time a replica takes a job's lease it is
+  granted the job's system scope, which the audit log records; lease timing is in
+  [03](03-connections.md#timeouts-keepalive-and-backoff).
 - **DNS job** (Phase 2): configuration transactions that touch DNS sources send `dns_dirty` with the
   zone ID over `LISTEN/NOTIFY` to the replica holding the `dns` lease; a replica that takes over the
   lease starts with a full pass. The fencing token cannot stop a call to the provider, so the job

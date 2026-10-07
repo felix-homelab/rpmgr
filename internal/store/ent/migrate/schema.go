@@ -324,6 +324,19 @@ var (
 			},
 		},
 	}
+	// LeasesColumns holds the columns for the "leases" table.
+	LeasesColumns = []*schema.Column{
+		{Name: "name", Type: field.TypeString},
+		{Name: "holder", Type: field.TypeString},
+		{Name: "fencing_token", Type: field.TypeInt64},
+		{Name: "expires_at", Type: field.TypeInt64},
+	}
+	// LeasesTable holds the schema information for the "leases" table.
+	LeasesTable = &schema.Table{
+		Name:       "leases",
+		Columns:    LeasesColumns,
+		PrimaryKey: []*schema.Column{LeasesColumns[0]},
+	}
 	// OrgsColumns holds the columns for the "orgs" table.
 	OrgsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeString},
@@ -400,6 +413,7 @@ var (
 		InstanceTable,
 		InstanceSettingsTable,
 		IssuedCertificatesTable,
+		LeasesTable,
 		OrgsTable,
 		OrgSettingsTable,
 		SecretsMetaTable,
@@ -431,6 +445,9 @@ func init() {
 	}
 	IssuedCertificatesTable.Annotation = &entsql.Annotation{
 		Table: "issued_certificates",
+	}
+	LeasesTable.Annotation = &entsql.Annotation{
+		Table: "leases",
 	}
 	OrgSettingsTable.Annotation = &entsql.Annotation{
 		Table: "org_settings",

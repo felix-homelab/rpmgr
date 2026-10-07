@@ -24,6 +24,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/instance"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/instancesetting"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/issuedcertificate"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/lease"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/org"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/orgsetting"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/secretmeta"
@@ -99,6 +100,7 @@ func checkColumn(t, c string) error {
 			instance.Table:          instance.ValidColumn,
 			instancesetting.Table:   instancesetting.ValidColumn,
 			issuedcertificate.Table: issuedcertificate.ValidColumn,
+			lease.Table:             lease.ValidColumn,
 			org.Table:               org.ValidColumn,
 			orgsetting.Table:        orgsetting.ValidColumn,
 			secretmeta.Table:        secretmeta.ValidColumn,
