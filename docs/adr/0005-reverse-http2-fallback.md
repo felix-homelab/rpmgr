@@ -138,3 +138,11 @@ Throughput and CPU are compared in **S1**.
 **Rule:** if S2 fails any of its pass criteria ([13](../13-roadmap.md#phase-0--spikes)), the TCP
 transport uses yamux with a patch that adds half-close, kept as a separate module, instead of
 reverse HTTP/2; this ADR is then superseded.
+
+**Result (S2, 2026-10-06, [S2](../spikes/S2.md)):** every criterion passes except one: as decided
+above, the connector's half-close cannot be the response's `END_STREAM`, because Go's HTTP/2
+server — net/http's in Go 1.27, and x/net's own — resets the request stream when a handler ends
+its response while the request is still open, so the client-to-service bytes after the service's
+FIN are lost. With the connector's FIN carried in-band, every criterion passes. The rule did not
+foresee that variant; the product owner decides between the rule's yamux fallback and reverse
+HTTP/2 with an in-band connector FIN ([14](../14-open-decisions.md)).
