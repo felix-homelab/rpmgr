@@ -9,6 +9,30 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
 )
 
+// The AuditEntryFunc type is an adapter to allow the use of ordinary
+// function as AuditEntry mutator.
+type AuditEntryFunc func(context.Context, *ent.AuditEntryMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f AuditEntryFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.AuditEntryMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.AuditEntryMutation", m)
+}
+
+// The AuditHeadFunc type is an adapter to allow the use of ordinary
+// function as AuditHead mutator.
+type AuditHeadFunc func(context.Context, *ent.AuditHeadMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f AuditHeadFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.AuditHeadMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.AuditHeadMutation", m)
+}
+
 // The ConfigRevisionFunc type is an adapter to allow the use of ordinary
 // function as ConfigRevision mutator.
 type ConfigRevisionFunc func(context.Context, *ent.ConfigRevisionMutation) (ent.Value, error)

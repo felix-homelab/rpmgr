@@ -9,6 +9,61 @@ import (
 )
 
 var (
+	// AuditLogColumns holds the columns for the "audit_log" table.
+	AuditLogColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeString},
+		{Name: "org_id", Type: field.TypeString, Nullable: true},
+		{Name: "seq", Type: field.TypeInt64},
+		{Name: "prev_hash", Type: field.TypeBytes},
+		{Name: "hash", Type: field.TypeBytes},
+		{Name: "ts", Type: field.TypeTime},
+		{Name: "actor_type", Type: field.TypeEnum, Enums: []string{"user", "agent", "system", "anonymous"}},
+		{Name: "actor_id", Type: field.TypeString, Default: ""},
+		{Name: "credential_id", Type: field.TypeString, Default: ""},
+		{Name: "auth_method", Type: field.TypeString, Default: ""},
+		{Name: "ip", Type: field.TypeString, Default: ""},
+		{Name: "user_agent", Type: field.TypeString, Default: ""},
+		{Name: "request_id", Type: field.TypeString, Default: ""},
+		{Name: "action", Type: field.TypeString},
+		{Name: "target_type", Type: field.TypeString, Default: ""},
+		{Name: "target_id", Type: field.TypeString, Default: ""},
+		{Name: "result", Type: field.TypeEnum, Enums: []string{"success", "failure", "denied"}},
+		{Name: "diff", Type: field.TypeString, Size: 2147483647, Default: ""},
+		{Name: "reason", Type: field.TypeString, Default: ""},
+	}
+	// AuditLogTable holds the schema information for the "audit_log" table.
+	AuditLogTable = &schema.Table{
+		Name:       "audit_log",
+		Columns:    AuditLogColumns,
+		PrimaryKey: []*schema.Column{AuditLogColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "auditentry_org_id_seq",
+				Unique:  true,
+				Columns: []*schema.Column{AuditLogColumns[1], AuditLogColumns[2]},
+			},
+			{
+				Name:    "auditentry_instance_seq",
+				Unique:  true,
+				Columns: []*schema.Column{AuditLogColumns[2]},
+				Annotation: &entsql.IndexAnnotation{
+					Where: "org_id IS NULL",
+				},
+			},
+		},
+	}
+	// AuditHeadsColumns holds the columns for the "audit_heads" table.
+	AuditHeadsColumns = []*schema.Column{
+		{Name: "chain", Type: field.TypeString},
+		{Name: "seq", Type: field.TypeInt64},
+		{Name: "hash", Type: field.TypeBytes},
+	}
+	// AuditHeadsTable holds the schema information for the "audit_heads" table.
+	AuditHeadsTable = &schema.Table{
+		Name:       "audit_heads",
+		Columns:    AuditHeadsColumns,
+		PrimaryKey: []*schema.Column{AuditHeadsColumns[0]},
+	}
 	// ConfigRevisionsColumns holds the columns for the "config_revisions" table.
 	ConfigRevisionsColumns = []*schema.Column{
 		{Name: "seq", Type: field.TypeInt64, Increment: true},
@@ -127,6 +182,8 @@ var (
 	}
 	// Tables holds all the tables in the schema.
 	Tables = []*schema.Table{
+		AuditLogTable,
+		AuditHeadsTable,
 		ConfigRevisionsTable,
 		ConfigSeqTable,
 		GatewayGroupsTable,
@@ -138,6 +195,12 @@ var (
 )
 
 func init() {
+	AuditLogTable.Annotation = &entsql.Annotation{
+		Table: "audit_log",
+	}
+	AuditHeadsTable.Annotation = &entsql.Annotation{
+		Table: "audit_heads",
+	}
 	ConfigSeqTable.Annotation = &entsql.Annotation{
 		Table: "config_seq",
 	}
