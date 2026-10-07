@@ -10,8 +10,9 @@ authority and win on any conflict. Personal settings belong in the ignored `CLAU
 - **rpmgr** (Reverse Proxy Manager) publishes services on private networks through public gateways,
   managed from one control plane. One Go binary, `rpmgr`, runs every role: controller, gateway,
   connector, all-in-one ([02](docs/02-architecture.md)).
-- **Status:** design phase, now in **Phase 0** (spikes, [13](docs/13-roadmap.md#phase-0--spikes)).
-  `main` holds documents and repository tooling only; product code starts in Phase 1.
+- **Status:** design phase; **Phase 0** (spikes, [13](docs/13-roadmap.md#phase-0--spikes)) is
+  complete and **Phase 1** (MVP) is next. `main` holds documents and repository tooling only;
+  product code starts in Phase 1.
 - A personal open-source project with one maintainer, the product owner, who decides; Apache-2.0.
 - Read first: [README](README.md) → [00](docs/00-vision-and-scope.md) →
   [02](docs/02-architecture.md) → [03](docs/03-connections.md) → [04](docs/04-security.md); phases
@@ -75,8 +76,9 @@ The repository is `github.com/felix-homelab/rpmgr`; use `gh` for issues and PRs.
 - Never commit secrets, private keys, tokens or build output. Security vulnerabilities are never
   discussed in public issues ([SECURITY.md](SECURITY.md)).
 
-## Phase 0 spikes
+## Spikes
 
+Phase 0 is complete; the same process applies to later spikes, such as S9 at the start of Phase 2.
 Process in CONTRIBUTING, "Spikes"; questions, methods, pass criteria and the pre-agreed rules in
 [13](docs/13-roadmap.md#phase-0--spikes). In short:
 
@@ -87,8 +89,9 @@ Process in CONTRIBUTING, "Spikes"; questions, methods, pass criteria and the pre
   updates every affected document. Afterwards: tag `spike/sx` on the branch tip and push it; the
   maintainer deletes the branch.
 - The rule decides; a spike never re-opens a decision. Pin the current releases and re-check, at
-  those versions, every `[F]` fact the decision rests on (D39). Local dry runs of S1 and S6 never
-  decide their rules (D37).
+  those versions, every `[F]` fact the decision rests on (D39). A local dry run never decides a
+  rule that needs external resources (D37); only the product owner can replace such a rule, as
+  D45 and D46 did for S1 and S6.
 - Go: the latest stable release, pinned with the `toolchain` directive; `CGO_ENABLED=0`.
 - Even spike code follows the security rules of [04](docs/04-security.md): TLS 1.3 only, no
   `InsecureSkipVerify` (tests use a generated test CA), no 0-RTT, `crypto/rand` for keys and tokens.

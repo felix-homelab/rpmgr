@@ -27,6 +27,11 @@ public API (`rpmgr.v1`) and the agent protocol (`rpmgr-tunnel/1`) follow the com
 
 ## Phase 0 — spikes
 
+**Status: complete (2026-10-07).** S1–S8 have written results in [spikes](spikes/), their code is
+archived as `spike/s1` … `spike/s8` (and `spike/s8-arm64`), no ADR is *Proposed*, and the decisions
+taken along the way are D35–D47 in [14](14-open-decisions.md). Phase 1 is next; S9 runs at the
+start of Phase 2.
+
 Small, throw-away prototypes that answer the questions the design depends on. The maintainer runs
 every spike. Each spike produces a short written result (`docs/spikes/Sx.md`, from
 [`docs/spikes/TEMPLATE.md`](spikes/TEMPLATE.md)) and updates the ADR it decides, from *Proposed* to
