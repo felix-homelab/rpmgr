@@ -308,6 +308,13 @@ Rules:
    and `Rejected` count only for a snapshot that the same session was sent; of a rejection the
    controller keeps at most 32 reasons of at most 512 bytes each. The last 5 snapshots sent to
    each agent are kept for support ([06](06-data-model.md#desired-vs-observed-state)).
+10. **What an agent gets.** A gateway gets every enabled `tcp` route of its gateway group that has
+    a port: the port, the idle timeout and the connectors that serve the route (enabled
+    connectors with an enabled target on it); the gateway opens streams only to those. A
+    connector gets every enabled route with an enabled target on it: its targets, by priority,
+    and the effective transport policy, the route's, else the connector's, else the instance
+    default ([Transport selection](#transport-selection)). A disabled or decommissioned agent gets
+    an empty snapshot. Each resource's ID is the route's ID; the other route types follow.
 
 ### Revisions and ordering
 
