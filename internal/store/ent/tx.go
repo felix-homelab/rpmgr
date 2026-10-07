@@ -50,8 +50,20 @@ type Tx struct {
 	Org *OrgClient
 	// OrgSetting is the client for interacting with the OrgSetting builders.
 	OrgSetting *OrgSettingClient
+	// PortAllocation is the client for interacting with the PortAllocation builders.
+	PortAllocation *PortAllocationClient
+	// PortPool is the client for interacting with the PortPool builders.
+	PortPool *PortPoolClient
+	// PortQuota is the client for interacting with the PortQuota builders.
+	PortQuota *PortQuotaClient
 	// RevokedIdentity is the client for interacting with the RevokedIdentity builders.
 	RevokedIdentity *RevokedIdentityClient
+	// Route is the client for interacting with the Route builders.
+	Route *RouteClient
+	// RouteTCP is the client for interacting with the RouteTCP builders.
+	RouteTCP *RouteTCPClient
+	// RouteTarget is the client for interacting with the RouteTarget builders.
+	RouteTarget *RouteTargetClient
 	// SecretMeta is the client for interacting with the SecretMeta builders.
 	SecretMeta *SecretMetaClient
 
@@ -203,7 +215,13 @@ func (tx *Tx) init() {
 	tx.Lease = NewLeaseClient(tx.config)
 	tx.Org = NewOrgClient(tx.config)
 	tx.OrgSetting = NewOrgSettingClient(tx.config)
+	tx.PortAllocation = NewPortAllocationClient(tx.config)
+	tx.PortPool = NewPortPoolClient(tx.config)
+	tx.PortQuota = NewPortQuotaClient(tx.config)
 	tx.RevokedIdentity = NewRevokedIdentityClient(tx.config)
+	tx.Route = NewRouteClient(tx.config)
+	tx.RouteTCP = NewRouteTCPClient(tx.config)
+	tx.RouteTarget = NewRouteTargetClient(tx.config)
 	tx.SecretMeta = NewSecretMetaClient(tx.config)
 }
 

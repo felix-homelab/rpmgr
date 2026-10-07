@@ -330,6 +330,7 @@ internal/connector/        session pool, dialer, health, visitors, p2p
 internal/tunnel/           Session/Stream abstraction; quic and h2 implementations; framing
 internal/pki/              CA, issuance, verification, enrollment
 internal/policy/           connector-local policy parser and enforcement
+internal/routes/           routes and their ports: pools, quotas, allocation, snapshot compilers
 internal/authz/            roles, permission checks, interceptor
 internal/store/            Ent schema, privacy rules, migrations (atlas)
 internal/secret/           secret.Value, envelope encryption, KEK providers

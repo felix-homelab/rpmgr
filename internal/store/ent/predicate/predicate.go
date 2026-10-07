@@ -60,8 +60,26 @@ type Org func(*sql.Selector)
 // OrgSetting is the predicate function for orgsetting builders.
 type OrgSetting func(*sql.Selector)
 
+// PortAllocation is the predicate function for portallocation builders.
+type PortAllocation func(*sql.Selector)
+
+// PortPool is the predicate function for portpool builders.
+type PortPool func(*sql.Selector)
+
+// PortQuota is the predicate function for portquota builders.
+type PortQuota func(*sql.Selector)
+
 // RevokedIdentity is the predicate function for revokedidentity builders.
 type RevokedIdentity func(*sql.Selector)
+
+// Route is the predicate function for route builders.
+type Route func(*sql.Selector)
+
+// RouteTCP is the predicate function for routetcp builders.
+type RouteTCP func(*sql.Selector)
+
+// RouteTarget is the predicate function for routetarget builders.
+type RouteTarget func(*sql.Selector)
 
 // SecretMeta is the predicate function for secretmeta builders.
 type SecretMeta func(*sql.Selector)

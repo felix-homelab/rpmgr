@@ -481,6 +481,105 @@ var (
 			},
 		},
 	}
+	// PortAllocationsColumns holds the columns for the "port_allocations" table.
+	PortAllocationsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeString},
+		{Name: "org_id", Type: field.TypeString},
+		{Name: "protocol", Type: field.TypeEnum, Enums: []string{"tcp", "udp"}},
+		{Name: "port", Type: field.TypeInt},
+		{Name: "route_id", Type: field.TypeString, Nullable: true},
+		{Name: "gateway_group_id", Type: field.TypeString},
+	}
+	// PortAllocationsTable holds the schema information for the "port_allocations" table.
+	PortAllocationsTable = &schema.Table{
+		Name:       "port_allocations",
+		Columns:    PortAllocationsColumns,
+		PrimaryKey: []*schema.Column{PortAllocationsColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "port_allocations_gateway_groups_group",
+				Columns:    []*schema.Column{PortAllocationsColumns[5]},
+				RefColumns: []*schema.Column{GatewayGroupsColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+		},
+		Indexes: []*schema.Index{
+			{
+				Name:    "portallocation_org_id_id",
+				Unique:  true,
+				Columns: []*schema.Column{PortAllocationsColumns[1], PortAllocationsColumns[0]},
+			},
+			{
+				Name:    "portallocation_gateway_group_id_protocol_port",
+				Unique:  true,
+				Columns: []*schema.Column{PortAllocationsColumns[5], PortAllocationsColumns[2], PortAllocationsColumns[3]},
+			},
+		},
+	}
+	// PortPoolsColumns holds the columns for the "port_pools" table.
+	PortPoolsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeString},
+		{Name: "org_id", Type: field.TypeString},
+		{Name: "protocol", Type: field.TypeEnum, Enums: []string{"tcp", "udp"}},
+		{Name: "port_from", Type: field.TypeInt},
+		{Name: "port_to", Type: field.TypeInt},
+		{Name: "gateway_group_id", Type: field.TypeString},
+	}
+	// PortPoolsTable holds the schema information for the "port_pools" table.
+	PortPoolsTable = &schema.Table{
+		Name:       "port_pools",
+		Columns:    PortPoolsColumns,
+		PrimaryKey: []*schema.Column{PortPoolsColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "port_pools_gateway_groups_group",
+				Columns:    []*schema.Column{PortPoolsColumns[5]},
+				RefColumns: []*schema.Column{GatewayGroupsColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+		},
+		Indexes: []*schema.Index{
+			{
+				Name:    "portpool_org_id_id",
+				Unique:  true,
+				Columns: []*schema.Column{PortPoolsColumns[1], PortPoolsColumns[0]},
+			},
+		},
+	}
+	// PortQuotasColumns holds the columns for the "port_quotas" table.
+	PortQuotasColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeString},
+		{Name: "org_id", Type: field.TypeString},
+		{Name: "protocol", Type: field.TypeEnum, Enums: []string{"tcp", "udp"}},
+		{Name: "max_ports", Type: field.TypeInt},
+		{Name: "gateway_group_id", Type: field.TypeString},
+	}
+	// PortQuotasTable holds the schema information for the "port_quotas" table.
+	PortQuotasTable = &schema.Table{
+		Name:       "port_quotas",
+		Columns:    PortQuotasColumns,
+		PrimaryKey: []*schema.Column{PortQuotasColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "port_quotas_gateway_groups_group",
+				Columns:    []*schema.Column{PortQuotasColumns[4]},
+				RefColumns: []*schema.Column{GatewayGroupsColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+		},
+		Indexes: []*schema.Index{
+			{
+				Name:    "portquota_org_id_id",
+				Unique:  true,
+				Columns: []*schema.Column{PortQuotasColumns[1], PortQuotasColumns[0]},
+			},
+			{
+				Name:    "portquota_org_id_gateway_group_id_protocol",
+				Unique:  true,
+				Columns: []*schema.Column{PortQuotasColumns[1], PortQuotasColumns[4], PortQuotasColumns[2]},
+			},
+		},
+	}
 	// RevokedIdentitiesColumns holds the columns for the "revoked_identities" table.
 	RevokedIdentitiesColumns = []*schema.Column{
 		{Name: "spiffe_id", Type: field.TypeString},
@@ -496,6 +595,139 @@ var (
 		Name:       "revoked_identities",
 		Columns:    RevokedIdentitiesColumns,
 		PrimaryKey: []*schema.Column{RevokedIdentitiesColumns[0]},
+	}
+	// RoutesColumns holds the columns for the "routes" table.
+	RoutesColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeString},
+		{Name: "org_id", Type: field.TypeString},
+		{Name: "name", Type: field.TypeString},
+		{Name: "type", Type: field.TypeEnum, Enums: []string{"http", "tcp", "udp", "tls_passthrough"}},
+		{Name: "enabled", Type: field.TypeBool, Default: true},
+		{Name: "transport", Type: field.TypeEnum, Nullable: true, Enums: []string{"auto", "quic", "h2"}},
+		{Name: "description", Type: field.TypeString, Default: ""},
+		{Name: "labels", Type: field.TypeJSON, Nullable: true},
+		{Name: "version", Type: field.TypeInt64, Default: 1},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+		{Name: "updated_by", Type: field.TypeString, Default: ""},
+		{Name: "gateway_group_id", Type: field.TypeString},
+	}
+	// RoutesTable holds the schema information for the "routes" table.
+	RoutesTable = &schema.Table{
+		Name:       "routes",
+		Columns:    RoutesColumns,
+		PrimaryKey: []*schema.Column{RoutesColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "routes_gateway_groups_group",
+				Columns:    []*schema.Column{RoutesColumns[12]},
+				RefColumns: []*schema.Column{GatewayGroupsColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+		},
+		Indexes: []*schema.Index{
+			{
+				Name:    "route_org_id_id",
+				Unique:  true,
+				Columns: []*schema.Column{RoutesColumns[1], RoutesColumns[0]},
+			},
+			{
+				Name:    "route_org_id_name",
+				Unique:  true,
+				Columns: []*schema.Column{RoutesColumns[1], RoutesColumns[2]},
+			},
+		},
+	}
+	// RouteTCPColumns holds the columns for the "route_tcp" table.
+	RouteTCPColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt, Increment: true},
+		{Name: "org_id", Type: field.TypeString},
+		{Name: "listener_mode", Type: field.TypeEnum, Enums: []string{"plain", "http_connect"}, Default: "plain"},
+		{Name: "idle_timeout_seconds", Type: field.TypeInt, Default: 3600},
+		{Name: "route_id", Type: field.TypeString},
+		{Name: "port_allocation_id", Type: field.TypeString},
+	}
+	// RouteTCPTable holds the schema information for the "route_tcp" table.
+	RouteTCPTable = &schema.Table{
+		Name:       "route_tcp",
+		Columns:    RouteTCPColumns,
+		PrimaryKey: []*schema.Column{RouteTCPColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "route_tcp_routes_route",
+				Columns:    []*schema.Column{RouteTCPColumns[4]},
+				RefColumns: []*schema.Column{RoutesColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+			{
+				Symbol:     "route_tcp_port_allocations_port",
+				Columns:    []*schema.Column{RouteTCPColumns[5]},
+				RefColumns: []*schema.Column{PortAllocationsColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+		},
+		Indexes: []*schema.Index{
+			{
+				Name:    "routetcp_org_id_id",
+				Unique:  true,
+				Columns: []*schema.Column{RouteTCPColumns[1], RouteTCPColumns[0]},
+			},
+		},
+	}
+	// RouteTargetsColumns holds the columns for the "route_targets" table.
+	RouteTargetsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeString},
+		{Name: "org_id", Type: field.TypeString},
+		{Name: "kind", Type: field.TypeEnum, Enums: []string{"address", "unix"}},
+		{Name: "host", Type: field.TypeString, Default: ""},
+		{Name: "port", Type: field.TypeInt, Default: 0},
+		{Name: "unix_path", Type: field.TypeString, Default: ""},
+		{Name: "upstream_protocol", Type: field.TypeEnum, Enums: []string{"tcp", "http", "https", "h2c"}, Default: "tcp"},
+		{Name: "tls_server_name", Type: field.TypeString, Default: ""},
+		{Name: "tls_spki_sha256", Type: field.TypeString, Default: ""},
+		{Name: "proxy_protocol", Type: field.TypeEnum, Enums: []string{"none", "v1", "v2"}, Default: "none"},
+		{Name: "weight", Type: field.TypeInt, Default: 1},
+		{Name: "priority", Type: field.TypeInt, Default: 0},
+		{Name: "enabled", Type: field.TypeBool, Default: true},
+		{Name: "route_id", Type: field.TypeString},
+		{Name: "connector_id", Type: field.TypeString},
+	}
+	// RouteTargetsTable holds the schema information for the "route_targets" table.
+	RouteTargetsTable = &schema.Table{
+		Name:       "route_targets",
+		Columns:    RouteTargetsColumns,
+		PrimaryKey: []*schema.Column{RouteTargetsColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "route_targets_routes_route",
+				Columns:    []*schema.Column{RouteTargetsColumns[13]},
+				RefColumns: []*schema.Column{RoutesColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+			{
+				Symbol:     "route_targets_connectors_connector",
+				Columns:    []*schema.Column{RouteTargetsColumns[14]},
+				RefColumns: []*schema.Column{ConnectorsColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+		},
+		Indexes: []*schema.Index{
+			{
+				Name:    "routetarget_org_id_id",
+				Unique:  true,
+				Columns: []*schema.Column{RouteTargetsColumns[1], RouteTargetsColumns[0]},
+			},
+			{
+				Name:    "routetarget_route_id",
+				Unique:  false,
+				Columns: []*schema.Column{RouteTargetsColumns[13]},
+			},
+			{
+				Name:    "routetarget_connector_id",
+				Unique:  false,
+				Columns: []*schema.Column{RouteTargetsColumns[14]},
+			},
+		},
 	}
 	// SecretsMetaColumns holds the columns for the "secrets_meta" table.
 	SecretsMetaColumns = []*schema.Column{
@@ -539,7 +771,13 @@ var (
 		LeasesTable,
 		OrgsTable,
 		OrgSettingsTable,
+		PortAllocationsTable,
+		PortPoolsTable,
+		PortQuotasTable,
 		RevokedIdentitiesTable,
+		RoutesTable,
+		RouteTCPTable,
+		RouteTargetsTable,
 		SecretsMetaTable,
 	}
 )
@@ -586,8 +824,34 @@ func init() {
 	OrgSettingsTable.Annotation = &entsql.Annotation{
 		Table: "org_settings",
 	}
+	PortAllocationsTable.ForeignKeys[0].RefTable = GatewayGroupsTable
+	PortAllocationsTable.Annotation = &entsql.Annotation{
+		Table: "port_allocations",
+	}
+	PortPoolsTable.ForeignKeys[0].RefTable = GatewayGroupsTable
+	PortPoolsTable.Annotation = &entsql.Annotation{
+		Table: "port_pools",
+	}
+	PortQuotasTable.ForeignKeys[0].RefTable = GatewayGroupsTable
+	PortQuotasTable.Annotation = &entsql.Annotation{
+		Table: "port_quotas",
+	}
 	RevokedIdentitiesTable.Annotation = &entsql.Annotation{
 		Table: "revoked_identities",
+	}
+	RoutesTable.ForeignKeys[0].RefTable = GatewayGroupsTable
+	RoutesTable.Annotation = &entsql.Annotation{
+		Table: "routes",
+	}
+	RouteTCPTable.ForeignKeys[0].RefTable = RoutesTable
+	RouteTCPTable.ForeignKeys[1].RefTable = PortAllocationsTable
+	RouteTCPTable.Annotation = &entsql.Annotation{
+		Table: "route_tcp",
+	}
+	RouteTargetsTable.ForeignKeys[0].RefTable = RoutesTable
+	RouteTargetsTable.ForeignKeys[1].RefTable = ConnectorsTable
+	RouteTargetsTable.Annotation = &entsql.Annotation{
+		Table: "route_targets",
 	}
 	SecretsMetaTable.Annotation = &entsql.Annotation{
 		Table: "secrets_meta",

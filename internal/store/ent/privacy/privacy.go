@@ -543,6 +543,78 @@ func (f OrgSettingMutationRuleFunc) EvalMutation(ctx context.Context, m ent.Muta
 	return Denyf("ent/privacy: unexpected mutation type %T, expect *ent.OrgSettingMutation", m)
 }
 
+// The PortAllocationQueryRuleFunc type is an adapter to allow the use of ordinary
+// functions as a query rule.
+type PortAllocationQueryRuleFunc func(context.Context, *ent.PortAllocationQuery) error
+
+// EvalQuery return f(ctx, q).
+func (f PortAllocationQueryRuleFunc) EvalQuery(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.PortAllocationQuery); ok {
+		return f(ctx, q)
+	}
+	return Denyf("ent/privacy: unexpected query type %T, expect *ent.PortAllocationQuery", q)
+}
+
+// The PortAllocationMutationRuleFunc type is an adapter to allow the use of ordinary
+// functions as a mutation rule.
+type PortAllocationMutationRuleFunc func(context.Context, *ent.PortAllocationMutation) error
+
+// EvalMutation calls f(ctx, m).
+func (f PortAllocationMutationRuleFunc) EvalMutation(ctx context.Context, m ent.Mutation) error {
+	if m, ok := m.(*ent.PortAllocationMutation); ok {
+		return f(ctx, m)
+	}
+	return Denyf("ent/privacy: unexpected mutation type %T, expect *ent.PortAllocationMutation", m)
+}
+
+// The PortPoolQueryRuleFunc type is an adapter to allow the use of ordinary
+// functions as a query rule.
+type PortPoolQueryRuleFunc func(context.Context, *ent.PortPoolQuery) error
+
+// EvalQuery return f(ctx, q).
+func (f PortPoolQueryRuleFunc) EvalQuery(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.PortPoolQuery); ok {
+		return f(ctx, q)
+	}
+	return Denyf("ent/privacy: unexpected query type %T, expect *ent.PortPoolQuery", q)
+}
+
+// The PortPoolMutationRuleFunc type is an adapter to allow the use of ordinary
+// functions as a mutation rule.
+type PortPoolMutationRuleFunc func(context.Context, *ent.PortPoolMutation) error
+
+// EvalMutation calls f(ctx, m).
+func (f PortPoolMutationRuleFunc) EvalMutation(ctx context.Context, m ent.Mutation) error {
+	if m, ok := m.(*ent.PortPoolMutation); ok {
+		return f(ctx, m)
+	}
+	return Denyf("ent/privacy: unexpected mutation type %T, expect *ent.PortPoolMutation", m)
+}
+
+// The PortQuotaQueryRuleFunc type is an adapter to allow the use of ordinary
+// functions as a query rule.
+type PortQuotaQueryRuleFunc func(context.Context, *ent.PortQuotaQuery) error
+
+// EvalQuery return f(ctx, q).
+func (f PortQuotaQueryRuleFunc) EvalQuery(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.PortQuotaQuery); ok {
+		return f(ctx, q)
+	}
+	return Denyf("ent/privacy: unexpected query type %T, expect *ent.PortQuotaQuery", q)
+}
+
+// The PortQuotaMutationRuleFunc type is an adapter to allow the use of ordinary
+// functions as a mutation rule.
+type PortQuotaMutationRuleFunc func(context.Context, *ent.PortQuotaMutation) error
+
+// EvalMutation calls f(ctx, m).
+func (f PortQuotaMutationRuleFunc) EvalMutation(ctx context.Context, m ent.Mutation) error {
+	if m, ok := m.(*ent.PortQuotaMutation); ok {
+		return f(ctx, m)
+	}
+	return Denyf("ent/privacy: unexpected mutation type %T, expect *ent.PortQuotaMutation", m)
+}
+
 // The RevokedIdentityQueryRuleFunc type is an adapter to allow the use of ordinary
 // functions as a query rule.
 type RevokedIdentityQueryRuleFunc func(context.Context, *ent.RevokedIdentityQuery) error
@@ -565,6 +637,78 @@ func (f RevokedIdentityMutationRuleFunc) EvalMutation(ctx context.Context, m ent
 		return f(ctx, m)
 	}
 	return Denyf("ent/privacy: unexpected mutation type %T, expect *ent.RevokedIdentityMutation", m)
+}
+
+// The RouteQueryRuleFunc type is an adapter to allow the use of ordinary
+// functions as a query rule.
+type RouteQueryRuleFunc func(context.Context, *ent.RouteQuery) error
+
+// EvalQuery return f(ctx, q).
+func (f RouteQueryRuleFunc) EvalQuery(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.RouteQuery); ok {
+		return f(ctx, q)
+	}
+	return Denyf("ent/privacy: unexpected query type %T, expect *ent.RouteQuery", q)
+}
+
+// The RouteMutationRuleFunc type is an adapter to allow the use of ordinary
+// functions as a mutation rule.
+type RouteMutationRuleFunc func(context.Context, *ent.RouteMutation) error
+
+// EvalMutation calls f(ctx, m).
+func (f RouteMutationRuleFunc) EvalMutation(ctx context.Context, m ent.Mutation) error {
+	if m, ok := m.(*ent.RouteMutation); ok {
+		return f(ctx, m)
+	}
+	return Denyf("ent/privacy: unexpected mutation type %T, expect *ent.RouteMutation", m)
+}
+
+// The RouteTCPQueryRuleFunc type is an adapter to allow the use of ordinary
+// functions as a query rule.
+type RouteTCPQueryRuleFunc func(context.Context, *ent.RouteTCPQuery) error
+
+// EvalQuery return f(ctx, q).
+func (f RouteTCPQueryRuleFunc) EvalQuery(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.RouteTCPQuery); ok {
+		return f(ctx, q)
+	}
+	return Denyf("ent/privacy: unexpected query type %T, expect *ent.RouteTCPQuery", q)
+}
+
+// The RouteTCPMutationRuleFunc type is an adapter to allow the use of ordinary
+// functions as a mutation rule.
+type RouteTCPMutationRuleFunc func(context.Context, *ent.RouteTCPMutation) error
+
+// EvalMutation calls f(ctx, m).
+func (f RouteTCPMutationRuleFunc) EvalMutation(ctx context.Context, m ent.Mutation) error {
+	if m, ok := m.(*ent.RouteTCPMutation); ok {
+		return f(ctx, m)
+	}
+	return Denyf("ent/privacy: unexpected mutation type %T, expect *ent.RouteTCPMutation", m)
+}
+
+// The RouteTargetQueryRuleFunc type is an adapter to allow the use of ordinary
+// functions as a query rule.
+type RouteTargetQueryRuleFunc func(context.Context, *ent.RouteTargetQuery) error
+
+// EvalQuery return f(ctx, q).
+func (f RouteTargetQueryRuleFunc) EvalQuery(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.RouteTargetQuery); ok {
+		return f(ctx, q)
+	}
+	return Denyf("ent/privacy: unexpected query type %T, expect *ent.RouteTargetQuery", q)
+}
+
+// The RouteTargetMutationRuleFunc type is an adapter to allow the use of ordinary
+// functions as a mutation rule.
+type RouteTargetMutationRuleFunc func(context.Context, *ent.RouteTargetMutation) error
+
+// EvalMutation calls f(ctx, m).
+func (f RouteTargetMutationRuleFunc) EvalMutation(ctx context.Context, m ent.Mutation) error {
+	if m, ok := m.(*ent.RouteTargetMutation); ok {
+		return f(ctx, m)
+	}
+	return Denyf("ent/privacy: unexpected mutation type %T, expect *ent.RouteTargetMutation", m)
 }
 
 // The SecretMetaQueryRuleFunc type is an adapter to allow the use of ordinary
@@ -662,7 +806,19 @@ func queryFilter(q ent.Query) (Filter, error) {
 		return q.Filter(), nil
 	case *ent.OrgSettingQuery:
 		return q.Filter(), nil
+	case *ent.PortAllocationQuery:
+		return q.Filter(), nil
+	case *ent.PortPoolQuery:
+		return q.Filter(), nil
+	case *ent.PortQuotaQuery:
+		return q.Filter(), nil
 	case *ent.RevokedIdentityQuery:
+		return q.Filter(), nil
+	case *ent.RouteQuery:
+		return q.Filter(), nil
+	case *ent.RouteTCPQuery:
+		return q.Filter(), nil
+	case *ent.RouteTargetQuery:
 		return q.Filter(), nil
 	case *ent.SecretMetaQuery:
 		return q.Filter(), nil
@@ -709,7 +865,19 @@ func mutationFilter(m ent.Mutation) (Filter, error) {
 		return m.Filter(), nil
 	case *ent.OrgSettingMutation:
 		return m.Filter(), nil
+	case *ent.PortAllocationMutation:
+		return m.Filter(), nil
+	case *ent.PortPoolMutation:
+		return m.Filter(), nil
+	case *ent.PortQuotaMutation:
+		return m.Filter(), nil
 	case *ent.RevokedIdentityMutation:
+		return m.Filter(), nil
+	case *ent.RouteMutation:
+		return m.Filter(), nil
+	case *ent.RouteTCPMutation:
+		return m.Filter(), nil
+	case *ent.RouteTargetMutation:
 		return m.Filter(), nil
 	case *ent.SecretMetaMutation:
 		return m.Filter(), nil

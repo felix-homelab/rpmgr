@@ -24,7 +24,13 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/lease"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/org"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/orgsetting"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/portallocation"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/portpool"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/portquota"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/revokedidentity"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/route"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/routetarget"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/routetcp"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/schema"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/secretmeta"
 
@@ -957,6 +963,163 @@ func init() {
 			return nil
 		}
 	}()
+	portallocationMixin := schema.PortAllocation{}.Mixin()
+	portallocation.Policy = privacy.NewPolicies(portallocationMixin[0], schema.PortAllocation{})
+	portallocation.Hooks[0] = func(next ent.Mutator) ent.Mutator {
+		return ent.MutateFunc(func(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+			if err := portallocation.Policy.EvalMutation(ctx, m); err != nil {
+				return nil, err
+			}
+			return next.Mutate(ctx, m)
+		})
+	}
+	portallocationMixinHooks0 := portallocationMixin[0].Hooks()
+
+	portallocation.Hooks[1] = portallocationMixinHooks0[0]
+	portallocationMixinInters0 := portallocationMixin[0].Interceptors()
+	portallocation.Interceptors[0] = portallocationMixinInters0[0]
+	portallocationMixinFields0 := portallocationMixin[0].Fields()
+	_ = portallocationMixinFields0
+	portallocationFields := schema.PortAllocation{}.Fields()
+	_ = portallocationFields
+	// portallocationDescOrgID is the schema descriptor for org_id field.
+	portallocationDescOrgID := portallocationMixinFields0[0].Descriptor()
+	// portallocation.OrgIDValidator is a validator for the "org_id" field. It is called by the builders before save.
+	portallocation.OrgIDValidator = portallocationDescOrgID.Validators[0].(func(string) error)
+	// portallocationDescGatewayGroupID is the schema descriptor for gateway_group_id field.
+	portallocationDescGatewayGroupID := portallocationFields[1].Descriptor()
+	// portallocation.GatewayGroupIDValidator is a validator for the "gateway_group_id" field. It is called by the builders before save.
+	portallocation.GatewayGroupIDValidator = portallocationDescGatewayGroupID.Validators[0].(func(string) error)
+	// portallocationDescPort is the schema descriptor for port field.
+	portallocationDescPort := portallocationFields[3].Descriptor()
+	// portallocation.PortValidator is a validator for the "port" field. It is called by the builders before save.
+	portallocation.PortValidator = portallocationDescPort.Validators[0].(func(int) error)
+	// portallocationDescID is the schema descriptor for id field.
+	portallocationDescID := portallocationFields[0].Descriptor()
+	// portallocation.DefaultID holds the default value on creation for the id field.
+	portallocation.DefaultID = portallocationDescID.Default.(func() string)
+	// portallocation.IDValidator is a validator for the "id" field. It is called by the builders before save.
+	portallocation.IDValidator = func() func(string) error {
+		validators := portallocationDescID.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(id string) error {
+			for _, fn := range fns {
+				if err := fn(id); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	portpoolMixin := schema.PortPool{}.Mixin()
+	portpool.Policy = privacy.NewPolicies(portpoolMixin[0], schema.PortPool{})
+	portpool.Hooks[0] = func(next ent.Mutator) ent.Mutator {
+		return ent.MutateFunc(func(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+			if err := portpool.Policy.EvalMutation(ctx, m); err != nil {
+				return nil, err
+			}
+			return next.Mutate(ctx, m)
+		})
+	}
+	portpoolMixinHooks0 := portpoolMixin[0].Hooks()
+
+	portpool.Hooks[1] = portpoolMixinHooks0[0]
+	portpoolMixinInters0 := portpoolMixin[0].Interceptors()
+	portpool.Interceptors[0] = portpoolMixinInters0[0]
+	portpoolMixinFields0 := portpoolMixin[0].Fields()
+	_ = portpoolMixinFields0
+	portpoolFields := schema.PortPool{}.Fields()
+	_ = portpoolFields
+	// portpoolDescOrgID is the schema descriptor for org_id field.
+	portpoolDescOrgID := portpoolMixinFields0[0].Descriptor()
+	// portpool.OrgIDValidator is a validator for the "org_id" field. It is called by the builders before save.
+	portpool.OrgIDValidator = portpoolDescOrgID.Validators[0].(func(string) error)
+	// portpoolDescGatewayGroupID is the schema descriptor for gateway_group_id field.
+	portpoolDescGatewayGroupID := portpoolFields[1].Descriptor()
+	// portpool.GatewayGroupIDValidator is a validator for the "gateway_group_id" field. It is called by the builders before save.
+	portpool.GatewayGroupIDValidator = portpoolDescGatewayGroupID.Validators[0].(func(string) error)
+	// portpoolDescPortFrom is the schema descriptor for port_from field.
+	portpoolDescPortFrom := portpoolFields[3].Descriptor()
+	// portpool.PortFromValidator is a validator for the "port_from" field. It is called by the builders before save.
+	portpool.PortFromValidator = portpoolDescPortFrom.Validators[0].(func(int) error)
+	// portpoolDescPortTo is the schema descriptor for port_to field.
+	portpoolDescPortTo := portpoolFields[4].Descriptor()
+	// portpool.PortToValidator is a validator for the "port_to" field. It is called by the builders before save.
+	portpool.PortToValidator = portpoolDescPortTo.Validators[0].(func(int) error)
+	// portpoolDescID is the schema descriptor for id field.
+	portpoolDescID := portpoolFields[0].Descriptor()
+	// portpool.DefaultID holds the default value on creation for the id field.
+	portpool.DefaultID = portpoolDescID.Default.(func() string)
+	// portpool.IDValidator is a validator for the "id" field. It is called by the builders before save.
+	portpool.IDValidator = func() func(string) error {
+		validators := portpoolDescID.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(id string) error {
+			for _, fn := range fns {
+				if err := fn(id); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	portquotaMixin := schema.PortQuota{}.Mixin()
+	portquota.Policy = privacy.NewPolicies(portquotaMixin[0], schema.PortQuota{})
+	portquota.Hooks[0] = func(next ent.Mutator) ent.Mutator {
+		return ent.MutateFunc(func(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+			if err := portquota.Policy.EvalMutation(ctx, m); err != nil {
+				return nil, err
+			}
+			return next.Mutate(ctx, m)
+		})
+	}
+	portquotaMixinHooks0 := portquotaMixin[0].Hooks()
+
+	portquota.Hooks[1] = portquotaMixinHooks0[0]
+	portquotaMixinInters0 := portquotaMixin[0].Interceptors()
+	portquota.Interceptors[0] = portquotaMixinInters0[0]
+	portquotaMixinFields0 := portquotaMixin[0].Fields()
+	_ = portquotaMixinFields0
+	portquotaFields := schema.PortQuota{}.Fields()
+	_ = portquotaFields
+	// portquotaDescOrgID is the schema descriptor for org_id field.
+	portquotaDescOrgID := portquotaMixinFields0[0].Descriptor()
+	// portquota.OrgIDValidator is a validator for the "org_id" field. It is called by the builders before save.
+	portquota.OrgIDValidator = portquotaDescOrgID.Validators[0].(func(string) error)
+	// portquotaDescGatewayGroupID is the schema descriptor for gateway_group_id field.
+	portquotaDescGatewayGroupID := portquotaFields[1].Descriptor()
+	// portquota.GatewayGroupIDValidator is a validator for the "gateway_group_id" field. It is called by the builders before save.
+	portquota.GatewayGroupIDValidator = portquotaDescGatewayGroupID.Validators[0].(func(string) error)
+	// portquotaDescMaxPorts is the schema descriptor for max_ports field.
+	portquotaDescMaxPorts := portquotaFields[3].Descriptor()
+	// portquota.MaxPortsValidator is a validator for the "max_ports" field. It is called by the builders before save.
+	portquota.MaxPortsValidator = portquotaDescMaxPorts.Validators[0].(func(int) error)
+	// portquotaDescID is the schema descriptor for id field.
+	portquotaDescID := portquotaFields[0].Descriptor()
+	// portquota.DefaultID holds the default value on creation for the id field.
+	portquota.DefaultID = portquotaDescID.Default.(func() string)
+	// portquota.IDValidator is a validator for the "id" field. It is called by the builders before save.
+	portquota.IDValidator = func() func(string) error {
+		validators := portquotaDescID.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(id string) error {
+			for _, fn := range fns {
+				if err := fn(id); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
 	revokedidentity.Policy = privacy.NewPolicies(schema.RevokedIdentity{})
 	revokedidentity.Hooks[0] = func(next ent.Mutator) ent.Mutator {
 		return ent.MutateFunc(func(ctx context.Context, m ent.Mutation) (ent.Value, error) {
@@ -985,6 +1148,223 @@ func init() {
 	revokedidentityDescID := revokedidentityFields[0].Descriptor()
 	// revokedidentity.IDValidator is a validator for the "id" field. It is called by the builders before save.
 	revokedidentity.IDValidator = revokedidentityDescID.Validators[0].(func(string) error)
+	routeMixin := schema.Route{}.Mixin()
+	route.Policy = privacy.NewPolicies(routeMixin[0], schema.Route{})
+	route.Hooks[0] = func(next ent.Mutator) ent.Mutator {
+		return ent.MutateFunc(func(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+			if err := route.Policy.EvalMutation(ctx, m); err != nil {
+				return nil, err
+			}
+			return next.Mutate(ctx, m)
+		})
+	}
+	routeMixinHooks0 := routeMixin[0].Hooks()
+
+	route.Hooks[1] = routeMixinHooks0[0]
+	routeMixinInters0 := routeMixin[0].Interceptors()
+	route.Interceptors[0] = routeMixinInters0[0]
+	routeMixinFields0 := routeMixin[0].Fields()
+	_ = routeMixinFields0
+	routeFields := schema.Route{}.Fields()
+	_ = routeFields
+	// routeDescOrgID is the schema descriptor for org_id field.
+	routeDescOrgID := routeMixinFields0[0].Descriptor()
+	// route.OrgIDValidator is a validator for the "org_id" field. It is called by the builders before save.
+	route.OrgIDValidator = routeDescOrgID.Validators[0].(func(string) error)
+	// routeDescName is the schema descriptor for name field.
+	routeDescName := routeFields[1].Descriptor()
+	// route.NameValidator is a validator for the "name" field. It is called by the builders before save.
+	route.NameValidator = func() func(string) error {
+		validators := routeDescName.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(name string) error {
+			for _, fn := range fns {
+				if err := fn(name); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// routeDescGatewayGroupID is the schema descriptor for gateway_group_id field.
+	routeDescGatewayGroupID := routeFields[3].Descriptor()
+	// route.GatewayGroupIDValidator is a validator for the "gateway_group_id" field. It is called by the builders before save.
+	route.GatewayGroupIDValidator = routeDescGatewayGroupID.Validators[0].(func(string) error)
+	// routeDescEnabled is the schema descriptor for enabled field.
+	routeDescEnabled := routeFields[4].Descriptor()
+	// route.DefaultEnabled holds the default value on creation for the enabled field.
+	route.DefaultEnabled = routeDescEnabled.Default.(bool)
+	// routeDescDescription is the schema descriptor for description field.
+	routeDescDescription := routeFields[6].Descriptor()
+	// route.DefaultDescription holds the default value on creation for the description field.
+	route.DefaultDescription = routeDescDescription.Default.(string)
+	// routeDescVersion is the schema descriptor for version field.
+	routeDescVersion := routeFields[8].Descriptor()
+	// route.DefaultVersion holds the default value on creation for the version field.
+	route.DefaultVersion = routeDescVersion.Default.(int64)
+	// route.VersionValidator is a validator for the "version" field. It is called by the builders before save.
+	route.VersionValidator = routeDescVersion.Validators[0].(func(int64) error)
+	// routeDescCreatedAt is the schema descriptor for created_at field.
+	routeDescCreatedAt := routeFields[9].Descriptor()
+	// route.DefaultCreatedAt holds the default value on creation for the created_at field.
+	route.DefaultCreatedAt = routeDescCreatedAt.Default.(func() time.Time)
+	// routeDescUpdatedAt is the schema descriptor for updated_at field.
+	routeDescUpdatedAt := routeFields[10].Descriptor()
+	// route.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	route.DefaultUpdatedAt = routeDescUpdatedAt.Default.(func() time.Time)
+	// routeDescUpdatedBy is the schema descriptor for updated_by field.
+	routeDescUpdatedBy := routeFields[11].Descriptor()
+	// route.DefaultUpdatedBy holds the default value on creation for the updated_by field.
+	route.DefaultUpdatedBy = routeDescUpdatedBy.Default.(string)
+	// routeDescID is the schema descriptor for id field.
+	routeDescID := routeFields[0].Descriptor()
+	// route.DefaultID holds the default value on creation for the id field.
+	route.DefaultID = routeDescID.Default.(func() string)
+	// route.IDValidator is a validator for the "id" field. It is called by the builders before save.
+	route.IDValidator = func() func(string) error {
+		validators := routeDescID.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(id string) error {
+			for _, fn := range fns {
+				if err := fn(id); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	routetcpMixin := schema.RouteTCP{}.Mixin()
+	routetcp.Policy = privacy.NewPolicies(routetcpMixin[0], schema.RouteTCP{})
+	routetcp.Hooks[0] = func(next ent.Mutator) ent.Mutator {
+		return ent.MutateFunc(func(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+			if err := routetcp.Policy.EvalMutation(ctx, m); err != nil {
+				return nil, err
+			}
+			return next.Mutate(ctx, m)
+		})
+	}
+	routetcpMixinHooks0 := routetcpMixin[0].Hooks()
+
+	routetcp.Hooks[1] = routetcpMixinHooks0[0]
+	routetcpMixinInters0 := routetcpMixin[0].Interceptors()
+	routetcp.Interceptors[0] = routetcpMixinInters0[0]
+	routetcpMixinFields0 := routetcpMixin[0].Fields()
+	_ = routetcpMixinFields0
+	routetcpFields := schema.RouteTCP{}.Fields()
+	_ = routetcpFields
+	// routetcpDescOrgID is the schema descriptor for org_id field.
+	routetcpDescOrgID := routetcpMixinFields0[0].Descriptor()
+	// routetcp.OrgIDValidator is a validator for the "org_id" field. It is called by the builders before save.
+	routetcp.OrgIDValidator = routetcpDescOrgID.Validators[0].(func(string) error)
+	// routetcpDescRouteID is the schema descriptor for route_id field.
+	routetcpDescRouteID := routetcpFields[0].Descriptor()
+	// routetcp.RouteIDValidator is a validator for the "route_id" field. It is called by the builders before save.
+	routetcp.RouteIDValidator = routetcpDescRouteID.Validators[0].(func(string) error)
+	// routetcpDescPortAllocationID is the schema descriptor for port_allocation_id field.
+	routetcpDescPortAllocationID := routetcpFields[1].Descriptor()
+	// routetcp.PortAllocationIDValidator is a validator for the "port_allocation_id" field. It is called by the builders before save.
+	routetcp.PortAllocationIDValidator = routetcpDescPortAllocationID.Validators[0].(func(string) error)
+	// routetcpDescIdleTimeoutSeconds is the schema descriptor for idle_timeout_seconds field.
+	routetcpDescIdleTimeoutSeconds := routetcpFields[3].Descriptor()
+	// routetcp.DefaultIdleTimeoutSeconds holds the default value on creation for the idle_timeout_seconds field.
+	routetcp.DefaultIdleTimeoutSeconds = routetcpDescIdleTimeoutSeconds.Default.(int)
+	// routetcp.IdleTimeoutSecondsValidator is a validator for the "idle_timeout_seconds" field. It is called by the builders before save.
+	routetcp.IdleTimeoutSecondsValidator = routetcpDescIdleTimeoutSeconds.Validators[0].(func(int) error)
+	routetargetMixin := schema.RouteTarget{}.Mixin()
+	routetarget.Policy = privacy.NewPolicies(routetargetMixin[0], schema.RouteTarget{})
+	routetarget.Hooks[0] = func(next ent.Mutator) ent.Mutator {
+		return ent.MutateFunc(func(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+			if err := routetarget.Policy.EvalMutation(ctx, m); err != nil {
+				return nil, err
+			}
+			return next.Mutate(ctx, m)
+		})
+	}
+	routetargetMixinHooks0 := routetargetMixin[0].Hooks()
+
+	routetarget.Hooks[1] = routetargetMixinHooks0[0]
+	routetargetMixinInters0 := routetargetMixin[0].Interceptors()
+	routetarget.Interceptors[0] = routetargetMixinInters0[0]
+	routetargetMixinFields0 := routetargetMixin[0].Fields()
+	_ = routetargetMixinFields0
+	routetargetFields := schema.RouteTarget{}.Fields()
+	_ = routetargetFields
+	// routetargetDescOrgID is the schema descriptor for org_id field.
+	routetargetDescOrgID := routetargetMixinFields0[0].Descriptor()
+	// routetarget.OrgIDValidator is a validator for the "org_id" field. It is called by the builders before save.
+	routetarget.OrgIDValidator = routetargetDescOrgID.Validators[0].(func(string) error)
+	// routetargetDescRouteID is the schema descriptor for route_id field.
+	routetargetDescRouteID := routetargetFields[1].Descriptor()
+	// routetarget.RouteIDValidator is a validator for the "route_id" field. It is called by the builders before save.
+	routetarget.RouteIDValidator = routetargetDescRouteID.Validators[0].(func(string) error)
+	// routetargetDescConnectorID is the schema descriptor for connector_id field.
+	routetargetDescConnectorID := routetargetFields[2].Descriptor()
+	// routetarget.ConnectorIDValidator is a validator for the "connector_id" field. It is called by the builders before save.
+	routetarget.ConnectorIDValidator = routetargetDescConnectorID.Validators[0].(func(string) error)
+	// routetargetDescHost is the schema descriptor for host field.
+	routetargetDescHost := routetargetFields[4].Descriptor()
+	// routetarget.DefaultHost holds the default value on creation for the host field.
+	routetarget.DefaultHost = routetargetDescHost.Default.(string)
+	// routetargetDescPort is the schema descriptor for port field.
+	routetargetDescPort := routetargetFields[5].Descriptor()
+	// routetarget.DefaultPort holds the default value on creation for the port field.
+	routetarget.DefaultPort = routetargetDescPort.Default.(int)
+	// routetarget.PortValidator is a validator for the "port" field. It is called by the builders before save.
+	routetarget.PortValidator = routetargetDescPort.Validators[0].(func(int) error)
+	// routetargetDescUnixPath is the schema descriptor for unix_path field.
+	routetargetDescUnixPath := routetargetFields[6].Descriptor()
+	// routetarget.DefaultUnixPath holds the default value on creation for the unix_path field.
+	routetarget.DefaultUnixPath = routetargetDescUnixPath.Default.(string)
+	// routetargetDescTLSServerName is the schema descriptor for tls_server_name field.
+	routetargetDescTLSServerName := routetargetFields[8].Descriptor()
+	// routetarget.DefaultTLSServerName holds the default value on creation for the tls_server_name field.
+	routetarget.DefaultTLSServerName = routetargetDescTLSServerName.Default.(string)
+	// routetargetDescTLSSpkiSha256 is the schema descriptor for tls_spki_sha256 field.
+	routetargetDescTLSSpkiSha256 := routetargetFields[9].Descriptor()
+	// routetarget.DefaultTLSSpkiSha256 holds the default value on creation for the tls_spki_sha256 field.
+	routetarget.DefaultTLSSpkiSha256 = routetargetDescTLSSpkiSha256.Default.(string)
+	// routetargetDescWeight is the schema descriptor for weight field.
+	routetargetDescWeight := routetargetFields[11].Descriptor()
+	// routetarget.DefaultWeight holds the default value on creation for the weight field.
+	routetarget.DefaultWeight = routetargetDescWeight.Default.(int)
+	// routetarget.WeightValidator is a validator for the "weight" field. It is called by the builders before save.
+	routetarget.WeightValidator = routetargetDescWeight.Validators[0].(func(int) error)
+	// routetargetDescPriority is the schema descriptor for priority field.
+	routetargetDescPriority := routetargetFields[12].Descriptor()
+	// routetarget.DefaultPriority holds the default value on creation for the priority field.
+	routetarget.DefaultPriority = routetargetDescPriority.Default.(int)
+	// routetarget.PriorityValidator is a validator for the "priority" field. It is called by the builders before save.
+	routetarget.PriorityValidator = routetargetDescPriority.Validators[0].(func(int) error)
+	// routetargetDescEnabled is the schema descriptor for enabled field.
+	routetargetDescEnabled := routetargetFields[13].Descriptor()
+	// routetarget.DefaultEnabled holds the default value on creation for the enabled field.
+	routetarget.DefaultEnabled = routetargetDescEnabled.Default.(bool)
+	// routetargetDescID is the schema descriptor for id field.
+	routetargetDescID := routetargetFields[0].Descriptor()
+	// routetarget.DefaultID holds the default value on creation for the id field.
+	routetarget.DefaultID = routetargetDescID.Default.(func() string)
+	// routetarget.IDValidator is a validator for the "id" field. It is called by the builders before save.
+	routetarget.IDValidator = func() func(string) error {
+		validators := routetargetDescID.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(id string) error {
+			for _, fn := range fns {
+				if err := fn(id); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
 	secretmetaMixin := schema.SecretMeta{}.Mixin()
 	secretmeta.Policy = privacy.NewPolicies(secretmetaMixin[0], schema.SecretMeta{})
 	secretmeta.Hooks[0] = func(next ent.Mutator) ent.Mutator {
