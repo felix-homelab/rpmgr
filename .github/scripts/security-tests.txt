@@ -6,7 +6,7 @@
 # names clauses that other slices or later phases add.
 
 TestNoReplayableHandshake	done	2.10	#54
-TestRejectsUnpinnedCA	done	3.8	#63	enrollment clause done; session clauses in 3.9 (control) and 4.10 (data)
+TestRejectsUnpinnedCA	done	3.8	#63	enrollment (3.8) and control-session (3.9, internal/itest) clauses done; data-session clause in 4.10
 TestRelaySeesCiphertextOnly	p2	-	-	private services
 TestTokenScopesBoundedByCreator	pending	7.7	#112
 TestShellRequiresOwnershipGrantAndOptIn	p3	-	-	remote shell
