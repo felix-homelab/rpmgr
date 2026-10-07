@@ -57,7 +57,7 @@ func TestEveryCommandHasHelp(t *testing.T) {
 func TestUnimplementedCommandsReportIt(t *testing.T) {
 	for _, args := range [][]string{
 		{"controller"}, {"controller", "--config", "/tmp/c.yaml"}, {"all-in-one", "init"},
-		{"gateway"}, {"connector"}, {"all-in-one"}, {"enroll"}, {"policy", "show"}, {"ca", "status"},
+		{"gateway"}, {"connector"}, {"all-in-one"}, {"leave"}, {"policy", "show"}, {"ca", "status"},
 	} {
 		code, _, stderr := runRpmgr(args...)
 		if code != cli.ExitUsage || !strings.Contains(stderr, "not available in this build") {
@@ -92,6 +92,28 @@ func TestControllerInit(t *testing.T) {
 	code, _, stderr = runRpmgr("controller", "init", "--config", filepath.Join(dir, "missing.yaml"))
 	if code != cli.ExitError || !strings.Contains(stderr, "--public-url is needed") {
 		t.Errorf("init without boot file or URL: exit %d, stderr %q", code, stderr)
+	}
+}
+
+// TestEnrollCommand: the token never comes from the command line, the controller and the pin are
+// required, and a malformed token or pin fails before any connection.
+func TestEnrollCommand(t *testing.T) {
+	for _, name := range []string{"token", "t", "enrollment-token"} {
+		if code, _, _ := runRpmgr("enroll", "--"+name, "x"); code != cli.ExitUsage {
+			t.Errorf("rpmgr enroll --%s: exit %d; a token on the command line must be refused", name, code)
+		}
+	}
+	if code, _, stderr := runRpmgr("enroll", "--controller", "https://p.example"); code != cli.ExitUsage || !strings.Contains(stderr, "--ca-pin") {
+		t.Errorf("without --ca-pin: exit %d, %q", code, stderr)
+	}
+	tokenFile := filepath.Join(t.TempDir(), "token")
+	if err := os.WriteFile(tokenFile, []byte("rpmgr_enr_not-a-token\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	code, _, stderr := runRpmgr("enroll", "--controller", "https://127.0.0.1:1", "--ca-pin", "sha256:"+strings.Repeat("A", 43)+"=",
+		"--token-file", tokenFile, "--identity-dir", filepath.Join(t.TempDir(), "id"))
+	if code != cli.ExitError || !strings.Contains(stderr, "malformed or mistyped") {
+		t.Errorf("a malformed token: exit %d, %q", code, stderr)
 	}
 }
 

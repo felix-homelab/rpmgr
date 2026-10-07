@@ -6,14 +6,14 @@
 # names clauses that other slices or later phases add.
 
 TestNoReplayableHandshake	done	2.10	#54
-TestRejectsUnpinnedCA	pending	3.8	#63	session clauses in 3.9 (control) and 4.10 (data)
+TestRejectsUnpinnedCA	done	3.8	#63	enrollment clause done; session clauses in 3.9 (control) and 4.10 (data)
 TestRelaySeesCiphertextOnly	p2	-	-	private services
 TestTokenScopesBoundedByCreator	pending	7.7	#112
 TestShellRequiresOwnershipGrantAndOptIn	p3	-	-	remote shell
 TestUnverifiedDomainRejected	pending	8.5a	#119
 TestBadSnapshotKeepsLastKnownGood	pending	3.11	#66	traffic clause in 4.13
 TestSecretsNeverLogged	pending	9.6	#138
-TestEnroll_BundleWithExtraRootRejected	pending	3.8	#63
+TestEnroll_BundleWithExtraRootRejected	done	3.8	#63
 TestH2_ConnectorInitiatedStreams	pending	4.4	#74	CONTROL_PASSTHROUGH clause in 5.13; RELAY_OUT clause in P2 (private services)
 TestTLS_WrongGatewayIDRejected	pending	4.10	#80
 TestDenyList_AppliedDespiteRejectedSnapshot	pending	3.13	#68

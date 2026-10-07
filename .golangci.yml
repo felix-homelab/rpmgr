@@ -55,9 +55,9 @@ linters:
       - path: internal/store/
         text: DecisionContext
         linters: [forbidigo]
-      # Tests start subprocesses and write fixtures with ordinary modes.
+      # Tests start subprocesses, write fixtures with ordinary modes and read the files they wrote.
       - path: _test\.go$
-        text: "G(204|301|306)"
+        text: "G(204|301|304|306)"
         linters: [gosec]
 
 run:

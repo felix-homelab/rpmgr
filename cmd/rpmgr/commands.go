@@ -26,7 +26,7 @@ func commands() *cli.Command {
 			role("connector", "run a connector: data sessions to gateways and the local targets"),
 			role("all-in-one", "run a controller and a gateway in one process",
 				&cli.Command{Name: "init", Summary: "initialise an all-in-one installation", Run: cli.NotAvailable}),
-			{Name: "enroll", Summary: "enroll this host as an agent with a single-use token", Run: cli.NotAvailable},
+			enrollCommand(),
 			{Name: "leave", Summary: "revoke this agent's identity and remove it from the host", Run: cli.NotAvailable},
 			{Name: "status", Summary: "show the state of the agent on this host", Run: cli.NotAvailable},
 			group("diag", "diagnose this host",
