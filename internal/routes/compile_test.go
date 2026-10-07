@@ -88,6 +88,11 @@ func (f *fleet) compile(t *testing.T, kind pki.Kind, id string) []*agentv1.Resou
 	return snap.GetResources()
 }
 
+// routesOf keeps the ConnectorRoute resources.
+func routesOf(rs []*agentv1.Resource) []*agentv1.Resource {
+	return slices.DeleteFunc(rs, func(r *agentv1.Resource) bool { return r.GetConnectorRoute() == nil })
+}
+
 func TestCompile_GatewayTCP(t *testing.T) {
 	storetest.ForEachDialect(t, func(t *testing.T, db *store.DB) {
 		f := newFleet(t, db)
@@ -112,7 +117,7 @@ func TestCompile_GatewayTCP(t *testing.T) {
 func TestCompile_ConnectorRoutes(t *testing.T) {
 	storetest.ForEachDialect(t, func(t *testing.T, db *store.DB) {
 		f := newFleet(t, db)
-		rs := f.compile(t, pki.KindConnector, f.c1)
+		rs := routesOf(f.compile(t, pki.KindConnector, f.c1))
 		ids := []string{f.r1, f.rOther}
 		slices.Sort(ids)
 		if len(rs) != 2 || rs[0].GetId() != ids[0] || rs[1].GetId() != ids[1] {
@@ -169,10 +174,75 @@ func TestCompile_TargetOrder(t *testing.T) {
 		c.RouteTarget.Create().SetOrgID(f.orgA).SetRouteID(f.r1).SetConnectorID(f.c2).SetKind("unix").SetUnixPath("/run/a.sock").
 			SetPriority(p).ExecX(f.sys)
 	}
-	for _, r := range f.compile(t, pki.KindConnector, f.c2) {
+	for _, r := range routesOf(f.compile(t, pki.KindConnector, f.c2)) {
 		ts := r.GetConnectorRoute().GetTargets()
 		if !slices.IsSortedFunc(ts, func(x, y *agentv1.Target) int { return int(x.GetPriority()) - int(y.GetPriority()) }) || len(ts) != 4 {
 			t.Fatalf("targets %v", ts)
 		}
 	}
+}
+
+// TestCompile_ConnectorGateways: a connector gets the enabled gateways of its routes' groups, with
+// those routes and their effective transports; decommissioned and disabled gateways are left out.
+func TestCompile_ConnectorGateways(t *testing.T) {
+	storetest.ForEachDialect(t, func(t *testing.T, db *store.DB) {
+		f := newFleet(t, db)
+		c := db.Client()
+		otherGroup := c.Route.GetX(f.sys, f.rOther).GatewayGroupID
+		gw2 := c.Gateway.Create().SetOrgID(f.orgA).SetGatewayGroupID(otherGroup).SetName("gw2").SetSlot(1).
+			SetTunnelEndpoints([]string{"gw2.example:443", "[2001:db8::2]:443"}).SaveX(f.sys).ID
+		c.Gateway.Create().SetOrgID(f.orgA).SetGatewayGroupID(f.groupA).SetName("gone").SetSlot(2).
+			SetTunnelEndpoints([]string{"gone.example:443"}).SetDecommissionedAt(time.Now()).ExecX(f.sys)
+		c.Gateway.Create().SetOrgID(f.orgA).SetGatewayGroupID(f.groupA).SetName("off").SetSlot(3).
+			SetTunnelEndpoints([]string{"off.example:443"}).SetEnabled(false).ExecX(f.sys)
+
+		gateways := func(con string) map[string]*agentv1.ConnectorGateway {
+			t.Helper()
+			out := map[string]*agentv1.ConnectorGateway{}
+			for _, r := range f.compile(t, pki.KindConnector, con) {
+				if g := r.GetConnectorGateway(); g != nil {
+					out[r.GetId()] = g
+				}
+			}
+			return out
+		}
+		got := gateways(f.c1)
+		if len(got) != 2 || got[f.gateway] == nil || got[gw2] == nil {
+			t.Fatalf("gateways %v, want gw1 and gw2", got)
+		}
+		auto := []agentv1.TransportPolicy{agentv1.TransportPolicy_TRANSPORT_POLICY_AUTO}
+		if g := got[f.gateway]; !slices.Equal(g.GetRoutes(), []string{f.r1}) || !slices.Equal(g.GetTransports(), auto) ||
+			!slices.Equal(g.GetTunnelEndpoints(), []string{"gw1.example:443"}) {
+			t.Fatalf("gw1 %v", g)
+		}
+		if g := got[gw2]; !slices.Equal(g.GetRoutes(), []string{f.rOther}) || len(g.GetTunnelEndpoints()) != 2 {
+			t.Fatalf("gw2 %v", g)
+		}
+		if got := gateways(f.c2); len(got) != 1 || got[f.gateway] == nil {
+			t.Fatalf("c2 gets %v, want only gw1", got)
+		}
+		if got := gateways(f.c3); len(got) != 0 {
+			t.Fatalf("a disabled connector gets %v", got)
+		}
+
+		// A second route on the group, pinned to quic, next to r1 pinned to h2: both sessions.
+		c.Route.UpdateOneID(f.r1).SetTransport("h2").ExecX(f.sys)
+		pinned := c.Route.Create().SetOrgID(f.orgA).SetName("pinned").SetType("tcp").SetGatewayGroupID(f.groupA).
+			SetTransport("quic").SaveX(f.sys).ID
+		c.RouteTarget.Create().SetOrgID(f.orgA).SetRouteID(pinned).SetConnectorID(f.c1).SetKind("address").SetHost("10.0.0.6").
+			SetPort(22).ExecX(f.sys)
+		g := gateways(f.c1)[f.gateway]
+		want := []string{f.r1, pinned}
+		slices.Sort(want)
+		if !slices.Equal(g.GetRoutes(), want) || !slices.Equal(g.GetTransports(),
+			[]agentv1.TransportPolicy{agentv1.TransportPolicy_TRANSPORT_POLICY_QUIC, agentv1.TransportPolicy_TRANSPORT_POLICY_H2}) {
+			t.Fatalf("gw1 %v", g)
+		}
+
+		// No route left: no gateway.
+		c.RouteTarget.Update().SetEnabled(false).ExecX(f.sys)
+		if got := gateways(f.c1); len(got) != 0 {
+			t.Fatalf("without a route: %v", got)
+		}
+	})
 }

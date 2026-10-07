@@ -4,6 +4,7 @@ package routes
 
 import (
 	"context"
+	"maps"
 	"slices"
 	"strings"
 
@@ -14,6 +15,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/snapshot"
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/connector"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/gateway"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/route"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routetarget"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routetcp"
@@ -22,7 +24,7 @@ import (
 // Sources are the snapshot sources of the route types implemented so far (docs/03-connections.md,
 // "Configuration reconciliation").
 func Sources() []snapshot.Source {
-	return []snapshot.Source{GatewayTCP, ConnectorRoutes}
+	return []snapshot.Source{GatewayTCP, ConnectorRoutes, ConnectorGateways}
 }
 
 // GatewayTCP compiles a gateway's tcp routes: every enabled tcp route of its gateway group with a
@@ -76,27 +78,39 @@ func serving(ctx context.Context, tx *ent.Tx, routeID string) ([]string, error) 
 	return slices.Compact(targets), nil
 }
 
+// connectorTargets loads the connector a for ConnectorRoutes and ConnectorGateways, its enabled
+// targets on enabled tcp routes, with the routes, and the instance settings. con is nil for any
+// other agent and for a disabled or decommissioned connector, which serve nothing.
+func connectorTargets(ctx context.Context, tx *ent.Tx, a snapshot.Agent) (con *ent.Connector, targets []*ent.RouteTarget,
+	inst *rpmgrv1.InstanceSettings, err error) {
+	if a.Identity.Kind != pki.KindConnector {
+		return nil, nil, nil, nil
+	}
+	con, err = tx.Connector.Get(ctx, a.Identity.ID)
+	if ent.IsNotFound(err) {
+		return nil, nil, nil, nil
+	}
+	if err != nil || !con.Enabled || con.DecommissionedAt != nil {
+		return nil, nil, nil, err
+	}
+	targets, err = tx.RouteTarget.Query().Where(routetarget.ConnectorID(con.ID), routetarget.Enabled(true),
+		routetarget.HasRouteWith(route.Enabled(true), route.TypeEQ(route.TypeTCP))).WithRoute().All(ctx)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	inst, _, err = settings.Instance(ctx, tx.Client())
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	return con, targets, inst, nil
+}
+
 // ConnectorRoutes compiles a connector's routes: for every enabled tcp route with an enabled
 // target on it, its targets and the effective transport. A disabled or decommissioned connector
 // gets none.
 func ConnectorRoutes(ctx context.Context, tx *ent.Tx, a snapshot.Agent) ([]*agentv1.Resource, error) {
-	if a.Identity.Kind != pki.KindConnector {
-		return nil, nil
-	}
-	con, err := tx.Connector.Get(ctx, a.Identity.ID)
-	if ent.IsNotFound(err) {
-		return nil, nil
-	}
-	if err != nil || !con.Enabled || con.DecommissionedAt != nil {
-		return nil, err
-	}
-	targets, err := tx.RouteTarget.Query().Where(routetarget.ConnectorID(con.ID), routetarget.Enabled(true),
-		routetarget.HasRouteWith(route.Enabled(true), route.TypeEQ(route.TypeTCP))).WithRoute().All(ctx)
-	if err != nil {
-		return nil, err
-	}
-	inst, _, err := settings.Instance(ctx, tx.Client())
-	if err != nil {
+	con, targets, inst, err := connectorTargets(ctx, tx, a)
+	if con == nil || err != nil {
 		return nil, err
 	}
 	byRoute := map[string]*agentv1.ConnectorRoute{}
@@ -123,6 +137,46 @@ func ConnectorRoutes(ctx context.Context, tx *ent.Tx, a snapshot.Agent) ([]*agen
 			return strings.Compare(x.Id, y.Id)
 		})
 		out = append(out, &agentv1.Resource{Id: id, Kind: &agentv1.Resource_ConnectorRoute{ConnectorRoute: cr}})
+	}
+	return out, nil
+}
+
+// ConnectorGateways compiles the gateways a connector keeps data sessions to: every enabled
+// gateway, not decommissioned, of the groups of the routes ConnectorRoutes compiles, with the
+// effective transports and the IDs of those routes (docs/03-connections.md, "Multiple gateways").
+func ConnectorGateways(ctx context.Context, tx *ent.Tx, a snapshot.Agent) ([]*agentv1.Resource, error) {
+	con, targets, inst, err := connectorTargets(ctx, tx, a)
+	if con == nil || err != nil {
+		return nil, err
+	}
+	type need struct {
+		transports map[agentv1.TransportPolicy]bool
+		routes     map[string]bool
+	}
+	byGroup := map[string]*need{}
+	for _, t := range targets {
+		r := t.Edges.Route
+		n := byGroup[r.GatewayGroupID]
+		if n == nil {
+			n = &need{transports: map[agentv1.TransportPolicy]bool{}, routes: map[string]bool{}}
+			byGroup[r.GatewayGroupID] = n
+		}
+		n.transports[effective(r, con, inst)] = true
+		n.routes[r.ID] = true
+	}
+	if len(byGroup) == 0 {
+		return nil, nil
+	}
+	gws, err := tx.Gateway.Query().Where(gateway.GatewayGroupIDIn(slices.Collect(maps.Keys(byGroup))...), gateway.Enabled(true),
+		gateway.DecommissionedAtIsNil()).Order(ent.Asc(gateway.FieldID)).All(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]*agentv1.Resource, 0, len(gws))
+	for _, gw := range gws {
+		n := byGroup[gw.GatewayGroupID]
+		out = append(out, &agentv1.Resource{Id: gw.ID, Kind: &agentv1.Resource_ConnectorGateway{ConnectorGateway: &agentv1.ConnectorGateway{
+			TunnelEndpoints: gw.TunnelEndpoints, Transports: slices.Sorted(maps.Keys(n.transports)), Routes: slices.Sorted(maps.Keys(n.routes))}}})
 	}
 	return out, nil
 }
