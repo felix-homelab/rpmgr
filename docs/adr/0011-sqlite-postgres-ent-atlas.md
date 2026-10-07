@@ -1,6 +1,6 @@
 # ADR-0011: SQLite by default, PostgreSQL for HA, Ent with Atlas migrations
 
-Status: Proposed (design phase) · Date: 2026-10-06
+Status: Accepted (spikes S5 and S8, 2026-10-06) · Date: 2026-10-06
 
 ## Context
 
