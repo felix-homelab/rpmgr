@@ -5,6 +5,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"errors"
 	"os/exec"
 	"path/filepath"
 	"runtime"
@@ -94,7 +95,8 @@ func TestVersionFromLinkerFlags(t *testing.T) {
 	if testing.Short() {
 		t.Skip("builds the binary")
 	}
-	goTool, err := exec.LookPath(filepath.Join(runtime.GOROOT(), "bin", "go"))
+	// go test puts its own go command first in PATH.
+	goTool, err := exec.LookPath("go")
 	if err != nil {
 		t.Skipf("go tool not found: %v", err)
 	}
@@ -114,9 +116,8 @@ func TestVersionFromLinkerFlags(t *testing.T) {
 	if string(out) != want {
 		t.Errorf("rpmgr version = %q, want %q", out, want)
 	}
-	if err := exec.Command(bin).Run(); err == nil {
-		t.Error("rpmgr without a command exited 0, want 2")
-	} else if ee, ok := err.(*exec.ExitError); !ok || ee.ExitCode() != cli.ExitUsage {
+	var exitErr *exec.ExitError
+	if err := exec.Command(bin).Run(); !errors.As(err, &exitErr) || exitErr.ExitCode() != cli.ExitUsage {
 		t.Errorf("rpmgr without a command: %v, want exit code %d", err, cli.ExitUsage)
 	}
 }

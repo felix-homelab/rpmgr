@@ -161,7 +161,9 @@ func (c *Command) writeHelp(w io.Writer, path []string) {
 		for _, s := range subs {
 			fmt.Fprintf(tw, "  %s\t%s\n", s.Name, s.Summary)
 		}
-		tw.Flush()
+		if err := tw.Flush(); err != nil {
+			return
+		}
 		fmt.Fprintf(w, "\nRun '%s <command> --help' for the flags of a command.\n", name)
 	}
 	if hasFlags {
