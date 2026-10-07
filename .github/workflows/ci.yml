@@ -33,6 +33,9 @@ jobs:
       - name: Workflows
         if: ${{ !cancelled() }}
         run: .github/scripts/check-workflows.sh
+      - name: Security regression tests registered (D61)
+        if: ${{ !cancelled() }}
+        run: .github/scripts/check-security-tests.sh
       - name: Tests of the repository checks
         if: ${{ !cancelled() }}
         env:

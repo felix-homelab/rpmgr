@@ -110,6 +110,8 @@ Process in CONTRIBUTING, "Spikes"; questions, methods, pass criteria and the pre
 - Generated Go code (protobuf, gRPC, ConnectRPC, Ent) is committed and checked for drift by CI.
 - Test keys, seeding and fault hooks live only behind the build tag `rpmgrtest`, which release
   builds refuse (D60).
+- A PR that implements a named security regression test of 12 marks it `done` in
+  `.github/scripts/security-tests.txt`; CI fails otherwise (D61).
 
 ## Definition of done
 
