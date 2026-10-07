@@ -33,7 +33,13 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/lease"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/org"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/orgsetting"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/portallocation"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/portpool"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/portquota"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/revokedidentity"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/route"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/routetarget"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/routetcp"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/secretmeta"
 
 	stdsql "database/sql"
@@ -80,8 +86,20 @@ type Client struct {
 	Org *OrgClient
 	// OrgSetting is the client for interacting with the OrgSetting builders.
 	OrgSetting *OrgSettingClient
+	// PortAllocation is the client for interacting with the PortAllocation builders.
+	PortAllocation *PortAllocationClient
+	// PortPool is the client for interacting with the PortPool builders.
+	PortPool *PortPoolClient
+	// PortQuota is the client for interacting with the PortQuota builders.
+	PortQuota *PortQuotaClient
 	// RevokedIdentity is the client for interacting with the RevokedIdentity builders.
 	RevokedIdentity *RevokedIdentityClient
+	// Route is the client for interacting with the Route builders.
+	Route *RouteClient
+	// RouteTCP is the client for interacting with the RouteTCP builders.
+	RouteTCP *RouteTCPClient
+	// RouteTarget is the client for interacting with the RouteTarget builders.
+	RouteTarget *RouteTargetClient
 	// SecretMeta is the client for interacting with the SecretMeta builders.
 	SecretMeta *SecretMetaClient
 }
@@ -113,7 +131,13 @@ func (c *Client) init() {
 	c.Lease = NewLeaseClient(c.config)
 	c.Org = NewOrgClient(c.config)
 	c.OrgSetting = NewOrgSettingClient(c.config)
+	c.PortAllocation = NewPortAllocationClient(c.config)
+	c.PortPool = NewPortPoolClient(c.config)
+	c.PortQuota = NewPortQuotaClient(c.config)
 	c.RevokedIdentity = NewRevokedIdentityClient(c.config)
+	c.Route = NewRouteClient(c.config)
+	c.RouteTCP = NewRouteTCPClient(c.config)
+	c.RouteTarget = NewRouteTargetClient(c.config)
 	c.SecretMeta = NewSecretMetaClient(c.config)
 }
 
@@ -225,7 +249,13 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		Lease:             NewLeaseClient(cfg),
 		Org:               NewOrgClient(cfg),
 		OrgSetting:        NewOrgSettingClient(cfg),
+		PortAllocation:    NewPortAllocationClient(cfg),
+		PortPool:          NewPortPoolClient(cfg),
+		PortQuota:         NewPortQuotaClient(cfg),
 		RevokedIdentity:   NewRevokedIdentityClient(cfg),
+		Route:             NewRouteClient(cfg),
+		RouteTCP:          NewRouteTCPClient(cfg),
+		RouteTarget:       NewRouteTargetClient(cfg),
 		SecretMeta:        NewSecretMetaClient(cfg),
 	}, nil
 }
@@ -264,7 +294,13 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		Lease:             NewLeaseClient(cfg),
 		Org:               NewOrgClient(cfg),
 		OrgSetting:        NewOrgSettingClient(cfg),
+		PortAllocation:    NewPortAllocationClient(cfg),
+		PortPool:          NewPortPoolClient(cfg),
+		PortQuota:         NewPortQuotaClient(cfg),
 		RevokedIdentity:   NewRevokedIdentityClient(cfg),
+		Route:             NewRouteClient(cfg),
+		RouteTCP:          NewRouteTCPClient(cfg),
+		RouteTarget:       NewRouteTargetClient(cfg),
 		SecretMeta:        NewSecretMetaClient(cfg),
 	}, nil
 }
@@ -298,7 +334,8 @@ func (c *Client) Use(hooks ...Hook) {
 		c.AgentSession, c.AgentState, c.AuditEntry, c.AuditHead, c.CAKey,
 		c.CompiledSnapshot, c.ConfigRevision, c.ConfigSeq, c.Connector,
 		c.EnrollmentToken, c.Gateway, c.GatewayGroup, c.Instance, c.InstanceSetting,
-		c.IssuedCertificate, c.Lease, c.Org, c.OrgSetting, c.RevokedIdentity,
+		c.IssuedCertificate, c.Lease, c.Org, c.OrgSetting, c.PortAllocation,
+		c.PortPool, c.PortQuota, c.RevokedIdentity, c.Route, c.RouteTCP, c.RouteTarget,
 		c.SecretMeta,
 	} {
 		n.Use(hooks...)
@@ -312,7 +349,8 @@ func (c *Client) Intercept(interceptors ...Interceptor) {
 		c.AgentSession, c.AgentState, c.AuditEntry, c.AuditHead, c.CAKey,
 		c.CompiledSnapshot, c.ConfigRevision, c.ConfigSeq, c.Connector,
 		c.EnrollmentToken, c.Gateway, c.GatewayGroup, c.Instance, c.InstanceSetting,
-		c.IssuedCertificate, c.Lease, c.Org, c.OrgSetting, c.RevokedIdentity,
+		c.IssuedCertificate, c.Lease, c.Org, c.OrgSetting, c.PortAllocation,
+		c.PortPool, c.PortQuota, c.RevokedIdentity, c.Route, c.RouteTCP, c.RouteTarget,
 		c.SecretMeta,
 	} {
 		n.Intercept(interceptors...)
@@ -358,8 +396,20 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.Org.mutate(ctx, m)
 	case *OrgSettingMutation:
 		return c.OrgSetting.mutate(ctx, m)
+	case *PortAllocationMutation:
+		return c.PortAllocation.mutate(ctx, m)
+	case *PortPoolMutation:
+		return c.PortPool.mutate(ctx, m)
+	case *PortQuotaMutation:
+		return c.PortQuota.mutate(ctx, m)
 	case *RevokedIdentityMutation:
 		return c.RevokedIdentity.mutate(ctx, m)
+	case *RouteMutation:
+		return c.Route.mutate(ctx, m)
+	case *RouteTCPMutation:
+		return c.RouteTCP.mutate(ctx, m)
+	case *RouteTargetMutation:
+		return c.RouteTarget.mutate(ctx, m)
 	case *SecretMetaMutation:
 		return c.SecretMeta.mutate(ctx, m)
 	default:
@@ -2873,6 +2923,459 @@ func (c *OrgSettingClient) mutate(ctx context.Context, m *OrgSettingMutation) (V
 	}
 }
 
+// PortAllocationClient is a client for the PortAllocation schema.
+type PortAllocationClient struct {
+	config
+}
+
+// NewPortAllocationClient returns a client for the PortAllocation from the given config.
+func NewPortAllocationClient(c config) *PortAllocationClient {
+	return &PortAllocationClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `portallocation.Hooks(f(g(h())))`.
+func (c *PortAllocationClient) Use(hooks ...Hook) {
+	c.hooks.PortAllocation = append(c.hooks.PortAllocation, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `portallocation.Intercept(f(g(h())))`.
+func (c *PortAllocationClient) Intercept(interceptors ...Interceptor) {
+	c.inters.PortAllocation = append(c.inters.PortAllocation, interceptors...)
+}
+
+// Create returns a builder for creating a PortAllocation entity.
+func (c *PortAllocationClient) Create() *PortAllocationCreate {
+	mutation := newPortAllocationMutation(c.config, OpCreate)
+	return &PortAllocationCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of PortAllocation entities.
+func (c *PortAllocationClient) CreateBulk(builders ...*PortAllocationCreate) *PortAllocationCreateBulk {
+	return &PortAllocationCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *PortAllocationClient) MapCreateBulk(slice any, setFunc func(*PortAllocationCreate, int)) *PortAllocationCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &PortAllocationCreateBulk{err: fmt.Errorf("calling to PortAllocationClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*PortAllocationCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &PortAllocationCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for PortAllocation.
+func (c *PortAllocationClient) Update() *PortAllocationUpdate {
+	mutation := newPortAllocationMutation(c.config, OpUpdate)
+	return &PortAllocationUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *PortAllocationClient) UpdateOne(_m *PortAllocation) *PortAllocationUpdateOne {
+	mutation := newPortAllocationMutation(c.config, OpUpdateOne, withPortAllocation(_m))
+	return &PortAllocationUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *PortAllocationClient) UpdateOneID(id string) *PortAllocationUpdateOne {
+	mutation := newPortAllocationMutation(c.config, OpUpdateOne, withPortAllocationID(id))
+	return &PortAllocationUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for PortAllocation.
+func (c *PortAllocationClient) Delete() *PortAllocationDelete {
+	mutation := newPortAllocationMutation(c.config, OpDelete)
+	return &PortAllocationDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *PortAllocationClient) DeleteOne(_m *PortAllocation) *PortAllocationDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *PortAllocationClient) DeleteOneID(id string) *PortAllocationDeleteOne {
+	builder := c.Delete().Where(portallocation.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &PortAllocationDeleteOne{builder}
+}
+
+// Query returns a query builder for PortAllocation.
+func (c *PortAllocationClient) Query() *PortAllocationQuery {
+	return &PortAllocationQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypePortAllocation},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a PortAllocation entity by its id.
+func (c *PortAllocationClient) Get(ctx context.Context, id string) (*PortAllocation, error) {
+	return c.Query().Where(portallocation.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *PortAllocationClient) GetX(ctx context.Context, id string) *PortAllocation {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// QueryGroup queries the group edge of a PortAllocation.
+func (c *PortAllocationClient) QueryGroup(_m *PortAllocation) *GatewayGroupQuery {
+	query := (&GatewayGroupClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(portallocation.Table, portallocation.FieldID, id),
+			sqlgraph.To(gatewaygroup.Table, gatewaygroup.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, false, portallocation.GroupTable, portallocation.GroupColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// Hooks returns the client hooks.
+func (c *PortAllocationClient) Hooks() []Hook {
+	hooks := c.hooks.PortAllocation
+	return append(hooks[:len(hooks):len(hooks)], portallocation.Hooks[:]...)
+}
+
+// Interceptors returns the client interceptors.
+func (c *PortAllocationClient) Interceptors() []Interceptor {
+	inters := c.inters.PortAllocation
+	return append(inters[:len(inters):len(inters)], portallocation.Interceptors[:]...)
+}
+
+func (c *PortAllocationClient) mutate(ctx context.Context, m *PortAllocationMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&PortAllocationCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&PortAllocationUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&PortAllocationUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&PortAllocationDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown PortAllocation mutation op: %q", m.Op())
+	}
+}
+
+// PortPoolClient is a client for the PortPool schema.
+type PortPoolClient struct {
+	config
+}
+
+// NewPortPoolClient returns a client for the PortPool from the given config.
+func NewPortPoolClient(c config) *PortPoolClient {
+	return &PortPoolClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `portpool.Hooks(f(g(h())))`.
+func (c *PortPoolClient) Use(hooks ...Hook) {
+	c.hooks.PortPool = append(c.hooks.PortPool, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `portpool.Intercept(f(g(h())))`.
+func (c *PortPoolClient) Intercept(interceptors ...Interceptor) {
+	c.inters.PortPool = append(c.inters.PortPool, interceptors...)
+}
+
+// Create returns a builder for creating a PortPool entity.
+func (c *PortPoolClient) Create() *PortPoolCreate {
+	mutation := newPortPoolMutation(c.config, OpCreate)
+	return &PortPoolCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of PortPool entities.
+func (c *PortPoolClient) CreateBulk(builders ...*PortPoolCreate) *PortPoolCreateBulk {
+	return &PortPoolCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *PortPoolClient) MapCreateBulk(slice any, setFunc func(*PortPoolCreate, int)) *PortPoolCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &PortPoolCreateBulk{err: fmt.Errorf("calling to PortPoolClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*PortPoolCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &PortPoolCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for PortPool.
+func (c *PortPoolClient) Update() *PortPoolUpdate {
+	mutation := newPortPoolMutation(c.config, OpUpdate)
+	return &PortPoolUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *PortPoolClient) UpdateOne(_m *PortPool) *PortPoolUpdateOne {
+	mutation := newPortPoolMutation(c.config, OpUpdateOne, withPortPool(_m))
+	return &PortPoolUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *PortPoolClient) UpdateOneID(id string) *PortPoolUpdateOne {
+	mutation := newPortPoolMutation(c.config, OpUpdateOne, withPortPoolID(id))
+	return &PortPoolUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for PortPool.
+func (c *PortPoolClient) Delete() *PortPoolDelete {
+	mutation := newPortPoolMutation(c.config, OpDelete)
+	return &PortPoolDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *PortPoolClient) DeleteOne(_m *PortPool) *PortPoolDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *PortPoolClient) DeleteOneID(id string) *PortPoolDeleteOne {
+	builder := c.Delete().Where(portpool.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &PortPoolDeleteOne{builder}
+}
+
+// Query returns a query builder for PortPool.
+func (c *PortPoolClient) Query() *PortPoolQuery {
+	return &PortPoolQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypePortPool},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a PortPool entity by its id.
+func (c *PortPoolClient) Get(ctx context.Context, id string) (*PortPool, error) {
+	return c.Query().Where(portpool.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *PortPoolClient) GetX(ctx context.Context, id string) *PortPool {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// QueryGroup queries the group edge of a PortPool.
+func (c *PortPoolClient) QueryGroup(_m *PortPool) *GatewayGroupQuery {
+	query := (&GatewayGroupClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(portpool.Table, portpool.FieldID, id),
+			sqlgraph.To(gatewaygroup.Table, gatewaygroup.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, false, portpool.GroupTable, portpool.GroupColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// Hooks returns the client hooks.
+func (c *PortPoolClient) Hooks() []Hook {
+	hooks := c.hooks.PortPool
+	return append(hooks[:len(hooks):len(hooks)], portpool.Hooks[:]...)
+}
+
+// Interceptors returns the client interceptors.
+func (c *PortPoolClient) Interceptors() []Interceptor {
+	inters := c.inters.PortPool
+	return append(inters[:len(inters):len(inters)], portpool.Interceptors[:]...)
+}
+
+func (c *PortPoolClient) mutate(ctx context.Context, m *PortPoolMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&PortPoolCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&PortPoolUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&PortPoolUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&PortPoolDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown PortPool mutation op: %q", m.Op())
+	}
+}
+
+// PortQuotaClient is a client for the PortQuota schema.
+type PortQuotaClient struct {
+	config
+}
+
+// NewPortQuotaClient returns a client for the PortQuota from the given config.
+func NewPortQuotaClient(c config) *PortQuotaClient {
+	return &PortQuotaClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `portquota.Hooks(f(g(h())))`.
+func (c *PortQuotaClient) Use(hooks ...Hook) {
+	c.hooks.PortQuota = append(c.hooks.PortQuota, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `portquota.Intercept(f(g(h())))`.
+func (c *PortQuotaClient) Intercept(interceptors ...Interceptor) {
+	c.inters.PortQuota = append(c.inters.PortQuota, interceptors...)
+}
+
+// Create returns a builder for creating a PortQuota entity.
+func (c *PortQuotaClient) Create() *PortQuotaCreate {
+	mutation := newPortQuotaMutation(c.config, OpCreate)
+	return &PortQuotaCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of PortQuota entities.
+func (c *PortQuotaClient) CreateBulk(builders ...*PortQuotaCreate) *PortQuotaCreateBulk {
+	return &PortQuotaCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *PortQuotaClient) MapCreateBulk(slice any, setFunc func(*PortQuotaCreate, int)) *PortQuotaCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &PortQuotaCreateBulk{err: fmt.Errorf("calling to PortQuotaClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*PortQuotaCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &PortQuotaCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for PortQuota.
+func (c *PortQuotaClient) Update() *PortQuotaUpdate {
+	mutation := newPortQuotaMutation(c.config, OpUpdate)
+	return &PortQuotaUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *PortQuotaClient) UpdateOne(_m *PortQuota) *PortQuotaUpdateOne {
+	mutation := newPortQuotaMutation(c.config, OpUpdateOne, withPortQuota(_m))
+	return &PortQuotaUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *PortQuotaClient) UpdateOneID(id string) *PortQuotaUpdateOne {
+	mutation := newPortQuotaMutation(c.config, OpUpdateOne, withPortQuotaID(id))
+	return &PortQuotaUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for PortQuota.
+func (c *PortQuotaClient) Delete() *PortQuotaDelete {
+	mutation := newPortQuotaMutation(c.config, OpDelete)
+	return &PortQuotaDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *PortQuotaClient) DeleteOne(_m *PortQuota) *PortQuotaDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *PortQuotaClient) DeleteOneID(id string) *PortQuotaDeleteOne {
+	builder := c.Delete().Where(portquota.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &PortQuotaDeleteOne{builder}
+}
+
+// Query returns a query builder for PortQuota.
+func (c *PortQuotaClient) Query() *PortQuotaQuery {
+	return &PortQuotaQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypePortQuota},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a PortQuota entity by its id.
+func (c *PortQuotaClient) Get(ctx context.Context, id string) (*PortQuota, error) {
+	return c.Query().Where(portquota.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *PortQuotaClient) GetX(ctx context.Context, id string) *PortQuota {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// QueryGroup queries the group edge of a PortQuota.
+func (c *PortQuotaClient) QueryGroup(_m *PortQuota) *GatewayGroupQuery {
+	query := (&GatewayGroupClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(portquota.Table, portquota.FieldID, id),
+			sqlgraph.To(gatewaygroup.Table, gatewaygroup.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, false, portquota.GroupTable, portquota.GroupColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// Hooks returns the client hooks.
+func (c *PortQuotaClient) Hooks() []Hook {
+	hooks := c.hooks.PortQuota
+	return append(hooks[:len(hooks):len(hooks)], portquota.Hooks[:]...)
+}
+
+// Interceptors returns the client interceptors.
+func (c *PortQuotaClient) Interceptors() []Interceptor {
+	inters := c.inters.PortQuota
+	return append(inters[:len(inters):len(inters)], portquota.Interceptors[:]...)
+}
+
+func (c *PortQuotaClient) mutate(ctx context.Context, m *PortQuotaMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&PortQuotaCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&PortQuotaUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&PortQuotaUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&PortQuotaDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown PortQuota mutation op: %q", m.Op())
+	}
+}
+
 // RevokedIdentityClient is a client for the RevokedIdentity schema.
 type RevokedIdentityClient struct {
 	config
@@ -3005,6 +3508,491 @@ func (c *RevokedIdentityClient) mutate(ctx context.Context, m *RevokedIdentityMu
 		return (&RevokedIdentityDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
 	default:
 		return nil, fmt.Errorf("ent: unknown RevokedIdentity mutation op: %q", m.Op())
+	}
+}
+
+// RouteClient is a client for the Route schema.
+type RouteClient struct {
+	config
+}
+
+// NewRouteClient returns a client for the Route from the given config.
+func NewRouteClient(c config) *RouteClient {
+	return &RouteClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `route.Hooks(f(g(h())))`.
+func (c *RouteClient) Use(hooks ...Hook) {
+	c.hooks.Route = append(c.hooks.Route, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `route.Intercept(f(g(h())))`.
+func (c *RouteClient) Intercept(interceptors ...Interceptor) {
+	c.inters.Route = append(c.inters.Route, interceptors...)
+}
+
+// Create returns a builder for creating a Route entity.
+func (c *RouteClient) Create() *RouteCreate {
+	mutation := newRouteMutation(c.config, OpCreate)
+	return &RouteCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of Route entities.
+func (c *RouteClient) CreateBulk(builders ...*RouteCreate) *RouteCreateBulk {
+	return &RouteCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *RouteClient) MapCreateBulk(slice any, setFunc func(*RouteCreate, int)) *RouteCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &RouteCreateBulk{err: fmt.Errorf("calling to RouteClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*RouteCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &RouteCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for Route.
+func (c *RouteClient) Update() *RouteUpdate {
+	mutation := newRouteMutation(c.config, OpUpdate)
+	return &RouteUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *RouteClient) UpdateOne(_m *Route) *RouteUpdateOne {
+	mutation := newRouteMutation(c.config, OpUpdateOne, withRoute(_m))
+	return &RouteUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *RouteClient) UpdateOneID(id string) *RouteUpdateOne {
+	mutation := newRouteMutation(c.config, OpUpdateOne, withRouteID(id))
+	return &RouteUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for Route.
+func (c *RouteClient) Delete() *RouteDelete {
+	mutation := newRouteMutation(c.config, OpDelete)
+	return &RouteDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *RouteClient) DeleteOne(_m *Route) *RouteDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *RouteClient) DeleteOneID(id string) *RouteDeleteOne {
+	builder := c.Delete().Where(route.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &RouteDeleteOne{builder}
+}
+
+// Query returns a query builder for Route.
+func (c *RouteClient) Query() *RouteQuery {
+	return &RouteQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeRoute},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a Route entity by its id.
+func (c *RouteClient) Get(ctx context.Context, id string) (*Route, error) {
+	return c.Query().Where(route.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *RouteClient) GetX(ctx context.Context, id string) *Route {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// QueryGroup queries the group edge of a Route.
+func (c *RouteClient) QueryGroup(_m *Route) *GatewayGroupQuery {
+	query := (&GatewayGroupClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(route.Table, route.FieldID, id),
+			sqlgraph.To(gatewaygroup.Table, gatewaygroup.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, false, route.GroupTable, route.GroupColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// Hooks returns the client hooks.
+func (c *RouteClient) Hooks() []Hook {
+	hooks := c.hooks.Route
+	return append(hooks[:len(hooks):len(hooks)], route.Hooks[:]...)
+}
+
+// Interceptors returns the client interceptors.
+func (c *RouteClient) Interceptors() []Interceptor {
+	inters := c.inters.Route
+	return append(inters[:len(inters):len(inters)], route.Interceptors[:]...)
+}
+
+func (c *RouteClient) mutate(ctx context.Context, m *RouteMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&RouteCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&RouteUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&RouteUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&RouteDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown Route mutation op: %q", m.Op())
+	}
+}
+
+// RouteTCPClient is a client for the RouteTCP schema.
+type RouteTCPClient struct {
+	config
+}
+
+// NewRouteTCPClient returns a client for the RouteTCP from the given config.
+func NewRouteTCPClient(c config) *RouteTCPClient {
+	return &RouteTCPClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `routetcp.Hooks(f(g(h())))`.
+func (c *RouteTCPClient) Use(hooks ...Hook) {
+	c.hooks.RouteTCP = append(c.hooks.RouteTCP, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `routetcp.Intercept(f(g(h())))`.
+func (c *RouteTCPClient) Intercept(interceptors ...Interceptor) {
+	c.inters.RouteTCP = append(c.inters.RouteTCP, interceptors...)
+}
+
+// Create returns a builder for creating a RouteTCP entity.
+func (c *RouteTCPClient) Create() *RouteTCPCreate {
+	mutation := newRouteTCPMutation(c.config, OpCreate)
+	return &RouteTCPCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of RouteTCP entities.
+func (c *RouteTCPClient) CreateBulk(builders ...*RouteTCPCreate) *RouteTCPCreateBulk {
+	return &RouteTCPCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *RouteTCPClient) MapCreateBulk(slice any, setFunc func(*RouteTCPCreate, int)) *RouteTCPCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &RouteTCPCreateBulk{err: fmt.Errorf("calling to RouteTCPClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*RouteTCPCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &RouteTCPCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for RouteTCP.
+func (c *RouteTCPClient) Update() *RouteTCPUpdate {
+	mutation := newRouteTCPMutation(c.config, OpUpdate)
+	return &RouteTCPUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *RouteTCPClient) UpdateOne(_m *RouteTCP) *RouteTCPUpdateOne {
+	mutation := newRouteTCPMutation(c.config, OpUpdateOne, withRouteTCP(_m))
+	return &RouteTCPUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *RouteTCPClient) UpdateOneID(id int) *RouteTCPUpdateOne {
+	mutation := newRouteTCPMutation(c.config, OpUpdateOne, withRouteTCPID(id))
+	return &RouteTCPUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for RouteTCP.
+func (c *RouteTCPClient) Delete() *RouteTCPDelete {
+	mutation := newRouteTCPMutation(c.config, OpDelete)
+	return &RouteTCPDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *RouteTCPClient) DeleteOne(_m *RouteTCP) *RouteTCPDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *RouteTCPClient) DeleteOneID(id int) *RouteTCPDeleteOne {
+	builder := c.Delete().Where(routetcp.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &RouteTCPDeleteOne{builder}
+}
+
+// Query returns a query builder for RouteTCP.
+func (c *RouteTCPClient) Query() *RouteTCPQuery {
+	return &RouteTCPQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeRouteTCP},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a RouteTCP entity by its id.
+func (c *RouteTCPClient) Get(ctx context.Context, id int) (*RouteTCP, error) {
+	return c.Query().Where(routetcp.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *RouteTCPClient) GetX(ctx context.Context, id int) *RouteTCP {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// QueryRoute queries the route edge of a RouteTCP.
+func (c *RouteTCPClient) QueryRoute(_m *RouteTCP) *RouteQuery {
+	query := (&RouteClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(routetcp.Table, routetcp.FieldID, id),
+			sqlgraph.To(route.Table, route.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, false, routetcp.RouteTable, routetcp.RouteColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// QueryPort queries the port edge of a RouteTCP.
+func (c *RouteTCPClient) QueryPort(_m *RouteTCP) *PortAllocationQuery {
+	query := (&PortAllocationClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(routetcp.Table, routetcp.FieldID, id),
+			sqlgraph.To(portallocation.Table, portallocation.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, false, routetcp.PortTable, routetcp.PortColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// Hooks returns the client hooks.
+func (c *RouteTCPClient) Hooks() []Hook {
+	hooks := c.hooks.RouteTCP
+	return append(hooks[:len(hooks):len(hooks)], routetcp.Hooks[:]...)
+}
+
+// Interceptors returns the client interceptors.
+func (c *RouteTCPClient) Interceptors() []Interceptor {
+	inters := c.inters.RouteTCP
+	return append(inters[:len(inters):len(inters)], routetcp.Interceptors[:]...)
+}
+
+func (c *RouteTCPClient) mutate(ctx context.Context, m *RouteTCPMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&RouteTCPCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&RouteTCPUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&RouteTCPUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&RouteTCPDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown RouteTCP mutation op: %q", m.Op())
+	}
+}
+
+// RouteTargetClient is a client for the RouteTarget schema.
+type RouteTargetClient struct {
+	config
+}
+
+// NewRouteTargetClient returns a client for the RouteTarget from the given config.
+func NewRouteTargetClient(c config) *RouteTargetClient {
+	return &RouteTargetClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `routetarget.Hooks(f(g(h())))`.
+func (c *RouteTargetClient) Use(hooks ...Hook) {
+	c.hooks.RouteTarget = append(c.hooks.RouteTarget, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `routetarget.Intercept(f(g(h())))`.
+func (c *RouteTargetClient) Intercept(interceptors ...Interceptor) {
+	c.inters.RouteTarget = append(c.inters.RouteTarget, interceptors...)
+}
+
+// Create returns a builder for creating a RouteTarget entity.
+func (c *RouteTargetClient) Create() *RouteTargetCreate {
+	mutation := newRouteTargetMutation(c.config, OpCreate)
+	return &RouteTargetCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of RouteTarget entities.
+func (c *RouteTargetClient) CreateBulk(builders ...*RouteTargetCreate) *RouteTargetCreateBulk {
+	return &RouteTargetCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *RouteTargetClient) MapCreateBulk(slice any, setFunc func(*RouteTargetCreate, int)) *RouteTargetCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &RouteTargetCreateBulk{err: fmt.Errorf("calling to RouteTargetClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*RouteTargetCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &RouteTargetCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for RouteTarget.
+func (c *RouteTargetClient) Update() *RouteTargetUpdate {
+	mutation := newRouteTargetMutation(c.config, OpUpdate)
+	return &RouteTargetUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *RouteTargetClient) UpdateOne(_m *RouteTarget) *RouteTargetUpdateOne {
+	mutation := newRouteTargetMutation(c.config, OpUpdateOne, withRouteTarget(_m))
+	return &RouteTargetUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *RouteTargetClient) UpdateOneID(id string) *RouteTargetUpdateOne {
+	mutation := newRouteTargetMutation(c.config, OpUpdateOne, withRouteTargetID(id))
+	return &RouteTargetUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for RouteTarget.
+func (c *RouteTargetClient) Delete() *RouteTargetDelete {
+	mutation := newRouteTargetMutation(c.config, OpDelete)
+	return &RouteTargetDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *RouteTargetClient) DeleteOne(_m *RouteTarget) *RouteTargetDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *RouteTargetClient) DeleteOneID(id string) *RouteTargetDeleteOne {
+	builder := c.Delete().Where(routetarget.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &RouteTargetDeleteOne{builder}
+}
+
+// Query returns a query builder for RouteTarget.
+func (c *RouteTargetClient) Query() *RouteTargetQuery {
+	return &RouteTargetQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeRouteTarget},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a RouteTarget entity by its id.
+func (c *RouteTargetClient) Get(ctx context.Context, id string) (*RouteTarget, error) {
+	return c.Query().Where(routetarget.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *RouteTargetClient) GetX(ctx context.Context, id string) *RouteTarget {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// QueryRoute queries the route edge of a RouteTarget.
+func (c *RouteTargetClient) QueryRoute(_m *RouteTarget) *RouteQuery {
+	query := (&RouteClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(routetarget.Table, routetarget.FieldID, id),
+			sqlgraph.To(route.Table, route.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, false, routetarget.RouteTable, routetarget.RouteColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// QueryConnector queries the connector edge of a RouteTarget.
+func (c *RouteTargetClient) QueryConnector(_m *RouteTarget) *ConnectorQuery {
+	query := (&ConnectorClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(routetarget.Table, routetarget.FieldID, id),
+			sqlgraph.To(connector.Table, connector.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, false, routetarget.ConnectorTable, routetarget.ConnectorColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// Hooks returns the client hooks.
+func (c *RouteTargetClient) Hooks() []Hook {
+	hooks := c.hooks.RouteTarget
+	return append(hooks[:len(hooks):len(hooks)], routetarget.Hooks[:]...)
+}
+
+// Interceptors returns the client interceptors.
+func (c *RouteTargetClient) Interceptors() []Interceptor {
+	inters := c.inters.RouteTarget
+	return append(inters[:len(inters):len(inters)], routetarget.Interceptors[:]...)
+}
+
+func (c *RouteTargetClient) mutate(ctx context.Context, m *RouteTargetMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&RouteTargetCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&RouteTargetUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&RouteTargetUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&RouteTargetDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown RouteTarget mutation op: %q", m.Op())
 	}
 }
 
@@ -3148,13 +4136,15 @@ type (
 		AgentSession, AgentState, AuditEntry, AuditHead, CAKey, CompiledSnapshot,
 		ConfigRevision, ConfigSeq, Connector, EnrollmentToken, Gateway, GatewayGroup,
 		Instance, InstanceSetting, IssuedCertificate, Lease, Org, OrgSetting,
-		RevokedIdentity, SecretMeta []ent.Hook
+		PortAllocation, PortPool, PortQuota, RevokedIdentity, Route, RouteTCP,
+		RouteTarget, SecretMeta []ent.Hook
 	}
 	inters struct {
 		AgentSession, AgentState, AuditEntry, AuditHead, CAKey, CompiledSnapshot,
 		ConfigRevision, ConfigSeq, Connector, EnrollmentToken, Gateway, GatewayGroup,
 		Instance, InstanceSetting, IssuedCertificate, Lease, Org, OrgSetting,
-		RevokedIdentity, SecretMeta []ent.Interceptor
+		PortAllocation, PortPool, PortQuota, RevokedIdentity, Route, RouteTCP,
+		RouteTarget, SecretMeta []ent.Interceptor
 	}
 )
 

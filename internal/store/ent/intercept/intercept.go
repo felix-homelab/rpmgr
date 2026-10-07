@@ -26,8 +26,14 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/lease"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/org"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/orgsetting"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/portallocation"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/portpool"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/portquota"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/predicate"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/revokedidentity"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/route"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/routetarget"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/routetcp"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/secretmeta"
 )
 
@@ -573,6 +579,87 @@ func (f TraverseOrgSetting) Traverse(ctx context.Context, q ent.Query) error {
 	return fmt.Errorf("unexpected query type %T. expect *ent.OrgSettingQuery", q)
 }
 
+// The PortAllocationFunc type is an adapter to allow the use of ordinary function as a Querier.
+type PortAllocationFunc func(context.Context, *ent.PortAllocationQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f PortAllocationFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.PortAllocationQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.PortAllocationQuery", q)
+}
+
+// The TraversePortAllocation type is an adapter to allow the use of ordinary function as Traverser.
+type TraversePortAllocation func(context.Context, *ent.PortAllocationQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraversePortAllocation) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraversePortAllocation) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.PortAllocationQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.PortAllocationQuery", q)
+}
+
+// The PortPoolFunc type is an adapter to allow the use of ordinary function as a Querier.
+type PortPoolFunc func(context.Context, *ent.PortPoolQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f PortPoolFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.PortPoolQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.PortPoolQuery", q)
+}
+
+// The TraversePortPool type is an adapter to allow the use of ordinary function as Traverser.
+type TraversePortPool func(context.Context, *ent.PortPoolQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraversePortPool) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraversePortPool) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.PortPoolQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.PortPoolQuery", q)
+}
+
+// The PortQuotaFunc type is an adapter to allow the use of ordinary function as a Querier.
+type PortQuotaFunc func(context.Context, *ent.PortQuotaQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f PortQuotaFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.PortQuotaQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.PortQuotaQuery", q)
+}
+
+// The TraversePortQuota type is an adapter to allow the use of ordinary function as Traverser.
+type TraversePortQuota func(context.Context, *ent.PortQuotaQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraversePortQuota) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraversePortQuota) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.PortQuotaQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.PortQuotaQuery", q)
+}
+
 // The RevokedIdentityFunc type is an adapter to allow the use of ordinary function as a Querier.
 type RevokedIdentityFunc func(context.Context, *ent.RevokedIdentityQuery) (ent.Value, error)
 
@@ -598,6 +685,87 @@ func (f TraverseRevokedIdentity) Traverse(ctx context.Context, q ent.Query) erro
 		return f(ctx, q)
 	}
 	return fmt.Errorf("unexpected query type %T. expect *ent.RevokedIdentityQuery", q)
+}
+
+// The RouteFunc type is an adapter to allow the use of ordinary function as a Querier.
+type RouteFunc func(context.Context, *ent.RouteQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f RouteFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.RouteQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.RouteQuery", q)
+}
+
+// The TraverseRoute type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseRoute func(context.Context, *ent.RouteQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseRoute) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseRoute) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.RouteQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.RouteQuery", q)
+}
+
+// The RouteTCPFunc type is an adapter to allow the use of ordinary function as a Querier.
+type RouteTCPFunc func(context.Context, *ent.RouteTCPQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f RouteTCPFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.RouteTCPQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.RouteTCPQuery", q)
+}
+
+// The TraverseRouteTCP type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseRouteTCP func(context.Context, *ent.RouteTCPQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseRouteTCP) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseRouteTCP) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.RouteTCPQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.RouteTCPQuery", q)
+}
+
+// The RouteTargetFunc type is an adapter to allow the use of ordinary function as a Querier.
+type RouteTargetFunc func(context.Context, *ent.RouteTargetQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f RouteTargetFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.RouteTargetQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.RouteTargetQuery", q)
+}
+
+// The TraverseRouteTarget type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseRouteTarget func(context.Context, *ent.RouteTargetQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseRouteTarget) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseRouteTarget) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.RouteTargetQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.RouteTargetQuery", q)
 }
 
 // The SecretMetaFunc type is an adapter to allow the use of ordinary function as a Querier.
@@ -666,8 +834,20 @@ func NewQuery(q ent.Query) (Query, error) {
 		return &query[*ent.OrgQuery, predicate.Org, org.OrderOption]{typ: ent.TypeOrg, tq: q}, nil
 	case *ent.OrgSettingQuery:
 		return &query[*ent.OrgSettingQuery, predicate.OrgSetting, orgsetting.OrderOption]{typ: ent.TypeOrgSetting, tq: q}, nil
+	case *ent.PortAllocationQuery:
+		return &query[*ent.PortAllocationQuery, predicate.PortAllocation, portallocation.OrderOption]{typ: ent.TypePortAllocation, tq: q}, nil
+	case *ent.PortPoolQuery:
+		return &query[*ent.PortPoolQuery, predicate.PortPool, portpool.OrderOption]{typ: ent.TypePortPool, tq: q}, nil
+	case *ent.PortQuotaQuery:
+		return &query[*ent.PortQuotaQuery, predicate.PortQuota, portquota.OrderOption]{typ: ent.TypePortQuota, tq: q}, nil
 	case *ent.RevokedIdentityQuery:
 		return &query[*ent.RevokedIdentityQuery, predicate.RevokedIdentity, revokedidentity.OrderOption]{typ: ent.TypeRevokedIdentity, tq: q}, nil
+	case *ent.RouteQuery:
+		return &query[*ent.RouteQuery, predicate.Route, route.OrderOption]{typ: ent.TypeRoute, tq: q}, nil
+	case *ent.RouteTCPQuery:
+		return &query[*ent.RouteTCPQuery, predicate.RouteTCP, routetcp.OrderOption]{typ: ent.TypeRouteTCP, tq: q}, nil
+	case *ent.RouteTargetQuery:
+		return &query[*ent.RouteTargetQuery, predicate.RouteTarget, routetarget.OrderOption]{typ: ent.TypeRouteTarget, tq: q}, nil
 	case *ent.SecretMetaQuery:
 		return &query[*ent.SecretMetaQuery, predicate.SecretMeta, secretmeta.OrderOption]{typ: ent.TypeSecretMeta, tq: q}, nil
 	default:

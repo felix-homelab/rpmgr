@@ -30,7 +30,13 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/lease"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/org"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/orgsetting"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/portallocation"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/portpool"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/portquota"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/revokedidentity"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/route"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/routetarget"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/routetcp"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/secretmeta"
 )
 
@@ -110,7 +116,13 @@ func checkColumn(t, c string) error {
 			lease.Table:             lease.ValidColumn,
 			org.Table:               org.ValidColumn,
 			orgsetting.Table:        orgsetting.ValidColumn,
+			portallocation.Table:    portallocation.ValidColumn,
+			portpool.Table:          portpool.ValidColumn,
+			portquota.Table:         portquota.ValidColumn,
 			revokedidentity.Table:   revokedidentity.ValidColumn,
+			route.Table:             route.ValidColumn,
+			routetcp.Table:          routetcp.ValidColumn,
+			routetarget.Table:       routetarget.ValidColumn,
 			secretmeta.Table:        secretmeta.ValidColumn,
 		})
 	})

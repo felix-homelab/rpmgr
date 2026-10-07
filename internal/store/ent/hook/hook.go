@@ -225,6 +225,42 @@ func (f OrgSettingFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, 
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.OrgSettingMutation", m)
 }
 
+// The PortAllocationFunc type is an adapter to allow the use of ordinary
+// function as PortAllocation mutator.
+type PortAllocationFunc func(context.Context, *ent.PortAllocationMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f PortAllocationFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.PortAllocationMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.PortAllocationMutation", m)
+}
+
+// The PortPoolFunc type is an adapter to allow the use of ordinary
+// function as PortPool mutator.
+type PortPoolFunc func(context.Context, *ent.PortPoolMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f PortPoolFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.PortPoolMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.PortPoolMutation", m)
+}
+
+// The PortQuotaFunc type is an adapter to allow the use of ordinary
+// function as PortQuota mutator.
+type PortQuotaFunc func(context.Context, *ent.PortQuotaMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f PortQuotaFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.PortQuotaMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.PortQuotaMutation", m)
+}
+
 // The RevokedIdentityFunc type is an adapter to allow the use of ordinary
 // function as RevokedIdentity mutator.
 type RevokedIdentityFunc func(context.Context, *ent.RevokedIdentityMutation) (ent.Value, error)
@@ -235,6 +271,42 @@ func (f RevokedIdentityFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Va
 		return f(ctx, mv)
 	}
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.RevokedIdentityMutation", m)
+}
+
+// The RouteFunc type is an adapter to allow the use of ordinary
+// function as Route mutator.
+type RouteFunc func(context.Context, *ent.RouteMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f RouteFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.RouteMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.RouteMutation", m)
+}
+
+// The RouteTCPFunc type is an adapter to allow the use of ordinary
+// function as RouteTCP mutator.
+type RouteTCPFunc func(context.Context, *ent.RouteTCPMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f RouteTCPFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.RouteTCPMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.RouteTCPMutation", m)
+}
+
+// The RouteTargetFunc type is an adapter to allow the use of ordinary
+// function as RouteTarget mutator.
+type RouteTargetFunc func(context.Context, *ent.RouteTargetMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f RouteTargetFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.RouteTargetMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.RouteTargetMutation", m)
 }
 
 // The SecretMetaFunc type is an adapter to allow the use of ordinary

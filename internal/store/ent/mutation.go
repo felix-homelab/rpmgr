@@ -29,8 +29,14 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/lease"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/org"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/orgsetting"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/portallocation"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/portpool"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/portquota"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/predicate"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/revokedidentity"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/route"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/routetarget"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/routetcp"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/secretmeta"
 )
 
@@ -61,7 +67,13 @@ const (
 	TypeLease             = "Lease"
 	TypeOrg               = "Org"
 	TypeOrgSetting        = "OrgSetting"
+	TypePortAllocation    = "PortAllocation"
+	TypePortPool          = "PortPool"
+	TypePortQuota         = "PortQuota"
 	TypeRevokedIdentity   = "RevokedIdentity"
+	TypeRoute             = "Route"
+	TypeRouteTCP          = "RouteTCP"
+	TypeRouteTarget       = "RouteTarget"
 	TypeSecretMeta        = "SecretMeta"
 )
 
@@ -14294,6 +14306,1960 @@ func (m *OrgSettingMutation) ResetEdge(name string) error {
 	return fmt.Errorf("unknown OrgSetting edge %s", name)
 }
 
+// PortAllocationMutation represents an operation that mutates the PortAllocation nodes in the graph.
+type PortAllocationMutation struct {
+	config
+	op            Op
+	typ           string
+	id            *string
+	org_id        *string
+	protocol      *portallocation.Protocol
+	port          *int
+	addport       *int
+	route_id      *string
+	clearedFields map[string]struct{}
+	group         *string
+	clearedgroup  bool
+	done          bool
+	oldValue      func(context.Context) (*PortAllocation, error)
+	predicates    []predicate.PortAllocation
+}
+
+var _ ent.Mutation = (*PortAllocationMutation)(nil)
+
+// portallocationOption allows management of the mutation configuration using functional options.
+type portallocationOption func(*PortAllocationMutation)
+
+// newPortAllocationMutation creates new mutation for the PortAllocation entity.
+func newPortAllocationMutation(c config, op Op, opts ...portallocationOption) *PortAllocationMutation {
+	m := &PortAllocationMutation{
+		config:        c,
+		op:            op,
+		typ:           TypePortAllocation,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withPortAllocationID sets the ID field of the mutation.
+func withPortAllocationID(id string) portallocationOption {
+	return func(m *PortAllocationMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *PortAllocation
+		)
+		m.oldValue = func(ctx context.Context) (*PortAllocation, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().PortAllocation.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withPortAllocation sets the old PortAllocation of the mutation.
+func withPortAllocation(node *PortAllocation) portallocationOption {
+	return func(m *PortAllocationMutation) {
+		m.oldValue = func(context.Context) (*PortAllocation, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m PortAllocationMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m PortAllocationMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// SetID sets the value of the id field. Note that this
+// operation is only accepted on creation of PortAllocation entities.
+func (m *PortAllocationMutation) SetID(id string) {
+	m.id = &id
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *PortAllocationMutation) ID() (id string, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *PortAllocationMutation) IDs(ctx context.Context) ([]string, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []string{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().PortAllocation.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetOrgID sets the "org_id" field.
+func (m *PortAllocationMutation) SetOrgID(s string) {
+	m.org_id = &s
+}
+
+// OrgID returns the value of the "org_id" field in the mutation.
+func (m *PortAllocationMutation) OrgID() (r string, exists bool) {
+	v := m.org_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldOrgID returns the old "org_id" field's value of the PortAllocation entity.
+// If the PortAllocation object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *PortAllocationMutation) OldOrgID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldOrgID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldOrgID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldOrgID: %w", err)
+	}
+	return oldValue.OrgID, nil
+}
+
+// ResetOrgID resets all changes to the "org_id" field.
+func (m *PortAllocationMutation) ResetOrgID() {
+	m.org_id = nil
+}
+
+// SetGatewayGroupID sets the "gateway_group_id" field.
+func (m *PortAllocationMutation) SetGatewayGroupID(s string) {
+	m.group = &s
+}
+
+// GatewayGroupID returns the value of the "gateway_group_id" field in the mutation.
+func (m *PortAllocationMutation) GatewayGroupID() (r string, exists bool) {
+	v := m.group
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldGatewayGroupID returns the old "gateway_group_id" field's value of the PortAllocation entity.
+// If the PortAllocation object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *PortAllocationMutation) OldGatewayGroupID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldGatewayGroupID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldGatewayGroupID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldGatewayGroupID: %w", err)
+	}
+	return oldValue.GatewayGroupID, nil
+}
+
+// ResetGatewayGroupID resets all changes to the "gateway_group_id" field.
+func (m *PortAllocationMutation) ResetGatewayGroupID() {
+	m.group = nil
+}
+
+// SetProtocol sets the "protocol" field.
+func (m *PortAllocationMutation) SetProtocol(po portallocation.Protocol) {
+	m.protocol = &po
+}
+
+// Protocol returns the value of the "protocol" field in the mutation.
+func (m *PortAllocationMutation) Protocol() (r portallocation.Protocol, exists bool) {
+	v := m.protocol
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldProtocol returns the old "protocol" field's value of the PortAllocation entity.
+// If the PortAllocation object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *PortAllocationMutation) OldProtocol(ctx context.Context) (v portallocation.Protocol, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldProtocol is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldProtocol requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldProtocol: %w", err)
+	}
+	return oldValue.Protocol, nil
+}
+
+// ResetProtocol resets all changes to the "protocol" field.
+func (m *PortAllocationMutation) ResetProtocol() {
+	m.protocol = nil
+}
+
+// SetPort sets the "port" field.
+func (m *PortAllocationMutation) SetPort(i int) {
+	m.port = &i
+	m.addport = nil
+}
+
+// Port returns the value of the "port" field in the mutation.
+func (m *PortAllocationMutation) Port() (r int, exists bool) {
+	v := m.port
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldPort returns the old "port" field's value of the PortAllocation entity.
+// If the PortAllocation object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *PortAllocationMutation) OldPort(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPort is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPort requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPort: %w", err)
+	}
+	return oldValue.Port, nil
+}
+
+// AddPort adds i to the "port" field.
+func (m *PortAllocationMutation) AddPort(i int) {
+	if m.addport != nil {
+		*m.addport += i
+	} else {
+		m.addport = &i
+	}
+}
+
+// AddedPort returns the value that was added to the "port" field in this mutation.
+func (m *PortAllocationMutation) AddedPort() (r int, exists bool) {
+	v := m.addport
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetPort resets all changes to the "port" field.
+func (m *PortAllocationMutation) ResetPort() {
+	m.port = nil
+	m.addport = nil
+}
+
+// SetRouteID sets the "route_id" field.
+func (m *PortAllocationMutation) SetRouteID(s string) {
+	m.route_id = &s
+}
+
+// RouteID returns the value of the "route_id" field in the mutation.
+func (m *PortAllocationMutation) RouteID() (r string, exists bool) {
+	v := m.route_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRouteID returns the old "route_id" field's value of the PortAllocation entity.
+// If the PortAllocation object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *PortAllocationMutation) OldRouteID(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRouteID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRouteID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRouteID: %w", err)
+	}
+	return oldValue.RouteID, nil
+}
+
+// ClearRouteID clears the value of the "route_id" field.
+func (m *PortAllocationMutation) ClearRouteID() {
+	m.route_id = nil
+	m.clearedFields[portallocation.FieldRouteID] = struct{}{}
+}
+
+// RouteIDCleared returns if the "route_id" field was cleared in this mutation.
+func (m *PortAllocationMutation) RouteIDCleared() bool {
+	_, ok := m.clearedFields[portallocation.FieldRouteID]
+	return ok
+}
+
+// ResetRouteID resets all changes to the "route_id" field.
+func (m *PortAllocationMutation) ResetRouteID() {
+	m.route_id = nil
+	delete(m.clearedFields, portallocation.FieldRouteID)
+}
+
+// SetGroupID sets the "group" edge to the GatewayGroup entity by id.
+func (m *PortAllocationMutation) SetGroupID(id string) {
+	m.group = &id
+}
+
+// ClearGroup clears the "group" edge to the GatewayGroup entity.
+func (m *PortAllocationMutation) ClearGroup() {
+	m.clearedgroup = true
+	m.clearedFields[portallocation.FieldGatewayGroupID] = struct{}{}
+}
+
+// GroupCleared reports if the "group" edge to the GatewayGroup entity was cleared.
+func (m *PortAllocationMutation) GroupCleared() bool {
+	return m.clearedgroup
+}
+
+// GroupID returns the "group" edge ID in the mutation.
+func (m *PortAllocationMutation) GroupID() (id string, exists bool) {
+	if m.group != nil {
+		return *m.group, true
+	}
+	return
+}
+
+// GroupIDs returns the "group" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// GroupID instead. It exists only for internal usage by the builders.
+func (m *PortAllocationMutation) GroupIDs() (ids []string) {
+	if id := m.group; id != nil {
+		ids = append(ids, *id)
+	}
+	return
+}
+
+// ResetGroup resets all changes to the "group" edge.
+func (m *PortAllocationMutation) ResetGroup() {
+	m.group = nil
+	m.clearedgroup = false
+}
+
+// Where appends a list predicates to the PortAllocationMutation builder.
+func (m *PortAllocationMutation) Where(ps ...predicate.PortAllocation) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the PortAllocationMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *PortAllocationMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.PortAllocation, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *PortAllocationMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *PortAllocationMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (PortAllocation).
+func (m *PortAllocationMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *PortAllocationMutation) Fields() []string {
+	fields := make([]string, 0, 5)
+	if m.org_id != nil {
+		fields = append(fields, portallocation.FieldOrgID)
+	}
+	if m.group != nil {
+		fields = append(fields, portallocation.FieldGatewayGroupID)
+	}
+	if m.protocol != nil {
+		fields = append(fields, portallocation.FieldProtocol)
+	}
+	if m.port != nil {
+		fields = append(fields, portallocation.FieldPort)
+	}
+	if m.route_id != nil {
+		fields = append(fields, portallocation.FieldRouteID)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *PortAllocationMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case portallocation.FieldOrgID:
+		return m.OrgID()
+	case portallocation.FieldGatewayGroupID:
+		return m.GatewayGroupID()
+	case portallocation.FieldProtocol:
+		return m.Protocol()
+	case portallocation.FieldPort:
+		return m.Port()
+	case portallocation.FieldRouteID:
+		return m.RouteID()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *PortAllocationMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case portallocation.FieldOrgID:
+		return m.OldOrgID(ctx)
+	case portallocation.FieldGatewayGroupID:
+		return m.OldGatewayGroupID(ctx)
+	case portallocation.FieldProtocol:
+		return m.OldProtocol(ctx)
+	case portallocation.FieldPort:
+		return m.OldPort(ctx)
+	case portallocation.FieldRouteID:
+		return m.OldRouteID(ctx)
+	}
+	return nil, fmt.Errorf("unknown PortAllocation field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *PortAllocationMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case portallocation.FieldOrgID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetOrgID(v)
+		return nil
+	case portallocation.FieldGatewayGroupID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetGatewayGroupID(v)
+		return nil
+	case portallocation.FieldProtocol:
+		v, ok := value.(portallocation.Protocol)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetProtocol(v)
+		return nil
+	case portallocation.FieldPort:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetPort(v)
+		return nil
+	case portallocation.FieldRouteID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRouteID(v)
+		return nil
+	}
+	return fmt.Errorf("unknown PortAllocation field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *PortAllocationMutation) AddedFields() []string {
+	var fields []string
+	if m.addport != nil {
+		fields = append(fields, portallocation.FieldPort)
+	}
+	return fields
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *PortAllocationMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case portallocation.FieldPort:
+		return m.AddedPort()
+	}
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *PortAllocationMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	case portallocation.FieldPort:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddPort(v)
+		return nil
+	}
+	return fmt.Errorf("unknown PortAllocation numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *PortAllocationMutation) ClearedFields() []string {
+	var fields []string
+	if m.FieldCleared(portallocation.FieldRouteID) {
+		fields = append(fields, portallocation.FieldRouteID)
+	}
+	return fields
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *PortAllocationMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *PortAllocationMutation) ClearField(name string) error {
+	switch name {
+	case portallocation.FieldRouteID:
+		m.ClearRouteID()
+		return nil
+	}
+	return fmt.Errorf("unknown PortAllocation nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *PortAllocationMutation) ResetField(name string) error {
+	switch name {
+	case portallocation.FieldOrgID:
+		m.ResetOrgID()
+		return nil
+	case portallocation.FieldGatewayGroupID:
+		m.ResetGatewayGroupID()
+		return nil
+	case portallocation.FieldProtocol:
+		m.ResetProtocol()
+		return nil
+	case portallocation.FieldPort:
+		m.ResetPort()
+		return nil
+	case portallocation.FieldRouteID:
+		m.ResetRouteID()
+		return nil
+	}
+	return fmt.Errorf("unknown PortAllocation field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *PortAllocationMutation) AddedEdges() []string {
+	edges := make([]string, 0, 1)
+	if m.group != nil {
+		edges = append(edges, portallocation.EdgeGroup)
+	}
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *PortAllocationMutation) AddedIDs(name string) []ent.Value {
+	switch name {
+	case portallocation.EdgeGroup:
+		if id := m.group; id != nil {
+			return []ent.Value{*id}
+		}
+	}
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *PortAllocationMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 1)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *PortAllocationMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *PortAllocationMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 1)
+	if m.clearedgroup {
+		edges = append(edges, portallocation.EdgeGroup)
+	}
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *PortAllocationMutation) EdgeCleared(name string) bool {
+	switch name {
+	case portallocation.EdgeGroup:
+		return m.clearedgroup
+	}
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *PortAllocationMutation) ClearEdge(name string) error {
+	switch name {
+	case portallocation.EdgeGroup:
+		m.ClearGroup()
+		return nil
+	}
+	return fmt.Errorf("unknown PortAllocation unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *PortAllocationMutation) ResetEdge(name string) error {
+	switch name {
+	case portallocation.EdgeGroup:
+		m.ResetGroup()
+		return nil
+	}
+	return fmt.Errorf("unknown PortAllocation edge %s", name)
+}
+
+// PortPoolMutation represents an operation that mutates the PortPool nodes in the graph.
+type PortPoolMutation struct {
+	config
+	op            Op
+	typ           string
+	id            *string
+	org_id        *string
+	protocol      *portpool.Protocol
+	port_from     *int
+	addport_from  *int
+	port_to       *int
+	addport_to    *int
+	clearedFields map[string]struct{}
+	group         *string
+	clearedgroup  bool
+	done          bool
+	oldValue      func(context.Context) (*PortPool, error)
+	predicates    []predicate.PortPool
+}
+
+var _ ent.Mutation = (*PortPoolMutation)(nil)
+
+// portpoolOption allows management of the mutation configuration using functional options.
+type portpoolOption func(*PortPoolMutation)
+
+// newPortPoolMutation creates new mutation for the PortPool entity.
+func newPortPoolMutation(c config, op Op, opts ...portpoolOption) *PortPoolMutation {
+	m := &PortPoolMutation{
+		config:        c,
+		op:            op,
+		typ:           TypePortPool,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withPortPoolID sets the ID field of the mutation.
+func withPortPoolID(id string) portpoolOption {
+	return func(m *PortPoolMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *PortPool
+		)
+		m.oldValue = func(ctx context.Context) (*PortPool, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().PortPool.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withPortPool sets the old PortPool of the mutation.
+func withPortPool(node *PortPool) portpoolOption {
+	return func(m *PortPoolMutation) {
+		m.oldValue = func(context.Context) (*PortPool, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m PortPoolMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m PortPoolMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// SetID sets the value of the id field. Note that this
+// operation is only accepted on creation of PortPool entities.
+func (m *PortPoolMutation) SetID(id string) {
+	m.id = &id
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *PortPoolMutation) ID() (id string, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *PortPoolMutation) IDs(ctx context.Context) ([]string, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []string{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().PortPool.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetOrgID sets the "org_id" field.
+func (m *PortPoolMutation) SetOrgID(s string) {
+	m.org_id = &s
+}
+
+// OrgID returns the value of the "org_id" field in the mutation.
+func (m *PortPoolMutation) OrgID() (r string, exists bool) {
+	v := m.org_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldOrgID returns the old "org_id" field's value of the PortPool entity.
+// If the PortPool object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *PortPoolMutation) OldOrgID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldOrgID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldOrgID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldOrgID: %w", err)
+	}
+	return oldValue.OrgID, nil
+}
+
+// ResetOrgID resets all changes to the "org_id" field.
+func (m *PortPoolMutation) ResetOrgID() {
+	m.org_id = nil
+}
+
+// SetGatewayGroupID sets the "gateway_group_id" field.
+func (m *PortPoolMutation) SetGatewayGroupID(s string) {
+	m.group = &s
+}
+
+// GatewayGroupID returns the value of the "gateway_group_id" field in the mutation.
+func (m *PortPoolMutation) GatewayGroupID() (r string, exists bool) {
+	v := m.group
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldGatewayGroupID returns the old "gateway_group_id" field's value of the PortPool entity.
+// If the PortPool object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *PortPoolMutation) OldGatewayGroupID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldGatewayGroupID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldGatewayGroupID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldGatewayGroupID: %w", err)
+	}
+	return oldValue.GatewayGroupID, nil
+}
+
+// ResetGatewayGroupID resets all changes to the "gateway_group_id" field.
+func (m *PortPoolMutation) ResetGatewayGroupID() {
+	m.group = nil
+}
+
+// SetProtocol sets the "protocol" field.
+func (m *PortPoolMutation) SetProtocol(po portpool.Protocol) {
+	m.protocol = &po
+}
+
+// Protocol returns the value of the "protocol" field in the mutation.
+func (m *PortPoolMutation) Protocol() (r portpool.Protocol, exists bool) {
+	v := m.protocol
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldProtocol returns the old "protocol" field's value of the PortPool entity.
+// If the PortPool object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *PortPoolMutation) OldProtocol(ctx context.Context) (v portpool.Protocol, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldProtocol is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldProtocol requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldProtocol: %w", err)
+	}
+	return oldValue.Protocol, nil
+}
+
+// ResetProtocol resets all changes to the "protocol" field.
+func (m *PortPoolMutation) ResetProtocol() {
+	m.protocol = nil
+}
+
+// SetPortFrom sets the "port_from" field.
+func (m *PortPoolMutation) SetPortFrom(i int) {
+	m.port_from = &i
+	m.addport_from = nil
+}
+
+// PortFrom returns the value of the "port_from" field in the mutation.
+func (m *PortPoolMutation) PortFrom() (r int, exists bool) {
+	v := m.port_from
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldPortFrom returns the old "port_from" field's value of the PortPool entity.
+// If the PortPool object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *PortPoolMutation) OldPortFrom(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPortFrom is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPortFrom requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPortFrom: %w", err)
+	}
+	return oldValue.PortFrom, nil
+}
+
+// AddPortFrom adds i to the "port_from" field.
+func (m *PortPoolMutation) AddPortFrom(i int) {
+	if m.addport_from != nil {
+		*m.addport_from += i
+	} else {
+		m.addport_from = &i
+	}
+}
+
+// AddedPortFrom returns the value that was added to the "port_from" field in this mutation.
+func (m *PortPoolMutation) AddedPortFrom() (r int, exists bool) {
+	v := m.addport_from
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetPortFrom resets all changes to the "port_from" field.
+func (m *PortPoolMutation) ResetPortFrom() {
+	m.port_from = nil
+	m.addport_from = nil
+}
+
+// SetPortTo sets the "port_to" field.
+func (m *PortPoolMutation) SetPortTo(i int) {
+	m.port_to = &i
+	m.addport_to = nil
+}
+
+// PortTo returns the value of the "port_to" field in the mutation.
+func (m *PortPoolMutation) PortTo() (r int, exists bool) {
+	v := m.port_to
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldPortTo returns the old "port_to" field's value of the PortPool entity.
+// If the PortPool object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *PortPoolMutation) OldPortTo(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPortTo is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPortTo requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPortTo: %w", err)
+	}
+	return oldValue.PortTo, nil
+}
+
+// AddPortTo adds i to the "port_to" field.
+func (m *PortPoolMutation) AddPortTo(i int) {
+	if m.addport_to != nil {
+		*m.addport_to += i
+	} else {
+		m.addport_to = &i
+	}
+}
+
+// AddedPortTo returns the value that was added to the "port_to" field in this mutation.
+func (m *PortPoolMutation) AddedPortTo() (r int, exists bool) {
+	v := m.addport_to
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetPortTo resets all changes to the "port_to" field.
+func (m *PortPoolMutation) ResetPortTo() {
+	m.port_to = nil
+	m.addport_to = nil
+}
+
+// SetGroupID sets the "group" edge to the GatewayGroup entity by id.
+func (m *PortPoolMutation) SetGroupID(id string) {
+	m.group = &id
+}
+
+// ClearGroup clears the "group" edge to the GatewayGroup entity.
+func (m *PortPoolMutation) ClearGroup() {
+	m.clearedgroup = true
+	m.clearedFields[portpool.FieldGatewayGroupID] = struct{}{}
+}
+
+// GroupCleared reports if the "group" edge to the GatewayGroup entity was cleared.
+func (m *PortPoolMutation) GroupCleared() bool {
+	return m.clearedgroup
+}
+
+// GroupID returns the "group" edge ID in the mutation.
+func (m *PortPoolMutation) GroupID() (id string, exists bool) {
+	if m.group != nil {
+		return *m.group, true
+	}
+	return
+}
+
+// GroupIDs returns the "group" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// GroupID instead. It exists only for internal usage by the builders.
+func (m *PortPoolMutation) GroupIDs() (ids []string) {
+	if id := m.group; id != nil {
+		ids = append(ids, *id)
+	}
+	return
+}
+
+// ResetGroup resets all changes to the "group" edge.
+func (m *PortPoolMutation) ResetGroup() {
+	m.group = nil
+	m.clearedgroup = false
+}
+
+// Where appends a list predicates to the PortPoolMutation builder.
+func (m *PortPoolMutation) Where(ps ...predicate.PortPool) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the PortPoolMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *PortPoolMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.PortPool, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *PortPoolMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *PortPoolMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (PortPool).
+func (m *PortPoolMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *PortPoolMutation) Fields() []string {
+	fields := make([]string, 0, 5)
+	if m.org_id != nil {
+		fields = append(fields, portpool.FieldOrgID)
+	}
+	if m.group != nil {
+		fields = append(fields, portpool.FieldGatewayGroupID)
+	}
+	if m.protocol != nil {
+		fields = append(fields, portpool.FieldProtocol)
+	}
+	if m.port_from != nil {
+		fields = append(fields, portpool.FieldPortFrom)
+	}
+	if m.port_to != nil {
+		fields = append(fields, portpool.FieldPortTo)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *PortPoolMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case portpool.FieldOrgID:
+		return m.OrgID()
+	case portpool.FieldGatewayGroupID:
+		return m.GatewayGroupID()
+	case portpool.FieldProtocol:
+		return m.Protocol()
+	case portpool.FieldPortFrom:
+		return m.PortFrom()
+	case portpool.FieldPortTo:
+		return m.PortTo()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *PortPoolMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case portpool.FieldOrgID:
+		return m.OldOrgID(ctx)
+	case portpool.FieldGatewayGroupID:
+		return m.OldGatewayGroupID(ctx)
+	case portpool.FieldProtocol:
+		return m.OldProtocol(ctx)
+	case portpool.FieldPortFrom:
+		return m.OldPortFrom(ctx)
+	case portpool.FieldPortTo:
+		return m.OldPortTo(ctx)
+	}
+	return nil, fmt.Errorf("unknown PortPool field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *PortPoolMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case portpool.FieldOrgID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetOrgID(v)
+		return nil
+	case portpool.FieldGatewayGroupID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetGatewayGroupID(v)
+		return nil
+	case portpool.FieldProtocol:
+		v, ok := value.(portpool.Protocol)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetProtocol(v)
+		return nil
+	case portpool.FieldPortFrom:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetPortFrom(v)
+		return nil
+	case portpool.FieldPortTo:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetPortTo(v)
+		return nil
+	}
+	return fmt.Errorf("unknown PortPool field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *PortPoolMutation) AddedFields() []string {
+	var fields []string
+	if m.addport_from != nil {
+		fields = append(fields, portpool.FieldPortFrom)
+	}
+	if m.addport_to != nil {
+		fields = append(fields, portpool.FieldPortTo)
+	}
+	return fields
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *PortPoolMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case portpool.FieldPortFrom:
+		return m.AddedPortFrom()
+	case portpool.FieldPortTo:
+		return m.AddedPortTo()
+	}
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *PortPoolMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	case portpool.FieldPortFrom:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddPortFrom(v)
+		return nil
+	case portpool.FieldPortTo:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddPortTo(v)
+		return nil
+	}
+	return fmt.Errorf("unknown PortPool numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *PortPoolMutation) ClearedFields() []string {
+	return nil
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *PortPoolMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *PortPoolMutation) ClearField(name string) error {
+	return fmt.Errorf("unknown PortPool nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *PortPoolMutation) ResetField(name string) error {
+	switch name {
+	case portpool.FieldOrgID:
+		m.ResetOrgID()
+		return nil
+	case portpool.FieldGatewayGroupID:
+		m.ResetGatewayGroupID()
+		return nil
+	case portpool.FieldProtocol:
+		m.ResetProtocol()
+		return nil
+	case portpool.FieldPortFrom:
+		m.ResetPortFrom()
+		return nil
+	case portpool.FieldPortTo:
+		m.ResetPortTo()
+		return nil
+	}
+	return fmt.Errorf("unknown PortPool field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *PortPoolMutation) AddedEdges() []string {
+	edges := make([]string, 0, 1)
+	if m.group != nil {
+		edges = append(edges, portpool.EdgeGroup)
+	}
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *PortPoolMutation) AddedIDs(name string) []ent.Value {
+	switch name {
+	case portpool.EdgeGroup:
+		if id := m.group; id != nil {
+			return []ent.Value{*id}
+		}
+	}
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *PortPoolMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 1)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *PortPoolMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *PortPoolMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 1)
+	if m.clearedgroup {
+		edges = append(edges, portpool.EdgeGroup)
+	}
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *PortPoolMutation) EdgeCleared(name string) bool {
+	switch name {
+	case portpool.EdgeGroup:
+		return m.clearedgroup
+	}
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *PortPoolMutation) ClearEdge(name string) error {
+	switch name {
+	case portpool.EdgeGroup:
+		m.ClearGroup()
+		return nil
+	}
+	return fmt.Errorf("unknown PortPool unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *PortPoolMutation) ResetEdge(name string) error {
+	switch name {
+	case portpool.EdgeGroup:
+		m.ResetGroup()
+		return nil
+	}
+	return fmt.Errorf("unknown PortPool edge %s", name)
+}
+
+// PortQuotaMutation represents an operation that mutates the PortQuota nodes in the graph.
+type PortQuotaMutation struct {
+	config
+	op            Op
+	typ           string
+	id            *string
+	org_id        *string
+	protocol      *portquota.Protocol
+	max_ports     *int
+	addmax_ports  *int
+	clearedFields map[string]struct{}
+	group         *string
+	clearedgroup  bool
+	done          bool
+	oldValue      func(context.Context) (*PortQuota, error)
+	predicates    []predicate.PortQuota
+}
+
+var _ ent.Mutation = (*PortQuotaMutation)(nil)
+
+// portquotaOption allows management of the mutation configuration using functional options.
+type portquotaOption func(*PortQuotaMutation)
+
+// newPortQuotaMutation creates new mutation for the PortQuota entity.
+func newPortQuotaMutation(c config, op Op, opts ...portquotaOption) *PortQuotaMutation {
+	m := &PortQuotaMutation{
+		config:        c,
+		op:            op,
+		typ:           TypePortQuota,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withPortQuotaID sets the ID field of the mutation.
+func withPortQuotaID(id string) portquotaOption {
+	return func(m *PortQuotaMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *PortQuota
+		)
+		m.oldValue = func(ctx context.Context) (*PortQuota, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().PortQuota.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withPortQuota sets the old PortQuota of the mutation.
+func withPortQuota(node *PortQuota) portquotaOption {
+	return func(m *PortQuotaMutation) {
+		m.oldValue = func(context.Context) (*PortQuota, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m PortQuotaMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m PortQuotaMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// SetID sets the value of the id field. Note that this
+// operation is only accepted on creation of PortQuota entities.
+func (m *PortQuotaMutation) SetID(id string) {
+	m.id = &id
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *PortQuotaMutation) ID() (id string, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *PortQuotaMutation) IDs(ctx context.Context) ([]string, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []string{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().PortQuota.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetOrgID sets the "org_id" field.
+func (m *PortQuotaMutation) SetOrgID(s string) {
+	m.org_id = &s
+}
+
+// OrgID returns the value of the "org_id" field in the mutation.
+func (m *PortQuotaMutation) OrgID() (r string, exists bool) {
+	v := m.org_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldOrgID returns the old "org_id" field's value of the PortQuota entity.
+// If the PortQuota object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *PortQuotaMutation) OldOrgID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldOrgID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldOrgID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldOrgID: %w", err)
+	}
+	return oldValue.OrgID, nil
+}
+
+// ResetOrgID resets all changes to the "org_id" field.
+func (m *PortQuotaMutation) ResetOrgID() {
+	m.org_id = nil
+}
+
+// SetGatewayGroupID sets the "gateway_group_id" field.
+func (m *PortQuotaMutation) SetGatewayGroupID(s string) {
+	m.group = &s
+}
+
+// GatewayGroupID returns the value of the "gateway_group_id" field in the mutation.
+func (m *PortQuotaMutation) GatewayGroupID() (r string, exists bool) {
+	v := m.group
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldGatewayGroupID returns the old "gateway_group_id" field's value of the PortQuota entity.
+// If the PortQuota object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *PortQuotaMutation) OldGatewayGroupID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldGatewayGroupID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldGatewayGroupID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldGatewayGroupID: %w", err)
+	}
+	return oldValue.GatewayGroupID, nil
+}
+
+// ResetGatewayGroupID resets all changes to the "gateway_group_id" field.
+func (m *PortQuotaMutation) ResetGatewayGroupID() {
+	m.group = nil
+}
+
+// SetProtocol sets the "protocol" field.
+func (m *PortQuotaMutation) SetProtocol(po portquota.Protocol) {
+	m.protocol = &po
+}
+
+// Protocol returns the value of the "protocol" field in the mutation.
+func (m *PortQuotaMutation) Protocol() (r portquota.Protocol, exists bool) {
+	v := m.protocol
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldProtocol returns the old "protocol" field's value of the PortQuota entity.
+// If the PortQuota object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *PortQuotaMutation) OldProtocol(ctx context.Context) (v portquota.Protocol, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldProtocol is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldProtocol requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldProtocol: %w", err)
+	}
+	return oldValue.Protocol, nil
+}
+
+// ResetProtocol resets all changes to the "protocol" field.
+func (m *PortQuotaMutation) ResetProtocol() {
+	m.protocol = nil
+}
+
+// SetMaxPorts sets the "max_ports" field.
+func (m *PortQuotaMutation) SetMaxPorts(i int) {
+	m.max_ports = &i
+	m.addmax_ports = nil
+}
+
+// MaxPorts returns the value of the "max_ports" field in the mutation.
+func (m *PortQuotaMutation) MaxPorts() (r int, exists bool) {
+	v := m.max_ports
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldMaxPorts returns the old "max_ports" field's value of the PortQuota entity.
+// If the PortQuota object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *PortQuotaMutation) OldMaxPorts(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldMaxPorts is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldMaxPorts requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldMaxPorts: %w", err)
+	}
+	return oldValue.MaxPorts, nil
+}
+
+// AddMaxPorts adds i to the "max_ports" field.
+func (m *PortQuotaMutation) AddMaxPorts(i int) {
+	if m.addmax_ports != nil {
+		*m.addmax_ports += i
+	} else {
+		m.addmax_ports = &i
+	}
+}
+
+// AddedMaxPorts returns the value that was added to the "max_ports" field in this mutation.
+func (m *PortQuotaMutation) AddedMaxPorts() (r int, exists bool) {
+	v := m.addmax_ports
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetMaxPorts resets all changes to the "max_ports" field.
+func (m *PortQuotaMutation) ResetMaxPorts() {
+	m.max_ports = nil
+	m.addmax_ports = nil
+}
+
+// SetGroupID sets the "group" edge to the GatewayGroup entity by id.
+func (m *PortQuotaMutation) SetGroupID(id string) {
+	m.group = &id
+}
+
+// ClearGroup clears the "group" edge to the GatewayGroup entity.
+func (m *PortQuotaMutation) ClearGroup() {
+	m.clearedgroup = true
+	m.clearedFields[portquota.FieldGatewayGroupID] = struct{}{}
+}
+
+// GroupCleared reports if the "group" edge to the GatewayGroup entity was cleared.
+func (m *PortQuotaMutation) GroupCleared() bool {
+	return m.clearedgroup
+}
+
+// GroupID returns the "group" edge ID in the mutation.
+func (m *PortQuotaMutation) GroupID() (id string, exists bool) {
+	if m.group != nil {
+		return *m.group, true
+	}
+	return
+}
+
+// GroupIDs returns the "group" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// GroupID instead. It exists only for internal usage by the builders.
+func (m *PortQuotaMutation) GroupIDs() (ids []string) {
+	if id := m.group; id != nil {
+		ids = append(ids, *id)
+	}
+	return
+}
+
+// ResetGroup resets all changes to the "group" edge.
+func (m *PortQuotaMutation) ResetGroup() {
+	m.group = nil
+	m.clearedgroup = false
+}
+
+// Where appends a list predicates to the PortQuotaMutation builder.
+func (m *PortQuotaMutation) Where(ps ...predicate.PortQuota) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the PortQuotaMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *PortQuotaMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.PortQuota, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *PortQuotaMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *PortQuotaMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (PortQuota).
+func (m *PortQuotaMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *PortQuotaMutation) Fields() []string {
+	fields := make([]string, 0, 4)
+	if m.org_id != nil {
+		fields = append(fields, portquota.FieldOrgID)
+	}
+	if m.group != nil {
+		fields = append(fields, portquota.FieldGatewayGroupID)
+	}
+	if m.protocol != nil {
+		fields = append(fields, portquota.FieldProtocol)
+	}
+	if m.max_ports != nil {
+		fields = append(fields, portquota.FieldMaxPorts)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *PortQuotaMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case portquota.FieldOrgID:
+		return m.OrgID()
+	case portquota.FieldGatewayGroupID:
+		return m.GatewayGroupID()
+	case portquota.FieldProtocol:
+		return m.Protocol()
+	case portquota.FieldMaxPorts:
+		return m.MaxPorts()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *PortQuotaMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case portquota.FieldOrgID:
+		return m.OldOrgID(ctx)
+	case portquota.FieldGatewayGroupID:
+		return m.OldGatewayGroupID(ctx)
+	case portquota.FieldProtocol:
+		return m.OldProtocol(ctx)
+	case portquota.FieldMaxPorts:
+		return m.OldMaxPorts(ctx)
+	}
+	return nil, fmt.Errorf("unknown PortQuota field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *PortQuotaMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case portquota.FieldOrgID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetOrgID(v)
+		return nil
+	case portquota.FieldGatewayGroupID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetGatewayGroupID(v)
+		return nil
+	case portquota.FieldProtocol:
+		v, ok := value.(portquota.Protocol)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetProtocol(v)
+		return nil
+	case portquota.FieldMaxPorts:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetMaxPorts(v)
+		return nil
+	}
+	return fmt.Errorf("unknown PortQuota field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *PortQuotaMutation) AddedFields() []string {
+	var fields []string
+	if m.addmax_ports != nil {
+		fields = append(fields, portquota.FieldMaxPorts)
+	}
+	return fields
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *PortQuotaMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case portquota.FieldMaxPorts:
+		return m.AddedMaxPorts()
+	}
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *PortQuotaMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	case portquota.FieldMaxPorts:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddMaxPorts(v)
+		return nil
+	}
+	return fmt.Errorf("unknown PortQuota numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *PortQuotaMutation) ClearedFields() []string {
+	return nil
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *PortQuotaMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *PortQuotaMutation) ClearField(name string) error {
+	return fmt.Errorf("unknown PortQuota nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *PortQuotaMutation) ResetField(name string) error {
+	switch name {
+	case portquota.FieldOrgID:
+		m.ResetOrgID()
+		return nil
+	case portquota.FieldGatewayGroupID:
+		m.ResetGatewayGroupID()
+		return nil
+	case portquota.FieldProtocol:
+		m.ResetProtocol()
+		return nil
+	case portquota.FieldMaxPorts:
+		m.ResetMaxPorts()
+		return nil
+	}
+	return fmt.Errorf("unknown PortQuota field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *PortQuotaMutation) AddedEdges() []string {
+	edges := make([]string, 0, 1)
+	if m.group != nil {
+		edges = append(edges, portquota.EdgeGroup)
+	}
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *PortQuotaMutation) AddedIDs(name string) []ent.Value {
+	switch name {
+	case portquota.EdgeGroup:
+		if id := m.group; id != nil {
+			return []ent.Value{*id}
+		}
+	}
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *PortQuotaMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 1)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *PortQuotaMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *PortQuotaMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 1)
+	if m.clearedgroup {
+		edges = append(edges, portquota.EdgeGroup)
+	}
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *PortQuotaMutation) EdgeCleared(name string) bool {
+	switch name {
+	case portquota.EdgeGroup:
+		return m.clearedgroup
+	}
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *PortQuotaMutation) ClearEdge(name string) error {
+	switch name {
+	case portquota.EdgeGroup:
+		m.ClearGroup()
+		return nil
+	}
+	return fmt.Errorf("unknown PortQuota unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *PortQuotaMutation) ResetEdge(name string) error {
+	switch name {
+	case portquota.EdgeGroup:
+		m.ResetGroup()
+		return nil
+	}
+	return fmt.Errorf("unknown PortQuota edge %s", name)
+}
+
 // RevokedIdentityMutation represents an operation that mutates the RevokedIdentity nodes in the graph.
 type RevokedIdentityMutation struct {
 	config
@@ -14916,6 +16882,3003 @@ func (m *RevokedIdentityMutation) ClearEdge(name string) error {
 // It returns an error if the edge is not defined in the schema.
 func (m *RevokedIdentityMutation) ResetEdge(name string) error {
 	return fmt.Errorf("unknown RevokedIdentity edge %s", name)
+}
+
+// RouteMutation represents an operation that mutates the Route nodes in the graph.
+type RouteMutation struct {
+	config
+	op            Op
+	typ           string
+	id            *string
+	org_id        *string
+	name          *string
+	_type         *route.Type
+	enabled       *bool
+	transport     *route.Transport
+	description   *string
+	labels        *map[string]string
+	version       *int64
+	addversion    *int64
+	created_at    *time.Time
+	updated_at    *time.Time
+	updated_by    *string
+	clearedFields map[string]struct{}
+	group         *string
+	clearedgroup  bool
+	done          bool
+	oldValue      func(context.Context) (*Route, error)
+	predicates    []predicate.Route
+}
+
+var _ ent.Mutation = (*RouteMutation)(nil)
+
+// routeOption allows management of the mutation configuration using functional options.
+type routeOption func(*RouteMutation)
+
+// newRouteMutation creates new mutation for the Route entity.
+func newRouteMutation(c config, op Op, opts ...routeOption) *RouteMutation {
+	m := &RouteMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeRoute,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withRouteID sets the ID field of the mutation.
+func withRouteID(id string) routeOption {
+	return func(m *RouteMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *Route
+		)
+		m.oldValue = func(ctx context.Context) (*Route, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().Route.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withRoute sets the old Route of the mutation.
+func withRoute(node *Route) routeOption {
+	return func(m *RouteMutation) {
+		m.oldValue = func(context.Context) (*Route, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m RouteMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m RouteMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// SetID sets the value of the id field. Note that this
+// operation is only accepted on creation of Route entities.
+func (m *RouteMutation) SetID(id string) {
+	m.id = &id
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *RouteMutation) ID() (id string, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *RouteMutation) IDs(ctx context.Context) ([]string, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []string{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().Route.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetOrgID sets the "org_id" field.
+func (m *RouteMutation) SetOrgID(s string) {
+	m.org_id = &s
+}
+
+// OrgID returns the value of the "org_id" field in the mutation.
+func (m *RouteMutation) OrgID() (r string, exists bool) {
+	v := m.org_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldOrgID returns the old "org_id" field's value of the Route entity.
+// If the Route object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RouteMutation) OldOrgID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldOrgID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldOrgID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldOrgID: %w", err)
+	}
+	return oldValue.OrgID, nil
+}
+
+// ResetOrgID resets all changes to the "org_id" field.
+func (m *RouteMutation) ResetOrgID() {
+	m.org_id = nil
+}
+
+// SetName sets the "name" field.
+func (m *RouteMutation) SetName(s string) {
+	m.name = &s
+}
+
+// Name returns the value of the "name" field in the mutation.
+func (m *RouteMutation) Name() (r string, exists bool) {
+	v := m.name
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldName returns the old "name" field's value of the Route entity.
+// If the Route object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RouteMutation) OldName(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldName is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldName requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldName: %w", err)
+	}
+	return oldValue.Name, nil
+}
+
+// ResetName resets all changes to the "name" field.
+func (m *RouteMutation) ResetName() {
+	m.name = nil
+}
+
+// SetType sets the "type" field.
+func (m *RouteMutation) SetType(r route.Type) {
+	m._type = &r
+}
+
+// GetType returns the value of the "type" field in the mutation.
+func (m *RouteMutation) GetType() (r route.Type, exists bool) {
+	v := m._type
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldType returns the old "type" field's value of the Route entity.
+// If the Route object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RouteMutation) OldType(ctx context.Context) (v route.Type, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldType is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldType requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldType: %w", err)
+	}
+	return oldValue.Type, nil
+}
+
+// ResetType resets all changes to the "type" field.
+func (m *RouteMutation) ResetType() {
+	m._type = nil
+}
+
+// SetGatewayGroupID sets the "gateway_group_id" field.
+func (m *RouteMutation) SetGatewayGroupID(s string) {
+	m.group = &s
+}
+
+// GatewayGroupID returns the value of the "gateway_group_id" field in the mutation.
+func (m *RouteMutation) GatewayGroupID() (r string, exists bool) {
+	v := m.group
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldGatewayGroupID returns the old "gateway_group_id" field's value of the Route entity.
+// If the Route object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RouteMutation) OldGatewayGroupID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldGatewayGroupID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldGatewayGroupID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldGatewayGroupID: %w", err)
+	}
+	return oldValue.GatewayGroupID, nil
+}
+
+// ResetGatewayGroupID resets all changes to the "gateway_group_id" field.
+func (m *RouteMutation) ResetGatewayGroupID() {
+	m.group = nil
+}
+
+// SetEnabled sets the "enabled" field.
+func (m *RouteMutation) SetEnabled(b bool) {
+	m.enabled = &b
+}
+
+// Enabled returns the value of the "enabled" field in the mutation.
+func (m *RouteMutation) Enabled() (r bool, exists bool) {
+	v := m.enabled
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldEnabled returns the old "enabled" field's value of the Route entity.
+// If the Route object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RouteMutation) OldEnabled(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldEnabled is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldEnabled requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldEnabled: %w", err)
+	}
+	return oldValue.Enabled, nil
+}
+
+// ResetEnabled resets all changes to the "enabled" field.
+func (m *RouteMutation) ResetEnabled() {
+	m.enabled = nil
+}
+
+// SetTransport sets the "transport" field.
+func (m *RouteMutation) SetTransport(r route.Transport) {
+	m.transport = &r
+}
+
+// Transport returns the value of the "transport" field in the mutation.
+func (m *RouteMutation) Transport() (r route.Transport, exists bool) {
+	v := m.transport
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldTransport returns the old "transport" field's value of the Route entity.
+// If the Route object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RouteMutation) OldTransport(ctx context.Context) (v *route.Transport, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldTransport is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldTransport requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldTransport: %w", err)
+	}
+	return oldValue.Transport, nil
+}
+
+// ClearTransport clears the value of the "transport" field.
+func (m *RouteMutation) ClearTransport() {
+	m.transport = nil
+	m.clearedFields[route.FieldTransport] = struct{}{}
+}
+
+// TransportCleared returns if the "transport" field was cleared in this mutation.
+func (m *RouteMutation) TransportCleared() bool {
+	_, ok := m.clearedFields[route.FieldTransport]
+	return ok
+}
+
+// ResetTransport resets all changes to the "transport" field.
+func (m *RouteMutation) ResetTransport() {
+	m.transport = nil
+	delete(m.clearedFields, route.FieldTransport)
+}
+
+// SetDescription sets the "description" field.
+func (m *RouteMutation) SetDescription(s string) {
+	m.description = &s
+}
+
+// Description returns the value of the "description" field in the mutation.
+func (m *RouteMutation) Description() (r string, exists bool) {
+	v := m.description
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldDescription returns the old "description" field's value of the Route entity.
+// If the Route object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RouteMutation) OldDescription(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDescription is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDescription requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDescription: %w", err)
+	}
+	return oldValue.Description, nil
+}
+
+// ResetDescription resets all changes to the "description" field.
+func (m *RouteMutation) ResetDescription() {
+	m.description = nil
+}
+
+// SetLabels sets the "labels" field.
+func (m *RouteMutation) SetLabels(value map[string]string) {
+	m.labels = &value
+}
+
+// Labels returns the value of the "labels" field in the mutation.
+func (m *RouteMutation) Labels() (r map[string]string, exists bool) {
+	v := m.labels
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldLabels returns the old "labels" field's value of the Route entity.
+// If the Route object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RouteMutation) OldLabels(ctx context.Context) (v map[string]string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldLabels is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldLabels requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldLabels: %w", err)
+	}
+	return oldValue.Labels, nil
+}
+
+// ClearLabels clears the value of the "labels" field.
+func (m *RouteMutation) ClearLabels() {
+	m.labels = nil
+	m.clearedFields[route.FieldLabels] = struct{}{}
+}
+
+// LabelsCleared returns if the "labels" field was cleared in this mutation.
+func (m *RouteMutation) LabelsCleared() bool {
+	_, ok := m.clearedFields[route.FieldLabels]
+	return ok
+}
+
+// ResetLabels resets all changes to the "labels" field.
+func (m *RouteMutation) ResetLabels() {
+	m.labels = nil
+	delete(m.clearedFields, route.FieldLabels)
+}
+
+// SetVersion sets the "version" field.
+func (m *RouteMutation) SetVersion(i int64) {
+	m.version = &i
+	m.addversion = nil
+}
+
+// Version returns the value of the "version" field in the mutation.
+func (m *RouteMutation) Version() (r int64, exists bool) {
+	v := m.version
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldVersion returns the old "version" field's value of the Route entity.
+// If the Route object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RouteMutation) OldVersion(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldVersion is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldVersion requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldVersion: %w", err)
+	}
+	return oldValue.Version, nil
+}
+
+// AddVersion adds i to the "version" field.
+func (m *RouteMutation) AddVersion(i int64) {
+	if m.addversion != nil {
+		*m.addversion += i
+	} else {
+		m.addversion = &i
+	}
+}
+
+// AddedVersion returns the value that was added to the "version" field in this mutation.
+func (m *RouteMutation) AddedVersion() (r int64, exists bool) {
+	v := m.addversion
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetVersion resets all changes to the "version" field.
+func (m *RouteMutation) ResetVersion() {
+	m.version = nil
+	m.addversion = nil
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *RouteMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *RouteMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the Route entity.
+// If the Route object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RouteMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *RouteMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (m *RouteMutation) SetUpdatedAt(t time.Time) {
+	m.updated_at = &t
+}
+
+// UpdatedAt returns the value of the "updated_at" field in the mutation.
+func (m *RouteMutation) UpdatedAt() (r time.Time, exists bool) {
+	v := m.updated_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUpdatedAt returns the old "updated_at" field's value of the Route entity.
+// If the Route object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RouteMutation) OldUpdatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUpdatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUpdatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUpdatedAt: %w", err)
+	}
+	return oldValue.UpdatedAt, nil
+}
+
+// ResetUpdatedAt resets all changes to the "updated_at" field.
+func (m *RouteMutation) ResetUpdatedAt() {
+	m.updated_at = nil
+}
+
+// SetUpdatedBy sets the "updated_by" field.
+func (m *RouteMutation) SetUpdatedBy(s string) {
+	m.updated_by = &s
+}
+
+// UpdatedBy returns the value of the "updated_by" field in the mutation.
+func (m *RouteMutation) UpdatedBy() (r string, exists bool) {
+	v := m.updated_by
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUpdatedBy returns the old "updated_by" field's value of the Route entity.
+// If the Route object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RouteMutation) OldUpdatedBy(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUpdatedBy is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUpdatedBy requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUpdatedBy: %w", err)
+	}
+	return oldValue.UpdatedBy, nil
+}
+
+// ResetUpdatedBy resets all changes to the "updated_by" field.
+func (m *RouteMutation) ResetUpdatedBy() {
+	m.updated_by = nil
+}
+
+// SetGroupID sets the "group" edge to the GatewayGroup entity by id.
+func (m *RouteMutation) SetGroupID(id string) {
+	m.group = &id
+}
+
+// ClearGroup clears the "group" edge to the GatewayGroup entity.
+func (m *RouteMutation) ClearGroup() {
+	m.clearedgroup = true
+	m.clearedFields[route.FieldGatewayGroupID] = struct{}{}
+}
+
+// GroupCleared reports if the "group" edge to the GatewayGroup entity was cleared.
+func (m *RouteMutation) GroupCleared() bool {
+	return m.clearedgroup
+}
+
+// GroupID returns the "group" edge ID in the mutation.
+func (m *RouteMutation) GroupID() (id string, exists bool) {
+	if m.group != nil {
+		return *m.group, true
+	}
+	return
+}
+
+// GroupIDs returns the "group" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// GroupID instead. It exists only for internal usage by the builders.
+func (m *RouteMutation) GroupIDs() (ids []string) {
+	if id := m.group; id != nil {
+		ids = append(ids, *id)
+	}
+	return
+}
+
+// ResetGroup resets all changes to the "group" edge.
+func (m *RouteMutation) ResetGroup() {
+	m.group = nil
+	m.clearedgroup = false
+}
+
+// Where appends a list predicates to the RouteMutation builder.
+func (m *RouteMutation) Where(ps ...predicate.Route) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the RouteMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *RouteMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.Route, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *RouteMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *RouteMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (Route).
+func (m *RouteMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *RouteMutation) Fields() []string {
+	fields := make([]string, 0, 12)
+	if m.org_id != nil {
+		fields = append(fields, route.FieldOrgID)
+	}
+	if m.name != nil {
+		fields = append(fields, route.FieldName)
+	}
+	if m._type != nil {
+		fields = append(fields, route.FieldType)
+	}
+	if m.group != nil {
+		fields = append(fields, route.FieldGatewayGroupID)
+	}
+	if m.enabled != nil {
+		fields = append(fields, route.FieldEnabled)
+	}
+	if m.transport != nil {
+		fields = append(fields, route.FieldTransport)
+	}
+	if m.description != nil {
+		fields = append(fields, route.FieldDescription)
+	}
+	if m.labels != nil {
+		fields = append(fields, route.FieldLabels)
+	}
+	if m.version != nil {
+		fields = append(fields, route.FieldVersion)
+	}
+	if m.created_at != nil {
+		fields = append(fields, route.FieldCreatedAt)
+	}
+	if m.updated_at != nil {
+		fields = append(fields, route.FieldUpdatedAt)
+	}
+	if m.updated_by != nil {
+		fields = append(fields, route.FieldUpdatedBy)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *RouteMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case route.FieldOrgID:
+		return m.OrgID()
+	case route.FieldName:
+		return m.Name()
+	case route.FieldType:
+		return m.GetType()
+	case route.FieldGatewayGroupID:
+		return m.GatewayGroupID()
+	case route.FieldEnabled:
+		return m.Enabled()
+	case route.FieldTransport:
+		return m.Transport()
+	case route.FieldDescription:
+		return m.Description()
+	case route.FieldLabels:
+		return m.Labels()
+	case route.FieldVersion:
+		return m.Version()
+	case route.FieldCreatedAt:
+		return m.CreatedAt()
+	case route.FieldUpdatedAt:
+		return m.UpdatedAt()
+	case route.FieldUpdatedBy:
+		return m.UpdatedBy()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *RouteMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case route.FieldOrgID:
+		return m.OldOrgID(ctx)
+	case route.FieldName:
+		return m.OldName(ctx)
+	case route.FieldType:
+		return m.OldType(ctx)
+	case route.FieldGatewayGroupID:
+		return m.OldGatewayGroupID(ctx)
+	case route.FieldEnabled:
+		return m.OldEnabled(ctx)
+	case route.FieldTransport:
+		return m.OldTransport(ctx)
+	case route.FieldDescription:
+		return m.OldDescription(ctx)
+	case route.FieldLabels:
+		return m.OldLabels(ctx)
+	case route.FieldVersion:
+		return m.OldVersion(ctx)
+	case route.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	case route.FieldUpdatedAt:
+		return m.OldUpdatedAt(ctx)
+	case route.FieldUpdatedBy:
+		return m.OldUpdatedBy(ctx)
+	}
+	return nil, fmt.Errorf("unknown Route field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *RouteMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case route.FieldOrgID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetOrgID(v)
+		return nil
+	case route.FieldName:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetName(v)
+		return nil
+	case route.FieldType:
+		v, ok := value.(route.Type)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetType(v)
+		return nil
+	case route.FieldGatewayGroupID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetGatewayGroupID(v)
+		return nil
+	case route.FieldEnabled:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetEnabled(v)
+		return nil
+	case route.FieldTransport:
+		v, ok := value.(route.Transport)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetTransport(v)
+		return nil
+	case route.FieldDescription:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetDescription(v)
+		return nil
+	case route.FieldLabels:
+		v, ok := value.(map[string]string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetLabels(v)
+		return nil
+	case route.FieldVersion:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetVersion(v)
+		return nil
+	case route.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	case route.FieldUpdatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUpdatedAt(v)
+		return nil
+	case route.FieldUpdatedBy:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUpdatedBy(v)
+		return nil
+	}
+	return fmt.Errorf("unknown Route field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *RouteMutation) AddedFields() []string {
+	var fields []string
+	if m.addversion != nil {
+		fields = append(fields, route.FieldVersion)
+	}
+	return fields
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *RouteMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case route.FieldVersion:
+		return m.AddedVersion()
+	}
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *RouteMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	case route.FieldVersion:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddVersion(v)
+		return nil
+	}
+	return fmt.Errorf("unknown Route numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *RouteMutation) ClearedFields() []string {
+	var fields []string
+	if m.FieldCleared(route.FieldTransport) {
+		fields = append(fields, route.FieldTransport)
+	}
+	if m.FieldCleared(route.FieldLabels) {
+		fields = append(fields, route.FieldLabels)
+	}
+	return fields
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *RouteMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *RouteMutation) ClearField(name string) error {
+	switch name {
+	case route.FieldTransport:
+		m.ClearTransport()
+		return nil
+	case route.FieldLabels:
+		m.ClearLabels()
+		return nil
+	}
+	return fmt.Errorf("unknown Route nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *RouteMutation) ResetField(name string) error {
+	switch name {
+	case route.FieldOrgID:
+		m.ResetOrgID()
+		return nil
+	case route.FieldName:
+		m.ResetName()
+		return nil
+	case route.FieldType:
+		m.ResetType()
+		return nil
+	case route.FieldGatewayGroupID:
+		m.ResetGatewayGroupID()
+		return nil
+	case route.FieldEnabled:
+		m.ResetEnabled()
+		return nil
+	case route.FieldTransport:
+		m.ResetTransport()
+		return nil
+	case route.FieldDescription:
+		m.ResetDescription()
+		return nil
+	case route.FieldLabels:
+		m.ResetLabels()
+		return nil
+	case route.FieldVersion:
+		m.ResetVersion()
+		return nil
+	case route.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	case route.FieldUpdatedAt:
+		m.ResetUpdatedAt()
+		return nil
+	case route.FieldUpdatedBy:
+		m.ResetUpdatedBy()
+		return nil
+	}
+	return fmt.Errorf("unknown Route field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *RouteMutation) AddedEdges() []string {
+	edges := make([]string, 0, 1)
+	if m.group != nil {
+		edges = append(edges, route.EdgeGroup)
+	}
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *RouteMutation) AddedIDs(name string) []ent.Value {
+	switch name {
+	case route.EdgeGroup:
+		if id := m.group; id != nil {
+			return []ent.Value{*id}
+		}
+	}
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *RouteMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 1)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *RouteMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *RouteMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 1)
+	if m.clearedgroup {
+		edges = append(edges, route.EdgeGroup)
+	}
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *RouteMutation) EdgeCleared(name string) bool {
+	switch name {
+	case route.EdgeGroup:
+		return m.clearedgroup
+	}
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *RouteMutation) ClearEdge(name string) error {
+	switch name {
+	case route.EdgeGroup:
+		m.ClearGroup()
+		return nil
+	}
+	return fmt.Errorf("unknown Route unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *RouteMutation) ResetEdge(name string) error {
+	switch name {
+	case route.EdgeGroup:
+		m.ResetGroup()
+		return nil
+	}
+	return fmt.Errorf("unknown Route edge %s", name)
+}
+
+// RouteTCPMutation represents an operation that mutates the RouteTCP nodes in the graph.
+type RouteTCPMutation struct {
+	config
+	op                      Op
+	typ                     string
+	id                      *int
+	org_id                  *string
+	listener_mode           *routetcp.ListenerMode
+	idle_timeout_seconds    *int
+	addidle_timeout_seconds *int
+	clearedFields           map[string]struct{}
+	route                   *string
+	clearedroute            bool
+	port                    *string
+	clearedport             bool
+	done                    bool
+	oldValue                func(context.Context) (*RouteTCP, error)
+	predicates              []predicate.RouteTCP
+}
+
+var _ ent.Mutation = (*RouteTCPMutation)(nil)
+
+// routetcpOption allows management of the mutation configuration using functional options.
+type routetcpOption func(*RouteTCPMutation)
+
+// newRouteTCPMutation creates new mutation for the RouteTCP entity.
+func newRouteTCPMutation(c config, op Op, opts ...routetcpOption) *RouteTCPMutation {
+	m := &RouteTCPMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeRouteTCP,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withRouteTCPID sets the ID field of the mutation.
+func withRouteTCPID(id int) routetcpOption {
+	return func(m *RouteTCPMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *RouteTCP
+		)
+		m.oldValue = func(ctx context.Context) (*RouteTCP, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().RouteTCP.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withRouteTCP sets the old RouteTCP of the mutation.
+func withRouteTCP(node *RouteTCP) routetcpOption {
+	return func(m *RouteTCPMutation) {
+		m.oldValue = func(context.Context) (*RouteTCP, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m RouteTCPMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m RouteTCPMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *RouteTCPMutation) ID() (id int, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *RouteTCPMutation) IDs(ctx context.Context) ([]int, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []int{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().RouteTCP.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetOrgID sets the "org_id" field.
+func (m *RouteTCPMutation) SetOrgID(s string) {
+	m.org_id = &s
+}
+
+// OrgID returns the value of the "org_id" field in the mutation.
+func (m *RouteTCPMutation) OrgID() (r string, exists bool) {
+	v := m.org_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldOrgID returns the old "org_id" field's value of the RouteTCP entity.
+// If the RouteTCP object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RouteTCPMutation) OldOrgID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldOrgID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldOrgID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldOrgID: %w", err)
+	}
+	return oldValue.OrgID, nil
+}
+
+// ResetOrgID resets all changes to the "org_id" field.
+func (m *RouteTCPMutation) ResetOrgID() {
+	m.org_id = nil
+}
+
+// SetRouteID sets the "route_id" field.
+func (m *RouteTCPMutation) SetRouteID(s string) {
+	m.route = &s
+}
+
+// RouteID returns the value of the "route_id" field in the mutation.
+func (m *RouteTCPMutation) RouteID() (r string, exists bool) {
+	v := m.route
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRouteID returns the old "route_id" field's value of the RouteTCP entity.
+// If the RouteTCP object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RouteTCPMutation) OldRouteID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRouteID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRouteID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRouteID: %w", err)
+	}
+	return oldValue.RouteID, nil
+}
+
+// ResetRouteID resets all changes to the "route_id" field.
+func (m *RouteTCPMutation) ResetRouteID() {
+	m.route = nil
+}
+
+// SetPortAllocationID sets the "port_allocation_id" field.
+func (m *RouteTCPMutation) SetPortAllocationID(s string) {
+	m.port = &s
+}
+
+// PortAllocationID returns the value of the "port_allocation_id" field in the mutation.
+func (m *RouteTCPMutation) PortAllocationID() (r string, exists bool) {
+	v := m.port
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldPortAllocationID returns the old "port_allocation_id" field's value of the RouteTCP entity.
+// If the RouteTCP object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RouteTCPMutation) OldPortAllocationID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPortAllocationID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPortAllocationID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPortAllocationID: %w", err)
+	}
+	return oldValue.PortAllocationID, nil
+}
+
+// ResetPortAllocationID resets all changes to the "port_allocation_id" field.
+func (m *RouteTCPMutation) ResetPortAllocationID() {
+	m.port = nil
+}
+
+// SetListenerMode sets the "listener_mode" field.
+func (m *RouteTCPMutation) SetListenerMode(rm routetcp.ListenerMode) {
+	m.listener_mode = &rm
+}
+
+// ListenerMode returns the value of the "listener_mode" field in the mutation.
+func (m *RouteTCPMutation) ListenerMode() (r routetcp.ListenerMode, exists bool) {
+	v := m.listener_mode
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldListenerMode returns the old "listener_mode" field's value of the RouteTCP entity.
+// If the RouteTCP object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RouteTCPMutation) OldListenerMode(ctx context.Context) (v routetcp.ListenerMode, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldListenerMode is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldListenerMode requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldListenerMode: %w", err)
+	}
+	return oldValue.ListenerMode, nil
+}
+
+// ResetListenerMode resets all changes to the "listener_mode" field.
+func (m *RouteTCPMutation) ResetListenerMode() {
+	m.listener_mode = nil
+}
+
+// SetIdleTimeoutSeconds sets the "idle_timeout_seconds" field.
+func (m *RouteTCPMutation) SetIdleTimeoutSeconds(i int) {
+	m.idle_timeout_seconds = &i
+	m.addidle_timeout_seconds = nil
+}
+
+// IdleTimeoutSeconds returns the value of the "idle_timeout_seconds" field in the mutation.
+func (m *RouteTCPMutation) IdleTimeoutSeconds() (r int, exists bool) {
+	v := m.idle_timeout_seconds
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldIdleTimeoutSeconds returns the old "idle_timeout_seconds" field's value of the RouteTCP entity.
+// If the RouteTCP object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RouteTCPMutation) OldIdleTimeoutSeconds(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldIdleTimeoutSeconds is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldIdleTimeoutSeconds requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldIdleTimeoutSeconds: %w", err)
+	}
+	return oldValue.IdleTimeoutSeconds, nil
+}
+
+// AddIdleTimeoutSeconds adds i to the "idle_timeout_seconds" field.
+func (m *RouteTCPMutation) AddIdleTimeoutSeconds(i int) {
+	if m.addidle_timeout_seconds != nil {
+		*m.addidle_timeout_seconds += i
+	} else {
+		m.addidle_timeout_seconds = &i
+	}
+}
+
+// AddedIdleTimeoutSeconds returns the value that was added to the "idle_timeout_seconds" field in this mutation.
+func (m *RouteTCPMutation) AddedIdleTimeoutSeconds() (r int, exists bool) {
+	v := m.addidle_timeout_seconds
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetIdleTimeoutSeconds resets all changes to the "idle_timeout_seconds" field.
+func (m *RouteTCPMutation) ResetIdleTimeoutSeconds() {
+	m.idle_timeout_seconds = nil
+	m.addidle_timeout_seconds = nil
+}
+
+// ClearRoute clears the "route" edge to the Route entity.
+func (m *RouteTCPMutation) ClearRoute() {
+	m.clearedroute = true
+	m.clearedFields[routetcp.FieldRouteID] = struct{}{}
+}
+
+// RouteCleared reports if the "route" edge to the Route entity was cleared.
+func (m *RouteTCPMutation) RouteCleared() bool {
+	return m.clearedroute
+}
+
+// RouteIDs returns the "route" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// RouteID instead. It exists only for internal usage by the builders.
+func (m *RouteTCPMutation) RouteIDs() (ids []string) {
+	if id := m.route; id != nil {
+		ids = append(ids, *id)
+	}
+	return
+}
+
+// ResetRoute resets all changes to the "route" edge.
+func (m *RouteTCPMutation) ResetRoute() {
+	m.route = nil
+	m.clearedroute = false
+}
+
+// SetPortID sets the "port" edge to the PortAllocation entity by id.
+func (m *RouteTCPMutation) SetPortID(id string) {
+	m.port = &id
+}
+
+// ClearPort clears the "port" edge to the PortAllocation entity.
+func (m *RouteTCPMutation) ClearPort() {
+	m.clearedport = true
+	m.clearedFields[routetcp.FieldPortAllocationID] = struct{}{}
+}
+
+// PortCleared reports if the "port" edge to the PortAllocation entity was cleared.
+func (m *RouteTCPMutation) PortCleared() bool {
+	return m.clearedport
+}
+
+// PortID returns the "port" edge ID in the mutation.
+func (m *RouteTCPMutation) PortID() (id string, exists bool) {
+	if m.port != nil {
+		return *m.port, true
+	}
+	return
+}
+
+// PortIDs returns the "port" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// PortID instead. It exists only for internal usage by the builders.
+func (m *RouteTCPMutation) PortIDs() (ids []string) {
+	if id := m.port; id != nil {
+		ids = append(ids, *id)
+	}
+	return
+}
+
+// ResetPort resets all changes to the "port" edge.
+func (m *RouteTCPMutation) ResetPort() {
+	m.port = nil
+	m.clearedport = false
+}
+
+// Where appends a list predicates to the RouteTCPMutation builder.
+func (m *RouteTCPMutation) Where(ps ...predicate.RouteTCP) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the RouteTCPMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *RouteTCPMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.RouteTCP, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *RouteTCPMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *RouteTCPMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (RouteTCP).
+func (m *RouteTCPMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *RouteTCPMutation) Fields() []string {
+	fields := make([]string, 0, 5)
+	if m.org_id != nil {
+		fields = append(fields, routetcp.FieldOrgID)
+	}
+	if m.route != nil {
+		fields = append(fields, routetcp.FieldRouteID)
+	}
+	if m.port != nil {
+		fields = append(fields, routetcp.FieldPortAllocationID)
+	}
+	if m.listener_mode != nil {
+		fields = append(fields, routetcp.FieldListenerMode)
+	}
+	if m.idle_timeout_seconds != nil {
+		fields = append(fields, routetcp.FieldIdleTimeoutSeconds)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *RouteTCPMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case routetcp.FieldOrgID:
+		return m.OrgID()
+	case routetcp.FieldRouteID:
+		return m.RouteID()
+	case routetcp.FieldPortAllocationID:
+		return m.PortAllocationID()
+	case routetcp.FieldListenerMode:
+		return m.ListenerMode()
+	case routetcp.FieldIdleTimeoutSeconds:
+		return m.IdleTimeoutSeconds()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *RouteTCPMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case routetcp.FieldOrgID:
+		return m.OldOrgID(ctx)
+	case routetcp.FieldRouteID:
+		return m.OldRouteID(ctx)
+	case routetcp.FieldPortAllocationID:
+		return m.OldPortAllocationID(ctx)
+	case routetcp.FieldListenerMode:
+		return m.OldListenerMode(ctx)
+	case routetcp.FieldIdleTimeoutSeconds:
+		return m.OldIdleTimeoutSeconds(ctx)
+	}
+	return nil, fmt.Errorf("unknown RouteTCP field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *RouteTCPMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case routetcp.FieldOrgID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetOrgID(v)
+		return nil
+	case routetcp.FieldRouteID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRouteID(v)
+		return nil
+	case routetcp.FieldPortAllocationID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetPortAllocationID(v)
+		return nil
+	case routetcp.FieldListenerMode:
+		v, ok := value.(routetcp.ListenerMode)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetListenerMode(v)
+		return nil
+	case routetcp.FieldIdleTimeoutSeconds:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetIdleTimeoutSeconds(v)
+		return nil
+	}
+	return fmt.Errorf("unknown RouteTCP field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *RouteTCPMutation) AddedFields() []string {
+	var fields []string
+	if m.addidle_timeout_seconds != nil {
+		fields = append(fields, routetcp.FieldIdleTimeoutSeconds)
+	}
+	return fields
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *RouteTCPMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case routetcp.FieldIdleTimeoutSeconds:
+		return m.AddedIdleTimeoutSeconds()
+	}
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *RouteTCPMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	case routetcp.FieldIdleTimeoutSeconds:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddIdleTimeoutSeconds(v)
+		return nil
+	}
+	return fmt.Errorf("unknown RouteTCP numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *RouteTCPMutation) ClearedFields() []string {
+	return nil
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *RouteTCPMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *RouteTCPMutation) ClearField(name string) error {
+	return fmt.Errorf("unknown RouteTCP nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *RouteTCPMutation) ResetField(name string) error {
+	switch name {
+	case routetcp.FieldOrgID:
+		m.ResetOrgID()
+		return nil
+	case routetcp.FieldRouteID:
+		m.ResetRouteID()
+		return nil
+	case routetcp.FieldPortAllocationID:
+		m.ResetPortAllocationID()
+		return nil
+	case routetcp.FieldListenerMode:
+		m.ResetListenerMode()
+		return nil
+	case routetcp.FieldIdleTimeoutSeconds:
+		m.ResetIdleTimeoutSeconds()
+		return nil
+	}
+	return fmt.Errorf("unknown RouteTCP field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *RouteTCPMutation) AddedEdges() []string {
+	edges := make([]string, 0, 2)
+	if m.route != nil {
+		edges = append(edges, routetcp.EdgeRoute)
+	}
+	if m.port != nil {
+		edges = append(edges, routetcp.EdgePort)
+	}
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *RouteTCPMutation) AddedIDs(name string) []ent.Value {
+	switch name {
+	case routetcp.EdgeRoute:
+		if id := m.route; id != nil {
+			return []ent.Value{*id}
+		}
+	case routetcp.EdgePort:
+		if id := m.port; id != nil {
+			return []ent.Value{*id}
+		}
+	}
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *RouteTCPMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 2)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *RouteTCPMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *RouteTCPMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 2)
+	if m.clearedroute {
+		edges = append(edges, routetcp.EdgeRoute)
+	}
+	if m.clearedport {
+		edges = append(edges, routetcp.EdgePort)
+	}
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *RouteTCPMutation) EdgeCleared(name string) bool {
+	switch name {
+	case routetcp.EdgeRoute:
+		return m.clearedroute
+	case routetcp.EdgePort:
+		return m.clearedport
+	}
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *RouteTCPMutation) ClearEdge(name string) error {
+	switch name {
+	case routetcp.EdgeRoute:
+		m.ClearRoute()
+		return nil
+	case routetcp.EdgePort:
+		m.ClearPort()
+		return nil
+	}
+	return fmt.Errorf("unknown RouteTCP unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *RouteTCPMutation) ResetEdge(name string) error {
+	switch name {
+	case routetcp.EdgeRoute:
+		m.ResetRoute()
+		return nil
+	case routetcp.EdgePort:
+		m.ResetPort()
+		return nil
+	}
+	return fmt.Errorf("unknown RouteTCP edge %s", name)
+}
+
+// RouteTargetMutation represents an operation that mutates the RouteTarget nodes in the graph.
+type RouteTargetMutation struct {
+	config
+	op                Op
+	typ               string
+	id                *string
+	org_id            *string
+	kind              *routetarget.Kind
+	host              *string
+	port              *int
+	addport           *int
+	unix_path         *string
+	upstream_protocol *routetarget.UpstreamProtocol
+	tls_server_name   *string
+	tls_spki_sha256   *string
+	proxy_protocol    *routetarget.ProxyProtocol
+	weight            *int
+	addweight         *int
+	priority          *int
+	addpriority       *int
+	enabled           *bool
+	clearedFields     map[string]struct{}
+	route             *string
+	clearedroute      bool
+	connector         *string
+	clearedconnector  bool
+	done              bool
+	oldValue          func(context.Context) (*RouteTarget, error)
+	predicates        []predicate.RouteTarget
+}
+
+var _ ent.Mutation = (*RouteTargetMutation)(nil)
+
+// routetargetOption allows management of the mutation configuration using functional options.
+type routetargetOption func(*RouteTargetMutation)
+
+// newRouteTargetMutation creates new mutation for the RouteTarget entity.
+func newRouteTargetMutation(c config, op Op, opts ...routetargetOption) *RouteTargetMutation {
+	m := &RouteTargetMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeRouteTarget,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withRouteTargetID sets the ID field of the mutation.
+func withRouteTargetID(id string) routetargetOption {
+	return func(m *RouteTargetMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *RouteTarget
+		)
+		m.oldValue = func(ctx context.Context) (*RouteTarget, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().RouteTarget.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withRouteTarget sets the old RouteTarget of the mutation.
+func withRouteTarget(node *RouteTarget) routetargetOption {
+	return func(m *RouteTargetMutation) {
+		m.oldValue = func(context.Context) (*RouteTarget, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m RouteTargetMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m RouteTargetMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// SetID sets the value of the id field. Note that this
+// operation is only accepted on creation of RouteTarget entities.
+func (m *RouteTargetMutation) SetID(id string) {
+	m.id = &id
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *RouteTargetMutation) ID() (id string, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *RouteTargetMutation) IDs(ctx context.Context) ([]string, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []string{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().RouteTarget.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetOrgID sets the "org_id" field.
+func (m *RouteTargetMutation) SetOrgID(s string) {
+	m.org_id = &s
+}
+
+// OrgID returns the value of the "org_id" field in the mutation.
+func (m *RouteTargetMutation) OrgID() (r string, exists bool) {
+	v := m.org_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldOrgID returns the old "org_id" field's value of the RouteTarget entity.
+// If the RouteTarget object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RouteTargetMutation) OldOrgID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldOrgID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldOrgID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldOrgID: %w", err)
+	}
+	return oldValue.OrgID, nil
+}
+
+// ResetOrgID resets all changes to the "org_id" field.
+func (m *RouteTargetMutation) ResetOrgID() {
+	m.org_id = nil
+}
+
+// SetRouteID sets the "route_id" field.
+func (m *RouteTargetMutation) SetRouteID(s string) {
+	m.route = &s
+}
+
+// RouteID returns the value of the "route_id" field in the mutation.
+func (m *RouteTargetMutation) RouteID() (r string, exists bool) {
+	v := m.route
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRouteID returns the old "route_id" field's value of the RouteTarget entity.
+// If the RouteTarget object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RouteTargetMutation) OldRouteID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRouteID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRouteID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRouteID: %w", err)
+	}
+	return oldValue.RouteID, nil
+}
+
+// ResetRouteID resets all changes to the "route_id" field.
+func (m *RouteTargetMutation) ResetRouteID() {
+	m.route = nil
+}
+
+// SetConnectorID sets the "connector_id" field.
+func (m *RouteTargetMutation) SetConnectorID(s string) {
+	m.connector = &s
+}
+
+// ConnectorID returns the value of the "connector_id" field in the mutation.
+func (m *RouteTargetMutation) ConnectorID() (r string, exists bool) {
+	v := m.connector
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldConnectorID returns the old "connector_id" field's value of the RouteTarget entity.
+// If the RouteTarget object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RouteTargetMutation) OldConnectorID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldConnectorID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldConnectorID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldConnectorID: %w", err)
+	}
+	return oldValue.ConnectorID, nil
+}
+
+// ResetConnectorID resets all changes to the "connector_id" field.
+func (m *RouteTargetMutation) ResetConnectorID() {
+	m.connector = nil
+}
+
+// SetKind sets the "kind" field.
+func (m *RouteTargetMutation) SetKind(r routetarget.Kind) {
+	m.kind = &r
+}
+
+// Kind returns the value of the "kind" field in the mutation.
+func (m *RouteTargetMutation) Kind() (r routetarget.Kind, exists bool) {
+	v := m.kind
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldKind returns the old "kind" field's value of the RouteTarget entity.
+// If the RouteTarget object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RouteTargetMutation) OldKind(ctx context.Context) (v routetarget.Kind, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldKind is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldKind requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldKind: %w", err)
+	}
+	return oldValue.Kind, nil
+}
+
+// ResetKind resets all changes to the "kind" field.
+func (m *RouteTargetMutation) ResetKind() {
+	m.kind = nil
+}
+
+// SetHost sets the "host" field.
+func (m *RouteTargetMutation) SetHost(s string) {
+	m.host = &s
+}
+
+// Host returns the value of the "host" field in the mutation.
+func (m *RouteTargetMutation) Host() (r string, exists bool) {
+	v := m.host
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldHost returns the old "host" field's value of the RouteTarget entity.
+// If the RouteTarget object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RouteTargetMutation) OldHost(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldHost is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldHost requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldHost: %w", err)
+	}
+	return oldValue.Host, nil
+}
+
+// ResetHost resets all changes to the "host" field.
+func (m *RouteTargetMutation) ResetHost() {
+	m.host = nil
+}
+
+// SetPort sets the "port" field.
+func (m *RouteTargetMutation) SetPort(i int) {
+	m.port = &i
+	m.addport = nil
+}
+
+// Port returns the value of the "port" field in the mutation.
+func (m *RouteTargetMutation) Port() (r int, exists bool) {
+	v := m.port
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldPort returns the old "port" field's value of the RouteTarget entity.
+// If the RouteTarget object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RouteTargetMutation) OldPort(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPort is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPort requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPort: %w", err)
+	}
+	return oldValue.Port, nil
+}
+
+// AddPort adds i to the "port" field.
+func (m *RouteTargetMutation) AddPort(i int) {
+	if m.addport != nil {
+		*m.addport += i
+	} else {
+		m.addport = &i
+	}
+}
+
+// AddedPort returns the value that was added to the "port" field in this mutation.
+func (m *RouteTargetMutation) AddedPort() (r int, exists bool) {
+	v := m.addport
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetPort resets all changes to the "port" field.
+func (m *RouteTargetMutation) ResetPort() {
+	m.port = nil
+	m.addport = nil
+}
+
+// SetUnixPath sets the "unix_path" field.
+func (m *RouteTargetMutation) SetUnixPath(s string) {
+	m.unix_path = &s
+}
+
+// UnixPath returns the value of the "unix_path" field in the mutation.
+func (m *RouteTargetMutation) UnixPath() (r string, exists bool) {
+	v := m.unix_path
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUnixPath returns the old "unix_path" field's value of the RouteTarget entity.
+// If the RouteTarget object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RouteTargetMutation) OldUnixPath(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUnixPath is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUnixPath requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUnixPath: %w", err)
+	}
+	return oldValue.UnixPath, nil
+}
+
+// ResetUnixPath resets all changes to the "unix_path" field.
+func (m *RouteTargetMutation) ResetUnixPath() {
+	m.unix_path = nil
+}
+
+// SetUpstreamProtocol sets the "upstream_protocol" field.
+func (m *RouteTargetMutation) SetUpstreamProtocol(rp routetarget.UpstreamProtocol) {
+	m.upstream_protocol = &rp
+}
+
+// UpstreamProtocol returns the value of the "upstream_protocol" field in the mutation.
+func (m *RouteTargetMutation) UpstreamProtocol() (r routetarget.UpstreamProtocol, exists bool) {
+	v := m.upstream_protocol
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUpstreamProtocol returns the old "upstream_protocol" field's value of the RouteTarget entity.
+// If the RouteTarget object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RouteTargetMutation) OldUpstreamProtocol(ctx context.Context) (v routetarget.UpstreamProtocol, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUpstreamProtocol is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUpstreamProtocol requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUpstreamProtocol: %w", err)
+	}
+	return oldValue.UpstreamProtocol, nil
+}
+
+// ResetUpstreamProtocol resets all changes to the "upstream_protocol" field.
+func (m *RouteTargetMutation) ResetUpstreamProtocol() {
+	m.upstream_protocol = nil
+}
+
+// SetTLSServerName sets the "tls_server_name" field.
+func (m *RouteTargetMutation) SetTLSServerName(s string) {
+	m.tls_server_name = &s
+}
+
+// TLSServerName returns the value of the "tls_server_name" field in the mutation.
+func (m *RouteTargetMutation) TLSServerName() (r string, exists bool) {
+	v := m.tls_server_name
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldTLSServerName returns the old "tls_server_name" field's value of the RouteTarget entity.
+// If the RouteTarget object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RouteTargetMutation) OldTLSServerName(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldTLSServerName is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldTLSServerName requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldTLSServerName: %w", err)
+	}
+	return oldValue.TLSServerName, nil
+}
+
+// ResetTLSServerName resets all changes to the "tls_server_name" field.
+func (m *RouteTargetMutation) ResetTLSServerName() {
+	m.tls_server_name = nil
+}
+
+// SetTLSSpkiSha256 sets the "tls_spki_sha256" field.
+func (m *RouteTargetMutation) SetTLSSpkiSha256(s string) {
+	m.tls_spki_sha256 = &s
+}
+
+// TLSSpkiSha256 returns the value of the "tls_spki_sha256" field in the mutation.
+func (m *RouteTargetMutation) TLSSpkiSha256() (r string, exists bool) {
+	v := m.tls_spki_sha256
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldTLSSpkiSha256 returns the old "tls_spki_sha256" field's value of the RouteTarget entity.
+// If the RouteTarget object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RouteTargetMutation) OldTLSSpkiSha256(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldTLSSpkiSha256 is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldTLSSpkiSha256 requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldTLSSpkiSha256: %w", err)
+	}
+	return oldValue.TLSSpkiSha256, nil
+}
+
+// ResetTLSSpkiSha256 resets all changes to the "tls_spki_sha256" field.
+func (m *RouteTargetMutation) ResetTLSSpkiSha256() {
+	m.tls_spki_sha256 = nil
+}
+
+// SetProxyProtocol sets the "proxy_protocol" field.
+func (m *RouteTargetMutation) SetProxyProtocol(rp routetarget.ProxyProtocol) {
+	m.proxy_protocol = &rp
+}
+
+// ProxyProtocol returns the value of the "proxy_protocol" field in the mutation.
+func (m *RouteTargetMutation) ProxyProtocol() (r routetarget.ProxyProtocol, exists bool) {
+	v := m.proxy_protocol
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldProxyProtocol returns the old "proxy_protocol" field's value of the RouteTarget entity.
+// If the RouteTarget object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RouteTargetMutation) OldProxyProtocol(ctx context.Context) (v routetarget.ProxyProtocol, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldProxyProtocol is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldProxyProtocol requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldProxyProtocol: %w", err)
+	}
+	return oldValue.ProxyProtocol, nil
+}
+
+// ResetProxyProtocol resets all changes to the "proxy_protocol" field.
+func (m *RouteTargetMutation) ResetProxyProtocol() {
+	m.proxy_protocol = nil
+}
+
+// SetWeight sets the "weight" field.
+func (m *RouteTargetMutation) SetWeight(i int) {
+	m.weight = &i
+	m.addweight = nil
+}
+
+// Weight returns the value of the "weight" field in the mutation.
+func (m *RouteTargetMutation) Weight() (r int, exists bool) {
+	v := m.weight
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldWeight returns the old "weight" field's value of the RouteTarget entity.
+// If the RouteTarget object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RouteTargetMutation) OldWeight(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldWeight is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldWeight requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldWeight: %w", err)
+	}
+	return oldValue.Weight, nil
+}
+
+// AddWeight adds i to the "weight" field.
+func (m *RouteTargetMutation) AddWeight(i int) {
+	if m.addweight != nil {
+		*m.addweight += i
+	} else {
+		m.addweight = &i
+	}
+}
+
+// AddedWeight returns the value that was added to the "weight" field in this mutation.
+func (m *RouteTargetMutation) AddedWeight() (r int, exists bool) {
+	v := m.addweight
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetWeight resets all changes to the "weight" field.
+func (m *RouteTargetMutation) ResetWeight() {
+	m.weight = nil
+	m.addweight = nil
+}
+
+// SetPriority sets the "priority" field.
+func (m *RouteTargetMutation) SetPriority(i int) {
+	m.priority = &i
+	m.addpriority = nil
+}
+
+// Priority returns the value of the "priority" field in the mutation.
+func (m *RouteTargetMutation) Priority() (r int, exists bool) {
+	v := m.priority
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldPriority returns the old "priority" field's value of the RouteTarget entity.
+// If the RouteTarget object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RouteTargetMutation) OldPriority(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPriority is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPriority requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPriority: %w", err)
+	}
+	return oldValue.Priority, nil
+}
+
+// AddPriority adds i to the "priority" field.
+func (m *RouteTargetMutation) AddPriority(i int) {
+	if m.addpriority != nil {
+		*m.addpriority += i
+	} else {
+		m.addpriority = &i
+	}
+}
+
+// AddedPriority returns the value that was added to the "priority" field in this mutation.
+func (m *RouteTargetMutation) AddedPriority() (r int, exists bool) {
+	v := m.addpriority
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetPriority resets all changes to the "priority" field.
+func (m *RouteTargetMutation) ResetPriority() {
+	m.priority = nil
+	m.addpriority = nil
+}
+
+// SetEnabled sets the "enabled" field.
+func (m *RouteTargetMutation) SetEnabled(b bool) {
+	m.enabled = &b
+}
+
+// Enabled returns the value of the "enabled" field in the mutation.
+func (m *RouteTargetMutation) Enabled() (r bool, exists bool) {
+	v := m.enabled
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldEnabled returns the old "enabled" field's value of the RouteTarget entity.
+// If the RouteTarget object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RouteTargetMutation) OldEnabled(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldEnabled is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldEnabled requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldEnabled: %w", err)
+	}
+	return oldValue.Enabled, nil
+}
+
+// ResetEnabled resets all changes to the "enabled" field.
+func (m *RouteTargetMutation) ResetEnabled() {
+	m.enabled = nil
+}
+
+// ClearRoute clears the "route" edge to the Route entity.
+func (m *RouteTargetMutation) ClearRoute() {
+	m.clearedroute = true
+	m.clearedFields[routetarget.FieldRouteID] = struct{}{}
+}
+
+// RouteCleared reports if the "route" edge to the Route entity was cleared.
+func (m *RouteTargetMutation) RouteCleared() bool {
+	return m.clearedroute
+}
+
+// RouteIDs returns the "route" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// RouteID instead. It exists only for internal usage by the builders.
+func (m *RouteTargetMutation) RouteIDs() (ids []string) {
+	if id := m.route; id != nil {
+		ids = append(ids, *id)
+	}
+	return
+}
+
+// ResetRoute resets all changes to the "route" edge.
+func (m *RouteTargetMutation) ResetRoute() {
+	m.route = nil
+	m.clearedroute = false
+}
+
+// ClearConnector clears the "connector" edge to the Connector entity.
+func (m *RouteTargetMutation) ClearConnector() {
+	m.clearedconnector = true
+	m.clearedFields[routetarget.FieldConnectorID] = struct{}{}
+}
+
+// ConnectorCleared reports if the "connector" edge to the Connector entity was cleared.
+func (m *RouteTargetMutation) ConnectorCleared() bool {
+	return m.clearedconnector
+}
+
+// ConnectorIDs returns the "connector" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// ConnectorID instead. It exists only for internal usage by the builders.
+func (m *RouteTargetMutation) ConnectorIDs() (ids []string) {
+	if id := m.connector; id != nil {
+		ids = append(ids, *id)
+	}
+	return
+}
+
+// ResetConnector resets all changes to the "connector" edge.
+func (m *RouteTargetMutation) ResetConnector() {
+	m.connector = nil
+	m.clearedconnector = false
+}
+
+// Where appends a list predicates to the RouteTargetMutation builder.
+func (m *RouteTargetMutation) Where(ps ...predicate.RouteTarget) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the RouteTargetMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *RouteTargetMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.RouteTarget, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *RouteTargetMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *RouteTargetMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (RouteTarget).
+func (m *RouteTargetMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *RouteTargetMutation) Fields() []string {
+	fields := make([]string, 0, 14)
+	if m.org_id != nil {
+		fields = append(fields, routetarget.FieldOrgID)
+	}
+	if m.route != nil {
+		fields = append(fields, routetarget.FieldRouteID)
+	}
+	if m.connector != nil {
+		fields = append(fields, routetarget.FieldConnectorID)
+	}
+	if m.kind != nil {
+		fields = append(fields, routetarget.FieldKind)
+	}
+	if m.host != nil {
+		fields = append(fields, routetarget.FieldHost)
+	}
+	if m.port != nil {
+		fields = append(fields, routetarget.FieldPort)
+	}
+	if m.unix_path != nil {
+		fields = append(fields, routetarget.FieldUnixPath)
+	}
+	if m.upstream_protocol != nil {
+		fields = append(fields, routetarget.FieldUpstreamProtocol)
+	}
+	if m.tls_server_name != nil {
+		fields = append(fields, routetarget.FieldTLSServerName)
+	}
+	if m.tls_spki_sha256 != nil {
+		fields = append(fields, routetarget.FieldTLSSpkiSha256)
+	}
+	if m.proxy_protocol != nil {
+		fields = append(fields, routetarget.FieldProxyProtocol)
+	}
+	if m.weight != nil {
+		fields = append(fields, routetarget.FieldWeight)
+	}
+	if m.priority != nil {
+		fields = append(fields, routetarget.FieldPriority)
+	}
+	if m.enabled != nil {
+		fields = append(fields, routetarget.FieldEnabled)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *RouteTargetMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case routetarget.FieldOrgID:
+		return m.OrgID()
+	case routetarget.FieldRouteID:
+		return m.RouteID()
+	case routetarget.FieldConnectorID:
+		return m.ConnectorID()
+	case routetarget.FieldKind:
+		return m.Kind()
+	case routetarget.FieldHost:
+		return m.Host()
+	case routetarget.FieldPort:
+		return m.Port()
+	case routetarget.FieldUnixPath:
+		return m.UnixPath()
+	case routetarget.FieldUpstreamProtocol:
+		return m.UpstreamProtocol()
+	case routetarget.FieldTLSServerName:
+		return m.TLSServerName()
+	case routetarget.FieldTLSSpkiSha256:
+		return m.TLSSpkiSha256()
+	case routetarget.FieldProxyProtocol:
+		return m.ProxyProtocol()
+	case routetarget.FieldWeight:
+		return m.Weight()
+	case routetarget.FieldPriority:
+		return m.Priority()
+	case routetarget.FieldEnabled:
+		return m.Enabled()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *RouteTargetMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case routetarget.FieldOrgID:
+		return m.OldOrgID(ctx)
+	case routetarget.FieldRouteID:
+		return m.OldRouteID(ctx)
+	case routetarget.FieldConnectorID:
+		return m.OldConnectorID(ctx)
+	case routetarget.FieldKind:
+		return m.OldKind(ctx)
+	case routetarget.FieldHost:
+		return m.OldHost(ctx)
+	case routetarget.FieldPort:
+		return m.OldPort(ctx)
+	case routetarget.FieldUnixPath:
+		return m.OldUnixPath(ctx)
+	case routetarget.FieldUpstreamProtocol:
+		return m.OldUpstreamProtocol(ctx)
+	case routetarget.FieldTLSServerName:
+		return m.OldTLSServerName(ctx)
+	case routetarget.FieldTLSSpkiSha256:
+		return m.OldTLSSpkiSha256(ctx)
+	case routetarget.FieldProxyProtocol:
+		return m.OldProxyProtocol(ctx)
+	case routetarget.FieldWeight:
+		return m.OldWeight(ctx)
+	case routetarget.FieldPriority:
+		return m.OldPriority(ctx)
+	case routetarget.FieldEnabled:
+		return m.OldEnabled(ctx)
+	}
+	return nil, fmt.Errorf("unknown RouteTarget field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *RouteTargetMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case routetarget.FieldOrgID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetOrgID(v)
+		return nil
+	case routetarget.FieldRouteID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRouteID(v)
+		return nil
+	case routetarget.FieldConnectorID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetConnectorID(v)
+		return nil
+	case routetarget.FieldKind:
+		v, ok := value.(routetarget.Kind)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetKind(v)
+		return nil
+	case routetarget.FieldHost:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetHost(v)
+		return nil
+	case routetarget.FieldPort:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetPort(v)
+		return nil
+	case routetarget.FieldUnixPath:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUnixPath(v)
+		return nil
+	case routetarget.FieldUpstreamProtocol:
+		v, ok := value.(routetarget.UpstreamProtocol)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUpstreamProtocol(v)
+		return nil
+	case routetarget.FieldTLSServerName:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetTLSServerName(v)
+		return nil
+	case routetarget.FieldTLSSpkiSha256:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetTLSSpkiSha256(v)
+		return nil
+	case routetarget.FieldProxyProtocol:
+		v, ok := value.(routetarget.ProxyProtocol)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetProxyProtocol(v)
+		return nil
+	case routetarget.FieldWeight:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetWeight(v)
+		return nil
+	case routetarget.FieldPriority:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetPriority(v)
+		return nil
+	case routetarget.FieldEnabled:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetEnabled(v)
+		return nil
+	}
+	return fmt.Errorf("unknown RouteTarget field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *RouteTargetMutation) AddedFields() []string {
+	var fields []string
+	if m.addport != nil {
+		fields = append(fields, routetarget.FieldPort)
+	}
+	if m.addweight != nil {
+		fields = append(fields, routetarget.FieldWeight)
+	}
+	if m.addpriority != nil {
+		fields = append(fields, routetarget.FieldPriority)
+	}
+	return fields
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *RouteTargetMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case routetarget.FieldPort:
+		return m.AddedPort()
+	case routetarget.FieldWeight:
+		return m.AddedWeight()
+	case routetarget.FieldPriority:
+		return m.AddedPriority()
+	}
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *RouteTargetMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	case routetarget.FieldPort:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddPort(v)
+		return nil
+	case routetarget.FieldWeight:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddWeight(v)
+		return nil
+	case routetarget.FieldPriority:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddPriority(v)
+		return nil
+	}
+	return fmt.Errorf("unknown RouteTarget numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *RouteTargetMutation) ClearedFields() []string {
+	return nil
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *RouteTargetMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *RouteTargetMutation) ClearField(name string) error {
+	return fmt.Errorf("unknown RouteTarget nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *RouteTargetMutation) ResetField(name string) error {
+	switch name {
+	case routetarget.FieldOrgID:
+		m.ResetOrgID()
+		return nil
+	case routetarget.FieldRouteID:
+		m.ResetRouteID()
+		return nil
+	case routetarget.FieldConnectorID:
+		m.ResetConnectorID()
+		return nil
+	case routetarget.FieldKind:
+		m.ResetKind()
+		return nil
+	case routetarget.FieldHost:
+		m.ResetHost()
+		return nil
+	case routetarget.FieldPort:
+		m.ResetPort()
+		return nil
+	case routetarget.FieldUnixPath:
+		m.ResetUnixPath()
+		return nil
+	case routetarget.FieldUpstreamProtocol:
+		m.ResetUpstreamProtocol()
+		return nil
+	case routetarget.FieldTLSServerName:
+		m.ResetTLSServerName()
+		return nil
+	case routetarget.FieldTLSSpkiSha256:
+		m.ResetTLSSpkiSha256()
+		return nil
+	case routetarget.FieldProxyProtocol:
+		m.ResetProxyProtocol()
+		return nil
+	case routetarget.FieldWeight:
+		m.ResetWeight()
+		return nil
+	case routetarget.FieldPriority:
+		m.ResetPriority()
+		return nil
+	case routetarget.FieldEnabled:
+		m.ResetEnabled()
+		return nil
+	}
+	return fmt.Errorf("unknown RouteTarget field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *RouteTargetMutation) AddedEdges() []string {
+	edges := make([]string, 0, 2)
+	if m.route != nil {
+		edges = append(edges, routetarget.EdgeRoute)
+	}
+	if m.connector != nil {
+		edges = append(edges, routetarget.EdgeConnector)
+	}
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *RouteTargetMutation) AddedIDs(name string) []ent.Value {
+	switch name {
+	case routetarget.EdgeRoute:
+		if id := m.route; id != nil {
+			return []ent.Value{*id}
+		}
+	case routetarget.EdgeConnector:
+		if id := m.connector; id != nil {
+			return []ent.Value{*id}
+		}
+	}
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *RouteTargetMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 2)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *RouteTargetMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *RouteTargetMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 2)
+	if m.clearedroute {
+		edges = append(edges, routetarget.EdgeRoute)
+	}
+	if m.clearedconnector {
+		edges = append(edges, routetarget.EdgeConnector)
+	}
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *RouteTargetMutation) EdgeCleared(name string) bool {
+	switch name {
+	case routetarget.EdgeRoute:
+		return m.clearedroute
+	case routetarget.EdgeConnector:
+		return m.clearedconnector
+	}
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *RouteTargetMutation) ClearEdge(name string) error {
+	switch name {
+	case routetarget.EdgeRoute:
+		m.ClearRoute()
+		return nil
+	case routetarget.EdgeConnector:
+		m.ClearConnector()
+		return nil
+	}
+	return fmt.Errorf("unknown RouteTarget unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *RouteTargetMutation) ResetEdge(name string) error {
+	switch name {
+	case routetarget.EdgeRoute:
+		m.ResetRoute()
+		return nil
+	case routetarget.EdgeConnector:
+		m.ResetConnector()
+		return nil
+	}
+	return fmt.Errorf("unknown RouteTarget edge %s", name)
 }
 
 // SecretMetaMutation represents an operation that mutates the SecretMeta nodes in the graph.

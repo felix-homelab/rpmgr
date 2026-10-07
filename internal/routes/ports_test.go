@@ -1,0 +1,184 @@
+// SPDX-License-Identifier: Apache-2.0
+
+package routes_test
+
+import (
+	"context"
+	"errors"
+	"testing"
+
+	"github.com/felix-homelab/rpmgr/internal/routes"
+	"github.com/felix-homelab/rpmgr/internal/store"
+	"github.com/felix-homelab/rpmgr/internal/store/ent"
+	"github.com/felix-homelab/rpmgr/internal/store/storetest"
+)
+
+type env struct {
+	db             *store.DB
+	sys            context.Context
+	orgA, orgB     string
+	groupA, groupB string
+}
+
+func newEnv(t *testing.T, db *store.DB) *env {
+	t.Helper()
+	storetest.Init(t, db)
+	e := &env{db: db, sys: storetest.SystemCtx(t), orgA: storetest.Org(t, db, "org-a"), orgB: storetest.Org(t, db, "org-b")}
+	e.groupA = db.Client().GatewayGroup.Create().SetOrgID(e.orgA).SetName("eu").SaveX(e.sys).ID
+	e.groupB = db.Client().GatewayGroup.Create().SetOrgID(e.orgB).SetName("eu").SaveX(e.sys).ID
+	return e
+}
+
+func (e *env) tx(t *testing.T, f func(tx *ent.Tx) error) error {
+	t.Helper()
+	return store.WriteTx(e.sys, e.db, f)
+}
+
+func (e *env) pool(t *testing.T, org, group string, p routes.Protocol, from, to int) error {
+	t.Helper()
+	return e.tx(t, func(tx *ent.Tx) error { _, err := routes.AddPool(e.sys, tx, org, group, p, from, to); return err })
+}
+
+func (e *env) alloc(t *testing.T, org, group string, p routes.Protocol, port int) (int, error) {
+	t.Helper()
+	var got int
+	err := e.tx(t, func(tx *ent.Tx) error {
+		a, err := routes.Allocate(e.sys, tx, org, group, p, port)
+		if err == nil {
+			got = a.Port
+		}
+		return err
+	})
+	return got, err
+}
+
+func TestPools(t *testing.T) {
+	storetest.ForEachDialect(t, func(t *testing.T, db *store.DB) {
+		e := newEnv(t, db)
+		if err := e.pool(t, e.orgA, e.groupA, routes.TCP, 20000, 20099); err != nil {
+			t.Fatal(err)
+		}
+		for name, tc := range map[string]struct {
+			org, group string
+			p          routes.Protocol
+			from, to   int
+			want       error
+		}{
+			"overlap at the end":  {e.orgA, e.groupA, routes.TCP, 20099, 20200, routes.ErrPoolOverlap},
+			"overlap inside":      {e.orgA, e.groupA, routes.TCP, 20010, 20020, routes.ErrPoolOverlap},
+			"another org's group": {e.orgA, e.groupB, routes.TCP, 30000, 30010, routes.ErrNoGroup},
+			"reversed":            {e.orgA, e.groupA, routes.TCP, 30010, 30000, nil},
+			"port 0":              {e.orgA, e.groupA, routes.TCP, 0, 10, nil},
+			"port 65536":          {e.orgA, e.groupA, routes.TCP, 65530, 65536, nil},
+		} {
+			err := e.pool(t, tc.org, tc.group, tc.p, tc.from, tc.to)
+			if err == nil || tc.want != nil && !errors.Is(err, tc.want) {
+				t.Errorf("%s: %v, want %v", name, err, tc.want)
+			}
+		}
+		for name, r := range map[string][2]int{"adjacent": {20100, 20199}, "UDP on the same ports": {20000, 20099}} {
+			p := routes.TCP
+			if name == "UDP on the same ports" {
+				p = routes.UDP
+			}
+			if err := e.pool(t, e.orgA, e.groupA, p, r[0], r[1]); err != nil {
+				t.Errorf("%s: %v", name, err)
+			}
+		}
+	})
+}
+
+func TestAllocate(t *testing.T) {
+	storetest.ForEachDialect(t, func(t *testing.T, db *store.DB) {
+		e := newEnv(t, db)
+		if err := e.pool(t, e.orgA, e.groupA, routes.TCP, 20000, 20009); err != nil {
+			t.Fatal(err)
+		}
+		if port, err := e.alloc(t, e.orgA, e.groupA, routes.TCP, 20005); err != nil || port != 20005 {
+			t.Fatalf("an explicit port: %d %v", port, err)
+		}
+		if _, err := e.alloc(t, e.orgA, e.groupA, routes.TCP, 20005); !errors.Is(err, routes.ErrPortTaken) {
+			t.Fatalf("a taken port: %v", err)
+		}
+		if _, err := e.alloc(t, e.orgA, e.groupA, routes.TCP, 20010); !errors.Is(err, routes.ErrNotInPool) {
+			t.Fatalf("a port outside the pools: %v", err)
+		}
+		if _, err := e.alloc(t, e.orgA, e.groupA, routes.UDP, 20000); !errors.Is(err, routes.ErrNotInPool) {
+			t.Fatalf("a UDP port in a TCP pool: %v", err)
+		}
+		if _, err := e.alloc(t, e.orgB, e.groupA, routes.TCP, 0); !errors.Is(err, routes.ErrNoGroup) {
+			t.Fatalf("another org's group: %v", err)
+		}
+		seen := map[int]bool{20005: true}
+		for range 9 {
+			port, err := e.alloc(t, e.orgA, e.groupA, routes.TCP, 0)
+			if err != nil || port < 20000 || port > 20009 || seen[port] {
+				t.Fatalf("a random port: %d %v", port, err)
+			}
+			seen[port] = true
+		}
+		if _, err := e.alloc(t, e.orgA, e.groupA, routes.TCP, 0); !errors.Is(err, routes.ErrPoolExhausted) {
+			t.Fatalf("an exhausted pool: %v", err)
+		}
+		// A released port can be allocated again.
+		if err := e.tx(t, func(tx *ent.Tx) error {
+			a := tx.PortAllocation.Query().FirstX(e.sys)
+			return routes.Release(e.sys, tx, a.ID)
+		}); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := e.alloc(t, e.orgA, e.groupA, routes.TCP, 0); err != nil {
+			t.Fatalf("after a release: %v", err)
+		}
+	})
+}
+
+// TestQuota: a quota caps an org's allocations in a group; without one only the pools do.
+func TestQuota(t *testing.T) {
+	storetest.ForEachDialect(t, func(t *testing.T, db *store.DB) {
+		e := newEnv(t, db)
+		for _, p := range []routes.Protocol{routes.TCP, routes.UDP} {
+			if err := e.pool(t, e.orgA, e.groupA, p, 20000, 20099); err != nil {
+				t.Fatal(err)
+			}
+		}
+		db.Client().PortQuota.Create().SetOrgID(e.orgA).SetGatewayGroupID(e.groupA).SetProtocol("tcp").SetMaxPorts(2).SaveX(e.sys)
+		for range 2 {
+			if _, err := e.alloc(t, e.orgA, e.groupA, routes.TCP, 0); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if _, err := e.alloc(t, e.orgA, e.groupA, routes.TCP, 0); !errors.Is(err, routes.ErrQuotaReached) {
+			t.Fatalf("over the quota: %v", err)
+		}
+		for range 5 { // no UDP quota: the pool limits
+			if _, err := e.alloc(t, e.orgA, e.groupA, routes.UDP, 0); err != nil {
+				t.Fatalf("UDP without a quota: %v", err)
+			}
+		}
+		db.Client().PortQuota.Create().SetOrgID(e.orgA).SetGatewayGroupID(e.groupA).SetProtocol("udp").SetMaxPorts(0).SaveX(e.sys)
+		if _, err := e.alloc(t, e.orgA, e.groupA, routes.UDP, 0); !errors.Is(err, routes.ErrQuotaReached) {
+			t.Fatalf("a quota of 0: %v", err)
+		}
+	})
+}
+
+// TestRouteTarget_CrossOrgRefused: a route's target cannot name another org's connector; the
+// composite foreign key refuses it even in the system scope.
+func TestRouteTarget_CrossOrgRefused(t *testing.T) {
+	storetest.ForEachDialect(t, func(t *testing.T, db *store.DB) {
+		e := newEnv(t, db)
+		c := db.Client()
+		route := c.Route.Create().SetOrgID(e.orgA).SetName("db").SetType("tcp").SetGatewayGroupID(e.groupA).SaveX(e.sys)
+		mine := c.Connector.Create().SetOrgID(e.orgA).SetName("c1").SetSpiffeID("spiffe://x/a").SetPubkeySha256("a").SaveX(e.sys)
+		theirs := c.Connector.Create().SetOrgID(e.orgB).SetName("c1").SetSpiffeID("spiffe://x/b").SetPubkeySha256("b").SaveX(e.sys)
+		if _, err := c.RouteTarget.Create().SetOrgID(e.orgA).SetRouteID(route.ID).SetConnectorID(mine.ID).SetKind("address").
+			SetHost("10.0.0.5").SetPort(5432).Save(e.sys); err != nil {
+			t.Fatalf("a target on the org's connector: %v", err)
+		}
+		if _, err := c.RouteTarget.Create().SetOrgID(e.orgA).SetRouteID(route.ID).SetConnectorID(theirs.ID).SetKind("address").
+			SetHost("10.0.0.5").SetPort(5432).Save(e.sys); err == nil {
+			t.Fatal("a target on another org's connector was stored")
+		}
+	})
+}

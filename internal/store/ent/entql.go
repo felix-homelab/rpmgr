@@ -21,8 +21,14 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/lease"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/org"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/orgsetting"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/portallocation"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/portpool"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/portquota"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/predicate"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/revokedidentity"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/route"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/routetarget"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/routetcp"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/secretmeta"
 
 	"entgo.io/ent/dialect/sql"
@@ -33,7 +39,7 @@ import (
 
 // schemaGraph holds a representation of ent/schema at runtime.
 var schemaGraph = func() *sqlgraph.Schema {
-	graph := &sqlgraph.Schema{Nodes: make([]*sqlgraph.Node, 20)}
+	graph := &sqlgraph.Schema{Nodes: make([]*sqlgraph.Node, 26)}
 	graph.Nodes[0] = &sqlgraph.Node{
 		NodeSpec: sqlgraph.NodeSpec{
 			Table:   agentsession.Table,
@@ -410,6 +416,59 @@ var schemaGraph = func() *sqlgraph.Schema {
 	}
 	graph.Nodes[18] = &sqlgraph.Node{
 		NodeSpec: sqlgraph.NodeSpec{
+			Table:   portallocation.Table,
+			Columns: portallocation.Columns,
+			ID: &sqlgraph.FieldSpec{
+				Type:   field.TypeString,
+				Column: portallocation.FieldID,
+			},
+		},
+		Type: "PortAllocation",
+		Fields: map[string]*sqlgraph.FieldSpec{
+			portallocation.FieldOrgID:          {Type: field.TypeString, Column: portallocation.FieldOrgID},
+			portallocation.FieldGatewayGroupID: {Type: field.TypeString, Column: portallocation.FieldGatewayGroupID},
+			portallocation.FieldProtocol:       {Type: field.TypeEnum, Column: portallocation.FieldProtocol},
+			portallocation.FieldPort:           {Type: field.TypeInt, Column: portallocation.FieldPort},
+			portallocation.FieldRouteID:        {Type: field.TypeString, Column: portallocation.FieldRouteID},
+		},
+	}
+	graph.Nodes[19] = &sqlgraph.Node{
+		NodeSpec: sqlgraph.NodeSpec{
+			Table:   portpool.Table,
+			Columns: portpool.Columns,
+			ID: &sqlgraph.FieldSpec{
+				Type:   field.TypeString,
+				Column: portpool.FieldID,
+			},
+		},
+		Type: "PortPool",
+		Fields: map[string]*sqlgraph.FieldSpec{
+			portpool.FieldOrgID:          {Type: field.TypeString, Column: portpool.FieldOrgID},
+			portpool.FieldGatewayGroupID: {Type: field.TypeString, Column: portpool.FieldGatewayGroupID},
+			portpool.FieldProtocol:       {Type: field.TypeEnum, Column: portpool.FieldProtocol},
+			portpool.FieldPortFrom:       {Type: field.TypeInt, Column: portpool.FieldPortFrom},
+			portpool.FieldPortTo:         {Type: field.TypeInt, Column: portpool.FieldPortTo},
+		},
+	}
+	graph.Nodes[20] = &sqlgraph.Node{
+		NodeSpec: sqlgraph.NodeSpec{
+			Table:   portquota.Table,
+			Columns: portquota.Columns,
+			ID: &sqlgraph.FieldSpec{
+				Type:   field.TypeString,
+				Column: portquota.FieldID,
+			},
+		},
+		Type: "PortQuota",
+		Fields: map[string]*sqlgraph.FieldSpec{
+			portquota.FieldOrgID:          {Type: field.TypeString, Column: portquota.FieldOrgID},
+			portquota.FieldGatewayGroupID: {Type: field.TypeString, Column: portquota.FieldGatewayGroupID},
+			portquota.FieldProtocol:       {Type: field.TypeEnum, Column: portquota.FieldProtocol},
+			portquota.FieldMaxPorts:       {Type: field.TypeInt, Column: portquota.FieldMaxPorts},
+		},
+	}
+	graph.Nodes[21] = &sqlgraph.Node{
+		NodeSpec: sqlgraph.NodeSpec{
 			Table:   revokedidentity.Table,
 			Columns: revokedidentity.Columns,
 			ID: &sqlgraph.FieldSpec{
@@ -427,7 +486,77 @@ var schemaGraph = func() *sqlgraph.Schema {
 			revokedidentity.FieldNotAfter:    {Type: field.TypeTime, Column: revokedidentity.FieldNotAfter},
 		},
 	}
-	graph.Nodes[19] = &sqlgraph.Node{
+	graph.Nodes[22] = &sqlgraph.Node{
+		NodeSpec: sqlgraph.NodeSpec{
+			Table:   route.Table,
+			Columns: route.Columns,
+			ID: &sqlgraph.FieldSpec{
+				Type:   field.TypeString,
+				Column: route.FieldID,
+			},
+		},
+		Type: "Route",
+		Fields: map[string]*sqlgraph.FieldSpec{
+			route.FieldOrgID:          {Type: field.TypeString, Column: route.FieldOrgID},
+			route.FieldName:           {Type: field.TypeString, Column: route.FieldName},
+			route.FieldType:           {Type: field.TypeEnum, Column: route.FieldType},
+			route.FieldGatewayGroupID: {Type: field.TypeString, Column: route.FieldGatewayGroupID},
+			route.FieldEnabled:        {Type: field.TypeBool, Column: route.FieldEnabled},
+			route.FieldTransport:      {Type: field.TypeEnum, Column: route.FieldTransport},
+			route.FieldDescription:    {Type: field.TypeString, Column: route.FieldDescription},
+			route.FieldLabels:         {Type: field.TypeJSON, Column: route.FieldLabels},
+			route.FieldVersion:        {Type: field.TypeInt64, Column: route.FieldVersion},
+			route.FieldCreatedAt:      {Type: field.TypeTime, Column: route.FieldCreatedAt},
+			route.FieldUpdatedAt:      {Type: field.TypeTime, Column: route.FieldUpdatedAt},
+			route.FieldUpdatedBy:      {Type: field.TypeString, Column: route.FieldUpdatedBy},
+		},
+	}
+	graph.Nodes[23] = &sqlgraph.Node{
+		NodeSpec: sqlgraph.NodeSpec{
+			Table:   routetcp.Table,
+			Columns: routetcp.Columns,
+			ID: &sqlgraph.FieldSpec{
+				Type:   field.TypeInt,
+				Column: routetcp.FieldID,
+			},
+		},
+		Type: "RouteTCP",
+		Fields: map[string]*sqlgraph.FieldSpec{
+			routetcp.FieldOrgID:              {Type: field.TypeString, Column: routetcp.FieldOrgID},
+			routetcp.FieldRouteID:            {Type: field.TypeString, Column: routetcp.FieldRouteID},
+			routetcp.FieldPortAllocationID:   {Type: field.TypeString, Column: routetcp.FieldPortAllocationID},
+			routetcp.FieldListenerMode:       {Type: field.TypeEnum, Column: routetcp.FieldListenerMode},
+			routetcp.FieldIdleTimeoutSeconds: {Type: field.TypeInt, Column: routetcp.FieldIdleTimeoutSeconds},
+		},
+	}
+	graph.Nodes[24] = &sqlgraph.Node{
+		NodeSpec: sqlgraph.NodeSpec{
+			Table:   routetarget.Table,
+			Columns: routetarget.Columns,
+			ID: &sqlgraph.FieldSpec{
+				Type:   field.TypeString,
+				Column: routetarget.FieldID,
+			},
+		},
+		Type: "RouteTarget",
+		Fields: map[string]*sqlgraph.FieldSpec{
+			routetarget.FieldOrgID:            {Type: field.TypeString, Column: routetarget.FieldOrgID},
+			routetarget.FieldRouteID:          {Type: field.TypeString, Column: routetarget.FieldRouteID},
+			routetarget.FieldConnectorID:      {Type: field.TypeString, Column: routetarget.FieldConnectorID},
+			routetarget.FieldKind:             {Type: field.TypeEnum, Column: routetarget.FieldKind},
+			routetarget.FieldHost:             {Type: field.TypeString, Column: routetarget.FieldHost},
+			routetarget.FieldPort:             {Type: field.TypeInt, Column: routetarget.FieldPort},
+			routetarget.FieldUnixPath:         {Type: field.TypeString, Column: routetarget.FieldUnixPath},
+			routetarget.FieldUpstreamProtocol: {Type: field.TypeEnum, Column: routetarget.FieldUpstreamProtocol},
+			routetarget.FieldTLSServerName:    {Type: field.TypeString, Column: routetarget.FieldTLSServerName},
+			routetarget.FieldTLSSpkiSha256:    {Type: field.TypeString, Column: routetarget.FieldTLSSpkiSha256},
+			routetarget.FieldProxyProtocol:    {Type: field.TypeEnum, Column: routetarget.FieldProxyProtocol},
+			routetarget.FieldWeight:           {Type: field.TypeInt, Column: routetarget.FieldWeight},
+			routetarget.FieldPriority:         {Type: field.TypeInt, Column: routetarget.FieldPriority},
+			routetarget.FieldEnabled:          {Type: field.TypeBool, Column: routetarget.FieldEnabled},
+		},
+	}
+	graph.Nodes[25] = &sqlgraph.Node{
 		NodeSpec: sqlgraph.NodeSpec{
 			Table:   secretmeta.Table,
 			Columns: secretmeta.Columns,
@@ -504,6 +633,102 @@ var schemaGraph = func() *sqlgraph.Schema {
 		},
 		"IssuedCertificate",
 		"EnrollmentToken",
+	)
+	graph.MustAddE(
+		"group",
+		&sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2O,
+			Inverse: false,
+			Table:   portallocation.GroupTable,
+			Columns: []string{portallocation.GroupColumn},
+			Bidi:    false,
+		},
+		"PortAllocation",
+		"GatewayGroup",
+	)
+	graph.MustAddE(
+		"group",
+		&sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2O,
+			Inverse: false,
+			Table:   portpool.GroupTable,
+			Columns: []string{portpool.GroupColumn},
+			Bidi:    false,
+		},
+		"PortPool",
+		"GatewayGroup",
+	)
+	graph.MustAddE(
+		"group",
+		&sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2O,
+			Inverse: false,
+			Table:   portquota.GroupTable,
+			Columns: []string{portquota.GroupColumn},
+			Bidi:    false,
+		},
+		"PortQuota",
+		"GatewayGroup",
+	)
+	graph.MustAddE(
+		"group",
+		&sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2O,
+			Inverse: false,
+			Table:   route.GroupTable,
+			Columns: []string{route.GroupColumn},
+			Bidi:    false,
+		},
+		"Route",
+		"GatewayGroup",
+	)
+	graph.MustAddE(
+		"route",
+		&sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2O,
+			Inverse: false,
+			Table:   routetcp.RouteTable,
+			Columns: []string{routetcp.RouteColumn},
+			Bidi:    false,
+		},
+		"RouteTCP",
+		"Route",
+	)
+	graph.MustAddE(
+		"port",
+		&sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2O,
+			Inverse: false,
+			Table:   routetcp.PortTable,
+			Columns: []string{routetcp.PortColumn},
+			Bidi:    false,
+		},
+		"RouteTCP",
+		"PortAllocation",
+	)
+	graph.MustAddE(
+		"route",
+		&sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2O,
+			Inverse: false,
+			Table:   routetarget.RouteTable,
+			Columns: []string{routetarget.RouteColumn},
+			Bidi:    false,
+		},
+		"RouteTarget",
+		"Route",
+	)
+	graph.MustAddE(
+		"connector",
+		&sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2O,
+			Inverse: false,
+			Table:   routetarget.ConnectorTable,
+			Columns: []string{routetarget.ConnectorColumn},
+			Bidi:    false,
+		},
+		"RouteTarget",
+		"Connector",
 	)
 	return graph
 }()
@@ -2005,6 +2230,238 @@ func (f *OrgSettingFilter) WhereUpdatedAt(p entql.TimeP) {
 }
 
 // addPredicate implements the predicateAdder interface.
+func (_q *PortAllocationQuery) addPredicate(pred func(s *sql.Selector)) {
+	_q.predicates = append(_q.predicates, pred)
+}
+
+// Filter returns a Filter implementation to apply filters on the PortAllocationQuery builder.
+func (_q *PortAllocationQuery) Filter() *PortAllocationFilter {
+	return &PortAllocationFilter{config: _q.config, predicateAdder: _q}
+}
+
+// addPredicate implements the predicateAdder interface.
+func (m *PortAllocationMutation) addPredicate(pred func(s *sql.Selector)) {
+	m.predicates = append(m.predicates, pred)
+}
+
+// Filter returns an entql.Where implementation to apply filters on the PortAllocationMutation builder.
+func (m *PortAllocationMutation) Filter() *PortAllocationFilter {
+	return &PortAllocationFilter{config: m.config, predicateAdder: m}
+}
+
+// PortAllocationFilter provides a generic filtering capability at runtime for PortAllocationQuery.
+type PortAllocationFilter struct {
+	predicateAdder
+	config
+}
+
+// Where applies the entql predicate on the query filter.
+func (f *PortAllocationFilter) Where(p entql.P) {
+	f.addPredicate(func(s *sql.Selector) {
+		if err := schemaGraph.EvalP(schemaGraph.Nodes[18].Type, p, s); err != nil {
+			s.AddError(err)
+		}
+	})
+}
+
+// WhereID applies the entql string predicate on the id field.
+func (f *PortAllocationFilter) WhereID(p entql.StringP) {
+	f.Where(p.Field(portallocation.FieldID))
+}
+
+// WhereOrgID applies the entql string predicate on the org_id field.
+func (f *PortAllocationFilter) WhereOrgID(p entql.StringP) {
+	f.Where(p.Field(portallocation.FieldOrgID))
+}
+
+// WhereGatewayGroupID applies the entql string predicate on the gateway_group_id field.
+func (f *PortAllocationFilter) WhereGatewayGroupID(p entql.StringP) {
+	f.Where(p.Field(portallocation.FieldGatewayGroupID))
+}
+
+// WhereProtocol applies the entql string predicate on the protocol field.
+func (f *PortAllocationFilter) WhereProtocol(p entql.StringP) {
+	f.Where(p.Field(portallocation.FieldProtocol))
+}
+
+// WherePort applies the entql int predicate on the port field.
+func (f *PortAllocationFilter) WherePort(p entql.IntP) {
+	f.Where(p.Field(portallocation.FieldPort))
+}
+
+// WhereRouteID applies the entql string predicate on the route_id field.
+func (f *PortAllocationFilter) WhereRouteID(p entql.StringP) {
+	f.Where(p.Field(portallocation.FieldRouteID))
+}
+
+// WhereHasGroup applies a predicate to check if query has an edge group.
+func (f *PortAllocationFilter) WhereHasGroup() {
+	f.Where(entql.HasEdge("group"))
+}
+
+// WhereHasGroupWith applies a predicate to check if query has an edge group with a given conditions (other predicates).
+func (f *PortAllocationFilter) WhereHasGroupWith(preds ...predicate.GatewayGroup) {
+	f.Where(entql.HasEdgeWith("group", sqlgraph.WrapFunc(func(s *sql.Selector) {
+		for _, p := range preds {
+			p(s)
+		}
+	})))
+}
+
+// addPredicate implements the predicateAdder interface.
+func (_q *PortPoolQuery) addPredicate(pred func(s *sql.Selector)) {
+	_q.predicates = append(_q.predicates, pred)
+}
+
+// Filter returns a Filter implementation to apply filters on the PortPoolQuery builder.
+func (_q *PortPoolQuery) Filter() *PortPoolFilter {
+	return &PortPoolFilter{config: _q.config, predicateAdder: _q}
+}
+
+// addPredicate implements the predicateAdder interface.
+func (m *PortPoolMutation) addPredicate(pred func(s *sql.Selector)) {
+	m.predicates = append(m.predicates, pred)
+}
+
+// Filter returns an entql.Where implementation to apply filters on the PortPoolMutation builder.
+func (m *PortPoolMutation) Filter() *PortPoolFilter {
+	return &PortPoolFilter{config: m.config, predicateAdder: m}
+}
+
+// PortPoolFilter provides a generic filtering capability at runtime for PortPoolQuery.
+type PortPoolFilter struct {
+	predicateAdder
+	config
+}
+
+// Where applies the entql predicate on the query filter.
+func (f *PortPoolFilter) Where(p entql.P) {
+	f.addPredicate(func(s *sql.Selector) {
+		if err := schemaGraph.EvalP(schemaGraph.Nodes[19].Type, p, s); err != nil {
+			s.AddError(err)
+		}
+	})
+}
+
+// WhereID applies the entql string predicate on the id field.
+func (f *PortPoolFilter) WhereID(p entql.StringP) {
+	f.Where(p.Field(portpool.FieldID))
+}
+
+// WhereOrgID applies the entql string predicate on the org_id field.
+func (f *PortPoolFilter) WhereOrgID(p entql.StringP) {
+	f.Where(p.Field(portpool.FieldOrgID))
+}
+
+// WhereGatewayGroupID applies the entql string predicate on the gateway_group_id field.
+func (f *PortPoolFilter) WhereGatewayGroupID(p entql.StringP) {
+	f.Where(p.Field(portpool.FieldGatewayGroupID))
+}
+
+// WhereProtocol applies the entql string predicate on the protocol field.
+func (f *PortPoolFilter) WhereProtocol(p entql.StringP) {
+	f.Where(p.Field(portpool.FieldProtocol))
+}
+
+// WherePortFrom applies the entql int predicate on the port_from field.
+func (f *PortPoolFilter) WherePortFrom(p entql.IntP) {
+	f.Where(p.Field(portpool.FieldPortFrom))
+}
+
+// WherePortTo applies the entql int predicate on the port_to field.
+func (f *PortPoolFilter) WherePortTo(p entql.IntP) {
+	f.Where(p.Field(portpool.FieldPortTo))
+}
+
+// WhereHasGroup applies a predicate to check if query has an edge group.
+func (f *PortPoolFilter) WhereHasGroup() {
+	f.Where(entql.HasEdge("group"))
+}
+
+// WhereHasGroupWith applies a predicate to check if query has an edge group with a given conditions (other predicates).
+func (f *PortPoolFilter) WhereHasGroupWith(preds ...predicate.GatewayGroup) {
+	f.Where(entql.HasEdgeWith("group", sqlgraph.WrapFunc(func(s *sql.Selector) {
+		for _, p := range preds {
+			p(s)
+		}
+	})))
+}
+
+// addPredicate implements the predicateAdder interface.
+func (_q *PortQuotaQuery) addPredicate(pred func(s *sql.Selector)) {
+	_q.predicates = append(_q.predicates, pred)
+}
+
+// Filter returns a Filter implementation to apply filters on the PortQuotaQuery builder.
+func (_q *PortQuotaQuery) Filter() *PortQuotaFilter {
+	return &PortQuotaFilter{config: _q.config, predicateAdder: _q}
+}
+
+// addPredicate implements the predicateAdder interface.
+func (m *PortQuotaMutation) addPredicate(pred func(s *sql.Selector)) {
+	m.predicates = append(m.predicates, pred)
+}
+
+// Filter returns an entql.Where implementation to apply filters on the PortQuotaMutation builder.
+func (m *PortQuotaMutation) Filter() *PortQuotaFilter {
+	return &PortQuotaFilter{config: m.config, predicateAdder: m}
+}
+
+// PortQuotaFilter provides a generic filtering capability at runtime for PortQuotaQuery.
+type PortQuotaFilter struct {
+	predicateAdder
+	config
+}
+
+// Where applies the entql predicate on the query filter.
+func (f *PortQuotaFilter) Where(p entql.P) {
+	f.addPredicate(func(s *sql.Selector) {
+		if err := schemaGraph.EvalP(schemaGraph.Nodes[20].Type, p, s); err != nil {
+			s.AddError(err)
+		}
+	})
+}
+
+// WhereID applies the entql string predicate on the id field.
+func (f *PortQuotaFilter) WhereID(p entql.StringP) {
+	f.Where(p.Field(portquota.FieldID))
+}
+
+// WhereOrgID applies the entql string predicate on the org_id field.
+func (f *PortQuotaFilter) WhereOrgID(p entql.StringP) {
+	f.Where(p.Field(portquota.FieldOrgID))
+}
+
+// WhereGatewayGroupID applies the entql string predicate on the gateway_group_id field.
+func (f *PortQuotaFilter) WhereGatewayGroupID(p entql.StringP) {
+	f.Where(p.Field(portquota.FieldGatewayGroupID))
+}
+
+// WhereProtocol applies the entql string predicate on the protocol field.
+func (f *PortQuotaFilter) WhereProtocol(p entql.StringP) {
+	f.Where(p.Field(portquota.FieldProtocol))
+}
+
+// WhereMaxPorts applies the entql int predicate on the max_ports field.
+func (f *PortQuotaFilter) WhereMaxPorts(p entql.IntP) {
+	f.Where(p.Field(portquota.FieldMaxPorts))
+}
+
+// WhereHasGroup applies a predicate to check if query has an edge group.
+func (f *PortQuotaFilter) WhereHasGroup() {
+	f.Where(entql.HasEdge("group"))
+}
+
+// WhereHasGroupWith applies a predicate to check if query has an edge group with a given conditions (other predicates).
+func (f *PortQuotaFilter) WhereHasGroupWith(preds ...predicate.GatewayGroup) {
+	f.Where(entql.HasEdgeWith("group", sqlgraph.WrapFunc(func(s *sql.Selector) {
+		for _, p := range preds {
+			p(s)
+		}
+	})))
+}
+
+// addPredicate implements the predicateAdder interface.
 func (_q *RevokedIdentityQuery) addPredicate(pred func(s *sql.Selector)) {
 	_q.predicates = append(_q.predicates, pred)
 }
@@ -2033,7 +2490,7 @@ type RevokedIdentityFilter struct {
 // Where applies the entql predicate on the query filter.
 func (f *RevokedIdentityFilter) Where(p entql.P) {
 	f.addPredicate(func(s *sql.Selector) {
-		if err := schemaGraph.EvalP(schemaGraph.Nodes[18].Type, p, s); err != nil {
+		if err := schemaGraph.EvalP(schemaGraph.Nodes[21].Type, p, s); err != nil {
 			s.AddError(err)
 		}
 	})
@@ -2075,6 +2532,351 @@ func (f *RevokedIdentityFilter) WhereNotAfter(p entql.TimeP) {
 }
 
 // addPredicate implements the predicateAdder interface.
+func (_q *RouteQuery) addPredicate(pred func(s *sql.Selector)) {
+	_q.predicates = append(_q.predicates, pred)
+}
+
+// Filter returns a Filter implementation to apply filters on the RouteQuery builder.
+func (_q *RouteQuery) Filter() *RouteFilter {
+	return &RouteFilter{config: _q.config, predicateAdder: _q}
+}
+
+// addPredicate implements the predicateAdder interface.
+func (m *RouteMutation) addPredicate(pred func(s *sql.Selector)) {
+	m.predicates = append(m.predicates, pred)
+}
+
+// Filter returns an entql.Where implementation to apply filters on the RouteMutation builder.
+func (m *RouteMutation) Filter() *RouteFilter {
+	return &RouteFilter{config: m.config, predicateAdder: m}
+}
+
+// RouteFilter provides a generic filtering capability at runtime for RouteQuery.
+type RouteFilter struct {
+	predicateAdder
+	config
+}
+
+// Where applies the entql predicate on the query filter.
+func (f *RouteFilter) Where(p entql.P) {
+	f.addPredicate(func(s *sql.Selector) {
+		if err := schemaGraph.EvalP(schemaGraph.Nodes[22].Type, p, s); err != nil {
+			s.AddError(err)
+		}
+	})
+}
+
+// WhereID applies the entql string predicate on the id field.
+func (f *RouteFilter) WhereID(p entql.StringP) {
+	f.Where(p.Field(route.FieldID))
+}
+
+// WhereOrgID applies the entql string predicate on the org_id field.
+func (f *RouteFilter) WhereOrgID(p entql.StringP) {
+	f.Where(p.Field(route.FieldOrgID))
+}
+
+// WhereName applies the entql string predicate on the name field.
+func (f *RouteFilter) WhereName(p entql.StringP) {
+	f.Where(p.Field(route.FieldName))
+}
+
+// WhereType applies the entql string predicate on the type field.
+func (f *RouteFilter) WhereType(p entql.StringP) {
+	f.Where(p.Field(route.FieldType))
+}
+
+// WhereGatewayGroupID applies the entql string predicate on the gateway_group_id field.
+func (f *RouteFilter) WhereGatewayGroupID(p entql.StringP) {
+	f.Where(p.Field(route.FieldGatewayGroupID))
+}
+
+// WhereEnabled applies the entql bool predicate on the enabled field.
+func (f *RouteFilter) WhereEnabled(p entql.BoolP) {
+	f.Where(p.Field(route.FieldEnabled))
+}
+
+// WhereTransport applies the entql string predicate on the transport field.
+func (f *RouteFilter) WhereTransport(p entql.StringP) {
+	f.Where(p.Field(route.FieldTransport))
+}
+
+// WhereDescription applies the entql string predicate on the description field.
+func (f *RouteFilter) WhereDescription(p entql.StringP) {
+	f.Where(p.Field(route.FieldDescription))
+}
+
+// WhereLabels applies the entql json.RawMessage predicate on the labels field.
+func (f *RouteFilter) WhereLabels(p entql.BytesP) {
+	f.Where(p.Field(route.FieldLabels))
+}
+
+// WhereVersion applies the entql int64 predicate on the version field.
+func (f *RouteFilter) WhereVersion(p entql.Int64P) {
+	f.Where(p.Field(route.FieldVersion))
+}
+
+// WhereCreatedAt applies the entql time.Time predicate on the created_at field.
+func (f *RouteFilter) WhereCreatedAt(p entql.TimeP) {
+	f.Where(p.Field(route.FieldCreatedAt))
+}
+
+// WhereUpdatedAt applies the entql time.Time predicate on the updated_at field.
+func (f *RouteFilter) WhereUpdatedAt(p entql.TimeP) {
+	f.Where(p.Field(route.FieldUpdatedAt))
+}
+
+// WhereUpdatedBy applies the entql string predicate on the updated_by field.
+func (f *RouteFilter) WhereUpdatedBy(p entql.StringP) {
+	f.Where(p.Field(route.FieldUpdatedBy))
+}
+
+// WhereHasGroup applies a predicate to check if query has an edge group.
+func (f *RouteFilter) WhereHasGroup() {
+	f.Where(entql.HasEdge("group"))
+}
+
+// WhereHasGroupWith applies a predicate to check if query has an edge group with a given conditions (other predicates).
+func (f *RouteFilter) WhereHasGroupWith(preds ...predicate.GatewayGroup) {
+	f.Where(entql.HasEdgeWith("group", sqlgraph.WrapFunc(func(s *sql.Selector) {
+		for _, p := range preds {
+			p(s)
+		}
+	})))
+}
+
+// addPredicate implements the predicateAdder interface.
+func (_q *RouteTCPQuery) addPredicate(pred func(s *sql.Selector)) {
+	_q.predicates = append(_q.predicates, pred)
+}
+
+// Filter returns a Filter implementation to apply filters on the RouteTCPQuery builder.
+func (_q *RouteTCPQuery) Filter() *RouteTCPFilter {
+	return &RouteTCPFilter{config: _q.config, predicateAdder: _q}
+}
+
+// addPredicate implements the predicateAdder interface.
+func (m *RouteTCPMutation) addPredicate(pred func(s *sql.Selector)) {
+	m.predicates = append(m.predicates, pred)
+}
+
+// Filter returns an entql.Where implementation to apply filters on the RouteTCPMutation builder.
+func (m *RouteTCPMutation) Filter() *RouteTCPFilter {
+	return &RouteTCPFilter{config: m.config, predicateAdder: m}
+}
+
+// RouteTCPFilter provides a generic filtering capability at runtime for RouteTCPQuery.
+type RouteTCPFilter struct {
+	predicateAdder
+	config
+}
+
+// Where applies the entql predicate on the query filter.
+func (f *RouteTCPFilter) Where(p entql.P) {
+	f.addPredicate(func(s *sql.Selector) {
+		if err := schemaGraph.EvalP(schemaGraph.Nodes[23].Type, p, s); err != nil {
+			s.AddError(err)
+		}
+	})
+}
+
+// WhereID applies the entql int predicate on the id field.
+func (f *RouteTCPFilter) WhereID(p entql.IntP) {
+	f.Where(p.Field(routetcp.FieldID))
+}
+
+// WhereOrgID applies the entql string predicate on the org_id field.
+func (f *RouteTCPFilter) WhereOrgID(p entql.StringP) {
+	f.Where(p.Field(routetcp.FieldOrgID))
+}
+
+// WhereRouteID applies the entql string predicate on the route_id field.
+func (f *RouteTCPFilter) WhereRouteID(p entql.StringP) {
+	f.Where(p.Field(routetcp.FieldRouteID))
+}
+
+// WherePortAllocationID applies the entql string predicate on the port_allocation_id field.
+func (f *RouteTCPFilter) WherePortAllocationID(p entql.StringP) {
+	f.Where(p.Field(routetcp.FieldPortAllocationID))
+}
+
+// WhereListenerMode applies the entql string predicate on the listener_mode field.
+func (f *RouteTCPFilter) WhereListenerMode(p entql.StringP) {
+	f.Where(p.Field(routetcp.FieldListenerMode))
+}
+
+// WhereIdleTimeoutSeconds applies the entql int predicate on the idle_timeout_seconds field.
+func (f *RouteTCPFilter) WhereIdleTimeoutSeconds(p entql.IntP) {
+	f.Where(p.Field(routetcp.FieldIdleTimeoutSeconds))
+}
+
+// WhereHasRoute applies a predicate to check if query has an edge route.
+func (f *RouteTCPFilter) WhereHasRoute() {
+	f.Where(entql.HasEdge("route"))
+}
+
+// WhereHasRouteWith applies a predicate to check if query has an edge route with a given conditions (other predicates).
+func (f *RouteTCPFilter) WhereHasRouteWith(preds ...predicate.Route) {
+	f.Where(entql.HasEdgeWith("route", sqlgraph.WrapFunc(func(s *sql.Selector) {
+		for _, p := range preds {
+			p(s)
+		}
+	})))
+}
+
+// WhereHasPort applies a predicate to check if query has an edge port.
+func (f *RouteTCPFilter) WhereHasPort() {
+	f.Where(entql.HasEdge("port"))
+}
+
+// WhereHasPortWith applies a predicate to check if query has an edge port with a given conditions (other predicates).
+func (f *RouteTCPFilter) WhereHasPortWith(preds ...predicate.PortAllocation) {
+	f.Where(entql.HasEdgeWith("port", sqlgraph.WrapFunc(func(s *sql.Selector) {
+		for _, p := range preds {
+			p(s)
+		}
+	})))
+}
+
+// addPredicate implements the predicateAdder interface.
+func (_q *RouteTargetQuery) addPredicate(pred func(s *sql.Selector)) {
+	_q.predicates = append(_q.predicates, pred)
+}
+
+// Filter returns a Filter implementation to apply filters on the RouteTargetQuery builder.
+func (_q *RouteTargetQuery) Filter() *RouteTargetFilter {
+	return &RouteTargetFilter{config: _q.config, predicateAdder: _q}
+}
+
+// addPredicate implements the predicateAdder interface.
+func (m *RouteTargetMutation) addPredicate(pred func(s *sql.Selector)) {
+	m.predicates = append(m.predicates, pred)
+}
+
+// Filter returns an entql.Where implementation to apply filters on the RouteTargetMutation builder.
+func (m *RouteTargetMutation) Filter() *RouteTargetFilter {
+	return &RouteTargetFilter{config: m.config, predicateAdder: m}
+}
+
+// RouteTargetFilter provides a generic filtering capability at runtime for RouteTargetQuery.
+type RouteTargetFilter struct {
+	predicateAdder
+	config
+}
+
+// Where applies the entql predicate on the query filter.
+func (f *RouteTargetFilter) Where(p entql.P) {
+	f.addPredicate(func(s *sql.Selector) {
+		if err := schemaGraph.EvalP(schemaGraph.Nodes[24].Type, p, s); err != nil {
+			s.AddError(err)
+		}
+	})
+}
+
+// WhereID applies the entql string predicate on the id field.
+func (f *RouteTargetFilter) WhereID(p entql.StringP) {
+	f.Where(p.Field(routetarget.FieldID))
+}
+
+// WhereOrgID applies the entql string predicate on the org_id field.
+func (f *RouteTargetFilter) WhereOrgID(p entql.StringP) {
+	f.Where(p.Field(routetarget.FieldOrgID))
+}
+
+// WhereRouteID applies the entql string predicate on the route_id field.
+func (f *RouteTargetFilter) WhereRouteID(p entql.StringP) {
+	f.Where(p.Field(routetarget.FieldRouteID))
+}
+
+// WhereConnectorID applies the entql string predicate on the connector_id field.
+func (f *RouteTargetFilter) WhereConnectorID(p entql.StringP) {
+	f.Where(p.Field(routetarget.FieldConnectorID))
+}
+
+// WhereKind applies the entql string predicate on the kind field.
+func (f *RouteTargetFilter) WhereKind(p entql.StringP) {
+	f.Where(p.Field(routetarget.FieldKind))
+}
+
+// WhereHost applies the entql string predicate on the host field.
+func (f *RouteTargetFilter) WhereHost(p entql.StringP) {
+	f.Where(p.Field(routetarget.FieldHost))
+}
+
+// WherePort applies the entql int predicate on the port field.
+func (f *RouteTargetFilter) WherePort(p entql.IntP) {
+	f.Where(p.Field(routetarget.FieldPort))
+}
+
+// WhereUnixPath applies the entql string predicate on the unix_path field.
+func (f *RouteTargetFilter) WhereUnixPath(p entql.StringP) {
+	f.Where(p.Field(routetarget.FieldUnixPath))
+}
+
+// WhereUpstreamProtocol applies the entql string predicate on the upstream_protocol field.
+func (f *RouteTargetFilter) WhereUpstreamProtocol(p entql.StringP) {
+	f.Where(p.Field(routetarget.FieldUpstreamProtocol))
+}
+
+// WhereTLSServerName applies the entql string predicate on the tls_server_name field.
+func (f *RouteTargetFilter) WhereTLSServerName(p entql.StringP) {
+	f.Where(p.Field(routetarget.FieldTLSServerName))
+}
+
+// WhereTLSSpkiSha256 applies the entql string predicate on the tls_spki_sha256 field.
+func (f *RouteTargetFilter) WhereTLSSpkiSha256(p entql.StringP) {
+	f.Where(p.Field(routetarget.FieldTLSSpkiSha256))
+}
+
+// WhereProxyProtocol applies the entql string predicate on the proxy_protocol field.
+func (f *RouteTargetFilter) WhereProxyProtocol(p entql.StringP) {
+	f.Where(p.Field(routetarget.FieldProxyProtocol))
+}
+
+// WhereWeight applies the entql int predicate on the weight field.
+func (f *RouteTargetFilter) WhereWeight(p entql.IntP) {
+	f.Where(p.Field(routetarget.FieldWeight))
+}
+
+// WherePriority applies the entql int predicate on the priority field.
+func (f *RouteTargetFilter) WherePriority(p entql.IntP) {
+	f.Where(p.Field(routetarget.FieldPriority))
+}
+
+// WhereEnabled applies the entql bool predicate on the enabled field.
+func (f *RouteTargetFilter) WhereEnabled(p entql.BoolP) {
+	f.Where(p.Field(routetarget.FieldEnabled))
+}
+
+// WhereHasRoute applies a predicate to check if query has an edge route.
+func (f *RouteTargetFilter) WhereHasRoute() {
+	f.Where(entql.HasEdge("route"))
+}
+
+// WhereHasRouteWith applies a predicate to check if query has an edge route with a given conditions (other predicates).
+func (f *RouteTargetFilter) WhereHasRouteWith(preds ...predicate.Route) {
+	f.Where(entql.HasEdgeWith("route", sqlgraph.WrapFunc(func(s *sql.Selector) {
+		for _, p := range preds {
+			p(s)
+		}
+	})))
+}
+
+// WhereHasConnector applies a predicate to check if query has an edge connector.
+func (f *RouteTargetFilter) WhereHasConnector() {
+	f.Where(entql.HasEdge("connector"))
+}
+
+// WhereHasConnectorWith applies a predicate to check if query has an edge connector with a given conditions (other predicates).
+func (f *RouteTargetFilter) WhereHasConnectorWith(preds ...predicate.Connector) {
+	f.Where(entql.HasEdgeWith("connector", sqlgraph.WrapFunc(func(s *sql.Selector) {
+		for _, p := range preds {
+			p(s)
+		}
+	})))
+}
+
+// addPredicate implements the predicateAdder interface.
 func (_q *SecretMetaQuery) addPredicate(pred func(s *sql.Selector)) {
 	_q.predicates = append(_q.predicates, pred)
 }
@@ -2103,7 +2905,7 @@ type SecretMetaFilter struct {
 // Where applies the entql predicate on the query filter.
 func (f *SecretMetaFilter) Where(p entql.P) {
 	f.addPredicate(func(s *sql.Selector) {
-		if err := schemaGraph.EvalP(schemaGraph.Nodes[19].Type, p, s); err != nil {
+		if err := schemaGraph.EvalP(schemaGraph.Nodes[25].Type, p, s); err != nil {
 			s.AddError(err)
 		}
 	})
