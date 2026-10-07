@@ -321,7 +321,9 @@ The full threat model is in [04-security.md](04-security.md#threat-model).
 [R] A single Go module, `github.com/felix-homelab/rpmgr`, and a single web app:
 
 ```
-cmd/rpmgr/                 main and CLI subcommands
+cmd/rpmgr/                 main and the command tree (16)
+internal/cli/              command dispatcher on the standard flag package
+internal/version/          version of the running build
 internal/controller/       api handlers, compiler, registry, jobs
 internal/gateway/          listeners, sni router, http engine, relay
 internal/connector/        session pool, dialer, health, visitors, p2p

@@ -1,0 +1,58 @@
+# 16 — Command line
+
+> Status: Phase 1, being implemented. Tags: [F] fact · [R] recommendation · [T] target · [V] verify
+> at implementation ([README](../README.md#how-to-read-these-documents)).
+>
+> This document lists every `rpmgr` command, its flags and its exit codes. It is written from the
+> commands' `--help` output and changes in the same PR as the command. Configuration keys are in
+> [10](10-operations.md#configuration); the API behind the resource commands is in [07](07-api.md).
+
+## Conventions
+
+- One binary, `rpmgr`, for every role and every administration task
+  ([ADR-0002](adr/0002-one-binary-three-roles.md)). Commands form a tree:
+  `rpmgr <command> [<sub-command>] [flags] [arguments]`.
+- Flags come before positional arguments. `-h` or `--help` prints the help of any command;
+  `rpmgr help <command> …` does the same.
+- No secret is ever accepted as a command-line argument: tokens and passwords come from a file, an
+  explicitly passed environment variable or a terminal prompt
+  ([04](04-security.md#secrets-at-rest-and-in-logs)).
+- Commands of the public API put the verb first, `rpmgr <verb> <kind>` (`get`, `list`, `create`,
+  `update`, `delete`, …), so they never collide with the role commands or with the host's
+  `rpmgr policy` ([D51](14-open-decisions.md#engineering)). They arrive with the resource API.
+
+| Exit code | Meaning |
+|---|---|
+| 0 | Success, or help was requested |
+| 1 | The command ran and failed |
+| 2 | Invalid command line (unknown command or flag, missing or unexpected argument), or the command is not available in this build |
+
+## Commands
+
+A command marked *not yet* exists in the command tree and prints "not available in this build"
+with exit code 2 until its implementation lands.
+
+| Command | What it does | Runs on | State |
+|---|---|---|---|
+| `rpmgr controller [--config <file>]` | Run the controller: web UI, API, CA and configuration | controller host | not yet |
+| `rpmgr controller init` | Initialise a controller: database, trust domain, CA and first-user link | controller host | not yet |
+| `rpmgr gateway [--config <file>]` | Run a gateway | gateway host | not yet |
+| `rpmgr connector [--config <file>]` | Run a connector | connector host | not yet |
+| `rpmgr all-in-one [--config <file>]`, `… init` | Run, or initialise, a controller and a gateway in one process | controller host | not yet |
+| `rpmgr enroll` | Enroll this host as an agent with a single-use token | agent host | not yet |
+| `rpmgr leave` | Revoke this agent's identity and remove it from the host | agent host | not yet |
+| `rpmgr status` | Show the state of the agent on this host | agent host | not yet |
+| `rpmgr diag transport`, `diag clock` | Test the data-session transports to a gateway; compare clocks | agent host | not yet |
+| `rpmgr policy show`, `allow-target`, `remove-target` | Show or change the connector-local policy ([04](04-security.md#connector-local-policy)) | connector host, as root | not yet |
+| `rpmgr backup`, `restore`, `restore confirm` | Back up or restore the controller; end the restore review ([10](10-operations.md#backup-and-restore)) | controller host | not yet |
+| `rpmgr migrate` | Apply database migrations | controller host | not yet |
+| `rpmgr ca status`, `ca rotate-intermediate` | Administer the internal CA ([04](04-security.md#ca-rotation)) | controller host | not yet |
+| `rpmgr kek status`, `kek rotate` | Administer the key-encryption key ([04](04-security.md#secrets-at-rest-and-in-logs)) | controller host | not yet |
+| `rpmgr user reset-password` | Create a one-time password-reset link | controller host | not yet |
+| `rpmgr release import` | Import a signed release for air-gapped installations ([D59](14-open-decisions.md#security-defaults)) | controller host | not yet |
+| `rpmgr version` | Print the version, commit, Go version and platform of this binary | any | available |
+
+The role commands read their boot file from `--config`, else from `$RPMGR_CONFIG`, else from
+`/etc/rpmgr/<role>.yaml` ([10](10-operations.md#boot-files)). Administration commands on the
+controller host are authorised by host access and audited as `local-cli`
+([04](04-security.md#roles)).
