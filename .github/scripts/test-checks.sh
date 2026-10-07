@@ -109,6 +109,34 @@ expect fail "no CHANGELOG change, similar label" in_repo "$r" "$c" "$base" "$noc
 expect pass "no CHANGELOG change, no-changelog label" in_repo "$r" "$c" "$base" "$nochange" "type:docs no-changelog"
 expect pass "CHANGELOG changed" in_repo "$r" "$c" "$base" "$withentry" ""
 
+# --- Security regression test registry ------------------------------------------------------
+st="$dir/check-security-tests.sh"
+r=$(new_repo)
+mkdir -p "$r/docs" "$r/.github/scripts" "$r/p"
+printf '| Test | Asserts |\n|---|---|\n| `TestDone` | x |\n| `TestLater` | y |\n| `TestOpen` | z |\n' \
+  >"$r/docs/12-testing-and-quality.md"
+printf '# registry\n\nTestDone\tdone\t1.1\t#1\nTestLater\tp2\t-\t-\tlater\nTestOpen\tpending\t2.3\t#9\tnote\n' \
+  >"$r/.github/scripts/security-tests.txt"
+printf 'package p\n\nimport "testing"\n\nfunc TestDone(t *testing.T) {}\n' >"$r/p/p_test.go"
+git -C "$r" add -A
+expect pass "registry consistent with the document and the code" "$st" "$r"
+expect fail "pending test at the end of the phase" env REQUIRE_COMPLETE=1 "$st" "$r"
+printf '| `TestNew` | w |\n' >>"$r/docs/12-testing-and-quality.md"
+expect fail "test named in the document but not registered" "$st" "$r"
+git -C "$r" checkout -q -- docs
+printf 'TestGone\tp3\t-\t-\tx\n' >>"$r/.github/scripts/security-tests.txt"
+expect fail "registered test not named in the document" "$st" "$r"
+git -C "$r" checkout -q -- .github
+printf 'func TestOpen(t *testing.T) {}\n' >>"$r/p/p_test.go" && git -C "$r" add -A
+expect fail "pending test that already exists" "$st" "$r"
+printf 'package p\n\nimport "testing"\n\nfunc TestRenamed(t *testing.T) {}\n' >"$r/p/p_test.go" && git -C "$r" add -A
+expect fail "done test that does not exist" "$st" "$r"
+printf 'package p\n\nimport "testing"\n\nfunc TestDone(t *testing.T) {}\n' >"$r/p/p_test.go" && git -C "$r" add -A
+sed -i 's/^TestLater\tp2/TestLater\tsomeday/' "$r/.github/scripts/security-tests.txt"
+expect fail "unknown status" "$st" "$r"
+sed -i 's/^TestLater\tsomeday/TestLater\tp2/; s/^TestOpen\tpending\t2.3\t#9/TestOpen\tpending\t-\t-/' "$r/.github/scripts/security-tests.txt"
+expect fail "pending test without slice and issue" "$st" "$r"
+
 # --- Size of changes -------------------------------------------------------------------------
 z="$dir/check-size.sh"
 r=$(new_repo)
