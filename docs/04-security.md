@@ -180,6 +180,12 @@ later.
 - If the controller sits behind a reverse proxy or CDN, the agent hostnames (`controller.<td>` and
   `reauth.controller.<td>`) must be passed through at layer 4 (TLS passthrough), or served on a
   separate port.
+- **Route certificates** ([D17](14-open-decisions.md#tenancy-and-data)): the controller runs ACME
+  for route hostnames. For HTTP-01 and TLS-ALPN-01 it pushes each challenge to **every gateway
+  that serves the name** and lets the CA validate only after all of them acknowledged; gateways
+  answer from what was pushed and never read the database. Issued certificates go to the same
+  gateways. certmagic supports this through the storage hook of its distributed solving
+  ([S6](spikes/S6.md)); the run against Let's Encrypt staging is pending [V S6].
 
 ### CA rotation
 

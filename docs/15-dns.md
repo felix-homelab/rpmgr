@@ -294,7 +294,9 @@ verify call does not list permissions: a zone where the provider refuses access 
   the managed zone for the name and uses that zone's provider, rate budget and marker.
 - Enabling DNS-01 on a certmagic issuer disables its other challenge types
   [F certmagic:README.md:408-422]. rpmgr therefore runs two certmagic configurations on the same
-  storage and picks one per name [V S6].
+  storage and picks one per name. One certificate cache serves both and picks the configuration
+  by the certificate's name, so a renewal uses the same challenge type as the first issuance
+  ([S6](spikes/S6.md)).
 - This gives wildcard certificates, and certificates issued before DNS points at a gateway, which
   the cutover needs ([11](11-migration.md#cutover-plan)).
 - The DNS job ignores `_acme-challenge.*` names.

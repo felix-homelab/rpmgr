@@ -51,7 +51,7 @@ restarts, kills and network impairment are real.
 
 | Dimension | Values |
 |---|---|
-| Route type | `tcp`, `udp` (payloads below and above the datagram limit, [03](03-connections.md#udp-routes)), `http` (h1, h2, WebSocket, gRPC), `http` with ACME (against a local ACME test server [V S6]; Phase 2: DNS-01 through the fake Cloudflare API with a test DNS server answering the challenges), `tls_passthrough`, private TCP, private UDP; Phase 2: `tcp` with `http_connect`, load-balanced routes with health checks |
+| Route type | `tcp`, `udp` (payloads below and above the datagram limit, [03](03-connections.md#udp-routes)), `http` (h1, h2, WebSocket, gRPC), `http` with ACME (against Pebble, the local ACME test server, as in [S6](spikes/S6.md); Phase 2: DNS-01 through the fake Cloudflare API with a test DNS server answering the challenges), `tls_passthrough`, private TCP, private UDP; Phase 2: `tcp` with `http_connect`, load-balanced routes with health checks |
 | Transport | QUIC; TLS + reverse HTTP/2 (all streams gateway-opened, connector-initiated streams via `OpenRequest`); WSS through a TLS-intercepting proxy test double, Phase 2 ([03](03-connections.md#transports-and-fallback)) |
 | Scenario | Steady state; configuration change on an **unrelated** route; change on the **same** route; route removed (drain); gateway planned restart (`Drain`); gateway `SIGKILL`; controller down; controller restore with a new `db_epoch`; connector revoked; tightened access policy; target blocked by local policy; policy file edited and reloaded (no new revision); certificate expiry and grace re-authentication (fake clock); clock skew; UDP blackholed mid-session; NAT rebinding (source port change) |
 
