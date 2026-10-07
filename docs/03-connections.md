@@ -101,8 +101,17 @@ single-use token. Token format, lifetimes and re-enrollment rules are in
   SNI `controller.<trust-domain>`, ALPN `h2`.
 - The controller's TCP/443 listener reads the ClientHello like a gateway
   ([Port 443 multiplexing](#port-443-multiplexing)) and hands the agent names `controller.<td>` and
-  `reauth.controller.<td>` to the grpc-go server; every other name goes to its `net/http` server,
-  where browsers and the CLI use ConnectRPC.
+  `reauth.controller.<td>` to the grpc-go server; every other name, and a ClientHello without a
+  name, goes to its `net/http` server, where browsers and the CLI use ConnectRPC. A connection that
+  does not start with a ClientHello within the peek limits is closed without an answer.
+- **Who may call what.** One table lists every method of the agent protocol, and a method missing
+  from it is refused, so a new method is unreachable until it is listed:
+  - `Enrollment.Enroll` at `controller.<td>`, with or without a client certificate (an enrolling
+    agent has none yet);
+  - every `Control` method at `controller.<td>`, with a client certificate of a connector or a
+    gateway;
+  - `Reauth.Reauth` only at `reauth.controller.<td>`, whose verifier admits expired certificates, so
+    an expired certificate never reaches `Control`.
 - Spike S4 tested ConnectRPC for this session and applied the pre-agreed rule
   ([S4](spikes/S4.md)): with connect-go, a cancelled or expired call did not end a stream the agent
   waits on, and a read-limit error on an open stream blocked; with grpc-go, both sides end within
