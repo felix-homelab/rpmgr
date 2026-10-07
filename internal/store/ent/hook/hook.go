@@ -225,6 +225,18 @@ func (f OrgSettingFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, 
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.OrgSettingMutation", m)
 }
 
+// The RevokedIdentityFunc type is an adapter to allow the use of ordinary
+// function as RevokedIdentity mutator.
+type RevokedIdentityFunc func(context.Context, *ent.RevokedIdentityMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f RevokedIdentityFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.RevokedIdentityMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.RevokedIdentityMutation", m)
+}
+
 // The SecretMetaFunc type is an adapter to allow the use of ordinary
 // function as SecretMeta mutator.
 type SecretMetaFunc func(context.Context, *ent.SecretMetaMutation) (ent.Value, error)

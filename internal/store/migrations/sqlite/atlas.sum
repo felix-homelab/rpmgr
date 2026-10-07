@@ -1,4 +1,4 @@
-h1:AnhEjY7J3cqazypw8eRIaI+FKFCokxcAHaprRSlhR8c=
+h1:wMDIAZ9Ti3sRpXqB68jNhI6QGxPQLHUD4U4DkIG/L44=
 20261007104715_init.sql h1:pF+EZfqVnaVoEYtJTX+eFxkAZNQHtzLrN7GFfoc+GNE=
 20261007110312_config_revisions.sql h1:vyGjNiUBsWooQ4kxjnpkYMWZLX4CLUoGUjFmXl2tGrc=
 20261007111838_settings.sql h1:DZYkkYfp2eUVgo0ZYeZ/5eY7F2XI5yCZ4oKu/LAte6w=
@@ -9,3 +9,4 @@ h1:AnhEjY7J3cqazypw8eRIaI+FKFCokxcAHaprRSlhR8c=
 20261007162429_enrollment.sql h1:yFB2gWVisLSeceGOEW9FOzwv2uubW0b3UxeY66pVOwY=
 20261007173151_agent_sessions.sql h1:UMsfsIO/2JfzMCYTe5PYnkJJx10WjHQ9cFKjMAyBfBc=
 20261007184415_snapshots.sql h1:Gd12+/A2a6P1W3ELLZwWQFvOrrKvemH/PBTSXVWRiq4=
+20261007193932_revoked_identities.sql h1:qjirg2EdH5Z+qIfilmcJ7bXFYkOjF7KBOVY3+q+5ghk=

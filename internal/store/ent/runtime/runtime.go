@@ -24,6 +24,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/lease"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/org"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/orgsetting"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/revokedidentity"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/schema"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/secretmeta"
 
@@ -956,6 +957,34 @@ func init() {
 			return nil
 		}
 	}()
+	revokedidentity.Policy = privacy.NewPolicies(schema.RevokedIdentity{})
+	revokedidentity.Hooks[0] = func(next ent.Mutator) ent.Mutator {
+		return ent.MutateFunc(func(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+			if err := revokedidentity.Policy.EvalMutation(ctx, m); err != nil {
+				return nil, err
+			}
+			return next.Mutate(ctx, m)
+		})
+	}
+	revokedidentityHooks := schema.RevokedIdentity{}.Hooks()
+
+	revokedidentity.Hooks[1] = revokedidentityHooks[0]
+	revokedidentityInters := schema.RevokedIdentity{}.Interceptors()
+	revokedidentity.Interceptors[0] = revokedidentityInters[0]
+	revokedidentityFields := schema.RevokedIdentity{}.Fields()
+	_ = revokedidentityFields
+	// revokedidentityDescSubjectID is the schema descriptor for subject_id field.
+	revokedidentityDescSubjectID := revokedidentityFields[3].Descriptor()
+	// revokedidentity.SubjectIDValidator is a validator for the "subject_id" field. It is called by the builders before save.
+	revokedidentity.SubjectIDValidator = revokedidentityDescSubjectID.Validators[0].(func(string) error)
+	// revokedidentityDescReason is the schema descriptor for reason field.
+	revokedidentityDescReason := revokedidentityFields[5].Descriptor()
+	// revokedidentity.DefaultReason holds the default value on creation for the reason field.
+	revokedidentity.DefaultReason = revokedidentityDescReason.Default.(string)
+	// revokedidentityDescID is the schema descriptor for id field.
+	revokedidentityDescID := revokedidentityFields[0].Descriptor()
+	// revokedidentity.IDValidator is a validator for the "id" field. It is called by the builders before save.
+	revokedidentity.IDValidator = revokedidentityDescID.Validators[0].(func(string) error)
 	secretmetaMixin := schema.SecretMeta{}.Mixin()
 	secretmeta.Policy = privacy.NewPolicies(secretmetaMixin[0], schema.SecretMeta{})
 	secretmeta.Hooks[0] = func(next ent.Mutator) ent.Mutator {

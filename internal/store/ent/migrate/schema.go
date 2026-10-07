@@ -481,6 +481,22 @@ var (
 			},
 		},
 	}
+	// RevokedIdentitiesColumns holds the columns for the "revoked_identities" table.
+	RevokedIdentitiesColumns = []*schema.Column{
+		{Name: "spiffe_id", Type: field.TypeString},
+		{Name: "org_id", Type: field.TypeString, Nullable: true},
+		{Name: "subject_type", Type: field.TypeEnum, Enums: []string{"connector", "gateway", "controller"}},
+		{Name: "subject_id", Type: field.TypeString},
+		{Name: "revoked_at", Type: field.TypeTime},
+		{Name: "reason", Type: field.TypeString, Default: ""},
+		{Name: "not_after", Type: field.TypeTime},
+	}
+	// RevokedIdentitiesTable holds the schema information for the "revoked_identities" table.
+	RevokedIdentitiesTable = &schema.Table{
+		Name:       "revoked_identities",
+		Columns:    RevokedIdentitiesColumns,
+		PrimaryKey: []*schema.Column{RevokedIdentitiesColumns[0]},
+	}
 	// SecretsMetaColumns holds the columns for the "secrets_meta" table.
 	SecretsMetaColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeInt, Increment: true},
@@ -523,6 +539,7 @@ var (
 		LeasesTable,
 		OrgsTable,
 		OrgSettingsTable,
+		RevokedIdentitiesTable,
 		SecretsMetaTable,
 	}
 )
@@ -568,6 +585,9 @@ func init() {
 	}
 	OrgSettingsTable.Annotation = &entsql.Annotation{
 		Table: "org_settings",
+	}
+	RevokedIdentitiesTable.Annotation = &entsql.Annotation{
+		Table: "revoked_identities",
 	}
 	SecretsMetaTable.Annotation = &entsql.Annotation{
 		Table: "secrets_meta",

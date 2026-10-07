@@ -33,6 +33,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/lease"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/org"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/orgsetting"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/revokedidentity"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/secretmeta"
 
 	stdsql "database/sql"
@@ -79,6 +80,8 @@ type Client struct {
 	Org *OrgClient
 	// OrgSetting is the client for interacting with the OrgSetting builders.
 	OrgSetting *OrgSettingClient
+	// RevokedIdentity is the client for interacting with the RevokedIdentity builders.
+	RevokedIdentity *RevokedIdentityClient
 	// SecretMeta is the client for interacting with the SecretMeta builders.
 	SecretMeta *SecretMetaClient
 }
@@ -110,6 +113,7 @@ func (c *Client) init() {
 	c.Lease = NewLeaseClient(c.config)
 	c.Org = NewOrgClient(c.config)
 	c.OrgSetting = NewOrgSettingClient(c.config)
+	c.RevokedIdentity = NewRevokedIdentityClient(c.config)
 	c.SecretMeta = NewSecretMetaClient(c.config)
 }
 
@@ -221,6 +225,7 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		Lease:             NewLeaseClient(cfg),
 		Org:               NewOrgClient(cfg),
 		OrgSetting:        NewOrgSettingClient(cfg),
+		RevokedIdentity:   NewRevokedIdentityClient(cfg),
 		SecretMeta:        NewSecretMetaClient(cfg),
 	}, nil
 }
@@ -259,6 +264,7 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		Lease:             NewLeaseClient(cfg),
 		Org:               NewOrgClient(cfg),
 		OrgSetting:        NewOrgSettingClient(cfg),
+		RevokedIdentity:   NewRevokedIdentityClient(cfg),
 		SecretMeta:        NewSecretMetaClient(cfg),
 	}, nil
 }
@@ -292,7 +298,8 @@ func (c *Client) Use(hooks ...Hook) {
 		c.AgentSession, c.AgentState, c.AuditEntry, c.AuditHead, c.CAKey,
 		c.CompiledSnapshot, c.ConfigRevision, c.ConfigSeq, c.Connector,
 		c.EnrollmentToken, c.Gateway, c.GatewayGroup, c.Instance, c.InstanceSetting,
-		c.IssuedCertificate, c.Lease, c.Org, c.OrgSetting, c.SecretMeta,
+		c.IssuedCertificate, c.Lease, c.Org, c.OrgSetting, c.RevokedIdentity,
+		c.SecretMeta,
 	} {
 		n.Use(hooks...)
 	}
@@ -305,7 +312,8 @@ func (c *Client) Intercept(interceptors ...Interceptor) {
 		c.AgentSession, c.AgentState, c.AuditEntry, c.AuditHead, c.CAKey,
 		c.CompiledSnapshot, c.ConfigRevision, c.ConfigSeq, c.Connector,
 		c.EnrollmentToken, c.Gateway, c.GatewayGroup, c.Instance, c.InstanceSetting,
-		c.IssuedCertificate, c.Lease, c.Org, c.OrgSetting, c.SecretMeta,
+		c.IssuedCertificate, c.Lease, c.Org, c.OrgSetting, c.RevokedIdentity,
+		c.SecretMeta,
 	} {
 		n.Intercept(interceptors...)
 	}
@@ -350,6 +358,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.Org.mutate(ctx, m)
 	case *OrgSettingMutation:
 		return c.OrgSetting.mutate(ctx, m)
+	case *RevokedIdentityMutation:
+		return c.RevokedIdentity.mutate(ctx, m)
 	case *SecretMetaMutation:
 		return c.SecretMeta.mutate(ctx, m)
 	default:
@@ -2863,6 +2873,141 @@ func (c *OrgSettingClient) mutate(ctx context.Context, m *OrgSettingMutation) (V
 	}
 }
 
+// RevokedIdentityClient is a client for the RevokedIdentity schema.
+type RevokedIdentityClient struct {
+	config
+}
+
+// NewRevokedIdentityClient returns a client for the RevokedIdentity from the given config.
+func NewRevokedIdentityClient(c config) *RevokedIdentityClient {
+	return &RevokedIdentityClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `revokedidentity.Hooks(f(g(h())))`.
+func (c *RevokedIdentityClient) Use(hooks ...Hook) {
+	c.hooks.RevokedIdentity = append(c.hooks.RevokedIdentity, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `revokedidentity.Intercept(f(g(h())))`.
+func (c *RevokedIdentityClient) Intercept(interceptors ...Interceptor) {
+	c.inters.RevokedIdentity = append(c.inters.RevokedIdentity, interceptors...)
+}
+
+// Create returns a builder for creating a RevokedIdentity entity.
+func (c *RevokedIdentityClient) Create() *RevokedIdentityCreate {
+	mutation := newRevokedIdentityMutation(c.config, OpCreate)
+	return &RevokedIdentityCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of RevokedIdentity entities.
+func (c *RevokedIdentityClient) CreateBulk(builders ...*RevokedIdentityCreate) *RevokedIdentityCreateBulk {
+	return &RevokedIdentityCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *RevokedIdentityClient) MapCreateBulk(slice any, setFunc func(*RevokedIdentityCreate, int)) *RevokedIdentityCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &RevokedIdentityCreateBulk{err: fmt.Errorf("calling to RevokedIdentityClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*RevokedIdentityCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &RevokedIdentityCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for RevokedIdentity.
+func (c *RevokedIdentityClient) Update() *RevokedIdentityUpdate {
+	mutation := newRevokedIdentityMutation(c.config, OpUpdate)
+	return &RevokedIdentityUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *RevokedIdentityClient) UpdateOne(_m *RevokedIdentity) *RevokedIdentityUpdateOne {
+	mutation := newRevokedIdentityMutation(c.config, OpUpdateOne, withRevokedIdentity(_m))
+	return &RevokedIdentityUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *RevokedIdentityClient) UpdateOneID(id string) *RevokedIdentityUpdateOne {
+	mutation := newRevokedIdentityMutation(c.config, OpUpdateOne, withRevokedIdentityID(id))
+	return &RevokedIdentityUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for RevokedIdentity.
+func (c *RevokedIdentityClient) Delete() *RevokedIdentityDelete {
+	mutation := newRevokedIdentityMutation(c.config, OpDelete)
+	return &RevokedIdentityDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *RevokedIdentityClient) DeleteOne(_m *RevokedIdentity) *RevokedIdentityDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *RevokedIdentityClient) DeleteOneID(id string) *RevokedIdentityDeleteOne {
+	builder := c.Delete().Where(revokedidentity.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &RevokedIdentityDeleteOne{builder}
+}
+
+// Query returns a query builder for RevokedIdentity.
+func (c *RevokedIdentityClient) Query() *RevokedIdentityQuery {
+	return &RevokedIdentityQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeRevokedIdentity},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a RevokedIdentity entity by its id.
+func (c *RevokedIdentityClient) Get(ctx context.Context, id string) (*RevokedIdentity, error) {
+	return c.Query().Where(revokedidentity.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *RevokedIdentityClient) GetX(ctx context.Context, id string) *RevokedIdentity {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *RevokedIdentityClient) Hooks() []Hook {
+	hooks := c.hooks.RevokedIdentity
+	return append(hooks[:len(hooks):len(hooks)], revokedidentity.Hooks[:]...)
+}
+
+// Interceptors returns the client interceptors.
+func (c *RevokedIdentityClient) Interceptors() []Interceptor {
+	inters := c.inters.RevokedIdentity
+	return append(inters[:len(inters):len(inters)], revokedidentity.Interceptors[:]...)
+}
+
+func (c *RevokedIdentityClient) mutate(ctx context.Context, m *RevokedIdentityMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&RevokedIdentityCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&RevokedIdentityUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&RevokedIdentityUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&RevokedIdentityDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown RevokedIdentity mutation op: %q", m.Op())
+	}
+}
+
 // SecretMetaClient is a client for the SecretMeta schema.
 type SecretMetaClient struct {
 	config
@@ -3003,13 +3148,13 @@ type (
 		AgentSession, AgentState, AuditEntry, AuditHead, CAKey, CompiledSnapshot,
 		ConfigRevision, ConfigSeq, Connector, EnrollmentToken, Gateway, GatewayGroup,
 		Instance, InstanceSetting, IssuedCertificate, Lease, Org, OrgSetting,
-		SecretMeta []ent.Hook
+		RevokedIdentity, SecretMeta []ent.Hook
 	}
 	inters struct {
 		AgentSession, AgentState, AuditEntry, AuditHead, CAKey, CompiledSnapshot,
 		ConfigRevision, ConfigSeq, Connector, EnrollmentToken, Gateway, GatewayGroup,
 		Instance, InstanceSetting, IssuedCertificate, Lease, Org, OrgSetting,
-		SecretMeta []ent.Interceptor
+		RevokedIdentity, SecretMeta []ent.Interceptor
 	}
 )
 

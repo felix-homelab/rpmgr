@@ -50,6 +50,8 @@ type Tx struct {
 	Org *OrgClient
 	// OrgSetting is the client for interacting with the OrgSetting builders.
 	OrgSetting *OrgSettingClient
+	// RevokedIdentity is the client for interacting with the RevokedIdentity builders.
+	RevokedIdentity *RevokedIdentityClient
 	// SecretMeta is the client for interacting with the SecretMeta builders.
 	SecretMeta *SecretMetaClient
 
@@ -201,6 +203,7 @@ func (tx *Tx) init() {
 	tx.Lease = NewLeaseClient(tx.config)
 	tx.Org = NewOrgClient(tx.config)
 	tx.OrgSetting = NewOrgSettingClient(tx.config)
+	tx.RevokedIdentity = NewRevokedIdentityClient(tx.config)
 	tx.SecretMeta = NewSecretMetaClient(tx.config)
 }
 
