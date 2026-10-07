@@ -338,6 +338,7 @@ internal/dns/cloudflare/   Cloudflare REST client (Provider implementation)
 internal/telemetry/        slog setup, metrics, tracing
 proto/rpmgr/v1/              public API (.proto)
 proto/rpmgr/agent/v1/        agent protocol (.proto)
+gen/                       Go code generated from proto/ (committed; checked for drift)
 web/                       Vite + React SPA (embedded via embed.FS)
 docs/                      these documents
 ```
