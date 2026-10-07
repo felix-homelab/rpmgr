@@ -1,6 +1,7 @@
 # ADR-0010: ConnectRPC and protobuf for the public API and the agent control service
 
-Status: Proposed (design phase) · Date: 2026-10-06
+Status: Superseded by [ADR-0016](0016-connectrpc-public-api-grpc-go-agents.md) (spike S4,
+2026-10-06) · Date: 2026-10-06
 
 ## Context
 
@@ -91,3 +92,9 @@ design principle P7 together with goal 4 ([00](../00-vision-and-scope.md#goals))
 agent protocol, with the keepalive enforcement policy from
 [03](../03-connections.md#control-session); browsers and the CLI stay on ConnectRPC. The protobuf
 contract does not change.
+
+**Result** ([S4](../spikes/S4.md), 2026-10-06, Go 1.27.1, connect-go v1.21.0): bidirectional
+streaming, PING liveness, 10 000 idle sessions and the passthrough route passed; cancellation,
+deadlines and message-size limits failed on open streams. The rule applies: grpc-go carries the
+agent protocol, recorded in [ADR-0016](0016-connectrpc-public-api-grpc-go-agents.md), which
+supersedes this ADR.
