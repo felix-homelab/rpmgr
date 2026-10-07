@@ -2,9 +2,10 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 # The store checks of docs/12-testing-and-quality.md ("Database tests"):
-#   - the store tests on SQLite and on every PostgreSQL given in RPMGR_TEST_PG_URLS (admin DSNs,
-#     space-separated), among them: the embedded migrations apply, regenerating them from the Ent
-#     schema yields nothing new, and the live schema equals the Ent schema;
+#   - the database tests on SQLite and on every PostgreSQL given in RPMGR_TEST_PG_URLS (admin DSNs,
+#     space-separated): the store's own tests, among them that the embedded migrations apply, that
+#     regenerating them from the Ent schema yields nothing new and that the live schema equals the
+#     Ent schema, and the tests of every package that uses the store through storetest;
 #   - Atlas community lint of both migration directories (check-atlas-lint.sh). PostgreSQL lint
 #     needs an empty development database in RPMGR_LINT_PG_DEV.
 # With REQUIRE_PG=1 (CI) a missing PostgreSQL is an error, not a skip. Needs Docker for the lint.
@@ -21,8 +22,12 @@ if [[ ! -d $migrations ]]; then
   exit 0
 fi
 
+mapfile -t pkgs < <(go list -f '{{.ImportPath}} {{join .TestImports " "}} {{join .XTestImports " "}}' ./... |
+  awk '$1 ~ /\/internal\/store(\/|$)/ { print $1; next }
+    { for (i = 2; i <= NF; i++) if ($i ~ /\/internal\/store\/storetest$/) { print $1; next } }')
+echo "== database test packages: ${pkgs[*]}"
 echo "== store tests, SQLite"
-if ! go test -race -count=1 ./internal/store/...; then
+if ! go test -race -count=1 "${pkgs[@]}"; then
   fail "store tests failed on SQLite"
 fi
 read -r -a pgs <<<"${RPMGR_TEST_PG_URLS-}"
@@ -31,7 +36,7 @@ if ((${#pgs[@]} == 0)) && [[ ${REQUIRE_PG-} == 1 ]]; then
 fi
 for pg in "${pgs[@]}"; do
   echo "== store tests, PostgreSQL $pg"
-  if ! RPMGR_TEST_PG=$pg RPMGR_TEST_REQUIRE_PG=1 go test -race -count=1 ./internal/store/...; then
+  if ! RPMGR_TEST_PG=$pg RPMGR_TEST_REQUIRE_PG=1 go test -race -count=1 "${pkgs[@]}"; then
     fail "store tests failed on PostgreSQL ($pg)"
   fi
 done
