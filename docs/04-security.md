@@ -279,17 +279,19 @@ Shown in [03-connections.md](03-connections.md#enrollment). Security-relevant ru
 - The CSR is **bound to the TLS connection** that carries it; the binding is **mandatory** for
   `Enroll`, `Renew` and `Reauth` ([S7](spikes/S7.md)). The agent exports the connection's
   `tls-exporter` value (RFC 9266, Section 2: label `EXPORTER-Channel-Binding`, empty context,
-  32 bytes) and puts it into a non-critical CSR extension, which its key signs; EST binds requests
-  the same way (RFC 7030, Section 3.5). The controller compares it with its own value for that
-  connection and refuses a CSR without it or with another connection's value, so a captured CSR
-  cannot be replayed. Consequences:
+  32 bytes), base64-encoded, into the CSR's PKCS #9 `challengePassword` attribute, which its key
+  signs; EST binds requests to `tls-unique` the same way (RFC 7030, Section 3.5)
+  ([D62](14-open-decisions.md#engineering)). The controller compares it with its own value for
+  that connection and refuses a CSR without it, with another connection's value, or with any other
+  shape (two attributes, two values, not 32 bytes), so a captured CSR cannot be replayed.
+  Consequences:
   - the agent sends the CSR on the connection it computed the value on (its control-session
     connection, not a pool); if that connection was replaced meanwhile, the request is refused and
     the agent builds a new CSR;
-  - the extension's OID is `2.25.330347968250229846689170632254339943880`: an OID under the arc 2.25, which ITU-T X.667
-    (ISO/IEC 9834-8) assigns to UUIDs, formed from the random UUID `f886b454-5949-4333-85f5-cd88690c0dc8`. It is unique
-    without any registration ([D47](14-open-decisions.md#engineering)); the spike used an OID under
-    32473, the enterprise number reserved for documentation (RFC 5612).
+  - crypto/x509 neither writes nor exposes the attribute, so the agent builds the request itself
+    and the controller reads the attribute from the signed request. A CSR extension under an OID of
+    the arc 2.25 (D47, superseded) cannot carry it: Go's `encoding/asn1` refuses OID arcs above
+    2^31−1 [F Go 1.27.1 `encoding/asn1/asn1.go:301-331`].
 
 ### Lifecycle
 
