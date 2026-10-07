@@ -6,7 +6,10 @@ import (
 	"context"
 	"time"
 
+	"github.com/felix-homelab/rpmgr/internal/store/ent/configrevision"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/configseq"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/gatewaygroup"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/instance"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/org"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/schema"
 
@@ -18,6 +21,54 @@ import (
 // (default values, validators, hooks and policies) and stitches it
 // to their package variables.
 func init() {
+	configrevisionMixin := schema.ConfigRevision{}.Mixin()
+	configrevision.Policy = privacy.NewPolicies(configrevisionMixin[0], schema.ConfigRevision{})
+	configrevision.Hooks[0] = func(next ent.Mutator) ent.Mutator {
+		return ent.MutateFunc(func(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+			if err := configrevision.Policy.EvalMutation(ctx, m); err != nil {
+				return nil, err
+			}
+			return next.Mutate(ctx, m)
+		})
+	}
+	configrevisionFields := schema.ConfigRevision{}.Fields()
+	_ = configrevisionFields
+	// configrevisionDescDbEpoch is the schema descriptor for db_epoch field.
+	configrevisionDescDbEpoch := configrevisionFields[1].Descriptor()
+	// configrevision.DbEpochValidator is a validator for the "db_epoch" field. It is called by the builders before save.
+	configrevision.DbEpochValidator = configrevisionDescDbEpoch.Validators[0].(func(string) error)
+	// configrevisionDescActor is the schema descriptor for actor field.
+	configrevisionDescActor := configrevisionFields[2].Descriptor()
+	// configrevision.ActorValidator is a validator for the "actor" field. It is called by the builders before save.
+	configrevision.ActorValidator = configrevisionDescActor.Validators[0].(func(string) error)
+	// configrevisionDescCreatedAt is the schema descriptor for created_at field.
+	configrevisionDescCreatedAt := configrevisionFields[4].Descriptor()
+	// configrevision.DefaultCreatedAt holds the default value on creation for the created_at field.
+	configrevision.DefaultCreatedAt = configrevisionDescCreatedAt.Default.(func() time.Time)
+	// configrevisionDescID is the schema descriptor for id field.
+	configrevisionDescID := configrevisionFields[0].Descriptor()
+	// configrevision.IDValidator is a validator for the "id" field. It is called by the builders before save.
+	configrevision.IDValidator = configrevisionDescID.Validators[0].(func(int64) error)
+	configseqMixin := schema.ConfigSeq{}.Mixin()
+	configseq.Policy = privacy.NewPolicies(configseqMixin[0], schema.ConfigSeq{})
+	configseq.Hooks[0] = func(next ent.Mutator) ent.Mutator {
+		return ent.MutateFunc(func(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+			if err := configseq.Policy.EvalMutation(ctx, m); err != nil {
+				return nil, err
+			}
+			return next.Mutate(ctx, m)
+		})
+	}
+	configseqFields := schema.ConfigSeq{}.Fields()
+	_ = configseqFields
+	// configseqDescSeq is the schema descriptor for seq field.
+	configseqDescSeq := configseqFields[1].Descriptor()
+	// configseq.SeqValidator is a validator for the "seq" field. It is called by the builders before save.
+	configseq.SeqValidator = configseqDescSeq.Validators[0].(func(int64) error)
+	// configseqDescID is the schema descriptor for id field.
+	configseqDescID := configseqFields[0].Descriptor()
+	// configseq.IDValidator is a validator for the "id" field. It is called by the builders before save.
+	configseq.IDValidator = configseqDescID.Validators[0].(func(int) error)
 	gatewaygroupMixin := schema.GatewayGroup{}.Mixin()
 	gatewaygroup.Policy = privacy.NewPolicies(gatewaygroupMixin[0], schema.GatewayGroup{})
 	gatewaygroup.Hooks[0] = func(next ent.Mutator) ent.Mutator {
@@ -79,6 +130,34 @@ func init() {
 			return nil
 		}
 	}()
+	instanceMixin := schema.Instance{}.Mixin()
+	instance.Policy = privacy.NewPolicies(instanceMixin[0], schema.Instance{})
+	instance.Hooks[0] = func(next ent.Mutator) ent.Mutator {
+		return ent.MutateFunc(func(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+			if err := instance.Policy.EvalMutation(ctx, m); err != nil {
+				return nil, err
+			}
+			return next.Mutate(ctx, m)
+		})
+	}
+	instanceFields := schema.Instance{}.Fields()
+	_ = instanceFields
+	// instanceDescTrustDomain is the schema descriptor for trust_domain field.
+	instanceDescTrustDomain := instanceFields[1].Descriptor()
+	// instance.TrustDomainValidator is a validator for the "trust_domain" field. It is called by the builders before save.
+	instance.TrustDomainValidator = instanceDescTrustDomain.Validators[0].(func(string) error)
+	// instanceDescDbEpoch is the schema descriptor for db_epoch field.
+	instanceDescDbEpoch := instanceFields[2].Descriptor()
+	// instance.DbEpochValidator is a validator for the "db_epoch" field. It is called by the builders before save.
+	instance.DbEpochValidator = instanceDescDbEpoch.Validators[0].(func(string) error)
+	// instanceDescCreatedAt is the schema descriptor for created_at field.
+	instanceDescCreatedAt := instanceFields[3].Descriptor()
+	// instance.DefaultCreatedAt holds the default value on creation for the created_at field.
+	instance.DefaultCreatedAt = instanceDescCreatedAt.Default.(func() time.Time)
+	// instanceDescID is the schema descriptor for id field.
+	instanceDescID := instanceFields[0].Descriptor()
+	// instance.IDValidator is a validator for the "id" field. It is called by the builders before save.
+	instance.IDValidator = instanceDescID.Validators[0].(func(int) error)
 	orgMixin := schema.Org{}.Mixin()
 	org.Policy = privacy.NewPolicies(orgMixin[0], schema.Org{})
 	org.Hooks[0] = func(next ent.Mutator) ent.Mutator {

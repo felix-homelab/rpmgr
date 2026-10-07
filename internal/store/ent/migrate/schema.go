@@ -3,11 +3,37 @@
 package migrate
 
 import (
+	"entgo.io/ent/dialect/entsql"
 	"entgo.io/ent/dialect/sql/schema"
 	"entgo.io/ent/schema/field"
 )
 
 var (
+	// ConfigRevisionsColumns holds the columns for the "config_revisions" table.
+	ConfigRevisionsColumns = []*schema.Column{
+		{Name: "seq", Type: field.TypeInt64, Increment: true},
+		{Name: "db_epoch", Type: field.TypeString},
+		{Name: "actor", Type: field.TypeString},
+		{Name: "changed_resources", Type: field.TypeJSON, Nullable: true},
+		{Name: "created_at", Type: field.TypeTime},
+	}
+	// ConfigRevisionsTable holds the schema information for the "config_revisions" table.
+	ConfigRevisionsTable = &schema.Table{
+		Name:       "config_revisions",
+		Columns:    ConfigRevisionsColumns,
+		PrimaryKey: []*schema.Column{ConfigRevisionsColumns[0]},
+	}
+	// ConfigSeqColumns holds the columns for the "config_seq" table.
+	ConfigSeqColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt, Increment: true},
+		{Name: "seq", Type: field.TypeInt64},
+	}
+	// ConfigSeqTable holds the schema information for the "config_seq" table.
+	ConfigSeqTable = &schema.Table{
+		Name:       "config_seq",
+		Columns:    ConfigSeqColumns,
+		PrimaryKey: []*schema.Column{ConfigSeqColumns[0]},
+	}
 	// GatewayGroupsColumns holds the columns for the "gateway_groups" table.
 	GatewayGroupsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeString},
@@ -32,6 +58,19 @@ var (
 			},
 		},
 	}
+	// InstanceColumns holds the columns for the "instance" table.
+	InstanceColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt, Increment: true},
+		{Name: "trust_domain", Type: field.TypeString},
+		{Name: "db_epoch", Type: field.TypeString},
+		{Name: "created_at", Type: field.TypeTime},
+	}
+	// InstanceTable holds the schema information for the "instance" table.
+	InstanceTable = &schema.Table{
+		Name:       "instance",
+		Columns:    InstanceColumns,
+		PrimaryKey: []*schema.Column{InstanceColumns[0]},
+	}
 	// OrgsColumns holds the columns for the "orgs" table.
 	OrgsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeString},
@@ -47,10 +86,19 @@ var (
 	}
 	// Tables holds all the tables in the schema.
 	Tables = []*schema.Table{
+		ConfigRevisionsTable,
+		ConfigSeqTable,
 		GatewayGroupsTable,
+		InstanceTable,
 		OrgsTable,
 	}
 )
 
 func init() {
+	ConfigSeqTable.Annotation = &entsql.Annotation{
+		Table: "config_seq",
+	}
+	InstanceTable.Annotation = &entsql.Annotation{
+		Table: "instance",
+	}
 }

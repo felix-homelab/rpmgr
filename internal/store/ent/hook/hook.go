@@ -9,6 +9,30 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
 )
 
+// The ConfigRevisionFunc type is an adapter to allow the use of ordinary
+// function as ConfigRevision mutator.
+type ConfigRevisionFunc func(context.Context, *ent.ConfigRevisionMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f ConfigRevisionFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.ConfigRevisionMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.ConfigRevisionMutation", m)
+}
+
+// The ConfigSeqFunc type is an adapter to allow the use of ordinary
+// function as ConfigSeq mutator.
+type ConfigSeqFunc func(context.Context, *ent.ConfigSeqMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f ConfigSeqFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.ConfigSeqMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.ConfigSeqMutation", m)
+}
+
 // The GatewayGroupFunc type is an adapter to allow the use of ordinary
 // function as GatewayGroup mutator.
 type GatewayGroupFunc func(context.Context, *ent.GatewayGroupMutation) (ent.Value, error)
@@ -19,6 +43,18 @@ func (f GatewayGroupFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value
 		return f(ctx, mv)
 	}
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.GatewayGroupMutation", m)
+}
+
+// The InstanceFunc type is an adapter to allow the use of ordinary
+// function as Instance mutator.
+type InstanceFunc func(context.Context, *ent.InstanceMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f InstanceFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.InstanceMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.InstanceMutation", m)
 }
 
 // The OrgFunc type is an adapter to allow the use of ordinary

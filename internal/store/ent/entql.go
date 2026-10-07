@@ -3,7 +3,10 @@
 package ent
 
 import (
+	"github.com/felix-homelab/rpmgr/internal/store/ent/configrevision"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/configseq"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/gatewaygroup"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/instance"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/org"
 
 	"entgo.io/ent/dialect/sql"
@@ -14,8 +17,39 @@ import (
 
 // schemaGraph holds a representation of ent/schema at runtime.
 var schemaGraph = func() *sqlgraph.Schema {
-	graph := &sqlgraph.Schema{Nodes: make([]*sqlgraph.Node, 2)}
+	graph := &sqlgraph.Schema{Nodes: make([]*sqlgraph.Node, 5)}
 	graph.Nodes[0] = &sqlgraph.Node{
+		NodeSpec: sqlgraph.NodeSpec{
+			Table:   configrevision.Table,
+			Columns: configrevision.Columns,
+			ID: &sqlgraph.FieldSpec{
+				Type:   field.TypeInt64,
+				Column: configrevision.FieldID,
+			},
+		},
+		Type: "ConfigRevision",
+		Fields: map[string]*sqlgraph.FieldSpec{
+			configrevision.FieldDbEpoch:          {Type: field.TypeString, Column: configrevision.FieldDbEpoch},
+			configrevision.FieldActor:            {Type: field.TypeString, Column: configrevision.FieldActor},
+			configrevision.FieldChangedResources: {Type: field.TypeJSON, Column: configrevision.FieldChangedResources},
+			configrevision.FieldCreatedAt:        {Type: field.TypeTime, Column: configrevision.FieldCreatedAt},
+		},
+	}
+	graph.Nodes[1] = &sqlgraph.Node{
+		NodeSpec: sqlgraph.NodeSpec{
+			Table:   configseq.Table,
+			Columns: configseq.Columns,
+			ID: &sqlgraph.FieldSpec{
+				Type:   field.TypeInt,
+				Column: configseq.FieldID,
+			},
+		},
+		Type: "ConfigSeq",
+		Fields: map[string]*sqlgraph.FieldSpec{
+			configseq.FieldSeq: {Type: field.TypeInt64, Column: configseq.FieldSeq},
+		},
+	}
+	graph.Nodes[2] = &sqlgraph.Node{
 		NodeSpec: sqlgraph.NodeSpec{
 			Table:   gatewaygroup.Table,
 			Columns: gatewaygroup.Columns,
@@ -30,7 +64,23 @@ var schemaGraph = func() *sqlgraph.Schema {
 			gatewaygroup.FieldName:  {Type: field.TypeString, Column: gatewaygroup.FieldName},
 		},
 	}
-	graph.Nodes[1] = &sqlgraph.Node{
+	graph.Nodes[3] = &sqlgraph.Node{
+		NodeSpec: sqlgraph.NodeSpec{
+			Table:   instance.Table,
+			Columns: instance.Columns,
+			ID: &sqlgraph.FieldSpec{
+				Type:   field.TypeInt,
+				Column: instance.FieldID,
+			},
+		},
+		Type: "Instance",
+		Fields: map[string]*sqlgraph.FieldSpec{
+			instance.FieldTrustDomain: {Type: field.TypeString, Column: instance.FieldTrustDomain},
+			instance.FieldDbEpoch:     {Type: field.TypeString, Column: instance.FieldDbEpoch},
+			instance.FieldCreatedAt:   {Type: field.TypeTime, Column: instance.FieldCreatedAt},
+		},
+	}
+	graph.Nodes[4] = &sqlgraph.Node{
 		NodeSpec: sqlgraph.NodeSpec{
 			Table:   org.Table,
 			Columns: org.Columns,
@@ -53,6 +103,111 @@ var schemaGraph = func() *sqlgraph.Schema {
 // All update, update-one and query builders implement this interface.
 type predicateAdder interface {
 	addPredicate(func(s *sql.Selector))
+}
+
+// addPredicate implements the predicateAdder interface.
+func (_q *ConfigRevisionQuery) addPredicate(pred func(s *sql.Selector)) {
+	_q.predicates = append(_q.predicates, pred)
+}
+
+// Filter returns a Filter implementation to apply filters on the ConfigRevisionQuery builder.
+func (_q *ConfigRevisionQuery) Filter() *ConfigRevisionFilter {
+	return &ConfigRevisionFilter{config: _q.config, predicateAdder: _q}
+}
+
+// addPredicate implements the predicateAdder interface.
+func (m *ConfigRevisionMutation) addPredicate(pred func(s *sql.Selector)) {
+	m.predicates = append(m.predicates, pred)
+}
+
+// Filter returns an entql.Where implementation to apply filters on the ConfigRevisionMutation builder.
+func (m *ConfigRevisionMutation) Filter() *ConfigRevisionFilter {
+	return &ConfigRevisionFilter{config: m.config, predicateAdder: m}
+}
+
+// ConfigRevisionFilter provides a generic filtering capability at runtime for ConfigRevisionQuery.
+type ConfigRevisionFilter struct {
+	predicateAdder
+	config
+}
+
+// Where applies the entql predicate on the query filter.
+func (f *ConfigRevisionFilter) Where(p entql.P) {
+	f.addPredicate(func(s *sql.Selector) {
+		if err := schemaGraph.EvalP(schemaGraph.Nodes[0].Type, p, s); err != nil {
+			s.AddError(err)
+		}
+	})
+}
+
+// WhereID applies the entql int64 predicate on the id field.
+func (f *ConfigRevisionFilter) WhereID(p entql.Int64P) {
+	f.Where(p.Field(configrevision.FieldID))
+}
+
+// WhereDbEpoch applies the entql string predicate on the db_epoch field.
+func (f *ConfigRevisionFilter) WhereDbEpoch(p entql.StringP) {
+	f.Where(p.Field(configrevision.FieldDbEpoch))
+}
+
+// WhereActor applies the entql string predicate on the actor field.
+func (f *ConfigRevisionFilter) WhereActor(p entql.StringP) {
+	f.Where(p.Field(configrevision.FieldActor))
+}
+
+// WhereChangedResources applies the entql json.RawMessage predicate on the changed_resources field.
+func (f *ConfigRevisionFilter) WhereChangedResources(p entql.BytesP) {
+	f.Where(p.Field(configrevision.FieldChangedResources))
+}
+
+// WhereCreatedAt applies the entql time.Time predicate on the created_at field.
+func (f *ConfigRevisionFilter) WhereCreatedAt(p entql.TimeP) {
+	f.Where(p.Field(configrevision.FieldCreatedAt))
+}
+
+// addPredicate implements the predicateAdder interface.
+func (_q *ConfigSeqQuery) addPredicate(pred func(s *sql.Selector)) {
+	_q.predicates = append(_q.predicates, pred)
+}
+
+// Filter returns a Filter implementation to apply filters on the ConfigSeqQuery builder.
+func (_q *ConfigSeqQuery) Filter() *ConfigSeqFilter {
+	return &ConfigSeqFilter{config: _q.config, predicateAdder: _q}
+}
+
+// addPredicate implements the predicateAdder interface.
+func (m *ConfigSeqMutation) addPredicate(pred func(s *sql.Selector)) {
+	m.predicates = append(m.predicates, pred)
+}
+
+// Filter returns an entql.Where implementation to apply filters on the ConfigSeqMutation builder.
+func (m *ConfigSeqMutation) Filter() *ConfigSeqFilter {
+	return &ConfigSeqFilter{config: m.config, predicateAdder: m}
+}
+
+// ConfigSeqFilter provides a generic filtering capability at runtime for ConfigSeqQuery.
+type ConfigSeqFilter struct {
+	predicateAdder
+	config
+}
+
+// Where applies the entql predicate on the query filter.
+func (f *ConfigSeqFilter) Where(p entql.P) {
+	f.addPredicate(func(s *sql.Selector) {
+		if err := schemaGraph.EvalP(schemaGraph.Nodes[1].Type, p, s); err != nil {
+			s.AddError(err)
+		}
+	})
+}
+
+// WhereID applies the entql int predicate on the id field.
+func (f *ConfigSeqFilter) WhereID(p entql.IntP) {
+	f.Where(p.Field(configseq.FieldID))
+}
+
+// WhereSeq applies the entql int64 predicate on the seq field.
+func (f *ConfigSeqFilter) WhereSeq(p entql.Int64P) {
+	f.Where(p.Field(configseq.FieldSeq))
 }
 
 // addPredicate implements the predicateAdder interface.
@@ -84,7 +239,7 @@ type GatewayGroupFilter struct {
 // Where applies the entql predicate on the query filter.
 func (f *GatewayGroupFilter) Where(p entql.P) {
 	f.addPredicate(func(s *sql.Selector) {
-		if err := schemaGraph.EvalP(schemaGraph.Nodes[0].Type, p, s); err != nil {
+		if err := schemaGraph.EvalP(schemaGraph.Nodes[2].Type, p, s); err != nil {
 			s.AddError(err)
 		}
 	})
@@ -103,6 +258,61 @@ func (f *GatewayGroupFilter) WhereOrgID(p entql.StringP) {
 // WhereName applies the entql string predicate on the name field.
 func (f *GatewayGroupFilter) WhereName(p entql.StringP) {
 	f.Where(p.Field(gatewaygroup.FieldName))
+}
+
+// addPredicate implements the predicateAdder interface.
+func (_q *InstanceQuery) addPredicate(pred func(s *sql.Selector)) {
+	_q.predicates = append(_q.predicates, pred)
+}
+
+// Filter returns a Filter implementation to apply filters on the InstanceQuery builder.
+func (_q *InstanceQuery) Filter() *InstanceFilter {
+	return &InstanceFilter{config: _q.config, predicateAdder: _q}
+}
+
+// addPredicate implements the predicateAdder interface.
+func (m *InstanceMutation) addPredicate(pred func(s *sql.Selector)) {
+	m.predicates = append(m.predicates, pred)
+}
+
+// Filter returns an entql.Where implementation to apply filters on the InstanceMutation builder.
+func (m *InstanceMutation) Filter() *InstanceFilter {
+	return &InstanceFilter{config: m.config, predicateAdder: m}
+}
+
+// InstanceFilter provides a generic filtering capability at runtime for InstanceQuery.
+type InstanceFilter struct {
+	predicateAdder
+	config
+}
+
+// Where applies the entql predicate on the query filter.
+func (f *InstanceFilter) Where(p entql.P) {
+	f.addPredicate(func(s *sql.Selector) {
+		if err := schemaGraph.EvalP(schemaGraph.Nodes[3].Type, p, s); err != nil {
+			s.AddError(err)
+		}
+	})
+}
+
+// WhereID applies the entql int predicate on the id field.
+func (f *InstanceFilter) WhereID(p entql.IntP) {
+	f.Where(p.Field(instance.FieldID))
+}
+
+// WhereTrustDomain applies the entql string predicate on the trust_domain field.
+func (f *InstanceFilter) WhereTrustDomain(p entql.StringP) {
+	f.Where(p.Field(instance.FieldTrustDomain))
+}
+
+// WhereDbEpoch applies the entql string predicate on the db_epoch field.
+func (f *InstanceFilter) WhereDbEpoch(p entql.StringP) {
+	f.Where(p.Field(instance.FieldDbEpoch))
+}
+
+// WhereCreatedAt applies the entql time.Time predicate on the created_at field.
+func (f *InstanceFilter) WhereCreatedAt(p entql.TimeP) {
+	f.Where(p.Field(instance.FieldCreatedAt))
 }
 
 // addPredicate implements the predicateAdder interface.
@@ -134,7 +344,7 @@ type OrgFilter struct {
 // Where applies the entql predicate on the query filter.
 func (f *OrgFilter) Where(p entql.P) {
 	f.addPredicate(func(s *sql.Selector) {
-		if err := schemaGraph.EvalP(schemaGraph.Nodes[1].Type, p, s); err != nil {
+		if err := schemaGraph.EvalP(schemaGraph.Nodes[4].Type, p, s); err != nil {
 			s.AddError(err)
 		}
 	})

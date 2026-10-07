@@ -111,6 +111,54 @@ func DenyMutationOperationRule(op ent.Op) MutationRule {
 	return OnMutationOperation(rule, op)
 }
 
+// The ConfigRevisionQueryRuleFunc type is an adapter to allow the use of ordinary
+// functions as a query rule.
+type ConfigRevisionQueryRuleFunc func(context.Context, *ent.ConfigRevisionQuery) error
+
+// EvalQuery return f(ctx, q).
+func (f ConfigRevisionQueryRuleFunc) EvalQuery(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.ConfigRevisionQuery); ok {
+		return f(ctx, q)
+	}
+	return Denyf("ent/privacy: unexpected query type %T, expect *ent.ConfigRevisionQuery", q)
+}
+
+// The ConfigRevisionMutationRuleFunc type is an adapter to allow the use of ordinary
+// functions as a mutation rule.
+type ConfigRevisionMutationRuleFunc func(context.Context, *ent.ConfigRevisionMutation) error
+
+// EvalMutation calls f(ctx, m).
+func (f ConfigRevisionMutationRuleFunc) EvalMutation(ctx context.Context, m ent.Mutation) error {
+	if m, ok := m.(*ent.ConfigRevisionMutation); ok {
+		return f(ctx, m)
+	}
+	return Denyf("ent/privacy: unexpected mutation type %T, expect *ent.ConfigRevisionMutation", m)
+}
+
+// The ConfigSeqQueryRuleFunc type is an adapter to allow the use of ordinary
+// functions as a query rule.
+type ConfigSeqQueryRuleFunc func(context.Context, *ent.ConfigSeqQuery) error
+
+// EvalQuery return f(ctx, q).
+func (f ConfigSeqQueryRuleFunc) EvalQuery(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.ConfigSeqQuery); ok {
+		return f(ctx, q)
+	}
+	return Denyf("ent/privacy: unexpected query type %T, expect *ent.ConfigSeqQuery", q)
+}
+
+// The ConfigSeqMutationRuleFunc type is an adapter to allow the use of ordinary
+// functions as a mutation rule.
+type ConfigSeqMutationRuleFunc func(context.Context, *ent.ConfigSeqMutation) error
+
+// EvalMutation calls f(ctx, m).
+func (f ConfigSeqMutationRuleFunc) EvalMutation(ctx context.Context, m ent.Mutation) error {
+	if m, ok := m.(*ent.ConfigSeqMutation); ok {
+		return f(ctx, m)
+	}
+	return Denyf("ent/privacy: unexpected mutation type %T, expect *ent.ConfigSeqMutation", m)
+}
+
 // The GatewayGroupQueryRuleFunc type is an adapter to allow the use of ordinary
 // functions as a query rule.
 type GatewayGroupQueryRuleFunc func(context.Context, *ent.GatewayGroupQuery) error
@@ -133,6 +181,30 @@ func (f GatewayGroupMutationRuleFunc) EvalMutation(ctx context.Context, m ent.Mu
 		return f(ctx, m)
 	}
 	return Denyf("ent/privacy: unexpected mutation type %T, expect *ent.GatewayGroupMutation", m)
+}
+
+// The InstanceQueryRuleFunc type is an adapter to allow the use of ordinary
+// functions as a query rule.
+type InstanceQueryRuleFunc func(context.Context, *ent.InstanceQuery) error
+
+// EvalQuery return f(ctx, q).
+func (f InstanceQueryRuleFunc) EvalQuery(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.InstanceQuery); ok {
+		return f(ctx, q)
+	}
+	return Denyf("ent/privacy: unexpected query type %T, expect *ent.InstanceQuery", q)
+}
+
+// The InstanceMutationRuleFunc type is an adapter to allow the use of ordinary
+// functions as a mutation rule.
+type InstanceMutationRuleFunc func(context.Context, *ent.InstanceMutation) error
+
+// EvalMutation calls f(ctx, m).
+func (f InstanceMutationRuleFunc) EvalMutation(ctx context.Context, m ent.Mutation) error {
+	if m, ok := m.(*ent.InstanceMutation); ok {
+		return f(ctx, m)
+	}
+	return Denyf("ent/privacy: unexpected mutation type %T, expect *ent.InstanceMutation", m)
 }
 
 // The OrgQueryRuleFunc type is an adapter to allow the use of ordinary
@@ -194,7 +266,13 @@ var _ QueryMutationRule = FilterFunc(nil)
 
 func queryFilter(q ent.Query) (Filter, error) {
 	switch q := q.(type) {
+	case *ent.ConfigRevisionQuery:
+		return q.Filter(), nil
+	case *ent.ConfigSeqQuery:
+		return q.Filter(), nil
 	case *ent.GatewayGroupQuery:
+		return q.Filter(), nil
+	case *ent.InstanceQuery:
 		return q.Filter(), nil
 	case *ent.OrgQuery:
 		return q.Filter(), nil
@@ -205,7 +283,13 @@ func queryFilter(q ent.Query) (Filter, error) {
 
 func mutationFilter(m ent.Mutation) (Filter, error) {
 	switch m := m.(type) {
+	case *ent.ConfigRevisionMutation:
+		return m.Filter(), nil
+	case *ent.ConfigSeqMutation:
+		return m.Filter(), nil
 	case *ent.GatewayGroupMutation:
+		return m.Filter(), nil
+	case *ent.InstanceMutation:
 		return m.Filter(), nil
 	case *ent.OrgMutation:
 		return m.Filter(), nil

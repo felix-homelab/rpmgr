@@ -6,8 +6,17 @@ import (
 	"entgo.io/ent/dialect/sql"
 )
 
+// ConfigRevision is the predicate function for configrevision builders.
+type ConfigRevision func(*sql.Selector)
+
+// ConfigSeq is the predicate function for configseq builders.
+type ConfigSeq func(*sql.Selector)
+
 // GatewayGroup is the predicate function for gatewaygroup builders.
 type GatewayGroup func(*sql.Selector)
+
+// Instance is the predicate function for instance builders.
+type Instance func(*sql.Selector)
 
 // Org is the predicate function for org builders.
 type Org func(*sql.Selector)
