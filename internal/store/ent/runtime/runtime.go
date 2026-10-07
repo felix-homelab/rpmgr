@@ -6,6 +6,8 @@ import (
 	"context"
 	"time"
 
+	"github.com/felix-homelab/rpmgr/internal/store/ent/auditentry"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/audithead"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/configrevision"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/configseq"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/gatewaygroup"
@@ -23,6 +25,114 @@ import (
 // (default values, validators, hooks and policies) and stitches it
 // to their package variables.
 func init() {
+	auditentry.Policy = privacy.NewPolicies(schema.AuditEntry{})
+	auditentry.Hooks[0] = func(next ent.Mutator) ent.Mutator {
+		return ent.MutateFunc(func(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+			if err := auditentry.Policy.EvalMutation(ctx, m); err != nil {
+				return nil, err
+			}
+			return next.Mutate(ctx, m)
+		})
+	}
+	auditentryHooks := schema.AuditEntry{}.Hooks()
+
+	auditentry.Hooks[1] = auditentryHooks[0]
+	auditentryInters := schema.AuditEntry{}.Interceptors()
+	auditentry.Interceptors[0] = auditentryInters[0]
+	auditentryFields := schema.AuditEntry{}.Fields()
+	_ = auditentryFields
+	// auditentryDescSeq is the schema descriptor for seq field.
+	auditentryDescSeq := auditentryFields[2].Descriptor()
+	// auditentry.SeqValidator is a validator for the "seq" field. It is called by the builders before save.
+	auditentry.SeqValidator = auditentryDescSeq.Validators[0].(func(int64) error)
+	// auditentryDescActorID is the schema descriptor for actor_id field.
+	auditentryDescActorID := auditentryFields[7].Descriptor()
+	// auditentry.DefaultActorID holds the default value on creation for the actor_id field.
+	auditentry.DefaultActorID = auditentryDescActorID.Default.(string)
+	// auditentryDescCredentialID is the schema descriptor for credential_id field.
+	auditentryDescCredentialID := auditentryFields[8].Descriptor()
+	// auditentry.DefaultCredentialID holds the default value on creation for the credential_id field.
+	auditentry.DefaultCredentialID = auditentryDescCredentialID.Default.(string)
+	// auditentryDescAuthMethod is the schema descriptor for auth_method field.
+	auditentryDescAuthMethod := auditentryFields[9].Descriptor()
+	// auditentry.DefaultAuthMethod holds the default value on creation for the auth_method field.
+	auditentry.DefaultAuthMethod = auditentryDescAuthMethod.Default.(string)
+	// auditentryDescIP is the schema descriptor for ip field.
+	auditentryDescIP := auditentryFields[10].Descriptor()
+	// auditentry.DefaultIP holds the default value on creation for the ip field.
+	auditentry.DefaultIP = auditentryDescIP.Default.(string)
+	// auditentryDescUserAgent is the schema descriptor for user_agent field.
+	auditentryDescUserAgent := auditentryFields[11].Descriptor()
+	// auditentry.DefaultUserAgent holds the default value on creation for the user_agent field.
+	auditentry.DefaultUserAgent = auditentryDescUserAgent.Default.(string)
+	// auditentryDescRequestID is the schema descriptor for request_id field.
+	auditentryDescRequestID := auditentryFields[12].Descriptor()
+	// auditentry.DefaultRequestID holds the default value on creation for the request_id field.
+	auditentry.DefaultRequestID = auditentryDescRequestID.Default.(string)
+	// auditentryDescAction is the schema descriptor for action field.
+	auditentryDescAction := auditentryFields[13].Descriptor()
+	// auditentry.ActionValidator is a validator for the "action" field. It is called by the builders before save.
+	auditentry.ActionValidator = auditentryDescAction.Validators[0].(func(string) error)
+	// auditentryDescTargetType is the schema descriptor for target_type field.
+	auditentryDescTargetType := auditentryFields[14].Descriptor()
+	// auditentry.DefaultTargetType holds the default value on creation for the target_type field.
+	auditentry.DefaultTargetType = auditentryDescTargetType.Default.(string)
+	// auditentryDescTargetID is the schema descriptor for target_id field.
+	auditentryDescTargetID := auditentryFields[15].Descriptor()
+	// auditentry.DefaultTargetID holds the default value on creation for the target_id field.
+	auditentry.DefaultTargetID = auditentryDescTargetID.Default.(string)
+	// auditentryDescDiff is the schema descriptor for diff field.
+	auditentryDescDiff := auditentryFields[17].Descriptor()
+	// auditentry.DefaultDiff holds the default value on creation for the diff field.
+	auditentry.DefaultDiff = auditentryDescDiff.Default.(string)
+	// auditentryDescReason is the schema descriptor for reason field.
+	auditentryDescReason := auditentryFields[18].Descriptor()
+	// auditentry.DefaultReason holds the default value on creation for the reason field.
+	auditentry.DefaultReason = auditentryDescReason.Default.(string)
+	// auditentryDescID is the schema descriptor for id field.
+	auditentryDescID := auditentryFields[0].Descriptor()
+	// auditentry.DefaultID holds the default value on creation for the id field.
+	auditentry.DefaultID = auditentryDescID.Default.(func() string)
+	// auditentry.IDValidator is a validator for the "id" field. It is called by the builders before save.
+	auditentry.IDValidator = func() func(string) error {
+		validators := auditentryDescID.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(id string) error {
+			for _, fn := range fns {
+				if err := fn(id); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	audithead.Policy = privacy.NewPolicies(schema.AuditHead{})
+	audithead.Hooks[0] = func(next ent.Mutator) ent.Mutator {
+		return ent.MutateFunc(func(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+			if err := audithead.Policy.EvalMutation(ctx, m); err != nil {
+				return nil, err
+			}
+			return next.Mutate(ctx, m)
+		})
+	}
+	auditheadHooks := schema.AuditHead{}.Hooks()
+
+	audithead.Hooks[1] = auditheadHooks[0]
+	auditheadInters := schema.AuditHead{}.Interceptors()
+	audithead.Interceptors[0] = auditheadInters[0]
+	auditheadFields := schema.AuditHead{}.Fields()
+	_ = auditheadFields
+	// auditheadDescSeq is the schema descriptor for seq field.
+	auditheadDescSeq := auditheadFields[1].Descriptor()
+	// audithead.SeqValidator is a validator for the "seq" field. It is called by the builders before save.
+	audithead.SeqValidator = auditheadDescSeq.Validators[0].(func(int64) error)
+	// auditheadDescID is the schema descriptor for id field.
+	auditheadDescID := auditheadFields[0].Descriptor()
+	// audithead.IDValidator is a validator for the "id" field. It is called by the builders before save.
+	audithead.IDValidator = auditheadDescID.Validators[0].(func(string) error)
 	configrevisionMixin := schema.ConfigRevision{}.Mixin()
 	configrevision.Policy = privacy.NewPolicies(configrevisionMixin[0], schema.ConfigRevision{})
 	configrevision.Hooks[0] = func(next ent.Mutator) ent.Mutator {

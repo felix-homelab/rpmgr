@@ -179,7 +179,8 @@ erDiagram
 | `config_seq` | id (single row), seq | Incremented with a row lock inside every configuration transaction, so commit order equals revision order ([03](03-connections.md#revisions-and-ordering)) |
 | `config_revisions` | seq, db_epoch, created_at, actor, changed_resources | One row per configuration transaction. `db_epoch` is a random UUIDv7, new at init and on every restore |
 | `compiled_snapshots` | agent_id, revision, hash, size_bytes, signature, created_at | Last 5 per agent; for diffing and support |
-| `audit_log` | id, org_id, seq, prev_hash, hash, ts, actor_type, actor_id, auth_method, ip, user_agent, request_id, action, target_type, target_id, result, diff (redacted), reason | Hash chain per org ([04](04-security.md#audit-log)) |
+| `audit_log` | id, org_id (null: the instance chain), seq, prev_hash, hash, ts, actor_type (`user`, `agent`, `system`, `anonymous`), actor_id, credential_id (session or token ID), auth_method, ip, user_agent, request_id, action, target_type, target_id, result (`success`, `failure`, `denied`), diff (redacted), reason | A hash chain per org and one for the instance ([04](04-security.md#audit-log)); seq is unique within a chain. Text is stored as valid UTF-8 without NUL. Fields a client controls are truncated, never refused, so an over-long header cannot keep an event out of the log: user_agent at 512 bytes, request_id at 128 |
+| `audit_heads` | chain (org ID or `instance`), seq, hash | The last entry of each audit chain; every append locks and increments it first |
 | `audit_checkpoints` | org_id, seq, head_hash, signature, exported_at, sink | |
 | `leases` | name, holder, fencing_token, expires_at | Singleton jobs in HA, including the DNS job's `dns` lease ([10](10-operations.md#high-availability)) |
 | `controller_nodes` | node_id, internal_address, last_seen_at | HA: where a replica can be reached by the others over controller-to-controller mutual TLS |

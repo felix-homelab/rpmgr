@@ -3,6 +3,8 @@
 package ent
 
 import (
+	"github.com/felix-homelab/rpmgr/internal/store/ent/auditentry"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/audithead"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/configrevision"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/configseq"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/gatewaygroup"
@@ -19,8 +21,54 @@ import (
 
 // schemaGraph holds a representation of ent/schema at runtime.
 var schemaGraph = func() *sqlgraph.Schema {
-	graph := &sqlgraph.Schema{Nodes: make([]*sqlgraph.Node, 7)}
+	graph := &sqlgraph.Schema{Nodes: make([]*sqlgraph.Node, 9)}
 	graph.Nodes[0] = &sqlgraph.Node{
+		NodeSpec: sqlgraph.NodeSpec{
+			Table:   auditentry.Table,
+			Columns: auditentry.Columns,
+			ID: &sqlgraph.FieldSpec{
+				Type:   field.TypeString,
+				Column: auditentry.FieldID,
+			},
+		},
+		Type: "AuditEntry",
+		Fields: map[string]*sqlgraph.FieldSpec{
+			auditentry.FieldOrgID:        {Type: field.TypeString, Column: auditentry.FieldOrgID},
+			auditentry.FieldSeq:          {Type: field.TypeInt64, Column: auditentry.FieldSeq},
+			auditentry.FieldPrevHash:     {Type: field.TypeBytes, Column: auditentry.FieldPrevHash},
+			auditentry.FieldHash:         {Type: field.TypeBytes, Column: auditentry.FieldHash},
+			auditentry.FieldTs:           {Type: field.TypeTime, Column: auditentry.FieldTs},
+			auditentry.FieldActorType:    {Type: field.TypeEnum, Column: auditentry.FieldActorType},
+			auditentry.FieldActorID:      {Type: field.TypeString, Column: auditentry.FieldActorID},
+			auditentry.FieldCredentialID: {Type: field.TypeString, Column: auditentry.FieldCredentialID},
+			auditentry.FieldAuthMethod:   {Type: field.TypeString, Column: auditentry.FieldAuthMethod},
+			auditentry.FieldIP:           {Type: field.TypeString, Column: auditentry.FieldIP},
+			auditentry.FieldUserAgent:    {Type: field.TypeString, Column: auditentry.FieldUserAgent},
+			auditentry.FieldRequestID:    {Type: field.TypeString, Column: auditentry.FieldRequestID},
+			auditentry.FieldAction:       {Type: field.TypeString, Column: auditentry.FieldAction},
+			auditentry.FieldTargetType:   {Type: field.TypeString, Column: auditentry.FieldTargetType},
+			auditentry.FieldTargetID:     {Type: field.TypeString, Column: auditentry.FieldTargetID},
+			auditentry.FieldResult:       {Type: field.TypeEnum, Column: auditentry.FieldResult},
+			auditentry.FieldDiff:         {Type: field.TypeString, Column: auditentry.FieldDiff},
+			auditentry.FieldReason:       {Type: field.TypeString, Column: auditentry.FieldReason},
+		},
+	}
+	graph.Nodes[1] = &sqlgraph.Node{
+		NodeSpec: sqlgraph.NodeSpec{
+			Table:   audithead.Table,
+			Columns: audithead.Columns,
+			ID: &sqlgraph.FieldSpec{
+				Type:   field.TypeString,
+				Column: audithead.FieldID,
+			},
+		},
+		Type: "AuditHead",
+		Fields: map[string]*sqlgraph.FieldSpec{
+			audithead.FieldSeq:  {Type: field.TypeInt64, Column: audithead.FieldSeq},
+			audithead.FieldHash: {Type: field.TypeBytes, Column: audithead.FieldHash},
+		},
+	}
+	graph.Nodes[2] = &sqlgraph.Node{
 		NodeSpec: sqlgraph.NodeSpec{
 			Table:   configrevision.Table,
 			Columns: configrevision.Columns,
@@ -37,7 +85,7 @@ var schemaGraph = func() *sqlgraph.Schema {
 			configrevision.FieldCreatedAt:        {Type: field.TypeTime, Column: configrevision.FieldCreatedAt},
 		},
 	}
-	graph.Nodes[1] = &sqlgraph.Node{
+	graph.Nodes[3] = &sqlgraph.Node{
 		NodeSpec: sqlgraph.NodeSpec{
 			Table:   configseq.Table,
 			Columns: configseq.Columns,
@@ -51,7 +99,7 @@ var schemaGraph = func() *sqlgraph.Schema {
 			configseq.FieldSeq: {Type: field.TypeInt64, Column: configseq.FieldSeq},
 		},
 	}
-	graph.Nodes[2] = &sqlgraph.Node{
+	graph.Nodes[4] = &sqlgraph.Node{
 		NodeSpec: sqlgraph.NodeSpec{
 			Table:   gatewaygroup.Table,
 			Columns: gatewaygroup.Columns,
@@ -66,7 +114,7 @@ var schemaGraph = func() *sqlgraph.Schema {
 			gatewaygroup.FieldName:  {Type: field.TypeString, Column: gatewaygroup.FieldName},
 		},
 	}
-	graph.Nodes[3] = &sqlgraph.Node{
+	graph.Nodes[5] = &sqlgraph.Node{
 		NodeSpec: sqlgraph.NodeSpec{
 			Table:   instance.Table,
 			Columns: instance.Columns,
@@ -82,7 +130,7 @@ var schemaGraph = func() *sqlgraph.Schema {
 			instance.FieldCreatedAt:   {Type: field.TypeTime, Column: instance.FieldCreatedAt},
 		},
 	}
-	graph.Nodes[4] = &sqlgraph.Node{
+	graph.Nodes[6] = &sqlgraph.Node{
 		NodeSpec: sqlgraph.NodeSpec{
 			Table:   instancesetting.Table,
 			Columns: instancesetting.Columns,
@@ -99,7 +147,7 @@ var schemaGraph = func() *sqlgraph.Schema {
 			instancesetting.FieldUpdatedAt: {Type: field.TypeTime, Column: instancesetting.FieldUpdatedAt},
 		},
 	}
-	graph.Nodes[5] = &sqlgraph.Node{
+	graph.Nodes[7] = &sqlgraph.Node{
 		NodeSpec: sqlgraph.NodeSpec{
 			Table:   org.Table,
 			Columns: org.Columns,
@@ -115,7 +163,7 @@ var schemaGraph = func() *sqlgraph.Schema {
 			org.FieldCreatedAt: {Type: field.TypeTime, Column: org.FieldCreatedAt},
 		},
 	}
-	graph.Nodes[6] = &sqlgraph.Node{
+	graph.Nodes[8] = &sqlgraph.Node{
 		NodeSpec: sqlgraph.NodeSpec{
 			Table:   orgsetting.Table,
 			Columns: orgsetting.Columns,
@@ -140,6 +188,186 @@ var schemaGraph = func() *sqlgraph.Schema {
 // All update, update-one and query builders implement this interface.
 type predicateAdder interface {
 	addPredicate(func(s *sql.Selector))
+}
+
+// addPredicate implements the predicateAdder interface.
+func (_q *AuditEntryQuery) addPredicate(pred func(s *sql.Selector)) {
+	_q.predicates = append(_q.predicates, pred)
+}
+
+// Filter returns a Filter implementation to apply filters on the AuditEntryQuery builder.
+func (_q *AuditEntryQuery) Filter() *AuditEntryFilter {
+	return &AuditEntryFilter{config: _q.config, predicateAdder: _q}
+}
+
+// addPredicate implements the predicateAdder interface.
+func (m *AuditEntryMutation) addPredicate(pred func(s *sql.Selector)) {
+	m.predicates = append(m.predicates, pred)
+}
+
+// Filter returns an entql.Where implementation to apply filters on the AuditEntryMutation builder.
+func (m *AuditEntryMutation) Filter() *AuditEntryFilter {
+	return &AuditEntryFilter{config: m.config, predicateAdder: m}
+}
+
+// AuditEntryFilter provides a generic filtering capability at runtime for AuditEntryQuery.
+type AuditEntryFilter struct {
+	predicateAdder
+	config
+}
+
+// Where applies the entql predicate on the query filter.
+func (f *AuditEntryFilter) Where(p entql.P) {
+	f.addPredicate(func(s *sql.Selector) {
+		if err := schemaGraph.EvalP(schemaGraph.Nodes[0].Type, p, s); err != nil {
+			s.AddError(err)
+		}
+	})
+}
+
+// WhereID applies the entql string predicate on the id field.
+func (f *AuditEntryFilter) WhereID(p entql.StringP) {
+	f.Where(p.Field(auditentry.FieldID))
+}
+
+// WhereOrgID applies the entql string predicate on the org_id field.
+func (f *AuditEntryFilter) WhereOrgID(p entql.StringP) {
+	f.Where(p.Field(auditentry.FieldOrgID))
+}
+
+// WhereSeq applies the entql int64 predicate on the seq field.
+func (f *AuditEntryFilter) WhereSeq(p entql.Int64P) {
+	f.Where(p.Field(auditentry.FieldSeq))
+}
+
+// WherePrevHash applies the entql []byte predicate on the prev_hash field.
+func (f *AuditEntryFilter) WherePrevHash(p entql.BytesP) {
+	f.Where(p.Field(auditentry.FieldPrevHash))
+}
+
+// WhereHash applies the entql []byte predicate on the hash field.
+func (f *AuditEntryFilter) WhereHash(p entql.BytesP) {
+	f.Where(p.Field(auditentry.FieldHash))
+}
+
+// WhereTs applies the entql time.Time predicate on the ts field.
+func (f *AuditEntryFilter) WhereTs(p entql.TimeP) {
+	f.Where(p.Field(auditentry.FieldTs))
+}
+
+// WhereActorType applies the entql string predicate on the actor_type field.
+func (f *AuditEntryFilter) WhereActorType(p entql.StringP) {
+	f.Where(p.Field(auditentry.FieldActorType))
+}
+
+// WhereActorID applies the entql string predicate on the actor_id field.
+func (f *AuditEntryFilter) WhereActorID(p entql.StringP) {
+	f.Where(p.Field(auditentry.FieldActorID))
+}
+
+// WhereCredentialID applies the entql string predicate on the credential_id field.
+func (f *AuditEntryFilter) WhereCredentialID(p entql.StringP) {
+	f.Where(p.Field(auditentry.FieldCredentialID))
+}
+
+// WhereAuthMethod applies the entql string predicate on the auth_method field.
+func (f *AuditEntryFilter) WhereAuthMethod(p entql.StringP) {
+	f.Where(p.Field(auditentry.FieldAuthMethod))
+}
+
+// WhereIP applies the entql string predicate on the ip field.
+func (f *AuditEntryFilter) WhereIP(p entql.StringP) {
+	f.Where(p.Field(auditentry.FieldIP))
+}
+
+// WhereUserAgent applies the entql string predicate on the user_agent field.
+func (f *AuditEntryFilter) WhereUserAgent(p entql.StringP) {
+	f.Where(p.Field(auditentry.FieldUserAgent))
+}
+
+// WhereRequestID applies the entql string predicate on the request_id field.
+func (f *AuditEntryFilter) WhereRequestID(p entql.StringP) {
+	f.Where(p.Field(auditentry.FieldRequestID))
+}
+
+// WhereAction applies the entql string predicate on the action field.
+func (f *AuditEntryFilter) WhereAction(p entql.StringP) {
+	f.Where(p.Field(auditentry.FieldAction))
+}
+
+// WhereTargetType applies the entql string predicate on the target_type field.
+func (f *AuditEntryFilter) WhereTargetType(p entql.StringP) {
+	f.Where(p.Field(auditentry.FieldTargetType))
+}
+
+// WhereTargetID applies the entql string predicate on the target_id field.
+func (f *AuditEntryFilter) WhereTargetID(p entql.StringP) {
+	f.Where(p.Field(auditentry.FieldTargetID))
+}
+
+// WhereResult applies the entql string predicate on the result field.
+func (f *AuditEntryFilter) WhereResult(p entql.StringP) {
+	f.Where(p.Field(auditentry.FieldResult))
+}
+
+// WhereDiff applies the entql string predicate on the diff field.
+func (f *AuditEntryFilter) WhereDiff(p entql.StringP) {
+	f.Where(p.Field(auditentry.FieldDiff))
+}
+
+// WhereReason applies the entql string predicate on the reason field.
+func (f *AuditEntryFilter) WhereReason(p entql.StringP) {
+	f.Where(p.Field(auditentry.FieldReason))
+}
+
+// addPredicate implements the predicateAdder interface.
+func (_q *AuditHeadQuery) addPredicate(pred func(s *sql.Selector)) {
+	_q.predicates = append(_q.predicates, pred)
+}
+
+// Filter returns a Filter implementation to apply filters on the AuditHeadQuery builder.
+func (_q *AuditHeadQuery) Filter() *AuditHeadFilter {
+	return &AuditHeadFilter{config: _q.config, predicateAdder: _q}
+}
+
+// addPredicate implements the predicateAdder interface.
+func (m *AuditHeadMutation) addPredicate(pred func(s *sql.Selector)) {
+	m.predicates = append(m.predicates, pred)
+}
+
+// Filter returns an entql.Where implementation to apply filters on the AuditHeadMutation builder.
+func (m *AuditHeadMutation) Filter() *AuditHeadFilter {
+	return &AuditHeadFilter{config: m.config, predicateAdder: m}
+}
+
+// AuditHeadFilter provides a generic filtering capability at runtime for AuditHeadQuery.
+type AuditHeadFilter struct {
+	predicateAdder
+	config
+}
+
+// Where applies the entql predicate on the query filter.
+func (f *AuditHeadFilter) Where(p entql.P) {
+	f.addPredicate(func(s *sql.Selector) {
+		if err := schemaGraph.EvalP(schemaGraph.Nodes[1].Type, p, s); err != nil {
+			s.AddError(err)
+		}
+	})
+}
+
+// WhereID applies the entql string predicate on the id field.
+func (f *AuditHeadFilter) WhereID(p entql.StringP) {
+	f.Where(p.Field(audithead.FieldID))
+}
+
+// WhereSeq applies the entql int64 predicate on the seq field.
+func (f *AuditHeadFilter) WhereSeq(p entql.Int64P) {
+	f.Where(p.Field(audithead.FieldSeq))
+}
+
+// WhereHash applies the entql []byte predicate on the hash field.
+func (f *AuditHeadFilter) WhereHash(p entql.BytesP) {
+	f.Where(p.Field(audithead.FieldHash))
 }
 
 // addPredicate implements the predicateAdder interface.
@@ -171,7 +399,7 @@ type ConfigRevisionFilter struct {
 // Where applies the entql predicate on the query filter.
 func (f *ConfigRevisionFilter) Where(p entql.P) {
 	f.addPredicate(func(s *sql.Selector) {
-		if err := schemaGraph.EvalP(schemaGraph.Nodes[0].Type, p, s); err != nil {
+		if err := schemaGraph.EvalP(schemaGraph.Nodes[2].Type, p, s); err != nil {
 			s.AddError(err)
 		}
 	})
@@ -231,7 +459,7 @@ type ConfigSeqFilter struct {
 // Where applies the entql predicate on the query filter.
 func (f *ConfigSeqFilter) Where(p entql.P) {
 	f.addPredicate(func(s *sql.Selector) {
-		if err := schemaGraph.EvalP(schemaGraph.Nodes[1].Type, p, s); err != nil {
+		if err := schemaGraph.EvalP(schemaGraph.Nodes[3].Type, p, s); err != nil {
 			s.AddError(err)
 		}
 	})
@@ -276,7 +504,7 @@ type GatewayGroupFilter struct {
 // Where applies the entql predicate on the query filter.
 func (f *GatewayGroupFilter) Where(p entql.P) {
 	f.addPredicate(func(s *sql.Selector) {
-		if err := schemaGraph.EvalP(schemaGraph.Nodes[2].Type, p, s); err != nil {
+		if err := schemaGraph.EvalP(schemaGraph.Nodes[4].Type, p, s); err != nil {
 			s.AddError(err)
 		}
 	})
@@ -326,7 +554,7 @@ type InstanceFilter struct {
 // Where applies the entql predicate on the query filter.
 func (f *InstanceFilter) Where(p entql.P) {
 	f.addPredicate(func(s *sql.Selector) {
-		if err := schemaGraph.EvalP(schemaGraph.Nodes[3].Type, p, s); err != nil {
+		if err := schemaGraph.EvalP(schemaGraph.Nodes[5].Type, p, s); err != nil {
 			s.AddError(err)
 		}
 	})
@@ -381,7 +609,7 @@ type InstanceSettingFilter struct {
 // Where applies the entql predicate on the query filter.
 func (f *InstanceSettingFilter) Where(p entql.P) {
 	f.addPredicate(func(s *sql.Selector) {
-		if err := schemaGraph.EvalP(schemaGraph.Nodes[4].Type, p, s); err != nil {
+		if err := schemaGraph.EvalP(schemaGraph.Nodes[6].Type, p, s); err != nil {
 			s.AddError(err)
 		}
 	})
@@ -441,7 +669,7 @@ type OrgFilter struct {
 // Where applies the entql predicate on the query filter.
 func (f *OrgFilter) Where(p entql.P) {
 	f.addPredicate(func(s *sql.Selector) {
-		if err := schemaGraph.EvalP(schemaGraph.Nodes[5].Type, p, s); err != nil {
+		if err := schemaGraph.EvalP(schemaGraph.Nodes[7].Type, p, s); err != nil {
 			s.AddError(err)
 		}
 	})
@@ -496,7 +724,7 @@ type OrgSettingFilter struct {
 // Where applies the entql predicate on the query filter.
 func (f *OrgSettingFilter) Where(p entql.P) {
 	f.addPredicate(func(s *sql.Selector) {
-		if err := schemaGraph.EvalP(schemaGraph.Nodes[6].Type, p, s); err != nil {
+		if err := schemaGraph.EvalP(schemaGraph.Nodes[8].Type, p, s); err != nil {
 			s.AddError(err)
 		}
 	})

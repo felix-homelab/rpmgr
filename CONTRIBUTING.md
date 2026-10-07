@@ -366,6 +366,7 @@ for any external review ([D28](docs/14-open-decisions.md#project-and-process),
 
 - PKI, enrollment, certificate verification and the deny-list (`internal/pki`);
 - authorization and tenancy enforcement (`internal/authz`, store privacy rules, composite keys);
+- the hash-chained audit log (`internal/audit`);
 - connector-local policy (`internal/policy`);
 - secrets, the KEK and redaction (`internal/secret`);
 - tunnel framing and TLS configuration (`internal/tunnel`);
