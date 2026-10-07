@@ -1,0 +1,128 @@
+// SPDX-License-Identifier: Apache-2.0
+
+syntax = "proto3";
+
+package rpmgr.v1;
+
+import "buf/validate/validate.proto";
+import "google/protobuf/duration.proto";
+
+option go_package = "github.com/felix-homelab/rpmgr/gen/rpmgr/v1;rpmgrv1";
+
+// TransportPolicy selects the data-session transport between connectors and gateways
+// (docs/03-connections.md, "Transport selection").
+enum TransportPolicy {
+  // Not set: the next less specific level decides (route, then connector, then instance).
+  TRANSPORT_POLICY_UNSPECIFIED = 0;
+  // QUIC first, TLS + reverse HTTP/2 when UDP is blocked or QUIC loses the race.
+  TRANSPORT_POLICY_AUTO = 1;
+  // QUIC only; never falls back.
+  TRANSPORT_POLICY_QUIC = 2;
+  // TLS + reverse HTTP/2 only; never falls back.
+  TRANSPORT_POLICY_H2 = 3;
+}
+
+// PasswordHashProfile is the argon2id cost of password hashes (docs/04-security.md,
+// "Human authentication and sessions").
+enum PasswordHashProfile {
+  // Not set.
+  PASSWORD_HASH_PROFILE_UNSPECIFIED = 0;
+  // t=3, m=64 MiB, p=4.
+  PASSWORD_HASH_PROFILE_DEFAULT = 1;
+  // t=2, m=19 MiB, p=1, for hosts with less than 1 GiB of memory.
+  PASSWORD_HASH_PROFILE_LOW_MEMORY = 2;
+}
+
+// UpdateChannel is the release channel the controller offers (docs/04-security.md,
+// "Release signing").
+enum UpdateChannel {
+  // Not set.
+  UPDATE_CHANNEL_UNSPECIFIED = 0;
+  // Stable releases only.
+  UPDATE_CHANNEL_STABLE = 1;
+  // Pre-releases as well.
+  UPDATE_CHANNEL_PRERELEASE = 2;
+}
+
+// InstanceSettings are the runtime settings of the installation, changed by the Instance Admin
+// (docs/10-operations.md, "Runtime settings"). A field that is not set has its default, which the
+// server fills in when it reads them.
+message InstanceSettings {
+  // Default data-session transport of every connector; default AUTO.
+  optional TransportPolicy default_transport = 1 [(buf.validate.field).enum = {
+    defined_only: true
+    not_in: [0]
+  }];
+  // Lifetime of agent leaf certificates, 1 to 30 days; default 7 days (D8).
+  google.protobuf.Duration leaf_certificate_lifetime = 2 [(buf.validate.field).duration = {
+    gte: {seconds: 86400}
+    lte: {seconds: 2592000}
+  }];
+  // How long after expiry an agent may still re-authenticate, 0 to 90 days, 0 disables;
+  // default 30 days (D8).
+  google.protobuf.Duration expired_certificate_grace = 3 [(buf.validate.field).duration = {
+    gte: {}
+    lte: {seconds: 7776000}
+  }];
+  // argon2id cost of new password hashes; default DEFAULT, or LOW_MEMORY when the controller was
+  // initialised on a host with less than 1 GiB of memory.
+  optional PasswordHashProfile password_hash_profile = 4 [(buf.validate.field).enum = {
+    defined_only: true
+    not_in: [0]
+  }];
+  // Whether the controller checks for releases once a day; default true (D4).
+  optional bool release_check = 5;
+  // Channel of the release check; default STABLE.
+  optional UpdateChannel update_channel = 6 [(buf.validate.field).enum = {
+    defined_only: true
+    not_in: [0]
+  }];
+  // Further public origins of the web UI, accepted as Origin by the CSRF check, e.g.
+  // "https://panel.example.com".
+  repeated string public_url_aliases = 7 [(buf.validate.field).repeated = {
+    max_items: 16
+    unique: true
+    items: {
+      string: {
+        uri: true
+        max_len: 253
+      }
+    }
+  }];
+  // Controller endpoints advertised to agents in every snapshot, tried in order, e.g.
+  // "https://controller.example.net:443"; empty means the public URL only.
+  repeated string controller_endpoints = 8 [(buf.validate.field).repeated = {
+    max_items: 8
+    unique: true
+    items: {
+      string: {
+        uri: true
+        max_len: 253
+      }
+    }
+  }];
+  // How long hourly traffic rollups are kept, 1 to 400 days; default 30 days.
+  google.protobuf.Duration hourly_rollup_retention = 9 [(buf.validate.field).duration = {
+    gte: {seconds: 86400}
+    lte: {seconds: 34560000}
+  }];
+  // How long daily traffic rollups are kept, 1 to 3650 days; default 400 days.
+  google.protobuf.Duration daily_rollup_retention = 10 [(buf.validate.field).duration = {
+    gte: {seconds: 86400}
+    lte: {seconds: 315360000}
+  }];
+}
+
+// OrgSettings are the runtime settings of an org, changed by its Owner (docs/10-operations.md,
+// "Runtime settings").
+message OrgSettings {
+  // Whether every member must use multi-factor authentication; default false.
+  optional bool require_mfa = 1;
+  // Whether Operators may enroll and revoke connectors; default false (docs/04-security.md,
+  // "Roles").
+  optional bool operators_may_enroll = 2;
+  // Gateway group preselected for new routes; empty means none.
+  string default_gateway_group_id = 3 [(buf.validate.field).string = {
+    pattern: "^(gwg_[0-7][0-9A-HJKMNP-TV-Z]{25})?$"
+  }];
+}

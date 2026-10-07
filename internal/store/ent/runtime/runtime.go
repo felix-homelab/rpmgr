@@ -10,7 +10,9 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/configseq"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/gatewaygroup"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/instance"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/instancesetting"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/org"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/orgsetting"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/schema"
 
 	"entgo.io/ent"
@@ -158,6 +160,36 @@ func init() {
 	instanceDescID := instanceFields[0].Descriptor()
 	// instance.IDValidator is a validator for the "id" field. It is called by the builders before save.
 	instance.IDValidator = instanceDescID.Validators[0].(func(int) error)
+	instancesettingMixin := schema.InstanceSetting{}.Mixin()
+	instancesetting.Policy = privacy.NewPolicies(instancesettingMixin[0], schema.InstanceSetting{})
+	instancesetting.Hooks[0] = func(next ent.Mutator) ent.Mutator {
+		return ent.MutateFunc(func(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+			if err := instancesetting.Policy.EvalMutation(ctx, m); err != nil {
+				return nil, err
+			}
+			return next.Mutate(ctx, m)
+		})
+	}
+	instancesettingFields := schema.InstanceSetting{}.Fields()
+	_ = instancesettingFields
+	// instancesettingDescVersion is the schema descriptor for version field.
+	instancesettingDescVersion := instancesettingFields[2].Descriptor()
+	// instancesetting.VersionValidator is a validator for the "version" field. It is called by the builders before save.
+	instancesetting.VersionValidator = instancesettingDescVersion.Validators[0].(func(int64) error)
+	// instancesettingDescUpdatedBy is the schema descriptor for updated_by field.
+	instancesettingDescUpdatedBy := instancesettingFields[3].Descriptor()
+	// instancesetting.UpdatedByValidator is a validator for the "updated_by" field. It is called by the builders before save.
+	instancesetting.UpdatedByValidator = instancesettingDescUpdatedBy.Validators[0].(func(string) error)
+	// instancesettingDescUpdatedAt is the schema descriptor for updated_at field.
+	instancesettingDescUpdatedAt := instancesettingFields[4].Descriptor()
+	// instancesetting.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	instancesetting.DefaultUpdatedAt = instancesettingDescUpdatedAt.Default.(func() time.Time)
+	// instancesetting.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	instancesetting.UpdateDefaultUpdatedAt = instancesettingDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// instancesettingDescID is the schema descriptor for id field.
+	instancesettingDescID := instancesettingFields[0].Descriptor()
+	// instancesetting.IDValidator is a validator for the "id" field. It is called by the builders before save.
+	instancesetting.IDValidator = instancesettingDescID.Validators[0].(func(int) error)
 	orgMixin := schema.Org{}.Mixin()
 	org.Policy = privacy.NewPolicies(orgMixin[0], schema.Org{})
 	org.Hooks[0] = func(next ent.Mutator) ent.Mutator {
@@ -208,6 +240,63 @@ func init() {
 	// org.IDValidator is a validator for the "id" field. It is called by the builders before save.
 	org.IDValidator = func() func(string) error {
 		validators := orgDescID.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(id string) error {
+			for _, fn := range fns {
+				if err := fn(id); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	orgsettingMixin := schema.OrgSetting{}.Mixin()
+	orgsetting.Policy = privacy.NewPolicies(orgsettingMixin[0], schema.OrgSetting{})
+	orgsetting.Hooks[0] = func(next ent.Mutator) ent.Mutator {
+		return ent.MutateFunc(func(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+			if err := orgsetting.Policy.EvalMutation(ctx, m); err != nil {
+				return nil, err
+			}
+			return next.Mutate(ctx, m)
+		})
+	}
+	orgsettingMixinHooks0 := orgsettingMixin[0].Hooks()
+
+	orgsetting.Hooks[1] = orgsettingMixinHooks0[0]
+	orgsettingMixinInters0 := orgsettingMixin[0].Interceptors()
+	orgsetting.Interceptors[0] = orgsettingMixinInters0[0]
+	orgsettingMixinFields0 := orgsettingMixin[0].Fields()
+	_ = orgsettingMixinFields0
+	orgsettingFields := schema.OrgSetting{}.Fields()
+	_ = orgsettingFields
+	// orgsettingDescOrgID is the schema descriptor for org_id field.
+	orgsettingDescOrgID := orgsettingMixinFields0[0].Descriptor()
+	// orgsetting.OrgIDValidator is a validator for the "org_id" field. It is called by the builders before save.
+	orgsetting.OrgIDValidator = orgsettingDescOrgID.Validators[0].(func(string) error)
+	// orgsettingDescVersion is the schema descriptor for version field.
+	orgsettingDescVersion := orgsettingFields[2].Descriptor()
+	// orgsetting.VersionValidator is a validator for the "version" field. It is called by the builders before save.
+	orgsetting.VersionValidator = orgsettingDescVersion.Validators[0].(func(int64) error)
+	// orgsettingDescUpdatedBy is the schema descriptor for updated_by field.
+	orgsettingDescUpdatedBy := orgsettingFields[3].Descriptor()
+	// orgsetting.UpdatedByValidator is a validator for the "updated_by" field. It is called by the builders before save.
+	orgsetting.UpdatedByValidator = orgsettingDescUpdatedBy.Validators[0].(func(string) error)
+	// orgsettingDescUpdatedAt is the schema descriptor for updated_at field.
+	orgsettingDescUpdatedAt := orgsettingFields[4].Descriptor()
+	// orgsetting.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	orgsetting.DefaultUpdatedAt = orgsettingDescUpdatedAt.Default.(func() time.Time)
+	// orgsetting.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	orgsetting.UpdateDefaultUpdatedAt = orgsettingDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// orgsettingDescID is the schema descriptor for id field.
+	orgsettingDescID := orgsettingFields[0].Descriptor()
+	// orgsetting.DefaultID holds the default value on creation for the id field.
+	orgsetting.DefaultID = orgsettingDescID.Default.(func() string)
+	// orgsetting.IDValidator is a validator for the "id" field. It is called by the builders before save.
+	orgsetting.IDValidator = func() func(string) error {
+		validators := orgsettingDescID.Validators
 		fns := [...]func(string) error{
 			validators[0].(func(string) error),
 			validators[1].(func(string) error),

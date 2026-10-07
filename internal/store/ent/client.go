@@ -18,7 +18,9 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/configseq"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/gatewaygroup"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/instance"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/instancesetting"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/org"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/orgsetting"
 
 	stdsql "database/sql"
 )
@@ -36,8 +38,12 @@ type Client struct {
 	GatewayGroup *GatewayGroupClient
 	// Instance is the client for interacting with the Instance builders.
 	Instance *InstanceClient
+	// InstanceSetting is the client for interacting with the InstanceSetting builders.
+	InstanceSetting *InstanceSettingClient
 	// Org is the client for interacting with the Org builders.
 	Org *OrgClient
+	// OrgSetting is the client for interacting with the OrgSetting builders.
+	OrgSetting *OrgSettingClient
 }
 
 // NewClient creates a new client configured with the given options.
@@ -53,7 +59,9 @@ func (c *Client) init() {
 	c.ConfigSeq = NewConfigSeqClient(c.config)
 	c.GatewayGroup = NewGatewayGroupClient(c.config)
 	c.Instance = NewInstanceClient(c.config)
+	c.InstanceSetting = NewInstanceSettingClient(c.config)
 	c.Org = NewOrgClient(c.config)
+	c.OrgSetting = NewOrgSettingClient(c.config)
 }
 
 type (
@@ -144,13 +152,15 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 	cfg := c.config
 	cfg.driver = tx
 	return &Tx{
-		ctx:            ctx,
-		config:         cfg,
-		ConfigRevision: NewConfigRevisionClient(cfg),
-		ConfigSeq:      NewConfigSeqClient(cfg),
-		GatewayGroup:   NewGatewayGroupClient(cfg),
-		Instance:       NewInstanceClient(cfg),
-		Org:            NewOrgClient(cfg),
+		ctx:             ctx,
+		config:          cfg,
+		ConfigRevision:  NewConfigRevisionClient(cfg),
+		ConfigSeq:       NewConfigSeqClient(cfg),
+		GatewayGroup:    NewGatewayGroupClient(cfg),
+		Instance:        NewInstanceClient(cfg),
+		InstanceSetting: NewInstanceSettingClient(cfg),
+		Org:             NewOrgClient(cfg),
+		OrgSetting:      NewOrgSettingClient(cfg),
 	}, nil
 }
 
@@ -168,13 +178,15 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 	cfg := c.config
 	cfg.driver = &txDriver{tx: tx, drv: c.driver}
 	return &Tx{
-		ctx:            ctx,
-		config:         cfg,
-		ConfigRevision: NewConfigRevisionClient(cfg),
-		ConfigSeq:      NewConfigSeqClient(cfg),
-		GatewayGroup:   NewGatewayGroupClient(cfg),
-		Instance:       NewInstanceClient(cfg),
-		Org:            NewOrgClient(cfg),
+		ctx:             ctx,
+		config:          cfg,
+		ConfigRevision:  NewConfigRevisionClient(cfg),
+		ConfigSeq:       NewConfigSeqClient(cfg),
+		GatewayGroup:    NewGatewayGroupClient(cfg),
+		Instance:        NewInstanceClient(cfg),
+		InstanceSetting: NewInstanceSettingClient(cfg),
+		Org:             NewOrgClient(cfg),
+		OrgSetting:      NewOrgSettingClient(cfg),
 	}, nil
 }
 
@@ -203,21 +215,23 @@ func (c *Client) Close() error {
 // Use adds the mutation hooks to all the entity clients.
 // In order to add hooks to a specific client, call: `client.Node.Use(...)`.
 func (c *Client) Use(hooks ...Hook) {
-	c.ConfigRevision.Use(hooks...)
-	c.ConfigSeq.Use(hooks...)
-	c.GatewayGroup.Use(hooks...)
-	c.Instance.Use(hooks...)
-	c.Org.Use(hooks...)
+	for _, n := range []interface{ Use(...Hook) }{
+		c.ConfigRevision, c.ConfigSeq, c.GatewayGroup, c.Instance, c.InstanceSetting,
+		c.Org, c.OrgSetting,
+	} {
+		n.Use(hooks...)
+	}
 }
 
 // Intercept adds the query interceptors to all the entity clients.
 // In order to add interceptors to a specific client, call: `client.Node.Intercept(...)`.
 func (c *Client) Intercept(interceptors ...Interceptor) {
-	c.ConfigRevision.Intercept(interceptors...)
-	c.ConfigSeq.Intercept(interceptors...)
-	c.GatewayGroup.Intercept(interceptors...)
-	c.Instance.Intercept(interceptors...)
-	c.Org.Intercept(interceptors...)
+	for _, n := range []interface{ Intercept(...Interceptor) }{
+		c.ConfigRevision, c.ConfigSeq, c.GatewayGroup, c.Instance, c.InstanceSetting,
+		c.Org, c.OrgSetting,
+	} {
+		n.Intercept(interceptors...)
+	}
 }
 
 // Mutate implements the ent.Mutator interface.
@@ -231,8 +245,12 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.GatewayGroup.mutate(ctx, m)
 	case *InstanceMutation:
 		return c.Instance.mutate(ctx, m)
+	case *InstanceSettingMutation:
+		return c.InstanceSetting.mutate(ctx, m)
 	case *OrgMutation:
 		return c.Org.mutate(ctx, m)
+	case *OrgSettingMutation:
+		return c.OrgSetting.mutate(ctx, m)
 	default:
 		return nil, fmt.Errorf("ent: unknown mutation type %T", m)
 	}
@@ -775,6 +793,140 @@ func (c *InstanceClient) mutate(ctx context.Context, m *InstanceMutation) (Value
 	}
 }
 
+// InstanceSettingClient is a client for the InstanceSetting schema.
+type InstanceSettingClient struct {
+	config
+}
+
+// NewInstanceSettingClient returns a client for the InstanceSetting from the given config.
+func NewInstanceSettingClient(c config) *InstanceSettingClient {
+	return &InstanceSettingClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `instancesetting.Hooks(f(g(h())))`.
+func (c *InstanceSettingClient) Use(hooks ...Hook) {
+	c.hooks.InstanceSetting = append(c.hooks.InstanceSetting, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `instancesetting.Intercept(f(g(h())))`.
+func (c *InstanceSettingClient) Intercept(interceptors ...Interceptor) {
+	c.inters.InstanceSetting = append(c.inters.InstanceSetting, interceptors...)
+}
+
+// Create returns a builder for creating a InstanceSetting entity.
+func (c *InstanceSettingClient) Create() *InstanceSettingCreate {
+	mutation := newInstanceSettingMutation(c.config, OpCreate)
+	return &InstanceSettingCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of InstanceSetting entities.
+func (c *InstanceSettingClient) CreateBulk(builders ...*InstanceSettingCreate) *InstanceSettingCreateBulk {
+	return &InstanceSettingCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *InstanceSettingClient) MapCreateBulk(slice any, setFunc func(*InstanceSettingCreate, int)) *InstanceSettingCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &InstanceSettingCreateBulk{err: fmt.Errorf("calling to InstanceSettingClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*InstanceSettingCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &InstanceSettingCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for InstanceSetting.
+func (c *InstanceSettingClient) Update() *InstanceSettingUpdate {
+	mutation := newInstanceSettingMutation(c.config, OpUpdate)
+	return &InstanceSettingUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *InstanceSettingClient) UpdateOne(_m *InstanceSetting) *InstanceSettingUpdateOne {
+	mutation := newInstanceSettingMutation(c.config, OpUpdateOne, withInstanceSetting(_m))
+	return &InstanceSettingUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *InstanceSettingClient) UpdateOneID(id int) *InstanceSettingUpdateOne {
+	mutation := newInstanceSettingMutation(c.config, OpUpdateOne, withInstanceSettingID(id))
+	return &InstanceSettingUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for InstanceSetting.
+func (c *InstanceSettingClient) Delete() *InstanceSettingDelete {
+	mutation := newInstanceSettingMutation(c.config, OpDelete)
+	return &InstanceSettingDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *InstanceSettingClient) DeleteOne(_m *InstanceSetting) *InstanceSettingDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *InstanceSettingClient) DeleteOneID(id int) *InstanceSettingDeleteOne {
+	builder := c.Delete().Where(instancesetting.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &InstanceSettingDeleteOne{builder}
+}
+
+// Query returns a query builder for InstanceSetting.
+func (c *InstanceSettingClient) Query() *InstanceSettingQuery {
+	return &InstanceSettingQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeInstanceSetting},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a InstanceSetting entity by its id.
+func (c *InstanceSettingClient) Get(ctx context.Context, id int) (*InstanceSetting, error) {
+	return c.Query().Where(instancesetting.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *InstanceSettingClient) GetX(ctx context.Context, id int) *InstanceSetting {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *InstanceSettingClient) Hooks() []Hook {
+	hooks := c.hooks.InstanceSetting
+	return append(hooks[:len(hooks):len(hooks)], instancesetting.Hooks[:]...)
+}
+
+// Interceptors returns the client interceptors.
+func (c *InstanceSettingClient) Interceptors() []Interceptor {
+	return c.inters.InstanceSetting
+}
+
+func (c *InstanceSettingClient) mutate(ctx context.Context, m *InstanceSettingMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&InstanceSettingCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&InstanceSettingUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&InstanceSettingUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&InstanceSettingDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown InstanceSetting mutation op: %q", m.Op())
+	}
+}
+
 // OrgClient is a client for the Org schema.
 type OrgClient struct {
 	config
@@ -910,13 +1062,150 @@ func (c *OrgClient) mutate(ctx context.Context, m *OrgMutation) (Value, error) {
 	}
 }
 
+// OrgSettingClient is a client for the OrgSetting schema.
+type OrgSettingClient struct {
+	config
+}
+
+// NewOrgSettingClient returns a client for the OrgSetting from the given config.
+func NewOrgSettingClient(c config) *OrgSettingClient {
+	return &OrgSettingClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `orgsetting.Hooks(f(g(h())))`.
+func (c *OrgSettingClient) Use(hooks ...Hook) {
+	c.hooks.OrgSetting = append(c.hooks.OrgSetting, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `orgsetting.Intercept(f(g(h())))`.
+func (c *OrgSettingClient) Intercept(interceptors ...Interceptor) {
+	c.inters.OrgSetting = append(c.inters.OrgSetting, interceptors...)
+}
+
+// Create returns a builder for creating a OrgSetting entity.
+func (c *OrgSettingClient) Create() *OrgSettingCreate {
+	mutation := newOrgSettingMutation(c.config, OpCreate)
+	return &OrgSettingCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of OrgSetting entities.
+func (c *OrgSettingClient) CreateBulk(builders ...*OrgSettingCreate) *OrgSettingCreateBulk {
+	return &OrgSettingCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *OrgSettingClient) MapCreateBulk(slice any, setFunc func(*OrgSettingCreate, int)) *OrgSettingCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &OrgSettingCreateBulk{err: fmt.Errorf("calling to OrgSettingClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*OrgSettingCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &OrgSettingCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for OrgSetting.
+func (c *OrgSettingClient) Update() *OrgSettingUpdate {
+	mutation := newOrgSettingMutation(c.config, OpUpdate)
+	return &OrgSettingUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *OrgSettingClient) UpdateOne(_m *OrgSetting) *OrgSettingUpdateOne {
+	mutation := newOrgSettingMutation(c.config, OpUpdateOne, withOrgSetting(_m))
+	return &OrgSettingUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *OrgSettingClient) UpdateOneID(id string) *OrgSettingUpdateOne {
+	mutation := newOrgSettingMutation(c.config, OpUpdateOne, withOrgSettingID(id))
+	return &OrgSettingUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for OrgSetting.
+func (c *OrgSettingClient) Delete() *OrgSettingDelete {
+	mutation := newOrgSettingMutation(c.config, OpDelete)
+	return &OrgSettingDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *OrgSettingClient) DeleteOne(_m *OrgSetting) *OrgSettingDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *OrgSettingClient) DeleteOneID(id string) *OrgSettingDeleteOne {
+	builder := c.Delete().Where(orgsetting.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &OrgSettingDeleteOne{builder}
+}
+
+// Query returns a query builder for OrgSetting.
+func (c *OrgSettingClient) Query() *OrgSettingQuery {
+	return &OrgSettingQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeOrgSetting},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a OrgSetting entity by its id.
+func (c *OrgSettingClient) Get(ctx context.Context, id string) (*OrgSetting, error) {
+	return c.Query().Where(orgsetting.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *OrgSettingClient) GetX(ctx context.Context, id string) *OrgSetting {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *OrgSettingClient) Hooks() []Hook {
+	hooks := c.hooks.OrgSetting
+	return append(hooks[:len(hooks):len(hooks)], orgsetting.Hooks[:]...)
+}
+
+// Interceptors returns the client interceptors.
+func (c *OrgSettingClient) Interceptors() []Interceptor {
+	inters := c.inters.OrgSetting
+	return append(inters[:len(inters):len(inters)], orgsetting.Interceptors[:]...)
+}
+
+func (c *OrgSettingClient) mutate(ctx context.Context, m *OrgSettingMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&OrgSettingCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&OrgSettingUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&OrgSettingUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&OrgSettingDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown OrgSetting mutation op: %q", m.Op())
+	}
+}
+
 // hooks and interceptors per client, for fast access.
 type (
 	hooks struct {
-		ConfigRevision, ConfigSeq, GatewayGroup, Instance, Org []ent.Hook
+		ConfigRevision, ConfigSeq, GatewayGroup, Instance, InstanceSetting, Org,
+		OrgSetting []ent.Hook
 	}
 	inters struct {
-		ConfigRevision, ConfigSeq, GatewayGroup, Instance, Org []ent.Interceptor
+		ConfigRevision, ConfigSeq, GatewayGroup, Instance, InstanceSetting, Org,
+		OrgSetting []ent.Interceptor
 	}
 )
 
