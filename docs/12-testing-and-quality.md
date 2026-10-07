@@ -1,7 +1,7 @@
 # 12 — Testing and quality
 
-> Status: design, not implemented. Tags: [F] fact · [R] recommendation · [T] target · [V] verify at
-> implementation ([README](../README.md#how-to-read-these-documents)). Performance targets are
+> Status: Phase 1, being implemented. Tags: [F] fact · [R] recommendation · [T] target · [V] verify
+> at implementation ([README](../README.md#how-to-read-these-documents)). Performance targets are
 > defined in [03-connections.md](03-connections.md#performance-budget); security controls in
 > [04-security.md](04-security.md). This document defines how they are proven.
 

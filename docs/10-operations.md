@@ -1,10 +1,10 @@
 # 10 — Operations
 
-> Status: design, not implemented. Tags: [F] fact · [R] recommendation · [T] target · [V] verify at
-> implementation ([README](../README.md#how-to-read-these-documents)). Timeouts, sizes and limits
+> Status: Phase 1, being implemented. Tags: [F] fact · [R] recommendation · [T] target · [V] verify
+> at implementation ([README](../README.md#how-to-read-these-documents)). Timeouts, sizes and limits
 > are defined in [03-connections.md](03-connections.md); identities, lifetimes and cryptographic
-> parameters in [04-security.md](04-security.md). This document links to them instead of
-> restating them.
+> parameters in [04-security.md](04-security.md). This document links to them instead of restating
+> them.
 
 ## Install
 
