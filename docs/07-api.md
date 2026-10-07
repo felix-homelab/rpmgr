@@ -272,6 +272,7 @@ Defined in [03-connections.md](03-connections.md); summarised here for reference
 | | `Open` | controller → agent | Start an imperative operation (logs, diagnostics, shell) |
 | | `Drain` / `Goodbye` | controller → agent | Reconnect elsewhere / session ends (superseded, revoked, upgrade required) |
 | | `DenyListUpdate` | controller → agent | Revocations; applied unconditionally, independent of snapshots |
+| | `AcmeChallenge` / `OpResult` | controller → gateway / back | An ACME HTTP-01 or TLS-ALPN-01 challenge the gateway answers (add, remove), and its acknowledgement |
 | Control unary | `Renew`, `FetchResource` | agent → controller | Certificate renewal; large resources by hash |
 | `Reauth` (SNI `reauth.controller.<td>`) | `Reauth` | agent → controller | New certificate for an agent whose certificate expired within the grace period; mutual TLS with the expired certificate |
 | Control `Attach` | `AttachFrame` | both | Data of an imperative operation |
