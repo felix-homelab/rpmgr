@@ -72,7 +72,7 @@ an opaque blob: no foreign system's configuration is embedded, and every field i
 
 | Table | Key fields | Notes |
 |---|---|---|
-| `connectors` | id, org_id, name, labels, spiffe_id, pubkey_sha256, ephemeral, enabled, desired_version, created_at, decommissioned_at | One row per enrolled connector |
+| `connectors` | id, org_id, name, labels, spiffe_id, pubkey_sha256, ephemeral, enabled, transport, desired_version, created_at, decommissioned_at | One row per enrolled connector. `transport` (`auto`, `quic`, `h2`; null = the instance default) overrides the data-session transport ([03](03-connections.md#transport-selection)) |
 | `gateway_groups` | id, org_id, name, region, public_hostnames (DNS or anycast names for **public** traffic), dns_target (typed `oneof`: `cname` FQDN, or `addresses` list of IPv4/IPv6; unset = nothing is published) | Shared groups belong to the system org. `dns_target` is where managed DNS records for this group point ([15](15-dns.md#publication-rules)). A group has **at most 4 gateways**, enforced by the store, because connectors keep a session to every gateway of the group ([03](03-connections.md#multiple-gateways)) |
 | `gateway_group_grants` | gateway_group_id, org_id | Which orgs may publish routes on a shared group |
 | `gateways` | id, org_id, gateway_group_id, name, spiffe_id, pubkey_sha256, **tunnel_endpoints** (this gateway's own address/port for connectors, and its WSS hostname), enabled, desired_version, created_at, decommissioned_at | Connectors dial each gateway at its own endpoint, because they must know which gateway ID they reach ([03](03-connections.md#establishment)) |
@@ -112,7 +112,7 @@ erDiagram
 
 | Table | Key fields | Notes |
 |---|---|---|
-| `routes` | id, org_id, name, type (`http`, `tcp`, `udp`, `tls_passthrough`), gateway_group_id, **enabled**, description, labels, version, created_at, updated_at, updated_by | The only place a route exists. `version` is the optimistic-concurrency counter ([07](07-api.md#concurrency)) |
+| `routes` | id, org_id, name, type (`http`, `tcp`, `udp`, `tls_passthrough`), gateway_group_id, **enabled**, transport, description, labels, version, created_at, updated_at, updated_by | The only place a route exists. `version` is the optimistic-concurrency counter ([07](07-api.md#concurrency)). `transport` (`auto`, `quic`, `h2`; null = the connector's) pins the route's data-session transport on every connector serving it ([03](03-connections.md#transport-selection)) |
 | `route_http` | route_id, org_id, path_prefix, header_matches, tls_mode (`acme`, `certificate`), certificate_id, port80 (`redirect` default, `serve`, `off`), host_header (`preserve` or a value), request_headers_set, response_headers_set, websocket, max_body_bytes, dns_proxied | One row per `http` route. `port80` decides what plain HTTP on port 80 does; ACME HTTP-01 challenges are always answered there. `dns_proxied` opts the route's hostnames into Cloudflare's proxy (Phase 2, [15](15-dns.md#proxied-http-routes)) |
 | `route_tcp` | route_id, org_id, port_allocation_id, listener_mode (`plain`, `http_connect`), idle_timeout | `http_connect` is an HTTP CONNECT multiplexer on one port |
 | `route_udp` | route_id, org_id, port_allocation_id, flow_idle_timeout | |
@@ -173,7 +173,7 @@ erDiagram
 
 | Table | Key fields | Notes |
 |---|---|---|
-| `instance_settings`, `org_settings` | key, value (typed proto), updated_by, updated_at | Runtime settings edited in the UI; boot settings stay in the config file ([10](10-operations.md#configuration)). `cloudflare_ip_ranges` is written by a daily job in a configuration transaction, so gateway snapshots stay deterministic ([15](15-dns.md#proxied-http-routes)) |
+| `instance_settings`, `org_settings` | key, value (typed proto), updated_by, updated_at | Runtime settings edited in the UI; boot settings stay in the config file ([10](10-operations.md#configuration)). `default_transport` is the instance default of the data-session transport, `auto` until changed ([03](03-connections.md#transport-selection)). `cloudflare_ip_ranges` is written by a daily job in a configuration transaction, so gateway snapshots stay deterministic ([15](15-dns.md#proxied-http-routes)) |
 | `config_seq` | id (single row), seq | Incremented with a row lock inside every configuration transaction, so commit order equals revision order ([03](03-connections.md#revisions-and-ordering)) |
 | `config_revisions` | seq, db_epoch, created_at, actor, changed_resources | One row per configuration transaction. `db_epoch` is a random UUIDv7, new at init and on every restore |
 | `compiled_snapshots` | agent_id, revision, hash, size_bytes, signature, created_at | Last 5 per agent; for diffing and support |

@@ -105,7 +105,7 @@ reads the request: when a handler finishes early, it resets the request stream
   [F Go 1.27.1 `net/http/clientconn.go:254,301`]; at the limit it uses another session or returns
   503 / resets — it never blocks. net/http's `ClientConn` reports only stream counts, not the
   connection send window, so the gateway deprioritises a session whose stream writers have been
-  blocked for more than 200 ms when choosing where to open new streams [V S1]
+  blocked for more than 200 ms when choosing where to open new streams [V VB-18]
 - Liveness comes from transport-level HTTP/2 PING frames (`SendPingTimeout` 15 s, `PingTimeout`
   10 s, on both ends; S2 detected a blackholed connection after 25 s) plus TCP keepalive 15 s,
   which are not flow-controlled; the application `Ping` on the session control stream only
