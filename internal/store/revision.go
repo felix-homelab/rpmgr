@@ -100,6 +100,14 @@ func ConfigTx(ctx context.Context, db *DB, fn func(tx *ent.Tx) ([]string, error)
 	return rev, nil
 }
 
+// WriteTx runs fn as a write transaction that is not a configuration change, so it records no
+// revision: audit entries, sessions, observed state. Like ConfigTx it is READ COMMITTED on
+// PostgreSQL and runs on the single writer on SQLite, so on SQLite it must not be called while the
+// same goroutine holds another write transaction.
+func WriteTx(ctx context.Context, db *DB, fn func(tx *ent.Tx) error) error {
+	return withTx(ctx, db.client, db.writeTxOptions(), fn)
+}
+
 // ReadTx runs fn in one consistent read snapshot, labelled with the revision it shows: a
 // REPEATABLE READ transaction on PostgreSQL, a read transaction of the read-only pool on SQLite.
 // The snapshot compiler reads through it, so that every replica compiles the same snapshot for
