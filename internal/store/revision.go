@@ -27,20 +27,29 @@ var ErrInitialised = errors.New("store: the database is already initialised")
 // InitInstance creates the instance row with the trust domain and a new database epoch, and the
 // revision counter at 0. It runs once, at `rpmgr controller init`.
 func InitInstance(ctx context.Context, db *DB, trustDomain string) (Revision, error) {
+	var rev Revision
+	err := withTx(ctx, db.client, nil, func(tx *ent.Tx) error {
+		var err error
+		rev, err = InitInstanceTx(ctx, tx, trustDomain)
+		return err
+	})
+	return rev, err
+}
+
+// InitInstanceTx is InitInstance in the caller's transaction, so that `rpmgr controller init`
+// creates the instance and its CA together or not at all.
+func InitInstanceTx(ctx context.Context, tx *ent.Tx, trustDomain string) (Revision, error) {
 	epoch, err := newEpoch()
 	if err != nil {
 		return Revision{}, err
 	}
-	err = withTx(ctx, db.client, nil, func(tx *ent.Tx) error {
-		if _, err := tx.Instance.Create().SetID(1).SetTrustDomain(trustDomain).SetDbEpoch(epoch).Save(ctx); err != nil {
-			if ent.IsConstraintError(err) {
-				return ErrInitialised
-			}
-			return err
+	if _, err := tx.Instance.Create().SetID(1).SetTrustDomain(trustDomain).SetDbEpoch(epoch).Save(ctx); err != nil {
+		if ent.IsConstraintError(err) {
+			return Revision{}, ErrInitialised
 		}
-		return tx.ConfigSeq.Create().SetID(1).SetSeq(0).Exec(ctx)
-	})
-	if err != nil {
+		return Revision{}, err
+	}
+	if err := tx.ConfigSeq.Create().SetID(1).SetSeq(0).Exec(ctx); err != nil {
 		return Revision{}, err
 	}
 	return Revision{DBEpoch: epoch}, nil

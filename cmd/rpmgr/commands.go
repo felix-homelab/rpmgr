@@ -8,6 +8,8 @@ import (
 	"fmt"
 
 	"github.com/felix-homelab/rpmgr/internal/cli"
+	"github.com/felix-homelab/rpmgr/internal/config"
+	"github.com/felix-homelab/rpmgr/internal/controller"
 	"github.com/felix-homelab/rpmgr/internal/version"
 )
 
@@ -19,7 +21,7 @@ func commands() *cli.Command {
 		Summary: "publish services on private networks through public gateways",
 		Sub: []*cli.Command{
 			role("controller", "run the controller: web UI, API, CA and configuration",
-				&cli.Command{Name: "init", Summary: "initialise a controller: database, trust domain, CA and first-user link", Run: cli.NotAvailable}),
+				controllerInit()),
 			role("gateway", "run a gateway: public listeners and data sessions from connectors"),
 			role("connector", "run a connector: data sessions to gateways and the local targets"),
 			role("all-in-one", "run a controller and a gateway in one process",
@@ -63,6 +65,33 @@ func role(name, summary string, sub ...*cli.Command) *cli.Command {
 		},
 		Run: cli.NotAvailable,
 		Sub: sub,
+	}
+}
+
+// controllerInit is `rpmgr controller init`.
+func controllerInit() *cli.Command {
+	var o controller.InitOptions
+	return &cli.Command{
+		Name:    "init",
+		Summary: "initialise a controller: boot file, KEK, database, trust domain and CA",
+		Flags: func(fs *flag.FlagSet) {
+			fs.StringVar(&o.ConfigPath, "config", "", "boot file, written if it does not exist (default $RPMGR_CONFIG, else /etc/rpmgr/controller.yaml)")
+			fs.StringVar(&o.PublicURL, "public-url", "", "https URL of the web UI and API; needed when the boot file does not exist")
+			fs.StringVar(&o.KEKSource, "kek-source", "", "KEK source of a new boot file: systemd-credential (default) or file")
+			fs.StringVar(&o.KEKPath, "kek-path", "", "KEK file of a new boot file with --kek-source file (default /etc/rpmgr/kek)")
+		},
+		Run: func(ctx context.Context, env *cli.Env, _ []string) error {
+			o.ConfigPath = config.Path(o.ConfigPath, "controller", env.Getenv)
+			o.Getenv = env.Getenv
+			r, err := controller.Init(ctx, o)
+			if err != nil {
+				return err
+			}
+			_, err = fmt.Fprintf(env.Stdout, "Initialised the controller.\n  trust domain: %s\n  CA pin:       %s\n"+
+				"  KEK:          %s\nBack up the KEK separately: without it the database cannot be read.\n",
+				r.TrustDomain, r.RootPin, r.KEK)
+			return err
+		},
 	}
 }
 

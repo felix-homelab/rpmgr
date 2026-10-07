@@ -35,7 +35,7 @@ with exit code 2 until its implementation lands.
 | Command | What it does | Runs on | State |
 |---|---|---|---|
 | `rpmgr controller [--config <file>]` | Run the controller: web UI, API, CA and configuration | controller host | not yet |
-| `rpmgr controller init` | Initialise a controller: database, trust domain, CA and first-user link | controller host | not yet |
+| `rpmgr controller init [--config <file>] [--public-url <url>] [--kek-source <source>] [--kek-path <file>]` | Initialise a controller: boot file, KEK, database, trust domain and CA; prints the trust domain and the CA pin ([10](10-operations.md#install)). The first-user link follows with local accounts | controller host | available |
 | `rpmgr gateway [--config <file>]` | Run a gateway | gateway host | not yet |
 | `rpmgr connector [--config <file>]` | Run a connector | connector host | not yet |
 | `rpmgr all-in-one [--config <file>]`, `… init` | Run, or initialise, a controller and a gateway in one process | controller host | not yet |
