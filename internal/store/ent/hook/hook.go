@@ -9,6 +9,18 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
 )
 
+// The AgentSessionFunc type is an adapter to allow the use of ordinary
+// function as AgentSession mutator.
+type AgentSessionFunc func(context.Context, *ent.AgentSessionMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f AgentSessionFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.AgentSessionMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.AgentSessionMutation", m)
+}
+
 // The AuditEntryFunc type is an adapter to allow the use of ordinary
 // function as AuditEntry mutator.
 type AuditEntryFunc func(context.Context, *ent.AuditEntryMutation) (ent.Value, error)

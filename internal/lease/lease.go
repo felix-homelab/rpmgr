@@ -181,8 +181,11 @@ func (l *Leases) hold(ctx context.Context, job Job, lease Lease, onErr func(erro
 			}
 		case <-run.C:
 			if err := job.Run(sys, lease); err != nil {
-				if errors.Is(err, ErrLost) {
+				switch {
+				case errors.Is(err, ErrLost):
 					return err
+				case ctx.Err() != nil:
+					continue // a shutdown, not a failed run: the next pass releases the lease
 				}
 				onErr(err) // retried at the next interval; the lease stays
 			}
