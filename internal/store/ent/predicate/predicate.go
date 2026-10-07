@@ -42,6 +42,9 @@ type InstanceSetting func(*sql.Selector)
 // IssuedCertificate is the predicate function for issuedcertificate builders.
 type IssuedCertificate func(*sql.Selector)
 
+// Lease is the predicate function for lease builders.
+type Lease func(*sql.Selector)
+
 // Org is the predicate function for org builders.
 type Org func(*sql.Selector)
 

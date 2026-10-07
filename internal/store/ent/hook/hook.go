@@ -153,6 +153,18 @@ func (f IssuedCertificateFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.IssuedCertificateMutation", m)
 }
 
+// The LeaseFunc type is an adapter to allow the use of ordinary
+// function as Lease mutator.
+type LeaseFunc func(context.Context, *ent.LeaseMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f LeaseFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.LeaseMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.LeaseMutation", m)
+}
+
 // The OrgFunc type is an adapter to allow the use of ordinary
 // function as Org mutator.
 type OrgFunc func(context.Context, *ent.OrgMutation) (ent.Value, error)

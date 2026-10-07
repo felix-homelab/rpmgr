@@ -18,6 +18,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/instance"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/instancesetting"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/issuedcertificate"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/lease"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/org"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/orgsetting"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/schema"
@@ -638,6 +639,31 @@ func init() {
 	issuedcertificateDescID := issuedcertificateFields[0].Descriptor()
 	// issuedcertificate.IDValidator is a validator for the "id" field. It is called by the builders before save.
 	issuedcertificate.IDValidator = issuedcertificateDescID.Validators[0].(func(string) error)
+	leaseMixin := schema.Lease{}.Mixin()
+	lease.Policy = privacy.NewPolicies(leaseMixin[0], schema.Lease{})
+	lease.Hooks[0] = func(next ent.Mutator) ent.Mutator {
+		return ent.MutateFunc(func(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+			if err := lease.Policy.EvalMutation(ctx, m); err != nil {
+				return nil, err
+			}
+			return next.Mutate(ctx, m)
+		})
+	}
+	leaseMixinHooks0 := leaseMixin[0].Hooks()
+
+	lease.Hooks[1] = leaseMixinHooks0[0]
+	leaseMixinInters0 := leaseMixin[0].Interceptors()
+	lease.Interceptors[0] = leaseMixinInters0[0]
+	leaseFields := schema.Lease{}.Fields()
+	_ = leaseFields
+	// leaseDescFencingToken is the schema descriptor for fencing_token field.
+	leaseDescFencingToken := leaseFields[2].Descriptor()
+	// lease.FencingTokenValidator is a validator for the "fencing_token" field. It is called by the builders before save.
+	lease.FencingTokenValidator = leaseDescFencingToken.Validators[0].(func(int64) error)
+	// leaseDescID is the schema descriptor for id field.
+	leaseDescID := leaseFields[0].Descriptor()
+	// lease.IDValidator is a validator for the "id" field. It is called by the builders before save.
+	lease.IDValidator = leaseDescID.Validators[0].(func(string) error)
 	orgMixin := schema.Org{}.Mixin()
 	org.Policy = privacy.NewPolicies(orgMixin[0], schema.Org{})
 	org.Hooks[0] = func(next ent.Mutator) ent.Mutator {
