@@ -231,6 +231,78 @@ func (f ConfigSeqMutationRuleFunc) EvalMutation(ctx context.Context, m ent.Mutat
 	return Denyf("ent/privacy: unexpected mutation type %T, expect *ent.ConfigSeqMutation", m)
 }
 
+// The ConnectorQueryRuleFunc type is an adapter to allow the use of ordinary
+// functions as a query rule.
+type ConnectorQueryRuleFunc func(context.Context, *ent.ConnectorQuery) error
+
+// EvalQuery return f(ctx, q).
+func (f ConnectorQueryRuleFunc) EvalQuery(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.ConnectorQuery); ok {
+		return f(ctx, q)
+	}
+	return Denyf("ent/privacy: unexpected query type %T, expect *ent.ConnectorQuery", q)
+}
+
+// The ConnectorMutationRuleFunc type is an adapter to allow the use of ordinary
+// functions as a mutation rule.
+type ConnectorMutationRuleFunc func(context.Context, *ent.ConnectorMutation) error
+
+// EvalMutation calls f(ctx, m).
+func (f ConnectorMutationRuleFunc) EvalMutation(ctx context.Context, m ent.Mutation) error {
+	if m, ok := m.(*ent.ConnectorMutation); ok {
+		return f(ctx, m)
+	}
+	return Denyf("ent/privacy: unexpected mutation type %T, expect *ent.ConnectorMutation", m)
+}
+
+// The EnrollmentTokenQueryRuleFunc type is an adapter to allow the use of ordinary
+// functions as a query rule.
+type EnrollmentTokenQueryRuleFunc func(context.Context, *ent.EnrollmentTokenQuery) error
+
+// EvalQuery return f(ctx, q).
+func (f EnrollmentTokenQueryRuleFunc) EvalQuery(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.EnrollmentTokenQuery); ok {
+		return f(ctx, q)
+	}
+	return Denyf("ent/privacy: unexpected query type %T, expect *ent.EnrollmentTokenQuery", q)
+}
+
+// The EnrollmentTokenMutationRuleFunc type is an adapter to allow the use of ordinary
+// functions as a mutation rule.
+type EnrollmentTokenMutationRuleFunc func(context.Context, *ent.EnrollmentTokenMutation) error
+
+// EvalMutation calls f(ctx, m).
+func (f EnrollmentTokenMutationRuleFunc) EvalMutation(ctx context.Context, m ent.Mutation) error {
+	if m, ok := m.(*ent.EnrollmentTokenMutation); ok {
+		return f(ctx, m)
+	}
+	return Denyf("ent/privacy: unexpected mutation type %T, expect *ent.EnrollmentTokenMutation", m)
+}
+
+// The GatewayQueryRuleFunc type is an adapter to allow the use of ordinary
+// functions as a query rule.
+type GatewayQueryRuleFunc func(context.Context, *ent.GatewayQuery) error
+
+// EvalQuery return f(ctx, q).
+func (f GatewayQueryRuleFunc) EvalQuery(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.GatewayQuery); ok {
+		return f(ctx, q)
+	}
+	return Denyf("ent/privacy: unexpected query type %T, expect *ent.GatewayQuery", q)
+}
+
+// The GatewayMutationRuleFunc type is an adapter to allow the use of ordinary
+// functions as a mutation rule.
+type GatewayMutationRuleFunc func(context.Context, *ent.GatewayMutation) error
+
+// EvalMutation calls f(ctx, m).
+func (f GatewayMutationRuleFunc) EvalMutation(ctx context.Context, m ent.Mutation) error {
+	if m, ok := m.(*ent.GatewayMutation); ok {
+		return f(ctx, m)
+	}
+	return Denyf("ent/privacy: unexpected mutation type %T, expect *ent.GatewayMutation", m)
+}
+
 // The GatewayGroupQueryRuleFunc type is an adapter to allow the use of ordinary
 // functions as a query rule.
 type GatewayGroupQueryRuleFunc func(context.Context, *ent.GatewayGroupQuery) error
@@ -444,6 +516,12 @@ func queryFilter(q ent.Query) (Filter, error) {
 		return q.Filter(), nil
 	case *ent.ConfigSeqQuery:
 		return q.Filter(), nil
+	case *ent.ConnectorQuery:
+		return q.Filter(), nil
+	case *ent.EnrollmentTokenQuery:
+		return q.Filter(), nil
+	case *ent.GatewayQuery:
+		return q.Filter(), nil
 	case *ent.GatewayGroupQuery:
 		return q.Filter(), nil
 	case *ent.InstanceQuery:
@@ -474,6 +552,12 @@ func mutationFilter(m ent.Mutation) (Filter, error) {
 	case *ent.ConfigRevisionMutation:
 		return m.Filter(), nil
 	case *ent.ConfigSeqMutation:
+		return m.Filter(), nil
+	case *ent.ConnectorMutation:
+		return m.Filter(), nil
+	case *ent.EnrollmentTokenMutation:
+		return m.Filter(), nil
+	case *ent.GatewayMutation:
 		return m.Filter(), nil
 	case *ent.GatewayGroupMutation:
 		return m.Filter(), nil

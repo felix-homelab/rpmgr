@@ -8,12 +8,16 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/cakey"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/configrevision"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/configseq"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/connector"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/enrollmenttoken"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/gateway"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/gatewaygroup"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/instance"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/instancesetting"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/issuedcertificate"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/org"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/orgsetting"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/predicate"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/secretmeta"
 
 	"entgo.io/ent/dialect/sql"
@@ -24,7 +28,7 @@ import (
 
 // schemaGraph holds a representation of ent/schema at runtime.
 var schemaGraph = func() *sqlgraph.Schema {
-	graph := &sqlgraph.Schema{Nodes: make([]*sqlgraph.Node, 12)}
+	graph := &sqlgraph.Schema{Nodes: make([]*sqlgraph.Node, 15)}
 	graph.Nodes[0] = &sqlgraph.Node{
 		NodeSpec: sqlgraph.NodeSpec{
 			Table:   auditentry.Table,
@@ -125,6 +129,83 @@ var schemaGraph = func() *sqlgraph.Schema {
 	}
 	graph.Nodes[5] = &sqlgraph.Node{
 		NodeSpec: sqlgraph.NodeSpec{
+			Table:   connector.Table,
+			Columns: connector.Columns,
+			ID: &sqlgraph.FieldSpec{
+				Type:   field.TypeString,
+				Column: connector.FieldID,
+			},
+		},
+		Type: "Connector",
+		Fields: map[string]*sqlgraph.FieldSpec{
+			connector.FieldOrgID:            {Type: field.TypeString, Column: connector.FieldOrgID},
+			connector.FieldName:             {Type: field.TypeString, Column: connector.FieldName},
+			connector.FieldLabels:           {Type: field.TypeJSON, Column: connector.FieldLabels},
+			connector.FieldSpiffeID:         {Type: field.TypeString, Column: connector.FieldSpiffeID},
+			connector.FieldPubkeySha256:     {Type: field.TypeString, Column: connector.FieldPubkeySha256},
+			connector.FieldEphemeral:        {Type: field.TypeBool, Column: connector.FieldEphemeral},
+			connector.FieldEnabled:          {Type: field.TypeBool, Column: connector.FieldEnabled},
+			connector.FieldTransport:        {Type: field.TypeEnum, Column: connector.FieldTransport},
+			connector.FieldDesiredVersion:   {Type: field.TypeString, Column: connector.FieldDesiredVersion},
+			connector.FieldCreatedAt:        {Type: field.TypeTime, Column: connector.FieldCreatedAt},
+			connector.FieldDecommissionedAt: {Type: field.TypeTime, Column: connector.FieldDecommissionedAt},
+		},
+	}
+	graph.Nodes[6] = &sqlgraph.Node{
+		NodeSpec: sqlgraph.NodeSpec{
+			Table:   enrollmenttoken.Table,
+			Columns: enrollmenttoken.Columns,
+			ID: &sqlgraph.FieldSpec{
+				Type:   field.TypeString,
+				Column: enrollmenttoken.FieldID,
+			},
+		},
+		Type: "EnrollmentToken",
+		Fields: map[string]*sqlgraph.FieldSpec{
+			enrollmenttoken.FieldOrgID:          {Type: field.TypeString, Column: enrollmenttoken.FieldOrgID},
+			enrollmenttoken.FieldTokenHash:      {Type: field.TypeBytes, Column: enrollmenttoken.FieldTokenHash},
+			enrollmenttoken.FieldRole:           {Type: field.TypeEnum, Column: enrollmenttoken.FieldRole},
+			enrollmenttoken.FieldGatewayGroupID: {Type: field.TypeString, Column: enrollmenttoken.FieldGatewayGroupID},
+			enrollmenttoken.FieldGatewayID:      {Type: field.TypeString, Column: enrollmenttoken.FieldGatewayID},
+			enrollmenttoken.FieldConnectorID:    {Type: field.TypeString, Column: enrollmenttoken.FieldConnectorID},
+			enrollmenttoken.FieldLabels:         {Type: field.TypeJSON, Column: enrollmenttoken.FieldLabels},
+			enrollmenttoken.FieldEphemeral:      {Type: field.TypeBool, Column: enrollmenttoken.FieldEphemeral},
+			enrollmenttoken.FieldMaxUses:        {Type: field.TypeInt, Column: enrollmenttoken.FieldMaxUses},
+			enrollmenttoken.FieldUseCount:       {Type: field.TypeInt, Column: enrollmenttoken.FieldUseCount},
+			enrollmenttoken.FieldExpiresAt:      {Type: field.TypeTime, Column: enrollmenttoken.FieldExpiresAt},
+			enrollmenttoken.FieldCreatedBy:      {Type: field.TypeString, Column: enrollmenttoken.FieldCreatedBy},
+			enrollmenttoken.FieldCreatedAt:      {Type: field.TypeTime, Column: enrollmenttoken.FieldCreatedAt},
+			enrollmenttoken.FieldLastUsedAt:     {Type: field.TypeTime, Column: enrollmenttoken.FieldLastUsedAt},
+			enrollmenttoken.FieldLastUsedIP:     {Type: field.TypeString, Column: enrollmenttoken.FieldLastUsedIP},
+			enrollmenttoken.FieldRevokedAt:      {Type: field.TypeTime, Column: enrollmenttoken.FieldRevokedAt},
+		},
+	}
+	graph.Nodes[7] = &sqlgraph.Node{
+		NodeSpec: sqlgraph.NodeSpec{
+			Table:   gateway.Table,
+			Columns: gateway.Columns,
+			ID: &sqlgraph.FieldSpec{
+				Type:   field.TypeString,
+				Column: gateway.FieldID,
+			},
+		},
+		Type: "Gateway",
+		Fields: map[string]*sqlgraph.FieldSpec{
+			gateway.FieldOrgID:            {Type: field.TypeString, Column: gateway.FieldOrgID},
+			gateway.FieldGatewayGroupID:   {Type: field.TypeString, Column: gateway.FieldGatewayGroupID},
+			gateway.FieldName:             {Type: field.TypeString, Column: gateway.FieldName},
+			gateway.FieldSlot:             {Type: field.TypeInt, Column: gateway.FieldSlot},
+			gateway.FieldTunnelEndpoints:  {Type: field.TypeJSON, Column: gateway.FieldTunnelEndpoints},
+			gateway.FieldSpiffeID:         {Type: field.TypeString, Column: gateway.FieldSpiffeID},
+			gateway.FieldPubkeySha256:     {Type: field.TypeString, Column: gateway.FieldPubkeySha256},
+			gateway.FieldEnabled:          {Type: field.TypeBool, Column: gateway.FieldEnabled},
+			gateway.FieldDesiredVersion:   {Type: field.TypeString, Column: gateway.FieldDesiredVersion},
+			gateway.FieldCreatedAt:        {Type: field.TypeTime, Column: gateway.FieldCreatedAt},
+			gateway.FieldDecommissionedAt: {Type: field.TypeTime, Column: gateway.FieldDecommissionedAt},
+		},
+	}
+	graph.Nodes[8] = &sqlgraph.Node{
+		NodeSpec: sqlgraph.NodeSpec{
 			Table:   gatewaygroup.Table,
 			Columns: gatewaygroup.Columns,
 			ID: &sqlgraph.FieldSpec{
@@ -134,11 +215,14 @@ var schemaGraph = func() *sqlgraph.Schema {
 		},
 		Type: "GatewayGroup",
 		Fields: map[string]*sqlgraph.FieldSpec{
-			gatewaygroup.FieldOrgID: {Type: field.TypeString, Column: gatewaygroup.FieldOrgID},
-			gatewaygroup.FieldName:  {Type: field.TypeString, Column: gatewaygroup.FieldName},
+			gatewaygroup.FieldOrgID:             {Type: field.TypeString, Column: gatewaygroup.FieldOrgID},
+			gatewaygroup.FieldName:              {Type: field.TypeString, Column: gatewaygroup.FieldName},
+			gatewaygroup.FieldRegion:            {Type: field.TypeString, Column: gatewaygroup.FieldRegion},
+			gatewaygroup.FieldPublicHostnames:   {Type: field.TypeJSON, Column: gatewaygroup.FieldPublicHostnames},
+			gatewaygroup.FieldTrustedProxyCidrs: {Type: field.TypeJSON, Column: gatewaygroup.FieldTrustedProxyCidrs},
 		},
 	}
-	graph.Nodes[6] = &sqlgraph.Node{
+	graph.Nodes[9] = &sqlgraph.Node{
 		NodeSpec: sqlgraph.NodeSpec{
 			Table:   instance.Table,
 			Columns: instance.Columns,
@@ -154,7 +238,7 @@ var schemaGraph = func() *sqlgraph.Schema {
 			instance.FieldCreatedAt:   {Type: field.TypeTime, Column: instance.FieldCreatedAt},
 		},
 	}
-	graph.Nodes[7] = &sqlgraph.Node{
+	graph.Nodes[10] = &sqlgraph.Node{
 		NodeSpec: sqlgraph.NodeSpec{
 			Table:   instancesetting.Table,
 			Columns: instancesetting.Columns,
@@ -171,7 +255,7 @@ var schemaGraph = func() *sqlgraph.Schema {
 			instancesetting.FieldUpdatedAt: {Type: field.TypeTime, Column: instancesetting.FieldUpdatedAt},
 		},
 	}
-	graph.Nodes[8] = &sqlgraph.Node{
+	graph.Nodes[11] = &sqlgraph.Node{
 		NodeSpec: sqlgraph.NodeSpec{
 			Table:   issuedcertificate.Table,
 			Columns: issuedcertificate.Columns,
@@ -195,7 +279,7 @@ var schemaGraph = func() *sqlgraph.Schema {
 			issuedcertificate.FieldRevocationReason: {Type: field.TypeString, Column: issuedcertificate.FieldRevocationReason},
 		},
 	}
-	graph.Nodes[9] = &sqlgraph.Node{
+	graph.Nodes[12] = &sqlgraph.Node{
 		NodeSpec: sqlgraph.NodeSpec{
 			Table:   org.Table,
 			Columns: org.Columns,
@@ -211,7 +295,7 @@ var schemaGraph = func() *sqlgraph.Schema {
 			org.FieldCreatedAt: {Type: field.TypeTime, Column: org.FieldCreatedAt},
 		},
 	}
-	graph.Nodes[10] = &sqlgraph.Node{
+	graph.Nodes[13] = &sqlgraph.Node{
 		NodeSpec: sqlgraph.NodeSpec{
 			Table:   orgsetting.Table,
 			Columns: orgsetting.Columns,
@@ -229,7 +313,7 @@ var schemaGraph = func() *sqlgraph.Schema {
 			orgsetting.FieldUpdatedAt: {Type: field.TypeTime, Column: orgsetting.FieldUpdatedAt},
 		},
 	}
-	graph.Nodes[11] = &sqlgraph.Node{
+	graph.Nodes[14] = &sqlgraph.Node{
 		NodeSpec: sqlgraph.NodeSpec{
 			Table:   secretmeta.Table,
 			Columns: secretmeta.Columns,
@@ -247,6 +331,54 @@ var schemaGraph = func() *sqlgraph.Schema {
 			secretmeta.FieldCreatedAt:  {Type: field.TypeTime, Column: secretmeta.FieldCreatedAt},
 		},
 	}
+	graph.MustAddE(
+		"group",
+		&sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2O,
+			Inverse: false,
+			Table:   enrollmenttoken.GroupTable,
+			Columns: []string{enrollmenttoken.GroupColumn},
+			Bidi:    false,
+		},
+		"EnrollmentToken",
+		"GatewayGroup",
+	)
+	graph.MustAddE(
+		"gateway",
+		&sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2O,
+			Inverse: false,
+			Table:   enrollmenttoken.GatewayTable,
+			Columns: []string{enrollmenttoken.GatewayColumn},
+			Bidi:    false,
+		},
+		"EnrollmentToken",
+		"Gateway",
+	)
+	graph.MustAddE(
+		"connector",
+		&sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2O,
+			Inverse: false,
+			Table:   enrollmenttoken.ConnectorTable,
+			Columns: []string{enrollmenttoken.ConnectorColumn},
+			Bidi:    false,
+		},
+		"EnrollmentToken",
+		"Connector",
+	)
+	graph.MustAddE(
+		"group",
+		&sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2O,
+			Inverse: false,
+			Table:   gateway.GroupTable,
+			Columns: []string{gateway.GroupColumn},
+			Bidi:    false,
+		},
+		"Gateway",
+		"GatewayGroup",
+	)
 	return graph
 }()
 
@@ -622,6 +754,372 @@ func (f *ConfigSeqFilter) WhereSeq(p entql.Int64P) {
 }
 
 // addPredicate implements the predicateAdder interface.
+func (_q *ConnectorQuery) addPredicate(pred func(s *sql.Selector)) {
+	_q.predicates = append(_q.predicates, pred)
+}
+
+// Filter returns a Filter implementation to apply filters on the ConnectorQuery builder.
+func (_q *ConnectorQuery) Filter() *ConnectorFilter {
+	return &ConnectorFilter{config: _q.config, predicateAdder: _q}
+}
+
+// addPredicate implements the predicateAdder interface.
+func (m *ConnectorMutation) addPredicate(pred func(s *sql.Selector)) {
+	m.predicates = append(m.predicates, pred)
+}
+
+// Filter returns an entql.Where implementation to apply filters on the ConnectorMutation builder.
+func (m *ConnectorMutation) Filter() *ConnectorFilter {
+	return &ConnectorFilter{config: m.config, predicateAdder: m}
+}
+
+// ConnectorFilter provides a generic filtering capability at runtime for ConnectorQuery.
+type ConnectorFilter struct {
+	predicateAdder
+	config
+}
+
+// Where applies the entql predicate on the query filter.
+func (f *ConnectorFilter) Where(p entql.P) {
+	f.addPredicate(func(s *sql.Selector) {
+		if err := schemaGraph.EvalP(schemaGraph.Nodes[5].Type, p, s); err != nil {
+			s.AddError(err)
+		}
+	})
+}
+
+// WhereID applies the entql string predicate on the id field.
+func (f *ConnectorFilter) WhereID(p entql.StringP) {
+	f.Where(p.Field(connector.FieldID))
+}
+
+// WhereOrgID applies the entql string predicate on the org_id field.
+func (f *ConnectorFilter) WhereOrgID(p entql.StringP) {
+	f.Where(p.Field(connector.FieldOrgID))
+}
+
+// WhereName applies the entql string predicate on the name field.
+func (f *ConnectorFilter) WhereName(p entql.StringP) {
+	f.Where(p.Field(connector.FieldName))
+}
+
+// WhereLabels applies the entql json.RawMessage predicate on the labels field.
+func (f *ConnectorFilter) WhereLabels(p entql.BytesP) {
+	f.Where(p.Field(connector.FieldLabels))
+}
+
+// WhereSpiffeID applies the entql string predicate on the spiffe_id field.
+func (f *ConnectorFilter) WhereSpiffeID(p entql.StringP) {
+	f.Where(p.Field(connector.FieldSpiffeID))
+}
+
+// WherePubkeySha256 applies the entql string predicate on the pubkey_sha256 field.
+func (f *ConnectorFilter) WherePubkeySha256(p entql.StringP) {
+	f.Where(p.Field(connector.FieldPubkeySha256))
+}
+
+// WhereEphemeral applies the entql bool predicate on the ephemeral field.
+func (f *ConnectorFilter) WhereEphemeral(p entql.BoolP) {
+	f.Where(p.Field(connector.FieldEphemeral))
+}
+
+// WhereEnabled applies the entql bool predicate on the enabled field.
+func (f *ConnectorFilter) WhereEnabled(p entql.BoolP) {
+	f.Where(p.Field(connector.FieldEnabled))
+}
+
+// WhereTransport applies the entql string predicate on the transport field.
+func (f *ConnectorFilter) WhereTransport(p entql.StringP) {
+	f.Where(p.Field(connector.FieldTransport))
+}
+
+// WhereDesiredVersion applies the entql string predicate on the desired_version field.
+func (f *ConnectorFilter) WhereDesiredVersion(p entql.StringP) {
+	f.Where(p.Field(connector.FieldDesiredVersion))
+}
+
+// WhereCreatedAt applies the entql time.Time predicate on the created_at field.
+func (f *ConnectorFilter) WhereCreatedAt(p entql.TimeP) {
+	f.Where(p.Field(connector.FieldCreatedAt))
+}
+
+// WhereDecommissionedAt applies the entql time.Time predicate on the decommissioned_at field.
+func (f *ConnectorFilter) WhereDecommissionedAt(p entql.TimeP) {
+	f.Where(p.Field(connector.FieldDecommissionedAt))
+}
+
+// addPredicate implements the predicateAdder interface.
+func (_q *EnrollmentTokenQuery) addPredicate(pred func(s *sql.Selector)) {
+	_q.predicates = append(_q.predicates, pred)
+}
+
+// Filter returns a Filter implementation to apply filters on the EnrollmentTokenQuery builder.
+func (_q *EnrollmentTokenQuery) Filter() *EnrollmentTokenFilter {
+	return &EnrollmentTokenFilter{config: _q.config, predicateAdder: _q}
+}
+
+// addPredicate implements the predicateAdder interface.
+func (m *EnrollmentTokenMutation) addPredicate(pred func(s *sql.Selector)) {
+	m.predicates = append(m.predicates, pred)
+}
+
+// Filter returns an entql.Where implementation to apply filters on the EnrollmentTokenMutation builder.
+func (m *EnrollmentTokenMutation) Filter() *EnrollmentTokenFilter {
+	return &EnrollmentTokenFilter{config: m.config, predicateAdder: m}
+}
+
+// EnrollmentTokenFilter provides a generic filtering capability at runtime for EnrollmentTokenQuery.
+type EnrollmentTokenFilter struct {
+	predicateAdder
+	config
+}
+
+// Where applies the entql predicate on the query filter.
+func (f *EnrollmentTokenFilter) Where(p entql.P) {
+	f.addPredicate(func(s *sql.Selector) {
+		if err := schemaGraph.EvalP(schemaGraph.Nodes[6].Type, p, s); err != nil {
+			s.AddError(err)
+		}
+	})
+}
+
+// WhereID applies the entql string predicate on the id field.
+func (f *EnrollmentTokenFilter) WhereID(p entql.StringP) {
+	f.Where(p.Field(enrollmenttoken.FieldID))
+}
+
+// WhereOrgID applies the entql string predicate on the org_id field.
+func (f *EnrollmentTokenFilter) WhereOrgID(p entql.StringP) {
+	f.Where(p.Field(enrollmenttoken.FieldOrgID))
+}
+
+// WhereTokenHash applies the entql []byte predicate on the token_hash field.
+func (f *EnrollmentTokenFilter) WhereTokenHash(p entql.BytesP) {
+	f.Where(p.Field(enrollmenttoken.FieldTokenHash))
+}
+
+// WhereRole applies the entql string predicate on the role field.
+func (f *EnrollmentTokenFilter) WhereRole(p entql.StringP) {
+	f.Where(p.Field(enrollmenttoken.FieldRole))
+}
+
+// WhereGatewayGroupID applies the entql string predicate on the gateway_group_id field.
+func (f *EnrollmentTokenFilter) WhereGatewayGroupID(p entql.StringP) {
+	f.Where(p.Field(enrollmenttoken.FieldGatewayGroupID))
+}
+
+// WhereGatewayID applies the entql string predicate on the gateway_id field.
+func (f *EnrollmentTokenFilter) WhereGatewayID(p entql.StringP) {
+	f.Where(p.Field(enrollmenttoken.FieldGatewayID))
+}
+
+// WhereConnectorID applies the entql string predicate on the connector_id field.
+func (f *EnrollmentTokenFilter) WhereConnectorID(p entql.StringP) {
+	f.Where(p.Field(enrollmenttoken.FieldConnectorID))
+}
+
+// WhereLabels applies the entql json.RawMessage predicate on the labels field.
+func (f *EnrollmentTokenFilter) WhereLabels(p entql.BytesP) {
+	f.Where(p.Field(enrollmenttoken.FieldLabels))
+}
+
+// WhereEphemeral applies the entql bool predicate on the ephemeral field.
+func (f *EnrollmentTokenFilter) WhereEphemeral(p entql.BoolP) {
+	f.Where(p.Field(enrollmenttoken.FieldEphemeral))
+}
+
+// WhereMaxUses applies the entql int predicate on the max_uses field.
+func (f *EnrollmentTokenFilter) WhereMaxUses(p entql.IntP) {
+	f.Where(p.Field(enrollmenttoken.FieldMaxUses))
+}
+
+// WhereUseCount applies the entql int predicate on the use_count field.
+func (f *EnrollmentTokenFilter) WhereUseCount(p entql.IntP) {
+	f.Where(p.Field(enrollmenttoken.FieldUseCount))
+}
+
+// WhereExpiresAt applies the entql time.Time predicate on the expires_at field.
+func (f *EnrollmentTokenFilter) WhereExpiresAt(p entql.TimeP) {
+	f.Where(p.Field(enrollmenttoken.FieldExpiresAt))
+}
+
+// WhereCreatedBy applies the entql string predicate on the created_by field.
+func (f *EnrollmentTokenFilter) WhereCreatedBy(p entql.StringP) {
+	f.Where(p.Field(enrollmenttoken.FieldCreatedBy))
+}
+
+// WhereCreatedAt applies the entql time.Time predicate on the created_at field.
+func (f *EnrollmentTokenFilter) WhereCreatedAt(p entql.TimeP) {
+	f.Where(p.Field(enrollmenttoken.FieldCreatedAt))
+}
+
+// WhereLastUsedAt applies the entql time.Time predicate on the last_used_at field.
+func (f *EnrollmentTokenFilter) WhereLastUsedAt(p entql.TimeP) {
+	f.Where(p.Field(enrollmenttoken.FieldLastUsedAt))
+}
+
+// WhereLastUsedIP applies the entql string predicate on the last_used_ip field.
+func (f *EnrollmentTokenFilter) WhereLastUsedIP(p entql.StringP) {
+	f.Where(p.Field(enrollmenttoken.FieldLastUsedIP))
+}
+
+// WhereRevokedAt applies the entql time.Time predicate on the revoked_at field.
+func (f *EnrollmentTokenFilter) WhereRevokedAt(p entql.TimeP) {
+	f.Where(p.Field(enrollmenttoken.FieldRevokedAt))
+}
+
+// WhereHasGroup applies a predicate to check if query has an edge group.
+func (f *EnrollmentTokenFilter) WhereHasGroup() {
+	f.Where(entql.HasEdge("group"))
+}
+
+// WhereHasGroupWith applies a predicate to check if query has an edge group with a given conditions (other predicates).
+func (f *EnrollmentTokenFilter) WhereHasGroupWith(preds ...predicate.GatewayGroup) {
+	f.Where(entql.HasEdgeWith("group", sqlgraph.WrapFunc(func(s *sql.Selector) {
+		for _, p := range preds {
+			p(s)
+		}
+	})))
+}
+
+// WhereHasGateway applies a predicate to check if query has an edge gateway.
+func (f *EnrollmentTokenFilter) WhereHasGateway() {
+	f.Where(entql.HasEdge("gateway"))
+}
+
+// WhereHasGatewayWith applies a predicate to check if query has an edge gateway with a given conditions (other predicates).
+func (f *EnrollmentTokenFilter) WhereHasGatewayWith(preds ...predicate.Gateway) {
+	f.Where(entql.HasEdgeWith("gateway", sqlgraph.WrapFunc(func(s *sql.Selector) {
+		for _, p := range preds {
+			p(s)
+		}
+	})))
+}
+
+// WhereHasConnector applies a predicate to check if query has an edge connector.
+func (f *EnrollmentTokenFilter) WhereHasConnector() {
+	f.Where(entql.HasEdge("connector"))
+}
+
+// WhereHasConnectorWith applies a predicate to check if query has an edge connector with a given conditions (other predicates).
+func (f *EnrollmentTokenFilter) WhereHasConnectorWith(preds ...predicate.Connector) {
+	f.Where(entql.HasEdgeWith("connector", sqlgraph.WrapFunc(func(s *sql.Selector) {
+		for _, p := range preds {
+			p(s)
+		}
+	})))
+}
+
+// addPredicate implements the predicateAdder interface.
+func (_q *GatewayQuery) addPredicate(pred func(s *sql.Selector)) {
+	_q.predicates = append(_q.predicates, pred)
+}
+
+// Filter returns a Filter implementation to apply filters on the GatewayQuery builder.
+func (_q *GatewayQuery) Filter() *GatewayFilter {
+	return &GatewayFilter{config: _q.config, predicateAdder: _q}
+}
+
+// addPredicate implements the predicateAdder interface.
+func (m *GatewayMutation) addPredicate(pred func(s *sql.Selector)) {
+	m.predicates = append(m.predicates, pred)
+}
+
+// Filter returns an entql.Where implementation to apply filters on the GatewayMutation builder.
+func (m *GatewayMutation) Filter() *GatewayFilter {
+	return &GatewayFilter{config: m.config, predicateAdder: m}
+}
+
+// GatewayFilter provides a generic filtering capability at runtime for GatewayQuery.
+type GatewayFilter struct {
+	predicateAdder
+	config
+}
+
+// Where applies the entql predicate on the query filter.
+func (f *GatewayFilter) Where(p entql.P) {
+	f.addPredicate(func(s *sql.Selector) {
+		if err := schemaGraph.EvalP(schemaGraph.Nodes[7].Type, p, s); err != nil {
+			s.AddError(err)
+		}
+	})
+}
+
+// WhereID applies the entql string predicate on the id field.
+func (f *GatewayFilter) WhereID(p entql.StringP) {
+	f.Where(p.Field(gateway.FieldID))
+}
+
+// WhereOrgID applies the entql string predicate on the org_id field.
+func (f *GatewayFilter) WhereOrgID(p entql.StringP) {
+	f.Where(p.Field(gateway.FieldOrgID))
+}
+
+// WhereGatewayGroupID applies the entql string predicate on the gateway_group_id field.
+func (f *GatewayFilter) WhereGatewayGroupID(p entql.StringP) {
+	f.Where(p.Field(gateway.FieldGatewayGroupID))
+}
+
+// WhereName applies the entql string predicate on the name field.
+func (f *GatewayFilter) WhereName(p entql.StringP) {
+	f.Where(p.Field(gateway.FieldName))
+}
+
+// WhereSlot applies the entql int predicate on the slot field.
+func (f *GatewayFilter) WhereSlot(p entql.IntP) {
+	f.Where(p.Field(gateway.FieldSlot))
+}
+
+// WhereTunnelEndpoints applies the entql json.RawMessage predicate on the tunnel_endpoints field.
+func (f *GatewayFilter) WhereTunnelEndpoints(p entql.BytesP) {
+	f.Where(p.Field(gateway.FieldTunnelEndpoints))
+}
+
+// WhereSpiffeID applies the entql string predicate on the spiffe_id field.
+func (f *GatewayFilter) WhereSpiffeID(p entql.StringP) {
+	f.Where(p.Field(gateway.FieldSpiffeID))
+}
+
+// WherePubkeySha256 applies the entql string predicate on the pubkey_sha256 field.
+func (f *GatewayFilter) WherePubkeySha256(p entql.StringP) {
+	f.Where(p.Field(gateway.FieldPubkeySha256))
+}
+
+// WhereEnabled applies the entql bool predicate on the enabled field.
+func (f *GatewayFilter) WhereEnabled(p entql.BoolP) {
+	f.Where(p.Field(gateway.FieldEnabled))
+}
+
+// WhereDesiredVersion applies the entql string predicate on the desired_version field.
+func (f *GatewayFilter) WhereDesiredVersion(p entql.StringP) {
+	f.Where(p.Field(gateway.FieldDesiredVersion))
+}
+
+// WhereCreatedAt applies the entql time.Time predicate on the created_at field.
+func (f *GatewayFilter) WhereCreatedAt(p entql.TimeP) {
+	f.Where(p.Field(gateway.FieldCreatedAt))
+}
+
+// WhereDecommissionedAt applies the entql time.Time predicate on the decommissioned_at field.
+func (f *GatewayFilter) WhereDecommissionedAt(p entql.TimeP) {
+	f.Where(p.Field(gateway.FieldDecommissionedAt))
+}
+
+// WhereHasGroup applies a predicate to check if query has an edge group.
+func (f *GatewayFilter) WhereHasGroup() {
+	f.Where(entql.HasEdge("group"))
+}
+
+// WhereHasGroupWith applies a predicate to check if query has an edge group with a given conditions (other predicates).
+func (f *GatewayFilter) WhereHasGroupWith(preds ...predicate.GatewayGroup) {
+	f.Where(entql.HasEdgeWith("group", sqlgraph.WrapFunc(func(s *sql.Selector) {
+		for _, p := range preds {
+			p(s)
+		}
+	})))
+}
+
+// addPredicate implements the predicateAdder interface.
 func (_q *GatewayGroupQuery) addPredicate(pred func(s *sql.Selector)) {
 	_q.predicates = append(_q.predicates, pred)
 }
@@ -650,7 +1148,7 @@ type GatewayGroupFilter struct {
 // Where applies the entql predicate on the query filter.
 func (f *GatewayGroupFilter) Where(p entql.P) {
 	f.addPredicate(func(s *sql.Selector) {
-		if err := schemaGraph.EvalP(schemaGraph.Nodes[5].Type, p, s); err != nil {
+		if err := schemaGraph.EvalP(schemaGraph.Nodes[8].Type, p, s); err != nil {
 			s.AddError(err)
 		}
 	})
@@ -669,6 +1167,21 @@ func (f *GatewayGroupFilter) WhereOrgID(p entql.StringP) {
 // WhereName applies the entql string predicate on the name field.
 func (f *GatewayGroupFilter) WhereName(p entql.StringP) {
 	f.Where(p.Field(gatewaygroup.FieldName))
+}
+
+// WhereRegion applies the entql string predicate on the region field.
+func (f *GatewayGroupFilter) WhereRegion(p entql.StringP) {
+	f.Where(p.Field(gatewaygroup.FieldRegion))
+}
+
+// WherePublicHostnames applies the entql json.RawMessage predicate on the public_hostnames field.
+func (f *GatewayGroupFilter) WherePublicHostnames(p entql.BytesP) {
+	f.Where(p.Field(gatewaygroup.FieldPublicHostnames))
+}
+
+// WhereTrustedProxyCidrs applies the entql json.RawMessage predicate on the trusted_proxy_cidrs field.
+func (f *GatewayGroupFilter) WhereTrustedProxyCidrs(p entql.BytesP) {
+	f.Where(p.Field(gatewaygroup.FieldTrustedProxyCidrs))
 }
 
 // addPredicate implements the predicateAdder interface.
@@ -700,7 +1213,7 @@ type InstanceFilter struct {
 // Where applies the entql predicate on the query filter.
 func (f *InstanceFilter) Where(p entql.P) {
 	f.addPredicate(func(s *sql.Selector) {
-		if err := schemaGraph.EvalP(schemaGraph.Nodes[6].Type, p, s); err != nil {
+		if err := schemaGraph.EvalP(schemaGraph.Nodes[9].Type, p, s); err != nil {
 			s.AddError(err)
 		}
 	})
@@ -755,7 +1268,7 @@ type InstanceSettingFilter struct {
 // Where applies the entql predicate on the query filter.
 func (f *InstanceSettingFilter) Where(p entql.P) {
 	f.addPredicate(func(s *sql.Selector) {
-		if err := schemaGraph.EvalP(schemaGraph.Nodes[7].Type, p, s); err != nil {
+		if err := schemaGraph.EvalP(schemaGraph.Nodes[10].Type, p, s); err != nil {
 			s.AddError(err)
 		}
 	})
@@ -815,7 +1328,7 @@ type IssuedCertificateFilter struct {
 // Where applies the entql predicate on the query filter.
 func (f *IssuedCertificateFilter) Where(p entql.P) {
 	f.addPredicate(func(s *sql.Selector) {
-		if err := schemaGraph.EvalP(schemaGraph.Nodes[8].Type, p, s); err != nil {
+		if err := schemaGraph.EvalP(schemaGraph.Nodes[11].Type, p, s); err != nil {
 			s.AddError(err)
 		}
 	})
@@ -910,7 +1423,7 @@ type OrgFilter struct {
 // Where applies the entql predicate on the query filter.
 func (f *OrgFilter) Where(p entql.P) {
 	f.addPredicate(func(s *sql.Selector) {
-		if err := schemaGraph.EvalP(schemaGraph.Nodes[9].Type, p, s); err != nil {
+		if err := schemaGraph.EvalP(schemaGraph.Nodes[12].Type, p, s); err != nil {
 			s.AddError(err)
 		}
 	})
@@ -965,7 +1478,7 @@ type OrgSettingFilter struct {
 // Where applies the entql predicate on the query filter.
 func (f *OrgSettingFilter) Where(p entql.P) {
 	f.addPredicate(func(s *sql.Selector) {
-		if err := schemaGraph.EvalP(schemaGraph.Nodes[10].Type, p, s); err != nil {
+		if err := schemaGraph.EvalP(schemaGraph.Nodes[13].Type, p, s); err != nil {
 			s.AddError(err)
 		}
 	})
@@ -1030,7 +1543,7 @@ type SecretMetaFilter struct {
 // Where applies the entql predicate on the query filter.
 func (f *SecretMetaFilter) Where(p entql.P) {
 	f.addPredicate(func(s *sql.Selector) {
-		if err := schemaGraph.EvalP(schemaGraph.Nodes[11].Type, p, s); err != nil {
+		if err := schemaGraph.EvalP(schemaGraph.Nodes[14].Type, p, s); err != nil {
 			s.AddError(err)
 		}
 	})

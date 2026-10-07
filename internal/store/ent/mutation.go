@@ -16,6 +16,9 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/cakey"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/configrevision"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/configseq"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/connector"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/enrollmenttoken"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/gateway"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/gatewaygroup"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/instance"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/instancesetting"
@@ -40,6 +43,9 @@ const (
 	TypeCAKey             = "CAKey"
 	TypeConfigRevision    = "ConfigRevision"
 	TypeConfigSeq         = "ConfigSeq"
+	TypeConnector         = "Connector"
+	TypeEnrollmentToken   = "EnrollmentToken"
+	TypeGateway           = "Gateway"
 	TypeGatewayGroup      = "GatewayGroup"
 	TypeInstance          = "Instance"
 	TypeInstanceSetting   = "InstanceSetting"
@@ -3412,18 +3418,3550 @@ func (m *ConfigSeqMutation) ResetEdge(name string) error {
 	return fmt.Errorf("unknown ConfigSeq edge %s", name)
 }
 
+// ConnectorMutation represents an operation that mutates the Connector nodes in the graph.
+type ConnectorMutation struct {
+	config
+	op                Op
+	typ               string
+	id                *string
+	org_id            *string
+	name              *string
+	labels            *map[string]string
+	spiffe_id         *string
+	pubkey_sha256     *string
+	ephemeral         *bool
+	enabled           *bool
+	transport         *connector.Transport
+	desired_version   *string
+	created_at        *time.Time
+	decommissioned_at *time.Time
+	clearedFields     map[string]struct{}
+	done              bool
+	oldValue          func(context.Context) (*Connector, error)
+	predicates        []predicate.Connector
+}
+
+var _ ent.Mutation = (*ConnectorMutation)(nil)
+
+// connectorOption allows management of the mutation configuration using functional options.
+type connectorOption func(*ConnectorMutation)
+
+// newConnectorMutation creates new mutation for the Connector entity.
+func newConnectorMutation(c config, op Op, opts ...connectorOption) *ConnectorMutation {
+	m := &ConnectorMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeConnector,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withConnectorID sets the ID field of the mutation.
+func withConnectorID(id string) connectorOption {
+	return func(m *ConnectorMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *Connector
+		)
+		m.oldValue = func(ctx context.Context) (*Connector, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().Connector.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withConnector sets the old Connector of the mutation.
+func withConnector(node *Connector) connectorOption {
+	return func(m *ConnectorMutation) {
+		m.oldValue = func(context.Context) (*Connector, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m ConnectorMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m ConnectorMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// SetID sets the value of the id field. Note that this
+// operation is only accepted on creation of Connector entities.
+func (m *ConnectorMutation) SetID(id string) {
+	m.id = &id
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *ConnectorMutation) ID() (id string, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *ConnectorMutation) IDs(ctx context.Context) ([]string, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []string{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().Connector.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetOrgID sets the "org_id" field.
+func (m *ConnectorMutation) SetOrgID(s string) {
+	m.org_id = &s
+}
+
+// OrgID returns the value of the "org_id" field in the mutation.
+func (m *ConnectorMutation) OrgID() (r string, exists bool) {
+	v := m.org_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldOrgID returns the old "org_id" field's value of the Connector entity.
+// If the Connector object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ConnectorMutation) OldOrgID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldOrgID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldOrgID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldOrgID: %w", err)
+	}
+	return oldValue.OrgID, nil
+}
+
+// ResetOrgID resets all changes to the "org_id" field.
+func (m *ConnectorMutation) ResetOrgID() {
+	m.org_id = nil
+}
+
+// SetName sets the "name" field.
+func (m *ConnectorMutation) SetName(s string) {
+	m.name = &s
+}
+
+// Name returns the value of the "name" field in the mutation.
+func (m *ConnectorMutation) Name() (r string, exists bool) {
+	v := m.name
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldName returns the old "name" field's value of the Connector entity.
+// If the Connector object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ConnectorMutation) OldName(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldName is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldName requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldName: %w", err)
+	}
+	return oldValue.Name, nil
+}
+
+// ResetName resets all changes to the "name" field.
+func (m *ConnectorMutation) ResetName() {
+	m.name = nil
+}
+
+// SetLabels sets the "labels" field.
+func (m *ConnectorMutation) SetLabels(value map[string]string) {
+	m.labels = &value
+}
+
+// Labels returns the value of the "labels" field in the mutation.
+func (m *ConnectorMutation) Labels() (r map[string]string, exists bool) {
+	v := m.labels
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldLabels returns the old "labels" field's value of the Connector entity.
+// If the Connector object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ConnectorMutation) OldLabels(ctx context.Context) (v map[string]string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldLabels is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldLabels requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldLabels: %w", err)
+	}
+	return oldValue.Labels, nil
+}
+
+// ClearLabels clears the value of the "labels" field.
+func (m *ConnectorMutation) ClearLabels() {
+	m.labels = nil
+	m.clearedFields[connector.FieldLabels] = struct{}{}
+}
+
+// LabelsCleared returns if the "labels" field was cleared in this mutation.
+func (m *ConnectorMutation) LabelsCleared() bool {
+	_, ok := m.clearedFields[connector.FieldLabels]
+	return ok
+}
+
+// ResetLabels resets all changes to the "labels" field.
+func (m *ConnectorMutation) ResetLabels() {
+	m.labels = nil
+	delete(m.clearedFields, connector.FieldLabels)
+}
+
+// SetSpiffeID sets the "spiffe_id" field.
+func (m *ConnectorMutation) SetSpiffeID(s string) {
+	m.spiffe_id = &s
+}
+
+// SpiffeID returns the value of the "spiffe_id" field in the mutation.
+func (m *ConnectorMutation) SpiffeID() (r string, exists bool) {
+	v := m.spiffe_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSpiffeID returns the old "spiffe_id" field's value of the Connector entity.
+// If the Connector object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ConnectorMutation) OldSpiffeID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSpiffeID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSpiffeID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSpiffeID: %w", err)
+	}
+	return oldValue.SpiffeID, nil
+}
+
+// ResetSpiffeID resets all changes to the "spiffe_id" field.
+func (m *ConnectorMutation) ResetSpiffeID() {
+	m.spiffe_id = nil
+}
+
+// SetPubkeySha256 sets the "pubkey_sha256" field.
+func (m *ConnectorMutation) SetPubkeySha256(s string) {
+	m.pubkey_sha256 = &s
+}
+
+// PubkeySha256 returns the value of the "pubkey_sha256" field in the mutation.
+func (m *ConnectorMutation) PubkeySha256() (r string, exists bool) {
+	v := m.pubkey_sha256
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldPubkeySha256 returns the old "pubkey_sha256" field's value of the Connector entity.
+// If the Connector object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ConnectorMutation) OldPubkeySha256(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPubkeySha256 is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPubkeySha256 requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPubkeySha256: %w", err)
+	}
+	return oldValue.PubkeySha256, nil
+}
+
+// ResetPubkeySha256 resets all changes to the "pubkey_sha256" field.
+func (m *ConnectorMutation) ResetPubkeySha256() {
+	m.pubkey_sha256 = nil
+}
+
+// SetEphemeral sets the "ephemeral" field.
+func (m *ConnectorMutation) SetEphemeral(b bool) {
+	m.ephemeral = &b
+}
+
+// Ephemeral returns the value of the "ephemeral" field in the mutation.
+func (m *ConnectorMutation) Ephemeral() (r bool, exists bool) {
+	v := m.ephemeral
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldEphemeral returns the old "ephemeral" field's value of the Connector entity.
+// If the Connector object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ConnectorMutation) OldEphemeral(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldEphemeral is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldEphemeral requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldEphemeral: %w", err)
+	}
+	return oldValue.Ephemeral, nil
+}
+
+// ResetEphemeral resets all changes to the "ephemeral" field.
+func (m *ConnectorMutation) ResetEphemeral() {
+	m.ephemeral = nil
+}
+
+// SetEnabled sets the "enabled" field.
+func (m *ConnectorMutation) SetEnabled(b bool) {
+	m.enabled = &b
+}
+
+// Enabled returns the value of the "enabled" field in the mutation.
+func (m *ConnectorMutation) Enabled() (r bool, exists bool) {
+	v := m.enabled
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldEnabled returns the old "enabled" field's value of the Connector entity.
+// If the Connector object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ConnectorMutation) OldEnabled(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldEnabled is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldEnabled requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldEnabled: %w", err)
+	}
+	return oldValue.Enabled, nil
+}
+
+// ResetEnabled resets all changes to the "enabled" field.
+func (m *ConnectorMutation) ResetEnabled() {
+	m.enabled = nil
+}
+
+// SetTransport sets the "transport" field.
+func (m *ConnectorMutation) SetTransport(c connector.Transport) {
+	m.transport = &c
+}
+
+// Transport returns the value of the "transport" field in the mutation.
+func (m *ConnectorMutation) Transport() (r connector.Transport, exists bool) {
+	v := m.transport
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldTransport returns the old "transport" field's value of the Connector entity.
+// If the Connector object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ConnectorMutation) OldTransport(ctx context.Context) (v *connector.Transport, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldTransport is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldTransport requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldTransport: %w", err)
+	}
+	return oldValue.Transport, nil
+}
+
+// ClearTransport clears the value of the "transport" field.
+func (m *ConnectorMutation) ClearTransport() {
+	m.transport = nil
+	m.clearedFields[connector.FieldTransport] = struct{}{}
+}
+
+// TransportCleared returns if the "transport" field was cleared in this mutation.
+func (m *ConnectorMutation) TransportCleared() bool {
+	_, ok := m.clearedFields[connector.FieldTransport]
+	return ok
+}
+
+// ResetTransport resets all changes to the "transport" field.
+func (m *ConnectorMutation) ResetTransport() {
+	m.transport = nil
+	delete(m.clearedFields, connector.FieldTransport)
+}
+
+// SetDesiredVersion sets the "desired_version" field.
+func (m *ConnectorMutation) SetDesiredVersion(s string) {
+	m.desired_version = &s
+}
+
+// DesiredVersion returns the value of the "desired_version" field in the mutation.
+func (m *ConnectorMutation) DesiredVersion() (r string, exists bool) {
+	v := m.desired_version
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldDesiredVersion returns the old "desired_version" field's value of the Connector entity.
+// If the Connector object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ConnectorMutation) OldDesiredVersion(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDesiredVersion is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDesiredVersion requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDesiredVersion: %w", err)
+	}
+	return oldValue.DesiredVersion, nil
+}
+
+// ClearDesiredVersion clears the value of the "desired_version" field.
+func (m *ConnectorMutation) ClearDesiredVersion() {
+	m.desired_version = nil
+	m.clearedFields[connector.FieldDesiredVersion] = struct{}{}
+}
+
+// DesiredVersionCleared returns if the "desired_version" field was cleared in this mutation.
+func (m *ConnectorMutation) DesiredVersionCleared() bool {
+	_, ok := m.clearedFields[connector.FieldDesiredVersion]
+	return ok
+}
+
+// ResetDesiredVersion resets all changes to the "desired_version" field.
+func (m *ConnectorMutation) ResetDesiredVersion() {
+	m.desired_version = nil
+	delete(m.clearedFields, connector.FieldDesiredVersion)
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *ConnectorMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *ConnectorMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the Connector entity.
+// If the Connector object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ConnectorMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *ConnectorMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// SetDecommissionedAt sets the "decommissioned_at" field.
+func (m *ConnectorMutation) SetDecommissionedAt(t time.Time) {
+	m.decommissioned_at = &t
+}
+
+// DecommissionedAt returns the value of the "decommissioned_at" field in the mutation.
+func (m *ConnectorMutation) DecommissionedAt() (r time.Time, exists bool) {
+	v := m.decommissioned_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldDecommissionedAt returns the old "decommissioned_at" field's value of the Connector entity.
+// If the Connector object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ConnectorMutation) OldDecommissionedAt(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDecommissionedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDecommissionedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDecommissionedAt: %w", err)
+	}
+	return oldValue.DecommissionedAt, nil
+}
+
+// ClearDecommissionedAt clears the value of the "decommissioned_at" field.
+func (m *ConnectorMutation) ClearDecommissionedAt() {
+	m.decommissioned_at = nil
+	m.clearedFields[connector.FieldDecommissionedAt] = struct{}{}
+}
+
+// DecommissionedAtCleared returns if the "decommissioned_at" field was cleared in this mutation.
+func (m *ConnectorMutation) DecommissionedAtCleared() bool {
+	_, ok := m.clearedFields[connector.FieldDecommissionedAt]
+	return ok
+}
+
+// ResetDecommissionedAt resets all changes to the "decommissioned_at" field.
+func (m *ConnectorMutation) ResetDecommissionedAt() {
+	m.decommissioned_at = nil
+	delete(m.clearedFields, connector.FieldDecommissionedAt)
+}
+
+// Where appends a list predicates to the ConnectorMutation builder.
+func (m *ConnectorMutation) Where(ps ...predicate.Connector) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the ConnectorMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *ConnectorMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.Connector, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *ConnectorMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *ConnectorMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (Connector).
+func (m *ConnectorMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *ConnectorMutation) Fields() []string {
+	fields := make([]string, 0, 11)
+	if m.org_id != nil {
+		fields = append(fields, connector.FieldOrgID)
+	}
+	if m.name != nil {
+		fields = append(fields, connector.FieldName)
+	}
+	if m.labels != nil {
+		fields = append(fields, connector.FieldLabels)
+	}
+	if m.spiffe_id != nil {
+		fields = append(fields, connector.FieldSpiffeID)
+	}
+	if m.pubkey_sha256 != nil {
+		fields = append(fields, connector.FieldPubkeySha256)
+	}
+	if m.ephemeral != nil {
+		fields = append(fields, connector.FieldEphemeral)
+	}
+	if m.enabled != nil {
+		fields = append(fields, connector.FieldEnabled)
+	}
+	if m.transport != nil {
+		fields = append(fields, connector.FieldTransport)
+	}
+	if m.desired_version != nil {
+		fields = append(fields, connector.FieldDesiredVersion)
+	}
+	if m.created_at != nil {
+		fields = append(fields, connector.FieldCreatedAt)
+	}
+	if m.decommissioned_at != nil {
+		fields = append(fields, connector.FieldDecommissionedAt)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *ConnectorMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case connector.FieldOrgID:
+		return m.OrgID()
+	case connector.FieldName:
+		return m.Name()
+	case connector.FieldLabels:
+		return m.Labels()
+	case connector.FieldSpiffeID:
+		return m.SpiffeID()
+	case connector.FieldPubkeySha256:
+		return m.PubkeySha256()
+	case connector.FieldEphemeral:
+		return m.Ephemeral()
+	case connector.FieldEnabled:
+		return m.Enabled()
+	case connector.FieldTransport:
+		return m.Transport()
+	case connector.FieldDesiredVersion:
+		return m.DesiredVersion()
+	case connector.FieldCreatedAt:
+		return m.CreatedAt()
+	case connector.FieldDecommissionedAt:
+		return m.DecommissionedAt()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *ConnectorMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case connector.FieldOrgID:
+		return m.OldOrgID(ctx)
+	case connector.FieldName:
+		return m.OldName(ctx)
+	case connector.FieldLabels:
+		return m.OldLabels(ctx)
+	case connector.FieldSpiffeID:
+		return m.OldSpiffeID(ctx)
+	case connector.FieldPubkeySha256:
+		return m.OldPubkeySha256(ctx)
+	case connector.FieldEphemeral:
+		return m.OldEphemeral(ctx)
+	case connector.FieldEnabled:
+		return m.OldEnabled(ctx)
+	case connector.FieldTransport:
+		return m.OldTransport(ctx)
+	case connector.FieldDesiredVersion:
+		return m.OldDesiredVersion(ctx)
+	case connector.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	case connector.FieldDecommissionedAt:
+		return m.OldDecommissionedAt(ctx)
+	}
+	return nil, fmt.Errorf("unknown Connector field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *ConnectorMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case connector.FieldOrgID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetOrgID(v)
+		return nil
+	case connector.FieldName:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetName(v)
+		return nil
+	case connector.FieldLabels:
+		v, ok := value.(map[string]string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetLabels(v)
+		return nil
+	case connector.FieldSpiffeID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSpiffeID(v)
+		return nil
+	case connector.FieldPubkeySha256:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetPubkeySha256(v)
+		return nil
+	case connector.FieldEphemeral:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetEphemeral(v)
+		return nil
+	case connector.FieldEnabled:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetEnabled(v)
+		return nil
+	case connector.FieldTransport:
+		v, ok := value.(connector.Transport)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetTransport(v)
+		return nil
+	case connector.FieldDesiredVersion:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetDesiredVersion(v)
+		return nil
+	case connector.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	case connector.FieldDecommissionedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetDecommissionedAt(v)
+		return nil
+	}
+	return fmt.Errorf("unknown Connector field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *ConnectorMutation) AddedFields() []string {
+	return nil
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *ConnectorMutation) AddedField(name string) (ent.Value, bool) {
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *ConnectorMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	}
+	return fmt.Errorf("unknown Connector numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *ConnectorMutation) ClearedFields() []string {
+	var fields []string
+	if m.FieldCleared(connector.FieldLabels) {
+		fields = append(fields, connector.FieldLabels)
+	}
+	if m.FieldCleared(connector.FieldTransport) {
+		fields = append(fields, connector.FieldTransport)
+	}
+	if m.FieldCleared(connector.FieldDesiredVersion) {
+		fields = append(fields, connector.FieldDesiredVersion)
+	}
+	if m.FieldCleared(connector.FieldDecommissionedAt) {
+		fields = append(fields, connector.FieldDecommissionedAt)
+	}
+	return fields
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *ConnectorMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *ConnectorMutation) ClearField(name string) error {
+	switch name {
+	case connector.FieldLabels:
+		m.ClearLabels()
+		return nil
+	case connector.FieldTransport:
+		m.ClearTransport()
+		return nil
+	case connector.FieldDesiredVersion:
+		m.ClearDesiredVersion()
+		return nil
+	case connector.FieldDecommissionedAt:
+		m.ClearDecommissionedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown Connector nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *ConnectorMutation) ResetField(name string) error {
+	switch name {
+	case connector.FieldOrgID:
+		m.ResetOrgID()
+		return nil
+	case connector.FieldName:
+		m.ResetName()
+		return nil
+	case connector.FieldLabels:
+		m.ResetLabels()
+		return nil
+	case connector.FieldSpiffeID:
+		m.ResetSpiffeID()
+		return nil
+	case connector.FieldPubkeySha256:
+		m.ResetPubkeySha256()
+		return nil
+	case connector.FieldEphemeral:
+		m.ResetEphemeral()
+		return nil
+	case connector.FieldEnabled:
+		m.ResetEnabled()
+		return nil
+	case connector.FieldTransport:
+		m.ResetTransport()
+		return nil
+	case connector.FieldDesiredVersion:
+		m.ResetDesiredVersion()
+		return nil
+	case connector.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	case connector.FieldDecommissionedAt:
+		m.ResetDecommissionedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown Connector field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *ConnectorMutation) AddedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *ConnectorMutation) AddedIDs(name string) []ent.Value {
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *ConnectorMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *ConnectorMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *ConnectorMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *ConnectorMutation) EdgeCleared(name string) bool {
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *ConnectorMutation) ClearEdge(name string) error {
+	return fmt.Errorf("unknown Connector unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *ConnectorMutation) ResetEdge(name string) error {
+	return fmt.Errorf("unknown Connector edge %s", name)
+}
+
+// EnrollmentTokenMutation represents an operation that mutates the EnrollmentToken nodes in the graph.
+type EnrollmentTokenMutation struct {
+	config
+	op               Op
+	typ              string
+	id               *string
+	org_id           *string
+	token_hash       *[]byte
+	role             *enrollmenttoken.Role
+	labels           *map[string]string
+	ephemeral        *bool
+	max_uses         *int
+	addmax_uses      *int
+	use_count        *int
+	adduse_count     *int
+	expires_at       *time.Time
+	created_by       *string
+	created_at       *time.Time
+	last_used_at     *time.Time
+	last_used_ip     *string
+	revoked_at       *time.Time
+	clearedFields    map[string]struct{}
+	group            *string
+	clearedgroup     bool
+	gateway          *string
+	clearedgateway   bool
+	connector        *string
+	clearedconnector bool
+	done             bool
+	oldValue         func(context.Context) (*EnrollmentToken, error)
+	predicates       []predicate.EnrollmentToken
+}
+
+var _ ent.Mutation = (*EnrollmentTokenMutation)(nil)
+
+// enrollmenttokenOption allows management of the mutation configuration using functional options.
+type enrollmenttokenOption func(*EnrollmentTokenMutation)
+
+// newEnrollmentTokenMutation creates new mutation for the EnrollmentToken entity.
+func newEnrollmentTokenMutation(c config, op Op, opts ...enrollmenttokenOption) *EnrollmentTokenMutation {
+	m := &EnrollmentTokenMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeEnrollmentToken,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withEnrollmentTokenID sets the ID field of the mutation.
+func withEnrollmentTokenID(id string) enrollmenttokenOption {
+	return func(m *EnrollmentTokenMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *EnrollmentToken
+		)
+		m.oldValue = func(ctx context.Context) (*EnrollmentToken, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().EnrollmentToken.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withEnrollmentToken sets the old EnrollmentToken of the mutation.
+func withEnrollmentToken(node *EnrollmentToken) enrollmenttokenOption {
+	return func(m *EnrollmentTokenMutation) {
+		m.oldValue = func(context.Context) (*EnrollmentToken, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m EnrollmentTokenMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m EnrollmentTokenMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// SetID sets the value of the id field. Note that this
+// operation is only accepted on creation of EnrollmentToken entities.
+func (m *EnrollmentTokenMutation) SetID(id string) {
+	m.id = &id
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *EnrollmentTokenMutation) ID() (id string, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *EnrollmentTokenMutation) IDs(ctx context.Context) ([]string, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []string{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().EnrollmentToken.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetOrgID sets the "org_id" field.
+func (m *EnrollmentTokenMutation) SetOrgID(s string) {
+	m.org_id = &s
+}
+
+// OrgID returns the value of the "org_id" field in the mutation.
+func (m *EnrollmentTokenMutation) OrgID() (r string, exists bool) {
+	v := m.org_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldOrgID returns the old "org_id" field's value of the EnrollmentToken entity.
+// If the EnrollmentToken object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *EnrollmentTokenMutation) OldOrgID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldOrgID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldOrgID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldOrgID: %w", err)
+	}
+	return oldValue.OrgID, nil
+}
+
+// ResetOrgID resets all changes to the "org_id" field.
+func (m *EnrollmentTokenMutation) ResetOrgID() {
+	m.org_id = nil
+}
+
+// SetTokenHash sets the "token_hash" field.
+func (m *EnrollmentTokenMutation) SetTokenHash(b []byte) {
+	m.token_hash = &b
+}
+
+// TokenHash returns the value of the "token_hash" field in the mutation.
+func (m *EnrollmentTokenMutation) TokenHash() (r []byte, exists bool) {
+	v := m.token_hash
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldTokenHash returns the old "token_hash" field's value of the EnrollmentToken entity.
+// If the EnrollmentToken object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *EnrollmentTokenMutation) OldTokenHash(ctx context.Context) (v []byte, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldTokenHash is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldTokenHash requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldTokenHash: %w", err)
+	}
+	return oldValue.TokenHash, nil
+}
+
+// ResetTokenHash resets all changes to the "token_hash" field.
+func (m *EnrollmentTokenMutation) ResetTokenHash() {
+	m.token_hash = nil
+}
+
+// SetRole sets the "role" field.
+func (m *EnrollmentTokenMutation) SetRole(e enrollmenttoken.Role) {
+	m.role = &e
+}
+
+// Role returns the value of the "role" field in the mutation.
+func (m *EnrollmentTokenMutation) Role() (r enrollmenttoken.Role, exists bool) {
+	v := m.role
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRole returns the old "role" field's value of the EnrollmentToken entity.
+// If the EnrollmentToken object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *EnrollmentTokenMutation) OldRole(ctx context.Context) (v enrollmenttoken.Role, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRole is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRole requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRole: %w", err)
+	}
+	return oldValue.Role, nil
+}
+
+// ResetRole resets all changes to the "role" field.
+func (m *EnrollmentTokenMutation) ResetRole() {
+	m.role = nil
+}
+
+// SetGatewayGroupID sets the "gateway_group_id" field.
+func (m *EnrollmentTokenMutation) SetGatewayGroupID(s string) {
+	m.group = &s
+}
+
+// GatewayGroupID returns the value of the "gateway_group_id" field in the mutation.
+func (m *EnrollmentTokenMutation) GatewayGroupID() (r string, exists bool) {
+	v := m.group
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldGatewayGroupID returns the old "gateway_group_id" field's value of the EnrollmentToken entity.
+// If the EnrollmentToken object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *EnrollmentTokenMutation) OldGatewayGroupID(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldGatewayGroupID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldGatewayGroupID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldGatewayGroupID: %w", err)
+	}
+	return oldValue.GatewayGroupID, nil
+}
+
+// ClearGatewayGroupID clears the value of the "gateway_group_id" field.
+func (m *EnrollmentTokenMutation) ClearGatewayGroupID() {
+	m.group = nil
+	m.clearedFields[enrollmenttoken.FieldGatewayGroupID] = struct{}{}
+}
+
+// GatewayGroupIDCleared returns if the "gateway_group_id" field was cleared in this mutation.
+func (m *EnrollmentTokenMutation) GatewayGroupIDCleared() bool {
+	_, ok := m.clearedFields[enrollmenttoken.FieldGatewayGroupID]
+	return ok
+}
+
+// ResetGatewayGroupID resets all changes to the "gateway_group_id" field.
+func (m *EnrollmentTokenMutation) ResetGatewayGroupID() {
+	m.group = nil
+	delete(m.clearedFields, enrollmenttoken.FieldGatewayGroupID)
+}
+
+// SetGatewayID sets the "gateway_id" field.
+func (m *EnrollmentTokenMutation) SetGatewayID(s string) {
+	m.gateway = &s
+}
+
+// GatewayID returns the value of the "gateway_id" field in the mutation.
+func (m *EnrollmentTokenMutation) GatewayID() (r string, exists bool) {
+	v := m.gateway
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldGatewayID returns the old "gateway_id" field's value of the EnrollmentToken entity.
+// If the EnrollmentToken object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *EnrollmentTokenMutation) OldGatewayID(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldGatewayID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldGatewayID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldGatewayID: %w", err)
+	}
+	return oldValue.GatewayID, nil
+}
+
+// ClearGatewayID clears the value of the "gateway_id" field.
+func (m *EnrollmentTokenMutation) ClearGatewayID() {
+	m.gateway = nil
+	m.clearedFields[enrollmenttoken.FieldGatewayID] = struct{}{}
+}
+
+// GatewayIDCleared returns if the "gateway_id" field was cleared in this mutation.
+func (m *EnrollmentTokenMutation) GatewayIDCleared() bool {
+	_, ok := m.clearedFields[enrollmenttoken.FieldGatewayID]
+	return ok
+}
+
+// ResetGatewayID resets all changes to the "gateway_id" field.
+func (m *EnrollmentTokenMutation) ResetGatewayID() {
+	m.gateway = nil
+	delete(m.clearedFields, enrollmenttoken.FieldGatewayID)
+}
+
+// SetConnectorID sets the "connector_id" field.
+func (m *EnrollmentTokenMutation) SetConnectorID(s string) {
+	m.connector = &s
+}
+
+// ConnectorID returns the value of the "connector_id" field in the mutation.
+func (m *EnrollmentTokenMutation) ConnectorID() (r string, exists bool) {
+	v := m.connector
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldConnectorID returns the old "connector_id" field's value of the EnrollmentToken entity.
+// If the EnrollmentToken object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *EnrollmentTokenMutation) OldConnectorID(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldConnectorID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldConnectorID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldConnectorID: %w", err)
+	}
+	return oldValue.ConnectorID, nil
+}
+
+// ClearConnectorID clears the value of the "connector_id" field.
+func (m *EnrollmentTokenMutation) ClearConnectorID() {
+	m.connector = nil
+	m.clearedFields[enrollmenttoken.FieldConnectorID] = struct{}{}
+}
+
+// ConnectorIDCleared returns if the "connector_id" field was cleared in this mutation.
+func (m *EnrollmentTokenMutation) ConnectorIDCleared() bool {
+	_, ok := m.clearedFields[enrollmenttoken.FieldConnectorID]
+	return ok
+}
+
+// ResetConnectorID resets all changes to the "connector_id" field.
+func (m *EnrollmentTokenMutation) ResetConnectorID() {
+	m.connector = nil
+	delete(m.clearedFields, enrollmenttoken.FieldConnectorID)
+}
+
+// SetLabels sets the "labels" field.
+func (m *EnrollmentTokenMutation) SetLabels(value map[string]string) {
+	m.labels = &value
+}
+
+// Labels returns the value of the "labels" field in the mutation.
+func (m *EnrollmentTokenMutation) Labels() (r map[string]string, exists bool) {
+	v := m.labels
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldLabels returns the old "labels" field's value of the EnrollmentToken entity.
+// If the EnrollmentToken object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *EnrollmentTokenMutation) OldLabels(ctx context.Context) (v map[string]string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldLabels is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldLabels requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldLabels: %w", err)
+	}
+	return oldValue.Labels, nil
+}
+
+// ClearLabels clears the value of the "labels" field.
+func (m *EnrollmentTokenMutation) ClearLabels() {
+	m.labels = nil
+	m.clearedFields[enrollmenttoken.FieldLabels] = struct{}{}
+}
+
+// LabelsCleared returns if the "labels" field was cleared in this mutation.
+func (m *EnrollmentTokenMutation) LabelsCleared() bool {
+	_, ok := m.clearedFields[enrollmenttoken.FieldLabels]
+	return ok
+}
+
+// ResetLabels resets all changes to the "labels" field.
+func (m *EnrollmentTokenMutation) ResetLabels() {
+	m.labels = nil
+	delete(m.clearedFields, enrollmenttoken.FieldLabels)
+}
+
+// SetEphemeral sets the "ephemeral" field.
+func (m *EnrollmentTokenMutation) SetEphemeral(b bool) {
+	m.ephemeral = &b
+}
+
+// Ephemeral returns the value of the "ephemeral" field in the mutation.
+func (m *EnrollmentTokenMutation) Ephemeral() (r bool, exists bool) {
+	v := m.ephemeral
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldEphemeral returns the old "ephemeral" field's value of the EnrollmentToken entity.
+// If the EnrollmentToken object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *EnrollmentTokenMutation) OldEphemeral(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldEphemeral is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldEphemeral requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldEphemeral: %w", err)
+	}
+	return oldValue.Ephemeral, nil
+}
+
+// ResetEphemeral resets all changes to the "ephemeral" field.
+func (m *EnrollmentTokenMutation) ResetEphemeral() {
+	m.ephemeral = nil
+}
+
+// SetMaxUses sets the "max_uses" field.
+func (m *EnrollmentTokenMutation) SetMaxUses(i int) {
+	m.max_uses = &i
+	m.addmax_uses = nil
+}
+
+// MaxUses returns the value of the "max_uses" field in the mutation.
+func (m *EnrollmentTokenMutation) MaxUses() (r int, exists bool) {
+	v := m.max_uses
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldMaxUses returns the old "max_uses" field's value of the EnrollmentToken entity.
+// If the EnrollmentToken object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *EnrollmentTokenMutation) OldMaxUses(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldMaxUses is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldMaxUses requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldMaxUses: %w", err)
+	}
+	return oldValue.MaxUses, nil
+}
+
+// AddMaxUses adds i to the "max_uses" field.
+func (m *EnrollmentTokenMutation) AddMaxUses(i int) {
+	if m.addmax_uses != nil {
+		*m.addmax_uses += i
+	} else {
+		m.addmax_uses = &i
+	}
+}
+
+// AddedMaxUses returns the value that was added to the "max_uses" field in this mutation.
+func (m *EnrollmentTokenMutation) AddedMaxUses() (r int, exists bool) {
+	v := m.addmax_uses
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetMaxUses resets all changes to the "max_uses" field.
+func (m *EnrollmentTokenMutation) ResetMaxUses() {
+	m.max_uses = nil
+	m.addmax_uses = nil
+}
+
+// SetUseCount sets the "use_count" field.
+func (m *EnrollmentTokenMutation) SetUseCount(i int) {
+	m.use_count = &i
+	m.adduse_count = nil
+}
+
+// UseCount returns the value of the "use_count" field in the mutation.
+func (m *EnrollmentTokenMutation) UseCount() (r int, exists bool) {
+	v := m.use_count
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUseCount returns the old "use_count" field's value of the EnrollmentToken entity.
+// If the EnrollmentToken object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *EnrollmentTokenMutation) OldUseCount(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUseCount is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUseCount requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUseCount: %w", err)
+	}
+	return oldValue.UseCount, nil
+}
+
+// AddUseCount adds i to the "use_count" field.
+func (m *EnrollmentTokenMutation) AddUseCount(i int) {
+	if m.adduse_count != nil {
+		*m.adduse_count += i
+	} else {
+		m.adduse_count = &i
+	}
+}
+
+// AddedUseCount returns the value that was added to the "use_count" field in this mutation.
+func (m *EnrollmentTokenMutation) AddedUseCount() (r int, exists bool) {
+	v := m.adduse_count
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetUseCount resets all changes to the "use_count" field.
+func (m *EnrollmentTokenMutation) ResetUseCount() {
+	m.use_count = nil
+	m.adduse_count = nil
+}
+
+// SetExpiresAt sets the "expires_at" field.
+func (m *EnrollmentTokenMutation) SetExpiresAt(t time.Time) {
+	m.expires_at = &t
+}
+
+// ExpiresAt returns the value of the "expires_at" field in the mutation.
+func (m *EnrollmentTokenMutation) ExpiresAt() (r time.Time, exists bool) {
+	v := m.expires_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldExpiresAt returns the old "expires_at" field's value of the EnrollmentToken entity.
+// If the EnrollmentToken object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *EnrollmentTokenMutation) OldExpiresAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldExpiresAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldExpiresAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldExpiresAt: %w", err)
+	}
+	return oldValue.ExpiresAt, nil
+}
+
+// ResetExpiresAt resets all changes to the "expires_at" field.
+func (m *EnrollmentTokenMutation) ResetExpiresAt() {
+	m.expires_at = nil
+}
+
+// SetCreatedBy sets the "created_by" field.
+func (m *EnrollmentTokenMutation) SetCreatedBy(s string) {
+	m.created_by = &s
+}
+
+// CreatedBy returns the value of the "created_by" field in the mutation.
+func (m *EnrollmentTokenMutation) CreatedBy() (r string, exists bool) {
+	v := m.created_by
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedBy returns the old "created_by" field's value of the EnrollmentToken entity.
+// If the EnrollmentToken object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *EnrollmentTokenMutation) OldCreatedBy(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedBy is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedBy requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedBy: %w", err)
+	}
+	return oldValue.CreatedBy, nil
+}
+
+// ResetCreatedBy resets all changes to the "created_by" field.
+func (m *EnrollmentTokenMutation) ResetCreatedBy() {
+	m.created_by = nil
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *EnrollmentTokenMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *EnrollmentTokenMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the EnrollmentToken entity.
+// If the EnrollmentToken object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *EnrollmentTokenMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *EnrollmentTokenMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// SetLastUsedAt sets the "last_used_at" field.
+func (m *EnrollmentTokenMutation) SetLastUsedAt(t time.Time) {
+	m.last_used_at = &t
+}
+
+// LastUsedAt returns the value of the "last_used_at" field in the mutation.
+func (m *EnrollmentTokenMutation) LastUsedAt() (r time.Time, exists bool) {
+	v := m.last_used_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldLastUsedAt returns the old "last_used_at" field's value of the EnrollmentToken entity.
+// If the EnrollmentToken object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *EnrollmentTokenMutation) OldLastUsedAt(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldLastUsedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldLastUsedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldLastUsedAt: %w", err)
+	}
+	return oldValue.LastUsedAt, nil
+}
+
+// ClearLastUsedAt clears the value of the "last_used_at" field.
+func (m *EnrollmentTokenMutation) ClearLastUsedAt() {
+	m.last_used_at = nil
+	m.clearedFields[enrollmenttoken.FieldLastUsedAt] = struct{}{}
+}
+
+// LastUsedAtCleared returns if the "last_used_at" field was cleared in this mutation.
+func (m *EnrollmentTokenMutation) LastUsedAtCleared() bool {
+	_, ok := m.clearedFields[enrollmenttoken.FieldLastUsedAt]
+	return ok
+}
+
+// ResetLastUsedAt resets all changes to the "last_used_at" field.
+func (m *EnrollmentTokenMutation) ResetLastUsedAt() {
+	m.last_used_at = nil
+	delete(m.clearedFields, enrollmenttoken.FieldLastUsedAt)
+}
+
+// SetLastUsedIP sets the "last_used_ip" field.
+func (m *EnrollmentTokenMutation) SetLastUsedIP(s string) {
+	m.last_used_ip = &s
+}
+
+// LastUsedIP returns the value of the "last_used_ip" field in the mutation.
+func (m *EnrollmentTokenMutation) LastUsedIP() (r string, exists bool) {
+	v := m.last_used_ip
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldLastUsedIP returns the old "last_used_ip" field's value of the EnrollmentToken entity.
+// If the EnrollmentToken object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *EnrollmentTokenMutation) OldLastUsedIP(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldLastUsedIP is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldLastUsedIP requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldLastUsedIP: %w", err)
+	}
+	return oldValue.LastUsedIP, nil
+}
+
+// ClearLastUsedIP clears the value of the "last_used_ip" field.
+func (m *EnrollmentTokenMutation) ClearLastUsedIP() {
+	m.last_used_ip = nil
+	m.clearedFields[enrollmenttoken.FieldLastUsedIP] = struct{}{}
+}
+
+// LastUsedIPCleared returns if the "last_used_ip" field was cleared in this mutation.
+func (m *EnrollmentTokenMutation) LastUsedIPCleared() bool {
+	_, ok := m.clearedFields[enrollmenttoken.FieldLastUsedIP]
+	return ok
+}
+
+// ResetLastUsedIP resets all changes to the "last_used_ip" field.
+func (m *EnrollmentTokenMutation) ResetLastUsedIP() {
+	m.last_used_ip = nil
+	delete(m.clearedFields, enrollmenttoken.FieldLastUsedIP)
+}
+
+// SetRevokedAt sets the "revoked_at" field.
+func (m *EnrollmentTokenMutation) SetRevokedAt(t time.Time) {
+	m.revoked_at = &t
+}
+
+// RevokedAt returns the value of the "revoked_at" field in the mutation.
+func (m *EnrollmentTokenMutation) RevokedAt() (r time.Time, exists bool) {
+	v := m.revoked_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRevokedAt returns the old "revoked_at" field's value of the EnrollmentToken entity.
+// If the EnrollmentToken object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *EnrollmentTokenMutation) OldRevokedAt(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRevokedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRevokedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRevokedAt: %w", err)
+	}
+	return oldValue.RevokedAt, nil
+}
+
+// ClearRevokedAt clears the value of the "revoked_at" field.
+func (m *EnrollmentTokenMutation) ClearRevokedAt() {
+	m.revoked_at = nil
+	m.clearedFields[enrollmenttoken.FieldRevokedAt] = struct{}{}
+}
+
+// RevokedAtCleared returns if the "revoked_at" field was cleared in this mutation.
+func (m *EnrollmentTokenMutation) RevokedAtCleared() bool {
+	_, ok := m.clearedFields[enrollmenttoken.FieldRevokedAt]
+	return ok
+}
+
+// ResetRevokedAt resets all changes to the "revoked_at" field.
+func (m *EnrollmentTokenMutation) ResetRevokedAt() {
+	m.revoked_at = nil
+	delete(m.clearedFields, enrollmenttoken.FieldRevokedAt)
+}
+
+// SetGroupID sets the "group" edge to the GatewayGroup entity by id.
+func (m *EnrollmentTokenMutation) SetGroupID(id string) {
+	m.group = &id
+}
+
+// ClearGroup clears the "group" edge to the GatewayGroup entity.
+func (m *EnrollmentTokenMutation) ClearGroup() {
+	m.clearedgroup = true
+	m.clearedFields[enrollmenttoken.FieldGatewayGroupID] = struct{}{}
+}
+
+// GroupCleared reports if the "group" edge to the GatewayGroup entity was cleared.
+func (m *EnrollmentTokenMutation) GroupCleared() bool {
+	return m.GatewayGroupIDCleared() || m.clearedgroup
+}
+
+// GroupID returns the "group" edge ID in the mutation.
+func (m *EnrollmentTokenMutation) GroupID() (id string, exists bool) {
+	if m.group != nil {
+		return *m.group, true
+	}
+	return
+}
+
+// GroupIDs returns the "group" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// GroupID instead. It exists only for internal usage by the builders.
+func (m *EnrollmentTokenMutation) GroupIDs() (ids []string) {
+	if id := m.group; id != nil {
+		ids = append(ids, *id)
+	}
+	return
+}
+
+// ResetGroup resets all changes to the "group" edge.
+func (m *EnrollmentTokenMutation) ResetGroup() {
+	m.group = nil
+	m.clearedgroup = false
+}
+
+// ClearGateway clears the "gateway" edge to the Gateway entity.
+func (m *EnrollmentTokenMutation) ClearGateway() {
+	m.clearedgateway = true
+	m.clearedFields[enrollmenttoken.FieldGatewayID] = struct{}{}
+}
+
+// GatewayCleared reports if the "gateway" edge to the Gateway entity was cleared.
+func (m *EnrollmentTokenMutation) GatewayCleared() bool {
+	return m.GatewayIDCleared() || m.clearedgateway
+}
+
+// GatewayIDs returns the "gateway" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// GatewayID instead. It exists only for internal usage by the builders.
+func (m *EnrollmentTokenMutation) GatewayIDs() (ids []string) {
+	if id := m.gateway; id != nil {
+		ids = append(ids, *id)
+	}
+	return
+}
+
+// ResetGateway resets all changes to the "gateway" edge.
+func (m *EnrollmentTokenMutation) ResetGateway() {
+	m.gateway = nil
+	m.clearedgateway = false
+}
+
+// ClearConnector clears the "connector" edge to the Connector entity.
+func (m *EnrollmentTokenMutation) ClearConnector() {
+	m.clearedconnector = true
+	m.clearedFields[enrollmenttoken.FieldConnectorID] = struct{}{}
+}
+
+// ConnectorCleared reports if the "connector" edge to the Connector entity was cleared.
+func (m *EnrollmentTokenMutation) ConnectorCleared() bool {
+	return m.ConnectorIDCleared() || m.clearedconnector
+}
+
+// ConnectorIDs returns the "connector" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// ConnectorID instead. It exists only for internal usage by the builders.
+func (m *EnrollmentTokenMutation) ConnectorIDs() (ids []string) {
+	if id := m.connector; id != nil {
+		ids = append(ids, *id)
+	}
+	return
+}
+
+// ResetConnector resets all changes to the "connector" edge.
+func (m *EnrollmentTokenMutation) ResetConnector() {
+	m.connector = nil
+	m.clearedconnector = false
+}
+
+// Where appends a list predicates to the EnrollmentTokenMutation builder.
+func (m *EnrollmentTokenMutation) Where(ps ...predicate.EnrollmentToken) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the EnrollmentTokenMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *EnrollmentTokenMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.EnrollmentToken, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *EnrollmentTokenMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *EnrollmentTokenMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (EnrollmentToken).
+func (m *EnrollmentTokenMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *EnrollmentTokenMutation) Fields() []string {
+	fields := make([]string, 0, 16)
+	if m.org_id != nil {
+		fields = append(fields, enrollmenttoken.FieldOrgID)
+	}
+	if m.token_hash != nil {
+		fields = append(fields, enrollmenttoken.FieldTokenHash)
+	}
+	if m.role != nil {
+		fields = append(fields, enrollmenttoken.FieldRole)
+	}
+	if m.group != nil {
+		fields = append(fields, enrollmenttoken.FieldGatewayGroupID)
+	}
+	if m.gateway != nil {
+		fields = append(fields, enrollmenttoken.FieldGatewayID)
+	}
+	if m.connector != nil {
+		fields = append(fields, enrollmenttoken.FieldConnectorID)
+	}
+	if m.labels != nil {
+		fields = append(fields, enrollmenttoken.FieldLabels)
+	}
+	if m.ephemeral != nil {
+		fields = append(fields, enrollmenttoken.FieldEphemeral)
+	}
+	if m.max_uses != nil {
+		fields = append(fields, enrollmenttoken.FieldMaxUses)
+	}
+	if m.use_count != nil {
+		fields = append(fields, enrollmenttoken.FieldUseCount)
+	}
+	if m.expires_at != nil {
+		fields = append(fields, enrollmenttoken.FieldExpiresAt)
+	}
+	if m.created_by != nil {
+		fields = append(fields, enrollmenttoken.FieldCreatedBy)
+	}
+	if m.created_at != nil {
+		fields = append(fields, enrollmenttoken.FieldCreatedAt)
+	}
+	if m.last_used_at != nil {
+		fields = append(fields, enrollmenttoken.FieldLastUsedAt)
+	}
+	if m.last_used_ip != nil {
+		fields = append(fields, enrollmenttoken.FieldLastUsedIP)
+	}
+	if m.revoked_at != nil {
+		fields = append(fields, enrollmenttoken.FieldRevokedAt)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *EnrollmentTokenMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case enrollmenttoken.FieldOrgID:
+		return m.OrgID()
+	case enrollmenttoken.FieldTokenHash:
+		return m.TokenHash()
+	case enrollmenttoken.FieldRole:
+		return m.Role()
+	case enrollmenttoken.FieldGatewayGroupID:
+		return m.GatewayGroupID()
+	case enrollmenttoken.FieldGatewayID:
+		return m.GatewayID()
+	case enrollmenttoken.FieldConnectorID:
+		return m.ConnectorID()
+	case enrollmenttoken.FieldLabels:
+		return m.Labels()
+	case enrollmenttoken.FieldEphemeral:
+		return m.Ephemeral()
+	case enrollmenttoken.FieldMaxUses:
+		return m.MaxUses()
+	case enrollmenttoken.FieldUseCount:
+		return m.UseCount()
+	case enrollmenttoken.FieldExpiresAt:
+		return m.ExpiresAt()
+	case enrollmenttoken.FieldCreatedBy:
+		return m.CreatedBy()
+	case enrollmenttoken.FieldCreatedAt:
+		return m.CreatedAt()
+	case enrollmenttoken.FieldLastUsedAt:
+		return m.LastUsedAt()
+	case enrollmenttoken.FieldLastUsedIP:
+		return m.LastUsedIP()
+	case enrollmenttoken.FieldRevokedAt:
+		return m.RevokedAt()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *EnrollmentTokenMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case enrollmenttoken.FieldOrgID:
+		return m.OldOrgID(ctx)
+	case enrollmenttoken.FieldTokenHash:
+		return m.OldTokenHash(ctx)
+	case enrollmenttoken.FieldRole:
+		return m.OldRole(ctx)
+	case enrollmenttoken.FieldGatewayGroupID:
+		return m.OldGatewayGroupID(ctx)
+	case enrollmenttoken.FieldGatewayID:
+		return m.OldGatewayID(ctx)
+	case enrollmenttoken.FieldConnectorID:
+		return m.OldConnectorID(ctx)
+	case enrollmenttoken.FieldLabels:
+		return m.OldLabels(ctx)
+	case enrollmenttoken.FieldEphemeral:
+		return m.OldEphemeral(ctx)
+	case enrollmenttoken.FieldMaxUses:
+		return m.OldMaxUses(ctx)
+	case enrollmenttoken.FieldUseCount:
+		return m.OldUseCount(ctx)
+	case enrollmenttoken.FieldExpiresAt:
+		return m.OldExpiresAt(ctx)
+	case enrollmenttoken.FieldCreatedBy:
+		return m.OldCreatedBy(ctx)
+	case enrollmenttoken.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	case enrollmenttoken.FieldLastUsedAt:
+		return m.OldLastUsedAt(ctx)
+	case enrollmenttoken.FieldLastUsedIP:
+		return m.OldLastUsedIP(ctx)
+	case enrollmenttoken.FieldRevokedAt:
+		return m.OldRevokedAt(ctx)
+	}
+	return nil, fmt.Errorf("unknown EnrollmentToken field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *EnrollmentTokenMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case enrollmenttoken.FieldOrgID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetOrgID(v)
+		return nil
+	case enrollmenttoken.FieldTokenHash:
+		v, ok := value.([]byte)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetTokenHash(v)
+		return nil
+	case enrollmenttoken.FieldRole:
+		v, ok := value.(enrollmenttoken.Role)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRole(v)
+		return nil
+	case enrollmenttoken.FieldGatewayGroupID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetGatewayGroupID(v)
+		return nil
+	case enrollmenttoken.FieldGatewayID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetGatewayID(v)
+		return nil
+	case enrollmenttoken.FieldConnectorID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetConnectorID(v)
+		return nil
+	case enrollmenttoken.FieldLabels:
+		v, ok := value.(map[string]string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetLabels(v)
+		return nil
+	case enrollmenttoken.FieldEphemeral:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetEphemeral(v)
+		return nil
+	case enrollmenttoken.FieldMaxUses:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetMaxUses(v)
+		return nil
+	case enrollmenttoken.FieldUseCount:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUseCount(v)
+		return nil
+	case enrollmenttoken.FieldExpiresAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetExpiresAt(v)
+		return nil
+	case enrollmenttoken.FieldCreatedBy:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedBy(v)
+		return nil
+	case enrollmenttoken.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	case enrollmenttoken.FieldLastUsedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetLastUsedAt(v)
+		return nil
+	case enrollmenttoken.FieldLastUsedIP:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetLastUsedIP(v)
+		return nil
+	case enrollmenttoken.FieldRevokedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRevokedAt(v)
+		return nil
+	}
+	return fmt.Errorf("unknown EnrollmentToken field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *EnrollmentTokenMutation) AddedFields() []string {
+	var fields []string
+	if m.addmax_uses != nil {
+		fields = append(fields, enrollmenttoken.FieldMaxUses)
+	}
+	if m.adduse_count != nil {
+		fields = append(fields, enrollmenttoken.FieldUseCount)
+	}
+	return fields
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *EnrollmentTokenMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case enrollmenttoken.FieldMaxUses:
+		return m.AddedMaxUses()
+	case enrollmenttoken.FieldUseCount:
+		return m.AddedUseCount()
+	}
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *EnrollmentTokenMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	case enrollmenttoken.FieldMaxUses:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddMaxUses(v)
+		return nil
+	case enrollmenttoken.FieldUseCount:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddUseCount(v)
+		return nil
+	}
+	return fmt.Errorf("unknown EnrollmentToken numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *EnrollmentTokenMutation) ClearedFields() []string {
+	var fields []string
+	if m.FieldCleared(enrollmenttoken.FieldGatewayGroupID) {
+		fields = append(fields, enrollmenttoken.FieldGatewayGroupID)
+	}
+	if m.FieldCleared(enrollmenttoken.FieldGatewayID) {
+		fields = append(fields, enrollmenttoken.FieldGatewayID)
+	}
+	if m.FieldCleared(enrollmenttoken.FieldConnectorID) {
+		fields = append(fields, enrollmenttoken.FieldConnectorID)
+	}
+	if m.FieldCleared(enrollmenttoken.FieldLabels) {
+		fields = append(fields, enrollmenttoken.FieldLabels)
+	}
+	if m.FieldCleared(enrollmenttoken.FieldLastUsedAt) {
+		fields = append(fields, enrollmenttoken.FieldLastUsedAt)
+	}
+	if m.FieldCleared(enrollmenttoken.FieldLastUsedIP) {
+		fields = append(fields, enrollmenttoken.FieldLastUsedIP)
+	}
+	if m.FieldCleared(enrollmenttoken.FieldRevokedAt) {
+		fields = append(fields, enrollmenttoken.FieldRevokedAt)
+	}
+	return fields
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *EnrollmentTokenMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *EnrollmentTokenMutation) ClearField(name string) error {
+	switch name {
+	case enrollmenttoken.FieldGatewayGroupID:
+		m.ClearGatewayGroupID()
+		return nil
+	case enrollmenttoken.FieldGatewayID:
+		m.ClearGatewayID()
+		return nil
+	case enrollmenttoken.FieldConnectorID:
+		m.ClearConnectorID()
+		return nil
+	case enrollmenttoken.FieldLabels:
+		m.ClearLabels()
+		return nil
+	case enrollmenttoken.FieldLastUsedAt:
+		m.ClearLastUsedAt()
+		return nil
+	case enrollmenttoken.FieldLastUsedIP:
+		m.ClearLastUsedIP()
+		return nil
+	case enrollmenttoken.FieldRevokedAt:
+		m.ClearRevokedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown EnrollmentToken nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *EnrollmentTokenMutation) ResetField(name string) error {
+	switch name {
+	case enrollmenttoken.FieldOrgID:
+		m.ResetOrgID()
+		return nil
+	case enrollmenttoken.FieldTokenHash:
+		m.ResetTokenHash()
+		return nil
+	case enrollmenttoken.FieldRole:
+		m.ResetRole()
+		return nil
+	case enrollmenttoken.FieldGatewayGroupID:
+		m.ResetGatewayGroupID()
+		return nil
+	case enrollmenttoken.FieldGatewayID:
+		m.ResetGatewayID()
+		return nil
+	case enrollmenttoken.FieldConnectorID:
+		m.ResetConnectorID()
+		return nil
+	case enrollmenttoken.FieldLabels:
+		m.ResetLabels()
+		return nil
+	case enrollmenttoken.FieldEphemeral:
+		m.ResetEphemeral()
+		return nil
+	case enrollmenttoken.FieldMaxUses:
+		m.ResetMaxUses()
+		return nil
+	case enrollmenttoken.FieldUseCount:
+		m.ResetUseCount()
+		return nil
+	case enrollmenttoken.FieldExpiresAt:
+		m.ResetExpiresAt()
+		return nil
+	case enrollmenttoken.FieldCreatedBy:
+		m.ResetCreatedBy()
+		return nil
+	case enrollmenttoken.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	case enrollmenttoken.FieldLastUsedAt:
+		m.ResetLastUsedAt()
+		return nil
+	case enrollmenttoken.FieldLastUsedIP:
+		m.ResetLastUsedIP()
+		return nil
+	case enrollmenttoken.FieldRevokedAt:
+		m.ResetRevokedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown EnrollmentToken field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *EnrollmentTokenMutation) AddedEdges() []string {
+	edges := make([]string, 0, 3)
+	if m.group != nil {
+		edges = append(edges, enrollmenttoken.EdgeGroup)
+	}
+	if m.gateway != nil {
+		edges = append(edges, enrollmenttoken.EdgeGateway)
+	}
+	if m.connector != nil {
+		edges = append(edges, enrollmenttoken.EdgeConnector)
+	}
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *EnrollmentTokenMutation) AddedIDs(name string) []ent.Value {
+	switch name {
+	case enrollmenttoken.EdgeGroup:
+		if id := m.group; id != nil {
+			return []ent.Value{*id}
+		}
+	case enrollmenttoken.EdgeGateway:
+		if id := m.gateway; id != nil {
+			return []ent.Value{*id}
+		}
+	case enrollmenttoken.EdgeConnector:
+		if id := m.connector; id != nil {
+			return []ent.Value{*id}
+		}
+	}
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *EnrollmentTokenMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 3)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *EnrollmentTokenMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *EnrollmentTokenMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 3)
+	if m.clearedgroup {
+		edges = append(edges, enrollmenttoken.EdgeGroup)
+	}
+	if m.clearedgateway {
+		edges = append(edges, enrollmenttoken.EdgeGateway)
+	}
+	if m.clearedconnector {
+		edges = append(edges, enrollmenttoken.EdgeConnector)
+	}
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *EnrollmentTokenMutation) EdgeCleared(name string) bool {
+	switch name {
+	case enrollmenttoken.EdgeGroup:
+		return m.clearedgroup
+	case enrollmenttoken.EdgeGateway:
+		return m.clearedgateway
+	case enrollmenttoken.EdgeConnector:
+		return m.clearedconnector
+	}
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *EnrollmentTokenMutation) ClearEdge(name string) error {
+	switch name {
+	case enrollmenttoken.EdgeGroup:
+		m.ClearGroup()
+		return nil
+	case enrollmenttoken.EdgeGateway:
+		m.ClearGateway()
+		return nil
+	case enrollmenttoken.EdgeConnector:
+		m.ClearConnector()
+		return nil
+	}
+	return fmt.Errorf("unknown EnrollmentToken unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *EnrollmentTokenMutation) ResetEdge(name string) error {
+	switch name {
+	case enrollmenttoken.EdgeGroup:
+		m.ResetGroup()
+		return nil
+	case enrollmenttoken.EdgeGateway:
+		m.ResetGateway()
+		return nil
+	case enrollmenttoken.EdgeConnector:
+		m.ResetConnector()
+		return nil
+	}
+	return fmt.Errorf("unknown EnrollmentToken edge %s", name)
+}
+
+// GatewayMutation represents an operation that mutates the Gateway nodes in the graph.
+type GatewayMutation struct {
+	config
+	op                     Op
+	typ                    string
+	id                     *string
+	org_id                 *string
+	name                   *string
+	slot                   *int
+	addslot                *int
+	tunnel_endpoints       *[]string
+	appendtunnel_endpoints []string
+	spiffe_id              *string
+	pubkey_sha256          *string
+	enabled                *bool
+	desired_version        *string
+	created_at             *time.Time
+	decommissioned_at      *time.Time
+	clearedFields          map[string]struct{}
+	group                  *string
+	clearedgroup           bool
+	done                   bool
+	oldValue               func(context.Context) (*Gateway, error)
+	predicates             []predicate.Gateway
+}
+
+var _ ent.Mutation = (*GatewayMutation)(nil)
+
+// gatewayOption allows management of the mutation configuration using functional options.
+type gatewayOption func(*GatewayMutation)
+
+// newGatewayMutation creates new mutation for the Gateway entity.
+func newGatewayMutation(c config, op Op, opts ...gatewayOption) *GatewayMutation {
+	m := &GatewayMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeGateway,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withGatewayID sets the ID field of the mutation.
+func withGatewayID(id string) gatewayOption {
+	return func(m *GatewayMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *Gateway
+		)
+		m.oldValue = func(ctx context.Context) (*Gateway, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().Gateway.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withGateway sets the old Gateway of the mutation.
+func withGateway(node *Gateway) gatewayOption {
+	return func(m *GatewayMutation) {
+		m.oldValue = func(context.Context) (*Gateway, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m GatewayMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m GatewayMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// SetID sets the value of the id field. Note that this
+// operation is only accepted on creation of Gateway entities.
+func (m *GatewayMutation) SetID(id string) {
+	m.id = &id
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *GatewayMutation) ID() (id string, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *GatewayMutation) IDs(ctx context.Context) ([]string, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []string{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().Gateway.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetOrgID sets the "org_id" field.
+func (m *GatewayMutation) SetOrgID(s string) {
+	m.org_id = &s
+}
+
+// OrgID returns the value of the "org_id" field in the mutation.
+func (m *GatewayMutation) OrgID() (r string, exists bool) {
+	v := m.org_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldOrgID returns the old "org_id" field's value of the Gateway entity.
+// If the Gateway object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GatewayMutation) OldOrgID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldOrgID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldOrgID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldOrgID: %w", err)
+	}
+	return oldValue.OrgID, nil
+}
+
+// ResetOrgID resets all changes to the "org_id" field.
+func (m *GatewayMutation) ResetOrgID() {
+	m.org_id = nil
+}
+
+// SetGatewayGroupID sets the "gateway_group_id" field.
+func (m *GatewayMutation) SetGatewayGroupID(s string) {
+	m.group = &s
+}
+
+// GatewayGroupID returns the value of the "gateway_group_id" field in the mutation.
+func (m *GatewayMutation) GatewayGroupID() (r string, exists bool) {
+	v := m.group
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldGatewayGroupID returns the old "gateway_group_id" field's value of the Gateway entity.
+// If the Gateway object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GatewayMutation) OldGatewayGroupID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldGatewayGroupID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldGatewayGroupID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldGatewayGroupID: %w", err)
+	}
+	return oldValue.GatewayGroupID, nil
+}
+
+// ResetGatewayGroupID resets all changes to the "gateway_group_id" field.
+func (m *GatewayMutation) ResetGatewayGroupID() {
+	m.group = nil
+}
+
+// SetName sets the "name" field.
+func (m *GatewayMutation) SetName(s string) {
+	m.name = &s
+}
+
+// Name returns the value of the "name" field in the mutation.
+func (m *GatewayMutation) Name() (r string, exists bool) {
+	v := m.name
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldName returns the old "name" field's value of the Gateway entity.
+// If the Gateway object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GatewayMutation) OldName(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldName is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldName requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldName: %w", err)
+	}
+	return oldValue.Name, nil
+}
+
+// ResetName resets all changes to the "name" field.
+func (m *GatewayMutation) ResetName() {
+	m.name = nil
+}
+
+// SetSlot sets the "slot" field.
+func (m *GatewayMutation) SetSlot(i int) {
+	m.slot = &i
+	m.addslot = nil
+}
+
+// Slot returns the value of the "slot" field in the mutation.
+func (m *GatewayMutation) Slot() (r int, exists bool) {
+	v := m.slot
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSlot returns the old "slot" field's value of the Gateway entity.
+// If the Gateway object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GatewayMutation) OldSlot(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSlot is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSlot requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSlot: %w", err)
+	}
+	return oldValue.Slot, nil
+}
+
+// AddSlot adds i to the "slot" field.
+func (m *GatewayMutation) AddSlot(i int) {
+	if m.addslot != nil {
+		*m.addslot += i
+	} else {
+		m.addslot = &i
+	}
+}
+
+// AddedSlot returns the value that was added to the "slot" field in this mutation.
+func (m *GatewayMutation) AddedSlot() (r int, exists bool) {
+	v := m.addslot
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetSlot resets all changes to the "slot" field.
+func (m *GatewayMutation) ResetSlot() {
+	m.slot = nil
+	m.addslot = nil
+}
+
+// SetTunnelEndpoints sets the "tunnel_endpoints" field.
+func (m *GatewayMutation) SetTunnelEndpoints(s []string) {
+	m.tunnel_endpoints = &s
+	m.appendtunnel_endpoints = nil
+}
+
+// TunnelEndpoints returns the value of the "tunnel_endpoints" field in the mutation.
+func (m *GatewayMutation) TunnelEndpoints() (r []string, exists bool) {
+	v := m.tunnel_endpoints
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldTunnelEndpoints returns the old "tunnel_endpoints" field's value of the Gateway entity.
+// If the Gateway object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GatewayMutation) OldTunnelEndpoints(ctx context.Context) (v []string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldTunnelEndpoints is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldTunnelEndpoints requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldTunnelEndpoints: %w", err)
+	}
+	return oldValue.TunnelEndpoints, nil
+}
+
+// AppendTunnelEndpoints adds s to the "tunnel_endpoints" field.
+func (m *GatewayMutation) AppendTunnelEndpoints(s []string) {
+	m.appendtunnel_endpoints = append(m.appendtunnel_endpoints, s...)
+}
+
+// AppendedTunnelEndpoints returns the list of values that were appended to the "tunnel_endpoints" field in this mutation.
+func (m *GatewayMutation) AppendedTunnelEndpoints() ([]string, bool) {
+	if len(m.appendtunnel_endpoints) == 0 {
+		return nil, false
+	}
+	return m.appendtunnel_endpoints, true
+}
+
+// ResetTunnelEndpoints resets all changes to the "tunnel_endpoints" field.
+func (m *GatewayMutation) ResetTunnelEndpoints() {
+	m.tunnel_endpoints = nil
+	m.appendtunnel_endpoints = nil
+}
+
+// SetSpiffeID sets the "spiffe_id" field.
+func (m *GatewayMutation) SetSpiffeID(s string) {
+	m.spiffe_id = &s
+}
+
+// SpiffeID returns the value of the "spiffe_id" field in the mutation.
+func (m *GatewayMutation) SpiffeID() (r string, exists bool) {
+	v := m.spiffe_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSpiffeID returns the old "spiffe_id" field's value of the Gateway entity.
+// If the Gateway object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GatewayMutation) OldSpiffeID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSpiffeID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSpiffeID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSpiffeID: %w", err)
+	}
+	return oldValue.SpiffeID, nil
+}
+
+// ClearSpiffeID clears the value of the "spiffe_id" field.
+func (m *GatewayMutation) ClearSpiffeID() {
+	m.spiffe_id = nil
+	m.clearedFields[gateway.FieldSpiffeID] = struct{}{}
+}
+
+// SpiffeIDCleared returns if the "spiffe_id" field was cleared in this mutation.
+func (m *GatewayMutation) SpiffeIDCleared() bool {
+	_, ok := m.clearedFields[gateway.FieldSpiffeID]
+	return ok
+}
+
+// ResetSpiffeID resets all changes to the "spiffe_id" field.
+func (m *GatewayMutation) ResetSpiffeID() {
+	m.spiffe_id = nil
+	delete(m.clearedFields, gateway.FieldSpiffeID)
+}
+
+// SetPubkeySha256 sets the "pubkey_sha256" field.
+func (m *GatewayMutation) SetPubkeySha256(s string) {
+	m.pubkey_sha256 = &s
+}
+
+// PubkeySha256 returns the value of the "pubkey_sha256" field in the mutation.
+func (m *GatewayMutation) PubkeySha256() (r string, exists bool) {
+	v := m.pubkey_sha256
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldPubkeySha256 returns the old "pubkey_sha256" field's value of the Gateway entity.
+// If the Gateway object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GatewayMutation) OldPubkeySha256(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPubkeySha256 is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPubkeySha256 requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPubkeySha256: %w", err)
+	}
+	return oldValue.PubkeySha256, nil
+}
+
+// ClearPubkeySha256 clears the value of the "pubkey_sha256" field.
+func (m *GatewayMutation) ClearPubkeySha256() {
+	m.pubkey_sha256 = nil
+	m.clearedFields[gateway.FieldPubkeySha256] = struct{}{}
+}
+
+// PubkeySha256Cleared returns if the "pubkey_sha256" field was cleared in this mutation.
+func (m *GatewayMutation) PubkeySha256Cleared() bool {
+	_, ok := m.clearedFields[gateway.FieldPubkeySha256]
+	return ok
+}
+
+// ResetPubkeySha256 resets all changes to the "pubkey_sha256" field.
+func (m *GatewayMutation) ResetPubkeySha256() {
+	m.pubkey_sha256 = nil
+	delete(m.clearedFields, gateway.FieldPubkeySha256)
+}
+
+// SetEnabled sets the "enabled" field.
+func (m *GatewayMutation) SetEnabled(b bool) {
+	m.enabled = &b
+}
+
+// Enabled returns the value of the "enabled" field in the mutation.
+func (m *GatewayMutation) Enabled() (r bool, exists bool) {
+	v := m.enabled
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldEnabled returns the old "enabled" field's value of the Gateway entity.
+// If the Gateway object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GatewayMutation) OldEnabled(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldEnabled is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldEnabled requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldEnabled: %w", err)
+	}
+	return oldValue.Enabled, nil
+}
+
+// ResetEnabled resets all changes to the "enabled" field.
+func (m *GatewayMutation) ResetEnabled() {
+	m.enabled = nil
+}
+
+// SetDesiredVersion sets the "desired_version" field.
+func (m *GatewayMutation) SetDesiredVersion(s string) {
+	m.desired_version = &s
+}
+
+// DesiredVersion returns the value of the "desired_version" field in the mutation.
+func (m *GatewayMutation) DesiredVersion() (r string, exists bool) {
+	v := m.desired_version
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldDesiredVersion returns the old "desired_version" field's value of the Gateway entity.
+// If the Gateway object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GatewayMutation) OldDesiredVersion(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDesiredVersion is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDesiredVersion requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDesiredVersion: %w", err)
+	}
+	return oldValue.DesiredVersion, nil
+}
+
+// ClearDesiredVersion clears the value of the "desired_version" field.
+func (m *GatewayMutation) ClearDesiredVersion() {
+	m.desired_version = nil
+	m.clearedFields[gateway.FieldDesiredVersion] = struct{}{}
+}
+
+// DesiredVersionCleared returns if the "desired_version" field was cleared in this mutation.
+func (m *GatewayMutation) DesiredVersionCleared() bool {
+	_, ok := m.clearedFields[gateway.FieldDesiredVersion]
+	return ok
+}
+
+// ResetDesiredVersion resets all changes to the "desired_version" field.
+func (m *GatewayMutation) ResetDesiredVersion() {
+	m.desired_version = nil
+	delete(m.clearedFields, gateway.FieldDesiredVersion)
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *GatewayMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *GatewayMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the Gateway entity.
+// If the Gateway object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GatewayMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *GatewayMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// SetDecommissionedAt sets the "decommissioned_at" field.
+func (m *GatewayMutation) SetDecommissionedAt(t time.Time) {
+	m.decommissioned_at = &t
+}
+
+// DecommissionedAt returns the value of the "decommissioned_at" field in the mutation.
+func (m *GatewayMutation) DecommissionedAt() (r time.Time, exists bool) {
+	v := m.decommissioned_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldDecommissionedAt returns the old "decommissioned_at" field's value of the Gateway entity.
+// If the Gateway object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GatewayMutation) OldDecommissionedAt(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDecommissionedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDecommissionedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDecommissionedAt: %w", err)
+	}
+	return oldValue.DecommissionedAt, nil
+}
+
+// ClearDecommissionedAt clears the value of the "decommissioned_at" field.
+func (m *GatewayMutation) ClearDecommissionedAt() {
+	m.decommissioned_at = nil
+	m.clearedFields[gateway.FieldDecommissionedAt] = struct{}{}
+}
+
+// DecommissionedAtCleared returns if the "decommissioned_at" field was cleared in this mutation.
+func (m *GatewayMutation) DecommissionedAtCleared() bool {
+	_, ok := m.clearedFields[gateway.FieldDecommissionedAt]
+	return ok
+}
+
+// ResetDecommissionedAt resets all changes to the "decommissioned_at" field.
+func (m *GatewayMutation) ResetDecommissionedAt() {
+	m.decommissioned_at = nil
+	delete(m.clearedFields, gateway.FieldDecommissionedAt)
+}
+
+// SetGroupID sets the "group" edge to the GatewayGroup entity by id.
+func (m *GatewayMutation) SetGroupID(id string) {
+	m.group = &id
+}
+
+// ClearGroup clears the "group" edge to the GatewayGroup entity.
+func (m *GatewayMutation) ClearGroup() {
+	m.clearedgroup = true
+	m.clearedFields[gateway.FieldGatewayGroupID] = struct{}{}
+}
+
+// GroupCleared reports if the "group" edge to the GatewayGroup entity was cleared.
+func (m *GatewayMutation) GroupCleared() bool {
+	return m.clearedgroup
+}
+
+// GroupID returns the "group" edge ID in the mutation.
+func (m *GatewayMutation) GroupID() (id string, exists bool) {
+	if m.group != nil {
+		return *m.group, true
+	}
+	return
+}
+
+// GroupIDs returns the "group" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// GroupID instead. It exists only for internal usage by the builders.
+func (m *GatewayMutation) GroupIDs() (ids []string) {
+	if id := m.group; id != nil {
+		ids = append(ids, *id)
+	}
+	return
+}
+
+// ResetGroup resets all changes to the "group" edge.
+func (m *GatewayMutation) ResetGroup() {
+	m.group = nil
+	m.clearedgroup = false
+}
+
+// Where appends a list predicates to the GatewayMutation builder.
+func (m *GatewayMutation) Where(ps ...predicate.Gateway) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the GatewayMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *GatewayMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.Gateway, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *GatewayMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *GatewayMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (Gateway).
+func (m *GatewayMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *GatewayMutation) Fields() []string {
+	fields := make([]string, 0, 11)
+	if m.org_id != nil {
+		fields = append(fields, gateway.FieldOrgID)
+	}
+	if m.group != nil {
+		fields = append(fields, gateway.FieldGatewayGroupID)
+	}
+	if m.name != nil {
+		fields = append(fields, gateway.FieldName)
+	}
+	if m.slot != nil {
+		fields = append(fields, gateway.FieldSlot)
+	}
+	if m.tunnel_endpoints != nil {
+		fields = append(fields, gateway.FieldTunnelEndpoints)
+	}
+	if m.spiffe_id != nil {
+		fields = append(fields, gateway.FieldSpiffeID)
+	}
+	if m.pubkey_sha256 != nil {
+		fields = append(fields, gateway.FieldPubkeySha256)
+	}
+	if m.enabled != nil {
+		fields = append(fields, gateway.FieldEnabled)
+	}
+	if m.desired_version != nil {
+		fields = append(fields, gateway.FieldDesiredVersion)
+	}
+	if m.created_at != nil {
+		fields = append(fields, gateway.FieldCreatedAt)
+	}
+	if m.decommissioned_at != nil {
+		fields = append(fields, gateway.FieldDecommissionedAt)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *GatewayMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case gateway.FieldOrgID:
+		return m.OrgID()
+	case gateway.FieldGatewayGroupID:
+		return m.GatewayGroupID()
+	case gateway.FieldName:
+		return m.Name()
+	case gateway.FieldSlot:
+		return m.Slot()
+	case gateway.FieldTunnelEndpoints:
+		return m.TunnelEndpoints()
+	case gateway.FieldSpiffeID:
+		return m.SpiffeID()
+	case gateway.FieldPubkeySha256:
+		return m.PubkeySha256()
+	case gateway.FieldEnabled:
+		return m.Enabled()
+	case gateway.FieldDesiredVersion:
+		return m.DesiredVersion()
+	case gateway.FieldCreatedAt:
+		return m.CreatedAt()
+	case gateway.FieldDecommissionedAt:
+		return m.DecommissionedAt()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *GatewayMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case gateway.FieldOrgID:
+		return m.OldOrgID(ctx)
+	case gateway.FieldGatewayGroupID:
+		return m.OldGatewayGroupID(ctx)
+	case gateway.FieldName:
+		return m.OldName(ctx)
+	case gateway.FieldSlot:
+		return m.OldSlot(ctx)
+	case gateway.FieldTunnelEndpoints:
+		return m.OldTunnelEndpoints(ctx)
+	case gateway.FieldSpiffeID:
+		return m.OldSpiffeID(ctx)
+	case gateway.FieldPubkeySha256:
+		return m.OldPubkeySha256(ctx)
+	case gateway.FieldEnabled:
+		return m.OldEnabled(ctx)
+	case gateway.FieldDesiredVersion:
+		return m.OldDesiredVersion(ctx)
+	case gateway.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	case gateway.FieldDecommissionedAt:
+		return m.OldDecommissionedAt(ctx)
+	}
+	return nil, fmt.Errorf("unknown Gateway field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *GatewayMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case gateway.FieldOrgID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetOrgID(v)
+		return nil
+	case gateway.FieldGatewayGroupID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetGatewayGroupID(v)
+		return nil
+	case gateway.FieldName:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetName(v)
+		return nil
+	case gateway.FieldSlot:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSlot(v)
+		return nil
+	case gateway.FieldTunnelEndpoints:
+		v, ok := value.([]string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetTunnelEndpoints(v)
+		return nil
+	case gateway.FieldSpiffeID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSpiffeID(v)
+		return nil
+	case gateway.FieldPubkeySha256:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetPubkeySha256(v)
+		return nil
+	case gateway.FieldEnabled:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetEnabled(v)
+		return nil
+	case gateway.FieldDesiredVersion:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetDesiredVersion(v)
+		return nil
+	case gateway.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	case gateway.FieldDecommissionedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetDecommissionedAt(v)
+		return nil
+	}
+	return fmt.Errorf("unknown Gateway field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *GatewayMutation) AddedFields() []string {
+	var fields []string
+	if m.addslot != nil {
+		fields = append(fields, gateway.FieldSlot)
+	}
+	return fields
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *GatewayMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case gateway.FieldSlot:
+		return m.AddedSlot()
+	}
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *GatewayMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	case gateway.FieldSlot:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddSlot(v)
+		return nil
+	}
+	return fmt.Errorf("unknown Gateway numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *GatewayMutation) ClearedFields() []string {
+	var fields []string
+	if m.FieldCleared(gateway.FieldSpiffeID) {
+		fields = append(fields, gateway.FieldSpiffeID)
+	}
+	if m.FieldCleared(gateway.FieldPubkeySha256) {
+		fields = append(fields, gateway.FieldPubkeySha256)
+	}
+	if m.FieldCleared(gateway.FieldDesiredVersion) {
+		fields = append(fields, gateway.FieldDesiredVersion)
+	}
+	if m.FieldCleared(gateway.FieldDecommissionedAt) {
+		fields = append(fields, gateway.FieldDecommissionedAt)
+	}
+	return fields
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *GatewayMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *GatewayMutation) ClearField(name string) error {
+	switch name {
+	case gateway.FieldSpiffeID:
+		m.ClearSpiffeID()
+		return nil
+	case gateway.FieldPubkeySha256:
+		m.ClearPubkeySha256()
+		return nil
+	case gateway.FieldDesiredVersion:
+		m.ClearDesiredVersion()
+		return nil
+	case gateway.FieldDecommissionedAt:
+		m.ClearDecommissionedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown Gateway nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *GatewayMutation) ResetField(name string) error {
+	switch name {
+	case gateway.FieldOrgID:
+		m.ResetOrgID()
+		return nil
+	case gateway.FieldGatewayGroupID:
+		m.ResetGatewayGroupID()
+		return nil
+	case gateway.FieldName:
+		m.ResetName()
+		return nil
+	case gateway.FieldSlot:
+		m.ResetSlot()
+		return nil
+	case gateway.FieldTunnelEndpoints:
+		m.ResetTunnelEndpoints()
+		return nil
+	case gateway.FieldSpiffeID:
+		m.ResetSpiffeID()
+		return nil
+	case gateway.FieldPubkeySha256:
+		m.ResetPubkeySha256()
+		return nil
+	case gateway.FieldEnabled:
+		m.ResetEnabled()
+		return nil
+	case gateway.FieldDesiredVersion:
+		m.ResetDesiredVersion()
+		return nil
+	case gateway.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	case gateway.FieldDecommissionedAt:
+		m.ResetDecommissionedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown Gateway field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *GatewayMutation) AddedEdges() []string {
+	edges := make([]string, 0, 1)
+	if m.group != nil {
+		edges = append(edges, gateway.EdgeGroup)
+	}
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *GatewayMutation) AddedIDs(name string) []ent.Value {
+	switch name {
+	case gateway.EdgeGroup:
+		if id := m.group; id != nil {
+			return []ent.Value{*id}
+		}
+	}
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *GatewayMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 1)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *GatewayMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *GatewayMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 1)
+	if m.clearedgroup {
+		edges = append(edges, gateway.EdgeGroup)
+	}
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *GatewayMutation) EdgeCleared(name string) bool {
+	switch name {
+	case gateway.EdgeGroup:
+		return m.clearedgroup
+	}
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *GatewayMutation) ClearEdge(name string) error {
+	switch name {
+	case gateway.EdgeGroup:
+		m.ClearGroup()
+		return nil
+	}
+	return fmt.Errorf("unknown Gateway unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *GatewayMutation) ResetEdge(name string) error {
+	switch name {
+	case gateway.EdgeGroup:
+		m.ResetGroup()
+		return nil
+	}
+	return fmt.Errorf("unknown Gateway edge %s", name)
+}
+
 // GatewayGroupMutation represents an operation that mutates the GatewayGroup nodes in the graph.
 type GatewayGroupMutation struct {
 	config
-	op            Op
-	typ           string
-	id            *string
-	org_id        *string
-	name          *string
-	clearedFields map[string]struct{}
-	done          bool
-	oldValue      func(context.Context) (*GatewayGroup, error)
-	predicates    []predicate.GatewayGroup
+	op                        Op
+	typ                       string
+	id                        *string
+	org_id                    *string
+	name                      *string
+	region                    *string
+	public_hostnames          *[]string
+	appendpublic_hostnames    []string
+	trusted_proxy_cidrs       *[]string
+	appendtrusted_proxy_cidrs []string
+	clearedFields             map[string]struct{}
+	done                      bool
+	oldValue                  func(context.Context) (*GatewayGroup, error)
+	predicates                []predicate.GatewayGroup
 }
 
 var _ ent.Mutation = (*GatewayGroupMutation)(nil)
@@ -3602,6 +7140,185 @@ func (m *GatewayGroupMutation) ResetName() {
 	m.name = nil
 }
 
+// SetRegion sets the "region" field.
+func (m *GatewayGroupMutation) SetRegion(s string) {
+	m.region = &s
+}
+
+// Region returns the value of the "region" field in the mutation.
+func (m *GatewayGroupMutation) Region() (r string, exists bool) {
+	v := m.region
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRegion returns the old "region" field's value of the GatewayGroup entity.
+// If the GatewayGroup object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GatewayGroupMutation) OldRegion(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRegion is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRegion requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRegion: %w", err)
+	}
+	return oldValue.Region, nil
+}
+
+// ClearRegion clears the value of the "region" field.
+func (m *GatewayGroupMutation) ClearRegion() {
+	m.region = nil
+	m.clearedFields[gatewaygroup.FieldRegion] = struct{}{}
+}
+
+// RegionCleared returns if the "region" field was cleared in this mutation.
+func (m *GatewayGroupMutation) RegionCleared() bool {
+	_, ok := m.clearedFields[gatewaygroup.FieldRegion]
+	return ok
+}
+
+// ResetRegion resets all changes to the "region" field.
+func (m *GatewayGroupMutation) ResetRegion() {
+	m.region = nil
+	delete(m.clearedFields, gatewaygroup.FieldRegion)
+}
+
+// SetPublicHostnames sets the "public_hostnames" field.
+func (m *GatewayGroupMutation) SetPublicHostnames(s []string) {
+	m.public_hostnames = &s
+	m.appendpublic_hostnames = nil
+}
+
+// PublicHostnames returns the value of the "public_hostnames" field in the mutation.
+func (m *GatewayGroupMutation) PublicHostnames() (r []string, exists bool) {
+	v := m.public_hostnames
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldPublicHostnames returns the old "public_hostnames" field's value of the GatewayGroup entity.
+// If the GatewayGroup object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GatewayGroupMutation) OldPublicHostnames(ctx context.Context) (v []string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPublicHostnames is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPublicHostnames requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPublicHostnames: %w", err)
+	}
+	return oldValue.PublicHostnames, nil
+}
+
+// AppendPublicHostnames adds s to the "public_hostnames" field.
+func (m *GatewayGroupMutation) AppendPublicHostnames(s []string) {
+	m.appendpublic_hostnames = append(m.appendpublic_hostnames, s...)
+}
+
+// AppendedPublicHostnames returns the list of values that were appended to the "public_hostnames" field in this mutation.
+func (m *GatewayGroupMutation) AppendedPublicHostnames() ([]string, bool) {
+	if len(m.appendpublic_hostnames) == 0 {
+		return nil, false
+	}
+	return m.appendpublic_hostnames, true
+}
+
+// ClearPublicHostnames clears the value of the "public_hostnames" field.
+func (m *GatewayGroupMutation) ClearPublicHostnames() {
+	m.public_hostnames = nil
+	m.appendpublic_hostnames = nil
+	m.clearedFields[gatewaygroup.FieldPublicHostnames] = struct{}{}
+}
+
+// PublicHostnamesCleared returns if the "public_hostnames" field was cleared in this mutation.
+func (m *GatewayGroupMutation) PublicHostnamesCleared() bool {
+	_, ok := m.clearedFields[gatewaygroup.FieldPublicHostnames]
+	return ok
+}
+
+// ResetPublicHostnames resets all changes to the "public_hostnames" field.
+func (m *GatewayGroupMutation) ResetPublicHostnames() {
+	m.public_hostnames = nil
+	m.appendpublic_hostnames = nil
+	delete(m.clearedFields, gatewaygroup.FieldPublicHostnames)
+}
+
+// SetTrustedProxyCidrs sets the "trusted_proxy_cidrs" field.
+func (m *GatewayGroupMutation) SetTrustedProxyCidrs(s []string) {
+	m.trusted_proxy_cidrs = &s
+	m.appendtrusted_proxy_cidrs = nil
+}
+
+// TrustedProxyCidrs returns the value of the "trusted_proxy_cidrs" field in the mutation.
+func (m *GatewayGroupMutation) TrustedProxyCidrs() (r []string, exists bool) {
+	v := m.trusted_proxy_cidrs
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldTrustedProxyCidrs returns the old "trusted_proxy_cidrs" field's value of the GatewayGroup entity.
+// If the GatewayGroup object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GatewayGroupMutation) OldTrustedProxyCidrs(ctx context.Context) (v []string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldTrustedProxyCidrs is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldTrustedProxyCidrs requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldTrustedProxyCidrs: %w", err)
+	}
+	return oldValue.TrustedProxyCidrs, nil
+}
+
+// AppendTrustedProxyCidrs adds s to the "trusted_proxy_cidrs" field.
+func (m *GatewayGroupMutation) AppendTrustedProxyCidrs(s []string) {
+	m.appendtrusted_proxy_cidrs = append(m.appendtrusted_proxy_cidrs, s...)
+}
+
+// AppendedTrustedProxyCidrs returns the list of values that were appended to the "trusted_proxy_cidrs" field in this mutation.
+func (m *GatewayGroupMutation) AppendedTrustedProxyCidrs() ([]string, bool) {
+	if len(m.appendtrusted_proxy_cidrs) == 0 {
+		return nil, false
+	}
+	return m.appendtrusted_proxy_cidrs, true
+}
+
+// ClearTrustedProxyCidrs clears the value of the "trusted_proxy_cidrs" field.
+func (m *GatewayGroupMutation) ClearTrustedProxyCidrs() {
+	m.trusted_proxy_cidrs = nil
+	m.appendtrusted_proxy_cidrs = nil
+	m.clearedFields[gatewaygroup.FieldTrustedProxyCidrs] = struct{}{}
+}
+
+// TrustedProxyCidrsCleared returns if the "trusted_proxy_cidrs" field was cleared in this mutation.
+func (m *GatewayGroupMutation) TrustedProxyCidrsCleared() bool {
+	_, ok := m.clearedFields[gatewaygroup.FieldTrustedProxyCidrs]
+	return ok
+}
+
+// ResetTrustedProxyCidrs resets all changes to the "trusted_proxy_cidrs" field.
+func (m *GatewayGroupMutation) ResetTrustedProxyCidrs() {
+	m.trusted_proxy_cidrs = nil
+	m.appendtrusted_proxy_cidrs = nil
+	delete(m.clearedFields, gatewaygroup.FieldTrustedProxyCidrs)
+}
+
 // Where appends a list predicates to the GatewayGroupMutation builder.
 func (m *GatewayGroupMutation) Where(ps ...predicate.GatewayGroup) {
 	m.predicates = append(m.predicates, ps...)
@@ -3636,12 +7353,21 @@ func (m *GatewayGroupMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *GatewayGroupMutation) Fields() []string {
-	fields := make([]string, 0, 2)
+	fields := make([]string, 0, 5)
 	if m.org_id != nil {
 		fields = append(fields, gatewaygroup.FieldOrgID)
 	}
 	if m.name != nil {
 		fields = append(fields, gatewaygroup.FieldName)
+	}
+	if m.region != nil {
+		fields = append(fields, gatewaygroup.FieldRegion)
+	}
+	if m.public_hostnames != nil {
+		fields = append(fields, gatewaygroup.FieldPublicHostnames)
+	}
+	if m.trusted_proxy_cidrs != nil {
+		fields = append(fields, gatewaygroup.FieldTrustedProxyCidrs)
 	}
 	return fields
 }
@@ -3655,6 +7381,12 @@ func (m *GatewayGroupMutation) Field(name string) (ent.Value, bool) {
 		return m.OrgID()
 	case gatewaygroup.FieldName:
 		return m.Name()
+	case gatewaygroup.FieldRegion:
+		return m.Region()
+	case gatewaygroup.FieldPublicHostnames:
+		return m.PublicHostnames()
+	case gatewaygroup.FieldTrustedProxyCidrs:
+		return m.TrustedProxyCidrs()
 	}
 	return nil, false
 }
@@ -3668,6 +7400,12 @@ func (m *GatewayGroupMutation) OldField(ctx context.Context, name string) (ent.V
 		return m.OldOrgID(ctx)
 	case gatewaygroup.FieldName:
 		return m.OldName(ctx)
+	case gatewaygroup.FieldRegion:
+		return m.OldRegion(ctx)
+	case gatewaygroup.FieldPublicHostnames:
+		return m.OldPublicHostnames(ctx)
+	case gatewaygroup.FieldTrustedProxyCidrs:
+		return m.OldTrustedProxyCidrs(ctx)
 	}
 	return nil, fmt.Errorf("unknown GatewayGroup field %s", name)
 }
@@ -3690,6 +7428,27 @@ func (m *GatewayGroupMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetName(v)
+		return nil
+	case gatewaygroup.FieldRegion:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRegion(v)
+		return nil
+	case gatewaygroup.FieldPublicHostnames:
+		v, ok := value.([]string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetPublicHostnames(v)
+		return nil
+	case gatewaygroup.FieldTrustedProxyCidrs:
+		v, ok := value.([]string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetTrustedProxyCidrs(v)
 		return nil
 	}
 	return fmt.Errorf("unknown GatewayGroup field %s", name)
@@ -3720,7 +7479,17 @@ func (m *GatewayGroupMutation) AddField(name string, value ent.Value) error {
 // ClearedFields returns all nullable fields that were cleared during this
 // mutation.
 func (m *GatewayGroupMutation) ClearedFields() []string {
-	return nil
+	var fields []string
+	if m.FieldCleared(gatewaygroup.FieldRegion) {
+		fields = append(fields, gatewaygroup.FieldRegion)
+	}
+	if m.FieldCleared(gatewaygroup.FieldPublicHostnames) {
+		fields = append(fields, gatewaygroup.FieldPublicHostnames)
+	}
+	if m.FieldCleared(gatewaygroup.FieldTrustedProxyCidrs) {
+		fields = append(fields, gatewaygroup.FieldTrustedProxyCidrs)
+	}
+	return fields
 }
 
 // FieldCleared returns a boolean indicating if a field with the given name was
@@ -3733,6 +7502,17 @@ func (m *GatewayGroupMutation) FieldCleared(name string) bool {
 // ClearField clears the value of the field with the given name. It returns an
 // error if the field is not defined in the schema.
 func (m *GatewayGroupMutation) ClearField(name string) error {
+	switch name {
+	case gatewaygroup.FieldRegion:
+		m.ClearRegion()
+		return nil
+	case gatewaygroup.FieldPublicHostnames:
+		m.ClearPublicHostnames()
+		return nil
+	case gatewaygroup.FieldTrustedProxyCidrs:
+		m.ClearTrustedProxyCidrs()
+		return nil
+	}
 	return fmt.Errorf("unknown GatewayGroup nullable field %s", name)
 }
 
@@ -3745,6 +7525,15 @@ func (m *GatewayGroupMutation) ResetField(name string) error {
 		return nil
 	case gatewaygroup.FieldName:
 		m.ResetName()
+		return nil
+	case gatewaygroup.FieldRegion:
+		m.ResetRegion()
+		return nil
+	case gatewaygroup.FieldPublicHostnames:
+		m.ResetPublicHostnames()
+		return nil
+	case gatewaygroup.FieldTrustedProxyCidrs:
+		m.ResetTrustedProxyCidrs()
 		return nil
 	}
 	return fmt.Errorf("unknown GatewayGroup field %s", name)

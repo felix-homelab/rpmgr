@@ -3,6 +3,7 @@
 package ent
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -19,8 +20,14 @@ type GatewayGroup struct {
 	// OrgID holds the value of the "org_id" field.
 	OrgID string `json:"org_id,omitempty"`
 	// Name holds the value of the "name" field.
-	Name         string `json:"name,omitempty"`
-	selectValues sql.SelectValues
+	Name string `json:"name,omitempty"`
+	// Region holds the value of the "region" field.
+	Region string `json:"region,omitempty"`
+	// PublicHostnames holds the value of the "public_hostnames" field.
+	PublicHostnames []string `json:"public_hostnames,omitempty"`
+	// TrustedProxyCidrs holds the value of the "trusted_proxy_cidrs" field.
+	TrustedProxyCidrs []string `json:"trusted_proxy_cidrs,omitempty"`
+	selectValues      sql.SelectValues
 }
 
 // scanValues returns the types for scanning values from sql.Rows.
@@ -28,7 +35,9 @@ func (*GatewayGroup) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case gatewaygroup.FieldID, gatewaygroup.FieldOrgID, gatewaygroup.FieldName:
+		case gatewaygroup.FieldPublicHostnames, gatewaygroup.FieldTrustedProxyCidrs:
+			values[i] = new([]byte)
+		case gatewaygroup.FieldID, gatewaygroup.FieldOrgID, gatewaygroup.FieldName, gatewaygroup.FieldRegion:
 			values[i] = new(sql.NullString)
 		default:
 			values[i] = new(sql.UnknownType)
@@ -62,6 +71,28 @@ func (_m *GatewayGroup) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field name", values[i])
 			} else if value.Valid {
 				_m.Name = value.String
+			}
+		case gatewaygroup.FieldRegion:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field region", values[i])
+			} else if value.Valid {
+				_m.Region = value.String
+			}
+		case gatewaygroup.FieldPublicHostnames:
+			if value, ok := values[i].(*[]byte); !ok {
+				return fmt.Errorf("unexpected type %T for field public_hostnames", values[i])
+			} else if value != nil && len(*value) > 0 {
+				if err := json.Unmarshal(*value, &_m.PublicHostnames); err != nil {
+					return fmt.Errorf("unmarshal field public_hostnames: %w", err)
+				}
+			}
+		case gatewaygroup.FieldTrustedProxyCidrs:
+			if value, ok := values[i].(*[]byte); !ok {
+				return fmt.Errorf("unexpected type %T for field trusted_proxy_cidrs", values[i])
+			} else if value != nil && len(*value) > 0 {
+				if err := json.Unmarshal(*value, &_m.TrustedProxyCidrs); err != nil {
+					return fmt.Errorf("unmarshal field trusted_proxy_cidrs: %w", err)
+				}
 			}
 		default:
 			_m.selectValues.Set(columns[i], values[i])
@@ -104,6 +135,15 @@ func (_m *GatewayGroup) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("name=")
 	builder.WriteString(_m.Name)
+	builder.WriteString(", ")
+	builder.WriteString("region=")
+	builder.WriteString(_m.Region)
+	builder.WriteString(", ")
+	builder.WriteString("public_hostnames=")
+	builder.WriteString(fmt.Sprintf("%v", _m.PublicHostnames))
+	builder.WriteString(", ")
+	builder.WriteString("trusted_proxy_cidrs=")
+	builder.WriteString(fmt.Sprintf("%v", _m.TrustedProxyCidrs))
 	builder.WriteByte(')')
 	return builder.String()
 }

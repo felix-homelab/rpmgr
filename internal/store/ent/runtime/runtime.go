@@ -11,6 +11,9 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/cakey"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/configrevision"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/configseq"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/connector"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/enrollmenttoken"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/gateway"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/gatewaygroup"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/instance"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/instancesetting"
@@ -233,6 +236,245 @@ func init() {
 	configseqDescID := configseqFields[0].Descriptor()
 	// configseq.IDValidator is a validator for the "id" field. It is called by the builders before save.
 	configseq.IDValidator = configseqDescID.Validators[0].(func(int) error)
+	connectorMixin := schema.Connector{}.Mixin()
+	connector.Policy = privacy.NewPolicies(connectorMixin[0], schema.Connector{})
+	connector.Hooks[0] = func(next ent.Mutator) ent.Mutator {
+		return ent.MutateFunc(func(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+			if err := connector.Policy.EvalMutation(ctx, m); err != nil {
+				return nil, err
+			}
+			return next.Mutate(ctx, m)
+		})
+	}
+	connectorMixinHooks0 := connectorMixin[0].Hooks()
+
+	connector.Hooks[1] = connectorMixinHooks0[0]
+	connectorMixinInters0 := connectorMixin[0].Interceptors()
+	connector.Interceptors[0] = connectorMixinInters0[0]
+	connectorMixinFields0 := connectorMixin[0].Fields()
+	_ = connectorMixinFields0
+	connectorFields := schema.Connector{}.Fields()
+	_ = connectorFields
+	// connectorDescOrgID is the schema descriptor for org_id field.
+	connectorDescOrgID := connectorMixinFields0[0].Descriptor()
+	// connector.OrgIDValidator is a validator for the "org_id" field. It is called by the builders before save.
+	connector.OrgIDValidator = connectorDescOrgID.Validators[0].(func(string) error)
+	// connectorDescName is the schema descriptor for name field.
+	connectorDescName := connectorFields[1].Descriptor()
+	// connector.NameValidator is a validator for the "name" field. It is called by the builders before save.
+	connector.NameValidator = func() func(string) error {
+		validators := connectorDescName.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(name string) error {
+			for _, fn := range fns {
+				if err := fn(name); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// connectorDescSpiffeID is the schema descriptor for spiffe_id field.
+	connectorDescSpiffeID := connectorFields[3].Descriptor()
+	// connector.SpiffeIDValidator is a validator for the "spiffe_id" field. It is called by the builders before save.
+	connector.SpiffeIDValidator = connectorDescSpiffeID.Validators[0].(func(string) error)
+	// connectorDescPubkeySha256 is the schema descriptor for pubkey_sha256 field.
+	connectorDescPubkeySha256 := connectorFields[4].Descriptor()
+	// connector.PubkeySha256Validator is a validator for the "pubkey_sha256" field. It is called by the builders before save.
+	connector.PubkeySha256Validator = connectorDescPubkeySha256.Validators[0].(func(string) error)
+	// connectorDescEphemeral is the schema descriptor for ephemeral field.
+	connectorDescEphemeral := connectorFields[5].Descriptor()
+	// connector.DefaultEphemeral holds the default value on creation for the ephemeral field.
+	connector.DefaultEphemeral = connectorDescEphemeral.Default.(bool)
+	// connectorDescEnabled is the schema descriptor for enabled field.
+	connectorDescEnabled := connectorFields[6].Descriptor()
+	// connector.DefaultEnabled holds the default value on creation for the enabled field.
+	connector.DefaultEnabled = connectorDescEnabled.Default.(bool)
+	// connectorDescCreatedAt is the schema descriptor for created_at field.
+	connectorDescCreatedAt := connectorFields[9].Descriptor()
+	// connector.DefaultCreatedAt holds the default value on creation for the created_at field.
+	connector.DefaultCreatedAt = connectorDescCreatedAt.Default.(func() time.Time)
+	// connectorDescID is the schema descriptor for id field.
+	connectorDescID := connectorFields[0].Descriptor()
+	// connector.DefaultID holds the default value on creation for the id field.
+	connector.DefaultID = connectorDescID.Default.(func() string)
+	// connector.IDValidator is a validator for the "id" field. It is called by the builders before save.
+	connector.IDValidator = func() func(string) error {
+		validators := connectorDescID.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(id string) error {
+			for _, fn := range fns {
+				if err := fn(id); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	enrollmenttokenMixin := schema.EnrollmentToken{}.Mixin()
+	enrollmenttoken.Policy = privacy.NewPolicies(enrollmenttokenMixin[0], schema.EnrollmentToken{})
+	enrollmenttoken.Hooks[0] = func(next ent.Mutator) ent.Mutator {
+		return ent.MutateFunc(func(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+			if err := enrollmenttoken.Policy.EvalMutation(ctx, m); err != nil {
+				return nil, err
+			}
+			return next.Mutate(ctx, m)
+		})
+	}
+	enrollmenttokenMixinHooks0 := enrollmenttokenMixin[0].Hooks()
+	enrollmenttokenHooks := schema.EnrollmentToken{}.Hooks()
+
+	enrollmenttoken.Hooks[1] = enrollmenttokenMixinHooks0[0]
+
+	enrollmenttoken.Hooks[2] = enrollmenttokenHooks[0]
+	enrollmenttokenMixinInters0 := enrollmenttokenMixin[0].Interceptors()
+	enrollmenttoken.Interceptors[0] = enrollmenttokenMixinInters0[0]
+	enrollmenttokenMixinFields0 := enrollmenttokenMixin[0].Fields()
+	_ = enrollmenttokenMixinFields0
+	enrollmenttokenFields := schema.EnrollmentToken{}.Fields()
+	_ = enrollmenttokenFields
+	// enrollmenttokenDescOrgID is the schema descriptor for org_id field.
+	enrollmenttokenDescOrgID := enrollmenttokenMixinFields0[0].Descriptor()
+	// enrollmenttoken.OrgIDValidator is a validator for the "org_id" field. It is called by the builders before save.
+	enrollmenttoken.OrgIDValidator = enrollmenttokenDescOrgID.Validators[0].(func(string) error)
+	// enrollmenttokenDescTokenHash is the schema descriptor for token_hash field.
+	enrollmenttokenDescTokenHash := enrollmenttokenFields[1].Descriptor()
+	// enrollmenttoken.TokenHashValidator is a validator for the "token_hash" field. It is called by the builders before save.
+	enrollmenttoken.TokenHashValidator = enrollmenttokenDescTokenHash.Validators[0].(func([]byte) error)
+	// enrollmenttokenDescEphemeral is the schema descriptor for ephemeral field.
+	enrollmenttokenDescEphemeral := enrollmenttokenFields[7].Descriptor()
+	// enrollmenttoken.DefaultEphemeral holds the default value on creation for the ephemeral field.
+	enrollmenttoken.DefaultEphemeral = enrollmenttokenDescEphemeral.Default.(bool)
+	// enrollmenttokenDescMaxUses is the schema descriptor for max_uses field.
+	enrollmenttokenDescMaxUses := enrollmenttokenFields[8].Descriptor()
+	// enrollmenttoken.DefaultMaxUses holds the default value on creation for the max_uses field.
+	enrollmenttoken.DefaultMaxUses = enrollmenttokenDescMaxUses.Default.(int)
+	// enrollmenttoken.MaxUsesValidator is a validator for the "max_uses" field. It is called by the builders before save.
+	enrollmenttoken.MaxUsesValidator = enrollmenttokenDescMaxUses.Validators[0].(func(int) error)
+	// enrollmenttokenDescUseCount is the schema descriptor for use_count field.
+	enrollmenttokenDescUseCount := enrollmenttokenFields[9].Descriptor()
+	// enrollmenttoken.DefaultUseCount holds the default value on creation for the use_count field.
+	enrollmenttoken.DefaultUseCount = enrollmenttokenDescUseCount.Default.(int)
+	// enrollmenttoken.UseCountValidator is a validator for the "use_count" field. It is called by the builders before save.
+	enrollmenttoken.UseCountValidator = enrollmenttokenDescUseCount.Validators[0].(func(int) error)
+	// enrollmenttokenDescCreatedBy is the schema descriptor for created_by field.
+	enrollmenttokenDescCreatedBy := enrollmenttokenFields[11].Descriptor()
+	// enrollmenttoken.CreatedByValidator is a validator for the "created_by" field. It is called by the builders before save.
+	enrollmenttoken.CreatedByValidator = enrollmenttokenDescCreatedBy.Validators[0].(func(string) error)
+	// enrollmenttokenDescCreatedAt is the schema descriptor for created_at field.
+	enrollmenttokenDescCreatedAt := enrollmenttokenFields[12].Descriptor()
+	// enrollmenttoken.DefaultCreatedAt holds the default value on creation for the created_at field.
+	enrollmenttoken.DefaultCreatedAt = enrollmenttokenDescCreatedAt.Default.(func() time.Time)
+	// enrollmenttokenDescID is the schema descriptor for id field.
+	enrollmenttokenDescID := enrollmenttokenFields[0].Descriptor()
+	// enrollmenttoken.DefaultID holds the default value on creation for the id field.
+	enrollmenttoken.DefaultID = enrollmenttokenDescID.Default.(func() string)
+	// enrollmenttoken.IDValidator is a validator for the "id" field. It is called by the builders before save.
+	enrollmenttoken.IDValidator = func() func(string) error {
+		validators := enrollmenttokenDescID.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(id string) error {
+			for _, fn := range fns {
+				if err := fn(id); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	gatewayMixin := schema.Gateway{}.Mixin()
+	gateway.Policy = privacy.NewPolicies(gatewayMixin[0], schema.Gateway{})
+	gateway.Hooks[0] = func(next ent.Mutator) ent.Mutator {
+		return ent.MutateFunc(func(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+			if err := gateway.Policy.EvalMutation(ctx, m); err != nil {
+				return nil, err
+			}
+			return next.Mutate(ctx, m)
+		})
+	}
+	gatewayMixinHooks0 := gatewayMixin[0].Hooks()
+	gatewayHooks := schema.Gateway{}.Hooks()
+
+	gateway.Hooks[1] = gatewayMixinHooks0[0]
+
+	gateway.Hooks[2] = gatewayHooks[0]
+	gatewayMixinInters0 := gatewayMixin[0].Interceptors()
+	gateway.Interceptors[0] = gatewayMixinInters0[0]
+	gatewayMixinFields0 := gatewayMixin[0].Fields()
+	_ = gatewayMixinFields0
+	gatewayFields := schema.Gateway{}.Fields()
+	_ = gatewayFields
+	// gatewayDescOrgID is the schema descriptor for org_id field.
+	gatewayDescOrgID := gatewayMixinFields0[0].Descriptor()
+	// gateway.OrgIDValidator is a validator for the "org_id" field. It is called by the builders before save.
+	gateway.OrgIDValidator = gatewayDescOrgID.Validators[0].(func(string) error)
+	// gatewayDescGatewayGroupID is the schema descriptor for gateway_group_id field.
+	gatewayDescGatewayGroupID := gatewayFields[1].Descriptor()
+	// gateway.GatewayGroupIDValidator is a validator for the "gateway_group_id" field. It is called by the builders before save.
+	gateway.GatewayGroupIDValidator = gatewayDescGatewayGroupID.Validators[0].(func(string) error)
+	// gatewayDescName is the schema descriptor for name field.
+	gatewayDescName := gatewayFields[2].Descriptor()
+	// gateway.NameValidator is a validator for the "name" field. It is called by the builders before save.
+	gateway.NameValidator = func() func(string) error {
+		validators := gatewayDescName.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(name string) error {
+			for _, fn := range fns {
+				if err := fn(name); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// gatewayDescSlot is the schema descriptor for slot field.
+	gatewayDescSlot := gatewayFields[3].Descriptor()
+	// gateway.SlotValidator is a validator for the "slot" field. It is called by the builders before save.
+	gateway.SlotValidator = gatewayDescSlot.Validators[0].(func(int) error)
+	// gatewayDescTunnelEndpoints is the schema descriptor for tunnel_endpoints field.
+	gatewayDescTunnelEndpoints := gatewayFields[4].Descriptor()
+	// gateway.TunnelEndpointsValidator is a validator for the "tunnel_endpoints" field. It is called by the builders before save.
+	gateway.TunnelEndpointsValidator = gatewayDescTunnelEndpoints.Validators[0].(func([]string) error)
+	// gatewayDescEnabled is the schema descriptor for enabled field.
+	gatewayDescEnabled := gatewayFields[7].Descriptor()
+	// gateway.DefaultEnabled holds the default value on creation for the enabled field.
+	gateway.DefaultEnabled = gatewayDescEnabled.Default.(bool)
+	// gatewayDescCreatedAt is the schema descriptor for created_at field.
+	gatewayDescCreatedAt := gatewayFields[9].Descriptor()
+	// gateway.DefaultCreatedAt holds the default value on creation for the created_at field.
+	gateway.DefaultCreatedAt = gatewayDescCreatedAt.Default.(func() time.Time)
+	// gatewayDescID is the schema descriptor for id field.
+	gatewayDescID := gatewayFields[0].Descriptor()
+	// gateway.DefaultID holds the default value on creation for the id field.
+	gateway.DefaultID = gatewayDescID.Default.(func() string)
+	// gateway.IDValidator is a validator for the "id" field. It is called by the builders before save.
+	gateway.IDValidator = func() func(string) error {
+		validators := gatewayDescID.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(id string) error {
+			for _, fn := range fns {
+				if err := fn(id); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
 	gatewaygroupMixin := schema.GatewayGroup{}.Mixin()
 	gatewaygroup.Policy = privacy.NewPolicies(gatewaygroupMixin[0], schema.GatewayGroup{})
 	gatewaygroup.Hooks[0] = func(next ent.Mutator) ent.Mutator {
@@ -274,6 +516,14 @@ func init() {
 			return nil
 		}
 	}()
+	// gatewaygroupDescPublicHostnames is the schema descriptor for public_hostnames field.
+	gatewaygroupDescPublicHostnames := gatewaygroupFields[3].Descriptor()
+	// gatewaygroup.PublicHostnamesValidator is a validator for the "public_hostnames" field. It is called by the builders before save.
+	gatewaygroup.PublicHostnamesValidator = gatewaygroupDescPublicHostnames.Validators[0].(func([]string) error)
+	// gatewaygroupDescTrustedProxyCidrs is the schema descriptor for trusted_proxy_cidrs field.
+	gatewaygroupDescTrustedProxyCidrs := gatewaygroupFields[4].Descriptor()
+	// gatewaygroup.TrustedProxyCidrsValidator is a validator for the "trusted_proxy_cidrs" field. It is called by the builders before save.
+	gatewaygroup.TrustedProxyCidrsValidator = gatewaygroupDescTrustedProxyCidrs.Validators[0].(func([]string) error)
 	// gatewaygroupDescID is the schema descriptor for id field.
 	gatewaygroupDescID := gatewaygroupFields[0].Descriptor()
 	// gatewaygroup.DefaultID holds the default value on creation for the id field.
