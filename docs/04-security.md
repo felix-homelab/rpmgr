@@ -108,6 +108,9 @@ What the design does **not** protect against, stated plainly:
   usage. Agents accept a snapshot or deny-list signature only from a key whose certificate chains
   to the pinned root with that URI. The URI is not an identity, so the certificate never
   authenticates a TLS peer.
+- **Signatures.** A signature is ECDSA with SHA-256 over the signed bytes, ASN.1-encoded. It names
+  its key by `key_id`, the lower-case hexadecimal SHA-256 of the key certificate's
+  SubjectPublicKeyInfo, so an agent that holds the current and the next key picks the right one.
 - **No certificate outlives its issuer**: `NotAfter` is capped at the issuer's. Serial numbers are
   128 random bits.
 

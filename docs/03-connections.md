@@ -198,7 +198,7 @@ message Signed { bytes payload = 1; bytes signature = 2; string key_id = 3; }
   agent verifies and persists exactly the signed bytes, so nothing is re-encoded, and a snapshot's
   hash is the SHA-256 of its payload. A snapshot names the agent it was compiled for; an agent
   refuses one for another identity. The signing key's certificate must chain to the pinned root
-  with the config-signing URI ([04](04-security.md#ca-hierarchy)).
+  with the config-signing URI; `key_id` names the key ([04](04-security.md#ca-hierarchy)).
 - **Imperative operations** (Phase 2: live logs and diagnostics; Phase 3: the shell; the field
   number of `Open` is reserved): the controller sends
   `Open{op_id, kind, ticket, deadline}`; the agent opens an `Attach` stream on the **same HTTP/2
@@ -257,8 +257,9 @@ Rules:
    certificate parsing are evaluated against the whole snapshot first.
 2. **Prepare, then swap.** New listeners and handlers are built next to the running ones. The swap
    is one atomic pointer exchange of the route table.
-3. **Unchanged resources are never touched.** Every resource carries a content hash; equal hashes
-   mean the running instance is kept, including its open connections.
+3. **Unchanged resources are never touched.** Every resource carries a content hash, the SHA-256 of
+   its deterministic encoding; equal hashes mean the running instance is kept, including its open
+   connections.
 4. **Acknowledge at the swap, then drain.** `Applied` is sent immediately after the swap. Removed
    resources stop accepting new connections at the swap and keep existing ones for the route drain
    period (see the timeout table) in the background, so draining never delays the acknowledgement.
@@ -303,8 +304,10 @@ Rules:
 - Compilation is a deterministic function of (database at revision, agent identity, agent
   capabilities), read from **one consistent snapshot** (a `REPEATABLE READ` transaction on
   PostgreSQL, an explicit read transaction on SQLite). The compiler reads `config_seq` inside that
-  same transaction and labels the snapshot with it. Two controller replicas therefore produce the **same
-  snapshot and hash** for the same agent and revision.
+  same transaction and labels the snapshot with it. Resources are ordered by ID and the snapshot is
+  encoded deterministically, so two controller replicas produce the **same snapshot and hash** for
+  the same agent and revision. Each resource kind has its own compiler, which sees the agent's
+  capabilities and leaves out what the agent cannot run.
 - Agents apply a snapshot only if its revision is greater than the last applied one. If several
   arrive while one is being applied, only the newest is applied next ("latest wins").
 - `db_epoch` is a fresh random UUIDv7, generated at initialisation and again on **every** restore
