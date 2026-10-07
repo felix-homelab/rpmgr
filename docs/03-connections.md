@@ -662,7 +662,8 @@ Which transport a connector uses is a setting
 - **Changes are ordinary configuration changes** ([Configuration
   reconciliation](#configuration-reconciliation)): new user connections use the new transport at
   once; connections already open finish on their session; a session no route needs any more is
-  closed after its last stream has ended. Unchanged routes are untouched.
+  closed after its last stream has ended, at the latest after the route drain period. Unchanged
+  routes are untouched.
 - Phase 2 adds `wss` as a fourth value and as the last step of `auto`.
 
 **Reverse HTTP/2** ([ADR-0005](adr/0005-reverse-http2-fallback.md)). The connector dials the
@@ -840,7 +841,7 @@ sequenceDiagram
 | Singleton job lease (controller) | TTL 30 s, renewed every 10 s; another replica tries to take it every 5 s | A dead replica's jobs move within 30 s; renewals have two chances before expiry ([10](10-operations.md#high-availability)) |
 | Controller admission | 50 new control sessions/s per replica; excess gets `Goodbye{overloaded}` with a `retry_after` drawn from 1–10 s | Restart storms, spread out again |
 | Control session start | `Hello` within 10 s, as the first message only | A connection that sends nothing holds no session |
-| Data session start | `SessionHello` within 10 s of the session control stream, as its first message only | As for control sessions |
+| Data session start | `SessionHello` within 10 s of the session control stream, as its first message only; the connector waits as long for `SessionWelcome` | As for control sessions |
 | Controller drain | `Drain{deadline}` to every session, also to sessions that start later; new sessions while draining get `Goodbye{shutdown}` with a `retry_after` | Agents move to another endpoint before the replica stops |
 | ClientHello peek | 16 KiB within 5 s | Slowloris protection |
 | `StreamOpen` → `StreamResult` | 10 s; upstream dial 5 s | Bounded connection setup |
