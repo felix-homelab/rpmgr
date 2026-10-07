@@ -217,9 +217,8 @@ func (p *pusher) push(id string) {
 	}
 	p.mu.Unlock()
 
-	if !p.s.sendTo(id, epoch, &agentv1.ControllerMessage{Msg: &agentv1.ControllerMessage_Snapshot{Snapshot: signed}}) {
-		return // the session ended or its queue was full; the agent reconnects and asks again
-	}
+	// Record the push before sending it, so that an answer, which may come at once, never finds
+	// agent_state without it. A push that cannot be sent stays pending; the next session pushes.
 	err = store.WriteTx(p.s.sys, p.s.db, func(tx *ent.Tx) error {
 		if err := tx.CompiledSnapshot.Create().SetOrgID(agent.Identity.Org).SetAgentID(id).
 			SetDbEpoch(rev.DBEpoch).SetSeq(rev.Seq).SetHash(hash).SetSizeBytes(len(signed.GetPayload())).
@@ -242,8 +241,10 @@ func (p *pusher) push(id string) {
 		})
 	})
 	if err != nil {
-		p.log.Error("cannot record a sent snapshot", "agent", id, "error", err)
+		p.log.Error("cannot record a snapshot before sending it", "agent", id, "error", err)
 	}
+	// If the session ended or its queue was full, the agent reconnects and asks again.
+	p.s.sendTo(id, epoch, &agentv1.ControllerMessage{Msg: &agentv1.ControllerMessage_Snapshot{Snapshot: signed}})
 }
 
 // checkTimeouts reports snapshots that were not answered within ApplyTimeout, once each; their
