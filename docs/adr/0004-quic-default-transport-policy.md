@@ -54,7 +54,7 @@ congestion control. "QUIC is faster" is therefore a **hypothesis**, not a premis
     route idle timeout. When unread bytes held by streams without read progress for ≥ 30 s exceed
     50 % of the connection window, the receiver resets those streams oldest-first until below the
     threshold;
-  - neither quic-go nor x/net exposes the connection-level send window, so the gateway deprioritises
+  - neither quic-go nor net/http's HTTP/2 exposes the connection-level send window, so the gateway deprioritises
     a session whose stream writers have been blocked for more than 200 ms when choosing where to
     open new streams [V S1];
   - liveness from transport-level PINGs (QUIC keepalive and idle timeout), which are not

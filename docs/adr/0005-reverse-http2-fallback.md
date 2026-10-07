@@ -1,6 +1,6 @@
 # ADR-0005: Reverse HTTP/2 as the TCP transport, not yamux
 
-Status: Accepted (spike S2 and the product owner's decision, 2026-10-06) · Date: 2026-10-06
+Status: Accepted (spike S2, 2026-10-06, and the product owner's decision D40, 2026-10-07) · Date: 2026-10-06
 
 ## Context
 
@@ -170,4 +170,5 @@ server — net/http's in Go 1.27, and x/net's own — resets the request stream 
 its response while the request is still open, so the client-to-service bytes after the service's
 FIN are lost. With the connector's FIN carried in-band, every criterion passes. The rule did not
 foresee that variant; the product owner chose reverse HTTP/2 with the in-band connector FIN over
-the rule's yamux fallback ([14](../14-open-decisions.md)), and the decision above includes it.
+the rule's yamux fallback on 2026-10-07 ([D40](../14-open-decisions.md#engineering)), and the
+decision above includes it.
