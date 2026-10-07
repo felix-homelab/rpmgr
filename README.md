@@ -1,6 +1,7 @@
 # rpmgr — Reverse Proxy Manager
 
-**Status: design. Nothing here is implemented yet.**
+**Status: design. Phase 0 (spikes) is complete; Phase 1 (MVP) is next. Nothing here is implemented
+yet.**
 
 rpmgr publishes services that run on private networks — behind NAT, CGNAT or firewalls — through
 public gateways, and manages them from one control plane. It is built as **one product**: one

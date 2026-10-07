@@ -1,6 +1,6 @@
 # 14 — Open decisions
 
-> Status: design, not implemented. **No decision is open as of 2026-10-06.** Each row records a
+> Status: design, not implemented. **No decision is open as of 2026-10-07.** Each row records a
 > decision that was open, the options, the outcome and where the outcome is written down. A new
 > open question gets the next free number and a recommended default, which the other
 > documents then assume; it is closed by recording its outcome here
