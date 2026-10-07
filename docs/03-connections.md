@@ -153,6 +153,8 @@ message ControllerMessage {
     Drain drain = 4;            // reconnect elsewhere before deadline (controller shutdown)
     Goodbye goodbye = 5;        // superseded | revoked | upgrade_required | shutdown
     DenyListUpdate deny_list = 6; // version + entries; applied unconditionally, never shrinks early
+    AcmeChallenge acme_challenge = 7; // gateways: op_id, add | remove, type, identifier, token,
+                                      // key_authorization; acknowledged with OpResult
   }
 }
 ```
@@ -168,6 +170,13 @@ message ControllerMessage {
 - **Large items** (certificate chains, function bundles) are referenced by content hash inside the
   snapshot and fetched with `FetchResource`, so snapshots stay small and unchanged resources are not
   re-sent.
+- **ACME challenges** (HTTP-01 and TLS-ALPN-01 for route certificates, D41): the controller sends
+  `AcmeChallenge{op_id, add, type, identifier, token, key_authorization}` to **every gateway that
+  serves the name** and lets the CA validate only after each of them acknowledged with
+  `OpResult{op_id}` within the deadline (see the timeout table); otherwise the order fails without a
+  validation request and is retried later. Gateways keep challenges in memory only, never in the
+  snapshot or on disk, and answer the CA from them; `AcmeChallenge{remove}` follows when the
+  authorization is finished ([04](04-security.md#controller-certificates), [S6](spikes/S6.md)).
 - **Revocations travel separately from snapshots.** `DenyListUpdate` carries the full current set
   (deltas above 1 MiB) and is applied unconditionally, merged by union; an entry is removed only
   after the covered certificate's `NotAfter`. An agent that rejects a snapshot still receives every
@@ -725,6 +734,7 @@ sequenceDiagram
 | Route drain | 30 s | Finish in-flight requests |
 | Gateway drain | 60 s | Time for connectors to re-home |
 | Revocation, tightened access policy | immediate | Security beats continuity |
+| ACME challenge push | `OpResult` from every gateway of the name within 10 s | [R] A gateway that cannot answer fails the order before the CA validates, instead of a failed validation counted against the account |
 | Imperative operation | `Open` → `Attach` within 10 s; ticket single-use, valid 30 s; shell idle 30 min | No unbounded waits |
 | P2P | punch window 5 s; retry backoff 30 s → 15 min; also on network change | Don't hammer NATs |
 | Webhook delivery (Phase 2) | 5 s timeout per attempt; retries with backoff | A slow receiver must not hold controller resources ([07](07-api.md#webhooks-phase-2)) |

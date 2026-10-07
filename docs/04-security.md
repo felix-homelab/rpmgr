@@ -182,7 +182,8 @@ later.
   separate port.
 - **Route certificates** ([D17](14-open-decisions.md#tenancy-and-data)): the controller runs ACME
   for route hostnames. For HTTP-01 and TLS-ALPN-01 it pushes each challenge to **every gateway
-  that serves the name** and lets the CA validate only after all of them acknowledged; gateways
+  that serves the name** with the control-session message `AcmeChallenge` and lets the CA validate
+  only after all of them acknowledged ([03](03-connections.md#service-sketch), D41); gateways
   answer from what was pushed and never read the database. Issued certificates go to the same
   gateways. certmagic supports this through the storage hook of its distributed solving
   ([S6](spikes/S6.md)); the run against Let's Encrypt staging is pending [V S6].
