@@ -47,7 +47,7 @@ an opaque blob: no foreign system's configuration is embedded, and every field i
 | `cak_` | CA key | `cab_` | CA bundle |
 | `pwr_` | password reset | `whk_` | webhook |
 | `rel_` | release | `rol_` | rollout |
-| `ost_` | org settings | | |
+| `ost_` | org settings | `ctn_` | controller node |
 
 ## Entities
 
@@ -183,7 +183,7 @@ erDiagram
 | `audit_heads` | chain (org ID or `instance`), seq, hash | The last entry of each audit chain; every append locks and increments it first |
 | `audit_checkpoints` | org_id, seq, head_hash, signature, exported_at, sink | |
 | `leases` | name, holder, fencing_token, expires_at | Singleton jobs in HA, including the DNS job's `dns` lease ([10](10-operations.md#high-availability)) |
-| `controller_nodes` | node_id, internal_address, last_seen_at | HA: where a replica can be reached by the others over controller-to-controller mutual TLS |
+| `controller_nodes` | node_id (`ctn_`), internal_address, last_seen_at | HA: where a replica can be reached by the others over controller-to-controller mutual TLS |
 | `secrets_meta` | table_name, row_id, column, kek_version, created_at | Bookkeeping for KEK rotation |
 
 ## Desired vs observed state
