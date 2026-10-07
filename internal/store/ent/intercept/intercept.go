@@ -12,7 +12,9 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/configseq"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/gatewaygroup"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/instance"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/instancesetting"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/org"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/orgsetting"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/predicate"
 )
 
@@ -180,6 +182,33 @@ func (f TraverseInstance) Traverse(ctx context.Context, q ent.Query) error {
 	return fmt.Errorf("unexpected query type %T. expect *ent.InstanceQuery", q)
 }
 
+// The InstanceSettingFunc type is an adapter to allow the use of ordinary function as a Querier.
+type InstanceSettingFunc func(context.Context, *ent.InstanceSettingQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f InstanceSettingFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.InstanceSettingQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.InstanceSettingQuery", q)
+}
+
+// The TraverseInstanceSetting type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseInstanceSetting func(context.Context, *ent.InstanceSettingQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseInstanceSetting) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseInstanceSetting) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.InstanceSettingQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.InstanceSettingQuery", q)
+}
+
 // The OrgFunc type is an adapter to allow the use of ordinary function as a Querier.
 type OrgFunc func(context.Context, *ent.OrgQuery) (ent.Value, error)
 
@@ -207,6 +236,33 @@ func (f TraverseOrg) Traverse(ctx context.Context, q ent.Query) error {
 	return fmt.Errorf("unexpected query type %T. expect *ent.OrgQuery", q)
 }
 
+// The OrgSettingFunc type is an adapter to allow the use of ordinary function as a Querier.
+type OrgSettingFunc func(context.Context, *ent.OrgSettingQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f OrgSettingFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.OrgSettingQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.OrgSettingQuery", q)
+}
+
+// The TraverseOrgSetting type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseOrgSetting func(context.Context, *ent.OrgSettingQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseOrgSetting) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseOrgSetting) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.OrgSettingQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.OrgSettingQuery", q)
+}
+
 // NewQuery returns the generic Query interface for the given typed query.
 func NewQuery(q ent.Query) (Query, error) {
 	switch q := q.(type) {
@@ -218,8 +274,12 @@ func NewQuery(q ent.Query) (Query, error) {
 		return &query[*ent.GatewayGroupQuery, predicate.GatewayGroup, gatewaygroup.OrderOption]{typ: ent.TypeGatewayGroup, tq: q}, nil
 	case *ent.InstanceQuery:
 		return &query[*ent.InstanceQuery, predicate.Instance, instance.OrderOption]{typ: ent.TypeInstance, tq: q}, nil
+	case *ent.InstanceSettingQuery:
+		return &query[*ent.InstanceSettingQuery, predicate.InstanceSetting, instancesetting.OrderOption]{typ: ent.TypeInstanceSetting, tq: q}, nil
 	case *ent.OrgQuery:
 		return &query[*ent.OrgQuery, predicate.Org, org.OrderOption]{typ: ent.TypeOrg, tq: q}, nil
+	case *ent.OrgSettingQuery:
+		return &query[*ent.OrgSettingQuery, predicate.OrgSetting, orgsetting.OrderOption]{typ: ent.TypeOrgSetting, tq: q}, nil
 	default:
 		return nil, fmt.Errorf("unknown query type %T", q)
 	}

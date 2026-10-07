@@ -207,6 +207,30 @@ func (f InstanceMutationRuleFunc) EvalMutation(ctx context.Context, m ent.Mutati
 	return Denyf("ent/privacy: unexpected mutation type %T, expect *ent.InstanceMutation", m)
 }
 
+// The InstanceSettingQueryRuleFunc type is an adapter to allow the use of ordinary
+// functions as a query rule.
+type InstanceSettingQueryRuleFunc func(context.Context, *ent.InstanceSettingQuery) error
+
+// EvalQuery return f(ctx, q).
+func (f InstanceSettingQueryRuleFunc) EvalQuery(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.InstanceSettingQuery); ok {
+		return f(ctx, q)
+	}
+	return Denyf("ent/privacy: unexpected query type %T, expect *ent.InstanceSettingQuery", q)
+}
+
+// The InstanceSettingMutationRuleFunc type is an adapter to allow the use of ordinary
+// functions as a mutation rule.
+type InstanceSettingMutationRuleFunc func(context.Context, *ent.InstanceSettingMutation) error
+
+// EvalMutation calls f(ctx, m).
+func (f InstanceSettingMutationRuleFunc) EvalMutation(ctx context.Context, m ent.Mutation) error {
+	if m, ok := m.(*ent.InstanceSettingMutation); ok {
+		return f(ctx, m)
+	}
+	return Denyf("ent/privacy: unexpected mutation type %T, expect *ent.InstanceSettingMutation", m)
+}
+
 // The OrgQueryRuleFunc type is an adapter to allow the use of ordinary
 // functions as a query rule.
 type OrgQueryRuleFunc func(context.Context, *ent.OrgQuery) error
@@ -229,6 +253,30 @@ func (f OrgMutationRuleFunc) EvalMutation(ctx context.Context, m ent.Mutation) e
 		return f(ctx, m)
 	}
 	return Denyf("ent/privacy: unexpected mutation type %T, expect *ent.OrgMutation", m)
+}
+
+// The OrgSettingQueryRuleFunc type is an adapter to allow the use of ordinary
+// functions as a query rule.
+type OrgSettingQueryRuleFunc func(context.Context, *ent.OrgSettingQuery) error
+
+// EvalQuery return f(ctx, q).
+func (f OrgSettingQueryRuleFunc) EvalQuery(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.OrgSettingQuery); ok {
+		return f(ctx, q)
+	}
+	return Denyf("ent/privacy: unexpected query type %T, expect *ent.OrgSettingQuery", q)
+}
+
+// The OrgSettingMutationRuleFunc type is an adapter to allow the use of ordinary
+// functions as a mutation rule.
+type OrgSettingMutationRuleFunc func(context.Context, *ent.OrgSettingMutation) error
+
+// EvalMutation calls f(ctx, m).
+func (f OrgSettingMutationRuleFunc) EvalMutation(ctx context.Context, m ent.Mutation) error {
+	if m, ok := m.(*ent.OrgSettingMutation); ok {
+		return f(ctx, m)
+	}
+	return Denyf("ent/privacy: unexpected mutation type %T, expect *ent.OrgSettingMutation", m)
 }
 
 type (
@@ -274,7 +322,11 @@ func queryFilter(q ent.Query) (Filter, error) {
 		return q.Filter(), nil
 	case *ent.InstanceQuery:
 		return q.Filter(), nil
+	case *ent.InstanceSettingQuery:
+		return q.Filter(), nil
 	case *ent.OrgQuery:
+		return q.Filter(), nil
+	case *ent.OrgSettingQuery:
 		return q.Filter(), nil
 	default:
 		return nil, Denyf("ent/privacy: unexpected query type %T for query filter", q)
@@ -291,7 +343,11 @@ func mutationFilter(m ent.Mutation) (Filter, error) {
 		return m.Filter(), nil
 	case *ent.InstanceMutation:
 		return m.Filter(), nil
+	case *ent.InstanceSettingMutation:
+		return m.Filter(), nil
 	case *ent.OrgMutation:
+		return m.Filter(), nil
+	case *ent.OrgSettingMutation:
 		return m.Filter(), nil
 	default:
 		return nil, Denyf("ent/privacy: unexpected mutation type %T for mutation filter", m)

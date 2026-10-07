@@ -57,6 +57,18 @@ func (f InstanceFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, er
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.InstanceMutation", m)
 }
 
+// The InstanceSettingFunc type is an adapter to allow the use of ordinary
+// function as InstanceSetting mutator.
+type InstanceSettingFunc func(context.Context, *ent.InstanceSettingMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f InstanceSettingFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.InstanceSettingMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.InstanceSettingMutation", m)
+}
+
 // The OrgFunc type is an adapter to allow the use of ordinary
 // function as Org mutator.
 type OrgFunc func(context.Context, *ent.OrgMutation) (ent.Value, error)
@@ -67,6 +79,18 @@ func (f OrgFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) 
 		return f(ctx, mv)
 	}
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.OrgMutation", m)
+}
+
+// The OrgSettingFunc type is an adapter to allow the use of ordinary
+// function as OrgSetting mutator.
+type OrgSettingFunc func(context.Context, *ent.OrgSettingMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f OrgSettingFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.OrgSettingMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.OrgSettingMutation", m)
 }
 
 // Condition is a hook condition function.

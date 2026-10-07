@@ -71,6 +71,20 @@ var (
 		Columns:    InstanceColumns,
 		PrimaryKey: []*schema.Column{InstanceColumns[0]},
 	}
+	// InstanceSettingsColumns holds the columns for the "instance_settings" table.
+	InstanceSettingsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt, Increment: true},
+		{Name: "value", Type: field.TypeBytes},
+		{Name: "version", Type: field.TypeInt64},
+		{Name: "updated_by", Type: field.TypeString},
+		{Name: "updated_at", Type: field.TypeTime},
+	}
+	// InstanceSettingsTable holds the schema information for the "instance_settings" table.
+	InstanceSettingsTable = &schema.Table{
+		Name:       "instance_settings",
+		Columns:    InstanceSettingsColumns,
+		PrimaryKey: []*schema.Column{InstanceSettingsColumns[0]},
+	}
 	// OrgsColumns holds the columns for the "orgs" table.
 	OrgsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeString},
@@ -84,13 +98,42 @@ var (
 		Columns:    OrgsColumns,
 		PrimaryKey: []*schema.Column{OrgsColumns[0]},
 	}
+	// OrgSettingsColumns holds the columns for the "org_settings" table.
+	OrgSettingsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeString},
+		{Name: "org_id", Type: field.TypeString},
+		{Name: "value", Type: field.TypeBytes},
+		{Name: "version", Type: field.TypeInt64},
+		{Name: "updated_by", Type: field.TypeString},
+		{Name: "updated_at", Type: field.TypeTime},
+	}
+	// OrgSettingsTable holds the schema information for the "org_settings" table.
+	OrgSettingsTable = &schema.Table{
+		Name:       "org_settings",
+		Columns:    OrgSettingsColumns,
+		PrimaryKey: []*schema.Column{OrgSettingsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "orgsetting_org_id_id",
+				Unique:  true,
+				Columns: []*schema.Column{OrgSettingsColumns[1], OrgSettingsColumns[0]},
+			},
+			{
+				Name:    "orgsetting_org_id",
+				Unique:  true,
+				Columns: []*schema.Column{OrgSettingsColumns[1]},
+			},
+		},
+	}
 	// Tables holds all the tables in the schema.
 	Tables = []*schema.Table{
 		ConfigRevisionsTable,
 		ConfigSeqTable,
 		GatewayGroupsTable,
 		InstanceTable,
+		InstanceSettingsTable,
 		OrgsTable,
+		OrgSettingsTable,
 	}
 )
 
@@ -100,5 +143,11 @@ func init() {
 	}
 	InstanceTable.Annotation = &entsql.Annotation{
 		Table: "instance",
+	}
+	InstanceSettingsTable.Annotation = &entsql.Annotation{
+		Table: "instance_settings",
+	}
+	OrgSettingsTable.Annotation = &entsql.Annotation{
+		Table: "org_settings",
 	}
 }
