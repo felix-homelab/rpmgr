@@ -1,6 +1,9 @@
-# Dependency updates (docs/08-software-stack.md, "Dependency policy"). Go modules, npm and container
-# base images are added when the first code that uses them lands. Tool images used by the scripts
-# in .github/scripts/ are pinned by digest there and updated by hand.
+# Dependency updates (docs/08-software-stack.md, "Dependency policy"). Every ecosystem groups its
+# updates, so each pull-request title stays a short Conventional Commit header that passes
+# check-pr-title.sh (D55): "ci(deps): bump the actions group …", "build(deps): bump the go group …".
+# Dependabot adds the colon after a prefix that ends with ")". npm and container base images are
+# added when the first code that uses them lands. Tool images used by the scripts in
+# .github/scripts/ are pinned by digest there and updated by hand.
 version: 2
 updates:
   - package-ecosystem: github-actions
@@ -13,3 +16,26 @@ updates:
     labels:
       - no-changelog
       - type:improvement
+    groups:
+      actions:
+        patterns: ["*"]
+      actions-sec:
+        applies-to: security-updates
+        patterns: ["*"]
+
+  - package-ecosystem: gomod
+    directory: /
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: build(deps)
+    labels:
+      - no-changelog
+      - type:improvement
+      - area:ops
+    groups:
+      go:
+        patterns: ["*"]
+      go-sec:
+        applies-to: security-updates
+        patterns: ["*"]
