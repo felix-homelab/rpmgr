@@ -176,10 +176,12 @@ later.
   keyed by `(db_epoch, n)` with a periodic full set. Agents apply it unconditionally — an agent that
   rejects a snapshot still receives revocations — and merge it by **union**: an entry is dropped
   only after its own expiry, never because of a version number or a new `db_epoch` after a restore.
-- Agents **persist** the deny-list next to the last-known-good snapshot (signed) and load it before
-  accepting any session, so a gateway restarted while the controller is down still refuses revoked
-  connectors. The control-session `Hello` carries a digest of the agent's list (gateways and
-  connectors both have a control session); on a mismatch the controller resends it. The list is checked in `VerifyConnection`; a change closes affected live
+- Agents **persist** the deny-list next to the last-known-good snapshot, as the signed lists that
+  still contribute an unexpired entry, and load it before accepting any session; a stored list that
+  no longer verifies is dropped and the others are kept. A gateway restarted while the controller
+  is down therefore still refuses revoked connectors. The control-session `Hello` carries a digest
+  of the agent's list (gateways and connectors both have a control session); on a mismatch the
+  controller resends it. The list is checked in `VerifyConnection`; a change closes affected live
   sessions immediately ([03](03-connections.md#service-sketch)).
 - Short lifetimes bound the damage when a deny-list cannot be pushed (controller down).
 - **Revoking** a certificate (by serial) or an identity (every certificate of it, also one issued

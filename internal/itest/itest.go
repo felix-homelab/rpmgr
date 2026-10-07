@@ -157,6 +157,11 @@ func (c *Controller) StartReplica(t testing.TB) (string, *controller.Sessions) {
 	return url, sessions
 }
 
+// Revoker revokes through the first replica.
+func (c *Controller) Revoker() controller.Revoker {
+	return controller.Revoker{Sessions: c.Sessions, Log: c.RevLog}
+}
+
 // Stop stops every replica, as a controller outage does; the database stays.
 func (c *Controller) Stop() {
 	for _, stop := range c.stops {
