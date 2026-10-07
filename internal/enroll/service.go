@@ -97,12 +97,11 @@ func (s *Service) Enroll(ctx context.Context, req *agentv1.EnrollRequest) (*agen
 	if err != nil {
 		return nil, status.Error(codes.Internal, "enrollment failed")
 	}
-	signer := s.CA.ConfigSigner()
 	return &agentv1.EnrollResponse{
 		AgentId:             id.ID,
-		Chain:               [][]byte{cert.Raw, s.CA.Intermediate().Raw},
+		Chain:               s.CA.Chain(cert),
 		TrustBundle:         [][]byte{s.CA.Root().Raw},
-		SigningCertificates: [][]byte{signer.Cert.Raw, s.CA.Intermediate().Raw},
+		SigningCertificates: s.CA.SigningChain(),
 		ControllerEndpoints: s.Endpoints,
 		Ephemeral:           g.Ephemeral,
 	}, nil

@@ -50,9 +50,8 @@ type Sessions struct {
 
 	db      *store.DB
 	ca      *pki.CA
-	signing [][]byte // DER of the config-signing certificates and their intermediates
-	node    string   // this controller node's ID
-	version string   // this controller's version
+	node    string // this controller node's ID
+	version string // this controller's version
 	now     func() time.Time
 	admit   *ratelimit.Limiter
 	sys     context.Context // the audited system scope of the session handlers
@@ -99,13 +98,11 @@ func NewSessions(o SessionsOptions) *Sessions {
 	if o.Logger == nil {
 		o.Logger = slog.New(slog.DiscardHandler)
 	}
-	signer := o.CA.ConfigSigner()
 	s := &Sessions{
 		db: o.DB, ca: o.CA, node: o.Node, version: o.Version, now: o.Now, sys: o.Sys, revlog: o.RevLog,
 		log: o.Logger, every: o.RevisionCheck,
-		signing: [][]byte{signer.Cert.Raw, o.CA.Intermediate().Raw},
-		admit:   ratelimit.New(time.Second/time.Duration(o.Admission), o.Admission, o.Now),
-		active:  map[string]*session{},
+		admit:  ratelimit.New(time.Second/time.Duration(o.Admission), o.Admission, o.Now),
+		active: map[string]*session{},
 	}
 	if o.Compiler != nil {
 		s.push = newPusher(s, o.Compiler, o.RevisionCheck, o.Logger)
@@ -167,7 +164,7 @@ func (s *Sessions) Session(st grpc.BidiStreamingServer[agentv1.AgentMessage, age
 	defer s.remove(sess)
 	welcome := &agentv1.ControllerMessage{Msg: &agentv1.ControllerMessage_Welcome{Welcome: &agentv1.Welcome{
 		SessionEpoch: uint64(epoch), DbEpoch: dbEpoch, ServerTime: timestamppb.New(s.now()), //nolint:gosec // G115: epochs are positive
-		MinAgentVersion: MinAgentVersion(s.version), SigningCertificates: s.signing}}}
+		MinAgentVersion: MinAgentVersion(s.version), SigningCertificates: s.ca.SigningChain()}}}
 	if err := st.Send(welcome); err != nil {
 		return err
 	}
