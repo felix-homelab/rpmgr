@@ -1,0 +1,80 @@
+go version go1.27.1 linux/amd64
+=== RUN   TestReplicaProcess
+    replicas_test.go:68: helper for the multi-process tests
+--- SKIP: TestReplicaProcess (0.00s)
+=== RUN   TestTwoReplicaProcessesNoDuplicateOrders
+    replicas_test.go:249: two processes, 4 names: 4 orders; 7 lock acquisitions waited for the other process
+--- PASS: TestTwoReplicaProcessesNoDuplicateOrders (3.10s)
+=== RUN   TestTwoReplicaProcessesRenewOnce
+    replicas_test.go:308: r.other.test: 2 orders: b(renewal=false), b(renewal=true)
+    replicas_test.go:308: r.managed.test: 2 orders: b(renewal=false), b(renewal=true)
+--- PASS: TestTwoReplicaProcessesRenewOnce (27.05s)
+=== RUN   TestHTTP01AnsweredByGateway
+    s6_test.go:240: HTTP-01: gateway answered 3 validation request(s); 2 challenge update(s) pushed
+--- PASS: TestHTTP01AnsweredByGateway (0.98s)
+=== RUN   TestTLSALPN01AnsweredByGateway
+    s6_test.go:270: TLS-ALPN-01: gateway answered 3 validation handshake(s)
+--- PASS: TestTLSALPN01AnsweredByGateway (1.40s)
+=== RUN   TestWithoutPushValidationFails
+    s6_test.go:291: without push: issuance failed as expected ([nopush.other.test] Obtain: [nopush.other.test] solving challenge: nopush.other.test: [nopush.other.test] authorization failed: HTTP 403 urn:ietf:params:acme:er…)
+--- PASS: TestWithoutPushValidationFails (0.31s)
+=== RUN   TestUnacknowledgedPushFailsBeforeValidation
+--- PASS: TestUnacknowledgedPushFailsBeforeValidation (2.06s)
+=== RUN   TestChallengeReachesEveryGatewayOfTheGroup
+--- PASS: TestChallengeReachesEveryGatewayOfTheGroup (2.19s)
+=== RUN   TestDNS01WildcardViaFakeCloudflare
+    s6_test.go:357: DNS-01: 2 TXT record(s) created and removed at the fake provider
+--- PASS: TestDNS01WildcardViaFakeCloudflare (2.67s)
+=== RUN   TestDNS01WithRejectedTokenFails
+--- PASS: TestDNS01WithRejectedTokenFails (0.08s)
+=== RUN   TestWildcardOutsideManagedZoneRefused
+--- PASS: TestWildcardOutsideManagedZoneRefused (0.02s)
+=== RUN   TestConfigurationChosenPerName
+--- PASS: TestConfigurationChosenPerName (4.25s)
+=== RUN   TestRenewalOfBothKinds
+    s6_test.go:476: renewed: map[*.renew.managed.test:2 renew.managed.test:1 renew.other.test:1]
+--- PASS: TestRenewalOfBothKinds (21.53s)
+PASS
+ok  	github.com/felix-homelab/rpmgr/spikes/s6	66.698s
+?   	github.com/felix-homelab/rpmgr/spikes/s6/cmd/s6run	[no test files]
+?   	github.com/felix-homelab/rpmgr/spikes/s6/internal/cfclient	[no test files]
+?   	github.com/felix-homelab/rpmgr/spikes/s6/internal/controller	[no test files]
+=== RUN   TestIsChallengeKey
+--- PASS: TestIsChallengeKey (0.00s)
+=== RUN   TestSyncStoragePushesBeforeStoringAndRemovesOnDelete
+--- PASS: TestSyncStoragePushesBeforeStoringAndRemovesOnDelete (0.06s)
+=== RUN   TestLocalSessionTimesOutWhenDropped
+--- PASS: TestLocalSessionTimesOutWhenDropped (0.20s)
+PASS
+ok  	github.com/felix-homelab/rpmgr/spikes/s6/internal/controlplane	1.293s
+=== RUN   TestStorageSemantics
+--- PASS: TestStorageSemantics (0.07s)
+=== RUN   TestLockExclusiveAcrossInstances
+--- PASS: TestLockExclusiveAcrossInstances (4.78s)
+=== RUN   TestLeaseExpiresWhenHolderDies
+--- PASS: TestLeaseExpiresWhenHolderDies (1.22s)
+=== RUN   TestLockMutualExclusionUnderContention
+--- PASS: TestLockMutualExclusionUnderContention (1.04s)
+PASS
+ok  	github.com/felix-homelab/rpmgr/spikes/s6/internal/dbstore	8.144s
+=== RUN   TestAppendAndDeleteChallengeRecords
+--- PASS: TestAppendAndDeleteChallengeRecords (0.14s)
+=== RUN   TestAdapterRefusals
+--- PASS: TestAdapterRefusals (0.10s)
+=== RUN   TestBadTokenIsAnAPIError
+--- PASS: TestBadTokenIsAnAPIError (0.01s)
+=== RUN   TestTokenFileMustBePrivate
+--- PASS: TestTokenFileMustBePrivate (0.00s)
+PASS
+ok  	github.com/felix-homelab/rpmgr/spikes/s6/internal/dnsadapter	1.277s
+?   	github.com/felix-homelab/rpmgr/spikes/s6/internal/dnsserver	[no test files]
+?   	github.com/felix-homelab/rpmgr/spikes/s6/internal/fakecf	[no test files]
+=== RUN   TestHTTP01OnlyForPushedChallenge
+--- PASS: TestHTTP01OnlyForPushedChallenge (0.03s)
+=== RUN   TestApplyChallengeRejectsInvalidUpdates
+--- PASS: TestApplyChallengeRejectsInvalidUpdates (0.00s)
+=== RUN   TestTLSALPN01OnlyForPushedChallenge
+--- PASS: TestTLSALPN01OnlyForPushedChallenge (0.03s)
+PASS
+ok  	github.com/felix-homelab/rpmgr/spikes/s6/internal/gateway	1.090s
+?   	github.com/felix-homelab/rpmgr/spikes/s6/internal/pebblehost	[no test files]

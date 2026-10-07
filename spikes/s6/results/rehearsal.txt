@@ -1,0 +1,16 @@
+PASS s6.managed.test: replica b holds a certificate replica a obtained (shared storage, no second order)
+PASS s6.managed.test: forced renewal by replica a yields a new certificate
+     s6.managed.test: challenge dns-01
+PASS *.s6.managed.test: replica b holds a certificate replica a obtained (shared storage, no second order)
+PASS *.s6.managed.test: forced renewal by replica a yields a new certificate
+     *.s6.managed.test: challenge dns-01
+PASS s6.other.test: replica b holds a certificate replica a obtained (shared storage, no second order)
+PASS s6.other.test: forced renewal by replica a yields a new certificate
+     s6.other.test: challenge http-01/tls-alpn-01
+PASS s6.managed.test: exactly one first issuance across both replicas (by ['b'])
+PASS *.s6.managed.test: exactly one first issuance across both replicas (by ['b'])
+PASS s6.other.test: exactly one first issuance across both replicas (by ['b'])
+PASS CA saw 6 orders (want 6: one first issuance and one renewal per name)
+PASS DNS-01 TXT records: created 4, deleted 4, left 0
+PASS gateway answered 6 HTTP-01 and 0 TLS-ALPN-01 validations
+     lock acquisitions that waited for the other replica: 5

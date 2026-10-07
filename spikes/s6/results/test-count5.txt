@@ -1,0 +1,181 @@
+=== RUN   TestReplicaProcess
+    replicas_test.go:68: helper for the multi-process tests
+--- SKIP: TestReplicaProcess (0.00s)
+=== RUN   TestTwoReplicaProcessesNoDuplicateOrders
+    replicas_test.go:249: two processes, 4 names: 4 orders; 7 lock acquisitions waited for the other process
+--- PASS: TestTwoReplicaProcessesNoDuplicateOrders (1.70s)
+=== RUN   TestTwoReplicaProcessesRenewOnce
+    replicas_test.go:308: r.other.test: 2 orders: a(renewal=false), a(renewal=true)
+    replicas_test.go:308: r.managed.test: 2 orders: a(renewal=false), a(renewal=true)
+--- PASS: TestTwoReplicaProcessesRenewOnce (26.54s)
+=== RUN   TestHTTP01AnsweredByGateway
+    s6_test.go:240: HTTP-01: gateway answered 3 validation request(s); 2 challenge update(s) pushed
+--- PASS: TestHTTP01AnsweredByGateway (1.31s)
+=== RUN   TestTLSALPN01AnsweredByGateway
+    s6_test.go:270: TLS-ALPN-01: gateway answered 3 validation handshake(s)
+--- PASS: TestTLSALPN01AnsweredByGateway (0.59s)
+=== RUN   TestWithoutPushValidationFails
+    s6_test.go:291: without push: issuance failed as expected ([nopush.other.test] Obtain: [nopush.other.test] solving challenge: nopush.other.test: [nopush.other.test] authorization failed: HTTP 403 urn:ietf:params:acme:er…)
+--- PASS: TestWithoutPushValidationFails (0.26s)
+=== RUN   TestUnacknowledgedPushFailsBeforeValidation
+--- PASS: TestUnacknowledgedPushFailsBeforeValidation (2.01s)
+=== RUN   TestChallengeReachesEveryGatewayOfTheGroup
+--- PASS: TestChallengeReachesEveryGatewayOfTheGroup (1.73s)
+=== RUN   TestDNS01WildcardViaFakeCloudflare
+    s6_test.go:357: DNS-01: 2 TXT record(s) created and removed at the fake provider
+--- PASS: TestDNS01WildcardViaFakeCloudflare (2.27s)
+=== RUN   TestDNS01WithRejectedTokenFails
+--- PASS: TestDNS01WithRejectedTokenFails (0.01s)
+=== RUN   TestWildcardOutsideManagedZoneRefused
+--- PASS: TestWildcardOutsideManagedZoneRefused (0.00s)
+=== RUN   TestConfigurationChosenPerName
+--- PASS: TestConfigurationChosenPerName (4.59s)
+=== RUN   TestRenewalOfBothKinds
+    s6_test.go:476: renewed: map[*.renew.managed.test:1 renew.managed.test:1 renew.other.test:1]
+--- PASS: TestRenewalOfBothKinds (24.25s)
+=== RUN   TestReplicaProcess
+    replicas_test.go:68: helper for the multi-process tests
+--- SKIP: TestReplicaProcess (0.00s)
+=== RUN   TestTwoReplicaProcessesNoDuplicateOrders
+2026/10/06 14:52:15 [ERROR] key auth HTTP server: accept tcp 127.0.0.1:41177: use of closed network connection
+    replicas_test.go:249: two processes, 4 names: 4 orders; 7 lock acquisitions waited for the other process
+--- PASS: TestTwoReplicaProcessesNoDuplicateOrders (1.56s)
+=== RUN   TestTwoReplicaProcessesRenewOnce
+    replicas_test.go:308: r.other.test: 2 orders: a(renewal=false), a(renewal=true)
+    replicas_test.go:308: r.managed.test: 2 orders: a(renewal=false), a(renewal=true)
+--- PASS: TestTwoReplicaProcessesRenewOnce (27.54s)
+=== RUN   TestHTTP01AnsweredByGateway
+    s6_test.go:240: HTTP-01: gateway answered 3 validation request(s); 2 challenge update(s) pushed
+--- PASS: TestHTTP01AnsweredByGateway (0.80s)
+=== RUN   TestTLSALPN01AnsweredByGateway
+    s6_test.go:270: TLS-ALPN-01: gateway answered 3 validation handshake(s)
+--- PASS: TestTLSALPN01AnsweredByGateway (1.31s)
+=== RUN   TestWithoutPushValidationFails
+    s6_test.go:291: without push: issuance failed as expected ([nopush.other.test] Obtain: [nopush.other.test] solving challenge: nopush.other.test: [nopush.other.test] authorization failed: HTTP 403 urn:ietf:params:acme:er…)
+--- PASS: TestWithoutPushValidationFails (0.26s)
+=== RUN   TestUnacknowledgedPushFailsBeforeValidation
+--- PASS: TestUnacknowledgedPushFailsBeforeValidation (2.01s)
+=== RUN   TestChallengeReachesEveryGatewayOfTheGroup
+--- PASS: TestChallengeReachesEveryGatewayOfTheGroup (2.41s)
+=== RUN   TestDNS01WildcardViaFakeCloudflare
+    s6_test.go:357: DNS-01: 2 TXT record(s) created and removed at the fake provider
+--- PASS: TestDNS01WildcardViaFakeCloudflare (2.00s)
+=== RUN   TestDNS01WithRejectedTokenFails
+--- PASS: TestDNS01WithRejectedTokenFails (0.01s)
+=== RUN   TestWildcardOutsideManagedZoneRefused
+--- PASS: TestWildcardOutsideManagedZoneRefused (0.00s)
+=== RUN   TestConfigurationChosenPerName
+--- PASS: TestConfigurationChosenPerName (4.99s)
+=== RUN   TestRenewalOfBothKinds
+    s6_test.go:476: renewed: map[*.renew.managed.test:1 renew.managed.test:1 renew.other.test:1]
+--- PASS: TestRenewalOfBothKinds (14.53s)
+=== RUN   TestReplicaProcess
+    replicas_test.go:68: helper for the multi-process tests
+--- SKIP: TestReplicaProcess (0.00s)
+=== RUN   TestTwoReplicaProcessesNoDuplicateOrders
+2026/10/06 14:53:14 http: TLS handshake error from 127.0.0.1:51810: read tcp 127.0.0.1:32987->127.0.0.1:51810: read: connection reset by peer
+2026/10/06 14:53:14 http: TLS handshake error from 127.0.0.1:51820: read tcp 127.0.0.1:32987->127.0.0.1:51820: read: connection reset by peer
+    replicas_test.go:249: two processes, 4 names: 4 orders; 7 lock acquisitions waited for the other process
+--- PASS: TestTwoReplicaProcessesNoDuplicateOrders (1.59s)
+=== RUN   TestTwoReplicaProcessesRenewOnce
+    replicas_test.go:308: r.other.test: 2 orders: b(renewal=false), a(renewal=true)
+    replicas_test.go:308: r.managed.test: 2 orders: b(renewal=false), b(renewal=true)
+--- PASS: TestTwoReplicaProcessesRenewOnce (27.04s)
+=== RUN   TestHTTP01AnsweredByGateway
+    s6_test.go:240: HTTP-01: gateway answered 3 validation request(s); 2 challenge update(s) pushed
+--- PASS: TestHTTP01AnsweredByGateway (1.31s)
+=== RUN   TestTLSALPN01AnsweredByGateway
+    s6_test.go:270: TLS-ALPN-01: gateway answered 3 validation handshake(s)
+--- PASS: TestTLSALPN01AnsweredByGateway (0.54s)
+=== RUN   TestWithoutPushValidationFails
+    s6_test.go:291: without push: issuance failed as expected ([nopush.other.test] Obtain: [nopush.other.test] solving challenge: nopush.other.test: [nopush.other.test] authorization failed: HTTP 403 urn:ietf:params:acme:er…)
+--- PASS: TestWithoutPushValidationFails (0.26s)
+=== RUN   TestUnacknowledgedPushFailsBeforeValidation
+--- PASS: TestUnacknowledgedPushFailsBeforeValidation (2.01s)
+=== RUN   TestChallengeReachesEveryGatewayOfTheGroup
+--- PASS: TestChallengeReachesEveryGatewayOfTheGroup (2.03s)
+=== RUN   TestDNS01WildcardViaFakeCloudflare
+    s6_test.go:357: DNS-01: 2 TXT record(s) created and removed at the fake provider
+--- PASS: TestDNS01WildcardViaFakeCloudflare (1.97s)
+=== RUN   TestDNS01WithRejectedTokenFails
+--- PASS: TestDNS01WithRejectedTokenFails (0.02s)
+=== RUN   TestWildcardOutsideManagedZoneRefused
+--- PASS: TestWildcardOutsideManagedZoneRefused (0.00s)
+=== RUN   TestConfigurationChosenPerName
+--- PASS: TestConfigurationChosenPerName (4.71s)
+=== RUN   TestRenewalOfBothKinds
+    s6_test.go:476: renewed: map[*.renew.managed.test:1 renew.managed.test:1 renew.other.test:1]
+--- PASS: TestRenewalOfBothKinds (20.53s)
+=== RUN   TestReplicaProcess
+    replicas_test.go:68: helper for the multi-process tests
+--- SKIP: TestReplicaProcess (0.00s)
+=== RUN   TestTwoReplicaProcessesNoDuplicateOrders
+2026/10/06 14:54:15 [ERROR] key auth HTTP server: accept tcp 127.0.0.1:45947: use of closed network connection
+    replicas_test.go:249: two processes, 4 names: 4 orders; 7 lock acquisitions waited for the other process
+--- PASS: TestTwoReplicaProcessesNoDuplicateOrders (1.67s)
+=== RUN   TestTwoReplicaProcessesRenewOnce
+    replicas_test.go:308: r.other.test: 2 orders: b(renewal=false), a(renewal=true)
+    replicas_test.go:308: r.managed.test: 2 orders: b(renewal=false), a(renewal=true)
+--- PASS: TestTwoReplicaProcessesRenewOnce (27.54s)
+=== RUN   TestHTTP01AnsweredByGateway
+    s6_test.go:240: HTTP-01: gateway answered 3 validation request(s); 2 challenge update(s) pushed
+--- PASS: TestHTTP01AnsweredByGateway (1.27s)
+=== RUN   TestTLSALPN01AnsweredByGateway
+    s6_test.go:270: TLS-ALPN-01: gateway answered 3 validation handshake(s)
+--- PASS: TestTLSALPN01AnsweredByGateway (1.32s)
+=== RUN   TestWithoutPushValidationFails
+    s6_test.go:291: without push: issuance failed as expected ([nopush.other.test] Obtain: [nopush.other.test] solving challenge: nopush.other.test: [nopush.other.test] authorization failed: HTTP 403 urn:ietf:params:acme:er…)
+--- PASS: TestWithoutPushValidationFails (0.27s)
+=== RUN   TestUnacknowledgedPushFailsBeforeValidation
+--- PASS: TestUnacknowledgedPushFailsBeforeValidation (2.02s)
+=== RUN   TestChallengeReachesEveryGatewayOfTheGroup
+--- PASS: TestChallengeReachesEveryGatewayOfTheGroup (1.38s)
+=== RUN   TestDNS01WildcardViaFakeCloudflare
+    s6_test.go:357: DNS-01: 2 TXT record(s) created and removed at the fake provider
+--- PASS: TestDNS01WildcardViaFakeCloudflare (2.55s)
+=== RUN   TestDNS01WithRejectedTokenFails
+--- PASS: TestDNS01WithRejectedTokenFails (0.02s)
+=== RUN   TestWildcardOutsideManagedZoneRefused
+--- PASS: TestWildcardOutsideManagedZoneRefused (0.00s)
+=== RUN   TestConfigurationChosenPerName
+--- PASS: TestConfigurationChosenPerName (4.05s)
+=== RUN   TestRenewalOfBothKinds
+    s6_test.go:476: renewed: map[*.renew.managed.test:1 renew.managed.test:1 renew.other.test:1]
+--- PASS: TestRenewalOfBothKinds (23.41s)
+=== RUN   TestReplicaProcess
+    replicas_test.go:68: helper for the multi-process tests
+--- SKIP: TestReplicaProcess (0.00s)
+=== RUN   TestTwoReplicaProcessesNoDuplicateOrders
+    replicas_test.go:249: two processes, 4 names: 4 orders; 7 lock acquisitions waited for the other process
+--- PASS: TestTwoReplicaProcessesNoDuplicateOrders (1.82s)
+=== RUN   TestTwoReplicaProcessesRenewOnce
+    replicas_test.go:308: r.other.test: 2 orders: a(renewal=false), b(renewal=true)
+    replicas_test.go:308: r.managed.test: 2 orders: a(renewal=false), a(renewal=true)
+--- PASS: TestTwoReplicaProcessesRenewOnce (28.54s)
+=== RUN   TestHTTP01AnsweredByGateway
+    s6_test.go:240: HTTP-01: gateway answered 3 validation request(s); 2 challenge update(s) pushed
+--- PASS: TestHTTP01AnsweredByGateway (1.33s)
+=== RUN   TestTLSALPN01AnsweredByGateway
+    s6_test.go:270: TLS-ALPN-01: gateway answered 3 validation handshake(s)
+--- PASS: TestTLSALPN01AnsweredByGateway (1.29s)
+=== RUN   TestWithoutPushValidationFails
+    s6_test.go:291: without push: issuance failed as expected ([nopush.other.test] Obtain: [nopush.other.test] solving challenge: nopush.other.test: [nopush.other.test] authorization failed: HTTP 403 urn:ietf:params:acme:er…)
+--- PASS: TestWithoutPushValidationFails (0.27s)
+=== RUN   TestUnacknowledgedPushFailsBeforeValidation
+--- PASS: TestUnacknowledgedPushFailsBeforeValidation (2.02s)
+=== RUN   TestChallengeReachesEveryGatewayOfTheGroup
+--- PASS: TestChallengeReachesEveryGatewayOfTheGroup (2.02s)
+=== RUN   TestDNS01WildcardViaFakeCloudflare
+    s6_test.go:357: DNS-01: 2 TXT record(s) created and removed at the fake provider
+--- PASS: TestDNS01WildcardViaFakeCloudflare (1.70s)
+=== RUN   TestDNS01WithRejectedTokenFails
+--- PASS: TestDNS01WithRejectedTokenFails (0.02s)
+=== RUN   TestWildcardOutsideManagedZoneRefused
+--- PASS: TestWildcardOutsideManagedZoneRefused (0.01s)
+=== RUN   TestConfigurationChosenPerName
+--- PASS: TestConfigurationChosenPerName (3.96s)
+=== RUN   TestRenewalOfBothKinds
+    s6_test.go:476: renewed: map[*.renew.managed.test:1 renew.managed.test:1 renew.other.test:2]
+--- PASS: TestRenewalOfBothKinds (22.04s)
+PASS
+ok  	github.com/felix-homelab/rpmgr/spikes/s6	315.192s

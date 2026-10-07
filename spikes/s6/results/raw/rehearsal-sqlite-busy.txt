@@ -1,0 +1,21 @@
+# rehearse.sh failure before the dbstore fix (busy_timeout first, retried initialisation).
+# Replica b exited during startup; replica a completed alone. Non-info lines of b.err:
+s6run: database is locked (5) (SQLITE_BUSY)
+# Events of replica a (a.out):
+{"event":"obtained","name":"s6.other.test","renewal":false,"replica":"a","time":"2026-10-06T12:46:20.006314127Z"}
+{"event":"obtained","name":"s6.managed.test","renewal":false,"replica":"a","time":"2026-10-06T12:46:20.006358688Z"}
+{"event":"obtained","name":"*.s6.managed.test","renewal":false,"replica":"a","time":"2026-10-06T12:46:20.454589831Z"}
+{"dns01":true,"event":"certificate","issuer":"Pebble Intermediate CA 5e98ee","name":"s6.managed.test","not_after":"2027-01-04T12:46:18Z","not_before":"2026-10-06T12:46:19Z","replica":"a","sans":["s6.managed.test"],"serial":"2058981168994746
+{"dns01":true,"event":"certificate","issuer":"Pebble Intermediate CA 5e98ee","name":"*.s6.managed.test","not_after":"2027-01-04T12:46:18Z","not_before":"2026-10-06T12:46:19Z","replica":"a","sans":["*.s6.managed.test"],"serial":"585310096401
+{"dns01":false,"event":"certificate","issuer":"Pebble Intermediate CA 5e98ee","name":"s6.other.test","not_after":"2027-01-04T12:46:18Z","not_before":"2026-10-06T12:46:19Z","replica":"a","sans":["s6.other.test"],"serial":"2150779226682474529
+{"event":"obtained","name":"*.s6.managed.test","renewal":true,"replica":"a","time":"2026-10-06T12:46:21.003887666Z"}
+{"event":"obtained","name":"s6.managed.test","renewal":true,"replica":"a","time":"2026-10-06T12:46:21.727887486Z"}
+{"event":"obtained","name":"s6.other.test","renewal":true,"replica":"a","time":"2026-10-06T12:46:21.730069687Z"}
+{"dns01":true,"event":"renewed_certificate","issuer":"Pebble Intermediate CA 5e98ee","name":"s6.managed.test","not_after":"2027-01-04T12:46:19Z","not_before":"2026-10-06T12:46:20Z","replica":"a","sans":["s6.managed.test"],"serial":"82072361
+{"dns01":true,"event":"renewed_certificate","issuer":"Pebble Intermediate CA 5e98ee","name":"*.s6.managed.test","not_after":"2027-01-04T12:46:19Z","not_before":"2026-10-06T12:46:20Z","replica":"a","sans":["*.s6.managed.test"],"serial":"7442
+{"dns01":false,"event":"renewed_certificate","issuer":"Pebble Intermediate CA 5e98ee","name":"s6.other.test","not_after":"2027-01-04T12:46:19Z","not_before":"2026-10-06T12:46:20Z","replica":"a","sans":["s6.other.test"],"serial":"26621074217
+{"event":"lock_waits","n":2,"replica":"a","time":"2026-10-06T12:46:21.730649169Z"}
+# Gateway and testbed totals:
+{"event":"gateway_ready","http":"127.0.0.1:33193","time":"2026-10-06T12:46:18.40590849Z","tls":"127.0.0.1:43817"}
+{"challenge_updates":4,"event":"gateway_stats","http01_answered":6,"time":"2026-10-06T12:46:21.736947703Z","tlsalpn01_answered":0}
+{"challenge_posts":6,"event":"testbed_orders","new_orders":6,"time":"2026-10-06T12:46:21.736981824Z","txt_creates":4,"txt_deletes":4,"txt_left":0}
