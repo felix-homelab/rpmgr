@@ -39,7 +39,7 @@ with exit code 2 until its implementation lands.
 | `rpmgr gateway [--config <file>]` | Run a gateway | gateway host | not yet |
 | `rpmgr connector [--config <file>]` | Run a connector | connector host | not yet |
 | `rpmgr all-in-one [--config <file>]`, `… init` | Run, or initialise, a controller and a gateway in one process | controller host | not yet |
-| `rpmgr enroll` | Enroll this host as an agent with a single-use token | agent host | not yet |
+| `rpmgr enroll --controller <url> --ca-pin <pin> [--token-file <file>] [--replace] [--identity-dir <dir>] [--trust-bundle <file>]` | Enroll this host as an agent with a single-use token, read from `--token-file`, else `$RPMGR_ENROLL_TOKEN`, else the terminal; never from the command line ([04](04-security.md#join-command)). `--trust-bundle` replaces the download, for a controller whose web certificate the system does not trust | agent host | available |
 | `rpmgr leave` | Revoke this agent's identity and remove it from the host | agent host | not yet |
 | `rpmgr status` | Show the state of the agent on this host | agent host | not yet |
 | `rpmgr diag transport`, `diag clock` | Test the data-session transports to a gateway; compare clocks | agent host | not yet |
