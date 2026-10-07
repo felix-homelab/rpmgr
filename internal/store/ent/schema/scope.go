@@ -128,3 +128,23 @@ func (OrgTableMixin) Interceptors() []ent.Interceptor {
 
 // Hooks let only the system scope change orgs.
 func (OrgTableMixin) Hooks() []ent.Hook { return []ent.Hook{systemOnlyHook} }
+
+// Policy denies every query and mutation without a scope.
+func (SystemMixin) Policy() ent.Policy { return scopePolicy() }
+
+// Interceptors refuse every query outside the system scope.
+func (SystemMixin) Interceptors() []ent.Interceptor {
+	return []ent.Interceptor{intercept.TraverseFunc(func(ctx context.Context, _ intercept.Query) error {
+		s, ok := authz.FromContext(ctx)
+		if !ok {
+			return errNoScope()
+		}
+		if !s.System() {
+			return privacy.Denyf("store: the table can only be read in the system scope")
+		}
+		return nil
+	})}
+}
+
+// Hooks let only the system scope change the table.
+func (SystemMixin) Hooks() []ent.Hook { return []ent.Hook{systemOnlyHook} }

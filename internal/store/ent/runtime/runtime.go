@@ -8,14 +8,17 @@ import (
 
 	"github.com/felix-homelab/rpmgr/internal/store/ent/auditentry"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/audithead"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/cakey"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/configrevision"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/configseq"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/gatewaygroup"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/instance"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/instancesetting"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/issuedcertificate"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/org"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/orgsetting"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/schema"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/secretmeta"
 
 	"entgo.io/ent"
 	"entgo.io/ent/privacy"
@@ -133,6 +136,55 @@ func init() {
 	auditheadDescID := auditheadFields[0].Descriptor()
 	// audithead.IDValidator is a validator for the "id" field. It is called by the builders before save.
 	audithead.IDValidator = auditheadDescID.Validators[0].(func(string) error)
+	cakeyMixin := schema.CAKey{}.Mixin()
+	cakey.Policy = privacy.NewPolicies(cakeyMixin[0], schema.CAKey{})
+	cakey.Hooks[0] = func(next ent.Mutator) ent.Mutator {
+		return ent.MutateFunc(func(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+			if err := cakey.Policy.EvalMutation(ctx, m); err != nil {
+				return nil, err
+			}
+			return next.Mutate(ctx, m)
+		})
+	}
+	cakeyMixinHooks0 := cakeyMixin[0].Hooks()
+
+	cakey.Hooks[1] = cakeyMixinHooks0[0]
+	cakeyMixinInters0 := cakeyMixin[0].Interceptors()
+	cakey.Interceptors[0] = cakeyMixinInters0[0]
+	cakeyFields := schema.CAKey{}.Fields()
+	_ = cakeyFields
+	// cakeyDescAlgorithm is the schema descriptor for algorithm field.
+	cakeyDescAlgorithm := cakeyFields[2].Descriptor()
+	// cakey.AlgorithmValidator is a validator for the "algorithm" field. It is called by the builders before save.
+	cakey.AlgorithmValidator = cakeyDescAlgorithm.Validators[0].(func(string) error)
+	// cakeyDescPublicKey is the schema descriptor for public_key field.
+	cakeyDescPublicKey := cakeyFields[3].Descriptor()
+	// cakey.PublicKeyValidator is a validator for the "public_key" field. It is called by the builders before save.
+	cakey.PublicKeyValidator = cakeyDescPublicKey.Validators[0].(func([]byte) error)
+	// cakeyDescCertificate is the schema descriptor for certificate field.
+	cakeyDescCertificate := cakeyFields[4].Descriptor()
+	// cakey.CertificateValidator is a validator for the "certificate" field. It is called by the builders before save.
+	cakey.CertificateValidator = cakeyDescCertificate.Validators[0].(func([]byte) error)
+	// cakeyDescID is the schema descriptor for id field.
+	cakeyDescID := cakeyFields[0].Descriptor()
+	// cakey.DefaultID holds the default value on creation for the id field.
+	cakey.DefaultID = cakeyDescID.Default.(func() string)
+	// cakey.IDValidator is a validator for the "id" field. It is called by the builders before save.
+	cakey.IDValidator = func() func(string) error {
+		validators := cakeyDescID.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(id string) error {
+			for _, fn := range fns {
+				if err := fn(id); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
 	configrevisionMixin := schema.ConfigRevision{}.Mixin()
 	configrevision.Policy = privacy.NewPolicies(configrevisionMixin[0], schema.ConfigRevision{})
 	configrevision.Hooks[0] = func(next ent.Mutator) ent.Mutator {
@@ -300,6 +352,42 @@ func init() {
 	instancesettingDescID := instancesettingFields[0].Descriptor()
 	// instancesetting.IDValidator is a validator for the "id" field. It is called by the builders before save.
 	instancesetting.IDValidator = instancesettingDescID.Validators[0].(func(int) error)
+	issuedcertificate.Policy = privacy.NewPolicies(schema.IssuedCertificate{})
+	issuedcertificate.Hooks[0] = func(next ent.Mutator) ent.Mutator {
+		return ent.MutateFunc(func(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+			if err := issuedcertificate.Policy.EvalMutation(ctx, m); err != nil {
+				return nil, err
+			}
+			return next.Mutate(ctx, m)
+		})
+	}
+	issuedcertificateHooks := schema.IssuedCertificate{}.Hooks()
+
+	issuedcertificate.Hooks[1] = issuedcertificateHooks[0]
+	issuedcertificateInters := schema.IssuedCertificate{}.Interceptors()
+	issuedcertificate.Interceptors[0] = issuedcertificateInters[0]
+	issuedcertificateFields := schema.IssuedCertificate{}.Fields()
+	_ = issuedcertificateFields
+	// issuedcertificateDescSubjectID is the schema descriptor for subject_id field.
+	issuedcertificateDescSubjectID := issuedcertificateFields[3].Descriptor()
+	// issuedcertificate.SubjectIDValidator is a validator for the "subject_id" field. It is called by the builders before save.
+	issuedcertificate.SubjectIDValidator = issuedcertificateDescSubjectID.Validators[0].(func(string) error)
+	// issuedcertificateDescSpiffeID is the schema descriptor for spiffe_id field.
+	issuedcertificateDescSpiffeID := issuedcertificateFields[4].Descriptor()
+	// issuedcertificate.SpiffeIDValidator is a validator for the "spiffe_id" field. It is called by the builders before save.
+	issuedcertificate.SpiffeIDValidator = issuedcertificateDescSpiffeID.Validators[0].(func(string) error)
+	// issuedcertificateDescPubkeySha256 is the schema descriptor for pubkey_sha256 field.
+	issuedcertificateDescPubkeySha256 := issuedcertificateFields[5].Descriptor()
+	// issuedcertificate.PubkeySha256Validator is a validator for the "pubkey_sha256" field. It is called by the builders before save.
+	issuedcertificate.PubkeySha256Validator = issuedcertificateDescPubkeySha256.Validators[0].(func(string) error)
+	// issuedcertificateDescRevocationReason is the schema descriptor for revocation_reason field.
+	issuedcertificateDescRevocationReason := issuedcertificateFields[11].Descriptor()
+	// issuedcertificate.DefaultRevocationReason holds the default value on creation for the revocation_reason field.
+	issuedcertificate.DefaultRevocationReason = issuedcertificateDescRevocationReason.Default.(string)
+	// issuedcertificateDescID is the schema descriptor for id field.
+	issuedcertificateDescID := issuedcertificateFields[0].Descriptor()
+	// issuedcertificate.IDValidator is a validator for the "id" field. It is called by the builders before save.
+	issuedcertificate.IDValidator = issuedcertificateDescID.Validators[0].(func(string) error)
 	orgMixin := schema.Org{}.Mixin()
 	org.Policy = privacy.NewPolicies(orgMixin[0], schema.Org{})
 	org.Hooks[0] = func(next ent.Mutator) ent.Mutator {
@@ -420,6 +508,38 @@ func init() {
 			return nil
 		}
 	}()
+	secretmetaMixin := schema.SecretMeta{}.Mixin()
+	secretmeta.Policy = privacy.NewPolicies(secretmetaMixin[0], schema.SecretMeta{})
+	secretmeta.Hooks[0] = func(next ent.Mutator) ent.Mutator {
+		return ent.MutateFunc(func(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+			if err := secretmeta.Policy.EvalMutation(ctx, m); err != nil {
+				return nil, err
+			}
+			return next.Mutate(ctx, m)
+		})
+	}
+	secretmetaFields := schema.SecretMeta{}.Fields()
+	_ = secretmetaFields
+	// secretmetaDescTableName is the schema descriptor for table_name field.
+	secretmetaDescTableName := secretmetaFields[0].Descriptor()
+	// secretmeta.TableNameValidator is a validator for the "table_name" field. It is called by the builders before save.
+	secretmeta.TableNameValidator = secretmetaDescTableName.Validators[0].(func(string) error)
+	// secretmetaDescRowID is the schema descriptor for row_id field.
+	secretmetaDescRowID := secretmetaFields[1].Descriptor()
+	// secretmeta.RowIDValidator is a validator for the "row_id" field. It is called by the builders before save.
+	secretmeta.RowIDValidator = secretmetaDescRowID.Validators[0].(func(string) error)
+	// secretmetaDescColumnName is the schema descriptor for column_name field.
+	secretmetaDescColumnName := secretmetaFields[2].Descriptor()
+	// secretmeta.ColumnNameValidator is a validator for the "column_name" field. It is called by the builders before save.
+	secretmeta.ColumnNameValidator = secretmetaDescColumnName.Validators[0].(func(string) error)
+	// secretmetaDescKekVersion is the schema descriptor for kek_version field.
+	secretmetaDescKekVersion := secretmetaFields[3].Descriptor()
+	// secretmeta.KekVersionValidator is a validator for the "kek_version" field. It is called by the builders before save.
+	secretmeta.KekVersionValidator = secretmetaDescKekVersion.Validators[0].(func(string) error)
+	// secretmetaDescCreatedAt is the schema descriptor for created_at field.
+	secretmetaDescCreatedAt := secretmetaFields[4].Descriptor()
+	// secretmeta.DefaultCreatedAt holds the default value on creation for the created_at field.
+	secretmeta.DefaultCreatedAt = secretmetaDescCreatedAt.Default.(func() time.Time)
 }
 
 const (

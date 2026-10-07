@@ -16,13 +16,16 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/auditentry"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/audithead"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/cakey"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/configrevision"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/configseq"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/gatewaygroup"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/instance"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/instancesetting"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/issuedcertificate"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/org"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/orgsetting"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/secretmeta"
 
 	stdsql "database/sql"
 )
@@ -36,6 +39,8 @@ type Client struct {
 	AuditEntry *AuditEntryClient
 	// AuditHead is the client for interacting with the AuditHead builders.
 	AuditHead *AuditHeadClient
+	// CAKey is the client for interacting with the CAKey builders.
+	CAKey *CAKeyClient
 	// ConfigRevision is the client for interacting with the ConfigRevision builders.
 	ConfigRevision *ConfigRevisionClient
 	// ConfigSeq is the client for interacting with the ConfigSeq builders.
@@ -46,10 +51,14 @@ type Client struct {
 	Instance *InstanceClient
 	// InstanceSetting is the client for interacting with the InstanceSetting builders.
 	InstanceSetting *InstanceSettingClient
+	// IssuedCertificate is the client for interacting with the IssuedCertificate builders.
+	IssuedCertificate *IssuedCertificateClient
 	// Org is the client for interacting with the Org builders.
 	Org *OrgClient
 	// OrgSetting is the client for interacting with the OrgSetting builders.
 	OrgSetting *OrgSettingClient
+	// SecretMeta is the client for interacting with the SecretMeta builders.
+	SecretMeta *SecretMetaClient
 }
 
 // NewClient creates a new client configured with the given options.
@@ -63,13 +72,16 @@ func (c *Client) init() {
 	c.Schema = migrate.NewSchema(c.driver)
 	c.AuditEntry = NewAuditEntryClient(c.config)
 	c.AuditHead = NewAuditHeadClient(c.config)
+	c.CAKey = NewCAKeyClient(c.config)
 	c.ConfigRevision = NewConfigRevisionClient(c.config)
 	c.ConfigSeq = NewConfigSeqClient(c.config)
 	c.GatewayGroup = NewGatewayGroupClient(c.config)
 	c.Instance = NewInstanceClient(c.config)
 	c.InstanceSetting = NewInstanceSettingClient(c.config)
+	c.IssuedCertificate = NewIssuedCertificateClient(c.config)
 	c.Org = NewOrgClient(c.config)
 	c.OrgSetting = NewOrgSettingClient(c.config)
+	c.SecretMeta = NewSecretMetaClient(c.config)
 }
 
 type (
@@ -160,17 +172,20 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 	cfg := c.config
 	cfg.driver = tx
 	return &Tx{
-		ctx:             ctx,
-		config:          cfg,
-		AuditEntry:      NewAuditEntryClient(cfg),
-		AuditHead:       NewAuditHeadClient(cfg),
-		ConfigRevision:  NewConfigRevisionClient(cfg),
-		ConfigSeq:       NewConfigSeqClient(cfg),
-		GatewayGroup:    NewGatewayGroupClient(cfg),
-		Instance:        NewInstanceClient(cfg),
-		InstanceSetting: NewInstanceSettingClient(cfg),
-		Org:             NewOrgClient(cfg),
-		OrgSetting:      NewOrgSettingClient(cfg),
+		ctx:               ctx,
+		config:            cfg,
+		AuditEntry:        NewAuditEntryClient(cfg),
+		AuditHead:         NewAuditHeadClient(cfg),
+		CAKey:             NewCAKeyClient(cfg),
+		ConfigRevision:    NewConfigRevisionClient(cfg),
+		ConfigSeq:         NewConfigSeqClient(cfg),
+		GatewayGroup:      NewGatewayGroupClient(cfg),
+		Instance:          NewInstanceClient(cfg),
+		InstanceSetting:   NewInstanceSettingClient(cfg),
+		IssuedCertificate: NewIssuedCertificateClient(cfg),
+		Org:               NewOrgClient(cfg),
+		OrgSetting:        NewOrgSettingClient(cfg),
+		SecretMeta:        NewSecretMetaClient(cfg),
 	}, nil
 }
 
@@ -188,17 +203,20 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 	cfg := c.config
 	cfg.driver = &txDriver{tx: tx, drv: c.driver}
 	return &Tx{
-		ctx:             ctx,
-		config:          cfg,
-		AuditEntry:      NewAuditEntryClient(cfg),
-		AuditHead:       NewAuditHeadClient(cfg),
-		ConfigRevision:  NewConfigRevisionClient(cfg),
-		ConfigSeq:       NewConfigSeqClient(cfg),
-		GatewayGroup:    NewGatewayGroupClient(cfg),
-		Instance:        NewInstanceClient(cfg),
-		InstanceSetting: NewInstanceSettingClient(cfg),
-		Org:             NewOrgClient(cfg),
-		OrgSetting:      NewOrgSettingClient(cfg),
+		ctx:               ctx,
+		config:            cfg,
+		AuditEntry:        NewAuditEntryClient(cfg),
+		AuditHead:         NewAuditHeadClient(cfg),
+		CAKey:             NewCAKeyClient(cfg),
+		ConfigRevision:    NewConfigRevisionClient(cfg),
+		ConfigSeq:         NewConfigSeqClient(cfg),
+		GatewayGroup:      NewGatewayGroupClient(cfg),
+		Instance:          NewInstanceClient(cfg),
+		InstanceSetting:   NewInstanceSettingClient(cfg),
+		IssuedCertificate: NewIssuedCertificateClient(cfg),
+		Org:               NewOrgClient(cfg),
+		OrgSetting:        NewOrgSettingClient(cfg),
+		SecretMeta:        NewSecretMetaClient(cfg),
 	}, nil
 }
 
@@ -228,8 +246,9 @@ func (c *Client) Close() error {
 // In order to add hooks to a specific client, call: `client.Node.Use(...)`.
 func (c *Client) Use(hooks ...Hook) {
 	for _, n := range []interface{ Use(...Hook) }{
-		c.AuditEntry, c.AuditHead, c.ConfigRevision, c.ConfigSeq, c.GatewayGroup,
-		c.Instance, c.InstanceSetting, c.Org, c.OrgSetting,
+		c.AuditEntry, c.AuditHead, c.CAKey, c.ConfigRevision, c.ConfigSeq,
+		c.GatewayGroup, c.Instance, c.InstanceSetting, c.IssuedCertificate, c.Org,
+		c.OrgSetting, c.SecretMeta,
 	} {
 		n.Use(hooks...)
 	}
@@ -239,8 +258,9 @@ func (c *Client) Use(hooks ...Hook) {
 // In order to add interceptors to a specific client, call: `client.Node.Intercept(...)`.
 func (c *Client) Intercept(interceptors ...Interceptor) {
 	for _, n := range []interface{ Intercept(...Interceptor) }{
-		c.AuditEntry, c.AuditHead, c.ConfigRevision, c.ConfigSeq, c.GatewayGroup,
-		c.Instance, c.InstanceSetting, c.Org, c.OrgSetting,
+		c.AuditEntry, c.AuditHead, c.CAKey, c.ConfigRevision, c.ConfigSeq,
+		c.GatewayGroup, c.Instance, c.InstanceSetting, c.IssuedCertificate, c.Org,
+		c.OrgSetting, c.SecretMeta,
 	} {
 		n.Intercept(interceptors...)
 	}
@@ -253,6 +273,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.AuditEntry.mutate(ctx, m)
 	case *AuditHeadMutation:
 		return c.AuditHead.mutate(ctx, m)
+	case *CAKeyMutation:
+		return c.CAKey.mutate(ctx, m)
 	case *ConfigRevisionMutation:
 		return c.ConfigRevision.mutate(ctx, m)
 	case *ConfigSeqMutation:
@@ -263,10 +285,14 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.Instance.mutate(ctx, m)
 	case *InstanceSettingMutation:
 		return c.InstanceSetting.mutate(ctx, m)
+	case *IssuedCertificateMutation:
+		return c.IssuedCertificate.mutate(ctx, m)
 	case *OrgMutation:
 		return c.Org.mutate(ctx, m)
 	case *OrgSettingMutation:
 		return c.OrgSetting.mutate(ctx, m)
+	case *SecretMetaMutation:
+		return c.SecretMeta.mutate(ctx, m)
 	default:
 		return nil, fmt.Errorf("ent: unknown mutation type %T", m)
 	}
@@ -539,6 +565,141 @@ func (c *AuditHeadClient) mutate(ctx context.Context, m *AuditHeadMutation) (Val
 		return (&AuditHeadDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
 	default:
 		return nil, fmt.Errorf("ent: unknown AuditHead mutation op: %q", m.Op())
+	}
+}
+
+// CAKeyClient is a client for the CAKey schema.
+type CAKeyClient struct {
+	config
+}
+
+// NewCAKeyClient returns a client for the CAKey from the given config.
+func NewCAKeyClient(c config) *CAKeyClient {
+	return &CAKeyClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `cakey.Hooks(f(g(h())))`.
+func (c *CAKeyClient) Use(hooks ...Hook) {
+	c.hooks.CAKey = append(c.hooks.CAKey, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `cakey.Intercept(f(g(h())))`.
+func (c *CAKeyClient) Intercept(interceptors ...Interceptor) {
+	c.inters.CAKey = append(c.inters.CAKey, interceptors...)
+}
+
+// Create returns a builder for creating a CAKey entity.
+func (c *CAKeyClient) Create() *CAKeyCreate {
+	mutation := newCAKeyMutation(c.config, OpCreate)
+	return &CAKeyCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of CAKey entities.
+func (c *CAKeyClient) CreateBulk(builders ...*CAKeyCreate) *CAKeyCreateBulk {
+	return &CAKeyCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *CAKeyClient) MapCreateBulk(slice any, setFunc func(*CAKeyCreate, int)) *CAKeyCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &CAKeyCreateBulk{err: fmt.Errorf("calling to CAKeyClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*CAKeyCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &CAKeyCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for CAKey.
+func (c *CAKeyClient) Update() *CAKeyUpdate {
+	mutation := newCAKeyMutation(c.config, OpUpdate)
+	return &CAKeyUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *CAKeyClient) UpdateOne(_m *CAKey) *CAKeyUpdateOne {
+	mutation := newCAKeyMutation(c.config, OpUpdateOne, withCAKey(_m))
+	return &CAKeyUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *CAKeyClient) UpdateOneID(id string) *CAKeyUpdateOne {
+	mutation := newCAKeyMutation(c.config, OpUpdateOne, withCAKeyID(id))
+	return &CAKeyUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for CAKey.
+func (c *CAKeyClient) Delete() *CAKeyDelete {
+	mutation := newCAKeyMutation(c.config, OpDelete)
+	return &CAKeyDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *CAKeyClient) DeleteOne(_m *CAKey) *CAKeyDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *CAKeyClient) DeleteOneID(id string) *CAKeyDeleteOne {
+	builder := c.Delete().Where(cakey.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &CAKeyDeleteOne{builder}
+}
+
+// Query returns a query builder for CAKey.
+func (c *CAKeyClient) Query() *CAKeyQuery {
+	return &CAKeyQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeCAKey},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a CAKey entity by its id.
+func (c *CAKeyClient) Get(ctx context.Context, id string) (*CAKey, error) {
+	return c.Query().Where(cakey.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *CAKeyClient) GetX(ctx context.Context, id string) *CAKey {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *CAKeyClient) Hooks() []Hook {
+	hooks := c.hooks.CAKey
+	return append(hooks[:len(hooks):len(hooks)], cakey.Hooks[:]...)
+}
+
+// Interceptors returns the client interceptors.
+func (c *CAKeyClient) Interceptors() []Interceptor {
+	inters := c.inters.CAKey
+	return append(inters[:len(inters):len(inters)], cakey.Interceptors[:]...)
+}
+
+func (c *CAKeyClient) mutate(ctx context.Context, m *CAKeyMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&CAKeyCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&CAKeyUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&CAKeyUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&CAKeyDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown CAKey mutation op: %q", m.Op())
 	}
 }
 
@@ -1213,6 +1374,141 @@ func (c *InstanceSettingClient) mutate(ctx context.Context, m *InstanceSettingMu
 	}
 }
 
+// IssuedCertificateClient is a client for the IssuedCertificate schema.
+type IssuedCertificateClient struct {
+	config
+}
+
+// NewIssuedCertificateClient returns a client for the IssuedCertificate from the given config.
+func NewIssuedCertificateClient(c config) *IssuedCertificateClient {
+	return &IssuedCertificateClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `issuedcertificate.Hooks(f(g(h())))`.
+func (c *IssuedCertificateClient) Use(hooks ...Hook) {
+	c.hooks.IssuedCertificate = append(c.hooks.IssuedCertificate, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `issuedcertificate.Intercept(f(g(h())))`.
+func (c *IssuedCertificateClient) Intercept(interceptors ...Interceptor) {
+	c.inters.IssuedCertificate = append(c.inters.IssuedCertificate, interceptors...)
+}
+
+// Create returns a builder for creating a IssuedCertificate entity.
+func (c *IssuedCertificateClient) Create() *IssuedCertificateCreate {
+	mutation := newIssuedCertificateMutation(c.config, OpCreate)
+	return &IssuedCertificateCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of IssuedCertificate entities.
+func (c *IssuedCertificateClient) CreateBulk(builders ...*IssuedCertificateCreate) *IssuedCertificateCreateBulk {
+	return &IssuedCertificateCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *IssuedCertificateClient) MapCreateBulk(slice any, setFunc func(*IssuedCertificateCreate, int)) *IssuedCertificateCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &IssuedCertificateCreateBulk{err: fmt.Errorf("calling to IssuedCertificateClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*IssuedCertificateCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &IssuedCertificateCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for IssuedCertificate.
+func (c *IssuedCertificateClient) Update() *IssuedCertificateUpdate {
+	mutation := newIssuedCertificateMutation(c.config, OpUpdate)
+	return &IssuedCertificateUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *IssuedCertificateClient) UpdateOne(_m *IssuedCertificate) *IssuedCertificateUpdateOne {
+	mutation := newIssuedCertificateMutation(c.config, OpUpdateOne, withIssuedCertificate(_m))
+	return &IssuedCertificateUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *IssuedCertificateClient) UpdateOneID(id string) *IssuedCertificateUpdateOne {
+	mutation := newIssuedCertificateMutation(c.config, OpUpdateOne, withIssuedCertificateID(id))
+	return &IssuedCertificateUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for IssuedCertificate.
+func (c *IssuedCertificateClient) Delete() *IssuedCertificateDelete {
+	mutation := newIssuedCertificateMutation(c.config, OpDelete)
+	return &IssuedCertificateDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *IssuedCertificateClient) DeleteOne(_m *IssuedCertificate) *IssuedCertificateDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *IssuedCertificateClient) DeleteOneID(id string) *IssuedCertificateDeleteOne {
+	builder := c.Delete().Where(issuedcertificate.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &IssuedCertificateDeleteOne{builder}
+}
+
+// Query returns a query builder for IssuedCertificate.
+func (c *IssuedCertificateClient) Query() *IssuedCertificateQuery {
+	return &IssuedCertificateQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeIssuedCertificate},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a IssuedCertificate entity by its id.
+func (c *IssuedCertificateClient) Get(ctx context.Context, id string) (*IssuedCertificate, error) {
+	return c.Query().Where(issuedcertificate.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *IssuedCertificateClient) GetX(ctx context.Context, id string) *IssuedCertificate {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *IssuedCertificateClient) Hooks() []Hook {
+	hooks := c.hooks.IssuedCertificate
+	return append(hooks[:len(hooks):len(hooks)], issuedcertificate.Hooks[:]...)
+}
+
+// Interceptors returns the client interceptors.
+func (c *IssuedCertificateClient) Interceptors() []Interceptor {
+	inters := c.inters.IssuedCertificate
+	return append(inters[:len(inters):len(inters)], issuedcertificate.Interceptors[:]...)
+}
+
+func (c *IssuedCertificateClient) mutate(ctx context.Context, m *IssuedCertificateMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&IssuedCertificateCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&IssuedCertificateUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&IssuedCertificateUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&IssuedCertificateDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown IssuedCertificate mutation op: %q", m.Op())
+	}
+}
+
 // OrgClient is a client for the Org schema.
 type OrgClient struct {
 	config
@@ -1483,15 +1779,150 @@ func (c *OrgSettingClient) mutate(ctx context.Context, m *OrgSettingMutation) (V
 	}
 }
 
+// SecretMetaClient is a client for the SecretMeta schema.
+type SecretMetaClient struct {
+	config
+}
+
+// NewSecretMetaClient returns a client for the SecretMeta from the given config.
+func NewSecretMetaClient(c config) *SecretMetaClient {
+	return &SecretMetaClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `secretmeta.Hooks(f(g(h())))`.
+func (c *SecretMetaClient) Use(hooks ...Hook) {
+	c.hooks.SecretMeta = append(c.hooks.SecretMeta, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `secretmeta.Intercept(f(g(h())))`.
+func (c *SecretMetaClient) Intercept(interceptors ...Interceptor) {
+	c.inters.SecretMeta = append(c.inters.SecretMeta, interceptors...)
+}
+
+// Create returns a builder for creating a SecretMeta entity.
+func (c *SecretMetaClient) Create() *SecretMetaCreate {
+	mutation := newSecretMetaMutation(c.config, OpCreate)
+	return &SecretMetaCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of SecretMeta entities.
+func (c *SecretMetaClient) CreateBulk(builders ...*SecretMetaCreate) *SecretMetaCreateBulk {
+	return &SecretMetaCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *SecretMetaClient) MapCreateBulk(slice any, setFunc func(*SecretMetaCreate, int)) *SecretMetaCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &SecretMetaCreateBulk{err: fmt.Errorf("calling to SecretMetaClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*SecretMetaCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &SecretMetaCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for SecretMeta.
+func (c *SecretMetaClient) Update() *SecretMetaUpdate {
+	mutation := newSecretMetaMutation(c.config, OpUpdate)
+	return &SecretMetaUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *SecretMetaClient) UpdateOne(_m *SecretMeta) *SecretMetaUpdateOne {
+	mutation := newSecretMetaMutation(c.config, OpUpdateOne, withSecretMeta(_m))
+	return &SecretMetaUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *SecretMetaClient) UpdateOneID(id int) *SecretMetaUpdateOne {
+	mutation := newSecretMetaMutation(c.config, OpUpdateOne, withSecretMetaID(id))
+	return &SecretMetaUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for SecretMeta.
+func (c *SecretMetaClient) Delete() *SecretMetaDelete {
+	mutation := newSecretMetaMutation(c.config, OpDelete)
+	return &SecretMetaDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *SecretMetaClient) DeleteOne(_m *SecretMeta) *SecretMetaDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *SecretMetaClient) DeleteOneID(id int) *SecretMetaDeleteOne {
+	builder := c.Delete().Where(secretmeta.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &SecretMetaDeleteOne{builder}
+}
+
+// Query returns a query builder for SecretMeta.
+func (c *SecretMetaClient) Query() *SecretMetaQuery {
+	return &SecretMetaQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeSecretMeta},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a SecretMeta entity by its id.
+func (c *SecretMetaClient) Get(ctx context.Context, id int) (*SecretMeta, error) {
+	return c.Query().Where(secretmeta.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *SecretMetaClient) GetX(ctx context.Context, id int) *SecretMeta {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *SecretMetaClient) Hooks() []Hook {
+	hooks := c.hooks.SecretMeta
+	return append(hooks[:len(hooks):len(hooks)], secretmeta.Hooks[:]...)
+}
+
+// Interceptors returns the client interceptors.
+func (c *SecretMetaClient) Interceptors() []Interceptor {
+	return c.inters.SecretMeta
+}
+
+func (c *SecretMetaClient) mutate(ctx context.Context, m *SecretMetaMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&SecretMetaCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&SecretMetaUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&SecretMetaUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&SecretMetaDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown SecretMeta mutation op: %q", m.Op())
+	}
+}
+
 // hooks and interceptors per client, for fast access.
 type (
 	hooks struct {
-		AuditEntry, AuditHead, ConfigRevision, ConfigSeq, GatewayGroup, Instance,
-		InstanceSetting, Org, OrgSetting []ent.Hook
+		AuditEntry, AuditHead, CAKey, ConfigRevision, ConfigSeq, GatewayGroup, Instance,
+		InstanceSetting, IssuedCertificate, Org, OrgSetting, SecretMeta []ent.Hook
 	}
 	inters struct {
-		AuditEntry, AuditHead, ConfigRevision, ConfigSeq, GatewayGroup, Instance,
-		InstanceSetting, Org, OrgSetting []ent.Interceptor
+		AuditEntry, AuditHead, CAKey, ConfigRevision, ConfigSeq, GatewayGroup, Instance,
+		InstanceSetting, IssuedCertificate, Org, OrgSetting,
+		SecretMeta []ent.Interceptor
 	}
 )
 

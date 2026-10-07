@@ -12,6 +12,9 @@ type AuditEntry func(*sql.Selector)
 // AuditHead is the predicate function for audithead builders.
 type AuditHead func(*sql.Selector)
 
+// CAKey is the predicate function for cakey builders.
+type CAKey func(*sql.Selector)
+
 // ConfigRevision is the predicate function for configrevision builders.
 type ConfigRevision func(*sql.Selector)
 
@@ -27,8 +30,14 @@ type Instance func(*sql.Selector)
 // InstanceSetting is the predicate function for instancesetting builders.
 type InstanceSetting func(*sql.Selector)
 
+// IssuedCertificate is the predicate function for issuedcertificate builders.
+type IssuedCertificate func(*sql.Selector)
+
 // Org is the predicate function for org builders.
 type Org func(*sql.Selector)
 
 // OrgSetting is the predicate function for orgsetting builders.
 type OrgSetting func(*sql.Selector)
+
+// SecretMeta is the predicate function for secretmeta builders.
+type SecretMeta func(*sql.Selector)

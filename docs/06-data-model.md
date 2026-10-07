@@ -80,13 +80,13 @@ an opaque blob: no foreign system's configuration is embedded, and every field i
 | `port_pools` | id, gateway_group_id, protocol (tcp, udp), port_from, port_to, org_id (nullable = any granted org) | |
 | `port_allocations` | id, org_id, gateway_group_id, protocol, port, route_id | Unique (gateway_group_id, protocol, port) |
 | `port_quotas` | org_id, gateway_group_id, protocol, max_ports | Maximum ports an org may allocate in a gateway group (Phase 1). Unique (org_id, gateway_group_id, protocol); no row = limited only by the pools |
-| `issued_certificates` | serial, org_id, subject_type, subject_id, spiffe_id, pubkey_sha256, not_before, not_after, first_seen_at, superseded_at, revoked_at, revocation_reason | Source of the deny-list ([04](04-security.md#revocation)) |
+| `issued_certificates` | serial, org_id, subject_type, subject_id, spiffe_id, pubkey_sha256, not_before, not_after, first_seen_at, superseded_at, revoked_at, revocation_reason | Source of the deny-list ([04](04-security.md#revocation)). `serial` is lower-case hexadecimal. Agent certificates belong to their org; controller node certificates have no org and are visible only in the system scope |
 
 ### PKI and ACME
 
 | Table | Key fields | Notes |
 |---|---|---|
-| `ca_keys` | id, kind (`root`, `intermediate`, `config_signing`, `audit_checkpoint`), algorithm, public_key, certificate, key_enc, not_before, not_after, status (`next`, `active`, `retired`) | Instance-level keys of [04](04-security.md#ca-hierarchy). `key_enc` is envelope-encrypted under the KEK, and null for an offline root (`rpmgr ca offline-root`) |
+| `ca_keys` | id, kind (`root`, `intermediate`, `config_signing`, `audit_checkpoint`), algorithm, public_key, certificate, key_enc, not_before, not_after, status (`next`, `active`, `retired`) | Instance-level keys of [04](04-security.md#ca-hierarchy). `key_enc` is envelope-encrypted under the KEK, and null for an offline root (`rpmgr ca offline-root`). Each kind has one `active` key; the controller refuses to start otherwise. Only the system scope reads or writes the table |
 | `acme_storage` | key, value_enc, modified_at | certmagic's storage (account keys, orders, certificates in progress); locks use `leases` (holder, expiry, fencing token), so replicas never order the same certificate twice ([S6](spikes/S6.md)) |
 | `ca_bundles` | id, org_id, name, pem | Custom CAs for verifying HTTPS upstreams, referenced by `route_targets.tls_ca_bundle_id` |
 
@@ -184,7 +184,7 @@ erDiagram
 | `audit_checkpoints` | org_id, seq, head_hash, signature, exported_at, sink | |
 | `leases` | name, holder, fencing_token, expires_at | Singleton jobs in HA, including the DNS job's `dns` lease ([10](10-operations.md#high-availability)) |
 | `controller_nodes` | node_id (`ctn_`), internal_address, last_seen_at | HA: where a replica can be reached by the others over controller-to-controller mutual TLS |
-| `secrets_meta` | table_name, row_id, column, kek_version, created_at | Bookkeeping for KEK rotation |
+| `secrets_meta` | table_name, row_id, column_name, kek_version, created_at | Bookkeeping for KEK rotation: one row per sealed column of a row, written in the transaction that writes the sealed value |
 
 ## Desired vs observed state
 

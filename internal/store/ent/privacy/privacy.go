@@ -159,6 +159,30 @@ func (f AuditHeadMutationRuleFunc) EvalMutation(ctx context.Context, m ent.Mutat
 	return Denyf("ent/privacy: unexpected mutation type %T, expect *ent.AuditHeadMutation", m)
 }
 
+// The CAKeyQueryRuleFunc type is an adapter to allow the use of ordinary
+// functions as a query rule.
+type CAKeyQueryRuleFunc func(context.Context, *ent.CAKeyQuery) error
+
+// EvalQuery return f(ctx, q).
+func (f CAKeyQueryRuleFunc) EvalQuery(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.CAKeyQuery); ok {
+		return f(ctx, q)
+	}
+	return Denyf("ent/privacy: unexpected query type %T, expect *ent.CAKeyQuery", q)
+}
+
+// The CAKeyMutationRuleFunc type is an adapter to allow the use of ordinary
+// functions as a mutation rule.
+type CAKeyMutationRuleFunc func(context.Context, *ent.CAKeyMutation) error
+
+// EvalMutation calls f(ctx, m).
+func (f CAKeyMutationRuleFunc) EvalMutation(ctx context.Context, m ent.Mutation) error {
+	if m, ok := m.(*ent.CAKeyMutation); ok {
+		return f(ctx, m)
+	}
+	return Denyf("ent/privacy: unexpected mutation type %T, expect *ent.CAKeyMutation", m)
+}
+
 // The ConfigRevisionQueryRuleFunc type is an adapter to allow the use of ordinary
 // functions as a query rule.
 type ConfigRevisionQueryRuleFunc func(context.Context, *ent.ConfigRevisionQuery) error
@@ -279,6 +303,30 @@ func (f InstanceSettingMutationRuleFunc) EvalMutation(ctx context.Context, m ent
 	return Denyf("ent/privacy: unexpected mutation type %T, expect *ent.InstanceSettingMutation", m)
 }
 
+// The IssuedCertificateQueryRuleFunc type is an adapter to allow the use of ordinary
+// functions as a query rule.
+type IssuedCertificateQueryRuleFunc func(context.Context, *ent.IssuedCertificateQuery) error
+
+// EvalQuery return f(ctx, q).
+func (f IssuedCertificateQueryRuleFunc) EvalQuery(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.IssuedCertificateQuery); ok {
+		return f(ctx, q)
+	}
+	return Denyf("ent/privacy: unexpected query type %T, expect *ent.IssuedCertificateQuery", q)
+}
+
+// The IssuedCertificateMutationRuleFunc type is an adapter to allow the use of ordinary
+// functions as a mutation rule.
+type IssuedCertificateMutationRuleFunc func(context.Context, *ent.IssuedCertificateMutation) error
+
+// EvalMutation calls f(ctx, m).
+func (f IssuedCertificateMutationRuleFunc) EvalMutation(ctx context.Context, m ent.Mutation) error {
+	if m, ok := m.(*ent.IssuedCertificateMutation); ok {
+		return f(ctx, m)
+	}
+	return Denyf("ent/privacy: unexpected mutation type %T, expect *ent.IssuedCertificateMutation", m)
+}
+
 // The OrgQueryRuleFunc type is an adapter to allow the use of ordinary
 // functions as a query rule.
 type OrgQueryRuleFunc func(context.Context, *ent.OrgQuery) error
@@ -327,6 +375,30 @@ func (f OrgSettingMutationRuleFunc) EvalMutation(ctx context.Context, m ent.Muta
 	return Denyf("ent/privacy: unexpected mutation type %T, expect *ent.OrgSettingMutation", m)
 }
 
+// The SecretMetaQueryRuleFunc type is an adapter to allow the use of ordinary
+// functions as a query rule.
+type SecretMetaQueryRuleFunc func(context.Context, *ent.SecretMetaQuery) error
+
+// EvalQuery return f(ctx, q).
+func (f SecretMetaQueryRuleFunc) EvalQuery(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.SecretMetaQuery); ok {
+		return f(ctx, q)
+	}
+	return Denyf("ent/privacy: unexpected query type %T, expect *ent.SecretMetaQuery", q)
+}
+
+// The SecretMetaMutationRuleFunc type is an adapter to allow the use of ordinary
+// functions as a mutation rule.
+type SecretMetaMutationRuleFunc func(context.Context, *ent.SecretMetaMutation) error
+
+// EvalMutation calls f(ctx, m).
+func (f SecretMetaMutationRuleFunc) EvalMutation(ctx context.Context, m ent.Mutation) error {
+	if m, ok := m.(*ent.SecretMetaMutation); ok {
+		return f(ctx, m)
+	}
+	return Denyf("ent/privacy: unexpected mutation type %T, expect *ent.SecretMetaMutation", m)
+}
+
 type (
 	// Filter is the interface that wraps the Where function
 	// for filtering nodes in queries and mutations.
@@ -366,6 +438,8 @@ func queryFilter(q ent.Query) (Filter, error) {
 		return q.Filter(), nil
 	case *ent.AuditHeadQuery:
 		return q.Filter(), nil
+	case *ent.CAKeyQuery:
+		return q.Filter(), nil
 	case *ent.ConfigRevisionQuery:
 		return q.Filter(), nil
 	case *ent.ConfigSeqQuery:
@@ -376,9 +450,13 @@ func queryFilter(q ent.Query) (Filter, error) {
 		return q.Filter(), nil
 	case *ent.InstanceSettingQuery:
 		return q.Filter(), nil
+	case *ent.IssuedCertificateQuery:
+		return q.Filter(), nil
 	case *ent.OrgQuery:
 		return q.Filter(), nil
 	case *ent.OrgSettingQuery:
+		return q.Filter(), nil
+	case *ent.SecretMetaQuery:
 		return q.Filter(), nil
 	default:
 		return nil, Denyf("ent/privacy: unexpected query type %T for query filter", q)
@@ -391,6 +469,8 @@ func mutationFilter(m ent.Mutation) (Filter, error) {
 		return m.Filter(), nil
 	case *ent.AuditHeadMutation:
 		return m.Filter(), nil
+	case *ent.CAKeyMutation:
+		return m.Filter(), nil
 	case *ent.ConfigRevisionMutation:
 		return m.Filter(), nil
 	case *ent.ConfigSeqMutation:
@@ -401,9 +481,13 @@ func mutationFilter(m ent.Mutation) (Filter, error) {
 		return m.Filter(), nil
 	case *ent.InstanceSettingMutation:
 		return m.Filter(), nil
+	case *ent.IssuedCertificateMutation:
+		return m.Filter(), nil
 	case *ent.OrgMutation:
 		return m.Filter(), nil
 	case *ent.OrgSettingMutation:
+		return m.Filter(), nil
+	case *ent.SecretMetaMutation:
 		return m.Filter(), nil
 	default:
 		return nil, Denyf("ent/privacy: unexpected mutation type %T for mutation filter", m)

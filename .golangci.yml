@@ -48,6 +48,10 @@ linters:
       - path: internal/secret/
         text: Reveal
         linters: [forbidigo]
+      # The CA opens its keys to sign with them.
+      - path: internal/pki/
+        text: Reveal
+        linters: [forbidigo]
       - path: internal/store/
         text: DecisionContext
         linters: [forbidigo]
