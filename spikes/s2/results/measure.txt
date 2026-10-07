@@ -1,0 +1,19 @@
+go version go1.27.1 linux/amd64
+golang.org/x/net v0.59.0
+args: -run TestMeasure -timeout 30m
+=== RUN   TestMeasureOpenLatency
+    measure_test.go:96: RESULT impl=stdlib rtt=0s ping=200µs gateway_open_first_answer=200µs open_request_no_chunk=400µs open_request_first_chunk=300µs
+    measure_test.go:96: RESULT impl=stdlib rtt=20ms ping=21.2ms gateway_open_first_answer=21.7ms open_request_no_chunk=42.8ms open_request_first_chunk=21.8ms
+    measure_test.go:96: RESULT impl=stdlib rtt=80ms ping=81.8ms gateway_open_first_answer=81.9ms open_request_no_chunk=163.1ms open_request_first_chunk=82ms
+    measure_test.go:96: RESULT impl=xnet rtt=0s ping=100µs gateway_open_first_answer=200µs open_request_no_chunk=300µs open_request_first_chunk=200µs
+    measure_test.go:96: RESULT impl=xnet rtt=20ms ping=21.5ms gateway_open_first_answer=21.9ms open_request_no_chunk=43.1ms open_request_first_chunk=21.9ms
+    measure_test.go:96: RESULT impl=xnet rtt=80ms ping=81.6ms gateway_open_first_answer=82.2ms open_request_no_chunk=163.6ms open_request_first_chunk=82.2ms
+--- PASS: TestMeasureOpenLatency (22.41s)
+=== RUN   TestMeasureThroughputAt100ms
+    measure_test.go:151: RESULT impl=stdlib windows=defaults rtt=100ms up=80 Mbit/s down=328 Mbit/s (32 MiB each)
+    measure_test.go:151: RESULT impl=stdlib windows=rpmgr rtt=100ms up=1251 Mbit/s down=1327 Mbit/s (256 MiB each)
+    measure_test.go:151: RESULT impl=xnet windows=defaults rtt=100ms up=79 Mbit/s down=329 Mbit/s (32 MiB each)
+    measure_test.go:151: RESULT impl=xnet windows=rpmgr rtt=100ms up=868 Mbit/s down=549 Mbit/s (256 MiB each)
+--- PASS: TestMeasureThroughputAt100ms (20.38s)
+PASS
+ok  	github.com/felix-homelab/rpmgr/spikes/s2	42.814s

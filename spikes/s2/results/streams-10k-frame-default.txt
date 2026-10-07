@@ -1,0 +1,15 @@
+go version go1.27.1 linux/amd64
+golang.org/x/net v0.59.0
+args: -run TestStreamLimit_TenThousand/frame-default -timeout 15m
+=== RUN   TestStreamLimit_TenThousand
+=== RUN   TestStreamLimit_TenThousand/frame-default
+=== RUN   TestStreamLimit_TenThousand/frame-default/stdlib/framed
+    s2_test.go:810: 9 999 open idle streams: active 10000; after GC, heap +5461 MiB (559 KiB per stream, both ends in one process, incl. 2 × 16 KiB harness read buffers), goroutine stacks +164 MiB, goroutines 30008
+=== RUN   TestStreamLimit_TenThousand/frame-default/xnet/framed
+    s2_test.go:810: 9 999 open idle streams: active 10000; after GC, heap +300 MiB (30 KiB per stream, both ends in one process, incl. 2 × 16 KiB harness read buffers), goroutine stacks +149 MiB, goroutines 30007
+--- PASS: TestStreamLimit_TenThousand (10.74s)
+    --- PASS: TestStreamLimit_TenThousand/frame-default (10.74s)
+        --- PASS: TestStreamLimit_TenThousand/frame-default/stdlib/framed (5.02s)
+        --- PASS: TestStreamLimit_TenThousand/frame-default/xnet/framed (5.72s)
+PASS
+ok  	github.com/felix-homelab/rpmgr/spikes/s2	10.868s

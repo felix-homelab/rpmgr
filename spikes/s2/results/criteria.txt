@@ -1,0 +1,205 @@
+go version go1.27.1 linux/amd64
+golang.org/x/net v0.59.0
+args: -timeout 30m
+=== RUN   TestMeasureOpenLatency
+    measure_test.go:17: set S2_MEASURE=1 to run the measurements
+--- SKIP: TestMeasureOpenLatency (0.00s)
+=== RUN   TestMeasureThroughputAt100ms
+    measure_test.go:17: set S2_MEASURE=1 to run the measurements
+--- SKIP: TestMeasureThroughputAt100ms (0.00s)
+=== RUN   TestDuplex
+=== RUN   TestDuplex/stdlib/raw
+    s2_test.go:95: 1024 MiB each way in 21.353s: 48 MiB/s per direction (indicative, loopback, shared host)
+=== RUN   TestDuplex/stdlib/framed
+    s2_test.go:95: 1024 MiB each way in 23.294s: 44 MiB/s per direction (indicative, loopback, shared host)
+=== RUN   TestDuplex/xnet/raw
+    s2_test.go:95: 1024 MiB each way in 14.218s: 72 MiB/s per direction (indicative, loopback, shared host)
+=== RUN   TestDuplex/xnet/framed
+    s2_test.go:95: 1024 MiB each way in 23.963s: 43 MiB/s per direction (indicative, loopback, shared host)
+--- PASS: TestDuplex (100.92s)
+    --- PASS: TestDuplex/stdlib/raw (25.75s)
+    --- PASS: TestDuplex/stdlib/framed (27.40s)
+    --- PASS: TestDuplex/xnet/raw (18.52s)
+    --- PASS: TestDuplex/xnet/framed (29.24s)
+=== RUN   TestHalfClose_GatewayFirst
+=== RUN   TestHalfClose_GatewayFirst/stdlib/raw
+=== RUN   TestHalfClose_GatewayFirst/stdlib/framed
+=== RUN   TestHalfClose_GatewayFirst/xnet/raw
+=== RUN   TestHalfClose_GatewayFirst/xnet/framed
+--- PASS: TestHalfClose_GatewayFirst (0.30s)
+    --- PASS: TestHalfClose_GatewayFirst/stdlib/raw (0.07s)
+    --- PASS: TestHalfClose_GatewayFirst/stdlib/framed (0.08s)
+    --- PASS: TestHalfClose_GatewayFirst/xnet/raw (0.07s)
+    --- PASS: TestHalfClose_GatewayFirst/xnet/framed (0.08s)
+=== RUN   TestHalfClose_ConnectorFirst_Framed
+=== RUN   TestHalfClose_ConnectorFirst_Framed/stdlib/framed
+=== RUN   TestHalfClose_ConnectorFirst_Framed/xnet/framed
+--- PASS: TestHalfClose_ConnectorFirst_Framed (0.23s)
+    --- PASS: TestHalfClose_ConnectorFirst_Framed/stdlib/framed (0.12s)
+    --- PASS: TestHalfClose_ConnectorFirst_Framed/xnet/framed (0.11s)
+=== RUN   TestHalfClose_ConnectorFirst_RawLosesClientData
+=== RUN   TestHalfClose_ConnectorFirst_RawLosesClientData/stdlib/raw
+    s2_test.go:187: gateway recv err: <nil>; gateway send err after connector FIN: io: read/write on closed pipe; connector received 0 of 4194304 bytes after its FIN, err: stream error: stream ID 3; NO_ERROR
+=== RUN   TestHalfClose_ConnectorFirst_RawLosesClientData/xnet/raw
+    s2_test.go:187: gateway recv err: <nil>; gateway send err after connector FIN: io: read/write on closed pipe; connector received 0 of 4194304 bytes after its FIN, err: stream error: stream ID 3; NO_ERROR
+--- PASS: TestHalfClose_ConnectorFirst_RawLosesClientData (0.15s)
+    --- PASS: TestHalfClose_ConnectorFirst_RawLosesClientData/stdlib/raw (0.08s)
+    --- PASS: TestHalfClose_ConnectorFirst_RawLosesClientData/xnet/raw (0.07s)
+=== RUN   TestAbort
+=== RUN   TestAbort/gateway
+=== RUN   TestAbort/gateway/stdlib/raw
+    s2_test.go:269: gateway abort observed on all four ends within 1ms
+=== RUN   TestAbort/gateway/stdlib/framed
+    s2_test.go:269: gateway abort observed on all four ends within 1ms
+=== RUN   TestAbort/gateway/xnet/raw
+    s2_test.go:269: gateway abort observed on all four ends within 0s
+=== RUN   TestAbort/gateway/xnet/framed
+    s2_test.go:269: gateway abort observed on all four ends within 1ms
+=== RUN   TestAbort/connector
+=== RUN   TestAbort/connector/stdlib/raw
+    s2_test.go:269: connector abort observed on all four ends within 2ms
+=== RUN   TestAbort/connector/stdlib/framed
+    s2_test.go:269: connector abort observed on all four ends within 1ms
+=== RUN   TestAbort/connector/xnet/raw
+    s2_test.go:269: connector abort observed on all four ends within 1ms
+=== RUN   TestAbort/connector/xnet/framed
+    s2_test.go:269: connector abort observed on all four ends within 1ms
+--- PASS: TestAbort (0.75s)
+    --- PASS: TestAbort/gateway (0.51s)
+        --- PASS: TestAbort/gateway/stdlib/raw (0.09s)
+        --- PASS: TestAbort/gateway/stdlib/framed (0.15s)
+        --- PASS: TestAbort/gateway/xnet/raw (0.09s)
+        --- PASS: TestAbort/gateway/xnet/framed (0.17s)
+    --- PASS: TestAbort/connector (0.24s)
+        --- PASS: TestAbort/connector/stdlib/raw (0.07s)
+        --- PASS: TestAbort/connector/stdlib/framed (0.06s)
+        --- PASS: TestAbort/connector/xnet/raw (0.06s)
+        --- PASS: TestAbort/connector/xnet/framed (0.06s)
+=== RUN   TestControlStreamIsFirstRequest
+=== RUN   TestControlStreamIsFirstRequest/stdlib/framed
+=== RUN   TestControlStreamIsFirstRequest/xnet/framed
+--- PASS: TestControlStreamIsFirstRequest (0.02s)
+    --- PASS: TestControlStreamIsFirstRequest/stdlib/framed (0.01s)
+    --- PASS: TestControlStreamIsFirstRequest/xnet/framed (0.01s)
+=== RUN   TestStreamBeforeControlRefused
+=== RUN   TestStreamBeforeControlRefused/stdlib
+=== RUN   TestStreamBeforeControlRefused/xnet
+--- PASS: TestStreamBeforeControlRefused (0.01s)
+    --- PASS: TestStreamBeforeControlRefused/stdlib (0.01s)
+    --- PASS: TestStreamBeforeControlRefused/xnet (0.01s)
+=== RUN   TestOpenRequest_Accepted
+=== RUN   TestOpenRequest_Accepted/stdlib/raw
+=== RUN   TestOpenRequest_Accepted/stdlib/framed
+=== RUN   TestOpenRequest_Accepted/xnet/raw
+=== RUN   TestOpenRequest_Accepted/xnet/framed
+--- PASS: TestOpenRequest_Accepted (0.05s)
+    --- PASS: TestOpenRequest_Accepted/stdlib/raw (0.02s)
+    --- PASS: TestOpenRequest_Accepted/stdlib/framed (0.01s)
+    --- PASS: TestOpenRequest_Accepted/xnet/raw (0.01s)
+    --- PASS: TestOpenRequest_Accepted/xnet/framed (0.01s)
+=== RUN   TestOpenRequest_Rejected
+=== RUN   TestOpenRequest_Rejected/stdlib/framed
+=== RUN   TestOpenRequest_Rejected/xnet/framed
+--- PASS: TestOpenRequest_Rejected (0.01s)
+    --- PASS: TestOpenRequest_Rejected/stdlib/framed (0.01s)
+    --- PASS: TestOpenRequest_Rejected/xnet/framed (0.01s)
+=== RUN   TestOpenRequest_DuplicateOpenIDRejected
+=== RUN   TestOpenRequest_DuplicateOpenIDRejected/stdlib/framed
+=== RUN   TestOpenRequest_DuplicateOpenIDRejected/xnet/framed
+--- PASS: TestOpenRequest_DuplicateOpenIDRejected (0.02s)
+    --- PASS: TestOpenRequest_DuplicateOpenIDRejected/stdlib/framed (0.01s)
+    --- PASS: TestOpenRequest_DuplicateOpenIDRejected/xnet/framed (0.01s)
+=== RUN   TestOpenRequest_Timeout
+=== RUN   TestOpenRequest_Timeout/300ms
+=== RUN   TestOpenRequest_Timeout/300ms/stdlib/framed
+=== RUN   TestOpenRequest_Timeout/300ms/xnet/framed
+=== RUN   TestOpenRequest_Timeout/10s
+=== RUN   TestOpenRequest_Timeout/10s/stdlib/framed
+=== RUN   TestOpenRequest_Timeout/10s/xnet/framed
+--- PASS: TestOpenRequest_Timeout (20.64s)
+    --- PASS: TestOpenRequest_Timeout/300ms (0.62s)
+        --- PASS: TestOpenRequest_Timeout/300ms/stdlib/framed (0.31s)
+        --- PASS: TestOpenRequest_Timeout/300ms/xnet/framed (0.31s)
+    --- PASS: TestOpenRequest_Timeout/10s (20.02s)
+        --- PASS: TestOpenRequest_Timeout/10s/stdlib/framed (10.01s)
+        --- PASS: TestOpenRequest_Timeout/10s/xnet/framed (10.01s)
+=== RUN   TestFlowControl_StalledStreamsDoNotBlockOthers
+=== RUN   TestFlowControl_StalledStreamsDoNotBlockOthers/stdlib/framed
+    s2_test.go:550: stalled streams hold 63 MiB towards the gateway
+    s2_test.go:559: control-stream Ping RTT under pressure: 400.983µs
+=== RUN   TestFlowControl_StalledStreamsDoNotBlockOthers/xnet/framed
+    s2_test.go:550: stalled streams hold 63 MiB towards the gateway
+    s2_test.go:559: control-stream Ping RTT under pressure: 548.039µs
+--- PASS: TestFlowControl_StalledStreamsDoNotBlockOthers (3.07s)
+    --- PASS: TestFlowControl_StalledStreamsDoNotBlockOthers/stdlib/framed (1.74s)
+    --- PASS: TestFlowControl_StalledStreamsDoNotBlockOthers/xnet/framed (1.33s)
+=== RUN   TestFlowControl_StallDetectionUnderWindowPressure
+=== RUN   TestFlowControl_StallDetectionUnderWindowPressure/stdlib/framed
+    s2_test.go:595: 17 stalled streams hold 255 MiB; connection window 256 MiB
+    s2_test.go:624: detector reset streams [0 1 2 3 4 5 6 7 8] (oldest first); echo and Ping resumed
+=== RUN   TestFlowControl_StallDetectionUnderWindowPressure/xnet/framed
+    s2_test.go:595: 17 stalled streams hold 256 MiB; connection window 256 MiB
+    s2_test.go:624: detector reset streams [0 1 2 3 4 5 6 7 8] (oldest first); echo and Ping resumed
+--- PASS: TestFlowControl_StallDetectionUnderWindowPressure (16.33s)
+    --- PASS: TestFlowControl_StallDetectionUnderWindowPressure/stdlib/framed (8.02s)
+    --- PASS: TestFlowControl_StallDetectionUnderWindowPressure/xnet/framed (8.31s)
+=== RUN   TestFlowControl_PausedClientNotResetWithoutPressure
+=== RUN   TestFlowControl_PausedClientNotResetWithoutPressure/stdlib/framed
+=== RUN   TestFlowControl_PausedClientNotResetWithoutPressure/xnet/framed
+--- PASS: TestFlowControl_PausedClientNotResetWithoutPressure (4.02s)
+    --- PASS: TestFlowControl_PausedClientNotResetWithoutPressure/stdlib/framed (2.01s)
+    --- PASS: TestFlowControl_PausedClientNotResetWithoutPressure/xnet/framed (2.01s)
+=== RUN   TestWindowsApplied
+=== RUN   TestWindowsApplied/defaults
+=== RUN   TestWindowsApplied/defaults/stdlib/raw
+    s2_test.go:699: in flight to a non-reading gateway: 4.00 MiB (want ≈ 4 MiB); to a non-reading connector: 1.02 MiB (want ≈ 1 MiB)
+=== RUN   TestWindowsApplied/defaults/xnet/raw
+    s2_test.go:699: in flight to a non-reading gateway: 4.00 MiB (want ≈ 4 MiB); to a non-reading connector: 1.02 MiB (want ≈ 1 MiB)
+=== RUN   TestWindowsApplied/rpmgr
+=== RUN   TestWindowsApplied/rpmgr/stdlib/raw
+    s2_test.go:699: in flight to a non-reading gateway: 16.00 MiB (want ≈ 16 MiB); to a non-reading connector: 16.02 MiB (want ≈ 16 MiB)
+=== RUN   TestWindowsApplied/rpmgr/xnet/raw
+    s2_test.go:699: in flight to a non-reading gateway: 16.00 MiB (want ≈ 16 MiB); to a non-reading connector: 16.02 MiB (want ≈ 16 MiB)
+--- PASS: TestWindowsApplied (4.53s)
+    --- PASS: TestWindowsApplied/defaults (2.18s)
+        --- PASS: TestWindowsApplied/defaults/stdlib/raw (1.09s)
+        --- PASS: TestWindowsApplied/defaults/xnet/raw (1.09s)
+    --- PASS: TestWindowsApplied/rpmgr (2.35s)
+        --- PASS: TestWindowsApplied/rpmgr/stdlib/raw (1.19s)
+        --- PASS: TestWindowsApplied/rpmgr/xnet/raw (1.16s)
+=== RUN   TestStreamLimit_NeverBlocks
+=== RUN   TestStreamLimit_NeverBlocks/stdlib/framed
+=== RUN   TestStreamLimit_NeverBlocks/xnet/framed
+--- PASS: TestStreamLimit_NeverBlocks (0.02s)
+    --- PASS: TestStreamLimit_NeverBlocks/stdlib/framed (0.01s)
+    --- PASS: TestStreamLimit_NeverBlocks/xnet/framed (0.01s)
+=== RUN   TestStreamLimit_TenThousand
+=== RUN   TestStreamLimit_TenThousand/frame-default
+=== RUN   TestStreamLimit_TenThousand/frame-default/stdlib/framed
+    s2_test.go:810: 9 999 open idle streams: active 10000; after GC, heap +5436 MiB (556 KiB per stream, both ends in one process, incl. 2 × 16 KiB harness read buffers), goroutine stacks +158 MiB, goroutines 30008
+=== RUN   TestStreamLimit_TenThousand/frame-default/xnet/framed
+    s2_test.go:810: 9 999 open idle streams: active 10000; after GC, heap +302 MiB (30 KiB per stream, both ends in one process, incl. 2 × 16 KiB harness read buffers), goroutine stacks +149 MiB, goroutines 30007
+=== RUN   TestStreamLimit_TenThousand/frame-16KiB
+=== RUN   TestStreamLimit_TenThousand/frame-16KiB/stdlib/framed
+    s2_test.go:810: 9 999 open idle streams: active 10000; after GC, heap +-4560 MiB (-467 KiB per stream, both ends in one process, incl. 2 × 16 KiB harness read buffers), goroutine stacks +153 MiB, goroutines 30008
+=== RUN   TestStreamLimit_TenThousand/frame-16KiB/xnet/framed
+    s2_test.go:810: 9 999 open idle streams: active 10000; after GC, heap +271 MiB (27 KiB per stream, both ends in one process, incl. 2 × 16 KiB harness read buffers), goroutine stacks +155 MiB, goroutines 30007
+--- PASS: TestStreamLimit_TenThousand (24.81s)
+    --- PASS: TestStreamLimit_TenThousand/frame-default (14.07s)
+        --- PASS: TestStreamLimit_TenThousand/frame-default/stdlib/framed (6.91s)
+        --- PASS: TestStreamLimit_TenThousand/frame-default/xnet/framed (7.16s)
+    --- PASS: TestStreamLimit_TenThousand/frame-16KiB (10.74s)
+        --- PASS: TestStreamLimit_TenThousand/frame-16KiB/stdlib/framed (5.68s)
+        --- PASS: TestStreamLimit_TenThousand/frame-16KiB/xnet/framed (5.05s)
+=== RUN   TestPingLiveness_Blackhole
+=== RUN   TestPingLiveness_Blackhole/stdlib/framed
+    s2_test.go:864: blackhole detected: gateway after 25.01s, connector after 25.01s (SendPingTimeout 15s + PingTimeout 10s = 25s)
+=== RUN   TestPingLiveness_Blackhole/xnet/framed
+    s2_test.go:864: blackhole detected: gateway after 25.01s, connector after 25.01s (SendPingTimeout 15s + PingTimeout 10s = 25s)
+--- PASS: TestPingLiveness_Blackhole (50.05s)
+    --- PASS: TestPingLiveness_Blackhole/stdlib/framed (25.02s)
+    --- PASS: TestPingLiveness_Blackhole/xnet/framed (25.02s)
+=== RUN   TestTLS_WrongGatewayIDRejected
+--- PASS: TestTLS_WrongGatewayIDRejected (0.00s)
+PASS
+ok  	github.com/felix-homelab/rpmgr/spikes/s2	225.976s
