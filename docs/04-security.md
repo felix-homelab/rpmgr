@@ -457,7 +457,7 @@ Rules:
 | User passwords, recovery codes | argon2id hash |
 | Session, API, enrollment tokens | SHA-256 hash (tokens are 256-bit random, so a fast hash is sufficient) |
 | Route basic-auth credentials | argon2id hash; gateways receive the hash, never the password. Because browsers send basic-auth credentials with **every** request, a gateway verifies with argon2id once and then caches `HMAC-SHA256(gateway-local random key, policy_id ‖ credential_version ‖ len(user) ‖ user ‖ password)` together with the matched user, for 5 minutes in a bounded LRU. The policy ID and credential version keep an entry from being reused on another route, org or credential; the length prefix prevents ambiguous user/password splits; entries for a policy are flushed as soon as a snapshot changes that policy, so tightened policies apply immediately; failed attempts are rate-limited per client IP **before** hashing, and hashing has a per-gateway concurrency cap. This keeps argon2id from becoming a CPU/memory amplifier for unauthenticated clients |
-| CA, intermediate, config-signing and audit keys; ACME account key; TLS private keys of public certificates; TOTP seeds; OIDC client secrets; DNS-provider tokens (one per `dns_providers` row, per org); SMTP and webhook secrets | **Envelope encryption**: a random data key per secret (AES-256-GCM, AAD = table, column, row ID, KEK version), wrapped by the KEK |
+| CA, intermediate, config-signing and audit keys; ACME account key; TLS private keys of public certificates; TOTP seeds; OIDC client secrets; DNS-provider tokens (one per `dns_providers` row, per org); SMTP and webhook secrets | **Envelope encryption**: a random data key per secret encrypts it with AES-256-GCM (AAD = table, column, row ID); the data key is wrapped by the KEK with AES-256-GCM (AAD = the same plus the KEK version). Rotating the KEK re-wraps only data keys, never the secrets. The KEK version is derived from the key itself (the first 8 bytes of a SHA-256 over it), so it needs no configuration |
 | Agent private keys, WireGuard private keys | **Never stored centrally**. Generated on the agent; only public keys reach the controller |
 
 **KEK sources**, in order of preference:
@@ -465,8 +465,8 @@ Rules:
 | Source (`kek.source`) | Phase | Notes |
 |---|---|---|
 | `kms`: HashiCorp Vault or OpenBao Transit | P2 | Plugin interface; cloud KMS (AWS, GCP, Azure) added by demand |
-| `systemd-credential`: systemd `LoadCredentialEncrypted=` | P1 | TPM-sealable where available; needs systemd ≥ 250, otherwise the installer falls back to `file` [V VB-03] |
-| `file`: a 0600 file | P1 | Containers mount secrets as files |
+| `systemd-credential`: systemd `LoadCredentialEncrypted=` | P1 | TPM-sealable where available [V VB-03]; needs systemd ≥ 250, otherwise the installer falls back to `file` (VB-03: Ubuntu 22.04 has 249). The credential `<name>` is read from `$CREDENTIALS_DIRECTORY`, in the format of `file` |
+| `file`: a 0600 file | P1 | Containers mount secrets as files. The file holds the base64 encoding of 32 random bytes; symbolic links are followed (container platforms mount secrets that way), but the file must be regular and closed to its group and other users (0600 or 0400) |
 
 **Not** an environment variable: no secret is kept in the environment of a long-running process.
 `rpmgr kek rotate` re-wraps all data keys.
