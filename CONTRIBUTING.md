@@ -92,7 +92,9 @@ branch fails CI, because `tmp/` branches are never merged.
 - Branches are deleted when their PR is merged or closed. A `tmp/` branch is deleted when its
   result is written down; a spike's branch is first tagged ([Spikes](#spikes)).
 - Force-pushing your own unmerged branch is fine; force-pushing `main` or `release/*` is never
-  allowed.
+  allowed. AI assistants never force-push and never delete a remote branch: they bring a pushed
+  branch up to date by merging `main` into it, and leave deletions to the maintainer
+  ([D44](docs/14-open-decisions.md#project-and-process)).
 
 ## Commits
 
@@ -322,9 +324,9 @@ before it runs ([13](docs/13-roadmap.md#phase-0--spikes),
    [template](docs/spikes/TEMPLATE.md), the ADR moved to *Accepted* or to the fallback the rule
    names, and every document the result affects.
 4. **Archive.** After that PR is merged, the last commit of the spike branch is tagged with an
-   annotated tag `spike/sx` (immutable, protected by a ruleset), the tag is pushed, and the branch
-   is deleted. `docs/spikes/Sx.md` links to the tag, so the code behind the numbers stays
-   available.
+   annotated tag `spike/sx` (immutable, protected by a ruleset) and the tag is pushed; then the
+   maintainer deletes the branch ([D44](docs/14-open-decisions.md#project-and-process)).
+   `docs/spikes/Sx.md` links to the tag, so the code behind the numbers stays available.
 
 A spike pins the current releases of the libraries it tests and re-checks, at those versions,
 every `[F]` fact its decision rests on ([D39](docs/14-open-decisions.md#project-and-process)).
