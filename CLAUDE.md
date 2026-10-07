@@ -48,6 +48,8 @@ authority and win on any conflict. Personal settings belong in the ignored `CLAU
 The repository is `github.com/felix-homelab/rpmgr`; use `gh` for issues and PRs.
 
 - **Never push to `main`** (a ruleset blocks it) and never rewrite `main`, `release/*` or a tag.
+- **Never force-push and never delete a remote branch** (D44): bring a pushed branch up to date by
+  merging `main` into it; the maintainer deletes branches. Rebase only branches not yet pushed.
 - **Branches** (CONTRIBUTING, "Branches"): `feature/<issue>-<desc>` and `bugfix/<issue>-<desc>`
   need a GitHub issue; `improvement/<desc>` (tooling, docs, no behaviour change), `merge/<desc>`,
   `tmp/<desc>` (spikes, never merged), `release/<major>.<minor>`. Lowercase, digits, `-`, `.`;
@@ -82,8 +84,8 @@ Process in CONTRIBUTING, "Spikes"; questions, methods, pass criteria and the pre
   repeats every run and raw results in `results/`) on `tmp/sx-<desc>`, never merged.
 - The result PR from `feature/<issue>-sx-<desc>` (`docs(adr): …`, `no-changelog`) adds
   `docs/spikes/Sx.md` from the [template](docs/spikes/TEMPLATE.md), applies the rule to the ADR and
-  updates every affected document. Afterwards: tag `spike/sx` on the branch tip, push it, delete
-  the branch.
+  updates every affected document. Afterwards: tag `spike/sx` on the branch tip and push it; the
+  maintainer deletes the branch.
 - The rule decides; a spike never re-opens a decision. Pin the current releases and re-check, at
   those versions, every `[F]` fact the decision rests on (D39). Local dry runs of S1 and S6 never
   decide their rules (D37).
