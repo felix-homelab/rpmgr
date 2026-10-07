@@ -133,7 +133,7 @@ func (c *Controller) StartReplica(t testing.TB) (string, *controller.Sessions) {
 		so.Compiler = &snapshot.Compiler{Sources: c.opts.Sources, Endpoints: func() []string { return []string{url} }}
 	}
 	sessions := controller.NewSessions(so)
-	cfg := pki.AgentEndpointConfig(node, roots, pki.Expect{TrustDomain: td, Kinds: []pki.Kind{pki.KindConnector, pki.KindGateway},
+	cfg := pki.AgentEndpointConfig(pki.NewHolder(node), roots, pki.Expect{TrustDomain: td, Kinds: []pki.Kind{pki.KindConnector, pki.KindGateway},
 		Denied: sessions.Denied}, nil, controller.ReauthChecks(c.DB, c.Sys))
 	split := controller.NewSplitter(td, ln.Addr())
 	agents := controller.NewAgentServer(cfg, td)

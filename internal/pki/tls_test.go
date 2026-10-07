@@ -361,7 +361,7 @@ type reauthEnv struct {
 func (e *reauthEnv) server(t *testing.T) *tls.Config {
 	t.Helper()
 	ctl := e.c.agent(t, node(ctn1), pki.ControllerLifetime) // valid at the current fake time
-	return pki.AgentEndpointConfig(ctl.tls, e.c.pool(), pki.Expect{TrustDomain: td, Kinds: []pki.Kind{pki.KindConnector, pki.KindGateway}},
+	return pki.AgentEndpointConfig(pki.NewHolder(ctl.tls), e.c.pool(), pki.Expect{TrustDomain: td, Kinds: []pki.Kind{pki.KindConnector, pki.KindGateway}},
 		e.c.clock, pki.Reauth{
 			Grace: func() time.Duration { return e.grace },
 			Check: func(*x509.Certificate) error { return e.checkErr },
@@ -432,7 +432,7 @@ func TestReauth(t *testing.T) {
 	if r := run(t, e.server(t), e.client(nodeLeaf, reauth, nil)); !errors.Is(r.srvErr, pki.ErrWrongIdentity) {
 		t.Errorf("a controller node certificate at Reauth: %v", r.srvErr)
 	}
-	unconfigured := pki.AgentEndpointConfig(c.agent(t, node(ctn1), pki.ControllerLifetime).tls, c.pool(),
+	unconfigured := pki.AgentEndpointConfig(pki.NewHolder(c.agent(t, node(ctn1), pki.ControllerLifetime).tls), c.pool(),
 		pki.Expect{TrustDomain: td, Kinds: []pki.Kind{pki.KindConnector}}, c.clock, pki.Reauth{})
 	if r := run(t, unconfigured, e.client(e.agent, reauth, nil)); r.srvErr == nil {
 		t.Error("Reauth without a database check accepted a certificate")
@@ -621,7 +621,7 @@ func TestConfigs(t *testing.T) {
 	e := pki.Expect{TrustDomain: td}
 	cli := pki.ClientConfig(con.tls, c.pool(), "controller."+td, e, nil, nil)
 	srv := pki.ServerConfig(con.tls, c.pool(), e, nil)
-	ep := pki.AgentEndpointConfig(con.tls, c.pool(), e, nil, pki.Reauth{})
+	ep := pki.AgentEndpointConfig(pki.NewHolder(con.tls), c.pool(), e, nil, pki.Reauth{})
 	for name, cfg := range map[string]*tls.Config{"client": cli, "server": srv, "agent endpoint": ep} {
 		if cfg.MinVersion != tls.VersionTLS13 || cfg.MaxVersion != tls.VersionTLS13 || cfg.VerifyConnection == nil {
 			t.Errorf("%s: versions %x–%x, VerifyConnection set %v", name, cfg.MinVersion, cfg.MaxVersion, cfg.VerifyConnection != nil)
@@ -656,7 +656,7 @@ func TestAgentEndpoint_CertificateOptional(t *testing.T) {
 	c := newCA(t, td)
 	ctl := c.agent(t, node(ctn1), pki.ControllerLifetime)
 	e := pki.Expect{TrustDomain: td, Kinds: []pki.Kind{pki.KindConnector, pki.KindGateway}}
-	srv := pki.AgentEndpointConfig(ctl.tls, c.pool(), e, c.clock, pki.Reauth{
+	srv := pki.AgentEndpointConfig(pki.NewHolder(ctl.tls), c.pool(), e, c.clock, pki.Reauth{
 		Grace: func() time.Duration { return 30 * 24 * time.Hour }, Check: func(*x509.Certificate) error { return nil }})
 	want := pki.Expect{TrustDomain: td, Kinds: []pki.Kind{pki.KindController}}
 	client := func(sni string, own *agent) *tls.Config {

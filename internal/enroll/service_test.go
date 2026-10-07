@@ -58,7 +58,7 @@ func (e *env) server(t *testing.T) (string, *enroll.Service) {
 	}
 	roots := x509.NewCertPool()
 	roots.AddCert(e.ca.Root())
-	cfg := pki.AgentEndpointConfig(node, roots, pki.Expect{TrustDomain: td, Kinds: []pki.Kind{pki.KindConnector, pki.KindGateway}},
+	cfg := pki.AgentEndpointConfig(pki.NewHolder(node), roots, pki.Expect{TrustDomain: td, Kinds: []pki.Kind{pki.KindConnector, pki.KindGateway}},
 		nil, pki.Reauth{})
 	srv := controller.NewAgentServer(cfg, td)
 	svc := enroll.NewService(e.db, e.ca, []string{"https://panel.example.com"}, func() time.Time { return e.clock })
