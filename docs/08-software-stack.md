@@ -77,6 +77,7 @@ flowchart TB
 |---|---|
 | `crypto/tls`, `crypto/x509`, `crypto/ecdsa` | TLS 1.3, internal CA, P-256 keys ([04](04-security.md#pki-and-identity)) |
 | `golang.org/x/crypto/argon2` | Password hashing (`IDKey` [F x/crypto v0.54.0 `argon2/argon2.go:101`]) |
+| `golang.org/x/crypto/cryptobyte` | Parses the TLS ClientHello that port 443 routes on, from the recorded records, without `crypto/tls` internals ([03](03-connections.md#port-443-multiplexing)) |
 | `coreos/go-oidc` | OIDC SSO verification |
 | A maintained WebAuthn library | Passkeys [V VB-01] |
 | Ed25519 (`crypto/ed25519`), minisign-compatible format | Release manifest signatures verified in-binary ([ADR-0013](adr/0013-signed-ota.md)) |
