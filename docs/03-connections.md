@@ -117,58 +117,77 @@ single-use token. Token format, lifetimes and re-enrollment rules are in
 
 ### Service sketch
 
-```protobuf
-// rpmgr/agent/v1/control.proto (sketch)
-service Control {
-  // One per agent. The agent sends AgentMessage, the controller sends ControllerMessage.
-  rpc Session(stream AgentMessage) returns (stream ControllerMessage);
-  // Imperative operations: the agent opens this after a ControllerMessage.Open.
-  rpc Attach(stream AttachFrame) returns (stream AttachFrame);
-  rpc Renew(RenewRequest) returns (RenewResponse);               // new CSR → new certificate
-  rpc FetchResource(FetchResourceRequest) returns (Resource);    // large items by content hash
-}
+The protocol is defined in `proto/rpmgr/agent/v1` (`control.proto`, `enrollment.proto`,
+`snapshot.proto`); abridged:
 
-// Reached via SNI reauth.controller.<td>, which selects a verifier that accepts client certificates
-// expired at most the grace period ago (04-security.md, Leaf certificates). Mutual TLS only.
+```protobuf
+// SNI controller.<td>, mutual TLS. The peer's identity comes from its certificate, never from a
+// message.
+service Control {
+  rpc Session(stream AgentMessage) returns (stream ControllerMessage); // one per agent
+  rpc Renew(RenewRequest) returns (RenewResponse);         // CSR bound to the connection
+  rpc FetchResource(FetchResourceRequest) returns (FetchResourceResponse); // items by hash
+  rpc Leave(LeaveRequest) returns (LeaveResponse);         // revoke the caller's identity
+}
+// SNI controller.<td> without a client certificate: the only method reachable so.
+service Enrollment {
+  rpc Enroll(EnrollRequest) returns (EnrollResponse);
+}
+// SNI reauth.controller.<td>: client certificates expired at most the grace period ago
+// (04-security.md, Leaf certificates).
 service Reauth {
-  rpc Reauth(ReauthRequest) returns (ReauthResponse);            // new CSR → new certificate
+  rpc Reauth(ReauthRequest) returns (ReauthResponse);
 }
 
 message AgentMessage {
   oneof msg {
-    Hello hello = 1;            // first message: agent_id, last_applied, caps, versions, boot_id, clock
-    Applied applied = 2;        // revision applied (+ per-resource status)
-    Rejected rejected = 3;      // revision rejected, structured errors; LKG kept
-    Status status = 4;          // health, per-route readiness, counters summary
-    OpResult op_result = 5;     // result of an imperative operation that needs no stream
+    Hello hello = 1;          // last_applied + hash, capabilities, version, boot_id, clock,
+                              // deny-list digest
+    Applied applied = 2;      // revision applied, resources not ready
+    Rejected rejected = 3;    // revision rejected, structured errors; LKG kept
+    Status status = 4;        // readiness changes, route counters, data sessions (gateways)
+    OpResult op_result = 5;   // result of an operation that needs no stream
   }
 }
 
 message ControllerMessage {
+  reserved 3;                       // Open, for imperative operations (Phase 2)
   oneof msg {
-    Welcome welcome = 1;        // session_epoch, db_epoch, server_time, min_agent_version
-    Snapshot snapshot = 2;      // revision, hash, resources (or references), signature
-    Open open = 3;              // op_id, kind (logs, diagnostics, shell), ticket, deadline
-    Drain drain = 4;            // reconnect elsewhere before deadline (controller shutdown)
-    Goodbye goodbye = 5;        // superseded | revoked | upgrade_required | shutdown
-    DenyListUpdate deny_list = 6; // version + entries; applied unconditionally, never shrinks early
-    AcmeChallenge acme_challenge = 7; // gateways: op_id, add | remove, type, identifier, token,
-                                      // key_authorization; acknowledged with OpResult
+    Welcome welcome = 1;            // session_epoch, db_epoch, server_time, min_agent_version,
+                                    // config-signing certificates
+    Signed snapshot = 2;            // a Snapshot: revision, agent, controller endpoints, resources
+    Drain drain = 4;                // reconnect elsewhere before the deadline
+    Goodbye goodbye = 5;            // superseded, revoked, upgrade_required, shutdown, overloaded
+    Signed deny_list = 6;           // a DenyList; applied unconditionally, never shrinks early
+    AcmeChallenge acme_challenge = 7; // gateways: add | remove, acknowledged with OpResult
   }
 }
+
+// Signed is a message as the exact bytes the config-signing key signed (R14).
+message Signed { bytes payload = 1; bytes signature = 2; string key_id = 3; }
 ```
 
 - **Hello** carries `last_applied` revision and hash, capability strings, binary and protocol
   version, `boot_id`, the agent's clock, and a digest of its deny-list (the controller resends the
-  list on a mismatch). **Welcome** carries the controller's time, the
-  `session_epoch` assigned to this session, the current `db_epoch`, and `min_agent_version`.
-- **Imperative operations** (live logs, diagnostics, and in Phase 3 the shell): the controller sends
+  list on a mismatch). It carries no agent ID: the controller takes the identity from the client
+  certificate. **Welcome** carries the controller's time, the `session_epoch` assigned to this
+  session, the current `db_epoch`, `min_agent_version`, and the certificates of the config-signing
+  keys, the next key included, so the agent can verify snapshots across a key rotation.
+- **Signed messages.** Snapshots and deny-lists travel as `Signed{payload, signature, key_id}`: the
+  agent verifies and persists exactly the signed bytes, so nothing is re-encoded, and a snapshot's
+  hash is the SHA-256 of its payload. A snapshot names the agent it was compiled for; an agent
+  refuses one for another identity. The signing key's certificate must chain to the pinned root
+  with the config-signing URI ([04](04-security.md#ca-hierarchy)).
+- **Imperative operations** (Phase 2: live logs and diagnostics; Phase 3: the shell; the field
+  number of `Open` is reserved): the controller sends
   `Open{op_id, kind, ticket, deadline}`; the agent opens an `Attach` stream on the **same HTTP/2
   connection** presenting the single-use ticket. No new TCP or TLS handshake. Every operation has a
   deadline; unanswered operations fail with `DEADLINE_EXCEEDED` instead of blocking forever.
 - **Large items** (certificate chains, function bundles) are referenced by content hash inside the
   snapshot and fetched with `FetchResource`, so snapshots stay small and unchanged resources are not
-  re-sent.
+  re-sent. An agent can fetch only items of its own current snapshot.
+- **Leaving.** `Leave` lets an agent revoke its own identity; the controller revokes it, pushes the
+  deny-list and audits it, and `rpmgr leave` then removes the identity from the host.
 - **ACME challenges** (HTTP-01 and TLS-ALPN-01 for route certificates, D41): the controller sends
   `AcmeChallenge{op_id, add, type, identifier, token, key_authorization}` to **every gateway that
   serves the name** and lets the CA validate only after each of them acknowledged with
@@ -772,10 +791,21 @@ sequenceDiagram
 
 - The **ALPN carries the major protocol version**: `rpmgr-tunnel/1`, `rpmgr-tunnel-h2/1`, `rpmgr-e2e/1`,
   `rpmgr-p2p/1`. A breaking change gets a new ALPN, and both are served during a transition.
-- `Hello`/`SessionHello` carry the minor version and **capability strings** (e.g. `udp.dgram`,
-  `udp.oversize-stream`, `p2p.v1`, `proxyproto.v2`). The controller compiles each agent's snapshot
-  using only features that agent supports, and refuses agents older than `min_agent_version` with
-  `Goodbye{upgrade_required}`, shown in the UI.
+- `Hello`/`SessionHello` carry the minor version and **capability strings**. The controller
+  compiles each agent's snapshot using only features that agent supports, and refuses agents older
+  than `min_agent_version` with `Goodbye{upgrade_required}`, shown in the UI.
+
+| Capability | Phase | Meaning |
+|---|---|---|
+| `tunnel.quic` | P1 | Data sessions over QUIC |
+| `tunnel.h2` | P1 | Data sessions over TLS and reverse HTTP/2 |
+| `udp.dgram` | P1 | UDP routes as QUIC datagrams |
+| `udp.oversize-stream` | P1 | Datagrams above the datagram limit as stream frames |
+| `proxyproto.v1` | P1 | PROXY protocol v1 towards targets |
+| `proxyproto.v2` | P1 | PROXY protocol v2 towards targets |
+| `control-passthrough` | P1 | The control session inside a data session ([ADR-0006](adr/0006-separate-control-session.md)) |
+| `p2p.v1` | P3 | Direct connector-to-connector sessions ([Private services](#private-services)) |
+
 - Protobuf rules: fields are only added; unknown fields are ignored; an unknown `StreamOpen.kind`
   is answered with `PROTOCOL`.
 - Version skew policy (which versions must interoperate) is in

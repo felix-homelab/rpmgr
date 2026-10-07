@@ -8,9 +8,12 @@ plugins:
   - local: [go, tool, protoc-gen-go]
     out: gen
     opt: paths=source_relative
+  # grpc-go serves the agent protocol, connect-go the public API (ADR-0016).
   - local: [go, tool, protoc-gen-go-grpc]
     out: gen
     opt: paths=source_relative
+    exclude_types: [rpmgr.v1]
   - local: [go, tool, protoc-gen-connect-go]
     out: gen
     opt: paths=source_relative
+    exclude_types: [rpmgr.agent.v1]
