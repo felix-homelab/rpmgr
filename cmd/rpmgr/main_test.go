@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
@@ -55,13 +56,42 @@ func TestEveryCommandHasHelp(t *testing.T) {
 
 func TestUnimplementedCommandsReportIt(t *testing.T) {
 	for _, args := range [][]string{
-		{"controller"}, {"controller", "--config", "/tmp/c.yaml"}, {"controller", "init"},
+		{"controller"}, {"controller", "--config", "/tmp/c.yaml"}, {"all-in-one", "init"},
 		{"gateway"}, {"connector"}, {"all-in-one"}, {"enroll"}, {"policy", "show"}, {"ca", "status"},
 	} {
 		code, _, stderr := runRpmgr(args...)
 		if code != cli.ExitUsage || !strings.Contains(stderr, "not available in this build") {
 			t.Errorf("rpmgr %s: exit %d, stderr %q; want exit 2, not available", strings.Join(args, " "), code, stderr)
 		}
+	}
+}
+
+// TestControllerInit runs `rpmgr controller init` against a boot file in a temporary directory.
+// The initialisation itself is tested in internal/controller.
+func TestControllerInit(t *testing.T) {
+	dir := t.TempDir()
+	cfg := filepath.Join(dir, "controller.yaml")
+	boot := "version: 1\npublic_url: https://panel.example.com\n" +
+		"database: {dsn: " + filepath.Join(dir, "controller.db") + "}\n" +
+		"kek: {source: file, path: " + filepath.Join(dir, "kek") + "}\n"
+	if err := os.WriteFile(cfg, []byte(boot), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	code, stdout, stderr := runRpmgr("controller", "init", "--config", cfg)
+	if code != cli.ExitOK || !strings.Contains(stdout, "trust domain: rpmgr-") || !strings.Contains(stdout, "CA pin:       sha256:") {
+		t.Fatalf("first init: exit %d, stdout %q, stderr %q", code, stdout, stderr)
+	}
+	code, _, stderr = runRpmgr("controller", "init", "--config", cfg, "--public-url", "https://other.example.com")
+	if code != cli.ExitError || !strings.Contains(stderr, "public_url") {
+		t.Errorf("init with another public URL: exit %d, stderr %q", code, stderr)
+	}
+	code, _, stderr = runRpmgr("controller", "init", "--config", cfg)
+	if code != cli.ExitError || !strings.Contains(stderr, "already initialised") {
+		t.Errorf("second init: exit %d, stderr %q", code, stderr)
+	}
+	code, _, stderr = runRpmgr("controller", "init", "--config", filepath.Join(dir, "missing.yaml"))
+	if code != cli.ExitError || !strings.Contains(stderr, "--public-url is needed") {
+		t.Errorf("init without boot file or URL: exit %d, stderr %q", code, stderr)
 	}
 }
 

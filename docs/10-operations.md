@@ -43,7 +43,17 @@ rpmgr controller init --public-url https://panel.example.com   # creates DB, tru
 systemctl enable --now rpmgr-controller
 ```
 
-`init` prints a one-time link for creating the first user (Owner and Instance Admin). There is no
+`init` writes the boot file if it does not exist (from `--public-url` and, for a KEK file,
+`--kek-source file --kek-path`), creates the KEK, the database and its migrations, and in one
+transaction the trust domain, the database epoch, the CA with its signing keys, and the audit
+entry. It never overwrites a boot file or a KEK: an existing one is read and used, so `init` can run
+again after a failure, and it refuses a database that is already initialised or in use by a running
+controller. A new systemd credential is encrypted with `systemd-creds encrypt` into
+`/etc/rpmgr/credstore/<name>`; an existing one is readable only where systemd loads it, so `init`
+then has to run under `systemd-run --pipe --wait --property=LoadCredentialEncrypted=…`.
+
+`init` prints the trust domain and the CA pin for `--ca-pin`, and a one-time link for creating the
+first user (Owner and Instance Admin), which arrives with local accounts in Phase 1. There is no
 default password ([04](04-security.md#security-goals)).
 
 ### Filesystem layout
