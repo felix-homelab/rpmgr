@@ -1,6 +1,6 @@
 # ADR-0005: Reverse HTTP/2 as the TCP transport, not yamux
 
-Status: Proposed (design phase) · Date: 2026-10-06
+Status: Accepted (spike S2 and the product owner's decision, 2026-10-06) · Date: 2026-10-06
 
 ## Context
 
@@ -28,8 +28,12 @@ HTTP/2 already has the required semantics:
 - `WINDOW_UPDATE` flow control;
 - `PING`.
 
-Go has a mature implementation in `golang.org/x/net/http2`, including `ReadIdleTimeout` and
-`PingTimeout` health checks [F x/net:http2/transport_common.go:137,142].
+Go has a mature implementation in net/http itself since Go 1.27, including PING health checks
+(`SendPingTimeout`, `PingTimeout`) [F Go 1.27.1 `net/http/http.go:302,307`];
+`golang.org/x/net/http2` is now a deprecated wrapper around it
+[F x/net v0.59.0 `http2/transport_wrap.go:5`]. Its server cannot end a response while it still
+reads the request: when a handler finishes early, it resets the request stream
+[F Go 1.27.1 `net/http/internal/http2/server.go:1207-1224`] ([S2](../spikes/S2.md)).
 
 ## Decision
 
@@ -38,7 +42,9 @@ Go has a mature implementation in `golang.org/x/net/http2`, including `ReadIdleT
   - The connector sets ServerName `<gateway-id>.gateway.<td>` (IDs come from its snapshot) and checks
     the gateway's SPIFFE URI ([ADR-0008](0008-internal-ca-mtls-spiffe.md)).
   - After the mutual-TLS handshake, the **Connector acts as the HTTP/2 server** on that connection
-    (`http2.Server.ServeConn`), and the **Gateway acts as the HTTP/2 client**.
+    and the **Gateway acts as the HTTP/2 client**, both with net/http's HTTP/2 speaking HTTP/2
+    with prior knowledge on the authenticated connection (ALPN `rpmgr-tunnel-h2/1` is checked
+    first).
   - For each user connection the gateway sends **one request**. The `StreamOpen` preamble and the
     client→service bytes go in the request body; `StreamResult` and the service→client bytes come
     back in the response body ([03](../03-connections.md#framing)).
@@ -53,40 +59,57 @@ Go has a mature implementation in `golang.org/x/net/http2`, including `ReadIdleT
     `StreamResult` on such a stream. `open_id` is unique per session; an unanswered `OpenRequest`
     times out after 10 s.
   - Cost: **+1 RTT** before the connector can send on such a stream, on the TCP transport only.
-    [R] `OpenRequest` may carry the first chunk (≤ 16 KiB, normally the inner TLS ClientHello), which
-    hides most of it [V S2].
+    `OpenRequest` carries the first chunk when the connector has one (≤ 16 KiB, normally the inner
+    TLS ClientHello), and the gateway forwards it at once: S2 measured the first answer after
+    1 RTT with it and 2 RTT without ([S2](../spikes/S2.md)).
   - `StreamOpen` is written by the side that opens the stream; on h2 that is always the gateway.
   - The h2 session control stream is an ordinary request stream; it is not called "stream 0" (in
     HTTP/2, stream 0 is the connection-level stream).
   - Session setup on this transport: TCP + TLS 1.3 = 2 RTT, plus ½–1 RTT for the gateway-opened
     control stream.
-- Half-close maps to `END_STREAM`, abort to `RST_STREAM`.
-- **Parameters** (x/net defaults are too small for a first-class transport):
+- **Half-close.** Gateway → connector: the request's `END_STREAM`. Connector → gateway: an
+  **in-band FIN**, because net/http's server cannot end the response while it still reads the
+  request: after `StreamResult` the connector's bytes are chunks of `varint(length) ‖ bytes`, a
+  zero-length chunk is its FIN, and the response's `END_STREAM` follows only when both directions
+  have ended ([03](../03-connections.md#framing)). Abort maps to `RST_STREAM` in both directions.
+- **Parameters** (the net/http defaults are too small for a first-class transport):
 
-  | Setting | x/net default | rpmgr value |
+  | Setting | net/http default | rpmgr value |
   |---|---|---|
-  | Connector h2 server `MaxConcurrentStreams` | 250 [F x/net:http2/server.go:62] | 10 000 |
-  | Connector h2 server `MaxUploadBufferPerStream` | 1 MiB [F x/net:http2/config.go:110] | 16 MiB |
-  | Connector h2 server `MaxUploadBufferPerConnection` | 1 MiB [F x/net:http2/config.go:105] | 256 MiB |
-  | Gateway h2 client receive window per stream | 4 MiB [F x/net:http2/transport.go:48] | 16 MiB |
-  | Gateway h2 client receive window per connection | 1 GiB [F x/net:http2/transport.go:43] | 256 MiB |
+  | Connector h2 server `MaxConcurrentStreams` | 250 [F Go 1.27.1 `net/http/internal/http2/server.go:61`] | 10 000 |
+  | Connector h2 server receive window per stream | 1 MiB [F Go 1.27.1 `net/http/internal/http2/config.go:60`] | 16 MiB |
+  | Connector h2 server receive window per connection | 1 MiB [F Go 1.27.1 `net/http/internal/http2/config.go:55`] | 256 MiB |
+  | Gateway h2 client receive window per stream | 4 MiB [F Go 1.27.1 `net/http/internal/http2/transport.go:50`] | 16 MiB |
+  | Gateway h2 client receive window per connection | 1 GiB [F Go 1.27.1 `net/http/internal/http2/transport.go:45`] | 256 MiB |
+  | Both: largest frame accepted (`MaxReadFrameSize`, advertised as `SETTINGS_MAX_FRAME_SIZE`) | 1 MiB [F Go 1.27.1 `net/http/internal/http2/http2.go:82`] | 16 KiB |
 
-  With the 1 MiB server defaults, client→service traffic would be capped near 84 Mbit/s per
-  connection at 100 ms RTT. The connection window is ≥ 16 × the stream maximum, so a few stalled
-  streams cannot pin all connection credit. HTTP/2 has no window-budget hook like quic-go's, so h2
-  sessions are **admitted against the same process-wide budget** (the sum of their maximum
-  connection windows); when the budget is tight, new h2 sessions get smaller windows.
+  Both sides set these through `http.HTTP2Config`; the gateway's client is an `http.Transport`
+  whose `DialContext` returns the accepted connection, created with `NewClientConn`
+  [F Go 1.27.1 `net/http/clientconn.go:113`]. With the 1 MiB server defaults, client→service
+  traffic is capped near 84 Mbit/s per connection at 100 ms RTT (S2 measured 80 Mbit/s; with the
+  rpmgr windows 1.25 Gbit/s). The frame size is lowered because net/http's client holds a
+  request-body buffer of min(the peer's frame size, 512 KiB) per open stream
+  [F Go 1.27.1 `net/http/internal/http2/transport.go:1607-1620`]; with 16 KiB frames S2 measured
+  62 KiB per stream for both ends together. The connection window is ≥ 16 × the stream maximum,
+  so a few stalled streams cannot pin all connection credit. HTTP/2 has no window-budget hook like
+  quic-go's, so h2 sessions are **admitted against the same process-wide budget** (the sum of their
+  maximum connection windows); when the budget is tight, new h2 sessions get smaller windows.
   **Stall detection** applies only under connection-window pressure: backpressure is normal and is
   allowed indefinitely, subject only to the route idle timeout; when unread bytes held by streams
   without read progress for ≥ 30 s exceed 50 % of the connection window, the receiver resets those
-  streams oldest-first until below the threshold. The gateway checks the `ClientConn`'s active
-  stream count before opening a stream; at the limit it uses another session or returns 503 /
-  resets — it never blocks. x/net's `ClientConnState` reports only stream counts, not the
+  streams oldest-first until below the threshold. net/http does not expose a stream's unread bytes,
+  so a stalled stream counts with its full receive window; a reset on the gateway also closes the
+  response body, because only that returns the connection window
+  [F Go 1.27.1 `net/http/internal/http2/transport.go:2402-2421`]. The gateway reserves a slot with
+  the non-blocking `ClientConn.Reserve` before opening a stream (`RoundTrip` alone would wait)
+  [F Go 1.27.1 `net/http/clientconn.go:254,301`]; at the limit it uses another session or returns
+  503 / resets — it never blocks. net/http's `ClientConn` reports only stream counts, not the
   connection send window, so the gateway deprioritises a session whose stream writers have been
-  blocked for more than 200 ms when choosing where to open new streams [V S1] [V S2]
-- Liveness comes from transport-level HTTP/2 PING frames (`ReadIdleTimeout` 15 s, `PingTimeout`
-  10 s) plus TCP keepalive 15 s, which are not flow-controlled; the application `Ping` on the
-  session control stream only measures RTT and never takes a session out of service on its own
+  blocked for more than 200 ms when choosing where to open new streams [V S1]
+- Liveness comes from transport-level HTTP/2 PING frames (`SendPingTimeout` 15 s, `PingTimeout`
+  10 s, on both ends; S2 detected a blackholed connection after 25 s) plus TCP keepalive 15 s,
+  which are not flow-controlled; the application `Ping` on the session control stream only
+  measures RTT and never takes a session out of service on its own
   ([03](../03-connections.md#timeouts-keepalive-and-backoff)).
 - [R] A connector keeps **2 TCP connections per gateway** and spreads streams across them, which
   limits loss-induced head-of-line blocking to half the streams.
@@ -98,9 +121,8 @@ Go has a mature implementation in `golang.org/x/net/http2`, including `ReadIdleT
   gateway it reached; inside it the connector runs TLS 1.3 mutual TLS to
   `<gateway-id>.gateway.<td>` and then reverse HTTP/2. The outer TLS goes to the proxy; the inner
   TLS stays end to end.
-- Fallback plan: if spike S2 shows that full-duplex bodies over reverse h2 are not reliable in
-  `x/net/http2`, patch yamux (add `CloseWrite`, fix `Read` after local close, raise windows) behind
-  the same `internal/tunnel` interface.
+- The pre-agreed fallback, a patched yamux, is not needed: S2 met every criterion with the in-band
+  connector FIN ([S2](../spikes/S2.md)).
 
 ## Consequences
 
@@ -114,7 +136,10 @@ Go has a mature implementation in `golang.org/x/net/http2`, including `ReadIdleT
 
 - The direction is unusual (the server dials out, the client accepts), and reviewers must be told.
 - HTTP/2 framing adds some per-frame overhead compared with yamux (an inference, to be measured in
-  S1).
+  S1), and the connector-to-gateway direction adds 1–3 bytes per chunk of up to 16 KiB for its
+  in-band FIN.
+- The in-band FIN makes the two directions of a stream differ on this transport; QUIC streams need
+  no such framing.
 - TCP still has head-of-line blocking within each TCP connection. This is inherent; QUIC remains
   the default policy for that reason.
 
@@ -129,7 +154,7 @@ Go has a mature implementation in `golang.org/x/net/http2`, including `ReadIdleT
 
 ## Verification
 
-**S2**: full-duplex request/response bodies over reverse `x/net/http2` (concurrent reads and
+**S2**: full-duplex request/response bodies over reverse HTTP/2 (concurrent reads and
 writes, half-close in both directions, `RST_STREAM` propagation, behaviour at the stream limit),
 the tuned parameters above, stall detection, and connector-initiated streams via `OpenRequest`
 (+1 RTT; how much a first chunk carried in `OpenRequest` hides).
@@ -144,5 +169,5 @@ above, the connector's half-close cannot be the response's `END_STREAM`, because
 server — net/http's in Go 1.27, and x/net's own — resets the request stream when a handler ends
 its response while the request is still open, so the client-to-service bytes after the service's
 FIN are lost. With the connector's FIN carried in-band, every criterion passes. The rule did not
-foresee that variant; the product owner decides between the rule's yamux fallback and reverse
-HTTP/2 with an in-band connector FIN ([14](../14-open-decisions.md)).
+foresee that variant; the product owner chose reverse HTTP/2 with the in-band connector FIN over
+the rule's yamux fallback ([14](../14-open-decisions.md)), and the decision above includes it.
