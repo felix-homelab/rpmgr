@@ -219,7 +219,8 @@ database:
   dsn: /var/lib/rpmgr/controller.db
 kek:
   source: systemd-credential  # systemd-credential | file; kms (Vault/OpenBao Transit) from Phase 2; never env
-  name: rpmgr-kek
+  name: rpmgr-kek             # systemd-credential: the credential name
+  # path: /etc/rpmgr/kek      # file: base64 of 32 random bytes, mode 0600 or 0400
 log:
   level: info                 # debug | info | warn | error
   format: json
