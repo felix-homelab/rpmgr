@@ -110,8 +110,7 @@ later.
 
 | Holder | Lifetime | Renewal | Notes |
 |---|---|---|---|
-| Connector, gateway | **7 days** | at **50 %** of lifetime (± jitter), over the control session, **new key every time** | `NotBefore` backdated **5 min**; EKU clientAuth (+ serverAuth for connectors, which act as TLS server in `rpmgr-e2e` and `rpmgr-p2p` sessions; in the reverse-h2 transport the connector is the TLS client) |
-| Gateway server certificate (`<gateway-id>.gateway.<td>`) | 7 days | same | EKU serverAuth |
+| Connector, gateway | **7 days** | at **50 %** of lifetime (± jitter), over the control session, **new key every time** | `NotBefore` backdated **5 min**; EKU clientAuth **and** serverAuth. One certificate per agent serves every session: a gateway is the TLS client of its control session and the TLS server of data sessions (`<gateway-id>.gateway.<td>`); a connector is the TLS client of its control and data sessions and the TLS server in `rpmgr-e2e` and `rpmgr-p2p` sessions ([D42](14-open-decisions.md#engineering)) |
 | Controller node certificate (`controller.<td>`, `reauth.controller.<td>`, `<node-id>.controller.<td>`) | 30 days | automatic | EKU serverAuth **and clientAuth** (replicas call each other over mutual TLS in HA, [10](10-operations.md#high-availability)) |
 
 - **Expired certificate.** An agent offline longer than 7 days calls `Reauth` over **mutual TLS
