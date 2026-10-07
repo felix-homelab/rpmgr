@@ -169,10 +169,11 @@ func checkConn(ctx context.Context, c *sql.Conn) error {
 // Close closes the pools and releases the controller lock.
 func (db *DB) Close() error {
 	var errs []error
-	for _, p := range []*sql.DB{db.Reader, db.Writer} {
-		if p != nil {
-			errs = append(errs, p.Close())
-		}
+	if db.Writer != nil {
+		errs = append(errs, db.Writer.Close())
+	}
+	if db.Reader != nil && db.Reader != db.Writer {
+		errs = append(errs, db.Reader.Close())
 	}
 	errs = append(errs, db.unlock())
 	return errors.Join(errs...)

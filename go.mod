@@ -12,6 +12,7 @@ tool (
 )
 
 require (
+	ariga.io/atlas v1.3.0
 	entgo.io/ent v0.14.6
 	github.com/google/uuid v1.6.0
 	github.com/jackc/pgx/v5 v5.11.0
@@ -20,7 +21,6 @@ require (
 )
 
 require (
-	ariga.io/atlas v1.3.0 // indirect
 	connectrpc.com/connect v1.21.0 // indirect
 	github.com/agext/levenshtein v1.2.3 // indirect
 	github.com/apparentlymart/go-textseg/v15 v15.0.0 // indirect
