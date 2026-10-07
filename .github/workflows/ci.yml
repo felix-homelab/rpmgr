@@ -63,6 +63,34 @@ jobs:
         if: ${{ !cancelled() }}
         run: .github/scripts/check-govulncheck.sh
 
+  proto:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      pull-requests: read # labels and title for the breaking-change override
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # buf breaking compares with origin/main
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - name: Breaking-change override (D56)
+        if: ${{ github.event_name == 'pull_request' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          labels=$(gh pr view "$PR" --repo "$GITHUB_REPOSITORY" --json labels --jq '[.labels[].name] | join(" ")')
+          title=$(gh pr view "$PR" --repo "$GITHUB_REPOSITORY" --json title --jq .title)
+          if [[ " $labels " == *" breaking "* && $title =~ ^[a-z]+(\([a-z-]+\))?!: ]]; then
+            echo "ALLOW_BREAKING=1" >>"$GITHUB_ENV"
+          fi
+      - name: buf lint, breaking, generated code
+        run: .github/scripts/check-buf.sh
+
   build:
     runs-on: ubuntu-24.04
     timeout-minutes: 15

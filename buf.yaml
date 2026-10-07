@@ -1,0 +1,12 @@
+# SPDX-License-Identifier: Apache-2.0
+# buf configuration for rpmgr's protobuf packages (docs/07-api.md, docs/12-testing-and-quality.md,
+# "Continuous integration"). Run with .github/scripts/check-buf.sh.
+version: v2
+modules:
+  - path: proto
+lint:
+  use:
+    - STANDARD
+breaking:
+  use:
+    - FILE

@@ -36,9 +36,10 @@ Administrative commands run on the controller host itself (`rpmgr ca …`, `kek 
 `restore …`, `user reset-password`, `migrate`, `migrate-db`) do not use the API: they are
 authorised by host access and audited as `local-cli` ([04](04-security.md#roles)).
 
-Every method carries an `(rpmgr.v1.authz)` option naming the permission it needs and the request field
-that identifies the target resource; an unannotated method fails closed
-([04](04-security.md#one-enforcement-point-with-defence-in-depth)).
+Every method carries an `(rpmgr.v1.authz)` option naming the permission it needs, the request field
+that identifies the target resource and whether it needs step-up; an unannotated method fails closed
+([04](04-security.md#one-enforcement-point-with-defence-in-depth)). Secret fields carry
+`(rpmgr.v1.sensitive)`. Both options are defined in `proto/rpmgr/v1/options.proto`.
 
 ## Resource design
 
