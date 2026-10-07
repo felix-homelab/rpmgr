@@ -192,7 +192,8 @@ In Phase 1, CI only builds these targets; end-to-end tests on Windows and macOS 
 
 ## Configuration
 
-Configuration has two layers:
+Configuration has two layers (the commands and their flags are listed in
+[16](16-cli.md)):
 
 1. A **small boot file** per role, read at start: only what is needed before the database or the
    control session is available. Strict YAML: unknown keys are rejected and the process refuses to
