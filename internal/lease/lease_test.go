@@ -247,3 +247,31 @@ func TestRun(t *testing.T) {
 		}
 	})
 }
+
+// TestRun_ShutdownIsNoError: a job that is cancelled by the shutdown it runs in is not reported as
+// a failed run, and the lease is released.
+func TestRun_ShutdownIsNoError(t *testing.T) {
+	db := storetest.Migrated(t, store.SQLite)
+	storetest.Init(t, db)
+	l := lease.New(db, "ctn_a", nil)
+	started := make(chan struct{})
+	job := lease.Job{Name: "slow", Reason: "a job that runs until it is cancelled", Every: time.Hour,
+		Run: func(ctx context.Context, _ lease.Lease) error {
+			close(started)
+			<-ctx.Done()
+			return ctx.Err()
+		}}
+	ctx, cancel := context.WithCancel(context.Background())
+	var reported []error
+	done := make(chan struct{})
+	go func() { defer close(done); l.Run(ctx, job, func(err error) { reported = append(reported, err) }) }()
+	<-started
+	cancel()
+	<-done
+	if len(reported) != 0 {
+		t.Errorf("errors reported at shutdown: %v", reported)
+	}
+	if _, ok, err := lease.New(db, "ctn_b", nil).TryAcquire(context.Background(), "slow"); err != nil || !ok {
+		t.Errorf("the lease after shutdown: %v, %v; want it released", ok, err)
+	}
+}
