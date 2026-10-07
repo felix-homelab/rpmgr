@@ -5,7 +5,7 @@
 # p2 or p3 (a later phase). The PR that implements a test changes pending to done. The note
 # names clauses that other slices or later phases add.
 
-TestNoReplayableHandshake	pending	2.10	#54
+TestNoReplayableHandshake	done	2.10	#54
 TestRejectsUnpinnedCA	pending	3.8	#63	session clauses in 3.9 (control) and 4.10 (data)
 TestRelaySeesCiphertextOnly	p2	-	-	private services
 TestTokenScopesBoundedByCreator	pending	7.7	#112
@@ -70,7 +70,7 @@ TestPolicy_AutoUpdateAndChannelDefaults	pending	4.6	#76	installer clause in 11.4
 TestRevocationLog_SingleNodeWithoutSink	pending	11.5	#159	second-replica clause through the single-controller lock of 2.4; UI warning in 10.12
 TestGatewayGroup_MaxFourGateways	pending	3.4	#59
 TestDomain_TrustedOnlyByInstanceAdmin	pending	8.4	#118
-TestTLS_VerifyConnectionOnResumption	pending	2.10	#54
-TestSPIFFE_TrustDomainExact	pending	2.10	#54
-TestReauth_NoSessionTickets	pending	2.10	#54
+TestTLS_VerifyConnectionOnResumption	done	2.10	#54
+TestSPIFFE_TrustDomainExact	done	2.10	#54
+TestReauth_NoSessionTickets	done	2.10	#54
 TestCSR_BoundToConnection	pending	2.10	#54	RPC clauses in 3.7 (Enroll) and 3.12 (Renew, Reauth)
