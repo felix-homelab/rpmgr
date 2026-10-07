@@ -278,10 +278,19 @@ Rules:
 7. **"Saved" and "applied" are different states.** The API returns the revision immediately and
    tracks `apply_status` per agent (`pending`, `applied`, `rejected`, `apply_timeout`); callers may
    wait for it ([07](07-api.md#writes-and-apply-status)). Success is never reported before the
-   agent has applied the change.
+   agent has applied the change. A snapshot that the agent has neither applied nor rejected within
+   the apply acknowledgement time (see the timeout table) is `apply_timeout`.
 8. **Snapshots are full, resources are hashed.** [R] v1 sends the complete snapshot for an agent;
    large resources are references. A delta protocol is only worth adding if snapshots routinely
    exceed the control message limit (4 MiB, see [Framing](#framing)).
+9. **When a snapshot is sent.** The controller compiles an agent's snapshot when its session starts
+   and at every new revision. It looks for new revisions at the revision check interval (see the
+   timeout table), so a revision that another process wrote, such as an admin command, reaches the
+   agents too. A snapshot whose hash equals the one the agent named in `Hello`, or the one it was
+   sent last, is not sent again. `Applied` and `Rejected` count only for a snapshot that the same
+   session was sent; of a rejection the controller keeps at most 32 reasons of at most 512 bytes
+   each. The last 5 snapshots sent to each agent are kept for support
+   ([06](06-data-model.md#desired-vs-observed-state)).
 
 ### Revisions and ordering
 
@@ -798,6 +807,7 @@ sequenceDiagram
 | Idle TCP route connection | 1 h (per route; 0 disables) | Reclaim half-open connections |
 | Idle UDP flow | 60 s | Typical UDP NAT behaviour |
 | Apply acknowledgement | 30 s → `apply_timeout` | Visible instead of silent |
+| Revision check | every 1 s | A revision written by another process reaches the agents without a notification channel |
 | Route drain | 30 s | Finish in-flight requests |
 | Gateway drain | 60 s | Time for connectors to re-home |
 | Revocation, tightened access policy | immediate | Security beats continuity |

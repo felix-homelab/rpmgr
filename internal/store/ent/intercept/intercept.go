@@ -9,9 +9,11 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/agentsession"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/agentstate"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/auditentry"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/audithead"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/cakey"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/compiledsnapshot"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/configrevision"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/configseq"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/connector"
@@ -111,6 +113,33 @@ func (f TraverseAgentSession) Traverse(ctx context.Context, q ent.Query) error {
 	return fmt.Errorf("unexpected query type %T. expect *ent.AgentSessionQuery", q)
 }
 
+// The AgentStateFunc type is an adapter to allow the use of ordinary function as a Querier.
+type AgentStateFunc func(context.Context, *ent.AgentStateQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f AgentStateFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.AgentStateQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.AgentStateQuery", q)
+}
+
+// The TraverseAgentState type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseAgentState func(context.Context, *ent.AgentStateQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseAgentState) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseAgentState) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.AgentStateQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.AgentStateQuery", q)
+}
+
 // The AuditEntryFunc type is an adapter to allow the use of ordinary function as a Querier.
 type AuditEntryFunc func(context.Context, *ent.AuditEntryQuery) (ent.Value, error)
 
@@ -190,6 +219,33 @@ func (f TraverseCAKey) Traverse(ctx context.Context, q ent.Query) error {
 		return f(ctx, q)
 	}
 	return fmt.Errorf("unexpected query type %T. expect *ent.CAKeyQuery", q)
+}
+
+// The CompiledSnapshotFunc type is an adapter to allow the use of ordinary function as a Querier.
+type CompiledSnapshotFunc func(context.Context, *ent.CompiledSnapshotQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f CompiledSnapshotFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.CompiledSnapshotQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.CompiledSnapshotQuery", q)
+}
+
+// The TraverseCompiledSnapshot type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseCompiledSnapshot func(context.Context, *ent.CompiledSnapshotQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseCompiledSnapshot) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseCompiledSnapshot) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.CompiledSnapshotQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.CompiledSnapshotQuery", q)
 }
 
 // The ConfigRevisionFunc type is an adapter to allow the use of ordinary function as a Querier.
@@ -548,12 +604,16 @@ func NewQuery(q ent.Query) (Query, error) {
 	switch q := q.(type) {
 	case *ent.AgentSessionQuery:
 		return &query[*ent.AgentSessionQuery, predicate.AgentSession, agentsession.OrderOption]{typ: ent.TypeAgentSession, tq: q}, nil
+	case *ent.AgentStateQuery:
+		return &query[*ent.AgentStateQuery, predicate.AgentState, agentstate.OrderOption]{typ: ent.TypeAgentState, tq: q}, nil
 	case *ent.AuditEntryQuery:
 		return &query[*ent.AuditEntryQuery, predicate.AuditEntry, auditentry.OrderOption]{typ: ent.TypeAuditEntry, tq: q}, nil
 	case *ent.AuditHeadQuery:
 		return &query[*ent.AuditHeadQuery, predicate.AuditHead, audithead.OrderOption]{typ: ent.TypeAuditHead, tq: q}, nil
 	case *ent.CAKeyQuery:
 		return &query[*ent.CAKeyQuery, predicate.CAKey, cakey.OrderOption]{typ: ent.TypeCAKey, tq: q}, nil
+	case *ent.CompiledSnapshotQuery:
+		return &query[*ent.CompiledSnapshotQuery, predicate.CompiledSnapshot, compiledsnapshot.OrderOption]{typ: ent.TypeCompiledSnapshot, tq: q}, nil
 	case *ent.ConfigRevisionQuery:
 		return &query[*ent.ConfigRevisionQuery, predicate.ConfigRevision, configrevision.OrderOption]{typ: ent.TypeConfigRevision, tq: q}, nil
 	case *ent.ConfigSeqQuery:
