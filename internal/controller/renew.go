@@ -118,5 +118,5 @@ func renew(ctx context.Context, db *store.DB, ca *pki.CA, sys context.Context, n
 	case err != nil:
 		return nil, status.Error(codes.Unavailable, "the controller cannot issue certificates now")
 	}
-	return [][]byte{cert.Raw, ca.Intermediate().Raw}, nil
+	return ca.Chain(cert), nil
 }

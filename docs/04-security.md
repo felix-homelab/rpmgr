@@ -98,8 +98,8 @@ What the design does **not** protect against, stated plainly:
 |---|---|---|---|---|
 | **Root CA** | ECDSA P-256 | 10 years | Controller DB, envelope-encrypted under the KEK (default); or offline (`rpmgr ca offline-root`, Phase 2, [D58](14-open-decisions.md#project-and-process)) | Signs intermediates only (`pathlen=1`) |
 | **Issuing intermediate** | ECDSA P-256 | 1 year, rotated at 6 months with overlap | Controller DB, envelope-encrypted | Signs leaf certificates (`pathlen=0`), name-constrained (critical) to URI domain and DNS domain `<td>`; Go enforces both [F Go 1.27.1 `crypto/x509/constraints.go:525`] ([S7](spikes/S7.md)) |
-| **Config-signing key** | ECDSA P-256 | rotated yearly | Controller DB, envelope-encrypted | Signs snapshots (agents verify last-known-good on disk) |
-| **Audit-checkpoint key** | ECDSA P-256 | rotated yearly | Controller DB, envelope-encrypted | Signs audit checkpoints |
+| **Config-signing key** | ECDSA P-256 | certificate 1 year (at most the intermediate's); a next key 90 days before it expires, which replaces it 60 days before | Controller DB, envelope-encrypted | Signs snapshots and deny-lists (agents verify last-known-good on disk) |
+| **Audit-checkpoint key** | ECDSA P-256 | as the config-signing key | Controller DB, envelope-encrypted | Signs audit checkpoints |
 
 - **Signing keys.** The config-signing and audit-checkpoint keys get certificates from the issuing
   intermediate, not the root, so a root that goes offline does not block their yearly rotation. The
@@ -221,6 +221,17 @@ later.
 ### CA rotation
 
 - **Intermediate**: automatic, with overlap; agents receive the new chain at their next renewal.
+  The new intermediate issues from half the old one's lifetime on; the retired one keeps verifying
+  the leaves it issued until it expires, months after their lifetime plus the Reauth grace period.
+- **Signing keys**: the next config-signing key is created 90 days before the active key's
+  certificate expires and replaces it 60 days before. `Welcome` and enrollment deliver every
+  config-signing certificate that has not expired, the next one included, with the intermediates
+  that issued them; an agent gets the next key's certificate in its next session, at the latest
+  after its next renewal, which reconnects, long before the key signs. The audit-checkpoint key
+  follows the same schedule.
+- **Schedule**: a singleton job checks it every hour and commits a rotation with an audit record;
+  every replica reloads the keys every minute
+  ([03](03-connections.md#timeouts-keepalive-and-backoff)).
 - **Root** (planned, Phase 2, [D58](14-open-decisions.md#project-and-process)): 1) generate root
   R2 and cross-sign it with R1; 2) push the trust bundle
   {R1, R2} in snapshots; 3) wait until every agent acknowledges (the UI lists stragglers);

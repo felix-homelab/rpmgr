@@ -222,7 +222,7 @@ func (c *Controller) IssueAt(t testing.TB, id agent.Loaded, at time.Time) *x509.
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if err := agent.SaveCertificate(id.Dir, key, [][]byte{leaf.Raw, ca.Intermediate().Raw}); err != nil {
+	if err := agent.SaveCertificate(id.Dir, key, ca.Chain(leaf)); err != nil {
 		t.Fatal(err)
 	}
 	return leaf
