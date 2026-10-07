@@ -69,6 +69,42 @@ func (f ConfigSeqFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, e
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.ConfigSeqMutation", m)
 }
 
+// The ConnectorFunc type is an adapter to allow the use of ordinary
+// function as Connector mutator.
+type ConnectorFunc func(context.Context, *ent.ConnectorMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f ConnectorFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.ConnectorMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.ConnectorMutation", m)
+}
+
+// The EnrollmentTokenFunc type is an adapter to allow the use of ordinary
+// function as EnrollmentToken mutator.
+type EnrollmentTokenFunc func(context.Context, *ent.EnrollmentTokenMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f EnrollmentTokenFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.EnrollmentTokenMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.EnrollmentTokenMutation", m)
+}
+
+// The GatewayFunc type is an adapter to allow the use of ordinary
+// function as Gateway mutator.
+type GatewayFunc func(context.Context, *ent.GatewayMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f GatewayFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.GatewayMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.GatewayMutation", m)
+}
+
 // The GatewayGroupFunc type is an adapter to allow the use of ordinary
 // function as GatewayGroup mutator.
 type GatewayGroupFunc func(context.Context, *ent.GatewayGroupMutation) (ent.Value, error)

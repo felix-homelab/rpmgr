@@ -24,6 +24,12 @@ type Tx struct {
 	ConfigRevision *ConfigRevisionClient
 	// ConfigSeq is the client for interacting with the ConfigSeq builders.
 	ConfigSeq *ConfigSeqClient
+	// Connector is the client for interacting with the Connector builders.
+	Connector *ConnectorClient
+	// EnrollmentToken is the client for interacting with the EnrollmentToken builders.
+	EnrollmentToken *EnrollmentTokenClient
+	// Gateway is the client for interacting with the Gateway builders.
+	Gateway *GatewayClient
 	// GatewayGroup is the client for interacting with the GatewayGroup builders.
 	GatewayGroup *GatewayGroupClient
 	// Instance is the client for interacting with the Instance builders.
@@ -174,6 +180,9 @@ func (tx *Tx) init() {
 	tx.CAKey = NewCAKeyClient(tx.config)
 	tx.ConfigRevision = NewConfigRevisionClient(tx.config)
 	tx.ConfigSeq = NewConfigSeqClient(tx.config)
+	tx.Connector = NewConnectorClient(tx.config)
+	tx.EnrollmentToken = NewEnrollmentTokenClient(tx.config)
+	tx.Gateway = NewGatewayClient(tx.config)
 	tx.GatewayGroup = NewGatewayGroupClient(tx.config)
 	tx.Instance = NewInstanceClient(tx.config)
 	tx.InstanceSetting = NewInstanceSettingClient(tx.config)

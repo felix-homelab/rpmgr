@@ -9,6 +9,7 @@ import (
 
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
+	"entgo.io/ent/dialect/sql/sqljson"
 	"entgo.io/ent/schema/field"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/gatewaygroup"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/predicate"
@@ -38,6 +39,62 @@ func (_u *GatewayGroupUpdate) SetNillableName(v *string) *GatewayGroupUpdate {
 	if v != nil {
 		_u.SetName(*v)
 	}
+	return _u
+}
+
+// SetRegion sets the "region" field.
+func (_u *GatewayGroupUpdate) SetRegion(v string) *GatewayGroupUpdate {
+	_u.mutation.SetRegion(v)
+	return _u
+}
+
+// SetNillableRegion sets the "region" field if the given value is not nil.
+func (_u *GatewayGroupUpdate) SetNillableRegion(v *string) *GatewayGroupUpdate {
+	if v != nil {
+		_u.SetRegion(*v)
+	}
+	return _u
+}
+
+// ClearRegion clears the value of the "region" field.
+func (_u *GatewayGroupUpdate) ClearRegion() *GatewayGroupUpdate {
+	_u.mutation.ClearRegion()
+	return _u
+}
+
+// SetPublicHostnames sets the "public_hostnames" field.
+func (_u *GatewayGroupUpdate) SetPublicHostnames(v []string) *GatewayGroupUpdate {
+	_u.mutation.SetPublicHostnames(v)
+	return _u
+}
+
+// AppendPublicHostnames appends value to the "public_hostnames" field.
+func (_u *GatewayGroupUpdate) AppendPublicHostnames(v []string) *GatewayGroupUpdate {
+	_u.mutation.AppendPublicHostnames(v)
+	return _u
+}
+
+// ClearPublicHostnames clears the value of the "public_hostnames" field.
+func (_u *GatewayGroupUpdate) ClearPublicHostnames() *GatewayGroupUpdate {
+	_u.mutation.ClearPublicHostnames()
+	return _u
+}
+
+// SetTrustedProxyCidrs sets the "trusted_proxy_cidrs" field.
+func (_u *GatewayGroupUpdate) SetTrustedProxyCidrs(v []string) *GatewayGroupUpdate {
+	_u.mutation.SetTrustedProxyCidrs(v)
+	return _u
+}
+
+// AppendTrustedProxyCidrs appends value to the "trusted_proxy_cidrs" field.
+func (_u *GatewayGroupUpdate) AppendTrustedProxyCidrs(v []string) *GatewayGroupUpdate {
+	_u.mutation.AppendTrustedProxyCidrs(v)
+	return _u
+}
+
+// ClearTrustedProxyCidrs clears the value of the "trusted_proxy_cidrs" field.
+func (_u *GatewayGroupUpdate) ClearTrustedProxyCidrs() *GatewayGroupUpdate {
+	_u.mutation.ClearTrustedProxyCidrs()
 	return _u
 }
 
@@ -80,6 +137,16 @@ func (_u *GatewayGroupUpdate) check() error {
 			return &ValidationError{Name: "name", err: fmt.Errorf(`ent: validator failed for field "GatewayGroup.name": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.PublicHostnames(); ok {
+		if err := gatewaygroup.PublicHostnamesValidator(v); err != nil {
+			return &ValidationError{Name: "public_hostnames", err: fmt.Errorf(`ent: validator failed for field "GatewayGroup.public_hostnames": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.TrustedProxyCidrs(); ok {
+		if err := gatewaygroup.TrustedProxyCidrsValidator(v); err != nil {
+			return &ValidationError{Name: "trusted_proxy_cidrs", err: fmt.Errorf(`ent: validator failed for field "GatewayGroup.trusted_proxy_cidrs": %w`, err)}
+		}
+	}
 	return nil
 }
 
@@ -97,6 +164,34 @@ func (_u *GatewayGroupUpdate) sqlSave(ctx context.Context) (_node int, err error
 	}
 	if value, ok := _u.mutation.Name(); ok {
 		_spec.SetField(gatewaygroup.FieldName, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.Region(); ok {
+		_spec.SetField(gatewaygroup.FieldRegion, field.TypeString, value)
+	}
+	if _u.mutation.RegionCleared() {
+		_spec.ClearField(gatewaygroup.FieldRegion, field.TypeString)
+	}
+	if value, ok := _u.mutation.PublicHostnames(); ok {
+		_spec.SetField(gatewaygroup.FieldPublicHostnames, field.TypeJSON, value)
+	}
+	if value, ok := _u.mutation.AppendedPublicHostnames(); ok {
+		_spec.AddModifier(func(u *sql.UpdateBuilder) {
+			sqljson.Append(u, gatewaygroup.FieldPublicHostnames, value)
+		})
+	}
+	if _u.mutation.PublicHostnamesCleared() {
+		_spec.ClearField(gatewaygroup.FieldPublicHostnames, field.TypeJSON)
+	}
+	if value, ok := _u.mutation.TrustedProxyCidrs(); ok {
+		_spec.SetField(gatewaygroup.FieldTrustedProxyCidrs, field.TypeJSON, value)
+	}
+	if value, ok := _u.mutation.AppendedTrustedProxyCidrs(); ok {
+		_spec.AddModifier(func(u *sql.UpdateBuilder) {
+			sqljson.Append(u, gatewaygroup.FieldTrustedProxyCidrs, value)
+		})
+	}
+	if _u.mutation.TrustedProxyCidrsCleared() {
+		_spec.ClearField(gatewaygroup.FieldTrustedProxyCidrs, field.TypeJSON)
 	}
 	if _node, err = sqlgraph.UpdateNodes(ctx, _u.driver, _spec); err != nil {
 		if _, ok := err.(*sqlgraph.NotFoundError); ok {
@@ -129,6 +224,62 @@ func (_u *GatewayGroupUpdateOne) SetNillableName(v *string) *GatewayGroupUpdateO
 	if v != nil {
 		_u.SetName(*v)
 	}
+	return _u
+}
+
+// SetRegion sets the "region" field.
+func (_u *GatewayGroupUpdateOne) SetRegion(v string) *GatewayGroupUpdateOne {
+	_u.mutation.SetRegion(v)
+	return _u
+}
+
+// SetNillableRegion sets the "region" field if the given value is not nil.
+func (_u *GatewayGroupUpdateOne) SetNillableRegion(v *string) *GatewayGroupUpdateOne {
+	if v != nil {
+		_u.SetRegion(*v)
+	}
+	return _u
+}
+
+// ClearRegion clears the value of the "region" field.
+func (_u *GatewayGroupUpdateOne) ClearRegion() *GatewayGroupUpdateOne {
+	_u.mutation.ClearRegion()
+	return _u
+}
+
+// SetPublicHostnames sets the "public_hostnames" field.
+func (_u *GatewayGroupUpdateOne) SetPublicHostnames(v []string) *GatewayGroupUpdateOne {
+	_u.mutation.SetPublicHostnames(v)
+	return _u
+}
+
+// AppendPublicHostnames appends value to the "public_hostnames" field.
+func (_u *GatewayGroupUpdateOne) AppendPublicHostnames(v []string) *GatewayGroupUpdateOne {
+	_u.mutation.AppendPublicHostnames(v)
+	return _u
+}
+
+// ClearPublicHostnames clears the value of the "public_hostnames" field.
+func (_u *GatewayGroupUpdateOne) ClearPublicHostnames() *GatewayGroupUpdateOne {
+	_u.mutation.ClearPublicHostnames()
+	return _u
+}
+
+// SetTrustedProxyCidrs sets the "trusted_proxy_cidrs" field.
+func (_u *GatewayGroupUpdateOne) SetTrustedProxyCidrs(v []string) *GatewayGroupUpdateOne {
+	_u.mutation.SetTrustedProxyCidrs(v)
+	return _u
+}
+
+// AppendTrustedProxyCidrs appends value to the "trusted_proxy_cidrs" field.
+func (_u *GatewayGroupUpdateOne) AppendTrustedProxyCidrs(v []string) *GatewayGroupUpdateOne {
+	_u.mutation.AppendTrustedProxyCidrs(v)
+	return _u
+}
+
+// ClearTrustedProxyCidrs clears the value of the "trusted_proxy_cidrs" field.
+func (_u *GatewayGroupUpdateOne) ClearTrustedProxyCidrs() *GatewayGroupUpdateOne {
+	_u.mutation.ClearTrustedProxyCidrs()
 	return _u
 }
 
@@ -184,6 +335,16 @@ func (_u *GatewayGroupUpdateOne) check() error {
 			return &ValidationError{Name: "name", err: fmt.Errorf(`ent: validator failed for field "GatewayGroup.name": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.PublicHostnames(); ok {
+		if err := gatewaygroup.PublicHostnamesValidator(v); err != nil {
+			return &ValidationError{Name: "public_hostnames", err: fmt.Errorf(`ent: validator failed for field "GatewayGroup.public_hostnames": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.TrustedProxyCidrs(); ok {
+		if err := gatewaygroup.TrustedProxyCidrsValidator(v); err != nil {
+			return &ValidationError{Name: "trusted_proxy_cidrs", err: fmt.Errorf(`ent: validator failed for field "GatewayGroup.trusted_proxy_cidrs": %w`, err)}
+		}
+	}
 	return nil
 }
 
@@ -218,6 +379,34 @@ func (_u *GatewayGroupUpdateOne) sqlSave(ctx context.Context) (_node *GatewayGro
 	}
 	if value, ok := _u.mutation.Name(); ok {
 		_spec.SetField(gatewaygroup.FieldName, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.Region(); ok {
+		_spec.SetField(gatewaygroup.FieldRegion, field.TypeString, value)
+	}
+	if _u.mutation.RegionCleared() {
+		_spec.ClearField(gatewaygroup.FieldRegion, field.TypeString)
+	}
+	if value, ok := _u.mutation.PublicHostnames(); ok {
+		_spec.SetField(gatewaygroup.FieldPublicHostnames, field.TypeJSON, value)
+	}
+	if value, ok := _u.mutation.AppendedPublicHostnames(); ok {
+		_spec.AddModifier(func(u *sql.UpdateBuilder) {
+			sqljson.Append(u, gatewaygroup.FieldPublicHostnames, value)
+		})
+	}
+	if _u.mutation.PublicHostnamesCleared() {
+		_spec.ClearField(gatewaygroup.FieldPublicHostnames, field.TypeJSON)
+	}
+	if value, ok := _u.mutation.TrustedProxyCidrs(); ok {
+		_spec.SetField(gatewaygroup.FieldTrustedProxyCidrs, field.TypeJSON, value)
+	}
+	if value, ok := _u.mutation.AppendedTrustedProxyCidrs(); ok {
+		_spec.AddModifier(func(u *sql.UpdateBuilder) {
+			sqljson.Append(u, gatewaygroup.FieldTrustedProxyCidrs, value)
+		})
+	}
+	if _u.mutation.TrustedProxyCidrsCleared() {
+		_spec.ClearField(gatewaygroup.FieldTrustedProxyCidrs, field.TypeJSON)
 	}
 	_node = &GatewayGroup{config: _u.config}
 	_spec.Assign = _node.assignValues

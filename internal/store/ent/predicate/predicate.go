@@ -21,6 +21,15 @@ type ConfigRevision func(*sql.Selector)
 // ConfigSeq is the predicate function for configseq builders.
 type ConfigSeq func(*sql.Selector)
 
+// Connector is the predicate function for connector builders.
+type Connector func(*sql.Selector)
+
+// EnrollmentToken is the predicate function for enrollmenttoken builders.
+type EnrollmentToken func(*sql.Selector)
+
+// Gateway is the predicate function for gateway builders.
+type Gateway func(*sql.Selector)
+
 // GatewayGroup is the predicate function for gatewaygroup builders.
 type GatewayGroup func(*sql.Selector)
 

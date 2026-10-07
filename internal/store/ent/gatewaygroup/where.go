@@ -72,6 +72,11 @@ func Name(v string) predicate.GatewayGroup {
 	return predicate.GatewayGroup(sql.FieldEQ(FieldName, v))
 }
 
+// Region applies equality check predicate on the "region" field. It's identical to RegionEQ.
+func Region(v string) predicate.GatewayGroup {
+	return predicate.GatewayGroup(sql.FieldEQ(FieldRegion, v))
+}
+
 // OrgIDEQ applies the EQ predicate on the "org_id" field.
 func OrgIDEQ(v string) predicate.GatewayGroup {
 	return predicate.GatewayGroup(sql.FieldEQ(FieldOrgID, v))
@@ -200,6 +205,101 @@ func NameEqualFold(v string) predicate.GatewayGroup {
 // NameContainsFold applies the ContainsFold predicate on the "name" field.
 func NameContainsFold(v string) predicate.GatewayGroup {
 	return predicate.GatewayGroup(sql.FieldContainsFold(FieldName, v))
+}
+
+// RegionEQ applies the EQ predicate on the "region" field.
+func RegionEQ(v string) predicate.GatewayGroup {
+	return predicate.GatewayGroup(sql.FieldEQ(FieldRegion, v))
+}
+
+// RegionNEQ applies the NEQ predicate on the "region" field.
+func RegionNEQ(v string) predicate.GatewayGroup {
+	return predicate.GatewayGroup(sql.FieldNEQ(FieldRegion, v))
+}
+
+// RegionIn applies the In predicate on the "region" field.
+func RegionIn(vs ...string) predicate.GatewayGroup {
+	return predicate.GatewayGroup(sql.FieldIn(FieldRegion, vs...))
+}
+
+// RegionNotIn applies the NotIn predicate on the "region" field.
+func RegionNotIn(vs ...string) predicate.GatewayGroup {
+	return predicate.GatewayGroup(sql.FieldNotIn(FieldRegion, vs...))
+}
+
+// RegionGT applies the GT predicate on the "region" field.
+func RegionGT(v string) predicate.GatewayGroup {
+	return predicate.GatewayGroup(sql.FieldGT(FieldRegion, v))
+}
+
+// RegionGTE applies the GTE predicate on the "region" field.
+func RegionGTE(v string) predicate.GatewayGroup {
+	return predicate.GatewayGroup(sql.FieldGTE(FieldRegion, v))
+}
+
+// RegionLT applies the LT predicate on the "region" field.
+func RegionLT(v string) predicate.GatewayGroup {
+	return predicate.GatewayGroup(sql.FieldLT(FieldRegion, v))
+}
+
+// RegionLTE applies the LTE predicate on the "region" field.
+func RegionLTE(v string) predicate.GatewayGroup {
+	return predicate.GatewayGroup(sql.FieldLTE(FieldRegion, v))
+}
+
+// RegionContains applies the Contains predicate on the "region" field.
+func RegionContains(v string) predicate.GatewayGroup {
+	return predicate.GatewayGroup(sql.FieldContains(FieldRegion, v))
+}
+
+// RegionHasPrefix applies the HasPrefix predicate on the "region" field.
+func RegionHasPrefix(v string) predicate.GatewayGroup {
+	return predicate.GatewayGroup(sql.FieldHasPrefix(FieldRegion, v))
+}
+
+// RegionHasSuffix applies the HasSuffix predicate on the "region" field.
+func RegionHasSuffix(v string) predicate.GatewayGroup {
+	return predicate.GatewayGroup(sql.FieldHasSuffix(FieldRegion, v))
+}
+
+// RegionIsNil applies the IsNil predicate on the "region" field.
+func RegionIsNil() predicate.GatewayGroup {
+	return predicate.GatewayGroup(sql.FieldIsNull(FieldRegion))
+}
+
+// RegionNotNil applies the NotNil predicate on the "region" field.
+func RegionNotNil() predicate.GatewayGroup {
+	return predicate.GatewayGroup(sql.FieldNotNull(FieldRegion))
+}
+
+// RegionEqualFold applies the EqualFold predicate on the "region" field.
+func RegionEqualFold(v string) predicate.GatewayGroup {
+	return predicate.GatewayGroup(sql.FieldEqualFold(FieldRegion, v))
+}
+
+// RegionContainsFold applies the ContainsFold predicate on the "region" field.
+func RegionContainsFold(v string) predicate.GatewayGroup {
+	return predicate.GatewayGroup(sql.FieldContainsFold(FieldRegion, v))
+}
+
+// PublicHostnamesIsNil applies the IsNil predicate on the "public_hostnames" field.
+func PublicHostnamesIsNil() predicate.GatewayGroup {
+	return predicate.GatewayGroup(sql.FieldIsNull(FieldPublicHostnames))
+}
+
+// PublicHostnamesNotNil applies the NotNil predicate on the "public_hostnames" field.
+func PublicHostnamesNotNil() predicate.GatewayGroup {
+	return predicate.GatewayGroup(sql.FieldNotNull(FieldPublicHostnames))
+}
+
+// TrustedProxyCidrsIsNil applies the IsNil predicate on the "trusted_proxy_cidrs" field.
+func TrustedProxyCidrsIsNil() predicate.GatewayGroup {
+	return predicate.GatewayGroup(sql.FieldIsNull(FieldTrustedProxyCidrs))
+}
+
+// TrustedProxyCidrsNotNil applies the NotNil predicate on the "trusted_proxy_cidrs" field.
+func TrustedProxyCidrsNotNil() predicate.GatewayGroup {
+	return predicate.GatewayGroup(sql.FieldNotNull(FieldTrustedProxyCidrs))
 }
 
 // And groups predicates with the AND operator between them.

@@ -14,11 +14,15 @@ import (
 	"entgo.io/ent"
 	"entgo.io/ent/dialect"
 	"entgo.io/ent/dialect/sql"
+	"entgo.io/ent/dialect/sql/sqlgraph"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/auditentry"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/audithead"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/cakey"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/configrevision"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/configseq"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/connector"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/enrollmenttoken"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/gateway"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/gatewaygroup"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/instance"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/instancesetting"
@@ -45,6 +49,12 @@ type Client struct {
 	ConfigRevision *ConfigRevisionClient
 	// ConfigSeq is the client for interacting with the ConfigSeq builders.
 	ConfigSeq *ConfigSeqClient
+	// Connector is the client for interacting with the Connector builders.
+	Connector *ConnectorClient
+	// EnrollmentToken is the client for interacting with the EnrollmentToken builders.
+	EnrollmentToken *EnrollmentTokenClient
+	// Gateway is the client for interacting with the Gateway builders.
+	Gateway *GatewayClient
 	// GatewayGroup is the client for interacting with the GatewayGroup builders.
 	GatewayGroup *GatewayGroupClient
 	// Instance is the client for interacting with the Instance builders.
@@ -75,6 +85,9 @@ func (c *Client) init() {
 	c.CAKey = NewCAKeyClient(c.config)
 	c.ConfigRevision = NewConfigRevisionClient(c.config)
 	c.ConfigSeq = NewConfigSeqClient(c.config)
+	c.Connector = NewConnectorClient(c.config)
+	c.EnrollmentToken = NewEnrollmentTokenClient(c.config)
+	c.Gateway = NewGatewayClient(c.config)
 	c.GatewayGroup = NewGatewayGroupClient(c.config)
 	c.Instance = NewInstanceClient(c.config)
 	c.InstanceSetting = NewInstanceSettingClient(c.config)
@@ -179,6 +192,9 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		CAKey:             NewCAKeyClient(cfg),
 		ConfigRevision:    NewConfigRevisionClient(cfg),
 		ConfigSeq:         NewConfigSeqClient(cfg),
+		Connector:         NewConnectorClient(cfg),
+		EnrollmentToken:   NewEnrollmentTokenClient(cfg),
+		Gateway:           NewGatewayClient(cfg),
 		GatewayGroup:      NewGatewayGroupClient(cfg),
 		Instance:          NewInstanceClient(cfg),
 		InstanceSetting:   NewInstanceSettingClient(cfg),
@@ -210,6 +226,9 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		CAKey:             NewCAKeyClient(cfg),
 		ConfigRevision:    NewConfigRevisionClient(cfg),
 		ConfigSeq:         NewConfigSeqClient(cfg),
+		Connector:         NewConnectorClient(cfg),
+		EnrollmentToken:   NewEnrollmentTokenClient(cfg),
+		Gateway:           NewGatewayClient(cfg),
 		GatewayGroup:      NewGatewayGroupClient(cfg),
 		Instance:          NewInstanceClient(cfg),
 		InstanceSetting:   NewInstanceSettingClient(cfg),
@@ -246,9 +265,9 @@ func (c *Client) Close() error {
 // In order to add hooks to a specific client, call: `client.Node.Use(...)`.
 func (c *Client) Use(hooks ...Hook) {
 	for _, n := range []interface{ Use(...Hook) }{
-		c.AuditEntry, c.AuditHead, c.CAKey, c.ConfigRevision, c.ConfigSeq,
-		c.GatewayGroup, c.Instance, c.InstanceSetting, c.IssuedCertificate, c.Org,
-		c.OrgSetting, c.SecretMeta,
+		c.AuditEntry, c.AuditHead, c.CAKey, c.ConfigRevision, c.ConfigSeq, c.Connector,
+		c.EnrollmentToken, c.Gateway, c.GatewayGroup, c.Instance, c.InstanceSetting,
+		c.IssuedCertificate, c.Org, c.OrgSetting, c.SecretMeta,
 	} {
 		n.Use(hooks...)
 	}
@@ -258,9 +277,9 @@ func (c *Client) Use(hooks ...Hook) {
 // In order to add interceptors to a specific client, call: `client.Node.Intercept(...)`.
 func (c *Client) Intercept(interceptors ...Interceptor) {
 	for _, n := range []interface{ Intercept(...Interceptor) }{
-		c.AuditEntry, c.AuditHead, c.CAKey, c.ConfigRevision, c.ConfigSeq,
-		c.GatewayGroup, c.Instance, c.InstanceSetting, c.IssuedCertificate, c.Org,
-		c.OrgSetting, c.SecretMeta,
+		c.AuditEntry, c.AuditHead, c.CAKey, c.ConfigRevision, c.ConfigSeq, c.Connector,
+		c.EnrollmentToken, c.Gateway, c.GatewayGroup, c.Instance, c.InstanceSetting,
+		c.IssuedCertificate, c.Org, c.OrgSetting, c.SecretMeta,
 	} {
 		n.Intercept(interceptors...)
 	}
@@ -279,6 +298,12 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.ConfigRevision.mutate(ctx, m)
 	case *ConfigSeqMutation:
 		return c.ConfigSeq.mutate(ctx, m)
+	case *ConnectorMutation:
+		return c.Connector.mutate(ctx, m)
+	case *EnrollmentTokenMutation:
+		return c.EnrollmentToken.mutate(ctx, m)
+	case *GatewayMutation:
+		return c.Gateway.mutate(ctx, m)
 	case *GatewayGroupMutation:
 		return c.GatewayGroup.mutate(ctx, m)
 	case *InstanceMutation:
@@ -968,6 +993,475 @@ func (c *ConfigSeqClient) mutate(ctx context.Context, m *ConfigSeqMutation) (Val
 		return (&ConfigSeqDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
 	default:
 		return nil, fmt.Errorf("ent: unknown ConfigSeq mutation op: %q", m.Op())
+	}
+}
+
+// ConnectorClient is a client for the Connector schema.
+type ConnectorClient struct {
+	config
+}
+
+// NewConnectorClient returns a client for the Connector from the given config.
+func NewConnectorClient(c config) *ConnectorClient {
+	return &ConnectorClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `connector.Hooks(f(g(h())))`.
+func (c *ConnectorClient) Use(hooks ...Hook) {
+	c.hooks.Connector = append(c.hooks.Connector, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `connector.Intercept(f(g(h())))`.
+func (c *ConnectorClient) Intercept(interceptors ...Interceptor) {
+	c.inters.Connector = append(c.inters.Connector, interceptors...)
+}
+
+// Create returns a builder for creating a Connector entity.
+func (c *ConnectorClient) Create() *ConnectorCreate {
+	mutation := newConnectorMutation(c.config, OpCreate)
+	return &ConnectorCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of Connector entities.
+func (c *ConnectorClient) CreateBulk(builders ...*ConnectorCreate) *ConnectorCreateBulk {
+	return &ConnectorCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *ConnectorClient) MapCreateBulk(slice any, setFunc func(*ConnectorCreate, int)) *ConnectorCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &ConnectorCreateBulk{err: fmt.Errorf("calling to ConnectorClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*ConnectorCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &ConnectorCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for Connector.
+func (c *ConnectorClient) Update() *ConnectorUpdate {
+	mutation := newConnectorMutation(c.config, OpUpdate)
+	return &ConnectorUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *ConnectorClient) UpdateOne(_m *Connector) *ConnectorUpdateOne {
+	mutation := newConnectorMutation(c.config, OpUpdateOne, withConnector(_m))
+	return &ConnectorUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *ConnectorClient) UpdateOneID(id string) *ConnectorUpdateOne {
+	mutation := newConnectorMutation(c.config, OpUpdateOne, withConnectorID(id))
+	return &ConnectorUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for Connector.
+func (c *ConnectorClient) Delete() *ConnectorDelete {
+	mutation := newConnectorMutation(c.config, OpDelete)
+	return &ConnectorDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *ConnectorClient) DeleteOne(_m *Connector) *ConnectorDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *ConnectorClient) DeleteOneID(id string) *ConnectorDeleteOne {
+	builder := c.Delete().Where(connector.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &ConnectorDeleteOne{builder}
+}
+
+// Query returns a query builder for Connector.
+func (c *ConnectorClient) Query() *ConnectorQuery {
+	return &ConnectorQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeConnector},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a Connector entity by its id.
+func (c *ConnectorClient) Get(ctx context.Context, id string) (*Connector, error) {
+	return c.Query().Where(connector.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *ConnectorClient) GetX(ctx context.Context, id string) *Connector {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *ConnectorClient) Hooks() []Hook {
+	hooks := c.hooks.Connector
+	return append(hooks[:len(hooks):len(hooks)], connector.Hooks[:]...)
+}
+
+// Interceptors returns the client interceptors.
+func (c *ConnectorClient) Interceptors() []Interceptor {
+	inters := c.inters.Connector
+	return append(inters[:len(inters):len(inters)], connector.Interceptors[:]...)
+}
+
+func (c *ConnectorClient) mutate(ctx context.Context, m *ConnectorMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&ConnectorCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&ConnectorUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&ConnectorUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&ConnectorDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown Connector mutation op: %q", m.Op())
+	}
+}
+
+// EnrollmentTokenClient is a client for the EnrollmentToken schema.
+type EnrollmentTokenClient struct {
+	config
+}
+
+// NewEnrollmentTokenClient returns a client for the EnrollmentToken from the given config.
+func NewEnrollmentTokenClient(c config) *EnrollmentTokenClient {
+	return &EnrollmentTokenClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `enrollmenttoken.Hooks(f(g(h())))`.
+func (c *EnrollmentTokenClient) Use(hooks ...Hook) {
+	c.hooks.EnrollmentToken = append(c.hooks.EnrollmentToken, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `enrollmenttoken.Intercept(f(g(h())))`.
+func (c *EnrollmentTokenClient) Intercept(interceptors ...Interceptor) {
+	c.inters.EnrollmentToken = append(c.inters.EnrollmentToken, interceptors...)
+}
+
+// Create returns a builder for creating a EnrollmentToken entity.
+func (c *EnrollmentTokenClient) Create() *EnrollmentTokenCreate {
+	mutation := newEnrollmentTokenMutation(c.config, OpCreate)
+	return &EnrollmentTokenCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of EnrollmentToken entities.
+func (c *EnrollmentTokenClient) CreateBulk(builders ...*EnrollmentTokenCreate) *EnrollmentTokenCreateBulk {
+	return &EnrollmentTokenCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *EnrollmentTokenClient) MapCreateBulk(slice any, setFunc func(*EnrollmentTokenCreate, int)) *EnrollmentTokenCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &EnrollmentTokenCreateBulk{err: fmt.Errorf("calling to EnrollmentTokenClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*EnrollmentTokenCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &EnrollmentTokenCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for EnrollmentToken.
+func (c *EnrollmentTokenClient) Update() *EnrollmentTokenUpdate {
+	mutation := newEnrollmentTokenMutation(c.config, OpUpdate)
+	return &EnrollmentTokenUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *EnrollmentTokenClient) UpdateOne(_m *EnrollmentToken) *EnrollmentTokenUpdateOne {
+	mutation := newEnrollmentTokenMutation(c.config, OpUpdateOne, withEnrollmentToken(_m))
+	return &EnrollmentTokenUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *EnrollmentTokenClient) UpdateOneID(id string) *EnrollmentTokenUpdateOne {
+	mutation := newEnrollmentTokenMutation(c.config, OpUpdateOne, withEnrollmentTokenID(id))
+	return &EnrollmentTokenUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for EnrollmentToken.
+func (c *EnrollmentTokenClient) Delete() *EnrollmentTokenDelete {
+	mutation := newEnrollmentTokenMutation(c.config, OpDelete)
+	return &EnrollmentTokenDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *EnrollmentTokenClient) DeleteOne(_m *EnrollmentToken) *EnrollmentTokenDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *EnrollmentTokenClient) DeleteOneID(id string) *EnrollmentTokenDeleteOne {
+	builder := c.Delete().Where(enrollmenttoken.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &EnrollmentTokenDeleteOne{builder}
+}
+
+// Query returns a query builder for EnrollmentToken.
+func (c *EnrollmentTokenClient) Query() *EnrollmentTokenQuery {
+	return &EnrollmentTokenQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeEnrollmentToken},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a EnrollmentToken entity by its id.
+func (c *EnrollmentTokenClient) Get(ctx context.Context, id string) (*EnrollmentToken, error) {
+	return c.Query().Where(enrollmenttoken.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *EnrollmentTokenClient) GetX(ctx context.Context, id string) *EnrollmentToken {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// QueryGroup queries the group edge of a EnrollmentToken.
+func (c *EnrollmentTokenClient) QueryGroup(_m *EnrollmentToken) *GatewayGroupQuery {
+	query := (&GatewayGroupClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(enrollmenttoken.Table, enrollmenttoken.FieldID, id),
+			sqlgraph.To(gatewaygroup.Table, gatewaygroup.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, false, enrollmenttoken.GroupTable, enrollmenttoken.GroupColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// QueryGateway queries the gateway edge of a EnrollmentToken.
+func (c *EnrollmentTokenClient) QueryGateway(_m *EnrollmentToken) *GatewayQuery {
+	query := (&GatewayClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(enrollmenttoken.Table, enrollmenttoken.FieldID, id),
+			sqlgraph.To(gateway.Table, gateway.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, false, enrollmenttoken.GatewayTable, enrollmenttoken.GatewayColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// QueryConnector queries the connector edge of a EnrollmentToken.
+func (c *EnrollmentTokenClient) QueryConnector(_m *EnrollmentToken) *ConnectorQuery {
+	query := (&ConnectorClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(enrollmenttoken.Table, enrollmenttoken.FieldID, id),
+			sqlgraph.To(connector.Table, connector.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, false, enrollmenttoken.ConnectorTable, enrollmenttoken.ConnectorColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// Hooks returns the client hooks.
+func (c *EnrollmentTokenClient) Hooks() []Hook {
+	hooks := c.hooks.EnrollmentToken
+	return append(hooks[:len(hooks):len(hooks)], enrollmenttoken.Hooks[:]...)
+}
+
+// Interceptors returns the client interceptors.
+func (c *EnrollmentTokenClient) Interceptors() []Interceptor {
+	inters := c.inters.EnrollmentToken
+	return append(inters[:len(inters):len(inters)], enrollmenttoken.Interceptors[:]...)
+}
+
+func (c *EnrollmentTokenClient) mutate(ctx context.Context, m *EnrollmentTokenMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&EnrollmentTokenCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&EnrollmentTokenUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&EnrollmentTokenUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&EnrollmentTokenDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown EnrollmentToken mutation op: %q", m.Op())
+	}
+}
+
+// GatewayClient is a client for the Gateway schema.
+type GatewayClient struct {
+	config
+}
+
+// NewGatewayClient returns a client for the Gateway from the given config.
+func NewGatewayClient(c config) *GatewayClient {
+	return &GatewayClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `gateway.Hooks(f(g(h())))`.
+func (c *GatewayClient) Use(hooks ...Hook) {
+	c.hooks.Gateway = append(c.hooks.Gateway, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `gateway.Intercept(f(g(h())))`.
+func (c *GatewayClient) Intercept(interceptors ...Interceptor) {
+	c.inters.Gateway = append(c.inters.Gateway, interceptors...)
+}
+
+// Create returns a builder for creating a Gateway entity.
+func (c *GatewayClient) Create() *GatewayCreate {
+	mutation := newGatewayMutation(c.config, OpCreate)
+	return &GatewayCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of Gateway entities.
+func (c *GatewayClient) CreateBulk(builders ...*GatewayCreate) *GatewayCreateBulk {
+	return &GatewayCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *GatewayClient) MapCreateBulk(slice any, setFunc func(*GatewayCreate, int)) *GatewayCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &GatewayCreateBulk{err: fmt.Errorf("calling to GatewayClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*GatewayCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &GatewayCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for Gateway.
+func (c *GatewayClient) Update() *GatewayUpdate {
+	mutation := newGatewayMutation(c.config, OpUpdate)
+	return &GatewayUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *GatewayClient) UpdateOne(_m *Gateway) *GatewayUpdateOne {
+	mutation := newGatewayMutation(c.config, OpUpdateOne, withGateway(_m))
+	return &GatewayUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *GatewayClient) UpdateOneID(id string) *GatewayUpdateOne {
+	mutation := newGatewayMutation(c.config, OpUpdateOne, withGatewayID(id))
+	return &GatewayUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for Gateway.
+func (c *GatewayClient) Delete() *GatewayDelete {
+	mutation := newGatewayMutation(c.config, OpDelete)
+	return &GatewayDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *GatewayClient) DeleteOne(_m *Gateway) *GatewayDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *GatewayClient) DeleteOneID(id string) *GatewayDeleteOne {
+	builder := c.Delete().Where(gateway.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &GatewayDeleteOne{builder}
+}
+
+// Query returns a query builder for Gateway.
+func (c *GatewayClient) Query() *GatewayQuery {
+	return &GatewayQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeGateway},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a Gateway entity by its id.
+func (c *GatewayClient) Get(ctx context.Context, id string) (*Gateway, error) {
+	return c.Query().Where(gateway.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *GatewayClient) GetX(ctx context.Context, id string) *Gateway {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// QueryGroup queries the group edge of a Gateway.
+func (c *GatewayClient) QueryGroup(_m *Gateway) *GatewayGroupQuery {
+	query := (&GatewayGroupClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(gateway.Table, gateway.FieldID, id),
+			sqlgraph.To(gatewaygroup.Table, gatewaygroup.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, false, gateway.GroupTable, gateway.GroupColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// Hooks returns the client hooks.
+func (c *GatewayClient) Hooks() []Hook {
+	hooks := c.hooks.Gateway
+	return append(hooks[:len(hooks):len(hooks)], gateway.Hooks[:]...)
+}
+
+// Interceptors returns the client interceptors.
+func (c *GatewayClient) Interceptors() []Interceptor {
+	inters := c.inters.Gateway
+	return append(inters[:len(inters):len(inters)], gateway.Interceptors[:]...)
+}
+
+func (c *GatewayClient) mutate(ctx context.Context, m *GatewayMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&GatewayCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&GatewayUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&GatewayUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&GatewayDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown Gateway mutation op: %q", m.Op())
 	}
 }
 
@@ -1916,13 +2410,14 @@ func (c *SecretMetaClient) mutate(ctx context.Context, m *SecretMetaMutation) (V
 // hooks and interceptors per client, for fast access.
 type (
 	hooks struct {
-		AuditEntry, AuditHead, CAKey, ConfigRevision, ConfigSeq, GatewayGroup, Instance,
-		InstanceSetting, IssuedCertificate, Org, OrgSetting, SecretMeta []ent.Hook
+		AuditEntry, AuditHead, CAKey, ConfigRevision, ConfigSeq, Connector,
+		EnrollmentToken, Gateway, GatewayGroup, Instance, InstanceSetting,
+		IssuedCertificate, Org, OrgSetting, SecretMeta []ent.Hook
 	}
 	inters struct {
-		AuditEntry, AuditHead, CAKey, ConfigRevision, ConfigSeq, GatewayGroup, Instance,
-		InstanceSetting, IssuedCertificate, Org, OrgSetting,
-		SecretMeta []ent.Interceptor
+		AuditEntry, AuditHead, CAKey, ConfigRevision, ConfigSeq, Connector,
+		EnrollmentToken, Gateway, GatewayGroup, Instance, InstanceSetting,
+		IssuedCertificate, Org, OrgSetting, SecretMeta []ent.Interceptor
 	}
 )
 

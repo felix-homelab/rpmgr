@@ -107,11 +107,149 @@ var (
 		Columns:    ConfigSeqColumns,
 		PrimaryKey: []*schema.Column{ConfigSeqColumns[0]},
 	}
+	// ConnectorsColumns holds the columns for the "connectors" table.
+	ConnectorsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeString},
+		{Name: "org_id", Type: field.TypeString},
+		{Name: "name", Type: field.TypeString},
+		{Name: "labels", Type: field.TypeJSON, Nullable: true},
+		{Name: "spiffe_id", Type: field.TypeString},
+		{Name: "pubkey_sha256", Type: field.TypeString},
+		{Name: "ephemeral", Type: field.TypeBool, Default: false},
+		{Name: "enabled", Type: field.TypeBool, Default: true},
+		{Name: "transport", Type: field.TypeEnum, Nullable: true, Enums: []string{"auto", "quic", "h2"}},
+		{Name: "desired_version", Type: field.TypeString, Nullable: true},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "decommissioned_at", Type: field.TypeTime, Nullable: true},
+	}
+	// ConnectorsTable holds the schema information for the "connectors" table.
+	ConnectorsTable = &schema.Table{
+		Name:       "connectors",
+		Columns:    ConnectorsColumns,
+		PrimaryKey: []*schema.Column{ConnectorsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "connector_org_id_id",
+				Unique:  true,
+				Columns: []*schema.Column{ConnectorsColumns[1], ConnectorsColumns[0]},
+			},
+			{
+				Name:    "connector_org_id_name",
+				Unique:  true,
+				Columns: []*schema.Column{ConnectorsColumns[1], ConnectorsColumns[2]},
+			},
+		},
+	}
+	// EnrollmentTokensColumns holds the columns for the "enrollment_tokens" table.
+	EnrollmentTokensColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeString},
+		{Name: "org_id", Type: field.TypeString},
+		{Name: "token_hash", Type: field.TypeBytes, Unique: true},
+		{Name: "role", Type: field.TypeEnum, Enums: []string{"connector", "gateway"}},
+		{Name: "labels", Type: field.TypeJSON, Nullable: true},
+		{Name: "ephemeral", Type: field.TypeBool, Default: false},
+		{Name: "max_uses", Type: field.TypeInt, Default: 1},
+		{Name: "use_count", Type: field.TypeInt, Default: 0},
+		{Name: "expires_at", Type: field.TypeTime},
+		{Name: "created_by", Type: field.TypeString},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "last_used_at", Type: field.TypeTime, Nullable: true},
+		{Name: "last_used_ip", Type: field.TypeString, Nullable: true},
+		{Name: "revoked_at", Type: field.TypeTime, Nullable: true},
+		{Name: "gateway_group_id", Type: field.TypeString, Nullable: true},
+		{Name: "gateway_id", Type: field.TypeString, Nullable: true},
+		{Name: "connector_id", Type: field.TypeString, Nullable: true},
+	}
+	// EnrollmentTokensTable holds the schema information for the "enrollment_tokens" table.
+	EnrollmentTokensTable = &schema.Table{
+		Name:       "enrollment_tokens",
+		Columns:    EnrollmentTokensColumns,
+		PrimaryKey: []*schema.Column{EnrollmentTokensColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "enrollment_tokens_gateway_groups_group",
+				Columns:    []*schema.Column{EnrollmentTokensColumns[14]},
+				RefColumns: []*schema.Column{GatewayGroupsColumns[0]},
+				OnDelete:   schema.SetNull,
+			},
+			{
+				Symbol:     "enrollment_tokens_gateways_gateway",
+				Columns:    []*schema.Column{EnrollmentTokensColumns[15]},
+				RefColumns: []*schema.Column{GatewaysColumns[0]},
+				OnDelete:   schema.SetNull,
+			},
+			{
+				Symbol:     "enrollment_tokens_connectors_connector",
+				Columns:    []*schema.Column{EnrollmentTokensColumns[16]},
+				RefColumns: []*schema.Column{ConnectorsColumns[0]},
+				OnDelete:   schema.SetNull,
+			},
+		},
+		Indexes: []*schema.Index{
+			{
+				Name:    "enrollmenttoken_org_id_id",
+				Unique:  true,
+				Columns: []*schema.Column{EnrollmentTokensColumns[1], EnrollmentTokensColumns[0]},
+			},
+		},
+	}
+	// GatewaysColumns holds the columns for the "gateways" table.
+	GatewaysColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeString},
+		{Name: "org_id", Type: field.TypeString},
+		{Name: "name", Type: field.TypeString},
+		{Name: "slot", Type: field.TypeInt},
+		{Name: "tunnel_endpoints", Type: field.TypeJSON},
+		{Name: "spiffe_id", Type: field.TypeString, Nullable: true},
+		{Name: "pubkey_sha256", Type: field.TypeString, Nullable: true},
+		{Name: "enabled", Type: field.TypeBool, Default: true},
+		{Name: "desired_version", Type: field.TypeString, Nullable: true},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "decommissioned_at", Type: field.TypeTime, Nullable: true},
+		{Name: "gateway_group_id", Type: field.TypeString},
+	}
+	// GatewaysTable holds the schema information for the "gateways" table.
+	GatewaysTable = &schema.Table{
+		Name:       "gateways",
+		Columns:    GatewaysColumns,
+		PrimaryKey: []*schema.Column{GatewaysColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "gateways_gateway_groups_group",
+				Columns:    []*schema.Column{GatewaysColumns[11]},
+				RefColumns: []*schema.Column{GatewayGroupsColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+		},
+		Indexes: []*schema.Index{
+			{
+				Name:    "gateway_org_id_id",
+				Unique:  true,
+				Columns: []*schema.Column{GatewaysColumns[1], GatewaysColumns[0]},
+			},
+			{
+				Name:    "gateway_org_id_name",
+				Unique:  true,
+				Columns: []*schema.Column{GatewaysColumns[1], GatewaysColumns[2]},
+			},
+			{
+				Name:    "gateway_gateway_group_id_slot",
+				Unique:  true,
+				Columns: []*schema.Column{GatewaysColumns[11], GatewaysColumns[3]},
+				Annotation: &entsql.IndexAnnotation{
+					Where: "decommissioned_at IS NULL",
+				},
+			},
+		},
+	}
 	// GatewayGroupsColumns holds the columns for the "gateway_groups" table.
 	GatewayGroupsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeString},
 		{Name: "org_id", Type: field.TypeString},
 		{Name: "name", Type: field.TypeString},
+		{Name: "region", Type: field.TypeString, Nullable: true},
+		{Name: "public_hostnames", Type: field.TypeJSON, Nullable: true},
+		{Name: "trusted_proxy_cidrs", Type: field.TypeJSON, Nullable: true},
 	}
 	// GatewayGroupsTable holds the schema information for the "gateway_groups" table.
 	GatewayGroupsTable = &schema.Table{
@@ -255,6 +393,9 @@ var (
 		CaKeysTable,
 		ConfigRevisionsTable,
 		ConfigSeqTable,
+		ConnectorsTable,
+		EnrollmentTokensTable,
+		GatewaysTable,
 		GatewayGroupsTable,
 		InstanceTable,
 		InstanceSettingsTable,
@@ -278,6 +419,10 @@ func init() {
 	ConfigSeqTable.Annotation = &entsql.Annotation{
 		Table: "config_seq",
 	}
+	EnrollmentTokensTable.ForeignKeys[0].RefTable = GatewayGroupsTable
+	EnrollmentTokensTable.ForeignKeys[1].RefTable = GatewaysTable
+	EnrollmentTokensTable.ForeignKeys[2].RefTable = ConnectorsTable
+	GatewaysTable.ForeignKeys[0].RefTable = GatewayGroupsTable
 	InstanceTable.Annotation = &entsql.Annotation{
 		Table: "instance",
 	}

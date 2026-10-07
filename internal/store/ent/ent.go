@@ -17,6 +17,9 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/cakey"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/configrevision"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/configseq"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/connector"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/enrollmenttoken"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/gateway"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/gatewaygroup"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/instance"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/instancesetting"
@@ -89,6 +92,9 @@ func checkColumn(t, c string) error {
 			cakey.Table:             cakey.ValidColumn,
 			configrevision.Table:    configrevision.ValidColumn,
 			configseq.Table:         configseq.ValidColumn,
+			connector.Table:         connector.ValidColumn,
+			enrollmenttoken.Table:   enrollmenttoken.ValidColumn,
+			gateway.Table:           gateway.ValidColumn,
 			gatewaygroup.Table:      gatewaygroup.ValidColumn,
 			instance.Table:          instance.ValidColumn,
 			instancesetting.Table:   instancesetting.ValidColumn,
