@@ -477,12 +477,15 @@ redirect them ([15](15-dns.md#cloudflare-specifics)).
 
 **Logs**:
 
-- A `secret.Value` type with an unexported field. `String`, `GoString`, `Format`, `MarshalJSON`,
-  `MarshalText` and `LogValue` all return `[REDACTED]`; only `.Reveal()` returns the value, and its
-  use is restricted by lint.
+- A `secret.Value` type. `String`, `GoString`, `Format`, `MarshalJSON`, `MarshalText` and
+  `LogValue` all return `[REDACTED]`; only `.Reveal()` returns the value, and its use is restricted
+  by lint. The value is captured by an unexported function rather than stored in a field: where fmt
+  cannot call the methods (an unexported struct field, a wrong verb), it prints by reflection, and
+  reflection shows a pointer or a byte slice with its contents but a function only as an address.
+- The logger redacts every attribute whose key contains `token`, `secret`, `password`,
+  `authorization`, `cookie` or `private_key` (case and `-`/`_` ignored), whatever its type.
 - Proto fields carrying secrets are annotated `(rpmgr.v1.sensitive) = true` (plus `debug_redact`
-  [V VB-04]); the logging handler redacts them and a denylist of keys (`token`,
-  `secret`, `password`, `authorization`, `cookie`, `private_key`).
+  [V VB-04]); the logging handler redacts them.
 - **Whole requests are never logged.** Access logs omit query strings and authentication headers.
 - No secret appears in argv, in the environment of long-running processes, or in unit files.
 
