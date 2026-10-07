@@ -227,7 +227,9 @@ later.
   certificate expires and replaces it 60 days before. `Welcome` and enrollment deliver every
   config-signing certificate that has not expired, the next one included, with the intermediates
   that issued them; an agent gets the next key's certificate in its next session, at the latest
-  after its next renewal, which reconnects, long before the key signs. The audit-checkpoint key
+  after its next renewal, which reconnects, long before the key signs. When the next key replaces
+  the active one, every agent receives its snapshot and deny-list signed by the new key, so its
+  stored copies still verify after the old key's certificate expires. The audit-checkpoint key
   follows the same schedule.
 - **Schedule**: a singleton job checks it every hour and commits a rotation with an audit record;
   every replica reloads the keys every minute

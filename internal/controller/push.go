@@ -126,14 +126,17 @@ func (p *pusher) run(ctx context.Context) {
 	t := time.NewTicker(p.every)
 	defer t.Stop()
 	var last store.Revision
+	var lastKey string
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-p.wake:
 		case <-t.C:
-			if rev, err := currentRevision(p.s); err == nil && rev != last {
-				last = rev
+			// A new revision or a new signing key: every agent gets a new snapshot.
+			key := snapshot.KeyID(p.s.ca.ConfigSigner().Cert)
+			if rev, err := currentRevision(p.s); err == nil && (rev != last || key != lastKey) {
+				last, lastKey = rev, key
 				p.mu.Lock()
 				for id := range p.agents {
 					p.dirty[id] = true
@@ -179,7 +182,9 @@ func (p *pusher) push(id string) {
 	snap, err := p.compiler.Compile(p.s.sys, p.s.db, agent)
 	var signed *agentv1.Signed
 	if err == nil {
-		signed, err = snapshot.Sign(p.s.ca.ConfigSigner(), snap)
+		signer := p.s.ca.ConfigSigner()
+		snap.SigningKeyId = snapshot.KeyID(signer.Cert)
+		signed, err = snapshot.Sign(signer, snap)
 	}
 	p.mu.Lock()
 	st = p.agents[id]

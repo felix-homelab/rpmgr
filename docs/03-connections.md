@@ -222,8 +222,10 @@ message Signed { bytes payload = 1; bytes signature = 2; string key_id = 3; }
   revocation ([04](04-security.md#revocation)). The controller sends the list after `Welcome` when
   the digest in `Hello` differs from its own, and to every session when the list changes. The
   digest is the SHA-256 over the distinct entries, sorted, each written as `1 serial <serial>` or
-  `2 identity <SPIFFE ID>` and a newline; an empty list has an empty digest, and expiry times are
-  not part of it.
+  `2 identity <SPIFFE ID>` and a newline, followed by `key <key_id>` and a newline for the key that
+  signed the list (for the agent, its newest stored list); an empty list has an empty digest, and
+  expiry times are not part of it. After a key rotation every agent therefore receives the list
+  signed by the new key.
 
 ### Configuration reconciliation
 
@@ -297,14 +299,15 @@ Rules:
 8. **Snapshots are full, resources are hashed.** [R] v1 sends the complete snapshot for an agent;
    large resources are references. A delta protocol is only worth adding if snapshots routinely
    exceed the control message limit (4 MiB, see [Framing](#framing)).
-9. **When a snapshot is sent.** The controller compiles an agent's snapshot when its session starts
-   and at every new revision. It looks for new revisions at the revision check interval (see the
-   timeout table), so a revision that another process wrote, such as an admin command, reaches the
-   agents too. A snapshot whose hash equals the one the agent named in `Hello`, or the one it was
-   sent last, is not sent again. `Applied` and `Rejected` count only for a snapshot that the same
-   session was sent; of a rejection the controller keeps at most 32 reasons of at most 512 bytes
-   each. The last 5 snapshots sent to each agent are kept for support
-   ([06](06-data-model.md#desired-vs-observed-state)).
+9. **When a snapshot is sent.** The controller compiles an agent's snapshot when its session starts,
+   at every new revision and when the config-signing key changes; the snapshot names its signing
+   key, so the agent then keeps a copy signed by the new key. The controller looks for new
+   revisions at the revision check interval (see the timeout table), so a revision that another
+   process wrote, such as an admin command, reaches the agents too. A snapshot whose hash equals
+   the one the agent named in `Hello`, or the one it was sent last, is not sent again. `Applied`
+   and `Rejected` count only for a snapshot that the same session was sent; of a rejection the
+   controller keeps at most 32 reasons of at most 512 bytes each. The last 5 snapshots sent to
+   each agent are kept for support ([06](06-data-model.md#desired-vs-observed-state)).
 
 ### Revisions and ordering
 
@@ -327,7 +330,8 @@ Rules:
   capabilities and leaves out what the agent cannot run.
 - Agents apply a snapshot only if its revision is greater than the last applied one. If several
   arrive while one is being applied, only the newest is applied next ("latest wins"). A snapshot
-  that is not newer is ignored, except the one the agent runs, which it acknowledges again.
+  that is not newer is ignored, except the one the agent runs, which it acknowledges again, and the
+  running revision signed by another key, which replaces the stored copy after a key rotation.
 - `db_epoch` is a fresh random UUIDv7, generated at initialisation and again on **every** restore
   from a backup (revisions could otherwise go backwards, and restoring the same backup twice must
   still yield a new epoch). An agent accepts a lower revision only together with a new `db_epoch`

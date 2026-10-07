@@ -148,14 +148,20 @@ func (d *DenyList) Denied(cert *x509.Certificate) bool {
 	return len(cert.URIs) == 1 && es["identity "+cert.URIs[0].String()] != nil
 }
 
-// Digest is the digest of the unexpired entries, for Hello.
+// Digest is the digest of the unexpired entries and the key of the newest stored list, for Hello.
 func (d *DenyList) Digest() []byte {
 	es := d.entries()
 	list := make([]*agentv1.DenyEntry, 0, len(es))
 	for _, e := range es {
 		list = append(list, e)
 	}
-	return pki.DenyDigest(list)
+	d.mu.RLock()
+	key := ""
+	if len(d.kept) > 0 {
+		key = d.kept[0].signed.GetKeyId()
+	}
+	d.mu.RUnlock()
+	return pki.DenyDigest(list, key)
 }
 
 // store writes the kept lists, each as a length-prefixed signed message, atomically.

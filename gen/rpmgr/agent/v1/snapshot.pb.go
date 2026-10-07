@@ -158,7 +158,10 @@ type Snapshot struct {
 	// The controller endpoints, in the order the agent tries them.
 	ControllerEndpoints []string `protobuf:"bytes,3,rep,name=controller_endpoints,json=controllerEndpoints,proto3" json:"controller_endpoints,omitempty"`
 	// The resources, each with its content hash, so unchanged resources stay untouched.
-	Resources     []*Resource `protobuf:"bytes,4,rep,name=resources,proto3" json:"resources,omitempty"`
+	Resources []*Resource `protobuf:"bytes,4,rep,name=resources,proto3" json:"resources,omitempty"`
+	// The key_id of the key that signs it: a new signing key changes the snapshot's hash, so every
+	// agent receives and keeps a copy signed by the new key.
+	SigningKeyId  string `protobuf:"bytes,5,opt,name=signing_key_id,json=signingKeyId,proto3" json:"signing_key_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -219,6 +222,13 @@ func (x *Snapshot) GetResources() []*Resource {
 		return x.Resources
 	}
 	return nil
+}
+
+func (x *Snapshot) GetSigningKeyId() string {
+	if x != nil {
+		return x.SigningKeyId
+	}
+	return ""
 }
 
 // Resource is one item of a snapshot. The kinds are added by the slices that implement them.
@@ -527,12 +537,13 @@ const file_rpmgr_agent_v1_snapshot_proto_rawDesc = "" +
 	"\x06Signed\x12\x18\n" +
 	"\apayload\x18\x01 \x01(\fR\apayload\x12\x1c\n" +
 	"\tsignature\x18\x02 \x01(\fR\tsignature\x12\x15\n" +
-	"\x06key_id\x18\x03 \x01(\tR\x05keyId\"\xc1\x01\n" +
+	"\x06key_id\x18\x03 \x01(\tR\x05keyId\"\xe7\x01\n" +
 	"\bSnapshot\x124\n" +
 	"\brevision\x18\x01 \x01(\v2\x18.rpmgr.agent.v1.RevisionR\brevision\x12\x14\n" +
 	"\x05agent\x18\x02 \x01(\tR\x05agent\x121\n" +
 	"\x14controller_endpoints\x18\x03 \x03(\tR\x13controllerEndpoints\x126\n" +
-	"\tresources\x18\x04 \x03(\v2\x18.rpmgr.agent.v1.ResourceR\tresources\"y\n" +
+	"\tresources\x18\x04 \x03(\v2\x18.rpmgr.agent.v1.ResourceR\tresources\x12$\n" +
+	"\x0esigning_key_id\x18\x05 \x01(\tR\fsigningKeyId\"y\n" +
 	"\bResource\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
 	"\x04hash\x18\x02 \x01(\fR\x04hash\x12A\n" +

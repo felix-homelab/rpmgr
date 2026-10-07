@@ -97,7 +97,7 @@ func res(t *testing.T, id string, size uint64) *agentv1.Resource {
 func (e *rtEnv) signed(t *testing.T, kp pki.KeyPair, ep string, seq uint64, rs ...*agentv1.Resource) *agentv1.Signed {
 	t.Helper()
 	s, err := snapshot.Sign(kp, &agentv1.Snapshot{Revision: &agentv1.Revision{DbEpoch: ep, Seq: seq}, Agent: e.id.SPIFFE(),
-		ControllerEndpoints: []string{"https://ctl.example"}, Resources: rs})
+		ControllerEndpoints: []string{"https://ctl.example"}, Resources: rs, SigningKeyId: snapshot.KeyID(kp.Cert)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -425,5 +425,33 @@ func TestRuntime_PersistFailure(t *testing.T) {
 	offer(rt, e.signed(t, e.config, epoch1, 1))
 	if answer(t, out).GetApplied() == nil {
 		t.Fatal("not acknowledged")
+	}
+}
+
+// TestRuntime_ResignedSameRevision: the running revision signed by another key, as after a key
+// rotation, replaces the stored copy; signed by the same key with other content it is ignored.
+func TestRuntime_ResignedSameRevision(t *testing.T) {
+	e := newRTEnv(t)
+	f := &fakeApplier{}
+	rt, out := e.runtime(t, f)
+	rt.Welcome(&agentv1.Welcome{DbEpoch: epoch1, SigningCertificates: [][]byte{e.config.Cert.Raw, e.nextConfig.Cert.Raw, e.inter.Cert.Raw}})
+	offer(rt, e.signed(t, e.config, epoch1, 7, res(t, "rt_1", 1)))
+	answer(t, out)
+	offer(rt, e.signed(t, e.config, epoch1, 7, res(t, "rt_1", 2)))
+	quiet(t, out)
+	resigned := e.signed(t, e.nextConfig, epoch1, 7, res(t, "rt_1", 1))
+	offer(rt, resigned)
+	if a := answer(t, out).GetApplied(); a == nil || !slices.Equal(a.GetHash(), snapshot.Hash(resigned)) {
+		t.Fatalf("the re-signed snapshot: %v", a)
+	}
+	stored := &agentv1.Signed{}
+	if err := proto.Unmarshal(lkg(t, e), stored); err != nil || stored.GetKeyId() != snapshot.KeyID(e.nextConfig.Cert) {
+		t.Fatalf("the stored copy is signed by %q (%v)", stored.GetKeyId(), err)
+	}
+	f.mu.Lock()
+	c := f.applied[len(f.applied)-1]
+	f.mu.Unlock()
+	if !slices.Equal(c.Unchanged, []string{"rt_1"}) {
+		t.Fatalf("the re-signed snapshot changed resources: %+v", c)
 	}
 }

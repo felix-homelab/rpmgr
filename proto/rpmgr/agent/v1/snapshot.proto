@@ -41,6 +41,9 @@ message Snapshot {
   repeated string controller_endpoints = 3;
   // The resources, each with its content hash, so unchanged resources stay untouched.
   repeated Resource resources = 4;
+  // The key_id of the key that signs it: a new signing key changes the snapshot's hash, so every
+  // agent receives and keeps a copy signed by the new key.
+  string signing_key_id = 5;
 }
 
 // Resource is one item of a snapshot. The kinds are added by the slices that implement them.

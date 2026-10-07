@@ -41,6 +41,9 @@ type Options struct {
 	Admission int              // control sessions per second; 0 is the default
 	// Sources compile the agents' snapshots; without any, no snapshot is sent.
 	Sources []snapshot.Source
+	// CAAge is how long ago the CA was created; 0 is 60 days, so that tests can hand agents
+	// certificates that have expired since.
+	CAAge time.Duration
 }
 
 // Controller is a running test controller: its first replica, and those StartReplica adds.
@@ -86,9 +89,11 @@ func StartController(t testing.TB, o Options) *Controller {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// The CA starts 60 days ago, so tests can hand agents certificates that have expired since.
+	if o.CAAge == 0 {
+		o.CAAge = 60 * 24 * time.Hour
+	}
 	if err := store.WriteTx(sys, db, func(tx *ent.Tx) error {
-		return pki.InitCA(sys, tx, sealer, td, time.Now().Add(-60*24*time.Hour))
+		return pki.InitCA(sys, tx, sealer, td, time.Now().Add(-o.CAAge))
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -156,6 +161,9 @@ func (c *Controller) StartReplica(t testing.TB) (string, *controller.Sessions) {
 	}
 	return url, sessions
 }
+
+// Sealer returns the sealer of the controller's KEK.
+func (c *Controller) Sealer() *secret.Sealer { return c.sealer }
 
 // Revoker revokes through the first replica.
 func (c *Controller) Revoker() controller.Revoker {

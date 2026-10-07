@@ -105,24 +105,29 @@ func TestRevoke(t *testing.T) {
 	})
 }
 
-// TestDenyDigest: the digest ignores order, duplicates and expiry times; an empty list has none.
+// TestDenyDigest: the digest ignores order, duplicates and expiry times, but not the signing key;
+// an empty list has none.
 func TestDenyDigest(t *testing.T) {
+	const k1, k2 = "key-1", "key-2"
 	a, b := serialEntry("0a"), identityEntry("spiffe://rpmgr-x/org/o/connector/c")
 	withTime := identityEntry("spiffe://rpmgr-x/org/o/connector/c")
 	withTime.NotAfter = timestamppb.New(t0)
-	d1 := pki.DenyDigest([]*agentv1.DenyEntry{a, b})
+	d1 := pki.DenyDigest([]*agentv1.DenyEntry{a, b}, k1)
 	for name, es := range map[string][]*agentv1.DenyEntry{
 		"reversed": {b, a}, "duplicate": {a, b, a}, "expiry time": {a, withTime},
 	} {
-		if !bytes.Equal(pki.DenyDigest(es), d1) {
+		if !bytes.Equal(pki.DenyDigest(es, k1), d1) {
 			t.Errorf("%s: another digest", name)
 		}
 	}
-	if bytes.Equal(pki.DenyDigest([]*agentv1.DenyEntry{a}), d1) || pki.DenyDigest(nil) != nil {
+	if bytes.Equal(pki.DenyDigest([]*agentv1.DenyEntry{a}, k1), d1) || pki.DenyDigest(nil, k1) != nil {
 		t.Error("the digest does not tell the lists apart")
 	}
 	// A serial and an identity with the same text are different entries.
-	if bytes.Equal(pki.DenyDigest([]*agentv1.DenyEntry{serialEntry("x")}), pki.DenyDigest([]*agentv1.DenyEntry{identityEntry("x")})) {
+	if bytes.Equal(pki.DenyDigest([]*agentv1.DenyEntry{a, b}, k2), d1) {
+		t.Error("another signing key gives the same digest")
+	}
+	if bytes.Equal(pki.DenyDigest([]*agentv1.DenyEntry{serialEntry("x")}, k1), pki.DenyDigest([]*agentv1.DenyEntry{identityEntry("x")}, k1)) {
 		t.Error("a serial and an identity with the same text have the same digest")
 	}
 }
