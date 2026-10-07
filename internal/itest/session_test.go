@@ -123,9 +123,12 @@ func TestControlSession_Failover(t *testing.T) {
 	waitFor(t, "a session on the first live replica", func() bool { return slices.Contains(ctl.Sessions.Connected(), id.AgentID) })
 	ctl.Sessions.Drain(time.Now().Add(time.Minute))
 	waitFor(t, "the move to the second replica", func() bool { return slices.Contains(secondSessions.Connected(), id.AgentID) })
-	if _, _, ep := c.Stats(); ep != second {
-		t.Errorf("last endpoint %s, want %s", ep, second)
-	}
+	// The replica lists the session before its Welcome reaches the agent, which records the
+	// endpoint only then.
+	waitFor(t, "the agent's welcome from the second replica", func() bool {
+		_, _, ep := c.Stats()
+		return ep == second
+	})
 	row := ctl.DB.Client().AgentSession.GetX(ctl.Sys, id.AgentID)
 	if row.SessionEpoch != 2 {
 		t.Errorf("session epoch %d after moving, want 2", row.SessionEpoch)
