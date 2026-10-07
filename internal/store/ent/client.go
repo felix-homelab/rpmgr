@@ -15,6 +15,7 @@ import (
 	"entgo.io/ent/dialect"
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/agentsession"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/auditentry"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/audithead"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/cakey"
@@ -40,6 +41,8 @@ type Client struct {
 	config
 	// Schema is the client for creating, migrating and dropping schema.
 	Schema *migrate.Schema
+	// AgentSession is the client for interacting with the AgentSession builders.
+	AgentSession *AgentSessionClient
 	// AuditEntry is the client for interacting with the AuditEntry builders.
 	AuditEntry *AuditEntryClient
 	// AuditHead is the client for interacting with the AuditHead builders.
@@ -83,6 +86,7 @@ func NewClient(opts ...Option) *Client {
 
 func (c *Client) init() {
 	c.Schema = migrate.NewSchema(c.driver)
+	c.AgentSession = NewAgentSessionClient(c.config)
 	c.AuditEntry = NewAuditEntryClient(c.config)
 	c.AuditHead = NewAuditHeadClient(c.config)
 	c.CAKey = NewCAKeyClient(c.config)
@@ -191,6 +195,7 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 	return &Tx{
 		ctx:               ctx,
 		config:            cfg,
+		AgentSession:      NewAgentSessionClient(cfg),
 		AuditEntry:        NewAuditEntryClient(cfg),
 		AuditHead:         NewAuditHeadClient(cfg),
 		CAKey:             NewCAKeyClient(cfg),
@@ -226,6 +231,7 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 	return &Tx{
 		ctx:               ctx,
 		config:            cfg,
+		AgentSession:      NewAgentSessionClient(cfg),
 		AuditEntry:        NewAuditEntryClient(cfg),
 		AuditHead:         NewAuditHeadClient(cfg),
 		CAKey:             NewCAKeyClient(cfg),
@@ -248,7 +254,7 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 // Debug returns a new debug-client. It's used to get verbose logging on specific operations.
 //
 //	client.Debug().
-//		AuditEntry.
+//		AgentSession.
 //		Query().
 //		Count(ctx)
 func (c *Client) Debug() *Client {
@@ -271,9 +277,10 @@ func (c *Client) Close() error {
 // In order to add hooks to a specific client, call: `client.Node.Use(...)`.
 func (c *Client) Use(hooks ...Hook) {
 	for _, n := range []interface{ Use(...Hook) }{
-		c.AuditEntry, c.AuditHead, c.CAKey, c.ConfigRevision, c.ConfigSeq, c.Connector,
-		c.EnrollmentToken, c.Gateway, c.GatewayGroup, c.Instance, c.InstanceSetting,
-		c.IssuedCertificate, c.Lease, c.Org, c.OrgSetting, c.SecretMeta,
+		c.AgentSession, c.AuditEntry, c.AuditHead, c.CAKey, c.ConfigRevision,
+		c.ConfigSeq, c.Connector, c.EnrollmentToken, c.Gateway, c.GatewayGroup,
+		c.Instance, c.InstanceSetting, c.IssuedCertificate, c.Lease, c.Org,
+		c.OrgSetting, c.SecretMeta,
 	} {
 		n.Use(hooks...)
 	}
@@ -283,9 +290,10 @@ func (c *Client) Use(hooks ...Hook) {
 // In order to add interceptors to a specific client, call: `client.Node.Intercept(...)`.
 func (c *Client) Intercept(interceptors ...Interceptor) {
 	for _, n := range []interface{ Intercept(...Interceptor) }{
-		c.AuditEntry, c.AuditHead, c.CAKey, c.ConfigRevision, c.ConfigSeq, c.Connector,
-		c.EnrollmentToken, c.Gateway, c.GatewayGroup, c.Instance, c.InstanceSetting,
-		c.IssuedCertificate, c.Lease, c.Org, c.OrgSetting, c.SecretMeta,
+		c.AgentSession, c.AuditEntry, c.AuditHead, c.CAKey, c.ConfigRevision,
+		c.ConfigSeq, c.Connector, c.EnrollmentToken, c.Gateway, c.GatewayGroup,
+		c.Instance, c.InstanceSetting, c.IssuedCertificate, c.Lease, c.Org,
+		c.OrgSetting, c.SecretMeta,
 	} {
 		n.Intercept(interceptors...)
 	}
@@ -294,6 +302,8 @@ func (c *Client) Intercept(interceptors ...Interceptor) {
 // Mutate implements the ent.Mutator interface.
 func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 	switch m := m.(type) {
+	case *AgentSessionMutation:
+		return c.AgentSession.mutate(ctx, m)
 	case *AuditEntryMutation:
 		return c.AuditEntry.mutate(ctx, m)
 	case *AuditHeadMutation:
@@ -328,6 +338,141 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.SecretMeta.mutate(ctx, m)
 	default:
 		return nil, fmt.Errorf("ent: unknown mutation type %T", m)
+	}
+}
+
+// AgentSessionClient is a client for the AgentSession schema.
+type AgentSessionClient struct {
+	config
+}
+
+// NewAgentSessionClient returns a client for the AgentSession from the given config.
+func NewAgentSessionClient(c config) *AgentSessionClient {
+	return &AgentSessionClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `agentsession.Hooks(f(g(h())))`.
+func (c *AgentSessionClient) Use(hooks ...Hook) {
+	c.hooks.AgentSession = append(c.hooks.AgentSession, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `agentsession.Intercept(f(g(h())))`.
+func (c *AgentSessionClient) Intercept(interceptors ...Interceptor) {
+	c.inters.AgentSession = append(c.inters.AgentSession, interceptors...)
+}
+
+// Create returns a builder for creating a AgentSession entity.
+func (c *AgentSessionClient) Create() *AgentSessionCreate {
+	mutation := newAgentSessionMutation(c.config, OpCreate)
+	return &AgentSessionCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of AgentSession entities.
+func (c *AgentSessionClient) CreateBulk(builders ...*AgentSessionCreate) *AgentSessionCreateBulk {
+	return &AgentSessionCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *AgentSessionClient) MapCreateBulk(slice any, setFunc func(*AgentSessionCreate, int)) *AgentSessionCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &AgentSessionCreateBulk{err: fmt.Errorf("calling to AgentSessionClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*AgentSessionCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &AgentSessionCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for AgentSession.
+func (c *AgentSessionClient) Update() *AgentSessionUpdate {
+	mutation := newAgentSessionMutation(c.config, OpUpdate)
+	return &AgentSessionUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *AgentSessionClient) UpdateOne(_m *AgentSession) *AgentSessionUpdateOne {
+	mutation := newAgentSessionMutation(c.config, OpUpdateOne, withAgentSession(_m))
+	return &AgentSessionUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *AgentSessionClient) UpdateOneID(id string) *AgentSessionUpdateOne {
+	mutation := newAgentSessionMutation(c.config, OpUpdateOne, withAgentSessionID(id))
+	return &AgentSessionUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for AgentSession.
+func (c *AgentSessionClient) Delete() *AgentSessionDelete {
+	mutation := newAgentSessionMutation(c.config, OpDelete)
+	return &AgentSessionDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *AgentSessionClient) DeleteOne(_m *AgentSession) *AgentSessionDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *AgentSessionClient) DeleteOneID(id string) *AgentSessionDeleteOne {
+	builder := c.Delete().Where(agentsession.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &AgentSessionDeleteOne{builder}
+}
+
+// Query returns a query builder for AgentSession.
+func (c *AgentSessionClient) Query() *AgentSessionQuery {
+	return &AgentSessionQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeAgentSession},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a AgentSession entity by its id.
+func (c *AgentSessionClient) Get(ctx context.Context, id string) (*AgentSession, error) {
+	return c.Query().Where(agentsession.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *AgentSessionClient) GetX(ctx context.Context, id string) *AgentSession {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *AgentSessionClient) Hooks() []Hook {
+	hooks := c.hooks.AgentSession
+	return append(hooks[:len(hooks):len(hooks)], agentsession.Hooks[:]...)
+}
+
+// Interceptors returns the client interceptors.
+func (c *AgentSessionClient) Interceptors() []Interceptor {
+	inters := c.inters.AgentSession
+	return append(inters[:len(inters):len(inters)], agentsession.Interceptors[:]...)
+}
+
+func (c *AgentSessionClient) mutate(ctx context.Context, m *AgentSessionMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&AgentSessionCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&AgentSessionUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&AgentSessionUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&AgentSessionDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown AgentSession mutation op: %q", m.Op())
 	}
 }
 
@@ -2569,13 +2714,13 @@ func (c *SecretMetaClient) mutate(ctx context.Context, m *SecretMetaMutation) (V
 // hooks and interceptors per client, for fast access.
 type (
 	hooks struct {
-		AuditEntry, AuditHead, CAKey, ConfigRevision, ConfigSeq, Connector,
-		EnrollmentToken, Gateway, GatewayGroup, Instance, InstanceSetting,
+		AgentSession, AuditEntry, AuditHead, CAKey, ConfigRevision, ConfigSeq,
+		Connector, EnrollmentToken, Gateway, GatewayGroup, Instance, InstanceSetting,
 		IssuedCertificate, Lease, Org, OrgSetting, SecretMeta []ent.Hook
 	}
 	inters struct {
-		AuditEntry, AuditHead, CAKey, ConfigRevision, ConfigSeq, Connector,
-		EnrollmentToken, Gateway, GatewayGroup, Instance, InstanceSetting,
+		AgentSession, AuditEntry, AuditHead, CAKey, ConfigRevision, ConfigSeq,
+		Connector, EnrollmentToken, Gateway, GatewayGroup, Instance, InstanceSetting,
 		IssuedCertificate, Lease, Org, OrgSetting, SecretMeta []ent.Interceptor
 	}
 )

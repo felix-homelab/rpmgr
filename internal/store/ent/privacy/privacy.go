@@ -111,6 +111,30 @@ func DenyMutationOperationRule(op ent.Op) MutationRule {
 	return OnMutationOperation(rule, op)
 }
 
+// The AgentSessionQueryRuleFunc type is an adapter to allow the use of ordinary
+// functions as a query rule.
+type AgentSessionQueryRuleFunc func(context.Context, *ent.AgentSessionQuery) error
+
+// EvalQuery return f(ctx, q).
+func (f AgentSessionQueryRuleFunc) EvalQuery(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.AgentSessionQuery); ok {
+		return f(ctx, q)
+	}
+	return Denyf("ent/privacy: unexpected query type %T, expect *ent.AgentSessionQuery", q)
+}
+
+// The AgentSessionMutationRuleFunc type is an adapter to allow the use of ordinary
+// functions as a mutation rule.
+type AgentSessionMutationRuleFunc func(context.Context, *ent.AgentSessionMutation) error
+
+// EvalMutation calls f(ctx, m).
+func (f AgentSessionMutationRuleFunc) EvalMutation(ctx context.Context, m ent.Mutation) error {
+	if m, ok := m.(*ent.AgentSessionMutation); ok {
+		return f(ctx, m)
+	}
+	return Denyf("ent/privacy: unexpected mutation type %T, expect *ent.AgentSessionMutation", m)
+}
+
 // The AuditEntryQueryRuleFunc type is an adapter to allow the use of ordinary
 // functions as a query rule.
 type AuditEntryQueryRuleFunc func(context.Context, *ent.AuditEntryQuery) error
@@ -530,6 +554,8 @@ var _ QueryMutationRule = FilterFunc(nil)
 
 func queryFilter(q ent.Query) (Filter, error) {
 	switch q := q.(type) {
+	case *ent.AgentSessionQuery:
+		return q.Filter(), nil
 	case *ent.AuditEntryQuery:
 		return q.Filter(), nil
 	case *ent.AuditHeadQuery:
@@ -569,6 +595,8 @@ func queryFilter(q ent.Query) (Filter, error) {
 
 func mutationFilter(m ent.Mutation) (Filter, error) {
 	switch m := m.(type) {
+	case *ent.AgentSessionMutation:
+		return m.Filter(), nil
 	case *ent.AuditEntryMutation:
 		return m.Filter(), nil
 	case *ent.AuditHeadMutation:
