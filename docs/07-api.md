@@ -283,7 +283,9 @@ Defined in [03-connections.md](03-connections.md); summarised here for reference
 ## Versioning and compatibility
 
 - Packages are versioned: `rpmgr.v1`, `rpmgr.agent.v1`. Within a version, changes are **additive only**
-  (new fields, new methods, new enum values); `buf breaking` enforces this in CI.
+  (new fields, new methods, new enum values); `buf breaking` enforces this in CI. Before v1.0.0 a
+  breaking change passes only in a PR labelled `breaking` with `!` in its title
+  ([D56](14-open-decisions.md#engineering)).
 - Removing or changing anything requires `v2`. Adding `rpmgr.v2` is additive, so it ships in a
   MINOR release, served alongside `v1`, with deprecation warnings for `v1` in responses and in the
   UI. Removing `v1` is a MAJOR release, at least two minor releases after `v2` appeared

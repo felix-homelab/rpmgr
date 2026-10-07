@@ -55,7 +55,7 @@ flowchart LR
   | `type:` | `feature`, `bug`, `improvement`, `security`, `docs`, `release` |
   | `area:` | `controller`, `gateway`, `connector`, `tunnel`, `pki`, `policy`, `authz`, `store`, `api`, `web`, `dns`, `acme`, `ota`, `importer`, `cli`, `ops`, `design` |
   | `phase:` | `p0`, `p1`, `p2`, `p3` ([13](docs/13-roadmap.md)) |
-  | Flags | `breaking`, `no-changelog`, `needs-adr`, `security-sensitive` |
+  | Flags | `breaking`, `no-changelog`, `needs-adr`, `security-sensitive`, `mechanical` |
 
 - Security vulnerabilities are **never** reported in public issues; see [SECURITY.md](SECURITY.md).
 
@@ -95,6 +95,11 @@ branch fails CI, because `tmp/` branches are never merged.
   allowed. AI assistants never force-push and never delete a remote branch: they bring a pushed
   branch up to date by merging `main` into it, and leave deletions to the maintainer
   ([D44](docs/14-open-decisions.md#project-and-process)).
+- Because of that, assistants run every check locally before the first push. If the commits of a
+  pushed PR must change, they push the corrected history to a new branch (`…-v2`) and open a new
+  PR that supersedes the old one, which they close; a further commit on a pushed branch is allowed
+  only when it is a logical change of its own
+  ([D54](docs/14-open-decisions.md#project-and-process)).
 
 ## Commits
 
@@ -140,8 +145,9 @@ Commit messages follow [Conventional Commits 1.0.0](https://www.conventionalcomm
   (`git commit --fixup <commit>`, then `git rebase --autosquash main`); CI refuses `fixup!`
   commits.
 - Never commit secrets, credentials, private keys, real customer data, or build output. Generated
-  files are committed only where the toolchain requires it (for example Atlas migration files) and
-  are regenerated in the same PR; CI fails if regeneration produces a diff.
+  files are committed only where the toolchain requires it (for example Atlas migration files, and
+  the Go code generated from protobuf and Ent, which `go build` and `go install` need) and are
+  regenerated in the same PR; CI fails if regeneration produces a diff.
 
 PRs are merged with a **merge commit** ([Pull requests](#pull-requests)), so every commit of the
 branch reaches `main` unchanged and no commit is lost. These rules therefore apply to each commit,
@@ -159,6 +165,9 @@ reviewed better, reverted more safely and released more predictably.
 | Design documents | One feature or one decision per PR. Above about 1 000 changed lines, split into the decision (ADR and main document) and follow-up edits |
 | Dependency updates | One dependency, or one bot-grouped set, per PR |
 
+CI counts the production lines of every PR: 400–800 lines give a warning, more than 800 fail unless
+the PR is labelled `mechanical` ([D53](docs/14-open-decisions.md#project-and-process)).
+
 How to split:
 
 - **Separate refactoring from behaviour change.** First a `refactor` PR that changes no behaviour,
@@ -166,7 +175,9 @@ How to split:
 - **Separate mechanical changes** (renames, moves, formatting) from everything else.
 - **Slice features vertically or by layer** (schema → API → job → UI), each slice merged on its own
   and kept inert until the feature is complete: not reachable from the UI or API, or behind a
-  setting that defaults to off. `main` must stay releasable at every merge.
+  setting that defaults to off. `main` must stay releasable at every merge. An inert slice carries
+  `no-changelog`; the PR that makes the feature reachable writes its CHANGELOG entry
+  ([D52](docs/14-open-decisions.md#project-and-process)).
 - Stacked PRs (a branch based on another open branch) are allowed; retarget them to `main` after
   the base merges.
 

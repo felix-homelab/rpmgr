@@ -96,7 +96,7 @@ What the design does **not** protect against, stated plainly:
 
 | Key | Algorithm | Lifetime | Storage | Use |
 |---|---|---|---|---|
-| **Root CA** | ECDSA P-256 | 10 years | Controller DB, envelope-encrypted under the KEK (default); or offline (`rpmgr ca offline-root`) | Signs intermediates only (`pathlen=1`) |
+| **Root CA** | ECDSA P-256 | 10 years | Controller DB, envelope-encrypted under the KEK (default); or offline (`rpmgr ca offline-root`, Phase 2, [D58](14-open-decisions.md#project-and-process)) | Signs intermediates only (`pathlen=1`) |
 | **Issuing intermediate** | ECDSA P-256 | 1 year, rotated at 6 months with overlap | Controller DB, envelope-encrypted | Signs leaf certificates (`pathlen=0`), name-constrained (critical) to URI domain and DNS domain `<td>`; Go enforces both [F Go 1.27.1 `crypto/x509/constraints.go:525`] ([S7](spikes/S7.md)) |
 | **Config-signing key** | ECDSA P-256 | rotated yearly | Controller DB, envelope-encrypted | Signs snapshots (agents verify last-known-good on disk) |
 | **Audit-checkpoint key** | ECDSA P-256 | rotated yearly | Controller DB, envelope-encrypted | Signs audit checkpoints |
@@ -190,7 +190,8 @@ later.
 ### CA rotation
 
 - **Intermediate**: automatic, with overlap; agents receive the new chain at their next renewal.
-- **Root** (planned): 1) generate root R2 and cross-sign it with R1; 2) push the trust bundle
+- **Root** (planned, Phase 2, [D58](14-open-decisions.md#project-and-process)): 1) generate root
+  R2 and cross-sign it with R1; 2) push the trust bundle
   {R1, R2} in snapshots; 3) wait until every agent acknowledges (the UI lists stragglers);
   4) issue from an intermediate under R2; 5) drop R1 only after the longest leaf lifetime **plus the
   Reauth grace period** (7 + 30 days) has passed, so agents that were offline can still reauthenticate.
@@ -508,8 +509,18 @@ redirect them ([15](15-dns.md#cloudflare-specifics)).
     is valid for **12 months**; a new signing key is introduced with a new statement before the old
     one expires.
   - Losing both root tokens means shipping a new binary through an out-of-band trust path.
-  - Producing minisign-format signatures with the chosen token is verified at implementation
-    [V VB-13]; if that is not possible, rpmgr uses its own documented raw Ed25519 signature format.
+  - Producing minisign-format signatures with the chosen token is verified before the first
+    release with OTA [V VB-13]; if that is not possible, rpmgr uses its own documented raw Ed25519
+    signature format.
+  - **Phase 1 (v0.x, no OTA)** uses interim keys: two root keys and a signing key, generated on an
+    offline machine and kept as encrypted files on offline media, one root copy off-site. The first
+    release with OTA (Phase 2) carries the hardware-token roots; hosts installed in Phase 1 install
+    that binary by hand anyway, so nothing depends on the interim roots afterwards
+    ([D48](14-open-decisions.md#security-defaults)).
+  - Only the real root keys are compiled into release builds. Tests use the build tag `rpmgrtest`,
+    which swaps in generated test roots; release builds refuse that tag, and the release job checks
+    the key fingerprints printed by `rpmgr version --verbose`
+    ([D60](14-open-decisions.md#security-defaults)).
 - `channel` is `stable` or `prerelease`. The root updater installs a manifest only if its channel
   matches the host's `update_channel` in the local policy, so a prerelease never reaches a stable
   host, even through a compromised controller. `variant` is `full` or `connector` (the optional
@@ -538,6 +549,9 @@ Phase 3 item ([13](13-roadmap.md#phase-3--advanced)).
    `felix-homelab/rpmgr` (the release check is on by default and can be disabled,
    [14](14-open-decisions.md) D4), or an admin uploads it on air-gapped installs. It verifies the
    signature and mirrors the artifacts under `/dl/`. Agents never contact the release source.
+   Phase 1, which has no rollouts, mirrors only the controller's own version, which `/install.sh`
+   installs; air-gapped installations import it with `rpmgr release import <dir>` on the
+   controller host ([D59](14-open-decisions.md#security-defaults)).
 2. An admin approves a **staged rollout** (canary agents, then a percentage, then all). The target
    version becomes desired state.
 3. The agent (running as the unprivileged service user) downloads the artifact and manifest from
@@ -624,7 +638,8 @@ Checkpoints prove tampering but cannot restore content, so revocations get their
   retries, to a shared sink that can be read back; syslog and webhooks are not enough. While a
   replica has an unshipped backlog, the UI raises an alert ("revocation log not yet off-host").
 - **Sink types**: S3-compatible object storage (conditional create with `If-None-Match: *`) or a
-  filesystem path, e.g. a file share (exclusive create).
+  filesystem path, e.g. a file share (exclusive create). Phase 1 offers the filesystem sink; the
+  S3-compatible sink comes with HA in Phase 2 ([D58](14-open-decisions.md#project-and-process)).
 - Sink sequence numbers are allocated by **conditional create** of the object named `<seq>`
   (allocation is the write), so the sink has no gaps; entries are hash-chained.
 - **Single node**: the sink is optional. Without it, the local log, included in every backup, is the

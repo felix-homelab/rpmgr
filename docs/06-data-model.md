@@ -326,11 +326,14 @@ method, list filter or search returns or modifies the other org's data
   the `db_epoch`, because the content is unchanged ([10](10-operations.md#high-availability)).
 - CI applies every migration to an empty database and to a database seeded at the previous release,
   on both dialects ([12](12-testing-and-quality.md#continuous-integration)).
+- The migrations written while Phase 1 is developed are squashed into one baseline before
+  `v0.1.0-rc.1`, because no release had them; from then on migrations are forward-only
+  ([D57](14-open-decisions.md#engineering)).
 
 ## Database engines
 
 | Engine | Use | Notes |
 |---|---|---|
 | **SQLite** (pure Go, `modernc.org/sqlite`) | Default; single controller | Needed for `CGO_ENABLED=0` static builds. WAL mode, `busy_timeout`, one writer connection. `PRAGMA foreign_keys = 1` on every connection: SQLite enforces no foreign key without it, and the controller refuses a connection on which it is off ([S5](spikes/S5.md)). Works on linux/amd64, arm64, armv7 and riscv64 ([S8](spikes/S8.md)). Every setting is part of the DSN, so each pooled connection has it; [R] `synchronous = FULL`, `busy_timeout` 5 s, and readers in a separate `query_only` pool. `sqlite.StrictPragmas(true)` is set at start, because the DSN comes from the boot file and a `_pragma` value otherwise also runs whatever follows a `;` [F modernc.org/sqlite v1.60.1 `strictpragma.go:20-43`]. An `ON DELETE RESTRICT` violation carries the extended code `SQLITE_CONSTRAINT_TRIGGER`, not `SQLITE_CONSTRAINT_FOREIGNKEY`; the store maps both to the same error ([S8](spikes/S8.md)). Pinned to a current version |
-| **PostgreSQL** | HA, larger installations | Required for more than one controller replica. Existing SQLite installations move with `rpmgr migrate-db` ([Migrations](#migrations)) |
+| **PostgreSQL** | HA, larger installations (Phase 2) | Required for more than one controller replica. Existing SQLite installations move with `rpmgr migrate-db` ([Migrations](#migrations)). Phase 1 generates and tests its migrations but does not offer it ([D57](14-open-decisions.md#engineering)) |
 | MySQL | **Dropped** | A third dialect multiplies migration and test cost. The importer still reads MySQL source databases ([11](11-migration.md)) |

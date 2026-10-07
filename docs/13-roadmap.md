@@ -29,8 +29,8 @@ public API (`rpmgr.v1`) and the agent protocol (`rpmgr-tunnel/1`) follow the com
 
 **Status: complete (2026-10-07).** S1–S8 have written results in [spikes](spikes/), their code is
 archived as `spike/s1` … `spike/s8` (and `spike/s8-arm64`), no ADR is *Proposed*, and the decisions
-taken along the way are D35–D47 in [14](14-open-decisions.md). Phase 1 is next; S9 runs at the
-start of Phase 2.
+taken along the way are D35–D47 in [14](14-open-decisions.md). Phase 1 is in progress; S9 runs at
+the start of Phase 2.
 
 Small, throw-away prototypes that answer the questions the design depends on. The maintainer runs
 every spike. Each spike produces a short written result (`docs/spikes/Sx.md`, from
@@ -97,16 +97,38 @@ a homelab or a small team.
   rollups.
 - Signed releases; install scripts and binaries served by the controller; backup and restore.
 
+**How it is built.** Twelve GitHub milestones, `P1-M01` … `P1-M12`, in dependency order:
+
+1. walking skeleton and CI;
+2. foundations (secrets, store, settings, audit chain, PKI);
+3. the agent control plane;
+4. the data plane, up to TCP routes end to end;
+5. the other route types and the HTTP engine;
+6. ACME;
+7. the public API and authentication;
+8. the resource API and the command line;
+9. audit and observability;
+10. the web UI;
+11. operations and release;
+12. the exit criteria.
+
+Each milestone holds one issue per PR-sized slice. A feature stays inert until it is complete
+([D52](14-open-decisions.md#project-and-process)). The decisions taken for Phase 1 are D48–D61 in
+[14](14-open-decisions.md).
+
 **Exit criteria:**
 
 - End-to-end topology matrix ([12](12-testing-and-quality.md#end-to-end-topology-matrix)) green for
   all P1 route types on QUIC and on TCP/h2, including **zero resets on unchanged routes**.
-- Every [T] target in [03](03-connections.md#targets-t) measured; each miss has a recorded decision.
+- Every [T] target in [03](03-connections.md#targets-t) measured, on GitHub-hosted runners until
+  the reference testbed runs ([D49](14-open-decisions.md#project-and-process)); each miss has a
+  recorded decision.
 - Every security regression test in [12](12-testing-and-quality.md#security-testing) that applies
-  to P1 scope passes.
+  to P1 scope passes, checked by CI clause by clause.
 - Lint bans (`InsecureSkipVerify`, `.Reveal()` outside allowed packages) active in CI.
-- Threat model reviewed against the implementation.
-- An upgrade from one P1 release to the next tested with live traffic.
+- Threat model reviewed against the implementation, recorded in `docs/reviews/`.
+- An upgrade from one P1 release to the next tested with live traffic, as an automated end-to-end
+  test ([D61](14-open-decisions.md#project-and-process)).
 
 ## Phase 2 — production
 
@@ -190,13 +212,14 @@ implemented, and the result recorded in the PR.
 | VB-10 | Cloudflare record comments and batches: the marker round-trips unchanged; a batch patch can change the comment alone; which operation a failed batch reports; listing by comment | [15](15-dns.md#ownership-ledger) |
 | VB-11 | Cloudflare proxy: a proxied CNAME to a name in another Cloudflare account (error 1014 or not); proxied wildcards on all plans; request-size and timeout limits that affect routes; whether ACME HTTP-01 reaches the origin through the proxy | [15](15-dns.md#proxied-http-routes) |
 | VB-12 | Cloudflare zones and tokens: adding a zone needs no proof of ownership (assumed); partial, secondary and child-zone behaviour; `GET /zones` paging with more than 50 zones; `moved` zones; verifying account-owned tokens; whether a token can be scoped below a zone | [15](15-dns.md#connecting-importing-and-disconnecting) |
-| VB-13 | Produce minisign-format Ed25519 signatures with the chosen hardware token, for signing-key statements and release manifests; fallback: rpmgr's own documented raw Ed25519 signature format | [04](04-security.md#release-signing), [ADR-0013](adr/0013-signed-ota.md) |
+| VB-13 | Produce minisign-format Ed25519 signatures with the chosen hardware token, for signing-key statements and release manifests; fallback: rpmgr's own documented raw Ed25519 signature format. Due before the first release with OTA; the v0.x releases of Phase 1 use interim file keys (D48) | [04](04-security.md#release-signing), [ADR-0013](adr/0013-signed-ota.md) |
 | VB-14 | The package name `rpmgr` is free in Debian, Fedora, Homebrew, winget and GHCR | [ADR-0001](adr/0001-name-rpmgr.md) |
 | VB-15 | `/install.sh` verification chain (root key → signing-key statement → manifest → SHA-256) with OpenSSL ≥ 3.0 (Ed25519 `pkeyutl -rawin`, BLAKE2b-512 prehash) on the supported distributions | [04](04-security.md#install-scripts) |
 | VB-16 | protovalidate-es maturity as the react-hook-form resolver; fallback: hand-written zod schemas | [09](09-web-ui.md), [08](08-software-stack.md#frontend) |
 | VB-17 | ~~An IANA Private Enterprise Number registered for rpmgr before Phase 1, for the OID of the CSR-binding extension; S7 used 32473, the number reserved for documentation (RFC 5612)~~ **Resolved:** a UUID-based OID under 2.25 needs no registration (D47) | [04](04-security.md#flow), [S7](spikes/S7.md) |
 | VB-18 | A session whose stream writers have been blocked for more than 200 ms is deprioritised for new streams: check that the signal works on QUIC and on reverse HTTP/2 under load, with the benchmark harness (formerly part of S1) | [03](03-connections.md#multiple-gateways), [ADR-0004](adr/0004-quic-default-transport-policy.md), [ADR-0005](adr/0005-reverse-http2-fallback.md) |
-| VB-19 | ACME against Let's Encrypt staging and a real Cloudflare zone, before the first release that issues ACME certificates: HTTP-01 and TLS-ALPN-01 answered by real gateways from the internet (multi-perspective validation), DNS-01 through the real Cloudflare API with propagation, the marker comment and TXT removal; run sheet in `spikes/s6/README.md` on the tag `spike/s6` (D46) | [04](04-security.md#controller-certificates), [05](05-features.md#tls-and-domains), [08](08-software-stack.md#networking), [S6](spikes/S6.md) |
+| VB-19 | ACME against Let's Encrypt staging and a real Cloudflare zone, before the first release that issues ACME certificates: HTTP-01 and TLS-ALPN-01 answered by real gateways from the internet (multi-perspective validation), DNS-01 through the real Cloudflare API with propagation, the marker comment and TXT removal; run sheet in `spikes/s6/README.md` on the tag `spike/s6` (D46). Split by D50: the HTTP-01/TLS-ALPN-01 part before v0.1.0, on a public host the maintainer provides; the DNS-01 part before the first release with DNS-01 (Phase 2) | [04](04-security.md#controller-certificates), [05](05-features.md#tls-and-domains), [08](08-software-stack.md#networking), [S6](spikes/S6.md) |
+| VB-20 | The benchmark matrix on the reference testbed (D30), before v1.0.0; until then the [T] targets are measured on GitHub-hosted runners and the release regression check is reported only (D49) | [12](12-testing-and-quality.md#benchmarks), [03](03-connections.md#targets-t) |
 
 ## Risks
 
@@ -207,7 +230,7 @@ implemented, and the result recorded in the PR.
 | ConnectRPC unsuitable for the agent stream | Rework of the control session | **Happened** (S4): grpc-go carries the agent protocol with the same protobuf contract ([ADR-0016](adr/0016-connectrpc-public-api-grpc-go-agents.md)) |
 | Ent/Atlas complexity or limits | Slower data-layer work | S5; bun fallback; the schema is plain SQL underneath |
 | Scope: Phase 3 items (WireGuard mesh, `workerd`) are each large | Delays v1.0 | Phase 3 starts only after v1.0.0; each item is independent |
-| Release-signing key custody | Compromised or lost update keys | One maintainer holds two offline root keys on two hardware tokens, one of them off-site; either can sign alone; signing-key rotation without new binaries ([04](04-security.md#release-signing), D10) |
+| Release-signing key custody | Compromised or lost update keys | One maintainer holds two offline root keys on two hardware tokens, one of them off-site; either can sign alone; signing-key rotation without new binaries ([04](04-security.md#release-signing), D10). Phase 1 releases, which have no OTA, use interim file keys on offline media (D48) |
 | Single maintainer (bus factor 1) | Development and releases stop if the maintainer is unavailable | Design documents, ADRs and runbooks written down; two root tokens in two places; Apache-2.0, so others can fork and continue |
 | Users of other tunnel tools expect wire compatibility | Adoption friction | Importer and parallel-run cutover plan ([11](11-migration.md)) |
 | A DNS-job bug deletes or rewrites production DNS records | Outage of the published names, possibly of mail or other services | Owned records only; ledger plus marker; deletion guard and held zones; fail-static; property tests and the fake Cloudflare API in CI ([15](15-dns.md)) |
