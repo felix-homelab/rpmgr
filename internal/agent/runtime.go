@@ -156,6 +156,14 @@ func (r *Runtime) Welcome(w *agentv1.Welcome) {
 	}
 }
 
+// Signers returns the config-signing certificates and their intermediates the runtime verifies
+// with.
+func (r *Runtime) Signers() []*x509.Certificate {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return slices.Clone(r.signers)
+}
+
 // Message takes a snapshot from the control session; it is ClientOptions.OnMessage. It never
 // blocks: a snapshot replaces one that is still waiting.
 func (r *Runtime) Message(m *agentv1.ControllerMessage) {
