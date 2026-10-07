@@ -6,7 +6,7 @@ Status: Accepted (decided by the product owner on 2026-10-06) · Date: 2026-10-0
 
 The web UI is served by the Controller and embedded in the single binary
 ([ADR-0002](0002-one-binary-three-roles.md)). It talks to the API through generated ConnectRPC
-clients ([ADR-0010](0010-connectrpc.md)).
+clients ([ADR-0016](0016-connectrpc-public-api-grpc-go-agents.md)).
 
 Because the UI is embedded as static files, nothing needs server-side rendering, middleware or API
 routes; a framework built around those features would serve only as a bundler and router.

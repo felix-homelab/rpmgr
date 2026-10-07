@@ -16,6 +16,7 @@ flowchart TB
   end
   subgraph rpmgr["rpmgr (one Go binary)"]
     HTTP[net/http server<br/>ConnectRPC handlers · embedded SPA]
+    AGT[grpc-go server<br/>agent protocol]
     STORE[Ent + Atlas<br/>SQLite or PostgreSQL]
     PKI[crypto/x509, crypto/tls<br/>internal CA]
     ACME[certmagic]
@@ -26,6 +27,8 @@ flowchart TB
   HTTP --> STORE
   HTTP --> PKI
   HTTP --> ACME
+  AGT --> STORE
+  AGT --> PKI
   TUN --> PKI
 ```
 
@@ -42,7 +45,8 @@ flowchart TB
 | Choice | Rationale | Rejected |
 |---|---|---|
 | **Protocol Buffers + buf** (lint, breaking-change check, generation for Go and TypeScript) | One schema for the database model, the public API, the agent protocol and the UI types; breaking changes caught in CI | Hand-written TypeScript mirrors of Go types (they drift from the server) |
-| **ConnectRPC** (`connect-go`, `connect-es`) | One handler stack on `net/http` serves the browser (Connect protocol, JSON, works over HTTP/1.1), agents (gRPC protocol over HTTP/2 mTLS) and the CLI; `curl`-friendly ([ADR-0010](adr/0010-connectrpc.md)) [V S4] | grpc-go + grpc-gateway (two stacks, REST mapping annotations, a separate gRPC-Web proxy for browsers). grpc-go remains the fallback for the agent protocol if S4 fails |
+| **ConnectRPC** (`connect-go`, `connect-es`) for the public API | One handler stack on `net/http` serves the browser (Connect protocol, JSON, works over HTTP/1.1) and the CLI; `curl`-friendly ([ADR-0016](adr/0016-connectrpc-public-api-grpc-go-agents.md)) | grpc-go + grpc-gateway (two stacks, REST mapping annotations, a separate gRPC-Web proxy for browsers) |
+| **grpc-go** (`google.golang.org/grpc`) for the agent protocol, client and server | Cancellation, deadlines and message limits end both sides of a long-lived stream within about 1 ms; keepalive with an enforcement policy ([ADR-0016](adr/0016-connectrpc-public-api-grpc-go-agents.md), [S4](spikes/S4.md)) | connect-go for agents: in S4 a cancelled or expired call did not end a stream the agent waits on, and a read-limit error on an open stream blocked |
 | **protovalidate** | Validation rules live in the `.proto` files and are enforced on the server; the same rules are visible to every client | Validation only in UI code (bypassable, duplicates logic) |
 
 ## Networking

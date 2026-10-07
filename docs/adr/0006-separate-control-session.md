@@ -31,7 +31,7 @@ Arguments against:
 - Every agent (Gateway or Connector) keeps **its own control session to the Controller**:
   - HTTP/2 over TLS 1.3 with mutual TLS;
   - SNI `controller.<trust-domain>`;
-  - gRPC protocol via ConnectRPC ([ADR-0010](0010-connectrpc.md),
+  - gRPC protocol ([ADR-0016](0016-connectrpc-public-api-grpc-go-agents.md),
     [03](../03-connections.md#control-session)).
 - **A private Controller** is reached through a **TLS-passthrough route** on a gateway:
   - the gateway forwards encrypted bytes and never terminates the control TLS;

@@ -17,7 +17,7 @@
 | Connection | From → to | Transport | Authentication | Lifetime |
 |---|---|---|---|---|
 | **Enrollment** | Agent → Controller | HTTPS, TLS 1.3 | Server: pinned rpmgr root CA. Client: enrollment token | Once per agent |
-| **Control session** | Agent → Controller | HTTP/2 over TLS 1.3, gRPC protocol (ConnectRPC) | Mutual TLS, per-agent certificate | Long-lived |
+| **Control session** | Agent → Controller | HTTP/2 over TLS 1.3, gRPC (grpc-go) | Mutual TLS, per-agent certificate | Long-lived |
 | **Data session** | Connector → Gateway | QUIC (`rpmgr-tunnel/1`), or TLS + reverse HTTP/2 (`rpmgr-tunnel-h2/1`), optionally wrapped in WSS | Mutual TLS, per-agent certificate | Long-lived |
 | **End-to-end session** | Connector ↔ Connector, inside a relayed stream | TLS 1.3 (`rpmgr-e2e/1`) | Mutual TLS | One per private-service connection |
 | **P2P session** | Connector ↔ Connector, direct | QUIC (`rpmgr-p2p/1`) | Mutual TLS | Long-lived per peer pair |
@@ -95,16 +95,24 @@ single-use token. Token format, lifetimes and re-enrollment rules are in
 
 ### Transport
 
-- [R] **ConnectRPC** on the controller's existing `net/http` server, speaking the **gRPC protocol**
-  over HTTP/2 to agents ([ADR-0010](adr/0010-connectrpc.md)). One TCP connection per agent,
-  SNI `controller.<trust-domain>`, ALPN `h2`. Browsers use the Connect protocol on the same server.
-- [V S4] Required before committing: bidirectional streaming over `net/http` HTTP/2 with mutual
-  TLS, cancellation propagation, message-size limits, and HTTP/2 PING liveness. If any of these
-  fails, fall back to grpc-go with an explicit keepalive enforcement policy (see the timeout table).
-- [F] grpc-go's server rejects client pings more frequent than its enforcement policy's `MinTime`,
-  which defaults to 5 minutes, unless the server sets `EnforcementPolicy` explicitly
-  [F grpc:keepalive/keepalive.go:36-59]. rpmgr's liveness pings are every 20 s, so a grpc-go fallback
-  must set `MinTime` ≤ 10 s.
+- **grpc-go** at both ends ([ADR-0016](adr/0016-connectrpc-public-api-grpc-go-agents.md)): agents
+  use a grpc-go client, the controller grpc-go's own HTTP/2 server. One TCP connection per agent,
+  SNI `controller.<trust-domain>`, ALPN `h2`.
+- The controller's TCP/443 listener reads the ClientHello like a gateway
+  ([Port 443 multiplexing](#port-443-multiplexing)) and hands the agent names `controller.<td>` and
+  `reauth.controller.<td>` to the grpc-go server; every other name goes to its `net/http` server,
+  where browsers and the CLI use ConnectRPC.
+- Spike S4 tested ConnectRPC for this session and applied the pre-agreed rule
+  ([S4](spikes/S4.md)): with connect-go, a cancelled or expired call did not end a stream the agent
+  waits on, and a read-limit error on an open stream blocked; with grpc-go, both sides end within
+  about 1 ms.
+- [F] grpc-go's server closes clients that ping more often than its enforcement policy's `MinTime`,
+  which defaults to 5 minutes [F grpc v1.84.0 `internal/transport/defaults.go:40`]. Agents ping
+  every 20 s, so the controller sets `MinTime` to 10 s (see the timeout table). grpc-go raises a
+  client ping interval below 10 s to 10 s [F grpc v1.84.0 `dialoptions.go:576-578`].
+- The control session uses **no compression**: both stacks check the sender's message limit
+  against the compressed size, so without compression the 4 MiB limit ([Framing](#framing)) counts
+  message bytes on both sides (S4).
 
 ### Service sketch
 
@@ -478,7 +486,7 @@ path with a 1500-byte MTU they arrive in two TCP segments ([S3](spikes/S3.md)).
 
 | Condition | Action |
 |---|---|
-| SNI = `controller.<td>`, `reauth.controller.<td>` or a controller UI hostname | All-in-one: hand to the in-process controller. Otherwise: TLS-passthrough route to the controller |
+| SNI = `controller.<td>`, `reauth.controller.<td>` or a controller UI hostname | All-in-one: hand to the in-process controller, the agent names to its grpc-go server and the UI names to its `net/http` server ([Control session](#transport)). Otherwise: TLS-passthrough route to the controller |
 | SNI = this gateway's `<gateway-id>.gateway.<td>` and the client offers ALPN `rpmgr-tunnel-h2/1` | Data session over TLS + reverse HTTP/2 (mutual TLS with the certificate for that name). Any other name under `.gateway.<td>` is handled like an unknown SNI |
 | SNI = this gateway's WSS tunnel hostname | HTTP engine; `/.rpmgr/tunnel` upgrades to the WSS transport (Phase 2) |
 | SNI matches a TLS-passthrough route | Splice raw bytes to a connector |
@@ -681,7 +689,7 @@ sequenceDiagram
 | Happy eyeballs | TCP starts after 300 ms; winner cached 24 h per (gateway, local source address); QUIC re-probed every 10 min | RFC 8305 suggests 250 ms; QUIC gets a head start |
 | UDP blackholed mid-session | QUIC idle timeout (30 s) → move to TCP; QUIC demoted for 1 h | Avoids flapping between transports |
 | TCP fallback liveness | HTTP/2 `ReadIdleTimeout` 15 s, `PingTimeout` 10 s; TCP keepalive 15 s | Parity with QUIC ([F x/net:http2/transport_common.go:137,142]) |
-| Control session liveness | HTTP/2 `ReadIdleTimeout` 20 s, `PingTimeout` 10 s, both ends; grpc-go fallback: client ping 20 s / timeout 10 s, server `EnforcementPolicy{MinTime: 10 s, PermitWithoutStream: true}` | Avoids grpc-go's "too many pings" disconnect |
+| Control session liveness | grpc-go keepalive at both ends: ping after 20 s without activity, also without an active RPC; close after 10 s without an answer. Controller: `EnforcementPolicy{MinTime: 10 s, PermitWithoutStream: true}` | A dead path is noticed within 30 s; the policy avoids grpc-go's "too many pings" disconnect |
 | Reconnect backoff | full jitter, base 0.5 s, factor 2, cap 30 s (control) / 15 s (data); reset after 60 s healthy; honour `Goodbye.retry_after` | Avoids reconnect storms and synchronised retries |
 | Controller admission | 50 new control sessions/s per replica, excess gets `Goodbye{retry_after}` | Restart storms |
 | ClientHello peek | 16 KiB within 5 s | Slowloris protection |

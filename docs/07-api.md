@@ -8,11 +8,12 @@
 | API | Package | Clients | Protocol |
 |---|---|---|---|
 | **Public API** | `rpmgr.v1` | Web UI, `rpmgr` CLI, scripts, Terraform provider (later) | ConnectRPC: Connect protocol (JSON or binary) over HTTP/1.1 or HTTP/2; gRPC and gRPC-Web on the same endpoints |
-| **Agent protocol** | `rpmgr.agent.v1` | Gateways, connectors | gRPC protocol over HTTP/2 with mutual TLS ([03](03-connections.md#control-session)) |
+| **Agent protocol** | `rpmgr.agent.v1` | Gateways, connectors | gRPC over HTTP/2 with mutual TLS, grpc-go at both ends ([03](03-connections.md#control-session)) |
 
 Both are defined in protobuf and managed with `buf` (lint, breaking-change detection, code
-generation for Go and TypeScript) ([ADR-0010](adr/0010-connectrpc.md)). The web UI uses exactly the
-public API; there are no private UI endpoints.
+generation for Go and TypeScript); buf generates connect-go code for the public API and grpc-go
+code for the agent protocol ([ADR-0016](adr/0016-connectrpc-public-api-grpc-go-agents.md)). The web
+UI uses exactly the public API; there are no private UI endpoints.
 
 The Connect protocol is plain HTTP: every unary method is `POST /<package>.<Service>/<Method>` with
 a JSON body, so `curl` works without special tooling:

@@ -56,7 +56,7 @@ flowchart TB
 | Plane | Who talks | Transport | Carries |
 |---|---|---|---|
 | **Management** | Browser, CLI, API clients → Controller | HTTPS (HTTP/1.1 or h2), Connect protocol | User actions, reads, live events and logs |
-| **Control** | Gateways and Connectors → Controller | HTTP/2 + TLS 1.3 mTLS, gRPC protocol via ConnectRPC | Snapshots, ACK/NACK, status, metrics summaries, certificate renewal, imperative operations |
+| **Control** | Gateways and Connectors → Controller | HTTP/2 + TLS 1.3 mTLS, gRPC (grpc-go) | Snapshots, ACK/NACK, status, metrics summaries, certificate renewal, imperative operations |
 | **Data** | Public clients → Gateway ↔ Connector → service | QUIC (default policy) or TLS + reverse HTTP/2 between gateway and connector | User traffic only |
 
 Two invariants:
@@ -77,7 +77,9 @@ The detailed protocols are in [03-connections.md](03-connections.md).
 ```mermaid
 flowchart LR
   subgraph Controller
+    L443[TCP/443<br/>ClientHello peek]
     API[API server<br/>ConnectRPC + net/http]
+    AGT[Agent service<br/>grpc-go]
     UI[Embedded SPA]
     AUTH[AuthN / AuthZ<br/>sessions, tokens, roles]
     STORE[(Store<br/>Ent: SQLite or Postgres)]
@@ -89,8 +91,12 @@ flowchart LR
     DNS[DNS job<br/>providers: Cloudflare]
     AUDIT[Audit log]
   end
+  L443 -->|UI and API names| API
+  L443 -->|agent names| AGT
   API --> AUTH --> STORE
   API --> AUDIT
+  AGT --> REG
+  AGT --> CA
   STORE --> COMP --> REG
   CA --> STORE
   ACME --> STORE
@@ -100,10 +106,15 @@ flowchart LR
   DNS --> PROV[(DNS provider API)]
 ```
 
-- **API server.** One `net/http` server on 443 serving the SPA, the public API (Connect protocol),
-  the agent control service (gRPC protocol) and the enrollment endpoint. SNI selects the
-  certificate: the public name gets an ACME or user-supplied certificate; the reserved agent name
-  `controller.<trust-domain>` gets an internal-CA certificate ([04](04-security.md#controller-certificates)).
+- **Port 443.** One listener reads the TLS ClientHello and hands the reserved agent names
+  (`controller.<trust-domain>`, `reauth.controller.<trust-domain>`) to the agent service and every
+  other name to the API server ([03](03-connections.md#transport)).
+- **API server.** A `net/http` server serving the SPA and the public API (ConnectRPC, Connect
+  protocol), `/install.sh`, `/dl/` and the trust bundle. The public name gets an ACME or
+  user-supplied certificate ([04](04-security.md#controller-certificates)).
+- **Agent service.** grpc-go's own HTTP/2 server for the agent protocol: enrollment, control
+  sessions, renewal and `Reauth` ([ADR-0016](adr/0016-connectrpc-public-api-grpc-go-agents.md)). The
+  agent names get internal-CA certificates.
 - **Store.** The single source of truth. Every change increments the instance-wide configuration
   revision in the same transaction ([03](03-connections.md#revisions-and-ordering)).
 - **Snapshot compiler.** A deterministic function of (database state at revision R, agent
