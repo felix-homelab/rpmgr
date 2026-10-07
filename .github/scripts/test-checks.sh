@@ -9,7 +9,13 @@
 #
 # Usage: test-checks.sh
 set -euo pipefail
+shopt -s inherit_errexit # a failing command substitution stops the script too
 export LC_ALL=C.UTF-8
+# Test commits take their identity and settings from the environment, so the script never writes a
+# git configuration, not even by accident in the repository that contains it.
+export GIT_AUTHOR_NAME="Test Author" GIT_AUTHOR_EMAIL="author@example.org"
+export GIT_COMMITTER_NAME="Test Author" GIT_COMMITTER_EMAIL="author@example.org"
+export GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=commit.gpgsign GIT_CONFIG_VALUE_0=false
 dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 passed=0
 failed=0
@@ -32,10 +38,12 @@ expect() {
 new_repo() {
   local r
   r=$(mktemp -d "$tmproot/repo.XXXXXX")
+  # An empty path would make "git -C" act on the current directory's repository.
+  if [[ -z $r || ! -d $r || $r != "$tmproot"/* ]]; then
+    echo "new_repo: no temporary directory (got '$r')" >&2
+    exit 1
+  fi
   git -C "$r" init -q -b main
-  git -C "$r" config user.name "Test Author"
-  git -C "$r" config user.email "author@example.org"
-  git -C "$r" config commit.gpgsign false
   echo base >"$r/file.txt"
   git -C "$r" add file.txt
   git -C "$r" commit -q -s -m "chore: base"
@@ -113,8 +121,8 @@ git -C "$r" commit -q -am "feat: wrong signer" -m "Signed-off-by: Someone Else <
 expect fail "sign-off by someone else" in_repo "$r" "$d" "$base" "$(git -C "$r" rev-parse HEAD)"
 git -C "$r" reset -q --hard "$signed"
 echo 4 >>"$r/file.txt"
-git -C "$r" -c user.name="dependabot[bot]" -c user.email="49699333+dependabot[bot]@users.noreply.github.com" \
-  commit -q -am "ci(deps): bump x"
+GIT_AUTHOR_NAME="dependabot[bot]" GIT_AUTHOR_EMAIL="49699333+dependabot[bot]@users.noreply.github.com" \
+  git -C "$r" commit -q -am "ci(deps): bump x"
 expect pass "dependency-bot commit without sign-off" in_repo "$r" "$d" "$base" "$(git -C "$r" rev-parse HEAD)"
 git -C "$r" reset -q --hard "$signed"
 git -C "$r" switch -q main && echo m >"$r/main.txt" && git -C "$r" add main.txt && git -C "$r" commit -q -s -m "chore: main"

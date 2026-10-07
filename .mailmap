@@ -1,0 +1,7 @@
+# Maps commit identities to their real author (gitmailmap(5)); git log and git shortlog apply it.
+#
+# "Test Author <author@example.org>" is the identity of the temporary test repositories of
+# .github/scripts/test-checks.sh. On 2026-10-06 a faulty run of that script wrote it into this
+# repository's own configuration, and commits made before it was noticed carry it, among them
+# 53e1434 and c52eec7 on main. They are the maintainer's.
+FeliX <75430338+felix-homelab@users.noreply.github.com> Test Author <author@example.org>
