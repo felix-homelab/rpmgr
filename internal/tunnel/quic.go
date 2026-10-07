@@ -149,7 +149,7 @@ func DialQUIC(ctx context.Context, tr *quic.Transport, addr net.Addr, cfg *tls.C
 	if err != nil {
 		return nil, err
 	}
-	return newQUICSession(conn, budget), nil
+	return newQUICSession(conn, budget, true), nil
 }
 
 // QUICListener accepts connectors' QUIC data sessions on a gateway.
@@ -175,7 +175,7 @@ func (l *QUICListener) Accept(ctx context.Context) (*QUICSession, error) {
 	if err != nil {
 		return nil, err
 	}
-	return newQUICSession(conn, l.budget), nil
+	return newQUICSession(conn, l.budget, false), nil
 }
 
 // Close stops accepting sessions.
@@ -183,12 +183,26 @@ func (l *QUICListener) Close() error { return l.ln.Close() }
 
 // QUICSession is a data session over QUIC.
 type QUICSession struct {
-	conn *quic.Conn
+	conn      *quic.Conn
+	connector bool // the side that dialled
+	control   atomic.Bool
 }
 
-func newQUICSession(conn *quic.Conn, budget *Budget) *QUICSession {
+func newQUICSession(conn *quic.Conn, budget *Budget, connector bool) *QUICSession {
 	context.AfterFunc(conn.Context(), func() { budget.release(conn) })
-	return &QUICSession{conn: conn}
+	return &QUICSession{conn: conn, connector: connector}
+}
+
+// Control returns the session control stream: the connector opens it as the first stream
+// ("stream 0"), the gateway accepts it as the first stream.
+func (s *QUICSession) Control(ctx context.Context) (Stream, error) {
+	if s.control.Swap(true) {
+		return nil, errors.New("tunnel: the session control stream is already open")
+	}
+	if s.connector {
+		return s.OpenStream(ctx)
+	}
+	return s.AcceptStream(ctx)
 }
 
 // OpenStream opens a stream without blocking; at the peer's stream limit it returns
