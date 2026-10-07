@@ -395,6 +395,8 @@ sequenceDiagram
 - The gateway opens user streams for a route only if (a) its snapshot assigns that route to this
   connector's identity and (b) the connector reported the route `ready`. A connector whose local
   policy blocks a target reports `not_ready(blocked_by_local_policy)`, and the UI shows the reason.
+- The gateway closes a connector's data sessions at once when the deny-list names it or a new
+  snapshot no longer assigns it a route of this gateway.
 
 ### One stream per user connection
 
@@ -838,6 +840,7 @@ sequenceDiagram
 | Singleton job lease (controller) | TTL 30 s, renewed every 10 s; another replica tries to take it every 5 s | A dead replica's jobs move within 30 s; renewals have two chances before expiry ([10](10-operations.md#high-availability)) |
 | Controller admission | 50 new control sessions/s per replica; excess gets `Goodbye{overloaded}` with a `retry_after` drawn from 1–10 s | Restart storms, spread out again |
 | Control session start | `Hello` within 10 s, as the first message only | A connection that sends nothing holds no session |
+| Data session start | `SessionHello` within 10 s of the session control stream, as its first message only | As for control sessions |
 | Controller drain | `Drain{deadline}` to every session, also to sessions that start later; new sessions while draining get `Goodbye{shutdown}` with a `retry_after` | Agents move to another endpoint before the replica stops |
 | ClientHello peek | 16 KiB within 5 s | Slowloris protection |
 | `StreamOpen` → `StreamResult` | 10 s; upstream dial 5 s | Bounded connection setup |

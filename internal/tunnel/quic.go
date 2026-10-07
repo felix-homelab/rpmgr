@@ -6,6 +6,7 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/tls"
+	"crypto/x509"
 	"errors"
 	"fmt"
 	"io"
@@ -274,6 +275,17 @@ func (s *QUICSession) Err() error { return context.Cause(s.conn.Context()) }
 
 // Transport is "quic".
 func (s *QUICSession) Transport() string { return "quic" }
+
+// RTT is the session's smoothed round-trip time.
+func (s *QUICSession) RTT() time.Duration { return s.conn.ConnectionStats().SmoothedRTT }
+
+// PeerCertificate is the peer's leaf certificate, which TLS verified.
+func (s *QUICSession) PeerCertificate() *x509.Certificate {
+	if certs := s.conn.ConnectionState().TLS.PeerCertificates; len(certs) > 0 {
+		return certs[0]
+	}
+	return nil
+}
 
 // quicStream adapts a quic-go stream. Closing a quic-go stream closes only its send direction
 // [F quic-go v0.63.0 stream.go:192], which is CloseWrite here; a reset by the peer is an error from
