@@ -188,20 +188,25 @@ func startGateway(t *testing.T, w *world, id pki.Identity, cert tls.Certificate)
 // newConnector returns the world's connector sessions with an echo handler.
 func newConnector(t *testing.T, w *world) *connector.Sessions {
 	t.Helper()
+	return newConnectorWith(t, w, func(_ context.Context, _ string, st tunnel.Stream, _ *tunnelv1.StreamOpen) {
+		defer func() { _ = st.Close() }()
+		if tunnel.WriteMessage(st, &tunnelv1.StreamResult{}) != nil {
+			return
+		}
+		_, _ = io.Copy(st, st)
+		_ = st.CloseWrite()
+	})
+}
+
+// newConnectorWith returns the world's connector sessions with the stream handler streams.
+func newConnectorWith(t *testing.T, w *world, streams func(context.Context, string, tunnel.Stream, *tunnelv1.StreamOpen)) *connector.Sessions {
+	t.Helper()
 	pc, err := net.ListenPacket("udp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
 	}
 	tr := &quic.Transport{Conn: pc}
-	m := connector.New(connector.Options{TLS: w.clientTLS, QUIC: tr,
-		Streams: func(_ context.Context, _ string, st tunnel.Stream, _ *tunnelv1.StreamOpen) {
-			defer func() { _ = st.Close() }()
-			if tunnel.WriteMessage(st, &tunnelv1.StreamResult{}) != nil {
-				return
-			}
-			_, _ = io.Copy(st, st)
-			_ = st.CloseWrite()
-		}})
+	m := connector.New(connector.Options{TLS: w.clientTLS, QUIC: tr, Streams: streams})
 	t.Cleanup(func() {
 		m.Close()
 		_ = tr.Close()

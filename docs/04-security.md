@@ -485,7 +485,10 @@ Rules:
   affected target reports `not_ready(blocked_by_local_policy: 10.0.0.5:5432)`; the UI shows the
   reason and the exact command to allow it: `sudo rpmgr policy allow-target 10.0.0.5:5432`. One
   disallowed target therefore never blocks unrelated changes
-  ([03](03-connections.md#configuration-reconciliation)).
+  ([03](03-connections.md#configuration-reconciliation)). A target given as a name counts as
+  allowed until a dial is refused on its resolved address; the route is then
+  `not_ready(blocked_by_local_policy: <ip:port>)` until the policy is reloaded or a snapshot
+  changes it.
 - `rpmgr policy …` edits the file as root, under a lock file, atomically and keeping its comments
   and other keys, and triggers a reload (`systemctl reload`, i.e. SIGHUP); the connector also
   watches the file. On reload it re-evaluates the current snapshot and reports the

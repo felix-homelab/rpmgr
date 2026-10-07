@@ -421,6 +421,11 @@ sequenceDiagram
   pre-opened connections that could run empty.
 - **The connector dials only what its own snapshot says.** `StreamOpen` names a `route_id`, never an
   address. A compromised gateway cannot turn a connector into an open proxy.
+- **Targets.** The connector tries a route's targets by priority, lowest first, and within a
+  priority in a random order weighted by `weight`; a refused target passes the stream on to the
+  next one, all within the upstream dial timeout. A target the local policy blocks is never
+  dialled, and a stream with no target left gets `UPSTREAM_REFUSED`. A route removed from the
+  snapshot still takes streams for the route drain period.
 - **Half-close works.** QUIC `Stream.Close()` closes only the send direction
   [F quic-go:stream.go:183-185]. A client FIN becomes a stream FIN, and the connector calls
   `CloseWrite` on the upstream TCP connection, and vice versa; neither direction is closed just
