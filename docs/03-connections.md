@@ -635,11 +635,12 @@ must differ from public HTTP/3, which one listener cannot provide
 | 2 | **TLS 1.3 + reverse HTTP/2** on TCP/443, ALPN `rpmgr-tunnel-h2/1`; direct, or through an HTTP CONNECT / SOCKS5 proxy | Fallback of `auto` when UDP is blocked or QUIC loses the race, or pinned with `h2` |
 | 3 | **WSS** (Phase 2): HTTP Upgrade at `/.rpmgr/tunnel` on the gateway's own public WSS hostname, which has a publicly trusted ACME certificate (an intercepting proxy verifies it like any website); inside, TLS 1.3 mutual auth to `<gateway-id>.gateway.<td>`, then reverse HTTP/2 | Networks with TLS-intercepting proxies |
 
-**Happy eyeballs.** The connector starts QUIC, and TCP 300 ms later; the first session to complete
-its handshake wins. The winner is cached for 24 h per **(gateway, local source address)**, where
-the local source address is the one the kernel picks to reach that gateway; when it changes (a new
-network), the next connection starts a new race. While TCP is in use, QUIC is re-probed every
-10 min.
+**Happy eyeballs.** The connector starts QUIC, and TCP 300 ms later or as soon as QUIC fails; the
+first session to complete its handshake wins, and the other attempt is cancelled. The winner is
+cached for 24 h per **(gateway, local source address)**, where the local source address is the one
+the kernel picks to reach that gateway; when it changes (a new network), the next connection starts
+a new race. While TCP is in use, QUIC is re-probed every 10 min, except while it is demoted after a
+blackhole; a successful probe moves the routes to QUIC.
 
 #### Transport selection
 
@@ -660,15 +661,16 @@ Which transport a connector uses is a setting
   connector on `auto` that also serves a route pinned to `h2` keeps its QUIC session and the two
   TCP connections of the h2 transport.
 - **Streams follow the route.** The gateway opens a route's streams only on sessions of the
-  route's effective transport; for `auto`, on the transport the race chose.
+  route's effective transport; for `auto`, on the transport the race chose. The connector achieves
+  this by reporting a route ready (`SessionHello`, `RouteHealth`) only on those sessions, so the
+  gateway needs no transport in its snapshot.
 - **A pin never falls back.** If a pinned transport cannot be established, the routes that need it
   are `not_ready(transport_unavailable: quic)` (or `h2`) on that connector, and the UI shows the
   reason. Only `auto` changes transport by itself.
 - **Changes are ordinary configuration changes** ([Configuration
   reconciliation](#configuration-reconciliation)): new user connections use the new transport at
   once; connections already open finish on their session; a session no route needs any more is
-  closed after its last stream has ended, at the latest after the route drain period. Unchanged
-  routes are untouched.
+  closed after its last stream has ended. Unchanged routes are untouched.
 - Phase 2 adds `wss` as a fourth value and as the last step of `auto`.
 
 **Reverse HTTP/2** ([ADR-0005](adr/0005-reverse-http2-fallback.md)). The connector dials the

@@ -10,6 +10,7 @@ import (
 	"errors"
 	"io"
 	"net"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -96,21 +97,36 @@ func (w *world) sessions(id pki.Identity) *gateway.Sessions {
 // testGateway listens on one port for TCP and UDP, as a gateway does on 443, and serves data
 // sessions with its current Sessions.
 type testGateway struct {
-	id         pki.Identity
-	addr       string
-	sessions   atomic.Pointer[gateway.Sessions]
-	serverName chan string // the SNI of every TCP handshake
-	tcpErrs    chan error  // failed TCP handshakes
-	quicConns  atomic.Int64
+	id       pki.Identity
+	addr     string
+	server   *tls.Config
+	ctx      context.Context
+	sessions atomic.Pointer[gateway.Sessions]
+	// quicSessions, if set, serves the QUIC sessions, so that a test sees which transport carries
+	// a route.
+	quicSessions atomic.Pointer[gateway.Sessions]
+	udpPackets   atomic.Int64 // dropped by a blackhole
+	mu           sync.Mutex
+	closers      []io.Closer
+	serverName   chan string // the SNI of every TCP handshake
+	tcpErrs      chan error  // failed TCP handshakes
+	quicConns    atomic.Int64
 }
 
 // startGateway serves data sessions for the gateway id with the certificate cert, which a test
 // may take from another gateway or CA.
 func startGateway(t *testing.T, w *world, id pki.Identity, cert tls.Certificate) *testGateway {
 	t.Helper()
+	return startGatewayWith(t, w, id, cert, false)
+}
+
+// startGatewayWith is startGateway; with blackhole, UDP packets are read and dropped, as on a path
+// that blocks UDP, until enableQUIC.
+func startGatewayWith(t *testing.T, w *world, id pki.Identity, cert tls.Certificate, blackhole bool) *testGateway {
+	t.Helper()
 	g := &testGateway{id: id, serverName: make(chan string, 64), tcpErrs: make(chan error, 64)}
 	g.sessions.Store(w.sessions(id))
-	server := pki.ServerConfig(cert, w.roots, pki.Expect{TrustDomain: td, Kinds: []pki.Kind{pki.KindConnector}}, nil)
+	g.server = pki.ServerConfig(cert, w.roots, pki.Expect{TrustDomain: td, Kinds: []pki.Kind{pki.KindConnector}}, nil)
 	var (
 		ln net.Listener
 		pc net.PacketConn
@@ -131,30 +147,36 @@ func startGateway(t *testing.T, w *world, id pki.Identity, cert tls.Certificate)
 		t.Fatal("no port free for both TCP and UDP")
 	}
 	g.addr = ln.Addr().String()
-	ctx, cancel := context.WithCancel(context.Background())
-	tr := &quic.Transport{Conn: pc}
-	qln, err := tunnel.ListenQUIC(tr, gateway.QUICTLS(td, id.ID, server), tunnel.NewBudget(tunnel.DefaultWindowBudget))
-	if err != nil {
-		t.Fatal(err)
-	}
+	var cancel context.CancelFunc
+	g.ctx, cancel = context.WithCancel(context.Background())
 	t.Cleanup(func() {
 		cancel()
 		_ = ln.Close()
-		_ = qln.Close()
-		_ = tr.Close()
-		g.sessions.Load().Close()
-	})
-	go func() {
-		for {
-			s, err := qln.Accept(ctx)
-			if err != nil {
-				return
-			}
-			g.quicConns.Add(1)
-			go func() { _ = g.sessions.Load().Serve(ctx, s, s.PeerCertificate()) }()
+		g.mu.Lock()
+		for _, c := range g.closers {
+			_ = c.Close()
 		}
-	}()
-	h2 := server.Clone()
+		g.mu.Unlock()
+		g.sessions.Load().Close()
+		if q := g.quicSessions.Load(); q != nil {
+			q.Close()
+		}
+	})
+	if blackhole {
+		g.track(pc)
+		go func() {
+			buf := make([]byte, 2048)
+			for {
+				if _, _, err := pc.ReadFrom(buf); err != nil {
+					return
+				}
+				g.udpPackets.Add(1)
+			}
+		}()
+	} else {
+		g.serveQUIC(t, pc)
+	}
+	h2 := g.server.Clone()
 	h2.NextProtos = []string{tunnel.ALPNH2}
 	h2.GetConfigForClient = func(hi *tls.ClientHelloInfo) (*tls.Config, error) {
 		g.serverName <- hi.ServerName
@@ -168,7 +190,7 @@ func startGateway(t *testing.T, w *world, id pki.Identity, cert tls.Certificate)
 			}
 			go func() {
 				tc := tls.Server(c, h2)
-				if err := tc.HandshakeContext(ctx); err != nil {
+				if err := tc.HandshakeContext(g.ctx); err != nil {
 					g.tcpErrs <- err
 					_ = c.Close()
 					return
@@ -178,35 +200,95 @@ func startGateway(t *testing.T, w *world, id pki.Identity, cert tls.Certificate)
 					_ = tc.Close()
 					return
 				}
-				_ = g.sessions.Load().Serve(ctx, s, tc.ConnectionState().PeerCertificates[0])
+				_ = g.sessions.Load().Serve(g.ctx, s, tc.ConnectionState().PeerCertificates[0])
 			}()
 		}
 	}()
 	return g
 }
 
+func (g *testGateway) track(c io.Closer) {
+	g.mu.Lock()
+	g.closers = append(g.closers, c)
+	g.mu.Unlock()
+}
+
+// serveQUIC serves QUIC data sessions on pc, with quicSessions if set, else sessions.
+func (g *testGateway) serveQUIC(t *testing.T, pc net.PacketConn) {
+	t.Helper()
+	tr := &quic.Transport{Conn: pc}
+	qln, err := tunnel.ListenQUIC(tr, gateway.QUICTLS(td, g.id.ID, g.server), tunnel.NewBudget(tunnel.DefaultWindowBudget))
+	if err != nil {
+		t.Fatal(err)
+	}
+	g.track(qln)
+	g.track(tr)
+	go func() {
+		for {
+			s, err := qln.Accept(g.ctx)
+			if err != nil {
+				return
+			}
+			g.quicConns.Add(1)
+			sessions := g.sessions.Load()
+			if q := g.quicSessions.Load(); q != nil {
+				sessions = q
+			}
+			go func() { _ = sessions.Serve(g.ctx, s, s.PeerCertificate()) }()
+		}
+	}()
+}
+
+// enableQUIC ends the blackhole: the UDP port now serves QUIC.
+func (g *testGateway) enableQUIC(t *testing.T) {
+	t.Helper()
+	g.mu.Lock()
+	for _, c := range g.closers {
+		_ = c.Close()
+	}
+	g.closers = nil
+	g.mu.Unlock()
+	pc, err := net.ListenPacket("udp", g.addr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	g.serveQUIC(t, pc)
+}
+
+// echoStream answers a stream and echoes it.
+func echoStream(_ context.Context, _ string, st tunnel.Stream, _ *tunnelv1.StreamOpen) {
+	defer func() { _ = st.Close() }()
+	if tunnel.WriteMessage(st, &tunnelv1.StreamResult{}) != nil {
+		return
+	}
+	_, _ = io.Copy(st, st)
+	_ = st.CloseWrite()
+}
+
 // newConnector returns the world's connector sessions with an echo handler.
 func newConnector(t *testing.T, w *world) *connector.Sessions {
 	t.Helper()
-	return newConnectorWith(t, w, func(_ context.Context, _ string, st tunnel.Stream, _ *tunnelv1.StreamOpen) {
-		defer func() { _ = st.Close() }()
-		if tunnel.WriteMessage(st, &tunnelv1.StreamResult{}) != nil {
-			return
-		}
-		_, _ = io.Copy(st, st)
-		_ = st.CloseWrite()
-	})
+	return newConnectorOptions(t, w, func(*connector.Options) {})
 }
 
 // newConnectorWith returns the world's connector sessions with the stream handler streams.
 func newConnectorWith(t *testing.T, w *world, streams func(context.Context, string, tunnel.Stream, *tunnelv1.StreamOpen)) *connector.Sessions {
+	t.Helper()
+	return newConnectorOptions(t, w, func(o *connector.Options) { o.Streams = streams })
+}
+
+// newConnectorOptions returns the world's connector sessions with a UDP socket and an echo
+// handler, as opt changes them.
+func newConnectorOptions(t *testing.T, w *world, opt func(*connector.Options)) *connector.Sessions {
 	t.Helper()
 	pc, err := net.ListenPacket("udp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
 	}
 	tr := &quic.Transport{Conn: pc}
-	m := connector.New(connector.Options{TLS: w.clientTLS, QUIC: tr, Streams: streams})
+	o := connector.Options{TLS: w.clientTLS, QUIC: tr, Streams: echoStream}
+	opt(&o)
+	m := connector.New(o)
 	t.Cleanup(func() {
 		m.Close()
 		_ = tr.Close()
@@ -257,8 +339,8 @@ func TestGateway_PerGatewayTunnelEndpoints(t *testing.T) {
 	m := newConnector(t, w)
 	m.SetReady(&tunnelv1.RouteHealth{RouteId: "rt_1", Ready: true})
 	m.Set([]connector.Gateway{
-		{ID: id1.ID, Endpoints: []string{g1.addr}, Transports: []string{connector.TransportQUIC}, Routes: []string{"rt_1"}},
-		{ID: id2.ID, Endpoints: []string{g2.addr}, Transports: []string{connector.TransportH2}, Routes: []string{"rt_1"}},
+		{ID: id1.ID, Endpoints: []string{g1.addr}, Routes: map[string]string{"rt_1": connector.TransportQUIC}},
+		{ID: id2.ID, Endpoints: []string{g2.addr}, Routes: map[string]string{"rt_1": connector.TransportH2}},
 	})
 	// The gateway counts a session before its SessionWelcome, the connector after it: wait for both.
 	eventually(t, "not every gateway has its sessions", func() bool {
@@ -289,7 +371,7 @@ func refusedEverywhere(t *testing.T, w *world, entry pki.Identity, cert tls.Cert
 	g := startGateway(t, w, entry, cert)
 	m := newConnector(t, w)
 	m.Set([]connector.Gateway{{ID: entry.ID, Endpoints: []string{g.addr},
-		Transports: []string{connector.TransportQUIC, connector.TransportH2}}})
+		Routes: map[string]string{"rt_q": connector.TransportQUIC, "rt_h": connector.TransportH2}}})
 	select {
 	case err := <-g.tcpErrs:
 		t.Logf("the gateway's TCP handshake failed as expected: %v", err)
@@ -337,8 +419,8 @@ func TestSessions_RouteHealth(t *testing.T) {
 	m := newConnector(t, w)
 	m.SetReady(&tunnelv1.RouteHealth{RouteId: "rt_1", Ready: true})
 	m.SetReady(&tunnelv1.RouteHealth{RouteId: "rt_other", Ready: true})
-	m.Set([]connector.Gateway{{ID: id.ID, Endpoints: []string{g.addr}, Transports: []string{connector.TransportQUIC},
-		Routes: []string{"rt_1", "rt_2"}}})
+	m.Set([]connector.Gateway{{ID: id.ID, Endpoints: []string{g.addr},
+		Routes: map[string]string{"rt_1": connector.TransportQUIC, "rt_2": connector.TransportQUIC}}})
 	eventually(t, "no session", func() bool { return g.sessions.Load().Count()["quic"] == 1 })
 	gs := g.sessions.Load()
 	if err := echo(t, gs, "rt_1"); err != nil {
@@ -359,9 +441,8 @@ func TestSessions_RouteHealth(t *testing.T) {
 	g2id := w.gatewayID()
 	g2 := startGateway(t, w, g2id, w.leaf(t, w.is, w.inter, g2id))
 	bare.SetReady(&tunnelv1.RouteHealth{RouteId: "rt_1", Ready: true})
-	bare.Set([]connector.Gateway{{ID: g2id.ID, Endpoints: []string{g2.addr}, Transports: []string{connector.TransportAuto},
-		Routes: []string{"rt_1"}}})
-	eventually(t, "auto without a UDP socket did not fall back to h2", func() bool { return g2.sessions.Load().Count()["h2"] == 1 })
+	bare.Set([]connector.Gateway{{ID: g2id.ID, Endpoints: []string{g2.addr}, Routes: map[string]string{"rt_1": connector.TransportAuto}}})
+	eventually(t, "auto without a UDP socket did not fall back to h2", func() bool { return g2.sessions.Load().Count()["h2"] == 2 })
 	if _, code, err := g2.sessions.Load().OpenStream(context.Background(), &tunnelv1.StreamOpen{RouteId: "rt_1"}); err != nil ||
 		code != tunnelv1.ResultCode_RESULT_CODE_ROUTE_UNKNOWN {
 		t.Fatalf("%s %v, want ROUTE_UNKNOWN", code, err)
@@ -376,8 +457,7 @@ func TestSessions_Reconnect(t *testing.T) {
 	g := startGateway(t, w, id, w.leaf(t, w.is, w.inter, id))
 	m := newConnector(t, w)
 	m.SetReady(&tunnelv1.RouteHealth{RouteId: "rt_1", Ready: true})
-	m.Set([]connector.Gateway{{ID: id.ID, Endpoints: []string{g.addr}, Transports: []string{connector.TransportQUIC},
-		Routes: []string{"rt_1"}}})
+	m.Set([]connector.Gateway{{ID: id.ID, Endpoints: []string{g.addr}, Routes: map[string]string{"rt_1": connector.TransportQUIC}}})
 	eventually(t, "no session", func() bool { return g.sessions.Load().Count()["quic"] == 1 })
 	g.sessions.Load().Close()
 	eventually(t, "no session after the gateway closed it", func() bool {
@@ -403,14 +483,13 @@ func TestSessions_Reconnect(t *testing.T) {
 // TestSessions_Set: a removed gateway's session keeps its open streams, then closes; a changed
 // endpoint moves the session; Close ends everything.
 func TestSessions_Set(t *testing.T) {
-	connector.SetRetireAfter(t, 5*time.Second)
 	w := newWorld(t)
 	id := w.gatewayID()
 	g := startGateway(t, w, id, w.leaf(t, w.is, w.inter, id))
 	moved := startGateway(t, w, id, w.leaf(t, w.is, w.inter, id))
 	m := newConnector(t, w)
 	m.SetReady(&tunnelv1.RouteHealth{RouteId: "rt_1", Ready: true})
-	entry := connector.Gateway{ID: id.ID, Endpoints: []string{g.addr}, Transports: []string{connector.TransportQUIC}, Routes: []string{"rt_1"}}
+	entry := connector.Gateway{ID: id.ID, Endpoints: []string{g.addr}, Routes: map[string]string{"rt_1": connector.TransportQUIC}}
 	m.Set([]connector.Gateway{entry})
 	eventually(t, "no session", func() bool { return g.sessions.Load().Count()["quic"] == 1 })
 	m.Set([]connector.Gateway{entry}) // unchanged: untouched
@@ -460,6 +539,6 @@ func TestSessions_Endpoints(t *testing.T) {
 	deadAddr := dead.Addr().String()
 	_ = dead.Close()
 	m := newConnector(t, w)
-	m.Set([]connector.Gateway{{ID: id.ID, Endpoints: []string{deadAddr, "not-a-port:x", g.addr}, Transports: []string{connector.TransportH2}}})
+	m.Set([]connector.Gateway{{ID: id.ID, Endpoints: []string{deadAddr, "not-a-port:x", g.addr}, Routes: map[string]string{"rt_1": connector.TransportH2}}})
 	eventually(t, "the third endpoint was not used", func() bool { return g.sessions.Load().Count()["h2"] == 2 })
 }
