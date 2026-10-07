@@ -243,6 +243,17 @@ EOF
   printf 'package p\n\nimport "syscall"\n\n// Winch only compiles on Unix.\nfunc Winch() syscall.Signal { return syscall.SIGWINCH }\n' >"$r/p/unix.go"
   git -C "$r" add -A
   expect fail "Unix-only code without a Windows stub" "$dir/check-build.sh" "$r"
+  git -C "$r" rm -q -f p/unix.go
+
+  # govulncheck (needs network): no finding in clean code; a called function of a vulnerable
+  # golang.org/x/text version (GO-2022-1059) is found.
+  expect pass "govulncheck without findings" "$dir/check-govulncheck.sh" "$r"
+  r=$(new_repo)
+  printf 'module example.org/v\n\ngo 1.26.0\n\nrequire golang.org/x/text v0.3.7\n' >"$r/go.mod"
+  mkdir -p "$r/p"
+  printf 'package p\n\nimport "golang.org/x/text/language"\n\n// Parse parses.\nfunc Parse(s string) ([]language.Tag, []float32, error) { return language.ParseAcceptLanguage(s) }\n' >"$r/p/p.go"
+  (cd "$r" && go mod tidy >/dev/null 2>&1)
+  expect fail "govulncheck finds a called vulnerable function" "$dir/check-govulncheck.sh" "$r"
 fi
 
 # --- Docker-based checks -------------------------------------------------------------------
