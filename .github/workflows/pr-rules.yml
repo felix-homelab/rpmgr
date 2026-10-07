@@ -9,10 +9,11 @@ on:
 
 permissions:
   contents: read
+  pull-requests: read
 
-concurrency:
-  group: pr-rules-${{ github.event.pull_request.number }}
-  cancel-in-progress: true
+# No concurrency group: adding labels fires several runs within one second, and cancelling all but
+# one could leave a cancelled run as the newest, which blocks the merge. The changelog step reads the
+# labels when it runs, not from the event, so every run of a pull request reaches the same result.
 
 jobs:
   pr-rules:
@@ -46,5 +47,8 @@ jobs:
       - name: Changelog
         if: ${{ !cancelled() }}
         env:
-          LABELS: ${{ join(github.event.pull_request.labels.*.name, ' ') }}
-        run: .github/scripts/check-changelog.sh "$BASE_SHA" "$HEAD_SHA" "$LABELS"
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          labels=$(gh pr view "$PR" --repo "$GITHUB_REPOSITORY" --json labels --jq '[.labels[].name] | join(" ")')
+          .github/scripts/check-changelog.sh "$BASE_SHA" "$HEAD_SHA" "$labels"

@@ -281,7 +281,7 @@ Docker-based ones need Docker), and `test-checks.sh` tests the checks with valid
 
 | Workflow and job | Checks | Script |
 |---|---|---|
-| `pr-rules` / `pr-rules` | PR title, branch names, commit headers, DCO sign-off, changelog or `no-changelog`; re-runs when the title or labels change | `check-pr-title.sh`, `check-branch-name.sh`, `check-commits.sh`, `check-dco.sh`, `check-changelog.sh` |
+| `pr-rules` / `pr-rules` | PR title, branch names, commit headers, DCO sign-off, changelog or `no-changelog` (labels read when the check runs); re-runs when the title or labels change, and no run is cancelled, so the newest run never blocks a merge as cancelled | `check-pr-title.sh`, `check-branch-name.sh`, `check-commits.sh`, `check-dco.sh`, `check-changelog.sh` |
 | `ci` / `lint` | SPDX headers; actionlint (with shellcheck) and actions pinned by commit SHA; tests of the checks | `check-spdx.sh`, `check-workflows.sh`, `test-checks.sh` |
 | `ci` / `docs` | Relative links and heading anchors in all Markdown files (lychee, offline); every Mermaid diagram renders (mermaid-cli) | `check-links.sh`, `check-mermaid.sh` |
 | `ci` / `secrets` | gitleaks over the full history, with the rules in `.gitleaks.toml` | `check-secrets.sh` |
