@@ -44,6 +44,8 @@ const (
 	NotReadyReason_NOT_READY_REASON_TRANSPORT_UNAVAILABLE NotReadyReason = 3
 	// An environmental error that is retried with backoff (upstream, DNS).
 	NotReadyReason_NOT_READY_REASON_ENVIRONMENT NotReadyReason = 4
+	// The connector's local policy file does not parse, or others may write it: nothing is allowed.
+	NotReadyReason_NOT_READY_REASON_POLICY_INVALID NotReadyReason = 5
 )
 
 // Enum value maps for NotReadyReason.
@@ -54,6 +56,7 @@ var (
 		2: "NOT_READY_REASON_PORT_IN_USE",
 		3: "NOT_READY_REASON_TRANSPORT_UNAVAILABLE",
 		4: "NOT_READY_REASON_ENVIRONMENT",
+		5: "NOT_READY_REASON_POLICY_INVALID",
 	}
 	NotReadyReason_value = map[string]int32{
 		"NOT_READY_REASON_UNSPECIFIED":             0,
@@ -61,6 +64,7 @@ var (
 		"NOT_READY_REASON_PORT_IN_USE":             2,
 		"NOT_READY_REASON_TRANSPORT_UNAVAILABLE":   3,
 		"NOT_READY_REASON_ENVIRONMENT":             4,
+		"NOT_READY_REASON_POLICY_INVALID":          5,
 	}
 )
 
@@ -1868,13 +1872,14 @@ const file_rpmgr_agent_v1_control_proto_rawDesc = "" +
 	"\x15FetchResourceResponse\x12\x18\n" +
 	"\acontent\x18\x01 \x01(\fR\acontent\"\x0e\n" +
 	"\fLeaveRequest\"\x0f\n" +
-	"\rLeaveResponse*\xd0\x01\n" +
+	"\rLeaveResponse*\xf5\x01\n" +
 	"\x0eNotReadyReason\x12 \n" +
 	"\x1cNOT_READY_REASON_UNSPECIFIED\x10\x00\x12,\n" +
 	"(NOT_READY_REASON_BLOCKED_BY_LOCAL_POLICY\x10\x01\x12 \n" +
 	"\x1cNOT_READY_REASON_PORT_IN_USE\x10\x02\x12*\n" +
 	"&NOT_READY_REASON_TRANSPORT_UNAVAILABLE\x10\x03\x12 \n" +
-	"\x1cNOT_READY_REASON_ENVIRONMENT\x10\x04*L\n" +
+	"\x1cNOT_READY_REASON_ENVIRONMENT\x10\x04\x12#\n" +
+	"\x1fNOT_READY_REASON_POLICY_INVALID\x10\x05*L\n" +
 	"\tTransport\x12\x19\n" +
 	"\x15TRANSPORT_UNSPECIFIED\x10\x00\x12\x12\n" +
 	"\x0eTRANSPORT_QUIC\x10\x01\x12\x10\n" +

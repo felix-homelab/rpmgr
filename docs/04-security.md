@@ -474,8 +474,9 @@ Rules:
   or asks interactively, and always writes `auto_update` and `update_channel` explicitly.
 - Windows and macOS connectors (Phase 2) keep the same file in a platform-specific location with
   equivalent permissions ([10](10-operations.md#install)).
-- A file that does not parse means **deny everything**: every target becomes
-  `not_ready(policy_invalid)`; the snapshot itself is still applied.
+- A file that does not parse, or that its group or other users may write, means **deny
+  everything**: every target becomes `not_ready(policy_invalid)`; the snapshot itself is still
+  applied. Unknown keys and values are parse errors.
 - Checks happen **at dial time on the resolved IP and port** (`net.Dialer.Control`), which defeats
   DNS rebinding. IPv4-mapped IPv6 addresses are unmapped before checking. Link-local and cloud
   metadata addresses (169.254.0.0/16, fe80::/10, `fd00:ec2::254/128`, `100.100.100.200/32`) are denied unless listed
