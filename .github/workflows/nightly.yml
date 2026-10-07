@@ -1,0 +1,30 @@
+# Nightly correctness runs (docs/12-testing-and-quality.md, "Continuous integration"). Phase 1
+# slices add the long fuzz runs, the full end-to-end matrix and the other nightly stages here.
+name: nightly
+
+on:
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  riscv64:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - name: Register QEMU user-mode emulation for riscv64
+        run: >-
+          docker run --rm --privileged
+          tonistiigi/binfmt:qemu-v10.2.3@sha256:400a4873b838d1b89194d982c45e5fb3cda4593fbfd7e08a02e76b03b21166f0
+          --install riscv64
+      - name: Tests on riscv64 under QEMU
+        run: .github/scripts/check-test-arch.sh riscv64
