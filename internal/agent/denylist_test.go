@@ -86,7 +86,8 @@ func TestDenyList_PersistedAcrossGatewayRestart(t *testing.T) {
 	if d.Denied(cert("c1", idB)) {
 		t.Error("a certificate that is not on the list is denied")
 	}
-	want := pki.DenyDigest([]*agentv1.DenyEntry{serial("a1", soon), identity(idA, later), serial("b1", later)})
+	want := pki.DenyDigest([]*agentv1.DenyEntry{serial("a1", soon), identity(idA, later), serial("b1", later)},
+		snapshot.KeyID(e.config.Cert))
 	if !bytes.Equal(d.Digest(), want) {
 		t.Error("the digest is not that of the union")
 	}

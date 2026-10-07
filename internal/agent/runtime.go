@@ -74,6 +74,7 @@ type Runtime struct {
 type running struct {
 	rev       *agentv1.Revision
 	hash      []byte
+	key       string            // the key that signed it
 	resources map[string][]byte // resource hash by ID
 }
 
@@ -214,7 +215,7 @@ func (r *Runtime) receive(ctx context.Context, signed *agentv1.Signed) {
 		r.o.Send(applied(rev, hash, nil)) // the controller missed the answer
 		return
 	}
-	if cur != nil && !newer(rev, cur.rev, epoch) {
+	if cur != nil && !newer(rev, cur.rev, epoch) && !resigned(rev, cur, signed.GetKeyId()) {
 		r.o.Logger.Info("ignoring a snapshot that is not newer", "seq", rev.GetSeq(), "db_epoch", rev.GetDbEpoch(),
 			"running_seq", cur.rev.GetSeq())
 		return
@@ -239,6 +240,13 @@ func newer(rev, cur *agentv1.Revision, announced string) bool {
 		return rev.GetSeq() > cur.GetSeq()
 	}
 	return rev.GetDbEpoch() == announced
+}
+
+// resigned reports whether a snapshot of revision rev signed by key is the running revision signed
+// by another key, as after a key rotation: the agent takes it, so that its last-known-good copy is
+// signed by the new key before the old key's certificate expires.
+func resigned(rev *agentv1.Revision, cur *running, key string) bool {
+	return rev.GetDbEpoch() == cur.rev.GetDbEpoch() && rev.GetSeq() == cur.rev.GetSeq() && key != cur.key
 }
 
 // verify checks the signature, the signer and the agent the snapshot is for.
@@ -274,7 +282,7 @@ func (r *Runtime) validate(snap *agentv1.Snapshot) []*agentv1.SnapshotError {
 
 // apply hands the changes to the role and makes snap the running snapshot.
 func (r *Runtime) apply(ctx context.Context, signed *agentv1.Signed, snap *agentv1.Snapshot) []*agentv1.ResourceStatus {
-	next := &running{rev: snap.GetRevision(), hash: snapshot.Hash(signed), resources: map[string][]byte{}}
+	next := &running{rev: snap.GetRevision(), hash: snapshot.Hash(signed), key: signed.GetKeyId(), resources: map[string][]byte{}}
 	for _, res := range snap.GetResources() {
 		next.resources[res.GetId()] = res.GetHash()
 	}

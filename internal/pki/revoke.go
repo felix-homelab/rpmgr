@@ -108,10 +108,11 @@ func denyKey(e *agentv1.DenyEntry) string {
 }
 
 // DenyDigest is the digest of a deny-list that an agent sends in Hello: SHA-256 over the sorted,
-// distinct entries, serial or identity, each followed by a newline, and nothing for an empty list.
-// Expiry times are not part of it, so a controller and an agent that prune at slightly different
-// times still agree.
-func DenyDigest(es []*agentv1.DenyEntry) []byte {
+// distinct entries, serial or identity, each followed by a newline, and then the line
+// "key <keyID>" of the key that signed the list; nothing for an empty list. Expiry times are not
+// part of it, so a controller and an agent that prune at slightly different times still agree; the
+// key is, so that after a key rotation every agent receives the list signed by the new key.
+func DenyDigest(es []*agentv1.DenyEntry, keyID string) []byte {
 	if len(es) == 0 {
 		return nil
 	}
@@ -125,5 +126,6 @@ func DenyDigest(es []*agentv1.DenyEntry) []byte {
 	for _, k := range keys {
 		h.Write([]byte(k + "\n"))
 	}
+	h.Write([]byte("key " + keyID + "\n"))
 	return h.Sum(nil)
 }

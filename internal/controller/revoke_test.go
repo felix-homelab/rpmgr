@@ -176,7 +176,7 @@ func TestDenyList_HelloDigest(t *testing.T) {
 	entries := e.verifyDenyList(t, recv(t, stale))
 
 	current := hello("0.1.0")
-	current.DenyListDigest = pki.DenyDigest(entries)
+	current.DenyListDigest = pki.DenyDigest(entries, snapshot.KeyID(e.ca.ConfigSigner().Cert))
 	inSync := e.open(t, testCtx(t), cert, current)
 	welcomed(t, inSync)
 	expectQuiet(t, inSync, 200*time.Millisecond)

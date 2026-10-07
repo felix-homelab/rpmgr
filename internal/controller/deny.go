@@ -55,7 +55,8 @@ func (s *Sessions) refreshDeny() (changed bool, err error) {
 	if err != nil {
 		return false, err
 	}
-	digest := pki.DenyDigest(entries)
+	signer := s.ca.ConfigSigner()
+	digest := pki.DenyDigest(entries, snapshot.KeyID(signer.Cert))
 	old := s.deny.Load()
 	if old != nil && bytes.Equal(old.digest, digest) {
 		return false, nil
@@ -67,7 +68,7 @@ func (s *Sessions) refreshDeny() (changed bool, err error) {
 	}); err != nil {
 		return false, err
 	}
-	signed, err := snapshot.Sign(s.ca.ConfigSigner(), &agentv1.DenyList{Full: true, Entries: entries,
+	signed, err := snapshot.Sign(signer, &agentv1.DenyList{Full: true, Entries: entries,
 		Version: &agentv1.Revision{DbEpoch: epoch, Seq: uint64(s.now().UnixMilli())}}) //nolint:gosec // G115: a time after 1970
 	if err != nil {
 		return false, err
