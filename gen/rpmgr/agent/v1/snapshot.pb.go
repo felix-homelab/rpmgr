@@ -24,6 +24,64 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
+// TransportPolicy is how a route chooses its data-session transport (docs/03-connections.md,
+// "Transport selection").
+type TransportPolicy int32
+
+const (
+	// Not set.
+	TransportPolicy_TRANSPORT_POLICY_UNSPECIFIED TransportPolicy = 0
+	// QUIC first, TLS + reverse HTTP/2 when UDP is blocked or QUIC loses the race.
+	TransportPolicy_TRANSPORT_POLICY_AUTO TransportPolicy = 1
+	// QUIC only; never falls back.
+	TransportPolicy_TRANSPORT_POLICY_QUIC TransportPolicy = 2
+	// TLS + reverse HTTP/2 only; never falls back.
+	TransportPolicy_TRANSPORT_POLICY_H2 TransportPolicy = 3
+)
+
+// Enum value maps for TransportPolicy.
+var (
+	TransportPolicy_name = map[int32]string{
+		0: "TRANSPORT_POLICY_UNSPECIFIED",
+		1: "TRANSPORT_POLICY_AUTO",
+		2: "TRANSPORT_POLICY_QUIC",
+		3: "TRANSPORT_POLICY_H2",
+	}
+	TransportPolicy_value = map[string]int32{
+		"TRANSPORT_POLICY_UNSPECIFIED": 0,
+		"TRANSPORT_POLICY_AUTO":        1,
+		"TRANSPORT_POLICY_QUIC":        2,
+		"TRANSPORT_POLICY_H2":          3,
+	}
+)
+
+func (x TransportPolicy) Enum() *TransportPolicy {
+	p := new(TransportPolicy)
+	*p = x
+	return p
+}
+
+func (x TransportPolicy) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (TransportPolicy) Descriptor() protoreflect.EnumDescriptor {
+	return file_rpmgr_agent_v1_snapshot_proto_enumTypes[0].Descriptor()
+}
+
+func (TransportPolicy) Type() protoreflect.EnumType {
+	return &file_rpmgr_agent_v1_snapshot_proto_enumTypes[0]
+}
+
+func (x TransportPolicy) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use TransportPolicy.Descriptor instead.
+func (TransportPolicy) EnumDescriptor() ([]byte, []int) {
+	return file_rpmgr_agent_v1_snapshot_proto_rawDescGZIP(), []int{0}
+}
+
 // Revision identifies a configuration state: seq orders revisions within one database epoch, and a
 // restore starts a new epoch (docs/03-connections.md, "Revisions and ordering").
 type Revision struct {
@@ -242,6 +300,8 @@ type Resource struct {
 	//
 	// Types that are valid to be assigned to Kind:
 	//
+	//	*Resource_GatewayTcpRoute
+	//	*Resource_ConnectorRoute
 	//	*Resource_Reference
 	Kind          isResource_Kind `protobuf_oneof:"kind"`
 	unknownFields protoimpl.UnknownFields
@@ -299,6 +359,24 @@ func (x *Resource) GetKind() isResource_Kind {
 	return nil
 }
 
+func (x *Resource) GetGatewayTcpRoute() *GatewayTCPRoute {
+	if x != nil {
+		if x, ok := x.Kind.(*Resource_GatewayTcpRoute); ok {
+			return x.GatewayTcpRoute
+		}
+	}
+	return nil
+}
+
+func (x *Resource) GetConnectorRoute() *ConnectorRoute {
+	if x != nil {
+		if x, ok := x.Kind.(*Resource_ConnectorRoute); ok {
+			return x.ConnectorRoute
+		}
+	}
+	return nil
+}
+
 func (x *Resource) GetReference() *ResourceReference {
 	if x != nil {
 		if x, ok := x.Kind.(*Resource_Reference); ok {
@@ -312,12 +390,254 @@ type isResource_Kind interface {
 	isResource_Kind()
 }
 
+type Resource_GatewayTcpRoute struct {
+	// Gateways: a tcp route's public port.
+	GatewayTcpRoute *GatewayTCPRoute `protobuf:"bytes,3,opt,name=gateway_tcp_route,json=gatewayTcpRoute,proto3,oneof"`
+}
+
+type Resource_ConnectorRoute struct {
+	// Connectors: where a route's streams go.
+	ConnectorRoute *ConnectorRoute `protobuf:"bytes,4,opt,name=connector_route,json=connectorRoute,proto3,oneof"`
+}
+
 type Resource_Reference struct {
 	// A large item the agent fetches by hash with Control.FetchResource.
 	Reference *ResourceReference `protobuf:"bytes,15,opt,name=reference,proto3,oneof"`
 }
 
+func (*Resource_GatewayTcpRoute) isResource_Kind() {}
+
+func (*Resource_ConnectorRoute) isResource_Kind() {}
+
 func (*Resource_Reference) isResource_Kind() {}
+
+// GatewayTCPRoute is a tcp route as a gateway runs it; the resource ID is the route's ID.
+type GatewayTCPRoute struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The public port.
+	Port uint32 `protobuf:"varint,1,opt,name=port,proto3" json:"port,omitempty"`
+	// A connection without traffic for this long is closed; 0 never.
+	IdleTimeoutSeconds uint32 `protobuf:"varint,2,opt,name=idle_timeout_seconds,json=idleTimeoutSeconds,proto3" json:"idle_timeout_seconds,omitempty"`
+	// The connectors that serve the route, sorted: the gateway opens its streams only to them.
+	Connectors    []string `protobuf:"bytes,3,rep,name=connectors,proto3" json:"connectors,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GatewayTCPRoute) Reset() {
+	*x = GatewayTCPRoute{}
+	mi := &file_rpmgr_agent_v1_snapshot_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GatewayTCPRoute) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GatewayTCPRoute) ProtoMessage() {}
+
+func (x *GatewayTCPRoute) ProtoReflect() protoreflect.Message {
+	mi := &file_rpmgr_agent_v1_snapshot_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GatewayTCPRoute.ProtoReflect.Descriptor instead.
+func (*GatewayTCPRoute) Descriptor() ([]byte, []int) {
+	return file_rpmgr_agent_v1_snapshot_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *GatewayTCPRoute) GetPort() uint32 {
+	if x != nil {
+		return x.Port
+	}
+	return 0
+}
+
+func (x *GatewayTCPRoute) GetIdleTimeoutSeconds() uint32 {
+	if x != nil {
+		return x.IdleTimeoutSeconds
+	}
+	return 0
+}
+
+func (x *GatewayTCPRoute) GetConnectors() []string {
+	if x != nil {
+		return x.Connectors
+	}
+	return nil
+}
+
+// ConnectorRoute is a route as a connector serves it; the resource ID is the route's ID.
+type ConnectorRoute struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The route's type: "tcp" in this version.
+	Type string `protobuf:"bytes,1,opt,name=type,proto3" json:"type,omitempty"`
+	// Where the connector delivers the route's streams, by priority, then ID.
+	Targets []*Target `protobuf:"bytes,2,rep,name=targets,proto3" json:"targets,omitempty"`
+	// The effective transport policy: the route's, else the connector's, else the instance default.
+	Transport     TransportPolicy `protobuf:"varint,3,opt,name=transport,proto3,enum=rpmgr.agent.v1.TransportPolicy" json:"transport,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ConnectorRoute) Reset() {
+	*x = ConnectorRoute{}
+	mi := &file_rpmgr_agent_v1_snapshot_proto_msgTypes[5]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ConnectorRoute) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ConnectorRoute) ProtoMessage() {}
+
+func (x *ConnectorRoute) ProtoReflect() protoreflect.Message {
+	mi := &file_rpmgr_agent_v1_snapshot_proto_msgTypes[5]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ConnectorRoute.ProtoReflect.Descriptor instead.
+func (*ConnectorRoute) Descriptor() ([]byte, []int) {
+	return file_rpmgr_agent_v1_snapshot_proto_rawDescGZIP(), []int{5}
+}
+
+func (x *ConnectorRoute) GetType() string {
+	if x != nil {
+		return x.Type
+	}
+	return ""
+}
+
+func (x *ConnectorRoute) GetTargets() []*Target {
+	if x != nil {
+		return x.Targets
+	}
+	return nil
+}
+
+func (x *ConnectorRoute) GetTransport() TransportPolicy {
+	if x != nil {
+		return x.Transport
+	}
+	return TransportPolicy_TRANSPORT_POLICY_UNSPECIFIED
+}
+
+// Target is one destination of a route on the connector's host.
+type Target struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The target's ID.
+	Id string `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	// An address and port, or a unix socket path.
+	Host string `protobuf:"bytes,2,opt,name=host,proto3" json:"host,omitempty"`
+	// The port of host.
+	Port uint32 `protobuf:"varint,3,opt,name=port,proto3" json:"port,omitempty"`
+	// A unix socket instead of host and port.
+	UnixPath string `protobuf:"bytes,4,opt,name=unix_path,json=unixPath,proto3" json:"unix_path,omitempty"`
+	// The PROXY protocol version to send: "none", "v1" or "v2".
+	ProxyProtocol string `protobuf:"bytes,5,opt,name=proxy_protocol,json=proxyProtocol,proto3" json:"proxy_protocol,omitempty"`
+	// Relative share among targets of the same priority.
+	Weight uint32 `protobuf:"varint,6,opt,name=weight,proto3" json:"weight,omitempty"`
+	// Lower first; higher priorities are failovers.
+	Priority      uint32 `protobuf:"varint,7,opt,name=priority,proto3" json:"priority,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *Target) Reset() {
+	*x = Target{}
+	mi := &file_rpmgr_agent_v1_snapshot_proto_msgTypes[6]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Target) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Target) ProtoMessage() {}
+
+func (x *Target) ProtoReflect() protoreflect.Message {
+	mi := &file_rpmgr_agent_v1_snapshot_proto_msgTypes[6]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Target.ProtoReflect.Descriptor instead.
+func (*Target) Descriptor() ([]byte, []int) {
+	return file_rpmgr_agent_v1_snapshot_proto_rawDescGZIP(), []int{6}
+}
+
+func (x *Target) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+func (x *Target) GetHost() string {
+	if x != nil {
+		return x.Host
+	}
+	return ""
+}
+
+func (x *Target) GetPort() uint32 {
+	if x != nil {
+		return x.Port
+	}
+	return 0
+}
+
+func (x *Target) GetUnixPath() string {
+	if x != nil {
+		return x.UnixPath
+	}
+	return ""
+}
+
+func (x *Target) GetProxyProtocol() string {
+	if x != nil {
+		return x.ProxyProtocol
+	}
+	return ""
+}
+
+func (x *Target) GetWeight() uint32 {
+	if x != nil {
+		return x.Weight
+	}
+	return 0
+}
+
+func (x *Target) GetPriority() uint32 {
+	if x != nil {
+		return x.Priority
+	}
+	return 0
+}
 
 // ResourceReference points to content fetched with Control.FetchResource.
 type ResourceReference struct {
@@ -330,7 +650,7 @@ type ResourceReference struct {
 
 func (x *ResourceReference) Reset() {
 	*x = ResourceReference{}
-	mi := &file_rpmgr_agent_v1_snapshot_proto_msgTypes[4]
+	mi := &file_rpmgr_agent_v1_snapshot_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -342,7 +662,7 @@ func (x *ResourceReference) String() string {
 func (*ResourceReference) ProtoMessage() {}
 
 func (x *ResourceReference) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_agent_v1_snapshot_proto_msgTypes[4]
+	mi := &file_rpmgr_agent_v1_snapshot_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -355,7 +675,7 @@ func (x *ResourceReference) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ResourceReference.ProtoReflect.Descriptor instead.
 func (*ResourceReference) Descriptor() ([]byte, []int) {
-	return file_rpmgr_agent_v1_snapshot_proto_rawDescGZIP(), []int{4}
+	return file_rpmgr_agent_v1_snapshot_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *ResourceReference) GetSize() uint64 {
@@ -381,7 +701,7 @@ type DenyList struct {
 
 func (x *DenyList) Reset() {
 	*x = DenyList{}
-	mi := &file_rpmgr_agent_v1_snapshot_proto_msgTypes[5]
+	mi := &file_rpmgr_agent_v1_snapshot_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -393,7 +713,7 @@ func (x *DenyList) String() string {
 func (*DenyList) ProtoMessage() {}
 
 func (x *DenyList) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_agent_v1_snapshot_proto_msgTypes[5]
+	mi := &file_rpmgr_agent_v1_snapshot_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -406,7 +726,7 @@ func (x *DenyList) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DenyList.ProtoReflect.Descriptor instead.
 func (*DenyList) Descriptor() ([]byte, []int) {
-	return file_rpmgr_agent_v1_snapshot_proto_rawDescGZIP(), []int{5}
+	return file_rpmgr_agent_v1_snapshot_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *DenyList) GetVersion() *Revision {
@@ -448,7 +768,7 @@ type DenyEntry struct {
 
 func (x *DenyEntry) Reset() {
 	*x = DenyEntry{}
-	mi := &file_rpmgr_agent_v1_snapshot_proto_msgTypes[6]
+	mi := &file_rpmgr_agent_v1_snapshot_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -460,7 +780,7 @@ func (x *DenyEntry) String() string {
 func (*DenyEntry) ProtoMessage() {}
 
 func (x *DenyEntry) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_agent_v1_snapshot_proto_msgTypes[6]
+	mi := &file_rpmgr_agent_v1_snapshot_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -473,7 +793,7 @@ func (x *DenyEntry) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DenyEntry.ProtoReflect.Descriptor instead.
 func (*DenyEntry) Descriptor() ([]byte, []int) {
-	return file_rpmgr_agent_v1_snapshot_proto_rawDescGZIP(), []int{6}
+	return file_rpmgr_agent_v1_snapshot_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *DenyEntry) GetSubject() isDenyEntry_Subject {
@@ -543,12 +863,32 @@ const file_rpmgr_agent_v1_snapshot_proto_rawDesc = "" +
 	"\x05agent\x18\x02 \x01(\tR\x05agent\x121\n" +
 	"\x14controller_endpoints\x18\x03 \x03(\tR\x13controllerEndpoints\x126\n" +
 	"\tresources\x18\x04 \x03(\v2\x18.rpmgr.agent.v1.ResourceR\tresources\x12$\n" +
-	"\x0esigning_key_id\x18\x05 \x01(\tR\fsigningKeyId\"y\n" +
+	"\x0esigning_key_id\x18\x05 \x01(\tR\fsigningKeyId\"\x93\x02\n" +
 	"\bResource\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
-	"\x04hash\x18\x02 \x01(\fR\x04hash\x12A\n" +
+	"\x04hash\x18\x02 \x01(\fR\x04hash\x12M\n" +
+	"\x11gateway_tcp_route\x18\x03 \x01(\v2\x1f.rpmgr.agent.v1.GatewayTCPRouteH\x00R\x0fgatewayTcpRoute\x12I\n" +
+	"\x0fconnector_route\x18\x04 \x01(\v2\x1e.rpmgr.agent.v1.ConnectorRouteH\x00R\x0econnectorRoute\x12A\n" +
 	"\treference\x18\x0f \x01(\v2!.rpmgr.agent.v1.ResourceReferenceH\x00R\treferenceB\x06\n" +
-	"\x04kind\"'\n" +
+	"\x04kind\"w\n" +
+	"\x0fGatewayTCPRoute\x12\x12\n" +
+	"\x04port\x18\x01 \x01(\rR\x04port\x120\n" +
+	"\x14idle_timeout_seconds\x18\x02 \x01(\rR\x12idleTimeoutSeconds\x12\x1e\n" +
+	"\n" +
+	"connectors\x18\x03 \x03(\tR\n" +
+	"connectors\"\x95\x01\n" +
+	"\x0eConnectorRoute\x12\x12\n" +
+	"\x04type\x18\x01 \x01(\tR\x04type\x120\n" +
+	"\atargets\x18\x02 \x03(\v2\x16.rpmgr.agent.v1.TargetR\atargets\x12=\n" +
+	"\ttransport\x18\x03 \x01(\x0e2\x1f.rpmgr.agent.v1.TransportPolicyR\ttransport\"\xb8\x01\n" +
+	"\x06Target\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
+	"\x04host\x18\x02 \x01(\tR\x04host\x12\x12\n" +
+	"\x04port\x18\x03 \x01(\rR\x04port\x12\x1b\n" +
+	"\tunix_path\x18\x04 \x01(\tR\bunixPath\x12%\n" +
+	"\x0eproxy_protocol\x18\x05 \x01(\tR\rproxyProtocol\x12\x16\n" +
+	"\x06weight\x18\x06 \x01(\rR\x06weight\x12\x1a\n" +
+	"\bpriority\x18\a \x01(\rR\bpriority\"'\n" +
 	"\x11ResourceReference\x12\x12\n" +
 	"\x04size\x18\x01 \x01(\x04R\x04size\"\x87\x01\n" +
 	"\bDenyList\x122\n" +
@@ -559,7 +899,12 @@ const file_rpmgr_agent_v1_snapshot_proto_rawDesc = "" +
 	"\x06serial\x18\x01 \x01(\tH\x00R\x06serial\x12\x1c\n" +
 	"\bidentity\x18\x02 \x01(\tH\x00R\bidentity\x127\n" +
 	"\tnot_after\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\bnotAfterB\t\n" +
-	"\asubjectB;Z9github.com/felix-homelab/rpmgr/gen/rpmgr/agent/v1;agentv1b\x06proto3"
+	"\asubject*\x82\x01\n" +
+	"\x0fTransportPolicy\x12 \n" +
+	"\x1cTRANSPORT_POLICY_UNSPECIFIED\x10\x00\x12\x19\n" +
+	"\x15TRANSPORT_POLICY_AUTO\x10\x01\x12\x19\n" +
+	"\x15TRANSPORT_POLICY_QUIC\x10\x02\x12\x17\n" +
+	"\x13TRANSPORT_POLICY_H2\x10\x03B;Z9github.com/felix-homelab/rpmgr/gen/rpmgr/agent/v1;agentv1b\x06proto3"
 
 var (
 	file_rpmgr_agent_v1_snapshot_proto_rawDescOnce sync.Once
@@ -573,29 +918,38 @@ func file_rpmgr_agent_v1_snapshot_proto_rawDescGZIP() []byte {
 	return file_rpmgr_agent_v1_snapshot_proto_rawDescData
 }
 
-var file_rpmgr_agent_v1_snapshot_proto_msgTypes = make([]protoimpl.MessageInfo, 7)
+var file_rpmgr_agent_v1_snapshot_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
+var file_rpmgr_agent_v1_snapshot_proto_msgTypes = make([]protoimpl.MessageInfo, 10)
 var file_rpmgr_agent_v1_snapshot_proto_goTypes = []any{
-	(*Revision)(nil),              // 0: rpmgr.agent.v1.Revision
-	(*Signed)(nil),                // 1: rpmgr.agent.v1.Signed
-	(*Snapshot)(nil),              // 2: rpmgr.agent.v1.Snapshot
-	(*Resource)(nil),              // 3: rpmgr.agent.v1.Resource
-	(*ResourceReference)(nil),     // 4: rpmgr.agent.v1.ResourceReference
-	(*DenyList)(nil),              // 5: rpmgr.agent.v1.DenyList
-	(*DenyEntry)(nil),             // 6: rpmgr.agent.v1.DenyEntry
-	(*timestamppb.Timestamp)(nil), // 7: google.protobuf.Timestamp
+	(TransportPolicy)(0),          // 0: rpmgr.agent.v1.TransportPolicy
+	(*Revision)(nil),              // 1: rpmgr.agent.v1.Revision
+	(*Signed)(nil),                // 2: rpmgr.agent.v1.Signed
+	(*Snapshot)(nil),              // 3: rpmgr.agent.v1.Snapshot
+	(*Resource)(nil),              // 4: rpmgr.agent.v1.Resource
+	(*GatewayTCPRoute)(nil),       // 5: rpmgr.agent.v1.GatewayTCPRoute
+	(*ConnectorRoute)(nil),        // 6: rpmgr.agent.v1.ConnectorRoute
+	(*Target)(nil),                // 7: rpmgr.agent.v1.Target
+	(*ResourceReference)(nil),     // 8: rpmgr.agent.v1.ResourceReference
+	(*DenyList)(nil),              // 9: rpmgr.agent.v1.DenyList
+	(*DenyEntry)(nil),             // 10: rpmgr.agent.v1.DenyEntry
+	(*timestamppb.Timestamp)(nil), // 11: google.protobuf.Timestamp
 }
 var file_rpmgr_agent_v1_snapshot_proto_depIdxs = []int32{
-	0, // 0: rpmgr.agent.v1.Snapshot.revision:type_name -> rpmgr.agent.v1.Revision
-	3, // 1: rpmgr.agent.v1.Snapshot.resources:type_name -> rpmgr.agent.v1.Resource
-	4, // 2: rpmgr.agent.v1.Resource.reference:type_name -> rpmgr.agent.v1.ResourceReference
-	0, // 3: rpmgr.agent.v1.DenyList.version:type_name -> rpmgr.agent.v1.Revision
-	6, // 4: rpmgr.agent.v1.DenyList.entries:type_name -> rpmgr.agent.v1.DenyEntry
-	7, // 5: rpmgr.agent.v1.DenyEntry.not_after:type_name -> google.protobuf.Timestamp
-	6, // [6:6] is the sub-list for method output_type
-	6, // [6:6] is the sub-list for method input_type
-	6, // [6:6] is the sub-list for extension type_name
-	6, // [6:6] is the sub-list for extension extendee
-	0, // [0:6] is the sub-list for field type_name
+	1,  // 0: rpmgr.agent.v1.Snapshot.revision:type_name -> rpmgr.agent.v1.Revision
+	4,  // 1: rpmgr.agent.v1.Snapshot.resources:type_name -> rpmgr.agent.v1.Resource
+	5,  // 2: rpmgr.agent.v1.Resource.gateway_tcp_route:type_name -> rpmgr.agent.v1.GatewayTCPRoute
+	6,  // 3: rpmgr.agent.v1.Resource.connector_route:type_name -> rpmgr.agent.v1.ConnectorRoute
+	8,  // 4: rpmgr.agent.v1.Resource.reference:type_name -> rpmgr.agent.v1.ResourceReference
+	7,  // 5: rpmgr.agent.v1.ConnectorRoute.targets:type_name -> rpmgr.agent.v1.Target
+	0,  // 6: rpmgr.agent.v1.ConnectorRoute.transport:type_name -> rpmgr.agent.v1.TransportPolicy
+	1,  // 7: rpmgr.agent.v1.DenyList.version:type_name -> rpmgr.agent.v1.Revision
+	10, // 8: rpmgr.agent.v1.DenyList.entries:type_name -> rpmgr.agent.v1.DenyEntry
+	11, // 9: rpmgr.agent.v1.DenyEntry.not_after:type_name -> google.protobuf.Timestamp
+	10, // [10:10] is the sub-list for method output_type
+	10, // [10:10] is the sub-list for method input_type
+	10, // [10:10] is the sub-list for extension type_name
+	10, // [10:10] is the sub-list for extension extendee
+	0,  // [0:10] is the sub-list for field type_name
 }
 
 func init() { file_rpmgr_agent_v1_snapshot_proto_init() }
@@ -604,9 +958,11 @@ func file_rpmgr_agent_v1_snapshot_proto_init() {
 		return
 	}
 	file_rpmgr_agent_v1_snapshot_proto_msgTypes[3].OneofWrappers = []any{
+		(*Resource_GatewayTcpRoute)(nil),
+		(*Resource_ConnectorRoute)(nil),
 		(*Resource_Reference)(nil),
 	}
-	file_rpmgr_agent_v1_snapshot_proto_msgTypes[6].OneofWrappers = []any{
+	file_rpmgr_agent_v1_snapshot_proto_msgTypes[9].OneofWrappers = []any{
 		(*DenyEntry_Serial)(nil),
 		(*DenyEntry_Identity)(nil),
 	}
@@ -615,13 +971,14 @@ func file_rpmgr_agent_v1_snapshot_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_rpmgr_agent_v1_snapshot_proto_rawDesc), len(file_rpmgr_agent_v1_snapshot_proto_rawDesc)),
-			NumEnums:      0,
-			NumMessages:   7,
+			NumEnums:      1,
+			NumMessages:   10,
 			NumExtensions: 0,
 			NumServices:   0,
 		},
 		GoTypes:           file_rpmgr_agent_v1_snapshot_proto_goTypes,
 		DependencyIndexes: file_rpmgr_agent_v1_snapshot_proto_depIdxs,
+		EnumInfos:         file_rpmgr_agent_v1_snapshot_proto_enumTypes,
 		MessageInfos:      file_rpmgr_agent_v1_snapshot_proto_msgTypes,
 	}.Build()
 	File_rpmgr_agent_v1_snapshot_proto = out.File

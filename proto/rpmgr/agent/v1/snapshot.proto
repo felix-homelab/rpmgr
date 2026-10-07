@@ -54,9 +54,64 @@ message Resource {
   bytes hash = 2;
   // The content.
   oneof kind {
+    // Gateways: a tcp route's public port.
+    GatewayTCPRoute gateway_tcp_route = 3;
+    // Connectors: where a route's streams go.
+    ConnectorRoute connector_route = 4;
     // A large item the agent fetches by hash with Control.FetchResource.
     ResourceReference reference = 15;
   }
+}
+
+// GatewayTCPRoute is a tcp route as a gateway runs it; the resource ID is the route's ID.
+message GatewayTCPRoute {
+  // The public port.
+  uint32 port = 1;
+  // A connection without traffic for this long is closed; 0 never.
+  uint32 idle_timeout_seconds = 2;
+  // The connectors that serve the route, sorted: the gateway opens its streams only to them.
+  repeated string connectors = 3;
+}
+
+// TransportPolicy is how a route chooses its data-session transport (docs/03-connections.md,
+// "Transport selection").
+enum TransportPolicy {
+  // Not set.
+  TRANSPORT_POLICY_UNSPECIFIED = 0;
+  // QUIC first, TLS + reverse HTTP/2 when UDP is blocked or QUIC loses the race.
+  TRANSPORT_POLICY_AUTO = 1;
+  // QUIC only; never falls back.
+  TRANSPORT_POLICY_QUIC = 2;
+  // TLS + reverse HTTP/2 only; never falls back.
+  TRANSPORT_POLICY_H2 = 3;
+}
+
+// ConnectorRoute is a route as a connector serves it; the resource ID is the route's ID.
+message ConnectorRoute {
+  // The route's type: "tcp" in this version.
+  string type = 1;
+  // Where the connector delivers the route's streams, by priority, then ID.
+  repeated Target targets = 2;
+  // The effective transport policy: the route's, else the connector's, else the instance default.
+  TransportPolicy transport = 3;
+}
+
+// Target is one destination of a route on the connector's host.
+message Target {
+  // The target's ID.
+  string id = 1;
+  // An address and port, or a unix socket path.
+  string host = 2;
+  // The port of host.
+  uint32 port = 3;
+  // A unix socket instead of host and port.
+  string unix_path = 4;
+  // The PROXY protocol version to send: "none", "v1" or "v2".
+  string proxy_protocol = 5;
+  // Relative share among targets of the same priority.
+  uint32 weight = 6;
+  // Lower first; higher priorities are failovers.
+  uint32 priority = 7;
 }
 
 // ResourceReference points to content fetched with Control.FetchResource.
