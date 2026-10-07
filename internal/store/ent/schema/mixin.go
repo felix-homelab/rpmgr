@@ -48,3 +48,7 @@ func (OrgMixin) Indexes() []ent.Index {
 // OrgTableMixin applies the scope rules to the orgs table itself: a scope sees only its own org,
 // and only the system scope changes orgs.
 type OrgTableMixin struct{ mixin.Schema }
+
+// SystemMixin makes a table usable only in the system scope, for queries and mutations alike: the
+// CA's keys.
+type SystemMixin struct{ mixin.Schema }

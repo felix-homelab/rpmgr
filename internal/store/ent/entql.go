@@ -5,13 +5,16 @@ package ent
 import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/auditentry"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/audithead"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/cakey"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/configrevision"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/configseq"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/gatewaygroup"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/instance"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/instancesetting"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/issuedcertificate"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/org"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/orgsetting"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/secretmeta"
 
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
@@ -21,7 +24,7 @@ import (
 
 // schemaGraph holds a representation of ent/schema at runtime.
 var schemaGraph = func() *sqlgraph.Schema {
-	graph := &sqlgraph.Schema{Nodes: make([]*sqlgraph.Node, 9)}
+	graph := &sqlgraph.Schema{Nodes: make([]*sqlgraph.Node, 12)}
 	graph.Nodes[0] = &sqlgraph.Node{
 		NodeSpec: sqlgraph.NodeSpec{
 			Table:   auditentry.Table,
@@ -70,6 +73,27 @@ var schemaGraph = func() *sqlgraph.Schema {
 	}
 	graph.Nodes[2] = &sqlgraph.Node{
 		NodeSpec: sqlgraph.NodeSpec{
+			Table:   cakey.Table,
+			Columns: cakey.Columns,
+			ID: &sqlgraph.FieldSpec{
+				Type:   field.TypeString,
+				Column: cakey.FieldID,
+			},
+		},
+		Type: "CAKey",
+		Fields: map[string]*sqlgraph.FieldSpec{
+			cakey.FieldKind:        {Type: field.TypeEnum, Column: cakey.FieldKind},
+			cakey.FieldAlgorithm:   {Type: field.TypeString, Column: cakey.FieldAlgorithm},
+			cakey.FieldPublicKey:   {Type: field.TypeBytes, Column: cakey.FieldPublicKey},
+			cakey.FieldCertificate: {Type: field.TypeBytes, Column: cakey.FieldCertificate},
+			cakey.FieldKeyEnc:      {Type: field.TypeBytes, Column: cakey.FieldKeyEnc},
+			cakey.FieldNotBefore:   {Type: field.TypeTime, Column: cakey.FieldNotBefore},
+			cakey.FieldNotAfter:    {Type: field.TypeTime, Column: cakey.FieldNotAfter},
+			cakey.FieldStatus:      {Type: field.TypeEnum, Column: cakey.FieldStatus},
+		},
+	}
+	graph.Nodes[3] = &sqlgraph.Node{
+		NodeSpec: sqlgraph.NodeSpec{
 			Table:   configrevision.Table,
 			Columns: configrevision.Columns,
 			ID: &sqlgraph.FieldSpec{
@@ -85,7 +109,7 @@ var schemaGraph = func() *sqlgraph.Schema {
 			configrevision.FieldCreatedAt:        {Type: field.TypeTime, Column: configrevision.FieldCreatedAt},
 		},
 	}
-	graph.Nodes[3] = &sqlgraph.Node{
+	graph.Nodes[4] = &sqlgraph.Node{
 		NodeSpec: sqlgraph.NodeSpec{
 			Table:   configseq.Table,
 			Columns: configseq.Columns,
@@ -99,7 +123,7 @@ var schemaGraph = func() *sqlgraph.Schema {
 			configseq.FieldSeq: {Type: field.TypeInt64, Column: configseq.FieldSeq},
 		},
 	}
-	graph.Nodes[4] = &sqlgraph.Node{
+	graph.Nodes[5] = &sqlgraph.Node{
 		NodeSpec: sqlgraph.NodeSpec{
 			Table:   gatewaygroup.Table,
 			Columns: gatewaygroup.Columns,
@@ -114,7 +138,7 @@ var schemaGraph = func() *sqlgraph.Schema {
 			gatewaygroup.FieldName:  {Type: field.TypeString, Column: gatewaygroup.FieldName},
 		},
 	}
-	graph.Nodes[5] = &sqlgraph.Node{
+	graph.Nodes[6] = &sqlgraph.Node{
 		NodeSpec: sqlgraph.NodeSpec{
 			Table:   instance.Table,
 			Columns: instance.Columns,
@@ -130,7 +154,7 @@ var schemaGraph = func() *sqlgraph.Schema {
 			instance.FieldCreatedAt:   {Type: field.TypeTime, Column: instance.FieldCreatedAt},
 		},
 	}
-	graph.Nodes[6] = &sqlgraph.Node{
+	graph.Nodes[7] = &sqlgraph.Node{
 		NodeSpec: sqlgraph.NodeSpec{
 			Table:   instancesetting.Table,
 			Columns: instancesetting.Columns,
@@ -147,7 +171,31 @@ var schemaGraph = func() *sqlgraph.Schema {
 			instancesetting.FieldUpdatedAt: {Type: field.TypeTime, Column: instancesetting.FieldUpdatedAt},
 		},
 	}
-	graph.Nodes[7] = &sqlgraph.Node{
+	graph.Nodes[8] = &sqlgraph.Node{
+		NodeSpec: sqlgraph.NodeSpec{
+			Table:   issuedcertificate.Table,
+			Columns: issuedcertificate.Columns,
+			ID: &sqlgraph.FieldSpec{
+				Type:   field.TypeString,
+				Column: issuedcertificate.FieldID,
+			},
+		},
+		Type: "IssuedCertificate",
+		Fields: map[string]*sqlgraph.FieldSpec{
+			issuedcertificate.FieldOrgID:            {Type: field.TypeString, Column: issuedcertificate.FieldOrgID},
+			issuedcertificate.FieldSubjectType:      {Type: field.TypeEnum, Column: issuedcertificate.FieldSubjectType},
+			issuedcertificate.FieldSubjectID:        {Type: field.TypeString, Column: issuedcertificate.FieldSubjectID},
+			issuedcertificate.FieldSpiffeID:         {Type: field.TypeString, Column: issuedcertificate.FieldSpiffeID},
+			issuedcertificate.FieldPubkeySha256:     {Type: field.TypeString, Column: issuedcertificate.FieldPubkeySha256},
+			issuedcertificate.FieldNotBefore:        {Type: field.TypeTime, Column: issuedcertificate.FieldNotBefore},
+			issuedcertificate.FieldNotAfter:         {Type: field.TypeTime, Column: issuedcertificate.FieldNotAfter},
+			issuedcertificate.FieldFirstSeenAt:      {Type: field.TypeTime, Column: issuedcertificate.FieldFirstSeenAt},
+			issuedcertificate.FieldSupersededAt:     {Type: field.TypeTime, Column: issuedcertificate.FieldSupersededAt},
+			issuedcertificate.FieldRevokedAt:        {Type: field.TypeTime, Column: issuedcertificate.FieldRevokedAt},
+			issuedcertificate.FieldRevocationReason: {Type: field.TypeString, Column: issuedcertificate.FieldRevocationReason},
+		},
+	}
+	graph.Nodes[9] = &sqlgraph.Node{
 		NodeSpec: sqlgraph.NodeSpec{
 			Table:   org.Table,
 			Columns: org.Columns,
@@ -163,7 +211,7 @@ var schemaGraph = func() *sqlgraph.Schema {
 			org.FieldCreatedAt: {Type: field.TypeTime, Column: org.FieldCreatedAt},
 		},
 	}
-	graph.Nodes[8] = &sqlgraph.Node{
+	graph.Nodes[10] = &sqlgraph.Node{
 		NodeSpec: sqlgraph.NodeSpec{
 			Table:   orgsetting.Table,
 			Columns: orgsetting.Columns,
@@ -179,6 +227,24 @@ var schemaGraph = func() *sqlgraph.Schema {
 			orgsetting.FieldVersion:   {Type: field.TypeInt64, Column: orgsetting.FieldVersion},
 			orgsetting.FieldUpdatedBy: {Type: field.TypeString, Column: orgsetting.FieldUpdatedBy},
 			orgsetting.FieldUpdatedAt: {Type: field.TypeTime, Column: orgsetting.FieldUpdatedAt},
+		},
+	}
+	graph.Nodes[11] = &sqlgraph.Node{
+		NodeSpec: sqlgraph.NodeSpec{
+			Table:   secretmeta.Table,
+			Columns: secretmeta.Columns,
+			ID: &sqlgraph.FieldSpec{
+				Type:   field.TypeInt,
+				Column: secretmeta.FieldID,
+			},
+		},
+		Type: "SecretMeta",
+		Fields: map[string]*sqlgraph.FieldSpec{
+			secretmeta.FieldTableName:  {Type: field.TypeString, Column: secretmeta.FieldTableName},
+			secretmeta.FieldRowID:      {Type: field.TypeString, Column: secretmeta.FieldRowID},
+			secretmeta.FieldColumnName: {Type: field.TypeString, Column: secretmeta.FieldColumnName},
+			secretmeta.FieldKekVersion: {Type: field.TypeString, Column: secretmeta.FieldKekVersion},
+			secretmeta.FieldCreatedAt:  {Type: field.TypeTime, Column: secretmeta.FieldCreatedAt},
 		},
 	}
 	return graph
@@ -371,6 +437,86 @@ func (f *AuditHeadFilter) WhereHash(p entql.BytesP) {
 }
 
 // addPredicate implements the predicateAdder interface.
+func (_q *CAKeyQuery) addPredicate(pred func(s *sql.Selector)) {
+	_q.predicates = append(_q.predicates, pred)
+}
+
+// Filter returns a Filter implementation to apply filters on the CAKeyQuery builder.
+func (_q *CAKeyQuery) Filter() *CAKeyFilter {
+	return &CAKeyFilter{config: _q.config, predicateAdder: _q}
+}
+
+// addPredicate implements the predicateAdder interface.
+func (m *CAKeyMutation) addPredicate(pred func(s *sql.Selector)) {
+	m.predicates = append(m.predicates, pred)
+}
+
+// Filter returns an entql.Where implementation to apply filters on the CAKeyMutation builder.
+func (m *CAKeyMutation) Filter() *CAKeyFilter {
+	return &CAKeyFilter{config: m.config, predicateAdder: m}
+}
+
+// CAKeyFilter provides a generic filtering capability at runtime for CAKeyQuery.
+type CAKeyFilter struct {
+	predicateAdder
+	config
+}
+
+// Where applies the entql predicate on the query filter.
+func (f *CAKeyFilter) Where(p entql.P) {
+	f.addPredicate(func(s *sql.Selector) {
+		if err := schemaGraph.EvalP(schemaGraph.Nodes[2].Type, p, s); err != nil {
+			s.AddError(err)
+		}
+	})
+}
+
+// WhereID applies the entql string predicate on the id field.
+func (f *CAKeyFilter) WhereID(p entql.StringP) {
+	f.Where(p.Field(cakey.FieldID))
+}
+
+// WhereKind applies the entql string predicate on the kind field.
+func (f *CAKeyFilter) WhereKind(p entql.StringP) {
+	f.Where(p.Field(cakey.FieldKind))
+}
+
+// WhereAlgorithm applies the entql string predicate on the algorithm field.
+func (f *CAKeyFilter) WhereAlgorithm(p entql.StringP) {
+	f.Where(p.Field(cakey.FieldAlgorithm))
+}
+
+// WherePublicKey applies the entql []byte predicate on the public_key field.
+func (f *CAKeyFilter) WherePublicKey(p entql.BytesP) {
+	f.Where(p.Field(cakey.FieldPublicKey))
+}
+
+// WhereCertificate applies the entql []byte predicate on the certificate field.
+func (f *CAKeyFilter) WhereCertificate(p entql.BytesP) {
+	f.Where(p.Field(cakey.FieldCertificate))
+}
+
+// WhereKeyEnc applies the entql []byte predicate on the key_enc field.
+func (f *CAKeyFilter) WhereKeyEnc(p entql.BytesP) {
+	f.Where(p.Field(cakey.FieldKeyEnc))
+}
+
+// WhereNotBefore applies the entql time.Time predicate on the not_before field.
+func (f *CAKeyFilter) WhereNotBefore(p entql.TimeP) {
+	f.Where(p.Field(cakey.FieldNotBefore))
+}
+
+// WhereNotAfter applies the entql time.Time predicate on the not_after field.
+func (f *CAKeyFilter) WhereNotAfter(p entql.TimeP) {
+	f.Where(p.Field(cakey.FieldNotAfter))
+}
+
+// WhereStatus applies the entql string predicate on the status field.
+func (f *CAKeyFilter) WhereStatus(p entql.StringP) {
+	f.Where(p.Field(cakey.FieldStatus))
+}
+
+// addPredicate implements the predicateAdder interface.
 func (_q *ConfigRevisionQuery) addPredicate(pred func(s *sql.Selector)) {
 	_q.predicates = append(_q.predicates, pred)
 }
@@ -399,7 +545,7 @@ type ConfigRevisionFilter struct {
 // Where applies the entql predicate on the query filter.
 func (f *ConfigRevisionFilter) Where(p entql.P) {
 	f.addPredicate(func(s *sql.Selector) {
-		if err := schemaGraph.EvalP(schemaGraph.Nodes[2].Type, p, s); err != nil {
+		if err := schemaGraph.EvalP(schemaGraph.Nodes[3].Type, p, s); err != nil {
 			s.AddError(err)
 		}
 	})
@@ -459,7 +605,7 @@ type ConfigSeqFilter struct {
 // Where applies the entql predicate on the query filter.
 func (f *ConfigSeqFilter) Where(p entql.P) {
 	f.addPredicate(func(s *sql.Selector) {
-		if err := schemaGraph.EvalP(schemaGraph.Nodes[3].Type, p, s); err != nil {
+		if err := schemaGraph.EvalP(schemaGraph.Nodes[4].Type, p, s); err != nil {
 			s.AddError(err)
 		}
 	})
@@ -504,7 +650,7 @@ type GatewayGroupFilter struct {
 // Where applies the entql predicate on the query filter.
 func (f *GatewayGroupFilter) Where(p entql.P) {
 	f.addPredicate(func(s *sql.Selector) {
-		if err := schemaGraph.EvalP(schemaGraph.Nodes[4].Type, p, s); err != nil {
+		if err := schemaGraph.EvalP(schemaGraph.Nodes[5].Type, p, s); err != nil {
 			s.AddError(err)
 		}
 	})
@@ -554,7 +700,7 @@ type InstanceFilter struct {
 // Where applies the entql predicate on the query filter.
 func (f *InstanceFilter) Where(p entql.P) {
 	f.addPredicate(func(s *sql.Selector) {
-		if err := schemaGraph.EvalP(schemaGraph.Nodes[5].Type, p, s); err != nil {
+		if err := schemaGraph.EvalP(schemaGraph.Nodes[6].Type, p, s); err != nil {
 			s.AddError(err)
 		}
 	})
@@ -609,7 +755,7 @@ type InstanceSettingFilter struct {
 // Where applies the entql predicate on the query filter.
 func (f *InstanceSettingFilter) Where(p entql.P) {
 	f.addPredicate(func(s *sql.Selector) {
-		if err := schemaGraph.EvalP(schemaGraph.Nodes[6].Type, p, s); err != nil {
+		if err := schemaGraph.EvalP(schemaGraph.Nodes[7].Type, p, s); err != nil {
 			s.AddError(err)
 		}
 	})
@@ -641,6 +787,101 @@ func (f *InstanceSettingFilter) WhereUpdatedAt(p entql.TimeP) {
 }
 
 // addPredicate implements the predicateAdder interface.
+func (_q *IssuedCertificateQuery) addPredicate(pred func(s *sql.Selector)) {
+	_q.predicates = append(_q.predicates, pred)
+}
+
+// Filter returns a Filter implementation to apply filters on the IssuedCertificateQuery builder.
+func (_q *IssuedCertificateQuery) Filter() *IssuedCertificateFilter {
+	return &IssuedCertificateFilter{config: _q.config, predicateAdder: _q}
+}
+
+// addPredicate implements the predicateAdder interface.
+func (m *IssuedCertificateMutation) addPredicate(pred func(s *sql.Selector)) {
+	m.predicates = append(m.predicates, pred)
+}
+
+// Filter returns an entql.Where implementation to apply filters on the IssuedCertificateMutation builder.
+func (m *IssuedCertificateMutation) Filter() *IssuedCertificateFilter {
+	return &IssuedCertificateFilter{config: m.config, predicateAdder: m}
+}
+
+// IssuedCertificateFilter provides a generic filtering capability at runtime for IssuedCertificateQuery.
+type IssuedCertificateFilter struct {
+	predicateAdder
+	config
+}
+
+// Where applies the entql predicate on the query filter.
+func (f *IssuedCertificateFilter) Where(p entql.P) {
+	f.addPredicate(func(s *sql.Selector) {
+		if err := schemaGraph.EvalP(schemaGraph.Nodes[8].Type, p, s); err != nil {
+			s.AddError(err)
+		}
+	})
+}
+
+// WhereID applies the entql string predicate on the id field.
+func (f *IssuedCertificateFilter) WhereID(p entql.StringP) {
+	f.Where(p.Field(issuedcertificate.FieldID))
+}
+
+// WhereOrgID applies the entql string predicate on the org_id field.
+func (f *IssuedCertificateFilter) WhereOrgID(p entql.StringP) {
+	f.Where(p.Field(issuedcertificate.FieldOrgID))
+}
+
+// WhereSubjectType applies the entql string predicate on the subject_type field.
+func (f *IssuedCertificateFilter) WhereSubjectType(p entql.StringP) {
+	f.Where(p.Field(issuedcertificate.FieldSubjectType))
+}
+
+// WhereSubjectID applies the entql string predicate on the subject_id field.
+func (f *IssuedCertificateFilter) WhereSubjectID(p entql.StringP) {
+	f.Where(p.Field(issuedcertificate.FieldSubjectID))
+}
+
+// WhereSpiffeID applies the entql string predicate on the spiffe_id field.
+func (f *IssuedCertificateFilter) WhereSpiffeID(p entql.StringP) {
+	f.Where(p.Field(issuedcertificate.FieldSpiffeID))
+}
+
+// WherePubkeySha256 applies the entql string predicate on the pubkey_sha256 field.
+func (f *IssuedCertificateFilter) WherePubkeySha256(p entql.StringP) {
+	f.Where(p.Field(issuedcertificate.FieldPubkeySha256))
+}
+
+// WhereNotBefore applies the entql time.Time predicate on the not_before field.
+func (f *IssuedCertificateFilter) WhereNotBefore(p entql.TimeP) {
+	f.Where(p.Field(issuedcertificate.FieldNotBefore))
+}
+
+// WhereNotAfter applies the entql time.Time predicate on the not_after field.
+func (f *IssuedCertificateFilter) WhereNotAfter(p entql.TimeP) {
+	f.Where(p.Field(issuedcertificate.FieldNotAfter))
+}
+
+// WhereFirstSeenAt applies the entql time.Time predicate on the first_seen_at field.
+func (f *IssuedCertificateFilter) WhereFirstSeenAt(p entql.TimeP) {
+	f.Where(p.Field(issuedcertificate.FieldFirstSeenAt))
+}
+
+// WhereSupersededAt applies the entql time.Time predicate on the superseded_at field.
+func (f *IssuedCertificateFilter) WhereSupersededAt(p entql.TimeP) {
+	f.Where(p.Field(issuedcertificate.FieldSupersededAt))
+}
+
+// WhereRevokedAt applies the entql time.Time predicate on the revoked_at field.
+func (f *IssuedCertificateFilter) WhereRevokedAt(p entql.TimeP) {
+	f.Where(p.Field(issuedcertificate.FieldRevokedAt))
+}
+
+// WhereRevocationReason applies the entql string predicate on the revocation_reason field.
+func (f *IssuedCertificateFilter) WhereRevocationReason(p entql.StringP) {
+	f.Where(p.Field(issuedcertificate.FieldRevocationReason))
+}
+
+// addPredicate implements the predicateAdder interface.
 func (_q *OrgQuery) addPredicate(pred func(s *sql.Selector)) {
 	_q.predicates = append(_q.predicates, pred)
 }
@@ -669,7 +910,7 @@ type OrgFilter struct {
 // Where applies the entql predicate on the query filter.
 func (f *OrgFilter) Where(p entql.P) {
 	f.addPredicate(func(s *sql.Selector) {
-		if err := schemaGraph.EvalP(schemaGraph.Nodes[7].Type, p, s); err != nil {
+		if err := schemaGraph.EvalP(schemaGraph.Nodes[9].Type, p, s); err != nil {
 			s.AddError(err)
 		}
 	})
@@ -724,7 +965,7 @@ type OrgSettingFilter struct {
 // Where applies the entql predicate on the query filter.
 func (f *OrgSettingFilter) Where(p entql.P) {
 	f.addPredicate(func(s *sql.Selector) {
-		if err := schemaGraph.EvalP(schemaGraph.Nodes[8].Type, p, s); err != nil {
+		if err := schemaGraph.EvalP(schemaGraph.Nodes[10].Type, p, s); err != nil {
 			s.AddError(err)
 		}
 	})
@@ -758,4 +999,69 @@ func (f *OrgSettingFilter) WhereUpdatedBy(p entql.StringP) {
 // WhereUpdatedAt applies the entql time.Time predicate on the updated_at field.
 func (f *OrgSettingFilter) WhereUpdatedAt(p entql.TimeP) {
 	f.Where(p.Field(orgsetting.FieldUpdatedAt))
+}
+
+// addPredicate implements the predicateAdder interface.
+func (_q *SecretMetaQuery) addPredicate(pred func(s *sql.Selector)) {
+	_q.predicates = append(_q.predicates, pred)
+}
+
+// Filter returns a Filter implementation to apply filters on the SecretMetaQuery builder.
+func (_q *SecretMetaQuery) Filter() *SecretMetaFilter {
+	return &SecretMetaFilter{config: _q.config, predicateAdder: _q}
+}
+
+// addPredicate implements the predicateAdder interface.
+func (m *SecretMetaMutation) addPredicate(pred func(s *sql.Selector)) {
+	m.predicates = append(m.predicates, pred)
+}
+
+// Filter returns an entql.Where implementation to apply filters on the SecretMetaMutation builder.
+func (m *SecretMetaMutation) Filter() *SecretMetaFilter {
+	return &SecretMetaFilter{config: m.config, predicateAdder: m}
+}
+
+// SecretMetaFilter provides a generic filtering capability at runtime for SecretMetaQuery.
+type SecretMetaFilter struct {
+	predicateAdder
+	config
+}
+
+// Where applies the entql predicate on the query filter.
+func (f *SecretMetaFilter) Where(p entql.P) {
+	f.addPredicate(func(s *sql.Selector) {
+		if err := schemaGraph.EvalP(schemaGraph.Nodes[11].Type, p, s); err != nil {
+			s.AddError(err)
+		}
+	})
+}
+
+// WhereID applies the entql int predicate on the id field.
+func (f *SecretMetaFilter) WhereID(p entql.IntP) {
+	f.Where(p.Field(secretmeta.FieldID))
+}
+
+// WhereTableName applies the entql string predicate on the table_name field.
+func (f *SecretMetaFilter) WhereTableName(p entql.StringP) {
+	f.Where(p.Field(secretmeta.FieldTableName))
+}
+
+// WhereRowID applies the entql string predicate on the row_id field.
+func (f *SecretMetaFilter) WhereRowID(p entql.StringP) {
+	f.Where(p.Field(secretmeta.FieldRowID))
+}
+
+// WhereColumnName applies the entql string predicate on the column_name field.
+func (f *SecretMetaFilter) WhereColumnName(p entql.StringP) {
+	f.Where(p.Field(secretmeta.FieldColumnName))
+}
+
+// WhereKekVersion applies the entql string predicate on the kek_version field.
+func (f *SecretMetaFilter) WhereKekVersion(p entql.StringP) {
+	f.Where(p.Field(secretmeta.FieldKekVersion))
+}
+
+// WhereCreatedAt applies the entql time.Time predicate on the created_at field.
+func (f *SecretMetaFilter) WhereCreatedAt(p entql.TimeP) {
+	f.Where(p.Field(secretmeta.FieldCreatedAt))
 }
