@@ -30,8 +30,10 @@ while IFS=$'\t' read -r added deleted path; do
   [[ $path =~ \.(go|proto|ts|tsx|js|jsx|mjs|cjs|css|sh|sql)$ ]] || continue
   [[ $path =~ (_test\.go|\.(test|spec)\.(ts|tsx|js|jsx))$ ]] && continue
   [[ $path =~ (^|/)(testdata|migrations|node_modules|vendor|e2e)/ || $path =~ ^(gen|\.github)/ ]] && continue
-  if git cat-file -e "$head:$path" 2>/dev/null &&
-    git show "$head:$path" | head -n 10 | grep -qE 'Code generated .* DO NOT EDIT\.'; then
+  # The header is read in full before grep looks at it: with pipefail, "git show | head | grep -q"
+  # fails whenever head closes the pipe while git show is still writing a large file (SIGPIPE).
+  header=$(git show "$head:$path" 2>/dev/null | head -n 10 || true)
+  if grep -qE 'Code generated .* DO NOT EDIT\.' <<<"$header"; then
     continue
   fi
   counted=$((counted + added + deleted))
