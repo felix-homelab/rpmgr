@@ -287,13 +287,14 @@ Docker-based ones need Docker), and `test-checks.sh` tests the checks with valid
 | `ci` / `secrets` | gitleaks over the full history, with the rules in `.gitleaks.toml` | `check-secrets.sh` |
 | `ci` / `go` | gofmt, a tidy `go.mod`, `go vet`, the banned TLS and QUIC settings (`InsecureSkipVerify`, `VerifyPeerCertificate`, `Renegotiation`, 0-RTT; also as composite-literal keys, which forbidigo does not see), `go test -race`; a 10 s run of every fuzz target; golangci-lint with gosec, errorlint, bodyclose, depguard (`math/rand` and `math/rand/v2` in `internal/{authz,pki,secret,token,tunnel}`) and forbidigo (`secret.Value.Reveal` outside its allow-list, `privacy.DecisionContext` outside `internal/store`) ; govulncheck on the code paths rpmgr calls | `check-go.sh` (with `tools/bannedapi`), `check-fuzz.sh`, `check-golangci.sh`, `.golangci.yml`, `check-govulncheck.sh` |
 | `ci` / `proto` | `buf lint` (STANDARD); `buf breaking` (FILE) against `main`, passed only by a PR labelled `breaking` with `!` in its title before v1.0.0 (D56); the code in `gen/` regenerated and compared. buf runs at a pinned version through the go command, the generators are tool dependencies in `go.mod` | `check-buf.sh`, `buf.yaml`, `buf.gen.yaml` |
+| `ci` / `store` | The store tests on SQLite and on PostgreSQL 16 and 18 (service containers): tenancy scoping, the embedded migrations from an empty database, regenerating them from the Ent schema yields nothing new, the live schema equals the Ent schema, edited or unlisted migration files refused, failing files rolled back; `atlas migrate lint` (community CLI, image by digest) on both dialects | `check-store.sh`, `check-atlas-lint.sh` |
 | `ci` / `build` | `go build` and `go vet` of every package, tests included, with `CGO_ENABLED=0` for linux/{amd64,arm64,armv7,riscv64}, windows/amd64 and darwin/{amd64,arm64} | `check-build.sh` |
 | `ci` / `go-arm64` | Every test natively on a GitHub-hosted arm64 runner, with the race detector, and again for armv7 on the same host | `check-test-arch.sh` |
 | `nightly` / `govulncheck`, `fuzz`, `riscv64` | govulncheck against the latest vulnerability database; every fuzz target for 10 minutes; every test for riscv64 under QEMU user-mode emulation. A failure opens the issue "Nightly run failed", or comments on the open one. Also started by hand | `check-govulncheck.sh`, `check-fuzz.sh`, `check-test-arch.sh` |
 | `scorecard` / `analysis` | OpenSSF Scorecard, weekly and on every push to `main`; results in the code-scanning alerts and the public Scorecard API | — |
 
-The jobs `pr-rules`, `lint`, `docs`, `secrets`, `go`, `proto`, `build` and `go-arm64` are required
-status checks of the `main` ruleset; each new job is added to the ruleset by the maintainer once its
-PR is merged. Tool images are pinned by digest in the scripts and actions by commit SHA; Dependabot
-updates the actions. The race detector needs cgo for its runtime; release builds stay
-`CGO_ENABLED=0`. The web and migration stages are added by their Phase 1 slices.
+The jobs `pr-rules`, `lint`, `docs`, `secrets`, `go`, `proto`, `store`, `build` and `go-arm64` are
+required status checks of the `main` ruleset; each new job is added to the ruleset by the maintainer
+once its PR is merged. Tool images are pinned by digest in the scripts and actions by commit SHA;
+Dependabot updates the actions. The race detector needs cgo for its runtime; release builds stay
+`CGO_ENABLED=0`. The web stage is added by its Phase 1 slice.
