@@ -61,6 +61,10 @@ for ok in "ci: add repository-rule and documentation checks" \
   "chore(release): v1.4.0" \
   "build(deps): bump golang.org/x/net from 0.57.0 to 0.59.0" \
   "ci(deps): bump actions/checkout from 7.0.1 to 7.0.2" \
+  "ci(deps): bump the actions group with 3 updates" \
+  "build(deps): bump the go group with 12 updates" \
+  "build(deps): bump the go-sec group across 1 directory with 12 updates" \
+  "ci(deps): bump the actions-sec group across 1 directory with 12 updates" \
   "feat: $(printf 'a%.0s' {1..66})"; do
   expect pass "title '$ok'" "$t" "$ok"
 done
