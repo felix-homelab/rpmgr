@@ -1,0 +1,73 @@
+// SPDX-License-Identifier: Apache-2.0
+
+// Spike S4: a reduced sketch of the agent control service from docs/03-connections.md, "Service
+// sketch". Only what the spike needs to exercise ConnectRPC: one bidirectional stream and one
+// unary method. The Blob messages exist only for the message-size tests.
+syntax = "proto3";
+
+package rpmgr.agent.v1;
+
+option go_package = "github.com/felix-homelab/rpmgr/spikes/s4/gen/rpmgr/agent/v1;agentv1";
+
+service Control {
+  // One per agent. The agent sends AgentMessage, the controller sends ControllerMessage.
+  rpc Session(stream AgentMessage) returns (stream ControllerMessage);
+  // New CSR -> new certificate (here: only used for deadline tests).
+  rpc Renew(RenewRequest) returns (RenewResponse);
+}
+
+message AgentMessage {
+  oneof msg {
+    Hello hello = 1;
+    Status status = 4;
+    Blob blob = 15;
+  }
+}
+
+message ControllerMessage {
+  oneof msg {
+    Welcome welcome = 1;
+    Snapshot snapshot = 2;
+    Blob blob = 15;
+  }
+}
+
+message Hello {
+  string agent_id = 1;
+  uint64 last_applied = 2;
+  // Spike-only knobs that tell the test server how to behave on this session.
+  string behaviour = 15;
+}
+
+message Welcome {
+  string session_epoch = 1;
+  // The SPIFFE ID the controller saw in the client certificate.
+  string peer_identity = 2;
+  int64 server_time_unix_nano = 3;
+  // The deadline the server saw for this call, 0 if none.
+  int64 deadline_unix_nano = 4;
+}
+
+message Status {
+  uint64 seq = 1;
+  bytes payload = 2;
+}
+
+message Snapshot {
+  uint64 revision = 1;
+  bytes payload = 2;
+}
+
+message Blob {
+  bytes data = 1;
+}
+
+message RenewRequest {
+  bytes csr = 1;
+  // Spike-only: how long the server takes before answering.
+  int64 delay_ms = 15;
+}
+
+message RenewResponse {
+  bytes certificate = 1;
+}

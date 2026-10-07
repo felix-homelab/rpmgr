@@ -1,0 +1,18 @@
+# SPDX-License-Identifier: Apache-2.0
+version: v2
+modules:
+  - path: proto
+lint:
+  use:
+    - STANDARD
+  # The names follow the sketch in docs/03 (service Control, AgentMessage, ControllerMessage),
+  # which the STANDARD rules for service and request/response names reject; see
+  # docs/spikes/S4.md.
+  except:
+    - SERVICE_SUFFIX
+    - RPC_REQUEST_STANDARD_NAME
+    - RPC_RESPONSE_STANDARD_NAME
+    - RPC_REQUEST_RESPONSE_UNIQUE
+breaking:
+  use:
+    - FILE

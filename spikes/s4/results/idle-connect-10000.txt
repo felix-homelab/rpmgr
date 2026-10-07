@@ -1,0 +1,60 @@
+2026/10/06 14:58:09 1000 sessions open
+2026/10/06 14:58:10 2000 sessions open
+2026/10/06 14:58:11 3000 sessions open
+2026/10/06 14:58:11 4000 sessions open
+2026/10/06 14:58:12 5000 sessions open
+2026/10/06 14:58:12 6000 sessions open
+2026/10/06 14:58:13 7000 sessions open
+2026/10/06 14:58:13 8000 sessions open
+2026/10/06 14:58:14 9000 sessions open
+2026/10/06 14:58:15 10000 sessions open
+2026/10/06 14:58:15 10000 sessions open after 6.0 s; idling 1m0s
+{
+  "stack": "connect",
+  "sessions": 10000,
+  "go_version": "go1.27.1",
+  "setup_seconds": 5.96423156,
+  "idle_seconds": 60.000222866,
+  "server_before": {
+    "heap_alloc": 704048,
+    "heap_inuse": 1449984,
+    "stack_inuse": 589824,
+    "sys": 13728008,
+    "rss": 16756736,
+    "goroutines": 5
+  },
+  "server_after": {
+    "heap_alloc": 333736256,
+    "heap_inuse": 437354496,
+    "stack_inuse": 290422784,
+    "sys": 899214808,
+    "rss": 793919488,
+    "goroutines": 30005,
+    "active_sessions": 10000
+  },
+  "client_before": {
+    "heap_alloc": 697688,
+    "heap_inuse": 1597440,
+    "stack_inuse": 622592,
+    "sys": 14067992,
+    "rss": 16650240,
+    "goroutines": 3
+  },
+  "client_after": {
+    "heap_alloc": 542522680,
+    "heap_inuse": 704315392,
+    "stack_inuse": 127827968,
+    "sys": 1211428904,
+    "rss": 1038118912,
+    "goroutines": 20003
+  },
+  "server_heap_plus_stack_bytes_per_session": 72573.7472,
+  "server_rss_bytes_per_session": 77716.2752,
+  "client_heap_plus_stack_bytes_per_session": 82992.3328,
+  "client_rss_bytes_per_session": 102146.8672,
+  "server_cpu_percent_of_one_core_while_idle": 11.333291236578587,
+  "client_cpu_percent_of_one_core_while_idle": 10.633293836672262,
+  "server_goroutines_per_session": 3,
+  "client_goroutines_per_session": 2,
+  "fd_limit": "1048576"
+}

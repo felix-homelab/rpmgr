@@ -1,0 +1,138 @@
+?   	github.com/felix-homelab/rpmgr/spikes/s4/cmd/idle	[no test files]
+?   	github.com/felix-homelab/rpmgr/spikes/s4/gen/rpmgr/agent/v1	[no test files]
+?   	github.com/felix-homelab/rpmgr/spikes/s4/gen/rpmgr/agent/v1/agentv1connect	[no test files]
+=== RUN   TestBidiFullDuplex
+    control_test.go:173: full duplex: 62 MiB each way; client received its first message 4.726s before its last send
+--- PASS: TestBidiFullDuplex (13.94s)
+=== RUN   TestHalfCloseThenServerSends
+--- PASS: TestHalfCloseThenServerSends (0.02s)
+=== RUN   TestFinding_CancelDoesNotReachBlockedStream
+    control_test.go:268: 2 s after cancel nothing happened; CloseResponse: client canceled: http2: response body closed (code canceled); server after 893µs, end canceled: stream error: stream ID 1; CANCEL, ctx context canceled
+--- PASS: TestFinding_CancelDoesNotReachBlockedStream (2.07s)
+=== RUN   TestFinding_CancelDoesNotReachBlockedStreamXNet
+--- PASS: TestFinding_CancelDoesNotReachBlockedStreamXNet (2.10s)
+=== RUN   TestCancelWithCloseResponseWorkaround
+    control_test.go:332: with CloseResponse on cancel: client after 1.059ms (canceled: http2: response body closed, code canceled); server after 1.507ms (end canceled: stream error: stream ID 1; CANCEL, ctx context canceled)
+--- PASS: TestCancelWithCloseResponseWorkaround (0.11s)
+=== RUN   TestCancelReachesServerOnNextCall
+    control_test.go:355: server saw a clean EOF; its call context error at that moment: <nil>
+--- PASS: TestCancelReachesServerOnNextCall (0.05s)
+=== RUN   TestServerErrorReachesClient
+--- PASS: TestServerErrorReachesClient (0.06s)
+=== RUN   TestServerCloseIsEOF
+--- PASS: TestServerCloseIsEOF (0.05s)
+=== RUN   TestDeadlineHeaderPropagates
+    control_test.go:403: server deadline -33.136004ms before the client's
+--- PASS: TestDeadlineHeaderPropagates (0.07s)
+=== RUN   TestFinding_DeadlineDoesNotEndBlockedStream
+--- PASS: TestFinding_DeadlineDoesNotEndBlockedStream (2.04s)
+=== RUN   TestUnaryDeadline
+=== RUN   TestUnaryDeadline/unary_expires
+    control_test.go:455: unary deadline: server call context ended with context canceled
+=== RUN   TestUnaryDeadline/unary_within_deadline
+--- PASS: TestUnaryDeadline (0.34s)
+    --- PASS: TestUnaryDeadline/unary_expires (0.31s)
+    --- PASS: TestUnaryDeadline/unary_within_deadline (0.02s)
+=== RUN   TestMessageSizeLimits
+=== RUN   TestMessageSizeLimits/client_sends_exactly_4_MiB
+=== RUN   TestMessageSizeLimits/client_send_limit_refuses_4_MiB_+_1
+=== RUN   TestMessageSizeLimits/server_read_limit_refuses_4_MiB_+_1
+=== RUN   TestMessageSizeLimits/server_sends_exactly_4_MiB
+=== RUN   TestMessageSizeLimits/server_send_limit_refuses_4_MiB_+_1
+=== RUN   TestMessageSizeLimits/client_read_limit_refuses_4_MiB_+_1_when_the_server_ends_the_call
+--- PASS: TestMessageSizeLimits (1.48s)
+    --- PASS: TestMessageSizeLimits/client_sends_exactly_4_MiB (0.48s)
+    --- PASS: TestMessageSizeLimits/client_send_limit_refuses_4_MiB_+_1 (0.11s)
+    --- PASS: TestMessageSizeLimits/server_read_limit_refuses_4_MiB_+_1 (0.21s)
+    --- PASS: TestMessageSizeLimits/server_sends_exactly_4_MiB (0.40s)
+    --- PASS: TestMessageSizeLimits/server_send_limit_refuses_4_MiB_+_1 (0.09s)
+    --- PASS: TestMessageSizeLimits/client_read_limit_refuses_4_MiB_+_1_when_the_server_ends_the_call (0.18s)
+=== RUN   TestFinding_SendLimitCountsCompressedSize
+    control_test.go:549: server sent a 4194305-byte message despite its 4 MiB send limit; client: resource_exhausted: message size 4194305 is larger than configured max 4194304
+    control_test.go:557: exactly 4 MiB of random bytes under gzip: resource_exhausted: compressed message size 4194649 exceeds sendMaxBytes 4194304
+--- PASS: TestFinding_SendLimitCountsCompressedSize (1.70s)
+=== RUN   TestFinding_ReadLimitBlocksOnOpenStream
+    control_test.go:586: Receive blocked until CloseResponse, then returned resource_exhausted: message size 4194650 is larger than configured max 4194304 (code resource_exhausted)
+--- PASS: TestFinding_ReadLimitBlocksOnOpenStream (2.04s)
+=== RUN   TestLivenessBlackhole
+=== RUN   TestLivenessBlackhole/direct_proxy
+2026/10/06 15:04:20 timeout waiting for PING response
+    control_test.go:643: client stream ended: invalid_argument: protocol error: incomplete envelope: http2: client connection lost (code invalid_argument)
+    control_test.go:596: server session ended: canceled: client disconnected
+    control_test.go:601: 1s / 500ms: client detected after 1.000259727s, server after 992.167435ms
+=== RUN   TestLivenessBlackhole/TLS_passthrough
+2026/10/06 15:04:22 timeout waiting for PING response
+    control_test.go:643: client stream ended: invalid_argument: protocol error: incomplete envelope: http2: client connection lost (code invalid_argument)
+    control_test.go:596: server session ended: canceled: client disconnected
+    control_test.go:601: 1s / 500ms: client detected after 999.75449ms, server after 986.038712ms
+--- PASS: TestLivenessBlackhole (3.10s)
+    --- PASS: TestLivenessBlackhole/direct_proxy (1.54s)
+    --- PASS: TestLivenessBlackhole/TLS_passthrough (1.56s)
+=== RUN   TestLivenessRealValues
+    control_test.go:610: set S4_REAL_LIVENESS=1
+--- SKIP: TestLivenessRealValues (0.00s)
+=== RUN   TestIdleSessionSurvivesPings
+    control_test.go:697: 2106 bytes of PING traffic in 3 s of idleness at 200ms / 100ms
+--- PASS: TestIdleSessionSurvivesPings (3.07s)
+=== RUN   TestTLSPassthrough
+=== RUN   TestTLSPassthrough/unknown_SNI_is_closed
+=== RUN   TestTLSPassthrough/not_TLS_is_closed
+--- PASS: TestTLSPassthrough (0.08s)
+    --- PASS: TestTLSPassthrough/unknown_SNI_is_closed (0.01s)
+    --- PASS: TestTLSPassthrough/not_TLS_is_closed (0.00s)
+=== RUN   TestRejectsWrongIdentity
+=== RUN   TestRejectsWrongIdentity/controller_role_as_client
+2026/10/06 15:04:25 http: TLS handshake error from 127.0.0.1:48372: role "controller" may not open a control session
+=== RUN   TestRejectsWrongIdentity/no_client_certificate
+2026/10/06 15:04:25 http: TLS handshake error from 127.0.0.1:48388: tls: client didn't provide a certificate
+=== RUN   TestRejectsWrongIdentity/TLS_1.2
+2026/10/06 15:04:25 http: TLS handshake error from 127.0.0.1:48396: tls: client offered only unsupported versions: [303]
+=== RUN   TestRejectsWrongIdentity/certificate_from_another_CA
+2026/10/06 15:04:25 http: TLS handshake error from 127.0.0.1:48404: tls: failed to verify certificate: x509: certificate signed by unknown authority (possibly because of "x509: ECDSA verification failure" while trying to verify candidate authority certificate "rpmgr root rpmgr-s4test01")
+--- PASS: TestRejectsWrongIdentity (0.12s)
+    --- PASS: TestRejectsWrongIdentity/controller_role_as_client (0.02s)
+    --- PASS: TestRejectsWrongIdentity/no_client_certificate (0.02s)
+    --- PASS: TestRejectsWrongIdentity/TLS_1.2 (0.00s)
+    --- PASS: TestRejectsWrongIdentity/certificate_from_another_CA (0.02s)
+PASS
+ok  	github.com/felix-homelab/rpmgr/spikes/s4/internal/control	33.501s
+=== RUN   TestGRPCClient_CancelAndDeadline
+=== RUN   TestGRPCClient_CancelAndDeadline/grpc-go_native_server
+    grpcstack_test.go:199: cancel: client Canceled after 894µs; server after 725µs (end rpc error: code = Canceled desc = context canceled, ctx context canceled)
+    grpcstack_test.go:222: deadline: client DeadlineExceeded at 1ms; server at 1ms (end rpc error: code = DeadlineExceeded desc = context deadline exceeded, ctx context deadline exceeded)
+=== RUN   TestGRPCClient_CancelAndDeadline/grpc-go_ServeHTTP_on_net/http
+    grpcstack_test.go:199: cancel: client Canceled after 1.254ms; server after 1.211ms (end rpc error: code = Canceled desc = context canceled, ctx context canceled)
+    grpcstack_test.go:222: deadline: client DeadlineExceeded at 2ms; server at 2ms (end rpc error: code = Canceled desc = context canceled, ctx context canceled)
+=== RUN   TestGRPCClient_CancelAndDeadline/connect-go_server
+    grpcstack_test.go:199: cancel: client Canceled after 1.637ms; server after 1.331ms (end canceled: stream error: stream ID 3; CANCEL, ctx context canceled)
+    grpcstack_test.go:222: deadline: client DeadlineExceeded at 2ms; server at 2ms (end canceled: stream error: stream ID 5; CANCEL, ctx context canceled)
+--- PASS: TestGRPCClient_CancelAndDeadline (1.82s)
+    --- PASS: TestGRPCClient_CancelAndDeadline/grpc-go_native_server (0.58s)
+    --- PASS: TestGRPCClient_CancelAndDeadline/grpc-go_ServeHTTP_on_net/http (0.60s)
+    --- PASS: TestGRPCClient_CancelAndDeadline/connect-go_server (0.63s)
+=== RUN   TestGRPC_FullDuplex
+--- PASS: TestGRPC_FullDuplex (3.98s)
+=== RUN   TestGRPC_MessageSizeLimits
+=== RUN   TestGRPC_MessageSizeLimits/server_sends_exactly_4_MiB
+=== RUN   TestGRPC_MessageSizeLimits/server_send_limit_refuses_4_MiB_+_1
+=== RUN   TestGRPC_MessageSizeLimits/client_read_limit_on_a_stream_the_server_keeps_open_returns_at_once
+    grpcstack_test.go:303: client: rpc error: code = ResourceExhausted desc = grpc: received message larger than max (4194305 vs. 4194304); server stream ended with rpc error: code = Canceled desc = context canceled
+=== RUN   TestGRPC_MessageSizeLimits/client_send_limit_refuses_4_MiB_+_1
+=== RUN   TestGRPC_MessageSizeLimits/server_read_limit_refuses_4_MiB_+_1
+=== RUN   TestGRPC_MessageSizeLimits/gzip:_the_sender_counts_the_compressed_size,_the_receiver_the_decompressed_size
+    grpcstack_test.go:330: compressible 4 MiB + 1 under gzip: Send returned <nil>; the server's read limit answered rpc error: code = ResourceExhausted desc = grpc: received message after decompression larger than max 4194304
+    grpcstack_test.go:334: incompressible exactly 4 MiB under gzip: Send returned rpc error: code = ResourceExhausted desc = trying to send message larger than max (4194649 vs. 4194304)
+--- PASS: TestGRPC_MessageSizeLimits (1.08s)
+    --- PASS: TestGRPC_MessageSizeLimits/server_sends_exactly_4_MiB (0.20s)
+    --- PASS: TestGRPC_MessageSizeLimits/server_send_limit_refuses_4_MiB_+_1 (0.08s)
+    --- PASS: TestGRPC_MessageSizeLimits/client_read_limit_on_a_stream_the_server_keeps_open_returns_at_once (0.08s)
+    --- PASS: TestGRPC_MessageSizeLimits/client_send_limit_refuses_4_MiB_+_1 (0.06s)
+    --- PASS: TestGRPC_MessageSizeLimits/server_read_limit_refuses_4_MiB_+_1 (0.07s)
+    --- PASS: TestGRPC_MessageSizeLimits/gzip:_the_sender_counts_the_compressed_size,_the_receiver_the_decompressed_size (0.58s)
+=== RUN   TestGRPC_LivenessBlackhole
+    grpcstack_test.go:363: blackhole: server (1 s / 0.5 s) after 504ms (rpc error: code = Canceled desc = context canceled); client (10 s / 1 s) after 10.003s (rpc error: code = Unavailable desc = keepalive ping failed to receive ACK within timeout)
+--- PASS: TestGRPC_LivenessBlackhole (12.02s)
+PASS
+ok  	github.com/felix-homelab/rpmgr/spikes/s4/internal/grpcstack	19.946s
+?   	github.com/felix-homelab/rpmgr/spikes/s4/internal/pki	[no test files]
+?   	github.com/felix-homelab/rpmgr/spikes/s4/internal/proxy	[no test files]

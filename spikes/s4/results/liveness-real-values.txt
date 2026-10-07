@@ -1,0 +1,24 @@
+=== RUN   TestLivenessRealValues
+=== RUN   TestLivenessRealValues/passthrough=false
+=== PAUSE TestLivenessRealValues/passthrough=false
+=== RUN   TestLivenessRealValues/passthrough=true
+=== PAUSE TestLivenessRealValues/passthrough=true
+=== CONT  TestLivenessRealValues/passthrough=false
+=== CONT  TestLivenessRealValues/passthrough=true
+2026/10/06 14:59:11 timeout waiting for PING response
+2026/10/06 14:59:11 timeout waiting for PING response
+=== NAME  TestLivenessRealValues/passthrough=false
+    control_test.go:608: client stream ended: invalid_argument: protocol error: incomplete envelope: http2: client connection lost (code invalid_argument)
+    control_test.go:581: server session ended: canceled: client disconnected
+=== NAME  TestLivenessRealValues/passthrough=true
+    control_test.go:608: client stream ended: invalid_argument: protocol error: incomplete envelope: http2: client connection lost (code invalid_argument)
+=== NAME  TestLivenessRealValues/passthrough=false
+    control_test.go:582: 20 s / 10 s, passthrough=false: client detected after 20.011373634s, server after 20.0114656s
+=== NAME  TestLivenessRealValues/passthrough=true
+    control_test.go:581: server session ended: canceled: client disconnected
+    control_test.go:582: 20 s / 10 s, passthrough=true: client detected after 20.004537203s, server after 20.004252151s
+--- PASS: TestLivenessRealValues (0.00s)
+    --- PASS: TestLivenessRealValues/passthrough=false (30.03s)
+    --- PASS: TestLivenessRealValues/passthrough=true (30.03s)
+PASS
+ok  	github.com/felix-homelab/rpmgr/spikes/s4/internal/control	30.033s
