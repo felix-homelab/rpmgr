@@ -52,6 +52,7 @@ type Controller struct {
 	opts     Options
 	web      *http.Client
 	stops    []func()
+	sealer   *secret.Sealer
 }
 
 // StartController starts a controller on a loopback port; t's cleanup stops it.
@@ -82,14 +83,17 @@ func StartController(t testing.TB, o Options) *Controller {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := store.WriteTx(sys, db, func(tx *ent.Tx) error { return pki.InitCA(sys, tx, sealer, td, time.Now()) }); err != nil {
+	// The CA starts 60 days ago, so tests can hand agents certificates that have expired since.
+	if err := store.WriteTx(sys, db, func(tx *ent.Tx) error {
+		return pki.InitCA(sys, tx, sealer, td, time.Now().Add(-60*24*time.Hour))
+	}); err != nil {
 		t.Fatal(err)
 	}
 	ca, err := pki.LoadCA(sys, db, sealer, time.Now)
 	if err != nil {
 		t.Fatal(err)
 	}
-	c := &Controller{DB: db, CA: ca, Org: storetest.Org(t, db, "org-a"), Sys: sys, opts: o}
+	c := &Controller{DB: db, CA: ca, Org: storetest.Org(t, db, "org-a"), Sys: sys, opts: o, sealer: sealer}
 	c.URL, c.Sessions = c.StartReplica(t)
 	return c
 }
@@ -112,7 +116,7 @@ func (c *Controller) StartReplica(t testing.TB) (string, *controller.Sessions) {
 	roots := x509.NewCertPool()
 	roots.AddCert(c.CA.Root())
 	cfg := pki.AgentEndpointConfig(node, roots, pki.Expect{TrustDomain: td, Kinds: []pki.Kind{pki.KindConnector, pki.KindGateway}},
-		nil, pki.Reauth{})
+		nil, controller.ReauthChecks(c.DB, c.Sys))
 	split := controller.NewSplitter(td, ln.Addr())
 	agents := controller.NewAgentServer(cfg, td)
 	so := controller.SessionsOptions{DB: c.DB, CA: c.CA, Node: nodeID, Version: c.opts.Version,
@@ -125,6 +129,7 @@ func (c *Controller) StartReplica(t testing.TB) (string, *controller.Sessions) {
 	running := make(chan struct{})
 	go func() { sessions.Run(runCtx); close(running) }()
 	agentv1.RegisterControlServer(agents, sessions)
+	agentv1.RegisterReauthServer(agents, controller.NewReauthService(c.DB, c.CA, c.Sys, c.opts.Now))
 	agentv1.RegisterEnrollmentServer(agents, enroll.NewService(c.DB, c.CA, []string{url}, nil))
 	mux := http.NewServeMux()
 	mux.Handle("/.well-known/rpmgr/trust-bundle", enroll.TrustBundleHandler(c.CA.Root()))
@@ -172,6 +177,43 @@ func (c *Controller) EnrollConnector(t testing.TB, dir string) agent.Loaded {
 		t.Fatal(err)
 	}
 	return l
+}
+
+// IssueAt issues the agent of id a certificate as the CA would have at time at, and stores it in
+// the identity directory in place of the current one.
+func (c *Controller) IssueAt(t testing.TB, id agent.Loaded, at time.Time) *x509.Certificate {
+	t.Helper()
+	ca, err := pki.LoadCA(c.Sys, c.DB, c.sealer, func() time.Time { return at })
+	if err != nil {
+		t.Fatal(err)
+	}
+	key, err := pki.NewKey()
+	if err != nil {
+		t.Fatal(err)
+	}
+	der, err := x509.CreateCertificateRequest(rand.Reader, &x509.CertificateRequest{}, key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	csr, err := x509.ParseCertificateRequest(der)
+	if err != nil {
+		t.Fatal(err)
+	}
+	identity, err := c.CA.IdentityOf(id.Certificate.Leaf, id.Certificate.Leaf.NotBefore.Add(pki.Backdate))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var leaf *x509.Certificate
+	if err := store.WriteTx(c.Sys, c.DB, func(tx *ent.Tx) error {
+		leaf, err = ca.Issue(c.Sys, tx, csr, identity, pki.DefaultLeafLifetime)
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := agent.SaveCertificate(id.Dir, key, [][]byte{leaf.Raw, ca.Intermediate().Raw}); err != nil {
+		t.Fatal(err)
+	}
+	return leaf
 }
 
 // webCertificate is a self-signed certificate for 127.0.0.1, as an operator might supply.

@@ -192,7 +192,7 @@ func Load(dir string) (Loaded, error) {
 	if st.Mode().Perm()&0o077 != 0 {
 		return l, fmt.Errorf("agent: %s has mode %04o; it must be 0600", keyPath, st.Mode().Perm())
 	}
-	if l.Certificate, err = tls.LoadX509KeyPair(filepath.Join(dir, ChainFile), keyPath); err != nil {
+	if l.Certificate, err = loadKeyPair(dir); err != nil {
 		return l, err
 	}
 	rootsPEM, err := os.ReadFile(filepath.Join(dir, RootsFile)) //nolint:gosec // G304: the configured identity directory
@@ -215,4 +215,55 @@ func Load(dir string) (Loaded, error) {
 		return l, fmt.Errorf("agent: %s: %w", SigningFile, err)
 	}
 	return l, nil
+}
+
+// pending is the suffix of a renewed chain or key that SaveCertificate has written but not yet
+// moved into place.
+const pending = ".new"
+
+// SaveCertificate stores a renewed key and chain in the identity directory. Both are written
+// beside the current files first and then moved into place, the key first; a start between the
+// two moves finds the new chain beside the new key and finishes the move (loadKeyPair).
+func SaveCertificate(dir string, key *ecdsa.PrivateKey, chain [][]byte) error {
+	der, err := x509.MarshalPKCS8PrivateKey(key)
+	if err != nil {
+		return err
+	}
+	var chainPEM []byte
+	for _, c := range chain {
+		chainPEM = append(chainPEM, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: c})...)
+	}
+	keyPath, chainPath := filepath.Join(dir, KeyFile), filepath.Join(dir, ChainFile)
+	if err := writeAtomic(keyPath+pending, pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: der}), 0o600); err != nil {
+		return err
+	}
+	if err := writeAtomic(chainPath+pending, chainPEM, 0o644); err != nil {
+		return err
+	}
+	if err := os.Rename(keyPath+pending, keyPath); err != nil {
+		return err
+	}
+	if err := os.Rename(chainPath+pending, chainPath); err != nil {
+		return err
+	}
+	return syncDir(dir)
+}
+
+// loadKeyPair loads the key and chain of dir. If they do not match and a pending chain matches the
+// key, a SaveCertificate was interrupted between its two moves; the pending chain is moved into
+// place.
+func loadKeyPair(dir string) (tls.Certificate, error) {
+	keyPath, chainPath := filepath.Join(dir, KeyFile), filepath.Join(dir, ChainFile)
+	cert, err := tls.LoadX509KeyPair(chainPath, keyPath)
+	if err == nil {
+		return cert, nil
+	}
+	next, nerr := tls.LoadX509KeyPair(chainPath+pending, keyPath)
+	if nerr != nil {
+		return tls.Certificate{}, err
+	}
+	if err := os.Rename(chainPath+pending, chainPath); err != nil {
+		return tls.Certificate{}, err
+	}
+	return next, nil
 }

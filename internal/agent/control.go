@@ -4,6 +4,8 @@ package agent
 
 import (
 	"context"
+	"crypto/ecdsa"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"io"
@@ -15,13 +17,11 @@ import (
 	"time"
 
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/keepalive"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	agentv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/agent/v1"
 	"github.com/felix-homelab/rpmgr/internal/agentproto"
-	"github.com/felix-homelab/rpmgr/internal/pki"
 )
 
 // The agent's control-session timing (docs/03-connections.md, "Timeouts, keepalive and backoff").
@@ -52,6 +52,12 @@ type ClientOptions struct {
 	OnMessage func(*agentv1.ControllerMessage)
 	// Backoff between attempts; nil is ControlBackoff.
 	Backoff *Backoff
+	// SaveCertificate stores a renewed key and chain before the client uses them; nil keeps them
+	// in memory only.
+	SaveCertificate func(key *ecdsa.PrivateKey, chain [][]byte) error
+	// RenewJitter returns a number in [0, 1) that places each renewal within its window; nil is
+	// random.
+	RenewJitter func() float64
 }
 
 // Client keeps the agent's one control session to the controller.
@@ -63,9 +69,13 @@ type Client struct {
 	welcomes int
 	goodbyes map[agentv1.GoodbyeReason]int
 	endpoint string
-	// the current session's stream, for Send
+	cert     tls.Certificate // the certificate new connections present
+	// the current session, for Send, Renew and Reconnect
 	sendMu sync.Mutex
 	stream agentv1.Control_SessionClient
+	conn   *grpc.ClientConn
+	creds  *stateCreds
+	end    context.CancelFunc
 }
 
 // NewClient returns the control-session client.
@@ -79,7 +89,10 @@ func NewClient(o ClientOptions) *Client {
 	if o.Backoff == nil {
 		o.Backoff = ControlBackoff()
 	}
-	return &Client{o: o, goodbyes: map[agentv1.GoodbyeReason]int{}}
+	if o.RenewJitter == nil {
+		o.RenewJitter = randomFraction
+	}
+	return &Client{o: o, goodbyes: map[agentv1.GoodbyeReason]int{}, cert: o.Identity.Certificate}
 }
 
 // Run keeps a control session until ctx ends or the controller revokes the agent. It tries the
@@ -89,12 +102,20 @@ func (c *Client) Run(ctx context.Context) error {
 	if len(c.o.Endpoints) == 0 {
 		return errors.New("agent: no controller endpoint")
 	}
+	rctx, stopRenewal := context.WithCancel(ctx)
+	renewing := make(chan struct{})
+	go func() { c.renewLoop(rctx); close(renewing) }()
+	defer func() { stopRenewal(); <-renewing }()
 	next := 0
 	for ctx.Err() == nil {
 		start := c.o.Now()
 		endpoints := c.Endpoints()
 		ep := endpoints[next%len(endpoints)]
-		out, err := c.session(ctx, ep)
+		var out outcome
+		err := c.reauthIfExpired(ctx, ep)
+		if err == nil {
+			out, err = c.session(ctx, ep)
+		}
 		c.o.Backoff.Healthy(c.o.Now().Sub(start))
 		switch {
 		case ctx.Err() != nil:
@@ -132,10 +153,9 @@ func (c *Client) session(ctx context.Context, endpoint string) (outcome, error) 
 	if err != nil {
 		return out, err
 	}
-	cfg := pki.ClientConfig(c.o.Identity.Certificate, c.o.Identity.Roots, "controller."+c.o.Identity.TrustDomain,
-		pki.Expect{TrustDomain: c.o.Identity.TrustDomain, Kinds: []pki.Kind{pki.KindController}}, c.o.Now, nil)
+	creds := c.credentials("controller." + c.o.Identity.TrustDomain)
 	cc, err := grpc.NewClient("passthrough:///"+addr,
-		grpc.WithTransportCredentials(credentials.NewTLS(cfg)),
+		grpc.WithTransportCredentials(creds),
 		grpc.WithKeepaliveParams(keepalive.ClientParameters{Time: keepaliveTime, Timeout: keepaliveTimeout, PermitWithoutStream: true}),
 		grpc.WithDefaultCallOptions(grpc.MaxCallRecvMsgSize(agentproto.MaxControlMessage), grpc.MaxCallSendMsgSize(agentproto.MaxControlMessage)))
 	if err != nil {
@@ -159,11 +179,11 @@ func (c *Client) session(ctx context.Context, endpoint string) (outcome, error) 
 		return out, err
 	}
 	c.sendMu.Lock()
-	c.stream = st
+	c.stream, c.conn, c.creds, c.end = st, cc, creds, cancel
 	c.sendMu.Unlock()
 	defer func() {
 		c.sendMu.Lock()
-		c.stream = nil
+		c.stream, c.conn, c.creds, c.end = nil, nil, nil, nil
 		c.sendMu.Unlock()
 	}()
 	for {

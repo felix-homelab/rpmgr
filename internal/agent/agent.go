@@ -4,6 +4,7 @@ package agent
 
 import (
 	"context"
+	"crypto/ecdsa"
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
@@ -27,8 +28,8 @@ type ControlOptions struct {
 
 // RunControl runs an agent's control plane until ctx ends: it loads the identity and the
 // last-known-good snapshot, so the role runs before any controller answers, then keeps the control
-// session and applies the snapshots it receives. A last-known-good copy that does not verify is
-// logged and skipped; the agent then waits for the controller.
+// session, renews the certificate and applies the snapshots it receives. A last-known-good copy
+// that does not verify is logged and skipped; the agent then waits for the controller.
 func RunControl(ctx context.Context, o ControlOptions) error {
 	if o.Logger == nil {
 		o.Logger = slog.New(slog.DiscardHandler)
@@ -47,7 +48,8 @@ func RunControl(ctx context.Context, o ControlOptions) error {
 		OnEndpoints: func(eps []string) { client.SetEndpoints(eps) }})
 	client = NewClient(ClientOptions{Identity: id, Endpoints: id.Endpoints, Version: o.Version, Capabilities: o.Capabilities,
 		BootID: hex.EncodeToString(boot), Now: o.Now, Logger: o.Logger, Backoff: o.Backoff,
-		Hello: rt.Hello, OnWelcome: rt.Welcome, OnMessage: rt.Message})
+		Hello: rt.Hello, OnWelcome: rt.Welcome, OnMessage: rt.Message,
+		SaveCertificate: func(key *ecdsa.PrivateKey, chain [][]byte) error { return SaveCertificate(id.Dir, key, chain) }})
 	if err := rt.LoadLastKnownGood(ctx); errors.Is(err, ErrBadLastKnownGood) {
 		o.Logger.Error("starting without the last-known-good snapshot", "error", err)
 	} else if err != nil {
