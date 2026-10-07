@@ -321,7 +321,7 @@ func TestEnroll_RefusedBeforeTheNetwork(t *testing.T) {
 	cases := map[string]func(o *agent.EnrollOptions){
 		"bad pin":               func(o *agent.EnrollOptions) { o.Pin = "sha256:abc" },
 		"API token":             func(o *agent.EnrollOptions) { o.Token = pat },
-		"mistyped token":        func(o *agent.EnrollOptions) { o.Token = good[:len(good)-1] + "x" },
+		"mistyped token":        func(o *agent.EnrollOptions) { o.Token = mistype(good) },
 		"http controller":       func(o *agent.EnrollOptions) { o.Controller = "http://127.0.0.1:1" },
 		"relative identity dir": func(o *agent.EnrollOptions) { o.IdentityDir = "identity" },
 		"open identity dir": func(o *agent.EnrollOptions) {
@@ -339,6 +339,15 @@ func TestEnroll_RefusedBeforeTheNetwork(t *testing.T) {
 			t.Errorf("%s: reached the network: %v", name, err)
 		}
 	}
+}
+
+// mistype changes the last character of s to a different one.
+func mistype(s string) string {
+	last := byte('x')
+	if s[len(s)-1] == last {
+		last = 'y'
+	}
+	return s[:len(s)-1] + string(last)
 }
 
 func TestReadToken(t *testing.T) {
