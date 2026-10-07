@@ -33,6 +33,18 @@ func (f AuditHeadFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, e
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.AuditHeadMutation", m)
 }
 
+// The CAKeyFunc type is an adapter to allow the use of ordinary
+// function as CAKey mutator.
+type CAKeyFunc func(context.Context, *ent.CAKeyMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f CAKeyFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.CAKeyMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.CAKeyMutation", m)
+}
+
 // The ConfigRevisionFunc type is an adapter to allow the use of ordinary
 // function as ConfigRevision mutator.
 type ConfigRevisionFunc func(context.Context, *ent.ConfigRevisionMutation) (ent.Value, error)
@@ -93,6 +105,18 @@ func (f InstanceSettingFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Va
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.InstanceSettingMutation", m)
 }
 
+// The IssuedCertificateFunc type is an adapter to allow the use of ordinary
+// function as IssuedCertificate mutator.
+type IssuedCertificateFunc func(context.Context, *ent.IssuedCertificateMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f IssuedCertificateFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.IssuedCertificateMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.IssuedCertificateMutation", m)
+}
+
 // The OrgFunc type is an adapter to allow the use of ordinary
 // function as Org mutator.
 type OrgFunc func(context.Context, *ent.OrgMutation) (ent.Value, error)
@@ -115,6 +139,18 @@ func (f OrgSettingFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, 
 		return f(ctx, mv)
 	}
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.OrgSettingMutation", m)
+}
+
+// The SecretMetaFunc type is an adapter to allow the use of ordinary
+// function as SecretMeta mutator.
+type SecretMetaFunc func(context.Context, *ent.SecretMetaMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f SecretMetaFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.SecretMetaMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.SecretMetaMutation", m)
 }
 
 // Condition is a hook condition function.

@@ -18,6 +18,8 @@ type Tx struct {
 	AuditEntry *AuditEntryClient
 	// AuditHead is the client for interacting with the AuditHead builders.
 	AuditHead *AuditHeadClient
+	// CAKey is the client for interacting with the CAKey builders.
+	CAKey *CAKeyClient
 	// ConfigRevision is the client for interacting with the ConfigRevision builders.
 	ConfigRevision *ConfigRevisionClient
 	// ConfigSeq is the client for interacting with the ConfigSeq builders.
@@ -28,10 +30,14 @@ type Tx struct {
 	Instance *InstanceClient
 	// InstanceSetting is the client for interacting with the InstanceSetting builders.
 	InstanceSetting *InstanceSettingClient
+	// IssuedCertificate is the client for interacting with the IssuedCertificate builders.
+	IssuedCertificate *IssuedCertificateClient
 	// Org is the client for interacting with the Org builders.
 	Org *OrgClient
 	// OrgSetting is the client for interacting with the OrgSetting builders.
 	OrgSetting *OrgSettingClient
+	// SecretMeta is the client for interacting with the SecretMeta builders.
+	SecretMeta *SecretMetaClient
 
 	// lazily loaded.
 	client     *Client
@@ -165,13 +171,16 @@ func (tx *Tx) Client() *Client {
 func (tx *Tx) init() {
 	tx.AuditEntry = NewAuditEntryClient(tx.config)
 	tx.AuditHead = NewAuditHeadClient(tx.config)
+	tx.CAKey = NewCAKeyClient(tx.config)
 	tx.ConfigRevision = NewConfigRevisionClient(tx.config)
 	tx.ConfigSeq = NewConfigSeqClient(tx.config)
 	tx.GatewayGroup = NewGatewayGroupClient(tx.config)
 	tx.Instance = NewInstanceClient(tx.config)
 	tx.InstanceSetting = NewInstanceSettingClient(tx.config)
+	tx.IssuedCertificate = NewIssuedCertificateClient(tx.config)
 	tx.Org = NewOrgClient(tx.config)
 	tx.OrgSetting = NewOrgSettingClient(tx.config)
+	tx.SecretMeta = NewSecretMetaClient(tx.config)
 }
 
 // txDriver wraps the given dialect.Tx with a nop dialect.Driver implementation.

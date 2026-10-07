@@ -14,13 +14,16 @@ import (
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/auditentry"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/audithead"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/cakey"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/configrevision"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/configseq"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/gatewaygroup"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/instance"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/instancesetting"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/issuedcertificate"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/org"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/orgsetting"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/secretmeta"
 )
 
 // ent aliases to avoid import conflicts in user's code.
@@ -81,15 +84,18 @@ var (
 func checkColumn(t, c string) error {
 	initCheck.Do(func() {
 		columnCheck = sql.NewColumnCheck(map[string]func(string) bool{
-			auditentry.Table:      auditentry.ValidColumn,
-			audithead.Table:       audithead.ValidColumn,
-			configrevision.Table:  configrevision.ValidColumn,
-			configseq.Table:       configseq.ValidColumn,
-			gatewaygroup.Table:    gatewaygroup.ValidColumn,
-			instance.Table:        instance.ValidColumn,
-			instancesetting.Table: instancesetting.ValidColumn,
-			org.Table:             org.ValidColumn,
-			orgsetting.Table:      orgsetting.ValidColumn,
+			auditentry.Table:        auditentry.ValidColumn,
+			audithead.Table:         audithead.ValidColumn,
+			cakey.Table:             cakey.ValidColumn,
+			configrevision.Table:    configrevision.ValidColumn,
+			configseq.Table:         configseq.ValidColumn,
+			gatewaygroup.Table:      gatewaygroup.ValidColumn,
+			instance.Table:          instance.ValidColumn,
+			instancesetting.Table:   instancesetting.ValidColumn,
+			issuedcertificate.Table: issuedcertificate.ValidColumn,
+			org.Table:               org.ValidColumn,
+			orgsetting.Table:        orgsetting.ValidColumn,
+			secretmeta.Table:        secretmeta.ValidColumn,
 		})
 	})
 	return columnCheck(t, c)

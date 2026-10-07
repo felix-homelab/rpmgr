@@ -64,6 +64,24 @@ var (
 		Columns:    AuditHeadsColumns,
 		PrimaryKey: []*schema.Column{AuditHeadsColumns[0]},
 	}
+	// CaKeysColumns holds the columns for the "ca_keys" table.
+	CaKeysColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeString},
+		{Name: "kind", Type: field.TypeEnum, Enums: []string{"root", "intermediate", "config_signing", "audit_checkpoint"}},
+		{Name: "algorithm", Type: field.TypeString},
+		{Name: "public_key", Type: field.TypeBytes},
+		{Name: "certificate", Type: field.TypeBytes},
+		{Name: "key_enc", Type: field.TypeBytes, Nullable: true},
+		{Name: "not_before", Type: field.TypeTime},
+		{Name: "not_after", Type: field.TypeTime},
+		{Name: "status", Type: field.TypeEnum, Enums: []string{"next", "active", "retired"}},
+	}
+	// CaKeysTable holds the schema information for the "ca_keys" table.
+	CaKeysTable = &schema.Table{
+		Name:       "ca_keys",
+		Columns:    CaKeysColumns,
+		PrimaryKey: []*schema.Column{CaKeysColumns[0]},
+	}
 	// ConfigRevisionsColumns holds the columns for the "config_revisions" table.
 	ConfigRevisionsColumns = []*schema.Column{
 		{Name: "seq", Type: field.TypeInt64, Increment: true},
@@ -140,6 +158,34 @@ var (
 		Columns:    InstanceSettingsColumns,
 		PrimaryKey: []*schema.Column{InstanceSettingsColumns[0]},
 	}
+	// IssuedCertificatesColumns holds the columns for the "issued_certificates" table.
+	IssuedCertificatesColumns = []*schema.Column{
+		{Name: "serial", Type: field.TypeString},
+		{Name: "org_id", Type: field.TypeString, Nullable: true},
+		{Name: "subject_type", Type: field.TypeEnum, Enums: []string{"connector", "gateway", "controller"}},
+		{Name: "subject_id", Type: field.TypeString},
+		{Name: "spiffe_id", Type: field.TypeString},
+		{Name: "pubkey_sha256", Type: field.TypeString},
+		{Name: "not_before", Type: field.TypeTime},
+		{Name: "not_after", Type: field.TypeTime},
+		{Name: "first_seen_at", Type: field.TypeTime, Nullable: true},
+		{Name: "superseded_at", Type: field.TypeTime, Nullable: true},
+		{Name: "revoked_at", Type: field.TypeTime, Nullable: true},
+		{Name: "revocation_reason", Type: field.TypeString, Default: ""},
+	}
+	// IssuedCertificatesTable holds the schema information for the "issued_certificates" table.
+	IssuedCertificatesTable = &schema.Table{
+		Name:       "issued_certificates",
+		Columns:    IssuedCertificatesColumns,
+		PrimaryKey: []*schema.Column{IssuedCertificatesColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "issuedcertificate_subject_id",
+				Unique:  false,
+				Columns: []*schema.Column{IssuedCertificatesColumns[3]},
+			},
+		},
+	}
 	// OrgsColumns holds the columns for the "orgs" table.
 	OrgsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeString},
@@ -180,17 +226,42 @@ var (
 			},
 		},
 	}
+	// SecretsMetaColumns holds the columns for the "secrets_meta" table.
+	SecretsMetaColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt, Increment: true},
+		{Name: "table_name", Type: field.TypeString},
+		{Name: "row_id", Type: field.TypeString},
+		{Name: "column_name", Type: field.TypeString},
+		{Name: "kek_version", Type: field.TypeString},
+		{Name: "created_at", Type: field.TypeTime},
+	}
+	// SecretsMetaTable holds the schema information for the "secrets_meta" table.
+	SecretsMetaTable = &schema.Table{
+		Name:       "secrets_meta",
+		Columns:    SecretsMetaColumns,
+		PrimaryKey: []*schema.Column{SecretsMetaColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "secretmeta_table_name_row_id_column_name",
+				Unique:  true,
+				Columns: []*schema.Column{SecretsMetaColumns[1], SecretsMetaColumns[2], SecretsMetaColumns[3]},
+			},
+		},
+	}
 	// Tables holds all the tables in the schema.
 	Tables = []*schema.Table{
 		AuditLogTable,
 		AuditHeadsTable,
+		CaKeysTable,
 		ConfigRevisionsTable,
 		ConfigSeqTable,
 		GatewayGroupsTable,
 		InstanceTable,
 		InstanceSettingsTable,
+		IssuedCertificatesTable,
 		OrgsTable,
 		OrgSettingsTable,
+		SecretsMetaTable,
 	}
 )
 
@@ -201,6 +272,9 @@ func init() {
 	AuditHeadsTable.Annotation = &entsql.Annotation{
 		Table: "audit_heads",
 	}
+	CaKeysTable.Annotation = &entsql.Annotation{
+		Table: "ca_keys",
+	}
 	ConfigSeqTable.Annotation = &entsql.Annotation{
 		Table: "config_seq",
 	}
@@ -210,7 +284,13 @@ func init() {
 	InstanceSettingsTable.Annotation = &entsql.Annotation{
 		Table: "instance_settings",
 	}
+	IssuedCertificatesTable.Annotation = &entsql.Annotation{
+		Table: "issued_certificates",
+	}
 	OrgSettingsTable.Annotation = &entsql.Annotation{
 		Table: "org_settings",
+	}
+	SecretsMetaTable.Annotation = &entsql.Annotation{
+		Table: "secrets_meta",
 	}
 }

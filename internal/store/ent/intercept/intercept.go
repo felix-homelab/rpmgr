@@ -10,14 +10,17 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/auditentry"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/audithead"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/cakey"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/configrevision"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/configseq"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/gatewaygroup"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/instance"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/instancesetting"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/issuedcertificate"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/org"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/orgsetting"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/predicate"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/secretmeta"
 )
 
 // The Query interface represents an operation that queries a graph.
@@ -128,6 +131,33 @@ func (f TraverseAuditHead) Traverse(ctx context.Context, q ent.Query) error {
 		return f(ctx, q)
 	}
 	return fmt.Errorf("unexpected query type %T. expect *ent.AuditHeadQuery", q)
+}
+
+// The CAKeyFunc type is an adapter to allow the use of ordinary function as a Querier.
+type CAKeyFunc func(context.Context, *ent.CAKeyQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f CAKeyFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.CAKeyQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.CAKeyQuery", q)
+}
+
+// The TraverseCAKey type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseCAKey func(context.Context, *ent.CAKeyQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseCAKey) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseCAKey) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.CAKeyQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.CAKeyQuery", q)
 }
 
 // The ConfigRevisionFunc type is an adapter to allow the use of ordinary function as a Querier.
@@ -265,6 +295,33 @@ func (f TraverseInstanceSetting) Traverse(ctx context.Context, q ent.Query) erro
 	return fmt.Errorf("unexpected query type %T. expect *ent.InstanceSettingQuery", q)
 }
 
+// The IssuedCertificateFunc type is an adapter to allow the use of ordinary function as a Querier.
+type IssuedCertificateFunc func(context.Context, *ent.IssuedCertificateQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f IssuedCertificateFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.IssuedCertificateQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.IssuedCertificateQuery", q)
+}
+
+// The TraverseIssuedCertificate type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseIssuedCertificate func(context.Context, *ent.IssuedCertificateQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseIssuedCertificate) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseIssuedCertificate) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.IssuedCertificateQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.IssuedCertificateQuery", q)
+}
+
 // The OrgFunc type is an adapter to allow the use of ordinary function as a Querier.
 type OrgFunc func(context.Context, *ent.OrgQuery) (ent.Value, error)
 
@@ -319,6 +376,33 @@ func (f TraverseOrgSetting) Traverse(ctx context.Context, q ent.Query) error {
 	return fmt.Errorf("unexpected query type %T. expect *ent.OrgSettingQuery", q)
 }
 
+// The SecretMetaFunc type is an adapter to allow the use of ordinary function as a Querier.
+type SecretMetaFunc func(context.Context, *ent.SecretMetaQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f SecretMetaFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.SecretMetaQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.SecretMetaQuery", q)
+}
+
+// The TraverseSecretMeta type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseSecretMeta func(context.Context, *ent.SecretMetaQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseSecretMeta) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseSecretMeta) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.SecretMetaQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.SecretMetaQuery", q)
+}
+
 // NewQuery returns the generic Query interface for the given typed query.
 func NewQuery(q ent.Query) (Query, error) {
 	switch q := q.(type) {
@@ -326,6 +410,8 @@ func NewQuery(q ent.Query) (Query, error) {
 		return &query[*ent.AuditEntryQuery, predicate.AuditEntry, auditentry.OrderOption]{typ: ent.TypeAuditEntry, tq: q}, nil
 	case *ent.AuditHeadQuery:
 		return &query[*ent.AuditHeadQuery, predicate.AuditHead, audithead.OrderOption]{typ: ent.TypeAuditHead, tq: q}, nil
+	case *ent.CAKeyQuery:
+		return &query[*ent.CAKeyQuery, predicate.CAKey, cakey.OrderOption]{typ: ent.TypeCAKey, tq: q}, nil
 	case *ent.ConfigRevisionQuery:
 		return &query[*ent.ConfigRevisionQuery, predicate.ConfigRevision, configrevision.OrderOption]{typ: ent.TypeConfigRevision, tq: q}, nil
 	case *ent.ConfigSeqQuery:
@@ -336,10 +422,14 @@ func NewQuery(q ent.Query) (Query, error) {
 		return &query[*ent.InstanceQuery, predicate.Instance, instance.OrderOption]{typ: ent.TypeInstance, tq: q}, nil
 	case *ent.InstanceSettingQuery:
 		return &query[*ent.InstanceSettingQuery, predicate.InstanceSetting, instancesetting.OrderOption]{typ: ent.TypeInstanceSetting, tq: q}, nil
+	case *ent.IssuedCertificateQuery:
+		return &query[*ent.IssuedCertificateQuery, predicate.IssuedCertificate, issuedcertificate.OrderOption]{typ: ent.TypeIssuedCertificate, tq: q}, nil
 	case *ent.OrgQuery:
 		return &query[*ent.OrgQuery, predicate.Org, org.OrderOption]{typ: ent.TypeOrg, tq: q}, nil
 	case *ent.OrgSettingQuery:
 		return &query[*ent.OrgSettingQuery, predicate.OrgSetting, orgsetting.OrderOption]{typ: ent.TypeOrgSetting, tq: q}, nil
+	case *ent.SecretMetaQuery:
+		return &query[*ent.SecretMetaQuery, predicate.SecretMeta, secretmeta.OrderOption]{typ: ent.TypeSecretMeta, tq: q}, nil
 	default:
 		return nil, fmt.Errorf("unknown query type %T", q)
 	}
