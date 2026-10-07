@@ -22,8 +22,12 @@ type Tx struct {
 	GatewayGroup *GatewayGroupClient
 	// Instance is the client for interacting with the Instance builders.
 	Instance *InstanceClient
+	// InstanceSetting is the client for interacting with the InstanceSetting builders.
+	InstanceSetting *InstanceSettingClient
 	// Org is the client for interacting with the Org builders.
 	Org *OrgClient
+	// OrgSetting is the client for interacting with the OrgSetting builders.
+	OrgSetting *OrgSettingClient
 
 	// lazily loaded.
 	client     *Client
@@ -159,7 +163,9 @@ func (tx *Tx) init() {
 	tx.ConfigSeq = NewConfigSeqClient(tx.config)
 	tx.GatewayGroup = NewGatewayGroupClient(tx.config)
 	tx.Instance = NewInstanceClient(tx.config)
+	tx.InstanceSetting = NewInstanceSettingClient(tx.config)
 	tx.Org = NewOrgClient(tx.config)
+	tx.OrgSetting = NewOrgSettingClient(tx.config)
 }
 
 // txDriver wraps the given dialect.Tx with a nop dialect.Driver implementation.

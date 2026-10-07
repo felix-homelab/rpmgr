@@ -16,7 +16,9 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/configseq"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/gatewaygroup"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/instance"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/instancesetting"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/org"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/orgsetting"
 )
 
 // ent aliases to avoid import conflicts in user's code.
@@ -77,11 +79,13 @@ var (
 func checkColumn(t, c string) error {
 	initCheck.Do(func() {
 		columnCheck = sql.NewColumnCheck(map[string]func(string) bool{
-			configrevision.Table: configrevision.ValidColumn,
-			configseq.Table:      configseq.ValidColumn,
-			gatewaygroup.Table:   gatewaygroup.ValidColumn,
-			instance.Table:       instance.ValidColumn,
-			org.Table:            org.ValidColumn,
+			configrevision.Table:  configrevision.ValidColumn,
+			configseq.Table:       configseq.ValidColumn,
+			gatewaygroup.Table:    gatewaygroup.ValidColumn,
+			instance.Table:        instance.ValidColumn,
+			instancesetting.Table: instancesetting.ValidColumn,
+			org.Table:             org.ValidColumn,
+			orgsetting.Table:      orgsetting.ValidColumn,
 		})
 	})
 	return columnCheck(t, c)

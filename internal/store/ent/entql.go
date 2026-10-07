@@ -7,7 +7,9 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/configseq"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/gatewaygroup"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/instance"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/instancesetting"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/org"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/orgsetting"
 
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
@@ -17,7 +19,7 @@ import (
 
 // schemaGraph holds a representation of ent/schema at runtime.
 var schemaGraph = func() *sqlgraph.Schema {
-	graph := &sqlgraph.Schema{Nodes: make([]*sqlgraph.Node, 5)}
+	graph := &sqlgraph.Schema{Nodes: make([]*sqlgraph.Node, 7)}
 	graph.Nodes[0] = &sqlgraph.Node{
 		NodeSpec: sqlgraph.NodeSpec{
 			Table:   configrevision.Table,
@@ -82,6 +84,23 @@ var schemaGraph = func() *sqlgraph.Schema {
 	}
 	graph.Nodes[4] = &sqlgraph.Node{
 		NodeSpec: sqlgraph.NodeSpec{
+			Table:   instancesetting.Table,
+			Columns: instancesetting.Columns,
+			ID: &sqlgraph.FieldSpec{
+				Type:   field.TypeInt,
+				Column: instancesetting.FieldID,
+			},
+		},
+		Type: "InstanceSetting",
+		Fields: map[string]*sqlgraph.FieldSpec{
+			instancesetting.FieldValue:     {Type: field.TypeBytes, Column: instancesetting.FieldValue},
+			instancesetting.FieldVersion:   {Type: field.TypeInt64, Column: instancesetting.FieldVersion},
+			instancesetting.FieldUpdatedBy: {Type: field.TypeString, Column: instancesetting.FieldUpdatedBy},
+			instancesetting.FieldUpdatedAt: {Type: field.TypeTime, Column: instancesetting.FieldUpdatedAt},
+		},
+	}
+	graph.Nodes[5] = &sqlgraph.Node{
+		NodeSpec: sqlgraph.NodeSpec{
 			Table:   org.Table,
 			Columns: org.Columns,
 			ID: &sqlgraph.FieldSpec{
@@ -94,6 +113,24 @@ var schemaGraph = func() *sqlgraph.Schema {
 			org.FieldName:      {Type: field.TypeString, Column: org.FieldName},
 			org.FieldSlug:      {Type: field.TypeString, Column: org.FieldSlug},
 			org.FieldCreatedAt: {Type: field.TypeTime, Column: org.FieldCreatedAt},
+		},
+	}
+	graph.Nodes[6] = &sqlgraph.Node{
+		NodeSpec: sqlgraph.NodeSpec{
+			Table:   orgsetting.Table,
+			Columns: orgsetting.Columns,
+			ID: &sqlgraph.FieldSpec{
+				Type:   field.TypeString,
+				Column: orgsetting.FieldID,
+			},
+		},
+		Type: "OrgSetting",
+		Fields: map[string]*sqlgraph.FieldSpec{
+			orgsetting.FieldOrgID:     {Type: field.TypeString, Column: orgsetting.FieldOrgID},
+			orgsetting.FieldValue:     {Type: field.TypeBytes, Column: orgsetting.FieldValue},
+			orgsetting.FieldVersion:   {Type: field.TypeInt64, Column: orgsetting.FieldVersion},
+			orgsetting.FieldUpdatedBy: {Type: field.TypeString, Column: orgsetting.FieldUpdatedBy},
+			orgsetting.FieldUpdatedAt: {Type: field.TypeTime, Column: orgsetting.FieldUpdatedAt},
 		},
 	}
 	return graph
@@ -316,6 +353,66 @@ func (f *InstanceFilter) WhereCreatedAt(p entql.TimeP) {
 }
 
 // addPredicate implements the predicateAdder interface.
+func (_q *InstanceSettingQuery) addPredicate(pred func(s *sql.Selector)) {
+	_q.predicates = append(_q.predicates, pred)
+}
+
+// Filter returns a Filter implementation to apply filters on the InstanceSettingQuery builder.
+func (_q *InstanceSettingQuery) Filter() *InstanceSettingFilter {
+	return &InstanceSettingFilter{config: _q.config, predicateAdder: _q}
+}
+
+// addPredicate implements the predicateAdder interface.
+func (m *InstanceSettingMutation) addPredicate(pred func(s *sql.Selector)) {
+	m.predicates = append(m.predicates, pred)
+}
+
+// Filter returns an entql.Where implementation to apply filters on the InstanceSettingMutation builder.
+func (m *InstanceSettingMutation) Filter() *InstanceSettingFilter {
+	return &InstanceSettingFilter{config: m.config, predicateAdder: m}
+}
+
+// InstanceSettingFilter provides a generic filtering capability at runtime for InstanceSettingQuery.
+type InstanceSettingFilter struct {
+	predicateAdder
+	config
+}
+
+// Where applies the entql predicate on the query filter.
+func (f *InstanceSettingFilter) Where(p entql.P) {
+	f.addPredicate(func(s *sql.Selector) {
+		if err := schemaGraph.EvalP(schemaGraph.Nodes[4].Type, p, s); err != nil {
+			s.AddError(err)
+		}
+	})
+}
+
+// WhereID applies the entql int predicate on the id field.
+func (f *InstanceSettingFilter) WhereID(p entql.IntP) {
+	f.Where(p.Field(instancesetting.FieldID))
+}
+
+// WhereValue applies the entql []byte predicate on the value field.
+func (f *InstanceSettingFilter) WhereValue(p entql.BytesP) {
+	f.Where(p.Field(instancesetting.FieldValue))
+}
+
+// WhereVersion applies the entql int64 predicate on the version field.
+func (f *InstanceSettingFilter) WhereVersion(p entql.Int64P) {
+	f.Where(p.Field(instancesetting.FieldVersion))
+}
+
+// WhereUpdatedBy applies the entql string predicate on the updated_by field.
+func (f *InstanceSettingFilter) WhereUpdatedBy(p entql.StringP) {
+	f.Where(p.Field(instancesetting.FieldUpdatedBy))
+}
+
+// WhereUpdatedAt applies the entql time.Time predicate on the updated_at field.
+func (f *InstanceSettingFilter) WhereUpdatedAt(p entql.TimeP) {
+	f.Where(p.Field(instancesetting.FieldUpdatedAt))
+}
+
+// addPredicate implements the predicateAdder interface.
 func (_q *OrgQuery) addPredicate(pred func(s *sql.Selector)) {
 	_q.predicates = append(_q.predicates, pred)
 }
@@ -344,7 +441,7 @@ type OrgFilter struct {
 // Where applies the entql predicate on the query filter.
 func (f *OrgFilter) Where(p entql.P) {
 	f.addPredicate(func(s *sql.Selector) {
-		if err := schemaGraph.EvalP(schemaGraph.Nodes[4].Type, p, s); err != nil {
+		if err := schemaGraph.EvalP(schemaGraph.Nodes[5].Type, p, s); err != nil {
 			s.AddError(err)
 		}
 	})
@@ -368,4 +465,69 @@ func (f *OrgFilter) WhereSlug(p entql.StringP) {
 // WhereCreatedAt applies the entql time.Time predicate on the created_at field.
 func (f *OrgFilter) WhereCreatedAt(p entql.TimeP) {
 	f.Where(p.Field(org.FieldCreatedAt))
+}
+
+// addPredicate implements the predicateAdder interface.
+func (_q *OrgSettingQuery) addPredicate(pred func(s *sql.Selector)) {
+	_q.predicates = append(_q.predicates, pred)
+}
+
+// Filter returns a Filter implementation to apply filters on the OrgSettingQuery builder.
+func (_q *OrgSettingQuery) Filter() *OrgSettingFilter {
+	return &OrgSettingFilter{config: _q.config, predicateAdder: _q}
+}
+
+// addPredicate implements the predicateAdder interface.
+func (m *OrgSettingMutation) addPredicate(pred func(s *sql.Selector)) {
+	m.predicates = append(m.predicates, pred)
+}
+
+// Filter returns an entql.Where implementation to apply filters on the OrgSettingMutation builder.
+func (m *OrgSettingMutation) Filter() *OrgSettingFilter {
+	return &OrgSettingFilter{config: m.config, predicateAdder: m}
+}
+
+// OrgSettingFilter provides a generic filtering capability at runtime for OrgSettingQuery.
+type OrgSettingFilter struct {
+	predicateAdder
+	config
+}
+
+// Where applies the entql predicate on the query filter.
+func (f *OrgSettingFilter) Where(p entql.P) {
+	f.addPredicate(func(s *sql.Selector) {
+		if err := schemaGraph.EvalP(schemaGraph.Nodes[6].Type, p, s); err != nil {
+			s.AddError(err)
+		}
+	})
+}
+
+// WhereID applies the entql string predicate on the id field.
+func (f *OrgSettingFilter) WhereID(p entql.StringP) {
+	f.Where(p.Field(orgsetting.FieldID))
+}
+
+// WhereOrgID applies the entql string predicate on the org_id field.
+func (f *OrgSettingFilter) WhereOrgID(p entql.StringP) {
+	f.Where(p.Field(orgsetting.FieldOrgID))
+}
+
+// WhereValue applies the entql []byte predicate on the value field.
+func (f *OrgSettingFilter) WhereValue(p entql.BytesP) {
+	f.Where(p.Field(orgsetting.FieldValue))
+}
+
+// WhereVersion applies the entql int64 predicate on the version field.
+func (f *OrgSettingFilter) WhereVersion(p entql.Int64P) {
+	f.Where(p.Field(orgsetting.FieldVersion))
+}
+
+// WhereUpdatedBy applies the entql string predicate on the updated_by field.
+func (f *OrgSettingFilter) WhereUpdatedBy(p entql.StringP) {
+	f.Where(p.Field(orgsetting.FieldUpdatedBy))
+}
+
+// WhereUpdatedAt applies the entql time.Time predicate on the updated_at field.
+func (f *OrgSettingFilter) WhereUpdatedAt(p entql.TimeP) {
+	f.Where(p.Field(orgsetting.FieldUpdatedAt))
 }

@@ -18,5 +18,11 @@ type GatewayGroup func(*sql.Selector)
 // Instance is the predicate function for instance builders.
 type Instance func(*sql.Selector)
 
+// InstanceSetting is the predicate function for instancesetting builders.
+type InstanceSetting func(*sql.Selector)
+
 // Org is the predicate function for org builders.
 type Org func(*sql.Selector)
+
+// OrgSetting is the predicate function for orgsetting builders.
+type OrgSetting func(*sql.Selector)
