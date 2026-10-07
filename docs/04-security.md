@@ -137,7 +137,9 @@ later.
   was never used) and a restore (marks are re-applied from the log) still work. The controller then
   issues a new certificate for a CSR with a new key, bound to the connection ([Flow](#flow)). No
   signed application messages are involved, so nothing can be replayed. [R] 0 disables the grace
-  period. After it, the agent must re-enroll.
+  period, and so does a grace period the controller cannot read from its settings. After it, the
+  agent must re-enroll. `Renew` applies the same database checks; both refuse a certificate that
+  `issued_certificates` does not record.
 - **The Reauth verifier** ([S7](spikes/S7.md)). `GetConfigForClient` selects it for SNI
   `reauth.controller.<td>`. It requests any client certificate and verifies the chain itself, in
   `VerifyConnection`, at a time inside the certificate's validity; crypto/tls still checks the

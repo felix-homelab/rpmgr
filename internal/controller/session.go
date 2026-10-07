@@ -282,6 +282,9 @@ func (s *Sessions) register(ctx context.Context, agent Agent, hello *agentv1.Hel
 			return err
 		}
 		dbEpoch = inst.DbEpoch
+		if err := pki.MarkSeen(s.sys, tx, agent.Certificate, now); err != nil {
+			return err
+		}
 		offset := int64(0)
 		if hello.GetAgentTime() != nil {
 			offset = hello.GetAgentTime().AsTime().Sub(now).Milliseconds()
