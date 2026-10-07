@@ -64,7 +64,21 @@ func checkTokenBinding(next ent.Mutator) ent.Mutator {
 		case role == "connector" && gw:
 			return nil, errors.New("store: a connector token is not bound to a gateway")
 		}
-		if uses, _ := m.MaxUses(); con && uses > 1 {
+		if exp, ok := m.ExpiresAt(); ok {
+			// UTC, so that SQLite compares the stored text with the consumption's $now correctly.
+			m.SetExpiresAt(exp.UTC())
+		}
+		uses, set := m.MaxUses()
+		switch {
+		case !set:
+			m.SetMaxUses(1)
+		case uses == 0:
+			if ephemeral, _ := m.Ephemeral(); !ephemeral {
+				return nil, errors.New("store: only an ephemeral token may have unlimited uses")
+			}
+			m.ClearMaxUses()
+		}
+		if uses, _ := m.MaxUses(); con && (uses != 1) {
 			return nil, errors.New("store: a re-enrollment token is single-use")
 		}
 		return next.Mutate(ctx, m)

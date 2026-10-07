@@ -125,8 +125,6 @@ var (
 	TokenHashValidator func([]byte) error
 	// DefaultEphemeral holds the default value on creation for the "ephemeral" field.
 	DefaultEphemeral bool
-	// DefaultMaxUses holds the default value on creation for the "max_uses" field.
-	DefaultMaxUses int
 	// MaxUsesValidator is a validator for the "max_uses" field. It is called by the builders before save.
 	MaxUsesValidator func(int) error
 	// DefaultUseCount holds the default value on creation for the "use_count" field.

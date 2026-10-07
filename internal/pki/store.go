@@ -203,11 +203,17 @@ func (ca *CA) AuditSigner() KeyPair { return ca.auditSigner }
 // Issue issues a leaf for id from csr (see Issuer.IssueLeaf) and records it in tx, the
 // transaction that hands it out.
 func (ca *CA) Issue(ctx context.Context, tx *ent.Tx, csr *x509.CertificateRequest, id Identity, lifetime time.Duration) (*x509.Certificate, error) {
+	return ca.IssueEnrolled(ctx, tx, csr, id, lifetime, "")
+}
+
+// IssueEnrolled is Issue for an enrollment that consumed the token tokenID, which the record
+// keeps so that a retry with the same token and key gets the same certificate.
+func (ca *CA) IssueEnrolled(ctx context.Context, tx *ent.Tx, csr *x509.CertificateRequest, id Identity, lifetime time.Duration, tokenID string) (*x509.Certificate, error) {
 	cert, err := ca.issuer.IssueLeaf(csr, id, lifetime)
 	if err != nil {
 		return nil, err
 	}
-	return cert, record(ctx, tx, cert, id)
+	return cert, record(ctx, tx, cert, id, tokenID)
 }
 
 // Renew renews presented for a CSR with a new key (see Issuer.RenewLeaf) and records the new leaf
@@ -221,7 +227,7 @@ func (ca *CA) Renew(ctx context.Context, tx *ent.Tx, presented *x509.Certificate
 	if err != nil {
 		return nil, err
 	}
-	return cert, record(ctx, tx, cert, id)
+	return cert, record(ctx, tx, cert, id, "")
 }
 
 // NodeCertificate issues the TLS certificate of controller node nodeID. Its key exists only in
@@ -255,13 +261,23 @@ func (ca *CA) NodeCertificate(ctx context.Context, db *store.DB, nodeID string) 
 // SerialHex is a serial number's key in issued_certificates and on the deny-list.
 func SerialHex(n *big.Int) string { return n.Text(16) }
 
-func record(ctx context.Context, tx *ent.Tx, cert *x509.Certificate, id Identity) error {
-	sum := sha256.Sum256(cert.RawSubjectPublicKeyInfo)
+func record(ctx context.Context, tx *ent.Tx, cert *x509.Certificate, id Identity, tokenID string) error {
 	c := tx.IssuedCertificate.Create().SetID(SerialHex(cert.SerialNumber)).
 		SetSubjectType(issuedcertificate.SubjectType(id.Kind)).SetSubjectID(id.ID).SetSpiffeID(id.String()).
-		SetPubkeySha256(hex.EncodeToString(sum[:])).SetNotBefore(cert.NotBefore).SetNotAfter(cert.NotAfter)
+		SetPubkeySha256(PublicKeyHash(cert.RawSubjectPublicKeyInfo)).SetNotBefore(cert.NotBefore).
+		SetNotAfter(cert.NotAfter).SetCertificate(cert.Raw)
 	if id.Org != "" { // controller nodes have none
 		c.SetOrgID(id.Org)
 	}
+	if tokenID != "" {
+		c.SetEnrollmentTokenID(tokenID)
+	}
 	return c.Exec(ctx)
+}
+
+// PublicKeyHash is the lower-case hexadecimal SHA-256 of a SubjectPublicKeyInfo, as
+// issued_certificates and the fleet tables store it.
+func PublicKeyHash(spki []byte) string {
+	sum := sha256.Sum256(spki)
+	return hex.EncodeToString(sum[:])
 }

@@ -167,6 +167,9 @@ func (_u *IssuedCertificateUpdate) sqlSave(ctx context.Context) (_node int, err 
 	if value, ok := _u.mutation.RevocationReason(); ok {
 		_spec.SetField(issuedcertificate.FieldRevocationReason, field.TypeString, value)
 	}
+	if _u.mutation.CertificateCleared() {
+		_spec.ClearField(issuedcertificate.FieldCertificate, field.TypeBytes)
+	}
 	if _node, err = sqlgraph.UpdateNodes(ctx, _u.driver, _spec); err != nil {
 		if _, ok := err.(*sqlgraph.NotFoundError); ok {
 			err = &NotFoundError{issuedcertificate.Label}
@@ -355,6 +358,9 @@ func (_u *IssuedCertificateUpdateOne) sqlSave(ctx context.Context) (_node *Issue
 	}
 	if value, ok := _u.mutation.RevocationReason(); ok {
 		_spec.SetField(issuedcertificate.FieldRevocationReason, field.TypeString, value)
+	}
+	if _u.mutation.CertificateCleared() {
+		_spec.ClearField(issuedcertificate.FieldCertificate, field.TypeBytes)
 	}
 	_node = &IssuedCertificate{config: _u.config}
 	_spec.Assign = _node.assignValues

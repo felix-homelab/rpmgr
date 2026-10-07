@@ -4866,7 +4866,7 @@ func (m *EnrollmentTokenMutation) MaxUses() (r int, exists bool) {
 // OldMaxUses returns the old "max_uses" field's value of the EnrollmentToken entity.
 // If the EnrollmentToken object wasn't provided to the builder, the object is fetched from the database.
 // An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *EnrollmentTokenMutation) OldMaxUses(ctx context.Context) (v int, err error) {
+func (m *EnrollmentTokenMutation) OldMaxUses(ctx context.Context) (v *int, err error) {
 	if !m.op.Is(OpUpdateOne) {
 		return v, errors.New("OldMaxUses is only allowed on UpdateOne operations")
 	}
@@ -4898,10 +4898,24 @@ func (m *EnrollmentTokenMutation) AddedMaxUses() (r int, exists bool) {
 	return *v, true
 }
 
+// ClearMaxUses clears the value of the "max_uses" field.
+func (m *EnrollmentTokenMutation) ClearMaxUses() {
+	m.max_uses = nil
+	m.addmax_uses = nil
+	m.clearedFields[enrollmenttoken.FieldMaxUses] = struct{}{}
+}
+
+// MaxUsesCleared returns if the "max_uses" field was cleared in this mutation.
+func (m *EnrollmentTokenMutation) MaxUsesCleared() bool {
+	_, ok := m.clearedFields[enrollmenttoken.FieldMaxUses]
+	return ok
+}
+
 // ResetMaxUses resets all changes to the "max_uses" field.
 func (m *EnrollmentTokenMutation) ResetMaxUses() {
 	m.max_uses = nil
 	m.addmax_uses = nil
+	delete(m.clearedFields, enrollmenttoken.FieldMaxUses)
 }
 
 // SetUseCount sets the "use_count" field.
@@ -5663,6 +5677,9 @@ func (m *EnrollmentTokenMutation) ClearedFields() []string {
 	if m.FieldCleared(enrollmenttoken.FieldLabels) {
 		fields = append(fields, enrollmenttoken.FieldLabels)
 	}
+	if m.FieldCleared(enrollmenttoken.FieldMaxUses) {
+		fields = append(fields, enrollmenttoken.FieldMaxUses)
+	}
 	if m.FieldCleared(enrollmenttoken.FieldLastUsedAt) {
 		fields = append(fields, enrollmenttoken.FieldLastUsedAt)
 	}
@@ -5697,6 +5714,9 @@ func (m *EnrollmentTokenMutation) ClearField(name string) error {
 		return nil
 	case enrollmenttoken.FieldLabels:
 		m.ClearLabels()
+		return nil
+	case enrollmenttoken.FieldMaxUses:
+		m.ClearMaxUses()
 		return nil
 	case enrollmenttoken.FieldLastUsedAt:
 		m.ClearLastUsedAt()
@@ -8562,24 +8582,27 @@ func (m *InstanceSettingMutation) ResetEdge(name string) error {
 // IssuedCertificateMutation represents an operation that mutates the IssuedCertificate nodes in the graph.
 type IssuedCertificateMutation struct {
 	config
-	op                Op
-	typ               string
-	id                *string
-	org_id            *string
-	subject_type      *issuedcertificate.SubjectType
-	subject_id        *string
-	spiffe_id         *string
-	pubkey_sha256     *string
-	not_before        *time.Time
-	not_after         *time.Time
-	first_seen_at     *time.Time
-	superseded_at     *time.Time
-	revoked_at        *time.Time
-	revocation_reason *string
-	clearedFields     map[string]struct{}
-	done              bool
-	oldValue          func(context.Context) (*IssuedCertificate, error)
-	predicates        []predicate.IssuedCertificate
+	op                      Op
+	typ                     string
+	id                      *string
+	org_id                  *string
+	subject_type            *issuedcertificate.SubjectType
+	subject_id              *string
+	spiffe_id               *string
+	pubkey_sha256           *string
+	not_before              *time.Time
+	not_after               *time.Time
+	first_seen_at           *time.Time
+	superseded_at           *time.Time
+	revoked_at              *time.Time
+	revocation_reason       *string
+	certificate             *[]byte
+	clearedFields           map[string]struct{}
+	enrollment_token        *string
+	clearedenrollment_token bool
+	done                    bool
+	oldValue                func(context.Context) (*IssuedCertificate, error)
+	predicates              []predicate.IssuedCertificate
 }
 
 var _ ent.Mutation = (*IssuedCertificateMutation)(nil)
@@ -9134,6 +9157,131 @@ func (m *IssuedCertificateMutation) ResetRevocationReason() {
 	m.revocation_reason = nil
 }
 
+// SetCertificate sets the "certificate" field.
+func (m *IssuedCertificateMutation) SetCertificate(b []byte) {
+	m.certificate = &b
+}
+
+// Certificate returns the value of the "certificate" field in the mutation.
+func (m *IssuedCertificateMutation) Certificate() (r []byte, exists bool) {
+	v := m.certificate
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCertificate returns the old "certificate" field's value of the IssuedCertificate entity.
+// If the IssuedCertificate object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *IssuedCertificateMutation) OldCertificate(ctx context.Context) (v []byte, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCertificate is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCertificate requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCertificate: %w", err)
+	}
+	return oldValue.Certificate, nil
+}
+
+// ClearCertificate clears the value of the "certificate" field.
+func (m *IssuedCertificateMutation) ClearCertificate() {
+	m.certificate = nil
+	m.clearedFields[issuedcertificate.FieldCertificate] = struct{}{}
+}
+
+// CertificateCleared returns if the "certificate" field was cleared in this mutation.
+func (m *IssuedCertificateMutation) CertificateCleared() bool {
+	_, ok := m.clearedFields[issuedcertificate.FieldCertificate]
+	return ok
+}
+
+// ResetCertificate resets all changes to the "certificate" field.
+func (m *IssuedCertificateMutation) ResetCertificate() {
+	m.certificate = nil
+	delete(m.clearedFields, issuedcertificate.FieldCertificate)
+}
+
+// SetEnrollmentTokenID sets the "enrollment_token_id" field.
+func (m *IssuedCertificateMutation) SetEnrollmentTokenID(s string) {
+	m.enrollment_token = &s
+}
+
+// EnrollmentTokenID returns the value of the "enrollment_token_id" field in the mutation.
+func (m *IssuedCertificateMutation) EnrollmentTokenID() (r string, exists bool) {
+	v := m.enrollment_token
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldEnrollmentTokenID returns the old "enrollment_token_id" field's value of the IssuedCertificate entity.
+// If the IssuedCertificate object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *IssuedCertificateMutation) OldEnrollmentTokenID(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldEnrollmentTokenID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldEnrollmentTokenID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldEnrollmentTokenID: %w", err)
+	}
+	return oldValue.EnrollmentTokenID, nil
+}
+
+// ClearEnrollmentTokenID clears the value of the "enrollment_token_id" field.
+func (m *IssuedCertificateMutation) ClearEnrollmentTokenID() {
+	m.enrollment_token = nil
+	m.clearedFields[issuedcertificate.FieldEnrollmentTokenID] = struct{}{}
+}
+
+// EnrollmentTokenIDCleared returns if the "enrollment_token_id" field was cleared in this mutation.
+func (m *IssuedCertificateMutation) EnrollmentTokenIDCleared() bool {
+	_, ok := m.clearedFields[issuedcertificate.FieldEnrollmentTokenID]
+	return ok
+}
+
+// ResetEnrollmentTokenID resets all changes to the "enrollment_token_id" field.
+func (m *IssuedCertificateMutation) ResetEnrollmentTokenID() {
+	m.enrollment_token = nil
+	delete(m.clearedFields, issuedcertificate.FieldEnrollmentTokenID)
+}
+
+// ClearEnrollmentToken clears the "enrollment_token" edge to the EnrollmentToken entity.
+func (m *IssuedCertificateMutation) ClearEnrollmentToken() {
+	m.clearedenrollment_token = true
+	m.clearedFields[issuedcertificate.FieldEnrollmentTokenID] = struct{}{}
+}
+
+// EnrollmentTokenCleared reports if the "enrollment_token" edge to the EnrollmentToken entity was cleared.
+func (m *IssuedCertificateMutation) EnrollmentTokenCleared() bool {
+	return m.EnrollmentTokenIDCleared() || m.clearedenrollment_token
+}
+
+// EnrollmentTokenIDs returns the "enrollment_token" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// EnrollmentTokenID instead. It exists only for internal usage by the builders.
+func (m *IssuedCertificateMutation) EnrollmentTokenIDs() (ids []string) {
+	if id := m.enrollment_token; id != nil {
+		ids = append(ids, *id)
+	}
+	return
+}
+
+// ResetEnrollmentToken resets all changes to the "enrollment_token" edge.
+func (m *IssuedCertificateMutation) ResetEnrollmentToken() {
+	m.enrollment_token = nil
+	m.clearedenrollment_token = false
+}
+
 // Where appends a list predicates to the IssuedCertificateMutation builder.
 func (m *IssuedCertificateMutation) Where(ps ...predicate.IssuedCertificate) {
 	m.predicates = append(m.predicates, ps...)
@@ -9168,7 +9316,7 @@ func (m *IssuedCertificateMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *IssuedCertificateMutation) Fields() []string {
-	fields := make([]string, 0, 11)
+	fields := make([]string, 0, 13)
 	if m.org_id != nil {
 		fields = append(fields, issuedcertificate.FieldOrgID)
 	}
@@ -9202,6 +9350,12 @@ func (m *IssuedCertificateMutation) Fields() []string {
 	if m.revocation_reason != nil {
 		fields = append(fields, issuedcertificate.FieldRevocationReason)
 	}
+	if m.certificate != nil {
+		fields = append(fields, issuedcertificate.FieldCertificate)
+	}
+	if m.enrollment_token != nil {
+		fields = append(fields, issuedcertificate.FieldEnrollmentTokenID)
+	}
 	return fields
 }
 
@@ -9232,6 +9386,10 @@ func (m *IssuedCertificateMutation) Field(name string) (ent.Value, bool) {
 		return m.RevokedAt()
 	case issuedcertificate.FieldRevocationReason:
 		return m.RevocationReason()
+	case issuedcertificate.FieldCertificate:
+		return m.Certificate()
+	case issuedcertificate.FieldEnrollmentTokenID:
+		return m.EnrollmentTokenID()
 	}
 	return nil, false
 }
@@ -9263,6 +9421,10 @@ func (m *IssuedCertificateMutation) OldField(ctx context.Context, name string) (
 		return m.OldRevokedAt(ctx)
 	case issuedcertificate.FieldRevocationReason:
 		return m.OldRevocationReason(ctx)
+	case issuedcertificate.FieldCertificate:
+		return m.OldCertificate(ctx)
+	case issuedcertificate.FieldEnrollmentTokenID:
+		return m.OldEnrollmentTokenID(ctx)
 	}
 	return nil, fmt.Errorf("unknown IssuedCertificate field %s", name)
 }
@@ -9349,6 +9511,20 @@ func (m *IssuedCertificateMutation) SetField(name string, value ent.Value) error
 		}
 		m.SetRevocationReason(v)
 		return nil
+	case issuedcertificate.FieldCertificate:
+		v, ok := value.([]byte)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCertificate(v)
+		return nil
+	case issuedcertificate.FieldEnrollmentTokenID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetEnrollmentTokenID(v)
+		return nil
 	}
 	return fmt.Errorf("unknown IssuedCertificate field %s", name)
 }
@@ -9391,6 +9567,12 @@ func (m *IssuedCertificateMutation) ClearedFields() []string {
 	if m.FieldCleared(issuedcertificate.FieldRevokedAt) {
 		fields = append(fields, issuedcertificate.FieldRevokedAt)
 	}
+	if m.FieldCleared(issuedcertificate.FieldCertificate) {
+		fields = append(fields, issuedcertificate.FieldCertificate)
+	}
+	if m.FieldCleared(issuedcertificate.FieldEnrollmentTokenID) {
+		fields = append(fields, issuedcertificate.FieldEnrollmentTokenID)
+	}
 	return fields
 }
 
@@ -9416,6 +9598,12 @@ func (m *IssuedCertificateMutation) ClearField(name string) error {
 		return nil
 	case issuedcertificate.FieldRevokedAt:
 		m.ClearRevokedAt()
+		return nil
+	case issuedcertificate.FieldCertificate:
+		m.ClearCertificate()
+		return nil
+	case issuedcertificate.FieldEnrollmentTokenID:
+		m.ClearEnrollmentTokenID()
 		return nil
 	}
 	return fmt.Errorf("unknown IssuedCertificate nullable field %s", name)
@@ -9458,25 +9646,40 @@ func (m *IssuedCertificateMutation) ResetField(name string) error {
 	case issuedcertificate.FieldRevocationReason:
 		m.ResetRevocationReason()
 		return nil
+	case issuedcertificate.FieldCertificate:
+		m.ResetCertificate()
+		return nil
+	case issuedcertificate.FieldEnrollmentTokenID:
+		m.ResetEnrollmentTokenID()
+		return nil
 	}
 	return fmt.Errorf("unknown IssuedCertificate field %s", name)
 }
 
 // AddedEdges returns all edge names that were set/added in this mutation.
 func (m *IssuedCertificateMutation) AddedEdges() []string {
-	edges := make([]string, 0, 0)
+	edges := make([]string, 0, 1)
+	if m.enrollment_token != nil {
+		edges = append(edges, issuedcertificate.EdgeEnrollmentToken)
+	}
 	return edges
 }
 
 // AddedIDs returns all IDs (to other nodes) that were added for the given edge
 // name in this mutation.
 func (m *IssuedCertificateMutation) AddedIDs(name string) []ent.Value {
+	switch name {
+	case issuedcertificate.EdgeEnrollmentToken:
+		if id := m.enrollment_token; id != nil {
+			return []ent.Value{*id}
+		}
+	}
 	return nil
 }
 
 // RemovedEdges returns all edge names that were removed in this mutation.
 func (m *IssuedCertificateMutation) RemovedEdges() []string {
-	edges := make([]string, 0, 0)
+	edges := make([]string, 0, 1)
 	return edges
 }
 
@@ -9488,25 +9691,42 @@ func (m *IssuedCertificateMutation) RemovedIDs(name string) []ent.Value {
 
 // ClearedEdges returns all edge names that were cleared in this mutation.
 func (m *IssuedCertificateMutation) ClearedEdges() []string {
-	edges := make([]string, 0, 0)
+	edges := make([]string, 0, 1)
+	if m.clearedenrollment_token {
+		edges = append(edges, issuedcertificate.EdgeEnrollmentToken)
+	}
 	return edges
 }
 
 // EdgeCleared returns a boolean which indicates if the edge with the given name
 // was cleared in this mutation.
 func (m *IssuedCertificateMutation) EdgeCleared(name string) bool {
+	switch name {
+	case issuedcertificate.EdgeEnrollmentToken:
+		return m.clearedenrollment_token
+	}
 	return false
 }
 
 // ClearEdge clears the value of the edge with the given name. It returns an error
 // if that edge is not defined in the schema.
 func (m *IssuedCertificateMutation) ClearEdge(name string) error {
+	switch name {
+	case issuedcertificate.EdgeEnrollmentToken:
+		m.ClearEnrollmentToken()
+		return nil
+	}
 	return fmt.Errorf("unknown IssuedCertificate unique edge %s", name)
 }
 
 // ResetEdge resets all changes to the edge with the given name in this mutation.
 // It returns an error if the edge is not defined in the schema.
 func (m *IssuedCertificateMutation) ResetEdge(name string) error {
+	switch name {
+	case issuedcertificate.EdgeEnrollmentToken:
+		m.ResetEnrollmentToken()
+		return nil
+	}
 	return fmt.Errorf("unknown IssuedCertificate edge %s", name)
 }
 

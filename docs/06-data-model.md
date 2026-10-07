@@ -67,7 +67,7 @@ an opaque blob: no foreign system's configuration is embedded, and every field i
 | `external_identities` | idp_id, subject, user_id | Unique (idp_id, subject) |
 | `service_accounts` | id, org_id, name, role | Non-human principals for automation |
 | `api_tokens` | id, org_id, owner_type (user, service_account), owner_id, name, prefix, token_hash, scopes, expires_at, last_used_at, last_used_ip, revoked_at | Expiry mandatory |
-| `enrollment_tokens` | id, org_id, token_hash, role (connector, gateway), gateway_group_id, gateway_id (gateway tokens), connector_id (re-enrollment only), labels, ephemeral, max_uses, use_count, expires_at, created_by, last_used_at, last_used_ip, revoked_at | Consumed atomically ([04](04-security.md#enrollment)). A gateway token is bound to exactly one gateway, which an Admin created first, so a host chooses neither its identity nor its endpoints; a connector token to no gateway; a re-enrollment token to its connector, and it is single-use |
+| `enrollment_tokens` | id, org_id, token_hash, role (connector, gateway), gateway_group_id, gateway_id (gateway tokens), connector_id (re-enrollment only), labels, ephemeral, max_uses (null: unlimited, ephemeral tokens only), use_count, expires_at, created_by, last_used_at, last_used_ip, revoked_at | Consumed atomically ([04](04-security.md#enrollment)). A gateway token is bound to exactly one gateway, which an Admin created first, so a host chooses neither its identity nor its endpoints; a connector token to no gateway; a re-enrollment token to its connector, and it is single-use |
 
 ### Fleet
 
@@ -80,7 +80,7 @@ an opaque blob: no foreign system's configuration is embedded, and every field i
 | `port_pools` | id, gateway_group_id, protocol (tcp, udp), port_from, port_to, org_id (nullable = any granted org) | |
 | `port_allocations` | id, org_id, gateway_group_id, protocol, port, route_id | Unique (gateway_group_id, protocol, port) |
 | `port_quotas` | org_id, gateway_group_id, protocol, max_ports | Maximum ports an org may allocate in a gateway group (Phase 1). Unique (org_id, gateway_group_id, protocol); no row = limited only by the pools |
-| `issued_certificates` | serial, org_id, subject_type, subject_id, spiffe_id, pubkey_sha256, not_before, not_after, first_seen_at, superseded_at, revoked_at, revocation_reason | Source of the deny-list ([04](04-security.md#revocation)). `serial` is lower-case hexadecimal. Agent certificates belong to their org; controller node certificates have no org and are visible only in the system scope |
+| `issued_certificates` | serial, org_id, subject_type, subject_id, spiffe_id, pubkey_sha256, not_before, not_after, first_seen_at, superseded_at, revoked_at, revocation_reason, certificate (DER), enrollment_token_id | Source of the deny-list ([04](04-security.md#revocation)). `serial` is lower-case hexadecimal. An enrollment records the token it consumed and keeps the DER, so a retry with the same token and key within the retry window of [04](04-security.md#tokens) gets the same certificate. Agent certificates belong to their org; controller node certificates have no org and are visible only in the system scope |
 
 ### PKI and ACME
 

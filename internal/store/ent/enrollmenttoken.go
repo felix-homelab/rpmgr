@@ -38,7 +38,7 @@ type EnrollmentToken struct {
 	// Ephemeral holds the value of the "ephemeral" field.
 	Ephemeral bool `json:"ephemeral,omitempty"`
 	// MaxUses holds the value of the "max_uses" field.
-	MaxUses int `json:"max_uses,omitempty"`
+	MaxUses *int `json:"max_uses,omitempty"`
 	// UseCount holds the value of the "use_count" field.
 	UseCount int `json:"use_count,omitempty"`
 	// ExpiresAt holds the value of the "expires_at" field.
@@ -198,7 +198,8 @@ func (_m *EnrollmentToken) assignValues(columns []string, values []any) error {
 			if value, ok := values[i].(*sql.NullInt64); !ok {
 				return fmt.Errorf("unexpected type %T for field max_uses", values[i])
 			} else if value.Valid {
-				_m.MaxUses = int(value.Int64)
+				_m.MaxUses = new(int)
+				*_m.MaxUses = int(value.Int64)
 			}
 		case enrollmenttoken.FieldUseCount:
 			if value, ok := values[i].(*sql.NullInt64); !ok {
@@ -325,8 +326,10 @@ func (_m *EnrollmentToken) String() string {
 	builder.WriteString("ephemeral=")
 	builder.WriteString(fmt.Sprintf("%v", _m.Ephemeral))
 	builder.WriteString(", ")
-	builder.WriteString("max_uses=")
-	builder.WriteString(fmt.Sprintf("%v", _m.MaxUses))
+	if v := _m.MaxUses; v != nil {
+		builder.WriteString("max_uses=")
+		builder.WriteString(fmt.Sprintf("%v", *v))
+	}
 	builder.WriteString(", ")
 	builder.WriteString("use_count=")
 	builder.WriteString(fmt.Sprintf("%v", _m.UseCount))

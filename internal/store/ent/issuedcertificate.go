@@ -9,6 +9,7 @@ import (
 
 	"entgo.io/ent"
 	"entgo.io/ent/dialect/sql"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/enrollmenttoken"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/issuedcertificate"
 )
 
@@ -39,7 +40,34 @@ type IssuedCertificate struct {
 	RevokedAt *time.Time `json:"revoked_at,omitempty"`
 	// RevocationReason holds the value of the "revocation_reason" field.
 	RevocationReason string `json:"revocation_reason,omitempty"`
-	selectValues     sql.SelectValues
+	// Certificate holds the value of the "certificate" field.
+	Certificate []byte `json:"certificate,omitempty"`
+	// EnrollmentTokenID holds the value of the "enrollment_token_id" field.
+	EnrollmentTokenID *string `json:"enrollment_token_id,omitempty"`
+	// Edges holds the relations/edges for other nodes in the graph.
+	// The values are being populated by the IssuedCertificateQuery when eager-loading is set.
+	Edges        IssuedCertificateEdges `json:"edges"`
+	selectValues sql.SelectValues
+}
+
+// IssuedCertificateEdges holds the relations/edges for other nodes in the graph.
+type IssuedCertificateEdges struct {
+	// EnrollmentToken holds the value of the enrollment_token edge.
+	EnrollmentToken *EnrollmentToken `json:"enrollment_token,omitempty"`
+	// loadedTypes holds the information for reporting if a
+	// type was loaded (or requested) in eager-loading or not.
+	loadedTypes [1]bool
+}
+
+// EnrollmentTokenOrErr returns the EnrollmentToken value or an error if the edge
+// was not loaded in eager-loading, or loaded but was not found.
+func (e IssuedCertificateEdges) EnrollmentTokenOrErr() (*EnrollmentToken, error) {
+	if e.EnrollmentToken != nil {
+		return e.EnrollmentToken, nil
+	} else if e.loadedTypes[0] {
+		return nil, &NotFoundError{label: enrollmenttoken.Label}
+	}
+	return nil, &NotLoadedError{edge: "enrollment_token"}
 }
 
 // scanValues returns the types for scanning values from sql.Rows.
@@ -47,7 +75,9 @@ func (*IssuedCertificate) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case issuedcertificate.FieldID, issuedcertificate.FieldOrgID, issuedcertificate.FieldSubjectType, issuedcertificate.FieldSubjectID, issuedcertificate.FieldSpiffeID, issuedcertificate.FieldPubkeySha256, issuedcertificate.FieldRevocationReason:
+		case issuedcertificate.FieldCertificate:
+			values[i] = new([]byte)
+		case issuedcertificate.FieldID, issuedcertificate.FieldOrgID, issuedcertificate.FieldSubjectType, issuedcertificate.FieldSubjectID, issuedcertificate.FieldSpiffeID, issuedcertificate.FieldPubkeySha256, issuedcertificate.FieldRevocationReason, issuedcertificate.FieldEnrollmentTokenID:
 			values[i] = new(sql.NullString)
 		case issuedcertificate.FieldNotBefore, issuedcertificate.FieldNotAfter, issuedcertificate.FieldFirstSeenAt, issuedcertificate.FieldSupersededAt, issuedcertificate.FieldRevokedAt:
 			values[i] = new(sql.NullTime)
@@ -142,6 +172,19 @@ func (_m *IssuedCertificate) assignValues(columns []string, values []any) error 
 			} else if value.Valid {
 				_m.RevocationReason = value.String
 			}
+		case issuedcertificate.FieldCertificate:
+			if value, ok := values[i].(*[]byte); !ok {
+				return fmt.Errorf("unexpected type %T for field certificate", values[i])
+			} else if value != nil {
+				_m.Certificate = *value
+			}
+		case issuedcertificate.FieldEnrollmentTokenID:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field enrollment_token_id", values[i])
+			} else if value.Valid {
+				_m.EnrollmentTokenID = new(string)
+				*_m.EnrollmentTokenID = value.String
+			}
 		default:
 			_m.selectValues.Set(columns[i], values[i])
 		}
@@ -153,6 +196,11 @@ func (_m *IssuedCertificate) assignValues(columns []string, values []any) error 
 // This includes values selected through modifiers, order, etc.
 func (_m *IssuedCertificate) Value(name string) (ent.Value, error) {
 	return _m.selectValues.Get(name)
+}
+
+// QueryEnrollmentToken queries the "enrollment_token" edge of the IssuedCertificate entity.
+func (_m *IssuedCertificate) QueryEnrollmentToken() *EnrollmentTokenQuery {
+	return NewIssuedCertificateClient(_m.config).QueryEnrollmentToken(_m)
 }
 
 // Update returns a builder for updating this IssuedCertificate.
@@ -218,6 +266,14 @@ func (_m *IssuedCertificate) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("revocation_reason=")
 	builder.WriteString(_m.RevocationReason)
+	builder.WriteString(", ")
+	builder.WriteString("certificate=")
+	builder.WriteString(fmt.Sprintf("%v", _m.Certificate))
+	builder.WriteString(", ")
+	if v := _m.EnrollmentTokenID; v != nil {
+		builder.WriteString("enrollment_token_id=")
+		builder.WriteString(*v)
+	}
 	builder.WriteByte(')')
 	return builder.String()
 }

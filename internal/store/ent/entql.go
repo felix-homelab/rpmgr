@@ -267,17 +267,19 @@ var schemaGraph = func() *sqlgraph.Schema {
 		},
 		Type: "IssuedCertificate",
 		Fields: map[string]*sqlgraph.FieldSpec{
-			issuedcertificate.FieldOrgID:            {Type: field.TypeString, Column: issuedcertificate.FieldOrgID},
-			issuedcertificate.FieldSubjectType:      {Type: field.TypeEnum, Column: issuedcertificate.FieldSubjectType},
-			issuedcertificate.FieldSubjectID:        {Type: field.TypeString, Column: issuedcertificate.FieldSubjectID},
-			issuedcertificate.FieldSpiffeID:         {Type: field.TypeString, Column: issuedcertificate.FieldSpiffeID},
-			issuedcertificate.FieldPubkeySha256:     {Type: field.TypeString, Column: issuedcertificate.FieldPubkeySha256},
-			issuedcertificate.FieldNotBefore:        {Type: field.TypeTime, Column: issuedcertificate.FieldNotBefore},
-			issuedcertificate.FieldNotAfter:         {Type: field.TypeTime, Column: issuedcertificate.FieldNotAfter},
-			issuedcertificate.FieldFirstSeenAt:      {Type: field.TypeTime, Column: issuedcertificate.FieldFirstSeenAt},
-			issuedcertificate.FieldSupersededAt:     {Type: field.TypeTime, Column: issuedcertificate.FieldSupersededAt},
-			issuedcertificate.FieldRevokedAt:        {Type: field.TypeTime, Column: issuedcertificate.FieldRevokedAt},
-			issuedcertificate.FieldRevocationReason: {Type: field.TypeString, Column: issuedcertificate.FieldRevocationReason},
+			issuedcertificate.FieldOrgID:             {Type: field.TypeString, Column: issuedcertificate.FieldOrgID},
+			issuedcertificate.FieldSubjectType:       {Type: field.TypeEnum, Column: issuedcertificate.FieldSubjectType},
+			issuedcertificate.FieldSubjectID:         {Type: field.TypeString, Column: issuedcertificate.FieldSubjectID},
+			issuedcertificate.FieldSpiffeID:          {Type: field.TypeString, Column: issuedcertificate.FieldSpiffeID},
+			issuedcertificate.FieldPubkeySha256:      {Type: field.TypeString, Column: issuedcertificate.FieldPubkeySha256},
+			issuedcertificate.FieldNotBefore:         {Type: field.TypeTime, Column: issuedcertificate.FieldNotBefore},
+			issuedcertificate.FieldNotAfter:          {Type: field.TypeTime, Column: issuedcertificate.FieldNotAfter},
+			issuedcertificate.FieldFirstSeenAt:       {Type: field.TypeTime, Column: issuedcertificate.FieldFirstSeenAt},
+			issuedcertificate.FieldSupersededAt:      {Type: field.TypeTime, Column: issuedcertificate.FieldSupersededAt},
+			issuedcertificate.FieldRevokedAt:         {Type: field.TypeTime, Column: issuedcertificate.FieldRevokedAt},
+			issuedcertificate.FieldRevocationReason:  {Type: field.TypeString, Column: issuedcertificate.FieldRevocationReason},
+			issuedcertificate.FieldCertificate:       {Type: field.TypeBytes, Column: issuedcertificate.FieldCertificate},
+			issuedcertificate.FieldEnrollmentTokenID: {Type: field.TypeString, Column: issuedcertificate.FieldEnrollmentTokenID},
 		},
 	}
 	graph.Nodes[12] = &sqlgraph.Node{
@@ -395,6 +397,18 @@ var schemaGraph = func() *sqlgraph.Schema {
 		},
 		"Gateway",
 		"GatewayGroup",
+	)
+	graph.MustAddE(
+		"enrollment_token",
+		&sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2O,
+			Inverse: false,
+			Table:   issuedcertificate.EnrollmentTokenTable,
+			Columns: []string{issuedcertificate.EnrollmentTokenColumn},
+			Bidi:    false,
+		},
+		"IssuedCertificate",
+		"EnrollmentToken",
 	)
 	return graph
 }()
@@ -1409,6 +1423,30 @@ func (f *IssuedCertificateFilter) WhereRevokedAt(p entql.TimeP) {
 // WhereRevocationReason applies the entql string predicate on the revocation_reason field.
 func (f *IssuedCertificateFilter) WhereRevocationReason(p entql.StringP) {
 	f.Where(p.Field(issuedcertificate.FieldRevocationReason))
+}
+
+// WhereCertificate applies the entql []byte predicate on the certificate field.
+func (f *IssuedCertificateFilter) WhereCertificate(p entql.BytesP) {
+	f.Where(p.Field(issuedcertificate.FieldCertificate))
+}
+
+// WhereEnrollmentTokenID applies the entql string predicate on the enrollment_token_id field.
+func (f *IssuedCertificateFilter) WhereEnrollmentTokenID(p entql.StringP) {
+	f.Where(p.Field(issuedcertificate.FieldEnrollmentTokenID))
+}
+
+// WhereHasEnrollmentToken applies a predicate to check if query has an edge enrollment_token.
+func (f *IssuedCertificateFilter) WhereHasEnrollmentToken() {
+	f.Where(entql.HasEdge("enrollment_token"))
+}
+
+// WhereHasEnrollmentTokenWith applies a predicate to check if query has an edge enrollment_token with a given conditions (other predicates).
+func (f *IssuedCertificateFilter) WhereHasEnrollmentTokenWith(preds ...predicate.EnrollmentToken) {
+	f.Where(entql.HasEdgeWith("enrollment_token", sqlgraph.WrapFunc(func(s *sql.Selector) {
+		for _, p := range preds {
+			p(s)
+		}
+	})))
 }
 
 // addPredicate implements the predicateAdder interface.

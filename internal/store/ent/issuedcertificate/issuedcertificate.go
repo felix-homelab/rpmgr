@@ -7,6 +7,7 @@ import (
 
 	"entgo.io/ent"
 	"entgo.io/ent/dialect/sql"
+	"entgo.io/ent/dialect/sql/sqlgraph"
 )
 
 const (
@@ -36,8 +37,23 @@ const (
 	FieldRevokedAt = "revoked_at"
 	// FieldRevocationReason holds the string denoting the revocation_reason field in the database.
 	FieldRevocationReason = "revocation_reason"
+	// FieldCertificate holds the string denoting the certificate field in the database.
+	FieldCertificate = "certificate"
+	// FieldEnrollmentTokenID holds the string denoting the enrollment_token_id field in the database.
+	FieldEnrollmentTokenID = "enrollment_token_id"
+	// EdgeEnrollmentToken holds the string denoting the enrollment_token edge name in mutations.
+	EdgeEnrollmentToken = "enrollment_token"
+	// EnrollmentTokenFieldID holds the string denoting the ID field of the EnrollmentToken.
+	EnrollmentTokenFieldID = "id"
 	// Table holds the table name of the issuedcertificate in the database.
 	Table = "issued_certificates"
+	// EnrollmentTokenTable is the table that holds the enrollment_token relation/edge.
+	EnrollmentTokenTable = "issued_certificates"
+	// EnrollmentTokenInverseTable is the table name for the EnrollmentToken entity.
+	// It exists in this package in order to avoid circular dependency with the "enrollmenttoken" package.
+	EnrollmentTokenInverseTable = "enrollment_tokens"
+	// EnrollmentTokenColumn is the table column denoting the enrollment_token relation/edge.
+	EnrollmentTokenColumn = "enrollment_token_id"
 )
 
 // Columns holds all SQL columns for issuedcertificate fields.
@@ -54,6 +70,8 @@ var Columns = []string{
 	FieldSupersededAt,
 	FieldRevokedAt,
 	FieldRevocationReason,
+	FieldCertificate,
+	FieldEnrollmentTokenID,
 }
 
 // ValidColumn reports if the column name is valid (part of the table columns).
@@ -172,4 +190,23 @@ func ByRevokedAt(opts ...sql.OrderTermOption) OrderOption {
 // ByRevocationReason orders the results by the revocation_reason field.
 func ByRevocationReason(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldRevocationReason, opts...).ToFunc()
+}
+
+// ByEnrollmentTokenID orders the results by the enrollment_token_id field.
+func ByEnrollmentTokenID(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldEnrollmentTokenID, opts...).ToFunc()
+}
+
+// ByEnrollmentTokenField orders the results by enrollment_token field.
+func ByEnrollmentTokenField(field string, opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newEnrollmentTokenStep(), sql.OrderByField(field, opts...))
+	}
+}
+func newEnrollmentTokenStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(EnrollmentTokenInverseTable, EnrollmentTokenFieldID),
+		sqlgraph.Edge(sqlgraph.M2O, false, EnrollmentTokenTable, EnrollmentTokenColumn),
+	)
 }

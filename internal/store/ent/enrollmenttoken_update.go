@@ -181,6 +181,9 @@ func (_u *EnrollmentTokenUpdate) sqlSave(ctx context.Context) (_node int, err er
 	if _u.mutation.LabelsCleared() {
 		_spec.ClearField(enrollmenttoken.FieldLabels, field.TypeJSON)
 	}
+	if _u.mutation.MaxUsesCleared() {
+		_spec.ClearField(enrollmenttoken.FieldMaxUses, field.TypeInt)
+	}
 	if value, ok := _u.mutation.UseCount(); ok {
 		_spec.SetField(enrollmenttoken.FieldUseCount, field.TypeInt, value)
 	}
@@ -407,6 +410,9 @@ func (_u *EnrollmentTokenUpdateOne) sqlSave(ctx context.Context) (_node *Enrollm
 	}
 	if _u.mutation.LabelsCleared() {
 		_spec.ClearField(enrollmenttoken.FieldLabels, field.TypeJSON)
+	}
+	if _u.mutation.MaxUsesCleared() {
+		_spec.ClearField(enrollmenttoken.FieldMaxUses, field.TypeInt)
 	}
 	if value, ok := _u.mutation.UseCount(); ok {
 		_spec.SetField(enrollmenttoken.FieldUseCount, field.TypeInt, value)

@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"entgo.io/ent/dialect/sql"
+	"entgo.io/ent/dialect/sql/sqlgraph"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/predicate"
 )
 
@@ -112,6 +113,16 @@ func RevokedAt(v time.Time) predicate.IssuedCertificate {
 // RevocationReason applies equality check predicate on the "revocation_reason" field. It's identical to RevocationReasonEQ.
 func RevocationReason(v string) predicate.IssuedCertificate {
 	return predicate.IssuedCertificate(sql.FieldEQ(FieldRevocationReason, v))
+}
+
+// Certificate applies equality check predicate on the "certificate" field. It's identical to CertificateEQ.
+func Certificate(v []byte) predicate.IssuedCertificate {
+	return predicate.IssuedCertificate(sql.FieldEQ(FieldCertificate, v))
+}
+
+// EnrollmentTokenID applies equality check predicate on the "enrollment_token_id" field. It's identical to EnrollmentTokenIDEQ.
+func EnrollmentTokenID(v string) predicate.IssuedCertificate {
+	return predicate.IssuedCertificate(sql.FieldEQ(FieldEnrollmentTokenID, v))
 }
 
 // OrgIDEQ applies the EQ predicate on the "org_id" field.
@@ -697,6 +708,154 @@ func RevocationReasonEqualFold(v string) predicate.IssuedCertificate {
 // RevocationReasonContainsFold applies the ContainsFold predicate on the "revocation_reason" field.
 func RevocationReasonContainsFold(v string) predicate.IssuedCertificate {
 	return predicate.IssuedCertificate(sql.FieldContainsFold(FieldRevocationReason, v))
+}
+
+// CertificateEQ applies the EQ predicate on the "certificate" field.
+func CertificateEQ(v []byte) predicate.IssuedCertificate {
+	return predicate.IssuedCertificate(sql.FieldEQ(FieldCertificate, v))
+}
+
+// CertificateNEQ applies the NEQ predicate on the "certificate" field.
+func CertificateNEQ(v []byte) predicate.IssuedCertificate {
+	return predicate.IssuedCertificate(sql.FieldNEQ(FieldCertificate, v))
+}
+
+// CertificateIn applies the In predicate on the "certificate" field.
+func CertificateIn(vs ...[]byte) predicate.IssuedCertificate {
+	return predicate.IssuedCertificate(sql.FieldIn(FieldCertificate, vs...))
+}
+
+// CertificateNotIn applies the NotIn predicate on the "certificate" field.
+func CertificateNotIn(vs ...[]byte) predicate.IssuedCertificate {
+	return predicate.IssuedCertificate(sql.FieldNotIn(FieldCertificate, vs...))
+}
+
+// CertificateGT applies the GT predicate on the "certificate" field.
+func CertificateGT(v []byte) predicate.IssuedCertificate {
+	return predicate.IssuedCertificate(sql.FieldGT(FieldCertificate, v))
+}
+
+// CertificateGTE applies the GTE predicate on the "certificate" field.
+func CertificateGTE(v []byte) predicate.IssuedCertificate {
+	return predicate.IssuedCertificate(sql.FieldGTE(FieldCertificate, v))
+}
+
+// CertificateLT applies the LT predicate on the "certificate" field.
+func CertificateLT(v []byte) predicate.IssuedCertificate {
+	return predicate.IssuedCertificate(sql.FieldLT(FieldCertificate, v))
+}
+
+// CertificateLTE applies the LTE predicate on the "certificate" field.
+func CertificateLTE(v []byte) predicate.IssuedCertificate {
+	return predicate.IssuedCertificate(sql.FieldLTE(FieldCertificate, v))
+}
+
+// CertificateIsNil applies the IsNil predicate on the "certificate" field.
+func CertificateIsNil() predicate.IssuedCertificate {
+	return predicate.IssuedCertificate(sql.FieldIsNull(FieldCertificate))
+}
+
+// CertificateNotNil applies the NotNil predicate on the "certificate" field.
+func CertificateNotNil() predicate.IssuedCertificate {
+	return predicate.IssuedCertificate(sql.FieldNotNull(FieldCertificate))
+}
+
+// EnrollmentTokenIDEQ applies the EQ predicate on the "enrollment_token_id" field.
+func EnrollmentTokenIDEQ(v string) predicate.IssuedCertificate {
+	return predicate.IssuedCertificate(sql.FieldEQ(FieldEnrollmentTokenID, v))
+}
+
+// EnrollmentTokenIDNEQ applies the NEQ predicate on the "enrollment_token_id" field.
+func EnrollmentTokenIDNEQ(v string) predicate.IssuedCertificate {
+	return predicate.IssuedCertificate(sql.FieldNEQ(FieldEnrollmentTokenID, v))
+}
+
+// EnrollmentTokenIDIn applies the In predicate on the "enrollment_token_id" field.
+func EnrollmentTokenIDIn(vs ...string) predicate.IssuedCertificate {
+	return predicate.IssuedCertificate(sql.FieldIn(FieldEnrollmentTokenID, vs...))
+}
+
+// EnrollmentTokenIDNotIn applies the NotIn predicate on the "enrollment_token_id" field.
+func EnrollmentTokenIDNotIn(vs ...string) predicate.IssuedCertificate {
+	return predicate.IssuedCertificate(sql.FieldNotIn(FieldEnrollmentTokenID, vs...))
+}
+
+// EnrollmentTokenIDGT applies the GT predicate on the "enrollment_token_id" field.
+func EnrollmentTokenIDGT(v string) predicate.IssuedCertificate {
+	return predicate.IssuedCertificate(sql.FieldGT(FieldEnrollmentTokenID, v))
+}
+
+// EnrollmentTokenIDGTE applies the GTE predicate on the "enrollment_token_id" field.
+func EnrollmentTokenIDGTE(v string) predicate.IssuedCertificate {
+	return predicate.IssuedCertificate(sql.FieldGTE(FieldEnrollmentTokenID, v))
+}
+
+// EnrollmentTokenIDLT applies the LT predicate on the "enrollment_token_id" field.
+func EnrollmentTokenIDLT(v string) predicate.IssuedCertificate {
+	return predicate.IssuedCertificate(sql.FieldLT(FieldEnrollmentTokenID, v))
+}
+
+// EnrollmentTokenIDLTE applies the LTE predicate on the "enrollment_token_id" field.
+func EnrollmentTokenIDLTE(v string) predicate.IssuedCertificate {
+	return predicate.IssuedCertificate(sql.FieldLTE(FieldEnrollmentTokenID, v))
+}
+
+// EnrollmentTokenIDContains applies the Contains predicate on the "enrollment_token_id" field.
+func EnrollmentTokenIDContains(v string) predicate.IssuedCertificate {
+	return predicate.IssuedCertificate(sql.FieldContains(FieldEnrollmentTokenID, v))
+}
+
+// EnrollmentTokenIDHasPrefix applies the HasPrefix predicate on the "enrollment_token_id" field.
+func EnrollmentTokenIDHasPrefix(v string) predicate.IssuedCertificate {
+	return predicate.IssuedCertificate(sql.FieldHasPrefix(FieldEnrollmentTokenID, v))
+}
+
+// EnrollmentTokenIDHasSuffix applies the HasSuffix predicate on the "enrollment_token_id" field.
+func EnrollmentTokenIDHasSuffix(v string) predicate.IssuedCertificate {
+	return predicate.IssuedCertificate(sql.FieldHasSuffix(FieldEnrollmentTokenID, v))
+}
+
+// EnrollmentTokenIDIsNil applies the IsNil predicate on the "enrollment_token_id" field.
+func EnrollmentTokenIDIsNil() predicate.IssuedCertificate {
+	return predicate.IssuedCertificate(sql.FieldIsNull(FieldEnrollmentTokenID))
+}
+
+// EnrollmentTokenIDNotNil applies the NotNil predicate on the "enrollment_token_id" field.
+func EnrollmentTokenIDNotNil() predicate.IssuedCertificate {
+	return predicate.IssuedCertificate(sql.FieldNotNull(FieldEnrollmentTokenID))
+}
+
+// EnrollmentTokenIDEqualFold applies the EqualFold predicate on the "enrollment_token_id" field.
+func EnrollmentTokenIDEqualFold(v string) predicate.IssuedCertificate {
+	return predicate.IssuedCertificate(sql.FieldEqualFold(FieldEnrollmentTokenID, v))
+}
+
+// EnrollmentTokenIDContainsFold applies the ContainsFold predicate on the "enrollment_token_id" field.
+func EnrollmentTokenIDContainsFold(v string) predicate.IssuedCertificate {
+	return predicate.IssuedCertificate(sql.FieldContainsFold(FieldEnrollmentTokenID, v))
+}
+
+// HasEnrollmentToken applies the HasEdge predicate on the "enrollment_token" edge.
+func HasEnrollmentToken() predicate.IssuedCertificate {
+	return predicate.IssuedCertificate(func(s *sql.Selector) {
+		step := sqlgraph.NewStep(
+			sqlgraph.From(Table, FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, false, EnrollmentTokenTable, EnrollmentTokenColumn),
+		)
+		sqlgraph.HasNeighbors(s, step)
+	})
+}
+
+// HasEnrollmentTokenWith applies the HasEdge predicate on the "enrollment_token" edge with a given conditions (other predicates).
+func HasEnrollmentTokenWith(preds ...predicate.EnrollmentToken) predicate.IssuedCertificate {
+	return predicate.IssuedCertificate(func(s *sql.Selector) {
+		step := newEnrollmentTokenStep()
+		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
+			for _, p := range preds {
+				p(s)
+			}
+		})
+	})
 }
 
 // And groups predicates with the AND operator between them.

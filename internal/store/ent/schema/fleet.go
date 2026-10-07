@@ -128,7 +128,9 @@ func (EnrollmentToken) Fields() []ent.Field {
 		field.String("connector_id").Optional().Nillable().Immutable(),
 		field.JSON("labels", map[string]string{}).Optional(),
 		field.Bool("ephemeral").Default(false).Immutable(),
-		field.Int("max_uses").Positive().Default(1).Immutable(),
+		// max_uses is null for unlimited uses, which only ephemeral tokens may have; create a token
+		// with max_uses 0 to ask for that (docs/04-security.md, "Tokens"). Unset means 1.
+		field.Int("max_uses").Positive().Optional().Nillable().Immutable(),
 		field.Int("use_count").NonNegative().Default(0),
 		field.Time("expires_at").Immutable(),
 		field.String("created_by").NotEmpty().Immutable(),

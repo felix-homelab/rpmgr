@@ -283,10 +283,6 @@ func (_c *EnrollmentTokenCreate) defaults() error {
 		v := enrollmenttoken.DefaultEphemeral
 		_c.mutation.SetEphemeral(v)
 	}
-	if _, ok := _c.mutation.MaxUses(); !ok {
-		v := enrollmenttoken.DefaultMaxUses
-		_c.mutation.SetMaxUses(v)
-	}
 	if _, ok := _c.mutation.UseCount(); !ok {
 		v := enrollmenttoken.DefaultUseCount
 		_c.mutation.SetUseCount(v)
@@ -336,9 +332,6 @@ func (_c *EnrollmentTokenCreate) check() error {
 	}
 	if _, ok := _c.mutation.Ephemeral(); !ok {
 		return &ValidationError{Name: "ephemeral", err: errors.New(`ent: missing required field "EnrollmentToken.ephemeral"`)}
-	}
-	if _, ok := _c.mutation.MaxUses(); !ok {
-		return &ValidationError{Name: "max_uses", err: errors.New(`ent: missing required field "EnrollmentToken.max_uses"`)}
 	}
 	if v, ok := _c.mutation.MaxUses(); ok {
 		if err := enrollmenttoken.MaxUsesValidator(v); err != nil {
@@ -429,7 +422,7 @@ func (_c *EnrollmentTokenCreate) createSpec() (*EnrollmentToken, *sqlgraph.Creat
 	}
 	if value, ok := _c.mutation.MaxUses(); ok {
 		_spec.SetField(enrollmenttoken.FieldMaxUses, field.TypeInt, value)
-		_node.MaxUses = value
+		_node.MaxUses = &value
 	}
 	if value, ok := _c.mutation.UseCount(); ok {
 		_spec.SetField(enrollmenttoken.FieldUseCount, field.TypeInt, value)

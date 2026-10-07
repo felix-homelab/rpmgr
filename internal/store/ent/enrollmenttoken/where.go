@@ -545,6 +545,16 @@ func MaxUsesLTE(v int) predicate.EnrollmentToken {
 	return predicate.EnrollmentToken(sql.FieldLTE(FieldMaxUses, v))
 }
 
+// MaxUsesIsNil applies the IsNil predicate on the "max_uses" field.
+func MaxUsesIsNil() predicate.EnrollmentToken {
+	return predicate.EnrollmentToken(sql.FieldIsNull(FieldMaxUses))
+}
+
+// MaxUsesNotNil applies the NotNil predicate on the "max_uses" field.
+func MaxUsesNotNil() predicate.EnrollmentToken {
+	return predicate.EnrollmentToken(sql.FieldNotNull(FieldMaxUses))
+}
+
 // UseCountEQ applies the EQ predicate on the "use_count" field.
 func UseCountEQ(v int) predicate.EnrollmentToken {
 	return predicate.EnrollmentToken(sql.FieldEQ(FieldUseCount, v))

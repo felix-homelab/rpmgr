@@ -10,6 +10,7 @@ import (
 
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/enrollmenttoken"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/issuedcertificate"
 )
 
@@ -126,10 +127,35 @@ func (_c *IssuedCertificateCreate) SetNillableRevocationReason(v *string) *Issue
 	return _c
 }
 
+// SetCertificate sets the "certificate" field.
+func (_c *IssuedCertificateCreate) SetCertificate(v []byte) *IssuedCertificateCreate {
+	_c.mutation.SetCertificate(v)
+	return _c
+}
+
+// SetEnrollmentTokenID sets the "enrollment_token_id" field.
+func (_c *IssuedCertificateCreate) SetEnrollmentTokenID(v string) *IssuedCertificateCreate {
+	_c.mutation.SetEnrollmentTokenID(v)
+	return _c
+}
+
+// SetNillableEnrollmentTokenID sets the "enrollment_token_id" field if the given value is not nil.
+func (_c *IssuedCertificateCreate) SetNillableEnrollmentTokenID(v *string) *IssuedCertificateCreate {
+	if v != nil {
+		_c.SetEnrollmentTokenID(*v)
+	}
+	return _c
+}
+
 // SetID sets the "id" field.
 func (_c *IssuedCertificateCreate) SetID(v string) *IssuedCertificateCreate {
 	_c.mutation.SetID(v)
 	return _c
+}
+
+// SetEnrollmentToken sets the "enrollment_token" edge to the EnrollmentToken entity.
+func (_c *IssuedCertificateCreate) SetEnrollmentToken(v *EnrollmentToken) *IssuedCertificateCreate {
+	return _c.SetEnrollmentTokenID(v.ID)
 }
 
 // Mutation returns the IssuedCertificateMutation object of the builder.
@@ -302,6 +328,27 @@ func (_c *IssuedCertificateCreate) createSpec() (*IssuedCertificate, *sqlgraph.C
 	if value, ok := _c.mutation.RevocationReason(); ok {
 		_spec.SetField(issuedcertificate.FieldRevocationReason, field.TypeString, value)
 		_node.RevocationReason = value
+	}
+	if value, ok := _c.mutation.Certificate(); ok {
+		_spec.SetField(issuedcertificate.FieldCertificate, field.TypeBytes, value)
+		_node.Certificate = value
+	}
+	if nodes := _c.mutation.EnrollmentTokenIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2O,
+			Inverse: false,
+			Table:   issuedcertificate.EnrollmentTokenTable,
+			Columns: []string{issuedcertificate.EnrollmentTokenColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(enrollmenttoken.FieldID, field.TypeString),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_node.EnrollmentTokenID = &nodes[0]
+		_spec.Edges = append(_spec.Edges, edge)
 	}
 	return _node, _spec
 }
