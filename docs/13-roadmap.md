@@ -41,10 +41,10 @@ How spikes run, also agreed before they start:
   ADR and the affected documents in one PR.
 - **Versions** (D39): a spike pins the current releases of what it tests and re-checks, at those
   versions, every `[F]` fact its decision rests on; a re-checked fact cites the new version inline.
-- **External parts** (D37): S1 needs the reference testbed (D30), and S6 needs Let's Encrypt
-  staging and a real test zone. The harness and a local dry run come first; the maintainer runs
-  the external parts afterwards. A local dry run never decides a rule: until the external run,
-  the spike stays *Running* and its ADR *Proposed*.
+- **External parts** (D37): S6 needs Let's Encrypt staging and a real test zone. The harness and
+  a local dry run come first; the maintainer runs the external part afterwards. A local dry run
+  never decides a rule: until the external run, the spike stays *Running*. S1 needs no testbed any
+  more, because D45 made the default transport a setting.
 - **Platforms and clients** (D38): S8 runs arm64, armv7 and riscv64 under QEMU user-mode emulation
   when no such hardware is at hand, and arm64 again on the Raspberry Pi 5 of the reference
   testbed. In S3, "real clients" are headless Chromium and Firefox, whose TLS stacks are those of
@@ -52,7 +52,7 @@ How spikes run, also agreed before they start:
 
 | ID | Question | Method | Pass criteria | Decides | Rule |
 |---|---|---|---|---|---|
-| **S1** | Is QUIC (quic-go) or TLS + reverse HTTP/2 the better default transport, and by how much? | Benchmark subset from [12](12-testing-and-quality.md#benchmarks): RTT {1, 80} ms × loss {0, 1} %, 1 and 32 streams, CPU per Gbit/s, on the reference testbed (D30, [12](12-testing-and-quality.md#benchmarks)) | Data sufficient to set the default transport policy; numbers recorded | [ADR-0004](adr/0004-quic-default-transport-policy.md), D19 | QUIC and TCP + h2 are compared head-to-head on four metrics: single-stream throughput, 32-stream goodput at 1 % loss, connection-setup latency p99 and CPU per Gbit/s ([03](03-connections.md#targets-t)); the default is the transport that wins more of the four; a tie keeps QUIC |
+| **S1** | Is QUIC (quic-go) or TLS + reverse HTTP/2 the better default transport, and by how much? | Benchmark subset from [12](12-testing-and-quality.md#benchmarks): RTT {1, 80} ms × loss {0, 1} %, 1 and 32 streams, CPU per Gbit/s, on the reference testbed (D30, [12](12-testing-and-quality.md#benchmarks)) | Data sufficient to set the default transport policy; numbers recorded | [ADR-0004](adr/0004-quic-default-transport-policy.md), D19; result: D45 | ~~QUIC and TCP + h2 are compared head-to-head on four metrics: single-stream throughput, 32-stream goodput at 1 % loss, connection-setup latency p99 and CPU per Gbit/s ([03](03-connections.md#targets-t)); the default is the transport that wins more of the four; a tie keeps QUIC~~ **Replaced by D45** (2026-10-07): both transports first-class; the default is the setting `default_transport` (shipped `auto`), overridable per connector and per route |
 | **S2** | Does reverse HTTP/2 (connector as h2 server on a connection it dialled) give full-duplex streams with half-close and reset semantics? | Prototype with `x/net/http2`: 1 GiB in both directions concurrently; half-close each side; abort mid-stream; gateway-opened session control stream and `OpenRequest`-driven streams for connector-initiated opens; tuned windows and stream limits set on a `ClientConn` over an existing connection; behaviour at the stream limit; stall detection under connection-window pressure; how much of the extra round trip a first chunk carried in `OpenRequest` hides | Correct bytes, FIN and RST mapping in all cases; no deadlock under flow-control pressure; never blocks at the stream limit | [ADR-0005](adr/0005-reverse-http2-fallback.md); result: D40 | Pass: reverse HTTP/2 as designed. Fail: a patched yamux |
 | **S3** | Can the gateway multiplex TCP/443 and UDP/443 as designed? | ClientHello peek with real clients (headless Chromium and Firefox, curl, Go; D38) incl. post-quantum key shares; SNI-based certificate selection with `GetConfigForClient`; one quic-go listener serving `h3` and `rpmgr-tunnel/1` | All clients routed correctly; peek within limits; both ALPNs served from one UDP socket | [03](03-connections.md#port-443-multiplexing), [ADR-0004](adr/0004-quic-default-transport-policy.md) | If one quic-go listener cannot serve both ALPNs well, tunnels move to a separate UDP port (gateway boot-file key `listen.tunnel_udp`, [10](10-operations.md#boot-files)) |
 | **S4** | Does ConnectRPC carry the agent control session? | Bidirectional stream over `net/http` HTTP/2 with mutual TLS: cancellation, deadlines, message-size limits, HTTP/2 PING liveness, 10 000 concurrent idle sessions (memory); behaviour behind a TLS-passthrough route | All behaviours correct; memory per idle session recorded | [ADR-0010](adr/0010-connectrpc.md), D20; result: [ADR-0016](adr/0016-connectrpc-public-api-grpc-go-agents.md) | ConnectRPC if every check passes; otherwise grpc-go for the agent protocol only |
@@ -62,8 +62,8 @@ How spikes run, also agreed before they start:
 | **S8** | Does pure-Go SQLite cover the controller's platforms? | Current `modernc.org/sqlite` on linux/amd64, arm64, armv7, riscv64 (QEMU user-mode emulation where no hardware is at hand; arm64 also on the Raspberry Pi 5, D38): test suite, WAL, `VACUUM INTO` | Tests pass on the supported platforms; unsupported ones documented | [ADR-0011](adr/0011-sqlite-postgres-ent-atlas.md) | The controller ships only on platforms that pass; the others are documented as unsupported |
 | **S9** | How do controller replicas share session ownership? (Run at the **start of Phase 2**.) | PostgreSQL `LISTEN/NOTIFY` (or polling-free alternative) for the session registry and push fan-out; controller-to-controller mutual TLS for imperative operations; revocation-log shipping to the shared sink with conditional-create sequencing; kill a replica under load | An agent's push reaches it within 1 s of commit; failover within the reconnect backoff | [10](10-operations.md#high-availability) | If `LISTEN/NOTIFY` is insufficient: push fan-out over controller-to-controller mutual TLS |
 
-**Exit criteria:** S1–S8 have written results, including the maintainer's external runs for S1
-and S6 (D37); every affected ADR is *Accepted* or changed; the documents in this folder are
+**Exit criteria:** S1–S8 have written results, including the maintainer's external run for S6 (D37;
+S1 is decided by D45); every affected ADR is *Accepted* or changed; the documents in this folder are
 updated to match.
 
 ## Phase 1 — MVP
@@ -192,12 +192,13 @@ implemented, and the result recorded in the PR.
 | VB-15 | `/install.sh` verification chain (root key → signing-key statement → manifest → SHA-256) with OpenSSL ≥ 3.0 (Ed25519 `pkeyutl -rawin`, BLAKE2b-512 prehash) on the supported distributions | [04](04-security.md#install-scripts) |
 | VB-16 | protovalidate-es maturity as the react-hook-form resolver; fallback: hand-written zod schemas | [09](09-web-ui.md), [08](08-software-stack.md#frontend) |
 | VB-17 | An IANA Private Enterprise Number registered for rpmgr before Phase 1, for the OID of the CSR-binding extension; S7 used 32473, the number reserved for documentation (RFC 5612) | [04](04-security.md#flow), [S7](spikes/S7.md) |
+| VB-18 | A session whose stream writers have been blocked for more than 200 ms is deprioritised for new streams: check that the signal works on QUIC and on reverse HTTP/2 under load, with the benchmark harness (formerly part of S1) | [03](03-connections.md#multiple-gateways), [ADR-0004](adr/0004-quic-default-transport-policy.md), [ADR-0005](adr/0005-reverse-http2-fallback.md) |
 
 ## Risks
 
 | Risk | Impact | Mitigation |
 |---|---|---|
-| quic-go throughput or CPU cost below targets (NewReno, no GRO, ~1 core per session) | Slower than a direct connection on bulk transfers | S1 decides the default; TCP/h2 is first-class; several sessions per connector; transport selectable per route |
+| quic-go throughput or CPU cost below targets (NewReno, no GRO, ~1 core per session) | Slower than a direct connection on bulk transfers | The transport is a setting: instance default, per connector and per route (D45); TCP/h2 is first-class; several sessions per connector |
 | quic-go API changes (pre-1.0) | Churn in the tunnel layer | Wrapped behind `internal/tunnel`; pinned versions; upgrade with the e2e matrix |
 | ConnectRPC unsuitable for the agent stream | Rework of the control session | **Happened** (S4): grpc-go carries the agent protocol with the same protobuf contract ([ADR-0016](adr/0016-connectrpc-public-api-grpc-go-agents.md)) |
 | Ent/Atlas complexity or limits | Slower data-layer work | S5; bun fallback; the schema is plain SQL underneath |

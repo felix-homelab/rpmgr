@@ -52,7 +52,7 @@ restarts, kills and network impairment are real.
 | Dimension | Values |
 |---|---|
 | Route type | `tcp`, `udp` (payloads below and above the datagram limit, [03](03-connections.md#udp-routes)), `http` (h1, h2, WebSocket, gRPC), `http` with ACME (against Pebble, the local ACME test server, as in [S6](spikes/S6.md); Phase 2: DNS-01 through the fake Cloudflare API with a test DNS server answering the challenges), `tls_passthrough`, private TCP, private UDP; Phase 2: `tcp` with `http_connect`, load-balanced routes with health checks |
-| Transport | QUIC; TLS + reverse HTTP/2 (all streams gateway-opened, connector-initiated streams via `OpenRequest`); WSS through a TLS-intercepting proxy test double, Phase 2 ([03](03-connections.md#transports-and-fallback)) |
+| Transport | Each value of the transport setting: `auto`, `quic`, `h2`, also mixed per route on one connector ([03](03-connections.md#transport-selection)); QUIC; TLS + reverse HTTP/2 (all streams gateway-opened, connector-initiated streams via `OpenRequest`); WSS through a TLS-intercepting proxy test double, Phase 2 ([03](03-connections.md#transports-and-fallback)) |
 | Scenario | Steady state; configuration change on an **unrelated** route; change on the **same** route; route removed (drain); gateway planned restart (`Drain`); gateway `SIGKILL`; controller down; controller restore with a new `db_epoch`; connector revoked; tightened access policy; target blocked by local policy; policy file edited and reloaded (no new revision); certificate expiry and grace re-authentication (fake clock); clock skew; UDP blackholed mid-session; NAT rebinding (source port change) |
 
 **Assertions** (every cell):
@@ -77,13 +77,14 @@ controller database restarts, and clock jumps, while a load generator checks int
 ## Benchmarks
 
 The benchmark suite proves or disproves the targets in
-[03-connections.md](03-connections.md#performance-budget); it also decides the default transport
-([ADR-0004](adr/0004-quic-default-transport-policy.md), spike S1).
+[03-connections.md](03-connections.md#performance-budget). It also shows how the two transports
+compare, which the documentation turns into a recommendation per kind of network; the default
+transport itself is a setting ([ADR-0004](adr/0004-quic-default-transport-policy.md), D45).
 
 **Testbed** (the reference testbed, D30): three short-lived 2-vCPU cloud VMs — **client**,
 **gateway**, **connector + service** — with `tc netem` on the gateway↔connector link, run once on
 x86-64 and once on arm64; plus a **Raspberry Pi 5** as connector for the CPU-constrained case. The
-same testbed serves spike S1 ([13](13-roadmap.md#phase-0--spikes)).
+suite is the harness of spike S1 (tag `spike/s1`, [S1](spikes/S1.md)), moved to `bench/` in Phase 1.
 
 | Axis | Values |
 |---|---|
@@ -110,13 +111,12 @@ gateway and connector, recorded per Gbit/s as a baseline for the release regress
 ([03](03-connections.md#targets-t)); memory via the runtime metrics; GSO and buffer status via the
 `rpmgr_quic_*` metrics ([10](10-operations.md#observability)).
 
-**When**: the benchmarks run on the reference testbed, started by hand, for spike S1 and **before
-every release**: the full matrix, plus a regression check against the last release's baseline. A
-regression of more than 10 % blocks the release ([RELEASING](../RELEASING.md#release-process)).
-Nightly CI runs on GitHub-hosted runners, whose shared VMs are too noisy for a performance gate, so
-it runs correctness only (end-to-end matrix, chaos tests, long fuzzing). **Results and the decision
-taken are recorded in [ADR-0004](adr/0004-quic-default-transport-policy.md)**; a missed target is
-recorded, not hidden.
+**When**: the benchmarks run on the reference testbed, started by hand, **before every release**:
+the full matrix, plus a regression check against the last release's baseline. A regression of more
+than 10 % blocks the release ([RELEASING](../RELEASING.md#release-process)). Nightly CI runs on
+GitHub-hosted runners, whose shared VMs are too noisy for a performance gate, so it runs correctness
+only (end-to-end matrix, chaos tests, long fuzzing). **Results are recorded with the release**, and
+a missed target is recorded, not hidden.
 
 ## Security testing
 
@@ -195,6 +195,9 @@ Regression tests for design-review findings:
 | `TestDNS_ReservedNamesNeverWritten` | The controller's public URL and aliases, the agent endpoints and `_acme-challenge.*` names are never written, even when a route or DNS name asks for them |
 | `TestDNS_TokenWriteOnlyAndBaseURLFixed` | The provider token is never returned by any API, export or log; a release build has no setting or flag that changes the Cloudflare API URL |
 | `TestGateway_CFConnectingIPOnlyForProxiedFromCloudflare` | `CF-Connecting-IP` sets the client address only for `dns_proxied` routes and only from a peer in the Cloudflare ranges of the snapshot; from any other peer, or on another route, it is ignored and IP rules see the TCP peer; `X-Forwarded-For` from Cloudflare peers is not trusted |
+| `TestTransport_PinnedRouteUsesPinnedSessions` | On a connector whose effective transport is `auto` (QUIC), a route pinned to `h2` is served only over the connector's h2 sessions and the other routes only over QUIC; the most specific level wins (route over connector over instance) ([03](03-connections.md#transport-selection)) |
+| `TestTransport_PinNeverFallsBack` | With UDP blocked, a route pinned to `quic` is `not_ready(transport_unavailable: quic)` and no stream of it goes over h2, while a route on `auto` moves to h2 ([03](03-connections.md#transport-selection)) |
+| `TestTransport_ChangeKeepsOpenConnections` | Changing the instance default, a connector's or a route's transport moves new user connections at once; open connections finish on their session; a session no route needs is closed only after its last stream; unchanged routes see 0 resets ([03](03-connections.md#transport-selection)) |
 | `TestACME_ValidationWaitsForEveryGateway` | For HTTP-01 and TLS-ALPN-01 the CA is asked to validate only after every gateway serving the name acknowledged its `AcmeChallenge`; a gateway without a control session, or one that does not acknowledge within the deadline, fails the order without a validation request; gateways keep challenges in memory only and never read the database ([03](03-connections.md#service-sketch), [S6](spikes/S6.md)) |
 | `TestACME_DNS01OnlyManagedZones` | Hostnames in managed zones are issued via DNS-01 through the zone's provider; other hostnames keep HTTP-01/TLS-ALPN-01; the challenge TXT is removed after issuance |
 | `TestPolicy_MetadataAlwaysDenied` | Targets 169.254.169.254, `fd00:ec2::254`, `100.100.100.200`, link-local fe80::/10 and IPv4-mapped forms such as `::ffff:169.254.169.254` are denied unless explicitly listed, even inside an allowed CIDR |

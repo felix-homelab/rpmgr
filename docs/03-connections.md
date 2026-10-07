@@ -548,16 +548,44 @@ must differ from public HTTP/3, which one listener cannot provide
 
 | Order | Transport | When it is used |
 |---|---|---|
-| 1 | **QUIC** on UDP/443, ALPN `rpmgr-tunnel/1` | Default policy ([ADR-0004](adr/0004-quic-default-transport-policy.md)) |
-| 2 | **TLS 1.3 + reverse HTTP/2** on TCP/443, ALPN `rpmgr-tunnel-h2/1`; direct, or through an HTTP CONNECT / SOCKS5 proxy | UDP blocked or slower; operator preference |
+| 1 | **QUIC** on UDP/443, ALPN `rpmgr-tunnel/1` | First choice of `auto`, or pinned with `quic` ([Transport selection](#transport-selection)) |
+| 2 | **TLS 1.3 + reverse HTTP/2** on TCP/443, ALPN `rpmgr-tunnel-h2/1`; direct, or through an HTTP CONNECT / SOCKS5 proxy | Fallback of `auto` when UDP is blocked or QUIC loses the race, or pinned with `h2` |
 | 3 | **WSS** (Phase 2): HTTP Upgrade at `/.rpmgr/tunnel` on the gateway's own public WSS hostname, which has a publicly trusted ACME certificate (an intercepting proxy verifies it like any website); inside, TLS 1.3 mutual auth to `<gateway-id>.gateway.<td>`, then reverse HTTP/2 | Networks with TLS-intercepting proxies |
 
 **Happy eyeballs.** The connector starts QUIC, and TCP 300 ms later; the first session to complete
 its handshake wins. The winner is cached for 24 h per **(gateway, local source address)**, where
 the local source address is the one the kernel picks to reach that gateway; when it changes (a new
 network), the next connection starts a new race. While TCP is in use, QUIC is re-probed every
-10 min. Operators can pin a transport per connector or per route (e.g. bulk transfer routes on TCP
-if benchmarks show it faster on that host).
+10 min.
+
+#### Transport selection
+
+Which transport a connector uses is a setting
+([ADR-0004](adr/0004-quic-default-transport-policy.md), [D45](14-open-decisions.md#engineering)):
+
+| Value | Behaviour |
+|---|---|
+| `auto` | Happy eyeballs as above: QUIC first, TLS + reverse HTTP/2 when UDP is blocked or QUIC loses the race |
+| `quic` | QUIC only |
+| `h2` | TLS + reverse HTTP/2 only, direct or through a proxy |
+
+- **Three levels.** The instance default `default_transport` (Instance Admin, shipped as `auto`,
+  [10](10-operations.md#runtime-settings-ui--settings)), a connector's `transport` and a route's
+  `transport`. The most specific level that is set applies: route, then connector, then instance.
+- **Sessions follow the need.** A connector's snapshot carries its own effective transport and the
+  effective transport of every route it serves. Per gateway it keeps the sessions these need: a
+  connector on `auto` that also serves a route pinned to `h2` keeps its QUIC session and the two
+  TCP connections of the h2 transport.
+- **Streams follow the route.** The gateway opens a route's streams only on sessions of the
+  route's effective transport; for `auto`, on the transport the race chose.
+- **A pin never falls back.** If a pinned transport cannot be established, the routes that need it
+  are `not_ready(transport_unavailable: quic)` (or `h2`) on that connector, and the UI shows the
+  reason. Only `auto` changes transport by itself.
+- **Changes are ordinary configuration changes** ([Configuration
+  reconciliation](#configuration-reconciliation)): new user connections use the new transport at
+  once; connections already open finish on their session; a session no route needs any more is
+  closed after its last stream has ended. Unchanged routes are untouched.
+- Phase 2 adds `wss` as a fourth value and as the last step of `auto`.
 
 **Reverse HTTP/2** ([ADR-0005](adr/0005-reverse-http2-fallback.md)). The connector dials the
 gateway and then acts as the **HTTP/2 server** on that connection; the gateway acts as the client
@@ -652,7 +680,7 @@ the gateway tries another session for the route, then returns 503 (HTTP) or rese
   **power of two choices**: sample two, take the one with the lower (smoothed RTT × in-flight
   streams). Neither library exposes the connection-level send window (quic-go's connection state
   and net/http's `ClientConn` only report stream counts), so a session whose stream writers have
-  been blocked for more than 200 ms is deprioritised for new streams [V S1].
+  been blocked for more than 200 ms is deprioritised for new streams [V VB-18].
 - **Planned gateway restart**: the gateway sends `Drain{deadline}` on the session control stream, stops accepting new
   public connections (or lets the load balancer/DNS move them), and keeps existing streams until the
   gateway drain deadline. Connectors reconnect to the restarted gateway when it is back.
@@ -767,7 +795,7 @@ sequenceDiagram
 | **Bad configuration** | Rejected at compile time by the controller, or `Rejected` by the agent; last-known-good keeps running; the UI shows the reasons. No outage. |
 | **Certificate expiring** | Renewed at 50 % of lifetime over the control session. If the agent was offline past expiry, it re-authenticates within the grace period using the same key, otherwise it must re-enroll ([04](04-security.md#enrollment)). |
 | **Clock skew** | Certificates are backdated 5 min; `Welcome` carries the controller's time; the agent warns above 30 s skew and reports TLS time errors as "clock skew". No protocol message depends on timestamps. |
-| **UDP blocked** | Happy eyeballs selects TCP within 300 ms plus the TCP and TLS handshake. If UDP is blackholed mid-session, the QUIC idle timeout fires, the connector moves to TCP, and QUIC is not retried for 1 h. |
+| **UDP blocked** | With `auto`, happy eyeballs selects TCP within 300 ms plus the TCP and TLS handshake. If UDP is blackholed mid-session, the QUIC idle timeout fires, the connector moves to TCP, and QUIC is not retried for 1 h. With `quic` pinned, the routes that need QUIC are `not_ready(transport_unavailable: quic)` instead ([Transport selection](#transport-selection)). |
 | **Two controller replicas** | Revisions come from the database; one session per agent via `session_epoch` ([Revisions and ordering](#revisions-and-ordering)). |
 | **Connector local policy blocks a target** | The route is `not_ready(blocked_by_local_policy: 10.0.0.5:5432)`; the UI shows the exact command to allow it on the host. |
 
@@ -809,8 +837,8 @@ them by default**, and rpmgr does not assume it:
 
 So at 100 ms RTT a single QUIC session tops out around 1.16 Gbit/s regardless of window tuning;
 higher-BDP paths need several sessions or the TCP transport. This is why TCP is a **first-class**
-transport, selectable per connector and per route, not just an emergency fallback, and why the
-default is decided by benchmarks ([ADR-0004](adr/0004-quic-default-transport-policy.md)).
+transport, selectable as the instance default, per connector and per route, not just an emergency
+fallback ([Transport selection](#transport-selection)).
 
 ### Targets [T]
 

@@ -1,6 +1,6 @@
-# ADR-0004: QUIC as the default transport policy, TCP as a first-class transport
+# ADR-0004: QUIC and TCP as first-class transports, with an operator-set default
 
-Status: Proposed (design phase) · Date: 2026-10-06
+Status: Accepted (decided by the product owner, D45, 2026-10-07) · Date: 2026-10-06
 
 ## Context
 
@@ -35,28 +35,36 @@ congestion control. "QUIC is faster" is therefore a **hypothesis**, not a premis
 
 ## Decision
 
-- QUIC (`rpmgr-tunnel/1` on UDP/443) is the **default transport policy**. TLS 1.3 + reverse HTTP/2
-  on TCP/443 is a **first-class transport**, not only an emergency fallback
-  ([ADR-0005](0005-reverse-http2-fallback.md)).
-- Connectors race the two with **happy eyeballs**: QUIC first, TCP 300 ms later, the winner cached
-  per network for 24 h, QUIC re-probed every 10 min
-  ([03](../03-connections.md#transports-and-fallback)).
-- Operators can **pin the transport** per connector or per route. For example, bulk-transfer
-  routes can run on TCP if benchmarks show it is faster on that host.
+- **Both transports are first-class:** QUIC (`rpmgr-tunnel/1` on UDP/443) and TLS 1.3 + reverse
+  HTTP/2 (`rpmgr-tunnel-h2/1` on TCP/443, [ADR-0005](0005-reverse-http2-fallback.md)). Neither is
+  only an emergency fallback.
+- **The transport is a setting** ([D45](../14-open-decisions.md#engineering),
+  [03](../03-connections.md#transport-selection)) with the values `auto`, `quic` and `h2`:
+  - `auto` races the two with **happy eyeballs**: QUIC first, TCP 300 ms later, the winner cached
+    per network for 24 h, QUIC re-probed every 10 min;
+  - `quic` and `h2` pin one transport, which then never falls back: routes that need it are
+    `not_ready(transport_unavailable)` where it cannot be established.
+- **Three levels:** the instance default `default_transport`, shipped as `auto`; a connector's
+  `transport`; a route's `transport`. The most specific level that is set applies.
+- **Measurements inform, they do not decide.** The better transport depends on the network (loss,
+  how UDP is treated, CPU), so no single benchmark fixes one default for everyone. The benchmark
+  suite measures both transports against a direct connection before every release
+  ([12](../12-testing-and-quality.md#benchmarks)), and the documentation recommends a setting per
+  kind of network.
 - Tuned values (defined in [03](../03-connections.md#quic-parameters)):
   - stream window 512 KiB → 16 MiB;
   - connection window up to **256 MiB** (≥ 16 × the stream maximum, so a few stalled streams cannot
     pin all connection credit), with growth bounded by `AllowConnectionWindowIncrease` against the
-    process-wide budget (default 1 GiB), with **separate budgets per ALPN** (`rpmgr-tunnel/1` vs public
-    `h3`), so public HTTP/3 cannot consume the tunnels' share;
+    process-wide budget (default 1 GiB), with **separate budgets per ALPN** (`rpmgr-tunnel/1` vs
+    public `h3`), so public HTTP/3 cannot consume the tunnels' share;
   - stall detection only under connection-window pressure: backpressure is normal (a suspended ssh
     client, a paused download, a slow consumer) and is allowed indefinitely, subject only to the
     route idle timeout. When unread bytes held by streams without read progress for ≥ 30 s exceed
     50 % of the connection window, the receiver resets those streams oldest-first until below the
     threshold;
-  - neither quic-go nor net/http's HTTP/2 exposes the connection-level send window, so the gateway deprioritises
-    a session whose stream writers have been blocked for more than 200 ms when choosing where to
-    open new streams [V S1];
+  - neither quic-go nor net/http's HTTP/2 exposes the connection-level send window, so the gateway
+    deprioritises a session whose stream writers have been blocked for more than 200 ms when
+    choosing where to open new streams [V VB-18];
   - liveness from transport-level PINGs (QUIC keepalive and idle timeout), which are not
     flow-controlled; the application `Ping` only measures RTT;
   - `MaxIncomingStreams` 10 000 on connectors;
@@ -70,12 +78,6 @@ congestion control. "QUIC is faster" is therefore a **hypothesis**, not a premis
 - quic-go sits **behind an internal `Session`/`Stream` interface** (`internal/tunnel`), so it can be
   upgraded or replaced without touching gateway or connector logic
   ([02](../02-architecture.md#source-layout-proposed)).
-- **The default is confirmed by benchmark**, by a rule agreed before S1 runs
-  ([D19](../14-open-decisions.md#engineering)): QUIC and TCP + h2 are compared head-to-head on the
-  reference testbed on four metrics — single-stream throughput, 32-stream goodput at 1 % loss,
-  connection-setup latency p99 and CPU per Gbit/s ([03](../03-connections.md#targets-t)). The
-  default is the transport that wins more of the four; a tie keeps QUIC. If TCP + h2 wins, the
-  default flips to TCP and QUIC becomes opt-in. This ADR is then updated.
 
 ## Consequences
 
@@ -84,7 +86,8 @@ congestion control. "QUIC is faster" is therefore a **hypothesis**, not a premis
 - Loss on one user connection does not stall the others.
 - UDP routes are carried as datagrams, without reliable-stream overhead.
 - One handshake fewer when a session is set up.
-- The decision rests on measured results, not on reputation.
+- Operators choose the transport per installation, connector or route, for the network they
+  actually have; measurements inform that choice instead of fixing it once for everyone.
 
 **Negative**
 
@@ -96,6 +99,8 @@ congestion control. "QUIC is faster" is therefore a **hypothesis**, not a premis
   [F quic-go:internal/protocol/params.go:6,9], or quic-go warns and throughput drops.
 - Some networks block or throttle UDP/443. Happy eyeballs hides this, but diagnosing it needs good
   metrics.
+- A pinned transport can leave routes not ready where it is blocked; only `auto` adapts by itself.
+- Connectors may hold sessions of both transports to one gateway when routes pin different ones.
 
 ## Alternatives considered
 
@@ -105,18 +110,14 @@ congestion control. "QUIC is faster" is therefore a **hypothesis**, not a premis
 | QUIC only | Fails on UDP-blocked networks and behind HTTP proxies; its throughput ceiling is unproven |
 | KCP | No standard encryption; FEC overhead; QUIC covers lossy links with standard cryptography |
 | A different QUIC library or a kernel QUIC module | Nothing mature in pure Go; cgo would break static builds |
+| A default fixed by a benchmark (the S1 rule, [D19](../14-open-decisions.md#engineering)) | One global answer from one testbed, while the better transport depends on the network; it also needed a reference testbed before Phase 1. Replaced by D45 |
 
 ## Verification
 
-- **S1**: throughput, latency and CPU of QUIC vs TCP + h2 on the reference testbed
-  ([D30](../14-open-decisions.md#project-and-process)), netem subset RTT {1, 80} ms × loss
-  {0, 1} %, with a direct connection (no tunnel) as the reference; the rule above decides. The full
-  benchmark matrix (RTT {1, 20, 80, 200} ms × loss {0, 0.5, 1, 2} %) runs on the same testbed
-  before every release ([12](../12-testing-and-quality.md#benchmarks)).
-  The harness, how the rule's four metrics are computed (cells, medians, a geometric mean per
-  metric over cells and testbeds, a 5 % margin for a win) and a local dry run are in
-  [S1](../spikes/S1.md); only the reference-testbed run decides (D37), so this ADR stays
-  *Proposed* until then.
+- **S1** ([S1](../spikes/S1.md)): the benchmark harness for QUIC, TCP + h2 and a direct
+  connection, and a local dry run. Under D45 its comparison no longer decides a default; the
+  harness becomes the benchmark suite of [12](../12-testing-and-quality.md#benchmarks), which
+  records both transports before every release.
 - **S3**: dispatching on a shared UDP/443 listener (`h3` + `rpmgr-tunnel/1`). If one listener
   cannot serve both well, tunnels move to a separate UDP port (gateway boot-file key
   `listen.tunnel_udp`, [10](../10-operations.md#configuration)).
@@ -124,4 +125,4 @@ congestion control. "QUIC is faster" is therefore a **hypothesis**, not a premis
   v0.63.0 listener served both ALPNs on one socket under concurrent load, with per-ALPN TLS
   settings through `GetConfigForClient` and per-ALPN window budgets; tunnels share UDP/443 by
   default, and `listen.tunnel_udp` remains the option for tunnel transport parameters that differ
-  from public HTTP/3. This ADR stays *Proposed* until S1 decides the default transport.
+  from public HTTP/3.

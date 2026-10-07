@@ -65,7 +65,7 @@ names.
 | `OrgService` | `GetOrg`, `UpdateOrg`, `ListMembers`, `UpdateMember`, `RemoveMember`, `CreateInvitation` (returns a one-time link; also e-mailed if SMTP is configured), `AcceptInvitation` | 1 (multi-org UI: 2) |
 | `TokenService` | `CreateAPIToken`, `ListAPITokens`, `RevokeAPIToken`, `CreateServiceAccount`, … | Personal API tokens: 1; service accounts: 2 |
 | `EnrollmentService` | `CreateEnrollmentToken`, `ListEnrollmentTokens`, `RevokeEnrollmentToken`, `GetInstallCommand` | 1 |
-| `ConnectorService` | `ListConnectors`, `GetConnector`, `UpdateConnector`, `DecommissionConnector`, `GetConnectorStatus` | 1 |
+| `ConnectorService` | `ListConnectors`, `GetConnector`, `UpdateConnector` (name, labels, `transport`), `DecommissionConnector`, `GetConnectorStatus` | 1 |
 | `GatewayService` | gateways, gateway groups, port pools, port quotas, shared-group grants | 1 (shared-group grants: 2) |
 | `RouteService` | CRUD on routes and targets, `PreviewRoute` (compile without saving) | 1 |
 | `DomainService` | `CreateDomain`, `VerifyDomain`, `ListDomains`, `DeleteDomain`, `MarkDomainTrusted` (Instance Admin, step-up), `DelegateDomain` and `ApproveDomainClaim` (Instance Admin, step-up) | 1 (`DelegateDomain`, `ApproveDomainClaim`: 2) |
@@ -80,7 +80,7 @@ names.
 | `LogService` | `StreamLogs` (server stream from an agent via an imperative operation) | 2 |
 | `MetricsService` | `GetRouteTraffic`, `GetOverview` (rollups) | 1 |
 | `AuditService` | `ListAuditEntries`, `ExportAudit`, `VerifyAuditChain` | 1 (export: 2) |
-| `SettingsService` | `GetInstanceSettings`, `UpdateInstanceSettings`, `GetOrgSettings`, `UpdateOrgSettings` | 1 |
+| `SettingsService` | `GetInstanceSettings`, `UpdateInstanceSettings` (including `default_transport`), `GetOrgSettings`, `UpdateOrgSettings` | 1 |
 | `ReleaseService` | `ListReleases`, `UploadRelease` (air-gapped installs), `CreateRollout`, `GetRollout`, `PauseRollout`; the release check and update channel are instance settings (`SettingsService`) | 2 |
 | `ManifestService` | `Plan`, `Apply` (declarative manifests) | 2 |
 | `WebhookService` | webhook endpoints and deliveries | 2 |
@@ -105,6 +105,7 @@ message Route {
   repeated Target targets = 20;
   repeated string policy_ids = 21;
   RouteLimits limits = 22;
+  TransportPolicy transport = 23;      // AUTO, QUIC, H2; UNSPECIFIED = the connector's (03)
   string etag = 30;                    // output only; send back on update
   RouteStatus status = 31;             // output only; derived from observed state (see 06-data-model)
   repeated HostnameDnsStatus dns_status = 32;  // output only; per hostname, not part of status

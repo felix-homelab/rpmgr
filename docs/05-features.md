@@ -93,6 +93,7 @@
 | Ephemeral connectors, purged automatically | P1 |
 | Decommission and revoke, with immediate effect | P1 |
 | Gateway groups of at most 4 gateways; connectors keep a session to every gateway of the group | P1 |
+| Data-session transport as a setting: instance default `auto` (QUIC first, TCP + h2 as fallback), `quic` or `h2`, overridable per connector and per route ([03](03-connections.md#transport-selection)) | P1 |
 | WSS transport for networks with TLS-intercepting proxies ([03](03-connections.md#transports-and-fallback)) | P2 |
 | Local-policy status per connector, with the reason for any blocked target | P1 |
 | Staged, signed over-the-air updates with automatic rollback, with `stable` and `prerelease` channels (Linux script installs only; deb/rpm packages update from the signed repository; Windows and macOS connectors: no OTA before P3) | P2 |
