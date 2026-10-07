@@ -21,6 +21,9 @@ lint:
       - proto/rpmgr/agent
     RPC_REQUEST_RESPONSE_UNIQUE:
       - proto/rpmgr/agent
+    # The result codes of docs/03 ("Framing") start with NO_ERROR = 0.
+    ENUM_ZERO_VALUE_SUFFIX:
+      - proto/rpmgr/tunnel/v1/tunnel.proto
 breaking:
   use:
     - FILE
