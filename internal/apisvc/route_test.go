@@ -565,8 +565,8 @@ func addressTarget(connector, host string, port uint32) *rpmgrv1.RouteTarget {
 // TestRouteTargets: a target of a connector of the org is added to a route, enabled, with what it
 // speaks, its PROXY header and its TLS settings checked against the route's type; an http route's
 // enabled targets speak one protocol; a decommissioned connector, another org's connector and a
-// missing CA bundle are refused; targets are updated under their etags and deleted; the route
-// lists them by priority; a Viewer changes nothing.
+// missing CA bundle are refused; targets are updated under their etags, read alone with their
+// route, and deleted; the route lists them by priority; a Viewer reads but changes nothing.
 func TestRouteTargets(t *testing.T) {
 	e, ada, org, group := gatewayEnv(t)
 	ctx := context.Background()
@@ -696,6 +696,15 @@ func TestRouteTargets(t *testing.T) {
 	vwr, _ := e.join(t, ada, org, "vwr@example.com", "viewer")
 	if _, err := add(vwr, "pg", addressTarget(con, "10.0.0.7", 1)); code(err) != connect.CodePermissionDenied {
 		t.Fatalf("a Viewer adds: %v", err)
+	}
+	// A target alone, with its route, for a Viewer too.
+	one, err := vwr.rt.GetRouteTarget(ctx, connect.NewRequest(&rpmgrv1.GetRouteTargetRequest{RouteTargetId: web.GetId()}))
+	if err != nil || one.Msg.GetRouteId() != routeID["web"] || one.Msg.GetTarget().GetId() != web.GetId() ||
+		one.Msg.GetTarget().GetConnectorId() != con {
+		t.Fatalf("a target read: %v %v", one, err)
+	}
+	if _, err := ada.rt.GetRouteTarget(ctx, connect.NewRequest(&rpmgrv1.GetRouteTargetRequest{RouteTargetId: "tg_01M4EJ9C77F6FA3765PTDHY29H"})); code(err) != connect.CodeNotFound {
+		t.Errorf("an unknown target: %v", err)
 	}
 	if _, err := ada.rt.DeleteRouteTarget(ctx, connect.NewRequest(&rpmgrv1.DeleteRouteTargetRequest{RouteTargetId: web.GetId(), Etag: "1"})); reason(err) !=
 		api.ReasonEtagMismatch {
