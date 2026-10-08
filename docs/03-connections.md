@@ -395,8 +395,10 @@ sequenceDiagram
 - The gateway opens user streams for a route only if (a) its snapshot assigns that route to this
   connector's identity and (b) the connector reported the route `ready`. A connector whose local
   policy blocks a target reports `not_ready(blocked_by_local_policy)`, and the UI shows the reason.
-- The gateway closes a connector's data sessions at once when the deny-list names it or a new
-  snapshot no longer assigns it a route of this gateway.
+- The gateway closes a connector's data sessions at once when the deny-list names it. When a new
+  snapshot no longer assigns the connector a route of this gateway, no new stream is opened on its
+  sessions, and they close after their last stream has ended, at the latest after the route drain
+  period: its routes were removed, not revoked.
 
 ### One stream per user connection
 

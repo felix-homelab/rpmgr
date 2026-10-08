@@ -14,3 +14,11 @@ func SetTimeouts(t testing.TB, hello, result time.Duration) {
 	helloTimeout, resultTimeout = hello, result
 	t.Cleanup(func() { helloTimeout, resultTimeout = oldHello, oldResult })
 }
+
+// SetUnassignedDrain shortens how long the sessions of a dropped connector keep their streams, for
+// one test that must not run in parallel with others.
+func SetUnassignedDrain(t testing.TB, d time.Duration) {
+	old := unassignedDrain
+	unassignedDrain = d
+	t.Cleanup(func() { unassignedDrain = old })
+}

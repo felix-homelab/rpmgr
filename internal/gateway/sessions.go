@@ -37,6 +37,9 @@ var (
 	helloTimeout = 10 * time.Second
 	// resultTimeout bounds the wait for a stream's StreamResult.
 	resultTimeout = 10 * time.Second
+	// unassignedDrain is how long the sessions of a connector the snapshot dropped keep their
+	// streams: the route drain period (docs/03-connections.md, "Timeouts, keepalive and backoff").
+	unassignedDrain = 30 * time.Second
 )
 
 // Errors of Open and OpenStream.
@@ -100,6 +103,7 @@ type dataSession struct {
 	send      func(*tunnelv1.SessionMessage) error
 	now       func() time.Time
 	inflight  atomic.Int64
+	retiring  atomic.Bool // the snapshot dropped the connector; retire runs
 	// writing is the start, in Unix nanoseconds, of a stream write still in progress, or 0. With
 	// concurrent writers it tracks one of them, which is enough to notice a session whose writes
 	// all block.
@@ -267,22 +271,52 @@ func (m *Sessions) add(d *dataSession) bool {
 	return true
 }
 
-// Recheck closes every session whose connector the deny-list now names or the snapshot no longer
-// knows; the gateway calls it after applying a deny-list or a snapshot, because revocation takes
-// effect at once (docs/03-connections.md, "Timeouts, keepalive and backoff").
+// Recheck applies a new deny-list or snapshot to the live sessions; the gateway calls it after
+// applying either. A session whose connector the deny-list now names closes at once, because
+// revocation takes effect at once. A connector the snapshot no longer assigns a route of this
+// gateway only lost its routes: no new stream is opened on its sessions, which close after their
+// last stream has ended, at the latest after the route drain period (docs/03-connections.md,
+// "Configuration reconciliation").
 func (m *Sessions) Recheck() {
 	m.mu.Lock()
-	var gone []*dataSession
+	var denied, dropped []*dataSession
 	for _, ds := range m.byConnector {
 		for _, d := range ds {
-			if (m.o.Denied != nil && m.o.Denied(d.peer)) || !m.o.Assignment.Known(d.connector) {
-				gone = append(gone, d)
+			switch {
+			case m.o.Denied != nil && m.o.Denied(d.peer):
+				denied = append(denied, d)
+			case !m.o.Assignment.Known(d.connector) && d.retiring.CompareAndSwap(false, true):
+				dropped = append(dropped, d)
 			}
 		}
 	}
 	m.mu.Unlock()
-	for _, d := range gone {
-		m.o.Logger.Info("closing the data session of a connector no longer admitted", "connector", d.connector)
+	for _, d := range denied {
+		m.o.Logger.Info("closing the data session of a revoked connector", "connector", d.connector)
+		_ = d.s.Close()
+	}
+	for _, d := range dropped {
+		go m.retire(d)
+	}
+}
+
+// retire closes the session of a connector the snapshot dropped once its streams have ended, at
+// the latest after unassignedDrain, unless a later snapshot assigns the connector again.
+func (m *Sessions) retire(d *dataSession) {
+	defer d.retiring.Store(false)
+	deadline := time.Now().Add(unassignedDrain)
+	for time.Now().Before(deadline) && d.inflight.Load() > 0 {
+		if m.o.Assignment.Known(d.connector) {
+			return
+		}
+		select {
+		case <-d.s.Done():
+			return
+		case <-time.After(100 * time.Millisecond):
+		}
+	}
+	if !m.o.Assignment.Known(d.connector) {
+		m.o.Logger.Info("closing the data session of a connector without routes here", "connector", d.connector)
 		_ = d.s.Close()
 	}
 }
