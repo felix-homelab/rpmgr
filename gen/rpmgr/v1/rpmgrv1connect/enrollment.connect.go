@@ -44,6 +44,9 @@ const (
 	// EnrollmentServiceListEnrollmentTokensProcedure is the fully-qualified name of the
 	// EnrollmentService's ListEnrollmentTokens RPC.
 	EnrollmentServiceListEnrollmentTokensProcedure = "/rpmgr.v1.EnrollmentService/ListEnrollmentTokens"
+	// EnrollmentServiceGetInstallCommandProcedure is the fully-qualified name of the
+	// EnrollmentService's GetInstallCommand RPC.
+	EnrollmentServiceGetInstallCommandProcedure = "/rpmgr.v1.EnrollmentService/GetInstallCommand"
 	// EnrollmentServiceRevokeEnrollmentTokenProcedure is the fully-qualified name of the
 	// EnrollmentService's RevokeEnrollmentToken RPC.
 	EnrollmentServiceRevokeEnrollmentTokenProcedure = "/rpmgr.v1.EnrollmentService/RevokeEnrollmentToken"
@@ -59,6 +62,9 @@ type EnrollmentServiceClient interface {
 	CreateGatewayEnrollmentToken(context.Context, *connect.Request[v1.CreateGatewayEnrollmentTokenRequest]) (*connect.Response[v1.CreateGatewayEnrollmentTokenResponse], error)
 	// ListEnrollmentTokens lists an org's tokens by ID, newest last; never the tokens themselves.
 	ListEnrollmentTokens(context.Context, *connect.Request[v1.ListEnrollmentTokensRequest]) (*connect.Response[v1.ListEnrollmentTokensResponse], error)
+	// GetInstallCommand returns the command that installs and enrolls an agent on a Linux host. It
+	// holds no token: the installer asks for it.
+	GetInstallCommand(context.Context, *connect.Request[v1.GetInstallCommandRequest]) (*connect.Response[v1.GetInstallCommandResponse], error)
 	// RevokeEnrollmentToken ends a token. A gateway's token also needs infrastructure.write.
 	RevokeEnrollmentToken(context.Context, *connect.Request[v1.RevokeEnrollmentTokenRequest]) (*connect.Response[v1.RevokeEnrollmentTokenResponse], error)
 }
@@ -93,6 +99,13 @@ func NewEnrollmentServiceClient(httpClient connect.HTTPClient, baseURL string, o
 			connect.WithIdempotency(connect.IdempotencyNoSideEffects),
 			connect.WithClientOptions(opts...),
 		),
+		getInstallCommand: connect.NewClient[v1.GetInstallCommandRequest, v1.GetInstallCommandResponse](
+			httpClient,
+			baseURL+EnrollmentServiceGetInstallCommandProcedure,
+			connect.WithSchema(enrollmentServiceMethods.ByName("GetInstallCommand")),
+			connect.WithIdempotency(connect.IdempotencyNoSideEffects),
+			connect.WithClientOptions(opts...),
+		),
 		revokeEnrollmentToken: connect.NewClient[v1.RevokeEnrollmentTokenRequest, v1.RevokeEnrollmentTokenResponse](
 			httpClient,
 			baseURL+EnrollmentServiceRevokeEnrollmentTokenProcedure,
@@ -107,6 +120,7 @@ type enrollmentServiceClient struct {
 	createEnrollmentToken        *connect.Client[v1.CreateEnrollmentTokenRequest, v1.CreateEnrollmentTokenResponse]
 	createGatewayEnrollmentToken *connect.Client[v1.CreateGatewayEnrollmentTokenRequest, v1.CreateGatewayEnrollmentTokenResponse]
 	listEnrollmentTokens         *connect.Client[v1.ListEnrollmentTokensRequest, v1.ListEnrollmentTokensResponse]
+	getInstallCommand            *connect.Client[v1.GetInstallCommandRequest, v1.GetInstallCommandResponse]
 	revokeEnrollmentToken        *connect.Client[v1.RevokeEnrollmentTokenRequest, v1.RevokeEnrollmentTokenResponse]
 }
 
@@ -125,6 +139,11 @@ func (c *enrollmentServiceClient) ListEnrollmentTokens(ctx context.Context, req 
 	return c.listEnrollmentTokens.CallUnary(ctx, req)
 }
 
+// GetInstallCommand calls rpmgr.v1.EnrollmentService.GetInstallCommand.
+func (c *enrollmentServiceClient) GetInstallCommand(ctx context.Context, req *connect.Request[v1.GetInstallCommandRequest]) (*connect.Response[v1.GetInstallCommandResponse], error) {
+	return c.getInstallCommand.CallUnary(ctx, req)
+}
+
 // RevokeEnrollmentToken calls rpmgr.v1.EnrollmentService.RevokeEnrollmentToken.
 func (c *enrollmentServiceClient) RevokeEnrollmentToken(ctx context.Context, req *connect.Request[v1.RevokeEnrollmentTokenRequest]) (*connect.Response[v1.RevokeEnrollmentTokenResponse], error) {
 	return c.revokeEnrollmentToken.CallUnary(ctx, req)
@@ -140,6 +159,9 @@ type EnrollmentServiceHandler interface {
 	CreateGatewayEnrollmentToken(context.Context, *connect.Request[v1.CreateGatewayEnrollmentTokenRequest]) (*connect.Response[v1.CreateGatewayEnrollmentTokenResponse], error)
 	// ListEnrollmentTokens lists an org's tokens by ID, newest last; never the tokens themselves.
 	ListEnrollmentTokens(context.Context, *connect.Request[v1.ListEnrollmentTokensRequest]) (*connect.Response[v1.ListEnrollmentTokensResponse], error)
+	// GetInstallCommand returns the command that installs and enrolls an agent on a Linux host. It
+	// holds no token: the installer asks for it.
+	GetInstallCommand(context.Context, *connect.Request[v1.GetInstallCommandRequest]) (*connect.Response[v1.GetInstallCommandResponse], error)
 	// RevokeEnrollmentToken ends a token. A gateway's token also needs infrastructure.write.
 	RevokeEnrollmentToken(context.Context, *connect.Request[v1.RevokeEnrollmentTokenRequest]) (*connect.Response[v1.RevokeEnrollmentTokenResponse], error)
 }
@@ -170,6 +192,13 @@ func NewEnrollmentServiceHandler(svc EnrollmentServiceHandler, opts ...connect.H
 		connect.WithIdempotency(connect.IdempotencyNoSideEffects),
 		connect.WithHandlerOptions(opts...),
 	)
+	enrollmentServiceGetInstallCommandHandler := connect.NewUnaryHandler(
+		EnrollmentServiceGetInstallCommandProcedure,
+		svc.GetInstallCommand,
+		connect.WithSchema(enrollmentServiceMethods.ByName("GetInstallCommand")),
+		connect.WithIdempotency(connect.IdempotencyNoSideEffects),
+		connect.WithHandlerOptions(opts...),
+	)
 	enrollmentServiceRevokeEnrollmentTokenHandler := connect.NewUnaryHandler(
 		EnrollmentServiceRevokeEnrollmentTokenProcedure,
 		svc.RevokeEnrollmentToken,
@@ -184,6 +213,8 @@ func NewEnrollmentServiceHandler(svc EnrollmentServiceHandler, opts ...connect.H
 			enrollmentServiceCreateGatewayEnrollmentTokenHandler.ServeHTTP(w, r)
 		case EnrollmentServiceListEnrollmentTokensProcedure:
 			enrollmentServiceListEnrollmentTokensHandler.ServeHTTP(w, r)
+		case EnrollmentServiceGetInstallCommandProcedure:
+			enrollmentServiceGetInstallCommandHandler.ServeHTTP(w, r)
 		case EnrollmentServiceRevokeEnrollmentTokenProcedure:
 			enrollmentServiceRevokeEnrollmentTokenHandler.ServeHTTP(w, r)
 		default:
@@ -205,6 +236,10 @@ func (UnimplementedEnrollmentServiceHandler) CreateGatewayEnrollmentToken(contex
 
 func (UnimplementedEnrollmentServiceHandler) ListEnrollmentTokens(context.Context, *connect.Request[v1.ListEnrollmentTokensRequest]) (*connect.Response[v1.ListEnrollmentTokensResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("rpmgr.v1.EnrollmentService.ListEnrollmentTokens is not implemented"))
+}
+
+func (UnimplementedEnrollmentServiceHandler) GetInstallCommand(context.Context, *connect.Request[v1.GetInstallCommandRequest]) (*connect.Response[v1.GetInstallCommandResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("rpmgr.v1.EnrollmentService.GetInstallCommand is not implemented"))
 }
 
 func (UnimplementedEnrollmentServiceHandler) RevokeEnrollmentToken(context.Context, *connect.Request[v1.RevokeEnrollmentTokenRequest]) (*connect.Response[v1.RevokeEnrollmentTokenResponse], error) {

@@ -342,6 +342,10 @@ curl -fsSL https://panel.example.com/install.sh | sudo sh -s -- \
   an attacker nothing, and there is no trust-on-first-use.
 - The install script and binary come from the controller's own mirror and are signature-checked
   ([Supply chain and updates](#supply-chain-and-updates)).
+- The command comes from `GetInstallCommand` ([07](07-api.md#services)): the controller's URL and
+  the pin, `--role gateway` for a gateway, and for a connector one `--allow-target` per target it
+  may reach. A target is checked as the local policy reads it, and every value is quoted for the
+  shell, so a pasted command runs nothing but the installer.
 
 ### Flow
 

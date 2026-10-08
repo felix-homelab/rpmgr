@@ -757,6 +757,135 @@ func (x *RevokeEnrollmentTokenResponse) GetEnrollmentToken() *EnrollmentToken {
 	return nil
 }
 
+// GetInstallCommandRequest is what the install command sets up.
+type GetInstallCommandRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The org.
+	OrgId string `protobuf:"bytes,1,opt,name=org_id,json=orgId,proto3" json:"org_id,omitempty"`
+	// The role to install; a connector if not set.
+	Role AgentRole `protobuf:"varint,2,opt,name=role,proto3,enum=rpmgr.v1.AgentRole" json:"role,omitempty"`
+	// The targets a connector may reach, written into its local policy: ip:port, [ipv6]:port or a
+	// socket path. None for a gateway.
+	AllowTargets  []string `protobuf:"bytes,3,rep,name=allow_targets,json=allowTargets,proto3" json:"allow_targets,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetInstallCommandRequest) Reset() {
+	*x = GetInstallCommandRequest{}
+	mi := &file_rpmgr_v1_enrollment_proto_msgTypes[9]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetInstallCommandRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetInstallCommandRequest) ProtoMessage() {}
+
+func (x *GetInstallCommandRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_rpmgr_v1_enrollment_proto_msgTypes[9]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetInstallCommandRequest.ProtoReflect.Descriptor instead.
+func (*GetInstallCommandRequest) Descriptor() ([]byte, []int) {
+	return file_rpmgr_v1_enrollment_proto_rawDescGZIP(), []int{9}
+}
+
+func (x *GetInstallCommandRequest) GetOrgId() string {
+	if x != nil {
+		return x.OrgId
+	}
+	return ""
+}
+
+func (x *GetInstallCommandRequest) GetRole() AgentRole {
+	if x != nil {
+		return x.Role
+	}
+	return AgentRole_AGENT_ROLE_UNSPECIFIED
+}
+
+func (x *GetInstallCommandRequest) GetAllowTargets() []string {
+	if x != nil {
+		return x.AllowTargets
+	}
+	return nil
+}
+
+// GetInstallCommandResponse is the command.
+type GetInstallCommandResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The command, on several lines joined by backslashes.
+	Command string `protobuf:"bytes,1,opt,name=command,proto3" json:"command,omitempty"`
+	// The controller's public URL in it.
+	ControllerUrl string `protobuf:"bytes,2,opt,name=controller_url,json=controllerUrl,proto3" json:"controller_url,omitempty"`
+	// The --ca-pin in it: "sha256:" and the base64 SHA-256 of the root's public key.
+	CaPin         string `protobuf:"bytes,3,opt,name=ca_pin,json=caPin,proto3" json:"ca_pin,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetInstallCommandResponse) Reset() {
+	*x = GetInstallCommandResponse{}
+	mi := &file_rpmgr_v1_enrollment_proto_msgTypes[10]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetInstallCommandResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetInstallCommandResponse) ProtoMessage() {}
+
+func (x *GetInstallCommandResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_rpmgr_v1_enrollment_proto_msgTypes[10]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetInstallCommandResponse.ProtoReflect.Descriptor instead.
+func (*GetInstallCommandResponse) Descriptor() ([]byte, []int) {
+	return file_rpmgr_v1_enrollment_proto_rawDescGZIP(), []int{10}
+}
+
+func (x *GetInstallCommandResponse) GetCommand() string {
+	if x != nil {
+		return x.Command
+	}
+	return ""
+}
+
+func (x *GetInstallCommandResponse) GetControllerUrl() string {
+	if x != nil {
+		return x.ControllerUrl
+	}
+	return ""
+}
+
+func (x *GetInstallCommandResponse) GetCaPin() string {
+	if x != nil {
+		return x.CaPin
+	}
+	return ""
+}
+
 var File_rpmgr_v1_enrollment_proto protoreflect.FileDescriptor
 
 const file_rpmgr_v1_enrollment_proto_rawDesc = "" +
@@ -825,11 +954,19 @@ const file_rpmgr_v1_enrollment_proto_rawDesc = "" +
 	"\x1cRevokeEnrollmentTokenRequest\x127\n" +
 	"\x13enrollment_token_id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x11enrollmentTokenId\"e\n" +
 	"\x1dRevokeEnrollmentTokenResponse\x12D\n" +
-	"\x10enrollment_token\x18\x01 \x01(\v2\x19.rpmgr.v1.EnrollmentTokenR\x0fenrollmentToken*Y\n" +
+	"\x10enrollment_token\x18\x01 \x01(\v2\x19.rpmgr.v1.EnrollmentTokenR\x0fenrollmentToken\"\xa7\x01\n" +
+	"\x18GetInstallCommandRequest\x12\x1e\n" +
+	"\x06org_id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x05orgId\x121\n" +
+	"\x04role\x18\x02 \x01(\x0e2\x13.rpmgr.v1.AgentRoleB\b\xbaH\x05\x82\x01\x02\x10\x01R\x04role\x128\n" +
+	"\rallow_targets\x18\x03 \x03(\tB\x13\xbaH\x10\x92\x01\r\x10 \x18\x01\"\ar\x05\x10\x01\x18\x80\x02R\fallowTargets\"s\n" +
+	"\x19GetInstallCommandResponse\x12\x18\n" +
+	"\acommand\x18\x01 \x01(\tR\acommand\x12%\n" +
+	"\x0econtroller_url\x18\x02 \x01(\tR\rcontrollerUrl\x12\x15\n" +
+	"\x06ca_pin\x18\x03 \x01(\tR\x05caPin*Y\n" +
 	"\tAgentRole\x12\x1a\n" +
 	"\x16AGENT_ROLE_UNSPECIFIED\x10\x00\x12\x18\n" +
 	"\x14AGENT_ROLE_CONNECTOR\x10\x01\x12\x16\n" +
-	"\x12AGENT_ROLE_GATEWAY\x10\x022\xe5\x04\n" +
+	"\x12AGENT_ROLE_GATEWAY\x10\x022\xde\x05\n" +
 	"\x11EnrollmentService\x12\x8a\x01\n" +
 	"\x15CreateEnrollmentToken\x12&.rpmgr.v1.CreateEnrollmentTokenRequest\x1a'.rpmgr.v1.CreateEnrollmentTokenResponse\" \x8a\xb5\x18\x1c\n" +
 	"\x10connectors.write\x12\x06org_id\x18\x01\x12\xa7\x01\n" +
@@ -837,6 +974,8 @@ const file_rpmgr_v1_enrollment_proto_rawDesc = "" +
 	"\x14infrastructure.write\x12\n" +
 	"gateway_id\x18\x01\x12\x80\x01\n" +
 	"\x14ListEnrollmentTokens\x12%.rpmgr.v1.ListEnrollmentTokensRequest\x1a&.rpmgr.v1.ListEnrollmentTokensResponse\"\x19\x8a\xb5\x18\x12\n" +
+	"\borg.read\x12\x06org_id\x90\x02\x01\x12w\n" +
+	"\x11GetInstallCommand\x12\".rpmgr.v1.GetInstallCommandRequest\x1a#.rpmgr.v1.GetInstallCommandResponse\"\x19\x8a\xb5\x18\x12\n" +
 	"\borg.read\x12\x06org_id\x90\x02\x01\x12\x95\x01\n" +
 	"\x15RevokeEnrollmentToken\x12&.rpmgr.v1.RevokeEnrollmentTokenRequest\x1a'.rpmgr.v1.RevokeEnrollmentTokenResponse\"+\x8a\xb5\x18'\n" +
 	"\x10connectors.write\x12\x13enrollment_token_idB5Z3github.com/felix-homelab/rpmgr/gen/rpmgr/v1;rpmgrv1b\x06proto3"
@@ -854,7 +993,7 @@ func file_rpmgr_v1_enrollment_proto_rawDescGZIP() []byte {
 }
 
 var file_rpmgr_v1_enrollment_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_rpmgr_v1_enrollment_proto_msgTypes = make([]protoimpl.MessageInfo, 11)
+var file_rpmgr_v1_enrollment_proto_msgTypes = make([]protoimpl.MessageInfo, 13)
 var file_rpmgr_v1_enrollment_proto_goTypes = []any{
 	(AgentRole)(0),                               // 0: rpmgr.v1.AgentRole
 	(*EnrollmentToken)(nil),                      // 1: rpmgr.v1.EnrollmentToken
@@ -866,38 +1005,43 @@ var file_rpmgr_v1_enrollment_proto_goTypes = []any{
 	(*ListEnrollmentTokensResponse)(nil),         // 7: rpmgr.v1.ListEnrollmentTokensResponse
 	(*RevokeEnrollmentTokenRequest)(nil),         // 8: rpmgr.v1.RevokeEnrollmentTokenRequest
 	(*RevokeEnrollmentTokenResponse)(nil),        // 9: rpmgr.v1.RevokeEnrollmentTokenResponse
-	nil,                                          // 10: rpmgr.v1.EnrollmentToken.LabelsEntry
-	nil,                                          // 11: rpmgr.v1.CreateEnrollmentTokenRequest.LabelsEntry
-	(*timestamppb.Timestamp)(nil),                // 12: google.protobuf.Timestamp
-	(*durationpb.Duration)(nil),                  // 13: google.protobuf.Duration
+	(*GetInstallCommandRequest)(nil),             // 10: rpmgr.v1.GetInstallCommandRequest
+	(*GetInstallCommandResponse)(nil),            // 11: rpmgr.v1.GetInstallCommandResponse
+	nil,                                          // 12: rpmgr.v1.EnrollmentToken.LabelsEntry
+	nil,                                          // 13: rpmgr.v1.CreateEnrollmentTokenRequest.LabelsEntry
+	(*timestamppb.Timestamp)(nil),                // 14: google.protobuf.Timestamp
+	(*durationpb.Duration)(nil),                  // 15: google.protobuf.Duration
 }
 var file_rpmgr_v1_enrollment_proto_depIdxs = []int32{
 	0,  // 0: rpmgr.v1.EnrollmentToken.role:type_name -> rpmgr.v1.AgentRole
-	10, // 1: rpmgr.v1.EnrollmentToken.labels:type_name -> rpmgr.v1.EnrollmentToken.LabelsEntry
-	12, // 2: rpmgr.v1.EnrollmentToken.expire_time:type_name -> google.protobuf.Timestamp
-	12, // 3: rpmgr.v1.EnrollmentToken.create_time:type_name -> google.protobuf.Timestamp
-	12, // 4: rpmgr.v1.EnrollmentToken.last_use_time:type_name -> google.protobuf.Timestamp
-	12, // 5: rpmgr.v1.EnrollmentToken.revoke_time:type_name -> google.protobuf.Timestamp
-	11, // 6: rpmgr.v1.CreateEnrollmentTokenRequest.labels:type_name -> rpmgr.v1.CreateEnrollmentTokenRequest.LabelsEntry
-	13, // 7: rpmgr.v1.CreateEnrollmentTokenRequest.ttl:type_name -> google.protobuf.Duration
+	12, // 1: rpmgr.v1.EnrollmentToken.labels:type_name -> rpmgr.v1.EnrollmentToken.LabelsEntry
+	14, // 2: rpmgr.v1.EnrollmentToken.expire_time:type_name -> google.protobuf.Timestamp
+	14, // 3: rpmgr.v1.EnrollmentToken.create_time:type_name -> google.protobuf.Timestamp
+	14, // 4: rpmgr.v1.EnrollmentToken.last_use_time:type_name -> google.protobuf.Timestamp
+	14, // 5: rpmgr.v1.EnrollmentToken.revoke_time:type_name -> google.protobuf.Timestamp
+	13, // 6: rpmgr.v1.CreateEnrollmentTokenRequest.labels:type_name -> rpmgr.v1.CreateEnrollmentTokenRequest.LabelsEntry
+	15, // 7: rpmgr.v1.CreateEnrollmentTokenRequest.ttl:type_name -> google.protobuf.Duration
 	1,  // 8: rpmgr.v1.CreateEnrollmentTokenResponse.enrollment_token:type_name -> rpmgr.v1.EnrollmentToken
-	13, // 9: rpmgr.v1.CreateGatewayEnrollmentTokenRequest.ttl:type_name -> google.protobuf.Duration
+	15, // 9: rpmgr.v1.CreateGatewayEnrollmentTokenRequest.ttl:type_name -> google.protobuf.Duration
 	1,  // 10: rpmgr.v1.CreateGatewayEnrollmentTokenResponse.enrollment_token:type_name -> rpmgr.v1.EnrollmentToken
 	1,  // 11: rpmgr.v1.ListEnrollmentTokensResponse.enrollment_tokens:type_name -> rpmgr.v1.EnrollmentToken
 	1,  // 12: rpmgr.v1.RevokeEnrollmentTokenResponse.enrollment_token:type_name -> rpmgr.v1.EnrollmentToken
-	2,  // 13: rpmgr.v1.EnrollmentService.CreateEnrollmentToken:input_type -> rpmgr.v1.CreateEnrollmentTokenRequest
-	4,  // 14: rpmgr.v1.EnrollmentService.CreateGatewayEnrollmentToken:input_type -> rpmgr.v1.CreateGatewayEnrollmentTokenRequest
-	6,  // 15: rpmgr.v1.EnrollmentService.ListEnrollmentTokens:input_type -> rpmgr.v1.ListEnrollmentTokensRequest
-	8,  // 16: rpmgr.v1.EnrollmentService.RevokeEnrollmentToken:input_type -> rpmgr.v1.RevokeEnrollmentTokenRequest
-	3,  // 17: rpmgr.v1.EnrollmentService.CreateEnrollmentToken:output_type -> rpmgr.v1.CreateEnrollmentTokenResponse
-	5,  // 18: rpmgr.v1.EnrollmentService.CreateGatewayEnrollmentToken:output_type -> rpmgr.v1.CreateGatewayEnrollmentTokenResponse
-	7,  // 19: rpmgr.v1.EnrollmentService.ListEnrollmentTokens:output_type -> rpmgr.v1.ListEnrollmentTokensResponse
-	9,  // 20: rpmgr.v1.EnrollmentService.RevokeEnrollmentToken:output_type -> rpmgr.v1.RevokeEnrollmentTokenResponse
-	17, // [17:21] is the sub-list for method output_type
-	13, // [13:17] is the sub-list for method input_type
-	13, // [13:13] is the sub-list for extension type_name
-	13, // [13:13] is the sub-list for extension extendee
-	0,  // [0:13] is the sub-list for field type_name
+	0,  // 13: rpmgr.v1.GetInstallCommandRequest.role:type_name -> rpmgr.v1.AgentRole
+	2,  // 14: rpmgr.v1.EnrollmentService.CreateEnrollmentToken:input_type -> rpmgr.v1.CreateEnrollmentTokenRequest
+	4,  // 15: rpmgr.v1.EnrollmentService.CreateGatewayEnrollmentToken:input_type -> rpmgr.v1.CreateGatewayEnrollmentTokenRequest
+	6,  // 16: rpmgr.v1.EnrollmentService.ListEnrollmentTokens:input_type -> rpmgr.v1.ListEnrollmentTokensRequest
+	10, // 17: rpmgr.v1.EnrollmentService.GetInstallCommand:input_type -> rpmgr.v1.GetInstallCommandRequest
+	8,  // 18: rpmgr.v1.EnrollmentService.RevokeEnrollmentToken:input_type -> rpmgr.v1.RevokeEnrollmentTokenRequest
+	3,  // 19: rpmgr.v1.EnrollmentService.CreateEnrollmentToken:output_type -> rpmgr.v1.CreateEnrollmentTokenResponse
+	5,  // 20: rpmgr.v1.EnrollmentService.CreateGatewayEnrollmentToken:output_type -> rpmgr.v1.CreateGatewayEnrollmentTokenResponse
+	7,  // 21: rpmgr.v1.EnrollmentService.ListEnrollmentTokens:output_type -> rpmgr.v1.ListEnrollmentTokensResponse
+	11, // 22: rpmgr.v1.EnrollmentService.GetInstallCommand:output_type -> rpmgr.v1.GetInstallCommandResponse
+	9,  // 23: rpmgr.v1.EnrollmentService.RevokeEnrollmentToken:output_type -> rpmgr.v1.RevokeEnrollmentTokenResponse
+	19, // [19:24] is the sub-list for method output_type
+	14, // [14:19] is the sub-list for method input_type
+	14, // [14:14] is the sub-list for extension type_name
+	14, // [14:14] is the sub-list for extension extendee
+	0,  // [0:14] is the sub-list for field type_name
 }
 
 func init() { file_rpmgr_v1_enrollment_proto_init() }
@@ -913,7 +1057,7 @@ func file_rpmgr_v1_enrollment_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_rpmgr_v1_enrollment_proto_rawDesc), len(file_rpmgr_v1_enrollment_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   11,
+			NumMessages:   13,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

@@ -4,6 +4,8 @@ package apisvc_test
 
 import (
 	"context"
+	"os/exec"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -14,6 +16,7 @@ import (
 
 	rpmgrv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/v1"
 	"github.com/felix-homelab/rpmgr/internal/api"
+	"github.com/felix-homelab/rpmgr/internal/apisvc"
 	"github.com/felix-homelab/rpmgr/internal/settings"
 )
 
@@ -213,5 +216,83 @@ func TestEnrollmentTokens_Roles(t *testing.T) {
 	if r, err := vwr.enr.ListEnrollmentTokens(ctx, connect.NewRequest(&rpmgrv1.ListEnrollmentTokensRequest{OrgId: org, ShowInactive: true})); err != nil ||
 		len(r.Msg.GetEnrollmentTokens()) != 2 {
 		t.Fatalf("a Viewer lists: %v %v", r, err)
+	}
+}
+
+// TestGetInstallCommand: the command names the controller and the pin, never a token; a gateway's
+// gets --role gateway and no targets; each target is checked as the local policy reads it and
+// quoted, so that a shell gives back exactly the arguments; anything else is refused.
+func TestGetInstallCommand(t *testing.T) {
+	e, ada, org, _ := gatewayEnv(t)
+	ctx := context.Background()
+	get := func(b *browser, role rpmgrv1.AgentRole, targets ...string) (*rpmgrv1.GetInstallCommandResponse, error) {
+		r, err := b.enr.GetInstallCommand(ctx, connect.NewRequest(&rpmgrv1.GetInstallCommandRequest{OrgId: org, Role: role, AllowTargets: targets}))
+		if err != nil {
+			return nil, err
+		}
+		return r.Msg, nil
+	}
+	plain, err := get(ada, rpmgrv1.AgentRole_AGENT_ROLE_UNSPECIFIED)
+	want := "curl -fsSL 'https://panel.example.com/install.sh' | sudo sh -s -- \\\n" +
+		"  --controller 'https://panel.example.com' --ca-pin 'sha256:3q2+7w=='"
+	if err != nil || plain.GetCommand() != want || plain.GetControllerUrl() != "https://panel.example.com" || plain.GetCaPin() != "sha256:3q2+7w==" {
+		t.Fatalf("a connector's command:\n%s\n%v", plain.GetCommand(), err)
+	}
+	gw, err := get(ada, rpmgrv1.AgentRole_AGENT_ROLE_GATEWAY)
+	if err != nil || !strings.HasSuffix(gw.GetCommand(), " \\\n  --role gateway") {
+		t.Fatalf("a gateway's command:\n%s\n%v", gw.GetCommand(), err)
+	}
+
+	targets := []string{"10.0.0.5:5432", "[2001:db8::5]:443", "/run/postgresql/.s.PGSQL.5432", "/run/a b/$HOME*.sock"}
+	withTargets, err := get(ada, rpmgrv1.AgentRole_AGENT_ROLE_CONNECTOR, targets...)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(withTargets.GetCommand(), "rpmgr_enr_") {
+		t.Fatal("the command holds a token")
+	}
+	// What the installer would get as its arguments, as a shell parses them.
+	_, args, _ := strings.Cut(withTargets.GetCommand(), "sudo sh -s --")
+	out, err := exec.Command("/bin/sh", "-c", `printf '%s\n'`+args).Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantArgs := []string{"--controller", "https://panel.example.com", "--ca-pin", "sha256:3q2+7w=="}
+	for _, tg := range targets {
+		wantArgs = append(wantArgs, "--allow-target", tg)
+	}
+	if got := strings.Split(strings.TrimSuffix(string(out), "\n"), "\n"); !slices.Equal(got, wantArgs) {
+		t.Fatalf("the shell parses %q, want %q", got, wantArgs)
+	}
+
+	for name, tg := range map[string]string{
+		"no port": "10.0.0.5", "a name": "db.example.com:5432", "port 0": "10.0.0.5:0", "port 65536": "10.0.0.5:65536",
+		"a relative path": "run/x.sock", "an unclean path": "/run/../x.sock", "a quote": "/run/a'b.sock",
+		"a line break": "/run/a\nb.sock", "a zone": "[fe80::1%eth0]:22",
+	} {
+		if _, err := get(ada, rpmgrv1.AgentRole_AGENT_ROLE_CONNECTOR, tg); code(err) != connect.CodeInvalidArgument {
+			t.Errorf("%s: %v", name, err)
+		}
+	}
+	if _, err := get(ada, rpmgrv1.AgentRole_AGENT_ROLE_GATEWAY, "10.0.0.5:5432"); code(err) != connect.CodeInvalidArgument {
+		t.Fatalf("a gateway with targets: %v", err)
+	}
+	if _, err := get(ada, rpmgrv1.AgentRole(9)); code(err) != connect.CodeInvalidArgument {
+		t.Fatalf("an undefined role: %v", err)
+	}
+	vwr, _ := e.join(t, ada, org, "vwr@example.com", "viewer")
+	if _, err := get(vwr, rpmgrv1.AgentRole_AGENT_ROLE_CONNECTOR); err != nil {
+		t.Fatalf("a Viewer: %v", err)
+	}
+}
+
+// TestShellQuote: a shell reads back exactly what was quoted, quotes, spaces, globs, variables and
+// command substitutions included.
+func TestShellQuote(t *testing.T) {
+	for _, s := range []string{"", "plain", "it's", "''", "a b", "$HOME", "`id`", "$(id)", "*", "back\\slash", "a'b'c", "\"double\""} {
+		out, err := exec.Command("/bin/sh", "-c", "printf '%s' "+apisvc.ShellQuote(s)).Output()
+		if err != nil || string(out) != s {
+			t.Errorf("%q came back as %q: %v", s, out, err)
+		}
 	}
 }

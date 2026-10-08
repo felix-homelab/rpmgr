@@ -58,6 +58,13 @@ func parseEditTarget(s string) (editTarget, error) {
 	return editTarget{cidr: netip.PrefixFrom(ip, ip.BitLen()).String(), port: uint16(n)}, nil //nolint:gosec // G115: checked
 }
 
+// CheckTarget checks a target as AllowTarget reads it: ip:port, [ipv6]:port or a clean absolute
+// socket path.
+func CheckTarget(target string) error {
+	_, err := parseEditTarget(target)
+	return err
+}
+
 // AllowTarget allows target, ip:port or a socket path, in the policy file at path, keeping the
 // rest of the file and its comments, and reports whether the file changed. Without a file it
 // writes a new one.

@@ -5,7 +5,10 @@ package apisvc
 import (
 	"context"
 	"errors"
+	"fmt"
+	"strings"
 	"time"
+	"unicode"
 
 	"connectrpc.com/connect"
 	"entgo.io/ent/dialect/sql"
@@ -16,6 +19,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/api"
 	"github.com/felix-homelab/rpmgr/internal/authz"
 	"github.com/felix-homelab/rpmgr/internal/enroll"
+	"github.com/felix-homelab/rpmgr/internal/policy"
 	"github.com/felix-homelab/rpmgr/internal/store"
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/enrollmenttoken"
@@ -28,6 +32,8 @@ type Enrollment struct {
 	DB  *store.DB
 	API *api.Server
 	Now func() time.Time
+	// PublicURL and RootPin go into install commands.
+	PublicURL, RootPin string
 }
 
 // CreateEnrollmentToken implements EnrollmentService.
@@ -162,6 +168,34 @@ var usesLeft = predicate.EnrollmentToken(func(s *sql.Selector) {
 	s.Where(sql.Or(sql.IsNull(s.C(enrollmenttoken.FieldMaxUses)),
 		sql.ColumnsLT(s.C(enrollmenttoken.FieldUseCount), s.C(enrollmenttoken.FieldMaxUses))))
 })
+
+// GetInstallCommand implements EnrollmentService. Every value is quoted for the shell, and a
+// target that could break out of its quotes is refused.
+func (e *Enrollment) GetInstallCommand(_ context.Context, req *connect.Request[rpmgrv1.GetInstallCommandRequest]) (
+	*connect.Response[rpmgrv1.GetInstallCommandResponse], error) {
+	m := req.Msg
+	base := strings.TrimSuffix(e.PublicURL, "/")
+	lines := []string{"curl -fsSL " + shellQuote(base+"/install.sh") + " | sudo sh -s --",
+		"  --controller " + shellQuote(base) + " --ca-pin " + shellQuote(e.RootPin)}
+	if m.GetRole() == rpmgrv1.AgentRole_AGENT_ROLE_GATEWAY {
+		if len(m.GetAllowTargets()) > 0 {
+			return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("apisvc: a gateway has no local policy to allow targets in"))
+		}
+		lines = append(lines, "  --role gateway")
+	}
+	for _, t := range m.GetAllowTargets() {
+		if err := policy.CheckTarget(t); err != nil || strings.ContainsFunc(t, func(r rune) bool { return r == '\'' || unicode.IsControl(r) }) {
+			return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("apisvc: allow target %q: want ip:port, [ipv6]:port or a socket path", t))
+		}
+		lines = append(lines, "  --allow-target "+shellQuote(t))
+	}
+	return connect.NewResponse(&rpmgrv1.GetInstallCommandResponse{Command: strings.Join(lines, " \\\n"), ControllerUrl: base,
+		CaPin: e.RootPin}), nil
+}
+
+// shellQuote quotes s for a POSIX shell: in single quotes, each single quote closed, escaped and
+// reopened.
+func shellQuote(s string) string { return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'" }
 
 func (e *Enrollment) now() time.Time {
 	if e.Now != nil {
