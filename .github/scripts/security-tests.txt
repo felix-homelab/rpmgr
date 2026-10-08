@@ -29,7 +29,7 @@ TestRestore_RevocationsReapplied	pending	11.6	#160
 TestRestore_IncompleteLogFailsClosed	pending	11.6	#160
 TestRestore_OrgOwnerCannotEndInstanceReview	pending	11.6	#160
 TestRevocation_EnforcedWhileSinkDown	pending	11.5	#159
-TestDenyList_PersistedAcrossGatewayRestart	done	3.13	#68	in-process clause (internal/agent; the digest resend: TestDenyList_HelloDigest); process-level clause in 4.16
+TestDenyList_PersistedAcrossGatewayRestart	done	3.13	#68	in-process clause (internal/agent; the digest resend: TestDenyList_HelloDigest) and process-level clause (test/e2e) done
 TestEnrollReplace_TokenBoundToConnector	pending	8.2	#116
 TestBasicAuth_HashOncePerTTL	pending	5.11	#97
 TestBasicAuth_CacheScopedToPolicy	pending	5.11	#97
