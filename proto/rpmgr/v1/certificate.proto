@@ -5,6 +5,7 @@ syntax = "proto3";
 package rpmgr.v1;
 
 import "buf/validate/validate.proto";
+import "google/protobuf/field_mask.proto";
 import "google/protobuf/timestamp.proto";
 import "rpmgr/v1/common.proto";
 import "rpmgr/v1/options.proto";
@@ -14,7 +15,7 @@ option go_package = "github.com/felix-homelab/rpmgr/gen/rpmgr/v1;rpmgrv1";
 
 // CertificateService is an org's route certificates (docs/07-api.md, "Services";
 // docs/04-security.md, "Controller certificates"): those ACME obtains for http route hostnames, and
-// those uploaded for routes in certificate mode.
+// those uploaded for routes in certificate mode; and its CA bundles, which verify HTTPS upstreams.
 service CertificateService {
   // UploadCertificate stores a certificate chain with its key, which the controller keeps under
   // the KEK and never returns.
@@ -54,6 +55,43 @@ service CertificateService {
     option (rpmgr.v1.authz) = {
       permission: "infrastructure.write"
       resource_field: "certificate_id"
+    };
+  }
+  // CreateCABundle creates a CA bundle.
+  rpc CreateCABundle(CreateCABundleRequest) returns (CreateCABundleResponse) {
+    option (rpmgr.v1.authz) = {
+      permission: "infrastructure.write"
+      resource_field: "org_id"
+    };
+  }
+  // GetCABundle returns a CA bundle.
+  rpc GetCABundle(GetCABundleRequest) returns (GetCABundleResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+    option (rpmgr.v1.authz) = {
+      permission: "org.read"
+      resource_field: "ca_bundle_id"
+    };
+  }
+  // ListCABundles lists an org's CA bundles by ID.
+  rpc ListCABundles(ListCABundlesRequest) returns (ListCABundlesResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+    option (rpmgr.v1.authz) = {
+      permission: "org.read"
+      resource_field: "org_id"
+    };
+  }
+  // UpdateCABundle changes the fields the mask names: name, pem.
+  rpc UpdateCABundle(UpdateCABundleRequest) returns (UpdateCABundleResponse) {
+    option (rpmgr.v1.authz) = {
+      permission: "infrastructure.write"
+      resource_field: "ca_bundle.id"
+    };
+  }
+  // DeleteCABundle deletes a CA bundle; refused while a route target uses it.
+  rpc DeleteCABundle(DeleteCABundleRequest) returns (DeleteCABundleResponse) {
+    option (rpmgr.v1.authz) = {
+      permission: "infrastructure.write"
+      resource_field: "ca_bundle_id"
     };
   }
 }
@@ -193,6 +231,125 @@ message DeleteCertificateRequest {
 
 // DeleteCertificateResponse is the revision of the deletion.
 message DeleteCertificateResponse {
+  // The revision of the change.
+  Revision revision = 1;
+  // The apply status of the revision; with the request header Rpmgr-Wait-Applied, once it is
+  // final or the wait is over (docs/07-api.md, "Writes and apply status").
+  ApplyStatus apply_status = 2;
+}
+
+// CABundle is a set of an org's CA certificates that verify the certificates of HTTPS upstreams
+// (docs/04-security.md, "Controller certificates"); route targets name it.
+message CABundle {
+  // Its ID, cab_…; output only.
+  string id = 1;
+  // Its name, unique in the org.
+  string name = 2 [(buf.validate.field) = {
+    ignore: IGNORE_IF_ZERO_VALUE
+    string: {pattern: "^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$"}
+  }];
+  // 1 to 100 PEM certificates, each a trust anchor.
+  string pem = 3 [(buf.validate.field).string.max_len = 524288];
+  // Its certificates' subjects and expiry, in order; output only.
+  repeated CACertificate certificates = 4;
+  // The route targets that use it; output only.
+  repeated string target_ids = 5;
+  // When it was created; output only.
+  google.protobuf.Timestamp create_time = 6;
+  // The version to send back with an update; output only.
+  string etag = 7;
+}
+
+// CACertificate is one certificate of a CA bundle.
+message CACertificate {
+  // Its subject.
+  string subject = 1;
+  // When it expires.
+  google.protobuf.Timestamp not_after = 2;
+}
+
+// CreateCABundleRequest creates a CA bundle in an org.
+message CreateCABundleRequest {
+  // The org.
+  string org_id = 1 [(buf.validate.field).string.min_len = 1];
+  // The bundle: its name and PEM.
+  CABundle ca_bundle = 2 [(buf.validate.field).required = true];
+  // Makes retries idempotent (docs/07-api.md, "Resource design").
+  string request_id = 3 [(buf.validate.field).string.max_len = 128];
+}
+
+// CreateCABundleResponse is the new bundle.
+message CreateCABundleResponse {
+  // The bundle.
+  CABundle ca_bundle = 1;
+  // The revision of the change.
+  Revision revision = 2;
+  // The apply status of the revision; with the request header Rpmgr-Wait-Applied, once it is
+  // final or the wait is over (docs/07-api.md, "Writes and apply status").
+  ApplyStatus apply_status = 3;
+}
+
+// GetCABundleRequest names a CA bundle.
+message GetCABundleRequest {
+  // The bundle's ID.
+  string ca_bundle_id = 1 [(buf.validate.field).string.min_len = 1];
+}
+
+// GetCABundleResponse is the bundle.
+message GetCABundleResponse {
+  // The bundle.
+  CABundle ca_bundle = 1;
+}
+
+// ListCABundlesRequest pages through an org's CA bundles.
+message ListCABundlesRequest {
+  // The org.
+  string org_id = 1 [(buf.validate.field).string.min_len = 1];
+  // At most this many, 50 if not set, 500 at most.
+  int32 page_size = 2;
+  // The page after the one that returned it.
+  string page_token = 3;
+}
+
+// ListCABundlesResponse is one page of CA bundles.
+message ListCABundlesResponse {
+  // The bundles.
+  repeated CABundle ca_bundles = 1;
+  // The token of the next page; empty after the last.
+  string next_page_token = 2;
+}
+
+// UpdateCABundleRequest changes a CA bundle.
+message UpdateCABundleRequest {
+  // The bundle, with its ID and the fields to change.
+  CABundle ca_bundle = 1 [(buf.validate.field).required = true];
+  // The fields to change: name, pem.
+  google.protobuf.FieldMask update_mask = 2;
+  // The etag the caller read; empty skips the check.
+  string etag = 3;
+}
+
+// UpdateCABundleResponse is the changed bundle.
+message UpdateCABundleResponse {
+  // The bundle.
+  CABundle ca_bundle = 1;
+  // The revision of the change.
+  Revision revision = 2;
+  // The apply status of the revision; with the request header Rpmgr-Wait-Applied, once it is
+  // final or the wait is over (docs/07-api.md, "Writes and apply status").
+  ApplyStatus apply_status = 3;
+}
+
+// DeleteCABundleRequest names a CA bundle.
+message DeleteCABundleRequest {
+  // The bundle's ID.
+  string ca_bundle_id = 1 [(buf.validate.field).string.min_len = 1];
+  // The etag the caller read; empty skips the check.
+  string etag = 2;
+}
+
+// DeleteCABundleResponse is the revision of the deletion.
+message DeleteCABundleResponse {
   // The revision of the change.
   Revision revision = 1;
   // The apply status of the revision; with the request header Rpmgr-Wait-Applied, once it is

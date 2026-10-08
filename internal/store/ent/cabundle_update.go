@@ -27,26 +27,6 @@ func (_u *CABundleUpdate) Where(ps ...predicate.CABundle) *CABundleUpdate {
 	return _u
 }
 
-// SetName sets the "name" field.
-func (_u *CABundleUpdate) SetName(v string) *CABundleUpdate {
-	_u.mutation.SetName(v)
-	return _u
-}
-
-// SetNillableName sets the "name" field if the given value is not nil.
-func (_u *CABundleUpdate) SetNillableName(v *string) *CABundleUpdate {
-	if v != nil {
-		_u.SetName(*v)
-	}
-	return _u
-}
-
-// SetPem sets the "pem" field.
-func (_u *CABundleUpdate) SetPem(v []byte) *CABundleUpdate {
-	_u.mutation.SetPem(v)
-	return _u
-}
-
 // SetVersion sets the "version" field.
 func (_u *CABundleUpdate) SetVersion(v int64) *CABundleUpdate {
 	_u.mutation.ResetVersion()
@@ -65,6 +45,26 @@ func (_u *CABundleUpdate) SetNillableVersion(v *int64) *CABundleUpdate {
 // AddVersion adds value to the "version" field.
 func (_u *CABundleUpdate) AddVersion(v int64) *CABundleUpdate {
 	_u.mutation.AddVersion(v)
+	return _u
+}
+
+// SetName sets the "name" field.
+func (_u *CABundleUpdate) SetName(v string) *CABundleUpdate {
+	_u.mutation.SetName(v)
+	return _u
+}
+
+// SetNillableName sets the "name" field if the given value is not nil.
+func (_u *CABundleUpdate) SetNillableName(v *string) *CABundleUpdate {
+	if v != nil {
+		_u.SetName(*v)
+	}
+	return _u
+}
+
+// SetPem sets the "pem" field.
+func (_u *CABundleUpdate) SetPem(v []byte) *CABundleUpdate {
+	_u.mutation.SetPem(v)
 	return _u
 }
 
@@ -102,6 +102,11 @@ func (_u *CABundleUpdate) ExecX(ctx context.Context) {
 
 // check runs all checks and user-defined validators on the builder.
 func (_u *CABundleUpdate) check() error {
+	if v, ok := _u.mutation.Version(); ok {
+		if err := cabundle.VersionValidator(v); err != nil {
+			return &ValidationError{Name: "version", err: fmt.Errorf(`ent: validator failed for field "CABundle.version": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.Name(); ok {
 		if err := cabundle.NameValidator(v); err != nil {
 			return &ValidationError{Name: "name", err: fmt.Errorf(`ent: validator failed for field "CABundle.name": %w`, err)}
@@ -110,11 +115,6 @@ func (_u *CABundleUpdate) check() error {
 	if v, ok := _u.mutation.Pem(); ok {
 		if err := cabundle.PemValidator(v); err != nil {
 			return &ValidationError{Name: "pem", err: fmt.Errorf(`ent: validator failed for field "CABundle.pem": %w`, err)}
-		}
-	}
-	if v, ok := _u.mutation.Version(); ok {
-		if err := cabundle.VersionValidator(v); err != nil {
-			return &ValidationError{Name: "version", err: fmt.Errorf(`ent: validator failed for field "CABundle.version": %w`, err)}
 		}
 	}
 	return nil
@@ -132,17 +132,17 @@ func (_u *CABundleUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 			}
 		}
 	}
-	if value, ok := _u.mutation.Name(); ok {
-		_spec.SetField(cabundle.FieldName, field.TypeString, value)
-	}
-	if value, ok := _u.mutation.Pem(); ok {
-		_spec.SetField(cabundle.FieldPem, field.TypeBytes, value)
-	}
 	if value, ok := _u.mutation.Version(); ok {
 		_spec.SetField(cabundle.FieldVersion, field.TypeInt64, value)
 	}
 	if value, ok := _u.mutation.AddedVersion(); ok {
 		_spec.AddField(cabundle.FieldVersion, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.Name(); ok {
+		_spec.SetField(cabundle.FieldName, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.Pem(); ok {
+		_spec.SetField(cabundle.FieldPem, field.TypeBytes, value)
 	}
 	if _node, err = sqlgraph.UpdateNodes(ctx, _u.driver, _spec); err != nil {
 		if _, ok := err.(*sqlgraph.NotFoundError); ok {
@@ -164,26 +164,6 @@ type CABundleUpdateOne struct {
 	mutation *CABundleMutation
 }
 
-// SetName sets the "name" field.
-func (_u *CABundleUpdateOne) SetName(v string) *CABundleUpdateOne {
-	_u.mutation.SetName(v)
-	return _u
-}
-
-// SetNillableName sets the "name" field if the given value is not nil.
-func (_u *CABundleUpdateOne) SetNillableName(v *string) *CABundleUpdateOne {
-	if v != nil {
-		_u.SetName(*v)
-	}
-	return _u
-}
-
-// SetPem sets the "pem" field.
-func (_u *CABundleUpdateOne) SetPem(v []byte) *CABundleUpdateOne {
-	_u.mutation.SetPem(v)
-	return _u
-}
-
 // SetVersion sets the "version" field.
 func (_u *CABundleUpdateOne) SetVersion(v int64) *CABundleUpdateOne {
 	_u.mutation.ResetVersion()
@@ -202,6 +182,26 @@ func (_u *CABundleUpdateOne) SetNillableVersion(v *int64) *CABundleUpdateOne {
 // AddVersion adds value to the "version" field.
 func (_u *CABundleUpdateOne) AddVersion(v int64) *CABundleUpdateOne {
 	_u.mutation.AddVersion(v)
+	return _u
+}
+
+// SetName sets the "name" field.
+func (_u *CABundleUpdateOne) SetName(v string) *CABundleUpdateOne {
+	_u.mutation.SetName(v)
+	return _u
+}
+
+// SetNillableName sets the "name" field if the given value is not nil.
+func (_u *CABundleUpdateOne) SetNillableName(v *string) *CABundleUpdateOne {
+	if v != nil {
+		_u.SetName(*v)
+	}
+	return _u
+}
+
+// SetPem sets the "pem" field.
+func (_u *CABundleUpdateOne) SetPem(v []byte) *CABundleUpdateOne {
+	_u.mutation.SetPem(v)
 	return _u
 }
 
@@ -252,6 +252,11 @@ func (_u *CABundleUpdateOne) ExecX(ctx context.Context) {
 
 // check runs all checks and user-defined validators on the builder.
 func (_u *CABundleUpdateOne) check() error {
+	if v, ok := _u.mutation.Version(); ok {
+		if err := cabundle.VersionValidator(v); err != nil {
+			return &ValidationError{Name: "version", err: fmt.Errorf(`ent: validator failed for field "CABundle.version": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.Name(); ok {
 		if err := cabundle.NameValidator(v); err != nil {
 			return &ValidationError{Name: "name", err: fmt.Errorf(`ent: validator failed for field "CABundle.name": %w`, err)}
@@ -260,11 +265,6 @@ func (_u *CABundleUpdateOne) check() error {
 	if v, ok := _u.mutation.Pem(); ok {
 		if err := cabundle.PemValidator(v); err != nil {
 			return &ValidationError{Name: "pem", err: fmt.Errorf(`ent: validator failed for field "CABundle.pem": %w`, err)}
-		}
-	}
-	if v, ok := _u.mutation.Version(); ok {
-		if err := cabundle.VersionValidator(v); err != nil {
-			return &ValidationError{Name: "version", err: fmt.Errorf(`ent: validator failed for field "CABundle.version": %w`, err)}
 		}
 	}
 	return nil
@@ -299,17 +299,17 @@ func (_u *CABundleUpdateOne) sqlSave(ctx context.Context) (_node *CABundle, err 
 			}
 		}
 	}
-	if value, ok := _u.mutation.Name(); ok {
-		_spec.SetField(cabundle.FieldName, field.TypeString, value)
-	}
-	if value, ok := _u.mutation.Pem(); ok {
-		_spec.SetField(cabundle.FieldPem, field.TypeBytes, value)
-	}
 	if value, ok := _u.mutation.Version(); ok {
 		_spec.SetField(cabundle.FieldVersion, field.TypeInt64, value)
 	}
 	if value, ok := _u.mutation.AddedVersion(); ok {
 		_spec.AddField(cabundle.FieldVersion, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.Name(); ok {
+		_spec.SetField(cabundle.FieldName, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.Pem(); ok {
+		_spec.SetField(cabundle.FieldPem, field.TypeBytes, value)
 	}
 	_node = &CABundle{config: _u.config}
 	_spec.Assign = _node.assignValues

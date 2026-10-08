@@ -26,6 +26,20 @@ func (_c *CABundleCreate) SetOrgID(v string) *CABundleCreate {
 	return _c
 }
 
+// SetVersion sets the "version" field.
+func (_c *CABundleCreate) SetVersion(v int64) *CABundleCreate {
+	_c.mutation.SetVersion(v)
+	return _c
+}
+
+// SetNillableVersion sets the "version" field if the given value is not nil.
+func (_c *CABundleCreate) SetNillableVersion(v *int64) *CABundleCreate {
+	if v != nil {
+		_c.SetVersion(*v)
+	}
+	return _c
+}
+
 // SetName sets the "name" field.
 func (_c *CABundleCreate) SetName(v string) *CABundleCreate {
 	_c.mutation.SetName(v)
@@ -48,20 +62,6 @@ func (_c *CABundleCreate) SetCreatedAt(v time.Time) *CABundleCreate {
 func (_c *CABundleCreate) SetNillableCreatedAt(v *time.Time) *CABundleCreate {
 	if v != nil {
 		_c.SetCreatedAt(*v)
-	}
-	return _c
-}
-
-// SetVersion sets the "version" field.
-func (_c *CABundleCreate) SetVersion(v int64) *CABundleCreate {
-	_c.mutation.SetVersion(v)
-	return _c
-}
-
-// SetNillableVersion sets the "version" field if the given value is not nil.
-func (_c *CABundleCreate) SetNillableVersion(v *int64) *CABundleCreate {
-	if v != nil {
-		_c.SetVersion(*v)
 	}
 	return _c
 }
@@ -117,16 +117,16 @@ func (_c *CABundleCreate) ExecX(ctx context.Context) {
 
 // defaults sets the default values of the builder before save.
 func (_c *CABundleCreate) defaults() error {
+	if _, ok := _c.mutation.Version(); !ok {
+		v := cabundle.DefaultVersion
+		_c.mutation.SetVersion(v)
+	}
 	if _, ok := _c.mutation.CreatedAt(); !ok {
 		if cabundle.DefaultCreatedAt == nil {
 			return fmt.Errorf("ent: uninitialized cabundle.DefaultCreatedAt (forgotten import ent/runtime?)")
 		}
 		v := cabundle.DefaultCreatedAt()
 		_c.mutation.SetCreatedAt(v)
-	}
-	if _, ok := _c.mutation.Version(); !ok {
-		v := cabundle.DefaultVersion
-		_c.mutation.SetVersion(v)
 	}
 	if _, ok := _c.mutation.ID(); !ok {
 		if cabundle.DefaultID == nil {
@@ -148,6 +148,14 @@ func (_c *CABundleCreate) check() error {
 			return &ValidationError{Name: "org_id", err: fmt.Errorf(`ent: validator failed for field "CABundle.org_id": %w`, err)}
 		}
 	}
+	if _, ok := _c.mutation.Version(); !ok {
+		return &ValidationError{Name: "version", err: errors.New(`ent: missing required field "CABundle.version"`)}
+	}
+	if v, ok := _c.mutation.Version(); ok {
+		if err := cabundle.VersionValidator(v); err != nil {
+			return &ValidationError{Name: "version", err: fmt.Errorf(`ent: validator failed for field "CABundle.version": %w`, err)}
+		}
+	}
 	if _, ok := _c.mutation.Name(); !ok {
 		return &ValidationError{Name: "name", err: errors.New(`ent: missing required field "CABundle.name"`)}
 	}
@@ -166,14 +174,6 @@ func (_c *CABundleCreate) check() error {
 	}
 	if _, ok := _c.mutation.CreatedAt(); !ok {
 		return &ValidationError{Name: "created_at", err: errors.New(`ent: missing required field "CABundle.created_at"`)}
-	}
-	if _, ok := _c.mutation.Version(); !ok {
-		return &ValidationError{Name: "version", err: errors.New(`ent: missing required field "CABundle.version"`)}
-	}
-	if v, ok := _c.mutation.Version(); ok {
-		if err := cabundle.VersionValidator(v); err != nil {
-			return &ValidationError{Name: "version", err: fmt.Errorf(`ent: validator failed for field "CABundle.version": %w`, err)}
-		}
 	}
 	if v, ok := _c.mutation.ID(); ok {
 		if err := cabundle.IDValidator(v); err != nil {
@@ -219,6 +219,10 @@ func (_c *CABundleCreate) createSpec() (*CABundle, *sqlgraph.CreateSpec) {
 		_spec.SetField(cabundle.FieldOrgID, field.TypeString, value)
 		_node.OrgID = value
 	}
+	if value, ok := _c.mutation.Version(); ok {
+		_spec.SetField(cabundle.FieldVersion, field.TypeInt64, value)
+		_node.Version = value
+	}
 	if value, ok := _c.mutation.Name(); ok {
 		_spec.SetField(cabundle.FieldName, field.TypeString, value)
 		_node.Name = value
@@ -230,10 +234,6 @@ func (_c *CABundleCreate) createSpec() (*CABundle, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.CreatedAt(); ok {
 		_spec.SetField(cabundle.FieldCreatedAt, field.TypeTime, value)
 		_node.CreatedAt = value
-	}
-	if value, ok := _c.mutation.Version(); ok {
-		_spec.SetField(cabundle.FieldVersion, field.TypeInt64, value)
-		_node.Version = value
 	}
 	return _node, _spec
 }

@@ -52,8 +52,8 @@ func (Certificate) Fields() []ent.Field {
 // (docs/06-data-model.md, "Routes"), referenced by route_targets.tls_ca_bundle_id.
 type CABundle struct{ ent.Schema }
 
-// Mixin makes CA bundles org-owned.
-func (CABundle) Mixin() []ent.Mixin { return []ent.Mixin{OrgMixin{}} }
+// Mixin makes CA bundles org-owned and versioned.
+func (CABundle) Mixin() []ent.Mixin { return []ent.Mixin{OrgMixin{}, VersionMixin{}} }
 
 // Annotations name the table as docs/06-data-model.md does.
 func (CABundle) Annotations() []schema.Annotation {
@@ -67,7 +67,6 @@ func (CABundle) Fields() []ent.Field {
 		field.String("name").NotEmpty().MaxLen(100),
 		field.Bytes("pem").NotEmpty(),
 		field.Time("created_at").Immutable().Default(time.Now),
-		field.Int64("version").Positive().Default(1),
 	}
 }
 

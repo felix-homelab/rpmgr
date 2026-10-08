@@ -233,10 +233,10 @@ var (
 	CaBundlesColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeString},
 		{Name: "org_id", Type: field.TypeString},
+		{Name: "version", Type: field.TypeInt64, Default: 1},
 		{Name: "name", Type: field.TypeString, Size: 100},
 		{Name: "pem", Type: field.TypeBytes},
 		{Name: "created_at", Type: field.TypeTime},
-		{Name: "version", Type: field.TypeInt64, Default: 1},
 	}
 	// CaBundlesTable holds the schema information for the "ca_bundles" table.
 	CaBundlesTable = &schema.Table{
@@ -252,7 +252,7 @@ var (
 			{
 				Name:    "cabundle_org_id_name",
 				Unique:  true,
-				Columns: []*schema.Column{CaBundlesColumns[1], CaBundlesColumns[2]},
+				Columns: []*schema.Column{CaBundlesColumns[1], CaBundlesColumns[3]},
 			},
 		},
 	}
