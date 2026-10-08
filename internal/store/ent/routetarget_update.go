@@ -29,6 +29,27 @@ func (_u *RouteTargetUpdate) Where(ps ...predicate.RouteTarget) *RouteTargetUpda
 	return _u
 }
 
+// SetVersion sets the "version" field.
+func (_u *RouteTargetUpdate) SetVersion(v int64) *RouteTargetUpdate {
+	_u.mutation.ResetVersion()
+	_u.mutation.SetVersion(v)
+	return _u
+}
+
+// SetNillableVersion sets the "version" field if the given value is not nil.
+func (_u *RouteTargetUpdate) SetNillableVersion(v *int64) *RouteTargetUpdate {
+	if v != nil {
+		_u.SetVersion(*v)
+	}
+	return _u
+}
+
+// AddVersion adds value to the "version" field.
+func (_u *RouteTargetUpdate) AddVersion(v int64) *RouteTargetUpdate {
+	_u.mutation.AddVersion(v)
+	return _u
+}
+
 // SetConnectorID sets the "connector_id" field.
 func (_u *RouteTargetUpdate) SetConnectorID(v string) *RouteTargetUpdate {
 	_u.mutation.SetConnectorID(v)
@@ -308,6 +329,11 @@ func (_u *RouteTargetUpdate) ExecX(ctx context.Context) {
 
 // check runs all checks and user-defined validators on the builder.
 func (_u *RouteTargetUpdate) check() error {
+	if v, ok := _u.mutation.Version(); ok {
+		if err := routetarget.VersionValidator(v); err != nil {
+			return &ValidationError{Name: "version", err: fmt.Errorf(`ent: validator failed for field "RouteTarget.version": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.ConnectorID(); ok {
 		if err := routetarget.ConnectorIDValidator(v); err != nil {
 			return &ValidationError{Name: "connector_id", err: fmt.Errorf(`ent: validator failed for field "RouteTarget.connector_id": %w`, err)}
@@ -363,6 +389,12 @@ func (_u *RouteTargetUpdate) sqlSave(ctx context.Context) (_node int, err error)
 				ps[i](selector)
 			}
 		}
+	}
+	if value, ok := _u.mutation.Version(); ok {
+		_spec.SetField(routetarget.FieldVersion, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedVersion(); ok {
+		_spec.AddField(routetarget.FieldVersion, field.TypeInt64, value)
 	}
 	if value, ok := _u.mutation.Kind(); ok {
 		_spec.SetField(routetarget.FieldKind, field.TypeEnum, value)
@@ -482,6 +514,27 @@ type RouteTargetUpdateOne struct {
 	fields   []string
 	hooks    []Hook
 	mutation *RouteTargetMutation
+}
+
+// SetVersion sets the "version" field.
+func (_u *RouteTargetUpdateOne) SetVersion(v int64) *RouteTargetUpdateOne {
+	_u.mutation.ResetVersion()
+	_u.mutation.SetVersion(v)
+	return _u
+}
+
+// SetNillableVersion sets the "version" field if the given value is not nil.
+func (_u *RouteTargetUpdateOne) SetNillableVersion(v *int64) *RouteTargetUpdateOne {
+	if v != nil {
+		_u.SetVersion(*v)
+	}
+	return _u
+}
+
+// AddVersion adds value to the "version" field.
+func (_u *RouteTargetUpdateOne) AddVersion(v int64) *RouteTargetUpdateOne {
+	_u.mutation.AddVersion(v)
+	return _u
 }
 
 // SetConnectorID sets the "connector_id" field.
@@ -776,6 +829,11 @@ func (_u *RouteTargetUpdateOne) ExecX(ctx context.Context) {
 
 // check runs all checks and user-defined validators on the builder.
 func (_u *RouteTargetUpdateOne) check() error {
+	if v, ok := _u.mutation.Version(); ok {
+		if err := routetarget.VersionValidator(v); err != nil {
+			return &ValidationError{Name: "version", err: fmt.Errorf(`ent: validator failed for field "RouteTarget.version": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.ConnectorID(); ok {
 		if err := routetarget.ConnectorIDValidator(v); err != nil {
 			return &ValidationError{Name: "connector_id", err: fmt.Errorf(`ent: validator failed for field "RouteTarget.connector_id": %w`, err)}
@@ -848,6 +906,12 @@ func (_u *RouteTargetUpdateOne) sqlSave(ctx context.Context) (_node *RouteTarget
 				ps[i](selector)
 			}
 		}
+	}
+	if value, ok := _u.mutation.Version(); ok {
+		_spec.SetField(routetarget.FieldVersion, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedVersion(); ok {
+		_spec.AddField(routetarget.FieldVersion, field.TypeInt64, value)
 	}
 	if value, ok := _u.mutation.Kind(); ok {
 		_spec.SetField(routetarget.FieldKind, field.TypeEnum, value)

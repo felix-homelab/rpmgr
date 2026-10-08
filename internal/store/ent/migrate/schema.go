@@ -1283,6 +1283,7 @@ var (
 	RouteTargetsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeString},
 		{Name: "org_id", Type: field.TypeString},
+		{Name: "version", Type: field.TypeInt64, Default: 1},
 		{Name: "kind", Type: field.TypeEnum, Enums: []string{"address", "unix"}},
 		{Name: "host", Type: field.TypeString, Default: ""},
 		{Name: "port", Type: field.TypeInt, Default: 0},
@@ -1306,19 +1307,19 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "route_targets_routes_route",
-				Columns:    []*schema.Column{RouteTargetsColumns[13]},
+				Columns:    []*schema.Column{RouteTargetsColumns[14]},
 				RefColumns: []*schema.Column{RoutesColumns[0]},
 				OnDelete:   schema.NoAction,
 			},
 			{
 				Symbol:     "route_targets_connectors_connector",
-				Columns:    []*schema.Column{RouteTargetsColumns[14]},
+				Columns:    []*schema.Column{RouteTargetsColumns[15]},
 				RefColumns: []*schema.Column{ConnectorsColumns[0]},
 				OnDelete:   schema.NoAction,
 			},
 			{
 				Symbol:     "route_targets_ca_bundles_ca_bundle",
-				Columns:    []*schema.Column{RouteTargetsColumns[15]},
+				Columns:    []*schema.Column{RouteTargetsColumns[16]},
 				RefColumns: []*schema.Column{CaBundlesColumns[0]},
 				OnDelete:   schema.SetNull,
 			},
@@ -1332,17 +1333,17 @@ var (
 			{
 				Name:    "routetarget_route_id",
 				Unique:  false,
-				Columns: []*schema.Column{RouteTargetsColumns[13]},
+				Columns: []*schema.Column{RouteTargetsColumns[14]},
 			},
 			{
 				Name:    "routetarget_connector_id",
 				Unique:  false,
-				Columns: []*schema.Column{RouteTargetsColumns[14]},
+				Columns: []*schema.Column{RouteTargetsColumns[15]},
 			},
 			{
 				Name:    "routetarget_tls_ca_bundle_id",
 				Unique:  false,
-				Columns: []*schema.Column{RouteTargetsColumns[15]},
+				Columns: []*schema.Column{RouteTargetsColumns[16]},
 			},
 		},
 	}

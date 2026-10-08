@@ -45,6 +45,27 @@ service RouteService {
       resource_field: "route.id"
     };
   }
+  // CreateRouteTarget adds a target to a route: where a connector of the org sends its streams.
+  rpc CreateRouteTarget(CreateRouteTargetRequest) returns (CreateRouteTargetResponse) {
+    option (rpmgr.v1.authz) = {
+      permission: "routes.write"
+      resource_field: "route_id"
+    };
+  }
+  // UpdateRouteTarget changes the fields the mask names.
+  rpc UpdateRouteTarget(UpdateRouteTargetRequest) returns (UpdateRouteTargetResponse) {
+    option (rpmgr.v1.authz) = {
+      permission: "routes.write"
+      resource_field: "target.id"
+    };
+  }
+  // DeleteRouteTarget removes a target from its route.
+  rpc DeleteRouteTarget(DeleteRouteTargetRequest) returns (DeleteRouteTargetResponse) {
+    option (rpmgr.v1.authz) = {
+      permission: "routes.write"
+      resource_field: "route_target_id"
+    };
+  }
   // DeleteRoute deletes a route with its hostnames, targets and port.
   rpc DeleteRoute(DeleteRouteRequest) returns (DeleteRouteResponse) {
     option (rpmgr.v1.authz) = {
@@ -90,6 +111,8 @@ message Route {
     // A TLS route passed through by SNI, TLS ending at the target.
     TLSPassthroughRouteSpec tls_passthrough = 13;
   }
+  // Its targets, by priority; output only: they change with the target methods.
+  repeated RouteTarget targets = 20;
   // Its transport policy; the connector's if not set (docs/03-connections.md, "Transport
   // selection").
   DataTransport transport = 23 [(buf.validate.field).enum.defined_only = true];
@@ -198,6 +221,88 @@ message TLSPassthroughRouteSpec {
   }];
 }
 
+// UpstreamProtocol is how a connector speaks to a target.
+enum UpstreamProtocol {
+  // Not set: TCP for tcp, udp and tls_passthrough routes, HTTP for http routes.
+  UPSTREAM_PROTOCOL_UNSPECIFIED = 0;
+  // The bytes as they come, for tcp and tls_passthrough routes; datagrams for udp routes.
+  UPSTREAM_PROTOCOL_TCP = 1;
+  // Plain HTTP, for http routes.
+  UPSTREAM_PROTOCOL_HTTP = 2;
+  // HTTPS, verified, for http routes.
+  UPSTREAM_PROTOCOL_HTTPS = 3;
+  // HTTP/2 without TLS, for http routes.
+  UPSTREAM_PROTOCOL_H2C = 4;
+}
+
+// ProxyProtocol is the PROXY protocol header a connector sends a target before the client's bytes.
+enum ProxyProtocol {
+  // Not set: none.
+  PROXY_PROTOCOL_UNSPECIFIED = 0;
+  // None.
+  PROXY_PROTOCOL_NONE = 1;
+  // Version 1, text.
+  PROXY_PROTOCOL_V1 = 2;
+  // Version 2, binary.
+  PROXY_PROTOCOL_V2 = 3;
+}
+
+// RouteTarget is where a route's streams go: a connector of the org and an address it dials.
+message RouteTarget {
+  // The target's ID, tg_…; output only.
+  string id = 1;
+  // The connector that dials it; set at creation.
+  string connector_id = 2;
+  // The address, as the connector reaches it; its local policy must allow it.
+  oneof address {
+    // A host and port.
+    HostPort host_port = 3;
+    // A Unix socket, an absolute path.
+    string unix_path = 4 [(buf.validate.field).string = {
+      max_len: 1024
+      pattern: "^/"
+    }];
+  }
+  // How the connector speaks to it.
+  UpstreamProtocol upstream_protocol = 5 [(buf.validate.field).enum.defined_only = true];
+  // How an HTTPS upstream is verified.
+  UpstreamTLSSettings tls = 6;
+  // The PROXY protocol header, for tcp and tls_passthrough routes.
+  ProxyProtocol proxy_protocol = 7 [(buf.validate.field).enum.defined_only = true];
+  // Its share among the targets of its priority, 1 to 1000; 1 if not set.
+  uint32 weight = 8 [(buf.validate.field).uint32.lte = 1000];
+  // Lower is preferred; a higher priority is a failover.
+  uint32 priority = 9 [(buf.validate.field).uint32.lte = 1000];
+  // Whether streams go to it.
+  bool enabled = 10;
+  // The version to send back with an update; output only.
+  string etag = 11;
+}
+
+// HostPort is a host and a port.
+message HostPort {
+  // A host name or an IP address.
+  string host = 1 [(buf.validate.field).string = {
+    min_len: 1
+    max_len: 253
+  }];
+  // The port.
+  uint32 port = 2 [(buf.validate.field).uint32 = {
+    gte: 1
+    lte: 65535
+  }];
+}
+
+// UpstreamTLSSettings verify an HTTPS upstream.
+message UpstreamTLSSettings {
+  // The name its certificate must hold; the target's host if not set.
+  string server_name = 1 [(buf.validate.field).string.max_len = 253];
+  // The CA bundle its certificate must chain to; the gateway host's roots if not set.
+  string ca_bundle_id = 2;
+  // The SHA-256 of its public key, 64 hexadecimal digits, which it must match if set.
+  string spki_sha256 = 3 [(buf.validate.field).string.pattern = "^([0-9a-f]{64})?$"];
+}
+
 // CreateRouteRequest is a new route.
 message CreateRouteRequest {
   // The org.
@@ -277,6 +382,57 @@ message DeleteRouteRequest {
 
 // DeleteRouteResponse is the revision of the deletion.
 message DeleteRouteResponse {
+  // The configuration revision of the change.
+  Revision revision = 1;
+}
+
+// CreateRouteTargetRequest is a new target.
+message CreateRouteTargetRequest {
+  // The route.
+  string route_id = 1 [(buf.validate.field).string.min_len = 1];
+  // The target; its ID and etag are ignored. A new target is enabled.
+  RouteTarget target = 2 [(buf.validate.field).required = true];
+  // Makes retries idempotent (docs/07-api.md, "Resource design").
+  string request_id = 3 [(buf.validate.field).string.max_len = 128];
+}
+
+// CreateRouteTargetResponse is the new target.
+message CreateRouteTargetResponse {
+  // The target.
+  RouteTarget target = 1;
+  // The configuration revision of the change.
+  Revision revision = 2;
+}
+
+// UpdateRouteTargetRequest is a changed target.
+message UpdateRouteTargetRequest {
+  // The target with its ID and the new values of the fields the mask names.
+  RouteTarget target = 1 [(buf.validate.field).required = true];
+  // The fields to change: host_port, unix_path, upstream_protocol, tls, proxy_protocol, weight,
+  // priority, enabled.
+  google.protobuf.FieldMask update_mask = 2;
+  // The etag the caller read; empty skips the check.
+  string etag = 3;
+}
+
+// UpdateRouteTargetResponse is the changed target.
+message UpdateRouteTargetResponse {
+  // The target.
+  RouteTarget target = 1;
+  // The configuration revision of the change.
+  Revision revision = 2;
+}
+
+// DeleteRouteTargetRequest names a target.
+message DeleteRouteTargetRequest {
+  // The target's ID.
+  string route_target_id = 1 [(buf.validate.field).string.min_len = 1];
+  // The etag the caller read; empty skips the check.
+  string etag = 2;
+}
+
+// DeleteRouteTargetResponse is the revision of the deletion.
+message DeleteRouteTargetResponse {
   // The configuration revision of the change.
   Revision revision = 1;
 }

@@ -68,6 +68,11 @@ func OrgID(v string) predicate.RouteTarget {
 	return predicate.RouteTarget(sql.FieldEQ(FieldOrgID, v))
 }
 
+// Version applies equality check predicate on the "version" field. It's identical to VersionEQ.
+func Version(v int64) predicate.RouteTarget {
+	return predicate.RouteTarget(sql.FieldEQ(FieldVersion, v))
+}
+
 // RouteID applies equality check predicate on the "route_id" field. It's identical to RouteIDEQ.
 func RouteID(v string) predicate.RouteTarget {
 	return predicate.RouteTarget(sql.FieldEQ(FieldRouteID, v))
@@ -186,6 +191,46 @@ func OrgIDEqualFold(v string) predicate.RouteTarget {
 // OrgIDContainsFold applies the ContainsFold predicate on the "org_id" field.
 func OrgIDContainsFold(v string) predicate.RouteTarget {
 	return predicate.RouteTarget(sql.FieldContainsFold(FieldOrgID, v))
+}
+
+// VersionEQ applies the EQ predicate on the "version" field.
+func VersionEQ(v int64) predicate.RouteTarget {
+	return predicate.RouteTarget(sql.FieldEQ(FieldVersion, v))
+}
+
+// VersionNEQ applies the NEQ predicate on the "version" field.
+func VersionNEQ(v int64) predicate.RouteTarget {
+	return predicate.RouteTarget(sql.FieldNEQ(FieldVersion, v))
+}
+
+// VersionIn applies the In predicate on the "version" field.
+func VersionIn(vs ...int64) predicate.RouteTarget {
+	return predicate.RouteTarget(sql.FieldIn(FieldVersion, vs...))
+}
+
+// VersionNotIn applies the NotIn predicate on the "version" field.
+func VersionNotIn(vs ...int64) predicate.RouteTarget {
+	return predicate.RouteTarget(sql.FieldNotIn(FieldVersion, vs...))
+}
+
+// VersionGT applies the GT predicate on the "version" field.
+func VersionGT(v int64) predicate.RouteTarget {
+	return predicate.RouteTarget(sql.FieldGT(FieldVersion, v))
+}
+
+// VersionGTE applies the GTE predicate on the "version" field.
+func VersionGTE(v int64) predicate.RouteTarget {
+	return predicate.RouteTarget(sql.FieldGTE(FieldVersion, v))
+}
+
+// VersionLT applies the LT predicate on the "version" field.
+func VersionLT(v int64) predicate.RouteTarget {
+	return predicate.RouteTarget(sql.FieldLT(FieldVersion, v))
+}
+
+// VersionLTE applies the LTE predicate on the "version" field.
+func VersionLTE(v int64) predicate.RouteTarget {
+	return predicate.RouteTarget(sql.FieldLTE(FieldVersion, v))
 }
 
 // RouteIDEQ applies the EQ predicate on the "route_id" field.

@@ -5,6 +5,7 @@ package apisvc_test
 import (
 	"context"
 	"slices"
+	"strings"
 	"testing"
 
 	"connectrpc.com/connect"
@@ -268,8 +269,9 @@ func TestHTTPRoutes(t *testing.T) {
 	}
 }
 
-// TestRoutes_GatewayAcceptsThem: routes the API accepts, with every http setting, compile into a
-// snapshot the gateway validates without an error.
+// TestRoutes_GatewayAcceptsThem: routes the API accepts, with every http setting and a target
+// each, an HTTPS one verified by a pin, compile into a snapshot the gateway validates without an
+// error.
 func TestRoutes_GatewayAcceptsThem(t *testing.T) {
 	e, ada, org, group := gatewayEnv(t)
 	e.verified(t, org, "example.com", true)
@@ -290,9 +292,23 @@ func TestRoutes_GatewayAcceptsThem(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	con := e.addConnector(t, org, "nas", nil).ID
 	for _, rt := range []*rpmgrv1.Route{full, httpRoute("plain", group, "plain.example.com"), passthroughRoute("db", group, "db.example.com"),
 		tcpRoute("pg", group, 0), udpRoute("dns", group, 0)} {
-		if _, err := createRoute(ada, org, rt, ""); err != nil {
+		created, err := createRoute(ada, org, rt, "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		tg := addressTarget(con, "10.0.0.5", 8443)
+		switch rt.GetName() {
+		case "full":
+			tg.UpstreamProtocol, tg.Tls = rpmgrv1.UpstreamProtocol_UPSTREAM_PROTOCOL_HTTPS,
+				&rpmgrv1.UpstreamTLSSettings{ServerName: "app.internal", SpkiSha256: strings.Repeat("ab", 32)}
+		case "pg":
+			tg.ProxyProtocol = rpmgrv1.ProxyProtocol_PROXY_PROTOCOL_V2
+		}
+		if _, err := ada.rt.CreateRouteTarget(context.Background(), connect.NewRequest(&rpmgrv1.CreateRouteTargetRequest{RouteId: created.GetId(),
+			Target: tg})); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -516,5 +532,156 @@ func TestPortRoutes(t *testing.T) {
 	}
 	if _, err := createRoute(ada, org, udpRoute("dns-2", group, dns.GetUdp().GetPort()), ""); err != nil {
 		t.Fatalf("the port of a deleted route: %v", err)
+	}
+}
+
+func addressTarget(connector, host string, port uint32) *rpmgrv1.RouteTarget {
+	return &rpmgrv1.RouteTarget{ConnectorId: connector, Address: &rpmgrv1.RouteTarget_HostPort{HostPort: &rpmgrv1.HostPort{Host: host, Port: port}}}
+}
+
+// TestRouteTargets: a target of a connector of the org is added to a route, enabled, with what it
+// speaks, its PROXY header and its TLS settings checked against the route's type; an http route's
+// enabled targets speak one protocol; a decommissioned connector, another org's connector and a
+// missing CA bundle are refused; targets are updated under their etags and deleted; the route
+// lists them by priority; a Viewer changes nothing.
+func TestRouteTargets(t *testing.T) {
+	e, ada, org, group := gatewayEnv(t)
+	ctx := context.Background()
+	e.verified(t, org, "example.com", true)
+	for _, p := range []*rpmgrv1.PortPool{{GatewayGroupId: group, Protocol: tcp, PortFrom: 20000, PortTo: 20009},
+		{GatewayGroupId: group, Protocol: udp, PortFrom: 30000, PortTo: 30009}} {
+		if _, err := ada.gw.CreatePortPool(ctx, connect.NewRequest(&rpmgrv1.CreatePortPoolRequest{OrgId: org, PortPool: p})); err != nil {
+			t.Fatal(err)
+		}
+	}
+	con := e.addConnector(t, org, "nas", nil).ID
+	gone := e.addConnector(t, org, "old", func(c *ent.ConnectorCreate) { c.SetDecommissionedAt(e.clock) }).ID
+	orgB := storetest.Org(t, e.db, "org-b")
+	theirs := e.addConnector(t, orgB, "theirs", nil).ID
+	routeID := map[string]string{}
+	for _, rt := range []*rpmgrv1.Route{httpRoute("web", group, "web.example.com"), httpRoute("secure", group, "secure.example.com"),
+		tcpRoute("pg", group, 0), udpRoute("dns", group, 0), passthroughRoute("db", group, "db.example.com")} {
+		got, err := createRoute(ada, org, rt, "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		routeID[rt.GetName()] = got.GetId()
+	}
+	add := func(b *browser, route string, tg *rpmgrv1.RouteTarget) (*rpmgrv1.RouteTarget, error) {
+		r, err := b.rt.CreateRouteTarget(ctx, connect.NewRequest(&rpmgrv1.CreateRouteTargetRequest{RouteId: routeID[route], Target: tg}))
+		if err != nil {
+			return nil, err
+		}
+		return r.Msg.GetTarget(), nil
+	}
+	web, err := add(ada, "web", addressTarget(con, "10.0.0.5", 8080))
+	if err != nil || !web.GetEnabled() || web.GetUpstreamProtocol() != rpmgrv1.UpstreamProtocol_UPSTREAM_PROTOCOL_HTTP || web.GetWeight() != 1 ||
+		web.GetEtag() != "1" || web.GetProxyProtocol() != rpmgrv1.ProxyProtocol_PROXY_PROTOCOL_NONE {
+		t.Fatalf("an http target: %v %v", web, err)
+	}
+	pin := strings.Repeat("ab", 32)
+	https := func(host string, tls *rpmgrv1.UpstreamTLSSettings) *rpmgrv1.RouteTarget {
+		tg := addressTarget(con, host, 8443)
+		tg.UpstreamProtocol, tg.Tls = rpmgrv1.UpstreamProtocol_UPSTREAM_PROTOCOL_HTTPS, tls
+		return tg
+	}
+	if tg, err := add(ada, "secure", https("10.0.0.6", &rpmgrv1.UpstreamTLSSettings{ServerName: "app.internal", SpkiSha256: pin})); err != nil ||
+		tg.GetTls().GetSpkiSha256() != pin || tg.GetTls().GetServerName() != "app.internal" {
+		t.Fatalf("an https target: %v %v", tg, err)
+	}
+	proxied := addressTarget(con, "10.0.0.7", 5432)
+	proxied.ProxyProtocol, proxied.Priority = rpmgrv1.ProxyProtocol_PROXY_PROTOCOL_V2, 1
+	if _, err := add(ada, "pg", proxied); err != nil {
+		t.Fatalf("a tcp target with PROXY v2: %v", err)
+	}
+	if _, err := add(ada, "pg", &rpmgrv1.RouteTarget{ConnectorId: con, Address: &rpmgrv1.RouteTarget_UnixPath{UnixPath: "/run/pg/.s.PGSQL.5432"}}); err != nil {
+		t.Fatalf("a tcp target on a socket: %v", err)
+	}
+	if _, err := add(ada, "dns", addressTarget(con, "10.0.0.53", 53)); err != nil {
+		t.Fatalf("a udp target: %v", err)
+	}
+	unix := func(p string) *rpmgrv1.RouteTarget {
+		return &rpmgrv1.RouteTarget{ConnectorId: con, Address: &rpmgrv1.RouteTarget_UnixPath{UnixPath: p}}
+	}
+	for name, c := range map[string]struct {
+		route string
+		tg    *rpmgrv1.RouteTarget
+		code  connect.Code
+	}{
+		"a second protocol on an http route": {"web", https("10.0.0.8", nil), connect.CodeFailedPrecondition},
+		"TCP on an http route":               {"web", func() *rpmgrv1.RouteTarget { tg := addressTarget(con, "h", 1); tg.UpstreamProtocol = 1; return tg }(), connect.CodeInvalidArgument},
+		"HTTP on a tcp route":                {"pg", func() *rpmgrv1.RouteTarget { tg := addressTarget(con, "h", 1); tg.UpstreamProtocol = 2; return tg }(), connect.CodeInvalidArgument},
+		"a socket for a udp route":           {"dns", unix("/run/dns.sock"), connect.CodeInvalidArgument},
+		"a PROXY header for a udp route":     {"dns", func() *rpmgrv1.RouteTarget { tg := addressTarget(con, "h", 53); tg.ProxyProtocol = 2; return tg }(), connect.CodeInvalidArgument},
+		"a PROXY header for an http route":   {"web", func() *rpmgrv1.RouteTarget { tg := addressTarget(con, "h", 80); tg.ProxyProtocol = 2; return tg }(), connect.CodeInvalidArgument},
+		"TLS settings for HTTP": {"web", func() *rpmgrv1.RouteTarget {
+			tg := addressTarget(con, "h", 80)
+			tg.Tls = &rpmgrv1.UpstreamTLSSettings{ServerName: "x"}
+			return tg
+		}(), connect.CodeInvalidArgument},
+		"HTTPS on a socket, no server name": {"secure", func() *rpmgrv1.RouteTarget { tg := unix("/run/app.sock"); tg.UpstreamProtocol = 3; return tg }(), connect.CodeInvalidArgument},
+		"a bad pin":                         {"secure", https("10.0.0.9", &rpmgrv1.UpstreamTLSSettings{SpkiSha256: "abc"}), connect.CodeInvalidArgument},
+		"a missing CA bundle":               {"secure", https("10.0.0.9", &rpmgrv1.UpstreamTLSSettings{CaBundleId: "cab_missing"}), connect.CodeNotFound},
+		"no address":                        {"pg", &rpmgrv1.RouteTarget{ConnectorId: con}, connect.CodeInvalidArgument},
+		"an unclean path":                   {"pg", unix("/run/../x.sock"), connect.CodeInvalidArgument},
+		"a relative path":                   {"pg", unix("run/x.sock"), connect.CodeInvalidArgument},
+		"port 0":                            {"pg", addressTarget(con, "10.0.0.7", 0), connect.CodeInvalidArgument},
+		"weight 1001":                       {"pg", func() *rpmgrv1.RouteTarget { tg := addressTarget(con, "h", 1); tg.Weight = 1001; return tg }(), connect.CodeInvalidArgument},
+		"a decommissioned connector":        {"pg", addressTarget(gone, "10.0.0.7", 5432), connect.CodeFailedPrecondition},
+		"another org's connector":           {"pg", addressTarget(theirs, "10.0.0.7", 5432), connect.CodeNotFound},
+		"a missing connector":               {"pg", addressTarget("con_missing", "10.0.0.7", 5432), connect.CodeNotFound},
+	} {
+		if _, err := add(ada, c.route, c.tg); code(err) != c.code {
+			t.Errorf("%s: %v, want %v", name, err, c.code)
+		}
+	}
+
+	read, err := ada.rt.GetRoute(ctx, connect.NewRequest(&rpmgrv1.GetRouteRequest{RouteId: routeID["pg"]}))
+	if ts := read.Msg.GetRoute().GetTargets(); err != nil || len(ts) != 2 || ts[0].GetUnixPath() == "" || ts[1].GetPriority() != 1 {
+		t.Fatalf("the tcp route's targets by priority: %v %v", read, err)
+	}
+	update := func(id string, mask []string, in *rpmgrv1.RouteTarget, etag string) (*rpmgrv1.RouteTarget, error) {
+		in.Id = id
+		r, err := ada.rt.UpdateRouteTarget(ctx, connect.NewRequest(&rpmgrv1.UpdateRouteTargetRequest{Target: in,
+			UpdateMask: &fieldmaskpb.FieldMask{Paths: mask}, Etag: etag}))
+		if err != nil {
+			return nil, err
+		}
+		return r.Msg.GetTarget(), nil
+	}
+	up, err := update(web.GetId(), []string{"weight", "enabled"}, &rpmgrv1.RouteTarget{Weight: 5}, "1")
+	if err != nil || up.GetWeight() != 5 || up.GetEnabled() || up.GetEtag() != "2" {
+		t.Fatalf("a weight and disabled: %v %v", up, err)
+	}
+	if _, err := update(web.GetId(), []string{"weight"}, &rpmgrv1.RouteTarget{Weight: 2}, "1"); reason(err) != api.ReasonEtagMismatch {
+		t.Fatalf("a stale etag: %v", err)
+	}
+	if _, err := update(web.GetId(), []string{"connector_id"}, &rpmgrv1.RouteTarget{ConnectorId: con}, ""); code(err) != connect.CodeInvalidArgument {
+		t.Fatalf("a new connector: %v", err)
+	}
+	// With the HTTP target disabled, an HTTPS one may join; enabling the HTTP one again is refused.
+	if _, err := add(ada, "web", https("10.0.0.8", nil)); err != nil {
+		t.Fatalf("an https target next to a disabled http one: %v", err)
+	}
+	if _, err := update(web.GetId(), []string{"enabled"}, &rpmgrv1.RouteTarget{Enabled: true}, ""); code(err) != connect.CodeFailedPrecondition {
+		t.Fatalf("enabling a target of another protocol: %v", err)
+	}
+	if up, err := update(web.GetId(), []string{"host_port"}, addressTarget("", "10.0.0.15", 8081), ""); err != nil ||
+		up.GetHostPort().GetHost() != "10.0.0.15" {
+		t.Fatalf("a new address: %v %v", up, err)
+	}
+	vwr, _ := e.join(t, ada, org, "vwr@example.com", "viewer")
+	if _, err := add(vwr, "pg", addressTarget(con, "10.0.0.7", 1)); code(err) != connect.CodePermissionDenied {
+		t.Fatalf("a Viewer adds: %v", err)
+	}
+	if _, err := ada.rt.DeleteRouteTarget(ctx, connect.NewRequest(&rpmgrv1.DeleteRouteTargetRequest{RouteTargetId: web.GetId(), Etag: "1"})); reason(err) !=
+		api.ReasonEtagMismatch {
+		t.Fatalf("a stale etag on delete: %v", err)
+	}
+	if _, err := ada.rt.DeleteRouteTarget(ctx, connect.NewRequest(&rpmgrv1.DeleteRouteTargetRequest{RouteTargetId: web.GetId()})); err != nil {
+		t.Fatal(err)
+	}
+	if read, _ := ada.rt.GetRoute(ctx, connect.NewRequest(&rpmgrv1.GetRouteRequest{RouteId: routeID["web"]})); len(read.Msg.GetRoute().GetTargets()) != 1 {
+		t.Fatalf("after the delete: %v", read.Msg.GetRoute().GetTargets())
 	}
 }
