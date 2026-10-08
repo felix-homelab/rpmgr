@@ -30,19 +30,20 @@ import (
 // apiCommands are the verb-first commands of the public API (docs/16-cli.md, D51).
 func apiCommands() []*cli.Command {
 	createRoute, updateRoute, enableRoute, disableRoute, previewRoute := routeCommands()
+	createTarget, updateTarget := targetCommands()
 	return []*cli.Command{getCommand(), listCommand(), deleteCommand(),
-		group("create", "create a resource of the public API", createRoute),
-		group("update", "change a resource of the public API", updateRoute),
+		group("create", "create a resource of the public API", createRoute, createTarget),
+		group("update", "change a resource of the public API", updateRoute, updateTarget),
 		group("enable", "serve a resource again", enableRoute),
 		group("disable", "stop serving a resource, keeping its configuration", disableRoute),
 		group("preview", "show what a change would do, saving nothing", previewRoute)}
 }
 
-// kindsHelp lists the kinds for a command's synopsis.
-func kindsHelp(deletable bool) string {
+// kindsHelp lists the kinds a command takes, for its synopsis.
+func kindsHelp(takes func(apicli.Kind) bool) string {
 	var names []string
 	for _, k := range apicli.Kinds {
-		if !deletable || k.Delete {
+		if takes(k) {
 			names = append(names, k.Name)
 		}
 	}
@@ -99,7 +100,7 @@ func (s *apiSession) get(ctx context.Context, k apicli.Kind, id string) (protore
 func getCommand() *cli.Command {
 	var output string
 	return &cli.Command{
-		Name: "get", Summary: "show a resource of the public API", Args: "<" + kindsHelp(false) + "> <id>",
+		Name: "get", Summary: "show a resource of the public API", Args: "<" + kindsHelp(func(apicli.Kind) bool { return true }) + "> <id>",
 		Flags: func(fs *flag.FlagSet) { outputFlag(fs, &output) },
 		Run: func(ctx context.Context, env *cli.Env, args []string) error {
 			k, err := kindArgs(args, 2)
@@ -122,12 +123,15 @@ func getCommand() *cli.Command {
 func listCommand() *cli.Command {
 	var output string
 	return &cli.Command{
-		Name: "list", Summary: "list the resources of a kind in the org", Args: "<" + kindsHelp(false) + ">",
+		Name: "list", Summary: "list the resources of a kind in the org", Args: "<" + kindsHelp(func(k apicli.Kind) bool { return k.Plural != "" }) + ">",
 		Flags: func(fs *flag.FlagSet) { outputFlag(fs, &output) },
 		Run: func(ctx context.Context, env *cli.Env, args []string) error {
 			k, err := kindArgs(args, 1)
 			if err != nil {
 				return err
+			}
+			if k.Plural == "" {
+				return cli.Usagef("a %s is listed with what it belongs to; see rpmgr help get", k.Name)
 			}
 			s, err := newAPISession(env)
 			if err != nil {
@@ -164,7 +168,7 @@ func deleteCommand() *cli.Command {
 		wait  time.Duration
 	)
 	return &cli.Command{
-		Name: "delete", Summary: "delete a resource of the public API", Args: "<" + kindsHelp(true) + "> <id>",
+		Name: "delete", Summary: "delete a resource of the public API", Args: "<" + kindsHelp(func(k apicli.Kind) bool { return k.Delete }) + "> <id>",
 		Flags: func(fs *flag.FlagSet) {
 			fs.BoolVar(&force, "force", false, "delete without checking that the resource is unchanged since this command read it")
 			fs.DurationVar(&wait, "wait", 0, "wait up to this long, at most 30s, for the agents to apply the change")

@@ -48,6 +48,8 @@ var Kinds = []Kind{
 		IDField: "certificate_id", Columns: []string{"source", "status", "sans", "notAfter"}, Delete: true},
 	{Name: "ca-bundle", Prefix: "cab_", Service: "rpmgr.v1.CertificateService", Resource: "CABundle", Plural: "CABundles", IDField: "ca_bundle_id",
 		Manifest: "CABundle", Delete: true},
+	{Name: "route-target", Prefix: "tg_", Service: "rpmgr.v1.RouteService", Resource: "RouteTarget", IDField: "route_target_id",
+		Columns: []string{"connectorId", "upstreamProtocol", "enabled", "weight", "priority"}, Delete: true},
 	{Name: "access-policy", Prefix: "ap_", Service: "rpmgr.v1.PolicyService", Resource: "AccessPolicy", Plural: "AccessPolicies",
 		IDField: "access_policy_id", Manifest: "AccessPolicy", Columns: []string{"description"}, Delete: true},
 }
