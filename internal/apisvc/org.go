@@ -5,6 +5,7 @@ package apisvc
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -27,6 +28,8 @@ type Org struct {
 	API       *api.Server // for request_id deduplication
 	PublicURL string
 	Now       func() time.Time
+	Mail      Mailer // e-mails invitations when there is a relay
+	Logger    *slog.Logger
 }
 
 // GetOrg implements OrgService.
@@ -100,8 +103,10 @@ func (o *Org) CreateInvitation(ctx context.Context, req *connect.Request[rpmgrv1
 		if err != nil {
 			return nil, memberError(err)
 		}
-		return &rpmgrv1.CreateInvitationResponse{Url: strings.TrimSuffix(o.PublicURL, "/") + "/invite#" + tok,
-			ExpireTime: timestamppb.New(o.now().Add(accounts.InvitationTTL))}, nil
+		out := &rpmgrv1.CreateInvitationResponse{Url: strings.TrimSuffix(o.PublicURL, "/") + "/invite#" + tok,
+			ExpireTime: timestamppb.New(o.now().Add(accounts.InvitationTTL))}
+		out.EmailSent = o.mailInvitation(ctx, m.GetOrgId(), m.GetEmail(), m.GetRole(), out.GetUrl())
+		return out, nil
 	})
 	if err != nil {
 		return nil, err
@@ -129,6 +134,25 @@ func (o *Org) AcceptInvitation(ctx context.Context, req *connect.Request[rpmgrv1
 		return nil, err
 	}
 	return connect.NewResponse(&rpmgrv1.AcceptInvitationResponse{OrgId: org, UserId: u.ID}), nil
+}
+
+// mailInvitation e-mails an invitation if there is a relay, and reports whether the relay took it;
+// why it did not goes to the log, not to the caller.
+func (o *Org) mailInvitation(ctx context.Context, orgID, to, role, link string) bool {
+	if o.Mail == nil {
+		return false
+	}
+	if ok, err := o.Mail.Configured(ctx); err != nil || !ok {
+		return false
+	}
+	org, err := o.Members.Org(orgID)
+	if err == nil {
+		err = o.Mail.Send(ctx, invitationMail(strings.ToLower(strings.TrimSpace(to)), org.Name, role, link, accounts.InvitationTTL))
+	}
+	if err != nil && o.Logger != nil {
+		o.Logger.Warn("cannot e-mail an invitation", "org", orgID, "error", err)
+	}
+	return err == nil
 }
 
 // acting returns the caller and their role in the org, after the step-up that granting Admin or

@@ -49,6 +49,9 @@ const (
 	// AuthServiceRevokeSessionProcedure is the fully-qualified name of the AuthService's RevokeSession
 	// RPC.
 	AuthServiceRevokeSessionProcedure = "/rpmgr.v1.AuthService/RevokeSession"
+	// AuthServiceRequestPasswordResetProcedure is the fully-qualified name of the AuthService's
+	// RequestPasswordReset RPC.
+	AuthServiceRequestPasswordResetProcedure = "/rpmgr.v1.AuthService/RequestPasswordReset"
 	// AuthServiceCompletePasswordResetProcedure is the fully-qualified name of the AuthService's
 	// CompletePasswordReset RPC.
 	AuthServiceCompletePasswordResetProcedure = "/rpmgr.v1.AuthService/CompletePasswordReset"
@@ -72,6 +75,9 @@ type AuthServiceClient interface {
 	ListSessions(context.Context, *connect.Request[v1.ListSessionsRequest]) (*connect.Response[v1.ListSessionsResponse], error)
 	// RevokeSession ends one of the caller's sessions.
 	RevokeSession(context.Context, *connect.Request[v1.RevokeSessionRequest]) (*connect.Response[v1.RevokeSessionResponse], error)
+	// RequestPasswordReset e-mails a one-time reset link to the address if a user has it; the
+	// answer is the same whether one does or not. It needs a mail relay (UNAVAILABLE without).
+	RequestPasswordReset(context.Context, *connect.Request[v1.RequestPasswordResetRequest]) (*connect.Response[v1.RequestPasswordResetResponse], error)
 	// CompletePasswordReset sets a user's password with a one-time link, or creates the first user
 	// with the first-user link. A link works once, until it expires.
 	CompletePasswordReset(context.Context, *connect.Request[v1.CompletePasswordResetRequest]) (*connect.Response[v1.CompletePasswordResetResponse], error)
@@ -126,6 +132,12 @@ func NewAuthServiceClient(httpClient connect.HTTPClient, baseURL string, opts ..
 			connect.WithSchema(authServiceMethods.ByName("RevokeSession")),
 			connect.WithClientOptions(opts...),
 		),
+		requestPasswordReset: connect.NewClient[v1.RequestPasswordResetRequest, v1.RequestPasswordResetResponse](
+			httpClient,
+			baseURL+AuthServiceRequestPasswordResetProcedure,
+			connect.WithSchema(authServiceMethods.ByName("RequestPasswordReset")),
+			connect.WithClientOptions(opts...),
+		),
 		completePasswordReset: connect.NewClient[v1.CompletePasswordResetRequest, v1.CompletePasswordResetResponse](
 			httpClient,
 			baseURL+AuthServiceCompletePasswordResetProcedure,
@@ -143,6 +155,7 @@ type authServiceClient struct {
 	getSession            *connect.Client[v1.GetSessionRequest, v1.GetSessionResponse]
 	listSessions          *connect.Client[v1.ListSessionsRequest, v1.ListSessionsResponse]
 	revokeSession         *connect.Client[v1.RevokeSessionRequest, v1.RevokeSessionResponse]
+	requestPasswordReset  *connect.Client[v1.RequestPasswordResetRequest, v1.RequestPasswordResetResponse]
 	completePasswordReset *connect.Client[v1.CompletePasswordResetRequest, v1.CompletePasswordResetResponse]
 }
 
@@ -176,6 +189,11 @@ func (c *authServiceClient) RevokeSession(ctx context.Context, req *connect.Requ
 	return c.revokeSession.CallUnary(ctx, req)
 }
 
+// RequestPasswordReset calls rpmgr.v1.AuthService.RequestPasswordReset.
+func (c *authServiceClient) RequestPasswordReset(ctx context.Context, req *connect.Request[v1.RequestPasswordResetRequest]) (*connect.Response[v1.RequestPasswordResetResponse], error) {
+	return c.requestPasswordReset.CallUnary(ctx, req)
+}
+
 // CompletePasswordReset calls rpmgr.v1.AuthService.CompletePasswordReset.
 func (c *authServiceClient) CompletePasswordReset(ctx context.Context, req *connect.Request[v1.CompletePasswordResetRequest]) (*connect.Response[v1.CompletePasswordResetResponse], error) {
 	return c.completePasswordReset.CallUnary(ctx, req)
@@ -199,6 +217,9 @@ type AuthServiceHandler interface {
 	ListSessions(context.Context, *connect.Request[v1.ListSessionsRequest]) (*connect.Response[v1.ListSessionsResponse], error)
 	// RevokeSession ends one of the caller's sessions.
 	RevokeSession(context.Context, *connect.Request[v1.RevokeSessionRequest]) (*connect.Response[v1.RevokeSessionResponse], error)
+	// RequestPasswordReset e-mails a one-time reset link to the address if a user has it; the
+	// answer is the same whether one does or not. It needs a mail relay (UNAVAILABLE without).
+	RequestPasswordReset(context.Context, *connect.Request[v1.RequestPasswordResetRequest]) (*connect.Response[v1.RequestPasswordResetResponse], error)
 	// CompletePasswordReset sets a user's password with a one-time link, or creates the first user
 	// with the first-user link. A link works once, until it expires.
 	CompletePasswordReset(context.Context, *connect.Request[v1.CompletePasswordResetRequest]) (*connect.Response[v1.CompletePasswordResetResponse], error)
@@ -249,6 +270,12 @@ func NewAuthServiceHandler(svc AuthServiceHandler, opts ...connect.HandlerOption
 		connect.WithSchema(authServiceMethods.ByName("RevokeSession")),
 		connect.WithHandlerOptions(opts...),
 	)
+	authServiceRequestPasswordResetHandler := connect.NewUnaryHandler(
+		AuthServiceRequestPasswordResetProcedure,
+		svc.RequestPasswordReset,
+		connect.WithSchema(authServiceMethods.ByName("RequestPasswordReset")),
+		connect.WithHandlerOptions(opts...),
+	)
 	authServiceCompletePasswordResetHandler := connect.NewUnaryHandler(
 		AuthServiceCompletePasswordResetProcedure,
 		svc.CompletePasswordReset,
@@ -269,6 +296,8 @@ func NewAuthServiceHandler(svc AuthServiceHandler, opts ...connect.HandlerOption
 			authServiceListSessionsHandler.ServeHTTP(w, r)
 		case AuthServiceRevokeSessionProcedure:
 			authServiceRevokeSessionHandler.ServeHTTP(w, r)
+		case AuthServiceRequestPasswordResetProcedure:
+			authServiceRequestPasswordResetHandler.ServeHTTP(w, r)
 		case AuthServiceCompletePasswordResetProcedure:
 			authServiceCompletePasswordResetHandler.ServeHTTP(w, r)
 		default:
@@ -302,6 +331,10 @@ func (UnimplementedAuthServiceHandler) ListSessions(context.Context, *connect.Re
 
 func (UnimplementedAuthServiceHandler) RevokeSession(context.Context, *connect.Request[v1.RevokeSessionRequest]) (*connect.Response[v1.RevokeSessionResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("rpmgr.v1.AuthService.RevokeSession is not implemented"))
+}
+
+func (UnimplementedAuthServiceHandler) RequestPasswordReset(context.Context, *connect.Request[v1.RequestPasswordResetRequest]) (*connect.Response[v1.RequestPasswordResetResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("rpmgr.v1.AuthService.RequestPasswordReset is not implemented"))
 }
 
 func (UnimplementedAuthServiceHandler) CompletePasswordReset(context.Context, *connect.Request[v1.CompletePasswordResetRequest]) (*connect.Response[v1.CompletePasswordResetResponse], error) {

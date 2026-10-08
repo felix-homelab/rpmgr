@@ -37,6 +37,8 @@ type env struct {
 	acc      *accounts.Accounts
 	mfa      *accounts.MFA
 	sessions *websession.Sessions
+	auth     *apisvc.Auth
+	orgs     *apisvc.Org
 	url      string
 	ada      string // the first user's ID
 }
@@ -69,14 +71,17 @@ func newEnv(t *testing.T) *env {
 	mux := http.NewServeMux()
 	if err := srv.Mount(mux, rpmgrv1.File_rpmgr_v1_auth_proto.Services().ByName("AuthService"),
 		func(o ...connect.HandlerOption) (string, http.Handler) {
-			return rpmgrv1connect.NewAuthServiceHandler(apisvc.NewAuth(e.mfa, e.sessions, now), o...)
+			e.auth = apisvc.NewAuth(e.mfa, e.sessions, now)
+			e.auth.PublicURL = "https://panel.example.com"
+			return rpmgrv1connect.NewAuthServiceHandler(e.auth, o...)
 		}); err != nil {
 		t.Fatal(err)
 	}
 	if err := srv.Mount(mux, rpmgrv1.File_rpmgr_v1_org_proto.Services().ByName("OrgService"),
 		func(o ...connect.HandlerOption) (string, http.Handler) {
-			return rpmgrv1connect.NewOrgServiceHandler(&apisvc.Org{Members: &accounts.Members{Accounts: e.acc, RevLog: rl}, API: srv,
-				PublicURL: "https://panel.example.com", Now: now}, o...)
+			e.orgs = &apisvc.Org{Members: &accounts.Members{Accounts: e.acc, RevLog: rl}, API: srv,
+				PublicURL: "https://panel.example.com", Now: now}
+			return rpmgrv1connect.NewOrgServiceHandler(e.orgs, o...)
 		}); err != nil {
 		t.Fatal(err)
 	}

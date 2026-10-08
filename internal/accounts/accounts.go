@@ -286,3 +286,16 @@ func (a *Accounts) User(id string) (*ent.User, []*ent.Membership, error) {
 	}
 	return u, u.Edges.Memberships, nil
 }
+
+// UserByEmail returns the active user with an e-mail address; ErrNoUser for none.
+func (a *Accounts) UserByEmail(email string) (*ent.User, error) {
+	norm, err := NormalizeEmail(email)
+	if err != nil {
+		return nil, ErrNoUser
+	}
+	u, err := a.db.ReadClient().User.Query().Where(user.Email(norm), user.StatusEQ(user.StatusActive)).Only(a.sys)
+	if ent.IsNotFound(err) {
+		return nil, ErrNoUser
+	}
+	return u, err
+}

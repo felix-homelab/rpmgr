@@ -43,6 +43,11 @@ service AuthService {
   rpc RevokeSession(RevokeSessionRequest) returns (RevokeSessionResponse) {
     option (rpmgr.v1.authz) = {permission: "authenticated"};
   }
+  // RequestPasswordReset e-mails a one-time reset link to the address if a user has it; the
+  // answer is the same whether one does or not. It needs a mail relay (UNAVAILABLE without).
+  rpc RequestPasswordReset(RequestPasswordResetRequest) returns (RequestPasswordResetResponse) {
+    option (rpmgr.v1.authz) = {permission: "public"};
+  }
   // CompletePasswordReset sets a user's password with a one-time link, or creates the first user
   // with the first-user link. A link works once, until it expires.
   rpc CompletePasswordReset(CompletePasswordResetRequest) returns (CompletePasswordResetResponse) {
@@ -203,3 +208,15 @@ message StepUpResponse {
   // The end of the step-up.
   google.protobuf.Timestamp expire_time = 1;
 }
+
+// RequestPasswordResetRequest is an e-mail address.
+message RequestPasswordResetRequest {
+  // The address.
+  string email = 1 [(buf.validate.field).string = {
+    min_len: 3
+    max_len: 254
+  }];
+}
+
+// RequestPasswordResetResponse is empty.
+message RequestPasswordResetResponse {}
