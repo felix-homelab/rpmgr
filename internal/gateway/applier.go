@@ -49,6 +49,34 @@ func (a *assignment) Connectors(routeID string) []string {
 	return s.routes[routeID]
 }
 
+// basicAuthOf parses a route's basic_auth rules: each names its policy and credential version and
+// has users with distinct names and argon2id hashes.
+func basicAuthOf(rules []*agentv1.BasicAuthRule) ([]BasicAuthRule, error) {
+	var out []BasicAuthRule
+	for i, r := range rules {
+		if r.GetPolicyId() == "" || r.GetCredentialVersion() == "" || len(r.GetUsers()) == 0 {
+			return nil, fmt.Errorf("rule %d: no policy, credential version or users", i+1)
+		}
+		rule := BasicAuthRule{PolicyID: r.GetPolicyId(), CredentialVersion: r.GetCredentialVersion(), Users: map[string]PHC{}}
+		for _, u := range r.GetUsers() {
+			name := u.GetName()
+			if name == "" || strings.Contains(name, ":") {
+				return nil, fmt.Errorf("rule %d: user name %q", i+1, name)
+			}
+			if _, dup := rule.Users[name]; dup {
+				return nil, fmt.Errorf("rule %d: user %q twice", i+1, name)
+			}
+			h, err := ParsePHC(u.GetPasswordHash())
+			if err != nil {
+				return nil, fmt.Errorf("rule %d, user %q: %w", i+1, name, err)
+			}
+			rule.Users[name] = h
+		}
+		out = append(out, rule)
+	}
+	return out, nil
+}
+
 // accessOf returns the access rules of a gateway route resource, nil for another kind.
 func accessOf(res *agentv1.Resource) *agentv1.RouteAccess {
 	switch {
@@ -132,6 +160,14 @@ func (a *Applier) Validate(snap *agentv1.Snapshot) []*agentv1.SnapshotError {
 		id := res.GetId()
 		if _, err := AccessOf(accessOf(res)); err != nil {
 			bad(id, "access rules: %v", err)
+		}
+		if ba := accessOf(res).GetBasicAuth(); len(ba) > 0 {
+			if res.GetGatewayHttpRoute() == nil {
+				bad(id, "basic auth on a route that is not http")
+			}
+			if _, err := basicAuthOf(ba); err != nil {
+				bad(id, "basic auth: %v", err)
+			}
 		}
 		var connectors []string
 		switch {
@@ -271,6 +307,7 @@ func (a *Applier) Apply(ctx context.Context, snap *agentv1.Snapshot, _ agent.Cha
 			hr := HTTPRoute{ID: res.GetId(), Upstream: r.GetUpstreamProtocol(), WebSocket: r.GetWebsocket(),
 				HostHeader: r.GetHostHeader(), MaxBody: int64(min(r.GetMaxBodyBytes(), math.MaxInt64)), //nolint:gosec // G115: bounded above
 				Port80: r.GetPort80(), HSTS: int(r.GetHstsMaxAgeSeconds()), Access: access}
+			hr.BasicAuth, _ = basicAuthOf(r.GetAccess().GetBasicAuth()) // Validate refused any that does not parse
 			for _, h := range r.GetRequestHeaders() {
 				hr.RequestHeaders = append(hr.RequestHeaders, HTTPHeader{Name: h.GetName(), Value: h.GetValue()})
 			}

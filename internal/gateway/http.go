@@ -83,6 +83,8 @@ type HTTPRoute struct {
 	HSTS int
 	// Access is who may send requests: the client, or the client a trusted proxy names.
 	Access Access
+	// BasicAuth are the basic_auth rules a request the IP rules allow must pass, in order.
+	BasicAuth []BasicAuthRule
 }
 
 // HTTPHeader is a header name, canonical, and its value; "" removes the header.
@@ -156,6 +158,7 @@ type HTTPOptions struct {
 // path prefix, and proxies it over a tunnel stream to a connector of the route.
 type HTTPRoutes struct {
 	o        HTTPOptions
+	basic    *BasicAuth
 	server   *http.Server
 	server80 *http.Server
 	ln       *connListener
@@ -211,7 +214,7 @@ func NewHTTPRoutes(o HTTPOptions) *HTTPRoutes {
 	if o.Logger == nil {
 		o.Logger = slog.New(slog.DiscardHandler)
 	}
-	h := &HTTPRoutes{o: o, ln: newConnListener(), transports: map[string]*routeTransport{}}
+	h := &HTTPRoutes{o: o, ln: newConnListener(), transports: map[string]*routeTransport{}, basic: NewBasicAuth(nil)}
 	h.table.Store(&httpTable{byHost: map[string][]httpEntry{}})
 	protocols := new(http.Protocols)
 	protocols.SetHTTP1(true)
@@ -347,6 +350,11 @@ func (h *HTTPRoutes) Apply(routes []HTTPRoute) {
 		slices.SortFunc(entries, func(a, b httpEntry) int { return len(b.prefix) - len(a.prefix) })
 	}
 	h.table.Store(t)
+	var rules []BasicAuthRule
+	for _, r := range routes {
+		rules = append(rules, r.BasicAuth...)
+	}
+	h.basic.Retain(rules)
 	for id, rt := range h.transports {
 		if next[id] != rt {
 			rt.tr.CloseIdleConnections()
@@ -394,6 +402,9 @@ func (h *HTTPRoutes) newTransport(r HTTPRoute) *routeTransport {
 				pr.Out.Host = route.HostHeader
 			}
 			forward(pr, route.TrustedProxies)
+			if len(route.BasicAuth) > 0 {
+				pr.Out.Header.Del("Authorization") // the gateway's credentials, not the upstream's
+			}
 			apply(pr.Out.Header, route.RequestHeaders)
 		},
 		Transport:     rt.tr,
@@ -603,6 +614,26 @@ func (h *HTTPRoutes) proxy(w http.ResponseWriter, r *http.Request, rt *routeTran
 	if !route.Access.Allows(client) {
 		http.Error(w, http.StatusText(http.StatusForbidden), http.StatusForbidden)
 		return
+	}
+	if len(route.BasicAuth) > 0 {
+		user, password, given := r.BasicAuth()
+		ok := false
+		var err error
+		if given {
+			ok, err = h.basic.Check(r.Context(), client, route.BasicAuth, user, password)
+		}
+		switch {
+		case errors.Is(err, ErrRateLimited):
+			w.Header().Set("Retry-After", strconv.Itoa(int(basicAuthRefill.Seconds())))
+			http.Error(w, http.StatusText(http.StatusTooManyRequests), http.StatusTooManyRequests)
+			return
+		case err != nil:
+			return // the client went away
+		case !ok:
+			w.Header().Set("WWW-Authenticate", `Basic realm="rpmgr", charset="UTF-8"`)
+			http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
+			return
+		}
 	}
 	ctx, cancel := context.WithCancel(r.Context())
 	defer cancel()

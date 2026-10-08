@@ -31,8 +31,8 @@ TestRestore_OrgOwnerCannotEndInstanceReview	pending	11.6	#160
 TestRevocation_EnforcedWhileSinkDown	pending	11.5	#159
 TestDenyList_PersistedAcrossGatewayRestart	done	3.13	#68	in-process clause (internal/agent; the digest resend: TestDenyList_HelloDigest) and process-level clause (test/e2e) done
 TestEnrollReplace_TokenBoundToConnector	pending	8.2	#116
-TestBasicAuth_HashOncePerTTL	pending	5.11	#97
-TestBasicAuth_CacheScopedToPolicy	pending	5.11	#97
+TestBasicAuth_HashOncePerTTL	done	5.11	#97
+TestBasicAuth_CacheScopedToPolicy	done	5.11	#97
 TestPrivateUDP_GatewaySeesCiphertextOnly	p2	-	-	private services
 TestFlowControl_StalledStreamsDoNotFreezeSession	done	4.5	#75
 TestFlowControl_PausedClientNotResetWithoutPressure	done	4.5	#75

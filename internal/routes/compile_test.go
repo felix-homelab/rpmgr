@@ -552,8 +552,9 @@ func TestCompile_HTTPSUpstream(t *testing.T) {
 }
 
 // TestCompile_Access: a gateway route carries the IP rules of its access policies, in the order of
-// the policies and of their rules; rules of other kinds are not part of them; a rule whose
-// parameters do not parse fails the compile rather than serve the route without it.
+// the policies and of their rules; an http route also their basic_auth rules, and any other route
+// with one denies everyone; a rule whose parameters do not parse fails the compile rather than
+// serve the route without it.
 func TestCompile_Access(t *testing.T) {
 	storetest.ForEachDialect(t, func(t *testing.T, db *store.DB) {
 		f := newFleet(t, db)
@@ -571,8 +572,13 @@ func TestCompile_Access(t *testing.T) {
 			SetParams(params("10.0.0.0/8")).ExecX(f.sys)
 		c.PolicyRule.Create().SetOrgID(f.orgA).SetPolicyID(office.ID).SetPosition(1).SetKind(policyrule.KindIPDeny).
 			SetParams(params("10.6.6.0/24")).ExecX(f.sys)
-		c.PolicyRule.Create().SetOrgID(f.orgA).SetPolicyID(office.ID).SetPosition(3).SetKind(policyrule.KindBasicAuth).
-			SetParams([]byte{}).ExecX(f.sys)
+		users, err := proto.Marshal(&rpmgrv1.PolicyRuleParams{Params: &rpmgrv1.PolicyRuleParams_BasicAuth{BasicAuth: &rpmgrv1.BasicAuthParams{
+			Users: []*rpmgrv1.BasicAuthUser{{Name: "alice", PasswordHash: "$argon2id$v=19$m=8,t=1,p=1$c2FsdHNhbHQ$aGFzaGhhc2hoYXNoaGFzaA"}}}}}) //nolint:gosec // G101: a test hash
+		if err != nil {
+			t.Fatal(err)
+		}
+		basic := c.PolicyRule.Create().SetOrgID(f.orgA).SetPolicyID(office.ID).SetPosition(3).SetKind(policyrule.KindBasicAuth).
+			SetParams(users).SaveX(f.sys)
 		c.PolicyRule.Create().SetOrgID(f.orgA).SetPolicyID(blocked.ID).SetPosition(0).SetKind(policyrule.KindIPDeny).
 			SetParams(params("192.0.2.0/24", "2001:db8::/32")).ExecX(f.sys)
 		c.RoutePolicy.Create().SetOrgID(f.orgA).SetRouteID(f.r1).SetPolicyID(office.ID).SetPosition(1).ExecX(f.sys)
@@ -585,9 +591,23 @@ func TestCompile_Access(t *testing.T) {
 				}
 			}
 		}
-		want := []string{"false 192.0.2.0/24,2001:db8::/32", "false 10.6.6.0/24", "true 10.0.0.0/8"}
+		// The tcp route has a basic_auth rule, which no TCP client can pass: everyone is denied first.
+		want := []string{"false 0.0.0.0/0,::/0", "false 192.0.2.0/24,2001:db8::/32", "false 10.6.6.0/24", "true 10.0.0.0/8"}
 		if !slices.Equal(got, want) {
 			t.Fatalf("rules %q, want %q", got, want)
+		}
+		f.verifiedExample(t)
+		web := f.httpRoute(t, "web", true, true, nil, "app.example.com")
+		c.RoutePolicy.Create().SetOrgID(f.orgA).SetRouteID(web).SetPolicyID(office.ID).SetPosition(0).ExecX(f.sys)
+		var wa *agentv1.RouteAccess
+		for _, r := range f.compile(t, pki.KindGateway, f.gateway) {
+			if r.GetId() == web {
+				wa = r.GetGatewayHttpRoute().GetAccess()
+			}
+		}
+		if len(wa.GetIpRules()) != 2 || len(wa.GetBasicAuth()) != 1 || wa.GetBasicAuth()[0].GetPolicyId() != office.ID ||
+			!strings.HasPrefix(wa.GetBasicAuth()[0].GetCredentialVersion(), basic.ID+".") || wa.GetBasicAuth()[0].GetUsers()[0].GetName() != "alice" {
+			t.Fatalf("the http route's access %v", wa)
 		}
 		// Another org's policy cannot be applied.
 		theirs := c.AccessPolicy.Create().SetOrgID(f.orgB).SetName("theirs").SaveX(f.sys)

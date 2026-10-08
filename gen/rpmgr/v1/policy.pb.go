@@ -34,6 +34,7 @@ type PolicyRuleParams struct {
 	// Types that are valid to be assigned to Params:
 	//
 	//	*PolicyRuleParams_Ip
+	//	*PolicyRuleParams_BasicAuth
 	Params        isPolicyRuleParams_Params `protobuf_oneof:"params"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -85,6 +86,15 @@ func (x *PolicyRuleParams) GetIp() *IPRuleParams {
 	return nil
 }
 
+func (x *PolicyRuleParams) GetBasicAuth() *BasicAuthParams {
+	if x != nil {
+		if x, ok := x.Params.(*PolicyRuleParams_BasicAuth); ok {
+			return x.BasicAuth
+		}
+	}
+	return nil
+}
+
 type isPolicyRuleParams_Params interface {
 	isPolicyRuleParams_Params()
 }
@@ -94,7 +104,116 @@ type PolicyRuleParams_Ip struct {
 	Ip *IPRuleParams `protobuf:"bytes,1,opt,name=ip,proto3,oneof"`
 }
 
+type PolicyRuleParams_BasicAuth struct {
+	// basic_auth: the users who may pass.
+	BasicAuth *BasicAuthParams `protobuf:"bytes,2,opt,name=basic_auth,json=basicAuth,proto3,oneof"`
+}
+
 func (*PolicyRuleParams_Ip) isPolicyRuleParams_Params() {}
+
+func (*PolicyRuleParams_BasicAuth) isPolicyRuleParams_Params() {}
+
+// BasicAuthParams are the users of a basic_auth rule (docs/04-security.md, "Secrets at rest and
+// in logs"): the controller keeps their argon2id hashes, never their passwords.
+type BasicAuthParams struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The users.
+	Users         []*BasicAuthUser `protobuf:"bytes,1,rep,name=users,proto3" json:"users,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *BasicAuthParams) Reset() {
+	*x = BasicAuthParams{}
+	mi := &file_rpmgr_v1_policy_proto_msgTypes[1]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *BasicAuthParams) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*BasicAuthParams) ProtoMessage() {}
+
+func (x *BasicAuthParams) ProtoReflect() protoreflect.Message {
+	mi := &file_rpmgr_v1_policy_proto_msgTypes[1]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use BasicAuthParams.ProtoReflect.Descriptor instead.
+func (*BasicAuthParams) Descriptor() ([]byte, []int) {
+	return file_rpmgr_v1_policy_proto_rawDescGZIP(), []int{1}
+}
+
+func (x *BasicAuthParams) GetUsers() []*BasicAuthUser {
+	if x != nil {
+		return x.Users
+	}
+	return nil
+}
+
+// BasicAuthUser is one user of a basic_auth rule.
+type BasicAuthUser struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The user name; no colon (RFC 7617).
+	Name string `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	// The password's argon2id hash in PHC string format.
+	PasswordHash  string `protobuf:"bytes,2,opt,name=password_hash,json=passwordHash,proto3" json:"password_hash,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *BasicAuthUser) Reset() {
+	*x = BasicAuthUser{}
+	mi := &file_rpmgr_v1_policy_proto_msgTypes[2]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *BasicAuthUser) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*BasicAuthUser) ProtoMessage() {}
+
+func (x *BasicAuthUser) ProtoReflect() protoreflect.Message {
+	mi := &file_rpmgr_v1_policy_proto_msgTypes[2]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use BasicAuthUser.ProtoReflect.Descriptor instead.
+func (*BasicAuthUser) Descriptor() ([]byte, []int) {
+	return file_rpmgr_v1_policy_proto_rawDescGZIP(), []int{2}
+}
+
+func (x *BasicAuthUser) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *BasicAuthUser) GetPasswordHash() string {
+	if x != nil {
+		return x.PasswordHash
+	}
+	return ""
+}
 
 // IPRuleParams match client addresses.
 type IPRuleParams struct {
@@ -107,7 +226,7 @@ type IPRuleParams struct {
 
 func (x *IPRuleParams) Reset() {
 	*x = IPRuleParams{}
-	mi := &file_rpmgr_v1_policy_proto_msgTypes[1]
+	mi := &file_rpmgr_v1_policy_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -119,7 +238,7 @@ func (x *IPRuleParams) String() string {
 func (*IPRuleParams) ProtoMessage() {}
 
 func (x *IPRuleParams) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_v1_policy_proto_msgTypes[1]
+	mi := &file_rpmgr_v1_policy_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -132,7 +251,7 @@ func (x *IPRuleParams) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use IPRuleParams.ProtoReflect.Descriptor instead.
 func (*IPRuleParams) Descriptor() ([]byte, []int) {
-	return file_rpmgr_v1_policy_proto_rawDescGZIP(), []int{1}
+	return file_rpmgr_v1_policy_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *IPRuleParams) GetCidrs() []string {
@@ -146,10 +265,18 @@ var File_rpmgr_v1_policy_proto protoreflect.FileDescriptor
 
 const file_rpmgr_v1_policy_proto_rawDesc = "" +
 	"\n" +
-	"\x15rpmgr/v1/policy.proto\x12\brpmgr.v1\x1a\x1bbuf/validate/validate.proto\"F\n" +
+	"\x15rpmgr/v1/policy.proto\x12\brpmgr.v1\x1a\x1bbuf/validate/validate.proto\x1a\x16rpmgr/v1/options.proto\"\x82\x01\n" +
 	"\x10PolicyRuleParams\x12(\n" +
-	"\x02ip\x18\x01 \x01(\v2\x16.rpmgr.v1.IPRuleParamsH\x00R\x02ipB\b\n" +
-	"\x06params\"1\n" +
+	"\x02ip\x18\x01 \x01(\v2\x16.rpmgr.v1.IPRuleParamsH\x00R\x02ip\x12:\n" +
+	"\n" +
+	"basic_auth\x18\x02 \x01(\v2\x19.rpmgr.v1.BasicAuthParamsH\x00R\tbasicAuthB\b\n" +
+	"\x06params\"L\n" +
+	"\x0fBasicAuthParams\x129\n" +
+	"\x05users\x18\x01 \x03(\v2\x17.rpmgr.v1.BasicAuthUserB\n" +
+	"\xbaH\a\x92\x01\x04\b\x01\x10dR\x05users\"^\n" +
+	"\rBasicAuthUser\x12\"\n" +
+	"\x04name\x18\x01 \x01(\tB\x0e\xbaH\vr\t\x10\x01\x18\x80\x01\xba\x01\x01:R\x04name\x12)\n" +
+	"\rpassword_hash\x18\x02 \x01(\tB\x04\x88\xb5\x18\x01R\fpasswordHash\"1\n" +
 	"\fIPRuleParams\x12!\n" +
 	"\x05cidrs\x18\x01 \x03(\tB\v\xbaH\b\x92\x01\x05\b\x01\x10\xe8\aR\x05cidrsB5Z3github.com/felix-homelab/rpmgr/gen/rpmgr/v1;rpmgrv1b\x06proto3"
 
@@ -165,18 +292,22 @@ func file_rpmgr_v1_policy_proto_rawDescGZIP() []byte {
 	return file_rpmgr_v1_policy_proto_rawDescData
 }
 
-var file_rpmgr_v1_policy_proto_msgTypes = make([]protoimpl.MessageInfo, 2)
+var file_rpmgr_v1_policy_proto_msgTypes = make([]protoimpl.MessageInfo, 4)
 var file_rpmgr_v1_policy_proto_goTypes = []any{
 	(*PolicyRuleParams)(nil), // 0: rpmgr.v1.PolicyRuleParams
-	(*IPRuleParams)(nil),     // 1: rpmgr.v1.IPRuleParams
+	(*BasicAuthParams)(nil),  // 1: rpmgr.v1.BasicAuthParams
+	(*BasicAuthUser)(nil),    // 2: rpmgr.v1.BasicAuthUser
+	(*IPRuleParams)(nil),     // 3: rpmgr.v1.IPRuleParams
 }
 var file_rpmgr_v1_policy_proto_depIdxs = []int32{
-	1, // 0: rpmgr.v1.PolicyRuleParams.ip:type_name -> rpmgr.v1.IPRuleParams
-	1, // [1:1] is the sub-list for method output_type
-	1, // [1:1] is the sub-list for method input_type
-	1, // [1:1] is the sub-list for extension type_name
-	1, // [1:1] is the sub-list for extension extendee
-	0, // [0:1] is the sub-list for field type_name
+	3, // 0: rpmgr.v1.PolicyRuleParams.ip:type_name -> rpmgr.v1.IPRuleParams
+	1, // 1: rpmgr.v1.PolicyRuleParams.basic_auth:type_name -> rpmgr.v1.BasicAuthParams
+	2, // 2: rpmgr.v1.BasicAuthParams.users:type_name -> rpmgr.v1.BasicAuthUser
+	3, // [3:3] is the sub-list for method output_type
+	3, // [3:3] is the sub-list for method input_type
+	3, // [3:3] is the sub-list for extension type_name
+	3, // [3:3] is the sub-list for extension extendee
+	0, // [0:3] is the sub-list for field type_name
 }
 
 func init() { file_rpmgr_v1_policy_proto_init() }
@@ -184,8 +315,10 @@ func file_rpmgr_v1_policy_proto_init() {
 	if File_rpmgr_v1_policy_proto != nil {
 		return
 	}
+	file_rpmgr_v1_options_proto_init()
 	file_rpmgr_v1_policy_proto_msgTypes[0].OneofWrappers = []any{
 		(*PolicyRuleParams_Ip)(nil),
+		(*PolicyRuleParams_BasicAuth)(nil),
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
@@ -193,7 +326,7 @@ func file_rpmgr_v1_policy_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_rpmgr_v1_policy_proto_rawDesc), len(file_rpmgr_v1_policy_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   2,
+			NumMessages:   4,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

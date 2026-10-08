@@ -54,3 +54,11 @@ func RouteFor(h *HTTPRoutes, host, path string) string {
 	}
 	return ""
 }
+
+// SetBasicAuthTTL shortens how long basic-auth verifications are cached, for one test that must
+// not run in parallel with others.
+func SetBasicAuthTTL(t testing.TB, d time.Duration) {
+	old := basicAuthTTL
+	basicAuthTTL = d
+	t.Cleanup(func() { basicAuthTTL = old })
+}

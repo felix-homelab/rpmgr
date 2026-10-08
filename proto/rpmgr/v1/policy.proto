@@ -5,6 +5,7 @@ syntax = "proto3";
 package rpmgr.v1;
 
 import "buf/validate/validate.proto";
+import "rpmgr/v1/options.proto";
 
 option go_package = "github.com/felix-homelab/rpmgr/gen/rpmgr/v1;rpmgrv1";
 
@@ -16,7 +17,31 @@ message PolicyRuleParams {
   oneof params {
     // ip_allow and ip_deny: the client addresses the rule matches.
     IPRuleParams ip = 1;
+    // basic_auth: the users who may pass.
+    BasicAuthParams basic_auth = 2;
   }
+}
+
+// BasicAuthParams are the users of a basic_auth rule (docs/04-security.md, "Secrets at rest and
+// in logs"): the controller keeps their argon2id hashes, never their passwords.
+message BasicAuthParams {
+  // The users.
+  repeated BasicAuthUser users = 1 [(buf.validate.field).repeated = {
+    min_items: 1
+    max_items: 100
+  }];
+}
+
+// BasicAuthUser is one user of a basic_auth rule.
+message BasicAuthUser {
+  // The user name; no colon (RFC 7617).
+  string name = 1 [(buf.validate.field).string = {
+    min_len: 1
+    max_len: 128
+    not_contains: ":"
+  }];
+  // The password's argon2id hash in PHC string format.
+  string password_hash = 2 [(rpmgr.v1.sensitive) = true];
 }
 
 // IPRuleParams match client addresses.
