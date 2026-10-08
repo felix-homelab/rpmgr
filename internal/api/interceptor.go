@@ -46,7 +46,7 @@ func (i interceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
 			return nil, connect.NewError(connect.CodeInternal, errors.New("api: a request without a protobuf method"))
 		}
 		rec := i.s.newRecord(md, req.Header(), req.Peer(), msg)
-		ctx, err := i.s.admit(ctx, md, req.Header(), msg, rec)
+		ctx, err := i.s.admit(context.WithValue(ctx, peerKey{}, req.Peer().Addr), md, req.Header(), msg, rec)
 		if err != nil {
 			rec.finish(ctx, err)
 			return nil, err
@@ -78,7 +78,7 @@ func (i interceptor) WrapStreamingHandler(next connect.StreamingHandlerFunc) con
 			return err
 		}
 		rec := i.s.newRecord(md, conn.RequestHeader(), conn.Peer(), msg)
-		ctx, err := i.s.admit(ctx, md, conn.RequestHeader(), msg, rec)
+		ctx, err := i.s.admit(context.WithValue(ctx, peerKey{}, conn.Peer().Addr), md, conn.RequestHeader(), msg, rec)
 		if err != nil {
 			rec.finish(ctx, err)
 			return err

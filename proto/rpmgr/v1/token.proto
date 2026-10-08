@@ -1,0 +1,118 @@
+// SPDX-License-Identifier: Apache-2.0
+
+syntax = "proto3";
+
+package rpmgr.v1;
+
+import "buf/validate/validate.proto";
+import "google/protobuf/duration.proto";
+import "google/protobuf/timestamp.proto";
+import "rpmgr/v1/options.proto";
+
+option go_package = "github.com/felix-homelab/rpmgr/gen/rpmgr/v1;rpmgrv1";
+
+// TokenService is the caller's personal API tokens (docs/07-api.md, "Services";
+// docs/04-security.md, "Human authentication and sessions"). A token belongs to one org; it acts
+// with its scopes, as far as its owner's current role there allows, sent only as
+// "Authorization: Bearer".
+service TokenService {
+  // CreateAPIToken makes a token, shown once. Its scopes are permissions the caller holds in the
+  // org now.
+  rpc CreateAPIToken(CreateAPITokenRequest) returns (CreateAPITokenResponse) {
+    option (rpmgr.v1.authz) = {
+      permission: "org.read"
+      resource_field: "org_id"
+      step_up: true
+    };
+  }
+  // ListAPITokens lists the caller's live tokens in an org.
+  rpc ListAPITokens(ListAPITokensRequest) returns (ListAPITokensResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+    option (rpmgr.v1.authz) = {
+      permission: "org.read"
+      resource_field: "org_id"
+    };
+  }
+  // RevokeAPIToken ends one of the caller's tokens.
+  rpc RevokeAPIToken(RevokeAPITokenRequest) returns (RevokeAPITokenResponse) {
+    option (rpmgr.v1.authz) = {
+      permission: "org.read"
+      resource_field: "org_id"
+    };
+  }
+}
+
+// APIToken is a personal API token, without its secret.
+message APIToken {
+  // The token's ID, atk_….
+  string id = 1;
+  // Its name.
+  string name = 2;
+  // The start of the token, to tell it apart: rpmgr_pat_ and four characters.
+  string prefix = 3;
+  // The permissions it may use.
+  repeated string scopes = 4;
+  // When it was made.
+  google.protobuf.Timestamp create_time = 5;
+  // When it expires.
+  google.protobuf.Timestamp expire_time = 6;
+  // When it was last used, to the minute; not set if never.
+  google.protobuf.Timestamp last_use_time = 7;
+  // The address it was last used from.
+  string last_use_ip = 8;
+}
+
+// CreateAPITokenRequest names a token, its scopes and its lifetime.
+message CreateAPITokenRequest {
+  // The org the token acts in.
+  string org_id = 1 [(buf.validate.field).string.min_len = 1];
+  // A name for it.
+  string name = 2 [(buf.validate.field).string = {
+    min_len: 1
+    max_len: 100
+  }];
+  // The permissions it may use, for example "org.read" or "routes.write".
+  repeated string scopes = 3 [(buf.validate.field).repeated = {
+    min_items: 1
+    max_items: 16
+    unique: true
+  }];
+  // How long it lasts, at most a year; 90 days if not set.
+  google.protobuf.Duration ttl = 4 [(buf.validate.field).duration = {
+    gt: {}
+    lte: {seconds: 31536000}
+  }];
+  // Makes retries idempotent (docs/07-api.md, "Resource design").
+  string request_id = 5 [(buf.validate.field).string.max_len = 128];
+}
+
+// CreateAPITokenResponse is the token, shown once.
+message CreateAPITokenResponse {
+  // The token, rpmgr_pat_…; it is not stored and cannot be shown again.
+  string token = 1 [(rpmgr.v1.sensitive) = true];
+  // Its details.
+  APIToken api_token = 2;
+}
+
+// ListAPITokensRequest names an org.
+message ListAPITokensRequest {
+  // The org's ID.
+  string org_id = 1 [(buf.validate.field).string.min_len = 1];
+}
+
+// ListAPITokensResponse is the caller's tokens.
+message ListAPITokensResponse {
+  // The tokens, newest first.
+  repeated APIToken api_tokens = 1;
+}
+
+// RevokeAPITokenRequest names a token.
+message RevokeAPITokenRequest {
+  // The org's ID.
+  string org_id = 1 [(buf.validate.field).string.min_len = 1];
+  // The token's ID.
+  string token_id = 2 [(buf.validate.field).string.min_len = 1];
+}
+
+// RevokeAPITokenResponse is empty.
+message RevokeAPITokenResponse {}

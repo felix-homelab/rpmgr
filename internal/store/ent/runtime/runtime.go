@@ -11,6 +11,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/agentsession"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/agentstate"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/apirequest"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/apitoken"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/auditentry"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/audithead"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/cabundle"
@@ -154,6 +155,87 @@ func init() {
 	// apirequest.IDValidator is a validator for the "id" field. It is called by the builders before save.
 	apirequest.IDValidator = func() func(string) error {
 		validators := apirequestDescID.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(id string) error {
+			for _, fn := range fns {
+				if err := fn(id); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	apitokenMixin := schema.APIToken{}.Mixin()
+	apitoken.Policy = privacy.NewPolicies(apitokenMixin[0], schema.APIToken{})
+	apitoken.Hooks[0] = func(next ent.Mutator) ent.Mutator {
+		return ent.MutateFunc(func(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+			if err := apitoken.Policy.EvalMutation(ctx, m); err != nil {
+				return nil, err
+			}
+			return next.Mutate(ctx, m)
+		})
+	}
+	apitokenMixinHooks0 := apitokenMixin[0].Hooks()
+
+	apitoken.Hooks[1] = apitokenMixinHooks0[0]
+	apitokenMixinInters0 := apitokenMixin[0].Interceptors()
+	apitoken.Interceptors[0] = apitokenMixinInters0[0]
+	apitokenMixinFields0 := apitokenMixin[0].Fields()
+	_ = apitokenMixinFields0
+	apitokenFields := schema.APIToken{}.Fields()
+	_ = apitokenFields
+	// apitokenDescOrgID is the schema descriptor for org_id field.
+	apitokenDescOrgID := apitokenMixinFields0[0].Descriptor()
+	// apitoken.OrgIDValidator is a validator for the "org_id" field. It is called by the builders before save.
+	apitoken.OrgIDValidator = apitokenDescOrgID.Validators[0].(func(string) error)
+	// apitokenDescOwnerID is the schema descriptor for owner_id field.
+	apitokenDescOwnerID := apitokenFields[2].Descriptor()
+	// apitoken.OwnerIDValidator is a validator for the "owner_id" field. It is called by the builders before save.
+	apitoken.OwnerIDValidator = apitokenDescOwnerID.Validators[0].(func(string) error)
+	// apitokenDescName is the schema descriptor for name field.
+	apitokenDescName := apitokenFields[3].Descriptor()
+	// apitoken.NameValidator is a validator for the "name" field. It is called by the builders before save.
+	apitoken.NameValidator = func() func(string) error {
+		validators := apitokenDescName.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(name string) error {
+			for _, fn := range fns {
+				if err := fn(name); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// apitokenDescPrefix is the schema descriptor for prefix field.
+	apitokenDescPrefix := apitokenFields[4].Descriptor()
+	// apitoken.PrefixValidator is a validator for the "prefix" field. It is called by the builders before save.
+	apitoken.PrefixValidator = apitokenDescPrefix.Validators[0].(func(string) error)
+	// apitokenDescTokenHash is the schema descriptor for token_hash field.
+	apitokenDescTokenHash := apitokenFields[5].Descriptor()
+	// apitoken.TokenHashValidator is a validator for the "token_hash" field. It is called by the builders before save.
+	apitoken.TokenHashValidator = apitokenDescTokenHash.Validators[0].(func([]byte) error)
+	// apitokenDescMfa is the schema descriptor for mfa field.
+	apitokenDescMfa := apitokenFields[7].Descriptor()
+	// apitoken.DefaultMfa holds the default value on creation for the mfa field.
+	apitoken.DefaultMfa = apitokenDescMfa.Default.(bool)
+	// apitokenDescLastUsedIP is the schema descriptor for last_used_ip field.
+	apitokenDescLastUsedIP := apitokenFields[11].Descriptor()
+	// apitoken.LastUsedIPValidator is a validator for the "last_used_ip" field. It is called by the builders before save.
+	apitoken.LastUsedIPValidator = apitokenDescLastUsedIP.Validators[0].(func(string) error)
+	// apitokenDescID is the schema descriptor for id field.
+	apitokenDescID := apitokenFields[0].Descriptor()
+	// apitoken.DefaultID holds the default value on creation for the id field.
+	apitoken.DefaultID = apitokenDescID.Default.(func() string)
+	// apitoken.IDValidator is a validator for the "id" field. It is called by the builders before save.
+	apitoken.IDValidator = func() func(string) error {
+		validators := apitokenDescID.Validators
 		fns := [...]func(string) error{
 			validators[0].(func(string) error),
 			validators[1].(func(string) error),

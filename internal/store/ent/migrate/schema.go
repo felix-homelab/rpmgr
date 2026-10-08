@@ -50,6 +50,46 @@ var (
 			},
 		},
 	}
+	// APITokensColumns holds the columns for the "api_tokens" table.
+	APITokensColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeString},
+		{Name: "org_id", Type: field.TypeString},
+		{Name: "owner_type", Type: field.TypeEnum, Enums: []string{"user", "service_account"}},
+		{Name: "owner_id", Type: field.TypeString},
+		{Name: "name", Type: field.TypeString, Size: 100},
+		{Name: "prefix", Type: field.TypeString},
+		{Name: "token_hash", Type: field.TypeBytes},
+		{Name: "scopes", Type: field.TypeJSON},
+		{Name: "mfa", Type: field.TypeBool, Default: false},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "expires_at", Type: field.TypeTime},
+		{Name: "last_used_at", Type: field.TypeTime, Nullable: true},
+		{Name: "last_used_ip", Type: field.TypeString, Nullable: true, Size: 64},
+		{Name: "revoked_at", Type: field.TypeTime, Nullable: true},
+	}
+	// APITokensTable holds the schema information for the "api_tokens" table.
+	APITokensTable = &schema.Table{
+		Name:       "api_tokens",
+		Columns:    APITokensColumns,
+		PrimaryKey: []*schema.Column{APITokensColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "apitoken_org_id_id",
+				Unique:  true,
+				Columns: []*schema.Column{APITokensColumns[1], APITokensColumns[0]},
+			},
+			{
+				Name:    "apitoken_token_hash",
+				Unique:  true,
+				Columns: []*schema.Column{APITokensColumns[6]},
+			},
+			{
+				Name:    "apitoken_org_id_owner_id",
+				Unique:  false,
+				Columns: []*schema.Column{APITokensColumns[1], APITokensColumns[3]},
+			},
+		},
+	}
 	// AccessPoliciesColumns holds the columns for the "access_policies" table.
 	AccessPoliciesColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeString},
@@ -1404,6 +1444,7 @@ var (
 	Tables = []*schema.Table{
 		AcmeStorageTable,
 		APIRequestsTable,
+		APITokensTable,
 		AccessPoliciesTable,
 		AgentSessionsTable,
 		AgentStateTable,
@@ -1456,6 +1497,9 @@ func init() {
 	}
 	APIRequestsTable.Annotation = &entsql.Annotation{
 		Table: "api_requests",
+	}
+	APITokensTable.Annotation = &entsql.Annotation{
+		Table: "api_tokens",
 	}
 	AccessPoliciesTable.Annotation = &entsql.Annotation{
 		Table: "access_policies",

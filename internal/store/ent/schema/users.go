@@ -246,3 +246,42 @@ func (Invitation) Fields() []ent.Field {
 func (Invitation) Indexes() []ent.Index {
 	return []ent.Index{index.Fields("token_hash").Unique()}
 }
+
+// APIToken is an API token of a user in one org (docs/04-security.md, "Human authentication and
+// sessions"). Only its hash is stored, with a prefix that tells tokens apart in lists. Its
+// permissions are its scopes intersected with the owner's current role in the org, at every
+// request.
+type APIToken struct{ ent.Schema }
+
+// Mixin makes API tokens org-owned.
+func (APIToken) Mixin() []ent.Mixin { return []ent.Mixin{OrgMixin{}} }
+
+// Annotations name the table as docs/06-data-model.md does.
+func (APIToken) Annotations() []schema.Annotation {
+	return []schema.Annotation{entsql.Annotation{Table: "api_tokens"}}
+}
+
+// Fields of an API token. mfa records that its creator had signed in with a second factor, which
+// an org's MFA policy then accepts from the token.
+func (APIToken) Fields() []ent.Field {
+	return []ent.Field{
+		idField("atk"),
+		field.Enum("owner_type").Values("user", "service_account").Immutable(),
+		field.String("owner_id").NotEmpty().Immutable(),
+		field.String("name").NotEmpty().MaxLen(100),
+		field.String("prefix").NotEmpty().Immutable(),
+		field.Bytes("token_hash").NotEmpty().Immutable(),
+		field.Strings("scopes").Immutable(),
+		field.Bool("mfa").Default(false).Immutable(),
+		field.Time("created_at").Immutable(),
+		field.Time("expires_at").Immutable(),
+		field.Time("last_used_at").Optional().Nillable(),
+		field.String("last_used_ip").Optional().MaxLen(64),
+		field.Time("revoked_at").Optional().Nillable(),
+	}
+}
+
+// Indexes: tokens are looked up by hash and listed per owner.
+func (APIToken) Indexes() []ent.Index {
+	return []ent.Index{index.Fields("token_hash").Unique(), index.Fields("org_id", "owner_id")}
+}

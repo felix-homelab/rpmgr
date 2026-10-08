@@ -12,6 +12,9 @@ type ACMEStorage func(*sql.Selector)
 // APIRequest is the predicate function for apirequest builders.
 type APIRequest func(*sql.Selector)
 
+// APIToken is the predicate function for apitoken builders.
+type APIToken func(*sql.Selector)
+
 // AccessPolicy is the predicate function for accesspolicy builders.
 type AccessPolicy func(*sql.Selector)
 

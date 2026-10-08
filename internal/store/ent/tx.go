@@ -18,6 +18,8 @@ type Tx struct {
 	ACMEStorage *ACMEStorageClient
 	// APIRequest is the client for interacting with the APIRequest builders.
 	APIRequest *APIRequestClient
+	// APIToken is the client for interacting with the APIToken builders.
+	APIToken *APITokenClient
 	// AccessPolicy is the client for interacting with the AccessPolicy builders.
 	AccessPolicy *AccessPolicyClient
 	// AgentSession is the client for interacting with the AgentSession builders.
@@ -237,6 +239,7 @@ func (tx *Tx) Client() *Client {
 func (tx *Tx) init() {
 	tx.ACMEStorage = NewACMEStorageClient(tx.config)
 	tx.APIRequest = NewAPIRequestClient(tx.config)
+	tx.APIToken = NewAPITokenClient(tx.config)
 	tx.AccessPolicy = NewAccessPolicyClient(tx.config)
 	tx.AgentSession = NewAgentSessionClient(tx.config)
 	tx.AgentState = NewAgentStateClient(tx.config)
