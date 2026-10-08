@@ -1,4 +1,4 @@
-h1:hHDdwNWQ7WnlmTEmi21mzMUeni9sOGJntnNj/vz6/s8=
+h1:vzvTiNroZrS2o/aVwC3oqjMMKYzv8wwoXTjc8yN/Qoc=
 20261007104728_init.sql h1:6jeR95S+59R2NO1vbm6eVqcBaiAFq0laX9cjx4ljQRo=
 20261007110313_config_revisions.sql h1:8mMQJJ5PsYIRtP7o9RJ6IVYgH3r29EMOlCi6dvlf7W0=
 20261007111839_settings.sql h1:AW7TBnWPYmVtPeTExhcg+GulKnZOuVU/pRldCFLv+Dk=
@@ -12,3 +12,4 @@ h1:hHDdwNWQ7WnlmTEmi21mzMUeni9sOGJntnNj/vz6/s8=
 20261007193933_revoked_identities.sql h1:tpQkZm+xGQSYZONkxs8Vh2QUx+mfWKXb1jqNRQpUP1Q=
 20261007212357_tcp_routes.sql h1:T3DPWftL1DGXP6jqunTJsbuCvkst4cWd4wpnDDKvwng=
 20261008061445_domains.sql h1:Fm1DPBXB1sG/XS+7qUNqXDqMtj06vBEMjLPnl9r6C1M=
+20261008062208_route_hostnames.sql h1:ZBz1GE7IZE9lugTZL/18+xBDC7KMkM3kzvcmIpZROkQ=

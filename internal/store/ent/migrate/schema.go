@@ -670,6 +670,54 @@ var (
 			},
 		},
 	}
+	// RouteHostnamesColumns holds the columns for the "route_hostnames" table.
+	RouteHostnamesColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt, Increment: true},
+		{Name: "org_id", Type: field.TypeString},
+		{Name: "gateway_group_id", Type: field.TypeString},
+		{Name: "route_type", Type: field.TypeEnum, Enums: []string{"http", "tls_passthrough"}},
+		{Name: "hostname", Type: field.TypeString, Size: 253},
+		{Name: "path_prefix", Type: field.TypeString, Default: ""},
+		{Name: "route_id", Type: field.TypeString},
+		{Name: "domain_id", Type: field.TypeString},
+	}
+	// RouteHostnamesTable holds the schema information for the "route_hostnames" table.
+	RouteHostnamesTable = &schema.Table{
+		Name:       "route_hostnames",
+		Columns:    RouteHostnamesColumns,
+		PrimaryKey: []*schema.Column{RouteHostnamesColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "route_hostnames_routes_route",
+				Columns:    []*schema.Column{RouteHostnamesColumns[6]},
+				RefColumns: []*schema.Column{RoutesColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+			{
+				Symbol:     "route_hostnames_domains_domain",
+				Columns:    []*schema.Column{RouteHostnamesColumns[7]},
+				RefColumns: []*schema.Column{DomainsColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+		},
+		Indexes: []*schema.Index{
+			{
+				Name:    "routehostname_org_id_id",
+				Unique:  true,
+				Columns: []*schema.Column{RouteHostnamesColumns[1], RouteHostnamesColumns[0]},
+			},
+			{
+				Name:    "routehostname_gateway_group_id_hostname_path_prefix",
+				Unique:  true,
+				Columns: []*schema.Column{RouteHostnamesColumns[2], RouteHostnamesColumns[4], RouteHostnamesColumns[5]},
+			},
+			{
+				Name:    "routehostname_route_id",
+				Unique:  false,
+				Columns: []*schema.Column{RouteHostnamesColumns[6]},
+			},
+		},
+	}
 	// RouteTCPColumns holds the columns for the "route_tcp" table.
 	RouteTCPColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeInt, Increment: true},
@@ -809,6 +857,7 @@ var (
 		PortQuotasTable,
 		RevokedIdentitiesTable,
 		RoutesTable,
+		RouteHostnamesTable,
 		RouteTCPTable,
 		RouteTargetsTable,
 		SecretsMetaTable,
@@ -878,6 +927,11 @@ func init() {
 	RoutesTable.ForeignKeys[0].RefTable = GatewayGroupsTable
 	RoutesTable.Annotation = &entsql.Annotation{
 		Table: "routes",
+	}
+	RouteHostnamesTable.ForeignKeys[0].RefTable = RoutesTable
+	RouteHostnamesTable.ForeignKeys[1].RefTable = DomainsTable
+	RouteHostnamesTable.Annotation = &entsql.Annotation{
+		Table: "route_hostnames",
 	}
 	RouteTCPTable.ForeignKeys[0].RefTable = RoutesTable
 	RouteTCPTable.ForeignKeys[1].RefTable = PortAllocationsTable
