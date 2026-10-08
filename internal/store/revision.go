@@ -129,9 +129,19 @@ type txHookKey struct{}
 
 // WithTxHook returns ctx with a hook that every ConfigTx and WriteTx under it runs last, in the
 // transaction, so its writes commit or roll back with the transaction's; an error rolls it back.
-// The API appends the audit entry of a request with it (docs/04-security.md, "Audit log").
+// A hook already in ctx runs after it. The API appends the audit entry of a request with it
+// (docs/04-security.md, "Audit log").
 func WithTxHook(ctx context.Context, hook func(ctx context.Context, tx *ent.Tx) error) context.Context {
-	return context.WithValue(ctx, txHookKey{}, hook)
+	prev, _ := ctx.Value(txHookKey{}).(func(context.Context, *ent.Tx) error)
+	if prev == nil {
+		return context.WithValue(ctx, txHookKey{}, hook)
+	}
+	return context.WithValue(ctx, txHookKey{}, func(ctx context.Context, tx *ent.Tx) error {
+		if err := hook(ctx, tx); err != nil {
+			return err
+		}
+		return prev(ctx, tx)
+	})
 }
 
 // WithoutTxHook returns ctx without the hook, for transactions that must not run it: the audit

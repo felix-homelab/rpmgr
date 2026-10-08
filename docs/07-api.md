@@ -51,7 +51,7 @@ AIP's `parent` does.
 |---|---|---|
 | `Get<Resource>` | `id` | |
 | `List<Resources>` | typed filter fields, `page_size` (default 50, max 500), `page_token` | Opaque, stable page tokens; ordered by ID (time-ordered) unless `order_by` is given. [R] A larger `page_size` is cut to 500; a token is bound to its query and authenticated, so one for another query, or altered, is `INVALID_ARGUMENT` |
-| `Create<Resource>` | resource, `request_id` | `request_id` makes retries idempotent (deduplication window in [03](03-connections.md#timeouts-keepalive-and-backoff)) |
+| `Create<Resource>` | resource, `request_id` | `request_id` makes retries idempotent (deduplication window in [03](03-connections.md#timeouts-keepalive-and-backoff)). [R] Per caller and method: a retry gets the first response without a second change; the same ID with another request is `INVALID_ARGUMENT`, and `ABORTED` while the first request has not answered. A request that failed may run again |
 | `Update<Resource>` | resource, `update_mask`, `etag` | Field mask lists exactly the fields to change; untouched fields are never reset. [R] Paths use proto field names, through singular messages with dots; an empty mask, an unknown field or one the method does not let clients change (output-only fields among them) is `INVALID_ARGUMENT` |
 | `Delete<Resource>` | `id`, optional `etag`, `cascade` | Refuses when dependants exist unless `cascade` is set |
 

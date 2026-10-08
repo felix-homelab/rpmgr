@@ -15,6 +15,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/acmestorage"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/agentsession"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/agentstate"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/apirequest"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/auditentry"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/audithead"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/cabundle"
@@ -60,6 +61,7 @@ const (
 
 	// Node types.
 	TypeACMEStorage       = "ACMEStorage"
+	TypeAPIRequest        = "APIRequest"
 	TypeAccessPolicy      = "AccessPolicy"
 	TypeAgentSession      = "AgentSession"
 	TypeAgentState        = "AgentState"
@@ -571,6 +573,630 @@ func (m *ACMEStorageMutation) ClearEdge(name string) error {
 // It returns an error if the edge is not defined in the schema.
 func (m *ACMEStorageMutation) ResetEdge(name string) error {
 	return fmt.Errorf("unknown ACMEStorage edge %s", name)
+}
+
+// APIRequestMutation represents an operation that mutates the APIRequest nodes in the graph.
+type APIRequestMutation struct {
+	config
+	op            Op
+	typ           string
+	id            *string
+	caller_id     *string
+	method        *string
+	request_id    *string
+	request_hash  *[]byte
+	response_enc  *[]byte
+	created_at    *time.Time
+	clearedFields map[string]struct{}
+	done          bool
+	oldValue      func(context.Context) (*APIRequest, error)
+	predicates    []predicate.APIRequest
+}
+
+var _ ent.Mutation = (*APIRequestMutation)(nil)
+
+// apirequestOption allows management of the mutation configuration using functional options.
+type apirequestOption func(*APIRequestMutation)
+
+// newAPIRequestMutation creates new mutation for the APIRequest entity.
+func newAPIRequestMutation(c config, op Op, opts ...apirequestOption) *APIRequestMutation {
+	m := &APIRequestMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeAPIRequest,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withAPIRequestID sets the ID field of the mutation.
+func withAPIRequestID(id string) apirequestOption {
+	return func(m *APIRequestMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *APIRequest
+		)
+		m.oldValue = func(ctx context.Context) (*APIRequest, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().APIRequest.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withAPIRequest sets the old APIRequest of the mutation.
+func withAPIRequest(node *APIRequest) apirequestOption {
+	return func(m *APIRequestMutation) {
+		m.oldValue = func(context.Context) (*APIRequest, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m APIRequestMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m APIRequestMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// SetID sets the value of the id field. Note that this
+// operation is only accepted on creation of APIRequest entities.
+func (m *APIRequestMutation) SetID(id string) {
+	m.id = &id
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *APIRequestMutation) ID() (id string, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *APIRequestMutation) IDs(ctx context.Context) ([]string, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []string{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().APIRequest.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetCallerID sets the "caller_id" field.
+func (m *APIRequestMutation) SetCallerID(s string) {
+	m.caller_id = &s
+}
+
+// CallerID returns the value of the "caller_id" field in the mutation.
+func (m *APIRequestMutation) CallerID() (r string, exists bool) {
+	v := m.caller_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCallerID returns the old "caller_id" field's value of the APIRequest entity.
+// If the APIRequest object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *APIRequestMutation) OldCallerID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCallerID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCallerID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCallerID: %w", err)
+	}
+	return oldValue.CallerID, nil
+}
+
+// ResetCallerID resets all changes to the "caller_id" field.
+func (m *APIRequestMutation) ResetCallerID() {
+	m.caller_id = nil
+}
+
+// SetMethod sets the "method" field.
+func (m *APIRequestMutation) SetMethod(s string) {
+	m.method = &s
+}
+
+// Method returns the value of the "method" field in the mutation.
+func (m *APIRequestMutation) Method() (r string, exists bool) {
+	v := m.method
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldMethod returns the old "method" field's value of the APIRequest entity.
+// If the APIRequest object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *APIRequestMutation) OldMethod(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldMethod is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldMethod requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldMethod: %w", err)
+	}
+	return oldValue.Method, nil
+}
+
+// ResetMethod resets all changes to the "method" field.
+func (m *APIRequestMutation) ResetMethod() {
+	m.method = nil
+}
+
+// SetRequestID sets the "request_id" field.
+func (m *APIRequestMutation) SetRequestID(s string) {
+	m.request_id = &s
+}
+
+// RequestID returns the value of the "request_id" field in the mutation.
+func (m *APIRequestMutation) RequestID() (r string, exists bool) {
+	v := m.request_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRequestID returns the old "request_id" field's value of the APIRequest entity.
+// If the APIRequest object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *APIRequestMutation) OldRequestID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRequestID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRequestID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRequestID: %w", err)
+	}
+	return oldValue.RequestID, nil
+}
+
+// ResetRequestID resets all changes to the "request_id" field.
+func (m *APIRequestMutation) ResetRequestID() {
+	m.request_id = nil
+}
+
+// SetRequestHash sets the "request_hash" field.
+func (m *APIRequestMutation) SetRequestHash(b []byte) {
+	m.request_hash = &b
+}
+
+// RequestHash returns the value of the "request_hash" field in the mutation.
+func (m *APIRequestMutation) RequestHash() (r []byte, exists bool) {
+	v := m.request_hash
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRequestHash returns the old "request_hash" field's value of the APIRequest entity.
+// If the APIRequest object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *APIRequestMutation) OldRequestHash(ctx context.Context) (v []byte, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRequestHash is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRequestHash requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRequestHash: %w", err)
+	}
+	return oldValue.RequestHash, nil
+}
+
+// ResetRequestHash resets all changes to the "request_hash" field.
+func (m *APIRequestMutation) ResetRequestHash() {
+	m.request_hash = nil
+}
+
+// SetResponseEnc sets the "response_enc" field.
+func (m *APIRequestMutation) SetResponseEnc(b []byte) {
+	m.response_enc = &b
+}
+
+// ResponseEnc returns the value of the "response_enc" field in the mutation.
+func (m *APIRequestMutation) ResponseEnc() (r []byte, exists bool) {
+	v := m.response_enc
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldResponseEnc returns the old "response_enc" field's value of the APIRequest entity.
+// If the APIRequest object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *APIRequestMutation) OldResponseEnc(ctx context.Context) (v *[]byte, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldResponseEnc is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldResponseEnc requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldResponseEnc: %w", err)
+	}
+	return oldValue.ResponseEnc, nil
+}
+
+// ClearResponseEnc clears the value of the "response_enc" field.
+func (m *APIRequestMutation) ClearResponseEnc() {
+	m.response_enc = nil
+	m.clearedFields[apirequest.FieldResponseEnc] = struct{}{}
+}
+
+// ResponseEncCleared returns if the "response_enc" field was cleared in this mutation.
+func (m *APIRequestMutation) ResponseEncCleared() bool {
+	_, ok := m.clearedFields[apirequest.FieldResponseEnc]
+	return ok
+}
+
+// ResetResponseEnc resets all changes to the "response_enc" field.
+func (m *APIRequestMutation) ResetResponseEnc() {
+	m.response_enc = nil
+	delete(m.clearedFields, apirequest.FieldResponseEnc)
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *APIRequestMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *APIRequestMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the APIRequest entity.
+// If the APIRequest object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *APIRequestMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *APIRequestMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// Where appends a list predicates to the APIRequestMutation builder.
+func (m *APIRequestMutation) Where(ps ...predicate.APIRequest) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the APIRequestMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *APIRequestMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.APIRequest, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *APIRequestMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *APIRequestMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (APIRequest).
+func (m *APIRequestMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *APIRequestMutation) Fields() []string {
+	fields := make([]string, 0, 6)
+	if m.caller_id != nil {
+		fields = append(fields, apirequest.FieldCallerID)
+	}
+	if m.method != nil {
+		fields = append(fields, apirequest.FieldMethod)
+	}
+	if m.request_id != nil {
+		fields = append(fields, apirequest.FieldRequestID)
+	}
+	if m.request_hash != nil {
+		fields = append(fields, apirequest.FieldRequestHash)
+	}
+	if m.response_enc != nil {
+		fields = append(fields, apirequest.FieldResponseEnc)
+	}
+	if m.created_at != nil {
+		fields = append(fields, apirequest.FieldCreatedAt)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *APIRequestMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case apirequest.FieldCallerID:
+		return m.CallerID()
+	case apirequest.FieldMethod:
+		return m.Method()
+	case apirequest.FieldRequestID:
+		return m.RequestID()
+	case apirequest.FieldRequestHash:
+		return m.RequestHash()
+	case apirequest.FieldResponseEnc:
+		return m.ResponseEnc()
+	case apirequest.FieldCreatedAt:
+		return m.CreatedAt()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *APIRequestMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case apirequest.FieldCallerID:
+		return m.OldCallerID(ctx)
+	case apirequest.FieldMethod:
+		return m.OldMethod(ctx)
+	case apirequest.FieldRequestID:
+		return m.OldRequestID(ctx)
+	case apirequest.FieldRequestHash:
+		return m.OldRequestHash(ctx)
+	case apirequest.FieldResponseEnc:
+		return m.OldResponseEnc(ctx)
+	case apirequest.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	}
+	return nil, fmt.Errorf("unknown APIRequest field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *APIRequestMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case apirequest.FieldCallerID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCallerID(v)
+		return nil
+	case apirequest.FieldMethod:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetMethod(v)
+		return nil
+	case apirequest.FieldRequestID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRequestID(v)
+		return nil
+	case apirequest.FieldRequestHash:
+		v, ok := value.([]byte)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRequestHash(v)
+		return nil
+	case apirequest.FieldResponseEnc:
+		v, ok := value.([]byte)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetResponseEnc(v)
+		return nil
+	case apirequest.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	}
+	return fmt.Errorf("unknown APIRequest field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *APIRequestMutation) AddedFields() []string {
+	return nil
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *APIRequestMutation) AddedField(name string) (ent.Value, bool) {
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *APIRequestMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	}
+	return fmt.Errorf("unknown APIRequest numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *APIRequestMutation) ClearedFields() []string {
+	var fields []string
+	if m.FieldCleared(apirequest.FieldResponseEnc) {
+		fields = append(fields, apirequest.FieldResponseEnc)
+	}
+	return fields
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *APIRequestMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *APIRequestMutation) ClearField(name string) error {
+	switch name {
+	case apirequest.FieldResponseEnc:
+		m.ClearResponseEnc()
+		return nil
+	}
+	return fmt.Errorf("unknown APIRequest nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *APIRequestMutation) ResetField(name string) error {
+	switch name {
+	case apirequest.FieldCallerID:
+		m.ResetCallerID()
+		return nil
+	case apirequest.FieldMethod:
+		m.ResetMethod()
+		return nil
+	case apirequest.FieldRequestID:
+		m.ResetRequestID()
+		return nil
+	case apirequest.FieldRequestHash:
+		m.ResetRequestHash()
+		return nil
+	case apirequest.FieldResponseEnc:
+		m.ResetResponseEnc()
+		return nil
+	case apirequest.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown APIRequest field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *APIRequestMutation) AddedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *APIRequestMutation) AddedIDs(name string) []ent.Value {
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *APIRequestMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *APIRequestMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *APIRequestMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *APIRequestMutation) EdgeCleared(name string) bool {
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *APIRequestMutation) ClearEdge(name string) error {
+	return fmt.Errorf("unknown APIRequest unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *APIRequestMutation) ResetEdge(name string) error {
+	return fmt.Errorf("unknown APIRequest edge %s", name)
 }
 
 // AccessPolicyMutation represents an operation that mutates the AccessPolicy nodes in the graph.

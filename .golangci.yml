@@ -60,6 +60,10 @@ linters:
       - path: internal/certs/
         text: Reveal
         linters: [forbidigo]
+      # The stored response of a request_id is opened to answer a retry.
+      - path: internal/api/dedup\.go
+        text: Reveal
+        linters: [forbidigo]
       - path: internal/store/
         text: DecisionContext
         linters: [forbidigo]

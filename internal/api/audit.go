@@ -165,5 +165,5 @@ func sensitive(fd protoreflect.FieldDescriptor) bool {
 	return v
 }
 
-// errNoDB is returned by New without a database for the audit log.
-var errNoDB = errors.New("api: the audit log needs a database")
+// errNoDB is returned by New without the database, the system scope or the sealer.
+var errNoDB = errors.New("api: the audit log and the request_ids need the database, the system scope and the sealer")

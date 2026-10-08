@@ -4,6 +4,7 @@ package api_test
 
 import (
 	"context"
+	"crypto/rand"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -25,9 +26,26 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/api"
 	"github.com/felix-homelab/rpmgr/internal/authz"
 	"github.com/felix-homelab/rpmgr/internal/ids"
+	"github.com/felix-homelab/rpmgr/internal/secret"
 	"github.com/felix-homelab/rpmgr/internal/store"
 	"github.com/felix-homelab/rpmgr/internal/store/storetest"
 )
+
+// testSealer returns a sealer under a random KEK.
+func testSealer(t testing.TB) *secret.Sealer {
+	t.Helper()
+	key := make([]byte, 32)
+	_, _ = rand.Read(key)
+	kek, err := secret.NewKEK(key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s, err := secret.NewSealer(kek)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return s
+}
 
 // method describes one method of a test service.
 type method struct {
@@ -230,7 +248,7 @@ func TestServer_Authorization(t *testing.T) {
 		method{name: "Members", authz: &rpmgrv1.Authz{Permission: authz.PermMembersWrite, ResourceField: "org_id", StepUp: true}},
 		method{name: "Watch", authz: &rpmgrv1.Authz{Permission: authz.PermOrgRead, ResourceField: "org_id"}, stream: "server"},
 	)
-	srv, err := api.New(api.Options{DB: storetest.Migrated(t, store.SQLite), Authenticator: callers, Now: func() time.Time { return now },
+	srv, err := api.New(api.Options{DB: storetest.Migrated(t, store.SQLite), Sys: storetest.SystemCtx(t), Sealer: testSealer(t), Authenticator: callers, Now: func() time.Time { return now },
 		Resolver: func(_ context.Context, id string) (string, error) {
 			switch id {
 			case routeA:
@@ -355,7 +373,7 @@ func TestServer_ErrorDetails(t *testing.T) {
 		method{name: "Write", authz: &rpmgrv1.Authz{Permission: authz.PermRoutesWrite, ResourceField: "org_id"}},
 		method{name: "Members", authz: &rpmgrv1.Authz{Permission: authz.PermMembersWrite, ResourceField: "org_id", StepUp: true}},
 	)
-	srv, err := api.New(api.Options{DB: storetest.Migrated(t, store.SQLite),
+	srv, err := api.New(api.Options{DB: storetest.Migrated(t, store.SQLite), Sys: storetest.SystemCtx(t), Sealer: testSealer(t),
 		Authenticator: bearer{
 			"viewer": {Principal: authz.Principal{UserID: "usr_v", Memberships: map[string]string{org: authz.RoleViewer}}},
 			"owner":  {Principal: authz.Principal{UserID: "usr_o", Memberships: map[string]string{org: authz.RoleOwner}}},
@@ -429,7 +447,7 @@ func TestCheck(t *testing.T) {
 		"public_with_bad_field": {name: "M", authz: &rpmgrv1.Authz{Permission: authz.PermPublic, ResourceField: "nope"}},
 	} {
 		sd := testFile(t, "check_"+name, method{name: "Good", authz: ok}, m)
-		srv, err := api.New(api.Options{DB: db, Resolver: func(context.Context, string) (string, error) { return "", api.ErrNotFound },
+		srv, err := api.New(api.Options{DB: db, Sys: storetest.SystemCtx(t), Sealer: testSealer(t), Resolver: func(context.Context, string) (string, error) { return "", api.ErrNotFound },
 			OperatorsMayEnroll: func(context.Context, string) (bool, error) { return false, nil }})
 		if err != nil {
 			t.Fatal(err)
@@ -443,7 +461,7 @@ func TestCheck(t *testing.T) {
 	if err := api.Check(sd); err != nil {
 		t.Fatal(err)
 	}
-	srv, _ := api.New(api.Options{DB: db, Resolver: func(context.Context, string) (string, error) { return "", api.ErrNotFound },
+	srv, _ := api.New(api.Options{DB: db, Sys: storetest.SystemCtx(t), Sealer: testSealer(t), Resolver: func(context.Context, string) (string, error) { return "", api.ErrNotFound },
 		OperatorsMayEnroll: func(context.Context, string) (bool, error) { return false, nil }})
 	if err := srv.Mount(http.NewServeMux(), sd, func(o ...connect.HandlerOption) (string, http.Handler) {
 		_, h := handlers(sd)(o...)
@@ -451,12 +469,16 @@ func TestCheck(t *testing.T) {
 	}); err == nil {
 		t.Fatal("mounted a handler on another service's path")
 	}
-	if _, err := api.New(api.Options{DB: db}); err == nil {
+	if _, err := api.New(api.Options{DB: db, Sys: storetest.SystemCtx(t), Sealer: testSealer(t)}); err == nil {
 		t.Fatal("a server without a resolver")
 	}
 	if _, err := api.New(api.Options{Resolver: func(context.Context, string) (string, error) { return "", api.ErrNotFound },
 		OperatorsMayEnroll: func(context.Context, string) (bool, error) { return false, nil }}); err == nil {
 		t.Fatal("a server without a database for the audit log")
+	}
+	if _, err := api.New(api.Options{DB: db, Sealer: testSealer(t), Resolver: func(context.Context, string) (string, error) { return "", api.ErrNotFound },
+		OperatorsMayEnroll: func(context.Context, string) (bool, error) { return false, nil }}); err == nil {
+		t.Fatal("a server without the system scope")
 	}
 }
 

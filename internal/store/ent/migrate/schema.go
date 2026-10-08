@@ -22,6 +22,34 @@ var (
 		Columns:    AcmeStorageColumns,
 		PrimaryKey: []*schema.Column{AcmeStorageColumns[0]},
 	}
+	// APIRequestsColumns holds the columns for the "api_requests" table.
+	APIRequestsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeString},
+		{Name: "caller_id", Type: field.TypeString},
+		{Name: "method", Type: field.TypeString},
+		{Name: "request_id", Type: field.TypeString, Size: 128},
+		{Name: "request_hash", Type: field.TypeBytes},
+		{Name: "response_enc", Type: field.TypeBytes, Nullable: true},
+		{Name: "created_at", Type: field.TypeTime},
+	}
+	// APIRequestsTable holds the schema information for the "api_requests" table.
+	APIRequestsTable = &schema.Table{
+		Name:       "api_requests",
+		Columns:    APIRequestsColumns,
+		PrimaryKey: []*schema.Column{APIRequestsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "apirequest_caller_id_method_request_id",
+				Unique:  true,
+				Columns: []*schema.Column{APIRequestsColumns[1], APIRequestsColumns[2], APIRequestsColumns[3]},
+			},
+			{
+				Name:    "apirequest_created_at",
+				Unique:  false,
+				Columns: []*schema.Column{APIRequestsColumns[6]},
+			},
+		},
+	}
 	// AccessPoliciesColumns holds the columns for the "access_policies" table.
 	AccessPoliciesColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeString},
@@ -1137,6 +1165,7 @@ var (
 	// Tables holds all the tables in the schema.
 	Tables = []*schema.Table{
 		AcmeStorageTable,
+		APIRequestsTable,
 		AccessPoliciesTable,
 		AgentSessionsTable,
 		AgentStateTable,
@@ -1178,6 +1207,9 @@ var (
 func init() {
 	AcmeStorageTable.Annotation = &entsql.Annotation{
 		Table: "acme_storage",
+	}
+	APIRequestsTable.Annotation = &entsql.Annotation{
+		Table: "api_requests",
 	}
 	AccessPoliciesTable.Annotation = &entsql.Annotation{
 		Table: "access_policies",

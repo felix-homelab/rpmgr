@@ -24,7 +24,7 @@ import (
 
 func helperServer(t *testing.T, key []byte) *api.Server {
 	t.Helper()
-	s, err := api.New(api.Options{DB: storetest.Migrated(t, store.SQLite), PageKey: key,
+	s, err := api.New(api.Options{DB: storetest.Migrated(t, store.SQLite), Sys: storetest.SystemCtx(t), Sealer: testSealer(t), PageKey: key,
 		Resolver:           func(context.Context, string) (string, error) { return "", api.ErrNotFound },
 		OperatorsMayEnroll: func(context.Context, string) (bool, error) { return false, nil }})
 	if err != nil {
@@ -194,7 +194,8 @@ func TestApplyMask(t *testing.T) {
 
 // FuzzAfterPage: no token makes AfterPage panic, and one it accepts is the one PageToken makes.
 func FuzzAfterPage(f *testing.F) {
-	s, err := api.New(api.Options{DB: &store.DB{} /* never used: no request is served */, PageKey: []byte("fuzz-key"),
+	s, err := api.New(api.Options{DB: &store.DB{} /* never used: no request is served */, Sys: storetest.SystemCtx(f), Sealer: testSealer(f),
+		PageKey:            []byte("fuzz-key"),
 		Resolver:           func(context.Context, string) (string, error) { return "", api.ErrNotFound },
 		OperatorsMayEnroll: func(context.Context, string) (bool, error) { return false, nil }})
 	if err != nil {

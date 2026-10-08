@@ -40,7 +40,7 @@ func TestServer_Audit(t *testing.T) {
 	session := func(id string, roles map[string]string) *api.Caller {
 		return &api.Caller{Principal: authz.Principal{UserID: id, Memberships: roles}, CredentialID: "ses_" + id, AuthMethod: "session"}
 	}
-	srv, err := api.New(api.Options{DB: db, Resolver: api.StoreResolver(db, sys), OperatorsMayEnroll: api.StoreOperatorsMayEnroll(db, sys),
+	srv, err := api.New(api.Options{DB: db, Sys: sys, Sealer: testSealer(t), Resolver: api.StoreResolver(db, sys), OperatorsMayEnroll: api.StoreOperatorsMayEnroll(db, sys),
 		Authenticator: bearer{
 			"owner":   session("usr_owner", map[string]string{orgA: authz.RoleOwner}),
 			"viewer":  session("usr_viewer", map[string]string{orgA: authz.RoleViewer}),
