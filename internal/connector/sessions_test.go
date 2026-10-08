@@ -309,7 +309,7 @@ func eventually(t *testing.T, what string, f func() bool) {
 // echo opens a stream for route through the gateway's sessions and checks the echo.
 func echo(t *testing.T, s *gateway.Sessions, route string) error {
 	t.Helper()
-	st, code, err := s.OpenStream(context.Background(), &tunnelv1.StreamOpen{RouteId: route})
+	st, code, err := s.OpenStream(context.Background(), &tunnelv1.StreamOpen{Kind: tunnelv1.StreamKind_STREAM_KIND_TCP, RouteId: route})
 	if err != nil {
 		return err
 	}
