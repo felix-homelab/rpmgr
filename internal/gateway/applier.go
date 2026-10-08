@@ -46,9 +46,7 @@ func (a *assignment) Connectors(routeID string) []string {
 // its tcp routes on their ports and the connector assignment its data sessions are admitted
 // against. It implements agent.Applier.
 type Applier struct {
-	routes   *TCPRoutes
-	pass     *Passthrough
-	sessions *Sessions
+	served   Served
 	assign   *assignment
 	revision atomic.Pointer[agentv1.Revision]
 }
@@ -60,56 +58,71 @@ func NewApplier() (*Applier, Assignment) {
 	return a, a.assign
 }
 
-// Bind gives the applier the route listeners, the passthrough routes and the data sessions it
-// updates; any may be nil.
-func (a *Applier) Bind(routes *TCPRoutes, pass *Passthrough, sessions *Sessions) {
-	a.routes, a.pass, a.sessions = routes, pass, sessions
+// Served is what the applier updates; any part may be nil.
+type Served struct {
+	TCP         *TCPRoutes
+	UDP         *UDPRoutes
+	Passthrough *Passthrough
+	Sessions    *Sessions
 }
+
+// Bind gives the applier what it updates.
+func (a *Applier) Bind(s Served) { a.served = s }
 
 // Revision returns the revision of the applied snapshot; it is TCPOptions.Revision.
 func (a *Applier) Revision() *agentv1.Revision { return a.revision.Load() }
 
 // Validate implements agent.Applier: every resource must be one a gateway runs, every port a
-// valid one used once, every hostname a normalised one used once, and every connector ID present.
+// valid one used once per protocol, every hostname a normalised one used once, and every connector
+// ID present.
 func (a *Applier) Validate(snap *agentv1.Snapshot) []*agentv1.SnapshotError {
 	var errs []*agentv1.SnapshotError
-	ports := map[uint32]string{}
+	bad := func(id, format string, args ...any) {
+		errs = append(errs, &agentv1.SnapshotError{ResourceId: id, Message: fmt.Sprintf(format, args...)})
+	}
+	ports := map[string]map[uint32]string{"TCP": {}, "UDP": {}}
+	port := func(id, proto string, p uint32) {
+		switch {
+		case p == 0 || p > 65535:
+			bad(id, "port %d is not a %s port", p, proto)
+		case ports[proto][p] != "":
+			bad(id, "%s port %d is also the port of %s", proto, p, ports[proto][p])
+		default:
+			ports[proto][p] = id
+		}
+	}
 	hostnames := map[string]string{}
 	for _, res := range snap.GetResources() {
-		if p := res.GetGatewayPassthroughRoute(); p != nil {
+		id := res.GetId()
+		var connectors []string
+		switch {
+		case res.GetGatewayTcpRoute() != nil:
+			port(id, "TCP", res.GetGatewayTcpRoute().GetPort())
+			connectors = res.GetGatewayTcpRoute().GetConnectors()
+		case res.GetGatewayUdpRoute() != nil:
+			port(id, "UDP", res.GetGatewayUdpRoute().GetPort())
+			connectors = res.GetGatewayUdpRoute().GetConnectors()
+		case res.GetGatewayPassthroughRoute() != nil:
+			p := res.GetGatewayPassthroughRoute()
 			if len(p.GetHostnames()) == 0 {
-				errs = append(errs, &agentv1.SnapshotError{ResourceId: res.GetId(), Message: "a passthrough route without hostnames"})
+				bad(id, "a passthrough route without hostnames")
 			}
 			for _, h := range p.GetHostnames() {
 				switch n, err := domains.Normalize(h, true); {
 				case err != nil || n != h:
-					errs = append(errs, &agentv1.SnapshotError{ResourceId: res.GetId(), Message: fmt.Sprintf("hostname %q is not normalised", h)})
+					bad(id, "hostname %q is not normalised", h)
 				case hostnames[h] != "":
-					errs = append(errs, &agentv1.SnapshotError{ResourceId: res.GetId(), Message: fmt.Sprintf("hostname %s is also a hostname of %s", h, hostnames[h])})
+					bad(id, "hostname %s is also a hostname of %s", h, hostnames[h])
 				default:
-					hostnames[h] = res.GetId()
+					hostnames[h] = id
 				}
 			}
-			if slices.Contains(p.GetConnectors(), "") {
-				errs = append(errs, &agentv1.SnapshotError{ResourceId: res.GetId(), Message: "an empty connector ID"})
-			}
-			continue
-		}
-		r := res.GetGatewayTcpRoute()
-		if r == nil {
-			errs = append(errs, &agentv1.SnapshotError{ResourceId: res.GetId(), Message: fmt.Sprintf("a gateway does not run %T resources", res.GetKind())})
-			continue
-		}
-		switch p := r.GetPort(); {
-		case p == 0 || p > 65535:
-			errs = append(errs, &agentv1.SnapshotError{ResourceId: res.GetId(), Message: fmt.Sprintf("port %d is not a TCP port", p)})
-		case ports[p] != "":
-			errs = append(errs, &agentv1.SnapshotError{ResourceId: res.GetId(), Message: fmt.Sprintf("port %d is also the port of %s", p, ports[p])})
+			connectors = p.GetConnectors()
 		default:
-			ports[p] = res.GetId()
+			bad(id, "a gateway does not run %T resources", res.GetKind())
 		}
-		if slices.Contains(r.GetConnectors(), "") {
-			errs = append(errs, &agentv1.SnapshotError{ResourceId: res.GetId(), Message: "an empty connector ID"})
+		if slices.Contains(connectors, "") {
+			bad(id, "an empty connector ID")
 		}
 	}
 	return errs
@@ -119,18 +132,28 @@ func (a *Applier) Validate(snap *agentv1.Snapshot) []*agentv1.SnapshotError {
 // the data sessions of connectors no longer assigned are closed.
 func (a *Applier) Apply(_ context.Context, snap *agentv1.Snapshot, _ agent.Changes) []*agentv1.ResourceStatus {
 	next := &assigned{known: map[string]bool{}, routes: map[string][]string{}}
-	var routes []TCPRoute
-	var passthrough []PassthroughRoute
+	var (
+		tcp         []TCPRoute
+		udp         []UDPRoute
+		passthrough []PassthroughRoute
+	)
 	for _, res := range snap.GetResources() {
 		var connectors []string
-		if p := res.GetGatewayPassthroughRoute(); p != nil {
-			connectors = p.GetConnectors()
-			passthrough = append(passthrough, PassthroughRoute{ID: res.GetId(), Hostnames: p.GetHostnames()})
-		} else {
+		switch {
+		case res.GetGatewayTcpRoute() != nil:
 			r := res.GetGatewayTcpRoute()
 			connectors = r.GetConnectors()
-			routes = append(routes, TCPRoute{ID: res.GetId(), Port: uint16(r.GetPort()), //nolint:gosec // G115: Validate bounds the port
+			tcp = append(tcp, TCPRoute{ID: res.GetId(), Port: uint16(r.GetPort()), //nolint:gosec // G115: Validate bounds the port
 				IdleTimeout: time.Duration(r.GetIdleTimeoutSeconds()) * time.Second})
+		case res.GetGatewayUdpRoute() != nil:
+			r := res.GetGatewayUdpRoute()
+			connectors = r.GetConnectors()
+			udp = append(udp, UDPRoute{ID: res.GetId(), Port: uint16(r.GetPort()), //nolint:gosec // G115: Validate bounds the port
+				FlowIdle: time.Duration(r.GetFlowIdleTimeoutSeconds()) * time.Second})
+		case res.GetGatewayPassthroughRoute() != nil:
+			p := res.GetGatewayPassthroughRoute()
+			connectors = p.GetConnectors()
+			passthrough = append(passthrough, PassthroughRoute{ID: res.GetId(), Hostnames: p.GetHostnames()})
 		}
 		next.routes[res.GetId()] = slices.Clone(connectors)
 		for _, c := range connectors {
@@ -140,14 +163,18 @@ func (a *Applier) Apply(_ context.Context, snap *agentv1.Snapshot, _ agent.Chang
 	a.revision.Store(proto.Clone(snap.GetRevision()).(*agentv1.Revision))
 	a.assign.cur.Store(next)
 	var status []*agentv1.ResourceStatus
-	if a.routes != nil {
-		status = a.routes.Apply(routes)
+	s := a.served
+	if s.TCP != nil {
+		status = append(status, s.TCP.Apply(tcp)...)
 	}
-	if a.pass != nil {
-		a.pass.Apply(passthrough)
+	if s.UDP != nil {
+		status = append(status, s.UDP.Apply(udp)...)
 	}
-	if a.sessions != nil {
-		a.sessions.Recheck()
+	if s.Passthrough != nil {
+		s.Passthrough.Apply(passthrough)
+	}
+	if s.Sessions != nil {
+		s.Sessions.Recheck()
 	}
 	return status
 }

@@ -531,6 +531,11 @@ sequenceDiagram
 - A connector may receive a datagram for a flow whose `StreamOpen` has not arrived yet; it buffers
   up to 8 datagrams for up to 1 s per unknown flow, for at most 64 unknown flows per session, and
   drops the rest.
+- The gateway reads each route port in one goroutine that never waits for a flow: a flow queues up
+  to **64** payloads towards its stream and drops the rest. A flow ends when its stream ends or when
+  it has been idle for the route's flow idle timeout, in either direction. A port keeps at most
+  **4096** flows; a datagram from a further client address is dropped, as client addresses cost a
+  forger nothing.
 - Over the TCP fallback (no datagrams), UDP payloads are always length-prefixed frames on the flow
   stream. This works, but loss on the TCP connection delays every UDP flow on it; the UI flags
   UDP routes served over the fallback.
@@ -870,7 +875,7 @@ sequenceDiagram
 | `StreamOpen` → `StreamResult` | 10 s; upstream dial 5 s | Bounded connection setup |
 | HTTP server | header read 10 s; idle 120 s; upstream response header 60 s; no total write timeout | Long downloads and streaming must work |
 | Idle TCP route connection | 1 h (per route; 0 disables) | Reclaim half-open connections |
-| Idle UDP flow | 60 s | Typical UDP NAT behaviour |
+| Idle UDP flow | 60 s (per route) | Typical UDP NAT behaviour |
 | Apply acknowledgement | 30 s → `apply_timeout` | Visible instead of silent |
 | Certificate renewal | a failed attempt is retried with full jitter, base 1 s, cap 5 min; at most one renewal per 10 min | A controller outage delays renewal without a retry storm; a clock far ahead cannot make the agent renew in a loop ([04](04-security.md#leaf-certificates)) |
 | Controller node certificate renewal | at half its lifetime; a failed renewal is retried every 1 min | Weeks of margin before the certificate expires ([04](04-security.md#leaf-certificates)) |

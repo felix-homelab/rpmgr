@@ -116,6 +116,61 @@ func TestCompile_GatewayTCP(t *testing.T) {
 	})
 }
 
+// TestCompile_GatewayUDP: a gateway gets the enabled udp routes of its group that have a port,
+// with their flow idle timeout and serving connectors; connectors do not get them yet.
+func TestCompile_GatewayUDP(t *testing.T) {
+	storetest.ForEachDialect(t, func(t *testing.T, db *store.DB) {
+		f := newFleet(t, db)
+		c := db.Client()
+		if err := f.pool(t, f.orgA, f.groupA, routes.UDP, 20000, 20099); err != nil {
+			t.Fatal(err)
+		}
+		udpRoute := func(name string, port int, enabled bool, idle int) string {
+			r := c.Route.Create().SetOrgID(f.orgA).SetName(name).SetType("udp").SetGatewayGroupID(f.groupA).SetEnabled(enabled).SaveX(f.sys)
+			if err := f.tx(t, func(tx *ent.Tx) error {
+				a, err := routes.Allocate(f.sys, tx, f.orgA, f.groupA, routes.UDP, port)
+				if err != nil {
+					return err
+				}
+				create := tx.RouteUDP.Create().SetOrgID(f.orgA).SetRouteID(r.ID).SetPortAllocationID(a.ID)
+				if idle > 0 {
+					create.SetFlowIdleTimeoutSeconds(idle)
+				}
+				return create.Exec(f.sys)
+			}); err != nil {
+				t.Fatal(err)
+			}
+			c.RouteTarget.Create().SetOrgID(f.orgA).SetRouteID(r.ID).SetConnectorID(f.c2).SetKind("address").SetHost("10.0.0.53").
+				SetPort(53).ExecX(f.sys)
+			return r.ID
+		}
+		dns := udpRoute("dns", 20001, true, 0) // the same number as the tcp route's port
+		game := udpRoute("game", 20002, true, 300)
+		udpRoute("udp-off", 20003, false, 0)
+		c.Route.Create().SetOrgID(f.orgA).SetName("half-udp").SetType("udp").SetGatewayGroupID(f.groupA).ExecX(f.sys)
+
+		got := map[string]*agentv1.GatewayUDPRoute{}
+		for _, r := range f.compile(t, pki.KindGateway, f.gateway) {
+			if u := r.GetGatewayUdpRoute(); u != nil {
+				got[r.GetId()] = u
+			}
+		}
+		if len(got) != 2 || got[dns].GetPort() != 20001 || got[dns].GetFlowIdleTimeoutSeconds() != 60 ||
+			got[game].GetPort() != 20002 || got[game].GetFlowIdleTimeoutSeconds() != 300 || !slices.Equal(got[dns].GetConnectors(), []string{f.c2}) {
+			t.Fatalf("udp routes %v", got)
+		}
+		for _, r := range routesOf(f.compile(t, pki.KindConnector, f.c2)) {
+			if r.GetConnectorRoute().GetType() == "udp" {
+				t.Fatalf("a connector got a udp route before it serves them: %v", r)
+			}
+		}
+		db.Client().Gateway.UpdateOneID(f.gateway).SetEnabled(false).ExecX(f.sys)
+		if rs := f.compile(t, pki.KindGateway, f.gateway); len(rs) != 0 {
+			t.Fatalf("a disabled gateway: %v", rs)
+		}
+	})
+}
+
 func TestCompile_ConnectorRoutes(t *testing.T) {
 	storetest.ForEachDialect(t, func(t *testing.T, db *store.DB) {
 		f := newFleet(t, db)

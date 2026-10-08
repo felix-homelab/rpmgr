@@ -494,6 +494,19 @@ func (m *Sessions) Close() {
 	}
 }
 
+// Datagrams returns the datagram multiplexer of the session a stream from Open runs on, or nil on
+// the TCP transport.
+func (m *Sessions) Datagrams(st tunnel.Stream) *tunnel.Datagrams {
+	ts, ok := st.(*trackedStream)
+	if !ok {
+		return nil
+	}
+	if q, ok := ts.d.s.(*tunnel.QUICSession); ok {
+		return q.Datagrams()
+	}
+	return nil
+}
+
 // Streams returns the number of streams in flight on all sessions.
 func (m *Sessions) Streams() int64 {
 	m.mu.Lock()
@@ -536,6 +549,9 @@ func (t *trackedStream) Write(p []byte) (int, error) {
 }
 
 func (t *trackedStream) done() { t.once.Do(func() { t.d.inflight.Add(-1) }) }
+
+// Unwrap returns the transport's stream, for its QUIC stream ID.
+func (t *trackedStream) Unwrap() tunnel.Stream { return t.Stream }
 
 func (t *trackedStream) Abort() {
 	t.done()
