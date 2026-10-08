@@ -419,7 +419,7 @@ func TestTargets_ThroughSessions(t *testing.T) {
 	tg := connector.NewTargets(connector.TargetsOptions{Policy: cur.Load, OnHealth: func(h *tunnelv1.RouteHealth) { m.SetReady(h) }})
 	m = newConnectorWith(t, w, tg.Handle)
 	tg.Set([]connector.Route{{ID: "rt_1", Targets: []connector.Target{target("127.0.0.1", svc.port())}}})
-	m.Set([]connector.Gateway{{ID: id.ID, Endpoints: []string{g.addr}, Transports: []string{connector.TransportQUIC}, Routes: []string{"rt_1"}}})
+	m.Set([]connector.Gateway{{ID: id.ID, Endpoints: []string{g.addr}, Routes: map[string]string{"rt_1": connector.TransportQUIC}}})
 	eventually(t, "no session", func() bool { return g.sessions.Load().Count()["quic"] == 1 })
 	if _, _, err := g.sessions.Load().OpenStream(context.Background(), tcpOpen("rt_1")); !errors.Is(err, gateway.ErrNoSession) {
 		t.Fatalf("a blocked route was opened: %v", err)
