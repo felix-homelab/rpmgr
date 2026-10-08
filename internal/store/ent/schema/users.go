@@ -111,3 +111,42 @@ func (PasswordReset) Edges() []ent.Edge {
 func (PasswordReset) Indexes() []ent.Index {
 	return []ent.Index{index.Fields("token_hash").Unique()}
 }
+
+// Session is a signed-in browser (docs/04-security.md, "Human authentication and sessions"). Only
+// the token's hash is stored. elevated_until is when the last step-up stops counting; amr lists
+// how the user authenticated (pwd, otp).
+type Session struct{ ent.Schema }
+
+// Mixin makes sessions system-only.
+func (Session) Mixin() []ent.Mixin { return []ent.Mixin{SystemMixin{}} }
+
+// Fields of a session.
+func (Session) Fields() []ent.Field {
+	return []ent.Field{
+		idField("ses"),
+		field.String("user_id").NotEmpty().Immutable(),
+		field.Bytes("token_hash").NotEmpty(),
+		field.Time("created_at").Immutable(),
+		field.Time("last_seen_at"),
+		field.Time("idle_expires_at"),
+		field.Time("absolute_expires_at").Immutable(),
+		field.Time("elevated_until").Optional().Nillable(),
+		field.Strings("amr"),
+		field.String("ip").MaxLen(64),
+		field.String("user_agent").MaxLen(512),
+		field.Time("revoked_at").Optional().Nillable(),
+	}
+}
+
+// Edges of a session.
+func (Session) Edges() []ent.Edge {
+	return []ent.Edge{
+		edge.To("user", User.Type).Field("user_id").Unique().Required().Immutable().
+			Annotations(entsql.OnDelete(entsql.Cascade)),
+	}
+}
+
+// Indexes: tokens are looked up by hash, sessions listed per user.
+func (Session) Indexes() []ent.Index {
+	return []ent.Index{index.Fields("token_hash").Unique(), index.Fields("user_id")}
+}
