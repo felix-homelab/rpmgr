@@ -1,4 +1,4 @@
-h1:PIPPw91rrbu50j0+wB6cmEiCMbt3t1LixeLfeK5bYOo=
+h1:oYURWI6AzrIB5ofAvh2/SLQ/7meepaoRfPwFLoOd2i4=
 20261007104715_init.sql h1:pF+EZfqVnaVoEYtJTX+eFxkAZNQHtzLrN7GFfoc+GNE=
 20261007110312_config_revisions.sql h1:vyGjNiUBsWooQ4kxjnpkYMWZLX4CLUoGUjFmXl2tGrc=
 20261007111838_settings.sql h1:DZYkkYfp2eUVgo0ZYeZ/5eY7F2XI5yCZ4oKu/LAte6w=
@@ -14,3 +14,4 @@ h1:PIPPw91rrbu50j0+wB6cmEiCMbt3t1LixeLfeK5bYOo=
 20261008061444_domains.sql h1:C+jDGKHFTVtyVrmDDod6mog2ncGScwK3PSqZ5ZFGx0g=
 20261008062205_route_hostnames.sql h1:cRrl6iHgqYEV3IGqZT+g0Bfv1nf/+znTkAprL4SUNxs=
 20261008065659_route_tcp_unique.sql h1:MOCGF/VNfYgFOY/5fa+O76RtxvQ0MUoeXA+6LdG+Jqg=
+20261008070243_route_udp.sql h1:pK4nOpRfh/IQYTWiSVNKbVKyaZoeVDETBlILgu6WCRE=

@@ -36,6 +36,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routehostname"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routetarget"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routetcp"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/routeudp"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/secretmeta"
 )
 
@@ -824,6 +825,33 @@ func (f TraverseRouteTarget) Traverse(ctx context.Context, q ent.Query) error {
 	return fmt.Errorf("unexpected query type %T. expect *ent.RouteTargetQuery", q)
 }
 
+// The RouteUDPFunc type is an adapter to allow the use of ordinary function as a Querier.
+type RouteUDPFunc func(context.Context, *ent.RouteUDPQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f RouteUDPFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.RouteUDPQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.RouteUDPQuery", q)
+}
+
+// The TraverseRouteUDP type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseRouteUDP func(context.Context, *ent.RouteUDPQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseRouteUDP) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseRouteUDP) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.RouteUDPQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.RouteUDPQuery", q)
+}
+
 // The SecretMetaFunc type is an adapter to allow the use of ordinary function as a Querier.
 type SecretMetaFunc func(context.Context, *ent.SecretMetaQuery) (ent.Value, error)
 
@@ -908,6 +936,8 @@ func NewQuery(q ent.Query) (Query, error) {
 		return &query[*ent.RouteTCPQuery, predicate.RouteTCP, routetcp.OrderOption]{typ: ent.TypeRouteTCP, tq: q}, nil
 	case *ent.RouteTargetQuery:
 		return &query[*ent.RouteTargetQuery, predicate.RouteTarget, routetarget.OrderOption]{typ: ent.TypeRouteTarget, tq: q}, nil
+	case *ent.RouteUDPQuery:
+		return &query[*ent.RouteUDPQuery, predicate.RouteUDP, routeudp.OrderOption]{typ: ent.TypeRouteUDP, tq: q}, nil
 	case *ent.SecretMetaQuery:
 		return &query[*ent.SecretMetaQuery, predicate.SecretMeta, secretmeta.OrderOption]{typ: ent.TypeSecretMeta, tq: q}, nil
 	default:

@@ -819,6 +819,51 @@ var (
 			},
 		},
 	}
+	// RouteUDPColumns holds the columns for the "route_udp" table.
+	RouteUDPColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt, Increment: true},
+		{Name: "org_id", Type: field.TypeString},
+		{Name: "flow_idle_timeout_seconds", Type: field.TypeInt, Default: 60},
+		{Name: "route_id", Type: field.TypeString},
+		{Name: "port_allocation_id", Type: field.TypeString},
+	}
+	// RouteUDPTable holds the schema information for the "route_udp" table.
+	RouteUDPTable = &schema.Table{
+		Name:       "route_udp",
+		Columns:    RouteUDPColumns,
+		PrimaryKey: []*schema.Column{RouteUDPColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "route_udp_routes_route",
+				Columns:    []*schema.Column{RouteUDPColumns[3]},
+				RefColumns: []*schema.Column{RoutesColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+			{
+				Symbol:     "route_udp_port_allocations_port",
+				Columns:    []*schema.Column{RouteUDPColumns[4]},
+				RefColumns: []*schema.Column{PortAllocationsColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+		},
+		Indexes: []*schema.Index{
+			{
+				Name:    "routeudp_org_id_id",
+				Unique:  true,
+				Columns: []*schema.Column{RouteUDPColumns[1], RouteUDPColumns[0]},
+			},
+			{
+				Name:    "routeudp_route_id",
+				Unique:  true,
+				Columns: []*schema.Column{RouteUDPColumns[3]},
+			},
+			{
+				Name:    "routeudp_port_allocation_id",
+				Unique:  true,
+				Columns: []*schema.Column{RouteUDPColumns[4]},
+			},
+		},
+	}
 	// SecretsMetaColumns holds the columns for the "secrets_meta" table.
 	SecretsMetaColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeInt, Increment: true},
@@ -870,6 +915,7 @@ var (
 		RouteHostnamesTable,
 		RouteTCPTable,
 		RouteTargetsTable,
+		RouteUDPTable,
 		SecretsMetaTable,
 	}
 )
@@ -952,6 +998,11 @@ func init() {
 	RouteTargetsTable.ForeignKeys[1].RefTable = ConnectorsTable
 	RouteTargetsTable.Annotation = &entsql.Annotation{
 		Table: "route_targets",
+	}
+	RouteUDPTable.ForeignKeys[0].RefTable = RoutesTable
+	RouteUDPTable.ForeignKeys[1].RefTable = PortAllocationsTable
+	RouteUDPTable.Annotation = &entsql.Annotation{
+		Table: "route_udp",
 	}
 	SecretsMetaTable.Annotation = &entsql.Annotation{
 		Table: "secrets_meta",

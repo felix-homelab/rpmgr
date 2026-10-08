@@ -33,6 +33,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routehostname"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routetarget"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routetcp"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/routeudp"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/schema"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/secretmeta"
 
@@ -1503,6 +1504,43 @@ func init() {
 			return nil
 		}
 	}()
+	routeudpMixin := schema.RouteUDP{}.Mixin()
+	routeudp.Policy = privacy.NewPolicies(routeudpMixin[0], schema.RouteUDP{})
+	routeudp.Hooks[0] = func(next ent.Mutator) ent.Mutator {
+		return ent.MutateFunc(func(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+			if err := routeudp.Policy.EvalMutation(ctx, m); err != nil {
+				return nil, err
+			}
+			return next.Mutate(ctx, m)
+		})
+	}
+	routeudpMixinHooks0 := routeudpMixin[0].Hooks()
+
+	routeudp.Hooks[1] = routeudpMixinHooks0[0]
+	routeudpMixinInters0 := routeudpMixin[0].Interceptors()
+	routeudp.Interceptors[0] = routeudpMixinInters0[0]
+	routeudpMixinFields0 := routeudpMixin[0].Fields()
+	_ = routeudpMixinFields0
+	routeudpFields := schema.RouteUDP{}.Fields()
+	_ = routeudpFields
+	// routeudpDescOrgID is the schema descriptor for org_id field.
+	routeudpDescOrgID := routeudpMixinFields0[0].Descriptor()
+	// routeudp.OrgIDValidator is a validator for the "org_id" field. It is called by the builders before save.
+	routeudp.OrgIDValidator = routeudpDescOrgID.Validators[0].(func(string) error)
+	// routeudpDescRouteID is the schema descriptor for route_id field.
+	routeudpDescRouteID := routeudpFields[0].Descriptor()
+	// routeudp.RouteIDValidator is a validator for the "route_id" field. It is called by the builders before save.
+	routeudp.RouteIDValidator = routeudpDescRouteID.Validators[0].(func(string) error)
+	// routeudpDescPortAllocationID is the schema descriptor for port_allocation_id field.
+	routeudpDescPortAllocationID := routeudpFields[1].Descriptor()
+	// routeudp.PortAllocationIDValidator is a validator for the "port_allocation_id" field. It is called by the builders before save.
+	routeudp.PortAllocationIDValidator = routeudpDescPortAllocationID.Validators[0].(func(string) error)
+	// routeudpDescFlowIdleTimeoutSeconds is the schema descriptor for flow_idle_timeout_seconds field.
+	routeudpDescFlowIdleTimeoutSeconds := routeudpFields[2].Descriptor()
+	// routeudp.DefaultFlowIdleTimeoutSeconds holds the default value on creation for the flow_idle_timeout_seconds field.
+	routeudp.DefaultFlowIdleTimeoutSeconds = routeudpDescFlowIdleTimeoutSeconds.Default.(int)
+	// routeudp.FlowIdleTimeoutSecondsValidator is a validator for the "flow_idle_timeout_seconds" field. It is called by the builders before save.
+	routeudp.FlowIdleTimeoutSecondsValidator = routeudpDescFlowIdleTimeoutSeconds.Validators[0].(func(int) error)
 	secretmetaMixin := schema.SecretMeta{}.Mixin()
 	secretmeta.Policy = privacy.NewPolicies(secretmetaMixin[0], schema.SecretMeta{})
 	secretmeta.Hooks[0] = func(next ent.Mutator) ent.Mutator {

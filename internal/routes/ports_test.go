@@ -213,3 +213,39 @@ func TestRouteTCP_Unique(t *testing.T) {
 		}
 	})
 }
+
+// TestRouteUDP: a udp route holds one udp port of its group, with a 60 s flow idle timeout by
+// default; the same number can be a tcp port of another route, but one allocation serves one
+// route.
+func TestRouteUDP(t *testing.T) {
+	storetest.ForEachDialect(t, func(t *testing.T, db *store.DB) {
+		e := newEnv(t, db)
+		c := db.Client()
+		for _, p := range []routes.Protocol{routes.UDP, routes.TCP} {
+			if err := e.pool(t, e.orgA, e.groupA, p, 5300, 5300); err != nil {
+				t.Fatal(err)
+			}
+		}
+		var udp, tcp *ent.PortAllocation
+		if err := e.tx(t, func(tx *ent.Tx) error {
+			var err error
+			if udp, err = routes.Allocate(e.sys, tx, e.orgA, e.groupA, routes.UDP, 5300); err != nil {
+				return err
+			}
+			tcp, err = routes.Allocate(e.sys, tx, e.orgA, e.groupA, routes.TCP, 5300)
+			return err
+		}); err != nil {
+			t.Fatalf("udp and tcp 5300 side by side: %v", err)
+		}
+		dns := c.Route.Create().SetOrgID(e.orgA).SetName("dns").SetType("udp").SetGatewayGroupID(e.groupA).SaveX(e.sys)
+		ru := c.RouteUDP.Create().SetOrgID(e.orgA).SetRouteID(dns.ID).SetPortAllocationID(udp.ID).SaveX(e.sys)
+		if ru.FlowIdleTimeoutSeconds != 60 {
+			t.Fatalf("flow idle timeout %d, want 60", ru.FlowIdleTimeoutSeconds)
+		}
+		other := c.Route.Create().SetOrgID(e.orgA).SetName("dns2").SetType("udp").SetGatewayGroupID(e.groupA).SaveX(e.sys)
+		if err := c.RouteUDP.Create().SetOrgID(e.orgA).SetRouteID(other.ID).SetPortAllocationID(udp.ID).Exec(e.sys); !store.IsUniqueViolation(err) {
+			t.Fatalf("a second route on the same allocation: %v", err)
+		}
+		_ = tcp
+	})
+}
