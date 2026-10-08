@@ -182,7 +182,7 @@ In Phase 1, CI only builds these targets; end-to-end tests on Windows and macOS 
 | Gateway | 443 | UDP | QUIC data sessions (`rpmgr-tunnel/1`); HTTP/3 in Phase 3. Optionally, tunnels move to a separate UDP port (`listen.tunnel_udp`) when their QUIC tuning must differ from public HTTP/3 ([03](03-connections.md#port-443-multiplexing)) | Public |
 | Gateway | 80 | TCP | ACME HTTP-01 challenges; per `http` route a redirect to HTTPS (default), plain HTTP, or nothing (`port80`, [06](06-data-model.md#routing)) | Public |
 | Gateway | port pools (e.g. 20000–20999) | TCP and/or UDP | `tcp`/`udp` routes; ranges are gateway-group settings, allocated per [04](04-security.md#route-and-hostname-ownership) | Public, only the configured ranges |
-| Controller | 443 | TCP | UI, public API, enrollment, agent control sessions (SNI `controller.<td>`), `Reauth` for expired agent certificates (SNI `reauth.controller.<td>`), `/install.sh`, `/dl/` mirror | Reachable by browsers and agents (directly or via a gateway passthrough route for both agent names, [03](03-connections.md#reaching-a-private-controller)) |
+| Controller | 443 | TCP | UI, public API, enrollment, agent control sessions (SNI `controller.<td>`), `Reauth` for expired agent certificates (SNI `reauth.controller.<td>`), `/install.sh`, `/dl/` mirror | Reachable by browsers and agents (directly or through a gateway's controller passthrough, [03](03-connections.md#reaching-a-private-controller)) |
 | Controller | 80 | TCP | Optional: ACME HTTP-01 and redirect, if the controller obtains its own UI certificate | Public, optional |
 | Every role | 127.0.0.1:7381 (controller, all-in-one), 127.0.0.1:7382 (gateway), 127.0.0.1:7383 (connector) | TCP | Admin listener: `/metrics`, `/healthz`, `/readyz`, pprof (off unless enabled). One port per role, so roles on the same host never collide, and none is 9090, Prometheus's own port. If the default is taken, the installer picks the next free port and writes it to the boot file. The ports are registered in Prometheus's port registry once public code exists | Localhost by default; may be bound to a private interface for scrapers and load-balancer checks, **never** public: a boot file that binds it to all interfaces, a public address or a host name is refused |
 | Connector | — | — | No inbound ports. Outbound: 443/TCP+UDP to gateways, 443/TCP to the controller | — |
@@ -244,6 +244,9 @@ log:
 version: 1
 controller:
   endpoints: [https://panel.example.com]   # replaced by the list from snapshots after first connect
+  passthrough:                              # optional: publish a private controller (03, R23)
+    address: ""                             # its host:port for 443, reached from here; "" = none
+    hostnames: []                           # its UI hostnames; the agent names always go there
 identity_dir: /var/lib/rpmgr/identity       # key, certificate chain, trust bundle (written by enroll)
 state_dir: /var/lib/rpmgr                   # last-known-good snapshot, stateless reset key
 listen:
@@ -297,6 +300,9 @@ Rules for every boot file:
   self-signed certificate for the public URL's host and warns; obtaining it with ACME comes with a
   later version. `rpmgr enroll` downloads the trust bundle from the public URL, so enrollment needs
   a certificate the agent host trusts ([04](04-security.md#join-command)).
+- `controller.passthrough` is for gateways only and absent from all-in-one: `address` is
+  `host:port`; `hostnames` are lower-case DNS names (internationalised ones in their `xn--` form)
+  and need an address ([03](03-connections.md#reaching-a-private-controller)).
 - URLs are `https://<host>[:<port>]` without user, path, query or fragment; listen addresses are
   `[host]:port`; paths are absolute. `database.driver: postgres` and `kek.source: kms` are refused
   until Phase 2.

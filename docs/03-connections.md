@@ -350,11 +350,19 @@ Rules:
 
 ### Reaching a private controller
 
-The controller does not need a public address. A gateway can publish the controller's agent
-hostnames (`controller.<trust-domain>` and `reauth.controller.<trust-domain>`) as **TLS-passthrough routes** whose target is the
-controller. TLS terminates at the controller, so the gateway forwards bytes it can neither read nor
-alter, and the agent still verifies the controller against the pinned root. Agents get the list of
-controller endpoints (direct and via gateways) in every snapshot and try them in order.
+The controller does not need a public address. A gateway publishes it when its boot file names the
+controller's address in `controller.passthrough` ([10](10-operations.md#boot-files), R23): the
+gateway then forwards every TCP/443 connection for the agent hostnames (`controller.<td>` and
+`reauth.controller.<td>`) and for the UI hostnames listed there to that address at layer 4, after
+the ClientHello peek and with the peeked bytes replayed. TLS terminates at the controller, so the
+gateway forwards bytes it can neither read nor alter, and the agent still verifies the controller
+against the pinned root. The end of one direction is passed on as a half-close; a controller that
+does not answer within the dial timeout resets the connection, so the agent tries its next endpoint
+at once; a stopping gateway closes the forwarded connections at the end of its drain period.
+Enrollment and the UI work through the same forwarding. Agents get the list of controller endpoints
+(direct and via gateways) in every snapshot and try them in order; the operator lists the gateway's
+address there (instance setting, [10](10-operations.md#runtime-settings-ui--settings)). A gateway
+with an in-process controller (all-in-one) has no `controller.passthrough`.
 
 [R] Control traffic deliberately does **not** ride inside the data session to a gateway: gateways
 are edge components and must not be able to forge or withhold configuration, and gateway restarts
@@ -608,7 +616,7 @@ path with a 1500-byte MTU they arrive in two TCP segments ([S3](spikes/S3.md)).
 
 | Condition | Action |
 |---|---|
-| SNI = `controller.<td>`, `reauth.controller.<td>` or a controller UI hostname | All-in-one: hand to the in-process controller, the agent names to its grpc-go server and the UI names to its `net/http` server ([Control session](#transport)). Otherwise: TLS-passthrough route to the controller |
+| SNI = `controller.<td>`, `reauth.controller.<td>` or a controller UI hostname | All-in-one: hand to the in-process controller, the agent names to its grpc-go server and the UI names to its `net/http` server ([Control session](#transport)). With `controller.passthrough` in the boot file: forward at layer 4 to the private controller ([Reaching a private controller](#reaching-a-private-controller)). Otherwise: close |
 | SNI = this gateway's `<gateway-id>.gateway.<td>` and the client offers ALPN `rpmgr-tunnel-h2/1` | Data session over TLS + reverse HTTP/2 (mutual TLS with the certificate for that name). Any other name under `.gateway.<td>` is handled like an unknown SNI |
 | SNI = this gateway's WSS tunnel hostname | HTTP engine; `/.rpmgr/tunnel` upgrades to the WSS transport (Phase 2) |
 | SNI matches a TLS-passthrough route | Splice raw bytes to a connector |
@@ -878,6 +886,7 @@ sequenceDiagram
 | Controller drain | `Drain{deadline}` to every session, also to sessions that start later; new sessions while draining get `Goodbye{shutdown}` with a `retry_after`; a stopping replica waits up to 5 s for its sessions to move, then closes | Agents move to another endpoint before the replica stops |
 | ClientHello peek | 16 KiB within 5 s | Slowloris protection |
 | `StreamOpen` → `StreamResult` | 10 s; upstream dial 5 s | Bounded connection setup |
+| Private-controller forwarding | dial 5 s; no idle timeout, the control session's keepalive keeps it alive | An unreachable controller fails fast, so the agent tries its next endpoint |
 | HTTP server | header read 10 s; idle 120 s; upstream response header 60 s; no total write timeout | Long downloads and streaming must work |
 | Idle TCP route connection | 1 h (per route; 0 disables) | Reclaim half-open connections |
 | Idle UDP flow | 60 s (per route) | Typical UDP NAT behaviour |

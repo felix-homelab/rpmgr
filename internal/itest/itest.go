@@ -47,6 +47,10 @@ type Options struct {
 	CAAge time.Duration
 }
 
+// UIHostname is a name the controller's UI certificate covers besides 127.0.0.1; it resolves to
+// nothing, so a test dials it explicitly.
+const UIHostname = "panel.rpmgr.test"
+
 // Controller is a running test controller: its first replica, and those StartReplica adds.
 type Controller struct {
 	DB       *store.DB
@@ -54,6 +58,7 @@ type Controller struct {
 	Sessions *controller.Sessions // of the first replica
 	URL      string               // https://127.0.0.1:<port> of the first replica
 	RevLog   *revlog.Log          // the replicas' revocation log
+	UIRoots  *x509.CertPool       // the roots of the UI certificate
 	Org      string
 	Sys      context.Context
 	opts     Options
@@ -157,6 +162,7 @@ func (c *Controller) StartReplica(t testing.TB) (string, *controller.Sessions) {
 	c.stops = append(c.stops, stop)
 	t.Cleanup(stop)
 	if c.web == nil {
+		c.UIRoots = uiRoots
 		c.web = &http.Client{Timeout: 10 * time.Second, Transport: &http.Transport{
 			TLSClientConfig: &tls.Config{RootCAs: uiRoots, MinVersion: tls.VersionTLS13}}}
 	}
@@ -200,8 +206,9 @@ func (c *Controller) GatewayGroup(t testing.TB, name string) string {
 	return c.DB.Client().GatewayGroup.Create().SetOrgID(c.Org).SetName(name).SaveX(c.Sys).ID
 }
 
-// enroll mints a token that set completes and enrolls an agent into dir with it.
-func (c *Controller) enroll(t testing.TB, dir string, set func(*ent.EnrollmentTokenCreate)) agent.Loaded {
+// EnrollmentToken mints an enrollment token that set completes, for a test that enrolls an agent
+// itself.
+func (c *Controller) EnrollmentToken(t testing.TB, set func(*ent.EnrollmentTokenCreate)) string {
 	t.Helper()
 	tok, err := token.New(token.Enrollment)
 	if err != nil {
@@ -211,6 +218,13 @@ func (c *Controller) enroll(t testing.TB, dir string, set func(*ent.EnrollmentTo
 		SetExpiresAt(time.Now().Add(time.Hour)).SetCreatedBy("usr_itest")
 	set(tc)
 	tc.ExecX(c.Sys)
+	return tok
+}
+
+// enroll mints a token that set completes and enrolls an agent into dir with it.
+func (c *Controller) enroll(t testing.TB, dir string, set func(*ent.EnrollmentTokenCreate)) agent.Loaded {
+	t.Helper()
+	tok := c.EnrollmentToken(t, set)
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	if _, err := agent.Enroll(ctx, agent.EnrollOptions{Controller: c.URL, Pin: pki.RootPin(c.CA.Root()), Token: tok,
@@ -261,7 +275,8 @@ func (c *Controller) IssueAt(t testing.TB, id agent.Loaded, at time.Time) *x509.
 	return leaf
 }
 
-// webCertificate is a self-signed certificate for 127.0.0.1, as an operator might supply.
+// webCertificate is a self-signed certificate for 127.0.0.1 and UIHostname, as an operator might
+// supply.
 func webCertificate(t testing.TB) (tls.Certificate, *x509.CertPool) {
 	t.Helper()
 	key, err := pki.NewKey()
@@ -270,7 +285,7 @@ func webCertificate(t testing.TB) (tls.Certificate, *x509.CertPool) {
 	}
 	tmpl := &x509.Certificate{SerialNumber: big.NewInt(1), Subject: pkix.Name{CommonName: "itest"},
 		NotBefore: time.Now().Add(-time.Hour), NotAfter: time.Now().Add(24 * time.Hour), IsCA: true, BasicConstraintsValid: true,
-		IPAddresses: []net.IP{net.IPv4(127, 0, 0, 1)}, KeyUsage: x509.KeyUsageDigitalSignature | x509.KeyUsageCertSign,
+		IPAddresses: []net.IP{net.IPv4(127, 0, 0, 1)}, DNSNames: []string{UIHostname}, KeyUsage: x509.KeyUsageDigitalSignature | x509.KeyUsageCertSign,
 		ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth}}
 	der, err := x509.CreateCertificate(rand.Reader, tmpl, tmpl, &key.PublicKey, key)
 	if err != nil {

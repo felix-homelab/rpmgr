@@ -226,9 +226,14 @@ func (pl *portListener) abortAll() {
 	}
 }
 
+// lingerer is a TCP connection, or a wrapper of one, that can be reset.
+type lingerer interface{ SetLinger(sec int) error }
+
+// abort resets c, so the client sees the failure at once; a connection that cannot be reset is
+// closed.
 func abort(c net.Conn) {
-	if tc, ok := c.(*net.TCPConn); ok {
-		_ = tc.SetLinger(0)
+	if l, ok := c.(lingerer); ok {
+		_ = l.SetLinger(0)
 	}
 	_ = c.Close()
 }
@@ -363,8 +368,8 @@ func (c *idleConn) CloseWrite() error {
 
 // SetLinger lets Relay reset the connection.
 func (c *idleConn) SetLinger(sec int) error {
-	if tc, ok := c.Conn.(*net.TCPConn); ok {
-		return tc.SetLinger(sec)
+	if l, ok := c.Conn.(lingerer); ok {
+		return l.SetLinger(sec)
 	}
 	return nil
 }

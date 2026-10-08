@@ -74,6 +74,40 @@ func TestDefaults(t *testing.T) {
 	}
 }
 
+// pt is an agent boot file with controller.passthrough.
+func pt(address, hostnames string) string {
+	y := "version: 1\ncontroller:\n  endpoints: [https://panel.example.com]\n  passthrough:\n"
+	if address != "" {
+		y += "    address: \"" + address + "\"\n"
+	}
+	if hostnames != "" {
+		y += "    hostnames: " + hostnames + "\n"
+	}
+	return y
+}
+
+// TestPassthrough: a gateway may forward to a private controller; the address alone forwards the
+// agent names, with hostnames the UI too.
+func TestPassthrough(t *testing.T) {
+	for _, y := range []string{pt("10.0.0.5:443", ""), pt("ctl.internal:8443", "[panel.example.com, xn--bcher-kva.example]"),
+		pt("[2001:db8::5]:443", "[panel.example.com]")} {
+		var g config.Gateway
+		if err := config.Parse([]byte(y), &g); err != nil {
+			t.Errorf("%q: %v", y, err)
+		}
+	}
+	var g config.Gateway
+	if err := config.Parse([]byte("version: 1\ncontroller: {endpoints: [https://p.example]}\n"), &g); err != nil ||
+		g.Controller.Passthrough.Address != "" || len(g.Controller.Passthrough.Hostnames) != 0 {
+		t.Errorf("no passthrough by default: %+v %v", g.Controller.Passthrough, err)
+	}
+	var a config.AllInOne
+	if err := config.Parse([]byte("version: 1\npublic_url: https://p.example\ncontroller: {passthrough: {address: \"10.0.0.5:443\"}}\n"), &a); err == nil ||
+		!strings.Contains(err.Error(), "controller") {
+		t.Errorf("all-in-one with a passthrough: %v, want the unknown key refused", err)
+	}
+}
+
 // TestRefused: each case changes a valid file in one place and must be refused with a message that
 // names the problem.
 func TestRefused(t *testing.T) {
@@ -124,6 +158,17 @@ func TestRefused(t *testing.T) {
 		{"admin on all interfaces", "controller", ctl + "listen: {admin: \"0.0.0.0:7381\"}\n", "listen.admin"},
 		{"admin on a public address", "gateway", agent + "listen: {admin: \"203.0.113.5:7382\"}\n", "listen.admin"},
 		{"admin on a host name", "connector", agent + "listen: {admin: \"admin.example:7383\"}\n", "listen.admin"},
+		{"passthrough without a host", "gateway", pt(":443", ""), "controller.passthrough.address"},
+		{"passthrough without a port", "gateway", pt("10.0.0.5", ""), "controller.passthrough.address"},
+		{"passthrough port 0", "gateway", pt("10.0.0.5:0", ""), "controller.passthrough.address"},
+		{"passthrough port 65536", "gateway", pt("ctl.internal:65536", ""), "controller.passthrough.address"},
+		{"passthrough hostnames without an address", "gateway", pt("", "[panel.example.com]"), "need controller.passthrough.address"},
+		{"passthrough hostname in upper case", "gateway", pt("10.0.0.5:443", "[Panel.example.com]"), "hostnames[0]"},
+		{"passthrough hostname of one label", "gateway", pt("10.0.0.5:443", "[panel]"), "hostnames[0]"},
+		{"passthrough hostname with a port", "gateway", pt("10.0.0.5:443", "[ok.example.com, \"p.example.com:443\"]"), "hostnames[1]"},
+		{"passthrough hostname as an IP address", "gateway", pt("10.0.0.5:443", "[192.0.2.1]"), "hostnames[0]"},
+		{"passthrough wildcard hostname", "gateway", pt("10.0.0.5:443", "[\"*.example.com\"]"), "hostnames[0]"},
+		{"passthrough on a connector", "connector", pt("10.0.0.5:443", ""), "only a gateway"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
