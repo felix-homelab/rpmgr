@@ -12,11 +12,13 @@ import (
 	"net/http"
 	"strings"
 	"text/tabwriter"
+	"time"
 
 	"connectrpc.com/connect"
 	"go.yaml.in/yaml/v3"
 	"google.golang.org/genproto/googleapis/rpc/errdetails"
 	"google.golang.org/protobuf/encoding/protojson"
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/reflect/protoreflect"
 
 	rpmgrv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/v1"
@@ -27,14 +29,16 @@ import (
 
 // apiCommands are the verb-first commands of the public API (docs/16-cli.md, D51).
 func apiCommands() []*cli.Command {
-	return []*cli.Command{getCommand()}
+	return []*cli.Command{getCommand(), listCommand(), deleteCommand()}
 }
 
 // kindsHelp lists the kinds for a command's synopsis.
-func kindsHelp() string {
+func kindsHelp(deletable bool) string {
 	var names []string
 	for _, k := range apicli.Kinds {
-		names = append(names, k.Name)
+		if !deletable || k.Delete {
+			names = append(names, k.Name)
+		}
 	}
 	return strings.Join(names, "|")
 }
@@ -89,7 +93,7 @@ func (s *apiSession) get(ctx context.Context, k apicli.Kind, id string) (protore
 func getCommand() *cli.Command {
 	var output string
 	return &cli.Command{
-		Name: "get", Summary: "show a resource of the public API", Args: "<" + kindsHelp() + "> <id>",
+		Name: "get", Summary: "show a resource of the public API", Args: "<" + kindsHelp(false) + "> <id>",
 		Flags: func(fs *flag.FlagSet) { outputFlag(fs, &output) },
 		Run: func(ctx context.Context, env *cli.Env, args []string) error {
 			k, err := kindArgs(args, 2)
@@ -104,7 +108,87 @@ func getCommand() *cli.Command {
 			if err != nil {
 				return err
 			}
-			return s.print(ctx, env.Stdout, k, output, res, args[1])
+			return s.print(ctx, env.Stdout, k, output, []protoreflect.Message{res}, []string{args[1]}, false)
+		},
+	}
+}
+
+func listCommand() *cli.Command {
+	var output string
+	return &cli.Command{
+		Name: "list", Summary: "list the resources of a kind in the org", Args: "<" + kindsHelp(false) + ">",
+		Flags: func(fs *flag.FlagSet) { outputFlag(fs, &output) },
+		Run: func(ctx context.Context, env *cli.Env, args []string) error {
+			k, err := kindArgs(args, 1)
+			if err != nil {
+				return err
+			}
+			s, err := newAPISession(env)
+			if err != nil {
+				return err
+			}
+			var all []protoreflect.Message
+			var ids []string
+			for page := ""; ; {
+				resp, err := s.call(ctx, k, "List"+k.Plural, map[string]any{"org_id": s.creds.Org, "page_size": int32(500), "page_token": page}, nil)
+				if err != nil {
+					return err
+				}
+				fd, err := k.Field(resp)
+				if err != nil {
+					return err
+				}
+				l := resp.Get(fd).List()
+				for i := range l.Len() {
+					all = append(all, l.Get(i).Message())
+					ids = append(ids, l.Get(i).Message().Get(l.Get(i).Message().Descriptor().Fields().ByName("id")).String())
+				}
+				if page = resp.Get(resp.Descriptor().Fields().ByName("next_page_token")).String(); page == "" {
+					break
+				}
+			}
+			return s.print(ctx, env.Stdout, k, output, all, ids, true)
+		},
+	}
+}
+
+func deleteCommand() *cli.Command {
+	var (
+		force bool
+		wait  time.Duration
+	)
+	return &cli.Command{
+		Name: "delete", Summary: "delete a resource of the public API", Args: "<" + kindsHelp(true) + "> <id>",
+		Flags: func(fs *flag.FlagSet) {
+			fs.BoolVar(&force, "force", false, "delete without checking that the resource is unchanged since this command read it")
+			fs.DurationVar(&wait, "wait", 0, "wait up to this long, at most 30s, for the agents to apply the change")
+		},
+		Run: func(ctx context.Context, env *cli.Env, args []string) error {
+			k, err := kindArgs(args, 2)
+			if err != nil {
+				return err
+			}
+			if !k.Delete {
+				return cli.Usagef("a %s is not deleted; see rpmgr help", k.Name)
+			}
+			s, err := newAPISession(env)
+			if err != nil {
+				return err
+			}
+			fields := map[string]any{k.IDField: args[1]}
+			if !force {
+				res, err := s.get(ctx, k, args[1])
+				if err != nil {
+					return err
+				}
+				fields["etag"] = res.Get(res.Descriptor().Fields().ByName("etag")).String()
+			}
+			resp, err := s.call(ctx, k, "Delete"+k.Resource, fields, waitHeader(wait))
+			if err != nil {
+				return err
+			}
+			_, err = fmt.Fprintf(env.Stdout, "Deleted %s %s%s.\n", k.Name, args[1], applied(resp))
+			return err
 		},
 	}
 }
@@ -125,12 +209,52 @@ func kindArgs(args []string, n int) (apicli.Kind, error) {
 	return k, nil
 }
 
-// print writes a resource as a table, as its YAML manifest (or as YAML for a kind without
-// manifests) or as JSON.
-func (s *apiSession) print(ctx context.Context, w io.Writer, k apicli.Kind, output string, res protoreflect.Message, id string) error {
+// waitHeader asks a write's answer to wait for its apply status (docs/07-api.md, "Writes and apply
+// status").
+func waitHeader(wait time.Duration) http.Header {
+	if wait <= 0 {
+		return nil
+	}
+	return http.Header{"Rpmgr-Wait-Applied": []string{wait.String()}}
+}
+
+// applied describes the revision and apply status of a write's answer, if it has them.
+func applied(resp protoreflect.Message) string {
+	fields := resp.Descriptor().Fields()
+	rev, st := fields.ByName("revision"), fields.ByName("apply_status")
+	if rev == nil || !resp.Has(rev) {
+		return ""
+	}
+	out := fmt.Sprintf(" in revision %d", resp.Get(rev).Message().Get(rev.Message().Fields().ByName("seq")).Int())
+	if st != nil && resp.Has(st) {
+		var as rpmgrv1.ApplyStatus
+		b, err := proto.Marshal(resp.Get(st).Message().Interface())
+		if err == nil && proto.Unmarshal(b, &as) == nil {
+			out += fmt.Sprintf(", %s on %d of %d online agents", strings.TrimPrefix(as.GetState().String(), "APPLY_STATE_"),
+				as.GetAgentsApplied(), as.GetAgentsTotal())
+		}
+	}
+	return out
+}
+
+// print writes resources as a table, as YAML manifests (or the resources as YAML for a kind
+// without them) or as JSON.
+func (s *apiSession) print(ctx context.Context, w io.Writer, k apicli.Kind, output string, res []protoreflect.Message, ids []string, list bool) error {
 	switch output {
 	case "json":
-		b, err := protojson.MarshalOptions{Multiline: true, Indent: "  "}.Marshal(res.Interface())
+		var out []json.RawMessage
+		for _, r := range res {
+			b, err := protojson.Marshal(r.Interface())
+			if err != nil {
+				return err
+			}
+			out = append(out, b)
+		}
+		var v any = out
+		if !list {
+			v = out[0]
+		}
+		b, err := json.MarshalIndent(v, "", "  ")
 		if err != nil {
 			return err
 		}
@@ -138,9 +262,15 @@ func (s *apiSession) print(ctx context.Context, w io.Writer, k apicli.Kind, outp
 		return err
 	case "yaml":
 		if k.Manifest == "" {
-			return writeYAML(w, []protoreflect.Message{res})
+			return writeYAML(w, res)
 		}
-		req := &rpmgrv1.ExportManifestsRequest{OrgId: s.creds.Org, ResourceIds: []string{id}}
+		req := &rpmgrv1.ExportManifestsRequest{OrgId: s.creds.Org, ResourceIds: ids}
+		if list {
+			req = &rpmgrv1.ExportManifestsRequest{OrgId: s.creds.Org, Kinds: []string{k.Manifest}}
+		}
+		if len(ids) == 0 {
+			return nil
+		}
 		r, err := rpmgrv1connect.NewManifestServiceClient(s.hc, s.creds.Controller).ExportManifests(ctx, connect.NewRequest(req))
 		if err != nil {
 			return apiError(err)
@@ -148,7 +278,7 @@ func (s *apiSession) print(ctx context.Context, w io.Writer, k apicli.Kind, outp
 		_, err = io.WriteString(w, r.Msg.GetYaml())
 		return err
 	case "table":
-		return writeTable(w, k, []protoreflect.Message{res})
+		return writeTable(w, k, res)
 	}
 	return cli.Usagef("unknown output %q: table, yaml or json", output)
 }
