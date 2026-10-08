@@ -730,6 +730,10 @@ there is no usable half-close.
 
 **Proxies.** The TCP transports honour `HTTPS_PROXY`/`ALL_PROXY` (HTTP CONNECT and SOCKS5). QUIC
 does not traverse HTTP proxies (MASQUE is out of scope); behind a proxy, the TCP transport is used.
+The proxy is an `http://` URL (CONNECT) or a `socks5://` or `socks5h://` URL, with optional
+credentials; `HTTPS_PROXY` wins over `ALL_PROXY`, `NO_PROXY` exempts gateways as it does for
+net/http, and loopback addresses are always dialled directly. The proxy resolves the gateway's
+name.
 
 [R] Over TCP, a connector keeps **2** connections per gateway and spreads streams across them, which
 limits head-of-line blocking from packet loss to half the streams.

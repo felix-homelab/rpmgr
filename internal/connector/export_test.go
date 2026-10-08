@@ -3,6 +3,8 @@
 package connector
 
 import (
+	"context"
+	"net"
 	"testing"
 	"time"
 )
@@ -13,4 +15,10 @@ func SetRetireAfter(t testing.TB, d time.Duration) {
 	old := retireAfter
 	retireAfter = d
 	t.Cleanup(func() { retireAfter = old })
+}
+
+// NewProxyDialer is ProxyDialer with the direct dial function of a test.
+func NewProxyDialer(getenv func(string) string, dial func(ctx context.Context, network, addr string) (net.Conn, error)) (
+	func(ctx context.Context, addr string) (net.Conn, error), error) {
+	return newProxyDialer(getenv, dial)
 }
