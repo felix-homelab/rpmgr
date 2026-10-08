@@ -1,0 +1,117 @@
+// SPDX-License-Identifier: Apache-2.0
+
+syntax = "proto3";
+
+package rpmgr.v1;
+
+import "buf/validate/validate.proto";
+import "google/protobuf/timestamp.proto";
+import "rpmgr/v1/common.proto";
+import "rpmgr/v1/options.proto";
+
+option go_package = "github.com/felix-homelab/rpmgr/gen/rpmgr/v1;rpmgrv1";
+
+// StatusService is what the agents of an org run (docs/07-api.md, "Writes and apply status").
+service StatusService {
+  // GetApplyStatus returns how far the org's agents are with a revision.
+  rpc GetApplyStatus(GetApplyStatusRequest) returns (GetApplyStatusResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+    option (rpmgr.v1.authz) = {
+      permission: "org.read"
+      resource_field: "org_id"
+    };
+  }
+  // WatchApplyStatus streams the apply status of a revision at every change, until it is applied,
+  // rejected or timed out, or for 60 s at most.
+  rpc WatchApplyStatus(WatchApplyStatusRequest) returns (stream WatchApplyStatusResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+    option (rpmgr.v1.authz) = {
+      permission: "org.read"
+      resource_field: "org_id"
+    };
+  }
+}
+
+// ApplyState is where a revision stands on the agents.
+enum ApplyState {
+  // Not set.
+  APPLY_STATE_UNSPECIFIED = 0;
+  // Some online agent has not applied it yet.
+  APPLY_STATE_PENDING = 1;
+  // Every online agent runs it, or a later revision.
+  APPLY_STATE_APPLIED = 2;
+  // An online agent rejected it; the reasons are with the agent.
+  APPLY_STATE_REJECTED = 3;
+  // An online agent did not answer within the apply acknowledgement period (docs/03).
+  APPLY_STATE_APPLY_TIMEOUT = 4;
+}
+
+// ApplyStatus is how far the org's agents are with a revision. Offline agents are listed apart and
+// do not hold the state at PENDING.
+message ApplyStatus {
+  // The state over the online agents: REJECTED if one rejected it, else APPLY_TIMEOUT if one timed
+  // out, else APPLIED if all applied it, else PENDING.
+  ApplyState state = 1;
+  // How many online agents there are.
+  int32 agents_total = 2;
+  // How many of them applied it.
+  int32 agents_applied = 3;
+  // The online agents that have not applied it, with their state.
+  repeated AgentApplyStatus agents = 4;
+  // The agents without a live control session, which get it when they connect.
+  repeated OfflineAgent offline = 5;
+}
+
+// AgentApplyStatus is one agent's state with a revision.
+message AgentApplyStatus {
+  // The agent: a gateway or a connector ID.
+  string agent_id = 1;
+  // PENDING, REJECTED or APPLY_TIMEOUT.
+  ApplyState state = 2;
+  // Why it rejected it.
+  repeated ApplyError errors = 3;
+}
+
+// ApplyError is one reason an agent gave for rejecting a snapshot.
+message ApplyError {
+  // The resource the reason is about, if one.
+  string resource_id = 1;
+  // The reason.
+  string message = 2;
+}
+
+// OfflineAgent is an agent without a live control session.
+message OfflineAgent {
+  // The agent: a gateway or a connector ID.
+  string agent_id = 1;
+  // When it was last seen; not set if it never connected.
+  google.protobuf.Timestamp last_seen_time = 2;
+}
+
+// GetApplyStatusRequest names an org and a revision.
+message GetApplyStatusRequest {
+  // The org.
+  string org_id = 1 [(buf.validate.field).string.min_len = 1];
+  // The revision a write returned.
+  Revision revision = 2 [(buf.validate.field).required = true];
+}
+
+// GetApplyStatusResponse is the status.
+message GetApplyStatusResponse {
+  // The status.
+  ApplyStatus apply_status = 1;
+}
+
+// WatchApplyStatusRequest names an org and a revision.
+message WatchApplyStatusRequest {
+  // The org.
+  string org_id = 1 [(buf.validate.field).string.min_len = 1];
+  // The revision a write returned.
+  Revision revision = 2 [(buf.validate.field).required = true];
+}
+
+// WatchApplyStatusResponse is the status after a change.
+message WatchApplyStatusResponse {
+  // The status.
+  ApplyStatus apply_status = 1;
+}

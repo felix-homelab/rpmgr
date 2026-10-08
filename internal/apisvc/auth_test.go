@@ -114,6 +114,12 @@ func newEnv(t *testing.T) *env {
 		}); err != nil {
 		t.Fatal(err)
 	}
+	if err := srv.Mount(mux, rpmgrv1.File_rpmgr_v1_status_proto.Services().ByName("StatusService"),
+		func(o ...connect.HandlerOption) (string, http.Handler) {
+			return rpmgrv1connect.NewStatusServiceHandler(&apisvc.Status{DB: db, Now: now, Every: 20 * time.Millisecond}, o...)
+		}); err != nil {
+		t.Fatal(err)
+	}
 	if err := srv.Mount(mux, rpmgrv1.File_rpmgr_v1_route_proto.Services().ByName("RouteService"),
 		func(o ...connect.HandlerOption) (string, http.Handler) {
 			return rpmgrv1connect.NewRouteServiceHandler(&apisvc.Routes{DB: db, API: srv, Now: now}, o...)
@@ -166,6 +172,7 @@ type browser struct {
 	con    rpmgrv1connect.ConnectorServiceClient
 	dom    rpmgrv1connect.DomainServiceClient
 	rt     rpmgrv1connect.RouteServiceClient
+	st     rpmgrv1connect.StatusServiceClient
 }
 
 func (e *env) browser() *browser {
@@ -179,6 +186,7 @@ func (e *env) browser() *browser {
 	b.con = rpmgrv1connect.NewConnectorServiceClient(&http.Client{Transport: b}, e.url)
 	b.dom = rpmgrv1connect.NewDomainServiceClient(&http.Client{Transport: b}, e.url)
 	b.rt = rpmgrv1connect.NewRouteServiceClient(&http.Client{Transport: b}, e.url)
+	b.st = rpmgrv1connect.NewStatusServiceClient(&http.Client{Transport: b}, e.url)
 	return b
 }
 

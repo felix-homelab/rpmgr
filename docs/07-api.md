@@ -175,7 +175,12 @@ API reports both ([03](03-connections.md#configuration-reconciliation)).
   returns once the revision is applied or rejected, or the timeout passes. The CLI does this by
   default.
 - `StatusService.WatchApplyStatus(revision)` streams progress; the UI uses it to show
-  "pending → applied" live after every save.
+  "pending → applied" live after every save. `GetApplyStatus(revision)` returns it once.
+- The status is derived over the org's agents with a live control session: an agent applied the
+  revision when it runs that revision or a later one, which an agent whose snapshot the revision
+  did not change does at once; it rejected or timed out when the newest snapshot it was sent, of
+  that revision or later, was rejected or not answered; it is pending otherwise, also when it runs
+  a revision of an older database epoch. A watch ends at the final state, or after 60 s.
 - DNS configuration (managed zones, DNS names, `dns_target`, `dns_proxied`) is written in ordinary
   configuration transactions with a revision. Publication at the DNS provider is **not** part of
   `apply_status` and `wait = APPLIED` does not wait for it; it is reported as `dns_status` per
