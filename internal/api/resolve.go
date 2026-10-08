@@ -105,3 +105,15 @@ func StoreOperatorsMayEnroll(db *store.DB, sys context.Context) func(context.Con
 		return s.GetOperatorsMayEnroll(), nil
 	}
 }
+
+// StoreRequireMFA reads an org's policy that its members sign in with a second factor from the
+// store, under sys.
+func StoreRequireMFA(db *store.DB, sys context.Context) func(context.Context, string) (bool, error) {
+	return func(_ context.Context, orgID string) (bool, error) {
+		s, _, err := settings.Org(sys, db.ReadClient(), orgID)
+		if err != nil {
+			return false, err
+		}
+		return s.GetRequireMfa(), nil
+	}
+}

@@ -43,15 +43,20 @@ const (
 type Auth struct {
 	rpmgrv1connect.UnimplementedAuthServiceHandler
 	Accounts *accounts.Accounts
+	MFA      *accounts.MFA
 	Sessions *websession.Sessions
 	IPLimit  *ratelimit.Limiter // logins and password resets per client address
-	Backoff  *ratelimit.Backoff // failed logins per account
+	Backoff  *ratelimit.Backoff // failed logins per account, failed step-ups per user
+	Now      func() time.Time
 }
 
 // NewAuth returns AuthService with the limits of docs/04.
-func NewAuth(acc *accounts.Accounts, s *websession.Sessions, now func() time.Time) *Auth {
-	return &Auth{Accounts: acc, Sessions: s, IPLimit: ratelimit.New(IPEvery, IPBurst, now),
-		Backoff: ratelimit.NewBackoff(FreeFailures, FirstDelay, MaxDelay, now)}
+func NewAuth(mfa *accounts.MFA, s *websession.Sessions, now func() time.Time) *Auth {
+	if now == nil {
+		now = time.Now
+	}
+	return &Auth{Accounts: mfa.Accounts, MFA: mfa, Sessions: s, IPLimit: ratelimit.New(IPEvery, IPBurst, now),
+		Backoff: ratelimit.NewBackoff(FreeFailures, FirstDelay, MaxDelay, now), Now: now}
 }
 
 // Login implements AuthService.
@@ -75,6 +80,25 @@ func (a *Auth) Login(ctx context.Context, req *connect.Request[rpmgrv1.LoginRequ
 	if err != nil {
 		return nil, err
 	}
+	amr := []string{"pwd"}
+	switch has, err := a.MFA.HasMFA(u.ID); {
+	case err != nil:
+		return nil, err
+	case has && req.Msg.GetSecondFactor() == "":
+		// The password was right; the second factor is still to come, and counts no failure.
+		return nil, withReason(connect.NewError(connect.CodeUnauthenticated, errors.New("apisvc: a second factor is needed")),
+			api.ReasonMFARequired)
+	case has:
+		how, err := a.MFA.VerifySecondFactor(u.ID, req.Msg.GetSecondFactor())
+		if errors.Is(err, accounts.ErrSecondFactor) {
+			a.Backoff.Fail(key)
+			return nil, connect.NewError(connect.CodeUnauthenticated, err)
+		}
+		if err != nil {
+			return nil, err
+		}
+		amr = append(amr, how)
+	}
 	a.Backoff.Succeed(key)
 	// A new token at every sign-in: a session the browser still carries ends.
 	if old, err := (&http.Request{Header: req.Header()}).Cookie(websession.CookieName); err == nil {
@@ -82,11 +106,57 @@ func (a *Auth) Login(ctx context.Context, req *connect.Request[rpmgrv1.LoginRequ
 			_ = a.Sessions.Revoke(s.UserID, s.ID, u.ID)
 		}
 	}
-	tok, sess, err := a.Sessions.Create(u.ID, []string{"pwd"}, ip, req.Header().Get("User-Agent"))
+	tok, sess, err := a.Sessions.Create(u.ID, amr, ip, req.Header().Get("User-Agent"))
 	if err != nil {
 		return nil, err
 	}
 	resp := connect.NewResponse(&rpmgrv1.LoginResponse{UserId: u.ID, Session: sessionOf(sess, sess.ID)})
+	resp.Header().Add("Set-Cookie", websession.Cookie(tok, sess).String())
+	return resp, nil
+}
+
+// StepUp implements AuthService. A user with an authenticator steps up with a second factor; the
+// password alone is not enough for them.
+func (a *Auth) StepUp(ctx context.Context, req *connect.Request[rpmgrv1.StepUpRequest]) (*connect.Response[rpmgrv1.StepUpResponse], error) {
+	c, err := sessionCaller(ctx)
+	if err != nil {
+		return nil, err
+	}
+	key := "step-up:" + c.UserID
+	if wait := a.Backoff.Wait(key); wait > 0 {
+		return nil, limited(wait)
+	}
+	has, err := a.MFA.HasMFA(c.UserID)
+	if err != nil {
+		return nil, err
+	}
+	how := "pwd"
+	if has {
+		if req.Msg.GetSecondFactor() == "" {
+			return nil, withReason(connect.NewError(connect.CodeInvalidArgument, errors.New("apisvc: step up with a second factor")),
+				api.ReasonMFARequired)
+		}
+		how, err = a.MFA.VerifySecondFactor(c.UserID, req.Msg.GetSecondFactor())
+	} else {
+		u, _, uerr := a.Accounts.User(c.UserID)
+		if uerr != nil {
+			return nil, uerr
+		}
+		_, err = a.Accounts.Authenticate(ctx, u.Email, req.Msg.GetPassword())
+	}
+	if errors.Is(err, accounts.ErrSecondFactor) || errors.Is(err, accounts.ErrCredentials) {
+		a.Backoff.Fail(key)
+		return nil, connect.NewError(connect.CodeUnauthenticated, errors.New("apisvc: the step-up failed"))
+	}
+	if err != nil {
+		return nil, err
+	}
+	a.Backoff.Succeed(key)
+	tok, sess, err := a.Sessions.Elevate(c.CredentialID, how, api.StepUpWindow)
+	if err != nil {
+		return nil, err
+	}
+	resp := connect.NewResponse(&rpmgrv1.StepUpResponse{ExpireTime: timestamppb.New(*sess.ElevatedUntil)})
 	resp.Header().Add("Set-Cookie", websession.Cookie(tok, sess).String())
 	return resp, nil
 }
@@ -203,6 +273,14 @@ func sessionOf(s *ent.Session, current string) *rpmgrv1.Session {
 	return &rpmgrv1.Session{Id: s.ID, CreateTime: timestamppb.New(s.CreatedAt), LastSeenTime: timestamppb.New(s.LastSeenAt),
 		IdleExpireTime: timestamppb.New(s.IdleExpiresAt), ExpireTime: timestamppb.New(s.AbsoluteExpiresAt), Ip: s.IP,
 		UserAgent: s.UserAgent, Current: s.ID == current}
+}
+
+// withReason adds a google.rpc.ErrorInfo reason to an error.
+func withReason(err *connect.Error, reason string) error {
+	if d, derr := connect.NewErrorDetail(&errdetails.ErrorInfo{Reason: reason, Domain: api.ErrorDomain}); derr == nil {
+		err.AddDetail(d)
+	}
+	return err
 }
 
 // limited is RESOURCE_EXHAUSTED with the time to wait (docs/07-api.md, "Errors").
