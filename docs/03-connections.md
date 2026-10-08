@@ -611,6 +611,14 @@ sequenceDiagram
   ([07](07-api.md#example-a-route)).
 - `Forwarded` and `X-Forwarded-For/Proto/Host` are set by the gateway; values arriving from the
   public client are stripped unless the client's address is in the gateway's trusted-proxy CIDRs.
+  A trusted proxy's `X-Forwarded-For` and `Forwarded` chains are extended with its address, and its
+  `X-Forwarded-Proto` (`http` or `https`) and `X-Forwarded-Host` are kept.
+- **Route settings** ([06](06-data-model.md#routing)): a route sends its own `Host` upstream or the
+  client's; it sets request and response headers, and an empty value removes one. Headers that are
+  the gateway's own (`Forwarded`, `X-Forwarded-*`, `Host`) or the connection's (`Connection`,
+  `Content-Length`, `Transfer-Encoding`, `Upgrade` and the other hop-by-hop headers) cannot be set,
+  and a value with CR or LF is refused. A request body above the route's limit is **413**, whether
+  `Content-Length` announces it or it is streamed.
 - For a route with `dns_proxied` (Phase 2), the client address is taken from `CF-Connecting-IP`,
   and only when the TCP peer is in Cloudflare's published ranges, which reach the gateway in its
   snapshot. `X-Forwarded-*` from those peers is not trusted. Access policies, rate limits and the

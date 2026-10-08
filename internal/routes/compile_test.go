@@ -439,8 +439,11 @@ func TestCompile_GatewayHTTP(t *testing.T) {
 			c.RouteTarget.Create().SetOrgID(f.orgA).SetRouteID(route).SetConnectorID(con).SetKind("address").SetHost("10.0.0.80").
 				SetPort(8080).SetUpstreamProtocol(proto).SetPriority(priority).ExecX(f.sys)
 		}
-		web := f.httpRoute(t, "web", true, true, func(h *ent.RouteHTTPCreate) { h.SetWebsocket(false) },
-			"www.example.com/docs", "app.example.com", "www.example.com")
+		c.GatewayGroup.UpdateOneID(f.groupA).SetTrustedProxyCidrs([]string{"10.0.0.0/8"}).ExecX(f.sys)
+		web := f.httpRoute(t, "web", true, true, func(h *ent.RouteHTTPCreate) {
+			h.SetWebsocket(false).SetHostHeader("internal.local").SetMaxBodyBytes(1 << 20).
+				SetRequestHeadersSet(map[string]string{"x-env": "prod", "X-Debug": ""}).SetResponseHeadersSet(map[string]string{"server": ""})
+		}, "www.example.com/docs", "app.example.com", "www.example.com")
 		target(web, f.c1, routetarget.UpstreamProtocolH2c, 0)
 		target(web, f.c2, routetarget.UpstreamProtocolH2c, 1)
 		plain := f.httpRoute(t, "plain", true, true, nil, "plain.example.com")
@@ -469,7 +472,19 @@ func TestCompile_GatewayHTTP(t *testing.T) {
 			w.GetWebsocket() || !slices.Equal(w.GetConnectors(), cons) {
 			t.Fatalf("web %v", w)
 		}
-		if p := got[plain]; p.GetUpstreamProtocol() != "http" || !p.GetWebsocket() || !slices.Equal(p.GetConnectors(), []string{f.c1}) {
+		var req, res []string
+		for _, h := range w.GetRequestHeaders() {
+			req = append(req, h.GetName()+"="+h.GetValue())
+		}
+		for _, h := range w.GetResponseHeaders() {
+			res = append(res, h.GetName()+"="+h.GetValue())
+		}
+		if w.GetHostHeader() != "internal.local" || w.GetMaxBodyBytes() != 1<<20 || !slices.Equal(req, []string{"X-Debug=", "X-Env=prod"}) ||
+			!slices.Equal(res, []string{"Server="}) || !slices.Equal(w.GetTrustedProxies(), []string{"10.0.0.0/8"}) {
+			t.Fatalf("web's HTTP settings %v", w)
+		}
+		if p := got[plain]; p.GetUpstreamProtocol() != "http" || !p.GetWebsocket() || !slices.Equal(p.GetConnectors(), []string{f.c1}) ||
+			p.GetHostHeader() != "" || p.GetMaxBodyBytes() != 0 {
 			t.Fatalf("plain %v", p)
 		}
 		var types []string

@@ -19,6 +19,7 @@ import (
 	"math/big"
 	"net"
 	"net/http"
+	"net/netip"
 	"slices"
 	"strings"
 	"testing"
@@ -497,5 +498,81 @@ func TestHTTPRoutes_HTTPSUpstream(t *testing.T) {
 		if r.status != tc.want || tc.want == http.StatusOK && r.body != "HTTP/2.0" {
 			t.Errorf("%s: %d %q, want %d", tc.name, r.status, r.body, tc.want)
 		}
+	}
+}
+
+// headerEcho answers with the request's Host, forwarding headers, two test headers and body size,
+// and sets a Server header.
+var headerEcho = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	n, err := io.Copy(io.Discard, r.Body)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	w.Header().Set("Server", "upstream/1.0")
+	//nolint:gosec // G705: the test upstream echoes the request as plain text
+	_, _ = fmt.Fprintf(w, "%s|%s|%s|%s|%s|%s|%s|%d", r.Host, r.Header.Get("X-Forwarded-For"), r.Header.Get("X-Forwarded-Proto"),
+		r.Header.Get("X-Forwarded-Host"), strings.Join(r.Header.Values("Forwarded"), ", "), r.Header.Get("X-Env"),
+		r.Header.Get("X-Debug"), n)
+})
+
+// TestHTTPRoutes_Forwarding: a client's forwarding headers are replaced unless it is a trusted
+// proxy, whose chain is extended and whose protocol and host are kept.
+func TestHTTPRoutes_Forwarding(t *testing.T) {
+	route := gateway.HTTPRoute{ID: "rt_web", Upstream: "http", Hosts: []gateway.HTTPHost{{Hostname: "app.example.com"}}}
+	e := newHTTPEnv(t, headerEcho, route)
+	spoofed := http.Header{"X-Forwarded-For": {"203.0.113.9"}, "X-Forwarded-Proto": {"http"}, "X-Forwarded-Host": {"evil.example"},
+		"Forwarded": {"for=203.0.113.9"}}
+	want := `app.example.com|127.0.0.1|https|app.example.com|for=127.0.0.1;host="app.example.com";proto=https|||0`
+	if r := get(t, e.client(false), "https://app.example.com/", spoofed); r.body != want {
+		t.Errorf("an untrusted client:\n got %s\nwant %s", r.body, want)
+	}
+	route.TrustedProxies = []netip.Prefix{netip.MustParsePrefix("127.0.0.0/8")}
+	e.routes.Apply([]gateway.HTTPRoute{route})
+	want = `app.example.com|203.0.113.9, 127.0.0.1|http|evil.example|for=203.0.113.9, for=127.0.0.1;host="app.example.com";proto=https|||0`
+	if r := get(t, e.client(true), "https://app.example.com/", spoofed); r.body != want {
+		t.Errorf("a trusted proxy:\n got %s\nwant %s", r.body, want)
+	}
+}
+
+// TestHTTPRoutes_Headers: a route sets and removes request and response headers and may send its
+// own Host upstream.
+func TestHTTPRoutes_Headers(t *testing.T) {
+	route := gateway.HTTPRoute{ID: "rt_web", Upstream: "http", Hosts: []gateway.HTTPHost{{Hostname: "app.example.com"}},
+		HostHeader:      "internal.local",
+		RequestHeaders:  []gateway.HTTPHeader{{Name: "X-Debug"}, {Name: "X-Env", Value: "prod"}},
+		ResponseHeaders: []gateway.HTTPHeader{{Name: "Server"}, {Name: "X-Frame-Options", Value: "DENY"}}}
+	e := newHTTPEnv(t, headerEcho, route)
+	r := get(t, e.client(false), "https://app.example.com/", http.Header{"X-Debug": {"1"}, "X-Env": {"dev"}})
+	if !strings.HasPrefix(r.body, "internal.local|") || !strings.HasSuffix(r.body, "|prod||0") || r.header.Get("Server") != "" ||
+		r.header.Get("X-Frame-Options") != "DENY" {
+		t.Fatalf("%q %v", r.body, r.header)
+	}
+}
+
+// TestHTTPRoutes_BodyLimit: a body at the route's limit passes; one byte more is 413, whether
+// announced by Content-Length or streamed.
+func TestHTTPRoutes_BodyLimit(t *testing.T) {
+	route := gateway.HTTPRoute{ID: "rt_web", Upstream: "http", Hosts: []gateway.HTTPHost{{Hostname: "app.example.com"}}, MaxBody: 10}
+	e := newHTTPEnv(t, headerEcho, route)
+	post := func(body io.Reader, length int64) int {
+		req, _ := http.NewRequest(http.MethodPost, "https://app.example.com/", body)
+		req.ContentLength = length
+		resp, err := e.client(false).Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer func() { _ = resp.Body.Close() }()
+		_, _ = io.Copy(io.Discard, resp.Body)
+		return resp.StatusCode
+	}
+	if got := post(strings.NewReader("0123456789"), 10); got != http.StatusOK {
+		t.Errorf("at the limit: %d", got)
+	}
+	if got := post(strings.NewReader("0123456789x"), 11); got != http.StatusRequestEntityTooLarge {
+		t.Errorf("announced above the limit: %d", got)
+	}
+	if got := post(io.MultiReader(strings.NewReader("0123456789x")), -1); got != http.StatusRequestEntityTooLarge {
+		t.Errorf("streamed above the limit: %d", got)
 	}
 }
