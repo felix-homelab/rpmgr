@@ -717,7 +717,7 @@ window defaults to 4 MiB per stream and 1 GiB per connection
 | Connector (HTTP/2 server) | `MaxConcurrentStreams` | 10 000 |
 | Both | `MaxReceiveBufferPerStream` / `MaxReceiveBufferPerConnection` | 16 MiB / 256 MiB |
 | Both | `MaxReadFrameSize` (advertised as `SETTINGS_MAX_FRAME_SIZE`) | 16 KiB |
-| Both | Memory bound | net/http's HTTP/2 has no window-budget hook like quic-go's, so h2 sessions are **admitted** against the same process-wide budget (the sum of their maximum connection windows); when it is tight, new sessions get smaller windows (the stream window at most a sixteenth of the connection window), and a session that would get less than 4 MiB is refused |
+| Both | Memory bound | net/http's HTTP/2 has no window-budget hook like quic-go's, so h2 sessions are **admitted** against the same process-wide budget (the sum of their maximum connection windows): a new session gets at most half the free budget, so when it is tight new sessions get smaller windows (the stream window at most a sixteenth of the connection window), and a session that would get less than 4 MiB is refused. With the default budget, three sessions get 256 MiB, the next ones 128, 64 … 4 MiB |
 | Gateway | At the stream limit | Reserves a slot with the non-blocking `ClientConn.Reserve` **before** opening (`RoundTrip` alone would wait [F Go 1.27.1 `net/http/clientconn.go:254,301`]); uses another session, or answers 503 (HTTP) / resets (TCP). Never blocks waiting for a slot |
 | Gateway | Reset of a stream | Also closes the response body: only that returns the stream's unread bytes to the connection window [F Go 1.27.1 `net/http/internal/http2/transport.go:2402-2421`] |
 

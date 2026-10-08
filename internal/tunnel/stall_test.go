@@ -132,34 +132,35 @@ func TestStalls_OldestFirst(t *testing.T) {
 	}
 }
 
-// TestH2_AdmissionUnderBudget: reverse-HTTP/2 sessions are admitted against the process-wide window
-// budget, which QUIC sessions share; when it is tight a new session gets smaller windows, and when
-// not even 4 MiB fit, none. (The h3 share is Phase 3.)
+// TestH2_AdmissionUnderBudget: h2 sessions are admitted against the window budget, each with at
+// most half of what is free: the first ones get full windows, later ones smaller ones (the stream
+// window a sixteenth of the connection window), and a session that would get less than 4 MiB is
+// refused; released reservations are free again. Two links of two sessions each to four gateways
+// fit in the default budget.
 func TestH2_AdmissionUnderBudget(t *testing.T) {
-	b := tunnel.NewBudget(600 << 20)
+	b := tunnel.NewBudget(tunnel.DefaultWindowBudget)
 	full := tunnel.DefaultH2Windows()
-	w1, release1, err := b.AdmitH2(full)
-	if err != nil || w1 != full {
-		t.Fatalf("first session: %+v %v", w1, err)
-	}
-	if _, _, err := b.AdmitH2(full); err != nil {
-		t.Fatal(err)
-	}
-	w3, release3, err := b.AdmitH2(full)
-	if err != nil || w3.Conn != 88<<20 || w3.Stream != (88<<20)/16 {
-		t.Fatalf("third session: %+v %v", w3, err)
+	var releases []func()
+	for i, want := range []int{256, 256, 256, 128, 64, 32, 16, 8, 4} {
+		w, release, err := b.AdmitH2(full)
+		if err != nil || w.Conn != want<<20 || w.Stream != min(full.Stream, (want<<20)/16) {
+			t.Fatalf("session %d: %+v %v, want a %d MiB window", i+1, w, err, want)
+		}
+		releases = append(releases, release)
 	}
 	if _, _, err := b.AdmitH2(full); !errors.Is(err, tunnel.ErrBudget) {
-		t.Fatalf("a fourth session with the budget exhausted: %v", err)
+		t.Fatalf("a tenth session with less than 4 MiB free: %v", err)
 	}
-	if b.Used() != 600<<20 {
+	if b.Used() != 1020<<20 {
 		t.Fatalf("used %d", b.Used())
 	}
-	release1()
-	release1() // twice is harmless
-	release3()
-	if b.Used() != 256<<20 {
-		t.Fatalf("after two releases: used %d", b.Used())
+	releases[0]()
+	releases[0]() // twice is harmless
+	for _, release := range releases[1:4] {
+		release()
+	}
+	if b.Used() != (1020-3*256-128)<<20 {
+		t.Fatalf("after four releases: used %d", b.Used())
 	}
 	if w, _, err := b.AdmitH2(full); err != nil || w != full {
 		t.Fatalf("after the releases: %+v %v", w, err)
