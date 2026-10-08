@@ -22,3 +22,11 @@ func SetRouteTimers(t testing.TB, drain, rebind time.Duration) {
 	routeDrain, rebindEvery = drain, rebind
 	t.Cleanup(func() { routeDrain, rebindEvery = oldDrain, oldRebind })
 }
+
+// SetUnassignedDrain shortens how long the sessions of a dropped connector keep their streams, for
+// one test that must not run in parallel with others.
+func SetUnassignedDrain(t testing.TB, d time.Duration) {
+	old := unassignedDrain
+	unassignedDrain = d
+	t.Cleanup(func() { unassignedDrain = old })
+}

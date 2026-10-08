@@ -473,3 +473,83 @@ func TestSessions_Recheck(t *testing.T) {
 	_ = c3.serveErr(t)
 	eventually(t, "a cancelled session is still counted", func() bool { return len(m.Count()) == 0 })
 }
+
+// TestSessions_DroppedConnectorKeepsStreams: a connector the snapshot drops keeps its session while
+// a stream is open, gets no new stream, and loses the session when the stream ends, or at the end
+// of the drain period; one assigned again in time keeps it.
+func TestSessions_DroppedConnectorKeepsStreams(t *testing.T) {
+	gateway.SetUnassignedDrain(t, 2*time.Second)
+	a := &assignment{known: map[string]bool{cid("con_4"): true}, routes: map[string][]string{"r1": {cid("con_4")}}}
+	m := newSessions(a, nil)
+	c := start(t, m, connectorID("con_4"), hello("r1"))
+	ctx := context.Background()
+	open := func() tunnel.Stream {
+		t.Helper()
+		st, code, err := m.OpenStream(ctx, &tunnelv1.StreamOpen{RouteId: "r1"})
+		if err != nil || code != tunnelv1.ResultCode_RESULT_CODE_NO_ERROR {
+			t.Fatalf("%s %v", code, err)
+		}
+		return st
+	}
+	echoOnce := func(st tunnel.Stream, msg string) {
+		t.Helper()
+		if _, err := st.Write([]byte(msg)); err != nil {
+			t.Fatal(err)
+		}
+		b := make([]byte, len(msg))
+		if _, err := io.ReadFull(st, b); err != nil || string(b) != msg {
+			t.Fatalf("echo %q %v", b, err)
+		}
+	}
+
+	// Dropped while a stream is open: the stream works on, no new stream opens.
+	st := open()
+	a.mu.Lock()
+	delete(a.known, cid("con_4"))
+	a.routes = map[string][]string{}
+	a.mu.Unlock()
+	m.Recheck()
+	time.Sleep(300 * time.Millisecond)
+	echoOnce(st, "still here")
+	if _, _, err := m.OpenStream(ctx, &tunnelv1.StreamOpen{RouteId: "r1"}); !errors.Is(err, gateway.ErrNoSession) {
+		t.Fatalf("a new stream for a dropped connector: %v", err)
+	}
+	_ = st.CloseWrite()
+	_, _ = io.ReadAll(st)
+	_ = st.Close()
+	if err := c.serveErr(t); err == nil {
+		t.Fatal("the session ended without an error")
+	}
+
+	// Dropped and assigned again before the stream ends: the session stays.
+	a.mu.Lock()
+	a.known[cid("con_4")], a.routes["r1"] = true, []string{cid("con_4")}
+	a.mu.Unlock()
+	c = start(t, m, connectorID("con_4"), hello("r1"))
+	st = open()
+	a.forget(cid("con_4"))
+	m.Recheck()
+	time.Sleep(300 * time.Millisecond)
+	a.mu.Lock()
+	a.known[cid("con_4")] = true
+	a.mu.Unlock()
+	time.Sleep(300 * time.Millisecond)
+	_ = st.Close()
+	time.Sleep(300 * time.Millisecond)
+	select {
+	case err := <-c.served:
+		t.Fatalf("a connector assigned again lost its session: %v", err)
+	default:
+	}
+
+	// Dropped with a stream that never ends: closed at the end of the drain period.
+	st = open()
+	a.forget(cid("con_4"))
+	begin := time.Now()
+	m.Recheck()
+	_ = c.serveErr(t)
+	if d := time.Since(begin); d < 1500*time.Millisecond || d > 4*time.Second {
+		t.Fatalf("closed after %s, want the 2 s drain period", d)
+	}
+	_ = st.Close()
+}
