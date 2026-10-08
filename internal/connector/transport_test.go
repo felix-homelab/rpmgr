@@ -148,7 +148,6 @@ func TestTransport_PinNeverFallsBack(t *testing.T) {
 	})
 }
 
-// TestTransport_UDPBlocked: with UDP blackholed, TCP starts after 300 ms and wins; the winner is
 // TestTransport_UDPBlocked: with UDP blackholed, TCP starts after 300 ms and wins.
 func TestTransport_UDPBlocked(t *testing.T) {
 	w := newWorld(t)
