@@ -81,9 +81,16 @@ func (r *Routes) CreateRoute(ctx context.Context, req *connect.Request[rpmgrv1.C
 			case *rpmgrv1.Route_TlsPassthrough:
 				c.SetType(route.TypeTLSPassthrough)
 				hostnames = spec.TlsPassthrough.GetHostnames()
+			case *rpmgrv1.Route_Tcp:
+				c.SetType(route.TypeTCP)
+			case *rpmgrv1.Route_Udp:
+				c.SetType(route.TypeUDP)
 			}
 			row, err := c.Save(ctx)
 			if err != nil {
+				return nil, err
+			}
+			if err := createPortRoute(ctx, tx, row, in); err != nil {
 				return nil, err
 			}
 			if h := in.GetHttp(); h != nil {
@@ -144,7 +151,9 @@ func checkSpec(in *rpmgrv1.Route) error {
 	hostnames := append(in.GetHttp().GetHostnames(), in.GetTlsPassthrough().GetHostnames()...)
 	switch {
 	case in.GetSpec() == nil:
-		return invalid("a route needs a spec: http or tls_passthrough")
+		return invalid("a route needs a spec: http, tcp, udp or tls_passthrough")
+	case in.GetTcp() != nil || in.GetUdp() != nil:
+		return nil
 	case len(hostnames) == 0 || len(hostnames) > maxHostnames:
 		// The request's validation sees an update's hostnames only if it names them.
 		return invalid("a route needs 1 to %d hostnames", maxHostnames)
@@ -200,6 +209,9 @@ func canonicalHeaders(headers map[string]string) map[string]string {
 
 // routeError gives the route rules' errors their API codes.
 func routeError(err error) error {
+	if perr := portError(err); perr != nil {
+		return perr
+	}
 	switch {
 	case errors.Is(err, domains.ErrNotOwned):
 		return withReason(connect.NewError(connect.CodeFailedPrecondition, err), ReasonDomainNotVerified)
@@ -222,6 +234,10 @@ func routeFields(t route.Type) []string {
 		}
 	case route.TypeTLSPassthrough:
 		fields = append(fields, "tls_passthrough.hostnames")
+	case route.TypeTCP:
+		fields = append(fields, "tcp.port", "tcp.idle_timeout_seconds")
+	case route.TypeUDP:
+		fields = append(fields, "udp.port", "udp.flow_idle_timeout_seconds")
 	}
 	return fields
 }
@@ -262,7 +278,11 @@ func (r *Routes) UpdateRoute(ctx context.Context, req *connect.Request[rpmgrv1.U
 		if err != nil {
 			return nil, err
 		}
-		if !proto.Equal(specOf(was), specOf(next)) {
+		if row.Type == route.TypeTCP || row.Type == route.TypeUDP {
+			if err := updatePortRoute(ctx, tx, row, was, next); err != nil {
+				return nil, err
+			}
+		} else if !proto.Equal(specOf(was), specOf(next)) {
 			if err := routes.RemoveHostnames(ctx, tx, row.ID); err != nil {
 				return nil, err
 			}
@@ -325,8 +345,7 @@ func (r *Routes) ListRoutes(ctx context.Context, req *connect.Request[rpmgrv1.Li
 		return nil, err
 	}
 	c := r.DB.ReadClient()
-	q := c.Route.Query().Where(route.OrgID(m.GetOrgId()), route.TypeIn(route.TypeHTTP, route.TypeTLSPassthrough)).
-		Order(ent.Asc(route.FieldID)).Limit(size + 1)
+	q := c.Route.Query().Where(route.OrgID(m.GetOrgId())).Order(ent.Asc(route.FieldID)).Limit(size + 1)
 	if m.GetGatewayGroupId() != "" {
 		q.Where(route.GatewayGroupID(m.GetGatewayGroupId()))
 	}
@@ -435,6 +454,10 @@ func routeOf(ctx context.Context, c *ent.Client, row *ent.Route) (*rpmgrv1.Route
 		names[i] = h.Hostname
 	}
 	switch row.Type {
+	case route.TypeTCP, route.TypeUDP:
+		if err := setPortSpec(ctx, c, row, out); err != nil {
+			return nil, err
+		}
 	case route.TypeTLSPassthrough:
 		out.Spec = &rpmgrv1.Route_TlsPassthrough{TlsPassthrough: &rpmgrv1.TLSPassthroughRouteSpec{Hostnames: names}}
 	case route.TypeHTTP:

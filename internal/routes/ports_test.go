@@ -5,6 +5,7 @@ package routes_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/felix-homelab/rpmgr/internal/routes"
@@ -305,5 +306,44 @@ func TestRouteUDP(t *testing.T) {
 			t.Fatalf("a second route on the same allocation: %v", err)
 		}
 		_ = tcp
+	})
+}
+
+// TestAllocateReplacing: a route moving to a new port at a full quota does not count its old port,
+// another allocation does, and the old port stays taken until it is freed.
+func TestAllocateReplacing(t *testing.T) {
+	storetest.ForEachDialect(t, func(t *testing.T, db *store.DB) {
+		e := newEnv(t, db)
+		if err := e.pool(t, e.orgA, e.groupA, routes.TCP, 20000, 20009); err != nil {
+			t.Fatal(err)
+		}
+		e.db.Client().PortQuota.Create().SetOrgID(e.orgA).SetGatewayGroupID(e.groupA).SetProtocol("tcp").SetMaxPorts(1).ExecX(e.sys)
+		var old *ent.PortAllocation
+		if err := e.tx(t, func(tx *ent.Tx) error {
+			var err error
+			old, err = routes.Allocate(e.sys, tx, e.orgA, e.groupA, routes.TCP, 20001)
+			return err
+		}); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := e.alloc(t, e.orgA, e.groupA, routes.TCP, 20002); !errors.Is(err, routes.ErrQuotaReached) {
+			t.Fatalf("a second port at a full quota: %v", err)
+		}
+		err := e.tx(t, func(tx *ent.Tx) error {
+			if _, err := routes.AllocateReplacing(e.sys, tx, e.orgA, e.groupA, routes.TCP, 20001, old.ID); !errors.Is(err, routes.ErrPortTaken) {
+				t.Errorf("the old port itself: %v", err)
+			}
+			moved, err := routes.AllocateReplacing(e.sys, tx, e.orgA, e.groupA, routes.TCP, 20002, old.ID)
+			if err != nil || moved.Port != 20002 {
+				return fmt.Errorf("a move at a full quota: %v %w", moved, err)
+			}
+			return routes.Release(e.sys, tx, old.ID)
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if n := e.db.Client().PortAllocation.Query().CountX(e.sys); n != 1 {
+			t.Fatalf("%d allocations after the move", n)
+		}
 	})
 }

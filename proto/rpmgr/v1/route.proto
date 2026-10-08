@@ -83,6 +83,10 @@ message Route {
   oneof spec {
     // An HTTP route, TLS terminated at the gateway.
     HTTPRouteSpec http = 10;
+    // A TCP route on a public port of the group.
+    TCPRouteSpec tcp = 11;
+    // A UDP route on a public port of the group.
+    UDPRouteSpec udp = 12;
     // A TLS route passed through by SNI, TLS ending at the target.
     TLSPassthroughRouteSpec tls_passthrough = 13;
   }
@@ -156,6 +160,25 @@ message HTTPRouteSpec {
   optional bool websocket = 10;
   // The largest request body; 0 is no limit.
   uint64 max_body_bytes = 11;
+}
+
+// TCPRouteSpec is a tcp route: a public port of the gateway group, from its TCP port pools.
+message TCPRouteSpec {
+  // The port; 0 on create is a random free port of the pools. Within the org's quota.
+  uint32 port = 1 [(buf.validate.field).uint32.lte = 65535];
+  // A connection without traffic for this long is closed; 0 never; 3600 if not set.
+  optional uint32 idle_timeout_seconds = 2 [(buf.validate.field).uint32.lte = 604800];
+}
+
+// UDPRouteSpec is a udp route: a public port of the gateway group, from its UDP port pools.
+message UDPRouteSpec {
+  // The port; 0 on create is a random free port of the pools. Within the org's quota.
+  uint32 port = 1 [(buf.validate.field).uint32.lte = 65535];
+  // A flow without datagrams for this long is forgotten; 60 if not set.
+  optional uint32 flow_idle_timeout_seconds = 2 [(buf.validate.field).uint32 = {
+    gte: 1
+    lte: 86400
+  }];
 }
 
 // TLSPassthroughRouteSpec is a tls_passthrough route: the gateway reads the SNI and passes the

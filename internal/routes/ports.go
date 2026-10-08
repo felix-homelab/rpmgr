@@ -110,6 +110,13 @@ func ownGroup(ctx context.Context, tx *ent.Tx, org, group string) error {
 // must lie in one of the org's pools of the group, or with port 0 a random free one. The org's
 // quota for the group, if it has one, caps its allocations; without one only the pools do.
 func Allocate(ctx context.Context, tx *ent.Tx, org, group string, p Protocol, port int) (*ent.PortAllocation, error) {
+	return AllocateReplacing(ctx, tx, org, group, p, port, "")
+}
+
+// AllocateReplacing is Allocate for a route that moves from the allocation replaces to a new
+// port: replaces does not count towards the quota, as the caller frees it in the same
+// transaction.
+func AllocateReplacing(ctx context.Context, tx *ent.Tx, org, group string, p Protocol, port int, replaces string) (*ent.PortAllocation, error) {
 	if err := ownGroup(ctx, tx, org, group); err != nil {
 		return nil, err
 	}
@@ -122,7 +129,7 @@ func Allocate(ctx context.Context, tx *ent.Tx, org, group string, p Protocol, po
 		return nil, err
 	default:
 		n, err := tx.PortAllocation.Query().Where(portallocation.OrgID(org), portallocation.GatewayGroupID(group),
-			portallocation.ProtocolEQ(proto)).Count(ctx)
+			portallocation.ProtocolEQ(proto), portallocation.IDNEQ(replaces)).Count(ctx)
 		if err != nil {
 			return nil, err
 		}

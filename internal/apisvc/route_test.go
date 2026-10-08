@@ -4,6 +4,7 @@ package apisvc_test
 
 import (
 	"context"
+	"slices"
 	"testing"
 
 	"connectrpc.com/connect"
@@ -283,7 +284,14 @@ func TestRoutes_GatewayAcceptsThem(t *testing.T) {
 	h.RequestHeadersSet = map[string]string{"x-env": "prod", "Authorization": "Bearer abc"}
 	h.ResponseHeadersSet = map[string]string{"cache-control": "no-store"}
 	h.Websocket, h.MaxBodyBytes = &off, 1<<20
-	for _, rt := range []*rpmgrv1.Route{full, httpRoute("plain", group, "plain.example.com"), passthroughRoute("db", group, "db.example.com")} {
+	for _, p := range []*rpmgrv1.PortPool{{GatewayGroupId: group, Protocol: tcp, PortFrom: 20000, PortTo: 20009},
+		{GatewayGroupId: group, Protocol: udp, PortFrom: 30000, PortTo: 30009}} {
+		if _, err := ada.gw.CreatePortPool(context.Background(), connect.NewRequest(&rpmgrv1.CreatePortPoolRequest{OrgId: org, PortPool: p})); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, rt := range []*rpmgrv1.Route{full, httpRoute("plain", group, "plain.example.com"), passthroughRoute("db", group, "db.example.com"),
+		tcpRoute("pg", group, 0), udpRoute("dns", group, 0)} {
 		if _, err := createRoute(ada, org, rt, ""); err != nil {
 			t.Fatal(err)
 		}
@@ -303,8 +311,8 @@ func TestRoutes_GatewayAcceptsThem(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if len(snap.GetResources()) != 3 {
-		t.Fatalf("compiled %d resources, want 3", len(snap.GetResources()))
+	if len(snap.GetResources()) != 5 {
+		t.Fatalf("compiled %d resources, want 5", len(snap.GetResources()))
 	}
 	a, _ := gateway.NewApplier()
 	if errs := a.Validate(snap); len(errs) != 0 {
@@ -400,5 +408,113 @@ func TestUpdateRoute(t *testing.T) {
 	vwr, _ := e.join(t, ada, org, "vwr@example.com", "viewer")
 	if _, err := update(vwr, got.GetId(), []string{"enabled"}, &rpmgrv1.Route{Enabled: true}, ""); code(err) != connect.CodePermissionDenied {
 		t.Fatalf("a Viewer updates: %v", err)
+	}
+}
+
+func tcpRoute(name, group string, port uint32) *rpmgrv1.Route {
+	return &rpmgrv1.Route{Name: name, GatewayGroupId: group, Spec: &rpmgrv1.Route_Tcp{Tcp: &rpmgrv1.TCPRouteSpec{Port: port}}}
+}
+
+func udpRoute(name, group string, port uint32) *rpmgrv1.Route {
+	return &rpmgrv1.Route{Name: name, GatewayGroupId: group, Spec: &rpmgrv1.Route_Udp{Udp: &rpmgrv1.UDPRouteSpec{Port: port}}}
+}
+
+// TestPortRoutes: tcp and udp routes take an explicit or a random port of the group's pools,
+// within the org's quota; a port changes by allocating the new one before freeing the old, so a
+// refused port leaves the route as it was; a deleted route frees its port.
+func TestPortRoutes(t *testing.T) {
+	_, ada, org, group := gatewayEnv(t)
+	ctx := context.Background()
+	for _, p := range []*rpmgrv1.PortPool{{GatewayGroupId: group, Protocol: tcp, PortFrom: 20000, PortTo: 20009},
+		{GatewayGroupId: group, Protocol: udp, PortFrom: 30000, PortTo: 30001}} {
+		if _, err := ada.gw.CreatePortPool(ctx, connect.NewRequest(&rpmgrv1.CreatePortPoolRequest{OrgId: org, PortPool: p})); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := ada.gw.SetPortQuota(ctx, connect.NewRequest(&rpmgrv1.SetPortQuotaRequest{OrgId: org, GatewayGroupId: group, Protocol: tcp,
+		MaxPorts: 3})); err != nil {
+		t.Fatal(err)
+	}
+	pg, err := createRoute(ada, org, tcpRoute("pg", group, 20005), "")
+	if err != nil || pg.GetTcp().GetPort() != 20005 || pg.GetTcp().GetIdleTimeoutSeconds() != 3600 {
+		t.Fatalf("an explicit tcp port: %v %v", pg, err)
+	}
+	random, err := createRoute(ada, org, tcpRoute("redis", group, 0), "")
+	if p := random.GetTcp().GetPort(); err != nil || p < 20000 || p > 20009 || p == 20005 {
+		t.Fatalf("a random tcp port: %v %v", random, err)
+	}
+	dns, err := createRoute(ada, org, udpRoute("dns", group, 0), "")
+	if p := dns.GetUdp().GetPort(); err != nil || (p != 30000 && p != 30001) || dns.GetUdp().GetFlowIdleTimeoutSeconds() != 60 {
+		t.Fatalf("a random udp port: %v %v", dns, err)
+	}
+	if _, err := createRoute(ada, org, udpRoute("ntp", group, 0), ""); err != nil {
+		t.Fatal(err)
+	}
+	for name, c := range map[string]struct {
+		rt     *rpmgrv1.Route
+		code   connect.Code
+		reason string
+	}{
+		"a taken port":         {tcpRoute("taken", group, 20005), connect.CodeAlreadyExists, ""},
+		"a port outside pools": {tcpRoute("outside", group, 25000), connect.CodeFailedPrecondition, apisvc.ReasonPortNotInPool},
+		"a udp pool used up":   {udpRoute("third", group, 0), connect.CodeResourceExhausted, apisvc.ReasonPoolExhausted},
+		"port 65536":           {tcpRoute("big", group, 65536), connect.CodeInvalidArgument, ""},
+		"a zero flow idle time": {func() *rpmgrv1.Route {
+			zero := uint32(0)
+			r := udpRoute("z", group, 0)
+			r.GetUdp().FlowIdleTimeoutSeconds = &zero
+			return r
+		}(), connect.CodeInvalidArgument, ""},
+	} {
+		_, err := createRoute(ada, org, c.rt, "")
+		if code(err) != c.code || c.reason != "" && reason(err) != c.reason {
+			t.Errorf("%s: %v, want %v %s", name, err, c.code, c.reason)
+		}
+	}
+	third, err := createRoute(ada, org, tcpRoute("third", group, 0), "")
+	if err != nil {
+		t.Fatalf("the third tcp port, within the quota: %v", err)
+	}
+	if _, err := createRoute(ada, org, tcpRoute("fourth", group, 0), ""); reason(err) != apisvc.ReasonQuotaReached {
+		t.Fatalf("a fourth tcp port beyond the quota: %v", err)
+	}
+
+	update := func(id string, mask []string, in *rpmgrv1.Route) (*rpmgrv1.Route, error) {
+		in.Id = id
+		r, err := ada.rt.UpdateRoute(ctx, connect.NewRequest(&rpmgrv1.UpdateRouteRequest{Route: in, UpdateMask: &fieldmaskpb.FieldMask{Paths: mask}}))
+		if err != nil {
+			return nil, err
+		}
+		return r.Msg.GetRoute(), nil
+	}
+	// A port of the pool that no route has: the random ones may have any.
+	free := uint32(20000)
+	for slices.Contains([]uint32{20005, random.GetTcp().GetPort(), third.GetTcp().GetPort()}, free) {
+		free++
+	}
+	zero := uint32(0)
+	up, err := update(pg.GetId(), []string{"tcp.port", "tcp.idle_timeout_seconds"}, &rpmgrv1.Route{Spec: &rpmgrv1.Route_Tcp{Tcp: &rpmgrv1.TCPRouteSpec{
+		Port: free, IdleTimeoutSeconds: &zero}}})
+	if err != nil || up.GetTcp().GetPort() != free || up.GetTcp().GetIdleTimeoutSeconds() != 0 {
+		t.Fatalf("a new port and no idle timeout: %v %v", up, err)
+	}
+	if _, err := update(pg.GetId(), []string{"tcp.port"}, tcpRoute("", "", random.GetTcp().GetPort())); code(err) != connect.CodeAlreadyExists {
+		t.Fatalf("a taken port: %v", err)
+	}
+	if got, _ := ada.rt.GetRoute(ctx, connect.NewRequest(&rpmgrv1.GetRouteRequest{RouteId: pg.GetId()})); got.Msg.GetRoute().GetTcp().GetPort() != free {
+		t.Fatalf("a refused port changed the route: %v", got.Msg.GetRoute())
+	}
+	if _, err := update(dns.GetId(), []string{"tcp.port"}, tcpRoute("", "", 20001)); code(err) != connect.CodeInvalidArgument {
+		t.Fatalf("a udp route made tcp: %v", err)
+	}
+	// The quota is used up, so the freed 20005 is taken by moving a route, not by a new one.
+	if up, err := update(random.GetId(), []string{"tcp.port"}, tcpRoute("", "", 20005)); err != nil || up.GetTcp().GetPort() != 20005 {
+		t.Fatalf("the freed port: %v %v", up, err)
+	}
+	if _, err := ada.rt.DeleteRoute(ctx, connect.NewRequest(&rpmgrv1.DeleteRouteRequest{RouteId: dns.GetId()})); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := createRoute(ada, org, udpRoute("dns-2", group, dns.GetUdp().GetPort()), ""); err != nil {
+		t.Fatalf("the port of a deleted route: %v", err)
 	}
 }
