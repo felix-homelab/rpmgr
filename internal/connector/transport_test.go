@@ -149,16 +149,11 @@ func TestTransport_PinNeverFallsBack(t *testing.T) {
 }
 
 // TestTransport_UDPBlocked: with UDP blackholed, TCP starts after 300 ms and wins; the winner is
-// used again from the same source address without a race, and a new source address races again.
+// TestTransport_UDPBlocked: with UDP blackholed, TCP starts after 300 ms and wins.
 func TestTransport_UDPBlocked(t *testing.T) {
 	w := newWorld(t)
 	g, _, h := splitGateway(t, w, true)
-	var local atomic.Pointer[netip.Addr]
-	a, b := netip.MustParseAddr("192.0.2.10"), netip.MustParseAddr("198.51.100.20")
-	local.Store(&a)
-	m := newConnectorOptions(t, w, func(o *connector.Options) {
-		o.LocalAddr = func(context.Context, string) (netip.Addr, error) { return *local.Load(), nil }
-	})
+	m := newConnector(t, w)
 	readyAll(m, "rt_a")
 	start := time.Now()
 	m.Set([]connector.Gateway{{ID: g.id.ID, Endpoints: []string{g.addr}, Routes: map[string]string{"rt_a": connector.TransportAuto}}})
@@ -169,11 +164,29 @@ func TestTransport_UDPBlocked(t *testing.T) {
 		t.Logf("the first TCP session after %s", d)
 	}
 	eventually(t, "not both TCP connections", func() bool { return h.Count()["h2"] == 2 })
-	if g.udpPackets.Load() == 0 {
-		t.Fatal("QUIC was never tried")
-	}
 	if err := echo(t, h, "rt_a"); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// TestTransport_RaceCache: the winner of a race is used again from the same source address without
+// a race, and a new source address races again. QUIC gets a 2 s head start here, so that its
+// packets reach the blackhole on a slow machine before TCP wins: they are how the test sees a race.
+func TestTransport_RaceCache(t *testing.T) {
+	connector.SetTransportTimers(t, 2*time.Second, 10*time.Minute, time.Hour)
+	w := newWorld(t)
+	g, _, h := splitGateway(t, w, true)
+	var local atomic.Pointer[netip.Addr]
+	a, b := netip.MustParseAddr("192.0.2.10"), netip.MustParseAddr("198.51.100.20")
+	local.Store(&a)
+	m := newConnectorOptions(t, w, func(o *connector.Options) {
+		o.LocalAddr = func(context.Context, string) (netip.Addr, error) { return *local.Load(), nil }
+	})
+	readyAll(m, "rt_a")
+	m.Set([]connector.Gateway{{ID: g.id.ID, Endpoints: []string{g.addr}, Routes: map[string]string{"rt_a": connector.TransportAuto}}})
+	eventually(t, "not both TCP connections", func() bool { return h.Count()["h2"] == 2 })
+	if g.udpPackets.Load() == 0 {
+		t.Fatal("QUIC was never tried")
 	}
 
 	// The gateway restarts: from the same source address, h2 without a race.
