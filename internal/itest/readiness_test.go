@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/datasession"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/resourcestatus"
 )
 
@@ -66,4 +67,38 @@ func TestReadiness_ReportedToController(t *testing.T) {
 	}
 	p.startConnector(t, nil)
 	waitFor("after a restart with the target allowed again", func(r *ent.ResourceStatus) bool { return r == nil })
+}
+
+// TestDataSessions_ReportedToController: a gateway reports its connectors' data sessions to the
+// controller a moment after they change: the connector's sessions appear once it connects, and go
+// once it stops.
+func TestDataSessions_ReportedToController(t *testing.T) {
+	p := newDataPlane(t)
+	c := p.dial(t)
+	_ = c.Close()
+	sessions := func() []*ent.DataSession {
+		return p.c.DB.Client().DataSession.Query().Where(datasession.GatewayID(p.gatewayID), datasession.ConnectorID(p.connector)).
+			AllX(p.c.Sys)
+	}
+	wait := func(what string, ok func([]*ent.DataSession) bool) []*ent.DataSession {
+		t.Helper()
+		deadline := time.Now().Add(15 * time.Second)
+		for {
+			if got := sessions(); ok(got) {
+				return got
+			}
+			if time.Now().After(deadline) {
+				t.Fatalf("%s: %v", what, sessions())
+			}
+			time.Sleep(50 * time.Millisecond)
+		}
+	}
+	got := wait("a connected connector", func(s []*ent.DataSession) bool { return len(s) > 0 })
+	for _, s := range got {
+		if s.OrgID != p.c.Org || s.EstablishedAt.IsZero() {
+			t.Fatalf("a data session row: %+v", s)
+		}
+	}
+	p.stopConnector()
+	wait("a stopped connector", func(s []*ent.DataSession) bool { return len(s) == 0 })
 }

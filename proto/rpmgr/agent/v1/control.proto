@@ -162,7 +162,8 @@ message Status {
   repeated ResourceStatus readiness = 1;
   // Per-route counters since the agent started.
   repeated RouteCounters counters = 2;
-  // Gateways: the data sessions of connectors.
+  // Gateways: every data session of connectors, one per connector and transport. Each Status a
+  // gateway sends lists them all.
   repeated DataSession data_sessions = 3;
   // Whether readiness names every resource that is not ready, as the first Status of a session
   // does; the controller then forgets every other.

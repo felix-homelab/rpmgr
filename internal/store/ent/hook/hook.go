@@ -189,6 +189,18 @@ func (f ConnectorFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, e
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.ConnectorMutation", m)
 }
 
+// The DataSessionFunc type is an adapter to allow the use of ordinary
+// function as DataSession mutator.
+type DataSessionFunc func(context.Context, *ent.DataSessionMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f DataSessionFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.DataSessionMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.DataSessionMutation", m)
+}
+
 // The DomainFunc type is an adapter to allow the use of ordinary
 // function as Domain mutator.
 type DomainFunc func(context.Context, *ent.DomainMutation) (ent.Value, error)

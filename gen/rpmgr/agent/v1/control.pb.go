@@ -1058,7 +1058,8 @@ type Status struct {
 	Readiness []*ResourceStatus `protobuf:"bytes,1,rep,name=readiness,proto3" json:"readiness,omitempty"`
 	// Per-route counters since the agent started.
 	Counters []*RouteCounters `protobuf:"bytes,2,rep,name=counters,proto3" json:"counters,omitempty"`
-	// Gateways: the data sessions of connectors.
+	// Gateways: every data session of connectors, one per connector and transport. Each Status a
+	// gateway sends lists them all.
 	DataSessions []*DataSession `protobuf:"bytes,3,rep,name=data_sessions,json=dataSessions,proto3" json:"data_sessions,omitempty"`
 	// Whether readiness names every resource that is not ready, as the first Status of a session
 	// does; the controller then forgets every other.

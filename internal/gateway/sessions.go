@@ -3,6 +3,7 @@
 package gateway
 
 import (
+	"cmp"
 	"context"
 	"crypto/rand"
 	"crypto/x509"
@@ -14,8 +15,10 @@ import (
 	"sync/atomic"
 	"time"
 
+	"google.golang.org/protobuf/types/known/durationpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
+	agentv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/agent/v1"
 	tunnelv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/tunnel/v1"
 	"github.com/felix-homelab/rpmgr/internal/pki"
 	"github.com/felix-homelab/rpmgr/internal/tunnel"
@@ -68,8 +71,11 @@ type SessionsOptions struct {
 	// OnOpenRequest decides a stream a connector asks for, an OpenRequest on HTTP/2 or a stream it
 	// opened on QUIC (CONTROL_PASSTHROUGH); nil refuses every one with UNAUTHORIZED.
 	OnOpenRequest func(connectorID string, r *tunnelv1.OpenRequest) (tunnelv1.ResultCode, func(tunnel.Stream))
-	Now           func() time.Time
-	Logger        *slog.Logger
+	// OnChange, if set, is called after a data session was added or removed, for the report to
+	// the controller.
+	OnChange func()
+	Now      func() time.Time
+	Logger   *slog.Logger
 }
 
 // Sessions holds the gateway's data sessions from connectors (docs/03-connections.md, "Data
@@ -309,6 +315,9 @@ func (m *Sessions) add(d *dataSession) bool {
 		return false
 	}
 	m.byConnector[d.connector] = append(m.byConnector[d.connector], d)
+	if m.o.OnChange != nil {
+		defer m.o.OnChange()
+	}
 	return true
 }
 
@@ -369,6 +378,44 @@ func (m *Sessions) remove(d *dataSession) {
 	if len(m.byConnector[d.connector]) == 0 {
 		delete(m.byConnector, d.connector)
 	}
+	if m.o.OnChange != nil {
+		defer m.o.OnChange()
+	}
+}
+
+// Report returns the gateway's data sessions for the controller (docs/03-connections.md,
+// "Configuration reconciliation"): one per connector and transport, with the lowest smoothed
+// round-trip time any of them knows, 0 if none does.
+func (m *Sessions) Report() []*agentv1.DataSession {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	type key struct{ connector, transport string }
+	best := map[key]time.Duration{}
+	for con, ds := range m.byConnector {
+		for _, d := range ds {
+			k := key{con, d.s.Transport()}
+			rtt, known := best[k]
+			if r, ok := d.s.(interface{ RTT() time.Duration }); ok && r.RTT() > 0 && (!known || rtt == 0 || r.RTT() < rtt) {
+				rtt = r.RTT()
+			}
+			best[k] = rtt
+		}
+	}
+	out := make([]*agentv1.DataSession, 0, len(best))
+	for k, rtt := range best {
+		ds := &agentv1.DataSession{ConnectorId: k.connector, Transport: agentv1.Transport_TRANSPORT_H2}
+		if k.transport == "quic" {
+			ds.Transport = agentv1.Transport_TRANSPORT_QUIC
+		}
+		if rtt > 0 {
+			ds.Rtt = durationpb.New(rtt)
+		}
+		out = append(out, ds)
+	}
+	slices.SortFunc(out, func(a, b *agentv1.DataSession) int {
+		return cmp.Or(cmp.Compare(a.GetConnectorId(), b.GetConnectorId()), cmp.Compare(a.GetTransport(), b.GetTransport()))
+	})
+	return out
 }
 
 // candidates are the ready sessions of the route's connectors.

@@ -30,6 +30,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/configrevision"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/configseq"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/connector"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/datasession"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/domain"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/enrollmenttoken"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/gateway"
@@ -101,6 +102,8 @@ type Client struct {
 	ConfigSeq *ConfigSeqClient
 	// Connector is the client for interacting with the Connector builders.
 	Connector *ConnectorClient
+	// DataSession is the client for interacting with the DataSession builders.
+	DataSession *DataSessionClient
 	// Domain is the client for interacting with the Domain builders.
 	Domain *DomainClient
 	// EnrollmentToken is the client for interacting with the EnrollmentToken builders.
@@ -191,6 +194,7 @@ func (c *Client) init() {
 	c.ConfigRevision = NewConfigRevisionClient(c.config)
 	c.ConfigSeq = NewConfigSeqClient(c.config)
 	c.Connector = NewConnectorClient(c.config)
+	c.DataSession = NewDataSessionClient(c.config)
 	c.Domain = NewDomainClient(c.config)
 	c.EnrollmentToken = NewEnrollmentTokenClient(c.config)
 	c.Gateway = NewGatewayClient(c.config)
@@ -330,6 +334,7 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		ConfigRevision:    NewConfigRevisionClient(cfg),
 		ConfigSeq:         NewConfigSeqClient(cfg),
 		Connector:         NewConnectorClient(cfg),
+		DataSession:       NewDataSessionClient(cfg),
 		Domain:            NewDomainClient(cfg),
 		EnrollmentToken:   NewEnrollmentTokenClient(cfg),
 		Gateway:           NewGatewayClient(cfg),
@@ -396,6 +401,7 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		ConfigRevision:    NewConfigRevisionClient(cfg),
 		ConfigSeq:         NewConfigSeqClient(cfg),
 		Connector:         NewConnectorClient(cfg),
+		DataSession:       NewDataSessionClient(cfg),
 		Domain:            NewDomainClient(cfg),
 		EnrollmentToken:   NewEnrollmentTokenClient(cfg),
 		Gateway:           NewGatewayClient(cfg),
@@ -459,13 +465,14 @@ func (c *Client) Use(hooks ...Hook) {
 	for _, n := range []interface{ Use(...Hook) }{
 		c.ACMEStorage, c.APIRequest, c.APIToken, c.AccessPolicy, c.AgentSession,
 		c.AgentState, c.AuditEntry, c.AuditHead, c.CABundle, c.CAKey, c.Certificate,
-		c.CompiledSnapshot, c.ConfigRevision, c.ConfigSeq, c.Connector, c.Domain,
-		c.EnrollmentToken, c.Gateway, c.GatewayGroup, c.Instance, c.InstanceSecret,
-		c.InstanceSetting, c.Invitation, c.IssuedCertificate, c.Lease, c.Membership,
-		c.Org, c.OrgSetting, c.PasswordReset, c.PolicyRule, c.PortAllocation,
-		c.PortPool, c.PortQuota, c.RecoveryCode, c.ResourceStatus, c.RevokedIdentity,
-		c.Route, c.RouteHTTP, c.RouteHostname, c.RoutePolicy, c.RouteTCP,
-		c.RouteTarget, c.RouteUDP, c.SecretMeta, c.Session, c.TOTPCredential, c.User,
+		c.CompiledSnapshot, c.ConfigRevision, c.ConfigSeq, c.Connector, c.DataSession,
+		c.Domain, c.EnrollmentToken, c.Gateway, c.GatewayGroup, c.Instance,
+		c.InstanceSecret, c.InstanceSetting, c.Invitation, c.IssuedCertificate,
+		c.Lease, c.Membership, c.Org, c.OrgSetting, c.PasswordReset, c.PolicyRule,
+		c.PortAllocation, c.PortPool, c.PortQuota, c.RecoveryCode, c.ResourceStatus,
+		c.RevokedIdentity, c.Route, c.RouteHTTP, c.RouteHostname, c.RoutePolicy,
+		c.RouteTCP, c.RouteTarget, c.RouteUDP, c.SecretMeta, c.Session,
+		c.TOTPCredential, c.User,
 	} {
 		n.Use(hooks...)
 	}
@@ -477,13 +484,14 @@ func (c *Client) Intercept(interceptors ...Interceptor) {
 	for _, n := range []interface{ Intercept(...Interceptor) }{
 		c.ACMEStorage, c.APIRequest, c.APIToken, c.AccessPolicy, c.AgentSession,
 		c.AgentState, c.AuditEntry, c.AuditHead, c.CABundle, c.CAKey, c.Certificate,
-		c.CompiledSnapshot, c.ConfigRevision, c.ConfigSeq, c.Connector, c.Domain,
-		c.EnrollmentToken, c.Gateway, c.GatewayGroup, c.Instance, c.InstanceSecret,
-		c.InstanceSetting, c.Invitation, c.IssuedCertificate, c.Lease, c.Membership,
-		c.Org, c.OrgSetting, c.PasswordReset, c.PolicyRule, c.PortAllocation,
-		c.PortPool, c.PortQuota, c.RecoveryCode, c.ResourceStatus, c.RevokedIdentity,
-		c.Route, c.RouteHTTP, c.RouteHostname, c.RoutePolicy, c.RouteTCP,
-		c.RouteTarget, c.RouteUDP, c.SecretMeta, c.Session, c.TOTPCredential, c.User,
+		c.CompiledSnapshot, c.ConfigRevision, c.ConfigSeq, c.Connector, c.DataSession,
+		c.Domain, c.EnrollmentToken, c.Gateway, c.GatewayGroup, c.Instance,
+		c.InstanceSecret, c.InstanceSetting, c.Invitation, c.IssuedCertificate,
+		c.Lease, c.Membership, c.Org, c.OrgSetting, c.PasswordReset, c.PolicyRule,
+		c.PortAllocation, c.PortPool, c.PortQuota, c.RecoveryCode, c.ResourceStatus,
+		c.RevokedIdentity, c.Route, c.RouteHTTP, c.RouteHostname, c.RoutePolicy,
+		c.RouteTCP, c.RouteTarget, c.RouteUDP, c.SecretMeta, c.Session,
+		c.TOTPCredential, c.User,
 	} {
 		n.Intercept(interceptors...)
 	}
@@ -522,6 +530,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.ConfigSeq.mutate(ctx, m)
 	case *ConnectorMutation:
 		return c.Connector.mutate(ctx, m)
+	case *DataSessionMutation:
+		return c.DataSession.mutate(ctx, m)
 	case *DomainMutation:
 		return c.Domain.mutate(ctx, m)
 	case *EnrollmentTokenMutation:
@@ -2611,6 +2621,141 @@ func (c *ConnectorClient) mutate(ctx context.Context, m *ConnectorMutation) (Val
 		return (&ConnectorDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
 	default:
 		return nil, fmt.Errorf("ent: unknown Connector mutation op: %q", m.Op())
+	}
+}
+
+// DataSessionClient is a client for the DataSession schema.
+type DataSessionClient struct {
+	config
+}
+
+// NewDataSessionClient returns a client for the DataSession from the given config.
+func NewDataSessionClient(c config) *DataSessionClient {
+	return &DataSessionClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `datasession.Hooks(f(g(h())))`.
+func (c *DataSessionClient) Use(hooks ...Hook) {
+	c.hooks.DataSession = append(c.hooks.DataSession, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `datasession.Intercept(f(g(h())))`.
+func (c *DataSessionClient) Intercept(interceptors ...Interceptor) {
+	c.inters.DataSession = append(c.inters.DataSession, interceptors...)
+}
+
+// Create returns a builder for creating a DataSession entity.
+func (c *DataSessionClient) Create() *DataSessionCreate {
+	mutation := newDataSessionMutation(c.config, OpCreate)
+	return &DataSessionCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of DataSession entities.
+func (c *DataSessionClient) CreateBulk(builders ...*DataSessionCreate) *DataSessionCreateBulk {
+	return &DataSessionCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *DataSessionClient) MapCreateBulk(slice any, setFunc func(*DataSessionCreate, int)) *DataSessionCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &DataSessionCreateBulk{err: fmt.Errorf("calling to DataSessionClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*DataSessionCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &DataSessionCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for DataSession.
+func (c *DataSessionClient) Update() *DataSessionUpdate {
+	mutation := newDataSessionMutation(c.config, OpUpdate)
+	return &DataSessionUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *DataSessionClient) UpdateOne(_m *DataSession) *DataSessionUpdateOne {
+	mutation := newDataSessionMutation(c.config, OpUpdateOne, withDataSession(_m))
+	return &DataSessionUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *DataSessionClient) UpdateOneID(id string) *DataSessionUpdateOne {
+	mutation := newDataSessionMutation(c.config, OpUpdateOne, withDataSessionID(id))
+	return &DataSessionUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for DataSession.
+func (c *DataSessionClient) Delete() *DataSessionDelete {
+	mutation := newDataSessionMutation(c.config, OpDelete)
+	return &DataSessionDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *DataSessionClient) DeleteOne(_m *DataSession) *DataSessionDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *DataSessionClient) DeleteOneID(id string) *DataSessionDeleteOne {
+	builder := c.Delete().Where(datasession.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &DataSessionDeleteOne{builder}
+}
+
+// Query returns a query builder for DataSession.
+func (c *DataSessionClient) Query() *DataSessionQuery {
+	return &DataSessionQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeDataSession},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a DataSession entity by its id.
+func (c *DataSessionClient) Get(ctx context.Context, id string) (*DataSession, error) {
+	return c.Query().Where(datasession.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *DataSessionClient) GetX(ctx context.Context, id string) *DataSession {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *DataSessionClient) Hooks() []Hook {
+	hooks := c.hooks.DataSession
+	return append(hooks[:len(hooks):len(hooks)], datasession.Hooks[:]...)
+}
+
+// Interceptors returns the client interceptors.
+func (c *DataSessionClient) Interceptors() []Interceptor {
+	inters := c.inters.DataSession
+	return append(inters[:len(inters):len(inters)], datasession.Interceptors[:]...)
+}
+
+func (c *DataSessionClient) mutate(ctx context.Context, m *DataSessionMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&DataSessionCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&DataSessionUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&DataSessionUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&DataSessionDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown DataSession mutation op: %q", m.Op())
 	}
 }
 
@@ -7400,8 +7545,8 @@ type (
 	hooks struct {
 		ACMEStorage, APIRequest, APIToken, AccessPolicy, AgentSession, AgentState,
 		AuditEntry, AuditHead, CABundle, CAKey, Certificate, CompiledSnapshot,
-		ConfigRevision, ConfigSeq, Connector, Domain, EnrollmentToken, Gateway,
-		GatewayGroup, Instance, InstanceSecret, InstanceSetting, Invitation,
+		ConfigRevision, ConfigSeq, Connector, DataSession, Domain, EnrollmentToken,
+		Gateway, GatewayGroup, Instance, InstanceSecret, InstanceSetting, Invitation,
 		IssuedCertificate, Lease, Membership, Org, OrgSetting, PasswordReset,
 		PolicyRule, PortAllocation, PortPool, PortQuota, RecoveryCode, ResourceStatus,
 		RevokedIdentity, Route, RouteHTTP, RouteHostname, RoutePolicy, RouteTCP,
@@ -7410,8 +7555,8 @@ type (
 	inters struct {
 		ACMEStorage, APIRequest, APIToken, AccessPolicy, AgentSession, AgentState,
 		AuditEntry, AuditHead, CABundle, CAKey, Certificate, CompiledSnapshot,
-		ConfigRevision, ConfigSeq, Connector, Domain, EnrollmentToken, Gateway,
-		GatewayGroup, Instance, InstanceSecret, InstanceSetting, Invitation,
+		ConfigRevision, ConfigSeq, Connector, DataSession, Domain, EnrollmentToken,
+		Gateway, GatewayGroup, Instance, InstanceSecret, InstanceSetting, Invitation,
 		IssuedCertificate, Lease, Membership, Org, OrgSetting, PasswordReset,
 		PolicyRule, PortAllocation, PortPool, PortQuota, RecoveryCode, ResourceStatus,
 		RevokedIdentity, Route, RouteHTTP, RouteHostname, RoutePolicy, RouteTCP,

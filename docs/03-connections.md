@@ -333,7 +333,11 @@ Rules:
     lost. The controller keeps, per agent, at most 1 024 resources that are not ready, each
     resource ID and detail at most 512 bytes; a resource it does not keep is shown as ready. It
     records an `Applied` only for a snapshot the same session was sent
-    ([06](06-data-model.md#desired-vs-observed-state)).
+    ([06](06-data-model.md#desired-vs-observed-state)). A gateway's every `Status` lists its
+    connectors' data sessions, one per connector and transport with the lowest round-trip time a
+    session measures (QUIC does; h2 does not), at the report interval of the timeout table and at
+    the start of each control session; the controller keeps the last report, at most 4 096 per
+    gateway.
 
 ### Revisions and ordering
 
@@ -1001,6 +1005,7 @@ sequenceDiagram
 | Revision and deny-list check | every 1 s | A revision or a revocation written by another process reaches the agents without a notification channel |
 | Route drain | 30 s | Finish in-flight requests |
 | Gateway drain | 60 s | Time for connectors to re-home |
+| Data-session report | every 60 s, and 1 s after a change | A gateway's `Status` listing its connectors' data sessions, for their status in the API |
 | Revocation, tightened access policy | immediate | Security beats continuity |
 | Mail delivery | dial 10 s; the whole delivery 30 s | [R] A relay that hangs never holds a request or job for long |
 | ACME job | looks for certificates to obtain or renew every 1 min, on the replica that holds its lease | New routes get their certificates within a minute or so; renewals are never late by more |

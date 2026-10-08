@@ -51,6 +51,9 @@ type ConfigSeq func(*sql.Selector)
 // Connector is the predicate function for connector builders.
 type Connector func(*sql.Selector)
 
+// DataSession is the predicate function for datasession builders.
+type DataSession func(*sql.Selector)
+
 // Domain is the predicate function for domain builders.
 type Domain func(*sql.Selector)
 

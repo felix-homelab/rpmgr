@@ -44,6 +44,8 @@ type Tx struct {
 	ConfigSeq *ConfigSeqClient
 	// Connector is the client for interacting with the Connector builders.
 	Connector *ConnectorClient
+	// DataSession is the client for interacting with the DataSession builders.
+	DataSession *DataSessionClient
 	// Domain is the client for interacting with the Domain builders.
 	Domain *DomainClient
 	// EnrollmentToken is the client for interacting with the EnrollmentToken builders.
@@ -254,6 +256,7 @@ func (tx *Tx) init() {
 	tx.ConfigRevision = NewConfigRevisionClient(tx.config)
 	tx.ConfigSeq = NewConfigSeqClient(tx.config)
 	tx.Connector = NewConnectorClient(tx.config)
+	tx.DataSession = NewDataSessionClient(tx.config)
 	tx.Domain = NewDomainClient(tx.config)
 	tx.EnrollmentToken = NewEnrollmentTokenClient(tx.config)
 	tx.Gateway = NewGatewayClient(tx.config)

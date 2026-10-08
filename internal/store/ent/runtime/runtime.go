@@ -21,6 +21,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/configrevision"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/configseq"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/connector"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/datasession"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/domain"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/enrollmenttoken"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/gateway"
@@ -895,6 +896,63 @@ func init() {
 	// connector.IDValidator is a validator for the "id" field. It is called by the builders before save.
 	connector.IDValidator = func() func(string) error {
 		validators := connectorDescID.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(id string) error {
+			for _, fn := range fns {
+				if err := fn(id); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	datasessionMixin := schema.DataSession{}.Mixin()
+	datasession.Policy = privacy.NewPolicies(datasessionMixin[0], schema.DataSession{})
+	datasession.Hooks[0] = func(next ent.Mutator) ent.Mutator {
+		return ent.MutateFunc(func(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+			if err := datasession.Policy.EvalMutation(ctx, m); err != nil {
+				return nil, err
+			}
+			return next.Mutate(ctx, m)
+		})
+	}
+	datasessionMixinHooks0 := datasessionMixin[0].Hooks()
+
+	datasession.Hooks[1] = datasessionMixinHooks0[0]
+	datasessionMixinInters0 := datasessionMixin[0].Interceptors()
+	datasession.Interceptors[0] = datasessionMixinInters0[0]
+	datasessionMixinFields0 := datasessionMixin[0].Fields()
+	_ = datasessionMixinFields0
+	datasessionFields := schema.DataSession{}.Fields()
+	_ = datasessionFields
+	// datasessionDescOrgID is the schema descriptor for org_id field.
+	datasessionDescOrgID := datasessionMixinFields0[0].Descriptor()
+	// datasession.OrgIDValidator is a validator for the "org_id" field. It is called by the builders before save.
+	datasession.OrgIDValidator = datasessionDescOrgID.Validators[0].(func(string) error)
+	// datasessionDescGatewayID is the schema descriptor for gateway_id field.
+	datasessionDescGatewayID := datasessionFields[1].Descriptor()
+	// datasession.GatewayIDValidator is a validator for the "gateway_id" field. It is called by the builders before save.
+	datasession.GatewayIDValidator = datasessionDescGatewayID.Validators[0].(func(string) error)
+	// datasessionDescConnectorID is the schema descriptor for connector_id field.
+	datasessionDescConnectorID := datasessionFields[2].Descriptor()
+	// datasession.ConnectorIDValidator is a validator for the "connector_id" field. It is called by the builders before save.
+	datasession.ConnectorIDValidator = datasessionDescConnectorID.Validators[0].(func(string) error)
+	// datasessionDescRttMs is the schema descriptor for rtt_ms field.
+	datasessionDescRttMs := datasessionFields[4].Descriptor()
+	// datasession.DefaultRttMs holds the default value on creation for the rtt_ms field.
+	datasession.DefaultRttMs = datasessionDescRttMs.Default.(int64)
+	// datasession.RttMsValidator is a validator for the "rtt_ms" field. It is called by the builders before save.
+	datasession.RttMsValidator = datasessionDescRttMs.Validators[0].(func(int64) error)
+	// datasessionDescID is the schema descriptor for id field.
+	datasessionDescID := datasessionFields[0].Descriptor()
+	// datasession.DefaultID holds the default value on creation for the id field.
+	datasession.DefaultID = datasessionDescID.Default.(func() string)
+	// datasession.IDValidator is a validator for the "id" field. It is called by the builders before save.
+	datasession.IDValidator = func() func(string) error {
+		validators := datasessionDescID.Validators
 		fns := [...]func(string) error{
 			validators[0].(func(string) error),
 			validators[1].(func(string) error),

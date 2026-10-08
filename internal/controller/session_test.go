@@ -95,13 +95,23 @@ func startSessionsWith(t *testing.T, db *store.DB, opt func(*controller.Sessions
 // agentCert issues a connector certificate in the env's org.
 func (e *sessionEnv) agentCert(t *testing.T) (tls.Certificate, pki.Identity) {
 	t.Helper()
+	return e.certOf(t, pki.KindConnector)
+}
+
+// certOf issues a certificate for a new agent of kind in the env's org.
+func (e *sessionEnv) certOf(t *testing.T, kind pki.Kind) (tls.Certificate, pki.Identity) {
+	t.Helper()
 	key, err := pki.NewKey()
 	if err != nil {
 		t.Fatal(err)
 	}
 	der, _ := x509.CreateCertificateRequest(rand.Reader, &x509.CertificateRequest{}, key)
 	csr, _ := x509.ParseCertificateRequest(der)
-	id := pki.Identity{TrustDomain: e.ca.TrustDomain(), Org: e.org, Kind: pki.KindConnector, ID: ids.New("con")}
+	prefix := "con"
+	if kind == pki.KindGateway {
+		prefix = "gw"
+	}
+	id := pki.Identity{TrustDomain: e.ca.TrustDomain(), Org: e.org, Kind: kind, ID: ids.New(prefix)}
 	sys := storetest.SystemCtx(t)
 	var leaf *x509.Certificate
 	if err := store.WriteTx(sys, e.db, func(tx *ent.Tx) error {

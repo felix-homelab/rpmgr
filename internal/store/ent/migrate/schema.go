@@ -393,6 +393,40 @@ var (
 			},
 		},
 	}
+	// DataSessionsColumns holds the columns for the "data_sessions" table.
+	DataSessionsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeString},
+		{Name: "org_id", Type: field.TypeString},
+		{Name: "gateway_id", Type: field.TypeString},
+		{Name: "connector_id", Type: field.TypeString},
+		{Name: "transport", Type: field.TypeEnum, Enums: []string{"quic", "h2"}},
+		{Name: "rtt_ms", Type: field.TypeInt64, Default: 0},
+		{Name: "established_at", Type: field.TypeTime},
+		{Name: "reported_at", Type: field.TypeTime},
+	}
+	// DataSessionsTable holds the schema information for the "data_sessions" table.
+	DataSessionsTable = &schema.Table{
+		Name:       "data_sessions",
+		Columns:    DataSessionsColumns,
+		PrimaryKey: []*schema.Column{DataSessionsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "datasession_org_id_id",
+				Unique:  true,
+				Columns: []*schema.Column{DataSessionsColumns[1], DataSessionsColumns[0]},
+			},
+			{
+				Name:    "datasession_gateway_id_connector_id_transport",
+				Unique:  true,
+				Columns: []*schema.Column{DataSessionsColumns[2], DataSessionsColumns[3], DataSessionsColumns[4]},
+			},
+			{
+				Name:    "datasession_connector_id",
+				Unique:  false,
+				Columns: []*schema.Column{DataSessionsColumns[3]},
+			},
+		},
+	}
 	// DomainsColumns holds the columns for the "domains" table.
 	DomainsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeString},
@@ -1488,6 +1522,7 @@ var (
 		ConfigRevisionsTable,
 		ConfigSeqTable,
 		ConnectorsTable,
+		DataSessionsTable,
 		DomainsTable,
 		EnrollmentTokensTable,
 		GatewaysTable,
@@ -1562,6 +1597,9 @@ func init() {
 	}
 	ConfigSeqTable.Annotation = &entsql.Annotation{
 		Table: "config_seq",
+	}
+	DataSessionsTable.Annotation = &entsql.Annotation{
+		Table: "data_sessions",
 	}
 	DomainsTable.Annotation = &entsql.Annotation{
 		Table: "domains",

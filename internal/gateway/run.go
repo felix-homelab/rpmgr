@@ -16,6 +16,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/quic-go/quic-go"
 
+	agentv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/agent/v1"
 	"github.com/felix-homelab/rpmgr/internal/agent"
 	"github.com/felix-homelab/rpmgr/internal/agentproto"
 	"github.com/felix-homelab/rpmgr/internal/config"
@@ -88,13 +89,19 @@ func Run(ctx context.Context, o RunOptions) error {
 	}
 	applier, assign := NewApplier()
 	var sessions *Sessions
-	challenges := NewChallenges()
+	challenges, report := NewChallenges(), newReporter()
 	ctl, err := agent.NewControl(agent.ControlOptions{IdentityDir: cfg.IdentityDir, StateDir: cfg.StateDir, Version: o.Version,
 		Capabilities: Capabilities, Applier: applier, Now: o.Now, Logger: o.Logger, Dial: o.Dial, OnAcmeChallenge: challenges.Apply,
 		OnDenyList: func() {
 			if sessions != nil {
 				sessions.Recheck()
 			}
+		},
+		SessionStatus: func() *agentv1.Status {
+			if sessions == nil {
+				return &agentv1.Status{}
+			}
+			return &agentv1.Status{DataSessions: sessions.Report()}
 		}})
 	if err != nil {
 		return err
@@ -120,7 +127,7 @@ func Run(ctx context.Context, o RunOptions) error {
 	}
 	sessions = NewSessions(SessionsOptions{TrustDomain: id.TrustDomain, GatewayID: id.AgentID, Assignment: assign,
 		Denied: ctl.DenyList().Denied, Capabilities: Capabilities, Now: o.Now, Logger: o.Logger,
-		OnOpenRequest: NewControlStreams(carried).Decide})
+		OnOpenRequest: NewControlStreams(carried).Decide, OnChange: report.change})
 	host, _, err := net.SplitHostPort(cfg.Listen.TCP)
 	if err != nil {
 		return err
@@ -251,6 +258,7 @@ func Run(ctx context.Context, o RunOptions) error {
 		}()
 	}
 	go certificates.Run(run)
+	go report.run(run, ReportEvery, ctl.Send, sessions.Report)
 	go func() {
 		for {
 			s, err := qln.Accept(run)

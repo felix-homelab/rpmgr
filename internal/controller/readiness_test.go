@@ -9,7 +9,10 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"google.golang.org/protobuf/types/known/durationpb"
+
 	agentv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/agent/v1"
+	"github.com/felix-homelab/rpmgr/internal/pki"
 	"github.com/felix-homelab/rpmgr/internal/store"
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/resourcestatus"
@@ -129,3 +132,89 @@ func TestResourceStatus(t *testing.T) {
 
 // clipped is s cut to 512 bytes of valid UTF-8, as the controller stores agent text.
 func clipped(s string) string { return strings.ToValidUTF8(s[:min(len(s), 512)], "") }
+
+// TestDataSessions: each Status of a gateway replaces what the controller knows of its data
+// sessions: one row per connector and transport, keeping when it was first heard of; a session
+// no longer reported goes; a connector's report and an unknown transport are ignored; a gateway
+// cannot make it keep more than 4096 rows.
+func TestDataSessions(t *testing.T) {
+	storetest.ForEachDialect(t, func(t *testing.T, db *store.DB) {
+		e := pushEnv(t, db)
+		sys := storetest.SystemCtx(t)
+		gwCert, gw := e.certOf(t, pki.KindGateway)
+		conCert, _ := e.agentCert(t)
+		gst := e.open(t, testCtx(t), gwCert, hello("0.1.0"))
+		cst := e.open(t, testCtx(t), conCert, hello("0.1.0"))
+		for _, st := range []controlStream{gst, cst} {
+			if recv(t, st).GetWelcome() == nil {
+				t.Fatal("no Welcome")
+			}
+		}
+		report := func(st controlStream, ds ...*agentv1.DataSession) {
+			t.Helper()
+			send(t, st, &agentv1.AgentMessage{Msg: &agentv1.AgentMessage_Status{Status: &agentv1.Status{DataSessions: ds}}})
+		}
+		ds := func(connector string, tr agentv1.Transport, rtt time.Duration) *agentv1.DataSession {
+			d := &agentv1.DataSession{ConnectorId: connector, Transport: tr}
+			if rtt > 0 {
+				d.Rtt = durationpb.New(rtt)
+			}
+			return d
+		}
+		rows := func() map[string]*ent.DataSession {
+			out := map[string]*ent.DataSession{}
+			for _, r := range db.Client().DataSession.Query().AllX(sys) {
+				out[r.GatewayID+"/"+r.ConnectorID+"/"+string(r.Transport)] = r
+			}
+			return out
+		}
+		waitFor := func(what string, ok func(map[string]*ent.DataSession) bool) map[string]*ent.DataSession {
+			t.Helper()
+			deadline := time.Now().Add(10 * time.Second)
+			for {
+				if got := rows(); ok(got) {
+					return got
+				}
+				if time.Now().After(deadline) {
+					t.Fatalf("%s: %v", what, rows())
+				}
+				time.Sleep(10 * time.Millisecond)
+			}
+		}
+		quic, h2 := agentv1.Transport_TRANSPORT_QUIC, agentv1.Transport_TRANSPORT_H2
+		report(gst, ds("con_a", quic, 12*time.Millisecond), ds("con_a", h2, 0), ds("con_b", h2, 0), ds("con_c", agentv1.Transport_TRANSPORT_UNSPECIFIED, 0))
+		got := waitFor("the first report", func(m map[string]*ent.DataSession) bool { return len(m) == 3 })
+		first := got[gw.ID+"/con_a/quic"]
+		if first == nil || first.RttMs != 12 || first.OrgID != gw.Org || got[gw.ID+"/con_a/h2"].RttMs != 0 {
+			t.Fatalf("after the first report: %v", got)
+		}
+
+		report(cst, ds("con_x", quic, time.Millisecond))
+		// The connector's messages are handled in order: once the marker is recorded, so is its report.
+		send(t, cst, statusMsg(false, notReady("marker", agentv1.NotReadyReason_NOT_READY_REASON_ENVIRONMENT, "")))
+		for db.Client().ResourceStatus.Query().CountX(sys) == 0 {
+			time.Sleep(10 * time.Millisecond)
+		}
+		report(gst, ds("con_a", quic, 30*time.Millisecond), ds("con_a", h2, 0))
+		got = waitFor("the second report", func(m map[string]*ent.DataSession) bool {
+			return len(m) == 2 && m[gw.ID+"/con_a/quic"] != nil && m[gw.ID+"/con_a/quic"].RttMs == 30
+		})
+		if a := got[gw.ID+"/con_a/quic"]; !a.EstablishedAt.Equal(first.EstablishedAt) || a.ReportedAt.Before(first.ReportedAt) {
+			t.Fatalf("a session still reported: %+v, first %+v", a, first)
+		}
+		for k := range got {
+			if strings.Contains(k, "con_x") || strings.Contains(k, "con_b") {
+				t.Fatalf("%s is kept", k)
+			}
+		}
+
+		var flood []*agentv1.DataSession
+		for i := range 5000 {
+			flood = append(flood, ds(fmt.Sprintf("con_%05d", i), h2, 0))
+		}
+		report(gst, flood...)
+		waitFor("a flood", func(m map[string]*ent.DataSession) bool { return len(m) == 4096 })
+		report(gst)
+		waitFor("an empty report", func(m map[string]*ent.DataSession) bool { return len(m) == 0 })
+	})
+}

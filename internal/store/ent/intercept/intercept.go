@@ -23,6 +23,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/configrevision"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/configseq"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/connector"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/datasession"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/domain"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/enrollmenttoken"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/gateway"
@@ -517,6 +518,33 @@ func (f TraverseConnector) Traverse(ctx context.Context, q ent.Query) error {
 		return f(ctx, q)
 	}
 	return fmt.Errorf("unexpected query type %T. expect *ent.ConnectorQuery", q)
+}
+
+// The DataSessionFunc type is an adapter to allow the use of ordinary function as a Querier.
+type DataSessionFunc func(context.Context, *ent.DataSessionQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f DataSessionFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.DataSessionQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.DataSessionQuery", q)
+}
+
+// The TraverseDataSession type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseDataSession func(context.Context, *ent.DataSessionQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseDataSession) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseDataSession) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.DataSessionQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.DataSessionQuery", q)
 }
 
 // The DomainFunc type is an adapter to allow the use of ordinary function as a Querier.
@@ -1416,6 +1444,8 @@ func NewQuery(q ent.Query) (Query, error) {
 		return &query[*ent.ConfigSeqQuery, predicate.ConfigSeq, configseq.OrderOption]{typ: ent.TypeConfigSeq, tq: q}, nil
 	case *ent.ConnectorQuery:
 		return &query[*ent.ConnectorQuery, predicate.Connector, connector.OrderOption]{typ: ent.TypeConnector, tq: q}, nil
+	case *ent.DataSessionQuery:
+		return &query[*ent.DataSessionQuery, predicate.DataSession, datasession.OrderOption]{typ: ent.TypeDataSession, tq: q}, nil
 	case *ent.DomainQuery:
 		return &query[*ent.DomainQuery, predicate.Domain, domain.OrderOption]{typ: ent.TypeDomain, tq: q}, nil
 	case *ent.EnrollmentTokenQuery:

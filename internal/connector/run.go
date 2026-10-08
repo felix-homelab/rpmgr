@@ -111,7 +111,10 @@ func Run(ctx context.Context, o RunOptions) error {
 	applier := NewApplier(targets, sessions)
 	ctl, err = agent.NewControl(agent.ControlOptions{IdentityDir: cfg.IdentityDir, StateDir: cfg.StateDir, Version: o.Version,
 		Capabilities: Capabilities, Applier: applier, Now: o.Now, Logger: o.Logger,
-		Dial: o.ControlDial, Fallback: sessions.ControlConn, Readiness: applier.Readiness})
+		Dial: o.ControlDial, Fallback: sessions.ControlConn,
+		SessionStatus: func() *agentv1.Status {
+			return &agentv1.Status{Readiness: applier.Readiness(), ReadinessComplete: true}
+		}})
 	if err != nil {
 		return err
 	}

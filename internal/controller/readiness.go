@@ -3,6 +3,7 @@
 package controller
 
 import (
+	"cmp"
 	"maps"
 	"slices"
 
@@ -10,6 +11,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/pki"
 	"github.com/felix-homelab/rpmgr/internal/store"
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/datasession"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/resourcestatus"
 )
 
@@ -71,5 +73,66 @@ func (s *Sessions) readiness(id pki.Identity, list []*agentv1.ResourceStatus, al
 	})
 	if err != nil {
 		s.log.Error("cannot record an agent's readiness", "agent", id.ID, "error", err)
+	}
+}
+
+// maxDataSessions is how many data sessions of one gateway the controller keeps
+// (docs/03-connections.md, "Configuration reconciliation").
+const maxDataSessions = 4096
+
+// dataSessions replaces what a gateway reported of its connectors' data sessions; a session it
+// still reports keeps when it was first heard of.
+func (s *Sessions) dataSessions(id pki.Identity, list []*agentv1.DataSession) {
+	type key struct{ connector, transport string }
+	next := map[key]*agentv1.DataSession{}
+	for _, d := range list {
+		tr := ""
+		switch d.GetTransport() {
+		case agentv1.Transport_TRANSPORT_QUIC:
+			tr = "quic"
+		case agentv1.Transport_TRANSPORT_H2:
+			tr = "h2"
+		}
+		if d.GetConnectorId() != "" && tr != "" && len(next) < maxDataSessions {
+			next[key{clip(d.GetConnectorId()), tr}] = d
+		}
+	}
+	now := s.now()
+	err := store.WriteTx(s.sys, s.db, func(tx *ent.Tx) error {
+		cur, err := tx.DataSession.Query().Where(datasession.GatewayID(id.ID)).All(s.sys)
+		if err != nil {
+			return err
+		}
+		held := map[key]*ent.DataSession{}
+		for _, row := range cur {
+			k := key{row.ConnectorID, string(row.Transport)}
+			if _, ok := next[k]; !ok {
+				if err := tx.DataSession.DeleteOne(row).Exec(s.sys); err != nil {
+					return err
+				}
+				continue
+			}
+			held[k] = row
+		}
+		for _, k := range slices.SortedFunc(maps.Keys(next), func(a, b key) int {
+			return cmp.Or(cmp.Compare(a.connector, b.connector), cmp.Compare(a.transport, b.transport))
+		}) {
+			rtt := next[k].GetRtt().AsDuration().Milliseconds()
+			if row, ok := held[k]; ok {
+				if err := tx.DataSession.UpdateOne(row).SetRttMs(max(rtt, 0)).SetReportedAt(now).Exec(s.sys); err != nil {
+					return err
+				}
+				continue
+			}
+			if err := tx.DataSession.Create().SetOrgID(id.Org).SetGatewayID(id.ID).SetConnectorID(k.connector).
+				SetTransport(datasession.Transport(k.transport)).SetRttMs(max(rtt, 0)).SetEstablishedAt(now).SetReportedAt(now).
+				Exec(s.sys); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		s.log.Error("cannot record a gateway's data sessions", "gateway", id.ID, "error", err)
 	}
 }
