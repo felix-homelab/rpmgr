@@ -296,7 +296,7 @@ later.
 
 | Property | Value |
 |---|---|
-| Format | `rpmgr_enr_<base62(32 random bytes)>_<6-char CRC32 checksum>`, GitHub-style: typos and secret scanners detect it offline. The same scheme is used for `rpmgr_pat_` (personal API tokens), `rpmgr_sat_` (service-account tokens), `rpmgr_ses_` (session tokens) and `rpmgr_prs_` (password-reset links). |
+| Format | `rpmgr_enr_<base62(32 random bytes)>_<6-char CRC32 checksum>`, GitHub-style: typos and secret scanners detect it offline. The same scheme is used for `rpmgr_pat_` (personal API tokens), `rpmgr_sat_` (service-account tokens), `rpmgr_ses_` (session tokens), `rpmgr_prs_` (password-reset links) and `rpmgr_inv_` (invitations). |
 | Storage | SHA-256 of the token, unique index; the plaintext is shown once |
 | Lifetime | **1 hour** default, maximum 30 days |
 | Uses | **1** by default; N or unlimited only for ephemeral connectors, always with a lifetime |
@@ -419,6 +419,12 @@ Shown in [03-connections.md](03-connections.md#enrollment). Security-relevant ru
 [R] The API names the permission of each row as in brackets. Three more are granted by no org
 role: `public` (no sign-in), `authenticated` (any signed-in caller, on their own account) and
 `instance.admin` (the Instance Admin role).
+
+[R] **Members.** Only an Owner makes, changes or removes an Owner, and an org keeps at least one
+Owner. An invitation is a one-time link (`rpmgr_inv_`, 7 days) for an e-mail address and a role:
+for a new address it creates the account, with the display name and password the holder chooses;
+the holder of an existing account signs in as it first. A lower role and a removal take effect at
+the next request and are recorded in the revocation log.
 
 **Instance Admin** is a separate, instance-level role for the CA, the KEK, system gateways,
 system-org DNS providers and zones, and instance settings. In a single-org installation, the first

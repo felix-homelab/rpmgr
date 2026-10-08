@@ -66,6 +66,9 @@ type Instance func(*sql.Selector)
 // InstanceSetting is the predicate function for instancesetting builders.
 type InstanceSetting func(*sql.Selector)
 
+// Invitation is the predicate function for invitation builders.
+type Invitation func(*sql.Selector)
+
 // IssuedCertificate is the predicate function for issuedcertificate builders.
 type IssuedCertificate func(*sql.Selector)
 

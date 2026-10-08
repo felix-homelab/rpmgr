@@ -35,6 +35,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/gatewaygroup"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/instance"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/instancesetting"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/invitation"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/issuedcertificate"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/lease"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/membership"
@@ -107,6 +108,8 @@ type Client struct {
 	Instance *InstanceClient
 	// InstanceSetting is the client for interacting with the InstanceSetting builders.
 	InstanceSetting *InstanceSettingClient
+	// Invitation is the client for interacting with the Invitation builders.
+	Invitation *InvitationClient
 	// IssuedCertificate is the client for interacting with the IssuedCertificate builders.
 	IssuedCertificate *IssuedCertificateClient
 	// Lease is the client for interacting with the Lease builders.
@@ -184,6 +187,7 @@ func (c *Client) init() {
 	c.GatewayGroup = NewGatewayGroupClient(c.config)
 	c.Instance = NewInstanceClient(c.config)
 	c.InstanceSetting = NewInstanceSettingClient(c.config)
+	c.Invitation = NewInvitationClient(c.config)
 	c.IssuedCertificate = NewIssuedCertificateClient(c.config)
 	c.Lease = NewLeaseClient(c.config)
 	c.Membership = NewMembershipClient(c.config)
@@ -319,6 +323,7 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		GatewayGroup:      NewGatewayGroupClient(cfg),
 		Instance:          NewInstanceClient(cfg),
 		InstanceSetting:   NewInstanceSettingClient(cfg),
+		Invitation:        NewInvitationClient(cfg),
 		IssuedCertificate: NewIssuedCertificateClient(cfg),
 		Lease:             NewLeaseClient(cfg),
 		Membership:        NewMembershipClient(cfg),
@@ -381,6 +386,7 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		GatewayGroup:      NewGatewayGroupClient(cfg),
 		Instance:          NewInstanceClient(cfg),
 		InstanceSetting:   NewInstanceSettingClient(cfg),
+		Invitation:        NewInvitationClient(cfg),
 		IssuedCertificate: NewIssuedCertificateClient(cfg),
 		Lease:             NewLeaseClient(cfg),
 		Membership:        NewMembershipClient(cfg),
@@ -437,7 +443,7 @@ func (c *Client) Use(hooks ...Hook) {
 		c.AuditEntry, c.AuditHead, c.CABundle, c.CAKey, c.Certificate,
 		c.CompiledSnapshot, c.ConfigRevision, c.ConfigSeq, c.Connector, c.Domain,
 		c.EnrollmentToken, c.Gateway, c.GatewayGroup, c.Instance, c.InstanceSetting,
-		c.IssuedCertificate, c.Lease, c.Membership, c.Org, c.OrgSetting,
+		c.Invitation, c.IssuedCertificate, c.Lease, c.Membership, c.Org, c.OrgSetting,
 		c.PasswordReset, c.PolicyRule, c.PortAllocation, c.PortPool, c.PortQuota,
 		c.RecoveryCode, c.RevokedIdentity, c.Route, c.RouteHTTP, c.RouteHostname,
 		c.RoutePolicy, c.RouteTCP, c.RouteTarget, c.RouteUDP, c.SecretMeta, c.Session,
@@ -455,7 +461,7 @@ func (c *Client) Intercept(interceptors ...Interceptor) {
 		c.AuditEntry, c.AuditHead, c.CABundle, c.CAKey, c.Certificate,
 		c.CompiledSnapshot, c.ConfigRevision, c.ConfigSeq, c.Connector, c.Domain,
 		c.EnrollmentToken, c.Gateway, c.GatewayGroup, c.Instance, c.InstanceSetting,
-		c.IssuedCertificate, c.Lease, c.Membership, c.Org, c.OrgSetting,
+		c.Invitation, c.IssuedCertificate, c.Lease, c.Membership, c.Org, c.OrgSetting,
 		c.PasswordReset, c.PolicyRule, c.PortAllocation, c.PortPool, c.PortQuota,
 		c.RecoveryCode, c.RevokedIdentity, c.Route, c.RouteHTTP, c.RouteHostname,
 		c.RoutePolicy, c.RouteTCP, c.RouteTarget, c.RouteUDP, c.SecretMeta, c.Session,
@@ -508,6 +514,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.Instance.mutate(ctx, m)
 	case *InstanceSettingMutation:
 		return c.InstanceSetting.mutate(ctx, m)
+	case *InvitationMutation:
+		return c.Invitation.mutate(ctx, m)
 	case *IssuedCertificateMutation:
 		return c.IssuedCertificate.mutate(ctx, m)
 	case *LeaseMutation:
@@ -3316,6 +3324,141 @@ func (c *InstanceSettingClient) mutate(ctx context.Context, m *InstanceSettingMu
 		return (&InstanceSettingDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
 	default:
 		return nil, fmt.Errorf("ent: unknown InstanceSetting mutation op: %q", m.Op())
+	}
+}
+
+// InvitationClient is a client for the Invitation schema.
+type InvitationClient struct {
+	config
+}
+
+// NewInvitationClient returns a client for the Invitation from the given config.
+func NewInvitationClient(c config) *InvitationClient {
+	return &InvitationClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `invitation.Hooks(f(g(h())))`.
+func (c *InvitationClient) Use(hooks ...Hook) {
+	c.hooks.Invitation = append(c.hooks.Invitation, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `invitation.Intercept(f(g(h())))`.
+func (c *InvitationClient) Intercept(interceptors ...Interceptor) {
+	c.inters.Invitation = append(c.inters.Invitation, interceptors...)
+}
+
+// Create returns a builder for creating a Invitation entity.
+func (c *InvitationClient) Create() *InvitationCreate {
+	mutation := newInvitationMutation(c.config, OpCreate)
+	return &InvitationCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of Invitation entities.
+func (c *InvitationClient) CreateBulk(builders ...*InvitationCreate) *InvitationCreateBulk {
+	return &InvitationCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *InvitationClient) MapCreateBulk(slice any, setFunc func(*InvitationCreate, int)) *InvitationCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &InvitationCreateBulk{err: fmt.Errorf("calling to InvitationClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*InvitationCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &InvitationCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for Invitation.
+func (c *InvitationClient) Update() *InvitationUpdate {
+	mutation := newInvitationMutation(c.config, OpUpdate)
+	return &InvitationUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *InvitationClient) UpdateOne(_m *Invitation) *InvitationUpdateOne {
+	mutation := newInvitationMutation(c.config, OpUpdateOne, withInvitation(_m))
+	return &InvitationUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *InvitationClient) UpdateOneID(id string) *InvitationUpdateOne {
+	mutation := newInvitationMutation(c.config, OpUpdateOne, withInvitationID(id))
+	return &InvitationUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for Invitation.
+func (c *InvitationClient) Delete() *InvitationDelete {
+	mutation := newInvitationMutation(c.config, OpDelete)
+	return &InvitationDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *InvitationClient) DeleteOne(_m *Invitation) *InvitationDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *InvitationClient) DeleteOneID(id string) *InvitationDeleteOne {
+	builder := c.Delete().Where(invitation.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &InvitationDeleteOne{builder}
+}
+
+// Query returns a query builder for Invitation.
+func (c *InvitationClient) Query() *InvitationQuery {
+	return &InvitationQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeInvitation},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a Invitation entity by its id.
+func (c *InvitationClient) Get(ctx context.Context, id string) (*Invitation, error) {
+	return c.Query().Where(invitation.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *InvitationClient) GetX(ctx context.Context, id string) *Invitation {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *InvitationClient) Hooks() []Hook {
+	hooks := c.hooks.Invitation
+	return append(hooks[:len(hooks):len(hooks)], invitation.Hooks[:]...)
+}
+
+// Interceptors returns the client interceptors.
+func (c *InvitationClient) Interceptors() []Interceptor {
+	inters := c.inters.Invitation
+	return append(inters[:len(inters):len(inters)], invitation.Interceptors[:]...)
+}
+
+func (c *InvitationClient) mutate(ctx context.Context, m *InvitationMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&InvitationCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&InvitationUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&InvitationUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&InvitationDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown Invitation mutation op: %q", m.Op())
 	}
 }
 
@@ -6829,19 +6972,20 @@ type (
 		ACMEStorage, APIRequest, AccessPolicy, AgentSession, AgentState, AuditEntry,
 		AuditHead, CABundle, CAKey, Certificate, CompiledSnapshot, ConfigRevision,
 		ConfigSeq, Connector, Domain, EnrollmentToken, Gateway, GatewayGroup, Instance,
-		InstanceSetting, IssuedCertificate, Lease, Membership, Org, OrgSetting,
-		PasswordReset, PolicyRule, PortAllocation, PortPool, PortQuota, RecoveryCode,
-		RevokedIdentity, Route, RouteHTTP, RouteHostname, RoutePolicy, RouteTCP,
-		RouteTarget, RouteUDP, SecretMeta, Session, TOTPCredential, User []ent.Hook
+		InstanceSetting, Invitation, IssuedCertificate, Lease, Membership, Org,
+		OrgSetting, PasswordReset, PolicyRule, PortAllocation, PortPool, PortQuota,
+		RecoveryCode, RevokedIdentity, Route, RouteHTTP, RouteHostname, RoutePolicy,
+		RouteTCP, RouteTarget, RouteUDP, SecretMeta, Session, TOTPCredential,
+		User []ent.Hook
 	}
 	inters struct {
 		ACMEStorage, APIRequest, AccessPolicy, AgentSession, AgentState, AuditEntry,
 		AuditHead, CABundle, CAKey, Certificate, CompiledSnapshot, ConfigRevision,
 		ConfigSeq, Connector, Domain, EnrollmentToken, Gateway, GatewayGroup, Instance,
-		InstanceSetting, IssuedCertificate, Lease, Membership, Org, OrgSetting,
-		PasswordReset, PolicyRule, PortAllocation, PortPool, PortQuota, RecoveryCode,
-		RevokedIdentity, Route, RouteHTTP, RouteHostname, RoutePolicy, RouteTCP,
-		RouteTarget, RouteUDP, SecretMeta, Session, TOTPCredential,
+		InstanceSetting, Invitation, IssuedCertificate, Lease, Membership, Org,
+		OrgSetting, PasswordReset, PolicyRule, PortAllocation, PortPool, PortQuota,
+		RecoveryCode, RevokedIdentity, Route, RouteHTTP, RouteHostname, RoutePolicy,
+		RouteTCP, RouteTarget, RouteUDP, SecretMeta, Session, TOTPCredential,
 		User []ent.Interceptor
 	}
 )
