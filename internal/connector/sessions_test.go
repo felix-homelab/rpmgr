@@ -450,7 +450,7 @@ func TestSessions_RouteHealth(t *testing.T) {
 }
 
 // TestSessions_Reconnect: after the gateway closes the session, and after a Drain, the connector
-// dials again; a draining session keeps serving until the gateway closes it.
+// dials again; a draining session with a stream open lasts until its deadline.
 func TestSessions_Reconnect(t *testing.T) {
 	w := newWorld(t)
 	id := w.gatewayID()
@@ -464,13 +464,20 @@ func TestSessions_Reconnect(t *testing.T) {
 		return g.sessions.Load().Count()["quic"] == 1 && g.quicConns.Load() == 2
 	})
 
-	// A planned restart: Drain, then a new process.
+	// A planned restart: Drain, then a new process. A stream open on the draining session keeps
+	// it: the connector closes a draining session it no longer needs once it has moved, so only a
+	// session with streams must last until the deadline.
 	old := g.sessions.Load()
+	held, _, err := old.OpenStream(context.Background(), &tunnelv1.StreamOpen{RouteId: "rt_1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = held.Close() }()
 	old.Drain(time.Now().Add(gateway.DrainPeriod))
 	g.sessions.Store(w.sessions(id))
 	eventually(t, "no session to the restarted gateway", func() bool { return g.sessions.Load().Count()["quic"] == 1 })
 	if old.Count()["quic"] != 1 {
-		t.Fatal("the draining session closed before its deadline")
+		t.Fatal("the draining session closed before its deadline with a stream open")
 	}
 	if _, err := old.Open(context.Background(), &tunnelv1.StreamOpen{RouteId: "rt_1"}); !errors.Is(err, gateway.ErrDraining) {
 		t.Fatalf("draining gateway: %v", err)
