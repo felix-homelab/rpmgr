@@ -5,6 +5,7 @@ syntax = "proto3";
 package rpmgr.agent.v1;
 
 import "google/protobuf/timestamp.proto";
+import "rpmgr/v1/options.proto";
 
 option go_package = "github.com/felix-homelab/rpmgr/gen/rpmgr/agent/v1;agentv1";
 
@@ -64,6 +65,8 @@ message Resource {
     GatewayPassthroughRoute gateway_passthrough_route = 6;
     // Gateways: a udp route's public port.
     GatewayUDPRoute gateway_udp_route = 7;
+    // Gateways: a certificate for http route hostnames, fetched by hash.
+    GatewayCertificate gateway_certificate = 8;
     // A large item the agent fetches by hash with Control.FetchResource.
     ResourceReference reference = 15;
   }
@@ -87,6 +90,26 @@ message GatewayUDPRoute {
   uint32 flow_idle_timeout_seconds = 2;
   // The connectors that serve the route, sorted.
   repeated string connectors = 3;
+}
+
+// GatewayCertificate is a public certificate a gateway terminates TLS with, for the http route
+// hostnames it lists: names of routes of the certificate's own org that it covers. The chain and
+// key come with Control.FetchResource, as a CertificateItem whose SHA-256 is content_sha256.
+message GatewayCertificate {
+  // SHA-256 of the CertificateItem.
+  bytes content_sha256 = 1;
+  // The route hostnames it serves, sorted.
+  repeated string hostnames = 2;
+  // The leaf's expiry; among certificates for a name, the gateway prefers the latest.
+  google.protobuf.Timestamp not_after = 3;
+}
+
+// CertificateItem is a certificate chain with its key, the content of a GatewayCertificate.
+message CertificateItem {
+  // The DER certificates, leaf first.
+  repeated bytes chain = 1;
+  // The leaf's private key, PKCS #8 DER.
+  bytes private_key = 2 [(rpmgr.v1.sensitive) = true];
 }
 
 // GatewayPassthroughRoute is a tls_passthrough route as a gateway serves it on port 443: a TLS

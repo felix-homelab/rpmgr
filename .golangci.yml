@@ -52,6 +52,10 @@ linters:
       - path: internal/pki/
         text: Reveal
         linters: [forbidigo]
+      # Route certificate keys are opened for the gateways that terminate TLS with them.
+      - path: internal/certs/
+        text: Reveal
+        linters: [forbidigo]
       - path: internal/store/
         text: DecisionContext
         linters: [forbidigo]

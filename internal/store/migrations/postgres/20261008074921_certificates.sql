@@ -1,0 +1,4 @@
+-- Create "certificates" table
+CREATE TABLE "certificates" ("id" character varying NOT NULL, "org_id" character varying NOT NULL, "source" character varying NOT NULL, "sans" jsonb NOT NULL, "not_before" timestamptz NOT NULL, "not_after" timestamptz NOT NULL, "chain" bytea NOT NULL, "key_enc" bytea NOT NULL, "content_sha256" bytea NOT NULL, "status" character varying NOT NULL DEFAULT 'active', "last_error" character varying NULL, "issuer" character varying NULL, "created_at" timestamptz NOT NULL, "version" bigint NOT NULL DEFAULT 1, PRIMARY KEY ("id"), CONSTRAINT "certificates_orgs" FOREIGN KEY ("org_id") REFERENCES "orgs" ("id") ON UPDATE NO ACTION ON DELETE NO ACTION);
+-- Create index "certificate_org_id_id" to table: "certificates"
+CREATE UNIQUE INDEX "certificate_org_id_id" ON "certificates" ("org_id", "id");

@@ -139,6 +139,36 @@ var (
 		Columns:    CaKeysColumns,
 		PrimaryKey: []*schema.Column{CaKeysColumns[0]},
 	}
+	// CertificatesColumns holds the columns for the "certificates" table.
+	CertificatesColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeString},
+		{Name: "org_id", Type: field.TypeString},
+		{Name: "source", Type: field.TypeEnum, Enums: []string{"acme", "uploaded"}},
+		{Name: "sans", Type: field.TypeJSON},
+		{Name: "not_before", Type: field.TypeTime},
+		{Name: "not_after", Type: field.TypeTime},
+		{Name: "chain", Type: field.TypeBytes},
+		{Name: "key_enc", Type: field.TypeBytes},
+		{Name: "content_sha256", Type: field.TypeBytes},
+		{Name: "status", Type: field.TypeEnum, Enums: []string{"pending", "active", "failed"}, Default: "active"},
+		{Name: "last_error", Type: field.TypeString, Nullable: true},
+		{Name: "issuer", Type: field.TypeString, Nullable: true},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "version", Type: field.TypeInt64, Default: 1},
+	}
+	// CertificatesTable holds the schema information for the "certificates" table.
+	CertificatesTable = &schema.Table{
+		Name:       "certificates",
+		Columns:    CertificatesColumns,
+		PrimaryKey: []*schema.Column{CertificatesColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "certificate_org_id_id",
+				Unique:  true,
+				Columns: []*schema.Column{CertificatesColumns[1], CertificatesColumns[0]},
+			},
+		},
+	}
 	// CompiledSnapshotsColumns holds the columns for the "compiled_snapshots" table.
 	CompiledSnapshotsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeInt, Increment: true},
@@ -893,6 +923,7 @@ var (
 		AuditLogTable,
 		AuditHeadsTable,
 		CaKeysTable,
+		CertificatesTable,
 		CompiledSnapshotsTable,
 		ConfigRevisionsTable,
 		ConfigSeqTable,
@@ -935,6 +966,9 @@ func init() {
 	}
 	CaKeysTable.Annotation = &entsql.Annotation{
 		Table: "ca_keys",
+	}
+	CertificatesTable.Annotation = &entsql.Annotation{
+		Table: "certificates",
 	}
 	CompiledSnapshotsTable.Annotation = &entsql.Annotation{
 		Table: "compiled_snapshots",

@@ -11,6 +11,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/auditentry"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/audithead"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/cakey"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/certificate"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/compiledsnapshot"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/configrevision"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/configseq"
@@ -305,6 +306,71 @@ func init() {
 	// cakey.IDValidator is a validator for the "id" field. It is called by the builders before save.
 	cakey.IDValidator = func() func(string) error {
 		validators := cakeyDescID.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(id string) error {
+			for _, fn := range fns {
+				if err := fn(id); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	certificateMixin := schema.Certificate{}.Mixin()
+	certificate.Policy = privacy.NewPolicies(certificateMixin[0], schema.Certificate{})
+	certificate.Hooks[0] = func(next ent.Mutator) ent.Mutator {
+		return ent.MutateFunc(func(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+			if err := certificate.Policy.EvalMutation(ctx, m); err != nil {
+				return nil, err
+			}
+			return next.Mutate(ctx, m)
+		})
+	}
+	certificateMixinHooks0 := certificateMixin[0].Hooks()
+
+	certificate.Hooks[1] = certificateMixinHooks0[0]
+	certificateMixinInters0 := certificateMixin[0].Interceptors()
+	certificate.Interceptors[0] = certificateMixinInters0[0]
+	certificateMixinFields0 := certificateMixin[0].Fields()
+	_ = certificateMixinFields0
+	certificateFields := schema.Certificate{}.Fields()
+	_ = certificateFields
+	// certificateDescOrgID is the schema descriptor for org_id field.
+	certificateDescOrgID := certificateMixinFields0[0].Descriptor()
+	// certificate.OrgIDValidator is a validator for the "org_id" field. It is called by the builders before save.
+	certificate.OrgIDValidator = certificateDescOrgID.Validators[0].(func(string) error)
+	// certificateDescChain is the schema descriptor for chain field.
+	certificateDescChain := certificateFields[5].Descriptor()
+	// certificate.ChainValidator is a validator for the "chain" field. It is called by the builders before save.
+	certificate.ChainValidator = certificateDescChain.Validators[0].(func([]byte) error)
+	// certificateDescKeyEnc is the schema descriptor for key_enc field.
+	certificateDescKeyEnc := certificateFields[6].Descriptor()
+	// certificate.KeyEncValidator is a validator for the "key_enc" field. It is called by the builders before save.
+	certificate.KeyEncValidator = certificateDescKeyEnc.Validators[0].(func([]byte) error)
+	// certificateDescContentSha256 is the schema descriptor for content_sha256 field.
+	certificateDescContentSha256 := certificateFields[7].Descriptor()
+	// certificate.ContentSha256Validator is a validator for the "content_sha256" field. It is called by the builders before save.
+	certificate.ContentSha256Validator = certificateDescContentSha256.Validators[0].(func([]byte) error)
+	// certificateDescCreatedAt is the schema descriptor for created_at field.
+	certificateDescCreatedAt := certificateFields[11].Descriptor()
+	// certificate.DefaultCreatedAt holds the default value on creation for the created_at field.
+	certificate.DefaultCreatedAt = certificateDescCreatedAt.Default.(func() time.Time)
+	// certificateDescVersion is the schema descriptor for version field.
+	certificateDescVersion := certificateFields[12].Descriptor()
+	// certificate.DefaultVersion holds the default value on creation for the version field.
+	certificate.DefaultVersion = certificateDescVersion.Default.(int64)
+	// certificate.VersionValidator is a validator for the "version" field. It is called by the builders before save.
+	certificate.VersionValidator = certificateDescVersion.Validators[0].(func(int64) error)
+	// certificateDescID is the schema descriptor for id field.
+	certificateDescID := certificateFields[0].Descriptor()
+	// certificate.DefaultID holds the default value on creation for the id field.
+	certificate.DefaultID = certificateDescID.Default.(func() string)
+	// certificate.IDValidator is a validator for the "id" field. It is called by the builders before save.
+	certificate.IDValidator = func() func(string) error {
+		validators := certificateDescID.Validators
 		fns := [...]func(string) error{
 			validators[0].(func(string) error),
 			validators[1].(func(string) error),

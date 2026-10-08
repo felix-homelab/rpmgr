@@ -231,6 +231,30 @@ func (f CAKeyMutationRuleFunc) EvalMutation(ctx context.Context, m ent.Mutation)
 	return Denyf("ent/privacy: unexpected mutation type %T, expect *ent.CAKeyMutation", m)
 }
 
+// The CertificateQueryRuleFunc type is an adapter to allow the use of ordinary
+// functions as a query rule.
+type CertificateQueryRuleFunc func(context.Context, *ent.CertificateQuery) error
+
+// EvalQuery return f(ctx, q).
+func (f CertificateQueryRuleFunc) EvalQuery(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.CertificateQuery); ok {
+		return f(ctx, q)
+	}
+	return Denyf("ent/privacy: unexpected query type %T, expect *ent.CertificateQuery", q)
+}
+
+// The CertificateMutationRuleFunc type is an adapter to allow the use of ordinary
+// functions as a mutation rule.
+type CertificateMutationRuleFunc func(context.Context, *ent.CertificateMutation) error
+
+// EvalMutation calls f(ctx, m).
+func (f CertificateMutationRuleFunc) EvalMutation(ctx context.Context, m ent.Mutation) error {
+	if m, ok := m.(*ent.CertificateMutation); ok {
+		return f(ctx, m)
+	}
+	return Denyf("ent/privacy: unexpected mutation type %T, expect *ent.CertificateMutation", m)
+}
+
 // The CompiledSnapshotQueryRuleFunc type is an adapter to allow the use of ordinary
 // functions as a query rule.
 type CompiledSnapshotQueryRuleFunc func(context.Context, *ent.CompiledSnapshotQuery) error
@@ -852,6 +876,8 @@ func queryFilter(q ent.Query) (Filter, error) {
 		return q.Filter(), nil
 	case *ent.CAKeyQuery:
 		return q.Filter(), nil
+	case *ent.CertificateQuery:
+		return q.Filter(), nil
 	case *ent.CompiledSnapshotQuery:
 		return q.Filter(), nil
 	case *ent.ConfigRevisionQuery:
@@ -916,6 +942,8 @@ func mutationFilter(m ent.Mutation) (Filter, error) {
 	case *ent.AuditHeadMutation:
 		return m.Filter(), nil
 	case *ent.CAKeyMutation:
+		return m.Filter(), nil
+	case *ent.CertificateMutation:
 		return m.Filter(), nil
 	case *ent.CompiledSnapshotMutation:
 		return m.Filter(), nil
