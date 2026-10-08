@@ -128,6 +128,12 @@ func httpResource(id, upstream string, hosts ...string) *agentv1.Resource {
 	return &agentv1.Resource{Id: id, Kind: &agentv1.Resource_GatewayHttpRoute{GatewayHttpRoute: r}}
 }
 
+func httpsResource(id string, tls ...*agentv1.UpstreamTLS) *agentv1.Resource {
+	r := httpResource(id, "https", "secure.example.com")
+	r.GetGatewayHttpRoute().UpstreamTls = tls
+	return r
+}
+
 func passResource(id string, hostnames ...string) *agentv1.Resource {
 	return &agentv1.Resource{Id: id, Kind: &agentv1.Resource_GatewayPassthroughRoute{GatewayPassthroughRoute: &agentv1.GatewayPassthroughRoute{
 		Hostnames: hostnames, Connectors: []string{"con_1"}}}}
@@ -139,7 +145,8 @@ func passResource(id string, hostnames ...string) *agentv1.Resource {
 func TestApplier_ValidateHTTP(t *testing.T) {
 	a, _ := gateway.NewApplier()
 	ok := gatewaySnapshot(1, httpResource("rt_1", "http", "app.example.com", "app.example.com|/api", "*.example.com"),
-		httpResource("rt_2", "h2c", "app.example.com|/grpc"), passResource("rt_3", "db.example.com"))
+		httpResource("rt_2", "h2c", "app.example.com|/grpc"), passResource("rt_3", "db.example.com"),
+		httpsResource("rt_4", &agentv1.UpstreamTLS{TargetId: "tg_1", ServerName: "a.internal", SpkiSha256: make([]byte, 32)}))
 	if errs := a.Validate(ok); len(errs) != 0 {
 		t.Fatal(errs)
 	}
@@ -149,7 +156,15 @@ func TestApplier_ValidateHTTP(t *testing.T) {
 		want string
 	}{
 		{"no hosts", gatewaySnapshot(1, httpResource("rt_1", "http")), "without hostnames"},
-		{"an https upstream", gatewaySnapshot(1, httpResource("rt_1", "https", "app.example.com")), "upstream protocol"},
+		{"a grpc upstream", gatewaySnapshot(1, httpResource("rt_1", "grpc", "app.example.com")), "upstream protocol"},
+		{"upstream TLS without a target", gatewaySnapshot(1, httpsResource("rt_1", &agentv1.UpstreamTLS{ServerName: "a"})), "without a target"},
+		{"upstream TLS twice", gatewaySnapshot(1, httpsResource("rt_1", &agentv1.UpstreamTLS{TargetId: "tg_1", ServerName: "a"},
+			&agentv1.UpstreamTLS{TargetId: "tg_1", ServerName: "b"})), "twice"},
+		{"no server name", gatewaySnapshot(1, httpsResource("rt_1", &agentv1.UpstreamTLS{TargetId: "tg_1"})), "without a server name"},
+		{"a bundle without certificates", gatewaySnapshot(1, httpsResource("rt_1", &agentv1.UpstreamTLS{TargetId: "tg_1", ServerName: "a",
+			CaPem: []byte("nothing")})), "holds no certificate"},
+		{"a short pin", gatewaySnapshot(1, httpsResource("rt_1", &agentv1.UpstreamTLS{TargetId: "tg_1", ServerName: "a",
+			SpkiSha256: make([]byte, 16)})), "not a SHA-256"},
 		{"no upstream", gatewaySnapshot(1, httpResource("rt_1", "", "app.example.com")), "upstream protocol"},
 		{"upper case", gatewaySnapshot(1, httpResource("rt_1", "http", "App.example.com")), "not normalised"},
 		{"a relative prefix", gatewaySnapshot(1, httpResource("rt_1", "http", "app.example.com|api")), "start with /"},

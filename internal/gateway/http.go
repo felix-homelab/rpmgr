@@ -3,8 +3,11 @@
 package gateway
 
 import (
+	"bytes"
 	"context"
+	"crypto/sha256"
 	"crypto/tls"
+	"crypto/x509"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -12,6 +15,7 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"net/url"
+	"reflect"
 	"slices"
 	"strconv"
 	"strings"
@@ -58,9 +62,42 @@ func (t RouteTable) HTTP(sni string) bool { return t.http.Serves(sni) }
 type HTTPRoute struct {
 	ID    string
 	Hosts []HTTPHost
-	// Upstream is "http" (HTTP/1.1) or "h2c".
+	// Upstream is "http" (HTTP/1.1), "h2c" or "https".
 	Upstream  string
 	WebSocket bool
+	// TLS verifies an "https" upstream, by route target ID.
+	TLS map[string]UpstreamTLS
+}
+
+// UpstreamTLS is how the gateway verifies the HTTPS upstream of one route target.
+type UpstreamTLS struct {
+	ServerName string
+	// CAPEM verifies the upstream's chain; empty is the host's trust store.
+	CAPEM []byte
+	// SPKISHA256, if set, must be the SHA-256 of the leaf's SubjectPublicKeyInfo.
+	SPKISHA256 []byte
+}
+
+// config returns the TLS configuration of a connection to the upstream: TLS 1.2 or later, the
+// server name, the CA bundle or the host's trust store, the pin, and ALPN for HTTP/2.
+func (u UpstreamTLS) config() (*tls.Config, error) {
+	cfg := &tls.Config{MinVersion: tls.VersionTLS12, ServerName: u.ServerName, NextProtos: []string{"h2", "http/1.1"}}
+	if len(u.CAPEM) > 0 {
+		cfg.RootCAs = x509.NewCertPool()
+		if !cfg.RootCAs.AppendCertsFromPEM(u.CAPEM) {
+			return nil, errors.New("the CA bundle holds no certificate")
+		}
+	}
+	if pin := u.SPKISHA256; len(pin) > 0 {
+		cfg.VerifyConnection = func(cs tls.ConnectionState) error {
+			sum := sha256.Sum256(cs.PeerCertificates[0].RawSubjectPublicKeyInfo)
+			if !bytes.Equal(sum[:], pin) {
+				return errors.New("the upstream's key does not match its pin")
+			}
+			return nil
+		}
+	}
+	return cfg, nil
 }
 
 // HTTPHost is a hostname, or "*.name" for every name one label below, with a path prefix; ""
@@ -102,11 +139,13 @@ type httpEntry struct {
 }
 
 // routeTransport is one route's proxy, whose transport pools the route's tunnel streams. route
-// changes with snapshots while requests read it.
+// changes with snapshots while requests read it; a change of the upstream protocol or its TLS
+// settings makes a new routeTransport, so no pooled connection outlives its verification.
 type routeTransport struct {
 	route atomic.Pointer[HTTPRoute]
 	tr    *http.Transport
 	proxy *httputil.ReverseProxy
+	tls   map[string]*tls.Config // by route target ID
 }
 
 // NewHTTPRoutes returns the http routes' server; Close stops it.
@@ -173,7 +212,7 @@ func (h *HTTPRoutes) Apply(routes []HTTPRoute) {
 	t := &httpTable{byHost: map[string][]httpEntry{}}
 	for _, r := range routes {
 		rt := h.transports[r.ID]
-		if rt == nil || rt.route.Load().Upstream != r.Upstream {
+		if rt == nil || rt.route.Load().Upstream != r.Upstream || !reflect.DeepEqual(rt.route.Load().TLS, r.TLS) {
 			rt = h.newTransport(r)
 		} else {
 			rt.route.Store(&r)
@@ -205,12 +244,26 @@ func (h *HTTPRoutes) newTransport(r HTTPRoute) *routeTransport {
 		MaxIdleConnsPerHost:   64,
 		IdleConnTimeout:       httpIdle,
 	}
-	if r.Upstream == "h2c" {
+	target := &url.URL{Scheme: "http", Host: r.ID + ".route.invalid"}
+	switch r.Upstream {
+	case "h2c":
 		p := new(http.Protocols)
 		p.SetUnencryptedHTTP2(true)
 		rt.tr.Protocols = p
+	case "https":
+		target.Scheme = "https"
+		p := new(http.Protocols)
+		p.SetHTTP1(true)
+		p.SetHTTP2(true)
+		rt.tr.Protocols = p
+		rt.tls = map[string]*tls.Config{}
+		for id, u := range r.TLS {
+			if cfg, err := u.config(); err == nil {
+				rt.tls[id] = cfg
+			}
+		}
+		rt.tr.DialTLSContext = func(ctx context.Context, _, _ string) (net.Conn, error) { return h.dialTLS(ctx, rt) }
 	}
-	target := &url.URL{Scheme: "http", Host: r.ID + ".route.invalid"}
 	rt.proxy = &httputil.ReverseProxy{
 		Rewrite: func(pr *httputil.ProxyRequest) {
 			pr.SetURL(target)
@@ -255,18 +308,45 @@ func (e *openError) Error() string { return fmt.Sprintf("route %s: %s", e.route,
 
 // dial opens a tunnel stream for the route.
 func (h *HTTPRoutes) dial(ctx context.Context, route string) (net.Conn, error) {
+	c, _, err := h.open(ctx, route)
+	return c, err
+}
+
+// open opens a tunnel stream for the route and returns it with the target the connector chose.
+func (h *HTTPRoutes) open(ctx context.Context, route string) (net.Conn, string, error) {
 	open := &tunnelv1.StreamOpen{Kind: tunnelv1.StreamKind_STREAM_KIND_TCP, RouteId: route}
 	if h.o.Revision != nil {
 		open.SnapshotRev = h.o.Revision()
 	}
-	st, code, err := h.o.Sessions.OpenStream(ctx, open)
+	st, res, err := h.o.Sessions.OpenStreamResult(ctx, open)
+	if err != nil {
+		return nil, "", err
+	}
+	if st == nil {
+		return nil, "", &openError{route: route, code: res.GetCode()}
+	}
+	return &streamConn{Stream: st}, res.GetTargetId(), nil
+}
+
+// dialTLS opens a tunnel stream for an https route and completes TLS over it, verified with the
+// settings of the target the connector chose; a target without them fails closed.
+func (h *HTTPRoutes) dialTLS(ctx context.Context, rt *routeTransport) (net.Conn, error) {
+	route := rt.route.Load().ID
+	c, target, err := h.open(ctx, route)
 	if err != nil {
 		return nil, err
 	}
-	if st == nil {
-		return nil, &openError{route: route, code: code}
+	cfg := rt.tls[target]
+	if cfg == nil {
+		_ = c.Close()
+		return nil, fmt.Errorf("route %s: no TLS settings for target %q", route, target)
 	}
-	return &streamConn{Stream: st}, nil
+	tc := tls.Client(c, cfg)
+	if err := tc.HandshakeContext(ctx); err != nil {
+		_ = tc.Close()
+		return nil, fmt.Errorf("route %s: TLS to target %s: %w", route, target, err)
+	}
+	return tc, nil
 }
 
 // proxyError answers a request the proxy could not complete: 503 with Retry-After when no

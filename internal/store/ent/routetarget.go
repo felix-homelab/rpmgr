@@ -8,6 +8,7 @@ import (
 
 	"entgo.io/ent"
 	"entgo.io/ent/dialect/sql"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/cabundle"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/connector"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/route"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routetarget"
@@ -36,6 +37,8 @@ type RouteTarget struct {
 	UpstreamProtocol routetarget.UpstreamProtocol `json:"upstream_protocol,omitempty"`
 	// TLSServerName holds the value of the "tls_server_name" field.
 	TLSServerName string `json:"tls_server_name,omitempty"`
+	// TLSCaBundleID holds the value of the "tls_ca_bundle_id" field.
+	TLSCaBundleID *string `json:"tls_ca_bundle_id,omitempty"`
 	// TLSSpkiSha256 holds the value of the "tls_spki_sha256" field.
 	TLSSpkiSha256 string `json:"tls_spki_sha256,omitempty"`
 	// ProxyProtocol holds the value of the "proxy_protocol" field.
@@ -58,9 +61,11 @@ type RouteTargetEdges struct {
 	Route *Route `json:"route,omitempty"`
 	// Connector holds the value of the connector edge.
 	Connector *Connector `json:"connector,omitempty"`
+	// CaBundle holds the value of the ca_bundle edge.
+	CaBundle *CABundle `json:"ca_bundle,omitempty"`
 	// loadedTypes holds the information for reporting if a
 	// type was loaded (or requested) in eager-loading or not.
-	loadedTypes [2]bool
+	loadedTypes [3]bool
 }
 
 // RouteOrErr returns the Route value or an error if the edge
@@ -85,6 +90,17 @@ func (e RouteTargetEdges) ConnectorOrErr() (*Connector, error) {
 	return nil, &NotLoadedError{edge: "connector"}
 }
 
+// CaBundleOrErr returns the CaBundle value or an error if the edge
+// was not loaded in eager-loading, or loaded but was not found.
+func (e RouteTargetEdges) CaBundleOrErr() (*CABundle, error) {
+	if e.CaBundle != nil {
+		return e.CaBundle, nil
+	} else if e.loadedTypes[2] {
+		return nil, &NotFoundError{label: cabundle.Label}
+	}
+	return nil, &NotLoadedError{edge: "ca_bundle"}
+}
+
 // scanValues returns the types for scanning values from sql.Rows.
 func (*RouteTarget) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
@@ -94,7 +110,7 @@ func (*RouteTarget) scanValues(columns []string) ([]any, error) {
 			values[i] = new(sql.NullBool)
 		case routetarget.FieldPort, routetarget.FieldWeight, routetarget.FieldPriority:
 			values[i] = new(sql.NullInt64)
-		case routetarget.FieldID, routetarget.FieldOrgID, routetarget.FieldRouteID, routetarget.FieldConnectorID, routetarget.FieldKind, routetarget.FieldHost, routetarget.FieldUnixPath, routetarget.FieldUpstreamProtocol, routetarget.FieldTLSServerName, routetarget.FieldTLSSpkiSha256, routetarget.FieldProxyProtocol:
+		case routetarget.FieldID, routetarget.FieldOrgID, routetarget.FieldRouteID, routetarget.FieldConnectorID, routetarget.FieldKind, routetarget.FieldHost, routetarget.FieldUnixPath, routetarget.FieldUpstreamProtocol, routetarget.FieldTLSServerName, routetarget.FieldTLSCaBundleID, routetarget.FieldTLSSpkiSha256, routetarget.FieldProxyProtocol:
 			values[i] = new(sql.NullString)
 		default:
 			values[i] = new(sql.UnknownType)
@@ -171,6 +187,13 @@ func (_m *RouteTarget) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.TLSServerName = value.String
 			}
+		case routetarget.FieldTLSCaBundleID:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field tls_ca_bundle_id", values[i])
+			} else if value.Valid {
+				_m.TLSCaBundleID = new(string)
+				*_m.TLSCaBundleID = value.String
+			}
 		case routetarget.FieldTLSSpkiSha256:
 			if value, ok := values[i].(*sql.NullString); !ok {
 				return fmt.Errorf("unexpected type %T for field tls_spki_sha256", values[i])
@@ -224,6 +247,11 @@ func (_m *RouteTarget) QueryConnector() *ConnectorQuery {
 	return NewRouteTargetClient(_m.config).QueryConnector(_m)
 }
 
+// QueryCaBundle queries the "ca_bundle" edge of the RouteTarget entity.
+func (_m *RouteTarget) QueryCaBundle() *CABundleQuery {
+	return NewRouteTargetClient(_m.config).QueryCaBundle(_m)
+}
+
 // Update returns a builder for updating this RouteTarget.
 // Note that you need to call RouteTarget.Unwrap() before calling this method if this RouteTarget
 // was returned from a transaction, and the transaction was committed or rolled back.
@@ -273,6 +301,11 @@ func (_m *RouteTarget) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("tls_server_name=")
 	builder.WriteString(_m.TLSServerName)
+	builder.WriteString(", ")
+	if v := _m.TLSCaBundleID; v != nil {
+		builder.WriteString("tls_ca_bundle_id=")
+		builder.WriteString(*v)
+	}
 	builder.WriteString(", ")
 	builder.WriteString("tls_spki_sha256=")
 	builder.WriteString(_m.TLSSpkiSha256)

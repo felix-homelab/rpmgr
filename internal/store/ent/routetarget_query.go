@@ -12,6 +12,7 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/cabundle"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/connector"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/predicate"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/route"
@@ -27,6 +28,7 @@ type RouteTargetQuery struct {
 	predicates    []predicate.RouteTarget
 	withRoute     *RouteQuery
 	withConnector *ConnectorQuery
+	withCaBundle  *CABundleQuery
 	// intermediate query (i.e. traversal path).
 	sql  *sql.Selector
 	path func(context.Context) (*sql.Selector, error)
@@ -100,6 +102,28 @@ func (_q *RouteTargetQuery) QueryConnector() *ConnectorQuery {
 			sqlgraph.From(routetarget.Table, routetarget.FieldID, selector),
 			sqlgraph.To(connector.Table, connector.FieldID),
 			sqlgraph.Edge(sqlgraph.M2O, false, routetarget.ConnectorTable, routetarget.ConnectorColumn),
+		)
+		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
+		return fromU, nil
+	}
+	return query
+}
+
+// QueryCaBundle chains the current query on the "ca_bundle" edge.
+func (_q *RouteTargetQuery) QueryCaBundle() *CABundleQuery {
+	query := (&CABundleClient{config: _q.config}).Query()
+	query.path = func(ctx context.Context) (fromU *sql.Selector, err error) {
+		if err := _q.prepareQuery(ctx); err != nil {
+			return nil, err
+		}
+		selector := _q.sqlQuery(ctx)
+		if err := selector.Err(); err != nil {
+			return nil, err
+		}
+		step := sqlgraph.NewStep(
+			sqlgraph.From(routetarget.Table, routetarget.FieldID, selector),
+			sqlgraph.To(cabundle.Table, cabundle.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, false, routetarget.CaBundleTable, routetarget.CaBundleColumn),
 		)
 		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
 		return fromU, nil
@@ -301,6 +325,7 @@ func (_q *RouteTargetQuery) Clone() *RouteTargetQuery {
 		predicates:    append([]predicate.RouteTarget{}, _q.predicates...),
 		withRoute:     _q.withRoute.Clone(),
 		withConnector: _q.withConnector.Clone(),
+		withCaBundle:  _q.withCaBundle.Clone(),
 		// clone intermediate query.
 		sql:  _q.sql.Clone(),
 		path: _q.path,
@@ -326,6 +351,17 @@ func (_q *RouteTargetQuery) WithConnector(opts ...func(*ConnectorQuery)) *RouteT
 		opt(query)
 	}
 	_q.withConnector = query
+	return _q
+}
+
+// WithCaBundle tells the query-builder to eager-load the nodes that are connected to
+// the "ca_bundle" edge. The optional arguments are used to configure the query builder of the edge.
+func (_q *RouteTargetQuery) WithCaBundle(opts ...func(*CABundleQuery)) *RouteTargetQuery {
+	query := (&CABundleClient{config: _q.config}).Query()
+	for _, opt := range opts {
+		opt(query)
+	}
+	_q.withCaBundle = query
 	return _q
 }
 
@@ -413,9 +449,10 @@ func (_q *RouteTargetQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*
 	var (
 		nodes       = []*RouteTarget{}
 		_spec       = _q.querySpec()
-		loadedTypes = [2]bool{
+		loadedTypes = [3]bool{
 			_q.withRoute != nil,
 			_q.withConnector != nil,
+			_q.withCaBundle != nil,
 		}
 	)
 	_spec.ScanValues = func(columns []string) ([]any, error) {
@@ -445,6 +482,12 @@ func (_q *RouteTargetQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*
 	if query := _q.withConnector; query != nil {
 		if err := _q.loadConnector(ctx, query, nodes, nil,
 			func(n *RouteTarget, e *Connector) { n.Edges.Connector = e }); err != nil {
+			return nil, err
+		}
+	}
+	if query := _q.withCaBundle; query != nil {
+		if err := _q.loadCaBundle(ctx, query, nodes, nil,
+			func(n *RouteTarget, e *CABundle) { n.Edges.CaBundle = e }); err != nil {
 			return nil, err
 		}
 	}
@@ -509,6 +552,38 @@ func (_q *RouteTargetQuery) loadConnector(ctx context.Context, query *ConnectorQ
 	}
 	return nil
 }
+func (_q *RouteTargetQuery) loadCaBundle(ctx context.Context, query *CABundleQuery, nodes []*RouteTarget, init func(*RouteTarget), assign func(*RouteTarget, *CABundle)) error {
+	ids := make([]string, 0, len(nodes))
+	nodeids := make(map[string][]*RouteTarget)
+	for i := range nodes {
+		if nodes[i].TLSCaBundleID == nil {
+			continue
+		}
+		fk := *nodes[i].TLSCaBundleID
+		if _, ok := nodeids[fk]; !ok {
+			ids = append(ids, fk)
+		}
+		nodeids[fk] = append(nodeids[fk], nodes[i])
+	}
+	if len(ids) == 0 {
+		return nil
+	}
+	query.Where(cabundle.IDIn(ids...))
+	neighbors, err := query.All(ctx)
+	if err != nil {
+		return err
+	}
+	for _, n := range neighbors {
+		nodes, ok := nodeids[n.ID]
+		if !ok {
+			return fmt.Errorf(`unexpected foreign-key "tls_ca_bundle_id" returned %v`, n.ID)
+		}
+		for i := range nodes {
+			assign(nodes[i], n)
+		}
+	}
+	return nil
+}
 
 func (_q *RouteTargetQuery) sqlCount(ctx context.Context) (int, error) {
 	_spec := _q.querySpec()
@@ -540,6 +615,9 @@ func (_q *RouteTargetQuery) querySpec() *sqlgraph.QuerySpec {
 		}
 		if _q.withConnector != nil {
 			_spec.Node.AddColumnOnce(routetarget.FieldConnectorID)
+		}
+		if _q.withCaBundle != nil {
+			_spec.Node.AddColumnOnce(routetarget.FieldTLSCaBundleID)
 		}
 	}
 	if ps := _q.predicates; len(ps) > 0 {

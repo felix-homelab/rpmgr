@@ -121,6 +121,33 @@ var (
 		Columns:    AuditHeadsColumns,
 		PrimaryKey: []*schema.Column{AuditHeadsColumns[0]},
 	}
+	// CaBundlesColumns holds the columns for the "ca_bundles" table.
+	CaBundlesColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeString},
+		{Name: "org_id", Type: field.TypeString},
+		{Name: "name", Type: field.TypeString, Size: 100},
+		{Name: "pem", Type: field.TypeBytes},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "version", Type: field.TypeInt64, Default: 1},
+	}
+	// CaBundlesTable holds the schema information for the "ca_bundles" table.
+	CaBundlesTable = &schema.Table{
+		Name:       "ca_bundles",
+		Columns:    CaBundlesColumns,
+		PrimaryKey: []*schema.Column{CaBundlesColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "cabundle_org_id_id",
+				Unique:  true,
+				Columns: []*schema.Column{CaBundlesColumns[1], CaBundlesColumns[0]},
+			},
+			{
+				Name:    "cabundle_org_id_name",
+				Unique:  true,
+				Columns: []*schema.Column{CaBundlesColumns[1], CaBundlesColumns[2]},
+			},
+		},
+	}
 	// CaKeysColumns holds the columns for the "ca_keys" table.
 	CaKeysColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeString},
@@ -865,6 +892,7 @@ var (
 		{Name: "enabled", Type: field.TypeBool, Default: true},
 		{Name: "route_id", Type: field.TypeString},
 		{Name: "connector_id", Type: field.TypeString},
+		{Name: "tls_ca_bundle_id", Type: field.TypeString, Nullable: true},
 	}
 	// RouteTargetsTable holds the schema information for the "route_targets" table.
 	RouteTargetsTable = &schema.Table{
@@ -884,6 +912,12 @@ var (
 				RefColumns: []*schema.Column{ConnectorsColumns[0]},
 				OnDelete:   schema.NoAction,
 			},
+			{
+				Symbol:     "route_targets_ca_bundles_ca_bundle",
+				Columns:    []*schema.Column{RouteTargetsColumns[15]},
+				RefColumns: []*schema.Column{CaBundlesColumns[0]},
+				OnDelete:   schema.SetNull,
+			},
 		},
 		Indexes: []*schema.Index{
 			{
@@ -900,6 +934,11 @@ var (
 				Name:    "routetarget_connector_id",
 				Unique:  false,
 				Columns: []*schema.Column{RouteTargetsColumns[14]},
+			},
+			{
+				Name:    "routetarget_tls_ca_bundle_id",
+				Unique:  false,
+				Columns: []*schema.Column{RouteTargetsColumns[15]},
 			},
 		},
 	}
@@ -976,6 +1015,7 @@ var (
 		AgentStateTable,
 		AuditLogTable,
 		AuditHeadsTable,
+		CaBundlesTable,
 		CaKeysTable,
 		CertificatesTable,
 		CompiledSnapshotsTable,
@@ -1018,6 +1058,9 @@ func init() {
 	}
 	AuditHeadsTable.Annotation = &entsql.Annotation{
 		Table: "audit_heads",
+	}
+	CaBundlesTable.Annotation = &entsql.Annotation{
+		Table: "ca_bundles",
 	}
 	CaKeysTable.Annotation = &entsql.Annotation{
 		Table: "ca_keys",
@@ -1090,6 +1133,7 @@ func init() {
 	}
 	RouteTargetsTable.ForeignKeys[0].RefTable = RoutesTable
 	RouteTargetsTable.ForeignKeys[1].RefTable = ConnectorsTable
+	RouteTargetsTable.ForeignKeys[2].RefTable = CaBundlesTable
 	RouteTargetsTable.Annotation = &entsql.Annotation{
 		Table: "route_targets",
 	}

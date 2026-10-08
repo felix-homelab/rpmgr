@@ -9,6 +9,7 @@ import (
 
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/cabundle"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/connector"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/route"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routetarget"
@@ -115,6 +116,20 @@ func (_c *RouteTargetCreate) SetNillableTLSServerName(v *string) *RouteTargetCre
 	return _c
 }
 
+// SetTLSCaBundleID sets the "tls_ca_bundle_id" field.
+func (_c *RouteTargetCreate) SetTLSCaBundleID(v string) *RouteTargetCreate {
+	_c.mutation.SetTLSCaBundleID(v)
+	return _c
+}
+
+// SetNillableTLSCaBundleID sets the "tls_ca_bundle_id" field if the given value is not nil.
+func (_c *RouteTargetCreate) SetNillableTLSCaBundleID(v *string) *RouteTargetCreate {
+	if v != nil {
+		_c.SetTLSCaBundleID(*v)
+	}
+	return _c
+}
+
 // SetTLSSpkiSha256 sets the "tls_spki_sha256" field.
 func (_c *RouteTargetCreate) SetTLSSpkiSha256(v string) *RouteTargetCreate {
 	_c.mutation.SetTLSSpkiSha256(v)
@@ -207,6 +222,25 @@ func (_c *RouteTargetCreate) SetRoute(v *Route) *RouteTargetCreate {
 // SetConnector sets the "connector" edge to the Connector entity.
 func (_c *RouteTargetCreate) SetConnector(v *Connector) *RouteTargetCreate {
 	return _c.SetConnectorID(v.ID)
+}
+
+// SetCaBundleID sets the "ca_bundle" edge to the CABundle entity by ID.
+func (_c *RouteTargetCreate) SetCaBundleID(id string) *RouteTargetCreate {
+	_c.mutation.SetCaBundleID(id)
+	return _c
+}
+
+// SetNillableCaBundleID sets the "ca_bundle" edge to the CABundle entity by ID if the given value is not nil.
+func (_c *RouteTargetCreate) SetNillableCaBundleID(id *string) *RouteTargetCreate {
+	if id != nil {
+		_c = _c.SetCaBundleID(*id)
+	}
+	return _c
+}
+
+// SetCaBundle sets the "ca_bundle" edge to the CABundle entity.
+func (_c *RouteTargetCreate) SetCaBundle(v *CABundle) *RouteTargetCreate {
+	return _c.SetCaBundleID(v.ID)
 }
 
 // Mutation returns the RouteTargetMutation object of the builder.
@@ -511,6 +545,23 @@ func (_c *RouteTargetCreate) createSpec() (*RouteTarget, *sqlgraph.CreateSpec) {
 			edge.Target.Nodes = append(edge.Target.Nodes, k)
 		}
 		_node.ConnectorID = nodes[0]
+		_spec.Edges = append(_spec.Edges, edge)
+	}
+	if nodes := _c.mutation.CaBundleIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2O,
+			Inverse: false,
+			Table:   routetarget.CaBundleTable,
+			Columns: []string{routetarget.CaBundleColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(cabundle.FieldID, field.TypeString),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_node.TLSCaBundleID = &nodes[0]
 		_spec.Edges = append(_spec.Edges, edge)
 	}
 	return _node, _spec

@@ -162,6 +162,42 @@ func samePublic(a, b crypto.PublicKey) bool {
 	return ok && e.Equal(b)
 }
 
+// MaxBundle is the most certificates a CA bundle holds (docs/04-security.md, "Route
+// certificates").
+const MaxBundle = 100
+
+// CheckBundle checks a CA bundle for HTTPS upstreams: CERTIFICATE blocks only, at least one and
+// at most MaxBundle, each one that parses. A certificate need not be a CA: a self-signed server
+// certificate trusts itself.
+func CheckBundle(bundle []byte) ([]*x509.Certificate, error) {
+	var out []*x509.Certificate
+	for rest := bundle; ; {
+		var b *pem.Block
+		b, rest = pem.Decode(rest)
+		if b == nil {
+			if strings.TrimSpace(string(rest)) != "" {
+				return nil, invalid("the bundle has text that is not PEM")
+			}
+			break
+		}
+		if b.Type != "CERTIFICATE" {
+			return nil, invalid("the bundle holds a %s block", b.Type)
+		}
+		if len(out) == MaxBundle {
+			return nil, invalid("the bundle holds more than %d certificates", MaxBundle)
+		}
+		c, err := x509.ParseCertificate(b.Bytes)
+		if err != nil {
+			return nil, invalid("certificate %d of the bundle: %v", len(out)+1, err)
+		}
+		out = append(out, c)
+	}
+	if len(out) == 0 {
+		return nil, invalid("an empty bundle")
+	}
+	return out, nil
+}
+
 // Item is what a gateway fetches for the certificate: its chain and key, deterministically
 // encoded, so its SHA-256 identifies it.
 func (p *Parsed) Item() ([]byte, error) {

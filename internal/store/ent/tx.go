@@ -22,6 +22,8 @@ type Tx struct {
 	AuditEntry *AuditEntryClient
 	// AuditHead is the client for interacting with the AuditHead builders.
 	AuditHead *AuditHeadClient
+	// CABundle is the client for interacting with the CABundle builders.
+	CABundle *CABundleClient
 	// CAKey is the client for interacting with the CAKey builders.
 	CAKey *CAKeyClient
 	// Certificate is the client for interacting with the Certificate builders.
@@ -211,6 +213,7 @@ func (tx *Tx) init() {
 	tx.AgentState = NewAgentStateClient(tx.config)
 	tx.AuditEntry = NewAuditEntryClient(tx.config)
 	tx.AuditHead = NewAuditHeadClient(tx.config)
+	tx.CABundle = NewCABundleClient(tx.config)
 	tx.CAKey = NewCAKeyClient(tx.config)
 	tx.Certificate = NewCertificateClient(tx.config)
 	tx.CompiledSnapshot = NewCompiledSnapshotClient(tx.config)

@@ -416,7 +416,10 @@ func (x *StreamOpen) GetResult() *StreamResult {
 type StreamResult struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// The outcome.
-	Code          ResultCode `protobuf:"varint,1,opt,name=code,proto3,enum=rpmgr.tunnel.v1.ResultCode" json:"code,omitempty"`
+	Code ResultCode `protobuf:"varint,1,opt,name=code,proto3,enum=rpmgr.tunnel.v1.ResultCode" json:"code,omitempty"`
+	// With NO_ERROR: the route target the connector connected to, so the gateway can verify an
+	// HTTPS upstream with that target's TLS settings.
+	TargetId      string `protobuf:"bytes,2,opt,name=target_id,json=targetId,proto3" json:"target_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -456,6 +459,13 @@ func (x *StreamResult) GetCode() ResultCode {
 		return x.Code
 	}
 	return ResultCode_RESULT_CODE_NO_ERROR
+}
+
+func (x *StreamResult) GetTargetId() string {
+	if x != nil {
+		return x.TargetId
+	}
+	return ""
 }
 
 // SessionMessage is a message on the session control stream (docs/03-connections.md,
@@ -1248,9 +1258,10 @@ const file_rpmgr_tunnel_v1_tunnel_proto_rawDesc = "" +
 	"\x0fopen_timeout_ms\x18\f \x01(\rR\ropenTimeoutMs\x12#\n" +
 	"\rpeer_identity\x18\r \x01(\tR\fpeerIdentity\x12\x17\n" +
 	"\aopen_id\x18\x0e \x01(\x04R\x06openId\x125\n" +
-	"\x06result\x18\x0f \x01(\v2\x1d.rpmgr.tunnel.v1.StreamResultR\x06result\"?\n" +
+	"\x06result\x18\x0f \x01(\v2\x1d.rpmgr.tunnel.v1.StreamResultR\x06result\"\\\n" +
 	"\fStreamResult\x12/\n" +
-	"\x04code\x18\x01 \x01(\x0e2\x1b.rpmgr.tunnel.v1.ResultCodeR\x04code\"\x9d\x04\n" +
+	"\x04code\x18\x01 \x01(\x0e2\x1b.rpmgr.tunnel.v1.ResultCodeR\x04code\x12\x1b\n" +
+	"\ttarget_id\x18\x02 \x01(\tR\btargetId\"\x9d\x04\n" +
 	"\x0eSessionMessage\x125\n" +
 	"\x05hello\x18\x01 \x01(\v2\x1d.rpmgr.tunnel.v1.SessionHelloH\x00R\x05hello\x12;\n" +
 	"\awelcome\x18\x02 \x01(\v2\x1f.rpmgr.tunnel.v1.SessionWelcomeH\x00R\awelcome\x12+\n" +

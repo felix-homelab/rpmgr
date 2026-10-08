@@ -12,6 +12,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/pem"
 	"errors"
 	"fmt"
 	"io"
@@ -425,4 +426,76 @@ func TestHTTPRoutes_ApplyWhileServing(t *testing.T) {
 		}
 	}
 	<-done
+}
+
+// upstreamCA is a CA with a TLS server certificate for upstream.internal issued by it.
+type upstreamCA struct {
+	pem  []byte
+	leaf tls.Certificate
+}
+
+func newUpstreamCA(t *testing.T) upstreamCA {
+	t.Helper()
+	caKey, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	caTmpl := &x509.Certificate{SerialNumber: big.NewInt(1), Subject: pkix.Name{CommonName: "upstream CA"}, IsCA: true,
+		BasicConstraintsValid: true, KeyUsage: x509.KeyUsageCertSign, NotBefore: time.Now().Add(-time.Hour), NotAfter: time.Now().Add(time.Hour)}
+	caDER, err := x509.CreateCertificate(rand.Reader, caTmpl, caTmpl, &caKey.PublicKey, caKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ca, _ := x509.ParseCertificate(caDER)
+	k, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	tmpl := &x509.Certificate{SerialNumber: big.NewInt(2), Subject: pkix.Name{CommonName: "upstream.internal"},
+		DNSNames: []string{"upstream.internal"}, NotBefore: time.Now().Add(-time.Hour), NotAfter: time.Now().Add(time.Hour)}
+	der, err := x509.CreateCertificate(rand.Reader, tmpl, ca, &k.PublicKey, caKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	leaf, _ := x509.ParseCertificate(der)
+	return upstreamCA{pem: pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: caDER}),
+		leaf: tls.Certificate{Certificate: [][]byte{der}, PrivateKey: k, Leaf: leaf}}
+}
+
+// TestHTTPRoutes_HTTPSUpstream: an https upstream is verified with the settings of the target the
+// connector chose: its CA bundle, server name and SPKI pin; any mismatch, a target without
+// settings, or the host's trust store for a private CA is 502. ALPN brings HTTP/2.
+func TestHTTPRoutes_HTTPSUpstream(t *testing.T) {
+	ca := newUpstreamCA(t)
+	ln, err := tls.Listen("tcp", "127.0.0.1:0", &tls.Config{MinVersion: tls.VersionTLS13, Certificates: []tls.Certificate{ca.leaf},
+		NextProtos: []string{"h2", "http/1.1"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	up := &http.Server{ReadHeaderTimeout: 5 * time.Second, Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.WriteString(w, r.Proto) //nolint:gosec // G705: the test upstream answers with its protocol as plain text
+	})}
+	go func() { _ = up.Serve(ln) }()
+	t.Cleanup(func() { _ = up.Close() })
+	p := newPlaneWith(t, ln.Addr().String(), "none", "rt_tls")
+	route := gateway.HTTPRoute{ID: "rt_tls", Upstream: "https", Hosts: []gateway.HTTPHost{{Hostname: "app.example.com"}}}
+	e := newHTTPEnvOn(t, p.sessions, route)
+	pin := sha256.Sum256(ca.leaf.Leaf.RawSubjectPublicKeyInfo)
+	other := newUpstreamCA(t)
+	for _, tc := range []struct {
+		name string
+		tls  map[string]gateway.UpstreamTLS
+		want int
+	}{
+		{"verified", map[string]gateway.UpstreamTLS{"tg_rt_tls": {ServerName: "upstream.internal", CAPEM: ca.pem}}, http.StatusOK},
+		{"pinned", map[string]gateway.UpstreamTLS{"tg_rt_tls": {ServerName: "upstream.internal", CAPEM: ca.pem, SPKISHA256: pin[:]}}, http.StatusOK},
+		{"another CA", map[string]gateway.UpstreamTLS{"tg_rt_tls": {ServerName: "upstream.internal", CAPEM: other.pem}}, http.StatusBadGateway},
+		{"another name", map[string]gateway.UpstreamTLS{"tg_rt_tls": {ServerName: "other.internal", CAPEM: ca.pem}}, http.StatusBadGateway},
+		{"another pin", map[string]gateway.UpstreamTLS{"tg_rt_tls": {ServerName: "upstream.internal", CAPEM: ca.pem,
+			SPKISHA256: make([]byte, 32)}}, http.StatusBadGateway},
+		{"the host's trust store", map[string]gateway.UpstreamTLS{"tg_rt_tls": {ServerName: "upstream.internal"}}, http.StatusBadGateway},
+		{"another target's settings only", map[string]gateway.UpstreamTLS{"tg_other": {ServerName: "upstream.internal", CAPEM: ca.pem}},
+			http.StatusBadGateway},
+	} {
+		route.TLS = tc.tls
+		e.routes.Apply([]gateway.HTTPRoute{route})
+		r := get(t, e.client(false), "https://app.example.com/", nil)
+		if r.status != tc.want || tc.want == http.StatusOK && r.body != "HTTP/2.0" {
+			t.Errorf("%s: %d %q, want %d", tc.name, r.status, r.body, tc.want)
+		}
+	}
 }

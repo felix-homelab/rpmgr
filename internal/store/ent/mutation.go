@@ -15,6 +15,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/agentstate"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/auditentry"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/audithead"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/cabundle"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/cakey"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/certificate"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/compiledsnapshot"
@@ -58,6 +59,7 @@ const (
 	TypeAgentState        = "AgentState"
 	TypeAuditEntry        = "AuditEntry"
 	TypeAuditHead         = "AuditHead"
+	TypeCABundle          = "CABundle"
 	TypeCAKey             = "CAKey"
 	TypeCertificate       = "Certificate"
 	TypeCompiledSnapshot  = "CompiledSnapshot"
@@ -3957,6 +3959,590 @@ func (m *AuditHeadMutation) ClearEdge(name string) error {
 // It returns an error if the edge is not defined in the schema.
 func (m *AuditHeadMutation) ResetEdge(name string) error {
 	return fmt.Errorf("unknown AuditHead edge %s", name)
+}
+
+// CABundleMutation represents an operation that mutates the CABundle nodes in the graph.
+type CABundleMutation struct {
+	config
+	op            Op
+	typ           string
+	id            *string
+	org_id        *string
+	name          *string
+	pem           *[]byte
+	created_at    *time.Time
+	version       *int64
+	addversion    *int64
+	clearedFields map[string]struct{}
+	done          bool
+	oldValue      func(context.Context) (*CABundle, error)
+	predicates    []predicate.CABundle
+}
+
+var _ ent.Mutation = (*CABundleMutation)(nil)
+
+// cabundleOption allows management of the mutation configuration using functional options.
+type cabundleOption func(*CABundleMutation)
+
+// newCABundleMutation creates new mutation for the CABundle entity.
+func newCABundleMutation(c config, op Op, opts ...cabundleOption) *CABundleMutation {
+	m := &CABundleMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeCABundle,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withCABundleID sets the ID field of the mutation.
+func withCABundleID(id string) cabundleOption {
+	return func(m *CABundleMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *CABundle
+		)
+		m.oldValue = func(ctx context.Context) (*CABundle, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().CABundle.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withCABundle sets the old CABundle of the mutation.
+func withCABundle(node *CABundle) cabundleOption {
+	return func(m *CABundleMutation) {
+		m.oldValue = func(context.Context) (*CABundle, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m CABundleMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m CABundleMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// SetID sets the value of the id field. Note that this
+// operation is only accepted on creation of CABundle entities.
+func (m *CABundleMutation) SetID(id string) {
+	m.id = &id
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *CABundleMutation) ID() (id string, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *CABundleMutation) IDs(ctx context.Context) ([]string, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []string{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().CABundle.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetOrgID sets the "org_id" field.
+func (m *CABundleMutation) SetOrgID(s string) {
+	m.org_id = &s
+}
+
+// OrgID returns the value of the "org_id" field in the mutation.
+func (m *CABundleMutation) OrgID() (r string, exists bool) {
+	v := m.org_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldOrgID returns the old "org_id" field's value of the CABundle entity.
+// If the CABundle object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CABundleMutation) OldOrgID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldOrgID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldOrgID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldOrgID: %w", err)
+	}
+	return oldValue.OrgID, nil
+}
+
+// ResetOrgID resets all changes to the "org_id" field.
+func (m *CABundleMutation) ResetOrgID() {
+	m.org_id = nil
+}
+
+// SetName sets the "name" field.
+func (m *CABundleMutation) SetName(s string) {
+	m.name = &s
+}
+
+// Name returns the value of the "name" field in the mutation.
+func (m *CABundleMutation) Name() (r string, exists bool) {
+	v := m.name
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldName returns the old "name" field's value of the CABundle entity.
+// If the CABundle object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CABundleMutation) OldName(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldName is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldName requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldName: %w", err)
+	}
+	return oldValue.Name, nil
+}
+
+// ResetName resets all changes to the "name" field.
+func (m *CABundleMutation) ResetName() {
+	m.name = nil
+}
+
+// SetPem sets the "pem" field.
+func (m *CABundleMutation) SetPem(b []byte) {
+	m.pem = &b
+}
+
+// Pem returns the value of the "pem" field in the mutation.
+func (m *CABundleMutation) Pem() (r []byte, exists bool) {
+	v := m.pem
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldPem returns the old "pem" field's value of the CABundle entity.
+// If the CABundle object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CABundleMutation) OldPem(ctx context.Context) (v []byte, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPem is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPem requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPem: %w", err)
+	}
+	return oldValue.Pem, nil
+}
+
+// ResetPem resets all changes to the "pem" field.
+func (m *CABundleMutation) ResetPem() {
+	m.pem = nil
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *CABundleMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *CABundleMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the CABundle entity.
+// If the CABundle object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CABundleMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *CABundleMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// SetVersion sets the "version" field.
+func (m *CABundleMutation) SetVersion(i int64) {
+	m.version = &i
+	m.addversion = nil
+}
+
+// Version returns the value of the "version" field in the mutation.
+func (m *CABundleMutation) Version() (r int64, exists bool) {
+	v := m.version
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldVersion returns the old "version" field's value of the CABundle entity.
+// If the CABundle object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CABundleMutation) OldVersion(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldVersion is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldVersion requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldVersion: %w", err)
+	}
+	return oldValue.Version, nil
+}
+
+// AddVersion adds i to the "version" field.
+func (m *CABundleMutation) AddVersion(i int64) {
+	if m.addversion != nil {
+		*m.addversion += i
+	} else {
+		m.addversion = &i
+	}
+}
+
+// AddedVersion returns the value that was added to the "version" field in this mutation.
+func (m *CABundleMutation) AddedVersion() (r int64, exists bool) {
+	v := m.addversion
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetVersion resets all changes to the "version" field.
+func (m *CABundleMutation) ResetVersion() {
+	m.version = nil
+	m.addversion = nil
+}
+
+// Where appends a list predicates to the CABundleMutation builder.
+func (m *CABundleMutation) Where(ps ...predicate.CABundle) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the CABundleMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *CABundleMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.CABundle, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *CABundleMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *CABundleMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (CABundle).
+func (m *CABundleMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *CABundleMutation) Fields() []string {
+	fields := make([]string, 0, 5)
+	if m.org_id != nil {
+		fields = append(fields, cabundle.FieldOrgID)
+	}
+	if m.name != nil {
+		fields = append(fields, cabundle.FieldName)
+	}
+	if m.pem != nil {
+		fields = append(fields, cabundle.FieldPem)
+	}
+	if m.created_at != nil {
+		fields = append(fields, cabundle.FieldCreatedAt)
+	}
+	if m.version != nil {
+		fields = append(fields, cabundle.FieldVersion)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *CABundleMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case cabundle.FieldOrgID:
+		return m.OrgID()
+	case cabundle.FieldName:
+		return m.Name()
+	case cabundle.FieldPem:
+		return m.Pem()
+	case cabundle.FieldCreatedAt:
+		return m.CreatedAt()
+	case cabundle.FieldVersion:
+		return m.Version()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *CABundleMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case cabundle.FieldOrgID:
+		return m.OldOrgID(ctx)
+	case cabundle.FieldName:
+		return m.OldName(ctx)
+	case cabundle.FieldPem:
+		return m.OldPem(ctx)
+	case cabundle.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	case cabundle.FieldVersion:
+		return m.OldVersion(ctx)
+	}
+	return nil, fmt.Errorf("unknown CABundle field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *CABundleMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case cabundle.FieldOrgID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetOrgID(v)
+		return nil
+	case cabundle.FieldName:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetName(v)
+		return nil
+	case cabundle.FieldPem:
+		v, ok := value.([]byte)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetPem(v)
+		return nil
+	case cabundle.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	case cabundle.FieldVersion:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetVersion(v)
+		return nil
+	}
+	return fmt.Errorf("unknown CABundle field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *CABundleMutation) AddedFields() []string {
+	var fields []string
+	if m.addversion != nil {
+		fields = append(fields, cabundle.FieldVersion)
+	}
+	return fields
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *CABundleMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case cabundle.FieldVersion:
+		return m.AddedVersion()
+	}
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *CABundleMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	case cabundle.FieldVersion:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddVersion(v)
+		return nil
+	}
+	return fmt.Errorf("unknown CABundle numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *CABundleMutation) ClearedFields() []string {
+	return nil
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *CABundleMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *CABundleMutation) ClearField(name string) error {
+	return fmt.Errorf("unknown CABundle nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *CABundleMutation) ResetField(name string) error {
+	switch name {
+	case cabundle.FieldOrgID:
+		m.ResetOrgID()
+		return nil
+	case cabundle.FieldName:
+		m.ResetName()
+		return nil
+	case cabundle.FieldPem:
+		m.ResetPem()
+		return nil
+	case cabundle.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	case cabundle.FieldVersion:
+		m.ResetVersion()
+		return nil
+	}
+	return fmt.Errorf("unknown CABundle field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *CABundleMutation) AddedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *CABundleMutation) AddedIDs(name string) []ent.Value {
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *CABundleMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *CABundleMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *CABundleMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *CABundleMutation) EdgeCleared(name string) bool {
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *CABundleMutation) ClearEdge(name string) error {
+	return fmt.Errorf("unknown CABundle unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *CABundleMutation) ResetEdge(name string) error {
+	return fmt.Errorf("unknown CABundle edge %s", name)
 }
 
 // CAKeyMutation represents an operation that mutates the CAKey nodes in the graph.
@@ -22588,6 +23174,8 @@ type RouteTargetMutation struct {
 	clearedroute      bool
 	connector         *string
 	clearedconnector  bool
+	ca_bundle         *string
+	clearedca_bundle  bool
 	done              bool
 	oldValue          func(context.Context) (*RouteTarget, error)
 	predicates        []predicate.RouteTarget
@@ -23041,6 +23629,55 @@ func (m *RouteTargetMutation) ResetTLSServerName() {
 	m.tls_server_name = nil
 }
 
+// SetTLSCaBundleID sets the "tls_ca_bundle_id" field.
+func (m *RouteTargetMutation) SetTLSCaBundleID(s string) {
+	m.ca_bundle = &s
+}
+
+// TLSCaBundleID returns the value of the "tls_ca_bundle_id" field in the mutation.
+func (m *RouteTargetMutation) TLSCaBundleID() (r string, exists bool) {
+	v := m.ca_bundle
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldTLSCaBundleID returns the old "tls_ca_bundle_id" field's value of the RouteTarget entity.
+// If the RouteTarget object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RouteTargetMutation) OldTLSCaBundleID(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldTLSCaBundleID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldTLSCaBundleID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldTLSCaBundleID: %w", err)
+	}
+	return oldValue.TLSCaBundleID, nil
+}
+
+// ClearTLSCaBundleID clears the value of the "tls_ca_bundle_id" field.
+func (m *RouteTargetMutation) ClearTLSCaBundleID() {
+	m.ca_bundle = nil
+	m.clearedFields[routetarget.FieldTLSCaBundleID] = struct{}{}
+}
+
+// TLSCaBundleIDCleared returns if the "tls_ca_bundle_id" field was cleared in this mutation.
+func (m *RouteTargetMutation) TLSCaBundleIDCleared() bool {
+	_, ok := m.clearedFields[routetarget.FieldTLSCaBundleID]
+	return ok
+}
+
+// ResetTLSCaBundleID resets all changes to the "tls_ca_bundle_id" field.
+func (m *RouteTargetMutation) ResetTLSCaBundleID() {
+	m.ca_bundle = nil
+	delete(m.clearedFields, routetarget.FieldTLSCaBundleID)
+}
+
 // SetTLSSpkiSha256 sets the "tls_spki_sha256" field.
 func (m *RouteTargetMutation) SetTLSSpkiSha256(s string) {
 	m.tls_spki_sha256 = &s
@@ -23315,6 +23952,46 @@ func (m *RouteTargetMutation) ResetConnector() {
 	m.clearedconnector = false
 }
 
+// SetCaBundleID sets the "ca_bundle" edge to the CABundle entity by id.
+func (m *RouteTargetMutation) SetCaBundleID(id string) {
+	m.ca_bundle = &id
+}
+
+// ClearCaBundle clears the "ca_bundle" edge to the CABundle entity.
+func (m *RouteTargetMutation) ClearCaBundle() {
+	m.clearedca_bundle = true
+	m.clearedFields[routetarget.FieldTLSCaBundleID] = struct{}{}
+}
+
+// CaBundleCleared reports if the "ca_bundle" edge to the CABundle entity was cleared.
+func (m *RouteTargetMutation) CaBundleCleared() bool {
+	return m.TLSCaBundleIDCleared() || m.clearedca_bundle
+}
+
+// CaBundleID returns the "ca_bundle" edge ID in the mutation.
+func (m *RouteTargetMutation) CaBundleID() (id string, exists bool) {
+	if m.ca_bundle != nil {
+		return *m.ca_bundle, true
+	}
+	return
+}
+
+// CaBundleIDs returns the "ca_bundle" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// CaBundleID instead. It exists only for internal usage by the builders.
+func (m *RouteTargetMutation) CaBundleIDs() (ids []string) {
+	if id := m.ca_bundle; id != nil {
+		ids = append(ids, *id)
+	}
+	return
+}
+
+// ResetCaBundle resets all changes to the "ca_bundle" edge.
+func (m *RouteTargetMutation) ResetCaBundle() {
+	m.ca_bundle = nil
+	m.clearedca_bundle = false
+}
+
 // Where appends a list predicates to the RouteTargetMutation builder.
 func (m *RouteTargetMutation) Where(ps ...predicate.RouteTarget) {
 	m.predicates = append(m.predicates, ps...)
@@ -23349,7 +24026,7 @@ func (m *RouteTargetMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *RouteTargetMutation) Fields() []string {
-	fields := make([]string, 0, 14)
+	fields := make([]string, 0, 15)
 	if m.org_id != nil {
 		fields = append(fields, routetarget.FieldOrgID)
 	}
@@ -23376,6 +24053,9 @@ func (m *RouteTargetMutation) Fields() []string {
 	}
 	if m.tls_server_name != nil {
 		fields = append(fields, routetarget.FieldTLSServerName)
+	}
+	if m.ca_bundle != nil {
+		fields = append(fields, routetarget.FieldTLSCaBundleID)
 	}
 	if m.tls_spki_sha256 != nil {
 		fields = append(fields, routetarget.FieldTLSSpkiSha256)
@@ -23418,6 +24098,8 @@ func (m *RouteTargetMutation) Field(name string) (ent.Value, bool) {
 		return m.UpstreamProtocol()
 	case routetarget.FieldTLSServerName:
 		return m.TLSServerName()
+	case routetarget.FieldTLSCaBundleID:
+		return m.TLSCaBundleID()
 	case routetarget.FieldTLSSpkiSha256:
 		return m.TLSSpkiSha256()
 	case routetarget.FieldProxyProtocol:
@@ -23455,6 +24137,8 @@ func (m *RouteTargetMutation) OldField(ctx context.Context, name string) (ent.Va
 		return m.OldUpstreamProtocol(ctx)
 	case routetarget.FieldTLSServerName:
 		return m.OldTLSServerName(ctx)
+	case routetarget.FieldTLSCaBundleID:
+		return m.OldTLSCaBundleID(ctx)
 	case routetarget.FieldTLSSpkiSha256:
 		return m.OldTLSSpkiSha256(ctx)
 	case routetarget.FieldProxyProtocol:
@@ -23536,6 +24220,13 @@ func (m *RouteTargetMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetTLSServerName(v)
+		return nil
+	case routetarget.FieldTLSCaBundleID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetTLSCaBundleID(v)
 		return nil
 	case routetarget.FieldTLSSpkiSha256:
 		v, ok := value.(string)
@@ -23640,7 +24331,11 @@ func (m *RouteTargetMutation) AddField(name string, value ent.Value) error {
 // ClearedFields returns all nullable fields that were cleared during this
 // mutation.
 func (m *RouteTargetMutation) ClearedFields() []string {
-	return nil
+	var fields []string
+	if m.FieldCleared(routetarget.FieldTLSCaBundleID) {
+		fields = append(fields, routetarget.FieldTLSCaBundleID)
+	}
+	return fields
 }
 
 // FieldCleared returns a boolean indicating if a field with the given name was
@@ -23653,6 +24348,11 @@ func (m *RouteTargetMutation) FieldCleared(name string) bool {
 // ClearField clears the value of the field with the given name. It returns an
 // error if the field is not defined in the schema.
 func (m *RouteTargetMutation) ClearField(name string) error {
+	switch name {
+	case routetarget.FieldTLSCaBundleID:
+		m.ClearTLSCaBundleID()
+		return nil
+	}
 	return fmt.Errorf("unknown RouteTarget nullable field %s", name)
 }
 
@@ -23687,6 +24387,9 @@ func (m *RouteTargetMutation) ResetField(name string) error {
 	case routetarget.FieldTLSServerName:
 		m.ResetTLSServerName()
 		return nil
+	case routetarget.FieldTLSCaBundleID:
+		m.ResetTLSCaBundleID()
+		return nil
 	case routetarget.FieldTLSSpkiSha256:
 		m.ResetTLSSpkiSha256()
 		return nil
@@ -23708,12 +24411,15 @@ func (m *RouteTargetMutation) ResetField(name string) error {
 
 // AddedEdges returns all edge names that were set/added in this mutation.
 func (m *RouteTargetMutation) AddedEdges() []string {
-	edges := make([]string, 0, 2)
+	edges := make([]string, 0, 3)
 	if m.route != nil {
 		edges = append(edges, routetarget.EdgeRoute)
 	}
 	if m.connector != nil {
 		edges = append(edges, routetarget.EdgeConnector)
+	}
+	if m.ca_bundle != nil {
+		edges = append(edges, routetarget.EdgeCaBundle)
 	}
 	return edges
 }
@@ -23730,13 +24436,17 @@ func (m *RouteTargetMutation) AddedIDs(name string) []ent.Value {
 		if id := m.connector; id != nil {
 			return []ent.Value{*id}
 		}
+	case routetarget.EdgeCaBundle:
+		if id := m.ca_bundle; id != nil {
+			return []ent.Value{*id}
+		}
 	}
 	return nil
 }
 
 // RemovedEdges returns all edge names that were removed in this mutation.
 func (m *RouteTargetMutation) RemovedEdges() []string {
-	edges := make([]string, 0, 2)
+	edges := make([]string, 0, 3)
 	return edges
 }
 
@@ -23748,12 +24458,15 @@ func (m *RouteTargetMutation) RemovedIDs(name string) []ent.Value {
 
 // ClearedEdges returns all edge names that were cleared in this mutation.
 func (m *RouteTargetMutation) ClearedEdges() []string {
-	edges := make([]string, 0, 2)
+	edges := make([]string, 0, 3)
 	if m.clearedroute {
 		edges = append(edges, routetarget.EdgeRoute)
 	}
 	if m.clearedconnector {
 		edges = append(edges, routetarget.EdgeConnector)
+	}
+	if m.clearedca_bundle {
+		edges = append(edges, routetarget.EdgeCaBundle)
 	}
 	return edges
 }
@@ -23766,6 +24479,8 @@ func (m *RouteTargetMutation) EdgeCleared(name string) bool {
 		return m.clearedroute
 	case routetarget.EdgeConnector:
 		return m.clearedconnector
+	case routetarget.EdgeCaBundle:
+		return m.clearedca_bundle
 	}
 	return false
 }
@@ -23780,6 +24495,9 @@ func (m *RouteTargetMutation) ClearEdge(name string) error {
 	case routetarget.EdgeConnector:
 		m.ClearConnector()
 		return nil
+	case routetarget.EdgeCaBundle:
+		m.ClearCaBundle()
+		return nil
 	}
 	return fmt.Errorf("unknown RouteTarget unique edge %s", name)
 }
@@ -23793,6 +24511,9 @@ func (m *RouteTargetMutation) ResetEdge(name string) error {
 		return nil
 	case routetarget.EdgeConnector:
 		m.ResetConnector()
+		return nil
+	case routetarget.EdgeCaBundle:
+		m.ResetCaBundle()
 		return nil
 	}
 	return fmt.Errorf("unknown RouteTarget edge %s", name)

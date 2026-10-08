@@ -98,6 +98,11 @@ func TLSServerName(v string) predicate.RouteTarget {
 	return predicate.RouteTarget(sql.FieldEQ(FieldTLSServerName, v))
 }
 
+// TLSCaBundleID applies equality check predicate on the "tls_ca_bundle_id" field. It's identical to TLSCaBundleIDEQ.
+func TLSCaBundleID(v string) predicate.RouteTarget {
+	return predicate.RouteTarget(sql.FieldEQ(FieldTLSCaBundleID, v))
+}
+
 // TLSSpkiSha256 applies equality check predicate on the "tls_spki_sha256" field. It's identical to TLSSpkiSha256EQ.
 func TLSSpkiSha256(v string) predicate.RouteTarget {
 	return predicate.RouteTarget(sql.FieldEQ(FieldTLSSpkiSha256, v))
@@ -588,6 +593,81 @@ func TLSServerNameContainsFold(v string) predicate.RouteTarget {
 	return predicate.RouteTarget(sql.FieldContainsFold(FieldTLSServerName, v))
 }
 
+// TLSCaBundleIDEQ applies the EQ predicate on the "tls_ca_bundle_id" field.
+func TLSCaBundleIDEQ(v string) predicate.RouteTarget {
+	return predicate.RouteTarget(sql.FieldEQ(FieldTLSCaBundleID, v))
+}
+
+// TLSCaBundleIDNEQ applies the NEQ predicate on the "tls_ca_bundle_id" field.
+func TLSCaBundleIDNEQ(v string) predicate.RouteTarget {
+	return predicate.RouteTarget(sql.FieldNEQ(FieldTLSCaBundleID, v))
+}
+
+// TLSCaBundleIDIn applies the In predicate on the "tls_ca_bundle_id" field.
+func TLSCaBundleIDIn(vs ...string) predicate.RouteTarget {
+	return predicate.RouteTarget(sql.FieldIn(FieldTLSCaBundleID, vs...))
+}
+
+// TLSCaBundleIDNotIn applies the NotIn predicate on the "tls_ca_bundle_id" field.
+func TLSCaBundleIDNotIn(vs ...string) predicate.RouteTarget {
+	return predicate.RouteTarget(sql.FieldNotIn(FieldTLSCaBundleID, vs...))
+}
+
+// TLSCaBundleIDGT applies the GT predicate on the "tls_ca_bundle_id" field.
+func TLSCaBundleIDGT(v string) predicate.RouteTarget {
+	return predicate.RouteTarget(sql.FieldGT(FieldTLSCaBundleID, v))
+}
+
+// TLSCaBundleIDGTE applies the GTE predicate on the "tls_ca_bundle_id" field.
+func TLSCaBundleIDGTE(v string) predicate.RouteTarget {
+	return predicate.RouteTarget(sql.FieldGTE(FieldTLSCaBundleID, v))
+}
+
+// TLSCaBundleIDLT applies the LT predicate on the "tls_ca_bundle_id" field.
+func TLSCaBundleIDLT(v string) predicate.RouteTarget {
+	return predicate.RouteTarget(sql.FieldLT(FieldTLSCaBundleID, v))
+}
+
+// TLSCaBundleIDLTE applies the LTE predicate on the "tls_ca_bundle_id" field.
+func TLSCaBundleIDLTE(v string) predicate.RouteTarget {
+	return predicate.RouteTarget(sql.FieldLTE(FieldTLSCaBundleID, v))
+}
+
+// TLSCaBundleIDContains applies the Contains predicate on the "tls_ca_bundle_id" field.
+func TLSCaBundleIDContains(v string) predicate.RouteTarget {
+	return predicate.RouteTarget(sql.FieldContains(FieldTLSCaBundleID, v))
+}
+
+// TLSCaBundleIDHasPrefix applies the HasPrefix predicate on the "tls_ca_bundle_id" field.
+func TLSCaBundleIDHasPrefix(v string) predicate.RouteTarget {
+	return predicate.RouteTarget(sql.FieldHasPrefix(FieldTLSCaBundleID, v))
+}
+
+// TLSCaBundleIDHasSuffix applies the HasSuffix predicate on the "tls_ca_bundle_id" field.
+func TLSCaBundleIDHasSuffix(v string) predicate.RouteTarget {
+	return predicate.RouteTarget(sql.FieldHasSuffix(FieldTLSCaBundleID, v))
+}
+
+// TLSCaBundleIDIsNil applies the IsNil predicate on the "tls_ca_bundle_id" field.
+func TLSCaBundleIDIsNil() predicate.RouteTarget {
+	return predicate.RouteTarget(sql.FieldIsNull(FieldTLSCaBundleID))
+}
+
+// TLSCaBundleIDNotNil applies the NotNil predicate on the "tls_ca_bundle_id" field.
+func TLSCaBundleIDNotNil() predicate.RouteTarget {
+	return predicate.RouteTarget(sql.FieldNotNull(FieldTLSCaBundleID))
+}
+
+// TLSCaBundleIDEqualFold applies the EqualFold predicate on the "tls_ca_bundle_id" field.
+func TLSCaBundleIDEqualFold(v string) predicate.RouteTarget {
+	return predicate.RouteTarget(sql.FieldEqualFold(FieldTLSCaBundleID, v))
+}
+
+// TLSCaBundleIDContainsFold applies the ContainsFold predicate on the "tls_ca_bundle_id" field.
+func TLSCaBundleIDContainsFold(v string) predicate.RouteTarget {
+	return predicate.RouteTarget(sql.FieldContainsFold(FieldTLSCaBundleID, v))
+}
+
 // TLSSpkiSha256EQ applies the EQ predicate on the "tls_spki_sha256" field.
 func TLSSpkiSha256EQ(v string) predicate.RouteTarget {
 	return predicate.RouteTarget(sql.FieldEQ(FieldTLSSpkiSha256, v))
@@ -801,6 +881,29 @@ func HasConnector() predicate.RouteTarget {
 func HasConnectorWith(preds ...predicate.Connector) predicate.RouteTarget {
 	return predicate.RouteTarget(func(s *sql.Selector) {
 		step := newConnectorStep()
+		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
+			for _, p := range preds {
+				p(s)
+			}
+		})
+	})
+}
+
+// HasCaBundle applies the HasEdge predicate on the "ca_bundle" edge.
+func HasCaBundle() predicate.RouteTarget {
+	return predicate.RouteTarget(func(s *sql.Selector) {
+		step := sqlgraph.NewStep(
+			sqlgraph.From(Table, FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, false, CaBundleTable, CaBundleColumn),
+		)
+		sqlgraph.HasNeighbors(s, step)
+	})
+}
+
+// HasCaBundleWith applies the HasEdge predicate on the "ca_bundle" edge with a given conditions (other predicates).
+func HasCaBundleWith(preds ...predicate.CABundle) predicate.RouteTarget {
+	return predicate.RouteTarget(func(s *sql.Selector) {
+		step := newCaBundleStep()
 		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
 			for _, p := range preds {
 				p(s)

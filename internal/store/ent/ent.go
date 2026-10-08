@@ -16,6 +16,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/agentstate"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/auditentry"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/audithead"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/cabundle"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/cakey"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/certificate"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/compiledsnapshot"
@@ -107,6 +108,7 @@ func checkColumn(t, c string) error {
 			agentstate.Table:        agentstate.ValidColumn,
 			auditentry.Table:        auditentry.ValidColumn,
 			audithead.Table:         audithead.ValidColumn,
+			cabundle.Table:          cabundle.ValidColumn,
 			cakey.Table:             cakey.ValidColumn,
 			certificate.Table:       certificate.ValidColumn,
 			compiledsnapshot.Table:  compiledsnapshot.ValidColumn,

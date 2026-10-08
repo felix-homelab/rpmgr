@@ -10,6 +10,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/agentstate"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/auditentry"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/audithead"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/cabundle"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/cakey"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/certificate"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/compiledsnapshot"
@@ -271,6 +272,81 @@ func init() {
 	auditheadDescID := auditheadFields[0].Descriptor()
 	// audithead.IDValidator is a validator for the "id" field. It is called by the builders before save.
 	audithead.IDValidator = auditheadDescID.Validators[0].(func(string) error)
+	cabundleMixin := schema.CABundle{}.Mixin()
+	cabundle.Policy = privacy.NewPolicies(cabundleMixin[0], schema.CABundle{})
+	cabundle.Hooks[0] = func(next ent.Mutator) ent.Mutator {
+		return ent.MutateFunc(func(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+			if err := cabundle.Policy.EvalMutation(ctx, m); err != nil {
+				return nil, err
+			}
+			return next.Mutate(ctx, m)
+		})
+	}
+	cabundleMixinHooks0 := cabundleMixin[0].Hooks()
+
+	cabundle.Hooks[1] = cabundleMixinHooks0[0]
+	cabundleMixinInters0 := cabundleMixin[0].Interceptors()
+	cabundle.Interceptors[0] = cabundleMixinInters0[0]
+	cabundleMixinFields0 := cabundleMixin[0].Fields()
+	_ = cabundleMixinFields0
+	cabundleFields := schema.CABundle{}.Fields()
+	_ = cabundleFields
+	// cabundleDescOrgID is the schema descriptor for org_id field.
+	cabundleDescOrgID := cabundleMixinFields0[0].Descriptor()
+	// cabundle.OrgIDValidator is a validator for the "org_id" field. It is called by the builders before save.
+	cabundle.OrgIDValidator = cabundleDescOrgID.Validators[0].(func(string) error)
+	// cabundleDescName is the schema descriptor for name field.
+	cabundleDescName := cabundleFields[1].Descriptor()
+	// cabundle.NameValidator is a validator for the "name" field. It is called by the builders before save.
+	cabundle.NameValidator = func() func(string) error {
+		validators := cabundleDescName.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(name string) error {
+			for _, fn := range fns {
+				if err := fn(name); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// cabundleDescPem is the schema descriptor for pem field.
+	cabundleDescPem := cabundleFields[2].Descriptor()
+	// cabundle.PemValidator is a validator for the "pem" field. It is called by the builders before save.
+	cabundle.PemValidator = cabundleDescPem.Validators[0].(func([]byte) error)
+	// cabundleDescCreatedAt is the schema descriptor for created_at field.
+	cabundleDescCreatedAt := cabundleFields[3].Descriptor()
+	// cabundle.DefaultCreatedAt holds the default value on creation for the created_at field.
+	cabundle.DefaultCreatedAt = cabundleDescCreatedAt.Default.(func() time.Time)
+	// cabundleDescVersion is the schema descriptor for version field.
+	cabundleDescVersion := cabundleFields[4].Descriptor()
+	// cabundle.DefaultVersion holds the default value on creation for the version field.
+	cabundle.DefaultVersion = cabundleDescVersion.Default.(int64)
+	// cabundle.VersionValidator is a validator for the "version" field. It is called by the builders before save.
+	cabundle.VersionValidator = cabundleDescVersion.Validators[0].(func(int64) error)
+	// cabundleDescID is the schema descriptor for id field.
+	cabundleDescID := cabundleFields[0].Descriptor()
+	// cabundle.DefaultID holds the default value on creation for the id field.
+	cabundle.DefaultID = cabundleDescID.Default.(func() string)
+	// cabundle.IDValidator is a validator for the "id" field. It is called by the builders before save.
+	cabundle.IDValidator = func() func(string) error {
+		validators := cabundleDescID.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(id string) error {
+			for _, fn := range fns {
+				if err := fn(id); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
 	cakeyMixin := schema.CAKey{}.Mixin()
 	cakey.Policy = privacy.NewPolicies(cakeyMixin[0], schema.CAKey{})
 	cakey.Hooks[0] = func(next ent.Mutator) ent.Mutator {
@@ -1583,23 +1659,23 @@ func init() {
 	// routetarget.DefaultTLSServerName holds the default value on creation for the tls_server_name field.
 	routetarget.DefaultTLSServerName = routetargetDescTLSServerName.Default.(string)
 	// routetargetDescTLSSpkiSha256 is the schema descriptor for tls_spki_sha256 field.
-	routetargetDescTLSSpkiSha256 := routetargetFields[9].Descriptor()
+	routetargetDescTLSSpkiSha256 := routetargetFields[10].Descriptor()
 	// routetarget.DefaultTLSSpkiSha256 holds the default value on creation for the tls_spki_sha256 field.
 	routetarget.DefaultTLSSpkiSha256 = routetargetDescTLSSpkiSha256.Default.(string)
 	// routetargetDescWeight is the schema descriptor for weight field.
-	routetargetDescWeight := routetargetFields[11].Descriptor()
+	routetargetDescWeight := routetargetFields[12].Descriptor()
 	// routetarget.DefaultWeight holds the default value on creation for the weight field.
 	routetarget.DefaultWeight = routetargetDescWeight.Default.(int)
 	// routetarget.WeightValidator is a validator for the "weight" field. It is called by the builders before save.
 	routetarget.WeightValidator = routetargetDescWeight.Validators[0].(func(int) error)
 	// routetargetDescPriority is the schema descriptor for priority field.
-	routetargetDescPriority := routetargetFields[12].Descriptor()
+	routetargetDescPriority := routetargetFields[13].Descriptor()
 	// routetarget.DefaultPriority holds the default value on creation for the priority field.
 	routetarget.DefaultPriority = routetargetDescPriority.Default.(int)
 	// routetarget.PriorityValidator is a validator for the "priority" field. It is called by the builders before save.
 	routetarget.PriorityValidator = routetargetDescPriority.Validators[0].(func(int) error)
 	// routetargetDescEnabled is the schema descriptor for enabled field.
-	routetargetDescEnabled := routetargetFields[13].Descriptor()
+	routetargetDescEnabled := routetargetFields[14].Descriptor()
 	// routetarget.DefaultEnabled holds the default value on creation for the enabled field.
 	routetarget.DefaultEnabled = routetargetDescEnabled.Default.(bool)
 	// routetargetDescID is the schema descriptor for id field.

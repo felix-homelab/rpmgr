@@ -4,6 +4,8 @@ package routes
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"maps"
 	"slices"
 	"strings"
@@ -200,8 +202,45 @@ func GatewayHTTP(ctx context.Context, tx *ent.Tx, a snapshot.Agent) ([]*agentv1.
 		if first != nil && first.UpstreamProtocol != routetarget.UpstreamProtocolTCP {
 			upstream = first.UpstreamProtocol.String()
 		}
+		var upstreamTLS []*agentv1.UpstreamTLS
+		if upstream == "https" {
+			if upstreamTLS, err = upstreamTLSOf(ctx, tx, r.ID); err != nil {
+				return nil, err
+			}
+		}
 		out = append(out, &agentv1.Resource{Id: r.ID, Kind: &agentv1.Resource_GatewayHttpRoute{GatewayHttpRoute: &agentv1.GatewayHTTPRoute{
-			Hosts: hosts, UpstreamProtocol: upstream, Connectors: connectors, Websocket: h.Websocket}}})
+			Hosts: hosts, UpstreamProtocol: upstream, Connectors: connectors, Websocket: h.Websocket, UpstreamTls: upstreamTLS}}})
+	}
+	return out, nil
+}
+
+// upstreamTLS lists how the gateway verifies each enabled target of an https route: the target's
+// server name, or else its host; its CA bundle, or else the gateway host's trust store; and its
+// SPKI pin. A pin that is not 64 hexadecimal digits becomes one no key matches, so the target
+// fails closed.
+func upstreamTLSOf(ctx context.Context, tx *ent.Tx, routeID string) ([]*agentv1.UpstreamTLS, error) {
+	targets, err := tx.RouteTarget.Query().Where(routetarget.RouteID(routeID), routetarget.Enabled(true)).
+		WithCaBundle().Order(ent.Asc(routetarget.FieldID)).All(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]*agentv1.UpstreamTLS, 0, len(targets))
+	for _, t := range targets {
+		u := &agentv1.UpstreamTLS{TargetId: t.ID, ServerName: t.TLSServerName}
+		if u.ServerName == "" {
+			u.ServerName = t.Host
+		}
+		if t.Edges.CaBundle != nil {
+			u.CaPem = t.Edges.CaBundle.Pem
+		}
+		if t.TLSSpkiSha256 != "" {
+			pin, err := hex.DecodeString(t.TLSSpkiSha256)
+			if err != nil || len(pin) != sha256.Size {
+				pin = make([]byte, sha256.Size)
+			}
+			u.SpkiSha256 = pin
+		}
+		out = append(out, u)
 	}
 	return out, nil
 }

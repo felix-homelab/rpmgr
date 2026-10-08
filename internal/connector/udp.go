@@ -31,7 +31,7 @@ func datagramsOf(st tunnel.Stream) *tunnel.Datagrams {
 
 // dialUDP connects a UDP socket of its own to a target of a udp route that the local policy
 // allows; the socket is the flow's, so the target's replies reach the right client.
-func (t *Targets) dialUDP(ctx context.Context, r Route, open *tunnelv1.StreamOpen) (tunnelv1.ResultCode, net.Conn) {
+func (t *Targets) dialUDP(ctx context.Context, r Route, open *tunnelv1.StreamOpen) (tunnelv1.ResultCode, net.Conn, string) {
 	timeout := dialUpstream
 	if ms := open.GetOpenTimeoutMs(); ms > 0 && time.Duration(ms)*time.Millisecond < timeout {
 		timeout = time.Duration(ms) * time.Millisecond
@@ -57,9 +57,9 @@ func (t *Targets) dialUDP(ctx context.Context, r Route, open *tunnelv1.StreamOpe
 			}
 			continue
 		}
-		return tunnelv1.ResultCode_RESULT_CODE_NO_ERROR, conn
+		return tunnelv1.ResultCode_RESULT_CODE_NO_ERROR, conn, tg.ID
 	}
-	return code, nil
+	return code, nil, ""
 }
 
 // relayUDP carries one flow between its stream and its target socket until either ends: the

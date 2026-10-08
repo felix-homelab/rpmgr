@@ -3,12 +3,15 @@
 package routes_test
 
 import (
+	"bytes"
 	"slices"
 	"strings"
 	"testing"
 	"time"
 
 	"google.golang.org/protobuf/types/known/fieldmaskpb"
+
+	"google.golang.org/protobuf/proto"
 
 	agentv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/agent/v1"
 	rpmgrv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/v1"
@@ -477,6 +480,56 @@ func TestCompile_GatewayHTTP(t *testing.T) {
 		}
 		if !slices.Equal(types, []string{"http"}) {
 			t.Fatalf("c2's http routes: %v", types)
+		}
+	})
+}
+
+// TestCompile_HTTPSUpstream: an https route's gateway resource names each enabled target's server
+// name (its host by default), CA bundle and SPKI pin; a malformed pin becomes one no key matches.
+func TestCompile_HTTPSUpstream(t *testing.T) {
+	storetest.ForEachDialect(t, func(t *testing.T, db *store.DB) {
+		f := newFleet(t, db)
+		c := db.Client()
+		f.verifiedExample(t)
+		bundle := c.CABundle.Create().SetOrgID(f.orgA).SetName("internal").SetPem([]byte("PEM")).SaveX(f.sys)
+		id := f.httpRoute(t, "secure", true, true, nil, "secure.example.com")
+		pin := strings.Repeat("ab", 32)
+		mk := func(host, name, spki string, enabled bool, ca bool) string {
+			tc := c.RouteTarget.Create().SetOrgID(f.orgA).SetRouteID(id).SetConnectorID(f.c1).SetKind("address").SetHost(host).
+				SetPort(8443).SetUpstreamProtocol(routetarget.UpstreamProtocolHTTPS).SetTLSServerName(name).SetTLSSpkiSha256(spki).SetEnabled(enabled)
+			if ca {
+				tc.SetCaBundleID(bundle.ID)
+			}
+			return tc.SaveX(f.sys).ID
+		}
+		named := mk("10.0.0.1", "app.internal", pin, true, true)
+		byHost := mk("app2.internal", "", "", true, false)
+		badPin := mk("10.0.0.3", "", "not hex", true, false)
+		mk("10.0.0.4", "", "", false, false)
+		var got *agentv1.GatewayHTTPRoute
+		for _, r := range f.compile(t, pki.KindGateway, f.gateway) {
+			if r.GetId() == id {
+				got = r.GetGatewayHttpRoute()
+			}
+		}
+		want := map[string]*agentv1.UpstreamTLS{
+			named:  {TargetId: named, ServerName: "app.internal", CaPem: []byte("PEM"), SpkiSha256: bytes.Repeat([]byte{0xab}, 32)},
+			byHost: {TargetId: byHost, ServerName: "app2.internal"},
+			badPin: {TargetId: badPin, ServerName: "10.0.0.3", SpkiSha256: make([]byte, 32)},
+		}
+		if got.GetUpstreamProtocol() != "https" || len(got.GetUpstreamTls()) != len(want) {
+			t.Fatalf("route %v", got)
+		}
+		for _, u := range got.GetUpstreamTls() {
+			if !proto.Equal(u, want[u.GetTargetId()]) {
+				t.Errorf("target %s: %v, want %v", u.GetTargetId(), u, want[u.GetTargetId()])
+			}
+		}
+		// Another org's bundle cannot be named.
+		other := c.CABundle.Create().SetOrgID(f.orgB).SetName("theirs").SetPem([]byte("PEM")).SaveX(f.sys)
+		if err := c.RouteTarget.Create().SetOrgID(f.orgA).SetRouteID(id).SetConnectorID(f.c1).SetKind("address").SetHost("h").
+			SetPort(1).SetCaBundleID(other.ID).Exec(f.sys); err == nil {
+			t.Fatal("a target named another org's CA bundle")
 		}
 	})
 }

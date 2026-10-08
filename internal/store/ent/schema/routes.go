@@ -287,6 +287,7 @@ func (RouteTarget) Fields() []ent.Field {
 		field.String("unix_path").Default(""),
 		field.Enum("upstream_protocol").Values("tcp", "http", "https", "h2c").Default("tcp"),
 		field.String("tls_server_name").Default(""),
+		field.String("tls_ca_bundle_id").Optional().Nillable(),
 		field.String("tls_spki_sha256").Default(""),
 		field.Enum("proxy_protocol").Values("none", "v1", "v2").Default("none"),
 		field.Int("weight").Range(1, 1000).Default(1),
@@ -300,12 +301,13 @@ func (RouteTarget) Edges() []ent.Edge {
 	return []ent.Edge{
 		edge.To("route", Route.Type).Field("route_id").Unique().Required().Immutable(),
 		edge.To("connector", Connector.Type).Field("connector_id").Unique().Required(),
+		edge.To("ca_bundle", CABundle.Type).Field("tls_ca_bundle_id").Unique(),
 	}
 }
 
-// Indexes find a route's and a connector's targets.
+// Indexes find a route's and a connector's targets, and a CA bundle's.
 func (RouteTarget) Indexes() []ent.Index {
-	return []ent.Index{index.Fields("route_id"), index.Fields("connector_id")}
+	return []ent.Index{index.Fields("route_id"), index.Fields("connector_id"), index.Fields("tls_ca_bundle_id")}
 }
 
 // RouteHostname is one hostname of an http or tls_passthrough route, under a verified domain of

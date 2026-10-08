@@ -12,6 +12,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/agentstate"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/auditentry"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/audithead"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/cabundle"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/cakey"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/certificate"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/compiledsnapshot"
@@ -204,6 +205,33 @@ func (f TraverseAuditHead) Traverse(ctx context.Context, q ent.Query) error {
 		return f(ctx, q)
 	}
 	return fmt.Errorf("unexpected query type %T. expect *ent.AuditHeadQuery", q)
+}
+
+// The CABundleFunc type is an adapter to allow the use of ordinary function as a Querier.
+type CABundleFunc func(context.Context, *ent.CABundleQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f CABundleFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.CABundleQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.CABundleQuery", q)
+}
+
+// The TraverseCABundle type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseCABundle func(context.Context, *ent.CABundleQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseCABundle) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseCABundle) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.CABundleQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.CABundleQuery", q)
 }
 
 // The CAKeyFunc type is an adapter to allow the use of ordinary function as a Querier.
@@ -946,6 +974,8 @@ func NewQuery(q ent.Query) (Query, error) {
 		return &query[*ent.AuditEntryQuery, predicate.AuditEntry, auditentry.OrderOption]{typ: ent.TypeAuditEntry, tq: q}, nil
 	case *ent.AuditHeadQuery:
 		return &query[*ent.AuditHeadQuery, predicate.AuditHead, audithead.OrderOption]{typ: ent.TypeAuditHead, tq: q}, nil
+	case *ent.CABundleQuery:
+		return &query[*ent.CABundleQuery, predicate.CABundle, cabundle.OrderOption]{typ: ent.TypeCABundle, tq: q}, nil
 	case *ent.CAKeyQuery:
 		return &query[*ent.CAKeyQuery, predicate.CAKey, cakey.OrderOption]{typ: ent.TypeCAKey, tq: q}, nil
 	case *ent.CertificateQuery:
