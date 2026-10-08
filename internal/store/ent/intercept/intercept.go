@@ -17,6 +17,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/configrevision"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/configseq"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/connector"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/domain"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/enrollmenttoken"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/gateway"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/gatewaygroup"
@@ -334,6 +335,33 @@ func (f TraverseConnector) Traverse(ctx context.Context, q ent.Query) error {
 		return f(ctx, q)
 	}
 	return fmt.Errorf("unexpected query type %T. expect *ent.ConnectorQuery", q)
+}
+
+// The DomainFunc type is an adapter to allow the use of ordinary function as a Querier.
+type DomainFunc func(context.Context, *ent.DomainQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f DomainFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.DomainQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.DomainQuery", q)
+}
+
+// The TraverseDomain type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseDomain func(context.Context, *ent.DomainQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseDomain) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseDomain) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.DomainQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.DomainQuery", q)
 }
 
 // The EnrollmentTokenFunc type is an adapter to allow the use of ordinary function as a Querier.
@@ -816,6 +844,8 @@ func NewQuery(q ent.Query) (Query, error) {
 		return &query[*ent.ConfigSeqQuery, predicate.ConfigSeq, configseq.OrderOption]{typ: ent.TypeConfigSeq, tq: q}, nil
 	case *ent.ConnectorQuery:
 		return &query[*ent.ConnectorQuery, predicate.Connector, connector.OrderOption]{typ: ent.TypeConnector, tq: q}, nil
+	case *ent.DomainQuery:
+		return &query[*ent.DomainQuery, predicate.Domain, domain.OrderOption]{typ: ent.TypeDomain, tq: q}, nil
 	case *ent.EnrollmentTokenQuery:
 		return &query[*ent.EnrollmentTokenQuery, predicate.EnrollmentToken, enrollmenttoken.OrderOption]{typ: ent.TypeEnrollmentToken, tq: q}, nil
 	case *ent.GatewayQuery:

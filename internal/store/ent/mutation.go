@@ -20,6 +20,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/configrevision"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/configseq"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/connector"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/domain"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/enrollmenttoken"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/gateway"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/gatewaygroup"
@@ -58,6 +59,7 @@ const (
 	TypeConfigRevision    = "ConfigRevision"
 	TypeConfigSeq         = "ConfigSeq"
 	TypeConnector         = "Connector"
+	TypeDomain            = "Domain"
 	TypeEnrollmentToken   = "EnrollmentToken"
 	TypeGateway           = "Gateway"
 	TypeGatewayGroup      = "GatewayGroup"
@@ -7412,6 +7414,901 @@ func (m *ConnectorMutation) ClearEdge(name string) error {
 // It returns an error if the edge is not defined in the schema.
 func (m *ConnectorMutation) ResetEdge(name string) error {
 	return fmt.Errorf("unknown Connector edge %s", name)
+}
+
+// DomainMutation represents an operation that mutates the Domain nodes in the graph.
+type DomainMutation struct {
+	config
+	op              Op
+	typ             string
+	id              *string
+	org_id          *string
+	fqdn            *string
+	wildcard        *bool
+	status          *domain.Status
+	method          *domain.Method
+	challenge_value *string
+	created_at      *time.Time
+	verified_at     *time.Time
+	last_checked_at *time.Time
+	version         *int64
+	addversion      *int64
+	clearedFields   map[string]struct{}
+	done            bool
+	oldValue        func(context.Context) (*Domain, error)
+	predicates      []predicate.Domain
+}
+
+var _ ent.Mutation = (*DomainMutation)(nil)
+
+// domainOption allows management of the mutation configuration using functional options.
+type domainOption func(*DomainMutation)
+
+// newDomainMutation creates new mutation for the Domain entity.
+func newDomainMutation(c config, op Op, opts ...domainOption) *DomainMutation {
+	m := &DomainMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeDomain,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withDomainID sets the ID field of the mutation.
+func withDomainID(id string) domainOption {
+	return func(m *DomainMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *Domain
+		)
+		m.oldValue = func(ctx context.Context) (*Domain, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().Domain.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withDomain sets the old Domain of the mutation.
+func withDomain(node *Domain) domainOption {
+	return func(m *DomainMutation) {
+		m.oldValue = func(context.Context) (*Domain, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m DomainMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m DomainMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// SetID sets the value of the id field. Note that this
+// operation is only accepted on creation of Domain entities.
+func (m *DomainMutation) SetID(id string) {
+	m.id = &id
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *DomainMutation) ID() (id string, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *DomainMutation) IDs(ctx context.Context) ([]string, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []string{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().Domain.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetOrgID sets the "org_id" field.
+func (m *DomainMutation) SetOrgID(s string) {
+	m.org_id = &s
+}
+
+// OrgID returns the value of the "org_id" field in the mutation.
+func (m *DomainMutation) OrgID() (r string, exists bool) {
+	v := m.org_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldOrgID returns the old "org_id" field's value of the Domain entity.
+// If the Domain object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *DomainMutation) OldOrgID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldOrgID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldOrgID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldOrgID: %w", err)
+	}
+	return oldValue.OrgID, nil
+}
+
+// ResetOrgID resets all changes to the "org_id" field.
+func (m *DomainMutation) ResetOrgID() {
+	m.org_id = nil
+}
+
+// SetFqdn sets the "fqdn" field.
+func (m *DomainMutation) SetFqdn(s string) {
+	m.fqdn = &s
+}
+
+// Fqdn returns the value of the "fqdn" field in the mutation.
+func (m *DomainMutation) Fqdn() (r string, exists bool) {
+	v := m.fqdn
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldFqdn returns the old "fqdn" field's value of the Domain entity.
+// If the Domain object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *DomainMutation) OldFqdn(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldFqdn is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldFqdn requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldFqdn: %w", err)
+	}
+	return oldValue.Fqdn, nil
+}
+
+// ResetFqdn resets all changes to the "fqdn" field.
+func (m *DomainMutation) ResetFqdn() {
+	m.fqdn = nil
+}
+
+// SetWildcard sets the "wildcard" field.
+func (m *DomainMutation) SetWildcard(b bool) {
+	m.wildcard = &b
+}
+
+// Wildcard returns the value of the "wildcard" field in the mutation.
+func (m *DomainMutation) Wildcard() (r bool, exists bool) {
+	v := m.wildcard
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldWildcard returns the old "wildcard" field's value of the Domain entity.
+// If the Domain object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *DomainMutation) OldWildcard(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldWildcard is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldWildcard requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldWildcard: %w", err)
+	}
+	return oldValue.Wildcard, nil
+}
+
+// ResetWildcard resets all changes to the "wildcard" field.
+func (m *DomainMutation) ResetWildcard() {
+	m.wildcard = nil
+}
+
+// SetStatus sets the "status" field.
+func (m *DomainMutation) SetStatus(d domain.Status) {
+	m.status = &d
+}
+
+// Status returns the value of the "status" field in the mutation.
+func (m *DomainMutation) Status() (r domain.Status, exists bool) {
+	v := m.status
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldStatus returns the old "status" field's value of the Domain entity.
+// If the Domain object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *DomainMutation) OldStatus(ctx context.Context) (v domain.Status, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldStatus is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldStatus requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldStatus: %w", err)
+	}
+	return oldValue.Status, nil
+}
+
+// ResetStatus resets all changes to the "status" field.
+func (m *DomainMutation) ResetStatus() {
+	m.status = nil
+}
+
+// SetMethod sets the "method" field.
+func (m *DomainMutation) SetMethod(d domain.Method) {
+	m.method = &d
+}
+
+// Method returns the value of the "method" field in the mutation.
+func (m *DomainMutation) Method() (r domain.Method, exists bool) {
+	v := m.method
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldMethod returns the old "method" field's value of the Domain entity.
+// If the Domain object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *DomainMutation) OldMethod(ctx context.Context) (v domain.Method, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldMethod is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldMethod requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldMethod: %w", err)
+	}
+	return oldValue.Method, nil
+}
+
+// ResetMethod resets all changes to the "method" field.
+func (m *DomainMutation) ResetMethod() {
+	m.method = nil
+}
+
+// SetChallengeValue sets the "challenge_value" field.
+func (m *DomainMutation) SetChallengeValue(s string) {
+	m.challenge_value = &s
+}
+
+// ChallengeValue returns the value of the "challenge_value" field in the mutation.
+func (m *DomainMutation) ChallengeValue() (r string, exists bool) {
+	v := m.challenge_value
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldChallengeValue returns the old "challenge_value" field's value of the Domain entity.
+// If the Domain object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *DomainMutation) OldChallengeValue(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldChallengeValue is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldChallengeValue requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldChallengeValue: %w", err)
+	}
+	return oldValue.ChallengeValue, nil
+}
+
+// ResetChallengeValue resets all changes to the "challenge_value" field.
+func (m *DomainMutation) ResetChallengeValue() {
+	m.challenge_value = nil
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *DomainMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *DomainMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the Domain entity.
+// If the Domain object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *DomainMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *DomainMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// SetVerifiedAt sets the "verified_at" field.
+func (m *DomainMutation) SetVerifiedAt(t time.Time) {
+	m.verified_at = &t
+}
+
+// VerifiedAt returns the value of the "verified_at" field in the mutation.
+func (m *DomainMutation) VerifiedAt() (r time.Time, exists bool) {
+	v := m.verified_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldVerifiedAt returns the old "verified_at" field's value of the Domain entity.
+// If the Domain object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *DomainMutation) OldVerifiedAt(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldVerifiedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldVerifiedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldVerifiedAt: %w", err)
+	}
+	return oldValue.VerifiedAt, nil
+}
+
+// ClearVerifiedAt clears the value of the "verified_at" field.
+func (m *DomainMutation) ClearVerifiedAt() {
+	m.verified_at = nil
+	m.clearedFields[domain.FieldVerifiedAt] = struct{}{}
+}
+
+// VerifiedAtCleared returns if the "verified_at" field was cleared in this mutation.
+func (m *DomainMutation) VerifiedAtCleared() bool {
+	_, ok := m.clearedFields[domain.FieldVerifiedAt]
+	return ok
+}
+
+// ResetVerifiedAt resets all changes to the "verified_at" field.
+func (m *DomainMutation) ResetVerifiedAt() {
+	m.verified_at = nil
+	delete(m.clearedFields, domain.FieldVerifiedAt)
+}
+
+// SetLastCheckedAt sets the "last_checked_at" field.
+func (m *DomainMutation) SetLastCheckedAt(t time.Time) {
+	m.last_checked_at = &t
+}
+
+// LastCheckedAt returns the value of the "last_checked_at" field in the mutation.
+func (m *DomainMutation) LastCheckedAt() (r time.Time, exists bool) {
+	v := m.last_checked_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldLastCheckedAt returns the old "last_checked_at" field's value of the Domain entity.
+// If the Domain object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *DomainMutation) OldLastCheckedAt(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldLastCheckedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldLastCheckedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldLastCheckedAt: %w", err)
+	}
+	return oldValue.LastCheckedAt, nil
+}
+
+// ClearLastCheckedAt clears the value of the "last_checked_at" field.
+func (m *DomainMutation) ClearLastCheckedAt() {
+	m.last_checked_at = nil
+	m.clearedFields[domain.FieldLastCheckedAt] = struct{}{}
+}
+
+// LastCheckedAtCleared returns if the "last_checked_at" field was cleared in this mutation.
+func (m *DomainMutation) LastCheckedAtCleared() bool {
+	_, ok := m.clearedFields[domain.FieldLastCheckedAt]
+	return ok
+}
+
+// ResetLastCheckedAt resets all changes to the "last_checked_at" field.
+func (m *DomainMutation) ResetLastCheckedAt() {
+	m.last_checked_at = nil
+	delete(m.clearedFields, domain.FieldLastCheckedAt)
+}
+
+// SetVersion sets the "version" field.
+func (m *DomainMutation) SetVersion(i int64) {
+	m.version = &i
+	m.addversion = nil
+}
+
+// Version returns the value of the "version" field in the mutation.
+func (m *DomainMutation) Version() (r int64, exists bool) {
+	v := m.version
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldVersion returns the old "version" field's value of the Domain entity.
+// If the Domain object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *DomainMutation) OldVersion(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldVersion is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldVersion requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldVersion: %w", err)
+	}
+	return oldValue.Version, nil
+}
+
+// AddVersion adds i to the "version" field.
+func (m *DomainMutation) AddVersion(i int64) {
+	if m.addversion != nil {
+		*m.addversion += i
+	} else {
+		m.addversion = &i
+	}
+}
+
+// AddedVersion returns the value that was added to the "version" field in this mutation.
+func (m *DomainMutation) AddedVersion() (r int64, exists bool) {
+	v := m.addversion
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetVersion resets all changes to the "version" field.
+func (m *DomainMutation) ResetVersion() {
+	m.version = nil
+	m.addversion = nil
+}
+
+// Where appends a list predicates to the DomainMutation builder.
+func (m *DomainMutation) Where(ps ...predicate.Domain) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the DomainMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *DomainMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.Domain, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *DomainMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *DomainMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (Domain).
+func (m *DomainMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *DomainMutation) Fields() []string {
+	fields := make([]string, 0, 10)
+	if m.org_id != nil {
+		fields = append(fields, domain.FieldOrgID)
+	}
+	if m.fqdn != nil {
+		fields = append(fields, domain.FieldFqdn)
+	}
+	if m.wildcard != nil {
+		fields = append(fields, domain.FieldWildcard)
+	}
+	if m.status != nil {
+		fields = append(fields, domain.FieldStatus)
+	}
+	if m.method != nil {
+		fields = append(fields, domain.FieldMethod)
+	}
+	if m.challenge_value != nil {
+		fields = append(fields, domain.FieldChallengeValue)
+	}
+	if m.created_at != nil {
+		fields = append(fields, domain.FieldCreatedAt)
+	}
+	if m.verified_at != nil {
+		fields = append(fields, domain.FieldVerifiedAt)
+	}
+	if m.last_checked_at != nil {
+		fields = append(fields, domain.FieldLastCheckedAt)
+	}
+	if m.version != nil {
+		fields = append(fields, domain.FieldVersion)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *DomainMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case domain.FieldOrgID:
+		return m.OrgID()
+	case domain.FieldFqdn:
+		return m.Fqdn()
+	case domain.FieldWildcard:
+		return m.Wildcard()
+	case domain.FieldStatus:
+		return m.Status()
+	case domain.FieldMethod:
+		return m.Method()
+	case domain.FieldChallengeValue:
+		return m.ChallengeValue()
+	case domain.FieldCreatedAt:
+		return m.CreatedAt()
+	case domain.FieldVerifiedAt:
+		return m.VerifiedAt()
+	case domain.FieldLastCheckedAt:
+		return m.LastCheckedAt()
+	case domain.FieldVersion:
+		return m.Version()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *DomainMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case domain.FieldOrgID:
+		return m.OldOrgID(ctx)
+	case domain.FieldFqdn:
+		return m.OldFqdn(ctx)
+	case domain.FieldWildcard:
+		return m.OldWildcard(ctx)
+	case domain.FieldStatus:
+		return m.OldStatus(ctx)
+	case domain.FieldMethod:
+		return m.OldMethod(ctx)
+	case domain.FieldChallengeValue:
+		return m.OldChallengeValue(ctx)
+	case domain.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	case domain.FieldVerifiedAt:
+		return m.OldVerifiedAt(ctx)
+	case domain.FieldLastCheckedAt:
+		return m.OldLastCheckedAt(ctx)
+	case domain.FieldVersion:
+		return m.OldVersion(ctx)
+	}
+	return nil, fmt.Errorf("unknown Domain field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *DomainMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case domain.FieldOrgID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetOrgID(v)
+		return nil
+	case domain.FieldFqdn:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetFqdn(v)
+		return nil
+	case domain.FieldWildcard:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetWildcard(v)
+		return nil
+	case domain.FieldStatus:
+		v, ok := value.(domain.Status)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetStatus(v)
+		return nil
+	case domain.FieldMethod:
+		v, ok := value.(domain.Method)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetMethod(v)
+		return nil
+	case domain.FieldChallengeValue:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetChallengeValue(v)
+		return nil
+	case domain.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	case domain.FieldVerifiedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetVerifiedAt(v)
+		return nil
+	case domain.FieldLastCheckedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetLastCheckedAt(v)
+		return nil
+	case domain.FieldVersion:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetVersion(v)
+		return nil
+	}
+	return fmt.Errorf("unknown Domain field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *DomainMutation) AddedFields() []string {
+	var fields []string
+	if m.addversion != nil {
+		fields = append(fields, domain.FieldVersion)
+	}
+	return fields
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *DomainMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case domain.FieldVersion:
+		return m.AddedVersion()
+	}
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *DomainMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	case domain.FieldVersion:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddVersion(v)
+		return nil
+	}
+	return fmt.Errorf("unknown Domain numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *DomainMutation) ClearedFields() []string {
+	var fields []string
+	if m.FieldCleared(domain.FieldVerifiedAt) {
+		fields = append(fields, domain.FieldVerifiedAt)
+	}
+	if m.FieldCleared(domain.FieldLastCheckedAt) {
+		fields = append(fields, domain.FieldLastCheckedAt)
+	}
+	return fields
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *DomainMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *DomainMutation) ClearField(name string) error {
+	switch name {
+	case domain.FieldVerifiedAt:
+		m.ClearVerifiedAt()
+		return nil
+	case domain.FieldLastCheckedAt:
+		m.ClearLastCheckedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown Domain nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *DomainMutation) ResetField(name string) error {
+	switch name {
+	case domain.FieldOrgID:
+		m.ResetOrgID()
+		return nil
+	case domain.FieldFqdn:
+		m.ResetFqdn()
+		return nil
+	case domain.FieldWildcard:
+		m.ResetWildcard()
+		return nil
+	case domain.FieldStatus:
+		m.ResetStatus()
+		return nil
+	case domain.FieldMethod:
+		m.ResetMethod()
+		return nil
+	case domain.FieldChallengeValue:
+		m.ResetChallengeValue()
+		return nil
+	case domain.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	case domain.FieldVerifiedAt:
+		m.ResetVerifiedAt()
+		return nil
+	case domain.FieldLastCheckedAt:
+		m.ResetLastCheckedAt()
+		return nil
+	case domain.FieldVersion:
+		m.ResetVersion()
+		return nil
+	}
+	return fmt.Errorf("unknown Domain field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *DomainMutation) AddedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *DomainMutation) AddedIDs(name string) []ent.Value {
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *DomainMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *DomainMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *DomainMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *DomainMutation) EdgeCleared(name string) bool {
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *DomainMutation) ClearEdge(name string) error {
+	return fmt.Errorf("unknown Domain unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *DomainMutation) ResetEdge(name string) error {
+	return fmt.Errorf("unknown Domain edge %s", name)
 }
 
 // EnrollmentTokenMutation represents an operation that mutates the EnrollmentToken nodes in the graph.
