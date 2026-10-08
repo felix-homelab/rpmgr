@@ -31,7 +31,8 @@ service StatusService {
     };
   }
   // WatchEvents streams the org's configuration changes as they are committed, one event per
-  // revision, from the resume token on, so a client that reconnects misses none.
+  // revision, from the resume token on, so a client that reconnects misses none; and the changes of
+  // its routes' and agents' status as they are seen.
   rpc WatchEvents(WatchEventsRequest) returns (stream WatchEventsResponse) {
     option idempotency_level = NO_SIDE_EFFECTS;
     option (rpmgr.v1.authz) = {
@@ -133,7 +134,7 @@ message WatchEventsRequest {
   string resume_token = 2 [(buf.validate.field).string.max_len = 128];
 }
 
-// WatchEventsResponse is one configuration change of the org, or a reset.
+// WatchEventsResponse is one configuration change of the org, a reset, or status changes.
 message WatchEventsResponse {
   // The revision of the change.
   Revision revision = 1;
@@ -148,4 +149,8 @@ message WatchEventsResponse {
   // The resume token was of another database epoch, after a restore: the client reads everything
   // again. Such an event names no change.
   bool reset = 6;
+  // The routes, gateways and connectors whose status changed: a route's derived status, an
+  // agent's control session going up or down. Such an event has no revision, and its resume token
+  // is the last one. Status changes are not replayed after a reconnect.
+  repeated string status_changed = 7;
 }

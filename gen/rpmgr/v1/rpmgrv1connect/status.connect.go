@@ -54,7 +54,8 @@ type StatusServiceClient interface {
 	// rejected or timed out, or for 60 s at most.
 	WatchApplyStatus(context.Context, *connect.Request[v1.WatchApplyStatusRequest]) (*connect.ServerStreamForClient[v1.WatchApplyStatusResponse], error)
 	// WatchEvents streams the org's configuration changes as they are committed, one event per
-	// revision, from the resume token on, so a client that reconnects misses none.
+	// revision, from the resume token on, so a client that reconnects misses none; and the changes of
+	// its routes' and agents' status as they are seen.
 	WatchEvents(context.Context, *connect.Request[v1.WatchEventsRequest]) (*connect.ServerStreamForClient[v1.WatchEventsResponse], error)
 }
 
@@ -123,7 +124,8 @@ type StatusServiceHandler interface {
 	// rejected or timed out, or for 60 s at most.
 	WatchApplyStatus(context.Context, *connect.Request[v1.WatchApplyStatusRequest], *connect.ServerStream[v1.WatchApplyStatusResponse]) error
 	// WatchEvents streams the org's configuration changes as they are committed, one event per
-	// revision, from the resume token on, so a client that reconnects misses none.
+	// revision, from the resume token on, so a client that reconnects misses none; and the changes of
+	// its routes' and agents' status as they are seen.
 	WatchEvents(context.Context, *connect.Request[v1.WatchEventsRequest], *connect.ServerStream[v1.WatchEventsResponse]) error
 }
 
