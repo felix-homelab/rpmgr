@@ -206,10 +206,11 @@ func TestOpenRequest_Refusals(t *testing.T) {
 }
 
 // TestH2_ConnectorInitiatedStreams: on the reverse-HTTP/2 transport the connector never opens a
-// stream; it gets one with OpenRequest (DIAG here; CONTROL_PASSTHROUGH in 5.13), and the gateway
-// never blocks at the connector's stream limit but rejects with OVERLOADED.
+// stream; it gets one with OpenRequest, DIAG and CONTROL_PASSTHROUGH alike, the latter carrying
+// bytes both ways with the first chunk delivered first, and the gateway never blocks at the
+// connector's stream limit but rejects with OVERLOADED.
 func TestH2_ConnectorInitiatedStreams(t *testing.T) {
-	e := startOpenEnv(t, tunnel.WithMaxStreams(tunnel.DefaultH2Windows(), 2), time.Second)
+	e := startOpenEnv(t, tunnel.WithMaxStreams(tunnel.DefaultH2Windows(), 3), time.Second)
 	ctx := context.Background()
 	held := make(chan tunnel.Stream, 1)
 	e.setDecide(func(*tunnelv1.OpenRequest) (tunnelv1.ResultCode, func(tunnel.Stream)) {
@@ -221,12 +222,44 @@ func TestH2_ConnectorInitiatedStreams(t *testing.T) {
 	}
 	defer func() { _ = st.Close() }()
 	<-held
-	// The control stream and this stream fill the limit of 2.
+
+	// CONTROL_PASSTHROUGH: the gateway splices the stream, the first chunk ahead of the rest.
+	spliced := make(chan []byte, 1)
+	e.setDecide(func(r *tunnelv1.OpenRequest) (tunnelv1.ResultCode, func(tunnel.Stream)) {
+		if r.GetKind() != tunnelv1.StreamKind_STREAM_KIND_CONTROL_PASSTHROUGH || r.GetRouteId() != "" {
+			return tunnelv1.ResultCode_RESULT_CODE_PROTOCOL, nil
+		}
+		first := r.GetFirstChunk()
+		return tunnelv1.ResultCode_RESULT_CODE_NO_ERROR, func(st tunnel.Stream) {
+			_, _ = st.Write([]byte("from the controller"))
+			_ = st.CloseWrite()
+			rest, _ := io.ReadAll(st)
+			spliced <- append(first, rest...)
+		}
+	})
+	ctl, open, err := e.req.Request(ctx, tunnelv1.StreamKind_STREAM_KIND_CONTROL_PASSTHROUGH, "", []byte("ClientHello"))
+	if err != nil || open.GetKind() != tunnelv1.StreamKind_STREAM_KIND_CONTROL_PASSTHROUGH {
+		t.Fatalf("a CONTROL_PASSTHROUGH stream through OpenRequest: %v %v", open, err)
+	}
+	defer func() { _ = ctl.Close() }()
+
+	// The control stream, the DIAG stream and this one fill the limit of 3.
 	start := time.Now()
-	if _, _, err := e.req.Request(ctx, tunnelv1.StreamKind_STREAM_KIND_DIAG, "", nil); rejectedCode(err) != tunnelv1.ResultCode_RESULT_CODE_OVERLOADED {
+	if _, _, err := e.req.Request(ctx, tunnelv1.StreamKind_STREAM_KIND_CONTROL_PASSTHROUGH, "", nil); rejectedCode(err) != tunnelv1.ResultCode_RESULT_CODE_OVERLOADED {
 		t.Fatalf("at the stream limit: %v", err)
 	}
 	if d := time.Since(start); d > 500*time.Millisecond {
 		t.Fatalf("the gateway waited %v at the stream limit", d)
+	}
+
+	if _, err := ctl.Write([]byte(" and the rest")); err != nil {
+		t.Fatal(err)
+	}
+	_ = ctl.CloseWrite()
+	if got, err := io.ReadAll(ctl); err != nil || string(got) != "from the controller" {
+		t.Fatalf("from the gateway: %q %v", got, err)
+	}
+	if got := <-spliced; string(got) != "ClientHello and the rest" {
+		t.Fatalf("at the gateway: %q", got)
 	}
 }

@@ -320,6 +320,10 @@ func (s *quicStream) CloseWrite() error {
 // the stream is reset afterwards.
 func (s *quicStream) SetReliableBoundary() { s.st.SetReliableBoundary() }
 
+// SetReadDeadline and SetWriteDeadline are the QUIC stream's own, for Conn.
+func (s *quicStream) SetReadDeadline(t time.Time) error  { return s.st.SetReadDeadline(t) }
+func (s *quicStream) SetWriteDeadline(t time.Time) error { return s.st.SetWriteDeadline(t) }
+
 // Abort resets both directions.
 func (s *quicStream) Abort() {
 	s.st.CancelWrite(codeAborted)

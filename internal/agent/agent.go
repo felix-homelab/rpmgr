@@ -34,6 +34,9 @@ type ControlOptions struct {
 	OnDenyList func()
 	// Dial connects to a controller endpoint; nil dials TCP.
 	Dial func(ctx context.Context, addr string) (net.Conn, error)
+	// Fallback, if set, carries the control session through a data session when every
+	// controller endpoint failed (ClientOptions.Fallback).
+	Fallback func(ctx context.Context) (net.Conn, error)
 }
 
 // Control is an agent's control plane: its identity, the control session with certificate
@@ -66,7 +69,7 @@ func NewControl(o ControlOptions) (*Control, error) {
 		Send:        func(m *agentv1.AgentMessage) bool { return c.client.Send(m) },
 		OnEndpoints: func(eps []string) { c.client.SetEndpoints(eps) }})
 	c.client = NewClient(ClientOptions{Identity: id, Endpoints: id.Endpoints, Version: o.Version, Capabilities: o.Capabilities,
-		BootID: hex.EncodeToString(boot), Now: o.Now, Logger: o.Logger, Backoff: o.Backoff, Dial: o.Dial,
+		BootID: hex.EncodeToString(boot), Now: o.Now, Logger: o.Logger, Backoff: o.Backoff, Dial: o.Dial, Fallback: o.Fallback,
 		Hello: func(h *agentv1.Hello) {
 			c.rt.Hello(h)
 			h.DenyListDigest = c.deny.Digest()
@@ -146,6 +149,21 @@ func (c *Control) Identity() Loaded { return c.id }
 // Certificate returns the agent's current certificate, which renewal replaces, for the role's
 // TLS configurations.
 func (c *Control) Certificate() tls.Certificate { return c.client.Certificate() }
+
+// ControllerAddr returns host:port of the endpoint of the current or last control session, or of
+// the first endpoint before any session: where a gateway sends the control sessions that
+// connectors carry through its data sessions.
+func (c *Control) ControllerAddr() (string, error) {
+	_, _, ep := c.client.Stats()
+	if ep == "" || ep == DataSessionEndpoint {
+		eps := c.client.Endpoints()
+		if len(eps) == 0 {
+			return "", errors.New("agent: no controller endpoint")
+		}
+		ep = eps[0]
+	}
+	return dialAddr(ep)
+}
 
 // DenyList returns the agent's deny-list, for the role's TLS peers.
 func (c *Control) DenyList() *DenyList { return c.deny }

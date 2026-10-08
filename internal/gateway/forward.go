@@ -20,7 +20,7 @@ const forwardDial = 5 * time.Second
 // gateway relays bytes it can neither read nor alter, and the agent verifies the controller
 // against its pinned root as on a direct path.
 type Forward struct {
-	addr   string
+	addr   func() (string, error)
 	dial   func(ctx context.Context, addr string) (net.Conn, error)
 	logger *slog.Logger
 	ctx    context.Context
@@ -35,6 +35,11 @@ type Forward struct {
 // NewForward returns the forwarding to the controller at addr (host:port); dial connects to it,
 // nil dials TCP.
 func NewForward(addr string, dial func(ctx context.Context, addr string) (net.Conn, error), logger *slog.Logger) *Forward {
+	return NewForwardTo(func() (string, error) { return addr, nil }, dial, logger)
+}
+
+// NewForwardTo is NewForward to the address that addr returns at each connection.
+func NewForwardTo(addr func() (string, error), dial func(ctx context.Context, addr string) (net.Conn, error), logger *slog.Logger) *Forward {
 	if dial == nil {
 		d := &net.Dialer{}
 		dial = func(ctx context.Context, addr string) (net.Conn, error) { return d.DialContext(ctx, "tcp", addr) }
@@ -56,11 +61,15 @@ func (f *Forward) Serve(c net.Conn) {
 	}
 	defer f.wg.Done()
 	defer f.untrack(c)
-	ctx, cancel := context.WithTimeout(f.ctx, forwardDial)
-	up, err := f.dial(ctx, f.addr)
-	cancel()
+	addr, err := f.addr()
+	var up net.Conn
+	if err == nil {
+		ctx, cancel := context.WithTimeout(f.ctx, forwardDial)
+		up, err = f.dial(ctx, addr)
+		cancel()
+	}
 	if err != nil {
-		f.logger.Warn("the private controller does not answer", "address", f.addr, "error", err)
+		f.logger.Warn("the controller does not answer", "address", addr, "error", err)
 		abort(c)
 		return
 	}

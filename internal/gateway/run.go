@@ -50,8 +50,9 @@ type RunOptions struct {
 	ControllerNames []string
 	// Dial connects the control plane to a controller endpoint; nil dials TCP.
 	Dial func(ctx context.Context, addr string) (net.Conn, error)
-	// ForwardDial connects to the private controller of controller.passthrough; nil dials
-	// TCP.
+	// ForwardDial connects to the controller for what the gateway forwards to it: connections to
+	// the private controller of controller.passthrough, and the control sessions connectors carry
+	// through their data sessions; nil dials TCP.
 	ForwardDial func(ctx context.Context, addr string) (net.Conn, error)
 	// Registry, if set, receives the gateway's metrics and Run serves no admin listener;
 	// Readiness then gets the gateway's readiness check.
@@ -93,8 +94,24 @@ func Run(ctx context.Context, o RunOptions) error {
 	if id.Kind != string(pki.KindGateway) {
 		return fmt.Errorf("gateway: the identity in %s is a %s's", cfg.IdentityDir, id.Kind)
 	}
+	// The controller, for the connections to its names and for the control sessions connectors
+	// carry through their data sessions: the in-process one (all-in-one), the private one of
+	// controller.passthrough, or for the carried sessions the gateway's own controller endpoint.
+	toController, controllerNames := o.Controller, o.ControllerNames
+	if pt := cfg.Controller.Passthrough; pt.Address != "" {
+		forward := NewForward(pt.Address, o.ForwardDial, o.Logger)
+		defer forward.Close()
+		toController, controllerNames = forward.Serve, pt.Hostnames
+	}
+	carried := toController
+	if carried == nil {
+		own := NewForwardTo(ctl.ControllerAddr, o.ForwardDial, o.Logger)
+		defer own.Close()
+		carried = own.Serve
+	}
 	sessions = NewSessions(SessionsOptions{TrustDomain: id.TrustDomain, GatewayID: id.AgentID, Assignment: assign,
-		Denied: ctl.DenyList().Denied, Capabilities: Capabilities, Now: o.Now, Logger: o.Logger})
+		Denied: ctl.DenyList().Denied, Capabilities: Capabilities, Now: o.Now, Logger: o.Logger,
+		OnOpenRequest: NewControlStreams(carried).Decide})
 	host, _, err := net.SplitHostPort(cfg.Listen.TCP)
 	if err != nil {
 		return err
@@ -135,12 +152,6 @@ func Run(ctx context.Context, o RunOptions) error {
 	budget := tunnel.NewBudget(tunnel.DefaultWindowBudget)
 	run, stop := context.WithCancel(context.Background()) // outlives ctx by the drain period
 	defer stop()
-	toController, controllerNames := o.Controller, o.ControllerNames
-	if pt := cfg.Controller.Passthrough; pt.Address != "" {
-		forward := NewForward(pt.Address, o.ForwardDial, o.Logger)
-		defer forward.Close()
-		toController, controllerNames = forward.Serve, pt.Hostnames
-	}
 	router := &Router{TrustDomain: id.TrustDomain, GatewayID: id.AgentID, TunnelTLS: h2TLS, DefaultTLS: def, Logger: o.Logger,
 		Controller: toController, ControllerNames: controllerNames, Routes: pass,
 		Tunnel: func(c *tls.Conn) {

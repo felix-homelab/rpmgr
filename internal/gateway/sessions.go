@@ -65,8 +65,8 @@ type SessionsOptions struct {
 	// Denied is the deny-list check; nil denies nothing.
 	Denied       func(*x509.Certificate) bool
 	Capabilities []string
-	// OnOpenRequest decides a connector's OpenRequest (CONTROL_PASSTHROUGH in 5.13); nil rejects
-	// every request.
+	// OnOpenRequest decides a stream a connector asks for, an OpenRequest on HTTP/2 or a stream it
+	// opened on QUIC (CONTROL_PASSTHROUGH); nil refuses every one with UNAUTHORIZED.
 	OnOpenRequest func(connectorID string, r *tunnelv1.OpenRequest) (tunnelv1.ResultCode, func(tunnel.Stream))
 	Now           func() time.Time
 	Logger        *slog.Logger
@@ -181,12 +181,16 @@ func (m *Sessions) Serve(ctx context.Context, s tunnel.Session, peer *x509.Certi
 		GatewayId: m.o.GatewayID, ProtoMinor: protoMinor, Capabilities: m.o.Capabilities}}}); err != nil {
 		return err
 	}
-	resp := tunnel.NewOpenResponder(send, s.OpenStream, func(r *tunnelv1.OpenRequest) (tunnelv1.ResultCode, func(tunnel.Stream)) {
+	decide := func(r *tunnelv1.OpenRequest) (tunnelv1.ResultCode, func(tunnel.Stream)) {
 		if m.o.OnOpenRequest == nil {
 			return tunnelv1.ResultCode_RESULT_CODE_UNAUTHORIZED, nil
 		}
 		return m.o.OnOpenRequest(id.ID, r)
-	})
+	}
+	resp := tunnel.NewOpenResponder(send, s.OpenStream, decide)
+	if s.Transport() == "quic" {
+		go acceptOpened(ctx, s, decide)
+	}
 	for {
 		msg := &tunnelv1.SessionMessage{}
 		if err := tunnel.ReadMessage(control, msg); err != nil {
@@ -211,6 +215,43 @@ func (m *Sessions) Serve(ctx context.Context, s tunnel.Session, peer *x509.Certi
 		case msg.GetGoodbye() != nil:
 			return nil
 		}
+	}
+}
+
+// acceptOpened serves the streams a connector opens on a QUIC session: each starts with its
+// StreamOpen within the StreamResult timeout and gets a StreamResult; decide answers it as it
+// answers an OpenRequest on HTTP/2.
+func acceptOpened(ctx context.Context, s tunnel.Session, decide func(*tunnelv1.OpenRequest) (tunnelv1.ResultCode, func(tunnel.Stream))) {
+	for {
+		st, err := s.AcceptStream(ctx)
+		if err != nil {
+			return
+		}
+		go func() {
+			stop := time.AfterFunc(resultTimeout, st.Abort)
+			open := &tunnelv1.StreamOpen{}
+			err := tunnel.ReadMessage(st, open)
+			if !stop.Stop() || err != nil {
+				st.Abort()
+				return
+			}
+			code := tunnel.CheckStreamOpen(open)
+			var serve func(tunnel.Stream)
+			if code == tunnelv1.ResultCode_RESULT_CODE_NO_ERROR {
+				code, serve = decide(&tunnelv1.OpenRequest{Kind: open.GetKind(), RouteId: open.GetRouteId()})
+			}
+			if err := tunnel.WriteMessage(st, &tunnelv1.StreamResult{Code: code}); err != nil || code != tunnelv1.ResultCode_RESULT_CODE_NO_ERROR {
+				st.SetReliableBoundary()
+				_ = st.CloseWrite()
+				_ = st.Close()
+				return
+			}
+			if serve == nil {
+				_ = st.Close()
+				return
+			}
+			serve(st)
+		}()
 	}
 }
 

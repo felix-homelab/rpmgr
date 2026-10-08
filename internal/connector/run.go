@@ -40,6 +40,8 @@ type RunOptions struct {
 	Logger  *slog.Logger
 	// Listening, if set, is called once the connector runs.
 	Listening func()
+	// ControlDial connects the control plane to a controller endpoint; nil dials TCP.
+	ControlDial func(ctx context.Context, addr string) (net.Conn, error)
 }
 
 // Run runs a connector from its boot file until ctx ends (docs/02-architecture.md): its control
@@ -100,7 +102,8 @@ func Run(ctx context.Context, o RunOptions) error {
 		TLS: func(gatewayID string) (*tls.Config, error) { return gatewayTLS(ctl, gatewayID, o.Now) }})
 	defer sessions.Close()
 	ctl, err = agent.NewControl(agent.ControlOptions{IdentityDir: cfg.IdentityDir, StateDir: cfg.StateDir, Version: o.Version,
-		Capabilities: Capabilities, Applier: NewApplier(targets, sessions), Now: o.Now, Logger: o.Logger})
+		Capabilities: Capabilities, Applier: NewApplier(targets, sessions), Now: o.Now, Logger: o.Logger,
+		Dial: o.ControlDial, Fallback: sessions.ControlConn})
 	if err != nil {
 		return err
 	}

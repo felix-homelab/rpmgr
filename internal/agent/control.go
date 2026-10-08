@@ -32,6 +32,10 @@ const (
 	MaxSkew = 30 * time.Second
 )
 
+// DataSessionEndpoint names the last endpoint of every round when ClientOptions.Fallback is set:
+// the control session carried through a data session to a gateway (CONTROL_PASSTHROUGH).
+const DataSessionEndpoint = "data-session"
+
 // ErrRevoked ends Run: the controller revoked this agent's identity.
 var ErrRevoked = errors.New("agent: the controller revoked this agent; enroll it again")
 
@@ -61,6 +65,10 @@ type ClientOptions struct {
 	// Dial connects to a controller endpoint's host:port; nil dials TCP. All-in-one passes an
 	// in-memory connection to its own controller.
 	Dial func(ctx context.Context, addr string) (net.Conn, error)
+	// Fallback, if set, connects to the controller through a data session (CONTROL_PASSTHROUGH,
+	// docs/03-connections.md, "Control sessions through a data session"): DataSessionEndpoint, the
+	// last endpoint of every round, tried only after every endpoint before it failed.
+	Fallback func(ctx context.Context) (net.Conn, error)
 }
 
 // dialOptions are the gRPC options that apply Dial.
@@ -109,7 +117,9 @@ func NewClient(o ClientOptions) *Client {
 
 // Run keeps a control session until ctx ends or the controller revokes the agent. It tries the
 // endpoints in order and moves to the next on a failure or a Drain; after a whole round failed,
-// or after a session ended, it waits the backoff, at least a Goodbye's retry_after.
+// or after a session ended, it waits the backoff, at least a Goodbye's retry_after. With a
+// Fallback, the round ends with DataSessionEndpoint, and once a session through it ended the next
+// round starts with the direct endpoints again.
 func (c *Client) Run(ctx context.Context) error {
 	if len(c.o.Endpoints) == 0 {
 		return errors.New("agent: no controller endpoint")
@@ -122,6 +132,9 @@ func (c *Client) Run(ctx context.Context) error {
 	for ctx.Err() == nil {
 		start := c.o.Now()
 		endpoints := c.Endpoints()
+		if c.o.Fallback != nil {
+			endpoints = append(endpoints, DataSessionEndpoint)
+		}
 		ep := endpoints[next%len(endpoints)]
 		var out outcome
 		err := c.reauthIfExpired(ctx, ep)
@@ -134,6 +147,8 @@ func (c *Client) Run(ctx context.Context) error {
 			return nil
 		case out.reason == agentv1.GoodbyeReason_GOODBYE_REASON_REVOKED:
 			return ErrRevoked
+		case ep == DataSessionEndpoint:
+			next = 0 // the direct endpoints first again
 		case out.drained || out.reason == agentv1.GoodbyeReason_GOODBYE_REASON_SHUTDOWN || err != nil && !out.welcomed:
 			next++ // another endpoint
 		}
@@ -161,12 +176,19 @@ type outcome struct {
 // session runs one control session to endpoint until it ends.
 func (c *Client) session(ctx context.Context, endpoint string) (outcome, error) {
 	var out outcome
+	name := "controller." + c.o.Identity.TrustDomain
+	dial := c.o.Dial
 	addr, err := dialAddr(endpoint)
+	if endpoint == DataSessionEndpoint {
+		// The address only names the target for grpc-go; the connection comes from Fallback.
+		addr, err = net.JoinHostPort(name, "443"), nil
+		dial = func(ctx context.Context, _ string) (net.Conn, error) { return c.o.Fallback(ctx) }
+	}
 	if err != nil {
 		return out, err
 	}
-	creds := c.credentials("controller." + c.o.Identity.TrustDomain)
-	cc, err := grpc.NewClient("passthrough:///"+addr, append(dialOptions(c.o.Dial),
+	creds := c.credentials(name)
+	cc, err := grpc.NewClient("passthrough:///"+addr, append(dialOptions(dial),
 		grpc.WithTransportCredentials(creds),
 		grpc.WithKeepaliveParams(keepalive.ClientParameters{Time: keepaliveTime, Timeout: keepaliveTimeout, PermitWithoutStream: true}),
 		grpc.WithDefaultCallOptions(grpc.MaxCallRecvMsgSize(agentproto.MaxControlMessage), grpc.MaxCallSendMsgSize(agentproto.MaxControlMessage)))...)
