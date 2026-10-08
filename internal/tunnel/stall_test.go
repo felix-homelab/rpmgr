@@ -25,8 +25,12 @@ func TestFlowControl_StalledStreamsDoNotFreezeSession(t *testing.T) {
 		g, c := h2Open(t, gw, con)
 		stalls.Watch(g)
 		peers = append(peers, c)
-		go func() { _, _ = c.Write(make([]byte, 900<<10)) }() // the gateway never reads it
-		time.Sleep(20 * time.Millisecond)                     // a distinct age for each
+		// The four together fill the connection window, before the next stream writes; the
+		// gateway never reads them.
+		if _, err := c.Write(make([]byte, 768<<10)); err != nil {
+			t.Fatal(err)
+		}
+		time.Sleep(20 * time.Millisecond) // a distinct age for each
 	}
 	// Let the 3.6 MiB reach the 3 MiB connection window before the probe; on a loaded machine
 	// the writers need more than the 80 ms above.
