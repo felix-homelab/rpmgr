@@ -111,11 +111,13 @@ single-use token. Token format, lifetimes and re-enrollment rules are in
   name, goes to its `net/http` server, where browsers and the CLI use ConnectRPC. A connection that
   does not start with a ClientHello within the peek limits is closed without an answer.
 - **Endpoints and failover.** An agent knows its controller endpoints in order: from enrollment,
-  then from every snapshot. It tries them in that order; a failed connection, a `Drain` or
-  `Goodbye{shutdown}` moves it to the next endpoint, and after a whole round failed, or after a
-  session ended, it waits the reconnect backoff, at least a Goodbye's `retry_after`.
-  `Goodbye{revoked}` stops the agent, which must be enrolled again. The agent compares
-  `Welcome.server_time` with its own clock and warns above 30 s ([Failure modes](#failure-modes)).
+  then from every snapshot; a connector adds its data sessions as the last one ([Control sessions
+  through a data session](#control-sessions-through-a-data-session)). It tries them in that order; a
+  failed connection, a `Drain` or `Goodbye{shutdown}` moves it to the next endpoint, and after a
+  whole round failed, or after a session ended, it waits the reconnect backoff, at least a Goodbye's
+  `retry_after`. `Goodbye{revoked}` stops the agent, which must be enrolled again. The agent
+  compares `Welcome.server_time` with its own clock and warns above 30 s ([Failure
+  modes](#failure-modes)).
 - **Who may call what.** One table lists every method of the agent protocol, and a method missing
   from it is refused, so a new method is unreachable until it is listed:
   - `Enrollment.Enroll` at `controller.<td>`, with or without a client certificate (an enrolling
@@ -366,7 +368,32 @@ with an in-process controller (all-in-one) has no `controller.passthrough`.
 
 [R] Control traffic deliberately does **not** ride inside the data session to a gateway: gateways
 are edge components and must not be able to forge or withhold configuration, and gateway restarts
-must not interrupt control ([ADR-0006](adr/0006-separate-control-session.md)).
+must not interrupt control ([ADR-0006](adr/0006-separate-control-session.md)). The one exception is
+the last resort below, in which the gateway only splices bytes it cannot read.
+
+### Control sessions through a data session
+
+When none of a connector's controller endpoints answers, for example on a network that lets it
+reach its gateways only over UDP, the connector carries its control session through a data session
+(`CONTROL_PASSTHROUGH`, [ADR-0006](adr/0006-separate-control-session.md), R41):
+
+- It is the **last endpoint of every round**: the agent tries it only after every endpoint of the
+  list failed, and once a session through it ended the next round starts with the list again.
+- On QUIC the connector opens the stream itself with `StreamOpen{CONTROL_PASSTHROUGH}` and waits
+  for the `StreamResult`; on the TCP transport it asks for the stream with `OpenRequest`
+  ([Transports and fallback](#transports-and-fallback)). It tries its established data sessions,
+  QUIC ones first.
+- The gateway splices the stream at layer 4 to the controller: the in-process one (all-in-one), the
+  private controller of `controller.passthrough`, or otherwise the endpoint of its own control
+  session. Inside the stream the agent runs the same TLS to `controller.<td>` as on a direct path
+  and verifies the controller against the pinned root, so the gateway can neither read nor alter
+  the session; the forwarding's dial timeout applies ([timeouts](#timeouts-keepalive-and-backoff)).
+- A connector carries at most **4** control sessions through one gateway at a time; a further
+  request gets `OVERLOADED`. Any other kind a connector asks for gets `PROTOCOL` (`RELAY_OUT` comes
+  with private services in Phase 2).
+- Only connectors carry control sessions: a gateway has no data session of its own to carry one.
+  `Reauth` is never carried, because a connector whose certificate expired has no data session
+  either.
 
 ## Data session
 
@@ -885,8 +912,8 @@ sequenceDiagram
 | Data session start | `SessionHello` within 10 s of the session control stream, as its first message only; the connector waits as long for `SessionWelcome` | As for control sessions |
 | Controller drain | `Drain{deadline}` to every session, also to sessions that start later; new sessions while draining get `Goodbye{shutdown}` with a `retry_after`; a stopping replica waits up to 5 s for its sessions to move, then closes | Agents move to another endpoint before the replica stops |
 | ClientHello peek | 16 KiB within 5 s | Slowloris protection |
-| `StreamOpen` → `StreamResult` | 10 s; upstream dial 5 s | Bounded connection setup |
-| Private-controller forwarding | dial 5 s; no idle timeout, the control session's keepalive keeps it alive | An unreachable controller fails fast, so the agent tries its next endpoint |
+| `StreamOpen` → `StreamResult` | 10 s; upstream dial 5 s; a stream the connector opens brings its `StreamOpen` within the same 10 s | Bounded connection setup |
+| Forwarding to the controller (private controller, carried control sessions) | dial 5 s; no idle timeout, the control session's keepalive keeps it alive | An unreachable controller fails fast, so the agent tries its next endpoint |
 | HTTP server | header read 10 s; idle 120 s; upstream response header 60 s; no total write timeout | Long downloads and streaming must work |
 | Idle TCP route connection | 1 h (per route; 0 disables) | Reclaim half-open connections |
 | Idle UDP flow | 60 s (per route) | Typical UDP NAT behaviour |

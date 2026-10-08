@@ -209,6 +209,10 @@ func (c *Client) reauthIfExpired(ctx context.Context, endpoint string) error {
 	if leaf == nil || !c.o.Now().After(leaf.NotAfter) {
 		return nil
 	}
+	if endpoint == DataSessionEndpoint {
+		// A connector with an expired certificate has no data session either.
+		return errors.New("agent: the certificate expired; Reauth needs a direct controller endpoint")
+	}
 	addr, err := dialAddr(endpoint)
 	if err != nil {
 		return err

@@ -14,7 +14,7 @@ TestUnverifiedDomainRejected	pending	8.5a	#119
 TestBadSnapshotKeepsLastKnownGood	done	3.11	#66	framework clause (internal/agent) and traffic clause (internal/itest, 4.13) done
 TestSecretsNeverLogged	pending	9.6	#138
 TestEnroll_BundleWithExtraRootRejected	done	3.8	#63
-TestH2_ConnectorInitiatedStreams	done	4.4	#74	DIAG clause done; CONTROL_PASSTHROUGH clause in 5.13; RELAY_OUT clause in P2 (private services)
+TestH2_ConnectorInitiatedStreams	done	4.4	#74	DIAG clause (4.4) and CONTROL_PASSTHROUGH clause (5.13) done; RELAY_OUT clause in P2 (private services)
 TestTLS_WrongGatewayIDRejected	done	4.10	#80
 TestDenyList_AppliedDespiteRejectedSnapshot	done	3.13	#68	internal/itest
 TestOTA_ReplayedOldManifestRejected	p2	-	-	OTA
