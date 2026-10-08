@@ -69,6 +69,18 @@ func (f CAKeyFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.CAKeyMutation", m)
 }
 
+// The CertificateFunc type is an adapter to allow the use of ordinary
+// function as Certificate mutator.
+type CertificateFunc func(context.Context, *ent.CertificateMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f CertificateFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.CertificateMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.CertificateMutation", m)
+}
+
 // The CompiledSnapshotFunc type is an adapter to allow the use of ordinary
 // function as CompiledSnapshot mutator.
 type CompiledSnapshotFunc func(context.Context, *ent.CompiledSnapshotMutation) (ent.Value, error)

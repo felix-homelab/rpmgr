@@ -17,6 +17,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/auditentry"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/audithead"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/cakey"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/certificate"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/compiledsnapshot"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/configrevision"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/configseq"
@@ -106,6 +107,7 @@ func checkColumn(t, c string) error {
 			auditentry.Table:        auditentry.ValidColumn,
 			audithead.Table:         audithead.ValidColumn,
 			cakey.Table:             cakey.ValidColumn,
+			certificate.Table:       certificate.ValidColumn,
 			compiledsnapshot.Table:  compiledsnapshot.ValidColumn,
 			configrevision.Table:    configrevision.ValidColumn,
 			configseq.Table:         configseq.ValidColumn,

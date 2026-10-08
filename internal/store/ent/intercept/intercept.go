@@ -13,6 +13,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/auditentry"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/audithead"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/cakey"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/certificate"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/compiledsnapshot"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/configrevision"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/configseq"
@@ -229,6 +230,33 @@ func (f TraverseCAKey) Traverse(ctx context.Context, q ent.Query) error {
 		return f(ctx, q)
 	}
 	return fmt.Errorf("unexpected query type %T. expect *ent.CAKeyQuery", q)
+}
+
+// The CertificateFunc type is an adapter to allow the use of ordinary function as a Querier.
+type CertificateFunc func(context.Context, *ent.CertificateQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f CertificateFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.CertificateQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.CertificateQuery", q)
+}
+
+// The TraverseCertificate type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseCertificate func(context.Context, *ent.CertificateQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseCertificate) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseCertificate) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.CertificateQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.CertificateQuery", q)
 }
 
 // The CompiledSnapshotFunc type is an adapter to allow the use of ordinary function as a Querier.
@@ -892,6 +920,8 @@ func NewQuery(q ent.Query) (Query, error) {
 		return &query[*ent.AuditHeadQuery, predicate.AuditHead, audithead.OrderOption]{typ: ent.TypeAuditHead, tq: q}, nil
 	case *ent.CAKeyQuery:
 		return &query[*ent.CAKeyQuery, predicate.CAKey, cakey.OrderOption]{typ: ent.TypeCAKey, tq: q}, nil
+	case *ent.CertificateQuery:
+		return &query[*ent.CertificateQuery, predicate.Certificate, certificate.OrderOption]{typ: ent.TypeCertificate, tq: q}, nil
 	case *ent.CompiledSnapshotQuery:
 		return &query[*ent.CompiledSnapshotQuery, predicate.CompiledSnapshot, compiledsnapshot.OrderOption]{typ: ent.TypeCompiledSnapshot, tq: q}, nil
 	case *ent.ConfigRevisionQuery:

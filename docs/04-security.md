@@ -217,6 +217,12 @@ later.
   answer from what was pushed and never read the database. Issued certificates go to the same
   gateways. certmagic supports this through the storage hook of its distributed solving
   ([S6](spikes/S6.md)); the run against Let's Encrypt staging is pending [V VB-19].
+- **Uploaded route certificates** [R]: the controller accepts a PEM chain, leaf first, of at most
+  10 certificates, each signed by the next, and the leaf's PEM key. The leaf must be valid at the
+  upload, must not be a CA, must allow TLS server use (no extended key usage, or `serverAuth`) and
+  must name at least one valid DNS name; its key must match it and be ECDSA P-256 or P-384, or RSA
+  of 2048 to 8192 bits. The key is stored under the KEK; gateways fetch chain and key together by
+  their SHA-256, which the controller computes at the upload.
 
 ### CA rotation
 

@@ -21,6 +21,9 @@ type AuditHead func(*sql.Selector)
 // CAKey is the predicate function for cakey builders.
 type CAKey func(*sql.Selector)
 
+// Certificate is the predicate function for certificate builders.
+type Certificate func(*sql.Selector)
+
 // CompiledSnapshot is the predicate function for compiledsnapshot builders.
 type CompiledSnapshot func(*sql.Selector)
 
