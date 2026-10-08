@@ -58,6 +58,8 @@ message Resource {
     GatewayTCPRoute gateway_tcp_route = 3;
     // Connectors: where a route's streams go.
     ConnectorRoute connector_route = 4;
+    // Connectors: a gateway to keep data sessions to.
+    ConnectorGateway connector_gateway = 5;
     // A large item the agent fetches by hash with Control.FetchResource.
     ResourceReference reference = 15;
   }
@@ -94,6 +96,18 @@ message ConnectorRoute {
   repeated Target targets = 2;
   // The effective transport policy: the route's, else the connector's, else the instance default.
   TransportPolicy transport = 3;
+}
+
+// ConnectorGateway is a gateway that a connector keeps data sessions to (docs/03-connections.md,
+// "Establishment"); the resource ID is the gateway's ID, which the connector expects in the
+// gateway's certificate.
+message ConnectorGateway {
+  // The gateway's own tunnel endpoints, host:port, in the order configured.
+  repeated string tunnel_endpoints = 1;
+  // The effective transports of the connector's routes on the gateway, sorted: the sessions to keep.
+  repeated TransportPolicy transports = 2;
+  // The connector's routes on the gateway, sorted.
+  repeated string routes = 3;
 }
 
 // Target is one destination of a route on the connector's host.
