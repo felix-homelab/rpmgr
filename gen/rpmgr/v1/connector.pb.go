@@ -887,7 +887,10 @@ type UpdateConnectorResponse struct {
 	// The connector.
 	Connector *Connector `protobuf:"bytes,1,opt,name=connector,proto3" json:"connector,omitempty"`
 	// The configuration revision of the change.
-	Revision      *Revision `protobuf:"bytes,2,opt,name=revision,proto3" json:"revision,omitempty"`
+	Revision *Revision `protobuf:"bytes,2,opt,name=revision,proto3" json:"revision,omitempty"`
+	// The apply status of the revision; with the request header Rpmgr-Wait-Applied, once it is
+	// final or the wait is over (docs/07-api.md, "Writes and apply status").
+	ApplyStatus   *ApplyStatus `protobuf:"bytes,3,opt,name=apply_status,json=applyStatus,proto3" json:"apply_status,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -932,6 +935,13 @@ func (x *UpdateConnectorResponse) GetConnector() *Connector {
 func (x *UpdateConnectorResponse) GetRevision() *Revision {
 	if x != nil {
 		return x.Revision
+	}
+	return nil
+}
+
+func (x *UpdateConnectorResponse) GetApplyStatus() *ApplyStatus {
+	if x != nil {
+		return x.ApplyStatus
 	}
 	return nil
 }
@@ -997,7 +1007,10 @@ type DecommissionConnectorResponse struct {
 	// The decommissioned connector.
 	Connector *Connector `protobuf:"bytes,1,opt,name=connector,proto3" json:"connector,omitempty"`
 	// The configuration revision of the change.
-	Revision      *Revision `protobuf:"bytes,2,opt,name=revision,proto3" json:"revision,omitempty"`
+	Revision *Revision `protobuf:"bytes,2,opt,name=revision,proto3" json:"revision,omitempty"`
+	// The apply status of the revision; with the request header Rpmgr-Wait-Applied, once it is
+	// final or the wait is over (docs/07-api.md, "Writes and apply status").
+	ApplyStatus   *ApplyStatus `protobuf:"bytes,3,opt,name=apply_status,json=applyStatus,proto3" json:"apply_status,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1046,11 +1059,18 @@ func (x *DecommissionConnectorResponse) GetRevision() *Revision {
 	return nil
 }
 
+func (x *DecommissionConnectorResponse) GetApplyStatus() *ApplyStatus {
+	if x != nil {
+		return x.ApplyStatus
+	}
+	return nil
+}
+
 var File_rpmgr_v1_connector_proto protoreflect.FileDescriptor
 
 const file_rpmgr_v1_connector_proto_rawDesc = "" +
 	"\n" +
-	"\x18rpmgr/v1/connector.proto\x12\brpmgr.v1\x1a\x1bbuf/validate/validate.proto\x1a\x1egoogle/protobuf/duration.proto\x1a google/protobuf/field_mask.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x15rpmgr/v1/common.proto\x1a\x16rpmgr/v1/options.proto\"\xd5\x04\n" +
+	"\x18rpmgr/v1/connector.proto\x12\brpmgr.v1\x1a\x1bbuf/validate/validate.proto\x1a\x1egoogle/protobuf/duration.proto\x1a google/protobuf/field_mask.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x15rpmgr/v1/common.proto\x1a\x16rpmgr/v1/options.proto\x1a\x15rpmgr/v1/status.proto\"\xd5\x04\n" +
 	"\tConnector\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12B\n" +
 	"\x04name\x18\x02 \x01(\tB.\xbaH+\xd8\x01\x01r&2$^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$R\x04name\x12t\n" +
@@ -1114,16 +1134,18 @@ const file_rpmgr_v1_connector_proto_rawDesc = "" +
 	"\tconnector\x18\x01 \x01(\v2\x13.rpmgr.v1.ConnectorB\x06\xbaH\x03\xc8\x01\x01R\tconnector\x12;\n" +
 	"\vupdate_mask\x18\x02 \x01(\v2\x1a.google.protobuf.FieldMaskR\n" +
 	"updateMask\x12\x12\n" +
-	"\x04etag\x18\x03 \x01(\tR\x04etag\"|\n" +
+	"\x04etag\x18\x03 \x01(\tR\x04etag\"\xb6\x01\n" +
 	"\x17UpdateConnectorResponse\x121\n" +
 	"\tconnector\x18\x01 \x01(\v2\x13.rpmgr.v1.ConnectorR\tconnector\x12.\n" +
-	"\brevision\x18\x02 \x01(\v2\x12.rpmgr.v1.RevisionR\brevision\"^\n" +
+	"\brevision\x18\x02 \x01(\v2\x12.rpmgr.v1.RevisionR\brevision\x128\n" +
+	"\fapply_status\x18\x03 \x01(\v2\x15.rpmgr.v1.ApplyStatusR\vapplyStatus\"^\n" +
 	"\x1cDecommissionConnectorRequest\x12*\n" +
 	"\fconnector_id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\vconnectorId\x12\x12\n" +
-	"\x04etag\x18\x02 \x01(\tR\x04etag\"\x82\x01\n" +
+	"\x04etag\x18\x02 \x01(\tR\x04etag\"\xbc\x01\n" +
 	"\x1dDecommissionConnectorResponse\x121\n" +
 	"\tconnector\x18\x01 \x01(\v2\x13.rpmgr.v1.ConnectorR\tconnector\x12.\n" +
-	"\brevision\x18\x02 \x01(\v2\x12.rpmgr.v1.RevisionR\brevision*x\n" +
+	"\brevision\x18\x02 \x01(\v2\x12.rpmgr.v1.RevisionR\brevision\x128\n" +
+	"\fapply_status\x18\x03 \x01(\v2\x15.rpmgr.v1.ApplyStatusR\vapplyStatus*x\n" +
 	"\rDataTransport\x12\x1e\n" +
 	"\x1aDATA_TRANSPORT_UNSPECIFIED\x10\x00\x12\x17\n" +
 	"\x13DATA_TRANSPORT_AUTO\x10\x01\x12\x17\n" +
@@ -1177,6 +1199,7 @@ var file_rpmgr_v1_connector_proto_goTypes = []any{
 	(*durationpb.Duration)(nil),           // 18: google.protobuf.Duration
 	(*fieldmaskpb.FieldMask)(nil),         // 19: google.protobuf.FieldMask
 	(*Revision)(nil),                      // 20: rpmgr.v1.Revision
+	(*ApplyStatus)(nil),                   // 21: rpmgr.v1.ApplyStatus
 }
 var file_rpmgr_v1_connector_proto_depIdxs = []int32{
 	16, // 0: rpmgr.v1.Connector.labels:type_name -> rpmgr.v1.Connector.LabelsEntry
@@ -1200,23 +1223,25 @@ var file_rpmgr_v1_connector_proto_depIdxs = []int32{
 	19, // 18: rpmgr.v1.UpdateConnectorRequest.update_mask:type_name -> google.protobuf.FieldMask
 	1,  // 19: rpmgr.v1.UpdateConnectorResponse.connector:type_name -> rpmgr.v1.Connector
 	20, // 20: rpmgr.v1.UpdateConnectorResponse.revision:type_name -> rpmgr.v1.Revision
-	1,  // 21: rpmgr.v1.DecommissionConnectorResponse.connector:type_name -> rpmgr.v1.Connector
-	20, // 22: rpmgr.v1.DecommissionConnectorResponse.revision:type_name -> rpmgr.v1.Revision
-	6,  // 23: rpmgr.v1.ConnectorService.ListConnectors:input_type -> rpmgr.v1.ListConnectorsRequest
-	8,  // 24: rpmgr.v1.ConnectorService.GetConnector:input_type -> rpmgr.v1.GetConnectorRequest
-	12, // 25: rpmgr.v1.ConnectorService.UpdateConnector:input_type -> rpmgr.v1.UpdateConnectorRequest
-	14, // 26: rpmgr.v1.ConnectorService.DecommissionConnector:input_type -> rpmgr.v1.DecommissionConnectorRequest
-	10, // 27: rpmgr.v1.ConnectorService.GetConnectorStatus:input_type -> rpmgr.v1.GetConnectorStatusRequest
-	7,  // 28: rpmgr.v1.ConnectorService.ListConnectors:output_type -> rpmgr.v1.ListConnectorsResponse
-	9,  // 29: rpmgr.v1.ConnectorService.GetConnector:output_type -> rpmgr.v1.GetConnectorResponse
-	13, // 30: rpmgr.v1.ConnectorService.UpdateConnector:output_type -> rpmgr.v1.UpdateConnectorResponse
-	15, // 31: rpmgr.v1.ConnectorService.DecommissionConnector:output_type -> rpmgr.v1.DecommissionConnectorResponse
-	11, // 32: rpmgr.v1.ConnectorService.GetConnectorStatus:output_type -> rpmgr.v1.GetConnectorStatusResponse
-	28, // [28:33] is the sub-list for method output_type
-	23, // [23:28] is the sub-list for method input_type
-	23, // [23:23] is the sub-list for extension type_name
-	23, // [23:23] is the sub-list for extension extendee
-	0,  // [0:23] is the sub-list for field type_name
+	21, // 21: rpmgr.v1.UpdateConnectorResponse.apply_status:type_name -> rpmgr.v1.ApplyStatus
+	1,  // 22: rpmgr.v1.DecommissionConnectorResponse.connector:type_name -> rpmgr.v1.Connector
+	20, // 23: rpmgr.v1.DecommissionConnectorResponse.revision:type_name -> rpmgr.v1.Revision
+	21, // 24: rpmgr.v1.DecommissionConnectorResponse.apply_status:type_name -> rpmgr.v1.ApplyStatus
+	6,  // 25: rpmgr.v1.ConnectorService.ListConnectors:input_type -> rpmgr.v1.ListConnectorsRequest
+	8,  // 26: rpmgr.v1.ConnectorService.GetConnector:input_type -> rpmgr.v1.GetConnectorRequest
+	12, // 27: rpmgr.v1.ConnectorService.UpdateConnector:input_type -> rpmgr.v1.UpdateConnectorRequest
+	14, // 28: rpmgr.v1.ConnectorService.DecommissionConnector:input_type -> rpmgr.v1.DecommissionConnectorRequest
+	10, // 29: rpmgr.v1.ConnectorService.GetConnectorStatus:input_type -> rpmgr.v1.GetConnectorStatusRequest
+	7,  // 30: rpmgr.v1.ConnectorService.ListConnectors:output_type -> rpmgr.v1.ListConnectorsResponse
+	9,  // 31: rpmgr.v1.ConnectorService.GetConnector:output_type -> rpmgr.v1.GetConnectorResponse
+	13, // 32: rpmgr.v1.ConnectorService.UpdateConnector:output_type -> rpmgr.v1.UpdateConnectorResponse
+	15, // 33: rpmgr.v1.ConnectorService.DecommissionConnector:output_type -> rpmgr.v1.DecommissionConnectorResponse
+	11, // 34: rpmgr.v1.ConnectorService.GetConnectorStatus:output_type -> rpmgr.v1.GetConnectorStatusResponse
+	30, // [30:35] is the sub-list for method output_type
+	25, // [25:30] is the sub-list for method input_type
+	25, // [25:25] is the sub-list for extension type_name
+	25, // [25:25] is the sub-list for extension extendee
+	0,  // [0:25] is the sub-list for field type_name
 }
 
 func init() { file_rpmgr_v1_connector_proto_init() }
@@ -1226,6 +1251,7 @@ func file_rpmgr_v1_connector_proto_init() {
 	}
 	file_rpmgr_v1_common_proto_init()
 	file_rpmgr_v1_options_proto_init()
+	file_rpmgr_v1_status_proto_init()
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{

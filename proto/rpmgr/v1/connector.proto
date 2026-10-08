@@ -10,6 +10,7 @@ import "google/protobuf/field_mask.proto";
 import "google/protobuf/timestamp.proto";
 import "rpmgr/v1/common.proto";
 import "rpmgr/v1/options.proto";
+import "rpmgr/v1/status.proto";
 
 option go_package = "github.com/felix-homelab/rpmgr/gen/rpmgr/v1;rpmgrv1";
 
@@ -216,6 +217,9 @@ message UpdateConnectorResponse {
   Connector connector = 1;
   // The configuration revision of the change.
   Revision revision = 2;
+  // The apply status of the revision; with the request header Rpmgr-Wait-Applied, once it is
+  // final or the wait is over (docs/07-api.md, "Writes and apply status").
+  ApplyStatus apply_status = 3;
 }
 
 // DecommissionConnectorRequest names a connector.
@@ -232,4 +236,7 @@ message DecommissionConnectorResponse {
   Connector connector = 1;
   // The configuration revision of the change.
   Revision revision = 2;
+  // The apply status of the revision; with the request header Rpmgr-Wait-Applied, once it is
+  // final or the wait is over (docs/07-api.md, "Writes and apply status").
+  ApplyStatus apply_status = 3;
 }

@@ -10,6 +10,7 @@ import "google/protobuf/timestamp.proto";
 import "rpmgr/v1/common.proto";
 import "rpmgr/v1/connector.proto";
 import "rpmgr/v1/options.proto";
+import "rpmgr/v1/status.proto";
 
 option go_package = "github.com/felix-homelab/rpmgr/gen/rpmgr/v1;rpmgrv1";
 
@@ -319,6 +320,9 @@ message CreateRouteResponse {
   Route route = 1;
   // The configuration revision of the change.
   Revision revision = 2;
+  // The apply status of the revision; with the request header Rpmgr-Wait-Applied, once it is
+  // final or the wait is over (docs/07-api.md, "Writes and apply status").
+  ApplyStatus apply_status = 3;
 }
 
 // GetRouteRequest names a route.
@@ -370,6 +374,9 @@ message UpdateRouteResponse {
   Route route = 1;
   // The configuration revision of the change.
   Revision revision = 2;
+  // The apply status of the revision; with the request header Rpmgr-Wait-Applied, once it is
+  // final or the wait is over (docs/07-api.md, "Writes and apply status").
+  ApplyStatus apply_status = 3;
 }
 
 // DeleteRouteRequest names a route.
@@ -384,6 +391,9 @@ message DeleteRouteRequest {
 message DeleteRouteResponse {
   // The configuration revision of the change.
   Revision revision = 1;
+  // The apply status of the revision; with the request header Rpmgr-Wait-Applied, once it is
+  // final or the wait is over (docs/07-api.md, "Writes and apply status").
+  ApplyStatus apply_status = 2;
 }
 
 // CreateRouteTargetRequest is a new target.
@@ -402,6 +412,9 @@ message CreateRouteTargetResponse {
   RouteTarget target = 1;
   // The configuration revision of the change.
   Revision revision = 2;
+  // The apply status of the revision; with the request header Rpmgr-Wait-Applied, once it is
+  // final or the wait is over (docs/07-api.md, "Writes and apply status").
+  ApplyStatus apply_status = 3;
 }
 
 // UpdateRouteTargetRequest is a changed target.
@@ -421,6 +434,9 @@ message UpdateRouteTargetResponse {
   RouteTarget target = 1;
   // The configuration revision of the change.
   Revision revision = 2;
+  // The apply status of the revision; with the request header Rpmgr-Wait-Applied, once it is
+  // final or the wait is over (docs/07-api.md, "Writes and apply status").
+  ApplyStatus apply_status = 3;
 }
 
 // DeleteRouteTargetRequest names a target.
@@ -435,4 +451,7 @@ message DeleteRouteTargetRequest {
 message DeleteRouteTargetResponse {
   // The configuration revision of the change.
   Revision revision = 1;
+  // The apply status of the revision; with the request header Rpmgr-Wait-Applied, once it is
+  // final or the wait is over (docs/07-api.md, "Writes and apply status").
+  ApplyStatus apply_status = 2;
 }

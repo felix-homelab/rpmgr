@@ -74,7 +74,10 @@ func newEnv(t *testing.T) *env {
 		Authenticator:      apisvc.Credentials{Sessions: e.sessions, Tokens: e.tokens},
 		Resolver:           api.StoreResolver(db, sys),
 		OperatorsMayEnroll: api.StoreOperatorsMayEnroll(db, sys),
-		Origins:            func(context.Context) ([]string, error) { return []string{"https://panel.example.com"}, nil }})
+		Origins:            func(context.Context) ([]string, error) { return []string{"https://panel.example.com"}, nil },
+		ApplyStatus: func(ctx context.Context, org string, rev *rpmgrv1.Revision) (*rpmgrv1.ApplyStatus, error) {
+			return apisvc.ApplyStatusOf(ctx, db.ReadClient(), org, store.Revision{DBEpoch: rev.GetDbEpoch(), Seq: rev.GetSeq()}, now())
+		}})
 	if err != nil {
 		t.Fatal(err)
 	}

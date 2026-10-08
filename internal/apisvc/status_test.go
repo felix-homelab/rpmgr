@@ -8,8 +8,10 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
+	"google.golang.org/protobuf/types/known/fieldmaskpb"
 
 	rpmgrv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/v1"
+	"github.com/felix-homelab/rpmgr/internal/api"
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
 )
 
@@ -133,5 +135,54 @@ func TestApplyStatus(t *testing.T) {
 	if _, err := vwr.st.GetApplyStatus(ctx, connect.NewRequest(&rpmgrv1.GetApplyStatusRequest{OrgId: org,
 		Revision: &rpmgrv1.Revision{DbEpoch: epoch, Seq: 10}})); err != nil {
 		t.Fatalf("a Viewer reads: %v", err)
+	}
+}
+
+// TestWriteApplyStatus: every write that returns a revision returns its apply status too, at once
+// by default; with Rpmgr-Wait-Applied it answers once the revision is applied, or when the wait
+// is over with the state then; a malformed wait does not wait.
+func TestWriteApplyStatus(t *testing.T) {
+	e, ada, org, group := gatewayEnv(t)
+	ctx := context.Background()
+	epoch := e.db.Client().Instance.GetX(e.sys, 1).DbEpoch
+	// No agent is online: nothing holds the revision.
+	gw, err := ada.gw.CreateGateway(ctx, connect.NewRequest(&rpmgrv1.CreateGatewayRequest{OrgId: org,
+		Gateway: &rpmgrv1.Gateway{GatewayGroupId: group, Name: "gw1", TunnelEndpoints: []string{"gw1.example.com:443"}}}))
+	if err != nil || gw.Msg.GetApplyStatus().GetState() != rpmgrv1.ApplyState_APPLY_STATE_APPLIED || gw.Msg.GetApplyStatus().GetAgentsTotal() != 0 {
+		t.Fatalf("a write without online agents: %v %v", gw, err)
+	}
+	id := gw.Msg.GetGateway().GetId()
+	e.db.Client().AgentSession.Create().SetID(id).SetOrgID(org).SetSessionEpoch(1).SetControllerNode("ctn_1").SetConnectedAt(e.clock).
+		SetLastSeenAt(e.clock).ExecX(e.sys)
+	e.db.Client().AgentState.Create().SetID(id).SetOrgID(org).SetAppliedDbEpoch(epoch).SetAppliedSeq(1).ExecX(e.sys)
+	update := func(name, wait string) (*connect.Response[rpmgrv1.UpdateGatewayResponse], time.Duration, error) {
+		req := connect.NewRequest(&rpmgrv1.UpdateGatewayRequest{Gateway: &rpmgrv1.Gateway{Id: id, Name: name},
+			UpdateMask: &fieldmaskpb.FieldMask{Paths: []string{"name"}}})
+		if wait != "" {
+			req.Header().Set(api.WaitHeader, wait)
+		}
+		start := time.Now()
+		r, err := ada.gw.UpdateGateway(ctx, req)
+		return r, time.Since(start), err
+	}
+	r, _, err := update("gw-a", "")
+	if err != nil || r.Msg.GetApplyStatus().GetState() != rpmgrv1.ApplyState_APPLY_STATE_PENDING || r.Msg.GetApplyStatus().GetAgentsTotal() != 1 {
+		t.Fatalf("a write the online gateway has not applied: %v %v", r, err)
+	}
+	if r, took, err := update("gw-b", "300ms"); err != nil || r.Msg.GetApplyStatus().GetState() != rpmgrv1.ApplyState_APPLY_STATE_PENDING ||
+		took < 300*time.Millisecond {
+		t.Fatalf("a wait that ends pending: %v after %v (%v)", r, took, err)
+	}
+	if r, took, err := update("gw-c", "bogus"); err != nil || took > 250*time.Millisecond || r.Msg.GetApplyStatus() == nil {
+		t.Fatalf("a malformed wait: %v after %v (%v)", r, took, err)
+	}
+	go func() {
+		time.Sleep(400 * time.Millisecond)
+		e.db.Client().AgentState.UpdateOneID(id).SetAppliedSeq(1 << 40).ExecX(e.sys)
+	}()
+	r, took, err := update("gw-d", "5s")
+	if err != nil || r.Msg.GetApplyStatus().GetState() != rpmgrv1.ApplyState_APPLY_STATE_APPLIED || r.Msg.GetApplyStatus().GetAgentsApplied() != 1 ||
+		took < 400*time.Millisecond || took > 4*time.Second {
+		t.Fatalf("a wait the gateway's apply ends: %v after %v (%v)", r, took, err)
 	}
 }

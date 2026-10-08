@@ -216,7 +216,10 @@ func Run(ctx context.Context, o RunOptions) error {
 	tokens := &accounts.Tokens{Accounts: acc, RevLog: rl, Logger: o.Logger}
 	apiServer, err := api.New(api.Options{DB: db, Sys: sys, Sealer: sealer, Resolver: api.StoreResolver(db, sys),
 		OperatorsMayEnroll: api.StoreOperatorsMayEnroll(db, sys), PageKey: pageKey, Now: o.Now, Logger: o.Logger,
-		Authenticator: apisvc.Credentials{Sessions: webSessions, Tokens: tokens}, Origins: origins(db, sys, public), RequireMFA: api.StoreRequireMFA(db, sys)})
+		Authenticator: apisvc.Credentials{Sessions: webSessions, Tokens: tokens}, Origins: origins(db, sys, public), RequireMFA: api.StoreRequireMFA(db, sys),
+		ApplyStatus: func(ctx context.Context, org string, rev *rpmgrv1.Revision) (*rpmgrv1.ApplyStatus, error) {
+			return apisvc.ApplyStatusOf(ctx, db.ReadClient(), org, store.Revision{DBEpoch: rev.GetDbEpoch(), Seq: rev.GetSeq()}, o.Now())
+		}})
 	if err != nil {
 		return err
 	}

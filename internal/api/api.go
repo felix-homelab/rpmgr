@@ -67,8 +67,11 @@ type Options struct {
 	// PageKey authenticates page tokens; the controller derives it from the KEK, so tokens stay
 	// valid across restarts. Without it, a random key lasts as long as the Server.
 	PageKey []byte
-	Now     func() time.Time
-	Logger  *slog.Logger
+	// ApplyStatus fills the apply_status of a write's answer that carries a revision; nil leaves it
+	// out.
+	ApplyStatus ApplyStatusFunc
+	Now         func() time.Time
+	Logger      *slog.Logger
 }
 
 // Server holds the interceptor every method of the public API goes through.

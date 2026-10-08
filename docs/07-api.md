@@ -171,9 +171,10 @@ API reports both ([03](03-connections.md#configuration-reconciliation)).
   `APPLY_TIMEOUT` (an agent did not answer within the apply acknowledgement period,
   [03](03-connections.md#timeouts-keepalive-and-backoff)). Offline agents are listed separately and
   do not hold the state at `PENDING` forever.
-- A caller may set `wait = APPLIED` with a timeout (max 30 s) on any mutation; the response then
-  returns once the revision is applied or rejected, or the timeout passes. The CLI does this by
-  default.
+- A caller may set `wait = APPLIED` with a timeout (max 30 s) on any mutation, as the request
+  header `Rpmgr-Wait-Applied: <duration>` (for example `30s`); the response then returns once the
+  revision is applied, rejected or timed out, or the wait passes, with the state then. A duration
+  that does not parse is no wait. The CLI does this by default.
 - `StatusService.WatchApplyStatus(revision)` streams progress; the UI uses it to show
   "pending → applied" live after every save. `GetApplyStatus(revision)` returns it once.
 - The status is derived over the org's agents with a live control session: an agent applied the
