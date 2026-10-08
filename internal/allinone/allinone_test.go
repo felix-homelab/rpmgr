@@ -23,13 +23,19 @@ import (
 	"testing"
 	"time"
 
+	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/fieldmaskpb"
+
 	agentv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/agent/v1"
+	rpmgrv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/v1"
+	"github.com/felix-homelab/rpmgr/internal/acme/acmetest"
 	"github.com/felix-homelab/rpmgr/internal/agent"
 	"github.com/felix-homelab/rpmgr/internal/allinone"
 	"github.com/felix-homelab/rpmgr/internal/config"
 	"github.com/felix-homelab/rpmgr/internal/connector"
 	"github.com/felix-homelab/rpmgr/internal/controller"
 	"github.com/felix-homelab/rpmgr/internal/routes"
+	"github.com/felix-homelab/rpmgr/internal/settings"
 	"github.com/felix-homelab/rpmgr/internal/store"
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/gatewaygroup"
@@ -86,9 +92,14 @@ type host struct {
 	port, port80         int
 	cfg                  config.AllInOne
 	web                  *http.Client
+	acmeRoots            *x509.CertPool // RunOptions.ACMERoots
 }
 
-func newHost(t *testing.T) *host {
+func newHost(t *testing.T) *host { return newHostAt(t, "") }
+
+// newHostAt is newHost with the public URL at https://<name>:<port> and no certificate files, for
+// ACME; "" is localhost with files.
+func newHostAt(t *testing.T, name string) *host {
 	t.Helper()
 	h := &host{dir: t.TempDir(), port: freePort(t), port80: freePort(t)}
 	h.boot = filepath.Join(h.dir, "all-in-one.yaml")
@@ -98,16 +109,20 @@ func newHost(t *testing.T) *host {
 		t.Fatal(err)
 	}
 	certFile, keyFile := filepath.Join(h.dir, "ui.crt"), filepath.Join(h.dir, "ui.key")
-	pool := webFiles(t, certFile, keyFile)
-	h.web = &http.Client{Timeout: 10 * time.Second, Transport: &http.Transport{TLSClientConfig: &tls.Config{RootCAs: pool, MinVersion: tls.VersionTLS13}}}
+	files := fmt.Sprintf("tls: {cert_file: %s, key_file: %s}\n", certFile, keyFile)
+	if name == "" {
+		pool := webFiles(t, certFile, keyFile)
+		h.web = &http.Client{Timeout: 10 * time.Second, Transport: &http.Transport{TLSClientConfig: &tls.Config{RootCAs: pool, MinVersion: tls.VersionTLS13}}}
+	} else {
+		h.publicURL, files = "https://"+name+":"+strconv.Itoa(h.port), ""
+	}
 	boot := fmt.Sprintf(`version: 1
 public_url: %s
 listen: {tcp: ":%d", udp: ":%d", http: "127.0.0.1:%d", admin: "127.0.0.1:%d"}
 database: {dsn: %s}
 kek: {source: file, path: %s}
-tls: {cert_file: %s, key_file: %s}
-state_dir: %s
-`, h.publicURL, h.port, h.port, h.port80, freePort(t), filepath.Join(state, "controller.db"), filepath.Join(h.dir, "kek"), certFile, keyFile, state)
+%sstate_dir: %s
+`, h.publicURL, h.port, h.port, h.port80, freePort(t), filepath.Join(state, "controller.db"), filepath.Join(h.dir, "kek"), files, state)
 	if err := os.WriteFile(h.boot, []byte(boot), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -133,7 +148,7 @@ func (h *host) run(t *testing.T) func() {
 	listening, done := make(chan struct{}), make(chan error, 1)
 	go func() {
 		done <- allinone.Run(ctx, allinone.RunOptions{Config: h.cfg, Version: "0.1.0", Getenv: func(string) string { return "" },
-			DrainPeriod: 200 * time.Millisecond, Listening: func() { close(listening) }})
+			DrainPeriod: 200 * time.Millisecond, ACMERoots: h.acmeRoots, Listening: func() { close(listening) }})
 	}()
 	select {
 	case <-listening:
@@ -310,4 +325,65 @@ func TestAllInOne(t *testing.T) {
 	stop()
 	h.run(t)
 	waitFor(t, "the route is not served after a restart", served)
+}
+
+// TestAllInOne_ACME: without certificate files, all-in-one's controller obtains the public URL's
+// certificate through its gateway, which hands the CA's HTTP-01 requests for the name on port 80
+// and its TLS-ALPN-01 connections on port 443 to the controller; the controller then serves the
+// certificate through the gateway, with HSTS.
+func TestAllInOne_ACME(t *testing.T) {
+	h := newHostAt(t, "panel.example.com")
+	h.init(t)
+	dns, err := acmetest.StartDNS([]string{"example.com"}, func(string) []string { return nil })
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(dns.Close)
+	pebble, err := acmetest.Start(acmetest.Options{HTTPPort: h.port80, TLSPort: h.port, Resolver: dns.Addr})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(pebble.Close)
+	db, err := store.OpenSQLite(context.Background(), h.cfg.Database.DSN, store.SQLiteOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = settings.UpdateInstance(storetest.SystemCtx(t), db, &rpmgrv1.InstanceSettings{AcmeDirectoryUrl: proto.String(pebble.DirectoryURL)},
+		&fieldmaskpb.FieldMask{Paths: []string{"acme_directory_url"}}, 0)
+	_ = db.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	h.acmeRoots = pebble.ServerRoots
+	h.run(t)
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
+	roots, err := pebble.IssuanceRoots(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	client := &http.Client{Timeout: 5 * time.Second, Transport: &http.Transport{TLSClientConfig: &tls.Config{RootCAs: roots, MinVersion: tls.VersionTLS13},
+		DialContext: func(ctx context.Context, network, _ string) (net.Conn, error) {
+			var d net.Dialer
+			return d.DialContext(ctx, network, "127.0.0.1:"+strconv.Itoa(h.port))
+		}}}
+	var (
+		hsts string
+		last error
+	)
+	for deadline := time.Now().Add(time.Minute); ; time.Sleep(100 * time.Millisecond) {
+		resp, err := client.Get(h.publicURL + "/.well-known/rpmgr/trust-bundle")
+		if last = err; err == nil {
+			_ = resp.Body.Close()
+			hsts = resp.Header.Get("Strict-Transport-Security")
+			break
+		}
+		if time.Now().After(deadline) {
+			break
+		}
+	}
+	if last != nil || hsts != "max-age=31536000" {
+		t.Fatalf("the ACME certificate through the gateway: HSTS %q, %v", hsts, last)
+	}
 }

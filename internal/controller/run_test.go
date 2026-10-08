@@ -18,14 +18,21 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
 
+	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/fieldmaskpb"
+
 	agentv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/agent/v1"
+	rpmgrv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/v1"
+	"github.com/felix-homelab/rpmgr/internal/acme/acmetest"
 	"github.com/felix-homelab/rpmgr/internal/agent"
 	"github.com/felix-homelab/rpmgr/internal/config"
 	"github.com/felix-homelab/rpmgr/internal/controller"
+	"github.com/felix-homelab/rpmgr/internal/settings"
 	"github.com/felix-homelab/rpmgr/internal/store"
 	"github.com/felix-homelab/rpmgr/internal/store/storetest"
 	"github.com/felix-homelab/rpmgr/internal/telemetry"
@@ -97,23 +104,46 @@ type running struct {
 	cancel                context.CancelFunc
 	client                *http.Client
 	pin, trustDomain, url string
+	acmeRoots             *x509.CertPool
+}
+
+// runSetup varies startRunWith.
+type runSetup struct {
+	// host is the public URL's host, with no certificate files; "" is 127.0.0.1 with files.
+	host        string
+	https, http string           // the listeners; "" picks free ports
+	acmeRoots   *x509.CertPool   // RunOptions.ACMERoots
+	prepare     func(r *running) // after the initialisation, before Run
 }
 
 // startRun initialises a controller in a temporary directory and runs it.
-func startRun(t *testing.T) *running {
+func startRun(t *testing.T) *running { return startRunWith(t, runSetup{}) }
+
+func startRunWith(t *testing.T, o runSetup) *running {
 	t.Helper()
 	controller.SetRunTimers(t, 500*time.Millisecond, 50*time.Millisecond)
 	h := newHost(t)
-	r := &running{h: h, https: freeAddr(t), http: freeAddr(t), admin: freeAddr(t), ca: newWebCA(t),
-		certFile: filepath.Join(h.dir, "ui.crt"), keyFile: filepath.Join(h.dir, "ui.key")}
+	r := &running{h: h, https: o.https, http: o.http, admin: freeAddr(t), ca: newWebCA(t),
+		certFile: filepath.Join(h.dir, "ui.crt"), keyFile: filepath.Join(h.dir, "ui.key"), acmeRoots: o.acmeRoots}
+	if r.https == "" {
+		r.https = freeAddr(t)
+	}
+	if r.http == "" {
+		r.http = freeAddr(t)
+	}
 	r.url = "https://" + r.https
-	r.ca.issue(t, r.certFile, r.keyFile, "first")
+	files := "tls: {cert_file: " + r.certFile + ", key_file: " + r.keyFile + "}\n"
+	if o.host != "" {
+		_, port, _ := net.SplitHostPort(r.https)
+		r.url, files = "https://"+o.host+":"+port, ""
+	} else {
+		r.ca.issue(t, r.certFile, r.keyFile, "first")
+	}
 	if err := os.MkdirAll(filepath.Dir(h.db), 0o750); err != nil {
 		t.Fatal(err)
 	}
 	boot := "version: 1\npublic_url: " + r.url + "\ndatabase: {dsn: " + h.db + "}\n" + h.fileKEK() +
-		"listen: {https: \"" + r.https + "\", http: \"" + r.http + "\", admin: \"" + r.admin + "\"}\n" +
-		"tls: {cert_file: " + r.certFile + ", key_file: " + r.keyFile + "}\n"
+		"listen: {https: \"" + r.https + "\", http: \"" + r.http + "\", admin: \"" + r.admin + "\"}\n" + files
 	if err := os.WriteFile(h.cfg, []byte(boot), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -127,6 +157,9 @@ func startRun(t *testing.T) *running {
 	}
 	r.client = &http.Client{Timeout: 10 * time.Second, Transport: &http.Transport{
 		TLSClientConfig: &tls.Config{RootCAs: r.ca.pool, MinVersion: tls.VersionTLS13}}}
+	if o.prepare != nil {
+		o.prepare(r)
+	}
 	r.start(t)
 	return r
 }
@@ -139,7 +172,7 @@ func (r *running) start(t *testing.T) {
 	listening := make(chan struct{})
 	go func() {
 		r.err = controller.Run(ctx, controller.RunOptions{Config: r.cfg, Version: "0.1.0", Getenv: func(string) string { return "" },
-			Listening: func() { close(listening) }})
+			ACMERoots: r.acmeRoots, Listening: func() { close(listening) }})
 		close(ended)
 	}()
 	t.Cleanup(func() { cancel(); <-ended })
@@ -165,9 +198,9 @@ func (r *running) stop(t *testing.T) {
 	}
 }
 
-// TestRun: a running controller serves the trust bundle over the public URL's certificate, enrolls
-// an agent at its agent endpoint, redirects port 80, is ready on its admin listener and stops
-// cleanly; a restart keeps its node identity.
+// TestRun: a running controller serves the trust bundle over the public URL's certificate with
+// HSTS, enrolls an agent at its agent endpoint, redirects port 80, is ready on its admin listener
+// and stops cleanly; a restart keeps its node identity.
 func TestRun(t *testing.T) {
 	r := startRun(t)
 	resp, err := r.client.Get(r.url + "/.well-known/rpmgr/trust-bundle")
@@ -178,6 +211,9 @@ func TestRun(t *testing.T) {
 	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusOK || !strings.Contains(string(body), "BEGIN CERTIFICATE") {
 		t.Fatalf("trust bundle: %s %q", resp.Status, body)
+	}
+	if v := resp.Header.Get("Strict-Transport-Security"); v != "max-age=31536000" {
+		t.Fatalf("HSTS with certificate files: %q", v)
 	}
 
 	// Enrollment through the agent endpoint on the same port; the token is written alongside the
@@ -267,6 +303,116 @@ func TestRun_CertificateReload(t *testing.T) {
 	time.Sleep(200 * time.Millisecond)
 	if cn := served(); cn != "second" {
 		t.Fatalf("after a broken key the controller serves %q", cn)
+	}
+}
+
+// TestRun_ACME: without certificate files, a controller whose public URL has a public DNS name
+// serves a self-signed certificate without HSTS while its ACME CA cannot be reached; once it can,
+// the controller obtains the certificate, validated on its own ports 80 and 443, serves it with
+// HSTS and keeps redirecting port 80; after a restart it serves the stored certificate without a
+// new order.
+func TestRun_ACME(t *testing.T) {
+	dns, err := acmetest.StartDNS([]string{"example.com"}, func(string) []string { return nil })
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(dns.Close)
+	https, plain := freeAddr(t), freeAddr(t)
+	port := func(addr string) int { p, _ := strconv.Atoi(addr[strings.LastIndex(addr, ":")+1:]); return p }
+	pebble, err := acmetest.Start(acmetest.Options{HTTPPort: port(plain), TLSPort: port(https), Resolver: dns.Addr})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(pebble.Close)
+	setCA := func(r *running, dir string) {
+		t.Helper()
+		db, err := store.OpenSQLite(context.Background(), r.h.db, store.SQLiteOptions{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer func() { _ = db.Close() }()
+		if _, err := settings.UpdateInstance(storetest.SystemCtx(t), db, &rpmgrv1.InstanceSettings{AcmeDirectoryUrl: proto.String(dir)},
+			&fieldmaskpb.FieldMask{Paths: []string{"acme_directory_url"}}, 0); err != nil {
+			t.Fatal(err)
+		}
+	}
+	r := startRunWith(t, runSetup{host: "panel.example.com", https: https, http: plain, acmeRoots: pebble.ServerRoots,
+		prepare: func(r *running) { setCA(r, "https://127.0.0.1:1/directory") }})
+	client := func(roots *x509.CertPool) *http.Client {
+		return &http.Client{Timeout: 5 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+			Transport: &http.Transport{TLSClientConfig: &tls.Config{RootCAs: roots, MinVersion: tls.VersionTLS13},
+				DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+					if strings.HasPrefix(addr, "panel.example.com:") {
+						addr = https
+					}
+					var d net.Dialer
+					return d.DialContext(ctx, network, addr)
+				}}}
+	}
+	hsts := func(c *http.Client) (string, error) {
+		resp, err := c.Get(r.url + "/.well-known/rpmgr/trust-bundle")
+		if err != nil {
+			return "", err
+		}
+		_ = resp.Body.Close()
+		return resp.Header.Get("Strict-Transport-Security"), nil
+	}
+
+	// The CA cannot be reached: a self-signed certificate, which clients do not trust, and no HSTS.
+	untrusted, err := client(x509.NewCertPool()).Get(r.url + "/")
+	if err == nil {
+		_ = untrusted.Body.Close()
+	}
+	var unverified *tls.CertificateVerificationError
+	if !errors.As(err, &unverified) {
+		t.Fatalf("without a CA: %v", err)
+	}
+	self := unverified.UnverifiedCertificates[0]
+	if self.Issuer.CommonName != "panel.example.com" || self.Subject.CommonName != "panel.example.com" {
+		t.Fatalf("without a CA the controller serves %s from %s", self.Subject, self.Issuer)
+	}
+	selfPool := x509.NewCertPool()
+	selfPool.AddCert(self)
+	if v, err := hsts(client(selfPool)); err != nil || v != "" {
+		t.Fatalf("HSTS with a self-signed certificate: %q %v", v, err)
+	}
+
+	r.stop(t)
+	setCA(r, pebble.DirectoryURL)
+	r.start(t)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
+	roots, err := pebble.IssuanceRoots(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	trusting := client(roots)
+	var v string
+	for deadline := time.Now().Add(time.Minute); ; time.Sleep(100 * time.Millisecond) {
+		if v, err = hsts(trusting); err == nil || time.Now().After(deadline) {
+			break
+		}
+	}
+	if err != nil || v != "max-age=31536000" {
+		t.Fatalf("with the ACME certificate: HSTS %q, %v", v, err)
+	}
+	resp, err := trusting.Get("http://" + plain + "/some/path")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusMovedPermanently || resp.Header.Get("Location") != r.url+"/some/path" {
+		t.Fatalf("port 80 with ACME: %s %s", resp.Status, resp.Header.Get("Location"))
+	}
+
+	orders := pebble.OrdersFor("panel.example.com")
+	r.stop(t)
+	r.start(t)
+	if v, err := hsts(trusting); err != nil || v != "max-age=31536000" {
+		t.Fatalf("after a restart: HSTS %q, %v", v, err)
+	}
+	if n := pebble.OrdersFor("panel.example.com"); n != orders {
+		t.Fatalf("a restart ordered again: %d orders, were %d", n, orders)
 	}
 }
 

@@ -102,15 +102,16 @@ func TestChallenges_Limit(t *testing.T) {
 
 // TestRouter_TLSALPN01: a ClientHello with ALPN acme-tls/1 for a name with a TLS-ALPN-01
 // challenge is answered with the challenge certificate, before any route of the name; without the
-// ALPN, or without a challenge, the name is routed as usual. The certificate has the name and a
-// critical acmeIdentifier extension with the key authorization's digest (RFC 8737). A real CA's
-// validation of the handshake runs in internal/acme (TestACME_ValidationWaitsForEveryGateway).
+// ALPN, or without a challenge, the name is routed as usual, and all-in-one's controller gets its
+// own name with the ALPN. The certificate has the name and a critical acmeIdentifier extension
+// with the key authorization's digest (RFC 8737). A real CA's validation of the handshake runs in
+// internal/acme (TestACME_ValidationWaitsForEveryGateway).
 func TestRouter_TLSALPN01(t *testing.T) {
 	c := gateway.NewChallenges()
 	if err := c.Apply(challenge(add, alpn01, "app.example.com", "", "ka")); err != nil {
 		t.Fatal(err)
 	}
-	r := &gateway.Router{TrustDomain: td, GatewayID: "gw_01", ACME: c.ALPN,
+	r := &gateway.Router{TrustDomain: td, GatewayID: "gw_01", ACME: c.ALPN, ControllerNames: []string{"panel.example.com"},
 		Routes: fakeRoutes{pass: map[string]bool{"app.example.com": true}, http: map[string]bool{}}}
 	for _, tc := range []struct {
 		sni  string
@@ -121,6 +122,8 @@ func TestRouter_TLSALPN01(t *testing.T) {
 		{"APP.example.com.", []string{"acme-tls/1"}, gateway.DecideACME},
 		{"app.example.com", []string{"h2"}, gateway.DecidePassthrough},
 		{"other.example.com", []string{"acme-tls/1"}, gateway.DecideDefault},
+		// all-in-one's controller answers TLS-ALPN-01 for its own name.
+		{"panel.example.com", []string{"acme-tls/1"}, gateway.DecideController},
 	} {
 		if got := r.Decide(&tlspeek.ClientHello{ServerName: tc.sni, ALPN: tc.alpn}); got != tc.want {
 			t.Errorf("%s %v: %s, want %s", tc.sni, tc.alpn, got, tc.want)

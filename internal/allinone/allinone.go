@@ -8,11 +8,13 @@ package allinone
 
 import (
 	"context"
+	"crypto/x509"
 	"encoding/pem"
 	"errors"
 	"fmt"
 	"log/slog"
 	"net"
+	"net/http"
 	"net/url"
 	"os"
 	"sync"
@@ -141,7 +143,7 @@ func Init(ctx context.Context, o controller.InitOptions) (InitResult, error) {
 	ccfg := cfg.Controller()
 	ccfg.Listen.HTTP = &none
 	go func() {
-		done <- controller.Run(rctx, controller.RunOptions{Config: ccfg, Getenv: o.Getenv, Listener: mem,
+		done <- controller.Run(rctx, controller.RunOptions{Config: ccfg, Getenv: o.Getenv, Listener: mem, NoACME: true,
 			Registry: telemetry.NewRegistry(), Listening: func() { close(listening) }})
 	}()
 	select {
@@ -214,6 +216,8 @@ type RunOptions struct {
 	DrainPeriod time.Duration
 	// Listening, if set, is called once the controller and the gateway listen.
 	Listening func()
+	// ACMERoots, if set, trusts the ACME CA's TLS certificate instead of the system roots (tests).
+	ACMERoots *x509.CertPool
 }
 
 // Run runs the controller and the gateway until ctx ends; the admin listener reports both.
@@ -242,10 +246,14 @@ func Run(ctx context.Context, o RunOptions) error {
 	defer stopCtl()
 	gwCtx, stopGw := context.WithCancel(context.Background())
 	defer stopGw()
-	ctlListening, ctlDone := make(chan struct{}), make(chan error, 1)
+	// The controller's port-80 handler goes to the gateway, which serves port 80; the CA validates
+	// the public URL's certificate through the gateway, so ACME waits for it.
+	port80 := controller.RedirectHandler(public)
+	ctlListening, ctlDone, gwListening := make(chan struct{}), make(chan error, 1), make(chan struct{})
 	go func() {
 		ctlDone <- controller.Run(ctlCtx, controller.RunOptions{Config: cfg.Controller(), Version: o.Version, Sources: routes.Sources(),
 			Getenv: o.Getenv, Logger: o.Logger.With("role", "controller"), Listener: mem, Registry: reg, Readiness: readiness,
+			ACMERoots: o.ACMERoots, Port80: func(h http.Handler) { port80 = h }, ACMEAfter: gwListening,
 			Listening: func() { close(ctlListening) }})
 	}()
 	select {
@@ -253,11 +261,11 @@ func Run(ctx context.Context, o RunOptions) error {
 	case err := <-ctlDone:
 		return err
 	}
-	gwListening, gwDone := make(chan struct{}), make(chan error, 1)
+	gwDone := make(chan error, 1)
 	go func() {
 		gwDone <- gateway.Run(gwCtx, gateway.RunOptions{Config: cfg.Gateway(), Version: o.Version, Logger: o.Logger.With("role", "gateway"),
 			DrainPeriod: o.DrainPeriod, Controller: mem.Deliver, ControllerNames: []string{public.Hostname()}, Dial: mem.Dial,
-			Port80Fallback: controller.RedirectHandler(public),
+			Port80Fallback: port80,
 			Registry:       reg, Readiness: readiness, Listening: func() { close(gwListening) }})
 	}()
 	select {
