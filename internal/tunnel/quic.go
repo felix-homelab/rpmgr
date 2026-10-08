@@ -224,6 +224,8 @@ type QUICSession struct {
 	conn      *quic.Conn
 	connector bool // the side that dialled
 	control   atomic.Bool
+	dgOnce    sync.Once
+	dg        *Datagrams
 }
 
 func newQUICSession(conn *quic.Conn, budget *Budget, connector bool) *QUICSession {

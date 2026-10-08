@@ -521,13 +521,16 @@ sequenceDiagram
   most about **1412 bytes** after it (packet ceiling 1452 [F quic-go:internal/protocol/protocol.go:111]).
   A payload that does not fit is sent as a length-prefixed frame on the flow's stream instead:
   delivered reliably, at the cost of per-flow head-of-line blocking. A metric counts these events,
-  and the UI shows an MTU hint for the route.
+  and the UI shows an MTU hint for the route. [R] A session tries datagrams up to 1412 bytes, prefix
+  included; when quic-go reports a smaller limit, that datagram is lost, as on any path that
+  cannot carry it, and later payloads above the limit go as frames.
 - **Never block the read loop.** quic-go's `SendDatagram` **blocks** once 32 datagrams are queued
   [F quic-go:datagram_queue.go:12-15,44-67], and received datagrams beyond 128 queued are dropped.
   rpmgr wraps sending in a per-session queue of **256** that drops on overflow (UDP semantics), and
   reads datagrams in a dedicated goroutine.
 - A connector may receive a datagram for a flow whose `StreamOpen` has not arrived yet; it buffers
-  up to 8 datagrams for up to 1 s per unknown flow.
+  up to 8 datagrams for up to 1 s per unknown flow, for at most 64 unknown flows per session, and
+  drops the rest.
 - Over the TCP fallback (no datagrams), UDP payloads are always length-prefixed frames on the flow
   stream. This works, but loss on the TCP connection delays every UDP flow on it; the UI flags
   UDP routes served over the fallback.
