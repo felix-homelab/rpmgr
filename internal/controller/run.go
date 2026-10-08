@@ -17,6 +17,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
+
 	agentv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/agent/v1"
 	"github.com/felix-homelab/rpmgr/internal/audit"
 	"github.com/felix-homelab/rpmgr/internal/authz"
@@ -48,6 +50,13 @@ type RunOptions struct {
 	Logger  *slog.Logger
 	// Listening, if set, is called once every listener is up.
 	Listening func()
+	// Listener, if set, takes the place of listen.https: all-in-one hands it the connections its
+	// gateway routes to the controller, and its own control session.
+	Listener net.Listener
+	// Registry, if set, receives the controller's metrics and Run serves no admin listener;
+	// Readiness then gets the controller's readiness check.
+	Registry  *prometheus.Registry
+	Readiness func(check func(context.Context) error)
 }
 
 // ErrNotInitialised is returned by Run for a database without an installation.
@@ -127,7 +136,10 @@ func Run(ctx context.Context, o RunOptions) error {
 	sessions := NewSessions(SessionsOptions{DB: db, CA: ca, Node: nodeID, Version: o.Version, Sys: sys, Now: o.Now, RevLog: rl,
 		Logger:   o.Logger,
 		Compiler: &snapshot.Compiler{Sources: o.Sources, Endpoints: func() []string { return endpoints }}})
-	reg := telemetry.NewRegistry()
+	reg := o.Registry
+	if reg == nil {
+		reg = telemetry.NewRegistry()
+	}
 	if err := sessions.Register(reg); err != nil {
 		return err
 	}
@@ -151,9 +163,11 @@ func Run(ctx context.Context, o RunOptions) error {
 	web := &http.Server{Handler: mux, ReadHeaderTimeout: 10 * time.Second, IdleTimeout: 120 * time.Second,
 		ErrorLog: slog.NewLogLogger(o.Logger.Handler(), slog.LevelDebug)}
 
-	ln, err := net.Listen("tcp", cfg.Listen.HTTPS)
-	if err != nil {
-		return err
+	ln := o.Listener
+	if ln == nil {
+		if ln, err = net.Listen("tcp", cfg.Listen.HTTPS); err != nil {
+			return err
+		}
 	}
 	var redirect *http.Server
 	var httpLn net.Listener
@@ -191,7 +205,11 @@ func Run(ctx context.Context, o RunOptions) error {
 	if redirect != nil {
 		serve("port 80", func() error { return redirect.Serve(httpLn) })
 	}
-	serve("admin listener", func() error { return telemetry.ServeAdmin(run, cfg.Listen.Admin, reg, ready.Ready) })
+	if o.Registry == nil {
+		serve("admin listener", func() error { return telemetry.ServeAdmin(run, cfg.Listen.Admin, reg, ready.Ready) })
+	} else if o.Readiness != nil {
+		o.Readiness(ready.Ready)
+	}
 	o.Logger.Info("controller running", "trust_domain", td, "node", nodeID, "https", ln.Addr().String(), "public_url", cfg.PublicURL)
 	if o.Listening != nil {
 		o.Listening()

@@ -58,6 +58,17 @@ type ClientOptions struct {
 	// RenewJitter returns a number in [0, 1) that places each renewal within its window; nil is
 	// random.
 	RenewJitter func() float64
+	// Dial connects to a controller endpoint's host:port; nil dials TCP. All-in-one passes an
+	// in-memory connection to its own controller.
+	Dial func(ctx context.Context, addr string) (net.Conn, error)
+}
+
+// dialOptions are the gRPC options that apply Dial.
+func dialOptions(dial func(ctx context.Context, addr string) (net.Conn, error)) []grpc.DialOption {
+	if dial == nil {
+		return nil
+	}
+	return []grpc.DialOption{grpc.WithContextDialer(dial)}
 }
 
 // Client keeps the agent's one control session to the controller.
@@ -155,10 +166,10 @@ func (c *Client) session(ctx context.Context, endpoint string) (outcome, error) 
 		return out, err
 	}
 	creds := c.credentials("controller." + c.o.Identity.TrustDomain)
-	cc, err := grpc.NewClient("passthrough:///"+addr,
+	cc, err := grpc.NewClient("passthrough:///"+addr, append(dialOptions(c.o.Dial),
 		grpc.WithTransportCredentials(creds),
 		grpc.WithKeepaliveParams(keepalive.ClientParameters{Time: keepaliveTime, Timeout: keepaliveTimeout, PermitWithoutStream: true}),
-		grpc.WithDefaultCallOptions(grpc.MaxCallRecvMsgSize(agentproto.MaxControlMessage), grpc.MaxCallSendMsgSize(agentproto.MaxControlMessage)))
+		grpc.WithDefaultCallOptions(grpc.MaxCallRecvMsgSize(agentproto.MaxControlMessage), grpc.MaxCallSendMsgSize(agentproto.MaxControlMessage)))...)
 	if err != nil {
 		return out, err
 	}
