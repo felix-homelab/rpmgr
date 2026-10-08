@@ -546,6 +546,153 @@ func (x *WatchApplyStatusResponse) GetApplyStatus() *ApplyStatus {
 	return nil
 }
 
+// WatchEventsRequest names an org and where to start.
+type WatchEventsRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The org.
+	OrgId string `protobuf:"bytes,1,opt,name=org_id,json=orgId,proto3" json:"org_id,omitempty"`
+	// The resume_token of the last event the client has; empty starts with the next change.
+	ResumeToken   string `protobuf:"bytes,2,opt,name=resume_token,json=resumeToken,proto3" json:"resume_token,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *WatchEventsRequest) Reset() {
+	*x = WatchEventsRequest{}
+	mi := &file_rpmgr_v1_status_proto_msgTypes[8]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *WatchEventsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*WatchEventsRequest) ProtoMessage() {}
+
+func (x *WatchEventsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_rpmgr_v1_status_proto_msgTypes[8]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use WatchEventsRequest.ProtoReflect.Descriptor instead.
+func (*WatchEventsRequest) Descriptor() ([]byte, []int) {
+	return file_rpmgr_v1_status_proto_rawDescGZIP(), []int{8}
+}
+
+func (x *WatchEventsRequest) GetOrgId() string {
+	if x != nil {
+		return x.OrgId
+	}
+	return ""
+}
+
+func (x *WatchEventsRequest) GetResumeToken() string {
+	if x != nil {
+		return x.ResumeToken
+	}
+	return ""
+}
+
+// WatchEventsResponse is one configuration change of the org, or a reset.
+type WatchEventsResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The revision of the change.
+	Revision *Revision `protobuf:"bytes,1,opt,name=revision,proto3" json:"revision,omitempty"`
+	// The IDs of the resources it changed; the client reads them again.
+	ChangedResources []string `protobuf:"bytes,2,rep,name=changed_resources,json=changedResources,proto3" json:"changed_resources,omitempty"`
+	// Who changed them.
+	Actor string `protobuf:"bytes,3,opt,name=actor,proto3" json:"actor,omitempty"`
+	// When.
+	Time *timestamppb.Timestamp `protobuf:"bytes,4,opt,name=time,proto3" json:"time,omitempty"`
+	// Where to resume after this event.
+	ResumeToken string `protobuf:"bytes,5,opt,name=resume_token,json=resumeToken,proto3" json:"resume_token,omitempty"`
+	// The resume token was of another database epoch, after a restore: the client reads everything
+	// again. Such an event names no change.
+	Reset_        bool `protobuf:"varint,6,opt,name=reset,proto3" json:"reset,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *WatchEventsResponse) Reset() {
+	*x = WatchEventsResponse{}
+	mi := &file_rpmgr_v1_status_proto_msgTypes[9]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *WatchEventsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*WatchEventsResponse) ProtoMessage() {}
+
+func (x *WatchEventsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_rpmgr_v1_status_proto_msgTypes[9]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use WatchEventsResponse.ProtoReflect.Descriptor instead.
+func (*WatchEventsResponse) Descriptor() ([]byte, []int) {
+	return file_rpmgr_v1_status_proto_rawDescGZIP(), []int{9}
+}
+
+func (x *WatchEventsResponse) GetRevision() *Revision {
+	if x != nil {
+		return x.Revision
+	}
+	return nil
+}
+
+func (x *WatchEventsResponse) GetChangedResources() []string {
+	if x != nil {
+		return x.ChangedResources
+	}
+	return nil
+}
+
+func (x *WatchEventsResponse) GetActor() string {
+	if x != nil {
+		return x.Actor
+	}
+	return ""
+}
+
+func (x *WatchEventsResponse) GetTime() *timestamppb.Timestamp {
+	if x != nil {
+		return x.Time
+	}
+	return nil
+}
+
+func (x *WatchEventsResponse) GetResumeToken() string {
+	if x != nil {
+		return x.ResumeToken
+	}
+	return ""
+}
+
+func (x *WatchEventsResponse) GetReset_() bool {
+	if x != nil {
+		return x.Reset_
+	}
+	return false
+}
+
 var File_rpmgr_v1_status_proto protoreflect.FileDescriptor
 
 const file_rpmgr_v1_status_proto_rawDesc = "" +
@@ -578,18 +725,30 @@ const file_rpmgr_v1_status_proto_rawDesc = "" +
 	"\x06org_id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x05orgId\x126\n" +
 	"\brevision\x18\x02 \x01(\v2\x12.rpmgr.v1.RevisionB\x06\xbaH\x03\xc8\x01\x01R\brevision\"T\n" +
 	"\x18WatchApplyStatusResponse\x128\n" +
-	"\fapply_status\x18\x01 \x01(\v2\x15.rpmgr.v1.ApplyStatusR\vapplyStatus*\x94\x01\n" +
+	"\fapply_status\x18\x01 \x01(\v2\x15.rpmgr.v1.ApplyStatusR\vapplyStatus\"a\n" +
+	"\x12WatchEventsRequest\x12\x1e\n" +
+	"\x06org_id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x05orgId\x12+\n" +
+	"\fresume_token\x18\x02 \x01(\tB\b\xbaH\x05r\x03\x18\x80\x01R\vresumeToken\"\xf1\x01\n" +
+	"\x13WatchEventsResponse\x12.\n" +
+	"\brevision\x18\x01 \x01(\v2\x12.rpmgr.v1.RevisionR\brevision\x12+\n" +
+	"\x11changed_resources\x18\x02 \x03(\tR\x10changedResources\x12\x14\n" +
+	"\x05actor\x18\x03 \x01(\tR\x05actor\x12.\n" +
+	"\x04time\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\x04time\x12!\n" +
+	"\fresume_token\x18\x05 \x01(\tR\vresumeToken\x12\x14\n" +
+	"\x05reset\x18\x06 \x01(\bR\x05reset*\x94\x01\n" +
 	"\n" +
 	"ApplyState\x12\x1b\n" +
 	"\x17APPLY_STATE_UNSPECIFIED\x10\x00\x12\x17\n" +
 	"\x13APPLY_STATE_PENDING\x10\x01\x12\x17\n" +
 	"\x13APPLY_STATE_APPLIED\x10\x02\x12\x18\n" +
 	"\x14APPLY_STATE_REJECTED\x10\x03\x12\x1d\n" +
-	"\x19APPLY_STATE_APPLY_TIMEOUT\x10\x042\xf7\x01\n" +
+	"\x19APPLY_STATE_APPLY_TIMEOUT\x10\x042\xe0\x02\n" +
 	"\rStatusService\x12n\n" +
 	"\x0eGetApplyStatus\x12\x1f.rpmgr.v1.GetApplyStatusRequest\x1a .rpmgr.v1.GetApplyStatusResponse\"\x19\x8a\xb5\x18\x12\n" +
 	"\borg.read\x12\x06org_id\x90\x02\x01\x12v\n" +
 	"\x10WatchApplyStatus\x12!.rpmgr.v1.WatchApplyStatusRequest\x1a\".rpmgr.v1.WatchApplyStatusResponse\"\x19\x8a\xb5\x18\x12\n" +
+	"\borg.read\x12\x06org_id\x90\x02\x010\x01\x12g\n" +
+	"\vWatchEvents\x12\x1c.rpmgr.v1.WatchEventsRequest\x1a\x1d.rpmgr.v1.WatchEventsResponse\"\x19\x8a\xb5\x18\x12\n" +
 	"\borg.read\x12\x06org_id\x90\x02\x010\x01B5Z3github.com/felix-homelab/rpmgr/gen/rpmgr/v1;rpmgrv1b\x06proto3"
 
 var (
@@ -605,7 +764,7 @@ func file_rpmgr_v1_status_proto_rawDescGZIP() []byte {
 }
 
 var file_rpmgr_v1_status_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_rpmgr_v1_status_proto_msgTypes = make([]protoimpl.MessageInfo, 8)
+var file_rpmgr_v1_status_proto_msgTypes = make([]protoimpl.MessageInfo, 10)
 var file_rpmgr_v1_status_proto_goTypes = []any{
 	(ApplyState)(0),                  // 0: rpmgr.v1.ApplyState
 	(*ApplyStatus)(nil),              // 1: rpmgr.v1.ApplyStatus
@@ -616,8 +775,10 @@ var file_rpmgr_v1_status_proto_goTypes = []any{
 	(*GetApplyStatusResponse)(nil),   // 6: rpmgr.v1.GetApplyStatusResponse
 	(*WatchApplyStatusRequest)(nil),  // 7: rpmgr.v1.WatchApplyStatusRequest
 	(*WatchApplyStatusResponse)(nil), // 8: rpmgr.v1.WatchApplyStatusResponse
-	(*timestamppb.Timestamp)(nil),    // 9: google.protobuf.Timestamp
-	(*Revision)(nil),                 // 10: rpmgr.v1.Revision
+	(*WatchEventsRequest)(nil),       // 9: rpmgr.v1.WatchEventsRequest
+	(*WatchEventsResponse)(nil),      // 10: rpmgr.v1.WatchEventsResponse
+	(*timestamppb.Timestamp)(nil),    // 11: google.protobuf.Timestamp
+	(*Revision)(nil),                 // 12: rpmgr.v1.Revision
 }
 var file_rpmgr_v1_status_proto_depIdxs = []int32{
 	0,  // 0: rpmgr.v1.ApplyStatus.state:type_name -> rpmgr.v1.ApplyState
@@ -625,20 +786,24 @@ var file_rpmgr_v1_status_proto_depIdxs = []int32{
 	4,  // 2: rpmgr.v1.ApplyStatus.offline:type_name -> rpmgr.v1.OfflineAgent
 	0,  // 3: rpmgr.v1.AgentApplyStatus.state:type_name -> rpmgr.v1.ApplyState
 	3,  // 4: rpmgr.v1.AgentApplyStatus.errors:type_name -> rpmgr.v1.ApplyError
-	9,  // 5: rpmgr.v1.OfflineAgent.last_seen_time:type_name -> google.protobuf.Timestamp
-	10, // 6: rpmgr.v1.GetApplyStatusRequest.revision:type_name -> rpmgr.v1.Revision
+	11, // 5: rpmgr.v1.OfflineAgent.last_seen_time:type_name -> google.protobuf.Timestamp
+	12, // 6: rpmgr.v1.GetApplyStatusRequest.revision:type_name -> rpmgr.v1.Revision
 	1,  // 7: rpmgr.v1.GetApplyStatusResponse.apply_status:type_name -> rpmgr.v1.ApplyStatus
-	10, // 8: rpmgr.v1.WatchApplyStatusRequest.revision:type_name -> rpmgr.v1.Revision
+	12, // 8: rpmgr.v1.WatchApplyStatusRequest.revision:type_name -> rpmgr.v1.Revision
 	1,  // 9: rpmgr.v1.WatchApplyStatusResponse.apply_status:type_name -> rpmgr.v1.ApplyStatus
-	5,  // 10: rpmgr.v1.StatusService.GetApplyStatus:input_type -> rpmgr.v1.GetApplyStatusRequest
-	7,  // 11: rpmgr.v1.StatusService.WatchApplyStatus:input_type -> rpmgr.v1.WatchApplyStatusRequest
-	6,  // 12: rpmgr.v1.StatusService.GetApplyStatus:output_type -> rpmgr.v1.GetApplyStatusResponse
-	8,  // 13: rpmgr.v1.StatusService.WatchApplyStatus:output_type -> rpmgr.v1.WatchApplyStatusResponse
-	12, // [12:14] is the sub-list for method output_type
-	10, // [10:12] is the sub-list for method input_type
-	10, // [10:10] is the sub-list for extension type_name
-	10, // [10:10] is the sub-list for extension extendee
-	0,  // [0:10] is the sub-list for field type_name
+	12, // 10: rpmgr.v1.WatchEventsResponse.revision:type_name -> rpmgr.v1.Revision
+	11, // 11: rpmgr.v1.WatchEventsResponse.time:type_name -> google.protobuf.Timestamp
+	5,  // 12: rpmgr.v1.StatusService.GetApplyStatus:input_type -> rpmgr.v1.GetApplyStatusRequest
+	7,  // 13: rpmgr.v1.StatusService.WatchApplyStatus:input_type -> rpmgr.v1.WatchApplyStatusRequest
+	9,  // 14: rpmgr.v1.StatusService.WatchEvents:input_type -> rpmgr.v1.WatchEventsRequest
+	6,  // 15: rpmgr.v1.StatusService.GetApplyStatus:output_type -> rpmgr.v1.GetApplyStatusResponse
+	8,  // 16: rpmgr.v1.StatusService.WatchApplyStatus:output_type -> rpmgr.v1.WatchApplyStatusResponse
+	10, // 17: rpmgr.v1.StatusService.WatchEvents:output_type -> rpmgr.v1.WatchEventsResponse
+	15, // [15:18] is the sub-list for method output_type
+	12, // [12:15] is the sub-list for method input_type
+	12, // [12:12] is the sub-list for extension type_name
+	12, // [12:12] is the sub-list for extension extendee
+	0,  // [0:12] is the sub-list for field type_name
 }
 
 func init() { file_rpmgr_v1_status_proto_init() }
@@ -654,7 +819,7 @@ func file_rpmgr_v1_status_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_rpmgr_v1_status_proto_rawDesc), len(file_rpmgr_v1_status_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   8,
+			NumMessages:   10,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

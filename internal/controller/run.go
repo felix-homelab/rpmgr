@@ -264,7 +264,7 @@ func Run(ctx context.Context, o RunOptions) error {
 	}
 	if err := apiServer.Mount(mux, rpmgrv1.File_rpmgr_v1_status_proto.Services().ByName("StatusService"),
 		func(opts ...connect.HandlerOption) (string, http.Handler) {
-			return rpmgrv1connect.NewStatusServiceHandler(&apisvc.Status{DB: db, Now: o.Now}, opts...)
+			return rpmgrv1connect.NewStatusServiceHandler(&apisvc.Status{DB: db, Sys: sys, Now: o.Now}, opts...)
 		}); err != nil {
 		return err
 	}

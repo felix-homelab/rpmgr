@@ -16,6 +16,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store"
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/auditentry"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/configrevision"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/connector"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/issuedcertificate"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/predicate"
@@ -115,6 +116,10 @@ func TestPurge(t *testing.T) {
 			}
 		}
 		run()
+		// The purge's revisions belong to the org, so its event stream sees them.
+		if all, mine := c.ConfigRevision.Query().CountX(sys), c.ConfigRevision.Query().Where(configrevision.OrgID(org)).CountX(sys); all == 0 || mine != all {
+			t.Errorf("%d of the purge's %d revisions belong to the org", mine, all)
+		}
 		exists := func(id string) bool { return c.Connector.Query().Where(connectorID(id)).ExistX(sys) }
 		for name, id := range map[string]string{"ended 31 min ago": goneByEnd, "unseen for 40 min": unseen, "never connected, 31 min": neverOld,
 			"a 91-day tombstone": old} {

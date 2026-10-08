@@ -222,8 +222,18 @@ API reports both ([03](03-connections.md#configuration-reconciliation)).
 ## Events and streaming
 
 - `StatusService.WatchEvents` is a server stream of resource changes and status changes for the
-  caller's org (filtered by the caller's permissions). It carries a resume token so a reconnecting
-  UI misses nothing. The UI uses it instead of polling.
+  caller's org. It needs `org.read`, which lets every role read every resource of the org, so P1
+  filters it no further. The UI uses it instead of polling.
+  - **Resource changes:** one event per configuration revision of the org, in revision order, with
+    the IDs of the resources it changed, the actor and the time. The client reads those resources
+    again. A revision that a controller job makes for an org, such as an ACME renewal or the purge
+    of an ephemeral connector, belongs to that org. Instance-wide revisions are in no org's
+    stream.
+  - **Resume:** every event carries a resume token. A client that reconnects with its last token
+    gets every change since, so it misses nothing. Without a token, the stream starts with the next
+    change. A token of another database epoch (after a restore) gets one `reset` event first, and
+    the client reads everything again. A token the stream did not give is refused with
+    `INVALID_ARGUMENT`.
 - `LogService.StreamLogs(connector_id, filter)` opens an imperative log operation on the agent
   ([03](03-connections.md#control-session)) and streams lines. Log lines pass through the agent's
   redaction before they leave the host.

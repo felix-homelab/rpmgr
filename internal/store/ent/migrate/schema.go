@@ -342,6 +342,7 @@ var (
 		{Name: "db_epoch", Type: field.TypeString},
 		{Name: "actor", Type: field.TypeString},
 		{Name: "changed_resources", Type: field.TypeJSON, Nullable: true},
+		{Name: "org_id", Type: field.TypeString, Nullable: true},
 		{Name: "created_at", Type: field.TypeTime},
 	}
 	// ConfigRevisionsTable holds the schema information for the "config_revisions" table.
@@ -349,6 +350,13 @@ var (
 		Name:       "config_revisions",
 		Columns:    ConfigRevisionsColumns,
 		PrimaryKey: []*schema.Column{ConfigRevisionsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "configrevision_org_id_seq",
+				Unique:  false,
+				Columns: []*schema.Column{ConfigRevisionsColumns[4], ConfigRevisionsColumns[0]},
+			},
+		},
 	}
 	// ConfigSeqColumns holds the columns for the "config_seq" table.
 	ConfigSeqColumns = []*schema.Column{

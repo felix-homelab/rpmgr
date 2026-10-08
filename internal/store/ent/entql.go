@@ -338,6 +338,7 @@ var schemaGraph = func() *sqlgraph.Schema {
 			configrevision.FieldDbEpoch:          {Type: field.TypeString, Column: configrevision.FieldDbEpoch},
 			configrevision.FieldActor:            {Type: field.TypeString, Column: configrevision.FieldActor},
 			configrevision.FieldChangedResources: {Type: field.TypeJSON, Column: configrevision.FieldChangedResources},
+			configrevision.FieldOrgID:            {Type: field.TypeString, Column: configrevision.FieldOrgID},
 			configrevision.FieldCreatedAt:        {Type: field.TypeTime, Column: configrevision.FieldCreatedAt},
 		},
 	}
@@ -2460,6 +2461,11 @@ func (f *ConfigRevisionFilter) WhereActor(p entql.StringP) {
 // WhereChangedResources applies the entql json.RawMessage predicate on the changed_resources field.
 func (f *ConfigRevisionFilter) WhereChangedResources(p entql.BytesP) {
 	f.Where(p.Field(configrevision.FieldChangedResources))
+}
+
+// WhereOrgID applies the entql string predicate on the org_id field.
+func (f *ConfigRevisionFilter) WhereOrgID(p entql.StringP) {
+	f.Where(p.Field(configrevision.FieldOrgID))
 }
 
 // WhereCreatedAt applies the entql time.Time predicate on the created_at field.

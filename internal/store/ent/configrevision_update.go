@@ -71,6 +71,9 @@ func (_u *ConfigRevisionUpdate) sqlSave(ctx context.Context) (_node int, err err
 	if _u.mutation.ChangedResourcesCleared() {
 		_spec.ClearField(configrevision.FieldChangedResources, field.TypeJSON)
 	}
+	if _u.mutation.OrgIDCleared() {
+		_spec.ClearField(configrevision.FieldOrgID, field.TypeString)
+	}
 	if _node, err = sqlgraph.UpdateNodes(ctx, _u.driver, _spec); err != nil {
 		if _, ok := err.(*sqlgraph.NotFoundError); ok {
 			err = &NotFoundError{configrevision.Label}
@@ -164,6 +167,9 @@ func (_u *ConfigRevisionUpdateOne) sqlSave(ctx context.Context) (_node *ConfigRe
 	}
 	if _u.mutation.ChangedResourcesCleared() {
 		_spec.ClearField(configrevision.FieldChangedResources, field.TypeJSON)
+	}
+	if _u.mutation.OrgIDCleared() {
+		_spec.ClearField(configrevision.FieldOrgID, field.TypeString)
 	}
 	_node = &ConfigRevision{config: _u.config}
 	_spec.Assign = _node.assignValues

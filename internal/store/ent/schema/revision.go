@@ -10,6 +10,7 @@ import (
 	"entgo.io/ent/dialect/entsql"
 	"entgo.io/ent/schema"
 	"entgo.io/ent/schema/field"
+	"entgo.io/ent/schema/index"
 	"entgo.io/ent/schema/mixin"
 )
 
@@ -80,6 +81,13 @@ func (ConfigRevision) Fields() []ent.Field {
 		field.String("db_epoch").NotEmpty().Immutable(),
 		field.String("actor").NotEmpty().Immutable(),
 		field.Strings("changed_resources").Optional().Immutable(),
+		// org_id is the org whose scope made the change; null for a system scope's.
+		field.String("org_id").Optional().Nillable().Immutable(),
 		field.Time("created_at").Immutable().Default(time.Now),
 	}
+}
+
+// Indexes find an org's revisions after a seq, for its event stream.
+func (ConfigRevision) Indexes() []ent.Index {
+	return []ent.Index{index.Fields("org_id", "id")}
 }

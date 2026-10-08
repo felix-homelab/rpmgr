@@ -4,6 +4,8 @@ package apisvc_test
 
 import (
 	"context"
+	"encoding/base64"
+	"slices"
 	"testing"
 	"time"
 
@@ -13,6 +15,7 @@ import (
 	rpmgrv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/v1"
 	"github.com/felix-homelab/rpmgr/internal/api"
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
+	"github.com/felix-homelab/rpmgr/internal/store/storetest"
 )
 
 // TestApplyStatus (docs/07-api.md, "Writes and apply status"): a revision's status is derived
@@ -184,5 +187,108 @@ func TestWriteApplyStatus(t *testing.T) {
 	if err != nil || r.Msg.GetApplyStatus().GetState() != rpmgrv1.ApplyState_APPLY_STATE_APPLIED || r.Msg.GetApplyStatus().GetAgentsApplied() != 1 ||
 		took < 400*time.Millisecond || took > 4*time.Second {
 		t.Fatalf("a wait the gateway's apply ends: %v after %v (%v)", r, took, err)
+	}
+}
+
+// events opens a WatchEvents stream and delivers its events on a channel until stop.
+func events(t *testing.T, b *browser, org, token string) (<-chan *rpmgrv1.WatchEventsResponse, func() error) {
+	t.Helper()
+	ctx, cancel := context.WithCancel(context.Background())
+	stream, err := b.st.WatchEvents(ctx, connect.NewRequest(&rpmgrv1.WatchEventsRequest{OrgId: org, ResumeToken: token}))
+	if err != nil {
+		cancel()
+		t.Fatal(err)
+	}
+	out, done := make(chan *rpmgrv1.WatchEventsResponse, 16), make(chan error, 1)
+	go func() {
+		defer close(out)
+		for stream.Receive() {
+			out <- stream.Msg()
+		}
+		done <- stream.Err()
+	}()
+	t.Cleanup(cancel)
+	// stop ends the stream from the client's side; an error is any other end.
+	return out, func() error {
+		cancel()
+		if err := <-done; code(err) != connect.CodeCanceled {
+			return err
+		}
+		return nil
+	}
+}
+
+func next(t *testing.T, ch <-chan *rpmgrv1.WatchEventsResponse) *rpmgrv1.WatchEventsResponse {
+	t.Helper()
+	select {
+	case ev, ok := <-ch:
+		if !ok {
+			t.Fatal("the stream ended")
+		}
+		return ev
+	case <-time.After(5 * time.Second):
+		t.Fatal("no event")
+	}
+	return nil
+}
+
+// TestWatchEvents (docs/07-api.md, "Events and streaming"): the stream sends one event per
+// revision of the org, in order, with what it changed and a resume token, and not another org's;
+// a client that reconnects with its last token gets what it missed; a token of another database
+// epoch gets a reset first; a token WatchEvents did not give is refused.
+func TestWatchEvents(t *testing.T) {
+	e, ada, org, group := gatewayEnv(t)
+	ctx := context.Background()
+	ch, stop := events(t, ada, org, "")
+	gw, err := createGateway(ada, org, group, "gw1", "gw1.example.com:443")
+	if err != nil {
+		t.Fatal(err)
+	}
+	orgB := storetest.Org(t, e.db, "org-b")
+	bob, _ := e.addOwner(t, orgB, "bob@example.com")
+	if _, err := bob.gw.CreateGatewayGroup(ctx, connect.NewRequest(&rpmgrv1.CreateGatewayGroupRequest{OrgId: orgB,
+		GatewayGroup: &rpmgrv1.GatewayGroup{Name: "b"}})); err != nil {
+		t.Fatal(err)
+	}
+	pool, err := ada.gw.CreatePortPool(ctx, connect.NewRequest(&rpmgrv1.CreatePortPoolRequest{OrgId: org,
+		PortPool: &rpmgrv1.PortPool{GatewayGroupId: group, Protocol: tcp, PortFrom: 20000, PortTo: 20001}}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	first, second := next(t, ch), next(t, ch)
+	if !slices.Equal(first.GetChangedResources(), []string{gw.GetId()}) || !slices.Equal(second.GetChangedResources(), []string{pool.Msg.GetPortPool().GetId()}) ||
+		second.GetRevision().GetSeq() <= first.GetRevision().GetSeq() || first.GetActor() == "" || first.GetResumeToken() == "" || first.GetReset_() {
+		t.Fatalf("the org's events: %v, %v", first, second)
+	}
+	if err := stop(); err != nil {
+		t.Fatalf("the stream ended with %v", err)
+	}
+
+	// Missed while disconnected, and delivered on resuming.
+	missed, err := createGateway(ada, org, group, "gw2", "gw2.example.com:443")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ch, stop = events(t, ada, org, second.GetResumeToken())
+	if ev := next(t, ch); !slices.Equal(ev.GetChangedResources(), []string{missed.GetId()}) {
+		t.Fatalf("the missed event: %v", ev)
+	}
+	_ = stop()
+
+	other := base64.RawURLEncoding.EncodeToString([]byte("another-epoch/3"))
+	ch, stop = events(t, ada, org, other)
+	if ev := next(t, ch); !ev.GetReset_() || len(ev.GetChangedResources()) != 0 || ev.GetResumeToken() == "" {
+		t.Fatalf("a token of another epoch: %v", ev)
+	}
+	_ = stop()
+
+	stream, err := ada.st.WatchEvents(ctx, connect.NewRequest(&rpmgrv1.WatchEventsRequest{OrgId: org, ResumeToken: "not-a-token!"}))
+	if err == nil {
+		for stream.Receive() {
+		}
+		err = stream.Err()
+	}
+	if code(err) != connect.CodeInvalidArgument {
+		t.Fatalf("a malformed token: %v", err)
 	}
 }

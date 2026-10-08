@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -126,6 +127,15 @@ func TestACME_Issuance(t *testing.T) {
 		return row != nil && row.Status == certificate.StatusActive && len(row.ContentSha256) > 0
 	})
 	first := acmeRow(t, p, "app.example.com")
+	// The job's revision that stored it belongs to the certificate's org, whose event stream sees it.
+	revs, err := c.DB.Client().ConfigRevision.Query().All(c.Sys)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if i := slices.IndexFunc(revs, func(r *ent.ConfigRevision) bool { return slices.Contains(r.ChangedResources, first.ID) }); i < 0 ||
+		revs[i].OrgID == nil || *revs[i].OrgID != first.OrgID {
+		t.Fatalf("the certificate's revision does not belong to its org %s", first.OrgID)
+	}
 	if proxied.Load() == 0 {
 		t.Fatal("the ACME client never asked for its proxy")
 	}

@@ -20,6 +20,8 @@ const (
 	FieldActor = "actor"
 	// FieldChangedResources holds the string denoting the changed_resources field in the database.
 	FieldChangedResources = "changed_resources"
+	// FieldOrgID holds the string denoting the org_id field in the database.
+	FieldOrgID = "org_id"
 	// FieldCreatedAt holds the string denoting the created_at field in the database.
 	FieldCreatedAt = "created_at"
 	// Table holds the table name of the configrevision in the database.
@@ -32,6 +34,7 @@ var Columns = []string{
 	FieldDbEpoch,
 	FieldActor,
 	FieldChangedResources,
+	FieldOrgID,
 	FieldCreatedAt,
 }
 
@@ -79,6 +82,11 @@ func ByDbEpoch(opts ...sql.OrderTermOption) OrderOption {
 // ByActor orders the results by the actor field.
 func ByActor(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldActor, opts...).ToFunc()
+}
+
+// ByOrgID orders the results by the org_id field.
+func ByOrgID(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldOrgID, opts...).ToFunc()
 }
 
 // ByCreatedAt orders the results by the created_at field.

@@ -41,6 +41,9 @@ const (
 	// StatusServiceWatchApplyStatusProcedure is the fully-qualified name of the StatusService's
 	// WatchApplyStatus RPC.
 	StatusServiceWatchApplyStatusProcedure = "/rpmgr.v1.StatusService/WatchApplyStatus"
+	// StatusServiceWatchEventsProcedure is the fully-qualified name of the StatusService's WatchEvents
+	// RPC.
+	StatusServiceWatchEventsProcedure = "/rpmgr.v1.StatusService/WatchEvents"
 )
 
 // StatusServiceClient is a client for the rpmgr.v1.StatusService service.
@@ -50,6 +53,9 @@ type StatusServiceClient interface {
 	// WatchApplyStatus streams the apply status of a revision at every change, until it is applied,
 	// rejected or timed out, or for 60 s at most.
 	WatchApplyStatus(context.Context, *connect.Request[v1.WatchApplyStatusRequest]) (*connect.ServerStreamForClient[v1.WatchApplyStatusResponse], error)
+	// WatchEvents streams the org's configuration changes as they are committed, one event per
+	// revision, from the resume token on, so a client that reconnects misses none.
+	WatchEvents(context.Context, *connect.Request[v1.WatchEventsRequest]) (*connect.ServerStreamForClient[v1.WatchEventsResponse], error)
 }
 
 // NewStatusServiceClient constructs a client for the rpmgr.v1.StatusService service. By default, it
@@ -77,6 +83,13 @@ func NewStatusServiceClient(httpClient connect.HTTPClient, baseURL string, opts 
 			connect.WithIdempotency(connect.IdempotencyNoSideEffects),
 			connect.WithClientOptions(opts...),
 		),
+		watchEvents: connect.NewClient[v1.WatchEventsRequest, v1.WatchEventsResponse](
+			httpClient,
+			baseURL+StatusServiceWatchEventsProcedure,
+			connect.WithSchema(statusServiceMethods.ByName("WatchEvents")),
+			connect.WithIdempotency(connect.IdempotencyNoSideEffects),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -84,6 +97,7 @@ func NewStatusServiceClient(httpClient connect.HTTPClient, baseURL string, opts 
 type statusServiceClient struct {
 	getApplyStatus   *connect.Client[v1.GetApplyStatusRequest, v1.GetApplyStatusResponse]
 	watchApplyStatus *connect.Client[v1.WatchApplyStatusRequest, v1.WatchApplyStatusResponse]
+	watchEvents      *connect.Client[v1.WatchEventsRequest, v1.WatchEventsResponse]
 }
 
 // GetApplyStatus calls rpmgr.v1.StatusService.GetApplyStatus.
@@ -96,6 +110,11 @@ func (c *statusServiceClient) WatchApplyStatus(ctx context.Context, req *connect
 	return c.watchApplyStatus.CallServerStream(ctx, req)
 }
 
+// WatchEvents calls rpmgr.v1.StatusService.WatchEvents.
+func (c *statusServiceClient) WatchEvents(ctx context.Context, req *connect.Request[v1.WatchEventsRequest]) (*connect.ServerStreamForClient[v1.WatchEventsResponse], error) {
+	return c.watchEvents.CallServerStream(ctx, req)
+}
+
 // StatusServiceHandler is an implementation of the rpmgr.v1.StatusService service.
 type StatusServiceHandler interface {
 	// GetApplyStatus returns how far the org's agents are with a revision.
@@ -103,6 +122,9 @@ type StatusServiceHandler interface {
 	// WatchApplyStatus streams the apply status of a revision at every change, until it is applied,
 	// rejected or timed out, or for 60 s at most.
 	WatchApplyStatus(context.Context, *connect.Request[v1.WatchApplyStatusRequest], *connect.ServerStream[v1.WatchApplyStatusResponse]) error
+	// WatchEvents streams the org's configuration changes as they are committed, one event per
+	// revision, from the resume token on, so a client that reconnects misses none.
+	WatchEvents(context.Context, *connect.Request[v1.WatchEventsRequest], *connect.ServerStream[v1.WatchEventsResponse]) error
 }
 
 // NewStatusServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -126,12 +148,21 @@ func NewStatusServiceHandler(svc StatusServiceHandler, opts ...connect.HandlerOp
 		connect.WithIdempotency(connect.IdempotencyNoSideEffects),
 		connect.WithHandlerOptions(opts...),
 	)
+	statusServiceWatchEventsHandler := connect.NewServerStreamHandler(
+		StatusServiceWatchEventsProcedure,
+		svc.WatchEvents,
+		connect.WithSchema(statusServiceMethods.ByName("WatchEvents")),
+		connect.WithIdempotency(connect.IdempotencyNoSideEffects),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/rpmgr.v1.StatusService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case StatusServiceGetApplyStatusProcedure:
 			statusServiceGetApplyStatusHandler.ServeHTTP(w, r)
 		case StatusServiceWatchApplyStatusProcedure:
 			statusServiceWatchApplyStatusHandler.ServeHTTP(w, r)
+		case StatusServiceWatchEventsProcedure:
+			statusServiceWatchEventsHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -147,4 +178,8 @@ func (UnimplementedStatusServiceHandler) GetApplyStatus(context.Context, *connec
 
 func (UnimplementedStatusServiceHandler) WatchApplyStatus(context.Context, *connect.Request[v1.WatchApplyStatusRequest], *connect.ServerStream[v1.WatchApplyStatusResponse]) error {
 	return connect.NewError(connect.CodeUnimplemented, errors.New("rpmgr.v1.StatusService.WatchApplyStatus is not implemented"))
+}
+
+func (UnimplementedStatusServiceHandler) WatchEvents(context.Context, *connect.Request[v1.WatchEventsRequest], *connect.ServerStream[v1.WatchEventsResponse]) error {
+	return connect.NewError(connect.CodeUnimplemented, errors.New("rpmgr.v1.StatusService.WatchEvents is not implemented"))
 }
