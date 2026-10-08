@@ -40,3 +40,19 @@ func TestBackoff(t *testing.T) {
 		b.Healthy(time.Minute)
 	}
 }
+
+// TestDataBackoff: a data session's backoff is capped at 15 s, the control session's at 30 s.
+func TestDataBackoff(t *testing.T) {
+	b := agent.DataBackoff()
+	if b.Cap != 15*time.Second || b.Base != 500*time.Millisecond || b.ResetAfter != time.Minute {
+		t.Fatalf("%+v", b)
+	}
+	for range 100 {
+		if d := b.Next(0); d > 15*time.Second {
+			t.Fatalf("%v over the 15 s cap", d)
+		}
+	}
+	if agent.ControlBackoff().Cap != 30*time.Second {
+		t.Fatal("the control cap")
+	}
+}

@@ -6,7 +6,7 @@
 # names clauses that other slices or later phases add.
 
 TestNoReplayableHandshake	done	2.10	#54
-TestRejectsUnpinnedCA	done	3.8	#63	enrollment (3.8) and control-session (3.9, internal/itest) clauses done; data-session clause in 4.10
+TestRejectsUnpinnedCA	done	3.8	#63	enrollment (3.8), control-session (3.9, internal/itest) and data-session (4.10, internal/connector) clauses done
 TestRelaySeesCiphertextOnly	p2	-	-	private services
 TestTokenScopesBoundedByCreator	pending	7.7	#112
 TestShellRequiresOwnershipGrantAndOptIn	p3	-	-	remote shell
@@ -15,7 +15,7 @@ TestBadSnapshotKeepsLastKnownGood	done	3.11	#66	framework clause done (internal/
 TestSecretsNeverLogged	pending	9.6	#138
 TestEnroll_BundleWithExtraRootRejected	done	3.8	#63
 TestH2_ConnectorInitiatedStreams	done	4.4	#74	DIAG clause done; CONTROL_PASSTHROUGH clause in 5.13; RELAY_OUT clause in P2 (private services)
-TestTLS_WrongGatewayIDRejected	pending	4.10	#80
+TestTLS_WrongGatewayIDRejected	done	4.10	#80
 TestDenyList_AppliedDespiteRejectedSnapshot	done	3.13	#68	internal/itest
 TestOTA_ReplayedOldManifestRejected	p2	-	-	OTA
 TestOTA_FreshHostReplayRejected	p2	-	-	OTA
@@ -37,7 +37,7 @@ TestPrivateUDP_GatewaySeesCiphertextOnly	p2	-	-	private services
 TestFlowControl_StalledStreamsDoNotFreezeSession	done	4.5	#75
 TestFlowControl_PausedClientNotResetWithoutPressure	done	4.5	#75
 TestH2_AdmissionUnderBudget	done	4.5	#75	h3-share clause in P3 (HTTP/3 ingress)
-TestGateway_PerGatewayTunnelEndpoints	pending	4.10	#80	WSS clause in P2
+TestGateway_PerGatewayTunnelEndpoints	done	4.10	#80	WSS clause in P2
 TestOpenRequest_Semantics	done	4.4	#74
 TestH2_ConnectorFINKeepsClientDirection	done	4.3	#73
 TestH2_ResetReturnsConnectionWindow	done	4.3	#73

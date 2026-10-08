@@ -20,6 +20,11 @@ func ControlBackoff() *Backoff {
 	return &Backoff{Base: 500 * time.Millisecond, Cap: 30 * time.Second, ResetAfter: time.Minute}
 }
 
+// DataBackoff is the backoff of a data session to one gateway.
+func DataBackoff() *Backoff {
+	return &Backoff{Base: 500 * time.Millisecond, Cap: 15 * time.Second, ResetAfter: time.Minute}
+}
+
 // Next returns how long to wait before the next attempt: a uniformly random duration up to
 // min(Cap, Base·2^attempt), and at least floor (a Goodbye's retry_after).
 func (b *Backoff) Next(floor time.Duration) time.Duration {
