@@ -39,14 +39,19 @@ type interceptor struct{ s *Server }
 func (i interceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
 	return func(ctx context.Context, req connect.AnyRequest) (connect.AnyResponse, error) {
 		msg, ok := req.Any().(proto.Message)
-		if !ok {
-			return nil, connect.NewError(connect.CodeInternal, errors.New("api: a request that is not a protobuf message"))
+		md, isMethod := req.Spec().Schema.(protoreflect.MethodDescriptor)
+		if !ok || !isMethod {
+			return nil, connect.NewError(connect.CodeInternal, errors.New("api: a request without a protobuf method"))
 		}
-		ctx, err := i.s.admit(ctx, req.Spec(), req.Header(), msg)
+		rec := i.s.newRecord(md, req.Header(), req.Peer(), msg)
+		ctx, err := i.s.admit(ctx, md, req.Header(), msg, rec)
 		if err != nil {
+			rec.finish(ctx, err)
 			return nil, err
 		}
-		return next(ctx, req)
+		resp, err := next(rec.hook(ctx), req)
+		rec.finish(ctx, err)
+		return resp, err
 	}
 }
 
@@ -69,11 +74,15 @@ func (i interceptor) WrapStreamingHandler(next connect.StreamingHandlerFunc) con
 			}
 			return err
 		}
-		ctx, err := i.s.admit(ctx, conn.Spec(), conn.RequestHeader(), msg)
+		rec := i.s.newRecord(md, conn.RequestHeader(), conn.Peer(), msg)
+		ctx, err := i.s.admit(ctx, md, conn.RequestHeader(), msg, rec)
 		if err != nil {
+			rec.finish(ctx, err)
 			return err
 		}
-		return next(ctx, &replay{StreamingHandlerConn: conn, first: msg})
+		err = next(rec.hook(ctx), &replay{StreamingHandlerConn: conn, first: msg})
+		rec.finish(ctx, err)
+		return err
 	}
 }
 
@@ -108,16 +117,14 @@ func (r *replay) Receive(m any) error {
 }
 
 // admit authenticates, authorizes and validates one request, and returns the context the handler
-// runs in: with the caller, and for org permissions with the scope of the resource's org.
-func (s *Server) admit(ctx context.Context, spec connect.Spec, header http.Header, msg proto.Message) (context.Context, error) {
-	md, ok := spec.Schema.(protoreflect.MethodDescriptor)
-	if !ok {
-		return nil, connect.NewError(connect.CodePermissionDenied, errors.New("api: a method without a descriptor"))
-	}
+// runs in: with the caller, and for org permissions with the scope of the resource's org. rec
+// learns who acted and where. On an error the returned context is ctx.
+func (s *Server) admit(ctx context.Context, md protoreflect.MethodDescriptor, header http.Header, msg proto.Message,
+	rec *record) (context.Context, error) {
 	// Mount checked the method already; this guards handlers mounted another way.
 	if err := checkMethod(md); err != nil {
 		s.o.Logger.Error("refused a method whose authorization cannot be enforced", "method", md.FullName(), "error", err)
-		return nil, connect.NewError(connect.CodePermissionDenied, errors.New("api: the method cannot be authorized"))
+		return ctx, connect.NewError(connect.CodePermissionDenied, errors.New("api: the method cannot be authorized"))
 	}
 	a, _ := authzOf(md)
 	var caller *Caller
@@ -128,26 +135,26 @@ func (s *Server) admit(ctx context.Context, spec connect.Spec, header http.Heade
 			caller = c
 		case a.GetPermission() != authz.PermPublic:
 			s.o.Logger.Debug("refused credentials", "method", md.FullName(), "error", err)
-			return nil, connect.NewError(connect.CodeUnauthenticated, errors.New("api: the credentials are not valid"))
+			return ctx, connect.NewError(connect.CodeUnauthenticated, errors.New("api: the credentials are not valid"))
 		}
 		// A public method serves a caller with stale credentials as anonymous, so an expired
 		// session can still log in again.
 	}
-	ctx = context.WithValue(ctx, callerKey{}, caller)
-	ctx, err := s.authorize(ctx, md, a, caller, msg.ProtoReflect())
+	rec.by(caller)
+	scoped, err := s.authorize(context.WithValue(ctx, callerKey{}, caller), md, a, caller, msg.ProtoReflect(), rec)
 	if err != nil {
-		return nil, err
+		return ctx, err
 	}
 	if err := s.validator.Validate(msg); err != nil {
-		return nil, invalid(err)
+		return scoped, invalid(err)
 	}
-	return ctx, nil
+	return scoped, nil
 }
 
 // authorize applies a method's permission to the caller: org permissions in the org of the
 // request's resource, where a caller who is no member finds nothing, then step-up.
 func (s *Server) authorize(ctx context.Context, md protoreflect.MethodDescriptor, a *rpmgrv1.Authz, caller *Caller,
-	msg protoreflect.Message) (context.Context, error) {
+	msg protoreflect.Message, rec *record) (context.Context, error) {
 	p := a.GetPermission()
 	if p == authz.PermPublic {
 		return ctx, nil
@@ -177,6 +184,7 @@ func (s *Server) authorize(ctx context.Context, md protoreflect.MethodDescriptor
 		if !member {
 			return nil, errNotFound()
 		}
+		rec.in(org)
 		enroll := false
 		if p == authz.PermConnectorsWrite && role == authz.RoleOperator {
 			if enroll, err = s.o.OperatorsMayEnroll(ctx, org); err != nil {
