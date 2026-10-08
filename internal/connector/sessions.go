@@ -386,11 +386,18 @@ func (m *Sessions) Close() {
 	m.wg.Wait()
 }
 
+// modeHooks let the auto link end a mode from its slots; a pinned link has none.
+type modeHooks struct {
+	// ended sees every failed dial (dialled true) and every ended session; true ends the mode.
+	ended func(err error, dialled bool) bool
+	// moved is asked before every redial; true, for a new local source address, ends the mode.
+	moved func() bool
+}
+
 // runMode keeps the sessions of transport tr on link l until ctx ends: one for QUIC, two for h2,
 // each redialled with a backoff of up to 15 s; first, if set, is the first session of the first
-// slot. onEnd, if set, sees every failed dial (dialled true) and every ended session; returning
-// true ends the mode.
-func (m *Sessions) runMode(ctx context.Context, l *link, tr string, first tunnel.Session, onEnd func(err error, dialled bool) bool) {
+// slot.
+func (m *Sessions) runMode(ctx context.Context, l *link, tr string, first tunnel.Session, hooks *modeHooks) {
 	n := 1
 	if tr == TransportH2 {
 		n = h2Sessions
@@ -401,12 +408,12 @@ func (m *Sessions) runMode(ctx context.Context, l *link, tr string, first tunnel
 		if i > 0 {
 			f = nil
 		}
-		wg.Go(func() { m.slot(ctx, l, tr, f, onEnd) })
+		wg.Go(func() { m.slot(ctx, l, tr, f, hooks) })
 	}
 	wg.Wait()
 }
 
-func (m *Sessions) slot(ctx context.Context, l *link, tr string, first tunnel.Session, onEnd func(error, bool) bool) {
+func (m *Sessions) slot(ctx context.Context, l *link, tr string, first tunnel.Session, hooks *modeHooks) {
 	b := agent.DataBackoff()
 	for ctx.Err() == nil {
 		start := time.Now()
@@ -419,13 +426,13 @@ func (m *Sessions) slot(ctx context.Context, l *link, tr string, first tunnel.Se
 			m.mu.Lock()
 			l.failed = err
 			m.mu.Unlock()
-			if ctx.Err() != nil || (onEnd != nil && onEnd(err, true)) {
+			if ctx.Err() != nil || (hooks != nil && hooks.ended(err, true)) {
 				return
 			}
 		} else {
 			err = m.run(ctx, l, ts, tr)
 			b.Healthy(time.Since(start))
-			if ctx.Err() != nil || (onEnd != nil && onEnd(err, false)) {
+			if ctx.Err() != nil || (hooks != nil && hooks.ended(err, false)) {
 				return
 			}
 		}
@@ -435,6 +442,10 @@ func (m *Sessions) slot(ctx context.Context, l *link, tr string, first tunnel.Se
 		case <-ctx.Done():
 			return
 		case <-time.After(wait):
+		}
+		// The source address can change while the slot waits: a dial from a new one races again.
+		if hooks != nil && hooks.moved() {
+			return
 		}
 	}
 }
@@ -505,7 +516,15 @@ func (m *Sessions) runAuto(ctx context.Context, l *link) {
 		}
 		mctx, switchMode := context.WithCancel(ctx)
 		var probed atomic.Pointer[tunnel.Session]
-		onEnd := func(err error, dialled bool) bool {
+		// The next connection from a new local source address starts a new race.
+		moved := func() bool {
+			if now, err := m.o.LocalAddr(ctx, ep); err != nil || now == local {
+				return false
+			}
+			switchMode()
+			return true
+		}
+		ended := func(err error, dialled bool) bool {
 			switch {
 			case dialled:
 				m.choose.forget(gw, local)
@@ -513,16 +532,13 @@ func (m *Sessions) runAuto(ctx context.Context, l *link) {
 				m.o.Logger.Warn("QUIC to a gateway timed out; using TCP for an hour", "gateway", gw)
 				m.choose.blackholed(gw)
 			default:
-				// The next connection from a new local source address starts a new race.
-				if now, err := m.o.LocalAddr(ctx, ep); err != nil || now == local {
-					return false
-				}
+				return moved()
 			}
 			switchMode()
 			return true
 		}
 		var wg sync.WaitGroup
-		wg.Go(func() { m.runMode(mctx, l, tr, first, onEnd) })
+		wg.Go(func() { m.runMode(mctx, l, tr, first, &modeHooks{ended: ended, moved: moved}) })
 		if tr == TransportH2 {
 			wg.Go(func() {
 				if s := m.reprobe(mctx, l); s != nil {

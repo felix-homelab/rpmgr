@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/netip"
-	"sync/atomic"
+	"sync"
 	"testing"
 	"time"
 
@@ -168,19 +168,47 @@ func TestTransport_UDPBlocked(t *testing.T) {
 	}
 }
 
+// sourceAddr is a connector's local source address, which a test changes at once or after a
+// number of lookups.
+type sourceAddr struct {
+	mu        sync.Mutex
+	cur, next netip.Addr
+	after     int // the lookups that still return cur before next applies; 0 for none
+}
+
+func (s *sourceAddr) lookup(context.Context, string) (netip.Addr, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	addr := s.cur
+	if s.after > 0 {
+		if s.after--; s.after == 0 {
+			s.cur = s.next
+		}
+	}
+	return addr, nil
+}
+
+// set changes the address after the next n lookups, at once for 0.
+func (s *sourceAddr) set(addr netip.Addr, n int) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if n == 0 {
+		s.cur, s.after = addr, 0
+		return
+	}
+	s.next, s.after = addr, n
+}
+
 // TestTransport_RaceCache: the winner of a race is used again from the same source address without
-// a race, and a new source address races again. QUIC gets a 2 s head start here, so that its
+// a race, and a new source address races again: one that the end of a session shows, and one that
+// comes while the ended sessions wait to be redialled. QUIC gets a 2 s head start here, so that its
 // packets reach the blackhole on a slow machine before TCP wins: they are how the test sees a race.
 func TestTransport_RaceCache(t *testing.T) {
 	connector.SetTransportTimers(t, 2*time.Second, 10*time.Minute, time.Hour)
 	w := newWorld(t)
 	g, _, h := splitGateway(t, w, true)
-	var local atomic.Pointer[netip.Addr]
-	a, b := netip.MustParseAddr("192.0.2.10"), netip.MustParseAddr("198.51.100.20")
-	local.Store(&a)
-	m := newConnectorOptions(t, w, func(o *connector.Options) {
-		o.LocalAddr = func(context.Context, string) (netip.Addr, error) { return *local.Load(), nil }
-	})
+	src := &sourceAddr{cur: netip.MustParseAddr("192.0.2.10")}
+	m := newConnectorOptions(t, w, func(o *connector.Options) { o.LocalAddr = src.lookup })
 	readyAll(m, "rt_a")
 	m.Set([]connector.Gateway{{ID: g.id.ID, Endpoints: []string{g.addr}, Routes: map[string]string{"rt_a": connector.TransportAuto}}})
 	eventually(t, "not both TCP connections", func() bool { return h.Count()["h2"] == 2 })
@@ -188,23 +216,37 @@ func TestTransport_RaceCache(t *testing.T) {
 		t.Fatal("QUIC was never tried")
 	}
 
-	// The gateway restarts: from the same source address, h2 without a race.
+	// The gateway ends both TCP sessions and the connector dials two new ones. Close does not wait
+	// for the sessions to go, so until they have, Count still shows the old ones.
 	reconnect := func() {
 		t.Helper()
+		ended := g.tcpEnded.Load()
 		h.Close()
+		eventually(t, "the sessions did not end", func() bool { return g.tcpEnded.Load() >= ended+2 })
 		eventually(t, "no reconnection", func() bool { return h.Count()["h2"] == 2 })
 	}
-	time.Sleep(200 * time.Millisecond) // let the cancelled QUIC dial stop
-	before := g.udpPackets.Load()
+	settle := func() int64 {
+		time.Sleep(200 * time.Millisecond) // let the cancelled QUIC dial of a race stop
+		return g.udpPackets.Load()
+	}
+
+	// From the same source address, h2 without a race.
+	before := settle()
 	reconnect()
 	time.Sleep(200 * time.Millisecond)
 	if after := g.udpPackets.Load(); after != before {
 		t.Fatalf("%d QUIC packets from a cached source address", after-before)
 	}
-	// From a new source address, a new race.
-	local.Store(&b)
+	// The address has changed when the sessions end: a new race.
+	src.set(netip.MustParseAddr("198.51.100.20"), 0)
 	reconnect()
 	eventually(t, "no race from a new source address", func() bool { return g.udpPackets.Load() > before })
+	// It changes only after each ended session has looked it up, while they wait to be
+	// redialled: a new race too.
+	before = settle()
+	src.set(netip.MustParseAddr("203.0.113.30"), 2)
+	reconnect()
+	eventually(t, "no race from a source address that changed before the redial", func() bool { return g.udpPackets.Load() > before })
 }
 
 // TestTransport_ChangeKeepsOpenConnections: when QUIC comes back, the re-probe moves the auto

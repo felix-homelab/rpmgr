@@ -111,6 +111,7 @@ type testGateway struct {
 	serverName   chan string // the SNI of every TCP handshake
 	tcpErrs      chan error  // failed TCP handshakes
 	quicConns    atomic.Int64
+	tcpEnded     atomic.Int64 // TCP sessions the gateway served and removed
 }
 
 // startGateway serves data sessions for the gateway id with the certificate cert, which a test
@@ -201,6 +202,7 @@ func startGatewayWith(t *testing.T, w *world, id pki.Identity, cert tls.Certific
 					return
 				}
 				_ = g.sessions.Load().Serve(g.ctx, s, tc.ConnectionState().PeerCertificates[0])
+				g.tcpEnded.Add(1)
 			}()
 		}
 	}()
