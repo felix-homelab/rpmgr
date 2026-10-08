@@ -71,7 +71,7 @@ names.
 | `ConnectorService` | `ListConnectors`, `GetConnector` (with its control session), `UpdateConnector` (name, labels, `transport`), `DecommissionConnector`, `GetConnectorStatus` (control session, data sessions as its gateways report them, routes it reports not ready) | 1 |
 | `GatewayService` | `CreateGateway`, `GetGateway`, `ListGateways`, `UpdateGateway` (name, tunnel endpoints, `enabled`), `DecommissionGateway` (revokes the gateway's identity); CRUD on gateway groups and port pools; `SetPortQuota`, `ListPortQuotas`, `DeletePortQuota`; shared-group grants | 1 (shared-group grants: 2) |
 | `RouteService` | CRUD on routes and targets, `PreviewRoute` (compile without saving) | 1 |
-| `DomainService` | `CreateDomain`, `VerifyDomain`, `ListDomains`, `DeleteDomain`, `MarkDomainTrusted` (Instance Admin, step-up), `DelegateDomain` and `ApproveDomainClaim` (Instance Admin, step-up) | 1 (`DelegateDomain`, `ApproveDomainClaim`: 2) |
+| `DomainService` | `CreateDomain` (returns the TXT record or HTTP token that proves the claim), `GetDomain`, `VerifyDomain`, `ListDomains`, `DeleteDomain` (refused while route hostnames lie under it), `MarkDomainTrusted` (Instance Admin, step-up), `DelegateDomain` and `ApproveDomainClaim` (Instance Admin, step-up) | 1 (`DelegateDomain`, `ApproveDomainClaim`: 2) |
 | `CertificateService` | `ListCertificates`, `UploadCertificate`, `RenewCertificate` | 1 |
 | `PkiService` | `GetPkiStatus`, `RotateIntermediate` (Instance Admin, step-up) | 1 |
 | `DnsProviderService` | `ConnectDnsProvider`, `ListDnsProviders`, `UpdateDnsProvider` (rename, rotate token), `DeleteDnsProvider`, `ListProviderZones` | 2 |

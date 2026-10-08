@@ -412,6 +412,7 @@ var schemaGraph = func() *sqlgraph.Schema {
 		Type: "Domain",
 		Fields: map[string]*sqlgraph.FieldSpec{
 			domain.FieldOrgID:          {Type: field.TypeString, Column: domain.FieldOrgID},
+			domain.FieldVersion:        {Type: field.TypeInt64, Column: domain.FieldVersion},
 			domain.FieldFqdn:           {Type: field.TypeString, Column: domain.FieldFqdn},
 			domain.FieldWildcard:       {Type: field.TypeBool, Column: domain.FieldWildcard},
 			domain.FieldStatus:         {Type: field.TypeEnum, Column: domain.FieldStatus},
@@ -420,7 +421,6 @@ var schemaGraph = func() *sqlgraph.Schema {
 			domain.FieldCreatedAt:      {Type: field.TypeTime, Column: domain.FieldCreatedAt},
 			domain.FieldVerifiedAt:     {Type: field.TypeTime, Column: domain.FieldVerifiedAt},
 			domain.FieldLastCheckedAt:  {Type: field.TypeTime, Column: domain.FieldLastCheckedAt},
-			domain.FieldVersion:        {Type: field.TypeInt64, Column: domain.FieldVersion},
 		},
 	}
 	graph.Nodes[17] = &sqlgraph.Node{
@@ -2730,6 +2730,11 @@ func (f *DomainFilter) WhereOrgID(p entql.StringP) {
 	f.Where(p.Field(domain.FieldOrgID))
 }
 
+// WhereVersion applies the entql int64 predicate on the version field.
+func (f *DomainFilter) WhereVersion(p entql.Int64P) {
+	f.Where(p.Field(domain.FieldVersion))
+}
+
 // WhereFqdn applies the entql string predicate on the fqdn field.
 func (f *DomainFilter) WhereFqdn(p entql.StringP) {
 	f.Where(p.Field(domain.FieldFqdn))
@@ -2768,11 +2773,6 @@ func (f *DomainFilter) WhereVerifiedAt(p entql.TimeP) {
 // WhereLastCheckedAt applies the entql time.Time predicate on the last_checked_at field.
 func (f *DomainFilter) WhereLastCheckedAt(p entql.TimeP) {
 	f.Where(p.Field(domain.FieldLastCheckedAt))
-}
-
-// WhereVersion applies the entql int64 predicate on the version field.
-func (f *DomainFilter) WhereVersion(p entql.Int64P) {
-	f.Where(p.Field(domain.FieldVersion))
 }
 
 // addPredicate implements the predicateAdder interface.

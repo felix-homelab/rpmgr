@@ -17,6 +17,8 @@ const (
 	FieldID = "id"
 	// FieldOrgID holds the string denoting the org_id field in the database.
 	FieldOrgID = "org_id"
+	// FieldVersion holds the string denoting the version field in the database.
+	FieldVersion = "version"
 	// FieldFqdn holds the string denoting the fqdn field in the database.
 	FieldFqdn = "fqdn"
 	// FieldWildcard holds the string denoting the wildcard field in the database.
@@ -33,8 +35,6 @@ const (
 	FieldVerifiedAt = "verified_at"
 	// FieldLastCheckedAt holds the string denoting the last_checked_at field in the database.
 	FieldLastCheckedAt = "last_checked_at"
-	// FieldVersion holds the string denoting the version field in the database.
-	FieldVersion = "version"
 	// Table holds the table name of the domain in the database.
 	Table = "domains"
 )
@@ -43,6 +43,7 @@ const (
 var Columns = []string{
 	FieldID,
 	FieldOrgID,
+	FieldVersion,
 	FieldFqdn,
 	FieldWildcard,
 	FieldStatus,
@@ -51,7 +52,6 @@ var Columns = []string{
 	FieldCreatedAt,
 	FieldVerifiedAt,
 	FieldLastCheckedAt,
-	FieldVersion,
 }
 
 // ValidColumn reports if the column name is valid (part of the table columns).
@@ -70,11 +70,15 @@ func ValidColumn(column string) bool {
 //
 //	import _ "github.com/felix-homelab/rpmgr/internal/store/ent/runtime"
 var (
-	Hooks        [2]ent.Hook
+	Hooks        [3]ent.Hook
 	Interceptors [1]ent.Interceptor
 	Policy       ent.Policy
 	// OrgIDValidator is a validator for the "org_id" field. It is called by the builders before save.
 	OrgIDValidator func(string) error
+	// DefaultVersion holds the default value on creation for the "version" field.
+	DefaultVersion int64
+	// VersionValidator is a validator for the "version" field. It is called by the builders before save.
+	VersionValidator func(int64) error
 	// FqdnValidator is a validator for the "fqdn" field. It is called by the builders before save.
 	FqdnValidator func(string) error
 	// DefaultWildcard holds the default value on creation for the "wildcard" field.
@@ -83,10 +87,6 @@ var (
 	ChallengeValueValidator func(string) error
 	// DefaultCreatedAt holds the default value on creation for the "created_at" field.
 	DefaultCreatedAt func() time.Time
-	// DefaultVersion holds the default value on creation for the "version" field.
-	DefaultVersion int64
-	// VersionValidator is a validator for the "version" field. It is called by the builders before save.
-	VersionValidator func(int64) error
 	// DefaultID holds the default value on creation for the "id" field.
 	DefaultID func() string
 	// IDValidator is a validator for the "id" field. It is called by the builders before save.
@@ -162,6 +162,11 @@ func ByOrgID(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldOrgID, opts...).ToFunc()
 }
 
+// ByVersion orders the results by the version field.
+func ByVersion(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldVersion, opts...).ToFunc()
+}
+
 // ByFqdn orders the results by the fqdn field.
 func ByFqdn(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldFqdn, opts...).ToFunc()
@@ -200,9 +205,4 @@ func ByVerifiedAt(opts ...sql.OrderTermOption) OrderOption {
 // ByLastCheckedAt orders the results by the last_checked_at field.
 func ByLastCheckedAt(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldLastCheckedAt, opts...).ToFunc()
-}
-
-// ByVersion orders the results by the version field.
-func ByVersion(opts ...sql.OrderTermOption) OrderOption {
-	return sql.OrderByField(FieldVersion, opts...).ToFunc()
 }

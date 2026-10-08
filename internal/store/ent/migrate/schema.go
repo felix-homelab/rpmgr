@@ -433,6 +433,7 @@ var (
 	DomainsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeString},
 		{Name: "org_id", Type: field.TypeString},
+		{Name: "version", Type: field.TypeInt64, Default: 1},
 		{Name: "fqdn", Type: field.TypeString, Size: 253},
 		{Name: "wildcard", Type: field.TypeBool, Default: false},
 		{Name: "status", Type: field.TypeEnum, Enums: []string{"pending", "pending_approval", "verified", "failed"}, Default: "pending"},
@@ -441,7 +442,6 @@ var (
 		{Name: "created_at", Type: field.TypeTime},
 		{Name: "verified_at", Type: field.TypeTime, Nullable: true},
 		{Name: "last_checked_at", Type: field.TypeTime, Nullable: true},
-		{Name: "version", Type: field.TypeInt64, Default: 1},
 	}
 	// DomainsTable holds the schema information for the "domains" table.
 	DomainsTable = &schema.Table{
@@ -457,7 +457,7 @@ var (
 			{
 				Name:    "domain_fqdn",
 				Unique:  true,
-				Columns: []*schema.Column{DomainsColumns[2]},
+				Columns: []*schema.Column{DomainsColumns[3]},
 			},
 		},
 	}

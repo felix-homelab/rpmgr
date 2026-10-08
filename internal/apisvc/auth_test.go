@@ -107,6 +107,12 @@ func newEnv(t *testing.T) *env {
 		}); err != nil {
 		t.Fatal(err)
 	}
+	if err := srv.Mount(mux, rpmgrv1.File_rpmgr_v1_domain_proto.Services().ByName("DomainService"),
+		func(o ...connect.HandlerOption) (string, http.Handler) {
+			return rpmgrv1connect.NewDomainServiceHandler(&apisvc.Domains{DB: db, API: srv, Sys: sys, Now: now}, o...)
+		}); err != nil {
+		t.Fatal(err)
+	}
 	if err := srv.Mount(mux, rpmgrv1.File_rpmgr_v1_enrollment_proto.Services().ByName("EnrollmentService"),
 		func(o ...connect.HandlerOption) (string, http.Handler) {
 			return rpmgrv1connect.NewEnrollmentServiceHandler(&apisvc.Enrollment{DB: db, API: srv, Now: now,
@@ -151,6 +157,7 @@ type browser struct {
 	gw     rpmgrv1connect.GatewayServiceClient
 	enr    rpmgrv1connect.EnrollmentServiceClient
 	con    rpmgrv1connect.ConnectorServiceClient
+	dom    rpmgrv1connect.DomainServiceClient
 }
 
 func (e *env) browser() *browser {
@@ -162,6 +169,7 @@ func (e *env) browser() *browser {
 	b.gw = rpmgrv1connect.NewGatewayServiceClient(&http.Client{Transport: b}, e.url)
 	b.enr = rpmgrv1connect.NewEnrollmentServiceClient(&http.Client{Transport: b}, e.url)
 	b.con = rpmgrv1connect.NewConnectorServiceClient(&http.Client{Transport: b}, e.url)
+	b.dom = rpmgrv1connect.NewDomainServiceClient(&http.Client{Transport: b}, e.url)
 	return b
 }
 

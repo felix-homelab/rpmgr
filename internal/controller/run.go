@@ -251,6 +251,12 @@ func Run(ctx context.Context, o RunOptions) error {
 		}); err != nil {
 		return err
 	}
+	if err := apiServer.Mount(mux, rpmgrv1.File_rpmgr_v1_domain_proto.Services().ByName("DomainService"),
+		func(opts ...connect.HandlerOption) (string, http.Handler) {
+			return rpmgrv1connect.NewDomainServiceHandler(&apisvc.Domains{DB: db, API: apiServer, Sys: sys, Now: o.Now}, opts...)
+		}); err != nil {
+		return err
+	}
 	if err := apiServer.Mount(mux, rpmgrv1.File_rpmgr_v1_enrollment_proto.Services().ByName("EnrollmentService"),
 		func(opts ...connect.HandlerOption) (string, http.Handler) {
 			return rpmgrv1connect.NewEnrollmentServiceHandler(&apisvc.Enrollment{DB: db, API: apiServer, Now: o.Now,

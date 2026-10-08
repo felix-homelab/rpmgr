@@ -28,6 +28,27 @@ func (_u *DomainUpdate) Where(ps ...predicate.Domain) *DomainUpdate {
 	return _u
 }
 
+// SetVersion sets the "version" field.
+func (_u *DomainUpdate) SetVersion(v int64) *DomainUpdate {
+	_u.mutation.ResetVersion()
+	_u.mutation.SetVersion(v)
+	return _u
+}
+
+// SetNillableVersion sets the "version" field if the given value is not nil.
+func (_u *DomainUpdate) SetNillableVersion(v *int64) *DomainUpdate {
+	if v != nil {
+		_u.SetVersion(*v)
+	}
+	return _u
+}
+
+// AddVersion adds value to the "version" field.
+func (_u *DomainUpdate) AddVersion(v int64) *DomainUpdate {
+	_u.mutation.AddVersion(v)
+	return _u
+}
+
 // SetStatus sets the "status" field.
 func (_u *DomainUpdate) SetStatus(v domain.Status) *DomainUpdate {
 	_u.mutation.SetStatus(v)
@@ -110,27 +131,6 @@ func (_u *DomainUpdate) ClearLastCheckedAt() *DomainUpdate {
 	return _u
 }
 
-// SetVersion sets the "version" field.
-func (_u *DomainUpdate) SetVersion(v int64) *DomainUpdate {
-	_u.mutation.ResetVersion()
-	_u.mutation.SetVersion(v)
-	return _u
-}
-
-// SetNillableVersion sets the "version" field if the given value is not nil.
-func (_u *DomainUpdate) SetNillableVersion(v *int64) *DomainUpdate {
-	if v != nil {
-		_u.SetVersion(*v)
-	}
-	return _u
-}
-
-// AddVersion adds value to the "version" field.
-func (_u *DomainUpdate) AddVersion(v int64) *DomainUpdate {
-	_u.mutation.AddVersion(v)
-	return _u
-}
-
 // Mutation returns the DomainMutation object of the builder.
 func (_u *DomainUpdate) Mutation() *DomainMutation {
 	return _u.mutation
@@ -165,6 +165,11 @@ func (_u *DomainUpdate) ExecX(ctx context.Context) {
 
 // check runs all checks and user-defined validators on the builder.
 func (_u *DomainUpdate) check() error {
+	if v, ok := _u.mutation.Version(); ok {
+		if err := domain.VersionValidator(v); err != nil {
+			return &ValidationError{Name: "version", err: fmt.Errorf(`ent: validator failed for field "Domain.version": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.Status(); ok {
 		if err := domain.StatusValidator(v); err != nil {
 			return &ValidationError{Name: "status", err: fmt.Errorf(`ent: validator failed for field "Domain.status": %w`, err)}
@@ -178,11 +183,6 @@ func (_u *DomainUpdate) check() error {
 	if v, ok := _u.mutation.ChallengeValue(); ok {
 		if err := domain.ChallengeValueValidator(v); err != nil {
 			return &ValidationError{Name: "challenge_value", err: fmt.Errorf(`ent: validator failed for field "Domain.challenge_value": %w`, err)}
-		}
-	}
-	if v, ok := _u.mutation.Version(); ok {
-		if err := domain.VersionValidator(v); err != nil {
-			return &ValidationError{Name: "version", err: fmt.Errorf(`ent: validator failed for field "Domain.version": %w`, err)}
 		}
 	}
 	return nil
@@ -199,6 +199,12 @@ func (_u *DomainUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 				ps[i](selector)
 			}
 		}
+	}
+	if value, ok := _u.mutation.Version(); ok {
+		_spec.SetField(domain.FieldVersion, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedVersion(); ok {
+		_spec.AddField(domain.FieldVersion, field.TypeInt64, value)
 	}
 	if value, ok := _u.mutation.Status(); ok {
 		_spec.SetField(domain.FieldStatus, field.TypeEnum, value)
@@ -221,12 +227,6 @@ func (_u *DomainUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	if _u.mutation.LastCheckedAtCleared() {
 		_spec.ClearField(domain.FieldLastCheckedAt, field.TypeTime)
 	}
-	if value, ok := _u.mutation.Version(); ok {
-		_spec.SetField(domain.FieldVersion, field.TypeInt64, value)
-	}
-	if value, ok := _u.mutation.AddedVersion(); ok {
-		_spec.AddField(domain.FieldVersion, field.TypeInt64, value)
-	}
 	if _node, err = sqlgraph.UpdateNodes(ctx, _u.driver, _spec); err != nil {
 		if _, ok := err.(*sqlgraph.NotFoundError); ok {
 			err = &NotFoundError{domain.Label}
@@ -245,6 +245,27 @@ type DomainUpdateOne struct {
 	fields   []string
 	hooks    []Hook
 	mutation *DomainMutation
+}
+
+// SetVersion sets the "version" field.
+func (_u *DomainUpdateOne) SetVersion(v int64) *DomainUpdateOne {
+	_u.mutation.ResetVersion()
+	_u.mutation.SetVersion(v)
+	return _u
+}
+
+// SetNillableVersion sets the "version" field if the given value is not nil.
+func (_u *DomainUpdateOne) SetNillableVersion(v *int64) *DomainUpdateOne {
+	if v != nil {
+		_u.SetVersion(*v)
+	}
+	return _u
+}
+
+// AddVersion adds value to the "version" field.
+func (_u *DomainUpdateOne) AddVersion(v int64) *DomainUpdateOne {
+	_u.mutation.AddVersion(v)
+	return _u
 }
 
 // SetStatus sets the "status" field.
@@ -329,27 +350,6 @@ func (_u *DomainUpdateOne) ClearLastCheckedAt() *DomainUpdateOne {
 	return _u
 }
 
-// SetVersion sets the "version" field.
-func (_u *DomainUpdateOne) SetVersion(v int64) *DomainUpdateOne {
-	_u.mutation.ResetVersion()
-	_u.mutation.SetVersion(v)
-	return _u
-}
-
-// SetNillableVersion sets the "version" field if the given value is not nil.
-func (_u *DomainUpdateOne) SetNillableVersion(v *int64) *DomainUpdateOne {
-	if v != nil {
-		_u.SetVersion(*v)
-	}
-	return _u
-}
-
-// AddVersion adds value to the "version" field.
-func (_u *DomainUpdateOne) AddVersion(v int64) *DomainUpdateOne {
-	_u.mutation.AddVersion(v)
-	return _u
-}
-
 // Mutation returns the DomainMutation object of the builder.
 func (_u *DomainUpdateOne) Mutation() *DomainMutation {
 	return _u.mutation
@@ -397,6 +397,11 @@ func (_u *DomainUpdateOne) ExecX(ctx context.Context) {
 
 // check runs all checks and user-defined validators on the builder.
 func (_u *DomainUpdateOne) check() error {
+	if v, ok := _u.mutation.Version(); ok {
+		if err := domain.VersionValidator(v); err != nil {
+			return &ValidationError{Name: "version", err: fmt.Errorf(`ent: validator failed for field "Domain.version": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.Status(); ok {
 		if err := domain.StatusValidator(v); err != nil {
 			return &ValidationError{Name: "status", err: fmt.Errorf(`ent: validator failed for field "Domain.status": %w`, err)}
@@ -410,11 +415,6 @@ func (_u *DomainUpdateOne) check() error {
 	if v, ok := _u.mutation.ChallengeValue(); ok {
 		if err := domain.ChallengeValueValidator(v); err != nil {
 			return &ValidationError{Name: "challenge_value", err: fmt.Errorf(`ent: validator failed for field "Domain.challenge_value": %w`, err)}
-		}
-	}
-	if v, ok := _u.mutation.Version(); ok {
-		if err := domain.VersionValidator(v); err != nil {
-			return &ValidationError{Name: "version", err: fmt.Errorf(`ent: validator failed for field "Domain.version": %w`, err)}
 		}
 	}
 	return nil
@@ -449,6 +449,12 @@ func (_u *DomainUpdateOne) sqlSave(ctx context.Context) (_node *Domain, err erro
 			}
 		}
 	}
+	if value, ok := _u.mutation.Version(); ok {
+		_spec.SetField(domain.FieldVersion, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedVersion(); ok {
+		_spec.AddField(domain.FieldVersion, field.TypeInt64, value)
+	}
 	if value, ok := _u.mutation.Status(); ok {
 		_spec.SetField(domain.FieldStatus, field.TypeEnum, value)
 	}
@@ -469,12 +475,6 @@ func (_u *DomainUpdateOne) sqlSave(ctx context.Context) (_node *Domain, err erro
 	}
 	if _u.mutation.LastCheckedAtCleared() {
 		_spec.ClearField(domain.FieldLastCheckedAt, field.TypeTime)
-	}
-	if value, ok := _u.mutation.Version(); ok {
-		_spec.SetField(domain.FieldVersion, field.TypeInt64, value)
-	}
-	if value, ok := _u.mutation.AddedVersion(); ok {
-		_spec.AddField(domain.FieldVersion, field.TypeInt64, value)
 	}
 	_node = &Domain{config: _u.config}
 	_spec.Assign = _node.assignValues

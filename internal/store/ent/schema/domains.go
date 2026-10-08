@@ -18,8 +18,8 @@ import (
 // two orgs can claim it at once.
 type Domain struct{ ent.Schema }
 
-// Mixin makes domains org-owned.
-func (Domain) Mixin() []ent.Mixin { return []ent.Mixin{OrgMixin{}} }
+// Mixin makes domains org-owned and versioned.
+func (Domain) Mixin() []ent.Mixin { return []ent.Mixin{OrgMixin{}, VersionMixin{}} }
 
 // Annotations name the table as docs/06-data-model.md does.
 func (Domain) Annotations() []schema.Annotation {
@@ -41,7 +41,6 @@ func (Domain) Fields() []ent.Field {
 		field.Time("created_at").Immutable().Default(time.Now),
 		field.Time("verified_at").Optional().Nillable(),
 		field.Time("last_checked_at").Optional().Nillable(),
-		field.Int64("version").Positive().Default(1),
 	}
 }
 
