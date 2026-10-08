@@ -10,6 +10,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/cli"
 	"github.com/felix-homelab/rpmgr/internal/config"
 	"github.com/felix-homelab/rpmgr/internal/controller"
+	"github.com/felix-homelab/rpmgr/internal/telemetry"
 	"github.com/felix-homelab/rpmgr/internal/version"
 )
 
@@ -20,11 +21,11 @@ func commands() *cli.Command {
 		Name:    "rpmgr",
 		Summary: "publish services on private networks through public gateways",
 		Sub: []*cli.Command{
-			role("controller", "run the controller: web UI, API, CA and configuration",
+			role("controller", "run the controller: web UI, API, CA and configuration", runController,
 				controllerInit()),
-			role("gateway", "run a gateway: public listeners and data sessions from connectors"),
-			role("connector", "run a connector: data sessions to gateways and the local targets"),
-			role("all-in-one", "run a controller and a gateway in one process",
+			role("gateway", "run a gateway: public listeners and data sessions from connectors", nil),
+			role("connector", "run a connector: data sessions to gateways and the local targets", nil),
+			role("all-in-one", "run a controller and a gateway in one process", nil,
 				&cli.Command{Name: "init", Summary: "initialise an all-in-one installation", Run: cli.NotAvailable}),
 			enrollCommand(),
 			{Name: "leave", Summary: "revoke this agent's identity and remove it from the host", Run: cli.NotAvailable},
@@ -52,17 +53,37 @@ func commands() *cli.Command {
 	}
 }
 
-// role is a command that runs one role from its boot file.
-func role(name, summary string, sub ...*cli.Command) *cli.Command {
-	return &cli.Command{
+// role is a command that runs one role from its boot file; run nil is not available yet.
+func role(name, summary string, run func(ctx context.Context, env *cli.Env, configPath string) error, sub ...*cli.Command) *cli.Command {
+	var path string
+	c := &cli.Command{
 		Name:    name,
 		Summary: summary,
 		Flags: func(fs *flag.FlagSet) {
-			fs.String("config", "", "boot file (default $RPMGR_CONFIG, else /etc/rpmgr/"+name+".yaml)")
+			fs.StringVar(&path, "config", "", "boot file (default $RPMGR_CONFIG, else /etc/rpmgr/"+name+".yaml)")
 		},
 		Run: cli.NotAvailable,
 		Sub: sub,
 	}
+	if run != nil {
+		c.Run = func(ctx context.Context, env *cli.Env, _ []string) error {
+			return run(ctx, env, config.Path(path, name, env.Getenv))
+		}
+	}
+	return c
+}
+
+// runController is `rpmgr controller`: it runs until SIGINT or SIGTERM, then drains.
+func runController(ctx context.Context, env *cli.Env, path string) error {
+	var cfg config.Controller
+	if err := config.Load(path, &cfg); err != nil {
+		return err
+	}
+	logger, err := telemetry.NewLogger(env.Stderr, cfg.Log)
+	if err != nil {
+		return err
+	}
+	return controller.Run(ctx, controller.RunOptions{Config: cfg, Version: version.Get().Version, Getenv: env.Getenv, Logger: logger})
 }
 
 // controllerInit is `rpmgr controller init`.

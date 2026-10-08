@@ -107,6 +107,11 @@ type Controller struct {
 		Name   string `yaml:"name"` // systemd-credential
 		Path   string `yaml:"path"` // file
 	} `yaml:"kek"`
+	// TLS is the certificate of the public URL from files; without it, ACME obtains one.
+	TLS struct {
+		CertFile string `yaml:"cert_file"`
+		KeyFile  string `yaml:"key_file"`
+	} `yaml:"tls"`
 	Log Log `yaml:"log"`
 }
 
@@ -145,6 +150,13 @@ func (c *Controller) validate() error {
 		errs = append(errs, errors.New("database.driver: postgres comes with Phase 2 (D57); use sqlite"))
 	default:
 		errs = append(errs, fmt.Errorf("database.driver %q: want sqlite", c.Database.Driver))
+	}
+	switch {
+	case c.TLS.CertFile == "" && c.TLS.KeyFile == "":
+	case c.TLS.CertFile == "" || c.TLS.KeyFile == "":
+		errs = append(errs, errors.New("tls: cert_file and key_file go together"))
+	default:
+		errs = append(errs, checkAbs("tls.cert_file", c.TLS.CertFile), checkAbs("tls.key_file", c.TLS.KeyFile))
 	}
 	switch c.KEK.Source {
 	case KEKSystemdCredential:

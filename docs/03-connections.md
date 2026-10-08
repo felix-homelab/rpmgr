@@ -855,7 +855,7 @@ sequenceDiagram
 | Controller admission | 50 new control sessions/s per replica; excess gets `Goodbye{overloaded}` with a `retry_after` drawn from 1–10 s | Restart storms, spread out again |
 | Control session start | `Hello` within 10 s, as the first message only | A connection that sends nothing holds no session |
 | Data session start | `SessionHello` within 10 s of the session control stream, as its first message only; the connector waits as long for `SessionWelcome` | As for control sessions |
-| Controller drain | `Drain{deadline}` to every session, also to sessions that start later; new sessions while draining get `Goodbye{shutdown}` with a `retry_after` | Agents move to another endpoint before the replica stops |
+| Controller drain | `Drain{deadline}` to every session, also to sessions that start later; new sessions while draining get `Goodbye{shutdown}` with a `retry_after`; a stopping replica waits up to 5 s for its sessions to move, then closes | Agents move to another endpoint before the replica stops |
 | ClientHello peek | 16 KiB within 5 s | Slowloris protection |
 | `StreamOpen` → `StreamResult` | 10 s; upstream dial 5 s | Bounded connection setup |
 | HTTP server | header read 10 s; idle 120 s; upstream response header 60 s; no total write timeout | Long downloads and streaming must work |

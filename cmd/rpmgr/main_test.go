@@ -56,13 +56,35 @@ func TestEveryCommandHasHelp(t *testing.T) {
 
 func TestUnimplementedCommandsReportIt(t *testing.T) {
 	for _, args := range [][]string{
-		{"controller"}, {"controller", "--config", "/tmp/c.yaml"}, {"all-in-one", "init"},
+		{"all-in-one", "init"},
 		{"gateway"}, {"connector"}, {"all-in-one"}, {"leave"}, {"ca", "status"},
 	} {
 		code, _, stderr := runRpmgr(args...)
 		if code != cli.ExitUsage || !strings.Contains(stderr, "not available in this build") {
 			t.Errorf("rpmgr %s: exit %d, stderr %q; want exit 2, not available", strings.Join(args, " "), code, stderr)
 		}
+	}
+}
+
+// TestController: `rpmgr controller` reads its boot file from --config, else $RPMGR_CONFIG, and stops
+// with the boot file's problem; running is tested in internal/controller.
+func TestController(t *testing.T) {
+	dir := t.TempDir()
+	missing := filepath.Join(dir, "missing.yaml")
+	code, _, stderr := runRpmgr("controller", "--config", missing)
+	if code != cli.ExitError || !strings.Contains(stderr, missing) {
+		t.Fatalf("a missing boot file: exit %d, stderr %q", code, stderr)
+	}
+	bad := filepath.Join(dir, "bad.yaml")
+	if err := os.WriteFile(bad, []byte("version: 1\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var errOut bytes.Buffer
+	code = cli.Main(context.Background(), commands(), []string{"controller"}, &cli.Env{Stdout: &bytes.Buffer{}, Stderr: &errOut,
+		Getenv: func(k string) string { return map[string]string{"RPMGR_CONFIG": bad}[k] }})
+	stderr = errOut.String()
+	if code != cli.ExitError || !strings.Contains(stderr, "public_url") {
+		t.Fatalf("a boot file without public_url: exit %d, stderr %q", code, stderr)
 	}
 }
 
