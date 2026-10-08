@@ -7,11 +7,13 @@ import (
 	"flag"
 	"fmt"
 
+	"github.com/felix-homelab/rpmgr/internal/allinone"
 	"github.com/felix-homelab/rpmgr/internal/cli"
 	"github.com/felix-homelab/rpmgr/internal/config"
 	"github.com/felix-homelab/rpmgr/internal/connector"
 	"github.com/felix-homelab/rpmgr/internal/controller"
 	"github.com/felix-homelab/rpmgr/internal/gateway"
+	"github.com/felix-homelab/rpmgr/internal/routes"
 	"github.com/felix-homelab/rpmgr/internal/telemetry"
 	"github.com/felix-homelab/rpmgr/internal/version"
 )
@@ -27,8 +29,7 @@ func commands() *cli.Command {
 				controllerInit()),
 			role("gateway", "run a gateway: public listeners and data sessions from connectors", runGateway),
 			role("connector", "run a connector: data sessions to gateways and the local targets", runConnector),
-			role("all-in-one", "run a controller and a gateway in one process", nil,
-				&cli.Command{Name: "init", Summary: "initialise an all-in-one installation", Run: cli.NotAvailable}),
+			role("all-in-one", "run a controller and a gateway in one process", runAllInOne, allInOneInit()),
 			enrollCommand(),
 			{Name: "leave", Summary: "revoke this agent's identity and remove it from the host", Run: cli.NotAvailable},
 			{Name: "status", Summary: "show the state of the agent on this host", Run: cli.NotAvailable},
@@ -111,7 +112,48 @@ func runController(ctx context.Context, env *cli.Env, path string) error {
 	if err != nil {
 		return err
 	}
-	return controller.Run(ctx, controller.RunOptions{Config: cfg, Version: version.Get().Version, Getenv: env.Getenv, Logger: logger})
+	return controller.Run(ctx, controller.RunOptions{Config: cfg, Version: version.Get().Version, Sources: routes.Sources(),
+		Getenv: env.Getenv, Logger: logger})
+}
+
+// runAllInOne is `rpmgr all-in-one`: it runs until SIGINT or SIGTERM; the gateway drains first.
+func runAllInOne(ctx context.Context, env *cli.Env, path string) error {
+	var cfg config.AllInOne
+	if err := config.Load(path, &cfg); err != nil {
+		return err
+	}
+	logger, err := telemetry.NewLogger(env.Stderr, cfg.Log)
+	if err != nil {
+		return err
+	}
+	return allinone.Run(ctx, allinone.RunOptions{Config: cfg, Version: version.Get().Version, Getenv: env.Getenv, Logger: logger})
+}
+
+// allInOneInit is `rpmgr all-in-one init`.
+func allInOneInit() *cli.Command {
+	var o controller.InitOptions
+	return &cli.Command{
+		Name:    "init",
+		Summary: "initialise an all-in-one installation: controller, CA and its enrolled gateway",
+		Flags: func(fs *flag.FlagSet) {
+			fs.StringVar(&o.ConfigPath, "config", "", "boot file, written if it does not exist (default $RPMGR_CONFIG, else /etc/rpmgr/all-in-one.yaml)")
+			fs.StringVar(&o.PublicURL, "public-url", "", "https URL of the web UI, the API and the agents; needed when the boot file does not exist")
+			fs.StringVar(&o.KEKSource, "kek-source", "", "KEK source of a new boot file: systemd-credential (default) or file")
+			fs.StringVar(&o.KEKPath, "kek-path", "", "KEK file of a new boot file with --kek-source file (default /etc/rpmgr/kek)")
+		},
+		Run: func(ctx context.Context, env *cli.Env, _ []string) error {
+			o.ConfigPath = config.Path(o.ConfigPath, "all-in-one", env.Getenv)
+			o.Getenv = env.Getenv
+			r, err := allinone.Init(ctx, o)
+			if err != nil {
+				return err
+			}
+			_, err = fmt.Fprintf(env.Stdout, "Initialised the all-in-one installation.\n  trust domain: %s\n  CA pin:       %s\n"+
+				"  gateway:      %s\n  KEK:          %s\nBack up the KEK separately: without it the database cannot be read.\n",
+				r.TrustDomain, r.RootPin, r.GatewayID, r.KEK)
+			return err
+		},
+	}
 }
 
 // controllerInit is `rpmgr controller init`.

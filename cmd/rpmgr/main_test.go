@@ -56,8 +56,7 @@ func TestEveryCommandHasHelp(t *testing.T) {
 
 func TestUnimplementedCommandsReportIt(t *testing.T) {
 	for _, args := range [][]string{
-		{"all-in-one", "init"},
-		{"all-in-one"}, {"leave"}, {"ca", "status"},
+		{"leave"}, {"ca", "status"},
 	} {
 		code, _, stderr := runRpmgr(args...)
 		if code != cli.ExitUsage || !strings.Contains(stderr, "not available in this build") {
@@ -71,7 +70,7 @@ func TestUnimplementedCommandsReportIt(t *testing.T) {
 func TestController(t *testing.T) {
 	dir := t.TempDir()
 	missing := filepath.Join(dir, "missing.yaml")
-	for _, role := range []string{"controller", "gateway", "connector"} {
+	for _, role := range []string{"controller", "gateway", "connector", "all-in-one"} {
 		code, _, stderr := runRpmgr(role, "--config", missing)
 		if code != cli.ExitError || !strings.Contains(stderr, missing) {
 			t.Fatalf("%s with a missing boot file: exit %d, stderr %q", role, code, stderr)

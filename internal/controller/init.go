@@ -6,6 +6,7 @@ package controller
 import (
 	"context"
 	"crypto/rand"
+	"crypto/x509"
 	"encoding/base64"
 	"errors"
 	"fmt"
@@ -32,6 +33,9 @@ type InitOptions struct {
 	PublicURL  string // required unless the boot file exists; must match it if both are given
 	KEKSource  string // for a new boot file: systemd-credential (default) or file
 	KEKPath    string // for a new boot file with the file source; default /etc/rpmgr/kek
+	// AllInOne reads and writes an all-in-one boot file (config.AllInOne) instead of a
+	// controller's.
+	AllInOne bool
 
 	// Set by tests; the zero values are the real ones.
 	CredentialsDir string                                                       // /etc/rpmgr/credstore
@@ -44,6 +48,7 @@ type InitOptions struct {
 type InitResult struct {
 	TrustDomain string
 	RootPin     string
+	Root        *x509.Certificate
 	KEK         string // where the KEK is, and whether init created it
 }
 
@@ -115,7 +120,7 @@ func Init(ctx context.Context, o InitOptions) (InitResult, error) {
 	if err != nil {
 		return InitResult{}, err
 	}
-	return InitResult{TrustDomain: td, RootPin: pki.RootPin(ca.Root()), KEK: where}, nil
+	return InitResult{TrustDomain: td, RootPin: pki.RootPin(ca.Root()), Root: ca.Root(), KEK: where}, nil
 }
 
 func (o *InitOptions) setDefaults() {
@@ -135,7 +140,18 @@ func (o *InitOptions) setDefaults() {
 
 // bootFile reads the boot file, or writes it from the options if it does not exist.
 func bootFile(o InitOptions, cfg *config.Controller) error {
-	err := config.Load(o.ConfigPath, cfg)
+	load := func(parse func(config.File) error) error {
+		if !o.AllInOne {
+			return parse(cfg)
+		}
+		var a config.AllInOne
+		if err := parse(&a); err != nil {
+			return err
+		}
+		*cfg = a.Controller()
+		return nil
+	}
+	err := load(func(f config.File) error { return config.Load(o.ConfigPath, f) })
 	switch {
 	case err == nil:
 		if o.PublicURL != "" && o.PublicURL != cfg.PublicURL {
@@ -163,7 +179,7 @@ func bootFile(o InitOptions, cfg *config.Controller) error {
 	if err != nil {
 		return err
 	}
-	if err := config.Parse(data, cfg); err != nil {
+	if err := load(func(f config.File) error { return config.Parse(data, f) }); err != nil {
 		return err
 	}
 	return writeNew(o.ConfigPath, data, 0o644)

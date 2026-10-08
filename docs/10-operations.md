@@ -269,6 +269,23 @@ log: { level: info, format: json }
 # HTTPS_PROXY / ALL_PROXY / NO_PROXY are honoured for the TCP transports (03-connections.md#transports-and-fallback)
 ```
 
+```yaml
+# /etc/rpmgr/all-in-one.yaml
+version: 1
+public_url: https://panel.example.com
+listen:
+  tcp: ":443"                 # the gateway's; the controller is reached through it
+  udp: ":443"
+  tunnel_udp: ""
+  http: ":80"                 # the controller's redirect
+  admin: "127.0.0.1:7381"     # reports the controller and the gateway
+database: { driver: sqlite, dsn: /var/lib/rpmgr/controller.db }
+kek: { source: systemd-credential, name: rpmgr-kek }
+tls: { cert_file: /etc/rpmgr/tls/panel.crt, key_file: /etc/rpmgr/tls/panel.key }   # optional
+state_dir: /var/lib/rpmgr     # the gateway's identity in gateway/identity, its state in gateway/
+log: { level: info, format: json }
+```
+
 Rules for every boot file:
 
 - One YAML document of at most 64 KiB with `version: 1`; another version, an unknown key or a value
