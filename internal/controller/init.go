@@ -17,11 +17,13 @@ import (
 
 	"go.yaml.in/yaml/v3"
 
+	rpmgrv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/v1"
 	"github.com/felix-homelab/rpmgr/internal/audit"
 	"github.com/felix-homelab/rpmgr/internal/authz"
 	"github.com/felix-homelab/rpmgr/internal/config"
 	"github.com/felix-homelab/rpmgr/internal/pki"
 	"github.com/felix-homelab/rpmgr/internal/secret"
+	"github.com/felix-homelab/rpmgr/internal/settings"
 	"github.com/felix-homelab/rpmgr/internal/store"
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
 	"github.com/felix-homelab/rpmgr/internal/store/migrations"
@@ -42,7 +44,12 @@ type InitOptions struct {
 	Getenv         func(string) string                                          // os.Getenv
 	Encrypt        func(ctx context.Context, name, path string, b []byte) error // systemd-creds encrypt
 	Now            func() time.Time                                             // time.Now
+	Memory         func() (uint64, bool)                                        // the host's memory in bytes, if known
 }
+
+// lowMemory is the host memory below which init picks the low-memory password-hash profile
+// (docs/04-security.md, "Human authentication and sessions").
+const lowMemory = 1 << 30
 
 // InitResult is what init reports to the operator.
 type InitResult struct {
@@ -108,6 +115,12 @@ func Init(ctx context.Context, o InitOptions) (InitResult, error) {
 		if err := pki.InitCA(ctx, tx, sealer, td, o.Now()); err != nil {
 			return err
 		}
+		if mem, ok := o.Memory(); ok && mem < lowMemory {
+			low := rpmgrv1.PasswordHashProfile_PASSWORD_HASH_PROFILE_LOW_MEMORY
+			if err := settings.InitInstanceTx(ctx, tx, &rpmgrv1.InstanceSettings{PasswordHashProfile: &low}); err != nil {
+				return err
+			}
+		}
 		_, err := audit.Append(ctx, tx, audit.Entry{ActorType: audit.ActorSystem, ActorID: "local-cli",
 			Action: "instance.init", TargetType: "instance", TargetID: td, Result: audit.Success,
 			Reason: "public URL " + cfg.PublicURL})
@@ -135,6 +148,9 @@ func (o *InitOptions) setDefaults() {
 	}
 	if o.Now == nil {
 		o.Now = time.Now
+	}
+	if o.Memory == nil {
+		o.Memory = hostMemory
 	}
 }
 
