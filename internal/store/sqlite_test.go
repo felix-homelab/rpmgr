@@ -417,8 +417,9 @@ func TestCrashRecovery(t *testing.T) {
 			if integrity != "ok" {
 				t.Fatalf("integrity_check after the crash: %s", integrity)
 			}
-			// The child may have committed one more transaction after its last report.
-			if parents < last || parents > last+1 || uncommitted != 0 {
+			// No reported commit may be lost. The child runs on while its reports are read and the
+			// signal is delivered, so it may have committed a few more; under load two were seen.
+			if parents < last || parents > last+10 || uncommitted != 0 {
 				t.Fatalf("last reported commit %d; after recovery %d parents, %d uncommitted children", last, parents, uncommitted)
 			}
 			if _, err := re.Writer.Exec(`INSERT INTO parents (id, name) VALUES ('after', 'after')`); err != nil {
