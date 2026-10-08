@@ -59,9 +59,9 @@ TestDNS_ProxiedOnlyForHttp	p2	-	-	DNS automation
 TestDNS_ReservedNamesNeverWritten	p2	-	-	DNS automation
 TestDNS_TokenWriteOnlyAndBaseURLFixed	p2	-	-	DNS automation
 TestGateway_CFConnectingIPOnlyForProxiedFromCloudflare	p2	-	-	proxied http routes
-TestTransport_PinnedRouteUsesPinnedSessions	pending	4.14	#84
-TestTransport_PinNeverFallsBack	pending	4.14	#84
-TestTransport_ChangeKeepsOpenConnections	pending	4.14	#84
+TestTransport_PinnedRouteUsesPinnedSessions	done	4.14	#84	precedence clause (route over connector over instance) in internal/routes (4.12)
+TestTransport_PinNeverFallsBack	done	4.14	#84
+TestTransport_ChangeKeepsOpenConnections	done	4.14	#84
 TestACME_ValidationWaitsForEveryGateway	pending	6.2	#103
 TestACME_DNS01OnlyManagedZones	p2	-	-	ACME DNS-01
 TestPolicy_MetadataAlwaysDenied	done	4.6	#76

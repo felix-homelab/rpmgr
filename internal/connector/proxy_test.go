@@ -222,7 +222,7 @@ func throughProxy(t *testing.T, proxyURL string, p *testProxy) {
 	t.Cleanup(m.Close)
 	_, port, _ := net.SplitHostPort(g.addr)
 	ep := net.JoinHostPort("gw.test", port)
-	m.Set([]connector.Gateway{{ID: id.ID, Endpoints: []string{ep}, Transports: []string{connector.TransportH2}}})
+	m.Set([]connector.Gateway{{ID: id.ID, Endpoints: []string{ep}, Routes: map[string]string{"rt_1": connector.TransportH2}}})
 	eventually(t, "no session through the proxy", func() bool { return g.sessions.Load().Count()["h2"] == 2 })
 	if got := p.seen(); !slices.Equal(got, []string{ep, ep}) {
 		t.Fatalf("the proxy carried %v, want both connections to %s", got, ep)
