@@ -752,6 +752,16 @@ var (
 				Unique:  true,
 				Columns: []*schema.Column{RouteTCPColumns[1], RouteTCPColumns[0]},
 			},
+			{
+				Name:    "routetcp_route_id",
+				Unique:  true,
+				Columns: []*schema.Column{RouteTCPColumns[4]},
+			},
+			{
+				Name:    "routetcp_port_allocation_id",
+				Unique:  true,
+				Columns: []*schema.Column{RouteTCPColumns[5]},
+			},
 		},
 	}
 	// RouteTargetsColumns holds the columns for the "route_targets" table.

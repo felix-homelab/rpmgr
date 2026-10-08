@@ -182,3 +182,34 @@ func TestRouteTarget_CrossOrgRefused(t *testing.T) {
 		}
 	})
 }
+
+// TestRouteTCP_Unique: a tcp route has one row, and a port allocation serves one route.
+func TestRouteTCP_Unique(t *testing.T) {
+	storetest.ForEachDialect(t, func(t *testing.T, db *store.DB) {
+		e := newEnv(t, db)
+		c := db.Client()
+		if err := e.pool(t, e.orgA, e.groupA, routes.TCP, 6000, 6001); err != nil {
+			t.Fatal(err)
+		}
+		var a1, a2 *ent.PortAllocation
+		if err := e.tx(t, func(tx *ent.Tx) error {
+			var err error
+			if a1, err = routes.Allocate(e.sys, tx, e.orgA, e.groupA, routes.TCP, 6000); err != nil {
+				return err
+			}
+			a2, err = routes.Allocate(e.sys, tx, e.orgA, e.groupA, routes.TCP, 6001)
+			return err
+		}); err != nil {
+			t.Fatal(err)
+		}
+		r1 := c.Route.Create().SetOrgID(e.orgA).SetName("one").SetType("tcp").SetGatewayGroupID(e.groupA).SaveX(e.sys)
+		r2 := c.Route.Create().SetOrgID(e.orgA).SetName("two").SetType("tcp").SetGatewayGroupID(e.groupA).SaveX(e.sys)
+		c.RouteTCP.Create().SetOrgID(e.orgA).SetRouteID(r1.ID).SetPortAllocationID(a1.ID).ExecX(e.sys)
+		if err := c.RouteTCP.Create().SetOrgID(e.orgA).SetRouteID(r2.ID).SetPortAllocationID(a1.ID).Exec(e.sys); !store.IsUniqueViolation(err) {
+			t.Fatalf("two routes on one port allocation: %v", err)
+		}
+		if err := c.RouteTCP.Create().SetOrgID(e.orgA).SetRouteID(r1.ID).SetPortAllocationID(a2.ID).Exec(e.sys); !store.IsUniqueViolation(err) {
+			t.Fatalf("a second row for a route: %v", err)
+		}
+	})
+}
