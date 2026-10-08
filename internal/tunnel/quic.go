@@ -87,9 +87,9 @@ const h2MinConnWindow = 4 << 20
 var ErrBudget = errors.New("tunnel: the window budget is exhausted")
 
 // AdmitH2 reserves the connection window of a new reverse-HTTP/2 session, which has no hook like
-// quic-go's: the full windows while the budget has room, smaller ones when it is tight (a stream
-// window of at most a sixteenth of the connection window), and ErrBudget when not even
-// 4 MiB fit. release returns the reservation; call it when the session ends.
+// quic-go's: the full windows while half the free budget holds them, smaller ones when it is tight
+// (at most half the free budget, and a stream window of at most a sixteenth of the connection
+// window), and ErrBudget when not even 4 MiB fit. release returns the reservation; call it when the session ends.
 func (b *Budget) AdmitH2(want H2Windows) (H2Windows, func(), error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -97,7 +97,9 @@ func (b *Budget) AdmitH2(want H2Windows) (H2Windows, func(), error) {
 	if b.limit > b.used {
 		free = b.limit - b.used
 	}
-	conn := min(uint64(want.Conn), free) //nolint:gosec // G115: a window is positive
+	// At most half of what is free: many sessions fit with shrinking windows, rather than the
+	// first few taking all of it.
+	conn := min(uint64(want.Conn), free/2) //nolint:gosec // G115: a window is positive
 	if conn < h2MinConnWindow {
 		return H2Windows{}, nil, ErrBudget
 	}
