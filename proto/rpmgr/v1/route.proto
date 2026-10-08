@@ -132,6 +132,58 @@ message Route {
   google.protobuf.Timestamp update_time = 25;
   // The version to send back with an update; output only.
   string etag = 30;
+  // What the agents report about it, with GetRoute and ListRoutes; output only.
+  RouteStatus status = 31;
+}
+
+// RouteState is a route's status, derived from what its agents report (docs/06-data-model.md,
+// "Derived route status").
+enum RouteState {
+  // Not derived.
+  ROUTE_STATE_UNSPECIFIED = 0;
+  // It is not enabled.
+  ROUTE_STATE_DISABLED = 1;
+  // An online agent of it has not applied its latest change yet.
+  ROUTE_STATE_PENDING = 2;
+  // Every enabled target is ready, and every enabled gateway of the group serves it.
+  ROUTE_STATE_READY = 3;
+  // A target is ready and a gateway serves it, but not all of them.
+  ROUTE_STATE_DEGRADED = 4;
+  // No target is ready, or no gateway serves it.
+  ROUTE_STATE_UNAVAILABLE = 5;
+  // An online agent of it rejected the snapshot with its latest change.
+  ROUTE_STATE_ERROR = 6;
+}
+
+// RouteStatus is what a route's agents report: the gateways of its group and the connectors of its
+// enabled targets.
+message RouteStatus {
+  // The state.
+  RouteState state = 1;
+  // How many targets are enabled.
+  int32 targets_total = 2;
+  // How many of them are ready: the connector is online and reports the route ready.
+  int32 targets_ready = 3;
+  // How many gateways of the group are enabled.
+  int32 gateways_total = 4;
+  // How many of them serve it: online, reporting it ready, with a data session to the connector
+  // of a ready target.
+  int32 gateways_serving = 5;
+  // The targets that are not ready and the gateways that do not serve it, with the reason.
+  repeated RouteNotServing not_serving = 6;
+  // With ERROR: the agents that rejected the snapshot, with their reasons.
+  repeated AgentApplyStatus rejections = 7;
+}
+
+// RouteNotServing is a target that is not ready, or a gateway that does not serve a route.
+message RouteNotServing {
+  // The target's or the gateway's ID.
+  string id = 1;
+  // OFFLINE (no control session), DISABLED (the connector or gateway), NO_DATA_SESSION (with the
+  // connector of a ready target), or the agent's own reason, as in NotReadyResource.
+  string reason = 2;
+  // The agent's details.
+  string detail = 3;
 }
 
 // TLSMode is where an http route's certificate comes from.

@@ -413,6 +413,9 @@ func TestUpdateRoute(t *testing.T) {
 		}
 	}
 	after, err := ada.rt.GetRoute(ctx, connect.NewRequest(&rpmgrv1.GetRouteRequest{RouteId: got.GetId()}))
+	if err == nil {
+		after.Msg.GetRoute().Status = nil // a read adds it, a write does not
+	}
 	if err != nil || !proto.Equal(after.Msg.GetRoute(), before) {
 		t.Fatalf("refused updates changed the route:\n%v\n%v", after.Msg.GetRoute(), before)
 	}
