@@ -118,3 +118,51 @@ func TestApplier_Apply(t *testing.T) {
 		t.Fatal("the dropped connector is still known")
 	}
 }
+
+func httpResource(id, upstream string, hosts ...string) *agentv1.Resource {
+	r := &agentv1.GatewayHTTPRoute{UpstreamProtocol: upstream, Connectors: []string{"con_1"}}
+	for _, hp := range hosts {
+		host, prefix, _ := strings.Cut(hp, "|")
+		r.Hosts = append(r.Hosts, &agentv1.HTTPHost{Hostname: host, PathPrefix: prefix})
+	}
+	return &agentv1.Resource{Id: id, Kind: &agentv1.Resource_GatewayHttpRoute{GatewayHttpRoute: r}}
+}
+
+func passResource(id string, hostnames ...string) *agentv1.Resource {
+	return &agentv1.Resource{Id: id, Kind: &agentv1.Resource_GatewayPassthroughRoute{GatewayPassthroughRoute: &agentv1.GatewayPassthroughRoute{
+		Hostnames: hostnames, Connectors: []string{"con_1"}}}}
+}
+
+// TestApplier_ValidateHTTP: http routes need normalised hostnames, path prefixes that start with
+// "/", a known upstream protocol, and a hostname and prefix no other route serves; a hostname is
+// never both an http and a passthrough route's.
+func TestApplier_ValidateHTTP(t *testing.T) {
+	a, _ := gateway.NewApplier()
+	ok := gatewaySnapshot(1, httpResource("rt_1", "http", "app.example.com", "app.example.com|/api", "*.example.com"),
+		httpResource("rt_2", "h2c", "app.example.com|/grpc"), passResource("rt_3", "db.example.com"))
+	if errs := a.Validate(ok); len(errs) != 0 {
+		t.Fatal(errs)
+	}
+	for _, tc := range []struct {
+		name string
+		snap *agentv1.Snapshot
+		want string
+	}{
+		{"no hosts", gatewaySnapshot(1, httpResource("rt_1", "http")), "without hostnames"},
+		{"an https upstream", gatewaySnapshot(1, httpResource("rt_1", "https", "app.example.com")), "upstream protocol"},
+		{"no upstream", gatewaySnapshot(1, httpResource("rt_1", "", "app.example.com")), "upstream protocol"},
+		{"upper case", gatewaySnapshot(1, httpResource("rt_1", "http", "App.example.com")), "not normalised"},
+		{"a relative prefix", gatewaySnapshot(1, httpResource("rt_1", "http", "app.example.com|api")), "start with /"},
+		{"the same host and prefix twice", gatewaySnapshot(1, httpResource("rt_1", "http", "app.example.com|/api"),
+			httpResource("rt_2", "http", "app.example.com|/api")), "also served by rt_1"},
+		{"http after passthrough", gatewaySnapshot(1, passResource("rt_1", "app.example.com"),
+			httpResource("rt_2", "http", "app.example.com")), "also a hostname of rt_1"},
+		{"passthrough after http", gatewaySnapshot(1, httpResource("rt_1", "http", "app.example.com|/x"),
+			passResource("rt_2", "app.example.com")), "also a hostname of rt_1"},
+	} {
+		errs := a.Validate(tc.snap)
+		if len(errs) == 0 || !strings.Contains(errs[0].GetMessage(), tc.want) {
+			t.Errorf("%s: %v, want an error about %q", tc.name, errs, tc.want)
+		}
+	}
+}

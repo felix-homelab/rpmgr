@@ -447,14 +447,7 @@ func TestCompile_GatewayHTTP(t *testing.T) {
 		f.httpRoute(t, "bare", true, true, nil)
 
 		got := map[string]*agentv1.GatewayHTTPRoute{}
-		// Gateways serve http routes from the next slice on; until then the source is not in
-		// Sources, which gateways of this version would refuse.
-		c2 := &snapshot.Compiler{Sources: []snapshot.Source{routes.GatewayHTTP}}
-		snap, err := c2.Compile(f.sys, f.db, snapshot.Agent{Identity: pki.Identity{TrustDomain: "rpmgr-teststor", Org: f.orgA, Kind: pki.KindGateway, ID: f.gateway}})
-		if err != nil {
-			t.Fatal(err)
-		}
-		for _, r := range snap.GetResources() {
+		for _, r := range f.compile(t, pki.KindGateway, f.gateway) {
 			if h := r.GetGatewayHttpRoute(); h != nil {
 				got[r.GetId()] = h
 			}

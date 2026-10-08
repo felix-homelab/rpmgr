@@ -28,7 +28,7 @@ import (
 // Sources are the snapshot sources of the route types implemented so far (docs/03-connections.md,
 // "Configuration reconciliation").
 func Sources() []snapshot.Source {
-	return []snapshot.Source{GatewayTCP, GatewayUDP, GatewayPassthrough, certs.Gateway, ConnectorRoutes, ConnectorGateways}
+	return []snapshot.Source{GatewayTCP, GatewayUDP, GatewayPassthrough, GatewayHTTP, certs.Gateway, ConnectorRoutes, ConnectorGateways}
 }
 
 // GatewayTCP compiles a gateway's tcp routes: every enabled tcp route of its gateway group with a

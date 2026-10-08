@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"fmt"
 	"slices"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -64,6 +65,7 @@ type Served struct {
 	TCP          *TCPRoutes
 	UDP          *UDPRoutes
 	Passthrough  *Passthrough
+	HTTP         *HTTPRoutes
 	Certificates *Certificates
 	Sessions     *Sessions
 }
@@ -93,7 +95,14 @@ func (a *Applier) Validate(snap *agentv1.Snapshot) []*agentv1.SnapshotError {
 			ports[proto][p] = id
 		}
 	}
-	hostnames := map[string]string{}
+	hostnames := map[string]string{} // passthrough hostnames, and http ones with their path prefix
+	hostname := func(id, h string) bool {
+		if n, err := domains.Normalize(h, true); err != nil || n != h {
+			bad(id, "hostname %q is not normalised", h)
+			return false
+		}
+		return true
+	}
 	for _, res := range snap.GetResources() {
 		id := res.GetId()
 		var connectors []string
@@ -123,16 +132,39 @@ func (a *Applier) Validate(snap *agentv1.Snapshot) []*agentv1.SnapshotError {
 				bad(id, "a passthrough route without hostnames")
 			}
 			for _, h := range p.GetHostnames() {
-				switch n, err := domains.Normalize(h, true); {
-				case err != nil || n != h:
-					bad(id, "hostname %q is not normalised", h)
-				case hostnames[h] != "":
-					bad(id, "hostname %s is also a hostname of %s", h, hostnames[h])
+				switch {
+				case !hostname(id, h):
+				case hostnames[h] != "" || hostnames["http "+h] != "":
+					bad(id, "hostname %s is also a hostname of %s", h, hostnames[h]+hostnames["http "+h])
 				default:
 					hostnames[h] = id
 				}
 			}
 			connectors = p.GetConnectors()
+		case res.GetGatewayHttpRoute() != nil:
+			r := res.GetGatewayHttpRoute()
+			if len(r.GetHosts()) == 0 {
+				bad(id, "an http route without hostnames")
+			}
+			if u := r.GetUpstreamProtocol(); u != "http" && u != "h2c" {
+				bad(id, "upstream protocol %q", u)
+			}
+			for _, hp := range r.GetHosts() {
+				h, prefix := hp.GetHostname(), hp.GetPathPrefix()
+				switch {
+				case !hostname(id, h):
+				case prefix != "" && !strings.HasPrefix(prefix, "/"):
+					bad(id, "path prefix %q does not start with /", prefix)
+				case hostnames[h] != "":
+					bad(id, "hostname %s is also a hostname of %s", h, hostnames[h])
+				case hostnames["http "+h+prefix] != "":
+					bad(id, "%s%s is also served by %s", h, prefix, hostnames["http "+h+prefix])
+				default:
+					hostnames["http "+h+prefix] = id
+					hostnames["http "+h] = id
+				}
+			}
+			connectors = r.GetConnectors()
 		default:
 			bad(id, "a gateway does not run %T resources", res.GetKind())
 		}
@@ -151,6 +183,7 @@ func (a *Applier) Apply(ctx context.Context, snap *agentv1.Snapshot, _ agent.Cha
 		tcp         []TCPRoute
 		udp         []UDPRoute
 		passthrough []PassthroughRoute
+		httpRoutes  []HTTPRoute
 		certs       []CertificateRoute
 	)
 	for _, res := range snap.GetResources() {
@@ -166,6 +199,14 @@ func (a *Applier) Apply(ctx context.Context, snap *agentv1.Snapshot, _ agent.Cha
 			connectors = r.GetConnectors()
 			udp = append(udp, UDPRoute{ID: res.GetId(), Port: uint16(r.GetPort()), //nolint:gosec // G115: Validate bounds the port
 				FlowIdle: time.Duration(r.GetFlowIdleTimeoutSeconds()) * time.Second})
+		case res.GetGatewayHttpRoute() != nil:
+			r := res.GetGatewayHttpRoute()
+			connectors = r.GetConnectors()
+			hr := HTTPRoute{ID: res.GetId(), Upstream: r.GetUpstreamProtocol(), WebSocket: r.GetWebsocket()}
+			for _, hp := range r.GetHosts() {
+				hr.Hosts = append(hr.Hosts, HTTPHost{Hostname: hp.GetHostname(), PathPrefix: hp.GetPathPrefix()})
+			}
+			httpRoutes = append(httpRoutes, hr)
 		case res.GetGatewayCertificate() != nil:
 			c := res.GetGatewayCertificate()
 			certs = append(certs, CertificateRoute{ID: res.GetId(), ContentSHA256: c.GetContentSha256(), Hostnames: c.GetHostnames()})
@@ -195,6 +236,9 @@ func (a *Applier) Apply(ctx context.Context, snap *agentv1.Snapshot, _ agent.Cha
 	}
 	if s.Certificates != nil {
 		status = append(status, s.Certificates.Apply(ctx, certs)...)
+	}
+	if s.HTTP != nil {
+		s.HTTP.Apply(httpRoutes)
 	}
 	if s.Sessions != nil {
 		s.Sessions.Recheck()
