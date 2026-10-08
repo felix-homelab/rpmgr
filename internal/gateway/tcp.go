@@ -233,6 +233,33 @@ func abort(c net.Conn) {
 	_ = c.Close()
 }
 
+// Drain stops accepting on every port and binds no new ones; open connections carry on until
+// Close.
+func (t *TCPRoutes) Drain() {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.closed = true
+	if t.retry != nil {
+		t.retry.Stop()
+	}
+	for _, pl := range t.ports {
+		_ = pl.ln.Close()
+	}
+}
+
+// Conns returns the number of open public connections.
+func (t *TCPRoutes) Conns() int {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	n := 0
+	for _, pl := range t.ports {
+		pl.mu.Lock()
+		n += len(pl.conns)
+		pl.mu.Unlock()
+	}
+	return n
+}
+
 // Close stops every listener and closes every connection.
 func (t *TCPRoutes) Close() {
 	t.cancel()
