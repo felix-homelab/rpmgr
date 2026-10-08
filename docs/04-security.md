@@ -405,16 +405,20 @@ Shown in [03-connections.md](03-connections.md#enrollment). Security-relevant ru
 
 | Permission | Owner | Admin | Operator | Viewer |
 |---|:-:|:-:|:-:|:-:|
-| View resources, status, metrics | ✓ | ✓ | ✓ | ✓ |
-| Routes, targets, health checks, access policies, private services and grants | ✓ | ✓ | ✓ | |
-| Enroll and revoke connectors | ✓ | ✓ | org setting | |
-| Gateways, gateway groups, port pools, domains, certificates | ✓ | ✓ | | |
+| View resources, status, metrics (`org.read`) | ✓ | ✓ | ✓ | ✓ |
+| Routes, targets, health checks, access policies, private services and grants (`routes.write`) | ✓ | ✓ | ✓ | |
+| Enroll and revoke connectors (`connectors.write`) | ✓ | ✓ | org setting | |
+| Gateways, gateway groups, port pools, domains, certificates (`infrastructure.write`) | ✓ | ✓ | | |
 | DNS providers, managed zones and their gates, DNS names; adopt, release, approve plans; view foreign records (Phase 2) | ✓ | ✓ | | |
-| Members (Admins cannot change Owners) | ✓ | ✓ | | |
-| Service accounts and their tokens | ✓ | ✓ | | |
-| Audit log read and export | ✓ | ✓ | | |
-| SSO, MFA policy, org settings | ✓ | | | |
+| Members (Admins cannot change Owners) (`members.write`) | ✓ | ✓ | | |
+| Service accounts and their tokens (Phase 2) | ✓ | ✓ | | |
+| Audit log read and export (`audit.read`) | ✓ | ✓ | | |
+| SSO, MFA policy, org settings (`org.write`) | ✓ | | | |
 | `connector.shell` (Phase 3) | explicit per-user grant, plus host opt-in, plus step-up | | | |
+
+[R] The API names the permission of each row as in brackets. Three more are granted by no org
+role: `public` (no sign-in), `authenticated` (any signed-in caller, on their own account) and
+`instance.admin` (the Instance Admin role).
 
 **Instance Admin** is a separate, instance-level role for the CA, the KEK, system gateways,
 system-org DNS providers and zones, and instance settings. In a single-org installation, the first
@@ -436,7 +440,7 @@ provider and never stored.
 ### One enforcement point, with defence in depth
 
 1. **API layer.** Every RPC declares its permission in the proto:
-   `option (rpmgr.v1.authz) = { permission: "route.update", resource_field: "route.id" }`. One
+   `option (rpmgr.v1.authz) = { permission: "routes.write", resource_field: "route.id" }`. One
    interceptor resolves the target's org and checks the caller's role. **A method without the
    annotation is rejected at startup** and a test walks the service registry to prove every method
    is annotated ([12](12-testing-and-quality.md#security-testing)), so no method can exist

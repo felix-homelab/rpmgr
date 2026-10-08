@@ -13,7 +13,7 @@ option go_package = "github.com/felix-homelab/rpmgr/gen/rpmgr/v1;rpmgrv1";
 // Authz is the authorization a method needs. One interceptor enforces it, and the server refuses
 // to start while any method lacks it (docs/04-security.md, "One enforcement point").
 message Authz {
-  // The permission the caller needs, for example "route.update".
+  // The permission the caller needs, for example "routes.write" (docs/04-security.md, "Roles").
   string permission = 1;
   // The request field that identifies the target resource, for example "route.id"; empty for
   // methods without a target resource. The interceptor resolves the resource's org from it.
