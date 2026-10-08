@@ -7,6 +7,8 @@ import (
 	"testing"
 
 	"connectrpc.com/connect"
+	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/fieldmaskpb"
 
 	agentv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/agent/v1"
 	rpmgrv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/v1"
@@ -19,6 +21,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store"
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/domain"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/routehostname"
 	"github.com/felix-homelab/rpmgr/internal/store/storetest"
 )
 
@@ -306,5 +309,96 @@ func TestRoutes_GatewayAcceptsThem(t *testing.T) {
 	a, _ := gateway.NewApplier()
 	if errs := a.Validate(snap); len(errs) != 0 {
 		t.Fatalf("the gateway refuses the API's routes: %v", errs)
+	}
+}
+
+// TestUpdateRoute: an update changes only the masked fields under the etag; a changed spec
+// replaces the route's settings and hostnames with every rule checked again, and a refused one
+// changes nothing; a route's type, group and ID cannot change; a Viewer changes nothing.
+func TestUpdateRoute(t *testing.T) {
+	e, ada, org, group := gatewayEnv(t)
+	ctx := context.Background()
+	e.verified(t, org, "example.com", true)
+	web := httpRoute("web", group, "app.example.com")
+	web.GetHttp().PathPrefix = "/api"
+	got, err := createRoute(ada, org, web, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	db, err := createRoute(ada, org, passthroughRoute("db", group, "db.example.com"), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	update := func(b *browser, id string, mask []string, in *rpmgrv1.Route, etag string) (*rpmgrv1.Route, error) {
+		in.Id = id
+		r, err := b.rt.UpdateRoute(ctx, connect.NewRequest(&rpmgrv1.UpdateRouteRequest{Route: in, UpdateMask: &fieldmaskpb.FieldMask{Paths: mask},
+			Etag: etag}))
+		if err != nil {
+			return nil, err
+		}
+		return r.Msg.GetRoute(), nil
+	}
+	up, err := update(ada, got.GetId(), []string{"description", "transport"}, &rpmgrv1.Route{Description: "the API",
+		Transport: rpmgrv1.DataTransport_DATA_TRANSPORT_H2, Name: "ignored"}, "1")
+	if err != nil || up.GetDescription() != "the API" || up.GetTransport() != rpmgrv1.DataTransport_DATA_TRANSPORT_H2 || up.GetName() != "web" ||
+		up.GetEtag() != "2" || up.GetHttp().GetPathPrefix() != "/api" {
+		t.Fatalf("a description and a transport: %v %v", up, err)
+	}
+	if _, err := update(ada, got.GetId(), []string{"description"}, &rpmgrv1.Route{}, "1"); reason(err) != api.ReasonEtagMismatch {
+		t.Fatalf("a stale etag: %v", err)
+	}
+	up, err = update(ada, got.GetId(), []string{"http.hostnames", "http.response_headers_set", "transport", "enabled"},
+		&rpmgrv1.Route{Spec: &rpmgrv1.Route_Http{Http: &rpmgrv1.HTTPRouteSpec{Hostnames: []string{"app.example.com", "www.example.com"},
+			ResponseHeadersSet: map[string]string{"cache-control": "no-store"}}}}, "")
+	if err != nil || len(up.GetHttp().GetHostnames()) != 2 || up.GetHttp().GetResponseHeadersSet()["Cache-Control"] != "no-store" ||
+		up.GetHttp().GetPathPrefix() != "/api" || up.GetTransport() != rpmgrv1.DataTransport_DATA_TRANSPORT_UNSPECIFIED || up.GetEnabled() {
+		t.Fatalf("new hostnames and headers, the default transport, disabled: %v %v", up, err)
+	}
+	if n := e.db.Client().RouteHostname.Query().Where(routehostname.RouteID(got.GetId())).CountX(e.sys); n != 2 {
+		t.Fatalf("%d hostname rows", n)
+	}
+	before := up
+	for name, c := range map[string]struct {
+		id     string
+		mask   []string
+		in     *rpmgrv1.Route
+		code   connect.Code
+		reason string
+	}{
+		"an unverified hostname": {got.GetId(), []string{"http.hostnames"}, &rpmgrv1.Route{Spec: &rpmgrv1.Route_Http{Http: &rpmgrv1.HTTPRouteSpec{
+			Hostnames: []string{"nowhere.example"}}}}, connect.CodeFailedPrecondition, apisvc.ReasonDomainNotVerified},
+		"ACME for a wildcard": {got.GetId(), []string{"http.hostnames"}, &rpmgrv1.Route{Spec: &rpmgrv1.Route_Http{Http: &rpmgrv1.HTTPRouteSpec{
+			Hostnames: []string{"*.example.com"}}}}, connect.CodeFailedPrecondition, apisvc.ReasonWildcardACME},
+		"the gateway's header": {got.GetId(), []string{"http.request_headers_set"}, &rpmgrv1.Route{Spec: &rpmgrv1.Route_Http{Http: &rpmgrv1.HTTPRouteSpec{
+			RequestHeadersSet: map[string]string{"Forwarded": "x"}}}}, connect.CodeInvalidArgument, ""},
+		"no hostname left": {got.GetId(), []string{"http.hostnames"}, &rpmgrv1.Route{}, connect.CodeInvalidArgument, ""},
+		"a certificate mode without one": {got.GetId(), []string{"http.tls_mode"}, &rpmgrv1.Route{Spec: &rpmgrv1.Route_Http{Http: &rpmgrv1.HTTPRouteSpec{
+			TlsMode: rpmgrv1.TLSMode_TLS_MODE_CERTIFICATE}}}, connect.CodeInvalidArgument, ""},
+		"a taken name":                    {got.GetId(), []string{"name"}, &rpmgrv1.Route{Name: "db"}, connect.CodeAlreadyExists, ""},
+		"no name":                         {got.GetId(), []string{"name"}, &rpmgrv1.Route{}, connect.CodeInvalidArgument, ""},
+		"a passthrough route made http":   {db.GetId(), []string{"http.hostnames"}, &rpmgrv1.Route{}, connect.CodeInvalidArgument, ""},
+		"an http route made passthrough":  {got.GetId(), []string{"tls_passthrough.hostnames"}, &rpmgrv1.Route{}, connect.CodeInvalidArgument, ""},
+		"the group":                       {got.GetId(), []string{"gateway_group_id"}, &rpmgrv1.Route{}, connect.CodeInvalidArgument, ""},
+		"the whole spec":                  {got.GetId(), []string{"http"}, &rpmgrv1.Route{}, connect.CodeInvalidArgument, ""},
+		"an empty mask":                   {got.GetId(), nil, &rpmgrv1.Route{}, connect.CodeInvalidArgument, ""},
+		"a passthrough host of http name": {db.GetId(), []string{"tls_passthrough.hostnames"}, &rpmgrv1.Route{Spec: &rpmgrv1.Route_TlsPassthrough{TlsPassthrough: &rpmgrv1.TLSPassthroughRouteSpec{Hostnames: []string{"www.example.com"}}}}, connect.CodeAlreadyExists, ""},
+	} {
+		_, err := update(ada, c.id, c.mask, c.in, "")
+		if code(err) != c.code || c.reason != "" && reason(err) != c.reason {
+			t.Errorf("%s: %v, want %v %s", name, err, c.code, c.reason)
+		}
+	}
+	after, err := ada.rt.GetRoute(ctx, connect.NewRequest(&rpmgrv1.GetRouteRequest{RouteId: got.GetId()}))
+	if err != nil || !proto.Equal(after.Msg.GetRoute(), before) {
+		t.Fatalf("refused updates changed the route:\n%v\n%v", after.Msg.GetRoute(), before)
+	}
+	if up, err := update(ada, db.GetId(), []string{"tls_passthrough.hostnames"}, &rpmgrv1.Route{Spec: &rpmgrv1.Route_TlsPassthrough{
+		TlsPassthrough: &rpmgrv1.TLSPassthroughRouteSpec{Hostnames: []string{"pg.example.com"}}}}, ""); err != nil ||
+		up.GetTlsPassthrough().GetHostnames()[0] != "pg.example.com" {
+		t.Fatalf("a passthrough route's hostname: %v %v", up, err)
+	}
+	vwr, _ := e.join(t, ada, org, "vwr@example.com", "viewer")
+	if _, err := update(vwr, got.GetId(), []string{"enabled"}, &rpmgrv1.Route{Enabled: true}, ""); code(err) != connect.CodePermissionDenied {
+		t.Fatalf("a Viewer updates: %v", err)
 	}
 }

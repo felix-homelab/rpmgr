@@ -13,6 +13,7 @@ import (
 
 	"connectrpc.com/connect"
 	"golang.org/x/net/http/httpguts"
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	rpmgrv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/v1"
@@ -39,6 +40,9 @@ const (
 	// ReasonWildcardACME: ACME cannot issue a wildcard certificate in Phase 1 (R42).
 	ReasonWildcardACME = "WILDCARD_NEEDS_CERTIFICATE"
 )
+
+// maxHostnames is how many hostnames a route has at most.
+const maxHostnames = 100
 
 // Routes is RouteService. Its methods run in the org scope the interceptor gives them.
 type Routes struct {
@@ -137,9 +141,13 @@ func checkSpec(in *rpmgrv1.Route) error {
 	invalid := func(format string, args ...any) error {
 		return connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("apisvc: "+format, args...))
 	}
+	hostnames := append(in.GetHttp().GetHostnames(), in.GetTlsPassthrough().GetHostnames()...)
 	switch {
 	case in.GetSpec() == nil:
 		return invalid("a route needs a spec: http or tls_passthrough")
+	case len(hostnames) == 0 || len(hostnames) > maxHostnames:
+		// The request's validation sees an update's hostnames only if it names them.
+		return invalid("a route needs 1 to %d hostnames", maxHostnames)
 	case in.GetHttp() == nil:
 		return nil
 	}
@@ -201,6 +209,94 @@ func routeError(err error) error {
 		return connect.NewError(connect.CodeInvalidArgument, err)
 	}
 	return storeError(err)
+}
+
+// routeFields are the fields of a route of type t a client may change: never the type itself.
+func routeFields(t route.Type) []string {
+	fields := []string{"name", "enabled", "labels", "description", "transport"}
+	switch t {
+	case route.TypeHTTP:
+		for _, f := range []string{"hostnames", "path_prefix", "tls_mode", "certificate_id", "port80", "hsts_max_age_seconds", "host_header",
+			"request_headers_set", "response_headers_set", "websocket", "max_body_bytes"} {
+			fields = append(fields, "http."+f)
+		}
+	case route.TypeTLSPassthrough:
+		fields = append(fields, "tls_passthrough.hostnames")
+	}
+	return fields
+}
+
+// UpdateRoute implements RouteService. A change of the spec replaces the route's settings and
+// hostnames in the same transaction, so every rule is checked again, verified domains included.
+func (r *Routes) UpdateRoute(ctx context.Context, req *connect.Request[rpmgrv1.UpdateRouteRequest]) (
+	*connect.Response[rpmgrv1.UpdateRouteResponse], error) {
+	m := req.Msg
+	var out *rpmgrv1.Route
+	rev, err := store.ConfigTx(ctx, r.DB, func(tx *ent.Tx) ([]string, error) {
+		cur, err := tx.Route.Get(ctx, m.GetRoute().GetId())
+		if err != nil {
+			return nil, err
+		}
+		was, err := routeOf(ctx, tx.Client(), cur)
+		if err != nil {
+			return nil, err
+		}
+		if err := api.CheckEtag(m.GetEtag(), cur.Version, was); err != nil {
+			return nil, err
+		}
+		next := proto.Clone(was).(*rpmgrv1.Route)
+		if err := api.ApplyMask(next, m.GetRoute(), m.GetUpdateMask(), routeFields(cur.Type)...); err != nil {
+			return nil, err
+		}
+		if err := checkSpec(next); err != nil {
+			return nil, err
+		}
+		u := tx.Route.UpdateOneID(cur.ID).Where(route.Version(cur.Version)).SetName(next.GetName()).SetEnabled(next.GetEnabled()).
+			SetLabels(next.GetLabels()).SetDescription(next.GetDescription()).SetUpdatedAt(r.now()).SetUpdatedBy(api.CallerFrom(ctx).UserID)
+		if t, ok := storeRouteTransports[next.GetTransport()]; ok {
+			u.SetTransport(t)
+		} else {
+			u.ClearTransport()
+		}
+		row, err := u.Save(ctx)
+		if err != nil {
+			return nil, err
+		}
+		if !proto.Equal(specOf(was), specOf(next)) {
+			if err := routes.RemoveHostnames(ctx, tx, row.ID); err != nil {
+				return nil, err
+			}
+			hostnames, prefix := next.GetTlsPassthrough().GetHostnames(), ""
+			if h := next.GetHttp(); h != nil {
+				if _, err := tx.RouteHTTP.Delete().Where(routehttp.RouteID(row.ID)).Exec(ctx); err != nil {
+					return nil, err
+				}
+				if err := createHTTP(ctx, tx, row, h); err != nil {
+					return nil, err
+				}
+				hostnames, prefix = h.GetHostnames(), h.GetPathPrefix()
+			}
+			for _, name := range hostnames {
+				if _, err := routes.AddHostname(ctx, tx, row.ID, name, prefix); err != nil {
+					return nil, err
+				}
+			}
+		}
+		out, err = routeOf(ctx, tx.Client(), row)
+		return []string{row.ID}, err
+	})
+	if err != nil {
+		return nil, routeError(err)
+	}
+	return connect.NewResponse(&rpmgrv1.UpdateRouteResponse{Route: out, Revision: revisionOf(rev)}), nil
+}
+
+// specOf is a route's spec as a message, for comparing two versions of it.
+func specOf(r *rpmgrv1.Route) proto.Message {
+	if h := r.GetHttp(); h != nil {
+		return h
+	}
+	return r.GetTlsPassthrough()
 }
 
 // GetRoute implements RouteService.

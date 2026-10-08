@@ -5,6 +5,7 @@ syntax = "proto3";
 package rpmgr.v1;
 
 import "buf/validate/validate.proto";
+import "google/protobuf/field_mask.proto";
 import "google/protobuf/timestamp.proto";
 import "rpmgr/v1/common.proto";
 import "rpmgr/v1/connector.proto";
@@ -35,6 +36,13 @@ service RouteService {
     option (rpmgr.v1.authz) = {
       permission: "org.read"
       resource_field: "org_id"
+    };
+  }
+  // UpdateRoute changes the fields the mask names; a route's type does not change.
+  rpc UpdateRoute(UpdateRouteRequest) returns (UpdateRouteResponse) {
+    option (rpmgr.v1.authz) = {
+      permission: "routes.write"
+      resource_field: "route.id"
     };
   }
   // DeleteRoute deletes a route with its hostnames, targets and port.
@@ -215,6 +223,25 @@ message ListRoutesResponse {
   repeated Route routes = 1;
   // The token of the next page; empty after the last.
   string next_page_token = 2;
+}
+
+// UpdateRouteRequest is a changed route.
+message UpdateRouteRequest {
+  // The route with its ID and the new values of the fields the mask names.
+  Route route = 1 [(buf.validate.field).required = true];
+  // The fields to change: name, enabled, labels, description, transport, and the fields of the
+  // route's spec by their paths, such as http.hostnames or tls_passthrough.hostnames.
+  google.protobuf.FieldMask update_mask = 2;
+  // The etag the caller read; empty skips the check.
+  string etag = 3;
+}
+
+// UpdateRouteResponse is the changed route.
+message UpdateRouteResponse {
+  // The route.
+  Route route = 1;
+  // The configuration revision of the change.
+  Revision revision = 2;
 }
 
 // DeleteRouteRequest names a route.
