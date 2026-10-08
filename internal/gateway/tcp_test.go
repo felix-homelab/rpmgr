@@ -42,8 +42,15 @@ type plane struct {
 	targets  *conn.Targets
 }
 
-// newPlane starts the gateway and the connector; route IDs map to the service at target.
+// newPlane starts the gateway and the connector; route IDs map to the service at target, which
+// gets a PROXY v1 header.
 func newPlane(t *testing.T, target string, routeIDs ...string) *plane {
+	t.Helper()
+	return newPlaneWith(t, target, "v1", routeIDs...)
+}
+
+// newPlaneWith is newPlane with the PROXY protocol version proxy, "none" for none.
+func newPlaneWith(t *testing.T, target, proxy string, routeIDs ...string) *plane {
 	t.Helper()
 	w := newWorld(t)
 	p := &plane{sessions: gateway.NewSessions(gateway.SessionsOptions{TrustDomain: td, GatewayID: w.gw.ID,
@@ -94,7 +101,7 @@ func newPlane(t *testing.T, target string, routeIDs ...string) *plane {
 	gws := map[string]string{}
 	for _, id := range routeIDs {
 		crs = append(crs, conn.Route{ID: id, Targets: []conn.Target{{ID: "tg_" + id, Host: host, Port: uint16(port), //nolint:gosec // G115: a port
-			ProxyProtocol: "v1"}}})
+			ProxyProtocol: proxy}}})
 		gws[id] = conn.TransportQUIC
 	}
 	p.targets.Set(crs)

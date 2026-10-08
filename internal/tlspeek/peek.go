@@ -271,3 +271,11 @@ func (r *replayConn) CloseWrite() error {
 	}
 	return errors.ErrUnsupported
 }
+
+// SetLinger lets a relay reset the underlying TCP connection.
+func (r *replayConn) SetLinger(sec int) error {
+	if tc, ok := r.Conn.(*net.TCPConn); ok {
+		return tc.SetLinger(sec)
+	}
+	return nil
+}

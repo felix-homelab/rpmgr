@@ -280,9 +280,17 @@ func (t *TCPRoutes) Close() {
 // handle carries one public connection over a stream to a connector of the route. A connection
 // that gets no stream is reset, as an unreachable service would reset it.
 func (t *TCPRoutes) handle(c net.Conn, r *TCPRoute) {
-	open := &tunnelv1.StreamOpen{Kind: tunnelv1.StreamKind_STREAM_KIND_TCP, RouteId: r.ID}
-	if t.o.Revision != nil {
-		open.SnapshotRev = t.o.Revision()
+	carry(t.ctx, t.o.Sessions, t.o.Revision, t.o.Logger, c, r.ID, "", r.IdleTimeout)
+}
+
+// carry opens a stream for a route on one of its connectors' sessions and relays c over it, with
+// the client's and the listener's address and, for TLS passthrough, the SNI in StreamOpen. A
+// connection that gets no stream is reset, as an unreachable service would reset it.
+func carry(ctx context.Context, s *Sessions, rev func() *agentv1.Revision, logger *slog.Logger, c net.Conn, routeID, sni string,
+	idle time.Duration) {
+	open := &tunnelv1.StreamOpen{Kind: tunnelv1.StreamKind_STREAM_KIND_TCP, RouteId: routeID, Sni: sni}
+	if rev != nil {
+		open.SnapshotRev = rev()
 	}
 	if a, ok := c.RemoteAddr().(*net.TCPAddr); ok {
 		ap := a.AddrPort()
@@ -292,14 +300,14 @@ func (t *TCPRoutes) handle(c net.Conn, r *TCPRoute) {
 		ap := a.AddrPort()
 		open.DstIp, open.DstPort = ap.Addr().Unmap().AsSlice(), uint32(ap.Port())
 	}
-	st, code, err := t.o.Sessions.OpenStream(t.ctx, open)
+	st, code, err := s.OpenStream(ctx, open)
 	if err != nil || code != tunnelv1.ResultCode_RESULT_CODE_NO_ERROR {
-		t.o.Logger.Debug("no stream for a connection", "route", r.ID, "code", code, "error", err)
+		logger.Debug("no stream for a connection", "route", routeID, "code", code, "error", err)
 		abort(c)
 		return
 	}
-	if r.IdleTimeout > 0 {
-		c = newIdleConn(c, r.IdleTimeout)
+	if idle > 0 {
+		c = newIdleConn(c, idle)
 	}
 	tunnel.Relay(st, c)
 }

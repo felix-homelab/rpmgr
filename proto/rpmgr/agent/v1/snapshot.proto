@@ -60,6 +60,8 @@ message Resource {
     ConnectorRoute connector_route = 4;
     // Connectors: a gateway to keep data sessions to.
     ConnectorGateway connector_gateway = 5;
+    // Gateways: a tls_passthrough route's hostnames.
+    GatewayPassthroughRoute gateway_passthrough_route = 6;
     // A large item the agent fetches by hash with Control.FetchResource.
     ResourceReference reference = 15;
   }
@@ -73,6 +75,15 @@ message GatewayTCPRoute {
   uint32 idle_timeout_seconds = 2;
   // The connectors that serve the route, sorted: the gateway opens its streams only to them.
   repeated string connectors = 3;
+}
+
+// GatewayPassthroughRoute is a tls_passthrough route as a gateway serves it on port 443: a TLS
+// connection whose SNI is one of the hostnames goes, still encrypted, to one of the connectors.
+message GatewayPassthroughRoute {
+  // The hostnames, sorted; one may start with "*." for every name one label below.
+  repeated string hostnames = 1;
+  // The connectors that serve the route, sorted.
+  repeated string connectors = 2;
 }
 
 // TransportPolicy is how a route chooses its data-session transport (docs/03-connections.md,
@@ -90,7 +101,7 @@ enum TransportPolicy {
 
 // ConnectorRoute is a route as a connector serves it; the resource ID is the route's ID.
 message ConnectorRoute {
-  // The route's type: "tcp" in this version.
+  // The route's type: "tcp" or "tls_passthrough" in this version.
   string type = 1;
   // Where the connector delivers the route's streams, by priority, then ID.
   repeated Target targets = 2;

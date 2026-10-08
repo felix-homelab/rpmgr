@@ -11,12 +11,14 @@ import (
 
 	agentv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/agent/v1"
 	rpmgrv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/v1"
+	"github.com/felix-homelab/rpmgr/internal/domains"
 	"github.com/felix-homelab/rpmgr/internal/pki"
 	"github.com/felix-homelab/rpmgr/internal/routes"
 	"github.com/felix-homelab/rpmgr/internal/settings"
 	"github.com/felix-homelab/rpmgr/internal/snapshot"
 	"github.com/felix-homelab/rpmgr/internal/store"
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/domain"
 	"github.com/felix-homelab/rpmgr/internal/store/storetest"
 )
 
@@ -243,6 +245,62 @@ func TestCompile_ConnectorGateways(t *testing.T) {
 		c.RouteTarget.Update().SetEnabled(false).ExecX(f.sys)
 		if got := gateways(f.c1); len(got) != 0 {
 			t.Fatalf("without a route: %v", got)
+		}
+	})
+}
+
+// TestCompile_Passthrough: a gateway gets the enabled tls_passthrough routes of its group that have
+// hostnames, with them sorted and the connectors that serve them; a connector gets such a route
+// with its type.
+func TestCompile_Passthrough(t *testing.T) {
+	storetest.ForEachDialect(t, func(t *testing.T, db *store.DB) {
+		f := newFleet(t, db)
+		c := db.Client()
+		if err := f.tx(t, func(tx *ent.Tx) error {
+			d, err := domains.Claim(f.sys, tx, f.orgA, "example.com", true)
+			if err != nil {
+				return err
+			}
+			return tx.Domain.UpdateOne(d).SetStatus(domain.StatusVerified).Exec(f.sys)
+		}); err != nil {
+			t.Fatal(err)
+		}
+		mk := func(name string, enabled bool, hostnames ...string) string {
+			id := c.Route.Create().SetOrgID(f.orgA).SetName(name).SetType("tls_passthrough").SetGatewayGroupID(f.groupA).
+				SetEnabled(enabled).SaveX(f.sys).ID
+			c.RouteTarget.Create().SetOrgID(f.orgA).SetRouteID(id).SetConnectorID(f.c1).SetKind("address").SetHost("10.0.0.7").
+				SetPort(443).ExecX(f.sys)
+			c.RouteTarget.Create().SetOrgID(f.orgA).SetRouteID(id).SetConnectorID(f.c2).SetKind("address").SetHost("10.0.0.7").
+				SetPort(443).ExecX(f.sys)
+			for _, h := range hostnames {
+				if err := f.tx(t, func(tx *ent.Tx) error { _, err := routes.AddHostname(f.sys, tx, id, h, ""); return err }); err != nil {
+					t.Fatal(err)
+				}
+			}
+			return id
+		}
+		db1 := mk("pt-db", true, "db.example.com", "*.pg.example.com", "admin.example.com")
+		mk("pt-off", false, "off.example.com")
+		mk("pt-bare", true)
+		var got []*agentv1.GatewayPassthroughRoute
+		for _, r := range f.compile(t, pki.KindGateway, f.gateway) {
+			if p := r.GetGatewayPassthroughRoute(); p != nil {
+				if r.GetId() != db1 {
+					t.Fatalf("passthrough resource %s, want only %s", r.GetId(), db1)
+				}
+				got = append(got, p)
+			}
+		}
+		want := []string{f.c1, f.c2}
+		slices.Sort(want)
+		if len(got) != 1 || !slices.Equal(got[0].GetHostnames(), []string{"*.pg.example.com", "admin.example.com", "db.example.com"}) ||
+			!slices.Equal(got[0].GetConnectors(), want) {
+			t.Fatalf("passthrough resources %v", got)
+		}
+		for _, r := range f.compile(t, pki.KindConnector, f.c1) {
+			if r.GetId() == db1 && r.GetConnectorRoute().GetType() != "tls_passthrough" {
+				t.Fatalf("connector resource %v", r)
+			}
 		}
 	})
 }
