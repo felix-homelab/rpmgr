@@ -404,6 +404,13 @@ func TestCrashRecovery(t *testing.T) {
 					t.Fatalf("child: %s", line)
 				}
 			}
+			// Reports the child wrote before it died may still be in the pipe: under load the
+			// child runs well ahead of this loop. The last of them is its last commit.
+			for sc.Scan() {
+				if n, ok := strings.CutPrefix(sc.Text(), "committed "); ok {
+					last, _ = strconv.Atoi(n)
+				}
+			}
 			_ = cmd.Wait()
 			if !killed {
 				t.Fatalf("child ended before it was killed (last commit %d)", last)
