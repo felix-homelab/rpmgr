@@ -29,7 +29,10 @@ import (
 
 // apiCommands are the verb-first commands of the public API (docs/16-cli.md, D51).
 func apiCommands() []*cli.Command {
-	return []*cli.Command{getCommand(), listCommand(), deleteCommand()}
+	createRoute, updateRoute := routeCommands()
+	return []*cli.Command{getCommand(), listCommand(), deleteCommand(),
+		group("create", "create a resource of the public API", createRoute),
+		group("update", "change a resource of the public API", updateRoute)}
 }
 
 // kindsHelp lists the kinds for a command's synopsis.
