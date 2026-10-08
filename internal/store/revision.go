@@ -150,6 +150,15 @@ func WithoutTxHook(ctx context.Context) context.Context {
 	return context.WithValue(ctx, txHookKey{}, (func(context.Context, *ent.Tx) error)(nil))
 }
 
+// CarryTxHook returns dst with the transaction hook of src, if src has one: a service that writes
+// under a scope of its own still commits the request's audit entry and request_id with its change.
+func CarryTxHook(dst, src context.Context) context.Context {
+	if hook, _ := src.Value(txHookKey{}).(func(context.Context, *ent.Tx) error); hook != nil {
+		return context.WithValue(dst, txHookKey{}, hook)
+	}
+	return dst
+}
+
 func runTxHook(ctx context.Context, tx *ent.Tx) error {
 	if hook, _ := ctx.Value(txHookKey{}).(func(context.Context, *ent.Tx) error); hook != nil {
 		return hook(ctx, tx)

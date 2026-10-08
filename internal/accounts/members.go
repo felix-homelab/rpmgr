@@ -49,7 +49,8 @@ type Member struct {
 // Members applies the member rules of docs/04-security.md, "Roles": only an Owner makes, changes
 // or removes an Owner, and an org keeps at least one. The caller's permission (members.write) is
 // the API's to check; by and byRole are the acting member and their role. Removals and
-// downgrades go to the revocation log.
+// downgrades go to the revocation log. A change commits together with the transaction hook of its
+// ctx: the request's audit entry and request_id.
 type Members struct {
 	*Accounts
 	RevLog *revlog.Log
@@ -74,7 +75,7 @@ func (m *Members) List(orgID string) ([]Member, error) {
 
 // Invite creates a one-time link that makes its holder a member of the org with role, and returns
 // its token. Only an Owner invites an Owner.
-func (m *Members) Invite(orgID, email, role, by, byRole string) (string, error) {
+func (m *Members) Invite(ctx context.Context, orgID, email, role, by, byRole string) (string, error) {
 	if !slices.Contains(roles, role) {
 		return "", ErrRole
 	}
@@ -89,7 +90,7 @@ func (m *Members) Invite(orgID, email, role, by, byRole string) (string, error) 
 	if err != nil {
 		return "", err
 	}
-	err = store.WriteTx(m.sys, m.db, func(tx *ent.Tx) error {
+	err = store.WriteTx(store.CarryTxHook(m.sys, ctx), m.db, func(tx *ent.Tx) error {
 		inv, err := tx.Invitation.Create().SetOrgID(orgID).SetEmail(email).SetRole(invitation.Role(role)).
 			SetTokenHash(token.Hash(tok)).SetCreatedBy(by).SetCreatedAt(m.now()).SetExpiresAt(m.now().Add(InvitationTTL)).Save(m.sys)
 		if err != nil {
@@ -135,7 +136,7 @@ func (m *Members) AcceptInvitation(ctx context.Context, tok, signedIn, displayNa
 		}
 	}
 	var u *ent.User
-	err = store.WriteTx(m.sys, m.db, func(tx *ent.Tx) error {
+	err = store.WriteTx(store.CarryTxHook(m.sys, ctx), m.db, func(tx *ent.Tx) error {
 		if signedIn != "" {
 			if u, err = tx.User.Get(m.sys, signedIn); err != nil {
 				return err
@@ -176,11 +177,11 @@ func (m *Members) AcceptInvitation(ctx context.Context, tok, signedIn, displayNa
 
 // SetRole changes a member's role. Only an Owner makes or changes an Owner, and the last Owner
 // stays one. A lower role is recorded as a downgrade in the revocation log.
-func (m *Members) SetRole(orgID, userID, role, by, byRole string) error {
+func (m *Members) SetRole(ctx context.Context, orgID, userID, role, by, byRole string) error {
 	if !slices.Contains(roles, role) {
 		return ErrRole
 	}
-	return store.WriteTx(m.sys, m.db, func(tx *ent.Tx) error {
+	return store.WriteTx(store.CarryTxHook(m.sys, ctx), m.db, func(tx *ent.Tx) error {
 		cur, err := m.member(tx, orgID, userID)
 		if err != nil {
 			return err
@@ -208,8 +209,8 @@ func (m *Members) SetRole(orgID, userID, role, by, byRole string) error {
 }
 
 // Remove ends a membership. Only an Owner removes an Owner, and the last Owner stays.
-func (m *Members) Remove(orgID, userID, by, byRole string) error {
-	return store.WriteTx(m.sys, m.db, func(tx *ent.Tx) error {
+func (m *Members) Remove(ctx context.Context, orgID, userID, by, byRole string) error {
+	return store.WriteTx(store.CarryTxHook(m.sys, ctx), m.db, func(tx *ent.Tx) error {
 		cur, err := m.member(tx, orgID, userID)
 		if err != nil {
 			return err
@@ -265,4 +266,25 @@ func (m *Members) audit(tx *ent.Tx, orgID, by, action, targetType, target, reaso
 	_, err := audit.Append(m.sys, tx, audit.Entry{OrgID: orgID, ActorType: actorType(by), ActorID: by, Action: action,
 		TargetType: targetType, TargetID: target, Result: audit.Success, Reason: reason})
 	return err
+}
+
+// Org returns an org.
+func (m *Members) Org(orgID string) (*ent.Org, error) {
+	return m.db.ReadClient().Org.Get(m.sys, orgID)
+}
+
+// Rename gives an org a new name.
+func (m *Members) Rename(ctx context.Context, orgID, name, by string) (*ent.Org, error) {
+	var o *ent.Org
+	err := store.WriteTx(store.CarryTxHook(m.sys, ctx), m.db, func(tx *ent.Tx) error {
+		old, err := tx.Org.Get(m.sys, orgID)
+		if err != nil {
+			return err
+		}
+		if o, err = tx.Org.UpdateOne(old).SetName(name).Save(m.sys); err != nil {
+			return err
+		}
+		return m.audit(tx, orgID, by, "org.rename", "org", orgID, old.Name+" to "+name)
+	})
+	return o, err
 }

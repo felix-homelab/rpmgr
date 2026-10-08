@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"slices"
+	"time"
 
 	"buf.build/go/protovalidate"
 	"connectrpc.com/connect"
@@ -212,10 +213,24 @@ func (s *Server) authorize(ctx context.Context, md protoreflect.MethodDescriptor
 			return nil, errNotFound()
 		}
 	}
-	if a.GetStepUp() && (caller.StepUpAt.IsZero() || s.o.Now().Sub(caller.StepUpAt) > StepUpWindow) {
-		return nil, withInfo(connect.NewError(connect.CodeUnauthenticated, errors.New("api: step-up required")), ReasonStepUpRequired, nil)
+	if a.GetStepUp() {
+		if err := stepUp(caller, s.o.Now()); err != nil {
+			return nil, err
+		}
 	}
 	return ctx, nil
+}
+
+// RequireStepUp is the interceptor's step-up check, for a method that needs a step-up only for
+// some requests, such as granting Admin or Owner (docs/04-security.md, "Human authentication and
+// sessions").
+func RequireStepUp(ctx context.Context, now time.Time) error { return stepUp(CallerFrom(ctx), now) }
+
+func stepUp(c *Caller, now time.Time) error {
+	if c == nil || c.StepUpAt.IsZero() || now.Sub(c.StepUpAt) > StepUpWindow {
+		return withInfo(connect.NewError(connect.CodeUnauthenticated, errors.New("api: step-up required")), ReasonStepUpRequired, nil)
+	}
+	return nil
 }
 
 // orgOf returns the org of the resource a request names.

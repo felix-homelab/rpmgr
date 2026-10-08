@@ -48,7 +48,7 @@ func newMembers(t *testing.T) *members {
 // join invites an address with a role, as the Owner, and accepts it with a new account.
 func (x *members) join(t *testing.T, email, role string) string {
 	t.Helper()
-	tok, err := x.m.Invite(x.org, email, role, x.owner, authz.RoleOwner)
+	tok, err := x.m.Invite(context.Background(), x.org, email, role, x.owner, authz.RoleOwner)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -75,16 +75,16 @@ func (x *members) role(t *testing.T, user string) string {
 func TestInvitations(t *testing.T) {
 	x := newMembers(t)
 	ctx := context.Background()
-	if _, err := x.m.Invite(x.org, "new@example.com", "superuser", x.owner, authz.RoleOwner); !errors.Is(err, accounts.ErrRole) {
+	if _, err := x.m.Invite(context.Background(), x.org, "new@example.com", "superuser", x.owner, authz.RoleOwner); !errors.Is(err, accounts.ErrRole) {
 		t.Fatalf("an unknown role: %v", err)
 	}
-	if _, err := x.m.Invite(x.org, "new@example.com", authz.RoleOwner, x.admin, authz.RoleAdmin); !errors.Is(err, accounts.ErrOwnerOnly) {
+	if _, err := x.m.Invite(context.Background(), x.org, "new@example.com", authz.RoleOwner, x.admin, authz.RoleAdmin); !errors.Is(err, accounts.ErrOwnerOnly) {
 		t.Fatalf("an Admin invites an Owner: %v", err)
 	}
-	if _, err := x.m.Invite(x.org, "not an address", authz.RoleViewer, x.owner, authz.RoleOwner); !errors.Is(err, accounts.ErrEmail) {
+	if _, err := x.m.Invite(context.Background(), x.org, "not an address", authz.RoleViewer, x.owner, authz.RoleOwner); !errors.Is(err, accounts.ErrEmail) {
 		t.Fatalf("a bad address: %v", err)
 	}
-	tok, err := x.m.Invite(x.org, "Op@Example.com", authz.RoleOperator, x.admin, authz.RoleAdmin)
+	tok, err := x.m.Invite(context.Background(), x.org, "Op@Example.com", authz.RoleOperator, x.admin, authz.RoleAdmin)
 	if err != nil || len(tok) != token.Len {
 		t.Fatalf("%q %v", tok, err)
 	}
@@ -101,7 +101,7 @@ func TestInvitations(t *testing.T) {
 
 	// An existing account: sign in first, as that account.
 	org2 := x.db.Client().Org.Create().SetName("Second").SetSlug("second").SaveX(x.sys).ID
-	tok, _ = x.m.Invite(org2, "vwr@example.com", authz.RoleAdmin, x.owner, authz.RoleOwner)
+	tok, _ = x.m.Invite(context.Background(), org2, "vwr@example.com", authz.RoleAdmin, x.owner, authz.RoleOwner)
 	if _, _, err := x.m.AcceptInvitation(ctx, tok, "", "Someone", pw); !errors.Is(err, accounts.ErrSignInFirst) {
 		t.Fatalf("an existing address, signed out: %v", err)
 	}
@@ -111,12 +111,12 @@ func TestInvitations(t *testing.T) {
 	if _, org, err := x.m.AcceptInvitation(ctx, tok, x.vwr, "", ""); err != nil || org != org2 {
 		t.Fatalf("the invited account: %v", err)
 	}
-	tok, _ = x.m.Invite(x.org, "vwr@example.com", authz.RoleAdmin, x.owner, authz.RoleOwner)
+	tok, _ = x.m.Invite(context.Background(), x.org, "vwr@example.com", authz.RoleAdmin, x.owner, authz.RoleOwner)
 	if _, _, err := x.m.AcceptInvitation(ctx, tok, x.vwr, "", ""); !errors.Is(err, accounts.ErrMember) {
 		t.Fatalf("a member again: %v", err)
 	}
 
-	expiring, _ := x.m.Invite(x.org, "late@example.com", authz.RoleViewer, x.owner, authz.RoleOwner)
+	expiring, _ := x.m.Invite(context.Background(), x.org, "late@example.com", authz.RoleViewer, x.owner, authz.RoleOwner)
 	x.clock = x.clock.Add(accounts.InvitationTTL)
 	if _, _, err := x.m.AcceptInvitation(ctx, expiring, "", "Late", pw); !errors.Is(err, accounts.ErrInvitation) {
 		t.Fatalf("at its expiry: %v", err)
@@ -133,14 +133,14 @@ func TestInvitations(t *testing.T) {
 func TestMembers_Rules(t *testing.T) {
 	x := newMembers(t)
 	for name, err := range map[string]error{
-		"an Admin demotes the Owner":     x.m.SetRole(x.org, x.owner, authz.RoleAdmin, x.admin, authz.RoleAdmin),
-		"an Admin makes an Owner":        x.m.SetRole(x.org, x.vwr, authz.RoleOwner, x.admin, authz.RoleAdmin),
-		"an Admin removes the Owner":     x.m.Remove(x.org, x.owner, x.admin, authz.RoleAdmin),
-		"the only Owner steps down":      x.m.SetRole(x.org, x.owner, authz.RoleAdmin, x.owner, authz.RoleOwner),
-		"the only Owner is removed":      x.m.Remove(x.org, x.owner, x.owner, authz.RoleOwner),
-		"an unknown role":                x.m.SetRole(x.org, x.vwr, "root", x.owner, authz.RoleOwner),
-		"a role for someone not in it":   x.m.SetRole(x.org, "usr_nobody", authz.RoleViewer, x.owner, authz.RoleOwner),
-		"a removal of someone not in it": x.m.Remove(x.org, "usr_nobody", x.owner, authz.RoleOwner),
+		"an Admin demotes the Owner":     x.m.SetRole(context.Background(), x.org, x.owner, authz.RoleAdmin, x.admin, authz.RoleAdmin),
+		"an Admin makes an Owner":        x.m.SetRole(context.Background(), x.org, x.vwr, authz.RoleOwner, x.admin, authz.RoleAdmin),
+		"an Admin removes the Owner":     x.m.Remove(context.Background(), x.org, x.owner, x.admin, authz.RoleAdmin),
+		"the only Owner steps down":      x.m.SetRole(context.Background(), x.org, x.owner, authz.RoleAdmin, x.owner, authz.RoleOwner),
+		"the only Owner is removed":      x.m.Remove(context.Background(), x.org, x.owner, x.owner, authz.RoleOwner),
+		"an unknown role":                x.m.SetRole(context.Background(), x.org, x.vwr, "root", x.owner, authz.RoleOwner),
+		"a role for someone not in it":   x.m.SetRole(context.Background(), x.org, "usr_nobody", authz.RoleViewer, x.owner, authz.RoleOwner),
+		"a removal of someone not in it": x.m.Remove(context.Background(), x.org, "usr_nobody", x.owner, authz.RoleOwner),
 	} {
 		if err == nil {
 			t.Errorf("%s: allowed", name)
@@ -149,16 +149,16 @@ func TestMembers_Rules(t *testing.T) {
 	if x.role(t, x.owner) != authz.RoleOwner {
 		t.Fatal("the Owner changed")
 	}
-	if err := x.m.SetRole(x.org, x.vwr, authz.RoleOperator, x.admin, authz.RoleAdmin); err != nil {
+	if err := x.m.SetRole(context.Background(), x.org, x.vwr, authz.RoleOperator, x.admin, authz.RoleAdmin); err != nil {
 		t.Fatalf("an upgrade by an Admin: %v", err)
 	}
-	if err := x.m.SetRole(x.org, x.admin, authz.RoleOwner, x.owner, authz.RoleOwner); err != nil {
+	if err := x.m.SetRole(context.Background(), x.org, x.admin, authz.RoleOwner, x.owner, authz.RoleOwner); err != nil {
 		t.Fatalf("a second Owner: %v", err)
 	}
-	if err := x.m.SetRole(x.org, x.owner, authz.RoleViewer, x.owner, authz.RoleOwner); err != nil {
+	if err := x.m.SetRole(context.Background(), x.org, x.owner, authz.RoleViewer, x.owner, authz.RoleOwner); err != nil {
 		t.Fatalf("an Owner steps down beside another: %v", err)
 	}
-	if err := x.m.Remove(x.org, x.vwr, x.admin, authz.RoleOwner); err != nil {
+	if err := x.m.Remove(context.Background(), x.org, x.vwr, x.admin, authz.RoleOwner); err != nil {
 		t.Fatalf("a removal: %v", err)
 	}
 	list, err := x.m.List(x.org)
