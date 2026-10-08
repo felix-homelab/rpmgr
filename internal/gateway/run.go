@@ -50,6 +50,9 @@ type RunOptions struct {
 	ControllerNames []string
 	// Dial connects the control plane to a controller endpoint; nil dials TCP.
 	Dial func(ctx context.Context, addr string) (net.Conn, error)
+	// ForwardDial connects to the private controller of controller.passthrough; nil dials
+	// TCP.
+	ForwardDial func(ctx context.Context, addr string) (net.Conn, error)
 	// Registry, if set, receives the gateway's metrics and Run serves no admin listener;
 	// Readiness then gets the gateway's readiness check.
 	Registry  *prometheus.Registry
@@ -58,7 +61,7 @@ type RunOptions struct {
 
 // Run runs a gateway from its boot file until ctx ends (docs/02-architecture.md): its control
 // plane, the multiplexer on TCP port 443, the QUIC listener for data sessions, the tcp and udp
-// routes on their ports and the admin listener. When ctx ends it stops accepting public connections, tells
+// routes on their ports, the forwarding to a private controller and the admin listener. When ctx ends it stops accepting public connections, tells
 // its data sessions to drain and keeps their streams for the drain period (R22).
 func Run(ctx context.Context, o RunOptions) error {
 	if o.Now == nil {
@@ -71,6 +74,9 @@ func Run(ctx context.Context, o RunOptions) error {
 		o.DrainPeriod = DrainPeriod
 	}
 	cfg := o.Config
+	if cfg.Controller.Passthrough.Address != "" && o.Controller != nil {
+		return errors.New("gateway: controller.passthrough and an in-process controller exclude each other")
+	}
 	applier, assign := NewApplier()
 	var sessions *Sessions
 	ctl, err := agent.NewControl(agent.ControlOptions{IdentityDir: cfg.IdentityDir, StateDir: cfg.StateDir, Version: o.Version,
@@ -129,8 +135,14 @@ func Run(ctx context.Context, o RunOptions) error {
 	budget := tunnel.NewBudget(tunnel.DefaultWindowBudget)
 	run, stop := context.WithCancel(context.Background()) // outlives ctx by the drain period
 	defer stop()
+	toController, controllerNames := o.Controller, o.ControllerNames
+	if pt := cfg.Controller.Passthrough; pt.Address != "" {
+		forward := NewForward(pt.Address, o.ForwardDial, o.Logger)
+		defer forward.Close()
+		toController, controllerNames = forward.Serve, pt.Hostnames
+	}
 	router := &Router{TrustDomain: id.TrustDomain, GatewayID: id.AgentID, TunnelTLS: h2TLS, DefaultTLS: def, Logger: o.Logger,
-		Controller: o.Controller, ControllerNames: o.ControllerNames, Routes: pass,
+		Controller: toController, ControllerNames: controllerNames, Routes: pass,
 		Tunnel: func(c *tls.Conn) {
 			defer func() { _ = c.Close() }()
 			hctx, cancel := context.WithTimeout(run, tunnelHandshake)

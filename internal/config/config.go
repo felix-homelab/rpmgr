@@ -180,6 +180,8 @@ type Agent struct {
 	Version    int `yaml:"version"`
 	Controller struct {
 		Endpoints []string `yaml:"endpoints"`
+		// Passthrough is for gateways only.
+		Passthrough Passthrough `yaml:"passthrough"`
 	} `yaml:"controller"`
 	IdentityDir string `yaml:"identity_dir"`
 	StateDir    string `yaml:"state_dir"`
@@ -199,6 +201,31 @@ func (a *Agent) validate() error {
 	}
 	for i, e := range a.Controller.Endpoints {
 		errs = append(errs, checkURL(fmt.Sprintf("controller.endpoints[%d]", i), e))
+	}
+	return errors.Join(errs...)
+}
+
+// Passthrough publishes a private controller through a gateway (docs/03-connections.md, "Reaching
+// a private controller"): the gateway forwards the controller's names, still encrypted, to Address.
+type Passthrough struct {
+	// Address is host:port of the controller's port 443, reached from the gateway directly; ""
+	// forwards nothing.
+	Address string `yaml:"address"`
+	// Hostnames are the controller's UI hostnames; the agent names controller.<td> and
+	// reauth.controller.<td> are always forwarded.
+	Hostnames []string `yaml:"hostnames"`
+}
+
+func (p Passthrough) validate() error {
+	if p.Address == "" {
+		if len(p.Hostnames) > 0 {
+			return errors.New("controller.passthrough.hostnames: they need controller.passthrough.address")
+		}
+		return nil
+	}
+	errs := []error{checkHostPort("controller.passthrough.address", p.Address)}
+	for i, h := range p.Hostnames {
+		errs = append(errs, checkHostname(fmt.Sprintf("controller.passthrough.hostnames[%d]", i), h))
 	}
 	return errors.Join(errs...)
 }
@@ -224,7 +251,7 @@ func (g *Gateway) defaults() {
 }
 
 func (g *Gateway) validate() error {
-	return errors.Join(g.Agent.validate(), checkAddr("listen.tcp", g.Listen.TCP, false),
+	return errors.Join(g.Agent.validate(), g.Controller.Passthrough.validate(), checkAddr("listen.tcp", g.Listen.TCP, false),
 		checkAddr("listen.udp", g.Listen.UDP, false), checkAddr("listen.tunnel_udp", g.Listen.TunnelUDP, true),
 		checkAddr("listen.http", *g.Listen.HTTP, true), checkAdmin(g.Listen.Admin))
 }
@@ -245,8 +272,12 @@ func (c *Connector) defaults() {
 }
 
 func (c *Connector) validate() error {
-	return errors.Join(c.Agent.validate(), checkAbs("policy_file", c.PolicyFile),
-		checkAdmin(c.Listen.Admin))
+	var errs []error
+	if p := c.Controller.Passthrough; p.Address != "" || len(p.Hostnames) > 0 {
+		errs = append(errs, errors.New("controller.passthrough: only a gateway forwards to a private controller"))
+	}
+	return errors.Join(append(errs, c.Agent.validate(), checkAbs("policy_file", c.PolicyFile),
+		checkAdmin(c.Listen.Admin))...)
 }
 
 // AllInOne is /etc/rpmgr/all-in-one.yaml: a controller and a gateway in one process
@@ -361,6 +392,28 @@ func checkAddr(key, addr string, mayBeEmpty bool) error {
 	_, port, err := net.SplitHostPort(addr)
 	if n, perr := strconv.Atoi(port); err != nil || perr != nil || !portRe.MatchString(port) || n < 1 || n > 65535 {
 		return fmt.Errorf("%s %q: want [host]:port", key, addr)
+	}
+	return nil
+}
+
+// checkHostPort accepts host:port with a host and a port from 1 to 65535.
+func checkHostPort(key, addr string) error {
+	host, _, err := net.SplitHostPort(addr)
+	if err != nil || host == "" || checkAddr(key, addr, false) != nil {
+		return fmt.Errorf("%s %q: want host:port", key, addr)
+	}
+	return nil
+}
+
+// hostnameRe is a DNS name of at least two letter-digit-hyphen labels, in lower case; an
+// internationalised name is written in its ASCII (xn--) form.
+var hostnameRe = regexp.MustCompile(`^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$`)
+
+// checkHostname accepts a DNS name as hostnameRe has it, up to 253 characters, that is not an IP
+// address.
+func checkHostname(key, name string) error {
+	if len(name) > 253 || !hostnameRe.MatchString(name) || net.ParseIP(name) != nil {
+		return fmt.Errorf("%s %q: want a lower-case DNS name such as panel.example.com", key, name)
 	}
 	return nil
 }

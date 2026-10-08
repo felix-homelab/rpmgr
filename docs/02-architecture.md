@@ -220,13 +220,14 @@ flowchart LR
   end
   G1 -->|control session| CTL
   C[Connector] -->|data| G1
-  C -->|control via SNI passthrough route on G1<br/>TLS end-to-end to the controller| G1
+  C -->|control via G1's controller passthrough<br/>TLS end-to-end to the controller| G1
 ```
 
-The controller has no public port. Agents reach it through a **gateway SNI-passthrough route** to
-the controller's agent hostname; TLS terminates at the controller, so the gateway forwards bytes it
-cannot read or alter ([03](03-connections.md#reaching-a-private-controller)). The gateway itself
-needs a direct path to the controller (same private network or VPN).
+The controller has no public port. A gateway whose boot file names the controller
+(`controller.passthrough`) forwards the controller's agent hostnames and UI hostnames to it at
+layer 4; TLS terminates at the controller, so the gateway forwards bytes it cannot read or alter
+([03](03-connections.md#reaching-a-private-controller)). The gateway itself needs a direct path to
+the controller (same private network or VPN).
 
 ### Multi-region gateway groups
 
