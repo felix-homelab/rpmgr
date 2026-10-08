@@ -309,6 +309,8 @@ func Run(ctx context.Context, o RunOptions) error {
 		Storage: acme.NewChallengeStorage(acmeStore, sessions, acme.GatewaysServing(db, sys))})
 	go leases.Run(sys, certManager.Job(acme.JobEvery), func(err error) { o.Logger.Warn("ACME job", "error", err) })
 	go leases.Run(sys, apiServer.PruneJob(api.PruneEvery), func(err error) { o.Logger.Warn("request_id pruning job", "error", err) })
+	go leases.Run(sys, PurgeJob(PurgeOptions{DB: db, RevLog: rl, Logger: o.Logger, Denied: sessions.ApplyDenyList, Now: o.Now}),
+		func(err error) { o.Logger.Warn("agent purge job", "error", err) })
 	go ReloadCA(sys, caOpts)
 	go RenewNodeCertificate(sys, NodeCertOptions{CA: ca, DB: db, Sys: sys, NodeID: nodeID, Holder: holder, Now: o.Now, Logger: o.Logger})
 	serve("agent endpoint", func() error { return agents.Serve(split.Agents()) })
