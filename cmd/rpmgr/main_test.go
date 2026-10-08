@@ -57,7 +57,7 @@ func TestEveryCommandHasHelp(t *testing.T) {
 func TestUnimplementedCommandsReportIt(t *testing.T) {
 	for _, args := range [][]string{
 		{"all-in-one", "init"},
-		{"connector"}, {"all-in-one"}, {"leave"}, {"ca", "status"},
+		{"all-in-one"}, {"leave"}, {"ca", "status"},
 	} {
 		code, _, stderr := runRpmgr(args...)
 		if code != cli.ExitUsage || !strings.Contains(stderr, "not available in this build") {
@@ -71,7 +71,7 @@ func TestUnimplementedCommandsReportIt(t *testing.T) {
 func TestController(t *testing.T) {
 	dir := t.TempDir()
 	missing := filepath.Join(dir, "missing.yaml")
-	for _, role := range []string{"controller", "gateway"} {
+	for _, role := range []string{"controller", "gateway", "connector"} {
 		code, _, stderr := runRpmgr(role, "--config", missing)
 		if code != cli.ExitError || !strings.Contains(stderr, missing) {
 			t.Fatalf("%s with a missing boot file: exit %d, stderr %q", role, code, stderr)
@@ -81,7 +81,7 @@ func TestController(t *testing.T) {
 	if err := os.WriteFile(agent, []byte("version: 1\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	for _, role := range []string{"gateway"} {
+	for _, role := range []string{"gateway", "connector"} {
 		code, _, stderr := runRpmgr(role, "--config", agent)
 		if code != cli.ExitError || !strings.Contains(stderr, "controller.endpoints") {
 			t.Fatalf("%s without controller endpoints: exit %d, stderr %q", role, code, stderr)
