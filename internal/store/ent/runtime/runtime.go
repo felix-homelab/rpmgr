@@ -32,6 +32,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/revokedidentity"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/route"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routehostname"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/routehttp"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routetarget"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routetcp"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routeudp"
@@ -1387,6 +1388,57 @@ func init() {
 			return nil
 		}
 	}()
+	routehttpMixin := schema.RouteHTTP{}.Mixin()
+	routehttp.Policy = privacy.NewPolicies(routehttpMixin[0], schema.RouteHTTP{})
+	routehttp.Hooks[0] = func(next ent.Mutator) ent.Mutator {
+		return ent.MutateFunc(func(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+			if err := routehttp.Policy.EvalMutation(ctx, m); err != nil {
+				return nil, err
+			}
+			return next.Mutate(ctx, m)
+		})
+	}
+	routehttpMixinHooks0 := routehttpMixin[0].Hooks()
+
+	routehttp.Hooks[1] = routehttpMixinHooks0[0]
+	routehttpMixinInters0 := routehttpMixin[0].Interceptors()
+	routehttp.Interceptors[0] = routehttpMixinInters0[0]
+	routehttpMixinFields0 := routehttpMixin[0].Fields()
+	_ = routehttpMixinFields0
+	routehttpFields := schema.RouteHTTP{}.Fields()
+	_ = routehttpFields
+	// routehttpDescOrgID is the schema descriptor for org_id field.
+	routehttpDescOrgID := routehttpMixinFields0[0].Descriptor()
+	// routehttp.OrgIDValidator is a validator for the "org_id" field. It is called by the builders before save.
+	routehttp.OrgIDValidator = routehttpDescOrgID.Validators[0].(func(string) error)
+	// routehttpDescRouteID is the schema descriptor for route_id field.
+	routehttpDescRouteID := routehttpFields[0].Descriptor()
+	// routehttp.RouteIDValidator is a validator for the "route_id" field. It is called by the builders before save.
+	routehttp.RouteIDValidator = routehttpDescRouteID.Validators[0].(func(string) error)
+	// routehttpDescPathPrefix is the schema descriptor for path_prefix field.
+	routehttpDescPathPrefix := routehttpFields[1].Descriptor()
+	// routehttp.DefaultPathPrefix holds the default value on creation for the path_prefix field.
+	routehttp.DefaultPathPrefix = routehttpDescPathPrefix.Default.(string)
+	// routehttpDescHostHeader is the schema descriptor for host_header field.
+	routehttpDescHostHeader := routehttpFields[6].Descriptor()
+	// routehttp.DefaultHostHeader holds the default value on creation for the host_header field.
+	routehttp.DefaultHostHeader = routehttpDescHostHeader.Default.(string)
+	// routehttp.HostHeaderValidator is a validator for the "host_header" field. It is called by the builders before save.
+	routehttp.HostHeaderValidator = routehttpDescHostHeader.Validators[0].(func(string) error)
+	// routehttpDescWebsocket is the schema descriptor for websocket field.
+	routehttpDescWebsocket := routehttpFields[9].Descriptor()
+	// routehttp.DefaultWebsocket holds the default value on creation for the websocket field.
+	routehttp.DefaultWebsocket = routehttpDescWebsocket.Default.(bool)
+	// routehttpDescMaxBodyBytes is the schema descriptor for max_body_bytes field.
+	routehttpDescMaxBodyBytes := routehttpFields[10].Descriptor()
+	// routehttp.DefaultMaxBodyBytes holds the default value on creation for the max_body_bytes field.
+	routehttp.DefaultMaxBodyBytes = routehttpDescMaxBodyBytes.Default.(int64)
+	// routehttp.MaxBodyBytesValidator is a validator for the "max_body_bytes" field. It is called by the builders before save.
+	routehttp.MaxBodyBytesValidator = routehttpDescMaxBodyBytes.Validators[0].(func(int64) error)
+	// routehttpDescDNSProxied is the schema descriptor for dns_proxied field.
+	routehttpDescDNSProxied := routehttpFields[11].Descriptor()
+	// routehttp.DefaultDNSProxied holds the default value on creation for the dns_proxied field.
+	routehttp.DefaultDNSProxied = routehttpDescDNSProxied.Default.(bool)
 	routehostnameMixin := schema.RouteHostname{}.Mixin()
 	routehostname.Policy = privacy.NewPolicies(routehostnameMixin[0], schema.RouteHostname{})
 	routehostname.Hooks[0] = func(next ent.Mutator) ent.Mutator {

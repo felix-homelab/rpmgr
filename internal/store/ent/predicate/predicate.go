@@ -81,6 +81,9 @@ type RevokedIdentity func(*sql.Selector)
 // Route is the predicate function for route builders.
 type Route func(*sql.Selector)
 
+// RouteHTTP is the predicate function for routehttp builders.
+type RouteHTTP func(*sql.Selector)
+
 // RouteHostname is the predicate function for routehostname builders.
 type RouteHostname func(*sql.Selector)
 

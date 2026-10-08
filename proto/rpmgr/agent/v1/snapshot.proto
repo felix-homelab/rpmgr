@@ -67,6 +67,8 @@ message Resource {
     GatewayUDPRoute gateway_udp_route = 7;
     // Gateways: a certificate for http route hostnames, fetched by hash.
     GatewayCertificate gateway_certificate = 8;
+    // Gateways: an http route's hostnames and how to reach its upstream.
+    GatewayHTTPRoute gateway_http_route = 9;
     // A large item the agent fetches by hash with Control.FetchResource.
     ResourceReference reference = 15;
   }
@@ -90,6 +92,28 @@ message GatewayUDPRoute {
   uint32 flow_idle_timeout_seconds = 2;
   // The connectors that serve the route, sorted.
   repeated string connectors = 3;
+}
+
+// GatewayHTTPRoute is an http route as a gateway serves it on port 443: a request whose host and
+// path match one of its hosts goes over a tunnel stream to one of the connectors, and on to the
+// upstream with the upstream protocol.
+message GatewayHTTPRoute {
+  // The hostnames, each with its path prefix, sorted.
+  repeated HTTPHost hosts = 1;
+  // How the gateway speaks to the upstream: "http" (HTTP/1.1) or "h2c".
+  string upstream_protocol = 2;
+  // The connectors that serve the route, sorted.
+  repeated string connectors = 3;
+  // Whether WebSocket and other upgrades pass through.
+  bool websocket = 4;
+}
+
+// HTTPHost is one hostname of an http route with its path prefix; "" is every path.
+message HTTPHost {
+  // The hostname, or "*.name" for every name one label below.
+  string hostname = 1;
+  // The path prefix, starting with "/".
+  string path_prefix = 2;
 }
 
 // GatewayCertificate is a public certificate a gateway terminates TLS with, for the http route

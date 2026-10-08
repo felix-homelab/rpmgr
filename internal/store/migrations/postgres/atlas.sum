@@ -1,4 +1,4 @@
-h1:0TWJWXmqDcvevO//cjHz5Isbrp/Cxp0ulHlagD5d8MA=
+h1:BrP7Q30VzEApWqEY73Mu0f7cnj38dJIt11YLZj82cxw=
 20261007104728_init.sql h1:6jeR95S+59R2NO1vbm6eVqcBaiAFq0laX9cjx4ljQRo=
 20261007110313_config_revisions.sql h1:8mMQJJ5PsYIRtP7o9RJ6IVYgH3r29EMOlCi6dvlf7W0=
 20261007111839_settings.sql h1:AW7TBnWPYmVtPeTExhcg+GulKnZOuVU/pRldCFLv+Dk=
@@ -16,3 +16,4 @@ h1:0TWJWXmqDcvevO//cjHz5Isbrp/Cxp0ulHlagD5d8MA=
 20261008065700_route_tcp_unique.sql h1:SkVGzILCtxB4uGI5mcIh9s87G7MAyfkcwFLI6A+zxv8=
 20261008070244_route_udp.sql h1:ixKg/zEoeH8aOMYGos4awChZiB+5WLgbHr5+pMIICXQ=
 20261008074921_certificates.sql h1:0cj1GD6y/e1y5Aj0bGYAIbyUXh9IEwbtu+iFjAho/qw=
+20261008083033_route_http.sql h1:hhJx00HWQeU4C5hzKQVZRWjGu5iVw6hs4CygoX9tKTE=

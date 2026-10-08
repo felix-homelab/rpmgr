@@ -4,6 +4,7 @@ package routes_test
 
 import (
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -21,6 +22,8 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/certificate"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/domain"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/route"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/routehttp"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/routetarget"
 	"github.com/felix-homelab/rpmgr/internal/store/storetest"
 )
 
@@ -318,45 +321,73 @@ func TestCompile_ConnectorGateways(t *testing.T) {
 // TestCompile_Passthrough: a gateway gets the enabled tls_passthrough routes of its group that have
 // hostnames, with them sorted and the connectors that serve them; a connector gets such a route
 // with its type.
-// TestCompile_GatewayCertificates: a gateway gets the active certificates of its group's org that
-// cover hostnames of enabled http routes, each with the hostnames it covers; not one for a
-// passthrough or disabled route only, a failed one, or another org's; connectors get none.
+// verifiedExample gives org-a a verified wildcard claim on example.com.
+func (f *fleet) verifiedExample(t *testing.T) {
+	t.Helper()
+	if err := f.tx(t, func(tx *ent.Tx) error {
+		d, err := domains.Claim(f.sys, tx, f.orgA, "example.com", true)
+		if err != nil {
+			return err
+		}
+		return tx.Domain.UpdateOne(d).SetStatus(domain.StatusVerified).Exec(f.sys)
+	}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// httpRoute creates an http route of org-a with hostnames ("name" or "name/prefix") and a target
+// on c1 and c2; withHTTP false leaves out its route_http row.
+func (f *fleet) httpRoute(t *testing.T, name string, enabled, withHTTP bool, set func(*ent.RouteHTTPCreate), hostnames ...string) string {
+	t.Helper()
+	c := f.db.Client()
+	id := c.Route.Create().SetOrgID(f.orgA).SetName(name).SetType(route.TypeHTTP).SetGatewayGroupID(f.groupA).SetEnabled(enabled).SaveX(f.sys).ID
+	if withHTTP {
+		h := c.RouteHTTP.Create().SetOrgID(f.orgA).SetRouteID(id)
+		if set != nil {
+			set(h)
+		}
+		h.ExecX(f.sys)
+	}
+	for _, hp := range hostnames {
+		host, prefix, _ := strings.Cut(hp, "/")
+		if prefix != "" {
+			prefix = "/" + prefix
+		}
+		if err := f.tx(t, func(tx *ent.Tx) error { _, err := routes.AddHostname(f.sys, tx, id, host, prefix); return err }); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return id
+}
+
+// TestCompile_GatewayCertificates: a gateway gets, for each enabled http route of its group, the
+// certificate the route's TLS mode names, with the route hostnames it covers: the uploaded one in
+// certificate mode, the org's active ACME ones in acme mode; nothing for a disabled route, a failed
+// certificate or another mode's; connectors get none.
 func TestCompile_GatewayCertificates(t *testing.T) {
 	storetest.ForEachDialect(t, func(t *testing.T, db *store.DB) {
 		f := newFleet(t, db)
 		c := db.Client()
-		if err := f.tx(t, func(tx *ent.Tx) error {
-			d, err := domains.Claim(f.sys, tx, f.orgA, "example.com", true)
-			if err != nil {
-				return err
-			}
-			return tx.Domain.UpdateOne(d).SetStatus(domain.StatusVerified).Exec(f.sys)
-		}); err != nil {
-			t.Fatal(err)
-		}
-		mk := func(name string, typ route.Type, enabled bool, hostnames ...string) {
-			id := c.Route.Create().SetOrgID(f.orgA).SetName(name).SetType(typ).SetGatewayGroupID(f.groupA).SetEnabled(enabled).SaveX(f.sys).ID
-			for _, h := range hostnames {
-				if err := f.tx(t, func(tx *ent.Tx) error { _, err := routes.AddHostname(f.sys, tx, id, h, ""); return err }); err != nil {
-					t.Fatal(err)
-				}
-			}
-		}
-		mk("web", route.TypeHTTP, true, "app.example.com", "*.api.example.com", "www.example.com")
-		mk("web-off", route.TypeHTTP, false, "off.example.com")
-		mk("pt", route.TypeTLSPassthrough, true, "db.example.com")
-		cert := func(org string, status certificate.Status, sans ...string) string {
-			return c.Certificate.Create().SetOrgID(org).SetSource(certificate.SourceUploaded).SetSans(sans).SetStatus(status).
+		f.verifiedExample(t)
+		cert := func(source certificate.Source, status certificate.Status, sans ...string) string {
+			return c.Certificate.Create().SetOrgID(f.orgA).SetSource(source).SetSans(sans).SetStatus(status).
 				SetNotBefore(time.Now()).SetNotAfter(time.Unix(1893456000, 0)).SetChain([]byte{1}).SetKeyEnc([]byte{2}).
 				SetContentSha256([]byte(sans[0])).SaveX(f.sys).ID
 		}
-		exact := cert(f.orgA, certificate.StatusActive, "app.example.com")
-		wild := cert(f.orgA, certificate.StatusActive, "*.example.com", "off.example.com")
-		api := cert(f.orgA, certificate.StatusActive, "*.api.example.com")
-		cert(f.orgA, certificate.StatusActive, "db.example.com")
-		cert(f.orgA, certificate.StatusActive, "off.example.com")
-		cert(f.orgA, certificate.StatusFailed, "app.example.com")
-		cert(f.orgB, certificate.StatusActive, "app.example.com")
+		uploaded := func(id string) func(*ent.RouteHTTPCreate) {
+			return func(h *ent.RouteHTTPCreate) { h.SetTLSMode(routehttp.TLSModeCertificate).SetCertificateID(id) }
+		}
+		wild := cert(certificate.SourceUploaded, certificate.StatusActive, "*.example.com")
+		api := cert(certificate.SourceUploaded, certificate.StatusActive, "*.api.example.com")
+		failed := cert(certificate.SourceUploaded, certificate.StatusFailed, "off.example.com")
+		acmeBlog := cert(certificate.SourceAcme, certificate.StatusActive, "blog.example.com")
+		cert(certificate.SourceAcme, certificate.StatusFailed, "blog.example.com")
+		unused := cert(certificate.SourceUploaded, certificate.StatusActive, "blog.example.com")
+		f.httpRoute(t, "web", true, true, uploaded(wild), "app.example.com", "www.example.com/docs", "*.api.example.com")
+		f.httpRoute(t, "api", true, true, uploaded(api), "*.api.example.com/v2")
+		f.httpRoute(t, "blog", true, true, nil, "blog.example.com")
+		f.httpRoute(t, "http-off", false, true, uploaded(unused), "off2.example.com")
+		f.httpRoute(t, "failing", true, true, uploaded(failed), "off.example.com")
 
 		got := map[string]*agentv1.GatewayCertificate{}
 		for _, r := range f.compile(t, pki.KindGateway, f.gateway) {
@@ -364,7 +395,7 @@ func TestCompile_GatewayCertificates(t *testing.T) {
 				got[r.GetId()] = g
 			}
 		}
-		want := map[string][]string{exact: {"app.example.com"}, wild: {"app.example.com", "www.example.com"}, api: {"*.api.example.com"}}
+		want := map[string][]string{wild: {"app.example.com", "www.example.com"}, api: {"*.api.example.com"}, acmeBlog: {"blog.example.com"}}
 		if len(got) != len(want) {
 			t.Fatalf("certificates %v, want %v", got, want)
 		}
@@ -379,9 +410,80 @@ func TestCompile_GatewayCertificates(t *testing.T) {
 				t.Fatalf("a connector got a certificate: %v", r)
 			}
 		}
+		// Another org's certificate cannot be named: the composite foreign key refuses it.
+		other := c.Certificate.Create().SetOrgID(f.orgB).SetSource(certificate.SourceUploaded).SetSans([]string{"x.example.com"}).
+			SetNotBefore(time.Now()).SetNotAfter(time.Now()).SetChain([]byte{1}).SetKeyEnc([]byte{2}).SetContentSha256([]byte{3}).SaveX(f.sys).ID
+		rid := c.Route.Create().SetOrgID(f.orgA).SetName("cross").SetType(route.TypeHTTP).SetGatewayGroupID(f.groupA).SaveX(f.sys).ID
+		if err := c.RouteHTTP.Create().SetOrgID(f.orgA).SetRouteID(rid).SetTLSMode(routehttp.TLSModeCertificate).SetCertificateID(other).Exec(f.sys); err == nil {
+			t.Fatal("a route named another org's certificate")
+		}
 		c.Gateway.UpdateOneID(f.gateway).SetEnabled(false).ExecX(f.sys)
 		if rs := f.compile(t, pki.KindGateway, f.gateway); len(rs) != 0 {
 			t.Fatalf("a disabled gateway: %v", rs)
+		}
+	})
+}
+
+// TestCompile_GatewayHTTP: a gateway gets its group's enabled http routes that have their HTTP
+// row and hostnames, with every hostname and path prefix, the serving connectors and the upstream
+// protocol of the targets; connectors get the routes they serve.
+func TestCompile_GatewayHTTP(t *testing.T) {
+	storetest.ForEachDialect(t, func(t *testing.T, db *store.DB) {
+		f := newFleet(t, db)
+		c := db.Client()
+		f.verifiedExample(t)
+		target := func(route, con string, proto routetarget.UpstreamProtocol, priority int) {
+			c.RouteTarget.Create().SetOrgID(f.orgA).SetRouteID(route).SetConnectorID(con).SetKind("address").SetHost("10.0.0.80").
+				SetPort(8080).SetUpstreamProtocol(proto).SetPriority(priority).ExecX(f.sys)
+		}
+		web := f.httpRoute(t, "web", true, true, func(h *ent.RouteHTTPCreate) { h.SetWebsocket(false) },
+			"www.example.com/docs", "app.example.com", "www.example.com")
+		target(web, f.c1, routetarget.UpstreamProtocolH2c, 0)
+		target(web, f.c2, routetarget.UpstreamProtocolH2c, 1)
+		plain := f.httpRoute(t, "plain", true, true, nil, "plain.example.com")
+		target(plain, f.c1, routetarget.UpstreamProtocolTCP, 0)
+		f.httpRoute(t, "http-off", false, true, nil, "off.example.com")
+		f.httpRoute(t, "http-half", true, false, nil, "half.example.com")
+		f.httpRoute(t, "bare", true, true, nil)
+
+		got := map[string]*agentv1.GatewayHTTPRoute{}
+		// Gateways serve http routes from the next slice on; until then the source is not in
+		// Sources, which gateways of this version would refuse.
+		c2 := &snapshot.Compiler{Sources: []snapshot.Source{routes.GatewayHTTP}}
+		snap, err := c2.Compile(f.sys, f.db, snapshot.Agent{Identity: pki.Identity{TrustDomain: "rpmgr-teststor", Org: f.orgA, Kind: pki.KindGateway, ID: f.gateway}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, r := range snap.GetResources() {
+			if h := r.GetGatewayHttpRoute(); h != nil {
+				got[r.GetId()] = h
+			}
+		}
+		if len(got) != 2 {
+			t.Fatalf("http routes %v, want web and plain", got)
+		}
+		w := got[web]
+		var hosts []string
+		for _, h := range w.GetHosts() {
+			hosts = append(hosts, h.GetHostname()+h.GetPathPrefix())
+		}
+		cons := []string{f.c1, f.c2}
+		slices.Sort(cons)
+		if !slices.Equal(hosts, []string{"app.example.com", "www.example.com", "www.example.com/docs"}) || w.GetUpstreamProtocol() != "h2c" ||
+			w.GetWebsocket() || !slices.Equal(w.GetConnectors(), cons) {
+			t.Fatalf("web %v", w)
+		}
+		if p := got[plain]; p.GetUpstreamProtocol() != "http" || !p.GetWebsocket() || !slices.Equal(p.GetConnectors(), []string{f.c1}) {
+			t.Fatalf("plain %v", p)
+		}
+		var types []string
+		for _, r := range routesOf(f.compile(t, pki.KindConnector, f.c2)) {
+			if r.GetId() == web {
+				types = append(types, r.GetConnectorRoute().GetType())
+			}
+		}
+		if !slices.Equal(types, []string{"http"}) {
+			t.Fatalf("c2's http routes: %v", types)
 		}
 	})
 }

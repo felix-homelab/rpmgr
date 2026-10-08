@@ -23,10 +23,11 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store"
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/domain"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/routehttp"
 )
 
-// TestRouteCertificate_ReachesGateway: an uploaded certificate for an http route's hostname
-// reaches the gateway through its snapshot and FetchResource, and the gateway keeps it in its
+// TestRouteCertificate_ReachesGateway: the uploaded certificate an http route names reaches the
+// gateway through its snapshot and FetchResource, and the gateway keeps it in its
 // state directory, readable by itself only; once no route needs it, the copy goes.
 func TestRouteCertificate_ReachesGateway(t *testing.T) {
 	p := newDataPlane(t)
@@ -65,7 +66,11 @@ func TestRouteCertificate_ReachesGateway(t *testing.T) {
 		}
 		crt, err = certs.Upload(c.Sys, tx, c.Sealer(), c.Org, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}),
 			pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: pk}), time.Now())
-		return []string{r.ID, crt.ID}, err
+		if err != nil {
+			return nil, err
+		}
+		return []string{r.ID, crt.ID}, tx.RouteHTTP.Create().SetOrgID(c.Org).SetRouteID(r.ID).SetTLSMode(routehttp.TLSModeCertificate).
+			SetCertificateID(crt.ID).Exec(c.Sys)
 	}); err != nil {
 		t.Fatal(err)
 	}

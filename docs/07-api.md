@@ -126,7 +126,7 @@ message Target {
   string id = 1;
   string connector_id = 2;
   oneof address { HostPort host_port = 3; string unix_path = 4; }
-  UpstreamProtocol upstream_protocol = 5;   // TCP, HTTP, HTTPS (verified), H2C
+  UpstreamProtocol upstream_protocol = 5;   // TCP, HTTP, HTTPS (verified), H2C; one per http route
   ProxyProtocol proxy_protocol = 6;         // NONE, V1, V2
   uint32 weight = 7;
   uint32 priority = 8;                      // lower = preferred; higher priorities are failover

@@ -41,6 +41,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/revokedidentity"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/route"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routehostname"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/routehttp"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routetarget"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routetcp"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routeudp"
@@ -104,6 +105,8 @@ type Client struct {
 	RevokedIdentity *RevokedIdentityClient
 	// Route is the client for interacting with the Route builders.
 	Route *RouteClient
+	// RouteHTTP is the client for interacting with the RouteHTTP builders.
+	RouteHTTP *RouteHTTPClient
 	// RouteHostname is the client for interacting with the RouteHostname builders.
 	RouteHostname *RouteHostnameClient
 	// RouteTCP is the client for interacting with the RouteTCP builders.
@@ -150,6 +153,7 @@ func (c *Client) init() {
 	c.PortQuota = NewPortQuotaClient(c.config)
 	c.RevokedIdentity = NewRevokedIdentityClient(c.config)
 	c.Route = NewRouteClient(c.config)
+	c.RouteHTTP = NewRouteHTTPClient(c.config)
 	c.RouteHostname = NewRouteHostnameClient(c.config)
 	c.RouteTCP = NewRouteTCPClient(c.config)
 	c.RouteTarget = NewRouteTargetClient(c.config)
@@ -272,6 +276,7 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		PortQuota:         NewPortQuotaClient(cfg),
 		RevokedIdentity:   NewRevokedIdentityClient(cfg),
 		Route:             NewRouteClient(cfg),
+		RouteHTTP:         NewRouteHTTPClient(cfg),
 		RouteHostname:     NewRouteHostnameClient(cfg),
 		RouteTCP:          NewRouteTCPClient(cfg),
 		RouteTarget:       NewRouteTargetClient(cfg),
@@ -321,6 +326,7 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		PortQuota:         NewPortQuotaClient(cfg),
 		RevokedIdentity:   NewRevokedIdentityClient(cfg),
 		Route:             NewRouteClient(cfg),
+		RouteHTTP:         NewRouteHTTPClient(cfg),
 		RouteHostname:     NewRouteHostnameClient(cfg),
 		RouteTCP:          NewRouteTCPClient(cfg),
 		RouteTarget:       NewRouteTargetClient(cfg),
@@ -359,8 +365,8 @@ func (c *Client) Use(hooks ...Hook) {
 		c.CompiledSnapshot, c.ConfigRevision, c.ConfigSeq, c.Connector, c.Domain,
 		c.EnrollmentToken, c.Gateway, c.GatewayGroup, c.Instance, c.InstanceSetting,
 		c.IssuedCertificate, c.Lease, c.Org, c.OrgSetting, c.PortAllocation,
-		c.PortPool, c.PortQuota, c.RevokedIdentity, c.Route, c.RouteHostname,
-		c.RouteTCP, c.RouteTarget, c.RouteUDP, c.SecretMeta,
+		c.PortPool, c.PortQuota, c.RevokedIdentity, c.Route, c.RouteHTTP,
+		c.RouteHostname, c.RouteTCP, c.RouteTarget, c.RouteUDP, c.SecretMeta,
 	} {
 		n.Use(hooks...)
 	}
@@ -374,8 +380,8 @@ func (c *Client) Intercept(interceptors ...Interceptor) {
 		c.CompiledSnapshot, c.ConfigRevision, c.ConfigSeq, c.Connector, c.Domain,
 		c.EnrollmentToken, c.Gateway, c.GatewayGroup, c.Instance, c.InstanceSetting,
 		c.IssuedCertificate, c.Lease, c.Org, c.OrgSetting, c.PortAllocation,
-		c.PortPool, c.PortQuota, c.RevokedIdentity, c.Route, c.RouteHostname,
-		c.RouteTCP, c.RouteTarget, c.RouteUDP, c.SecretMeta,
+		c.PortPool, c.PortQuota, c.RevokedIdentity, c.Route, c.RouteHTTP,
+		c.RouteHostname, c.RouteTCP, c.RouteTarget, c.RouteUDP, c.SecretMeta,
 	} {
 		n.Intercept(interceptors...)
 	}
@@ -434,6 +440,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.RevokedIdentity.mutate(ctx, m)
 	case *RouteMutation:
 		return c.Route.mutate(ctx, m)
+	case *RouteHTTPMutation:
+		return c.RouteHTTP.mutate(ctx, m)
 	case *RouteHostnameMutation:
 		return c.RouteHostname.mutate(ctx, m)
 	case *RouteTCPMutation:
@@ -3964,6 +3972,173 @@ func (c *RouteClient) mutate(ctx context.Context, m *RouteMutation) (Value, erro
 	}
 }
 
+// RouteHTTPClient is a client for the RouteHTTP schema.
+type RouteHTTPClient struct {
+	config
+}
+
+// NewRouteHTTPClient returns a client for the RouteHTTP from the given config.
+func NewRouteHTTPClient(c config) *RouteHTTPClient {
+	return &RouteHTTPClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `routehttp.Hooks(f(g(h())))`.
+func (c *RouteHTTPClient) Use(hooks ...Hook) {
+	c.hooks.RouteHTTP = append(c.hooks.RouteHTTP, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `routehttp.Intercept(f(g(h())))`.
+func (c *RouteHTTPClient) Intercept(interceptors ...Interceptor) {
+	c.inters.RouteHTTP = append(c.inters.RouteHTTP, interceptors...)
+}
+
+// Create returns a builder for creating a RouteHTTP entity.
+func (c *RouteHTTPClient) Create() *RouteHTTPCreate {
+	mutation := newRouteHTTPMutation(c.config, OpCreate)
+	return &RouteHTTPCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of RouteHTTP entities.
+func (c *RouteHTTPClient) CreateBulk(builders ...*RouteHTTPCreate) *RouteHTTPCreateBulk {
+	return &RouteHTTPCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *RouteHTTPClient) MapCreateBulk(slice any, setFunc func(*RouteHTTPCreate, int)) *RouteHTTPCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &RouteHTTPCreateBulk{err: fmt.Errorf("calling to RouteHTTPClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*RouteHTTPCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &RouteHTTPCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for RouteHTTP.
+func (c *RouteHTTPClient) Update() *RouteHTTPUpdate {
+	mutation := newRouteHTTPMutation(c.config, OpUpdate)
+	return &RouteHTTPUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *RouteHTTPClient) UpdateOne(_m *RouteHTTP) *RouteHTTPUpdateOne {
+	mutation := newRouteHTTPMutation(c.config, OpUpdateOne, withRouteHTTP(_m))
+	return &RouteHTTPUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *RouteHTTPClient) UpdateOneID(id int) *RouteHTTPUpdateOne {
+	mutation := newRouteHTTPMutation(c.config, OpUpdateOne, withRouteHTTPID(id))
+	return &RouteHTTPUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for RouteHTTP.
+func (c *RouteHTTPClient) Delete() *RouteHTTPDelete {
+	mutation := newRouteHTTPMutation(c.config, OpDelete)
+	return &RouteHTTPDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *RouteHTTPClient) DeleteOne(_m *RouteHTTP) *RouteHTTPDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *RouteHTTPClient) DeleteOneID(id int) *RouteHTTPDeleteOne {
+	builder := c.Delete().Where(routehttp.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &RouteHTTPDeleteOne{builder}
+}
+
+// Query returns a query builder for RouteHTTP.
+func (c *RouteHTTPClient) Query() *RouteHTTPQuery {
+	return &RouteHTTPQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeRouteHTTP},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a RouteHTTP entity by its id.
+func (c *RouteHTTPClient) Get(ctx context.Context, id int) (*RouteHTTP, error) {
+	return c.Query().Where(routehttp.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *RouteHTTPClient) GetX(ctx context.Context, id int) *RouteHTTP {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// QueryRoute queries the route edge of a RouteHTTP.
+func (c *RouteHTTPClient) QueryRoute(_m *RouteHTTP) *RouteQuery {
+	query := (&RouteClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(routehttp.Table, routehttp.FieldID, id),
+			sqlgraph.To(route.Table, route.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, false, routehttp.RouteTable, routehttp.RouteColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// QueryCertificate queries the certificate edge of a RouteHTTP.
+func (c *RouteHTTPClient) QueryCertificate(_m *RouteHTTP) *CertificateQuery {
+	query := (&CertificateClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(routehttp.Table, routehttp.FieldID, id),
+			sqlgraph.To(certificate.Table, certificate.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, false, routehttp.CertificateTable, routehttp.CertificateColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// Hooks returns the client hooks.
+func (c *RouteHTTPClient) Hooks() []Hook {
+	hooks := c.hooks.RouteHTTP
+	return append(hooks[:len(hooks):len(hooks)], routehttp.Hooks[:]...)
+}
+
+// Interceptors returns the client interceptors.
+func (c *RouteHTTPClient) Interceptors() []Interceptor {
+	inters := c.inters.RouteHTTP
+	return append(inters[:len(inters):len(inters)], routehttp.Interceptors[:]...)
+}
+
+func (c *RouteHTTPClient) mutate(ctx context.Context, m *RouteHTTPMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&RouteHTTPCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&RouteHTTPUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&RouteHTTPUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&RouteHTTPDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown RouteHTTP mutation op: %q", m.Op())
+	}
+}
+
 // RouteHostnameClient is a client for the RouteHostname schema.
 type RouteHostnameClient struct {
 	config
@@ -4773,16 +4948,16 @@ type (
 		CompiledSnapshot, ConfigRevision, ConfigSeq, Connector, Domain,
 		EnrollmentToken, Gateway, GatewayGroup, Instance, InstanceSetting,
 		IssuedCertificate, Lease, Org, OrgSetting, PortAllocation, PortPool, PortQuota,
-		RevokedIdentity, Route, RouteHostname, RouteTCP, RouteTarget, RouteUDP,
-		SecretMeta []ent.Hook
+		RevokedIdentity, Route, RouteHTTP, RouteHostname, RouteTCP, RouteTarget,
+		RouteUDP, SecretMeta []ent.Hook
 	}
 	inters struct {
 		AgentSession, AgentState, AuditEntry, AuditHead, CAKey, Certificate,
 		CompiledSnapshot, ConfigRevision, ConfigSeq, Connector, Domain,
 		EnrollmentToken, Gateway, GatewayGroup, Instance, InstanceSetting,
 		IssuedCertificate, Lease, Org, OrgSetting, PortAllocation, PortPool, PortQuota,
-		RevokedIdentity, Route, RouteHostname, RouteTCP, RouteTarget, RouteUDP,
-		SecretMeta []ent.Interceptor
+		RevokedIdentity, Route, RouteHTTP, RouteHostname, RouteTCP, RouteTarget,
+		RouteUDP, SecretMeta []ent.Interceptor
 	}
 )
 

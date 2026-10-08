@@ -700,6 +700,60 @@ var (
 			},
 		},
 	}
+	// RouteHTTPColumns holds the columns for the "route_http" table.
+	RouteHTTPColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt, Increment: true},
+		{Name: "org_id", Type: field.TypeString},
+		{Name: "path_prefix", Type: field.TypeString, Default: ""},
+		{Name: "header_matches", Type: field.TypeJSON, Nullable: true},
+		{Name: "tls_mode", Type: field.TypeEnum, Enums: []string{"acme", "certificate"}, Default: "acme"},
+		{Name: "port80", Type: field.TypeEnum, Enums: []string{"redirect", "serve", "off"}, Default: "redirect"},
+		{Name: "host_header", Type: field.TypeString, Default: "preserve"},
+		{Name: "request_headers_set", Type: field.TypeJSON, Nullable: true},
+		{Name: "response_headers_set", Type: field.TypeJSON, Nullable: true},
+		{Name: "websocket", Type: field.TypeBool, Default: true},
+		{Name: "max_body_bytes", Type: field.TypeInt64, Default: 0},
+		{Name: "dns_proxied", Type: field.TypeBool, Default: false},
+		{Name: "route_id", Type: field.TypeString},
+		{Name: "certificate_id", Type: field.TypeString, Nullable: true},
+	}
+	// RouteHTTPTable holds the schema information for the "route_http" table.
+	RouteHTTPTable = &schema.Table{
+		Name:       "route_http",
+		Columns:    RouteHTTPColumns,
+		PrimaryKey: []*schema.Column{RouteHTTPColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "route_http_routes_route",
+				Columns:    []*schema.Column{RouteHTTPColumns[12]},
+				RefColumns: []*schema.Column{RoutesColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+			{
+				Symbol:     "route_http_certificates_certificate",
+				Columns:    []*schema.Column{RouteHTTPColumns[13]},
+				RefColumns: []*schema.Column{CertificatesColumns[0]},
+				OnDelete:   schema.SetNull,
+			},
+		},
+		Indexes: []*schema.Index{
+			{
+				Name:    "routehttp_org_id_id",
+				Unique:  true,
+				Columns: []*schema.Column{RouteHTTPColumns[1], RouteHTTPColumns[0]},
+			},
+			{
+				Name:    "routehttp_route_id",
+				Unique:  true,
+				Columns: []*schema.Column{RouteHTTPColumns[12]},
+			},
+			{
+				Name:    "routehttp_certificate_id",
+				Unique:  false,
+				Columns: []*schema.Column{RouteHTTPColumns[13]},
+			},
+		},
+	}
 	// RouteHostnamesColumns holds the columns for the "route_hostnames" table.
 	RouteHostnamesColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeInt, Increment: true},
@@ -943,6 +997,7 @@ var (
 		PortQuotasTable,
 		RevokedIdentitiesTable,
 		RoutesTable,
+		RouteHTTPTable,
 		RouteHostnamesTable,
 		RouteTCPTable,
 		RouteTargetsTable,
@@ -1017,6 +1072,11 @@ func init() {
 	RoutesTable.ForeignKeys[0].RefTable = GatewayGroupsTable
 	RoutesTable.Annotation = &entsql.Annotation{
 		Table: "routes",
+	}
+	RouteHTTPTable.ForeignKeys[0].RefTable = RoutesTable
+	RouteHTTPTable.ForeignKeys[1].RefTable = CertificatesTable
+	RouteHTTPTable.Annotation = &entsql.Annotation{
+		Table: "route_http",
 	}
 	RouteHostnamesTable.ForeignKeys[0].RefTable = RoutesTable
 	RouteHostnamesTable.ForeignKeys[1].RefTable = DomainsTable
