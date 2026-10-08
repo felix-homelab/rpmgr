@@ -324,8 +324,10 @@ Rules:
     connectors with an enabled target on it); the gateway opens streams only to those. A
     connector gets every enabled route with an enabled target on it: its targets, by priority,
     and the effective transport policy, the route's, else the connector's, else the instance
-    default ([Transport selection](#transport-selection)). A disabled or decommissioned agent gets
-    an empty snapshot. Each resource's ID is the route's ID; the other route types follow.
+    default ([Transport selection](#transport-selection)). A gateway also gets the HTTP tokens of
+    its org's pending HTTP domain claims ([15](15-dns.md#domain-verification)), each under the
+    claim's ID. A disabled or decommissioned agent gets an empty snapshot. Each route resource's ID
+    is the route's ID; the other route types follow.
 11. **Readiness is reported.** `Applied` names the resources that are not ready, with a reason and
     a detail. After that an agent sends a `Status` with each change, such as a connector whose
     local policy was reloaded, and at the start of every session a complete one, which names

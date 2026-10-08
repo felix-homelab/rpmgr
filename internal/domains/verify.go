@@ -44,10 +44,11 @@ type TXTVerifier struct {
 	Port string
 }
 
-// Verify reports nil if an authoritative nameserver of the zone holding fqdn answers the claim's
-// TXT record with value, ErrNoProof if they answer without it, and ErrNoNameserver, wrapped with
-// the cause, if none answers.
-func (v *TXTVerifier) Verify(ctx context.Context, fqdn, value string) error {
+// Verify reports nil if an authoritative nameserver of the zone holding the claimed name answers
+// its TXT record with the challenge value, ErrNoProof if they answer without it, and
+// ErrNoNameserver, wrapped with the cause, if none answers.
+func (v *TXTVerifier) Verify(ctx context.Context, c Challenge) error {
+	fqdn, value := c.FQDN, c.Value
 	servers, err := v.nameservers(ctx, fqdn)
 	if err != nil {
 		return fmt.Errorf("%w: %w", ErrNoNameserver, err)
@@ -148,9 +149,19 @@ func exchange(ctx context.Context, q *dns.Msg, addr string) (*dns.Msg, error) {
 	return r, err
 }
 
-// Verifier checks the proof of a claim on fqdn with the challenge value; nil is a proof.
+// Challenge is what a verifier checks: a claim's ID, name and challenge value.
+type Challenge struct {
+	ID, FQDN, Value string
+}
+
+// ChallengeOf is the challenge of a claim.
+func ChallengeOf(d *ent.Domain) Challenge {
+	return Challenge{ID: d.ID, FQDN: d.Fqdn, Value: d.ChallengeValue}
+}
+
+// Verifier checks the proof of a challenge; nil is a proof.
 type Verifier interface {
-	Verify(ctx context.Context, fqdn, value string) error
+	Verify(ctx context.Context, c Challenge) error
 }
 
 // maxError is how much of a check's error a claim keeps.

@@ -163,7 +163,8 @@ type HTTPRoutes struct {
 	server80 *http.Server
 	ln       *connListener
 	table    atomic.Pointer[httpTable]
-	active   atomic.Int64 // requests being served
+	tokens   atomic.Pointer[map[string]DomainToken] // by claim ID
+	active   atomic.Int64                           // requests being served
 
 	mu         sync.Mutex
 	transports map[string]*routeTransport // by route ID
@@ -238,8 +239,31 @@ func (h *HTTPRoutes) Serve80(ln net.Listener) error {
 // acmePath is where ACME HTTP-01 challenges are answered (RFC 8555, section 8.3).
 const acmePath = "/.well-known/acme-challenge/"
 
-// serve80 answers plain HTTP (docs/03-connections.md, "HTTP routes"): ACME HTTP-01 challenges for
-// any name, always; then, by the route of the host and path, a redirect to HTTPS that keeps the
+// tokenPath is where the HTTP tokens of domain claims are answered (R17).
+const tokenPath = "/.well-known/rpmgr-challenge/" //nolint:gosec // G101: a URL path, not a credential
+
+// DomainToken is the HTTP token of a pending domain claim of the gateway's org.
+type DomainToken struct {
+	FQDN, Value string
+}
+
+// SetDomainTokens makes tokens, by claim ID, the HTTP tokens the gateway answers on port 80.
+func (h *HTTPRoutes) SetDomainTokens(tokens map[string]DomainToken) { h.tokens.Store(&tokens) }
+
+// domainToken answers the token of a claim, only for the claimed name.
+func (h *HTTPRoutes) domainToken(w http.ResponseWriter, r *http.Request, host, id string) {
+	if tokens := h.tokens.Load(); tokens != nil {
+		if t, ok := (*tokens)[id]; ok && strings.EqualFold(host, t.FQDN) {
+			w.Header().Set("Content-Type", "text/plain")
+			_, _ = io.WriteString(w, t.Value)
+			return
+		}
+	}
+	http.NotFound(w, r)
+}
+
+// serve80 answers plain HTTP (docs/03-connections.md, "HTTP routes"): the HTTP tokens of the org's
+// pending domain claims and ACME HTTP-01 challenges for any name, always; then, by the route of the host and path, a redirect to HTTPS that keeps the
 // path and query, the route itself, or a closed connection.
 func (h *HTTPRoutes) serve80(w http.ResponseWriter, r *http.Request) {
 	h.active.Add(1)
@@ -247,6 +271,10 @@ func (h *HTTPRoutes) serve80(w http.ResponseWriter, r *http.Request) {
 	host := r.Host
 	if hp, _, err := net.SplitHostPort(host); err == nil {
 		host = hp
+	}
+	if id, ok := strings.CutPrefix(r.URL.Path, tokenPath); ok {
+		h.domainToken(w, r, host, id)
+		return
 	}
 	rt := h.routeFor(r.Host, r.URL.Path)
 	if token, ok := strings.CutPrefix(r.URL.Path, acmePath); ok {

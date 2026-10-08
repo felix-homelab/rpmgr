@@ -133,7 +133,7 @@ func TestTXTVerifier(t *testing.T) {
 		"one without authority, wrong": {[]string{"ns-cache.example.net", "ns-wrong.example.net"}, domains.ErrNoProof},
 	} {
 		v, _ := verifier(port, map[string][]string{"example.com": c.ns}, addrs)
-		if err := v.Verify(ctx, "example.com", value); !errors.Is(err, c.want) || c.want == nil && err != nil {
+		if err := v.Verify(ctx, domains.Challenge{FQDN: "example.com", Value: value}); !errors.Is(err, c.want) || c.want == nil && err != nil {
 			t.Errorf("%s: %v, want %v", name, err, c.want)
 		}
 	}
@@ -143,7 +143,7 @@ func TestTXTVerifier(t *testing.T) {
 
 	// The zone is found at the closest enclosing name with NS records.
 	v, asked := verifier(port, map[string][]string{"example.com": {"ns-good.example.net"}}, addrs)
-	if err := v.Verify(ctx, "app.eu.example.com", value); err != nil {
+	if err := v.Verify(ctx, domains.Challenge{FQDN: "app.eu.example.com", Value: value}); err != nil {
 		t.Fatalf("a name below the zone apex: %v", err)
 	}
 	if got := strings.Join(*asked, " "); got != "app.eu.example.com eu.example.com example.com" {
@@ -155,7 +155,7 @@ func TestTXTVerifier(t *testing.T) {
 	resolver := &nameserver{txt: []string{value}, authoritative: true}
 	resolver.serve(t, "127.0.0.8", port)
 	v, _ = verifier(port, map[string][]string{"example.com": {"ns-gone.example.net"}}, addrs)
-	if err := v.Verify(ctx, "example.com", value); !errors.Is(err, domains.ErrNoProof) || resolver.queries.Load() != 0 {
+	if err := v.Verify(ctx, domains.Challenge{FQDN: "example.com", Value: value}); !errors.Is(err, domains.ErrNoProof) || resolver.queries.Load() != 0 {
 		t.Fatalf("a record only the resolver has: %v, resolver asked %d times", err, resolver.queries.Load())
 	}
 
@@ -163,11 +163,11 @@ func TestTXTVerifier(t *testing.T) {
 	failing := &domains.TXTVerifier{Port: port, LookupNS: func(context.Context, string) ([]*net.NS, error) {
 		return nil, &net.DNSError{Err: "server misbehaving", Name: "example.com", IsTemporary: true}
 	}}
-	if err := failing.Verify(ctx, "example.com", value); !errors.Is(err, domains.ErrNoNameserver) {
+	if err := failing.Verify(ctx, domains.Challenge{FQDN: "example.com", Value: value}); !errors.Is(err, domains.ErrNoNameserver) {
 		t.Fatalf("a failed NS lookup: %v", err)
 	}
 	v, _ = verifier(port, map[string][]string{}, addrs)
-	if err := v.Verify(ctx, "example.com", value); !errors.Is(err, domains.ErrNoNameserver) {
+	if err := v.Verify(ctx, domains.Challenge{FQDN: "example.com", Value: value}); !errors.Is(err, domains.ErrNoNameserver) {
 		t.Fatalf("no zone: %v", err)
 	}
 }

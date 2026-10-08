@@ -279,6 +279,11 @@ verify call does not list permissions: a zone where the provider refuses access 
   any; only they are looked up through the resolver. Each is asked without recursion, and only an
   answer with the authority flag counts; the value may be split into several strings. A claim
   keeps the error of its last check, such as no authoritative answer or a wrong value.
+- **HTTP tokens** (R17). For a pending claim with the method `http`, every enabled gateway of the
+  claim's org answers `GET http://<fqdn>/.well-known/rpmgr-challenge/<claim ID>` on port 80 with
+  the challenge value, for the claimed name only and before any redirect. The controller fetches
+  that URL and compares the body. Pointing the name at the org's own gateways is the proof; a
+  gateway of another org does not serve the token.
 - **Managed zones publish the TXT themselves** for pending claims of the same org (publication rule
   2). The proof is still the public answer, so verification means the same thing with or without a
   provider.
@@ -389,6 +394,7 @@ type Provider interface {
 | `default_ttl` | 300 s; proxied records: automatic |
 | Pending-claim checks | every 1 min for 15 min, then every 15 min; `failed` after 7 days; [R] by one controller node, 8 checks at once |
 | [R] TXT proof query | 5 s per nameserver address, over UDP and again over TCP when truncated; at most 8 nameservers of a zone |
+| [R] HTTP token fetch | 10 s; no redirect followed; at most 256 bytes; through the proxy the environment names |
 | Token check | every 1 h; expiry warning 14 days ahead |
 | Cloudflare IP ranges | refreshed every 24 h; accepted only if non-empty and at most half of the entries changed |
 | DNS-01 propagation timeout | 2 min (certmagic default [F certmagic:solvers.go:532]) |

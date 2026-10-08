@@ -83,7 +83,7 @@ func checkDomains(ctx context.Context, o DomainCheckOptions) error {
 			sem <- struct{}{}
 			defer func() { <-sem }()
 			if result == nil {
-				result = v.Verify(ctx, d.Fqdn, d.ChallengeValue)
+				result = v.Verify(ctx, domains.ChallengeOf(d))
 			}
 			if err := recordCheck(ctx, o, d, result, now); err != nil {
 				mu.Lock()

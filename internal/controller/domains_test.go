@@ -25,7 +25,8 @@ type recordingVerifier struct {
 	checked []string
 }
 
-func (v *recordingVerifier) Verify(_ context.Context, fqdn, _ string) error {
+func (v *recordingVerifier) Verify(_ context.Context, c domains.Challenge) error {
+	fqdn := c.FQDN
 	v.mu.Lock()
 	defer v.mu.Unlock()
 	v.checked = append(v.checked, fqdn)

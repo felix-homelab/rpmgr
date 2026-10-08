@@ -266,6 +266,14 @@ func (a *Applier) Validate(snap *agentv1.Snapshot) []*agentv1.SnapshotError {
 				}
 			}
 			connectors = r.GetConnectors()
+		case res.GetGatewayDomainChallenge() != nil:
+			c := res.GetGatewayDomainChallenge()
+			if n, err := domains.Normalize(c.GetFqdn(), false); err != nil || n != c.GetFqdn() {
+				bad(id, "domain %q is not normalised", c.GetFqdn())
+			}
+			if v := c.GetValue(); v == "" || len(v) > 64 || strings.Trim(v, "abcdefghijklmnopqrstuvwxyz234567") != "" {
+				bad(id, "a challenge value that is not lower-case base32")
+			}
 		default:
 			bad(id, "a gateway does not run %T resources", res.GetKind())
 		}
@@ -286,6 +294,7 @@ func (a *Applier) Apply(ctx context.Context, snap *agentv1.Snapshot, _ agent.Cha
 		passthrough []PassthroughRoute
 		httpRoutes  []HTTPRoute
 		certs       []CertificateRoute
+		tokens      = map[string]DomainToken{}
 	)
 	for _, res := range snap.GetResources() {
 		var connectors []string
@@ -333,6 +342,10 @@ func (a *Applier) Apply(ctx context.Context, snap *agentv1.Snapshot, _ agent.Cha
 			c := res.GetGatewayCertificate()
 			certs = append(certs, CertificateRoute{ID: res.GetId(), ContentSHA256: c.GetContentSha256(), Hostnames: c.GetHostnames()})
 			continue // serves no route of its own
+		case res.GetGatewayDomainChallenge() != nil:
+			c := res.GetGatewayDomainChallenge()
+			tokens[res.GetId()] = DomainToken{FQDN: c.GetFqdn(), Value: c.GetValue()}
+			continue
 		case res.GetGatewayPassthroughRoute() != nil:
 			p := res.GetGatewayPassthroughRoute()
 			connectors = p.GetConnectors()
@@ -361,6 +374,7 @@ func (a *Applier) Apply(ctx context.Context, snap *agentv1.Snapshot, _ agent.Cha
 	}
 	if s.HTTP != nil {
 		s.HTTP.Apply(httpRoutes)
+		s.HTTP.SetDomainTokens(tokens)
 	}
 	if s.Sessions != nil {
 		s.Sessions.Recheck()
