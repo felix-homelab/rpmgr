@@ -73,6 +73,8 @@ message Route {
   string description = 6 [(buf.validate.field).string.max_len = 1024];
   // What it serves; its type is set at creation.
   oneof spec {
+    // An HTTP route, TLS terminated at the gateway.
+    HTTPRouteSpec http = 10;
     // A TLS route passed through by SNI, TLS ending at the target.
     TLSPassthroughRouteSpec tls_passthrough = 13;
   }
@@ -85,6 +87,67 @@ message Route {
   google.protobuf.Timestamp update_time = 25;
   // The version to send back with an update; output only.
   string etag = 30;
+}
+
+// TLSMode is where an http route's certificate comes from.
+enum TLSMode {
+  // Not set: ACME.
+  TLS_MODE_UNSPECIFIED = 0;
+  // Issued by ACME for the hostnames; not for a wildcard hostname in Phase 1 (R42).
+  TLS_MODE_ACME = 1;
+  // An uploaded certificate.
+  TLS_MODE_CERTIFICATE = 2;
+}
+
+// Port80Mode is what an http route's hostnames do on port 80; ACME HTTP-01 is always answered.
+enum Port80Mode {
+  // Not set: redirect.
+  PORT80_MODE_UNSPECIFIED = 0;
+  // Redirect to HTTPS, keeping path and query.
+  PORT80_MODE_REDIRECT = 1;
+  // Serve the route over plain HTTP too.
+  PORT80_MODE_SERVE = 2;
+  // Close the connection.
+  PORT80_MODE_OFF = 3;
+}
+
+// HTTPRouteSpec is an http route (docs/03-connections.md, "HTTP routes").
+message HTTPRouteSpec {
+  // Its hostnames: names under verified domains of the org, or *.<name> under a wildcard one.
+  repeated string hostnames = 1 [(buf.validate.field).repeated = {
+    min_items: 1
+    max_items: 100
+    unique: true
+    items: {
+      string: {
+        min_len: 1
+        max_len: 255
+      }
+    }
+  }];
+  // The path prefix it serves under its hostnames; the longest prefix wins. Empty is every path.
+  string path_prefix = 2 [(buf.validate.field).string = {
+    max_len: 1024
+    pattern: "^(/[^\\s]*)?$"
+  }];
+  // Where its certificate comes from.
+  TLSMode tls_mode = 3 [(buf.validate.field).enum.defined_only = true];
+  // The uploaded certificate, with TLS_MODE_CERTIFICATE.
+  string certificate_id = 4;
+  // What its hostnames do on port 80.
+  Port80Mode port80 = 5 [(buf.validate.field).enum.defined_only = true];
+  // Strict-Transport-Security max-age; 0 sends none.
+  uint32 hsts_max_age_seconds = 6 [(buf.validate.field).uint32.lte = 63072000];
+  // The Host header towards the upstream: empty or "preserve" keeps the client's.
+  string host_header = 7 [(buf.validate.field).string.max_len = 255];
+  // Request headers set towards the upstream.
+  map<string, string> request_headers_set = 8 [(buf.validate.field).map.max_pairs = 32];
+  // Response headers set towards the client.
+  map<string, string> response_headers_set = 9 [(buf.validate.field).map.max_pairs = 32];
+  // Whether WebSocket upgrades pass; true if not set.
+  optional bool websocket = 10;
+  // The largest request body; 0 is no limit.
+  uint64 max_body_bytes = 11;
 }
 
 // TLSPassthroughRouteSpec is a tls_passthrough route: the gateway reads the SNI and passes the

@@ -92,9 +92,9 @@ func accessOf(res *agentv1.Resource) *agentv1.RouteAccess {
 	return nil
 }
 
-// reservedHeaders are the headers a route cannot set: the gateway's forwarding headers and those
+// ReservedHeaders are the headers a route cannot set: the gateway's forwarding headers and those
 // of the connection itself.
-var reservedHeaders = []string{"Connection", "Content-Length", "Forwarded", "Host", "Keep-Alive", "Proxy-Connection", "Te",
+var ReservedHeaders = []string{"Connection", "Content-Length", "Forwarded", "Host", "Keep-Alive", "Proxy-Connection", "Te",
 	"Trailer", "Transfer-Encoding", "Upgrade", "X-Forwarded-For", "X-Forwarded-Host", "X-Forwarded-Proto"}
 
 // Applier runs a gateway's snapshots (docs/03-connections.md, "Configuration reconciliation"):
@@ -226,7 +226,7 @@ func (a *Applier) Validate(snap *agentv1.Snapshot) []*agentv1.SnapshotError {
 						bad(id, "header name %q", h.GetName())
 					case !httpguts.ValidHeaderFieldValue(h.GetValue()):
 						bad(id, "the value of header %s is not a valid field value", h.GetName())
-					case slices.Contains(reservedHeaders, h.GetName()):
+					case slices.Contains(ReservedHeaders, h.GetName()):
 						bad(id, "header %s is the gateway's own", h.GetName())
 					}
 				}

@@ -5,15 +5,21 @@ package apisvc
 import (
 	"context"
 	"errors"
+	"fmt"
+	"net/textproto"
+	"slices"
+	"strings"
 	"time"
 
 	"connectrpc.com/connect"
+	"golang.org/x/net/http/httpguts"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	rpmgrv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/v1"
 	"github.com/felix-homelab/rpmgr/gen/rpmgr/v1/rpmgrv1connect"
 	"github.com/felix-homelab/rpmgr/internal/api"
 	"github.com/felix-homelab/rpmgr/internal/domains"
+	"github.com/felix-homelab/rpmgr/internal/gateway"
 	"github.com/felix-homelab/rpmgr/internal/routes"
 	"github.com/felix-homelab/rpmgr/internal/store"
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
@@ -30,6 +36,8 @@ import (
 const (
 	// ReasonDomainNotVerified: a hostname lies under no verified domain of the org.
 	ReasonDomainNotVerified = "DOMAIN_NOT_VERIFIED"
+	// ReasonWildcardACME: ACME cannot issue a wildcard certificate in Phase 1 (R42).
+	ReasonWildcardACME = "WILDCARD_NEEDS_CERTIFICATE"
 )
 
 // Routes is RouteService. Its methods run in the org scope the interceptor gives them.
@@ -61,7 +69,12 @@ func (r *Routes) CreateRoute(ctx context.Context, req *connect.Request[rpmgrv1.C
 				c.SetTransport(t)
 			}
 			var hostnames []string
-			if spec, ok := in.GetSpec().(*rpmgrv1.Route_TlsPassthrough); ok {
+			prefix := ""
+			switch spec := in.GetSpec().(type) {
+			case *rpmgrv1.Route_Http:
+				c.SetType(route.TypeHTTP)
+				hostnames, prefix = spec.Http.GetHostnames(), spec.Http.GetPathPrefix()
+			case *rpmgrv1.Route_TlsPassthrough:
 				c.SetType(route.TypeTLSPassthrough)
 				hostnames = spec.TlsPassthrough.GetHostnames()
 			}
@@ -69,8 +82,13 @@ func (r *Routes) CreateRoute(ctx context.Context, req *connect.Request[rpmgrv1.C
 			if err != nil {
 				return nil, err
 			}
+			if h := in.GetHttp(); h != nil {
+				if err := createHTTP(ctx, tx, row, h); err != nil {
+					return nil, err
+				}
+			}
 			for _, name := range hostnames {
-				if _, err := routes.AddHostname(ctx, tx, row.ID, name, ""); err != nil {
+				if _, err := routes.AddHostname(ctx, tx, row.ID, name, prefix); err != nil {
 					return nil, err
 				}
 			}
@@ -88,12 +106,88 @@ func (r *Routes) CreateRoute(ctx context.Context, req *connect.Request[rpmgrv1.C
 	return connect.NewResponse(resp), nil
 }
 
-// checkSpec checks what the store cannot: a spec of a known type.
+// createHTTP stores an http route's settings.
+func createHTTP(ctx context.Context, tx *ent.Tx, row *ent.Route, h *rpmgrv1.HTTPRouteSpec) error {
+	port80 := routehttp.Port80Redirect
+	switch h.GetPort80() {
+	case rpmgrv1.Port80Mode_PORT80_MODE_SERVE:
+		port80 = routehttp.Port80Serve
+	case rpmgrv1.Port80Mode_PORT80_MODE_OFF:
+		port80 = routehttp.Port80Off
+	}
+	c := tx.RouteHTTP.Create().SetOrgID(row.OrgID).SetRouteID(row.ID).SetPathPrefix(h.GetPathPrefix()).SetPort80(port80).
+		SetHstsMaxAgeSeconds(int(h.GetHstsMaxAgeSeconds())).SetRequestHeadersSet(canonicalHeaders(h.GetRequestHeadersSet())).
+		SetResponseHeadersSet(canonicalHeaders(h.GetResponseHeadersSet())).SetWebsocket(h.Websocket == nil || *h.Websocket).
+		SetMaxBodyBytes(int64(min(h.GetMaxBodyBytes(), 1<<62))) //nolint:gosec // G115: bounded above
+	if hh := h.GetHostHeader(); hh != "" {
+		c.SetHostHeader(hh)
+	}
+	if h.GetTlsMode() == rpmgrv1.TLSMode_TLS_MODE_CERTIFICATE {
+		if _, err := tx.Certificate.Get(ctx, h.GetCertificateId()); err != nil {
+			return err
+		}
+		c.SetTLSMode(routehttp.TLSModeCertificate).SetCertificateID(h.GetCertificateId())
+	}
+	return c.Exec(ctx)
+}
+
+// checkSpec checks what the store cannot: a spec of a known type, header names and values the
+// gateway accepts, and no ACME certificate for a wildcard hostname (R42).
 func checkSpec(in *rpmgrv1.Route) error {
-	if in.GetSpec() == nil {
-		return connect.NewError(connect.CodeInvalidArgument, errors.New("apisvc: a route needs a spec: tls_passthrough"))
+	invalid := func(format string, args ...any) error {
+		return connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("apisvc: "+format, args...))
+	}
+	switch {
+	case in.GetSpec() == nil:
+		return invalid("a route needs a spec: http or tls_passthrough")
+	case in.GetHttp() == nil:
+		return nil
+	}
+	h := in.GetHttp()
+	for _, hs := range []map[string]string{h.GetRequestHeadersSet(), h.GetResponseHeadersSet()} {
+		for name, value := range hs {
+			switch {
+			case !httpguts.ValidHeaderFieldName(name):
+				return invalid("header name %q", name)
+			case !httpguts.ValidHeaderFieldValue(value):
+				return invalid("the value of header %s is not a valid field value", name)
+			case slices.Contains(gateway.ReservedHeaders, textproto.CanonicalMIMEHeaderKey(name)):
+				return invalid("header %s is the gateway's own", name)
+			}
+		}
+	}
+	if hh := h.GetHostHeader(); hh != "" && hh != "preserve" && !httpguts.ValidHostHeader(hh) {
+		return invalid("host header %q", hh)
+	}
+	switch h.GetTlsMode() {
+	case rpmgrv1.TLSMode_TLS_MODE_CERTIFICATE:
+		if h.GetCertificateId() == "" {
+			return invalid("TLS_MODE_CERTIFICATE needs a certificate_id")
+		}
+	default:
+		if h.GetCertificateId() != "" {
+			return invalid("a certificate_id needs TLS_MODE_CERTIFICATE")
+		}
+		for _, name := range h.GetHostnames() {
+			if strings.HasPrefix(name, "*.") {
+				return withReason(connect.NewError(connect.CodeFailedPrecondition, fmt.Errorf(
+					"apisvc: ACME cannot issue a certificate for the wildcard %s; upload one (TLS_MODE_CERTIFICATE)", name)), ReasonWildcardACME)
+			}
+		}
 	}
 	return nil
+}
+
+// canonicalHeaders is headers with canonical names, as the gateway expects them.
+func canonicalHeaders(headers map[string]string) map[string]string {
+	if len(headers) == 0 {
+		return nil
+	}
+	out := make(map[string]string, len(headers))
+	for name, value := range headers {
+		out[textproto.CanonicalMIMEHeaderKey(name)] = value
+	}
+	return out
 }
 
 // routeError gives the route rules' errors their API codes.
@@ -244,8 +338,26 @@ func routeOf(ctx context.Context, c *ent.Client, row *ent.Route) (*rpmgrv1.Route
 	for i, h := range hs {
 		names[i] = h.Hostname
 	}
-	if row.Type == route.TypeTLSPassthrough {
+	switch row.Type {
+	case route.TypeTLSPassthrough:
 		out.Spec = &rpmgrv1.Route_TlsPassthrough{TlsPassthrough: &rpmgrv1.TLSPassthroughRouteSpec{Hostnames: names}}
+	case route.TypeHTTP:
+		h, err := c.RouteHTTP.Query().Where(routehttp.RouteID(row.ID)).Only(ctx)
+		if err != nil {
+			return nil, err
+		}
+		spec := &rpmgrv1.HTTPRouteSpec{Hostnames: names, PathPrefix: h.PathPrefix, TlsMode: rpmgrv1.TLSMode_TLS_MODE_ACME,
+			Port80: map[routehttp.Port80]rpmgrv1.Port80Mode{routehttp.Port80Redirect: rpmgrv1.Port80Mode_PORT80_MODE_REDIRECT,
+				routehttp.Port80Serve: rpmgrv1.Port80Mode_PORT80_MODE_SERVE, routehttp.Port80Off: rpmgrv1.Port80Mode_PORT80_MODE_OFF}[h.Port80],
+			HstsMaxAgeSeconds: uint32(h.HstsMaxAgeSeconds), HostHeader: h.HostHeader, RequestHeadersSet: h.RequestHeadersSet, //nolint:gosec // G115: bounded
+			ResponseHeadersSet: h.ResponseHeadersSet, Websocket: &h.Websocket, MaxBodyBytes: uint64(h.MaxBodyBytes)} //nolint:gosec // G115: non-negative
+		if h.TLSMode == routehttp.TLSModeCertificate {
+			spec.TlsMode = rpmgrv1.TLSMode_TLS_MODE_CERTIFICATE
+			if h.CertificateID != nil {
+				spec.CertificateId = *h.CertificateID
+			}
+		}
+		out.Spec = &rpmgrv1.Route_Http{Http: spec}
 	}
 	return out, nil
 }

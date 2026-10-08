@@ -8,9 +8,16 @@ import (
 
 	"connectrpc.com/connect"
 
+	agentv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/agent/v1"
 	rpmgrv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/v1"
 	"github.com/felix-homelab/rpmgr/internal/api"
 	"github.com/felix-homelab/rpmgr/internal/apisvc"
+	"github.com/felix-homelab/rpmgr/internal/gateway"
+	"github.com/felix-homelab/rpmgr/internal/pki"
+	"github.com/felix-homelab/rpmgr/internal/routes"
+	"github.com/felix-homelab/rpmgr/internal/snapshot"
+	"github.com/felix-homelab/rpmgr/internal/store"
+	"github.com/felix-homelab/rpmgr/internal/store/ent"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/domain"
 	"github.com/felix-homelab/rpmgr/internal/store/storetest"
 )
@@ -20,6 +27,10 @@ func (e *env) verified(t *testing.T, org, fqdn string, wildcard bool) string {
 	t.Helper()
 	return e.db.Client().Domain.Create().SetOrgID(org).SetFqdn(fqdn).SetWildcard(wildcard).SetStatus(domain.StatusVerified).
 		SetChallengeValue("v").SaveX(e.sys).ID
+}
+
+func httpRoute(name, group string, hostnames ...string) *rpmgrv1.Route {
+	return &rpmgrv1.Route{Name: name, GatewayGroupId: group, Spec: &rpmgrv1.Route_Http{Http: &rpmgrv1.HTTPRouteSpec{Hostnames: hostnames}}}
 }
 
 func passthroughRoute(name, group string, hostnames ...string) *rpmgrv1.Route {
@@ -122,6 +133,8 @@ func TestUnverifiedDomainRejected(t *testing.T) {
 		"a name below an exact claim": passthroughRoute("d", group, "app.exact.example"),
 		"a wildcard of an exact one":  passthroughRoute("e", group, "*.exact.example"),
 		"one of two not owned":        passthroughRoute("f", group, "exact.example", "nowhere.example"),
+		"an http route, no claim":     httpRoute("g", group, "nowhere.example"),
+		"an http route, pending":      httpRoute("h", group, "web.pending.example"),
 	} {
 		if _, err := createRoute(ada, org, rt, ""); code(err) != connect.CodeFailedPrecondition || reason(err) != apisvc.ReasonDomainNotVerified {
 			t.Errorf("%s: %v", name, err)
@@ -134,5 +147,164 @@ func TestUnverifiedDomainRejected(t *testing.T) {
 	e.db.Client().Domain.UpdateOne(pending).SetStatus(domain.StatusVerified).ExecX(e.sys)
 	if _, err := createRoute(ada, org, passthroughRoute("b", group, "app.pending.example"), ""); err != nil {
 		t.Fatalf("after the claim was verified: %v", err)
+	}
+}
+
+// TestHTTPRoutes: http routes, next to tls_passthrough ones, are created with their hostnames under verified
+// domains, read, listed and deleted; a hostname is one passthrough route or http routes with
+// distinct path prefixes in a group; header names are canonical and the gateway's own refused;
+// ACME is refused for a wildcard hostname; a Viewer reads but creates nothing.
+func TestHTTPRoutes(t *testing.T) {
+	e, ada, org, group := gatewayEnv(t)
+	ctx := context.Background()
+	e.verified(t, org, "example.com", true)
+	web := httpRoute("web", group, "app.example.com")
+	web.GetHttp().PathPrefix = "/api"
+	web.GetHttp().RequestHeadersSet = map[string]string{"x-env": "prod"}
+	web.Labels = map[string]string{"tier": "front"}
+	got, err := createRoute(ada, org, web, "req-1")
+	h := got.GetHttp()
+	if err != nil || got.GetEtag() != "1" || !got.GetEnabled() || h.GetPathPrefix() != "/api" || h.GetRequestHeadersSet()["X-Env"] != "prod" ||
+		h.GetWebsocket() != true || h.GetPort80() != rpmgrv1.Port80Mode_PORT80_MODE_REDIRECT || h.GetTlsMode() != rpmgrv1.TLSMode_TLS_MODE_ACME ||
+		h.GetHostHeader() != "preserve" || got.GetLabels()["tier"] != "front" || len(h.GetHostnames()) != 1 {
+		t.Fatalf("an http route: %v %v", got, err)
+	}
+	if again, err := createRoute(ada, org, web, "req-1"); err != nil || again.GetId() != got.GetId() {
+		t.Fatalf("a retry: %v %v", again, err)
+	}
+	if _, err := createRoute(ada, org, passthroughRoute("db", group, "db.example.com"), ""); err != nil {
+		t.Fatal(err)
+	}
+	other := httpRoute("web-root", group, "app.example.com")
+	if _, err := createRoute(ada, org, other, ""); err != nil {
+		t.Fatalf("the same hostname with another prefix: %v", err)
+	}
+
+	cert := func(mode rpmgrv1.TLSMode, id string, hostnames ...string) *rpmgrv1.Route {
+		r := httpRoute("tls", group, hostnames...)
+		r.GetHttp().TlsMode, r.GetHttp().CertificateId = mode, id
+		return r
+	}
+	headers := func(set map[string]string) *rpmgrv1.Route {
+		r := httpRoute("hdr", group, "hdr.example.com")
+		r.GetHttp().ResponseHeadersSet = set
+		return r
+	}
+	for name, c := range map[string]struct {
+		rt         *rpmgrv1.Route
+		code       connect.Code
+		reasonWant string
+	}{
+		"a taken name":                {httpRoute("web", group, "new.example.com"), connect.CodeAlreadyExists, ""},
+		"passthrough on an http name": {passthroughRoute("pt", group, "app.example.com"), connect.CodeAlreadyExists, ""},
+		"http on a passthrough name":  {httpRoute("h2", group, "db.example.com"), connect.CodeAlreadyExists, ""},
+		"the same name and prefix": {func() *rpmgrv1.Route {
+			r := httpRoute("h3", group, "app.example.com")
+			r.GetHttp().PathPrefix = "/api"
+			return r
+		}(), connect.CodeAlreadyExists, ""},
+		"no spec":     {&rpmgrv1.Route{Name: "nospec", GatewayGroupId: group}, connect.CodeInvalidArgument, ""},
+		"no hostname": {httpRoute("none", group), connect.CodeInvalidArgument, ""},
+		"a prefix without /": {func() *rpmgrv1.Route {
+			r := httpRoute("p", group, "p.example.com")
+			r.GetHttp().PathPrefix = "api"
+			return r
+		}(), connect.CodeInvalidArgument, ""},
+		"a bad header name":          {headers(map[string]string{"Bad Header": "x"}), connect.CodeInvalidArgument, ""},
+		"a header with a line break": {headers(map[string]string{"X-Note": "a\r\nSet-Cookie: x"}), connect.CodeInvalidArgument, ""},
+		"the gateway's header":       {headers(map[string]string{"x-forwarded-for": "1.2.3.4"}), connect.CodeInvalidArgument, ""},
+		"a bad host header": {func() *rpmgrv1.Route {
+			r := httpRoute("hh", group, "hh.example.com")
+			r.GetHttp().HostHeader = "bad host"
+			return r
+		}(), connect.CodeInvalidArgument, ""},
+		"a certificate mode, no id":  {cert(rpmgrv1.TLSMode_TLS_MODE_CERTIFICATE, "", "c.example.com"), connect.CodeInvalidArgument, ""},
+		"ACME with a certificate id": {cert(rpmgrv1.TLSMode_TLS_MODE_ACME, "crt_x", "c.example.com"), connect.CodeInvalidArgument, ""},
+		"a missing certificate":      {cert(rpmgrv1.TLSMode_TLS_MODE_CERTIFICATE, "crt_missing", "c.example.com"), connect.CodeNotFound, ""},
+		"ACME for a wildcard":        {cert(rpmgrv1.TLSMode_TLS_MODE_UNSPECIFIED, "", "*.example.com"), connect.CodeFailedPrecondition, apisvc.ReasonWildcardACME},
+		"a missing group":            {httpRoute("g", "gwg_missing", "g.example.com"), connect.CodeNotFound, ""},
+	} {
+		_, err := createRoute(ada, org, c.rt, "")
+		if code(err) != c.code || c.reasonWant != "" && reason(err) != c.reasonWant {
+			t.Errorf("%s: %v, want %v %s", name, err, c.code, c.reasonWant)
+		}
+	}
+
+	list, err := ada.rt.ListRoutes(ctx, connect.NewRequest(&rpmgrv1.ListRoutesRequest{OrgId: org, PageSize: 2}))
+	if err != nil || len(list.Msg.GetRoutes()) != 2 || list.Msg.GetNextPageToken() == "" {
+		t.Fatalf("the first page: %v %v", list, err)
+	}
+	vwr, _ := e.join(t, ada, org, "vwr@example.com", "viewer")
+	if _, err := createRoute(vwr, org, httpRoute("v", group, "v.example.com"), ""); code(err) != connect.CodePermissionDenied {
+		t.Fatalf("a Viewer creates: %v", err)
+	}
+	read, err := vwr.rt.GetRoute(ctx, connect.NewRequest(&rpmgrv1.GetRouteRequest{RouteId: got.GetId()}))
+	if err != nil || read.Msg.GetRoute().GetHttp().GetHostnames()[0] != "app.example.com" {
+		t.Fatalf("a Viewer reads: %v %v", read, err)
+	}
+	del := func(id, etag string) error {
+		_, err := ada.rt.DeleteRoute(ctx, connect.NewRequest(&rpmgrv1.DeleteRouteRequest{RouteId: id, Etag: etag}))
+		return err
+	}
+	if err := del(got.GetId(), "7"); reason(err) != api.ReasonEtagMismatch {
+		t.Fatalf("a stale etag: %v", err)
+	}
+	if err := del(got.GetId(), "1"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := createRoute(ada, org, func() *rpmgrv1.Route {
+		r := httpRoute("again", group, "app.example.com")
+		r.GetHttp().PathPrefix = "/api"
+		return r
+	}(), ""); err != nil {
+		t.Fatalf("the freed hostname and prefix: %v", err)
+	}
+	if _, err := ada.rt.GetRoute(ctx, connect.NewRequest(&rpmgrv1.GetRouteRequest{RouteId: got.GetId()})); code(err) != connect.CodeNotFound {
+		t.Fatalf("a deleted route: %v", err)
+	}
+}
+
+// TestRoutes_GatewayAcceptsThem: routes the API accepts, with every http setting, compile into a
+// snapshot the gateway validates without an error.
+func TestRoutes_GatewayAcceptsThem(t *testing.T) {
+	e, ada, org, group := gatewayEnv(t)
+	e.verified(t, org, "example.com", true)
+	gw, err := createGateway(ada, org, group, "gw1", "gw1.example.com:443")
+	if err != nil {
+		t.Fatal(err)
+	}
+	off := false
+	full := httpRoute("full", group, "app.example.com", "www.example.com")
+	h := full.GetHttp()
+	h.PathPrefix, h.Port80, h.HstsMaxAgeSeconds, h.HostHeader = "/v1", rpmgrv1.Port80Mode_PORT80_MODE_SERVE, 31536000, "upstream.internal"
+	h.RequestHeadersSet = map[string]string{"x-env": "prod", "Authorization": "Bearer abc"}
+	h.ResponseHeadersSet = map[string]string{"cache-control": "no-store"}
+	h.Websocket, h.MaxBodyBytes = &off, 1<<20
+	for _, rt := range []*rpmgrv1.Route{full, httpRoute("plain", group, "plain.example.com"), passthroughRoute("db", group, "db.example.com")} {
+		if _, err := createRoute(ada, org, rt, ""); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var snap *agentv1.Snapshot
+	if err := store.ReadTx(e.sys, e.db, func(tx *ent.Tx, _ store.Revision) error {
+		a := snapshot.Agent{Identity: pki.Identity{TrustDomain: "rpmgr-teststor", Org: org, Kind: pki.KindGateway, ID: gw.GetId()}}
+		snap = &agentv1.Snapshot{}
+		for _, src := range routes.Sources() {
+			rs, err := src(e.sys, tx, a)
+			if err != nil {
+				return err
+			}
+			snap.Resources = append(snap.Resources, rs...)
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if len(snap.GetResources()) != 3 {
+		t.Fatalf("compiled %d resources, want 3", len(snap.GetResources()))
+	}
+	a, _ := gateway.NewApplier()
+	if errs := a.Validate(snap); len(errs) != 0 {
+		t.Fatalf("the gateway refuses the API's routes: %v", errs)
 	}
 }
