@@ -41,7 +41,18 @@ var (
 	here string // test/e2e
 	run  string // the containers' /var/lib/rpmgr directories
 	pin  string // the controller's CA pin
+	// webCA issues the certificates that every node trusts through SSL_CERT_FILE: the controller's,
+	// the route certificates and the TLS backend's.
+	webCA    *x509.Certificate
+	webCAKey *ecdsa.PrivateKey
 )
+
+// nodes are the containers with a /var/lib/rpmgr directory.
+var nodes = []string{"ctl", "gw1", "gw2", "con1", "con2", "svc", "client"}
+
+// connectorPolicy is the connectors' local policy: the service's ports, except 7009, which the
+// local-policy cell allows by a reload.
+const connectorPolicy = "version: 1\nallow_targets:\n  - cidr: 172.31.0.7/32\n    ports: [7007, 7008, 7080, 7443]\n"
 
 func TestMain(m *testing.M) {
 	code := 1
@@ -131,7 +142,7 @@ func setUp() error {
 	if run, err = os.MkdirTemp("", "rpmgr-e2e-"); err != nil {
 		return err
 	}
-	for _, node := range []string{"ctl", "gw1", "gw2", "con1", "con2"} {
+	for _, node := range nodes {
 		if err := os.MkdirAll(filepath.Join(run, node), 0o750); err != nil {
 			return err
 		}
@@ -206,7 +217,7 @@ listen: {tcp: ":8443", udp: ":8443", http: "", admin: "127.0.0.1:7382"}
 		if err := enroll(con, tok); err != nil {
 			return err
 		}
-		if err := writeFile(con, "policy.yaml", "version: 1\nallow_targets:\n  - cidr: 172.31.0.7/32\n    ports: [7007]\n"); err != nil {
+		if err := writeFile(con, "policy.yaml", connectorPolicy); err != nil {
 			return err
 		}
 		if err := writeFile(con, "connector.yaml", `version: 1
@@ -238,8 +249,9 @@ func enroll(node, tok string) error {
 	return err
 }
 
-// webCertificate writes a certificate for ctl from a new CA, which every node trusts through
-// SSL_CERT_FILE.
+// webCertificate creates the web CA, which every node trusts through SSL_CERT_FILE, and writes
+// the controller's certificate for ctl, the TLS backend's for svc and pt.e2e.test, and the route
+// certificates the cells upload.
 func webCertificate() error {
 	caKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
@@ -252,31 +264,62 @@ func webCertificate() error {
 	if err != nil {
 		return err
 	}
-	ca, _ := x509.ParseCertificate(caDER)
-	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	if err != nil {
-		return err
-	}
-	tmpl := &x509.Certificate{SerialNumber: big.NewInt(2), Subject: pkix.Name{CommonName: "ctl"}, DNSNames: []string{"ctl"},
-		ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth}, NotBefore: now.Add(-time.Hour), NotAfter: now.Add(24 * time.Hour)}
-	der, err := x509.CreateCertificate(rand.Reader, tmpl, ca, &key.PublicKey, caKey)
-	if err != nil {
-		return err
-	}
-	kb, err := x509.MarshalPKCS8PrivateKey(key)
-	if err != nil {
-		return err
-	}
+	webCA, _ = x509.ParseCertificate(caDER)
+	webCAKey = caKey
 	caPEM := string(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: caDER}))
-	for _, node := range []string{"ctl", "gw1", "gw2", "con1", "con2"} {
+	for _, node := range nodes {
 		if err := writeFile(node, "web-ca.pem", caPEM); err != nil {
 			return err
 		}
 	}
-	if err := writeFile("ctl", "web.crt", string(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}))); err != nil {
-		return err
+	for _, c := range []struct{ node, file, cn string }{
+		{"ctl", "web", "ctl"},
+		{"svc", "backend", "e2e backend"},
+		{"ctl", "route-web", "app.e2e.test"},
+		{"ctl", "route-grpc", "grpc.e2e.test"},
+		{"ctl", "route-secure", "secure.e2e.test"},
+	} {
+		names := []string{c.cn}
+		if c.file == "backend" {
+			names = []string{"svc", "pt.e2e.test"}
+		}
+		crt, key, err := issue(c.cn, names...)
+		if err != nil {
+			return err
+		}
+		if err := writeFile(c.node, c.file+".crt", crt); err != nil {
+			return err
+		}
+		if err := writeFile(c.node, c.file+".key", key); err != nil {
+			return err
+		}
 	}
-	return writeFile("ctl", "web.key", string(pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: kb})))
+	return nil
+}
+
+// issue returns a TLS server certificate of the web CA for names, and its key, in PEM.
+func issue(cn string, names ...string) (string, string, error) {
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		return "", "", err
+	}
+	serial, err := rand.Int(rand.Reader, new(big.Int).Lsh(big.NewInt(1), 62))
+	if err != nil {
+		return "", "", err
+	}
+	now := time.Now()
+	tmpl := &x509.Certificate{SerialNumber: serial, Subject: pkix.Name{CommonName: cn}, DNSNames: names,
+		ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth}, NotBefore: now.Add(-time.Hour), NotAfter: now.Add(24 * time.Hour)}
+	der, err := x509.CreateCertificate(rand.Reader, tmpl, webCA, &key.PublicKey, webCAKey)
+	if err != nil {
+		return "", "", err
+	}
+	kb, err := x509.MarshalPKCS8PrivateKey(key)
+	if err != nil {
+		return "", "", err
+	}
+	return string(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der})),
+		string(pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: kb})), nil
 }
 
 // dumpLogs prints every role's log, for a failed run.

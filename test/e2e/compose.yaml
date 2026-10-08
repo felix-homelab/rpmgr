@@ -64,11 +64,16 @@ services:
   svc:
     <<: *node
     hostname: svc
-    command: ["e2eclient", "serve", "-listen", ":7007"]
+    volumes: ["${E2E_RUN:?}/svc:/var/lib/rpmgr"]
+    # TCP echo on 7007 and 7009, UDP echo on 7008, the HTTP upstream on 7080 (HTTP/1.1, h2c) and
+    # the TLS backend on 7443.
+    command: ["e2eclient", "serve", "-listen", ":7007,:7009", "-udp", ":7008", "-http", ":7080", "-tls", ":7443",
+      "-cert", "/var/lib/rpmgr/backend.crt", "-key", "/var/lib/rpmgr/backend.key"]
     networks:
       private: {ipv4_address: 172.31.0.7}
   client:
     <<: *node
     hostname: client
+    volumes: ["${E2E_RUN:?}/client:/var/lib/rpmgr"]
     networks:
       public: {ipv4_address: 172.30.0.30, ipv6_address: "fd00:30::30"}

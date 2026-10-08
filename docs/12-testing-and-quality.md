@@ -81,8 +81,12 @@ controlled clock (certificate expiry and grace re-authentication, clock skew) ru
 real traffic and a fake clock; clock jumps in chaos tests use the clock-offset hook of the
 `rpmgrtest` build. Before the public API exists, end-to-end tests seed their configuration with the
 `rpmgrtest` seeding command ([D60](14-open-decisions.md#security-defaults)): `rpmgr testseed`
-creates gateways with their enrollment tokens, connector tokens and tcp routes, changes routes and
-revokes identities, writing next to the running controller through configuration transactions.
+creates gateways with their enrollment tokens, connector tokens, and tcp, udp, http and
+tls_passthrough routes (http routes with verified domains, uploaded certificates and HTTP, h2c or
+verified HTTPS upstreams), sets a route's IP access rules, changes routes and revokes identities,
+writing next to the running controller through configuration transactions. The per-PR subset runs
+every Phase 1 route type, the local-policy block and reload, a tightened access policy, mixed
+transports on one connector and UDP blackholed mid-session; NAT rebinding is not covered yet.
 `check-go.sh` vets the `rpmgrtest` build and runs the tests of its packages, golangci-lint lints it,
 and a test of the release build checks that no test-only command exists there.
 
