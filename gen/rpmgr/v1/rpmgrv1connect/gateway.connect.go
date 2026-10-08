@@ -65,6 +65,21 @@ const (
 	// GatewayServiceDecommissionGatewayProcedure is the fully-qualified name of the GatewayService's
 	// DecommissionGateway RPC.
 	GatewayServiceDecommissionGatewayProcedure = "/rpmgr.v1.GatewayService/DecommissionGateway"
+	// GatewayServiceCreatePortPoolProcedure is the fully-qualified name of the GatewayService's
+	// CreatePortPool RPC.
+	GatewayServiceCreatePortPoolProcedure = "/rpmgr.v1.GatewayService/CreatePortPool"
+	// GatewayServiceGetPortPoolProcedure is the fully-qualified name of the GatewayService's
+	// GetPortPool RPC.
+	GatewayServiceGetPortPoolProcedure = "/rpmgr.v1.GatewayService/GetPortPool"
+	// GatewayServiceListPortPoolsProcedure is the fully-qualified name of the GatewayService's
+	// ListPortPools RPC.
+	GatewayServiceListPortPoolsProcedure = "/rpmgr.v1.GatewayService/ListPortPools"
+	// GatewayServiceUpdatePortPoolProcedure is the fully-qualified name of the GatewayService's
+	// UpdatePortPool RPC.
+	GatewayServiceUpdatePortPoolProcedure = "/rpmgr.v1.GatewayService/UpdatePortPool"
+	// GatewayServiceDeletePortPoolProcedure is the fully-qualified name of the GatewayService's
+	// DeletePortPool RPC.
+	GatewayServiceDeletePortPoolProcedure = "/rpmgr.v1.GatewayService/DeletePortPool"
 )
 
 // GatewayServiceClient is a client for the rpmgr.v1.GatewayService service.
@@ -92,6 +107,17 @@ type GatewayServiceClient interface {
 	// DecommissionGateway retires a gateway for good: its identity is revoked, its sessions end, and
 	// it stays as a tombstone that no longer counts towards its group.
 	DecommissionGateway(context.Context, *connect.Request[v1.DecommissionGatewayRequest]) (*connect.Response[v1.DecommissionGatewayResponse], error)
+	// CreatePortPool adds a range of public ports of one protocol to a gateway group, from which
+	// TCP and UDP routes take their ports; pools of a group and protocol never overlap.
+	CreatePortPool(context.Context, *connect.Request[v1.CreatePortPoolRequest]) (*connect.Response[v1.CreatePortPoolResponse], error)
+	// GetPortPool returns a port pool.
+	GetPortPool(context.Context, *connect.Request[v1.GetPortPoolRequest]) (*connect.Response[v1.GetPortPoolResponse], error)
+	// ListPortPools lists an org's port pools by ID, those of one group if it names one.
+	ListPortPools(context.Context, *connect.Request[v1.ListPortPoolsRequest]) (*connect.Response[v1.ListPortPoolsResponse], error)
+	// UpdatePortPool changes a pool's range; every port allocated from it must stay inside.
+	UpdatePortPool(context.Context, *connect.Request[v1.UpdatePortPoolRequest]) (*connect.Response[v1.UpdatePortPoolResponse], error)
+	// DeletePortPool deletes a pool from which no port is allocated.
+	DeletePortPool(context.Context, *connect.Request[v1.DeletePortPoolRequest]) (*connect.Response[v1.DeletePortPoolResponse], error)
 }
 
 // NewGatewayServiceClient constructs a client for the rpmgr.v1.GatewayService service. By default,
@@ -169,6 +195,38 @@ func NewGatewayServiceClient(httpClient connect.HTTPClient, baseURL string, opts
 			connect.WithSchema(gatewayServiceMethods.ByName("DecommissionGateway")),
 			connect.WithClientOptions(opts...),
 		),
+		createPortPool: connect.NewClient[v1.CreatePortPoolRequest, v1.CreatePortPoolResponse](
+			httpClient,
+			baseURL+GatewayServiceCreatePortPoolProcedure,
+			connect.WithSchema(gatewayServiceMethods.ByName("CreatePortPool")),
+			connect.WithClientOptions(opts...),
+		),
+		getPortPool: connect.NewClient[v1.GetPortPoolRequest, v1.GetPortPoolResponse](
+			httpClient,
+			baseURL+GatewayServiceGetPortPoolProcedure,
+			connect.WithSchema(gatewayServiceMethods.ByName("GetPortPool")),
+			connect.WithIdempotency(connect.IdempotencyNoSideEffects),
+			connect.WithClientOptions(opts...),
+		),
+		listPortPools: connect.NewClient[v1.ListPortPoolsRequest, v1.ListPortPoolsResponse](
+			httpClient,
+			baseURL+GatewayServiceListPortPoolsProcedure,
+			connect.WithSchema(gatewayServiceMethods.ByName("ListPortPools")),
+			connect.WithIdempotency(connect.IdempotencyNoSideEffects),
+			connect.WithClientOptions(opts...),
+		),
+		updatePortPool: connect.NewClient[v1.UpdatePortPoolRequest, v1.UpdatePortPoolResponse](
+			httpClient,
+			baseURL+GatewayServiceUpdatePortPoolProcedure,
+			connect.WithSchema(gatewayServiceMethods.ByName("UpdatePortPool")),
+			connect.WithClientOptions(opts...),
+		),
+		deletePortPool: connect.NewClient[v1.DeletePortPoolRequest, v1.DeletePortPoolResponse](
+			httpClient,
+			baseURL+GatewayServiceDeletePortPoolProcedure,
+			connect.WithSchema(gatewayServiceMethods.ByName("DeletePortPool")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -184,6 +242,11 @@ type gatewayServiceClient struct {
 	listGateways        *connect.Client[v1.ListGatewaysRequest, v1.ListGatewaysResponse]
 	updateGateway       *connect.Client[v1.UpdateGatewayRequest, v1.UpdateGatewayResponse]
 	decommissionGateway *connect.Client[v1.DecommissionGatewayRequest, v1.DecommissionGatewayResponse]
+	createPortPool      *connect.Client[v1.CreatePortPoolRequest, v1.CreatePortPoolResponse]
+	getPortPool         *connect.Client[v1.GetPortPoolRequest, v1.GetPortPoolResponse]
+	listPortPools       *connect.Client[v1.ListPortPoolsRequest, v1.ListPortPoolsResponse]
+	updatePortPool      *connect.Client[v1.UpdatePortPoolRequest, v1.UpdatePortPoolResponse]
+	deletePortPool      *connect.Client[v1.DeletePortPoolRequest, v1.DeletePortPoolResponse]
 }
 
 // CreateGatewayGroup calls rpmgr.v1.GatewayService.CreateGatewayGroup.
@@ -236,6 +299,31 @@ func (c *gatewayServiceClient) DecommissionGateway(ctx context.Context, req *con
 	return c.decommissionGateway.CallUnary(ctx, req)
 }
 
+// CreatePortPool calls rpmgr.v1.GatewayService.CreatePortPool.
+func (c *gatewayServiceClient) CreatePortPool(ctx context.Context, req *connect.Request[v1.CreatePortPoolRequest]) (*connect.Response[v1.CreatePortPoolResponse], error) {
+	return c.createPortPool.CallUnary(ctx, req)
+}
+
+// GetPortPool calls rpmgr.v1.GatewayService.GetPortPool.
+func (c *gatewayServiceClient) GetPortPool(ctx context.Context, req *connect.Request[v1.GetPortPoolRequest]) (*connect.Response[v1.GetPortPoolResponse], error) {
+	return c.getPortPool.CallUnary(ctx, req)
+}
+
+// ListPortPools calls rpmgr.v1.GatewayService.ListPortPools.
+func (c *gatewayServiceClient) ListPortPools(ctx context.Context, req *connect.Request[v1.ListPortPoolsRequest]) (*connect.Response[v1.ListPortPoolsResponse], error) {
+	return c.listPortPools.CallUnary(ctx, req)
+}
+
+// UpdatePortPool calls rpmgr.v1.GatewayService.UpdatePortPool.
+func (c *gatewayServiceClient) UpdatePortPool(ctx context.Context, req *connect.Request[v1.UpdatePortPoolRequest]) (*connect.Response[v1.UpdatePortPoolResponse], error) {
+	return c.updatePortPool.CallUnary(ctx, req)
+}
+
+// DeletePortPool calls rpmgr.v1.GatewayService.DeletePortPool.
+func (c *gatewayServiceClient) DeletePortPool(ctx context.Context, req *connect.Request[v1.DeletePortPoolRequest]) (*connect.Response[v1.DeletePortPoolResponse], error) {
+	return c.deletePortPool.CallUnary(ctx, req)
+}
+
 // GatewayServiceHandler is an implementation of the rpmgr.v1.GatewayService service.
 type GatewayServiceHandler interface {
 	// CreateGatewayGroup creates a gateway group, which holds up to four gateways.
@@ -261,6 +349,17 @@ type GatewayServiceHandler interface {
 	// DecommissionGateway retires a gateway for good: its identity is revoked, its sessions end, and
 	// it stays as a tombstone that no longer counts towards its group.
 	DecommissionGateway(context.Context, *connect.Request[v1.DecommissionGatewayRequest]) (*connect.Response[v1.DecommissionGatewayResponse], error)
+	// CreatePortPool adds a range of public ports of one protocol to a gateway group, from which
+	// TCP and UDP routes take their ports; pools of a group and protocol never overlap.
+	CreatePortPool(context.Context, *connect.Request[v1.CreatePortPoolRequest]) (*connect.Response[v1.CreatePortPoolResponse], error)
+	// GetPortPool returns a port pool.
+	GetPortPool(context.Context, *connect.Request[v1.GetPortPoolRequest]) (*connect.Response[v1.GetPortPoolResponse], error)
+	// ListPortPools lists an org's port pools by ID, those of one group if it names one.
+	ListPortPools(context.Context, *connect.Request[v1.ListPortPoolsRequest]) (*connect.Response[v1.ListPortPoolsResponse], error)
+	// UpdatePortPool changes a pool's range; every port allocated from it must stay inside.
+	UpdatePortPool(context.Context, *connect.Request[v1.UpdatePortPoolRequest]) (*connect.Response[v1.UpdatePortPoolResponse], error)
+	// DeletePortPool deletes a pool from which no port is allocated.
+	DeletePortPool(context.Context, *connect.Request[v1.DeletePortPoolRequest]) (*connect.Response[v1.DeletePortPoolResponse], error)
 }
 
 // NewGatewayServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -334,6 +433,38 @@ func NewGatewayServiceHandler(svc GatewayServiceHandler, opts ...connect.Handler
 		connect.WithSchema(gatewayServiceMethods.ByName("DecommissionGateway")),
 		connect.WithHandlerOptions(opts...),
 	)
+	gatewayServiceCreatePortPoolHandler := connect.NewUnaryHandler(
+		GatewayServiceCreatePortPoolProcedure,
+		svc.CreatePortPool,
+		connect.WithSchema(gatewayServiceMethods.ByName("CreatePortPool")),
+		connect.WithHandlerOptions(opts...),
+	)
+	gatewayServiceGetPortPoolHandler := connect.NewUnaryHandler(
+		GatewayServiceGetPortPoolProcedure,
+		svc.GetPortPool,
+		connect.WithSchema(gatewayServiceMethods.ByName("GetPortPool")),
+		connect.WithIdempotency(connect.IdempotencyNoSideEffects),
+		connect.WithHandlerOptions(opts...),
+	)
+	gatewayServiceListPortPoolsHandler := connect.NewUnaryHandler(
+		GatewayServiceListPortPoolsProcedure,
+		svc.ListPortPools,
+		connect.WithSchema(gatewayServiceMethods.ByName("ListPortPools")),
+		connect.WithIdempotency(connect.IdempotencyNoSideEffects),
+		connect.WithHandlerOptions(opts...),
+	)
+	gatewayServiceUpdatePortPoolHandler := connect.NewUnaryHandler(
+		GatewayServiceUpdatePortPoolProcedure,
+		svc.UpdatePortPool,
+		connect.WithSchema(gatewayServiceMethods.ByName("UpdatePortPool")),
+		connect.WithHandlerOptions(opts...),
+	)
+	gatewayServiceDeletePortPoolHandler := connect.NewUnaryHandler(
+		GatewayServiceDeletePortPoolProcedure,
+		svc.DeletePortPool,
+		connect.WithSchema(gatewayServiceMethods.ByName("DeletePortPool")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/rpmgr.v1.GatewayService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case GatewayServiceCreateGatewayGroupProcedure:
@@ -356,6 +487,16 @@ func NewGatewayServiceHandler(svc GatewayServiceHandler, opts ...connect.Handler
 			gatewayServiceUpdateGatewayHandler.ServeHTTP(w, r)
 		case GatewayServiceDecommissionGatewayProcedure:
 			gatewayServiceDecommissionGatewayHandler.ServeHTTP(w, r)
+		case GatewayServiceCreatePortPoolProcedure:
+			gatewayServiceCreatePortPoolHandler.ServeHTTP(w, r)
+		case GatewayServiceGetPortPoolProcedure:
+			gatewayServiceGetPortPoolHandler.ServeHTTP(w, r)
+		case GatewayServiceListPortPoolsProcedure:
+			gatewayServiceListPortPoolsHandler.ServeHTTP(w, r)
+		case GatewayServiceUpdatePortPoolProcedure:
+			gatewayServiceUpdatePortPoolHandler.ServeHTTP(w, r)
+		case GatewayServiceDeletePortPoolProcedure:
+			gatewayServiceDeletePortPoolHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -403,4 +544,24 @@ func (UnimplementedGatewayServiceHandler) UpdateGateway(context.Context, *connec
 
 func (UnimplementedGatewayServiceHandler) DecommissionGateway(context.Context, *connect.Request[v1.DecommissionGatewayRequest]) (*connect.Response[v1.DecommissionGatewayResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("rpmgr.v1.GatewayService.DecommissionGateway is not implemented"))
+}
+
+func (UnimplementedGatewayServiceHandler) CreatePortPool(context.Context, *connect.Request[v1.CreatePortPoolRequest]) (*connect.Response[v1.CreatePortPoolResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("rpmgr.v1.GatewayService.CreatePortPool is not implemented"))
+}
+
+func (UnimplementedGatewayServiceHandler) GetPortPool(context.Context, *connect.Request[v1.GetPortPoolRequest]) (*connect.Response[v1.GetPortPoolResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("rpmgr.v1.GatewayService.GetPortPool is not implemented"))
+}
+
+func (UnimplementedGatewayServiceHandler) ListPortPools(context.Context, *connect.Request[v1.ListPortPoolsRequest]) (*connect.Response[v1.ListPortPoolsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("rpmgr.v1.GatewayService.ListPortPools is not implemented"))
+}
+
+func (UnimplementedGatewayServiceHandler) UpdatePortPool(context.Context, *connect.Request[v1.UpdatePortPoolRequest]) (*connect.Response[v1.UpdatePortPoolResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("rpmgr.v1.GatewayService.UpdatePortPool is not implemented"))
+}
+
+func (UnimplementedGatewayServiceHandler) DeletePortPool(context.Context, *connect.Request[v1.DeletePortPoolRequest]) (*connect.Response[v1.DeletePortPoolResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("rpmgr.v1.GatewayService.DeletePortPool is not implemented"))
 }

@@ -69,7 +69,7 @@ names.
 | `TokenService` | `CreateAPIToken`, `ListAPITokens`, `RevokeAPIToken`, `CreateServiceAccount`, … | Personal API tokens: 1; service accounts: 2 |
 | `EnrollmentService` | `CreateEnrollmentToken`, `ListEnrollmentTokens`, `RevokeEnrollmentToken`, `GetInstallCommand` | 1 |
 | `ConnectorService` | `ListConnectors`, `GetConnector`, `UpdateConnector` (name, labels, `transport`), `DecommissionConnector`, `GetConnectorStatus` | 1 |
-| `GatewayService` | `CreateGateway`, `GetGateway`, `ListGateways`, `UpdateGateway` (name, tunnel endpoints, `enabled`), `DecommissionGateway` (revokes the gateway's identity); CRUD on gateway groups; port pools, port quotas, shared-group grants | 1 (shared-group grants: 2) |
+| `GatewayService` | `CreateGateway`, `GetGateway`, `ListGateways`, `UpdateGateway` (name, tunnel endpoints, `enabled`), `DecommissionGateway` (revokes the gateway's identity); CRUD on gateway groups and port pools; port quotas, shared-group grants | 1 (shared-group grants: 2) |
 | `RouteService` | CRUD on routes and targets, `PreviewRoute` (compile without saving) | 1 |
 | `DomainService` | `CreateDomain`, `VerifyDomain`, `ListDomains`, `DeleteDomain`, `MarkDomainTrusted` (Instance Admin, step-up), `DelegateDomain` and `ApproveDomainClaim` (Instance Admin, step-up) | 1 (`DelegateDomain`, `ApproveDomainClaim`: 2) |
 | `CertificateService` | `ListCertificates`, `UploadCertificate`, `RenewCertificate` | 1 |

@@ -19,8 +19,8 @@ import (
 // belongs to the org that owns the group; pools of shared groups come with them (Phase 2).
 type PortPool struct{ ent.Schema }
 
-// Mixin makes port pools org-owned.
-func (PortPool) Mixin() []ent.Mixin { return []ent.Mixin{OrgMixin{}} }
+// Mixin makes port pools org-owned and versioned.
+func (PortPool) Mixin() []ent.Mixin { return []ent.Mixin{OrgMixin{}, VersionMixin{}} }
 
 // Annotations name the table as docs/06-data-model.md does.
 func (PortPool) Annotations() []schema.Annotation {

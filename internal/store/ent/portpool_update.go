@@ -27,6 +27,27 @@ func (_u *PortPoolUpdate) Where(ps ...predicate.PortPool) *PortPoolUpdate {
 	return _u
 }
 
+// SetVersion sets the "version" field.
+func (_u *PortPoolUpdate) SetVersion(v int64) *PortPoolUpdate {
+	_u.mutation.ResetVersion()
+	_u.mutation.SetVersion(v)
+	return _u
+}
+
+// SetNillableVersion sets the "version" field if the given value is not nil.
+func (_u *PortPoolUpdate) SetNillableVersion(v *int64) *PortPoolUpdate {
+	if v != nil {
+		_u.SetVersion(*v)
+	}
+	return _u
+}
+
+// AddVersion adds value to the "version" field.
+func (_u *PortPoolUpdate) AddVersion(v int64) *PortPoolUpdate {
+	_u.mutation.AddVersion(v)
+	return _u
+}
+
 // SetPortFrom sets the "port_from" field.
 func (_u *PortPoolUpdate) SetPortFrom(v int) *PortPoolUpdate {
 	_u.mutation.ResetPortFrom()
@@ -103,6 +124,11 @@ func (_u *PortPoolUpdate) ExecX(ctx context.Context) {
 
 // check runs all checks and user-defined validators on the builder.
 func (_u *PortPoolUpdate) check() error {
+	if v, ok := _u.mutation.Version(); ok {
+		if err := portpool.VersionValidator(v); err != nil {
+			return &ValidationError{Name: "version", err: fmt.Errorf(`ent: validator failed for field "PortPool.version": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.PortFrom(); ok {
 		if err := portpool.PortFromValidator(v); err != nil {
 			return &ValidationError{Name: "port_from", err: fmt.Errorf(`ent: validator failed for field "PortPool.port_from": %w`, err)}
@@ -130,6 +156,12 @@ func (_u *PortPoolUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 				ps[i](selector)
 			}
 		}
+	}
+	if value, ok := _u.mutation.Version(); ok {
+		_spec.SetField(portpool.FieldVersion, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedVersion(); ok {
+		_spec.AddField(portpool.FieldVersion, field.TypeInt64, value)
 	}
 	if value, ok := _u.mutation.PortFrom(); ok {
 		_spec.SetField(portpool.FieldPortFrom, field.TypeInt, value)
@@ -161,6 +193,27 @@ type PortPoolUpdateOne struct {
 	fields   []string
 	hooks    []Hook
 	mutation *PortPoolMutation
+}
+
+// SetVersion sets the "version" field.
+func (_u *PortPoolUpdateOne) SetVersion(v int64) *PortPoolUpdateOne {
+	_u.mutation.ResetVersion()
+	_u.mutation.SetVersion(v)
+	return _u
+}
+
+// SetNillableVersion sets the "version" field if the given value is not nil.
+func (_u *PortPoolUpdateOne) SetNillableVersion(v *int64) *PortPoolUpdateOne {
+	if v != nil {
+		_u.SetVersion(*v)
+	}
+	return _u
+}
+
+// AddVersion adds value to the "version" field.
+func (_u *PortPoolUpdateOne) AddVersion(v int64) *PortPoolUpdateOne {
+	_u.mutation.AddVersion(v)
+	return _u
 }
 
 // SetPortFrom sets the "port_from" field.
@@ -252,6 +305,11 @@ func (_u *PortPoolUpdateOne) ExecX(ctx context.Context) {
 
 // check runs all checks and user-defined validators on the builder.
 func (_u *PortPoolUpdateOne) check() error {
+	if v, ok := _u.mutation.Version(); ok {
+		if err := portpool.VersionValidator(v); err != nil {
+			return &ValidationError{Name: "version", err: fmt.Errorf(`ent: validator failed for field "PortPool.version": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.PortFrom(); ok {
 		if err := portpool.PortFromValidator(v); err != nil {
 			return &ValidationError{Name: "port_from", err: fmt.Errorf(`ent: validator failed for field "PortPool.port_from": %w`, err)}
@@ -296,6 +354,12 @@ func (_u *PortPoolUpdateOne) sqlSave(ctx context.Context) (_node *PortPool, err 
 				ps[i](selector)
 			}
 		}
+	}
+	if value, ok := _u.mutation.Version(); ok {
+		_spec.SetField(portpool.FieldVersion, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedVersion(); ok {
+		_spec.AddField(portpool.FieldVersion, field.TypeInt64, value)
 	}
 	if value, ok := _u.mutation.PortFrom(); ok {
 		_spec.SetField(portpool.FieldPortFrom, field.TypeInt, value)

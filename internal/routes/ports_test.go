@@ -10,6 +10,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/routes"
 	"github.com/felix-homelab/rpmgr/internal/store"
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/portpool"
 	"github.com/felix-homelab/rpmgr/internal/store/storetest"
 )
 
@@ -67,9 +68,9 @@ func TestPools(t *testing.T) {
 			"overlap at the end":  {e.orgA, e.groupA, routes.TCP, 20099, 20200, routes.ErrPoolOverlap},
 			"overlap inside":      {e.orgA, e.groupA, routes.TCP, 20010, 20020, routes.ErrPoolOverlap},
 			"another org's group": {e.orgA, e.groupB, routes.TCP, 30000, 30010, routes.ErrNoGroup},
-			"reversed":            {e.orgA, e.groupA, routes.TCP, 30010, 30000, nil},
-			"port 0":              {e.orgA, e.groupA, routes.TCP, 0, 10, nil},
-			"port 65536":          {e.orgA, e.groupA, routes.TCP, 65530, 65536, nil},
+			"reversed":            {e.orgA, e.groupA, routes.TCP, 30010, 30000, routes.ErrPoolRange},
+			"port 0":              {e.orgA, e.groupA, routes.TCP, 0, 10, routes.ErrPoolRange},
+			"port 65536":          {e.orgA, e.groupA, routes.TCP, 65530, 65536, routes.ErrPoolRange},
 		} {
 			err := e.pool(t, tc.org, tc.group, tc.p, tc.from, tc.to)
 			if err == nil || tc.want != nil && !errors.Is(err, tc.want) {
@@ -84,6 +85,63 @@ func TestPools(t *testing.T) {
 			if err := e.pool(t, e.orgA, e.groupA, p, r[0], r[1]); err != nil {
 				t.Errorf("%s: %v", name, err)
 			}
+		}
+	})
+}
+
+// TestResizePool: a pool grows and shrinks, but never over another pool of its group and
+// protocol, never past the port bounds, and never so that an allocated port falls outside.
+func TestResizePool(t *testing.T) {
+	storetest.ForEachDialect(t, func(t *testing.T, db *store.DB) {
+		e := newEnv(t, db)
+		for _, r := range [][2]int{{20000, 20099}, {20200, 20299}} {
+			if err := e.pool(t, e.orgA, e.groupA, routes.TCP, r[0], r[1]); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if err := e.pool(t, e.orgA, e.groupA, routes.UDP, 20100, 20199); err != nil {
+			t.Fatal(err)
+		}
+		for _, port := range []int{20010, 20090} {
+			if _, err := e.alloc(t, e.orgA, e.groupA, routes.TCP, port); err != nil {
+				t.Fatal(err)
+			}
+		}
+		resize := func(from, to int) (*ent.PortPool, error) {
+			var got *ent.PortPool
+			err := e.tx(t, func(tx *ent.Tx) error {
+				pool, err := tx.PortPool.Query().Where(portpool.GatewayGroupID(e.groupA), portpool.ProtocolEQ(portpool.ProtocolTCP),
+					portpool.PortFromLTE(20010), portpool.PortToGTE(20010)).Only(e.sys)
+				if err != nil {
+					return err
+				}
+				got, err = routes.ResizePool(e.sys, tx, pool, from, to)
+				return err
+			})
+			return got, err
+		}
+		for name, tc := range map[string]struct {
+			from, to int
+			want     error
+		}{
+			"onto the next pool":         {20000, 20200, routes.ErrPoolOverlap},
+			"leaving out the last port":  {20000, 20089, routes.ErrPoolInUse},
+			"leaving out the first port": {20011, 20099, routes.ErrPoolInUse},
+			"reversed":                   {20099, 20000, routes.ErrPoolRange},
+			"to port 0":                  {0, 20099, routes.ErrPoolRange},
+			"past 65535":                 {20000, 65536, routes.ErrPoolRange},
+		} {
+			if _, err := resize(tc.from, tc.to); !errors.Is(err, tc.want) {
+				t.Errorf("%s: %v, want %v", name, err, tc.want)
+			}
+		}
+		// The UDP pool on 20100-20199 is no obstacle to a TCP pool.
+		got, err := resize(19000, 20199)
+		if err != nil || got.PortFrom != 19000 || got.PortTo != 20199 || got.Version != 2 {
+			t.Fatalf("a growth up to the next pool: %v %v", got, err)
+		}
+		if got, err = resize(20010, 20090); err != nil || got.PortFrom != 20010 || got.PortTo != 20090 {
+			t.Fatalf("a shrink to the allocated ports: %v %v", got, err)
 		}
 	})
 }

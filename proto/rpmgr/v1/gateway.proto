@@ -92,6 +92,44 @@ service GatewayService {
       resource_field: "gateway_id"
     };
   }
+  // CreatePortPool adds a range of public ports of one protocol to a gateway group, from which
+  // TCP and UDP routes take their ports; pools of a group and protocol never overlap.
+  rpc CreatePortPool(CreatePortPoolRequest) returns (CreatePortPoolResponse) {
+    option (rpmgr.v1.authz) = {
+      permission: "infrastructure.write"
+      resource_field: "org_id"
+    };
+  }
+  // GetPortPool returns a port pool.
+  rpc GetPortPool(GetPortPoolRequest) returns (GetPortPoolResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+    option (rpmgr.v1.authz) = {
+      permission: "org.read"
+      resource_field: "port_pool_id"
+    };
+  }
+  // ListPortPools lists an org's port pools by ID, those of one group if it names one.
+  rpc ListPortPools(ListPortPoolsRequest) returns (ListPortPoolsResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+    option (rpmgr.v1.authz) = {
+      permission: "org.read"
+      resource_field: "org_id"
+    };
+  }
+  // UpdatePortPool changes a pool's range; every port allocated from it must stay inside.
+  rpc UpdatePortPool(UpdatePortPoolRequest) returns (UpdatePortPoolResponse) {
+    option (rpmgr.v1.authz) = {
+      permission: "infrastructure.write"
+      resource_field: "port_pool.id"
+    };
+  }
+  // DeletePortPool deletes a pool from which no port is allocated.
+  rpc DeletePortPool(DeletePortPoolRequest) returns (DeletePortPoolResponse) {
+    option (rpmgr.v1.authz) = {
+      permission: "infrastructure.write"
+      resource_field: "port_pool_id"
+    };
+  }
 }
 
 // Gateway is one gateway of a group.
@@ -322,6 +360,128 @@ message DeleteGatewayGroupRequest {
 
 // DeleteGatewayGroupResponse is the revision.
 message DeleteGatewayGroupResponse {
+  // The configuration revision of the change.
+  Revision revision = 1;
+}
+
+// PortProtocol is the protocol of public ports.
+enum PortProtocol {
+  // Not set.
+  PORT_PROTOCOL_UNSPECIFIED = 0;
+  // TCP.
+  PORT_PROTOCOL_TCP = 1;
+  // UDP.
+  PORT_PROTOCOL_UDP = 2;
+}
+
+// PortPool is a range of public ports of a gateway group, from port_from to port_to inclusive.
+message PortPool {
+  // The pool's ID, pp_…; output only.
+  string id = 1;
+  // Its group; set at creation.
+  string gateway_group_id = 2;
+  // The protocol of its ports; set at creation.
+  PortProtocol protocol = 3 [(buf.validate.field).enum.defined_only = true];
+  // The first port.
+  int32 port_from = 4 [(buf.validate.field) = {
+    ignore: IGNORE_IF_ZERO_VALUE
+    int32: {
+      gte: 1
+      lte: 65535
+    }
+  }];
+  // The last port.
+  int32 port_to = 5 [(buf.validate.field) = {
+    ignore: IGNORE_IF_ZERO_VALUE
+    int32: {
+      gte: 1
+      lte: 65535
+    }
+  }];
+  // How many of its ports routes hold; output only.
+  int32 allocated_ports = 6;
+  // The version to send back with an update; output only.
+  string etag = 7;
+}
+
+// CreatePortPoolRequest is a new port pool.
+message CreatePortPoolRequest {
+  // The org.
+  string org_id = 1 [(buf.validate.field).string.min_len = 1];
+  // The pool: its group, protocol and range.
+  PortPool port_pool = 2 [(buf.validate.field).required = true];
+  // Makes retries idempotent (docs/07-api.md, "Resource design").
+  string request_id = 3 [(buf.validate.field).string.max_len = 128];
+}
+
+// CreatePortPoolResponse is the new pool.
+message CreatePortPoolResponse {
+  // The pool.
+  PortPool port_pool = 1;
+  // The configuration revision of the change.
+  Revision revision = 2;
+}
+
+// GetPortPoolRequest names a port pool.
+message GetPortPoolRequest {
+  // The pool's ID.
+  string port_pool_id = 1 [(buf.validate.field).string.min_len = 1];
+}
+
+// GetPortPoolResponse is the pool.
+message GetPortPoolResponse {
+  // The pool.
+  PortPool port_pool = 1;
+}
+
+// ListPortPoolsRequest pages through an org's port pools.
+message ListPortPoolsRequest {
+  // The org.
+  string org_id = 1 [(buf.validate.field).string.min_len = 1];
+  // Only this group's, if set.
+  string gateway_group_id = 2;
+  // At most this many, 50 if not set, 500 at most.
+  int32 page_size = 3;
+  // The page after the one that returned it.
+  string page_token = 4;
+}
+
+// ListPortPoolsResponse is one page of port pools.
+message ListPortPoolsResponse {
+  // The pools.
+  repeated PortPool port_pools = 1;
+  // The token of the next page; empty after the last.
+  string next_page_token = 2;
+}
+
+// UpdatePortPoolRequest is a changed port pool.
+message UpdatePortPoolRequest {
+  // The pool with its ID and the new values of the fields the mask names.
+  PortPool port_pool = 1 [(buf.validate.field).required = true];
+  // The fields to change: port_from, port_to.
+  google.protobuf.FieldMask update_mask = 2;
+  // The etag the caller read; empty skips the check.
+  string etag = 3;
+}
+
+// UpdatePortPoolResponse is the changed pool.
+message UpdatePortPoolResponse {
+  // The pool.
+  PortPool port_pool = 1;
+  // The configuration revision of the change.
+  Revision revision = 2;
+}
+
+// DeletePortPoolRequest names a port pool.
+message DeletePortPoolRequest {
+  // The pool's ID.
+  string port_pool_id = 1 [(buf.validate.field).string.min_len = 1];
+  // The etag the caller read; empty skips the check.
+  string etag = 2;
+}
+
+// DeletePortPoolResponse is the revision of the deletion.
+message DeletePortPoolResponse {
   // The configuration revision of the change.
   Revision revision = 1;
 }
