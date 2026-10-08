@@ -255,12 +255,12 @@ func TestGateway_PerGatewayTunnelEndpoints(t *testing.T) {
 		{ID: id1.ID, Endpoints: []string{g1.addr}, Transports: []string{connector.TransportQUIC}, Routes: []string{"rt_1"}},
 		{ID: id2.ID, Endpoints: []string{g2.addr}, Transports: []string{connector.TransportH2}, Routes: []string{"rt_1"}},
 	})
+	// The gateway counts a session before its SessionWelcome, the connector after it: wait for both.
 	eventually(t, "not every gateway has its sessions", func() bool {
-		return g1.sessions.Load().Count()["quic"] == 1 && g2.sessions.Load().Count()["h2"] == 2
+		got := m.Count()
+		return g1.sessions.Load().Count()["quic"] == 1 && g2.sessions.Load().Count()["h2"] == 2 &&
+			got[id1.ID+"/quic"] == 1 && got[id2.ID+"/h2"] == 2 && len(got) == 2
 	})
-	if got := m.Count(); got[id1.ID+"/quic"] != 1 || got[id2.ID+"/h2"] != 2 || len(got) != 2 {
-		t.Fatalf("connector sessions %v", got)
-	}
 	for range 2 {
 		if sni := <-g2.serverName; sni != id2.DNSName() {
 			t.Fatalf("ServerName %q, want %q", sni, id2.DNSName())
