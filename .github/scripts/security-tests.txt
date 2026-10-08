@@ -11,7 +11,7 @@ TestRelaySeesCiphertextOnly	p2	-	-	private services
 TestTokenScopesBoundedByCreator	pending	7.7	#112
 TestShellRequiresOwnershipGrantAndOptIn	p3	-	-	remote shell
 TestUnverifiedDomainRejected	pending	8.5a	#119
-TestBadSnapshotKeepsLastKnownGood	done	3.11	#66	framework clause done (internal/agent); traffic clause in 4.13
+TestBadSnapshotKeepsLastKnownGood	done	3.11	#66	framework clause (internal/agent) and traffic clause (internal/itest, 4.13) done
 TestSecretsNeverLogged	pending	9.6	#138
 TestEnroll_BundleWithExtraRootRejected	done	3.8	#63
 TestH2_ConnectorInitiatedStreams	done	4.4	#74	DIAG clause done; CONTROL_PASSTHROUGH clause in 5.13; RELAY_OUT clause in P2 (private services)
