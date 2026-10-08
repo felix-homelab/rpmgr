@@ -62,6 +62,8 @@ type dataPlane struct {
 	publicPort         int
 	gwCfg              config.Gateway
 	stopGateway        func()
+	conCfg             config.Connector
+	stopConnector      func()
 	broken             atomic.Bool // the gateway's snapshot gets an invalid resource
 }
 
@@ -127,10 +129,8 @@ func newDataPlane(t *testing.T) *dataPlane {
 	if err := os.WriteFile(cc.PolicyFile, []byte(policy), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	runRole(t, func(ctx context.Context, listening func()) error {
-		return connector.Run(ctx, connector.RunOptions{Config: cc, Version: "0.1.0", Getenv: func(string) string { return "" },
-			Listening: listening})
-	})
+	p.conCfg = cc
+	p.startConnector(t, nil)
 	return p
 }
 
@@ -139,6 +139,15 @@ func (p *dataPlane) startGateway(t *testing.T) {
 	t.Helper()
 	p.stopGateway = runRole(t, func(ctx context.Context, listening func()) error {
 		return gateway.Run(ctx, gateway.RunOptions{Config: p.gwCfg, Version: "0.1.0", DrainPeriod: 200 * time.Millisecond, Listening: listening})
+	})
+}
+
+// startConnector runs the connector role on the clock now (nil is time.Now); stopConnector ends it.
+func (p *dataPlane) startConnector(t *testing.T, now func() time.Time) {
+	t.Helper()
+	p.stopConnector = runRole(t, func(ctx context.Context, listening func()) error {
+		return connector.Run(ctx, connector.RunOptions{Config: p.conCfg, Version: "0.1.0", Getenv: func(string) string { return "" },
+			Now: now, Listening: listening})
 	})
 }
 
