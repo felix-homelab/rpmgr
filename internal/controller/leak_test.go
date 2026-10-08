@@ -102,12 +102,14 @@ func TestCrossTenantLeaks(t *testing.T) {
 	quotaA := db.Client().PortQuota.Create().SetOrgID(orgA).SetGatewayGroupID(groupA.ID).SetProtocol("tcp").SetMaxPorts(7).SaveX(sys)
 	connectorA := db.Client().Connector.Create().SetOrgID(orgA).SetName("nas").SetSpiffeID("spiffe://leak/org/" + orgA + "/connector/x").
 		SetPubkeySha256("leak").SaveX(sys)
+	tokenA := db.Client().EnrollmentToken.Create().SetOrgID(orgA).SetTokenHash([]byte("leak")).SetRole("connector").
+		SetExpiresAt(time.Now().Add(time.Hour)).SetCreatedBy(ada.GetUserId()).SaveX(sys)
 	fill := map[string]string{
 		"org_id": orgA, "user_id": ada.GetUserId(), "token_id": adaToken.Msg.GetApiToken().GetId(),
 		"session_id": ada.GetSession().GetId(), "gateway_group_id": groupA.ID, "gateway_id": gatewayA.ID,
-		"port_pool_id": poolA.ID, "port_quota_id": quotaA.ID, "connector_id": connectorA.ID,
+		"port_pool_id": poolA.ID, "port_quota_id": quotaA.ID, "connector_id": connectorA.ID, "enrollment_token_id": tokenA.ID,
 	}
-	secrets := []string{orgA, groupA.ID, gatewayA.ID, "gw1.org-a.example", poolA.ID, quotaA.ID, connectorA.ID, ada.GetUserId(), "ada@example.com", adaToken.Msg.GetApiToken().GetId(), ada.GetSession().GetId(),
+	secrets := []string{orgA, groupA.ID, gatewayA.ID, "gw1.org-a.example", poolA.ID, quotaA.ID, connectorA.ID, tokenA.ID, ada.GetUserId(), "ada@example.com", adaToken.Msg.GetApiToken().GetId(), ada.GetSession().GetId(),
 		invitation.Msg.GetUrl()[strings.Index(invitation.Msg.GetUrl(), "#")+1:]}
 	before := orgRows(t, db, orgA)
 

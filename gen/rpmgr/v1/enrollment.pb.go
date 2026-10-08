@@ -537,6 +537,226 @@ func (x *CreateGatewayEnrollmentTokenResponse) GetEnrollmentToken() *EnrollmentT
 	return nil
 }
 
+// ListEnrollmentTokensRequest pages through an org's tokens.
+type ListEnrollmentTokensRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The org.
+	OrgId string `protobuf:"bytes,1,opt,name=org_id,json=orgId,proto3" json:"org_id,omitempty"`
+	// Also tokens that are revoked, expired or used up.
+	ShowInactive bool `protobuf:"varint,2,opt,name=show_inactive,json=showInactive,proto3" json:"show_inactive,omitempty"`
+	// At most this many, 50 if not set, 500 at most.
+	PageSize int32 `protobuf:"varint,3,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
+	// The page after the one that returned it.
+	PageToken     string `protobuf:"bytes,4,opt,name=page_token,json=pageToken,proto3" json:"page_token,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListEnrollmentTokensRequest) Reset() {
+	*x = ListEnrollmentTokensRequest{}
+	mi := &file_rpmgr_v1_enrollment_proto_msgTypes[5]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListEnrollmentTokensRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListEnrollmentTokensRequest) ProtoMessage() {}
+
+func (x *ListEnrollmentTokensRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_rpmgr_v1_enrollment_proto_msgTypes[5]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListEnrollmentTokensRequest.ProtoReflect.Descriptor instead.
+func (*ListEnrollmentTokensRequest) Descriptor() ([]byte, []int) {
+	return file_rpmgr_v1_enrollment_proto_rawDescGZIP(), []int{5}
+}
+
+func (x *ListEnrollmentTokensRequest) GetOrgId() string {
+	if x != nil {
+		return x.OrgId
+	}
+	return ""
+}
+
+func (x *ListEnrollmentTokensRequest) GetShowInactive() bool {
+	if x != nil {
+		return x.ShowInactive
+	}
+	return false
+}
+
+func (x *ListEnrollmentTokensRequest) GetPageSize() int32 {
+	if x != nil {
+		return x.PageSize
+	}
+	return 0
+}
+
+func (x *ListEnrollmentTokensRequest) GetPageToken() string {
+	if x != nil {
+		return x.PageToken
+	}
+	return ""
+}
+
+// ListEnrollmentTokensResponse is one page of tokens.
+type ListEnrollmentTokensResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The tokens.
+	EnrollmentTokens []*EnrollmentToken `protobuf:"bytes,1,rep,name=enrollment_tokens,json=enrollmentTokens,proto3" json:"enrollment_tokens,omitempty"`
+	// The token of the next page; empty after the last.
+	NextPageToken string `protobuf:"bytes,2,opt,name=next_page_token,json=nextPageToken,proto3" json:"next_page_token,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListEnrollmentTokensResponse) Reset() {
+	*x = ListEnrollmentTokensResponse{}
+	mi := &file_rpmgr_v1_enrollment_proto_msgTypes[6]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListEnrollmentTokensResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListEnrollmentTokensResponse) ProtoMessage() {}
+
+func (x *ListEnrollmentTokensResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_rpmgr_v1_enrollment_proto_msgTypes[6]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListEnrollmentTokensResponse.ProtoReflect.Descriptor instead.
+func (*ListEnrollmentTokensResponse) Descriptor() ([]byte, []int) {
+	return file_rpmgr_v1_enrollment_proto_rawDescGZIP(), []int{6}
+}
+
+func (x *ListEnrollmentTokensResponse) GetEnrollmentTokens() []*EnrollmentToken {
+	if x != nil {
+		return x.EnrollmentTokens
+	}
+	return nil
+}
+
+func (x *ListEnrollmentTokensResponse) GetNextPageToken() string {
+	if x != nil {
+		return x.NextPageToken
+	}
+	return ""
+}
+
+// RevokeEnrollmentTokenRequest names a token.
+type RevokeEnrollmentTokenRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The token's ID.
+	EnrollmentTokenId string `protobuf:"bytes,1,opt,name=enrollment_token_id,json=enrollmentTokenId,proto3" json:"enrollment_token_id,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
+}
+
+func (x *RevokeEnrollmentTokenRequest) Reset() {
+	*x = RevokeEnrollmentTokenRequest{}
+	mi := &file_rpmgr_v1_enrollment_proto_msgTypes[7]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RevokeEnrollmentTokenRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RevokeEnrollmentTokenRequest) ProtoMessage() {}
+
+func (x *RevokeEnrollmentTokenRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_rpmgr_v1_enrollment_proto_msgTypes[7]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RevokeEnrollmentTokenRequest.ProtoReflect.Descriptor instead.
+func (*RevokeEnrollmentTokenRequest) Descriptor() ([]byte, []int) {
+	return file_rpmgr_v1_enrollment_proto_rawDescGZIP(), []int{7}
+}
+
+func (x *RevokeEnrollmentTokenRequest) GetEnrollmentTokenId() string {
+	if x != nil {
+		return x.EnrollmentTokenId
+	}
+	return ""
+}
+
+// RevokeEnrollmentTokenResponse is the revoked token.
+type RevokeEnrollmentTokenResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The token.
+	EnrollmentToken *EnrollmentToken `protobuf:"bytes,1,opt,name=enrollment_token,json=enrollmentToken,proto3" json:"enrollment_token,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
+}
+
+func (x *RevokeEnrollmentTokenResponse) Reset() {
+	*x = RevokeEnrollmentTokenResponse{}
+	mi := &file_rpmgr_v1_enrollment_proto_msgTypes[8]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RevokeEnrollmentTokenResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RevokeEnrollmentTokenResponse) ProtoMessage() {}
+
+func (x *RevokeEnrollmentTokenResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_rpmgr_v1_enrollment_proto_msgTypes[8]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RevokeEnrollmentTokenResponse.ProtoReflect.Descriptor instead.
+func (*RevokeEnrollmentTokenResponse) Descriptor() ([]byte, []int) {
+	return file_rpmgr_v1_enrollment_proto_rawDescGZIP(), []int{8}
+}
+
+func (x *RevokeEnrollmentTokenResponse) GetEnrollmentToken() *EnrollmentToken {
+	if x != nil {
+		return x.EnrollmentToken
+	}
+	return nil
+}
+
 var File_rpmgr_v1_enrollment_proto protoreflect.FileDescriptor
 
 const file_rpmgr_v1_enrollment_proto_rawDesc = "" +
@@ -592,17 +812,34 @@ const file_rpmgr_v1_enrollment_proto_rawDesc = "" +
 	"request_id\x18\x03 \x01(\tB\b\xbaH\x05r\x03\x18\x80\x01R\trequestId\"\x88\x01\n" +
 	"$CreateGatewayEnrollmentTokenResponse\x12\x1a\n" +
 	"\x05token\x18\x01 \x01(\tB\x04\x88\xb5\x18\x01R\x05token\x12D\n" +
-	"\x10enrollment_token\x18\x02 \x01(\v2\x19.rpmgr.v1.EnrollmentTokenR\x0fenrollmentToken*Y\n" +
+	"\x10enrollment_token\x18\x02 \x01(\v2\x19.rpmgr.v1.EnrollmentTokenR\x0fenrollmentToken\"\x9e\x01\n" +
+	"\x1bListEnrollmentTokensRequest\x12\x1e\n" +
+	"\x06org_id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x05orgId\x12#\n" +
+	"\rshow_inactive\x18\x02 \x01(\bR\fshowInactive\x12\x1b\n" +
+	"\tpage_size\x18\x03 \x01(\x05R\bpageSize\x12\x1d\n" +
+	"\n" +
+	"page_token\x18\x04 \x01(\tR\tpageToken\"\x8e\x01\n" +
+	"\x1cListEnrollmentTokensResponse\x12F\n" +
+	"\x11enrollment_tokens\x18\x01 \x03(\v2\x19.rpmgr.v1.EnrollmentTokenR\x10enrollmentTokens\x12&\n" +
+	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"W\n" +
+	"\x1cRevokeEnrollmentTokenRequest\x127\n" +
+	"\x13enrollment_token_id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x11enrollmentTokenId\"e\n" +
+	"\x1dRevokeEnrollmentTokenResponse\x12D\n" +
+	"\x10enrollment_token\x18\x01 \x01(\v2\x19.rpmgr.v1.EnrollmentTokenR\x0fenrollmentToken*Y\n" +
 	"\tAgentRole\x12\x1a\n" +
 	"\x16AGENT_ROLE_UNSPECIFIED\x10\x00\x12\x18\n" +
 	"\x14AGENT_ROLE_CONNECTOR\x10\x01\x12\x16\n" +
-	"\x12AGENT_ROLE_GATEWAY\x10\x022\xca\x02\n" +
+	"\x12AGENT_ROLE_GATEWAY\x10\x022\xe5\x04\n" +
 	"\x11EnrollmentService\x12\x8a\x01\n" +
 	"\x15CreateEnrollmentToken\x12&.rpmgr.v1.CreateEnrollmentTokenRequest\x1a'.rpmgr.v1.CreateEnrollmentTokenResponse\" \x8a\xb5\x18\x1c\n" +
 	"\x10connectors.write\x12\x06org_id\x18\x01\x12\xa7\x01\n" +
 	"\x1cCreateGatewayEnrollmentToken\x12-.rpmgr.v1.CreateGatewayEnrollmentTokenRequest\x1a..rpmgr.v1.CreateGatewayEnrollmentTokenResponse\"(\x8a\xb5\x18$\n" +
 	"\x14infrastructure.write\x12\n" +
-	"gateway_id\x18\x01B5Z3github.com/felix-homelab/rpmgr/gen/rpmgr/v1;rpmgrv1b\x06proto3"
+	"gateway_id\x18\x01\x12\x80\x01\n" +
+	"\x14ListEnrollmentTokens\x12%.rpmgr.v1.ListEnrollmentTokensRequest\x1a&.rpmgr.v1.ListEnrollmentTokensResponse\"\x19\x8a\xb5\x18\x12\n" +
+	"\borg.read\x12\x06org_id\x90\x02\x01\x12\x95\x01\n" +
+	"\x15RevokeEnrollmentToken\x12&.rpmgr.v1.RevokeEnrollmentTokenRequest\x1a'.rpmgr.v1.RevokeEnrollmentTokenResponse\"+\x8a\xb5\x18'\n" +
+	"\x10connectors.write\x12\x13enrollment_token_idB5Z3github.com/felix-homelab/rpmgr/gen/rpmgr/v1;rpmgrv1b\x06proto3"
 
 var (
 	file_rpmgr_v1_enrollment_proto_rawDescOnce sync.Once
@@ -617,7 +854,7 @@ func file_rpmgr_v1_enrollment_proto_rawDescGZIP() []byte {
 }
 
 var file_rpmgr_v1_enrollment_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_rpmgr_v1_enrollment_proto_msgTypes = make([]protoimpl.MessageInfo, 7)
+var file_rpmgr_v1_enrollment_proto_msgTypes = make([]protoimpl.MessageInfo, 11)
 var file_rpmgr_v1_enrollment_proto_goTypes = []any{
 	(AgentRole)(0),                               // 0: rpmgr.v1.AgentRole
 	(*EnrollmentToken)(nil),                      // 1: rpmgr.v1.EnrollmentToken
@@ -625,32 +862,42 @@ var file_rpmgr_v1_enrollment_proto_goTypes = []any{
 	(*CreateEnrollmentTokenResponse)(nil),        // 3: rpmgr.v1.CreateEnrollmentTokenResponse
 	(*CreateGatewayEnrollmentTokenRequest)(nil),  // 4: rpmgr.v1.CreateGatewayEnrollmentTokenRequest
 	(*CreateGatewayEnrollmentTokenResponse)(nil), // 5: rpmgr.v1.CreateGatewayEnrollmentTokenResponse
-	nil,                           // 6: rpmgr.v1.EnrollmentToken.LabelsEntry
-	nil,                           // 7: rpmgr.v1.CreateEnrollmentTokenRequest.LabelsEntry
-	(*timestamppb.Timestamp)(nil), // 8: google.protobuf.Timestamp
-	(*durationpb.Duration)(nil),   // 9: google.protobuf.Duration
+	(*ListEnrollmentTokensRequest)(nil),          // 6: rpmgr.v1.ListEnrollmentTokensRequest
+	(*ListEnrollmentTokensResponse)(nil),         // 7: rpmgr.v1.ListEnrollmentTokensResponse
+	(*RevokeEnrollmentTokenRequest)(nil),         // 8: rpmgr.v1.RevokeEnrollmentTokenRequest
+	(*RevokeEnrollmentTokenResponse)(nil),        // 9: rpmgr.v1.RevokeEnrollmentTokenResponse
+	nil,                                          // 10: rpmgr.v1.EnrollmentToken.LabelsEntry
+	nil,                                          // 11: rpmgr.v1.CreateEnrollmentTokenRequest.LabelsEntry
+	(*timestamppb.Timestamp)(nil),                // 12: google.protobuf.Timestamp
+	(*durationpb.Duration)(nil),                  // 13: google.protobuf.Duration
 }
 var file_rpmgr_v1_enrollment_proto_depIdxs = []int32{
 	0,  // 0: rpmgr.v1.EnrollmentToken.role:type_name -> rpmgr.v1.AgentRole
-	6,  // 1: rpmgr.v1.EnrollmentToken.labels:type_name -> rpmgr.v1.EnrollmentToken.LabelsEntry
-	8,  // 2: rpmgr.v1.EnrollmentToken.expire_time:type_name -> google.protobuf.Timestamp
-	8,  // 3: rpmgr.v1.EnrollmentToken.create_time:type_name -> google.protobuf.Timestamp
-	8,  // 4: rpmgr.v1.EnrollmentToken.last_use_time:type_name -> google.protobuf.Timestamp
-	8,  // 5: rpmgr.v1.EnrollmentToken.revoke_time:type_name -> google.protobuf.Timestamp
-	7,  // 6: rpmgr.v1.CreateEnrollmentTokenRequest.labels:type_name -> rpmgr.v1.CreateEnrollmentTokenRequest.LabelsEntry
-	9,  // 7: rpmgr.v1.CreateEnrollmentTokenRequest.ttl:type_name -> google.protobuf.Duration
+	10, // 1: rpmgr.v1.EnrollmentToken.labels:type_name -> rpmgr.v1.EnrollmentToken.LabelsEntry
+	12, // 2: rpmgr.v1.EnrollmentToken.expire_time:type_name -> google.protobuf.Timestamp
+	12, // 3: rpmgr.v1.EnrollmentToken.create_time:type_name -> google.protobuf.Timestamp
+	12, // 4: rpmgr.v1.EnrollmentToken.last_use_time:type_name -> google.protobuf.Timestamp
+	12, // 5: rpmgr.v1.EnrollmentToken.revoke_time:type_name -> google.protobuf.Timestamp
+	11, // 6: rpmgr.v1.CreateEnrollmentTokenRequest.labels:type_name -> rpmgr.v1.CreateEnrollmentTokenRequest.LabelsEntry
+	13, // 7: rpmgr.v1.CreateEnrollmentTokenRequest.ttl:type_name -> google.protobuf.Duration
 	1,  // 8: rpmgr.v1.CreateEnrollmentTokenResponse.enrollment_token:type_name -> rpmgr.v1.EnrollmentToken
-	9,  // 9: rpmgr.v1.CreateGatewayEnrollmentTokenRequest.ttl:type_name -> google.protobuf.Duration
+	13, // 9: rpmgr.v1.CreateGatewayEnrollmentTokenRequest.ttl:type_name -> google.protobuf.Duration
 	1,  // 10: rpmgr.v1.CreateGatewayEnrollmentTokenResponse.enrollment_token:type_name -> rpmgr.v1.EnrollmentToken
-	2,  // 11: rpmgr.v1.EnrollmentService.CreateEnrollmentToken:input_type -> rpmgr.v1.CreateEnrollmentTokenRequest
-	4,  // 12: rpmgr.v1.EnrollmentService.CreateGatewayEnrollmentToken:input_type -> rpmgr.v1.CreateGatewayEnrollmentTokenRequest
-	3,  // 13: rpmgr.v1.EnrollmentService.CreateEnrollmentToken:output_type -> rpmgr.v1.CreateEnrollmentTokenResponse
-	5,  // 14: rpmgr.v1.EnrollmentService.CreateGatewayEnrollmentToken:output_type -> rpmgr.v1.CreateGatewayEnrollmentTokenResponse
-	13, // [13:15] is the sub-list for method output_type
-	11, // [11:13] is the sub-list for method input_type
-	11, // [11:11] is the sub-list for extension type_name
-	11, // [11:11] is the sub-list for extension extendee
-	0,  // [0:11] is the sub-list for field type_name
+	1,  // 11: rpmgr.v1.ListEnrollmentTokensResponse.enrollment_tokens:type_name -> rpmgr.v1.EnrollmentToken
+	1,  // 12: rpmgr.v1.RevokeEnrollmentTokenResponse.enrollment_token:type_name -> rpmgr.v1.EnrollmentToken
+	2,  // 13: rpmgr.v1.EnrollmentService.CreateEnrollmentToken:input_type -> rpmgr.v1.CreateEnrollmentTokenRequest
+	4,  // 14: rpmgr.v1.EnrollmentService.CreateGatewayEnrollmentToken:input_type -> rpmgr.v1.CreateGatewayEnrollmentTokenRequest
+	6,  // 15: rpmgr.v1.EnrollmentService.ListEnrollmentTokens:input_type -> rpmgr.v1.ListEnrollmentTokensRequest
+	8,  // 16: rpmgr.v1.EnrollmentService.RevokeEnrollmentToken:input_type -> rpmgr.v1.RevokeEnrollmentTokenRequest
+	3,  // 17: rpmgr.v1.EnrollmentService.CreateEnrollmentToken:output_type -> rpmgr.v1.CreateEnrollmentTokenResponse
+	5,  // 18: rpmgr.v1.EnrollmentService.CreateGatewayEnrollmentToken:output_type -> rpmgr.v1.CreateGatewayEnrollmentTokenResponse
+	7,  // 19: rpmgr.v1.EnrollmentService.ListEnrollmentTokens:output_type -> rpmgr.v1.ListEnrollmentTokensResponse
+	9,  // 20: rpmgr.v1.EnrollmentService.RevokeEnrollmentToken:output_type -> rpmgr.v1.RevokeEnrollmentTokenResponse
+	17, // [17:21] is the sub-list for method output_type
+	13, // [13:17] is the sub-list for method input_type
+	13, // [13:13] is the sub-list for extension type_name
+	13, // [13:13] is the sub-list for extension extendee
+	0,  // [0:13] is the sub-list for field type_name
 }
 
 func init() { file_rpmgr_v1_enrollment_proto_init() }
@@ -666,7 +913,7 @@ func file_rpmgr_v1_enrollment_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_rpmgr_v1_enrollment_proto_rawDesc), len(file_rpmgr_v1_enrollment_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   7,
+			NumMessages:   11,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

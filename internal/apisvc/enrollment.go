@@ -8,15 +8,18 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
+	"entgo.io/ent/dialect/sql"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	rpmgrv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/v1"
 	"github.com/felix-homelab/rpmgr/gen/rpmgr/v1/rpmgrv1connect"
 	"github.com/felix-homelab/rpmgr/internal/api"
+	"github.com/felix-homelab/rpmgr/internal/authz"
 	"github.com/felix-homelab/rpmgr/internal/enroll"
 	"github.com/felix-homelab/rpmgr/internal/store"
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/enrollmenttoken"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/predicate"
 )
 
 // Enrollment is EnrollmentService. Its methods run in the org scope the interceptor gives them.
@@ -93,6 +96,72 @@ func (e *Enrollment) mint(ctx context.Context, m enroll.Mint) (string, *ent.Enro
 	}
 	return tok, row, nil
 }
+
+// ListEnrollmentTokens implements EnrollmentService.
+func (e *Enrollment) ListEnrollmentTokens(ctx context.Context, req *connect.Request[rpmgrv1.ListEnrollmentTokensRequest]) (
+	*connect.Response[rpmgrv1.ListEnrollmentTokensResponse], error) {
+	m := req.Msg
+	size, err := api.PageSize(m.GetPageSize())
+	if err != nil {
+		return nil, err
+	}
+	after, err := e.API.AfterPage(m.GetPageToken(), m)
+	if err != nil {
+		return nil, err
+	}
+	q := e.DB.ReadClient().EnrollmentToken.Query().Where(enrollmenttoken.OrgID(m.GetOrgId())).
+		Order(ent.Asc(enrollmenttoken.FieldID)).Limit(size + 1)
+	if !m.GetShowInactive() {
+		// UTC, as the store keeps expires_at: SQLite compares the text.
+		q.Where(enrollmenttoken.RevokedAtIsNil(), enrollmenttoken.ExpiresAtGT(e.now().UTC()), usesLeft)
+	}
+	if after != "" {
+		q.Where(enrollmenttoken.IDGT(after))
+	}
+	rows, err := q.All(ctx)
+	if err != nil {
+		return nil, storeError(err)
+	}
+	out := &rpmgrv1.ListEnrollmentTokensResponse{}
+	if len(rows) > size {
+		rows = rows[:size]
+		out.NextPageToken = e.API.PageToken(rows[size-1].ID, m)
+	}
+	for _, r := range rows {
+		out.EnrollmentTokens = append(out.EnrollmentTokens, enrollmentTokenOf(r))
+	}
+	return connect.NewResponse(out), nil
+}
+
+// RevokeEnrollmentToken implements EnrollmentService. A second revocation keeps the first's time.
+func (e *Enrollment) RevokeEnrollmentToken(ctx context.Context, req *connect.Request[rpmgrv1.RevokeEnrollmentTokenRequest]) (
+	*connect.Response[rpmgrv1.RevokeEnrollmentTokenResponse], error) {
+	var row *ent.EnrollmentToken
+	err := store.WriteTx(ctx, e.DB, func(tx *ent.Tx) error {
+		cur, err := tx.EnrollmentToken.Get(ctx, req.Msg.GetEnrollmentTokenId())
+		if err != nil {
+			return err
+		}
+		if cur.Role == enrollmenttoken.RoleGateway && !api.Permits(ctx, cur.OrgID, authz.PermInfrastructureWrite) {
+			return connect.NewError(connect.CodePermissionDenied, errors.New("apisvc: a gateway's token needs infrastructure.write"))
+		}
+		if row = cur; cur.RevokedAt != nil {
+			return nil
+		}
+		row, err = tx.EnrollmentToken.UpdateOne(cur).SetRevokedAt(e.now()).Save(ctx)
+		return err
+	})
+	if err != nil {
+		return nil, storeError(err)
+	}
+	return connect.NewResponse(&rpmgrv1.RevokeEnrollmentTokenResponse{EnrollmentToken: enrollmentTokenOf(row)}), nil
+}
+
+// usesLeft holds a token that may still enroll: unlimited, or used fewer times than allowed.
+var usesLeft = predicate.EnrollmentToken(func(s *sql.Selector) {
+	s.Where(sql.Or(sql.IsNull(s.C(enrollmenttoken.FieldMaxUses)),
+		sql.ColumnsLT(s.C(enrollmenttoken.FieldUseCount), s.C(enrollmenttoken.FieldMaxUses))))
+})
 
 func (e *Enrollment) now() time.Time {
 	if e.Now != nil {

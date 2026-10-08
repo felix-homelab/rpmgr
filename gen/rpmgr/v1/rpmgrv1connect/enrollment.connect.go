@@ -41,6 +41,12 @@ const (
 	// EnrollmentServiceCreateGatewayEnrollmentTokenProcedure is the fully-qualified name of the
 	// EnrollmentService's CreateGatewayEnrollmentToken RPC.
 	EnrollmentServiceCreateGatewayEnrollmentTokenProcedure = "/rpmgr.v1.EnrollmentService/CreateGatewayEnrollmentToken"
+	// EnrollmentServiceListEnrollmentTokensProcedure is the fully-qualified name of the
+	// EnrollmentService's ListEnrollmentTokens RPC.
+	EnrollmentServiceListEnrollmentTokensProcedure = "/rpmgr.v1.EnrollmentService/ListEnrollmentTokens"
+	// EnrollmentServiceRevokeEnrollmentTokenProcedure is the fully-qualified name of the
+	// EnrollmentService's RevokeEnrollmentToken RPC.
+	EnrollmentServiceRevokeEnrollmentTokenProcedure = "/rpmgr.v1.EnrollmentService/RevokeEnrollmentToken"
 )
 
 // EnrollmentServiceClient is a client for the rpmgr.v1.EnrollmentService service.
@@ -51,6 +57,10 @@ type EnrollmentServiceClient interface {
 	// CreateGatewayEnrollmentToken mints the single-use token that enrolls a gateway an Admin
 	// created (R15).
 	CreateGatewayEnrollmentToken(context.Context, *connect.Request[v1.CreateGatewayEnrollmentTokenRequest]) (*connect.Response[v1.CreateGatewayEnrollmentTokenResponse], error)
+	// ListEnrollmentTokens lists an org's tokens by ID, newest last; never the tokens themselves.
+	ListEnrollmentTokens(context.Context, *connect.Request[v1.ListEnrollmentTokensRequest]) (*connect.Response[v1.ListEnrollmentTokensResponse], error)
+	// RevokeEnrollmentToken ends a token. A gateway's token also needs infrastructure.write.
+	RevokeEnrollmentToken(context.Context, *connect.Request[v1.RevokeEnrollmentTokenRequest]) (*connect.Response[v1.RevokeEnrollmentTokenResponse], error)
 }
 
 // NewEnrollmentServiceClient constructs a client for the rpmgr.v1.EnrollmentService service. By
@@ -76,6 +86,19 @@ func NewEnrollmentServiceClient(httpClient connect.HTTPClient, baseURL string, o
 			connect.WithSchema(enrollmentServiceMethods.ByName("CreateGatewayEnrollmentToken")),
 			connect.WithClientOptions(opts...),
 		),
+		listEnrollmentTokens: connect.NewClient[v1.ListEnrollmentTokensRequest, v1.ListEnrollmentTokensResponse](
+			httpClient,
+			baseURL+EnrollmentServiceListEnrollmentTokensProcedure,
+			connect.WithSchema(enrollmentServiceMethods.ByName("ListEnrollmentTokens")),
+			connect.WithIdempotency(connect.IdempotencyNoSideEffects),
+			connect.WithClientOptions(opts...),
+		),
+		revokeEnrollmentToken: connect.NewClient[v1.RevokeEnrollmentTokenRequest, v1.RevokeEnrollmentTokenResponse](
+			httpClient,
+			baseURL+EnrollmentServiceRevokeEnrollmentTokenProcedure,
+			connect.WithSchema(enrollmentServiceMethods.ByName("RevokeEnrollmentToken")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -83,6 +106,8 @@ func NewEnrollmentServiceClient(httpClient connect.HTTPClient, baseURL string, o
 type enrollmentServiceClient struct {
 	createEnrollmentToken        *connect.Client[v1.CreateEnrollmentTokenRequest, v1.CreateEnrollmentTokenResponse]
 	createGatewayEnrollmentToken *connect.Client[v1.CreateGatewayEnrollmentTokenRequest, v1.CreateGatewayEnrollmentTokenResponse]
+	listEnrollmentTokens         *connect.Client[v1.ListEnrollmentTokensRequest, v1.ListEnrollmentTokensResponse]
+	revokeEnrollmentToken        *connect.Client[v1.RevokeEnrollmentTokenRequest, v1.RevokeEnrollmentTokenResponse]
 }
 
 // CreateEnrollmentToken calls rpmgr.v1.EnrollmentService.CreateEnrollmentToken.
@@ -95,6 +120,16 @@ func (c *enrollmentServiceClient) CreateGatewayEnrollmentToken(ctx context.Conte
 	return c.createGatewayEnrollmentToken.CallUnary(ctx, req)
 }
 
+// ListEnrollmentTokens calls rpmgr.v1.EnrollmentService.ListEnrollmentTokens.
+func (c *enrollmentServiceClient) ListEnrollmentTokens(ctx context.Context, req *connect.Request[v1.ListEnrollmentTokensRequest]) (*connect.Response[v1.ListEnrollmentTokensResponse], error) {
+	return c.listEnrollmentTokens.CallUnary(ctx, req)
+}
+
+// RevokeEnrollmentToken calls rpmgr.v1.EnrollmentService.RevokeEnrollmentToken.
+func (c *enrollmentServiceClient) RevokeEnrollmentToken(ctx context.Context, req *connect.Request[v1.RevokeEnrollmentTokenRequest]) (*connect.Response[v1.RevokeEnrollmentTokenResponse], error) {
+	return c.revokeEnrollmentToken.CallUnary(ctx, req)
+}
+
 // EnrollmentServiceHandler is an implementation of the rpmgr.v1.EnrollmentService service.
 type EnrollmentServiceHandler interface {
 	// CreateEnrollmentToken mints a token that enrolls a connector, or, with connector_id, one that
@@ -103,6 +138,10 @@ type EnrollmentServiceHandler interface {
 	// CreateGatewayEnrollmentToken mints the single-use token that enrolls a gateway an Admin
 	// created (R15).
 	CreateGatewayEnrollmentToken(context.Context, *connect.Request[v1.CreateGatewayEnrollmentTokenRequest]) (*connect.Response[v1.CreateGatewayEnrollmentTokenResponse], error)
+	// ListEnrollmentTokens lists an org's tokens by ID, newest last; never the tokens themselves.
+	ListEnrollmentTokens(context.Context, *connect.Request[v1.ListEnrollmentTokensRequest]) (*connect.Response[v1.ListEnrollmentTokensResponse], error)
+	// RevokeEnrollmentToken ends a token. A gateway's token also needs infrastructure.write.
+	RevokeEnrollmentToken(context.Context, *connect.Request[v1.RevokeEnrollmentTokenRequest]) (*connect.Response[v1.RevokeEnrollmentTokenResponse], error)
 }
 
 // NewEnrollmentServiceHandler builds an HTTP handler from the service implementation. It returns
@@ -124,12 +163,29 @@ func NewEnrollmentServiceHandler(svc EnrollmentServiceHandler, opts ...connect.H
 		connect.WithSchema(enrollmentServiceMethods.ByName("CreateGatewayEnrollmentToken")),
 		connect.WithHandlerOptions(opts...),
 	)
+	enrollmentServiceListEnrollmentTokensHandler := connect.NewUnaryHandler(
+		EnrollmentServiceListEnrollmentTokensProcedure,
+		svc.ListEnrollmentTokens,
+		connect.WithSchema(enrollmentServiceMethods.ByName("ListEnrollmentTokens")),
+		connect.WithIdempotency(connect.IdempotencyNoSideEffects),
+		connect.WithHandlerOptions(opts...),
+	)
+	enrollmentServiceRevokeEnrollmentTokenHandler := connect.NewUnaryHandler(
+		EnrollmentServiceRevokeEnrollmentTokenProcedure,
+		svc.RevokeEnrollmentToken,
+		connect.WithSchema(enrollmentServiceMethods.ByName("RevokeEnrollmentToken")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/rpmgr.v1.EnrollmentService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case EnrollmentServiceCreateEnrollmentTokenProcedure:
 			enrollmentServiceCreateEnrollmentTokenHandler.ServeHTTP(w, r)
 		case EnrollmentServiceCreateGatewayEnrollmentTokenProcedure:
 			enrollmentServiceCreateGatewayEnrollmentTokenHandler.ServeHTTP(w, r)
+		case EnrollmentServiceListEnrollmentTokensProcedure:
+			enrollmentServiceListEnrollmentTokensHandler.ServeHTTP(w, r)
+		case EnrollmentServiceRevokeEnrollmentTokenProcedure:
+			enrollmentServiceRevokeEnrollmentTokenHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -145,4 +201,12 @@ func (UnimplementedEnrollmentServiceHandler) CreateEnrollmentToken(context.Conte
 
 func (UnimplementedEnrollmentServiceHandler) CreateGatewayEnrollmentToken(context.Context, *connect.Request[v1.CreateGatewayEnrollmentTokenRequest]) (*connect.Response[v1.CreateGatewayEnrollmentTokenResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("rpmgr.v1.EnrollmentService.CreateGatewayEnrollmentToken is not implemented"))
+}
+
+func (UnimplementedEnrollmentServiceHandler) ListEnrollmentTokens(context.Context, *connect.Request[v1.ListEnrollmentTokensRequest]) (*connect.Response[v1.ListEnrollmentTokensResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("rpmgr.v1.EnrollmentService.ListEnrollmentTokens is not implemented"))
+}
+
+func (UnimplementedEnrollmentServiceHandler) RevokeEnrollmentToken(context.Context, *connect.Request[v1.RevokeEnrollmentTokenRequest]) (*connect.Response[v1.RevokeEnrollmentTokenResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("rpmgr.v1.EnrollmentService.RevokeEnrollmentToken is not implemented"))
 }

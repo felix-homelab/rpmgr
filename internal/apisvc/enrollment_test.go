@@ -21,7 +21,8 @@ func ptr[T any](v T) *T { return &v }
 
 // TestEnrollmentTokens: minting needs a step-up; a token is single-use and lasts an hour unless
 // set otherwise, 30 days at most; only an ephemeral token with a set lifetime enrolls more than one
-// connector; a re-enrollment token names a live connector of the org and nothing else.
+// connector; a re-enrollment token names a live connector of the org and nothing else; the list
+// leaves out what can no longer enroll, and never holds a token.
 func TestEnrollmentTokens(t *testing.T) {
 	e, ada, org, group := gatewayEnv(t)
 	ctx := context.Background()
@@ -86,11 +87,34 @@ func TestEnrollmentTokens(t *testing.T) {
 		}
 	}
 
+	list := func(inactive bool) []*rpmgrv1.EnrollmentToken {
+		t.Helper()
+		r, err := ada.enr.ListEnrollmentTokens(ctx, connect.NewRequest(&rpmgrv1.ListEnrollmentTokensRequest{OrgId: org, ShowInactive: inactive}))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return r.Msg.GetEnrollmentTokens()
+	}
+	if n := len(list(false)); n != 4 {
+		t.Fatalf("%d live tokens, want 4", n)
+	}
+	e.db.Client().EnrollmentToken.UpdateOneID(tk.GetId()).SetUseCount(1).ExecX(e.sys) // used up
+	e.clock = e.clock.Add(2 * time.Hour)                                              // the 1-hour ones expire
+	live := list(false)
+	if len(live) != 2 || len(list(true)) != 4 {
+		t.Fatalf("live %d, all %d", len(live), len(list(true)))
+	}
+	for _, l := range list(true) {
+		if strings.Contains(l.String(), "rpmgr_enr_") {
+			t.Fatalf("the list holds a token: %v", l)
+		}
+	}
 }
 
 // TestEnrollmentTokens_Roles: an Operator mints connector tokens only where the org allows it, and
 // never gateway tokens; a gateway token is single-use, scoped to its gateway and group, refused
-// for a decommissioned gateway.
+// for a decommissioned gateway; revoking a gateway's token needs infrastructure.write, from the
+// role and, for an API token, from its scopes; a second revocation keeps the first's time.
 func TestEnrollmentTokens_Roles(t *testing.T) {
 	e, ada, org, group := gatewayEnv(t)
 	ctx := context.Background()
@@ -125,7 +149,8 @@ func TestEnrollmentTokens_Roles(t *testing.T) {
 		&fieldmaskpb.FieldMask{Paths: []string{"operators_may_enroll"}}, 0); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := connectorToken(op); err != nil {
+	opToken, err := connectorToken(op)
+	if err != nil {
 		t.Fatalf("an Operator in an org that allows it: %v", err)
 	}
 	if _, err := gatewayToken(op, gw.GetId()); code(err) != connect.CodePermissionDenied {
@@ -144,5 +169,49 @@ func TestEnrollmentTokens_Roles(t *testing.T) {
 	}
 	if _, err := gatewayToken(ada, gw.GetId()); code(err) != connect.CodeFailedPrecondition {
 		t.Fatalf("a decommissioned gateway: %v", err)
+	}
+
+	revoke := func(b *browser, id string) (*rpmgrv1.EnrollmentToken, error) {
+		r, err := b.enr.RevokeEnrollmentToken(ctx, connect.NewRequest(&rpmgrv1.RevokeEnrollmentTokenRequest{EnrollmentTokenId: id}))
+		if err != nil {
+			return nil, err
+		}
+		return r.Msg.GetEnrollmentToken(), nil
+	}
+	if _, err := revoke(op, gt.GetId()); code(err) != connect.CodePermissionDenied {
+		t.Fatalf("an Operator revokes a gateway token: %v", err)
+	}
+	// An Owner's API token without infrastructure.write in its scopes cannot either.
+	pat, err := ada.token.CreateAPIToken(ctx, connect.NewRequest(&rpmgrv1.CreateAPITokenRequest{OrgId: org, Name: "ci",
+		Scopes: []string{"connectors.write"}}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	bot := e.browser()
+	bot.bearer = pat.Msg.GetToken()
+	if _, err := revoke(bot, gt.GetId()); code(err) != connect.CodePermissionDenied {
+		t.Fatalf("a token scoped to connectors revokes a gateway token: %v", err)
+	}
+	if r, err := revoke(ada, gt.GetId()); err != nil || r.GetRevokeTime() == nil {
+		t.Fatalf("an Owner revokes a gateway token: %v %v", r, err)
+	}
+	r, err := revoke(op, opToken.GetId())
+	if err != nil || r.GetRevokeTime() == nil {
+		t.Fatalf("an Operator revokes a connector token: %v %v", r, err)
+	}
+	e.clock = e.clock.Add(time.Minute)
+	if again, err := revoke(op, opToken.GetId()); err != nil || !again.GetRevokeTime().AsTime().Equal(r.GetRevokeTime().AsTime()) {
+		t.Fatalf("a second revocation: %v %v", again, err)
+	}
+	if _, err := revoke(ada, "enr_missing"); code(err) != connect.CodeNotFound {
+		t.Fatalf("a missing token: %v", err)
+	}
+	vwr, _ := e.join(t, ada, org, "vwr@example.com", "viewer")
+	if _, err := revoke(vwr, opToken.GetId()); code(err) != connect.CodePermissionDenied {
+		t.Fatalf("a Viewer revokes: %v", err)
+	}
+	if r, err := vwr.enr.ListEnrollmentTokens(ctx, connect.NewRequest(&rpmgrv1.ListEnrollmentTokensRequest{OrgId: org, ShowInactive: true})); err != nil ||
+		len(r.Msg.GetEnrollmentTokens()) != 2 {
+		t.Fatalf("a Viewer lists: %v %v", r, err)
 	}
 }
