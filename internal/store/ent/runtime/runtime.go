@@ -25,6 +25,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/gateway"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/gatewaygroup"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/instance"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/instancesecret"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/instancesetting"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/invitation"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/issuedcertificate"
@@ -1156,6 +1157,31 @@ func init() {
 	instanceDescID := instanceFields[0].Descriptor()
 	// instance.IDValidator is a validator for the "id" field. It is called by the builders before save.
 	instance.IDValidator = instanceDescID.Validators[0].(func(int) error)
+	instancesecretMixin := schema.InstanceSecret{}.Mixin()
+	instancesecret.Policy = privacy.NewPolicies(instancesecretMixin[0], schema.InstanceSecret{})
+	instancesecret.Hooks[0] = func(next ent.Mutator) ent.Mutator {
+		return ent.MutateFunc(func(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+			if err := instancesecret.Policy.EvalMutation(ctx, m); err != nil {
+				return nil, err
+			}
+			return next.Mutate(ctx, m)
+		})
+	}
+	instancesecretMixinHooks0 := instancesecretMixin[0].Hooks()
+
+	instancesecret.Hooks[1] = instancesecretMixinHooks0[0]
+	instancesecretMixinInters0 := instancesecretMixin[0].Interceptors()
+	instancesecret.Interceptors[0] = instancesecretMixinInters0[0]
+	instancesecretFields := schema.InstanceSecret{}.Fields()
+	_ = instancesecretFields
+	// instancesecretDescValueEnc is the schema descriptor for value_enc field.
+	instancesecretDescValueEnc := instancesecretFields[1].Descriptor()
+	// instancesecret.ValueEncValidator is a validator for the "value_enc" field. It is called by the builders before save.
+	instancesecret.ValueEncValidator = instancesecretDescValueEnc.Validators[0].(func([]byte) error)
+	// instancesecretDescID is the schema descriptor for id field.
+	instancesecretDescID := instancesecretFields[0].Descriptor()
+	// instancesecret.IDValidator is a validator for the "id" field. It is called by the builders before save.
+	instancesecret.IDValidator = instancesecretDescID.Validators[0].(func(string) error)
 	instancesettingMixin := schema.InstanceSetting{}.Mixin()
 	instancesetting.Policy = privacy.NewPolicies(instancesettingMixin[0], schema.InstanceSetting{})
 	instancesetting.Hooks[0] = func(next ent.Mutator) ent.Mutator {

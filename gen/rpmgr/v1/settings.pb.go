@@ -191,6 +191,59 @@ func (UpdateChannel) EnumDescriptor() ([]byte, []int) {
 	return file_rpmgr_v1_settings_proto_rawDescGZIP(), []int{2}
 }
 
+// SmtpSecurity is how a connection to a mail relay is encrypted.
+type SmtpSecurity int32
+
+const (
+	// Not set.
+	SmtpSecurity_SMTP_SECURITY_UNSPECIFIED SmtpSecurity = 0
+	// Plain connection upgraded with STARTTLS, which the relay must offer; usually port 587.
+	SmtpSecurity_SMTP_SECURITY_STARTTLS SmtpSecurity = 1
+	// TLS from the start; usually port 465.
+	SmtpSecurity_SMTP_SECURITY_TLS SmtpSecurity = 2
+)
+
+// Enum value maps for SmtpSecurity.
+var (
+	SmtpSecurity_name = map[int32]string{
+		0: "SMTP_SECURITY_UNSPECIFIED",
+		1: "SMTP_SECURITY_STARTTLS",
+		2: "SMTP_SECURITY_TLS",
+	}
+	SmtpSecurity_value = map[string]int32{
+		"SMTP_SECURITY_UNSPECIFIED": 0,
+		"SMTP_SECURITY_STARTTLS":    1,
+		"SMTP_SECURITY_TLS":         2,
+	}
+)
+
+func (x SmtpSecurity) Enum() *SmtpSecurity {
+	p := new(SmtpSecurity)
+	*p = x
+	return p
+}
+
+func (x SmtpSecurity) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (SmtpSecurity) Descriptor() protoreflect.EnumDescriptor {
+	return file_rpmgr_v1_settings_proto_enumTypes[3].Descriptor()
+}
+
+func (SmtpSecurity) Type() protoreflect.EnumType {
+	return &file_rpmgr_v1_settings_proto_enumTypes[3]
+}
+
+func (x SmtpSecurity) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use SmtpSecurity.Descriptor instead.
+func (SmtpSecurity) EnumDescriptor() ([]byte, []int) {
+	return file_rpmgr_v1_settings_proto_rawDescGZIP(), []int{3}
+}
+
 // InstanceSettings are the runtime settings of the installation, changed by the Instance Admin
 // (docs/10-operations.md, "Runtime settings"). A field that is not set has its default, which the
 // server fills in when it reads them.
@@ -224,7 +277,10 @@ type InstanceSettings struct {
 	// production directory.
 	AcmeDirectoryUrl *string `protobuf:"bytes,11,opt,name=acme_directory_url,json=acmeDirectoryUrl,proto3,oneof" json:"acme_directory_url,omitempty"`
 	// The contact address of the ACME account; none by default.
-	AcmeEmail     *string `protobuf:"bytes,12,opt,name=acme_email,json=acmeEmail,proto3,oneof" json:"acme_email,omitempty"`
+	AcmeEmail *string `protobuf:"bytes,12,opt,name=acme_email,json=acmeEmail,proto3,oneof" json:"acme_email,omitempty"`
+	// The relay the controller sends mail through; not set by default, and then the controller
+	// sends none.
+	Smtp          *SmtpSettings `protobuf:"bytes,13,opt,name=smtp,proto3" json:"smtp,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -343,6 +399,87 @@ func (x *InstanceSettings) GetAcmeEmail() string {
 	return ""
 }
 
+func (x *InstanceSettings) GetSmtp() *SmtpSettings {
+	if x != nil {
+		return x.Smtp
+	}
+	return nil
+}
+
+// SmtpSettings are a mail relay (docs/04-security.md, "Human authentication and sessions"). Its
+// password is a secret kept apart from the settings, under the KEK.
+type SmtpSettings struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The relay's host:port.
+	Server string `protobuf:"bytes,1,opt,name=server,proto3" json:"server,omitempty"`
+	// The sender address.
+	From string `protobuf:"bytes,2,opt,name=from,proto3" json:"from,omitempty"`
+	// The user name for AUTH PLAIN; empty for a relay that needs none.
+	Username string `protobuf:"bytes,3,opt,name=username,proto3" json:"username,omitempty"`
+	// How the connection is encrypted; there is no plain-text mode.
+	Security      SmtpSecurity `protobuf:"varint,4,opt,name=security,proto3,enum=rpmgr.v1.SmtpSecurity" json:"security,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SmtpSettings) Reset() {
+	*x = SmtpSettings{}
+	mi := &file_rpmgr_v1_settings_proto_msgTypes[1]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SmtpSettings) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SmtpSettings) ProtoMessage() {}
+
+func (x *SmtpSettings) ProtoReflect() protoreflect.Message {
+	mi := &file_rpmgr_v1_settings_proto_msgTypes[1]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SmtpSettings.ProtoReflect.Descriptor instead.
+func (*SmtpSettings) Descriptor() ([]byte, []int) {
+	return file_rpmgr_v1_settings_proto_rawDescGZIP(), []int{1}
+}
+
+func (x *SmtpSettings) GetServer() string {
+	if x != nil {
+		return x.Server
+	}
+	return ""
+}
+
+func (x *SmtpSettings) GetFrom() string {
+	if x != nil {
+		return x.From
+	}
+	return ""
+}
+
+func (x *SmtpSettings) GetUsername() string {
+	if x != nil {
+		return x.Username
+	}
+	return ""
+}
+
+func (x *SmtpSettings) GetSecurity() SmtpSecurity {
+	if x != nil {
+		return x.Security
+	}
+	return SmtpSecurity_SMTP_SECURITY_UNSPECIFIED
+}
+
 // OrgSettings are the runtime settings of an org, changed by its Owner (docs/10-operations.md,
 // "Runtime settings").
 type OrgSettings struct {
@@ -360,7 +497,7 @@ type OrgSettings struct {
 
 func (x *OrgSettings) Reset() {
 	*x = OrgSettings{}
-	mi := &file_rpmgr_v1_settings_proto_msgTypes[1]
+	mi := &file_rpmgr_v1_settings_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -372,7 +509,7 @@ func (x *OrgSettings) String() string {
 func (*OrgSettings) ProtoMessage() {}
 
 func (x *OrgSettings) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_v1_settings_proto_msgTypes[1]
+	mi := &file_rpmgr_v1_settings_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -385,7 +522,7 @@ func (x *OrgSettings) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use OrgSettings.ProtoReflect.Descriptor instead.
 func (*OrgSettings) Descriptor() ([]byte, []int) {
-	return file_rpmgr_v1_settings_proto_rawDescGZIP(), []int{1}
+	return file_rpmgr_v1_settings_proto_rawDescGZIP(), []int{2}
 }
 
 func (x *OrgSettings) GetRequireMfa() bool {
@@ -413,7 +550,7 @@ var File_rpmgr_v1_settings_proto protoreflect.FileDescriptor
 
 const file_rpmgr_v1_settings_proto_rawDesc = "" +
 	"\n" +
-	"\x17rpmgr/v1/settings.proto\x12\brpmgr.v1\x1a\x1bbuf/validate/validate.proto\x1a\x1egoogle/protobuf/duration.proto\"\xe5\b\n" +
+	"\x17rpmgr/v1/settings.proto\x12\brpmgr.v1\x1a\x1bbuf/validate/validate.proto\x1a\x1egoogle/protobuf/duration.proto\"\x91\t\n" +
 	"\x10InstanceSettings\x12W\n" +
 	"\x11default_transport\x18\x01 \x01(\x0e2\x19.rpmgr.v1.TransportPolicyB\n" +
 	"\xbaH\a\x82\x01\x04\x10\x01 \x00H\x00R\x10defaultTransport\x88\x01\x01\x12j\n" +
@@ -432,13 +569,22 @@ const file_rpmgr_v1_settings_proto_rawDesc = "" +
 	"\x12acme_directory_url\x18\v \x01(\tB\v\xbaH\br\x06\x18\x80\x10\x88\x01\x01H\x04R\x10acmeDirectoryUrl\x88\x01\x01\x12.\n" +
 	"\n" +
 	"acme_email\x18\f \x01(\tB\n" +
-	"\xbaH\ar\x05\x18\xfe\x01`\x01H\x05R\tacmeEmail\x88\x01\x01B\x14\n" +
+	"\xbaH\ar\x05\x18\xfe\x01`\x01H\x05R\tacmeEmail\x88\x01\x01\x12*\n" +
+	"\x04smtp\x18\r \x01(\v2\x16.rpmgr.v1.SmtpSettingsR\x04smtpB\x14\n" +
 	"\x12_default_transportB\x18\n" +
 	"\x16_password_hash_profileB\x10\n" +
 	"\x0e_release_checkB\x11\n" +
 	"\x0f_update_channelB\x15\n" +
 	"\x13_acme_directory_urlB\r\n" +
-	"\v_acme_email\"\xf9\x01\n" +
+	"\v_acme_email\"\xb8\x01\n" +
+	"\fSmtpSettings\x12\"\n" +
+	"\x06server\x18\x01 \x01(\tB\n" +
+	"\xbaH\ar\x05\x10\x03\x18\x84\x02R\x06server\x12\x1e\n" +
+	"\x04from\x18\x02 \x01(\tB\n" +
+	"\xbaH\ar\x05\x18\xfe\x01`\x01R\x04from\x12$\n" +
+	"\busername\x18\x03 \x01(\tB\b\xbaH\x05r\x03\x18\xfe\x01R\busername\x12>\n" +
+	"\bsecurity\x18\x04 \x01(\x0e2\x16.rpmgr.v1.SmtpSecurityB\n" +
+	"\xbaH\a\x82\x01\x04\x10\x01 \x00R\bsecurity\"\xf9\x01\n" +
 	"\vOrgSettings\x12$\n" +
 	"\vrequire_mfa\x18\x01 \x01(\bH\x00R\n" +
 	"requireMfa\x88\x01\x01\x125\n" +
@@ -458,7 +604,11 @@ const file_rpmgr_v1_settings_proto_rawDesc = "" +
 	"\rUpdateChannel\x12\x1e\n" +
 	"\x1aUPDATE_CHANNEL_UNSPECIFIED\x10\x00\x12\x19\n" +
 	"\x15UPDATE_CHANNEL_STABLE\x10\x01\x12\x1d\n" +
-	"\x19UPDATE_CHANNEL_PRERELEASE\x10\x02B5Z3github.com/felix-homelab/rpmgr/gen/rpmgr/v1;rpmgrv1b\x06proto3"
+	"\x19UPDATE_CHANNEL_PRERELEASE\x10\x02*`\n" +
+	"\fSmtpSecurity\x12\x1d\n" +
+	"\x19SMTP_SECURITY_UNSPECIFIED\x10\x00\x12\x1a\n" +
+	"\x16SMTP_SECURITY_STARTTLS\x10\x01\x12\x15\n" +
+	"\x11SMTP_SECURITY_TLS\x10\x02B5Z3github.com/felix-homelab/rpmgr/gen/rpmgr/v1;rpmgrv1b\x06proto3"
 
 var (
 	file_rpmgr_v1_settings_proto_rawDescOnce sync.Once
@@ -472,29 +622,33 @@ func file_rpmgr_v1_settings_proto_rawDescGZIP() []byte {
 	return file_rpmgr_v1_settings_proto_rawDescData
 }
 
-var file_rpmgr_v1_settings_proto_enumTypes = make([]protoimpl.EnumInfo, 3)
-var file_rpmgr_v1_settings_proto_msgTypes = make([]protoimpl.MessageInfo, 2)
+var file_rpmgr_v1_settings_proto_enumTypes = make([]protoimpl.EnumInfo, 4)
+var file_rpmgr_v1_settings_proto_msgTypes = make([]protoimpl.MessageInfo, 3)
 var file_rpmgr_v1_settings_proto_goTypes = []any{
 	(TransportPolicy)(0),        // 0: rpmgr.v1.TransportPolicy
 	(PasswordHashProfile)(0),    // 1: rpmgr.v1.PasswordHashProfile
 	(UpdateChannel)(0),          // 2: rpmgr.v1.UpdateChannel
-	(*InstanceSettings)(nil),    // 3: rpmgr.v1.InstanceSettings
-	(*OrgSettings)(nil),         // 4: rpmgr.v1.OrgSettings
-	(*durationpb.Duration)(nil), // 5: google.protobuf.Duration
+	(SmtpSecurity)(0),           // 3: rpmgr.v1.SmtpSecurity
+	(*InstanceSettings)(nil),    // 4: rpmgr.v1.InstanceSettings
+	(*SmtpSettings)(nil),        // 5: rpmgr.v1.SmtpSettings
+	(*OrgSettings)(nil),         // 6: rpmgr.v1.OrgSettings
+	(*durationpb.Duration)(nil), // 7: google.protobuf.Duration
 }
 var file_rpmgr_v1_settings_proto_depIdxs = []int32{
 	0, // 0: rpmgr.v1.InstanceSettings.default_transport:type_name -> rpmgr.v1.TransportPolicy
-	5, // 1: rpmgr.v1.InstanceSettings.leaf_certificate_lifetime:type_name -> google.protobuf.Duration
-	5, // 2: rpmgr.v1.InstanceSettings.expired_certificate_grace:type_name -> google.protobuf.Duration
+	7, // 1: rpmgr.v1.InstanceSettings.leaf_certificate_lifetime:type_name -> google.protobuf.Duration
+	7, // 2: rpmgr.v1.InstanceSettings.expired_certificate_grace:type_name -> google.protobuf.Duration
 	1, // 3: rpmgr.v1.InstanceSettings.password_hash_profile:type_name -> rpmgr.v1.PasswordHashProfile
 	2, // 4: rpmgr.v1.InstanceSettings.update_channel:type_name -> rpmgr.v1.UpdateChannel
-	5, // 5: rpmgr.v1.InstanceSettings.hourly_rollup_retention:type_name -> google.protobuf.Duration
-	5, // 6: rpmgr.v1.InstanceSettings.daily_rollup_retention:type_name -> google.protobuf.Duration
-	7, // [7:7] is the sub-list for method output_type
-	7, // [7:7] is the sub-list for method input_type
-	7, // [7:7] is the sub-list for extension type_name
-	7, // [7:7] is the sub-list for extension extendee
-	0, // [0:7] is the sub-list for field type_name
+	7, // 5: rpmgr.v1.InstanceSettings.hourly_rollup_retention:type_name -> google.protobuf.Duration
+	7, // 6: rpmgr.v1.InstanceSettings.daily_rollup_retention:type_name -> google.protobuf.Duration
+	5, // 7: rpmgr.v1.InstanceSettings.smtp:type_name -> rpmgr.v1.SmtpSettings
+	3, // 8: rpmgr.v1.SmtpSettings.security:type_name -> rpmgr.v1.SmtpSecurity
+	9, // [9:9] is the sub-list for method output_type
+	9, // [9:9] is the sub-list for method input_type
+	9, // [9:9] is the sub-list for extension type_name
+	9, // [9:9] is the sub-list for extension extendee
+	0, // [0:9] is the sub-list for field type_name
 }
 
 func init() { file_rpmgr_v1_settings_proto_init() }
@@ -503,14 +657,14 @@ func file_rpmgr_v1_settings_proto_init() {
 		return
 	}
 	file_rpmgr_v1_settings_proto_msgTypes[0].OneofWrappers = []any{}
-	file_rpmgr_v1_settings_proto_msgTypes[1].OneofWrappers = []any{}
+	file_rpmgr_v1_settings_proto_msgTypes[2].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_rpmgr_v1_settings_proto_rawDesc), len(file_rpmgr_v1_settings_proto_rawDesc)),
-			NumEnums:      3,
-			NumMessages:   2,
+			NumEnums:      4,
+			NumMessages:   3,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

@@ -237,6 +237,18 @@ func (f InstanceFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, er
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.InstanceMutation", m)
 }
 
+// The InstanceSecretFunc type is an adapter to allow the use of ordinary
+// function as InstanceSecret mutator.
+type InstanceSecretFunc func(context.Context, *ent.InstanceSecretMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f InstanceSecretFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.InstanceSecretMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.InstanceSecretMutation", m)
+}
+
 // The InstanceSettingFunc type is an adapter to allow the use of ordinary
 // function as InstanceSetting mutator.
 type InstanceSettingFunc func(context.Context, *ent.InstanceSettingMutation) (ent.Value, error)

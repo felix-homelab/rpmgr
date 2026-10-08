@@ -1,4 +1,4 @@
-h1:LiDjtW5+mR3WyyUqbBgBY1uryk3no9liNhloAVqCv1E=
+h1:8mAz40itYAsQefJfyMVGuLSO8JMjLkoDKGb/OtrRrgs=
 20261007104715_init.sql h1:pF+EZfqVnaVoEYtJTX+eFxkAZNQHtzLrN7GFfoc+GNE=
 20261007110312_config_revisions.sql h1:vyGjNiUBsWooQ4kxjnpkYMWZLX4CLUoGUjFmXl2tGrc=
 20261007111838_settings.sql h1:DZYkkYfp2eUVgo0ZYeZ/5eY7F2XI5yCZ4oKu/LAte6w=
@@ -27,3 +27,4 @@ h1:LiDjtW5+mR3WyyUqbBgBY1uryk3no9liNhloAVqCv1E=
 20261008131309_sessions.sql h1:Kwj/7NMIsOmEFifyJz/L0kpYS33P5tzM4N6ReFWpMxA=
 20261008132714_mfa.sql h1:yw+3UHnyvfmjyIH83TAKPHyiQ8NadlQRVnQ3NVTRTrw=
 20261008134453_invitations.sql h1:CxhLWb2dZlrTHeE/hwx0Xhg+/FcJGBFPA9D+UmhUo8U=
+20261008135725_instance_secrets.sql h1:/iHrBkQ5vSkgG//p5Ws8oSGZdwc0nih+d1GO22CDwyc=
