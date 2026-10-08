@@ -44,9 +44,25 @@ func (_c *CertificateCreate) SetNotBefore(v time.Time) *CertificateCreate {
 	return _c
 }
 
+// SetNillableNotBefore sets the "not_before" field if the given value is not nil.
+func (_c *CertificateCreate) SetNillableNotBefore(v *time.Time) *CertificateCreate {
+	if v != nil {
+		_c.SetNotBefore(*v)
+	}
+	return _c
+}
+
 // SetNotAfter sets the "not_after" field.
 func (_c *CertificateCreate) SetNotAfter(v time.Time) *CertificateCreate {
 	_c.mutation.SetNotAfter(v)
+	return _c
+}
+
+// SetNillableNotAfter sets the "not_after" field if the given value is not nil.
+func (_c *CertificateCreate) SetNillableNotAfter(v *time.Time) *CertificateCreate {
+	if v != nil {
+		_c.SetNotAfter(*v)
+	}
 	return _c
 }
 
@@ -235,36 +251,6 @@ func (_c *CertificateCreate) check() error {
 	if _, ok := _c.mutation.Sans(); !ok {
 		return &ValidationError{Name: "sans", err: errors.New(`ent: missing required field "Certificate.sans"`)}
 	}
-	if _, ok := _c.mutation.NotBefore(); !ok {
-		return &ValidationError{Name: "not_before", err: errors.New(`ent: missing required field "Certificate.not_before"`)}
-	}
-	if _, ok := _c.mutation.NotAfter(); !ok {
-		return &ValidationError{Name: "not_after", err: errors.New(`ent: missing required field "Certificate.not_after"`)}
-	}
-	if _, ok := _c.mutation.Chain(); !ok {
-		return &ValidationError{Name: "chain", err: errors.New(`ent: missing required field "Certificate.chain"`)}
-	}
-	if v, ok := _c.mutation.Chain(); ok {
-		if err := certificate.ChainValidator(v); err != nil {
-			return &ValidationError{Name: "chain", err: fmt.Errorf(`ent: validator failed for field "Certificate.chain": %w`, err)}
-		}
-	}
-	if _, ok := _c.mutation.KeyEnc(); !ok {
-		return &ValidationError{Name: "key_enc", err: errors.New(`ent: missing required field "Certificate.key_enc"`)}
-	}
-	if v, ok := _c.mutation.KeyEnc(); ok {
-		if err := certificate.KeyEncValidator(v); err != nil {
-			return &ValidationError{Name: "key_enc", err: fmt.Errorf(`ent: validator failed for field "Certificate.key_enc": %w`, err)}
-		}
-	}
-	if _, ok := _c.mutation.ContentSha256(); !ok {
-		return &ValidationError{Name: "content_sha256", err: errors.New(`ent: missing required field "Certificate.content_sha256"`)}
-	}
-	if v, ok := _c.mutation.ContentSha256(); ok {
-		if err := certificate.ContentSha256Validator(v); err != nil {
-			return &ValidationError{Name: "content_sha256", err: fmt.Errorf(`ent: validator failed for field "Certificate.content_sha256": %w`, err)}
-		}
-	}
 	if _, ok := _c.mutation.Status(); !ok {
 		return &ValidationError{Name: "status", err: errors.New(`ent: missing required field "Certificate.status"`)}
 	}
@@ -338,11 +324,11 @@ func (_c *CertificateCreate) createSpec() (*Certificate, *sqlgraph.CreateSpec) {
 	}
 	if value, ok := _c.mutation.NotBefore(); ok {
 		_spec.SetField(certificate.FieldNotBefore, field.TypeTime, value)
-		_node.NotBefore = value
+		_node.NotBefore = &value
 	}
 	if value, ok := _c.mutation.NotAfter(); ok {
 		_spec.SetField(certificate.FieldNotAfter, field.TypeTime, value)
-		_node.NotAfter = value
+		_node.NotAfter = &value
 	}
 	if value, ok := _c.mutation.Chain(); ok {
 		_spec.SetField(certificate.FieldChain, field.TypeBytes, value)

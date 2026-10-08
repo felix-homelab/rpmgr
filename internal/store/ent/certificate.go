@@ -25,9 +25,9 @@ type Certificate struct {
 	// Sans holds the value of the "sans" field.
 	Sans []string `json:"sans,omitempty"`
 	// NotBefore holds the value of the "not_before" field.
-	NotBefore time.Time `json:"not_before,omitempty"`
+	NotBefore *time.Time `json:"not_before,omitempty"`
 	// NotAfter holds the value of the "not_after" field.
-	NotAfter time.Time `json:"not_after,omitempty"`
+	NotAfter *time.Time `json:"not_after,omitempty"`
 	// Chain holds the value of the "chain" field.
 	Chain []byte `json:"chain,omitempty"`
 	// KeyEnc holds the value of the "key_enc" field.
@@ -105,13 +105,15 @@ func (_m *Certificate) assignValues(columns []string, values []any) error {
 			if value, ok := values[i].(*sql.NullTime); !ok {
 				return fmt.Errorf("unexpected type %T for field not_before", values[i])
 			} else if value.Valid {
-				_m.NotBefore = value.Time
+				_m.NotBefore = new(time.Time)
+				*_m.NotBefore = value.Time
 			}
 		case certificate.FieldNotAfter:
 			if value, ok := values[i].(*sql.NullTime); !ok {
 				return fmt.Errorf("unexpected type %T for field not_after", values[i])
 			} else if value.Valid {
-				_m.NotAfter = value.Time
+				_m.NotAfter = new(time.Time)
+				*_m.NotAfter = value.Time
 			}
 		case certificate.FieldChain:
 			if value, ok := values[i].(*[]byte); !ok {
@@ -206,11 +208,15 @@ func (_m *Certificate) String() string {
 	builder.WriteString("sans=")
 	builder.WriteString(fmt.Sprintf("%v", _m.Sans))
 	builder.WriteString(", ")
-	builder.WriteString("not_before=")
-	builder.WriteString(_m.NotBefore.Format(time.ANSIC))
+	if v := _m.NotBefore; v != nil {
+		builder.WriteString("not_before=")
+		builder.WriteString(v.Format(time.ANSIC))
+	}
 	builder.WriteString(", ")
-	builder.WriteString("not_after=")
-	builder.WriteString(_m.NotAfter.Format(time.ANSIC))
+	if v := _m.NotAfter; v != nil {
+		builder.WriteString("not_after=")
+		builder.WriteString(v.Format(time.ANSIC))
+	}
 	builder.WriteString(", ")
 	builder.WriteString("chain=")
 	builder.WriteString(fmt.Sprintf("%v", _m.Chain))

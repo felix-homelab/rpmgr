@@ -539,18 +539,6 @@ func init() {
 	certificateDescOrgID := certificateMixinFields0[0].Descriptor()
 	// certificate.OrgIDValidator is a validator for the "org_id" field. It is called by the builders before save.
 	certificate.OrgIDValidator = certificateDescOrgID.Validators[0].(func(string) error)
-	// certificateDescChain is the schema descriptor for chain field.
-	certificateDescChain := certificateFields[5].Descriptor()
-	// certificate.ChainValidator is a validator for the "chain" field. It is called by the builders before save.
-	certificate.ChainValidator = certificateDescChain.Validators[0].(func([]byte) error)
-	// certificateDescKeyEnc is the schema descriptor for key_enc field.
-	certificateDescKeyEnc := certificateFields[6].Descriptor()
-	// certificate.KeyEncValidator is a validator for the "key_enc" field. It is called by the builders before save.
-	certificate.KeyEncValidator = certificateDescKeyEnc.Validators[0].(func([]byte) error)
-	// certificateDescContentSha256 is the schema descriptor for content_sha256 field.
-	certificateDescContentSha256 := certificateFields[7].Descriptor()
-	// certificate.ContentSha256Validator is a validator for the "content_sha256" field. It is called by the builders before save.
-	certificate.ContentSha256Validator = certificateDescContentSha256.Validators[0].(func([]byte) error)
 	// certificateDescCreatedAt is the schema descriptor for created_at field.
 	certificateDescCreatedAt := certificateFields[11].Descriptor()
 	// certificate.DefaultCreatedAt holds the default value on creation for the created_at field.

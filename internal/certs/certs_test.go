@@ -3,6 +3,7 @@
 package certs_test
 
 import (
+	"bytes"
 	"crypto"
 	"crypto/ecdsa"
 	"crypto/ed25519"
@@ -27,6 +28,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/secret"
 	"github.com/felix-homelab/rpmgr/internal/store"
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/certificate"
 	"github.com/felix-homelab/rpmgr/internal/store/storetest"
 )
 
@@ -314,4 +316,73 @@ func TestCheckBundle(t *testing.T) {
 			t.Errorf("%s: %v, want ErrInvalid", name, err)
 		}
 	}
+}
+
+// TestRecordACME: an attempt without a certificate leaves a failed row with the error; a
+// certificate makes the row active and is reported as changed once; a later failure keeps the
+// certificate serving and records the error; a renewed certificate replaces the old one in the
+// same row.
+func TestRecordACME(t *testing.T) {
+	storetest.ForEachDialect(t, func(t *testing.T, db *store.DB) {
+		storetest.Init(t, db)
+		sys := storetest.SystemCtx(t)
+		org := storetest.Org(t, db, "org-a")
+		s := sealer(t)
+		root := ca(t, "root", nil)
+		record := func(leaf *issued, attempt error) (*ent.Certificate, bool) {
+			t.Helper()
+			var (
+				row     *ent.Certificate
+				changed bool
+			)
+			if err := store.WriteTx(sys, db, func(tx *ent.Tx) error {
+				var chain []*x509.Certificate
+				var key crypto.Signer
+				if leaf != nil {
+					chain, key = []*x509.Certificate{leaf.cert, root.cert}, leaf.key
+				}
+				var err error
+				row, changed, err = certs.RecordACME(sys, tx, s, org, "app.example.com", chain, key, attempt)
+				return err
+			}); err != nil {
+				t.Fatal(err)
+			}
+			return row, changed
+		}
+		row, changed := record(nil, errors.New("the CA said no"))
+		if row.Status != certificate.StatusFailed || row.LastError != "the CA said no" || changed || len(row.ContentSha256) != 0 {
+			t.Fatalf("a failed first attempt: %+v %v", row, changed)
+		}
+		first := issue(t, leafTmpl("app.example.com"), ecKey(t), &root)
+		row, changed = record(&first, nil)
+		if row.Status != certificate.StatusActive || row.LastError != "" || !changed || len(row.ContentSha256) == 0 || row.NotAfter == nil {
+			t.Fatalf("obtained: %+v %v", row, changed)
+		}
+		id, hash := row.ID, row.ContentSha256
+		if _, changed := record(&first, nil); changed {
+			t.Fatal("the same certificate counted as a change")
+		}
+		row, changed = record(nil, errors.New("renewal failed"))
+		if row.Status != certificate.StatusActive || row.LastError != "renewal failed" || changed || !bytes.Equal(row.ContentSha256, hash) {
+			t.Fatalf("a failed renewal: %+v %v", row, changed)
+		}
+		second := issue(t, leafTmpl("app.example.com"), ecKey(t), &root)
+		row, changed = record(&second, nil)
+		if row.ID != id || !changed || bytes.Equal(row.ContentSha256, hash) || row.LastError != "" {
+			t.Fatalf("renewed: %+v %v", row, changed)
+		}
+		item, err := certs.Item(row, s)
+		if err != nil || len(item) == 0 {
+			t.Fatalf("the renewed item: %v", err)
+		}
+		if err := store.ReadTx(sys, db, func(tx *ent.Tx, _ store.Revision) error {
+			other, err := certs.ACMERow(sys, tx, org, "other.example.com")
+			if err != nil || other != nil {
+				t.Fatalf("another name: %+v %v", other, err)
+			}
+			return nil
+		}); err != nil {
+			t.Fatal(err)
+		}
+	})
 }

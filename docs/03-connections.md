@@ -993,6 +993,7 @@ sequenceDiagram
 | Route drain | 30 s | Finish in-flight requests |
 | Gateway drain | 60 s | Time for connectors to re-home |
 | Revocation, tightened access policy | immediate | Security beats continuity |
+| ACME job | looks for certificates to obtain or renew every 1 min, on the replica that holds its lease | New routes get their certificates within a minute or so; renewals are never late by more |
 | ACME challenge push | `OpResult` from every gateway of the name within 10 s | [R] A gateway that cannot answer fails the order before the CA validates, instead of a failed validation counted against the account |
 | Imperative operation | `Open` → `Attach` within 10 s; ticket single-use, valid 30 s; shell idle 30 min | No unbounded waits |
 | P2P | punch window 5 s; retry backoff 30 s → 15 min; also on network change | Don't hammer NATs |
