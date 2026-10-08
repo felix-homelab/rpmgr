@@ -82,6 +82,24 @@ message GatewayTCPRoute {
   uint32 idle_timeout_seconds = 2;
   // The connectors that serve the route, sorted: the gateway opens its streams only to them.
   repeated string connectors = 3;
+  // Who may connect.
+  RouteAccess access = 4;
+}
+
+// RouteAccess is who may use a route: the IP rules of its access policies, in order. The first
+// rule that matches the client's address decides; if none does, the client is allowed only when
+// no rule allows. No rules allow everyone.
+message RouteAccess {
+  // The rules, in the order of the route's policies and of each policy's rules.
+  repeated IPRule ip_rules = 1;
+}
+
+// IPRule allows or denies the clients of some addresses.
+message IPRule {
+  // Whether a match allows; otherwise it denies.
+  bool allow = 1;
+  // CIDRs; an IPv4-mapped IPv6 client matches the IPv4 ones.
+  repeated string cidrs = 2;
 }
 
 // GatewayUDPRoute is a udp route as a gateway serves it.
@@ -92,6 +110,8 @@ message GatewayUDPRoute {
   uint32 flow_idle_timeout_seconds = 2;
   // The connectors that serve the route, sorted.
   repeated string connectors = 3;
+  // Who may send.
+  RouteAccess access = 4;
 }
 
 // GatewayHTTPRoute is an http route as a gateway serves it on port 443: a request whose host and
@@ -125,6 +145,8 @@ message GatewayHTTPRoute {
   string port80 = 11;
   // The max-age of Strict-Transport-Security sent over HTTPS; 0 sends none.
   uint32 hsts_max_age_seconds = 12;
+  // Who may send requests.
+  RouteAccess access = 13;
 }
 
 // HTTPHeader is a header name with its value.
@@ -182,6 +204,8 @@ message GatewayPassthroughRoute {
   repeated string hostnames = 1;
   // The connectors that serve the route, sorted.
   repeated string connectors = 2;
+  // Who may connect.
+  RouteAccess access = 3;
 }
 
 // TransportPolicy is how a route chooses its data-session transport (docs/03-connections.md,

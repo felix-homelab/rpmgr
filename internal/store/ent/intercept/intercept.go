@@ -8,6 +8,7 @@ import (
 
 	"entgo.io/ent/dialect/sql"
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/accesspolicy"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/agentsession"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/agentstate"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/auditentry"
@@ -29,6 +30,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/lease"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/org"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/orgsetting"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/policyrule"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/portallocation"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/portpool"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/portquota"
@@ -37,6 +39,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/route"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routehostname"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routehttp"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/routepolicy"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routetarget"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routetcp"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routeudp"
@@ -97,6 +100,33 @@ func (f TraverseFunc) Traverse(ctx context.Context, q ent.Query) error {
 		return err
 	}
 	return f(ctx, query)
+}
+
+// The AccessPolicyFunc type is an adapter to allow the use of ordinary function as a Querier.
+type AccessPolicyFunc func(context.Context, *ent.AccessPolicyQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f AccessPolicyFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.AccessPolicyQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.AccessPolicyQuery", q)
+}
+
+// The TraverseAccessPolicy type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseAccessPolicy func(context.Context, *ent.AccessPolicyQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseAccessPolicy) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseAccessPolicy) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.AccessPolicyQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.AccessPolicyQuery", q)
 }
 
 // The AgentSessionFunc type is an adapter to allow the use of ordinary function as a Querier.
@@ -666,6 +696,33 @@ func (f TraverseOrgSetting) Traverse(ctx context.Context, q ent.Query) error {
 	return fmt.Errorf("unexpected query type %T. expect *ent.OrgSettingQuery", q)
 }
 
+// The PolicyRuleFunc type is an adapter to allow the use of ordinary function as a Querier.
+type PolicyRuleFunc func(context.Context, *ent.PolicyRuleQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f PolicyRuleFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.PolicyRuleQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.PolicyRuleQuery", q)
+}
+
+// The TraversePolicyRule type is an adapter to allow the use of ordinary function as Traverser.
+type TraversePolicyRule func(context.Context, *ent.PolicyRuleQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraversePolicyRule) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraversePolicyRule) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.PolicyRuleQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.PolicyRuleQuery", q)
+}
+
 // The PortAllocationFunc type is an adapter to allow the use of ordinary function as a Querier.
 type PortAllocationFunc func(context.Context, *ent.PortAllocationQuery) (ent.Value, error)
 
@@ -855,6 +912,33 @@ func (f TraverseRouteHostname) Traverse(ctx context.Context, q ent.Query) error 
 	return fmt.Errorf("unexpected query type %T. expect *ent.RouteHostnameQuery", q)
 }
 
+// The RoutePolicyFunc type is an adapter to allow the use of ordinary function as a Querier.
+type RoutePolicyFunc func(context.Context, *ent.RoutePolicyQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f RoutePolicyFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.RoutePolicyQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.RoutePolicyQuery", q)
+}
+
+// The TraverseRoutePolicy type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseRoutePolicy func(context.Context, *ent.RoutePolicyQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseRoutePolicy) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseRoutePolicy) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.RoutePolicyQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.RoutePolicyQuery", q)
+}
+
 // The RouteTCPFunc type is an adapter to allow the use of ordinary function as a Querier.
 type RouteTCPFunc func(context.Context, *ent.RouteTCPQuery) (ent.Value, error)
 
@@ -966,6 +1050,8 @@ func (f TraverseSecretMeta) Traverse(ctx context.Context, q ent.Query) error {
 // NewQuery returns the generic Query interface for the given typed query.
 func NewQuery(q ent.Query) (Query, error) {
 	switch q := q.(type) {
+	case *ent.AccessPolicyQuery:
+		return &query[*ent.AccessPolicyQuery, predicate.AccessPolicy, accesspolicy.OrderOption]{typ: ent.TypeAccessPolicy, tq: q}, nil
 	case *ent.AgentSessionQuery:
 		return &query[*ent.AgentSessionQuery, predicate.AgentSession, agentsession.OrderOption]{typ: ent.TypeAgentSession, tq: q}, nil
 	case *ent.AgentStateQuery:
@@ -1008,6 +1094,8 @@ func NewQuery(q ent.Query) (Query, error) {
 		return &query[*ent.OrgQuery, predicate.Org, org.OrderOption]{typ: ent.TypeOrg, tq: q}, nil
 	case *ent.OrgSettingQuery:
 		return &query[*ent.OrgSettingQuery, predicate.OrgSetting, orgsetting.OrderOption]{typ: ent.TypeOrgSetting, tq: q}, nil
+	case *ent.PolicyRuleQuery:
+		return &query[*ent.PolicyRuleQuery, predicate.PolicyRule, policyrule.OrderOption]{typ: ent.TypePolicyRule, tq: q}, nil
 	case *ent.PortAllocationQuery:
 		return &query[*ent.PortAllocationQuery, predicate.PortAllocation, portallocation.OrderOption]{typ: ent.TypePortAllocation, tq: q}, nil
 	case *ent.PortPoolQuery:
@@ -1022,6 +1110,8 @@ func NewQuery(q ent.Query) (Query, error) {
 		return &query[*ent.RouteHTTPQuery, predicate.RouteHTTP, routehttp.OrderOption]{typ: ent.TypeRouteHTTP, tq: q}, nil
 	case *ent.RouteHostnameQuery:
 		return &query[*ent.RouteHostnameQuery, predicate.RouteHostname, routehostname.OrderOption]{typ: ent.TypeRouteHostname, tq: q}, nil
+	case *ent.RoutePolicyQuery:
+		return &query[*ent.RoutePolicyQuery, predicate.RoutePolicy, routepolicy.OrderOption]{typ: ent.TypeRoutePolicy, tq: q}, nil
 	case *ent.RouteTCPQuery:
 		return &query[*ent.RouteTCPQuery, predicate.RouteTCP, routetcp.OrderOption]{typ: ent.TypeRouteTCP, tq: q}, nil
 	case *ent.RouteTargetQuery:

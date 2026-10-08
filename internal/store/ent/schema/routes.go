@@ -353,3 +353,98 @@ func (RouteHostname) Edges() []ent.Edge {
 func (RouteHostname) Indexes() []ent.Index {
 	return []ent.Index{index.Fields("gateway_group_id", "hostname", "path_prefix").Unique(), index.Fields("route_id")}
 }
+
+// AccessPolicy is an org's reusable list of rules that routes apply (docs/06-data-model.md,
+// "Routing").
+type AccessPolicy struct{ ent.Schema }
+
+// Mixin makes access policies org-owned.
+func (AccessPolicy) Mixin() []ent.Mixin { return []ent.Mixin{OrgMixin{}} }
+
+// Annotations name the table as docs/06-data-model.md does.
+func (AccessPolicy) Annotations() []schema.Annotation {
+	return []schema.Annotation{entsql.Annotation{Table: "access_policies"}}
+}
+
+// Fields of an access policy.
+func (AccessPolicy) Fields() []ent.Field {
+	return []ent.Field{
+		idField("ap"),
+		field.String("name").NotEmpty().MaxLen(100),
+		field.String("description").Default("").MaxLen(1000),
+		field.Int64("version").Positive().Default(1),
+	}
+}
+
+// Indexes: names are unique per org.
+func (AccessPolicy) Indexes() []ent.Index {
+	return []ent.Index{index.Fields("org_id", "name").Unique()}
+}
+
+// PolicyRule is one rule of an access policy; a policy's rules apply in the order of position.
+// params is an rpmgr.v1.PolicyRuleParams message.
+type PolicyRule struct{ ent.Schema }
+
+// Mixin makes policy rules org-owned.
+func (PolicyRule) Mixin() []ent.Mixin { return []ent.Mixin{OrgMixin{}} }
+
+// Annotations name the table as docs/06-data-model.md does.
+func (PolicyRule) Annotations() []schema.Annotation {
+	return []schema.Annotation{entsql.Annotation{Table: "policy_rules"}}
+}
+
+// Fields of a policy rule.
+func (PolicyRule) Fields() []ent.Field {
+	return []ent.Field{
+		idField("pr"),
+		field.String("policy_id").NotEmpty().Immutable(),
+		field.Int("position").NonNegative(),
+		field.Enum("kind").Values("ip_allow", "ip_deny", "basic_auth", "oidc", "rate_limit", "require_header"),
+		field.Bytes("params"),
+	}
+}
+
+// Edges of a policy rule.
+func (PolicyRule) Edges() []ent.Edge {
+	return []ent.Edge{edge.To("policy", AccessPolicy.Type).Field("policy_id").Unique().Required().Immutable()}
+}
+
+// Indexes: one rule per position of a policy.
+func (PolicyRule) Indexes() []ent.Index {
+	return []ent.Index{index.Fields("policy_id", "position").Unique()}
+}
+
+// RoutePolicy applies an access policy to a route; a route's policies apply in the order of
+// position, each policy once.
+type RoutePolicy struct{ ent.Schema }
+
+// Mixin makes route policies org-owned.
+func (RoutePolicy) Mixin() []ent.Mixin { return []ent.Mixin{OrgMixin{}} }
+
+// Annotations name the table as docs/06-data-model.md does.
+func (RoutePolicy) Annotations() []schema.Annotation {
+	return []schema.Annotation{entsql.Annotation{Table: "route_policies"}}
+}
+
+// Fields of a route policy.
+func (RoutePolicy) Fields() []ent.Field {
+	return []ent.Field{
+		field.String("route_id").NotEmpty().Immutable(),
+		field.String("policy_id").NotEmpty().Immutable(),
+		field.Int("position").NonNegative(),
+	}
+}
+
+// Edges of a route policy: the route and the policy, of the same org.
+func (RoutePolicy) Edges() []ent.Edge {
+	return []ent.Edge{
+		edge.To("route", Route.Type).Field("route_id").Unique().Required().Immutable(),
+		edge.To("policy", AccessPolicy.Type).Field("policy_id").Unique().Required().Immutable(),
+	}
+}
+
+// Indexes: a policy once per route, one per position, and the routes of a policy.
+func (RoutePolicy) Indexes() []ent.Index {
+	return []ent.Index{index.Fields("route_id", "policy_id").Unique(), index.Fields("route_id", "position").Unique(),
+		index.Fields("policy_id")}
+}

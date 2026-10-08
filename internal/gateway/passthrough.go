@@ -18,6 +18,8 @@ import (
 type PassthroughRoute struct {
 	ID        string
 	Hostnames []string // normalised; one may start with "*." for every name one label below
+	// Access is who may connect.
+	Access Access
 }
 
 // Passthrough serves the gateway's tls_passthrough routes on port 443 (docs/03-connections.md,
@@ -32,7 +34,8 @@ type Passthrough struct {
 	ctx      context.Context
 	cancel   context.CancelFunc
 
-	table atomic.Pointer[map[string]string] // hostname → route ID
+	table  atomic.Pointer[map[string]string] // hostname → route ID
+	access atomic.Pointer[map[string]Access] // route ID → who may connect
 
 	mu    sync.Mutex
 	conns map[string]map[net.Conn]struct{} // route ID → open connections
@@ -49,6 +52,8 @@ func NewPassthrough(sessions *Sessions, revision func() *agentv1.Revision, logge
 		conns: map[string]map[net.Conn]struct{}{}}
 	empty := map[string]string{}
 	p.table.Store(&empty)
+	none := map[string]Access{}
+	p.access.Store(&none)
 	return p
 }
 
@@ -56,13 +61,21 @@ func NewPassthrough(sessions *Sessions, revision func() *agentv1.Revision, logge
 // are reset after the route drain period.
 func (p *Passthrough) Apply(routes []PassthroughRoute) {
 	next := map[string]string{}
+	access := map[string]Access{}
 	for _, r := range routes {
 		for _, h := range r.Hostnames {
 			next[h] = r.ID
 		}
+		access[r.ID] = r.Access
 	}
 	old := *p.table.Load()
+	oldAccess := *p.access.Swap(&access)
 	p.table.Store(&next)
+	for id, a := range access {
+		if !oldAccess[id].Same(a) {
+			p.enforce(id, a)
+		}
+	}
 	removed := map[string]bool{}
 	for _, id := range old {
 		removed[id] = true
@@ -119,7 +132,22 @@ func (p *Passthrough) Passthrough(sni string) (func(net.Conn), bool) {
 // HTTP implements Routes: http routes are not served yet.
 func (p *Passthrough) HTTP(string) bool { return false }
 
+// enforce resets the connections of a route that its new access rules no longer allow.
+func (p *Passthrough) enforce(id string, a Access) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	for c := range p.conns[id] {
+		if !a.AllowsAddr(c.RemoteAddr()) {
+			abort(c)
+		}
+	}
+}
+
 func (p *Passthrough) handle(c net.Conn, id, sni string) {
+	if !(*p.access.Load())[id].AllowsAddr(c.RemoteAddr()) {
+		abort(c)
+		return
+	}
 	p.mu.Lock()
 	if p.conns[id] == nil {
 		p.conns[id] = map[net.Conn]struct{}{}

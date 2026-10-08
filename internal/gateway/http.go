@@ -81,6 +81,8 @@ type HTTPRoute struct {
 	Port80 string
 	// HSTS is the max-age, in seconds, of Strict-Transport-Security over HTTPS; 0 sends none.
 	HSTS int
+	// Access is who may send requests: the client, or the client a trusted proxy names.
+	Access Access
 }
 
 // HTTPHeader is a header name, canonical, and its value; "" removes the header.
@@ -181,6 +183,27 @@ type routeTransport struct {
 	tr    *http.Transport
 	proxy *httputil.ReverseProxy
 	tls   map[string]*tls.Config // by route target ID
+
+	mu     sync.Mutex
+	active map[*activeRequest]struct{}
+}
+
+// activeRequest is a request being proxied, which a tightened access policy cancels.
+type activeRequest struct {
+	client netip.Addr
+	cancel context.CancelFunc
+}
+
+// enforce cancels the requests, upgraded connections included, whose clients the route's new
+// access rules no longer allow.
+func (rt *routeTransport) enforce(a Access) {
+	rt.mu.Lock()
+	defer rt.mu.Unlock()
+	for ar := range rt.active {
+		if !a.Allows(ar.client) {
+			ar.cancel()
+		}
+	}
 }
 
 // NewHTTPRoutes returns the http routes' server; Close stops it.
@@ -308,9 +331,12 @@ func (h *HTTPRoutes) Apply(routes []HTTPRoute) {
 	for _, r := range routes {
 		rt := h.transports[r.ID]
 		if rt == nil || rt.route.Load().Upstream != r.Upstream || !reflect.DeepEqual(rt.route.Load().TLS, r.TLS) {
+			if rt != nil {
+				rt.enforce(r.Access) // its requests finish on the old transport
+			}
 			rt = h.newTransport(r)
-		} else {
-			rt.route.Store(&r)
+		} else if old := rt.route.Swap(&r); !old.Access.Same(r.Access) {
+			rt.enforce(r.Access)
 		}
 		next[r.ID] = rt
 		for _, host := range r.Hosts {
@@ -331,7 +357,7 @@ func (h *HTTPRoutes) Apply(routes []HTTPRoute) {
 
 // newTransport returns the proxy of a route; its transport dials tunnel streams to the route.
 func (h *HTTPRoutes) newTransport(r HTTPRoute) *routeTransport {
-	rt := &routeTransport{}
+	rt := &routeTransport{active: map[*activeRequest]struct{}{}}
 	rt.route.Store(&r)
 	rt.tr = &http.Transport{
 		DialContext:           func(ctx context.Context, _, _ string) (net.Conn, error) { return h.dial(ctx, r.ID) },
@@ -384,6 +410,37 @@ func (h *HTTPRoutes) newTransport(r HTTPRoute) *routeTransport {
 		ErrorLog:     slog.NewLogLogger(h.o.Logger.Handler(), slog.LevelDebug),
 	}
 	return rt
+}
+
+// clientOf returns the address of a request's client: the TCP peer, or, when the peer is a trusted
+// proxy, the last address in X-Forwarded-For that is not a trusted proxy.
+func clientOf(r *http.Request, trusted []netip.Prefix) netip.Addr {
+	ap, err := netip.ParseAddrPort(r.RemoteAddr)
+	if err != nil {
+		return netip.Addr{}
+	}
+	isTrusted := func(ip netip.Addr) bool {
+		return slices.ContainsFunc(trusted, func(p netip.Prefix) bool { return p.Contains(ip) })
+	}
+	ip := ap.Addr().Unmap()
+	if !isTrusted(ip) {
+		return ip
+	}
+	var chain []string
+	for _, v := range r.Header.Values("X-Forwarded-For") {
+		chain = append(chain, strings.Split(v, ",")...)
+	}
+	for i := len(chain) - 1; i >= 0; i-- {
+		hop, err := netip.ParseAddr(strings.TrimSpace(chain[i]))
+		if err != nil {
+			return ip // a chain that does not parse names no one: the proxy is the client
+		}
+		if hop = hop.Unmap(); !isTrusted(hop) {
+			return hop
+		}
+		ip = hop
+	}
+	return ip
 }
 
 // forward sets the forwarding headers of a proxied request (docs/03-connections.md, "HTTP
@@ -538,9 +595,27 @@ func (h *HTTPRoutes) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	h.proxy(w, r, rt)
 }
 
-// proxy sends a request over the route, within its WebSocket and body settings.
+// proxy sends a request over the route, within its access rules and its WebSocket and body
+// settings.
 func (h *HTTPRoutes) proxy(w http.ResponseWriter, r *http.Request, rt *routeTransport) {
 	route := rt.route.Load()
+	client := clientOf(r, route.TrustedProxies)
+	if !route.Access.Allows(client) {
+		http.Error(w, http.StatusText(http.StatusForbidden), http.StatusForbidden)
+		return
+	}
+	ctx, cancel := context.WithCancel(r.Context())
+	defer cancel()
+	ar := &activeRequest{client: client, cancel: cancel}
+	rt.mu.Lock()
+	rt.active[ar] = struct{}{}
+	rt.mu.Unlock()
+	defer func() {
+		rt.mu.Lock()
+		delete(rt.active, ar)
+		rt.mu.Unlock()
+	}()
+	r = r.WithContext(ctx)
 	if !route.WebSocket && r.Header.Get("Upgrade") != "" {
 		http.Error(w, "upgrades are off for this route", http.StatusForbidden)
 		return

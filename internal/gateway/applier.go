@@ -49,6 +49,21 @@ func (a *assignment) Connectors(routeID string) []string {
 	return s.routes[routeID]
 }
 
+// accessOf returns the access rules of a gateway route resource, nil for another kind.
+func accessOf(res *agentv1.Resource) *agentv1.RouteAccess {
+	switch {
+	case res.GetGatewayTcpRoute() != nil:
+		return res.GetGatewayTcpRoute().GetAccess()
+	case res.GetGatewayUdpRoute() != nil:
+		return res.GetGatewayUdpRoute().GetAccess()
+	case res.GetGatewayPassthroughRoute() != nil:
+		return res.GetGatewayPassthroughRoute().GetAccess()
+	case res.GetGatewayHttpRoute() != nil:
+		return res.GetGatewayHttpRoute().GetAccess()
+	}
+	return nil
+}
+
 // reservedHeaders are the headers a route cannot set: the gateway's forwarding headers and those
 // of the connection itself.
 var reservedHeaders = []string{"Connection", "Content-Length", "Forwarded", "Host", "Keep-Alive", "Proxy-Connection", "Te",
@@ -115,6 +130,9 @@ func (a *Applier) Validate(snap *agentv1.Snapshot) []*agentv1.SnapshotError {
 	}
 	for _, res := range snap.GetResources() {
 		id := res.GetId()
+		if _, err := AccessOf(accessOf(res)); err != nil {
+			bad(id, "access rules: %v", err)
+		}
 		var connectors []string
 		switch {
 		case res.GetGatewayTcpRoute() != nil:
@@ -235,23 +253,24 @@ func (a *Applier) Apply(ctx context.Context, snap *agentv1.Snapshot, _ agent.Cha
 	)
 	for _, res := range snap.GetResources() {
 		var connectors []string
+		access, _ := AccessOf(accessOf(res)) // Validate refused any that does not parse
 		switch {
 		case res.GetGatewayTcpRoute() != nil:
 			r := res.GetGatewayTcpRoute()
 			connectors = r.GetConnectors()
 			tcp = append(tcp, TCPRoute{ID: res.GetId(), Port: uint16(r.GetPort()), //nolint:gosec // G115: Validate bounds the port
-				IdleTimeout: time.Duration(r.GetIdleTimeoutSeconds()) * time.Second})
+				IdleTimeout: time.Duration(r.GetIdleTimeoutSeconds()) * time.Second, Access: access})
 		case res.GetGatewayUdpRoute() != nil:
 			r := res.GetGatewayUdpRoute()
 			connectors = r.GetConnectors()
 			udp = append(udp, UDPRoute{ID: res.GetId(), Port: uint16(r.GetPort()), //nolint:gosec // G115: Validate bounds the port
-				FlowIdle: time.Duration(r.GetFlowIdleTimeoutSeconds()) * time.Second})
+				FlowIdle: time.Duration(r.GetFlowIdleTimeoutSeconds()) * time.Second, Access: access})
 		case res.GetGatewayHttpRoute() != nil:
 			r := res.GetGatewayHttpRoute()
 			connectors = r.GetConnectors()
 			hr := HTTPRoute{ID: res.GetId(), Upstream: r.GetUpstreamProtocol(), WebSocket: r.GetWebsocket(),
 				HostHeader: r.GetHostHeader(), MaxBody: int64(min(r.GetMaxBodyBytes(), math.MaxInt64)), //nolint:gosec // G115: bounded above
-				Port80: r.GetPort80(), HSTS: int(r.GetHstsMaxAgeSeconds())}
+				Port80: r.GetPort80(), HSTS: int(r.GetHstsMaxAgeSeconds()), Access: access}
 			for _, h := range r.GetRequestHeaders() {
 				hr.RequestHeaders = append(hr.RequestHeaders, HTTPHeader{Name: h.GetName(), Value: h.GetValue()})
 			}
@@ -280,7 +299,7 @@ func (a *Applier) Apply(ctx context.Context, snap *agentv1.Snapshot, _ agent.Cha
 		case res.GetGatewayPassthroughRoute() != nil:
 			p := res.GetGatewayPassthroughRoute()
 			connectors = p.GetConnectors()
-			passthrough = append(passthrough, PassthroughRoute{ID: res.GetId(), Hostnames: p.GetHostnames()})
+			passthrough = append(passthrough, PassthroughRoute{ID: res.GetId(), Hostnames: p.GetHostnames(), Access: access})
 		}
 		next.routes[res.GetId()] = slices.Clone(connectors)
 		for _, c := range connectors {

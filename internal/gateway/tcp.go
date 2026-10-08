@@ -35,6 +35,8 @@ type TCPRoute struct {
 	Port uint16
 	// IdleTimeout closes a connection without traffic in either direction for this long; 0 never.
 	IdleTimeout time.Duration
+	// Access is who may connect.
+	Access Access
 }
 
 // TCPOptions configure TCPRoutes.
@@ -116,7 +118,10 @@ func (t *TCPRoutes) Apply(routes []TCPRoute) []*agentv1.ResourceStatus {
 	// Swap.
 	for port, pl := range t.ports {
 		if r, ok := want[port]; ok {
-			pl.route.Store(&r)
+			old := pl.route.Swap(&r)
+			if !old.Access.Same(r.Access) {
+				pl.enforce(r.Access)
+			}
 			continue
 		}
 		delete(t.ports, port)
@@ -196,6 +201,10 @@ func (t *TCPRoutes) serve(ln net.Listener, r TCPRoute) {
 			if err != nil {
 				return
 			}
+			if !pl.route.Load().Access.AllowsAddr(c.RemoteAddr()) {
+				abort(c)
+				continue
+			}
 			pl.mu.Lock()
 			pl.conns[c] = struct{}{}
 			pl.mu.Unlock()
@@ -216,6 +225,18 @@ func (t *TCPRoutes) serve(ln net.Listener, r TCPRoute) {
 func (t *TCPRoutes) retire(pl *portListener) {
 	_ = pl.ln.Close()
 	time.AfterFunc(routeDrain, pl.abortAll)
+}
+
+// enforce resets the connections the route's new access rules no longer allow: a tightened
+// policy applies at once (docs/03-connections.md, "Configuration reconciliation").
+func (pl *portListener) enforce(a Access) {
+	pl.mu.Lock()
+	defer pl.mu.Unlock()
+	for c := range pl.conns {
+		if !a.AllowsAddr(c.RemoteAddr()) {
+			abort(c)
+		}
+	}
 }
 
 func (pl *portListener) abortAll() {

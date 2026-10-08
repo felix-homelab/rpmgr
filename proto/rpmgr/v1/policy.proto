@@ -1,0 +1,29 @@
+// SPDX-License-Identifier: Apache-2.0
+
+syntax = "proto3";
+
+package rpmgr.v1;
+
+import "buf/validate/validate.proto";
+
+option go_package = "github.com/felix-homelab/rpmgr/gen/rpmgr/v1;rpmgrv1";
+
+// PolicyRuleParams are the parameters of one rule of an access policy (docs/06-data-model.md,
+// "Routing"), stored in policy_rules.params; the rule's kind decides which one is set. The kinds
+// of later phases add theirs.
+message PolicyRuleParams {
+  // The parameters.
+  oneof params {
+    // ip_allow and ip_deny: the client addresses the rule matches.
+    IPRuleParams ip = 1;
+  }
+}
+
+// IPRuleParams match client addresses.
+message IPRuleParams {
+  // CIDRs, IPv4 or IPv6; an IPv4-mapped IPv6 client matches the IPv4 ones.
+  repeated string cidrs = 1 [(buf.validate.field).repeated = {
+    min_items: 1
+    max_items: 1000
+  }];
+}

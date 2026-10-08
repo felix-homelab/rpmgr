@@ -9,6 +9,18 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
 )
 
+// The AccessPolicyFunc type is an adapter to allow the use of ordinary
+// function as AccessPolicy mutator.
+type AccessPolicyFunc func(context.Context, *ent.AccessPolicyMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f AccessPolicyFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.AccessPolicyMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.AccessPolicyMutation", m)
+}
+
 // The AgentSessionFunc type is an adapter to allow the use of ordinary
 // function as AgentSession mutator.
 type AgentSessionFunc func(context.Context, *ent.AgentSessionMutation) (ent.Value, error)
@@ -261,6 +273,18 @@ func (f OrgSettingFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, 
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.OrgSettingMutation", m)
 }
 
+// The PolicyRuleFunc type is an adapter to allow the use of ordinary
+// function as PolicyRule mutator.
+type PolicyRuleFunc func(context.Context, *ent.PolicyRuleMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f PolicyRuleFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.PolicyRuleMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.PolicyRuleMutation", m)
+}
+
 // The PortAllocationFunc type is an adapter to allow the use of ordinary
 // function as PortAllocation mutator.
 type PortAllocationFunc func(context.Context, *ent.PortAllocationMutation) (ent.Value, error)
@@ -343,6 +367,18 @@ func (f RouteHostnameFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Valu
 		return f(ctx, mv)
 	}
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.RouteHostnameMutation", m)
+}
+
+// The RoutePolicyFunc type is an adapter to allow the use of ordinary
+// function as RoutePolicy mutator.
+type RoutePolicyFunc func(context.Context, *ent.RoutePolicyMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f RoutePolicyFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.RoutePolicyMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.RoutePolicyMutation", m)
 }
 
 // The RouteTCPFunc type is an adapter to allow the use of ordinary
