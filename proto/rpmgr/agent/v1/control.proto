@@ -152,6 +152,8 @@ enum NotReadyReason {
   NOT_READY_REASON_TRANSPORT_UNAVAILABLE = 3;
   // An environmental error that is retried with backoff (upstream, DNS).
   NOT_READY_REASON_ENVIRONMENT = 4;
+  // The connector's local policy file does not parse, or others may write it: nothing is allowed.
+  NOT_READY_REASON_POLICY_INVALID = 5;
 }
 
 // Status reports readiness and counters.

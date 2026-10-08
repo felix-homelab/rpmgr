@@ -64,9 +64,9 @@ TestTransport_PinNeverFallsBack	pending	4.14	#84
 TestTransport_ChangeKeepsOpenConnections	pending	4.14	#84
 TestACME_ValidationWaitsForEveryGateway	pending	6.2	#103
 TestACME_DNS01OnlyManagedZones	p2	-	-	ACME DNS-01
-TestPolicy_MetadataAlwaysDenied	pending	4.6	#76
+TestPolicy_MetadataAlwaysDenied	done	4.6	#76
 TestOTA_ChannelAndVariantEnforced	p2	-	-	OTA
-TestPolicy_AutoUpdateAndChannelDefaults	pending	4.6	#76	installer clause in 11.4; root-updater clause in P2 (OTA)
+TestPolicy_AutoUpdateAndChannelDefaults	done	4.6	#76	installer clause in 11.4; root-updater clause in P2 (OTA)
 TestRevocationLog_SingleNodeWithoutSink	pending	11.5	#159	second-replica clause through the single-controller lock of 2.4; UI warning in 10.12
 TestGatewayGroup_MaxFourGateways	done	3.4	#59
 TestDomain_TrustedOnlyByInstanceAdmin	pending	8.4	#118
