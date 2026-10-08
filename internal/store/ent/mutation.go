@@ -12,6 +12,7 @@ import (
 	"entgo.io/ent"
 	"entgo.io/ent/dialect/sql"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/accesspolicy"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/acmestorage"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/agentsession"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/agentstate"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/auditentry"
@@ -58,6 +59,7 @@ const (
 	OpUpdateOne = ent.OpUpdateOne
 
 	// Node types.
+	TypeACMEStorage       = "ACMEStorage"
 	TypeAccessPolicy      = "AccessPolicy"
 	TypeAgentSession      = "AgentSession"
 	TypeAgentState        = "AgentState"
@@ -94,6 +96,482 @@ const (
 	TypeRouteUDP          = "RouteUDP"
 	TypeSecretMeta        = "SecretMeta"
 )
+
+// ACMEStorageMutation represents an operation that mutates the ACMEStorage nodes in the graph.
+type ACMEStorageMutation struct {
+	config
+	op            Op
+	typ           string
+	id            *string
+	value_enc     *[]byte
+	size          *int
+	addsize       *int
+	modified_at   *time.Time
+	clearedFields map[string]struct{}
+	done          bool
+	oldValue      func(context.Context) (*ACMEStorage, error)
+	predicates    []predicate.ACMEStorage
+}
+
+var _ ent.Mutation = (*ACMEStorageMutation)(nil)
+
+// acmestorageOption allows management of the mutation configuration using functional options.
+type acmestorageOption func(*ACMEStorageMutation)
+
+// newACMEStorageMutation creates new mutation for the ACMEStorage entity.
+func newACMEStorageMutation(c config, op Op, opts ...acmestorageOption) *ACMEStorageMutation {
+	m := &ACMEStorageMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeACMEStorage,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withACMEStorageID sets the ID field of the mutation.
+func withACMEStorageID(id string) acmestorageOption {
+	return func(m *ACMEStorageMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *ACMEStorage
+		)
+		m.oldValue = func(ctx context.Context) (*ACMEStorage, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().ACMEStorage.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withACMEStorage sets the old ACMEStorage of the mutation.
+func withACMEStorage(node *ACMEStorage) acmestorageOption {
+	return func(m *ACMEStorageMutation) {
+		m.oldValue = func(context.Context) (*ACMEStorage, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m ACMEStorageMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m ACMEStorageMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// SetID sets the value of the id field. Note that this
+// operation is only accepted on creation of ACMEStorage entities.
+func (m *ACMEStorageMutation) SetID(id string) {
+	m.id = &id
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *ACMEStorageMutation) ID() (id string, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *ACMEStorageMutation) IDs(ctx context.Context) ([]string, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []string{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().ACMEStorage.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetValueEnc sets the "value_enc" field.
+func (m *ACMEStorageMutation) SetValueEnc(b []byte) {
+	m.value_enc = &b
+}
+
+// ValueEnc returns the value of the "value_enc" field in the mutation.
+func (m *ACMEStorageMutation) ValueEnc() (r []byte, exists bool) {
+	v := m.value_enc
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldValueEnc returns the old "value_enc" field's value of the ACMEStorage entity.
+// If the ACMEStorage object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ACMEStorageMutation) OldValueEnc(ctx context.Context) (v []byte, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldValueEnc is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldValueEnc requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldValueEnc: %w", err)
+	}
+	return oldValue.ValueEnc, nil
+}
+
+// ResetValueEnc resets all changes to the "value_enc" field.
+func (m *ACMEStorageMutation) ResetValueEnc() {
+	m.value_enc = nil
+}
+
+// SetSize sets the "size" field.
+func (m *ACMEStorageMutation) SetSize(i int) {
+	m.size = &i
+	m.addsize = nil
+}
+
+// Size returns the value of the "size" field in the mutation.
+func (m *ACMEStorageMutation) Size() (r int, exists bool) {
+	v := m.size
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSize returns the old "size" field's value of the ACMEStorage entity.
+// If the ACMEStorage object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ACMEStorageMutation) OldSize(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSize is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSize requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSize: %w", err)
+	}
+	return oldValue.Size, nil
+}
+
+// AddSize adds i to the "size" field.
+func (m *ACMEStorageMutation) AddSize(i int) {
+	if m.addsize != nil {
+		*m.addsize += i
+	} else {
+		m.addsize = &i
+	}
+}
+
+// AddedSize returns the value that was added to the "size" field in this mutation.
+func (m *ACMEStorageMutation) AddedSize() (r int, exists bool) {
+	v := m.addsize
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetSize resets all changes to the "size" field.
+func (m *ACMEStorageMutation) ResetSize() {
+	m.size = nil
+	m.addsize = nil
+}
+
+// SetModifiedAt sets the "modified_at" field.
+func (m *ACMEStorageMutation) SetModifiedAt(t time.Time) {
+	m.modified_at = &t
+}
+
+// ModifiedAt returns the value of the "modified_at" field in the mutation.
+func (m *ACMEStorageMutation) ModifiedAt() (r time.Time, exists bool) {
+	v := m.modified_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldModifiedAt returns the old "modified_at" field's value of the ACMEStorage entity.
+// If the ACMEStorage object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ACMEStorageMutation) OldModifiedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldModifiedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldModifiedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldModifiedAt: %w", err)
+	}
+	return oldValue.ModifiedAt, nil
+}
+
+// ResetModifiedAt resets all changes to the "modified_at" field.
+func (m *ACMEStorageMutation) ResetModifiedAt() {
+	m.modified_at = nil
+}
+
+// Where appends a list predicates to the ACMEStorageMutation builder.
+func (m *ACMEStorageMutation) Where(ps ...predicate.ACMEStorage) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the ACMEStorageMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *ACMEStorageMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.ACMEStorage, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *ACMEStorageMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *ACMEStorageMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (ACMEStorage).
+func (m *ACMEStorageMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *ACMEStorageMutation) Fields() []string {
+	fields := make([]string, 0, 3)
+	if m.value_enc != nil {
+		fields = append(fields, acmestorage.FieldValueEnc)
+	}
+	if m.size != nil {
+		fields = append(fields, acmestorage.FieldSize)
+	}
+	if m.modified_at != nil {
+		fields = append(fields, acmestorage.FieldModifiedAt)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *ACMEStorageMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case acmestorage.FieldValueEnc:
+		return m.ValueEnc()
+	case acmestorage.FieldSize:
+		return m.Size()
+	case acmestorage.FieldModifiedAt:
+		return m.ModifiedAt()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *ACMEStorageMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case acmestorage.FieldValueEnc:
+		return m.OldValueEnc(ctx)
+	case acmestorage.FieldSize:
+		return m.OldSize(ctx)
+	case acmestorage.FieldModifiedAt:
+		return m.OldModifiedAt(ctx)
+	}
+	return nil, fmt.Errorf("unknown ACMEStorage field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *ACMEStorageMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case acmestorage.FieldValueEnc:
+		v, ok := value.([]byte)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetValueEnc(v)
+		return nil
+	case acmestorage.FieldSize:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSize(v)
+		return nil
+	case acmestorage.FieldModifiedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetModifiedAt(v)
+		return nil
+	}
+	return fmt.Errorf("unknown ACMEStorage field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *ACMEStorageMutation) AddedFields() []string {
+	var fields []string
+	if m.addsize != nil {
+		fields = append(fields, acmestorage.FieldSize)
+	}
+	return fields
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *ACMEStorageMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case acmestorage.FieldSize:
+		return m.AddedSize()
+	}
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *ACMEStorageMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	case acmestorage.FieldSize:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddSize(v)
+		return nil
+	}
+	return fmt.Errorf("unknown ACMEStorage numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *ACMEStorageMutation) ClearedFields() []string {
+	return nil
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *ACMEStorageMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *ACMEStorageMutation) ClearField(name string) error {
+	return fmt.Errorf("unknown ACMEStorage nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *ACMEStorageMutation) ResetField(name string) error {
+	switch name {
+	case acmestorage.FieldValueEnc:
+		m.ResetValueEnc()
+		return nil
+	case acmestorage.FieldSize:
+		m.ResetSize()
+		return nil
+	case acmestorage.FieldModifiedAt:
+		m.ResetModifiedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown ACMEStorage field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *ACMEStorageMutation) AddedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *ACMEStorageMutation) AddedIDs(name string) []ent.Value {
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *ACMEStorageMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *ACMEStorageMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *ACMEStorageMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *ACMEStorageMutation) EdgeCleared(name string) bool {
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *ACMEStorageMutation) ClearEdge(name string) error {
+	return fmt.Errorf("unknown ACMEStorage unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *ACMEStorageMutation) ResetEdge(name string) error {
+	return fmt.Errorf("unknown ACMEStorage edge %s", name)
+}
 
 // AccessPolicyMutation represents an operation that mutates the AccessPolicy nodes in the graph.
 type AccessPolicyMutation struct {

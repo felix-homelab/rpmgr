@@ -88,7 +88,7 @@ an opaque blob: no foreign system's configuration is embedded, and every field i
 | Table | Key fields | Notes |
 |---|---|---|
 | `ca_keys` | id, kind (`root`, `intermediate`, `config_signing`, `audit_checkpoint`), algorithm, public_key, certificate, key_enc, not_before, not_after, status (`next`, `active`, `retired`) | Instance-level keys of [04](04-security.md#ca-hierarchy). `key_enc` is envelope-encrypted under the KEK, and null for an offline root (`rpmgr ca offline-root`). Each kind has one `active` key; the controller refuses to start otherwise. Only the system scope reads or writes the table |
-| `acme_storage` | key, value_enc, modified_at | certmagic's storage (account keys, orders, certificates in progress); locks use `leases` (holder, expiry, fencing token), so replicas never order the same certificate twice ([S6](spikes/S6.md)) |
+| `acme_storage` | key, value_enc, size, modified_at | certmagic's storage (account keys, orders, certificates in progress); `value_enc` is under the KEK with the key as its row, `size` the plain value's; locks are `leases` named `acme:<lock>` (holder, expiry, fencing token), kept alive while held, so replicas never order the same certificate twice ([S6](spikes/S6.md)). Only the system scope reads or writes it |
 | `ca_bundles` | id, org_id, name (unique per org), pem | Custom CAs for verifying HTTPS upstreams ([04](04-security.md#controller-certificates)), referenced by `route_targets.tls_ca_bundle_id` of the same org (composite foreign key) |
 
 ### Routing

@@ -9,6 +9,7 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/accesspolicy"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/acmestorage"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/agentsession"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/agentstate"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/auditentry"
@@ -100,6 +101,33 @@ func (f TraverseFunc) Traverse(ctx context.Context, q ent.Query) error {
 		return err
 	}
 	return f(ctx, query)
+}
+
+// The ACMEStorageFunc type is an adapter to allow the use of ordinary function as a Querier.
+type ACMEStorageFunc func(context.Context, *ent.ACMEStorageQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f ACMEStorageFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.ACMEStorageQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.ACMEStorageQuery", q)
+}
+
+// The TraverseACMEStorage type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseACMEStorage func(context.Context, *ent.ACMEStorageQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseACMEStorage) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseACMEStorage) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.ACMEStorageQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.ACMEStorageQuery", q)
 }
 
 // The AccessPolicyFunc type is an adapter to allow the use of ordinary function as a Querier.
@@ -1050,6 +1078,8 @@ func (f TraverseSecretMeta) Traverse(ctx context.Context, q ent.Query) error {
 // NewQuery returns the generic Query interface for the given typed query.
 func NewQuery(q ent.Query) (Query, error) {
 	switch q := q.(type) {
+	case *ent.ACMEStorageQuery:
+		return &query[*ent.ACMEStorageQuery, predicate.ACMEStorage, acmestorage.OrderOption]{typ: ent.TypeACMEStorage, tq: q}, nil
 	case *ent.AccessPolicyQuery:
 		return &query[*ent.AccessPolicyQuery, predicate.AccessPolicy, accesspolicy.OrderOption]{typ: ent.TypeAccessPolicy, tq: q}, nil
 	case *ent.AgentSessionQuery:

@@ -52,6 +52,10 @@ linters:
       - path: internal/pki/
         text: Reveal
         linters: [forbidigo]
+      # certmagic's storage hands it the account keys and certificates it stored.
+      - path: internal/acme/
+        text: Reveal
+        linters: [forbidigo]
       # Route certificate keys are opened for the gateways that terminate TLS with them.
       - path: internal/certs/
         text: Reveal

@@ -6,6 +6,9 @@ import (
 	"entgo.io/ent/dialect/sql"
 )
 
+// ACMEStorage is the predicate function for acmestorage builders.
+type ACMEStorage func(*sql.Selector)
+
 // AccessPolicy is the predicate function for accesspolicy builders.
 type AccessPolicy func(*sql.Selector)
 

@@ -74,3 +74,26 @@ func (CABundle) Fields() []ent.Field {
 func (CABundle) Indexes() []ent.Index {
 	return []ent.Index{index.Fields("org_id", "name").Unique()}
 }
+
+// ACMEStorage is certmagic's storage on the controller (docs/06-data-model.md, "PKI and ACME"):
+// account keys, orders and certificates in progress, each value under the KEK. Its ID is
+// certmagic's key, a slash-separated path. Only the system scope reads or writes it.
+type ACMEStorage struct{ ent.Schema }
+
+// Mixin makes ACME storage system-only.
+func (ACMEStorage) Mixin() []ent.Mixin { return []ent.Mixin{SystemMixin{}} }
+
+// Annotations name the table as docs/06-data-model.md does.
+func (ACMEStorage) Annotations() []schema.Annotation {
+	return []schema.Annotation{entsql.Annotation{Table: "acme_storage"}}
+}
+
+// Fields of an ACME storage entry.
+func (ACMEStorage) Fields() []ent.Field {
+	return []ent.Field{
+		field.String("id").StorageKey("key").NotEmpty().MaxLen(1024).Immutable(),
+		field.Bytes("value_enc").NotEmpty().Sensitive(),
+		field.Int("size").NonNegative(),
+		field.Time("modified_at"),
+	}
+}
