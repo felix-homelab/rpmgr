@@ -48,6 +48,7 @@ type env struct {
 	ada      string       // the first user's ID
 	denied   atomic.Int32 // how often a service applied a changed deny-list
 	txt      fakeVerifier // the TXT proofs DomainService finds
+	renew    renewals     // the renewals CertificateService starts
 }
 
 func newEnv(t *testing.T) *env {
@@ -131,7 +132,8 @@ func newEnv(t *testing.T) *env {
 	}
 	if err := srv.Mount(mux, rpmgrv1.File_rpmgr_v1_certificate_proto.Services().ByName("CertificateService"),
 		func(o ...connect.HandlerOption) (string, http.Handler) {
-			return rpmgrv1connect.NewCertificateServiceHandler(&apisvc.Certificates{DB: db, API: srv, Sealer: sealer, Now: now}, o...)
+			return rpmgrv1connect.NewCertificateServiceHandler(&apisvc.Certificates{DB: db, API: srv, Sealer: sealer, Renewer: &e.renew,
+				Background: sys, Now: now}, o...)
 		}); err != nil {
 		t.Fatal(err)
 	}

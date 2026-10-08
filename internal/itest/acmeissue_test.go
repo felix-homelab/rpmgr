@@ -5,6 +5,7 @@ package itest_test
 import (
 	"context"
 	"crypto/tls"
+	"errors"
 	"io"
 	"net"
 	"net/http"
@@ -171,6 +172,19 @@ func TestACME_Issuance(t *testing.T) {
 	if body != "hello over acme" {
 		t.Fatalf("body %q", body)
 	}
+
+	// A renewal on demand replaces it before it is due; a hostname no route has is refused.
+	if started, err := m.RenewAsync(ctx, first.OrgID, "app.example.com"); err != nil || !started {
+		t.Fatalf("a renewal on demand: %t %v", started, err)
+	}
+	waitFor(t, "the certificate was not renewed on demand", func() bool {
+		r := acmeRow(t, p, "app.example.com")
+		return string(r.ContentSha256) != string(first.ContentSha256) && r.Status == certificate.StatusActive
+	})
+	if _, err := m.RenewAsync(ctx, first.OrgID, "nope.example.com"); !errors.Is(err, acme.ErrNotWanted) {
+		t.Fatalf("a hostname no route has: %v", err)
+	}
+	first = acmeRow(t, p, "app.example.com")
 
 	// With 90 % of its one-minute lifetime as the renewal window, the certificate is due after 6 s.
 	var renewed *ent.Certificate

@@ -14,6 +14,7 @@ import (
 	"encoding/pem"
 	"math/big"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -21,6 +22,7 @@ import (
 	"google.golang.org/protobuf/types/known/fieldmaskpb"
 
 	rpmgrv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/v1"
+	"github.com/felix-homelab/rpmgr/internal/acme"
 	"github.com/felix-homelab/rpmgr/internal/apisvc"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/auditentry"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/secretmeta"
@@ -197,5 +199,66 @@ func TestCertificates(t *testing.T) {
 		if strings.Contains(a.Diff, "PRIVATE KEY") {
 			t.Fatalf("audit entry %s holds a key", a.Action)
 		}
+	}
+}
+
+// renewals is a Renewer that records what it is asked to renew.
+type renewals struct {
+	mu      sync.Mutex
+	names   []string
+	running bool  // a renewal runs already
+	err     error // the answer
+}
+
+func (r *renewals) RenewAsync(_ context.Context, org, name string) (bool, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.err != nil {
+		return false, r.err
+	}
+	r.names = append(r.names, org+"/"+name)
+	return !r.running, nil
+}
+
+// TestRenewCertificate (docs/07-api.md, "Services"): an ACME certificate's renewal starts in the
+// background and the answer comes at once, saying whether this request started it; an uploaded
+// certificate, a hostname no route in acme mode has and a controller without ACME are refused;
+// only Owners and Admins renew.
+func TestRenewCertificate(t *testing.T) {
+	e, ada, org, _ := gatewayEnv(t)
+	ctx := context.Background()
+	c := e.db.Client()
+	acmeCert := c.Certificate.Create().SetOrgID(org).SetSource("acme").SetSans([]string{"shop.example.com"}).SetStatus("failed").
+		SetLastError("timeout").SaveX(e.sys)
+	uploaded := c.Certificate.Create().SetOrgID(org).SetSource("uploaded").SetSans([]string{"app.example.com"}).SaveX(e.sys)
+	renew := func(b *browser, id string) (*rpmgrv1.RenewCertificateResponse, error) {
+		r, err := b.crt.RenewCertificate(ctx, connect.NewRequest(&rpmgrv1.RenewCertificateRequest{CertificateId: id}))
+		if err != nil {
+			return nil, err
+		}
+		return r.Msg, nil
+	}
+	r, err := renew(ada, acmeCert.ID)
+	if err != nil || !r.GetStarted() || r.GetCertificate().GetId() != acmeCert.ID || len(e.renew.names) != 1 || e.renew.names[0] != org+"/shop.example.com" {
+		t.Fatalf("a renewal: %v %v %v", r, err, e.renew.names)
+	}
+	e.renew.running = true
+	if r, err := renew(ada, acmeCert.ID); err != nil || r.GetStarted() {
+		t.Fatalf("a renewal while one runs: %v %v", r, err)
+	}
+	if _, err := renew(ada, uploaded.ID); code(err) != connect.CodeFailedPrecondition {
+		t.Errorf("an uploaded certificate: %v", err)
+	}
+	e.renew.err = acme.ErrNotWanted
+	if _, err := renew(ada, acmeCert.ID); code(err) != connect.CodeFailedPrecondition {
+		t.Errorf("a hostname no route wants: %v", err)
+	}
+	op, _ := e.join(t, ada, org, "op@example.com", "operator")
+	if _, err := renew(op, acmeCert.ID); code(err) != connect.CodePermissionDenied {
+		t.Errorf("an Operator renews: %v", err)
+	}
+	if _, err := (&apisvc.Certificates{DB: e.db}).RenewCertificate(e.sys, connect.NewRequest(&rpmgrv1.RenewCertificateRequest{
+		CertificateId: acmeCert.ID})); code(err) != connect.CodeUnavailable {
+		t.Errorf("a controller without ACME: %v", err)
 	}
 }

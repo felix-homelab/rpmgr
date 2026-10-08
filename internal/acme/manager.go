@@ -15,6 +15,7 @@ import (
 	"net/url"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/caddyserver/certmagic"
@@ -40,6 +41,9 @@ const JobEvery = time.Minute
 // certificate needs DNS-01, which comes with managed DNS in Phase 2.
 var ErrWildcard = errors.New("acme: a wildcard needs DNS-01 (Phase 2); upload a certificate for it")
 
+// ErrNotWanted is returned by Renew for a hostname of no enabled http route in acme mode.
+var ErrNotWanted = errors.New("acme: no enabled http route in acme mode has the hostname")
+
 // ManagerOptions configure a Manager.
 type ManagerOptions struct {
 	DB      *store.DB
@@ -64,7 +68,8 @@ type ManagerOptions struct {
 // stored in the certificates table of the route's org, which gateways then fetch. It runs as the
 // singleton job "acme" (Job), so replicas never work on it at once.
 type Manager struct {
-	o ManagerOptions
+	o        ManagerOptions
+	renewing sync.Map // the wanted hostnames RenewAsync renews
 }
 
 // NewManager returns a Manager.
@@ -99,12 +104,41 @@ func (m *Manager) Sync(ctx context.Context) error {
 	defer stop()
 	var errs []error
 	for _, w := range want {
-		if err := m.one(ctx, cfg, w); err != nil {
+		if err := m.one(ctx, cfg, w, false); err != nil {
 			m.o.Logger.Warn("route certificate not obtained", "hostname", w.name, "error", err)
 			errs = append(errs, fmt.Errorf("%s: %w", w.name, err))
 		}
 	}
 	return errors.Join(errs...)
+}
+
+// RenewAsync starts renewing the certificate of one hostname of org in the background, under ctx:
+// now, even before it is due, or obtaining it if it has none yet, with the outcome recorded as
+// Sync does. It reports false if a renewal of the hostname runs already.
+func (m *Manager) RenewAsync(ctx context.Context, org, name string) (bool, error) {
+	want, err := m.wanted()
+	if err != nil {
+		return false, err
+	}
+	w := wanted{org: org, name: name}
+	if !slices.Contains(want, w) {
+		return false, ErrNotWanted
+	}
+	if _, running := m.renewing.LoadOrStore(w, struct{}{}); running {
+		return false, nil
+	}
+	go func() {
+		defer m.renewing.Delete(w)
+		cfg, stop, err := m.config()
+		if err == nil {
+			defer stop()
+			err = m.one(ctx, cfg, w, true)
+		}
+		if err != nil {
+			m.o.Logger.Warn("route certificate not renewed", "hostname", name, "error", err)
+		}
+	}()
+	return true, nil
 }
 
 // wanted lists the hostnames of enabled http routes in acme mode, each once.
@@ -169,11 +203,13 @@ func newIssuer(cfg *certmagic.Config, inst *rpmgrv1.InstanceSettings, roots *x50
 	})
 }
 
-// one obtains or renews the certificate of one hostname and records it.
-func (m *Manager) one(ctx context.Context, cfg *certmagic.Config, w wanted) error {
+// one obtains or renews the certificate of one hostname and records it. With force, a certificate
+// that was there before is renewed even if it is not due.
+func (m *Manager) one(ctx context.Context, cfg *certmagic.Config, w wanted, force bool) error {
 	if strings.HasPrefix(w.name, "*.") {
 		return m.record(w, nil, ErrWildcard)
 	}
+	had := cfg.Storage.Exists(ctx, certmagic.StorageKeys.SiteCert(cfg.Issuers[0].IssuerKey(), w.name))
 	if err := cfg.ObtainCertSync(ctx, w.name); err != nil {
 		return m.record(w, nil, err)
 	}
@@ -181,8 +217,8 @@ func (m *Manager) one(ctx context.Context, cfg *certmagic.Config, w wanted) erro
 	if err != nil {
 		return m.record(w, nil, err)
 	}
-	if cert.NeedsRenewal(cfg) {
-		if err := cfg.RenewCertSync(ctx, w.name, false); err != nil {
+	if force && had || cert.NeedsRenewal(cfg) {
+		if err := cfg.RenewCertSync(ctx, w.name, force); err != nil {
 			return m.record(w, &cert, err) // the old certificate serves on while it is valid
 		}
 		if cert, err = cfg.CacheManagedCertificate(ctx, w.name); err != nil {

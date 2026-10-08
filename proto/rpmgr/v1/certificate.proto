@@ -40,6 +40,14 @@ service CertificateService {
       resource_field: "org_id"
     };
   }
+  // RenewCertificate has the controller renew an ACME certificate now, or obtain it if it has none;
+  // the outcome shows in the certificate's validity, status and last_error once it is known.
+  rpc RenewCertificate(RenewCertificateRequest) returns (RenewCertificateResponse) {
+    option (rpmgr.v1.authz) = {
+      permission: "infrastructure.write"
+      resource_field: "certificate_id"
+    };
+  }
   // DeleteCertificate deletes an uploaded certificate; refused while a route uses it, and for an
   // ACME certificate, which the ACME job keeps.
   rpc DeleteCertificate(DeleteCertificateRequest) returns (DeleteCertificateResponse) {
@@ -159,6 +167,20 @@ message ListCertificatesResponse {
   repeated Certificate certificates = 1;
   // The token of the next page; empty after the last.
   string next_page_token = 2;
+}
+
+// RenewCertificateRequest names an ACME certificate.
+message RenewCertificateRequest {
+  // The certificate's ID.
+  string certificate_id = 1 [(buf.validate.field).string.min_len = 1];
+}
+
+// RenewCertificateResponse is the certificate as it is when the renewal starts.
+message RenewCertificateResponse {
+  // The certificate.
+  Certificate certificate = 1;
+  // Whether this request started the renewal; false while one runs already.
+  bool started = 2;
 }
 
 // DeleteCertificateRequest names an uploaded certificate.

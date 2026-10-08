@@ -13,6 +13,7 @@ import (
 
 	rpmgrv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/v1"
 	"github.com/felix-homelab/rpmgr/gen/rpmgr/v1/rpmgrv1connect"
+	"github.com/felix-homelab/rpmgr/internal/acme"
 	"github.com/felix-homelab/rpmgr/internal/api"
 	"github.com/felix-homelab/rpmgr/internal/certs"
 	"github.com/felix-homelab/rpmgr/internal/secret"
@@ -22,6 +23,11 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routehttp"
 )
 
+// Renewer renews ACME certificates on demand: acme.Manager.
+type Renewer interface {
+	RenewAsync(ctx context.Context, org, name string) (bool, error)
+}
+
 // Certificates is CertificateService. Its methods run in the org scope the interceptor gives
 // them.
 type Certificates struct {
@@ -29,7 +35,11 @@ type Certificates struct {
 	DB     *store.DB
 	API    *api.Server
 	Sealer *secret.Sealer
-	Now    func() time.Time
+	// Renewer renews ACME certificates, in the context Background, which outlives the request;
+	// without one RenewCertificate is UNAVAILABLE.
+	Renewer    Renewer
+	Background context.Context
+	Now        func() time.Time
 }
 
 // UploadCertificate implements CertificateService: the chain and key are checked as 04 requires,
@@ -114,6 +124,34 @@ func (c *Certificates) ListCertificates(ctx context.Context, req *connect.Reques
 		out.Certificates = append(out.Certificates, crt)
 	}
 	return connect.NewResponse(out), nil
+}
+
+// RenewCertificate implements CertificateService: it starts the renewal and answers at once.
+func (c *Certificates) RenewCertificate(ctx context.Context, req *connect.Request[rpmgrv1.RenewCertificateRequest]) (
+	*connect.Response[rpmgrv1.RenewCertificateResponse], error) {
+	rc := c.DB.ReadClient()
+	row, err := rc.Certificate.Get(ctx, req.Msg.GetCertificateId())
+	if err != nil {
+		return nil, storeError(err)
+	}
+	switch {
+	case row.Source != certificate.SourceAcme:
+		return nil, connect.NewError(connect.CodeFailedPrecondition, errors.New("apisvc: an uploaded certificate is renewed by uploading its successor"))
+	case c.Renewer == nil:
+		return nil, connect.NewError(connect.CodeUnavailable, errors.New("apisvc: this controller renews no certificates"))
+	}
+	started, err := c.Renewer.RenewAsync(c.Background, row.OrgID, row.Sans[0])
+	if errors.Is(err, acme.ErrNotWanted) {
+		return nil, connect.NewError(connect.CodeFailedPrecondition, fmt.Errorf("apisvc: no enabled http route in acme mode has %s", row.Sans[0]))
+	}
+	if err != nil {
+		return nil, storeError(err)
+	}
+	out, err := certificateOf(ctx, rc, row)
+	if err != nil {
+		return nil, storeError(err)
+	}
+	return connect.NewResponse(&rpmgrv1.RenewCertificateResponse{Certificate: out, Started: started}), nil
 }
 
 // DeleteCertificate implements CertificateService.

@@ -621,6 +621,107 @@ func (x *ListCertificatesResponse) GetNextPageToken() string {
 	return ""
 }
 
+// RenewCertificateRequest names an ACME certificate.
+type RenewCertificateRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The certificate's ID.
+	CertificateId string `protobuf:"bytes,1,opt,name=certificate_id,json=certificateId,proto3" json:"certificate_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RenewCertificateRequest) Reset() {
+	*x = RenewCertificateRequest{}
+	mi := &file_rpmgr_v1_certificate_proto_msgTypes[7]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RenewCertificateRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RenewCertificateRequest) ProtoMessage() {}
+
+func (x *RenewCertificateRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_rpmgr_v1_certificate_proto_msgTypes[7]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RenewCertificateRequest.ProtoReflect.Descriptor instead.
+func (*RenewCertificateRequest) Descriptor() ([]byte, []int) {
+	return file_rpmgr_v1_certificate_proto_rawDescGZIP(), []int{7}
+}
+
+func (x *RenewCertificateRequest) GetCertificateId() string {
+	if x != nil {
+		return x.CertificateId
+	}
+	return ""
+}
+
+// RenewCertificateResponse is the certificate as it is when the renewal starts.
+type RenewCertificateResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The certificate.
+	Certificate *Certificate `protobuf:"bytes,1,opt,name=certificate,proto3" json:"certificate,omitempty"`
+	// Whether this request started the renewal; false while one runs already.
+	Started       bool `protobuf:"varint,2,opt,name=started,proto3" json:"started,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RenewCertificateResponse) Reset() {
+	*x = RenewCertificateResponse{}
+	mi := &file_rpmgr_v1_certificate_proto_msgTypes[8]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RenewCertificateResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RenewCertificateResponse) ProtoMessage() {}
+
+func (x *RenewCertificateResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_rpmgr_v1_certificate_proto_msgTypes[8]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RenewCertificateResponse.ProtoReflect.Descriptor instead.
+func (*RenewCertificateResponse) Descriptor() ([]byte, []int) {
+	return file_rpmgr_v1_certificate_proto_rawDescGZIP(), []int{8}
+}
+
+func (x *RenewCertificateResponse) GetCertificate() *Certificate {
+	if x != nil {
+		return x.Certificate
+	}
+	return nil
+}
+
+func (x *RenewCertificateResponse) GetStarted() bool {
+	if x != nil {
+		return x.Started
+	}
+	return false
+}
+
 // DeleteCertificateRequest names an uploaded certificate.
 type DeleteCertificateRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
@@ -634,7 +735,7 @@ type DeleteCertificateRequest struct {
 
 func (x *DeleteCertificateRequest) Reset() {
 	*x = DeleteCertificateRequest{}
-	mi := &file_rpmgr_v1_certificate_proto_msgTypes[7]
+	mi := &file_rpmgr_v1_certificate_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -646,7 +747,7 @@ func (x *DeleteCertificateRequest) String() string {
 func (*DeleteCertificateRequest) ProtoMessage() {}
 
 func (x *DeleteCertificateRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_v1_certificate_proto_msgTypes[7]
+	mi := &file_rpmgr_v1_certificate_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -659,7 +760,7 @@ func (x *DeleteCertificateRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteCertificateRequest.ProtoReflect.Descriptor instead.
 func (*DeleteCertificateRequest) Descriptor() ([]byte, []int) {
-	return file_rpmgr_v1_certificate_proto_rawDescGZIP(), []int{7}
+	return file_rpmgr_v1_certificate_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *DeleteCertificateRequest) GetCertificateId() string {
@@ -690,7 +791,7 @@ type DeleteCertificateResponse struct {
 
 func (x *DeleteCertificateResponse) Reset() {
 	*x = DeleteCertificateResponse{}
-	mi := &file_rpmgr_v1_certificate_proto_msgTypes[8]
+	mi := &file_rpmgr_v1_certificate_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -702,7 +803,7 @@ func (x *DeleteCertificateResponse) String() string {
 func (*DeleteCertificateResponse) ProtoMessage() {}
 
 func (x *DeleteCertificateResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_v1_certificate_proto_msgTypes[8]
+	mi := &file_rpmgr_v1_certificate_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -715,7 +816,7 @@ func (x *DeleteCertificateResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteCertificateResponse.ProtoReflect.Descriptor instead.
 func (*DeleteCertificateResponse) Descriptor() ([]byte, []int) {
-	return file_rpmgr_v1_certificate_proto_rawDescGZIP(), []int{8}
+	return file_rpmgr_v1_certificate_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *DeleteCertificateResponse) GetRevision() *Revision {
@@ -774,7 +875,12 @@ const file_rpmgr_v1_certificate_proto_rawDesc = "" +
 	"page_token\x18\x03 \x01(\tR\tpageToken\"}\n" +
 	"\x18ListCertificatesResponse\x129\n" +
 	"\fcertificates\x18\x01 \x03(\v2\x15.rpmgr.v1.CertificateR\fcertificates\x12&\n" +
-	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"^\n" +
+	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"I\n" +
+	"\x17RenewCertificateRequest\x12.\n" +
+	"\x0ecertificate_id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\rcertificateId\"m\n" +
+	"\x18RenewCertificateResponse\x127\n" +
+	"\vcertificate\x18\x01 \x01(\v2\x15.rpmgr.v1.CertificateR\vcertificate\x12\x18\n" +
+	"\astarted\x18\x02 \x01(\bR\astarted\"^\n" +
 	"\x18DeleteCertificateRequest\x12.\n" +
 	"\x0ecertificate_id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\rcertificateId\x12\x12\n" +
 	"\x04etag\x18\x02 \x01(\tR\x04etag\"\x85\x01\n" +
@@ -789,14 +895,16 @@ const file_rpmgr_v1_certificate_proto_rawDesc = "" +
 	"\x1eCERTIFICATE_STATUS_UNSPECIFIED\x10\x00\x12\x1e\n" +
 	"\x1aCERTIFICATE_STATUS_PENDING\x10\x01\x12\x1d\n" +
 	"\x19CERTIFICATE_STATUS_ACTIVE\x10\x02\x12\x1d\n" +
-	"\x19CERTIFICATE_STATUS_FAILED\x10\x032\x90\x04\n" +
+	"\x19CERTIFICATE_STATUS_FAILED\x10\x032\x98\x05\n" +
 	"\x12CertificateService\x12\x80\x01\n" +
 	"\x11UploadCertificate\x12\".rpmgr.v1.UploadCertificateRequest\x1a#.rpmgr.v1.UploadCertificateResponse\"\"\x8a\xb5\x18\x1e\n" +
 	"\x14infrastructure.write\x12\x06org_id\x12v\n" +
 	"\x0eGetCertificate\x12\x1f.rpmgr.v1.GetCertificateRequest\x1a .rpmgr.v1.GetCertificateResponse\"!\x8a\xb5\x18\x1a\n" +
 	"\borg.read\x12\x0ecertificate_id\x90\x02\x01\x12t\n" +
 	"\x10ListCertificates\x12!.rpmgr.v1.ListCertificatesRequest\x1a\".rpmgr.v1.ListCertificatesResponse\"\x19\x8a\xb5\x18\x12\n" +
-	"\borg.read\x12\x06org_id\x90\x02\x01\x12\x88\x01\n" +
+	"\borg.read\x12\x06org_id\x90\x02\x01\x12\x85\x01\n" +
+	"\x10RenewCertificate\x12!.rpmgr.v1.RenewCertificateRequest\x1a\".rpmgr.v1.RenewCertificateResponse\"*\x8a\xb5\x18&\n" +
+	"\x14infrastructure.write\x12\x0ecertificate_id\x12\x88\x01\n" +
 	"\x11DeleteCertificate\x12\".rpmgr.v1.DeleteCertificateRequest\x1a#.rpmgr.v1.DeleteCertificateResponse\"*\x8a\xb5\x18&\n" +
 	"\x14infrastructure.write\x12\x0ecertificate_idB5Z3github.com/felix-homelab/rpmgr/gen/rpmgr/v1;rpmgrv1b\x06proto3"
 
@@ -813,7 +921,7 @@ func file_rpmgr_v1_certificate_proto_rawDescGZIP() []byte {
 }
 
 var file_rpmgr_v1_certificate_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
-var file_rpmgr_v1_certificate_proto_msgTypes = make([]protoimpl.MessageInfo, 9)
+var file_rpmgr_v1_certificate_proto_msgTypes = make([]protoimpl.MessageInfo, 11)
 var file_rpmgr_v1_certificate_proto_goTypes = []any{
 	(CertificateSource)(0),            // 0: rpmgr.v1.CertificateSource
 	(CertificateStatus)(0),            // 1: rpmgr.v1.CertificateStatus
@@ -824,38 +932,43 @@ var file_rpmgr_v1_certificate_proto_goTypes = []any{
 	(*GetCertificateResponse)(nil),    // 6: rpmgr.v1.GetCertificateResponse
 	(*ListCertificatesRequest)(nil),   // 7: rpmgr.v1.ListCertificatesRequest
 	(*ListCertificatesResponse)(nil),  // 8: rpmgr.v1.ListCertificatesResponse
-	(*DeleteCertificateRequest)(nil),  // 9: rpmgr.v1.DeleteCertificateRequest
-	(*DeleteCertificateResponse)(nil), // 10: rpmgr.v1.DeleteCertificateResponse
-	(*timestamppb.Timestamp)(nil),     // 11: google.protobuf.Timestamp
-	(*Revision)(nil),                  // 12: rpmgr.v1.Revision
-	(*ApplyStatus)(nil),               // 13: rpmgr.v1.ApplyStatus
+	(*RenewCertificateRequest)(nil),   // 9: rpmgr.v1.RenewCertificateRequest
+	(*RenewCertificateResponse)(nil),  // 10: rpmgr.v1.RenewCertificateResponse
+	(*DeleteCertificateRequest)(nil),  // 11: rpmgr.v1.DeleteCertificateRequest
+	(*DeleteCertificateResponse)(nil), // 12: rpmgr.v1.DeleteCertificateResponse
+	(*timestamppb.Timestamp)(nil),     // 13: google.protobuf.Timestamp
+	(*Revision)(nil),                  // 14: rpmgr.v1.Revision
+	(*ApplyStatus)(nil),               // 15: rpmgr.v1.ApplyStatus
 }
 var file_rpmgr_v1_certificate_proto_depIdxs = []int32{
 	0,  // 0: rpmgr.v1.Certificate.source:type_name -> rpmgr.v1.CertificateSource
-	11, // 1: rpmgr.v1.Certificate.not_before:type_name -> google.protobuf.Timestamp
-	11, // 2: rpmgr.v1.Certificate.not_after:type_name -> google.protobuf.Timestamp
+	13, // 1: rpmgr.v1.Certificate.not_before:type_name -> google.protobuf.Timestamp
+	13, // 2: rpmgr.v1.Certificate.not_after:type_name -> google.protobuf.Timestamp
 	1,  // 3: rpmgr.v1.Certificate.status:type_name -> rpmgr.v1.CertificateStatus
-	11, // 4: rpmgr.v1.Certificate.create_time:type_name -> google.protobuf.Timestamp
+	13, // 4: rpmgr.v1.Certificate.create_time:type_name -> google.protobuf.Timestamp
 	2,  // 5: rpmgr.v1.UploadCertificateResponse.certificate:type_name -> rpmgr.v1.Certificate
-	12, // 6: rpmgr.v1.UploadCertificateResponse.revision:type_name -> rpmgr.v1.Revision
-	13, // 7: rpmgr.v1.UploadCertificateResponse.apply_status:type_name -> rpmgr.v1.ApplyStatus
+	14, // 6: rpmgr.v1.UploadCertificateResponse.revision:type_name -> rpmgr.v1.Revision
+	15, // 7: rpmgr.v1.UploadCertificateResponse.apply_status:type_name -> rpmgr.v1.ApplyStatus
 	2,  // 8: rpmgr.v1.GetCertificateResponse.certificate:type_name -> rpmgr.v1.Certificate
 	2,  // 9: rpmgr.v1.ListCertificatesResponse.certificates:type_name -> rpmgr.v1.Certificate
-	12, // 10: rpmgr.v1.DeleteCertificateResponse.revision:type_name -> rpmgr.v1.Revision
-	13, // 11: rpmgr.v1.DeleteCertificateResponse.apply_status:type_name -> rpmgr.v1.ApplyStatus
-	3,  // 12: rpmgr.v1.CertificateService.UploadCertificate:input_type -> rpmgr.v1.UploadCertificateRequest
-	5,  // 13: rpmgr.v1.CertificateService.GetCertificate:input_type -> rpmgr.v1.GetCertificateRequest
-	7,  // 14: rpmgr.v1.CertificateService.ListCertificates:input_type -> rpmgr.v1.ListCertificatesRequest
-	9,  // 15: rpmgr.v1.CertificateService.DeleteCertificate:input_type -> rpmgr.v1.DeleteCertificateRequest
-	4,  // 16: rpmgr.v1.CertificateService.UploadCertificate:output_type -> rpmgr.v1.UploadCertificateResponse
-	6,  // 17: rpmgr.v1.CertificateService.GetCertificate:output_type -> rpmgr.v1.GetCertificateResponse
-	8,  // 18: rpmgr.v1.CertificateService.ListCertificates:output_type -> rpmgr.v1.ListCertificatesResponse
-	10, // 19: rpmgr.v1.CertificateService.DeleteCertificate:output_type -> rpmgr.v1.DeleteCertificateResponse
-	16, // [16:20] is the sub-list for method output_type
-	12, // [12:16] is the sub-list for method input_type
-	12, // [12:12] is the sub-list for extension type_name
-	12, // [12:12] is the sub-list for extension extendee
-	0,  // [0:12] is the sub-list for field type_name
+	2,  // 10: rpmgr.v1.RenewCertificateResponse.certificate:type_name -> rpmgr.v1.Certificate
+	14, // 11: rpmgr.v1.DeleteCertificateResponse.revision:type_name -> rpmgr.v1.Revision
+	15, // 12: rpmgr.v1.DeleteCertificateResponse.apply_status:type_name -> rpmgr.v1.ApplyStatus
+	3,  // 13: rpmgr.v1.CertificateService.UploadCertificate:input_type -> rpmgr.v1.UploadCertificateRequest
+	5,  // 14: rpmgr.v1.CertificateService.GetCertificate:input_type -> rpmgr.v1.GetCertificateRequest
+	7,  // 15: rpmgr.v1.CertificateService.ListCertificates:input_type -> rpmgr.v1.ListCertificatesRequest
+	9,  // 16: rpmgr.v1.CertificateService.RenewCertificate:input_type -> rpmgr.v1.RenewCertificateRequest
+	11, // 17: rpmgr.v1.CertificateService.DeleteCertificate:input_type -> rpmgr.v1.DeleteCertificateRequest
+	4,  // 18: rpmgr.v1.CertificateService.UploadCertificate:output_type -> rpmgr.v1.UploadCertificateResponse
+	6,  // 19: rpmgr.v1.CertificateService.GetCertificate:output_type -> rpmgr.v1.GetCertificateResponse
+	8,  // 20: rpmgr.v1.CertificateService.ListCertificates:output_type -> rpmgr.v1.ListCertificatesResponse
+	10, // 21: rpmgr.v1.CertificateService.RenewCertificate:output_type -> rpmgr.v1.RenewCertificateResponse
+	12, // 22: rpmgr.v1.CertificateService.DeleteCertificate:output_type -> rpmgr.v1.DeleteCertificateResponse
+	18, // [18:23] is the sub-list for method output_type
+	13, // [13:18] is the sub-list for method input_type
+	13, // [13:13] is the sub-list for extension type_name
+	13, // [13:13] is the sub-list for extension extendee
+	0,  // [0:13] is the sub-list for field type_name
 }
 
 func init() { file_rpmgr_v1_certificate_proto_init() }
@@ -872,7 +985,7 @@ func file_rpmgr_v1_certificate_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_rpmgr_v1_certificate_proto_rawDesc), len(file_rpmgr_v1_certificate_proto_rawDesc)),
 			NumEnums:      2,
-			NumMessages:   9,
+			NumMessages:   11,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

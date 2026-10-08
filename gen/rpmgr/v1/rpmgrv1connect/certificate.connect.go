@@ -44,6 +44,9 @@ const (
 	// CertificateServiceListCertificatesProcedure is the fully-qualified name of the
 	// CertificateService's ListCertificates RPC.
 	CertificateServiceListCertificatesProcedure = "/rpmgr.v1.CertificateService/ListCertificates"
+	// CertificateServiceRenewCertificateProcedure is the fully-qualified name of the
+	// CertificateService's RenewCertificate RPC.
+	CertificateServiceRenewCertificateProcedure = "/rpmgr.v1.CertificateService/RenewCertificate"
 	// CertificateServiceDeleteCertificateProcedure is the fully-qualified name of the
 	// CertificateService's DeleteCertificate RPC.
 	CertificateServiceDeleteCertificateProcedure = "/rpmgr.v1.CertificateService/DeleteCertificate"
@@ -58,6 +61,9 @@ type CertificateServiceClient interface {
 	GetCertificate(context.Context, *connect.Request[v1.GetCertificateRequest]) (*connect.Response[v1.GetCertificateResponse], error)
 	// ListCertificates lists an org's certificates by ID.
 	ListCertificates(context.Context, *connect.Request[v1.ListCertificatesRequest]) (*connect.Response[v1.ListCertificatesResponse], error)
+	// RenewCertificate has the controller renew an ACME certificate now, or obtain it if it has none;
+	// the outcome shows in the certificate's validity, status and last_error once it is known.
+	RenewCertificate(context.Context, *connect.Request[v1.RenewCertificateRequest]) (*connect.Response[v1.RenewCertificateResponse], error)
 	// DeleteCertificate deletes an uploaded certificate; refused while a route uses it, and for an
 	// ACME certificate, which the ACME job keeps.
 	DeleteCertificate(context.Context, *connect.Request[v1.DeleteCertificateRequest]) (*connect.Response[v1.DeleteCertificateResponse], error)
@@ -94,6 +100,12 @@ func NewCertificateServiceClient(httpClient connect.HTTPClient, baseURL string, 
 			connect.WithIdempotency(connect.IdempotencyNoSideEffects),
 			connect.WithClientOptions(opts...),
 		),
+		renewCertificate: connect.NewClient[v1.RenewCertificateRequest, v1.RenewCertificateResponse](
+			httpClient,
+			baseURL+CertificateServiceRenewCertificateProcedure,
+			connect.WithSchema(certificateServiceMethods.ByName("RenewCertificate")),
+			connect.WithClientOptions(opts...),
+		),
 		deleteCertificate: connect.NewClient[v1.DeleteCertificateRequest, v1.DeleteCertificateResponse](
 			httpClient,
 			baseURL+CertificateServiceDeleteCertificateProcedure,
@@ -108,6 +120,7 @@ type certificateServiceClient struct {
 	uploadCertificate *connect.Client[v1.UploadCertificateRequest, v1.UploadCertificateResponse]
 	getCertificate    *connect.Client[v1.GetCertificateRequest, v1.GetCertificateResponse]
 	listCertificates  *connect.Client[v1.ListCertificatesRequest, v1.ListCertificatesResponse]
+	renewCertificate  *connect.Client[v1.RenewCertificateRequest, v1.RenewCertificateResponse]
 	deleteCertificate *connect.Client[v1.DeleteCertificateRequest, v1.DeleteCertificateResponse]
 }
 
@@ -126,6 +139,11 @@ func (c *certificateServiceClient) ListCertificates(ctx context.Context, req *co
 	return c.listCertificates.CallUnary(ctx, req)
 }
 
+// RenewCertificate calls rpmgr.v1.CertificateService.RenewCertificate.
+func (c *certificateServiceClient) RenewCertificate(ctx context.Context, req *connect.Request[v1.RenewCertificateRequest]) (*connect.Response[v1.RenewCertificateResponse], error) {
+	return c.renewCertificate.CallUnary(ctx, req)
+}
+
 // DeleteCertificate calls rpmgr.v1.CertificateService.DeleteCertificate.
 func (c *certificateServiceClient) DeleteCertificate(ctx context.Context, req *connect.Request[v1.DeleteCertificateRequest]) (*connect.Response[v1.DeleteCertificateResponse], error) {
 	return c.deleteCertificate.CallUnary(ctx, req)
@@ -140,6 +158,9 @@ type CertificateServiceHandler interface {
 	GetCertificate(context.Context, *connect.Request[v1.GetCertificateRequest]) (*connect.Response[v1.GetCertificateResponse], error)
 	// ListCertificates lists an org's certificates by ID.
 	ListCertificates(context.Context, *connect.Request[v1.ListCertificatesRequest]) (*connect.Response[v1.ListCertificatesResponse], error)
+	// RenewCertificate has the controller renew an ACME certificate now, or obtain it if it has none;
+	// the outcome shows in the certificate's validity, status and last_error once it is known.
+	RenewCertificate(context.Context, *connect.Request[v1.RenewCertificateRequest]) (*connect.Response[v1.RenewCertificateResponse], error)
 	// DeleteCertificate deletes an uploaded certificate; refused while a route uses it, and for an
 	// ACME certificate, which the ACME job keeps.
 	DeleteCertificate(context.Context, *connect.Request[v1.DeleteCertificateRequest]) (*connect.Response[v1.DeleteCertificateResponse], error)
@@ -172,6 +193,12 @@ func NewCertificateServiceHandler(svc CertificateServiceHandler, opts ...connect
 		connect.WithIdempotency(connect.IdempotencyNoSideEffects),
 		connect.WithHandlerOptions(opts...),
 	)
+	certificateServiceRenewCertificateHandler := connect.NewUnaryHandler(
+		CertificateServiceRenewCertificateProcedure,
+		svc.RenewCertificate,
+		connect.WithSchema(certificateServiceMethods.ByName("RenewCertificate")),
+		connect.WithHandlerOptions(opts...),
+	)
 	certificateServiceDeleteCertificateHandler := connect.NewUnaryHandler(
 		CertificateServiceDeleteCertificateProcedure,
 		svc.DeleteCertificate,
@@ -186,6 +213,8 @@ func NewCertificateServiceHandler(svc CertificateServiceHandler, opts ...connect
 			certificateServiceGetCertificateHandler.ServeHTTP(w, r)
 		case CertificateServiceListCertificatesProcedure:
 			certificateServiceListCertificatesHandler.ServeHTTP(w, r)
+		case CertificateServiceRenewCertificateProcedure:
+			certificateServiceRenewCertificateHandler.ServeHTTP(w, r)
 		case CertificateServiceDeleteCertificateProcedure:
 			certificateServiceDeleteCertificateHandler.ServeHTTP(w, r)
 		default:
@@ -207,6 +236,10 @@ func (UnimplementedCertificateServiceHandler) GetCertificate(context.Context, *c
 
 func (UnimplementedCertificateServiceHandler) ListCertificates(context.Context, *connect.Request[v1.ListCertificatesRequest]) (*connect.Response[v1.ListCertificatesResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("rpmgr.v1.CertificateService.ListCertificates is not implemented"))
+}
+
+func (UnimplementedCertificateServiceHandler) RenewCertificate(context.Context, *connect.Request[v1.RenewCertificateRequest]) (*connect.Response[v1.RenewCertificateResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("rpmgr.v1.CertificateService.RenewCertificate is not implemented"))
 }
 
 func (UnimplementedCertificateServiceHandler) DeleteCertificate(context.Context, *connect.Request[v1.DeleteCertificateRequest]) (*connect.Response[v1.DeleteCertificateResponse], error) {
