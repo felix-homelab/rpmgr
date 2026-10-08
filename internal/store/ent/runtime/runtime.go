@@ -30,6 +30,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/portquota"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/revokedidentity"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/route"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/routehostname"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routetarget"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routetcp"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/schema"
@@ -1319,6 +1320,63 @@ func init() {
 			return nil
 		}
 	}()
+	routehostnameMixin := schema.RouteHostname{}.Mixin()
+	routehostname.Policy = privacy.NewPolicies(routehostnameMixin[0], schema.RouteHostname{})
+	routehostname.Hooks[0] = func(next ent.Mutator) ent.Mutator {
+		return ent.MutateFunc(func(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+			if err := routehostname.Policy.EvalMutation(ctx, m); err != nil {
+				return nil, err
+			}
+			return next.Mutate(ctx, m)
+		})
+	}
+	routehostnameMixinHooks0 := routehostnameMixin[0].Hooks()
+
+	routehostname.Hooks[1] = routehostnameMixinHooks0[0]
+	routehostnameMixinInters0 := routehostnameMixin[0].Interceptors()
+	routehostname.Interceptors[0] = routehostnameMixinInters0[0]
+	routehostnameMixinFields0 := routehostnameMixin[0].Fields()
+	_ = routehostnameMixinFields0
+	routehostnameFields := schema.RouteHostname{}.Fields()
+	_ = routehostnameFields
+	// routehostnameDescOrgID is the schema descriptor for org_id field.
+	routehostnameDescOrgID := routehostnameMixinFields0[0].Descriptor()
+	// routehostname.OrgIDValidator is a validator for the "org_id" field. It is called by the builders before save.
+	routehostname.OrgIDValidator = routehostnameDescOrgID.Validators[0].(func(string) error)
+	// routehostnameDescRouteID is the schema descriptor for route_id field.
+	routehostnameDescRouteID := routehostnameFields[0].Descriptor()
+	// routehostname.RouteIDValidator is a validator for the "route_id" field. It is called by the builders before save.
+	routehostname.RouteIDValidator = routehostnameDescRouteID.Validators[0].(func(string) error)
+	// routehostnameDescGatewayGroupID is the schema descriptor for gateway_group_id field.
+	routehostnameDescGatewayGroupID := routehostnameFields[1].Descriptor()
+	// routehostname.GatewayGroupIDValidator is a validator for the "gateway_group_id" field. It is called by the builders before save.
+	routehostname.GatewayGroupIDValidator = routehostnameDescGatewayGroupID.Validators[0].(func(string) error)
+	// routehostnameDescHostname is the schema descriptor for hostname field.
+	routehostnameDescHostname := routehostnameFields[3].Descriptor()
+	// routehostname.HostnameValidator is a validator for the "hostname" field. It is called by the builders before save.
+	routehostname.HostnameValidator = func() func(string) error {
+		validators := routehostnameDescHostname.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(hostname string) error {
+			for _, fn := range fns {
+				if err := fn(hostname); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// routehostnameDescPathPrefix is the schema descriptor for path_prefix field.
+	routehostnameDescPathPrefix := routehostnameFields[4].Descriptor()
+	// routehostname.DefaultPathPrefix holds the default value on creation for the path_prefix field.
+	routehostname.DefaultPathPrefix = routehostnameDescPathPrefix.Default.(string)
+	// routehostnameDescDomainID is the schema descriptor for domain_id field.
+	routehostnameDescDomainID := routehostnameFields[5].Descriptor()
+	// routehostname.DomainIDValidator is a validator for the "domain_id" field. It is called by the builders before save.
+	routehostname.DomainIDValidator = routehostnameDescDomainID.Validators[0].(func(string) error)
 	routetcpMixin := schema.RouteTCP{}.Mixin()
 	routetcp.Policy = privacy.NewPolicies(routetcpMixin[0], schema.RouteTCP{})
 	routetcp.Hooks[0] = func(next ent.Mutator) ent.Mutator {

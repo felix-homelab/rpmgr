@@ -36,6 +36,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/predicate"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/revokedidentity"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/route"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/routehostname"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routetarget"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routetcp"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/secretmeta"
@@ -74,6 +75,7 @@ const (
 	TypePortQuota         = "PortQuota"
 	TypeRevokedIdentity   = "RevokedIdentity"
 	TypeRoute             = "Route"
+	TypeRouteHostname     = "RouteHostname"
 	TypeRouteTCP          = "RouteTCP"
 	TypeRouteTarget       = "RouteTarget"
 	TypeSecretMeta        = "SecretMeta"
@@ -18849,6 +18851,756 @@ func (m *RouteMutation) ResetEdge(name string) error {
 		return nil
 	}
 	return fmt.Errorf("unknown Route edge %s", name)
+}
+
+// RouteHostnameMutation represents an operation that mutates the RouteHostname nodes in the graph.
+type RouteHostnameMutation struct {
+	config
+	op               Op
+	typ              string
+	id               *int
+	org_id           *string
+	gateway_group_id *string
+	route_type       *routehostname.RouteType
+	hostname         *string
+	path_prefix      *string
+	clearedFields    map[string]struct{}
+	route            *string
+	clearedroute     bool
+	domain           *string
+	cleareddomain    bool
+	done             bool
+	oldValue         func(context.Context) (*RouteHostname, error)
+	predicates       []predicate.RouteHostname
+}
+
+var _ ent.Mutation = (*RouteHostnameMutation)(nil)
+
+// routehostnameOption allows management of the mutation configuration using functional options.
+type routehostnameOption func(*RouteHostnameMutation)
+
+// newRouteHostnameMutation creates new mutation for the RouteHostname entity.
+func newRouteHostnameMutation(c config, op Op, opts ...routehostnameOption) *RouteHostnameMutation {
+	m := &RouteHostnameMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeRouteHostname,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withRouteHostnameID sets the ID field of the mutation.
+func withRouteHostnameID(id int) routehostnameOption {
+	return func(m *RouteHostnameMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *RouteHostname
+		)
+		m.oldValue = func(ctx context.Context) (*RouteHostname, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().RouteHostname.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withRouteHostname sets the old RouteHostname of the mutation.
+func withRouteHostname(node *RouteHostname) routehostnameOption {
+	return func(m *RouteHostnameMutation) {
+		m.oldValue = func(context.Context) (*RouteHostname, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m RouteHostnameMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m RouteHostnameMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *RouteHostnameMutation) ID() (id int, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *RouteHostnameMutation) IDs(ctx context.Context) ([]int, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []int{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().RouteHostname.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetOrgID sets the "org_id" field.
+func (m *RouteHostnameMutation) SetOrgID(s string) {
+	m.org_id = &s
+}
+
+// OrgID returns the value of the "org_id" field in the mutation.
+func (m *RouteHostnameMutation) OrgID() (r string, exists bool) {
+	v := m.org_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldOrgID returns the old "org_id" field's value of the RouteHostname entity.
+// If the RouteHostname object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RouteHostnameMutation) OldOrgID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldOrgID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldOrgID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldOrgID: %w", err)
+	}
+	return oldValue.OrgID, nil
+}
+
+// ResetOrgID resets all changes to the "org_id" field.
+func (m *RouteHostnameMutation) ResetOrgID() {
+	m.org_id = nil
+}
+
+// SetRouteID sets the "route_id" field.
+func (m *RouteHostnameMutation) SetRouteID(s string) {
+	m.route = &s
+}
+
+// RouteID returns the value of the "route_id" field in the mutation.
+func (m *RouteHostnameMutation) RouteID() (r string, exists bool) {
+	v := m.route
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRouteID returns the old "route_id" field's value of the RouteHostname entity.
+// If the RouteHostname object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RouteHostnameMutation) OldRouteID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRouteID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRouteID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRouteID: %w", err)
+	}
+	return oldValue.RouteID, nil
+}
+
+// ResetRouteID resets all changes to the "route_id" field.
+func (m *RouteHostnameMutation) ResetRouteID() {
+	m.route = nil
+}
+
+// SetGatewayGroupID sets the "gateway_group_id" field.
+func (m *RouteHostnameMutation) SetGatewayGroupID(s string) {
+	m.gateway_group_id = &s
+}
+
+// GatewayGroupID returns the value of the "gateway_group_id" field in the mutation.
+func (m *RouteHostnameMutation) GatewayGroupID() (r string, exists bool) {
+	v := m.gateway_group_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldGatewayGroupID returns the old "gateway_group_id" field's value of the RouteHostname entity.
+// If the RouteHostname object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RouteHostnameMutation) OldGatewayGroupID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldGatewayGroupID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldGatewayGroupID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldGatewayGroupID: %w", err)
+	}
+	return oldValue.GatewayGroupID, nil
+}
+
+// ResetGatewayGroupID resets all changes to the "gateway_group_id" field.
+func (m *RouteHostnameMutation) ResetGatewayGroupID() {
+	m.gateway_group_id = nil
+}
+
+// SetRouteType sets the "route_type" field.
+func (m *RouteHostnameMutation) SetRouteType(rt routehostname.RouteType) {
+	m.route_type = &rt
+}
+
+// RouteType returns the value of the "route_type" field in the mutation.
+func (m *RouteHostnameMutation) RouteType() (r routehostname.RouteType, exists bool) {
+	v := m.route_type
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRouteType returns the old "route_type" field's value of the RouteHostname entity.
+// If the RouteHostname object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RouteHostnameMutation) OldRouteType(ctx context.Context) (v routehostname.RouteType, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRouteType is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRouteType requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRouteType: %w", err)
+	}
+	return oldValue.RouteType, nil
+}
+
+// ResetRouteType resets all changes to the "route_type" field.
+func (m *RouteHostnameMutation) ResetRouteType() {
+	m.route_type = nil
+}
+
+// SetHostname sets the "hostname" field.
+func (m *RouteHostnameMutation) SetHostname(s string) {
+	m.hostname = &s
+}
+
+// Hostname returns the value of the "hostname" field in the mutation.
+func (m *RouteHostnameMutation) Hostname() (r string, exists bool) {
+	v := m.hostname
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldHostname returns the old "hostname" field's value of the RouteHostname entity.
+// If the RouteHostname object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RouteHostnameMutation) OldHostname(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldHostname is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldHostname requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldHostname: %w", err)
+	}
+	return oldValue.Hostname, nil
+}
+
+// ResetHostname resets all changes to the "hostname" field.
+func (m *RouteHostnameMutation) ResetHostname() {
+	m.hostname = nil
+}
+
+// SetPathPrefix sets the "path_prefix" field.
+func (m *RouteHostnameMutation) SetPathPrefix(s string) {
+	m.path_prefix = &s
+}
+
+// PathPrefix returns the value of the "path_prefix" field in the mutation.
+func (m *RouteHostnameMutation) PathPrefix() (r string, exists bool) {
+	v := m.path_prefix
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldPathPrefix returns the old "path_prefix" field's value of the RouteHostname entity.
+// If the RouteHostname object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RouteHostnameMutation) OldPathPrefix(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPathPrefix is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPathPrefix requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPathPrefix: %w", err)
+	}
+	return oldValue.PathPrefix, nil
+}
+
+// ResetPathPrefix resets all changes to the "path_prefix" field.
+func (m *RouteHostnameMutation) ResetPathPrefix() {
+	m.path_prefix = nil
+}
+
+// SetDomainID sets the "domain_id" field.
+func (m *RouteHostnameMutation) SetDomainID(s string) {
+	m.domain = &s
+}
+
+// DomainID returns the value of the "domain_id" field in the mutation.
+func (m *RouteHostnameMutation) DomainID() (r string, exists bool) {
+	v := m.domain
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldDomainID returns the old "domain_id" field's value of the RouteHostname entity.
+// If the RouteHostname object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RouteHostnameMutation) OldDomainID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDomainID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDomainID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDomainID: %w", err)
+	}
+	return oldValue.DomainID, nil
+}
+
+// ResetDomainID resets all changes to the "domain_id" field.
+func (m *RouteHostnameMutation) ResetDomainID() {
+	m.domain = nil
+}
+
+// ClearRoute clears the "route" edge to the Route entity.
+func (m *RouteHostnameMutation) ClearRoute() {
+	m.clearedroute = true
+	m.clearedFields[routehostname.FieldRouteID] = struct{}{}
+}
+
+// RouteCleared reports if the "route" edge to the Route entity was cleared.
+func (m *RouteHostnameMutation) RouteCleared() bool {
+	return m.clearedroute
+}
+
+// RouteIDs returns the "route" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// RouteID instead. It exists only for internal usage by the builders.
+func (m *RouteHostnameMutation) RouteIDs() (ids []string) {
+	if id := m.route; id != nil {
+		ids = append(ids, *id)
+	}
+	return
+}
+
+// ResetRoute resets all changes to the "route" edge.
+func (m *RouteHostnameMutation) ResetRoute() {
+	m.route = nil
+	m.clearedroute = false
+}
+
+// ClearDomain clears the "domain" edge to the Domain entity.
+func (m *RouteHostnameMutation) ClearDomain() {
+	m.cleareddomain = true
+	m.clearedFields[routehostname.FieldDomainID] = struct{}{}
+}
+
+// DomainCleared reports if the "domain" edge to the Domain entity was cleared.
+func (m *RouteHostnameMutation) DomainCleared() bool {
+	return m.cleareddomain
+}
+
+// DomainIDs returns the "domain" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// DomainID instead. It exists only for internal usage by the builders.
+func (m *RouteHostnameMutation) DomainIDs() (ids []string) {
+	if id := m.domain; id != nil {
+		ids = append(ids, *id)
+	}
+	return
+}
+
+// ResetDomain resets all changes to the "domain" edge.
+func (m *RouteHostnameMutation) ResetDomain() {
+	m.domain = nil
+	m.cleareddomain = false
+}
+
+// Where appends a list predicates to the RouteHostnameMutation builder.
+func (m *RouteHostnameMutation) Where(ps ...predicate.RouteHostname) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the RouteHostnameMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *RouteHostnameMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.RouteHostname, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *RouteHostnameMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *RouteHostnameMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (RouteHostname).
+func (m *RouteHostnameMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *RouteHostnameMutation) Fields() []string {
+	fields := make([]string, 0, 7)
+	if m.org_id != nil {
+		fields = append(fields, routehostname.FieldOrgID)
+	}
+	if m.route != nil {
+		fields = append(fields, routehostname.FieldRouteID)
+	}
+	if m.gateway_group_id != nil {
+		fields = append(fields, routehostname.FieldGatewayGroupID)
+	}
+	if m.route_type != nil {
+		fields = append(fields, routehostname.FieldRouteType)
+	}
+	if m.hostname != nil {
+		fields = append(fields, routehostname.FieldHostname)
+	}
+	if m.path_prefix != nil {
+		fields = append(fields, routehostname.FieldPathPrefix)
+	}
+	if m.domain != nil {
+		fields = append(fields, routehostname.FieldDomainID)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *RouteHostnameMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case routehostname.FieldOrgID:
+		return m.OrgID()
+	case routehostname.FieldRouteID:
+		return m.RouteID()
+	case routehostname.FieldGatewayGroupID:
+		return m.GatewayGroupID()
+	case routehostname.FieldRouteType:
+		return m.RouteType()
+	case routehostname.FieldHostname:
+		return m.Hostname()
+	case routehostname.FieldPathPrefix:
+		return m.PathPrefix()
+	case routehostname.FieldDomainID:
+		return m.DomainID()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *RouteHostnameMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case routehostname.FieldOrgID:
+		return m.OldOrgID(ctx)
+	case routehostname.FieldRouteID:
+		return m.OldRouteID(ctx)
+	case routehostname.FieldGatewayGroupID:
+		return m.OldGatewayGroupID(ctx)
+	case routehostname.FieldRouteType:
+		return m.OldRouteType(ctx)
+	case routehostname.FieldHostname:
+		return m.OldHostname(ctx)
+	case routehostname.FieldPathPrefix:
+		return m.OldPathPrefix(ctx)
+	case routehostname.FieldDomainID:
+		return m.OldDomainID(ctx)
+	}
+	return nil, fmt.Errorf("unknown RouteHostname field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *RouteHostnameMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case routehostname.FieldOrgID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetOrgID(v)
+		return nil
+	case routehostname.FieldRouteID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRouteID(v)
+		return nil
+	case routehostname.FieldGatewayGroupID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetGatewayGroupID(v)
+		return nil
+	case routehostname.FieldRouteType:
+		v, ok := value.(routehostname.RouteType)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRouteType(v)
+		return nil
+	case routehostname.FieldHostname:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetHostname(v)
+		return nil
+	case routehostname.FieldPathPrefix:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetPathPrefix(v)
+		return nil
+	case routehostname.FieldDomainID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetDomainID(v)
+		return nil
+	}
+	return fmt.Errorf("unknown RouteHostname field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *RouteHostnameMutation) AddedFields() []string {
+	return nil
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *RouteHostnameMutation) AddedField(name string) (ent.Value, bool) {
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *RouteHostnameMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	}
+	return fmt.Errorf("unknown RouteHostname numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *RouteHostnameMutation) ClearedFields() []string {
+	return nil
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *RouteHostnameMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *RouteHostnameMutation) ClearField(name string) error {
+	return fmt.Errorf("unknown RouteHostname nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *RouteHostnameMutation) ResetField(name string) error {
+	switch name {
+	case routehostname.FieldOrgID:
+		m.ResetOrgID()
+		return nil
+	case routehostname.FieldRouteID:
+		m.ResetRouteID()
+		return nil
+	case routehostname.FieldGatewayGroupID:
+		m.ResetGatewayGroupID()
+		return nil
+	case routehostname.FieldRouteType:
+		m.ResetRouteType()
+		return nil
+	case routehostname.FieldHostname:
+		m.ResetHostname()
+		return nil
+	case routehostname.FieldPathPrefix:
+		m.ResetPathPrefix()
+		return nil
+	case routehostname.FieldDomainID:
+		m.ResetDomainID()
+		return nil
+	}
+	return fmt.Errorf("unknown RouteHostname field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *RouteHostnameMutation) AddedEdges() []string {
+	edges := make([]string, 0, 2)
+	if m.route != nil {
+		edges = append(edges, routehostname.EdgeRoute)
+	}
+	if m.domain != nil {
+		edges = append(edges, routehostname.EdgeDomain)
+	}
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *RouteHostnameMutation) AddedIDs(name string) []ent.Value {
+	switch name {
+	case routehostname.EdgeRoute:
+		if id := m.route; id != nil {
+			return []ent.Value{*id}
+		}
+	case routehostname.EdgeDomain:
+		if id := m.domain; id != nil {
+			return []ent.Value{*id}
+		}
+	}
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *RouteHostnameMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 2)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *RouteHostnameMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *RouteHostnameMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 2)
+	if m.clearedroute {
+		edges = append(edges, routehostname.EdgeRoute)
+	}
+	if m.cleareddomain {
+		edges = append(edges, routehostname.EdgeDomain)
+	}
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *RouteHostnameMutation) EdgeCleared(name string) bool {
+	switch name {
+	case routehostname.EdgeRoute:
+		return m.clearedroute
+	case routehostname.EdgeDomain:
+		return m.cleareddomain
+	}
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *RouteHostnameMutation) ClearEdge(name string) error {
+	switch name {
+	case routehostname.EdgeRoute:
+		m.ClearRoute()
+		return nil
+	case routehostname.EdgeDomain:
+		m.ClearDomain()
+		return nil
+	}
+	return fmt.Errorf("unknown RouteHostname unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *RouteHostnameMutation) ResetEdge(name string) error {
+	switch name {
+	case routehostname.EdgeRoute:
+		m.ResetRoute()
+		return nil
+	case routehostname.EdgeDomain:
+		m.ResetDomain()
+		return nil
+	}
+	return fmt.Errorf("unknown RouteHostname edge %s", name)
 }
 
 // RouteTCPMutation represents an operation that mutates the RouteTCP nodes in the graph.

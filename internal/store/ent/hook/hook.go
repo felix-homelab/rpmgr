@@ -297,6 +297,18 @@ func (f RouteFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.RouteMutation", m)
 }
 
+// The RouteHostnameFunc type is an adapter to allow the use of ordinary
+// function as RouteHostname mutator.
+type RouteHostnameFunc func(context.Context, *ent.RouteHostnameMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f RouteHostnameFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.RouteHostnameMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.RouteHostnameMutation", m)
+}
+
 // The RouteTCPFunc type is an adapter to allow the use of ordinary
 // function as RouteTCP mutator.
 type RouteTCPFunc func(context.Context, *ent.RouteTCPMutation) (ent.Value, error)

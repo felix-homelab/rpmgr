@@ -221,3 +221,45 @@ func (RouteTarget) Edges() []ent.Edge {
 func (RouteTarget) Indexes() []ent.Index {
 	return []ent.Index{index.Fields("route_id"), index.Fields("connector_id")}
 }
+
+// RouteHostname is one hostname of an http or tls_passthrough route, under a verified domain of
+// the route's org (docs/06-data-model.md, "Routes"). The group, the type and the path prefix are
+// copied from the route so that the uniqueness rule can be declared here; within a group a
+// hostname is either one tls_passthrough route or any number of http routes, which
+// routes.AddHostname enforces inside the configuration transaction.
+type RouteHostname struct{ ent.Schema }
+
+// Mixin makes route hostnames org-owned.
+func (RouteHostname) Mixin() []ent.Mixin { return []ent.Mixin{OrgMixin{}} }
+
+// Annotations name the table as docs/06-data-model.md does.
+func (RouteHostname) Annotations() []schema.Annotation {
+	return []schema.Annotation{entsql.Annotation{Table: "route_hostnames"}}
+}
+
+// Fields of a route hostname. hostname is normalised (internal/domains) and may start with "*."
+// for http routes; path_prefix is "" for tls_passthrough.
+func (RouteHostname) Fields() []ent.Field {
+	return []ent.Field{
+		field.String("route_id").NotEmpty().Immutable(),
+		field.String("gateway_group_id").NotEmpty().Immutable(),
+		field.Enum("route_type").Values("http", "tls_passthrough").Immutable(),
+		field.String("hostname").NotEmpty().MaxLen(253).Immutable(),
+		field.String("path_prefix").Default("").Immutable(),
+		field.String("domain_id").NotEmpty(),
+	}
+}
+
+// Edges of a route hostname: the route and the covering domain of the same org.
+func (RouteHostname) Edges() []ent.Edge {
+	return []ent.Edge{
+		edge.To("route", Route.Type).Field("route_id").Unique().Required().Immutable(),
+		edge.To("domain", Domain.Type).Field("domain_id").Unique().Required(),
+	}
+}
+
+// Indexes: a hostname and path prefix are served once per group; a route's hostnames are found
+// by route.
+func (RouteHostname) Indexes() []ent.Index {
+	return []ent.Index{index.Fields("gateway_group_id", "hostname", "path_prefix").Unique(), index.Fields("route_id")}
+}

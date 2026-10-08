@@ -36,6 +36,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/portquota"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/revokedidentity"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/route"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/routehostname"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routetarget"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routetcp"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/secretmeta"
@@ -123,6 +124,7 @@ func checkColumn(t, c string) error {
 			portquota.Table:         portquota.ValidColumn,
 			revokedidentity.Table:   revokedidentity.ValidColumn,
 			route.Table:             route.ValidColumn,
+			routehostname.Table:     routehostname.ValidColumn,
 			routetcp.Table:          routetcp.ValidColumn,
 			routetarget.Table:       routetarget.ValidColumn,
 			secretmeta.Table:        secretmeta.ValidColumn,

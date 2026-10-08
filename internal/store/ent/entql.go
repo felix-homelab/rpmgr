@@ -28,6 +28,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/predicate"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/revokedidentity"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/route"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/routehostname"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routetarget"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routetcp"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/secretmeta"
@@ -40,7 +41,7 @@ import (
 
 // schemaGraph holds a representation of ent/schema at runtime.
 var schemaGraph = func() *sqlgraph.Schema {
-	graph := &sqlgraph.Schema{Nodes: make([]*sqlgraph.Node, 27)}
+	graph := &sqlgraph.Schema{Nodes: make([]*sqlgraph.Node, 28)}
 	graph.Nodes[0] = &sqlgraph.Node{
 		NodeSpec: sqlgraph.NodeSpec{
 			Table:   agentsession.Table,
@@ -537,6 +538,26 @@ var schemaGraph = func() *sqlgraph.Schema {
 	}
 	graph.Nodes[24] = &sqlgraph.Node{
 		NodeSpec: sqlgraph.NodeSpec{
+			Table:   routehostname.Table,
+			Columns: routehostname.Columns,
+			ID: &sqlgraph.FieldSpec{
+				Type:   field.TypeInt,
+				Column: routehostname.FieldID,
+			},
+		},
+		Type: "RouteHostname",
+		Fields: map[string]*sqlgraph.FieldSpec{
+			routehostname.FieldOrgID:          {Type: field.TypeString, Column: routehostname.FieldOrgID},
+			routehostname.FieldRouteID:        {Type: field.TypeString, Column: routehostname.FieldRouteID},
+			routehostname.FieldGatewayGroupID: {Type: field.TypeString, Column: routehostname.FieldGatewayGroupID},
+			routehostname.FieldRouteType:      {Type: field.TypeEnum, Column: routehostname.FieldRouteType},
+			routehostname.FieldHostname:       {Type: field.TypeString, Column: routehostname.FieldHostname},
+			routehostname.FieldPathPrefix:     {Type: field.TypeString, Column: routehostname.FieldPathPrefix},
+			routehostname.FieldDomainID:       {Type: field.TypeString, Column: routehostname.FieldDomainID},
+		},
+	}
+	graph.Nodes[25] = &sqlgraph.Node{
+		NodeSpec: sqlgraph.NodeSpec{
 			Table:   routetcp.Table,
 			Columns: routetcp.Columns,
 			ID: &sqlgraph.FieldSpec{
@@ -553,7 +574,7 @@ var schemaGraph = func() *sqlgraph.Schema {
 			routetcp.FieldIdleTimeoutSeconds: {Type: field.TypeInt, Column: routetcp.FieldIdleTimeoutSeconds},
 		},
 	}
-	graph.Nodes[25] = &sqlgraph.Node{
+	graph.Nodes[26] = &sqlgraph.Node{
 		NodeSpec: sqlgraph.NodeSpec{
 			Table:   routetarget.Table,
 			Columns: routetarget.Columns,
@@ -580,7 +601,7 @@ var schemaGraph = func() *sqlgraph.Schema {
 			routetarget.FieldEnabled:          {Type: field.TypeBool, Column: routetarget.FieldEnabled},
 		},
 	}
-	graph.Nodes[26] = &sqlgraph.Node{
+	graph.Nodes[27] = &sqlgraph.Node{
 		NodeSpec: sqlgraph.NodeSpec{
 			Table:   secretmeta.Table,
 			Columns: secretmeta.Columns,
@@ -705,6 +726,30 @@ var schemaGraph = func() *sqlgraph.Schema {
 		},
 		"Route",
 		"GatewayGroup",
+	)
+	graph.MustAddE(
+		"route",
+		&sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2O,
+			Inverse: false,
+			Table:   routehostname.RouteTable,
+			Columns: []string{routehostname.RouteColumn},
+			Bidi:    false,
+		},
+		"RouteHostname",
+		"Route",
+	)
+	graph.MustAddE(
+		"domain",
+		&sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2O,
+			Inverse: false,
+			Table:   routehostname.DomainTable,
+			Columns: []string{routehostname.DomainColumn},
+			Bidi:    false,
+		},
+		"RouteHostname",
+		"Domain",
 	)
 	graph.MustAddE(
 		"route",
@@ -2760,6 +2805,109 @@ func (f *RouteFilter) WhereHasGroupWith(preds ...predicate.GatewayGroup) {
 }
 
 // addPredicate implements the predicateAdder interface.
+func (_q *RouteHostnameQuery) addPredicate(pred func(s *sql.Selector)) {
+	_q.predicates = append(_q.predicates, pred)
+}
+
+// Filter returns a Filter implementation to apply filters on the RouteHostnameQuery builder.
+func (_q *RouteHostnameQuery) Filter() *RouteHostnameFilter {
+	return &RouteHostnameFilter{config: _q.config, predicateAdder: _q}
+}
+
+// addPredicate implements the predicateAdder interface.
+func (m *RouteHostnameMutation) addPredicate(pred func(s *sql.Selector)) {
+	m.predicates = append(m.predicates, pred)
+}
+
+// Filter returns an entql.Where implementation to apply filters on the RouteHostnameMutation builder.
+func (m *RouteHostnameMutation) Filter() *RouteHostnameFilter {
+	return &RouteHostnameFilter{config: m.config, predicateAdder: m}
+}
+
+// RouteHostnameFilter provides a generic filtering capability at runtime for RouteHostnameQuery.
+type RouteHostnameFilter struct {
+	predicateAdder
+	config
+}
+
+// Where applies the entql predicate on the query filter.
+func (f *RouteHostnameFilter) Where(p entql.P) {
+	f.addPredicate(func(s *sql.Selector) {
+		if err := schemaGraph.EvalP(schemaGraph.Nodes[24].Type, p, s); err != nil {
+			s.AddError(err)
+		}
+	})
+}
+
+// WhereID applies the entql int predicate on the id field.
+func (f *RouteHostnameFilter) WhereID(p entql.IntP) {
+	f.Where(p.Field(routehostname.FieldID))
+}
+
+// WhereOrgID applies the entql string predicate on the org_id field.
+func (f *RouteHostnameFilter) WhereOrgID(p entql.StringP) {
+	f.Where(p.Field(routehostname.FieldOrgID))
+}
+
+// WhereRouteID applies the entql string predicate on the route_id field.
+func (f *RouteHostnameFilter) WhereRouteID(p entql.StringP) {
+	f.Where(p.Field(routehostname.FieldRouteID))
+}
+
+// WhereGatewayGroupID applies the entql string predicate on the gateway_group_id field.
+func (f *RouteHostnameFilter) WhereGatewayGroupID(p entql.StringP) {
+	f.Where(p.Field(routehostname.FieldGatewayGroupID))
+}
+
+// WhereRouteType applies the entql string predicate on the route_type field.
+func (f *RouteHostnameFilter) WhereRouteType(p entql.StringP) {
+	f.Where(p.Field(routehostname.FieldRouteType))
+}
+
+// WhereHostname applies the entql string predicate on the hostname field.
+func (f *RouteHostnameFilter) WhereHostname(p entql.StringP) {
+	f.Where(p.Field(routehostname.FieldHostname))
+}
+
+// WherePathPrefix applies the entql string predicate on the path_prefix field.
+func (f *RouteHostnameFilter) WherePathPrefix(p entql.StringP) {
+	f.Where(p.Field(routehostname.FieldPathPrefix))
+}
+
+// WhereDomainID applies the entql string predicate on the domain_id field.
+func (f *RouteHostnameFilter) WhereDomainID(p entql.StringP) {
+	f.Where(p.Field(routehostname.FieldDomainID))
+}
+
+// WhereHasRoute applies a predicate to check if query has an edge route.
+func (f *RouteHostnameFilter) WhereHasRoute() {
+	f.Where(entql.HasEdge("route"))
+}
+
+// WhereHasRouteWith applies a predicate to check if query has an edge route with a given conditions (other predicates).
+func (f *RouteHostnameFilter) WhereHasRouteWith(preds ...predicate.Route) {
+	f.Where(entql.HasEdgeWith("route", sqlgraph.WrapFunc(func(s *sql.Selector) {
+		for _, p := range preds {
+			p(s)
+		}
+	})))
+}
+
+// WhereHasDomain applies a predicate to check if query has an edge domain.
+func (f *RouteHostnameFilter) WhereHasDomain() {
+	f.Where(entql.HasEdge("domain"))
+}
+
+// WhereHasDomainWith applies a predicate to check if query has an edge domain with a given conditions (other predicates).
+func (f *RouteHostnameFilter) WhereHasDomainWith(preds ...predicate.Domain) {
+	f.Where(entql.HasEdgeWith("domain", sqlgraph.WrapFunc(func(s *sql.Selector) {
+		for _, p := range preds {
+			p(s)
+		}
+	})))
+}
+
+// addPredicate implements the predicateAdder interface.
 func (_q *RouteTCPQuery) addPredicate(pred func(s *sql.Selector)) {
 	_q.predicates = append(_q.predicates, pred)
 }
@@ -2788,7 +2936,7 @@ type RouteTCPFilter struct {
 // Where applies the entql predicate on the query filter.
 func (f *RouteTCPFilter) Where(p entql.P) {
 	f.addPredicate(func(s *sql.Selector) {
-		if err := schemaGraph.EvalP(schemaGraph.Nodes[24].Type, p, s); err != nil {
+		if err := schemaGraph.EvalP(schemaGraph.Nodes[25].Type, p, s); err != nil {
 			s.AddError(err)
 		}
 	})
@@ -2881,7 +3029,7 @@ type RouteTargetFilter struct {
 // Where applies the entql predicate on the query filter.
 func (f *RouteTargetFilter) Where(p entql.P) {
 	f.addPredicate(func(s *sql.Selector) {
-		if err := schemaGraph.EvalP(schemaGraph.Nodes[25].Type, p, s); err != nil {
+		if err := schemaGraph.EvalP(schemaGraph.Nodes[26].Type, p, s); err != nil {
 			s.AddError(err)
 		}
 	})
@@ -3019,7 +3167,7 @@ type SecretMetaFilter struct {
 // Where applies the entql predicate on the query filter.
 func (f *SecretMetaFilter) Where(p entql.P) {
 	f.addPredicate(func(s *sql.Selector) {
-		if err := schemaGraph.EvalP(schemaGraph.Nodes[26].Type, p, s); err != nil {
+		if err := schemaGraph.EvalP(schemaGraph.Nodes[27].Type, p, s); err != nil {
 			s.AddError(err)
 		}
 	})
