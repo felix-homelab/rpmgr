@@ -745,7 +745,10 @@ limits head-of-line blocking from packet loss to half the streams.
 | UDP socket buffers | requests 7 MiB [F quic-go:internal/protocol/params.go:6,9] | installer sets `net.core.rmem_max`/`wmem_max` ≥ 7 MiB | Otherwise quic-go logs a warning and throughput suffers |
 
 The gateway opens streams with the non-blocking `OpenStream`. When a session hits its stream limit,
-the gateway tries another session for the route, then returns 503 (HTTP) or resets (TCP).
+the gateway tries another session for the route, then returns 503 (HTTP) or resets (TCP). A stream
+that rpmgr resets carries the application error code 1 when it was aborted (a client's RST) and 2
+when it was closed before both directions ended. Phase 1 gives the whole window budget to
+`rpmgr-tunnel/1`; the `h3` share comes with HTTP/3 (Phase 3).
 
 ### Multiple gateways
 

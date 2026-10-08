@@ -24,6 +24,9 @@ type Stream interface {
 	io.Writer
 	// CloseWrite half-closes the sending direction (FIN); reading continues.
 	CloseWrite() error
+	// SetReliableBoundary makes what was written so far, the StreamResult, reach the peer even if
+	// the stream is reset afterwards, where the transport can (QUIC); elsewhere it does nothing.
+	SetReliableBoundary()
 	// Abort resets both directions, as a client's RST does; data not yet delivered is dropped.
 	Abort()
 	// Close releases the stream after both directions ended; a direction still open is aborted.

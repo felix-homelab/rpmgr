@@ -44,7 +44,7 @@ TestH2_ResetReturnsConnectionWindow	pending	4.3	#73
 TestH2_IdleStreamMemoryBounded	pending	4.3	#73
 TestReauth_ExpiredWithinGrace	done	3.12	#67	internal/controller, with the revoked-identity clause (3.13); after-restore clause in 11.6
 TestReauth_SupersededSerialRefused	done	3.12	#67	internal/controller; after-restore clause in 11.6
-TestStatelessReset_DetectedWithinPingInterval	pending	4.2	#72
+TestStatelessReset_DetectedWithinPingInterval	done	4.2	#72
 TestDNS_ForeignRecordNeverModified	p2	-	-	DNS automation
 TestDNS_CrossOrgPublishRefused	p2	-	-	DNS automation
 TestDNS_PendingZoneIsNotProof	p2	-	-	DNS automation
