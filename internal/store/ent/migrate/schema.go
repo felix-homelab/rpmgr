@@ -957,6 +957,34 @@ var (
 			},
 		},
 	}
+	// ResourceStatusColumns holds the columns for the "resource_status" table.
+	ResourceStatusColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeString},
+		{Name: "org_id", Type: field.TypeString},
+		{Name: "agent_id", Type: field.TypeString},
+		{Name: "resource_id", Type: field.TypeString},
+		{Name: "reason", Type: field.TypeString},
+		{Name: "detail", Type: field.TypeString, Default: ""},
+		{Name: "since", Type: field.TypeTime},
+	}
+	// ResourceStatusTable holds the schema information for the "resource_status" table.
+	ResourceStatusTable = &schema.Table{
+		Name:       "resource_status",
+		Columns:    ResourceStatusColumns,
+		PrimaryKey: []*schema.Column{ResourceStatusColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "resourcestatus_org_id_id",
+				Unique:  true,
+				Columns: []*schema.Column{ResourceStatusColumns[1], ResourceStatusColumns[0]},
+			},
+			{
+				Name:    "resourcestatus_agent_id_resource_id",
+				Unique:  true,
+				Columns: []*schema.Column{ResourceStatusColumns[2], ResourceStatusColumns[3]},
+			},
+		},
+	}
 	// RevokedIdentitiesColumns holds the columns for the "revoked_identities" table.
 	RevokedIdentitiesColumns = []*schema.Column{
 		{Name: "spiffe_id", Type: field.TypeString},
@@ -1479,6 +1507,7 @@ var (
 		PortPoolsTable,
 		PortQuotasTable,
 		RecoveryCodesTable,
+		ResourceStatusTable,
 		RevokedIdentitiesTable,
 		RoutesTable,
 		RouteHTTPTable,
@@ -1576,6 +1605,9 @@ func init() {
 		Table: "port_quotas",
 	}
 	RecoveryCodesTable.ForeignKeys[0].RefTable = UsersTable
+	ResourceStatusTable.Annotation = &entsql.Annotation{
+		Table: "resource_status",
+	}
 	RevokedIdentitiesTable.Annotation = &entsql.Annotation{
 		Table: "revoked_identities",
 	}

@@ -417,6 +417,18 @@ func (f RecoveryCodeFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.RecoveryCodeMutation", m)
 }
 
+// The ResourceStatusFunc type is an adapter to allow the use of ordinary
+// function as ResourceStatus mutator.
+type ResourceStatusFunc func(context.Context, *ent.ResourceStatusMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f ResourceStatusFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.ResourceStatusMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.ResourceStatusMutation", m)
+}
+
 // The RevokedIdentityFunc type is an adapter to allow the use of ordinary
 // function as RevokedIdentity mutator.
 type RevokedIdentityFunc func(context.Context, *ent.RevokedIdentityMutation) (ent.Value, error)

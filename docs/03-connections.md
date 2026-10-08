@@ -326,6 +326,14 @@ Rules:
     and the effective transport policy, the route's, else the connector's, else the instance
     default ([Transport selection](#transport-selection)). A disabled or decommissioned agent gets
     an empty snapshot. Each resource's ID is the route's ID; the other route types follow.
+11. **Readiness is reported.** `Applied` names the resources that are not ready, with a reason and
+    a detail. After that an agent sends a `Status` with each change, such as a connector whose
+    local policy was reloaded, and at the start of every session a complete one, which names
+    every resource that is not ready, so that a change made while there was no session is not
+    lost. The controller keeps, per agent, at most 1 024 resources that are not ready, each
+    resource ID and detail at most 512 bytes; a resource it does not keep is shown as ready. It
+    records an `Applied` only for a snapshot the same session was sent
+    ([06](06-data-model.md#desired-vs-observed-state)).
 
 ### Revisions and ordering
 

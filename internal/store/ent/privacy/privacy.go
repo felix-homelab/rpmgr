@@ -927,6 +927,30 @@ func (f RecoveryCodeMutationRuleFunc) EvalMutation(ctx context.Context, m ent.Mu
 	return Denyf("ent/privacy: unexpected mutation type %T, expect *ent.RecoveryCodeMutation", m)
 }
 
+// The ResourceStatusQueryRuleFunc type is an adapter to allow the use of ordinary
+// functions as a query rule.
+type ResourceStatusQueryRuleFunc func(context.Context, *ent.ResourceStatusQuery) error
+
+// EvalQuery return f(ctx, q).
+func (f ResourceStatusQueryRuleFunc) EvalQuery(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.ResourceStatusQuery); ok {
+		return f(ctx, q)
+	}
+	return Denyf("ent/privacy: unexpected query type %T, expect *ent.ResourceStatusQuery", q)
+}
+
+// The ResourceStatusMutationRuleFunc type is an adapter to allow the use of ordinary
+// functions as a mutation rule.
+type ResourceStatusMutationRuleFunc func(context.Context, *ent.ResourceStatusMutation) error
+
+// EvalMutation calls f(ctx, m).
+func (f ResourceStatusMutationRuleFunc) EvalMutation(ctx context.Context, m ent.Mutation) error {
+	if m, ok := m.(*ent.ResourceStatusMutation); ok {
+		return f(ctx, m)
+	}
+	return Denyf("ent/privacy: unexpected mutation type %T, expect *ent.ResourceStatusMutation", m)
+}
+
 // The RevokedIdentityQueryRuleFunc type is an adapter to allow the use of ordinary
 // functions as a query rule.
 type RevokedIdentityQueryRuleFunc func(context.Context, *ent.RevokedIdentityQuery) error
@@ -1318,6 +1342,8 @@ func queryFilter(q ent.Query) (Filter, error) {
 		return q.Filter(), nil
 	case *ent.RecoveryCodeQuery:
 		return q.Filter(), nil
+	case *ent.ResourceStatusQuery:
+		return q.Filter(), nil
 	case *ent.RevokedIdentityQuery:
 		return q.Filter(), nil
 	case *ent.RouteQuery:
@@ -1416,6 +1442,8 @@ func mutationFilter(m ent.Mutation) (Filter, error) {
 	case *ent.PortQuotaMutation:
 		return m.Filter(), nil
 	case *ent.RecoveryCodeMutation:
+		return m.Filter(), nil
+	case *ent.ResourceStatusMutation:
 		return m.Filter(), nil
 	case *ent.RevokedIdentityMutation:
 		return m.Filter(), nil

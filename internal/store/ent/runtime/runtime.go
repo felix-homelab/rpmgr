@@ -40,6 +40,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/portpool"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/portquota"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/recoverycode"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/resourcestatus"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/revokedidentity"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/route"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routehostname"
@@ -1921,6 +1922,65 @@ func init() {
 	// recoverycode.IDValidator is a validator for the "id" field. It is called by the builders before save.
 	recoverycode.IDValidator = func() func(string) error {
 		validators := recoverycodeDescID.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(id string) error {
+			for _, fn := range fns {
+				if err := fn(id); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	resourcestatusMixin := schema.ResourceStatus{}.Mixin()
+	resourcestatus.Policy = privacy.NewPolicies(resourcestatusMixin[0], schema.ResourceStatus{})
+	resourcestatus.Hooks[0] = func(next ent.Mutator) ent.Mutator {
+		return ent.MutateFunc(func(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+			if err := resourcestatus.Policy.EvalMutation(ctx, m); err != nil {
+				return nil, err
+			}
+			return next.Mutate(ctx, m)
+		})
+	}
+	resourcestatusMixinHooks0 := resourcestatusMixin[0].Hooks()
+
+	resourcestatus.Hooks[1] = resourcestatusMixinHooks0[0]
+	resourcestatusMixinInters0 := resourcestatusMixin[0].Interceptors()
+	resourcestatus.Interceptors[0] = resourcestatusMixinInters0[0]
+	resourcestatusMixinFields0 := resourcestatusMixin[0].Fields()
+	_ = resourcestatusMixinFields0
+	resourcestatusFields := schema.ResourceStatus{}.Fields()
+	_ = resourcestatusFields
+	// resourcestatusDescOrgID is the schema descriptor for org_id field.
+	resourcestatusDescOrgID := resourcestatusMixinFields0[0].Descriptor()
+	// resourcestatus.OrgIDValidator is a validator for the "org_id" field. It is called by the builders before save.
+	resourcestatus.OrgIDValidator = resourcestatusDescOrgID.Validators[0].(func(string) error)
+	// resourcestatusDescAgentID is the schema descriptor for agent_id field.
+	resourcestatusDescAgentID := resourcestatusFields[1].Descriptor()
+	// resourcestatus.AgentIDValidator is a validator for the "agent_id" field. It is called by the builders before save.
+	resourcestatus.AgentIDValidator = resourcestatusDescAgentID.Validators[0].(func(string) error)
+	// resourcestatusDescResourceID is the schema descriptor for resource_id field.
+	resourcestatusDescResourceID := resourcestatusFields[2].Descriptor()
+	// resourcestatus.ResourceIDValidator is a validator for the "resource_id" field. It is called by the builders before save.
+	resourcestatus.ResourceIDValidator = resourcestatusDescResourceID.Validators[0].(func(string) error)
+	// resourcestatusDescReason is the schema descriptor for reason field.
+	resourcestatusDescReason := resourcestatusFields[3].Descriptor()
+	// resourcestatus.ReasonValidator is a validator for the "reason" field. It is called by the builders before save.
+	resourcestatus.ReasonValidator = resourcestatusDescReason.Validators[0].(func(string) error)
+	// resourcestatusDescDetail is the schema descriptor for detail field.
+	resourcestatusDescDetail := resourcestatusFields[4].Descriptor()
+	// resourcestatus.DefaultDetail holds the default value on creation for the detail field.
+	resourcestatus.DefaultDetail = resourcestatusDescDetail.Default.(string)
+	// resourcestatusDescID is the schema descriptor for id field.
+	resourcestatusDescID := resourcestatusFields[0].Descriptor()
+	// resourcestatus.DefaultID holds the default value on creation for the id field.
+	resourcestatus.DefaultID = resourcestatusDescID.Default.(func() string)
+	// resourcestatus.IDValidator is a validator for the "id" field. It is called by the builders before save.
+	resourcestatus.IDValidator = func() func(string) error {
+		validators := resourcestatusDescID.Validators
 		fns := [...]func(string) error{
 			validators[0].(func(string) error),
 			validators[1].(func(string) error),

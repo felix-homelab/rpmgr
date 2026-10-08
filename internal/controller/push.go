@@ -298,6 +298,7 @@ func (p *pusher) applied(sess *session, a *agentv1.Applied) {
 	p.record(sess.agent.Identity, func(u *ent.AgentStateUpdateOne) {
 		u.SetAppliedDbEpoch(rev.DBEpoch).SetAppliedSeq(rev.Seq).SetAppliedHash(a.GetHash()).SetLastAckAt(p.s.now())
 	})
+	p.s.readiness(sess.agent.Identity, a.GetNotReady(), true)
 }
 
 // rejected records that the agent rejected a snapshot, with a bounded copy of its reasons.

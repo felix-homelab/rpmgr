@@ -16,6 +16,7 @@ import (
 
 	"github.com/quic-go/quic-go"
 
+	agentv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/agent/v1"
 	tunnelv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/tunnel/v1"
 	"github.com/felix-homelab/rpmgr/internal/agent"
 	"github.com/felix-homelab/rpmgr/internal/agentproto"
@@ -84,7 +85,13 @@ func Run(ctx context.Context, o RunOptions) error {
 		return err
 	}
 	targets = NewTargets(TargetsOptions{Policy: watcher.Current, Logger: o.Logger, UDPMetrics: udpMetrics,
-		OnHealth: func(h *tunnelv1.RouteHealth) { sessions.SetReady(h) }})
+		OnHealth: func(h *tunnelv1.RouteHealth) {
+			sessions.SetReady(h)
+			if ctl != nil { // a change before the control plane exists goes out with its first session
+				ctl.Send(&agentv1.AgentMessage{Msg: &agentv1.AgentMessage_Status{Status: &agentv1.Status{
+					Readiness: []*agentv1.ResourceStatus{{ResourceId: h.GetRouteId(), Reason: h.GetReason(), Detail: h.GetDetail()}}}}})
+			}
+		}})
 	pc, err := net.ListenPacket("udp", ":0")
 	if err != nil {
 		return err
@@ -101,9 +108,10 @@ func Run(ctx context.Context, o RunOptions) error {
 		},
 		TLS: func(gatewayID string) (*tls.Config, error) { return gatewayTLS(ctl, gatewayID, o.Now) }})
 	defer sessions.Close()
+	applier := NewApplier(targets, sessions)
 	ctl, err = agent.NewControl(agent.ControlOptions{IdentityDir: cfg.IdentityDir, StateDir: cfg.StateDir, Version: o.Version,
-		Capabilities: Capabilities, Applier: NewApplier(targets, sessions), Now: o.Now, Logger: o.Logger,
-		Dial: o.ControlDial, Fallback: sessions.ControlConn})
+		Capabilities: Capabilities, Applier: applier, Now: o.Now, Logger: o.Logger,
+		Dial: o.ControlDial, Fallback: sessions.ControlConn, Readiness: applier.Readiness})
 	if err != nil {
 		return err
 	}

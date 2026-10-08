@@ -231,6 +231,8 @@ func (s *Sessions) receive(ctx context.Context, st grpc.BidiStreamingServer[agen
 			s.push.rejected(sess, m.GetRejected())
 		case m.GetOpResult() != nil:
 			s.opResult(sess, m.GetOpResult())
+		case m.GetStatus().GetReadinessComplete() || len(m.GetStatus().GetReadiness()) > 0:
+			s.readiness(sess.agent.Identity, m.GetStatus().GetReadiness(), m.GetStatus().GetReadinessComplete())
 		}
 	}
 }

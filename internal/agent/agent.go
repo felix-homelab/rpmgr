@@ -40,6 +40,10 @@ type ControlOptions struct {
 	// OnAcmeChallenge, if set, applies the ACME challenges gateways answer; its error goes back
 	// in the OpResult. Without it every challenge is refused.
 	OnAcmeChallenge func(*agentv1.AcmeChallenge) error
+	// Readiness, if set, returns the readiness of every resource the role runs. It goes to the
+	// controller in a complete Status at the start of each session, so that what changed while
+	// there was none is not lost.
+	Readiness func() []*agentv1.ResourceStatus
 }
 
 // Control is an agent's control plane: its identity, the control session with certificate
@@ -77,7 +81,13 @@ func NewControl(o ControlOptions) (*Control, error) {
 			c.rt.Hello(h)
 			h.DenyListDigest = c.deny.Digest()
 		},
-		OnWelcome: c.rt.Welcome,
+		OnWelcome: func(w *agentv1.Welcome) {
+			c.rt.Welcome(w)
+			if o.Readiness != nil {
+				c.client.Send(&agentv1.AgentMessage{Msg: &agentv1.AgentMessage_Status{Status: &agentv1.Status{
+					Readiness: o.Readiness(), ReadinessComplete: true}}})
+			}
+		},
 		OnMessage: func(m *agentv1.ControllerMessage) {
 			if ch := m.GetAcmeChallenge(); ch != nil {
 				err := errors.New("this agent answers no ACME challenges")
@@ -156,6 +166,10 @@ func (c *Control) Ready(context.Context) error {
 	}
 	return nil
 }
+
+// Send sends the role's own message, such as a Status, on the current control session; it reports
+// false if there is none.
+func (c *Control) Send(m *agentv1.AgentMessage) bool { return c.client.Send(m) }
 
 // Identity returns the agent's identity as it was loaded; the certificate in it is the one at
 // start, Certificate the current one.

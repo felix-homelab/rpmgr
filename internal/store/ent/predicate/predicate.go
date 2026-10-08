@@ -108,6 +108,9 @@ type PortQuota func(*sql.Selector)
 // RecoveryCode is the predicate function for recoverycode builders.
 type RecoveryCode func(*sql.Selector)
 
+// ResourceStatus is the predicate function for resourcestatus builders.
+type ResourceStatus func(*sql.Selector)
+
 // RevokedIdentity is the predicate function for revokedidentity builders.
 type RevokedIdentity func(*sql.Selector)
 
