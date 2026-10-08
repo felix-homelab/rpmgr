@@ -18,8 +18,10 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
+	"google.golang.org/protobuf/types/known/fieldmaskpb"
 
 	rpmgrv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/v1"
+	"github.com/felix-homelab/rpmgr/internal/apisvc"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/auditentry"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/secretmeta"
 )
@@ -66,9 +68,9 @@ func keyPEMOf(t *testing.T, k crypto.Signer) (string, []byte) {
 
 // TestCertificates (docs/04-security.md, "Controller certificates"): an uploaded chain and key
 // are checked, stored with the key under the KEK, and shown without it; an expired leaf, a key of
-// another certificate or text that is not PEM is refused; a certificate a route serves, or an ACME
-// one, is not deleted; a deleted one leaves no record of its sealed key; only Owners and Admins
-// upload.
+// another certificate or text that is not PEM is refused; a route serves only an uploaded
+// certificate that covers its hostnames; a certificate a route serves, or an ACME one, is not
+// deleted; a deleted one leaves no record of its sealed key; only Owners and Admins upload.
 func TestCertificates(t *testing.T) {
 	e, ada, org, group := gatewayEnv(t)
 	ctx := context.Background()
@@ -153,6 +155,20 @@ func TestCertificates(t *testing.T) {
 	route, err := createRoute(ada, org, rt, "")
 	if err != nil {
 		t.Fatal(err)
+	}
+	// Only an uploaded certificate that covers every hostname of the route.
+	for name, c := range map[string]struct{ host, cert string }{"a name it does not cover": {"shop.example.com", crt.GetId()},
+		"an ACME certificate": {"shop.example.com", acme.ID}} {
+		bad := httpRoute("bad", group, "app.example.com", c.host)
+		bad.GetHttp().TlsMode, bad.GetHttp().CertificateId = rpmgrv1.TLSMode_TLS_MODE_CERTIFICATE, c.cert
+		if _, err := createRoute(ada, org, bad, ""); code(err) != connect.CodeFailedPrecondition || reason(err) != apisvc.ReasonCertificateNotCovering {
+			t.Errorf("%s: %v", name, err)
+		}
+	}
+	if _, err := ada.rt.UpdateRoute(ctx, connect.NewRequest(&rpmgrv1.UpdateRouteRequest{Route: &rpmgrv1.Route{Id: route.GetId(),
+		Spec: &rpmgrv1.Route_Http{Http: &rpmgrv1.HTTPRouteSpec{Hostnames: []string{"app.example.com", "shop.example.com"}}}},
+		UpdateMask: &fieldmaskpb.FieldMask{Paths: []string{"http.hostnames"}}})); reason(err) != apisvc.ReasonCertificateNotCovering {
+		t.Errorf("a hostname the certificate does not cover, added: %v", err)
 	}
 	got, err := ada.crt.GetCertificate(ctx, connect.NewRequest(&rpmgrv1.GetCertificateRequest{CertificateId: crt.GetId()}))
 	if err != nil || len(got.Msg.GetCertificate().GetRouteIds()) != 1 || got.Msg.GetCertificate().GetRouteIds()[0] != route.GetId() {

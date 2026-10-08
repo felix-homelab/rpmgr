@@ -19,11 +19,13 @@ import (
 	rpmgrv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/v1"
 	"github.com/felix-homelab/rpmgr/gen/rpmgr/v1/rpmgrv1connect"
 	"github.com/felix-homelab/rpmgr/internal/api"
+	"github.com/felix-homelab/rpmgr/internal/certs"
 	"github.com/felix-homelab/rpmgr/internal/domains"
 	"github.com/felix-homelab/rpmgr/internal/gateway"
 	"github.com/felix-homelab/rpmgr/internal/routes"
 	"github.com/felix-homelab/rpmgr/internal/store"
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/certificate"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/policyrule"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/route"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routehostname"
@@ -40,6 +42,9 @@ const (
 	ReasonDomainNotVerified = "DOMAIN_NOT_VERIFIED"
 	// ReasonWildcardACME: ACME cannot issue a wildcard certificate in Phase 1 (R42).
 	ReasonWildcardACME = "WILDCARD_NEEDS_CERTIFICATE"
+	// ReasonCertificateNotCovering: the uploaded certificate a route names does not cover each of
+	// its hostnames.
+	ReasonCertificateNotCovering = "CERTIFICATE_NOT_COVERING"
 )
 
 // maxHostnames is how many hostnames a route has at most.
@@ -101,12 +106,37 @@ func createHTTP(ctx context.Context, tx *ent.Tx, row *ent.Route, h *rpmgrv1.HTTP
 		c.SetHostHeader(hh)
 	}
 	if h.GetTlsMode() == rpmgrv1.TLSMode_TLS_MODE_CERTIFICATE {
-		if _, err := tx.Certificate.Get(ctx, h.GetCertificateId()); err != nil {
+		crt, err := tx.Certificate.Get(ctx, h.GetCertificateId())
+		if err != nil {
+			return err
+		}
+		if err := checkCovers(crt, h.GetHostnames()); err != nil {
 			return err
 		}
 		c.SetTLSMode(routehttp.TLSModeCertificate).SetCertificateID(h.GetCertificateId())
 	}
 	return c.Exec(ctx)
+}
+
+// checkCovers refuses a certificate for a route that is not an uploaded one or does not cover
+// each of its hostnames, which a gateway would then serve with its default certificate.
+func checkCovers(crt *ent.Certificate, hostnames []string) error {
+	refuse := func(format string, args ...any) error {
+		return withReason(connect.NewError(connect.CodeFailedPrecondition, fmt.Errorf("apisvc: "+format, args...)), ReasonCertificateNotCovering)
+	}
+	if crt.Source != certificate.SourceUploaded {
+		return refuse("certificate %s is an ACME certificate; TLS_MODE_ACME uses those", crt.ID)
+	}
+	for _, name := range hostnames {
+		n, err := domains.Normalize(name, true)
+		if err != nil {
+			return connect.NewError(connect.CodeInvalidArgument, err)
+		}
+		if !slices.ContainsFunc(crt.Sans, func(san string) bool { return certs.Covers(san, n) }) {
+			return refuse("certificate %s does not cover %s", crt.ID, n)
+		}
+	}
+	return nil
 }
 
 // checkSpec checks what the store cannot: a spec of a known type, header names and values the
