@@ -277,3 +277,12 @@ func errIf(cond bool, err error) error {
 func LinkURL(publicURL, tok string) string {
 	return strings.TrimSuffix(publicURL, "/") + "/reset#" + tok
 }
+
+// User returns a user and their memberships.
+func (a *Accounts) User(id string) (*ent.User, []*ent.Membership, error) {
+	u, err := a.db.ReadClient().User.Query().Where(user.ID(id)).WithMemberships().Only(a.sys)
+	if err != nil {
+		return nil, nil, err
+	}
+	return u, u.Edges.Memberships, nil
+}

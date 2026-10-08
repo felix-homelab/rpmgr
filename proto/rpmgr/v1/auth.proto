@@ -5,6 +5,7 @@ syntax = "proto3";
 package rpmgr.v1;
 
 import "buf/validate/validate.proto";
+import "google/protobuf/timestamp.proto";
 import "rpmgr/v1/options.proto";
 
 option go_package = "github.com/felix-homelab/rpmgr/gen/rpmgr/v1;rpmgrv1";
@@ -12,6 +13,30 @@ option go_package = "github.com/felix-homelab/rpmgr/gen/rpmgr/v1;rpmgrv1";
 // AuthService signs users in and out and completes password resets (docs/07-api.md, "Services";
 // docs/04-security.md, "Human authentication and sessions").
 service AuthService {
+  // Login signs a user in with an e-mail address and password and sets the session cookie,
+  // replacing a session the request still carries. A wrong address and a wrong password give the
+  // same error.
+  rpc Login(LoginRequest) returns (LoginResponse) {
+    option (rpmgr.v1.authz) = {permission: "public"};
+  }
+  // Logout ends the caller's session and clears the cookie.
+  rpc Logout(LogoutRequest) returns (LogoutResponse) {
+    option (rpmgr.v1.authz) = {permission: "authenticated"};
+  }
+  // GetSession returns the caller, their memberships and their session.
+  rpc GetSession(GetSessionRequest) returns (GetSessionResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+    option (rpmgr.v1.authz) = {permission: "authenticated"};
+  }
+  // ListSessions lists the caller's live sessions, newest first.
+  rpc ListSessions(ListSessionsRequest) returns (ListSessionsResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+    option (rpmgr.v1.authz) = {permission: "authenticated"};
+  }
+  // RevokeSession ends one of the caller's sessions.
+  rpc RevokeSession(RevokeSessionRequest) returns (RevokeSessionResponse) {
+    option (rpmgr.v1.authz) = {permission: "authenticated"};
+  }
   // CompletePasswordReset sets a user's password with a one-time link, or creates the first user
   // with the first-user link. A link works once, until it expires.
   rpc CompletePasswordReset(CompletePasswordResetRequest) returns (CompletePasswordResetResponse) {
@@ -50,3 +75,99 @@ message CompletePasswordResetResponse {
   // The user's e-mail address, with which they sign in.
   string email = 2;
 }
+
+// LoginRequest is an e-mail address and a password.
+message LoginRequest {
+  // The e-mail address.
+  string email = 1 [(buf.validate.field).string = {
+    min_len: 1
+    max_len: 254
+  }];
+  // The password.
+  string password = 2 [
+    (rpmgr.v1.sensitive) = true,
+    (buf.validate.field).string = {
+      min_len: 1
+      max_len: 256
+    }
+  ];
+}
+
+// LoginResponse is the new session; its token is only in the cookie.
+message LoginResponse {
+  // The signed-in user's ID.
+  string user_id = 1;
+  // The new session.
+  Session session = 2;
+}
+
+// LogoutRequest is empty.
+message LogoutRequest {}
+
+// LogoutResponse is empty.
+message LogoutResponse {}
+
+// GetSessionRequest is empty.
+message GetSessionRequest {}
+
+// GetSessionResponse is the caller and their session.
+message GetSessionResponse {
+  // The user's ID.
+  string user_id = 1;
+  // The user's e-mail address.
+  string email = 2;
+  // The user's display name.
+  string display_name = 3;
+  // Whether the user holds the Instance Admin role.
+  bool instance_admin = 4;
+  // The user's memberships.
+  repeated Membership memberships = 5;
+  // The caller's session.
+  Session session = 6;
+}
+
+// Membership is a user's role in an org.
+message Membership {
+  // The org's ID.
+  string org_id = 1;
+  // owner, admin, operator or viewer.
+  string role = 2;
+}
+
+// Session is a signed-in browser.
+message Session {
+  // The session's ID, ses_….
+  string id = 1;
+  // When it started.
+  google.protobuf.Timestamp create_time = 2;
+  // When it was last used, to the minute.
+  google.protobuf.Timestamp last_seen_time = 3;
+  // When it ends if it is not used.
+  google.protobuf.Timestamp idle_expire_time = 4;
+  // When it ends at the latest.
+  google.protobuf.Timestamp expire_time = 5;
+  // The address it signed in from.
+  string ip = 6;
+  // The browser's user agent.
+  string user_agent = 7;
+  // Whether this is the session of the request.
+  bool current = 8;
+}
+
+// ListSessionsRequest is empty.
+message ListSessionsRequest {}
+
+// ListSessionsResponse is the caller's live sessions.
+message ListSessionsResponse {
+  // The sessions, newest first.
+  repeated Session sessions = 1;
+}
+
+// RevokeSessionRequest names a session of the caller.
+message RevokeSessionRequest {
+  // The session's ID.
+  string session_id = 1 [(buf.validate.field).string.min_len = 1];
+}
+
+// RevokeSessionResponse is empty.
+message RevokeSessionResponse {}

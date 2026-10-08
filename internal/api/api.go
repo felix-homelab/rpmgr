@@ -57,6 +57,9 @@ type Options struct {
 	Resolver Resolver
 	// OperatorsMayEnroll returns an org's setting that gives Operators connectors.write.
 	OperatorsMayEnroll func(ctx context.Context, orgID string) (bool, error)
+	// Origins returns the origins a browser may call the API from: the public URL's and its
+	// aliases'. Without it, only Go's cross-origin protection checks the Origin.
+	Origins func(ctx context.Context) ([]string, error)
 	// PageKey authenticates page tokens; the controller derives it from the KEK, so tokens stay
 	// valid across restarts. Without it, a random key lasts as long as the Server.
 	PageKey []byte
@@ -112,7 +115,7 @@ func (s *Server) Mount(mux *http.ServeMux, sd protoreflect.ServiceDescriptor,
 	if path != "/"+string(sd.FullName())+"/" {
 		return fmt.Errorf("api: the handler of %s serves %s", sd.FullName(), path)
 	}
-	mux.Handle(path, h)
+	mux.Handle(path, s.csrf(h))
 	return nil
 }
 
