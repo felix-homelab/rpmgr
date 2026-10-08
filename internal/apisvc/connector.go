@@ -4,15 +4,18 @@ package apisvc
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"connectrpc.com/connect"
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/durationpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	rpmgrv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/v1"
 	"github.com/felix-homelab/rpmgr/gen/rpmgr/v1/rpmgrv1connect"
 	"github.com/felix-homelab/rpmgr/internal/api"
+	"github.com/felix-homelab/rpmgr/internal/pki"
 	"github.com/felix-homelab/rpmgr/internal/store"
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/agentsession"
@@ -26,7 +29,103 @@ type Connectors struct {
 	rpmgrv1connect.UnimplementedConnectorServiceHandler
 	DB  *store.DB
 	API *api.Server
+	// Revocations revoke a decommissioned connector's identity.
+	Revocations *Revocations
+	Now         func() time.Time
 }
+
+// connectorFields are the fields of a connector a client may change.
+var connectorFields = []string{"name", "labels", "enabled", "transport"}
+
+// UpdateConnector implements ConnectorService.
+func (c *Connectors) UpdateConnector(ctx context.Context, req *connect.Request[rpmgrv1.UpdateConnectorRequest]) (
+	*connect.Response[rpmgrv1.UpdateConnectorResponse], error) {
+	m := req.Msg
+	var row *ent.Connector
+	rev, err := store.ConfigTx(ctx, c.DB, func(tx *ent.Tx) ([]string, error) {
+		cur, err := tx.Connector.Get(ctx, m.GetConnector().GetId())
+		if err != nil {
+			return nil, err
+		}
+		if err := api.CheckEtag(m.GetEtag(), cur.Version, connectorOf(cur, nil)); err != nil {
+			return nil, err
+		}
+		if cur.DecommissionedAt != nil {
+			return nil, connect.NewError(connect.CodeFailedPrecondition, errors.New("apisvc: the connector is decommissioned"))
+		}
+		next := proto.Clone(connectorOf(cur, nil)).(*rpmgrv1.Connector)
+		if err := api.ApplyMask(next, m.GetConnector(), m.GetUpdateMask(), connectorFields...); err != nil {
+			return nil, err
+		}
+		u := tx.Connector.UpdateOneID(cur.ID).Where(connector.Version(cur.Version)).SetName(next.GetName()).
+			SetLabels(next.GetLabels()).SetEnabled(next.GetEnabled())
+		if t, ok := storeTransports[next.GetTransport()]; ok {
+			u.SetTransport(t)
+		} else {
+			u.ClearTransport()
+		}
+		if row, err = u.Save(ctx); err != nil {
+			return nil, err
+		}
+		return []string{row.ID}, nil
+	})
+	if err != nil {
+		return nil, storeError(err)
+	}
+	s, err := c.session(ctx, row.ID)
+	if err != nil {
+		return nil, err
+	}
+	return connect.NewResponse(&rpmgrv1.UpdateConnectorResponse{Connector: connectorOf(row, s), Revision: revisionOf(rev)}), nil
+}
+
+// DecommissionConnector implements ConnectorService. The identity is revoked in the same
+// transaction; a second call changes nothing.
+func (c *Connectors) DecommissionConnector(ctx context.Context, req *connect.Request[rpmgrv1.DecommissionConnectorRequest]) (
+	*connect.Response[rpmgrv1.DecommissionConnectorResponse], error) {
+	actor := api.CallerFrom(ctx).UserID
+	var (
+		row     *ent.Connector
+		revoked bool
+	)
+	rev, err := store.ConfigTx(ctx, c.DB, func(tx *ent.Tx) ([]string, error) {
+		cur, err := tx.Connector.Get(ctx, req.Msg.GetConnectorId())
+		if err != nil {
+			return nil, err
+		}
+		if err := api.CheckEtag(req.Msg.GetEtag(), cur.Version, connectorOf(cur, nil)); err != nil {
+			return nil, err
+		}
+		if row = cur; cur.DecommissionedAt != nil {
+			return []string{cur.ID}, nil
+		}
+		now := c.now()
+		if row, err = tx.Connector.UpdateOneID(cur.ID).Where(connector.Version(cur.Version)).SetDecommissionedAt(now).
+			SetEnabled(false).Save(ctx); err != nil {
+			return nil, err
+		}
+		revoked, err = c.Revocations.agent(tx, pki.KindConnector, cur.OrgID, cur.ID, "decommissioned", actor, now)
+		return []string{cur.ID}, err
+	})
+	if err != nil {
+		return nil, storeError(err)
+	}
+	if revoked {
+		c.Revocations.applied()
+	}
+	return connect.NewResponse(&rpmgrv1.DecommissionConnectorResponse{Connector: connectorOf(row, nil), Revision: revisionOf(rev)}), nil
+}
+
+func (c *Connectors) now() time.Time {
+	if c.Now != nil {
+		return c.Now()
+	}
+	return time.Now()
+}
+
+// storeTransports are the store's transport policies by the API's; unspecified clears it.
+var storeTransports = map[rpmgrv1.DataTransport]connector.Transport{rpmgrv1.DataTransport_DATA_TRANSPORT_AUTO: connector.TransportAuto,
+	rpmgrv1.DataTransport_DATA_TRANSPORT_QUIC: connector.TransportQuic, rpmgrv1.DataTransport_DATA_TRANSPORT_H2: connector.TransportH2}
 
 // ListConnectors implements ConnectorService.
 func (c *Connectors) ListConnectors(ctx context.Context, req *connect.Request[rpmgrv1.ListConnectorsRequest]) (

@@ -295,6 +295,9 @@ method, list filter or search returns or modifies the other org's data
   purge). Both periods are defined in [04](04-security.md#lifecycle).
 - **Ephemeral connectors** are hard-deleted 30 minutes after their last disconnect
   ([04](04-security.md#lifecycle)).
+- **Decommissioning** a connector or gateway sets `decommissioned_at` and revokes its identity in
+  the same transaction ([04](04-security.md#revocation)). [R] A decommissioned connector's route
+  targets stay, serving nothing, until they are removed.
 - **Deleting a connector** that still serves route targets is refused with a list of the affected
   routes, unless the request explicitly cascades.
 - **Deleting a route** removes its DNS records in managed zones on the next DNS pass, unless another

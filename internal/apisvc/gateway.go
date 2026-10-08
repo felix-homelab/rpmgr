@@ -6,7 +6,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log/slog"
 	"time"
 
 	"connectrpc.com/connect"
@@ -16,9 +15,7 @@ import (
 	rpmgrv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/v1"
 	"github.com/felix-homelab/rpmgr/gen/rpmgr/v1/rpmgrv1connect"
 	"github.com/felix-homelab/rpmgr/internal/api"
-	"github.com/felix-homelab/rpmgr/internal/audit"
 	"github.com/felix-homelab/rpmgr/internal/pki"
-	"github.com/felix-homelab/rpmgr/internal/revlog"
 	"github.com/felix-homelab/rpmgr/internal/store"
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/agentsession"
@@ -36,14 +33,9 @@ type Gateways struct {
 	rpmgrv1connect.UnimplementedGatewayServiceHandler
 	DB  *store.DB
 	API *api.Server
-	// Sys is the controller's system scope, for revoking a decommissioned gateway's identity.
-	Sys    context.Context
-	RevLog *revlog.Log
-	Logger *slog.Logger
-	// Denied, if set, applies a changed deny-list to this controller's sessions at once; other
-	// replicas apply it at their next revision check.
-	Denied func()
-	Now    func() time.Time
+	// Revocations revoke a decommissioned gateway's identity.
+	Revocations *Revocations
+	Now         func() time.Time
 }
 
 // groupFields are the fields of a gateway group a client may change.
@@ -354,31 +346,14 @@ func (g *Gateways) DecommissionGateway(ctx context.Context, req *connect.Request
 			SetEnabled(false).Save(ctx); err != nil {
 			return nil, err
 		}
-		inst, err := tx.Instance.Get(g.Sys, 1)
-		if err != nil {
-			return nil, err
-		}
-		id := pki.Identity{TrustDomain: inst.TrustDomain, Org: cur.OrgID, Kind: pki.KindGateway, ID: cur.ID}
-		denied, changed, err := pki.RevokeIdentity(g.Sys, tx, id, "decommissioned", now)
-		if err != nil || !changed {
-			return []string{cur.ID}, err
-		}
-		revoked = true
-		if g.RevLog != nil {
-			if _, err := g.RevLog.Append(revlog.Entry{Kind: revlog.IdentityRevoked, Org: id.Org, Subject: id.String(),
-				Detail: "decommissioned", NotAfter: &denied.NotAfter, Actor: actor}); err != nil && g.Logger != nil {
-				g.Logger.Error("cannot append to the revocation log", "kind", revlog.IdentityRevoked, "subject", id.String(), "error", err)
-			}
-		}
-		_, err = audit.Append(g.Sys, tx, audit.Entry{OrgID: id.Org, ActorType: audit.ActorUser, ActorID: actor,
-			Action: "identity.revoke", TargetType: string(id.Kind), TargetID: id.ID, Result: audit.Success, Reason: "decommissioned"})
+		revoked, err = g.Revocations.agent(tx, pki.KindGateway, cur.OrgID, cur.ID, "decommissioned", actor, now)
 		return []string{cur.ID}, err
 	})
 	if err != nil {
 		return nil, storeError(err)
 	}
-	if revoked && g.Denied != nil {
-		g.Denied()
+	if revoked {
+		g.Revocations.applied()
 	}
 	return connect.NewResponse(&rpmgrv1.DecommissionGatewayResponse{Gateway: g.gatewayOf(ctx, row), Revision: revisionOf(rev)}), nil
 }

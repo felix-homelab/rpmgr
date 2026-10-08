@@ -221,6 +221,7 @@ func Run(ctx context.Context, o RunOptions) error {
 	}
 	mux := http.NewServeMux()
 	mux.Handle("/.well-known/rpmgr/trust-bundle", enroll.TrustBundleHandler(ca.Root()))
+	revocations := &apisvc.Revocations{Sys: sys, RevLog: rl, Logger: o.Logger, Denied: sessions.ApplyDenyList}
 	mfa := &accounts.MFA{Accounts: acc, Sealer: sealer, RevLog: rl, Logger: o.Logger}
 	relay := &apisvc.Relay{DB: db, Sys: sys, Sealer: sealer}
 	auth := apisvc.NewAuth(mfa, webSessions, o.Now)
@@ -240,14 +241,13 @@ func Run(ctx context.Context, o RunOptions) error {
 	}
 	if err := apiServer.Mount(mux, rpmgrv1.File_rpmgr_v1_gateway_proto.Services().ByName("GatewayService"),
 		func(opts ...connect.HandlerOption) (string, http.Handler) {
-			return rpmgrv1connect.NewGatewayServiceHandler(&apisvc.Gateways{DB: db, API: apiServer, Sys: sys, RevLog: rl, Logger: o.Logger,
-				Denied: sessions.ApplyDenyList, Now: o.Now}, opts...)
+			return rpmgrv1connect.NewGatewayServiceHandler(&apisvc.Gateways{DB: db, API: apiServer, Revocations: revocations, Now: o.Now}, opts...)
 		}); err != nil {
 		return err
 	}
 	if err := apiServer.Mount(mux, rpmgrv1.File_rpmgr_v1_connector_proto.Services().ByName("ConnectorService"),
 		func(opts ...connect.HandlerOption) (string, http.Handler) {
-			return rpmgrv1connect.NewConnectorServiceHandler(&apisvc.Connectors{DB: db, API: apiServer}, opts...)
+			return rpmgrv1connect.NewConnectorServiceHandler(&apisvc.Connectors{DB: db, API: apiServer, Revocations: revocations, Now: o.Now}, opts...)
 		}); err != nil {
 		return err
 	}

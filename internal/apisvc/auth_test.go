@@ -77,6 +77,7 @@ func newEnv(t *testing.T) *env {
 	if err != nil {
 		t.Fatal(err)
 	}
+	revocations := &apisvc.Revocations{Sys: sys, RevLog: rl, Denied: func() { e.denied.Add(1) }}
 	mux := http.NewServeMux()
 	if err := srv.Mount(mux, rpmgrv1.File_rpmgr_v1_auth_proto.Services().ByName("AuthService"),
 		func(o ...connect.HandlerOption) (string, http.Handler) {
@@ -96,14 +97,13 @@ func newEnv(t *testing.T) *env {
 	}
 	if err := srv.Mount(mux, rpmgrv1.File_rpmgr_v1_gateway_proto.Services().ByName("GatewayService"),
 		func(o ...connect.HandlerOption) (string, http.Handler) {
-			return rpmgrv1connect.NewGatewayServiceHandler(&apisvc.Gateways{DB: db, API: srv, Sys: sys, RevLog: rl, Now: now,
-				Denied: func() { e.denied.Add(1) }}, o...)
+			return rpmgrv1connect.NewGatewayServiceHandler(&apisvc.Gateways{DB: db, API: srv, Revocations: revocations, Now: now}, o...)
 		}); err != nil {
 		t.Fatal(err)
 	}
 	if err := srv.Mount(mux, rpmgrv1.File_rpmgr_v1_connector_proto.Services().ByName("ConnectorService"),
 		func(o ...connect.HandlerOption) (string, http.Handler) {
-			return rpmgrv1connect.NewConnectorServiceHandler(&apisvc.Connectors{DB: db, API: srv}, o...)
+			return rpmgrv1connect.NewConnectorServiceHandler(&apisvc.Connectors{DB: db, API: srv, Revocations: revocations, Now: now}, o...)
 		}); err != nil {
 		t.Fatal(err)
 	}

@@ -8,9 +8,13 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
+	"google.golang.org/protobuf/types/known/fieldmaskpb"
 
 	rpmgrv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/v1"
+	"github.com/felix-homelab/rpmgr/internal/api"
+	"github.com/felix-homelab/rpmgr/internal/revlog"
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/auditentry"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/connector"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/datasession"
 )
@@ -121,3 +125,97 @@ func TestConnectors_Read(t *testing.T) {
 }
 
 func datasessionTransport(s string) datasession.Transport { return datasession.Transport(s) }
+
+// TestConnectors_Write: an update changes only the masked fields and checks the etag; an unset
+// transport is the instance default again; decommissioning revokes the identity in the same
+// transaction, records it and applies the deny-list once; the tombstone cannot be changed; a
+// Viewer changes nothing.
+func TestConnectors_Write(t *testing.T) {
+	e, ada, org, _ := gatewayEnv(t)
+	ctx := context.Background()
+	nas := e.addConnector(t, org, "nas", nil)
+	e.addConnector(t, org, "pi", nil)
+	update := func(b *browser, mask []string, in *rpmgrv1.Connector, etag string) (*rpmgrv1.Connector, error) {
+		in.Id = nas.ID
+		r, err := b.con.UpdateConnector(ctx, connect.NewRequest(&rpmgrv1.UpdateConnectorRequest{Connector: in,
+			UpdateMask: &fieldmaskpb.FieldMask{Paths: mask}, Etag: etag}))
+		if err != nil {
+			return nil, err
+		}
+		return r.Msg.GetConnector(), nil
+	}
+	up, err := update(ada, []string{"name", "transport"}, &rpmgrv1.Connector{Name: "nas-2", Transport: rpmgrv1.DataTransport_DATA_TRANSPORT_QUIC,
+		Labels: map[string]string{"ignored": "x"}}, "1")
+	if err != nil || up.GetName() != "nas-2" || up.GetTransport() != rpmgrv1.DataTransport_DATA_TRANSPORT_QUIC || up.GetLabels()["site"] != "office" ||
+		up.GetLabels()["ignored"] != "" || up.GetEtag() != "2" {
+		t.Fatalf("an update: %v %v", up, err)
+	}
+	if up, err = update(ada, []string{"labels", "enabled", "transport"}, &rpmgrv1.Connector{Labels: map[string]string{"site": "lab", "tier": "db"}}, "2"); err != nil ||
+		len(up.GetLabels()) != 2 || up.GetEnabled() || up.GetTransport() != rpmgrv1.DataTransport_DATA_TRANSPORT_UNSPECIFIED {
+		t.Fatalf("new labels, disabled, the default transport: %v %v", up, err)
+	}
+	if e.db.Client().Connector.GetX(e.sys, nas.ID).Transport != nil {
+		t.Fatal("the transport policy was not cleared")
+	}
+	if _, err := update(ada, []string{"name"}, &rpmgrv1.Connector{Name: "late"}, "1"); reason(err) != api.ReasonEtagMismatch {
+		t.Fatalf("a stale etag: %v", err)
+	}
+	for name, c := range map[string]struct {
+		mask []string
+		in   *rpmgrv1.Connector
+		want connect.Code
+	}{
+		"a taken name":       {[]string{"name"}, &rpmgrv1.Connector{Name: "pi"}, connect.CodeAlreadyExists},
+		"a malformed name":   {[]string{"name"}, &rpmgrv1.Connector{Name: "Not A Slug"}, connect.CodeInvalidArgument},
+		"no name":            {[]string{"name"}, &rpmgrv1.Connector{}, connect.CodeInvalidArgument},
+		"a bad label":        {[]string{"labels"}, &rpmgrv1.Connector{Labels: map[string]string{"Bad Key": "x"}}, connect.CodeInvalidArgument},
+		"an unknown policy":  {[]string{"transport"}, &rpmgrv1.Connector{Transport: rpmgrv1.DataTransport(9)}, connect.CodeInvalidArgument},
+		"the ephemeral flag": {[]string{"ephemeral"}, &rpmgrv1.Connector{Ephemeral: true}, connect.CodeInvalidArgument},
+		"the session":        {[]string{"session"}, &rpmgrv1.Connector{}, connect.CodeInvalidArgument},
+		"an empty mask":      {nil, &rpmgrv1.Connector{}, connect.CodeInvalidArgument},
+	} {
+		if _, err := update(ada, c.mask, c.in, ""); code(err) != c.want {
+			t.Errorf("%s: %v, want %v", name, err, c.want)
+		}
+	}
+
+	vwr, _ := e.join(t, ada, org, "vwr@example.com", "viewer")
+	if _, err := update(vwr, []string{"enabled"}, &rpmgrv1.Connector{Enabled: true}, ""); code(err) != connect.CodePermissionDenied {
+		t.Fatalf("a Viewer updates: %v", err)
+	}
+	decommission := func(b *browser, etag string) (*rpmgrv1.Connector, error) {
+		r, err := b.con.DecommissionConnector(ctx, connect.NewRequest(&rpmgrv1.DecommissionConnectorRequest{ConnectorId: nas.ID, Etag: etag}))
+		if err != nil {
+			return nil, err
+		}
+		return r.Msg.GetConnector(), nil
+	}
+	if _, err := decommission(vwr, ""); code(err) != connect.CodePermissionDenied {
+		t.Fatalf("a Viewer decommissions: %v", err)
+	}
+	if _, err := decommission(ada, "1"); reason(err) != api.ReasonEtagMismatch {
+		t.Fatalf("a stale etag: %v", err)
+	}
+	gone, err := decommission(ada, "")
+	if err != nil || gone.GetDecommissionTime() == nil || gone.GetEnabled() {
+		t.Fatalf("a decommission: %v %v", gone, err)
+	}
+	spiffe := "spiffe://rpmgr-teststor/org/" + org + "/connector/" + nas.ID
+	if _, err := e.db.Client().RevokedIdentity.Get(e.sys, spiffe); err != nil {
+		t.Fatalf("the identity is not revoked: %v", err)
+	}
+	if entries, err := revlog.Read(e.log); err != nil || len(entries) != 1 || entries[0].Subject != spiffe {
+		t.Fatalf("the revocation log: %v %v", entries, err)
+	}
+	if n := e.db.Client().AuditEntry.Query().Where(auditentry.Action("identity.revoke"), auditentry.TargetID(nas.ID)).CountX(e.sys); n != 1 ||
+		e.denied.Load() != 1 {
+		t.Fatalf("%d audit entries, the deny-list applied %d times", n, e.denied.Load())
+	}
+	if again, err := decommission(ada, ""); err != nil || !again.GetDecommissionTime().AsTime().Equal(gone.GetDecommissionTime().AsTime()) ||
+		e.denied.Load() != 1 {
+		t.Fatalf("a second decommission: %v %v", again, err)
+	}
+	if _, err := update(ada, []string{"enabled"}, &rpmgrv1.Connector{Enabled: true}, ""); code(err) != connect.CodeFailedPrecondition {
+		t.Fatalf("an update of a tombstone: %v", err)
+	}
+}
