@@ -53,7 +53,7 @@ func commands() *cli.Command {
 			group("release", "administer release artifacts on the controller host",
 				leaf("import", "import a signed release for air-gapped installations")),
 			{Name: "version", Summary: "print the version of this binary", Run: runVersion},
-		}, testCommands...),
+		}, append(apiCommands(), testCommands...)...),
 	}
 }
 
