@@ -57,8 +57,8 @@ type RunOptions struct {
 }
 
 // Run runs a gateway from its boot file until ctx ends (docs/02-architecture.md): its control
-// plane, the multiplexer on TCP port 443, the QUIC listener for data sessions, the tcp routes on
-// their ports and the admin listener. When ctx ends it stops accepting public connections, tells
+// plane, the multiplexer on TCP port 443, the QUIC listener for data sessions, the tcp and udp
+// routes on their ports and the admin listener. When ctx ends it stops accepting public connections, tells
 // its data sessions to drain and keeps their streams for the drain period (R22).
 func Run(ctx context.Context, o RunOptions) error {
 	if o.Now == nil {
@@ -97,7 +97,22 @@ func Run(ctx context.Context, o RunOptions) error {
 	defer routes.Close()
 	pass := NewPassthrough(sessions, applier.Revision, o.Logger)
 	defer pass.Close()
-	applier.Bind(routes, pass, sessions)
+	udpHost, _, err := net.SplitHostPort(cfg.Listen.UDP)
+	if err != nil {
+		return err
+	}
+	reg := o.Registry
+	if reg == nil {
+		reg = telemetry.NewRegistry()
+	}
+	udpMetrics, err := tunnel.NewUDPMetrics(reg)
+	if err != nil {
+		return err
+	}
+	udpRoutes := NewUDPRoutes(UDPOptions{Host: udpHost, Sessions: sessions, Revision: applier.Revision, Metrics: udpMetrics,
+		Logger: o.Logger})
+	defer udpRoutes.Close()
+	applier.Bind(Served{TCP: routes, UDP: udpRoutes, Passthrough: pass, Sessions: sessions})
 
 	tunnelTLS := pki.ServerConfig(ctl.Certificate(), id.Roots, pki.Expect{TrustDomain: id.TrustDomain,
 		Kinds: []pki.Kind{pki.KindConnector}, Denied: ctl.DenyList().Denied}, o.Now)
@@ -163,10 +178,6 @@ func Run(ctx context.Context, o RunOptions) error {
 		return err
 	}
 
-	reg := o.Registry
-	if reg == nil {
-		reg = telemetry.NewRegistry()
-	}
 	if err := ctl.Register(reg); err != nil {
 		return err
 	}
@@ -223,6 +234,7 @@ func Run(ctx context.Context, o RunOptions) error {
 		}
 	}
 	routes.Close()
+	udpRoutes.Close()
 	sessions.Close()
 	stop()
 	return result

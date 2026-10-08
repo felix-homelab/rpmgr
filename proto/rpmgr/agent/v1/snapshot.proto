@@ -62,6 +62,8 @@ message Resource {
     ConnectorGateway connector_gateway = 5;
     // Gateways: a tls_passthrough route's hostnames.
     GatewayPassthroughRoute gateway_passthrough_route = 6;
+    // Gateways: a udp route's public port.
+    GatewayUDPRoute gateway_udp_route = 7;
     // A large item the agent fetches by hash with Control.FetchResource.
     ResourceReference reference = 15;
   }
@@ -74,6 +76,16 @@ message GatewayTCPRoute {
   // A connection without traffic for this long is closed; 0 never.
   uint32 idle_timeout_seconds = 2;
   // The connectors that serve the route, sorted: the gateway opens its streams only to them.
+  repeated string connectors = 3;
+}
+
+// GatewayUDPRoute is a udp route as a gateway serves it.
+message GatewayUDPRoute {
+  // The public port.
+  uint32 port = 1;
+  // A flow without datagrams for this long ends.
+  uint32 flow_idle_timeout_seconds = 2;
+  // The connectors that serve the route, sorted.
   repeated string connectors = 3;
 }
 
@@ -101,7 +113,7 @@ enum TransportPolicy {
 
 // ConnectorRoute is a route as a connector serves it; the resource ID is the route's ID.
 message ConnectorRoute {
-  // The route's type: "tcp" or "tls_passthrough" in this version.
+  // The route's type: "tcp", "udp" or "tls_passthrough" in this version.
   string type = 1;
   // Where the connector delivers the route's streams, by priority, then ID.
   repeated Target targets = 2;

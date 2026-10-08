@@ -30,3 +30,11 @@ func SetUnassignedDrain(t testing.TB, d time.Duration) {
 	unassignedDrain = d
 	t.Cleanup(func() { unassignedDrain = old })
 }
+
+// SetMaxFlows lowers how many flows a UDP route port keeps, for one test that must not run in
+// parallel with others.
+func SetMaxFlows(t testing.TB, n int) {
+	old := maxFlows
+	maxFlows = n
+	t.Cleanup(func() { maxFlows = old })
+}

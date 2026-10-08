@@ -160,7 +160,7 @@ func TestApplier_Passthrough(t *testing.T) {
 	t.Cleanup(m.Close)
 	pass := gateway.NewPassthrough(m, a.Revision, nil)
 	t.Cleanup(pass.Close)
-	a.Bind(nil, pass, m)
+	a.Bind(gateway.Served{Passthrough: pass, Sessions: m})
 	a.Apply(t.Context(), gatewaySnapshot(3, res("rt_1", "db.example.com")), agent.Changes{})
 	if _, ok := pass.Passthrough("db.example.com"); !ok || !assign.Known(cid("con_p")) {
 		t.Fatal("the applied passthrough route is not served")

@@ -104,6 +104,8 @@ type connector struct {
 	served  chan error                    // Serve's result
 	answer  atomic.Int32
 	silent  atomic.Bool // accept streams but never answer
+	stall   atomic.Bool // accept streams but neither answer nor read until the test ends
+	unstall chan struct{}
 	cancel  context.CancelFunc
 }
 
@@ -145,7 +147,8 @@ func start(t *testing.T, m *gateway.Sessions, id pki.Identity, first *tunnelv1.S
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
 	c := &connector{msgs: make(chan *tunnelv1.SessionMessage, 16), opens: make(chan *tunnelv1.StreamOpen, 16),
-		served: make(chan error, 1), cancel: cancel}
+		served: make(chan error, 1), cancel: cancel, unstall: make(chan struct{})}
+	t.Cleanup(func() { close(c.unstall) })
 	go func() { c.served <- m.Serve(ctx, gw, certOf(id)) }()
 	cctx, ccancel := context.WithTimeout(ctx, 5*time.Second)
 	defer ccancel()
@@ -195,6 +198,10 @@ func (c *connector) handle(st tunnel.Stream) {
 		return
 	}
 	c.opens <- open
+	if c.stall.Load() {
+		<-c.unstall
+		return
+	}
 	if c.silent.Load() {
 		_, _ = io.Copy(io.Discard, st)
 		return

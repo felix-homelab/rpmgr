@@ -70,10 +70,16 @@ func ReadFrame(r io.Reader) ([]byte, error) {
 // StreamID returns the full QUIC stream ID of a stream of a QUIC session, which prefixes its
 // flow's datagrams; ok is false on the TCP transport.
 func StreamID(st Stream) (id uint64, ok bool) {
-	if q, isQUIC := st.(*quicStream); isQUIC {
-		return uint64(q.st.StreamID()), true //nolint:gosec // G115: stream IDs are non-negative
+	for {
+		switch s := st.(type) {
+		case *quicStream:
+			return uint64(s.st.StreamID()), true //nolint:gosec // G115: stream IDs are non-negative
+		case interface{ Unwrap() Stream }:
+			st = s.Unwrap()
+		default:
+			return 0, false
+		}
 	}
-	return 0, false
 }
 
 // Datagrams carries the UDP payloads of one QUIC session's flows. Sending never blocks: a queue of

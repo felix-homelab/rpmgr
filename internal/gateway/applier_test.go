@@ -20,15 +20,21 @@ func tcpResource(id string, port uint32, connectors ...string) *agentv1.Resource
 		Port: port, IdleTimeoutSeconds: 3600, Connectors: connectors}}}
 }
 
+func udpResource(id string, port uint32, connectors ...string) *agentv1.Resource {
+	return &agentv1.Resource{Id: id, Kind: &agentv1.Resource_GatewayUdpRoute{GatewayUdpRoute: &agentv1.GatewayUDPRoute{
+		Port: port, FlowIdleTimeoutSeconds: 60, Connectors: connectors}}}
+}
+
 func gatewaySnapshot(seq uint64, rs ...*agentv1.Resource) *agentv1.Snapshot {
 	return &agentv1.Snapshot{Revision: &agentv1.Revision{Seq: seq}, Resources: rs}
 }
 
-// TestApplier_Validate: a gateway snapshot holds only tcp routes on valid, distinct ports with
-// connector IDs.
+// TestApplier_Validate: a gateway snapshot holds only gateway routes, on valid ports distinct per
+// protocol, with connector IDs.
 func TestApplier_Validate(t *testing.T) {
 	a, _ := gateway.NewApplier()
-	if errs := a.Validate(gatewaySnapshot(1, tcpResource("rt_1", 5432, "con_1"), tcpResource("rt_2", 6379, "con_1", "con_2"))); len(errs) != 0 {
+	if errs := a.Validate(gatewaySnapshot(1, tcpResource("rt_1", 5432, "con_1"), tcpResource("rt_2", 6379, "con_1", "con_2"),
+		udpResource("rt_3", 5432, "con_1"), udpResource("rt_4", 53, "con_2"))); len(errs) != 0 {
 		t.Fatalf("a valid snapshot: %v", errs)
 	}
 	for _, tc := range []struct {
@@ -42,6 +48,10 @@ func TestApplier_Validate(t *testing.T) {
 		{"port 65536", gatewaySnapshot(1, tcpResource("rt_1", 65536)), "not a TCP port"},
 		{"a port twice", gatewaySnapshot(1, tcpResource("rt_1", 5432), tcpResource("rt_2", 5432)), "also the port of rt_1"},
 		{"an empty connector", gatewaySnapshot(1, tcpResource("rt_1", 5432, "con_1", "")), "empty connector"},
+		{"udp port 0", gatewaySnapshot(1, udpResource("rt_1", 0)), "not a UDP port"},
+		{"udp port 65536", gatewaySnapshot(1, udpResource("rt_1", 65536)), "not a UDP port"},
+		{"a udp port twice", gatewaySnapshot(1, udpResource("rt_1", 53), udpResource("rt_2", 53)), "UDP port 53 is also the port of rt_1"},
+		{"an empty udp connector", gatewaySnapshot(1, udpResource("rt_1", 53, "")), "empty connector"},
 	} {
 		errs := a.Validate(tc.snap)
 		if len(errs) == 0 || !strings.Contains(errs[0].GetMessage(), tc.want) {
@@ -58,17 +68,20 @@ func TestApplier_Apply(t *testing.T) {
 	t.Cleanup(m.Close)
 	routes := gateway.NewTCPRoutes(gateway.TCPOptions{Host: "127.0.0.1", Sessions: m, Revision: a.Revision})
 	t.Cleanup(routes.Close)
-	a.Bind(routes, nil, m)
+	udp := gateway.NewUDPRoutes(gateway.UDPOptions{Host: "127.0.0.1", Sessions: m, Revision: a.Revision})
+	t.Cleanup(udp.Close)
+	a.Bind(gateway.Served{TCP: routes, UDP: udp, Sessions: m})
 	if assign.Known(cid("con_1")) || a.Revision() != nil {
 		t.Fatal("known before any snapshot")
 	}
-	p1, p2 := freePort(t), freePort(t)
-	st := a.Apply(t.Context(), gatewaySnapshot(7, tcpResource("rt_1", uint32(p1), cid("con_1")), tcpResource("rt_2", uint32(p2), cid("con_1"), cid("con_2"))),
-		agent.Changes{})
+	p1, p2, p3 := freePort(t), freePort(t), freeUDPPort(t)
+	st := a.Apply(t.Context(), gatewaySnapshot(7, tcpResource("rt_1", uint32(p1), cid("con_1")), tcpResource("rt_2", uint32(p2), cid("con_1"), cid("con_2")),
+		udpResource("rt_3", uint32(p3), cid("con_3"))), agent.Changes{})
 	if len(st) != 0 {
 		t.Fatal(st)
 	}
-	if !assign.Known(cid("con_2")) || assign.Known(cid("con_3")) || len(assign.Connectors("rt_2")) != 2 || a.Revision().GetSeq() != 7 {
+	if !assign.Known(cid("con_2")) || !assign.Known(cid("con_3")) || assign.Known(cid("con_4")) || len(assign.Connectors("rt_2")) != 2 ||
+		len(assign.Connectors("rt_3")) != 1 || a.Revision().GetSeq() != 7 {
 		t.Fatalf("assignment after the snapshot: %v %v rev %v", assign.Connectors("rt_1"), assign.Connectors("rt_2"), a.Revision())
 	}
 	for _, p := range []uint16{p1, p2} {
@@ -80,6 +93,20 @@ func TestApplier_Apply(t *testing.T) {
 		if c != nil {
 			_ = c.Close()
 		}
+	}
+
+	if _, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: int(p3)}); !errors.Is(err, syscall.EADDRINUSE) {
+		t.Fatalf("the udp route's port is not bound: %v", err)
+	}
+	taken, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = taken.Close() }()
+	st = a.Apply(t.Context(), gatewaySnapshot(7, tcpResource("rt_1", uint32(p1), cid("con_1")), tcpResource("rt_2", uint32(p2), cid("con_1"), cid("con_2")),
+		udpResource("rt_3", uint32(taken.LocalAddr().(*net.UDPAddr).Port), cid("con_3"))), agent.Changes{}) //nolint:gosec // G115: a port
+	if len(st) != 1 || st[0].GetResourceId() != "rt_3" || st[0].GetReason() != agentv1.NotReadyReason_NOT_READY_REASON_PORT_IN_USE {
+		t.Fatalf("an occupied udp port: %v", st)
 	}
 
 	c := start(t, m, connectorID("con_2"), hello("rt_2"))

@@ -20,12 +20,13 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routehostname"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routetarget"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routetcp"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/routeudp"
 )
 
 // Sources are the snapshot sources of the route types implemented so far (docs/03-connections.md,
 // "Configuration reconciliation").
 func Sources() []snapshot.Source {
-	return []snapshot.Source{GatewayTCP, GatewayPassthrough, ConnectorRoutes, ConnectorGateways}
+	return []snapshot.Source{GatewayTCP, GatewayUDP, GatewayPassthrough, ConnectorRoutes, ConnectorGateways}
 }
 
 // GatewayTCP compiles a gateway's tcp routes: every enabled tcp route of its gateway group with a
@@ -61,6 +62,44 @@ func GatewayTCP(ctx context.Context, tx *ent.Tx, a snapshot.Agent) ([]*agentv1.R
 		}
 		out = append(out, &agentv1.Resource{Id: r.ID, Kind: &agentv1.Resource_GatewayTcpRoute{GatewayTcpRoute: &agentv1.GatewayTCPRoute{
 			Port: uint32(tcp.Edges.Port.Port), IdleTimeoutSeconds: uint32(tcp.IdleTimeoutSeconds), //nolint:gosec // G115: ports and timeouts are small and positive
+			Connectors: connectors}}})
+	}
+	return out, nil
+}
+
+// GatewayUDP compiles a gateway's udp routes: every enabled udp route of its gateway group with a
+// port, and the connectors that serve it. A disabled or decommissioned gateway gets none.
+func GatewayUDP(ctx context.Context, tx *ent.Tx, a snapshot.Agent) ([]*agentv1.Resource, error) {
+	if a.Identity.Kind != pki.KindGateway {
+		return nil, nil
+	}
+	gw, err := tx.Gateway.Get(ctx, a.Identity.ID)
+	if ent.IsNotFound(err) {
+		return nil, nil
+	}
+	if err != nil || !gw.Enabled || gw.DecommissionedAt != nil {
+		return nil, err
+	}
+	routes, err := tx.Route.Query().Where(route.GatewayGroupID(gw.GatewayGroupID), route.TypeEQ(route.TypeUDP),
+		route.Enabled(true)).Order(ent.Asc(route.FieldID)).All(ctx)
+	if err != nil {
+		return nil, err
+	}
+	var out []*agentv1.Resource
+	for _, r := range routes {
+		udp, err := tx.RouteUDP.Query().Where(routeudp.RouteID(r.ID)).WithPort().Only(ctx)
+		if ent.IsNotFound(err) {
+			continue
+		}
+		if err != nil {
+			return nil, err
+		}
+		connectors, err := serving(ctx, tx, r.ID)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, &agentv1.Resource{Id: r.ID, Kind: &agentv1.Resource_GatewayUdpRoute{GatewayUdpRoute: &agentv1.GatewayUDPRoute{
+			Port: uint32(udp.Edges.Port.Port), FlowIdleTimeoutSeconds: uint32(udp.FlowIdleTimeoutSeconds), //nolint:gosec // G115: a port and a small positive number
 			Connectors: connectors}}})
 	}
 	return out, nil
