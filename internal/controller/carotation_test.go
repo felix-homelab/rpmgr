@@ -23,32 +23,38 @@ func TestCARotation(t *testing.T) {
 	first := e.ca.Intermediate()
 	at := time.Now()
 	o := controller.CAOptions{DB: db, CA: e.ca, Sealer: e.sealer, Leases: leases, Now: func() time.Time { return at }}
-	run := func() {
+	// run runs the job until done reports true, at most 10 s, and at least 200 ms.
+	run := func(done func() bool) {
 		t.Helper()
 		ctx, cancel := context.WithCancel(context.Background())
-		done := make(chan struct{})
+		ended := make(chan struct{})
 		var errs []error
 		go func() {
 			leases.Run(ctx, controller.CARotation(o), func(err error) { errs = append(errs, err) })
-			close(done)
+			close(ended)
 		}()
 		waitUntil(t, func() bool {
 			return e.db.Client().Lease.Query().CountX(e.sys) > 0
 		})
 		time.Sleep(200 * time.Millisecond)
+		deadline := time.Now().Add(10 * time.Second)
+		for !done() && time.Now().Before(deadline) {
+			time.Sleep(20 * time.Millisecond)
+		}
 		cancel()
-		<-done
+		<-ended
 		if len(errs) > 0 {
 			t.Fatalf("job errors: %v", errs)
 		}
 	}
-	run()
-	if !e.ca.Intermediate().Equal(first) {
+	rotated := func() bool { return !e.ca.Intermediate().Equal(first) }
+	run(func() bool { return true })
+	if rotated() {
 		t.Fatal("the intermediate was rotated before it was due")
 	}
 	at = first.NotBefore.Add(first.NotAfter.Sub(first.NotBefore)/2 + time.Hour)
-	run()
-	if e.ca.Intermediate().Equal(first) {
+	run(rotated) // a slow machine needs more than 200 ms for the new keys
+	if !rotated() {
 		t.Fatal("the intermediate was not rotated when it was due")
 	}
 	if n := e.db.Client().AuditEntry.Query().Where(auditentry.Action("ca.rotate")).CountX(e.sys); n != 1 {
