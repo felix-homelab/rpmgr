@@ -39,9 +39,9 @@ type method struct {
 
 // testFile builds rpmgr/apitest/<name>.proto with a service TestService of the given methods, all
 // taking Request and returning Reply. Request has org_id, ref (a Ref), name (at most 8
-// characters), tags (repeated), secret (sensitive), request_id and by_name (a map of Refs); a Ref
-// has id, token (sensitive) and note (debug_redact). Reply has the caller and the org of the
-// scope.
+// characters), tags (repeated), secret (sensitive), request_id, by_name (a map of Refs),
+// page_token and page_size; a Ref has id, token (sensitive) and note (debug_redact). Reply has
+// the caller and the org of the scope.
 func testFile(t *testing.T, name string, methods ...method) protoreflect.ServiceDescriptor {
 	t.Helper()
 	str := descriptorpb.FieldDescriptorProto_TYPE_STRING.Enum()
@@ -93,6 +93,8 @@ func testFile(t *testing.T, name string, methods ...method) protoreflect.Service
 				field("secret", 5, str, optional, "", sensitive),
 				field("request_id", 6, str, optional, "", nil),
 				field("by_name", 7, msg, repeated, "."+pkg+".Request.ByNameEntry", nil),
+				field("page_token", 8, str, optional, "", nil),
+				field("page_size", 9, descriptorpb.FieldDescriptorProto_TYPE_INT32.Enum(), optional, "", nil),
 			}, NestedType: []*descriptorpb.DescriptorProto{{Name: proto.String("ByNameEntry"),
 				Field: []*descriptorpb.FieldDescriptorProto{
 					field("key", 1, str, optional, "", nil),

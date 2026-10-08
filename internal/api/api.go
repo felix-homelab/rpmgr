@@ -4,6 +4,7 @@ package api
 
 import (
 	"context"
+	"crypto/rand"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -51,14 +52,18 @@ type Options struct {
 	Resolver Resolver
 	// OperatorsMayEnroll returns an org's setting that gives Operators connectors.write.
 	OperatorsMayEnroll func(ctx context.Context, orgID string) (bool, error)
-	Now                func() time.Time
-	Logger             *slog.Logger
+	// PageKey authenticates page tokens; the controller derives it from the KEK, so tokens stay
+	// valid across restarts. Without it, a random key lasts as long as the Server.
+	PageKey []byte
+	Now     func() time.Time
+	Logger  *slog.Logger
 }
 
 // Server holds the interceptor every method of the public API goes through.
 type Server struct {
 	o         Options
 	validator protovalidate.Validator
+	pageKey   []byte
 }
 
 // New returns a Server.
@@ -79,7 +84,12 @@ func New(o Options) (*Server, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Server{o: o, validator: v}, nil
+	key := o.PageKey
+	if len(key) == 0 {
+		key = make([]byte, 32)
+		_, _ = rand.Read(key)
+	}
+	return &Server{o: o, validator: v, pageKey: key}, nil
 }
 
 // Mount checks every method of a service and adds its handler to mux. handler is the generated

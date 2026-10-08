@@ -5,6 +5,7 @@ package secret
 import (
 	"crypto/aes"
 	"crypto/cipher"
+	"crypto/hkdf"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/binary"
@@ -91,6 +92,16 @@ func NewSealer(current KEK, previous ...KEK) (*Sealer, error) {
 		s.byID[k.id] = k
 	}
 	return s, nil
+}
+
+// DeriveKey returns a 32-byte key for one purpose, derived from the current KEK with HKDF-SHA256
+// (RFC 5869) and the label as its info, so that no other use of the KEK yields it. It changes
+// when the KEK does.
+func (s *Sealer) DeriveKey(label string) ([]byte, error) {
+	if label == "" {
+		return nil, errors.New("secret: a derived key needs a label")
+	}
+	return hkdf.Key(sha256.New, []byte(s.current.key.Reveal()), nil, "rpmgr-derived-key\x00"+label, keyLen)
 }
 
 // Seal encrypts v for storage at ctx.
