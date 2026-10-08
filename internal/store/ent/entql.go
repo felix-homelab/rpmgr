@@ -366,6 +366,7 @@ var schemaGraph = func() *sqlgraph.Schema {
 		Type: "Connector",
 		Fields: map[string]*sqlgraph.FieldSpec{
 			connector.FieldOrgID:            {Type: field.TypeString, Column: connector.FieldOrgID},
+			connector.FieldVersion:          {Type: field.TypeInt64, Column: connector.FieldVersion},
 			connector.FieldName:             {Type: field.TypeString, Column: connector.FieldName},
 			connector.FieldLabels:           {Type: field.TypeJSON, Column: connector.FieldLabels},
 			connector.FieldSpiffeID:         {Type: field.TypeString, Column: connector.FieldSpiffeID},
@@ -2546,6 +2547,11 @@ func (f *ConnectorFilter) WhereID(p entql.StringP) {
 // WhereOrgID applies the entql string predicate on the org_id field.
 func (f *ConnectorFilter) WhereOrgID(p entql.StringP) {
 	f.Where(p.Field(connector.FieldOrgID))
+}
+
+// WhereVersion applies the entql int64 predicate on the version field.
+func (f *ConnectorFilter) WhereVersion(p entql.Int64P) {
+	f.Where(p.Field(connector.FieldVersion))
 }
 
 // WhereName applies the entql string predicate on the name field.

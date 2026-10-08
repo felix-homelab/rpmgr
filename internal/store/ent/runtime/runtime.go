@@ -839,18 +839,29 @@ func init() {
 		})
 	}
 	connectorMixinHooks0 := connectorMixin[0].Hooks()
+	connectorMixinHooks1 := connectorMixin[1].Hooks()
 
 	connector.Hooks[1] = connectorMixinHooks0[0]
+
+	connector.Hooks[2] = connectorMixinHooks1[0]
 	connectorMixinInters0 := connectorMixin[0].Interceptors()
 	connector.Interceptors[0] = connectorMixinInters0[0]
 	connectorMixinFields0 := connectorMixin[0].Fields()
 	_ = connectorMixinFields0
+	connectorMixinFields1 := connectorMixin[1].Fields()
+	_ = connectorMixinFields1
 	connectorFields := schema.Connector{}.Fields()
 	_ = connectorFields
 	// connectorDescOrgID is the schema descriptor for org_id field.
 	connectorDescOrgID := connectorMixinFields0[0].Descriptor()
 	// connector.OrgIDValidator is a validator for the "org_id" field. It is called by the builders before save.
 	connector.OrgIDValidator = connectorDescOrgID.Validators[0].(func(string) error)
+	// connectorDescVersion is the schema descriptor for version field.
+	connectorDescVersion := connectorMixinFields1[0].Descriptor()
+	// connector.DefaultVersion holds the default value on creation for the version field.
+	connector.DefaultVersion = connectorDescVersion.Default.(int64)
+	// connector.VersionValidator is a validator for the "version" field. It is called by the builders before save.
+	connector.VersionValidator = connectorDescVersion.Validators[0].(func(int64) error)
 	// connectorDescName is the schema descriptor for name field.
 	connectorDescName := connectorFields[1].Descriptor()
 	// connector.NameValidator is a validator for the "name" field. It is called by the builders before save.

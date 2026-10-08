@@ -364,6 +364,7 @@ var (
 	ConnectorsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeString},
 		{Name: "org_id", Type: field.TypeString},
+		{Name: "version", Type: field.TypeInt64, Default: 1},
 		{Name: "name", Type: field.TypeString},
 		{Name: "labels", Type: field.TypeJSON, Nullable: true},
 		{Name: "spiffe_id", Type: field.TypeString},
@@ -389,7 +390,7 @@ var (
 			{
 				Name:    "connector_org_id_name",
 				Unique:  true,
-				Columns: []*schema.Column{ConnectorsColumns[1], ConnectorsColumns[2]},
+				Columns: []*schema.Column{ConnectorsColumns[1], ConnectorsColumns[3]},
 			},
 		},
 	}

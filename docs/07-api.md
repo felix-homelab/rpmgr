@@ -68,7 +68,7 @@ names.
 | `OrgService` | `GetOrg`, `UpdateOrg`, `ListMembers`, `UpdateMember`, `RemoveMember`, `CreateInvitation` (returns a one-time link; also e-mailed if SMTP is configured), `AcceptInvitation` | 1 (multi-org UI: 2) |
 | `TokenService` | `CreateAPIToken`, `ListAPITokens`, `RevokeAPIToken`, `CreateServiceAccount`, … | Personal API tokens: 1; service accounts: 2 |
 | `EnrollmentService` | `CreateEnrollmentToken` (connectors, also re-enrollment; `connectors.write`), `CreateGatewayEnrollmentToken` (a gateway an Admin created, R15; `infrastructure.write`), both with step-up and shown once; `ListEnrollmentTokens`, `RevokeEnrollmentToken`, `GetInstallCommand` | 1 |
-| `ConnectorService` | `ListConnectors`, `GetConnector`, `UpdateConnector` (name, labels, `transport`), `DecommissionConnector`, `GetConnectorStatus` | 1 |
+| `ConnectorService` | `ListConnectors`, `GetConnector` (with its control session), `UpdateConnector` (name, labels, `transport`), `DecommissionConnector`, `GetConnectorStatus` (control session, data sessions as its gateways report them, routes it reports not ready) | 1 |
 | `GatewayService` | `CreateGateway`, `GetGateway`, `ListGateways`, `UpdateGateway` (name, tunnel endpoints, `enabled`), `DecommissionGateway` (revokes the gateway's identity); CRUD on gateway groups and port pools; `SetPortQuota`, `ListPortQuotas`, `DeletePortQuota`; shared-group grants | 1 (shared-group grants: 2) |
 | `RouteService` | CRUD on routes and targets, `PreviewRoute` (compile without saving) | 1 |
 | `DomainService` | `CreateDomain`, `VerifyDomain`, `ListDomains`, `DeleteDomain`, `MarkDomainTrusted` (Instance Admin, step-up), `DelegateDomain` and `ApproveDomainClaim` (Instance Admin, step-up) | 1 (`DelegateDomain`, `ApproveDomainClaim`: 2) |

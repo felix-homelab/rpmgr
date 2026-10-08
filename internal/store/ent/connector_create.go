@@ -26,6 +26,20 @@ func (_c *ConnectorCreate) SetOrgID(v string) *ConnectorCreate {
 	return _c
 }
 
+// SetVersion sets the "version" field.
+func (_c *ConnectorCreate) SetVersion(v int64) *ConnectorCreate {
+	_c.mutation.SetVersion(v)
+	return _c
+}
+
+// SetNillableVersion sets the "version" field if the given value is not nil.
+func (_c *ConnectorCreate) SetNillableVersion(v *int64) *ConnectorCreate {
+	if v != nil {
+		_c.SetVersion(*v)
+	}
+	return _c
+}
+
 // SetName sets the "name" field.
 func (_c *ConnectorCreate) SetName(v string) *ConnectorCreate {
 	_c.mutation.SetName(v)
@@ -185,6 +199,10 @@ func (_c *ConnectorCreate) ExecX(ctx context.Context) {
 
 // defaults sets the default values of the builder before save.
 func (_c *ConnectorCreate) defaults() error {
+	if _, ok := _c.mutation.Version(); !ok {
+		v := connector.DefaultVersion
+		_c.mutation.SetVersion(v)
+	}
 	if _, ok := _c.mutation.Ephemeral(); !ok {
 		v := connector.DefaultEphemeral
 		_c.mutation.SetEphemeral(v)
@@ -218,6 +236,14 @@ func (_c *ConnectorCreate) check() error {
 	if v, ok := _c.mutation.OrgID(); ok {
 		if err := connector.OrgIDValidator(v); err != nil {
 			return &ValidationError{Name: "org_id", err: fmt.Errorf(`ent: validator failed for field "Connector.org_id": %w`, err)}
+		}
+	}
+	if _, ok := _c.mutation.Version(); !ok {
+		return &ValidationError{Name: "version", err: errors.New(`ent: missing required field "Connector.version"`)}
+	}
+	if v, ok := _c.mutation.Version(); ok {
+		if err := connector.VersionValidator(v); err != nil {
+			return &ValidationError{Name: "version", err: fmt.Errorf(`ent: validator failed for field "Connector.version": %w`, err)}
 		}
 	}
 	if _, ok := _c.mutation.Name(); !ok {
@@ -301,6 +327,10 @@ func (_c *ConnectorCreate) createSpec() (*Connector, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.OrgID(); ok {
 		_spec.SetField(connector.FieldOrgID, field.TypeString, value)
 		_node.OrgID = value
+	}
+	if value, ok := _c.mutation.Version(); ok {
+		_spec.SetField(connector.FieldVersion, field.TypeInt64, value)
+		_node.Version = value
 	}
 	if value, ok := _c.mutation.Name(); ok {
 		_spec.SetField(connector.FieldName, field.TypeString, value)

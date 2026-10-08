@@ -84,8 +84,8 @@ func ValidateEndpoints(eps []string) error {
 // Connector is one enrolled connector (docs/06-data-model.md, "Fleet").
 type Connector struct{ ent.Schema }
 
-// Mixin makes connectors org-owned.
-func (Connector) Mixin() []ent.Mixin { return []ent.Mixin{OrgMixin{}} }
+// Mixin makes connectors org-owned and versioned.
+func (Connector) Mixin() []ent.Mixin { return []ent.Mixin{OrgMixin{}, VersionMixin{}} }
 
 // Fields of a connector. transport overrides the data-session transport; null is the instance
 // default (docs/03-connections.md, "Transport selection").

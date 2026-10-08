@@ -28,6 +28,27 @@ func (_u *ConnectorUpdate) Where(ps ...predicate.Connector) *ConnectorUpdate {
 	return _u
 }
 
+// SetVersion sets the "version" field.
+func (_u *ConnectorUpdate) SetVersion(v int64) *ConnectorUpdate {
+	_u.mutation.ResetVersion()
+	_u.mutation.SetVersion(v)
+	return _u
+}
+
+// SetNillableVersion sets the "version" field if the given value is not nil.
+func (_u *ConnectorUpdate) SetNillableVersion(v *int64) *ConnectorUpdate {
+	if v != nil {
+		_u.SetVersion(*v)
+	}
+	return _u
+}
+
+// AddVersion adds value to the "version" field.
+func (_u *ConnectorUpdate) AddVersion(v int64) *ConnectorUpdate {
+	_u.mutation.AddVersion(v)
+	return _u
+}
+
 // SetName sets the "name" field.
 func (_u *ConnectorUpdate) SetName(v string) *ConnectorUpdate {
 	_u.mutation.SetName(v)
@@ -190,6 +211,11 @@ func (_u *ConnectorUpdate) ExecX(ctx context.Context) {
 
 // check runs all checks and user-defined validators on the builder.
 func (_u *ConnectorUpdate) check() error {
+	if v, ok := _u.mutation.Version(); ok {
+		if err := connector.VersionValidator(v); err != nil {
+			return &ValidationError{Name: "version", err: fmt.Errorf(`ent: validator failed for field "Connector.version": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.Name(); ok {
 		if err := connector.NameValidator(v); err != nil {
 			return &ValidationError{Name: "name", err: fmt.Errorf(`ent: validator failed for field "Connector.name": %w`, err)}
@@ -224,6 +250,12 @@ func (_u *ConnectorUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 				ps[i](selector)
 			}
 		}
+	}
+	if value, ok := _u.mutation.Version(); ok {
+		_spec.SetField(connector.FieldVersion, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedVersion(); ok {
+		_spec.AddField(connector.FieldVersion, field.TypeInt64, value)
 	}
 	if value, ok := _u.mutation.Name(); ok {
 		_spec.SetField(connector.FieldName, field.TypeString, value)
@@ -279,6 +311,27 @@ type ConnectorUpdateOne struct {
 	fields   []string
 	hooks    []Hook
 	mutation *ConnectorMutation
+}
+
+// SetVersion sets the "version" field.
+func (_u *ConnectorUpdateOne) SetVersion(v int64) *ConnectorUpdateOne {
+	_u.mutation.ResetVersion()
+	_u.mutation.SetVersion(v)
+	return _u
+}
+
+// SetNillableVersion sets the "version" field if the given value is not nil.
+func (_u *ConnectorUpdateOne) SetNillableVersion(v *int64) *ConnectorUpdateOne {
+	if v != nil {
+		_u.SetVersion(*v)
+	}
+	return _u
+}
+
+// AddVersion adds value to the "version" field.
+func (_u *ConnectorUpdateOne) AddVersion(v int64) *ConnectorUpdateOne {
+	_u.mutation.AddVersion(v)
+	return _u
 }
 
 // SetName sets the "name" field.
@@ -456,6 +509,11 @@ func (_u *ConnectorUpdateOne) ExecX(ctx context.Context) {
 
 // check runs all checks and user-defined validators on the builder.
 func (_u *ConnectorUpdateOne) check() error {
+	if v, ok := _u.mutation.Version(); ok {
+		if err := connector.VersionValidator(v); err != nil {
+			return &ValidationError{Name: "version", err: fmt.Errorf(`ent: validator failed for field "Connector.version": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.Name(); ok {
 		if err := connector.NameValidator(v); err != nil {
 			return &ValidationError{Name: "name", err: fmt.Errorf(`ent: validator failed for field "Connector.name": %w`, err)}
@@ -507,6 +565,12 @@ func (_u *ConnectorUpdateOne) sqlSave(ctx context.Context) (_node *Connector, er
 				ps[i](selector)
 			}
 		}
+	}
+	if value, ok := _u.mutation.Version(); ok {
+		_spec.SetField(connector.FieldVersion, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedVersion(); ok {
+		_spec.AddField(connector.FieldVersion, field.TypeInt64, value)
 	}
 	if value, ok := _u.mutation.Name(); ok {
 		_spec.SetField(connector.FieldName, field.TypeString, value)

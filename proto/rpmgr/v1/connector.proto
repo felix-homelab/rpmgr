@@ -1,0 +1,172 @@
+// SPDX-License-Identifier: Apache-2.0
+
+syntax = "proto3";
+
+package rpmgr.v1;
+
+import "buf/validate/validate.proto";
+import "google/protobuf/duration.proto";
+import "google/protobuf/timestamp.proto";
+import "rpmgr/v1/options.proto";
+
+option go_package = "github.com/felix-homelab/rpmgr/gen/rpmgr/v1;rpmgrv1";
+
+// ConnectorService is an org's connectors (docs/07-api.md, "Services"; docs/06-data-model.md,
+// "Fleet"). A connector comes into being when it enrolls.
+service ConnectorService {
+  // ListConnectors lists an org's connectors by ID.
+  rpc ListConnectors(ListConnectorsRequest) returns (ListConnectorsResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+    option (rpmgr.v1.authz) = {
+      permission: "org.read"
+      resource_field: "org_id"
+    };
+  }
+  // GetConnector returns a connector with the summary of its status.
+  rpc GetConnector(GetConnectorRequest) returns (GetConnectorResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+    option (rpmgr.v1.authz) = {
+      permission: "org.read"
+      resource_field: "connector_id"
+    };
+  }
+  // GetConnectorStatus returns what the controller knows of a connector's state: its control
+  // session, its data sessions to gateways and the routes it reports not ready.
+  rpc GetConnectorStatus(GetConnectorStatusRequest) returns (GetConnectorStatusResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+    option (rpmgr.v1.authz) = {
+      permission: "org.read"
+      resource_field: "connector_id"
+    };
+  }
+}
+
+// DataTransport is a data-session transport policy (docs/03-connections.md, "Transport
+// selection").
+enum DataTransport {
+  // Not set: the instance default.
+  DATA_TRANSPORT_UNSPECIFIED = 0;
+  // QUIC, falling back to TLS and HTTP/2 over TCP.
+  DATA_TRANSPORT_AUTO = 1;
+  // QUIC only.
+  DATA_TRANSPORT_QUIC = 2;
+  // TLS and HTTP/2 over TCP only.
+  DATA_TRANSPORT_H2 = 3;
+}
+
+// Connector is one enrolled connector.
+message Connector {
+  // The connector's ID, con_…; output only.
+  string id = 1;
+  // Its name, unique in the org.
+  string name = 2;
+  // Its labels.
+  map<string, string> labels = 3;
+  // Whether it is ephemeral: purged 30 minutes after its last disconnect; output only.
+  bool ephemeral = 4;
+  // Whether it serves; false gives it an empty snapshot.
+  bool enabled = 5;
+  // Its transport policy; the instance default if not set.
+  DataTransport transport = 6;
+  // Its control session; output only.
+  AgentSession session = 7;
+  // When it enrolled; output only.
+  google.protobuf.Timestamp create_time = 8;
+  // When it was decommissioned; output only, not set for a connector in service.
+  google.protobuf.Timestamp decommission_time = 9;
+  // The version to send back with an update; output only.
+  string etag = 10;
+}
+
+// AgentSession is what the controller knows of an agent's control session.
+message AgentSession {
+  // Whether it holds a control session now.
+  bool connected = 1;
+  // The version it runs.
+  string version = 2;
+  // When it was last heard from.
+  google.protobuf.Timestamp last_seen_time = 3;
+  // The address its control session comes from.
+  string remote_addr = 4;
+}
+
+// ConnectorStatus is a connector's state as the controller last heard of it.
+message ConnectorStatus {
+  // Its control session.
+  AgentSession session = 1;
+  // Its data sessions, as its gateways report them.
+  repeated ConnectorDataSession data_sessions = 2;
+  // The routes it reports not ready.
+  repeated NotReadyResource not_ready = 3;
+}
+
+// ConnectorDataSession is a connector's data sessions to one gateway over one transport.
+message ConnectorDataSession {
+  // The gateway.
+  string gateway_id = 1;
+  // The transport: DATA_TRANSPORT_QUIC or DATA_TRANSPORT_H2.
+  DataTransport transport = 2;
+  // The lowest smoothed round-trip time a session measures; not set where none does.
+  google.protobuf.Duration rtt = 3;
+  // When the gateway first reported it.
+  google.protobuf.Timestamp establish_time = 4;
+  // When the gateway last reported it.
+  google.protobuf.Timestamp report_time = 5;
+}
+
+// NotReadyResource is a resource an agent cannot serve.
+message NotReadyResource {
+  // The resource, for a connector the route's ID.
+  string resource_id = 1;
+  // Why: BLOCKED_BY_LOCAL_POLICY, POLICY_INVALID, PORT_IN_USE, TRANSPORT_UNAVAILABLE or
+  // ENVIRONMENT.
+  string reason = 2;
+  // Details, for example the target a local policy blocks.
+  string detail = 3;
+  // Since when.
+  google.protobuf.Timestamp since = 4;
+}
+
+// ListConnectorsRequest pages through an org's connectors.
+message ListConnectorsRequest {
+  // The org.
+  string org_id = 1 [(buf.validate.field).string.min_len = 1];
+  // Decommissioned connectors too.
+  bool show_decommissioned = 2;
+  // At most this many, 50 if not set, 500 at most.
+  int32 page_size = 3;
+  // The page after the one that returned it.
+  string page_token = 4;
+}
+
+// ListConnectorsResponse is one page of connectors.
+message ListConnectorsResponse {
+  // The connectors.
+  repeated Connector connectors = 1;
+  // The token of the next page; empty after the last.
+  string next_page_token = 2;
+}
+
+// GetConnectorRequest names a connector.
+message GetConnectorRequest {
+  // The connector's ID.
+  string connector_id = 1 [(buf.validate.field).string.min_len = 1];
+}
+
+// GetConnectorResponse is the connector.
+message GetConnectorResponse {
+  // The connector.
+  Connector connector = 1;
+}
+
+// GetConnectorStatusRequest names a connector.
+message GetConnectorStatusRequest {
+  // The connector's ID.
+  string connector_id = 1 [(buf.validate.field).string.min_len = 1];
+}
+
+// GetConnectorStatusResponse is the connector's status.
+message GetConnectorStatusResponse {
+  // The status.
+  ConnectorStatus status = 1;
+}

@@ -10952,6 +10952,8 @@ type ConnectorMutation struct {
 	typ               string
 	id                *string
 	org_id            *string
+	version           *int64
+	addversion        *int64
 	name              *string
 	labels            *map[string]string
 	spiffe_id         *string
@@ -11106,6 +11108,62 @@ func (m *ConnectorMutation) OldOrgID(ctx context.Context) (v string, err error) 
 // ResetOrgID resets all changes to the "org_id" field.
 func (m *ConnectorMutation) ResetOrgID() {
 	m.org_id = nil
+}
+
+// SetVersion sets the "version" field.
+func (m *ConnectorMutation) SetVersion(i int64) {
+	m.version = &i
+	m.addversion = nil
+}
+
+// Version returns the value of the "version" field in the mutation.
+func (m *ConnectorMutation) Version() (r int64, exists bool) {
+	v := m.version
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldVersion returns the old "version" field's value of the Connector entity.
+// If the Connector object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ConnectorMutation) OldVersion(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldVersion is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldVersion requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldVersion: %w", err)
+	}
+	return oldValue.Version, nil
+}
+
+// AddVersion adds i to the "version" field.
+func (m *ConnectorMutation) AddVersion(i int64) {
+	if m.addversion != nil {
+		*m.addversion += i
+	} else {
+		m.addversion = &i
+	}
+}
+
+// AddedVersion returns the value that was added to the "version" field in this mutation.
+func (m *ConnectorMutation) AddedVersion() (r int64, exists bool) {
+	v := m.addversion
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetVersion resets all changes to the "version" field.
+func (m *ConnectorMutation) ResetVersion() {
+	m.version = nil
+	m.addversion = nil
 }
 
 // SetName sets the "name" field.
@@ -11554,9 +11612,12 @@ func (m *ConnectorMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *ConnectorMutation) Fields() []string {
-	fields := make([]string, 0, 11)
+	fields := make([]string, 0, 12)
 	if m.org_id != nil {
 		fields = append(fields, connector.FieldOrgID)
+	}
+	if m.version != nil {
+		fields = append(fields, connector.FieldVersion)
 	}
 	if m.name != nil {
 		fields = append(fields, connector.FieldName)
@@ -11598,6 +11659,8 @@ func (m *ConnectorMutation) Field(name string) (ent.Value, bool) {
 	switch name {
 	case connector.FieldOrgID:
 		return m.OrgID()
+	case connector.FieldVersion:
+		return m.Version()
 	case connector.FieldName:
 		return m.Name()
 	case connector.FieldLabels:
@@ -11629,6 +11692,8 @@ func (m *ConnectorMutation) OldField(ctx context.Context, name string) (ent.Valu
 	switch name {
 	case connector.FieldOrgID:
 		return m.OldOrgID(ctx)
+	case connector.FieldVersion:
+		return m.OldVersion(ctx)
 	case connector.FieldName:
 		return m.OldName(ctx)
 	case connector.FieldLabels:
@@ -11664,6 +11729,13 @@ func (m *ConnectorMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetOrgID(v)
+		return nil
+	case connector.FieldVersion:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetVersion(v)
 		return nil
 	case connector.FieldName:
 		v, ok := value.(string)
@@ -11742,13 +11814,21 @@ func (m *ConnectorMutation) SetField(name string, value ent.Value) error {
 // AddedFields returns all numeric fields that were incremented/decremented during
 // this mutation.
 func (m *ConnectorMutation) AddedFields() []string {
-	return nil
+	var fields []string
+	if m.addversion != nil {
+		fields = append(fields, connector.FieldVersion)
+	}
+	return fields
 }
 
 // AddedField returns the numeric value that was incremented/decremented on a field
 // with the given name. The second boolean return value indicates that this field
 // was not set, or was not defined in the schema.
 func (m *ConnectorMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case connector.FieldVersion:
+		return m.AddedVersion()
+	}
 	return nil, false
 }
 
@@ -11757,6 +11837,13 @@ func (m *ConnectorMutation) AddedField(name string) (ent.Value, bool) {
 // type.
 func (m *ConnectorMutation) AddField(name string, value ent.Value) error {
 	switch name {
+	case connector.FieldVersion:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddVersion(v)
+		return nil
 	}
 	return fmt.Errorf("unknown Connector numeric field %s", name)
 }
@@ -11813,6 +11900,9 @@ func (m *ConnectorMutation) ResetField(name string) error {
 	switch name {
 	case connector.FieldOrgID:
 		m.ResetOrgID()
+		return nil
+	case connector.FieldVersion:
+		m.ResetVersion()
 		return nil
 	case connector.FieldName:
 		m.ResetName()
