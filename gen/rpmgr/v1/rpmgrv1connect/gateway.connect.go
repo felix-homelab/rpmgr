@@ -80,6 +80,15 @@ const (
 	// GatewayServiceDeletePortPoolProcedure is the fully-qualified name of the GatewayService's
 	// DeletePortPool RPC.
 	GatewayServiceDeletePortPoolProcedure = "/rpmgr.v1.GatewayService/DeletePortPool"
+	// GatewayServiceSetPortQuotaProcedure is the fully-qualified name of the GatewayService's
+	// SetPortQuota RPC.
+	GatewayServiceSetPortQuotaProcedure = "/rpmgr.v1.GatewayService/SetPortQuota"
+	// GatewayServiceListPortQuotasProcedure is the fully-qualified name of the GatewayService's
+	// ListPortQuotas RPC.
+	GatewayServiceListPortQuotasProcedure = "/rpmgr.v1.GatewayService/ListPortQuotas"
+	// GatewayServiceDeletePortQuotaProcedure is the fully-qualified name of the GatewayService's
+	// DeletePortQuota RPC.
+	GatewayServiceDeletePortQuotaProcedure = "/rpmgr.v1.GatewayService/DeletePortQuota"
 )
 
 // GatewayServiceClient is a client for the rpmgr.v1.GatewayService service.
@@ -118,6 +127,13 @@ type GatewayServiceClient interface {
 	UpdatePortPool(context.Context, *connect.Request[v1.UpdatePortPoolRequest]) (*connect.Response[v1.UpdatePortPoolResponse], error)
 	// DeletePortPool deletes a pool from which no port is allocated.
 	DeletePortPool(context.Context, *connect.Request[v1.DeletePortPoolRequest]) (*connect.Response[v1.DeletePortPoolResponse], error)
+	// SetPortQuota caps the ports of one protocol the org may allocate in a gateway group, creating
+	// the quota or replacing its limit. Ports already allocated stay.
+	SetPortQuota(context.Context, *connect.Request[v1.SetPortQuotaRequest]) (*connect.Response[v1.SetPortQuotaResponse], error)
+	// ListPortQuotas lists an org's port quotas by ID, those of one group if it names one.
+	ListPortQuotas(context.Context, *connect.Request[v1.ListPortQuotasRequest]) (*connect.Response[v1.ListPortQuotasResponse], error)
+	// DeletePortQuota removes a quota; then only the pools limit the org's ports in the group.
+	DeletePortQuota(context.Context, *connect.Request[v1.DeletePortQuotaRequest]) (*connect.Response[v1.DeletePortQuotaResponse], error)
 }
 
 // NewGatewayServiceClient constructs a client for the rpmgr.v1.GatewayService service. By default,
@@ -227,6 +243,25 @@ func NewGatewayServiceClient(httpClient connect.HTTPClient, baseURL string, opts
 			connect.WithSchema(gatewayServiceMethods.ByName("DeletePortPool")),
 			connect.WithClientOptions(opts...),
 		),
+		setPortQuota: connect.NewClient[v1.SetPortQuotaRequest, v1.SetPortQuotaResponse](
+			httpClient,
+			baseURL+GatewayServiceSetPortQuotaProcedure,
+			connect.WithSchema(gatewayServiceMethods.ByName("SetPortQuota")),
+			connect.WithClientOptions(opts...),
+		),
+		listPortQuotas: connect.NewClient[v1.ListPortQuotasRequest, v1.ListPortQuotasResponse](
+			httpClient,
+			baseURL+GatewayServiceListPortQuotasProcedure,
+			connect.WithSchema(gatewayServiceMethods.ByName("ListPortQuotas")),
+			connect.WithIdempotency(connect.IdempotencyNoSideEffects),
+			connect.WithClientOptions(opts...),
+		),
+		deletePortQuota: connect.NewClient[v1.DeletePortQuotaRequest, v1.DeletePortQuotaResponse](
+			httpClient,
+			baseURL+GatewayServiceDeletePortQuotaProcedure,
+			connect.WithSchema(gatewayServiceMethods.ByName("DeletePortQuota")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -247,6 +282,9 @@ type gatewayServiceClient struct {
 	listPortPools       *connect.Client[v1.ListPortPoolsRequest, v1.ListPortPoolsResponse]
 	updatePortPool      *connect.Client[v1.UpdatePortPoolRequest, v1.UpdatePortPoolResponse]
 	deletePortPool      *connect.Client[v1.DeletePortPoolRequest, v1.DeletePortPoolResponse]
+	setPortQuota        *connect.Client[v1.SetPortQuotaRequest, v1.SetPortQuotaResponse]
+	listPortQuotas      *connect.Client[v1.ListPortQuotasRequest, v1.ListPortQuotasResponse]
+	deletePortQuota     *connect.Client[v1.DeletePortQuotaRequest, v1.DeletePortQuotaResponse]
 }
 
 // CreateGatewayGroup calls rpmgr.v1.GatewayService.CreateGatewayGroup.
@@ -324,6 +362,21 @@ func (c *gatewayServiceClient) DeletePortPool(ctx context.Context, req *connect.
 	return c.deletePortPool.CallUnary(ctx, req)
 }
 
+// SetPortQuota calls rpmgr.v1.GatewayService.SetPortQuota.
+func (c *gatewayServiceClient) SetPortQuota(ctx context.Context, req *connect.Request[v1.SetPortQuotaRequest]) (*connect.Response[v1.SetPortQuotaResponse], error) {
+	return c.setPortQuota.CallUnary(ctx, req)
+}
+
+// ListPortQuotas calls rpmgr.v1.GatewayService.ListPortQuotas.
+func (c *gatewayServiceClient) ListPortQuotas(ctx context.Context, req *connect.Request[v1.ListPortQuotasRequest]) (*connect.Response[v1.ListPortQuotasResponse], error) {
+	return c.listPortQuotas.CallUnary(ctx, req)
+}
+
+// DeletePortQuota calls rpmgr.v1.GatewayService.DeletePortQuota.
+func (c *gatewayServiceClient) DeletePortQuota(ctx context.Context, req *connect.Request[v1.DeletePortQuotaRequest]) (*connect.Response[v1.DeletePortQuotaResponse], error) {
+	return c.deletePortQuota.CallUnary(ctx, req)
+}
+
 // GatewayServiceHandler is an implementation of the rpmgr.v1.GatewayService service.
 type GatewayServiceHandler interface {
 	// CreateGatewayGroup creates a gateway group, which holds up to four gateways.
@@ -360,6 +413,13 @@ type GatewayServiceHandler interface {
 	UpdatePortPool(context.Context, *connect.Request[v1.UpdatePortPoolRequest]) (*connect.Response[v1.UpdatePortPoolResponse], error)
 	// DeletePortPool deletes a pool from which no port is allocated.
 	DeletePortPool(context.Context, *connect.Request[v1.DeletePortPoolRequest]) (*connect.Response[v1.DeletePortPoolResponse], error)
+	// SetPortQuota caps the ports of one protocol the org may allocate in a gateway group, creating
+	// the quota or replacing its limit. Ports already allocated stay.
+	SetPortQuota(context.Context, *connect.Request[v1.SetPortQuotaRequest]) (*connect.Response[v1.SetPortQuotaResponse], error)
+	// ListPortQuotas lists an org's port quotas by ID, those of one group if it names one.
+	ListPortQuotas(context.Context, *connect.Request[v1.ListPortQuotasRequest]) (*connect.Response[v1.ListPortQuotasResponse], error)
+	// DeletePortQuota removes a quota; then only the pools limit the org's ports in the group.
+	DeletePortQuota(context.Context, *connect.Request[v1.DeletePortQuotaRequest]) (*connect.Response[v1.DeletePortQuotaResponse], error)
 }
 
 // NewGatewayServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -465,6 +525,25 @@ func NewGatewayServiceHandler(svc GatewayServiceHandler, opts ...connect.Handler
 		connect.WithSchema(gatewayServiceMethods.ByName("DeletePortPool")),
 		connect.WithHandlerOptions(opts...),
 	)
+	gatewayServiceSetPortQuotaHandler := connect.NewUnaryHandler(
+		GatewayServiceSetPortQuotaProcedure,
+		svc.SetPortQuota,
+		connect.WithSchema(gatewayServiceMethods.ByName("SetPortQuota")),
+		connect.WithHandlerOptions(opts...),
+	)
+	gatewayServiceListPortQuotasHandler := connect.NewUnaryHandler(
+		GatewayServiceListPortQuotasProcedure,
+		svc.ListPortQuotas,
+		connect.WithSchema(gatewayServiceMethods.ByName("ListPortQuotas")),
+		connect.WithIdempotency(connect.IdempotencyNoSideEffects),
+		connect.WithHandlerOptions(opts...),
+	)
+	gatewayServiceDeletePortQuotaHandler := connect.NewUnaryHandler(
+		GatewayServiceDeletePortQuotaProcedure,
+		svc.DeletePortQuota,
+		connect.WithSchema(gatewayServiceMethods.ByName("DeletePortQuota")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/rpmgr.v1.GatewayService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case GatewayServiceCreateGatewayGroupProcedure:
@@ -497,6 +576,12 @@ func NewGatewayServiceHandler(svc GatewayServiceHandler, opts ...connect.Handler
 			gatewayServiceUpdatePortPoolHandler.ServeHTTP(w, r)
 		case GatewayServiceDeletePortPoolProcedure:
 			gatewayServiceDeletePortPoolHandler.ServeHTTP(w, r)
+		case GatewayServiceSetPortQuotaProcedure:
+			gatewayServiceSetPortQuotaHandler.ServeHTTP(w, r)
+		case GatewayServiceListPortQuotasProcedure:
+			gatewayServiceListPortQuotasHandler.ServeHTTP(w, r)
+		case GatewayServiceDeletePortQuotaProcedure:
+			gatewayServiceDeletePortQuotaHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -564,4 +649,16 @@ func (UnimplementedGatewayServiceHandler) UpdatePortPool(context.Context, *conne
 
 func (UnimplementedGatewayServiceHandler) DeletePortPool(context.Context, *connect.Request[v1.DeletePortPoolRequest]) (*connect.Response[v1.DeletePortPoolResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("rpmgr.v1.GatewayService.DeletePortPool is not implemented"))
+}
+
+func (UnimplementedGatewayServiceHandler) SetPortQuota(context.Context, *connect.Request[v1.SetPortQuotaRequest]) (*connect.Response[v1.SetPortQuotaResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("rpmgr.v1.GatewayService.SetPortQuota is not implemented"))
+}
+
+func (UnimplementedGatewayServiceHandler) ListPortQuotas(context.Context, *connect.Request[v1.ListPortQuotasRequest]) (*connect.Response[v1.ListPortQuotasResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("rpmgr.v1.GatewayService.ListPortQuotas is not implemented"))
+}
+
+func (UnimplementedGatewayServiceHandler) DeletePortQuota(context.Context, *connect.Request[v1.DeletePortQuotaRequest]) (*connect.Response[v1.DeletePortQuotaResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("rpmgr.v1.GatewayService.DeletePortQuota is not implemented"))
 }

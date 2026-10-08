@@ -99,12 +99,13 @@ func TestCrossTenantLeaks(t *testing.T) {
 		SetTunnelEndpoints([]string{"gw1.org-a.example:443"}).SaveX(sys)
 	poolA := db.Client().PortPool.Create().SetOrgID(orgA).SetGatewayGroupID(groupA.ID).SetProtocol("tcp").SetPortFrom(20000).
 		SetPortTo(20099).SaveX(sys)
+	quotaA := db.Client().PortQuota.Create().SetOrgID(orgA).SetGatewayGroupID(groupA.ID).SetProtocol("tcp").SetMaxPorts(7).SaveX(sys)
 	fill := map[string]string{
 		"org_id": orgA, "user_id": ada.GetUserId(), "token_id": adaToken.Msg.GetApiToken().GetId(),
 		"session_id": ada.GetSession().GetId(), "gateway_group_id": groupA.ID, "gateway_id": gatewayA.ID,
-		"port_pool_id": poolA.ID,
+		"port_pool_id": poolA.ID, "port_quota_id": quotaA.ID,
 	}
-	secrets := []string{orgA, groupA.ID, gatewayA.ID, "gw1.org-a.example", poolA.ID, ada.GetUserId(), "ada@example.com", adaToken.Msg.GetApiToken().GetId(), ada.GetSession().GetId(),
+	secrets := []string{orgA, groupA.ID, gatewayA.ID, "gw1.org-a.example", poolA.ID, quotaA.ID, ada.GetUserId(), "ada@example.com", adaToken.Msg.GetApiToken().GetId(), ada.GetSession().GetId(),
 		invitation.Msg.GetUrl()[strings.Index(invitation.Msg.GetUrl(), "#")+1:]}
 	before := orgRows(t, db, orgA)
 

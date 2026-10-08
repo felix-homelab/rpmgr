@@ -4,6 +4,7 @@ package apisvc_test
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"connectrpc.com/connect"
@@ -165,5 +166,88 @@ func TestPortPools(t *testing.T) {
 	}
 	if _, err := ada.gw.GetPortPool(ctx, connect.NewRequest(&rpmgrv1.GetPortPoolRequest{PortPoolId: pool.GetId()})); code(err) != connect.CodeNotFound {
 		t.Fatalf("a deleted pool: %v", err)
+	}
+}
+
+// TestPortQuotas: setting a quota creates it or replaces its limit, and the allocator obeys it at
+// once; a lowered limit keeps the ports already held; deleting it leaves only the pools as the
+// limit; a Viewer only reads.
+func TestPortQuotas(t *testing.T) {
+	e, ada, org, group := gatewayEnv(t)
+	ctx := context.Background()
+	if _, err := ada.gw.CreatePortPool(ctx, connect.NewRequest(&rpmgrv1.CreatePortPoolRequest{OrgId: org,
+		PortPool: &rpmgrv1.PortPool{GatewayGroupId: group, Protocol: tcp, PortFrom: 20000, PortTo: 20099}})); err != nil {
+		t.Fatal(err)
+	}
+	set := func(b *browser, g string, p rpmgrv1.PortProtocol, limit int32) (*rpmgrv1.PortQuota, error) {
+		r, err := b.gw.SetPortQuota(ctx, connect.NewRequest(&rpmgrv1.SetPortQuotaRequest{OrgId: org, GatewayGroupId: g, Protocol: p, MaxPorts: limit}))
+		if err != nil {
+			return nil, err
+		}
+		return r.Msg.GetPortQuota(), nil
+	}
+	q, err := set(ada, group, tcp, 1)
+	if err != nil || q.GetMaxPorts() != 1 || q.GetAllocatedPorts() != 0 {
+		t.Fatalf("a new quota: %v %v", q, err)
+	}
+	if err := e.allocate(t, org, group, routes.TCP, 0); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.allocate(t, org, group, routes.TCP, 0); !errors.Is(err, routes.ErrQuotaReached) {
+		t.Fatalf("a port beyond the quota: %v", err)
+	}
+	raised, err := set(ada, group, tcp, 5)
+	if err != nil || raised.GetId() != q.GetId() || raised.GetMaxPorts() != 5 || raised.GetAllocatedPorts() != 1 {
+		t.Fatalf("a raised quota: %v %v", raised, err)
+	}
+	if err := e.allocate(t, org, group, routes.TCP, 0); err != nil {
+		t.Fatalf("a port within the raised quota: %v", err)
+	}
+	if lowered, err := set(ada, group, tcp, 0); err != nil || lowered.GetAllocatedPorts() != 2 || lowered.GetMaxPorts() != 0 {
+		t.Fatalf("a quota lowered below the ports held: %v %v", lowered, err)
+	}
+	for name, c := range map[string]struct {
+		group string
+		p     rpmgrv1.PortProtocol
+		limit int32
+		want  connect.Code
+	}{
+		"no protocol": {group, rpmgrv1.PortProtocol_PORT_PROTOCOL_UNSPECIFIED, 1, connect.CodeInvalidArgument},
+		"a negative":  {group, tcp, -1, connect.CodeInvalidArgument},
+		"65536":       {group, tcp, 65536, connect.CodeInvalidArgument},
+		"no group":    {"gwg_missing", tcp, 1, connect.CodeNotFound},
+	} {
+		if _, err := set(ada, c.group, c.p, c.limit); code(err) != c.want {
+			t.Errorf("%s: %v", name, err)
+		}
+	}
+	if _, err := set(ada, group, udp, 65535); err != nil {
+		t.Fatalf("a UDP quota at the bound: %v", err)
+	}
+	list, err := ada.gw.ListPortQuotas(ctx, connect.NewRequest(&rpmgrv1.ListPortQuotasRequest{OrgId: org, GatewayGroupId: group}))
+	if err != nil || len(list.Msg.GetPortQuotas()) != 2 {
+		t.Fatalf("the quotas: %v %v", list, err)
+	}
+
+	vwr, _ := e.join(t, ada, org, "vwr@example.com", "viewer")
+	if _, err := set(vwr, group, tcp, 9); code(err) != connect.CodePermissionDenied {
+		t.Fatalf("a Viewer sets a quota: %v", err)
+	}
+	if r, err := vwr.gw.ListPortQuotas(ctx, connect.NewRequest(&rpmgrv1.ListPortQuotasRequest{OrgId: org})); err != nil ||
+		len(r.Msg.GetPortQuotas()) != 2 {
+		t.Fatalf("a Viewer lists: %v %v", r, err)
+	}
+	del := func() error {
+		_, err := ada.gw.DeletePortQuota(ctx, connect.NewRequest(&rpmgrv1.DeletePortQuotaRequest{PortQuotaId: q.GetId()}))
+		return err
+	}
+	if err := del(); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.allocate(t, org, group, routes.TCP, 0); err != nil {
+		t.Fatalf("a port without a quota: %v", err)
+	}
+	if err := del(); code(err) != connect.CodeNotFound {
+		t.Fatalf("a deleted quota: %v", err)
 	}
 }

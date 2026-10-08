@@ -130,6 +130,29 @@ service GatewayService {
       resource_field: "port_pool_id"
     };
   }
+  // SetPortQuota caps the ports of one protocol the org may allocate in a gateway group, creating
+  // the quota or replacing its limit. Ports already allocated stay.
+  rpc SetPortQuota(SetPortQuotaRequest) returns (SetPortQuotaResponse) {
+    option (rpmgr.v1.authz) = {
+      permission: "infrastructure.write"
+      resource_field: "org_id"
+    };
+  }
+  // ListPortQuotas lists an org's port quotas by ID, those of one group if it names one.
+  rpc ListPortQuotas(ListPortQuotasRequest) returns (ListPortQuotasResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+    option (rpmgr.v1.authz) = {
+      permission: "org.read"
+      resource_field: "org_id"
+    };
+  }
+  // DeletePortQuota removes a quota; then only the pools limit the org's ports in the group.
+  rpc DeletePortQuota(DeletePortQuotaRequest) returns (DeletePortQuotaResponse) {
+    option (rpmgr.v1.authz) = {
+      permission: "infrastructure.write"
+      resource_field: "port_quota_id"
+    };
+  }
 }
 
 // Gateway is one gateway of a group.
@@ -482,6 +505,79 @@ message DeletePortPoolRequest {
 
 // DeletePortPoolResponse is the revision of the deletion.
 message DeletePortPoolResponse {
+  // The configuration revision of the change.
+  Revision revision = 1;
+}
+
+// PortQuota caps the ports of one protocol an org may allocate in a gateway group.
+message PortQuota {
+  // The quota's ID, pq_…; output only.
+  string id = 1;
+  // Its group.
+  string gateway_group_id = 2;
+  // The protocol it counts.
+  PortProtocol protocol = 3;
+  // The most ports the org may hold; 0 allows none.
+  int32 max_ports = 4;
+  // How many ports the org holds now; output only. It may exceed max_ports after the limit was
+  // lowered.
+  int32 allocated_ports = 5;
+}
+
+// SetPortQuotaRequest sets the quota of an org, group and protocol.
+message SetPortQuotaRequest {
+  // The org.
+  string org_id = 1 [(buf.validate.field).string.min_len = 1];
+  // The group.
+  string gateway_group_id = 2 [(buf.validate.field).string.min_len = 1];
+  // The protocol.
+  PortProtocol protocol = 3 [(buf.validate.field).enum = {
+    defined_only: true
+    not_in: [0]
+  }];
+  // The most ports the org may hold, 0 to 65535.
+  int32 max_ports = 4 [(buf.validate.field).int32 = {
+    gte: 0
+    lte: 65535
+  }];
+}
+
+// SetPortQuotaResponse is the quota.
+message SetPortQuotaResponse {
+  // The quota.
+  PortQuota port_quota = 1;
+  // The configuration revision of the change.
+  Revision revision = 2;
+}
+
+// ListPortQuotasRequest pages through an org's port quotas.
+message ListPortQuotasRequest {
+  // The org.
+  string org_id = 1 [(buf.validate.field).string.min_len = 1];
+  // Only this group's, if set.
+  string gateway_group_id = 2;
+  // At most this many, 50 if not set, 500 at most.
+  int32 page_size = 3;
+  // The page after the one that returned it.
+  string page_token = 4;
+}
+
+// ListPortQuotasResponse is one page of port quotas.
+message ListPortQuotasResponse {
+  // The quotas.
+  repeated PortQuota port_quotas = 1;
+  // The token of the next page; empty after the last.
+  string next_page_token = 2;
+}
+
+// DeletePortQuotaRequest names a port quota.
+message DeletePortQuotaRequest {
+  // The quota's ID.
+  string port_quota_id = 1 [(buf.validate.field).string.min_len = 1];
+}
+
+// DeletePortQuotaResponse is the revision of the deletion.
+message DeletePortQuotaResponse {
   // The configuration revision of the change.
   Revision revision = 1;
 }

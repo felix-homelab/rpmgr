@@ -2165,6 +2165,437 @@ func (x *DeletePortPoolResponse) GetRevision() *Revision {
 	return nil
 }
 
+// PortQuota caps the ports of one protocol an org may allocate in a gateway group.
+type PortQuota struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The quota's ID, pq_…; output only.
+	Id string `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	// Its group.
+	GatewayGroupId string `protobuf:"bytes,2,opt,name=gateway_group_id,json=gatewayGroupId,proto3" json:"gateway_group_id,omitempty"`
+	// The protocol it counts.
+	Protocol PortProtocol `protobuf:"varint,3,opt,name=protocol,proto3,enum=rpmgr.v1.PortProtocol" json:"protocol,omitempty"`
+	// The most ports the org may hold; 0 allows none.
+	MaxPorts int32 `protobuf:"varint,4,opt,name=max_ports,json=maxPorts,proto3" json:"max_ports,omitempty"`
+	// How many ports the org holds now; output only. It may exceed max_ports after the limit was
+	// lowered.
+	AllocatedPorts int32 `protobuf:"varint,5,opt,name=allocated_ports,json=allocatedPorts,proto3" json:"allocated_ports,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
+func (x *PortQuota) Reset() {
+	*x = PortQuota{}
+	mi := &file_rpmgr_v1_gateway_proto_msgTypes[34]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *PortQuota) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*PortQuota) ProtoMessage() {}
+
+func (x *PortQuota) ProtoReflect() protoreflect.Message {
+	mi := &file_rpmgr_v1_gateway_proto_msgTypes[34]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use PortQuota.ProtoReflect.Descriptor instead.
+func (*PortQuota) Descriptor() ([]byte, []int) {
+	return file_rpmgr_v1_gateway_proto_rawDescGZIP(), []int{34}
+}
+
+func (x *PortQuota) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+func (x *PortQuota) GetGatewayGroupId() string {
+	if x != nil {
+		return x.GatewayGroupId
+	}
+	return ""
+}
+
+func (x *PortQuota) GetProtocol() PortProtocol {
+	if x != nil {
+		return x.Protocol
+	}
+	return PortProtocol_PORT_PROTOCOL_UNSPECIFIED
+}
+
+func (x *PortQuota) GetMaxPorts() int32 {
+	if x != nil {
+		return x.MaxPorts
+	}
+	return 0
+}
+
+func (x *PortQuota) GetAllocatedPorts() int32 {
+	if x != nil {
+		return x.AllocatedPorts
+	}
+	return 0
+}
+
+// SetPortQuotaRequest sets the quota of an org, group and protocol.
+type SetPortQuotaRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The org.
+	OrgId string `protobuf:"bytes,1,opt,name=org_id,json=orgId,proto3" json:"org_id,omitempty"`
+	// The group.
+	GatewayGroupId string `protobuf:"bytes,2,opt,name=gateway_group_id,json=gatewayGroupId,proto3" json:"gateway_group_id,omitempty"`
+	// The protocol.
+	Protocol PortProtocol `protobuf:"varint,3,opt,name=protocol,proto3,enum=rpmgr.v1.PortProtocol" json:"protocol,omitempty"`
+	// The most ports the org may hold, 0 to 65535.
+	MaxPorts      int32 `protobuf:"varint,4,opt,name=max_ports,json=maxPorts,proto3" json:"max_ports,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SetPortQuotaRequest) Reset() {
+	*x = SetPortQuotaRequest{}
+	mi := &file_rpmgr_v1_gateway_proto_msgTypes[35]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SetPortQuotaRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SetPortQuotaRequest) ProtoMessage() {}
+
+func (x *SetPortQuotaRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_rpmgr_v1_gateway_proto_msgTypes[35]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SetPortQuotaRequest.ProtoReflect.Descriptor instead.
+func (*SetPortQuotaRequest) Descriptor() ([]byte, []int) {
+	return file_rpmgr_v1_gateway_proto_rawDescGZIP(), []int{35}
+}
+
+func (x *SetPortQuotaRequest) GetOrgId() string {
+	if x != nil {
+		return x.OrgId
+	}
+	return ""
+}
+
+func (x *SetPortQuotaRequest) GetGatewayGroupId() string {
+	if x != nil {
+		return x.GatewayGroupId
+	}
+	return ""
+}
+
+func (x *SetPortQuotaRequest) GetProtocol() PortProtocol {
+	if x != nil {
+		return x.Protocol
+	}
+	return PortProtocol_PORT_PROTOCOL_UNSPECIFIED
+}
+
+func (x *SetPortQuotaRequest) GetMaxPorts() int32 {
+	if x != nil {
+		return x.MaxPorts
+	}
+	return 0
+}
+
+// SetPortQuotaResponse is the quota.
+type SetPortQuotaResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The quota.
+	PortQuota *PortQuota `protobuf:"bytes,1,opt,name=port_quota,json=portQuota,proto3" json:"port_quota,omitempty"`
+	// The configuration revision of the change.
+	Revision      *Revision `protobuf:"bytes,2,opt,name=revision,proto3" json:"revision,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SetPortQuotaResponse) Reset() {
+	*x = SetPortQuotaResponse{}
+	mi := &file_rpmgr_v1_gateway_proto_msgTypes[36]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SetPortQuotaResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SetPortQuotaResponse) ProtoMessage() {}
+
+func (x *SetPortQuotaResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_rpmgr_v1_gateway_proto_msgTypes[36]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SetPortQuotaResponse.ProtoReflect.Descriptor instead.
+func (*SetPortQuotaResponse) Descriptor() ([]byte, []int) {
+	return file_rpmgr_v1_gateway_proto_rawDescGZIP(), []int{36}
+}
+
+func (x *SetPortQuotaResponse) GetPortQuota() *PortQuota {
+	if x != nil {
+		return x.PortQuota
+	}
+	return nil
+}
+
+func (x *SetPortQuotaResponse) GetRevision() *Revision {
+	if x != nil {
+		return x.Revision
+	}
+	return nil
+}
+
+// ListPortQuotasRequest pages through an org's port quotas.
+type ListPortQuotasRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The org.
+	OrgId string `protobuf:"bytes,1,opt,name=org_id,json=orgId,proto3" json:"org_id,omitempty"`
+	// Only this group's, if set.
+	GatewayGroupId string `protobuf:"bytes,2,opt,name=gateway_group_id,json=gatewayGroupId,proto3" json:"gateway_group_id,omitempty"`
+	// At most this many, 50 if not set, 500 at most.
+	PageSize int32 `protobuf:"varint,3,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
+	// The page after the one that returned it.
+	PageToken     string `protobuf:"bytes,4,opt,name=page_token,json=pageToken,proto3" json:"page_token,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListPortQuotasRequest) Reset() {
+	*x = ListPortQuotasRequest{}
+	mi := &file_rpmgr_v1_gateway_proto_msgTypes[37]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListPortQuotasRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListPortQuotasRequest) ProtoMessage() {}
+
+func (x *ListPortQuotasRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_rpmgr_v1_gateway_proto_msgTypes[37]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListPortQuotasRequest.ProtoReflect.Descriptor instead.
+func (*ListPortQuotasRequest) Descriptor() ([]byte, []int) {
+	return file_rpmgr_v1_gateway_proto_rawDescGZIP(), []int{37}
+}
+
+func (x *ListPortQuotasRequest) GetOrgId() string {
+	if x != nil {
+		return x.OrgId
+	}
+	return ""
+}
+
+func (x *ListPortQuotasRequest) GetGatewayGroupId() string {
+	if x != nil {
+		return x.GatewayGroupId
+	}
+	return ""
+}
+
+func (x *ListPortQuotasRequest) GetPageSize() int32 {
+	if x != nil {
+		return x.PageSize
+	}
+	return 0
+}
+
+func (x *ListPortQuotasRequest) GetPageToken() string {
+	if x != nil {
+		return x.PageToken
+	}
+	return ""
+}
+
+// ListPortQuotasResponse is one page of port quotas.
+type ListPortQuotasResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The quotas.
+	PortQuotas []*PortQuota `protobuf:"bytes,1,rep,name=port_quotas,json=portQuotas,proto3" json:"port_quotas,omitempty"`
+	// The token of the next page; empty after the last.
+	NextPageToken string `protobuf:"bytes,2,opt,name=next_page_token,json=nextPageToken,proto3" json:"next_page_token,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListPortQuotasResponse) Reset() {
+	*x = ListPortQuotasResponse{}
+	mi := &file_rpmgr_v1_gateway_proto_msgTypes[38]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListPortQuotasResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListPortQuotasResponse) ProtoMessage() {}
+
+func (x *ListPortQuotasResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_rpmgr_v1_gateway_proto_msgTypes[38]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListPortQuotasResponse.ProtoReflect.Descriptor instead.
+func (*ListPortQuotasResponse) Descriptor() ([]byte, []int) {
+	return file_rpmgr_v1_gateway_proto_rawDescGZIP(), []int{38}
+}
+
+func (x *ListPortQuotasResponse) GetPortQuotas() []*PortQuota {
+	if x != nil {
+		return x.PortQuotas
+	}
+	return nil
+}
+
+func (x *ListPortQuotasResponse) GetNextPageToken() string {
+	if x != nil {
+		return x.NextPageToken
+	}
+	return ""
+}
+
+// DeletePortQuotaRequest names a port quota.
+type DeletePortQuotaRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The quota's ID.
+	PortQuotaId   string `protobuf:"bytes,1,opt,name=port_quota_id,json=portQuotaId,proto3" json:"port_quota_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DeletePortQuotaRequest) Reset() {
+	*x = DeletePortQuotaRequest{}
+	mi := &file_rpmgr_v1_gateway_proto_msgTypes[39]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DeletePortQuotaRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DeletePortQuotaRequest) ProtoMessage() {}
+
+func (x *DeletePortQuotaRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_rpmgr_v1_gateway_proto_msgTypes[39]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DeletePortQuotaRequest.ProtoReflect.Descriptor instead.
+func (*DeletePortQuotaRequest) Descriptor() ([]byte, []int) {
+	return file_rpmgr_v1_gateway_proto_rawDescGZIP(), []int{39}
+}
+
+func (x *DeletePortQuotaRequest) GetPortQuotaId() string {
+	if x != nil {
+		return x.PortQuotaId
+	}
+	return ""
+}
+
+// DeletePortQuotaResponse is the revision of the deletion.
+type DeletePortQuotaResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The configuration revision of the change.
+	Revision      *Revision `protobuf:"bytes,1,opt,name=revision,proto3" json:"revision,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DeletePortQuotaResponse) Reset() {
+	*x = DeletePortQuotaResponse{}
+	mi := &file_rpmgr_v1_gateway_proto_msgTypes[40]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DeletePortQuotaResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DeletePortQuotaResponse) ProtoMessage() {}
+
+func (x *DeletePortQuotaResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_rpmgr_v1_gateway_proto_msgTypes[40]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DeletePortQuotaResponse.ProtoReflect.Descriptor instead.
+func (*DeletePortQuotaResponse) Descriptor() ([]byte, []int) {
+	return file_rpmgr_v1_gateway_proto_rawDescGZIP(), []int{40}
+}
+
+func (x *DeletePortQuotaResponse) GetRevision() *Revision {
+	if x != nil {
+		return x.Revision
+	}
+	return nil
+}
+
 var File_rpmgr_v1_gateway_proto protoreflect.FileDescriptor
 
 const file_rpmgr_v1_gateway_proto_rawDesc = "" +
@@ -2312,11 +2743,41 @@ const file_rpmgr_v1_gateway_proto_rawDesc = "" +
 	"portPoolId\x12\x12\n" +
 	"\x04etag\x18\x02 \x01(\tR\x04etag\"H\n" +
 	"\x16DeletePortPoolResponse\x12.\n" +
+	"\brevision\x18\x01 \x01(\v2\x12.rpmgr.v1.RevisionR\brevision\"\xbf\x01\n" +
+	"\tPortQuota\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\x12(\n" +
+	"\x10gateway_group_id\x18\x02 \x01(\tR\x0egatewayGroupId\x122\n" +
+	"\bprotocol\x18\x03 \x01(\x0e2\x16.rpmgr.v1.PortProtocolR\bprotocol\x12\x1b\n" +
+	"\tmax_ports\x18\x04 \x01(\x05R\bmaxPorts\x12'\n" +
+	"\x0fallocated_ports\x18\x05 \x01(\x05R\x0eallocatedPorts\"\xd2\x01\n" +
+	"\x13SetPortQuotaRequest\x12\x1e\n" +
+	"\x06org_id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x05orgId\x121\n" +
+	"\x10gateway_group_id\x18\x02 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x0egatewayGroupId\x12>\n" +
+	"\bprotocol\x18\x03 \x01(\x0e2\x16.rpmgr.v1.PortProtocolB\n" +
+	"\xbaH\a\x82\x01\x04\x10\x01 \x00R\bprotocol\x12(\n" +
+	"\tmax_ports\x18\x04 \x01(\x05B\v\xbaH\b\x1a\x06\x18\xff\xff\x03(\x00R\bmaxPorts\"z\n" +
+	"\x14SetPortQuotaResponse\x122\n" +
+	"\n" +
+	"port_quota\x18\x01 \x01(\v2\x13.rpmgr.v1.PortQuotaR\tportQuota\x12.\n" +
+	"\brevision\x18\x02 \x01(\v2\x12.rpmgr.v1.RevisionR\brevision\"\x9d\x01\n" +
+	"\x15ListPortQuotasRequest\x12\x1e\n" +
+	"\x06org_id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x05orgId\x12(\n" +
+	"\x10gateway_group_id\x18\x02 \x01(\tR\x0egatewayGroupId\x12\x1b\n" +
+	"\tpage_size\x18\x03 \x01(\x05R\bpageSize\x12\x1d\n" +
+	"\n" +
+	"page_token\x18\x04 \x01(\tR\tpageToken\"v\n" +
+	"\x16ListPortQuotasResponse\x124\n" +
+	"\vport_quotas\x18\x01 \x03(\v2\x13.rpmgr.v1.PortQuotaR\n" +
+	"portQuotas\x12&\n" +
+	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"E\n" +
+	"\x16DeletePortQuotaRequest\x12+\n" +
+	"\rport_quota_id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\vportQuotaId\"I\n" +
+	"\x17DeletePortQuotaResponse\x12.\n" +
 	"\brevision\x18\x01 \x01(\v2\x12.rpmgr.v1.RevisionR\brevision*[\n" +
 	"\fPortProtocol\x12\x1d\n" +
 	"\x19PORT_PROTOCOL_UNSPECIFIED\x10\x00\x12\x15\n" +
 	"\x11PORT_PROTOCOL_TCP\x10\x01\x12\x15\n" +
-	"\x11PORT_PROTOCOL_UDP\x10\x022\xcc\x0e\n" +
+	"\x11PORT_PROTOCOL_UDP\x10\x022\xb3\x11\n" +
 	"\x0eGatewayService\x12\x83\x01\n" +
 	"\x12CreateGatewayGroup\x12#.rpmgr.v1.CreateGatewayGroupRequest\x1a$.rpmgr.v1.CreateGatewayGroupResponse\"\"\x8a\xb5\x18\x1e\n" +
 	"\x14infrastructure.write\x12\x06org_id\x12{\n" +
@@ -2351,7 +2812,13 @@ const file_rpmgr_v1_gateway_proto_rawDesc = "" +
 	"\x0eUpdatePortPool\x12\x1f.rpmgr.v1.UpdatePortPoolRequest\x1a .rpmgr.v1.UpdatePortPoolResponse\"(\x8a\xb5\x18$\n" +
 	"\x14infrastructure.write\x12\fport_pool.id\x12}\n" +
 	"\x0eDeletePortPool\x12\x1f.rpmgr.v1.DeletePortPoolRequest\x1a .rpmgr.v1.DeletePortPoolResponse\"(\x8a\xb5\x18$\n" +
-	"\x14infrastructure.write\x12\fport_pool_idB5Z3github.com/felix-homelab/rpmgr/gen/rpmgr/v1;rpmgrv1b\x06proto3"
+	"\x14infrastructure.write\x12\fport_pool_id\x12q\n" +
+	"\fSetPortQuota\x12\x1d.rpmgr.v1.SetPortQuotaRequest\x1a\x1e.rpmgr.v1.SetPortQuotaResponse\"\"\x8a\xb5\x18\x1e\n" +
+	"\x14infrastructure.write\x12\x06org_id\x12n\n" +
+	"\x0eListPortQuotas\x12\x1f.rpmgr.v1.ListPortQuotasRequest\x1a .rpmgr.v1.ListPortQuotasResponse\"\x19\x8a\xb5\x18\x12\n" +
+	"\borg.read\x12\x06org_id\x90\x02\x01\x12\x81\x01\n" +
+	"\x0fDeletePortQuota\x12 .rpmgr.v1.DeletePortQuotaRequest\x1a!.rpmgr.v1.DeletePortQuotaResponse\")\x8a\xb5\x18%\n" +
+	"\x14infrastructure.write\x12\rport_quota_idB5Z3github.com/felix-homelab/rpmgr/gen/rpmgr/v1;rpmgrv1b\x06proto3"
 
 var (
 	file_rpmgr_v1_gateway_proto_rawDescOnce sync.Once
@@ -2366,7 +2833,7 @@ func file_rpmgr_v1_gateway_proto_rawDescGZIP() []byte {
 }
 
 var file_rpmgr_v1_gateway_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_rpmgr_v1_gateway_proto_msgTypes = make([]protoimpl.MessageInfo, 34)
+var file_rpmgr_v1_gateway_proto_msgTypes = make([]protoimpl.MessageInfo, 41)
 var file_rpmgr_v1_gateway_proto_goTypes = []any{
 	(PortProtocol)(0),                   // 0: rpmgr.v1.PortProtocol
 	(*Gateway)(nil),                     // 1: rpmgr.v1.Gateway
@@ -2403,82 +2870,101 @@ var file_rpmgr_v1_gateway_proto_goTypes = []any{
 	(*UpdatePortPoolResponse)(nil),      // 32: rpmgr.v1.UpdatePortPoolResponse
 	(*DeletePortPoolRequest)(nil),       // 33: rpmgr.v1.DeletePortPoolRequest
 	(*DeletePortPoolResponse)(nil),      // 34: rpmgr.v1.DeletePortPoolResponse
-	(*timestamppb.Timestamp)(nil),       // 35: google.protobuf.Timestamp
-	(*Revision)(nil),                    // 36: rpmgr.v1.Revision
-	(*fieldmaskpb.FieldMask)(nil),       // 37: google.protobuf.FieldMask
+	(*PortQuota)(nil),                   // 35: rpmgr.v1.PortQuota
+	(*SetPortQuotaRequest)(nil),         // 36: rpmgr.v1.SetPortQuotaRequest
+	(*SetPortQuotaResponse)(nil),        // 37: rpmgr.v1.SetPortQuotaResponse
+	(*ListPortQuotasRequest)(nil),       // 38: rpmgr.v1.ListPortQuotasRequest
+	(*ListPortQuotasResponse)(nil),      // 39: rpmgr.v1.ListPortQuotasResponse
+	(*DeletePortQuotaRequest)(nil),      // 40: rpmgr.v1.DeletePortQuotaRequest
+	(*DeletePortQuotaResponse)(nil),     // 41: rpmgr.v1.DeletePortQuotaResponse
+	(*timestamppb.Timestamp)(nil),       // 42: google.protobuf.Timestamp
+	(*Revision)(nil),                    // 43: rpmgr.v1.Revision
+	(*fieldmaskpb.FieldMask)(nil),       // 44: google.protobuf.FieldMask
 }
 var file_rpmgr_v1_gateway_proto_depIdxs = []int32{
 	2,  // 0: rpmgr.v1.Gateway.status:type_name -> rpmgr.v1.GatewayStatus
-	35, // 1: rpmgr.v1.Gateway.decommission_time:type_name -> google.protobuf.Timestamp
-	35, // 2: rpmgr.v1.Gateway.create_time:type_name -> google.protobuf.Timestamp
-	35, // 3: rpmgr.v1.GatewayStatus.last_seen_time:type_name -> google.protobuf.Timestamp
+	42, // 1: rpmgr.v1.Gateway.decommission_time:type_name -> google.protobuf.Timestamp
+	42, // 2: rpmgr.v1.Gateway.create_time:type_name -> google.protobuf.Timestamp
+	42, // 3: rpmgr.v1.GatewayStatus.last_seen_time:type_name -> google.protobuf.Timestamp
 	1,  // 4: rpmgr.v1.CreateGatewayRequest.gateway:type_name -> rpmgr.v1.Gateway
 	1,  // 5: rpmgr.v1.CreateGatewayResponse.gateway:type_name -> rpmgr.v1.Gateway
-	36, // 6: rpmgr.v1.CreateGatewayResponse.revision:type_name -> rpmgr.v1.Revision
+	43, // 6: rpmgr.v1.CreateGatewayResponse.revision:type_name -> rpmgr.v1.Revision
 	1,  // 7: rpmgr.v1.GetGatewayResponse.gateway:type_name -> rpmgr.v1.Gateway
 	1,  // 8: rpmgr.v1.ListGatewaysResponse.gateways:type_name -> rpmgr.v1.Gateway
 	1,  // 9: rpmgr.v1.UpdateGatewayRequest.gateway:type_name -> rpmgr.v1.Gateway
-	37, // 10: rpmgr.v1.UpdateGatewayRequest.update_mask:type_name -> google.protobuf.FieldMask
+	44, // 10: rpmgr.v1.UpdateGatewayRequest.update_mask:type_name -> google.protobuf.FieldMask
 	1,  // 11: rpmgr.v1.UpdateGatewayResponse.gateway:type_name -> rpmgr.v1.Gateway
-	36, // 12: rpmgr.v1.UpdateGatewayResponse.revision:type_name -> rpmgr.v1.Revision
+	43, // 12: rpmgr.v1.UpdateGatewayResponse.revision:type_name -> rpmgr.v1.Revision
 	1,  // 13: rpmgr.v1.DecommissionGatewayResponse.gateway:type_name -> rpmgr.v1.Gateway
-	36, // 14: rpmgr.v1.DecommissionGatewayResponse.revision:type_name -> rpmgr.v1.Revision
+	43, // 14: rpmgr.v1.DecommissionGatewayResponse.revision:type_name -> rpmgr.v1.Revision
 	13, // 15: rpmgr.v1.CreateGatewayGroupRequest.gateway_group:type_name -> rpmgr.v1.GatewayGroup
 	13, // 16: rpmgr.v1.CreateGatewayGroupResponse.gateway_group:type_name -> rpmgr.v1.GatewayGroup
-	36, // 17: rpmgr.v1.CreateGatewayGroupResponse.revision:type_name -> rpmgr.v1.Revision
+	43, // 17: rpmgr.v1.CreateGatewayGroupResponse.revision:type_name -> rpmgr.v1.Revision
 	13, // 18: rpmgr.v1.GetGatewayGroupResponse.gateway_group:type_name -> rpmgr.v1.GatewayGroup
 	13, // 19: rpmgr.v1.ListGatewayGroupsResponse.gateway_groups:type_name -> rpmgr.v1.GatewayGroup
 	13, // 20: rpmgr.v1.UpdateGatewayGroupRequest.gateway_group:type_name -> rpmgr.v1.GatewayGroup
-	37, // 21: rpmgr.v1.UpdateGatewayGroupRequest.update_mask:type_name -> google.protobuf.FieldMask
+	44, // 21: rpmgr.v1.UpdateGatewayGroupRequest.update_mask:type_name -> google.protobuf.FieldMask
 	13, // 22: rpmgr.v1.UpdateGatewayGroupResponse.gateway_group:type_name -> rpmgr.v1.GatewayGroup
-	36, // 23: rpmgr.v1.UpdateGatewayGroupResponse.revision:type_name -> rpmgr.v1.Revision
-	36, // 24: rpmgr.v1.DeleteGatewayGroupResponse.revision:type_name -> rpmgr.v1.Revision
+	43, // 23: rpmgr.v1.UpdateGatewayGroupResponse.revision:type_name -> rpmgr.v1.Revision
+	43, // 24: rpmgr.v1.DeleteGatewayGroupResponse.revision:type_name -> rpmgr.v1.Revision
 	0,  // 25: rpmgr.v1.PortPool.protocol:type_name -> rpmgr.v1.PortProtocol
 	24, // 26: rpmgr.v1.CreatePortPoolRequest.port_pool:type_name -> rpmgr.v1.PortPool
 	24, // 27: rpmgr.v1.CreatePortPoolResponse.port_pool:type_name -> rpmgr.v1.PortPool
-	36, // 28: rpmgr.v1.CreatePortPoolResponse.revision:type_name -> rpmgr.v1.Revision
+	43, // 28: rpmgr.v1.CreatePortPoolResponse.revision:type_name -> rpmgr.v1.Revision
 	24, // 29: rpmgr.v1.GetPortPoolResponse.port_pool:type_name -> rpmgr.v1.PortPool
 	24, // 30: rpmgr.v1.ListPortPoolsResponse.port_pools:type_name -> rpmgr.v1.PortPool
 	24, // 31: rpmgr.v1.UpdatePortPoolRequest.port_pool:type_name -> rpmgr.v1.PortPool
-	37, // 32: rpmgr.v1.UpdatePortPoolRequest.update_mask:type_name -> google.protobuf.FieldMask
+	44, // 32: rpmgr.v1.UpdatePortPoolRequest.update_mask:type_name -> google.protobuf.FieldMask
 	24, // 33: rpmgr.v1.UpdatePortPoolResponse.port_pool:type_name -> rpmgr.v1.PortPool
-	36, // 34: rpmgr.v1.UpdatePortPoolResponse.revision:type_name -> rpmgr.v1.Revision
-	36, // 35: rpmgr.v1.DeletePortPoolResponse.revision:type_name -> rpmgr.v1.Revision
-	14, // 36: rpmgr.v1.GatewayService.CreateGatewayGroup:input_type -> rpmgr.v1.CreateGatewayGroupRequest
-	16, // 37: rpmgr.v1.GatewayService.GetGatewayGroup:input_type -> rpmgr.v1.GetGatewayGroupRequest
-	18, // 38: rpmgr.v1.GatewayService.ListGatewayGroups:input_type -> rpmgr.v1.ListGatewayGroupsRequest
-	20, // 39: rpmgr.v1.GatewayService.UpdateGatewayGroup:input_type -> rpmgr.v1.UpdateGatewayGroupRequest
-	22, // 40: rpmgr.v1.GatewayService.DeleteGatewayGroup:input_type -> rpmgr.v1.DeleteGatewayGroupRequest
-	3,  // 41: rpmgr.v1.GatewayService.CreateGateway:input_type -> rpmgr.v1.CreateGatewayRequest
-	5,  // 42: rpmgr.v1.GatewayService.GetGateway:input_type -> rpmgr.v1.GetGatewayRequest
-	7,  // 43: rpmgr.v1.GatewayService.ListGateways:input_type -> rpmgr.v1.ListGatewaysRequest
-	9,  // 44: rpmgr.v1.GatewayService.UpdateGateway:input_type -> rpmgr.v1.UpdateGatewayRequest
-	11, // 45: rpmgr.v1.GatewayService.DecommissionGateway:input_type -> rpmgr.v1.DecommissionGatewayRequest
-	25, // 46: rpmgr.v1.GatewayService.CreatePortPool:input_type -> rpmgr.v1.CreatePortPoolRequest
-	27, // 47: rpmgr.v1.GatewayService.GetPortPool:input_type -> rpmgr.v1.GetPortPoolRequest
-	29, // 48: rpmgr.v1.GatewayService.ListPortPools:input_type -> rpmgr.v1.ListPortPoolsRequest
-	31, // 49: rpmgr.v1.GatewayService.UpdatePortPool:input_type -> rpmgr.v1.UpdatePortPoolRequest
-	33, // 50: rpmgr.v1.GatewayService.DeletePortPool:input_type -> rpmgr.v1.DeletePortPoolRequest
-	15, // 51: rpmgr.v1.GatewayService.CreateGatewayGroup:output_type -> rpmgr.v1.CreateGatewayGroupResponse
-	17, // 52: rpmgr.v1.GatewayService.GetGatewayGroup:output_type -> rpmgr.v1.GetGatewayGroupResponse
-	19, // 53: rpmgr.v1.GatewayService.ListGatewayGroups:output_type -> rpmgr.v1.ListGatewayGroupsResponse
-	21, // 54: rpmgr.v1.GatewayService.UpdateGatewayGroup:output_type -> rpmgr.v1.UpdateGatewayGroupResponse
-	23, // 55: rpmgr.v1.GatewayService.DeleteGatewayGroup:output_type -> rpmgr.v1.DeleteGatewayGroupResponse
-	4,  // 56: rpmgr.v1.GatewayService.CreateGateway:output_type -> rpmgr.v1.CreateGatewayResponse
-	6,  // 57: rpmgr.v1.GatewayService.GetGateway:output_type -> rpmgr.v1.GetGatewayResponse
-	8,  // 58: rpmgr.v1.GatewayService.ListGateways:output_type -> rpmgr.v1.ListGatewaysResponse
-	10, // 59: rpmgr.v1.GatewayService.UpdateGateway:output_type -> rpmgr.v1.UpdateGatewayResponse
-	12, // 60: rpmgr.v1.GatewayService.DecommissionGateway:output_type -> rpmgr.v1.DecommissionGatewayResponse
-	26, // 61: rpmgr.v1.GatewayService.CreatePortPool:output_type -> rpmgr.v1.CreatePortPoolResponse
-	28, // 62: rpmgr.v1.GatewayService.GetPortPool:output_type -> rpmgr.v1.GetPortPoolResponse
-	30, // 63: rpmgr.v1.GatewayService.ListPortPools:output_type -> rpmgr.v1.ListPortPoolsResponse
-	32, // 64: rpmgr.v1.GatewayService.UpdatePortPool:output_type -> rpmgr.v1.UpdatePortPoolResponse
-	34, // 65: rpmgr.v1.GatewayService.DeletePortPool:output_type -> rpmgr.v1.DeletePortPoolResponse
-	51, // [51:66] is the sub-list for method output_type
-	36, // [36:51] is the sub-list for method input_type
-	36, // [36:36] is the sub-list for extension type_name
-	36, // [36:36] is the sub-list for extension extendee
-	0,  // [0:36] is the sub-list for field type_name
+	43, // 34: rpmgr.v1.UpdatePortPoolResponse.revision:type_name -> rpmgr.v1.Revision
+	43, // 35: rpmgr.v1.DeletePortPoolResponse.revision:type_name -> rpmgr.v1.Revision
+	0,  // 36: rpmgr.v1.PortQuota.protocol:type_name -> rpmgr.v1.PortProtocol
+	0,  // 37: rpmgr.v1.SetPortQuotaRequest.protocol:type_name -> rpmgr.v1.PortProtocol
+	35, // 38: rpmgr.v1.SetPortQuotaResponse.port_quota:type_name -> rpmgr.v1.PortQuota
+	43, // 39: rpmgr.v1.SetPortQuotaResponse.revision:type_name -> rpmgr.v1.Revision
+	35, // 40: rpmgr.v1.ListPortQuotasResponse.port_quotas:type_name -> rpmgr.v1.PortQuota
+	43, // 41: rpmgr.v1.DeletePortQuotaResponse.revision:type_name -> rpmgr.v1.Revision
+	14, // 42: rpmgr.v1.GatewayService.CreateGatewayGroup:input_type -> rpmgr.v1.CreateGatewayGroupRequest
+	16, // 43: rpmgr.v1.GatewayService.GetGatewayGroup:input_type -> rpmgr.v1.GetGatewayGroupRequest
+	18, // 44: rpmgr.v1.GatewayService.ListGatewayGroups:input_type -> rpmgr.v1.ListGatewayGroupsRequest
+	20, // 45: rpmgr.v1.GatewayService.UpdateGatewayGroup:input_type -> rpmgr.v1.UpdateGatewayGroupRequest
+	22, // 46: rpmgr.v1.GatewayService.DeleteGatewayGroup:input_type -> rpmgr.v1.DeleteGatewayGroupRequest
+	3,  // 47: rpmgr.v1.GatewayService.CreateGateway:input_type -> rpmgr.v1.CreateGatewayRequest
+	5,  // 48: rpmgr.v1.GatewayService.GetGateway:input_type -> rpmgr.v1.GetGatewayRequest
+	7,  // 49: rpmgr.v1.GatewayService.ListGateways:input_type -> rpmgr.v1.ListGatewaysRequest
+	9,  // 50: rpmgr.v1.GatewayService.UpdateGateway:input_type -> rpmgr.v1.UpdateGatewayRequest
+	11, // 51: rpmgr.v1.GatewayService.DecommissionGateway:input_type -> rpmgr.v1.DecommissionGatewayRequest
+	25, // 52: rpmgr.v1.GatewayService.CreatePortPool:input_type -> rpmgr.v1.CreatePortPoolRequest
+	27, // 53: rpmgr.v1.GatewayService.GetPortPool:input_type -> rpmgr.v1.GetPortPoolRequest
+	29, // 54: rpmgr.v1.GatewayService.ListPortPools:input_type -> rpmgr.v1.ListPortPoolsRequest
+	31, // 55: rpmgr.v1.GatewayService.UpdatePortPool:input_type -> rpmgr.v1.UpdatePortPoolRequest
+	33, // 56: rpmgr.v1.GatewayService.DeletePortPool:input_type -> rpmgr.v1.DeletePortPoolRequest
+	36, // 57: rpmgr.v1.GatewayService.SetPortQuota:input_type -> rpmgr.v1.SetPortQuotaRequest
+	38, // 58: rpmgr.v1.GatewayService.ListPortQuotas:input_type -> rpmgr.v1.ListPortQuotasRequest
+	40, // 59: rpmgr.v1.GatewayService.DeletePortQuota:input_type -> rpmgr.v1.DeletePortQuotaRequest
+	15, // 60: rpmgr.v1.GatewayService.CreateGatewayGroup:output_type -> rpmgr.v1.CreateGatewayGroupResponse
+	17, // 61: rpmgr.v1.GatewayService.GetGatewayGroup:output_type -> rpmgr.v1.GetGatewayGroupResponse
+	19, // 62: rpmgr.v1.GatewayService.ListGatewayGroups:output_type -> rpmgr.v1.ListGatewayGroupsResponse
+	21, // 63: rpmgr.v1.GatewayService.UpdateGatewayGroup:output_type -> rpmgr.v1.UpdateGatewayGroupResponse
+	23, // 64: rpmgr.v1.GatewayService.DeleteGatewayGroup:output_type -> rpmgr.v1.DeleteGatewayGroupResponse
+	4,  // 65: rpmgr.v1.GatewayService.CreateGateway:output_type -> rpmgr.v1.CreateGatewayResponse
+	6,  // 66: rpmgr.v1.GatewayService.GetGateway:output_type -> rpmgr.v1.GetGatewayResponse
+	8,  // 67: rpmgr.v1.GatewayService.ListGateways:output_type -> rpmgr.v1.ListGatewaysResponse
+	10, // 68: rpmgr.v1.GatewayService.UpdateGateway:output_type -> rpmgr.v1.UpdateGatewayResponse
+	12, // 69: rpmgr.v1.GatewayService.DecommissionGateway:output_type -> rpmgr.v1.DecommissionGatewayResponse
+	26, // 70: rpmgr.v1.GatewayService.CreatePortPool:output_type -> rpmgr.v1.CreatePortPoolResponse
+	28, // 71: rpmgr.v1.GatewayService.GetPortPool:output_type -> rpmgr.v1.GetPortPoolResponse
+	30, // 72: rpmgr.v1.GatewayService.ListPortPools:output_type -> rpmgr.v1.ListPortPoolsResponse
+	32, // 73: rpmgr.v1.GatewayService.UpdatePortPool:output_type -> rpmgr.v1.UpdatePortPoolResponse
+	34, // 74: rpmgr.v1.GatewayService.DeletePortPool:output_type -> rpmgr.v1.DeletePortPoolResponse
+	37, // 75: rpmgr.v1.GatewayService.SetPortQuota:output_type -> rpmgr.v1.SetPortQuotaResponse
+	39, // 76: rpmgr.v1.GatewayService.ListPortQuotas:output_type -> rpmgr.v1.ListPortQuotasResponse
+	41, // 77: rpmgr.v1.GatewayService.DeletePortQuota:output_type -> rpmgr.v1.DeletePortQuotaResponse
+	60, // [60:78] is the sub-list for method output_type
+	42, // [42:60] is the sub-list for method input_type
+	42, // [42:42] is the sub-list for extension type_name
+	42, // [42:42] is the sub-list for extension extendee
+	0,  // [0:42] is the sub-list for field type_name
 }
 
 func init() { file_rpmgr_v1_gateway_proto_init() }
@@ -2494,7 +2980,7 @@ func file_rpmgr_v1_gateway_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_rpmgr_v1_gateway_proto_rawDesc), len(file_rpmgr_v1_gateway_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   34,
+			NumMessages:   41,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

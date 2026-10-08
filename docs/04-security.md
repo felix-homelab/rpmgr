@@ -408,7 +408,7 @@ Shown in [03-connections.md](03-connections.md#enrollment). Security-relevant ru
 | View resources, status, metrics (`org.read`) | ✓ | ✓ | ✓ | ✓ |
 | Routes, targets, health checks, access policies, private services and grants (`routes.write`) | ✓ | ✓ | ✓ | |
 | Enroll and revoke connectors (`connectors.write`) | ✓ | ✓ | org setting | |
-| Gateways, gateway groups, port pools, domains, certificates (`infrastructure.write`) | ✓ | ✓ | | |
+| Gateways, gateway groups, port pools and quotas, domains, certificates (`infrastructure.write`) | ✓ | ✓ | | |
 | DNS providers, managed zones and their gates, DNS names; adopt, release, approve plans; view foreign records (Phase 2) | ✓ | ✓ | | |
 | Members (Admins cannot change Owners) (`members.write`) | ✓ | ✓ | | |
 | Service accounts and their tokens (Phase 2) | ✓ | ✓ | | |
