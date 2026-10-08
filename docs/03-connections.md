@@ -536,6 +536,11 @@ sequenceDiagram
   it has been idle for the route's flow idle timeout, in either direction. A port keeps at most
   **4096** flows; a datagram from a further client address is dropped, as client addresses cost a
   forger nothing.
+- The connector relays each flow through a UDP socket of its own, connected to a target of the
+  route that the local policy allows, and queues up to **64** payloads towards it, as the gateway
+  does. It ends the flow when the flow's stream ends, so the gateway's idle timeout decides for
+  both. An ICMP port unreachable from the target does not end a flow. A udp route's targets are
+  addresses and get no PROXY protocol header.
 - Over the TCP fallback (no datagrams), UDP payloads are always length-prefixed frames on the flow
   stream. This works, but loss on the TCP connection delays every UDP flow on it; the UI flags
   UDP routes served over the fallback.

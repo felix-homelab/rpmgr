@@ -796,6 +796,9 @@ type countedStream struct {
 
 func (c *countedStream) done() { c.once.Do(func() { c.s.streams.Add(-1) }) }
 
+// Unwrap returns the transport's stream, for its QUIC stream ID.
+func (c *countedStream) Unwrap() tunnel.Stream { return c.Stream }
+
 func (c *countedStream) Abort() {
 	c.done()
 	c.Stream.Abort()
