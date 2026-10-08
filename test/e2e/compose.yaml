@@ -1,0 +1,74 @@
+# SPDX-License-Identifier: Apache-2.0
+#
+# The end-to-end topology (docs/12-testing-and-quality.md, "Where the cells run"): a controller,
+# two gateways of one group, two connectors that reach the echo service on a private network,
+# and a client, on a public network with IPv4 and IPv6. The test starts and stops the rpmgr
+# processes inside the containers, as the user running the test; each container's /var/lib/rpmgr
+# is its directory under $E2E_RUN. Ports are unprivileged: the controller and the gateways use 8443.
+name: rpmgr-e2e
+
+x-node: &node
+  image: rpmgr-e2e:local
+  build: .
+  init: true
+  user: "${E2E_UID:?}:${E2E_GID:?}"
+  cap_add: [NET_ADMIN]
+  environment:
+    SSL_CERT_FILE: /var/lib/rpmgr/web-ca.pem
+
+networks:
+  public:
+    enable_ipv6: true
+    ipam:
+      config:
+        - subnet: 172.30.0.0/24
+        - subnet: fd00:30::/64
+  private:
+    ipam:
+      config:
+        - subnet: 172.31.0.0/24
+
+services:
+  ctl:
+    <<: *node
+    hostname: ctl
+    volumes: ["${E2E_RUN:?}/ctl:/var/lib/rpmgr"]
+    networks:
+      public: {ipv4_address: 172.30.0.10, ipv6_address: "fd00:30::10"}
+  gw1:
+    <<: *node
+    hostname: gw1
+    volumes: ["${E2E_RUN:?}/gw1:/var/lib/rpmgr"]
+    networks:
+      public: {ipv4_address: 172.30.0.11, ipv6_address: "fd00:30::11"}
+  gw2:
+    <<: *node
+    hostname: gw2
+    volumes: ["${E2E_RUN:?}/gw2:/var/lib/rpmgr"]
+    networks:
+      public: {ipv4_address: 172.30.0.12, ipv6_address: "fd00:30::12"}
+  con1:
+    <<: *node
+    hostname: con1
+    volumes: ["${E2E_RUN:?}/con1:/var/lib/rpmgr"]
+    networks:
+      public: {ipv4_address: 172.30.0.21, ipv6_address: "fd00:30::21"}
+      private: {ipv4_address: 172.31.0.21}
+  con2:
+    <<: *node
+    hostname: con2
+    volumes: ["${E2E_RUN:?}/con2:/var/lib/rpmgr"]
+    networks:
+      public: {ipv4_address: 172.30.0.22, ipv6_address: "fd00:30::22"}
+      private: {ipv4_address: 172.31.0.22}
+  svc:
+    <<: *node
+    hostname: svc
+    command: ["e2eclient", "serve", "-listen", ":7007"]
+    networks:
+      private: {ipv4_address: 172.31.0.7}
+  client:
+    <<: *node
+    hostname: client
+    networks:
+      public: {ipv4_address: 172.30.0.30, ipv6_address: "fd00:30::30"}

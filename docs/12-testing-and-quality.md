@@ -257,6 +257,10 @@ the reference testbed ([Benchmarks](#benchmarks)).
   end-to-end tests start in Phase 2, when those platforms ship
   ([05](05-features.md#platform-support)).
 - **Migrations** on both dialects, as described in [Database tests](#database-tests).
+- **End to end**: job `e2e` runs the per-PR subset of the container tests in `test/e2e`
+  (`check-e2e.sh`): tcp routes on each transport policy through two gateways over IPv4 and IPv6,
+  changes and removal with open connections, a gateway's drain and SIGKILL, the controller down,
+  and the deny-list across a gateway restart.
 - **Reproducibility**: the release build runs twice in separate environments and the artifacts'
   SHA-256 must match.
 - **Supply chain**: SBOM generation, SLSA provenance, signing of the release manifest and cosign

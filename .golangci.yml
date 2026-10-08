@@ -66,3 +66,4 @@ run:
   # without those files.
   build-tags:
     - rpmgrtest
+    - e2e # the container end-to-end harness in test/e2e
