@@ -33,6 +33,9 @@ type ConfigSeq func(*sql.Selector)
 // Connector is the predicate function for connector builders.
 type Connector func(*sql.Selector)
 
+// Domain is the predicate function for domain builders.
+type Domain func(*sql.Selector)
+
 // EnrollmentToken is the predicate function for enrollmenttoken builders.
 type EnrollmentToken func(*sql.Selector)
 

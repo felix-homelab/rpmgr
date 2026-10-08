@@ -229,6 +229,38 @@ var (
 			},
 		},
 	}
+	// DomainsColumns holds the columns for the "domains" table.
+	DomainsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeString},
+		{Name: "org_id", Type: field.TypeString},
+		{Name: "fqdn", Type: field.TypeString, Size: 253},
+		{Name: "wildcard", Type: field.TypeBool, Default: false},
+		{Name: "status", Type: field.TypeEnum, Enums: []string{"pending", "pending_approval", "verified", "failed"}, Default: "pending"},
+		{Name: "method", Type: field.TypeEnum, Enums: []string{"dns_txt", "http", "trusted", "delegated"}, Default: "dns_txt"},
+		{Name: "challenge_value", Type: field.TypeString},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "verified_at", Type: field.TypeTime, Nullable: true},
+		{Name: "last_checked_at", Type: field.TypeTime, Nullable: true},
+		{Name: "version", Type: field.TypeInt64, Default: 1},
+	}
+	// DomainsTable holds the schema information for the "domains" table.
+	DomainsTable = &schema.Table{
+		Name:       "domains",
+		Columns:    DomainsColumns,
+		PrimaryKey: []*schema.Column{DomainsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "domain_org_id_id",
+				Unique:  true,
+				Columns: []*schema.Column{DomainsColumns[1], DomainsColumns[0]},
+			},
+			{
+				Name:    "domain_fqdn",
+				Unique:  true,
+				Columns: []*schema.Column{DomainsColumns[2]},
+			},
+		},
+	}
 	// EnrollmentTokensColumns holds the columns for the "enrollment_tokens" table.
 	EnrollmentTokensColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeString},
@@ -762,6 +794,7 @@ var (
 		ConfigRevisionsTable,
 		ConfigSeqTable,
 		ConnectorsTable,
+		DomainsTable,
 		EnrollmentTokensTable,
 		GatewaysTable,
 		GatewayGroupsTable,
@@ -803,6 +836,9 @@ func init() {
 	}
 	ConfigSeqTable.Annotation = &entsql.Annotation{
 		Table: "config_seq",
+	}
+	DomainsTable.Annotation = &entsql.Annotation{
+		Table: "domains",
 	}
 	EnrollmentTokensTable.ForeignKeys[0].RefTable = GatewayGroupsTable
 	EnrollmentTokensTable.ForeignKeys[1].RefTable = GatewaysTable

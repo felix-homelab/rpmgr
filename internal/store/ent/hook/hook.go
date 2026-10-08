@@ -117,6 +117,18 @@ func (f ConnectorFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, e
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.ConnectorMutation", m)
 }
 
+// The DomainFunc type is an adapter to allow the use of ordinary
+// function as Domain mutator.
+type DomainFunc func(context.Context, *ent.DomainMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f DomainFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.DomainMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.DomainMutation", m)
+}
+
 // The EnrollmentTokenFunc type is an adapter to allow the use of ordinary
 // function as EnrollmentToken mutator.
 type EnrollmentTokenFunc func(context.Context, *ent.EnrollmentTokenMutation) (ent.Value, error)

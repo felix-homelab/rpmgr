@@ -15,6 +15,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/configrevision"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/configseq"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/connector"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/domain"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/enrollmenttoken"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/gateway"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/gatewaygroup"
@@ -486,6 +487,85 @@ func init() {
 	// connector.IDValidator is a validator for the "id" field. It is called by the builders before save.
 	connector.IDValidator = func() func(string) error {
 		validators := connectorDescID.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(id string) error {
+			for _, fn := range fns {
+				if err := fn(id); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	domainMixin := schema.Domain{}.Mixin()
+	domain.Policy = privacy.NewPolicies(domainMixin[0], schema.Domain{})
+	domain.Hooks[0] = func(next ent.Mutator) ent.Mutator {
+		return ent.MutateFunc(func(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+			if err := domain.Policy.EvalMutation(ctx, m); err != nil {
+				return nil, err
+			}
+			return next.Mutate(ctx, m)
+		})
+	}
+	domainMixinHooks0 := domainMixin[0].Hooks()
+
+	domain.Hooks[1] = domainMixinHooks0[0]
+	domainMixinInters0 := domainMixin[0].Interceptors()
+	domain.Interceptors[0] = domainMixinInters0[0]
+	domainMixinFields0 := domainMixin[0].Fields()
+	_ = domainMixinFields0
+	domainFields := schema.Domain{}.Fields()
+	_ = domainFields
+	// domainDescOrgID is the schema descriptor for org_id field.
+	domainDescOrgID := domainMixinFields0[0].Descriptor()
+	// domain.OrgIDValidator is a validator for the "org_id" field. It is called by the builders before save.
+	domain.OrgIDValidator = domainDescOrgID.Validators[0].(func(string) error)
+	// domainDescFqdn is the schema descriptor for fqdn field.
+	domainDescFqdn := domainFields[1].Descriptor()
+	// domain.FqdnValidator is a validator for the "fqdn" field. It is called by the builders before save.
+	domain.FqdnValidator = func() func(string) error {
+		validators := domainDescFqdn.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(fqdn string) error {
+			for _, fn := range fns {
+				if err := fn(fqdn); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// domainDescWildcard is the schema descriptor for wildcard field.
+	domainDescWildcard := domainFields[2].Descriptor()
+	// domain.DefaultWildcard holds the default value on creation for the wildcard field.
+	domain.DefaultWildcard = domainDescWildcard.Default.(bool)
+	// domainDescChallengeValue is the schema descriptor for challenge_value field.
+	domainDescChallengeValue := domainFields[5].Descriptor()
+	// domain.ChallengeValueValidator is a validator for the "challenge_value" field. It is called by the builders before save.
+	domain.ChallengeValueValidator = domainDescChallengeValue.Validators[0].(func(string) error)
+	// domainDescCreatedAt is the schema descriptor for created_at field.
+	domainDescCreatedAt := domainFields[6].Descriptor()
+	// domain.DefaultCreatedAt holds the default value on creation for the created_at field.
+	domain.DefaultCreatedAt = domainDescCreatedAt.Default.(func() time.Time)
+	// domainDescVersion is the schema descriptor for version field.
+	domainDescVersion := domainFields[9].Descriptor()
+	// domain.DefaultVersion holds the default value on creation for the version field.
+	domain.DefaultVersion = domainDescVersion.Default.(int64)
+	// domain.VersionValidator is a validator for the "version" field. It is called by the builders before save.
+	domain.VersionValidator = domainDescVersion.Validators[0].(func(int64) error)
+	// domainDescID is the schema descriptor for id field.
+	domainDescID := domainFields[0].Descriptor()
+	// domain.DefaultID holds the default value on creation for the id field.
+	domain.DefaultID = domainDescID.Default.(func() string)
+	// domain.IDValidator is a validator for the "id" field. It is called by the builders before save.
+	domain.IDValidator = func() func(string) error {
+		validators := domainDescID.Validators
 		fns := [...]func(string) error{
 			validators[0].(func(string) error),
 			validators[1].(func(string) error),

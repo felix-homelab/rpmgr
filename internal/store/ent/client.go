@@ -24,6 +24,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/configrevision"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/configseq"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/connector"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/domain"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/enrollmenttoken"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/gateway"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/gatewaygroup"
@@ -68,6 +69,8 @@ type Client struct {
 	ConfigSeq *ConfigSeqClient
 	// Connector is the client for interacting with the Connector builders.
 	Connector *ConnectorClient
+	// Domain is the client for interacting with the Domain builders.
+	Domain *DomainClient
 	// EnrollmentToken is the client for interacting with the EnrollmentToken builders.
 	EnrollmentToken *EnrollmentTokenClient
 	// Gateway is the client for interacting with the Gateway builders.
@@ -122,6 +125,7 @@ func (c *Client) init() {
 	c.ConfigRevision = NewConfigRevisionClient(c.config)
 	c.ConfigSeq = NewConfigSeqClient(c.config)
 	c.Connector = NewConnectorClient(c.config)
+	c.Domain = NewDomainClient(c.config)
 	c.EnrollmentToken = NewEnrollmentTokenClient(c.config)
 	c.Gateway = NewGatewayClient(c.config)
 	c.GatewayGroup = NewGatewayGroupClient(c.config)
@@ -240,6 +244,7 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		ConfigRevision:    NewConfigRevisionClient(cfg),
 		ConfigSeq:         NewConfigSeqClient(cfg),
 		Connector:         NewConnectorClient(cfg),
+		Domain:            NewDomainClient(cfg),
 		EnrollmentToken:   NewEnrollmentTokenClient(cfg),
 		Gateway:           NewGatewayClient(cfg),
 		GatewayGroup:      NewGatewayGroupClient(cfg),
@@ -285,6 +290,7 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		ConfigRevision:    NewConfigRevisionClient(cfg),
 		ConfigSeq:         NewConfigSeqClient(cfg),
 		Connector:         NewConnectorClient(cfg),
+		Domain:            NewDomainClient(cfg),
 		EnrollmentToken:   NewEnrollmentTokenClient(cfg),
 		Gateway:           NewGatewayClient(cfg),
 		GatewayGroup:      NewGatewayGroupClient(cfg),
@@ -332,7 +338,7 @@ func (c *Client) Close() error {
 func (c *Client) Use(hooks ...Hook) {
 	for _, n := range []interface{ Use(...Hook) }{
 		c.AgentSession, c.AgentState, c.AuditEntry, c.AuditHead, c.CAKey,
-		c.CompiledSnapshot, c.ConfigRevision, c.ConfigSeq, c.Connector,
+		c.CompiledSnapshot, c.ConfigRevision, c.ConfigSeq, c.Connector, c.Domain,
 		c.EnrollmentToken, c.Gateway, c.GatewayGroup, c.Instance, c.InstanceSetting,
 		c.IssuedCertificate, c.Lease, c.Org, c.OrgSetting, c.PortAllocation,
 		c.PortPool, c.PortQuota, c.RevokedIdentity, c.Route, c.RouteTCP, c.RouteTarget,
@@ -347,7 +353,7 @@ func (c *Client) Use(hooks ...Hook) {
 func (c *Client) Intercept(interceptors ...Interceptor) {
 	for _, n := range []interface{ Intercept(...Interceptor) }{
 		c.AgentSession, c.AgentState, c.AuditEntry, c.AuditHead, c.CAKey,
-		c.CompiledSnapshot, c.ConfigRevision, c.ConfigSeq, c.Connector,
+		c.CompiledSnapshot, c.ConfigRevision, c.ConfigSeq, c.Connector, c.Domain,
 		c.EnrollmentToken, c.Gateway, c.GatewayGroup, c.Instance, c.InstanceSetting,
 		c.IssuedCertificate, c.Lease, c.Org, c.OrgSetting, c.PortAllocation,
 		c.PortPool, c.PortQuota, c.RevokedIdentity, c.Route, c.RouteTCP, c.RouteTarget,
@@ -378,6 +384,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.ConfigSeq.mutate(ctx, m)
 	case *ConnectorMutation:
 		return c.Connector.mutate(ctx, m)
+	case *DomainMutation:
+		return c.Domain.mutate(ctx, m)
 	case *EnrollmentTokenMutation:
 		return c.EnrollmentToken.mutate(ctx, m)
 	case *GatewayMutation:
@@ -1627,6 +1635,141 @@ func (c *ConnectorClient) mutate(ctx context.Context, m *ConnectorMutation) (Val
 		return (&ConnectorDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
 	default:
 		return nil, fmt.Errorf("ent: unknown Connector mutation op: %q", m.Op())
+	}
+}
+
+// DomainClient is a client for the Domain schema.
+type DomainClient struct {
+	config
+}
+
+// NewDomainClient returns a client for the Domain from the given config.
+func NewDomainClient(c config) *DomainClient {
+	return &DomainClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `domain.Hooks(f(g(h())))`.
+func (c *DomainClient) Use(hooks ...Hook) {
+	c.hooks.Domain = append(c.hooks.Domain, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `domain.Intercept(f(g(h())))`.
+func (c *DomainClient) Intercept(interceptors ...Interceptor) {
+	c.inters.Domain = append(c.inters.Domain, interceptors...)
+}
+
+// Create returns a builder for creating a Domain entity.
+func (c *DomainClient) Create() *DomainCreate {
+	mutation := newDomainMutation(c.config, OpCreate)
+	return &DomainCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of Domain entities.
+func (c *DomainClient) CreateBulk(builders ...*DomainCreate) *DomainCreateBulk {
+	return &DomainCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *DomainClient) MapCreateBulk(slice any, setFunc func(*DomainCreate, int)) *DomainCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &DomainCreateBulk{err: fmt.Errorf("calling to DomainClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*DomainCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &DomainCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for Domain.
+func (c *DomainClient) Update() *DomainUpdate {
+	mutation := newDomainMutation(c.config, OpUpdate)
+	return &DomainUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *DomainClient) UpdateOne(_m *Domain) *DomainUpdateOne {
+	mutation := newDomainMutation(c.config, OpUpdateOne, withDomain(_m))
+	return &DomainUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *DomainClient) UpdateOneID(id string) *DomainUpdateOne {
+	mutation := newDomainMutation(c.config, OpUpdateOne, withDomainID(id))
+	return &DomainUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for Domain.
+func (c *DomainClient) Delete() *DomainDelete {
+	mutation := newDomainMutation(c.config, OpDelete)
+	return &DomainDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *DomainClient) DeleteOne(_m *Domain) *DomainDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *DomainClient) DeleteOneID(id string) *DomainDeleteOne {
+	builder := c.Delete().Where(domain.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &DomainDeleteOne{builder}
+}
+
+// Query returns a query builder for Domain.
+func (c *DomainClient) Query() *DomainQuery {
+	return &DomainQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeDomain},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a Domain entity by its id.
+func (c *DomainClient) Get(ctx context.Context, id string) (*Domain, error) {
+	return c.Query().Where(domain.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *DomainClient) GetX(ctx context.Context, id string) *Domain {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *DomainClient) Hooks() []Hook {
+	hooks := c.hooks.Domain
+	return append(hooks[:len(hooks):len(hooks)], domain.Hooks[:]...)
+}
+
+// Interceptors returns the client interceptors.
+func (c *DomainClient) Interceptors() []Interceptor {
+	inters := c.inters.Domain
+	return append(inters[:len(inters):len(inters)], domain.Interceptors[:]...)
+}
+
+func (c *DomainClient) mutate(ctx context.Context, m *DomainMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&DomainCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&DomainUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&DomainUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&DomainDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown Domain mutation op: %q", m.Op())
 	}
 }
 
@@ -4134,17 +4277,17 @@ func (c *SecretMetaClient) mutate(ctx context.Context, m *SecretMetaMutation) (V
 type (
 	hooks struct {
 		AgentSession, AgentState, AuditEntry, AuditHead, CAKey, CompiledSnapshot,
-		ConfigRevision, ConfigSeq, Connector, EnrollmentToken, Gateway, GatewayGroup,
-		Instance, InstanceSetting, IssuedCertificate, Lease, Org, OrgSetting,
-		PortAllocation, PortPool, PortQuota, RevokedIdentity, Route, RouteTCP,
-		RouteTarget, SecretMeta []ent.Hook
+		ConfigRevision, ConfigSeq, Connector, Domain, EnrollmentToken, Gateway,
+		GatewayGroup, Instance, InstanceSetting, IssuedCertificate, Lease, Org,
+		OrgSetting, PortAllocation, PortPool, PortQuota, RevokedIdentity, Route,
+		RouteTCP, RouteTarget, SecretMeta []ent.Hook
 	}
 	inters struct {
 		AgentSession, AgentState, AuditEntry, AuditHead, CAKey, CompiledSnapshot,
-		ConfigRevision, ConfigSeq, Connector, EnrollmentToken, Gateway, GatewayGroup,
-		Instance, InstanceSetting, IssuedCertificate, Lease, Org, OrgSetting,
-		PortAllocation, PortPool, PortQuota, RevokedIdentity, Route, RouteTCP,
-		RouteTarget, SecretMeta []ent.Interceptor
+		ConfigRevision, ConfigSeq, Connector, Domain, EnrollmentToken, Gateway,
+		GatewayGroup, Instance, InstanceSetting, IssuedCertificate, Lease, Org,
+		OrgSetting, PortAllocation, PortPool, PortQuota, RevokedIdentity, Route,
+		RouteTCP, RouteTarget, SecretMeta []ent.Interceptor
 	}
 )
 

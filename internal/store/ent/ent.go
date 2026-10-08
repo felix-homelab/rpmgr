@@ -21,6 +21,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/configrevision"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/configseq"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/connector"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/domain"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/enrollmenttoken"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/gateway"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/gatewaygroup"
@@ -107,6 +108,7 @@ func checkColumn(t, c string) error {
 			configrevision.Table:    configrevision.ValidColumn,
 			configseq.Table:         configseq.ValidColumn,
 			connector.Table:         connector.ValidColumn,
+			domain.Table:            domain.ValidColumn,
 			enrollmenttoken.Table:   enrollmenttoken.ValidColumn,
 			gateway.Table:           gateway.ValidColumn,
 			gatewaygroup.Table:      gatewaygroup.ValidColumn,
