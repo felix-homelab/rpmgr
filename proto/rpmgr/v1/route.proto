@@ -67,6 +67,15 @@ service RouteService {
       resource_field: "route_target_id"
     };
   }
+  // PreviewRoute checks a new route, or with an update mask a change of one, as the write would,
+  // and compiles it for the gateways, without saving anything.
+  rpc PreviewRoute(PreviewRouteRequest) returns (PreviewRouteResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+    option (rpmgr.v1.authz) = {
+      permission: "routes.write"
+      resource_field: "org_id"
+    };
+  }
   // DeleteRoute deletes a route with its hostnames, targets and port.
   rpc DeleteRoute(DeleteRouteRequest) returns (DeleteRouteResponse) {
     option (rpmgr.v1.authz) = {
@@ -454,4 +463,30 @@ message DeleteRouteTargetResponse {
   // The apply status of the revision; with the request header Rpmgr-Wait-Applied, once it is
   // final or the wait is over (docs/07-api.md, "Writes and apply status").
   ApplyStatus apply_status = 2;
+}
+
+// PreviewRouteRequest is a route to check: a new one, or with route.id and update_mask a change of
+// one.
+message PreviewRouteRequest {
+  // The org.
+  string org_id = 1 [(buf.validate.field).string.min_len = 1];
+  // The route, as CreateRoute or UpdateRoute takes it.
+  Route route = 2 [(buf.validate.field).required = true];
+  // The fields of an update; empty previews a new route.
+  google.protobuf.FieldMask update_mask = 3;
+  // The etag of an update; empty skips the check.
+  string etag = 4;
+}
+
+// PreviewRouteResponse is what the write would do. A write it would refuse is answered with the
+// error the write would give.
+message PreviewRouteResponse {
+  // The route as it would be stored, without an ID for a new one.
+  Route route = 1;
+  // The gateways that would serve it.
+  repeated string gateway_ids = 2;
+  // The connectors its streams would go to.
+  repeated string connector_ids = 3;
+  // What a gateway would refuse in its snapshot with the route; empty if nothing.
+  repeated ApplyError problems = 4;
 }

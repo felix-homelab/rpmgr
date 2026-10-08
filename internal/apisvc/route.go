@@ -63,45 +63,9 @@ func (r *Routes) CreateRoute(ctx context.Context, req *connect.Request[rpmgrv1.C
 		}
 		var out *rpmgrv1.Route
 		rev, err := store.ConfigTx(ctx, r.DB, func(tx *ent.Tx) ([]string, error) {
-			if _, err := tx.GatewayGroup.Get(ctx, in.GetGatewayGroupId()); err != nil {
-				return nil, err
-			}
-			c := tx.Route.Create().SetOrgID(m.GetOrgId()).SetName(in.GetName()).SetGatewayGroupID(in.GetGatewayGroupId()).
-				SetDescription(in.GetDescription()).SetLabels(in.GetLabels()).SetUpdatedBy(api.CallerFrom(ctx).UserID).SetCreatedAt(r.now()).
-				SetUpdatedAt(r.now())
-			if t, ok := storeRouteTransports[in.GetTransport()]; ok {
-				c.SetTransport(t)
-			}
-			var hostnames []string
-			prefix := ""
-			switch spec := in.GetSpec().(type) {
-			case *rpmgrv1.Route_Http:
-				c.SetType(route.TypeHTTP)
-				hostnames, prefix = spec.Http.GetHostnames(), spec.Http.GetPathPrefix()
-			case *rpmgrv1.Route_TlsPassthrough:
-				c.SetType(route.TypeTLSPassthrough)
-				hostnames = spec.TlsPassthrough.GetHostnames()
-			case *rpmgrv1.Route_Tcp:
-				c.SetType(route.TypeTCP)
-			case *rpmgrv1.Route_Udp:
-				c.SetType(route.TypeUDP)
-			}
-			row, err := c.Save(ctx)
+			row, err := r.createRouteTx(ctx, tx, m.GetOrgId(), in)
 			if err != nil {
 				return nil, err
-			}
-			if err := createPortRoute(ctx, tx, row, in); err != nil {
-				return nil, err
-			}
-			if h := in.GetHttp(); h != nil {
-				if err := createHTTP(ctx, tx, row, h); err != nil {
-					return nil, err
-				}
-			}
-			for _, name := range hostnames {
-				if _, err := routes.AddHostname(ctx, tx, row.ID, name, prefix); err != nil {
-					return nil, err
-				}
 			}
 			out, err = routeOf(ctx, tx.Client(), row)
 			return []string{row.ID}, err
@@ -249,58 +213,9 @@ func (r *Routes) UpdateRoute(ctx context.Context, req *connect.Request[rpmgrv1.U
 	m := req.Msg
 	var out *rpmgrv1.Route
 	rev, err := store.ConfigTx(ctx, r.DB, func(tx *ent.Tx) ([]string, error) {
-		cur, err := tx.Route.Get(ctx, m.GetRoute().GetId())
+		row, err := r.updateRouteTx(ctx, tx, m)
 		if err != nil {
 			return nil, err
-		}
-		was, err := routeOf(ctx, tx.Client(), cur)
-		if err != nil {
-			return nil, err
-		}
-		if err := api.CheckEtag(m.GetEtag(), cur.Version, was); err != nil {
-			return nil, err
-		}
-		next := proto.Clone(was).(*rpmgrv1.Route)
-		if err := api.ApplyMask(next, m.GetRoute(), m.GetUpdateMask(), routeFields(cur.Type)...); err != nil {
-			return nil, err
-		}
-		if err := checkSpec(next); err != nil {
-			return nil, err
-		}
-		u := tx.Route.UpdateOneID(cur.ID).Where(route.Version(cur.Version)).SetName(next.GetName()).SetEnabled(next.GetEnabled()).
-			SetLabels(next.GetLabels()).SetDescription(next.GetDescription()).SetUpdatedAt(r.now()).SetUpdatedBy(api.CallerFrom(ctx).UserID)
-		if t, ok := storeRouteTransports[next.GetTransport()]; ok {
-			u.SetTransport(t)
-		} else {
-			u.ClearTransport()
-		}
-		row, err := u.Save(ctx)
-		if err != nil {
-			return nil, err
-		}
-		if row.Type == route.TypeTCP || row.Type == route.TypeUDP {
-			if err := updatePortRoute(ctx, tx, row, was, next); err != nil {
-				return nil, err
-			}
-		} else if !proto.Equal(specOf(was), specOf(next)) {
-			if err := routes.RemoveHostnames(ctx, tx, row.ID); err != nil {
-				return nil, err
-			}
-			hostnames, prefix := next.GetTlsPassthrough().GetHostnames(), ""
-			if h := next.GetHttp(); h != nil {
-				if _, err := tx.RouteHTTP.Delete().Where(routehttp.RouteID(row.ID)).Exec(ctx); err != nil {
-					return nil, err
-				}
-				if err := createHTTP(ctx, tx, row, h); err != nil {
-					return nil, err
-				}
-				hostnames, prefix = h.GetHostnames(), h.GetPathPrefix()
-			}
-			for _, name := range hostnames {
-				if _, err := routes.AddHostname(ctx, tx, row.ID, name, prefix); err != nil {
-					return nil, err
-				}
-			}
 		}
 		out, err = routeOf(ctx, tx.Client(), row)
 		return []string{row.ID}, err
@@ -309,6 +224,109 @@ func (r *Routes) UpdateRoute(ctx context.Context, req *connect.Request[rpmgrv1.U
 		return nil, routeError(err)
 	}
 	return connect.NewResponse(&rpmgrv1.UpdateRouteResponse{Route: out, Revision: revisionOf(rev)}), nil
+}
+
+// createRouteTx creates a route in tx: the route, its settings, its port and its hostnames.
+func (r *Routes) createRouteTx(ctx context.Context, tx *ent.Tx, org string, in *rpmgrv1.Route) (*ent.Route, error) {
+	if _, err := tx.GatewayGroup.Get(ctx, in.GetGatewayGroupId()); err != nil {
+		return nil, err
+	}
+	c := tx.Route.Create().SetOrgID(org).SetName(in.GetName()).SetGatewayGroupID(in.GetGatewayGroupId()).
+		SetDescription(in.GetDescription()).SetLabels(in.GetLabels()).SetUpdatedBy(api.CallerFrom(ctx).UserID).SetCreatedAt(r.now()).
+		SetUpdatedAt(r.now())
+	if t, ok := storeRouteTransports[in.GetTransport()]; ok {
+		c.SetTransport(t)
+	}
+	var hostnames []string
+	prefix := ""
+	switch spec := in.GetSpec().(type) {
+	case *rpmgrv1.Route_Http:
+		c.SetType(route.TypeHTTP)
+		hostnames, prefix = spec.Http.GetHostnames(), spec.Http.GetPathPrefix()
+	case *rpmgrv1.Route_TlsPassthrough:
+		c.SetType(route.TypeTLSPassthrough)
+		hostnames = spec.TlsPassthrough.GetHostnames()
+	case *rpmgrv1.Route_Tcp:
+		c.SetType(route.TypeTCP)
+	case *rpmgrv1.Route_Udp:
+		c.SetType(route.TypeUDP)
+	}
+	row, err := c.Save(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if err := createPortRoute(ctx, tx, row, in); err != nil {
+		return nil, err
+	}
+	if h := in.GetHttp(); h != nil {
+		if err := createHTTP(ctx, tx, row, h); err != nil {
+			return nil, err
+		}
+	}
+	for _, name := range hostnames {
+		if _, err := routes.AddHostname(ctx, tx, row.ID, name, prefix); err != nil {
+			return nil, err
+		}
+	}
+	return row, nil
+}
+
+// updateRouteTx applies an update of a route in tx.
+func (r *Routes) updateRouteTx(ctx context.Context, tx *ent.Tx, m *rpmgrv1.UpdateRouteRequest) (*ent.Route, error) {
+	cur, err := tx.Route.Get(ctx, m.GetRoute().GetId())
+	if err != nil {
+		return nil, err
+	}
+	was, err := routeOf(ctx, tx.Client(), cur)
+	if err != nil {
+		return nil, err
+	}
+	if err := api.CheckEtag(m.GetEtag(), cur.Version, was); err != nil {
+		return nil, err
+	}
+	next := proto.Clone(was).(*rpmgrv1.Route)
+	if err := api.ApplyMask(next, m.GetRoute(), m.GetUpdateMask(), routeFields(cur.Type)...); err != nil {
+		return nil, err
+	}
+	if err := checkSpec(next); err != nil {
+		return nil, err
+	}
+	u := tx.Route.UpdateOneID(cur.ID).Where(route.Version(cur.Version)).SetName(next.GetName()).SetEnabled(next.GetEnabled()).
+		SetLabels(next.GetLabels()).SetDescription(next.GetDescription()).SetUpdatedAt(r.now()).SetUpdatedBy(api.CallerFrom(ctx).UserID)
+	if t, ok := storeRouteTransports[next.GetTransport()]; ok {
+		u.SetTransport(t)
+	} else {
+		u.ClearTransport()
+	}
+	row, err := u.Save(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if row.Type == route.TypeTCP || row.Type == route.TypeUDP {
+		if err := updatePortRoute(ctx, tx, row, was, next); err != nil {
+			return nil, err
+		}
+	} else if !proto.Equal(specOf(was), specOf(next)) {
+		if err := routes.RemoveHostnames(ctx, tx, row.ID); err != nil {
+			return nil, err
+		}
+		hostnames, prefix := next.GetTlsPassthrough().GetHostnames(), ""
+		if h := next.GetHttp(); h != nil {
+			if _, err := tx.RouteHTTP.Delete().Where(routehttp.RouteID(row.ID)).Exec(ctx); err != nil {
+				return nil, err
+			}
+			if err := createHTTP(ctx, tx, row, h); err != nil {
+				return nil, err
+			}
+			hostnames, prefix = h.GetHostnames(), h.GetPathPrefix()
+		}
+		for _, name := range hostnames {
+			if _, err := routes.AddHostname(ctx, tx, row.ID, name, prefix); err != nil {
+				return nil, err
+			}
+		}
+	}
+	return row, nil
 }
 
 // specOf is a route's spec as a message, for comparing two versions of it.
