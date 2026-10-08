@@ -77,7 +77,7 @@ names.
 | `DnsProviderService` | `ConnectDnsProvider`, `ListDnsProviders`, `UpdateDnsProvider` (rename, rotate token), `DeleteDnsProvider`, `ListProviderZones` | 2 |
 | `DnsZoneService` | `ImportZone`, `ListZones`, `UpdateZone` (gates), `RemoveZone` (keep or remove records), `PlanZoneSync`, `ApproveZonePlan` (plan hash), `SyncZone`, `ListZoneRecords` (owned and foreign, read live; Owner/Admin), `AdoptRecords`, `ReleaseRecord` (optionally restore the original) | 2 |
 | `DnsNameService` | `CreateDnsName`, `GetDnsName`, `ListDnsNames`, `UpdateDnsName`, `DeleteDnsName` | 2 |
-| `PolicyService` | access policies and rules, health checks | 2 (basic auth, IP rules: 1) |
+| `PolicyService` | `CreateAccessPolicy`, `GetAccessPolicy`, `ListAccessPolicies`: access policies with their rules in order (`ip_allow`, `ip_deny`, `basic_auth`; CIDRs kept in their masked form); a policy shows the routes that apply it. Basic-auth passwords are write-only: the controller hashes them ([04](04-security.md#secrets-at-rest-and-in-logs)) under the account password rules; health checks | 2 (basic auth, IP rules: 1) |
 | `PrivateServiceService` | private services and visitor grants | 2 |
 | `StatusService` | `GetApplyStatus`, `WatchApplyStatus` (stream), `WatchEvents` (stream) | 1 |
 | `LogService` | `StreamLogs` (server stream from an agent via an imperative operation) | 2 |
