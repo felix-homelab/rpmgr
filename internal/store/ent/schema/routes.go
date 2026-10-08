@@ -111,8 +111,8 @@ func (PortQuota) Indexes() []ent.Index {
 // holds the rest.
 type Route struct{ ent.Schema }
 
-// Mixin makes routes org-owned.
-func (Route) Mixin() []ent.Mixin { return []ent.Mixin{OrgMixin{}} }
+// Mixin makes routes org-owned and versioned.
+func (Route) Mixin() []ent.Mixin { return []ent.Mixin{OrgMixin{}, VersionMixin{}} }
 
 // Annotations name the table as docs/06-data-model.md does.
 func (Route) Annotations() []schema.Annotation {
@@ -131,7 +131,6 @@ func (Route) Fields() []ent.Field {
 		field.Enum("transport").Values("auto", "quic", "h2").Optional().Nillable(),
 		field.String("description").Default(""),
 		field.JSON("labels", map[string]string{}).Optional(),
-		field.Int64("version").Positive().Default(1),
 		field.Time("created_at").Immutable().Default(time.Now),
 		field.Time("updated_at").Default(time.Now),
 		field.String("updated_by").Default(""),

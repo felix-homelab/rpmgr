@@ -70,6 +70,11 @@ func OrgID(v string) predicate.Route {
 	return predicate.Route(sql.FieldEQ(FieldOrgID, v))
 }
 
+// Version applies equality check predicate on the "version" field. It's identical to VersionEQ.
+func Version(v int64) predicate.Route {
+	return predicate.Route(sql.FieldEQ(FieldVersion, v))
+}
+
 // Name applies equality check predicate on the "name" field. It's identical to NameEQ.
 func Name(v string) predicate.Route {
 	return predicate.Route(sql.FieldEQ(FieldName, v))
@@ -88,11 +93,6 @@ func Enabled(v bool) predicate.Route {
 // Description applies equality check predicate on the "description" field. It's identical to DescriptionEQ.
 func Description(v string) predicate.Route {
 	return predicate.Route(sql.FieldEQ(FieldDescription, v))
-}
-
-// Version applies equality check predicate on the "version" field. It's identical to VersionEQ.
-func Version(v int64) predicate.Route {
-	return predicate.Route(sql.FieldEQ(FieldVersion, v))
 }
 
 // CreatedAt applies equality check predicate on the "created_at" field. It's identical to CreatedAtEQ.
@@ -173,6 +173,46 @@ func OrgIDEqualFold(v string) predicate.Route {
 // OrgIDContainsFold applies the ContainsFold predicate on the "org_id" field.
 func OrgIDContainsFold(v string) predicate.Route {
 	return predicate.Route(sql.FieldContainsFold(FieldOrgID, v))
+}
+
+// VersionEQ applies the EQ predicate on the "version" field.
+func VersionEQ(v int64) predicate.Route {
+	return predicate.Route(sql.FieldEQ(FieldVersion, v))
+}
+
+// VersionNEQ applies the NEQ predicate on the "version" field.
+func VersionNEQ(v int64) predicate.Route {
+	return predicate.Route(sql.FieldNEQ(FieldVersion, v))
+}
+
+// VersionIn applies the In predicate on the "version" field.
+func VersionIn(vs ...int64) predicate.Route {
+	return predicate.Route(sql.FieldIn(FieldVersion, vs...))
+}
+
+// VersionNotIn applies the NotIn predicate on the "version" field.
+func VersionNotIn(vs ...int64) predicate.Route {
+	return predicate.Route(sql.FieldNotIn(FieldVersion, vs...))
+}
+
+// VersionGT applies the GT predicate on the "version" field.
+func VersionGT(v int64) predicate.Route {
+	return predicate.Route(sql.FieldGT(FieldVersion, v))
+}
+
+// VersionGTE applies the GTE predicate on the "version" field.
+func VersionGTE(v int64) predicate.Route {
+	return predicate.Route(sql.FieldGTE(FieldVersion, v))
+}
+
+// VersionLT applies the LT predicate on the "version" field.
+func VersionLT(v int64) predicate.Route {
+	return predicate.Route(sql.FieldLT(FieldVersion, v))
+}
+
+// VersionLTE applies the LTE predicate on the "version" field.
+func VersionLTE(v int64) predicate.Route {
+	return predicate.Route(sql.FieldLTE(FieldVersion, v))
 }
 
 // NameEQ applies the EQ predicate on the "name" field.
@@ -438,46 +478,6 @@ func LabelsIsNil() predicate.Route {
 // LabelsNotNil applies the NotNil predicate on the "labels" field.
 func LabelsNotNil() predicate.Route {
 	return predicate.Route(sql.FieldNotNull(FieldLabels))
-}
-
-// VersionEQ applies the EQ predicate on the "version" field.
-func VersionEQ(v int64) predicate.Route {
-	return predicate.Route(sql.FieldEQ(FieldVersion, v))
-}
-
-// VersionNEQ applies the NEQ predicate on the "version" field.
-func VersionNEQ(v int64) predicate.Route {
-	return predicate.Route(sql.FieldNEQ(FieldVersion, v))
-}
-
-// VersionIn applies the In predicate on the "version" field.
-func VersionIn(vs ...int64) predicate.Route {
-	return predicate.Route(sql.FieldIn(FieldVersion, vs...))
-}
-
-// VersionNotIn applies the NotIn predicate on the "version" field.
-func VersionNotIn(vs ...int64) predicate.Route {
-	return predicate.Route(sql.FieldNotIn(FieldVersion, vs...))
-}
-
-// VersionGT applies the GT predicate on the "version" field.
-func VersionGT(v int64) predicate.Route {
-	return predicate.Route(sql.FieldGT(FieldVersion, v))
-}
-
-// VersionGTE applies the GTE predicate on the "version" field.
-func VersionGTE(v int64) predicate.Route {
-	return predicate.Route(sql.FieldGTE(FieldVersion, v))
-}
-
-// VersionLT applies the LT predicate on the "version" field.
-func VersionLT(v int64) predicate.Route {
-	return predicate.Route(sql.FieldLT(FieldVersion, v))
-}
-
-// VersionLTE applies the LTE predicate on the "version" field.
-func VersionLTE(v int64) predicate.Route {
-	return predicate.Route(sql.FieldLTE(FieldVersion, v))
 }
 
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.

@@ -819,6 +819,7 @@ var schemaGraph = func() *sqlgraph.Schema {
 		Type: "Route",
 		Fields: map[string]*sqlgraph.FieldSpec{
 			route.FieldOrgID:          {Type: field.TypeString, Column: route.FieldOrgID},
+			route.FieldVersion:        {Type: field.TypeInt64, Column: route.FieldVersion},
 			route.FieldName:           {Type: field.TypeString, Column: route.FieldName},
 			route.FieldType:           {Type: field.TypeEnum, Column: route.FieldType},
 			route.FieldGatewayGroupID: {Type: field.TypeString, Column: route.FieldGatewayGroupID},
@@ -826,7 +827,6 @@ var schemaGraph = func() *sqlgraph.Schema {
 			route.FieldTransport:      {Type: field.TypeEnum, Column: route.FieldTransport},
 			route.FieldDescription:    {Type: field.TypeString, Column: route.FieldDescription},
 			route.FieldLabels:         {Type: field.TypeJSON, Column: route.FieldLabels},
-			route.FieldVersion:        {Type: field.TypeInt64, Column: route.FieldVersion},
 			route.FieldCreatedAt:      {Type: field.TypeTime, Column: route.FieldCreatedAt},
 			route.FieldUpdatedAt:      {Type: field.TypeTime, Column: route.FieldUpdatedAt},
 			route.FieldUpdatedBy:      {Type: field.TypeString, Column: route.FieldUpdatedBy},
@@ -4409,6 +4409,11 @@ func (f *RouteFilter) WhereOrgID(p entql.StringP) {
 	f.Where(p.Field(route.FieldOrgID))
 }
 
+// WhereVersion applies the entql int64 predicate on the version field.
+func (f *RouteFilter) WhereVersion(p entql.Int64P) {
+	f.Where(p.Field(route.FieldVersion))
+}
+
 // WhereName applies the entql string predicate on the name field.
 func (f *RouteFilter) WhereName(p entql.StringP) {
 	f.Where(p.Field(route.FieldName))
@@ -4442,11 +4447,6 @@ func (f *RouteFilter) WhereDescription(p entql.StringP) {
 // WhereLabels applies the entql json.RawMessage predicate on the labels field.
 func (f *RouteFilter) WhereLabels(p entql.BytesP) {
 	f.Where(p.Field(route.FieldLabels))
-}
-
-// WhereVersion applies the entql int64 predicate on the version field.
-func (f *RouteFilter) WhereVersion(p entql.Int64P) {
-	f.Where(p.Field(route.FieldVersion))
 }
 
 // WhereCreatedAt applies the entql time.Time predicate on the created_at field.

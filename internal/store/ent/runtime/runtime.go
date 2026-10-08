@@ -2113,18 +2113,29 @@ func init() {
 		})
 	}
 	routeMixinHooks0 := routeMixin[0].Hooks()
+	routeMixinHooks1 := routeMixin[1].Hooks()
 
 	route.Hooks[1] = routeMixinHooks0[0]
+
+	route.Hooks[2] = routeMixinHooks1[0]
 	routeMixinInters0 := routeMixin[0].Interceptors()
 	route.Interceptors[0] = routeMixinInters0[0]
 	routeMixinFields0 := routeMixin[0].Fields()
 	_ = routeMixinFields0
+	routeMixinFields1 := routeMixin[1].Fields()
+	_ = routeMixinFields1
 	routeFields := schema.Route{}.Fields()
 	_ = routeFields
 	// routeDescOrgID is the schema descriptor for org_id field.
 	routeDescOrgID := routeMixinFields0[0].Descriptor()
 	// route.OrgIDValidator is a validator for the "org_id" field. It is called by the builders before save.
 	route.OrgIDValidator = routeDescOrgID.Validators[0].(func(string) error)
+	// routeDescVersion is the schema descriptor for version field.
+	routeDescVersion := routeMixinFields1[0].Descriptor()
+	// route.DefaultVersion holds the default value on creation for the version field.
+	route.DefaultVersion = routeDescVersion.Default.(int64)
+	// route.VersionValidator is a validator for the "version" field. It is called by the builders before save.
+	route.VersionValidator = routeDescVersion.Validators[0].(func(int64) error)
 	// routeDescName is the schema descriptor for name field.
 	routeDescName := routeFields[1].Descriptor()
 	// route.NameValidator is a validator for the "name" field. It is called by the builders before save.
@@ -2155,22 +2166,16 @@ func init() {
 	routeDescDescription := routeFields[6].Descriptor()
 	// route.DefaultDescription holds the default value on creation for the description field.
 	route.DefaultDescription = routeDescDescription.Default.(string)
-	// routeDescVersion is the schema descriptor for version field.
-	routeDescVersion := routeFields[8].Descriptor()
-	// route.DefaultVersion holds the default value on creation for the version field.
-	route.DefaultVersion = routeDescVersion.Default.(int64)
-	// route.VersionValidator is a validator for the "version" field. It is called by the builders before save.
-	route.VersionValidator = routeDescVersion.Validators[0].(func(int64) error)
 	// routeDescCreatedAt is the schema descriptor for created_at field.
-	routeDescCreatedAt := routeFields[9].Descriptor()
+	routeDescCreatedAt := routeFields[8].Descriptor()
 	// route.DefaultCreatedAt holds the default value on creation for the created_at field.
 	route.DefaultCreatedAt = routeDescCreatedAt.Default.(func() time.Time)
 	// routeDescUpdatedAt is the schema descriptor for updated_at field.
-	routeDescUpdatedAt := routeFields[10].Descriptor()
+	routeDescUpdatedAt := routeFields[9].Descriptor()
 	// route.DefaultUpdatedAt holds the default value on creation for the updated_at field.
 	route.DefaultUpdatedAt = routeDescUpdatedAt.Default.(func() time.Time)
 	// routeDescUpdatedBy is the schema descriptor for updated_by field.
-	routeDescUpdatedBy := routeFields[11].Descriptor()
+	routeDescUpdatedBy := routeFields[10].Descriptor()
 	// route.DefaultUpdatedBy holds the default value on creation for the updated_by field.
 	route.DefaultUpdatedBy = routeDescUpdatedBy.Default.(string)
 	// routeDescID is the schema descriptor for id field.
