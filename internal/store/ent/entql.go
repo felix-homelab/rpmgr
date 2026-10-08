@@ -31,6 +31,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routehostname"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routetarget"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routetcp"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/routeudp"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/secretmeta"
 
 	"entgo.io/ent/dialect/sql"
@@ -41,7 +42,7 @@ import (
 
 // schemaGraph holds a representation of ent/schema at runtime.
 var schemaGraph = func() *sqlgraph.Schema {
-	graph := &sqlgraph.Schema{Nodes: make([]*sqlgraph.Node, 28)}
+	graph := &sqlgraph.Schema{Nodes: make([]*sqlgraph.Node, 29)}
 	graph.Nodes[0] = &sqlgraph.Node{
 		NodeSpec: sqlgraph.NodeSpec{
 			Table:   agentsession.Table,
@@ -603,6 +604,23 @@ var schemaGraph = func() *sqlgraph.Schema {
 	}
 	graph.Nodes[27] = &sqlgraph.Node{
 		NodeSpec: sqlgraph.NodeSpec{
+			Table:   routeudp.Table,
+			Columns: routeudp.Columns,
+			ID: &sqlgraph.FieldSpec{
+				Type:   field.TypeInt,
+				Column: routeudp.FieldID,
+			},
+		},
+		Type: "RouteUDP",
+		Fields: map[string]*sqlgraph.FieldSpec{
+			routeudp.FieldOrgID:                  {Type: field.TypeString, Column: routeudp.FieldOrgID},
+			routeudp.FieldRouteID:                {Type: field.TypeString, Column: routeudp.FieldRouteID},
+			routeudp.FieldPortAllocationID:       {Type: field.TypeString, Column: routeudp.FieldPortAllocationID},
+			routeudp.FieldFlowIdleTimeoutSeconds: {Type: field.TypeInt, Column: routeudp.FieldFlowIdleTimeoutSeconds},
+		},
+	}
+	graph.Nodes[28] = &sqlgraph.Node{
+		NodeSpec: sqlgraph.NodeSpec{
 			Table:   secretmeta.Table,
 			Columns: secretmeta.Columns,
 			ID: &sqlgraph.FieldSpec{
@@ -798,6 +816,30 @@ var schemaGraph = func() *sqlgraph.Schema {
 		},
 		"RouteTarget",
 		"Connector",
+	)
+	graph.MustAddE(
+		"route",
+		&sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2O,
+			Inverse: false,
+			Table:   routeudp.RouteTable,
+			Columns: []string{routeudp.RouteColumn},
+			Bidi:    false,
+		},
+		"RouteUDP",
+		"Route",
+	)
+	graph.MustAddE(
+		"port",
+		&sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2O,
+			Inverse: false,
+			Table:   routeudp.PortTable,
+			Columns: []string{routeudp.PortColumn},
+			Bidi:    false,
+		},
+		"RouteUDP",
+		"PortAllocation",
 	)
 	return graph
 }()
@@ -3139,6 +3181,94 @@ func (f *RouteTargetFilter) WhereHasConnectorWith(preds ...predicate.Connector) 
 }
 
 // addPredicate implements the predicateAdder interface.
+func (_q *RouteUDPQuery) addPredicate(pred func(s *sql.Selector)) {
+	_q.predicates = append(_q.predicates, pred)
+}
+
+// Filter returns a Filter implementation to apply filters on the RouteUDPQuery builder.
+func (_q *RouteUDPQuery) Filter() *RouteUDPFilter {
+	return &RouteUDPFilter{config: _q.config, predicateAdder: _q}
+}
+
+// addPredicate implements the predicateAdder interface.
+func (m *RouteUDPMutation) addPredicate(pred func(s *sql.Selector)) {
+	m.predicates = append(m.predicates, pred)
+}
+
+// Filter returns an entql.Where implementation to apply filters on the RouteUDPMutation builder.
+func (m *RouteUDPMutation) Filter() *RouteUDPFilter {
+	return &RouteUDPFilter{config: m.config, predicateAdder: m}
+}
+
+// RouteUDPFilter provides a generic filtering capability at runtime for RouteUDPQuery.
+type RouteUDPFilter struct {
+	predicateAdder
+	config
+}
+
+// Where applies the entql predicate on the query filter.
+func (f *RouteUDPFilter) Where(p entql.P) {
+	f.addPredicate(func(s *sql.Selector) {
+		if err := schemaGraph.EvalP(schemaGraph.Nodes[27].Type, p, s); err != nil {
+			s.AddError(err)
+		}
+	})
+}
+
+// WhereID applies the entql int predicate on the id field.
+func (f *RouteUDPFilter) WhereID(p entql.IntP) {
+	f.Where(p.Field(routeudp.FieldID))
+}
+
+// WhereOrgID applies the entql string predicate on the org_id field.
+func (f *RouteUDPFilter) WhereOrgID(p entql.StringP) {
+	f.Where(p.Field(routeudp.FieldOrgID))
+}
+
+// WhereRouteID applies the entql string predicate on the route_id field.
+func (f *RouteUDPFilter) WhereRouteID(p entql.StringP) {
+	f.Where(p.Field(routeudp.FieldRouteID))
+}
+
+// WherePortAllocationID applies the entql string predicate on the port_allocation_id field.
+func (f *RouteUDPFilter) WherePortAllocationID(p entql.StringP) {
+	f.Where(p.Field(routeudp.FieldPortAllocationID))
+}
+
+// WhereFlowIdleTimeoutSeconds applies the entql int predicate on the flow_idle_timeout_seconds field.
+func (f *RouteUDPFilter) WhereFlowIdleTimeoutSeconds(p entql.IntP) {
+	f.Where(p.Field(routeudp.FieldFlowIdleTimeoutSeconds))
+}
+
+// WhereHasRoute applies a predicate to check if query has an edge route.
+func (f *RouteUDPFilter) WhereHasRoute() {
+	f.Where(entql.HasEdge("route"))
+}
+
+// WhereHasRouteWith applies a predicate to check if query has an edge route with a given conditions (other predicates).
+func (f *RouteUDPFilter) WhereHasRouteWith(preds ...predicate.Route) {
+	f.Where(entql.HasEdgeWith("route", sqlgraph.WrapFunc(func(s *sql.Selector) {
+		for _, p := range preds {
+			p(s)
+		}
+	})))
+}
+
+// WhereHasPort applies a predicate to check if query has an edge port.
+func (f *RouteUDPFilter) WhereHasPort() {
+	f.Where(entql.HasEdge("port"))
+}
+
+// WhereHasPortWith applies a predicate to check if query has an edge port with a given conditions (other predicates).
+func (f *RouteUDPFilter) WhereHasPortWith(preds ...predicate.PortAllocation) {
+	f.Where(entql.HasEdgeWith("port", sqlgraph.WrapFunc(func(s *sql.Selector) {
+		for _, p := range preds {
+			p(s)
+		}
+	})))
+}
+
+// addPredicate implements the predicateAdder interface.
 func (_q *SecretMetaQuery) addPredicate(pred func(s *sql.Selector)) {
 	_q.predicates = append(_q.predicates, pred)
 }
@@ -3167,7 +3297,7 @@ type SecretMetaFilter struct {
 // Where applies the entql predicate on the query filter.
 func (f *SecretMetaFilter) Where(p entql.P) {
 	f.addPredicate(func(s *sql.Selector) {
-		if err := schemaGraph.EvalP(schemaGraph.Nodes[27].Type, p, s); err != nil {
+		if err := schemaGraph.EvalP(schemaGraph.Nodes[28].Type, p, s); err != nil {
 			s.AddError(err)
 		}
 	})

@@ -39,6 +39,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routehostname"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routetarget"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routetcp"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/routeudp"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/secretmeta"
 )
 
@@ -127,6 +128,7 @@ func checkColumn(t, c string) error {
 			routehostname.Table:     routehostname.ValidColumn,
 			routetcp.Table:          routetcp.ValidColumn,
 			routetarget.Table:       routetarget.ValidColumn,
+			routeudp.Table:          routeudp.ValidColumn,
 			secretmeta.Table:        secretmeta.ValidColumn,
 		})
 	})

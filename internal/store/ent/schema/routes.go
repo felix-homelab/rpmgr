@@ -183,6 +183,40 @@ func (RouteTCP) Indexes() []ent.Index {
 	return []ent.Index{index.Fields("route_id").Unique(), index.Fields("port_allocation_id").Unique()}
 }
 
+// RouteUDP is the UDP part of a udp route, one row per route.
+type RouteUDP struct{ ent.Schema }
+
+// Mixin makes it org-owned.
+func (RouteUDP) Mixin() []ent.Mixin { return []ent.Mixin{OrgMixin{}} }
+
+// Annotations name the table as docs/06-data-model.md does.
+func (RouteUDP) Annotations() []schema.Annotation {
+	return []schema.Annotation{entsql.Annotation{Table: "route_udp"}}
+}
+
+// Fields of a udp route. flow_idle_timeout ends a flow without datagrams for that long
+// (docs/03-connections.md, "Timeouts, keepalive and backoff").
+func (RouteUDP) Fields() []ent.Field {
+	return []ent.Field{
+		field.String("route_id").NotEmpty().Unique().Immutable(),
+		field.String("port_allocation_id").NotEmpty().Unique(),
+		field.Int("flow_idle_timeout_seconds").Positive().Default(60),
+	}
+}
+
+// Edges of a udp route.
+func (RouteUDP) Edges() []ent.Edge {
+	return []ent.Edge{
+		edge.To("route", Route.Type).Field("route_id").Unique().Required().Immutable(),
+		edge.To("port", PortAllocation.Type).Field("port_allocation_id").Unique().Required(),
+	}
+}
+
+// Indexes: one row per route and one route per port allocation.
+func (RouteUDP) Indexes() []ent.Index {
+	return []ent.Index{index.Fields("route_id").Unique(), index.Fields("port_allocation_id").Unique()}
+}
+
 // RouteTarget is where a connector delivers a route's connections; several targets balance and
 // fail over.
 type RouteTarget struct{ ent.Schema }

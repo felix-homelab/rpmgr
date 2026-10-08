@@ -87,5 +87,8 @@ type RouteTCP func(*sql.Selector)
 // RouteTarget is the predicate function for routetarget builders.
 type RouteTarget func(*sql.Selector)
 
+// RouteUDP is the predicate function for routeudp builders.
+type RouteUDP func(*sql.Selector)
+
 // SecretMeta is the predicate function for secretmeta builders.
 type SecretMeta func(*sql.Selector)

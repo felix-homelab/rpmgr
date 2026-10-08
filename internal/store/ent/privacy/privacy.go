@@ -759,6 +759,30 @@ func (f RouteTargetMutationRuleFunc) EvalMutation(ctx context.Context, m ent.Mut
 	return Denyf("ent/privacy: unexpected mutation type %T, expect *ent.RouteTargetMutation", m)
 }
 
+// The RouteUDPQueryRuleFunc type is an adapter to allow the use of ordinary
+// functions as a query rule.
+type RouteUDPQueryRuleFunc func(context.Context, *ent.RouteUDPQuery) error
+
+// EvalQuery return f(ctx, q).
+func (f RouteUDPQueryRuleFunc) EvalQuery(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.RouteUDPQuery); ok {
+		return f(ctx, q)
+	}
+	return Denyf("ent/privacy: unexpected query type %T, expect *ent.RouteUDPQuery", q)
+}
+
+// The RouteUDPMutationRuleFunc type is an adapter to allow the use of ordinary
+// functions as a mutation rule.
+type RouteUDPMutationRuleFunc func(context.Context, *ent.RouteUDPMutation) error
+
+// EvalMutation calls f(ctx, m).
+func (f RouteUDPMutationRuleFunc) EvalMutation(ctx context.Context, m ent.Mutation) error {
+	if m, ok := m.(*ent.RouteUDPMutation); ok {
+		return f(ctx, m)
+	}
+	return Denyf("ent/privacy: unexpected mutation type %T, expect *ent.RouteUDPMutation", m)
+}
+
 // The SecretMetaQueryRuleFunc type is an adapter to allow the use of ordinary
 // functions as a query rule.
 type SecretMetaQueryRuleFunc func(context.Context, *ent.SecretMetaQuery) error
@@ -872,6 +896,8 @@ func queryFilter(q ent.Query) (Filter, error) {
 		return q.Filter(), nil
 	case *ent.RouteTargetQuery:
 		return q.Filter(), nil
+	case *ent.RouteUDPQuery:
+		return q.Filter(), nil
 	case *ent.SecretMetaQuery:
 		return q.Filter(), nil
 	default:
@@ -934,6 +960,8 @@ func mutationFilter(m ent.Mutation) (Filter, error) {
 	case *ent.RouteTCPMutation:
 		return m.Filter(), nil
 	case *ent.RouteTargetMutation:
+		return m.Filter(), nil
+	case *ent.RouteUDPMutation:
 		return m.Filter(), nil
 	case *ent.SecretMetaMutation:
 		return m.Filter(), nil
