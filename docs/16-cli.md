@@ -35,7 +35,7 @@ with exit code 2 until its implementation lands.
 | Command | What it does | Runs on | State |
 |---|---|---|---|
 | `rpmgr controller [--config <file>]` | Run the controller: web UI, API, CA and configuration, until `SIGINT` or `SIGTERM`, then drain the agents' control sessions ([10](10-operations.md#boot-files)). The web UI and the API follow in later versions | controller host | available |
-| `rpmgr controller init [--config <file>] [--public-url <url>] [--kek-source <source>] [--kek-path <file>]` | Initialise a controller: boot file, KEK, database, trust domain and CA; prints the trust domain and the CA pin ([10](10-operations.md#install)). The first-user link follows with local accounts | controller host | available |
+| `rpmgr controller init [--config <file>] [--public-url <url>] [--kek-source <source>] [--kek-path <file>]` | Initialise a controller: boot file, KEK, database, trust domain and CA; prints the trust domain, the CA pin and the one-time link that creates the first user ([10](10-operations.md#install)) | controller host | available |
 | `rpmgr gateway [--config <file>]` | Run a gateway until `SIGINT` or `SIGTERM`, then drain: no new public connections or data sessions, open streams kept for the gateway drain period ([03](03-connections.md#multiple-gateways)) | gateway host | available |
 | `rpmgr connector [--config <file>]` | Run a connector until `SIGINT` or `SIGTERM`; `SIGHUP` reloads the local policy | connector host | available |
 | `rpmgr all-in-one [--config <file>]` | Run a controller and a gateway in one process until `SIGINT` or `SIGTERM`; the gateway drains first ([02](02-architecture.md#all-in-one-homelab-default)) | controller host | available |
@@ -50,7 +50,7 @@ with exit code 2 until its implementation lands.
 | `rpmgr migrate` | Apply database migrations | controller host | not yet |
 | `rpmgr ca status`, `ca rotate-intermediate` | Administer the internal CA ([04](04-security.md#ca-rotation)) | controller host | not yet |
 | `rpmgr kek status`, `kek rotate` | Administer the key-encryption key ([04](04-security.md#secrets-at-rest-and-in-logs)) | controller host | not yet |
-| `rpmgr user reset-password` | Create a one-time password-reset link | controller host | not yet |
+| `rpmgr user reset-password [--config <file>] [--email <address>]` | Create a one-time link that sets the password of the user with that address (valid 24 h); before the first user exists, without `--email`, a first-user link (7 days). Reads the controller's or all-in-one's boot file and needs no KEK; audited as `local-cli` ([04](04-security.md#human-authentication-and-sessions)) | controller host | available |
 | `rpmgr release import` | Import a signed release for air-gapped installations ([D59](14-open-decisions.md#security-defaults)) | controller host | not yet |
 | `rpmgr version` | Print the version, commit, Go version and platform of this binary | any | available |
 

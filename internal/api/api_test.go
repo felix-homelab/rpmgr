@@ -499,3 +499,38 @@ func TestAnnotations(t *testing.T) {
 	})
 	t.Logf("%d services checked", services)
 }
+
+// TestServer_HidesInternalErrors: an error a handler did not write for the client becomes
+// INTERNAL without its text; a connect error passes as it is.
+func TestServer_HidesInternalErrors(t *testing.T) {
+	sd := testFile(t, "internal", method{name: "Fail", authz: &rpmgrv1.Authz{Permission: authz.PermPublic}},
+		method{name: "Refuse", authz: &rpmgrv1.Authz{Permission: authz.PermPublic}},
+		method{name: "Stream", authz: &rpmgrv1.Authz{Permission: authz.PermPublic}, stream: "server"})
+	srv, err := api.New(api.Options{DB: storetest.Migrated(t, store.SQLite), Sys: storetest.SystemCtx(t), Sealer: testSealer(t),
+		Resolver:           func(context.Context, string) (string, error) { return "", api.ErrNotFound },
+		OperatorsMayEnroll: func(context.Context, string) (bool, error) { return false, nil }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	mux := http.NewServeMux()
+	if err := srv.Mount(mux, sd, handlersWith(sd, func(_ context.Context, method string, _ *dynamicpb.Message) error {
+		if method == "Refuse" {
+			return connect.NewError(connect.CodeFailedPrecondition, errors.New("the domain is not verified"))
+		}
+		return errors.New("pq: relation org_b_secrets does not exist")
+	})); err != nil {
+		t.Fatal(err)
+	}
+	hs := httptest.NewServer(mux)
+	t.Cleanup(hs.Close)
+	for _, m := range []string{"Fail", "Stream"} {
+		code, _, err := invoke(hs.URL, sd, call{method: m})
+		if code != connect.CodeInternal || err == nil || strings.Contains(err.Error(), "org_b") {
+			t.Errorf("%s: %v %v", m, code, err)
+		}
+	}
+	if code, _, err := invoke(hs.URL, sd, call{method: "Refuse"}); code != connect.CodeFailedPrecondition ||
+		!strings.Contains(err.Error(), "not verified") {
+		t.Errorf("a connect error: %v %v", code, err)
+	}
+}

@@ -105,6 +105,7 @@ type running struct {
 	client                *http.Client
 	pin, trustDomain, url string
 	acmeRoots             *x509.CertPool
+	firstUserLink         string
 }
 
 // runSetup varies startRunWith.
@@ -151,7 +152,7 @@ func startRunWith(t *testing.T, o runSetup) *running {
 	if err != nil {
 		t.Fatal(err)
 	}
-	r.pin, r.trustDomain = res.RootPin, res.TrustDomain
+	r.pin, r.trustDomain, r.firstUserLink = res.RootPin, res.TrustDomain, res.FirstUserLink
 	if err := config.Load(h.cfg, &r.cfg); err != nil {
 		t.Fatal(err)
 	}

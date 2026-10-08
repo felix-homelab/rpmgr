@@ -53,8 +53,10 @@ controller. A new systemd credential is encrypted with `systemd-creds encrypt` i
 then has to run under `systemd-run --pipe --wait --property=LoadCredentialEncrypted=…`.
 
 `init` prints the trust domain and the CA pin for `--ca-pin`, and a one-time link for creating the
-first user (Owner and Instance Admin), which arrives with local accounts in Phase 1. There is no
-default password ([04](04-security.md#security-goals)).
+first user (Owner and Instance Admin), `<public URL>/reset#<token>`, valid for 7 days; the token
+sits in the fragment, which browsers never send, so it stays out of logs. A lost link is replaced
+with `rpmgr user reset-password` while no user exists. There is no default password
+([04](04-security.md#security-goals)).
 
 ### Filesystem layout
 
