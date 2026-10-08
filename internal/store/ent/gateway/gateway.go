@@ -17,6 +17,8 @@ const (
 	FieldID = "id"
 	// FieldOrgID holds the string denoting the org_id field in the database.
 	FieldOrgID = "org_id"
+	// FieldVersion holds the string denoting the version field in the database.
+	FieldVersion = "version"
 	// FieldGatewayGroupID holds the string denoting the gateway_group_id field in the database.
 	FieldGatewayGroupID = "gateway_group_id"
 	// FieldName holds the string denoting the name field in the database.
@@ -54,6 +56,7 @@ const (
 var Columns = []string{
 	FieldID,
 	FieldOrgID,
+	FieldVersion,
 	FieldGatewayGroupID,
 	FieldName,
 	FieldSlot,
@@ -82,11 +85,15 @@ func ValidColumn(column string) bool {
 //
 //	import _ "github.com/felix-homelab/rpmgr/internal/store/ent/runtime"
 var (
-	Hooks        [3]ent.Hook
+	Hooks        [4]ent.Hook
 	Interceptors [1]ent.Interceptor
 	Policy       ent.Policy
 	// OrgIDValidator is a validator for the "org_id" field. It is called by the builders before save.
 	OrgIDValidator func(string) error
+	// DefaultVersion holds the default value on creation for the "version" field.
+	DefaultVersion int64
+	// VersionValidator is a validator for the "version" field. It is called by the builders before save.
+	VersionValidator func(int64) error
 	// GatewayGroupIDValidator is a validator for the "gateway_group_id" field. It is called by the builders before save.
 	GatewayGroupIDValidator func(string) error
 	// NameValidator is a validator for the "name" field. It is called by the builders before save.
@@ -116,6 +123,11 @@ func ByID(opts ...sql.OrderTermOption) OrderOption {
 // ByOrgID orders the results by the org_id field.
 func ByOrgID(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldOrgID, opts...).ToFunc()
+}
+
+// ByVersion orders the results by the version field.
+func ByVersion(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldVersion, opts...).ToFunc()
 }
 
 // ByGatewayGroupID orders the results by the gateway_group_id field.

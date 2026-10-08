@@ -25,6 +25,20 @@ func (_c *GatewayGroupCreate) SetOrgID(v string) *GatewayGroupCreate {
 	return _c
 }
 
+// SetVersion sets the "version" field.
+func (_c *GatewayGroupCreate) SetVersion(v int64) *GatewayGroupCreate {
+	_c.mutation.SetVersion(v)
+	return _c
+}
+
+// SetNillableVersion sets the "version" field if the given value is not nil.
+func (_c *GatewayGroupCreate) SetNillableVersion(v *int64) *GatewayGroupCreate {
+	if v != nil {
+		_c.SetVersion(*v)
+	}
+	return _c
+}
+
 // SetName sets the "name" field.
 func (_c *GatewayGroupCreate) SetName(v string) *GatewayGroupCreate {
 	_c.mutation.SetName(v)
@@ -108,6 +122,10 @@ func (_c *GatewayGroupCreate) ExecX(ctx context.Context) {
 
 // defaults sets the default values of the builder before save.
 func (_c *GatewayGroupCreate) defaults() error {
+	if _, ok := _c.mutation.Version(); !ok {
+		v := gatewaygroup.DefaultVersion
+		_c.mutation.SetVersion(v)
+	}
 	if _, ok := _c.mutation.ID(); !ok {
 		if gatewaygroup.DefaultID == nil {
 			return fmt.Errorf("ent: uninitialized gatewaygroup.DefaultID (forgotten import ent/runtime?)")
@@ -126,6 +144,14 @@ func (_c *GatewayGroupCreate) check() error {
 	if v, ok := _c.mutation.OrgID(); ok {
 		if err := gatewaygroup.OrgIDValidator(v); err != nil {
 			return &ValidationError{Name: "org_id", err: fmt.Errorf(`ent: validator failed for field "GatewayGroup.org_id": %w`, err)}
+		}
+	}
+	if _, ok := _c.mutation.Version(); !ok {
+		return &ValidationError{Name: "version", err: errors.New(`ent: missing required field "GatewayGroup.version"`)}
+	}
+	if v, ok := _c.mutation.Version(); ok {
+		if err := gatewaygroup.VersionValidator(v); err != nil {
+			return &ValidationError{Name: "version", err: fmt.Errorf(`ent: validator failed for field "GatewayGroup.version": %w`, err)}
 		}
 	}
 	if _, ok := _c.mutation.Name(); !ok {
@@ -189,6 +215,10 @@ func (_c *GatewayGroupCreate) createSpec() (*GatewayGroup, *sqlgraph.CreateSpec)
 	if value, ok := _c.mutation.OrgID(); ok {
 		_spec.SetField(gatewaygroup.FieldOrgID, field.TypeString, value)
 		_node.OrgID = value
+	}
+	if value, ok := _c.mutation.Version(); ok {
+		_spec.SetField(gatewaygroup.FieldVersion, field.TypeInt64, value)
+		_node.Version = value
 	}
 	if value, ok := _c.mutation.Name(); ok {
 		_spec.SetField(gatewaygroup.FieldName, field.TypeString, value)

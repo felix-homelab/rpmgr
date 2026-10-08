@@ -29,6 +29,27 @@ func (_u *GatewayUpdate) Where(ps ...predicate.Gateway) *GatewayUpdate {
 	return _u
 }
 
+// SetVersion sets the "version" field.
+func (_u *GatewayUpdate) SetVersion(v int64) *GatewayUpdate {
+	_u.mutation.ResetVersion()
+	_u.mutation.SetVersion(v)
+	return _u
+}
+
+// SetNillableVersion sets the "version" field if the given value is not nil.
+func (_u *GatewayUpdate) SetNillableVersion(v *int64) *GatewayUpdate {
+	if v != nil {
+		_u.SetVersion(*v)
+	}
+	return _u
+}
+
+// AddVersion adds value to the "version" field.
+func (_u *GatewayUpdate) AddVersion(v int64) *GatewayUpdate {
+	_u.mutation.AddVersion(v)
+	return _u
+}
+
 // SetName sets the "name" field.
 func (_u *GatewayUpdate) SetName(v string) *GatewayUpdate {
 	_u.mutation.SetName(v)
@@ -183,6 +204,11 @@ func (_u *GatewayUpdate) ExecX(ctx context.Context) {
 
 // check runs all checks and user-defined validators on the builder.
 func (_u *GatewayUpdate) check() error {
+	if v, ok := _u.mutation.Version(); ok {
+		if err := gateway.VersionValidator(v); err != nil {
+			return &ValidationError{Name: "version", err: fmt.Errorf(`ent: validator failed for field "Gateway.version": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.Name(); ok {
 		if err := gateway.NameValidator(v); err != nil {
 			return &ValidationError{Name: "name", err: fmt.Errorf(`ent: validator failed for field "Gateway.name": %w`, err)}
@@ -210,6 +236,12 @@ func (_u *GatewayUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 				ps[i](selector)
 			}
 		}
+	}
+	if value, ok := _u.mutation.Version(); ok {
+		_spec.SetField(gateway.FieldVersion, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedVersion(); ok {
+		_spec.AddField(gateway.FieldVersion, field.TypeInt64, value)
 	}
 	if value, ok := _u.mutation.Name(); ok {
 		_spec.SetField(gateway.FieldName, field.TypeString, value)
@@ -267,6 +299,27 @@ type GatewayUpdateOne struct {
 	fields   []string
 	hooks    []Hook
 	mutation *GatewayMutation
+}
+
+// SetVersion sets the "version" field.
+func (_u *GatewayUpdateOne) SetVersion(v int64) *GatewayUpdateOne {
+	_u.mutation.ResetVersion()
+	_u.mutation.SetVersion(v)
+	return _u
+}
+
+// SetNillableVersion sets the "version" field if the given value is not nil.
+func (_u *GatewayUpdateOne) SetNillableVersion(v *int64) *GatewayUpdateOne {
+	if v != nil {
+		_u.SetVersion(*v)
+	}
+	return _u
+}
+
+// AddVersion adds value to the "version" field.
+func (_u *GatewayUpdateOne) AddVersion(v int64) *GatewayUpdateOne {
+	_u.mutation.AddVersion(v)
+	return _u
 }
 
 // SetName sets the "name" field.
@@ -436,6 +489,11 @@ func (_u *GatewayUpdateOne) ExecX(ctx context.Context) {
 
 // check runs all checks and user-defined validators on the builder.
 func (_u *GatewayUpdateOne) check() error {
+	if v, ok := _u.mutation.Version(); ok {
+		if err := gateway.VersionValidator(v); err != nil {
+			return &ValidationError{Name: "version", err: fmt.Errorf(`ent: validator failed for field "Gateway.version": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.Name(); ok {
 		if err := gateway.NameValidator(v); err != nil {
 			return &ValidationError{Name: "name", err: fmt.Errorf(`ent: validator failed for field "Gateway.name": %w`, err)}
@@ -480,6 +538,12 @@ func (_u *GatewayUpdateOne) sqlSave(ctx context.Context) (_node *Gateway, err er
 				ps[i](selector)
 			}
 		}
+	}
+	if value, ok := _u.mutation.Version(); ok {
+		_spec.SetField(gateway.FieldVersion, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedVersion(); ok {
+		_spec.AddField(gateway.FieldVersion, field.TypeInt64, value)
 	}
 	if value, ok := _u.mutation.Name(); ok {
 		_spec.SetField(gateway.FieldName, field.TypeString, value)

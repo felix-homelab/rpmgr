@@ -67,6 +67,11 @@ func OrgID(v string) predicate.GatewayGroup {
 	return predicate.GatewayGroup(sql.FieldEQ(FieldOrgID, v))
 }
 
+// Version applies equality check predicate on the "version" field. It's identical to VersionEQ.
+func Version(v int64) predicate.GatewayGroup {
+	return predicate.GatewayGroup(sql.FieldEQ(FieldVersion, v))
+}
+
 // Name applies equality check predicate on the "name" field. It's identical to NameEQ.
 func Name(v string) predicate.GatewayGroup {
 	return predicate.GatewayGroup(sql.FieldEQ(FieldName, v))
@@ -140,6 +145,46 @@ func OrgIDEqualFold(v string) predicate.GatewayGroup {
 // OrgIDContainsFold applies the ContainsFold predicate on the "org_id" field.
 func OrgIDContainsFold(v string) predicate.GatewayGroup {
 	return predicate.GatewayGroup(sql.FieldContainsFold(FieldOrgID, v))
+}
+
+// VersionEQ applies the EQ predicate on the "version" field.
+func VersionEQ(v int64) predicate.GatewayGroup {
+	return predicate.GatewayGroup(sql.FieldEQ(FieldVersion, v))
+}
+
+// VersionNEQ applies the NEQ predicate on the "version" field.
+func VersionNEQ(v int64) predicate.GatewayGroup {
+	return predicate.GatewayGroup(sql.FieldNEQ(FieldVersion, v))
+}
+
+// VersionIn applies the In predicate on the "version" field.
+func VersionIn(vs ...int64) predicate.GatewayGroup {
+	return predicate.GatewayGroup(sql.FieldIn(FieldVersion, vs...))
+}
+
+// VersionNotIn applies the NotIn predicate on the "version" field.
+func VersionNotIn(vs ...int64) predicate.GatewayGroup {
+	return predicate.GatewayGroup(sql.FieldNotIn(FieldVersion, vs...))
+}
+
+// VersionGT applies the GT predicate on the "version" field.
+func VersionGT(v int64) predicate.GatewayGroup {
+	return predicate.GatewayGroup(sql.FieldGT(FieldVersion, v))
+}
+
+// VersionGTE applies the GTE predicate on the "version" field.
+func VersionGTE(v int64) predicate.GatewayGroup {
+	return predicate.GatewayGroup(sql.FieldGTE(FieldVersion, v))
+}
+
+// VersionLT applies the LT predicate on the "version" field.
+func VersionLT(v int64) predicate.GatewayGroup {
+	return predicate.GatewayGroup(sql.FieldLT(FieldVersion, v))
+}
+
+// VersionLTE applies the LTE predicate on the "version" field.
+func VersionLTE(v int64) predicate.GatewayGroup {
+	return predicate.GatewayGroup(sql.FieldLTE(FieldVersion, v))
 }
 
 // NameEQ applies the EQ predicate on the "name" field.

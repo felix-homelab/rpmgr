@@ -440,6 +440,7 @@ var schemaGraph = func() *sqlgraph.Schema {
 		Type: "Gateway",
 		Fields: map[string]*sqlgraph.FieldSpec{
 			gateway.FieldOrgID:            {Type: field.TypeString, Column: gateway.FieldOrgID},
+			gateway.FieldVersion:          {Type: field.TypeInt64, Column: gateway.FieldVersion},
 			gateway.FieldGatewayGroupID:   {Type: field.TypeString, Column: gateway.FieldGatewayGroupID},
 			gateway.FieldName:             {Type: field.TypeString, Column: gateway.FieldName},
 			gateway.FieldSlot:             {Type: field.TypeInt, Column: gateway.FieldSlot},
@@ -464,6 +465,7 @@ var schemaGraph = func() *sqlgraph.Schema {
 		Type: "GatewayGroup",
 		Fields: map[string]*sqlgraph.FieldSpec{
 			gatewaygroup.FieldOrgID:             {Type: field.TypeString, Column: gatewaygroup.FieldOrgID},
+			gatewaygroup.FieldVersion:           {Type: field.TypeInt64, Column: gatewaygroup.FieldVersion},
 			gatewaygroup.FieldName:              {Type: field.TypeString, Column: gatewaygroup.FieldName},
 			gatewaygroup.FieldRegion:            {Type: field.TypeString, Column: gatewaygroup.FieldRegion},
 			gatewaygroup.FieldPublicHostnames:   {Type: field.TypeJSON, Column: gatewaygroup.FieldPublicHostnames},
@@ -2851,6 +2853,11 @@ func (f *GatewayFilter) WhereOrgID(p entql.StringP) {
 	f.Where(p.Field(gateway.FieldOrgID))
 }
 
+// WhereVersion applies the entql int64 predicate on the version field.
+func (f *GatewayFilter) WhereVersion(p entql.Int64P) {
+	f.Where(p.Field(gateway.FieldVersion))
+}
+
 // WhereGatewayGroupID applies the entql string predicate on the gateway_group_id field.
 func (f *GatewayFilter) WhereGatewayGroupID(p entql.StringP) {
 	f.Where(p.Field(gateway.FieldGatewayGroupID))
@@ -2958,6 +2965,11 @@ func (f *GatewayGroupFilter) WhereID(p entql.StringP) {
 // WhereOrgID applies the entql string predicate on the org_id field.
 func (f *GatewayGroupFilter) WhereOrgID(p entql.StringP) {
 	f.Where(p.Field(gatewaygroup.FieldOrgID))
+}
+
+// WhereVersion applies the entql int64 predicate on the version field.
+func (f *GatewayGroupFilter) WhereVersion(p entql.Int64P) {
+	f.Where(p.Field(gatewaygroup.FieldVersion))
 }
 
 // WhereName applies the entql string predicate on the name field.

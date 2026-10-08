@@ -236,6 +236,12 @@ func Run(ctx context.Context, o RunOptions) error {
 		}); err != nil {
 		return err
 	}
+	if err := apiServer.Mount(mux, rpmgrv1.File_rpmgr_v1_gateway_proto.Services().ByName("GatewayService"),
+		func(opts ...connect.HandlerOption) (string, http.Handler) {
+			return rpmgrv1connect.NewGatewayServiceHandler(&apisvc.Gateways{DB: db, API: apiServer}, opts...)
+		}); err != nil {
+		return err
+	}
 	if err := apiServer.Mount(mux, rpmgrv1.File_rpmgr_v1_token_proto.Services().ByName("TokenService"),
 		func(opts ...connect.HandlerOption) (string, http.Handler) {
 			return rpmgrv1connect.NewTokenServiceHandler(&apisvc.Token{Tokens: tokens, API: apiServer}, opts...)
