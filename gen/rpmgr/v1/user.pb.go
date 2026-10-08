@@ -12,6 +12,7 @@ import (
 	_ "buf.build/gen/go/bufbuild/protovalidate/protocolbuffers/go/buf/validate"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
+	timestamppb "google.golang.org/protobuf/types/known/timestamppb"
 	reflect "reflect"
 	sync "sync"
 	unsafe "unsafe"
@@ -365,11 +366,607 @@ func (x *RegenerateRecoveryCodesResponse) GetRecoveryCodes() []string {
 	return nil
 }
 
+// User is an account.
+type User struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The user's ID, usr_….
+	Id string `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	// The e-mail address, with which they sign in.
+	Email string `protobuf:"bytes,2,opt,name=email,proto3" json:"email,omitempty"`
+	// The display name.
+	DisplayName string `protobuf:"bytes,3,opt,name=display_name,json=displayName,proto3" json:"display_name,omitempty"`
+	// Whether they hold the Instance Admin role.
+	InstanceAdmin bool `protobuf:"varint,4,opt,name=instance_admin,json=instanceAdmin,proto3" json:"instance_admin,omitempty"`
+	// Whether they have an authenticator.
+	Mfa bool `protobuf:"varint,5,opt,name=mfa,proto3" json:"mfa,omitempty"`
+	// active or disabled.
+	Status string `protobuf:"bytes,6,opt,name=status,proto3" json:"status,omitempty"`
+	// When they signed in last; not set if never.
+	LastLoginTime *timestamppb.Timestamp `protobuf:"bytes,7,opt,name=last_login_time,json=lastLoginTime,proto3" json:"last_login_time,omitempty"`
+	// When the account was created.
+	CreateTime    *timestamppb.Timestamp `protobuf:"bytes,8,opt,name=create_time,json=createTime,proto3" json:"create_time,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *User) Reset() {
+	*x = User{}
+	mi := &file_rpmgr_v1_user_proto_msgTypes[8]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *User) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*User) ProtoMessage() {}
+
+func (x *User) ProtoReflect() protoreflect.Message {
+	mi := &file_rpmgr_v1_user_proto_msgTypes[8]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use User.ProtoReflect.Descriptor instead.
+func (*User) Descriptor() ([]byte, []int) {
+	return file_rpmgr_v1_user_proto_rawDescGZIP(), []int{8}
+}
+
+func (x *User) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+func (x *User) GetEmail() string {
+	if x != nil {
+		return x.Email
+	}
+	return ""
+}
+
+func (x *User) GetDisplayName() string {
+	if x != nil {
+		return x.DisplayName
+	}
+	return ""
+}
+
+func (x *User) GetInstanceAdmin() bool {
+	if x != nil {
+		return x.InstanceAdmin
+	}
+	return false
+}
+
+func (x *User) GetMfa() bool {
+	if x != nil {
+		return x.Mfa
+	}
+	return false
+}
+
+func (x *User) GetStatus() string {
+	if x != nil {
+		return x.Status
+	}
+	return ""
+}
+
+func (x *User) GetLastLoginTime() *timestamppb.Timestamp {
+	if x != nil {
+		return x.LastLoginTime
+	}
+	return nil
+}
+
+func (x *User) GetCreateTime() *timestamppb.Timestamp {
+	if x != nil {
+		return x.CreateTime
+	}
+	return nil
+}
+
+// GetMeRequest is empty.
+type GetMeRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetMeRequest) Reset() {
+	*x = GetMeRequest{}
+	mi := &file_rpmgr_v1_user_proto_msgTypes[9]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetMeRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetMeRequest) ProtoMessage() {}
+
+func (x *GetMeRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_rpmgr_v1_user_proto_msgTypes[9]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetMeRequest.ProtoReflect.Descriptor instead.
+func (*GetMeRequest) Descriptor() ([]byte, []int) {
+	return file_rpmgr_v1_user_proto_rawDescGZIP(), []int{9}
+}
+
+// GetMeResponse is the caller's account and memberships.
+type GetMeResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The account.
+	User *User `protobuf:"bytes,1,opt,name=user,proto3" json:"user,omitempty"`
+	// The memberships.
+	Memberships   []*Membership `protobuf:"bytes,2,rep,name=memberships,proto3" json:"memberships,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetMeResponse) Reset() {
+	*x = GetMeResponse{}
+	mi := &file_rpmgr_v1_user_proto_msgTypes[10]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetMeResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetMeResponse) ProtoMessage() {}
+
+func (x *GetMeResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_rpmgr_v1_user_proto_msgTypes[10]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetMeResponse.ProtoReflect.Descriptor instead.
+func (*GetMeResponse) Descriptor() ([]byte, []int) {
+	return file_rpmgr_v1_user_proto_rawDescGZIP(), []int{10}
+}
+
+func (x *GetMeResponse) GetUser() *User {
+	if x != nil {
+		return x.User
+	}
+	return nil
+}
+
+func (x *GetMeResponse) GetMemberships() []*Membership {
+	if x != nil {
+		return x.Memberships
+	}
+	return nil
+}
+
+// UpdateMeRequest is a new display name.
+type UpdateMeRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The display name.
+	DisplayName   string `protobuf:"bytes,1,opt,name=display_name,json=displayName,proto3" json:"display_name,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *UpdateMeRequest) Reset() {
+	*x = UpdateMeRequest{}
+	mi := &file_rpmgr_v1_user_proto_msgTypes[11]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *UpdateMeRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*UpdateMeRequest) ProtoMessage() {}
+
+func (x *UpdateMeRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_rpmgr_v1_user_proto_msgTypes[11]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use UpdateMeRequest.ProtoReflect.Descriptor instead.
+func (*UpdateMeRequest) Descriptor() ([]byte, []int) {
+	return file_rpmgr_v1_user_proto_rawDescGZIP(), []int{11}
+}
+
+func (x *UpdateMeRequest) GetDisplayName() string {
+	if x != nil {
+		return x.DisplayName
+	}
+	return ""
+}
+
+// UpdateMeResponse is the account.
+type UpdateMeResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The account.
+	User          *User `protobuf:"bytes,1,opt,name=user,proto3" json:"user,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *UpdateMeResponse) Reset() {
+	*x = UpdateMeResponse{}
+	mi := &file_rpmgr_v1_user_proto_msgTypes[12]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *UpdateMeResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*UpdateMeResponse) ProtoMessage() {}
+
+func (x *UpdateMeResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_rpmgr_v1_user_proto_msgTypes[12]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use UpdateMeResponse.ProtoReflect.Descriptor instead.
+func (*UpdateMeResponse) Descriptor() ([]byte, []int) {
+	return file_rpmgr_v1_user_proto_rawDescGZIP(), []int{12}
+}
+
+func (x *UpdateMeResponse) GetUser() *User {
+	if x != nil {
+		return x.User
+	}
+	return nil
+}
+
+// ChangePasswordRequest is the current and the new password.
+type ChangePasswordRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The current password.
+	CurrentPassword string `protobuf:"bytes,1,opt,name=current_password,json=currentPassword,proto3" json:"current_password,omitempty"`
+	// The new password, 12 to 256 characters.
+	NewPassword   string `protobuf:"bytes,2,opt,name=new_password,json=newPassword,proto3" json:"new_password,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ChangePasswordRequest) Reset() {
+	*x = ChangePasswordRequest{}
+	mi := &file_rpmgr_v1_user_proto_msgTypes[13]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ChangePasswordRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ChangePasswordRequest) ProtoMessage() {}
+
+func (x *ChangePasswordRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_rpmgr_v1_user_proto_msgTypes[13]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ChangePasswordRequest.ProtoReflect.Descriptor instead.
+func (*ChangePasswordRequest) Descriptor() ([]byte, []int) {
+	return file_rpmgr_v1_user_proto_rawDescGZIP(), []int{13}
+}
+
+func (x *ChangePasswordRequest) GetCurrentPassword() string {
+	if x != nil {
+		return x.CurrentPassword
+	}
+	return ""
+}
+
+func (x *ChangePasswordRequest) GetNewPassword() string {
+	if x != nil {
+		return x.NewPassword
+	}
+	return ""
+}
+
+// ChangePasswordResponse is empty.
+type ChangePasswordResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ChangePasswordResponse) Reset() {
+	*x = ChangePasswordResponse{}
+	mi := &file_rpmgr_v1_user_proto_msgTypes[14]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ChangePasswordResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ChangePasswordResponse) ProtoMessage() {}
+
+func (x *ChangePasswordResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_rpmgr_v1_user_proto_msgTypes[14]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ChangePasswordResponse.ProtoReflect.Descriptor instead.
+func (*ChangePasswordResponse) Descriptor() ([]byte, []int) {
+	return file_rpmgr_v1_user_proto_rawDescGZIP(), []int{14}
+}
+
+// ListUsersRequest pages through the users.
+type ListUsersRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// At most this many, 50 if not set, 500 at most.
+	PageSize int32 `protobuf:"varint,1,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
+	// The page after the one that returned it.
+	PageToken     string `protobuf:"bytes,2,opt,name=page_token,json=pageToken,proto3" json:"page_token,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListUsersRequest) Reset() {
+	*x = ListUsersRequest{}
+	mi := &file_rpmgr_v1_user_proto_msgTypes[15]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListUsersRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListUsersRequest) ProtoMessage() {}
+
+func (x *ListUsersRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_rpmgr_v1_user_proto_msgTypes[15]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListUsersRequest.ProtoReflect.Descriptor instead.
+func (*ListUsersRequest) Descriptor() ([]byte, []int) {
+	return file_rpmgr_v1_user_proto_rawDescGZIP(), []int{15}
+}
+
+func (x *ListUsersRequest) GetPageSize() int32 {
+	if x != nil {
+		return x.PageSize
+	}
+	return 0
+}
+
+func (x *ListUsersRequest) GetPageToken() string {
+	if x != nil {
+		return x.PageToken
+	}
+	return ""
+}
+
+// ListUsersResponse is one page of users, by ID.
+type ListUsersResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The users.
+	Users []*User `protobuf:"bytes,1,rep,name=users,proto3" json:"users,omitempty"`
+	// The token of the next page; empty after the last.
+	NextPageToken string `protobuf:"bytes,2,opt,name=next_page_token,json=nextPageToken,proto3" json:"next_page_token,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListUsersResponse) Reset() {
+	*x = ListUsersResponse{}
+	mi := &file_rpmgr_v1_user_proto_msgTypes[16]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListUsersResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListUsersResponse) ProtoMessage() {}
+
+func (x *ListUsersResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_rpmgr_v1_user_proto_msgTypes[16]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListUsersResponse.ProtoReflect.Descriptor instead.
+func (*ListUsersResponse) Descriptor() ([]byte, []int) {
+	return file_rpmgr_v1_user_proto_rawDescGZIP(), []int{16}
+}
+
+func (x *ListUsersResponse) GetUsers() []*User {
+	if x != nil {
+		return x.Users
+	}
+	return nil
+}
+
+func (x *ListUsersResponse) GetNextPageToken() string {
+	if x != nil {
+		return x.NextPageToken
+	}
+	return ""
+}
+
+// CreatePasswordResetLinkRequest names a user.
+type CreatePasswordResetLinkRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The user's ID.
+	UserId        string `protobuf:"bytes,1,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CreatePasswordResetLinkRequest) Reset() {
+	*x = CreatePasswordResetLinkRequest{}
+	mi := &file_rpmgr_v1_user_proto_msgTypes[17]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CreatePasswordResetLinkRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CreatePasswordResetLinkRequest) ProtoMessage() {}
+
+func (x *CreatePasswordResetLinkRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_rpmgr_v1_user_proto_msgTypes[17]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CreatePasswordResetLinkRequest.ProtoReflect.Descriptor instead.
+func (*CreatePasswordResetLinkRequest) Descriptor() ([]byte, []int) {
+	return file_rpmgr_v1_user_proto_rawDescGZIP(), []int{17}
+}
+
+func (x *CreatePasswordResetLinkRequest) GetUserId() string {
+	if x != nil {
+		return x.UserId
+	}
+	return ""
+}
+
+// CreatePasswordResetLinkResponse is the link.
+type CreatePasswordResetLinkResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The link, to pass on to the user; shown once.
+	Url string `protobuf:"bytes,1,opt,name=url,proto3" json:"url,omitempty"`
+	// When it stops working.
+	ExpireTime    *timestamppb.Timestamp `protobuf:"bytes,2,opt,name=expire_time,json=expireTime,proto3" json:"expire_time,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CreatePasswordResetLinkResponse) Reset() {
+	*x = CreatePasswordResetLinkResponse{}
+	mi := &file_rpmgr_v1_user_proto_msgTypes[18]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CreatePasswordResetLinkResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CreatePasswordResetLinkResponse) ProtoMessage() {}
+
+func (x *CreatePasswordResetLinkResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_rpmgr_v1_user_proto_msgTypes[18]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CreatePasswordResetLinkResponse.ProtoReflect.Descriptor instead.
+func (*CreatePasswordResetLinkResponse) Descriptor() ([]byte, []int) {
+	return file_rpmgr_v1_user_proto_rawDescGZIP(), []int{18}
+}
+
+func (x *CreatePasswordResetLinkResponse) GetUrl() string {
+	if x != nil {
+		return x.Url
+	}
+	return ""
+}
+
+func (x *CreatePasswordResetLinkResponse) GetExpireTime() *timestamppb.Timestamp {
+	if x != nil {
+		return x.ExpireTime
+	}
+	return nil
+}
+
 var File_rpmgr_v1_user_proto protoreflect.FileDescriptor
 
 const file_rpmgr_v1_user_proto_rawDesc = "" +
 	"\n" +
-	"\x13rpmgr/v1/user.proto\x12\brpmgr.v1\x1a\x1bbuf/validate/validate.proto\x1a\x16rpmgr/v1/options.proto\"\x13\n" +
+	"\x13rpmgr/v1/user.proto\x12\brpmgr.v1\x1a\x1bbuf/validate/validate.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x13rpmgr/v1/auth.proto\x1a\x16rpmgr/v1/options.proto\"\x13\n" +
 	"\x11EnrollTOTPRequest\"J\n" +
 	"\x12EnrollTOTPResponse\x12\x1c\n" +
 	"\x06secret\x18\x01 \x01(\tB\x04\x88\xb5\x18\x01R\x06secret\x12\x16\n" +
@@ -382,8 +979,53 @@ const file_rpmgr_v1_user_proto_rawDesc = "" +
 	"\x12RemoveTOTPResponse\" \n" +
 	"\x1eRegenerateRecoveryCodesRequest\"N\n" +
 	"\x1fRegenerateRecoveryCodesResponse\x12+\n" +
-	"\x0erecovery_codes\x18\x01 \x03(\tB\x04\x88\xb5\x18\x01R\rrecoveryCodes2\xb8\x03\n" +
-	"\vUserService\x12^\n" +
+	"\x0erecovery_codes\x18\x01 \x03(\tB\x04\x88\xb5\x18\x01R\rrecoveryCodes\"\xa1\x02\n" +
+	"\x04User\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\x12\x14\n" +
+	"\x05email\x18\x02 \x01(\tR\x05email\x12!\n" +
+	"\fdisplay_name\x18\x03 \x01(\tR\vdisplayName\x12%\n" +
+	"\x0einstance_admin\x18\x04 \x01(\bR\rinstanceAdmin\x12\x10\n" +
+	"\x03mfa\x18\x05 \x01(\bR\x03mfa\x12\x16\n" +
+	"\x06status\x18\x06 \x01(\tR\x06status\x12B\n" +
+	"\x0flast_login_time\x18\a \x01(\v2\x1a.google.protobuf.TimestampR\rlastLoginTime\x12;\n" +
+	"\vcreate_time\x18\b \x01(\v2\x1a.google.protobuf.TimestampR\n" +
+	"createTime\"\x0e\n" +
+	"\fGetMeRequest\"k\n" +
+	"\rGetMeResponse\x12\"\n" +
+	"\x04user\x18\x01 \x01(\v2\x0e.rpmgr.v1.UserR\x04user\x126\n" +
+	"\vmemberships\x18\x02 \x03(\v2\x14.rpmgr.v1.MembershipR\vmemberships\"?\n" +
+	"\x0fUpdateMeRequest\x12,\n" +
+	"\fdisplay_name\x18\x01 \x01(\tB\t\xbaH\x06r\x04\x10\x01\x18dR\vdisplayName\"6\n" +
+	"\x10UpdateMeResponse\x12\"\n" +
+	"\x04user\x18\x01 \x01(\v2\x0e.rpmgr.v1.UserR\x04user\"\x85\x01\n" +
+	"\x15ChangePasswordRequest\x129\n" +
+	"\x10current_password\x18\x01 \x01(\tB\x0e\xbaH\ar\x05\x10\x01\x18\x80\x02\x88\xb5\x18\x01R\x0fcurrentPassword\x121\n" +
+	"\fnew_password\x18\x02 \x01(\tB\x0e\xbaH\ar\x05\x10\f\x18\x80\x02\x88\xb5\x18\x01R\vnewPassword\"\x18\n" +
+	"\x16ChangePasswordResponse\"N\n" +
+	"\x10ListUsersRequest\x12\x1b\n" +
+	"\tpage_size\x18\x01 \x01(\x05R\bpageSize\x12\x1d\n" +
+	"\n" +
+	"page_token\x18\x02 \x01(\tR\tpageToken\"a\n" +
+	"\x11ListUsersResponse\x12$\n" +
+	"\x05users\x18\x01 \x03(\v2\x0e.rpmgr.v1.UserR\x05users\x12&\n" +
+	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"B\n" +
+	"\x1eCreatePasswordResetLinkRequest\x12 \n" +
+	"\auser_id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x06userId\"v\n" +
+	"\x1fCreatePasswordResetLinkResponse\x12\x16\n" +
+	"\x03url\x18\x01 \x01(\tB\x04\x88\xb5\x18\x01R\x03url\x12;\n" +
+	"\vexpire_time\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\n" +
+	"expireTime2\xb3\a\n" +
+	"\vUserService\x12P\n" +
+	"\x05GetMe\x12\x16.rpmgr.v1.GetMeRequest\x1a\x17.rpmgr.v1.GetMeResponse\"\x16\x8a\xb5\x18\x0f\n" +
+	"\rauthenticated\x90\x02\x01\x12V\n" +
+	"\bUpdateMe\x12\x19.rpmgr.v1.UpdateMeRequest\x1a\x1a.rpmgr.v1.UpdateMeResponse\"\x13\x8a\xb5\x18\x0f\n" +
+	"\rauthenticated\x12h\n" +
+	"\x0eChangePassword\x12\x1f.rpmgr.v1.ChangePasswordRequest\x1a .rpmgr.v1.ChangePasswordResponse\"\x13\x8a\xb5\x18\x0f\n" +
+	"\rauthenticated\x12]\n" +
+	"\tListUsers\x12\x1a.rpmgr.v1.ListUsersRequest\x1a\x1b.rpmgr.v1.ListUsersResponse\"\x17\x8a\xb5\x18\x10\n" +
+	"\x0einstance.admin\x90\x02\x01\x12\x85\x01\n" +
+	"\x17CreatePasswordResetLink\x12(.rpmgr.v1.CreatePasswordResetLinkRequest\x1a).rpmgr.v1.CreatePasswordResetLinkResponse\"\x15\x8a\xb5\x18\x11\n" +
+	"\rauthenticated\x18\x01\x12^\n" +
 	"\n" +
 	"EnrollTOTP\x12\x1b.rpmgr.v1.EnrollTOTPRequest\x1a\x1c.rpmgr.v1.EnrollTOTPResponse\"\x15\x8a\xb5\x18\x11\n" +
 	"\rauthenticated\x18\x01\x12a\n" +
@@ -407,7 +1049,7 @@ func file_rpmgr_v1_user_proto_rawDescGZIP() []byte {
 	return file_rpmgr_v1_user_proto_rawDescData
 }
 
-var file_rpmgr_v1_user_proto_msgTypes = make([]protoimpl.MessageInfo, 8)
+var file_rpmgr_v1_user_proto_msgTypes = make([]protoimpl.MessageInfo, 19)
 var file_rpmgr_v1_user_proto_goTypes = []any{
 	(*EnrollTOTPRequest)(nil),               // 0: rpmgr.v1.EnrollTOTPRequest
 	(*EnrollTOTPResponse)(nil),              // 1: rpmgr.v1.EnrollTOTPResponse
@@ -417,21 +1059,51 @@ var file_rpmgr_v1_user_proto_goTypes = []any{
 	(*RemoveTOTPResponse)(nil),              // 5: rpmgr.v1.RemoveTOTPResponse
 	(*RegenerateRecoveryCodesRequest)(nil),  // 6: rpmgr.v1.RegenerateRecoveryCodesRequest
 	(*RegenerateRecoveryCodesResponse)(nil), // 7: rpmgr.v1.RegenerateRecoveryCodesResponse
+	(*User)(nil),                            // 8: rpmgr.v1.User
+	(*GetMeRequest)(nil),                    // 9: rpmgr.v1.GetMeRequest
+	(*GetMeResponse)(nil),                   // 10: rpmgr.v1.GetMeResponse
+	(*UpdateMeRequest)(nil),                 // 11: rpmgr.v1.UpdateMeRequest
+	(*UpdateMeResponse)(nil),                // 12: rpmgr.v1.UpdateMeResponse
+	(*ChangePasswordRequest)(nil),           // 13: rpmgr.v1.ChangePasswordRequest
+	(*ChangePasswordResponse)(nil),          // 14: rpmgr.v1.ChangePasswordResponse
+	(*ListUsersRequest)(nil),                // 15: rpmgr.v1.ListUsersRequest
+	(*ListUsersResponse)(nil),               // 16: rpmgr.v1.ListUsersResponse
+	(*CreatePasswordResetLinkRequest)(nil),  // 17: rpmgr.v1.CreatePasswordResetLinkRequest
+	(*CreatePasswordResetLinkResponse)(nil), // 18: rpmgr.v1.CreatePasswordResetLinkResponse
+	(*timestamppb.Timestamp)(nil),           // 19: google.protobuf.Timestamp
+	(*Membership)(nil),                      // 20: rpmgr.v1.Membership
 }
 var file_rpmgr_v1_user_proto_depIdxs = []int32{
-	0, // 0: rpmgr.v1.UserService.EnrollTOTP:input_type -> rpmgr.v1.EnrollTOTPRequest
-	2, // 1: rpmgr.v1.UserService.ConfirmTOTP:input_type -> rpmgr.v1.ConfirmTOTPRequest
-	4, // 2: rpmgr.v1.UserService.RemoveTOTP:input_type -> rpmgr.v1.RemoveTOTPRequest
-	6, // 3: rpmgr.v1.UserService.RegenerateRecoveryCodes:input_type -> rpmgr.v1.RegenerateRecoveryCodesRequest
-	1, // 4: rpmgr.v1.UserService.EnrollTOTP:output_type -> rpmgr.v1.EnrollTOTPResponse
-	3, // 5: rpmgr.v1.UserService.ConfirmTOTP:output_type -> rpmgr.v1.ConfirmTOTPResponse
-	5, // 6: rpmgr.v1.UserService.RemoveTOTP:output_type -> rpmgr.v1.RemoveTOTPResponse
-	7, // 7: rpmgr.v1.UserService.RegenerateRecoveryCodes:output_type -> rpmgr.v1.RegenerateRecoveryCodesResponse
-	4, // [4:8] is the sub-list for method output_type
-	0, // [0:4] is the sub-list for method input_type
-	0, // [0:0] is the sub-list for extension type_name
-	0, // [0:0] is the sub-list for extension extendee
-	0, // [0:0] is the sub-list for field type_name
+	19, // 0: rpmgr.v1.User.last_login_time:type_name -> google.protobuf.Timestamp
+	19, // 1: rpmgr.v1.User.create_time:type_name -> google.protobuf.Timestamp
+	8,  // 2: rpmgr.v1.GetMeResponse.user:type_name -> rpmgr.v1.User
+	20, // 3: rpmgr.v1.GetMeResponse.memberships:type_name -> rpmgr.v1.Membership
+	8,  // 4: rpmgr.v1.UpdateMeResponse.user:type_name -> rpmgr.v1.User
+	8,  // 5: rpmgr.v1.ListUsersResponse.users:type_name -> rpmgr.v1.User
+	19, // 6: rpmgr.v1.CreatePasswordResetLinkResponse.expire_time:type_name -> google.protobuf.Timestamp
+	9,  // 7: rpmgr.v1.UserService.GetMe:input_type -> rpmgr.v1.GetMeRequest
+	11, // 8: rpmgr.v1.UserService.UpdateMe:input_type -> rpmgr.v1.UpdateMeRequest
+	13, // 9: rpmgr.v1.UserService.ChangePassword:input_type -> rpmgr.v1.ChangePasswordRequest
+	15, // 10: rpmgr.v1.UserService.ListUsers:input_type -> rpmgr.v1.ListUsersRequest
+	17, // 11: rpmgr.v1.UserService.CreatePasswordResetLink:input_type -> rpmgr.v1.CreatePasswordResetLinkRequest
+	0,  // 12: rpmgr.v1.UserService.EnrollTOTP:input_type -> rpmgr.v1.EnrollTOTPRequest
+	2,  // 13: rpmgr.v1.UserService.ConfirmTOTP:input_type -> rpmgr.v1.ConfirmTOTPRequest
+	4,  // 14: rpmgr.v1.UserService.RemoveTOTP:input_type -> rpmgr.v1.RemoveTOTPRequest
+	6,  // 15: rpmgr.v1.UserService.RegenerateRecoveryCodes:input_type -> rpmgr.v1.RegenerateRecoveryCodesRequest
+	10, // 16: rpmgr.v1.UserService.GetMe:output_type -> rpmgr.v1.GetMeResponse
+	12, // 17: rpmgr.v1.UserService.UpdateMe:output_type -> rpmgr.v1.UpdateMeResponse
+	14, // 18: rpmgr.v1.UserService.ChangePassword:output_type -> rpmgr.v1.ChangePasswordResponse
+	16, // 19: rpmgr.v1.UserService.ListUsers:output_type -> rpmgr.v1.ListUsersResponse
+	18, // 20: rpmgr.v1.UserService.CreatePasswordResetLink:output_type -> rpmgr.v1.CreatePasswordResetLinkResponse
+	1,  // 21: rpmgr.v1.UserService.EnrollTOTP:output_type -> rpmgr.v1.EnrollTOTPResponse
+	3,  // 22: rpmgr.v1.UserService.ConfirmTOTP:output_type -> rpmgr.v1.ConfirmTOTPResponse
+	5,  // 23: rpmgr.v1.UserService.RemoveTOTP:output_type -> rpmgr.v1.RemoveTOTPResponse
+	7,  // 24: rpmgr.v1.UserService.RegenerateRecoveryCodes:output_type -> rpmgr.v1.RegenerateRecoveryCodesResponse
+	16, // [16:25] is the sub-list for method output_type
+	7,  // [7:16] is the sub-list for method input_type
+	7,  // [7:7] is the sub-list for extension type_name
+	7,  // [7:7] is the sub-list for extension extendee
+	0,  // [0:7] is the sub-list for field type_name
 }
 
 func init() { file_rpmgr_v1_user_proto_init() }
@@ -439,6 +1111,7 @@ func file_rpmgr_v1_user_proto_init() {
 	if File_rpmgr_v1_user_proto != nil {
 		return
 	}
+	file_rpmgr_v1_auth_proto_init()
 	file_rpmgr_v1_options_proto_init()
 	type x struct{}
 	out := protoimpl.TypeBuilder{
@@ -446,7 +1119,7 @@ func file_rpmgr_v1_user_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_rpmgr_v1_user_proto_rawDesc), len(file_rpmgr_v1_user_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   8,
+			NumMessages:   19,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

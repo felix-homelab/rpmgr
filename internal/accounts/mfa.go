@@ -31,9 +31,9 @@ var (
 	ErrSecondFactor = errors.New("accounts: the code is not valid or was used")
 )
 
-// MFA manages the second factors of users: an authenticator app (TOTP) and recovery codes
-// (docs/04-security.md, "Human authentication and sessions"). Every change is a credential
-// supersession in the revocation log.
+// MFA manages the credentials of users beyond their first password: an authenticator app (TOTP),
+// recovery codes and password changes (docs/04-security.md, "Human authentication and sessions").
+// Every change is a credential supersession in the revocation log.
 type MFA struct {
 	*Accounts
 	Sealer *secret.Sealer

@@ -221,10 +221,10 @@ func Run(ctx context.Context, o RunOptions) error {
 	mux.Handle("/.well-known/rpmgr/trust-bundle", enroll.TrustBundleHandler(ca.Root()))
 	mfa := &accounts.MFA{Accounts: acc, Sealer: sealer, RevLog: rl, Logger: o.Logger}
 	relay := &apisvc.Relay{DB: db, Sys: sys, Sealer: sealer}
+	auth := apisvc.NewAuth(mfa, webSessions, o.Now)
+	auth.Mail, auth.PublicURL, auth.Logger = relay, cfg.PublicURL, o.Logger
 	if err := apiServer.Mount(mux, rpmgrv1.File_rpmgr_v1_auth_proto.Services().ByName("AuthService"),
 		func(opts ...connect.HandlerOption) (string, http.Handler) {
-			auth := apisvc.NewAuth(mfa, webSessions, o.Now)
-			auth.Mail, auth.PublicURL, auth.Logger = relay, cfg.PublicURL, o.Logger
 			return rpmgrv1connect.NewAuthServiceHandler(auth, opts...)
 		}); err != nil {
 		return err
@@ -232,7 +232,7 @@ func Run(ctx context.Context, o RunOptions) error {
 	if err := apiServer.Mount(mux, rpmgrv1.File_rpmgr_v1_user_proto.Services().ByName("UserService"),
 		func(opts ...connect.HandlerOption) (string, http.Handler) {
 			return rpmgrv1connect.NewUserServiceHandler(&apisvc.User{MFA: mfa, Sessions: webSessions,
-				Issuer: "rpmgr " + public.Hostname()}, opts...)
+				Issuer: "rpmgr " + public.Hostname(), API: apiServer, PublicURL: cfg.PublicURL, Backoff: auth.Backoff}, opts...)
 		}); err != nil {
 		return err
 	}
