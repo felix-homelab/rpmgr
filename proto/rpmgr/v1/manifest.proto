@@ -1,0 +1,62 @@
+// SPDX-License-Identifier: Apache-2.0
+
+syntax = "proto3";
+
+package rpmgr.v1;
+
+import "buf/validate/validate.proto";
+import "rpmgr/v1/options.proto";
+
+option go_package = "github.com/felix-homelab/rpmgr/gen/rpmgr/v1;rpmgrv1";
+
+// ManifestService writes an org's resources as YAML manifests (docs/07-api.md, "Declarative
+// manifests"). Plan and Apply come in Phase 2.
+service ManifestService {
+  // ExportManifests returns the manifests of an org's resources: those named, or those of the
+  // kinds named, or all.
+  rpc ExportManifests(ExportManifestsRequest) returns (ExportManifestsResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+    option (rpmgr.v1.authz) = {
+      permission: "org.read"
+      resource_field: "org_id"
+    };
+  }
+}
+
+// ExportManifestsRequest names an org and what of it to export.
+message ExportManifestsRequest {
+  // The org.
+  string org_id = 1 [(buf.validate.field).string.min_len = 1];
+  // The kinds to export, such as "Route"; empty is every kind.
+  repeated string kinds = 2 [(buf.validate.field).repeated = {
+    max_items: 8
+    unique: true
+    items: {
+      string: {
+        in: [
+          "Route",
+          "AccessPolicy",
+          "GatewayGroup",
+          "Gateway",
+          "PortPool",
+          "Domain",
+          "Connector",
+          "CABundle"
+        ]
+      }
+    }
+  }];
+  // The resources to export, by ID, instead of whole kinds.
+  repeated string resource_ids = 3 [(buf.validate.field).repeated = {
+    max_items: 500
+    unique: true
+  }];
+}
+
+// ExportManifestsResponse is the manifests.
+message ExportManifestsResponse {
+  // The manifests as one YAML stream, by kind in the order of the request, then by ID.
+  string yaml = 1;
+  // How many manifests it holds.
+  int32 count = 2;
+}

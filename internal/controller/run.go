@@ -283,6 +283,12 @@ func Run(ctx context.Context, o RunOptions) error {
 		}); err != nil {
 		return err
 	}
+	if err := apiServer.Mount(mux, rpmgrv1.File_rpmgr_v1_manifest_proto.Services().ByName("ManifestService"),
+		func(opts ...connect.HandlerOption) (string, http.Handler) {
+			return rpmgrv1connect.NewManifestServiceHandler(&apisvc.Manifests{DB: db}, opts...)
+		}); err != nil {
+		return err
+	}
 	if err := apiServer.Mount(mux, rpmgrv1.File_rpmgr_v1_pki_proto.Services().ByName("PkiService"),
 		func(opts ...connect.HandlerOption) (string, http.Handler) {
 			return rpmgrv1connect.NewPkiServiceHandler(&apisvc.Pki{DB: db, Sys: sys, Sealer: sealer, CA: ca, Now: o.Now}, opts...)
