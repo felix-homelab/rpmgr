@@ -24,7 +24,7 @@ func commands() *cli.Command {
 	return &cli.Command{
 		Name:    "rpmgr",
 		Summary: "publish services on private networks through public gateways",
-		Sub: []*cli.Command{
+		Sub: append([]*cli.Command{
 			role("controller", "run the controller: web UI, API, CA and configuration", runController,
 				controllerInit()),
 			role("gateway", "run a gateway: public listeners and data sessions from connectors", runGateway),
@@ -52,9 +52,12 @@ func commands() *cli.Command {
 			group("release", "administer release artifacts on the controller host",
 				leaf("import", "import a signed release for air-gapped installations")),
 			{Name: "version", Summary: "print the version of this binary", Run: runVersion},
-		},
+		}, testCommands...),
 	}
 }
+
+// testCommands are the commands of the rpmgrtest build only (D60).
+var testCommands []*cli.Command
 
 // role is a command that runs one role from its boot file; run nil is not available yet.
 func role(name, summary string, run func(ctx context.Context, env *cli.Env, configPath string) error, sub ...*cli.Command) *cli.Command {

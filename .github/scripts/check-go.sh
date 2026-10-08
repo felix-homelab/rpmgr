@@ -33,4 +33,14 @@ fi
 if ! go test -race -count=1 ./...; then
   fail "tests failed"
 fi
+# The test-only code of the rpmgrtest build (D60): vet everything with the tag, and test the
+# packages that have files of their own under it.
+if ! go vet -tags rpmgrtest ./...; then
+  fail "go vet reported problems in the rpmgrtest build"
+fi
+tagged=$(git ls-files -z '*.go' | { xargs -0 -r grep -l '^//go:build rpmgrtest' || true; } | xargs -r -n1 dirname | sort -u |
+  sed 's#^#./#')
+if [[ -n $tagged ]] && ! go test -race -count=1 -tags rpmgrtest $tagged; then
+  fail "tests of the rpmgrtest build failed"
+fi
 finish

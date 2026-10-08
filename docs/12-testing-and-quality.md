@@ -80,7 +80,11 @@ per-PR subset when it is built; the nightly run covers the full cross-product. C
 controlled clock (certificate expiry and grace re-authentication, clock skew) run in-process with
 real traffic and a fake clock; clock jumps in chaos tests use the clock-offset hook of the
 `rpmgrtest` build. Before the public API exists, end-to-end tests seed their configuration with the
-`rpmgrtest` seeding command ([D60](14-open-decisions.md#security-defaults)).
+`rpmgrtest` seeding command ([D60](14-open-decisions.md#security-defaults)): `rpmgr testseed`
+creates gateways with their enrollment tokens, connector tokens and tcp routes, changes routes and
+revokes identities, writing next to the running controller through configuration transactions.
+`check-go.sh` vets the `rpmgrtest` build and runs the tests of its packages, golangci-lint lints it,
+and a test of the release build checks that no test-only command exists there.
 
 ## Benchmarks
 
