@@ -79,6 +79,41 @@ func (b *Budget) release(conn *quic.Conn) {
 	delete(b.conns, conn)
 }
 
+// h2MinConnWindow is the smallest connection window an HTTP/2 session is admitted with.
+const h2MinConnWindow = 4 << 20
+
+// ErrBudget is returned when the window budget has no room for another session.
+var ErrBudget = errors.New("tunnel: the window budget is exhausted")
+
+// AdmitH2 reserves the connection window of a new reverse-HTTP/2 session, which has no hook like
+// quic-go's: the full windows while the budget has room, smaller ones when it is tight (a stream
+// window of at most a sixteenth of the connection window), and ErrBudget when not even
+// 4 MiB fit. release returns the reservation; call it when the session ends.
+func (b *Budget) AdmitH2(want H2Windows) (H2Windows, func(), error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	free := uint64(0)
+	if b.limit > b.used {
+		free = b.limit - b.used
+	}
+	conn := min(uint64(want.Conn), free) //nolint:gosec // G115: a window is positive
+	if conn < h2MinConnWindow {
+		return H2Windows{}, nil, ErrBudget
+	}
+	got := want
+	got.Conn = int(conn) //nolint:gosec // G115: conn <= want.Conn
+	got.Stream = min(want.Stream, got.Conn/16)
+	b.used += conn
+	var once sync.Once
+	return got, func() {
+		once.Do(func() {
+			b.mu.Lock()
+			b.used -= conn
+			b.mu.Unlock()
+		})
+	}, nil
+}
+
 // Used returns how many bytes of the budget are taken.
 func (b *Budget) Used() uint64 {
 	b.mu.Lock()

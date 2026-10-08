@@ -34,9 +34,9 @@ TestEnrollReplace_TokenBoundToConnector	pending	8.2	#116
 TestBasicAuth_HashOncePerTTL	pending	5.11	#97
 TestBasicAuth_CacheScopedToPolicy	pending	5.11	#97
 TestPrivateUDP_GatewaySeesCiphertextOnly	p2	-	-	private services
-TestFlowControl_StalledStreamsDoNotFreezeSession	pending	4.5	#75
-TestFlowControl_PausedClientNotResetWithoutPressure	pending	4.5	#75
-TestH2_AdmissionUnderBudget	pending	4.5	#75	h3-share clause in P3 (HTTP/3 ingress)
+TestFlowControl_StalledStreamsDoNotFreezeSession	done	4.5	#75
+TestFlowControl_PausedClientNotResetWithoutPressure	done	4.5	#75
+TestH2_AdmissionUnderBudget	done	4.5	#75	h3-share clause in P3 (HTTP/3 ingress)
 TestGateway_PerGatewayTunnelEndpoints	pending	4.10	#80	WSS clause in P2
 TestOpenRequest_Semantics	done	4.4	#74
 TestH2_ConnectorFINKeepsClientDirection	done	4.3	#73
