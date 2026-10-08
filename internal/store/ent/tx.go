@@ -68,6 +68,8 @@ type Tx struct {
 	RouteTCP *RouteTCPClient
 	// RouteTarget is the client for interacting with the RouteTarget builders.
 	RouteTarget *RouteTargetClient
+	// RouteUDP is the client for interacting with the RouteUDP builders.
+	RouteUDP *RouteUDPClient
 	// SecretMeta is the client for interacting with the SecretMeta builders.
 	SecretMeta *SecretMetaClient
 
@@ -228,6 +230,7 @@ func (tx *Tx) init() {
 	tx.RouteHostname = NewRouteHostnameClient(tx.config)
 	tx.RouteTCP = NewRouteTCPClient(tx.config)
 	tx.RouteTarget = NewRouteTargetClient(tx.config)
+	tx.RouteUDP = NewRouteUDPClient(tx.config)
 	tx.SecretMeta = NewSecretMetaClient(tx.config)
 }
 

@@ -39,6 +39,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routehostname"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routetarget"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routetcp"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/routeudp"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/secretmeta"
 )
 
@@ -78,6 +79,7 @@ const (
 	TypeRouteHostname     = "RouteHostname"
 	TypeRouteTCP          = "RouteTCP"
 	TypeRouteTarget       = "RouteTarget"
+	TypeRouteUDP          = "RouteUDP"
 	TypeSecretMeta        = "SecretMeta"
 )
 
@@ -21528,6 +21530,643 @@ func (m *RouteTargetMutation) ResetEdge(name string) error {
 		return nil
 	}
 	return fmt.Errorf("unknown RouteTarget edge %s", name)
+}
+
+// RouteUDPMutation represents an operation that mutates the RouteUDP nodes in the graph.
+type RouteUDPMutation struct {
+	config
+	op                           Op
+	typ                          string
+	id                           *int
+	org_id                       *string
+	flow_idle_timeout_seconds    *int
+	addflow_idle_timeout_seconds *int
+	clearedFields                map[string]struct{}
+	route                        *string
+	clearedroute                 bool
+	port                         *string
+	clearedport                  bool
+	done                         bool
+	oldValue                     func(context.Context) (*RouteUDP, error)
+	predicates                   []predicate.RouteUDP
+}
+
+var _ ent.Mutation = (*RouteUDPMutation)(nil)
+
+// routeudpOption allows management of the mutation configuration using functional options.
+type routeudpOption func(*RouteUDPMutation)
+
+// newRouteUDPMutation creates new mutation for the RouteUDP entity.
+func newRouteUDPMutation(c config, op Op, opts ...routeudpOption) *RouteUDPMutation {
+	m := &RouteUDPMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeRouteUDP,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withRouteUDPID sets the ID field of the mutation.
+func withRouteUDPID(id int) routeudpOption {
+	return func(m *RouteUDPMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *RouteUDP
+		)
+		m.oldValue = func(ctx context.Context) (*RouteUDP, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().RouteUDP.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withRouteUDP sets the old RouteUDP of the mutation.
+func withRouteUDP(node *RouteUDP) routeudpOption {
+	return func(m *RouteUDPMutation) {
+		m.oldValue = func(context.Context) (*RouteUDP, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m RouteUDPMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m RouteUDPMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *RouteUDPMutation) ID() (id int, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *RouteUDPMutation) IDs(ctx context.Context) ([]int, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []int{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().RouteUDP.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetOrgID sets the "org_id" field.
+func (m *RouteUDPMutation) SetOrgID(s string) {
+	m.org_id = &s
+}
+
+// OrgID returns the value of the "org_id" field in the mutation.
+func (m *RouteUDPMutation) OrgID() (r string, exists bool) {
+	v := m.org_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldOrgID returns the old "org_id" field's value of the RouteUDP entity.
+// If the RouteUDP object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RouteUDPMutation) OldOrgID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldOrgID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldOrgID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldOrgID: %w", err)
+	}
+	return oldValue.OrgID, nil
+}
+
+// ResetOrgID resets all changes to the "org_id" field.
+func (m *RouteUDPMutation) ResetOrgID() {
+	m.org_id = nil
+}
+
+// SetRouteID sets the "route_id" field.
+func (m *RouteUDPMutation) SetRouteID(s string) {
+	m.route = &s
+}
+
+// RouteID returns the value of the "route_id" field in the mutation.
+func (m *RouteUDPMutation) RouteID() (r string, exists bool) {
+	v := m.route
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRouteID returns the old "route_id" field's value of the RouteUDP entity.
+// If the RouteUDP object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RouteUDPMutation) OldRouteID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRouteID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRouteID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRouteID: %w", err)
+	}
+	return oldValue.RouteID, nil
+}
+
+// ResetRouteID resets all changes to the "route_id" field.
+func (m *RouteUDPMutation) ResetRouteID() {
+	m.route = nil
+}
+
+// SetPortAllocationID sets the "port_allocation_id" field.
+func (m *RouteUDPMutation) SetPortAllocationID(s string) {
+	m.port = &s
+}
+
+// PortAllocationID returns the value of the "port_allocation_id" field in the mutation.
+func (m *RouteUDPMutation) PortAllocationID() (r string, exists bool) {
+	v := m.port
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldPortAllocationID returns the old "port_allocation_id" field's value of the RouteUDP entity.
+// If the RouteUDP object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RouteUDPMutation) OldPortAllocationID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPortAllocationID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPortAllocationID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPortAllocationID: %w", err)
+	}
+	return oldValue.PortAllocationID, nil
+}
+
+// ResetPortAllocationID resets all changes to the "port_allocation_id" field.
+func (m *RouteUDPMutation) ResetPortAllocationID() {
+	m.port = nil
+}
+
+// SetFlowIdleTimeoutSeconds sets the "flow_idle_timeout_seconds" field.
+func (m *RouteUDPMutation) SetFlowIdleTimeoutSeconds(i int) {
+	m.flow_idle_timeout_seconds = &i
+	m.addflow_idle_timeout_seconds = nil
+}
+
+// FlowIdleTimeoutSeconds returns the value of the "flow_idle_timeout_seconds" field in the mutation.
+func (m *RouteUDPMutation) FlowIdleTimeoutSeconds() (r int, exists bool) {
+	v := m.flow_idle_timeout_seconds
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldFlowIdleTimeoutSeconds returns the old "flow_idle_timeout_seconds" field's value of the RouteUDP entity.
+// If the RouteUDP object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RouteUDPMutation) OldFlowIdleTimeoutSeconds(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldFlowIdleTimeoutSeconds is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldFlowIdleTimeoutSeconds requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldFlowIdleTimeoutSeconds: %w", err)
+	}
+	return oldValue.FlowIdleTimeoutSeconds, nil
+}
+
+// AddFlowIdleTimeoutSeconds adds i to the "flow_idle_timeout_seconds" field.
+func (m *RouteUDPMutation) AddFlowIdleTimeoutSeconds(i int) {
+	if m.addflow_idle_timeout_seconds != nil {
+		*m.addflow_idle_timeout_seconds += i
+	} else {
+		m.addflow_idle_timeout_seconds = &i
+	}
+}
+
+// AddedFlowIdleTimeoutSeconds returns the value that was added to the "flow_idle_timeout_seconds" field in this mutation.
+func (m *RouteUDPMutation) AddedFlowIdleTimeoutSeconds() (r int, exists bool) {
+	v := m.addflow_idle_timeout_seconds
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetFlowIdleTimeoutSeconds resets all changes to the "flow_idle_timeout_seconds" field.
+func (m *RouteUDPMutation) ResetFlowIdleTimeoutSeconds() {
+	m.flow_idle_timeout_seconds = nil
+	m.addflow_idle_timeout_seconds = nil
+}
+
+// ClearRoute clears the "route" edge to the Route entity.
+func (m *RouteUDPMutation) ClearRoute() {
+	m.clearedroute = true
+	m.clearedFields[routeudp.FieldRouteID] = struct{}{}
+}
+
+// RouteCleared reports if the "route" edge to the Route entity was cleared.
+func (m *RouteUDPMutation) RouteCleared() bool {
+	return m.clearedroute
+}
+
+// RouteIDs returns the "route" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// RouteID instead. It exists only for internal usage by the builders.
+func (m *RouteUDPMutation) RouteIDs() (ids []string) {
+	if id := m.route; id != nil {
+		ids = append(ids, *id)
+	}
+	return
+}
+
+// ResetRoute resets all changes to the "route" edge.
+func (m *RouteUDPMutation) ResetRoute() {
+	m.route = nil
+	m.clearedroute = false
+}
+
+// SetPortID sets the "port" edge to the PortAllocation entity by id.
+func (m *RouteUDPMutation) SetPortID(id string) {
+	m.port = &id
+}
+
+// ClearPort clears the "port" edge to the PortAllocation entity.
+func (m *RouteUDPMutation) ClearPort() {
+	m.clearedport = true
+	m.clearedFields[routeudp.FieldPortAllocationID] = struct{}{}
+}
+
+// PortCleared reports if the "port" edge to the PortAllocation entity was cleared.
+func (m *RouteUDPMutation) PortCleared() bool {
+	return m.clearedport
+}
+
+// PortID returns the "port" edge ID in the mutation.
+func (m *RouteUDPMutation) PortID() (id string, exists bool) {
+	if m.port != nil {
+		return *m.port, true
+	}
+	return
+}
+
+// PortIDs returns the "port" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// PortID instead. It exists only for internal usage by the builders.
+func (m *RouteUDPMutation) PortIDs() (ids []string) {
+	if id := m.port; id != nil {
+		ids = append(ids, *id)
+	}
+	return
+}
+
+// ResetPort resets all changes to the "port" edge.
+func (m *RouteUDPMutation) ResetPort() {
+	m.port = nil
+	m.clearedport = false
+}
+
+// Where appends a list predicates to the RouteUDPMutation builder.
+func (m *RouteUDPMutation) Where(ps ...predicate.RouteUDP) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the RouteUDPMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *RouteUDPMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.RouteUDP, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *RouteUDPMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *RouteUDPMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (RouteUDP).
+func (m *RouteUDPMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *RouteUDPMutation) Fields() []string {
+	fields := make([]string, 0, 4)
+	if m.org_id != nil {
+		fields = append(fields, routeudp.FieldOrgID)
+	}
+	if m.route != nil {
+		fields = append(fields, routeudp.FieldRouteID)
+	}
+	if m.port != nil {
+		fields = append(fields, routeudp.FieldPortAllocationID)
+	}
+	if m.flow_idle_timeout_seconds != nil {
+		fields = append(fields, routeudp.FieldFlowIdleTimeoutSeconds)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *RouteUDPMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case routeudp.FieldOrgID:
+		return m.OrgID()
+	case routeudp.FieldRouteID:
+		return m.RouteID()
+	case routeudp.FieldPortAllocationID:
+		return m.PortAllocationID()
+	case routeudp.FieldFlowIdleTimeoutSeconds:
+		return m.FlowIdleTimeoutSeconds()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *RouteUDPMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case routeudp.FieldOrgID:
+		return m.OldOrgID(ctx)
+	case routeudp.FieldRouteID:
+		return m.OldRouteID(ctx)
+	case routeudp.FieldPortAllocationID:
+		return m.OldPortAllocationID(ctx)
+	case routeudp.FieldFlowIdleTimeoutSeconds:
+		return m.OldFlowIdleTimeoutSeconds(ctx)
+	}
+	return nil, fmt.Errorf("unknown RouteUDP field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *RouteUDPMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case routeudp.FieldOrgID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetOrgID(v)
+		return nil
+	case routeudp.FieldRouteID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRouteID(v)
+		return nil
+	case routeudp.FieldPortAllocationID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetPortAllocationID(v)
+		return nil
+	case routeudp.FieldFlowIdleTimeoutSeconds:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetFlowIdleTimeoutSeconds(v)
+		return nil
+	}
+	return fmt.Errorf("unknown RouteUDP field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *RouteUDPMutation) AddedFields() []string {
+	var fields []string
+	if m.addflow_idle_timeout_seconds != nil {
+		fields = append(fields, routeudp.FieldFlowIdleTimeoutSeconds)
+	}
+	return fields
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *RouteUDPMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case routeudp.FieldFlowIdleTimeoutSeconds:
+		return m.AddedFlowIdleTimeoutSeconds()
+	}
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *RouteUDPMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	case routeudp.FieldFlowIdleTimeoutSeconds:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddFlowIdleTimeoutSeconds(v)
+		return nil
+	}
+	return fmt.Errorf("unknown RouteUDP numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *RouteUDPMutation) ClearedFields() []string {
+	return nil
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *RouteUDPMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *RouteUDPMutation) ClearField(name string) error {
+	return fmt.Errorf("unknown RouteUDP nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *RouteUDPMutation) ResetField(name string) error {
+	switch name {
+	case routeudp.FieldOrgID:
+		m.ResetOrgID()
+		return nil
+	case routeudp.FieldRouteID:
+		m.ResetRouteID()
+		return nil
+	case routeudp.FieldPortAllocationID:
+		m.ResetPortAllocationID()
+		return nil
+	case routeudp.FieldFlowIdleTimeoutSeconds:
+		m.ResetFlowIdleTimeoutSeconds()
+		return nil
+	}
+	return fmt.Errorf("unknown RouteUDP field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *RouteUDPMutation) AddedEdges() []string {
+	edges := make([]string, 0, 2)
+	if m.route != nil {
+		edges = append(edges, routeudp.EdgeRoute)
+	}
+	if m.port != nil {
+		edges = append(edges, routeudp.EdgePort)
+	}
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *RouteUDPMutation) AddedIDs(name string) []ent.Value {
+	switch name {
+	case routeudp.EdgeRoute:
+		if id := m.route; id != nil {
+			return []ent.Value{*id}
+		}
+	case routeudp.EdgePort:
+		if id := m.port; id != nil {
+			return []ent.Value{*id}
+		}
+	}
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *RouteUDPMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 2)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *RouteUDPMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *RouteUDPMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 2)
+	if m.clearedroute {
+		edges = append(edges, routeudp.EdgeRoute)
+	}
+	if m.clearedport {
+		edges = append(edges, routeudp.EdgePort)
+	}
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *RouteUDPMutation) EdgeCleared(name string) bool {
+	switch name {
+	case routeudp.EdgeRoute:
+		return m.clearedroute
+	case routeudp.EdgePort:
+		return m.clearedport
+	}
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *RouteUDPMutation) ClearEdge(name string) error {
+	switch name {
+	case routeudp.EdgeRoute:
+		m.ClearRoute()
+		return nil
+	case routeudp.EdgePort:
+		m.ClearPort()
+		return nil
+	}
+	return fmt.Errorf("unknown RouteUDP unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *RouteUDPMutation) ResetEdge(name string) error {
+	switch name {
+	case routeudp.EdgeRoute:
+		m.ResetRoute()
+		return nil
+	case routeudp.EdgePort:
+		m.ResetPort()
+		return nil
+	}
+	return fmt.Errorf("unknown RouteUDP edge %s", name)
 }
 
 // SecretMetaMutation represents an operation that mutates the SecretMeta nodes in the graph.

@@ -333,6 +333,18 @@ func (f RouteTargetFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value,
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.RouteTargetMutation", m)
 }
 
+// The RouteUDPFunc type is an adapter to allow the use of ordinary
+// function as RouteUDP mutator.
+type RouteUDPFunc func(context.Context, *ent.RouteUDPMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f RouteUDPFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.RouteUDPMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.RouteUDPMutation", m)
+}
+
 // The SecretMetaFunc type is an adapter to allow the use of ordinary
 // function as SecretMeta mutator.
 type SecretMetaFunc func(context.Context, *ent.SecretMetaMutation) (ent.Value, error)

@@ -42,6 +42,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routehostname"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routetarget"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routetcp"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/routeudp"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/secretmeta"
 
 	stdsql "database/sql"
@@ -106,6 +107,8 @@ type Client struct {
 	RouteTCP *RouteTCPClient
 	// RouteTarget is the client for interacting with the RouteTarget builders.
 	RouteTarget *RouteTargetClient
+	// RouteUDP is the client for interacting with the RouteUDP builders.
+	RouteUDP *RouteUDPClient
 	// SecretMeta is the client for interacting with the SecretMeta builders.
 	SecretMeta *SecretMetaClient
 }
@@ -146,6 +149,7 @@ func (c *Client) init() {
 	c.RouteHostname = NewRouteHostnameClient(c.config)
 	c.RouteTCP = NewRouteTCPClient(c.config)
 	c.RouteTarget = NewRouteTargetClient(c.config)
+	c.RouteUDP = NewRouteUDPClient(c.config)
 	c.SecretMeta = NewSecretMetaClient(c.config)
 }
 
@@ -266,6 +270,7 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		RouteHostname:     NewRouteHostnameClient(cfg),
 		RouteTCP:          NewRouteTCPClient(cfg),
 		RouteTarget:       NewRouteTargetClient(cfg),
+		RouteUDP:          NewRouteUDPClient(cfg),
 		SecretMeta:        NewSecretMetaClient(cfg),
 	}, nil
 }
@@ -313,6 +318,7 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		RouteHostname:     NewRouteHostnameClient(cfg),
 		RouteTCP:          NewRouteTCPClient(cfg),
 		RouteTarget:       NewRouteTargetClient(cfg),
+		RouteUDP:          NewRouteUDPClient(cfg),
 		SecretMeta:        NewSecretMetaClient(cfg),
 	}, nil
 }
@@ -348,7 +354,7 @@ func (c *Client) Use(hooks ...Hook) {
 		c.EnrollmentToken, c.Gateway, c.GatewayGroup, c.Instance, c.InstanceSetting,
 		c.IssuedCertificate, c.Lease, c.Org, c.OrgSetting, c.PortAllocation,
 		c.PortPool, c.PortQuota, c.RevokedIdentity, c.Route, c.RouteHostname,
-		c.RouteTCP, c.RouteTarget, c.SecretMeta,
+		c.RouteTCP, c.RouteTarget, c.RouteUDP, c.SecretMeta,
 	} {
 		n.Use(hooks...)
 	}
@@ -363,7 +369,7 @@ func (c *Client) Intercept(interceptors ...Interceptor) {
 		c.EnrollmentToken, c.Gateway, c.GatewayGroup, c.Instance, c.InstanceSetting,
 		c.IssuedCertificate, c.Lease, c.Org, c.OrgSetting, c.PortAllocation,
 		c.PortPool, c.PortQuota, c.RevokedIdentity, c.Route, c.RouteHostname,
-		c.RouteTCP, c.RouteTarget, c.SecretMeta,
+		c.RouteTCP, c.RouteTarget, c.RouteUDP, c.SecretMeta,
 	} {
 		n.Intercept(interceptors...)
 	}
@@ -426,6 +432,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.RouteTCP.mutate(ctx, m)
 	case *RouteTargetMutation:
 		return c.RouteTarget.mutate(ctx, m)
+	case *RouteUDPMutation:
+		return c.RouteUDP.mutate(ctx, m)
 	case *SecretMetaMutation:
 		return c.SecretMeta.mutate(ctx, m)
 	default:
@@ -4314,6 +4322,173 @@ func (c *RouteTargetClient) mutate(ctx context.Context, m *RouteTargetMutation) 
 	}
 }
 
+// RouteUDPClient is a client for the RouteUDP schema.
+type RouteUDPClient struct {
+	config
+}
+
+// NewRouteUDPClient returns a client for the RouteUDP from the given config.
+func NewRouteUDPClient(c config) *RouteUDPClient {
+	return &RouteUDPClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `routeudp.Hooks(f(g(h())))`.
+func (c *RouteUDPClient) Use(hooks ...Hook) {
+	c.hooks.RouteUDP = append(c.hooks.RouteUDP, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `routeudp.Intercept(f(g(h())))`.
+func (c *RouteUDPClient) Intercept(interceptors ...Interceptor) {
+	c.inters.RouteUDP = append(c.inters.RouteUDP, interceptors...)
+}
+
+// Create returns a builder for creating a RouteUDP entity.
+func (c *RouteUDPClient) Create() *RouteUDPCreate {
+	mutation := newRouteUDPMutation(c.config, OpCreate)
+	return &RouteUDPCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of RouteUDP entities.
+func (c *RouteUDPClient) CreateBulk(builders ...*RouteUDPCreate) *RouteUDPCreateBulk {
+	return &RouteUDPCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *RouteUDPClient) MapCreateBulk(slice any, setFunc func(*RouteUDPCreate, int)) *RouteUDPCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &RouteUDPCreateBulk{err: fmt.Errorf("calling to RouteUDPClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*RouteUDPCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &RouteUDPCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for RouteUDP.
+func (c *RouteUDPClient) Update() *RouteUDPUpdate {
+	mutation := newRouteUDPMutation(c.config, OpUpdate)
+	return &RouteUDPUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *RouteUDPClient) UpdateOne(_m *RouteUDP) *RouteUDPUpdateOne {
+	mutation := newRouteUDPMutation(c.config, OpUpdateOne, withRouteUDP(_m))
+	return &RouteUDPUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *RouteUDPClient) UpdateOneID(id int) *RouteUDPUpdateOne {
+	mutation := newRouteUDPMutation(c.config, OpUpdateOne, withRouteUDPID(id))
+	return &RouteUDPUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for RouteUDP.
+func (c *RouteUDPClient) Delete() *RouteUDPDelete {
+	mutation := newRouteUDPMutation(c.config, OpDelete)
+	return &RouteUDPDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *RouteUDPClient) DeleteOne(_m *RouteUDP) *RouteUDPDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *RouteUDPClient) DeleteOneID(id int) *RouteUDPDeleteOne {
+	builder := c.Delete().Where(routeudp.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &RouteUDPDeleteOne{builder}
+}
+
+// Query returns a query builder for RouteUDP.
+func (c *RouteUDPClient) Query() *RouteUDPQuery {
+	return &RouteUDPQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeRouteUDP},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a RouteUDP entity by its id.
+func (c *RouteUDPClient) Get(ctx context.Context, id int) (*RouteUDP, error) {
+	return c.Query().Where(routeudp.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *RouteUDPClient) GetX(ctx context.Context, id int) *RouteUDP {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// QueryRoute queries the route edge of a RouteUDP.
+func (c *RouteUDPClient) QueryRoute(_m *RouteUDP) *RouteQuery {
+	query := (&RouteClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(routeudp.Table, routeudp.FieldID, id),
+			sqlgraph.To(route.Table, route.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, false, routeudp.RouteTable, routeudp.RouteColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// QueryPort queries the port edge of a RouteUDP.
+func (c *RouteUDPClient) QueryPort(_m *RouteUDP) *PortAllocationQuery {
+	query := (&PortAllocationClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(routeudp.Table, routeudp.FieldID, id),
+			sqlgraph.To(portallocation.Table, portallocation.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, false, routeudp.PortTable, routeudp.PortColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// Hooks returns the client hooks.
+func (c *RouteUDPClient) Hooks() []Hook {
+	hooks := c.hooks.RouteUDP
+	return append(hooks[:len(hooks):len(hooks)], routeudp.Hooks[:]...)
+}
+
+// Interceptors returns the client interceptors.
+func (c *RouteUDPClient) Interceptors() []Interceptor {
+	inters := c.inters.RouteUDP
+	return append(inters[:len(inters):len(inters)], routeudp.Interceptors[:]...)
+}
+
+func (c *RouteUDPClient) mutate(ctx context.Context, m *RouteUDPMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&RouteUDPCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&RouteUDPUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&RouteUDPUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&RouteUDPDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown RouteUDP mutation op: %q", m.Op())
+	}
+}
+
 // SecretMetaClient is a client for the SecretMeta schema.
 type SecretMetaClient struct {
 	config
@@ -4455,14 +4630,14 @@ type (
 		ConfigRevision, ConfigSeq, Connector, Domain, EnrollmentToken, Gateway,
 		GatewayGroup, Instance, InstanceSetting, IssuedCertificate, Lease, Org,
 		OrgSetting, PortAllocation, PortPool, PortQuota, RevokedIdentity, Route,
-		RouteHostname, RouteTCP, RouteTarget, SecretMeta []ent.Hook
+		RouteHostname, RouteTCP, RouteTarget, RouteUDP, SecretMeta []ent.Hook
 	}
 	inters struct {
 		AgentSession, AgentState, AuditEntry, AuditHead, CAKey, CompiledSnapshot,
 		ConfigRevision, ConfigSeq, Connector, Domain, EnrollmentToken, Gateway,
 		GatewayGroup, Instance, InstanceSetting, IssuedCertificate, Lease, Org,
 		OrgSetting, PortAllocation, PortPool, PortQuota, RevokedIdentity, Route,
-		RouteHostname, RouteTCP, RouteTarget, SecretMeta []ent.Interceptor
+		RouteHostname, RouteTCP, RouteTarget, RouteUDP, SecretMeta []ent.Interceptor
 	}
 )
 
