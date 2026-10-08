@@ -158,7 +158,7 @@ func serving(ctx context.Context, tx *ent.Tx, routeID string) ([]string, error) 
 }
 
 // connectorTargets loads the connector a for ConnectorRoutes and ConnectorGateways, its enabled
-// targets on enabled tcp and tls_passthrough routes, with the routes, and the instance settings. con is nil for any
+// targets on enabled tcp, udp and tls_passthrough routes, with the routes, and the instance settings. con is nil for any
 // other agent and for a disabled or decommissioned connector, which serve nothing.
 func connectorTargets(ctx context.Context, tx *ent.Tx, a snapshot.Agent) (con *ent.Connector, targets []*ent.RouteTarget,
 	inst *rpmgrv1.InstanceSettings, err error) {
@@ -173,7 +173,7 @@ func connectorTargets(ctx context.Context, tx *ent.Tx, a snapshot.Agent) (con *e
 		return nil, nil, nil, err
 	}
 	targets, err = tx.RouteTarget.Query().Where(routetarget.ConnectorID(con.ID), routetarget.Enabled(true),
-		routetarget.HasRouteWith(route.Enabled(true), route.TypeIn(route.TypeTCP, route.TypeTLSPassthrough))).WithRoute().All(ctx)
+		routetarget.HasRouteWith(route.Enabled(true), route.TypeIn(route.TypeTCP, route.TypeUDP, route.TypeTLSPassthrough))).WithRoute().All(ctx)
 	if err != nil {
 		return nil, nil, nil, err
 	}
@@ -184,7 +184,7 @@ func connectorTargets(ctx context.Context, tx *ent.Tx, a snapshot.Agent) (con *e
 	return con, targets, inst, nil
 }
 
-// ConnectorRoutes compiles a connector's routes: for every enabled tcp or tls_passthrough route
+// ConnectorRoutes compiles a connector's routes: for every enabled tcp, udp or tls_passthrough route
 // with an enabled target on it, its type, its targets and the effective transport. A disabled or decommissioned connector
 // gets none.
 func ConnectorRoutes(ctx context.Context, tx *ent.Tx, a snapshot.Agent) ([]*agentv1.Resource, error) {

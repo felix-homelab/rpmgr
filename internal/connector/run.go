@@ -23,6 +23,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/pki"
 	"github.com/felix-homelab/rpmgr/internal/policy"
 	"github.com/felix-homelab/rpmgr/internal/telemetry"
+	"github.com/felix-homelab/rpmgr/internal/tunnel"
 )
 
 // Capabilities are what this connector version implements (docs/03-connections.md, "Versioning
@@ -75,7 +76,12 @@ func Run(ctx context.Context, o RunOptions) error {
 	if p := watcher.Current(); p.Invalid != nil {
 		o.Logger.Error("the local policy does not load: every target is blocked", "file", cfg.PolicyFile, "error", p.Invalid)
 	}
-	targets = NewTargets(TargetsOptions{Policy: watcher.Current, Logger: o.Logger,
+	reg := telemetry.NewRegistry()
+	udpMetrics, err := tunnel.NewUDPMetrics(reg)
+	if err != nil {
+		return err
+	}
+	targets = NewTargets(TargetsOptions{Policy: watcher.Current, Logger: o.Logger, UDPMetrics: udpMetrics,
 		OnHealth: func(h *tunnelv1.RouteHealth) { sessions.SetReady(h) }})
 	pc, err := net.ListenPacket("udp", ":0")
 	if err != nil {
@@ -101,7 +107,6 @@ func Run(ctx context.Context, o RunOptions) error {
 	if k := ctl.Identity().Kind; k != string(pki.KindConnector) {
 		return fmt.Errorf("connector: the identity in %s is a %s's", cfg.IdentityDir, k)
 	}
-	reg := telemetry.NewRegistry()
 	if err := ctl.Register(reg); err != nil {
 		return err
 	}

@@ -117,7 +117,7 @@ func TestCompile_GatewayTCP(t *testing.T) {
 }
 
 // TestCompile_GatewayUDP: a gateway gets the enabled udp routes of its group that have a port,
-// with their flow idle timeout and serving connectors; connectors do not get them yet.
+// with their flow idle timeout and serving connectors; a connector gets the enabled ones it serves.
 func TestCompile_GatewayUDP(t *testing.T) {
 	storetest.ForEachDialect(t, func(t *testing.T, db *store.DB) {
 		f := newFleet(t, db)
@@ -159,10 +159,19 @@ func TestCompile_GatewayUDP(t *testing.T) {
 			got[game].GetPort() != 20002 || got[game].GetFlowIdleTimeoutSeconds() != 300 || !slices.Equal(got[dns].GetConnectors(), []string{f.c2}) {
 			t.Fatalf("udp routes %v", got)
 		}
+		var udp []string
 		for _, r := range routesOf(f.compile(t, pki.KindConnector, f.c2)) {
-			if r.GetConnectorRoute().GetType() == "udp" {
-				t.Fatalf("a connector got a udp route before it serves them: %v", r)
+			if cr := r.GetConnectorRoute(); cr.GetType() == "udp" {
+				if len(cr.GetTargets()) != 1 || cr.GetTargets()[0].GetPort() != 53 {
+					t.Fatalf("udp route %v", r)
+				}
+				udp = append(udp, r.GetId())
 			}
+		}
+		want := []string{dns, game}
+		slices.Sort(want)
+		if !slices.Equal(udp, want) {
+			t.Fatalf("the connector's udp routes %v, want the enabled %v", udp, want)
 		}
 		db.Client().Gateway.UpdateOneID(f.gateway).SetEnabled(false).ExecX(f.sys)
 		if rs := f.compile(t, pki.KindGateway, f.gateway); len(rs) != 0 {

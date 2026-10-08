@@ -36,6 +36,8 @@ var routeDrain = 30 * time.Second
 // Route is a route as the connector serves it, from its snapshot.
 type Route struct {
 	ID string
+	// UDP routes take UDP_FLOW streams, every other route TCP streams.
+	UDP bool
 	// Targets are tried by priority, lowest first, and by weight within a priority.
 	Targets []Target
 }
@@ -78,7 +80,9 @@ type TargetsOptions struct {
 	Policy func() *policy.Policy
 	// OnHealth gets every change of a route's readiness; normally Sessions.SetReady.
 	OnHealth func(*tunnelv1.RouteHealth)
-	Logger   *slog.Logger
+	// UDPMetrics count the udp flows' oversize and dropped payloads; nil keeps them unregistered.
+	UDPMetrics *tunnel.UDPMetrics
+	Logger     *slog.Logger
 }
 
 // Targets serves the streams gateways open (docs/03-connections.md, "One stream per user
@@ -104,6 +108,9 @@ type drainingRoute struct {
 func NewTargets(o TargetsOptions) *Targets {
 	if o.Logger == nil {
 		o.Logger = slog.New(slog.DiscardHandler)
+	}
+	if o.UDPMetrics == nil {
+		o.UDPMetrics, _ = tunnel.NewUDPMetrics(nil)
 	}
 	return &Targets{o: o, routes: map[string]Route{}, draining: map[string]drainingRoute{}, health: map[string]*tunnelv1.RouteHealth{}}
 }
@@ -223,7 +230,8 @@ func (t *Targets) route(id string) (Route, bool) {
 	return Route{}, false
 }
 
-// Handle serves one stream the gateway opened; it is Options.Streams.
+// Handle serves one stream the gateway opened; it is Options.Streams. A UDP_FLOW stream is one
+// flow of a udp route, relayed through a socket of its own.
 func (t *Targets) Handle(ctx context.Context, gatewayID string, st tunnel.Stream, open *tunnelv1.StreamOpen) {
 	code, conn := t.open(ctx, open)
 	if err := tunnel.WriteMessage(st, &tunnelv1.StreamResult{Code: code}); err != nil || code != tunnelv1.ResultCode_RESULT_CODE_NO_ERROR {
@@ -239,6 +247,10 @@ func (t *Targets) Handle(ctx context.Context, gatewayID string, st tunnel.Stream
 		return
 	}
 	st.SetReliableBoundary()
+	if open.GetKind() == tunnelv1.StreamKind_STREAM_KIND_UDP_FLOW {
+		t.relayUDP(ctx, open.GetRouteId(), st, conn)
+		return
+	}
 	tunnel.Relay(st, conn)
 }
 
@@ -247,12 +259,16 @@ func (t *Targets) open(ctx context.Context, open *tunnelv1.StreamOpen) (tunnelv1
 	if c := tunnel.CheckStreamOpen(open); c != tunnelv1.ResultCode_RESULT_CODE_NO_ERROR {
 		return c, nil
 	}
-	if open.GetKind() != tunnelv1.StreamKind_STREAM_KIND_TCP {
-		return tunnelv1.ResultCode_RESULT_CODE_PROTOCOL, nil
-	}
 	r, ok := t.route(open.GetRouteId())
-	if !ok {
+	switch kind := open.GetKind(); {
+	case kind != tunnelv1.StreamKind_STREAM_KIND_TCP && kind != tunnelv1.StreamKind_STREAM_KIND_UDP_FLOW:
+		return tunnelv1.ResultCode_RESULT_CODE_PROTOCOL, nil
+	case !ok:
 		return tunnelv1.ResultCode_RESULT_CODE_ROUTE_UNKNOWN, nil
+	case r.UDP != (kind == tunnelv1.StreamKind_STREAM_KIND_UDP_FLOW):
+		return tunnelv1.ResultCode_RESULT_CODE_PROTOCOL, nil
+	case r.UDP:
+		return t.dialUDP(ctx, r, open)
 	}
 	timeout := dialUpstream
 	if ms := open.GetOpenTimeoutMs(); ms > 0 && time.Duration(ms)*time.Millisecond < timeout {
