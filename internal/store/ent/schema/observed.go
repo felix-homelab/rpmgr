@@ -37,7 +37,22 @@ func (AgentSession) Fields() []ent.Field {
 		field.Strings("capabilities").Optional(),
 		field.Time("connected_at").Default(time.Now),
 		field.Time("last_seen_at").Default(time.Now),
+		field.Time("disconnected_at").Optional().Nillable(),
 	}
+}
+
+// How the controller keeps agent sessions current (docs/03-connections.md, "Timeouts, keepalive
+// and backoff"): each controller node writes last_seen_at of its live sessions every
+// AgentSessionSeenEvery, and disconnected_at when one ends. A node that stops without writing it
+// leaves last_seen_at to age: a session not seen for AgentSessionSeenFor is not live.
+const (
+	AgentSessionSeenEvery = time.Minute
+	AgentSessionSeenFor   = 3 * time.Minute
+)
+
+// AgentSessionLive reports whether an agent session row is a live session at now.
+func AgentSessionLive(disconnectedAt *time.Time, lastSeen, now time.Time) bool {
+	return disconnectedAt == nil && now.Sub(lastSeen) < AgentSessionSeenFor
 }
 
 // AgentState is what one agent runs and what it was sent (docs/06-data-model.md, "Desired vs

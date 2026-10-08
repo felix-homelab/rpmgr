@@ -31,7 +31,7 @@ func (e *env) addConnector(t *testing.T, org, name string, edit func(*ent.Connec
 }
 
 // TestConnectors_Read: connectors are listed by ID without the decommissioned ones unless asked;
-// each carries its control session; the status adds its data sessions as its gateways report them
+// each carries its control session, connected only while it is live; the status adds its data sessions as its gateways report them
 // and the routes it reports not ready; a Viewer reads all of it.
 func TestConnectors_Read(t *testing.T) {
 	e, ada, org, _ := gatewayEnv(t)
@@ -49,6 +49,10 @@ func TestConnectors_Read(t *testing.T) {
 		e.db.Client().DataSession.Create().SetOrgID(org).SetGatewayID(d.gw).SetConnectorID(nas.ID).SetTransport(datasessionTransport(d.tr)).
 			SetRttMs(d.rtt).SetEstablishedAt(seen).SetReportedAt(seen).ExecX(e.sys)
 	}
+	// pi was last connected an hour ago and has disconnected since.
+	e.db.Client().AgentSession.Create().SetID(pi.ID).SetOrgID(org).SetSessionEpoch(4).SetControllerNode("ctn_1").
+		SetAgentVersion("v0.0.9").SetConnectedAt(seen.Add(-time.Hour)).SetLastSeenAt(seen.Add(-time.Hour)).
+		SetDisconnectedAt(seen.Add(-time.Hour)).ExecX(e.sys)
 	e.db.Client().ResourceStatus.Create().SetOrgID(org).SetAgentID(nas.ID).SetResourceID("rt_1").
 		SetReason("NOT_READY_REASON_BLOCKED_BY_LOCAL_POLICY").SetDetail("10.0.0.5:5432").SetSince(seen).ExecX(e.sys)
 
@@ -79,8 +83,9 @@ func TestConnectors_Read(t *testing.T) {
 		n.GetLabels()["site"] != "office" || n.GetEtag() != "1" {
 		t.Fatalf("nas: %v", n)
 	}
-	if p := byName["pi"]; p.GetSession().GetConnected() || p.GetTransport() != rpmgrv1.DataTransport_DATA_TRANSPORT_UNSPECIFIED {
-		t.Fatalf("pi: %v", p)
+	if p := byName["pi"]; p.GetSession().GetConnected() || p.GetSession().GetVersion() != "v0.0.9" ||
+		p.GetTransport() != rpmgrv1.DataTransport_DATA_TRANSPORT_UNSPECIFIED {
+		t.Fatalf("pi, disconnected: %v", p)
 	}
 	if o := byName["old"]; o.GetDecommissionTime() == nil || o.GetEnabled() {
 		t.Fatalf("old: %v", o)
@@ -107,7 +112,8 @@ func TestConnectors_Read(t *testing.T) {
 		t.Fatal("the status has no session")
 	}
 	quiet, err := vwr.con.GetConnectorStatus(ctx, connect.NewRequest(&rpmgrv1.GetConnectorStatusRequest{ConnectorId: pi.ID}))
-	if err != nil || quiet.Msg.GetStatus().GetSession().GetConnected() || len(quiet.Msg.GetStatus().GetDataSessions()) != 0 {
+	if err != nil || quiet.Msg.GetStatus().GetSession().GetConnected() || len(quiet.Msg.GetStatus().GetDataSessions()) != 0 ||
+		quiet.Msg.GetStatus().GetSession().GetLastSeenTime() == nil {
 		t.Fatalf("a connector without sessions: %v %v", quiet, err)
 	}
 	if g, err := vwr.con.GetConnector(ctx, connect.NewRequest(&rpmgrv1.GetConnectorRequest{ConnectorId: old.ID})); err != nil ||

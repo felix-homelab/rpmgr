@@ -138,6 +138,26 @@ func (_u *AgentSessionUpdate) SetNillableLastSeenAt(v *time.Time) *AgentSessionU
 	return _u
 }
 
+// SetDisconnectedAt sets the "disconnected_at" field.
+func (_u *AgentSessionUpdate) SetDisconnectedAt(v time.Time) *AgentSessionUpdate {
+	_u.mutation.SetDisconnectedAt(v)
+	return _u
+}
+
+// SetNillableDisconnectedAt sets the "disconnected_at" field if the given value is not nil.
+func (_u *AgentSessionUpdate) SetNillableDisconnectedAt(v *time.Time) *AgentSessionUpdate {
+	if v != nil {
+		_u.SetDisconnectedAt(*v)
+	}
+	return _u
+}
+
+// ClearDisconnectedAt clears the value of the "disconnected_at" field.
+func (_u *AgentSessionUpdate) ClearDisconnectedAt() *AgentSessionUpdate {
+	_u.mutation.ClearDisconnectedAt()
+	return _u
+}
+
 // Mutation returns the AgentSessionMutation object of the builder.
 func (_u *AgentSessionUpdate) Mutation() *AgentSessionMutation {
 	return _u.mutation
@@ -228,6 +248,12 @@ func (_u *AgentSessionUpdate) sqlSave(ctx context.Context) (_node int, err error
 	}
 	if value, ok := _u.mutation.LastSeenAt(); ok {
 		_spec.SetField(agentsession.FieldLastSeenAt, field.TypeTime, value)
+	}
+	if value, ok := _u.mutation.DisconnectedAt(); ok {
+		_spec.SetField(agentsession.FieldDisconnectedAt, field.TypeTime, value)
+	}
+	if _u.mutation.DisconnectedAtCleared() {
+		_spec.ClearField(agentsession.FieldDisconnectedAt, field.TypeTime)
 	}
 	if _node, err = sqlgraph.UpdateNodes(ctx, _u.driver, _spec); err != nil {
 		if _, ok := err.(*sqlgraph.NotFoundError); ok {
@@ -358,6 +384,26 @@ func (_u *AgentSessionUpdateOne) SetNillableLastSeenAt(v *time.Time) *AgentSessi
 	return _u
 }
 
+// SetDisconnectedAt sets the "disconnected_at" field.
+func (_u *AgentSessionUpdateOne) SetDisconnectedAt(v time.Time) *AgentSessionUpdateOne {
+	_u.mutation.SetDisconnectedAt(v)
+	return _u
+}
+
+// SetNillableDisconnectedAt sets the "disconnected_at" field if the given value is not nil.
+func (_u *AgentSessionUpdateOne) SetNillableDisconnectedAt(v *time.Time) *AgentSessionUpdateOne {
+	if v != nil {
+		_u.SetDisconnectedAt(*v)
+	}
+	return _u
+}
+
+// ClearDisconnectedAt clears the value of the "disconnected_at" field.
+func (_u *AgentSessionUpdateOne) ClearDisconnectedAt() *AgentSessionUpdateOne {
+	_u.mutation.ClearDisconnectedAt()
+	return _u
+}
+
 // Mutation returns the AgentSessionMutation object of the builder.
 func (_u *AgentSessionUpdateOne) Mutation() *AgentSessionMutation {
 	return _u.mutation
@@ -478,6 +524,12 @@ func (_u *AgentSessionUpdateOne) sqlSave(ctx context.Context) (_node *AgentSessi
 	}
 	if value, ok := _u.mutation.LastSeenAt(); ok {
 		_spec.SetField(agentsession.FieldLastSeenAt, field.TypeTime, value)
+	}
+	if value, ok := _u.mutation.DisconnectedAt(); ok {
+		_spec.SetField(agentsession.FieldDisconnectedAt, field.TypeTime, value)
+	}
+	if _u.mutation.DisconnectedAtCleared() {
+		_spec.ClearField(agentsession.FieldDisconnectedAt, field.TypeTime)
 	}
 	_node = &AgentSession{config: _u.config}
 	_spec.Assign = _node.assignValues

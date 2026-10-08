@@ -30,6 +30,8 @@ const (
 	FieldConnectedAt = "connected_at"
 	// FieldLastSeenAt holds the string denoting the last_seen_at field in the database.
 	FieldLastSeenAt = "last_seen_at"
+	// FieldDisconnectedAt holds the string denoting the disconnected_at field in the database.
+	FieldDisconnectedAt = "disconnected_at"
 	// Table holds the table name of the agentsession in the database.
 	Table = "agent_sessions"
 )
@@ -45,6 +47,7 @@ var Columns = []string{
 	FieldCapabilities,
 	FieldConnectedAt,
 	FieldLastSeenAt,
+	FieldDisconnectedAt,
 }
 
 // ValidColumn reports if the column name is valid (part of the table columns).
@@ -125,4 +128,9 @@ func ByConnectedAt(opts ...sql.OrderTermOption) OrderOption {
 // ByLastSeenAt orders the results by the last_seen_at field.
 func ByLastSeenAt(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldLastSeenAt, opts...).ToFunc()
+}
+
+// ByDisconnectedAt orders the results by the disconnected_at field.
+func ByDisconnectedAt(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldDisconnectedAt, opts...).ToFunc()
 }

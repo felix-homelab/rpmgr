@@ -159,6 +159,7 @@ var schemaGraph = func() *sqlgraph.Schema {
 			agentsession.FieldCapabilities:   {Type: field.TypeJSON, Column: agentsession.FieldCapabilities},
 			agentsession.FieldConnectedAt:    {Type: field.TypeTime, Column: agentsession.FieldConnectedAt},
 			agentsession.FieldLastSeenAt:     {Type: field.TypeTime, Column: agentsession.FieldLastSeenAt},
+			agentsession.FieldDisconnectedAt: {Type: field.TypeTime, Column: agentsession.FieldDisconnectedAt},
 		},
 	}
 	graph.Nodes[5] = &sqlgraph.Node{
@@ -1762,6 +1763,11 @@ func (f *AgentSessionFilter) WhereConnectedAt(p entql.TimeP) {
 // WhereLastSeenAt applies the entql time.Time predicate on the last_seen_at field.
 func (f *AgentSessionFilter) WhereLastSeenAt(p entql.TimeP) {
 	f.Where(p.Field(agentsession.FieldLastSeenAt))
+}
+
+// WhereDisconnectedAt applies the entql time.Time predicate on the disconnected_at field.
+func (f *AgentSessionFilter) WhereDisconnectedAt(p entql.TimeP) {
+	f.Where(p.Field(agentsession.FieldDisconnectedAt))
 }
 
 // addPredicate implements the predicateAdder interface.

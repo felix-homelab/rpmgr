@@ -99,6 +99,11 @@ func LastSeenAt(v time.Time) predicate.AgentSession {
 	return predicate.AgentSession(sql.FieldEQ(FieldLastSeenAt, v))
 }
 
+// DisconnectedAt applies equality check predicate on the "disconnected_at" field. It's identical to DisconnectedAtEQ.
+func DisconnectedAt(v time.Time) predicate.AgentSession {
+	return predicate.AgentSession(sql.FieldEQ(FieldDisconnectedAt, v))
+}
+
 // OrgIDEQ applies the EQ predicate on the "org_id" field.
 func OrgIDEQ(v string) predicate.AgentSession {
 	return predicate.AgentSession(sql.FieldEQ(FieldOrgID, v))
@@ -487,6 +492,56 @@ func LastSeenAtLT(v time.Time) predicate.AgentSession {
 // LastSeenAtLTE applies the LTE predicate on the "last_seen_at" field.
 func LastSeenAtLTE(v time.Time) predicate.AgentSession {
 	return predicate.AgentSession(sql.FieldLTE(FieldLastSeenAt, v))
+}
+
+// DisconnectedAtEQ applies the EQ predicate on the "disconnected_at" field.
+func DisconnectedAtEQ(v time.Time) predicate.AgentSession {
+	return predicate.AgentSession(sql.FieldEQ(FieldDisconnectedAt, v))
+}
+
+// DisconnectedAtNEQ applies the NEQ predicate on the "disconnected_at" field.
+func DisconnectedAtNEQ(v time.Time) predicate.AgentSession {
+	return predicate.AgentSession(sql.FieldNEQ(FieldDisconnectedAt, v))
+}
+
+// DisconnectedAtIn applies the In predicate on the "disconnected_at" field.
+func DisconnectedAtIn(vs ...time.Time) predicate.AgentSession {
+	return predicate.AgentSession(sql.FieldIn(FieldDisconnectedAt, vs...))
+}
+
+// DisconnectedAtNotIn applies the NotIn predicate on the "disconnected_at" field.
+func DisconnectedAtNotIn(vs ...time.Time) predicate.AgentSession {
+	return predicate.AgentSession(sql.FieldNotIn(FieldDisconnectedAt, vs...))
+}
+
+// DisconnectedAtGT applies the GT predicate on the "disconnected_at" field.
+func DisconnectedAtGT(v time.Time) predicate.AgentSession {
+	return predicate.AgentSession(sql.FieldGT(FieldDisconnectedAt, v))
+}
+
+// DisconnectedAtGTE applies the GTE predicate on the "disconnected_at" field.
+func DisconnectedAtGTE(v time.Time) predicate.AgentSession {
+	return predicate.AgentSession(sql.FieldGTE(FieldDisconnectedAt, v))
+}
+
+// DisconnectedAtLT applies the LT predicate on the "disconnected_at" field.
+func DisconnectedAtLT(v time.Time) predicate.AgentSession {
+	return predicate.AgentSession(sql.FieldLT(FieldDisconnectedAt, v))
+}
+
+// DisconnectedAtLTE applies the LTE predicate on the "disconnected_at" field.
+func DisconnectedAtLTE(v time.Time) predicate.AgentSession {
+	return predicate.AgentSession(sql.FieldLTE(FieldDisconnectedAt, v))
+}
+
+// DisconnectedAtIsNil applies the IsNil predicate on the "disconnected_at" field.
+func DisconnectedAtIsNil() predicate.AgentSession {
+	return predicate.AgentSession(sql.FieldIsNull(FieldDisconnectedAt))
+}
+
+// DisconnectedAtNotNil applies the NotNil predicate on the "disconnected_at" field.
+func DisconnectedAtNotNil() predicate.AgentSession {
+	return predicate.AgentSession(sql.FieldNotNull(FieldDisconnectedAt))
 }
 
 // And groups predicates with the AND operator between them.

@@ -13,7 +13,9 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/api"
 	"github.com/felix-homelab/rpmgr/internal/apisvc"
 	"github.com/felix-homelab/rpmgr/internal/revlog"
+	"github.com/felix-homelab/rpmgr/internal/store/ent"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/auditentry"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/schema"
 )
 
 // TestGatewayGroups: an Owner creates, reads, lists, changes and deletes gateway groups: a name is
@@ -189,6 +191,21 @@ func TestGateways(t *testing.T) {
 	if st := got.Msg.GetGateway().GetStatus(); err != nil || !st.GetConnected() || st.GetVersion() != "v0.1.0" ||
 		st.GetRemoteAddr() != "192.0.2.7:51000" || !st.GetLastSeenTime().AsTime().Equal(e.clock.Truncate(0)) {
 		t.Fatalf("a connected gateway: %v %v", got, err)
+	}
+	// Disconnected, and connected but not seen for longer than a session lives: neither is connected.
+	for name, edit := range map[string]func(*ent.AgentSessionUpdateOne){
+		"disconnected": func(u *ent.AgentSessionUpdateOne) { u.SetDisconnectedAt(e.clock) },
+		"not seen": func(u *ent.AgentSessionUpdateOne) {
+			u.ClearDisconnectedAt().SetLastSeenAt(e.clock.Add(-schema.AgentSessionSeenFor))
+		},
+	} {
+		u := e.db.Client().AgentSession.UpdateOneID(gws[0].GetId())
+		edit(u)
+		u.ExecX(e.sys)
+		got, err := ada.gw.GetGateway(ctx, connect.NewRequest(&rpmgrv1.GetGatewayRequest{GatewayId: gws[0].GetId()}))
+		if err != nil || got.Msg.GetGateway().GetStatus().GetConnected() || got.Msg.GetGateway().GetStatus().GetVersion() != "v0.1.0" {
+			t.Fatalf("a %s gateway: %v %v", name, got, err)
+		}
 	}
 	first, err := ada.gw.ListGateways(ctx, connect.NewRequest(&rpmgrv1.ListGatewaysRequest{OrgId: org, GatewayGroupId: group, PageSize: 3}))
 	if err != nil || len(first.Msg.GetGateways()) != 3 || first.Msg.GetNextPageToken() == "" {

@@ -1005,6 +1005,7 @@ sequenceDiagram
 | Revision and deny-list check | every 1 s | A revision or a revocation written by another process reaches the agents without a notification channel |
 | Route drain | 30 s | Finish in-flight requests |
 | Gateway drain | 60 s | Time for connectors to re-home |
+| Session liveness | each controller node marks its live sessions seen every 60 s; a session not seen for 3 min is not live | An agent shows as connected while its control session is live; a node that stops without recording its sessions' ends leaves them to age, and ends them when it starts again |
 | Data-session report | every 60 s, and 1 s after a change | A gateway's `Status` listing its connectors' data sessions, for their status in the API |
 | Revocation, tightened access policy | immediate | Security beats continuity |
 | Mail delivery | dial 10 s; the whole delivery 30 s | [R] A relay that hangs never holds a request or job for long |

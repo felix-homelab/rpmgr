@@ -366,7 +366,7 @@ func (g *Gateways) now() time.Time {
 }
 
 // gatewayOf is a gateway with what the controller last saw of it: a gateway is connected while
-// it holds a control session with any controller node.
+// its control session with any controller node is live.
 func (g *Gateways) gatewayOf(ctx context.Context, r *ent.Gateway) *rpmgrv1.Gateway {
 	out := &rpmgrv1.Gateway{Id: r.ID, GatewayGroupId: r.GatewayGroupID, Name: r.Name, Slot: int32(r.Slot), //nolint:gosec // G115: 1 to 4
 		TunnelEndpoints: r.TunnelEndpoints, Enabled: r.Enabled, CreateTime: timestamppb.New(r.CreatedAt), Etag: etagOf(r.Version),
@@ -375,7 +375,7 @@ func (g *Gateways) gatewayOf(ctx context.Context, r *ent.Gateway) *rpmgrv1.Gatew
 		out.DecommissionTime = timestamppb.New(*r.DecommissionedAt)
 	}
 	if s, err := g.DB.ReadClient().AgentSession.Query().Where(agentsession.ID(r.ID)).Only(ctx); err == nil {
-		out.Status.Connected = true
+		out.Status.Connected = schema.AgentSessionLive(s.DisconnectedAt, s.LastSeenAt, g.now())
 		out.Status.Version, out.Status.RemoteAddr, out.Status.LastSeenTime = s.AgentVersion, s.RemoteAddr, timestamppb.New(s.LastSeenAt)
 	}
 	return out
