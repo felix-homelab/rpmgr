@@ -216,45 +216,26 @@ func (s *apiSession) resolveRefs(ctx context.Context, r *rpmgrv1.Route, policies
 	return nil
 }
 
-func routeCommands() (create, update *cli.Command) {
-	var cf, uf routeFlags
-	var cfs, ufs *flag.FlagSet
+func routeCommands() (create, update, enable, disable, preview *cli.Command) {
+	var cf, uf, pf routeFlags
+	var cfs, ufs, pfs *flag.FlagSet
+	var previewOf string
 	create = &cli.Command{
-		Name: "route", Summary: "create a route", Args: "",
+		Name: "route", Summary: "create a route",
 		Flags: func(fs *flag.FlagSet) { cfs = fs; cf.flags(fs, true) },
 		Run: func(ctx context.Context, env *cli.Env, args []string) error {
 			if len(args) > 0 {
 				return cli.Usagef("unexpected argument %q", args[0])
 			}
-			var types []string
-			for typ, on := range map[string]bool{"http": cf.http, "tcp": cf.tcp, "udp": cf.udp, "tls_passthrough": cf.passthrough} {
-				if on {
-					types = append(types, typ)
-				}
-			}
-			if len(types) != 1 || cf.name == "" || cf.group == "" {
-				return cli.Usagef("give --name, --group and one of --http, --tcp, --udp and --tls-passthrough")
-			}
-			r, _, err := cf.routeOf(setFlags(cfs), types[0], &rpmgrv1.Route{Enabled: !cf.disabled})
-			if err != nil {
-				return err
-			}
 			s, err := newAPISession(env)
 			if err != nil {
 				return err
 			}
-			gk, _ := apicli.KindOf("gateway-group")
-			if r.GatewayGroupId, err = gk.Resolve(ctx, s.hc, s.creds.Controller, s.creds.Org, cf.group); err != nil {
-				return apiError(err)
-			}
-			if err := s.resolveRefs(ctx, r, cf.policies); err != nil {
+			r, err := s.newRoute(ctx, &cf, setFlags(cfs))
+			if err != nil {
 				return err
 			}
-			req := &rpmgrv1.CreateRouteRequest{OrgId: s.creds.Org, Route: r}
-			if err := protovalidate.Validate(req); err != nil {
-				return cli.Usagef("%v", err)
-			}
-			c := connect.NewRequest(req)
+			c := connect.NewRequest(&rpmgrv1.CreateRouteRequest{OrgId: s.creds.Org, Route: r})
 			setWait(c.Header(), cf.wait)
 			resp, err := rpmgrv1connect.NewRouteServiceClient(s.hc, s.creds.Controller).CreateRoute(ctx, c)
 			if err != nil {
@@ -270,43 +251,136 @@ func routeCommands() (create, update *cli.Command) {
 			if len(args) != 1 {
 				return cli.Usagef("expected the route's ID")
 			}
-			set := setFlags(ufs)
-			return updateRoute(ctx, env, args[0], &uf, set)
+			return updateRoute(ctx, env, args[0], &uf, setFlags(ufs))
 		},
 	}
-	return create, update
+	toggle := func(name string, enabled bool) *cli.Command {
+		var f routeFlags
+		return &cli.Command{
+			Name: "route", Summary: name + " a route", Args: "<id>",
+			Flags: func(fs *flag.FlagSet) {
+				fs.BoolVar(&f.force, "force", false, "change it without checking that it is unchanged since this command read it")
+				fs.DurationVar(&f.wait, "wait", 0, "wait up to this long, at most 30s, for the agents to apply the change")
+				outputFlag(fs, &f.output)
+			},
+			Run: func(ctx context.Context, env *cli.Env, args []string) error {
+				if len(args) != 1 {
+					return cli.Usagef("expected the route's ID")
+				}
+				f.disabled = !enabled
+				return updateRoute(ctx, env, args[0], &f, map[string]bool{"disabled": true})
+			},
+		}
+	}
+	preview = &cli.Command{
+		Name: "route", Summary: "show what creating or changing a route would do, saving nothing",
+		Flags: func(fs *flag.FlagSet) {
+			pfs = fs
+			pf.flags(fs, true)
+			fs.StringVar(&previewOf, "route", "", "the ID of a route whose change to preview, rather than a new route")
+		},
+		Run: func(ctx context.Context, env *cli.Env, args []string) error {
+			if len(args) > 0 {
+				return cli.Usagef("unexpected argument %q", args[0])
+			}
+			s, err := newAPISession(env)
+			if err != nil {
+				return err
+			}
+			req := &rpmgrv1.PreviewRouteRequest{OrgId: s.creds.Org}
+			set := setFlags(pfs)
+			delete(set, "route")
+			if previewOf == "" {
+				if req.Route, err = s.newRoute(ctx, &pf, set); err != nil {
+					return err
+				}
+			} else {
+				upd, err := s.changedRoute(ctx, previewOf, &pf, set)
+				if err != nil {
+					return err
+				}
+				req.Route, req.UpdateMask, req.Etag = upd.GetRoute(), upd.GetUpdateMask(), upd.GetEtag()
+			}
+			resp, err := rpmgrv1connect.NewRouteServiceClient(s.hc, s.creds.Controller).PreviewRoute(ctx, connect.NewRequest(req))
+			if err != nil {
+				return apiError(err)
+			}
+			if _, err := fmt.Fprintf(env.Stdout, "Gateways that would serve it: %s\nConnectors it would reach: %s\n",
+				listOrNone(resp.Msg.GetGatewayIds()), listOrNone(resp.Msg.GetConnectorIds())); err != nil {
+				return err
+			}
+			for _, p := range resp.Msg.GetProblems() {
+				if _, err := fmt.Fprintf(env.Stdout, "Problem: %s: %s\n", p.GetResourceId(), p.GetMessage()); err != nil {
+					return err
+				}
+			}
+			k, _ := apicli.KindOf("route")
+			if pf.output == "yaml" { // a route not saved has no manifest to export
+				return writeYAML(env.Stdout, []protoreflect.Message{resp.Msg.GetRoute().ProtoReflect()})
+			}
+			return s.print(ctx, env.Stdout, k, pf.output, []protoreflect.Message{resp.Msg.GetRoute().ProtoReflect()}, nil, false)
+		},
+	}
+	return create, update, toggle("enable", true), toggle("disable", false), preview
 }
 
-// updateRoute reads the route, then changes the fields the flags set name under its etag.
-func updateRoute(ctx context.Context, env *cli.Env, id string, f *routeFlags, set map[string]bool) error {
+func listOrNone(ids []string) string {
+	if len(ids) == 0 {
+		return "none"
+	}
+	return strings.Join(ids, ", ")
+}
+
+// newRoute is the route the flags of create describe, its group and policies resolved, checked
+// with the API's rules.
+func (s *apiSession) newRoute(ctx context.Context, f *routeFlags, set map[string]bool) (*rpmgrv1.Route, error) {
+	var types []string
+	for typ, on := range map[string]bool{"http": f.http, "tcp": f.tcp, "udp": f.udp, "tls_passthrough": f.passthrough} {
+		if on {
+			types = append(types, typ)
+		}
+	}
+	if len(types) != 1 || f.name == "" || f.group == "" {
+		return nil, cli.Usagef("give --name, --group and one of --http, --tcp, --udp and --tls-passthrough")
+	}
+	r, _, err := f.routeOf(set, types[0], &rpmgrv1.Route{Enabled: !f.disabled})
+	if err != nil {
+		return nil, err
+	}
+	if err := protovalidate.Validate(&rpmgrv1.CreateRouteRequest{OrgId: s.creds.Org, Route: r}); err != nil {
+		return nil, cli.Usagef("%v", err)
+	}
+	gk, _ := apicli.KindOf("gateway-group")
+	if r.GatewayGroupId, err = gk.Resolve(ctx, s.hc, s.creds.Controller, s.creds.Org, f.group); err != nil {
+		return nil, apiError(err)
+	}
+	return r, s.resolveRefs(ctx, r, f.policies)
+}
+
+// changedRoute reads the route and returns the update the flags set make, under its etag.
+func (s *apiSession) changedRoute(ctx context.Context, id string, f *routeFlags, set map[string]bool) (*rpmgrv1.UpdateRouteRequest, error) {
 	for _, name := range []string{"force", "wait", "o"} {
 		delete(set, name)
 	}
 	if len(set) == 0 {
-		return cli.Usagef("name a field to change")
+		return nil, cli.Usagef("name a field to change")
 	}
-	s, err := newAPISession(env)
+	cur, err := rpmgrv1connect.NewRouteServiceClient(s.hc, s.creds.Controller).GetRoute(ctx, connect.NewRequest(&rpmgrv1.GetRouteRequest{RouteId: id}))
 	if err != nil {
-		return err
-	}
-	rc := rpmgrv1connect.NewRouteServiceClient(s.hc, s.creds.Controller)
-	cur, err := rc.GetRoute(ctx, connect.NewRequest(&rpmgrv1.GetRouteRequest{RouteId: id}))
-	if err != nil {
-		return apiError(err)
+		return nil, apiError(err)
 	}
 	// The route's type is the name of its spec's field: http, tcp, udp or tls_passthrough.
 	m := cur.Msg.GetRoute().ProtoReflect()
 	spec := m.WhichOneof(m.Descriptor().Oneofs().ByName("spec"))
 	if spec == nil {
-		return fmt.Errorf("route %s has no spec", id)
+		return nil, fmt.Errorf("route %s has no spec", id)
 	}
-	typ := string(spec.Name())
-	r, paths, err := f.routeOf(set, typ, cur.Msg.GetRoute())
+	r, paths, err := f.routeOf(set, string(spec.Name()), cur.Msg.GetRoute())
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if err := s.resolveRefs(ctx, r, f.policies); err != nil {
-		return err
+		return nil, err
 	}
 	r.Id = id
 	req := &rpmgrv1.UpdateRouteRequest{Route: r, UpdateMask: &fieldmaskpb.FieldMask{Paths: paths}}
@@ -314,11 +388,24 @@ func updateRoute(ctx context.Context, env *cli.Env, id string, f *routeFlags, se
 		req.Etag = cur.Msg.GetRoute().GetEtag()
 	}
 	if err := protovalidate.Validate(req); err != nil {
-		return cli.Usagef("%v", err)
+		return nil, cli.Usagef("%v", err)
+	}
+	return req, nil
+}
+
+// updateRoute changes the fields the flags set name, under the etag of the route as read.
+func updateRoute(ctx context.Context, env *cli.Env, id string, f *routeFlags, set map[string]bool) error {
+	s, err := newAPISession(env)
+	if err != nil {
+		return err
+	}
+	req, err := s.changedRoute(ctx, id, f, set)
+	if err != nil {
+		return err
 	}
 	c := connect.NewRequest(req)
 	setWait(c.Header(), f.wait)
-	resp, err := rc.UpdateRoute(ctx, c)
+	resp, err := rpmgrv1connect.NewRouteServiceClient(s.hc, s.creds.Controller).UpdateRoute(ctx, c)
 	if err != nil {
 		return apiError(err)
 	}

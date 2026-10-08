@@ -29,10 +29,13 @@ import (
 
 // apiCommands are the verb-first commands of the public API (docs/16-cli.md, D51).
 func apiCommands() []*cli.Command {
-	createRoute, updateRoute := routeCommands()
+	createRoute, updateRoute, enableRoute, disableRoute, previewRoute := routeCommands()
 	return []*cli.Command{getCommand(), listCommand(), deleteCommand(),
 		group("create", "create a resource of the public API", createRoute),
-		group("update", "change a resource of the public API", updateRoute)}
+		group("update", "change a resource of the public API", updateRoute),
+		group("enable", "serve a resource again", enableRoute),
+		group("disable", "stop serving a resource, keeping its configuration", disableRoute),
+		group("preview", "show what a change would do, saving nothing", previewRoute)}
 }
 
 // kindsHelp lists the kinds for a command's synopsis.

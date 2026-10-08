@@ -33,6 +33,7 @@ type routeAPI struct {
 	mu      sync.Mutex
 	created *rpmgrv1.CreateRouteRequest
 	updated *rpmgrv1.UpdateRouteRequest
+	preview *rpmgrv1.PreviewRouteRequest
 	route   *rpmgrv1.Route
 	calls   int
 }
@@ -62,6 +63,14 @@ func (a *routeAPI) UpdateRoute(_ context.Context, req *connect.Request[rpmgrv1.U
 	a.calls++
 	a.updated = req.Msg
 	return connect.NewResponse(&rpmgrv1.UpdateRouteResponse{Route: a.route, Revision: &rpmgrv1.Revision{Seq: 8}}), nil
+}
+
+func (a *routeAPI) PreviewRoute(_ context.Context, req *connect.Request[rpmgrv1.PreviewRouteRequest]) (*connect.Response[rpmgrv1.PreviewRouteResponse], error) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.preview = req.Msg
+	return connect.NewResponse(&rpmgrv1.PreviewRouteResponse{Route: req.Msg.GetRoute(), GatewayIds: []string{"gw_1", "gw_2"},
+		Problems: []*rpmgrv1.ApplyError{{ResourceId: "gw_2", Message: "port 20001 is taken"}}}), nil
 }
 
 func (a *routeAPI) ListGatewayGroups(context.Context, *connect.Request[rpmgrv1.ListGatewayGroupsRequest]) (*connect.Response[rpmgrv1.ListGatewayGroupsResponse], error) {
@@ -133,7 +142,8 @@ func TestCreateRoute(t *testing.T) {
 }
 
 // TestUpdateRoute (docs/16-cli.md): update route sends only the fields its flags name, in the
-// mask, with the etag it read, or none with --force; an update that names no field is refused.
+// mask, with the etag it read, or none with --force; enable and disable change only enabled; an
+// update that names no field is refused.
 func TestUpdateRoute(t *testing.T) {
 	a, env := routeEnv(t)
 	code, out, errOut := runWith(env, "", "update", "route", "--hostname", "web.example.com", "--hostname", "new.example.com", "--port80", "off", "rt_1")
@@ -148,6 +158,13 @@ func TestUpdateRoute(t *testing.T) {
 		!slices.Equal(a.updated.GetUpdateMask().GetPaths(), []string{"http.port80"}) ||
 		!slices.Equal(a.updated.GetRoute().GetHttp().GetHostnames(), []string{"web.example.com"}) {
 		t.Fatalf("one field of the spec: %d %q %v", code, errOut, a.updated)
+	}
+	if code, _, errOut := runWith(env, "", "disable", "route", "--force", "rt_1"); code != cli.ExitOK || a.updated.GetEtag() != "" ||
+		!slices.Equal(a.updated.GetUpdateMask().GetPaths(), []string{"enabled"}) || a.updated.GetRoute().GetEnabled() {
+		t.Fatalf("disable: %d %q %v", code, errOut, a.updated)
+	}
+	if code, _, _ := runWith(env, "", "enable", "route", "rt_1"); code != cli.ExitOK || !a.updated.GetRoute().GetEnabled() || a.updated.GetEtag() != "4" {
+		t.Fatalf("enable: %d %v", code, a.updated)
 	}
 	if code, _, errOut := runWith(env, "", "update", "route", "--policy", "office", "rt_1"); code != cli.ExitOK ||
 		!slices.Equal(a.updated.GetRoute().GetPolicyIds(), []string{"ap_1"}) {
@@ -168,5 +185,26 @@ func TestUpdateRoute(t *testing.T) {
 		if code, _, errOut := runWith(env, "", append([]string{"update", "route"}, args...)...); code != want {
 			t.Errorf("%s: exit %d %q", name, code, errOut)
 		}
+	}
+}
+
+// TestPreviewRoute (docs/16-cli.md): preview route sends a new route, or with --route the change
+// an update would make with its mask and etag, and shows the gateways, connectors and problems the
+// API finds; nothing is written.
+func TestPreviewRoute(t *testing.T) {
+	a, env := routeEnv(t)
+	code, out, errOut := runWith(env, "", "preview", "route", "--tcp", "--name", "pg", "--group", "eu", "--port", "20001")
+	if code != cli.ExitOK || a.preview.GetRoute().GetTcp().GetPort() != 20001 || a.preview.GetRoute().GetGatewayGroupId() != "gwg_1" ||
+		a.preview.GetUpdateMask() != nil || !strings.Contains(out, "gw_1, gw_2") || !strings.Contains(out, "Connectors it would reach: none") ||
+		!strings.Contains(out, "Problem: gw_2: port 20001 is taken") || a.calls != 0 {
+		t.Fatalf("a new route: %d %q %q %v", code, out, errOut, a.preview)
+	}
+	if code, out, errOut := runWith(env, "", "preview", "route", "--route", "rt_1", "--hostname", "web.example.com", "-o", "yaml"); code != cli.ExitOK ||
+		a.preview.GetEtag() != "4" || !slices.Equal(a.preview.GetUpdateMask().GetPaths(), []string{"http.hostnames"}) ||
+		a.preview.GetRoute().GetId() != "rt_1" || !strings.Contains(out, "web.example.com") || a.calls != 0 {
+		t.Fatalf("a change: %d %q %q %v", code, out, errOut, a.preview)
+	}
+	if code, _, errOut := runWith(env, "", "preview", "route", "--route", "rt_1"); code != cli.ExitUsage {
+		t.Errorf("a change of nothing: %d %q", code, errOut)
 	}
 }
