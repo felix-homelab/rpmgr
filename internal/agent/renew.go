@@ -214,7 +214,7 @@ func (c *Client) reauthIfExpired(ctx context.Context, endpoint string) error {
 		return err
 	}
 	creds := c.credentials("reauth.controller." + c.o.Identity.TrustDomain)
-	conn, err := grpc.NewClient("passthrough:///"+addr, grpc.WithTransportCredentials(creds))
+	conn, err := grpc.NewClient("passthrough:///"+addr, append(dialOptions(c.o.Dial), grpc.WithTransportCredentials(creds))...)
 	if err != nil {
 		return err
 	}

@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/quic-go/quic-go"
 
 	"github.com/felix-homelab/rpmgr/internal/agent"
@@ -43,6 +44,16 @@ type RunOptions struct {
 	DrainPeriod time.Duration
 	// Listening, if set, is called once every listener is up.
 	Listening func()
+	// Controller, if set, takes the connections for the controller's names, still encrypted:
+	// all-in-one's in-process controller. ControllerNames are its UI hostnames.
+	Controller      func(net.Conn)
+	ControllerNames []string
+	// Dial connects the control plane to a controller endpoint; nil dials TCP.
+	Dial func(ctx context.Context, addr string) (net.Conn, error)
+	// Registry, if set, receives the gateway's metrics and Run serves no admin listener;
+	// Readiness then gets the gateway's readiness check.
+	Registry  *prometheus.Registry
+	Readiness func(check func(context.Context) error)
 }
 
 // Run runs a gateway from its boot file until ctx ends (docs/02-architecture.md): its control
@@ -63,7 +74,7 @@ func Run(ctx context.Context, o RunOptions) error {
 	applier, assign := NewApplier()
 	var sessions *Sessions
 	ctl, err := agent.NewControl(agent.ControlOptions{IdentityDir: cfg.IdentityDir, StateDir: cfg.StateDir, Version: o.Version,
-		Capabilities: Capabilities, Applier: applier, Now: o.Now, Logger: o.Logger,
+		Capabilities: Capabilities, Applier: applier, Now: o.Now, Logger: o.Logger, Dial: o.Dial,
 		OnDenyList: func() {
 			if sessions != nil {
 				sessions.Recheck()
@@ -102,6 +113,7 @@ func Run(ctx context.Context, o RunOptions) error {
 	run, stop := context.WithCancel(context.Background()) // outlives ctx by the drain period
 	defer stop()
 	router := &Router{TrustDomain: id.TrustDomain, GatewayID: id.AgentID, TunnelTLS: h2TLS, DefaultTLS: def, Logger: o.Logger,
+		Controller: o.Controller, ControllerNames: o.ControllerNames,
 		Tunnel: func(c *tls.Conn) {
 			defer func() { _ = c.Close() }()
 			hctx, cancel := context.WithTimeout(run, tunnelHandshake)
@@ -149,7 +161,10 @@ func Run(ctx context.Context, o RunOptions) error {
 		return err
 	}
 
-	reg := telemetry.NewRegistry()
+	reg := o.Registry
+	if reg == nil {
+		reg = telemetry.NewRegistry()
+	}
 	if err := ctl.Register(reg); err != nil {
 		return err
 	}
@@ -159,11 +174,15 @@ func Run(ctx context.Context, o RunOptions) error {
 			errs <- fmt.Errorf("gateway: control plane: %w", err)
 		}
 	}()
-	go func() {
-		if err := telemetry.ServeAdmin(run, cfg.Listen.Admin, reg, ctl.Ready); err != nil {
-			errs <- fmt.Errorf("gateway: admin listener: %w", err)
-		}
-	}()
+	if o.Registry == nil {
+		go func() {
+			if err := telemetry.ServeAdmin(run, cfg.Listen.Admin, reg, ctl.Ready); err != nil {
+				errs <- fmt.Errorf("gateway: admin listener: %w", err)
+			}
+		}()
+	} else if o.Readiness != nil {
+		o.Readiness(ctl.Ready)
+	}
 	go func() { _ = router.Serve(tcp) }()
 	go func() {
 		for {

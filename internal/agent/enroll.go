@@ -44,6 +44,8 @@ type EnrollOptions struct {
 	Host        *agentv1.HostFacts
 	Version     string
 	Now         func() time.Time
+	// Dial connects to the controller's agent endpoint; nil dials TCP.
+	Dial func(ctx context.Context, addr string) (net.Conn, error)
 }
 
 // Enroll enrolls this host (docs/03-connections.md, "Enrollment"; docs/04-security.md, "Join
@@ -126,7 +128,7 @@ func enroll(ctx context.Context, o EnrollOptions, root *x509.Certificate, td, ad
 		pki.Expect{TrustDomain: td, Kinds: []pki.Kind{pki.KindController}}, o.Now, nil)
 	cfg.Certificates = nil // an enrolling agent has no certificate yet
 	creds := &bindingCreds{TransportCredentials: credentials.NewTLS(cfg)}
-	cc, err := grpc.NewClient("passthrough:///"+addr, grpc.WithTransportCredentials(creds))
+	cc, err := grpc.NewClient("passthrough:///"+addr, append(dialOptions(o.Dial), grpc.WithTransportCredentials(creds))...)
 	if err != nil {
 		return nil, err
 	}

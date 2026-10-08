@@ -11,6 +11,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"log/slog"
+	"net"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -31,6 +32,8 @@ type ControlOptions struct {
 	// OnDenyList, if set, is called after the deny-list changed: loaded at start or merged from
 	// the controller, so the role can close the sessions of peers it now names.
 	OnDenyList func()
+	// Dial connects to a controller endpoint; nil dials TCP.
+	Dial func(ctx context.Context, addr string) (net.Conn, error)
 }
 
 // Control is an agent's control plane: its identity, the control session with certificate
@@ -63,7 +66,7 @@ func NewControl(o ControlOptions) (*Control, error) {
 		Send:        func(m *agentv1.AgentMessage) bool { return c.client.Send(m) },
 		OnEndpoints: func(eps []string) { c.client.SetEndpoints(eps) }})
 	c.client = NewClient(ClientOptions{Identity: id, Endpoints: id.Endpoints, Version: o.Version, Capabilities: o.Capabilities,
-		BootID: hex.EncodeToString(boot), Now: o.Now, Logger: o.Logger, Backoff: o.Backoff,
+		BootID: hex.EncodeToString(boot), Now: o.Now, Logger: o.Logger, Backoff: o.Backoff, Dial: o.Dial,
 		Hello: func(h *agentv1.Hello) {
 			c.rt.Hello(h)
 			h.DenyListDigest = c.deny.Digest()

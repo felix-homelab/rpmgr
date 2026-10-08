@@ -28,6 +28,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/controller"
 	"github.com/felix-homelab/rpmgr/internal/store"
 	"github.com/felix-homelab/rpmgr/internal/store/storetest"
+	"github.com/felix-homelab/rpmgr/internal/telemetry"
 	"github.com/felix-homelab/rpmgr/internal/token"
 )
 
@@ -294,5 +295,51 @@ func TestRun_Refusals(t *testing.T) {
 	cfg.Database.DSN = filepath.Join(t.TempDir(), "empty.db")
 	if err := run(cfg); !errors.Is(err, controller.ErrNotInitialised) {
 		t.Fatalf("an empty database: %v", err)
+	}
+}
+
+// TestRun_InProcess: given a listener and a registry, as all-in-one gives them, Run serves on that
+// listener instead of listen.https, registers its metrics there, hands over its readiness check and
+// serves no admin listener of its own.
+func TestRun_InProcess(t *testing.T) {
+	r := startRun(t)
+	r.stop(t)
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	reg := telemetry.NewRegistry()
+	checks := make(chan func(context.Context) error, 1)
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	listening := make(chan struct{})
+	go func() {
+		done <- controller.Run(ctx, controller.RunOptions{Config: r.cfg, Getenv: func(string) string { return "" }, Listener: ln,
+			Registry: reg, Readiness: func(c func(context.Context) error) { checks <- c }, Listening: func() { close(listening) }})
+	}()
+	defer func() { cancel(); <-done }()
+	select {
+	case <-listening:
+	case err := <-done:
+		t.Fatalf("Run: %v", err)
+	}
+	resp, err := r.client.Get("https://" + ln.Addr().String() + "/.well-known/rpmgr/trust-bundle")
+	if err != nil {
+		t.Fatalf("the given listener: %v", err)
+	}
+	_ = resp.Body.Close()
+	if c, err := net.Dial("tcp", r.https); err == nil {
+		_ = c.Close()
+		t.Fatal("listen.https is bound as well")
+	}
+	if resp, err := http.Get("http://" + r.admin + "/healthz"); err == nil {
+		_ = resp.Body.Close()
+		t.Fatal("an admin listener of its own")
+	}
+	if err := (<-checks)(context.Background()); err != nil {
+		t.Fatalf("readiness: %v", err)
+	}
+	if mfs, err := reg.Gather(); err != nil || len(mfs) == 0 {
+		t.Fatalf("metrics: %v", err)
 	}
 }
