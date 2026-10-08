@@ -95,11 +95,13 @@ func TestCrossTenantLeaks(t *testing.T) {
 
 	// What org A has: every ID a request could name, and what no answer to Bob may hold.
 	groupA := db.Client().GatewayGroup.Create().SetOrgID(orgA).SetName("eu").SaveX(sys)
+	gatewayA := db.Client().Gateway.Create().SetOrgID(orgA).SetGatewayGroupID(groupA.ID).SetName("gw1").
+		SetTunnelEndpoints([]string{"gw1.org-a.example:443"}).SaveX(sys)
 	fill := map[string]string{
 		"org_id": orgA, "user_id": ada.GetUserId(), "token_id": adaToken.Msg.GetApiToken().GetId(),
-		"session_id": ada.GetSession().GetId(), "gateway_group_id": groupA.ID,
+		"session_id": ada.GetSession().GetId(), "gateway_group_id": groupA.ID, "gateway_id": gatewayA.ID,
 	}
-	secrets := []string{orgA, groupA.ID, ada.GetUserId(), "ada@example.com", adaToken.Msg.GetApiToken().GetId(), ada.GetSession().GetId(),
+	secrets := []string{orgA, groupA.ID, gatewayA.ID, "gw1.org-a.example", ada.GetUserId(), "ada@example.com", adaToken.Msg.GetApiToken().GetId(), ada.GetSession().GetId(),
 		invitation.Msg.GetUrl()[strings.Index(invitation.Msg.GetUrl(), "#")+1:]}
 	before := orgRows(t, db, orgA)
 

@@ -44,7 +44,7 @@ func (Gateway) Fields() []ent.Field {
 		field.Int("slot").Range(1, MaxGatewaysPerGroup).Immutable(),
 		// tunnel_endpoints are host:port addresses where connectors reach this gateway, over QUIC
 		// and TCP (docs/03-connections.md, "Establishment"); WSS hostnames come in Phase 2.
-		field.Strings("tunnel_endpoints").Validate(validateEndpoints),
+		field.Strings("tunnel_endpoints").Validate(ValidateEndpoints),
 		field.String("spiffe_id").Optional(),
 		field.String("pubkey_sha256").Optional(),
 		field.Bool("enabled").Default(true),
@@ -70,7 +70,8 @@ func (Gateway) Indexes() []ent.Index {
 	}
 }
 
-func validateEndpoints(eps []string) error {
+// ValidateEndpoints checks that each tunnel endpoint is host:port with a port from 1 to 65535.
+func ValidateEndpoints(eps []string) error {
 	for _, e := range eps {
 		host, port, err := net.SplitHostPort(e)
 		if n, perr := strconv.Atoi(port); err != nil || perr != nil || host == "" || n < 1 || n > 65535 {
