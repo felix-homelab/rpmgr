@@ -133,7 +133,7 @@ func Run(ctx context.Context, o RunOptions) error {
 	holder := pki.NewHolder(node)
 	endpoints := []string{cfg.PublicURL}
 
-	sessions := NewSessions(SessionsOptions{DB: db, CA: ca, Node: nodeID, Version: o.Version, Sys: sys, Now: o.Now, RevLog: rl,
+	sessions := NewSessions(SessionsOptions{DB: db, CA: ca, Node: nodeID, Version: o.Version, Sys: sys, Now: o.Now, RevLog: rl, Sealer: sealer,
 		Logger:   o.Logger,
 		Compiler: &snapshot.Compiler{Sources: o.Sources, Endpoints: func() []string { return endpoints }}})
 	reg := o.Registry

@@ -70,7 +70,7 @@ func startSessionsWith(t *testing.T, db *store.DB, opt func(*controller.Sessions
 	roots := x509.NewCertPool()
 	roots.AddCert(ca.Root())
 	e := &sessionEnv{db: db, ca: ca, org: storetest.Org(t, db, "org-a"), dbEpoch: rev.DBEpoch, sealer: s, sys: sys}
-	o := controller.SessionsOptions{DB: db, CA: ca, Node: "ctn_test", Sys: sys}
+	o := controller.SessionsOptions{DB: db, CA: ca, Node: "ctn_test", Sys: sys, Sealer: s}
 	opt(&o)
 	e.sessions = controller.NewSessions(o)
 	cfg := pki.AgentEndpointConfig(pki.NewHolder(node), roots, pki.Expect{TrustDomain: td, Kinds: []pki.Kind{pki.KindConnector, pki.KindGateway},
@@ -111,6 +111,21 @@ func (e *sessionEnv) agentCert(t *testing.T) (tls.Certificate, pki.Identity) {
 		t.Fatal(err)
 	}
 	return tls.Certificate{Certificate: [][]byte{leaf.Raw, e.ca.Intermediate().Raw}, PrivateKey: key, Leaf: leaf}, id
+}
+
+// client returns a Control client that presents cert.
+func (e *sessionEnv) client(t *testing.T, cert tls.Certificate) agentv1.ControlClient {
+	t.Helper()
+	roots := x509.NewCertPool()
+	roots.AddCert(e.ca.Root())
+	cfg := pki.ClientConfig(cert, roots, "controller."+e.ca.TrustDomain(),
+		pki.Expect{TrustDomain: e.ca.TrustDomain(), Kinds: []pki.Kind{pki.KindController}}, nil, nil)
+	cc, err := grpc.NewClient("passthrough:///"+e.addr, grpc.WithTransportCredentials(credentials.NewTLS(cfg)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = cc.Close() })
+	return agentv1.NewControlClient(cc)
 }
 
 // open starts a control session as the agent with cert and sends hello.
