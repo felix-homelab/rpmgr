@@ -369,6 +369,18 @@ func (f PortQuotaFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, e
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.PortQuotaMutation", m)
 }
 
+// The RecoveryCodeFunc type is an adapter to allow the use of ordinary
+// function as RecoveryCode mutator.
+type RecoveryCodeFunc func(context.Context, *ent.RecoveryCodeMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f RecoveryCodeFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.RecoveryCodeMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.RecoveryCodeMutation", m)
+}
+
 // The RevokedIdentityFunc type is an adapter to allow the use of ordinary
 // function as RevokedIdentity mutator.
 type RevokedIdentityFunc func(context.Context, *ent.RevokedIdentityMutation) (ent.Value, error)
@@ -487,6 +499,18 @@ func (f SessionFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, err
 		return f(ctx, mv)
 	}
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.SessionMutation", m)
+}
+
+// The TOTPCredentialFunc type is an adapter to allow the use of ordinary
+// function as TOTPCredential mutator.
+type TOTPCredentialFunc func(context.Context, *ent.TOTPCredentialMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f TOTPCredentialFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.TOTPCredentialMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.TOTPCredentialMutation", m)
 }
 
 // The UserFunc type is an adapter to allow the use of ordinary

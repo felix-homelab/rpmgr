@@ -42,6 +42,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/portpool"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/portquota"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/predicate"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/recoverycode"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/revokedidentity"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/route"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routehostname"
@@ -52,6 +53,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routeudp"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/secretmeta"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/session"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/totpcredential"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/user"
 )
 
@@ -94,6 +96,7 @@ const (
 	TypePortAllocation    = "PortAllocation"
 	TypePortPool          = "PortPool"
 	TypePortQuota         = "PortQuota"
+	TypeRecoveryCode      = "RecoveryCode"
 	TypeRevokedIdentity   = "RevokedIdentity"
 	TypeRoute             = "Route"
 	TypeRouteHTTP         = "RouteHTTP"
@@ -104,6 +107,7 @@ const (
 	TypeRouteUDP          = "RouteUDP"
 	TypeSecretMeta        = "SecretMeta"
 	TypeSession           = "Session"
+	TypeTOTPCredential    = "TOTPCredential"
 	TypeUser              = "User"
 )
 
@@ -22504,6 +22508,576 @@ func (m *PortQuotaMutation) ResetEdge(name string) error {
 	return fmt.Errorf("unknown PortQuota edge %s", name)
 }
 
+// RecoveryCodeMutation represents an operation that mutates the RecoveryCode nodes in the graph.
+type RecoveryCodeMutation struct {
+	config
+	op            Op
+	typ           string
+	id            *string
+	code_hash     *[]byte
+	created_at    *time.Time
+	used_at       *time.Time
+	clearedFields map[string]struct{}
+	user          *string
+	cleareduser   bool
+	done          bool
+	oldValue      func(context.Context) (*RecoveryCode, error)
+	predicates    []predicate.RecoveryCode
+}
+
+var _ ent.Mutation = (*RecoveryCodeMutation)(nil)
+
+// recoverycodeOption allows management of the mutation configuration using functional options.
+type recoverycodeOption func(*RecoveryCodeMutation)
+
+// newRecoveryCodeMutation creates new mutation for the RecoveryCode entity.
+func newRecoveryCodeMutation(c config, op Op, opts ...recoverycodeOption) *RecoveryCodeMutation {
+	m := &RecoveryCodeMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeRecoveryCode,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withRecoveryCodeID sets the ID field of the mutation.
+func withRecoveryCodeID(id string) recoverycodeOption {
+	return func(m *RecoveryCodeMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *RecoveryCode
+		)
+		m.oldValue = func(ctx context.Context) (*RecoveryCode, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().RecoveryCode.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withRecoveryCode sets the old RecoveryCode of the mutation.
+func withRecoveryCode(node *RecoveryCode) recoverycodeOption {
+	return func(m *RecoveryCodeMutation) {
+		m.oldValue = func(context.Context) (*RecoveryCode, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m RecoveryCodeMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m RecoveryCodeMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// SetID sets the value of the id field. Note that this
+// operation is only accepted on creation of RecoveryCode entities.
+func (m *RecoveryCodeMutation) SetID(id string) {
+	m.id = &id
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *RecoveryCodeMutation) ID() (id string, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *RecoveryCodeMutation) IDs(ctx context.Context) ([]string, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []string{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().RecoveryCode.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetUserID sets the "user_id" field.
+func (m *RecoveryCodeMutation) SetUserID(s string) {
+	m.user = &s
+}
+
+// UserID returns the value of the "user_id" field in the mutation.
+func (m *RecoveryCodeMutation) UserID() (r string, exists bool) {
+	v := m.user
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUserID returns the old "user_id" field's value of the RecoveryCode entity.
+// If the RecoveryCode object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RecoveryCodeMutation) OldUserID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUserID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUserID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUserID: %w", err)
+	}
+	return oldValue.UserID, nil
+}
+
+// ResetUserID resets all changes to the "user_id" field.
+func (m *RecoveryCodeMutation) ResetUserID() {
+	m.user = nil
+}
+
+// SetCodeHash sets the "code_hash" field.
+func (m *RecoveryCodeMutation) SetCodeHash(b []byte) {
+	m.code_hash = &b
+}
+
+// CodeHash returns the value of the "code_hash" field in the mutation.
+func (m *RecoveryCodeMutation) CodeHash() (r []byte, exists bool) {
+	v := m.code_hash
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCodeHash returns the old "code_hash" field's value of the RecoveryCode entity.
+// If the RecoveryCode object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RecoveryCodeMutation) OldCodeHash(ctx context.Context) (v []byte, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCodeHash is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCodeHash requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCodeHash: %w", err)
+	}
+	return oldValue.CodeHash, nil
+}
+
+// ResetCodeHash resets all changes to the "code_hash" field.
+func (m *RecoveryCodeMutation) ResetCodeHash() {
+	m.code_hash = nil
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *RecoveryCodeMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *RecoveryCodeMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the RecoveryCode entity.
+// If the RecoveryCode object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RecoveryCodeMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *RecoveryCodeMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// SetUsedAt sets the "used_at" field.
+func (m *RecoveryCodeMutation) SetUsedAt(t time.Time) {
+	m.used_at = &t
+}
+
+// UsedAt returns the value of the "used_at" field in the mutation.
+func (m *RecoveryCodeMutation) UsedAt() (r time.Time, exists bool) {
+	v := m.used_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUsedAt returns the old "used_at" field's value of the RecoveryCode entity.
+// If the RecoveryCode object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RecoveryCodeMutation) OldUsedAt(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUsedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUsedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUsedAt: %w", err)
+	}
+	return oldValue.UsedAt, nil
+}
+
+// ClearUsedAt clears the value of the "used_at" field.
+func (m *RecoveryCodeMutation) ClearUsedAt() {
+	m.used_at = nil
+	m.clearedFields[recoverycode.FieldUsedAt] = struct{}{}
+}
+
+// UsedAtCleared returns if the "used_at" field was cleared in this mutation.
+func (m *RecoveryCodeMutation) UsedAtCleared() bool {
+	_, ok := m.clearedFields[recoverycode.FieldUsedAt]
+	return ok
+}
+
+// ResetUsedAt resets all changes to the "used_at" field.
+func (m *RecoveryCodeMutation) ResetUsedAt() {
+	m.used_at = nil
+	delete(m.clearedFields, recoverycode.FieldUsedAt)
+}
+
+// ClearUser clears the "user" edge to the User entity.
+func (m *RecoveryCodeMutation) ClearUser() {
+	m.cleareduser = true
+	m.clearedFields[recoverycode.FieldUserID] = struct{}{}
+}
+
+// UserCleared reports if the "user" edge to the User entity was cleared.
+func (m *RecoveryCodeMutation) UserCleared() bool {
+	return m.cleareduser
+}
+
+// UserIDs returns the "user" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// UserID instead. It exists only for internal usage by the builders.
+func (m *RecoveryCodeMutation) UserIDs() (ids []string) {
+	if id := m.user; id != nil {
+		ids = append(ids, *id)
+	}
+	return
+}
+
+// ResetUser resets all changes to the "user" edge.
+func (m *RecoveryCodeMutation) ResetUser() {
+	m.user = nil
+	m.cleareduser = false
+}
+
+// Where appends a list predicates to the RecoveryCodeMutation builder.
+func (m *RecoveryCodeMutation) Where(ps ...predicate.RecoveryCode) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the RecoveryCodeMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *RecoveryCodeMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.RecoveryCode, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *RecoveryCodeMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *RecoveryCodeMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (RecoveryCode).
+func (m *RecoveryCodeMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *RecoveryCodeMutation) Fields() []string {
+	fields := make([]string, 0, 4)
+	if m.user != nil {
+		fields = append(fields, recoverycode.FieldUserID)
+	}
+	if m.code_hash != nil {
+		fields = append(fields, recoverycode.FieldCodeHash)
+	}
+	if m.created_at != nil {
+		fields = append(fields, recoverycode.FieldCreatedAt)
+	}
+	if m.used_at != nil {
+		fields = append(fields, recoverycode.FieldUsedAt)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *RecoveryCodeMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case recoverycode.FieldUserID:
+		return m.UserID()
+	case recoverycode.FieldCodeHash:
+		return m.CodeHash()
+	case recoverycode.FieldCreatedAt:
+		return m.CreatedAt()
+	case recoverycode.FieldUsedAt:
+		return m.UsedAt()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *RecoveryCodeMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case recoverycode.FieldUserID:
+		return m.OldUserID(ctx)
+	case recoverycode.FieldCodeHash:
+		return m.OldCodeHash(ctx)
+	case recoverycode.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	case recoverycode.FieldUsedAt:
+		return m.OldUsedAt(ctx)
+	}
+	return nil, fmt.Errorf("unknown RecoveryCode field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *RecoveryCodeMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case recoverycode.FieldUserID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUserID(v)
+		return nil
+	case recoverycode.FieldCodeHash:
+		v, ok := value.([]byte)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCodeHash(v)
+		return nil
+	case recoverycode.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	case recoverycode.FieldUsedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUsedAt(v)
+		return nil
+	}
+	return fmt.Errorf("unknown RecoveryCode field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *RecoveryCodeMutation) AddedFields() []string {
+	return nil
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *RecoveryCodeMutation) AddedField(name string) (ent.Value, bool) {
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *RecoveryCodeMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	}
+	return fmt.Errorf("unknown RecoveryCode numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *RecoveryCodeMutation) ClearedFields() []string {
+	var fields []string
+	if m.FieldCleared(recoverycode.FieldUsedAt) {
+		fields = append(fields, recoverycode.FieldUsedAt)
+	}
+	return fields
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *RecoveryCodeMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *RecoveryCodeMutation) ClearField(name string) error {
+	switch name {
+	case recoverycode.FieldUsedAt:
+		m.ClearUsedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown RecoveryCode nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *RecoveryCodeMutation) ResetField(name string) error {
+	switch name {
+	case recoverycode.FieldUserID:
+		m.ResetUserID()
+		return nil
+	case recoverycode.FieldCodeHash:
+		m.ResetCodeHash()
+		return nil
+	case recoverycode.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	case recoverycode.FieldUsedAt:
+		m.ResetUsedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown RecoveryCode field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *RecoveryCodeMutation) AddedEdges() []string {
+	edges := make([]string, 0, 1)
+	if m.user != nil {
+		edges = append(edges, recoverycode.EdgeUser)
+	}
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *RecoveryCodeMutation) AddedIDs(name string) []ent.Value {
+	switch name {
+	case recoverycode.EdgeUser:
+		if id := m.user; id != nil {
+			return []ent.Value{*id}
+		}
+	}
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *RecoveryCodeMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 1)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *RecoveryCodeMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *RecoveryCodeMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 1)
+	if m.cleareduser {
+		edges = append(edges, recoverycode.EdgeUser)
+	}
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *RecoveryCodeMutation) EdgeCleared(name string) bool {
+	switch name {
+	case recoverycode.EdgeUser:
+		return m.cleareduser
+	}
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *RecoveryCodeMutation) ClearEdge(name string) error {
+	switch name {
+	case recoverycode.EdgeUser:
+		m.ClearUser()
+		return nil
+	}
+	return fmt.Errorf("unknown RecoveryCode unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *RecoveryCodeMutation) ResetEdge(name string) error {
+	switch name {
+	case recoverycode.EdgeUser:
+		m.ResetUser()
+		return nil
+	}
+	return fmt.Errorf("unknown RecoveryCode edge %s", name)
+}
+
 // RevokedIdentityMutation represents an operation that mutates the RevokedIdentity nodes in the graph.
 type RevokedIdentityMutation struct {
 	config
@@ -31070,6 +31644,666 @@ func (m *SessionMutation) ResetEdge(name string) error {
 		return nil
 	}
 	return fmt.Errorf("unknown Session edge %s", name)
+}
+
+// TOTPCredentialMutation represents an operation that mutates the TOTPCredential nodes in the graph.
+type TOTPCredentialMutation struct {
+	config
+	op            Op
+	typ           string
+	id            *string
+	seed_enc      *[]byte
+	created_at    *time.Time
+	confirmed_at  *time.Time
+	last_step     *int64
+	addlast_step  *int64
+	clearedFields map[string]struct{}
+	user          *string
+	cleareduser   bool
+	done          bool
+	oldValue      func(context.Context) (*TOTPCredential, error)
+	predicates    []predicate.TOTPCredential
+}
+
+var _ ent.Mutation = (*TOTPCredentialMutation)(nil)
+
+// totpcredentialOption allows management of the mutation configuration using functional options.
+type totpcredentialOption func(*TOTPCredentialMutation)
+
+// newTOTPCredentialMutation creates new mutation for the TOTPCredential entity.
+func newTOTPCredentialMutation(c config, op Op, opts ...totpcredentialOption) *TOTPCredentialMutation {
+	m := &TOTPCredentialMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeTOTPCredential,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withTOTPCredentialID sets the ID field of the mutation.
+func withTOTPCredentialID(id string) totpcredentialOption {
+	return func(m *TOTPCredentialMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *TOTPCredential
+		)
+		m.oldValue = func(ctx context.Context) (*TOTPCredential, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().TOTPCredential.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withTOTPCredential sets the old TOTPCredential of the mutation.
+func withTOTPCredential(node *TOTPCredential) totpcredentialOption {
+	return func(m *TOTPCredentialMutation) {
+		m.oldValue = func(context.Context) (*TOTPCredential, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m TOTPCredentialMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m TOTPCredentialMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// SetID sets the value of the id field. Note that this
+// operation is only accepted on creation of TOTPCredential entities.
+func (m *TOTPCredentialMutation) SetID(id string) {
+	m.id = &id
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *TOTPCredentialMutation) ID() (id string, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *TOTPCredentialMutation) IDs(ctx context.Context) ([]string, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []string{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().TOTPCredential.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetUserID sets the "user_id" field.
+func (m *TOTPCredentialMutation) SetUserID(s string) {
+	m.user = &s
+}
+
+// UserID returns the value of the "user_id" field in the mutation.
+func (m *TOTPCredentialMutation) UserID() (r string, exists bool) {
+	v := m.user
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUserID returns the old "user_id" field's value of the TOTPCredential entity.
+// If the TOTPCredential object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TOTPCredentialMutation) OldUserID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUserID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUserID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUserID: %w", err)
+	}
+	return oldValue.UserID, nil
+}
+
+// ResetUserID resets all changes to the "user_id" field.
+func (m *TOTPCredentialMutation) ResetUserID() {
+	m.user = nil
+}
+
+// SetSeedEnc sets the "seed_enc" field.
+func (m *TOTPCredentialMutation) SetSeedEnc(b []byte) {
+	m.seed_enc = &b
+}
+
+// SeedEnc returns the value of the "seed_enc" field in the mutation.
+func (m *TOTPCredentialMutation) SeedEnc() (r []byte, exists bool) {
+	v := m.seed_enc
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSeedEnc returns the old "seed_enc" field's value of the TOTPCredential entity.
+// If the TOTPCredential object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TOTPCredentialMutation) OldSeedEnc(ctx context.Context) (v []byte, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSeedEnc is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSeedEnc requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSeedEnc: %w", err)
+	}
+	return oldValue.SeedEnc, nil
+}
+
+// ResetSeedEnc resets all changes to the "seed_enc" field.
+func (m *TOTPCredentialMutation) ResetSeedEnc() {
+	m.seed_enc = nil
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *TOTPCredentialMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *TOTPCredentialMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the TOTPCredential entity.
+// If the TOTPCredential object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TOTPCredentialMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *TOTPCredentialMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// SetConfirmedAt sets the "confirmed_at" field.
+func (m *TOTPCredentialMutation) SetConfirmedAt(t time.Time) {
+	m.confirmed_at = &t
+}
+
+// ConfirmedAt returns the value of the "confirmed_at" field in the mutation.
+func (m *TOTPCredentialMutation) ConfirmedAt() (r time.Time, exists bool) {
+	v := m.confirmed_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldConfirmedAt returns the old "confirmed_at" field's value of the TOTPCredential entity.
+// If the TOTPCredential object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TOTPCredentialMutation) OldConfirmedAt(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldConfirmedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldConfirmedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldConfirmedAt: %w", err)
+	}
+	return oldValue.ConfirmedAt, nil
+}
+
+// ClearConfirmedAt clears the value of the "confirmed_at" field.
+func (m *TOTPCredentialMutation) ClearConfirmedAt() {
+	m.confirmed_at = nil
+	m.clearedFields[totpcredential.FieldConfirmedAt] = struct{}{}
+}
+
+// ConfirmedAtCleared returns if the "confirmed_at" field was cleared in this mutation.
+func (m *TOTPCredentialMutation) ConfirmedAtCleared() bool {
+	_, ok := m.clearedFields[totpcredential.FieldConfirmedAt]
+	return ok
+}
+
+// ResetConfirmedAt resets all changes to the "confirmed_at" field.
+func (m *TOTPCredentialMutation) ResetConfirmedAt() {
+	m.confirmed_at = nil
+	delete(m.clearedFields, totpcredential.FieldConfirmedAt)
+}
+
+// SetLastStep sets the "last_step" field.
+func (m *TOTPCredentialMutation) SetLastStep(i int64) {
+	m.last_step = &i
+	m.addlast_step = nil
+}
+
+// LastStep returns the value of the "last_step" field in the mutation.
+func (m *TOTPCredentialMutation) LastStep() (r int64, exists bool) {
+	v := m.last_step
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldLastStep returns the old "last_step" field's value of the TOTPCredential entity.
+// If the TOTPCredential object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TOTPCredentialMutation) OldLastStep(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldLastStep is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldLastStep requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldLastStep: %w", err)
+	}
+	return oldValue.LastStep, nil
+}
+
+// AddLastStep adds i to the "last_step" field.
+func (m *TOTPCredentialMutation) AddLastStep(i int64) {
+	if m.addlast_step != nil {
+		*m.addlast_step += i
+	} else {
+		m.addlast_step = &i
+	}
+}
+
+// AddedLastStep returns the value that was added to the "last_step" field in this mutation.
+func (m *TOTPCredentialMutation) AddedLastStep() (r int64, exists bool) {
+	v := m.addlast_step
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetLastStep resets all changes to the "last_step" field.
+func (m *TOTPCredentialMutation) ResetLastStep() {
+	m.last_step = nil
+	m.addlast_step = nil
+}
+
+// ClearUser clears the "user" edge to the User entity.
+func (m *TOTPCredentialMutation) ClearUser() {
+	m.cleareduser = true
+	m.clearedFields[totpcredential.FieldUserID] = struct{}{}
+}
+
+// UserCleared reports if the "user" edge to the User entity was cleared.
+func (m *TOTPCredentialMutation) UserCleared() bool {
+	return m.cleareduser
+}
+
+// UserIDs returns the "user" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// UserID instead. It exists only for internal usage by the builders.
+func (m *TOTPCredentialMutation) UserIDs() (ids []string) {
+	if id := m.user; id != nil {
+		ids = append(ids, *id)
+	}
+	return
+}
+
+// ResetUser resets all changes to the "user" edge.
+func (m *TOTPCredentialMutation) ResetUser() {
+	m.user = nil
+	m.cleareduser = false
+}
+
+// Where appends a list predicates to the TOTPCredentialMutation builder.
+func (m *TOTPCredentialMutation) Where(ps ...predicate.TOTPCredential) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the TOTPCredentialMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *TOTPCredentialMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.TOTPCredential, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *TOTPCredentialMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *TOTPCredentialMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (TOTPCredential).
+func (m *TOTPCredentialMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *TOTPCredentialMutation) Fields() []string {
+	fields := make([]string, 0, 5)
+	if m.user != nil {
+		fields = append(fields, totpcredential.FieldUserID)
+	}
+	if m.seed_enc != nil {
+		fields = append(fields, totpcredential.FieldSeedEnc)
+	}
+	if m.created_at != nil {
+		fields = append(fields, totpcredential.FieldCreatedAt)
+	}
+	if m.confirmed_at != nil {
+		fields = append(fields, totpcredential.FieldConfirmedAt)
+	}
+	if m.last_step != nil {
+		fields = append(fields, totpcredential.FieldLastStep)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *TOTPCredentialMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case totpcredential.FieldUserID:
+		return m.UserID()
+	case totpcredential.FieldSeedEnc:
+		return m.SeedEnc()
+	case totpcredential.FieldCreatedAt:
+		return m.CreatedAt()
+	case totpcredential.FieldConfirmedAt:
+		return m.ConfirmedAt()
+	case totpcredential.FieldLastStep:
+		return m.LastStep()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *TOTPCredentialMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case totpcredential.FieldUserID:
+		return m.OldUserID(ctx)
+	case totpcredential.FieldSeedEnc:
+		return m.OldSeedEnc(ctx)
+	case totpcredential.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	case totpcredential.FieldConfirmedAt:
+		return m.OldConfirmedAt(ctx)
+	case totpcredential.FieldLastStep:
+		return m.OldLastStep(ctx)
+	}
+	return nil, fmt.Errorf("unknown TOTPCredential field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *TOTPCredentialMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case totpcredential.FieldUserID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUserID(v)
+		return nil
+	case totpcredential.FieldSeedEnc:
+		v, ok := value.([]byte)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSeedEnc(v)
+		return nil
+	case totpcredential.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	case totpcredential.FieldConfirmedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetConfirmedAt(v)
+		return nil
+	case totpcredential.FieldLastStep:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetLastStep(v)
+		return nil
+	}
+	return fmt.Errorf("unknown TOTPCredential field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *TOTPCredentialMutation) AddedFields() []string {
+	var fields []string
+	if m.addlast_step != nil {
+		fields = append(fields, totpcredential.FieldLastStep)
+	}
+	return fields
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *TOTPCredentialMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case totpcredential.FieldLastStep:
+		return m.AddedLastStep()
+	}
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *TOTPCredentialMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	case totpcredential.FieldLastStep:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddLastStep(v)
+		return nil
+	}
+	return fmt.Errorf("unknown TOTPCredential numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *TOTPCredentialMutation) ClearedFields() []string {
+	var fields []string
+	if m.FieldCleared(totpcredential.FieldConfirmedAt) {
+		fields = append(fields, totpcredential.FieldConfirmedAt)
+	}
+	return fields
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *TOTPCredentialMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *TOTPCredentialMutation) ClearField(name string) error {
+	switch name {
+	case totpcredential.FieldConfirmedAt:
+		m.ClearConfirmedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown TOTPCredential nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *TOTPCredentialMutation) ResetField(name string) error {
+	switch name {
+	case totpcredential.FieldUserID:
+		m.ResetUserID()
+		return nil
+	case totpcredential.FieldSeedEnc:
+		m.ResetSeedEnc()
+		return nil
+	case totpcredential.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	case totpcredential.FieldConfirmedAt:
+		m.ResetConfirmedAt()
+		return nil
+	case totpcredential.FieldLastStep:
+		m.ResetLastStep()
+		return nil
+	}
+	return fmt.Errorf("unknown TOTPCredential field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *TOTPCredentialMutation) AddedEdges() []string {
+	edges := make([]string, 0, 1)
+	if m.user != nil {
+		edges = append(edges, totpcredential.EdgeUser)
+	}
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *TOTPCredentialMutation) AddedIDs(name string) []ent.Value {
+	switch name {
+	case totpcredential.EdgeUser:
+		if id := m.user; id != nil {
+			return []ent.Value{*id}
+		}
+	}
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *TOTPCredentialMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 1)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *TOTPCredentialMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *TOTPCredentialMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 1)
+	if m.cleareduser {
+		edges = append(edges, totpcredential.EdgeUser)
+	}
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *TOTPCredentialMutation) EdgeCleared(name string) bool {
+	switch name {
+	case totpcredential.EdgeUser:
+		return m.cleareduser
+	}
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *TOTPCredentialMutation) ClearEdge(name string) error {
+	switch name {
+	case totpcredential.EdgeUser:
+		m.ClearUser()
+		return nil
+	}
+	return fmt.Errorf("unknown TOTPCredential unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *TOTPCredentialMutation) ResetEdge(name string) error {
+	switch name {
+	case totpcredential.EdgeUser:
+		m.ResetUser()
+		return nil
+	}
+	return fmt.Errorf("unknown TOTPCredential edge %s", name)
 }
 
 // UserMutation represents an operation that mutates the User nodes in the graph.

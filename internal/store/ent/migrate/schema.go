@@ -837,6 +837,40 @@ var (
 			},
 		},
 	}
+	// RecoveryCodesColumns holds the columns for the "recovery_codes" table.
+	RecoveryCodesColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeString},
+		{Name: "code_hash", Type: field.TypeBytes},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "used_at", Type: field.TypeTime, Nullable: true},
+		{Name: "user_id", Type: field.TypeString},
+	}
+	// RecoveryCodesTable holds the schema information for the "recovery_codes" table.
+	RecoveryCodesTable = &schema.Table{
+		Name:       "recovery_codes",
+		Columns:    RecoveryCodesColumns,
+		PrimaryKey: []*schema.Column{RecoveryCodesColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "recovery_codes_users_user",
+				Columns:    []*schema.Column{RecoveryCodesColumns[4]},
+				RefColumns: []*schema.Column{UsersColumns[0]},
+				OnDelete:   schema.Cascade,
+			},
+		},
+		Indexes: []*schema.Index{
+			{
+				Name:    "recoverycode_code_hash",
+				Unique:  true,
+				Columns: []*schema.Column{RecoveryCodesColumns[1]},
+			},
+			{
+				Name:    "recoverycode_user_id",
+				Unique:  false,
+				Columns: []*schema.Column{RecoveryCodesColumns[4]},
+			},
+		},
+	}
 	// RevokedIdentitiesColumns holds the columns for the "revoked_identities" table.
 	RevokedIdentitiesColumns = []*schema.Column{
 		{Name: "spiffe_id", Type: field.TypeString},
@@ -1269,6 +1303,36 @@ var (
 			},
 		},
 	}
+	// TotpCredentialsColumns holds the columns for the "totp_credentials" table.
+	TotpCredentialsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeString},
+		{Name: "seed_enc", Type: field.TypeBytes},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "confirmed_at", Type: field.TypeTime, Nullable: true},
+		{Name: "last_step", Type: field.TypeInt64, Default: 0},
+		{Name: "user_id", Type: field.TypeString},
+	}
+	// TotpCredentialsTable holds the schema information for the "totp_credentials" table.
+	TotpCredentialsTable = &schema.Table{
+		Name:       "totp_credentials",
+		Columns:    TotpCredentialsColumns,
+		PrimaryKey: []*schema.Column{TotpCredentialsColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "totp_credentials_users_user",
+				Columns:    []*schema.Column{TotpCredentialsColumns[5]},
+				RefColumns: []*schema.Column{UsersColumns[0]},
+				OnDelete:   schema.Cascade,
+			},
+		},
+		Indexes: []*schema.Index{
+			{
+				Name:    "totpcredential_user_id",
+				Unique:  true,
+				Columns: []*schema.Column{TotpCredentialsColumns[5]},
+			},
+		},
+	}
 	// UsersColumns holds the columns for the "users" table.
 	UsersColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeString},
@@ -1325,6 +1389,7 @@ var (
 		PortAllocationsTable,
 		PortPoolsTable,
 		PortQuotasTable,
+		RecoveryCodesTable,
 		RevokedIdentitiesTable,
 		RoutesTable,
 		RouteHTTPTable,
@@ -1335,6 +1400,7 @@ var (
 		RouteUDPTable,
 		SecretsMetaTable,
 		SessionsTable,
+		TotpCredentialsTable,
 		UsersTable,
 	}
 )
@@ -1417,6 +1483,7 @@ func init() {
 	PortQuotasTable.Annotation = &entsql.Annotation{
 		Table: "port_quotas",
 	}
+	RecoveryCodesTable.ForeignKeys[0].RefTable = UsersTable
 	RevokedIdentitiesTable.Annotation = &entsql.Annotation{
 		Table: "revoked_identities",
 	}
@@ -1459,4 +1526,8 @@ func init() {
 		Table: "secrets_meta",
 	}
 	SessionsTable.ForeignKeys[0].RefTable = UsersTable
+	TotpCredentialsTable.ForeignKeys[0].RefTable = UsersTable
+	TotpCredentialsTable.Annotation = &entsql.Annotation{
+		Table: "totp_credentials",
+	}
 }

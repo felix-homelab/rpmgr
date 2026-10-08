@@ -1,4 +1,4 @@
-h1:h3HiG7SdJbWOE8tIVng9l4qPj0qV3OazapxxsH7Hmvk=
+h1:rMWfYy+sYJi4EAbs+Jf9u/DxPkjfrOFshnptqRVVScs=
 20261007104728_init.sql h1:6jeR95S+59R2NO1vbm6eVqcBaiAFq0laX9cjx4ljQRo=
 20261007110313_config_revisions.sql h1:8mMQJJ5PsYIRtP7o9RJ6IVYgH3r29EMOlCi6dvlf7W0=
 20261007111839_settings.sql h1:AW7TBnWPYmVtPeTExhcg+GulKnZOuVU/pRldCFLv+Dk=
@@ -25,3 +25,4 @@ h1:h3HiG7SdJbWOE8tIVng9l4qPj0qV3OazapxxsH7Hmvk=
 20261008123600_api_requests.sql h1:+cZLCXYxWkOWBdaL9/OlF6YH1aErf+RlHOdtKOr27HY=
 20261008125951_users.sql h1:X3USI5JNhmmPMyZZjXHwmJigTqepp7kA2nPcEhj7Js4=
 20261008131314_sessions.sql h1:0sVSTv7qgXvKhFDlBD/5t2OqYuUzNx8In91Qxy9YkDI=
+20261008132715_mfa.sql h1:mEaKAXqGjtwsyge4z1be2nlSrcqujX7l2GB79AZsX9I=

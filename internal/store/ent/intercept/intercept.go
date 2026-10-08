@@ -39,6 +39,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/portpool"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/portquota"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/predicate"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/recoverycode"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/revokedidentity"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/route"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routehostname"
@@ -49,6 +50,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routeudp"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/secretmeta"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/session"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/totpcredential"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/user"
 )
 
@@ -918,6 +920,33 @@ func (f TraversePortQuota) Traverse(ctx context.Context, q ent.Query) error {
 	return fmt.Errorf("unexpected query type %T. expect *ent.PortQuotaQuery", q)
 }
 
+// The RecoveryCodeFunc type is an adapter to allow the use of ordinary function as a Querier.
+type RecoveryCodeFunc func(context.Context, *ent.RecoveryCodeQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f RecoveryCodeFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.RecoveryCodeQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.RecoveryCodeQuery", q)
+}
+
+// The TraverseRecoveryCode type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseRecoveryCode func(context.Context, *ent.RecoveryCodeQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseRecoveryCode) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseRecoveryCode) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.RecoveryCodeQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.RecoveryCodeQuery", q)
+}
+
 // The RevokedIdentityFunc type is an adapter to allow the use of ordinary function as a Querier.
 type RevokedIdentityFunc func(context.Context, *ent.RevokedIdentityQuery) (ent.Value, error)
 
@@ -1188,6 +1217,33 @@ func (f TraverseSession) Traverse(ctx context.Context, q ent.Query) error {
 	return fmt.Errorf("unexpected query type %T. expect *ent.SessionQuery", q)
 }
 
+// The TOTPCredentialFunc type is an adapter to allow the use of ordinary function as a Querier.
+type TOTPCredentialFunc func(context.Context, *ent.TOTPCredentialQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f TOTPCredentialFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.TOTPCredentialQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.TOTPCredentialQuery", q)
+}
+
+// The TraverseTOTPCredential type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseTOTPCredential func(context.Context, *ent.TOTPCredentialQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseTOTPCredential) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseTOTPCredential) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.TOTPCredentialQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.TOTPCredentialQuery", q)
+}
+
 // The UserFunc type is an adapter to allow the use of ordinary function as a Querier.
 type UserFunc func(context.Context, *ent.UserQuery) (ent.Value, error)
 
@@ -1278,6 +1334,8 @@ func NewQuery(q ent.Query) (Query, error) {
 		return &query[*ent.PortPoolQuery, predicate.PortPool, portpool.OrderOption]{typ: ent.TypePortPool, tq: q}, nil
 	case *ent.PortQuotaQuery:
 		return &query[*ent.PortQuotaQuery, predicate.PortQuota, portquota.OrderOption]{typ: ent.TypePortQuota, tq: q}, nil
+	case *ent.RecoveryCodeQuery:
+		return &query[*ent.RecoveryCodeQuery, predicate.RecoveryCode, recoverycode.OrderOption]{typ: ent.TypeRecoveryCode, tq: q}, nil
 	case *ent.RevokedIdentityQuery:
 		return &query[*ent.RevokedIdentityQuery, predicate.RevokedIdentity, revokedidentity.OrderOption]{typ: ent.TypeRevokedIdentity, tq: q}, nil
 	case *ent.RouteQuery:
@@ -1298,6 +1356,8 @@ func NewQuery(q ent.Query) (Query, error) {
 		return &query[*ent.SecretMetaQuery, predicate.SecretMeta, secretmeta.OrderOption]{typ: ent.TypeSecretMeta, tq: q}, nil
 	case *ent.SessionQuery:
 		return &query[*ent.SessionQuery, predicate.Session, session.OrderOption]{typ: ent.TypeSession, tq: q}, nil
+	case *ent.TOTPCredentialQuery:
+		return &query[*ent.TOTPCredentialQuery, predicate.TOTPCredential, totpcredential.OrderOption]{typ: ent.TypeTOTPCredential, tq: q}, nil
 	case *ent.UserQuery:
 		return &query[*ent.UserQuery, predicate.User, user.OrderOption]{typ: ent.TypeUser, tq: q}, nil
 	default:

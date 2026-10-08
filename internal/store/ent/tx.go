@@ -74,6 +74,8 @@ type Tx struct {
 	PortPool *PortPoolClient
 	// PortQuota is the client for interacting with the PortQuota builders.
 	PortQuota *PortQuotaClient
+	// RecoveryCode is the client for interacting with the RecoveryCode builders.
+	RecoveryCode *RecoveryCodeClient
 	// RevokedIdentity is the client for interacting with the RevokedIdentity builders.
 	RevokedIdentity *RevokedIdentityClient
 	// Route is the client for interacting with the Route builders.
@@ -94,6 +96,8 @@ type Tx struct {
 	SecretMeta *SecretMetaClient
 	// Session is the client for interacting with the Session builders.
 	Session *SessionClient
+	// TOTPCredential is the client for interacting with the TOTPCredential builders.
+	TOTPCredential *TOTPCredentialClient
 	// User is the client for interacting with the User builders.
 	User *UserClient
 
@@ -257,6 +261,7 @@ func (tx *Tx) init() {
 	tx.PortAllocation = NewPortAllocationClient(tx.config)
 	tx.PortPool = NewPortPoolClient(tx.config)
 	tx.PortQuota = NewPortQuotaClient(tx.config)
+	tx.RecoveryCode = NewRecoveryCodeClient(tx.config)
 	tx.RevokedIdentity = NewRevokedIdentityClient(tx.config)
 	tx.Route = NewRouteClient(tx.config)
 	tx.RouteHTTP = NewRouteHTTPClient(tx.config)
@@ -267,6 +272,7 @@ func (tx *Tx) init() {
 	tx.RouteUDP = NewRouteUDPClient(tx.config)
 	tx.SecretMeta = NewSecretMetaClient(tx.config)
 	tx.Session = NewSessionClient(tx.config)
+	tx.TOTPCredential = NewTOTPCredentialClient(tx.config)
 	tx.User = NewUserClient(tx.config)
 }
 
