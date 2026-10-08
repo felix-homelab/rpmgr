@@ -177,6 +177,12 @@ func (RouteTCP) Edges() []ent.Edge {
 	}
 }
 
+// Indexes: one row per route and one route per port allocation. The fields' Unique alone does not
+// make the migration generator emit an index.
+func (RouteTCP) Indexes() []ent.Index {
+	return []ent.Index{index.Fields("route_id").Unique(), index.Fields("port_allocation_id").Unique()}
+}
+
 // RouteTarget is where a connector delivers a route's connections; several targets balance and
 // fail over.
 type RouteTarget struct{ ent.Schema }
