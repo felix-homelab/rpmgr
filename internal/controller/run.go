@@ -317,6 +317,8 @@ func Run(ctx context.Context, o RunOptions) error {
 		Storage: acme.NewChallengeStorage(acmeStore, sessions, acme.GatewaysServing(db, sys))})
 	go leases.Run(sys, certManager.Job(acme.JobEvery), func(err error) { o.Logger.Warn("ACME job", "error", err) })
 	go leases.Run(sys, apiServer.PruneJob(api.PruneEvery), func(err error) { o.Logger.Warn("request_id pruning job", "error", err) })
+	go leases.Run(sys, DomainCheckJob(DomainCheckOptions{DB: db, TXT: &domains.TXTVerifier{}, Now: o.Now, Logger: o.Logger}),
+		func(err error) { o.Logger.Warn("domain check job", "error", err) })
 	go leases.Run(sys, PurgeJob(PurgeOptions{DB: db, RevLog: rl, Logger: o.Logger, Denied: sessions.ApplyDenyList, Now: o.Now}),
 		func(err error) { o.Logger.Warn("agent purge job", "error", err) })
 	go ReloadCA(sys, caOpts)
