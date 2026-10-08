@@ -141,6 +141,7 @@ func TestStepUpActions(t *testing.T) {
 		"rpmgr.v1.UserService.EnrollTOTP", "rpmgr.v1.UserService.ConfirmTOTP", "rpmgr.v1.UserService.RemoveTOTP",
 		"rpmgr.v1.UserService.RegenerateRecoveryCodes", "rpmgr.v1.TokenService.CreateAPIToken",
 		"rpmgr.v1.EnrollmentService.CreateEnrollmentToken", "rpmgr.v1.EnrollmentService.CreateGatewayEnrollmentToken",
+		"rpmgr.v1.PkiService.RotateIntermediate",
 	} {
 		d, err := protoregistry.GlobalFiles.FindDescriptorByName(protoreflect.FullName(name))
 		if err != nil {
