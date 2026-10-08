@@ -44,6 +44,12 @@ const (
 	// PolicyServiceListAccessPoliciesProcedure is the fully-qualified name of the PolicyService's
 	// ListAccessPolicies RPC.
 	PolicyServiceListAccessPoliciesProcedure = "/rpmgr.v1.PolicyService/ListAccessPolicies"
+	// PolicyServiceUpdateAccessPolicyProcedure is the fully-qualified name of the PolicyService's
+	// UpdateAccessPolicy RPC.
+	PolicyServiceUpdateAccessPolicyProcedure = "/rpmgr.v1.PolicyService/UpdateAccessPolicy"
+	// PolicyServiceDeleteAccessPolicyProcedure is the fully-qualified name of the PolicyService's
+	// DeleteAccessPolicy RPC.
+	PolicyServiceDeleteAccessPolicyProcedure = "/rpmgr.v1.PolicyService/DeleteAccessPolicy"
 )
 
 // PolicyServiceClient is a client for the rpmgr.v1.PolicyService service.
@@ -55,6 +61,10 @@ type PolicyServiceClient interface {
 	GetAccessPolicy(context.Context, *connect.Request[v1.GetAccessPolicyRequest]) (*connect.Response[v1.GetAccessPolicyResponse], error)
 	// ListAccessPolicies lists an org's access policies by ID.
 	ListAccessPolicies(context.Context, *connect.Request[v1.ListAccessPoliciesRequest]) (*connect.Response[v1.ListAccessPoliciesResponse], error)
+	// UpdateAccessPolicy changes the fields the mask names; rules are replaced as a whole.
+	UpdateAccessPolicy(context.Context, *connect.Request[v1.UpdateAccessPolicyRequest]) (*connect.Response[v1.UpdateAccessPolicyResponse], error)
+	// DeleteAccessPolicy deletes an access policy; refused while routes apply it.
+	DeleteAccessPolicy(context.Context, *connect.Request[v1.DeleteAccessPolicyRequest]) (*connect.Response[v1.DeleteAccessPolicyResponse], error)
 }
 
 // NewPolicyServiceClient constructs a client for the rpmgr.v1.PolicyService service. By default, it
@@ -88,6 +98,18 @@ func NewPolicyServiceClient(httpClient connect.HTTPClient, baseURL string, opts 
 			connect.WithIdempotency(connect.IdempotencyNoSideEffects),
 			connect.WithClientOptions(opts...),
 		),
+		updateAccessPolicy: connect.NewClient[v1.UpdateAccessPolicyRequest, v1.UpdateAccessPolicyResponse](
+			httpClient,
+			baseURL+PolicyServiceUpdateAccessPolicyProcedure,
+			connect.WithSchema(policyServiceMethods.ByName("UpdateAccessPolicy")),
+			connect.WithClientOptions(opts...),
+		),
+		deleteAccessPolicy: connect.NewClient[v1.DeleteAccessPolicyRequest, v1.DeleteAccessPolicyResponse](
+			httpClient,
+			baseURL+PolicyServiceDeleteAccessPolicyProcedure,
+			connect.WithSchema(policyServiceMethods.ByName("DeleteAccessPolicy")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -96,6 +118,8 @@ type policyServiceClient struct {
 	createAccessPolicy *connect.Client[v1.CreateAccessPolicyRequest, v1.CreateAccessPolicyResponse]
 	getAccessPolicy    *connect.Client[v1.GetAccessPolicyRequest, v1.GetAccessPolicyResponse]
 	listAccessPolicies *connect.Client[v1.ListAccessPoliciesRequest, v1.ListAccessPoliciesResponse]
+	updateAccessPolicy *connect.Client[v1.UpdateAccessPolicyRequest, v1.UpdateAccessPolicyResponse]
+	deleteAccessPolicy *connect.Client[v1.DeleteAccessPolicyRequest, v1.DeleteAccessPolicyResponse]
 }
 
 // CreateAccessPolicy calls rpmgr.v1.PolicyService.CreateAccessPolicy.
@@ -113,6 +137,16 @@ func (c *policyServiceClient) ListAccessPolicies(ctx context.Context, req *conne
 	return c.listAccessPolicies.CallUnary(ctx, req)
 }
 
+// UpdateAccessPolicy calls rpmgr.v1.PolicyService.UpdateAccessPolicy.
+func (c *policyServiceClient) UpdateAccessPolicy(ctx context.Context, req *connect.Request[v1.UpdateAccessPolicyRequest]) (*connect.Response[v1.UpdateAccessPolicyResponse], error) {
+	return c.updateAccessPolicy.CallUnary(ctx, req)
+}
+
+// DeleteAccessPolicy calls rpmgr.v1.PolicyService.DeleteAccessPolicy.
+func (c *policyServiceClient) DeleteAccessPolicy(ctx context.Context, req *connect.Request[v1.DeleteAccessPolicyRequest]) (*connect.Response[v1.DeleteAccessPolicyResponse], error) {
+	return c.deleteAccessPolicy.CallUnary(ctx, req)
+}
+
 // PolicyServiceHandler is an implementation of the rpmgr.v1.PolicyService service.
 type PolicyServiceHandler interface {
 	// CreateAccessPolicy creates an access policy. The controller hashes the passwords of its
@@ -122,6 +156,10 @@ type PolicyServiceHandler interface {
 	GetAccessPolicy(context.Context, *connect.Request[v1.GetAccessPolicyRequest]) (*connect.Response[v1.GetAccessPolicyResponse], error)
 	// ListAccessPolicies lists an org's access policies by ID.
 	ListAccessPolicies(context.Context, *connect.Request[v1.ListAccessPoliciesRequest]) (*connect.Response[v1.ListAccessPoliciesResponse], error)
+	// UpdateAccessPolicy changes the fields the mask names; rules are replaced as a whole.
+	UpdateAccessPolicy(context.Context, *connect.Request[v1.UpdateAccessPolicyRequest]) (*connect.Response[v1.UpdateAccessPolicyResponse], error)
+	// DeleteAccessPolicy deletes an access policy; refused while routes apply it.
+	DeleteAccessPolicy(context.Context, *connect.Request[v1.DeleteAccessPolicyRequest]) (*connect.Response[v1.DeleteAccessPolicyResponse], error)
 }
 
 // NewPolicyServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -151,6 +189,18 @@ func NewPolicyServiceHandler(svc PolicyServiceHandler, opts ...connect.HandlerOp
 		connect.WithIdempotency(connect.IdempotencyNoSideEffects),
 		connect.WithHandlerOptions(opts...),
 	)
+	policyServiceUpdateAccessPolicyHandler := connect.NewUnaryHandler(
+		PolicyServiceUpdateAccessPolicyProcedure,
+		svc.UpdateAccessPolicy,
+		connect.WithSchema(policyServiceMethods.ByName("UpdateAccessPolicy")),
+		connect.WithHandlerOptions(opts...),
+	)
+	policyServiceDeleteAccessPolicyHandler := connect.NewUnaryHandler(
+		PolicyServiceDeleteAccessPolicyProcedure,
+		svc.DeleteAccessPolicy,
+		connect.WithSchema(policyServiceMethods.ByName("DeleteAccessPolicy")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/rpmgr.v1.PolicyService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case PolicyServiceCreateAccessPolicyProcedure:
@@ -159,6 +209,10 @@ func NewPolicyServiceHandler(svc PolicyServiceHandler, opts ...connect.HandlerOp
 			policyServiceGetAccessPolicyHandler.ServeHTTP(w, r)
 		case PolicyServiceListAccessPoliciesProcedure:
 			policyServiceListAccessPoliciesHandler.ServeHTTP(w, r)
+		case PolicyServiceUpdateAccessPolicyProcedure:
+			policyServiceUpdateAccessPolicyHandler.ServeHTTP(w, r)
+		case PolicyServiceDeleteAccessPolicyProcedure:
+			policyServiceDeleteAccessPolicyHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -178,4 +232,12 @@ func (UnimplementedPolicyServiceHandler) GetAccessPolicy(context.Context, *conne
 
 func (UnimplementedPolicyServiceHandler) ListAccessPolicies(context.Context, *connect.Request[v1.ListAccessPoliciesRequest]) (*connect.Response[v1.ListAccessPoliciesResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("rpmgr.v1.PolicyService.ListAccessPolicies is not implemented"))
+}
+
+func (UnimplementedPolicyServiceHandler) UpdateAccessPolicy(context.Context, *connect.Request[v1.UpdateAccessPolicyRequest]) (*connect.Response[v1.UpdateAccessPolicyResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("rpmgr.v1.PolicyService.UpdateAccessPolicy is not implemented"))
+}
+
+func (UnimplementedPolicyServiceHandler) DeleteAccessPolicy(context.Context, *connect.Request[v1.DeleteAccessPolicyRequest]) (*connect.Response[v1.DeleteAccessPolicyResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("rpmgr.v1.PolicyService.DeleteAccessPolicy is not implemented"))
 }

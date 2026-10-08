@@ -262,18 +262,29 @@ func init() {
 		})
 	}
 	accesspolicyMixinHooks0 := accesspolicyMixin[0].Hooks()
+	accesspolicyMixinHooks1 := accesspolicyMixin[1].Hooks()
 
 	accesspolicy.Hooks[1] = accesspolicyMixinHooks0[0]
+
+	accesspolicy.Hooks[2] = accesspolicyMixinHooks1[0]
 	accesspolicyMixinInters0 := accesspolicyMixin[0].Interceptors()
 	accesspolicy.Interceptors[0] = accesspolicyMixinInters0[0]
 	accesspolicyMixinFields0 := accesspolicyMixin[0].Fields()
 	_ = accesspolicyMixinFields0
+	accesspolicyMixinFields1 := accesspolicyMixin[1].Fields()
+	_ = accesspolicyMixinFields1
 	accesspolicyFields := schema.AccessPolicy{}.Fields()
 	_ = accesspolicyFields
 	// accesspolicyDescOrgID is the schema descriptor for org_id field.
 	accesspolicyDescOrgID := accesspolicyMixinFields0[0].Descriptor()
 	// accesspolicy.OrgIDValidator is a validator for the "org_id" field. It is called by the builders before save.
 	accesspolicy.OrgIDValidator = accesspolicyDescOrgID.Validators[0].(func(string) error)
+	// accesspolicyDescVersion is the schema descriptor for version field.
+	accesspolicyDescVersion := accesspolicyMixinFields1[0].Descriptor()
+	// accesspolicy.DefaultVersion holds the default value on creation for the version field.
+	accesspolicy.DefaultVersion = accesspolicyDescVersion.Default.(int64)
+	// accesspolicy.VersionValidator is a validator for the "version" field. It is called by the builders before save.
+	accesspolicy.VersionValidator = accesspolicyDescVersion.Validators[0].(func(int64) error)
 	// accesspolicyDescName is the schema descriptor for name field.
 	accesspolicyDescName := accesspolicyFields[1].Descriptor()
 	// accesspolicy.NameValidator is a validator for the "name" field. It is called by the builders before save.
@@ -298,12 +309,6 @@ func init() {
 	accesspolicy.DefaultDescription = accesspolicyDescDescription.Default.(string)
 	// accesspolicy.DescriptionValidator is a validator for the "description" field. It is called by the builders before save.
 	accesspolicy.DescriptionValidator = accesspolicyDescDescription.Validators[0].(func(string) error)
-	// accesspolicyDescVersion is the schema descriptor for version field.
-	accesspolicyDescVersion := accesspolicyFields[3].Descriptor()
-	// accesspolicy.DefaultVersion holds the default value on creation for the version field.
-	accesspolicy.DefaultVersion = accesspolicyDescVersion.Default.(int64)
-	// accesspolicy.VersionValidator is a validator for the "version" field. It is called by the builders before save.
-	accesspolicy.VersionValidator = accesspolicyDescVersion.Validators[0].(func(int64) error)
 	// accesspolicyDescID is the schema descriptor for id field.
 	accesspolicyDescID := accesspolicyFields[0].Descriptor()
 	// accesspolicy.DefaultID holds the default value on creation for the id field.

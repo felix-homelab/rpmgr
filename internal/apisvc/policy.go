@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"net/netip"
+	"slices"
 	"sync"
 
 	"connectrpc.com/connect"
@@ -21,8 +22,13 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/accesspolicy"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/policyrule"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/route"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routepolicy"
 )
+
+// ReasonBasicAuthNotHTTP: a basic_auth rule would apply to a route that is not an http route,
+// where no client could pass it (docs/03-connections.md, "Access policies").
+const ReasonBasicAuthNotHTTP = "BASIC_AUTH_NOT_HTTP"
 
 // Policies is PolicyService. Its methods run in the org scope the interceptor gives them.
 type Policies struct {
@@ -32,6 +38,9 @@ type Policies struct {
 	// Sys is the controller's system scope, for the instance's password hash profile.
 	Sys context.Context
 }
+
+// policyFields are the fields of an access policy a client may change.
+var policyFields = []string{"name", "description", "rules"}
 
 // CreateAccessPolicy implements PolicyService.
 func (p *Policies) CreateAccessPolicy(ctx context.Context, req *connect.Request[rpmgrv1.CreateAccessPolicyRequest]) (
@@ -50,7 +59,7 @@ func (p *Policies) CreateAccessPolicy(ctx context.Context, req *connect.Request[
 			if err != nil {
 				return nil, err
 			}
-			return []string{row.ID}, storeRules(ctx, tx, row, in.GetRules(), hashes)
+			return []string{row.ID}, storeRules(ctx, tx, row, in.GetRules(), hashes, nil)
 		})
 		if err != nil {
 			return nil, storeError(err)
@@ -118,6 +127,94 @@ func (p *Policies) ListAccessPolicies(ctx context.Context, req *connect.Request[
 	return connect.NewResponse(out), nil
 }
 
+// UpdateAccessPolicy implements PolicyService. New rules replace the old ones; a basic_auth user
+// without a password keeps the hash of the old rules' user of that name.
+func (p *Policies) UpdateAccessPolicy(ctx context.Context, req *connect.Request[rpmgrv1.UpdateAccessPolicyRequest]) (
+	*connect.Response[rpmgrv1.UpdateAccessPolicyResponse], error) {
+	m := req.Msg
+	in := m.GetAccessPolicy()
+	replace := slices.Contains(m.GetUpdateMask().GetPaths(), "rules")
+	var hashes map[*rpmgrv1.BasicAuthCredential]string
+	if replace {
+		var err error
+		if hashes, err = p.hashRules(ctx, in.GetRules()); err != nil {
+			return nil, err
+		}
+	}
+	var row *ent.AccessPolicy
+	rev, err := store.ConfigTx(ctx, p.DB, func(tx *ent.Tx) ([]string, error) {
+		cur, err := tx.AccessPolicy.Get(ctx, in.GetId())
+		if err != nil {
+			return nil, err
+		}
+		shown, err := policyOf(ctx, tx.Client(), cur)
+		if err != nil {
+			return nil, err
+		}
+		if err := api.CheckEtag(m.GetEtag(), cur.Version, shown); err != nil {
+			return nil, err
+		}
+		next := proto.Clone(shown).(*rpmgrv1.AccessPolicy)
+		if err := api.ApplyMask(next, in, m.GetUpdateMask(), policyFields...); err != nil {
+			return nil, err
+		}
+		if row, err = tx.AccessPolicy.UpdateOneID(cur.ID).Where(accesspolicy.Version(cur.Version)).SetName(next.GetName()).
+			SetDescription(next.GetDescription()).Save(ctx); err != nil {
+			return nil, err
+		}
+		if replace {
+			kept, err := keptHashes(ctx, tx, cur.ID)
+			if err != nil {
+				return nil, err
+			}
+			if _, err := tx.PolicyRule.Delete().Where(policyrule.PolicyID(cur.ID)).Exec(ctx); err != nil {
+				return nil, err
+			}
+			if err := storeRules(ctx, tx, row, in.GetRules(), hashes, kept); err != nil {
+				return nil, err
+			}
+		}
+		return append([]string{cur.ID}, shown.GetRouteIds()...), nil
+	})
+	if err != nil {
+		return nil, storeError(err)
+	}
+	out, err := policyOf(ctx, p.DB.ReadClient(), row)
+	if err != nil {
+		return nil, storeError(err)
+	}
+	return connect.NewResponse(&rpmgrv1.UpdateAccessPolicyResponse{AccessPolicy: out, Revision: revisionOf(rev)}), nil
+}
+
+// DeleteAccessPolicy implements PolicyService.
+func (p *Policies) DeleteAccessPolicy(ctx context.Context, req *connect.Request[rpmgrv1.DeleteAccessPolicyRequest]) (
+	*connect.Response[rpmgrv1.DeleteAccessPolicyResponse], error) {
+	rev, err := store.ConfigTx(ctx, p.DB, func(tx *ent.Tx) ([]string, error) {
+		cur, err := tx.AccessPolicy.Get(ctx, req.Msg.GetAccessPolicyId())
+		if err != nil {
+			return nil, err
+		}
+		shown, err := policyOf(ctx, tx.Client(), cur)
+		if err != nil {
+			return nil, err
+		}
+		if err := api.CheckEtag(req.Msg.GetEtag(), cur.Version, shown); err != nil {
+			return nil, err
+		}
+		if n := len(shown.GetRouteIds()); n > 0 {
+			return nil, dependants(fmt.Sprintf("%d routes apply the policy", n))
+		}
+		if _, err := tx.PolicyRule.Delete().Where(policyrule.PolicyID(cur.ID)).Exec(ctx); err != nil {
+			return nil, err
+		}
+		return []string{cur.ID}, tx.AccessPolicy.DeleteOneID(cur.ID).Where(accesspolicy.Version(cur.Version)).Exec(ctx)
+	})
+	if err != nil {
+		return nil, storeError(err)
+	}
+	return connect.NewResponse(&rpmgrv1.DeleteAccessPolicyResponse{Revision: revisionOf(rev)}), nil
+}
+
 // hashRules checks rules and hashes the passwords they give, under the instance's profile, a few
 // at once. It runs outside a transaction, which the hashes would hold for long.
 func (p *Policies) hashRules(ctx context.Context, rules []*rpmgrv1.AccessRule) (map[*rpmgrv1.BasicAuthCredential]string, error) {
@@ -178,21 +275,57 @@ func ipRuleOf(r *rpmgrv1.AccessRule) *rpmgrv1.IPRuleParams {
 	return r.GetIpDeny()
 }
 
+// keptHashes are the password hashes of a policy's basic_auth users, by name; the first rule's
+// where two have the name.
+func keptHashes(ctx context.Context, tx *ent.Tx, policyID string) (map[string]string, error) {
+	rows, err := tx.PolicyRule.Query().Where(policyrule.PolicyID(policyID), policyrule.KindEQ(policyrule.KindBasicAuth)).
+		Order(ent.Asc(policyrule.FieldPosition)).All(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := map[string]string{}
+	for _, r := range rows {
+		var params rpmgrv1.PolicyRuleParams
+		if err := proto.Unmarshal(r.Params, &params); err != nil {
+			return nil, err
+		}
+		for _, u := range params.GetBasicAuth().GetUsers() {
+			if _, ok := out[u.GetName()]; !ok {
+				out[u.GetName()] = u.GetPasswordHash()
+			}
+		}
+	}
+	return out, nil
+}
+
 // storeRules adds a policy's rules in order: CIDRs in their masked form, basic_auth users with the
-// hash of their password.
+// hash of their password or, without one, their kept hash. A basic_auth rule is refused while a
+// route that is not an http route applies the policy.
 func storeRules(ctx context.Context, tx *ent.Tx, policy *ent.AccessPolicy, rules []*rpmgrv1.AccessRule,
-	hashes map[*rpmgrv1.BasicAuthCredential]string) error {
+	hashes map[*rpmgrv1.BasicAuthCredential]string, kept map[string]string) error {
 	for i, r := range rules {
 		params := &rpmgrv1.PolicyRuleParams{}
 		var kind policyrule.Kind
 		switch {
 		case r.GetBasicAuth() != nil:
 			kind = policyrule.KindBasicAuth
+			n, err := tx.RoutePolicy.Query().Where(routepolicy.PolicyID(policy.ID),
+				routepolicy.HasRouteWith(route.TypeNEQ(route.TypeHTTP))).Count(ctx)
+			if err != nil {
+				return err
+			}
+			if n > 0 {
+				return withReason(connect.NewError(connect.CodeFailedPrecondition, fmt.Errorf(
+					"apisvc: rule %d: %d routes that are not http routes apply the policy, and no client could pass basic auth there", i+1, n)),
+					ReasonBasicAuthNotHTTP)
+			}
 			ba := &rpmgrv1.BasicAuthParams{}
 			for _, u := range r.GetBasicAuth().GetUsers() {
 				h, ok := hashes[u]
 				if !ok {
-					return connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("apisvc: rule %d: user %q needs a password", i+1, u.GetName()))
+					if h, ok = kept[u.GetName()]; !ok {
+						return connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("apisvc: rule %d: user %q needs a password", i+1, u.GetName()))
+					}
 				}
 				ba.Users = append(ba.Users, &rpmgrv1.BasicAuthUser{Name: u.GetName(), PasswordHash: h})
 			}

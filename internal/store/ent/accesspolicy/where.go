@@ -67,6 +67,11 @@ func OrgID(v string) predicate.AccessPolicy {
 	return predicate.AccessPolicy(sql.FieldEQ(FieldOrgID, v))
 }
 
+// Version applies equality check predicate on the "version" field. It's identical to VersionEQ.
+func Version(v int64) predicate.AccessPolicy {
+	return predicate.AccessPolicy(sql.FieldEQ(FieldVersion, v))
+}
+
 // Name applies equality check predicate on the "name" field. It's identical to NameEQ.
 func Name(v string) predicate.AccessPolicy {
 	return predicate.AccessPolicy(sql.FieldEQ(FieldName, v))
@@ -75,11 +80,6 @@ func Name(v string) predicate.AccessPolicy {
 // Description applies equality check predicate on the "description" field. It's identical to DescriptionEQ.
 func Description(v string) predicate.AccessPolicy {
 	return predicate.AccessPolicy(sql.FieldEQ(FieldDescription, v))
-}
-
-// Version applies equality check predicate on the "version" field. It's identical to VersionEQ.
-func Version(v int64) predicate.AccessPolicy {
-	return predicate.AccessPolicy(sql.FieldEQ(FieldVersion, v))
 }
 
 // OrgIDEQ applies the EQ predicate on the "org_id" field.
@@ -145,6 +145,46 @@ func OrgIDEqualFold(v string) predicate.AccessPolicy {
 // OrgIDContainsFold applies the ContainsFold predicate on the "org_id" field.
 func OrgIDContainsFold(v string) predicate.AccessPolicy {
 	return predicate.AccessPolicy(sql.FieldContainsFold(FieldOrgID, v))
+}
+
+// VersionEQ applies the EQ predicate on the "version" field.
+func VersionEQ(v int64) predicate.AccessPolicy {
+	return predicate.AccessPolicy(sql.FieldEQ(FieldVersion, v))
+}
+
+// VersionNEQ applies the NEQ predicate on the "version" field.
+func VersionNEQ(v int64) predicate.AccessPolicy {
+	return predicate.AccessPolicy(sql.FieldNEQ(FieldVersion, v))
+}
+
+// VersionIn applies the In predicate on the "version" field.
+func VersionIn(vs ...int64) predicate.AccessPolicy {
+	return predicate.AccessPolicy(sql.FieldIn(FieldVersion, vs...))
+}
+
+// VersionNotIn applies the NotIn predicate on the "version" field.
+func VersionNotIn(vs ...int64) predicate.AccessPolicy {
+	return predicate.AccessPolicy(sql.FieldNotIn(FieldVersion, vs...))
+}
+
+// VersionGT applies the GT predicate on the "version" field.
+func VersionGT(v int64) predicate.AccessPolicy {
+	return predicate.AccessPolicy(sql.FieldGT(FieldVersion, v))
+}
+
+// VersionGTE applies the GTE predicate on the "version" field.
+func VersionGTE(v int64) predicate.AccessPolicy {
+	return predicate.AccessPolicy(sql.FieldGTE(FieldVersion, v))
+}
+
+// VersionLT applies the LT predicate on the "version" field.
+func VersionLT(v int64) predicate.AccessPolicy {
+	return predicate.AccessPolicy(sql.FieldLT(FieldVersion, v))
+}
+
+// VersionLTE applies the LTE predicate on the "version" field.
+func VersionLTE(v int64) predicate.AccessPolicy {
+	return predicate.AccessPolicy(sql.FieldLTE(FieldVersion, v))
 }
 
 // NameEQ applies the EQ predicate on the "name" field.
@@ -275,46 +315,6 @@ func DescriptionEqualFold(v string) predicate.AccessPolicy {
 // DescriptionContainsFold applies the ContainsFold predicate on the "description" field.
 func DescriptionContainsFold(v string) predicate.AccessPolicy {
 	return predicate.AccessPolicy(sql.FieldContainsFold(FieldDescription, v))
-}
-
-// VersionEQ applies the EQ predicate on the "version" field.
-func VersionEQ(v int64) predicate.AccessPolicy {
-	return predicate.AccessPolicy(sql.FieldEQ(FieldVersion, v))
-}
-
-// VersionNEQ applies the NEQ predicate on the "version" field.
-func VersionNEQ(v int64) predicate.AccessPolicy {
-	return predicate.AccessPolicy(sql.FieldNEQ(FieldVersion, v))
-}
-
-// VersionIn applies the In predicate on the "version" field.
-func VersionIn(vs ...int64) predicate.AccessPolicy {
-	return predicate.AccessPolicy(sql.FieldIn(FieldVersion, vs...))
-}
-
-// VersionNotIn applies the NotIn predicate on the "version" field.
-func VersionNotIn(vs ...int64) predicate.AccessPolicy {
-	return predicate.AccessPolicy(sql.FieldNotIn(FieldVersion, vs...))
-}
-
-// VersionGT applies the GT predicate on the "version" field.
-func VersionGT(v int64) predicate.AccessPolicy {
-	return predicate.AccessPolicy(sql.FieldGT(FieldVersion, v))
-}
-
-// VersionGTE applies the GTE predicate on the "version" field.
-func VersionGTE(v int64) predicate.AccessPolicy {
-	return predicate.AccessPolicy(sql.FieldGTE(FieldVersion, v))
-}
-
-// VersionLT applies the LT predicate on the "version" field.
-func VersionLT(v int64) predicate.AccessPolicy {
-	return predicate.AccessPolicy(sql.FieldLT(FieldVersion, v))
-}
-
-// VersionLTE applies the LTE predicate on the "version" field.
-func VersionLTE(v int64) predicate.AccessPolicy {
-	return predicate.AccessPolicy(sql.FieldLTE(FieldVersion, v))
 }
 
 // And groups predicates with the AND operator between them.

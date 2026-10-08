@@ -12,6 +12,7 @@ import (
 	_ "buf.build/gen/go/bufbuild/protovalidate/protocolbuffers/go/buf/validate"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
+	fieldmaskpb "google.golang.org/protobuf/types/known/fieldmaskpb"
 	reflect "reflect"
 	sync "sync"
 	unsafe "unsafe"
@@ -270,7 +271,8 @@ type BasicAuthCredential struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// The user name; no colon (RFC 7617).
 	Name string `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
-	// The password, 12 to 256 characters; write-only, never returned.
+	// The password, 12 to 256 characters; write-only, never returned. In an update, a user without
+	// one keeps the password of the user of that name in the policy's basic_auth rules.
 	Password      string `protobuf:"bytes,2,opt,name=password,proto3" json:"password,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -660,6 +662,246 @@ func (x *ListAccessPoliciesResponse) GetNextPageToken() string {
 	return ""
 }
 
+// UpdateAccessPolicyRequest changes an access policy.
+type UpdateAccessPolicyRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The policy, with its ID and the fields to change.
+	AccessPolicy *AccessPolicy `protobuf:"bytes,1,opt,name=access_policy,json=accessPolicy,proto3" json:"access_policy,omitempty"`
+	// The fields to change: name, description, rules.
+	UpdateMask *fieldmaskpb.FieldMask `protobuf:"bytes,2,opt,name=update_mask,json=updateMask,proto3" json:"update_mask,omitempty"`
+	// The etag the caller read; empty skips the check.
+	Etag          string `protobuf:"bytes,3,opt,name=etag,proto3" json:"etag,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *UpdateAccessPolicyRequest) Reset() {
+	*x = UpdateAccessPolicyRequest{}
+	mi := &file_rpmgr_v1_policy_proto_msgTypes[10]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *UpdateAccessPolicyRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*UpdateAccessPolicyRequest) ProtoMessage() {}
+
+func (x *UpdateAccessPolicyRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_rpmgr_v1_policy_proto_msgTypes[10]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use UpdateAccessPolicyRequest.ProtoReflect.Descriptor instead.
+func (*UpdateAccessPolicyRequest) Descriptor() ([]byte, []int) {
+	return file_rpmgr_v1_policy_proto_rawDescGZIP(), []int{10}
+}
+
+func (x *UpdateAccessPolicyRequest) GetAccessPolicy() *AccessPolicy {
+	if x != nil {
+		return x.AccessPolicy
+	}
+	return nil
+}
+
+func (x *UpdateAccessPolicyRequest) GetUpdateMask() *fieldmaskpb.FieldMask {
+	if x != nil {
+		return x.UpdateMask
+	}
+	return nil
+}
+
+func (x *UpdateAccessPolicyRequest) GetEtag() string {
+	if x != nil {
+		return x.Etag
+	}
+	return ""
+}
+
+// UpdateAccessPolicyResponse is the changed policy.
+type UpdateAccessPolicyResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The policy.
+	AccessPolicy *AccessPolicy `protobuf:"bytes,1,opt,name=access_policy,json=accessPolicy,proto3" json:"access_policy,omitempty"`
+	// The revision of the change.
+	Revision *Revision `protobuf:"bytes,2,opt,name=revision,proto3" json:"revision,omitempty"`
+	// The apply status of the revision; with the request header Rpmgr-Wait-Applied, once it is
+	// final or the wait is over (docs/07-api.md, "Writes and apply status").
+	ApplyStatus   *ApplyStatus `protobuf:"bytes,3,opt,name=apply_status,json=applyStatus,proto3" json:"apply_status,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *UpdateAccessPolicyResponse) Reset() {
+	*x = UpdateAccessPolicyResponse{}
+	mi := &file_rpmgr_v1_policy_proto_msgTypes[11]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *UpdateAccessPolicyResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*UpdateAccessPolicyResponse) ProtoMessage() {}
+
+func (x *UpdateAccessPolicyResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_rpmgr_v1_policy_proto_msgTypes[11]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use UpdateAccessPolicyResponse.ProtoReflect.Descriptor instead.
+func (*UpdateAccessPolicyResponse) Descriptor() ([]byte, []int) {
+	return file_rpmgr_v1_policy_proto_rawDescGZIP(), []int{11}
+}
+
+func (x *UpdateAccessPolicyResponse) GetAccessPolicy() *AccessPolicy {
+	if x != nil {
+		return x.AccessPolicy
+	}
+	return nil
+}
+
+func (x *UpdateAccessPolicyResponse) GetRevision() *Revision {
+	if x != nil {
+		return x.Revision
+	}
+	return nil
+}
+
+func (x *UpdateAccessPolicyResponse) GetApplyStatus() *ApplyStatus {
+	if x != nil {
+		return x.ApplyStatus
+	}
+	return nil
+}
+
+// DeleteAccessPolicyRequest names an access policy.
+type DeleteAccessPolicyRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The policy's ID.
+	AccessPolicyId string `protobuf:"bytes,1,opt,name=access_policy_id,json=accessPolicyId,proto3" json:"access_policy_id,omitempty"`
+	// The etag the caller read; empty skips the check.
+	Etag          string `protobuf:"bytes,2,opt,name=etag,proto3" json:"etag,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DeleteAccessPolicyRequest) Reset() {
+	*x = DeleteAccessPolicyRequest{}
+	mi := &file_rpmgr_v1_policy_proto_msgTypes[12]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DeleteAccessPolicyRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DeleteAccessPolicyRequest) ProtoMessage() {}
+
+func (x *DeleteAccessPolicyRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_rpmgr_v1_policy_proto_msgTypes[12]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DeleteAccessPolicyRequest.ProtoReflect.Descriptor instead.
+func (*DeleteAccessPolicyRequest) Descriptor() ([]byte, []int) {
+	return file_rpmgr_v1_policy_proto_rawDescGZIP(), []int{12}
+}
+
+func (x *DeleteAccessPolicyRequest) GetAccessPolicyId() string {
+	if x != nil {
+		return x.AccessPolicyId
+	}
+	return ""
+}
+
+func (x *DeleteAccessPolicyRequest) GetEtag() string {
+	if x != nil {
+		return x.Etag
+	}
+	return ""
+}
+
+// DeleteAccessPolicyResponse is the revision of the deletion.
+type DeleteAccessPolicyResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The revision of the change.
+	Revision *Revision `protobuf:"bytes,1,opt,name=revision,proto3" json:"revision,omitempty"`
+	// The apply status of the revision; with the request header Rpmgr-Wait-Applied, once it is
+	// final or the wait is over (docs/07-api.md, "Writes and apply status").
+	ApplyStatus   *ApplyStatus `protobuf:"bytes,2,opt,name=apply_status,json=applyStatus,proto3" json:"apply_status,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DeleteAccessPolicyResponse) Reset() {
+	*x = DeleteAccessPolicyResponse{}
+	mi := &file_rpmgr_v1_policy_proto_msgTypes[13]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DeleteAccessPolicyResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DeleteAccessPolicyResponse) ProtoMessage() {}
+
+func (x *DeleteAccessPolicyResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_rpmgr_v1_policy_proto_msgTypes[13]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DeleteAccessPolicyResponse.ProtoReflect.Descriptor instead.
+func (*DeleteAccessPolicyResponse) Descriptor() ([]byte, []int) {
+	return file_rpmgr_v1_policy_proto_rawDescGZIP(), []int{13}
+}
+
+func (x *DeleteAccessPolicyResponse) GetRevision() *Revision {
+	if x != nil {
+		return x.Revision
+	}
+	return nil
+}
+
+func (x *DeleteAccessPolicyResponse) GetApplyStatus() *ApplyStatus {
+	if x != nil {
+		return x.ApplyStatus
+	}
+	return nil
+}
+
 // PolicyRuleParams are the parameters of one rule of an access policy (docs/06-data-model.md,
 // "Routing"), stored in policy_rules.params; the rule's kind decides which one is set. The kinds
 // of later phases add theirs.
@@ -678,7 +920,7 @@ type PolicyRuleParams struct {
 
 func (x *PolicyRuleParams) Reset() {
 	*x = PolicyRuleParams{}
-	mi := &file_rpmgr_v1_policy_proto_msgTypes[10]
+	mi := &file_rpmgr_v1_policy_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -690,7 +932,7 @@ func (x *PolicyRuleParams) String() string {
 func (*PolicyRuleParams) ProtoMessage() {}
 
 func (x *PolicyRuleParams) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_v1_policy_proto_msgTypes[10]
+	mi := &file_rpmgr_v1_policy_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -703,7 +945,7 @@ func (x *PolicyRuleParams) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PolicyRuleParams.ProtoReflect.Descriptor instead.
 func (*PolicyRuleParams) Descriptor() ([]byte, []int) {
-	return file_rpmgr_v1_policy_proto_rawDescGZIP(), []int{10}
+	return file_rpmgr_v1_policy_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *PolicyRuleParams) GetParams() isPolicyRuleParams_Params {
@@ -761,7 +1003,7 @@ type BasicAuthParams struct {
 
 func (x *BasicAuthParams) Reset() {
 	*x = BasicAuthParams{}
-	mi := &file_rpmgr_v1_policy_proto_msgTypes[11]
+	mi := &file_rpmgr_v1_policy_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -773,7 +1015,7 @@ func (x *BasicAuthParams) String() string {
 func (*BasicAuthParams) ProtoMessage() {}
 
 func (x *BasicAuthParams) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_v1_policy_proto_msgTypes[11]
+	mi := &file_rpmgr_v1_policy_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -786,7 +1028,7 @@ func (x *BasicAuthParams) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BasicAuthParams.ProtoReflect.Descriptor instead.
 func (*BasicAuthParams) Descriptor() ([]byte, []int) {
-	return file_rpmgr_v1_policy_proto_rawDescGZIP(), []int{11}
+	return file_rpmgr_v1_policy_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *BasicAuthParams) GetUsers() []*BasicAuthUser {
@@ -809,7 +1051,7 @@ type BasicAuthUser struct {
 
 func (x *BasicAuthUser) Reset() {
 	*x = BasicAuthUser{}
-	mi := &file_rpmgr_v1_policy_proto_msgTypes[12]
+	mi := &file_rpmgr_v1_policy_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -821,7 +1063,7 @@ func (x *BasicAuthUser) String() string {
 func (*BasicAuthUser) ProtoMessage() {}
 
 func (x *BasicAuthUser) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_v1_policy_proto_msgTypes[12]
+	mi := &file_rpmgr_v1_policy_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -834,7 +1076,7 @@ func (x *BasicAuthUser) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BasicAuthUser.ProtoReflect.Descriptor instead.
 func (*BasicAuthUser) Descriptor() ([]byte, []int) {
-	return file_rpmgr_v1_policy_proto_rawDescGZIP(), []int{12}
+	return file_rpmgr_v1_policy_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *BasicAuthUser) GetName() string {
@@ -862,7 +1104,7 @@ type IPRuleParams struct {
 
 func (x *IPRuleParams) Reset() {
 	*x = IPRuleParams{}
-	mi := &file_rpmgr_v1_policy_proto_msgTypes[13]
+	mi := &file_rpmgr_v1_policy_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -874,7 +1116,7 @@ func (x *IPRuleParams) String() string {
 func (*IPRuleParams) ProtoMessage() {}
 
 func (x *IPRuleParams) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_v1_policy_proto_msgTypes[13]
+	mi := &file_rpmgr_v1_policy_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -887,7 +1129,7 @@ func (x *IPRuleParams) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use IPRuleParams.ProtoReflect.Descriptor instead.
 func (*IPRuleParams) Descriptor() ([]byte, []int) {
-	return file_rpmgr_v1_policy_proto_rawDescGZIP(), []int{13}
+	return file_rpmgr_v1_policy_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *IPRuleParams) GetCidrs() []string {
@@ -901,7 +1143,7 @@ var File_rpmgr_v1_policy_proto protoreflect.FileDescriptor
 
 const file_rpmgr_v1_policy_proto_rawDesc = "" +
 	"\n" +
-	"\x15rpmgr/v1/policy.proto\x12\brpmgr.v1\x1a\x1bbuf/validate/validate.proto\x1a\x15rpmgr/v1/common.proto\x1a\x16rpmgr/v1/options.proto\x1a\x15rpmgr/v1/status.proto\"\xf5\x01\n" +
+	"\x15rpmgr/v1/policy.proto\x12\brpmgr.v1\x1a\x1bbuf/validate/validate.proto\x1a google/protobuf/field_mask.proto\x1a\x15rpmgr/v1/common.proto\x1a\x16rpmgr/v1/options.proto\x1a\x15rpmgr/v1/status.proto\"\xf5\x01\n" +
 	"\fAccessPolicy\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12B\n" +
 	"\x04name\x18\x02 \x01(\tB.\xbaH+\xd8\x01\x01r&2$^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$R\x04name\x12*\n" +
@@ -942,7 +1184,22 @@ const file_rpmgr_v1_policy_proto_rawDesc = "" +
 	"page_token\x18\x03 \x01(\tR\tpageToken\"\x85\x01\n" +
 	"\x1aListAccessPoliciesResponse\x12?\n" +
 	"\x0faccess_policies\x18\x01 \x03(\v2\x16.rpmgr.v1.AccessPolicyR\x0eaccessPolicies\x12&\n" +
-	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"\x82\x01\n" +
+	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"\xb1\x01\n" +
+	"\x19UpdateAccessPolicyRequest\x12C\n" +
+	"\raccess_policy\x18\x01 \x01(\v2\x16.rpmgr.v1.AccessPolicyB\x06\xbaH\x03\xc8\x01\x01R\faccessPolicy\x12;\n" +
+	"\vupdate_mask\x18\x02 \x01(\v2\x1a.google.protobuf.FieldMaskR\n" +
+	"updateMask\x12\x12\n" +
+	"\x04etag\x18\x03 \x01(\tR\x04etag\"\xc3\x01\n" +
+	"\x1aUpdateAccessPolicyResponse\x12;\n" +
+	"\raccess_policy\x18\x01 \x01(\v2\x16.rpmgr.v1.AccessPolicyR\faccessPolicy\x12.\n" +
+	"\brevision\x18\x02 \x01(\v2\x12.rpmgr.v1.RevisionR\brevision\x128\n" +
+	"\fapply_status\x18\x03 \x01(\v2\x15.rpmgr.v1.ApplyStatusR\vapplyStatus\"b\n" +
+	"\x19DeleteAccessPolicyRequest\x121\n" +
+	"\x10access_policy_id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x0eaccessPolicyId\x12\x12\n" +
+	"\x04etag\x18\x02 \x01(\tR\x04etag\"\x86\x01\n" +
+	"\x1aDeleteAccessPolicyResponse\x12.\n" +
+	"\brevision\x18\x01 \x01(\v2\x12.rpmgr.v1.RevisionR\brevision\x128\n" +
+	"\fapply_status\x18\x02 \x01(\v2\x15.rpmgr.v1.ApplyStatusR\vapplyStatus\"\x82\x01\n" +
 	"\x10PolicyRuleParams\x12(\n" +
 	"\x02ip\x18\x01 \x01(\v2\x16.rpmgr.v1.IPRuleParamsH\x00R\x02ip\x12:\n" +
 	"\n" +
@@ -955,14 +1212,18 @@ const file_rpmgr_v1_policy_proto_rawDesc = "" +
 	"\x04name\x18\x01 \x01(\tB\x0e\xbaH\vr\t\x10\x01\x18\x80\x01\xba\x01\x01:R\x04name\x12)\n" +
 	"\rpassword_hash\x18\x02 \x01(\tB\x04\x88\xb5\x18\x01R\fpasswordHash\"1\n" +
 	"\fIPRuleParams\x12!\n" +
-	"\x05cidrs\x18\x01 \x03(\tB\v\xbaH\b\x92\x01\x05\b\x01\x10\xe8\aR\x05cidrs2\x85\x03\n" +
+	"\x05cidrs\x18\x01 \x03(\tB\v\xbaH\b\x92\x01\x05\b\x01\x10\xe8\aR\x05cidrs2\x95\x05\n" +
 	"\rPolicyService\x12{\n" +
 	"\x12CreateAccessPolicy\x12#.rpmgr.v1.CreateAccessPolicyRequest\x1a$.rpmgr.v1.CreateAccessPolicyResponse\"\x1a\x8a\xb5\x18\x16\n" +
 	"\froutes.write\x12\x06org_id\x12{\n" +
 	"\x0fGetAccessPolicy\x12 .rpmgr.v1.GetAccessPolicyRequest\x1a!.rpmgr.v1.GetAccessPolicyResponse\"#\x8a\xb5\x18\x1c\n" +
 	"\borg.read\x12\x10access_policy_id\x90\x02\x01\x12z\n" +
 	"\x12ListAccessPolicies\x12#.rpmgr.v1.ListAccessPoliciesRequest\x1a$.rpmgr.v1.ListAccessPoliciesResponse\"\x19\x8a\xb5\x18\x12\n" +
-	"\borg.read\x12\x06org_id\x90\x02\x01B5Z3github.com/felix-homelab/rpmgr/gen/rpmgr/v1;rpmgrv1b\x06proto3"
+	"\borg.read\x12\x06org_id\x90\x02\x01\x12\x85\x01\n" +
+	"\x12UpdateAccessPolicy\x12#.rpmgr.v1.UpdateAccessPolicyRequest\x1a$.rpmgr.v1.UpdateAccessPolicyResponse\"$\x8a\xb5\x18 \n" +
+	"\froutes.write\x12\x10access_policy.id\x12\x85\x01\n" +
+	"\x12DeleteAccessPolicy\x12#.rpmgr.v1.DeleteAccessPolicyRequest\x1a$.rpmgr.v1.DeleteAccessPolicyResponse\"$\x8a\xb5\x18 \n" +
+	"\froutes.write\x12\x10access_policy_idB5Z3github.com/felix-homelab/rpmgr/gen/rpmgr/v1;rpmgrv1b\x06proto3"
 
 var (
 	file_rpmgr_v1_policy_proto_rawDescOnce sync.Once
@@ -976,7 +1237,7 @@ func file_rpmgr_v1_policy_proto_rawDescGZIP() []byte {
 	return file_rpmgr_v1_policy_proto_rawDescData
 }
 
-var file_rpmgr_v1_policy_proto_msgTypes = make([]protoimpl.MessageInfo, 14)
+var file_rpmgr_v1_policy_proto_msgTypes = make([]protoimpl.MessageInfo, 18)
 var file_rpmgr_v1_policy_proto_goTypes = []any{
 	(*AccessPolicy)(nil),               // 0: rpmgr.v1.AccessPolicy
 	(*AccessRule)(nil),                 // 1: rpmgr.v1.AccessRule
@@ -988,39 +1249,55 @@ var file_rpmgr_v1_policy_proto_goTypes = []any{
 	(*GetAccessPolicyResponse)(nil),    // 7: rpmgr.v1.GetAccessPolicyResponse
 	(*ListAccessPoliciesRequest)(nil),  // 8: rpmgr.v1.ListAccessPoliciesRequest
 	(*ListAccessPoliciesResponse)(nil), // 9: rpmgr.v1.ListAccessPoliciesResponse
-	(*PolicyRuleParams)(nil),           // 10: rpmgr.v1.PolicyRuleParams
-	(*BasicAuthParams)(nil),            // 11: rpmgr.v1.BasicAuthParams
-	(*BasicAuthUser)(nil),              // 12: rpmgr.v1.BasicAuthUser
-	(*IPRuleParams)(nil),               // 13: rpmgr.v1.IPRuleParams
-	(*Revision)(nil),                   // 14: rpmgr.v1.Revision
-	(*ApplyStatus)(nil),                // 15: rpmgr.v1.ApplyStatus
+	(*UpdateAccessPolicyRequest)(nil),  // 10: rpmgr.v1.UpdateAccessPolicyRequest
+	(*UpdateAccessPolicyResponse)(nil), // 11: rpmgr.v1.UpdateAccessPolicyResponse
+	(*DeleteAccessPolicyRequest)(nil),  // 12: rpmgr.v1.DeleteAccessPolicyRequest
+	(*DeleteAccessPolicyResponse)(nil), // 13: rpmgr.v1.DeleteAccessPolicyResponse
+	(*PolicyRuleParams)(nil),           // 14: rpmgr.v1.PolicyRuleParams
+	(*BasicAuthParams)(nil),            // 15: rpmgr.v1.BasicAuthParams
+	(*BasicAuthUser)(nil),              // 16: rpmgr.v1.BasicAuthUser
+	(*IPRuleParams)(nil),               // 17: rpmgr.v1.IPRuleParams
+	(*Revision)(nil),                   // 18: rpmgr.v1.Revision
+	(*ApplyStatus)(nil),                // 19: rpmgr.v1.ApplyStatus
+	(*fieldmaskpb.FieldMask)(nil),      // 20: google.protobuf.FieldMask
 }
 var file_rpmgr_v1_policy_proto_depIdxs = []int32{
 	1,  // 0: rpmgr.v1.AccessPolicy.rules:type_name -> rpmgr.v1.AccessRule
-	13, // 1: rpmgr.v1.AccessRule.ip_allow:type_name -> rpmgr.v1.IPRuleParams
-	13, // 2: rpmgr.v1.AccessRule.ip_deny:type_name -> rpmgr.v1.IPRuleParams
+	17, // 1: rpmgr.v1.AccessRule.ip_allow:type_name -> rpmgr.v1.IPRuleParams
+	17, // 2: rpmgr.v1.AccessRule.ip_deny:type_name -> rpmgr.v1.IPRuleParams
 	2,  // 3: rpmgr.v1.AccessRule.basic_auth:type_name -> rpmgr.v1.BasicAuthRule
 	3,  // 4: rpmgr.v1.BasicAuthRule.users:type_name -> rpmgr.v1.BasicAuthCredential
 	0,  // 5: rpmgr.v1.CreateAccessPolicyRequest.access_policy:type_name -> rpmgr.v1.AccessPolicy
 	0,  // 6: rpmgr.v1.CreateAccessPolicyResponse.access_policy:type_name -> rpmgr.v1.AccessPolicy
-	14, // 7: rpmgr.v1.CreateAccessPolicyResponse.revision:type_name -> rpmgr.v1.Revision
-	15, // 8: rpmgr.v1.CreateAccessPolicyResponse.apply_status:type_name -> rpmgr.v1.ApplyStatus
+	18, // 7: rpmgr.v1.CreateAccessPolicyResponse.revision:type_name -> rpmgr.v1.Revision
+	19, // 8: rpmgr.v1.CreateAccessPolicyResponse.apply_status:type_name -> rpmgr.v1.ApplyStatus
 	0,  // 9: rpmgr.v1.GetAccessPolicyResponse.access_policy:type_name -> rpmgr.v1.AccessPolicy
 	0,  // 10: rpmgr.v1.ListAccessPoliciesResponse.access_policies:type_name -> rpmgr.v1.AccessPolicy
-	13, // 11: rpmgr.v1.PolicyRuleParams.ip:type_name -> rpmgr.v1.IPRuleParams
-	11, // 12: rpmgr.v1.PolicyRuleParams.basic_auth:type_name -> rpmgr.v1.BasicAuthParams
-	12, // 13: rpmgr.v1.BasicAuthParams.users:type_name -> rpmgr.v1.BasicAuthUser
-	4,  // 14: rpmgr.v1.PolicyService.CreateAccessPolicy:input_type -> rpmgr.v1.CreateAccessPolicyRequest
-	6,  // 15: rpmgr.v1.PolicyService.GetAccessPolicy:input_type -> rpmgr.v1.GetAccessPolicyRequest
-	8,  // 16: rpmgr.v1.PolicyService.ListAccessPolicies:input_type -> rpmgr.v1.ListAccessPoliciesRequest
-	5,  // 17: rpmgr.v1.PolicyService.CreateAccessPolicy:output_type -> rpmgr.v1.CreateAccessPolicyResponse
-	7,  // 18: rpmgr.v1.PolicyService.GetAccessPolicy:output_type -> rpmgr.v1.GetAccessPolicyResponse
-	9,  // 19: rpmgr.v1.PolicyService.ListAccessPolicies:output_type -> rpmgr.v1.ListAccessPoliciesResponse
-	17, // [17:20] is the sub-list for method output_type
-	14, // [14:17] is the sub-list for method input_type
-	14, // [14:14] is the sub-list for extension type_name
-	14, // [14:14] is the sub-list for extension extendee
-	0,  // [0:14] is the sub-list for field type_name
+	0,  // 11: rpmgr.v1.UpdateAccessPolicyRequest.access_policy:type_name -> rpmgr.v1.AccessPolicy
+	20, // 12: rpmgr.v1.UpdateAccessPolicyRequest.update_mask:type_name -> google.protobuf.FieldMask
+	0,  // 13: rpmgr.v1.UpdateAccessPolicyResponse.access_policy:type_name -> rpmgr.v1.AccessPolicy
+	18, // 14: rpmgr.v1.UpdateAccessPolicyResponse.revision:type_name -> rpmgr.v1.Revision
+	19, // 15: rpmgr.v1.UpdateAccessPolicyResponse.apply_status:type_name -> rpmgr.v1.ApplyStatus
+	18, // 16: rpmgr.v1.DeleteAccessPolicyResponse.revision:type_name -> rpmgr.v1.Revision
+	19, // 17: rpmgr.v1.DeleteAccessPolicyResponse.apply_status:type_name -> rpmgr.v1.ApplyStatus
+	17, // 18: rpmgr.v1.PolicyRuleParams.ip:type_name -> rpmgr.v1.IPRuleParams
+	15, // 19: rpmgr.v1.PolicyRuleParams.basic_auth:type_name -> rpmgr.v1.BasicAuthParams
+	16, // 20: rpmgr.v1.BasicAuthParams.users:type_name -> rpmgr.v1.BasicAuthUser
+	4,  // 21: rpmgr.v1.PolicyService.CreateAccessPolicy:input_type -> rpmgr.v1.CreateAccessPolicyRequest
+	6,  // 22: rpmgr.v1.PolicyService.GetAccessPolicy:input_type -> rpmgr.v1.GetAccessPolicyRequest
+	8,  // 23: rpmgr.v1.PolicyService.ListAccessPolicies:input_type -> rpmgr.v1.ListAccessPoliciesRequest
+	10, // 24: rpmgr.v1.PolicyService.UpdateAccessPolicy:input_type -> rpmgr.v1.UpdateAccessPolicyRequest
+	12, // 25: rpmgr.v1.PolicyService.DeleteAccessPolicy:input_type -> rpmgr.v1.DeleteAccessPolicyRequest
+	5,  // 26: rpmgr.v1.PolicyService.CreateAccessPolicy:output_type -> rpmgr.v1.CreateAccessPolicyResponse
+	7,  // 27: rpmgr.v1.PolicyService.GetAccessPolicy:output_type -> rpmgr.v1.GetAccessPolicyResponse
+	9,  // 28: rpmgr.v1.PolicyService.ListAccessPolicies:output_type -> rpmgr.v1.ListAccessPoliciesResponse
+	11, // 29: rpmgr.v1.PolicyService.UpdateAccessPolicy:output_type -> rpmgr.v1.UpdateAccessPolicyResponse
+	13, // 30: rpmgr.v1.PolicyService.DeleteAccessPolicy:output_type -> rpmgr.v1.DeleteAccessPolicyResponse
+	26, // [26:31] is the sub-list for method output_type
+	21, // [21:26] is the sub-list for method input_type
+	21, // [21:21] is the sub-list for extension type_name
+	21, // [21:21] is the sub-list for extension extendee
+	0,  // [0:21] is the sub-list for field type_name
 }
 
 func init() { file_rpmgr_v1_policy_proto_init() }
@@ -1036,7 +1313,7 @@ func file_rpmgr_v1_policy_proto_init() {
 		(*AccessRule_IpDeny)(nil),
 		(*AccessRule_BasicAuth)(nil),
 	}
-	file_rpmgr_v1_policy_proto_msgTypes[10].OneofWrappers = []any{
+	file_rpmgr_v1_policy_proto_msgTypes[14].OneofWrappers = []any{
 		(*PolicyRuleParams_Ip)(nil),
 		(*PolicyRuleParams_BasicAuth)(nil),
 	}
@@ -1046,7 +1323,7 @@ func file_rpmgr_v1_policy_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_rpmgr_v1_policy_proto_rawDesc), len(file_rpmgr_v1_policy_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   14,
+			NumMessages:   18,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

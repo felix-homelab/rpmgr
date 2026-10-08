@@ -25,6 +25,20 @@ func (_c *AccessPolicyCreate) SetOrgID(v string) *AccessPolicyCreate {
 	return _c
 }
 
+// SetVersion sets the "version" field.
+func (_c *AccessPolicyCreate) SetVersion(v int64) *AccessPolicyCreate {
+	_c.mutation.SetVersion(v)
+	return _c
+}
+
+// SetNillableVersion sets the "version" field if the given value is not nil.
+func (_c *AccessPolicyCreate) SetNillableVersion(v *int64) *AccessPolicyCreate {
+	if v != nil {
+		_c.SetVersion(*v)
+	}
+	return _c
+}
+
 // SetName sets the "name" field.
 func (_c *AccessPolicyCreate) SetName(v string) *AccessPolicyCreate {
 	_c.mutation.SetName(v)
@@ -41,20 +55,6 @@ func (_c *AccessPolicyCreate) SetDescription(v string) *AccessPolicyCreate {
 func (_c *AccessPolicyCreate) SetNillableDescription(v *string) *AccessPolicyCreate {
 	if v != nil {
 		_c.SetDescription(*v)
-	}
-	return _c
-}
-
-// SetVersion sets the "version" field.
-func (_c *AccessPolicyCreate) SetVersion(v int64) *AccessPolicyCreate {
-	_c.mutation.SetVersion(v)
-	return _c
-}
-
-// SetNillableVersion sets the "version" field if the given value is not nil.
-func (_c *AccessPolicyCreate) SetNillableVersion(v *int64) *AccessPolicyCreate {
-	if v != nil {
-		_c.SetVersion(*v)
 	}
 	return _c
 }
@@ -110,13 +110,13 @@ func (_c *AccessPolicyCreate) ExecX(ctx context.Context) {
 
 // defaults sets the default values of the builder before save.
 func (_c *AccessPolicyCreate) defaults() error {
-	if _, ok := _c.mutation.Description(); !ok {
-		v := accesspolicy.DefaultDescription
-		_c.mutation.SetDescription(v)
-	}
 	if _, ok := _c.mutation.Version(); !ok {
 		v := accesspolicy.DefaultVersion
 		_c.mutation.SetVersion(v)
+	}
+	if _, ok := _c.mutation.Description(); !ok {
+		v := accesspolicy.DefaultDescription
+		_c.mutation.SetDescription(v)
 	}
 	if _, ok := _c.mutation.ID(); !ok {
 		if accesspolicy.DefaultID == nil {
@@ -138,6 +138,14 @@ func (_c *AccessPolicyCreate) check() error {
 			return &ValidationError{Name: "org_id", err: fmt.Errorf(`ent: validator failed for field "AccessPolicy.org_id": %w`, err)}
 		}
 	}
+	if _, ok := _c.mutation.Version(); !ok {
+		return &ValidationError{Name: "version", err: errors.New(`ent: missing required field "AccessPolicy.version"`)}
+	}
+	if v, ok := _c.mutation.Version(); ok {
+		if err := accesspolicy.VersionValidator(v); err != nil {
+			return &ValidationError{Name: "version", err: fmt.Errorf(`ent: validator failed for field "AccessPolicy.version": %w`, err)}
+		}
+	}
 	if _, ok := _c.mutation.Name(); !ok {
 		return &ValidationError{Name: "name", err: errors.New(`ent: missing required field "AccessPolicy.name"`)}
 	}
@@ -152,14 +160,6 @@ func (_c *AccessPolicyCreate) check() error {
 	if v, ok := _c.mutation.Description(); ok {
 		if err := accesspolicy.DescriptionValidator(v); err != nil {
 			return &ValidationError{Name: "description", err: fmt.Errorf(`ent: validator failed for field "AccessPolicy.description": %w`, err)}
-		}
-	}
-	if _, ok := _c.mutation.Version(); !ok {
-		return &ValidationError{Name: "version", err: errors.New(`ent: missing required field "AccessPolicy.version"`)}
-	}
-	if v, ok := _c.mutation.Version(); ok {
-		if err := accesspolicy.VersionValidator(v); err != nil {
-			return &ValidationError{Name: "version", err: fmt.Errorf(`ent: validator failed for field "AccessPolicy.version": %w`, err)}
 		}
 	}
 	if v, ok := _c.mutation.ID(); ok {
@@ -206,6 +206,10 @@ func (_c *AccessPolicyCreate) createSpec() (*AccessPolicy, *sqlgraph.CreateSpec)
 		_spec.SetField(accesspolicy.FieldOrgID, field.TypeString, value)
 		_node.OrgID = value
 	}
+	if value, ok := _c.mutation.Version(); ok {
+		_spec.SetField(accesspolicy.FieldVersion, field.TypeInt64, value)
+		_node.Version = value
+	}
 	if value, ok := _c.mutation.Name(); ok {
 		_spec.SetField(accesspolicy.FieldName, field.TypeString, value)
 		_node.Name = value
@@ -213,10 +217,6 @@ func (_c *AccessPolicyCreate) createSpec() (*AccessPolicy, *sqlgraph.CreateSpec)
 	if value, ok := _c.mutation.Description(); ok {
 		_spec.SetField(accesspolicy.FieldDescription, field.TypeString, value)
 		_node.Description = value
-	}
-	if value, ok := _c.mutation.Version(); ok {
-		_spec.SetField(accesspolicy.FieldVersion, field.TypeInt64, value)
-		_node.Version = value
 	}
 	return _node, _spec
 }

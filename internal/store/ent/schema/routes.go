@@ -357,8 +357,8 @@ func (RouteHostname) Indexes() []ent.Index {
 // "Routing").
 type AccessPolicy struct{ ent.Schema }
 
-// Mixin makes access policies org-owned.
-func (AccessPolicy) Mixin() []ent.Mixin { return []ent.Mixin{OrgMixin{}} }
+// Mixin makes access policies org-owned and versioned.
+func (AccessPolicy) Mixin() []ent.Mixin { return []ent.Mixin{OrgMixin{}, VersionMixin{}} }
 
 // Annotations name the table as docs/06-data-model.md does.
 func (AccessPolicy) Annotations() []schema.Annotation {
@@ -371,7 +371,6 @@ func (AccessPolicy) Fields() []ent.Field {
 		idField("ap"),
 		field.String("name").NotEmpty().MaxLen(100),
 		field.String("description").Default("").MaxLen(1000),
-		field.Int64("version").Positive().Default(1),
 	}
 }
 

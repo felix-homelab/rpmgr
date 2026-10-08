@@ -9,11 +9,14 @@ import (
 
 	"connectrpc.com/connect"
 	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/fieldmaskpb"
 
 	rpmgrv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/v1"
+	"github.com/felix-homelab/rpmgr/internal/apisvc"
 	"github.com/felix-homelab/rpmgr/internal/password"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/auditentry"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/policyrule"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/routepolicy"
 )
 
 func ipAllow(cidrs ...string) *rpmgrv1.AccessRule {
@@ -31,12 +34,14 @@ func user(name, pw string) *rpmgrv1.BasicAuthCredential {
 // TestAccessPolicies (docs/07-api.md, "Services"; docs/04-security.md, "Secrets at rest and in
 // logs"): an access policy keeps its rules in order, CIDRs in their masked form, and its basic_auth
 // users' passwords only as argon2id hashes made on the controller, which no read and no audit entry
-// returns; bad rules are refused; a Viewer reads but creates nothing.
+// returns; an update replaces the rules, and a user without a password keeps the one of its name;
+// a basic_auth rule is refused while a route that is not an http route applies the policy, which
+// cannot then be deleted either; bad rules are refused; a Viewer reads but changes nothing.
 func TestAccessPolicies(t *testing.T) {
-	e, ada, org, _ := gatewayEnv(t)
+	e, ada, org, group := gatewayEnv(t)
 	ctx := context.Background()
 	c := e.db.Client()
-	const alicePW, bobPW = "correct horse battery", "staple of the bob" //nolint:gosec // G101: test passwords
+	const alicePW, bobPW, carolPW = "correct horse battery", "staple of the bob", "carol's own secret" //nolint:gosec // G101: test passwords
 	create := func(b *browser, ap *rpmgrv1.AccessPolicy) (*rpmgrv1.CreateAccessPolicyResponse, error) {
 		r, err := b.pol.CreateAccessPolicy(ctx, connect.NewRequest(&rpmgrv1.CreateAccessPolicyRequest{OrgId: org, AccessPolicy: ap}))
 		if err != nil {
@@ -108,13 +113,89 @@ func TestAccessPolicies(t *testing.T) {
 		t.Errorf("a taken name: %v", err)
 	}
 
-	// A Viewer reads, and creates nothing.
+	update := func(paths []string, in *rpmgrv1.AccessPolicy, etag string) (*rpmgrv1.AccessPolicy, error) {
+		in.Id = ap.GetId()
+		r, err := ada.pol.UpdateAccessPolicy(ctx, connect.NewRequest(&rpmgrv1.UpdateAccessPolicyRequest{AccessPolicy: in,
+			UpdateMask: &fieldmaskpb.FieldMask{Paths: paths}, Etag: etag}))
+		if err != nil {
+			return nil, err
+		}
+		return r.Msg.GetAccessPolicy(), nil
+	}
+	// New rules replace the old: alice keeps her password, carol gets one, bob is gone.
+	up, err := update([]string{"rules"}, &rpmgrv1.AccessPolicy{Rules: []*rpmgrv1.AccessRule{basicAuth(user("carol", carolPW), user("alice", ""))}}, "1")
+	if err != nil || len(up.GetRules()) != 1 || up.GetEtag() != "2" || up.GetDescription() != "the office only" {
+		t.Fatalf("new rules: %v %v", up, err)
+	}
+	second := hashes()
+	if len(second) != 2 || second["alice"] != first["alice"] || second["carol"] == "" {
+		t.Fatalf("hashes after the update: %v", second)
+	}
+	if _, err := update([]string{"rules"}, &rpmgrv1.AccessPolicy{Rules: []*rpmgrv1.AccessRule{basicAuth(user("dave", ""))}}, ""); code(err) != connect.CodeInvalidArgument {
+		t.Errorf("a new user without a password: %v", err)
+	}
+	if _, err := update([]string{"description"}, &rpmgrv1.AccessPolicy{Description: "x"}, "1"); code(err) != connect.CodeFailedPrecondition {
+		t.Errorf("a stale etag: %v", err)
+	}
+	if up, err := update([]string{"description"}, &rpmgrv1.AccessPolicy{Description: "anyone with a password"}, ""); err != nil ||
+		up.GetDescription() != "anyone with a password" || len(hashes()) != 2 || hashes()["carol"] != second["carol"] {
+		t.Fatalf("a description alone: %v %v", up, err)
+	}
+	if _, err := update([]string{"route_ids"}, &rpmgrv1.AccessPolicy{RouteIds: []string{"rt_x"}}, ""); code(err) != connect.CodeInvalidArgument {
+		t.Errorf("an output-only field: %v", err)
+	}
+	if _, err := update([]string{"name"}, &rpmgrv1.AccessPolicy{}, ""); code(err) != connect.CodeInvalidArgument {
+		t.Errorf("no name: %v", err)
+	}
+
+	// A tcp route that applies the policy: no basic_auth then, and no delete.
+	if _, err := ada.gw.CreatePortPool(ctx, connect.NewRequest(&rpmgrv1.CreatePortPoolRequest{OrgId: org,
+		PortPool: &rpmgrv1.PortPool{GatewayGroupId: group, Protocol: tcp, PortFrom: 20000, PortTo: 20001}})); err != nil {
+		t.Fatal(err)
+	}
+	pg, err := createRoute(ada, org, tcpRoute("pg", group, 20000), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := update([]string{"rules"}, &rpmgrv1.AccessPolicy{Rules: []*rpmgrv1.AccessRule{ipAllow("10.0.0.0/8")}}, ""); err != nil {
+		t.Fatal(err)
+	}
+	c.RoutePolicy.Create().SetOrgID(org).SetRouteID(pg.GetId()).SetPolicyID(ap.GetId()).SetPosition(0).ExecX(e.sys)
+	if _, err := update([]string{"rules"}, &rpmgrv1.AccessPolicy{Rules: []*rpmgrv1.AccessRule{basicAuth(user("alice", alicePW))}}, ""); code(err) != connect.CodeFailedPrecondition ||
+		reason(err) != apisvc.ReasonBasicAuthNotHTTP {
+		t.Errorf("basic auth for a tcp route: %v", err)
+	}
+	read, err := ada.pol.GetAccessPolicy(ctx, connect.NewRequest(&rpmgrv1.GetAccessPolicyRequest{AccessPolicyId: ap.GetId()}))
+	if err != nil || len(read.Msg.GetAccessPolicy().GetRouteIds()) != 1 || read.Msg.GetAccessPolicy().GetRouteIds()[0] != pg.GetId() {
+		t.Fatalf("the routes that apply it: %v %v", read, err)
+	}
+	del := func(b *browser) error {
+		_, err := b.pol.DeleteAccessPolicy(ctx, connect.NewRequest(&rpmgrv1.DeleteAccessPolicyRequest{AccessPolicyId: ap.GetId()}))
+		return err
+	}
+	if err := del(ada); code(err) != connect.CodeFailedPrecondition || reason(err) != apisvc.ReasonDependantsExist {
+		t.Errorf("a policy a route applies deleted: %v", err)
+	}
+
+	// A Viewer reads, and changes nothing.
 	vwr, _ := e.join(t, ada, org, "vwr@example.com", "viewer")
 	if _, err := vwr.pol.GetAccessPolicy(ctx, connect.NewRequest(&rpmgrv1.GetAccessPolicyRequest{AccessPolicyId: ap.GetId()})); err != nil {
 		t.Errorf("a Viewer reads: %v", err)
 	}
 	if _, err := create(vwr, &rpmgrv1.AccessPolicy{Name: "mine"}); code(err) != connect.CodePermissionDenied {
 		t.Errorf("a Viewer creates: %v", err)
+	}
+	if err := del(vwr); code(err) != connect.CodePermissionDenied {
+		t.Errorf("a Viewer deletes: %v", err)
+	}
+
+	c.RoutePolicy.Delete().Where(routepolicy.PolicyID(ap.GetId())).ExecX(e.sys)
+	if err := del(ada); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ada.pol.GetAccessPolicy(ctx, connect.NewRequest(&rpmgrv1.GetAccessPolicyRequest{AccessPolicyId: ap.GetId()})); code(err) != connect.CodeNotFound ||
+		c.PolicyRule.Query().CountX(e.sys) != 0 {
+		t.Fatalf("after the delete: %v", err)
 	}
 
 	// No password reached the audit log, which records the users.
@@ -123,7 +204,7 @@ func TestAccessPolicies(t *testing.T) {
 		t.Fatalf("%d audit entries of the policy with alice", n)
 	}
 	for _, a := range c.AuditEntry.Query().AllX(e.sys) {
-		for _, pw := range []string{alicePW, bobPW} {
+		for _, pw := range []string{alicePW, bobPW, carolPW} {
 			if strings.Contains(string(a.Diff), pw) {
 				t.Fatalf("audit entry %s holds a password", a.Action)
 			}
