@@ -34,3 +34,10 @@ func Seal(ctx context.Context, tx *ent.Tx, s *secret.Sealer, c secret.Context, v
 	}
 	return sealed, err
 }
+
+// ForgetSealed drops the record of a sealed value whose row is deleted, so that a KEK rotation
+// does not look for it.
+func ForgetSealed(ctx context.Context, tx *ent.Tx, c secret.Context) error {
+	_, err := tx.SecretMeta.Delete().Where(secretmeta.TableName(c.Table), secretmeta.RowID(c.RowID), secretmeta.ColumnName(c.Column)).Exec(ctx)
+	return err
+}

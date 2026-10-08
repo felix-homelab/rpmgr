@@ -249,6 +249,14 @@ func Upload(ctx context.Context, tx *ent.Tx, s *secret.Sealer, org string, chain
 		SetContentSha256(sum[:]).SetIssuer(leaf.Issuer.String()).Save(ctx)
 }
 
+// Delete deletes a stored certificate with the record of its sealed key.
+func Delete(ctx context.Context, tx *ent.Tx, c *ent.Certificate) error {
+	if err := tx.Certificate.DeleteOneID(c.ID).Where(certificate.Version(c.Version)).Exec(ctx); err != nil {
+		return err
+	}
+	return store.ForgetSealed(ctx, tx, keyContext(c.ID))
+}
+
 // Item opens a stored certificate's key with s and returns the item a gateway fetches; its
 // SHA-256 is the row's content_sha256, or the row was changed outside this package.
 func Item(c *ent.Certificate, s *secret.Sealer) ([]byte, error) {

@@ -274,6 +274,12 @@ func Run(ctx context.Context, o RunOptions) error {
 		}); err != nil {
 		return err
 	}
+	if err := apiServer.Mount(mux, rpmgrv1.File_rpmgr_v1_certificate_proto.Services().ByName("CertificateService"),
+		func(opts ...connect.HandlerOption) (string, http.Handler) {
+			return rpmgrv1connect.NewCertificateServiceHandler(&apisvc.Certificates{DB: db, API: apiServer, Sealer: sealer, Now: o.Now}, opts...)
+		}); err != nil {
+		return err
+	}
 	if err := apiServer.Mount(mux, rpmgrv1.File_rpmgr_v1_policy_proto.Services().ByName("PolicyService"),
 		func(opts ...connect.HandlerOption) (string, http.Handler) {
 			return rpmgrv1connect.NewPolicyServiceHandler(&apisvc.Policies{DB: db, API: apiServer, Sys: sys}, opts...)
