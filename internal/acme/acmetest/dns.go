@@ -26,20 +26,33 @@ type DNSServer struct {
 	Addr     string
 }
 
+// dnsPortAttempts is how many free UDP ports StartDNS tries, as the TCP port of the same number
+// may be taken.
+const dnsPortAttempts = 10
+
+// listenTCP is net.Listen; a test replaces it.
+var listenTCP = net.Listen
+
 // StartDNS serves the given zones on a free port of 127.0.0.1.
 func StartDNS(zones []string, txt func(string) []string) (*DNSServer, error) {
 	s := &DNSServer{TXT: txt, addrs: map[string][]net.IP{}, Default: net.IPv4(127, 0, 0, 1)}
 	for _, z := range zones {
 		s.zones = append(s.zones, strings.ToLower(strings.TrimSuffix(z, ".")))
 	}
-	pc, err := net.ListenPacket("udp", "127.0.0.1:0")
-	if err != nil {
-		return nil, err
-	}
-	ln, err := net.Listen("tcp", pc.LocalAddr().String())
-	if err != nil {
+	var pc net.PacketConn
+	var ln net.Listener
+	for attempt := 1; ; attempt++ {
+		var err error
+		if pc, err = net.ListenPacket("udp", "127.0.0.1:0"); err != nil {
+			return nil, err
+		}
+		if ln, err = listenTCP("tcp", pc.LocalAddr().String()); err == nil {
+			break
+		}
 		_ = pc.Close()
-		return nil, err
+		if attempt == dnsPortAttempts {
+			return nil, err
+		}
 	}
 	s.Addr = pc.LocalAddr().String()
 	h := dns.HandlerFunc(s.serve)
