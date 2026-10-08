@@ -25,9 +25,10 @@ func SetInstanceSecret(ctx context.Context, db *store.DB, sealer *secret.Sealer,
 			return err
 		}
 		if v.IsZero() {
-			return nil
+			return store.ForgetSealed(ctx, tx, secretContext(name))
 		}
-		sealed, err := sealer.Seal(secretContext(name), v)
+		// Recorded in secrets_meta, so a KEK rotation finds it.
+		sealed, err := store.Seal(ctx, tx, sealer, secretContext(name), v)
 		if err != nil {
 			return err
 		}

@@ -29,6 +29,9 @@ import (
 // (docs/07-api.md, "Concurrency").
 var ErrEtagMismatch = errors.New("settings: changed since they were read")
 
+// ErrInvalid is returned for an update mask or a value the settings do not take.
+var ErrInvalid = errors.New("settings: invalid")
+
 const day = 24 * time.Hour
 
 // InstanceDefaults returns the default instance settings (D4, D8, D45; docs/06-data-model.md).
@@ -173,7 +176,7 @@ func apply(defaults, stored, upd proto.Message, mask *fieldmaskpb.FieldMask, eta
 		return nil, ErrEtagMismatch
 	}
 	if len(mask.GetPaths()) == 0 {
-		return nil, errors.New("settings: the update mask names no field")
+		return nil, fmt.Errorf("%w: the update mask names no field", ErrInvalid)
 	}
 	fields := stored.ProtoReflect().Descriptor().Fields()
 	next := proto.Clone(stored).ProtoReflect()
@@ -181,7 +184,7 @@ func apply(defaults, stored, upd proto.Message, mask *fieldmaskpb.FieldMask, eta
 	for _, path := range mask.GetPaths() {
 		fd := fields.ByName(protoreflect.Name(path))
 		if fd == nil {
-			return nil, fmt.Errorf("settings: unknown field %q in the update mask", path)
+			return nil, fmt.Errorf("%w: unknown field %q in the update mask", ErrInvalid, path)
 		}
 		if src.Has(fd) {
 			next.Set(fd, src.Get(fd))
@@ -190,7 +193,7 @@ func apply(defaults, stored, upd proto.Message, mask *fieldmaskpb.FieldMask, eta
 		}
 	}
 	if err := protovalidate.Validate(effective(defaults, next.Interface())); err != nil {
-		return nil, fmt.Errorf("settings: %w", err)
+		return nil, fmt.Errorf("%w: %w", ErrInvalid, err)
 	}
 	return proto.MarshalOptions{Deterministic: true}.Marshal(next.Interface())
 }
