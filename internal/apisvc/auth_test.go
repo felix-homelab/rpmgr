@@ -72,7 +72,7 @@ func newEnv(t *testing.T) *env {
 	srv, err := api.New(api.Options{DB: db, Sys: sys, Sealer: sealer, Now: now,
 		Authenticator:      apisvc.Credentials{Sessions: e.sessions, Tokens: e.tokens},
 		Resolver:           api.StoreResolver(db, sys),
-		OperatorsMayEnroll: func(context.Context, string) (bool, error) { return false, nil },
+		OperatorsMayEnroll: api.StoreOperatorsMayEnroll(db, sys),
 		Origins:            func(context.Context) ([]string, error) { return []string{"https://panel.example.com"}, nil }})
 	if err != nil {
 		t.Fatal(err)
@@ -98,6 +98,12 @@ func newEnv(t *testing.T) *env {
 		func(o ...connect.HandlerOption) (string, http.Handler) {
 			return rpmgrv1connect.NewGatewayServiceHandler(&apisvc.Gateways{DB: db, API: srv, Sys: sys, RevLog: rl, Now: now,
 				Denied: func() { e.denied.Add(1) }}, o...)
+		}); err != nil {
+		t.Fatal(err)
+	}
+	if err := srv.Mount(mux, rpmgrv1.File_rpmgr_v1_enrollment_proto.Services().ByName("EnrollmentService"),
+		func(o ...connect.HandlerOption) (string, http.Handler) {
+			return rpmgrv1connect.NewEnrollmentServiceHandler(&apisvc.Enrollment{DB: db, API: srv, Now: now}, o...)
 		}); err != nil {
 		t.Fatal(err)
 	}
@@ -136,6 +142,7 @@ type browser struct {
 	org    rpmgrv1connect.OrgServiceClient
 	token  rpmgrv1connect.TokenServiceClient
 	gw     rpmgrv1connect.GatewayServiceClient
+	enr    rpmgrv1connect.EnrollmentServiceClient
 }
 
 func (e *env) browser() *browser {
@@ -145,6 +152,7 @@ func (e *env) browser() *browser {
 	b.org = rpmgrv1connect.NewOrgServiceClient(&http.Client{Transport: b}, e.url)
 	b.token = rpmgrv1connect.NewTokenServiceClient(&http.Client{Transport: b}, e.url)
 	b.gw = rpmgrv1connect.NewGatewayServiceClient(&http.Client{Transport: b}, e.url)
+	b.enr = rpmgrv1connect.NewEnrollmentServiceClient(&http.Client{Transport: b}, e.url)
 	return b
 }
 

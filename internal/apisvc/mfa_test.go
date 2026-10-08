@@ -139,7 +139,8 @@ func TestAuth_MFA(t *testing.T) {
 func TestStepUpActions(t *testing.T) {
 	for _, name := range []string{
 		"rpmgr.v1.UserService.EnrollTOTP", "rpmgr.v1.UserService.ConfirmTOTP", "rpmgr.v1.UserService.RemoveTOTP",
-		"rpmgr.v1.UserService.RegenerateRecoveryCodes",
+		"rpmgr.v1.UserService.RegenerateRecoveryCodes", "rpmgr.v1.TokenService.CreateAPIToken",
+		"rpmgr.v1.EnrollmentService.CreateEnrollmentToken", "rpmgr.v1.EnrollmentService.CreateGatewayEnrollmentToken",
 	} {
 		d, err := protoregistry.GlobalFiles.FindDescriptorByName(protoreflect.FullName(name))
 		if err != nil {
