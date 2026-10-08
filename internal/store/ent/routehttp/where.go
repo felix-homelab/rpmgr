@@ -73,6 +73,11 @@ func CertificateID(v string) predicate.RouteHTTP {
 	return predicate.RouteHTTP(sql.FieldEQ(FieldCertificateID, v))
 }
 
+// HstsMaxAgeSeconds applies equality check predicate on the "hsts_max_age_seconds" field. It's identical to HstsMaxAgeSecondsEQ.
+func HstsMaxAgeSeconds(v int) predicate.RouteHTTP {
+	return predicate.RouteHTTP(sql.FieldEQ(FieldHstsMaxAgeSeconds, v))
+}
+
 // HostHeader applies equality check predicate on the "host_header" field. It's identical to HostHeaderEQ.
 func HostHeader(v string) predicate.RouteHTTP {
 	return predicate.RouteHTTP(sql.FieldEQ(FieldHostHeader, v))
@@ -411,6 +416,46 @@ func Port80In(vs ...Port80) predicate.RouteHTTP {
 // Port80NotIn applies the NotIn predicate on the "port80" field.
 func Port80NotIn(vs ...Port80) predicate.RouteHTTP {
 	return predicate.RouteHTTP(sql.FieldNotIn(FieldPort80, vs...))
+}
+
+// HstsMaxAgeSecondsEQ applies the EQ predicate on the "hsts_max_age_seconds" field.
+func HstsMaxAgeSecondsEQ(v int) predicate.RouteHTTP {
+	return predicate.RouteHTTP(sql.FieldEQ(FieldHstsMaxAgeSeconds, v))
+}
+
+// HstsMaxAgeSecondsNEQ applies the NEQ predicate on the "hsts_max_age_seconds" field.
+func HstsMaxAgeSecondsNEQ(v int) predicate.RouteHTTP {
+	return predicate.RouteHTTP(sql.FieldNEQ(FieldHstsMaxAgeSeconds, v))
+}
+
+// HstsMaxAgeSecondsIn applies the In predicate on the "hsts_max_age_seconds" field.
+func HstsMaxAgeSecondsIn(vs ...int) predicate.RouteHTTP {
+	return predicate.RouteHTTP(sql.FieldIn(FieldHstsMaxAgeSeconds, vs...))
+}
+
+// HstsMaxAgeSecondsNotIn applies the NotIn predicate on the "hsts_max_age_seconds" field.
+func HstsMaxAgeSecondsNotIn(vs ...int) predicate.RouteHTTP {
+	return predicate.RouteHTTP(sql.FieldNotIn(FieldHstsMaxAgeSeconds, vs...))
+}
+
+// HstsMaxAgeSecondsGT applies the GT predicate on the "hsts_max_age_seconds" field.
+func HstsMaxAgeSecondsGT(v int) predicate.RouteHTTP {
+	return predicate.RouteHTTP(sql.FieldGT(FieldHstsMaxAgeSeconds, v))
+}
+
+// HstsMaxAgeSecondsGTE applies the GTE predicate on the "hsts_max_age_seconds" field.
+func HstsMaxAgeSecondsGTE(v int) predicate.RouteHTTP {
+	return predicate.RouteHTTP(sql.FieldGTE(FieldHstsMaxAgeSeconds, v))
+}
+
+// HstsMaxAgeSecondsLT applies the LT predicate on the "hsts_max_age_seconds" field.
+func HstsMaxAgeSecondsLT(v int) predicate.RouteHTTP {
+	return predicate.RouteHTTP(sql.FieldLT(FieldHstsMaxAgeSeconds, v))
+}
+
+// HstsMaxAgeSecondsLTE applies the LTE predicate on the "hsts_max_age_seconds" field.
+func HstsMaxAgeSecondsLTE(v int) predicate.RouteHTTP {
+	return predicate.RouteHTTP(sql.FieldLTE(FieldHstsMaxAgeSeconds, v))
 }
 
 // HostHeaderEQ applies the EQ predicate on the "host_header" field.

@@ -280,7 +280,7 @@ listen:
   tcp: ":443"                 # the gateway's; the controller is reached through it
   udp: ":443"
   tunnel_udp: ""
-  http: ":80"                 # the controller's redirect
+  http: ":80"                 # the gateway's: http routes, and the controller's redirect for the rest
   admin: "127.0.0.1:7381"     # reports the controller and the gateway
 database: { driver: sqlite, dsn: /var/lib/rpmgr/controller.db }
 kek: { source: systemd-credential, name: rpmgr-kek }

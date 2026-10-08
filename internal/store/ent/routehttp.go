@@ -33,6 +33,8 @@ type RouteHTTP struct {
 	CertificateID *string `json:"certificate_id,omitempty"`
 	// Port80 holds the value of the "port80" field.
 	Port80 routehttp.Port80 `json:"port80,omitempty"`
+	// HstsMaxAgeSeconds holds the value of the "hsts_max_age_seconds" field.
+	HstsMaxAgeSeconds int `json:"hsts_max_age_seconds,omitempty"`
 	// HostHeader holds the value of the "host_header" field.
 	HostHeader string `json:"host_header,omitempty"`
 	// RequestHeadersSet holds the value of the "request_headers_set" field.
@@ -93,7 +95,7 @@ func (*RouteHTTP) scanValues(columns []string) ([]any, error) {
 			values[i] = new([]byte)
 		case routehttp.FieldWebsocket, routehttp.FieldDNSProxied:
 			values[i] = new(sql.NullBool)
-		case routehttp.FieldID, routehttp.FieldMaxBodyBytes:
+		case routehttp.FieldID, routehttp.FieldHstsMaxAgeSeconds, routehttp.FieldMaxBodyBytes:
 			values[i] = new(sql.NullInt64)
 		case routehttp.FieldOrgID, routehttp.FieldRouteID, routehttp.FieldPathPrefix, routehttp.FieldTLSMode, routehttp.FieldCertificateID, routehttp.FieldPort80, routehttp.FieldHostHeader:
 			values[i] = new(sql.NullString)
@@ -162,6 +164,12 @@ func (_m *RouteHTTP) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field port80", values[i])
 			} else if value.Valid {
 				_m.Port80 = routehttp.Port80(value.String)
+			}
+		case routehttp.FieldHstsMaxAgeSeconds:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field hsts_max_age_seconds", values[i])
+			} else if value.Valid {
+				_m.HstsMaxAgeSeconds = int(value.Int64)
 			}
 		case routehttp.FieldHostHeader:
 			if value, ok := values[i].(*sql.NullString); !ok {
@@ -271,6 +279,9 @@ func (_m *RouteHTTP) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("port80=")
 	builder.WriteString(fmt.Sprintf("%v", _m.Port80))
+	builder.WriteString(", ")
+	builder.WriteString("hsts_max_age_seconds=")
+	builder.WriteString(fmt.Sprintf("%v", _m.HstsMaxAgeSeconds))
 	builder.WriteString(", ")
 	builder.WriteString("host_header=")
 	builder.WriteString(_m.HostHeader)

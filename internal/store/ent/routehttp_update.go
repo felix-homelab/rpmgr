@@ -102,6 +102,27 @@ func (_u *RouteHTTPUpdate) SetNillablePort80(v *routehttp.Port80) *RouteHTTPUpda
 	return _u
 }
 
+// SetHstsMaxAgeSeconds sets the "hsts_max_age_seconds" field.
+func (_u *RouteHTTPUpdate) SetHstsMaxAgeSeconds(v int) *RouteHTTPUpdate {
+	_u.mutation.ResetHstsMaxAgeSeconds()
+	_u.mutation.SetHstsMaxAgeSeconds(v)
+	return _u
+}
+
+// SetNillableHstsMaxAgeSeconds sets the "hsts_max_age_seconds" field if the given value is not nil.
+func (_u *RouteHTTPUpdate) SetNillableHstsMaxAgeSeconds(v *int) *RouteHTTPUpdate {
+	if v != nil {
+		_u.SetHstsMaxAgeSeconds(*v)
+	}
+	return _u
+}
+
+// AddHstsMaxAgeSeconds adds value to the "hsts_max_age_seconds" field.
+func (_u *RouteHTTPUpdate) AddHstsMaxAgeSeconds(v int) *RouteHTTPUpdate {
+	_u.mutation.AddHstsMaxAgeSeconds(v)
+	return _u
+}
+
 // SetHostHeader sets the "host_header" field.
 func (_u *RouteHTTPUpdate) SetHostHeader(v string) *RouteHTTPUpdate {
 	_u.mutation.SetHostHeader(v)
@@ -244,6 +265,11 @@ func (_u *RouteHTTPUpdate) check() error {
 			return &ValidationError{Name: "port80", err: fmt.Errorf(`ent: validator failed for field "RouteHTTP.port80": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.HstsMaxAgeSeconds(); ok {
+		if err := routehttp.HstsMaxAgeSecondsValidator(v); err != nil {
+			return &ValidationError{Name: "hsts_max_age_seconds", err: fmt.Errorf(`ent: validator failed for field "RouteHTTP.hsts_max_age_seconds": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.HostHeader(); ok {
 		if err := routehttp.HostHeaderValidator(v); err != nil {
 			return &ValidationError{Name: "host_header", err: fmt.Errorf(`ent: validator failed for field "RouteHTTP.host_header": %w`, err)}
@@ -286,6 +312,12 @@ func (_u *RouteHTTPUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if value, ok := _u.mutation.Port80(); ok {
 		_spec.SetField(routehttp.FieldPort80, field.TypeEnum, value)
+	}
+	if value, ok := _u.mutation.HstsMaxAgeSeconds(); ok {
+		_spec.SetField(routehttp.FieldHstsMaxAgeSeconds, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedHstsMaxAgeSeconds(); ok {
+		_spec.AddField(routehttp.FieldHstsMaxAgeSeconds, field.TypeInt, value)
 	}
 	if value, ok := _u.mutation.HostHeader(); ok {
 		_spec.SetField(routehttp.FieldHostHeader, field.TypeString, value)
@@ -434,6 +466,27 @@ func (_u *RouteHTTPUpdateOne) SetNillablePort80(v *routehttp.Port80) *RouteHTTPU
 	if v != nil {
 		_u.SetPort80(*v)
 	}
+	return _u
+}
+
+// SetHstsMaxAgeSeconds sets the "hsts_max_age_seconds" field.
+func (_u *RouteHTTPUpdateOne) SetHstsMaxAgeSeconds(v int) *RouteHTTPUpdateOne {
+	_u.mutation.ResetHstsMaxAgeSeconds()
+	_u.mutation.SetHstsMaxAgeSeconds(v)
+	return _u
+}
+
+// SetNillableHstsMaxAgeSeconds sets the "hsts_max_age_seconds" field if the given value is not nil.
+func (_u *RouteHTTPUpdateOne) SetNillableHstsMaxAgeSeconds(v *int) *RouteHTTPUpdateOne {
+	if v != nil {
+		_u.SetHstsMaxAgeSeconds(*v)
+	}
+	return _u
+}
+
+// AddHstsMaxAgeSeconds adds value to the "hsts_max_age_seconds" field.
+func (_u *RouteHTTPUpdateOne) AddHstsMaxAgeSeconds(v int) *RouteHTTPUpdateOne {
+	_u.mutation.AddHstsMaxAgeSeconds(v)
 	return _u
 }
 
@@ -592,6 +645,11 @@ func (_u *RouteHTTPUpdateOne) check() error {
 			return &ValidationError{Name: "port80", err: fmt.Errorf(`ent: validator failed for field "RouteHTTP.port80": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.HstsMaxAgeSeconds(); ok {
+		if err := routehttp.HstsMaxAgeSecondsValidator(v); err != nil {
+			return &ValidationError{Name: "hsts_max_age_seconds", err: fmt.Errorf(`ent: validator failed for field "RouteHTTP.hsts_max_age_seconds": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.HostHeader(); ok {
 		if err := routehttp.HostHeaderValidator(v); err != nil {
 			return &ValidationError{Name: "host_header", err: fmt.Errorf(`ent: validator failed for field "RouteHTTP.host_header": %w`, err)}
@@ -651,6 +709,12 @@ func (_u *RouteHTTPUpdateOne) sqlSave(ctx context.Context) (_node *RouteHTTP, er
 	}
 	if value, ok := _u.mutation.Port80(); ok {
 		_spec.SetField(routehttp.FieldPort80, field.TypeEnum, value)
+	}
+	if value, ok := _u.mutation.HstsMaxAgeSeconds(); ok {
+		_spec.SetField(routehttp.FieldHstsMaxAgeSeconds, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedHstsMaxAgeSeconds(); ok {
+		_spec.AddField(routehttp.FieldHstsMaxAgeSeconds, field.TypeInt, value)
 	}
 	if value, ok := _u.mutation.HostHeader(); ok {
 		_spec.SetField(routehttp.FieldHostHeader, field.TypeString, value)

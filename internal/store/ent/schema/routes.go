@@ -241,6 +241,8 @@ func (RouteHTTP) Fields() []ent.Field {
 		field.Enum("tls_mode").Values("acme", "certificate").Default("acme"),
 		field.String("certificate_id").Optional().Nillable(),
 		field.Enum("port80").Values("redirect", "serve", "off").Default("redirect"),
+		// hsts_max_age_seconds sends Strict-Transport-Security over HTTPS; 0 sends none.
+		field.Int("hsts_max_age_seconds").NonNegative().Default(0),
 		field.String("host_header").NotEmpty().Default("preserve"),
 		field.JSON("request_headers_set", map[string]string{}).Optional(),
 		field.JSON("response_headers_set", map[string]string{}).Optional(),

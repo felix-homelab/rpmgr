@@ -159,6 +159,9 @@ func (a *Applier) Validate(snap *agentv1.Snapshot) []*agentv1.SnapshotError {
 			if u := r.GetUpstreamProtocol(); u != "http" && u != "h2c" && u != "https" {
 				bad(id, "upstream protocol %q", u)
 			}
+			if m := r.GetPort80(); m != "" && m != "redirect" && m != "serve" && m != "off" {
+				bad(id, "port 80 mode %q", m)
+			}
 			if h := r.GetHostHeader(); h != "" && !httpguts.ValidHostHeader(h) {
 				bad(id, "host header %q", h)
 			}
@@ -247,7 +250,8 @@ func (a *Applier) Apply(ctx context.Context, snap *agentv1.Snapshot, _ agent.Cha
 			r := res.GetGatewayHttpRoute()
 			connectors = r.GetConnectors()
 			hr := HTTPRoute{ID: res.GetId(), Upstream: r.GetUpstreamProtocol(), WebSocket: r.GetWebsocket(),
-				HostHeader: r.GetHostHeader(), MaxBody: int64(min(r.GetMaxBodyBytes(), math.MaxInt64))} //nolint:gosec // G115: bounded above
+				HostHeader: r.GetHostHeader(), MaxBody: int64(min(r.GetMaxBodyBytes(), math.MaxInt64)), //nolint:gosec // G115: bounded above
+				Port80: r.GetPort80(), HSTS: int(r.GetHstsMaxAgeSeconds())}
 			for _, h := range r.GetRequestHeaders() {
 				hr.RequestHeaders = append(hr.RequestHeaders, HTTPHeader{Name: h.GetName(), Value: h.GetValue()})
 			}

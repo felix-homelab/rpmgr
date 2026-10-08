@@ -229,20 +229,20 @@ func TestAdminPrivateAddress(t *testing.T) {
 }
 
 // TestAllInOne: an all-in-one file takes the controller's and the gateway's defaults, and splits
-// into a controller whose port 443 is the gateway's and a gateway whose identity and state live
-// under state_dir and which leaves port 80 to the controller.
+// into a controller whose ports 443 and 80 are the gateway's and a gateway whose identity and
+// state live under state_dir.
 func TestAllInOne(t *testing.T) {
 	var a config.AllInOne
 	if err := config.Parse([]byte("version: 1\npublic_url: https://panel.example.com\n"), &a); err != nil {
 		t.Fatal(err)
 	}
 	c, g := a.Controller(), a.Gateway()
-	if c.PublicURL != "https://panel.example.com" || c.Listen.HTTPS != ":443" || *c.Listen.HTTP != ":80" || c.Listen.Admin != "127.0.0.1:7381" ||
+	if c.PublicURL != "https://panel.example.com" || c.Listen.HTTPS != ":443" || *c.Listen.HTTP != "" || c.Listen.Admin != "127.0.0.1:7381" ||
 		c.Database.DSN != "/var/lib/rpmgr/controller.db" || c.KEK.Source != config.KEKSystemdCredential || c.KEK.Name != "rpmgr-kek" {
 		t.Errorf("controller part: %+v", c)
 	}
 	if len(g.Controller.Endpoints) != 1 || g.Controller.Endpoints[0] != "https://panel.example.com" || g.Listen.TCP != ":443" ||
-		g.Listen.UDP != ":443" || *g.Listen.HTTP != "" || g.IdentityDir != "/var/lib/rpmgr/gateway/identity" || g.StateDir != "/var/lib/rpmgr/gateway" {
+		g.Listen.UDP != ":443" || *g.Listen.HTTP != ":80" || g.IdentityDir != "/var/lib/rpmgr/gateway/identity" || g.StateDir != "/var/lib/rpmgr/gateway" {
 		t.Errorf("gateway part: %+v", g)
 	}
 	for _, tc := range []struct{ yaml, want string }{

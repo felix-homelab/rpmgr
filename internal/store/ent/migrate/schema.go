@@ -735,6 +735,7 @@ var (
 		{Name: "header_matches", Type: field.TypeJSON, Nullable: true},
 		{Name: "tls_mode", Type: field.TypeEnum, Enums: []string{"acme", "certificate"}, Default: "acme"},
 		{Name: "port80", Type: field.TypeEnum, Enums: []string{"redirect", "serve", "off"}, Default: "redirect"},
+		{Name: "hsts_max_age_seconds", Type: field.TypeInt, Default: 0},
 		{Name: "host_header", Type: field.TypeString, Default: "preserve"},
 		{Name: "request_headers_set", Type: field.TypeJSON, Nullable: true},
 		{Name: "response_headers_set", Type: field.TypeJSON, Nullable: true},
@@ -752,13 +753,13 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "route_http_routes_route",
-				Columns:    []*schema.Column{RouteHTTPColumns[12]},
+				Columns:    []*schema.Column{RouteHTTPColumns[13]},
 				RefColumns: []*schema.Column{RoutesColumns[0]},
 				OnDelete:   schema.NoAction,
 			},
 			{
 				Symbol:     "route_http_certificates_certificate",
-				Columns:    []*schema.Column{RouteHTTPColumns[13]},
+				Columns:    []*schema.Column{RouteHTTPColumns[14]},
 				RefColumns: []*schema.Column{CertificatesColumns[0]},
 				OnDelete:   schema.SetNull,
 			},
@@ -772,12 +773,12 @@ var (
 			{
 				Name:    "routehttp_route_id",
 				Unique:  true,
-				Columns: []*schema.Column{RouteHTTPColumns[12]},
+				Columns: []*schema.Column{RouteHTTPColumns[13]},
 			},
 			{
 				Name:    "routehttp_certificate_id",
 				Unique:  false,
-				Columns: []*schema.Column{RouteHTTPColumns[13]},
+				Columns: []*schema.Column{RouteHTTPColumns[14]},
 			},
 		},
 	}

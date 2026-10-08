@@ -576,3 +576,117 @@ func TestHTTPRoutes_BodyLimit(t *testing.T) {
 		t.Errorf("streamed above the limit: %d", got)
 	}
 }
+
+// serve80 serves e's port 80 on a loopback port and returns its address.
+func (e *httpEnv) serve80(t *testing.T) string {
+	t.Helper()
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = ln.Close() })
+	go func() { _ = e.routes.Serve80(ln) }()
+	return ln.Addr().String()
+}
+
+// plain sends a request to port 80 at addr for host and returns the reply without following
+// redirects; err is set when the connection closed without one.
+func plain(t *testing.T, addr, method, host, target string) (reply, error) {
+	t.Helper()
+	req, _ := http.NewRequest(method, "http://"+host+target, strings.NewReader("body"))
+	c := &http.Client{Timeout: 5 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+		Transport: &http.Transport{DialContext: func(ctx context.Context, network, _ string) (net.Conn, error) {
+			var d net.Dialer
+			return d.DialContext(ctx, network, addr)
+		}}}
+	resp, err := c.Do(req)
+	if err != nil {
+		return reply{}, err
+	}
+	defer func() { _ = resp.Body.Close() }()
+	b, _ := io.ReadAll(resp.Body)
+	return reply{status: resp.StatusCode, header: resp.Header, body: string(b)}, nil
+}
+
+// TestHTTPRoutes_Port80: plain HTTP redirects to HTTPS keeping path and query (301 for GET, 308
+// otherwise), serves the route, or closes, as the route says; ACME challenges are answered for any
+// name, even with port 80 off; a name without a route goes to the fallback.
+func TestHTTPRoutes_Port80(t *testing.T) {
+	route := gateway.HTTPRoute{ID: "rt_web", Upstream: "http", Hosts: []gateway.HTTPHost{{Hostname: "app.example.com"}}}
+	p := newPlaneWith(t, service(t, func(c net.Conn, br *bufio.Reader, line string) {
+		// A minimal HTTP/1.1 upstream: answer with the forwarded protocol, then close.
+		req, err := http.ReadRequest(bufio.NewReader(io.MultiReader(strings.NewReader(line), br)))
+		if err != nil {
+			_ = c.Close()
+			return
+		}
+		body := req.Header.Get("X-Forwarded-Proto")
+		_, _ = fmt.Fprintf(c, "HTTP/1.1 200 OK\r\nContent-Length: %d\r\nConnection: close\r\n\r\n%s", len(body), body)
+		_ = c.Close()
+	}), "none", "rt_web")
+	certs, pool := routeCert(t, "app.example.com")
+	h := gateway.NewHTTPRoutes(gateway.HTTPOptions{Sessions: p.sessions, Certificates: certs,
+		Challenges: func(host, token string) (string, bool) { return token + ".thumbprint", token == "tok" && host != "" },
+		Fallback80: http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { http.Error(w, "fallback", http.StatusTeapot) })})
+	t.Cleanup(h.Close)
+	e := &httpEnv{routes: h, addr: httpFront(t, h), pool: pool}
+	addr := e.serve80(t)
+	h.Apply([]gateway.HTTPRoute{route})
+
+	r, err := plain(t, addr, http.MethodGet, "app.example.com", "/a/b?c=d&e")
+	if err != nil || r.status != http.StatusMovedPermanently || r.header.Get("Location") != "https://app.example.com/a/b?c=d&e" {
+		t.Errorf("redirect: %v %v", r, err)
+	}
+	if r, err := plain(t, addr, http.MethodPost, "app.example.com:80", "/form"); err != nil || r.status != http.StatusPermanentRedirect ||
+		r.header.Get("Location") != "https://app.example.com/form" {
+		t.Errorf("redirect of a POST: %v %v", r, err)
+	}
+	if r, err := plain(t, addr, http.MethodGet, "other.example.com", "/"); err != nil || r.status != http.StatusTeapot {
+		t.Errorf("a name without a route: %v %v", r, err)
+	}
+
+	route.Port80 = "serve"
+	h.Apply([]gateway.HTTPRoute{route})
+	if r, err := plain(t, addr, http.MethodGet, "app.example.com", "/"); err != nil || r.status != http.StatusOK || r.body != "http" {
+		t.Errorf("serve: %v %v", r, err)
+	}
+
+	route.Port80 = "off"
+	h.Apply([]gateway.HTTPRoute{route})
+	if r, err := plain(t, addr, http.MethodGet, "app.example.com", "/"); err == nil {
+		t.Errorf("off answered: %v", r)
+	}
+	if r, err := plain(t, addr, http.MethodGet, "app.example.com", "/.well-known/acme-challenge/tok"); err != nil ||
+		r.status != http.StatusOK || r.body != "tok.thumbprint" {
+		t.Errorf("an ACME challenge with port 80 off: %v %v", r, err)
+	}
+	if r, err := plain(t, addr, http.MethodGet, "app.example.com", "/.well-known/acme-challenge/unknown"); err != nil ||
+		r.status != http.StatusNotFound {
+		t.Errorf("an unknown ACME token: %v %v", r, err)
+	}
+}
+
+// TestHTTPRoutes_HSTS: Strict-Transport-Security goes out over HTTPS only, the route's value
+// replacing the upstream's, and not at all when the route sets none.
+func TestHTTPRoutes_HSTS(t *testing.T) {
+	upstream := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Strict-Transport-Security", "max-age=1")
+		_, _ = io.WriteString(w, "ok")
+	})
+	route := gateway.HTTPRoute{ID: "rt_web", Upstream: "http", Port80: "serve", HSTS: 31536000,
+		Hosts: []gateway.HTTPHost{{Hostname: "app.example.com"}}}
+	e := newHTTPEnv(t, upstream, route)
+	if r := get(t, e.client(true), "https://app.example.com/", nil); r.header.Values("Strict-Transport-Security")[0] != "max-age=31536000" ||
+		len(r.header.Values("Strict-Transport-Security")) != 1 {
+		t.Errorf("over HTTPS: %v", r.header.Values("Strict-Transport-Security"))
+	}
+	addr := e.serve80(t)
+	if r, err := plain(t, addr, http.MethodGet, "app.example.com", "/"); err != nil || r.header.Get("Strict-Transport-Security") != "" {
+		t.Errorf("over plain HTTP: %v %v", r, err)
+	}
+	route.HSTS = 0
+	e.routes.Apply([]gateway.HTTPRoute{route})
+	if r := get(t, e.client(false), "https://app.example.com/", nil); r.header.Get("Strict-Transport-Security") != "max-age=1" {
+		t.Errorf("a route without HSTS passes the upstream's: %v", r.header.Values("Strict-Transport-Security"))
+	}
+}

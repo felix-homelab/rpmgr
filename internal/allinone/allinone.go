@@ -257,7 +257,8 @@ func Run(ctx context.Context, o RunOptions) error {
 	go func() {
 		gwDone <- gateway.Run(gwCtx, gateway.RunOptions{Config: cfg.Gateway(), Version: o.Version, Logger: o.Logger.With("role", "gateway"),
 			DrainPeriod: o.DrainPeriod, Controller: mem.Deliver, ControllerNames: []string{public.Hostname()}, Dial: mem.Dial,
-			Registry: reg, Readiness: readiness, Listening: func() { close(gwListening) }})
+			Port80Fallback: controller.RedirectHandler(public),
+			Registry:       reg, Readiness: readiness, Listening: func() { close(gwListening) }})
 	}()
 	select {
 	case <-gwListening:

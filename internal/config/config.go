@@ -329,11 +329,12 @@ func (a *AllInOne) validate() error {
 	return errors.Join(checkAbs("state_dir", a.StateDir), c.validate(), g.validate())
 }
 
-// Controller is the controller part of the file; its port 443 is the gateway's.
+// Controller is the controller part of the file; its ports 443 and 80 are the gateway's.
 func (a *AllInOne) Controller() Controller {
 	var c Controller
 	c.Version, c.PublicURL, c.Log = a.Version, a.PublicURL, a.Log
-	c.Listen.HTTPS, c.Listen.HTTP, c.Listen.Admin = a.Listen.TCP, a.Listen.HTTP, a.Listen.Admin
+	none := ""
+	c.Listen.HTTPS, c.Listen.HTTP, c.Listen.Admin = a.Listen.TCP, &none, a.Listen.Admin
 	c.Database.Driver, c.Database.DSN = a.Database.Driver, a.Database.DSN
 	c.KEK.Source, c.KEK.Name, c.KEK.Path = a.KEK.Source, a.KEK.Name, a.KEK.Path
 	c.TLS.CertFile, c.TLS.KeyFile = a.TLS.CertFile, a.TLS.KeyFile
@@ -341,8 +342,8 @@ func (a *AllInOne) Controller() Controller {
 }
 
 // Gateway is the gateway part of the file: its identity in <state_dir>/gateway/identity, its
-// state in <state_dir>/gateway, the controller at the public URL. Port 80 stays with the
-// controller.
+// state in <state_dir>/gateway, the controller at the public URL. Port 80 is the gateway's too: it
+// serves the http routes there and redirects every other name as the controller would.
 func (a *AllInOne) Gateway() Gateway {
 	var g Gateway
 	g.Version, g.Log = a.Version, a.Log
@@ -350,8 +351,7 @@ func (a *AllInOne) Gateway() Gateway {
 	g.StateDir = filepath.Join(a.StateDir, "gateway")
 	g.IdentityDir = filepath.Join(g.StateDir, "identity")
 	g.Listen.TCP, g.Listen.UDP, g.Listen.TunnelUDP, g.Listen.Admin = a.Listen.TCP, a.Listen.UDP, a.Listen.TunnelUDP, a.Listen.Admin
-	none := ""
-	g.Listen.HTTP = &none
+	g.Listen.HTTP = a.Listen.HTTP
 	return g
 }
 

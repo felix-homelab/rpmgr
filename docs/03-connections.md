@@ -633,6 +633,16 @@ sequenceDiagram
   `StreamResult` names: the target's server name (its host by default), its CA bundle or else the
   gateway host's trust store, and an optional pin of the leaf's public key. A failed verification,
   or a target the gateway has no settings for, is **502** ([04](04-security.md#controller-certificates)).
+- **Port 80** (`listen.http`): ACME HTTP-01 challenges under `/.well-known/acme-challenge/` are
+  answered for every name, whatever the route says. Otherwise the route of the host and path
+  decides: `redirect` sends the same path and query to HTTPS (**301** for GET and HEAD, **308**
+  otherwise, which keeps the method and body), `serve` proxies the route as on 443 with
+  `X-Forwarded-Proto: http`, and `off` closes the connection without an answer. A name no route
+  serves is **404**; on all-in-one it gets the controller's redirect to its public URL, as the
+  gateway takes port 80 there too.
+- **HSTS**: a route with an HSTS max-age sends `Strict-Transport-Security: max-age=<n>` with every
+  HTTPS response, its own and the gateway's errors alike, replacing the upstream's; never over plain
+  HTTP.
 - WebSockets and other upgrades pass through, unless the route turns them off (**403**). gRPC passes
   through when the target speaks HTTP/2 (h2c, or TLS with ALPN `h2`); the gateway streams every
   response as it comes, so it sends a gRPC status that arrived without a body as trailers.

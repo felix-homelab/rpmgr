@@ -168,6 +168,9 @@ func TestApplier_ValidateHTTP(t *testing.T) {
 		{"no server name", gatewaySnapshot(1, httpsResource("rt_1", &agentv1.UpstreamTLS{TargetId: "tg_1"})), "without a server name"},
 		{"a bundle without certificates", gatewaySnapshot(1, httpsResource("rt_1", &agentv1.UpstreamTLS{TargetId: "tg_1", ServerName: "a",
 			CaPem: []byte("nothing")})), "holds no certificate"},
+		{"an unknown port 80 mode", gatewaySnapshot(1, withHTTP(httpResource("rt_1", "http", "app.example.com"), func(r *agentv1.GatewayHTTPRoute) {
+			r.Port80 = "proxy"
+		})), "port 80 mode"},
 		{"CR LF in a header value", gatewaySnapshot(1, withHTTP(httpResource("rt_1", "http", "app.example.com"), func(r *agentv1.GatewayHTTPRoute) {
 			r.RequestHeaders = []*agentv1.HTTPHeader{{Name: "X-Env", Value: "prod\r\nX-Admin: 1"}}
 		})), "not a valid field value"},

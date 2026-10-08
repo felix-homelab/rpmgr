@@ -441,7 +441,7 @@ func TestCompile_GatewayHTTP(t *testing.T) {
 		}
 		c.GatewayGroup.UpdateOneID(f.groupA).SetTrustedProxyCidrs([]string{"10.0.0.0/8"}).ExecX(f.sys)
 		web := f.httpRoute(t, "web", true, true, func(h *ent.RouteHTTPCreate) {
-			h.SetWebsocket(false).SetHostHeader("internal.local").SetMaxBodyBytes(1 << 20).
+			h.SetWebsocket(false).SetHostHeader("internal.local").SetMaxBodyBytes(1 << 20).SetPort80(routehttp.Port80Off).SetHstsMaxAgeSeconds(600).
 				SetRequestHeadersSet(map[string]string{"x-env": "prod", "X-Debug": ""}).SetResponseHeadersSet(map[string]string{"server": ""})
 		}, "www.example.com/docs", "app.example.com", "www.example.com")
 		target(web, f.c1, routetarget.UpstreamProtocolH2c, 0)
@@ -479,12 +479,12 @@ func TestCompile_GatewayHTTP(t *testing.T) {
 		for _, h := range w.GetResponseHeaders() {
 			res = append(res, h.GetName()+"="+h.GetValue())
 		}
-		if w.GetHostHeader() != "internal.local" || w.GetMaxBodyBytes() != 1<<20 || !slices.Equal(req, []string{"X-Debug=", "X-Env=prod"}) ||
+		if w.GetHostHeader() != "internal.local" || w.GetMaxBodyBytes() != 1<<20 || w.GetPort80() != "off" || w.GetHstsMaxAgeSeconds() != 600 || !slices.Equal(req, []string{"X-Debug=", "X-Env=prod"}) ||
 			!slices.Equal(res, []string{"Server="}) || !slices.Equal(w.GetTrustedProxies(), []string{"10.0.0.0/8"}) {
 			t.Fatalf("web's HTTP settings %v", w)
 		}
 		if p := got[plain]; p.GetUpstreamProtocol() != "http" || !p.GetWebsocket() || !slices.Equal(p.GetConnectors(), []string{f.c1}) ||
-			p.GetHostHeader() != "" || p.GetMaxBodyBytes() != 0 {
+			p.GetHostHeader() != "" || p.GetMaxBodyBytes() != 0 || p.GetPort80() != "redirect" || p.GetHstsMaxAgeSeconds() != 0 {
 			t.Fatalf("plain %v", p)
 		}
 		var types []string

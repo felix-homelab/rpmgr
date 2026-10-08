@@ -83,14 +83,14 @@ func webFiles(t *testing.T, certFile, keyFile string) *x509.CertPool {
 // https://localhost:<port>.
 type host struct {
 	dir, boot, publicURL string
-	port                 int
+	port, port80         int
 	cfg                  config.AllInOne
 	web                  *http.Client
 }
 
 func newHost(t *testing.T) *host {
 	t.Helper()
-	h := &host{dir: t.TempDir(), port: freePort(t)}
+	h := &host{dir: t.TempDir(), port: freePort(t), port80: freePort(t)}
 	h.boot = filepath.Join(h.dir, "all-in-one.yaml")
 	h.publicURL = "https://localhost:" + strconv.Itoa(h.port)
 	state := filepath.Join(h.dir, "lib")
@@ -102,12 +102,12 @@ func newHost(t *testing.T) *host {
 	h.web = &http.Client{Timeout: 10 * time.Second, Transport: &http.Transport{TLSClientConfig: &tls.Config{RootCAs: pool, MinVersion: tls.VersionTLS13}}}
 	boot := fmt.Sprintf(`version: 1
 public_url: %s
-listen: {tcp: ":%d", udp: ":%d", http: "", admin: "127.0.0.1:%d"}
+listen: {tcp: ":%d", udp: ":%d", http: "127.0.0.1:%d", admin: "127.0.0.1:%d"}
 database: {dsn: %s}
 kek: {source: file, path: %s}
 tls: {cert_file: %s, key_file: %s}
 state_dir: %s
-`, h.publicURL, h.port, h.port, freePort(t), filepath.Join(state, "controller.db"), filepath.Join(h.dir, "kek"), certFile, keyFile, state)
+`, h.publicURL, h.port, h.port, h.port80, freePort(t), filepath.Join(state, "controller.db"), filepath.Join(h.dir, "kek"), certFile, keyFile, state)
 	if err := os.WriteFile(h.boot, []byte(boot), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -228,6 +228,17 @@ func TestAllInOne(t *testing.T) {
 	}
 	stop := h.run(t)
 	waitFor(t, "not ready", h.ready)
+
+	// Port 80 is the gateway's; a name no route serves gets the controller's redirect.
+	noFollow := &http.Client{Timeout: 5 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	resp, err := noFollow.Get(fmt.Sprintf("http://127.0.0.1:%d/setup?step=1", h.port80))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusMovedPermanently || resp.Header.Get("Location") != h.publicURL+"/setup?step=1" {
+		t.Fatalf("port 80: %d %q", resp.StatusCode, resp.Header.Get("Location"))
+	}
 
 	// Enroll a connector through the public URL, which the gateway hands to the controller.
 	db, err := store.OpenSQLite(context.Background(), h.cfg.Database.DSN, store.SQLiteOptions{})
