@@ -18,6 +18,7 @@ require (
 	entgo.io/ent v0.14.6
 	github.com/google/uuid v1.6.0
 	github.com/jackc/pgx/v5 v5.11.0
+	github.com/pires/go-proxyproto v0.15.0
 	github.com/prometheus/client_golang v1.24.1
 	github.com/quic-go/quic-go v0.63.0
 	go.yaml.in/yaml/v3 v3.0.5

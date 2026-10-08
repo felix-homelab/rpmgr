@@ -22,3 +22,17 @@ func NewProxyDialer(getenv func(string) string, dial func(ctx context.Context, n
 	func(ctx context.Context, addr string) (net.Conn, error), error) {
 	return newProxyDialer(getenv, dial)
 }
+
+// SetRouteDrain shortens how long a removed route takes streams, for one test that must not run
+// in parallel with others.
+func SetRouteDrain(t testing.TB, d time.Duration) {
+	old := routeDrain
+	routeDrain = d
+	t.Cleanup(func() { routeDrain = old })
+}
+
+// Order is order.
+var Order = order
+
+// CodeOf is codeOf.
+var CodeOf = codeOf
