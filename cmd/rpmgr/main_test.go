@@ -57,7 +57,7 @@ func TestEveryCommandHasHelp(t *testing.T) {
 func TestUnimplementedCommandsReportIt(t *testing.T) {
 	for _, args := range [][]string{
 		{"controller"}, {"controller", "--config", "/tmp/c.yaml"}, {"all-in-one", "init"},
-		{"gateway"}, {"connector"}, {"all-in-one"}, {"leave"}, {"policy", "show"}, {"ca", "status"},
+		{"gateway"}, {"connector"}, {"all-in-one"}, {"leave"}, {"ca", "status"},
 	} {
 		code, _, stderr := runRpmgr(args...)
 		if code != cli.ExitUsage || !strings.Contains(stderr, "not available in this build") {

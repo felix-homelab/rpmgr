@@ -486,8 +486,9 @@ Rules:
   reason and the exact command to allow it: `sudo rpmgr policy allow-target 10.0.0.5:5432`. One
   disallowed target therefore never blocks unrelated changes
   ([03](03-connections.md#configuration-reconciliation)).
-- `rpmgr policy …` edits the file and triggers a reload (`systemctl reload`, i.e. SIGHUP); the
-  connector also watches the file. On reload it re-evaluates the current snapshot and reports the
+- `rpmgr policy …` edits the file as root, under a lock file, atomically and keeping its comments
+  and other keys, and triggers a reload (`systemctl reload`, i.e. SIGHUP); the connector also
+  watches the file. On reload it re-evaluates the current snapshot and reports the
   new readiness.
 - The policy only protects if the binary enforcing it is genuine: OTA installs only signed binaries
   at or above a locally persisted version floor, and `auto_update` lets the host refuse automatic
