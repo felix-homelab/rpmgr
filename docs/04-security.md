@@ -444,7 +444,18 @@ provider and never stored.
    interceptor resolves the target's org and checks the caller's role. **A method without the
    annotation is rejected at startup** and a test walks the service registry to prove every method
    is annotated ([12](12-testing-and-quality.md#security-testing)), so no method can exist
-   without an enforced permission check.
+   without an enforced permission check. [R] The rules of the interceptor:
+   - An unknown permission name stops startup, as a missing annotation does.
+   - An org permission needs a resource field: an `org_…` ID names the org itself, any other ID
+     the org that owns the resource. A caller who is no member of that org gets `NOT_FOUND`, the
+     same as for an ID nothing has, so no caller learns what other orgs hold. Instance Admin
+     alone is no membership.
+   - A member whose role lacks the permission gets `PERMISSION_DENIED`, which names it. Step-up
+     is checked last, so a request that would be refused anyway does not ask for it.
+   - A token's scopes narrow its owner's roles; a session has all of them.
+   - A public method serves a caller whose credentials are not valid as anonymous, so an expired
+     session can log in again; every other method refuses such a caller.
+   - The request is validated with protovalidate only after authorization.
 2. **Store layer.** Queries on org-owned tables require an `OrgScope` value that only the
    authorization layer can construct: a deny-by-default Ent privacy policy, an interceptor that
    filters every query by the scope's org, and a hook that does the same for every update and

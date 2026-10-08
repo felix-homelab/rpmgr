@@ -39,7 +39,9 @@ authorised by host access and audited as `local-cli` ([04](04-security.md#roles)
 Every method carries an `(rpmgr.v1.authz)` option naming the permission it needs, the request field
 that identifies the target resource and whether it needs step-up; an unannotated method fails closed
 ([04](04-security.md#one-enforcement-point-with-defence-in-depth)). Secret fields carry
-`(rpmgr.v1.sensitive)`. Both options are defined in `proto/rpmgr/v1/options.proto`.
+`(rpmgr.v1.sensitive)`. Both options are defined in `proto/rpmgr/v1/options.proto`. [R] A method on
+an org's collection (`List…`, `Create…`) names the org in an `org_id` field, its resource field, as
+AIP's `parent` does.
 
 ## Resource design
 
@@ -195,7 +197,7 @@ API reports both ([03](03-connections.md#configuration-reconciliation)).
 |---|---|---|
 | Validation failed | `INVALID_ARGUMENT` | List of field violations (`field`, `rule`, `message`) from protovalidate |
 | Not found, or exists in another org | `NOT_FOUND` | — (no existence oracle across orgs) |
-| Permission missing | `PERMISSION_DENIED` | Missing permission name |
+| Permission missing | `PERMISSION_DENIED` | `reason = PERMISSION_MISSING`, metadata `permission` |
 | Step-up required | `UNAUTHENTICATED` | `reason = STEP_UP_REQUIRED` |
 | Etag mismatch, dependants exist, domain not verified, port taken | `FAILED_PRECONDITION` | `reason` + metadata |
 | DNS (Phase 2): zone not managed or not `active`, proxied or wildcard name not allowed by the zone, plan changed since it was shown, provider refuses the token for this zone | `FAILED_PRECONDITION` | `reason` = `ZONE_NOT_MANAGED`, `ZONE_NOT_ACTIVE`, `PROXY_NOT_ALLOWED`, `WILDCARD_NOT_ALLOWED`, `PLAN_CHANGED`, `PROVIDER_PERMISSION_DENIED` |
@@ -203,6 +205,8 @@ API reports both ([03](03-connections.md#configuration-reconciliation)).
 | Agent unreachable for an imperative operation; DNS provider unreachable for a live call (`ListProviderZones`, `ListZoneRecords`, `PlanZoneSync`) | `UNAVAILABLE` | — |
 | Operation exceeded its deadline | `DEADLINE_EXCEEDED` | — |
 
+- [R] A `reason` comes as `google.rpc.ErrorInfo` with domain `rpmgr.v1`; field violations come as
+  `buf.validate.Violations`.
 - Error messages never contain secrets or other orgs' data.
 - **Validation is server-authoritative** (protovalidate annotations in the protos). The UI runs its
   own checks for responsiveness only ([09](09-web-ui.md)).
