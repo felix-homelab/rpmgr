@@ -350,6 +350,9 @@ type Route struct {
 	Spec isRoute_Spec `protobuf_oneof:"spec"`
 	// Its targets, by priority; output only: they change with the target methods.
 	Targets []*RouteTarget `protobuf:"bytes,20,rep,name=targets,proto3" json:"targets,omitempty"`
+	// The access policies it applies, in order, each once (docs/03-connections.md, "Access
+	// policies"); a policy with a basic_auth rule only on an http route.
+	PolicyIds []string `protobuf:"bytes,21,rep,name=policy_ids,json=policyIds,proto3" json:"policy_ids,omitempty"`
 	// Its transport policy; the connector's if not set (docs/03-connections.md, "Transport
 	// selection").
 	Transport DataTransport `protobuf:"varint,23,opt,name=transport,proto3,enum=rpmgr.v1.DataTransport" json:"transport,omitempty"`
@@ -483,6 +486,13 @@ func (x *Route) GetTlsPassthrough() *TLSPassthroughRouteSpec {
 func (x *Route) GetTargets() []*RouteTarget {
 	if x != nil {
 		return x.Targets
+	}
+	return nil
+}
+
+func (x *Route) GetPolicyIds() []string {
+	if x != nil {
+		return x.PolicyIds
 	}
 	return nil
 }
@@ -2413,7 +2423,7 @@ var File_rpmgr_v1_route_proto protoreflect.FileDescriptor
 
 const file_rpmgr_v1_route_proto_rawDesc = "" +
 	"\n" +
-	"\x14rpmgr/v1/route.proto\x12\brpmgr.v1\x1a\x1bbuf/validate/validate.proto\x1a google/protobuf/field_mask.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x15rpmgr/v1/common.proto\x1a\x18rpmgr/v1/connector.proto\x1a\x16rpmgr/v1/options.proto\x1a\x15rpmgr/v1/status.proto\"\x84\a\n" +
+	"\x14rpmgr/v1/route.proto\x12\brpmgr.v1\x1a\x1bbuf/validate/validate.proto\x1a google/protobuf/field_mask.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x15rpmgr/v1/common.proto\x1a\x18rpmgr/v1/connector.proto\x1a\x16rpmgr/v1/options.proto\x1a\x15rpmgr/v1/status.proto\"\xaf\a\n" +
 	"\x05Route\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12B\n" +
 	"\x04name\x18\x02 \x01(\tB.\xbaH+\xd8\x01\x01r&2$^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$R\x04name\x12(\n" +
@@ -2426,7 +2436,10 @@ const file_rpmgr_v1_route_proto_rawDesc = "" +
 	"\x03tcp\x18\v \x01(\v2\x16.rpmgr.v1.TCPRouteSpecH\x00R\x03tcp\x12*\n" +
 	"\x03udp\x18\f \x01(\v2\x16.rpmgr.v1.UDPRouteSpecH\x00R\x03udp\x12L\n" +
 	"\x0ftls_passthrough\x18\r \x01(\v2!.rpmgr.v1.TLSPassthroughRouteSpecH\x00R\x0etlsPassthrough\x12/\n" +
-	"\atargets\x18\x14 \x03(\v2\x15.rpmgr.v1.RouteTargetR\atargets\x12?\n" +
+	"\atargets\x18\x14 \x03(\v2\x15.rpmgr.v1.RouteTargetR\atargets\x12)\n" +
+	"\n" +
+	"policy_ids\x18\x15 \x03(\tB\n" +
+	"\xbaH\a\x92\x01\x04\x10\x14\x18\x01R\tpolicyIds\x12?\n" +
 	"\ttransport\x18\x17 \x01(\x0e2\x17.rpmgr.v1.DataTransportB\b\xbaH\x05\x82\x01\x02\x10\x01R\ttransport\x12;\n" +
 	"\vcreate_time\x18\x18 \x01(\v2\x1a.google.protobuf.TimestampR\n" +
 	"createTime\x12;\n" +

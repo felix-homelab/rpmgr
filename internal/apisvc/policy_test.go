@@ -4,6 +4,7 @@ package apisvc_test
 
 import (
 	"context"
+	"slices"
 	"strings"
 	"testing"
 
@@ -17,6 +18,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/auditentry"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/policyrule"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routepolicy"
+	"github.com/felix-homelab/rpmgr/internal/store/storetest"
 )
 
 func ipAllow(cidrs ...string) *rpmgrv1.AccessRule {
@@ -209,5 +211,87 @@ func TestAccessPolicies(t *testing.T) {
 				t.Fatalf("audit entry %s holds a password", a.Action)
 			}
 		}
+	}
+}
+
+// TestRoutePolicies (docs/03-connections.md, "Access policies"): a route applies policies of its
+// org in the order given, each once; a policy with a basic_auth rule only on an http route; an
+// update reorders or clears them; a policy shows the routes that apply it.
+func TestRoutePolicies(t *testing.T) {
+	e, ada, org, group := gatewayEnv(t)
+	ctx := context.Background()
+	e.verified(t, org, "example.com", true)
+	if _, err := ada.gw.CreatePortPool(ctx, connect.NewRequest(&rpmgrv1.CreatePortPoolRequest{OrgId: org,
+		PortPool: &rpmgrv1.PortPool{GatewayGroupId: group, Protocol: tcp, PortFrom: 20000, PortTo: 20001}})); err != nil {
+		t.Fatal(err)
+	}
+	policy := func(b *browser, org, name string, rules ...*rpmgrv1.AccessRule) string {
+		r, err := b.pol.CreateAccessPolicy(ctx, connect.NewRequest(&rpmgrv1.CreateAccessPolicyRequest{OrgId: org,
+			AccessPolicy: &rpmgrv1.AccessPolicy{Name: name, Rules: rules}}))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return r.Msg.GetAccessPolicy().GetId()
+	}
+	ips := policy(ada, org, "ips", ipAllow("10.0.0.0/8"))
+	auth := policy(ada, org, "auth", basicAuth(user("alice", "correct horse battery")))
+	orgB := storetest.Org(t, e.db, "org-b")
+	bob, _ := e.addOwner(t, orgB, "bob@example.com")
+	theirs := policy(bob, orgB, "theirs", ipAllow("192.0.2.0/24"))
+
+	web := httpRoute("web", group, "web.example.com")
+	web.PolicyIds = []string{auth, ips}
+	created, err := createRoute(ada, org, web, "")
+	if err != nil || !slices.Equal(created.GetPolicyIds(), []string{auth, ips}) {
+		t.Fatalf("an http route with two policies: %v %v", created, err)
+	}
+	for name, c := range map[string]struct {
+		rt   *rpmgrv1.Route
+		code connect.Code
+	}{
+		"basic auth on a tcp route": {&rpmgrv1.Route{Name: "pg", GatewayGroupId: group, Spec: &rpmgrv1.Route_Tcp{Tcp: &rpmgrv1.TCPRouteSpec{Port: 20000}},
+			PolicyIds: []string{auth}}, connect.CodeFailedPrecondition},
+		"another org's policy": {&rpmgrv1.Route{Name: "pg", GatewayGroupId: group, Spec: &rpmgrv1.Route_Tcp{Tcp: &rpmgrv1.TCPRouteSpec{Port: 20000}},
+			PolicyIds: []string{theirs}}, connect.CodeNotFound},
+		"a policy twice": {&rpmgrv1.Route{Name: "pg", GatewayGroupId: group, Spec: &rpmgrv1.Route_Tcp{Tcp: &rpmgrv1.TCPRouteSpec{Port: 20000}},
+			PolicyIds: []string{ips, ips}}, connect.CodeInvalidArgument},
+	} {
+		if _, err := createRoute(ada, org, c.rt, ""); code(err) != c.code {
+			t.Errorf("%s: %v, want %v", name, err, c.code)
+		}
+	}
+	pg := tcpRoute("pg", group, 20000)
+	pg.PolicyIds = []string{ips}
+	tcpRt, err := createRoute(ada, org, pg, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	update := func(id string, ids ...string) (*rpmgrv1.Route, error) {
+		r, err := ada.rt.UpdateRoute(ctx, connect.NewRequest(&rpmgrv1.UpdateRouteRequest{Route: &rpmgrv1.Route{Id: id, PolicyIds: ids},
+			UpdateMask: &fieldmaskpb.FieldMask{Paths: []string{"policy_ids"}}}))
+		if err != nil {
+			return nil, err
+		}
+		return r.Msg.GetRoute(), nil
+	}
+	if up, err := update(created.GetId(), ips, auth); err != nil || !slices.Equal(up.GetPolicyIds(), []string{ips, auth}) || up.GetEtag() != "2" {
+		t.Fatalf("reordered: %v %v", up, err)
+	}
+	if _, err := update(tcpRt.GetId(), ips, auth); code(err) != connect.CodeFailedPrecondition || reason(err) != apisvc.ReasonBasicAuthNotHTTP {
+		t.Errorf("basic auth added to a tcp route: %v", err)
+	}
+	got, err := ada.pol.GetAccessPolicy(ctx, connect.NewRequest(&rpmgrv1.GetAccessPolicyRequest{AccessPolicyId: ips}))
+	if err != nil || !slices.Equal(got.Msg.GetAccessPolicy().GetRouteIds(), sorted(created.GetId(), tcpRt.GetId())) {
+		t.Fatalf("the routes that apply a policy: %v %v", got, err)
+	}
+	if up, err := update(created.GetId()); err != nil || len(up.GetPolicyIds()) != 0 {
+		t.Fatalf("cleared: %v %v", up, err)
+	}
+	if _, err := ada.pol.DeleteAccessPolicy(ctx, connect.NewRequest(&rpmgrv1.DeleteAccessPolicyRequest{AccessPolicyId: auth})); err != nil {
+		t.Fatalf("a policy no route applies any more: %v", err)
+	}
+	if _, err := ada.rt.DeleteRoute(ctx, connect.NewRequest(&rpmgrv1.DeleteRouteRequest{RouteId: tcpRt.GetId()})); err != nil {
+		t.Fatalf("a route with a policy: %v", err)
 	}
 }

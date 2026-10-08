@@ -123,6 +123,12 @@ message Route {
   }
   // Its targets, by priority; output only: they change with the target methods.
   repeated RouteTarget targets = 20;
+  // The access policies it applies, in order, each once (docs/03-connections.md, "Access
+  // policies"); a policy with a basic_auth rule only on an http route.
+  repeated string policy_ids = 21 [(buf.validate.field).repeated = {
+    max_items: 20
+    unique: true
+  }];
   // Its transport policy; the connector's if not set (docs/03-connections.md, "Transport
   // selection").
   DataTransport transport = 23 [(buf.validate.field).enum.defined_only = true];
