@@ -204,7 +204,11 @@ flowchart LR
 ```
 
 One VPS, one process, SQLite. The UI is published on the same 443 as the routes; the gateway's SNI
-router hands the controller's hostnames to the in-process controller.
+router hands the controller's hostnames to the in-process controller. The in-process gateway is an
+ordinary enrolled agent: `rpmgr all-in-one init` creates it (gateway group `default`, gateway
+`local`, its tunnel endpoint the public URL's host on port 443) and enrolls it, and its control
+session reaches the controller over an in-memory mutual-TLS connection, so both topologies run the
+same code (R16).
 
 ### Split: private controller
 

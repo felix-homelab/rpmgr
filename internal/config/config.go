@@ -249,6 +249,81 @@ func (c *Connector) validate() error {
 		checkAdmin(c.Listen.Admin))
 }
 
+// AllInOne is /etc/rpmgr/all-in-one.yaml: a controller and a gateway in one process
+// (docs/02-architecture.md, "All-in-one"). The controller is reached through the gateway's port
+// 443; the gateway's identity and state live under state_dir.
+type AllInOne struct {
+	Version   int    `yaml:"version"`
+	PublicURL string `yaml:"public_url"`
+	Listen    struct {
+		TCP       string  `yaml:"tcp"`
+		UDP       string  `yaml:"udp"`
+		TunnelUDP string  `yaml:"tunnel_udp"`
+		HTTP      *string `yaml:"http"`
+		Admin     string  `yaml:"admin"`
+	} `yaml:"listen"`
+	Database struct {
+		Driver string `yaml:"driver"`
+		DSN    string `yaml:"dsn"`
+	} `yaml:"database"`
+	KEK struct {
+		Source string `yaml:"source"`
+		Name   string `yaml:"name"`
+		Path   string `yaml:"path"`
+	} `yaml:"kek"`
+	TLS struct {
+		CertFile string `yaml:"cert_file"`
+		KeyFile  string `yaml:"key_file"`
+	} `yaml:"tls"`
+	StateDir string `yaml:"state_dir"`
+	Log      Log    `yaml:"log"`
+}
+
+func (a *AllInOne) defaults() {
+	setDefault(&a.Listen.TCP, ":443")
+	setDefault(&a.Listen.UDP, ":443")
+	setDefaultPtr(&a.Listen.HTTP, ":80")
+	setDefault(&a.Listen.Admin, "127.0.0.1:7381")
+	setDefault(&a.StateDir, "/var/lib/rpmgr")
+	setDefault(&a.Database.Driver, "sqlite")
+	setDefault(&a.Database.DSN, "/var/lib/rpmgr/controller.db")
+	setDefault(&a.KEK.Source, KEKSystemdCredential)
+	if a.KEK.Source == KEKSystemdCredential {
+		setDefault(&a.KEK.Name, "rpmgr-kek")
+	}
+}
+
+func (a *AllInOne) validate() error {
+	c, g := a.Controller(), a.Gateway()
+	return errors.Join(checkAbs("state_dir", a.StateDir), c.validate(), g.validate())
+}
+
+// Controller is the controller part of the file; its port 443 is the gateway's.
+func (a *AllInOne) Controller() Controller {
+	var c Controller
+	c.Version, c.PublicURL, c.Log = a.Version, a.PublicURL, a.Log
+	c.Listen.HTTPS, c.Listen.HTTP, c.Listen.Admin = a.Listen.TCP, a.Listen.HTTP, a.Listen.Admin
+	c.Database.Driver, c.Database.DSN = a.Database.Driver, a.Database.DSN
+	c.KEK.Source, c.KEK.Name, c.KEK.Path = a.KEK.Source, a.KEK.Name, a.KEK.Path
+	c.TLS.CertFile, c.TLS.KeyFile = a.TLS.CertFile, a.TLS.KeyFile
+	return c
+}
+
+// Gateway is the gateway part of the file: its identity in <state_dir>/gateway/identity, its
+// state in <state_dir>/gateway, the controller at the public URL. Port 80 stays with the
+// controller.
+func (a *AllInOne) Gateway() Gateway {
+	var g Gateway
+	g.Version, g.Log = a.Version, a.Log
+	g.Controller.Endpoints = []string{a.PublicURL}
+	g.StateDir = filepath.Join(a.StateDir, "gateway")
+	g.IdentityDir = filepath.Join(g.StateDir, "identity")
+	g.Listen.TCP, g.Listen.UDP, g.Listen.TunnelUDP, g.Listen.Admin = a.Listen.TCP, a.Listen.UDP, a.Listen.TunnelUDP, a.Listen.Admin
+	none := ""
+	g.Listen.HTTP = &none
+	return g
+}
+
 func setDefault(s *string, v string) {
 	if *s == "" {
 		*s = v
