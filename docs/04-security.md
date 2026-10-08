@@ -300,7 +300,7 @@ later.
 | Storage | SHA-256 of the token, unique index; the plaintext is shown once |
 | Lifetime | **1 hour** default, maximum 30 days |
 | Uses | **1** by default; N or unlimited only for ephemeral connectors, always with a lifetime |
-| Scope | org, role (connector or gateway), gateway group, labels, ephemeral flag; for re-enrollment (`rpmgr enroll --replace`) the token is bound to **one connector ID** when it is minted (with step-up), so the host cannot choose which identity it replaces. Because the connector ID and SPIFFE ID are reused, the replacement revokes the old certificates **by serial**, not the identity |
+| Scope | org, role (connector or gateway), gateway group, labels, ephemeral flag; for re-enrollment (`rpmgr enroll --replace`) the token is bound to **one connector ID** when it is minted (with step-up), so the host cannot choose which identity it replaces. Because the connector ID and SPIFFE ID are reused, the replacement revokes the old certificates **by serial**, not the identity, in the transaction that issues the new one, and records them in the revocation log. [R] A gateway token for a gateway that has enrolled before does the same |
 | Bookkeeping | creator, use count, last use (time, IP), revoked time; listable and revocable in the UI |
 
 Consumption is one atomic statement, so a token cannot be used twice concurrently. `$now` is

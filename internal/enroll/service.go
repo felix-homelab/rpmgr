@@ -8,6 +8,7 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net"
 	"net/http"
 	"regexp"
@@ -25,6 +26,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/ids"
 	"github.com/felix-homelab/rpmgr/internal/pki"
 	"github.com/felix-homelab/rpmgr/internal/ratelimit"
+	"github.com/felix-homelab/rpmgr/internal/revlog"
 	"github.com/felix-homelab/rpmgr/internal/settings"
 	"github.com/felix-homelab/rpmgr/internal/store"
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
@@ -45,7 +47,12 @@ type Service struct {
 	CA        *pki.CA
 	Endpoints []string // the controller endpoints agents try, in order
 	Now       func() time.Time
-	limit     *ratelimit.Limiter
+	// RevLog records the certificates a re-enrollment replaces; Logger reports a failed append.
+	RevLog *revlog.Log
+	Logger *slog.Logger
+	// Denied, if set, applies a changed deny-list to this controller's sessions at once.
+	Denied func()
+	limit  *ratelimit.Limiter
 }
 
 // NewService returns the Enrollment service.
@@ -82,7 +89,8 @@ func (s *Service) Enroll(ctx context.Context, req *agentv1.EnrollRequest) (*agen
 	if err != nil {
 		return nil, status.Error(codes.Internal, "audit")
 	}
-	cert, g, _, err := Redeem(sys, s.DB, req.GetToken(), csr, ip, s.Now(), s.issue(csr, req, ip))
+	var replaced []*ent.IssuedCertificate
+	cert, g, _, err := Redeem(sys, s.DB, req.GetToken(), csr, ip, s.Now(), s.issue(csr, req, ip, &replaced))
 	switch {
 	case errors.Is(err, ErrInvalidToken):
 		return nil, status.Error(codes.Unauthenticated, "invalid token")
@@ -92,6 +100,9 @@ func (s *Service) Enroll(ctx context.Context, req *agentv1.EnrollRequest) (*agen
 		return nil, status.Error(codes.FailedPrecondition, err.Error())
 	case err != nil:
 		return nil, status.Error(codes.Internal, "enrollment failed")
+	}
+	if len(replaced) > 0 && s.Denied != nil {
+		s.Denied()
 	}
 	id, err := pki.ParseSPIFFE(cert.URIs[0], s.CA.TrustDomain())
 	if err != nil {
@@ -111,8 +122,10 @@ func (s *Service) Enroll(ctx context.Context, req *agentv1.EnrollRequest) (*agen
 var errIdentity = errors.New("enroll")
 
 // issue assigns the identity of a grant in the transaction that consumed the token, issues the
-// certificate and appends the audit entry.
-func (s *Service) issue(csr *x509.CertificateRequest, req *agentv1.EnrollRequest, ip string) Issue {
+// certificate and appends the audit entry. A token bound to an identity that already holds
+// certificates, a re-enrollment or a gateway enrolling again, revokes them by serial; replaced
+// receives them.
+func (s *Service) issue(csr *x509.CertificateRequest, req *agentv1.EnrollRequest, ip string, replaced *[]*ent.IssuedCertificate) Issue {
 	return func(ctx context.Context, tx *ent.Tx, g Grant) (*x509.Certificate, error) {
 		key := pki.PublicKeyHash(csr.RawSubjectPublicKeyInfo)
 		id := pki.Identity{TrustDomain: s.CA.TrustDomain(), Org: g.OrgID}
@@ -159,11 +172,35 @@ func (s *Service) issue(csr *x509.CertificateRequest, req *agentv1.EnrollRequest
 		if err != nil {
 			return nil, err
 		}
-		_, err = audit.Append(ctx, tx, audit.Entry{OrgID: g.OrgID, ActorType: audit.ActorAgent, ActorID: id.ID,
+		serial := pki.SerialHex(cert.SerialNumber)
+		if _, err = audit.Append(ctx, tx, audit.Entry{OrgID: g.OrgID, ActorType: audit.ActorAgent, ActorID: id.ID,
 			CredentialID: g.TokenID, AuthMethod: "enrollment_token", IP: ip, Action: action,
-			TargetType: string(id.Kind), TargetID: id.ID, Result: audit.Success,
-			Reason: "serial " + pki.SerialHex(cert.SerialNumber)})
-		return cert, err
+			TargetType: string(id.Kind), TargetID: id.ID, Result: audit.Success, Reason: "serial " + serial}); err != nil {
+			return nil, err
+		}
+		if g.GatewayID == "" && g.ConnectorID == "" {
+			return cert, nil
+		}
+		const reason = "replaced by a re-enrollment"
+		old, err := pki.RevokeReplaced(ctx, tx, id, serial, reason, s.Now())
+		if err != nil {
+			return nil, err
+		}
+		for _, c := range old {
+			if s.RevLog != nil {
+				if _, err := s.RevLog.Append(revlog.Entry{Kind: revlog.CertificateRevoked, Org: g.OrgID, Subject: c.ID, Detail: reason,
+					NotAfter: &c.NotAfter, Actor: id.ID}); err != nil && s.Logger != nil {
+					s.Logger.Error("cannot append to the revocation log", "kind", revlog.CertificateRevoked, "subject", c.ID, "error", err)
+				}
+			}
+			if _, err := audit.Append(ctx, tx, audit.Entry{OrgID: g.OrgID, ActorType: audit.ActorAgent, ActorID: id.ID,
+				CredentialID: g.TokenID, AuthMethod: "enrollment_token", IP: ip, Action: "certificate.revoke",
+				TargetType: "certificate", TargetID: c.ID, Result: audit.Success, Reason: reason}); err != nil {
+				return nil, err
+			}
+		}
+		*replaced = old
+		return cert, nil
 	}
 }
 
