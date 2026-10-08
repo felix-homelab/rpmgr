@@ -258,13 +258,25 @@ spec:
   gatewayGroup: eu
   http:
     hostnames: [nas.example.com]
-    tlsMode: ACME
+    tlsMode: TLS_MODE_ACME
   targets:
     - connector: home-connector
       hostPort: { host: 192.168.10.20, port: 5000 }
-      upstreamProtocol: HTTP
+      upstreamProtocol: UPSTREAM_PROTOCOL_HTTP
   policies: [office-ip-only]
 ```
+
+- [R] **Phase 1 writes manifests; it does not apply them** ([D58](14-open-decisions.md#project-and-process)).
+  The kinds are `Route` (with its targets), `AccessPolicy`, `GatewayGroup`, `Gateway`,
+  `PortPool`, `Domain`, `Connector` and `CABundle`.
+  - `metadata.name` is the resource's name, a domain's FQDN, or the ID of a resource without a
+    name (a port pool).
+  - The spec has no field the server sets: no ID, etag, status, times or lists of dependants.
+  - It names gateway groups, access policies, connectors and CA bundles by their names
+    (`gatewayGroup`, `policies`, `connector`, `caBundle`). A certificate, which has no name, keeps
+    its ID.
+  - Fields marked `sensitive` are never written, so a basic-auth user appears without a
+    password. Certificates and their keys are not a kind.
 
 - `ManifestService.Plan` returns the diff against the current state; `Apply` performs it in **one
   transaction** (one revision). Manifests reference other resources by name; the server resolves
