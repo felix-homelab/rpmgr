@@ -340,3 +340,33 @@ func TestTCPRoutes_Close(t *testing.T) {
 		t.Fatal("Apply after Close listens")
 	}
 }
+
+// TestTCPRoutes_Drain: a draining gateway accepts no new public connection and binds no port, and
+// its open connections carry on, counted, until Close; the open stream is counted by Sessions.
+func TestTCPRoutes_Drain(t *testing.T) {
+	p := newPlane(t, service(t, echoService), "rt_1")
+	port := freePort(t)
+	p.routes.Apply([]gateway.TCPRoute{{ID: "rt_1", Port: port}})
+	c := dialPort(t, port)
+	if err := ping(c, "open"); err != nil {
+		t.Fatal(err)
+	}
+	if n := p.sessions.Streams(); n != 1 {
+		t.Fatalf("%d streams in flight, want 1", n)
+	}
+	p.routes.Drain()
+	if conn, err := net.Dial("tcp", net.JoinHostPort("127.0.0.1", strconv.Itoa(int(port)))); err == nil {
+		_ = conn.Close()
+		t.Fatal("a draining gateway accepts")
+	}
+	if st := p.routes.Apply([]gateway.TCPRoute{{ID: "rt_2", Port: freePort(t)}}); st != nil || p.routes.Conns() != 1 {
+		t.Fatalf("Apply while draining: %v, %d connections", st, p.routes.Conns())
+	}
+	if err := ping(c, "while draining"); err != nil {
+		t.Fatal(err)
+	}
+	_ = c.CloseWrite()
+	_, _ = io.ReadAll(c)
+	_ = c.Close()
+	eventually(t, "the closed connection is still counted", func() bool { return p.routes.Conns() == 0 && p.sessions.Streams() == 0 })
+}

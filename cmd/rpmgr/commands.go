@@ -10,6 +10,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/cli"
 	"github.com/felix-homelab/rpmgr/internal/config"
 	"github.com/felix-homelab/rpmgr/internal/controller"
+	"github.com/felix-homelab/rpmgr/internal/gateway"
 	"github.com/felix-homelab/rpmgr/internal/telemetry"
 	"github.com/felix-homelab/rpmgr/internal/version"
 )
@@ -23,7 +24,7 @@ func commands() *cli.Command {
 		Sub: []*cli.Command{
 			role("controller", "run the controller: web UI, API, CA and configuration", runController,
 				controllerInit()),
-			role("gateway", "run a gateway: public listeners and data sessions from connectors", nil),
+			role("gateway", "run a gateway: public listeners and data sessions from connectors", runGateway),
 			role("connector", "run a connector: data sessions to gateways and the local targets", nil),
 			role("all-in-one", "run a controller and a gateway in one process", nil,
 				&cli.Command{Name: "init", Summary: "initialise an all-in-one installation", Run: cli.NotAvailable}),
@@ -71,6 +72,19 @@ func role(name, summary string, run func(ctx context.Context, env *cli.Env, conf
 		}
 	}
 	return c
+}
+
+// runGateway is `rpmgr gateway`: it runs until SIGINT or SIGTERM, then drains for 60 s.
+func runGateway(ctx context.Context, env *cli.Env, path string) error {
+	var cfg config.Gateway
+	if err := config.Load(path, &cfg); err != nil {
+		return err
+	}
+	logger, err := telemetry.NewLogger(env.Stderr, cfg.Log)
+	if err != nil {
+		return err
+	}
+	return gateway.Run(ctx, gateway.RunOptions{Config: cfg, Version: version.Get().Version, Logger: logger})
 }
 
 // runController is `rpmgr controller`: it runs until SIGINT or SIGTERM, then drains.
