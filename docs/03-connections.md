@@ -573,6 +573,13 @@ gateway nor the connector terminates TLS on these routes. Useful when the gatewa
 plaintext. A service that does not speak TLS itself uses a `tcp` route instead
 ([14](14-open-decisions.md) D31).
 
+- The SNI matches a route's hostname exactly, or a hostname `*.<name>` one label below `<name>`;
+  an exact hostname wins over a wildcard. Within a gateway group a hostname belongs to one
+  passthrough route and to no http route ([06](06-data-model.md#routing)).
+- The stream's `StreamOpen` carries the SNI and the client's address; the ClientHello the gateway
+  read to decide is replayed first, so the target sees the client's TLS handshake unchanged.
+- A removed route's open connections are reset after the route drain period.
+
 Limitation: with Encrypted Client Hello (ECH), the gateway only sees the outer SNI and cannot route
 on the inner name.
 

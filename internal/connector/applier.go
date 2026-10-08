@@ -58,7 +58,7 @@ func (a *Applier) Validate(snap *agentv1.Snapshot) []*agentv1.SnapshotError {
 		switch {
 		case res.GetConnectorRoute() != nil:
 			r := res.GetConnectorRoute()
-			if r.GetType() != "tcp" {
+			if r.GetType() != "tcp" && r.GetType() != "tls_passthrough" {
 				bad(id, "route type %q is not served by this version", r.GetType())
 			}
 			if _, ok := transportOf(r.GetTransport()); !ok {

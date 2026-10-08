@@ -17,6 +17,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/connector"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/gateway"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/route"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/routehostname"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routetarget"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routetcp"
 )
@@ -24,7 +25,7 @@ import (
 // Sources are the snapshot sources of the route types implemented so far (docs/03-connections.md,
 // "Configuration reconciliation").
 func Sources() []snapshot.Source {
-	return []snapshot.Source{GatewayTCP, ConnectorRoutes, ConnectorGateways}
+	return []snapshot.Source{GatewayTCP, GatewayPassthrough, ConnectorRoutes, ConnectorGateways}
 }
 
 // GatewayTCP compiles a gateway's tcp routes: every enabled tcp route of its gateway group with a
@@ -65,6 +66,45 @@ func GatewayTCP(ctx context.Context, tx *ent.Tx, a snapshot.Agent) ([]*agentv1.R
 	return out, nil
 }
 
+// GatewayPassthrough compiles a gateway's tls_passthrough routes: every enabled one of its gateway
+// group with hostnames, and the connectors that serve it. A disabled or decommissioned gateway gets
+// none.
+func GatewayPassthrough(ctx context.Context, tx *ent.Tx, a snapshot.Agent) ([]*agentv1.Resource, error) {
+	if a.Identity.Kind != pki.KindGateway {
+		return nil, nil
+	}
+	gw, err := tx.Gateway.Get(ctx, a.Identity.ID)
+	if ent.IsNotFound(err) {
+		return nil, nil
+	}
+	if err != nil || !gw.Enabled || gw.DecommissionedAt != nil {
+		return nil, err
+	}
+	routes, err := tx.Route.Query().Where(route.GatewayGroupID(gw.GatewayGroupID), route.TypeEQ(route.TypeTLSPassthrough),
+		route.Enabled(true)).Order(ent.Asc(route.FieldID)).All(ctx)
+	if err != nil {
+		return nil, err
+	}
+	var out []*agentv1.Resource
+	for _, r := range routes {
+		hostnames, err := tx.RouteHostname.Query().Where(routehostname.RouteID(r.ID)).Select(routehostname.FieldHostname).Strings(ctx)
+		if err != nil {
+			return nil, err
+		}
+		if len(hostnames) == 0 {
+			continue
+		}
+		slices.Sort(hostnames)
+		connectors, err := serving(ctx, tx, r.ID)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, &agentv1.Resource{Id: r.ID, Kind: &agentv1.Resource_GatewayPassthroughRoute{
+			GatewayPassthroughRoute: &agentv1.GatewayPassthroughRoute{Hostnames: hostnames, Connectors: connectors}}})
+	}
+	return out, nil
+}
+
 // serving lists the connectors, sorted, with an enabled target of the route that are themselves
 // enabled and not decommissioned.
 func serving(ctx context.Context, tx *ent.Tx, routeID string) ([]string, error) {
@@ -79,7 +119,7 @@ func serving(ctx context.Context, tx *ent.Tx, routeID string) ([]string, error) 
 }
 
 // connectorTargets loads the connector a for ConnectorRoutes and ConnectorGateways, its enabled
-// targets on enabled tcp routes, with the routes, and the instance settings. con is nil for any
+// targets on enabled tcp and tls_passthrough routes, with the routes, and the instance settings. con is nil for any
 // other agent and for a disabled or decommissioned connector, which serve nothing.
 func connectorTargets(ctx context.Context, tx *ent.Tx, a snapshot.Agent) (con *ent.Connector, targets []*ent.RouteTarget,
 	inst *rpmgrv1.InstanceSettings, err error) {
@@ -94,7 +134,7 @@ func connectorTargets(ctx context.Context, tx *ent.Tx, a snapshot.Agent) (con *e
 		return nil, nil, nil, err
 	}
 	targets, err = tx.RouteTarget.Query().Where(routetarget.ConnectorID(con.ID), routetarget.Enabled(true),
-		routetarget.HasRouteWith(route.Enabled(true), route.TypeEQ(route.TypeTCP))).WithRoute().All(ctx)
+		routetarget.HasRouteWith(route.Enabled(true), route.TypeIn(route.TypeTCP, route.TypeTLSPassthrough))).WithRoute().All(ctx)
 	if err != nil {
 		return nil, nil, nil, err
 	}
@@ -105,8 +145,8 @@ func connectorTargets(ctx context.Context, tx *ent.Tx, a snapshot.Agent) (con *e
 	return con, targets, inst, nil
 }
 
-// ConnectorRoutes compiles a connector's routes: for every enabled tcp route with an enabled
-// target on it, its targets and the effective transport. A disabled or decommissioned connector
+// ConnectorRoutes compiles a connector's routes: for every enabled tcp or tls_passthrough route
+// with an enabled target on it, its type, its targets and the effective transport. A disabled or decommissioned connector
 // gets none.
 func ConnectorRoutes(ctx context.Context, tx *ent.Tx, a snapshot.Agent) ([]*agentv1.Resource, error) {
 	con, targets, inst, err := connectorTargets(ctx, tx, a)

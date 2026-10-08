@@ -58,7 +58,7 @@ func TestApplier_Apply(t *testing.T) {
 	t.Cleanup(m.Close)
 	routes := gateway.NewTCPRoutes(gateway.TCPOptions{Host: "127.0.0.1", Sessions: m, Revision: a.Revision})
 	t.Cleanup(routes.Close)
-	a.Bind(routes, m)
+	a.Bind(routes, nil, m)
 	if assign.Known(cid("con_1")) || a.Revision() != nil {
 		t.Fatal("known before any snapshot")
 	}

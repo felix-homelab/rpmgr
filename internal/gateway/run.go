@@ -95,7 +95,9 @@ func Run(ctx context.Context, o RunOptions) error {
 	}
 	routes := NewTCPRoutes(TCPOptions{Host: host, Sessions: sessions, Revision: applier.Revision, Logger: o.Logger})
 	defer routes.Close()
-	applier.Bind(routes, sessions)
+	pass := NewPassthrough(sessions, applier.Revision, o.Logger)
+	defer pass.Close()
+	applier.Bind(routes, pass, sessions)
 
 	tunnelTLS := pki.ServerConfig(ctl.Certificate(), id.Roots, pki.Expect{TrustDomain: id.TrustDomain,
 		Kinds: []pki.Kind{pki.KindConnector}, Denied: ctl.DenyList().Denied}, o.Now)
@@ -113,7 +115,7 @@ func Run(ctx context.Context, o RunOptions) error {
 	run, stop := context.WithCancel(context.Background()) // outlives ctx by the drain period
 	defer stop()
 	router := &Router{TrustDomain: id.TrustDomain, GatewayID: id.AgentID, TunnelTLS: h2TLS, DefaultTLS: def, Logger: o.Logger,
-		Controller: o.Controller, ControllerNames: o.ControllerNames,
+		Controller: o.Controller, ControllerNames: o.ControllerNames, Routes: pass,
 		Tunnel: func(c *tls.Conn) {
 			defer func() { _ = c.Close() }()
 			hctx, cancel := context.WithTimeout(run, tunnelHandshake)
@@ -214,7 +216,7 @@ func Run(ctx context.Context, o RunOptions) error {
 	routes.Drain()
 	sessions.Drain(o.Now().Add(o.DrainPeriod))
 	deadline := time.Now().Add(o.DrainPeriod)
-	for result == nil && time.Now().Before(deadline) && (routes.Conns() > 0 || sessions.Streams() > 0) {
+	for result == nil && time.Now().Before(deadline) && (routes.Conns() > 0 || pass.Conns() > 0 || sessions.Streams() > 0) {
 		select {
 		case <-time.After(100 * time.Millisecond):
 		case result = <-errs:
