@@ -18,7 +18,9 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/snapshot"
 	"github.com/felix-homelab/rpmgr/internal/store"
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/certificate"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/domain"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/route"
 	"github.com/felix-homelab/rpmgr/internal/store/storetest"
 )
 
@@ -316,6 +318,74 @@ func TestCompile_ConnectorGateways(t *testing.T) {
 // TestCompile_Passthrough: a gateway gets the enabled tls_passthrough routes of its group that have
 // hostnames, with them sorted and the connectors that serve them; a connector gets such a route
 // with its type.
+// TestCompile_GatewayCertificates: a gateway gets the active certificates of its group's org that
+// cover hostnames of enabled http routes, each with the hostnames it covers; not one for a
+// passthrough or disabled route only, a failed one, or another org's; connectors get none.
+func TestCompile_GatewayCertificates(t *testing.T) {
+	storetest.ForEachDialect(t, func(t *testing.T, db *store.DB) {
+		f := newFleet(t, db)
+		c := db.Client()
+		if err := f.tx(t, func(tx *ent.Tx) error {
+			d, err := domains.Claim(f.sys, tx, f.orgA, "example.com", true)
+			if err != nil {
+				return err
+			}
+			return tx.Domain.UpdateOne(d).SetStatus(domain.StatusVerified).Exec(f.sys)
+		}); err != nil {
+			t.Fatal(err)
+		}
+		mk := func(name string, typ route.Type, enabled bool, hostnames ...string) {
+			id := c.Route.Create().SetOrgID(f.orgA).SetName(name).SetType(typ).SetGatewayGroupID(f.groupA).SetEnabled(enabled).SaveX(f.sys).ID
+			for _, h := range hostnames {
+				if err := f.tx(t, func(tx *ent.Tx) error { _, err := routes.AddHostname(f.sys, tx, id, h, ""); return err }); err != nil {
+					t.Fatal(err)
+				}
+			}
+		}
+		mk("web", route.TypeHTTP, true, "app.example.com", "*.api.example.com", "www.example.com")
+		mk("web-off", route.TypeHTTP, false, "off.example.com")
+		mk("pt", route.TypeTLSPassthrough, true, "db.example.com")
+		cert := func(org string, status certificate.Status, sans ...string) string {
+			return c.Certificate.Create().SetOrgID(org).SetSource(certificate.SourceUploaded).SetSans(sans).SetStatus(status).
+				SetNotBefore(time.Now()).SetNotAfter(time.Unix(1893456000, 0)).SetChain([]byte{1}).SetKeyEnc([]byte{2}).
+				SetContentSha256([]byte(sans[0])).SaveX(f.sys).ID
+		}
+		exact := cert(f.orgA, certificate.StatusActive, "app.example.com")
+		wild := cert(f.orgA, certificate.StatusActive, "*.example.com", "off.example.com")
+		api := cert(f.orgA, certificate.StatusActive, "*.api.example.com")
+		cert(f.orgA, certificate.StatusActive, "db.example.com")
+		cert(f.orgA, certificate.StatusActive, "off.example.com")
+		cert(f.orgA, certificate.StatusFailed, "app.example.com")
+		cert(f.orgB, certificate.StatusActive, "app.example.com")
+
+		got := map[string]*agentv1.GatewayCertificate{}
+		for _, r := range f.compile(t, pki.KindGateway, f.gateway) {
+			if g := r.GetGatewayCertificate(); g != nil {
+				got[r.GetId()] = g
+			}
+		}
+		want := map[string][]string{exact: {"app.example.com"}, wild: {"app.example.com", "www.example.com"}, api: {"*.api.example.com"}}
+		if len(got) != len(want) {
+			t.Fatalf("certificates %v, want %v", got, want)
+		}
+		for id, hosts := range want {
+			if g := got[id]; g == nil || !slices.Equal(g.GetHostnames(), hosts) || len(g.GetContentSha256()) == 0 ||
+				!g.GetNotAfter().AsTime().Equal(time.Unix(1893456000, 0)) {
+				t.Errorf("certificate %s: %v, want hostnames %v", id, g, hosts)
+			}
+		}
+		for _, r := range f.compile(t, pki.KindConnector, f.c1) {
+			if r.GetGatewayCertificate() != nil {
+				t.Fatalf("a connector got a certificate: %v", r)
+			}
+		}
+		c.Gateway.UpdateOneID(f.gateway).SetEnabled(false).ExecX(f.sys)
+		if rs := f.compile(t, pki.KindGateway, f.gateway); len(rs) != 0 {
+			t.Fatalf("a disabled gateway: %v", rs)
+		}
+	})
+}
+
 func TestCompile_Passthrough(t *testing.T) {
 	storetest.ForEachDialect(t, func(t *testing.T, db *store.DB) {
 		f := newFleet(t, db)

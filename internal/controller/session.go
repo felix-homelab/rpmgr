@@ -28,6 +28,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/pki"
 	"github.com/felix-homelab/rpmgr/internal/ratelimit"
 	"github.com/felix-homelab/rpmgr/internal/revlog"
+	"github.com/felix-homelab/rpmgr/internal/secret"
 	"github.com/felix-homelab/rpmgr/internal/snapshot"
 	"github.com/felix-homelab/rpmgr/internal/store"
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
@@ -57,6 +58,7 @@ type Sessions struct {
 	sys     context.Context // the audited system scope of the session handlers
 	push    *pusher         // nil without a compiler
 	revlog  *revlog.Log     // nil keeps no revocation log (tests)
+	sealer  *secret.Sealer  // opens route certificate keys for FetchResource; nil serves none
 	log     *slog.Logger
 	every   time.Duration
 	deny    atomic.Pointer[denyState]
@@ -81,6 +83,8 @@ type SessionsOptions struct {
 	RevisionCheck time.Duration
 	// RevLog receives superseded certificates; nil keeps no revocation log, for tests only.
 	RevLog *revlog.Log
+	// Sealer opens the keys of route certificates that gateways fetch; nil serves no item.
+	Sealer *secret.Sealer
 	Logger *slog.Logger
 }
 
@@ -99,7 +103,7 @@ func NewSessions(o SessionsOptions) *Sessions {
 		o.Logger = slog.New(slog.DiscardHandler)
 	}
 	s := &Sessions{
-		db: o.DB, ca: o.CA, node: o.Node, version: o.Version, now: o.Now, sys: o.Sys, revlog: o.RevLog,
+		db: o.DB, ca: o.CA, node: o.Node, version: o.Version, now: o.Now, sys: o.Sys, revlog: o.RevLog, sealer: o.Sealer,
 		log: o.Logger, every: o.RevisionCheck,
 		admit:  ratelimit.New(time.Second/time.Duration(o.Admission), o.Admission, o.Now),
 		active: map[string]*session{},

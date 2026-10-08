@@ -208,7 +208,10 @@ message Signed { bytes payload = 1; bytes signature = 2; string key_id = 3; }
   deadline; unanswered operations fail with `DEADLINE_EXCEEDED` instead of blocking forever.
 - **Large items** (certificate chains, function bundles) are referenced by content hash inside the
   snapshot and fetched with `FetchResource`, so snapshots stay small and unchanged resources are not
-  re-sent. An agent can fetch only items of its own current snapshot.
+  re-sent. An agent can fetch only an item that one of its own snapshots names with that hash, among
+  those the controller keeps ([06](06-data-model.md#system)); anything else is `NOT_FOUND`, whether
+  it exists or not. A gateway gets a route certificate, chain and key together, only for the
+  hostnames of its group's http routes of the certificate's own org that the certificate covers.
 - **Leaving.** `Leave` lets an agent revoke its own identity; the controller revokes it, pushes the
   deny-list and audits it, and `rpmgr leave` then removes the identity from the host.
 - **ACME challenges** (HTTP-01 and TLS-ALPN-01 for route certificates, D41): the controller sends
