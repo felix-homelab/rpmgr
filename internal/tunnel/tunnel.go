@@ -35,6 +35,10 @@ type Stream interface {
 
 // Session is a data session between a connector and a gateway.
 type Session interface {
+	// Control returns the session control stream. The side that opens it on this transport, the
+	// connector on QUIC and the gateway on HTTP/2, opens it; the other side waits for it. It is
+	// the session's first stream.
+	Control(ctx context.Context) (Stream, error)
 	// OpenStream opens a stream without waiting for a round trip. It never blocks on the peer's
 	// stream limit: it fails at once instead, so the caller can use another session.
 	OpenStream(ctx context.Context) (Stream, error)
@@ -47,3 +51,13 @@ type Session interface {
 	// Transport names the transport: "quic" or "h2".
 	Transport() string
 }
+
+// The transports implement the interfaces.
+var (
+	_ Session = (*QUICSession)(nil)
+	_ Session = (*H2Gateway)(nil)
+	_ Session = (*H2Connector)(nil)
+	_ Stream  = (*quicStream)(nil)
+	_ Stream  = (*h2ClientStream)(nil)
+	_ Stream  = (*h2ServerStream)(nil)
+)

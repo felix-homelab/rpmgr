@@ -675,7 +675,9 @@ deprecated wrapper around it), with one change: the connector's half-close is an
 An HTTP/2 server cannot open request streams, so on this transport **every stream is opened by the
 gateway**:
 
-- The **session control stream** is the first request the gateway opens once the connection is up.
+- The **session control stream** is the first request the gateway opens once the connection is up
+  (`POST /control`); every other stream is a `POST /stream`. The connector refuses a stream that
+  comes before the control stream (421) and a second control stream (409).
 - Streams the connector needs to start (`RELAY_OUT` for private-service visitors,
   `CONTROL_PASSTHROUGH`) are requested with `OpenRequest{open_id, kind, …}` on the session control
   stream. `open_id` is unique per session. The gateway answers either with

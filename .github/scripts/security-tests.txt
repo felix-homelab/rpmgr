@@ -39,9 +39,9 @@ TestFlowControl_PausedClientNotResetWithoutPressure	pending	4.5	#75
 TestH2_AdmissionUnderBudget	pending	4.5	#75	h3-share clause in P3 (HTTP/3 ingress)
 TestGateway_PerGatewayTunnelEndpoints	pending	4.10	#80	WSS clause in P2
 TestOpenRequest_Semantics	pending	4.4	#74
-TestH2_ConnectorFINKeepsClientDirection	pending	4.3	#73
-TestH2_ResetReturnsConnectionWindow	pending	4.3	#73
-TestH2_IdleStreamMemoryBounded	pending	4.3	#73
+TestH2_ConnectorFINKeepsClientDirection	done	4.3	#73
+TestH2_ResetReturnsConnectionWindow	done	4.3	#73
+TestH2_IdleStreamMemoryBounded	done	4.3	#73
 TestReauth_ExpiredWithinGrace	done	3.12	#67	internal/controller, with the revoked-identity clause (3.13); after-restore clause in 11.6
 TestReauth_SupersededSerialRefused	done	3.12	#67	internal/controller; after-restore clause in 11.6
 TestStatelessReset_DetectedWithinPingInterval	done	4.2	#72
