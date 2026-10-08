@@ -37,6 +37,9 @@ type ControlOptions struct {
 	// Fallback, if set, carries the control session through a data session when every
 	// controller endpoint failed (ClientOptions.Fallback).
 	Fallback func(ctx context.Context) (net.Conn, error)
+	// OnAcmeChallenge, if set, applies the ACME challenges gateways answer; its error goes back
+	// in the OpResult. Without it every challenge is refused.
+	OnAcmeChallenge func(*agentv1.AcmeChallenge) error
 }
 
 // Control is an agent's control plane: its identity, the control session with certificate
@@ -76,6 +79,18 @@ func NewControl(o ControlOptions) (*Control, error) {
 		},
 		OnWelcome: c.rt.Welcome,
 		OnMessage: func(m *agentv1.ControllerMessage) {
+			if ch := m.GetAcmeChallenge(); ch != nil {
+				err := errors.New("this agent answers no ACME challenges")
+				if o.OnAcmeChallenge != nil {
+					err = o.OnAcmeChallenge(ch)
+				}
+				r := &agentv1.OpResult{OpId: ch.GetOpId()}
+				if err != nil {
+					r.Error = err.Error()
+				}
+				c.client.Send(&agentv1.AgentMessage{Msg: &agentv1.AgentMessage_OpResult{OpResult: r}})
+				return
+			}
 			if m.GetDenyList() == nil {
 				c.rt.Message(m)
 				return

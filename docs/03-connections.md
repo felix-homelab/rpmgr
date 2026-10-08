@@ -222,6 +222,11 @@ message Signed { bytes payload = 1; bytes signature = 2; string key_id = 3; }
   validation request and is retried later. Gateways keep challenges in memory only, never in the
   snapshot or on disk, and answer the CA from them; `AcmeChallenge{remove}` follows when the
   authorization is finished ([04](04-security.md#controller-certificates), [S6](spikes/S6.md)).
+  The gateways of a name are the enabled gateways of every group with an enabled http route whose
+  hostname is the name or the wildcard one label up. A gateway answers HTTP-01 on port 80 for
+  every name and TLS-ALPN-01 on port 443 for a ClientHello with ALPN `acme-tls/1`, before any
+  route of the name; it keeps at most 1 000 challenges and refuses identifiers that are not DNS
+  names. An agent that answers no challenges, such as a connector, refuses them in its `OpResult`.
 - **Revocations travel separately from snapshots.** `DenyListUpdate` carries the full current set
   (deltas above 1 MiB) and is applied unconditionally, merged by union; an entry is removed only
   after the covered certificate's `NotAfter`. An agent that rejects a snapshot still receives every

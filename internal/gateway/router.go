@@ -21,6 +21,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/mholt/acmez/v3"
+
 	"github.com/felix-homelab/rpmgr/internal/tlspeek"
 	"github.com/felix-homelab/rpmgr/internal/tunnel"
 )
@@ -37,6 +39,7 @@ const (
 	DecideController  Decision = "controller"  // controller.<td>, reauth.controller.<td>, UI names
 	DecideTunnelH2    Decision = "tunnel-h2"   // <this gateway>.gateway.<td> and ALPN rpmgr-tunnel-h2/1
 	DecidePassthrough Decision = "passthrough" // the SNI of a TLS-passthrough route
+	DecideACME        Decision = "acme"        // ALPN acme-tls/1 for a name with a TLS-ALPN-01 challenge
 	DecideHTTP        Decision = "http"        // the SNI of an http route
 	DecideDefault     Decision = "default"     // no SNI, or an unknown one
 	DecideNotTLS      Decision = "not-tls"     // not a TLS handshake
@@ -71,6 +74,9 @@ type Router struct {
 	// HTTP takes the connections of http routes; HTTPTLS picks the certificate per name.
 	HTTP    func(*tls.Conn)
 	HTTPTLS *tls.Config
+	// ACME, if set, returns the acme-tls/1 certificate of a pending TLS-ALPN-01 challenge for a
+	// name, or nil.
+	ACME func(sni string) *tls.Certificate
 	// DefaultTLS completes the handshake for an unknown name before the connection is closed.
 	DefaultTLS *tls.Config
 	Logger     *slog.Logger
@@ -111,6 +117,9 @@ func (r *Router) Decide(ch *tlspeek.ClientHello) Decision {
 		}
 		return DecideDefault
 	}
+	if r.ACME != nil && slices.Contains(ch.ALPN, acmez.ACMETLS1Protocol) && r.ACME(sni) != nil {
+		return DecideACME // before the routes: a passthrough route's backend never sees the CA
+	}
 	if r.Routes != nil {
 		if _, ok := r.Routes.Passthrough(sni); ok {
 			return DecidePassthrough
@@ -149,6 +158,18 @@ func (r *Router) Handle(c net.Conn) {
 		h(rc)
 	case DecideHTTP:
 		r.HTTP(tls.Server(rc, r.HTTPTLS))
+	case DecideACME:
+		// RFC 8737: a handshake with the challenge certificate is the answer; nothing follows.
+		cert := r.ACME(strings.ToLower(strings.TrimSuffix(ch.ServerName, ".")))
+		if cert == nil {
+			_ = rc.Close()
+			return
+		}
+		tc := tls.Server(rc, &tls.Config{MinVersion: tls.VersionTLS12, NextProtos: []string{acmez.ACMETLS1Protocol},
+			Certificates: []tls.Certificate{*cert}})
+		_ = tc.SetDeadline(time.Now().Add(defaultHandshake))
+		_ = tc.Handshake()
+		_ = tc.Close()
 	default:
 		// There is no fallback route: complete the handshake with the default certificate, so a
 		// browser shows a certificate error rather than a reset, and close.
