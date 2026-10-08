@@ -41,6 +41,8 @@ func (Domain) Fields() []ent.Field {
 		field.Time("created_at").Immutable().Default(time.Now),
 		field.Time("verified_at").Optional().Nillable(),
 		field.Time("last_checked_at").Optional().Nillable(),
+		// last_error is why the last check found no proof; empty after a success.
+		field.String("last_error").Default("").MaxLen(512),
 	}
 }
 

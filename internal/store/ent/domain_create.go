@@ -136,6 +136,20 @@ func (_c *DomainCreate) SetNillableLastCheckedAt(v *time.Time) *DomainCreate {
 	return _c
 }
 
+// SetLastError sets the "last_error" field.
+func (_c *DomainCreate) SetLastError(v string) *DomainCreate {
+	_c.mutation.SetLastError(v)
+	return _c
+}
+
+// SetNillableLastError sets the "last_error" field if the given value is not nil.
+func (_c *DomainCreate) SetNillableLastError(v *string) *DomainCreate {
+	if v != nil {
+		_c.SetLastError(*v)
+	}
+	return _c
+}
+
 // SetID sets the "id" field.
 func (_c *DomainCreate) SetID(v string) *DomainCreate {
 	_c.mutation.SetID(v)
@@ -210,6 +224,10 @@ func (_c *DomainCreate) defaults() error {
 		v := domain.DefaultCreatedAt()
 		_c.mutation.SetCreatedAt(v)
 	}
+	if _, ok := _c.mutation.LastError(); !ok {
+		v := domain.DefaultLastError
+		_c.mutation.SetLastError(v)
+	}
 	if _, ok := _c.mutation.ID(); !ok {
 		if domain.DefaultID == nil {
 			return fmt.Errorf("ent: uninitialized domain.DefaultID (forgotten import ent/runtime?)")
@@ -275,6 +293,14 @@ func (_c *DomainCreate) check() error {
 	}
 	if _, ok := _c.mutation.CreatedAt(); !ok {
 		return &ValidationError{Name: "created_at", err: errors.New(`ent: missing required field "Domain.created_at"`)}
+	}
+	if _, ok := _c.mutation.LastError(); !ok {
+		return &ValidationError{Name: "last_error", err: errors.New(`ent: missing required field "Domain.last_error"`)}
+	}
+	if v, ok := _c.mutation.LastError(); ok {
+		if err := domain.LastErrorValidator(v); err != nil {
+			return &ValidationError{Name: "last_error", err: fmt.Errorf(`ent: validator failed for field "Domain.last_error": %w`, err)}
+		}
 	}
 	if v, ok := _c.mutation.ID(); ok {
 		if err := domain.IDValidator(v); err != nil {
@@ -355,6 +381,10 @@ func (_c *DomainCreate) createSpec() (*Domain, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.LastCheckedAt(); ok {
 		_spec.SetField(domain.FieldLastCheckedAt, field.TypeTime, value)
 		_node.LastCheckedAt = &value
+	}
+	if value, ok := _c.mutation.LastError(); ok {
+		_spec.SetField(domain.FieldLastError, field.TypeString, value)
+		_node.LastError = value
 	}
 	return _node, _spec
 }

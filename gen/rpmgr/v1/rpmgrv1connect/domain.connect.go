@@ -43,6 +43,9 @@ const (
 	// DomainServiceListDomainsProcedure is the fully-qualified name of the DomainService's ListDomains
 	// RPC.
 	DomainServiceListDomainsProcedure = "/rpmgr.v1.DomainService/ListDomains"
+	// DomainServiceVerifyDomainProcedure is the fully-qualified name of the DomainService's
+	// VerifyDomain RPC.
+	DomainServiceVerifyDomainProcedure = "/rpmgr.v1.DomainService/VerifyDomain"
 	// DomainServiceDeleteDomainProcedure is the fully-qualified name of the DomainService's
 	// DeleteDomain RPC.
 	DomainServiceDeleteDomainProcedure = "/rpmgr.v1.DomainService/DeleteDomain"
@@ -59,6 +62,8 @@ type DomainServiceClient interface {
 	GetDomain(context.Context, *connect.Request[v1.GetDomainRequest]) (*connect.Response[v1.GetDomainResponse], error)
 	// ListDomains lists an org's domain claims by ID.
 	ListDomains(context.Context, *connect.Request[v1.ListDomainsRequest]) (*connect.Response[v1.ListDomainsResponse], error)
+	// VerifyDomain checks a claim's proof now, as the schedule does later on its own.
+	VerifyDomain(context.Context, *connect.Request[v1.VerifyDomainRequest]) (*connect.Response[v1.VerifyDomainResponse], error)
 	// DeleteDomain gives a claim up; refused while route hostnames lie under it.
 	DeleteDomain(context.Context, *connect.Request[v1.DeleteDomainRequest]) (*connect.Response[v1.DeleteDomainResponse], error)
 	// MarkDomainTrusted verifies a claim without a proof (method trusted, D13). Only an Instance
@@ -97,6 +102,12 @@ func NewDomainServiceClient(httpClient connect.HTTPClient, baseURL string, opts 
 			connect.WithIdempotency(connect.IdempotencyNoSideEffects),
 			connect.WithClientOptions(opts...),
 		),
+		verifyDomain: connect.NewClient[v1.VerifyDomainRequest, v1.VerifyDomainResponse](
+			httpClient,
+			baseURL+DomainServiceVerifyDomainProcedure,
+			connect.WithSchema(domainServiceMethods.ByName("VerifyDomain")),
+			connect.WithClientOptions(opts...),
+		),
 		deleteDomain: connect.NewClient[v1.DeleteDomainRequest, v1.DeleteDomainResponse](
 			httpClient,
 			baseURL+DomainServiceDeleteDomainProcedure,
@@ -117,6 +128,7 @@ type domainServiceClient struct {
 	createDomain      *connect.Client[v1.CreateDomainRequest, v1.CreateDomainResponse]
 	getDomain         *connect.Client[v1.GetDomainRequest, v1.GetDomainResponse]
 	listDomains       *connect.Client[v1.ListDomainsRequest, v1.ListDomainsResponse]
+	verifyDomain      *connect.Client[v1.VerifyDomainRequest, v1.VerifyDomainResponse]
 	deleteDomain      *connect.Client[v1.DeleteDomainRequest, v1.DeleteDomainResponse]
 	markDomainTrusted *connect.Client[v1.MarkDomainTrustedRequest, v1.MarkDomainTrustedResponse]
 }
@@ -134,6 +146,11 @@ func (c *domainServiceClient) GetDomain(ctx context.Context, req *connect.Reques
 // ListDomains calls rpmgr.v1.DomainService.ListDomains.
 func (c *domainServiceClient) ListDomains(ctx context.Context, req *connect.Request[v1.ListDomainsRequest]) (*connect.Response[v1.ListDomainsResponse], error) {
 	return c.listDomains.CallUnary(ctx, req)
+}
+
+// VerifyDomain calls rpmgr.v1.DomainService.VerifyDomain.
+func (c *domainServiceClient) VerifyDomain(ctx context.Context, req *connect.Request[v1.VerifyDomainRequest]) (*connect.Response[v1.VerifyDomainResponse], error) {
+	return c.verifyDomain.CallUnary(ctx, req)
 }
 
 // DeleteDomain calls rpmgr.v1.DomainService.DeleteDomain.
@@ -154,6 +171,8 @@ type DomainServiceHandler interface {
 	GetDomain(context.Context, *connect.Request[v1.GetDomainRequest]) (*connect.Response[v1.GetDomainResponse], error)
 	// ListDomains lists an org's domain claims by ID.
 	ListDomains(context.Context, *connect.Request[v1.ListDomainsRequest]) (*connect.Response[v1.ListDomainsResponse], error)
+	// VerifyDomain checks a claim's proof now, as the schedule does later on its own.
+	VerifyDomain(context.Context, *connect.Request[v1.VerifyDomainRequest]) (*connect.Response[v1.VerifyDomainResponse], error)
 	// DeleteDomain gives a claim up; refused while route hostnames lie under it.
 	DeleteDomain(context.Context, *connect.Request[v1.DeleteDomainRequest]) (*connect.Response[v1.DeleteDomainResponse], error)
 	// MarkDomainTrusted verifies a claim without a proof (method trusted, D13). Only an Instance
@@ -188,6 +207,12 @@ func NewDomainServiceHandler(svc DomainServiceHandler, opts ...connect.HandlerOp
 		connect.WithIdempotency(connect.IdempotencyNoSideEffects),
 		connect.WithHandlerOptions(opts...),
 	)
+	domainServiceVerifyDomainHandler := connect.NewUnaryHandler(
+		DomainServiceVerifyDomainProcedure,
+		svc.VerifyDomain,
+		connect.WithSchema(domainServiceMethods.ByName("VerifyDomain")),
+		connect.WithHandlerOptions(opts...),
+	)
 	domainServiceDeleteDomainHandler := connect.NewUnaryHandler(
 		DomainServiceDeleteDomainProcedure,
 		svc.DeleteDomain,
@@ -208,6 +233,8 @@ func NewDomainServiceHandler(svc DomainServiceHandler, opts ...connect.HandlerOp
 			domainServiceGetDomainHandler.ServeHTTP(w, r)
 		case DomainServiceListDomainsProcedure:
 			domainServiceListDomainsHandler.ServeHTTP(w, r)
+		case DomainServiceVerifyDomainProcedure:
+			domainServiceVerifyDomainHandler.ServeHTTP(w, r)
 		case DomainServiceDeleteDomainProcedure:
 			domainServiceDeleteDomainHandler.ServeHTTP(w, r)
 		case DomainServiceMarkDomainTrustedProcedure:
@@ -231,6 +258,10 @@ func (UnimplementedDomainServiceHandler) GetDomain(context.Context, *connect.Req
 
 func (UnimplementedDomainServiceHandler) ListDomains(context.Context, *connect.Request[v1.ListDomainsRequest]) (*connect.Response[v1.ListDomainsResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("rpmgr.v1.DomainService.ListDomains is not implemented"))
+}
+
+func (UnimplementedDomainServiceHandler) VerifyDomain(context.Context, *connect.Request[v1.VerifyDomainRequest]) (*connect.Response[v1.VerifyDomainResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("rpmgr.v1.DomainService.VerifyDomain is not implemented"))
 }
 
 func (UnimplementedDomainServiceHandler) DeleteDomain(context.Context, *connect.Request[v1.DeleteDomainRequest]) (*connect.Response[v1.DeleteDomainResponse], error) {

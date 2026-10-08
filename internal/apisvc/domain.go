@@ -29,7 +29,46 @@ type Domains struct {
 	API *api.Server
 	// Sys is the controller's system scope, for MarkDomainTrusted.
 	Sys context.Context
-	Now func() time.Time
+	// TXT and HTTP check the proofs of claims; nil refuses to check that method.
+	TXT, HTTP domains.Verifier
+	Now       func() time.Time
+}
+
+// VerifyDomain implements DomainService: it checks the proof outside any transaction, then records
+// the result. A verified or trusted claim is returned as it is.
+func (d *Domains) VerifyDomain(ctx context.Context, req *connect.Request[rpmgrv1.VerifyDomainRequest]) (
+	*connect.Response[rpmgrv1.VerifyDomainResponse], error) {
+	cur, err := d.DB.ReadClient().Domain.Get(ctx, req.Msg.GetDomainId())
+	if err != nil {
+		return nil, storeError(err)
+	}
+	if cur.Status == domain.StatusVerified || cur.Status == domain.StatusPendingApproval {
+		return connect.NewResponse(&rpmgrv1.VerifyDomainResponse{Domain: domainOf(cur)}), nil
+	}
+	v := d.TXT
+	if cur.Method == domain.MethodHTTP {
+		v = d.HTTP
+	}
+	if v == nil {
+		return nil, connect.NewError(connect.CodeFailedPrecondition, fmt.Errorf("apisvc: this controller checks no %s proofs", cur.Method))
+	}
+	result := v.Verify(ctx, cur.Fqdn, cur.ChallengeValue)
+	var row *ent.Domain
+	err = store.WriteTx(ctx, d.DB, func(tx *ent.Tx) error {
+		latest, err := tx.Domain.Get(ctx, cur.ID)
+		if err != nil {
+			return err
+		}
+		if latest.ChallengeValue != cur.ChallengeValue {
+			return connect.NewError(connect.CodeAborted, errors.New("apisvc: the claim changed during the check"))
+		}
+		row, err = domains.Record(ctx, tx, latest, result, d.now())
+		return err
+	})
+	if err != nil {
+		return nil, storeError(err)
+	}
+	return connect.NewResponse(&rpmgrv1.VerifyDomainResponse{Domain: domainOf(row)}), nil
 }
 
 // CreateDomain implements DomainService.
@@ -185,6 +224,7 @@ func domainOf(r *ent.Domain) *rpmgrv1.Domain {
 	if r.VerifiedAt != nil {
 		out.VerifyTime = timestamppb.New(*r.VerifiedAt)
 	}
+	out.LastError = r.LastError
 	if r.LastCheckedAt != nil {
 		out.LastCheckTime = timestamppb.New(*r.LastCheckedAt)
 	}

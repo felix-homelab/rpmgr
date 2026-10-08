@@ -442,6 +442,7 @@ var (
 		{Name: "created_at", Type: field.TypeTime},
 		{Name: "verified_at", Type: field.TypeTime, Nullable: true},
 		{Name: "last_checked_at", Type: field.TypeTime, Nullable: true},
+		{Name: "last_error", Type: field.TypeString, Size: 512, Default: ""},
 	}
 	// DomainsTable holds the schema information for the "domains" table.
 	DomainsTable = &schema.Table{

@@ -31,6 +31,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/audit"
 	"github.com/felix-homelab/rpmgr/internal/authz"
 	"github.com/felix-homelab/rpmgr/internal/config"
+	"github.com/felix-homelab/rpmgr/internal/domains"
 	"github.com/felix-homelab/rpmgr/internal/enroll"
 	"github.com/felix-homelab/rpmgr/internal/ids"
 	"github.com/felix-homelab/rpmgr/internal/lease"
@@ -253,7 +254,8 @@ func Run(ctx context.Context, o RunOptions) error {
 	}
 	if err := apiServer.Mount(mux, rpmgrv1.File_rpmgr_v1_domain_proto.Services().ByName("DomainService"),
 		func(opts ...connect.HandlerOption) (string, http.Handler) {
-			return rpmgrv1connect.NewDomainServiceHandler(&apisvc.Domains{DB: db, API: apiServer, Sys: sys, Now: o.Now}, opts...)
+			return rpmgrv1connect.NewDomainServiceHandler(&apisvc.Domains{DB: db, API: apiServer, Sys: sys, Now: o.Now,
+				TXT: &domains.TXTVerifier{}}, opts...)
 		}); err != nil {
 		return err
 	}

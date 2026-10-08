@@ -35,6 +35,8 @@ const (
 	FieldVerifiedAt = "verified_at"
 	// FieldLastCheckedAt holds the string denoting the last_checked_at field in the database.
 	FieldLastCheckedAt = "last_checked_at"
+	// FieldLastError holds the string denoting the last_error field in the database.
+	FieldLastError = "last_error"
 	// Table holds the table name of the domain in the database.
 	Table = "domains"
 )
@@ -52,6 +54,7 @@ var Columns = []string{
 	FieldCreatedAt,
 	FieldVerifiedAt,
 	FieldLastCheckedAt,
+	FieldLastError,
 }
 
 // ValidColumn reports if the column name is valid (part of the table columns).
@@ -87,6 +90,10 @@ var (
 	ChallengeValueValidator func(string) error
 	// DefaultCreatedAt holds the default value on creation for the "created_at" field.
 	DefaultCreatedAt func() time.Time
+	// DefaultLastError holds the default value on creation for the "last_error" field.
+	DefaultLastError string
+	// LastErrorValidator is a validator for the "last_error" field. It is called by the builders before save.
+	LastErrorValidator func(string) error
 	// DefaultID holds the default value on creation for the "id" field.
 	DefaultID func() string
 	// IDValidator is a validator for the "id" field. It is called by the builders before save.
@@ -205,4 +212,9 @@ func ByVerifiedAt(opts ...sql.OrderTermOption) OrderOption {
 // ByLastCheckedAt orders the results by the last_checked_at field.
 func ByLastCheckedAt(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldLastCheckedAt, opts...).ToFunc()
+}
+
+// ByLastError orders the results by the last_error field.
+func ByLastError(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldLastError, opts...).ToFunc()
 }

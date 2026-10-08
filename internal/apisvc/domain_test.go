@@ -5,6 +5,7 @@ package apisvc_test
 import (
 	"context"
 	"strings"
+	"sync"
 	"testing"
 
 	"connectrpc.com/connect"
@@ -12,6 +13,7 @@ import (
 	rpmgrv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/v1"
 	"github.com/felix-homelab/rpmgr/internal/api"
 	"github.com/felix-homelab/rpmgr/internal/apisvc"
+	"github.com/felix-homelab/rpmgr/internal/domains"
 	"github.com/felix-homelab/rpmgr/internal/password"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/auditentry"
 	"github.com/felix-homelab/rpmgr/internal/store/storetest"
@@ -177,4 +179,77 @@ func (e *env) addOwner(t *testing.T, org, email string) (*browser, string) {
 		t.Fatal(err)
 	}
 	return b, u.ID
+}
+
+// fakeVerifier finds a proof for the names in ok and none for others.
+type fakeVerifier struct {
+	mu    sync.Mutex
+	ok    map[string]bool
+	calls int
+}
+
+func (f *fakeVerifier) Verify(_ context.Context, fqdn, _ string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.calls++
+	if f.ok[fqdn] {
+		return nil
+	}
+	return domains.ErrNoProof
+}
+
+func (f *fakeVerifier) prove(fqdn string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.ok == nil {
+		f.ok = map[string]bool{}
+	}
+	f.ok[fqdn] = true
+}
+
+// TestVerifyDomain: a check without a proof leaves the claim pending with why and when; with one
+// it is verified, its challenge gone; a verified claim is not checked again; an HTTP claim needs a
+// verifier this controller lacks for now; a Viewer checks nothing.
+func TestVerifyDomain(t *testing.T) {
+	e, ada, org, _ := gatewayEnv(t)
+	ctx := context.Background()
+	d, err := claim(ada, org, "example.com", false, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	verify := func(b *browser, id string) (*rpmgrv1.Domain, error) {
+		r, err := b.dom.VerifyDomain(ctx, connect.NewRequest(&rpmgrv1.VerifyDomainRequest{DomainId: id}))
+		if err != nil {
+			return nil, err
+		}
+		return r.Msg.GetDomain(), nil
+	}
+	got, err := verify(ada, d.GetId())
+	if err != nil || got.GetStatus() != rpmgrv1.DomainStatus_DOMAIN_STATUS_PENDING || !strings.Contains(got.GetLastError(), "does not hold") ||
+		got.GetLastCheckTime() == nil || got.GetEtag() == d.GetEtag() || got.GetChallenge() == nil {
+		t.Fatalf("no proof: %v %v", got, err)
+	}
+	e.txt.prove("example.com")
+	if got, err = verify(ada, d.GetId()); err != nil || got.GetStatus() != rpmgrv1.DomainStatus_DOMAIN_STATUS_VERIFIED ||
+		got.GetLastError() != "" || got.GetVerifyTime() == nil || got.GetChallenge() != nil {
+		t.Fatalf("a proof: %v %v", got, err)
+	}
+	calls := e.txt.calls
+	if again, err := verify(ada, d.GetId()); err != nil || !again.GetVerifyTime().AsTime().Equal(got.GetVerifyTime().AsTime()) || e.txt.calls != calls {
+		t.Fatalf("a verified claim checked again: %v %v", again, err)
+	}
+	web, err := claim(ada, org, "web.example.org", false, rpmgrv1.DomainMethod_DOMAIN_METHOD_HTTP)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := verify(ada, web.GetId()); code(err) != connect.CodeFailedPrecondition {
+		t.Fatalf("an HTTP claim without an HTTP verifier: %v", err)
+	}
+	vwr, _ := e.join(t, ada, org, "vwr@example.com", "viewer")
+	if _, err := verify(vwr, web.GetId()); code(err) != connect.CodePermissionDenied {
+		t.Fatalf("a Viewer checks: %v", err)
+	}
+	if _, err := verify(ada, "dom_missing"); code(err) != connect.CodeNotFound {
+		t.Fatalf("a missing claim: %v", err)
+	}
 }

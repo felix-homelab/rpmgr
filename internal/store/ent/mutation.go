@@ -12768,6 +12768,7 @@ type DomainMutation struct {
 	created_at      *time.Time
 	verified_at     *time.Time
 	last_checked_at *time.Time
+	last_error      *string
 	clearedFields   map[string]struct{}
 	done            bool
 	oldValue        func(context.Context) (*Domain, error)
@@ -13284,6 +13285,42 @@ func (m *DomainMutation) ResetLastCheckedAt() {
 	delete(m.clearedFields, domain.FieldLastCheckedAt)
 }
 
+// SetLastError sets the "last_error" field.
+func (m *DomainMutation) SetLastError(s string) {
+	m.last_error = &s
+}
+
+// LastError returns the value of the "last_error" field in the mutation.
+func (m *DomainMutation) LastError() (r string, exists bool) {
+	v := m.last_error
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldLastError returns the old "last_error" field's value of the Domain entity.
+// If the Domain object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *DomainMutation) OldLastError(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldLastError is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldLastError requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldLastError: %w", err)
+	}
+	return oldValue.LastError, nil
+}
+
+// ResetLastError resets all changes to the "last_error" field.
+func (m *DomainMutation) ResetLastError() {
+	m.last_error = nil
+}
+
 // Where appends a list predicates to the DomainMutation builder.
 func (m *DomainMutation) Where(ps ...predicate.Domain) {
 	m.predicates = append(m.predicates, ps...)
@@ -13318,7 +13355,7 @@ func (m *DomainMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *DomainMutation) Fields() []string {
-	fields := make([]string, 0, 10)
+	fields := make([]string, 0, 11)
 	if m.org_id != nil {
 		fields = append(fields, domain.FieldOrgID)
 	}
@@ -13349,6 +13386,9 @@ func (m *DomainMutation) Fields() []string {
 	if m.last_checked_at != nil {
 		fields = append(fields, domain.FieldLastCheckedAt)
 	}
+	if m.last_error != nil {
+		fields = append(fields, domain.FieldLastError)
+	}
 	return fields
 }
 
@@ -13377,6 +13417,8 @@ func (m *DomainMutation) Field(name string) (ent.Value, bool) {
 		return m.VerifiedAt()
 	case domain.FieldLastCheckedAt:
 		return m.LastCheckedAt()
+	case domain.FieldLastError:
+		return m.LastError()
 	}
 	return nil, false
 }
@@ -13406,6 +13448,8 @@ func (m *DomainMutation) OldField(ctx context.Context, name string) (ent.Value, 
 		return m.OldVerifiedAt(ctx)
 	case domain.FieldLastCheckedAt:
 		return m.OldLastCheckedAt(ctx)
+	case domain.FieldLastError:
+		return m.OldLastError(ctx)
 	}
 	return nil, fmt.Errorf("unknown Domain field %s", name)
 }
@@ -13484,6 +13528,13 @@ func (m *DomainMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetLastCheckedAt(v)
+		return nil
+	case domain.FieldLastError:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetLastError(v)
 		return nil
 	}
 	return fmt.Errorf("unknown Domain field %s", name)
@@ -13593,6 +13644,9 @@ func (m *DomainMutation) ResetField(name string) error {
 		return nil
 	case domain.FieldLastCheckedAt:
 		m.ResetLastCheckedAt()
+		return nil
+	case domain.FieldLastError:
+		m.ResetLastError()
 		return nil
 	}
 	return fmt.Errorf("unknown Domain field %s", name)

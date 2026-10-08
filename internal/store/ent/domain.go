@@ -37,7 +37,9 @@ type Domain struct {
 	VerifiedAt *time.Time `json:"verified_at,omitempty"`
 	// LastCheckedAt holds the value of the "last_checked_at" field.
 	LastCheckedAt *time.Time `json:"last_checked_at,omitempty"`
-	selectValues  sql.SelectValues
+	// LastError holds the value of the "last_error" field.
+	LastError    string `json:"last_error,omitempty"`
+	selectValues sql.SelectValues
 }
 
 // scanValues returns the types for scanning values from sql.Rows.
@@ -49,7 +51,7 @@ func (*Domain) scanValues(columns []string) ([]any, error) {
 			values[i] = new(sql.NullBool)
 		case domain.FieldVersion:
 			values[i] = new(sql.NullInt64)
-		case domain.FieldID, domain.FieldOrgID, domain.FieldFqdn, domain.FieldStatus, domain.FieldMethod, domain.FieldChallengeValue:
+		case domain.FieldID, domain.FieldOrgID, domain.FieldFqdn, domain.FieldStatus, domain.FieldMethod, domain.FieldChallengeValue, domain.FieldLastError:
 			values[i] = new(sql.NullString)
 		case domain.FieldCreatedAt, domain.FieldVerifiedAt, domain.FieldLastCheckedAt:
 			values[i] = new(sql.NullTime)
@@ -136,6 +138,12 @@ func (_m *Domain) assignValues(columns []string, values []any) error {
 				_m.LastCheckedAt = new(time.Time)
 				*_m.LastCheckedAt = value.Time
 			}
+		case domain.FieldLastError:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field last_error", values[i])
+			} else if value.Valid {
+				_m.LastError = value.String
+			}
 		default:
 			_m.selectValues.Set(columns[i], values[i])
 		}
@@ -205,6 +213,9 @@ func (_m *Domain) String() string {
 		builder.WriteString("last_checked_at=")
 		builder.WriteString(v.Format(time.ANSIC))
 	}
+	builder.WriteString(", ")
+	builder.WriteString("last_error=")
+	builder.WriteString(_m.LastError)
 	builder.WriteByte(')')
 	return builder.String()
 }

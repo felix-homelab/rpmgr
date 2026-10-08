@@ -104,6 +104,11 @@ func LastCheckedAt(v time.Time) predicate.Domain {
 	return predicate.Domain(sql.FieldEQ(FieldLastCheckedAt, v))
 }
 
+// LastError applies equality check predicate on the "last_error" field. It's identical to LastErrorEQ.
+func LastError(v string) predicate.Domain {
+	return predicate.Domain(sql.FieldEQ(FieldLastError, v))
+}
+
 // OrgIDEQ applies the EQ predicate on the "org_id" field.
 func OrgIDEQ(v string) predicate.Domain {
 	return predicate.Domain(sql.FieldEQ(FieldOrgID, v))
@@ -527,6 +532,71 @@ func LastCheckedAtIsNil() predicate.Domain {
 // LastCheckedAtNotNil applies the NotNil predicate on the "last_checked_at" field.
 func LastCheckedAtNotNil() predicate.Domain {
 	return predicate.Domain(sql.FieldNotNull(FieldLastCheckedAt))
+}
+
+// LastErrorEQ applies the EQ predicate on the "last_error" field.
+func LastErrorEQ(v string) predicate.Domain {
+	return predicate.Domain(sql.FieldEQ(FieldLastError, v))
+}
+
+// LastErrorNEQ applies the NEQ predicate on the "last_error" field.
+func LastErrorNEQ(v string) predicate.Domain {
+	return predicate.Domain(sql.FieldNEQ(FieldLastError, v))
+}
+
+// LastErrorIn applies the In predicate on the "last_error" field.
+func LastErrorIn(vs ...string) predicate.Domain {
+	return predicate.Domain(sql.FieldIn(FieldLastError, vs...))
+}
+
+// LastErrorNotIn applies the NotIn predicate on the "last_error" field.
+func LastErrorNotIn(vs ...string) predicate.Domain {
+	return predicate.Domain(sql.FieldNotIn(FieldLastError, vs...))
+}
+
+// LastErrorGT applies the GT predicate on the "last_error" field.
+func LastErrorGT(v string) predicate.Domain {
+	return predicate.Domain(sql.FieldGT(FieldLastError, v))
+}
+
+// LastErrorGTE applies the GTE predicate on the "last_error" field.
+func LastErrorGTE(v string) predicate.Domain {
+	return predicate.Domain(sql.FieldGTE(FieldLastError, v))
+}
+
+// LastErrorLT applies the LT predicate on the "last_error" field.
+func LastErrorLT(v string) predicate.Domain {
+	return predicate.Domain(sql.FieldLT(FieldLastError, v))
+}
+
+// LastErrorLTE applies the LTE predicate on the "last_error" field.
+func LastErrorLTE(v string) predicate.Domain {
+	return predicate.Domain(sql.FieldLTE(FieldLastError, v))
+}
+
+// LastErrorContains applies the Contains predicate on the "last_error" field.
+func LastErrorContains(v string) predicate.Domain {
+	return predicate.Domain(sql.FieldContains(FieldLastError, v))
+}
+
+// LastErrorHasPrefix applies the HasPrefix predicate on the "last_error" field.
+func LastErrorHasPrefix(v string) predicate.Domain {
+	return predicate.Domain(sql.FieldHasPrefix(FieldLastError, v))
+}
+
+// LastErrorHasSuffix applies the HasSuffix predicate on the "last_error" field.
+func LastErrorHasSuffix(v string) predicate.Domain {
+	return predicate.Domain(sql.FieldHasSuffix(FieldLastError, v))
+}
+
+// LastErrorEqualFold applies the EqualFold predicate on the "last_error" field.
+func LastErrorEqualFold(v string) predicate.Domain {
+	return predicate.Domain(sql.FieldEqualFold(FieldLastError, v))
+}
+
+// LastErrorContainsFold applies the ContainsFold predicate on the "last_error" field.
+func LastErrorContainsFold(v string) predicate.Domain {
+	return predicate.Domain(sql.FieldContainsFold(FieldLastError, v))
 }
 
 // And groups predicates with the AND operator between them.

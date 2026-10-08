@@ -47,6 +47,7 @@ type env struct {
 	url      string
 	ada      string       // the first user's ID
 	denied   atomic.Int32 // how often a service applied a changed deny-list
+	txt      fakeVerifier // the TXT proofs DomainService finds
 }
 
 func newEnv(t *testing.T) *env {
@@ -109,7 +110,7 @@ func newEnv(t *testing.T) *env {
 	}
 	if err := srv.Mount(mux, rpmgrv1.File_rpmgr_v1_domain_proto.Services().ByName("DomainService"),
 		func(o ...connect.HandlerOption) (string, http.Handler) {
-			return rpmgrv1connect.NewDomainServiceHandler(&apisvc.Domains{DB: db, API: srv, Sys: sys, Now: now}, o...)
+			return rpmgrv1connect.NewDomainServiceHandler(&apisvc.Domains{DB: db, API: srv, Sys: sys, Now: now, TXT: &e.txt}, o...)
 		}); err != nil {
 		t.Fatal(err)
 	}

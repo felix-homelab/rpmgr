@@ -169,7 +169,9 @@ type Domain struct {
 	// When it was claimed; output only.
 	CreateTime *timestamppb.Timestamp `protobuf:"bytes,9,opt,name=create_time,json=createTime,proto3" json:"create_time,omitempty"`
 	// The version to send back with a deletion; output only.
-	Etag          string `protobuf:"bytes,10,opt,name=etag,proto3" json:"etag,omitempty"`
+	Etag string `protobuf:"bytes,10,opt,name=etag,proto3" json:"etag,omitempty"`
+	// Why the last check found no proof; output only.
+	LastError     string `protobuf:"bytes,11,opt,name=last_error,json=lastError,proto3" json:"last_error,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -270,6 +272,13 @@ func (x *Domain) GetCreateTime() *timestamppb.Timestamp {
 func (x *Domain) GetEtag() string {
 	if x != nil {
 		return x.Etag
+	}
+	return ""
+}
+
+func (x *Domain) GetLastError() string {
+	if x != nil {
+		return x.LastError
 	}
 	return ""
 }
@@ -659,6 +668,98 @@ func (x *ListDomainsResponse) GetNextPageToken() string {
 	return ""
 }
 
+// VerifyDomainRequest names a claim.
+type VerifyDomainRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The claim's ID.
+	DomainId      string `protobuf:"bytes,1,opt,name=domain_id,json=domainId,proto3" json:"domain_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *VerifyDomainRequest) Reset() {
+	*x = VerifyDomainRequest{}
+	mi := &file_rpmgr_v1_domain_proto_msgTypes[8]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *VerifyDomainRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*VerifyDomainRequest) ProtoMessage() {}
+
+func (x *VerifyDomainRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_rpmgr_v1_domain_proto_msgTypes[8]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use VerifyDomainRequest.ProtoReflect.Descriptor instead.
+func (*VerifyDomainRequest) Descriptor() ([]byte, []int) {
+	return file_rpmgr_v1_domain_proto_rawDescGZIP(), []int{8}
+}
+
+func (x *VerifyDomainRequest) GetDomainId() string {
+	if x != nil {
+		return x.DomainId
+	}
+	return ""
+}
+
+// VerifyDomainResponse is the claim after the check.
+type VerifyDomainResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The claim: verified, or still pending with last_error.
+	Domain        *Domain `protobuf:"bytes,1,opt,name=domain,proto3" json:"domain,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *VerifyDomainResponse) Reset() {
+	*x = VerifyDomainResponse{}
+	mi := &file_rpmgr_v1_domain_proto_msgTypes[9]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *VerifyDomainResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*VerifyDomainResponse) ProtoMessage() {}
+
+func (x *VerifyDomainResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_rpmgr_v1_domain_proto_msgTypes[9]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use VerifyDomainResponse.ProtoReflect.Descriptor instead.
+func (*VerifyDomainResponse) Descriptor() ([]byte, []int) {
+	return file_rpmgr_v1_domain_proto_rawDescGZIP(), []int{9}
+}
+
+func (x *VerifyDomainResponse) GetDomain() *Domain {
+	if x != nil {
+		return x.Domain
+	}
+	return nil
+}
+
 // DeleteDomainRequest names a claim.
 type DeleteDomainRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
@@ -672,7 +773,7 @@ type DeleteDomainRequest struct {
 
 func (x *DeleteDomainRequest) Reset() {
 	*x = DeleteDomainRequest{}
-	mi := &file_rpmgr_v1_domain_proto_msgTypes[8]
+	mi := &file_rpmgr_v1_domain_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -684,7 +785,7 @@ func (x *DeleteDomainRequest) String() string {
 func (*DeleteDomainRequest) ProtoMessage() {}
 
 func (x *DeleteDomainRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_v1_domain_proto_msgTypes[8]
+	mi := &file_rpmgr_v1_domain_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -697,7 +798,7 @@ func (x *DeleteDomainRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteDomainRequest.ProtoReflect.Descriptor instead.
 func (*DeleteDomainRequest) Descriptor() ([]byte, []int) {
-	return file_rpmgr_v1_domain_proto_rawDescGZIP(), []int{8}
+	return file_rpmgr_v1_domain_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *DeleteDomainRequest) GetDomainId() string {
@@ -723,7 +824,7 @@ type DeleteDomainResponse struct {
 
 func (x *DeleteDomainResponse) Reset() {
 	*x = DeleteDomainResponse{}
-	mi := &file_rpmgr_v1_domain_proto_msgTypes[9]
+	mi := &file_rpmgr_v1_domain_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -735,7 +836,7 @@ func (x *DeleteDomainResponse) String() string {
 func (*DeleteDomainResponse) ProtoMessage() {}
 
 func (x *DeleteDomainResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_v1_domain_proto_msgTypes[9]
+	mi := &file_rpmgr_v1_domain_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -748,7 +849,7 @@ func (x *DeleteDomainResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteDomainResponse.ProtoReflect.Descriptor instead.
 func (*DeleteDomainResponse) Descriptor() ([]byte, []int) {
-	return file_rpmgr_v1_domain_proto_rawDescGZIP(), []int{9}
+	return file_rpmgr_v1_domain_proto_rawDescGZIP(), []int{11}
 }
 
 // MarkDomainTrustedRequest names a claim.
@@ -762,7 +863,7 @@ type MarkDomainTrustedRequest struct {
 
 func (x *MarkDomainTrustedRequest) Reset() {
 	*x = MarkDomainTrustedRequest{}
-	mi := &file_rpmgr_v1_domain_proto_msgTypes[10]
+	mi := &file_rpmgr_v1_domain_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -774,7 +875,7 @@ func (x *MarkDomainTrustedRequest) String() string {
 func (*MarkDomainTrustedRequest) ProtoMessage() {}
 
 func (x *MarkDomainTrustedRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_v1_domain_proto_msgTypes[10]
+	mi := &file_rpmgr_v1_domain_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -787,7 +888,7 @@ func (x *MarkDomainTrustedRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MarkDomainTrustedRequest.ProtoReflect.Descriptor instead.
 func (*MarkDomainTrustedRequest) Descriptor() ([]byte, []int) {
-	return file_rpmgr_v1_domain_proto_rawDescGZIP(), []int{10}
+	return file_rpmgr_v1_domain_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *MarkDomainTrustedRequest) GetDomainId() string {
@@ -808,7 +909,7 @@ type MarkDomainTrustedResponse struct {
 
 func (x *MarkDomainTrustedResponse) Reset() {
 	*x = MarkDomainTrustedResponse{}
-	mi := &file_rpmgr_v1_domain_proto_msgTypes[11]
+	mi := &file_rpmgr_v1_domain_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -820,7 +921,7 @@ func (x *MarkDomainTrustedResponse) String() string {
 func (*MarkDomainTrustedResponse) ProtoMessage() {}
 
 func (x *MarkDomainTrustedResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_v1_domain_proto_msgTypes[11]
+	mi := &file_rpmgr_v1_domain_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -833,7 +934,7 @@ func (x *MarkDomainTrustedResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MarkDomainTrustedResponse.ProtoReflect.Descriptor instead.
 func (*MarkDomainTrustedResponse) Descriptor() ([]byte, []int) {
-	return file_rpmgr_v1_domain_proto_rawDescGZIP(), []int{11}
+	return file_rpmgr_v1_domain_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *MarkDomainTrustedResponse) GetDomain() *Domain {
@@ -847,7 +948,7 @@ var File_rpmgr_v1_domain_proto protoreflect.FileDescriptor
 
 const file_rpmgr_v1_domain_proto_rawDesc = "" +
 	"\n" +
-	"\x15rpmgr/v1/domain.proto\x12\brpmgr.v1\x1a\x1bbuf/validate/validate.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x16rpmgr/v1/options.proto\"\xc3\x03\n" +
+	"\x15rpmgr/v1/domain.proto\x12\brpmgr.v1\x1a\x1bbuf/validate/validate.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x16rpmgr/v1/options.proto\"\xe2\x03\n" +
 	"\x06Domain\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
 	"\x04fqdn\x18\x02 \x01(\tR\x04fqdn\x12\x1a\n" +
@@ -861,7 +962,9 @@ const file_rpmgr_v1_domain_proto_rawDesc = "" +
 	"\vcreate_time\x18\t \x01(\v2\x1a.google.protobuf.TimestampR\n" +
 	"createTime\x12\x12\n" +
 	"\x04etag\x18\n" +
-	" \x01(\tR\x04etag\"]\n" +
+	" \x01(\tR\x04etag\x12\x1d\n" +
+	"\n" +
+	"last_error\x18\v \x01(\tR\tlastError\"]\n" +
 	"\x0fDomainChallenge\x12\x19\n" +
 	"\btxt_name\x18\x01 \x01(\tR\atxtName\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value\x12\x19\n" +
@@ -884,7 +987,11 @@ const file_rpmgr_v1_domain_proto_rawDesc = "" +
 	"page_token\x18\x03 \x01(\tR\tpageToken\"i\n" +
 	"\x13ListDomainsResponse\x12*\n" +
 	"\adomains\x18\x01 \x03(\v2\x10.rpmgr.v1.DomainR\adomains\x12&\n" +
-	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"O\n" +
+	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\";\n" +
+	"\x13VerifyDomainRequest\x12$\n" +
+	"\tdomain_id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\bdomainId\"@\n" +
+	"\x14VerifyDomainResponse\x12(\n" +
+	"\x06domain\x18\x01 \x01(\v2\x10.rpmgr.v1.DomainR\x06domain\"O\n" +
 	"\x13DeleteDomainRequest\x12$\n" +
 	"\tdomain_id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\bdomainId\x12\x12\n" +
 	"\x04etag\x18\x02 \x01(\tR\x04etag\"\x16\n" +
@@ -904,7 +1011,7 @@ const file_rpmgr_v1_domain_proto_rawDesc = "" +
 	"\x15DOMAIN_METHOD_DNS_TXT\x10\x01\x12\x16\n" +
 	"\x12DOMAIN_METHOD_HTTP\x10\x02\x12\x19\n" +
 	"\x15DOMAIN_METHOD_TRUSTED\x10\x03\x12\x1b\n" +
-	"\x17DOMAIN_METHOD_DELEGATED\x10\x042\xb9\x04\n" +
+	"\x17DOMAIN_METHOD_DELEGATED\x10\x042\xaf\x05\n" +
 	"\rDomainService\x12q\n" +
 	"\fCreateDomain\x12\x1d.rpmgr.v1.CreateDomainRequest\x1a\x1e.rpmgr.v1.CreateDomainResponse\"\"\x8a\xb5\x18\x1e\n" +
 	"\x14infrastructure.write\x12\x06org_id\x12b\n" +
@@ -912,6 +1019,8 @@ const file_rpmgr_v1_domain_proto_rawDesc = "" +
 	"\borg.read\x12\tdomain_id\x90\x02\x01\x12e\n" +
 	"\vListDomains\x12\x1c.rpmgr.v1.ListDomainsRequest\x1a\x1d.rpmgr.v1.ListDomainsResponse\"\x19\x8a\xb5\x18\x12\n" +
 	"\borg.read\x12\x06org_id\x90\x02\x01\x12t\n" +
+	"\fVerifyDomain\x12\x1d.rpmgr.v1.VerifyDomainRequest\x1a\x1e.rpmgr.v1.VerifyDomainResponse\"%\x8a\xb5\x18!\n" +
+	"\x14infrastructure.write\x12\tdomain_id\x12t\n" +
 	"\fDeleteDomain\x12\x1d.rpmgr.v1.DeleteDomainRequest\x1a\x1e.rpmgr.v1.DeleteDomainResponse\"%\x8a\xb5\x18!\n" +
 	"\x14infrastructure.write\x12\tdomain_id\x12t\n" +
 	"\x11MarkDomainTrusted\x12\".rpmgr.v1.MarkDomainTrustedRequest\x1a#.rpmgr.v1.MarkDomainTrustedResponse\"\x16\x8a\xb5\x18\x12\n" +
@@ -930,7 +1039,7 @@ func file_rpmgr_v1_domain_proto_rawDescGZIP() []byte {
 }
 
 var file_rpmgr_v1_domain_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
-var file_rpmgr_v1_domain_proto_msgTypes = make([]protoimpl.MessageInfo, 12)
+var file_rpmgr_v1_domain_proto_msgTypes = make([]protoimpl.MessageInfo, 14)
 var file_rpmgr_v1_domain_proto_goTypes = []any{
 	(DomainStatus)(0),                 // 0: rpmgr.v1.DomainStatus
 	(DomainMethod)(0),                 // 1: rpmgr.v1.DomainMethod
@@ -942,39 +1051,44 @@ var file_rpmgr_v1_domain_proto_goTypes = []any{
 	(*GetDomainResponse)(nil),         // 7: rpmgr.v1.GetDomainResponse
 	(*ListDomainsRequest)(nil),        // 8: rpmgr.v1.ListDomainsRequest
 	(*ListDomainsResponse)(nil),       // 9: rpmgr.v1.ListDomainsResponse
-	(*DeleteDomainRequest)(nil),       // 10: rpmgr.v1.DeleteDomainRequest
-	(*DeleteDomainResponse)(nil),      // 11: rpmgr.v1.DeleteDomainResponse
-	(*MarkDomainTrustedRequest)(nil),  // 12: rpmgr.v1.MarkDomainTrustedRequest
-	(*MarkDomainTrustedResponse)(nil), // 13: rpmgr.v1.MarkDomainTrustedResponse
-	(*timestamppb.Timestamp)(nil),     // 14: google.protobuf.Timestamp
+	(*VerifyDomainRequest)(nil),       // 10: rpmgr.v1.VerifyDomainRequest
+	(*VerifyDomainResponse)(nil),      // 11: rpmgr.v1.VerifyDomainResponse
+	(*DeleteDomainRequest)(nil),       // 12: rpmgr.v1.DeleteDomainRequest
+	(*DeleteDomainResponse)(nil),      // 13: rpmgr.v1.DeleteDomainResponse
+	(*MarkDomainTrustedRequest)(nil),  // 14: rpmgr.v1.MarkDomainTrustedRequest
+	(*MarkDomainTrustedResponse)(nil), // 15: rpmgr.v1.MarkDomainTrustedResponse
+	(*timestamppb.Timestamp)(nil),     // 16: google.protobuf.Timestamp
 }
 var file_rpmgr_v1_domain_proto_depIdxs = []int32{
 	0,  // 0: rpmgr.v1.Domain.status:type_name -> rpmgr.v1.DomainStatus
 	1,  // 1: rpmgr.v1.Domain.method:type_name -> rpmgr.v1.DomainMethod
 	3,  // 2: rpmgr.v1.Domain.challenge:type_name -> rpmgr.v1.DomainChallenge
-	14, // 3: rpmgr.v1.Domain.verify_time:type_name -> google.protobuf.Timestamp
-	14, // 4: rpmgr.v1.Domain.last_check_time:type_name -> google.protobuf.Timestamp
-	14, // 5: rpmgr.v1.Domain.create_time:type_name -> google.protobuf.Timestamp
+	16, // 3: rpmgr.v1.Domain.verify_time:type_name -> google.protobuf.Timestamp
+	16, // 4: rpmgr.v1.Domain.last_check_time:type_name -> google.protobuf.Timestamp
+	16, // 5: rpmgr.v1.Domain.create_time:type_name -> google.protobuf.Timestamp
 	2,  // 6: rpmgr.v1.CreateDomainRequest.domain:type_name -> rpmgr.v1.Domain
 	2,  // 7: rpmgr.v1.CreateDomainResponse.domain:type_name -> rpmgr.v1.Domain
 	2,  // 8: rpmgr.v1.GetDomainResponse.domain:type_name -> rpmgr.v1.Domain
 	2,  // 9: rpmgr.v1.ListDomainsResponse.domains:type_name -> rpmgr.v1.Domain
-	2,  // 10: rpmgr.v1.MarkDomainTrustedResponse.domain:type_name -> rpmgr.v1.Domain
-	4,  // 11: rpmgr.v1.DomainService.CreateDomain:input_type -> rpmgr.v1.CreateDomainRequest
-	6,  // 12: rpmgr.v1.DomainService.GetDomain:input_type -> rpmgr.v1.GetDomainRequest
-	8,  // 13: rpmgr.v1.DomainService.ListDomains:input_type -> rpmgr.v1.ListDomainsRequest
-	10, // 14: rpmgr.v1.DomainService.DeleteDomain:input_type -> rpmgr.v1.DeleteDomainRequest
-	12, // 15: rpmgr.v1.DomainService.MarkDomainTrusted:input_type -> rpmgr.v1.MarkDomainTrustedRequest
-	5,  // 16: rpmgr.v1.DomainService.CreateDomain:output_type -> rpmgr.v1.CreateDomainResponse
-	7,  // 17: rpmgr.v1.DomainService.GetDomain:output_type -> rpmgr.v1.GetDomainResponse
-	9,  // 18: rpmgr.v1.DomainService.ListDomains:output_type -> rpmgr.v1.ListDomainsResponse
-	11, // 19: rpmgr.v1.DomainService.DeleteDomain:output_type -> rpmgr.v1.DeleteDomainResponse
-	13, // 20: rpmgr.v1.DomainService.MarkDomainTrusted:output_type -> rpmgr.v1.MarkDomainTrustedResponse
-	16, // [16:21] is the sub-list for method output_type
-	11, // [11:16] is the sub-list for method input_type
-	11, // [11:11] is the sub-list for extension type_name
-	11, // [11:11] is the sub-list for extension extendee
-	0,  // [0:11] is the sub-list for field type_name
+	2,  // 10: rpmgr.v1.VerifyDomainResponse.domain:type_name -> rpmgr.v1.Domain
+	2,  // 11: rpmgr.v1.MarkDomainTrustedResponse.domain:type_name -> rpmgr.v1.Domain
+	4,  // 12: rpmgr.v1.DomainService.CreateDomain:input_type -> rpmgr.v1.CreateDomainRequest
+	6,  // 13: rpmgr.v1.DomainService.GetDomain:input_type -> rpmgr.v1.GetDomainRequest
+	8,  // 14: rpmgr.v1.DomainService.ListDomains:input_type -> rpmgr.v1.ListDomainsRequest
+	10, // 15: rpmgr.v1.DomainService.VerifyDomain:input_type -> rpmgr.v1.VerifyDomainRequest
+	12, // 16: rpmgr.v1.DomainService.DeleteDomain:input_type -> rpmgr.v1.DeleteDomainRequest
+	14, // 17: rpmgr.v1.DomainService.MarkDomainTrusted:input_type -> rpmgr.v1.MarkDomainTrustedRequest
+	5,  // 18: rpmgr.v1.DomainService.CreateDomain:output_type -> rpmgr.v1.CreateDomainResponse
+	7,  // 19: rpmgr.v1.DomainService.GetDomain:output_type -> rpmgr.v1.GetDomainResponse
+	9,  // 20: rpmgr.v1.DomainService.ListDomains:output_type -> rpmgr.v1.ListDomainsResponse
+	11, // 21: rpmgr.v1.DomainService.VerifyDomain:output_type -> rpmgr.v1.VerifyDomainResponse
+	13, // 22: rpmgr.v1.DomainService.DeleteDomain:output_type -> rpmgr.v1.DeleteDomainResponse
+	15, // 23: rpmgr.v1.DomainService.MarkDomainTrusted:output_type -> rpmgr.v1.MarkDomainTrustedResponse
+	18, // [18:24] is the sub-list for method output_type
+	12, // [12:18] is the sub-list for method input_type
+	12, // [12:12] is the sub-list for extension type_name
+	12, // [12:12] is the sub-list for extension extendee
+	0,  // [0:12] is the sub-list for field type_name
 }
 
 func init() { file_rpmgr_v1_domain_proto_init() }
@@ -989,7 +1103,7 @@ func file_rpmgr_v1_domain_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_rpmgr_v1_domain_proto_rawDesc), len(file_rpmgr_v1_domain_proto_rawDesc)),
 			NumEnums:      2,
-			NumMessages:   12,
+			NumMessages:   14,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

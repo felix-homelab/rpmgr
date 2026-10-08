@@ -421,6 +421,7 @@ var schemaGraph = func() *sqlgraph.Schema {
 			domain.FieldCreatedAt:      {Type: field.TypeTime, Column: domain.FieldCreatedAt},
 			domain.FieldVerifiedAt:     {Type: field.TypeTime, Column: domain.FieldVerifiedAt},
 			domain.FieldLastCheckedAt:  {Type: field.TypeTime, Column: domain.FieldLastCheckedAt},
+			domain.FieldLastError:      {Type: field.TypeString, Column: domain.FieldLastError},
 		},
 	}
 	graph.Nodes[17] = &sqlgraph.Node{
@@ -2773,6 +2774,11 @@ func (f *DomainFilter) WhereVerifiedAt(p entql.TimeP) {
 // WhereLastCheckedAt applies the entql time.Time predicate on the last_checked_at field.
 func (f *DomainFilter) WhereLastCheckedAt(p entql.TimeP) {
 	f.Where(p.Field(domain.FieldLastCheckedAt))
+}
+
+// WhereLastError applies the entql string predicate on the last_error field.
+func (f *DomainFilter) WhereLastError(p entql.StringP) {
+	f.Where(p.Field(domain.FieldLastError))
 }
 
 // addPredicate implements the predicateAdder interface.

@@ -1041,6 +1041,12 @@ func init() {
 	domainDescCreatedAt := domainFields[6].Descriptor()
 	// domain.DefaultCreatedAt holds the default value on creation for the created_at field.
 	domain.DefaultCreatedAt = domainDescCreatedAt.Default.(func() time.Time)
+	// domainDescLastError is the schema descriptor for last_error field.
+	domainDescLastError := domainFields[9].Descriptor()
+	// domain.DefaultLastError holds the default value on creation for the last_error field.
+	domain.DefaultLastError = domainDescLastError.Default.(string)
+	// domain.LastErrorValidator is a validator for the "last_error" field. It is called by the builders before save.
+	domain.LastErrorValidator = domainDescLastError.Validators[0].(func(string) error)
 	// domainDescID is the schema descriptor for id field.
 	domainDescID := domainFields[0].Descriptor()
 	// domain.DefaultID holds the default value on creation for the id field.

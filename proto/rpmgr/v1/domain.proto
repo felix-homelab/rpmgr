@@ -37,6 +37,13 @@ service DomainService {
       resource_field: "org_id"
     };
   }
+  // VerifyDomain checks a claim's proof now, as the schedule does later on its own.
+  rpc VerifyDomain(VerifyDomainRequest) returns (VerifyDomainResponse) {
+    option (rpmgr.v1.authz) = {
+      permission: "infrastructure.write"
+      resource_field: "domain_id"
+    };
+  }
   // DeleteDomain gives a claim up; refused while route hostnames lie under it.
   rpc DeleteDomain(DeleteDomainRequest) returns (DeleteDomainResponse) {
     option (rpmgr.v1.authz) = {
@@ -111,6 +118,8 @@ message Domain {
   google.protobuf.Timestamp create_time = 9;
   // The version to send back with a deletion; output only.
   string etag = 10;
+  // Why the last check found no proof; output only.
+  string last_error = 11;
 }
 
 // DomainChallenge is what proves a claim: the TXT record, or the HTTP token.
@@ -167,6 +176,18 @@ message ListDomainsResponse {
   repeated Domain domains = 1;
   // The token of the next page; empty after the last.
   string next_page_token = 2;
+}
+
+// VerifyDomainRequest names a claim.
+message VerifyDomainRequest {
+  // The claim's ID.
+  string domain_id = 1 [(buf.validate.field).string.min_len = 1];
+}
+
+// VerifyDomainResponse is the claim after the check.
+message VerifyDomainResponse {
+  // The claim: verified, or still pending with last_error.
+  Domain domain = 1;
 }
 
 // DeleteDomainRequest names a claim.
