@@ -37,7 +37,13 @@ in the change description.
 - **Cross-tenant leak suite.** Two orgs with identical resources. Generated from the service
   registry: every `Get`, `List`, `Update`, `Delete` and every streaming method is called by a user
   of org B with IDs from org A. Expected: `NotFound` (not `PermissionDenied`, so existence does not
-  leak), empty lists, and no row of org A changed. A new RPC is covered automatically.
+  leak), empty lists, and no row of org A changed. A new RPC is covered automatically. [R] As
+  built (`TestCrossTenantLeaks`, against a running controller): the Owner of org B, stepped up,
+  calls every method that is not public, its request's ID fields filled with org A's IDs. On org A
+  every org method answers `NotFound`; on org B with A's other IDs, and outside orgs, no answer
+  holds anything of org A; afterwards every row of org A in every org-owned table is unchanged. An
+  ID field the suite has no org A value for fails it, so each new kind of resource brings its
+  fixture.
 - **Authorization-annotation completeness.** A test walks every registered RPC and fails if one
   lacks the `(rpmgr.v1.authz)` option; the server also refuses to start in that case
   ([04](04-security.md#one-enforcement-point-with-defence-in-depth)).
@@ -148,7 +154,7 @@ a missed target is recorded, not hidden.
 | **Static analysis** | `golangci-lint` with `gosec`, plus `forbidigo` rules that fail the build on: `InsecureSkipVerify` anywhere outside test helpers (tests use a generated test CA instead), `math/rand` in packages handling keys, tokens or nonces, `secret.Value.Reveal()` outside an allow-listed set of packages ([04](04-security.md#secrets-at-rest-and-in-logs)), `privacy.DecisionContext` outside `internal/store`, because it skips Ent's privacy policies ([06](06-data-model.md#tenancy-enforcement)). |
 | **Dependencies** | `govulncheck` on every PR and nightly; dependency updates via Dependabot with the same CI gates. |
 | **Repository hygiene** | OpenSSF Scorecard; CI actions pinned by commit SHA; protected default branch. |
-| **Secret scanning** | gitleaks in CI (and as an optional pre-commit hook), with custom rules for the token prefixes `rpmgr_enr_`, `rpmgr_pat_`, `rpmgr_sat_`, `rpmgr_ses_` (checksum makes matches reliable, [04](04-security.md#tokens)) and for private keys. |
+| **Secret scanning** | gitleaks in CI (and as an optional pre-commit hook), with custom rules for the token prefixes `rpmgr_enr_`, `rpmgr_pat_`, `rpmgr_sat_`, `rpmgr_ses_`, `rpmgr_prs_`, `rpmgr_inv_` (checksum makes matches reliable, [04](04-security.md#tokens)) and for private keys. |
 | **TLS configuration** | Every `tls.Config` and `quic.Config` is built by a small set of constructors; tests assert TLS 1.3 only for internal sessions, client certificates required where specified, no `InsecureSkipVerify`, `Allow0RTT` false and no `ListenEarly`/`DialEarly`, `Renegotiation` never set, and every rpmgr check in `VerifyConnection`, none in `VerifyPeerCertificate` ([03](03-connections.md#properties-common-to-all-rpmgr-internal-sessions)). |
 | **Security regression tests** | One test per security control listed below, named after the control. Examples below. A CI check lists every named test below that applies to the current phase, clause by clause, with the clauses of later phases named as deferred, and fails when one is missing from the code ([D61](14-open-decisions.md#project-and-process)): the registry `.github/scripts/security-tests.txt` marks each test pending (with its Phase 1 slice and issue), done, or of a later phase, and the PR that implements a test marks it done. |
 | **Test-only code** | Test root keys, the end-to-end seeding command and fault hooks (an agent that rejects snapshots, a clock offset) exist only under the build tag `rpmgrtest`; release builds refuse it ([D60](14-open-decisions.md#security-defaults)). |
