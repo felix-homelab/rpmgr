@@ -24,6 +24,7 @@ const (
 	PersonalAPI    Kind = "pat" // a user's API token
 	ServiceAccount Kind = "sat" // a service account's API token
 	Session        Kind = "ses" // a web session
+	PasswordReset  Kind = "prs" // a one-time link that sets a password or creates the first user
 )
 
 const (
@@ -79,7 +80,7 @@ func Hash(s string) []byte {
 }
 
 func known(k Kind) bool {
-	return k == Enrollment || k == PersonalAPI || k == ServiceAccount || k == Session
+	return k == Enrollment || k == PersonalAPI || k == ServiceAccount || k == Session || k == PasswordReset
 }
 
 // checksum is the CRC32 (IEEE) of body in base62, 6 digits.

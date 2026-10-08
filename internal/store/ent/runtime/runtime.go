@@ -28,8 +28,10 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/instancesetting"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/issuedcertificate"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/lease"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/membership"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/org"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/orgsetting"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/passwordreset"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/policyrule"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/portallocation"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/portpool"
@@ -44,6 +46,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routeudp"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/schema"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/secretmeta"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/user"
 
 	"entgo.io/ent"
 	"entgo.io/ent/privacy"
@@ -1240,6 +1243,61 @@ func init() {
 	leaseDescID := leaseFields[0].Descriptor()
 	// lease.IDValidator is a validator for the "id" field. It is called by the builders before save.
 	lease.IDValidator = leaseDescID.Validators[0].(func(string) error)
+	membershipMixin := schema.Membership{}.Mixin()
+	membership.Policy = privacy.NewPolicies(membershipMixin[0], schema.Membership{})
+	membership.Hooks[0] = func(next ent.Mutator) ent.Mutator {
+		return ent.MutateFunc(func(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+			if err := membership.Policy.EvalMutation(ctx, m); err != nil {
+				return nil, err
+			}
+			return next.Mutate(ctx, m)
+		})
+	}
+	membershipMixinHooks0 := membershipMixin[0].Hooks()
+
+	membership.Hooks[1] = membershipMixinHooks0[0]
+	membershipMixinInters0 := membershipMixin[0].Interceptors()
+	membership.Interceptors[0] = membershipMixinInters0[0]
+	membershipMixinFields0 := membershipMixin[0].Fields()
+	_ = membershipMixinFields0
+	membershipFields := schema.Membership{}.Fields()
+	_ = membershipFields
+	// membershipDescOrgID is the schema descriptor for org_id field.
+	membershipDescOrgID := membershipMixinFields0[0].Descriptor()
+	// membership.OrgIDValidator is a validator for the "org_id" field. It is called by the builders before save.
+	membership.OrgIDValidator = membershipDescOrgID.Validators[0].(func(string) error)
+	// membershipDescUserID is the schema descriptor for user_id field.
+	membershipDescUserID := membershipFields[1].Descriptor()
+	// membership.UserIDValidator is a validator for the "user_id" field. It is called by the builders before save.
+	membership.UserIDValidator = membershipDescUserID.Validators[0].(func(string) error)
+	// membershipDescCreatedBy is the schema descriptor for created_by field.
+	membershipDescCreatedBy := membershipFields[3].Descriptor()
+	// membership.CreatedByValidator is a validator for the "created_by" field. It is called by the builders before save.
+	membership.CreatedByValidator = membershipDescCreatedBy.Validators[0].(func(string) error)
+	// membershipDescCreatedAt is the schema descriptor for created_at field.
+	membershipDescCreatedAt := membershipFields[4].Descriptor()
+	// membership.DefaultCreatedAt holds the default value on creation for the created_at field.
+	membership.DefaultCreatedAt = membershipDescCreatedAt.Default.(func() time.Time)
+	// membershipDescID is the schema descriptor for id field.
+	membershipDescID := membershipFields[0].Descriptor()
+	// membership.DefaultID holds the default value on creation for the id field.
+	membership.DefaultID = membershipDescID.Default.(func() string)
+	// membership.IDValidator is a validator for the "id" field. It is called by the builders before save.
+	membership.IDValidator = func() func(string) error {
+		validators := membershipDescID.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(id string) error {
+			for _, fn := range fns {
+				if err := fn(id); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
 	orgMixin := schema.Org{}.Mixin()
 	org.Policy = privacy.NewPolicies(orgMixin[0], schema.Org{})
 	org.Hooks[0] = func(next ent.Mutator) ent.Mutator {
@@ -1347,6 +1405,55 @@ func init() {
 	// orgsetting.IDValidator is a validator for the "id" field. It is called by the builders before save.
 	orgsetting.IDValidator = func() func(string) error {
 		validators := orgsettingDescID.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(id string) error {
+			for _, fn := range fns {
+				if err := fn(id); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	passwordresetMixin := schema.PasswordReset{}.Mixin()
+	passwordreset.Policy = privacy.NewPolicies(passwordresetMixin[0], schema.PasswordReset{})
+	passwordreset.Hooks[0] = func(next ent.Mutator) ent.Mutator {
+		return ent.MutateFunc(func(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+			if err := passwordreset.Policy.EvalMutation(ctx, m); err != nil {
+				return nil, err
+			}
+			return next.Mutate(ctx, m)
+		})
+	}
+	passwordresetMixinHooks0 := passwordresetMixin[0].Hooks()
+
+	passwordreset.Hooks[1] = passwordresetMixinHooks0[0]
+	passwordresetMixinInters0 := passwordresetMixin[0].Interceptors()
+	passwordreset.Interceptors[0] = passwordresetMixinInters0[0]
+	passwordresetFields := schema.PasswordReset{}.Fields()
+	_ = passwordresetFields
+	// passwordresetDescTokenHash is the schema descriptor for token_hash field.
+	passwordresetDescTokenHash := passwordresetFields[2].Descriptor()
+	// passwordreset.TokenHashValidator is a validator for the "token_hash" field. It is called by the builders before save.
+	passwordreset.TokenHashValidator = passwordresetDescTokenHash.Validators[0].(func([]byte) error)
+	// passwordresetDescCreatedBy is the schema descriptor for created_by field.
+	passwordresetDescCreatedBy := passwordresetFields[3].Descriptor()
+	// passwordreset.CreatedByValidator is a validator for the "created_by" field. It is called by the builders before save.
+	passwordreset.CreatedByValidator = passwordresetDescCreatedBy.Validators[0].(func(string) error)
+	// passwordresetDescCreatedAt is the schema descriptor for created_at field.
+	passwordresetDescCreatedAt := passwordresetFields[4].Descriptor()
+	// passwordreset.DefaultCreatedAt holds the default value on creation for the created_at field.
+	passwordreset.DefaultCreatedAt = passwordresetDescCreatedAt.Default.(func() time.Time)
+	// passwordresetDescID is the schema descriptor for id field.
+	passwordresetDescID := passwordresetFields[0].Descriptor()
+	// passwordreset.DefaultID holds the default value on creation for the id field.
+	passwordreset.DefaultID = passwordresetDescID.Default.(func() string)
+	// passwordreset.IDValidator is a validator for the "id" field. It is called by the builders before save.
+	passwordreset.IDValidator = func() func(string) error {
+		validators := passwordresetDescID.Validators
 		fns := [...]func(string) error{
 			validators[0].(func(string) error),
 			validators[1].(func(string) error),
@@ -2031,6 +2138,87 @@ func init() {
 	secretmetaDescCreatedAt := secretmetaFields[4].Descriptor()
 	// secretmeta.DefaultCreatedAt holds the default value on creation for the created_at field.
 	secretmeta.DefaultCreatedAt = secretmetaDescCreatedAt.Default.(func() time.Time)
+	userMixin := schema.User{}.Mixin()
+	user.Policy = privacy.NewPolicies(userMixin[0], schema.User{})
+	user.Hooks[0] = func(next ent.Mutator) ent.Mutator {
+		return ent.MutateFunc(func(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+			if err := user.Policy.EvalMutation(ctx, m); err != nil {
+				return nil, err
+			}
+			return next.Mutate(ctx, m)
+		})
+	}
+	userMixinHooks0 := userMixin[0].Hooks()
+
+	user.Hooks[1] = userMixinHooks0[0]
+	userMixinInters0 := userMixin[0].Interceptors()
+	user.Interceptors[0] = userMixinInters0[0]
+	userFields := schema.User{}.Fields()
+	_ = userFields
+	// userDescEmail is the schema descriptor for email field.
+	userDescEmail := userFields[1].Descriptor()
+	// user.EmailValidator is a validator for the "email" field. It is called by the builders before save.
+	user.EmailValidator = func() func(string) error {
+		validators := userDescEmail.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(email string) error {
+			for _, fn := range fns {
+				if err := fn(email); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// userDescDisplayName is the schema descriptor for display_name field.
+	userDescDisplayName := userFields[2].Descriptor()
+	// user.DisplayNameValidator is a validator for the "display_name" field. It is called by the builders before save.
+	user.DisplayNameValidator = func() func(string) error {
+		validators := userDescDisplayName.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(display_name string) error {
+			for _, fn := range fns {
+				if err := fn(display_name); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// userDescInstanceAdmin is the schema descriptor for instance_admin field.
+	userDescInstanceAdmin := userFields[5].Descriptor()
+	// user.DefaultInstanceAdmin holds the default value on creation for the instance_admin field.
+	user.DefaultInstanceAdmin = userDescInstanceAdmin.Default.(bool)
+	// userDescCreatedAt is the schema descriptor for created_at field.
+	userDescCreatedAt := userFields[6].Descriptor()
+	// user.DefaultCreatedAt holds the default value on creation for the created_at field.
+	user.DefaultCreatedAt = userDescCreatedAt.Default.(func() time.Time)
+	// userDescID is the schema descriptor for id field.
+	userDescID := userFields[0].Descriptor()
+	// user.DefaultID holds the default value on creation for the id field.
+	user.DefaultID = userDescID.Default.(func() string)
+	// user.IDValidator is a validator for the "id" field. It is called by the builders before save.
+	user.IDValidator = func() func(string) error {
+		validators := userDescID.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(id string) error {
+			for _, fn := range fns {
+				if err := fn(id); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
 }
 
 const (

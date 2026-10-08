@@ -72,11 +72,17 @@ type IssuedCertificate func(*sql.Selector)
 // Lease is the predicate function for lease builders.
 type Lease func(*sql.Selector)
 
+// Membership is the predicate function for membership builders.
+type Membership func(*sql.Selector)
+
 // Org is the predicate function for org builders.
 type Org func(*sql.Selector)
 
 // OrgSetting is the predicate function for orgsetting builders.
 type OrgSetting func(*sql.Selector)
+
+// PasswordReset is the predicate function for passwordreset builders.
+type PasswordReset func(*sql.Selector)
 
 // PolicyRule is the predicate function for policyrule builders.
 type PolicyRule func(*sql.Selector)
@@ -116,3 +122,6 @@ type RouteUDP func(*sql.Selector)
 
 // SecretMeta is the predicate function for secretmeta builders.
 type SecretMeta func(*sql.Selector)
+
+// User is the predicate function for user builders.
+type User func(*sql.Selector)

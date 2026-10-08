@@ -37,8 +37,10 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/instancesetting"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/issuedcertificate"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/lease"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/membership"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/org"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/orgsetting"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/passwordreset"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/policyrule"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/portallocation"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/portpool"
@@ -52,6 +54,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routetcp"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routeudp"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/secretmeta"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/user"
 
 	stdsql "database/sql"
 )
@@ -105,10 +108,14 @@ type Client struct {
 	IssuedCertificate *IssuedCertificateClient
 	// Lease is the client for interacting with the Lease builders.
 	Lease *LeaseClient
+	// Membership is the client for interacting with the Membership builders.
+	Membership *MembershipClient
 	// Org is the client for interacting with the Org builders.
 	Org *OrgClient
 	// OrgSetting is the client for interacting with the OrgSetting builders.
 	OrgSetting *OrgSettingClient
+	// PasswordReset is the client for interacting with the PasswordReset builders.
+	PasswordReset *PasswordResetClient
 	// PolicyRule is the client for interacting with the PolicyRule builders.
 	PolicyRule *PolicyRuleClient
 	// PortAllocation is the client for interacting with the PortAllocation builders.
@@ -135,6 +142,8 @@ type Client struct {
 	RouteUDP *RouteUDPClient
 	// SecretMeta is the client for interacting with the SecretMeta builders.
 	SecretMeta *SecretMetaClient
+	// User is the client for interacting with the User builders.
+	User *UserClient
 }
 
 // NewClient creates a new client configured with the given options.
@@ -168,8 +177,10 @@ func (c *Client) init() {
 	c.InstanceSetting = NewInstanceSettingClient(c.config)
 	c.IssuedCertificate = NewIssuedCertificateClient(c.config)
 	c.Lease = NewLeaseClient(c.config)
+	c.Membership = NewMembershipClient(c.config)
 	c.Org = NewOrgClient(c.config)
 	c.OrgSetting = NewOrgSettingClient(c.config)
+	c.PasswordReset = NewPasswordResetClient(c.config)
 	c.PolicyRule = NewPolicyRuleClient(c.config)
 	c.PortAllocation = NewPortAllocationClient(c.config)
 	c.PortPool = NewPortPoolClient(c.config)
@@ -183,6 +194,7 @@ func (c *Client) init() {
 	c.RouteTarget = NewRouteTargetClient(c.config)
 	c.RouteUDP = NewRouteUDPClient(c.config)
 	c.SecretMeta = NewSecretMetaClient(c.config)
+	c.User = NewUserClient(c.config)
 }
 
 type (
@@ -297,8 +309,10 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		InstanceSetting:   NewInstanceSettingClient(cfg),
 		IssuedCertificate: NewIssuedCertificateClient(cfg),
 		Lease:             NewLeaseClient(cfg),
+		Membership:        NewMembershipClient(cfg),
 		Org:               NewOrgClient(cfg),
 		OrgSetting:        NewOrgSettingClient(cfg),
+		PasswordReset:     NewPasswordResetClient(cfg),
 		PolicyRule:        NewPolicyRuleClient(cfg),
 		PortAllocation:    NewPortAllocationClient(cfg),
 		PortPool:          NewPortPoolClient(cfg),
@@ -312,6 +326,7 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		RouteTarget:       NewRouteTargetClient(cfg),
 		RouteUDP:          NewRouteUDPClient(cfg),
 		SecretMeta:        NewSecretMetaClient(cfg),
+		User:              NewUserClient(cfg),
 	}, nil
 }
 
@@ -353,8 +368,10 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		InstanceSetting:   NewInstanceSettingClient(cfg),
 		IssuedCertificate: NewIssuedCertificateClient(cfg),
 		Lease:             NewLeaseClient(cfg),
+		Membership:        NewMembershipClient(cfg),
 		Org:               NewOrgClient(cfg),
 		OrgSetting:        NewOrgSettingClient(cfg),
+		PasswordReset:     NewPasswordResetClient(cfg),
 		PolicyRule:        NewPolicyRuleClient(cfg),
 		PortAllocation:    NewPortAllocationClient(cfg),
 		PortPool:          NewPortPoolClient(cfg),
@@ -368,6 +385,7 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		RouteTarget:       NewRouteTargetClient(cfg),
 		RouteUDP:          NewRouteUDPClient(cfg),
 		SecretMeta:        NewSecretMetaClient(cfg),
+		User:              NewUserClient(cfg),
 	}, nil
 }
 
@@ -401,10 +419,10 @@ func (c *Client) Use(hooks ...Hook) {
 		c.AuditEntry, c.AuditHead, c.CABundle, c.CAKey, c.Certificate,
 		c.CompiledSnapshot, c.ConfigRevision, c.ConfigSeq, c.Connector, c.Domain,
 		c.EnrollmentToken, c.Gateway, c.GatewayGroup, c.Instance, c.InstanceSetting,
-		c.IssuedCertificate, c.Lease, c.Org, c.OrgSetting, c.PolicyRule,
-		c.PortAllocation, c.PortPool, c.PortQuota, c.RevokedIdentity, c.Route,
-		c.RouteHTTP, c.RouteHostname, c.RoutePolicy, c.RouteTCP, c.RouteTarget,
-		c.RouteUDP, c.SecretMeta,
+		c.IssuedCertificate, c.Lease, c.Membership, c.Org, c.OrgSetting,
+		c.PasswordReset, c.PolicyRule, c.PortAllocation, c.PortPool, c.PortQuota,
+		c.RevokedIdentity, c.Route, c.RouteHTTP, c.RouteHostname, c.RoutePolicy,
+		c.RouteTCP, c.RouteTarget, c.RouteUDP, c.SecretMeta, c.User,
 	} {
 		n.Use(hooks...)
 	}
@@ -418,10 +436,10 @@ func (c *Client) Intercept(interceptors ...Interceptor) {
 		c.AuditEntry, c.AuditHead, c.CABundle, c.CAKey, c.Certificate,
 		c.CompiledSnapshot, c.ConfigRevision, c.ConfigSeq, c.Connector, c.Domain,
 		c.EnrollmentToken, c.Gateway, c.GatewayGroup, c.Instance, c.InstanceSetting,
-		c.IssuedCertificate, c.Lease, c.Org, c.OrgSetting, c.PolicyRule,
-		c.PortAllocation, c.PortPool, c.PortQuota, c.RevokedIdentity, c.Route,
-		c.RouteHTTP, c.RouteHostname, c.RoutePolicy, c.RouteTCP, c.RouteTarget,
-		c.RouteUDP, c.SecretMeta,
+		c.IssuedCertificate, c.Lease, c.Membership, c.Org, c.OrgSetting,
+		c.PasswordReset, c.PolicyRule, c.PortAllocation, c.PortPool, c.PortQuota,
+		c.RevokedIdentity, c.Route, c.RouteHTTP, c.RouteHostname, c.RoutePolicy,
+		c.RouteTCP, c.RouteTarget, c.RouteUDP, c.SecretMeta, c.User,
 	} {
 		n.Intercept(interceptors...)
 	}
@@ -474,10 +492,14 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.IssuedCertificate.mutate(ctx, m)
 	case *LeaseMutation:
 		return c.Lease.mutate(ctx, m)
+	case *MembershipMutation:
+		return c.Membership.mutate(ctx, m)
 	case *OrgMutation:
 		return c.Org.mutate(ctx, m)
 	case *OrgSettingMutation:
 		return c.OrgSetting.mutate(ctx, m)
+	case *PasswordResetMutation:
+		return c.PasswordReset.mutate(ctx, m)
 	case *PolicyRuleMutation:
 		return c.PolicyRule.mutate(ctx, m)
 	case *PortAllocationMutation:
@@ -504,6 +526,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.RouteUDP.mutate(ctx, m)
 	case *SecretMetaMutation:
 		return c.SecretMeta.mutate(ctx, m)
+	case *UserMutation:
+		return c.User.mutate(ctx, m)
 	default:
 		return nil, fmt.Errorf("ent: unknown mutation type %T", m)
 	}
@@ -3555,6 +3579,157 @@ func (c *LeaseClient) mutate(ctx context.Context, m *LeaseMutation) (Value, erro
 	}
 }
 
+// MembershipClient is a client for the Membership schema.
+type MembershipClient struct {
+	config
+}
+
+// NewMembershipClient returns a client for the Membership from the given config.
+func NewMembershipClient(c config) *MembershipClient {
+	return &MembershipClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `membership.Hooks(f(g(h())))`.
+func (c *MembershipClient) Use(hooks ...Hook) {
+	c.hooks.Membership = append(c.hooks.Membership, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `membership.Intercept(f(g(h())))`.
+func (c *MembershipClient) Intercept(interceptors ...Interceptor) {
+	c.inters.Membership = append(c.inters.Membership, interceptors...)
+}
+
+// Create returns a builder for creating a Membership entity.
+func (c *MembershipClient) Create() *MembershipCreate {
+	mutation := newMembershipMutation(c.config, OpCreate)
+	return &MembershipCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of Membership entities.
+func (c *MembershipClient) CreateBulk(builders ...*MembershipCreate) *MembershipCreateBulk {
+	return &MembershipCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *MembershipClient) MapCreateBulk(slice any, setFunc func(*MembershipCreate, int)) *MembershipCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &MembershipCreateBulk{err: fmt.Errorf("calling to MembershipClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*MembershipCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &MembershipCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for Membership.
+func (c *MembershipClient) Update() *MembershipUpdate {
+	mutation := newMembershipMutation(c.config, OpUpdate)
+	return &MembershipUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *MembershipClient) UpdateOne(_m *Membership) *MembershipUpdateOne {
+	mutation := newMembershipMutation(c.config, OpUpdateOne, withMembership(_m))
+	return &MembershipUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *MembershipClient) UpdateOneID(id string) *MembershipUpdateOne {
+	mutation := newMembershipMutation(c.config, OpUpdateOne, withMembershipID(id))
+	return &MembershipUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for Membership.
+func (c *MembershipClient) Delete() *MembershipDelete {
+	mutation := newMembershipMutation(c.config, OpDelete)
+	return &MembershipDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *MembershipClient) DeleteOne(_m *Membership) *MembershipDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *MembershipClient) DeleteOneID(id string) *MembershipDeleteOne {
+	builder := c.Delete().Where(membership.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &MembershipDeleteOne{builder}
+}
+
+// Query returns a query builder for Membership.
+func (c *MembershipClient) Query() *MembershipQuery {
+	return &MembershipQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeMembership},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a Membership entity by its id.
+func (c *MembershipClient) Get(ctx context.Context, id string) (*Membership, error) {
+	return c.Query().Where(membership.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *MembershipClient) GetX(ctx context.Context, id string) *Membership {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// QueryUser queries the user edge of a Membership.
+func (c *MembershipClient) QueryUser(_m *Membership) *UserQuery {
+	query := (&UserClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(membership.Table, membership.FieldID, id),
+			sqlgraph.To(user.Table, user.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, true, membership.UserTable, membership.UserColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// Hooks returns the client hooks.
+func (c *MembershipClient) Hooks() []Hook {
+	hooks := c.hooks.Membership
+	return append(hooks[:len(hooks):len(hooks)], membership.Hooks[:]...)
+}
+
+// Interceptors returns the client interceptors.
+func (c *MembershipClient) Interceptors() []Interceptor {
+	inters := c.inters.Membership
+	return append(inters[:len(inters):len(inters)], membership.Interceptors[:]...)
+}
+
+func (c *MembershipClient) mutate(ctx context.Context, m *MembershipMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&MembershipCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&MembershipUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&MembershipUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&MembershipDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown Membership mutation op: %q", m.Op())
+	}
+}
+
 // OrgClient is a client for the Org schema.
 type OrgClient struct {
 	config
@@ -3822,6 +3997,157 @@ func (c *OrgSettingClient) mutate(ctx context.Context, m *OrgSettingMutation) (V
 		return (&OrgSettingDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
 	default:
 		return nil, fmt.Errorf("ent: unknown OrgSetting mutation op: %q", m.Op())
+	}
+}
+
+// PasswordResetClient is a client for the PasswordReset schema.
+type PasswordResetClient struct {
+	config
+}
+
+// NewPasswordResetClient returns a client for the PasswordReset from the given config.
+func NewPasswordResetClient(c config) *PasswordResetClient {
+	return &PasswordResetClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `passwordreset.Hooks(f(g(h())))`.
+func (c *PasswordResetClient) Use(hooks ...Hook) {
+	c.hooks.PasswordReset = append(c.hooks.PasswordReset, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `passwordreset.Intercept(f(g(h())))`.
+func (c *PasswordResetClient) Intercept(interceptors ...Interceptor) {
+	c.inters.PasswordReset = append(c.inters.PasswordReset, interceptors...)
+}
+
+// Create returns a builder for creating a PasswordReset entity.
+func (c *PasswordResetClient) Create() *PasswordResetCreate {
+	mutation := newPasswordResetMutation(c.config, OpCreate)
+	return &PasswordResetCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of PasswordReset entities.
+func (c *PasswordResetClient) CreateBulk(builders ...*PasswordResetCreate) *PasswordResetCreateBulk {
+	return &PasswordResetCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *PasswordResetClient) MapCreateBulk(slice any, setFunc func(*PasswordResetCreate, int)) *PasswordResetCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &PasswordResetCreateBulk{err: fmt.Errorf("calling to PasswordResetClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*PasswordResetCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &PasswordResetCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for PasswordReset.
+func (c *PasswordResetClient) Update() *PasswordResetUpdate {
+	mutation := newPasswordResetMutation(c.config, OpUpdate)
+	return &PasswordResetUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *PasswordResetClient) UpdateOne(_m *PasswordReset) *PasswordResetUpdateOne {
+	mutation := newPasswordResetMutation(c.config, OpUpdateOne, withPasswordReset(_m))
+	return &PasswordResetUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *PasswordResetClient) UpdateOneID(id string) *PasswordResetUpdateOne {
+	mutation := newPasswordResetMutation(c.config, OpUpdateOne, withPasswordResetID(id))
+	return &PasswordResetUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for PasswordReset.
+func (c *PasswordResetClient) Delete() *PasswordResetDelete {
+	mutation := newPasswordResetMutation(c.config, OpDelete)
+	return &PasswordResetDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *PasswordResetClient) DeleteOne(_m *PasswordReset) *PasswordResetDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *PasswordResetClient) DeleteOneID(id string) *PasswordResetDeleteOne {
+	builder := c.Delete().Where(passwordreset.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &PasswordResetDeleteOne{builder}
+}
+
+// Query returns a query builder for PasswordReset.
+func (c *PasswordResetClient) Query() *PasswordResetQuery {
+	return &PasswordResetQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypePasswordReset},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a PasswordReset entity by its id.
+func (c *PasswordResetClient) Get(ctx context.Context, id string) (*PasswordReset, error) {
+	return c.Query().Where(passwordreset.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *PasswordResetClient) GetX(ctx context.Context, id string) *PasswordReset {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// QueryUser queries the user edge of a PasswordReset.
+func (c *PasswordResetClient) QueryUser(_m *PasswordReset) *UserQuery {
+	query := (&UserClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(passwordreset.Table, passwordreset.FieldID, id),
+			sqlgraph.To(user.Table, user.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, false, passwordreset.UserTable, passwordreset.UserColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// Hooks returns the client hooks.
+func (c *PasswordResetClient) Hooks() []Hook {
+	hooks := c.hooks.PasswordReset
+	return append(hooks[:len(hooks):len(hooks)], passwordreset.Hooks[:]...)
+}
+
+// Interceptors returns the client interceptors.
+func (c *PasswordResetClient) Interceptors() []Interceptor {
+	inters := c.inters.PasswordReset
+	return append(inters[:len(inters):len(inters)], passwordreset.Interceptors[:]...)
+}
+
+func (c *PasswordResetClient) mutate(ctx context.Context, m *PasswordResetMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&PasswordResetCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&PasswordResetUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&PasswordResetUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&PasswordResetDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown PasswordReset mutation op: %q", m.Op())
 	}
 }
 
@@ -5867,25 +6193,176 @@ func (c *SecretMetaClient) mutate(ctx context.Context, m *SecretMetaMutation) (V
 	}
 }
 
+// UserClient is a client for the User schema.
+type UserClient struct {
+	config
+}
+
+// NewUserClient returns a client for the User from the given config.
+func NewUserClient(c config) *UserClient {
+	return &UserClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `user.Hooks(f(g(h())))`.
+func (c *UserClient) Use(hooks ...Hook) {
+	c.hooks.User = append(c.hooks.User, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `user.Intercept(f(g(h())))`.
+func (c *UserClient) Intercept(interceptors ...Interceptor) {
+	c.inters.User = append(c.inters.User, interceptors...)
+}
+
+// Create returns a builder for creating a User entity.
+func (c *UserClient) Create() *UserCreate {
+	mutation := newUserMutation(c.config, OpCreate)
+	return &UserCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of User entities.
+func (c *UserClient) CreateBulk(builders ...*UserCreate) *UserCreateBulk {
+	return &UserCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *UserClient) MapCreateBulk(slice any, setFunc func(*UserCreate, int)) *UserCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &UserCreateBulk{err: fmt.Errorf("calling to UserClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*UserCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &UserCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for User.
+func (c *UserClient) Update() *UserUpdate {
+	mutation := newUserMutation(c.config, OpUpdate)
+	return &UserUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *UserClient) UpdateOne(_m *User) *UserUpdateOne {
+	mutation := newUserMutation(c.config, OpUpdateOne, withUser(_m))
+	return &UserUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *UserClient) UpdateOneID(id string) *UserUpdateOne {
+	mutation := newUserMutation(c.config, OpUpdateOne, withUserID(id))
+	return &UserUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for User.
+func (c *UserClient) Delete() *UserDelete {
+	mutation := newUserMutation(c.config, OpDelete)
+	return &UserDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *UserClient) DeleteOne(_m *User) *UserDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *UserClient) DeleteOneID(id string) *UserDeleteOne {
+	builder := c.Delete().Where(user.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &UserDeleteOne{builder}
+}
+
+// Query returns a query builder for User.
+func (c *UserClient) Query() *UserQuery {
+	return &UserQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeUser},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a User entity by its id.
+func (c *UserClient) Get(ctx context.Context, id string) (*User, error) {
+	return c.Query().Where(user.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *UserClient) GetX(ctx context.Context, id string) *User {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// QueryMemberships queries the memberships edge of a User.
+func (c *UserClient) QueryMemberships(_m *User) *MembershipQuery {
+	query := (&MembershipClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(user.Table, user.FieldID, id),
+			sqlgraph.To(membership.Table, membership.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, user.MembershipsTable, user.MembershipsColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// Hooks returns the client hooks.
+func (c *UserClient) Hooks() []Hook {
+	hooks := c.hooks.User
+	return append(hooks[:len(hooks):len(hooks)], user.Hooks[:]...)
+}
+
+// Interceptors returns the client interceptors.
+func (c *UserClient) Interceptors() []Interceptor {
+	inters := c.inters.User
+	return append(inters[:len(inters):len(inters)], user.Interceptors[:]...)
+}
+
+func (c *UserClient) mutate(ctx context.Context, m *UserMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&UserCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&UserUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&UserUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&UserDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown User mutation op: %q", m.Op())
+	}
+}
+
 // hooks and interceptors per client, for fast access.
 type (
 	hooks struct {
 		ACMEStorage, APIRequest, AccessPolicy, AgentSession, AgentState, AuditEntry,
 		AuditHead, CABundle, CAKey, Certificate, CompiledSnapshot, ConfigRevision,
 		ConfigSeq, Connector, Domain, EnrollmentToken, Gateway, GatewayGroup, Instance,
-		InstanceSetting, IssuedCertificate, Lease, Org, OrgSetting, PolicyRule,
-		PortAllocation, PortPool, PortQuota, RevokedIdentity, Route, RouteHTTP,
-		RouteHostname, RoutePolicy, RouteTCP, RouteTarget, RouteUDP,
-		SecretMeta []ent.Hook
+		InstanceSetting, IssuedCertificate, Lease, Membership, Org, OrgSetting,
+		PasswordReset, PolicyRule, PortAllocation, PortPool, PortQuota,
+		RevokedIdentity, Route, RouteHTTP, RouteHostname, RoutePolicy, RouteTCP,
+		RouteTarget, RouteUDP, SecretMeta, User []ent.Hook
 	}
 	inters struct {
 		ACMEStorage, APIRequest, AccessPolicy, AgentSession, AgentState, AuditEntry,
 		AuditHead, CABundle, CAKey, Certificate, CompiledSnapshot, ConfigRevision,
 		ConfigSeq, Connector, Domain, EnrollmentToken, Gateway, GatewayGroup, Instance,
-		InstanceSetting, IssuedCertificate, Lease, Org, OrgSetting, PolicyRule,
-		PortAllocation, PortPool, PortQuota, RevokedIdentity, Route, RouteHTTP,
-		RouteHostname, RoutePolicy, RouteTCP, RouteTarget, RouteUDP,
-		SecretMeta []ent.Interceptor
+		InstanceSetting, IssuedCertificate, Lease, Membership, Org, OrgSetting,
+		PasswordReset, PolicyRule, PortAllocation, PortPool, PortQuota,
+		RevokedIdentity, Route, RouteHTTP, RouteHostname, RoutePolicy, RouteTCP,
+		RouteTarget, RouteUDP, SecretMeta, User []ent.Interceptor
 	}
 )
 

@@ -34,8 +34,10 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/instancesetting"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/issuedcertificate"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/lease"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/membership"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/org"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/orgsetting"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/passwordreset"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/policyrule"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/portallocation"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/portpool"
@@ -49,6 +51,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routetcp"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routeudp"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/secretmeta"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/user"
 )
 
 // ent aliases to avoid import conflicts in user's code.
@@ -131,8 +134,10 @@ func checkColumn(t, c string) error {
 			instancesetting.Table:   instancesetting.ValidColumn,
 			issuedcertificate.Table: issuedcertificate.ValidColumn,
 			lease.Table:             lease.ValidColumn,
+			membership.Table:        membership.ValidColumn,
 			org.Table:               org.ValidColumn,
 			orgsetting.Table:        orgsetting.ValidColumn,
+			passwordreset.Table:     passwordreset.ValidColumn,
 			policyrule.Table:        policyrule.ValidColumn,
 			portallocation.Table:    portallocation.ValidColumn,
 			portpool.Table:          portpool.ValidColumn,
@@ -146,6 +151,7 @@ func checkColumn(t, c string) error {
 			routetarget.Table:       routetarget.ValidColumn,
 			routeudp.Table:          routeudp.ValidColumn,
 			secretmeta.Table:        secretmeta.ValidColumn,
+			user.Table:              user.ValidColumn,
 		})
 	})
 	return columnCheck(t, c)
