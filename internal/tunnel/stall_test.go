@@ -28,6 +28,9 @@ func TestFlowControl_StalledStreamsDoNotFreezeSession(t *testing.T) {
 		go func() { _, _ = c.Write(make([]byte, 900<<10)) }() // the gateway never reads it
 		time.Sleep(20 * time.Millisecond)                     // a distinct age for each
 	}
+	// Let the 3.6 MiB reach the 3 MiB connection window before the probe; on a loaded machine
+	// the writers need more than the 80 ms above.
+	time.Sleep(500 * time.Millisecond)
 	g, c := h2Open(t, gw, con)
 	wrote := make(chan error, 1)
 	go func() { _, err := c.Write(make([]byte, 256<<10)); wrote <- err }()
