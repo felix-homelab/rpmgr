@@ -387,7 +387,8 @@ sequenceDiagram
   the SPIFFE ID, so a gateway of another group or org cannot impersonate it even with a valid
   certificate.
 - The **session control stream** carries `SessionHello`/`SessionWelcome`, `Ping`/`Pong`,
-  `Drain{reason, deadline}`, `RouteHealth`, `OpenRequest`, `P2PCandidates` and `Goodbye{code}`. On
+  `Drain{reason, deadline}`, `RouteHealth`, `OpenRequest`, `P2PCandidates` and `Goodbye{code}`
+  (`shutdown`, `protocol`, `unauthorized`); the messages are defined in `proto/rpmgr/tunnel/v1`. On
   QUIC it is the first bidirectional stream, opened by the connector ("stream 0"). On the TCP
   transport it is the first request the gateway opens after the connection is up, because there the
   connector is the HTTP/2 server and cannot open streams ([Transports and fallback](#transports-and-fallback)).
@@ -430,7 +431,11 @@ sequenceDiagram
 ### Framing
 
 - Every message on an rpmgr stream is `varint(length) ‖ protobuf`. Maximum message size: **16 KiB**
-  on tunnel streams, **4 MiB** on the control session.
+  on tunnel streams, **4 MiB** on the control session. A length above the limit is refused before
+  the payload is read.
+- A `StreamOpen` whose kind is unknown or not available in the running phase, that names no route
+  for `TCP` or `UDP_FLOW`, or whose addresses, ports or trace context are malformed, is answered
+  with `PROTOCOL` before anything is dialled.
 - `StreamOpen` is the first message on every user, relay or diagnostic stream, written by the side
   that opens the stream: the gateway for `TCP`, `UDP_FLOW`, `RELAY_IN`, `DIAG`; the connector for
   `RELAY_OUT` and `CONTROL_PASSTHROUGH` on QUIC. On the TCP transport only the gateway can open
