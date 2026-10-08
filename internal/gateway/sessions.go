@@ -494,6 +494,19 @@ func (m *Sessions) Close() {
 	}
 }
 
+// Streams returns the number of streams in flight on all sessions.
+func (m *Sessions) Streams() int64 {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	var n int64
+	for _, ds := range m.byConnector {
+		for _, d := range ds {
+			n += d.inflight.Load()
+		}
+	}
+	return n
+}
+
 // Count returns the number of sessions per transport, for the data_sessions report.
 func (m *Sessions) Count() map[string]int {
 	m.mu.Lock()

@@ -6,6 +6,7 @@ import (
 	"context"
 	"crypto/ecdsa"
 	"crypto/rand"
+	"crypto/tls"
 	"crypto/x509"
 	"encoding/hex"
 	"errors"
@@ -27,12 +28,16 @@ type ControlOptions struct {
 	Now          func() time.Time
 	Logger       *slog.Logger
 	Backoff      *Backoff // nil is ControlBackoff
+	// OnDenyList, if set, is called after the deny-list changed: loaded at start or merged from
+	// the controller, so the role can close the sessions of peers it now names.
+	OnDenyList func()
 }
 
 // Control is an agent's control plane: its identity, the control session with certificate
 // renewal, the snapshot runtime and the deny-list.
 type Control struct {
 	o      ControlOptions
+	id     Loaded
 	client *Client
 	rt     *Runtime
 	deny   *DenyList
@@ -51,7 +56,7 @@ func NewControl(o ControlOptions) (*Control, error) {
 	if _, err := rand.Read(boot); err != nil {
 		return nil, err
 	}
-	c := &Control{o: o}
+	c := &Control{o: o, id: id}
 	c.deny = NewDenyList(DenyListOptions{StateDir: o.StateDir, Root: id.Root, Now: o.Now,
 		Signers: func() []*x509.Certificate { return c.rt.Signers() }})
 	c.rt = NewRuntime(RuntimeOptions{Identity: id, StateDir: o.StateDir, Applier: o.Applier, Now: o.Now, Logger: o.Logger,
@@ -72,6 +77,8 @@ func NewControl(o ControlOptions) (*Control, error) {
 			// Applied whatever happens to snapshots.
 			if err := c.deny.Apply(m.GetDenyList()); err != nil {
 				o.Logger.Error("cannot apply a deny-list", "error", err)
+			} else if o.OnDenyList != nil {
+				o.OnDenyList()
 			}
 		},
 		SaveCertificate: func(key *ecdsa.PrivateKey, chain [][]byte) error { return SaveCertificate(id.Dir, key, chain) }})
@@ -95,6 +102,9 @@ func RunControl(ctx context.Context, o ControlOptions) error {
 func (c *Control) Run(ctx context.Context) error {
 	if err := c.deny.Load(); err != nil {
 		c.o.Logger.Error("starting with part of the stored deny-list", "error", err)
+	}
+	if c.o.OnDenyList != nil {
+		c.o.OnDenyList()
 	}
 	if err := c.rt.LoadLastKnownGood(ctx); errors.Is(err, ErrBadLastKnownGood) {
 		c.o.Logger.Error("starting without the last-known-good snapshot", "error", err)
@@ -125,6 +135,14 @@ func (c *Control) Ready(context.Context) error {
 	}
 	return nil
 }
+
+// Identity returns the agent's identity as it was loaded; the certificate in it is the one at
+// start, Certificate the current one.
+func (c *Control) Identity() Loaded { return c.id }
+
+// Certificate returns the agent's current certificate, which renewal replaces, for the role's
+// TLS configurations.
+func (c *Control) Certificate() tls.Certificate { return c.client.Certificate() }
 
 // DenyList returns the agent's deny-list, for the role's TLS peers.
 func (c *Control) DenyList() *DenyList { return c.deny }

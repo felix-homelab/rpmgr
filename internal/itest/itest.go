@@ -11,6 +11,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"fmt"
 	"math/big"
 	"net"
 	"net/http"
@@ -180,12 +181,36 @@ func (c *Controller) Stop() {
 // EnrollConnector enrolls a connector into dir through the controller and loads its identity.
 func (c *Controller) EnrollConnector(t testing.TB, dir string) agent.Loaded {
 	t.Helper()
+	return c.enroll(t, dir, func(tc *ent.EnrollmentTokenCreate) { tc.SetRole("connector") })
+}
+
+// EnrollGateway creates a gateway of group with its tunnel endpoints, as an Admin does, and enrolls
+// it into dir with a token bound to it.
+func (c *Controller) EnrollGateway(t testing.TB, dir, group string, endpoints []string) agent.Loaded {
+	t.Helper()
+	n := c.DB.Client().Gateway.Query().CountX(c.Sys)
+	gw := c.DB.Client().Gateway.Create().SetOrgID(c.Org).SetGatewayGroupID(group).SetName(fmt.Sprintf("gw-%d", n+1)).
+		SetTunnelEndpoints(endpoints).SaveX(c.Sys)
+	return c.enroll(t, dir, func(tc *ent.EnrollmentTokenCreate) { tc.SetRole("gateway").SetGatewayID(gw.ID) })
+}
+
+// GatewayGroup creates a gateway group in the controller's org.
+func (c *Controller) GatewayGroup(t testing.TB, name string) string {
+	t.Helper()
+	return c.DB.Client().GatewayGroup.Create().SetOrgID(c.Org).SetName(name).SaveX(c.Sys).ID
+}
+
+// enroll mints a token that set completes and enrolls an agent into dir with it.
+func (c *Controller) enroll(t testing.TB, dir string, set func(*ent.EnrollmentTokenCreate)) agent.Loaded {
+	t.Helper()
 	tok, err := token.New(token.Enrollment)
 	if err != nil {
 		t.Fatal(err)
 	}
-	c.DB.Client().EnrollmentToken.Create().SetOrgID(c.Org).SetTokenHash(token.Hash(tok)).SetRole("connector").
-		SetExpiresAt(time.Now().Add(time.Hour)).SetCreatedBy("usr_itest").ExecX(c.Sys)
+	tc := c.DB.Client().EnrollmentToken.Create().SetOrgID(c.Org).SetTokenHash(token.Hash(tok)).
+		SetExpiresAt(time.Now().Add(time.Hour)).SetCreatedBy("usr_itest")
+	set(tc)
+	tc.ExecX(c.Sys)
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	if _, err := agent.Enroll(ctx, agent.EnrollOptions{Controller: c.URL, Pin: pki.RootPin(c.CA.Root()), Token: tok,
