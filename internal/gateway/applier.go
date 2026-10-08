@@ -4,6 +4,7 @@ package gateway
 
 import (
 	"context"
+	"crypto/sha256"
 	"fmt"
 	"slices"
 	"sync/atomic"
@@ -60,10 +61,11 @@ func NewApplier() (*Applier, Assignment) {
 
 // Served is what the applier updates; any part may be nil.
 type Served struct {
-	TCP         *TCPRoutes
-	UDP         *UDPRoutes
-	Passthrough *Passthrough
-	Sessions    *Sessions
+	TCP          *TCPRoutes
+	UDP          *UDPRoutes
+	Passthrough  *Passthrough
+	Certificates *Certificates
+	Sessions     *Sessions
 }
 
 // Bind gives the applier what it updates.
@@ -102,6 +104,19 @@ func (a *Applier) Validate(snap *agentv1.Snapshot) []*agentv1.SnapshotError {
 		case res.GetGatewayUdpRoute() != nil:
 			port(id, "UDP", res.GetGatewayUdpRoute().GetPort())
 			connectors = res.GetGatewayUdpRoute().GetConnectors()
+		case res.GetGatewayCertificate() != nil:
+			c := res.GetGatewayCertificate()
+			if len(c.GetContentSha256()) != sha256.Size {
+				bad(id, "a certificate without a SHA-256 content hash")
+			}
+			if len(c.GetHostnames()) == 0 {
+				bad(id, "a certificate without hostnames")
+			}
+			for _, h := range c.GetHostnames() {
+				if n, err := domains.Normalize(h, true); err != nil || n != h {
+					bad(id, "hostname %q is not normalised", h)
+				}
+			}
 		case res.GetGatewayPassthroughRoute() != nil:
 			p := res.GetGatewayPassthroughRoute()
 			if len(p.GetHostnames()) == 0 {
@@ -130,12 +145,13 @@ func (a *Applier) Validate(snap *agentv1.Snapshot) []*agentv1.SnapshotError {
 
 // Apply implements agent.Applier: the new assignment takes effect first, then the routes, then
 // the data sessions of connectors no longer assigned are closed.
-func (a *Applier) Apply(_ context.Context, snap *agentv1.Snapshot, _ agent.Changes) []*agentv1.ResourceStatus {
+func (a *Applier) Apply(ctx context.Context, snap *agentv1.Snapshot, _ agent.Changes) []*agentv1.ResourceStatus {
 	next := &assigned{known: map[string]bool{}, routes: map[string][]string{}}
 	var (
 		tcp         []TCPRoute
 		udp         []UDPRoute
 		passthrough []PassthroughRoute
+		certs       []CertificateRoute
 	)
 	for _, res := range snap.GetResources() {
 		var connectors []string
@@ -150,6 +166,10 @@ func (a *Applier) Apply(_ context.Context, snap *agentv1.Snapshot, _ agent.Chang
 			connectors = r.GetConnectors()
 			udp = append(udp, UDPRoute{ID: res.GetId(), Port: uint16(r.GetPort()), //nolint:gosec // G115: Validate bounds the port
 				FlowIdle: time.Duration(r.GetFlowIdleTimeoutSeconds()) * time.Second})
+		case res.GetGatewayCertificate() != nil:
+			c := res.GetGatewayCertificate()
+			certs = append(certs, CertificateRoute{ID: res.GetId(), ContentSHA256: c.GetContentSha256(), Hostnames: c.GetHostnames()})
+			continue // serves no route of its own
 		case res.GetGatewayPassthroughRoute() != nil:
 			p := res.GetGatewayPassthroughRoute()
 			connectors = p.GetConnectors()
@@ -172,6 +192,9 @@ func (a *Applier) Apply(_ context.Context, snap *agentv1.Snapshot, _ agent.Chang
 	}
 	if s.Passthrough != nil {
 		s.Passthrough.Apply(passthrough)
+	}
+	if s.Certificates != nil {
+		status = append(status, s.Certificates.Apply(ctx, certs)...)
 	}
 	if s.Sessions != nil {
 		s.Sessions.Recheck()

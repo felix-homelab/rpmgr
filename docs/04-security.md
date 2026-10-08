@@ -223,6 +223,13 @@ later.
   must name at least one valid DNS name; its key must match it and be ECDSA P-256 or P-384, or RSA
   of 2048 to 8192 bits. The key is stored under the KEK; gateways fetch chain and key together by
   their SHA-256, which the controller computes at the upload.
+- **Route certificates on gateways** [R]: a gateway keeps each fetched chain and key in its state
+  directory, readable by the gateway's user only, as any TLS server keeps its keys, so that a
+  gateway restarted while the controller is unreachable still terminates TLS. It checks a kept copy
+  against its hash before use and removes it once no route needs it
+  ([10](10-operations.md#filesystem-layout)). For a TLS server name it uses a certificate listed
+  for that route hostname, or, only if none is, one for the wildcard hostname a label up; an
+  expired certificate never gives way to another route's.
 
 ### CA rotation
 

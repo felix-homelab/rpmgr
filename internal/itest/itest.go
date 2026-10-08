@@ -134,7 +134,7 @@ func (c *Controller) StartReplica(t testing.TB) (string, *controller.Sessions) {
 	roots := x509.NewCertPool()
 	roots.AddCert(c.CA.Root())
 	so := controller.SessionsOptions{DB: c.DB, CA: c.CA, Node: nodeID, Version: c.opts.Version,
-		Sys: c.Sys, Now: c.opts.Now, Admission: c.opts.Admission, RevisionCheck: 50 * time.Millisecond, RevLog: c.RevLog}
+		Sys: c.Sys, Now: c.opts.Now, Admission: c.opts.Admission, RevisionCheck: 50 * time.Millisecond, RevLog: c.RevLog, Sealer: c.sealer}
 	if len(c.opts.Sources) > 0 {
 		so.Compiler = &snapshot.Compiler{Sources: c.opts.Sources, Endpoints: func() []string { return []string{url} }}
 	}

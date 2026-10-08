@@ -23,9 +23,13 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/tunnel"
 )
 
-// ResetKeyFile is the gateway's stateless reset key in its state directory
-// (docs/10-operations.md, "Filesystem layout").
-const ResetKeyFile = "quic-reset.key"
+// ResetKeyFile is the gateway's stateless reset key in its state directory, and ResourcesDir the
+// directory of the items it fetched, route certificates with their keys (docs/10-operations.md,
+// "Filesystem layout").
+const (
+	ResetKeyFile = "quic-reset.key"
+	ResourcesDir = "resources"
+)
 
 // tunnelHandshake bounds the TLS handshake of a data session over TCP.
 const tunnelHandshake = 10 * time.Second
@@ -135,7 +139,9 @@ func Run(ctx context.Context, o RunOptions) error {
 	udpRoutes := NewUDPRoutes(UDPOptions{Host: udpHost, Sessions: sessions, Revision: applier.Revision, Metrics: udpMetrics,
 		Logger: o.Logger})
 	defer udpRoutes.Close()
-	applier.Bind(Served{TCP: routes, UDP: udpRoutes, Passthrough: pass, Sessions: sessions})
+	certificates := NewCertificates(CertificatesOptions{Dir: filepath.Join(cfg.StateDir, ResourcesDir), Fetch: ctl.Fetch,
+		Now: o.Now, Logger: o.Logger})
+	applier.Bind(Served{TCP: routes, UDP: udpRoutes, Passthrough: pass, Certificates: certificates, Sessions: sessions})
 
 	tunnelTLS := pki.ServerConfig(ctl.Certificate(), id.Roots, pki.Expect{TrustDomain: id.TrustDomain,
 		Kinds: []pki.Kind{pki.KindConnector}, Denied: ctl.DenyList().Denied}, o.Now)
@@ -220,6 +226,7 @@ func Run(ctx context.Context, o RunOptions) error {
 		o.Readiness(ctl.Ready)
 	}
 	go func() { _ = router.Serve(tcp) }()
+	go certificates.Run(run)
 	go func() {
 		for {
 			s, err := qln.Accept(run)
