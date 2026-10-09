@@ -221,8 +221,13 @@ func TestHTTPRoutes_Access(t *testing.T) {
 	}
 	route.Access = access(t, deny("127.0.0.0/8"))
 	e.routes.Apply([]gateway.HTTPRoute{route})
+	// Apply closes the connection soon, not before it returns: bytes already on their way may still
+	// arrive, but the connection must end within the deadline.
+	_ = c.SetReadDeadline(time.Now().Add(5 * time.Second))
 	_, _ = c.Write([]byte("x"))
-	if _, err := io.ReadFull(br, make([]byte, 1)); err == nil {
+	_, err = io.Copy(io.Discard, br)
+	var ne net.Error
+	if errors.As(err, &ne) && ne.Timeout() {
 		t.Fatal("an upgraded connection the tightened rules deny went on")
 	}
 }
