@@ -61,6 +61,22 @@ func TestTokens(t *testing.T) {
 	if r := x.db.Client().APIToken.GetX(x.sys, first.Token.ID); r.LastUsedIP != "192.0.2.1" {
 		t.Fatalf("written twice within a minute: %s", r.LastUsedIP)
 	}
+	// Its first use is recorded; a use from the same address a minute later is not, one from
+	// another address is.
+	x.clock = x.clock.Add(time.Minute)
+	if _, err := tokens.Authenticate(tok, "192.0.2.1"); err != nil {
+		t.Fatal(err)
+	}
+	x.clock = x.clock.Add(time.Minute)
+	if _, err := tokens.Authenticate(tok, "198.51.100.7"); err != nil {
+		t.Fatal(err)
+	}
+	uses := x.actions(t, "token.use")
+	if len(uses) != 2 || uses[0].IP != "192.0.2.1" || uses[0].Reason != "first use" || uses[1].IP != "198.51.100.7" ||
+		uses[1].Reason != "used before from 192.0.2.1" || uses[0].ActorID != op || uses[0].CredentialID != first.Token.ID ||
+		uses[0].AuthMethod != "token" || uses[0].OrgID == nil || *uses[0].OrgID != x.org {
+		t.Fatalf("token uses: %+v", uses)
+	}
 	if err := x.m.Remove(ctx, x.org, op, x.owner, authz.RoleOwner); err != nil {
 		t.Fatal(err)
 	}

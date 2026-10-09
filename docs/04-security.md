@@ -781,6 +781,14 @@ Phase 3 item ([13](13-roadmap.md#phase-3--advanced)).
   chain with the address given and the password redacted. It is the same for an unknown address
   as for a wrong password, so the log tells no more than the answer did. A step-up's entry names
   its factor; a failed one names its user. A logout's entry names the session it ends.
+- [R] **Token use.** A personal API token's use is recorded when its last use is written, at most
+  once a minute per token: its first use, and a use from another address than the last one
+  written. Every recorded request a token makes names it as the credential.
+- [R] **Enrollments.** A refused or failed enrollment is an anonymous entry in the instance chain
+  with the address and the reason, never the token.
+- [R] **Floods.** A rate limit's refusal of an anonymous caller, at login or enrollment, is not
+  recorded: the limit bounds such requests, and an entry for each would let a flood write the log,
+  and lock its chain, at the flood's pace.
 - Signed **checkpoints** (chain head + count, signed with the audit-checkpoint key) are shipped to an
   external sink (syslog, OTLP, webhook, or object storage with retention lock). The external copy
   is what makes tampering evident: anyone with database write access could recompute a chain.

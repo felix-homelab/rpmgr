@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/base32"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -136,6 +137,27 @@ func TestAudit_Logins(t *testing.T) {
 	}
 	if unknown.Reason != wrong.Reason || unknown.AuthMethod != wrong.AuthMethod || !strings.Contains(unknown.Diff, "nobody@example.com") {
 		t.Fatalf("an unknown address and a wrong password differ: %+v %+v", unknown, wrong)
+	}
+
+	// Once the address's limit refuses logins, the refusals are not recorded one by one.
+	tried := 2
+	for i := 0; ; i++ {
+		err := e.browser().login(fmt.Sprintf("guess%d@example.com", i), "a guessed password")
+		if code(err) == connect.CodeResourceExhausted {
+			break
+		}
+		if i > 100 {
+			t.Fatal("no rate limit")
+		}
+		tried++
+	}
+	for range 5 {
+		if err := e.browser().login("guess@example.com", "a guessed password"); code(err) != connect.CodeResourceExhausted {
+			t.Fatalf("after the limit: %v", err)
+		}
+	}
+	if n := len(logins()); n != 1+tried {
+		t.Fatalf("%d login entries after %d failed logins and the limit's refusals, want %d", n, tried, 1+tried)
 	}
 
 	stepUps := func() []*ent.AuditEntry {

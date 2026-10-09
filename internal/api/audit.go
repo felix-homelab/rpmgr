@@ -138,6 +138,11 @@ func (r *record) finish(ctx context.Context, err error) {
 	if r == nil || err == nil && (r.appended.Load() || r.req.Recorded()) {
 		return
 	}
+	// A rate limit's refusal of an anonymous caller is not recorded: the limit bounds such
+	// requests, and an entry for each would let a flood write the log at its own pace.
+	if connect.CodeOf(err) == connect.CodeResourceExhausted && r.req.Entry.ActorType == audit.ActorAnonymous {
+		return
+	}
 	e := r.req.Entry
 	switch code := connect.CodeOf(err); {
 	case err == nil:

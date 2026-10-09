@@ -63,9 +63,24 @@ func NewService(db *store.DB, ca *pki.CA, endpoints []string, now func() time.Ti
 	return &Service{DB: db, CA: ca, Endpoints: endpoints, Now: now, limit: ratelimit.New(RateEvery, RateBurst, now)}
 }
 
+// failed records a refused or failed enrollment: anonymous, with the address and the error's
+// message, which never holds the token.
+func (s *Service) failed(ctx context.Context, ip string, err error) {
+	st, _ := status.FromError(err)
+	result := audit.Failure
+	if st.Code() == codes.Unauthenticated || st.Code() == codes.PermissionDenied {
+		result = audit.Denied
+	}
+	if _, aerr := audit.Record(ctx, s.DB, audit.Entry{ActorType: audit.ActorAnonymous, IP: ip, Action: "agent.enroll", Result: result,
+		Reason: st.Message()}); aerr != nil && s.Logger != nil {
+		s.Logger.Error("cannot record a failed enrollment in the audit log", "error", aerr)
+	}
+}
+
 // Enroll checks the rate limit and the CSR's binding to this connection, then redeems the token,
-// assigns the identity the token grants and issues the agent's first certificate.
-func (s *Service) Enroll(ctx context.Context, req *agentv1.EnrollRequest) (*agentv1.EnrollResponse, error) {
+// assigns the identity the token grants and issues the agent's first certificate. A refused or
+// failed enrollment is recorded in the instance chain, unless the rate limit refused it.
+func (s *Service) Enroll(ctx context.Context, req *agentv1.EnrollRequest) (_ *agentv1.EnrollResponse, err error) {
 	p, ok := peer.FromContext(ctx)
 	info, tlsOK := p.AuthInfo.(credentials.TLSInfo)
 	if !ok || !tlsOK {
@@ -75,6 +90,11 @@ func (s *Service) Enroll(ctx context.Context, req *agentv1.EnrollRequest) (*agen
 	if !s.limit.Allow(ip) {
 		return nil, status.Error(codes.ResourceExhausted, "too many enrollments from this address")
 	}
+	defer func() {
+		if err != nil {
+			s.failed(context.WithoutCancel(ctx), ip, err)
+		}
+	}()
 	csr, err := x509.ParseCertificateRequest(req.GetCsr())
 	if err != nil {
 		return nil, status.Error(codes.InvalidArgument, "the CSR does not parse")
