@@ -1,2 +1,0 @@
--- Create "revoked_serials" table
-CREATE TABLE "revoked_serials" ("serial" character varying NOT NULL, "org_id" character varying NULL, "revoked_at" timestamptz NOT NULL, "reason" character varying NOT NULL DEFAULT '', "not_after" timestamptz NOT NULL, PRIMARY KEY ("serial"), CONSTRAINT "revoked_serials_orgs" FOREIGN KEY ("org_id") REFERENCES "orgs" ("id") ON UPDATE NO ACTION ON DELETE NO ACTION);
