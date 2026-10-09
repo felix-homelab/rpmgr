@@ -187,8 +187,11 @@ func Parse(ctx context.Context, r Resolver, d *Doc) (proto.Message, error) {
 	return m, nil
 }
 
-// Write writes manifests as one YAML stream, separated by "---".
+// Write writes manifests as one YAML stream, separated by "---"; no manifests are an empty stream.
 func Write(w io.Writer, docs []*Doc) error {
+	if len(docs) == 0 {
+		return nil // the encoder refuses to close a stream it has not started
+	}
 	enc := yaml.NewEncoder(w)
 	enc.SetIndent(2)
 	for _, d := range docs {
