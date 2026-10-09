@@ -53,6 +53,10 @@ The repository is `github.com/felix-homelab/rpmgr`; use `gh` for issues and PRs.
   merging `main` into it; the maintainer deletes branches. Rebase only branches not yet pushed.
   Run every check locally before the first push; if a pushed PR's commits must change, push the
   corrected history to a new branch (`…-v2`), open a new PR and close the old one (D54).
+- **Until v1.0.0** (D64): before the first push run fast checks of what changed; fix what CI then
+  finds with a further commit on the pushed branch, not a new branch; one PR may carry up to three
+  slices of one milestone as separate commits, within 800 production lines. A PR runs only the CI
+  stages its changes need; the nightly run runs everything.
 - **Branches** (CONTRIBUTING, "Branches"): `feature/<issue>-<desc>` and `bugfix/<issue>-<desc>`
   need a GitHub issue; `improvement/<desc>` (tooling, docs, no behaviour change), `merge/<desc>`,
   `tmp/<desc>` (spikes, never merged), `release/<major>.<minor>`. Lowercase, digits, `-`, `.`;
