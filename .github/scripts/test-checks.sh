@@ -167,6 +167,8 @@ size_commit docs/a.md 900 >/dev/null
 size_commit p/testdata/x.go 900 >/dev/null
 expect pass "documents, test data and migrations do not count" in_repo "$r" "$z" "$base" \
   "$(size_commit migrations/1.sql 900)" ""
+expect pass "the benchmark suite does not count" in_repo "$r" "$z" "$base" "$(size_commit bench/cmd/bench/run.go 900)" ""
+expect fail "a package named like it does" in_repo "$r" "$z" "$base" "$(size_commit internal/bench/x.go 900)" ""
 expect fail "unknown commit" in_repo "$r" "$z" "$base" 0000000000000000000000000000000000000000 ""
 
 # --- DCO -----------------------------------------------------------------------------------

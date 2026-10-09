@@ -115,6 +115,22 @@ are recorded as runner measurements, each missed target gets a recorded decision
 regression check compares runner baselines and is reported, not blocking, for v0.x releases
 ([D49](14-open-decisions.md#project-and-process)).
 
+**As built** ([bench/README.md](../bench/README.md)):
+- **Topology:** `bench run` starts a controller, a gateway and two connectors of the `rpmgrtest`
+  build in Docker containers on one host, seeds their routes with `rpmgr testseed` and shapes the
+  gateway↔connector link with `tc netem`.
+- **Workflow:** `bench` is started by hand with a profile: smoke, standard (RTT 1 and 80 ms, loss
+  0 and 1 %) or full (the axes below). It runs on an x86-64 and an arm64 runner and uploads the
+  measurements, the host's details and a summary with the targets of 03 and the regression check
+  against `bench/baselines/`.
+- **Scaled down on one runner:** in the full profile, 20 idle connectors, and 1 000 routes in the
+  configuration-change workload.
+- **CPU:** read as each process's CPU time, not with `perf stat`.
+- **VB-18:** the share of new connections a connector gets while its session's writers are blocked
+  is a workload of its own.
+- **GSO and the UDP buffer settings:** chosen per run, not crossed within one.
+- **Not here:** the Raspberry Pi 5.
+
 | Axis | Values |
 |---|---|
 | RTT | 1, 20, 80, 200 ms |
@@ -320,6 +336,7 @@ Docker-based ones need Docker), and `test-checks.sh` tests the checks with valid
 | `ci` / `go-arm64` | Every test natively on a GitHub-hosted arm64 runner, with the race detector, and again for armv7 on the same host | `check-test-arch.sh` |
 | `nightly` / `ci`, `govulncheck`, `fuzz`, `riscv64`, `real-clients` | every `ci` stage in full; govulncheck against the latest vulnerability database; every fuzz target for 10 minutes; every test for riscv64 under QEMU user-mode emulation; Go, curl, headless Chromium and Firefox (images by digest) against the gateway's port 443 router, each reaching two http routes, a TLS-passthrough route and the controller's UI name, and no page for an unknown name. A failure opens the issue "Nightly run failed", or comments on the open one. Also started by hand | `check-govulncheck.sh`, `check-fuzz.sh`, `check-test-arch.sh`, `check-real-clients.sh` |
 | `scorecard` / `analysis` | OpenSSF Scorecard, weekly and on every push to `main`; results in the code-scanning alerts and the public Scorecard API | — |
+| `bench` / `bench` | The benchmark suite on an x86-64 and an arm64 runner, started by hand with a profile ([Benchmarks](#benchmarks), D49); the measurements and the summary as artifacts, the summary also in the job summary | `run-bench.sh` |
 
 The jobs `pr-rules`, `lint`, `docs` and `secrets` are required status checks of the `main` ruleset;
 the maintainer adds the others once their PRs are merged (verified 2026-10-09: none is yet). A job

@@ -1,0 +1,71 @@
+# SPDX-License-Identifier: Apache-2.0
+#
+# The benchmark topology (docs/12-testing-and-quality.md, "Benchmarks"): a controller, a gateway,
+# two connectors with the service beside each, a host for idle connectors and a client. `bench run`
+# starts the rpmgr processes inside the containers as the user running it; each container's
+# /var/lib/rpmgr is its directory under $BENCH_RUN. netem shapes the link network only: the
+# gateway↔connector link. Control traffic and the client use the public network.
+name: rpmgr-bench
+
+x-node: &node
+  image: rpmgr-bench:local
+  build: .
+  init: true
+  user: "${BENCH_UID:?}:${BENCH_GID:?}"
+  cap_add: [NET_ADMIN]
+  environment:
+    SSL_CERT_FILE: /var/lib/rpmgr/ca.pem
+  ulimits:
+    nofile: {soft: 1048576, hard: 1048576}
+
+networks:
+  public:
+    ipam:
+      config:
+        - subnet: 10.232.1.0/24
+  link:
+    ipam:
+      config:
+        - subnet: 10.232.2.0/24
+
+services:
+  ctl:
+    <<: *node
+    hostname: ctl
+    volumes: ["${BENCH_RUN:?}/ctl:/var/lib/rpmgr"]
+    networks:
+      public: {ipv4_address: 10.232.1.10}
+  gw:
+    <<: *node
+    hostname: gw
+    volumes: ["${BENCH_RUN:?}/gw:/var/lib/rpmgr"]
+    networks:
+      public: {ipv4_address: 10.232.1.20}
+      link: {ipv4_address: 10.232.2.20}
+  con1:
+    <<: *node
+    hostname: con1
+    volumes: ["${BENCH_RUN:?}/con1:/var/lib/rpmgr"]
+    networks:
+      public: {ipv4_address: 10.232.1.31}
+      link: {ipv4_address: 10.232.2.31}
+  con2:
+    <<: *node
+    hostname: con2
+    volumes: ["${BENCH_RUN:?}/con2:/var/lib/rpmgr"]
+    networks:
+      public: {ipv4_address: 10.232.1.32}
+      link: {ipv4_address: 10.232.2.32}
+  idle:
+    <<: *node
+    hostname: idle
+    volumes: ["${BENCH_RUN:?}/idle:/var/lib/rpmgr"]
+    networks:
+      public: {ipv4_address: 10.232.1.33}
+      link: {ipv4_address: 10.232.2.33}
+  client:
+    <<: *node
+    hostname: client
+    volumes: ["${BENCH_RUN:?}/client:/var/lib/rpmgr"]
+    networks:
+      public: {ipv4_address: 10.232.1.40}
