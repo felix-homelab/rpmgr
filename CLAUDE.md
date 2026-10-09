@@ -103,7 +103,7 @@ Process in CONTRIBUTING, "Spikes"; questions, methods, pass criteria and the pre
 
 ## Product code
 
-- One Go module, `github.com/felix-homelab/rpmgr` (`go 1.26.0`, `toolchain go1.27.1`), laid out as
+- One Go module, `github.com/felix-homelab/rpmgr` (`go 1.26.4`, `toolchain go1.27.2`), laid out as
   in [02](docs/02-architecture.md#source-layout-proposed); `CGO_ENABLED=0` everywhere.
 - Spike code is copied from the archive tags (`git show spike/sx:spikes/sx/<file>`), adapted and
   kept with its tests; the PR names the tag and files.
