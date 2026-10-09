@@ -455,26 +455,34 @@ func (m *Sessions) open(ctx context.Context, open *tunnelv1.StreamOpen, skip *da
 // or OVERLOADED it tries once more on another session (docs/03-connections.md, "Framing"). It
 // returns the stream only with NO_ERROR, otherwise the last result code.
 func (m *Sessions) OpenStream(ctx context.Context, open *tunnelv1.StreamOpen) (tunnel.Stream, tunnelv1.ResultCode, error) {
+	st, res, err := m.OpenStreamResult(ctx, open)
+	return st, res.GetCode(), err
+}
+
+// OpenStreamResult is OpenStream returning the whole StreamResult, with the target the
+// connector chose; it is nil after an error.
+func (m *Sessions) OpenStreamResult(ctx context.Context, open *tunnelv1.StreamOpen) (tunnel.Stream, *tunnelv1.StreamResult, error) {
 	var (
-		code  tunnelv1.ResultCode
+		last  *tunnelv1.StreamResult
 		tried *dataSession
 	)
 	for attempt := range 2 {
 		st, err := m.open(ctx, open, tried)
 		if attempt == 1 && errors.Is(err, ErrNoSession) {
-			return nil, code, nil // no other session to try
+			return nil, last, nil // no other session to try
 		}
 		if err != nil {
-			return nil, 0, err
+			return nil, nil, err
 		}
 		res, err := readResult(ctx, st)
 		if err != nil {
 			st.Abort()
-			return nil, 0, err
+			return nil, nil, err
 		}
-		code = res.GetCode()
+		last = res
+		code := res.GetCode()
 		if code == tunnelv1.ResultCode_RESULT_CODE_NO_ERROR {
-			return st, code, nil
+			return st, res, nil
 		}
 		_ = st.Close()
 		if code != tunnelv1.ResultCode_RESULT_CODE_DRAINING && code != tunnelv1.ResultCode_RESULT_CODE_OVERLOADED {
@@ -482,7 +490,7 @@ func (m *Sessions) OpenStream(ctx context.Context, open *tunnelv1.StreamOpen) (t
 		}
 		tried = st.d
 	}
-	return nil, code, nil
+	return nil, last, nil
 }
 
 // readResult reads a stream's StreamResult, aborting the stream after resultTimeout or when ctx

@@ -233,8 +233,8 @@ func (t *Targets) route(id string) (Route, bool) {
 // Handle serves one stream the gateway opened; it is Options.Streams. A UDP_FLOW stream is one
 // flow of a udp route, relayed through a socket of its own.
 func (t *Targets) Handle(ctx context.Context, gatewayID string, st tunnel.Stream, open *tunnelv1.StreamOpen) {
-	code, conn := t.open(ctx, open)
-	if err := tunnel.WriteMessage(st, &tunnelv1.StreamResult{Code: code}); err != nil || code != tunnelv1.ResultCode_RESULT_CODE_NO_ERROR {
+	code, conn, target := t.open(ctx, open)
+	if err := tunnel.WriteMessage(st, &tunnelv1.StreamResult{Code: code, TargetId: target}); err != nil || code != tunnelv1.ResultCode_RESULT_CODE_NO_ERROR {
 		if conn != nil {
 			_ = conn.Close()
 		}
@@ -254,19 +254,20 @@ func (t *Targets) Handle(ctx context.Context, gatewayID string, st tunnel.Stream
 	tunnel.Relay(st, conn)
 }
 
-// open checks the StreamOpen and dials a target of its route.
-func (t *Targets) open(ctx context.Context, open *tunnelv1.StreamOpen) (tunnelv1.ResultCode, net.Conn) {
+// open checks the StreamOpen and dials a target of its route; it returns the target's ID with the
+// connection.
+func (t *Targets) open(ctx context.Context, open *tunnelv1.StreamOpen) (tunnelv1.ResultCode, net.Conn, string) {
 	if c := tunnel.CheckStreamOpen(open); c != tunnelv1.ResultCode_RESULT_CODE_NO_ERROR {
-		return c, nil
+		return c, nil, ""
 	}
 	r, ok := t.route(open.GetRouteId())
 	switch kind := open.GetKind(); {
 	case kind != tunnelv1.StreamKind_STREAM_KIND_TCP && kind != tunnelv1.StreamKind_STREAM_KIND_UDP_FLOW:
-		return tunnelv1.ResultCode_RESULT_CODE_PROTOCOL, nil
+		return tunnelv1.ResultCode_RESULT_CODE_PROTOCOL, nil, ""
 	case !ok:
-		return tunnelv1.ResultCode_RESULT_CODE_ROUTE_UNKNOWN, nil
+		return tunnelv1.ResultCode_RESULT_CODE_ROUTE_UNKNOWN, nil, ""
 	case r.UDP != (kind == tunnelv1.StreamKind_STREAM_KIND_UDP_FLOW):
-		return tunnelv1.ResultCode_RESULT_CODE_PROTOCOL, nil
+		return tunnelv1.ResultCode_RESULT_CODE_PROTOCOL, nil, ""
 	case r.UDP:
 		return t.dialUDP(ctx, r, open)
 	}
@@ -303,9 +304,9 @@ func (t *Targets) open(ctx context.Context, open *tunnelv1.StreamOpen) (tunnelv1
 				continue
 			}
 		}
-		return tunnelv1.ResultCode_RESULT_CODE_NO_ERROR, conn
+		return tunnelv1.ResultCode_RESULT_CODE_NO_ERROR, conn, tg.ID
 	}
-	return code, nil
+	return code, nil, ""
 }
 
 // codeOf maps a dial error to its result code.

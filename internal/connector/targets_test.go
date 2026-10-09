@@ -145,6 +145,13 @@ func (e *targetsEnv) last() *tunnelv1.RouteHealth {
 // handle runs Handle for open and returns the gateway's end after its StreamResult.
 func (e *targetsEnv) handle(t *testing.T, open *tunnelv1.StreamOpen) (tunnelv1.ResultCode, *net.TCPConn) {
 	t.Helper()
+	res, gw := e.handleResult(t, open)
+	return res.GetCode(), gw
+}
+
+// handleResult is handle returning the whole StreamResult.
+func (e *targetsEnv) handleResult(t *testing.T, open *tunnelv1.StreamOpen) (*tunnelv1.StreamResult, *net.TCPConn) {
+	t.Helper()
 	st, gw := streamPair(t)
 	go e.Handle(context.Background(), "gw_test", st, open)
 	_ = gw.SetReadDeadline(time.Now().Add(10 * time.Second))
@@ -153,7 +160,7 @@ func (e *targetsEnv) handle(t *testing.T, open *tunnelv1.StreamOpen) (tunnelv1.R
 		t.Fatalf("no StreamResult: %v", err)
 	}
 	_ = gw.SetReadDeadline(time.Time{})
-	return res.GetCode(), gw
+	return res, gw
 }
 
 func tcpOpen(route string) *tunnelv1.StreamOpen {
@@ -299,10 +306,15 @@ func TestTargets_Failover(t *testing.T) {
 	primary, backup := target("127.0.0.1", closedPort), target("127.0.0.1", svc.port())
 	backup.Priority = 1
 	e.Set([]connector.Route{{ID: "rt_1", Targets: []connector.Target{backup, primary}}})
-	if code, _ := e.handle(t, tcpOpen("rt_1")); code != tunnelv1.ResultCode_RESULT_CODE_NO_ERROR {
-		t.Fatalf("failover: %s", code)
+	// The result names the target the stream reached, so a gateway can verify an HTTPS upstream.
+	if res, _ := e.handleResult(t, tcpOpen("rt_1")); res.GetCode() != tunnelv1.ResultCode_RESULT_CODE_NO_ERROR || res.GetTargetId() != backup.ID {
+		t.Fatalf("failover: %v, want NO_ERROR from %s", res, backup.ID)
 	}
-	eventually(t, "the backup was not used", func() bool { return svc.conns.Load() == 1 })
+	e.Set([]connector.Route{{ID: "rt_1", Targets: []connector.Target{primary}}})
+	if res, _ := e.handleResult(t, tcpOpen("rt_1")); res.GetCode() == tunnelv1.ResultCode_RESULT_CODE_NO_ERROR || res.GetTargetId() != "" {
+		t.Fatalf("a refused stream: %v, want no target", res)
+	}
+	eventually(t, "the backup was not used", func() bool { return svc.conns.Load() >= 1 })
 }
 
 // TestOrder: priorities in order; within one, weights decide how often a target comes first.

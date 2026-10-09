@@ -33,6 +33,8 @@ const (
 	FieldUpstreamProtocol = "upstream_protocol"
 	// FieldTLSServerName holds the string denoting the tls_server_name field in the database.
 	FieldTLSServerName = "tls_server_name"
+	// FieldTLSCaBundleID holds the string denoting the tls_ca_bundle_id field in the database.
+	FieldTLSCaBundleID = "tls_ca_bundle_id"
 	// FieldTLSSpkiSha256 holds the string denoting the tls_spki_sha256 field in the database.
 	FieldTLSSpkiSha256 = "tls_spki_sha256"
 	// FieldProxyProtocol holds the string denoting the proxy_protocol field in the database.
@@ -47,6 +49,8 @@ const (
 	EdgeRoute = "route"
 	// EdgeConnector holds the string denoting the connector edge name in mutations.
 	EdgeConnector = "connector"
+	// EdgeCaBundle holds the string denoting the ca_bundle edge name in mutations.
+	EdgeCaBundle = "ca_bundle"
 	// Table holds the table name of the routetarget in the database.
 	Table = "route_targets"
 	// RouteTable is the table that holds the route relation/edge.
@@ -63,6 +67,13 @@ const (
 	ConnectorInverseTable = "connectors"
 	// ConnectorColumn is the table column denoting the connector relation/edge.
 	ConnectorColumn = "connector_id"
+	// CaBundleTable is the table that holds the ca_bundle relation/edge.
+	CaBundleTable = "route_targets"
+	// CaBundleInverseTable is the table name for the CABundle entity.
+	// It exists in this package in order to avoid circular dependency with the "cabundle" package.
+	CaBundleInverseTable = "ca_bundles"
+	// CaBundleColumn is the table column denoting the ca_bundle relation/edge.
+	CaBundleColumn = "tls_ca_bundle_id"
 )
 
 // Columns holds all SQL columns for routetarget fields.
@@ -77,6 +88,7 @@ var Columns = []string{
 	FieldUnixPath,
 	FieldUpstreamProtocol,
 	FieldTLSServerName,
+	FieldTLSCaBundleID,
 	FieldTLSSpkiSha256,
 	FieldProxyProtocol,
 	FieldWeight,
@@ -268,6 +280,11 @@ func ByTLSServerName(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldTLSServerName, opts...).ToFunc()
 }
 
+// ByTLSCaBundleID orders the results by the tls_ca_bundle_id field.
+func ByTLSCaBundleID(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldTLSCaBundleID, opts...).ToFunc()
+}
+
 // ByTLSSpkiSha256 orders the results by the tls_spki_sha256 field.
 func ByTLSSpkiSha256(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldTLSSpkiSha256, opts...).ToFunc()
@@ -306,6 +323,13 @@ func ByConnectorField(field string, opts ...sql.OrderTermOption) OrderOption {
 		sqlgraph.OrderByNeighborTerms(s, newConnectorStep(), sql.OrderByField(field, opts...))
 	}
 }
+
+// ByCaBundleField orders the results by ca_bundle field.
+func ByCaBundleField(field string, opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newCaBundleStep(), sql.OrderByField(field, opts...))
+	}
+}
 func newRouteStep() *sqlgraph.Step {
 	return sqlgraph.NewStep(
 		sqlgraph.From(Table, FieldID),
@@ -318,5 +342,12 @@ func newConnectorStep() *sqlgraph.Step {
 		sqlgraph.From(Table, FieldID),
 		sqlgraph.To(ConnectorInverseTable, FieldID),
 		sqlgraph.Edge(sqlgraph.M2O, false, ConnectorTable, ConnectorColumn),
+	)
+}
+func newCaBundleStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(CaBundleInverseTable, FieldID),
+		sqlgraph.Edge(sqlgraph.M2O, false, CaBundleTable, CaBundleColumn),
 	)
 }

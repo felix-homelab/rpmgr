@@ -285,3 +285,33 @@ func TestUploadAndItem(t *testing.T) {
 		}
 	})
 }
+
+// TestCheckBundle: a CA bundle holds certificates only, at least one and at most MaxBundle; a
+// self-signed server certificate counts.
+func TestCheckBundle(t *testing.T) {
+	root := ca(t, "root", nil)
+	leaf := issue(t, leafTmpl("self.example.com"), ecKey(t), nil)
+	if cs, err := certs.CheckBundle(pemOf(root, leaf)); err != nil || len(cs) != 2 {
+		t.Fatalf("%d %v", len(cs), err)
+	}
+	many := make([]issued, certs.MaxBundle+1)
+	for i := range many {
+		many[i] = root
+	}
+	if cs, err := certs.CheckBundle(pemOf(many[:certs.MaxBundle]...)); err != nil || len(cs) != certs.MaxBundle {
+		t.Fatalf("exactly %d: %d %v", certs.MaxBundle, len(cs), err)
+	}
+	for name, bundle := range map[string][]byte{
+		"empty":      nil,
+		"blank":      []byte("  \n"),
+		"garbage":    []byte("not pem"),
+		"a key":      keyPEM(t, root.key),
+		"trailing":   append(pemOf(root), "x"...),
+		"too many":   pemOf(many...),
+		"unparsable": pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: []byte{1, 2, 3}}),
+	} {
+		if _, err := certs.CheckBundle(bundle); !errors.Is(err, certs.ErrInvalid) {
+			t.Errorf("%s: %v, want ErrInvalid", name, err)
+		}
+	}
+}

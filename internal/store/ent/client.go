@@ -19,6 +19,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/agentstate"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/auditentry"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/audithead"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/cabundle"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/cakey"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/certificate"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/compiledsnapshot"
@@ -63,6 +64,8 @@ type Client struct {
 	AuditEntry *AuditEntryClient
 	// AuditHead is the client for interacting with the AuditHead builders.
 	AuditHead *AuditHeadClient
+	// CABundle is the client for interacting with the CABundle builders.
+	CABundle *CABundleClient
 	// CAKey is the client for interacting with the CAKey builders.
 	CAKey *CAKeyClient
 	// Certificate is the client for interacting with the Certificate builders.
@@ -132,6 +135,7 @@ func (c *Client) init() {
 	c.AgentState = NewAgentStateClient(c.config)
 	c.AuditEntry = NewAuditEntryClient(c.config)
 	c.AuditHead = NewAuditHeadClient(c.config)
+	c.CABundle = NewCABundleClient(c.config)
 	c.CAKey = NewCAKeyClient(c.config)
 	c.Certificate = NewCertificateClient(c.config)
 	c.CompiledSnapshot = NewCompiledSnapshotClient(c.config)
@@ -255,6 +259,7 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		AgentState:        NewAgentStateClient(cfg),
 		AuditEntry:        NewAuditEntryClient(cfg),
 		AuditHead:         NewAuditHeadClient(cfg),
+		CABundle:          NewCABundleClient(cfg),
 		CAKey:             NewCAKeyClient(cfg),
 		Certificate:       NewCertificateClient(cfg),
 		CompiledSnapshot:  NewCompiledSnapshotClient(cfg),
@@ -305,6 +310,7 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		AgentState:        NewAgentStateClient(cfg),
 		AuditEntry:        NewAuditEntryClient(cfg),
 		AuditHead:         NewAuditHeadClient(cfg),
+		CABundle:          NewCABundleClient(cfg),
 		CAKey:             NewCAKeyClient(cfg),
 		Certificate:       NewCertificateClient(cfg),
 		CompiledSnapshot:  NewCompiledSnapshotClient(cfg),
@@ -361,12 +367,13 @@ func (c *Client) Close() error {
 // In order to add hooks to a specific client, call: `client.Node.Use(...)`.
 func (c *Client) Use(hooks ...Hook) {
 	for _, n := range []interface{ Use(...Hook) }{
-		c.AgentSession, c.AgentState, c.AuditEntry, c.AuditHead, c.CAKey, c.Certificate,
-		c.CompiledSnapshot, c.ConfigRevision, c.ConfigSeq, c.Connector, c.Domain,
-		c.EnrollmentToken, c.Gateway, c.GatewayGroup, c.Instance, c.InstanceSetting,
-		c.IssuedCertificate, c.Lease, c.Org, c.OrgSetting, c.PortAllocation,
-		c.PortPool, c.PortQuota, c.RevokedIdentity, c.Route, c.RouteHTTP,
-		c.RouteHostname, c.RouteTCP, c.RouteTarget, c.RouteUDP, c.SecretMeta,
+		c.AgentSession, c.AgentState, c.AuditEntry, c.AuditHead, c.CABundle, c.CAKey,
+		c.Certificate, c.CompiledSnapshot, c.ConfigRevision, c.ConfigSeq, c.Connector,
+		c.Domain, c.EnrollmentToken, c.Gateway, c.GatewayGroup, c.Instance,
+		c.InstanceSetting, c.IssuedCertificate, c.Lease, c.Org, c.OrgSetting,
+		c.PortAllocation, c.PortPool, c.PortQuota, c.RevokedIdentity, c.Route,
+		c.RouteHTTP, c.RouteHostname, c.RouteTCP, c.RouteTarget, c.RouteUDP,
+		c.SecretMeta,
 	} {
 		n.Use(hooks...)
 	}
@@ -376,12 +383,13 @@ func (c *Client) Use(hooks ...Hook) {
 // In order to add interceptors to a specific client, call: `client.Node.Intercept(...)`.
 func (c *Client) Intercept(interceptors ...Interceptor) {
 	for _, n := range []interface{ Intercept(...Interceptor) }{
-		c.AgentSession, c.AgentState, c.AuditEntry, c.AuditHead, c.CAKey, c.Certificate,
-		c.CompiledSnapshot, c.ConfigRevision, c.ConfigSeq, c.Connector, c.Domain,
-		c.EnrollmentToken, c.Gateway, c.GatewayGroup, c.Instance, c.InstanceSetting,
-		c.IssuedCertificate, c.Lease, c.Org, c.OrgSetting, c.PortAllocation,
-		c.PortPool, c.PortQuota, c.RevokedIdentity, c.Route, c.RouteHTTP,
-		c.RouteHostname, c.RouteTCP, c.RouteTarget, c.RouteUDP, c.SecretMeta,
+		c.AgentSession, c.AgentState, c.AuditEntry, c.AuditHead, c.CABundle, c.CAKey,
+		c.Certificate, c.CompiledSnapshot, c.ConfigRevision, c.ConfigSeq, c.Connector,
+		c.Domain, c.EnrollmentToken, c.Gateway, c.GatewayGroup, c.Instance,
+		c.InstanceSetting, c.IssuedCertificate, c.Lease, c.Org, c.OrgSetting,
+		c.PortAllocation, c.PortPool, c.PortQuota, c.RevokedIdentity, c.Route,
+		c.RouteHTTP, c.RouteHostname, c.RouteTCP, c.RouteTarget, c.RouteUDP,
+		c.SecretMeta,
 	} {
 		n.Intercept(interceptors...)
 	}
@@ -398,6 +406,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.AuditEntry.mutate(ctx, m)
 	case *AuditHeadMutation:
 		return c.AuditHead.mutate(ctx, m)
+	case *CABundleMutation:
+		return c.CABundle.mutate(ctx, m)
 	case *CAKeyMutation:
 		return c.CAKey.mutate(ctx, m)
 	case *CertificateMutation:
@@ -994,6 +1004,141 @@ func (c *AuditHeadClient) mutate(ctx context.Context, m *AuditHeadMutation) (Val
 		return (&AuditHeadDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
 	default:
 		return nil, fmt.Errorf("ent: unknown AuditHead mutation op: %q", m.Op())
+	}
+}
+
+// CABundleClient is a client for the CABundle schema.
+type CABundleClient struct {
+	config
+}
+
+// NewCABundleClient returns a client for the CABundle from the given config.
+func NewCABundleClient(c config) *CABundleClient {
+	return &CABundleClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `cabundle.Hooks(f(g(h())))`.
+func (c *CABundleClient) Use(hooks ...Hook) {
+	c.hooks.CABundle = append(c.hooks.CABundle, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `cabundle.Intercept(f(g(h())))`.
+func (c *CABundleClient) Intercept(interceptors ...Interceptor) {
+	c.inters.CABundle = append(c.inters.CABundle, interceptors...)
+}
+
+// Create returns a builder for creating a CABundle entity.
+func (c *CABundleClient) Create() *CABundleCreate {
+	mutation := newCABundleMutation(c.config, OpCreate)
+	return &CABundleCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of CABundle entities.
+func (c *CABundleClient) CreateBulk(builders ...*CABundleCreate) *CABundleCreateBulk {
+	return &CABundleCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *CABundleClient) MapCreateBulk(slice any, setFunc func(*CABundleCreate, int)) *CABundleCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &CABundleCreateBulk{err: fmt.Errorf("calling to CABundleClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*CABundleCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &CABundleCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for CABundle.
+func (c *CABundleClient) Update() *CABundleUpdate {
+	mutation := newCABundleMutation(c.config, OpUpdate)
+	return &CABundleUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *CABundleClient) UpdateOne(_m *CABundle) *CABundleUpdateOne {
+	mutation := newCABundleMutation(c.config, OpUpdateOne, withCABundle(_m))
+	return &CABundleUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *CABundleClient) UpdateOneID(id string) *CABundleUpdateOne {
+	mutation := newCABundleMutation(c.config, OpUpdateOne, withCABundleID(id))
+	return &CABundleUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for CABundle.
+func (c *CABundleClient) Delete() *CABundleDelete {
+	mutation := newCABundleMutation(c.config, OpDelete)
+	return &CABundleDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *CABundleClient) DeleteOne(_m *CABundle) *CABundleDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *CABundleClient) DeleteOneID(id string) *CABundleDeleteOne {
+	builder := c.Delete().Where(cabundle.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &CABundleDeleteOne{builder}
+}
+
+// Query returns a query builder for CABundle.
+func (c *CABundleClient) Query() *CABundleQuery {
+	return &CABundleQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeCABundle},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a CABundle entity by its id.
+func (c *CABundleClient) Get(ctx context.Context, id string) (*CABundle, error) {
+	return c.Query().Where(cabundle.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *CABundleClient) GetX(ctx context.Context, id string) *CABundle {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *CABundleClient) Hooks() []Hook {
+	hooks := c.hooks.CABundle
+	return append(hooks[:len(hooks):len(hooks)], cabundle.Hooks[:]...)
+}
+
+// Interceptors returns the client interceptors.
+func (c *CABundleClient) Interceptors() []Interceptor {
+	inters := c.inters.CABundle
+	return append(inters[:len(inters):len(inters)], cabundle.Interceptors[:]...)
+}
+
+func (c *CABundleClient) mutate(ctx context.Context, m *CABundleMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&CABundleCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&CABundleUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&CABundleUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&CABundleDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown CABundle mutation op: %q", m.Op())
 	}
 }
 
@@ -4613,6 +4758,22 @@ func (c *RouteTargetClient) QueryConnector(_m *RouteTarget) *ConnectorQuery {
 	return query
 }
 
+// QueryCaBundle queries the ca_bundle edge of a RouteTarget.
+func (c *RouteTargetClient) QueryCaBundle(_m *RouteTarget) *CABundleQuery {
+	query := (&CABundleClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(routetarget.Table, routetarget.FieldID, id),
+			sqlgraph.To(cabundle.Table, cabundle.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, false, routetarget.CaBundleTable, routetarget.CaBundleColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
 // Hooks returns the client hooks.
 func (c *RouteTargetClient) Hooks() []Hook {
 	hooks := c.hooks.RouteTarget
@@ -4944,7 +5105,7 @@ func (c *SecretMetaClient) mutate(ctx context.Context, m *SecretMetaMutation) (V
 // hooks and interceptors per client, for fast access.
 type (
 	hooks struct {
-		AgentSession, AgentState, AuditEntry, AuditHead, CAKey, Certificate,
+		AgentSession, AgentState, AuditEntry, AuditHead, CABundle, CAKey, Certificate,
 		CompiledSnapshot, ConfigRevision, ConfigSeq, Connector, Domain,
 		EnrollmentToken, Gateway, GatewayGroup, Instance, InstanceSetting,
 		IssuedCertificate, Lease, Org, OrgSetting, PortAllocation, PortPool, PortQuota,
@@ -4952,7 +5113,7 @@ type (
 		RouteUDP, SecretMeta []ent.Hook
 	}
 	inters struct {
-		AgentSession, AgentState, AuditEntry, AuditHead, CAKey, Certificate,
+		AgentSession, AgentState, AuditEntry, AuditHead, CABundle, CAKey, Certificate,
 		CompiledSnapshot, ConfigRevision, ConfigSeq, Connector, Domain,
 		EnrollmentToken, Gateway, GatewayGroup, Instance, InstanceSetting,
 		IssuedCertificate, Lease, Org, OrgSetting, PortAllocation, PortPool, PortQuota,

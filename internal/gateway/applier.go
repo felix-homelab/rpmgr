@@ -5,6 +5,7 @@ package gateway
 import (
 	"context"
 	"crypto/sha256"
+	"crypto/x509"
 	"fmt"
 	"slices"
 	"strings"
@@ -146,8 +147,22 @@ func (a *Applier) Validate(snap *agentv1.Snapshot) []*agentv1.SnapshotError {
 			if len(r.GetHosts()) == 0 {
 				bad(id, "an http route without hostnames")
 			}
-			if u := r.GetUpstreamProtocol(); u != "http" && u != "h2c" {
+			if u := r.GetUpstreamProtocol(); u != "http" && u != "h2c" && u != "https" {
 				bad(id, "upstream protocol %q", u)
+			}
+			targets := map[string]bool{}
+			for _, u := range r.GetUpstreamTls() {
+				switch {
+				case u.GetTargetId() == "" || targets[u.GetTargetId()]:
+					bad(id, "upstream TLS for target %q twice or without a target", u.GetTargetId())
+				case u.GetServerName() == "":
+					bad(id, "upstream TLS for target %s without a server name", u.GetTargetId())
+				case len(u.GetCaPem()) > 0 && !x509.NewCertPool().AppendCertsFromPEM(u.GetCaPem()):
+					bad(id, "the CA bundle of target %s holds no certificate", u.GetTargetId())
+				case len(u.GetSpkiSha256()) != 0 && len(u.GetSpkiSha256()) != sha256.Size:
+					bad(id, "the SPKI pin of target %s is not a SHA-256", u.GetTargetId())
+				}
+				targets[u.GetTargetId()] = true
 			}
 			for _, hp := range r.GetHosts() {
 				h, prefix := hp.GetHostname(), hp.GetPathPrefix()
@@ -203,6 +218,12 @@ func (a *Applier) Apply(ctx context.Context, snap *agentv1.Snapshot, _ agent.Cha
 			r := res.GetGatewayHttpRoute()
 			connectors = r.GetConnectors()
 			hr := HTTPRoute{ID: res.GetId(), Upstream: r.GetUpstreamProtocol(), WebSocket: r.GetWebsocket()}
+			if len(r.GetUpstreamTls()) > 0 {
+				hr.TLS = map[string]UpstreamTLS{}
+				for _, u := range r.GetUpstreamTls() {
+					hr.TLS[u.GetTargetId()] = UpstreamTLS{ServerName: u.GetServerName(), CAPEM: u.GetCaPem(), SPKISHA256: u.GetSpkiSha256()}
+				}
+			}
 			for _, hp := range r.GetHosts() {
 				hr.Hosts = append(hr.Hosts, HTTPHost{Hostname: hp.GetHostname(), PathPrefix: hp.GetPathPrefix()})
 			}

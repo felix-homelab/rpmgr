@@ -228,6 +228,12 @@ later.
   TLS 1.3 only ([03](03-connections.md#properties-common-to-all-rpmgr-internal-sessions)). A name
   without a valid certificate gets the gateway's self-signed default certificate, so a browser
   shows a certificate error rather than a reset.
+- **HTTPS upstreams** [R]: the gateway connects with TLS 1.2 or 1.3 and verifies the upstream's
+  chain against the target's CA bundle, or else the gateway host's trust store, and its name
+  against the target's server name; a target may also pin the SHA-256 of its leaf's
+  SubjectPublicKeyInfo, checked in addition. A CA bundle holds 1 to 100 PEM certificates, each of
+  which counts as a trust anchor, so a self-signed upstream certificate can trust itself. A
+  connection whose verification settings change is not reused.
 - **Route certificates on gateways** [R]: a gateway keeps each fetched chain and key in its state
   directory, readable by the gateway's user only, as any TLS server keeps its keys, so that a
   gateway restarted while the controller is unreachable still terminates TLS. It checks a kept copy

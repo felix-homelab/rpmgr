@@ -97,6 +97,9 @@ message StreamOpen {
 message StreamResult {
   // The outcome.
   ResultCode code = 1;
+  // With NO_ERROR: the route target the connector connected to, so the gateway can verify an
+  // HTTPS upstream with that target's TLS settings.
+  string target_id = 2;
 }
 
 // SessionMessage is a message on the session control stream (docs/03-connections.md,

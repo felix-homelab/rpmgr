@@ -18,6 +18,9 @@ type AuditEntry func(*sql.Selector)
 // AuditHead is the predicate function for audithead builders.
 type AuditHead func(*sql.Selector)
 
+// CABundle is the predicate function for cabundle builders.
+type CABundle func(*sql.Selector)
+
 // CAKey is the predicate function for cakey builders.
 type CAKey func(*sql.Selector)
 

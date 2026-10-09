@@ -57,6 +57,18 @@ func (f AuditHeadFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, e
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.AuditHeadMutation", m)
 }
 
+// The CABundleFunc type is an adapter to allow the use of ordinary
+// function as CABundle mutator.
+type CABundleFunc func(context.Context, *ent.CABundleMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f CABundleFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.CABundleMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.CABundleMutation", m)
+}
+
 // The CAKeyFunc type is an adapter to allow the use of ordinary
 // function as CAKey mutator.
 type CAKeyFunc func(context.Context, *ent.CAKeyMutation) (ent.Value, error)

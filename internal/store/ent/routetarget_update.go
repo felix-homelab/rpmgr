@@ -10,6 +10,7 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/cabundle"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/connector"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/predicate"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routetarget"
@@ -133,6 +134,26 @@ func (_u *RouteTargetUpdate) SetNillableTLSServerName(v *string) *RouteTargetUpd
 	return _u
 }
 
+// SetTLSCaBundleID sets the "tls_ca_bundle_id" field.
+func (_u *RouteTargetUpdate) SetTLSCaBundleID(v string) *RouteTargetUpdate {
+	_u.mutation.SetTLSCaBundleID(v)
+	return _u
+}
+
+// SetNillableTLSCaBundleID sets the "tls_ca_bundle_id" field if the given value is not nil.
+func (_u *RouteTargetUpdate) SetNillableTLSCaBundleID(v *string) *RouteTargetUpdate {
+	if v != nil {
+		_u.SetTLSCaBundleID(*v)
+	}
+	return _u
+}
+
+// ClearTLSCaBundleID clears the value of the "tls_ca_bundle_id" field.
+func (_u *RouteTargetUpdate) ClearTLSCaBundleID() *RouteTargetUpdate {
+	_u.mutation.ClearTLSCaBundleID()
+	return _u
+}
+
 // SetTLSSpkiSha256 sets the "tls_spki_sha256" field.
 func (_u *RouteTargetUpdate) SetTLSSpkiSha256(v string) *RouteTargetUpdate {
 	_u.mutation.SetTLSSpkiSha256(v)
@@ -222,6 +243,25 @@ func (_u *RouteTargetUpdate) SetConnector(v *Connector) *RouteTargetUpdate {
 	return _u.SetConnectorID(v.ID)
 }
 
+// SetCaBundleID sets the "ca_bundle" edge to the CABundle entity by ID.
+func (_u *RouteTargetUpdate) SetCaBundleID(id string) *RouteTargetUpdate {
+	_u.mutation.SetCaBundleID(id)
+	return _u
+}
+
+// SetNillableCaBundleID sets the "ca_bundle" edge to the CABundle entity by ID if the given value is not nil.
+func (_u *RouteTargetUpdate) SetNillableCaBundleID(id *string) *RouteTargetUpdate {
+	if id != nil {
+		_u = _u.SetCaBundleID(*id)
+	}
+	return _u
+}
+
+// SetCaBundle sets the "ca_bundle" edge to the CABundle entity.
+func (_u *RouteTargetUpdate) SetCaBundle(v *CABundle) *RouteTargetUpdate {
+	return _u.SetCaBundleID(v.ID)
+}
+
 // Mutation returns the RouteTargetMutation object of the builder.
 func (_u *RouteTargetUpdate) Mutation() *RouteTargetMutation {
 	return _u.mutation
@@ -230,6 +270,12 @@ func (_u *RouteTargetUpdate) Mutation() *RouteTargetMutation {
 // ClearConnector clears the "connector" edge to the Connector entity.
 func (_u *RouteTargetUpdate) ClearConnector() *RouteTargetUpdate {
 	_u.mutation.ClearConnector()
+	return _u
+}
+
+// ClearCaBundle clears the "ca_bundle" edge to the CABundle entity.
+func (_u *RouteTargetUpdate) ClearCaBundle() *RouteTargetUpdate {
+	_u.mutation.ClearCaBundle()
 	return _u
 }
 
@@ -389,6 +435,35 @@ func (_u *RouteTargetUpdate) sqlSave(ctx context.Context) (_node int, err error)
 		}
 		_spec.Edges.Add = append(_spec.Edges.Add, edge)
 	}
+	if _u.mutation.CaBundleCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2O,
+			Inverse: false,
+			Table:   routetarget.CaBundleTable,
+			Columns: []string{routetarget.CaBundleColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(cabundle.FieldID, field.TypeString),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.CaBundleIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2O,
+			Inverse: false,
+			Table:   routetarget.CaBundleTable,
+			Columns: []string{routetarget.CaBundleColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(cabundle.FieldID, field.TypeString),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
 	if _node, err = sqlgraph.UpdateNodes(ctx, _u.driver, _spec); err != nil {
 		if _, ok := err.(*sqlgraph.NotFoundError); ok {
 			err = &NotFoundError{routetarget.Label}
@@ -514,6 +589,26 @@ func (_u *RouteTargetUpdateOne) SetNillableTLSServerName(v *string) *RouteTarget
 	return _u
 }
 
+// SetTLSCaBundleID sets the "tls_ca_bundle_id" field.
+func (_u *RouteTargetUpdateOne) SetTLSCaBundleID(v string) *RouteTargetUpdateOne {
+	_u.mutation.SetTLSCaBundleID(v)
+	return _u
+}
+
+// SetNillableTLSCaBundleID sets the "tls_ca_bundle_id" field if the given value is not nil.
+func (_u *RouteTargetUpdateOne) SetNillableTLSCaBundleID(v *string) *RouteTargetUpdateOne {
+	if v != nil {
+		_u.SetTLSCaBundleID(*v)
+	}
+	return _u
+}
+
+// ClearTLSCaBundleID clears the value of the "tls_ca_bundle_id" field.
+func (_u *RouteTargetUpdateOne) ClearTLSCaBundleID() *RouteTargetUpdateOne {
+	_u.mutation.ClearTLSCaBundleID()
+	return _u
+}
+
 // SetTLSSpkiSha256 sets the "tls_spki_sha256" field.
 func (_u *RouteTargetUpdateOne) SetTLSSpkiSha256(v string) *RouteTargetUpdateOne {
 	_u.mutation.SetTLSSpkiSha256(v)
@@ -603,6 +698,25 @@ func (_u *RouteTargetUpdateOne) SetConnector(v *Connector) *RouteTargetUpdateOne
 	return _u.SetConnectorID(v.ID)
 }
 
+// SetCaBundleID sets the "ca_bundle" edge to the CABundle entity by ID.
+func (_u *RouteTargetUpdateOne) SetCaBundleID(id string) *RouteTargetUpdateOne {
+	_u.mutation.SetCaBundleID(id)
+	return _u
+}
+
+// SetNillableCaBundleID sets the "ca_bundle" edge to the CABundle entity by ID if the given value is not nil.
+func (_u *RouteTargetUpdateOne) SetNillableCaBundleID(id *string) *RouteTargetUpdateOne {
+	if id != nil {
+		_u = _u.SetCaBundleID(*id)
+	}
+	return _u
+}
+
+// SetCaBundle sets the "ca_bundle" edge to the CABundle entity.
+func (_u *RouteTargetUpdateOne) SetCaBundle(v *CABundle) *RouteTargetUpdateOne {
+	return _u.SetCaBundleID(v.ID)
+}
+
 // Mutation returns the RouteTargetMutation object of the builder.
 func (_u *RouteTargetUpdateOne) Mutation() *RouteTargetMutation {
 	return _u.mutation
@@ -611,6 +725,12 @@ func (_u *RouteTargetUpdateOne) Mutation() *RouteTargetMutation {
 // ClearConnector clears the "connector" edge to the Connector entity.
 func (_u *RouteTargetUpdateOne) ClearConnector() *RouteTargetUpdateOne {
 	_u.mutation.ClearConnector()
+	return _u
+}
+
+// ClearCaBundle clears the "ca_bundle" edge to the CABundle entity.
+func (_u *RouteTargetUpdateOne) ClearCaBundle() *RouteTargetUpdateOne {
+	_u.mutation.ClearCaBundle()
 	return _u
 }
 
@@ -793,6 +913,35 @@ func (_u *RouteTargetUpdateOne) sqlSave(ctx context.Context) (_node *RouteTarget
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(connector.FieldID, field.TypeString),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.CaBundleCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2O,
+			Inverse: false,
+			Table:   routetarget.CaBundleTable,
+			Columns: []string{routetarget.CaBundleColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(cabundle.FieldID, field.TypeString),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.CaBundleIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2O,
+			Inverse: false,
+			Table:   routetarget.CaBundleTable,
+			Columns: []string{routetarget.CaBundleColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(cabundle.FieldID, field.TypeString),
 			},
 		}
 		for _, k := range nodes {

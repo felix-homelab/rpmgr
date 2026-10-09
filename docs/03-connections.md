@@ -504,7 +504,8 @@ sequenceDiagram
 | `result` | `StreamResult` | Set only on `open_id` streams on the TCP transport: the outcome of the requested open |
 
 - `StreamResult` (first message in the return direction, written by the side that received
-  `StreamOpen`), then raw bytes. On the TCP transport the connector-to-gateway bytes after
+  `StreamOpen`, with the code and, on success, the ID of the route target the connector reached),
+  then raw bytes. On the TCP transport the connector-to-gateway bytes after
   `StreamResult` (or after `StreamOpen` on an `open_id` stream) are chunks of
   `varint(length) ‖ bytes`, at most 16 KiB each, and a **zero-length chunk is the connector's
   FIN**: net/http's HTTP/2 server cannot end a response while it still reads the request
@@ -619,6 +620,11 @@ sequenceDiagram
   exactly comes before a wildcard hostname one label up, which serves a name only if no route
   names it. No match is **404**. TLS is terminated with the route certificate for the server name
   ([04](04-security.md#controller-certificates)).
+- **HTTPS upstreams.** For an `https` target the gateway speaks TLS over the stream, end to end
+  with the upstream, verified with the settings of the target the connector reached, which
+  `StreamResult` names: the target's server name (its host by default), its CA bundle or else the
+  gateway host's trust store, and an optional pin of the leaf's public key. A failed verification,
+  or a target the gateway has no settings for, is **502** ([04](04-security.md#controller-certificates)).
 - WebSockets and other upgrades pass through, unless the route turns them off (**403**). gRPC passes
   through when the target speaks HTTP/2 (h2c, or TLS with ALPN `h2`); the gateway streams every
   response as it comes, so it sends a gRPC status that arrived without a body as trailers.
