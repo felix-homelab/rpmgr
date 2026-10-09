@@ -35,6 +35,18 @@ const (
 // reflection-formatted method names, remove the leading slash and convert the remaining slash to a
 // period.
 const (
+	// AuthServiceLoginProcedure is the fully-qualified name of the AuthService's Login RPC.
+	AuthServiceLoginProcedure = "/rpmgr.v1.AuthService/Login"
+	// AuthServiceLogoutProcedure is the fully-qualified name of the AuthService's Logout RPC.
+	AuthServiceLogoutProcedure = "/rpmgr.v1.AuthService/Logout"
+	// AuthServiceGetSessionProcedure is the fully-qualified name of the AuthService's GetSession RPC.
+	AuthServiceGetSessionProcedure = "/rpmgr.v1.AuthService/GetSession"
+	// AuthServiceListSessionsProcedure is the fully-qualified name of the AuthService's ListSessions
+	// RPC.
+	AuthServiceListSessionsProcedure = "/rpmgr.v1.AuthService/ListSessions"
+	// AuthServiceRevokeSessionProcedure is the fully-qualified name of the AuthService's RevokeSession
+	// RPC.
+	AuthServiceRevokeSessionProcedure = "/rpmgr.v1.AuthService/RevokeSession"
 	// AuthServiceCompletePasswordResetProcedure is the fully-qualified name of the AuthService's
 	// CompletePasswordReset RPC.
 	AuthServiceCompletePasswordResetProcedure = "/rpmgr.v1.AuthService/CompletePasswordReset"
@@ -42,6 +54,18 @@ const (
 
 // AuthServiceClient is a client for the rpmgr.v1.AuthService service.
 type AuthServiceClient interface {
+	// Login signs a user in with an e-mail address and password and sets the session cookie,
+	// replacing a session the request still carries. A wrong address and a wrong password give the
+	// same error.
+	Login(context.Context, *connect.Request[v1.LoginRequest]) (*connect.Response[v1.LoginResponse], error)
+	// Logout ends the caller's session and clears the cookie.
+	Logout(context.Context, *connect.Request[v1.LogoutRequest]) (*connect.Response[v1.LogoutResponse], error)
+	// GetSession returns the caller, their memberships and their session.
+	GetSession(context.Context, *connect.Request[v1.GetSessionRequest]) (*connect.Response[v1.GetSessionResponse], error)
+	// ListSessions lists the caller's live sessions, newest first.
+	ListSessions(context.Context, *connect.Request[v1.ListSessionsRequest]) (*connect.Response[v1.ListSessionsResponse], error)
+	// RevokeSession ends one of the caller's sessions.
+	RevokeSession(context.Context, *connect.Request[v1.RevokeSessionRequest]) (*connect.Response[v1.RevokeSessionResponse], error)
 	// CompletePasswordReset sets a user's password with a one-time link, or creates the first user
 	// with the first-user link. A link works once, until it expires.
 	CompletePasswordReset(context.Context, *connect.Request[v1.CompletePasswordResetRequest]) (*connect.Response[v1.CompletePasswordResetResponse], error)
@@ -58,6 +82,38 @@ func NewAuthServiceClient(httpClient connect.HTTPClient, baseURL string, opts ..
 	baseURL = strings.TrimRight(baseURL, "/")
 	authServiceMethods := v1.File_rpmgr_v1_auth_proto.Services().ByName("AuthService").Methods()
 	return &authServiceClient{
+		login: connect.NewClient[v1.LoginRequest, v1.LoginResponse](
+			httpClient,
+			baseURL+AuthServiceLoginProcedure,
+			connect.WithSchema(authServiceMethods.ByName("Login")),
+			connect.WithClientOptions(opts...),
+		),
+		logout: connect.NewClient[v1.LogoutRequest, v1.LogoutResponse](
+			httpClient,
+			baseURL+AuthServiceLogoutProcedure,
+			connect.WithSchema(authServiceMethods.ByName("Logout")),
+			connect.WithClientOptions(opts...),
+		),
+		getSession: connect.NewClient[v1.GetSessionRequest, v1.GetSessionResponse](
+			httpClient,
+			baseURL+AuthServiceGetSessionProcedure,
+			connect.WithSchema(authServiceMethods.ByName("GetSession")),
+			connect.WithIdempotency(connect.IdempotencyNoSideEffects),
+			connect.WithClientOptions(opts...),
+		),
+		listSessions: connect.NewClient[v1.ListSessionsRequest, v1.ListSessionsResponse](
+			httpClient,
+			baseURL+AuthServiceListSessionsProcedure,
+			connect.WithSchema(authServiceMethods.ByName("ListSessions")),
+			connect.WithIdempotency(connect.IdempotencyNoSideEffects),
+			connect.WithClientOptions(opts...),
+		),
+		revokeSession: connect.NewClient[v1.RevokeSessionRequest, v1.RevokeSessionResponse](
+			httpClient,
+			baseURL+AuthServiceRevokeSessionProcedure,
+			connect.WithSchema(authServiceMethods.ByName("RevokeSession")),
+			connect.WithClientOptions(opts...),
+		),
 		completePasswordReset: connect.NewClient[v1.CompletePasswordResetRequest, v1.CompletePasswordResetResponse](
 			httpClient,
 			baseURL+AuthServiceCompletePasswordResetProcedure,
@@ -69,7 +125,37 @@ func NewAuthServiceClient(httpClient connect.HTTPClient, baseURL string, opts ..
 
 // authServiceClient implements AuthServiceClient.
 type authServiceClient struct {
+	login                 *connect.Client[v1.LoginRequest, v1.LoginResponse]
+	logout                *connect.Client[v1.LogoutRequest, v1.LogoutResponse]
+	getSession            *connect.Client[v1.GetSessionRequest, v1.GetSessionResponse]
+	listSessions          *connect.Client[v1.ListSessionsRequest, v1.ListSessionsResponse]
+	revokeSession         *connect.Client[v1.RevokeSessionRequest, v1.RevokeSessionResponse]
 	completePasswordReset *connect.Client[v1.CompletePasswordResetRequest, v1.CompletePasswordResetResponse]
+}
+
+// Login calls rpmgr.v1.AuthService.Login.
+func (c *authServiceClient) Login(ctx context.Context, req *connect.Request[v1.LoginRequest]) (*connect.Response[v1.LoginResponse], error) {
+	return c.login.CallUnary(ctx, req)
+}
+
+// Logout calls rpmgr.v1.AuthService.Logout.
+func (c *authServiceClient) Logout(ctx context.Context, req *connect.Request[v1.LogoutRequest]) (*connect.Response[v1.LogoutResponse], error) {
+	return c.logout.CallUnary(ctx, req)
+}
+
+// GetSession calls rpmgr.v1.AuthService.GetSession.
+func (c *authServiceClient) GetSession(ctx context.Context, req *connect.Request[v1.GetSessionRequest]) (*connect.Response[v1.GetSessionResponse], error) {
+	return c.getSession.CallUnary(ctx, req)
+}
+
+// ListSessions calls rpmgr.v1.AuthService.ListSessions.
+func (c *authServiceClient) ListSessions(ctx context.Context, req *connect.Request[v1.ListSessionsRequest]) (*connect.Response[v1.ListSessionsResponse], error) {
+	return c.listSessions.CallUnary(ctx, req)
+}
+
+// RevokeSession calls rpmgr.v1.AuthService.RevokeSession.
+func (c *authServiceClient) RevokeSession(ctx context.Context, req *connect.Request[v1.RevokeSessionRequest]) (*connect.Response[v1.RevokeSessionResponse], error) {
+	return c.revokeSession.CallUnary(ctx, req)
 }
 
 // CompletePasswordReset calls rpmgr.v1.AuthService.CompletePasswordReset.
@@ -79,6 +165,18 @@ func (c *authServiceClient) CompletePasswordReset(ctx context.Context, req *conn
 
 // AuthServiceHandler is an implementation of the rpmgr.v1.AuthService service.
 type AuthServiceHandler interface {
+	// Login signs a user in with an e-mail address and password and sets the session cookie,
+	// replacing a session the request still carries. A wrong address and a wrong password give the
+	// same error.
+	Login(context.Context, *connect.Request[v1.LoginRequest]) (*connect.Response[v1.LoginResponse], error)
+	// Logout ends the caller's session and clears the cookie.
+	Logout(context.Context, *connect.Request[v1.LogoutRequest]) (*connect.Response[v1.LogoutResponse], error)
+	// GetSession returns the caller, their memberships and their session.
+	GetSession(context.Context, *connect.Request[v1.GetSessionRequest]) (*connect.Response[v1.GetSessionResponse], error)
+	// ListSessions lists the caller's live sessions, newest first.
+	ListSessions(context.Context, *connect.Request[v1.ListSessionsRequest]) (*connect.Response[v1.ListSessionsResponse], error)
+	// RevokeSession ends one of the caller's sessions.
+	RevokeSession(context.Context, *connect.Request[v1.RevokeSessionRequest]) (*connect.Response[v1.RevokeSessionResponse], error)
 	// CompletePasswordReset sets a user's password with a one-time link, or creates the first user
 	// with the first-user link. A link works once, until it expires.
 	CompletePasswordReset(context.Context, *connect.Request[v1.CompletePasswordResetRequest]) (*connect.Response[v1.CompletePasswordResetResponse], error)
@@ -91,6 +189,38 @@ type AuthServiceHandler interface {
 // and JSON codecs. They also support gzip compression.
 func NewAuthServiceHandler(svc AuthServiceHandler, opts ...connect.HandlerOption) (string, http.Handler) {
 	authServiceMethods := v1.File_rpmgr_v1_auth_proto.Services().ByName("AuthService").Methods()
+	authServiceLoginHandler := connect.NewUnaryHandler(
+		AuthServiceLoginProcedure,
+		svc.Login,
+		connect.WithSchema(authServiceMethods.ByName("Login")),
+		connect.WithHandlerOptions(opts...),
+	)
+	authServiceLogoutHandler := connect.NewUnaryHandler(
+		AuthServiceLogoutProcedure,
+		svc.Logout,
+		connect.WithSchema(authServiceMethods.ByName("Logout")),
+		connect.WithHandlerOptions(opts...),
+	)
+	authServiceGetSessionHandler := connect.NewUnaryHandler(
+		AuthServiceGetSessionProcedure,
+		svc.GetSession,
+		connect.WithSchema(authServiceMethods.ByName("GetSession")),
+		connect.WithIdempotency(connect.IdempotencyNoSideEffects),
+		connect.WithHandlerOptions(opts...),
+	)
+	authServiceListSessionsHandler := connect.NewUnaryHandler(
+		AuthServiceListSessionsProcedure,
+		svc.ListSessions,
+		connect.WithSchema(authServiceMethods.ByName("ListSessions")),
+		connect.WithIdempotency(connect.IdempotencyNoSideEffects),
+		connect.WithHandlerOptions(opts...),
+	)
+	authServiceRevokeSessionHandler := connect.NewUnaryHandler(
+		AuthServiceRevokeSessionProcedure,
+		svc.RevokeSession,
+		connect.WithSchema(authServiceMethods.ByName("RevokeSession")),
+		connect.WithHandlerOptions(opts...),
+	)
 	authServiceCompletePasswordResetHandler := connect.NewUnaryHandler(
 		AuthServiceCompletePasswordResetProcedure,
 		svc.CompletePasswordReset,
@@ -99,6 +229,16 @@ func NewAuthServiceHandler(svc AuthServiceHandler, opts ...connect.HandlerOption
 	)
 	return "/rpmgr.v1.AuthService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
+		case AuthServiceLoginProcedure:
+			authServiceLoginHandler.ServeHTTP(w, r)
+		case AuthServiceLogoutProcedure:
+			authServiceLogoutHandler.ServeHTTP(w, r)
+		case AuthServiceGetSessionProcedure:
+			authServiceGetSessionHandler.ServeHTTP(w, r)
+		case AuthServiceListSessionsProcedure:
+			authServiceListSessionsHandler.ServeHTTP(w, r)
+		case AuthServiceRevokeSessionProcedure:
+			authServiceRevokeSessionHandler.ServeHTTP(w, r)
 		case AuthServiceCompletePasswordResetProcedure:
 			authServiceCompletePasswordResetHandler.ServeHTTP(w, r)
 		default:
@@ -109,6 +249,26 @@ func NewAuthServiceHandler(svc AuthServiceHandler, opts ...connect.HandlerOption
 
 // UnimplementedAuthServiceHandler returns CodeUnimplemented from all methods.
 type UnimplementedAuthServiceHandler struct{}
+
+func (UnimplementedAuthServiceHandler) Login(context.Context, *connect.Request[v1.LoginRequest]) (*connect.Response[v1.LoginResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("rpmgr.v1.AuthService.Login is not implemented"))
+}
+
+func (UnimplementedAuthServiceHandler) Logout(context.Context, *connect.Request[v1.LogoutRequest]) (*connect.Response[v1.LogoutResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("rpmgr.v1.AuthService.Logout is not implemented"))
+}
+
+func (UnimplementedAuthServiceHandler) GetSession(context.Context, *connect.Request[v1.GetSessionRequest]) (*connect.Response[v1.GetSessionResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("rpmgr.v1.AuthService.GetSession is not implemented"))
+}
+
+func (UnimplementedAuthServiceHandler) ListSessions(context.Context, *connect.Request[v1.ListSessionsRequest]) (*connect.Response[v1.ListSessionsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("rpmgr.v1.AuthService.ListSessions is not implemented"))
+}
+
+func (UnimplementedAuthServiceHandler) RevokeSession(context.Context, *connect.Request[v1.RevokeSessionRequest]) (*connect.Response[v1.RevokeSessionResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("rpmgr.v1.AuthService.RevokeSession is not implemented"))
+}
 
 func (UnimplementedAuthServiceHandler) CompletePasswordReset(context.Context, *connect.Request[v1.CompletePasswordResetRequest]) (*connect.Response[v1.CompletePasswordResetResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("rpmgr.v1.AuthService.CompletePasswordReset is not implemented"))
