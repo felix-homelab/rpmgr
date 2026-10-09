@@ -420,6 +420,26 @@ func LastLoginAtNotNil() predicate.User {
 	return predicate.User(sql.FieldNotNull(FieldLastLoginAt))
 }
 
+// ThemeEQ applies the EQ predicate on the "theme" field.
+func ThemeEQ(v Theme) predicate.User {
+	return predicate.User(sql.FieldEQ(FieldTheme, v))
+}
+
+// ThemeNEQ applies the NEQ predicate on the "theme" field.
+func ThemeNEQ(v Theme) predicate.User {
+	return predicate.User(sql.FieldNEQ(FieldTheme, v))
+}
+
+// ThemeIn applies the In predicate on the "theme" field.
+func ThemeIn(vs ...Theme) predicate.User {
+	return predicate.User(sql.FieldIn(FieldTheme, vs...))
+}
+
+// ThemeNotIn applies the NotIn predicate on the "theme" field.
+func ThemeNotIn(vs ...Theme) predicate.User {
+	return predicate.User(sql.FieldNotIn(FieldTheme, vs...))
+}
+
 // HasMemberships applies the HasEdge predicate on the "memberships" edge.
 func HasMemberships() predicate.User {
 	return predicate.User(func(s *sql.Selector) {

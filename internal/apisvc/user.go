@@ -118,10 +118,14 @@ func (u *User) GetMe(ctx context.Context, _ *connect.Request[rpmgrv1.GetMeReques
 	return connect.NewResponse(out), nil
 }
 
+// themes are the stored names of the API's themes; unspecified keeps the user's theme.
+var themes = map[rpmgrv1.Theme]string{rpmgrv1.Theme_THEME_UNSPECIFIED: "", rpmgrv1.Theme_THEME_SYSTEM: "system",
+	rpmgrv1.Theme_THEME_LIGHT: "light", rpmgrv1.Theme_THEME_DARK: "dark"}
+
 // UpdateMe implements UserService.
 func (u *User) UpdateMe(ctx context.Context, req *connect.Request[rpmgrv1.UpdateMeRequest]) (*connect.Response[rpmgrv1.UpdateMeResponse], error) {
-	usr, err := u.MFA.SetDisplayName(ctx, api.CallerFrom(ctx).UserID, req.Msg.GetDisplayName())
-	if errors.Is(err, accounts.ErrDisplayName) {
+	usr, err := u.MFA.SetProfile(ctx, api.CallerFrom(ctx).UserID, req.Msg.GetDisplayName(), themes[req.Msg.GetTheme()])
+	if errors.Is(err, accounts.ErrDisplayName) || errors.Is(err, accounts.ErrTheme) {
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	}
 	if err != nil {
@@ -224,6 +228,11 @@ func (u *User) userOf(usr *ent.User) *rpmgrv1.User {
 	has, _ := u.MFA.HasMFA(usr.ID)
 	out := &rpmgrv1.User{Id: usr.ID, Email: usr.Email, DisplayName: usr.DisplayName, InstanceAdmin: usr.InstanceAdmin, Mfa: has,
 		Status: string(usr.Status), CreateTime: timestamppb.New(usr.CreatedAt)}
+	for t, name := range themes {
+		if name == string(usr.Theme) && name != "" {
+			out.Theme = t
+		}
+	}
 	if usr.LastLoginAt != nil {
 		out.LastLoginTime = timestamppb.New(*usr.LastLoginAt)
 	}

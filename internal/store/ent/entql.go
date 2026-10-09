@@ -1125,6 +1125,7 @@ var schemaGraph = func() *sqlgraph.Schema {
 			user.FieldInstanceAdmin: {Type: field.TypeBool, Column: user.FieldInstanceAdmin},
 			user.FieldCreatedAt:     {Type: field.TypeTime, Column: user.FieldCreatedAt},
 			user.FieldLastLoginAt:   {Type: field.TypeTime, Column: user.FieldLastLoginAt},
+			user.FieldTheme:         {Type: field.TypeEnum, Column: user.FieldTheme},
 		},
 	}
 	graph.MustAddE(
@@ -5879,6 +5880,11 @@ func (f *UserFilter) WhereCreatedAt(p entql.TimeP) {
 // WhereLastLoginAt applies the entql time.Time predicate on the last_login_at field.
 func (f *UserFilter) WhereLastLoginAt(p entql.TimeP) {
 	f.Where(p.Field(user.FieldLastLoginAt))
+}
+
+// WhereTheme applies the entql string predicate on the theme field.
+func (f *UserFilter) WhereTheme(p entql.StringP) {
+	f.Where(p.Field(user.FieldTheme))
 }
 
 // WhereHasMemberships applies a predicate to check if query has an edge memberships.

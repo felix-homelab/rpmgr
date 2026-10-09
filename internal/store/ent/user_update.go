@@ -125,6 +125,20 @@ func (_u *UserUpdate) ClearLastLoginAt() *UserUpdate {
 	return _u
 }
 
+// SetTheme sets the "theme" field.
+func (_u *UserUpdate) SetTheme(v user.Theme) *UserUpdate {
+	_u.mutation.SetTheme(v)
+	return _u
+}
+
+// SetNillableTheme sets the "theme" field if the given value is not nil.
+func (_u *UserUpdate) SetNillableTheme(v *user.Theme) *UserUpdate {
+	if v != nil {
+		_u.SetTheme(*v)
+	}
+	return _u
+}
+
 // AddMembershipIDs adds the "memberships" edge to the Membership entity by IDs.
 func (_u *UserUpdate) AddMembershipIDs(ids ...string) *UserUpdate {
 	_u.mutation.AddMembershipIDs(ids...)
@@ -210,6 +224,11 @@ func (_u *UserUpdate) check() error {
 			return &ValidationError{Name: "status", err: fmt.Errorf(`ent: validator failed for field "User.status": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.Theme(); ok {
+		if err := user.ThemeValidator(v); err != nil {
+			return &ValidationError{Name: "theme", err: fmt.Errorf(`ent: validator failed for field "User.theme": %w`, err)}
+		}
+	}
 	return nil
 }
 
@@ -248,6 +267,9 @@ func (_u *UserUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if _u.mutation.LastLoginAtCleared() {
 		_spec.ClearField(user.FieldLastLoginAt, field.TypeTime)
+	}
+	if value, ok := _u.mutation.Theme(); ok {
+		_spec.SetField(user.FieldTheme, field.TypeEnum, value)
 	}
 	if _u.mutation.MembershipsCleared() {
 		edge := &sqlgraph.EdgeSpec{
@@ -410,6 +432,20 @@ func (_u *UserUpdateOne) ClearLastLoginAt() *UserUpdateOne {
 	return _u
 }
 
+// SetTheme sets the "theme" field.
+func (_u *UserUpdateOne) SetTheme(v user.Theme) *UserUpdateOne {
+	_u.mutation.SetTheme(v)
+	return _u
+}
+
+// SetNillableTheme sets the "theme" field if the given value is not nil.
+func (_u *UserUpdateOne) SetNillableTheme(v *user.Theme) *UserUpdateOne {
+	if v != nil {
+		_u.SetTheme(*v)
+	}
+	return _u
+}
+
 // AddMembershipIDs adds the "memberships" edge to the Membership entity by IDs.
 func (_u *UserUpdateOne) AddMembershipIDs(ids ...string) *UserUpdateOne {
 	_u.mutation.AddMembershipIDs(ids...)
@@ -508,6 +544,11 @@ func (_u *UserUpdateOne) check() error {
 			return &ValidationError{Name: "status", err: fmt.Errorf(`ent: validator failed for field "User.status": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.Theme(); ok {
+		if err := user.ThemeValidator(v); err != nil {
+			return &ValidationError{Name: "theme", err: fmt.Errorf(`ent: validator failed for field "User.theme": %w`, err)}
+		}
+	}
 	return nil
 }
 
@@ -563,6 +604,9 @@ func (_u *UserUpdateOne) sqlSave(ctx context.Context) (_node *User, err error) {
 	}
 	if _u.mutation.LastLoginAtCleared() {
 		_spec.ClearField(user.FieldLastLoginAt, field.TypeTime)
+	}
+	if value, ok := _u.mutation.Theme(); ok {
+		_spec.SetField(user.FieldTheme, field.TypeEnum, value)
 	}
 	if _u.mutation.MembershipsCleared() {
 		edge := &sqlgraph.EdgeSpec{

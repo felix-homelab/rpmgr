@@ -39,6 +39,7 @@ var (
 	ErrCredentials = errors.New("accounts: wrong e-mail address or password")
 	ErrEmail       = errors.New("accounts: not a valid e-mail address")
 	ErrDisplayName = errors.New("accounts: a display name has 1 to 100 characters, none of them control characters")
+	ErrTheme       = errors.New("accounts: a theme is system, light or dark")
 )
 
 // Accounts manages the users of one database.

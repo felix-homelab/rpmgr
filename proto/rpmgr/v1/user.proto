@@ -134,6 +134,20 @@ message User {
   google.protobuf.Timestamp last_login_time = 7;
   // When the account was created.
   google.protobuf.Timestamp create_time = 8;
+  // The web UI's theme the user chose (docs/09-web-ui.md, U10).
+  Theme theme = 9;
+}
+
+// Theme is the web UI's colour theme.
+enum Theme {
+  // Not set: in UpdateMeRequest, keep the user's theme.
+  THEME_UNSPECIFIED = 0;
+  // Follow the operating system's preference, the default.
+  THEME_SYSTEM = 1;
+  // Light.
+  THEME_LIGHT = 2;
+  // Dark.
+  THEME_DARK = 3;
 }
 
 // GetMeRequest is empty.
@@ -154,6 +168,8 @@ message UpdateMeRequest {
     min_len: 1
     max_len: 100
   }];
+  // The web UI's theme; unspecified keeps the user's theme.
+  Theme theme = 2 [(buf.validate.field).enum.defined_only = true];
 }
 
 // UpdateMeResponse is the account.

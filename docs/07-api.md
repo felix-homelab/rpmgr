@@ -64,7 +64,7 @@ names.
 | Service | Main methods | Phase |
 |---|---|---|
 | `AuthService` | `Login`, `Logout`, `GetSession`, `StepUp` (a session, or a personal API token for itself, D63), `BeginWebAuthn`/`FinishWebAuthn`, `StartOIDC`/`FinishOIDC`, `ListSessions`, `RevokeSession`, `RequestPasswordReset` (only with SMTP configured; `UNAVAILABLE` without), `CompletePasswordReset` | 1 (WebAuthn, OIDC: 2) |
-| `UserService` | `GetMe`, `UpdateMe`, `ChangePassword`, `EnrollTOTP`, `ConfirmTOTP`, `RemoveTOTP`, `RegenerateRecoveryCodes`, `ListUsers` (instance admin), `CreatePasswordResetLink` (one-time link; Owner/Admin for members, Instance Admin for any user) | 1 |
+| `UserService` | `GetMe`, `UpdateMe` (display name and web UI theme), `ChangePassword`, `EnrollTOTP`, `ConfirmTOTP`, `RemoveTOTP`, `RegenerateRecoveryCodes`, `ListUsers` (instance admin), `CreatePasswordResetLink` (one-time link; Owner/Admin for members, Instance Admin for any user) | 1 |
 | `OrgService` | `GetOrg`, `UpdateOrg`, `ListMembers`, `UpdateMember`, `RemoveMember`, `CreateInvitation` (returns a one-time link; also e-mailed if SMTP is configured), `AcceptInvitation` | 1 (multi-org UI: 2) |
 | `TokenService` | `CreateAPIToken`, `ListAPITokens`, `RevokeAPIToken`, `CreateServiceAccount`, … | Personal API tokens: 1; service accounts: 2 |
 | `EnrollmentService` | `CreateEnrollmentToken` (connectors, also re-enrollment; `connectors.write`), `CreateGatewayEnrollmentToken` (a gateway an Admin created, R15; `infrastructure.write`), both with step-up and shown once; `ListEnrollmentTokens`, `RevokeEnrollmentToken`, `GetInstallCommand` | 1 |

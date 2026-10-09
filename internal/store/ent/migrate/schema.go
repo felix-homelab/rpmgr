@@ -1634,6 +1634,7 @@ var (
 		{Name: "instance_admin", Type: field.TypeBool, Default: false},
 		{Name: "created_at", Type: field.TypeTime},
 		{Name: "last_login_at", Type: field.TypeTime, Nullable: true},
+		{Name: "theme", Type: field.TypeEnum, Enums: []string{"system", "light", "dark"}, Default: "system"},
 	}
 	// UsersTable holds the schema information for the "users" table.
 	UsersTable = &schema.Table{
