@@ -4,6 +4,7 @@ package api_test
 
 import (
 	"context"
+	"crypto/rand"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -25,18 +26,40 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/api"
 	"github.com/felix-homelab/rpmgr/internal/authz"
 	"github.com/felix-homelab/rpmgr/internal/ids"
+	"github.com/felix-homelab/rpmgr/internal/secret"
+	"github.com/felix-homelab/rpmgr/internal/store"
+	"github.com/felix-homelab/rpmgr/internal/store/storetest"
 )
+
+// testSealer returns a sealer under a random KEK.
+func testSealer(t testing.TB) *secret.Sealer {
+	t.Helper()
+	key := make([]byte, 32)
+	_, _ = rand.Read(key)
+	kek, err := secret.NewKEK(key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s, err := secret.NewSealer(kek)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return s
+}
 
 // method describes one method of a test service.
 type method struct {
-	name   string
-	authz  *rpmgrv1.Authz // nil: no option
-	stream string         // "server", "client" or ""
+	name     string
+	authz    *rpmgrv1.Authz // nil: no option
+	stream   string         // "server", "client" or ""
+	readOnly bool           // idempotency_level = NO_SIDE_EFFECTS
 }
 
-// testFile builds rpmgr/apitest/v1/<name>.proto with a service TestService of the given methods,
-// all taking Request and returning Reply. Request has org_id, ref.id, name (at most 8
-// characters), tags (repeated) and secret; Reply has the caller and the org of the scope.
+// testFile builds rpmgr/apitest/<name>.proto with a service TestService of the given methods, all
+// taking Request and returning Reply. Request has org_id, ref (a Ref), name (at most 8
+// characters), tags (repeated), secret (sensitive), request_id, by_name (a map of Refs),
+// page_token and page_size; a Ref has id, token (sensitive) and note (debug_redact). Reply has
+// the caller and the org of the scope.
 func testFile(t *testing.T, name string, methods ...method) protoreflect.ServiceDescriptor {
 	t.Helper()
 	str := descriptorpb.FieldDescriptorProto_TYPE_STRING.Enum()
@@ -57,10 +80,14 @@ func testFile(t *testing.T, name string, methods ...method) protoreflect.Service
 		String_: &validate.StringRules{MaxLen: proto.Uint64(8)}}})
 	sensitive := &descriptorpb.FieldOptions{}
 	proto.SetExtension(sensitive, rpmgrv1.E_Sensitive, true)
+	debugRedact := &descriptorpb.FieldOptions{DebugRedact: proto.Bool(true)}
 	pkg := "rpmgr.apitest." + name
 	svc := &descriptorpb.ServiceDescriptorProto{Name: proto.String("TestService")}
 	for _, m := range methods {
 		opts := &descriptorpb.MethodOptions{}
+		if m.readOnly {
+			opts.IdempotencyLevel = descriptorpb.MethodOptions_NO_SIDE_EFFECTS.Enum()
+		}
 		if m.authz != nil {
 			proto.SetExtension(opts, rpmgrv1.E_Authz, m.authz)
 		}
@@ -71,14 +98,26 @@ func testFile(t *testing.T, name string, methods ...method) protoreflect.Service
 	fdp := &descriptorpb.FileDescriptorProto{
 		Name: proto.String("rpmgr/apitest/" + name + ".proto"), Package: proto.String(pkg), Syntax: proto.String("proto3"),
 		MessageType: []*descriptorpb.DescriptorProto{
-			{Name: proto.String("Ref"), Field: []*descriptorpb.FieldDescriptorProto{field("id", 1, str, optional, "", nil)}},
+			{Name: proto.String("Ref"), Field: []*descriptorpb.FieldDescriptorProto{
+				field("id", 1, str, optional, "", nil),
+				field("token", 2, str, optional, "", sensitive),
+				field("note", 3, str, optional, "", debugRedact),
+			}},
 			{Name: proto.String("Request"), Field: []*descriptorpb.FieldDescriptorProto{
 				field("org_id", 1, str, optional, "", nil),
 				field("ref", 2, msg, optional, "."+pkg+".Ref", nil),
 				field("name", 3, str, optional, "", maxLen),
 				field("tags", 4, str, repeated, "", nil),
 				field("secret", 5, str, optional, "", sensitive),
-			}},
+				field("request_id", 6, str, optional, "", nil),
+				field("by_name", 7, msg, repeated, "."+pkg+".Request.ByNameEntry", nil),
+				field("page_token", 8, str, optional, "", nil),
+				field("page_size", 9, descriptorpb.FieldDescriptorProto_TYPE_INT32.Enum(), optional, "", nil),
+			}, NestedType: []*descriptorpb.DescriptorProto{{Name: proto.String("ByNameEntry"),
+				Field: []*descriptorpb.FieldDescriptorProto{
+					field("key", 1, str, optional, "", nil),
+					field("value", 2, msg, optional, "."+pkg+".Ref", nil),
+				}, Options: &descriptorpb.MessageOptions{MapEntry: proto.Bool(true)}}}},
 			{Name: proto.String("Reply"), Field: []*descriptorpb.FieldDescriptorProto{
 				field("caller", 1, str, optional, "", nil),
 				field("org", 2, str, optional, "", nil),
@@ -96,6 +135,12 @@ func testFile(t *testing.T, name string, methods ...method) protoreflect.Service
 // handlers serves every method of sd with dynamic messages: each answers with the caller and the
 // org of its scope.
 func handlers(sd protoreflect.ServiceDescriptor) func(...connect.HandlerOption) (string, http.Handler) {
+	return handlersWith(sd, nil)
+}
+
+// handlersWith is handlers, with do run first by every method; its error is the method's.
+func handlersWith(sd protoreflect.ServiceDescriptor,
+	do func(ctx context.Context, method string, req *dynamicpb.Message) error) func(...connect.HandlerOption) (string, http.Handler) {
 	return func(opts ...connect.HandlerOption) (string, http.Handler) {
 		mux := http.NewServeMux()
 		for i := range sd.Methods().Len() {
@@ -114,13 +159,23 @@ func handlers(sd protoreflect.ServiceDescriptor) func(...connect.HandlerOption) 
 			}
 			if md.IsStreamingServer() {
 				mux.Handle(procedure, connect.NewServerStreamHandler(procedure,
-					func(ctx context.Context, _ *connect.Request[dynamicpb.Message], s *connect.ServerStream[dynamicpb.Message]) error {
+					func(ctx context.Context, req *connect.Request[dynamicpb.Message], s *connect.ServerStream[dynamicpb.Message]) error {
+						if do != nil {
+							if err := do(ctx, string(md.Name()), req.Msg); err != nil {
+								return err
+							}
+						}
 						return s.Send(reply(ctx))
 					}, o...))
 				continue
 			}
 			mux.Handle(procedure, connect.NewUnaryHandler(procedure,
-				func(ctx context.Context, _ *connect.Request[dynamicpb.Message]) (*connect.Response[dynamicpb.Message], error) {
+				func(ctx context.Context, req *connect.Request[dynamicpb.Message]) (*connect.Response[dynamicpb.Message], error) {
+					if do != nil {
+						if err := do(ctx, string(md.Name()), req.Msg); err != nil {
+							return nil, err
+						}
+					}
 					return connect.NewResponse(reply(ctx)), nil
 				}, o...))
 		}
@@ -193,7 +248,7 @@ func TestServer_Authorization(t *testing.T) {
 		method{name: "Members", authz: &rpmgrv1.Authz{Permission: authz.PermMembersWrite, ResourceField: "org_id", StepUp: true}},
 		method{name: "Watch", authz: &rpmgrv1.Authz{Permission: authz.PermOrgRead, ResourceField: "org_id"}, stream: "server"},
 	)
-	srv, err := api.New(api.Options{Authenticator: callers, Now: func() time.Time { return now },
+	srv, err := api.New(api.Options{DB: storetest.Migrated(t, store.SQLite), Sys: storetest.SystemCtx(t), Sealer: testSealer(t), Authenticator: callers, Now: func() time.Time { return now },
 		Resolver: func(_ context.Context, id string) (string, error) {
 			switch id {
 			case routeA:
@@ -318,7 +373,7 @@ func TestServer_ErrorDetails(t *testing.T) {
 		method{name: "Write", authz: &rpmgrv1.Authz{Permission: authz.PermRoutesWrite, ResourceField: "org_id"}},
 		method{name: "Members", authz: &rpmgrv1.Authz{Permission: authz.PermMembersWrite, ResourceField: "org_id", StepUp: true}},
 	)
-	srv, err := api.New(api.Options{
+	srv, err := api.New(api.Options{DB: storetest.Migrated(t, store.SQLite), Sys: storetest.SystemCtx(t), Sealer: testSealer(t),
 		Authenticator: bearer{
 			"viewer": {Principal: authz.Principal{UserID: "usr_v", Memberships: map[string]string{org: authz.RoleViewer}}},
 			"owner":  {Principal: authz.Principal{UserID: "usr_o", Memberships: map[string]string{org: authz.RoleOwner}}},
@@ -376,6 +431,7 @@ func TestServer_ErrorDetails(t *testing.T) {
 
 // TestCheck: a service is mounted only if every method's authorization can be enforced.
 func TestCheck(t *testing.T) {
+	db := storetest.Migrated(t, store.SQLite)
 	ok := &rpmgrv1.Authz{Permission: authz.PermOrgRead, ResourceField: "org_id"}
 	for name, m := range map[string]method{
 		"without_option":        {name: "M"},
@@ -391,7 +447,7 @@ func TestCheck(t *testing.T) {
 		"public_with_bad_field": {name: "M", authz: &rpmgrv1.Authz{Permission: authz.PermPublic, ResourceField: "nope"}},
 	} {
 		sd := testFile(t, "check_"+name, method{name: "Good", authz: ok}, m)
-		srv, err := api.New(api.Options{Resolver: func(context.Context, string) (string, error) { return "", api.ErrNotFound },
+		srv, err := api.New(api.Options{DB: db, Sys: storetest.SystemCtx(t), Sealer: testSealer(t), Resolver: func(context.Context, string) (string, error) { return "", api.ErrNotFound },
 			OperatorsMayEnroll: func(context.Context, string) (bool, error) { return false, nil }})
 		if err != nil {
 			t.Fatal(err)
@@ -405,7 +461,7 @@ func TestCheck(t *testing.T) {
 	if err := api.Check(sd); err != nil {
 		t.Fatal(err)
 	}
-	srv, _ := api.New(api.Options{Resolver: func(context.Context, string) (string, error) { return "", api.ErrNotFound },
+	srv, _ := api.New(api.Options{DB: db, Sys: storetest.SystemCtx(t), Sealer: testSealer(t), Resolver: func(context.Context, string) (string, error) { return "", api.ErrNotFound },
 		OperatorsMayEnroll: func(context.Context, string) (bool, error) { return false, nil }})
 	if err := srv.Mount(http.NewServeMux(), sd, func(o ...connect.HandlerOption) (string, http.Handler) {
 		_, h := handlers(sd)(o...)
@@ -413,8 +469,16 @@ func TestCheck(t *testing.T) {
 	}); err == nil {
 		t.Fatal("mounted a handler on another service's path")
 	}
-	if _, err := api.New(api.Options{}); err == nil {
+	if _, err := api.New(api.Options{DB: db, Sys: storetest.SystemCtx(t), Sealer: testSealer(t)}); err == nil {
 		t.Fatal("a server without a resolver")
+	}
+	if _, err := api.New(api.Options{Resolver: func(context.Context, string) (string, error) { return "", api.ErrNotFound },
+		OperatorsMayEnroll: func(context.Context, string) (bool, error) { return false, nil }}); err == nil {
+		t.Fatal("a server without a database for the audit log")
+	}
+	if _, err := api.New(api.Options{DB: db, Sealer: testSealer(t), Resolver: func(context.Context, string) (string, error) { return "", api.ErrNotFound },
+		OperatorsMayEnroll: func(context.Context, string) (bool, error) { return false, nil }}); err == nil {
+		t.Fatal("a server without the system scope")
 	}
 }
 

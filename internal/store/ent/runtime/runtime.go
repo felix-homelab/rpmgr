@@ -10,6 +10,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/acmestorage"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/agentsession"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/agentstate"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/apirequest"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/auditentry"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/audithead"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/cabundle"
@@ -82,6 +83,69 @@ func init() {
 	// acmestorage.IDValidator is a validator for the "id" field. It is called by the builders before save.
 	acmestorage.IDValidator = func() func(string) error {
 		validators := acmestorageDescID.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(id string) error {
+			for _, fn := range fns {
+				if err := fn(id); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	apirequestMixin := schema.APIRequest{}.Mixin()
+	apirequest.Policy = privacy.NewPolicies(apirequestMixin[0], schema.APIRequest{})
+	apirequest.Hooks[0] = func(next ent.Mutator) ent.Mutator {
+		return ent.MutateFunc(func(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+			if err := apirequest.Policy.EvalMutation(ctx, m); err != nil {
+				return nil, err
+			}
+			return next.Mutate(ctx, m)
+		})
+	}
+	apirequestMixinHooks0 := apirequestMixin[0].Hooks()
+
+	apirequest.Hooks[1] = apirequestMixinHooks0[0]
+	apirequestMixinInters0 := apirequestMixin[0].Interceptors()
+	apirequest.Interceptors[0] = apirequestMixinInters0[0]
+	apirequestFields := schema.APIRequest{}.Fields()
+	_ = apirequestFields
+	// apirequestDescCallerID is the schema descriptor for caller_id field.
+	apirequestDescCallerID := apirequestFields[1].Descriptor()
+	// apirequest.CallerIDValidator is a validator for the "caller_id" field. It is called by the builders before save.
+	apirequest.CallerIDValidator = apirequestDescCallerID.Validators[0].(func(string) error)
+	// apirequestDescMethod is the schema descriptor for method field.
+	apirequestDescMethod := apirequestFields[2].Descriptor()
+	// apirequest.MethodValidator is a validator for the "method" field. It is called by the builders before save.
+	apirequest.MethodValidator = apirequestDescMethod.Validators[0].(func(string) error)
+	// apirequestDescRequestID is the schema descriptor for request_id field.
+	apirequestDescRequestID := apirequestFields[3].Descriptor()
+	// apirequest.RequestIDValidator is a validator for the "request_id" field. It is called by the builders before save.
+	apirequest.RequestIDValidator = func() func(string) error {
+		validators := apirequestDescRequestID.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(request_id string) error {
+			for _, fn := range fns {
+				if err := fn(request_id); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// apirequestDescID is the schema descriptor for id field.
+	apirequestDescID := apirequestFields[0].Descriptor()
+	// apirequest.DefaultID holds the default value on creation for the id field.
+	apirequest.DefaultID = apirequestDescID.Default.(func() string)
+	// apirequest.IDValidator is a validator for the "id" field. It is called by the builders before save.
+	apirequest.IDValidator = func() func(string) error {
+		validators := apirequestDescID.Validators
 		fns := [...]func(string) error{
 			validators[0].(func(string) error),
 			validators[1].(func(string) error),

@@ -12,6 +12,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/acmestorage"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/agentsession"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/agentstate"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/apirequest"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/auditentry"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/audithead"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/cabundle"
@@ -128,6 +129,33 @@ func (f TraverseACMEStorage) Traverse(ctx context.Context, q ent.Query) error {
 		return f(ctx, q)
 	}
 	return fmt.Errorf("unexpected query type %T. expect *ent.ACMEStorageQuery", q)
+}
+
+// The APIRequestFunc type is an adapter to allow the use of ordinary function as a Querier.
+type APIRequestFunc func(context.Context, *ent.APIRequestQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f APIRequestFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.APIRequestQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.APIRequestQuery", q)
+}
+
+// The TraverseAPIRequest type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseAPIRequest func(context.Context, *ent.APIRequestQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseAPIRequest) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseAPIRequest) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.APIRequestQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.APIRequestQuery", q)
 }
 
 // The AccessPolicyFunc type is an adapter to allow the use of ordinary function as a Querier.
@@ -1080,6 +1108,8 @@ func NewQuery(q ent.Query) (Query, error) {
 	switch q := q.(type) {
 	case *ent.ACMEStorageQuery:
 		return &query[*ent.ACMEStorageQuery, predicate.ACMEStorage, acmestorage.OrderOption]{typ: ent.TypeACMEStorage, tq: q}, nil
+	case *ent.APIRequestQuery:
+		return &query[*ent.APIRequestQuery, predicate.APIRequest, apirequest.OrderOption]{typ: ent.TypeAPIRequest, tq: q}, nil
 	case *ent.AccessPolicyQuery:
 		return &query[*ent.AccessPolicyQuery, predicate.AccessPolicy, accesspolicy.OrderOption]{typ: ent.TypeAccessPolicy, tq: q}, nil
 	case *ent.AgentSessionQuery:

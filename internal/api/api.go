@@ -4,6 +4,7 @@ package api
 
 import (
 	"context"
+	"crypto/rand"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -18,6 +19,8 @@ import (
 
 	rpmgrv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/v1"
 	"github.com/felix-homelab/rpmgr/internal/authz"
+	"github.com/felix-homelab/rpmgr/internal/secret"
+	"github.com/felix-homelab/rpmgr/internal/store"
 )
 
 // StepUpWindow is how long a step-up re-authentication lasts (docs/04-security.md, "Human
@@ -42,26 +45,39 @@ type Authenticator interface {
 
 // Options configure a Server.
 type Options struct {
+	// DB keeps the audit log of state-changing requests and the request_ids of Create calls.
+	DB *store.DB
+	// Sys is the controller's system scope, for the request_ids, which belong to no org.
+	Sys context.Context
+	// Sealer keeps the responses of request_ids under the KEK.
+	Sealer *secret.Sealer
 	// Authenticator finds callers; nil leaves every caller anonymous.
 	Authenticator Authenticator
 	// Resolver finds the org of a resource ID; StoreResolver is the controller's.
 	Resolver Resolver
 	// OperatorsMayEnroll returns an org's setting that gives Operators connectors.write.
 	OperatorsMayEnroll func(ctx context.Context, orgID string) (bool, error)
-	Now                func() time.Time
-	Logger             *slog.Logger
+	// PageKey authenticates page tokens; the controller derives it from the KEK, so tokens stay
+	// valid across restarts. Without it, a random key lasts as long as the Server.
+	PageKey []byte
+	Now     func() time.Time
+	Logger  *slog.Logger
 }
 
 // Server holds the interceptor every method of the public API goes through.
 type Server struct {
 	o         Options
 	validator protovalidate.Validator
+	pageKey   []byte
 }
 
 // New returns a Server.
 func New(o Options) (*Server, error) {
 	if o.Resolver == nil || o.OperatorsMayEnroll == nil {
 		return nil, errors.New("api: a resolver and the operator setting are required")
+	}
+	if o.DB == nil || o.Sys == nil || o.Sealer == nil {
+		return nil, errNoDB
 	}
 	if o.Now == nil {
 		o.Now = time.Now
@@ -73,7 +89,12 @@ func New(o Options) (*Server, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Server{o: o, validator: v}, nil
+	key := o.PageKey
+	if len(key) == 0 {
+		key = make([]byte, 32)
+		_, _ = rand.Read(key)
+	}
+	return &Server{o: o, validator: v, pageKey: key}, nil
 }
 
 // Mount checks every method of a service and adds its handler to mux. handler is the generated

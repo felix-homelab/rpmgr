@@ -200,6 +200,7 @@ func lockHead(ctx context.Context, tx *ent.Tx, chain string) (int64, []byte, err
 // holds a write transaction; use Append with that transaction instead.
 func Record(ctx context.Context, db *store.DB, e Entry) (Entry, error) {
 	var out Entry
+	ctx = store.WithoutTxHook(ctx) // a request's own entry belongs to the change it makes, not here
 	err := store.WriteTx(ctx, db, func(tx *ent.Tx) error {
 		var err error
 		out, err = Append(ctx, tx, e)

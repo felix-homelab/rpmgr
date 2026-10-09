@@ -19,6 +19,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/acmestorage"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/agentsession"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/agentstate"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/apirequest"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/auditentry"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/audithead"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/cabundle"
@@ -62,6 +63,8 @@ type Client struct {
 	Schema *migrate.Schema
 	// ACMEStorage is the client for interacting with the ACMEStorage builders.
 	ACMEStorage *ACMEStorageClient
+	// APIRequest is the client for interacting with the APIRequest builders.
+	APIRequest *APIRequestClient
 	// AccessPolicy is the client for interacting with the AccessPolicy builders.
 	AccessPolicy *AccessPolicyClient
 	// AgentSession is the client for interacting with the AgentSession builders.
@@ -144,6 +147,7 @@ func NewClient(opts ...Option) *Client {
 func (c *Client) init() {
 	c.Schema = migrate.NewSchema(c.driver)
 	c.ACMEStorage = NewACMEStorageClient(c.config)
+	c.APIRequest = NewAPIRequestClient(c.config)
 	c.AccessPolicy = NewAccessPolicyClient(c.config)
 	c.AgentSession = NewAgentSessionClient(c.config)
 	c.AgentState = NewAgentStateClient(c.config)
@@ -272,6 +276,7 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		ctx:               ctx,
 		config:            cfg,
 		ACMEStorage:       NewACMEStorageClient(cfg),
+		APIRequest:        NewAPIRequestClient(cfg),
 		AccessPolicy:      NewAccessPolicyClient(cfg),
 		AgentSession:      NewAgentSessionClient(cfg),
 		AgentState:        NewAgentStateClient(cfg),
@@ -327,6 +332,7 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		ctx:               ctx,
 		config:            cfg,
 		ACMEStorage:       NewACMEStorageClient(cfg),
+		APIRequest:        NewAPIRequestClient(cfg),
 		AccessPolicy:      NewAccessPolicyClient(cfg),
 		AgentSession:      NewAgentSessionClient(cfg),
 		AgentState:        NewAgentStateClient(cfg),
@@ -391,13 +397,14 @@ func (c *Client) Close() error {
 // In order to add hooks to a specific client, call: `client.Node.Use(...)`.
 func (c *Client) Use(hooks ...Hook) {
 	for _, n := range []interface{ Use(...Hook) }{
-		c.ACMEStorage, c.AccessPolicy, c.AgentSession, c.AgentState, c.AuditEntry,
-		c.AuditHead, c.CABundle, c.CAKey, c.Certificate, c.CompiledSnapshot,
-		c.ConfigRevision, c.ConfigSeq, c.Connector, c.Domain, c.EnrollmentToken,
-		c.Gateway, c.GatewayGroup, c.Instance, c.InstanceSetting, c.IssuedCertificate,
-		c.Lease, c.Org, c.OrgSetting, c.PolicyRule, c.PortAllocation, c.PortPool,
-		c.PortQuota, c.RevokedIdentity, c.Route, c.RouteHTTP, c.RouteHostname,
-		c.RoutePolicy, c.RouteTCP, c.RouteTarget, c.RouteUDP, c.SecretMeta,
+		c.ACMEStorage, c.APIRequest, c.AccessPolicy, c.AgentSession, c.AgentState,
+		c.AuditEntry, c.AuditHead, c.CABundle, c.CAKey, c.Certificate,
+		c.CompiledSnapshot, c.ConfigRevision, c.ConfigSeq, c.Connector, c.Domain,
+		c.EnrollmentToken, c.Gateway, c.GatewayGroup, c.Instance, c.InstanceSetting,
+		c.IssuedCertificate, c.Lease, c.Org, c.OrgSetting, c.PolicyRule,
+		c.PortAllocation, c.PortPool, c.PortQuota, c.RevokedIdentity, c.Route,
+		c.RouteHTTP, c.RouteHostname, c.RoutePolicy, c.RouteTCP, c.RouteTarget,
+		c.RouteUDP, c.SecretMeta,
 	} {
 		n.Use(hooks...)
 	}
@@ -407,13 +414,14 @@ func (c *Client) Use(hooks ...Hook) {
 // In order to add interceptors to a specific client, call: `client.Node.Intercept(...)`.
 func (c *Client) Intercept(interceptors ...Interceptor) {
 	for _, n := range []interface{ Intercept(...Interceptor) }{
-		c.ACMEStorage, c.AccessPolicy, c.AgentSession, c.AgentState, c.AuditEntry,
-		c.AuditHead, c.CABundle, c.CAKey, c.Certificate, c.CompiledSnapshot,
-		c.ConfigRevision, c.ConfigSeq, c.Connector, c.Domain, c.EnrollmentToken,
-		c.Gateway, c.GatewayGroup, c.Instance, c.InstanceSetting, c.IssuedCertificate,
-		c.Lease, c.Org, c.OrgSetting, c.PolicyRule, c.PortAllocation, c.PortPool,
-		c.PortQuota, c.RevokedIdentity, c.Route, c.RouteHTTP, c.RouteHostname,
-		c.RoutePolicy, c.RouteTCP, c.RouteTarget, c.RouteUDP, c.SecretMeta,
+		c.ACMEStorage, c.APIRequest, c.AccessPolicy, c.AgentSession, c.AgentState,
+		c.AuditEntry, c.AuditHead, c.CABundle, c.CAKey, c.Certificate,
+		c.CompiledSnapshot, c.ConfigRevision, c.ConfigSeq, c.Connector, c.Domain,
+		c.EnrollmentToken, c.Gateway, c.GatewayGroup, c.Instance, c.InstanceSetting,
+		c.IssuedCertificate, c.Lease, c.Org, c.OrgSetting, c.PolicyRule,
+		c.PortAllocation, c.PortPool, c.PortQuota, c.RevokedIdentity, c.Route,
+		c.RouteHTTP, c.RouteHostname, c.RoutePolicy, c.RouteTCP, c.RouteTarget,
+		c.RouteUDP, c.SecretMeta,
 	} {
 		n.Intercept(interceptors...)
 	}
@@ -424,6 +432,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 	switch m := m.(type) {
 	case *ACMEStorageMutation:
 		return c.ACMEStorage.mutate(ctx, m)
+	case *APIRequestMutation:
+		return c.APIRequest.mutate(ctx, m)
 	case *AccessPolicyMutation:
 		return c.AccessPolicy.mutate(ctx, m)
 	case *AgentSessionMutation:
@@ -631,6 +641,141 @@ func (c *ACMEStorageClient) mutate(ctx context.Context, m *ACMEStorageMutation) 
 		return (&ACMEStorageDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
 	default:
 		return nil, fmt.Errorf("ent: unknown ACMEStorage mutation op: %q", m.Op())
+	}
+}
+
+// APIRequestClient is a client for the APIRequest schema.
+type APIRequestClient struct {
+	config
+}
+
+// NewAPIRequestClient returns a client for the APIRequest from the given config.
+func NewAPIRequestClient(c config) *APIRequestClient {
+	return &APIRequestClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `apirequest.Hooks(f(g(h())))`.
+func (c *APIRequestClient) Use(hooks ...Hook) {
+	c.hooks.APIRequest = append(c.hooks.APIRequest, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `apirequest.Intercept(f(g(h())))`.
+func (c *APIRequestClient) Intercept(interceptors ...Interceptor) {
+	c.inters.APIRequest = append(c.inters.APIRequest, interceptors...)
+}
+
+// Create returns a builder for creating a APIRequest entity.
+func (c *APIRequestClient) Create() *APIRequestCreate {
+	mutation := newAPIRequestMutation(c.config, OpCreate)
+	return &APIRequestCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of APIRequest entities.
+func (c *APIRequestClient) CreateBulk(builders ...*APIRequestCreate) *APIRequestCreateBulk {
+	return &APIRequestCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *APIRequestClient) MapCreateBulk(slice any, setFunc func(*APIRequestCreate, int)) *APIRequestCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &APIRequestCreateBulk{err: fmt.Errorf("calling to APIRequestClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*APIRequestCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &APIRequestCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for APIRequest.
+func (c *APIRequestClient) Update() *APIRequestUpdate {
+	mutation := newAPIRequestMutation(c.config, OpUpdate)
+	return &APIRequestUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *APIRequestClient) UpdateOne(_m *APIRequest) *APIRequestUpdateOne {
+	mutation := newAPIRequestMutation(c.config, OpUpdateOne, withAPIRequest(_m))
+	return &APIRequestUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *APIRequestClient) UpdateOneID(id string) *APIRequestUpdateOne {
+	mutation := newAPIRequestMutation(c.config, OpUpdateOne, withAPIRequestID(id))
+	return &APIRequestUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for APIRequest.
+func (c *APIRequestClient) Delete() *APIRequestDelete {
+	mutation := newAPIRequestMutation(c.config, OpDelete)
+	return &APIRequestDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *APIRequestClient) DeleteOne(_m *APIRequest) *APIRequestDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *APIRequestClient) DeleteOneID(id string) *APIRequestDeleteOne {
+	builder := c.Delete().Where(apirequest.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &APIRequestDeleteOne{builder}
+}
+
+// Query returns a query builder for APIRequest.
+func (c *APIRequestClient) Query() *APIRequestQuery {
+	return &APIRequestQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeAPIRequest},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a APIRequest entity by its id.
+func (c *APIRequestClient) Get(ctx context.Context, id string) (*APIRequest, error) {
+	return c.Query().Where(apirequest.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *APIRequestClient) GetX(ctx context.Context, id string) *APIRequest {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *APIRequestClient) Hooks() []Hook {
+	hooks := c.hooks.APIRequest
+	return append(hooks[:len(hooks):len(hooks)], apirequest.Hooks[:]...)
+}
+
+// Interceptors returns the client interceptors.
+func (c *APIRequestClient) Interceptors() []Interceptor {
+	inters := c.inters.APIRequest
+	return append(inters[:len(inters):len(inters)], apirequest.Interceptors[:]...)
+}
+
+func (c *APIRequestClient) mutate(ctx context.Context, m *APIRequestMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&APIRequestCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&APIRequestUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&APIRequestUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&APIRequestDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown APIRequest mutation op: %q", m.Op())
 	}
 }
 
@@ -5725,18 +5870,18 @@ func (c *SecretMetaClient) mutate(ctx context.Context, m *SecretMetaMutation) (V
 // hooks and interceptors per client, for fast access.
 type (
 	hooks struct {
-		ACMEStorage, AccessPolicy, AgentSession, AgentState, AuditEntry, AuditHead,
-		CABundle, CAKey, Certificate, CompiledSnapshot, ConfigRevision, ConfigSeq,
-		Connector, Domain, EnrollmentToken, Gateway, GatewayGroup, Instance,
+		ACMEStorage, APIRequest, AccessPolicy, AgentSession, AgentState, AuditEntry,
+		AuditHead, CABundle, CAKey, Certificate, CompiledSnapshot, ConfigRevision,
+		ConfigSeq, Connector, Domain, EnrollmentToken, Gateway, GatewayGroup, Instance,
 		InstanceSetting, IssuedCertificate, Lease, Org, OrgSetting, PolicyRule,
 		PortAllocation, PortPool, PortQuota, RevokedIdentity, Route, RouteHTTP,
 		RouteHostname, RoutePolicy, RouteTCP, RouteTarget, RouteUDP,
 		SecretMeta []ent.Hook
 	}
 	inters struct {
-		ACMEStorage, AccessPolicy, AgentSession, AgentState, AuditEntry, AuditHead,
-		CABundle, CAKey, Certificate, CompiledSnapshot, ConfigRevision, ConfigSeq,
-		Connector, Domain, EnrollmentToken, Gateway, GatewayGroup, Instance,
+		ACMEStorage, APIRequest, AccessPolicy, AgentSession, AgentState, AuditEntry,
+		AuditHead, CABundle, CAKey, Certificate, CompiledSnapshot, ConfigRevision,
+		ConfigSeq, Connector, Domain, EnrollmentToken, Gateway, GatewayGroup, Instance,
 		InstanceSetting, IssuedCertificate, Lease, Org, OrgSetting, PolicyRule,
 		PortAllocation, PortPool, PortQuota, RevokedIdentity, Route, RouteHTTP,
 		RouteHostname, RoutePolicy, RouteTCP, RouteTarget, RouteUDP,

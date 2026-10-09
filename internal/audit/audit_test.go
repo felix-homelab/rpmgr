@@ -458,3 +458,18 @@ func TestCanonical_FieldBoundaries(t *testing.T) {
 		seen[enc] = name
 	}
 }
+
+// TestRecord_WithoutTxHook: Record never runs a request's transaction hook, which belongs to the
+// change the request makes.
+func TestRecord_WithoutTxHook(t *testing.T) {
+	db := storetest.Migrated(t, store.SQLite)
+	storetest.Init(t, db)
+	ran := false
+	ctx := store.WithTxHook(context.Background(), func(context.Context, *ent.Tx) error { ran = true; return nil })
+	if _, err := audit.Record(ctx, db, audit.Entry{ActorType: audit.ActorAnonymous, Action: "login.fail", Result: audit.Failure}); err != nil {
+		t.Fatal(err)
+	}
+	if ran {
+		t.Fatal("Record ran the hook")
+	}
+}

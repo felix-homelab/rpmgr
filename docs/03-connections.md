@@ -1000,7 +1000,7 @@ sequenceDiagram
 | Imperative operation | `Open` → `Attach` within 10 s; ticket single-use, valid 30 s; shell idle 30 min | No unbounded waits |
 | P2P | punch window 5 s; retry backoff 30 s → 15 min; also on network change | Don't hammer NATs |
 | Webhook delivery (Phase 2) | 5 s timeout per attempt; retries with backoff | A slow receiver must not hold controller resources ([07](07-api.md#webhooks-phase-2)) |
-| `request_id` deduplication of `Create` calls | 24 h | Retries of a lost response stay idempotent ([07](07-api.md#resource-design)) |
+| `request_id` deduplication of `Create` calls | 24 h; IDs past it are deleted every hour | Retries of a lost response stay idempotent ([07](07-api.md#resource-design)) |
 | Enrollment token, certificates | see [04-security.md](04-security.md#pki-and-identity) | — |
 
 ## Versioning and capabilities

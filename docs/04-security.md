@@ -583,7 +583,9 @@ Rules:
 | `file`: a 0600 file | P1 | Containers mount secrets as files. The file holds the base64 encoding of 32 random bytes; symbolic links are followed (container platforms mount secrets that way), but the file must be regular and closed to its group and other users (0600 or 0400) |
 
 **Not** an environment variable: no secret is kept in the environment of a long-running process.
-`rpmgr kek rotate` re-wraps all data keys.
+`rpmgr kek rotate` re-wraps all data keys. [R] With HKDF-SHA256 and one label per purpose, the KEK
+also yields keys that need no storage: the key that authenticates API page tokens. They change
+with the KEK.
 
 **API behaviour**: secret fields are write-only. They can be set or rotated, never read back.
 DNS-provider tokens are sent only to the compiled-in provider API URL; no runtime setting can
@@ -598,8 +600,13 @@ redirect them ([15](15-dns.md#cloudflare-specifics)).
   reflection shows a pointer or a byte slice with its contents but a function only as an address.
 - The logger redacts every attribute whose key contains `token`, `secret`, `password`,
   `authorization`, `cookie` or `private_key` (case and `-`/`_` ignored), whatever its type.
-- Proto fields carrying secrets are annotated `(rpmgr.v1.sensitive) = true` (plus `debug_redact`
-  [V VB-04]); the logging handler redacts them.
+- Proto fields carrying secrets are annotated `(rpmgr.v1.sensitive) = true`. rpmgr redacts them
+  itself wherever a message is written out, in audit diffs among others: a string becomes
+  `[REDACTED]`, so the record shows that a value was given, and any other value is cleared. The
+  standard option `debug_redact` would not do it: Go's protobuf libraries read it nowhere outside
+  the descriptor code, so text and JSON output print such fields as they are [F protobuf-go
+  v1.36.12: only `types/descriptorpb`, `internal/genid` and `reflect/protoreflect/source_gen.go`
+  name it] (VB-04).
 - **Whole requests are never logged.** Access logs omit query strings and authentication headers.
 - No secret appears in argv, in the environment of long-running processes, or in unit files.
 
@@ -742,6 +749,12 @@ Phase 3 item ([13](13-roadmap.md#phase-3--advanced)).
     deleted tail is found too. An org scope verifies only its own org's chain.
   - An org's request appends only to its own chain or the instance chain. Events before any scope
     exists (a failed login, the grant of a system scope) are appended without one.
+- [R] **Requests through the public API**: a method marked free of side effects
+  (`idempotency_level = NO_SIDE_EFFECTS`) is not recorded; every other request is. Each
+  configuration or write transaction it runs appends its entry, as a success, before committing.
+  A request that changes nothing, fails or is refused gets its entry in a transaction of its own,
+  in the chain of the org the caller is a member of, else in the instance chain. The diff is the
+  request as JSON with its sensitive fields redacted, until a method records a before and after.
 - Signed **checkpoints** (chain head + count, signed with the audit-checkpoint key) are shipped to an
   external sink (syslog, OTLP, webhook, or object storage with retention lock). The external copy
   is what makes tampering evident: anyone with database write access could recompute a chain.

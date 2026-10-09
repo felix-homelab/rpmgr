@@ -21,6 +21,18 @@ func (f ACMEStorageFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value,
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.ACMEStorageMutation", m)
 }
 
+// The APIRequestFunc type is an adapter to allow the use of ordinary
+// function as APIRequest mutator.
+type APIRequestFunc func(context.Context, *ent.APIRequestMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f APIRequestFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.APIRequestMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.APIRequestMutation", m)
+}
+
 // The AccessPolicyFunc type is an adapter to allow the use of ordinary
 // function as AccessPolicy mutator.
 type AccessPolicyFunc func(context.Context, *ent.AccessPolicyMutation) (ent.Value, error)

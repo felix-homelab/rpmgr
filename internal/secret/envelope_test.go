@@ -234,3 +234,32 @@ func TestLoadSystemdCredential(t *testing.T) {
 		t.Error("missing credential accepted")
 	}
 }
+
+// TestDeriveKey: a derived key is 32 bytes, the same for a KEK and label, different for another
+// label or KEK, and refused without a label.
+func TestDeriveKey(t *testing.T) {
+	kek := func(b byte) *Sealer {
+		k, err := NewKEK(bytes.Repeat([]byte{b}, 32))
+		if err != nil {
+			t.Fatal(err)
+		}
+		s, err := NewSealer(k)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return s
+	}
+	a, err := kek(1).DeriveKey("api-page-token")
+	if err != nil || len(a) != 32 {
+		t.Fatalf("%x %v", a, err)
+	}
+	again, _ := kek(1).DeriveKey("api-page-token")
+	other, _ := kek(1).DeriveKey("something-else")
+	otherKEK, _ := kek(2).DeriveKey("api-page-token")
+	if !bytes.Equal(a, again) || bytes.Equal(a, other) || bytes.Equal(a, otherKEK) || bytes.Equal(a, bytes.Repeat([]byte{1}, 32)) {
+		t.Fatal("derived keys")
+	}
+	if _, err := kek(1).DeriveKey(""); err == nil {
+		t.Fatal("a key without a label")
+	}
+}

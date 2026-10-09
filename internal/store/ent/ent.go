@@ -16,6 +16,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/acmestorage"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/agentsession"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/agentstate"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/apirequest"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/auditentry"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/audithead"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/cabundle"
@@ -109,6 +110,7 @@ func checkColumn(t, c string) error {
 	initCheck.Do(func() {
 		columnCheck = sql.NewColumnCheck(map[string]func(string) bool{
 			acmestorage.Table:       acmestorage.ValidColumn,
+			apirequest.Table:        apirequest.ValidColumn,
 			accesspolicy.Table:      accesspolicy.ValidColumn,
 			agentsession.Table:      agentsession.ValidColumn,
 			agentstate.Table:        agentstate.ValidColumn,
