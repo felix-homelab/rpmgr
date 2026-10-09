@@ -171,14 +171,14 @@ jobs:
     timeout-minutes: 20
     services:
       pg16:
-        image: postgres:16@sha256:65b16a8b326e0cfbdf33fa7e783f2a0cb352a61448616ccccfd616ef42aa0f65
+        image: mirror.gcr.io/library/postgres:16@sha256:65b16a8b326e0cfbdf33fa7e783f2a0cb352a61448616ccccfd616ef42aa0f65
         env:
           POSTGRES_USER: rpmgr
           POSTGRES_PASSWORD: rpmgr # a throw-away test database
         ports: ["5416:5432"]
         options: --health-cmd "pg_isready -U rpmgr" --health-interval 2s --health-timeout 5s --health-retries 30
       pg18:
-        image: postgres:18@sha256:fc973eb97c9fd04bfa1840e0f510719a584ccb3be8debfe6a4144637a9dfe8cf
+        image: mirror.gcr.io/library/postgres:18@sha256:fc973eb97c9fd04bfa1840e0f510719a584ccb3be8debfe6a4144637a9dfe8cf
         env:
           POSTGRES_USER: rpmgr
           POSTGRES_PASSWORD: rpmgr # a throw-away test database

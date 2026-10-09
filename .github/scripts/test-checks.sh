@@ -454,7 +454,7 @@ else
   printf 'DROP TABLE `gateway_groups`;\n' >"$r/20991231000000_drop.sql"
   rm "$r/atlas.sum"
   docker run --rm -u "$(id -u):$(id -g)" -v "$r:/m" \
-    arigaio/atlas:1.3.3-community@sha256:9c9958f5b8d26d404ab2e28098c8629526eb4bec647f790278611e58a0b19839 \
+    mirror.gcr.io/arigaio/atlas:1.3.3-community@sha256:9c9958f5b8d26d404ab2e28098c8629526eb4bec647f790278611e58a0b19839 \
     migrate hash --dir file:///m >/dev/null 2>&1
   expect fail "atlas lint reports a destructive change" "$dir/check-atlas-lint.sh" "$r" "sqlite://dev?mode=memory"
 

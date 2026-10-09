@@ -11,7 +11,7 @@ set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
 root=${1:-$(repo_root)}
-image='lycheeverse/lychee:0.24.2@sha256:e2d19e57cf6ab037026f20b8e449a1f30d9d7f81eef4194763aab2eab20bd28d'
+image='mirror.gcr.io/lycheeverse/lychee:0.24.2@sha256:e2d19e57cf6ab037026f20b8e449a1f30d9d7f81eef4194763aab2eab20bd28d'
 
 mapfile -t files < <(git -C "$root" ls-files '*.md')
 if ((${#files[@]} == 0)); then

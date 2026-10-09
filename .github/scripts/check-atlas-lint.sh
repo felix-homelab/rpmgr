@@ -11,7 +11,7 @@ source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
 dir=${1:?migration directory required}
 dev=${2:?development database URL required}
-atlas='arigaio/atlas:1.3.3-community@sha256:9c9958f5b8d26d404ab2e28098c8629526eb4bec647f790278611e58a0b19839'
+atlas='mirror.gcr.io/arigaio/atlas:1.3.3-community@sha256:9c9958f5b8d26d404ab2e28098c8629526eb4bec647f790278611e58a0b19839'
 
 abs=$(cd "$dir" && pwd)
 n=$(find "$abs" -maxdepth 1 -name '*.sql' | wc -l)
