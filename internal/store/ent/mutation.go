@@ -6562,7 +6562,7 @@ func (m *CertificateMutation) NotBefore() (r time.Time, exists bool) {
 // OldNotBefore returns the old "not_before" field's value of the Certificate entity.
 // If the Certificate object wasn't provided to the builder, the object is fetched from the database.
 // An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *CertificateMutation) OldNotBefore(ctx context.Context) (v time.Time, err error) {
+func (m *CertificateMutation) OldNotBefore(ctx context.Context) (v *time.Time, err error) {
 	if !m.op.Is(OpUpdateOne) {
 		return v, errors.New("OldNotBefore is only allowed on UpdateOne operations")
 	}
@@ -6576,9 +6576,22 @@ func (m *CertificateMutation) OldNotBefore(ctx context.Context) (v time.Time, er
 	return oldValue.NotBefore, nil
 }
 
+// ClearNotBefore clears the value of the "not_before" field.
+func (m *CertificateMutation) ClearNotBefore() {
+	m.not_before = nil
+	m.clearedFields[certificate.FieldNotBefore] = struct{}{}
+}
+
+// NotBeforeCleared returns if the "not_before" field was cleared in this mutation.
+func (m *CertificateMutation) NotBeforeCleared() bool {
+	_, ok := m.clearedFields[certificate.FieldNotBefore]
+	return ok
+}
+
 // ResetNotBefore resets all changes to the "not_before" field.
 func (m *CertificateMutation) ResetNotBefore() {
 	m.not_before = nil
+	delete(m.clearedFields, certificate.FieldNotBefore)
 }
 
 // SetNotAfter sets the "not_after" field.
@@ -6598,7 +6611,7 @@ func (m *CertificateMutation) NotAfter() (r time.Time, exists bool) {
 // OldNotAfter returns the old "not_after" field's value of the Certificate entity.
 // If the Certificate object wasn't provided to the builder, the object is fetched from the database.
 // An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *CertificateMutation) OldNotAfter(ctx context.Context) (v time.Time, err error) {
+func (m *CertificateMutation) OldNotAfter(ctx context.Context) (v *time.Time, err error) {
 	if !m.op.Is(OpUpdateOne) {
 		return v, errors.New("OldNotAfter is only allowed on UpdateOne operations")
 	}
@@ -6612,9 +6625,22 @@ func (m *CertificateMutation) OldNotAfter(ctx context.Context) (v time.Time, err
 	return oldValue.NotAfter, nil
 }
 
+// ClearNotAfter clears the value of the "not_after" field.
+func (m *CertificateMutation) ClearNotAfter() {
+	m.not_after = nil
+	m.clearedFields[certificate.FieldNotAfter] = struct{}{}
+}
+
+// NotAfterCleared returns if the "not_after" field was cleared in this mutation.
+func (m *CertificateMutation) NotAfterCleared() bool {
+	_, ok := m.clearedFields[certificate.FieldNotAfter]
+	return ok
+}
+
 // ResetNotAfter resets all changes to the "not_after" field.
 func (m *CertificateMutation) ResetNotAfter() {
 	m.not_after = nil
+	delete(m.clearedFields, certificate.FieldNotAfter)
 }
 
 // SetChain sets the "chain" field.
@@ -6648,9 +6674,22 @@ func (m *CertificateMutation) OldChain(ctx context.Context) (v []byte, err error
 	return oldValue.Chain, nil
 }
 
+// ClearChain clears the value of the "chain" field.
+func (m *CertificateMutation) ClearChain() {
+	m.chain = nil
+	m.clearedFields[certificate.FieldChain] = struct{}{}
+}
+
+// ChainCleared returns if the "chain" field was cleared in this mutation.
+func (m *CertificateMutation) ChainCleared() bool {
+	_, ok := m.clearedFields[certificate.FieldChain]
+	return ok
+}
+
 // ResetChain resets all changes to the "chain" field.
 func (m *CertificateMutation) ResetChain() {
 	m.chain = nil
+	delete(m.clearedFields, certificate.FieldChain)
 }
 
 // SetKeyEnc sets the "key_enc" field.
@@ -6684,9 +6723,22 @@ func (m *CertificateMutation) OldKeyEnc(ctx context.Context) (v []byte, err erro
 	return oldValue.KeyEnc, nil
 }
 
+// ClearKeyEnc clears the value of the "key_enc" field.
+func (m *CertificateMutation) ClearKeyEnc() {
+	m.key_enc = nil
+	m.clearedFields[certificate.FieldKeyEnc] = struct{}{}
+}
+
+// KeyEncCleared returns if the "key_enc" field was cleared in this mutation.
+func (m *CertificateMutation) KeyEncCleared() bool {
+	_, ok := m.clearedFields[certificate.FieldKeyEnc]
+	return ok
+}
+
 // ResetKeyEnc resets all changes to the "key_enc" field.
 func (m *CertificateMutation) ResetKeyEnc() {
 	m.key_enc = nil
+	delete(m.clearedFields, certificate.FieldKeyEnc)
 }
 
 // SetContentSha256 sets the "content_sha256" field.
@@ -6720,9 +6772,22 @@ func (m *CertificateMutation) OldContentSha256(ctx context.Context) (v []byte, e
 	return oldValue.ContentSha256, nil
 }
 
+// ClearContentSha256 clears the value of the "content_sha256" field.
+func (m *CertificateMutation) ClearContentSha256() {
+	m.content_sha256 = nil
+	m.clearedFields[certificate.FieldContentSha256] = struct{}{}
+}
+
+// ContentSha256Cleared returns if the "content_sha256" field was cleared in this mutation.
+func (m *CertificateMutation) ContentSha256Cleared() bool {
+	_, ok := m.clearedFields[certificate.FieldContentSha256]
+	return ok
+}
+
 // ResetContentSha256 resets all changes to the "content_sha256" field.
 func (m *CertificateMutation) ResetContentSha256() {
 	m.content_sha256 = nil
+	delete(m.clearedFields, certificate.FieldContentSha256)
 }
 
 // SetStatus sets the "status" field.
@@ -7239,6 +7304,21 @@ func (m *CertificateMutation) AddField(name string, value ent.Value) error {
 // mutation.
 func (m *CertificateMutation) ClearedFields() []string {
 	var fields []string
+	if m.FieldCleared(certificate.FieldNotBefore) {
+		fields = append(fields, certificate.FieldNotBefore)
+	}
+	if m.FieldCleared(certificate.FieldNotAfter) {
+		fields = append(fields, certificate.FieldNotAfter)
+	}
+	if m.FieldCleared(certificate.FieldChain) {
+		fields = append(fields, certificate.FieldChain)
+	}
+	if m.FieldCleared(certificate.FieldKeyEnc) {
+		fields = append(fields, certificate.FieldKeyEnc)
+	}
+	if m.FieldCleared(certificate.FieldContentSha256) {
+		fields = append(fields, certificate.FieldContentSha256)
+	}
 	if m.FieldCleared(certificate.FieldLastError) {
 		fields = append(fields, certificate.FieldLastError)
 	}
@@ -7259,6 +7339,21 @@ func (m *CertificateMutation) FieldCleared(name string) bool {
 // error if the field is not defined in the schema.
 func (m *CertificateMutation) ClearField(name string) error {
 	switch name {
+	case certificate.FieldNotBefore:
+		m.ClearNotBefore()
+		return nil
+	case certificate.FieldNotAfter:
+		m.ClearNotAfter()
+		return nil
+	case certificate.FieldChain:
+		m.ClearChain()
+		return nil
+	case certificate.FieldKeyEnc:
+		m.ClearKeyEnc()
+		return nil
+	case certificate.FieldContentSha256:
+		m.ClearContentSha256()
+		return nil
 	case certificate.FieldLastError:
 		m.ClearLastError()
 		return nil

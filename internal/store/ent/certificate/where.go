@@ -239,6 +239,16 @@ func NotBeforeLTE(v time.Time) predicate.Certificate {
 	return predicate.Certificate(sql.FieldLTE(FieldNotBefore, v))
 }
 
+// NotBeforeIsNil applies the IsNil predicate on the "not_before" field.
+func NotBeforeIsNil() predicate.Certificate {
+	return predicate.Certificate(sql.FieldIsNull(FieldNotBefore))
+}
+
+// NotBeforeNotNil applies the NotNil predicate on the "not_before" field.
+func NotBeforeNotNil() predicate.Certificate {
+	return predicate.Certificate(sql.FieldNotNull(FieldNotBefore))
+}
+
 // NotAfterEQ applies the EQ predicate on the "not_after" field.
 func NotAfterEQ(v time.Time) predicate.Certificate {
 	return predicate.Certificate(sql.FieldEQ(FieldNotAfter, v))
@@ -277,6 +287,16 @@ func NotAfterLT(v time.Time) predicate.Certificate {
 // NotAfterLTE applies the LTE predicate on the "not_after" field.
 func NotAfterLTE(v time.Time) predicate.Certificate {
 	return predicate.Certificate(sql.FieldLTE(FieldNotAfter, v))
+}
+
+// NotAfterIsNil applies the IsNil predicate on the "not_after" field.
+func NotAfterIsNil() predicate.Certificate {
+	return predicate.Certificate(sql.FieldIsNull(FieldNotAfter))
+}
+
+// NotAfterNotNil applies the NotNil predicate on the "not_after" field.
+func NotAfterNotNil() predicate.Certificate {
+	return predicate.Certificate(sql.FieldNotNull(FieldNotAfter))
 }
 
 // ChainEQ applies the EQ predicate on the "chain" field.
@@ -319,6 +339,16 @@ func ChainLTE(v []byte) predicate.Certificate {
 	return predicate.Certificate(sql.FieldLTE(FieldChain, v))
 }
 
+// ChainIsNil applies the IsNil predicate on the "chain" field.
+func ChainIsNil() predicate.Certificate {
+	return predicate.Certificate(sql.FieldIsNull(FieldChain))
+}
+
+// ChainNotNil applies the NotNil predicate on the "chain" field.
+func ChainNotNil() predicate.Certificate {
+	return predicate.Certificate(sql.FieldNotNull(FieldChain))
+}
+
 // KeyEncEQ applies the EQ predicate on the "key_enc" field.
 func KeyEncEQ(v []byte) predicate.Certificate {
 	return predicate.Certificate(sql.FieldEQ(FieldKeyEnc, v))
@@ -359,6 +389,16 @@ func KeyEncLTE(v []byte) predicate.Certificate {
 	return predicate.Certificate(sql.FieldLTE(FieldKeyEnc, v))
 }
 
+// KeyEncIsNil applies the IsNil predicate on the "key_enc" field.
+func KeyEncIsNil() predicate.Certificate {
+	return predicate.Certificate(sql.FieldIsNull(FieldKeyEnc))
+}
+
+// KeyEncNotNil applies the NotNil predicate on the "key_enc" field.
+func KeyEncNotNil() predicate.Certificate {
+	return predicate.Certificate(sql.FieldNotNull(FieldKeyEnc))
+}
+
 // ContentSha256EQ applies the EQ predicate on the "content_sha256" field.
 func ContentSha256EQ(v []byte) predicate.Certificate {
 	return predicate.Certificate(sql.FieldEQ(FieldContentSha256, v))
@@ -397,6 +437,16 @@ func ContentSha256LT(v []byte) predicate.Certificate {
 // ContentSha256LTE applies the LTE predicate on the "content_sha256" field.
 func ContentSha256LTE(v []byte) predicate.Certificate {
 	return predicate.Certificate(sql.FieldLTE(FieldContentSha256, v))
+}
+
+// ContentSha256IsNil applies the IsNil predicate on the "content_sha256" field.
+func ContentSha256IsNil() predicate.Certificate {
+	return predicate.Certificate(sql.FieldIsNull(FieldContentSha256))
+}
+
+// ContentSha256NotNil applies the NotNil predicate on the "content_sha256" field.
+func ContentSha256NotNil() predicate.Certificate {
+	return predicate.Certificate(sql.FieldNotNull(FieldContentSha256))
 }
 
 // StatusEQ applies the EQ predicate on the "status" field.

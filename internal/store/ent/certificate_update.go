@@ -55,6 +55,12 @@ func (_u *CertificateUpdate) SetNillableNotBefore(v *time.Time) *CertificateUpda
 	return _u
 }
 
+// ClearNotBefore clears the value of the "not_before" field.
+func (_u *CertificateUpdate) ClearNotBefore() *CertificateUpdate {
+	_u.mutation.ClearNotBefore()
+	return _u
+}
+
 // SetNotAfter sets the "not_after" field.
 func (_u *CertificateUpdate) SetNotAfter(v time.Time) *CertificateUpdate {
 	_u.mutation.SetNotAfter(v)
@@ -69,9 +75,21 @@ func (_u *CertificateUpdate) SetNillableNotAfter(v *time.Time) *CertificateUpdat
 	return _u
 }
 
+// ClearNotAfter clears the value of the "not_after" field.
+func (_u *CertificateUpdate) ClearNotAfter() *CertificateUpdate {
+	_u.mutation.ClearNotAfter()
+	return _u
+}
+
 // SetChain sets the "chain" field.
 func (_u *CertificateUpdate) SetChain(v []byte) *CertificateUpdate {
 	_u.mutation.SetChain(v)
+	return _u
+}
+
+// ClearChain clears the value of the "chain" field.
+func (_u *CertificateUpdate) ClearChain() *CertificateUpdate {
+	_u.mutation.ClearChain()
 	return _u
 }
 
@@ -81,9 +99,21 @@ func (_u *CertificateUpdate) SetKeyEnc(v []byte) *CertificateUpdate {
 	return _u
 }
 
+// ClearKeyEnc clears the value of the "key_enc" field.
+func (_u *CertificateUpdate) ClearKeyEnc() *CertificateUpdate {
+	_u.mutation.ClearKeyEnc()
+	return _u
+}
+
 // SetContentSha256 sets the "content_sha256" field.
 func (_u *CertificateUpdate) SetContentSha256(v []byte) *CertificateUpdate {
 	_u.mutation.SetContentSha256(v)
+	return _u
+}
+
+// ClearContentSha256 clears the value of the "content_sha256" field.
+func (_u *CertificateUpdate) ClearContentSha256() *CertificateUpdate {
+	_u.mutation.ClearContentSha256()
 	return _u
 }
 
@@ -196,21 +226,6 @@ func (_u *CertificateUpdate) ExecX(ctx context.Context) {
 
 // check runs all checks and user-defined validators on the builder.
 func (_u *CertificateUpdate) check() error {
-	if v, ok := _u.mutation.Chain(); ok {
-		if err := certificate.ChainValidator(v); err != nil {
-			return &ValidationError{Name: "chain", err: fmt.Errorf(`ent: validator failed for field "Certificate.chain": %w`, err)}
-		}
-	}
-	if v, ok := _u.mutation.KeyEnc(); ok {
-		if err := certificate.KeyEncValidator(v); err != nil {
-			return &ValidationError{Name: "key_enc", err: fmt.Errorf(`ent: validator failed for field "Certificate.key_enc": %w`, err)}
-		}
-	}
-	if v, ok := _u.mutation.ContentSha256(); ok {
-		if err := certificate.ContentSha256Validator(v); err != nil {
-			return &ValidationError{Name: "content_sha256", err: fmt.Errorf(`ent: validator failed for field "Certificate.content_sha256": %w`, err)}
-		}
-	}
 	if v, ok := _u.mutation.Status(); ok {
 		if err := certificate.StatusValidator(v); err != nil {
 			return &ValidationError{Name: "status", err: fmt.Errorf(`ent: validator failed for field "Certificate.status": %w`, err)}
@@ -247,17 +262,32 @@ func (_u *CertificateUpdate) sqlSave(ctx context.Context) (_node int, err error)
 	if value, ok := _u.mutation.NotBefore(); ok {
 		_spec.SetField(certificate.FieldNotBefore, field.TypeTime, value)
 	}
+	if _u.mutation.NotBeforeCleared() {
+		_spec.ClearField(certificate.FieldNotBefore, field.TypeTime)
+	}
 	if value, ok := _u.mutation.NotAfter(); ok {
 		_spec.SetField(certificate.FieldNotAfter, field.TypeTime, value)
+	}
+	if _u.mutation.NotAfterCleared() {
+		_spec.ClearField(certificate.FieldNotAfter, field.TypeTime)
 	}
 	if value, ok := _u.mutation.Chain(); ok {
 		_spec.SetField(certificate.FieldChain, field.TypeBytes, value)
 	}
+	if _u.mutation.ChainCleared() {
+		_spec.ClearField(certificate.FieldChain, field.TypeBytes)
+	}
 	if value, ok := _u.mutation.KeyEnc(); ok {
 		_spec.SetField(certificate.FieldKeyEnc, field.TypeBytes, value)
 	}
+	if _u.mutation.KeyEncCleared() {
+		_spec.ClearField(certificate.FieldKeyEnc, field.TypeBytes)
+	}
 	if value, ok := _u.mutation.ContentSha256(); ok {
 		_spec.SetField(certificate.FieldContentSha256, field.TypeBytes, value)
+	}
+	if _u.mutation.ContentSha256Cleared() {
+		_spec.ClearField(certificate.FieldContentSha256, field.TypeBytes)
 	}
 	if value, ok := _u.mutation.Status(); ok {
 		_spec.SetField(certificate.FieldStatus, field.TypeEnum, value)
@@ -326,6 +356,12 @@ func (_u *CertificateUpdateOne) SetNillableNotBefore(v *time.Time) *CertificateU
 	return _u
 }
 
+// ClearNotBefore clears the value of the "not_before" field.
+func (_u *CertificateUpdateOne) ClearNotBefore() *CertificateUpdateOne {
+	_u.mutation.ClearNotBefore()
+	return _u
+}
+
 // SetNotAfter sets the "not_after" field.
 func (_u *CertificateUpdateOne) SetNotAfter(v time.Time) *CertificateUpdateOne {
 	_u.mutation.SetNotAfter(v)
@@ -340,9 +376,21 @@ func (_u *CertificateUpdateOne) SetNillableNotAfter(v *time.Time) *CertificateUp
 	return _u
 }
 
+// ClearNotAfter clears the value of the "not_after" field.
+func (_u *CertificateUpdateOne) ClearNotAfter() *CertificateUpdateOne {
+	_u.mutation.ClearNotAfter()
+	return _u
+}
+
 // SetChain sets the "chain" field.
 func (_u *CertificateUpdateOne) SetChain(v []byte) *CertificateUpdateOne {
 	_u.mutation.SetChain(v)
+	return _u
+}
+
+// ClearChain clears the value of the "chain" field.
+func (_u *CertificateUpdateOne) ClearChain() *CertificateUpdateOne {
+	_u.mutation.ClearChain()
 	return _u
 }
 
@@ -352,9 +400,21 @@ func (_u *CertificateUpdateOne) SetKeyEnc(v []byte) *CertificateUpdateOne {
 	return _u
 }
 
+// ClearKeyEnc clears the value of the "key_enc" field.
+func (_u *CertificateUpdateOne) ClearKeyEnc() *CertificateUpdateOne {
+	_u.mutation.ClearKeyEnc()
+	return _u
+}
+
 // SetContentSha256 sets the "content_sha256" field.
 func (_u *CertificateUpdateOne) SetContentSha256(v []byte) *CertificateUpdateOne {
 	_u.mutation.SetContentSha256(v)
+	return _u
+}
+
+// ClearContentSha256 clears the value of the "content_sha256" field.
+func (_u *CertificateUpdateOne) ClearContentSha256() *CertificateUpdateOne {
+	_u.mutation.ClearContentSha256()
 	return _u
 }
 
@@ -480,21 +540,6 @@ func (_u *CertificateUpdateOne) ExecX(ctx context.Context) {
 
 // check runs all checks and user-defined validators on the builder.
 func (_u *CertificateUpdateOne) check() error {
-	if v, ok := _u.mutation.Chain(); ok {
-		if err := certificate.ChainValidator(v); err != nil {
-			return &ValidationError{Name: "chain", err: fmt.Errorf(`ent: validator failed for field "Certificate.chain": %w`, err)}
-		}
-	}
-	if v, ok := _u.mutation.KeyEnc(); ok {
-		if err := certificate.KeyEncValidator(v); err != nil {
-			return &ValidationError{Name: "key_enc", err: fmt.Errorf(`ent: validator failed for field "Certificate.key_enc": %w`, err)}
-		}
-	}
-	if v, ok := _u.mutation.ContentSha256(); ok {
-		if err := certificate.ContentSha256Validator(v); err != nil {
-			return &ValidationError{Name: "content_sha256", err: fmt.Errorf(`ent: validator failed for field "Certificate.content_sha256": %w`, err)}
-		}
-	}
 	if v, ok := _u.mutation.Status(); ok {
 		if err := certificate.StatusValidator(v); err != nil {
 			return &ValidationError{Name: "status", err: fmt.Errorf(`ent: validator failed for field "Certificate.status": %w`, err)}
@@ -548,17 +593,32 @@ func (_u *CertificateUpdateOne) sqlSave(ctx context.Context) (_node *Certificate
 	if value, ok := _u.mutation.NotBefore(); ok {
 		_spec.SetField(certificate.FieldNotBefore, field.TypeTime, value)
 	}
+	if _u.mutation.NotBeforeCleared() {
+		_spec.ClearField(certificate.FieldNotBefore, field.TypeTime)
+	}
 	if value, ok := _u.mutation.NotAfter(); ok {
 		_spec.SetField(certificate.FieldNotAfter, field.TypeTime, value)
+	}
+	if _u.mutation.NotAfterCleared() {
+		_spec.ClearField(certificate.FieldNotAfter, field.TypeTime)
 	}
 	if value, ok := _u.mutation.Chain(); ok {
 		_spec.SetField(certificate.FieldChain, field.TypeBytes, value)
 	}
+	if _u.mutation.ChainCleared() {
+		_spec.ClearField(certificate.FieldChain, field.TypeBytes)
+	}
 	if value, ok := _u.mutation.KeyEnc(); ok {
 		_spec.SetField(certificate.FieldKeyEnc, field.TypeBytes, value)
 	}
+	if _u.mutation.KeyEncCleared() {
+		_spec.ClearField(certificate.FieldKeyEnc, field.TypeBytes)
+	}
 	if value, ok := _u.mutation.ContentSha256(); ok {
 		_spec.SetField(certificate.FieldContentSha256, field.TypeBytes, value)
+	}
+	if _u.mutation.ContentSha256Cleared() {
+		_spec.ClearField(certificate.FieldContentSha256, field.TypeBytes)
 	}
 	if value, ok := _u.mutation.Status(); ok {
 		_spec.SetField(certificate.FieldStatus, field.TypeEnum, value)

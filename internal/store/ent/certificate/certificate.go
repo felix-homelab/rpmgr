@@ -84,12 +84,6 @@ var (
 	Policy       ent.Policy
 	// OrgIDValidator is a validator for the "org_id" field. It is called by the builders before save.
 	OrgIDValidator func(string) error
-	// ChainValidator is a validator for the "chain" field. It is called by the builders before save.
-	ChainValidator func([]byte) error
-	// KeyEncValidator is a validator for the "key_enc" field. It is called by the builders before save.
-	KeyEncValidator func([]byte) error
-	// ContentSha256Validator is a validator for the "content_sha256" field. It is called by the builders before save.
-	ContentSha256Validator func([]byte) error
 	// DefaultCreatedAt holds the default value on creation for the "created_at" field.
 	DefaultCreatedAt func() time.Time
 	// DefaultVersion holds the default value on creation for the "version" field.

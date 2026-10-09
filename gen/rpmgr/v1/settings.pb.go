@@ -220,8 +220,13 @@ type InstanceSettings struct {
 	HourlyRollupRetention *durationpb.Duration `protobuf:"bytes,9,opt,name=hourly_rollup_retention,json=hourlyRollupRetention,proto3" json:"hourly_rollup_retention,omitempty"`
 	// How long daily traffic rollups are kept, 1 to 3650 days; default 400 days.
 	DailyRollupRetention *durationpb.Duration `protobuf:"bytes,10,opt,name=daily_rollup_retention,json=dailyRollupRetention,proto3" json:"daily_rollup_retention,omitempty"`
-	unknownFields        protoimpl.UnknownFields
-	sizeCache            protoimpl.SizeCache
+	// The directory URL of the ACME CA that issues route certificates; default Let's Encrypt's
+	// production directory.
+	AcmeDirectoryUrl *string `protobuf:"bytes,11,opt,name=acme_directory_url,json=acmeDirectoryUrl,proto3,oneof" json:"acme_directory_url,omitempty"`
+	// The contact address of the ACME account; none by default.
+	AcmeEmail     *string `protobuf:"bytes,12,opt,name=acme_email,json=acmeEmail,proto3,oneof" json:"acme_email,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *InstanceSettings) Reset() {
@@ -324,6 +329,20 @@ func (x *InstanceSettings) GetDailyRollupRetention() *durationpb.Duration {
 	return nil
 }
 
+func (x *InstanceSettings) GetAcmeDirectoryUrl() string {
+	if x != nil && x.AcmeDirectoryUrl != nil {
+		return *x.AcmeDirectoryUrl
+	}
+	return ""
+}
+
+func (x *InstanceSettings) GetAcmeEmail() string {
+	if x != nil && x.AcmeEmail != nil {
+		return *x.AcmeEmail
+	}
+	return ""
+}
+
 // OrgSettings are the runtime settings of an org, changed by its Owner (docs/10-operations.md,
 // "Runtime settings").
 type OrgSettings struct {
@@ -394,7 +413,7 @@ var File_rpmgr_v1_settings_proto protoreflect.FileDescriptor
 
 const file_rpmgr_v1_settings_proto_rawDesc = "" +
 	"\n" +
-	"\x17rpmgr/v1/settings.proto\x12\brpmgr.v1\x1a\x1bbuf/validate/validate.proto\x1a\x1egoogle/protobuf/duration.proto\"\xcf\a\n" +
+	"\x17rpmgr/v1/settings.proto\x12\brpmgr.v1\x1a\x1bbuf/validate/validate.proto\x1a\x1egoogle/protobuf/duration.proto\"\xe5\b\n" +
 	"\x10InstanceSettings\x12W\n" +
 	"\x11default_transport\x18\x01 \x01(\x0e2\x19.rpmgr.v1.TransportPolicyB\n" +
 	"\xbaH\a\x82\x01\x04\x10\x01 \x00H\x00R\x10defaultTransport\x88\x01\x01\x12j\n" +
@@ -409,11 +428,17 @@ const file_rpmgr_v1_settings_proto_rawDesc = "" +
 	"\x14controller_endpoints\x18\b \x03(\tB\x14\xbaH\x11\x92\x01\x0e\x10\b\x18\x01\"\br\x06\x18\xfd\x01\x88\x01\x01R\x13controllerEndpoints\x12f\n" +
 	"\x17hourly_rollup_retention\x18\t \x01(\v2\x19.google.protobuf.DurationB\x13\xbaH\x10\xaa\x01\r\"\x05\b\x80\xb0\xbd\x102\x04\b\x80\xa3\x05R\x15hourlyRollupRetention\x12e\n" +
 	"\x16daily_rollup_retention\x18\n" +
-	" \x01(\v2\x19.google.protobuf.DurationB\x14\xbaH\x11\xaa\x01\x0e\"\x06\b\x80\x86\xb0\x96\x012\x04\b\x80\xa3\x05R\x14dailyRollupRetentionB\x14\n" +
+	" \x01(\v2\x19.google.protobuf.DurationB\x14\xbaH\x11\xaa\x01\x0e\"\x06\b\x80\x86\xb0\x96\x012\x04\b\x80\xa3\x05R\x14dailyRollupRetention\x12>\n" +
+	"\x12acme_directory_url\x18\v \x01(\tB\v\xbaH\br\x06\x18\x80\x10\x88\x01\x01H\x04R\x10acmeDirectoryUrl\x88\x01\x01\x12.\n" +
+	"\n" +
+	"acme_email\x18\f \x01(\tB\n" +
+	"\xbaH\ar\x05\x18\xfe\x01`\x01H\x05R\tacmeEmail\x88\x01\x01B\x14\n" +
 	"\x12_default_transportB\x18\n" +
 	"\x16_password_hash_profileB\x10\n" +
 	"\x0e_release_checkB\x11\n" +
-	"\x0f_update_channel\"\xf9\x01\n" +
+	"\x0f_update_channelB\x15\n" +
+	"\x13_acme_directory_urlB\r\n" +
+	"\v_acme_email\"\xf9\x01\n" +
 	"\vOrgSettings\x12$\n" +
 	"\vrequire_mfa\x18\x01 \x01(\bH\x00R\n" +
 	"requireMfa\x88\x01\x01\x125\n" +

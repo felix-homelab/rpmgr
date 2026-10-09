@@ -111,6 +111,17 @@ message InstanceSettings {
     gte: {seconds: 86400}
     lte: {seconds: 315360000}
   }];
+  // The directory URL of the ACME CA that issues route certificates; default Let's Encrypt's
+  // production directory.
+  optional string acme_directory_url = 11 [(buf.validate.field).string = {
+    uri: true
+    max_len: 2048
+  }];
+  // The contact address of the ACME account; none by default.
+  optional string acme_email = 12 [(buf.validate.field).string = {
+    email: true
+    max_len: 254
+  }];
 }
 
 // OrgSettings are the runtime settings of an org, changed by its Owner (docs/10-operations.md,

@@ -217,6 +217,15 @@ later.
   answer from what was pushed and never read the database. Issued certificates go to the same
   gateways. certmagic supports this through the storage hook of its distributed solving
   ([S6](spikes/S6.md)); the run against Let's Encrypt staging is pending [V VB-19].
+- **ACME route certificates** [R]: the singleton job `acme` gives every hostname of an enabled
+  http route in `acme` mode a certificate of its own from the instance's ACME CA (Let's Encrypt
+  by default) and account, obtained and renewed with certmagic: renewal follows ACME Renewal
+  Information where the CA offers it, else a third of the lifetime left. The certificate goes
+  into the certificates of the route's org and from there to the gateways. A hostname that gets
+  none has a `failed` row with the CA's error, and one whose renewal fails keeps serving its
+  certificate with the error recorded. A wildcard hostname in `acme` mode is refused with that
+  reason, as its certificate needs DNS-01 (Phase 2, R42). The ACME client honours `HTTPS_PROXY`,
+  `ALL_PROXY` and `NO_PROXY` (R44).
 - **Uploaded route certificates** [R]: the controller accepts a PEM chain, leaf first, of at most
   10 certificates, each signed by the next, and the leaf's PEM key. The leaf must be valid at the
   upload, must not be a CA, must allow TLS server use (no extended key usage, or `serverAuth`) and

@@ -20,6 +20,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 
 	agentv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/agent/v1"
+	"github.com/felix-homelab/rpmgr/internal/acme"
 	"github.com/felix-homelab/rpmgr/internal/audit"
 	"github.com/felix-homelab/rpmgr/internal/authz"
 	"github.com/felix-homelab/rpmgr/internal/config"
@@ -45,9 +46,11 @@ type RunOptions struct {
 	Version string
 	// Sources compile the agents' snapshots.
 	Sources []snapshot.Source
-	Getenv  func(string) string // os.Getenv
-	Now     func() time.Time    // time.Now
-	Logger  *slog.Logger
+	// ACMERoots, if set, trusts the ACME CA's TLS certificate instead of the system roots (tests).
+	ACMERoots *x509.CertPool
+	Getenv    func(string) string // os.Getenv
+	Now       func() time.Time    // time.Now
+	Logger    *slog.Logger
 	// Listening, if set, is called once every listener is up.
 	Listening func()
 	// Listener, if set, takes the place of listen.https: all-in-one hands it the connections its
@@ -195,6 +198,11 @@ func Run(ctx context.Context, o RunOptions) error {
 	leases := lease.New(db, nodeID, o.Now)
 	caOpts := CAOptions{DB: db, CA: ca, Sealer: sealer, Leases: leases, Now: o.Now, Logger: o.Logger}
 	go leases.Run(sys, CARotation(caOpts), func(err error) { o.Logger.Warn("CA rotation job", "error", err) })
+	acmeStore := acme.NewStorage(db, sys, sealer, leases, o.Now)
+	defer acmeStore.Close()
+	certManager := acme.NewManager(acme.ManagerOptions{DB: db, Sys: sys, Sealer: sealer, TrustedRoots: o.ACMERoots, Logger: o.Logger,
+		Storage: acme.NewChallengeStorage(acmeStore, sessions, acme.GatewaysServing(db, sys))})
+	go leases.Run(sys, certManager.Job(acme.JobEvery), func(err error) { o.Logger.Warn("ACME job", "error", err) })
 	go ReloadCA(sys, caOpts)
 	go RenewNodeCertificate(sys, NodeCertOptions{CA: ca, DB: db, Sys: sys, NodeID: nodeID, Holder: holder, Now: o.Now, Logger: o.Logger})
 	serve("agent endpoint", func() error { return agents.Serve(split.Agents()) })

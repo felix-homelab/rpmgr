@@ -27,18 +27,19 @@ func (Certificate) Annotations() []schema.Annotation {
 
 // Fields of a certificate. chain is the DER certificates, leaf first, concatenated; key_enc is
 // the leaf's PKCS #8 private key under the KEK; content_sha256 is the hash of what a gateway
-// fetches, both together.
+// fetches, both together. An ACME certificate that was never obtained has none of them yet:
+// status pending or failed, with last_error.
 func (Certificate) Fields() []ent.Field {
 	return []ent.Field{
 		idField("crt"),
 		field.Enum("source").Values("acme", "uploaded").Immutable(),
-		// sans are the leaf's DNS names, normalised.
+		// sans are the leaf's DNS names, normalised; for ACME the names ordered.
 		field.Strings("sans"),
-		field.Time("not_before"),
-		field.Time("not_after"),
-		field.Bytes("chain").NotEmpty(),
-		field.Bytes("key_enc").NotEmpty().Sensitive(),
-		field.Bytes("content_sha256").NotEmpty(),
+		field.Time("not_before").Optional().Nillable(),
+		field.Time("not_after").Optional().Nillable(),
+		field.Bytes("chain").Optional(),
+		field.Bytes("key_enc").Optional().Sensitive(),
+		field.Bytes("content_sha256").Optional(),
 		field.Enum("status").Values("pending", "active", "failed").Default("active"),
 		field.String("last_error").Optional(),
 		field.String("issuer").Optional(),

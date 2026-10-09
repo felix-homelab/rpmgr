@@ -42,8 +42,13 @@ func InstanceDefaults() *rpmgrv1.InstanceSettings {
 		UpdateChannel:           rpmgrv1.UpdateChannel_UPDATE_CHANNEL_STABLE.Enum(),
 		HourlyRollupRetention:   durationpb.New(30 * day),
 		DailyRollupRetention:    durationpb.New(400 * day),
+		AcmeDirectoryUrl:        proto.String(LetsEncrypt),
 	}
 }
+
+// LetsEncrypt is Let's Encrypt's production ACME directory, the default CA of route certificates
+// [F certmagic v0.25.6 acmeissuer.go:664].
+const LetsEncrypt = "https://acme-v02.api.letsencrypt.org/directory"
 
 // OrgDefaults returns the default settings of an org.
 func OrgDefaults() *rpmgrv1.OrgSettings {

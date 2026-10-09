@@ -95,10 +95,13 @@ func Gateway(ctx context.Context, tx *ent.Tx, a snapshot.Agent) ([]*agentv1.Reso
 	out := make([]*agentv1.Resource, 0, len(ids))
 	for _, id := range ids {
 		c := served[id]
+		if len(c.ContentSha256) == 0 || c.NotAfter == nil {
+			continue // an ACME certificate not obtained yet
+		}
 		hosts := hostnames[id]
 		slices.Sort(hosts)
 		out = append(out, &agentv1.Resource{Id: id, Kind: &agentv1.Resource_GatewayCertificate{GatewayCertificate: &agentv1.GatewayCertificate{
-			ContentSha256: c.ContentSha256, Hostnames: hosts, NotAfter: timestamppb.New(c.NotAfter)}}})
+			ContentSha256: c.ContentSha256, Hostnames: hosts, NotAfter: timestamppb.New(*c.NotAfter)}}})
 	}
 	return out, nil
 }
