@@ -120,9 +120,7 @@ func uploadCertificate() *cli.Command {
 			if err != nil {
 				return err
 			}
-			if st, err := os.Stat(keyFile); err == nil && st.Mode().Perm()&0o077 != 0 {
-				_, _ = fmt.Fprintf(env.Stderr, "warning: the key file %s is open to other users (mode %04o); make it 0600\n", keyFile, st.Mode().Perm())
-			}
+			warnOpenFile(env, "key", keyFile)
 			key, err := os.ReadFile(keyFile) //nolint:gosec // G304: the user's file
 			if err != nil {
 				return err

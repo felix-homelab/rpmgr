@@ -48,6 +48,8 @@ func apiCommands() []*cli.Command {
 	add(createDomain)
 	add(updateDomain)
 	add(moreDomain)
+	createPolicy, updatePolicy := accessPolicyCommands()
+	add(map[string][]*cli.Command{"create": {createPolicy}, "update": {updatePolicy}})
 	out := []*cli.Command{getCommand(), listCommand(), deleteCommand()}
 	for _, v := range []struct{ verb, summary string }{
 		{"create", "create a resource of the public API"}, {"update", "change a resource of the public API"},
