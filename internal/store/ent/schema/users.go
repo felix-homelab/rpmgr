@@ -278,6 +278,9 @@ func (APIToken) Fields() []ent.Field {
 		field.Time("last_used_at").Optional().Nillable(),
 		field.String("last_used_ip").Optional().MaxLen(64),
 		field.Time("revoked_at").Optional().Nillable(),
+		// step_up_at is the token's last step-up (D63): with it, the token makes the changes that
+		// need one for the step-up window.
+		field.Time("step_up_at").Optional().Nillable(),
 	}
 }
 

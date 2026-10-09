@@ -102,6 +102,26 @@ func (_u *APITokenUpdate) ClearRevokedAt() *APITokenUpdate {
 	return _u
 }
 
+// SetStepUpAt sets the "step_up_at" field.
+func (_u *APITokenUpdate) SetStepUpAt(v time.Time) *APITokenUpdate {
+	_u.mutation.SetStepUpAt(v)
+	return _u
+}
+
+// SetNillableStepUpAt sets the "step_up_at" field if the given value is not nil.
+func (_u *APITokenUpdate) SetNillableStepUpAt(v *time.Time) *APITokenUpdate {
+	if v != nil {
+		_u.SetStepUpAt(*v)
+	}
+	return _u
+}
+
+// ClearStepUpAt clears the value of the "step_up_at" field.
+func (_u *APITokenUpdate) ClearStepUpAt() *APITokenUpdate {
+	_u.mutation.ClearStepUpAt()
+	return _u
+}
+
 // Mutation returns the APITokenMutation object of the builder.
 func (_u *APITokenUpdate) Mutation() *APITokenMutation {
 	return _u.mutation
@@ -181,6 +201,12 @@ func (_u *APITokenUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if _u.mutation.RevokedAtCleared() {
 		_spec.ClearField(apitoken.FieldRevokedAt, field.TypeTime)
+	}
+	if value, ok := _u.mutation.StepUpAt(); ok {
+		_spec.SetField(apitoken.FieldStepUpAt, field.TypeTime, value)
+	}
+	if _u.mutation.StepUpAtCleared() {
+		_spec.ClearField(apitoken.FieldStepUpAt, field.TypeTime)
 	}
 	if _node, err = sqlgraph.UpdateNodes(ctx, _u.driver, _spec); err != nil {
 		if _, ok := err.(*sqlgraph.NotFoundError); ok {
@@ -273,6 +299,26 @@ func (_u *APITokenUpdateOne) SetNillableRevokedAt(v *time.Time) *APITokenUpdateO
 // ClearRevokedAt clears the value of the "revoked_at" field.
 func (_u *APITokenUpdateOne) ClearRevokedAt() *APITokenUpdateOne {
 	_u.mutation.ClearRevokedAt()
+	return _u
+}
+
+// SetStepUpAt sets the "step_up_at" field.
+func (_u *APITokenUpdateOne) SetStepUpAt(v time.Time) *APITokenUpdateOne {
+	_u.mutation.SetStepUpAt(v)
+	return _u
+}
+
+// SetNillableStepUpAt sets the "step_up_at" field if the given value is not nil.
+func (_u *APITokenUpdateOne) SetNillableStepUpAt(v *time.Time) *APITokenUpdateOne {
+	if v != nil {
+		_u.SetStepUpAt(*v)
+	}
+	return _u
+}
+
+// ClearStepUpAt clears the value of the "step_up_at" field.
+func (_u *APITokenUpdateOne) ClearStepUpAt() *APITokenUpdateOne {
+	_u.mutation.ClearStepUpAt()
 	return _u
 }
 
@@ -385,6 +431,12 @@ func (_u *APITokenUpdateOne) sqlSave(ctx context.Context) (_node *APIToken, err 
 	}
 	if _u.mutation.RevokedAtCleared() {
 		_spec.ClearField(apitoken.FieldRevokedAt, field.TypeTime)
+	}
+	if value, ok := _u.mutation.StepUpAt(); ok {
+		_spec.SetField(apitoken.FieldStepUpAt, field.TypeTime, value)
+	}
+	if _u.mutation.StepUpAtCleared() {
+		_spec.ClearField(apitoken.FieldStepUpAt, field.TypeTime)
 	}
 	_node = &APIToken{config: _u.config}
 	_spec.Assign = _node.assignValues

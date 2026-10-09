@@ -70,6 +70,8 @@ type Options struct {
 	// ApplyStatus fills the apply_status of a write's answer that carries a revision; nil leaves it
 	// out.
 	ApplyStatus ApplyStatusFunc
+	// TokenStepUp returns a personal API token's last step-up (D63); nil gives tokens none.
+	TokenStepUp func(ctx context.Context, tokenID string) (time.Time, error)
 	Now         func() time.Time
 	Logger      *slog.Logger
 }
@@ -152,6 +154,8 @@ func checkMethod(md protoreflect.MethodDescriptor) error {
 		return errors.New("client streams are not served")
 	case a.GetStepUp() && a.GetPermission() == authz.PermPublic:
 		return errors.New("step-up on a public method")
+	case a.GetAllowToken() && a.GetPermission() != authz.PermAuthenticated:
+		return errors.New("allow_token on a permission a token scope can name")
 	case authz.OrgPermission(a.GetPermission()) && a.GetResourceField() == "":
 		return errors.New("an org permission needs a resource field")
 	}

@@ -172,6 +172,22 @@ func (t *Tokens) Authenticate(tok, ip string) (*TokenOwner, error) {
 	return &TokenOwner{Token: row, User: u, Role: role, InstanceAdmin: u.InstanceAdmin}, nil
 }
 
+// StepUp records a step-up of a token now (D63) and returns when it was made; the caller has
+// checked the owner's second factor or password.
+func (t *Tokens) StepUp(tokenID string) (time.Time, error) {
+	now := t.now()
+	return now, t.db.Client().APIToken.UpdateOneID(tokenID).SetStepUpAt(now).Exec(t.sys)
+}
+
+// StepUpAt returns a token's last step-up; zero for none.
+func (t *Tokens) StepUpAt(_ context.Context, tokenID string) (time.Time, error) {
+	row, err := t.db.ReadClient().APIToken.Get(t.sys, tokenID)
+	if err != nil || row.StepUpAt == nil {
+		return time.Time{}, err
+	}
+	return *row.StepUpAt, nil
+}
+
 func truncateIP(ip string) string {
 	if len(ip) > 64 {
 		return ip[:64]

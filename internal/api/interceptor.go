@@ -146,6 +146,14 @@ func (s *Server) admit(ctx context.Context, md protoreflect.MethodDescriptor, he
 		// A public method serves a caller with stale credentials as anonymous, so an expired
 		// session can still log in again.
 	}
+	if caller != nil && caller.AuthMethod == "token" && s.o.TokenStepUp != nil {
+		at, err := s.o.TokenStepUp(ctx, caller.CredentialID)
+		if err != nil {
+			s.o.Logger.Error("cannot read a token's step-up", "error", err)
+			return ctx, connect.NewError(connect.CodeInternal, errors.New("api: cannot read the token"))
+		}
+		caller.StepUpAt = at
+	}
 	rec.by(caller)
 	scoped, err := s.authorize(context.WithValue(ctx, callerKey{}, caller), md, a, caller, msg.ProtoReflect(), rec)
 	if err != nil {
@@ -170,7 +178,7 @@ func (s *Server) authorize(ctx context.Context, md protoreflect.MethodDescriptor
 	}
 	switch p {
 	case authz.PermAuthenticated:
-		if !caller.scoped(p) {
+		if !caller.scoped(p) && (!a.GetAllowToken() || caller.AuthMethod != "token") {
 			return nil, denied(p)
 		}
 	case authz.PermInstanceAdmin:
