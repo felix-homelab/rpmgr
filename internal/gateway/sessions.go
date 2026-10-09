@@ -87,7 +87,8 @@ type Sessions struct {
 
 	mu          sync.Mutex
 	byConnector map[string][]*dataSession
-	draining    bool
+	draining    bool // the gateway stops
+	disabled    bool // the gateway is disabled (R22) until Enable
 }
 
 // NewSessions returns the session manager.
@@ -110,6 +111,7 @@ type dataSession struct {
 	now       func() time.Time
 	inflight  atomic.Int64
 	retiring  atomic.Bool // the snapshot dropped the connector; retire runs
+	drained   atomic.Bool // told to move; it opens no new stream and closes at its deadline
 	// writing is the start, in Unix nanoseconds, of a stream write still in progress, or 0. With
 	// concurrent writers it tracks one of them, which is enough to notice a session whose writes
 	// all block.
@@ -153,7 +155,7 @@ func (m *Sessions) Serve(ctx context.Context, s tunnel.Session, peer *x509.Certi
 		return err
 	}
 	m.mu.Lock()
-	draining := m.draining
+	draining := m.draining || m.disabled
 	m.mu.Unlock()
 	if draining {
 		return ErrDraining
@@ -311,7 +313,7 @@ func readHello(control tunnel.Stream) (*tunnelv1.SessionHello, error) {
 func (m *Sessions) add(d *dataSession) bool {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	if m.draining {
+	if m.draining || m.disabled {
 		return false
 	}
 	m.byConnector[d.connector] = append(m.byConnector[d.connector], d)
@@ -326,7 +328,8 @@ func (m *Sessions) add(d *dataSession) bool {
 // revocation takes effect at once. A connector the snapshot no longer assigns a route of this
 // gateway only lost its routes: no new stream is opened on its sessions, which close after their
 // last stream has ended, at the latest after the route drain period (docs/03-connections.md,
-// "Configuration reconciliation").
+// "Configuration reconciliation"). A drained session the deny-list does not name keeps its
+// deadline.
 func (m *Sessions) Recheck() {
 	m.mu.Lock()
 	var denied, dropped []*dataSession
@@ -335,7 +338,7 @@ func (m *Sessions) Recheck() {
 			switch {
 			case m.o.Denied != nil && m.o.Denied(d.peer):
 				denied = append(denied, d)
-			case !m.o.Assignment.Known(d.connector) && d.retiring.CompareAndSwap(false, true):
+			case !m.o.Assignment.Known(d.connector) && !d.drained.Load() && d.retiring.CompareAndSwap(false, true):
 				dropped = append(dropped, d)
 			}
 		}
@@ -425,7 +428,7 @@ func (m *Sessions) candidates(route string) []*dataSession {
 	var out []*dataSession
 	for _, c := range m.o.Assignment.Connectors(route) {
 		for _, d := range m.byConnector[c] {
-			if d.isReady(route) {
+			if d.isReady(route) && !d.drained.Load() {
 				out = append(out, d)
 			}
 		}
@@ -474,7 +477,7 @@ func (m *Sessions) Open(ctx context.Context, open *tunnelv1.StreamOpen) (tunnel.
 // open is Open without the session skip.
 func (m *Sessions) open(ctx context.Context, open *tunnelv1.StreamOpen, skip *dataSession) (*trackedStream, error) {
 	m.mu.Lock()
-	draining := m.draining
+	draining := m.draining || m.disabled
 	m.mu.Unlock()
 	if draining {
 		return nil, ErrDraining
@@ -561,19 +564,47 @@ func readResult(ctx context.Context, st tunnel.Stream) (*tunnelv1.StreamResult, 
 }
 
 // Drain tells every session to move before deadline, normally now plus DrainPeriod, and from then
-// on admits no new session and opens no new stream; the caller closes the sessions at the
-// deadline.
+// on admits no new session and opens no new stream; each session closes at the deadline.
 func (m *Sessions) Drain(deadline time.Time) {
 	m.mu.Lock()
 	m.draining = true
+	m.mu.Unlock()
+	m.drain(deadline, "gateway shutdown")
+}
+
+// Disable drains the sessions as Drain does, for a disabled gateway (R22), with the deadline
+// period from now. Until Enable, no new session or stream is admitted. A session already drained
+// keeps its deadline.
+func (m *Sessions) Disable(period time.Duration) {
+	m.mu.Lock()
+	m.disabled = true
+	m.mu.Unlock()
+	m.drain(m.o.Now().Add(period), "gateway disabled")
+}
+
+// Enable admits new sessions again after Disable; the drained ones still close at their deadline.
+func (m *Sessions) Enable() {
+	m.mu.Lock()
+	m.disabled = false
+	m.mu.Unlock()
+}
+
+// drain tells each session not yet drained to move before deadline, and closes it then.
+func (m *Sessions) drain(deadline time.Time, reason string) {
+	m.mu.Lock()
 	var all []*dataSession
 	for _, ds := range m.byConnector {
-		all = append(all, ds...)
+		for _, d := range ds {
+			if !d.drained.Swap(true) {
+				all = append(all, d)
+			}
+		}
 	}
 	m.mu.Unlock()
 	for _, d := range all {
 		_ = d.send(&tunnelv1.SessionMessage{Msg: &tunnelv1.SessionMessage_Drain{Drain: &tunnelv1.Drain{
-			Reason: "gateway shutdown", Deadline: timestamppb.New(deadline)}}})
+			Reason: reason, Deadline: timestamppb.New(deadline)}}})
+		time.AfterFunc(deadline.Sub(m.o.Now()), func() { _ = d.s.Close() })
 	}
 }
 

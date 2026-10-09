@@ -160,7 +160,8 @@ func Run(ctx context.Context, o RunOptions) error {
 	httpRoutes := NewHTTPRoutes(HTTPOptions{Sessions: sessions, Certificates: certificates, Default: &def.Certificates[0],
 		Revision: applier.Revision, Fallback80: o.Port80Fallback, Challenges: challenges.HTTP01, Logger: o.Logger})
 	defer httpRoutes.Close()
-	applier.Bind(Served{TCP: routes, UDP: udpRoutes, Passthrough: pass, HTTP: httpRoutes, Certificates: certificates, Sessions: sessions})
+	applier.Bind(Served{TCP: routes, UDP: udpRoutes, Passthrough: pass, HTTP: httpRoutes, Certificates: certificates, Sessions: sessions,
+		DrainPeriod: o.DrainPeriod})
 
 	tunnelTLS := pki.ServerConfig(ctl.Certificate(), id.Roots, pki.Expect{TrustDomain: id.TrustDomain,
 		Kinds: []pki.Kind{pki.KindConnector}, Denied: ctl.DenyList().Denied}, o.Now)

@@ -37,8 +37,9 @@ type Passthrough struct {
 	table  atomic.Pointer[map[string]string] // hostname → route ID
 	access atomic.Pointer[map[string]Access] // route ID → who may connect
 
-	mu    sync.Mutex
-	conns map[string]map[net.Conn]struct{} // route ID → open connections
+	mu      sync.Mutex
+	conns   map[string]map[net.Conn]struct{} // route ID → open connections
+	removal removalDrain
 }
 
 // NewPassthrough returns the tls_passthrough routes over sessions; Close resets their
@@ -84,9 +85,13 @@ func (p *Passthrough) Apply(routes []PassthroughRoute) {
 		delete(removed, id)
 	}
 	for id := range removed {
-		time.AfterFunc(routeDrain, func() { p.abortRoute(id) })
+		time.AfterFunc(p.removal.period(), func() { p.abortRoute(id) })
 	}
 }
+
+// SetRemovalDrain sets how long the connections of a route removed from now on stay open; 0 is
+// the route drain period.
+func (p *Passthrough) SetRemovalDrain(d time.Duration) { p.removal.Store(int64(d)) }
 
 func (p *Passthrough) abortRoute(id string) {
 	p.mu.Lock()

@@ -105,6 +105,8 @@ func routesOf(rs []*agentv1.Resource) []*agentv1.Resource {
 	return slices.DeleteFunc(rs, func(r *agentv1.Resource) bool { return r.GetConnectorRoute() == nil })
 }
 
+// TestCompile_GatewayTCP: a gateway gets the enabled tcp routes of its group that have a port; a
+// disabled one gets only the drain mark, a decommissioned one nothing.
 func TestCompile_GatewayTCP(t *testing.T) {
 	storetest.ForEachDialect(t, func(t *testing.T, db *store.DB) {
 		f := newFleet(t, db)
@@ -118,8 +120,21 @@ func TestCompile_GatewayTCP(t *testing.T) {
 		if g.GetPort() != 20001 || g.GetIdleTimeoutSeconds() != 3600 || !slices.Equal(g.GetConnectors(), want) {
 			t.Fatalf("route %v: want port 20001 and the enabled connectors %v", g, want)
 		}
-		// A decommissioned gateway gets nothing.
-		db.Client().Gateway.UpdateOneID(f.gateway).SetDecommissionedAt(time.Now()).ExecX(f.sys)
+		// A disabled gateway gets no route but the drain mark (R22); enabled again, it gets its
+		// routes and no mark.
+		db.Client().Gateway.UpdateOneID(f.gateway).SetEnabled(false).ExecX(f.sys)
+		if rs := f.compile(t, pki.KindGateway, f.gateway); len(rs) != 1 || rs[0].GetGatewayDrain() == nil || rs[0].GetId() != f.gateway {
+			t.Fatalf("a disabled gateway: %v", rs)
+		}
+		if rs := f.compile(t, pki.KindConnector, f.c1); slices.ContainsFunc(rs, func(r *agentv1.Resource) bool { return r.GetGatewayDrain() != nil }) {
+			t.Fatalf("a connector got the mark: %v", rs)
+		}
+		db.Client().Gateway.UpdateOneID(f.gateway).SetEnabled(true).ExecX(f.sys)
+		if rs := f.compile(t, pki.KindGateway, f.gateway); len(rs) != 1 || rs[0].GetGatewayTcpRoute() == nil {
+			t.Fatalf("an enabled gateway again: %v", rs)
+		}
+		// A decommissioned gateway gets nothing, not even the mark.
+		db.Client().Gateway.UpdateOneID(f.gateway).SetEnabled(false).SetDecommissionedAt(time.Now()).ExecX(f.sys)
 		if rs := f.compile(t, pki.KindGateway, f.gateway); len(rs) != 0 {
 			t.Fatalf("a decommissioned gateway: %v", rs)
 		}
@@ -184,8 +199,8 @@ func TestCompile_GatewayUDP(t *testing.T) {
 			t.Fatalf("the connector's udp routes %v, want the enabled %v", udp, want)
 		}
 		db.Client().Gateway.UpdateOneID(f.gateway).SetEnabled(false).ExecX(f.sys)
-		if rs := f.compile(t, pki.KindGateway, f.gateway); len(rs) != 0 {
-			t.Fatalf("a disabled gateway: %v", rs)
+		if rs := f.compile(t, pki.KindGateway, f.gateway); len(rs) != 1 || rs[0].GetGatewayDrain() == nil {
+			t.Fatalf("a disabled gateway: %v, want only the drain mark", rs)
 		}
 	})
 }
@@ -423,8 +438,8 @@ func TestCompile_GatewayCertificates(t *testing.T) {
 			t.Fatal("a route named another org's certificate")
 		}
 		c.Gateway.UpdateOneID(f.gateway).SetEnabled(false).ExecX(f.sys)
-		if rs := f.compile(t, pki.KindGateway, f.gateway); len(rs) != 0 {
-			t.Fatalf("a disabled gateway: %v", rs)
+		if rs := f.compile(t, pki.KindGateway, f.gateway); len(rs) != 1 || rs[0].GetGatewayDrain() == nil {
+			t.Fatalf("a disabled gateway: %v, want only the drain mark", rs)
 		}
 	})
 }

@@ -6,6 +6,7 @@ import (
 	"context"
 	"crypto/x509"
 	"errors"
+	"fmt"
 	"io"
 	"net"
 	"net/url"
@@ -451,6 +452,93 @@ func TestSessions_Drain(t *testing.T) {
 	m.Close()
 	if err := c.serveErr(t); err == nil {
 		t.Fatal("Close: the session ended without an error")
+	}
+}
+
+// TestSessions_Disable (R22): a disabled gateway tells its sessions to move with the drain
+// deadline; they keep their open streams although the snapshot no longer assigns their connector,
+// and close at the deadline. Until Enable no session or stream is admitted, and a second Disable
+// changes no deadline. Enabled again, the gateway admits new sessions, while a drained session
+// opens no stream.
+func TestSessions_Disable(t *testing.T) {
+	a := &assignment{known: map[string]bool{cid("con_1"): true, cid("con_2"): true}, routes: map[string][]string{"r1": {cid("con_1")}}}
+	m := newSessions(a, nil)
+	c1 := start(t, m, connectorID("con_1"), hello("r1"))
+	ctx := context.Background()
+	st, _, err := m.OpenStream(ctx, &tunnelv1.StreamOpen{RouteId: "r1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	echo := func(s string) error {
+		if _, err := st.Write([]byte(s)); err != nil {
+			return err
+		}
+		b := make([]byte, len(s))
+		if _, err := io.ReadFull(st, b); err != nil || string(b) != s {
+			return fmt.Errorf("echo %q: %w", b, err)
+		}
+		return nil
+	}
+	if err := echo("before"); err != nil {
+		t.Fatal(err)
+	}
+	begin := time.Now()
+	m.Disable(time.Second)
+	msg := <-c1.msgs
+	if d := msg.GetDrain(); d.GetReason() != "gateway disabled" || d.GetDeadline().AsTime().Before(begin.Add(time.Second)) ||
+		d.GetDeadline().AsTime().After(time.Now().Add(time.Second)) {
+		t.Fatalf("got %v, want Drain with a deadline in 1 s", msg)
+	}
+	if _, _, err := m.OpenStream(ctx, &tunnelv1.StreamOpen{RouteId: "r1"}); !errors.Is(err, gateway.ErrDraining) {
+		t.Fatalf("a stream while disabled: %v", err)
+	}
+	gw, _ := h2Session(t)
+	if err := m.Serve(ctx, gw, certOf(connectorID("con_2"))); !errors.Is(err, gateway.ErrDraining) {
+		t.Fatalf("a new session while disabled: %v", err)
+	}
+	a.forget(cid("con_1"))
+	m.Recheck()
+	m.Disable(time.Hour)
+	if err := echo("after"); err != nil {
+		t.Fatalf("the open stream after the drain began: %v", err)
+	}
+	select {
+	case msg := <-c1.msgs:
+		t.Fatalf("a second message: %v", msg)
+	case err := <-c1.served:
+		t.Fatalf("the session ended before its deadline: %v", err)
+	case <-time.After(300 * time.Millisecond):
+	}
+	_ = c1.serveErr(t)
+	if took := time.Since(begin); took < 900*time.Millisecond {
+		t.Fatalf("the session closed after %s, before its deadline", took)
+	}
+
+	a.mu.Lock()
+	a.known[cid("con_1")] = true
+	a.mu.Unlock()
+	m.Enable()
+	old := start(t, m, connectorID("con_1"), hello("r1"))
+	m.Disable(time.Hour)
+	<-old.msgs
+	m.Enable()
+	if _, _, err := m.OpenStream(ctx, &tunnelv1.StreamOpen{RouteId: "r1"}); !errors.Is(err, gateway.ErrNoSession) {
+		t.Fatalf("a stream on a drained session: %v", err)
+	}
+	fresh := start(t, m, connectorID("con_1"), hello("r1"))
+	if fresh.welcome == nil {
+		t.Fatal("no session admitted after Enable")
+	}
+	if st, _, err := m.OpenStream(ctx, &tunnelv1.StreamOpen{RouteId: "r1"}); err != nil {
+		t.Fatalf("a stream after Enable: %v", err)
+	} else {
+		_ = st.Close()
+	}
+	<-fresh.opens
+	select {
+	case open := <-old.opens:
+		t.Fatalf("the drained session got a stream: %v", open)
+	default:
 	}
 }
 

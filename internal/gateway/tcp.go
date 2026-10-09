@@ -67,6 +67,7 @@ type TCPRoutes struct {
 	status  map[string]*agentv1.ResourceStatus
 	closed  bool
 	retry   *time.Timer
+	removal removalDrain
 }
 
 // portListener is one public port and its connections.
@@ -224,7 +225,22 @@ func (t *TCPRoutes) serve(ln net.Listener, r TCPRoute) {
 // t.mu.
 func (t *TCPRoutes) retire(pl *portListener) {
 	_ = pl.ln.Close()
-	time.AfterFunc(routeDrain, pl.abortAll)
+	time.AfterFunc(t.removal.period(), pl.abortAll)
+}
+
+// SetRemovalDrain sets how long the connections of a route removed from now on stay open; 0 is
+// the route drain period.
+func (t *TCPRoutes) SetRemovalDrain(d time.Duration) { t.removal.Store(int64(d)) }
+
+// removalDrain is how long the connections of a removed route stay open: the route drain period,
+// or for a disabled gateway the gateway drain period (R22).
+type removalDrain struct{ atomic.Int64 }
+
+func (r *removalDrain) period() time.Duration {
+	if d := time.Duration(r.Load()); d > 0 {
+		return d
+	}
+	return routeDrain
 }
 
 // enforce resets the connections the route's new access rules no longer allow: a tightened

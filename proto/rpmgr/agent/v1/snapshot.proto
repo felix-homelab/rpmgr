@@ -72,6 +72,8 @@ message Resource {
     GatewayHTTPRoute gateway_http_route = 9;
     // Gateways: the HTTP token of a pending domain claim of the gateway's org.
     GatewayDomainChallenge gateway_domain_challenge = 10;
+    // Gateways: the gateway is disabled and drains.
+    GatewayDrain gateway_drain = 11;
     // A large item the agent fetches by hash with Control.FetchResource.
     ResourceReference reference = 15;
   }
@@ -86,6 +88,12 @@ message GatewayDomainChallenge {
   // The challenge value.
   string value = 2;
 }
+
+// GatewayDrain is in the snapshot of a disabled gateway, which has no routes (R22). The gateway
+// sends Drain on its data sessions, admits no new session or stream, and closes each session at
+// the end of the gateway drain period (docs/03-connections.md, "Timeouts, keepalive and
+// backoff"). The resource ID is the gateway's ID.
+message GatewayDrain {}
 
 // GatewayTCPRoute is a tcp route as a gateway runs it; the resource ID is the route's ID.
 message GatewayTCPRoute {
