@@ -10,8 +10,11 @@ import (
 	"crypto/sha256"
 	"crypto/x509"
 	"encoding/binary"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
+	"sync"
 	"time"
 
 	"github.com/felix-homelab/rpmgr/internal/authz"
@@ -248,4 +251,60 @@ func VerifyChain(ctx context.Context, db *store.DB, orgID string, trust Trust) (
 		return nil
 	})
 	return head, last, err
+}
+
+// CheckpointLog is the local copy of the checkpoints outside the database: one JSON object per
+// line, appended and synced to disk (docs/10-operations.md, "Files").
+type CheckpointLog struct {
+	Path string
+	mu   sync.Mutex
+}
+
+type logLine struct {
+	Chain       string    `json:"chain"`
+	Seq         int64     `json:"seq"`
+	HeadHash    []byte    `json:"head_hash"`
+	Time        time.Time `json:"time"`
+	KeyID       string    `json:"key_id"`
+	Signature   []byte    `json:"signature"`
+	Certificate []byte    `json:"certificate"`
+}
+
+// Append appends checkpoints to the log.
+func (l *CheckpointLog) Append(cps []Checkpoint) error {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	f, err := os.OpenFile(l.Path, os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0o640) //nolint:gosec // G302: 0640, as docs/10-operations.md, "Filesystem layout", says
+	if err != nil {
+		return err
+	}
+	var b bytes.Buffer
+	for _, c := range cps {
+		line, err := json.Marshal(logLine{c.Chain(), c.Seq, c.HeadHash, c.Time, c.KeyID, c.Signature, c.Certificate})
+		if err != nil {
+			_ = f.Close()
+			return err
+		}
+		b.Write(append(line, '\n'))
+	}
+	_, err = f.Write(b.Bytes())
+	return errors.Join(err, f.Sync(), f.Close())
+}
+
+// ReadCheckpointLog returns the checkpoints of a local log, in order.
+func ReadCheckpointLog(path string) ([]Checkpoint, error) {
+	b, err := os.ReadFile(path) //nolint:gosec // G304: the controller's own file
+	if err != nil {
+		return nil, err
+	}
+	var out []Checkpoint
+	for i, line := range bytes.Split(bytes.TrimSuffix(b, []byte("\n")), []byte("\n")) {
+		var l logLine
+		if err := json.Unmarshal(line, &l); err != nil {
+			return nil, fmt.Errorf("audit: %s, line %d: %w", path, i+1, err)
+		}
+		out = append(out, Checkpoint{OrgID: orgOf(l.Chain), Seq: l.Seq, HeadHash: l.HeadHash, Time: l.Time, KeyID: l.KeyID,
+			Signature: l.Signature, Certificate: l.Certificate})
+	}
+	return out, nil
 }

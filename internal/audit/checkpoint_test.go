@@ -6,6 +6,7 @@ import (
 	"context"
 	"crypto/rand"
 	"errors"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -191,4 +192,41 @@ func TestVerifyChain_Checkpoints(t *testing.T) {
 			})
 		})
 	}
+}
+
+// TestCheckpointLog: the local log keeps every checkpoint with its signer's certificate, so each
+// verifies with the root and the intermediates alone; an altered line does not.
+func TestCheckpointLog(t *testing.T) {
+	withCA(t, func(t *testing.T, e env, ca *pki.CA, trust audit.Trust) {
+		record(t, e.db, login(e.a, "usr_1"))
+		record(t, e.db, login(e.b, "usr_2"))
+		l := &audit.CheckpointLog{Path: filepath.Join(t.TempDir(), "audit-checkpoints.log")}
+		if err := l.Append(checkpoint(t, e, ca, time.Now(), audit.Pending)); err != nil {
+			t.Fatal(err)
+		}
+		record(t, e.db, login(e.a, "usr_1"))
+		if err := l.Append(checkpoint(t, e, ca, time.Now(), audit.Pending)); err != nil {
+			t.Fatal(err)
+		}
+		cps, err := audit.ReadCheckpointLog(l.Path)
+		if err != nil || len(cps) < 3 {
+			t.Fatalf("the log: %d checkpoints, %v", len(cps), err)
+		}
+		bare := audit.Trust{Root: trust.Root, Intermediates: trust.Intermediates}
+		for _, c := range cps {
+			if err := bare.VerifySignature(c); err != nil {
+				t.Fatalf("checkpoint %s/%d: %v", c.Chain(), c.Seq, err)
+			}
+		}
+		altered := cps[len(cps)-1]
+		altered.Seq++
+		if err := bare.VerifySignature(altered); err == nil {
+			t.Fatal("an altered checkpoint verifies")
+		}
+		altered = cps[len(cps)-1]
+		altered.Certificate = trust.Root.Raw
+		if err := bare.VerifySignature(altered); err == nil {
+			t.Fatal("a checkpoint with another certificate verifies")
+		}
+	})
 }
