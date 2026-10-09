@@ -6,7 +6,8 @@
     "signOut": "Sign out"
   },
   "nav": {
-    "overview": "Overview"
+    "overview": "Overview",
+    "routes": "Routes"
   },
   "overview": {
     "title": "Overview",
@@ -142,5 +143,45 @@
       "org_write": "SSO, the MFA policy and the org's settings",
       "instance_admin": "the instance: CA, KEK, system gateways and instance settings"
     }
+  },
+  "routeState": {
+    "unknown": "unknown",
+    "disabled": "disabled",
+    "pending": "pending",
+    "ready": "ready",
+    "degraded": "degraded",
+    "unavailable": "unavailable",
+    "error": "error"
+  },
+  "routeType": {
+    "http": "HTTP",
+    "tcp": "TCP",
+    "udp": "UDP",
+    "tlsPassthrough": "TLS passthrough",
+    "unknown": "unknown"
+  },
+  "routes": {
+    "title": "Routes",
+    "search": "Search",
+    "type": "Type",
+    "state": "Status",
+    "group": "Gateway group",
+    "all": "All",
+    "columns": {
+      "name": "Name and address",
+      "type": "Type",
+      "group": "Gateway group",
+      "targets": "Targets",
+      "state": "Status"
+    },
+    "ready": "{{ready}}/{{total}} ready",
+    "blocked_one": "{{count}} blocked by local policy",
+    "blocked_other": "{{count}} blocked by local policy",
+    "rejected_one": "rejected by {{count}} agent",
+    "rejected_other": "rejected by {{count}} agents",
+    "pages": "Pages",
+    "count": "{{from}}–{{to}} of {{total}}",
+    "previous": "Previous",
+    "next": "Next"
   }
 }

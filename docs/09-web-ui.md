@@ -90,6 +90,17 @@ flowchart LR
 └─────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
+**How the list works.**
+- It reads all of the org's routes and filters them in the browser by text (name or address),
+  type, status and gateway group. It sorts them by name and shows 25 a page. The filters and the
+  page stay in the URL (U9).
+- **Targets** shows how many are ready, and how many a connector's local policy blocks.
+- **Status** shows the observed state, with an icon and text, and how many agents rejected the
+  route.
+- [R] The "Applied" column of the mock-up is left out in Phase 1. It needs the revision that last
+  changed each route, which the API does not report. Rejections show under Status instead, and the
+  apply status of a change shows after each save.
+
 ### Route detail
 
 ```
