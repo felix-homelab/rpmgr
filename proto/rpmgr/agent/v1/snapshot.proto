@@ -109,6 +109,26 @@ message GatewayHTTPRoute {
   bool websocket = 4;
   // For "https": how to verify each enabled target, sorted by target ID.
   repeated UpstreamTLS upstream_tls = 5;
+  // The Host header sent upstream; empty keeps the client's.
+  string host_header = 6;
+  // Request headers set before the request goes upstream, sorted by name; an empty value removes
+  // the header.
+  repeated HTTPHeader request_headers = 7;
+  // Response headers set before the response goes to the client, sorted by name; an empty value
+  // removes the header.
+  repeated HTTPHeader response_headers = 8;
+  // The largest request body; 0 sets no limit.
+  uint64 max_body_bytes = 9;
+  // The gateway group's trusted proxies: the CIDRs whose forwarding headers the gateway keeps.
+  repeated string trusted_proxies = 10;
+}
+
+// HTTPHeader is a header name with its value.
+message HTTPHeader {
+  // The canonical header name.
+  string name = 1;
+  // The value; empty removes the header.
+  string value = 2;
 }
 
 // UpstreamTLS is how the gateway verifies the HTTPS upstream of one route target.

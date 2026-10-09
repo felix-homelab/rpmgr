@@ -128,6 +128,11 @@ func httpResource(id, upstream string, hosts ...string) *agentv1.Resource {
 	return &agentv1.Resource{Id: id, Kind: &agentv1.Resource_GatewayHttpRoute{GatewayHttpRoute: r}}
 }
 
+func withHTTP(r *agentv1.Resource, f func(*agentv1.GatewayHTTPRoute)) *agentv1.Resource {
+	f(r.GetGatewayHttpRoute())
+	return r
+}
+
 func httpsResource(id string, tls ...*agentv1.UpstreamTLS) *agentv1.Resource {
 	r := httpResource(id, "https", "secure.example.com")
 	r.GetGatewayHttpRoute().UpstreamTls = tls
@@ -163,6 +168,28 @@ func TestApplier_ValidateHTTP(t *testing.T) {
 		{"no server name", gatewaySnapshot(1, httpsResource("rt_1", &agentv1.UpstreamTLS{TargetId: "tg_1"})), "without a server name"},
 		{"a bundle without certificates", gatewaySnapshot(1, httpsResource("rt_1", &agentv1.UpstreamTLS{TargetId: "tg_1", ServerName: "a",
 			CaPem: []byte("nothing")})), "holds no certificate"},
+		{"CR LF in a header value", gatewaySnapshot(1, withHTTP(httpResource("rt_1", "http", "app.example.com"), func(r *agentv1.GatewayHTTPRoute) {
+			r.RequestHeaders = []*agentv1.HTTPHeader{{Name: "X-Env", Value: "prod\r\nX-Admin: 1"}}
+		})), "not a valid field value"},
+		{"a reserved header", gatewaySnapshot(1, withHTTP(httpResource("rt_1", "http", "app.example.com"), func(r *agentv1.GatewayHTTPRoute) {
+			r.RequestHeaders = []*agentv1.HTTPHeader{{Name: "X-Forwarded-For", Value: "1.2.3.4"}}
+		})), "gateway's own"},
+		{"a response header that is the connection's", gatewaySnapshot(1, withHTTP(httpResource("rt_1", "http", "app.example.com"),
+			func(r *agentv1.GatewayHTTPRoute) {
+				r.ResponseHeaders = []*agentv1.HTTPHeader{{Name: "Transfer-Encoding", Value: "x"}}
+			})), "gateway's own"},
+		{"a header name with a space", gatewaySnapshot(1, withHTTP(httpResource("rt_1", "http", "app.example.com"), func(r *agentv1.GatewayHTTPRoute) {
+			r.ResponseHeaders = []*agentv1.HTTPHeader{{Name: "X Env", Value: "x"}}
+		})), "header name"},
+		{"a name not canonical", gatewaySnapshot(1, withHTTP(httpResource("rt_1", "http", "app.example.com"), func(r *agentv1.GatewayHTTPRoute) {
+			r.ResponseHeaders = []*agentv1.HTTPHeader{{Name: "x-env", Value: "x"}}
+		})), "header name"},
+		{"CR LF in the host header", gatewaySnapshot(1, withHTTP(httpResource("rt_1", "http", "app.example.com"), func(r *agentv1.GatewayHTTPRoute) {
+			r.HostHeader = "a\r\nb"
+		})), "host header"},
+		{"a trusted proxy that is no CIDR", gatewaySnapshot(1, withHTTP(httpResource("rt_1", "http", "app.example.com"), func(r *agentv1.GatewayHTTPRoute) {
+			r.TrustedProxies = []string{"10.0.0.1"}
+		})), "not a CIDR"},
 		{"a short pin", gatewaySnapshot(1, httpsResource("rt_1", &agentv1.UpstreamTLS{TargetId: "tg_1", ServerName: "a",
 			SpkiSha256: make([]byte, 16)})), "not a SHA-256"},
 		{"no upstream", gatewaySnapshot(1, httpResource("rt_1", "", "app.example.com")), "upstream protocol"},

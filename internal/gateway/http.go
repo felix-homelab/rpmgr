@@ -14,6 +14,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httputil"
+	"net/netip"
 	"net/url"
 	"reflect"
 	"slices"
@@ -67,6 +68,28 @@ type HTTPRoute struct {
 	WebSocket bool
 	// TLS verifies an "https" upstream, by route target ID.
 	TLS map[string]UpstreamTLS
+	// HostHeader is the Host sent upstream; "" keeps the client's.
+	HostHeader string
+	// RequestHeaders and ResponseHeaders are set on the way; an empty value removes a header.
+	RequestHeaders, ResponseHeaders []HTTPHeader
+	// MaxBody is the largest request body; 0 sets no limit.
+	MaxBody int64
+	// TrustedProxies are the clients whose forwarding headers the gateway keeps.
+	TrustedProxies []netip.Prefix
+}
+
+// HTTPHeader is a header name, canonical, and its value; "" removes the header.
+type HTTPHeader struct{ Name, Value string }
+
+// apply sets or removes each header in hs.
+func apply(h http.Header, hs []HTTPHeader) {
+	for _, x := range hs {
+		if x.Value == "" {
+			h.Del(x.Name)
+		} else {
+			h.Set(x.Name, x.Value)
+		}
+	}
 }
 
 // UpstreamTLS is how the gateway verifies the HTTPS upstream of one route target.
@@ -266,17 +289,58 @@ func (h *HTTPRoutes) newTransport(r HTTPRoute) *routeTransport {
 	}
 	rt.proxy = &httputil.ReverseProxy{
 		Rewrite: func(pr *httputil.ProxyRequest) {
+			route := rt.route.Load()
 			pr.SetURL(target)
 			pr.Out.Host = pr.In.Host
-			pr.SetXForwarded()
+			if route.HostHeader != "" {
+				pr.Out.Host = route.HostHeader
+			}
+			forward(pr, route.TrustedProxies)
+			apply(pr.Out.Header, route.RequestHeaders)
 		},
-		Transport:      rt.tr,
-		FlushInterval:  -1, // stream responses as they come, for server-sent events and gRPC
-		ModifyResponse: grpcTrailersOnly,
-		ErrorHandler:   h.proxyError,
-		ErrorLog:       slog.NewLogLogger(h.o.Logger.Handler(), slog.LevelDebug),
+		Transport:     rt.tr,
+		FlushInterval: -1, // stream responses as they come, for server-sent events and gRPC
+		ModifyResponse: func(res *http.Response) error {
+			apply(res.Header, rt.route.Load().ResponseHeaders)
+			return grpcTrailersOnly(res)
+		},
+		ErrorHandler: h.proxyError,
+		ErrorLog:     slog.NewLogLogger(h.o.Logger.Handler(), slog.LevelDebug),
 	}
 	return rt
+}
+
+// forward sets the forwarding headers of a proxied request (docs/03-connections.md, "HTTP
+// routes"): X-Forwarded-For, -Proto and -Host and Forwarded. The client's own are dropped unless
+// the client is a trusted proxy, whose chain the gateway extends and whose protocol and host it
+// keeps.
+func forward(pr *httputil.ProxyRequest, trusted []netip.Prefix) {
+	client, err := netip.ParseAddrPort(pr.In.RemoteAddr)
+	if err != nil {
+		return
+	}
+	ip := client.Addr().Unmap()
+	proto, host := "https", pr.In.Host
+	var chain, prior []string
+	if slices.ContainsFunc(trusted, func(p netip.Prefix) bool { return p.Contains(ip) }) {
+		chain = pr.In.Header.Values("X-Forwarded-For")
+		prior = pr.In.Header.Values("Forwarded")
+		if p := pr.In.Header.Get("X-Forwarded-Proto"); p == "http" || p == "https" {
+			proto = p
+		}
+		if hh := pr.In.Header.Get("X-Forwarded-Host"); hh != "" {
+			host = hh
+		}
+	}
+	pr.Out.Header.Del("Forwarded") // Rewrite already drops X-Forwarded-*, not Forwarded
+	pr.Out.Header.Set("X-Forwarded-For", strings.Join(append(chain, ip.String()), ", "))
+	pr.Out.Header.Set("X-Forwarded-Proto", proto)
+	pr.Out.Header.Set("X-Forwarded-Host", host)
+	node := ip.String()
+	if ip.Is6() {
+		node = `"[` + node + `]"`
+	}
+	pr.Out.Header.Set("Forwarded", strings.Join(append(prior, fmt.Sprintf("for=%s;host=%q;proto=%s", node, pr.In.Host, "https")), ", "))
 }
 
 // grpcTrailersOnly turns a gRPC "Trailers-Only" response, whose status comes in its only HEADERS
@@ -355,9 +419,12 @@ func (h *HTTPRoutes) proxyError(w http.ResponseWriter, r *http.Request, err erro
 	var (
 		oe *openError
 		ne net.Error
+		me *http.MaxBytesError
 	)
 	status := http.StatusBadGateway
 	switch {
+	case errors.As(err, &me):
+		status = http.StatusRequestEntityTooLarge
 	case errors.Is(err, ErrNoSession), errors.Is(err, ErrDraining):
 		status = http.StatusServiceUnavailable
 	case errors.As(err, &oe) && (oe.code == tunnelv1.ResultCode_RESULT_CODE_ROUTE_UNKNOWN ||
@@ -385,9 +452,17 @@ func (h *HTTPRoutes) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "no route for this host and path", http.StatusNotFound)
 		return
 	}
-	if !rt.route.Load().WebSocket && r.Header.Get("Upgrade") != "" {
+	route := rt.route.Load()
+	if !route.WebSocket && r.Header.Get("Upgrade") != "" {
 		http.Error(w, "upgrades are off for this route", http.StatusForbidden)
 		return
+	}
+	if route.MaxBody > 0 {
+		if r.ContentLength > route.MaxBody {
+			http.Error(w, http.StatusText(http.StatusRequestEntityTooLarge), http.StatusRequestEntityTooLarge)
+			return
+		}
+		r.Body = http.MaxBytesReader(w, r.Body, route.MaxBody)
 	}
 	rt.proxy.ServeHTTP(w, r)
 }

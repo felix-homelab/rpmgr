@@ -7,11 +7,15 @@ import (
 	"crypto/sha256"
 	"crypto/x509"
 	"fmt"
+	"math"
+	"net/netip"
+	"net/textproto"
 	"slices"
 	"strings"
 	"sync/atomic"
 	"time"
 
+	"golang.org/x/net/http/httpguts"
 	"google.golang.org/protobuf/proto"
 
 	agentv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/agent/v1"
@@ -44,6 +48,11 @@ func (a *assignment) Connectors(routeID string) []string {
 	}
 	return s.routes[routeID]
 }
+
+// reservedHeaders are the headers a route cannot set: the gateway's forwarding headers and those
+// of the connection itself.
+var reservedHeaders = []string{"Connection", "Content-Length", "Forwarded", "Host", "Keep-Alive", "Proxy-Connection", "Te",
+	"Trailer", "Transfer-Encoding", "Upgrade", "X-Forwarded-For", "X-Forwarded-Host", "X-Forwarded-Proto"}
 
 // Applier runs a gateway's snapshots (docs/03-connections.md, "Configuration reconciliation"):
 // its tcp routes on their ports and the connector assignment its data sessions are admitted
@@ -150,6 +159,26 @@ func (a *Applier) Validate(snap *agentv1.Snapshot) []*agentv1.SnapshotError {
 			if u := r.GetUpstreamProtocol(); u != "http" && u != "h2c" && u != "https" {
 				bad(id, "upstream protocol %q", u)
 			}
+			if h := r.GetHostHeader(); h != "" && !httpguts.ValidHostHeader(h) {
+				bad(id, "host header %q", h)
+			}
+			for _, hs := range [][]*agentv1.HTTPHeader{r.GetRequestHeaders(), r.GetResponseHeaders()} {
+				for _, h := range hs {
+					switch {
+					case !httpguts.ValidHeaderFieldName(h.GetName()) || h.GetName() != textproto.CanonicalMIMEHeaderKey(h.GetName()):
+						bad(id, "header name %q", h.GetName())
+					case !httpguts.ValidHeaderFieldValue(h.GetValue()):
+						bad(id, "the value of header %s is not a valid field value", h.GetName())
+					case slices.Contains(reservedHeaders, h.GetName()):
+						bad(id, "header %s is the gateway's own", h.GetName())
+					}
+				}
+			}
+			for _, c := range r.GetTrustedProxies() {
+				if _, err := netip.ParsePrefix(c); err != nil {
+					bad(id, "trusted proxy %q is not a CIDR", c)
+				}
+			}
 			targets := map[string]bool{}
 			for _, u := range r.GetUpstreamTls() {
 				switch {
@@ -217,7 +246,19 @@ func (a *Applier) Apply(ctx context.Context, snap *agentv1.Snapshot, _ agent.Cha
 		case res.GetGatewayHttpRoute() != nil:
 			r := res.GetGatewayHttpRoute()
 			connectors = r.GetConnectors()
-			hr := HTTPRoute{ID: res.GetId(), Upstream: r.GetUpstreamProtocol(), WebSocket: r.GetWebsocket()}
+			hr := HTTPRoute{ID: res.GetId(), Upstream: r.GetUpstreamProtocol(), WebSocket: r.GetWebsocket(),
+				HostHeader: r.GetHostHeader(), MaxBody: int64(min(r.GetMaxBodyBytes(), math.MaxInt64))} //nolint:gosec // G115: bounded above
+			for _, h := range r.GetRequestHeaders() {
+				hr.RequestHeaders = append(hr.RequestHeaders, HTTPHeader{Name: h.GetName(), Value: h.GetValue()})
+			}
+			for _, h := range r.GetResponseHeaders() {
+				hr.ResponseHeaders = append(hr.ResponseHeaders, HTTPHeader{Name: h.GetName(), Value: h.GetValue()})
+			}
+			for _, c := range r.GetTrustedProxies() {
+				if p, err := netip.ParsePrefix(c); err == nil {
+					hr.TrustedProxies = append(hr.TrustedProxies, p.Masked())
+				}
+			}
 			if len(r.GetUpstreamTls()) > 0 {
 				hr.TLS = map[string]UpstreamTLS{}
 				for _, u := range r.GetUpstreamTls() {

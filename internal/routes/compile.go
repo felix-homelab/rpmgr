@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"maps"
+	"net/textproto"
 	"slices"
 	"strings"
 
@@ -165,6 +166,10 @@ func GatewayHTTP(ctx context.Context, tx *ent.Tx, a snapshot.Agent) ([]*agentv1.
 	}
 	routes, err := tx.Route.Query().Where(route.GatewayGroupID(gw.GatewayGroupID), route.TypeEQ(route.TypeHTTP),
 		route.Enabled(true)).Order(ent.Asc(route.FieldID)).All(ctx)
+	if err != nil || len(routes) == 0 {
+		return nil, err
+	}
+	group, err := tx.GatewayGroup.Get(ctx, gw.GatewayGroupID)
 	if err != nil {
 		return nil, err
 	}
@@ -208,10 +213,27 @@ func GatewayHTTP(ctx context.Context, tx *ent.Tx, a snapshot.Agent) ([]*agentv1.
 				return nil, err
 			}
 		}
+		hostHeader := h.HostHeader
+		if hostHeader == "preserve" {
+			hostHeader = ""
+		}
 		out = append(out, &agentv1.Resource{Id: r.ID, Kind: &agentv1.Resource_GatewayHttpRoute{GatewayHttpRoute: &agentv1.GatewayHTTPRoute{
-			Hosts: hosts, UpstreamProtocol: upstream, Connectors: connectors, Websocket: h.Websocket, UpstreamTls: upstreamTLS}}})
+			Hosts: hosts, UpstreamProtocol: upstream, Connectors: connectors, Websocket: h.Websocket, UpstreamTls: upstreamTLS,
+			HostHeader: hostHeader, RequestHeaders: headersOf(h.RequestHeadersSet), ResponseHeaders: headersOf(h.ResponseHeadersSet),
+			MaxBodyBytes: uint64(h.MaxBodyBytes), TrustedProxies: group.TrustedProxyCidrs}}}) //nolint:gosec // G115: the schema keeps it non-negative
 	}
 	return out, nil
+}
+
+// headersOf returns a route's header settings sorted by canonical name; an empty value removes
+// the header.
+func headersOf(set map[string]string) []*agentv1.HTTPHeader {
+	out := make([]*agentv1.HTTPHeader, 0, len(set))
+	for name, value := range set {
+		out = append(out, &agentv1.HTTPHeader{Name: textproto.CanonicalMIMEHeaderKey(name), Value: value})
+	}
+	slices.SortFunc(out, func(a, b *agentv1.HTTPHeader) int { return strings.Compare(a.GetName(), b.GetName()) })
+	return out
 }
 
 // upstreamTLS lists how the gateway verifies each enabled target of an https route: the target's
