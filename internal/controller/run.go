@@ -19,7 +19,6 @@ import (
 
 	"connectrpc.com/connect"
 	"github.com/mholt/acmez/v3"
-	"github.com/prometheus/client_golang/prometheus"
 
 	agentv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/agent/v1"
 	rpmgrv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/v1"
@@ -68,7 +67,7 @@ type RunOptions struct {
 	Listener net.Listener
 	// Registry, if set, receives the controller's metrics and Run serves no admin listener;
 	// Readiness then gets the controller's readiness check.
-	Registry  *prometheus.Registry
+	Registry  telemetry.Registry
 	Readiness func(check func(context.Context) error)
 	// NoACME keeps Run from obtaining the public URL's certificate: all-in-one's init runs the
 	// controller in memory only.

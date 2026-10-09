@@ -496,7 +496,7 @@ ID); there are never per-connection or per-client-IP labels.
 | `rpmgr_agent_cert_expiry_timestamp_seconds` | gauge | agent | 1 | Own certificate `NotAfter` |
 | `rpmgr_controller_control_sessions` | gauge | controller | 1 | Connected agents |
 | `rpmgr_acme_cert_expiry_timestamp_seconds{hostname}` | gauge | controller | 1 | Public certificates |
-| `rpmgr_quic_gso_enabled`, `rpmgr_quic_udp_buffer_warning` | gauge | gateway, connector | 1 | Host tuning status ([03](03-connections.md#host-tuning-applied-by-the-installer)) |
+| `rpmgr_quic_gso_enabled`, `rpmgr_quic_udp_buffer_warning` | gauge | gateway, connector | 1 | Host tuning status, read from the QUIC socket at each scrape: 1 if quic-go sends with GSO; 1 if its receive or send buffer is below the 7 MiB quic-go asks for ([03](03-connections.md#host-tuning-applied-by-the-installer)) |
 | `rpmgr_audit_checkpoint_age_seconds` | gauge | controller | 1 | Age of the oldest audit entry no checkpoint covers yet, 0 when every entry is covered ([04](04-security.md#audit-log)); with the external sink (Phase 2), no checkpoint that reached the sink |
 | `rpmgr_ratelimit_refused_total{limit}` | counter | controller | 1 | [R] Requests a rate limit refused: `login` and `password_reset` per address, `account` per account, `enrollment` per address; the audit log leaves them out ([04](04-security.md#audit-log)) |
 | `rpmgr_dns_sync_runs_total{zone,result}` | counter | controller | 2 | DNS passes per managed zone: `ok`, `held`, `failed`, `rate_limited` |

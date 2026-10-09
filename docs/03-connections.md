@@ -1132,7 +1132,9 @@ benchmark result and the decision taken are recorded in the relevant ADR.
 - Gateway: `CAP_NET_BIND_SERVICE` instead of root; `LimitNOFILE` ≥ 1 048 576.
 - [R] `net.ipv4.tcp_congestion_control=bbr` offered on gateways for the TCP transport and public
   TCP through the installer flag `--tcp-bbr`, never set silently.
-- Diagnostics expose whether GSO is active and whether quic-go's buffer-size warning fired.
+- The metrics `rpmgr_quic_gso_enabled` and `rpmgr_quic_udp_buffer_warning` show whether quic-go
+  sends with GSO and whether a UDP buffer of the QUIC socket stays below the 7 MiB quic-go asks
+  for, which makes it warn ([10](10-operations.md#metrics)).
 
 ## Known limitations
 

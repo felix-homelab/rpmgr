@@ -43,6 +43,8 @@ type RunOptions struct {
 	Listening func()
 	// ControlDial connects the control plane to a controller endpoint; nil dials TCP.
 	ControlDial func(ctx context.Context, addr string) (net.Conn, error)
+	// Registry, if set, receives the connector's metrics instead of a new registry.
+	Registry telemetry.Registry
 }
 
 // Run runs a connector from its boot file until ctx ends (docs/02-architecture.md): its control
@@ -79,7 +81,10 @@ func Run(ctx context.Context, o RunOptions) error {
 	if p := watcher.Current(); p.Invalid != nil {
 		o.Logger.Error("the local policy does not load: every target is blocked", "file", cfg.PolicyFile, "error", p.Invalid)
 	}
-	reg := telemetry.NewRegistry()
+	reg := o.Registry
+	if reg == nil {
+		reg = telemetry.NewRegistry()
+	}
 	udpMetrics, err := tunnel.NewUDPMetrics(reg)
 	if err != nil {
 		return err
@@ -102,6 +107,9 @@ func Run(ctx context.Context, o RunOptions) error {
 	}
 	tr := &quic.Transport{Conn: pc}
 	defer func() { _ = tr.Close(); _ = pc.Close() }() // a Transport does not close a conn it was given
+	if err := tunnel.RegisterHostMetrics(reg, pc); err != nil {
+		return err
+	}
 	boot := make([]byte, 16)
 	if _, err := rand.Read(boot); err != nil {
 		return err
