@@ -20,6 +20,10 @@
 - Commands of the public API put the verb first, `rpmgr <verb> <kind>` (`get`, `list`, `create`,
   `update`, `delete`, …), so they never collide with the role commands or with the host's
   `rpmgr policy` ([D51](14-open-decisions.md#engineering)). They arrive with the resource API.
+- A change that needs a step-up ([04](04-security.md#human-authentication-and-sessions)) asks for it
+  on the terminal when the API answers `STEP_UP_REQUIRED`: the authenticator or a recovery code, or
+  the password of a user without a second factor. The stored token then steps up for 10 minutes
+  ([D63](14-open-decisions.md#engineering)) and the change runs again.
 
 | Exit code | Meaning |
 |---|---|
@@ -54,6 +58,7 @@ with exit code 2 until its implementation lands.
 | `rpmgr update route-target [--force] [flags] <id>` | Change the fields of a target that the flags name, under its etag; its connector stays | any | available |
 | `rpmgr update connector [--force] [--name <name>] [--label key=value]… [--transport auto\|quic\|h2] <id>` | Change a connector's name, labels (they replace the old ones) or transport, under its etag | any | available |
 | `rpmgr decommission connector [--force] [--wait <duration>] <id>` | Take a connector out of service for good: its identity is revoked and its sessions closed ([04](04-security.md#revocation)) | any | available |
+| `rpmgr create enrollment-token [--ttl <duration>] [--max-uses <n>] [--ephemeral] [--label key=value]… [--connector <connector>] [--gateway-group <group>]` | Make a token that enrolls connectors, with a step-up, and print it once. `--connector` makes a single-use token that re-enrolls that connector with a new key | any | available |
 | `rpmgr revoke enrollment-token <id>` | Revoke an enrollment token, so that it enrolls nothing more | any | available |
 | `rpmgr leave` | Revoke this agent's identity and remove it from the host | agent host | not yet |
 | `rpmgr status` | Show the state of the agent on this host | agent host | not yet |
