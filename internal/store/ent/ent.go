@@ -13,6 +13,7 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/accesspolicy"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/acmestorage"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/agentsession"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/agentstate"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/auditentry"
@@ -107,6 +108,7 @@ var (
 func checkColumn(t, c string) error {
 	initCheck.Do(func() {
 		columnCheck = sql.NewColumnCheck(map[string]func(string) bool{
+			acmestorage.Table:       acmestorage.ValidColumn,
 			accesspolicy.Table:      accesspolicy.ValidColumn,
 			agentsession.Table:      agentsession.ValidColumn,
 			agentstate.Table:        agentstate.ValidColumn,

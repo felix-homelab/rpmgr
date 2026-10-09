@@ -9,6 +9,19 @@ import (
 )
 
 var (
+	// AcmeStorageColumns holds the columns for the "acme_storage" table.
+	AcmeStorageColumns = []*schema.Column{
+		{Name: "key", Type: field.TypeString, Size: 1024},
+		{Name: "value_enc", Type: field.TypeBytes},
+		{Name: "size", Type: field.TypeInt},
+		{Name: "modified_at", Type: field.TypeTime},
+	}
+	// AcmeStorageTable holds the schema information for the "acme_storage" table.
+	AcmeStorageTable = &schema.Table{
+		Name:       "acme_storage",
+		Columns:    AcmeStorageColumns,
+		PrimaryKey: []*schema.Column{AcmeStorageColumns[0]},
+	}
 	// AccessPoliciesColumns holds the columns for the "access_policies" table.
 	AccessPoliciesColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeString},
@@ -1123,6 +1136,7 @@ var (
 	}
 	// Tables holds all the tables in the schema.
 	Tables = []*schema.Table{
+		AcmeStorageTable,
 		AccessPoliciesTable,
 		AgentSessionsTable,
 		AgentStateTable,
@@ -1162,6 +1176,9 @@ var (
 )
 
 func init() {
+	AcmeStorageTable.Annotation = &entsql.Annotation{
+		Table: "acme_storage",
+	}
 	AccessPoliciesTable.Annotation = &entsql.Annotation{
 		Table: "access_policies",
 	}

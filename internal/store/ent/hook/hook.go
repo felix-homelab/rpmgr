@@ -9,6 +9,18 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
 )
 
+// The ACMEStorageFunc type is an adapter to allow the use of ordinary
+// function as ACMEStorage mutator.
+type ACMEStorageFunc func(context.Context, *ent.ACMEStorageMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f ACMEStorageFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.ACMEStorageMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.ACMEStorageMutation", m)
+}
+
 // The AccessPolicyFunc type is an adapter to allow the use of ordinary
 // function as AccessPolicy mutator.
 type AccessPolicyFunc func(context.Context, *ent.AccessPolicyMutation) (ent.Value, error)

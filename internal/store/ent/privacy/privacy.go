@@ -111,6 +111,30 @@ func DenyMutationOperationRule(op ent.Op) MutationRule {
 	return OnMutationOperation(rule, op)
 }
 
+// The ACMEStorageQueryRuleFunc type is an adapter to allow the use of ordinary
+// functions as a query rule.
+type ACMEStorageQueryRuleFunc func(context.Context, *ent.ACMEStorageQuery) error
+
+// EvalQuery return f(ctx, q).
+func (f ACMEStorageQueryRuleFunc) EvalQuery(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.ACMEStorageQuery); ok {
+		return f(ctx, q)
+	}
+	return Denyf("ent/privacy: unexpected query type %T, expect *ent.ACMEStorageQuery", q)
+}
+
+// The ACMEStorageMutationRuleFunc type is an adapter to allow the use of ordinary
+// functions as a mutation rule.
+type ACMEStorageMutationRuleFunc func(context.Context, *ent.ACMEStorageMutation) error
+
+// EvalMutation calls f(ctx, m).
+func (f ACMEStorageMutationRuleFunc) EvalMutation(ctx context.Context, m ent.Mutation) error {
+	if m, ok := m.(*ent.ACMEStorageMutation); ok {
+		return f(ctx, m)
+	}
+	return Denyf("ent/privacy: unexpected mutation type %T, expect *ent.ACMEStorageMutation", m)
+}
+
 // The AccessPolicyQueryRuleFunc type is an adapter to allow the use of ordinary
 // functions as a query rule.
 type AccessPolicyQueryRuleFunc func(context.Context, *ent.AccessPolicyQuery) error
@@ -986,6 +1010,8 @@ var _ QueryMutationRule = FilterFunc(nil)
 
 func queryFilter(q ent.Query) (Filter, error) {
 	switch q := q.(type) {
+	case *ent.ACMEStorageQuery:
+		return q.Filter(), nil
 	case *ent.AccessPolicyQuery:
 		return q.Filter(), nil
 	case *ent.AgentSessionQuery:
@@ -1063,6 +1089,8 @@ func queryFilter(q ent.Query) (Filter, error) {
 
 func mutationFilter(m ent.Mutation) (Filter, error) {
 	switch m := m.(type) {
+	case *ent.ACMEStorageMutation:
+		return m.Filter(), nil
 	case *ent.AccessPolicyMutation:
 		return m.Filter(), nil
 	case *ent.AgentSessionMutation:

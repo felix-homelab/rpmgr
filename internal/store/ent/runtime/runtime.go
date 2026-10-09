@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/felix-homelab/rpmgr/internal/store/ent/accesspolicy"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/acmestorage"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/agentsession"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/agentstate"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/auditentry"
@@ -51,6 +52,49 @@ import (
 // (default values, validators, hooks and policies) and stitches it
 // to their package variables.
 func init() {
+	acmestorageMixin := schema.ACMEStorage{}.Mixin()
+	acmestorage.Policy = privacy.NewPolicies(acmestorageMixin[0], schema.ACMEStorage{})
+	acmestorage.Hooks[0] = func(next ent.Mutator) ent.Mutator {
+		return ent.MutateFunc(func(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+			if err := acmestorage.Policy.EvalMutation(ctx, m); err != nil {
+				return nil, err
+			}
+			return next.Mutate(ctx, m)
+		})
+	}
+	acmestorageMixinHooks0 := acmestorageMixin[0].Hooks()
+
+	acmestorage.Hooks[1] = acmestorageMixinHooks0[0]
+	acmestorageMixinInters0 := acmestorageMixin[0].Interceptors()
+	acmestorage.Interceptors[0] = acmestorageMixinInters0[0]
+	acmestorageFields := schema.ACMEStorage{}.Fields()
+	_ = acmestorageFields
+	// acmestorageDescValueEnc is the schema descriptor for value_enc field.
+	acmestorageDescValueEnc := acmestorageFields[1].Descriptor()
+	// acmestorage.ValueEncValidator is a validator for the "value_enc" field. It is called by the builders before save.
+	acmestorage.ValueEncValidator = acmestorageDescValueEnc.Validators[0].(func([]byte) error)
+	// acmestorageDescSize is the schema descriptor for size field.
+	acmestorageDescSize := acmestorageFields[2].Descriptor()
+	// acmestorage.SizeValidator is a validator for the "size" field. It is called by the builders before save.
+	acmestorage.SizeValidator = acmestorageDescSize.Validators[0].(func(int) error)
+	// acmestorageDescID is the schema descriptor for id field.
+	acmestorageDescID := acmestorageFields[0].Descriptor()
+	// acmestorage.IDValidator is a validator for the "id" field. It is called by the builders before save.
+	acmestorage.IDValidator = func() func(string) error {
+		validators := acmestorageDescID.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(id string) error {
+			for _, fn := range fns {
+				if err := fn(id); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
 	accesspolicyMixin := schema.AccessPolicy{}.Mixin()
 	accesspolicy.Policy = privacy.NewPolicies(accesspolicyMixin[0], schema.AccessPolicy{})
 	accesspolicy.Hooks[0] = func(next ent.Mutator) ent.Mutator {

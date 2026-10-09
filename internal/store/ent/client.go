@@ -16,6 +16,7 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/accesspolicy"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/acmestorage"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/agentsession"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/agentstate"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/auditentry"
@@ -59,6 +60,8 @@ type Client struct {
 	config
 	// Schema is the client for creating, migrating and dropping schema.
 	Schema *migrate.Schema
+	// ACMEStorage is the client for interacting with the ACMEStorage builders.
+	ACMEStorage *ACMEStorageClient
 	// AccessPolicy is the client for interacting with the AccessPolicy builders.
 	AccessPolicy *AccessPolicyClient
 	// AgentSession is the client for interacting with the AgentSession builders.
@@ -140,6 +143,7 @@ func NewClient(opts ...Option) *Client {
 
 func (c *Client) init() {
 	c.Schema = migrate.NewSchema(c.driver)
+	c.ACMEStorage = NewACMEStorageClient(c.config)
 	c.AccessPolicy = NewAccessPolicyClient(c.config)
 	c.AgentSession = NewAgentSessionClient(c.config)
 	c.AgentState = NewAgentStateClient(c.config)
@@ -267,6 +271,7 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 	return &Tx{
 		ctx:               ctx,
 		config:            cfg,
+		ACMEStorage:       NewACMEStorageClient(cfg),
 		AccessPolicy:      NewAccessPolicyClient(cfg),
 		AgentSession:      NewAgentSessionClient(cfg),
 		AgentState:        NewAgentStateClient(cfg),
@@ -321,6 +326,7 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 	return &Tx{
 		ctx:               ctx,
 		config:            cfg,
+		ACMEStorage:       NewACMEStorageClient(cfg),
 		AccessPolicy:      NewAccessPolicyClient(cfg),
 		AgentSession:      NewAgentSessionClient(cfg),
 		AgentState:        NewAgentStateClient(cfg),
@@ -362,7 +368,7 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 // Debug returns a new debug-client. It's used to get verbose logging on specific operations.
 //
 //	client.Debug().
-//		AccessPolicy.
+//		ACMEStorage.
 //		Query().
 //		Count(ctx)
 func (c *Client) Debug() *Client {
@@ -385,13 +391,13 @@ func (c *Client) Close() error {
 // In order to add hooks to a specific client, call: `client.Node.Use(...)`.
 func (c *Client) Use(hooks ...Hook) {
 	for _, n := range []interface{ Use(...Hook) }{
-		c.AccessPolicy, c.AgentSession, c.AgentState, c.AuditEntry, c.AuditHead,
-		c.CABundle, c.CAKey, c.Certificate, c.CompiledSnapshot, c.ConfigRevision,
-		c.ConfigSeq, c.Connector, c.Domain, c.EnrollmentToken, c.Gateway,
-		c.GatewayGroup, c.Instance, c.InstanceSetting, c.IssuedCertificate, c.Lease,
-		c.Org, c.OrgSetting, c.PolicyRule, c.PortAllocation, c.PortPool, c.PortQuota,
-		c.RevokedIdentity, c.Route, c.RouteHTTP, c.RouteHostname, c.RoutePolicy,
-		c.RouteTCP, c.RouteTarget, c.RouteUDP, c.SecretMeta,
+		c.ACMEStorage, c.AccessPolicy, c.AgentSession, c.AgentState, c.AuditEntry,
+		c.AuditHead, c.CABundle, c.CAKey, c.Certificate, c.CompiledSnapshot,
+		c.ConfigRevision, c.ConfigSeq, c.Connector, c.Domain, c.EnrollmentToken,
+		c.Gateway, c.GatewayGroup, c.Instance, c.InstanceSetting, c.IssuedCertificate,
+		c.Lease, c.Org, c.OrgSetting, c.PolicyRule, c.PortAllocation, c.PortPool,
+		c.PortQuota, c.RevokedIdentity, c.Route, c.RouteHTTP, c.RouteHostname,
+		c.RoutePolicy, c.RouteTCP, c.RouteTarget, c.RouteUDP, c.SecretMeta,
 	} {
 		n.Use(hooks...)
 	}
@@ -401,13 +407,13 @@ func (c *Client) Use(hooks ...Hook) {
 // In order to add interceptors to a specific client, call: `client.Node.Intercept(...)`.
 func (c *Client) Intercept(interceptors ...Interceptor) {
 	for _, n := range []interface{ Intercept(...Interceptor) }{
-		c.AccessPolicy, c.AgentSession, c.AgentState, c.AuditEntry, c.AuditHead,
-		c.CABundle, c.CAKey, c.Certificate, c.CompiledSnapshot, c.ConfigRevision,
-		c.ConfigSeq, c.Connector, c.Domain, c.EnrollmentToken, c.Gateway,
-		c.GatewayGroup, c.Instance, c.InstanceSetting, c.IssuedCertificate, c.Lease,
-		c.Org, c.OrgSetting, c.PolicyRule, c.PortAllocation, c.PortPool, c.PortQuota,
-		c.RevokedIdentity, c.Route, c.RouteHTTP, c.RouteHostname, c.RoutePolicy,
-		c.RouteTCP, c.RouteTarget, c.RouteUDP, c.SecretMeta,
+		c.ACMEStorage, c.AccessPolicy, c.AgentSession, c.AgentState, c.AuditEntry,
+		c.AuditHead, c.CABundle, c.CAKey, c.Certificate, c.CompiledSnapshot,
+		c.ConfigRevision, c.ConfigSeq, c.Connector, c.Domain, c.EnrollmentToken,
+		c.Gateway, c.GatewayGroup, c.Instance, c.InstanceSetting, c.IssuedCertificate,
+		c.Lease, c.Org, c.OrgSetting, c.PolicyRule, c.PortAllocation, c.PortPool,
+		c.PortQuota, c.RevokedIdentity, c.Route, c.RouteHTTP, c.RouteHostname,
+		c.RoutePolicy, c.RouteTCP, c.RouteTarget, c.RouteUDP, c.SecretMeta,
 	} {
 		n.Intercept(interceptors...)
 	}
@@ -416,6 +422,8 @@ func (c *Client) Intercept(interceptors ...Interceptor) {
 // Mutate implements the ent.Mutator interface.
 func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 	switch m := m.(type) {
+	case *ACMEStorageMutation:
+		return c.ACMEStorage.mutate(ctx, m)
 	case *AccessPolicyMutation:
 		return c.AccessPolicy.mutate(ctx, m)
 	case *AgentSessionMutation:
@@ -488,6 +496,141 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.SecretMeta.mutate(ctx, m)
 	default:
 		return nil, fmt.Errorf("ent: unknown mutation type %T", m)
+	}
+}
+
+// ACMEStorageClient is a client for the ACMEStorage schema.
+type ACMEStorageClient struct {
+	config
+}
+
+// NewACMEStorageClient returns a client for the ACMEStorage from the given config.
+func NewACMEStorageClient(c config) *ACMEStorageClient {
+	return &ACMEStorageClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `acmestorage.Hooks(f(g(h())))`.
+func (c *ACMEStorageClient) Use(hooks ...Hook) {
+	c.hooks.ACMEStorage = append(c.hooks.ACMEStorage, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `acmestorage.Intercept(f(g(h())))`.
+func (c *ACMEStorageClient) Intercept(interceptors ...Interceptor) {
+	c.inters.ACMEStorage = append(c.inters.ACMEStorage, interceptors...)
+}
+
+// Create returns a builder for creating a ACMEStorage entity.
+func (c *ACMEStorageClient) Create() *ACMEStorageCreate {
+	mutation := newACMEStorageMutation(c.config, OpCreate)
+	return &ACMEStorageCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of ACMEStorage entities.
+func (c *ACMEStorageClient) CreateBulk(builders ...*ACMEStorageCreate) *ACMEStorageCreateBulk {
+	return &ACMEStorageCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *ACMEStorageClient) MapCreateBulk(slice any, setFunc func(*ACMEStorageCreate, int)) *ACMEStorageCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &ACMEStorageCreateBulk{err: fmt.Errorf("calling to ACMEStorageClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*ACMEStorageCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &ACMEStorageCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for ACMEStorage.
+func (c *ACMEStorageClient) Update() *ACMEStorageUpdate {
+	mutation := newACMEStorageMutation(c.config, OpUpdate)
+	return &ACMEStorageUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *ACMEStorageClient) UpdateOne(_m *ACMEStorage) *ACMEStorageUpdateOne {
+	mutation := newACMEStorageMutation(c.config, OpUpdateOne, withACMEStorage(_m))
+	return &ACMEStorageUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *ACMEStorageClient) UpdateOneID(id string) *ACMEStorageUpdateOne {
+	mutation := newACMEStorageMutation(c.config, OpUpdateOne, withACMEStorageID(id))
+	return &ACMEStorageUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for ACMEStorage.
+func (c *ACMEStorageClient) Delete() *ACMEStorageDelete {
+	mutation := newACMEStorageMutation(c.config, OpDelete)
+	return &ACMEStorageDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *ACMEStorageClient) DeleteOne(_m *ACMEStorage) *ACMEStorageDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *ACMEStorageClient) DeleteOneID(id string) *ACMEStorageDeleteOne {
+	builder := c.Delete().Where(acmestorage.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &ACMEStorageDeleteOne{builder}
+}
+
+// Query returns a query builder for ACMEStorage.
+func (c *ACMEStorageClient) Query() *ACMEStorageQuery {
+	return &ACMEStorageQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeACMEStorage},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a ACMEStorage entity by its id.
+func (c *ACMEStorageClient) Get(ctx context.Context, id string) (*ACMEStorage, error) {
+	return c.Query().Where(acmestorage.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *ACMEStorageClient) GetX(ctx context.Context, id string) *ACMEStorage {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *ACMEStorageClient) Hooks() []Hook {
+	hooks := c.hooks.ACMEStorage
+	return append(hooks[:len(hooks):len(hooks)], acmestorage.Hooks[:]...)
+}
+
+// Interceptors returns the client interceptors.
+func (c *ACMEStorageClient) Interceptors() []Interceptor {
+	inters := c.inters.ACMEStorage
+	return append(inters[:len(inters):len(inters)], acmestorage.Interceptors[:]...)
+}
+
+func (c *ACMEStorageClient) mutate(ctx context.Context, m *ACMEStorageMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&ACMEStorageCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&ACMEStorageUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&ACMEStorageUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&ACMEStorageDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown ACMEStorage mutation op: %q", m.Op())
 	}
 }
 
@@ -5582,20 +5725,22 @@ func (c *SecretMetaClient) mutate(ctx context.Context, m *SecretMetaMutation) (V
 // hooks and interceptors per client, for fast access.
 type (
 	hooks struct {
-		AccessPolicy, AgentSession, AgentState, AuditEntry, AuditHead, CABundle, CAKey,
-		Certificate, CompiledSnapshot, ConfigRevision, ConfigSeq, Connector, Domain,
-		EnrollmentToken, Gateway, GatewayGroup, Instance, InstanceSetting,
-		IssuedCertificate, Lease, Org, OrgSetting, PolicyRule, PortAllocation,
-		PortPool, PortQuota, RevokedIdentity, Route, RouteHTTP, RouteHostname,
-		RoutePolicy, RouteTCP, RouteTarget, RouteUDP, SecretMeta []ent.Hook
+		ACMEStorage, AccessPolicy, AgentSession, AgentState, AuditEntry, AuditHead,
+		CABundle, CAKey, Certificate, CompiledSnapshot, ConfigRevision, ConfigSeq,
+		Connector, Domain, EnrollmentToken, Gateway, GatewayGroup, Instance,
+		InstanceSetting, IssuedCertificate, Lease, Org, OrgSetting, PolicyRule,
+		PortAllocation, PortPool, PortQuota, RevokedIdentity, Route, RouteHTTP,
+		RouteHostname, RoutePolicy, RouteTCP, RouteTarget, RouteUDP,
+		SecretMeta []ent.Hook
 	}
 	inters struct {
-		AccessPolicy, AgentSession, AgentState, AuditEntry, AuditHead, CABundle, CAKey,
-		Certificate, CompiledSnapshot, ConfigRevision, ConfigSeq, Connector, Domain,
-		EnrollmentToken, Gateway, GatewayGroup, Instance, InstanceSetting,
-		IssuedCertificate, Lease, Org, OrgSetting, PolicyRule, PortAllocation,
-		PortPool, PortQuota, RevokedIdentity, Route, RouteHTTP, RouteHostname,
-		RoutePolicy, RouteTCP, RouteTarget, RouteUDP, SecretMeta []ent.Interceptor
+		ACMEStorage, AccessPolicy, AgentSession, AgentState, AuditEntry, AuditHead,
+		CABundle, CAKey, Certificate, CompiledSnapshot, ConfigRevision, ConfigSeq,
+		Connector, Domain, EnrollmentToken, Gateway, GatewayGroup, Instance,
+		InstanceSetting, IssuedCertificate, Lease, Org, OrgSetting, PolicyRule,
+		PortAllocation, PortPool, PortQuota, RevokedIdentity, Route, RouteHTTP,
+		RouteHostname, RoutePolicy, RouteTCP, RouteTarget, RouteUDP,
+		SecretMeta []ent.Interceptor
 	}
 )
 
