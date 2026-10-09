@@ -816,5 +816,32 @@
     "rotateAsk": "Make a new intermediate active now? The current one keeps verifying the certificates it issued until they expire.",
     "rotateIt": "Rotate it",
     "rotated": "A new intermediate is active."
+  },
+  "traffic": {
+    "title": "Traffic",
+    "day": "Traffic, last 24 hours",
+    "spans": {
+      "day": "24 hours",
+      "month": "30 days"
+    },
+    "totals": "In {{in}} · out {{out}} · {{connections}} · {{errors}}",
+    "in": "In",
+    "out": "Out",
+    "inOut": "in {{in}} · out {{out}}",
+    "busiest": "Busiest routes",
+    "none": "No route had traffic.",
+    "table": "Show the values as a table",
+    "columns": {
+      "at": "From",
+      "in": "In",
+      "out": "Out",
+      "connections": "Connections",
+      "errors": "Errors"
+    },
+    "empty": "No traffic in this period.",
+    "connections_one": "{{count, number}} connection",
+    "connections_other": "{{count, number}} connections",
+    "errors_one": "{{count, number}} error",
+    "errors_other": "{{count, number}} errors"
   }
 }

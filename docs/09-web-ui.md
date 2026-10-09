@@ -110,6 +110,23 @@ flowchart LR
   changed each route, which the API does not report. Rejections show under Status instead, and the
   apply status of a change shows after each save.
 
+### Overview
+
+- **Traffic, last 24 hours:** the org's bytes in and out per hour, their totals with connections
+  and errors, and its busiest routes, each linked to its detail.
+
+### Charts
+
+- **Drawing:** Recharts draws traffic in the UI's theme colours. The tooltip writes in the text
+  colour, because the series' colours are too light for text.
+- **Gaps:** the API sends only buckets with traffic. The chart fills the others with zeros, so time
+  runs evenly along its axis.
+- **Accessibility (U8):** the drawing is hidden from screen readers. The same values are in a table
+  under "Show the values as a table".
+- [R] Charts do not use shadcn/ui's chart component. It writes a `<style>` element, which the CSP
+  refuses and the lint rule against `dangerouslySetInnerHTML` forbids
+  ([Frontend architecture](#frontend-architecture)).
+
 ### Route detail
 
 ```
@@ -149,6 +166,8 @@ flowchart LR
 - **Gateways that do not serve the route, and agents that rejected it,** are listed with their
   reasons.
 - UDP routes show the MTU hint of [03](03-connections.md#udp-routes).
+- **Traffic:** the bytes in and out of the last 24 hours per hour, or of the last 30 days per day,
+  with their totals, connections and errors ([Charts](#charts)).
 - **Access policies:** the policies the route applies, in order. They are attached from the org's
   policies, detached, and moved up or down. They are then saved as one change: the route as read,
   with the mask `policy_ids` and its etag.
@@ -400,7 +419,7 @@ flowchart LR
 | Forms | react-hook-form with **protovalidate-es** as its resolver, so the form checks the same proto rules the server enforces, for immediate feedback only (VB-16, resolved). **The server's protovalidate result is authoritative**, and the server's field errors (`buf.validate.Violations`) are mapped back onto form fields; a violation of a field the form does not edit is shown with the form | Forms submit the full typed resource (U1) |
 | YAML editing | CodeMirror 6 with a YAML mode and schema-driven completion | Smaller than Monaco ([08](08-software-stack.md#frontend)) |
 | Terminal (Phase 3) | xterm.js over a WebSocket with a single-use ticket ([04](04-security.md#human-authentication-and-sessions)) | — |
-| Charts | Recharts, through the shadcn/ui chart components, for traffic and latency | Same component system as the rest of the UI ([08](08-software-stack.md#frontend)) |
+| Charts | Recharts in the UI's theme colours, for traffic and latency ([Charts](#charts)) | Same look as the rest of the UI ([08](08-software-stack.md#frontend)) |
 | i18n | i18next, English source, English fallback; Phase 1 ships English only | See U11 |
 
 **Code and patterns** (`web/`):

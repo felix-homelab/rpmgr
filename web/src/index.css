@@ -16,6 +16,8 @@
   --color-destructive-foreground: oklch(0.98 0 0);
   --color-ok: oklch(0.48 0.13 155);
   --color-warn: oklch(0.52 0.12 70);
+  --color-chart-in: oklch(0.55 0.15 255);
+  --color-chart-out: oklch(0.62 0.16 45);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -30,12 +32,16 @@
     --color-primary-foreground: oklch(0.21 0.03 265);
     --color-ok: oklch(0.8 0.15 155);
     --color-warn: oklch(0.82 0.14 80);
+    --color-chart-in: oklch(0.72 0.13 255);
+    --color-chart-out: oklch(0.78 0.14 55);
   }
 }
 
 :root[data-theme="dark"] {
   --color-ok: oklch(0.8 0.15 155);
   --color-warn: oklch(0.82 0.14 80);
+  --color-chart-in: oklch(0.72 0.13 255);
+  --color-chart-out: oklch(0.78 0.14 55);
   --color-background: oklch(0.15 0.02 265);
   --color-foreground: oklch(0.97 0 0);
   --color-muted: oklch(0.25 0.02 265);
