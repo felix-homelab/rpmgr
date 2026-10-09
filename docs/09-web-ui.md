@@ -217,6 +217,18 @@ flowchart LR
   policy is `allow_targets: []` ([04](04-security.md#connector-local-policy)).
 - The dialog waits on the enrollment event and switches to the new connector's detail page when it
   connects.
+- **Making the token:**
+  - it needs a step-up;
+  - its creation is one request, however often it is retried;
+  - it is valid for 15 minutes up to 30 days, 1 hour by default, and can be scoped to a gateway
+    group;
+  - an ephemeral token may enroll several connectors, 0 meaning any number;
+  - the dialog asks for the install command with the targets as `--allow-target`.
+- [R] The mock-up's "Name" field is left out. A token does not name the connector it enrolls: the
+  connector takes its host's name, and it is renamed on its page.
+- **The connectors page lists the enrollment tokens** that can still enroll, with creation, expiry,
+  uses, labels and last use. A token is revoked after a confirmation. Tokens that re-enroll one
+  connector belong to that connector and are not listed.
 
 ### Managed DNS zone (Phase 2)
 
