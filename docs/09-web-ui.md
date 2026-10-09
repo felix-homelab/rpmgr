@@ -252,6 +252,21 @@ flowchart LR
   which.
 - **After each change,** the apply status follows live.
 
+### Organisation
+
+- **`/org`** shows the org's name, which the Owner can change.
+- **Members:** each with name, e-mail address, role and since when. A member's role is changed with
+  a step-up where [04](04-security.md#roles) requires one (granting Admin or Owner). A member is
+  removed after a confirmation that names them.
+- **Invitations:** an address and a role. The step-up rule is the same.
+  - The answer is a one-time link with its expiry. It is shown with a copy button.
+  - The page says whether the controller e-mailed the link, or whether it must be sent by hand.
+- **The invitation link** opens `/invite#<token>`.
+  - A signed-in user joins with their account.
+  - Without a session, the page creates an account for the invited address, with a name and a
+    password, and the user then signs in.
+  - Pages that need no session never send the user to sign in.
+
 ### Enroll connector dialog
 
 ```

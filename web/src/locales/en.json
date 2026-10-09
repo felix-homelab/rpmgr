@@ -11,7 +11,8 @@
     "connectors": "Connectors",
     "gateways": "Gateways",
     "domains": "Domains & certificates",
-    "policies": "Access policies"
+    "policies": "Access policies",
+    "org": "Organisation"
   },
   "overview": {
     "title": "Overview",
@@ -632,5 +633,38 @@
     "add": "Add a policy",
     "choose": "Choose a policy",
     "attach": "Attach"
+  },
+  "org": {
+    "title": "Organisation",
+    "nameTitle": "The organisation's name",
+    "name": "Name",
+    "members": "Members",
+    "columns": {
+      "name": "Name",
+      "email": "E-mail address",
+      "role": "Role",
+      "since": "Member since",
+      "actions": "Actions"
+    },
+    "roles": {
+      "owner": "Owner",
+      "admin": "Admin",
+      "operator": "Operator",
+      "viewer": "Viewer"
+    },
+    "roleOf": "Role of {{name}}",
+    "removeAsk": "Remove {{name}} from the organisation?",
+    "invite": "Invite someone",
+    "inviteSubmit": "Make the invitation",
+    "mailed": "The invitation is e-mailed. Its one-time link works until {{until}}:",
+    "notMailed": "This controller cannot send e-mail. Send this one-time link yourself; it works until {{until}}:",
+    "link": "Invitation link"
+  },
+  "invite": {
+    "title": "Join an organisation",
+    "asYou": "You join as {{name}}.",
+    "newAccount": "An account is created for the address you were invited at.",
+    "join": "Join",
+    "created": "Your account is ready. Sign in with the address you were invited at."
   }
 }
