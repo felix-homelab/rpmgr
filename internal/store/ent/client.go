@@ -15,6 +15,7 @@ import (
 	"entgo.io/ent/dialect"
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/accesspolicy"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/agentsession"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/agentstate"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/auditentry"
@@ -36,6 +37,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/lease"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/org"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/orgsetting"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/policyrule"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/portallocation"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/portpool"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/portquota"
@@ -43,6 +45,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/route"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routehostname"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routehttp"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/routepolicy"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routetarget"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routetcp"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routeudp"
@@ -56,6 +59,8 @@ type Client struct {
 	config
 	// Schema is the client for creating, migrating and dropping schema.
 	Schema *migrate.Schema
+	// AccessPolicy is the client for interacting with the AccessPolicy builders.
+	AccessPolicy *AccessPolicyClient
 	// AgentSession is the client for interacting with the AgentSession builders.
 	AgentSession *AgentSessionClient
 	// AgentState is the client for interacting with the AgentState builders.
@@ -98,6 +103,8 @@ type Client struct {
 	Org *OrgClient
 	// OrgSetting is the client for interacting with the OrgSetting builders.
 	OrgSetting *OrgSettingClient
+	// PolicyRule is the client for interacting with the PolicyRule builders.
+	PolicyRule *PolicyRuleClient
 	// PortAllocation is the client for interacting with the PortAllocation builders.
 	PortAllocation *PortAllocationClient
 	// PortPool is the client for interacting with the PortPool builders.
@@ -112,6 +119,8 @@ type Client struct {
 	RouteHTTP *RouteHTTPClient
 	// RouteHostname is the client for interacting with the RouteHostname builders.
 	RouteHostname *RouteHostnameClient
+	// RoutePolicy is the client for interacting with the RoutePolicy builders.
+	RoutePolicy *RoutePolicyClient
 	// RouteTCP is the client for interacting with the RouteTCP builders.
 	RouteTCP *RouteTCPClient
 	// RouteTarget is the client for interacting with the RouteTarget builders.
@@ -131,6 +140,7 @@ func NewClient(opts ...Option) *Client {
 
 func (c *Client) init() {
 	c.Schema = migrate.NewSchema(c.driver)
+	c.AccessPolicy = NewAccessPolicyClient(c.config)
 	c.AgentSession = NewAgentSessionClient(c.config)
 	c.AgentState = NewAgentStateClient(c.config)
 	c.AuditEntry = NewAuditEntryClient(c.config)
@@ -152,6 +162,7 @@ func (c *Client) init() {
 	c.Lease = NewLeaseClient(c.config)
 	c.Org = NewOrgClient(c.config)
 	c.OrgSetting = NewOrgSettingClient(c.config)
+	c.PolicyRule = NewPolicyRuleClient(c.config)
 	c.PortAllocation = NewPortAllocationClient(c.config)
 	c.PortPool = NewPortPoolClient(c.config)
 	c.PortQuota = NewPortQuotaClient(c.config)
@@ -159,6 +170,7 @@ func (c *Client) init() {
 	c.Route = NewRouteClient(c.config)
 	c.RouteHTTP = NewRouteHTTPClient(c.config)
 	c.RouteHostname = NewRouteHostnameClient(c.config)
+	c.RoutePolicy = NewRoutePolicyClient(c.config)
 	c.RouteTCP = NewRouteTCPClient(c.config)
 	c.RouteTarget = NewRouteTargetClient(c.config)
 	c.RouteUDP = NewRouteUDPClient(c.config)
@@ -255,6 +267,7 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 	return &Tx{
 		ctx:               ctx,
 		config:            cfg,
+		AccessPolicy:      NewAccessPolicyClient(cfg),
 		AgentSession:      NewAgentSessionClient(cfg),
 		AgentState:        NewAgentStateClient(cfg),
 		AuditEntry:        NewAuditEntryClient(cfg),
@@ -276,6 +289,7 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		Lease:             NewLeaseClient(cfg),
 		Org:               NewOrgClient(cfg),
 		OrgSetting:        NewOrgSettingClient(cfg),
+		PolicyRule:        NewPolicyRuleClient(cfg),
 		PortAllocation:    NewPortAllocationClient(cfg),
 		PortPool:          NewPortPoolClient(cfg),
 		PortQuota:         NewPortQuotaClient(cfg),
@@ -283,6 +297,7 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		Route:             NewRouteClient(cfg),
 		RouteHTTP:         NewRouteHTTPClient(cfg),
 		RouteHostname:     NewRouteHostnameClient(cfg),
+		RoutePolicy:       NewRoutePolicyClient(cfg),
 		RouteTCP:          NewRouteTCPClient(cfg),
 		RouteTarget:       NewRouteTargetClient(cfg),
 		RouteUDP:          NewRouteUDPClient(cfg),
@@ -306,6 +321,7 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 	return &Tx{
 		ctx:               ctx,
 		config:            cfg,
+		AccessPolicy:      NewAccessPolicyClient(cfg),
 		AgentSession:      NewAgentSessionClient(cfg),
 		AgentState:        NewAgentStateClient(cfg),
 		AuditEntry:        NewAuditEntryClient(cfg),
@@ -327,6 +343,7 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		Lease:             NewLeaseClient(cfg),
 		Org:               NewOrgClient(cfg),
 		OrgSetting:        NewOrgSettingClient(cfg),
+		PolicyRule:        NewPolicyRuleClient(cfg),
 		PortAllocation:    NewPortAllocationClient(cfg),
 		PortPool:          NewPortPoolClient(cfg),
 		PortQuota:         NewPortQuotaClient(cfg),
@@ -334,6 +351,7 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		Route:             NewRouteClient(cfg),
 		RouteHTTP:         NewRouteHTTPClient(cfg),
 		RouteHostname:     NewRouteHostnameClient(cfg),
+		RoutePolicy:       NewRoutePolicyClient(cfg),
 		RouteTCP:          NewRouteTCPClient(cfg),
 		RouteTarget:       NewRouteTargetClient(cfg),
 		RouteUDP:          NewRouteUDPClient(cfg),
@@ -344,7 +362,7 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 // Debug returns a new debug-client. It's used to get verbose logging on specific operations.
 //
 //	client.Debug().
-//		AgentSession.
+//		AccessPolicy.
 //		Query().
 //		Count(ctx)
 func (c *Client) Debug() *Client {
@@ -367,13 +385,13 @@ func (c *Client) Close() error {
 // In order to add hooks to a specific client, call: `client.Node.Use(...)`.
 func (c *Client) Use(hooks ...Hook) {
 	for _, n := range []interface{ Use(...Hook) }{
-		c.AgentSession, c.AgentState, c.AuditEntry, c.AuditHead, c.CABundle, c.CAKey,
-		c.Certificate, c.CompiledSnapshot, c.ConfigRevision, c.ConfigSeq, c.Connector,
-		c.Domain, c.EnrollmentToken, c.Gateway, c.GatewayGroup, c.Instance,
-		c.InstanceSetting, c.IssuedCertificate, c.Lease, c.Org, c.OrgSetting,
-		c.PortAllocation, c.PortPool, c.PortQuota, c.RevokedIdentity, c.Route,
-		c.RouteHTTP, c.RouteHostname, c.RouteTCP, c.RouteTarget, c.RouteUDP,
-		c.SecretMeta,
+		c.AccessPolicy, c.AgentSession, c.AgentState, c.AuditEntry, c.AuditHead,
+		c.CABundle, c.CAKey, c.Certificate, c.CompiledSnapshot, c.ConfigRevision,
+		c.ConfigSeq, c.Connector, c.Domain, c.EnrollmentToken, c.Gateway,
+		c.GatewayGroup, c.Instance, c.InstanceSetting, c.IssuedCertificate, c.Lease,
+		c.Org, c.OrgSetting, c.PolicyRule, c.PortAllocation, c.PortPool, c.PortQuota,
+		c.RevokedIdentity, c.Route, c.RouteHTTP, c.RouteHostname, c.RoutePolicy,
+		c.RouteTCP, c.RouteTarget, c.RouteUDP, c.SecretMeta,
 	} {
 		n.Use(hooks...)
 	}
@@ -383,13 +401,13 @@ func (c *Client) Use(hooks ...Hook) {
 // In order to add interceptors to a specific client, call: `client.Node.Intercept(...)`.
 func (c *Client) Intercept(interceptors ...Interceptor) {
 	for _, n := range []interface{ Intercept(...Interceptor) }{
-		c.AgentSession, c.AgentState, c.AuditEntry, c.AuditHead, c.CABundle, c.CAKey,
-		c.Certificate, c.CompiledSnapshot, c.ConfigRevision, c.ConfigSeq, c.Connector,
-		c.Domain, c.EnrollmentToken, c.Gateway, c.GatewayGroup, c.Instance,
-		c.InstanceSetting, c.IssuedCertificate, c.Lease, c.Org, c.OrgSetting,
-		c.PortAllocation, c.PortPool, c.PortQuota, c.RevokedIdentity, c.Route,
-		c.RouteHTTP, c.RouteHostname, c.RouteTCP, c.RouteTarget, c.RouteUDP,
-		c.SecretMeta,
+		c.AccessPolicy, c.AgentSession, c.AgentState, c.AuditEntry, c.AuditHead,
+		c.CABundle, c.CAKey, c.Certificate, c.CompiledSnapshot, c.ConfigRevision,
+		c.ConfigSeq, c.Connector, c.Domain, c.EnrollmentToken, c.Gateway,
+		c.GatewayGroup, c.Instance, c.InstanceSetting, c.IssuedCertificate, c.Lease,
+		c.Org, c.OrgSetting, c.PolicyRule, c.PortAllocation, c.PortPool, c.PortQuota,
+		c.RevokedIdentity, c.Route, c.RouteHTTP, c.RouteHostname, c.RoutePolicy,
+		c.RouteTCP, c.RouteTarget, c.RouteUDP, c.SecretMeta,
 	} {
 		n.Intercept(interceptors...)
 	}
@@ -398,6 +416,8 @@ func (c *Client) Intercept(interceptors ...Interceptor) {
 // Mutate implements the ent.Mutator interface.
 func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 	switch m := m.(type) {
+	case *AccessPolicyMutation:
+		return c.AccessPolicy.mutate(ctx, m)
 	case *AgentSessionMutation:
 		return c.AgentSession.mutate(ctx, m)
 	case *AgentStateMutation:
@@ -440,6 +460,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.Org.mutate(ctx, m)
 	case *OrgSettingMutation:
 		return c.OrgSetting.mutate(ctx, m)
+	case *PolicyRuleMutation:
+		return c.PolicyRule.mutate(ctx, m)
 	case *PortAllocationMutation:
 		return c.PortAllocation.mutate(ctx, m)
 	case *PortPoolMutation:
@@ -454,6 +476,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.RouteHTTP.mutate(ctx, m)
 	case *RouteHostnameMutation:
 		return c.RouteHostname.mutate(ctx, m)
+	case *RoutePolicyMutation:
+		return c.RoutePolicy.mutate(ctx, m)
 	case *RouteTCPMutation:
 		return c.RouteTCP.mutate(ctx, m)
 	case *RouteTargetMutation:
@@ -464,6 +488,141 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.SecretMeta.mutate(ctx, m)
 	default:
 		return nil, fmt.Errorf("ent: unknown mutation type %T", m)
+	}
+}
+
+// AccessPolicyClient is a client for the AccessPolicy schema.
+type AccessPolicyClient struct {
+	config
+}
+
+// NewAccessPolicyClient returns a client for the AccessPolicy from the given config.
+func NewAccessPolicyClient(c config) *AccessPolicyClient {
+	return &AccessPolicyClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `accesspolicy.Hooks(f(g(h())))`.
+func (c *AccessPolicyClient) Use(hooks ...Hook) {
+	c.hooks.AccessPolicy = append(c.hooks.AccessPolicy, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `accesspolicy.Intercept(f(g(h())))`.
+func (c *AccessPolicyClient) Intercept(interceptors ...Interceptor) {
+	c.inters.AccessPolicy = append(c.inters.AccessPolicy, interceptors...)
+}
+
+// Create returns a builder for creating a AccessPolicy entity.
+func (c *AccessPolicyClient) Create() *AccessPolicyCreate {
+	mutation := newAccessPolicyMutation(c.config, OpCreate)
+	return &AccessPolicyCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of AccessPolicy entities.
+func (c *AccessPolicyClient) CreateBulk(builders ...*AccessPolicyCreate) *AccessPolicyCreateBulk {
+	return &AccessPolicyCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *AccessPolicyClient) MapCreateBulk(slice any, setFunc func(*AccessPolicyCreate, int)) *AccessPolicyCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &AccessPolicyCreateBulk{err: fmt.Errorf("calling to AccessPolicyClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*AccessPolicyCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &AccessPolicyCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for AccessPolicy.
+func (c *AccessPolicyClient) Update() *AccessPolicyUpdate {
+	mutation := newAccessPolicyMutation(c.config, OpUpdate)
+	return &AccessPolicyUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *AccessPolicyClient) UpdateOne(_m *AccessPolicy) *AccessPolicyUpdateOne {
+	mutation := newAccessPolicyMutation(c.config, OpUpdateOne, withAccessPolicy(_m))
+	return &AccessPolicyUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *AccessPolicyClient) UpdateOneID(id string) *AccessPolicyUpdateOne {
+	mutation := newAccessPolicyMutation(c.config, OpUpdateOne, withAccessPolicyID(id))
+	return &AccessPolicyUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for AccessPolicy.
+func (c *AccessPolicyClient) Delete() *AccessPolicyDelete {
+	mutation := newAccessPolicyMutation(c.config, OpDelete)
+	return &AccessPolicyDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *AccessPolicyClient) DeleteOne(_m *AccessPolicy) *AccessPolicyDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *AccessPolicyClient) DeleteOneID(id string) *AccessPolicyDeleteOne {
+	builder := c.Delete().Where(accesspolicy.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &AccessPolicyDeleteOne{builder}
+}
+
+// Query returns a query builder for AccessPolicy.
+func (c *AccessPolicyClient) Query() *AccessPolicyQuery {
+	return &AccessPolicyQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeAccessPolicy},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a AccessPolicy entity by its id.
+func (c *AccessPolicyClient) Get(ctx context.Context, id string) (*AccessPolicy, error) {
+	return c.Query().Where(accesspolicy.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *AccessPolicyClient) GetX(ctx context.Context, id string) *AccessPolicy {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *AccessPolicyClient) Hooks() []Hook {
+	hooks := c.hooks.AccessPolicy
+	return append(hooks[:len(hooks):len(hooks)], accesspolicy.Hooks[:]...)
+}
+
+// Interceptors returns the client interceptors.
+func (c *AccessPolicyClient) Interceptors() []Interceptor {
+	inters := c.inters.AccessPolicy
+	return append(inters[:len(inters):len(inters)], accesspolicy.Interceptors[:]...)
+}
+
+func (c *AccessPolicyClient) mutate(ctx context.Context, m *AccessPolicyMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&AccessPolicyCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&AccessPolicyUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&AccessPolicyUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&AccessPolicyDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown AccessPolicy mutation op: %q", m.Op())
 	}
 }
 
@@ -3378,6 +3537,157 @@ func (c *OrgSettingClient) mutate(ctx context.Context, m *OrgSettingMutation) (V
 	}
 }
 
+// PolicyRuleClient is a client for the PolicyRule schema.
+type PolicyRuleClient struct {
+	config
+}
+
+// NewPolicyRuleClient returns a client for the PolicyRule from the given config.
+func NewPolicyRuleClient(c config) *PolicyRuleClient {
+	return &PolicyRuleClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `policyrule.Hooks(f(g(h())))`.
+func (c *PolicyRuleClient) Use(hooks ...Hook) {
+	c.hooks.PolicyRule = append(c.hooks.PolicyRule, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `policyrule.Intercept(f(g(h())))`.
+func (c *PolicyRuleClient) Intercept(interceptors ...Interceptor) {
+	c.inters.PolicyRule = append(c.inters.PolicyRule, interceptors...)
+}
+
+// Create returns a builder for creating a PolicyRule entity.
+func (c *PolicyRuleClient) Create() *PolicyRuleCreate {
+	mutation := newPolicyRuleMutation(c.config, OpCreate)
+	return &PolicyRuleCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of PolicyRule entities.
+func (c *PolicyRuleClient) CreateBulk(builders ...*PolicyRuleCreate) *PolicyRuleCreateBulk {
+	return &PolicyRuleCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *PolicyRuleClient) MapCreateBulk(slice any, setFunc func(*PolicyRuleCreate, int)) *PolicyRuleCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &PolicyRuleCreateBulk{err: fmt.Errorf("calling to PolicyRuleClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*PolicyRuleCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &PolicyRuleCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for PolicyRule.
+func (c *PolicyRuleClient) Update() *PolicyRuleUpdate {
+	mutation := newPolicyRuleMutation(c.config, OpUpdate)
+	return &PolicyRuleUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *PolicyRuleClient) UpdateOne(_m *PolicyRule) *PolicyRuleUpdateOne {
+	mutation := newPolicyRuleMutation(c.config, OpUpdateOne, withPolicyRule(_m))
+	return &PolicyRuleUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *PolicyRuleClient) UpdateOneID(id string) *PolicyRuleUpdateOne {
+	mutation := newPolicyRuleMutation(c.config, OpUpdateOne, withPolicyRuleID(id))
+	return &PolicyRuleUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for PolicyRule.
+func (c *PolicyRuleClient) Delete() *PolicyRuleDelete {
+	mutation := newPolicyRuleMutation(c.config, OpDelete)
+	return &PolicyRuleDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *PolicyRuleClient) DeleteOne(_m *PolicyRule) *PolicyRuleDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *PolicyRuleClient) DeleteOneID(id string) *PolicyRuleDeleteOne {
+	builder := c.Delete().Where(policyrule.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &PolicyRuleDeleteOne{builder}
+}
+
+// Query returns a query builder for PolicyRule.
+func (c *PolicyRuleClient) Query() *PolicyRuleQuery {
+	return &PolicyRuleQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypePolicyRule},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a PolicyRule entity by its id.
+func (c *PolicyRuleClient) Get(ctx context.Context, id string) (*PolicyRule, error) {
+	return c.Query().Where(policyrule.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *PolicyRuleClient) GetX(ctx context.Context, id string) *PolicyRule {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// QueryPolicy queries the policy edge of a PolicyRule.
+func (c *PolicyRuleClient) QueryPolicy(_m *PolicyRule) *AccessPolicyQuery {
+	query := (&AccessPolicyClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(policyrule.Table, policyrule.FieldID, id),
+			sqlgraph.To(accesspolicy.Table, accesspolicy.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, false, policyrule.PolicyTable, policyrule.PolicyColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// Hooks returns the client hooks.
+func (c *PolicyRuleClient) Hooks() []Hook {
+	hooks := c.hooks.PolicyRule
+	return append(hooks[:len(hooks):len(hooks)], policyrule.Hooks[:]...)
+}
+
+// Interceptors returns the client interceptors.
+func (c *PolicyRuleClient) Interceptors() []Interceptor {
+	inters := c.inters.PolicyRule
+	return append(inters[:len(inters):len(inters)], policyrule.Interceptors[:]...)
+}
+
+func (c *PolicyRuleClient) mutate(ctx context.Context, m *PolicyRuleMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&PolicyRuleCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&PolicyRuleUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&PolicyRuleUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&PolicyRuleDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown PolicyRule mutation op: %q", m.Op())
+	}
+}
+
 // PortAllocationClient is a client for the PortAllocation schema.
 type PortAllocationClient struct {
 	config
@@ -4451,6 +4761,173 @@ func (c *RouteHostnameClient) mutate(ctx context.Context, m *RouteHostnameMutati
 	}
 }
 
+// RoutePolicyClient is a client for the RoutePolicy schema.
+type RoutePolicyClient struct {
+	config
+}
+
+// NewRoutePolicyClient returns a client for the RoutePolicy from the given config.
+func NewRoutePolicyClient(c config) *RoutePolicyClient {
+	return &RoutePolicyClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `routepolicy.Hooks(f(g(h())))`.
+func (c *RoutePolicyClient) Use(hooks ...Hook) {
+	c.hooks.RoutePolicy = append(c.hooks.RoutePolicy, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `routepolicy.Intercept(f(g(h())))`.
+func (c *RoutePolicyClient) Intercept(interceptors ...Interceptor) {
+	c.inters.RoutePolicy = append(c.inters.RoutePolicy, interceptors...)
+}
+
+// Create returns a builder for creating a RoutePolicy entity.
+func (c *RoutePolicyClient) Create() *RoutePolicyCreate {
+	mutation := newRoutePolicyMutation(c.config, OpCreate)
+	return &RoutePolicyCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of RoutePolicy entities.
+func (c *RoutePolicyClient) CreateBulk(builders ...*RoutePolicyCreate) *RoutePolicyCreateBulk {
+	return &RoutePolicyCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *RoutePolicyClient) MapCreateBulk(slice any, setFunc func(*RoutePolicyCreate, int)) *RoutePolicyCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &RoutePolicyCreateBulk{err: fmt.Errorf("calling to RoutePolicyClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*RoutePolicyCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &RoutePolicyCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for RoutePolicy.
+func (c *RoutePolicyClient) Update() *RoutePolicyUpdate {
+	mutation := newRoutePolicyMutation(c.config, OpUpdate)
+	return &RoutePolicyUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *RoutePolicyClient) UpdateOne(_m *RoutePolicy) *RoutePolicyUpdateOne {
+	mutation := newRoutePolicyMutation(c.config, OpUpdateOne, withRoutePolicy(_m))
+	return &RoutePolicyUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *RoutePolicyClient) UpdateOneID(id int) *RoutePolicyUpdateOne {
+	mutation := newRoutePolicyMutation(c.config, OpUpdateOne, withRoutePolicyID(id))
+	return &RoutePolicyUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for RoutePolicy.
+func (c *RoutePolicyClient) Delete() *RoutePolicyDelete {
+	mutation := newRoutePolicyMutation(c.config, OpDelete)
+	return &RoutePolicyDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *RoutePolicyClient) DeleteOne(_m *RoutePolicy) *RoutePolicyDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *RoutePolicyClient) DeleteOneID(id int) *RoutePolicyDeleteOne {
+	builder := c.Delete().Where(routepolicy.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &RoutePolicyDeleteOne{builder}
+}
+
+// Query returns a query builder for RoutePolicy.
+func (c *RoutePolicyClient) Query() *RoutePolicyQuery {
+	return &RoutePolicyQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeRoutePolicy},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a RoutePolicy entity by its id.
+func (c *RoutePolicyClient) Get(ctx context.Context, id int) (*RoutePolicy, error) {
+	return c.Query().Where(routepolicy.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *RoutePolicyClient) GetX(ctx context.Context, id int) *RoutePolicy {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// QueryRoute queries the route edge of a RoutePolicy.
+func (c *RoutePolicyClient) QueryRoute(_m *RoutePolicy) *RouteQuery {
+	query := (&RouteClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(routepolicy.Table, routepolicy.FieldID, id),
+			sqlgraph.To(route.Table, route.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, false, routepolicy.RouteTable, routepolicy.RouteColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// QueryPolicy queries the policy edge of a RoutePolicy.
+func (c *RoutePolicyClient) QueryPolicy(_m *RoutePolicy) *AccessPolicyQuery {
+	query := (&AccessPolicyClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(routepolicy.Table, routepolicy.FieldID, id),
+			sqlgraph.To(accesspolicy.Table, accesspolicy.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, false, routepolicy.PolicyTable, routepolicy.PolicyColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// Hooks returns the client hooks.
+func (c *RoutePolicyClient) Hooks() []Hook {
+	hooks := c.hooks.RoutePolicy
+	return append(hooks[:len(hooks):len(hooks)], routepolicy.Hooks[:]...)
+}
+
+// Interceptors returns the client interceptors.
+func (c *RoutePolicyClient) Interceptors() []Interceptor {
+	inters := c.inters.RoutePolicy
+	return append(inters[:len(inters):len(inters)], routepolicy.Interceptors[:]...)
+}
+
+func (c *RoutePolicyClient) mutate(ctx context.Context, m *RoutePolicyMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&RoutePolicyCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&RoutePolicyUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&RoutePolicyUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&RoutePolicyDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown RoutePolicy mutation op: %q", m.Op())
+	}
+}
+
 // RouteTCPClient is a client for the RouteTCP schema.
 type RouteTCPClient struct {
 	config
@@ -5105,20 +5582,20 @@ func (c *SecretMetaClient) mutate(ctx context.Context, m *SecretMetaMutation) (V
 // hooks and interceptors per client, for fast access.
 type (
 	hooks struct {
-		AgentSession, AgentState, AuditEntry, AuditHead, CABundle, CAKey, Certificate,
-		CompiledSnapshot, ConfigRevision, ConfigSeq, Connector, Domain,
+		AccessPolicy, AgentSession, AgentState, AuditEntry, AuditHead, CABundle, CAKey,
+		Certificate, CompiledSnapshot, ConfigRevision, ConfigSeq, Connector, Domain,
 		EnrollmentToken, Gateway, GatewayGroup, Instance, InstanceSetting,
-		IssuedCertificate, Lease, Org, OrgSetting, PortAllocation, PortPool, PortQuota,
-		RevokedIdentity, Route, RouteHTTP, RouteHostname, RouteTCP, RouteTarget,
-		RouteUDP, SecretMeta []ent.Hook
+		IssuedCertificate, Lease, Org, OrgSetting, PolicyRule, PortAllocation,
+		PortPool, PortQuota, RevokedIdentity, Route, RouteHTTP, RouteHostname,
+		RoutePolicy, RouteTCP, RouteTarget, RouteUDP, SecretMeta []ent.Hook
 	}
 	inters struct {
-		AgentSession, AgentState, AuditEntry, AuditHead, CABundle, CAKey, Certificate,
-		CompiledSnapshot, ConfigRevision, ConfigSeq, Connector, Domain,
+		AccessPolicy, AgentSession, AgentState, AuditEntry, AuditHead, CABundle, CAKey,
+		Certificate, CompiledSnapshot, ConfigRevision, ConfigSeq, Connector, Domain,
 		EnrollmentToken, Gateway, GatewayGroup, Instance, InstanceSetting,
-		IssuedCertificate, Lease, Org, OrgSetting, PortAllocation, PortPool, PortQuota,
-		RevokedIdentity, Route, RouteHTTP, RouteHostname, RouteTCP, RouteTarget,
-		RouteUDP, SecretMeta []ent.Interceptor
+		IssuedCertificate, Lease, Org, OrgSetting, PolicyRule, PortAllocation,
+		PortPool, PortQuota, RevokedIdentity, Route, RouteHTTP, RouteHostname,
+		RoutePolicy, RouteTCP, RouteTarget, RouteUDP, SecretMeta []ent.Interceptor
 	}
 )
 

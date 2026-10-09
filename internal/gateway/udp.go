@@ -31,6 +31,8 @@ type UDPRoute struct {
 	ID       string
 	Port     uint16
 	FlowIdle time.Duration
+	// Access is who may send.
+	Access Access
 }
 
 // UDPOptions configure UDPRoutes.
@@ -106,7 +108,9 @@ func (u *UDPRoutes) Apply(routes []UDPRoute) []*agentv1.ResourceStatus {
 	u.status = map[string]*agentv1.ResourceStatus{}
 	for port, p := range u.ports {
 		if r, ok := want[port]; ok {
-			p.route.Store(&r)
+			if old := p.route.Swap(&r); !old.Access.Same(r.Access) {
+				p.enforce(r.Access)
+			}
 			continue
 		}
 		delete(u.ports, port)
@@ -188,6 +192,11 @@ func (u *UDPRoutes) read(p *udpPort) {
 		payload := append([]byte(nil), buf[:n]...)
 		p.mu.Lock()
 		f := p.flows[client]
+		if f == nil && !p.route.Load().Access.Allows(client.Addr()) {
+			p.mu.Unlock()
+			u.o.Metrics.Dropped.WithLabelValues(p.route.Load().ID, "policy").Inc()
+			continue
+		}
 		if f == nil && len(p.flows) >= maxFlows {
 			p.mu.Unlock()
 			u.o.Metrics.Dropped.WithLabelValues(p.route.Load().ID, "flow_limit").Inc()
@@ -206,6 +215,18 @@ func (u *UDPRoutes) read(p *udpPort) {
 		case f.queue <- payload:
 		default:
 			u.o.Metrics.Dropped.WithLabelValues(p.route.Load().ID, "queue_full").Inc()
+		}
+	}
+}
+
+// enforce ends the flows of clients the route's new access rules no longer allow.
+func (p *udpPort) enforce(a Access) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	for k, f := range p.flows {
+		if !a.Allows(f.client.Addr()) {
+			f.close()
+			delete(p.flows, k)
 		}
 	}
 }

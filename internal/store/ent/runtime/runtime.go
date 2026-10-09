@@ -6,6 +6,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/felix-homelab/rpmgr/internal/store/ent/accesspolicy"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/agentsession"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/agentstate"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/auditentry"
@@ -27,6 +28,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/lease"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/org"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/orgsetting"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/policyrule"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/portallocation"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/portpool"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/portquota"
@@ -34,6 +36,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/route"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routehostname"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routehttp"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/routepolicy"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routetarget"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routetcp"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routeudp"
@@ -48,6 +51,79 @@ import (
 // (default values, validators, hooks and policies) and stitches it
 // to their package variables.
 func init() {
+	accesspolicyMixin := schema.AccessPolicy{}.Mixin()
+	accesspolicy.Policy = privacy.NewPolicies(accesspolicyMixin[0], schema.AccessPolicy{})
+	accesspolicy.Hooks[0] = func(next ent.Mutator) ent.Mutator {
+		return ent.MutateFunc(func(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+			if err := accesspolicy.Policy.EvalMutation(ctx, m); err != nil {
+				return nil, err
+			}
+			return next.Mutate(ctx, m)
+		})
+	}
+	accesspolicyMixinHooks0 := accesspolicyMixin[0].Hooks()
+
+	accesspolicy.Hooks[1] = accesspolicyMixinHooks0[0]
+	accesspolicyMixinInters0 := accesspolicyMixin[0].Interceptors()
+	accesspolicy.Interceptors[0] = accesspolicyMixinInters0[0]
+	accesspolicyMixinFields0 := accesspolicyMixin[0].Fields()
+	_ = accesspolicyMixinFields0
+	accesspolicyFields := schema.AccessPolicy{}.Fields()
+	_ = accesspolicyFields
+	// accesspolicyDescOrgID is the schema descriptor for org_id field.
+	accesspolicyDescOrgID := accesspolicyMixinFields0[0].Descriptor()
+	// accesspolicy.OrgIDValidator is a validator for the "org_id" field. It is called by the builders before save.
+	accesspolicy.OrgIDValidator = accesspolicyDescOrgID.Validators[0].(func(string) error)
+	// accesspolicyDescName is the schema descriptor for name field.
+	accesspolicyDescName := accesspolicyFields[1].Descriptor()
+	// accesspolicy.NameValidator is a validator for the "name" field. It is called by the builders before save.
+	accesspolicy.NameValidator = func() func(string) error {
+		validators := accesspolicyDescName.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(name string) error {
+			for _, fn := range fns {
+				if err := fn(name); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// accesspolicyDescDescription is the schema descriptor for description field.
+	accesspolicyDescDescription := accesspolicyFields[2].Descriptor()
+	// accesspolicy.DefaultDescription holds the default value on creation for the description field.
+	accesspolicy.DefaultDescription = accesspolicyDescDescription.Default.(string)
+	// accesspolicy.DescriptionValidator is a validator for the "description" field. It is called by the builders before save.
+	accesspolicy.DescriptionValidator = accesspolicyDescDescription.Validators[0].(func(string) error)
+	// accesspolicyDescVersion is the schema descriptor for version field.
+	accesspolicyDescVersion := accesspolicyFields[3].Descriptor()
+	// accesspolicy.DefaultVersion holds the default value on creation for the version field.
+	accesspolicy.DefaultVersion = accesspolicyDescVersion.Default.(int64)
+	// accesspolicy.VersionValidator is a validator for the "version" field. It is called by the builders before save.
+	accesspolicy.VersionValidator = accesspolicyDescVersion.Validators[0].(func(int64) error)
+	// accesspolicyDescID is the schema descriptor for id field.
+	accesspolicyDescID := accesspolicyFields[0].Descriptor()
+	// accesspolicy.DefaultID holds the default value on creation for the id field.
+	accesspolicy.DefaultID = accesspolicyDescID.Default.(func() string)
+	// accesspolicy.IDValidator is a validator for the "id" field. It is called by the builders before save.
+	accesspolicy.IDValidator = func() func(string) error {
+		validators := accesspolicyDescID.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(id string) error {
+			for _, fn := range fns {
+				if err := fn(id); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
 	agentsessionMixin := schema.AgentSession{}.Mixin()
 	agentsession.Policy = privacy.NewPolicies(agentsessionMixin[0], schema.AgentSession{})
 	agentsession.Hooks[0] = func(next ent.Mutator) ent.Mutator {
@@ -1188,6 +1264,57 @@ func init() {
 			return nil
 		}
 	}()
+	policyruleMixin := schema.PolicyRule{}.Mixin()
+	policyrule.Policy = privacy.NewPolicies(policyruleMixin[0], schema.PolicyRule{})
+	policyrule.Hooks[0] = func(next ent.Mutator) ent.Mutator {
+		return ent.MutateFunc(func(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+			if err := policyrule.Policy.EvalMutation(ctx, m); err != nil {
+				return nil, err
+			}
+			return next.Mutate(ctx, m)
+		})
+	}
+	policyruleMixinHooks0 := policyruleMixin[0].Hooks()
+
+	policyrule.Hooks[1] = policyruleMixinHooks0[0]
+	policyruleMixinInters0 := policyruleMixin[0].Interceptors()
+	policyrule.Interceptors[0] = policyruleMixinInters0[0]
+	policyruleMixinFields0 := policyruleMixin[0].Fields()
+	_ = policyruleMixinFields0
+	policyruleFields := schema.PolicyRule{}.Fields()
+	_ = policyruleFields
+	// policyruleDescOrgID is the schema descriptor for org_id field.
+	policyruleDescOrgID := policyruleMixinFields0[0].Descriptor()
+	// policyrule.OrgIDValidator is a validator for the "org_id" field. It is called by the builders before save.
+	policyrule.OrgIDValidator = policyruleDescOrgID.Validators[0].(func(string) error)
+	// policyruleDescPolicyID is the schema descriptor for policy_id field.
+	policyruleDescPolicyID := policyruleFields[1].Descriptor()
+	// policyrule.PolicyIDValidator is a validator for the "policy_id" field. It is called by the builders before save.
+	policyrule.PolicyIDValidator = policyruleDescPolicyID.Validators[0].(func(string) error)
+	// policyruleDescPosition is the schema descriptor for position field.
+	policyruleDescPosition := policyruleFields[2].Descriptor()
+	// policyrule.PositionValidator is a validator for the "position" field. It is called by the builders before save.
+	policyrule.PositionValidator = policyruleDescPosition.Validators[0].(func(int) error)
+	// policyruleDescID is the schema descriptor for id field.
+	policyruleDescID := policyruleFields[0].Descriptor()
+	// policyrule.DefaultID holds the default value on creation for the id field.
+	policyrule.DefaultID = policyruleDescID.Default.(func() string)
+	// policyrule.IDValidator is a validator for the "id" field. It is called by the builders before save.
+	policyrule.IDValidator = func() func(string) error {
+		validators := policyruleDescID.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(id string) error {
+			for _, fn := range fns {
+				if err := fn(id); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
 	portallocationMixin := schema.PortAllocation{}.Mixin()
 	portallocation.Policy = privacy.NewPolicies(portallocationMixin[0], schema.PortAllocation{})
 	portallocation.Hooks[0] = func(next ent.Mutator) ent.Mutator {
@@ -1578,6 +1705,41 @@ func init() {
 	routehostnameDescDomainID := routehostnameFields[5].Descriptor()
 	// routehostname.DomainIDValidator is a validator for the "domain_id" field. It is called by the builders before save.
 	routehostname.DomainIDValidator = routehostnameDescDomainID.Validators[0].(func(string) error)
+	routepolicyMixin := schema.RoutePolicy{}.Mixin()
+	routepolicy.Policy = privacy.NewPolicies(routepolicyMixin[0], schema.RoutePolicy{})
+	routepolicy.Hooks[0] = func(next ent.Mutator) ent.Mutator {
+		return ent.MutateFunc(func(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+			if err := routepolicy.Policy.EvalMutation(ctx, m); err != nil {
+				return nil, err
+			}
+			return next.Mutate(ctx, m)
+		})
+	}
+	routepolicyMixinHooks0 := routepolicyMixin[0].Hooks()
+
+	routepolicy.Hooks[1] = routepolicyMixinHooks0[0]
+	routepolicyMixinInters0 := routepolicyMixin[0].Interceptors()
+	routepolicy.Interceptors[0] = routepolicyMixinInters0[0]
+	routepolicyMixinFields0 := routepolicyMixin[0].Fields()
+	_ = routepolicyMixinFields0
+	routepolicyFields := schema.RoutePolicy{}.Fields()
+	_ = routepolicyFields
+	// routepolicyDescOrgID is the schema descriptor for org_id field.
+	routepolicyDescOrgID := routepolicyMixinFields0[0].Descriptor()
+	// routepolicy.OrgIDValidator is a validator for the "org_id" field. It is called by the builders before save.
+	routepolicy.OrgIDValidator = routepolicyDescOrgID.Validators[0].(func(string) error)
+	// routepolicyDescRouteID is the schema descriptor for route_id field.
+	routepolicyDescRouteID := routepolicyFields[0].Descriptor()
+	// routepolicy.RouteIDValidator is a validator for the "route_id" field. It is called by the builders before save.
+	routepolicy.RouteIDValidator = routepolicyDescRouteID.Validators[0].(func(string) error)
+	// routepolicyDescPolicyID is the schema descriptor for policy_id field.
+	routepolicyDescPolicyID := routepolicyFields[1].Descriptor()
+	// routepolicy.PolicyIDValidator is a validator for the "policy_id" field. It is called by the builders before save.
+	routepolicy.PolicyIDValidator = routepolicyDescPolicyID.Validators[0].(func(string) error)
+	// routepolicyDescPosition is the schema descriptor for position field.
+	routepolicyDescPosition := routepolicyFields[2].Descriptor()
+	// routepolicy.PositionValidator is a validator for the "position" field. It is called by the builders before save.
+	routepolicy.PositionValidator = routepolicyDescPosition.Validators[0].(func(int) error)
 	routetcpMixin := schema.RouteTCP{}.Mixin()
 	routetcp.Policy = privacy.NewPolicies(routetcpMixin[0], schema.RouteTCP{})
 	routetcp.Hooks[0] = func(next ent.Mutator) ent.Mutator {

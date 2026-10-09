@@ -12,6 +12,7 @@ import (
 	"entgo.io/ent"
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/accesspolicy"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/agentsession"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/agentstate"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/auditentry"
@@ -33,6 +34,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/lease"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/org"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/orgsetting"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/policyrule"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/portallocation"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/portpool"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/portquota"
@@ -40,6 +42,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/route"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routehostname"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routehttp"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/routepolicy"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routetarget"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routetcp"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routeudp"
@@ -104,6 +107,7 @@ var (
 func checkColumn(t, c string) error {
 	initCheck.Do(func() {
 		columnCheck = sql.NewColumnCheck(map[string]func(string) bool{
+			accesspolicy.Table:      accesspolicy.ValidColumn,
 			agentsession.Table:      agentsession.ValidColumn,
 			agentstate.Table:        agentstate.ValidColumn,
 			auditentry.Table:        auditentry.ValidColumn,
@@ -125,6 +129,7 @@ func checkColumn(t, c string) error {
 			lease.Table:             lease.ValidColumn,
 			org.Table:               org.ValidColumn,
 			orgsetting.Table:        orgsetting.ValidColumn,
+			policyrule.Table:        policyrule.ValidColumn,
 			portallocation.Table:    portallocation.ValidColumn,
 			portpool.Table:          portpool.ValidColumn,
 			portquota.Table:         portquota.ValidColumn,
@@ -132,6 +137,7 @@ func checkColumn(t, c string) error {
 			route.Table:             route.ValidColumn,
 			routehttp.Table:         routehttp.ValidColumn,
 			routehostname.Table:     routehostname.ValidColumn,
+			routepolicy.Table:       routepolicy.ValidColumn,
 			routetcp.Table:          routetcp.ValidColumn,
 			routetarget.Table:       routetarget.ValidColumn,
 			routeudp.Table:          routeudp.ValidColumn,

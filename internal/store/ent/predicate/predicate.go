@@ -6,6 +6,9 @@ import (
 	"entgo.io/ent/dialect/sql"
 )
 
+// AccessPolicy is the predicate function for accesspolicy builders.
+type AccessPolicy func(*sql.Selector)
+
 // AgentSession is the predicate function for agentsession builders.
 type AgentSession func(*sql.Selector)
 
@@ -69,6 +72,9 @@ type Org func(*sql.Selector)
 // OrgSetting is the predicate function for orgsetting builders.
 type OrgSetting func(*sql.Selector)
 
+// PolicyRule is the predicate function for policyrule builders.
+type PolicyRule func(*sql.Selector)
+
 // PortAllocation is the predicate function for portallocation builders.
 type PortAllocation func(*sql.Selector)
 
@@ -89,6 +95,9 @@ type RouteHTTP func(*sql.Selector)
 
 // RouteHostname is the predicate function for routehostname builders.
 type RouteHostname func(*sql.Selector)
+
+// RoutePolicy is the predicate function for routepolicy builders.
+type RoutePolicy func(*sql.Selector)
 
 // RouteTCP is the predicate function for routetcp builders.
 type RouteTCP func(*sql.Selector)

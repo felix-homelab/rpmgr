@@ -111,6 +111,30 @@ func DenyMutationOperationRule(op ent.Op) MutationRule {
 	return OnMutationOperation(rule, op)
 }
 
+// The AccessPolicyQueryRuleFunc type is an adapter to allow the use of ordinary
+// functions as a query rule.
+type AccessPolicyQueryRuleFunc func(context.Context, *ent.AccessPolicyQuery) error
+
+// EvalQuery return f(ctx, q).
+func (f AccessPolicyQueryRuleFunc) EvalQuery(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.AccessPolicyQuery); ok {
+		return f(ctx, q)
+	}
+	return Denyf("ent/privacy: unexpected query type %T, expect *ent.AccessPolicyQuery", q)
+}
+
+// The AccessPolicyMutationRuleFunc type is an adapter to allow the use of ordinary
+// functions as a mutation rule.
+type AccessPolicyMutationRuleFunc func(context.Context, *ent.AccessPolicyMutation) error
+
+// EvalMutation calls f(ctx, m).
+func (f AccessPolicyMutationRuleFunc) EvalMutation(ctx context.Context, m ent.Mutation) error {
+	if m, ok := m.(*ent.AccessPolicyMutation); ok {
+		return f(ctx, m)
+	}
+	return Denyf("ent/privacy: unexpected mutation type %T, expect *ent.AccessPolicyMutation", m)
+}
+
 // The AgentSessionQueryRuleFunc type is an adapter to allow the use of ordinary
 // functions as a query rule.
 type AgentSessionQueryRuleFunc func(context.Context, *ent.AgentSessionQuery) error
@@ -615,6 +639,30 @@ func (f OrgSettingMutationRuleFunc) EvalMutation(ctx context.Context, m ent.Muta
 	return Denyf("ent/privacy: unexpected mutation type %T, expect *ent.OrgSettingMutation", m)
 }
 
+// The PolicyRuleQueryRuleFunc type is an adapter to allow the use of ordinary
+// functions as a query rule.
+type PolicyRuleQueryRuleFunc func(context.Context, *ent.PolicyRuleQuery) error
+
+// EvalQuery return f(ctx, q).
+func (f PolicyRuleQueryRuleFunc) EvalQuery(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.PolicyRuleQuery); ok {
+		return f(ctx, q)
+	}
+	return Denyf("ent/privacy: unexpected query type %T, expect *ent.PolicyRuleQuery", q)
+}
+
+// The PolicyRuleMutationRuleFunc type is an adapter to allow the use of ordinary
+// functions as a mutation rule.
+type PolicyRuleMutationRuleFunc func(context.Context, *ent.PolicyRuleMutation) error
+
+// EvalMutation calls f(ctx, m).
+func (f PolicyRuleMutationRuleFunc) EvalMutation(ctx context.Context, m ent.Mutation) error {
+	if m, ok := m.(*ent.PolicyRuleMutation); ok {
+		return f(ctx, m)
+	}
+	return Denyf("ent/privacy: unexpected mutation type %T, expect *ent.PolicyRuleMutation", m)
+}
+
 // The PortAllocationQueryRuleFunc type is an adapter to allow the use of ordinary
 // functions as a query rule.
 type PortAllocationQueryRuleFunc func(context.Context, *ent.PortAllocationQuery) error
@@ -783,6 +831,30 @@ func (f RouteHostnameMutationRuleFunc) EvalMutation(ctx context.Context, m ent.M
 	return Denyf("ent/privacy: unexpected mutation type %T, expect *ent.RouteHostnameMutation", m)
 }
 
+// The RoutePolicyQueryRuleFunc type is an adapter to allow the use of ordinary
+// functions as a query rule.
+type RoutePolicyQueryRuleFunc func(context.Context, *ent.RoutePolicyQuery) error
+
+// EvalQuery return f(ctx, q).
+func (f RoutePolicyQueryRuleFunc) EvalQuery(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.RoutePolicyQuery); ok {
+		return f(ctx, q)
+	}
+	return Denyf("ent/privacy: unexpected query type %T, expect *ent.RoutePolicyQuery", q)
+}
+
+// The RoutePolicyMutationRuleFunc type is an adapter to allow the use of ordinary
+// functions as a mutation rule.
+type RoutePolicyMutationRuleFunc func(context.Context, *ent.RoutePolicyMutation) error
+
+// EvalMutation calls f(ctx, m).
+func (f RoutePolicyMutationRuleFunc) EvalMutation(ctx context.Context, m ent.Mutation) error {
+	if m, ok := m.(*ent.RoutePolicyMutation); ok {
+		return f(ctx, m)
+	}
+	return Denyf("ent/privacy: unexpected mutation type %T, expect *ent.RoutePolicyMutation", m)
+}
+
 // The RouteTCPQueryRuleFunc type is an adapter to allow the use of ordinary
 // functions as a query rule.
 type RouteTCPQueryRuleFunc func(context.Context, *ent.RouteTCPQuery) error
@@ -914,6 +986,8 @@ var _ QueryMutationRule = FilterFunc(nil)
 
 func queryFilter(q ent.Query) (Filter, error) {
 	switch q := q.(type) {
+	case *ent.AccessPolicyQuery:
+		return q.Filter(), nil
 	case *ent.AgentSessionQuery:
 		return q.Filter(), nil
 	case *ent.AgentStateQuery:
@@ -956,6 +1030,8 @@ func queryFilter(q ent.Query) (Filter, error) {
 		return q.Filter(), nil
 	case *ent.OrgSettingQuery:
 		return q.Filter(), nil
+	case *ent.PolicyRuleQuery:
+		return q.Filter(), nil
 	case *ent.PortAllocationQuery:
 		return q.Filter(), nil
 	case *ent.PortPoolQuery:
@@ -969,6 +1045,8 @@ func queryFilter(q ent.Query) (Filter, error) {
 	case *ent.RouteHTTPQuery:
 		return q.Filter(), nil
 	case *ent.RouteHostnameQuery:
+		return q.Filter(), nil
+	case *ent.RoutePolicyQuery:
 		return q.Filter(), nil
 	case *ent.RouteTCPQuery:
 		return q.Filter(), nil
@@ -985,6 +1063,8 @@ func queryFilter(q ent.Query) (Filter, error) {
 
 func mutationFilter(m ent.Mutation) (Filter, error) {
 	switch m := m.(type) {
+	case *ent.AccessPolicyMutation:
+		return m.Filter(), nil
 	case *ent.AgentSessionMutation:
 		return m.Filter(), nil
 	case *ent.AgentStateMutation:
@@ -1027,6 +1107,8 @@ func mutationFilter(m ent.Mutation) (Filter, error) {
 		return m.Filter(), nil
 	case *ent.OrgSettingMutation:
 		return m.Filter(), nil
+	case *ent.PolicyRuleMutation:
+		return m.Filter(), nil
 	case *ent.PortAllocationMutation:
 		return m.Filter(), nil
 	case *ent.PortPoolMutation:
@@ -1040,6 +1122,8 @@ func mutationFilter(m ent.Mutation) (Filter, error) {
 	case *ent.RouteHTTPMutation:
 		return m.Filter(), nil
 	case *ent.RouteHostnameMutation:
+		return m.Filter(), nil
+	case *ent.RoutePolicyMutation:
 		return m.Filter(), nil
 	case *ent.RouteTCPMutation:
 		return m.Filter(), nil

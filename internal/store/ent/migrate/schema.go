@@ -9,6 +9,32 @@ import (
 )
 
 var (
+	// AccessPoliciesColumns holds the columns for the "access_policies" table.
+	AccessPoliciesColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeString},
+		{Name: "org_id", Type: field.TypeString},
+		{Name: "name", Type: field.TypeString, Size: 100},
+		{Name: "description", Type: field.TypeString, Size: 1000, Default: ""},
+		{Name: "version", Type: field.TypeInt64, Default: 1},
+	}
+	// AccessPoliciesTable holds the schema information for the "access_policies" table.
+	AccessPoliciesTable = &schema.Table{
+		Name:       "access_policies",
+		Columns:    AccessPoliciesColumns,
+		PrimaryKey: []*schema.Column{AccessPoliciesColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "accesspolicy_org_id_id",
+				Unique:  true,
+				Columns: []*schema.Column{AccessPoliciesColumns[1], AccessPoliciesColumns[0]},
+			},
+			{
+				Name:    "accesspolicy_org_id_name",
+				Unique:  true,
+				Columns: []*schema.Column{AccessPoliciesColumns[1], AccessPoliciesColumns[2]},
+			},
+		},
+	}
 	// AgentSessionsColumns holds the columns for the "agent_sessions" table.
 	AgentSessionsColumns = []*schema.Column{
 		{Name: "agent_id", Type: field.TypeString},
@@ -570,6 +596,41 @@ var (
 			},
 		},
 	}
+	// PolicyRulesColumns holds the columns for the "policy_rules" table.
+	PolicyRulesColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeString},
+		{Name: "org_id", Type: field.TypeString},
+		{Name: "position", Type: field.TypeInt},
+		{Name: "kind", Type: field.TypeEnum, Enums: []string{"ip_allow", "ip_deny", "basic_auth", "oidc", "rate_limit", "require_header"}},
+		{Name: "params", Type: field.TypeBytes},
+		{Name: "policy_id", Type: field.TypeString},
+	}
+	// PolicyRulesTable holds the schema information for the "policy_rules" table.
+	PolicyRulesTable = &schema.Table{
+		Name:       "policy_rules",
+		Columns:    PolicyRulesColumns,
+		PrimaryKey: []*schema.Column{PolicyRulesColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "policy_rules_access_policies_policy",
+				Columns:    []*schema.Column{PolicyRulesColumns[5]},
+				RefColumns: []*schema.Column{AccessPoliciesColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+		},
+		Indexes: []*schema.Index{
+			{
+				Name:    "policyrule_org_id_id",
+				Unique:  true,
+				Columns: []*schema.Column{PolicyRulesColumns[1], PolicyRulesColumns[0]},
+			},
+			{
+				Name:    "policyrule_policy_id_position",
+				Unique:  true,
+				Columns: []*schema.Column{PolicyRulesColumns[5], PolicyRulesColumns[2]},
+			},
+		},
+	}
 	// PortAllocationsColumns holds the columns for the "port_allocations" table.
 	PortAllocationsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeString},
@@ -830,6 +891,56 @@ var (
 			},
 		},
 	}
+	// RoutePoliciesColumns holds the columns for the "route_policies" table.
+	RoutePoliciesColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt, Increment: true},
+		{Name: "org_id", Type: field.TypeString},
+		{Name: "position", Type: field.TypeInt},
+		{Name: "route_id", Type: field.TypeString},
+		{Name: "policy_id", Type: field.TypeString},
+	}
+	// RoutePoliciesTable holds the schema information for the "route_policies" table.
+	RoutePoliciesTable = &schema.Table{
+		Name:       "route_policies",
+		Columns:    RoutePoliciesColumns,
+		PrimaryKey: []*schema.Column{RoutePoliciesColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "route_policies_routes_route",
+				Columns:    []*schema.Column{RoutePoliciesColumns[3]},
+				RefColumns: []*schema.Column{RoutesColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+			{
+				Symbol:     "route_policies_access_policies_policy",
+				Columns:    []*schema.Column{RoutePoliciesColumns[4]},
+				RefColumns: []*schema.Column{AccessPoliciesColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+		},
+		Indexes: []*schema.Index{
+			{
+				Name:    "routepolicy_org_id_id",
+				Unique:  true,
+				Columns: []*schema.Column{RoutePoliciesColumns[1], RoutePoliciesColumns[0]},
+			},
+			{
+				Name:    "routepolicy_route_id_policy_id",
+				Unique:  true,
+				Columns: []*schema.Column{RoutePoliciesColumns[3], RoutePoliciesColumns[4]},
+			},
+			{
+				Name:    "routepolicy_route_id_position",
+				Unique:  true,
+				Columns: []*schema.Column{RoutePoliciesColumns[3], RoutePoliciesColumns[2]},
+			},
+			{
+				Name:    "routepolicy_policy_id",
+				Unique:  false,
+				Columns: []*schema.Column{RoutePoliciesColumns[4]},
+			},
+		},
+	}
 	// RouteTCPColumns holds the columns for the "route_tcp" table.
 	RouteTCPColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeInt, Increment: true},
@@ -1012,6 +1123,7 @@ var (
 	}
 	// Tables holds all the tables in the schema.
 	Tables = []*schema.Table{
+		AccessPoliciesTable,
 		AgentSessionsTable,
 		AgentStateTable,
 		AuditLogTable,
@@ -1033,6 +1145,7 @@ var (
 		LeasesTable,
 		OrgsTable,
 		OrgSettingsTable,
+		PolicyRulesTable,
 		PortAllocationsTable,
 		PortPoolsTable,
 		PortQuotasTable,
@@ -1040,6 +1153,7 @@ var (
 		RoutesTable,
 		RouteHTTPTable,
 		RouteHostnamesTable,
+		RoutePoliciesTable,
 		RouteTCPTable,
 		RouteTargetsTable,
 		RouteUDPTable,
@@ -1048,6 +1162,9 @@ var (
 )
 
 func init() {
+	AccessPoliciesTable.Annotation = &entsql.Annotation{
+		Table: "access_policies",
+	}
 	AgentSessionsTable.Annotation = &entsql.Annotation{
 		Table: "agent_sessions",
 	}
@@ -1098,6 +1215,10 @@ func init() {
 	OrgSettingsTable.Annotation = &entsql.Annotation{
 		Table: "org_settings",
 	}
+	PolicyRulesTable.ForeignKeys[0].RefTable = AccessPoliciesTable
+	PolicyRulesTable.Annotation = &entsql.Annotation{
+		Table: "policy_rules",
+	}
 	PortAllocationsTable.ForeignKeys[0].RefTable = GatewayGroupsTable
 	PortAllocationsTable.Annotation = &entsql.Annotation{
 		Table: "port_allocations",
@@ -1126,6 +1247,11 @@ func init() {
 	RouteHostnamesTable.ForeignKeys[1].RefTable = DomainsTable
 	RouteHostnamesTable.Annotation = &entsql.Annotation{
 		Table: "route_hostnames",
+	}
+	RoutePoliciesTable.ForeignKeys[0].RefTable = RoutesTable
+	RoutePoliciesTable.ForeignKeys[1].RefTable = AccessPoliciesTable
+	RoutePoliciesTable.Annotation = &entsql.Annotation{
+		Table: "route_policies",
 	}
 	RouteTCPTable.ForeignKeys[0].RefTable = RoutesTable
 	RouteTCPTable.ForeignKeys[1].RefTable = PortAllocationsTable

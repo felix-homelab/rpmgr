@@ -667,6 +667,25 @@ plaintext. A service that does not speak TLS itself uses a `tcp` route instead
 Limitation: with Encrypted Client Hello (ECH), the gateway only sees the outer SNI and cannot route
 on the inner name.
 
+### Access policies
+
+A route applies its access policies in order, and each policy its rules in order
+([06](06-data-model.md#routing)). The gateway enforces IP rules on every route type:
+
+- **IP rules.** The first `ip_allow` or `ip_deny` rule whose CIDRs contain the client's address
+  decides. If none does, the client is allowed only when no rule allows, so allow rules make an
+  allow list and deny rules alone a block list. An IPv4-mapped IPv6 address, of the client or in a
+  CIDR, counts as its IPv4 address.
+- **The client's address** is the TCP peer's, or a UDP datagram's source. On an http route whose
+  peer is a trusted proxy of the gateway group it is the last address in `X-Forwarded-For` that is
+  not a trusted proxy; a chain that does not parse counts as the proxy's own address.
+- **Refusals.** A denied TCP or TLS-passthrough connection is reset before any stream opens; a
+  denied UDP datagram opens no flow and is counted (`reason="policy"`); a denied HTTP request is
+  **403**.
+- **Tightening applies at once**: a snapshot that changes a route's rules resets the connections,
+  ends the UDP flows and cancels the HTTP requests, upgraded connections included, of the clients
+  the new rules deny ([Configuration reconciliation](#configuration-reconciliation)).
+
 ### Port 443 multiplexing
 
 Gateways serve everything on **443** (TCP and UDP) so that only standard ports need opening and

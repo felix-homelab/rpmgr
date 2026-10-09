@@ -14,6 +14,8 @@ import (
 // Tx is a transactional client that is created by calling Client.Tx().
 type Tx struct {
 	config
+	// AccessPolicy is the client for interacting with the AccessPolicy builders.
+	AccessPolicy *AccessPolicyClient
 	// AgentSession is the client for interacting with the AgentSession builders.
 	AgentSession *AgentSessionClient
 	// AgentState is the client for interacting with the AgentState builders.
@@ -56,6 +58,8 @@ type Tx struct {
 	Org *OrgClient
 	// OrgSetting is the client for interacting with the OrgSetting builders.
 	OrgSetting *OrgSettingClient
+	// PolicyRule is the client for interacting with the PolicyRule builders.
+	PolicyRule *PolicyRuleClient
 	// PortAllocation is the client for interacting with the PortAllocation builders.
 	PortAllocation *PortAllocationClient
 	// PortPool is the client for interacting with the PortPool builders.
@@ -70,6 +74,8 @@ type Tx struct {
 	RouteHTTP *RouteHTTPClient
 	// RouteHostname is the client for interacting with the RouteHostname builders.
 	RouteHostname *RouteHostnameClient
+	// RoutePolicy is the client for interacting with the RoutePolicy builders.
+	RoutePolicy *RoutePolicyClient
 	// RouteTCP is the client for interacting with the RouteTCP builders.
 	RouteTCP *RouteTCPClient
 	// RouteTarget is the client for interacting with the RouteTarget builders.
@@ -209,6 +215,7 @@ func (tx *Tx) Client() *Client {
 }
 
 func (tx *Tx) init() {
+	tx.AccessPolicy = NewAccessPolicyClient(tx.config)
 	tx.AgentSession = NewAgentSessionClient(tx.config)
 	tx.AgentState = NewAgentStateClient(tx.config)
 	tx.AuditEntry = NewAuditEntryClient(tx.config)
@@ -230,6 +237,7 @@ func (tx *Tx) init() {
 	tx.Lease = NewLeaseClient(tx.config)
 	tx.Org = NewOrgClient(tx.config)
 	tx.OrgSetting = NewOrgSettingClient(tx.config)
+	tx.PolicyRule = NewPolicyRuleClient(tx.config)
 	tx.PortAllocation = NewPortAllocationClient(tx.config)
 	tx.PortPool = NewPortPoolClient(tx.config)
 	tx.PortQuota = NewPortQuotaClient(tx.config)
@@ -237,6 +245,7 @@ func (tx *Tx) init() {
 	tx.Route = NewRouteClient(tx.config)
 	tx.RouteHTTP = NewRouteHTTPClient(tx.config)
 	tx.RouteHostname = NewRouteHostnameClient(tx.config)
+	tx.RoutePolicy = NewRoutePolicyClient(tx.config)
 	tx.RouteTCP = NewRouteTCPClient(tx.config)
 	tx.RouteTarget = NewRouteTargetClient(tx.config)
 	tx.RouteUDP = NewRouteUDPClient(tx.config)
@@ -250,7 +259,7 @@ func (tx *Tx) init() {
 // of them in order to commit or rollback the transaction.
 //
 // If a closed transaction is embedded in one of the generated entities, and the entity
-// applies a query, for example: AgentSession.QueryXXX(), the query will be executed
+// applies a query, for example: AccessPolicy.QueryXXX(), the query will be executed
 // through the driver which created this transaction.
 //
 // Note that txDriver is not goroutine safe.

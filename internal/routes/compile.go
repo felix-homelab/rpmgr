@@ -65,9 +65,13 @@ func GatewayTCP(ctx context.Context, tx *ent.Tx, a snapshot.Agent) ([]*agentv1.R
 		if err != nil {
 			return nil, err
 		}
+		access, err := accessOf(ctx, tx, r.ID)
+		if err != nil {
+			return nil, err
+		}
 		out = append(out, &agentv1.Resource{Id: r.ID, Kind: &agentv1.Resource_GatewayTcpRoute{GatewayTcpRoute: &agentv1.GatewayTCPRoute{
 			Port: uint32(tcp.Edges.Port.Port), IdleTimeoutSeconds: uint32(tcp.IdleTimeoutSeconds), //nolint:gosec // G115: ports and timeouts are small and positive
-			Connectors: connectors}}})
+			Connectors: connectors, Access: access}}})
 	}
 	return out, nil
 }
@@ -103,9 +107,13 @@ func GatewayUDP(ctx context.Context, tx *ent.Tx, a snapshot.Agent) ([]*agentv1.R
 		if err != nil {
 			return nil, err
 		}
+		access, err := accessOf(ctx, tx, r.ID)
+		if err != nil {
+			return nil, err
+		}
 		out = append(out, &agentv1.Resource{Id: r.ID, Kind: &agentv1.Resource_GatewayUdpRoute{GatewayUdpRoute: &agentv1.GatewayUDPRoute{
 			Port: uint32(udp.Edges.Port.Port), FlowIdleTimeoutSeconds: uint32(udp.FlowIdleTimeoutSeconds), //nolint:gosec // G115: a port and a small positive number
-			Connectors: connectors}}})
+			Connectors: connectors, Access: access}}})
 	}
 	return out, nil
 }
@@ -143,8 +151,12 @@ func GatewayPassthrough(ctx context.Context, tx *ent.Tx, a snapshot.Agent) ([]*a
 		if err != nil {
 			return nil, err
 		}
+		access, err := accessOf(ctx, tx, r.ID)
+		if err != nil {
+			return nil, err
+		}
 		out = append(out, &agentv1.Resource{Id: r.ID, Kind: &agentv1.Resource_GatewayPassthroughRoute{
-			GatewayPassthroughRoute: &agentv1.GatewayPassthroughRoute{Hostnames: hostnames, Connectors: connectors}}})
+			GatewayPassthroughRoute: &agentv1.GatewayPassthroughRoute{Hostnames: hostnames, Connectors: connectors, Access: access}}})
 	}
 	return out, nil
 }
@@ -217,11 +229,15 @@ func GatewayHTTP(ctx context.Context, tx *ent.Tx, a snapshot.Agent) ([]*agentv1.
 		if hostHeader == "preserve" {
 			hostHeader = ""
 		}
+		access, err := accessOf(ctx, tx, r.ID)
+		if err != nil {
+			return nil, err
+		}
 		out = append(out, &agentv1.Resource{Id: r.ID, Kind: &agentv1.Resource_GatewayHttpRoute{GatewayHttpRoute: &agentv1.GatewayHTTPRoute{
 			Hosts: hosts, UpstreamProtocol: upstream, Connectors: connectors, Websocket: h.Websocket, UpstreamTls: upstreamTLS,
 			HostHeader: hostHeader, RequestHeaders: headersOf(h.RequestHeadersSet), ResponseHeaders: headersOf(h.ResponseHeadersSet),
 			MaxBodyBytes: uint64(h.MaxBodyBytes), TrustedProxies: group.TrustedProxyCidrs, //nolint:gosec // G115: the schema keeps it non-negative
-			Port80: h.Port80.String(), HstsMaxAgeSeconds: uint32(h.HstsMaxAgeSeconds)}}}) //nolint:gosec // G115: the schema keeps it non-negative
+			Port80: h.Port80.String(), HstsMaxAgeSeconds: uint32(h.HstsMaxAgeSeconds), Access: access}}}) //nolint:gosec // G115: the schema keeps it non-negative
 	}
 	return out, nil
 }

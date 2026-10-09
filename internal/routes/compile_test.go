@@ -4,6 +4,7 @@ package routes_test
 
 import (
 	"bytes"
+	"fmt"
 	"slices"
 	"strings"
 	"testing"
@@ -24,6 +25,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/certificate"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/domain"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/policyrule"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/route"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routehttp"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routetarget"
@@ -545,6 +547,59 @@ func TestCompile_HTTPSUpstream(t *testing.T) {
 		if err := c.RouteTarget.Create().SetOrgID(f.orgA).SetRouteID(id).SetConnectorID(f.c1).SetKind("address").SetHost("h").
 			SetPort(1).SetCaBundleID(other.ID).Exec(f.sys); err == nil {
 			t.Fatal("a target named another org's CA bundle")
+		}
+	})
+}
+
+// TestCompile_Access: a gateway route carries the IP rules of its access policies, in the order of
+// the policies and of their rules; rules of other kinds are not part of them; a rule whose
+// parameters do not parse fails the compile rather than serve the route without it.
+func TestCompile_Access(t *testing.T) {
+	storetest.ForEachDialect(t, func(t *testing.T, db *store.DB) {
+		f := newFleet(t, db)
+		c := db.Client()
+		params := func(cidrs ...string) []byte {
+			b, err := proto.Marshal(&rpmgrv1.PolicyRuleParams{Params: &rpmgrv1.PolicyRuleParams_Ip{Ip: &rpmgrv1.IPRuleParams{Cidrs: cidrs}}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			return b
+		}
+		office := c.AccessPolicy.Create().SetOrgID(f.orgA).SetName("office").SaveX(f.sys)
+		blocked := c.AccessPolicy.Create().SetOrgID(f.orgA).SetName("blocked").SaveX(f.sys)
+		c.PolicyRule.Create().SetOrgID(f.orgA).SetPolicyID(office.ID).SetPosition(2).SetKind(policyrule.KindIPAllow).
+			SetParams(params("10.0.0.0/8")).ExecX(f.sys)
+		c.PolicyRule.Create().SetOrgID(f.orgA).SetPolicyID(office.ID).SetPosition(1).SetKind(policyrule.KindIPDeny).
+			SetParams(params("10.6.6.0/24")).ExecX(f.sys)
+		c.PolicyRule.Create().SetOrgID(f.orgA).SetPolicyID(office.ID).SetPosition(3).SetKind(policyrule.KindBasicAuth).
+			SetParams([]byte{}).ExecX(f.sys)
+		c.PolicyRule.Create().SetOrgID(f.orgA).SetPolicyID(blocked.ID).SetPosition(0).SetKind(policyrule.KindIPDeny).
+			SetParams(params("192.0.2.0/24", "2001:db8::/32")).ExecX(f.sys)
+		c.RoutePolicy.Create().SetOrgID(f.orgA).SetRouteID(f.r1).SetPolicyID(office.ID).SetPosition(1).ExecX(f.sys)
+		c.RoutePolicy.Create().SetOrgID(f.orgA).SetRouteID(f.r1).SetPolicyID(blocked.ID).SetPosition(0).ExecX(f.sys)
+		var got []string
+		for _, r := range f.compile(t, pki.KindGateway, f.gateway) {
+			if r.GetId() == f.r1 {
+				for _, rule := range r.GetGatewayTcpRoute().GetAccess().GetIpRules() {
+					got = append(got, fmt.Sprintf("%t %s", rule.GetAllow(), strings.Join(rule.GetCidrs(), ",")))
+				}
+			}
+		}
+		want := []string{"false 192.0.2.0/24,2001:db8::/32", "false 10.6.6.0/24", "true 10.0.0.0/8"}
+		if !slices.Equal(got, want) {
+			t.Fatalf("rules %q, want %q", got, want)
+		}
+		// Another org's policy cannot be applied.
+		theirs := c.AccessPolicy.Create().SetOrgID(f.orgB).SetName("theirs").SaveX(f.sys)
+		if err := c.RoutePolicy.Create().SetOrgID(f.orgA).SetRouteID(f.r1).SetPolicyID(theirs.ID).SetPosition(5).Exec(f.sys); err == nil {
+			t.Fatal("a route applied another org's policy")
+		}
+		c.PolicyRule.Create().SetOrgID(f.orgA).SetPolicyID(blocked.ID).SetPosition(1).SetKind(policyrule.KindIPDeny).
+			SetParams([]byte("not a message")).ExecX(f.sys)
+		cmp := &snapshot.Compiler{Sources: routes.Sources()}
+		if _, err := cmp.Compile(f.sys, f.db, snapshot.Agent{Identity: pki.Identity{TrustDomain: "rpmgr-teststor", Org: f.orgA,
+			Kind: pki.KindGateway, ID: f.gateway}}); err == nil {
+			t.Fatal("a rule that does not parse compiled")
 		}
 	})
 }
