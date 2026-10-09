@@ -40,27 +40,11 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/gatewaygroup"
 	"github.com/felix-homelab/rpmgr/internal/store/storetest"
+	"github.com/felix-homelab/rpmgr/internal/testutil/freeport"
 	"github.com/felix-homelab/rpmgr/internal/token"
 )
 
-func freePort(t *testing.T) int {
-	t.Helper()
-	for range 20 {
-		ln, err := net.Listen("tcp", ":0") //nolint:gosec // G102: the test gateway listens on every interface, as localhost may be ::1
-		if err != nil {
-			t.Fatal(err)
-		}
-		port := ln.Addr().(*net.TCPAddr).Port
-		pc, err := net.ListenPacket("udp", ln.Addr().String())
-		_ = ln.Close()
-		if err == nil {
-			_ = pc.Close()
-			return port
-		}
-	}
-	t.Fatal("no free port")
-	return 0
-}
+func freePort(t *testing.T) int { return freeport.Port(t) }
 
 // webFiles writes a certificate for localhost from a new CA and returns the CA's pool.
 func webFiles(t *testing.T, certFile, keyFile string) *x509.CertPool {

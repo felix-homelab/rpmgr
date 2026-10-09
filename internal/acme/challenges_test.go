@@ -21,6 +21,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/lease"
 	"github.com/felix-homelab/rpmgr/internal/store"
 	"github.com/felix-homelab/rpmgr/internal/store/storetest"
+	"github.com/felix-homelab/rpmgr/internal/testutil/freeport"
 )
 
 // fleetOps routes the challenge operations to two gateways: gw_a answers the CA, gw_b only
@@ -52,15 +53,7 @@ func (f *fleetOps) Op(ctx context.Context, id string, msg func(string) *agentv1.
 	return errors.New("unknown gateway")
 }
 
-func freePort(t *testing.T) int {
-	t.Helper()
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = ln.Close() }()
-	return ln.Addr().(*net.TCPAddr).Port
-}
+func freePort(t *testing.T) int { return freeport.Port(t) }
 
 // TestACME_ValidationWaitsForEveryGateway: for HTTP-01 and TLS-ALPN-01 the CA is asked to validate
 // only after every gateway serving the name acknowledged its challenge: a gateway that refuses,
