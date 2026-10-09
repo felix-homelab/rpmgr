@@ -8,6 +8,7 @@ import (
 	"crypto/rand"
 	"crypto/x509"
 	"errors"
+	"fmt"
 	"log/slog"
 	"math/big"
 	"slices"
@@ -16,6 +17,10 @@ import (
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/protobuf/types/known/durationpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
@@ -527,10 +532,20 @@ func (m *Sessions) OpenStream(ctx context.Context, open *tunnelv1.StreamOpen) (t
 // connector chose; it is nil after an error.
 func (m *Sessions) OpenStreamResult(ctx context.Context, open *tunnelv1.StreamOpen) (tunnel.Stream, *tunnelv1.StreamResult, error) {
 	start := time.Now()
+	ctx, span := otel.Tracer(tracerName).Start(ctx, "rpmgr.gateway.open_stream", trace.WithSpanKind(trace.SpanKindClient),
+		trace.WithAttributes(attribute.String("rpmgr.route", open.GetRouteId())))
+	defer span.End()
+	tunnel.SetTraceContext(ctx, open)
 	st, res, err := m.openStreamResult(ctx, open)
 	m.o.Metrics.opened(open.GetRouteId(), start, res, err)
+	if err != nil || res.GetCode() != tunnelv1.ResultCode_RESULT_CODE_NO_ERROR {
+		span.SetStatus(codes.Error, cmp.Or(res.GetCode().String(), fmt.Sprint(err)))
+	}
 	return st, res, err
 }
+
+// tracerName names the gateway's spans (docs/10-operations.md, "Traces").
+const tracerName = "github.com/felix-homelab/rpmgr/internal/gateway"
 
 func (m *Sessions) openStreamResult(ctx context.Context, open *tunnelv1.StreamOpen) (tunnel.Stream, *tunnelv1.StreamResult, error) {
 	var (

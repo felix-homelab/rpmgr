@@ -19,6 +19,10 @@ import (
 	"time"
 
 	"github.com/pires/go-proxyproto"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 
 	agentv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/agent/v1"
 	tunnelv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/tunnel/v1"
@@ -236,7 +240,13 @@ func (t *Targets) route(id string) (Route, bool) {
 // Handle serves one stream the gateway opened; it is Options.Streams. A UDP_FLOW stream is one
 // flow of a udp route, relayed through a socket of its own.
 func (t *Targets) Handle(ctx context.Context, gatewayID string, st tunnel.Stream, open *tunnelv1.StreamOpen) {
+	_, span := otel.Tracer("github.com/felix-homelab/rpmgr/internal/connector").Start(tunnel.TraceContext(ctx, open), "rpmgr.connector.dial",
+		trace.WithSpanKind(trace.SpanKindServer), trace.WithAttributes(attribute.String("rpmgr.route", open.GetRouteId())))
 	code, conn, target := t.open(ctx, open)
+	if code != tunnelv1.ResultCode_RESULT_CODE_NO_ERROR {
+		span.SetStatus(codes.Error, code.String())
+	}
+	span.End()
 	if err := tunnel.WriteMessage(st, &tunnelv1.StreamResult{Code: code, TargetId: target}); err != nil || code != tunnelv1.ResultCode_RESULT_CODE_NO_ERROR {
 		if conn != nil {
 			_ = conn.Close()

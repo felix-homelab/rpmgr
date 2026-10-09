@@ -94,6 +94,7 @@ func CheckStreamOpen(o *tunnelv1.StreamOpen) tunnelv1.ResultCode {
 		o.GetSrcPort() > 65535, o.GetDstPort() > 65535,
 		len(o.GetTraceId()) != 0 && len(o.GetTraceId()) != 16,
 		len(o.GetSpanId()) != 0 && len(o.GetSpanId()) != 8,
+		o.GetTraceFlags() > 0xff,
 		o.GetResult() != nil && o.GetOpenId() == 0:
 		return tunnelv1.ResultCode_RESULT_CODE_PROTOCOL
 	}

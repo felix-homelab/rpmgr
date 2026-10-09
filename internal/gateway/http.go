@@ -26,6 +26,12 @@ import (
 	"sync/atomic"
 	"time"
 
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/propagation"
+	"go.opentelemetry.io/otel/trace"
+
 	agentv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/agent/v1"
 	tunnelv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/tunnel/v1"
 	"github.com/felix-homelab/rpmgr/internal/tunnel"
@@ -436,6 +442,8 @@ func (h *HTTPRoutes) newTransport(r HTTPRoute) *routeTransport {
 				pr.Out.Host = route.HostHeader
 			}
 			forward(pr, route.TrustedProxies)
+			// The upstream continues the trace: the gateway's span, or the client's without one.
+			otel.GetTextMapPropagator().Inject(pr.Out.Context(), propagation.HeaderCarrier(pr.Out.Header))
 			if len(route.BasicAuth) > 0 {
 				pr.Out.Header.Del("Authorization") // the gateway's credentials, not the upstream's
 			}
@@ -645,7 +653,18 @@ func (h *HTTPRoutes) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 func (h *HTTPRoutes) proxy(rw http.ResponseWriter, r *http.Request, rt *routeTransport) {
 	route := rt.route.Load()
 	w := &statusWriter{ResponseWriter: rw}
-	defer func() { h.o.Sessions.metrics().request(route.ID, cmp.Or(w.code, http.StatusOK)) }()
+	tctx, span := otel.Tracer(tracerName).Start(otel.GetTextMapPropagator().Extract(r.Context(), propagation.HeaderCarrier(r.Header)),
+		"rpmgr.gateway.http", trace.WithSpanKind(trace.SpanKindServer), trace.WithAttributes(attribute.String("rpmgr.route", route.ID)))
+	r = r.WithContext(tctx)
+	defer func() {
+		code := cmp.Or(w.code, http.StatusOK)
+		h.o.Sessions.metrics().request(route.ID, code)
+		span.SetAttributes(attribute.Int("http.response.status_code", code))
+		if code >= http.StatusInternalServerError {
+			span.SetStatus(codes.Error, http.StatusText(code))
+		}
+		span.End()
+	}()
 	client := clientOf(r, route.TrustedProxies)
 	if !route.Access.Allows(client) {
 		http.Error(w, http.StatusText(http.StatusForbidden), http.StatusForbidden)

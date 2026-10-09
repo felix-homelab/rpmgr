@@ -103,18 +103,20 @@ func TestCheckStreamOpen(t *testing.T) {
 		"control passthrough": {func(o *tunnelv1.StreamOpen) {
 			o.Kind, o.RouteId = tunnelv1.StreamKind_STREAM_KIND_CONTROL_PASSTHROUGH, ""
 		}, ok},
-		"answer with a result": {func(o *tunnelv1.StreamOpen) { o.OpenId, o.Result = 7, &tunnelv1.StreamResult{} }, ok},
-		"unspecified kind":     {func(o *tunnelv1.StreamOpen) { o.Kind = tunnelv1.StreamKind_STREAM_KIND_UNSPECIFIED }, bad},
-		"unknown kind":         {func(o *tunnelv1.StreamOpen) { o.Kind = 42 }, bad},
-		"relay out":            {func(o *tunnelv1.StreamOpen) { o.Kind = tunnelv1.StreamKind_STREAM_KIND_RELAY_OUT }, bad},
-		"relay in":             {func(o *tunnelv1.StreamOpen) { o.Kind = tunnelv1.StreamKind_STREAM_KIND_RELAY_IN }, bad},
-		"no route":             {func(o *tunnelv1.StreamOpen) { o.RouteId = "" }, bad},
-		"UDP without route":    {func(o *tunnelv1.StreamOpen) { o.Kind, o.RouteId = tunnelv1.StreamKind_STREAM_KIND_UDP_FLOW, "" }, bad},
-		"5-byte address":       {func(o *tunnelv1.StreamOpen) { o.SrcIp = make([]byte, 5) }, bad},
-		"port 65536":           {func(o *tunnelv1.StreamOpen) { o.DstPort = 65536 }, bad},
-		"short trace ID":       {func(o *tunnelv1.StreamOpen) { o.TraceId = make([]byte, 15) }, bad},
-		"long span ID":         {func(o *tunnelv1.StreamOpen) { o.SpanId = make([]byte, 9) }, bad},
-		"result without ID":    {func(o *tunnelv1.StreamOpen) { o.Result = &tunnelv1.StreamResult{} }, bad},
+		"answer with a result":   {func(o *tunnelv1.StreamOpen) { o.OpenId, o.Result = 7, &tunnelv1.StreamResult{} }, ok},
+		"unspecified kind":       {func(o *tunnelv1.StreamOpen) { o.Kind = tunnelv1.StreamKind_STREAM_KIND_UNSPECIFIED }, bad},
+		"unknown kind":           {func(o *tunnelv1.StreamOpen) { o.Kind = 42 }, bad},
+		"relay out":              {func(o *tunnelv1.StreamOpen) { o.Kind = tunnelv1.StreamKind_STREAM_KIND_RELAY_OUT }, bad},
+		"relay in":               {func(o *tunnelv1.StreamOpen) { o.Kind = tunnelv1.StreamKind_STREAM_KIND_RELAY_IN }, bad},
+		"no route":               {func(o *tunnelv1.StreamOpen) { o.RouteId = "" }, bad},
+		"UDP without route":      {func(o *tunnelv1.StreamOpen) { o.Kind, o.RouteId = tunnelv1.StreamKind_STREAM_KIND_UDP_FLOW, "" }, bad},
+		"5-byte address":         {func(o *tunnelv1.StreamOpen) { o.SrcIp = make([]byte, 5) }, bad},
+		"port 65536":             {func(o *tunnelv1.StreamOpen) { o.DstPort = 65536 }, bad},
+		"short trace ID":         {func(o *tunnelv1.StreamOpen) { o.TraceId = make([]byte, 15) }, bad},
+		"long span ID":           {func(o *tunnelv1.StreamOpen) { o.SpanId = make([]byte, 9) }, bad},
+		"trace flags of 2 bytes": {func(o *tunnelv1.StreamOpen) { o.TraceFlags = 0x101 }, bad},
+		"sampled":                {func(o *tunnelv1.StreamOpen) { o.TraceFlags = 1 }, ok},
+		"result without ID":      {func(o *tunnelv1.StreamOpen) { o.Result = &tunnelv1.StreamResult{} }, bad},
 	} {
 		o := validOpen()
 		tc.edit(o)
