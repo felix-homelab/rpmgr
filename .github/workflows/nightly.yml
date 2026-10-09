@@ -61,7 +61,7 @@ jobs:
       - name: Register QEMU user-mode emulation for riscv64
         run: >-
           docker run --rm --privileged
-          tonistiigi/binfmt:qemu-v10.2.3@sha256:400a4873b838d1b89194d982c45e5fb3cda4593fbfd7e08a02e76b03b21166f0
+          mirror.gcr.io/tonistiigi/binfmt:qemu-v10.2.3@sha256:400a4873b838d1b89194d982c45e5fb3cda4593fbfd7e08a02e76b03b21166f0
           --install riscv64
       - name: Tests on riscv64 under QEMU
         run: .github/scripts/check-test-arch.sh riscv64
