@@ -148,6 +148,23 @@ expect fail "an empty changelog section" "$t" v1.1.0 "$r"
 notes=$("$t" v1.2.3 "$r" 2>/dev/null || true)
 expect pass "the release notes are the section's text" test "$notes" = $'### Added\n\n- A thing.'
 
+# --- Image tags ------------------------------------------------------------------------------
+it="$dir/image-tags.sh"
+tags_are() { # tags_are <want, space-separated> <version> [<published>...]
+  local want=$1
+  shift
+  [[ $("$it" "$@" | paste -sd ' ') == "$want" ]]
+}
+expect pass "the highest stable release gets X.Y, X and latest" tags_are "1.4.2 1.4 1 latest" 1.4.2 1.4.1 1.3.9
+expect pass "a patch of an older minor gets X.Y only" tags_are "1.3.10 1.3" 1.3.10 1.4.2 1.3.9
+expect pass "the highest of a major gets X, not latest" tags_are "1.9.1 1.9 1" 1.9.1 1.9.0 2.0.0
+expect pass "versions compare as numbers" tags_are "1.10.0 1.10 1 latest" 1.10.0 1.9.0
+expect pass "a pre-release gets its version only" tags_are "1.5.0-rc.1" 1.5.0-rc.1 1.4.2
+expect pass "published pre-releases and other words do not count" tags_are "1.4.2 1.4 1 latest" 1.4.2 1.5.0-rc.1 garbage
+expect pass "the first release" tags_are "0.1.0 0.1 0 latest" 0.1.0
+expect fail "a version with a leading v" "$it" v1.4.2
+expect fail "no version" "$it"
+
 # --- Security regression test registry ------------------------------------------------------
 st="$dir/check-security-tests.sh"
 r=$(new_repo)

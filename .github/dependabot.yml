@@ -1,8 +1,8 @@
 # Dependency updates (docs/08-software-stack.md, "Dependency policy"). Every ecosystem groups its
 # updates, so each pull-request title stays a short Conventional Commit header that passes
 # check-pr-title.sh (D55): "ci(deps): bump the actions group …", "build(deps): bump the go group …".
-# Dependabot adds the colon after a prefix that ends with ")". Container base images are added
-# when the first code that uses them lands. Tool images used by the scripts in
+# Dependabot adds the colon after a prefix that ends with ")". The base images of the release
+# image and of the end-to-end nodes are updated here too. Tool images used by the scripts in
 # .github/scripts/ are pinned by digest there and updated by hand.
 version: 2
 updates:
@@ -58,5 +58,22 @@ updates:
       npm:
         patterns: ["*"]
       npm-sec:
+        applies-to: security-updates
+        patterns: ["*"]
+
+  - package-ecosystem: docker
+    directories: ["/", "/test/e2e"]
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: build(deps)
+    labels:
+      - no-changelog
+      - type:improvement
+      - area:ops
+    groups:
+      docker:
+        patterns: ["*"]
+      docker-sec:
         applies-to: security-updates
         patterns: ["*"]
