@@ -737,7 +737,10 @@ type CreateInvitationResponse struct {
 	// The link, to pass on to the invitee; shown once.
 	Url string `protobuf:"bytes,1,opt,name=url,proto3" json:"url,omitempty"`
 	// When it stops working.
-	ExpireTime    *timestamppb.Timestamp `protobuf:"bytes,2,opt,name=expire_time,json=expireTime,proto3" json:"expire_time,omitempty"`
+	ExpireTime *timestamppb.Timestamp `protobuf:"bytes,2,opt,name=expire_time,json=expireTime,proto3" json:"expire_time,omitempty"`
+	// Whether the link was also e-mailed to the invitee; false without a mail relay or when the
+	// relay did not take it.
+	EmailSent     bool `protobuf:"varint,3,opt,name=email_sent,json=emailSent,proto3" json:"email_sent,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -784,6 +787,13 @@ func (x *CreateInvitationResponse) GetExpireTime() *timestamppb.Timestamp {
 		return x.ExpireTime
 	}
 	return nil
+}
+
+func (x *CreateInvitationResponse) GetEmailSent() bool {
+	if x != nil {
+		return x.EmailSent
+	}
+	return false
 }
 
 // AcceptInvitationRequest is the invitation's token and, for a new account, its details.
@@ -951,11 +961,13 @@ const file_rpmgr_v1_org_proto_rawDesc = "" +
 	"\xbaH\ar\x05\x10\x03\x18\xfe\x01R\x05email\x129\n" +
 	"\x04role\x18\x03 \x01(\tB%\xbaH\"r R\x05ownerR\x05adminR\boperatorR\x06viewerR\x04role\x12'\n" +
 	"\n" +
-	"request_id\x18\x04 \x01(\tB\b\xbaH\x05r\x03\x18\x80\x01R\trequestId\"o\n" +
+	"request_id\x18\x04 \x01(\tB\b\xbaH\x05r\x03\x18\x80\x01R\trequestId\"\x8e\x01\n" +
 	"\x18CreateInvitationResponse\x12\x16\n" +
 	"\x03url\x18\x01 \x01(\tB\x04\x88\xb5\x18\x01R\x03url\x12;\n" +
 	"\vexpire_time\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\n" +
-	"expireTime\"\x95\x01\n" +
+	"expireTime\x12\x1d\n" +
+	"\n" +
+	"email_sent\x18\x03 \x01(\bR\temailSent\"\x95\x01\n" +
 	"\x17AcceptInvitationRequest\x12$\n" +
 	"\x05token\x18\x01 \x01(\tB\x0e\xbaH\ar\x05\x10\x01\x18\x80\x01\x88\xb5\x18\x01R\x05token\x12*\n" +
 	"\fdisplay_name\x18\x02 \x01(\tB\a\xbaH\x04r\x02\x18dR\vdisplayName\x12(\n" +

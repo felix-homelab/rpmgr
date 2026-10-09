@@ -52,6 +52,8 @@ type Tx struct {
 	GatewayGroup *GatewayGroupClient
 	// Instance is the client for interacting with the Instance builders.
 	Instance *InstanceClient
+	// InstanceSecret is the client for interacting with the InstanceSecret builders.
+	InstanceSecret *InstanceSecretClient
 	// InstanceSetting is the client for interacting with the InstanceSetting builders.
 	InstanceSetting *InstanceSettingClient
 	// Invitation is the client for interacting with the Invitation builders.
@@ -252,6 +254,7 @@ func (tx *Tx) init() {
 	tx.Gateway = NewGatewayClient(tx.config)
 	tx.GatewayGroup = NewGatewayGroupClient(tx.config)
 	tx.Instance = NewInstanceClient(tx.config)
+	tx.InstanceSecret = NewInstanceSecretClient(tx.config)
 	tx.InstanceSetting = NewInstanceSettingClient(tx.config)
 	tx.Invitation = NewInvitationClient(tx.config)
 	tx.IssuedCertificate = NewIssuedCertificateClient(tx.config)

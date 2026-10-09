@@ -9,6 +9,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net"
 	"net/http"
 	"time"
@@ -37,6 +38,9 @@ const (
 	FreeFailures = 5
 	FirstDelay   = time.Second
 	MaxDelay     = time.Minute
+	// Reset links e-mailed to one address: 3 at once, then one every 20 minutes.
+	ResetEvery = 20 * time.Minute
+	ResetBurst = 3
 )
 
 // Auth is AuthService.
@@ -48,6 +52,13 @@ type Auth struct {
 	IPLimit  *ratelimit.Limiter // logins and password resets per client address
 	Backoff  *ratelimit.Backoff // failed logins per account, failed step-ups per user
 	Now      func() time.Time
+	// Mail sends reset links; ResetLimit bounds the requests per address.
+	Mail       Mailer
+	ResetLimit *ratelimit.Limiter
+	PublicURL  string
+	Logger     *slog.Logger
+	// sent, if set, is called after each attempt to e-mail a reset link (tests).
+	sent func(error)
 }
 
 // NewAuth returns AuthService with the limits of docs/04.
@@ -56,7 +67,8 @@ func NewAuth(mfa *accounts.MFA, s *websession.Sessions, now func() time.Time) *A
 		now = time.Now
 	}
 	return &Auth{Accounts: mfa.Accounts, MFA: mfa, Sessions: s, IPLimit: ratelimit.New(IPEvery, IPBurst, now),
-		Backoff: ratelimit.NewBackoff(FreeFailures, FirstDelay, MaxDelay, now), Now: now}
+		Backoff: ratelimit.NewBackoff(FreeFailures, FirstDelay, MaxDelay, now), Now: now,
+		ResetLimit: ratelimit.New(ResetEvery, ResetBurst, now), Logger: slog.New(slog.DiscardHandler)}
 }
 
 // Login implements AuthService.
@@ -235,6 +247,53 @@ func (a *Auth) RevokeSession(ctx context.Context, req *connect.Request[rpmgrv1.R
 		resp.Header().Add("Set-Cookie", websession.ClearCookie().String())
 	}
 	return resp, nil
+}
+
+// RequestPasswordReset implements AuthService. It answers before it looks the address up, and
+// e-mails the link in the background, so neither the answer nor its time tells whether the
+// address has an account.
+func (a *Auth) RequestPasswordReset(ctx context.Context, req *connect.Request[rpmgrv1.RequestPasswordResetRequest]) (
+	*connect.Response[rpmgrv1.RequestPasswordResetResponse], error) {
+	if !a.IPLimit.Allow(hostOf(req.Peer().Addr)) {
+		return nil, limited(IPEvery)
+	}
+	ok := false
+	if a.Mail != nil {
+		var err error
+		if ok, err = a.Mail.Configured(ctx); err != nil {
+			return nil, err
+		}
+	}
+	if !ok {
+		return nil, connect.NewError(connect.CodeUnavailable,
+			errors.New("apisvc: password resets by e-mail need a mail relay; ask an administrator for a link"))
+	}
+	addr, err := accounts.NormalizeEmail(req.Msg.GetEmail())
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, err)
+	}
+	if !a.ResetLimit.Allow(addr) {
+		return nil, limited(ResetEvery)
+	}
+	go a.mailReset(context.WithoutCancel(ctx), addr)
+	return connect.NewResponse(&rpmgrv1.RequestPasswordResetResponse{}), nil
+}
+
+// mailReset e-mails a reset link to an address that belongs to an active user.
+func (a *Auth) mailReset(ctx context.Context, addr string) {
+	u, err := a.Accounts.UserByEmail(addr)
+	if err == nil {
+		var tok string
+		if tok, err = a.Accounts.ResetLink(u.ID, "email-request"); err == nil {
+			err = a.Mail.Send(ctx, resetMail(addr, accounts.LinkURL(a.PublicURL, tok), accounts.ResetLinkTTL))
+		}
+		if err != nil {
+			a.Logger.Warn("cannot e-mail a password-reset link", "user", u.ID, "error", err)
+		}
+	}
+	if a.sent != nil {
+		a.sent(err)
+	}
 }
 
 // CompletePasswordReset implements AuthService; it ends every session of the user.

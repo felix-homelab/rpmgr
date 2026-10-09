@@ -567,6 +567,30 @@ func (f InstanceMutationRuleFunc) EvalMutation(ctx context.Context, m ent.Mutati
 	return Denyf("ent/privacy: unexpected mutation type %T, expect *ent.InstanceMutation", m)
 }
 
+// The InstanceSecretQueryRuleFunc type is an adapter to allow the use of ordinary
+// functions as a query rule.
+type InstanceSecretQueryRuleFunc func(context.Context, *ent.InstanceSecretQuery) error
+
+// EvalQuery return f(ctx, q).
+func (f InstanceSecretQueryRuleFunc) EvalQuery(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.InstanceSecretQuery); ok {
+		return f(ctx, q)
+	}
+	return Denyf("ent/privacy: unexpected query type %T, expect *ent.InstanceSecretQuery", q)
+}
+
+// The InstanceSecretMutationRuleFunc type is an adapter to allow the use of ordinary
+// functions as a mutation rule.
+type InstanceSecretMutationRuleFunc func(context.Context, *ent.InstanceSecretMutation) error
+
+// EvalMutation calls f(ctx, m).
+func (f InstanceSecretMutationRuleFunc) EvalMutation(ctx context.Context, m ent.Mutation) error {
+	if m, ok := m.(*ent.InstanceSecretMutation); ok {
+		return f(ctx, m)
+	}
+	return Denyf("ent/privacy: unexpected mutation type %T, expect *ent.InstanceSecretMutation", m)
+}
+
 // The InstanceSettingQueryRuleFunc type is an adapter to allow the use of ordinary
 // functions as a query rule.
 type InstanceSettingQueryRuleFunc func(context.Context, *ent.InstanceSettingQuery) error
@@ -1240,6 +1264,8 @@ func queryFilter(q ent.Query) (Filter, error) {
 		return q.Filter(), nil
 	case *ent.InstanceQuery:
 		return q.Filter(), nil
+	case *ent.InstanceSecretQuery:
+		return q.Filter(), nil
 	case *ent.InstanceSettingQuery:
 		return q.Filter(), nil
 	case *ent.InvitationQuery:
@@ -1334,6 +1360,8 @@ func mutationFilter(m ent.Mutation) (Filter, error) {
 	case *ent.GatewayGroupMutation:
 		return m.Filter(), nil
 	case *ent.InstanceMutation:
+		return m.Filter(), nil
+	case *ent.InstanceSecretMutation:
 		return m.Filter(), nil
 	case *ent.InstanceSettingMutation:
 		return m.Filter(), nil

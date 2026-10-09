@@ -63,6 +63,9 @@ type GatewayGroup func(*sql.Selector)
 // Instance is the predicate function for instance builders.
 type Instance func(*sql.Selector)
 
+// InstanceSecret is the predicate function for instancesecret builders.
+type InstanceSecret func(*sql.Selector)
+
 // InstanceSetting is the predicate function for instancesetting builders.
 type InstanceSetting func(*sql.Selector)
 

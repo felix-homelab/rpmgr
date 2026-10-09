@@ -182,6 +182,9 @@ message CreateInvitationResponse {
   string url = 1 [(rpmgr.v1.sensitive) = true];
   // When it stops working.
   google.protobuf.Timestamp expire_time = 2;
+  // Whether the link was also e-mailed to the invitee; false without a mail relay or when the
+  // relay did not take it.
+  bool email_sent = 3;
 }
 
 // AcceptInvitationRequest is the invitation's token and, for a new account, its details.

@@ -60,6 +60,10 @@ linters:
       - path: internal/certs/
         text: Reveal
         linters: [forbidigo]
+      # The mail relay's password is opened to log in to it.
+      - path: internal/mail/mail\.go
+        text: Reveal
+        linters: [forbidigo]
       # A user's authenticator seed is opened to check a code.
       - path: internal/accounts/mfa\.go
         text: Reveal

@@ -62,3 +62,20 @@ func (OrgSetting) Fields() []ent.Field {
 func (OrgSetting) Indexes() []ent.Index {
 	return []ent.Index{index.Fields("org_id").Unique()}
 }
+
+// InstanceSecret is a secret of the instance settings, kept apart from them under the KEK, such
+// as the mail relay's password (docs/04-security.md, "Secrets at rest and in logs"). The settings
+// API takes it write-only. Only the system scope reads or writes it.
+type InstanceSecret struct{ ent.Schema }
+
+// Mixin makes instance secrets system-only.
+func (InstanceSecret) Mixin() []ent.Mixin { return []ent.Mixin{SystemMixin{}} }
+
+// Fields of an instance secret; its ID is its name.
+func (InstanceSecret) Fields() []ent.Field {
+	return []ent.Field{
+		field.String("id").StorageKey("name").NotEmpty().Immutable(),
+		field.Bytes("value_enc").NotEmpty().Sensitive(),
+		field.Time("updated_at"),
+	}
+}

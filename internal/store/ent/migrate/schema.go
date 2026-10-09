@@ -527,6 +527,18 @@ var (
 		Columns:    InstanceColumns,
 		PrimaryKey: []*schema.Column{InstanceColumns[0]},
 	}
+	// InstanceSecretsColumns holds the columns for the "instance_secrets" table.
+	InstanceSecretsColumns = []*schema.Column{
+		{Name: "name", Type: field.TypeString},
+		{Name: "value_enc", Type: field.TypeBytes},
+		{Name: "updated_at", Type: field.TypeTime},
+	}
+	// InstanceSecretsTable holds the schema information for the "instance_secrets" table.
+	InstanceSecretsTable = &schema.Table{
+		Name:       "instance_secrets",
+		Columns:    InstanceSecretsColumns,
+		PrimaryKey: []*schema.Column{InstanceSecretsColumns[0]},
+	}
 	// InstanceSettingsColumns holds the columns for the "instance_settings" table.
 	InstanceSettingsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeInt, Increment: true},
@@ -1409,6 +1421,7 @@ var (
 		GatewaysTable,
 		GatewayGroupsTable,
 		InstanceTable,
+		InstanceSecretsTable,
 		InstanceSettingsTable,
 		InvitationsTable,
 		IssuedCertificatesTable,

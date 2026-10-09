@@ -34,6 +34,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/gateway"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/gatewaygroup"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/instance"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/instancesecret"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/instancesetting"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/invitation"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/issuedcertificate"
@@ -106,6 +107,8 @@ type Client struct {
 	GatewayGroup *GatewayGroupClient
 	// Instance is the client for interacting with the Instance builders.
 	Instance *InstanceClient
+	// InstanceSecret is the client for interacting with the InstanceSecret builders.
+	InstanceSecret *InstanceSecretClient
 	// InstanceSetting is the client for interacting with the InstanceSetting builders.
 	InstanceSetting *InstanceSettingClient
 	// Invitation is the client for interacting with the Invitation builders.
@@ -186,6 +189,7 @@ func (c *Client) init() {
 	c.Gateway = NewGatewayClient(c.config)
 	c.GatewayGroup = NewGatewayGroupClient(c.config)
 	c.Instance = NewInstanceClient(c.config)
+	c.InstanceSecret = NewInstanceSecretClient(c.config)
 	c.InstanceSetting = NewInstanceSettingClient(c.config)
 	c.Invitation = NewInvitationClient(c.config)
 	c.IssuedCertificate = NewIssuedCertificateClient(c.config)
@@ -322,6 +326,7 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		Gateway:           NewGatewayClient(cfg),
 		GatewayGroup:      NewGatewayGroupClient(cfg),
 		Instance:          NewInstanceClient(cfg),
+		InstanceSecret:    NewInstanceSecretClient(cfg),
 		InstanceSetting:   NewInstanceSettingClient(cfg),
 		Invitation:        NewInvitationClient(cfg),
 		IssuedCertificate: NewIssuedCertificateClient(cfg),
@@ -385,6 +390,7 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		Gateway:           NewGatewayClient(cfg),
 		GatewayGroup:      NewGatewayGroupClient(cfg),
 		Instance:          NewInstanceClient(cfg),
+		InstanceSecret:    NewInstanceSecretClient(cfg),
 		InstanceSetting:   NewInstanceSettingClient(cfg),
 		Invitation:        NewInvitationClient(cfg),
 		IssuedCertificate: NewIssuedCertificateClient(cfg),
@@ -442,12 +448,12 @@ func (c *Client) Use(hooks ...Hook) {
 		c.ACMEStorage, c.APIRequest, c.AccessPolicy, c.AgentSession, c.AgentState,
 		c.AuditEntry, c.AuditHead, c.CABundle, c.CAKey, c.Certificate,
 		c.CompiledSnapshot, c.ConfigRevision, c.ConfigSeq, c.Connector, c.Domain,
-		c.EnrollmentToken, c.Gateway, c.GatewayGroup, c.Instance, c.InstanceSetting,
-		c.Invitation, c.IssuedCertificate, c.Lease, c.Membership, c.Org, c.OrgSetting,
-		c.PasswordReset, c.PolicyRule, c.PortAllocation, c.PortPool, c.PortQuota,
-		c.RecoveryCode, c.RevokedIdentity, c.Route, c.RouteHTTP, c.RouteHostname,
-		c.RoutePolicy, c.RouteTCP, c.RouteTarget, c.RouteUDP, c.SecretMeta, c.Session,
-		c.TOTPCredential, c.User,
+		c.EnrollmentToken, c.Gateway, c.GatewayGroup, c.Instance, c.InstanceSecret,
+		c.InstanceSetting, c.Invitation, c.IssuedCertificate, c.Lease, c.Membership,
+		c.Org, c.OrgSetting, c.PasswordReset, c.PolicyRule, c.PortAllocation,
+		c.PortPool, c.PortQuota, c.RecoveryCode, c.RevokedIdentity, c.Route,
+		c.RouteHTTP, c.RouteHostname, c.RoutePolicy, c.RouteTCP, c.RouteTarget,
+		c.RouteUDP, c.SecretMeta, c.Session, c.TOTPCredential, c.User,
 	} {
 		n.Use(hooks...)
 	}
@@ -460,12 +466,12 @@ func (c *Client) Intercept(interceptors ...Interceptor) {
 		c.ACMEStorage, c.APIRequest, c.AccessPolicy, c.AgentSession, c.AgentState,
 		c.AuditEntry, c.AuditHead, c.CABundle, c.CAKey, c.Certificate,
 		c.CompiledSnapshot, c.ConfigRevision, c.ConfigSeq, c.Connector, c.Domain,
-		c.EnrollmentToken, c.Gateway, c.GatewayGroup, c.Instance, c.InstanceSetting,
-		c.Invitation, c.IssuedCertificate, c.Lease, c.Membership, c.Org, c.OrgSetting,
-		c.PasswordReset, c.PolicyRule, c.PortAllocation, c.PortPool, c.PortQuota,
-		c.RecoveryCode, c.RevokedIdentity, c.Route, c.RouteHTTP, c.RouteHostname,
-		c.RoutePolicy, c.RouteTCP, c.RouteTarget, c.RouteUDP, c.SecretMeta, c.Session,
-		c.TOTPCredential, c.User,
+		c.EnrollmentToken, c.Gateway, c.GatewayGroup, c.Instance, c.InstanceSecret,
+		c.InstanceSetting, c.Invitation, c.IssuedCertificate, c.Lease, c.Membership,
+		c.Org, c.OrgSetting, c.PasswordReset, c.PolicyRule, c.PortAllocation,
+		c.PortPool, c.PortQuota, c.RecoveryCode, c.RevokedIdentity, c.Route,
+		c.RouteHTTP, c.RouteHostname, c.RoutePolicy, c.RouteTCP, c.RouteTarget,
+		c.RouteUDP, c.SecretMeta, c.Session, c.TOTPCredential, c.User,
 	} {
 		n.Intercept(interceptors...)
 	}
@@ -512,6 +518,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.GatewayGroup.mutate(ctx, m)
 	case *InstanceMutation:
 		return c.Instance.mutate(ctx, m)
+	case *InstanceSecretMutation:
+		return c.InstanceSecret.mutate(ctx, m)
 	case *InstanceSettingMutation:
 		return c.InstanceSetting.mutate(ctx, m)
 	case *InvitationMutation:
@@ -3190,6 +3198,141 @@ func (c *InstanceClient) mutate(ctx context.Context, m *InstanceMutation) (Value
 		return (&InstanceDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
 	default:
 		return nil, fmt.Errorf("ent: unknown Instance mutation op: %q", m.Op())
+	}
+}
+
+// InstanceSecretClient is a client for the InstanceSecret schema.
+type InstanceSecretClient struct {
+	config
+}
+
+// NewInstanceSecretClient returns a client for the InstanceSecret from the given config.
+func NewInstanceSecretClient(c config) *InstanceSecretClient {
+	return &InstanceSecretClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `instancesecret.Hooks(f(g(h())))`.
+func (c *InstanceSecretClient) Use(hooks ...Hook) {
+	c.hooks.InstanceSecret = append(c.hooks.InstanceSecret, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `instancesecret.Intercept(f(g(h())))`.
+func (c *InstanceSecretClient) Intercept(interceptors ...Interceptor) {
+	c.inters.InstanceSecret = append(c.inters.InstanceSecret, interceptors...)
+}
+
+// Create returns a builder for creating a InstanceSecret entity.
+func (c *InstanceSecretClient) Create() *InstanceSecretCreate {
+	mutation := newInstanceSecretMutation(c.config, OpCreate)
+	return &InstanceSecretCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of InstanceSecret entities.
+func (c *InstanceSecretClient) CreateBulk(builders ...*InstanceSecretCreate) *InstanceSecretCreateBulk {
+	return &InstanceSecretCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *InstanceSecretClient) MapCreateBulk(slice any, setFunc func(*InstanceSecretCreate, int)) *InstanceSecretCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &InstanceSecretCreateBulk{err: fmt.Errorf("calling to InstanceSecretClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*InstanceSecretCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &InstanceSecretCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for InstanceSecret.
+func (c *InstanceSecretClient) Update() *InstanceSecretUpdate {
+	mutation := newInstanceSecretMutation(c.config, OpUpdate)
+	return &InstanceSecretUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *InstanceSecretClient) UpdateOne(_m *InstanceSecret) *InstanceSecretUpdateOne {
+	mutation := newInstanceSecretMutation(c.config, OpUpdateOne, withInstanceSecret(_m))
+	return &InstanceSecretUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *InstanceSecretClient) UpdateOneID(id string) *InstanceSecretUpdateOne {
+	mutation := newInstanceSecretMutation(c.config, OpUpdateOne, withInstanceSecretID(id))
+	return &InstanceSecretUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for InstanceSecret.
+func (c *InstanceSecretClient) Delete() *InstanceSecretDelete {
+	mutation := newInstanceSecretMutation(c.config, OpDelete)
+	return &InstanceSecretDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *InstanceSecretClient) DeleteOne(_m *InstanceSecret) *InstanceSecretDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *InstanceSecretClient) DeleteOneID(id string) *InstanceSecretDeleteOne {
+	builder := c.Delete().Where(instancesecret.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &InstanceSecretDeleteOne{builder}
+}
+
+// Query returns a query builder for InstanceSecret.
+func (c *InstanceSecretClient) Query() *InstanceSecretQuery {
+	return &InstanceSecretQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeInstanceSecret},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a InstanceSecret entity by its id.
+func (c *InstanceSecretClient) Get(ctx context.Context, id string) (*InstanceSecret, error) {
+	return c.Query().Where(instancesecret.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *InstanceSecretClient) GetX(ctx context.Context, id string) *InstanceSecret {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *InstanceSecretClient) Hooks() []Hook {
+	hooks := c.hooks.InstanceSecret
+	return append(hooks[:len(hooks):len(hooks)], instancesecret.Hooks[:]...)
+}
+
+// Interceptors returns the client interceptors.
+func (c *InstanceSecretClient) Interceptors() []Interceptor {
+	inters := c.inters.InstanceSecret
+	return append(inters[:len(inters):len(inters)], instancesecret.Interceptors[:]...)
+}
+
+func (c *InstanceSecretClient) mutate(ctx context.Context, m *InstanceSecretMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&InstanceSecretCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&InstanceSecretUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&InstanceSecretUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&InstanceSecretDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown InstanceSecret mutation op: %q", m.Op())
 	}
 }
 
@@ -6972,21 +7115,21 @@ type (
 		ACMEStorage, APIRequest, AccessPolicy, AgentSession, AgentState, AuditEntry,
 		AuditHead, CABundle, CAKey, Certificate, CompiledSnapshot, ConfigRevision,
 		ConfigSeq, Connector, Domain, EnrollmentToken, Gateway, GatewayGroup, Instance,
-		InstanceSetting, Invitation, IssuedCertificate, Lease, Membership, Org,
-		OrgSetting, PasswordReset, PolicyRule, PortAllocation, PortPool, PortQuota,
-		RecoveryCode, RevokedIdentity, Route, RouteHTTP, RouteHostname, RoutePolicy,
-		RouteTCP, RouteTarget, RouteUDP, SecretMeta, Session, TOTPCredential,
-		User []ent.Hook
+		InstanceSecret, InstanceSetting, Invitation, IssuedCertificate, Lease,
+		Membership, Org, OrgSetting, PasswordReset, PolicyRule, PortAllocation,
+		PortPool, PortQuota, RecoveryCode, RevokedIdentity, Route, RouteHTTP,
+		RouteHostname, RoutePolicy, RouteTCP, RouteTarget, RouteUDP, SecretMeta,
+		Session, TOTPCredential, User []ent.Hook
 	}
 	inters struct {
 		ACMEStorage, APIRequest, AccessPolicy, AgentSession, AgentState, AuditEntry,
 		AuditHead, CABundle, CAKey, Certificate, CompiledSnapshot, ConfigRevision,
 		ConfigSeq, Connector, Domain, EnrollmentToken, Gateway, GatewayGroup, Instance,
-		InstanceSetting, Invitation, IssuedCertificate, Lease, Membership, Org,
-		OrgSetting, PasswordReset, PolicyRule, PortAllocation, PortPool, PortQuota,
-		RecoveryCode, RevokedIdentity, Route, RouteHTTP, RouteHostname, RoutePolicy,
-		RouteTCP, RouteTarget, RouteUDP, SecretMeta, Session, TOTPCredential,
-		User []ent.Interceptor
+		InstanceSecret, InstanceSetting, Invitation, IssuedCertificate, Lease,
+		Membership, Org, OrgSetting, PasswordReset, PolicyRule, PortAllocation,
+		PortPool, PortQuota, RecoveryCode, RevokedIdentity, Route, RouteHTTP,
+		RouteHostname, RoutePolicy, RouteTCP, RouteTarget, RouteUDP, SecretMeta,
+		Session, TOTPCredential, User []ent.Interceptor
 	}
 )
 
