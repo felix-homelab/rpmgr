@@ -71,3 +71,4 @@ run:
   build-tags:
     - rpmgrtest
     - e2e # the container end-to-end harness in test/e2e
+    - realclients # the nightly real-client run against the gateway

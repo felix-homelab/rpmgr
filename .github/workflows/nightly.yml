@@ -1,5 +1,6 @@
 # Nightly correctness runs (docs/12-testing-and-quality.md, "Continuous integration"): govulncheck
-# against the latest vulnerability database, long fuzz runs, and the tests for riscv64 under QEMU.
+# against the latest vulnerability database, long fuzz runs, the tests for riscv64 under QEMU, and
+# real clients against the gateway's port 443.
 # Later Phase 1 slices add the full end-to-end matrix and the other nightly stages here. A failed
 # run opens an issue, or comments on the open one.
 name: nightly
@@ -56,8 +57,23 @@ jobs:
       - name: Tests on riscv64 under QEMU
         run: .github/scripts/check-test-arch.sh riscv64
 
+  real-clients:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - name: Go, curl, Chromium and Firefox against the port 443 router
+        env:
+          REQUIRE_DOCKER: "1"
+        run: .github/scripts/check-real-clients.sh
+
   report:
-    needs: [govulncheck, fuzz, riscv64]
+    needs: [govulncheck, fuzz, riscv64, real-clients]
     if: ${{ failure() }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
