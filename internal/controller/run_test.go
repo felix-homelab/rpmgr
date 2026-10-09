@@ -193,8 +193,9 @@ func (r *running) stop(t *testing.T) {
 }
 
 // TestRun: a running controller serves the trust bundle over the public URL's certificate with
-// HSTS, answers /dl/ from its release mirror, enrolls an agent at its agent endpoint, redirects
-// port 80, is ready on its admin listener and stops cleanly; a restart keeps its node identity.
+// HSTS, answers /dl/ from its release mirror, is backed up while it runs, enrolls an agent at its
+// agent endpoint, redirects port 80, is ready on its admin listener and stops cleanly; a restart
+// keeps its node identity.
 func TestRun(t *testing.T) {
 	r := startRun(t)
 	resp, err := r.client.Get(r.url + "/.well-known/rpmgr/trust-bundle")
@@ -231,6 +232,11 @@ func TestRun(t *testing.T) {
 	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusNotFound || resp.Header.Get("Content-Security-Policy") != "" {
 		t.Fatalf("/dl/: %s %v", resp.Status, resp.Header)
+	}
+
+	// A backup alongside the running controller, which holds the database's lifetime lock.
+	if _, err := controller.Backup(context.Background(), r.h.cfg, filepath.Join(t.TempDir(), "run.backup"), "0.1.0", time.Now); err != nil {
+		t.Fatalf("a backup while the controller runs: %v", err)
 	}
 
 	// Enrollment through the agent endpoint on the same port; the token is written alongside the

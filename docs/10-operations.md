@@ -392,6 +392,11 @@ affect agents take effect through reconciliation and show apply status like any 
   on SQLite, which runs while the controller keeps reading and writing
   ([S8](spikes/S8.md)), `pg_dump` on PostgreSQL (or the operator's own PostgreSQL backups).
   Secrets in the backup stay envelope-encrypted.
+  - **The archive:** one tar file, mode 0600, with `controller.db`, `revocations.log`,
+    `audit-checkpoints.log` (both without a line still being written) and `backup.json` (format,
+    version, time, trust domain, `db_epoch`).
+  - **Writing it:** it never overwrites a file, leaves nothing behind when it fails, and is
+    audited as `local-cli`.
 - **The KEK is backed up separately** and stored apart from database backups. A database backup
   without its KEK cannot be used to recover CA keys, ACME keys or other secrets; a KEK stored next
   to the backup defeats the encryption.
