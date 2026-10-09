@@ -36,6 +36,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/portallocation"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/portpool"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/portquota"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/recoverycode"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/revokedidentity"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/route"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routehostname"
@@ -47,6 +48,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/schema"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/secretmeta"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/session"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/totpcredential"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/user"
 
 	"entgo.io/ent"
@@ -1676,6 +1678,51 @@ func init() {
 			return nil
 		}
 	}()
+	recoverycodeMixin := schema.RecoveryCode{}.Mixin()
+	recoverycode.Policy = privacy.NewPolicies(recoverycodeMixin[0], schema.RecoveryCode{})
+	recoverycode.Hooks[0] = func(next ent.Mutator) ent.Mutator {
+		return ent.MutateFunc(func(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+			if err := recoverycode.Policy.EvalMutation(ctx, m); err != nil {
+				return nil, err
+			}
+			return next.Mutate(ctx, m)
+		})
+	}
+	recoverycodeMixinHooks0 := recoverycodeMixin[0].Hooks()
+
+	recoverycode.Hooks[1] = recoverycodeMixinHooks0[0]
+	recoverycodeMixinInters0 := recoverycodeMixin[0].Interceptors()
+	recoverycode.Interceptors[0] = recoverycodeMixinInters0[0]
+	recoverycodeFields := schema.RecoveryCode{}.Fields()
+	_ = recoverycodeFields
+	// recoverycodeDescUserID is the schema descriptor for user_id field.
+	recoverycodeDescUserID := recoverycodeFields[1].Descriptor()
+	// recoverycode.UserIDValidator is a validator for the "user_id" field. It is called by the builders before save.
+	recoverycode.UserIDValidator = recoverycodeDescUserID.Validators[0].(func(string) error)
+	// recoverycodeDescCodeHash is the schema descriptor for code_hash field.
+	recoverycodeDescCodeHash := recoverycodeFields[2].Descriptor()
+	// recoverycode.CodeHashValidator is a validator for the "code_hash" field. It is called by the builders before save.
+	recoverycode.CodeHashValidator = recoverycodeDescCodeHash.Validators[0].(func([]byte) error)
+	// recoverycodeDescID is the schema descriptor for id field.
+	recoverycodeDescID := recoverycodeFields[0].Descriptor()
+	// recoverycode.DefaultID holds the default value on creation for the id field.
+	recoverycode.DefaultID = recoverycodeDescID.Default.(func() string)
+	// recoverycode.IDValidator is a validator for the "id" field. It is called by the builders before save.
+	recoverycode.IDValidator = func() func(string) error {
+		validators := recoverycodeDescID.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(id string) error {
+			for _, fn := range fns {
+				if err := fn(id); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
 	revokedidentity.Policy = privacy.NewPolicies(schema.RevokedIdentity{})
 	revokedidentity.Hooks[0] = func(next ent.Mutator) ent.Mutator {
 		return ent.MutateFunc(func(ctx context.Context, m ent.Mutation) (ent.Value, error) {
@@ -2179,6 +2226,55 @@ func init() {
 	// session.IDValidator is a validator for the "id" field. It is called by the builders before save.
 	session.IDValidator = func() func(string) error {
 		validators := sessionDescID.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(id string) error {
+			for _, fn := range fns {
+				if err := fn(id); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	totpcredentialMixin := schema.TOTPCredential{}.Mixin()
+	totpcredential.Policy = privacy.NewPolicies(totpcredentialMixin[0], schema.TOTPCredential{})
+	totpcredential.Hooks[0] = func(next ent.Mutator) ent.Mutator {
+		return ent.MutateFunc(func(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+			if err := totpcredential.Policy.EvalMutation(ctx, m); err != nil {
+				return nil, err
+			}
+			return next.Mutate(ctx, m)
+		})
+	}
+	totpcredentialMixinHooks0 := totpcredentialMixin[0].Hooks()
+
+	totpcredential.Hooks[1] = totpcredentialMixinHooks0[0]
+	totpcredentialMixinInters0 := totpcredentialMixin[0].Interceptors()
+	totpcredential.Interceptors[0] = totpcredentialMixinInters0[0]
+	totpcredentialFields := schema.TOTPCredential{}.Fields()
+	_ = totpcredentialFields
+	// totpcredentialDescUserID is the schema descriptor for user_id field.
+	totpcredentialDescUserID := totpcredentialFields[1].Descriptor()
+	// totpcredential.UserIDValidator is a validator for the "user_id" field. It is called by the builders before save.
+	totpcredential.UserIDValidator = totpcredentialDescUserID.Validators[0].(func(string) error)
+	// totpcredentialDescSeedEnc is the schema descriptor for seed_enc field.
+	totpcredentialDescSeedEnc := totpcredentialFields[2].Descriptor()
+	// totpcredential.SeedEncValidator is a validator for the "seed_enc" field. It is called by the builders before save.
+	totpcredential.SeedEncValidator = totpcredentialDescSeedEnc.Validators[0].(func([]byte) error)
+	// totpcredentialDescLastStep is the schema descriptor for last_step field.
+	totpcredentialDescLastStep := totpcredentialFields[5].Descriptor()
+	// totpcredential.DefaultLastStep holds the default value on creation for the last_step field.
+	totpcredential.DefaultLastStep = totpcredentialDescLastStep.Default.(int64)
+	// totpcredentialDescID is the schema descriptor for id field.
+	totpcredentialDescID := totpcredentialFields[0].Descriptor()
+	// totpcredential.DefaultID holds the default value on creation for the id field.
+	totpcredential.DefaultID = totpcredentialDescID.Default.(func() string)
+	// totpcredential.IDValidator is a validator for the "id" field. It is called by the builders before save.
+	totpcredential.IDValidator = func() func(string) error {
+		validators := totpcredentialDescID.Validators
 		fns := [...]func(string) error{
 			validators[0].(func(string) error),
 			validators[1].(func(string) error),

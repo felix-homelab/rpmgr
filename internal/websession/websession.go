@@ -11,6 +11,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"slices"
 	"time"
 
 	"github.com/felix-homelab/rpmgr/internal/revlog"
@@ -102,6 +103,34 @@ func (s *Sessions) Lookup(tok string) (*ent.Session, error) {
 		}
 	}
 	return sess, nil
+}
+
+// Elevate records a step-up of a live session, which counts until window from now, adds how the
+// user authenticated to the session's methods, and gives the session a new token, which it
+// returns (docs/04-security.md: sessions rotate at step-up).
+func (s *Sessions) Elevate(id, method string, window time.Duration) (string, *ent.Session, error) {
+	tok, err := token.New(token.Session)
+	if err != nil {
+		return "", nil, err
+	}
+	now := s.o.Now()
+	sess, err := s.o.DB.Client().Session.Get(s.o.Sys, id)
+	if err != nil {
+		return "", nil, err
+	}
+	if !live(sess, now) {
+		return "", nil, ErrNoSession
+	}
+	amr := sess.Amr
+	if !slices.Contains(amr, method) {
+		amr = append(amr, method)
+	}
+	sess, err = s.o.DB.Client().Session.UpdateOneID(id).SetTokenHash(token.Hash(tok)).SetElevatedUntil(now.Add(window)).
+		SetAmr(amr).Save(s.o.Sys)
+	if err != nil {
+		return "", nil, err
+	}
+	return tok, sess, nil
 }
 
 // List returns a user's live sessions, newest first.

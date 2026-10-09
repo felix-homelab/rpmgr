@@ -203,3 +203,28 @@ func TestAuthenticate(t *testing.T) {
 		t.Fatalf("a disabled user: %v", err)
 	}
 }
+
+// TestSessions_Elevate: a step-up gives the session a new token, the old one stops working, the
+// step-up's end and method are recorded; a revoked session cannot step up.
+func TestSessions_Elevate(t *testing.T) {
+	e := newEnv(t)
+	tok, sess, _ := e.s.Create(e.ada, []string{"pwd"}, "", "")
+	next, up, err := e.s.Elevate(sess.ID, "otp", 10*time.Minute)
+	if err != nil || next == tok || up.ElevatedUntil == nil || !up.ElevatedUntil.Equal(e.clock.Add(10*time.Minute)) ||
+		strings.Join(up.Amr, ",") != "pwd,otp" {
+		t.Fatalf("%+v %v", up, err)
+	}
+	if _, err := e.s.Lookup(tok); !errors.Is(err, websession.ErrNoSession) {
+		t.Fatal("the old token still works")
+	}
+	if _, err := e.s.Lookup(next); err != nil {
+		t.Fatal(err)
+	}
+	if _, up, _ := e.s.Elevate(sess.ID, "otp", time.Minute); strings.Join(up.Amr, ",") != "pwd,otp" {
+		t.Fatalf("a method recorded twice: %v", up.Amr)
+	}
+	_ = e.s.Revoke(e.ada, sess.ID, e.ada)
+	if _, _, err := e.s.Elevate(sess.ID, "pwd", time.Minute); !errors.Is(err, websession.ErrNoSession) {
+		t.Fatalf("a revoked session: %v", err)
+	}
+}

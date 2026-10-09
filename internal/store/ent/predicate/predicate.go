@@ -96,6 +96,9 @@ type PortPool func(*sql.Selector)
 // PortQuota is the predicate function for portquota builders.
 type PortQuota func(*sql.Selector)
 
+// RecoveryCode is the predicate function for recoverycode builders.
+type RecoveryCode func(*sql.Selector)
+
 // RevokedIdentity is the predicate function for revokedidentity builders.
 type RevokedIdentity func(*sql.Selector)
 
@@ -125,6 +128,9 @@ type SecretMeta func(*sql.Selector)
 
 // Session is the predicate function for session builders.
 type Session func(*sql.Selector)
+
+// TOTPCredential is the predicate function for totpcredential builders.
+type TOTPCredential func(*sql.Selector)
 
 // User is the predicate function for user builders.
 type User func(*sql.Selector)

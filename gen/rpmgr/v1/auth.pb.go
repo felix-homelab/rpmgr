@@ -159,7 +159,10 @@ type LoginRequest struct {
 	// The e-mail address.
 	Email string `protobuf:"bytes,1,opt,name=email,proto3" json:"email,omitempty"`
 	// The password.
-	Password      string `protobuf:"bytes,2,opt,name=password,proto3" json:"password,omitempty"`
+	Password string `protobuf:"bytes,2,opt,name=password,proto3" json:"password,omitempty"`
+	// A code of the user's authenticator, or one of their recovery codes; needed, with reason
+	// MFA_REQUIRED, once the user has an authenticator.
+	SecondFactor  string `protobuf:"bytes,3,opt,name=second_factor,json=secondFactor,proto3" json:"second_factor,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -204,6 +207,13 @@ func (x *LoginRequest) GetEmail() string {
 func (x *LoginRequest) GetPassword() string {
 	if x != nil {
 		return x.Password
+	}
+	return ""
+}
+
+func (x *LoginRequest) GetSecondFactor() string {
+	if x != nil {
+		return x.SecondFactor
 	}
 	return ""
 }
@@ -795,6 +805,107 @@ func (*RevokeSessionResponse) Descriptor() ([]byte, []int) {
 	return file_rpmgr_v1_auth_proto_rawDescGZIP(), []int{13}
 }
 
+// StepUpRequest is the password, or a second factor once the user has an authenticator.
+type StepUpRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The password; for a user without an authenticator.
+	Password string `protobuf:"bytes,1,opt,name=password,proto3" json:"password,omitempty"`
+	// A code of the user's authenticator or a recovery code.
+	SecondFactor  string `protobuf:"bytes,2,opt,name=second_factor,json=secondFactor,proto3" json:"second_factor,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *StepUpRequest) Reset() {
+	*x = StepUpRequest{}
+	mi := &file_rpmgr_v1_auth_proto_msgTypes[14]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *StepUpRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*StepUpRequest) ProtoMessage() {}
+
+func (x *StepUpRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_rpmgr_v1_auth_proto_msgTypes[14]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use StepUpRequest.ProtoReflect.Descriptor instead.
+func (*StepUpRequest) Descriptor() ([]byte, []int) {
+	return file_rpmgr_v1_auth_proto_rawDescGZIP(), []int{14}
+}
+
+func (x *StepUpRequest) GetPassword() string {
+	if x != nil {
+		return x.Password
+	}
+	return ""
+}
+
+func (x *StepUpRequest) GetSecondFactor() string {
+	if x != nil {
+		return x.SecondFactor
+	}
+	return ""
+}
+
+// StepUpResponse is when the step-up stops counting.
+type StepUpResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The end of the step-up.
+	ExpireTime    *timestamppb.Timestamp `protobuf:"bytes,1,opt,name=expire_time,json=expireTime,proto3" json:"expire_time,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *StepUpResponse) Reset() {
+	*x = StepUpResponse{}
+	mi := &file_rpmgr_v1_auth_proto_msgTypes[15]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *StepUpResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*StepUpResponse) ProtoMessage() {}
+
+func (x *StepUpResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_rpmgr_v1_auth_proto_msgTypes[15]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use StepUpResponse.ProtoReflect.Descriptor instead.
+func (*StepUpResponse) Descriptor() ([]byte, []int) {
+	return file_rpmgr_v1_auth_proto_rawDescGZIP(), []int{15}
+}
+
+func (x *StepUpResponse) GetExpireTime() *timestamppb.Timestamp {
+	if x != nil {
+		return x.ExpireTime
+	}
+	return nil
+}
+
 var File_rpmgr_v1_auth_proto protoreflect.FileDescriptor
 
 const file_rpmgr_v1_auth_proto_rawDesc = "" +
@@ -807,11 +918,12 @@ const file_rpmgr_v1_auth_proto_rawDesc = "" +
 	"\fdisplay_name\x18\x04 \x01(\tB\a\xbaH\x04r\x02\x18dR\vdisplayName\"N\n" +
 	"\x1dCompletePasswordResetResponse\x12\x17\n" +
 	"\auser_id\x18\x01 \x01(\tR\x06userId\x12\x14\n" +
-	"\x05email\x18\x02 \x01(\tR\x05email\"\\\n" +
+	"\x05email\x18\x02 \x01(\tR\x05email\"\x8e\x01\n" +
 	"\fLoginRequest\x12 \n" +
 	"\x05email\x18\x01 \x01(\tB\n" +
 	"\xbaH\ar\x05\x10\x01\x18\xfe\x01R\x05email\x12*\n" +
-	"\bpassword\x18\x02 \x01(\tB\x0e\xbaH\ar\x05\x10\x01\x18\x80\x02\x88\xb5\x18\x01R\bpassword\"U\n" +
+	"\bpassword\x18\x02 \x01(\tB\x0e\xbaH\ar\x05\x10\x01\x18\x80\x02\x88\xb5\x18\x01R\bpassword\x120\n" +
+	"\rsecond_factor\x18\x03 \x01(\tB\v\xbaH\x04r\x02\x18@\x88\xb5\x18\x01R\fsecondFactor\"U\n" +
 	"\rLoginResponse\x12\x17\n" +
 	"\auser_id\x18\x01 \x01(\tR\x06userId\x12+\n" +
 	"\asession\x18\x02 \x01(\v2\x11.rpmgr.v1.SessionR\asession\"\x0f\n" +
@@ -847,10 +959,18 @@ const file_rpmgr_v1_auth_proto_rawDesc = "" +
 	"\x14RevokeSessionRequest\x12&\n" +
 	"\n" +
 	"session_id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\tsessionId\"\x17\n" +
-	"\x15RevokeSessionResponse2\xce\x04\n" +
+	"\x15RevokeSessionResponse\"k\n" +
+	"\rStepUpRequest\x12(\n" +
+	"\bpassword\x18\x01 \x01(\tB\f\xbaH\x05r\x03\x18\x80\x02\x88\xb5\x18\x01R\bpassword\x120\n" +
+	"\rsecond_factor\x18\x02 \x01(\tB\v\xbaH\x04r\x02\x18@\x88\xb5\x18\x01R\fsecondFactor\"M\n" +
+	"\x0eStepUpResponse\x12;\n" +
+	"\vexpire_time\x18\x01 \x01(\v2\x1a.google.protobuf.TimestampR\n" +
+	"expireTime2\xa0\x05\n" +
 	"\vAuthService\x12F\n" +
 	"\x05Login\x12\x16.rpmgr.v1.LoginRequest\x1a\x17.rpmgr.v1.LoginResponse\"\f\x8a\xb5\x18\b\n" +
 	"\x06public\x12P\n" +
+	"\x06StepUp\x12\x17.rpmgr.v1.StepUpRequest\x1a\x18.rpmgr.v1.StepUpResponse\"\x13\x8a\xb5\x18\x0f\n" +
+	"\rauthenticated\x12P\n" +
 	"\x06Logout\x12\x17.rpmgr.v1.LogoutRequest\x1a\x18.rpmgr.v1.LogoutResponse\"\x13\x8a\xb5\x18\x0f\n" +
 	"\rauthenticated\x12_\n" +
 	"\n" +
@@ -875,7 +995,7 @@ func file_rpmgr_v1_auth_proto_rawDescGZIP() []byte {
 	return file_rpmgr_v1_auth_proto_rawDescData
 }
 
-var file_rpmgr_v1_auth_proto_msgTypes = make([]protoimpl.MessageInfo, 14)
+var file_rpmgr_v1_auth_proto_msgTypes = make([]protoimpl.MessageInfo, 16)
 var file_rpmgr_v1_auth_proto_goTypes = []any{
 	(*CompletePasswordResetRequest)(nil),  // 0: rpmgr.v1.CompletePasswordResetRequest
 	(*CompletePasswordResetResponse)(nil), // 1: rpmgr.v1.CompletePasswordResetResponse
@@ -891,34 +1011,39 @@ var file_rpmgr_v1_auth_proto_goTypes = []any{
 	(*ListSessionsResponse)(nil),          // 11: rpmgr.v1.ListSessionsResponse
 	(*RevokeSessionRequest)(nil),          // 12: rpmgr.v1.RevokeSessionRequest
 	(*RevokeSessionResponse)(nil),         // 13: rpmgr.v1.RevokeSessionResponse
-	(*timestamppb.Timestamp)(nil),         // 14: google.protobuf.Timestamp
+	(*StepUpRequest)(nil),                 // 14: rpmgr.v1.StepUpRequest
+	(*StepUpResponse)(nil),                // 15: rpmgr.v1.StepUpResponse
+	(*timestamppb.Timestamp)(nil),         // 16: google.protobuf.Timestamp
 }
 var file_rpmgr_v1_auth_proto_depIdxs = []int32{
 	9,  // 0: rpmgr.v1.LoginResponse.session:type_name -> rpmgr.v1.Session
 	8,  // 1: rpmgr.v1.GetSessionResponse.memberships:type_name -> rpmgr.v1.Membership
 	9,  // 2: rpmgr.v1.GetSessionResponse.session:type_name -> rpmgr.v1.Session
-	14, // 3: rpmgr.v1.Session.create_time:type_name -> google.protobuf.Timestamp
-	14, // 4: rpmgr.v1.Session.last_seen_time:type_name -> google.protobuf.Timestamp
-	14, // 5: rpmgr.v1.Session.idle_expire_time:type_name -> google.protobuf.Timestamp
-	14, // 6: rpmgr.v1.Session.expire_time:type_name -> google.protobuf.Timestamp
+	16, // 3: rpmgr.v1.Session.create_time:type_name -> google.protobuf.Timestamp
+	16, // 4: rpmgr.v1.Session.last_seen_time:type_name -> google.protobuf.Timestamp
+	16, // 5: rpmgr.v1.Session.idle_expire_time:type_name -> google.protobuf.Timestamp
+	16, // 6: rpmgr.v1.Session.expire_time:type_name -> google.protobuf.Timestamp
 	9,  // 7: rpmgr.v1.ListSessionsResponse.sessions:type_name -> rpmgr.v1.Session
-	2,  // 8: rpmgr.v1.AuthService.Login:input_type -> rpmgr.v1.LoginRequest
-	4,  // 9: rpmgr.v1.AuthService.Logout:input_type -> rpmgr.v1.LogoutRequest
-	6,  // 10: rpmgr.v1.AuthService.GetSession:input_type -> rpmgr.v1.GetSessionRequest
-	10, // 11: rpmgr.v1.AuthService.ListSessions:input_type -> rpmgr.v1.ListSessionsRequest
-	12, // 12: rpmgr.v1.AuthService.RevokeSession:input_type -> rpmgr.v1.RevokeSessionRequest
-	0,  // 13: rpmgr.v1.AuthService.CompletePasswordReset:input_type -> rpmgr.v1.CompletePasswordResetRequest
-	3,  // 14: rpmgr.v1.AuthService.Login:output_type -> rpmgr.v1.LoginResponse
-	5,  // 15: rpmgr.v1.AuthService.Logout:output_type -> rpmgr.v1.LogoutResponse
-	7,  // 16: rpmgr.v1.AuthService.GetSession:output_type -> rpmgr.v1.GetSessionResponse
-	11, // 17: rpmgr.v1.AuthService.ListSessions:output_type -> rpmgr.v1.ListSessionsResponse
-	13, // 18: rpmgr.v1.AuthService.RevokeSession:output_type -> rpmgr.v1.RevokeSessionResponse
-	1,  // 19: rpmgr.v1.AuthService.CompletePasswordReset:output_type -> rpmgr.v1.CompletePasswordResetResponse
-	14, // [14:20] is the sub-list for method output_type
-	8,  // [8:14] is the sub-list for method input_type
-	8,  // [8:8] is the sub-list for extension type_name
-	8,  // [8:8] is the sub-list for extension extendee
-	0,  // [0:8] is the sub-list for field type_name
+	16, // 8: rpmgr.v1.StepUpResponse.expire_time:type_name -> google.protobuf.Timestamp
+	2,  // 9: rpmgr.v1.AuthService.Login:input_type -> rpmgr.v1.LoginRequest
+	14, // 10: rpmgr.v1.AuthService.StepUp:input_type -> rpmgr.v1.StepUpRequest
+	4,  // 11: rpmgr.v1.AuthService.Logout:input_type -> rpmgr.v1.LogoutRequest
+	6,  // 12: rpmgr.v1.AuthService.GetSession:input_type -> rpmgr.v1.GetSessionRequest
+	10, // 13: rpmgr.v1.AuthService.ListSessions:input_type -> rpmgr.v1.ListSessionsRequest
+	12, // 14: rpmgr.v1.AuthService.RevokeSession:input_type -> rpmgr.v1.RevokeSessionRequest
+	0,  // 15: rpmgr.v1.AuthService.CompletePasswordReset:input_type -> rpmgr.v1.CompletePasswordResetRequest
+	3,  // 16: rpmgr.v1.AuthService.Login:output_type -> rpmgr.v1.LoginResponse
+	15, // 17: rpmgr.v1.AuthService.StepUp:output_type -> rpmgr.v1.StepUpResponse
+	5,  // 18: rpmgr.v1.AuthService.Logout:output_type -> rpmgr.v1.LogoutResponse
+	7,  // 19: rpmgr.v1.AuthService.GetSession:output_type -> rpmgr.v1.GetSessionResponse
+	11, // 20: rpmgr.v1.AuthService.ListSessions:output_type -> rpmgr.v1.ListSessionsResponse
+	13, // 21: rpmgr.v1.AuthService.RevokeSession:output_type -> rpmgr.v1.RevokeSessionResponse
+	1,  // 22: rpmgr.v1.AuthService.CompletePasswordReset:output_type -> rpmgr.v1.CompletePasswordResetResponse
+	16, // [16:23] is the sub-list for method output_type
+	9,  // [9:16] is the sub-list for method input_type
+	9,  // [9:9] is the sub-list for extension type_name
+	9,  // [9:9] is the sub-list for extension extendee
+	0,  // [0:9] is the sub-list for field type_name
 }
 
 func init() { file_rpmgr_v1_auth_proto_init() }
@@ -933,7 +1058,7 @@ func file_rpmgr_v1_auth_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_rpmgr_v1_auth_proto_rawDesc), len(file_rpmgr_v1_auth_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   14,
+			NumMessages:   16,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

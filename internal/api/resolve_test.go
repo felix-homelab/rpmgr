@@ -63,3 +63,25 @@ func TestStoreOperatorsMayEnroll(t *testing.T) {
 		t.Fatalf("another org: %v %v", ok, err)
 	}
 }
+
+// TestStoreRequireMFA: the org policy is off by default and read per org.
+func TestStoreRequireMFA(t *testing.T) {
+	db := storetest.Migrated(t, store.SQLite)
+	storetest.Init(t, db)
+	sys := storetest.SystemCtx(t)
+	orgA, orgB := storetest.Org(t, db, "org-a"), storetest.Org(t, db, "org-b")
+	need := api.StoreRequireMFA(db, sys)
+	if ok, err := need(context.Background(), orgA); err != nil || ok {
+		t.Fatalf("by default: %v %v", ok, err)
+	}
+	if _, err := settings.UpdateOrg(sys, db, orgA, &rpmgrv1.OrgSettings{RequireMfa: proto.Bool(true)},
+		&fieldmaskpb.FieldMask{Paths: []string{"require_mfa"}}, 0); err != nil {
+		t.Fatal(err)
+	}
+	if ok, err := need(context.Background(), orgA); err != nil || !ok {
+		t.Fatalf("required: %v %v", ok, err)
+	}
+	if ok, err := need(context.Background(), orgB); err != nil || ok {
+		t.Fatalf("another org: %v %v", ok, err)
+	}
+}
