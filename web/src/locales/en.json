@@ -183,5 +183,41 @@
     "count": "{{from}}–{{to}} of {{total}}",
     "previous": "Previous",
     "next": "Next"
+  },
+  "route": {
+    "title": "Route {{name}} ({{type}})",
+    "notFound": "This route does not exist, or you cannot see it.",
+    "desired": "Configured",
+    "observed": "Observed",
+    "enabled": "enabled",
+    "disabled": "disabled",
+    "group": "gateway group {{name}}",
+    "gateways": "served by {{serving}} of {{total}} gateways",
+    "mtu": "UDP datagrams travel as QUIC datagrams up to about 1240 bytes, or 1412 bytes once path-MTU discovery has run. Larger ones go over the flow's stream: delivered reliably, but one late packet holds up those after it.",
+    "targets": "Targets",
+    "columns": {
+      "connector": "Connector",
+      "address": "Address",
+      "weight": "Weight",
+      "state": "Status"
+    },
+    "noTargets": "The route has no targets.",
+    "targetReady": "ready",
+    "targetDisabled": "disabled",
+    "fallback": "served over TLS and HTTP/2, the fallback for QUIC",
+    "runOn": "Run on the host of {{connector}}:",
+    "gatewaysTitle": "Gateways not serving",
+    "rejections": "Rejected by",
+    "noReason": "no reason given"
+  },
+  "notServing": {
+    "BLOCKED_BY_LOCAL_POLICY": "blocked by the connector's local policy",
+    "POLICY_INVALID": "the connector's local policy does not load",
+    "PORT_IN_USE": "the port is in use on the gateway",
+    "TRANSPORT_UNAVAILABLE": "no data session over the route's transport",
+    "ENVIRONMENT": "the host cannot serve it",
+    "OFFLINE": "offline",
+    "DISABLED": "disabled",
+    "NO_DATA_SESSION": "no data session to the connector"
   }
 }

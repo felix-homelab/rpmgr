@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
-import { getRouteApi, useNavigate } from "@tanstack/react-router";
+import { getRouteApi, Link, useNavigate } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 import { RouteStateChip, routeStateKey, routeStateKeys } from "@/components/route-state";
 import { Button } from "@/components/ui/button";
@@ -80,7 +80,7 @@ export function Routes() {
             {rows.map((r) => (
               <tr key={r.id} className="border-t border-border align-top">
                 <td className="py-2">
-                  <div className="font-medium">{r.name}</div>
+                  <Link to="/routes/$routeId" params={{ routeId: r.id }} className="font-medium underline-offset-2 hover:underline">{r.name}</Link>
                   {routeAddress(r).map((a) => <div key={a} className="text-muted-foreground">{a}</div>)}
                 </td>
                 <td className="py-2">{t(`routeType.${routeType(r) || "unknown"}`)}</td>

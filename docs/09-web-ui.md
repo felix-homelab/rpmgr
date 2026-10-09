@@ -119,6 +119,19 @@ flowchart LR
 └─────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
+**How the detail works.**
+- It shows the configured settings next to the observed state (U3), and how many of the group's
+  gateways serve the route.
+- **Each target** shows its connector by name, its address and weight, and whether it serves; if
+  not, it says why.
+- **A target that a connector's local policy blocks** shows the command for that connector's host,
+  with a copy button (U4). The target is shell-quoted, for example a socket path with a space.
+- **A target whose connector reaches the gateways only over TLS and HTTP/2** is marked as served
+  over the fallback for QUIC. A route pinned to HTTP/2 is not marked.
+- **Gateways that do not serve the route, and agents that rejected it,** are listed with their
+  reasons.
+- UDP routes show the MTU hint of [03](03-connections.md#udp-routes).
+
 ### Enroll connector dialog
 
 ```
