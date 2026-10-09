@@ -80,6 +80,15 @@ restarts, kills and network impairment are real.
 controller database restarts, and clock jumps, while a load generator checks integrity and the
 "0 resets on unchanged routes" invariant.
 
+- **As built (`TestChaos`):** routes on each transport, through both gateways, carry a load
+  generator's traffic, which fails the test on any byte that comes back changed. A seeded random
+  sequence of events runs for six minutes; `E2E_CHAOS_SEED` repeats a run and
+  `E2E_CHAOS_DURATION` changes its length.
+- **Soft events:** controller restarts, clock jumps of up to five minutes either way, and latency
+  spikes. A connection held through one gateway and one connector must survive each of them.
+- **Hard events:** gateway and connector kills, and loss and reordering bursts. These may reset the
+  connections through the process they hit. Afterwards every route answers again.
+
 **Where the cells run.** The in-process integration tests live in `internal/itest`, the container
 tests in `test/e2e` (Docker Compose, `tc netem`, IPv4 and IPv6). The browser tests of the web UI
 live in `web/e2e` and run with Playwright against an all-in-one in the process of `test/webe2e`. The
@@ -87,10 +96,23 @@ browser trusts the key of that all-in-one's UI certificate only; it does not ign
 errors. Every component of an in-process test, and every service of the API tests, logs at the debug
 level to a sink that fails the test when a line holds a secret (`TestSecretsNeverLogged`). Each
 feature adds its cells to the per-PR subset when it is built; the nightly run covers the full
-cross-product. Cells that need a controlled clock (certificate expiry and grace re-authentication,
-clock skew) run in-process with real traffic and a fake clock; clock jumps in chaos tests use the
-clock-offset hook of the `rpmgrtest` build. Before the public API exists, end-to-end tests seed
-their configuration with the `rpmgrtest` seeding command
+cross-product. [R] As built (`TestMatrix`, `E2E_FULL=1` in the nightly run):
+- **A cell per scenario:** a tcp, a udp, two http routes (HTTP/1.1, HTTP/2 and WebSocket clients;
+  gRPC to an h2c upstream) and a `tls_passthrough` route, each on `auto`, `quic` and `h2`. Both
+  connectors serve them, and both gateways are checked.
+- **Scenarios run:** steady state, unrelated and same-route changes, route removal, gateway drain
+  and kill, controller down, controller restore, tightened access, and the local-policy block and
+  reload.
+- **Their own per-PR cells:** connector revocation, which would leave one connector for the rest,
+  and UDP blackholed mid-session, which needs a connector without `h2` links: its window budget
+  leaves no room for an `auto` link's fallback to TLS next to an `h2` link.
+- **`apply_status`:** checked by the in-process tests, which have the API.
+
+Cells that need a controlled clock (certificate expiry and grace re-authentication, clock skew) run
+in-process with real traffic and a fake clock. Clock jumps in chaos tests use the clock-offset hook
+of the `rpmgrtest` build: the roles add the duration in the file that `RPMGR_TEST_CLOCK_FILE` names
+to their clock. Before the public API exists, end-to-end tests seed their configuration with the
+`rpmgrtest` seeding command
 ([D60](14-open-decisions.md#security-defaults)): `rpmgr testseed` creates gateways with their
 enrollment tokens, connector tokens, and tcp, udp, http and tls_passthrough routes (http routes with
 verified domains, uploaded certificates and HTTP, h2c or verified HTTPS upstreams), sets a route's

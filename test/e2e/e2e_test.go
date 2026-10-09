@@ -75,7 +75,7 @@ func TestMain(m *testing.M) {
 
 // command runs name with args in here and returns its combined output.
 func command(name string, args ...string) (string, error) {
-	cmd := exec.Command(name, args...)
+	cmd := exec.Command(name, args...) //nolint:gosec // G702: the test's own docker commands, with its own arguments
 	cmd.Dir = here
 	cmd.Env = append(os.Environ(), "E2E_RUN="+run, "E2E_UID="+strconv.Itoa(os.Getuid()), "E2E_GID="+strconv.Itoa(os.Getgid()))
 	var out bytes.Buffer
@@ -281,7 +281,7 @@ func webCertificate() error {
 	} {
 		names := []string{c.cn}
 		if c.file == "backend" {
-			names = []string{"svc", "pt.e2e.test"}
+			names = []string{"svc", "pt.e2e.test", "*.pt.e2e.test"} // the matrix's passthrough routes too
 		}
 		crt, key, err := issue(c.cn, names...)
 		if err != nil {
