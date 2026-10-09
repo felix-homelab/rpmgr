@@ -40,7 +40,8 @@ var leakSkip = []string{"rpmgr.v1.AuthService.Logout"}
 // stepped up, calls every method of every rpmgr.v1 service but the public ones, its request filled
 // with the IDs of org A's resources and members. Every method on an org of A's answers NOT_FOUND,
 // not PERMISSION_DENIED, so existence does not leak; called on org B with A's other IDs, no answer
-// holds anything of org A; and afterwards no row of org A has changed.
+// holds anything of org A, and a method outside orgs never succeeds on A's IDs; and afterwards no
+// row of org A has changed.
 func TestCrossTenantLeaks(t *testing.T) {
 	var link string
 	r := startRunWith(t, runSetup{prepare: func(r *running) { link = r.firstUserLink }})
@@ -123,7 +124,7 @@ func TestCrossTenantLeaks(t *testing.T) {
 						ids[k] = v
 					}
 					ids["org_id"] = org
-					req, missing := request(md.Input(), ids)
+					req, missing, named := request(md.Input(), ids)
 					if missing != "" {
 						t.Errorf("%s: no org A value for %s; add one to the suite's fixtures", md.FullName(), missing)
 						continue
@@ -134,6 +135,8 @@ func TestCrossTenantLeaks(t *testing.T) {
 					switch {
 					case orgScoped && org == orgA && code != connect.CodeNotFound:
 						t.Errorf("%s: %v, want NOT_FOUND", label, code)
+					case !orgScoped && named && code == 0:
+						t.Errorf("%s: succeeded on org A's IDs", label)
 					case slices.ContainsFunc(secrets, func(s string) bool { return s != "" && strings.Contains(body, s) }):
 						t.Errorf("%s: the answer holds org A's data: %s", label, body)
 					}
@@ -156,8 +159,9 @@ func TestCrossTenantLeaks(t *testing.T) {
 }
 
 // request is a request of a method's input type with every ID field the suite knows filled in,
-// in nested messages too; missing names an ID field it has no value for.
-func request(md protoreflect.MessageDescriptor, ids map[string]string) (*dynamicpb.Message, string) {
+// in nested messages too; missing names an ID field it has no value for; named reports whether any
+// field was filled.
+func request(md protoreflect.MessageDescriptor, ids map[string]string) (_ *dynamicpb.Message, missing string, named bool) {
 	m := dynamicpb.NewMessage(md)
 	fields := md.Fields()
 	for i := range fields.Len() {
@@ -167,19 +171,21 @@ func request(md protoreflect.MessageDescriptor, ids map[string]string) (*dynamic
 		case fd.Kind() == protoreflect.StringKind && !fd.IsList() && strings.HasSuffix(name, "_id") && name != "request_id":
 			v, ok := ids[name]
 			if !ok {
-				return nil, string(fd.FullName())
+				return nil, string(fd.FullName()), false
 			}
 			m.Set(fd, protoreflect.ValueOfString(v))
+			named = true
 		case fd.Kind() == protoreflect.MessageKind && !fd.IsList() && !fd.IsMap() && fd.Message().Fields().ByName("id") != nil:
 			v, ok := ids[name+"_id"]
 			if !ok {
-				return nil, string(fd.FullName()) + ".id"
+				return nil, string(fd.FullName()) + ".id", false
 			}
 			sub := m.Mutable(fd).Message()
 			sub.Set(sub.Descriptor().Fields().ByName("id"), protoreflect.ValueOfString(v))
+			named = true
 		}
 	}
-	return m, ""
+	return m, "", named
 }
 
 // call invokes a method with a dynamic request and returns its code, 0 for success, and the

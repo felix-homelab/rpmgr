@@ -35,6 +35,18 @@ const (
 // reflection-formatted method names, remove the leading slash and convert the remaining slash to a
 // period.
 const (
+	// UserServiceGetMeProcedure is the fully-qualified name of the UserService's GetMe RPC.
+	UserServiceGetMeProcedure = "/rpmgr.v1.UserService/GetMe"
+	// UserServiceUpdateMeProcedure is the fully-qualified name of the UserService's UpdateMe RPC.
+	UserServiceUpdateMeProcedure = "/rpmgr.v1.UserService/UpdateMe"
+	// UserServiceChangePasswordProcedure is the fully-qualified name of the UserService's
+	// ChangePassword RPC.
+	UserServiceChangePasswordProcedure = "/rpmgr.v1.UserService/ChangePassword"
+	// UserServiceListUsersProcedure is the fully-qualified name of the UserService's ListUsers RPC.
+	UserServiceListUsersProcedure = "/rpmgr.v1.UserService/ListUsers"
+	// UserServiceCreatePasswordResetLinkProcedure is the fully-qualified name of the UserService's
+	// CreatePasswordResetLink RPC.
+	UserServiceCreatePasswordResetLinkProcedure = "/rpmgr.v1.UserService/CreatePasswordResetLink"
 	// UserServiceEnrollTOTPProcedure is the fully-qualified name of the UserService's EnrollTOTP RPC.
 	UserServiceEnrollTOTPProcedure = "/rpmgr.v1.UserService/EnrollTOTP"
 	// UserServiceConfirmTOTPProcedure is the fully-qualified name of the UserService's ConfirmTOTP RPC.
@@ -48,6 +60,19 @@ const (
 
 // UserServiceClient is a client for the rpmgr.v1.UserService service.
 type UserServiceClient interface {
+	// GetMe returns the caller's account.
+	GetMe(context.Context, *connect.Request[v1.GetMeRequest]) (*connect.Response[v1.GetMeResponse], error)
+	// UpdateMe changes the caller's display name.
+	UpdateMe(context.Context, *connect.Request[v1.UpdateMeRequest]) (*connect.Response[v1.UpdateMeResponse], error)
+	// ChangePassword sets a new password after checking the current one; the caller's other
+	// sessions end.
+	ChangePassword(context.Context, *connect.Request[v1.ChangePasswordRequest]) (*connect.Response[v1.ChangePasswordResponse], error)
+	// ListUsers lists every user of the instance, for the Instance Admin.
+	ListUsers(context.Context, *connect.Request[v1.ListUsersRequest]) (*connect.Response[v1.ListUsersResponse], error)
+	// CreatePasswordResetLink returns a one-time link that sets a user's password: the Instance
+	// Admin's for any user, an Owner's or Admin's for a member of their org (an Admin's not for an
+	// Owner). A user the caller may not reset is not found.
+	CreatePasswordResetLink(context.Context, *connect.Request[v1.CreatePasswordResetLinkRequest]) (*connect.Response[v1.CreatePasswordResetLinkResponse], error)
 	// EnrollTOTP creates an authenticator secret for the caller, replacing one not confirmed yet;
 	// it counts once ConfirmTOTP accepted a code of it.
 	EnrollTOTP(context.Context, *connect.Request[v1.EnrollTOTPRequest]) (*connect.Response[v1.EnrollTOTPResponse], error)
@@ -73,6 +98,38 @@ func NewUserServiceClient(httpClient connect.HTTPClient, baseURL string, opts ..
 	baseURL = strings.TrimRight(baseURL, "/")
 	userServiceMethods := v1.File_rpmgr_v1_user_proto.Services().ByName("UserService").Methods()
 	return &userServiceClient{
+		getMe: connect.NewClient[v1.GetMeRequest, v1.GetMeResponse](
+			httpClient,
+			baseURL+UserServiceGetMeProcedure,
+			connect.WithSchema(userServiceMethods.ByName("GetMe")),
+			connect.WithIdempotency(connect.IdempotencyNoSideEffects),
+			connect.WithClientOptions(opts...),
+		),
+		updateMe: connect.NewClient[v1.UpdateMeRequest, v1.UpdateMeResponse](
+			httpClient,
+			baseURL+UserServiceUpdateMeProcedure,
+			connect.WithSchema(userServiceMethods.ByName("UpdateMe")),
+			connect.WithClientOptions(opts...),
+		),
+		changePassword: connect.NewClient[v1.ChangePasswordRequest, v1.ChangePasswordResponse](
+			httpClient,
+			baseURL+UserServiceChangePasswordProcedure,
+			connect.WithSchema(userServiceMethods.ByName("ChangePassword")),
+			connect.WithClientOptions(opts...),
+		),
+		listUsers: connect.NewClient[v1.ListUsersRequest, v1.ListUsersResponse](
+			httpClient,
+			baseURL+UserServiceListUsersProcedure,
+			connect.WithSchema(userServiceMethods.ByName("ListUsers")),
+			connect.WithIdempotency(connect.IdempotencyNoSideEffects),
+			connect.WithClientOptions(opts...),
+		),
+		createPasswordResetLink: connect.NewClient[v1.CreatePasswordResetLinkRequest, v1.CreatePasswordResetLinkResponse](
+			httpClient,
+			baseURL+UserServiceCreatePasswordResetLinkProcedure,
+			connect.WithSchema(userServiceMethods.ByName("CreatePasswordResetLink")),
+			connect.WithClientOptions(opts...),
+		),
 		enrollTOTP: connect.NewClient[v1.EnrollTOTPRequest, v1.EnrollTOTPResponse](
 			httpClient,
 			baseURL+UserServiceEnrollTOTPProcedure,
@@ -102,10 +159,40 @@ func NewUserServiceClient(httpClient connect.HTTPClient, baseURL string, opts ..
 
 // userServiceClient implements UserServiceClient.
 type userServiceClient struct {
+	getMe                   *connect.Client[v1.GetMeRequest, v1.GetMeResponse]
+	updateMe                *connect.Client[v1.UpdateMeRequest, v1.UpdateMeResponse]
+	changePassword          *connect.Client[v1.ChangePasswordRequest, v1.ChangePasswordResponse]
+	listUsers               *connect.Client[v1.ListUsersRequest, v1.ListUsersResponse]
+	createPasswordResetLink *connect.Client[v1.CreatePasswordResetLinkRequest, v1.CreatePasswordResetLinkResponse]
 	enrollTOTP              *connect.Client[v1.EnrollTOTPRequest, v1.EnrollTOTPResponse]
 	confirmTOTP             *connect.Client[v1.ConfirmTOTPRequest, v1.ConfirmTOTPResponse]
 	removeTOTP              *connect.Client[v1.RemoveTOTPRequest, v1.RemoveTOTPResponse]
 	regenerateRecoveryCodes *connect.Client[v1.RegenerateRecoveryCodesRequest, v1.RegenerateRecoveryCodesResponse]
+}
+
+// GetMe calls rpmgr.v1.UserService.GetMe.
+func (c *userServiceClient) GetMe(ctx context.Context, req *connect.Request[v1.GetMeRequest]) (*connect.Response[v1.GetMeResponse], error) {
+	return c.getMe.CallUnary(ctx, req)
+}
+
+// UpdateMe calls rpmgr.v1.UserService.UpdateMe.
+func (c *userServiceClient) UpdateMe(ctx context.Context, req *connect.Request[v1.UpdateMeRequest]) (*connect.Response[v1.UpdateMeResponse], error) {
+	return c.updateMe.CallUnary(ctx, req)
+}
+
+// ChangePassword calls rpmgr.v1.UserService.ChangePassword.
+func (c *userServiceClient) ChangePassword(ctx context.Context, req *connect.Request[v1.ChangePasswordRequest]) (*connect.Response[v1.ChangePasswordResponse], error) {
+	return c.changePassword.CallUnary(ctx, req)
+}
+
+// ListUsers calls rpmgr.v1.UserService.ListUsers.
+func (c *userServiceClient) ListUsers(ctx context.Context, req *connect.Request[v1.ListUsersRequest]) (*connect.Response[v1.ListUsersResponse], error) {
+	return c.listUsers.CallUnary(ctx, req)
+}
+
+// CreatePasswordResetLink calls rpmgr.v1.UserService.CreatePasswordResetLink.
+func (c *userServiceClient) CreatePasswordResetLink(ctx context.Context, req *connect.Request[v1.CreatePasswordResetLinkRequest]) (*connect.Response[v1.CreatePasswordResetLinkResponse], error) {
+	return c.createPasswordResetLink.CallUnary(ctx, req)
 }
 
 // EnrollTOTP calls rpmgr.v1.UserService.EnrollTOTP.
@@ -130,6 +217,19 @@ func (c *userServiceClient) RegenerateRecoveryCodes(ctx context.Context, req *co
 
 // UserServiceHandler is an implementation of the rpmgr.v1.UserService service.
 type UserServiceHandler interface {
+	// GetMe returns the caller's account.
+	GetMe(context.Context, *connect.Request[v1.GetMeRequest]) (*connect.Response[v1.GetMeResponse], error)
+	// UpdateMe changes the caller's display name.
+	UpdateMe(context.Context, *connect.Request[v1.UpdateMeRequest]) (*connect.Response[v1.UpdateMeResponse], error)
+	// ChangePassword sets a new password after checking the current one; the caller's other
+	// sessions end.
+	ChangePassword(context.Context, *connect.Request[v1.ChangePasswordRequest]) (*connect.Response[v1.ChangePasswordResponse], error)
+	// ListUsers lists every user of the instance, for the Instance Admin.
+	ListUsers(context.Context, *connect.Request[v1.ListUsersRequest]) (*connect.Response[v1.ListUsersResponse], error)
+	// CreatePasswordResetLink returns a one-time link that sets a user's password: the Instance
+	// Admin's for any user, an Owner's or Admin's for a member of their org (an Admin's not for an
+	// Owner). A user the caller may not reset is not found.
+	CreatePasswordResetLink(context.Context, *connect.Request[v1.CreatePasswordResetLinkRequest]) (*connect.Response[v1.CreatePasswordResetLinkResponse], error)
 	// EnrollTOTP creates an authenticator secret for the caller, replacing one not confirmed yet;
 	// it counts once ConfirmTOTP accepted a code of it.
 	EnrollTOTP(context.Context, *connect.Request[v1.EnrollTOTPRequest]) (*connect.Response[v1.EnrollTOTPResponse], error)
@@ -151,6 +251,38 @@ type UserServiceHandler interface {
 // and JSON codecs. They also support gzip compression.
 func NewUserServiceHandler(svc UserServiceHandler, opts ...connect.HandlerOption) (string, http.Handler) {
 	userServiceMethods := v1.File_rpmgr_v1_user_proto.Services().ByName("UserService").Methods()
+	userServiceGetMeHandler := connect.NewUnaryHandler(
+		UserServiceGetMeProcedure,
+		svc.GetMe,
+		connect.WithSchema(userServiceMethods.ByName("GetMe")),
+		connect.WithIdempotency(connect.IdempotencyNoSideEffects),
+		connect.WithHandlerOptions(opts...),
+	)
+	userServiceUpdateMeHandler := connect.NewUnaryHandler(
+		UserServiceUpdateMeProcedure,
+		svc.UpdateMe,
+		connect.WithSchema(userServiceMethods.ByName("UpdateMe")),
+		connect.WithHandlerOptions(opts...),
+	)
+	userServiceChangePasswordHandler := connect.NewUnaryHandler(
+		UserServiceChangePasswordProcedure,
+		svc.ChangePassword,
+		connect.WithSchema(userServiceMethods.ByName("ChangePassword")),
+		connect.WithHandlerOptions(opts...),
+	)
+	userServiceListUsersHandler := connect.NewUnaryHandler(
+		UserServiceListUsersProcedure,
+		svc.ListUsers,
+		connect.WithSchema(userServiceMethods.ByName("ListUsers")),
+		connect.WithIdempotency(connect.IdempotencyNoSideEffects),
+		connect.WithHandlerOptions(opts...),
+	)
+	userServiceCreatePasswordResetLinkHandler := connect.NewUnaryHandler(
+		UserServiceCreatePasswordResetLinkProcedure,
+		svc.CreatePasswordResetLink,
+		connect.WithSchema(userServiceMethods.ByName("CreatePasswordResetLink")),
+		connect.WithHandlerOptions(opts...),
+	)
 	userServiceEnrollTOTPHandler := connect.NewUnaryHandler(
 		UserServiceEnrollTOTPProcedure,
 		svc.EnrollTOTP,
@@ -177,6 +309,16 @@ func NewUserServiceHandler(svc UserServiceHandler, opts ...connect.HandlerOption
 	)
 	return "/rpmgr.v1.UserService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
+		case UserServiceGetMeProcedure:
+			userServiceGetMeHandler.ServeHTTP(w, r)
+		case UserServiceUpdateMeProcedure:
+			userServiceUpdateMeHandler.ServeHTTP(w, r)
+		case UserServiceChangePasswordProcedure:
+			userServiceChangePasswordHandler.ServeHTTP(w, r)
+		case UserServiceListUsersProcedure:
+			userServiceListUsersHandler.ServeHTTP(w, r)
+		case UserServiceCreatePasswordResetLinkProcedure:
+			userServiceCreatePasswordResetLinkHandler.ServeHTTP(w, r)
 		case UserServiceEnrollTOTPProcedure:
 			userServiceEnrollTOTPHandler.ServeHTTP(w, r)
 		case UserServiceConfirmTOTPProcedure:
@@ -193,6 +335,26 @@ func NewUserServiceHandler(svc UserServiceHandler, opts ...connect.HandlerOption
 
 // UnimplementedUserServiceHandler returns CodeUnimplemented from all methods.
 type UnimplementedUserServiceHandler struct{}
+
+func (UnimplementedUserServiceHandler) GetMe(context.Context, *connect.Request[v1.GetMeRequest]) (*connect.Response[v1.GetMeResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("rpmgr.v1.UserService.GetMe is not implemented"))
+}
+
+func (UnimplementedUserServiceHandler) UpdateMe(context.Context, *connect.Request[v1.UpdateMeRequest]) (*connect.Response[v1.UpdateMeResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("rpmgr.v1.UserService.UpdateMe is not implemented"))
+}
+
+func (UnimplementedUserServiceHandler) ChangePassword(context.Context, *connect.Request[v1.ChangePasswordRequest]) (*connect.Response[v1.ChangePasswordResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("rpmgr.v1.UserService.ChangePassword is not implemented"))
+}
+
+func (UnimplementedUserServiceHandler) ListUsers(context.Context, *connect.Request[v1.ListUsersRequest]) (*connect.Response[v1.ListUsersResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("rpmgr.v1.UserService.ListUsers is not implemented"))
+}
+
+func (UnimplementedUserServiceHandler) CreatePasswordResetLink(context.Context, *connect.Request[v1.CreatePasswordResetLinkRequest]) (*connect.Response[v1.CreatePasswordResetLinkResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("rpmgr.v1.UserService.CreatePasswordResetLink is not implemented"))
+}
 
 func (UnimplementedUserServiceHandler) EnrollTOTP(context.Context, *connect.Request[v1.EnrollTOTPRequest]) (*connect.Response[v1.EnrollTOTPResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("rpmgr.v1.UserService.EnrollTOTP is not implemented"))

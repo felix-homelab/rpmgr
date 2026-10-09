@@ -5,12 +5,42 @@ syntax = "proto3";
 package rpmgr.v1;
 
 import "buf/validate/validate.proto";
+import "google/protobuf/timestamp.proto";
+import "rpmgr/v1/auth.proto";
 import "rpmgr/v1/options.proto";
 
 option go_package = "github.com/felix-homelab/rpmgr/gen/rpmgr/v1;rpmgrv1";
 
 // UserService is the caller's own account (docs/07-api.md, "Services").
 service UserService {
+  // GetMe returns the caller's account.
+  rpc GetMe(GetMeRequest) returns (GetMeResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+    option (rpmgr.v1.authz) = {permission: "authenticated"};
+  }
+  // UpdateMe changes the caller's display name.
+  rpc UpdateMe(UpdateMeRequest) returns (UpdateMeResponse) {
+    option (rpmgr.v1.authz) = {permission: "authenticated"};
+  }
+  // ChangePassword sets a new password after checking the current one; the caller's other
+  // sessions end.
+  rpc ChangePassword(ChangePasswordRequest) returns (ChangePasswordResponse) {
+    option (rpmgr.v1.authz) = {permission: "authenticated"};
+  }
+  // ListUsers lists every user of the instance, for the Instance Admin.
+  rpc ListUsers(ListUsersRequest) returns (ListUsersResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+    option (rpmgr.v1.authz) = {permission: "instance.admin"};
+  }
+  // CreatePasswordResetLink returns a one-time link that sets a user's password: the Instance
+  // Admin's for any user, an Owner's or Admin's for a member of their org (an Admin's not for an
+  // Owner). A user the caller may not reset is not found.
+  rpc CreatePasswordResetLink(CreatePasswordResetLinkRequest) returns (CreatePasswordResetLinkResponse) {
+    option (rpmgr.v1.authz) = {
+      permission: "authenticated"
+      step_up: true
+    };
+  }
   // EnrollTOTP creates an authenticator secret for the caller, replacing one not confirmed yet;
   // it counts once ConfirmTOTP accepted a code of it.
   rpc EnrollTOTP(EnrollTOTPRequest) returns (EnrollTOTPResponse) {
@@ -84,4 +114,103 @@ message RegenerateRecoveryCodesRequest {}
 message RegenerateRecoveryCodesResponse {
   // Ten recovery codes; the old ones no longer work.
   repeated string recovery_codes = 1 [(rpmgr.v1.sensitive) = true];
+}
+
+// User is an account.
+message User {
+  // The user's ID, usr_….
+  string id = 1;
+  // The e-mail address, with which they sign in.
+  string email = 2;
+  // The display name.
+  string display_name = 3;
+  // Whether they hold the Instance Admin role.
+  bool instance_admin = 4;
+  // Whether they have an authenticator.
+  bool mfa = 5;
+  // active or disabled.
+  string status = 6;
+  // When they signed in last; not set if never.
+  google.protobuf.Timestamp last_login_time = 7;
+  // When the account was created.
+  google.protobuf.Timestamp create_time = 8;
+}
+
+// GetMeRequest is empty.
+message GetMeRequest {}
+
+// GetMeResponse is the caller's account and memberships.
+message GetMeResponse {
+  // The account.
+  User user = 1;
+  // The memberships.
+  repeated Membership memberships = 2;
+}
+
+// UpdateMeRequest is a new display name.
+message UpdateMeRequest {
+  // The display name.
+  string display_name = 1 [(buf.validate.field).string = {
+    min_len: 1
+    max_len: 100
+  }];
+}
+
+// UpdateMeResponse is the account.
+message UpdateMeResponse {
+  // The account.
+  User user = 1;
+}
+
+// ChangePasswordRequest is the current and the new password.
+message ChangePasswordRequest {
+  // The current password.
+  string current_password = 1 [
+    (rpmgr.v1.sensitive) = true,
+    (buf.validate.field).string = {
+      min_len: 1
+      max_len: 256
+    }
+  ];
+  // The new password, 12 to 256 characters.
+  string new_password = 2 [
+    (rpmgr.v1.sensitive) = true,
+    (buf.validate.field).string = {
+      min_len: 12
+      max_len: 256
+    }
+  ];
+}
+
+// ChangePasswordResponse is empty.
+message ChangePasswordResponse {}
+
+// ListUsersRequest pages through the users.
+message ListUsersRequest {
+  // At most this many, 50 if not set, 500 at most.
+  int32 page_size = 1;
+  // The page after the one that returned it.
+  string page_token = 2;
+}
+
+// ListUsersResponse is one page of users, by ID.
+message ListUsersResponse {
+  // The users.
+  repeated User users = 1;
+  // The token of the next page; empty after the last.
+  string next_page_token = 2;
+}
+
+// CreatePasswordResetLinkRequest names a user.
+message CreatePasswordResetLinkRequest {
+  // The user's ID.
+  string user_id = 1 [(buf.validate.field).string.min_len = 1];
+}
+
+// CreatePasswordResetLinkResponse is the link.
+message CreatePasswordResetLinkResponse {
+  // The link, to pass on to the user; shown once.
+  string url = 1 [(rpmgr.v1.sensitive) = true];
+  // When it stops working.
+  google.protobuf.Timestamp expire_time = 2;
 }

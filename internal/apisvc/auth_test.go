@@ -98,7 +98,8 @@ func newEnv(t *testing.T) *env {
 	}
 	if err := srv.Mount(mux, rpmgrv1.File_rpmgr_v1_user_proto.Services().ByName("UserService"),
 		func(o ...connect.HandlerOption) (string, http.Handler) {
-			return rpmgrv1connect.NewUserServiceHandler(&apisvc.User{MFA: e.mfa, Sessions: e.sessions, Issuer: "rpmgr test"}, o...)
+			return rpmgrv1connect.NewUserServiceHandler(&apisvc.User{MFA: e.mfa, Sessions: e.sessions, Issuer: "rpmgr test", API: srv,
+				PublicURL: "https://panel.example.com", Backoff: e.auth.Backoff}, o...)
 		}); err != nil {
 		t.Fatal(err)
 	}
