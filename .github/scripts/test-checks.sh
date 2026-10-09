@@ -210,6 +210,39 @@ git -C "$r" reset -q --hard "$good"
 echo 3 >>"$r/file.txt" && git -C "$r" commit -q -s -am "fixup! feat(dns): publish route hostnames"
 expect fail "fix-up commit" in_repo "$r" "$m" "$base" "$(git -C "$r" rev-parse HEAD)"
 
+# --- Changed areas (D64) --------------------------------------------------------------------
+# areas <expected output on one line> <file>...: a pull request that adds the files needs exactly
+# the stages expected.
+areas() {
+  local want=$1 r base got
+  shift
+  r=$(new_repo)
+  base=$(git -C "$r" rev-parse HEAD)
+  for f in "$@"; do
+    mkdir -p "$r/$(dirname "$f")"
+    echo x >"$r/$f"
+  done
+  git -C "$r" add -A
+  git -C "$r" commit -q -s -m "feat: change"
+  got=$(cd "$r" && "$dir/changed-areas.sh" "$base" HEAD | tr '\n' ' ')
+  if [[ $got == "$want " ]]; then
+    passed=$((passed + 1))
+  else
+    echo "FAIL: changed areas of $*: expected '$want', got '$got'"
+    failed=$((failed + 1))
+  fi
+}
+areas "go=false web=false checks=false md=true" docs/03-connections.md README.md
+areas "go=false web=true checks=false md=false" web/src/app.tsx web/e2e/a.spec.ts
+areas "go=false web=true checks=true md=false" web/package.json
+areas "go=true web=true checks=false md=false" internal/x/x.go proto/rpmgr/v1/x.proto
+areas "go=true web=true checks=true md=false" .github/scripts/check-go.sh
+areas "go=true web=true checks=true md=true" go.mod docs/x.md
+expect pass "every stage" "$dir/changed-areas.sh" --all
+expect fail "one commit only" "$dir/changed-areas.sh" HEAD
+[[ $("$dir/changed-areas.sh" --none | tr '\n' ' ') == "go=false web=false checks=false md=false " ]] && passed=$((passed + 1)) ||
+  { echo "FAIL: changed areas --none"; failed=$((failed + 1)); }
+
 # --- SPDX headers --------------------------------------------------------------------------
 s="$dir/check-spdx.sh"
 r=$(new_repo)
@@ -296,6 +329,8 @@ EOF
 
   # Builds for every platform; tests per architecture.
   expect pass "build and vet on every platform" "$dir/check-build.sh" "$r"
+  expect pass "vet only, on every platform" "$dir/check-build.sh" "$r" vet
+  expect fail "an unknown build mode" "$dir/check-build.sh" "$r" fast
   expect pass "tests on this machine's architecture" "$dir/check-test-arch.sh" "$(go env GOARCH)" "$r"
   expect fail "unknown architecture" "$dir/check-test-arch.sh" mips "$r"
   # Without cgo the go command drops a file that imports "C"; code that needs it no longer builds.
@@ -303,10 +338,13 @@ EOF
   printf 'package p\n\n// Two needs the cgo file.\nfunc Two() int { return One() + 1 }\n' >"$r/p/two.go"
   git -C "$r" add -A
   expect fail "package that needs cgo" "$dir/check-build.sh" "$r"
+  expect fail "package that needs cgo, vet only" "$dir/check-build.sh" "$r" vet
   git -C "$r" rm -q -f p/cgo.go p/two.go
   printf 'package p\n\nimport "syscall"\n\n// Winch only compiles on Unix.\nfunc Winch() syscall.Signal { return syscall.SIGWINCH }\n' >"$r/p/unix.go"
   git -C "$r" add -A
   expect fail "Unix-only code without a Windows stub" "$dir/check-build.sh" "$r"
+  expect fail "Unix-only code without a Windows stub, vet only" "$dir/check-build.sh" "$r" vet
+  expect pass "Unix-only code, Linux platforms only" env RPMGR_PLATFORMS="linux/amd64 linux/arm64" "$dir/check-build.sh" "$r" vet
   git -C "$r" rm -q -f p/unix.go
 
   # govulncheck (needs network): no finding in clean code; a called function of a vulnerable

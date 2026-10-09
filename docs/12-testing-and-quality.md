@@ -286,6 +286,15 @@ the reference testbed ([Benchmarks](#benchmarks)).
   ([D55](14-open-decisions.md#project-and-process)).
 - **Gate**: nothing merges to `main` unless all per-PR stages pass; nightly failures open an issue
   automatically.
+- **Until v1.0.0** a pull request runs only the stages its changes need, and the nightly run runs
+  every stage in full ([D64](14-open-decisions.md#project-and-process)):
+  - documents only: `lint`, `docs` and `secrets`;
+  - the web app: also the web stage;
+  - anything else: every stage, with PostgreSQL 18 only and the cross-platform builds vetted, not
+    built.
+
+  The tests of the checks run only when a PR changes something besides documents and sources. A
+  push to `main` runs `lint`, `docs` and `secrets`.
 
 **Implemented so far.** CI covers the repository itself and, from Phase 1 on, the Go code. Each
 check is a script in `.github/scripts/` that runs the same way on a developer machine (the
@@ -294,19 +303,20 @@ Docker-based ones need Docker), and `test-checks.sh` tests the checks with valid
 | Workflow and job | Checks | Script |
 |---|---|---|
 | `pr-rules` / `pr-rules` | PR title, branch names, commit headers, DCO sign-off, changelog or `no-changelog` (labels read when the check runs); size of the change in production code, with a warning from 400 lines and a failure above 800 unless labelled `mechanical` (D53); re-runs when the title or labels change, and no run is cancelled, so the newest run never blocks a merge as cancelled | `check-pr-title.sh`, `check-branch-name.sh`, `check-commits.sh`, `check-dco.sh`, `check-changelog.sh`, `check-size.sh` |
-| `ci` / `lint` | SPDX headers; actionlint (with shellcheck) and actions pinned by commit SHA; every named security regression test below registered as pending, done or a later phase, and the code agreeing with it (D61); tests of the checks | `check-spdx.sh`, `check-workflows.sh`, `check-security-tests.sh` with `security-tests.txt`, `test-checks.sh` |
-| `ci` / `docs` | Relative links and heading anchors in all Markdown files (lychee, offline); every Mermaid diagram renders (mermaid-cli) | `check-links.sh`, `check-mermaid.sh` |
+| `ci` / `changes` | Which stages a PR needs, from the files it changes (D64): `go` for anything but documents and the web app, `web` for anything but documents, `checks` for anything but documents and sources, `md` for Markdown; everything in full runs, nothing optional on `main` | `changed-areas.sh` |
+| `ci` / `lint` | SPDX headers; actionlint (with shellcheck) and actions pinned by commit SHA; every named security regression test below registered as pending, done or a later phase, and the code agreeing with it (D61); tests of the checks, when `checks` is set | `check-spdx.sh`, `check-workflows.sh`, `check-security-tests.sh` with `security-tests.txt`, `test-checks.sh` |
+| `ci` / `docs` | Relative links and heading anchors in all Markdown files (lychee, offline); every Mermaid diagram renders (mermaid-cli), when Markdown changed | `check-links.sh`, `check-mermaid.sh` |
 | `ci` / `secrets` | gitleaks over the full history, with the rules in `.gitleaks.toml` | `check-secrets.sh` |
-| `ci` / `go` | gofmt, a tidy `go.mod`, `go vet`, the banned TLS and QUIC settings (`InsecureSkipVerify`, `VerifyPeerCertificate`, `Renegotiation`, 0-RTT; also as composite-literal keys, which forbidigo does not see), `go test -race`; a 10 s run of every fuzz target; golangci-lint with gosec, errorlint, bodyclose, depguard (`math/rand` and `math/rand/v2` in `internal/{authz,pki,secret,token,tunnel}`) and forbidigo (`secret.Value.Reveal` outside its allow-list, `privacy.DecisionContext` outside `internal/store`) ; govulncheck on the code paths rpmgr calls | `check-go.sh` (with `tools/bannedapi`), `check-fuzz.sh`, `check-golangci.sh`, `.golangci.yml`, `check-govulncheck.sh` |
+| `ci` / `go` | gofmt, a tidy `go.mod`, `go vet`, the banned TLS and QUIC settings (`InsecureSkipVerify`, `VerifyPeerCertificate`, `Renegotiation`, 0-RTT; also as composite-literal keys, which forbidigo does not see), `go test -race`. Job `fuzz`: a 10 s run of every fuzz target. Job `go-lint`: golangci-lint with gosec, errorlint, bodyclose, depguard (`math/rand` and `math/rand/v2` in `internal/{authz,pki,secret,token,tunnel}`) and forbidigo (`secret.Value.Reveal` outside its allow-list, `privacy.DecisionContext` outside `internal/store`) ; govulncheck on the code paths rpmgr calls | `check-go.sh` (with `tools/bannedapi`), `check-fuzz.sh`, `check-golangci.sh`, `.golangci.yml`, `check-govulncheck.sh` |
 | `ci` / `proto` | `buf lint` (STANDARD); `buf breaking` (FILE) against `main`, passed only by a PR labelled `breaking` with `!` in its title before v1.0.0 (D56); the code in `gen/` regenerated and compared. buf runs at a pinned version through the go command, the generators are tool dependencies in `go.mod` | `check-buf.sh`, `buf.yaml`, `buf.gen.yaml` |
-| `ci` / `store` | The database tests on SQLite and on PostgreSQL 16 and 18 (service containers), which are the store's own tests and those of every package that uses `storetest`: tenancy scoping, the embedded migrations from an empty database, regenerating them from the Ent schema yields nothing new, the live schema equals the Ent schema, edited or unlisted migration files refused, failing files rolled back; `atlas migrate lint` (community CLI, image by digest) on both dialects | `check-store.sh`, `check-atlas-lint.sh` |
-| `ci` / `build` | `go build` and `go vet` of every package, tests included, with `CGO_ENABLED=0` for linux/{amd64,arm64,armv7,riscv64}, windows/amd64 and darwin/{amd64,arm64} | `check-build.sh` |
+| `ci` / `store` | The database tests on SQLite and on PostgreSQL 18, and 16 too in full runs (service containers), which are the store's own tests and those of every package that uses `storetest`: tenancy scoping, the embedded migrations from an empty database, regenerating them from the Ent schema yields nothing new, the live schema equals the Ent schema, edited or unlisted migration files refused, failing files rolled back; `atlas migrate lint` (community CLI, image by digest) on both dialects | `check-store.sh`, `check-atlas-lint.sh` |
+| `ci` / `build (linux)`, `build (windows and macos)` | `go vet` of every package, tests included, with `CGO_ENABLED=0` for linux/{amd64,arm64,armv7,riscv64}, windows/amd64 and darwin/{amd64,arm64}; vet type-checks what a build compiles, so only link errors wait for full runs, which also `go build` | `check-build.sh` |
 | `ci` / `go-arm64` | Every test natively on a GitHub-hosted arm64 runner, with the race detector, and again for armv7 on the same host | `check-test-arch.sh` |
-| `nightly` / `govulncheck`, `fuzz`, `riscv64`, `real-clients` | govulncheck against the latest vulnerability database; every fuzz target for 10 minutes; every test for riscv64 under QEMU user-mode emulation; Go, curl, headless Chromium and Firefox (images by digest) against the gateway's port 443 router, each reaching two http routes, a TLS-passthrough route and the controller's UI name, and no page for an unknown name. A failure opens the issue "Nightly run failed", or comments on the open one. Also started by hand | `check-govulncheck.sh`, `check-fuzz.sh`, `check-test-arch.sh`, `check-real-clients.sh` |
+| `nightly` / `ci`, `govulncheck`, `fuzz`, `riscv64`, `real-clients` | every `ci` stage in full; govulncheck against the latest vulnerability database; every fuzz target for 10 minutes; every test for riscv64 under QEMU user-mode emulation; Go, curl, headless Chromium and Firefox (images by digest) against the gateway's port 443 router, each reaching two http routes, a TLS-passthrough route and the controller's UI name, and no page for an unknown name. A failure opens the issue "Nightly run failed", or comments on the open one. Also started by hand | `check-govulncheck.sh`, `check-fuzz.sh`, `check-test-arch.sh`, `check-real-clients.sh` |
 | `scorecard` / `analysis` | OpenSSF Scorecard, weekly and on every push to `main`; results in the code-scanning alerts and the public Scorecard API | — |
 
-The jobs `pr-rules`, `lint`, `docs`, `secrets`, `go`, `proto`, `store`, `build` and `go-arm64` are
-required status checks of the `main` ruleset; each new job is added to the ruleset by the maintainer
-once its PR is merged. Tool images are pinned by digest in the scripts and actions by commit SHA;
+The jobs `pr-rules`, `lint`, `docs` and `secrets` are required status checks of the `main` ruleset;
+the maintainer adds the others once their PRs are merged (verified 2026-10-09: none is yet). A job
+skipped because a PR does not need it counts as passed. Tool images are pinned by digest in the scripts and actions by commit SHA;
 Dependabot updates the actions. The race detector needs cgo for its runtime; release builds stay
 `CGO_ENABLED=0`. The web stage is added by its Phase 1 slice.
