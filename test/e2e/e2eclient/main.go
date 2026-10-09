@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 
 // Command e2eclient is the traffic side of the end-to-end tests (docs/12-testing-and-quality.md,
-// "Where the cells run"): an echo service, and clients that check a route's data integrity,
-// hold a connection open across changes, or wait until a route stops answering. It prints one
-// line and exits 1 when a check fails.
+// "Where the cells run"): the services behind the connectors (TCP and UDP echo, an HTTP upstream
+// with WebSocket and gRPC, a TLS backend), and clients that check a route's data integrity, hold
+// a connection open across changes, wait until a route stops answering, or check UDP, HTTP,
+// WebSocket, gRPC and TLS passthrough routes. It prints one line and exits 1 when a check fails.
 package main
 
 import (
@@ -22,20 +23,29 @@ import (
 
 func main() {
 	if len(os.Args) < 2 {
-		fail(errors.New("usage: e2eclient serve|check|hold|gone|ready [flags]"))
+		fail(errors.New("usage: e2eclient serve|check|hold|gone|ready|udp|http|ws|grpc|tls [flags]"))
 	}
 	fs := flag.NewFlagSet(os.Args[1], flag.ExitOnError)
 	addr := fs.String("addr", "", "the route's address, host:port")
-	listen := fs.String("listen", ":7", "serve: the echo service's address")
+	listen := fs.String("listen", ":7", "serve: the TCP echo service's addresses, comma-separated")
+	udpAddr := fs.String("udp", "", "serve: the UDP echo service's address")
+	httpAddr := fs.String("http", "", "serve: the HTTP upstream's address, HTTP/1.1 and h2c")
+	tlsAddr := fs.String("tls", "", "serve: the TLS backend's address, HTTP/1.1 and HTTP/2")
+	certFile := fs.String("cert", "", "serve: the TLS backend's certificate")
+	keyFile := fs.String("key", "", "serve: the TLS backend's key")
+	sizes := fs.String("sizes", "100,3000", "udp: payload sizes, comma-separated")
+	target := fs.String("url", "", "ready: the admin listener's /readyz; http: the URL to get")
+	host := fs.String("host", "", "ws, grpc, tls: the server name")
+	h2 := fs.Bool("h2", false, "http: speak HTTP/2")
+	expect := fs.String("expect", "", "http: text the body must contain; tls: the common name of the backend's certificate")
 	size := fs.Int("bytes", 1<<20, "check: bytes to send")
 	duration := fs.Duration("duration", 5*time.Second, "hold: how long to hold the connection; gone: how long to wait")
 	every := fs.Duration("every", 200*time.Millisecond, "hold: how often to send a ping")
-	url := fs.String("url", "", "ready: the admin listener's /readyz")
 	_ = fs.Parse(os.Args[2:])
 	var err error
 	switch os.Args[1] {
 	case "serve":
-		err = serve(*listen)
+		err = serveAll(*listen, *udpAddr, *httpAddr, *tlsAddr, *certFile, *keyFile)
 	case "check":
 		err = check(*addr, *size)
 	case "hold":
@@ -43,7 +53,17 @@ func main() {
 	case "gone":
 		err = gone(*addr, *duration)
 	case "ready":
-		err = ready(*url, *duration)
+		err = ready(*target, *duration)
+	case "udp":
+		err = udpCheck(*addr, *sizes, *duration)
+	case "http":
+		err = httpCheck(*addr, *target, *h2, *expect)
+	case "ws":
+		err = wsCheck(*addr, *host)
+	case "grpc":
+		err = grpcCheck(*addr, *host)
+	case "tls":
+		err = tlsCheck(*addr, *host, *expect)
 	default:
 		err = fmt.Errorf("unknown command %q", os.Args[1])
 	}

@@ -22,6 +22,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/pki"
 	"github.com/felix-homelab/rpmgr/internal/revlog"
 	"github.com/felix-homelab/rpmgr/internal/routes"
+	"github.com/felix-homelab/rpmgr/internal/secret"
 	"github.com/felix-homelab/rpmgr/internal/store"
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/connector"
@@ -44,6 +45,7 @@ type Seeder struct {
 	sys context.Context
 	// RevLog is the controller's revocation log, which Revoke appends to.
 	RevLog string
+	sealer *secret.Sealer // set by UseKEK
 }
 
 // Open opens the database at dsn, without the controller's lock.
