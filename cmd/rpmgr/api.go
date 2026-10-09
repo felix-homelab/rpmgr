@@ -383,7 +383,7 @@ func writeTable(w io.Writer, k apicli.Kind, res []protoreflect.Message) error {
 			return err
 		}
 		name := cell(v, "name")
-		if name == "" {
+		if name == "-" {
 			name = cell(v, "fqdn")
 		}
 		row := []string{cell(v, "id"), name}

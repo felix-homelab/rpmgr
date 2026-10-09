@@ -15,6 +15,7 @@ import (
 
 	"connectrpc.com/connect"
 	"google.golang.org/genproto/googleapis/rpc/errdetails"
+	"google.golang.org/protobuf/reflect/protoreflect"
 
 	rpmgrv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/v1"
 	"github.com/felix-homelab/rpmgr/gen/rpmgr/v1/rpmgrv1connect"
@@ -211,5 +212,20 @@ func TestDelete(t *testing.T) {
 	}
 	if code, _, errOut := runWith(env, "", "delete", "connector", "con_1"); code != cli.ExitUsage {
 		t.Errorf("a connector deleted: %d %q", code, errOut)
+	}
+}
+
+// TestTableNames: a table names a resource by its name, or a domain by its FQDN.
+func TestTableNames(t *testing.T) {
+	k, err := apicli.KindOf("domain")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var b strings.Builder
+	if err := writeTable(&b, k, []protoreflect.Message{(&rpmgrv1.Domain{Id: "dom_1", Fqdn: "example.com"}).ProtoReflect()}); err != nil {
+		t.Fatal(err)
+	}
+	if lines := strings.Split(b.String(), "\n"); len(lines) < 2 || strings.Fields(lines[1])[1] != "example.com" {
+		t.Fatalf("a domain's table: %q", b.String())
 	}
 }
