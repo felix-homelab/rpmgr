@@ -95,12 +95,34 @@ func (r *record) in(org string) {
 	}
 }
 
+type recordKey struct{}
+
+// SignedIn records in the audit entry of the request in ctx that userID signed in, with the
+// session it got and the factors it used: a login's entry names who signed in, not the caller
+// before.
+func SignedIn(ctx context.Context, userID, sessionID, factors string) {
+	if r, _ := ctx.Value(recordKey{}).(*record); r != nil {
+		e := &r.req.Entry
+		e.ActorType, e.ActorID, e.CredentialID, e.AuthMethod = audit.ActorUser, userID, sessionID, factors
+		e.TargetType, e.TargetID = "user", userID
+	}
+}
+
+// AuditReason sets the reason in the audit entry of the request in ctx.
+func AuditReason(ctx context.Context, reason string) {
+	if r, _ := ctx.Value(recordKey{}).(*record); r != nil {
+		r.req.Entry.Reason = reason
+	}
+}
+
 // hook returns ctx whose write transactions append the entry, as a success, before they commit,
-// unless a service recorded the change in the transaction itself (audit.Append).
+// unless a service recorded the change in the transaction itself (audit.Append); handlers reach
+// the entry through it (SignedIn, AuditReason).
 func (r *record) hook(ctx context.Context) context.Context {
 	if r == nil {
 		return ctx
 	}
+	ctx = context.WithValue(ctx, recordKey{}, r)
 	return store.WithTxValue(store.WithTxHook(ctx, func(ctx context.Context, tx *ent.Tx) error {
 		ok, err := r.req.AppendOwn(ctx, tx, audit.Success)
 		if ok {

@@ -93,3 +93,71 @@ func TestAudit_OncePerChange(t *testing.T) {
 		t.Fatalf("the refused request: %+v, header %q", refused, cerr.Meta().Get(api.RequestIDHeader))
 	}
 }
+
+// TestAudit_Logins (docs/04-security.md, "Audit log"): a login is recorded once with the user who
+// signed in, the session they got and the factors they used; a failed login is recorded in the
+// instance chain alike for an unknown address and a wrong password, without the password, so the
+// log tells no more than the answer; a step-up names its factor, a failed one its user; a logout
+// names the session it ends.
+func TestAudit_Logins(t *testing.T) {
+	e := newEnv(t)
+	ctx := context.Background()
+	logins := func() []*ent.AuditEntry {
+		return e.db.Client().AuditEntry.Query().Where(auditentry.Action("rpmgr.v1.AuthService.Login")).Order(ent.Asc(auditentry.FieldTs)).AllX(e.sys)
+	}
+
+	ada := e.browser()
+	in, err := ada.auth.Login(ctx, connect.NewRequest(&rpmgrv1.LoginRequest{Email: "ada@example.com", Password: pw}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := logins()
+	if len(got) != 1 || got[0].ActorID != e.ada || got[0].TargetType != "user" || got[0].TargetID != e.ada || got[0].AuthMethod != "pwd" ||
+		got[0].CredentialID != in.Msg.GetSession().GetId() || got[0].CredentialID == "" || string(got[0].Result) != "success" ||
+		got[0].OrgID != nil || got[0].RequestID != in.Header().Get(api.RequestIDHeader) {
+		t.Fatalf("a login: %+v", got)
+	}
+
+	for _, try := range []struct{ email, password string }{{"nobody@example.com", "a guessed password"}, {"ada@example.com", "a guessed password"}} {
+		if err := e.browser().login(try.email, try.password); code(err) != connect.CodeUnauthenticated {
+			t.Fatalf("a failed login as %s: %v", try.email, err)
+		}
+	}
+	got = logins()
+	if len(got) != 3 {
+		t.Fatalf("%d login entries, want 3", len(got))
+	}
+	unknown, wrong := got[1], got[2]
+	for _, f := range []*ent.AuditEntry{unknown, wrong} {
+		if string(f.ActorType) != "anonymous" || f.ActorID != "" || f.TargetID != "" || f.CredentialID != "" || string(f.Result) != "denied" ||
+			f.OrgID != nil || strings.Contains(f.Diff, "guessed") {
+			t.Fatalf("a failed login: %+v", f)
+		}
+	}
+	if unknown.Reason != wrong.Reason || unknown.AuthMethod != wrong.AuthMethod || !strings.Contains(unknown.Diff, "nobody@example.com") {
+		t.Fatalf("an unknown address and a wrong password differ: %+v %+v", unknown, wrong)
+	}
+
+	stepUps := func() []*ent.AuditEntry {
+		return e.db.Client().AuditEntry.Query().Where(auditentry.Action("rpmgr.v1.AuthService.StepUp")).Order(ent.Asc(auditentry.FieldTs)).AllX(e.sys)
+	}
+	if err := ada.stepUp("a guessed password", ""); code(err) != connect.CodeUnauthenticated {
+		t.Fatalf("a failed step-up: %v", err)
+	}
+	if err := ada.stepUp(pw, ""); err != nil {
+		t.Fatal(err)
+	}
+	if su := stepUps(); len(su) != 2 || su[0].ActorID != e.ada || string(su[0].Result) != "denied" || su[1].ActorID != e.ada ||
+		string(su[1].Result) != "success" || su[1].Reason != "step-up with pwd" {
+		t.Fatalf("step-ups: %+v", su)
+	}
+
+	s, _ := ada.session()
+	if _, err := ada.auth.Logout(ctx, connect.NewRequest(&rpmgrv1.LogoutRequest{})); err != nil {
+		t.Fatal(err)
+	}
+	out := e.db.Client().AuditEntry.Query().Where(auditentry.Action("rpmgr.v1.AuthService.Logout")).AllX(e.sys)
+	if len(out) != 1 || out[0].ActorID != e.ada || out[0].CredentialID != s.GetSession().GetId() || string(out[0].Result) != "success" {
+		t.Fatalf("a logout: %+v", out)
+	}
+}

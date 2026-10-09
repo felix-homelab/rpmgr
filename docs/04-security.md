@@ -776,6 +776,11 @@ Phase 3 item ([13](13-roadmap.md#phase-3--advanced)).
   the request's transaction. That entry takes the request's IP, user agent, request ID and diff,
   and its session or token when the request's actor acted. The request's own entry is then left
   out for that transaction.
+- [R] **Sign-ins.** A login's entry names the user who signed in, the session they got and the
+  factors they used, such as `pwd+otp`. A failed login is an anonymous refusal in the instance
+  chain with the address given and the password redacted. It is the same for an unknown address
+  as for a wrong password, so the log tells no more than the answer did. A step-up's entry names
+  its factor; a failed one names its user. A logout's entry names the session it ends.
 - Signed **checkpoints** (chain head + count, signed with the audit-checkpoint key) are shipped to an
   external sink (syslog, OTLP, webhook, or object storage with retention lock). The external copy
   is what makes tampering evident: anyone with database write access could recompute a chain.
