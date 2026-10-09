@@ -771,6 +771,11 @@ Phase 3 item ([13](13-roadmap.md#phase-3--advanced)).
   A request that changes nothing, fails or is refused gets its entry in a transaction of its own,
   in the chain of the org the caller is a member of, else in the instance chain. The diff is the
   request as JSON with its sensitive fields redacted, until a method records a before and after.
+- [R] **Each change is recorded once.** A service that records a change itself, such as a token
+  made or revoked, a member's role, an authenticator or a revoked identity, appends its entry in
+  the request's transaction. That entry takes the request's IP, user agent, request ID and diff,
+  and its session or token when the request's actor acted. The request's own entry is then left
+  out for that transaction.
 - Signed **checkpoints** (chain head + count, signed with the audit-checkpoint key) are shipped to an
   external sink (syslog, OTLP, webhook, or object storage with retention lock). The external copy
   is what makes tampering evident: anyone with database write access could recompute a chain.

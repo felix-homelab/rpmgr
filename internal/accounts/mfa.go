@@ -3,6 +3,7 @@
 package accounts
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base32"
@@ -39,6 +40,13 @@ type MFA struct {
 	Sealer *secret.Sealer
 	RevLog *revlog.Log
 	Logger *slog.Logger
+}
+
+// For returns a copy of m whose writes carry the API request ctx, as Accounts.For.
+func (m *MFA) For(ctx context.Context) *MFA {
+	c := *m
+	c.Accounts = m.Accounts.For(ctx)
+	return &c
 }
 
 // HasMFA reports whether a user has a confirmed authenticator.

@@ -299,7 +299,7 @@ func (a *Auth) mailReset(ctx context.Context, addr string) {
 	u, err := a.Accounts.UserByEmail(addr)
 	if err == nil {
 		var tok string
-		if tok, err = a.Accounts.ResetLink(u.ID, "email-request"); err == nil {
+		if tok, err = a.Accounts.For(ctx).ResetLink(u.ID, "email-request"); err == nil {
 			err = a.Mail.Send(ctx, resetMail(addr, accounts.LinkURL(a.PublicURL, tok), accounts.ResetLinkTTL))
 		}
 		if err != nil {

@@ -48,6 +48,14 @@ type Accounts struct {
 	now func() time.Time
 }
 
+// For returns a copy of a whose writes carry the audit record and transaction hook of the API
+// request ctx (store.CarryTxHook), so that each change is recorded once and with it.
+func (a *Accounts) For(ctx context.Context) *Accounts {
+	c := *a
+	c.sys = store.CarryTxHook(a.sys, ctx)
+	return &c
+}
+
 // New returns Accounts; sys carries the system scope, now is time.Now if nil.
 func New(db *store.DB, sys context.Context, now func() time.Time) *Accounts {
 	if now == nil {

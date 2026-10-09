@@ -7,6 +7,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"sync"
 
 	"github.com/google/uuid"
 
@@ -158,17 +159,40 @@ func WithTxHook(ctx context.Context, hook func(ctx context.Context, tx *ent.Tx) 
 	})
 }
 
-// WithoutTxHook returns ctx without the hook, for transactions that must not run it: the audit
-// package's own.
+// WithoutTxHook returns ctx without the hook and the transaction value, for transactions that must
+// not run it: the audit package's own.
 func WithoutTxHook(ctx context.Context) context.Context {
+	ctx = context.WithValue(ctx, txValueKey{}, nil)
 	return context.WithValue(ctx, txHookKey{}, (func(context.Context, *ent.Tx) error)(nil))
 }
 
-// CarryTxHook returns dst with the transaction hook of src, if src has one: a service that writes
-// under a scope of its own still commits the request's audit entry and request_id with its change.
+type txValueKey struct{}
+
+// txValues holds the value of each running transaction that has one.
+var txValues sync.Map // *ent.Tx → any
+
+// WithTxValue returns ctx with v, which every transaction under it, or under a context that
+// CarryTxHook gives the hook to, hands to TxValue while it runs. The API keeps the audit record of
+// a request in it, so that a service's own audit entry can name the request.
+func WithTxValue(ctx context.Context, v any) context.Context {
+	return context.WithValue(ctx, txValueKey{}, v)
+}
+
+// TxValue returns the value WithTxValue gave the context of tx, or nil.
+func TxValue(tx *ent.Tx) any {
+	v, _ := txValues.Load(tx)
+	return v
+}
+
+// CarryTxHook returns dst with the transaction hook and value of src, if src has them: a service
+// that writes under a scope of its own still commits the request's audit entry and request_id
+// with its change.
 func CarryTxHook(dst, src context.Context) context.Context {
 	if hook, _ := src.Value(txHookKey{}).(func(context.Context, *ent.Tx) error); hook != nil {
-		return context.WithValue(dst, txHookKey{}, hook)
+		dst = context.WithValue(dst, txHookKey{}, hook)
+	}
+	if v := src.Value(txValueKey{}); v != nil {
+		dst = context.WithValue(dst, txValueKey{}, v)
 	}
 	return dst
 }
@@ -220,6 +244,10 @@ func withTx(ctx context.Context, c *ent.Client, opts *sql.TxOptions, fn func(tx 
 	tx, err := c.BeginTx(ctx, opts)
 	if err != nil {
 		return err
+	}
+	if v := ctx.Value(txValueKey{}); v != nil {
+		txValues.Store(tx, v)
+		defer txValues.Delete(tx)
 	}
 	defer func() {
 		if err != nil {

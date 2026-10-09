@@ -19,6 +19,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync/atomic"
 	"time"
 	"unicode/utf8"
 
@@ -131,7 +132,68 @@ func (e *ChainError) Unwrap() error { return ErrBroken }
 // instance-level effects of an org request. Without a scope any chain is allowed: events such as a
 // failed login or the grant of a system scope happen before there is one. On SQLite, Append must
 // run in the transaction the caller already holds, never in a second one (one writer).
+//
+// In a transaction of an API request (store.TxValue is its *Request), Append fills the entry's
+// empty IP, user agent, request ID and diff from the request, and its credential and
+// authentication method if the request's actor acted, and notes that the transaction recorded the
+// change, so that the API does not record it a second time.
 func Append(ctx context.Context, tx *ent.Tx, e Entry) (Entry, error) {
+	r, _ := store.TxValue(tx).(*Request)
+	if r == nil {
+		return appendEntry(ctx, tx, e)
+	}
+	e = r.fill(e)
+	out, err := appendEntry(ctx, tx, e)
+	if err == nil {
+		r.recorded.Store(tx)
+	}
+	return out, err
+}
+
+// Request is the audit record of one API request: its own entry, which names who acted, from
+// where and with which method. A service that records the change itself (Append) makes it
+// superfluous.
+type Request struct {
+	Entry    Entry
+	recorded atomic.Pointer[ent.Tx]
+}
+
+// RecordedIn reports whether a service recorded the request's change in tx.
+func (r *Request) RecordedIn(tx *ent.Tx) bool { return r.recorded.Load() == tx }
+
+// Recorded reports whether a service recorded the request's change in any transaction.
+func (r *Request) Recorded() bool { return r.recorded.Load() != nil }
+
+// AppendOwn appends the request's own entry with result in tx, unless a service recorded the
+// change in tx; it reports whether the change is recorded.
+func (r *Request) AppendOwn(ctx context.Context, tx *ent.Tx, result Result) (bool, error) {
+	if r.RecordedIn(tx) {
+		return true, nil
+	}
+	e := r.Entry
+	e.Result = result
+	_, err := appendEntry(ctx, tx, e)
+	return err == nil, err
+}
+
+func (r *Request) fill(e Entry) Entry {
+	b := r.Entry
+	fill := func(dst *string, src string) {
+		if *dst == "" {
+			*dst = src
+		}
+	}
+	fill(&e.IP, b.IP)
+	fill(&e.UserAgent, b.UserAgent)
+	fill(&e.RequestID, b.RequestID)
+	fill(&e.Diff, b.Diff)
+	if e.ActorType == b.ActorType && e.ActorID == b.ActorID && e.CredentialID == "" && e.AuthMethod == "" {
+		e.CredentialID, e.AuthMethod = b.CredentialID, b.AuthMethod
+	}
+	return e
+}
+
+func appendEntry(ctx context.Context, tx *ent.Tx, e Entry) (Entry, error) {
 	if s, ok := authz.FromContext(ctx); ok && !s.System() && e.OrgID != "" && e.OrgID != s.OrgID() {
 		return Entry{}, ErrOutsideScope
 	}

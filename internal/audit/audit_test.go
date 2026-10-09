@@ -473,3 +473,55 @@ func TestRecord_WithoutTxHook(t *testing.T) {
 		t.Fatal("Record ran the hook")
 	}
 }
+
+// TestAppend_Request: in a transaction of an API request, a service's entry gets the request's IP,
+// user agent, request ID and diff, and its credential and method when the request's actor acted;
+// the request's own entry is then not appended in that transaction, but is in one where no service
+// recorded the change.
+func TestAppend_Request(t *testing.T) {
+	setup(t, func(t *testing.T, e env) {
+		ctx := storetest.OrgCtx(t, e.a)
+		req := &audit.Request{Entry: audit.Entry{OrgID: e.a, ActorType: audit.ActorUser, ActorID: "usr_ada", CredentialID: "ses_1",
+			AuthMethod: "session", IP: "192.0.2.10", UserAgent: "rpmgr-cli", RequestID: "req_1", Action: "rpmgr.v1.TokenService.CreateAPIToken",
+			Diff: `{"name":"ci"}`}}
+		rctx := store.WithTxValue(ctx, req)
+		write := func(service ...audit.Entry) {
+			t.Helper()
+			if err := store.WriteTx(rctx, e.db, func(tx *ent.Tx) error {
+				for _, s := range service {
+					if _, err := audit.Append(ctx, tx, s); err != nil {
+						return err
+					}
+				}
+				_, err := req.AppendOwn(ctx, tx, audit.Success)
+				return err
+			}); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if req.Recorded() {
+			t.Fatal("recorded before any entry")
+		}
+		write(audit.Entry{OrgID: e.a, ActorType: audit.ActorUser, ActorID: "usr_ada", Action: "token.create", TargetType: "api_token",
+			TargetID: "atk_1", Result: audit.Success},
+			audit.Entry{OrgID: e.a, ActorType: audit.ActorUser, ActorID: "usr_bob", Action: "member.add", Result: audit.Success, IP: "198.51.100.7"})
+		wantHead(t, e.db, e.a, 2)
+		own := entryAt(t, e, e.a, 1)
+		if own.Action != "token.create" || own.IP != "192.0.2.10" || own.UserAgent != "rpmgr-cli" || own.RequestID != "req_1" ||
+			own.CredentialID != "ses_1" || own.AuthMethod != "session" || own.Diff != `{"name":"ci"}` {
+			t.Fatalf("the service's entry: %+v", own)
+		}
+		other := entryAt(t, e, e.a, 2)
+		if other.IP != "198.51.100.7" || other.CredentialID != "" || other.AuthMethod != "" || other.RequestID != "req_1" {
+			t.Fatalf("another actor's entry: %+v", other)
+		}
+		if !req.Recorded() {
+			t.Fatal("not recorded")
+		}
+		write()
+		wantHead(t, e.db, e.a, 3)
+		if got := entryAt(t, e, e.a, 3); got.Action != "rpmgr.v1.TokenService.CreateAPIToken" || got.Result != audit.Success {
+			t.Fatalf("the request's own entry: %+v", got)
+		}
+	})
+}

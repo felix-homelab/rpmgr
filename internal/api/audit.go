@@ -18,6 +18,7 @@ import (
 
 	rpmgrv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/v1"
 	"github.com/felix-homelab/rpmgr/internal/audit"
+	"github.com/felix-homelab/rpmgr/internal/ids"
 	"github.com/felix-homelab/rpmgr/internal/store"
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
 )
@@ -30,7 +31,7 @@ const Redacted = "[REDACTED]"
 // fails, is refused or writes nothing gets it in a transaction of its own.
 type record struct {
 	s        *Server
-	entry    audit.Entry
+	req      *audit.Request
 	appended atomic.Bool
 }
 
@@ -55,7 +56,27 @@ func (s *Server) newRecord(md protoreflect.MethodDescriptor, header http.Header,
 	if fd := md.Input().Fields().ByName("request_id"); fd != nil && fd.Kind() == protoreflect.StringKind && !fd.IsList() {
 		e.RequestID = msg.ProtoReflect().Get(fd).String()
 	}
-	return &record{s: s, entry: e}
+	if e.RequestID == "" {
+		e.RequestID = ids.New("req")
+	}
+	return &record{s: s, req: &audit.Request{Entry: e}}
+}
+
+// RequestIDHeader names the response header with a recorded request's ID, which its audit entries
+// carry: the request's request_id if it has one, else one the API makes.
+const RequestIDHeader = "Rpmgr-Request-Id"
+
+// tell sets the request ID header on a response or an error.
+func (r *record) tell(h http.Header, err error) {
+	if r == nil {
+		return
+	}
+	if cerr := new(connect.Error); errors.As(err, &cerr) {
+		h = cerr.Meta()
+	}
+	if h != nil {
+		h.Set(RequestIDHeader, r.req.Entry.RequestID)
+	}
 }
 
 // by records who acted.
@@ -63,39 +84,39 @@ func (r *record) by(c *Caller) {
 	if r == nil || c == nil || c.UserID == "" {
 		return
 	}
-	r.entry.ActorType, r.entry.ActorID, r.entry.CredentialID, r.entry.AuthMethod = audit.ActorUser, c.UserID, c.CredentialID, c.AuthMethod
+	e := &r.req.Entry
+	e.ActorType, e.ActorID, e.CredentialID, e.AuthMethod = audit.ActorUser, c.UserID, c.CredentialID, c.AuthMethod
 }
 
 // in records the org the request acts in, whose chain gets the entry; none is the instance chain.
 func (r *record) in(org string) {
 	if r != nil {
-		r.entry.OrgID = org
+		r.req.Entry.OrgID = org
 	}
 }
 
-// hook returns ctx whose write transactions append the entry, as a success, before they commit.
+// hook returns ctx whose write transactions append the entry, as a success, before they commit,
+// unless a service recorded the change in the transaction itself (audit.Append).
 func (r *record) hook(ctx context.Context) context.Context {
 	if r == nil {
 		return ctx
 	}
-	return store.WithTxHook(ctx, func(ctx context.Context, tx *ent.Tx) error {
-		e := r.entry
-		e.Result = audit.Success
-		if _, err := audit.Append(ctx, tx, e); err != nil {
-			return err
+	return store.WithTxValue(store.WithTxHook(ctx, func(ctx context.Context, tx *ent.Tx) error {
+		ok, err := r.req.AppendOwn(ctx, tx, audit.Success)
+		if ok {
+			r.appended.Store(true)
 		}
-		r.appended.Store(true)
-		return nil
-	})
+		return err
+	}), r.req)
 }
 
 // finish records the outcome of a request no transaction recorded: a success that wrote nothing,
 // a refusal, a failure. ctx carries the request's scope, if it got one.
 func (r *record) finish(ctx context.Context, err error) {
-	if r == nil || err == nil && r.appended.Load() {
+	if r == nil || err == nil && (r.appended.Load() || r.req.Recorded()) {
 		return
 	}
-	e := r.entry
+	e := r.req.Entry
 	switch code := connect.CodeOf(err); {
 	case err == nil:
 		e.Result = audit.Success

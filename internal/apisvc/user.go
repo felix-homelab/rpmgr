@@ -39,7 +39,7 @@ func (u *User) EnrollTOTP(ctx context.Context, _ *connect.Request[rpmgrv1.Enroll
 	if err != nil {
 		return nil, err
 	}
-	seed, uri, err := u.MFA.EnrollTOTP(c.UserID, u.Issuer)
+	seed, uri, err := u.MFA.For(ctx).EnrollTOTP(c.UserID, u.Issuer)
 	if errors.Is(err, accounts.ErrMFAEnrolled) {
 		return nil, connect.NewError(connect.CodeFailedPrecondition, err)
 	}
@@ -55,7 +55,7 @@ func (u *User) ConfirmTOTP(ctx context.Context, req *connect.Request[rpmgrv1.Con
 	if err != nil {
 		return nil, err
 	}
-	codes, err := u.MFA.ConfirmTOTP(c.UserID, req.Msg.GetCode())
+	codes, err := u.MFA.For(ctx).ConfirmTOTP(c.UserID, req.Msg.GetCode())
 	switch {
 	case errors.Is(err, accounts.ErrSecondFactor):
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
@@ -76,7 +76,7 @@ func (u *User) RemoveTOTP(ctx context.Context, _ *connect.Request[rpmgrv1.Remove
 	if err != nil {
 		return nil, err
 	}
-	if err := u.MFA.RemoveTOTP(c.UserID, c.UserID); errors.Is(err, accounts.ErrNoMFA) {
+	if err := u.MFA.For(ctx).RemoveTOTP(c.UserID, c.UserID); errors.Is(err, accounts.ErrNoMFA) {
 		return nil, connect.NewError(connect.CodeFailedPrecondition, err)
 	} else if err != nil {
 		return nil, err
@@ -94,7 +94,7 @@ func (u *User) RegenerateRecoveryCodes(ctx context.Context, _ *connect.Request[r
 	if err != nil {
 		return nil, err
 	}
-	codes, err := u.MFA.RegenerateRecoveryCodes(c.UserID)
+	codes, err := u.MFA.For(ctx).RegenerateRecoveryCodes(c.UserID)
 	if errors.Is(err, accounts.ErrNoMFA) {
 		return nil, connect.NewError(connect.CodeFailedPrecondition, err)
 	}
@@ -212,7 +212,7 @@ func (u *User) CreatePasswordResetLink(ctx context.Context, req *connect.Request
 	if !allowed {
 		return nil, connect.NewError(connect.CodeNotFound, accounts.ErrNoUser)
 	}
-	tok, err := u.MFA.ResetLink(target, c.UserID)
+	tok, err := u.MFA.For(ctx).ResetLink(target, c.UserID)
 	if err != nil {
 		return nil, err
 	}

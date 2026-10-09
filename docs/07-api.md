@@ -216,6 +216,10 @@ API reports both ([03](03-connections.md#configuration-reconciliation)).
   `buf.validate.Violations`.
 - Error messages never contain secrets or other orgs' data. [R] An error a method did not write
   for the client is `INTERNAL` without its text, which goes to the log.
+- [R] Every request the audit log records, every one but those free of side effects, gets a
+  request ID: its `request_id` if it has one, else one the API makes. The response, or the error,
+  carries it in the header `Rpmgr-Request-Id`, and the request's audit entries carry it
+  ([04](04-security.md#audit-log)).
 - **Validation is server-authoritative** (protovalidate annotations in the protos). The UI runs its
   own checks for responsiveness only ([09](09-web-ui.md)).
 

@@ -49,15 +49,19 @@ func (i interceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
 		ctx, err := i.s.admit(context.WithValue(ctx, peerKey{}, req.Peer().Addr), md, req.Header(), msg, rec)
 		if err != nil {
 			rec.finish(ctx, err)
+			rec.tell(nil, err)
 			return nil, err
 		}
 		resp, err := next(rec.hook(ctx), req)
 		err = i.s.sanitize(md, err)
 		rec.finish(ctx, err)
-		if err == nil {
-			i.s.applyStatus(ctx, req.Header(), resp)
+		if err != nil {
+			rec.tell(nil, err)
+			return nil, err
 		}
-		return resp, err
+		rec.tell(resp.Header(), nil)
+		i.s.applyStatus(ctx, req.Header(), resp)
+		return resp, nil
 	}
 }
 
@@ -84,10 +88,13 @@ func (i interceptor) WrapStreamingHandler(next connect.StreamingHandlerFunc) con
 		ctx, err := i.s.admit(context.WithValue(ctx, peerKey{}, conn.Peer().Addr), md, conn.RequestHeader(), msg, rec)
 		if err != nil {
 			rec.finish(ctx, err)
+			rec.tell(nil, err)
 			return err
 		}
+		rec.tell(conn.ResponseHeader(), nil)
 		err = i.s.sanitize(md, next(rec.hook(ctx), &replay{StreamingHandlerConn: conn, first: msg}))
 		rec.finish(ctx, err)
+		rec.tell(nil, err)
 		return err
 	}
 }

@@ -276,3 +276,45 @@ func TestReadTx_Snapshot(t *testing.T) {
 		}
 	})
 }
+
+// TestTxValue: a transaction under a context with a value hands it to TxValue while it runs, and
+// so does one under a context the hook was carried to; WithoutTxHook drops it, and a finished or
+// rolled-back transaction keeps nothing.
+func TestTxValue(t *testing.T) {
+	forEachDialect(t, func(t *testing.T, _ *ent.Client, db *store.DB) {
+		initialised(t, db)
+		req := store.WithTxValue(context.Background(), "request")
+		seen := func(ctx context.Context, fail bool) (any, *ent.Tx) {
+			var v any
+			var during *ent.Tx
+			_ = store.WriteTx(ctx, db, func(tx *ent.Tx) error {
+				v, during = store.TxValue(tx), tx
+				if fail {
+					return errors.New("rolled back")
+				}
+				return nil
+			})
+			return v, during
+		}
+		if v, tx := seen(store.CarryTxHook(systemCtx(t), req), false); v != "request" || store.TxValue(tx) != nil {
+			t.Fatalf("a carried value: %v, afterwards %v", v, store.TxValue(tx))
+		}
+		if v, tx := seen(req, true); v != "request" || store.TxValue(tx) != nil {
+			t.Fatalf("a rolled-back transaction: %v, afterwards %v", v, store.TxValue(tx))
+		}
+		if _, err := store.ConfigTx(store.CarryTxHook(systemCtx(t), req), db, func(tx *ent.Tx) ([]string, error) {
+			if v := store.TxValue(tx); v != "request" {
+				t.Errorf("ConfigTx: %v", v)
+			}
+			return nil, nil
+		}); err != nil {
+			t.Fatal(err)
+		}
+		if v, _ := seen(store.WithoutTxHook(req), false); v != nil {
+			t.Fatalf("WithoutTxHook kept %v", v)
+		}
+		if v, _ := seen(context.Background(), false); v != nil {
+			t.Fatalf("no value: %v", v)
+		}
+	})
+}
