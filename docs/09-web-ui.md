@@ -214,6 +214,16 @@ flowchart LR
   asks for an authenticator code or a recovery code.
 - A wrong address and a wrong password show the same message. A rate limit shows when to try
   again.
+- **One-time links.** Each kind opens its own page. The page reads the token from the URL fragment,
+  then removes it from the address bar and the history.
+  - The first-user link opens `/setup#<token>`. The page asks for the e-mail address, the name and
+    a password, creates the account and signs the user in.
+  - A reset link opens `/reset#<token>`, which sets a new password. The user then signs in again,
+    because the reset ended every session.
+- `/forgot` asks for a reset link by e-mail. Its answer does not depend on whether the address
+  belongs to an account. Without a mail relay, it says to ask an Owner or the Instance Admin.
+- New passwords are checked in the browser for length (12 to 256 characters) and for a matching
+  repetition before they are sent.
 
 **Serving.** The controller serves the UI on every path of its UI name that the API and
 `/.well-known/rpmgr/` do not take:

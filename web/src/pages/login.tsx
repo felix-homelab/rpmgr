@@ -3,10 +3,11 @@
 import { Code, ConnectError } from "@connectrpc/connect";
 import { useMutation } from "@connectrpc/connect-query";
 import { useQueryClient } from "@tanstack/react-query";
-import { getRouteApi, useNavigate } from "@tanstack/react-router";
+import { getRouteApi, Link, useNavigate } from "@tanstack/react-router";
 import { useState, type FormEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { Field } from "@/components/field";
+import { Alert, PublicPage } from "@/components/public-page";
 import { Button } from "@/components/ui/button";
 import { AuthService } from "@/gen/rpmgr/v1/auth_pb";
 import { Reason, reasonOf, retryAfter } from "@/lib/errors";
@@ -52,9 +53,8 @@ export function Login() {
   }
 
   return (
-    <main className="mx-auto mt-16 max-w-sm px-4">
-      <h1 className="text-2xl font-semibold">{t("login.title")}</h1>
-      <form onSubmit={submit} className="mt-6 grid gap-4" noValidate>
+    <PublicPage title={t("login.title")}>
+      <form onSubmit={submit} className="grid gap-4" noValidate>
         {!needCode ? (
           <>
             <Field label={t("login.email")} type="email" autoComplete="username" required value={email}
@@ -66,15 +66,14 @@ export function Login() {
           <Field label={t("login.code")} hint={t("login.codeHint")} autoComplete="one-time-code" autoFocus required
             value={code} onChange={(e) => setCode(e.target.value)} />
         )}
-        {error && (
-          <p role="alert" className="text-sm text-destructive">
-            {error}
-          </p>
-        )}
+        {error && <Alert>{error}</Alert>}
         <Button type="submit" disabled={login.isPending}>
           {t("login.submit")}
         </Button>
       </form>
-    </main>
+      <Link to="/forgot" className="mt-4 inline-block text-sm text-muted-foreground underline">
+        {t("login.forgot")}
+      </Link>
+    </PublicPage>
   );
 }

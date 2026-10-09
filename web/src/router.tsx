@@ -4,9 +4,12 @@ import { Code, ConnectError, type Transport } from "@connectrpc/connect";
 import type { QueryClient } from "@tanstack/react-query";
 import { createRootRouteWithContext, createRoute, createRouter, Outlet, redirect, type RouterHistory } from "@tanstack/react-router";
 import { Layout } from "@/components/layout";
+import { Forgot } from "@/pages/forgot";
 import { Login } from "@/pages/login";
 import { NotFound } from "@/pages/not-found";
 import { Overview } from "@/pages/overview";
+import { Reset } from "@/pages/reset";
+import { Setup } from "@/pages/setup";
 import { sessionQuery } from "@/session";
 
 export interface RouterContext {
@@ -41,7 +44,12 @@ const login = createRoute({
     typeof search.redirect === "string" ? { redirect: search.redirect } : {},
 });
 
-const routeTree = root.addChildren([app.addChildren([overview]), login]);
+// The pages of one-time links (docs/10-operations.md, "Install") and the reset request.
+const setup = createRoute({ getParentRoute: () => root, path: "/setup", component: Setup });
+const reset = createRoute({ getParentRoute: () => root, path: "/reset", component: Reset });
+const forgot = createRoute({ getParentRoute: () => root, path: "/forgot", component: Forgot });
+
+const routeTree = root.addChildren([app.addChildren([overview]), login, setup, reset, forgot]);
 
 export function createAppRouter(context: RouterContext, history?: RouterHistory) {
   return createRouter({ routeTree, history, context, defaultPreload: "intent" });
