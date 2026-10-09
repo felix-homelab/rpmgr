@@ -115,8 +115,22 @@ type Controller struct {
 		CertFile string `yaml:"cert_file"`
 		KeyFile  string `yaml:"key_file"`
 	} `yaml:"tls"`
-	Log     Log     `yaml:"log"`
-	Tracing Tracing `yaml:"tracing"`
+	Log           Log           `yaml:"log"`
+	Tracing       Tracing       `yaml:"tracing"`
+	RevocationLog RevocationLog `yaml:"revocation_log"`
+}
+
+// RevocationLog is where the revocation log keeps a copy off the host (docs/10-operations.md,
+// "Backup and restore"): a directory, usually a share mounted on every controller host.
+type RevocationLog struct {
+	Sink string `yaml:"sink"` // empty for none: a single node keeps only its local log
+}
+
+func (r RevocationLog) check() error {
+	if r.Sink == "" {
+		return nil
+	}
+	return checkAbs("revocation_log.sink", r.Sink)
 }
 
 // The KEK sources of Phase 1 (docs/04-security.md, "Secrets at rest and in logs").
@@ -144,7 +158,7 @@ var portRe = regexp.MustCompile(`^[1-9][0-9]{0,4}$`)
 func (c *Controller) validate() error {
 	errs := []error{checkVersion(c.Version), checkURL("public_url", c.PublicURL),
 		checkAddr("listen.https", c.Listen.HTTPS, false), checkAddr("listen.http", *c.Listen.HTTP, true),
-		checkAdmin(c.Listen.Admin), checkLog(c.Log), c.Tracing.Check()}
+		checkAdmin(c.Listen.Admin), checkLog(c.Log), c.Tracing.Check(), c.RevocationLog.check()}
 	switch c.Database.Driver {
 	case "sqlite":
 		if !filepath.IsAbs(c.Database.DSN) || strings.ContainsAny(c.Database.DSN, "?#%") {
@@ -311,9 +325,10 @@ type AllInOne struct {
 		CertFile string `yaml:"cert_file"`
 		KeyFile  string `yaml:"key_file"`
 	} `yaml:"tls"`
-	StateDir string  `yaml:"state_dir"`
-	Log      Log     `yaml:"log"`
-	Tracing  Tracing `yaml:"tracing"`
+	StateDir      string        `yaml:"state_dir"`
+	Log           Log           `yaml:"log"`
+	Tracing       Tracing       `yaml:"tracing"`
+	RevocationLog RevocationLog `yaml:"revocation_log"`
 }
 
 func (a *AllInOne) defaults() {
@@ -344,6 +359,7 @@ func (a *AllInOne) Controller() Controller {
 	c.Database.Driver, c.Database.DSN = a.Database.Driver, a.Database.DSN
 	c.KEK.Source, c.KEK.Name, c.KEK.Path = a.KEK.Source, a.KEK.Name, a.KEK.Path
 	c.TLS.CertFile, c.TLS.KeyFile = a.TLS.CertFile, a.TLS.KeyFile
+	c.RevocationLog = a.RevocationLog
 	return c
 }
 

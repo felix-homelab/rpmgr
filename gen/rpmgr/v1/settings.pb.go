@@ -14,6 +14,7 @@ import (
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	durationpb "google.golang.org/protobuf/types/known/durationpb"
 	fieldmaskpb "google.golang.org/protobuf/types/known/fieldmaskpb"
+	timestamppb "google.golang.org/protobuf/types/known/timestamppb"
 	reflect "reflect"
 	sync "sync"
 	unsafe "unsafe"
@@ -603,8 +604,10 @@ type GetInstanceSettingsResponse struct {
 	Etag string `protobuf:"bytes,2,opt,name=etag,proto3" json:"etag,omitempty"`
 	// Whether the mail relay's password is set; the password itself is never returned.
 	SmtpPasswordSet bool `protobuf:"varint,3,opt,name=smtp_password_set,json=smtpPasswordSet,proto3" json:"smtp_password_set,omitempty"`
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
+	// Where this controller's revocation log stands (docs/10-operations.md, "Backup and restore").
+	RevocationLog *RevocationLogStatus `protobuf:"bytes,4,opt,name=revocation_log,json=revocationLog,proto3" json:"revocation_log,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *GetInstanceSettingsResponse) Reset() {
@@ -658,6 +661,88 @@ func (x *GetInstanceSettingsResponse) GetSmtpPasswordSet() bool {
 	return false
 }
 
+func (x *GetInstanceSettingsResponse) GetRevocationLog() *RevocationLogStatus {
+	if x != nil {
+		return x.RevocationLog
+	}
+	return nil
+}
+
+// RevocationLogStatus is where a controller's revocation log stands: whether a sink keeps a copy
+// off the host, and what it does not hold yet.
+type RevocationLogStatus struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Whether a sink keeps a copy off the host; without one, the UI shows a standing warning.
+	Sink bool `protobuf:"varint,1,opt,name=sink,proto3" json:"sink,omitempty"`
+	// How many entries the sink does not hold yet.
+	Unshipped int64 `protobuf:"varint,2,opt,name=unshipped,proto3" json:"unshipped,omitempty"`
+	// When the oldest of them was logged; unset when there are none.
+	OldestUnshippedTime *timestamppb.Timestamp `protobuf:"bytes,3,opt,name=oldest_unshipped_time,json=oldestUnshippedTime,proto3" json:"oldest_unshipped_time,omitempty"`
+	// Whether the alert "revocation log not yet off-host" fires: an entry has waited longer than
+	// 5 minutes.
+	Alert         bool `protobuf:"varint,4,opt,name=alert,proto3" json:"alert,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RevocationLogStatus) Reset() {
+	*x = RevocationLogStatus{}
+	mi := &file_rpmgr_v1_settings_proto_msgTypes[5]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RevocationLogStatus) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RevocationLogStatus) ProtoMessage() {}
+
+func (x *RevocationLogStatus) ProtoReflect() protoreflect.Message {
+	mi := &file_rpmgr_v1_settings_proto_msgTypes[5]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RevocationLogStatus.ProtoReflect.Descriptor instead.
+func (*RevocationLogStatus) Descriptor() ([]byte, []int) {
+	return file_rpmgr_v1_settings_proto_rawDescGZIP(), []int{5}
+}
+
+func (x *RevocationLogStatus) GetSink() bool {
+	if x != nil {
+		return x.Sink
+	}
+	return false
+}
+
+func (x *RevocationLogStatus) GetUnshipped() int64 {
+	if x != nil {
+		return x.Unshipped
+	}
+	return 0
+}
+
+func (x *RevocationLogStatus) GetOldestUnshippedTime() *timestamppb.Timestamp {
+	if x != nil {
+		return x.OldestUnshippedTime
+	}
+	return nil
+}
+
+func (x *RevocationLogStatus) GetAlert() bool {
+	if x != nil {
+		return x.Alert
+	}
+	return false
+}
+
 // UpdateInstanceSettingsRequest changes the instance settings.
 type UpdateInstanceSettingsRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
@@ -673,7 +758,7 @@ type UpdateInstanceSettingsRequest struct {
 
 func (x *UpdateInstanceSettingsRequest) Reset() {
 	*x = UpdateInstanceSettingsRequest{}
-	mi := &file_rpmgr_v1_settings_proto_msgTypes[5]
+	mi := &file_rpmgr_v1_settings_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -685,7 +770,7 @@ func (x *UpdateInstanceSettingsRequest) String() string {
 func (*UpdateInstanceSettingsRequest) ProtoMessage() {}
 
 func (x *UpdateInstanceSettingsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_v1_settings_proto_msgTypes[5]
+	mi := &file_rpmgr_v1_settings_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -698,7 +783,7 @@ func (x *UpdateInstanceSettingsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateInstanceSettingsRequest.ProtoReflect.Descriptor instead.
 func (*UpdateInstanceSettingsRequest) Descriptor() ([]byte, []int) {
-	return file_rpmgr_v1_settings_proto_rawDescGZIP(), []int{5}
+	return file_rpmgr_v1_settings_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *UpdateInstanceSettingsRequest) GetSettings() *InstanceSettings {
@@ -737,7 +822,7 @@ type UpdateInstanceSettingsResponse struct {
 
 func (x *UpdateInstanceSettingsResponse) Reset() {
 	*x = UpdateInstanceSettingsResponse{}
-	mi := &file_rpmgr_v1_settings_proto_msgTypes[6]
+	mi := &file_rpmgr_v1_settings_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -749,7 +834,7 @@ func (x *UpdateInstanceSettingsResponse) String() string {
 func (*UpdateInstanceSettingsResponse) ProtoMessage() {}
 
 func (x *UpdateInstanceSettingsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_v1_settings_proto_msgTypes[6]
+	mi := &file_rpmgr_v1_settings_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -762,7 +847,7 @@ func (x *UpdateInstanceSettingsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateInstanceSettingsResponse.ProtoReflect.Descriptor instead.
 func (*UpdateInstanceSettingsResponse) Descriptor() ([]byte, []int) {
-	return file_rpmgr_v1_settings_proto_rawDescGZIP(), []int{6}
+	return file_rpmgr_v1_settings_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *UpdateInstanceSettingsResponse) GetSettings() *InstanceSettings {
@@ -797,7 +882,7 @@ type SetSmtpPasswordRequest struct {
 
 func (x *SetSmtpPasswordRequest) Reset() {
 	*x = SetSmtpPasswordRequest{}
-	mi := &file_rpmgr_v1_settings_proto_msgTypes[7]
+	mi := &file_rpmgr_v1_settings_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -809,7 +894,7 @@ func (x *SetSmtpPasswordRequest) String() string {
 func (*SetSmtpPasswordRequest) ProtoMessage() {}
 
 func (x *SetSmtpPasswordRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_v1_settings_proto_msgTypes[7]
+	mi := &file_rpmgr_v1_settings_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -822,7 +907,7 @@ func (x *SetSmtpPasswordRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SetSmtpPasswordRequest.ProtoReflect.Descriptor instead.
 func (*SetSmtpPasswordRequest) Descriptor() ([]byte, []int) {
-	return file_rpmgr_v1_settings_proto_rawDescGZIP(), []int{7}
+	return file_rpmgr_v1_settings_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *SetSmtpPasswordRequest) GetPassword() string {
@@ -841,7 +926,7 @@ type SetSmtpPasswordResponse struct {
 
 func (x *SetSmtpPasswordResponse) Reset() {
 	*x = SetSmtpPasswordResponse{}
-	mi := &file_rpmgr_v1_settings_proto_msgTypes[8]
+	mi := &file_rpmgr_v1_settings_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -853,7 +938,7 @@ func (x *SetSmtpPasswordResponse) String() string {
 func (*SetSmtpPasswordResponse) ProtoMessage() {}
 
 func (x *SetSmtpPasswordResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_v1_settings_proto_msgTypes[8]
+	mi := &file_rpmgr_v1_settings_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -866,7 +951,7 @@ func (x *SetSmtpPasswordResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SetSmtpPasswordResponse.ProtoReflect.Descriptor instead.
 func (*SetSmtpPasswordResponse) Descriptor() ([]byte, []int) {
-	return file_rpmgr_v1_settings_proto_rawDescGZIP(), []int{8}
+	return file_rpmgr_v1_settings_proto_rawDescGZIP(), []int{9}
 }
 
 // GetOrgSettingsRequest names an org.
@@ -880,7 +965,7 @@ type GetOrgSettingsRequest struct {
 
 func (x *GetOrgSettingsRequest) Reset() {
 	*x = GetOrgSettingsRequest{}
-	mi := &file_rpmgr_v1_settings_proto_msgTypes[9]
+	mi := &file_rpmgr_v1_settings_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -892,7 +977,7 @@ func (x *GetOrgSettingsRequest) String() string {
 func (*GetOrgSettingsRequest) ProtoMessage() {}
 
 func (x *GetOrgSettingsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_v1_settings_proto_msgTypes[9]
+	mi := &file_rpmgr_v1_settings_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -905,7 +990,7 @@ func (x *GetOrgSettingsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetOrgSettingsRequest.ProtoReflect.Descriptor instead.
 func (*GetOrgSettingsRequest) Descriptor() ([]byte, []int) {
-	return file_rpmgr_v1_settings_proto_rawDescGZIP(), []int{9}
+	return file_rpmgr_v1_settings_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *GetOrgSettingsRequest) GetOrgId() string {
@@ -928,7 +1013,7 @@ type GetOrgSettingsResponse struct {
 
 func (x *GetOrgSettingsResponse) Reset() {
 	*x = GetOrgSettingsResponse{}
-	mi := &file_rpmgr_v1_settings_proto_msgTypes[10]
+	mi := &file_rpmgr_v1_settings_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -940,7 +1025,7 @@ func (x *GetOrgSettingsResponse) String() string {
 func (*GetOrgSettingsResponse) ProtoMessage() {}
 
 func (x *GetOrgSettingsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_v1_settings_proto_msgTypes[10]
+	mi := &file_rpmgr_v1_settings_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -953,7 +1038,7 @@ func (x *GetOrgSettingsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetOrgSettingsResponse.ProtoReflect.Descriptor instead.
 func (*GetOrgSettingsResponse) Descriptor() ([]byte, []int) {
-	return file_rpmgr_v1_settings_proto_rawDescGZIP(), []int{10}
+	return file_rpmgr_v1_settings_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *GetOrgSettingsResponse) GetSettings() *OrgSettings {
@@ -987,7 +1072,7 @@ type UpdateOrgSettingsRequest struct {
 
 func (x *UpdateOrgSettingsRequest) Reset() {
 	*x = UpdateOrgSettingsRequest{}
-	mi := &file_rpmgr_v1_settings_proto_msgTypes[11]
+	mi := &file_rpmgr_v1_settings_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -999,7 +1084,7 @@ func (x *UpdateOrgSettingsRequest) String() string {
 func (*UpdateOrgSettingsRequest) ProtoMessage() {}
 
 func (x *UpdateOrgSettingsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_v1_settings_proto_msgTypes[11]
+	mi := &file_rpmgr_v1_settings_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1012,7 +1097,7 @@ func (x *UpdateOrgSettingsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateOrgSettingsRequest.ProtoReflect.Descriptor instead.
 func (*UpdateOrgSettingsRequest) Descriptor() ([]byte, []int) {
-	return file_rpmgr_v1_settings_proto_rawDescGZIP(), []int{11}
+	return file_rpmgr_v1_settings_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *UpdateOrgSettingsRequest) GetOrgId() string {
@@ -1061,7 +1146,7 @@ type UpdateOrgSettingsResponse struct {
 
 func (x *UpdateOrgSettingsResponse) Reset() {
 	*x = UpdateOrgSettingsResponse{}
-	mi := &file_rpmgr_v1_settings_proto_msgTypes[12]
+	mi := &file_rpmgr_v1_settings_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1073,7 +1158,7 @@ func (x *UpdateOrgSettingsResponse) String() string {
 func (*UpdateOrgSettingsResponse) ProtoMessage() {}
 
 func (x *UpdateOrgSettingsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_v1_settings_proto_msgTypes[12]
+	mi := &file_rpmgr_v1_settings_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1086,7 +1171,7 @@ func (x *UpdateOrgSettingsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateOrgSettingsResponse.ProtoReflect.Descriptor instead.
 func (*UpdateOrgSettingsResponse) Descriptor() ([]byte, []int) {
-	return file_rpmgr_v1_settings_proto_rawDescGZIP(), []int{12}
+	return file_rpmgr_v1_settings_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *UpdateOrgSettingsResponse) GetSettings() *OrgSettings {
@@ -1121,7 +1206,7 @@ var File_rpmgr_v1_settings_proto protoreflect.FileDescriptor
 
 const file_rpmgr_v1_settings_proto_rawDesc = "" +
 	"\n" +
-	"\x17rpmgr/v1/settings.proto\x12\brpmgr.v1\x1a\x1bbuf/validate/validate.proto\x1a\x1egoogle/protobuf/duration.proto\x1a google/protobuf/field_mask.proto\x1a\x15rpmgr/v1/common.proto\x1a\x16rpmgr/v1/options.proto\x1a\x15rpmgr/v1/status.proto\"\xec\t\n" +
+	"\x17rpmgr/v1/settings.proto\x12\brpmgr.v1\x1a\x1bbuf/validate/validate.proto\x1a\x1egoogle/protobuf/duration.proto\x1a google/protobuf/field_mask.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x15rpmgr/v1/common.proto\x1a\x16rpmgr/v1/options.proto\x1a\x15rpmgr/v1/status.proto\"\xec\t\n" +
 	"\x10InstanceSettings\x12W\n" +
 	"\x11default_transport\x18\x01 \x01(\x0e2\x19.rpmgr.v1.TransportPolicyB\n" +
 	"\xbaH\a\x82\x01\x04\x10\x01 \x00H\x00R\x10defaultTransport\x88\x01\x01\x12j\n" +
@@ -1164,11 +1249,17 @@ const file_rpmgr_v1_settings_proto_rawDesc = "" +
 	"\x18default_gateway_group_id\x18\x03 \x01(\tB+\xbaH(r&2$^(gwg_[0-7][0-9A-HJKMNP-TV-Z]{25})?$R\x15defaultGatewayGroupIdB\x0e\n" +
 	"\f_require_mfaB\x17\n" +
 	"\x15_operators_may_enroll\"\x1c\n" +
-	"\x1aGetInstanceSettingsRequest\"\x95\x01\n" +
+	"\x1aGetInstanceSettingsRequest\"\xdb\x01\n" +
 	"\x1bGetInstanceSettingsResponse\x126\n" +
 	"\bsettings\x18\x01 \x01(\v2\x1a.rpmgr.v1.InstanceSettingsR\bsettings\x12\x12\n" +
 	"\x04etag\x18\x02 \x01(\tR\x04etag\x12*\n" +
-	"\x11smtp_password_set\x18\x03 \x01(\bR\x0fsmtpPasswordSet\"\xb0\x01\n" +
+	"\x11smtp_password_set\x18\x03 \x01(\bR\x0fsmtpPasswordSet\x12D\n" +
+	"\x0erevocation_log\x18\x04 \x01(\v2\x1d.rpmgr.v1.RevocationLogStatusR\rrevocationLog\"\xad\x01\n" +
+	"\x13RevocationLogStatus\x12\x12\n" +
+	"\x04sink\x18\x01 \x01(\bR\x04sink\x12\x1c\n" +
+	"\tunshipped\x18\x02 \x01(\x03R\tunshipped\x12N\n" +
+	"\x15oldest_unshipped_time\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\x13oldestUnshippedTime\x12\x14\n" +
+	"\x05alert\x18\x04 \x01(\bR\x05alert\"\xb0\x01\n" +
 	"\x1dUpdateInstanceSettingsRequest\x12>\n" +
 	"\bsettings\x18\x01 \x01(\v2\x1a.rpmgr.v1.InstanceSettingsB\x06\xbaH\x03\xc8\x01\x01R\bsettings\x12;\n" +
 	"\vupdate_mask\x18\x02 \x01(\v2\x1a.google.protobuf.FieldMaskR\n" +
@@ -1239,7 +1330,7 @@ func file_rpmgr_v1_settings_proto_rawDescGZIP() []byte {
 }
 
 var file_rpmgr_v1_settings_proto_enumTypes = make([]protoimpl.EnumInfo, 4)
-var file_rpmgr_v1_settings_proto_msgTypes = make([]protoimpl.MessageInfo, 13)
+var file_rpmgr_v1_settings_proto_msgTypes = make([]protoimpl.MessageInfo, 14)
 var file_rpmgr_v1_settings_proto_goTypes = []any{
 	(TransportPolicy)(0),                   // 0: rpmgr.v1.TransportPolicy
 	(PasswordHashProfile)(0),               // 1: rpmgr.v1.PasswordHashProfile
@@ -1250,56 +1341,60 @@ var file_rpmgr_v1_settings_proto_goTypes = []any{
 	(*OrgSettings)(nil),                    // 6: rpmgr.v1.OrgSettings
 	(*GetInstanceSettingsRequest)(nil),     // 7: rpmgr.v1.GetInstanceSettingsRequest
 	(*GetInstanceSettingsResponse)(nil),    // 8: rpmgr.v1.GetInstanceSettingsResponse
-	(*UpdateInstanceSettingsRequest)(nil),  // 9: rpmgr.v1.UpdateInstanceSettingsRequest
-	(*UpdateInstanceSettingsResponse)(nil), // 10: rpmgr.v1.UpdateInstanceSettingsResponse
-	(*SetSmtpPasswordRequest)(nil),         // 11: rpmgr.v1.SetSmtpPasswordRequest
-	(*SetSmtpPasswordResponse)(nil),        // 12: rpmgr.v1.SetSmtpPasswordResponse
-	(*GetOrgSettingsRequest)(nil),          // 13: rpmgr.v1.GetOrgSettingsRequest
-	(*GetOrgSettingsResponse)(nil),         // 14: rpmgr.v1.GetOrgSettingsResponse
-	(*UpdateOrgSettingsRequest)(nil),       // 15: rpmgr.v1.UpdateOrgSettingsRequest
-	(*UpdateOrgSettingsResponse)(nil),      // 16: rpmgr.v1.UpdateOrgSettingsResponse
-	(*durationpb.Duration)(nil),            // 17: google.protobuf.Duration
-	(*fieldmaskpb.FieldMask)(nil),          // 18: google.protobuf.FieldMask
-	(*Revision)(nil),                       // 19: rpmgr.v1.Revision
-	(*ApplyStatus)(nil),                    // 20: rpmgr.v1.ApplyStatus
+	(*RevocationLogStatus)(nil),            // 9: rpmgr.v1.RevocationLogStatus
+	(*UpdateInstanceSettingsRequest)(nil),  // 10: rpmgr.v1.UpdateInstanceSettingsRequest
+	(*UpdateInstanceSettingsResponse)(nil), // 11: rpmgr.v1.UpdateInstanceSettingsResponse
+	(*SetSmtpPasswordRequest)(nil),         // 12: rpmgr.v1.SetSmtpPasswordRequest
+	(*SetSmtpPasswordResponse)(nil),        // 13: rpmgr.v1.SetSmtpPasswordResponse
+	(*GetOrgSettingsRequest)(nil),          // 14: rpmgr.v1.GetOrgSettingsRequest
+	(*GetOrgSettingsResponse)(nil),         // 15: rpmgr.v1.GetOrgSettingsResponse
+	(*UpdateOrgSettingsRequest)(nil),       // 16: rpmgr.v1.UpdateOrgSettingsRequest
+	(*UpdateOrgSettingsResponse)(nil),      // 17: rpmgr.v1.UpdateOrgSettingsResponse
+	(*durationpb.Duration)(nil),            // 18: google.protobuf.Duration
+	(*timestamppb.Timestamp)(nil),          // 19: google.protobuf.Timestamp
+	(*fieldmaskpb.FieldMask)(nil),          // 20: google.protobuf.FieldMask
+	(*Revision)(nil),                       // 21: rpmgr.v1.Revision
+	(*ApplyStatus)(nil),                    // 22: rpmgr.v1.ApplyStatus
 }
 var file_rpmgr_v1_settings_proto_depIdxs = []int32{
 	0,  // 0: rpmgr.v1.InstanceSettings.default_transport:type_name -> rpmgr.v1.TransportPolicy
-	17, // 1: rpmgr.v1.InstanceSettings.leaf_certificate_lifetime:type_name -> google.protobuf.Duration
-	17, // 2: rpmgr.v1.InstanceSettings.expired_certificate_grace:type_name -> google.protobuf.Duration
+	18, // 1: rpmgr.v1.InstanceSettings.leaf_certificate_lifetime:type_name -> google.protobuf.Duration
+	18, // 2: rpmgr.v1.InstanceSettings.expired_certificate_grace:type_name -> google.protobuf.Duration
 	1,  // 3: rpmgr.v1.InstanceSettings.password_hash_profile:type_name -> rpmgr.v1.PasswordHashProfile
 	2,  // 4: rpmgr.v1.InstanceSettings.update_channel:type_name -> rpmgr.v1.UpdateChannel
-	17, // 5: rpmgr.v1.InstanceSettings.hourly_rollup_retention:type_name -> google.protobuf.Duration
-	17, // 6: rpmgr.v1.InstanceSettings.daily_rollup_retention:type_name -> google.protobuf.Duration
+	18, // 5: rpmgr.v1.InstanceSettings.hourly_rollup_retention:type_name -> google.protobuf.Duration
+	18, // 6: rpmgr.v1.InstanceSettings.daily_rollup_retention:type_name -> google.protobuf.Duration
 	5,  // 7: rpmgr.v1.InstanceSettings.smtp:type_name -> rpmgr.v1.SmtpSettings
-	17, // 8: rpmgr.v1.InstanceSettings.audit_retention:type_name -> google.protobuf.Duration
+	18, // 8: rpmgr.v1.InstanceSettings.audit_retention:type_name -> google.protobuf.Duration
 	3,  // 9: rpmgr.v1.SmtpSettings.security:type_name -> rpmgr.v1.SmtpSecurity
 	4,  // 10: rpmgr.v1.GetInstanceSettingsResponse.settings:type_name -> rpmgr.v1.InstanceSettings
-	4,  // 11: rpmgr.v1.UpdateInstanceSettingsRequest.settings:type_name -> rpmgr.v1.InstanceSettings
-	18, // 12: rpmgr.v1.UpdateInstanceSettingsRequest.update_mask:type_name -> google.protobuf.FieldMask
-	4,  // 13: rpmgr.v1.UpdateInstanceSettingsResponse.settings:type_name -> rpmgr.v1.InstanceSettings
-	19, // 14: rpmgr.v1.UpdateInstanceSettingsResponse.revision:type_name -> rpmgr.v1.Revision
-	6,  // 15: rpmgr.v1.GetOrgSettingsResponse.settings:type_name -> rpmgr.v1.OrgSettings
-	6,  // 16: rpmgr.v1.UpdateOrgSettingsRequest.settings:type_name -> rpmgr.v1.OrgSettings
-	18, // 17: rpmgr.v1.UpdateOrgSettingsRequest.update_mask:type_name -> google.protobuf.FieldMask
-	6,  // 18: rpmgr.v1.UpdateOrgSettingsResponse.settings:type_name -> rpmgr.v1.OrgSettings
-	19, // 19: rpmgr.v1.UpdateOrgSettingsResponse.revision:type_name -> rpmgr.v1.Revision
-	20, // 20: rpmgr.v1.UpdateOrgSettingsResponse.apply_status:type_name -> rpmgr.v1.ApplyStatus
-	7,  // 21: rpmgr.v1.SettingsService.GetInstanceSettings:input_type -> rpmgr.v1.GetInstanceSettingsRequest
-	9,  // 22: rpmgr.v1.SettingsService.UpdateInstanceSettings:input_type -> rpmgr.v1.UpdateInstanceSettingsRequest
-	11, // 23: rpmgr.v1.SettingsService.SetSmtpPassword:input_type -> rpmgr.v1.SetSmtpPasswordRequest
-	13, // 24: rpmgr.v1.SettingsService.GetOrgSettings:input_type -> rpmgr.v1.GetOrgSettingsRequest
-	15, // 25: rpmgr.v1.SettingsService.UpdateOrgSettings:input_type -> rpmgr.v1.UpdateOrgSettingsRequest
-	8,  // 26: rpmgr.v1.SettingsService.GetInstanceSettings:output_type -> rpmgr.v1.GetInstanceSettingsResponse
-	10, // 27: rpmgr.v1.SettingsService.UpdateInstanceSettings:output_type -> rpmgr.v1.UpdateInstanceSettingsResponse
-	12, // 28: rpmgr.v1.SettingsService.SetSmtpPassword:output_type -> rpmgr.v1.SetSmtpPasswordResponse
-	14, // 29: rpmgr.v1.SettingsService.GetOrgSettings:output_type -> rpmgr.v1.GetOrgSettingsResponse
-	16, // 30: rpmgr.v1.SettingsService.UpdateOrgSettings:output_type -> rpmgr.v1.UpdateOrgSettingsResponse
-	26, // [26:31] is the sub-list for method output_type
-	21, // [21:26] is the sub-list for method input_type
-	21, // [21:21] is the sub-list for extension type_name
-	21, // [21:21] is the sub-list for extension extendee
-	0,  // [0:21] is the sub-list for field type_name
+	9,  // 11: rpmgr.v1.GetInstanceSettingsResponse.revocation_log:type_name -> rpmgr.v1.RevocationLogStatus
+	19, // 12: rpmgr.v1.RevocationLogStatus.oldest_unshipped_time:type_name -> google.protobuf.Timestamp
+	4,  // 13: rpmgr.v1.UpdateInstanceSettingsRequest.settings:type_name -> rpmgr.v1.InstanceSettings
+	20, // 14: rpmgr.v1.UpdateInstanceSettingsRequest.update_mask:type_name -> google.protobuf.FieldMask
+	4,  // 15: rpmgr.v1.UpdateInstanceSettingsResponse.settings:type_name -> rpmgr.v1.InstanceSettings
+	21, // 16: rpmgr.v1.UpdateInstanceSettingsResponse.revision:type_name -> rpmgr.v1.Revision
+	6,  // 17: rpmgr.v1.GetOrgSettingsResponse.settings:type_name -> rpmgr.v1.OrgSettings
+	6,  // 18: rpmgr.v1.UpdateOrgSettingsRequest.settings:type_name -> rpmgr.v1.OrgSettings
+	20, // 19: rpmgr.v1.UpdateOrgSettingsRequest.update_mask:type_name -> google.protobuf.FieldMask
+	6,  // 20: rpmgr.v1.UpdateOrgSettingsResponse.settings:type_name -> rpmgr.v1.OrgSettings
+	21, // 21: rpmgr.v1.UpdateOrgSettingsResponse.revision:type_name -> rpmgr.v1.Revision
+	22, // 22: rpmgr.v1.UpdateOrgSettingsResponse.apply_status:type_name -> rpmgr.v1.ApplyStatus
+	7,  // 23: rpmgr.v1.SettingsService.GetInstanceSettings:input_type -> rpmgr.v1.GetInstanceSettingsRequest
+	10, // 24: rpmgr.v1.SettingsService.UpdateInstanceSettings:input_type -> rpmgr.v1.UpdateInstanceSettingsRequest
+	12, // 25: rpmgr.v1.SettingsService.SetSmtpPassword:input_type -> rpmgr.v1.SetSmtpPasswordRequest
+	14, // 26: rpmgr.v1.SettingsService.GetOrgSettings:input_type -> rpmgr.v1.GetOrgSettingsRequest
+	16, // 27: rpmgr.v1.SettingsService.UpdateOrgSettings:input_type -> rpmgr.v1.UpdateOrgSettingsRequest
+	8,  // 28: rpmgr.v1.SettingsService.GetInstanceSettings:output_type -> rpmgr.v1.GetInstanceSettingsResponse
+	11, // 29: rpmgr.v1.SettingsService.UpdateInstanceSettings:output_type -> rpmgr.v1.UpdateInstanceSettingsResponse
+	13, // 30: rpmgr.v1.SettingsService.SetSmtpPassword:output_type -> rpmgr.v1.SetSmtpPasswordResponse
+	15, // 31: rpmgr.v1.SettingsService.GetOrgSettings:output_type -> rpmgr.v1.GetOrgSettingsResponse
+	17, // 32: rpmgr.v1.SettingsService.UpdateOrgSettings:output_type -> rpmgr.v1.UpdateOrgSettingsResponse
+	28, // [28:33] is the sub-list for method output_type
+	23, // [23:28] is the sub-list for method input_type
+	23, // [23:23] is the sub-list for extension type_name
+	23, // [23:23] is the sub-list for extension extendee
+	0,  // [0:23] is the sub-list for field type_name
 }
 
 func init() { file_rpmgr_v1_settings_proto_init() }
@@ -1318,7 +1413,7 @@ func file_rpmgr_v1_settings_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_rpmgr_v1_settings_proto_rawDesc), len(file_rpmgr_v1_settings_proto_rawDesc)),
 			NumEnums:      4,
-			NumMessages:   13,
+			NumMessages:   14,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

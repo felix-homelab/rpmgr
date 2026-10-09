@@ -264,6 +264,8 @@ log:
 tracing:                      # every role's boot file takes this section
   otlp_endpoint: ""           # OTLP/HTTP traces URL, e.g. https://collector:4318/v1/traces; "" = off
   sample_ratio: 0.01          # share of new traces sampled; failed spans are exported regardless
+revocation_log:
+  sink: ""                    # a directory, usually a share, for a copy off the host; "" = none
 ```
 
 ```yaml
@@ -424,6 +426,17 @@ affect agents take effect through reconciliation and show apply status like any 
     way the allocation is the write, so the sink has no gaps. Entries form a **hash chain**. Phase 1
     offers the filesystem sink; the S3-compatible sink comes with HA in Phase 2
     ([D58](14-open-decisions.md#project-and-process)).
+  - **The filesystem sink** is the boot setting `revocation_log.sink`, a directory.
+    - **Publishing:** each entry is written to a temporary file, synced, then hard-linked to its
+      number; the link fails when the number exists, so a crash leaves no empty number.
+    - **Contents:** an entry holds the replica, its local entry and the sink's own hash chain.
+    - **Shipping:** every 10 s; a replica finds what it has shipped in the sink itself, so nothing is
+      shipped twice.
+    - **State:** `GetInstanceSettings` reports it as `revocation_log`, and the metrics below
+      ([Metrics](#metrics)).
+    - [R] A boot setting, not a runtime setting as the settings table lists. The share has to be
+      mounted on every controller host, and a runtime setting could not check that per host when it
+      is saved.
   - A syslog or webhook sink cannot be read back and does not count.
   - **Single node**: the sink is optional. Without one, the local `revocations.log`, which every
     backup includes, is the only copy; the restore reads it with `--revocation-log <file>`. The UI
@@ -529,6 +542,9 @@ ID); there are never per-connection or per-client-IP labels.
 | `rpmgr_acme_cert_expiry_timestamp_seconds{hostname}` | gauge | controller | 1 | Public certificates |
 | `rpmgr_quic_gso_enabled`, `rpmgr_quic_udp_buffer_warning` | gauge | gateway, connector | 1 | Host tuning status, read from the QUIC socket at each scrape: 1 if quic-go sends with GSO; 1 if its receive or send buffer is below the 7 MiB quic-go asks for ([03](03-connections.md#host-tuning-applied-by-the-installer)) |
 | `rpmgr_audit_checkpoint_age_seconds` | gauge | controller | 1 | Age of the oldest audit entry no checkpoint covers yet, 0 when every entry is covered ([04](04-security.md#audit-log)); with the external sink (Phase 2), no checkpoint that reached the sink |
+| `rpmgr_revocation_log_sink` | gauge | controller | 1 | 1 if a sink keeps the revocation log off the host, 0 for a single node without one ([Backup and restore](#backup-and-restore)) |
+| `rpmgr_revocation_log_unshipped` | gauge | controller | 1 | Revocation log entries the sink does not hold yet |
+| `rpmgr_revocation_log_oldest_unshipped_timestamp_seconds` | gauge | controller | 1 | When the oldest unshipped entry was logged, 0 when none; the alert "revocation log not yet off-host" fires 5 min after it |
 | `rpmgr_ratelimit_refused_total{limit}` | counter | controller | 1 | [R] Requests a rate limit refused: `login` and `password_reset` per address, `account` per account, `enrollment` per address; the audit log leaves them out ([04](04-security.md#audit-log)) |
 | `rpmgr_dns_sync_runs_total{zone,result}` | counter | controller | 2 | DNS passes per managed zone: `ok`, `held`, `failed`, `rate_limited` |
 | `rpmgr_dns_names{zone,status}` | gauge | controller | 2 | Names per `dns_status` ([15](15-dns.md#publication-rules)) |
@@ -578,7 +594,7 @@ followed gateway → connector → service. [R] Head sampling at 1 % by default,
 | UDP payloads too large | `rpmgr_udp_oversize_total` rate > 0 sustained |
 | Clock skew | Agent clock offset > 30 s |
 | Audit checkpoints behind | `rpmgr_audit_checkpoint_age_seconds` > 1 h |
-| Revocation log not yet off-host | A revocation-log sink is configured and a controller replica has entries not yet shipped to it for > 5 min (without a sink, the UI shows a standing hardening warning instead) |
+| Revocation log not yet off-host | A revocation-log sink is configured and a controller replica has entries not yet shipped to it for > 5 min: `rpmgr_revocation_log_unshipped > 0` and `time() - rpmgr_revocation_log_oldest_unshipped_timestamp_seconds > 300` (without a sink, the UI shows a standing hardening warning instead) |
 | DNS conflict | A name in a managed zone is `conflict` or `ambiguous` for > 15 min |
 | DNS zone held | A managed zone is `held` (after import, restore or the deletion guard) |
 | DNS sync failing | No successful pass of a managed zone for > 30 min, or the provider status is not `ok` |

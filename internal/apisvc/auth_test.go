@@ -55,6 +55,8 @@ type env struct {
 	sealer   *secret.Sealer
 	pki      *apisvc.Pki
 	logs     *telemetrytest.Sink // where every service logs; a secret in a line fails the test
+	// revlogStatus, if set, is where SettingsService finds the revocation log's status.
+	revlogStatus func() revlog.Status
 }
 
 func newEnv(t *testing.T) *env {
@@ -178,7 +180,13 @@ func newEnv(t *testing.T) *env {
 	}
 	if err := srv.Mount(mux, rpmgrv1.File_rpmgr_v1_settings_proto.Services().ByName("SettingsService"),
 		func(o ...connect.HandlerOption) (string, http.Handler) {
-			return rpmgrv1connect.NewSettingsServiceHandler(&apisvc.Settings{DB: db, Sys: sys, Sealer: sealer, Now: now}, o...)
+			return rpmgrv1connect.NewSettingsServiceHandler(&apisvc.Settings{DB: db, Sys: sys, Sealer: sealer, Now: now,
+				RevocationLog: func() revlog.Status {
+					if e.revlogStatus == nil {
+						return revlog.Status{}
+					}
+					return e.revlogStatus()
+				}}, o...)
 		}); err != nil {
 		t.Fatal(err)
 	}
