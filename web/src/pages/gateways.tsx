@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/button";
 import { GatewayGroupSchema, GatewayService, type Gateway, type GatewayGroup } from "@/gen/rpmgr/v1/gateway_pb";
 import { when } from "@/lib/format";
 import { GatewayActions, GatewayForm, type Written } from "@/pages/gateway-actions";
+import { PortPools } from "@/pages/port-pools";
 import { useAgentNames, useGateways, useGroups } from "@/routes-data";
 import { useOrg } from "@/session";
 
@@ -177,6 +178,7 @@ export function GatewayGroupPage() {
           <Button size="sm" variant="outline" className="justify-self-start" onClick={() => setEditing("new")}>{t("gwActions.addButton")}</Button>
         )}
       </section>
+      <PortPools orgId={org.orgId} groupId={group.id} />
       <section aria-labelledby="group-settings-title" className="grid gap-2">
         <h2 id="group-settings-title" className="text-lg font-semibold">{t("gateways.settings")}</h2>
         <GroupForm key={group.etag} orgId={org.orgId} group={group} />

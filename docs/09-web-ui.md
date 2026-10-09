@@ -204,6 +204,12 @@ flowchart LR
     bound to that gateway and valid for 1 hour, and is shown once next to the install command,
     which does not hold it.
   - **After each change,** the apply status follows live.
+- **Port pools and quotas** on a group's page:
+  - the group's TCP and UDP port pools, from which TCP and UDP routes get their public ports;
+  - a pool is added, its range changed, or removed after a confirmation that names it;
+  - a range is checked first: 1 to 65535, the first port no larger than the last;
+  - per protocol, the org's quota of the group's ports, with how many are in use. An empty quota is
+    removed, so that the pools alone limit the org.
 
 ### Enroll connector dialog
 

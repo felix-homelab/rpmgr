@@ -492,5 +492,26 @@
     "token": "Enrollment token…",
     "tokenIntro": "A token that enrolls {{name}} and nothing else, valid for 1 hour. Making it needs you to confirm it is you.",
     "decommissionWarning": "Decommissioning {{name}} revokes its identity and ends its sessions for good; its tunnel endpoints stop serving."
+  },
+  "pools": {
+    "title": "Port pools",
+    "none": "The group has no port pool: TCP and UDP routes have no public ports.",
+    "add": "Add a port pool",
+    "addTitle": "New port pool",
+    "editTitle": "Edit port pool",
+    "addSubmit": "Add the pool",
+    "protocol": "Protocol",
+    "from": "First port",
+    "to": "Last port",
+    "range": "Ports are 1 to 65535, the first no larger than the last.",
+    "ask": "Remove the pool {{name}}?",
+    "quotas": "Port quotas",
+    "quotasIntro": "How many ports of the group's pools the org's routes may hold. Empty: the pools alone limit them.",
+    "quotaOf": "{{protocol}} quota",
+    "quotaLabel": "{{protocol}} ports at most",
+    "noQuota": "no quota",
+    "quotaRange": "A quota is 0 to 65535 ports.",
+    "allocated_one": "{{count}} in use",
+    "allocated_other": "{{count}} in use"
   }
 }
