@@ -51,6 +51,7 @@ func apiCommands() []*cli.Command {
 	createPolicy, updatePolicy := accessPolicyCommands()
 	add(map[string][]*cli.Command{"create": {createPolicy}, "update": {updatePolicy}})
 	add(memberCommands())
+	add(settingsCommands())
 	out := []*cli.Command{getCommand(), listCommand(), deleteCommand()}
 	for _, v := range []struct{ verb, summary string }{
 		{"create", "create a resource of the public API"}, {"update", "change a resource of the public API"},
@@ -126,17 +127,22 @@ func (s *apiSession) get(ctx context.Context, k apicli.Kind, id string) (protore
 func getCommand() *cli.Command {
 	var output, role string
 	var allow listFlag
+	var instance bool
 	return &cli.Command{
-		Name: "get", Summary: "show a resource of the public API, or the install command of an agent",
-		Args: "install-command | <" + kindsHelp(func(k apicli.Kind) bool { return !k.NoGet }) + "> <id>",
+		Name: "get", Summary: "show a resource of the public API, the settings, or the install command of an agent",
+		Args: "install-command | settings | <" + kindsHelp(func(k apicli.Kind) bool { return !k.NoGet }) + "> <id>",
 		Flags: func(fs *flag.FlagSet) {
 			outputFlag(fs, &output)
+			fs.BoolVar(&instance, "instance", false, "settings: the instance's settings, for an Instance Admin, instead of the org's")
 			fs.StringVar(&role, "role", "connector", "install-command: the role to install, connector or gateway")
 			fs.Var(&allow, "allow-target", "install-command: a target the connector may reach, ip:port or a socket path; repeat for more")
 		},
 		Run: func(ctx context.Context, env *cli.Env, args []string) error {
 			if len(args) == 1 && args[0] == "install-command" {
 				return installCommand(ctx, env, role, allow)
+			}
+			if len(args) == 1 && args[0] == "settings" {
+				return getSettings(ctx, env, instance, output)
 			}
 			k, err := kindArgs(args, 2)
 			if err != nil {
