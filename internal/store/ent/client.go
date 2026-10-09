@@ -45,6 +45,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/portallocation"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/portpool"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/portquota"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/recoverycode"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/revokedidentity"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/route"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routehostname"
@@ -55,6 +56,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routeudp"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/secretmeta"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/session"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/totpcredential"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/user"
 
 	stdsql "database/sql"
@@ -125,6 +127,8 @@ type Client struct {
 	PortPool *PortPoolClient
 	// PortQuota is the client for interacting with the PortQuota builders.
 	PortQuota *PortQuotaClient
+	// RecoveryCode is the client for interacting with the RecoveryCode builders.
+	RecoveryCode *RecoveryCodeClient
 	// RevokedIdentity is the client for interacting with the RevokedIdentity builders.
 	RevokedIdentity *RevokedIdentityClient
 	// Route is the client for interacting with the Route builders.
@@ -145,6 +149,8 @@ type Client struct {
 	SecretMeta *SecretMetaClient
 	// Session is the client for interacting with the Session builders.
 	Session *SessionClient
+	// TOTPCredential is the client for interacting with the TOTPCredential builders.
+	TOTPCredential *TOTPCredentialClient
 	// User is the client for interacting with the User builders.
 	User *UserClient
 }
@@ -188,6 +194,7 @@ func (c *Client) init() {
 	c.PortAllocation = NewPortAllocationClient(c.config)
 	c.PortPool = NewPortPoolClient(c.config)
 	c.PortQuota = NewPortQuotaClient(c.config)
+	c.RecoveryCode = NewRecoveryCodeClient(c.config)
 	c.RevokedIdentity = NewRevokedIdentityClient(c.config)
 	c.Route = NewRouteClient(c.config)
 	c.RouteHTTP = NewRouteHTTPClient(c.config)
@@ -198,6 +205,7 @@ func (c *Client) init() {
 	c.RouteUDP = NewRouteUDPClient(c.config)
 	c.SecretMeta = NewSecretMetaClient(c.config)
 	c.Session = NewSessionClient(c.config)
+	c.TOTPCredential = NewTOTPCredentialClient(c.config)
 	c.User = NewUserClient(c.config)
 }
 
@@ -321,6 +329,7 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		PortAllocation:    NewPortAllocationClient(cfg),
 		PortPool:          NewPortPoolClient(cfg),
 		PortQuota:         NewPortQuotaClient(cfg),
+		RecoveryCode:      NewRecoveryCodeClient(cfg),
 		RevokedIdentity:   NewRevokedIdentityClient(cfg),
 		Route:             NewRouteClient(cfg),
 		RouteHTTP:         NewRouteHTTPClient(cfg),
@@ -331,6 +340,7 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		RouteUDP:          NewRouteUDPClient(cfg),
 		SecretMeta:        NewSecretMetaClient(cfg),
 		Session:           NewSessionClient(cfg),
+		TOTPCredential:    NewTOTPCredentialClient(cfg),
 		User:              NewUserClient(cfg),
 	}, nil
 }
@@ -381,6 +391,7 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		PortAllocation:    NewPortAllocationClient(cfg),
 		PortPool:          NewPortPoolClient(cfg),
 		PortQuota:         NewPortQuotaClient(cfg),
+		RecoveryCode:      NewRecoveryCodeClient(cfg),
 		RevokedIdentity:   NewRevokedIdentityClient(cfg),
 		Route:             NewRouteClient(cfg),
 		RouteHTTP:         NewRouteHTTPClient(cfg),
@@ -391,6 +402,7 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		RouteUDP:          NewRouteUDPClient(cfg),
 		SecretMeta:        NewSecretMetaClient(cfg),
 		Session:           NewSessionClient(cfg),
+		TOTPCredential:    NewTOTPCredentialClient(cfg),
 		User:              NewUserClient(cfg),
 	}, nil
 }
@@ -427,8 +439,9 @@ func (c *Client) Use(hooks ...Hook) {
 		c.EnrollmentToken, c.Gateway, c.GatewayGroup, c.Instance, c.InstanceSetting,
 		c.IssuedCertificate, c.Lease, c.Membership, c.Org, c.OrgSetting,
 		c.PasswordReset, c.PolicyRule, c.PortAllocation, c.PortPool, c.PortQuota,
-		c.RevokedIdentity, c.Route, c.RouteHTTP, c.RouteHostname, c.RoutePolicy,
-		c.RouteTCP, c.RouteTarget, c.RouteUDP, c.SecretMeta, c.Session, c.User,
+		c.RecoveryCode, c.RevokedIdentity, c.Route, c.RouteHTTP, c.RouteHostname,
+		c.RoutePolicy, c.RouteTCP, c.RouteTarget, c.RouteUDP, c.SecretMeta, c.Session,
+		c.TOTPCredential, c.User,
 	} {
 		n.Use(hooks...)
 	}
@@ -444,8 +457,9 @@ func (c *Client) Intercept(interceptors ...Interceptor) {
 		c.EnrollmentToken, c.Gateway, c.GatewayGroup, c.Instance, c.InstanceSetting,
 		c.IssuedCertificate, c.Lease, c.Membership, c.Org, c.OrgSetting,
 		c.PasswordReset, c.PolicyRule, c.PortAllocation, c.PortPool, c.PortQuota,
-		c.RevokedIdentity, c.Route, c.RouteHTTP, c.RouteHostname, c.RoutePolicy,
-		c.RouteTCP, c.RouteTarget, c.RouteUDP, c.SecretMeta, c.Session, c.User,
+		c.RecoveryCode, c.RevokedIdentity, c.Route, c.RouteHTTP, c.RouteHostname,
+		c.RoutePolicy, c.RouteTCP, c.RouteTarget, c.RouteUDP, c.SecretMeta, c.Session,
+		c.TOTPCredential, c.User,
 	} {
 		n.Intercept(interceptors...)
 	}
@@ -514,6 +528,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.PortPool.mutate(ctx, m)
 	case *PortQuotaMutation:
 		return c.PortQuota.mutate(ctx, m)
+	case *RecoveryCodeMutation:
+		return c.RecoveryCode.mutate(ctx, m)
 	case *RevokedIdentityMutation:
 		return c.RevokedIdentity.mutate(ctx, m)
 	case *RouteMutation:
@@ -534,6 +550,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.SecretMeta.mutate(ctx, m)
 	case *SessionMutation:
 		return c.Session.mutate(ctx, m)
+	case *TOTPCredentialMutation:
+		return c.TOTPCredential.mutate(ctx, m)
 	case *UserMutation:
 		return c.User.mutate(ctx, m)
 	default:
@@ -4763,6 +4781,157 @@ func (c *PortQuotaClient) mutate(ctx context.Context, m *PortQuotaMutation) (Val
 	}
 }
 
+// RecoveryCodeClient is a client for the RecoveryCode schema.
+type RecoveryCodeClient struct {
+	config
+}
+
+// NewRecoveryCodeClient returns a client for the RecoveryCode from the given config.
+func NewRecoveryCodeClient(c config) *RecoveryCodeClient {
+	return &RecoveryCodeClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `recoverycode.Hooks(f(g(h())))`.
+func (c *RecoveryCodeClient) Use(hooks ...Hook) {
+	c.hooks.RecoveryCode = append(c.hooks.RecoveryCode, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `recoverycode.Intercept(f(g(h())))`.
+func (c *RecoveryCodeClient) Intercept(interceptors ...Interceptor) {
+	c.inters.RecoveryCode = append(c.inters.RecoveryCode, interceptors...)
+}
+
+// Create returns a builder for creating a RecoveryCode entity.
+func (c *RecoveryCodeClient) Create() *RecoveryCodeCreate {
+	mutation := newRecoveryCodeMutation(c.config, OpCreate)
+	return &RecoveryCodeCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of RecoveryCode entities.
+func (c *RecoveryCodeClient) CreateBulk(builders ...*RecoveryCodeCreate) *RecoveryCodeCreateBulk {
+	return &RecoveryCodeCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *RecoveryCodeClient) MapCreateBulk(slice any, setFunc func(*RecoveryCodeCreate, int)) *RecoveryCodeCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &RecoveryCodeCreateBulk{err: fmt.Errorf("calling to RecoveryCodeClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*RecoveryCodeCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &RecoveryCodeCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for RecoveryCode.
+func (c *RecoveryCodeClient) Update() *RecoveryCodeUpdate {
+	mutation := newRecoveryCodeMutation(c.config, OpUpdate)
+	return &RecoveryCodeUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *RecoveryCodeClient) UpdateOne(_m *RecoveryCode) *RecoveryCodeUpdateOne {
+	mutation := newRecoveryCodeMutation(c.config, OpUpdateOne, withRecoveryCode(_m))
+	return &RecoveryCodeUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *RecoveryCodeClient) UpdateOneID(id string) *RecoveryCodeUpdateOne {
+	mutation := newRecoveryCodeMutation(c.config, OpUpdateOne, withRecoveryCodeID(id))
+	return &RecoveryCodeUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for RecoveryCode.
+func (c *RecoveryCodeClient) Delete() *RecoveryCodeDelete {
+	mutation := newRecoveryCodeMutation(c.config, OpDelete)
+	return &RecoveryCodeDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *RecoveryCodeClient) DeleteOne(_m *RecoveryCode) *RecoveryCodeDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *RecoveryCodeClient) DeleteOneID(id string) *RecoveryCodeDeleteOne {
+	builder := c.Delete().Where(recoverycode.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &RecoveryCodeDeleteOne{builder}
+}
+
+// Query returns a query builder for RecoveryCode.
+func (c *RecoveryCodeClient) Query() *RecoveryCodeQuery {
+	return &RecoveryCodeQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeRecoveryCode},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a RecoveryCode entity by its id.
+func (c *RecoveryCodeClient) Get(ctx context.Context, id string) (*RecoveryCode, error) {
+	return c.Query().Where(recoverycode.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *RecoveryCodeClient) GetX(ctx context.Context, id string) *RecoveryCode {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// QueryUser queries the user edge of a RecoveryCode.
+func (c *RecoveryCodeClient) QueryUser(_m *RecoveryCode) *UserQuery {
+	query := (&UserClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(recoverycode.Table, recoverycode.FieldID, id),
+			sqlgraph.To(user.Table, user.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, false, recoverycode.UserTable, recoverycode.UserColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// Hooks returns the client hooks.
+func (c *RecoveryCodeClient) Hooks() []Hook {
+	hooks := c.hooks.RecoveryCode
+	return append(hooks[:len(hooks):len(hooks)], recoverycode.Hooks[:]...)
+}
+
+// Interceptors returns the client interceptors.
+func (c *RecoveryCodeClient) Interceptors() []Interceptor {
+	inters := c.inters.RecoveryCode
+	return append(inters[:len(inters):len(inters)], recoverycode.Interceptors[:]...)
+}
+
+func (c *RecoveryCodeClient) mutate(ctx context.Context, m *RecoveryCodeMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&RecoveryCodeCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&RecoveryCodeUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&RecoveryCodeUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&RecoveryCodeDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown RecoveryCode mutation op: %q", m.Op())
+	}
+}
+
 // RevokedIdentityClient is a client for the RevokedIdentity schema.
 type RevokedIdentityClient struct {
 	config
@@ -6352,6 +6521,157 @@ func (c *SessionClient) mutate(ctx context.Context, m *SessionMutation) (Value, 
 	}
 }
 
+// TOTPCredentialClient is a client for the TOTPCredential schema.
+type TOTPCredentialClient struct {
+	config
+}
+
+// NewTOTPCredentialClient returns a client for the TOTPCredential from the given config.
+func NewTOTPCredentialClient(c config) *TOTPCredentialClient {
+	return &TOTPCredentialClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `totpcredential.Hooks(f(g(h())))`.
+func (c *TOTPCredentialClient) Use(hooks ...Hook) {
+	c.hooks.TOTPCredential = append(c.hooks.TOTPCredential, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `totpcredential.Intercept(f(g(h())))`.
+func (c *TOTPCredentialClient) Intercept(interceptors ...Interceptor) {
+	c.inters.TOTPCredential = append(c.inters.TOTPCredential, interceptors...)
+}
+
+// Create returns a builder for creating a TOTPCredential entity.
+func (c *TOTPCredentialClient) Create() *TOTPCredentialCreate {
+	mutation := newTOTPCredentialMutation(c.config, OpCreate)
+	return &TOTPCredentialCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of TOTPCredential entities.
+func (c *TOTPCredentialClient) CreateBulk(builders ...*TOTPCredentialCreate) *TOTPCredentialCreateBulk {
+	return &TOTPCredentialCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *TOTPCredentialClient) MapCreateBulk(slice any, setFunc func(*TOTPCredentialCreate, int)) *TOTPCredentialCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &TOTPCredentialCreateBulk{err: fmt.Errorf("calling to TOTPCredentialClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*TOTPCredentialCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &TOTPCredentialCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for TOTPCredential.
+func (c *TOTPCredentialClient) Update() *TOTPCredentialUpdate {
+	mutation := newTOTPCredentialMutation(c.config, OpUpdate)
+	return &TOTPCredentialUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *TOTPCredentialClient) UpdateOne(_m *TOTPCredential) *TOTPCredentialUpdateOne {
+	mutation := newTOTPCredentialMutation(c.config, OpUpdateOne, withTOTPCredential(_m))
+	return &TOTPCredentialUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *TOTPCredentialClient) UpdateOneID(id string) *TOTPCredentialUpdateOne {
+	mutation := newTOTPCredentialMutation(c.config, OpUpdateOne, withTOTPCredentialID(id))
+	return &TOTPCredentialUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for TOTPCredential.
+func (c *TOTPCredentialClient) Delete() *TOTPCredentialDelete {
+	mutation := newTOTPCredentialMutation(c.config, OpDelete)
+	return &TOTPCredentialDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *TOTPCredentialClient) DeleteOne(_m *TOTPCredential) *TOTPCredentialDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *TOTPCredentialClient) DeleteOneID(id string) *TOTPCredentialDeleteOne {
+	builder := c.Delete().Where(totpcredential.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &TOTPCredentialDeleteOne{builder}
+}
+
+// Query returns a query builder for TOTPCredential.
+func (c *TOTPCredentialClient) Query() *TOTPCredentialQuery {
+	return &TOTPCredentialQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeTOTPCredential},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a TOTPCredential entity by its id.
+func (c *TOTPCredentialClient) Get(ctx context.Context, id string) (*TOTPCredential, error) {
+	return c.Query().Where(totpcredential.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *TOTPCredentialClient) GetX(ctx context.Context, id string) *TOTPCredential {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// QueryUser queries the user edge of a TOTPCredential.
+func (c *TOTPCredentialClient) QueryUser(_m *TOTPCredential) *UserQuery {
+	query := (&UserClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(totpcredential.Table, totpcredential.FieldID, id),
+			sqlgraph.To(user.Table, user.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, false, totpcredential.UserTable, totpcredential.UserColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// Hooks returns the client hooks.
+func (c *TOTPCredentialClient) Hooks() []Hook {
+	hooks := c.hooks.TOTPCredential
+	return append(hooks[:len(hooks):len(hooks)], totpcredential.Hooks[:]...)
+}
+
+// Interceptors returns the client interceptors.
+func (c *TOTPCredentialClient) Interceptors() []Interceptor {
+	inters := c.inters.TOTPCredential
+	return append(inters[:len(inters):len(inters)], totpcredential.Interceptors[:]...)
+}
+
+func (c *TOTPCredentialClient) mutate(ctx context.Context, m *TOTPCredentialMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&TOTPCredentialCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&TOTPCredentialUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&TOTPCredentialUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&TOTPCredentialDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown TOTPCredential mutation op: %q", m.Op())
+	}
+}
+
 // UserClient is a client for the User schema.
 type UserClient struct {
 	config
@@ -6510,18 +6830,19 @@ type (
 		AuditHead, CABundle, CAKey, Certificate, CompiledSnapshot, ConfigRevision,
 		ConfigSeq, Connector, Domain, EnrollmentToken, Gateway, GatewayGroup, Instance,
 		InstanceSetting, IssuedCertificate, Lease, Membership, Org, OrgSetting,
-		PasswordReset, PolicyRule, PortAllocation, PortPool, PortQuota,
+		PasswordReset, PolicyRule, PortAllocation, PortPool, PortQuota, RecoveryCode,
 		RevokedIdentity, Route, RouteHTTP, RouteHostname, RoutePolicy, RouteTCP,
-		RouteTarget, RouteUDP, SecretMeta, Session, User []ent.Hook
+		RouteTarget, RouteUDP, SecretMeta, Session, TOTPCredential, User []ent.Hook
 	}
 	inters struct {
 		ACMEStorage, APIRequest, AccessPolicy, AgentSession, AgentState, AuditEntry,
 		AuditHead, CABundle, CAKey, Certificate, CompiledSnapshot, ConfigRevision,
 		ConfigSeq, Connector, Domain, EnrollmentToken, Gateway, GatewayGroup, Instance,
 		InstanceSetting, IssuedCertificate, Lease, Membership, Org, OrgSetting,
-		PasswordReset, PolicyRule, PortAllocation, PortPool, PortQuota,
+		PasswordReset, PolicyRule, PortAllocation, PortPool, PortQuota, RecoveryCode,
 		RevokedIdentity, Route, RouteHTTP, RouteHostname, RoutePolicy, RouteTCP,
-		RouteTarget, RouteUDP, SecretMeta, Session, User []ent.Interceptor
+		RouteTarget, RouteUDP, SecretMeta, Session, TOTPCredential,
+		User []ent.Interceptor
 	}
 )
 

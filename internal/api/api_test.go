@@ -534,3 +534,41 @@ func TestServer_HidesInternalErrors(t *testing.T) {
 		t.Errorf("a connect error: %v %v", code, err)
 	}
 }
+
+// TestServer_RequireMFA: in an org that requires a second factor, a member signed in without one
+// is refused with MFA_REQUIRED, one with it passes; other orgs and methods outside orgs are
+// unaffected.
+func TestServer_RequireMFA(t *testing.T) {
+	strict, lax := ids.New("org"), ids.New("org")
+	roles := map[string]string{strict: authz.RoleOwner, lax: authz.RoleOwner}
+	sd := testFile(t, "mfa", method{name: "Read", authz: &rpmgrv1.Authz{Permission: authz.PermOrgRead, ResourceField: "org_id"}},
+		method{name: "Me", authz: &rpmgrv1.Authz{Permission: authz.PermAuthenticated}})
+	srv, err := api.New(api.Options{DB: storetest.Migrated(t, store.SQLite), Sys: storetest.SystemCtx(t), Sealer: testSealer(t),
+		Authenticator: bearer{
+			"password": {Principal: authz.Principal{UserID: "usr_p", Memberships: roles}},
+			"mfa":      {Principal: authz.Principal{UserID: "usr_m", Memberships: roles}, MFA: true},
+		},
+		Resolver:           func(context.Context, string) (string, error) { return "", api.ErrNotFound },
+		OperatorsMayEnroll: func(context.Context, string) (bool, error) { return false, nil },
+		RequireMFA:         func(_ context.Context, org string) (bool, error) { return org == strict, nil }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	mux := http.NewServeMux()
+	if err := srv.Mount(mux, sd, handlers(sd)); err != nil {
+		t.Fatal(err)
+	}
+	hs := httptest.NewServer(mux)
+	t.Cleanup(hs.Close)
+	for _, c := range []call{
+		{token: "password", method: "Read", orgID: strict, wantCode: connect.CodePermissionDenied, wantError: "second factor"},
+		{token: "mfa", method: "Read", orgID: strict, wantOrg: strict},
+		{token: "password", method: "Read", orgID: lax, wantOrg: lax},
+		{token: "password", method: "Me"},
+	} {
+		code, org, err := invoke(hs.URL, sd, c)
+		if code != c.wantCode || c.wantCode == 0 && org != c.wantOrg || c.wantError != "" && !strings.Contains(err.Error(), c.wantError) {
+			t.Errorf("%s %s %s: %v %q %v", c.token, c.method, c.orgID, code, org, err)
+		}
+	}
+}

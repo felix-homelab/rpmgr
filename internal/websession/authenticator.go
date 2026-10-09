@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"slices"
 
 	"github.com/felix-homelab/rpmgr/internal/api"
 	"github.com/felix-homelab/rpmgr/internal/authz"
@@ -47,7 +48,8 @@ func (s *Sessions) Authenticate(_ context.Context, h http.Header) (*api.Caller, 
 		roles[m.OrgID] = string(m.Role)
 	}
 	caller := &api.Caller{Principal: authz.Principal{UserID: u.ID, Memberships: roles}, CredentialID: sess.ID,
-		AuthMethod: "session", InstanceAdmin: u.InstanceAdmin}
+		AuthMethod: "session", InstanceAdmin: u.InstanceAdmin,
+		MFA: slices.Contains(sess.Amr, "otp") || slices.Contains(sess.Amr, "recovery")}
 	if sess.ElevatedUntil != nil {
 		caller.StepUpAt = sess.ElevatedUntil.Add(-api.StepUpWindow)
 	}

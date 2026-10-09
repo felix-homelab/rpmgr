@@ -34,6 +34,7 @@ type Caller struct {
 	AuthMethod      string    // "session" or "token"
 	InstanceAdmin   bool      // holds the instance-level role
 	StepUpAt        time.Time // the last step-up; zero for none
+	MFA             bool      // signed in with a second factor
 	Scopes          []string  // a token's permissions; nil for a session, which has its roles'
 }
 
@@ -57,6 +58,9 @@ type Options struct {
 	Resolver Resolver
 	// OperatorsMayEnroll returns an org's setting that gives Operators connectors.write.
 	OperatorsMayEnroll func(ctx context.Context, orgID string) (bool, error)
+	// RequireMFA returns an org's policy that its members act in it only after signing in with a
+	// second factor; nil is no such policy anywhere.
+	RequireMFA func(ctx context.Context, orgID string) (bool, error)
 	// Origins returns the origins a browser may call the API from: the public URL's and its
 	// aliases'. Without it, only Go's cross-origin protection checks the Origin.
 	Origins func(ctx context.Context) ([]string, error)

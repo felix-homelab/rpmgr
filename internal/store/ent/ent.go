@@ -42,6 +42,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/portallocation"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/portpool"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/portquota"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/recoverycode"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/revokedidentity"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/route"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routehostname"
@@ -52,6 +53,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routeudp"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/secretmeta"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/session"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/totpcredential"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/user"
 )
 
@@ -143,6 +145,7 @@ func checkColumn(t, c string) error {
 			portallocation.Table:    portallocation.ValidColumn,
 			portpool.Table:          portpool.ValidColumn,
 			portquota.Table:         portquota.ValidColumn,
+			recoverycode.Table:      recoverycode.ValidColumn,
 			revokedidentity.Table:   revokedidentity.ValidColumn,
 			route.Table:             route.ValidColumn,
 			routehttp.Table:         routehttp.ValidColumn,
@@ -153,6 +156,7 @@ func checkColumn(t, c string) error {
 			routeudp.Table:          routeudp.ValidColumn,
 			secretmeta.Table:        secretmeta.ValidColumn,
 			session.Table:           session.ValidColumn,
+			totpcredential.Table:    totpcredential.ValidColumn,
 			user.Table:              user.ValidColumn,
 		})
 	})

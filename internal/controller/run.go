@@ -211,15 +211,23 @@ func Run(ctx context.Context, o RunOptions) error {
 	webSessions := websession.New(websession.Options{DB: db, Sys: sys, RevLog: rl, Now: o.Now, Logger: o.Logger})
 	apiServer, err := api.New(api.Options{DB: db, Sys: sys, Sealer: sealer, Resolver: api.StoreResolver(db, sys),
 		OperatorsMayEnroll: api.StoreOperatorsMayEnroll(db, sys), PageKey: pageKey, Now: o.Now, Logger: o.Logger,
-		Authenticator: webSessions, Origins: origins(db, sys, public)})
+		Authenticator: webSessions, Origins: origins(db, sys, public), RequireMFA: api.StoreRequireMFA(db, sys)})
 	if err != nil {
 		return err
 	}
 	mux := http.NewServeMux()
 	mux.Handle("/.well-known/rpmgr/trust-bundle", enroll.TrustBundleHandler(ca.Root()))
+	mfa := &accounts.MFA{Accounts: accounts.New(db, sys, o.Now), Sealer: sealer, RevLog: rl, Logger: o.Logger}
 	if err := apiServer.Mount(mux, rpmgrv1.File_rpmgr_v1_auth_proto.Services().ByName("AuthService"),
 		func(opts ...connect.HandlerOption) (string, http.Handler) {
-			return rpmgrv1connect.NewAuthServiceHandler(apisvc.NewAuth(accounts.New(db, sys, o.Now), webSessions, o.Now), opts...)
+			return rpmgrv1connect.NewAuthServiceHandler(apisvc.NewAuth(mfa, webSessions, o.Now), opts...)
+		}); err != nil {
+		return err
+	}
+	if err := apiServer.Mount(mux, rpmgrv1.File_rpmgr_v1_user_proto.Services().ByName("UserService"),
+		func(opts ...connect.HandlerOption) (string, http.Handler) {
+			return rpmgrv1connect.NewUserServiceHandler(&apisvc.User{MFA: mfa, Sessions: webSessions,
+				Issuer: "rpmgr " + public.Hostname()}, opts...)
 		}); err != nil {
 		return err
 	}

@@ -37,6 +37,8 @@ const (
 const (
 	// AuthServiceLoginProcedure is the fully-qualified name of the AuthService's Login RPC.
 	AuthServiceLoginProcedure = "/rpmgr.v1.AuthService/Login"
+	// AuthServiceStepUpProcedure is the fully-qualified name of the AuthService's StepUp RPC.
+	AuthServiceStepUpProcedure = "/rpmgr.v1.AuthService/StepUp"
 	// AuthServiceLogoutProcedure is the fully-qualified name of the AuthService's Logout RPC.
 	AuthServiceLogoutProcedure = "/rpmgr.v1.AuthService/Logout"
 	// AuthServiceGetSessionProcedure is the fully-qualified name of the AuthService's GetSession RPC.
@@ -58,6 +60,10 @@ type AuthServiceClient interface {
 	// replacing a session the request still carries. A wrong address and a wrong password give the
 	// same error.
 	Login(context.Context, *connect.Request[v1.LoginRequest]) (*connect.Response[v1.LoginResponse], error)
+	// StepUp confirms the caller's identity again for the actions that need it within the next
+	// 10 minutes (docs/04-security.md, "Human authentication and sessions"): with a second factor if
+	// the user has one, else with the password. The session gets a new cookie.
+	StepUp(context.Context, *connect.Request[v1.StepUpRequest]) (*connect.Response[v1.StepUpResponse], error)
 	// Logout ends the caller's session and clears the cookie.
 	Logout(context.Context, *connect.Request[v1.LogoutRequest]) (*connect.Response[v1.LogoutResponse], error)
 	// GetSession returns the caller, their memberships and their session.
@@ -86,6 +92,12 @@ func NewAuthServiceClient(httpClient connect.HTTPClient, baseURL string, opts ..
 			httpClient,
 			baseURL+AuthServiceLoginProcedure,
 			connect.WithSchema(authServiceMethods.ByName("Login")),
+			connect.WithClientOptions(opts...),
+		),
+		stepUp: connect.NewClient[v1.StepUpRequest, v1.StepUpResponse](
+			httpClient,
+			baseURL+AuthServiceStepUpProcedure,
+			connect.WithSchema(authServiceMethods.ByName("StepUp")),
 			connect.WithClientOptions(opts...),
 		),
 		logout: connect.NewClient[v1.LogoutRequest, v1.LogoutResponse](
@@ -126,6 +138,7 @@ func NewAuthServiceClient(httpClient connect.HTTPClient, baseURL string, opts ..
 // authServiceClient implements AuthServiceClient.
 type authServiceClient struct {
 	login                 *connect.Client[v1.LoginRequest, v1.LoginResponse]
+	stepUp                *connect.Client[v1.StepUpRequest, v1.StepUpResponse]
 	logout                *connect.Client[v1.LogoutRequest, v1.LogoutResponse]
 	getSession            *connect.Client[v1.GetSessionRequest, v1.GetSessionResponse]
 	listSessions          *connect.Client[v1.ListSessionsRequest, v1.ListSessionsResponse]
@@ -136,6 +149,11 @@ type authServiceClient struct {
 // Login calls rpmgr.v1.AuthService.Login.
 func (c *authServiceClient) Login(ctx context.Context, req *connect.Request[v1.LoginRequest]) (*connect.Response[v1.LoginResponse], error) {
 	return c.login.CallUnary(ctx, req)
+}
+
+// StepUp calls rpmgr.v1.AuthService.StepUp.
+func (c *authServiceClient) StepUp(ctx context.Context, req *connect.Request[v1.StepUpRequest]) (*connect.Response[v1.StepUpResponse], error) {
+	return c.stepUp.CallUnary(ctx, req)
 }
 
 // Logout calls rpmgr.v1.AuthService.Logout.
@@ -169,6 +187,10 @@ type AuthServiceHandler interface {
 	// replacing a session the request still carries. A wrong address and a wrong password give the
 	// same error.
 	Login(context.Context, *connect.Request[v1.LoginRequest]) (*connect.Response[v1.LoginResponse], error)
+	// StepUp confirms the caller's identity again for the actions that need it within the next
+	// 10 minutes (docs/04-security.md, "Human authentication and sessions"): with a second factor if
+	// the user has one, else with the password. The session gets a new cookie.
+	StepUp(context.Context, *connect.Request[v1.StepUpRequest]) (*connect.Response[v1.StepUpResponse], error)
 	// Logout ends the caller's session and clears the cookie.
 	Logout(context.Context, *connect.Request[v1.LogoutRequest]) (*connect.Response[v1.LogoutResponse], error)
 	// GetSession returns the caller, their memberships and their session.
@@ -193,6 +215,12 @@ func NewAuthServiceHandler(svc AuthServiceHandler, opts ...connect.HandlerOption
 		AuthServiceLoginProcedure,
 		svc.Login,
 		connect.WithSchema(authServiceMethods.ByName("Login")),
+		connect.WithHandlerOptions(opts...),
+	)
+	authServiceStepUpHandler := connect.NewUnaryHandler(
+		AuthServiceStepUpProcedure,
+		svc.StepUp,
+		connect.WithSchema(authServiceMethods.ByName("StepUp")),
 		connect.WithHandlerOptions(opts...),
 	)
 	authServiceLogoutHandler := connect.NewUnaryHandler(
@@ -231,6 +259,8 @@ func NewAuthServiceHandler(svc AuthServiceHandler, opts ...connect.HandlerOption
 		switch r.URL.Path {
 		case AuthServiceLoginProcedure:
 			authServiceLoginHandler.ServeHTTP(w, r)
+		case AuthServiceStepUpProcedure:
+			authServiceStepUpHandler.ServeHTTP(w, r)
 		case AuthServiceLogoutProcedure:
 			authServiceLogoutHandler.ServeHTTP(w, r)
 		case AuthServiceGetSessionProcedure:
@@ -252,6 +282,10 @@ type UnimplementedAuthServiceHandler struct{}
 
 func (UnimplementedAuthServiceHandler) Login(context.Context, *connect.Request[v1.LoginRequest]) (*connect.Response[v1.LoginResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("rpmgr.v1.AuthService.Login is not implemented"))
+}
+
+func (UnimplementedAuthServiceHandler) StepUp(context.Context, *connect.Request[v1.StepUpRequest]) (*connect.Response[v1.StepUpResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("rpmgr.v1.AuthService.StepUp is not implemented"))
 }
 
 func (UnimplementedAuthServiceHandler) Logout(context.Context, *connect.Request[v1.LogoutRequest]) (*connect.Response[v1.LogoutResponse], error) {

@@ -19,6 +19,12 @@ service AuthService {
   rpc Login(LoginRequest) returns (LoginResponse) {
     option (rpmgr.v1.authz) = {permission: "public"};
   }
+  // StepUp confirms the caller's identity again for the actions that need it within the next
+  // 10 minutes (docs/04-security.md, "Human authentication and sessions"): with a second factor if
+  // the user has one, else with the password. The session gets a new cookie.
+  rpc StepUp(StepUpRequest) returns (StepUpResponse) {
+    option (rpmgr.v1.authz) = {permission: "authenticated"};
+  }
   // Logout ends the caller's session and clears the cookie.
   rpc Logout(LogoutRequest) returns (LogoutResponse) {
     option (rpmgr.v1.authz) = {permission: "authenticated"};
@@ -90,6 +96,12 @@ message LoginRequest {
       min_len: 1
       max_len: 256
     }
+  ];
+  // A code of the user's authenticator, or one of their recovery codes; needed, with reason
+  // MFA_REQUIRED, once the user has an authenticator.
+  string second_factor = 3 [
+    (rpmgr.v1.sensitive) = true,
+    (buf.validate.field).string.max_len = 64
   ];
 }
 
@@ -171,3 +183,23 @@ message RevokeSessionRequest {
 
 // RevokeSessionResponse is empty.
 message RevokeSessionResponse {}
+
+// StepUpRequest is the password, or a second factor once the user has an authenticator.
+message StepUpRequest {
+  // The password; for a user without an authenticator.
+  string password = 1 [
+    (rpmgr.v1.sensitive) = true,
+    (buf.validate.field).string.max_len = 256
+  ];
+  // A code of the user's authenticator or a recovery code.
+  string second_factor = 2 [
+    (rpmgr.v1.sensitive) = true,
+    (buf.validate.field).string.max_len = 64
+  ];
+}
+
+// StepUpResponse is when the step-up stops counting.
+message StepUpResponse {
+  // The end of the step-up.
+  google.protobuf.Timestamp expire_time = 1;
+}

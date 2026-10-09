@@ -1,0 +1,87 @@
+// SPDX-License-Identifier: Apache-2.0
+
+syntax = "proto3";
+
+package rpmgr.v1;
+
+import "buf/validate/validate.proto";
+import "rpmgr/v1/options.proto";
+
+option go_package = "github.com/felix-homelab/rpmgr/gen/rpmgr/v1;rpmgrv1";
+
+// UserService is the caller's own account (docs/07-api.md, "Services").
+service UserService {
+  // EnrollTOTP creates an authenticator secret for the caller, replacing one not confirmed yet;
+  // it counts once ConfirmTOTP accepted a code of it.
+  rpc EnrollTOTP(EnrollTOTPRequest) returns (EnrollTOTPResponse) {
+    option (rpmgr.v1.authz) = {
+      permission: "authenticated"
+      step_up: true
+    };
+  }
+  // ConfirmTOTP accepts the first code of the new authenticator and returns ten recovery codes,
+  // shown once; the caller's other sessions end.
+  rpc ConfirmTOTP(ConfirmTOTPRequest) returns (ConfirmTOTPResponse) {
+    option (rpmgr.v1.authz) = {
+      permission: "authenticated"
+      step_up: true
+    };
+  }
+  // RemoveTOTP removes the caller's authenticator and recovery codes; the caller's other sessions
+  // end.
+  rpc RemoveTOTP(RemoveTOTPRequest) returns (RemoveTOTPResponse) {
+    option (rpmgr.v1.authz) = {
+      permission: "authenticated"
+      step_up: true
+    };
+  }
+  // RegenerateRecoveryCodes replaces the caller's recovery codes and returns the new ones, shown
+  // once.
+  rpc RegenerateRecoveryCodes(RegenerateRecoveryCodesRequest) returns (RegenerateRecoveryCodesResponse) {
+    option (rpmgr.v1.authz) = {
+      permission: "authenticated"
+      step_up: true
+    };
+  }
+}
+
+// EnrollTOTPRequest is empty.
+message EnrollTOTPRequest {}
+
+// EnrollTOTPResponse is the new secret, for the authenticator app.
+message EnrollTOTPResponse {
+  // The secret in base32, to type in.
+  string secret = 1 [(rpmgr.v1.sensitive) = true];
+  // The otpauth:// URI of the secret, for a QR code.
+  string uri = 2 [(rpmgr.v1.sensitive) = true];
+}
+
+// ConfirmTOTPRequest is a code of the new authenticator.
+message ConfirmTOTPRequest {
+  // The code, 6 digits.
+  string code = 1 [
+    (rpmgr.v1.sensitive) = true,
+    (buf.validate.field).string.len = 6
+  ];
+}
+
+// ConfirmTOTPResponse is the recovery codes.
+message ConfirmTOTPResponse {
+  // Ten recovery codes, each usable once instead of an authenticator code.
+  repeated string recovery_codes = 1 [(rpmgr.v1.sensitive) = true];
+}
+
+// RemoveTOTPRequest is empty.
+message RemoveTOTPRequest {}
+
+// RemoveTOTPResponse is empty.
+message RemoveTOTPResponse {}
+
+// RegenerateRecoveryCodesRequest is empty.
+message RegenerateRecoveryCodesRequest {}
+
+// RegenerateRecoveryCodesResponse is the new recovery codes.
+message RegenerateRecoveryCodesResponse {
+  // Ten recovery codes; the old ones no longer work.
+  repeated string recovery_codes = 1 [(rpmgr.v1.sensitive) = true];
+}

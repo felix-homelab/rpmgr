@@ -30,6 +30,7 @@ const ErrorDomain = "rpmgr.v1"
 const (
 	ReasonStepUpRequired    = "STEP_UP_REQUIRED"
 	ReasonPermissionMissing = "PERMISSION_MISSING"
+	ReasonMFARequired       = "MFA_REQUIRED"
 )
 
 func (s *Server) interceptor() connect.Interceptor { return interceptor{s} }
@@ -195,6 +196,17 @@ func (s *Server) authorize(ctx context.Context, md protoreflect.MethodDescriptor
 		}
 		if !authz.Grants(role, p, enroll) || !caller.scoped(p) {
 			return nil, denied(p)
+		}
+		if s.o.RequireMFA != nil && !caller.MFA {
+			need, err := s.o.RequireMFA(ctx, org)
+			if err != nil {
+				s.o.Logger.Error("cannot read an org's settings", "org", org, "error", err)
+				return nil, connect.NewError(connect.CodeInternal, errors.New("api: cannot read the org's settings"))
+			}
+			if need {
+				return nil, withInfo(connect.NewError(connect.CodePermissionDenied,
+					errors.New("api: the org requires signing in with a second factor")), ReasonMFARequired, nil)
+			}
 		}
 		if ctx, err = authz.ForOrg(ctx, caller.Principal, org); err != nil {
 			return nil, errNotFound()

@@ -7,6 +7,7 @@ import (
 
 	"entgo.io/ent"
 	"entgo.io/ent/dialect/entsql"
+	"entgo.io/ent/schema"
 	"entgo.io/ent/schema/edge"
 	"entgo.io/ent/schema/field"
 	"entgo.io/ent/schema/index"
@@ -149,4 +150,72 @@ func (Session) Edges() []ent.Edge {
 // Indexes: tokens are looked up by hash, sessions listed per user.
 func (Session) Indexes() []ent.Index {
 	return []ent.Index{index.Fields("token_hash").Unique(), index.Fields("user_id")}
+}
+
+// TOTPCredential is a user's authenticator app (docs/04-security.md, "Human authentication and
+// sessions"). seed_enc is the secret under the KEK; confirmed_at is null until the user entered a
+// first code; last_step is the time step of the last code used, so that no code works twice.
+type TOTPCredential struct{ ent.Schema }
+
+// Mixin makes TOTP credentials system-only.
+func (TOTPCredential) Mixin() []ent.Mixin { return []ent.Mixin{SystemMixin{}} }
+
+// Annotations name the table as docs/06-data-model.md does.
+func (TOTPCredential) Annotations() []schema.Annotation {
+	return []schema.Annotation{entsql.Annotation{Table: "totp_credentials"}}
+}
+
+// Fields of a TOTP credential.
+func (TOTPCredential) Fields() []ent.Field {
+	return []ent.Field{
+		idField("tot"),
+		field.String("user_id").NotEmpty().Immutable(),
+		field.Bytes("seed_enc").NotEmpty().Immutable().Sensitive(),
+		field.Time("created_at").Immutable(),
+		field.Time("confirmed_at").Optional().Nillable(),
+		field.Int64("last_step").Default(0),
+	}
+}
+
+// Edges of a TOTP credential.
+func (TOTPCredential) Edges() []ent.Edge {
+	return []ent.Edge{
+		edge.To("user", User.Type).Field("user_id").Unique().Required().Immutable().
+			Annotations(entsql.OnDelete(entsql.Cascade)),
+	}
+}
+
+// Indexes: one authenticator per user.
+func (TOTPCredential) Indexes() []ent.Index {
+	return []ent.Index{index.Fields("user_id").Unique()}
+}
+
+// RecoveryCode is one of a user's one-time recovery codes; only its hash is stored.
+type RecoveryCode struct{ ent.Schema }
+
+// Mixin makes recovery codes system-only.
+func (RecoveryCode) Mixin() []ent.Mixin { return []ent.Mixin{SystemMixin{}} }
+
+// Fields of a recovery code.
+func (RecoveryCode) Fields() []ent.Field {
+	return []ent.Field{
+		idField("rcv"),
+		field.String("user_id").NotEmpty().Immutable(),
+		field.Bytes("code_hash").NotEmpty().Immutable(),
+		field.Time("created_at").Immutable(),
+		field.Time("used_at").Optional().Nillable(),
+	}
+}
+
+// Edges of a recovery code.
+func (RecoveryCode) Edges() []ent.Edge {
+	return []ent.Edge{
+		edge.To("user", User.Type).Field("user_id").Unique().Required().Immutable().
+			Annotations(entsql.OnDelete(entsql.Cascade)),
+	}
+}
+
+// Indexes: codes are looked up by hash.
+func (RecoveryCode) Indexes() []ent.Index {
+	return []ent.Index{index.Fields("code_hash").Unique(), index.Fields("user_id")}
 }
