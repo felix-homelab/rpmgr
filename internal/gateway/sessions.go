@@ -15,6 +15,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
 	"google.golang.org/protobuf/types/known/durationpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
@@ -74,8 +75,10 @@ type SessionsOptions struct {
 	// OnChange, if set, is called after a data session was added or removed, for the report to
 	// the controller.
 	OnChange func()
-	Now      func() time.Time
-	Logger   *slog.Logger
+	// Metrics, if set, records the sessions and the routes' streams.
+	Metrics *Metrics
+	Now     func() time.Time
+	Logger  *slog.Logger
 }
 
 // Sessions holds the gateway's data sessions from connectors (docs/03-connections.md, "Data
@@ -99,7 +102,17 @@ func NewSessions(o SessionsOptions) *Sessions {
 	if o.Logger == nil {
 		o.Logger = slog.New(slog.DiscardHandler)
 	}
-	return &Sessions{o: o, byConnector: map[string][]*dataSession{}}
+	s := &Sessions{o: o, byConnector: map[string][]*dataSession{}}
+	o.Metrics.watch(s)
+	return s
+}
+
+// metrics returns the gateway's metrics, nil for none.
+func (m *Sessions) metrics() *Metrics {
+	if m == nil {
+		return nil
+	}
+	return m.o.Metrics
 }
 
 // dataSession is one connector's session.
@@ -496,6 +509,7 @@ func (m *Sessions) open(ctx context.Context, open *tunnelv1.StreamOpen, skip *da
 			ts.Abort()
 			return nil, err
 		}
+		ts.open, ts.in, ts.out = m.o.Metrics.stream(open.GetRouteId(), d.s.Transport())
 		return ts, nil
 	}
 	return nil, ErrNoSession
@@ -512,6 +526,13 @@ func (m *Sessions) OpenStream(ctx context.Context, open *tunnelv1.StreamOpen) (t
 // OpenStreamResult is OpenStream returning the whole StreamResult, with the target the
 // connector chose; it is nil after an error.
 func (m *Sessions) OpenStreamResult(ctx context.Context, open *tunnelv1.StreamOpen) (tunnel.Stream, *tunnelv1.StreamResult, error) {
+	start := time.Now()
+	st, res, err := m.openStreamResult(ctx, open)
+	m.o.Metrics.opened(open.GetRouteId(), start, res, err)
+	return st, res, err
+}
+
+func (m *Sessions) openStreamResult(ctx context.Context, open *tunnelv1.StreamOpen) (tunnel.Stream, *tunnelv1.StreamResult, error) {
 	var (
 		last  *tunnelv1.StreamResult
 		tried *dataSession
@@ -660,11 +681,14 @@ func (m *Sessions) Count() map[string]int {
 	return out
 }
 
-// trackedStream counts a stream in its session's load and notes blocked writes.
+// trackedStream counts a stream in its session's load and its route's metrics, and notes blocked
+// writes.
 type trackedStream struct {
 	tunnel.Stream
-	d    *dataSession
-	once sync.Once
+	d       *dataSession
+	once    sync.Once
+	open    prometheus.Gauge   // nil without metrics
+	in, out prometheus.Counter // bytes towards the service and back
 }
 
 func (t *trackedStream) Write(p []byte) (int, error) {
@@ -672,10 +696,28 @@ func (t *trackedStream) Write(p []byte) (int, error) {
 	t.d.writing.CompareAndSwap(0, start)
 	n, err := t.Stream.Write(p)
 	t.d.writing.CompareAndSwap(start, 0)
+	if t.in != nil {
+		t.in.Add(float64(n))
+	}
 	return n, err
 }
 
-func (t *trackedStream) done() { t.once.Do(func() { t.d.inflight.Add(-1) }) }
+func (t *trackedStream) Read(p []byte) (int, error) {
+	n, err := t.Stream.Read(p)
+	if t.out != nil {
+		t.out.Add(float64(n))
+	}
+	return n, err
+}
+
+func (t *trackedStream) done() {
+	t.once.Do(func() {
+		t.d.inflight.Add(-1)
+		if t.open != nil {
+			t.open.Dec()
+		}
+	})
+}
 
 // Unwrap returns the transport's stream, for its QUIC stream ID.
 func (t *trackedStream) Unwrap() tunnel.Stream { return t.Stream }

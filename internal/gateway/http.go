@@ -4,6 +4,7 @@ package gateway
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"crypto/sha256"
 	"crypto/tls"
@@ -641,8 +642,10 @@ func (h *HTTPRoutes) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 // proxy sends a request over the route, within its access rules and its WebSocket and body
 // settings.
-func (h *HTTPRoutes) proxy(w http.ResponseWriter, r *http.Request, rt *routeTransport) {
+func (h *HTTPRoutes) proxy(rw http.ResponseWriter, r *http.Request, rt *routeTransport) {
 	route := rt.route.Load()
+	w := &statusWriter{ResponseWriter: rw}
+	defer func() { h.o.Sessions.metrics().request(route.ID, cmp.Or(w.code, http.StatusOK)) }()
 	client := clientOf(r, route.TrustedProxies)
 	if !route.Access.Allows(client) {
 		http.Error(w, http.StatusText(http.StatusForbidden), http.StatusForbidden)

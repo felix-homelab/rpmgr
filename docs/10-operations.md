@@ -482,10 +482,10 @@ ID); there are never per-connection or per-client-IP labels.
 |---|---|---|---|
 | `rpmgr_gateway_sessions{transport}` | gauge | gateway | Data sessions from connectors, by transport (`quic`, `h2`, `wss`) |
 | `rpmgr_gateway_streams_open{route,transport}` | gauge | gateway | Open user streams |
-| `rpmgr_route_connections_total{route,result}` | counter | gateway | User connections by `StreamResult` code name ([03](03-connections.md#framing)) |
+| `rpmgr_route_connections_total{route,result}` | counter | gateway | User connections, and streams of HTTP routes, by `StreamResult` code name in lower case ([03](03-connections.md#framing)), or `no_session`, `draining`, `timeout` or `error` without one |
 | `rpmgr_route_bytes_total{route,direction}` | counter | gateway | Bytes, `direction` = `in` (public → service) or `out` |
-| `rpmgr_route_connection_setup_seconds{route}` | histogram | gateway | Accept → `StreamResult` |
-| `rpmgr_http_requests_total{route,code}` | counter | gateway | HTTP routes |
+| `rpmgr_route_connection_setup_seconds{route}` | histogram | gateway | Asking a connector for a stream → its `StreamResult` |
+| `rpmgr_http_requests_total{route,code}` | counter | gateway | Requests of HTTP routes by status, the route's refusals included |
 | `rpmgr_udp_oversize_total{route}` | counter | gateway, connector | UDP payloads too large for a datagram, sent on the flow stream ([03](03-connections.md#udp-routes)) |
 | `rpmgr_udp_datagrams_dropped_total{route,reason}` | counter | gateway, connector | Drops: queue full, flow limit, unknown flow, policy |
 | `rpmgr_connector_session_rtt_seconds{gateway,transport}` | gauge | connector | Smoothed RTT per data session |

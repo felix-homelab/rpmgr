@@ -53,9 +53,15 @@ func newPlane(t *testing.T, target string, routeIDs ...string) *plane {
 // newPlaneWith is newPlane with the PROXY protocol version proxy, "none" for none.
 func newPlaneWith(t *testing.T, target, proxy string, routeIDs ...string) *plane {
 	t.Helper()
+	return planeWith(t, target, proxy, nil, routeIDs...)
+}
+
+// planeWith is newPlaneWith whose sessions record metrics.
+func planeWith(t *testing.T, target, proxy string, metrics *gateway.Metrics, routeIDs ...string) *plane {
+	t.Helper()
 	w := newWorld(t)
 	p := &plane{sessions: gateway.NewSessions(gateway.SessionsOptions{TrustDomain: td, GatewayID: w.gw.ID,
-		Assignment: routeAssignment{w.con.ID}})}
+		Assignment: routeAssignment{w.con.ID}, Metrics: metrics})}
 	t.Cleanup(p.sessions.Close)
 	pc, err := net.ListenPacket("udp", "127.0.0.1:0")
 	if err != nil {
