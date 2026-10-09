@@ -31,7 +31,7 @@ const (
 // to start while any method lacks it (docs/04-security.md, "One enforcement point").
 type Authz struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// The permission the caller needs, for example "route.update".
+	// The permission the caller needs, for example "routes.write" (docs/04-security.md, "Roles").
 	Permission string `protobuf:"bytes,1,opt,name=permission,proto3" json:"permission,omitempty"`
 	// The request field that identifies the target resource, for example "route.id"; empty for
 	// methods without a target resource. The interceptor resolves the resource's org from it.
