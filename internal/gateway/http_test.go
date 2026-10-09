@@ -615,12 +615,15 @@ func plain(t *testing.T, addr, method, host, target string) (reply, error) {
 func TestHTTPRoutes_Port80(t *testing.T) {
 	route := gateway.HTTPRoute{ID: "rt_web", Upstream: "http", Hosts: []gateway.HTTPHost{{Hostname: "app.example.com"}}}
 	p := newPlaneWith(t, service(t, func(c net.Conn, br *bufio.Reader, line string) {
-		// A minimal HTTP/1.1 upstream: answer with the forwarded protocol, then close.
+		// A minimal HTTP/1.1 upstream: answer with the forwarded protocol, then close. It reads the
+		// request's body first, as plain sends one: closing with unread data sends a reset, which
+		// can overtake the answer and turn it into a 502.
 		req, err := http.ReadRequest(bufio.NewReader(io.MultiReader(strings.NewReader(line), br)))
 		if err != nil {
 			_ = c.Close()
 			return
 		}
+		_, _ = io.Copy(io.Discard, req.Body)
 		body := req.Header.Get("X-Forwarded-Proto")
 		_, _ = fmt.Fprintf(c, "HTTP/1.1 200 OK\r\nContent-Length: %d\r\nConnection: close\r\n\r\n%s", len(body), body)
 		_ = c.Close()
