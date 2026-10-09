@@ -13,6 +13,7 @@ import { Input } from "@/components/ui/input";
 import { AuthService } from "@/gen/rpmgr/v1/auth_pb";
 import { InstanceSettingsSchema, OrgSettingsSchema, SettingsService, type InstanceSettings, type OrgSettings } from "@/gen/rpmgr/v1/settings_pb";
 import { Reason, reasonOf } from "@/lib/errors";
+import { when } from "@/lib/format";
 import { settingFields, withRelay, type Section, type SettingField } from "@/pages/settings-fields";
 import { useGroups } from "@/routes-data";
 import { useOrg } from "@/session";
@@ -50,10 +51,34 @@ export function Settings() {
           </nav>
         )}
       </div>
+      {admin && <RevocationLogNotice />}
       {org && <OrgSettingsSection orgId={org.orgId} owner={org.role === "owner"} />}
       {admin && <InstanceSettingsSection title={t("settings.instance")} sections={["agents", "endpoints", "traffic", "acme", "mail", "audit"]} />}
     </div>
   );
+}
+
+// RevocationLogNotice shows the Instance Admin where the revocation log stands
+// (docs/10-operations.md, "Backup and restore"): the alert when entries have waited more than
+// 5 minutes for the sink, the standing warning when no sink keeps a copy off the host, nothing
+// otherwise.
+function RevocationLogNotice() {
+  const { t } = useTranslation();
+  const st = useQuery(SettingsService.method.getInstanceSettings, {}).data?.revocationLog;
+  if (!st) {
+    return null;
+  }
+  if (st.alert) {
+    return (
+      <p role="alert" className="rounded-md border border-destructive p-3 text-sm text-destructive">
+        {t("settings.revlogAlert", { count: Number(st.unshipped), since: when(st.oldestUnshippedTime) })}
+      </p>
+    );
+  }
+  if (!st.sink) {
+    return <p role="status" className="rounded-md border border-warn p-3 text-sm">{t("settings.revlogNoSink")}</p>;
+  }
+  return null;
 }
 
 // Updates shows the release check and the update channel to the Instance Admin; uploading a

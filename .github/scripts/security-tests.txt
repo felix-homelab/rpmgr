@@ -28,7 +28,7 @@ TestOTA_UpdaterHonoursPolicy	p2	-	-	OTA
 TestRestore_RevocationsReapplied	pending	11.6	#160
 TestRestore_IncompleteLogFailsClosed	pending	11.6	#160
 TestRestore_OrgOwnerCannotEndInstanceReview	pending	11.6	#160
-TestRevocation_EnforcedWhileSinkDown	done	11.5	#159	the UI shows the alert with the web part of 11.5
+TestRevocation_EnforcedWhileSinkDown	done	11.5	#159	the alert reaches the UI through GetInstanceSettings (web/src/pages/settings.test.tsx)
 TestDenyList_PersistedAcrossGatewayRestart	done	3.13	#68	in-process clause (internal/agent; the digest resend: TestDenyList_HelloDigest) and process-level clause (test/e2e) done
 TestEnrollReplace_TokenBoundToConnector	done	8.2	#116
 TestBasicAuth_HashOncePerTTL	done	5.11	#97
@@ -67,7 +67,7 @@ TestACME_DNS01OnlyManagedZones	p2	-	-	ACME DNS-01
 TestPolicy_MetadataAlwaysDenied	done	4.6	#76
 TestOTA_ChannelAndVariantEnforced	p2	-	-	OTA
 TestPolicy_AutoUpdateAndChannelDefaults	done	4.6	#76	installer clause in 11.4 (test/installsh: the policy file with explicit auto_update and update_channel); root-updater clause in P2 (OTA)
-TestRevocationLog_SingleNodeWithoutSink	done	11.5	#159	second-replica clause through the single-controller lock of 2.4; the API reports the missing sink, the UI shows the warning with the web part of 11.5
+TestRevocationLog_SingleNodeWithoutSink	done	11.5	#159	second-replica clause through the single-controller lock of 2.4; the API reports the missing sink, which the settings page shows as the warning (web/src/pages/settings.test.tsx)
 TestGatewayGroup_MaxFourGateways	done	3.4	#59
 TestDomain_TrustedOnlyByInstanceAdmin	done	8.4	#118
 TestTLS_VerifyConnectionOnResumption	done	2.10	#54

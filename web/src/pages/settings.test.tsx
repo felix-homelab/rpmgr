@@ -28,7 +28,7 @@ const instance = create(InstanceSettingsSchema, {
   smtp: { server: "mail.example.com:587", from: "rpmgr@example.com", username: "relay", security: SmtpSecurity.STARTTLS },
 });
 
-function page({ role = "owner", admin = false, passwordSet = false, path = "/settings" } = {}) {
+function page({ role = "owner", admin = false, passwordSet = false, path = "/settings", revocationLog = { sink: true } as object } = {}) {
   const calls = { org: [] as UpdateOrgSettingsRequest[], instance: [] as UpdateInstanceSettingsRequest[], password: [] as string[] };
   const state = { org: create(OrgSettingsSchema, { requireMfa: false, operatorsMayEnroll: false }) as OrgSettings, orgEtag: "o1",
     instance: clone(InstanceSettingsSchema, instance) as InstanceSettings, instanceEtag: "i1", passwordSet, conflict: false };
@@ -50,7 +50,7 @@ function page({ role = "owner", admin = false, passwordSet = false, path = "/set
         state.orgEtag = "o2";
         return { settings: state.org, etag: state.orgEtag };
       },
-      getInstanceSettings: () => ({ settings: state.instance, etag: state.instanceEtag, smtpPasswordSet: state.passwordSet }),
+      getInstanceSettings: () => ({ settings: state.instance, etag: state.instanceEtag, smtpPasswordSet: state.passwordSet, revocationLog }),
       updateInstanceSettings: (req) => {
         if (state.conflict) {
           state.conflict = false;
@@ -212,5 +212,22 @@ describe("Settings", () => {
     page({ path: "/settings/updates" });
     expect(await screen.findByText("Only the Instance Admin sees and changes these.")).toBeTruthy();
     expect(screen.queryByRole("form", { name: "Updates" })).toBeNull();
+  });
+
+  it("warns the Instance Admin of a revocation log without an off-host copy, and alerts on one waiting for its sink", async () => {
+    page({ admin: true, revocationLog: { sink: false } });
+    const warning = await screen.findByText(/^The revocation log has no copy off this host/);
+    expect(warning.getAttribute("role")).toBe("status");
+    cleanup();
+    page({ admin: true, revocationLog: { sink: true, unshipped: 3n, alert: true, oldestUnshippedTime: { seconds: 1791590400n, nanos: 0 } } });
+    expect((await screen.findByRole("alert")).textContent).toMatch(/^The revocation log is not yet off-host: 3 entries have waited since /);
+    cleanup();
+    page({ admin: true, revocationLog: { sink: true, unshipped: 1n } });
+    await screen.findByRole("form", { name: "Instance settings" });
+    expect(screen.queryByText(/revocation log/)).toBeNull();
+    cleanup();
+    page({ revocationLog: { sink: false } });
+    await screen.findByRole("form", { name: "Organisation settings" });
+    expect(screen.queryByText(/revocation log/)).toBeNull(); // not the Instance Admin
   });
 });
