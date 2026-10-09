@@ -188,6 +188,24 @@ flowchart LR
 | Charts | Recharts, through the shadcn/ui chart components, for traffic and latency | Same component system as the rest of the UI ([08](08-software-stack.md#frontend)) |
 | i18n | i18next, English source, English fallback; Phase 1 ships English only | See U11 |
 
+**Code and patterns** (`web/`):
+- **Pages and routes.** Each page is a component in `src/pages/` with a route in `src/router.tsx`
+  (TanStack Router, code-based). The pages of the information architecture arrive with their
+  slices; an unknown path shows a "not found" page.
+- **Data.** Pages call the API only through connect-query hooks on the generated method
+  descriptors, e.g. `useQuery(AuthService.method.getSession, {})`. The transport is the UI's own
+  origin. There is no hand-written API layer.
+- **Generated code.** `npm run generate` writes the TypeScript code of `rpmgr.v1` to `src/gen/` with
+  buf and `protoc-gen-es`; `build`, `test` and `typecheck` run it first. It is not committed.
+- **Text.** Every string is `t("key")` with its English text in `src/locales/en.json`. A unit test
+  fails when the code uses a key without English text.
+- **Components.** shadcn/ui components are copied into `src/components/ui/` with their MIT license
+  notice.
+- **Tests.** Vitest with jsdom. The API is answered by Connect's router transport, so tests need
+  no server.
+- **Libraries in chunks of their own.** React, TanStack, Protobuf-ES with Connect, and the
+  generated code each get a chunk. Browsers keep them across releases that do not change them.
+
 **Serving.** The controller serves the UI on every path of its UI name that the API and
 `/.well-known/rpmgr/` do not take:
 - `npm run build` in `web/` writes the app to `internal/webui/ui/app/`, which is not committed, and

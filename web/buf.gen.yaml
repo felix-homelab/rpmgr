@@ -1,0 +1,11 @@
+# SPDX-License-Identifier: Apache-2.0
+# TypeScript code of the public API for the web UI: messages and the service descriptors that
+# connect-query calls (docs/09-web-ui.md, "Frontend architecture"). `npm run generate` writes it to
+# src/gen/, which is not committed (CONTRIBUTING.md, "Commits").
+version: v2
+clean: true
+plugins:
+  - local: protoc-gen-es
+    out: src/gen
+    opt: target=ts
+    include_imports: true

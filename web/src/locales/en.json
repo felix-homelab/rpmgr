@@ -1,0 +1,21 @@
+{
+  "app": {
+    "name": "rpmgr",
+    "skip": "Skip to content",
+    "nav": "Main navigation"
+  },
+  "nav": {
+    "overview": "Overview"
+  },
+  "overview": {
+    "title": "Overview",
+    "signedIn": "Signed in as {{name}}",
+    "signedOut": "You are not signed in.",
+    "loading": "Loading…",
+    "error": "The controller could not be reached: {{message}}"
+  },
+  "notFound": {
+    "title": "Page not found",
+    "back": "Go to the overview"
+  }
+}

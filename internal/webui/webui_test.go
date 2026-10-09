@@ -147,7 +147,8 @@ func TestNew_Refusals(t *testing.T) {
 }
 
 // TestHandler_Embedded: the embedded files make a working handler, with the committed placeholder
-// or with a local build.
+// or with the web build, whose page loads nothing the CSP refuses: no inline script, no style
+// attribute, nothing from another origin (docs/09-web-ui.md, "Security of the frontend").
 func TestHandler_Embedded(t *testing.T) {
 	h, err := webui.Handler()
 	if err != nil {
@@ -156,5 +157,19 @@ func TestHandler_Embedded(t *testing.T) {
 	resp, body := get(t, h, http.MethodGet, "/")
 	if m := nonceOf.FindStringSubmatch(resp.Header.Get("Content-Security-Policy")); m == nil || !strings.Contains(body, m[1]) {
 		t.Fatalf("%s %q", resp.Status, body)
+	}
+	for _, tag := range regexp.MustCompile(`<script\b[^>]*>`).FindAllString(body, -1) {
+		if !strings.Contains(tag, " src=") {
+			t.Errorf("the page has an inline script, which the CSP refuses: %s", tag)
+		}
+	}
+	for _, bad := range []*regexp.Regexp{
+		regexp.MustCompile(`<script\b[^>]*>[^<]`),                 // a script with a body
+		regexp.MustCompile(`\sstyle\s*=`),                         // a style attribute
+		regexp.MustCompile(`(?:src|href)\s*=\s*"?(?:https?:)?//`), // another origin
+	} {
+		if m := bad.FindString(body); m != "" {
+			t.Errorf("the page has %q, which the CSP refuses", m)
+		}
 	}
 }
