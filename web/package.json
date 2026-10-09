@@ -8,7 +8,7 @@
     "node": ">=24"
   },
   "scripts": {
-    "generate": "buf generate .. --template buf.gen.yaml --path ../proto/rpmgr/v1",
+    "generate": "buf generate --template buf.gen.yaml",
     "lint": "eslint --max-warnings 0 .",
     "typecheck": "npm run generate && tsc --noEmit",
     "test": "npm run generate && vitest run",

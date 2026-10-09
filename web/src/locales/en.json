@@ -2,17 +2,28 @@
   "app": {
     "name": "rpmgr",
     "skip": "Skip to content",
-    "nav": "Main navigation"
+    "nav": "Main navigation",
+    "signOut": "Sign out"
   },
   "nav": {
     "overview": "Overview"
   },
   "overview": {
     "title": "Overview",
-    "signedIn": "Signed in as {{name}}",
-    "signedOut": "You are not signed in.",
-    "loading": "Loading…",
-    "error": "The controller could not be reached: {{message}}"
+    "signedIn": "Signed in as {{name}}"
+  },
+  "login": {
+    "title": "Sign in to rpmgr",
+    "email": "E-mail address",
+    "password": "Password",
+    "code": "Authenticator code or recovery code",
+    "codeHint": "Enter the code your authenticator app shows, or one of your recovery codes.",
+    "submit": "Sign in",
+    "wrongPassword": "The e-mail address or the password is wrong.",
+    "wrongCode": "The code is wrong or was used already. Try the next code.",
+    "tooMany_one": "Too many attempts. Try again in {{count}} second.",
+    "tooMany_other": "Too many attempts. Try again in {{count}} seconds.",
+    "failed": "Signing in failed: {{message}}"
   },
   "notFound": {
     "title": "Page not found",

@@ -43,6 +43,6 @@ describe("i18n", () => {
       [...readFileSync(f, "utf8").matchAll(/\bt\("([^"]+)"/g)].map((m) => m[1] ?? ""),
     );
     expect(keys.length).toBeGreaterThan(5);
-    expect(keys.filter((k) => !has(en, k))).toEqual([]);
+    expect(keys.filter((k) => !has(en, k) && !has(en, `${k}_other`))).toEqual([]);
   });
 });
