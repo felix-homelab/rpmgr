@@ -249,6 +249,18 @@ func (f InstanceSettingFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Va
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.InstanceSettingMutation", m)
 }
 
+// The InvitationFunc type is an adapter to allow the use of ordinary
+// function as Invitation mutator.
+type InvitationFunc func(context.Context, *ent.InvitationMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f InvitationFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.InvitationMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.InvitationMutation", m)
+}
+
 // The IssuedCertificateFunc type is an adapter to allow the use of ordinary
 // function as IssuedCertificate mutator.
 type IssuedCertificateFunc func(context.Context, *ent.IssuedCertificateMutation) (ent.Value, error)

@@ -13,7 +13,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/token"
 )
 
-var kinds = []token.Kind{token.Enrollment, token.PersonalAPI, token.ServiceAccount, token.Session, token.PasswordReset}
+var kinds = []token.Kind{token.Enrollment, token.PersonalAPI, token.ServiceAccount, token.Session, token.PasswordReset, token.Invitation}
 
 func newToken(t *testing.T, k token.Kind) string {
 	t.Helper()

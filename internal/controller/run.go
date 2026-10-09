@@ -217,7 +217,8 @@ func Run(ctx context.Context, o RunOptions) error {
 	}
 	mux := http.NewServeMux()
 	mux.Handle("/.well-known/rpmgr/trust-bundle", enroll.TrustBundleHandler(ca.Root()))
-	mfa := &accounts.MFA{Accounts: accounts.New(db, sys, o.Now), Sealer: sealer, RevLog: rl, Logger: o.Logger}
+	acc := accounts.New(db, sys, o.Now)
+	mfa := &accounts.MFA{Accounts: acc, Sealer: sealer, RevLog: rl, Logger: o.Logger}
 	if err := apiServer.Mount(mux, rpmgrv1.File_rpmgr_v1_auth_proto.Services().ByName("AuthService"),
 		func(opts ...connect.HandlerOption) (string, http.Handler) {
 			return rpmgrv1connect.NewAuthServiceHandler(apisvc.NewAuth(mfa, webSessions, o.Now), opts...)
@@ -228,6 +229,13 @@ func Run(ctx context.Context, o RunOptions) error {
 		func(opts ...connect.HandlerOption) (string, http.Handler) {
 			return rpmgrv1connect.NewUserServiceHandler(&apisvc.User{MFA: mfa, Sessions: webSessions,
 				Issuer: "rpmgr " + public.Hostname()}, opts...)
+		}); err != nil {
+		return err
+	}
+	if err := apiServer.Mount(mux, rpmgrv1.File_rpmgr_v1_org_proto.Services().ByName("OrgService"),
+		func(opts ...connect.HandlerOption) (string, http.Handler) {
+			return rpmgrv1connect.NewOrgServiceHandler(&apisvc.Org{Members: &accounts.Members{Accounts: acc, RevLog: rl, Logger: o.Logger},
+				API: apiServer, PublicURL: cfg.PublicURL, Now: o.Now}, opts...)
 		}); err != nil {
 		return err
 	}

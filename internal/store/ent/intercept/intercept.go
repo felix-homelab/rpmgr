@@ -28,6 +28,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/gatewaygroup"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/instance"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/instancesetting"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/invitation"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/issuedcertificate"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/lease"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/membership"
@@ -648,6 +649,33 @@ func (f TraverseInstanceSetting) Traverse(ctx context.Context, q ent.Query) erro
 		return f(ctx, q)
 	}
 	return fmt.Errorf("unexpected query type %T. expect *ent.InstanceSettingQuery", q)
+}
+
+// The InvitationFunc type is an adapter to allow the use of ordinary function as a Querier.
+type InvitationFunc func(context.Context, *ent.InvitationQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f InvitationFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.InvitationQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.InvitationQuery", q)
+}
+
+// The TraverseInvitation type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseInvitation func(context.Context, *ent.InvitationQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseInvitation) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseInvitation) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.InvitationQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.InvitationQuery", q)
 }
 
 // The IssuedCertificateFunc type is an adapter to allow the use of ordinary function as a Querier.
@@ -1314,6 +1342,8 @@ func NewQuery(q ent.Query) (Query, error) {
 		return &query[*ent.InstanceQuery, predicate.Instance, instance.OrderOption]{typ: ent.TypeInstance, tq: q}, nil
 	case *ent.InstanceSettingQuery:
 		return &query[*ent.InstanceSettingQuery, predicate.InstanceSetting, instancesetting.OrderOption]{typ: ent.TypeInstanceSetting, tq: q}, nil
+	case *ent.InvitationQuery:
+		return &query[*ent.InvitationQuery, predicate.Invitation, invitation.OrderOption]{typ: ent.TypeInvitation, tq: q}, nil
 	case *ent.IssuedCertificateQuery:
 		return &query[*ent.IssuedCertificateQuery, predicate.IssuedCertificate, issuedcertificate.OrderOption]{typ: ent.TypeIssuedCertificate, tq: q}, nil
 	case *ent.LeaseQuery:
