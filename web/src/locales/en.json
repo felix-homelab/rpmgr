@@ -12,7 +12,8 @@
     "gateways": "Gateways",
     "domains": "Domains & certificates",
     "policies": "Access policies",
-    "org": "Organisation"
+    "org": "Organisation",
+    "audit": "Audit log"
   },
   "overview": {
     "title": "Overview",
@@ -666,5 +667,42 @@
     "newAccount": "An account is created for the address you were invited at.",
     "join": "Join",
     "created": "Your account is ready. Sign in with the address you were invited at."
+  },
+  "audit": {
+    "title": "Audit log",
+    "instanceTitle": "Instance audit log",
+    "which": "Which log",
+    "orgLog": "This organisation",
+    "instanceLog": "The instance",
+    "action": "Action, exactly",
+    "actor": "Actor ID",
+    "filter": "Filter",
+    "none": "No entry matches.",
+    "more": "Older entries",
+    "verify": "Verify the chain",
+    "intact": "The chain is intact up to entry {{seq}}.",
+    "checkpoint": "Its last signed checkpoint covers entry {{seq}}, from {{when}}.",
+    "broken": "The chain is broken at entry {{seq}}: {{problem}}",
+    "actorTypes": {
+      "user": "a user",
+      "agent": "an agent",
+      "system": "the system",
+      "anonymous": "anonymous"
+    },
+    "results": {
+      "success": "success",
+      "failure": "failure",
+      "denied": "denied"
+    },
+    "fields": {
+      "seq": "Entry",
+      "actorType": "Actor type",
+      "credential": "Credential",
+      "authMethod": "Authentication",
+      "ip": "Address",
+      "userAgent": "User agent",
+      "requestId": "Request ID",
+      "reason": "Reason"
+    }
   }
 }

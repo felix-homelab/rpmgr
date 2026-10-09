@@ -267,6 +267,20 @@ flowchart LR
     password, and the user then signs in.
   - Pages that need no session never send the user to sign in.
 
+### Audit log
+
+- **`/audit`** shows the org's audit log, newest first, 100 entries at a time with "Older entries".
+  The Instance Admin can switch to the instance's log.
+- **Each entry** shows time, action, target, actor (by name for members) and result. Opened, it
+  shows the entry number, credential, authentication, address, user agent, request ID, reason, and
+  the redacted request, as text.
+- **Filters:** action (exact) and actor ID, kept in the URL (U9).
+- **"Verify the chain"** checks the hash chain from its last signed checkpoint. It says whether the
+  chain is intact up to which entry, with the checkpoint, or where it broke and why
+  ([04](04-security.md#audit-log)).
+- [R] The export of the information architecture is left out in Phase 1: the API has no export
+  method, and the log is read in pages.
+
 ### Enroll connector dialog
 
 ```

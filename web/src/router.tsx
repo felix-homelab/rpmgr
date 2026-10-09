@@ -8,6 +8,7 @@ import { Account } from "@/pages/account";
 import { ConnectorDetail } from "@/pages/connector-detail";
 import { Connectors, validateConnectorsSearch } from "@/pages/connectors";
 import { DomainsPage } from "@/pages/domains-page";
+import { Audit, validateAuditSearch } from "@/pages/audit";
 import { Forgot } from "@/pages/forgot";
 import { Invite } from "@/pages/invite";
 import { OrgPage } from "@/pages/org";
@@ -59,6 +60,7 @@ const gatewayGroup = createRoute({ getParentRoute: () => app, path: "/gateways/$
 const domains = createRoute({ getParentRoute: () => app, path: "/domains", component: DomainsPage });
 const policies = createRoute({ getParentRoute: () => app, path: "/policies", component: Policies });
 const orgPage = createRoute({ getParentRoute: () => app, path: "/org", component: OrgPage });
+const audit = createRoute({ getParentRoute: () => app, path: "/audit", component: Audit, validateSearch: validateAuditSearch });
 const account = createRoute({
   getParentRoute: () => app,
   path: "/account",
@@ -79,7 +81,7 @@ const reset = createRoute({ getParentRoute: () => root, path: "/reset", componen
 const forgot = createRoute({ getParentRoute: () => root, path: "/forgot", component: Forgot });
 const invite = createRoute({ getParentRoute: () => root, path: "/invite", component: Invite });
 
-const routeTree = root.addChildren([app.addChildren([overview, routes, routeNew, routeDetail, routeEdit, connectors, connectorDetail, gateways, gatewayGroup, domains, policies, orgPage, account]), login, setup, reset, forgot, invite]);
+const routeTree = root.addChildren([app.addChildren([overview, routes, routeNew, routeDetail, routeEdit, connectors, connectorDetail, gateways, gatewayGroup, domains, policies, orgPage, audit, account]), login, setup, reset, forgot, invite]);
 
 export function createAppRouter(context: RouterContext, history?: RouterHistory) {
   return createRouter({ routeTree, history, context, defaultPreload: "intent" });
