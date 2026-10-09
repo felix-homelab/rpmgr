@@ -12,7 +12,7 @@
 
 | Path | For | Notes |
 |---|---|---|
-| **Controller-hosted install script** | Gateways and connectors on Linux (`/install.sh`) | Served by the controller from embedded templates; downloads from the controller's `/dl/` mirror and verifies root key → signing-key statement → manifest signature → artifact SHA-256 with OpenSSL ≥ 3.0, and refuses to install without it [V VB-15] ([04](04-security.md#install-scripts)). The UI generates the full command with `--controller` and `--ca-pin` ([04](04-security.md#join-command)). There is no `/install.ps1`: Windows and macOS connectors are installed from packages (Phase 2) |
+| **Controller-hosted install script** | Gateways and connectors on Linux (`/install.sh`) | Served by the controller from embedded templates; downloads from the controller's `/dl/` mirror and verifies root key → signing-key statement → manifest signature → artifact SHA-256 with OpenSSL ≥ 3.0, and refuses to install without it (VB-15, resolved in [13](13-roadmap.md#verification-backlog)) ([04](04-security.md#install-scripts)). The UI generates the full command with `--controller` and `--ca-pin` ([04](04-security.md#join-command)). There is no `/install.ps1`: Windows and macOS connectors are installed from packages (Phase 2) |
 | **Distribution packages** (`.deb`, `.rpm`; Phase 2) | High-assurance installs | [R] Package name `rpmgr` (never `rpm`, [ADR-0001](adr/0001-name-rpmgr.md)); availability checked as VB-14. Built with nfpm and served from a signed apt/yum repository on GitHub Pages, signed with a key on the release signing token. The package installs the binary and the hardened units; enrollment is a separate step. Package installs are **updated by the package manager from the signed repository, not by OTA**: the updater refuses to replace a package-owned binary, because the next package run would silently revert it ([04](04-security.md#over-the-air-updates)). `.apk` packages are not planned |
 | **Homebrew tap** (Phase 2) | Connectors on macOS | Updated with `brew upgrade`; no OTA on macOS before Phase 3 ([Windows and macOS connectors](#windows-and-macos-connectors-phase-2)) |
 | **winget / MSI** (Phase 2) | Connectors on Windows | Updated through winget or a new MSI; no OTA on Windows before Phase 3 ([Windows and macOS connectors](#windows-and-macos-connectors-phase-2)) |
@@ -28,7 +28,7 @@ A Helm chart is Phase 3 ([13](13-roadmap.md#phase-3--advanced)).
 | Linux kernel | ≥ 5.10 (the updater needs `openat2`, available since 5.6) |
 | systemd | ≥ 249; the KEK source `systemd-credential` needs ≥ 250, otherwise `rpmgr controller init` chooses `file`. The units verify on systemd 249 (Ubuntu 22.04) and 257 (Debian 13) (`check-units.sh`, VB-03) |
 | Distributions | Debian 12+, Ubuntu 22.04+, RHEL, Rocky and Alma Linux 9+, Raspberry Pi OS (Debian 12 based) |
-| `/install.sh` | OpenSSL ≥ 3.0 for signature verification [V VB-15] |
+| `/install.sh` | OpenSSL ≥ 3.0 for signature verification; checked on the distributions above by `check-install.sh` (VB-15, resolved) |
 | Windows, macOS | Connectors only, from Phase 2 ([Windows and macOS connectors](#windows-and-macos-connectors-phase-2)) |
 
 Architectures per role are in [05](05-features.md#platform-support).

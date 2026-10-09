@@ -777,7 +777,8 @@ Phase 3 item ([13](13-roadmap.md#phase-3--advanced)).
 - `/install.sh` (Linux) is **served by the controller** from an embedded template and downloads from
   the controller's own mirror, on the same endpoint as the UI. It verifies the chain **root key**
   (embedded in the script) → **signing-key statement** → **manifest signature** → artifact
-  **SHA-256** with OpenSSL ≥ 3.0, and refuses to install when OpenSSL is missing or older [V VB-15].
+  **SHA-256** with OpenSSL ≥ 3.0, and refuses to install when OpenSSL is missing or older (VB-15,
+  resolved in [13](13-roadmap.md#verification-backlog)).
   - **What it trusts:** it embeds the version and the root keys of the controller's own binary. It
     downloads over HTTPS only, from `--controller`'s `/dl/<version>/`.
   - **How it verifies:** with `openssl dgst -blake2b512` and `openssl pkeyutl -rawin` for each
