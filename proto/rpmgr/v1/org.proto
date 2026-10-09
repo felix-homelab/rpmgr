@@ -1,0 +1,212 @@
+// SPDX-License-Identifier: Apache-2.0
+
+syntax = "proto3";
+
+package rpmgr.v1;
+
+import "buf/validate/validate.proto";
+import "google/protobuf/timestamp.proto";
+import "rpmgr/v1/options.proto";
+
+option go_package = "github.com/felix-homelab/rpmgr/gen/rpmgr/v1;rpmgrv1";
+
+// OrgService is an org, its members and its invitations (docs/07-api.md, "Services";
+// docs/04-security.md, "Roles").
+service OrgService {
+  // GetOrg returns an org.
+  rpc GetOrg(GetOrgRequest) returns (GetOrgResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+    option (rpmgr.v1.authz) = {
+      permission: "org.read"
+      resource_field: "org_id"
+    };
+  }
+  // UpdateOrg renames an org.
+  rpc UpdateOrg(UpdateOrgRequest) returns (UpdateOrgResponse) {
+    option (rpmgr.v1.authz) = {
+      permission: "org.write"
+      resource_field: "org_id"
+    };
+  }
+  // ListMembers lists an org's members, Owners first.
+  rpc ListMembers(ListMembersRequest) returns (ListMembersResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+    option (rpmgr.v1.authz) = {
+      permission: "org.read"
+      resource_field: "org_id"
+    };
+  }
+  // UpdateMember changes a member's role; granting Admin or Owner needs a step-up, and only an
+  // Owner makes or changes an Owner.
+  rpc UpdateMember(UpdateMemberRequest) returns (UpdateMemberResponse) {
+    option (rpmgr.v1.authz) = {
+      permission: "members.write"
+      resource_field: "org_id"
+    };
+  }
+  // RemoveMember ends a membership; only an Owner removes an Owner, and an org keeps one.
+  rpc RemoveMember(RemoveMemberRequest) returns (RemoveMemberResponse) {
+    option (rpmgr.v1.authz) = {
+      permission: "members.write"
+      resource_field: "org_id"
+    };
+  }
+  // CreateInvitation returns a one-time link that makes its holder a member with a role; an
+  // invitation as Admin or Owner needs a step-up.
+  rpc CreateInvitation(CreateInvitationRequest) returns (CreateInvitationResponse) {
+    option (rpmgr.v1.authz) = {
+      permission: "members.write"
+      resource_field: "org_id"
+    };
+  }
+  // AcceptInvitation uses an invitation: a signed-in caller joins with their account; without
+  // one, an account is created for the invited address.
+  rpc AcceptInvitation(AcceptInvitationRequest) returns (AcceptInvitationResponse) {
+    option (rpmgr.v1.authz) = {permission: "public"};
+  }
+}
+
+// Org is an organisation.
+message Org {
+  // The org's ID, org_….
+  string id = 1;
+  // Its name.
+  string name = 2;
+  // Its slug.
+  string slug = 3;
+  // When it was created.
+  google.protobuf.Timestamp create_time = 4;
+}
+
+// GetOrgRequest names an org.
+message GetOrgRequest {
+  // The org's ID.
+  string org_id = 1 [(buf.validate.field).string.min_len = 1];
+}
+
+// GetOrgResponse is the org.
+message GetOrgResponse {
+  // The org.
+  Org org = 1;
+}
+
+// UpdateOrgRequest is an org's new name.
+message UpdateOrgRequest {
+  // The org's ID.
+  string org_id = 1 [(buf.validate.field).string.min_len = 1];
+  // The new name.
+  string name = 2 [(buf.validate.field).string = {
+    min_len: 1
+    max_len: 100
+  }];
+}
+
+// UpdateOrgResponse is the org.
+message UpdateOrgResponse {
+  // The org.
+  Org org = 1;
+}
+
+// Member is a user's membership of an org.
+message Member {
+  // The user's ID.
+  string user_id = 1;
+  // The user's e-mail address.
+  string email = 2;
+  // The user's display name.
+  string display_name = 3;
+  // owner, admin, operator or viewer.
+  string role = 4;
+  // Since when.
+  google.protobuf.Timestamp create_time = 5;
+}
+
+// ListMembersRequest names an org.
+message ListMembersRequest {
+  // The org's ID.
+  string org_id = 1 [(buf.validate.field).string.min_len = 1];
+}
+
+// ListMembersResponse is the org's members.
+message ListMembersResponse {
+  // The members, Owners first.
+  repeated Member members = 1;
+}
+
+// UpdateMemberRequest is a member's new role.
+message UpdateMemberRequest {
+  // The org's ID.
+  string org_id = 1 [(buf.validate.field).string.min_len = 1];
+  // The member's user ID.
+  string user_id = 2 [(buf.validate.field).string.min_len = 1];
+  // owner, admin, operator or viewer.
+  string role = 3 [(buf.validate.field).string = {
+    in: ["owner", "admin", "operator", "viewer"]
+  }];
+}
+
+// UpdateMemberResponse is empty.
+message UpdateMemberResponse {}
+
+// RemoveMemberRequest names a member.
+message RemoveMemberRequest {
+  // The org's ID.
+  string org_id = 1 [(buf.validate.field).string.min_len = 1];
+  // The member's user ID.
+  string user_id = 2 [(buf.validate.field).string.min_len = 1];
+}
+
+// RemoveMemberResponse is empty.
+message RemoveMemberResponse {}
+
+// CreateInvitationRequest is an address and a role.
+message CreateInvitationRequest {
+  // The org's ID.
+  string org_id = 1 [(buf.validate.field).string.min_len = 1];
+  // The invitee's e-mail address.
+  string email = 2 [(buf.validate.field).string = {
+    min_len: 3
+    max_len: 254
+  }];
+  // owner, admin, operator or viewer.
+  string role = 3 [(buf.validate.field).string = {
+    in: ["owner", "admin", "operator", "viewer"]
+  }];
+  // Makes retries idempotent (docs/07-api.md, "Resource design").
+  string request_id = 4 [(buf.validate.field).string.max_len = 128];
+}
+
+// CreateInvitationResponse is the one-time link.
+message CreateInvitationResponse {
+  // The link, to pass on to the invitee; shown once.
+  string url = 1 [(rpmgr.v1.sensitive) = true];
+  // When it stops working.
+  google.protobuf.Timestamp expire_time = 2;
+}
+
+// AcceptInvitationRequest is the invitation's token and, for a new account, its details.
+message AcceptInvitationRequest {
+  // The link's token, rpmgr_inv_….
+  string token = 1 [
+    (rpmgr.v1.sensitive) = true,
+    (buf.validate.field).string = {
+      min_len: 1
+      max_len: 128
+    }
+  ];
+  // For a new account: the display name.
+  string display_name = 2 [(buf.validate.field).string.max_len = 100];
+  // For a new account: the password, 12 to 256 characters.
+  string password = 3 [
+    (rpmgr.v1.sensitive) = true,
+    (buf.validate.field).string.max_len = 256
+  ];
+}
+
+// AcceptInvitationResponse is the new membership.
+message AcceptInvitationResponse {
+  // The org the caller joined.
+  string org_id = 1;
+  // The member's user ID.
+  string user_id = 2;
+}

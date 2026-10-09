@@ -26,6 +26,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/gatewaygroup"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/instance"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/instancesetting"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/invitation"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/issuedcertificate"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/lease"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/membership"
@@ -1185,6 +1186,75 @@ func init() {
 	instancesettingDescID := instancesettingFields[0].Descriptor()
 	// instancesetting.IDValidator is a validator for the "id" field. It is called by the builders before save.
 	instancesetting.IDValidator = instancesettingDescID.Validators[0].(func(int) error)
+	invitationMixin := schema.Invitation{}.Mixin()
+	invitation.Policy = privacy.NewPolicies(invitationMixin[0], schema.Invitation{})
+	invitation.Hooks[0] = func(next ent.Mutator) ent.Mutator {
+		return ent.MutateFunc(func(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+			if err := invitation.Policy.EvalMutation(ctx, m); err != nil {
+				return nil, err
+			}
+			return next.Mutate(ctx, m)
+		})
+	}
+	invitationMixinHooks0 := invitationMixin[0].Hooks()
+
+	invitation.Hooks[1] = invitationMixinHooks0[0]
+	invitationMixinInters0 := invitationMixin[0].Interceptors()
+	invitation.Interceptors[0] = invitationMixinInters0[0]
+	invitationMixinFields0 := invitationMixin[0].Fields()
+	_ = invitationMixinFields0
+	invitationFields := schema.Invitation{}.Fields()
+	_ = invitationFields
+	// invitationDescOrgID is the schema descriptor for org_id field.
+	invitationDescOrgID := invitationMixinFields0[0].Descriptor()
+	// invitation.OrgIDValidator is a validator for the "org_id" field. It is called by the builders before save.
+	invitation.OrgIDValidator = invitationDescOrgID.Validators[0].(func(string) error)
+	// invitationDescEmail is the schema descriptor for email field.
+	invitationDescEmail := invitationFields[1].Descriptor()
+	// invitation.EmailValidator is a validator for the "email" field. It is called by the builders before save.
+	invitation.EmailValidator = func() func(string) error {
+		validators := invitationDescEmail.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(email string) error {
+			for _, fn := range fns {
+				if err := fn(email); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// invitationDescTokenHash is the schema descriptor for token_hash field.
+	invitationDescTokenHash := invitationFields[3].Descriptor()
+	// invitation.TokenHashValidator is a validator for the "token_hash" field. It is called by the builders before save.
+	invitation.TokenHashValidator = invitationDescTokenHash.Validators[0].(func([]byte) error)
+	// invitationDescCreatedBy is the schema descriptor for created_by field.
+	invitationDescCreatedBy := invitationFields[4].Descriptor()
+	// invitation.CreatedByValidator is a validator for the "created_by" field. It is called by the builders before save.
+	invitation.CreatedByValidator = invitationDescCreatedBy.Validators[0].(func(string) error)
+	// invitationDescID is the schema descriptor for id field.
+	invitationDescID := invitationFields[0].Descriptor()
+	// invitation.DefaultID holds the default value on creation for the id field.
+	invitation.DefaultID = invitationDescID.Default.(func() string)
+	// invitation.IDValidator is a validator for the "id" field. It is called by the builders before save.
+	invitation.IDValidator = func() func(string) error {
+		validators := invitationDescID.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(id string) error {
+			for _, fn := range fns {
+				if err := fn(id); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
 	issuedcertificate.Policy = privacy.NewPolicies(schema.IssuedCertificate{})
 	issuedcertificate.Hooks[0] = func(next ent.Mutator) ent.Mutator {
 		return ent.MutateFunc(func(ctx context.Context, m ent.Mutation) (ent.Value, error) {

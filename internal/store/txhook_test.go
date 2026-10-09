@@ -17,7 +17,7 @@ import (
 // TestTxHook: ConfigTx and WriteTx run the context's hook last, in their transaction, so its
 // writes commit with theirs and its error rolls both back; a transaction that fails never runs
 // it; read transactions and contexts without the hook never run it; a second hook runs before the
-// one it was added to.
+// one it was added to; a hook carried into another context runs there.
 func TestTxHook(t *testing.T) {
 	storetest.ForEachDialect(t, func(t *testing.T, db *store.DB) {
 		storetest.Init(t, db)
@@ -65,10 +65,17 @@ func TestTxHook(t *testing.T) {
 		if _, err := store.ConfigTx(sys, db, create("plain")); err != nil || ran != 3 {
 			t.Fatalf("no hook: %v, %d runs", err, ran)
 		}
+		carried := store.CarryTxHook(sys, ctx)
+		if _, err := store.ConfigTx(carried, db, create("carried")); err != nil || ran != 4 {
+			t.Fatalf("a carried hook: %v, %d runs", err, ran)
+		}
+		if store.CarryTxHook(sys, context.Background()) != sys {
+			t.Fatal("carrying no hook changed the context")
+		}
 		var order []string
 		both := store.WithTxHook(ctx, func(context.Context, *ent.Tx) error { order = append(order, "second"); return nil })
 		both = store.WithTxHook(both, func(context.Context, *ent.Tx) error { order = append(order, "third"); return nil })
-		if _, err := store.ConfigTx(both, db, create("chained")); err != nil || ran != 4 || fmt.Sprint(order) != "[third second]" {
+		if _, err := store.ConfigTx(both, db, create("chained")); err != nil || ran != 5 || fmt.Sprint(order) != "[third second]" {
 			t.Fatalf("chained hooks: %v, %d runs, %v", err, ran, order)
 		}
 	})

@@ -60,7 +60,7 @@ func newEnv(t *testing.T) *env {
 	sealer, _ := secret.NewSealer(kek)
 	e.mfa = &accounts.MFA{Accounts: e.acc, Sealer: sealer, RevLog: rl}
 	srv, err := api.New(api.Options{DB: db, Sys: sys, Sealer: sealer, Authenticator: e.sessions, Now: now,
-		Resolver:           func(context.Context, string) (string, error) { return "", api.ErrNotFound },
+		Resolver:           api.StoreResolver(db, sys),
 		OperatorsMayEnroll: func(context.Context, string) (bool, error) { return false, nil },
 		Origins:            func(context.Context) ([]string, error) { return []string{"https://panel.example.com"}, nil }})
 	if err != nil {
@@ -70,6 +70,13 @@ func newEnv(t *testing.T) *env {
 	if err := srv.Mount(mux, rpmgrv1.File_rpmgr_v1_auth_proto.Services().ByName("AuthService"),
 		func(o ...connect.HandlerOption) (string, http.Handler) {
 			return rpmgrv1connect.NewAuthServiceHandler(apisvc.NewAuth(e.mfa, e.sessions, now), o...)
+		}); err != nil {
+		t.Fatal(err)
+	}
+	if err := srv.Mount(mux, rpmgrv1.File_rpmgr_v1_org_proto.Services().ByName("OrgService"),
+		func(o ...connect.HandlerOption) (string, http.Handler) {
+			return rpmgrv1connect.NewOrgServiceHandler(&apisvc.Org{Members: &accounts.Members{Accounts: e.acc, RevLog: rl}, API: srv,
+				PublicURL: "https://panel.example.com", Now: now}, o...)
 		}); err != nil {
 		t.Fatal(err)
 	}
@@ -97,12 +104,14 @@ type browser struct {
 	cookie string
 	auth   rpmgrv1connect.AuthServiceClient
 	user   rpmgrv1connect.UserServiceClient
+	org    rpmgrv1connect.OrgServiceClient
 }
 
 func (e *env) browser() *browser {
 	b := &browser{}
 	b.auth = rpmgrv1connect.NewAuthServiceClient(&http.Client{Transport: b}, e.url)
 	b.user = rpmgrv1connect.NewUserServiceClient(&http.Client{Transport: b}, e.url)
+	b.org = rpmgrv1connect.NewOrgServiceClient(&http.Client{Transport: b}, e.url)
 	return b
 }
 
