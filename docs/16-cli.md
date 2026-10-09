@@ -66,6 +66,11 @@ with exit code 2 until its implementation lands.
 | `rpmgr create gateway-token --gateway <gateway> [--ttl <duration>]` | Make the token that enrolls that gateway, with a step-up, and print it once | any | available |
 | `rpmgr create port-pool --group <group> --protocol tcp\|udp --from <port> --to <port>`, `update port-pool [--force] [--from] [--to] <id>` | Create a pool of public ports of a group, or resize it | any | available |
 | `rpmgr set port-quota --group <group> --protocol tcp\|udp --max <n>` | Set how many ports of a group's pools the org may hold; `list port-quota` and `delete port-quota <id>` show and remove them | any | available |
+| `rpmgr create domain --fqdn <name> [--wildcard] [--method txt\|http]` | Claim a domain for the org and print how to prove it: the TXT record to add, or the HTTP token the org's gateways serve ([15](15-dns.md)) | any | available |
+| `rpmgr verify domain <id>`, `trust domain <id>` | Check a claim's proof now, and say why it is not verified yet; or, for an Instance Admin with a step-up, mark it verified without a proof | any | available |
+| `rpmgr upload certificate --chain <file> --key <file>` | Upload a certificate chain, leaf first, and its key for http routes; a key file other users can read is warned about | any | available |
+| `rpmgr renew certificate <id>` | Renew an ACME certificate now, or obtain it if it failed; `get certificate` then shows the outcome | any | available |
+| `rpmgr create ca-bundle --name <name> --pem-file <file>`, `update ca-bundle [--force] [--name] [--pem-file] <id>` | Create or change a CA bundle that verifies HTTPS upstreams | any | available |
 | `rpmgr revoke enrollment-token <id>` | Revoke an enrollment token, so that it enrolls nothing more | any | available |
 | `rpmgr leave` | Revoke this agent's identity and remove it from the host | agent host | not yet |
 | `rpmgr status` | Show the state of the agent on this host | agent host | not yet |

@@ -6,6 +6,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -25,11 +26,13 @@ import (
 type field struct {
 	flag, name, usage, ref string
 	update                 bool // whether update may change it; create always sets it
+	file                   bool // the flag names a file whose content is the field's value
 }
 
 // resourceCommands are `create <kind>` and `update <kind>` of a kind whose resource the fields
-// describe, through its Create<Resource> and Update<Resource> methods.
-func resourceCommands(kind string, fields []field) (create, update *cli.Command) {
+// describe, through its Create<Resource> and Update<Resource> methods. after, if given, prints
+// more about a resource written.
+func resourceCommands(kind string, fields []field, after ...func(env *cli.Env, res protoreflect.Message) error) (create, update *cli.Command) {
 	k, err := apicli.KindOf(kind)
 	if err != nil {
 		panic(err)
@@ -50,10 +53,14 @@ func resourceCommands(kind string, fields []field) (create, update *cli.Command)
 				continue
 			}
 			fd := mt.Descriptor().Fields().ByName(protoreflect.Name(f.name))
-			if fd.IsList() {
+			switch {
+			case fd.IsList():
 				lists[f.flag] = &listFlag{}
 				fs.Var(lists[f.flag], f.flag, f.usage+"; repeat for more")
-			} else {
+			case fd.Kind() == protoreflect.BoolKind:
+				values[f.flag] = new(string)
+				fs.Var(boolFlag{values[f.flag]}, f.flag, f.usage)
+			default:
 				values[f.flag] = new(string)
 				fs.StringVar(values[f.flag], f.flag, "", f.usage)
 			}
@@ -76,7 +83,15 @@ func resourceCommands(kind string, fields []field) (create, update *cli.Command)
 					l.Append(protoreflect.ValueOfString(v))
 				}
 			} else {
-				v, err := s.value(ctx, fd, f, *values[f.flag])
+				raw := *values[f.flag]
+				if f.file {
+					b, err := os.ReadFile(raw) //nolint:gosec // G304: the user's file
+					if err != nil {
+						return nil, err
+					}
+					raw = string(b)
+				}
+				v, err := s.value(ctx, fd, f, raw)
 				if err != nil {
 					return nil, err
 				}
@@ -110,7 +125,7 @@ func resourceCommands(kind string, fields []field) (create, update *cli.Command)
 			rm := msgOf(req)
 			rm.Set(req.Fields().ByName("org_id"), protoreflect.ValueOfString(s.creds.Org))
 			rm.Set(req.Fields().ByName(protoreflect.Name(resourceField)), protoreflect.ValueOfMessage(res))
-			return s.send(ctx, env, k, md, rm.Interface(), wait, output, "Created")
+			return s.send(ctx, env, k, md, rm.Interface(), wait, output, "Created", after...)
 		},
 	}
 	update = &cli.Command{
@@ -158,11 +173,23 @@ func resourceCommands(kind string, fields []field) (create, update *cli.Command)
 			if !force {
 				rm.Set(md.Input().Fields().ByName("etag"), res.Get(res.Descriptor().Fields().ByName("etag")))
 			}
-			return s.send(ctx, env, k, md, rm.Interface(), wait, output, "Updated")
+			return s.send(ctx, env, k, md, rm.Interface(), wait, output, "Updated", after...)
 		},
 	}
 	return create, update
 }
+
+// boolFlag is a bool field's flag: given alone it is true, and --flag=false sets false.
+type boolFlag struct{ v *string }
+
+func (b boolFlag) String() string {
+	if b.v == nil {
+		return ""
+	}
+	return *b.v
+}
+func (b boolFlag) Set(v string) error { *b.v = v; return nil }
+func (b boolFlag) IsBoolFlag() bool   { return true }
 
 // msgOf is a new generated message of a descriptor.
 func msgOf(md protoreflect.MessageDescriptor) protoreflect.Message {
@@ -219,7 +246,7 @@ func (s *apiSession) value(ctx context.Context, fd protoreflect.FieldDescriptor,
 // send checks a write with the API's rules and sends it, taking a step-up if the API wants one,
 // then prints the resource written and how far the agents are.
 func (s *apiSession) send(ctx context.Context, env *cli.Env, k apicli.Kind, md protoreflect.MethodDescriptor, req proto.Message,
-	wait time.Duration, output, verb string) error {
+	wait time.Duration, output, verb string, after ...func(env *cli.Env, res protoreflect.Message) error) error {
 	if err := protovalidate.Validate(req); err != nil {
 		return cli.Usagef("%v", err)
 	}
@@ -240,5 +267,13 @@ func (s *apiSession) send(ctx context.Context, env *cli.Env, k apicli.Kind, md p
 	if _, err := fmt.Fprintf(env.Stdout, "%s %s %s%s.\n", verb, strings.ReplaceAll(k.Name, "-", " "), id, applied(resp)); err != nil {
 		return err
 	}
-	return s.print(ctx, env.Stdout, k, output, []protoreflect.Message{res}, []string{id}, false)
+	if err := s.print(ctx, env.Stdout, k, output, []protoreflect.Message{res}, []string{id}, false); err != nil {
+		return err
+	}
+	for _, f := range after {
+		if err := f(env, res); err != nil {
+			return err
+		}
+	}
+	return nil
 }

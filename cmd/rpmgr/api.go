@@ -29,21 +29,37 @@ import (
 
 // apiCommands are the verb-first commands of the public API (docs/16-cli.md, D51).
 func apiCommands() []*cli.Command {
+	verbs := map[string][]*cli.Command{}
+	add := func(m map[string][]*cli.Command) {
+		for verb, cs := range m {
+			verbs[verb] = append(verbs[verb], cs...)
+		}
+	}
 	createRoute, updateRoute, enableRoute, disableRoute, previewRoute := routeCommands()
 	createTarget, updateTarget := targetCommands()
 	updateConnector, decommissionConnector, revokeToken := connectorCommands()
+	add(map[string][]*cli.Command{"create": {createRoute, createTarget, enrollmentTokenCommand()},
+		"update": {updateRoute, updateTarget, updateConnector}, "decommission": {decommissionConnector}, "revoke": {revokeToken},
+		"enable": {enableRoute}, "disable": {disableRoute}, "preview": {previewRoute}})
 	createInfra, updateInfra, more := infrastructureCommands()
-	return []*cli.Command{getCommand(), listCommand(), deleteCommand(),
-		group("create", "create a resource of the public API",
-			append(append([]*cli.Command{createRoute, createTarget, enrollmentTokenCommand()}, createInfra...), more["create"]...)...),
-		group("update", "change a resource of the public API", append([]*cli.Command{updateRoute, updateTarget, updateConnector}, updateInfra...)...),
-		group("decommission", "take an agent out of service for good", append([]*cli.Command{decommissionConnector}, more["decommission"]...)...),
-		group("revoke", "revoke a credential", revokeToken),
-		group("enable", "serve a resource again", append([]*cli.Command{enableRoute}, more["enable"]...)...),
-		group("disable", "stop serving a resource, keeping its configuration", disableRoute),
-		group("drain", "stop a gateway taking new connections", more["drain"]...),
-		group("set", "set an org's limit", more["set"]...),
-		group("preview", "show what a change would do, saving nothing", previewRoute)}
+	add(map[string][]*cli.Command{"create": createInfra, "update": updateInfra})
+	add(more)
+	createDomain, updateDomain, moreDomain := domainCommands()
+	add(createDomain)
+	add(updateDomain)
+	add(moreDomain)
+	out := []*cli.Command{getCommand(), listCommand(), deleteCommand()}
+	for _, v := range []struct{ verb, summary string }{
+		{"create", "create a resource of the public API"}, {"update", "change a resource of the public API"},
+		{"enable", "serve a resource again"}, {"disable", "stop serving a resource, keeping its configuration"},
+		{"drain", "stop a gateway taking new connections"}, {"decommission", "take an agent out of service for good"},
+		{"revoke", "revoke a credential"}, {"set", "set an org's limit"}, {"preview", "show what a change would do, saving nothing"},
+		{"verify", "check a proof now"}, {"trust", "trust something without a proof"}, {"upload", "upload a file to the controller"},
+		{"renew", "renew a certificate now"},
+	} {
+		out = append(out, group(v.verb, v.summary, verbs[v.verb]...))
+	}
+	return out
 }
 
 // kindsHelp lists the kinds a command takes, for its synopsis.
