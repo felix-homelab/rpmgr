@@ -185,6 +185,15 @@ flowchart LR
   - **Decommission** comes after a confirmation that names the connector and says what it does
     (U7). The page then returns to the list.
 
+### Gateways
+
+- **The groups** (`/gateways`): each with its region, public hostnames, and how many of its gateways
+  are connected. A new group is created there, and the page then opens it.
+- **A group's page** lists its gateways by slot, with their tunnel endpoints, state (not enrolled,
+  connected or offline, and drained), version and last contact. It also edits the group's name,
+  region, public hostnames and trusted proxies, as the whole group as read with their mask and the
+  etag (U1).
+
 ### Enroll connector dialog
 
 ```

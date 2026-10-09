@@ -8,7 +8,8 @@
   "nav": {
     "overview": "Overview",
     "routes": "Routes",
-    "connectors": "Connectors"
+    "connectors": "Connectors",
+    "gateways": "Gateways"
   },
   "overview": {
     "title": "Overview",
@@ -442,5 +443,40 @@
     "used": "used {{count}} of {{max}}",
     "usedUnlimited": "used {{count}} times",
     "revokeAsk": "Revoke the token created {{when}}?"
+  },
+  "gateways": {
+    "title": "Gateway groups",
+    "newGroup": "New gateway group",
+    "create": "Create the group",
+    "noGroups": "The org has no gateway group yet.",
+    "notFound": "This gateway group does not exist, or you cannot see it.",
+    "columns": {
+      "name": "Name",
+      "region": "Region",
+      "hostnames": "Public hostnames",
+      "gateways": "Gateways"
+    },
+    "count": "{{connected}} of {{total}} connected",
+    "hostnamesHint": "One per line: the names public traffic reaches the group's gateways by.",
+    "cidrs": "Trusted proxies",
+    "cidrsHint": "One CIDR per line: proxies in front of the gateways whose X-Forwarded-For the gateways keep.",
+    "groupTitle": "Gateway group {{name}}",
+    "members": "Gateways",
+    "noGateways": "The group has no gateway yet.",
+    "settings": "Settings",
+    "drained": "drained",
+    "state": {
+      "notEnrolled": "not enrolled",
+      "connected": "connected",
+      "offline": "offline"
+    },
+    "gw": {
+      "name": "Name",
+      "slot": "Slot",
+      "endpoints": "Tunnel endpoints",
+      "state": "State",
+      "version": "Version",
+      "lastSeen": "Last seen"
+    }
   }
 }
