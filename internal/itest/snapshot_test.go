@@ -72,7 +72,7 @@ func TestSnapshots_EndToEnd(t *testing.T) {
 		done := make(chan struct{})
 		go func() {
 			_ = agent.RunControl(ctx, agent.ControlOptions{IdentityDir: id.Dir, StateDir: state, Version: "0.1.0",
-				Applier: rec, Backoff: fast()})
+				Applier: rec, Backoff: fast(), Logger: c.Logs.Logger()})
 			close(done)
 		}()
 		return func() { cancel(); <-done }

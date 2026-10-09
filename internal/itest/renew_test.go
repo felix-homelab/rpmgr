@@ -14,6 +14,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/agent"
 	"github.com/felix-homelab/rpmgr/internal/itest"
 	"github.com/felix-homelab/rpmgr/internal/pki"
+	"github.com/felix-homelab/rpmgr/internal/telemetry/telemetrytest"
 )
 
 // runAgent runs an agent's control plane until the test ends.
@@ -23,7 +24,7 @@ func runAgent(t *testing.T, id agent.Loaded, now func() time.Time) {
 	done := make(chan struct{})
 	go func() {
 		_ = agent.RunControl(ctx, agent.ControlOptions{IdentityDir: id.Dir, StateDir: t.TempDir(), Version: "0.1.0",
-			Applier: &recorder{}, Backoff: fast(), Now: now})
+			Applier: &recorder{}, Backoff: fast(), Now: now, Logger: telemetrytest.Logger(t)})
 		close(done)
 	}()
 	t.Cleanup(func() { cancel(); <-done })

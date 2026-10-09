@@ -138,7 +138,8 @@ func newDataPlane(t *testing.T) *dataPlane {
 func (p *dataPlane) startGateway(t *testing.T) {
 	t.Helper()
 	p.stopGateway = runRole(t, func(ctx context.Context, listening func()) error {
-		return gateway.Run(ctx, gateway.RunOptions{Config: p.gwCfg, Version: "0.1.0", DrainPeriod: 200 * time.Millisecond, Listening: listening})
+		return gateway.Run(ctx, gateway.RunOptions{Config: p.gwCfg, Version: "0.1.0", DrainPeriod: 200 * time.Millisecond, Listening: listening,
+			Logger: p.c.Logs.Logger()})
 	})
 }
 
@@ -147,7 +148,7 @@ func (p *dataPlane) startConnector(t *testing.T, now func() time.Time) {
 	t.Helper()
 	p.stopConnector = runRole(t, func(ctx context.Context, listening func()) error {
 		return connector.Run(ctx, connector.RunOptions{Config: p.conCfg, Version: "0.1.0", Getenv: func(string) string { return "" },
-			Now: now, Listening: listening})
+			Now: now, Listening: listening, Logger: p.c.Logs.Logger()})
 	})
 }
 
@@ -308,12 +309,12 @@ func TestConnectorRole_Refusals(t *testing.T) {
 		return cc
 	}
 	none := func(string) string { return "" }
-	if err := connector.Run(context.Background(), connector.RunOptions{Config: cfg(gw.Dir), Getenv: none}); err == nil ||
+	if err := connector.Run(context.Background(), connector.RunOptions{Config: cfg(gw.Dir), Getenv: none, Logger: c.Logs.Logger()}); err == nil ||
 		!strings.Contains(err.Error(), "gateway") {
 		t.Fatalf("a gateway's identity: %v", err)
 	}
 	proxy := func(k string) string { return map[string]string{"HTTPS_PROXY": "ftp://proxy.example"}[k] }
-	if err := connector.Run(context.Background(), connector.RunOptions{Config: cfg(con.Dir), Getenv: proxy}); err == nil ||
+	if err := connector.Run(context.Background(), connector.RunOptions{Config: cfg(con.Dir), Getenv: proxy, Logger: c.Logs.Logger()}); err == nil ||
 		!strings.Contains(err.Error(), "HTTPS_PROXY") {
 		t.Fatalf("an unusable proxy: %v", err)
 	}

@@ -117,7 +117,7 @@ func TestACME_Issuance(t *testing.T) {
 		c.Sessions, acme.GatewaysServing(c.DB, c.Sys))
 	t.Cleanup(storage.Close)
 	m := acme.NewManager(acme.ManagerOptions{DB: c.DB, Sys: c.Sys, Sealer: c.Sealer(), Storage: storage, TrustedRoots: pebble.ServerRoots,
-		DisableARI: true, RenewalWindowRatio: 0.9,
+		DisableARI: true, RenewalWindowRatio: 0.9, Logger: c.Logs.Logger(),
 		Proxy: func(*http.Request) (*url.URL, error) { proxied.Add(1); return nil, nil }})
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()

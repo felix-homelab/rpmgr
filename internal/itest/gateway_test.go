@@ -79,7 +79,7 @@ func TestGatewayRole(t *testing.T) {
 	defer cancel()
 	listening, done := make(chan struct{}), make(chan error, 1)
 	go func() {
-		done <- gateway.Run(ctx, gateway.RunOptions{Config: cfg, Version: "0.1.0", DrainPeriod: 30 * time.Second,
+		done <- gateway.Run(ctx, gateway.RunOptions{Config: cfg, Version: "0.1.0", DrainPeriod: 30 * time.Second, Logger: c.Logs.Logger(),
 			Listening: func() { close(listening) }})
 	}()
 	select {
@@ -128,7 +128,7 @@ func TestGatewayRole(t *testing.T) {
 
 	// A connector's identity is not a gateway's.
 	wrong := gatewayConfig(t, c, con.Dir, freeTCPUDPPort(t))
-	if err := gateway.Run(context.Background(), gateway.RunOptions{Config: wrong}); err == nil || !strings.Contains(err.Error(), "connector") {
+	if err := gateway.Run(context.Background(), gateway.RunOptions{Config: wrong, Logger: c.Logs.Logger()}); err == nil || !strings.Contains(err.Error(), "connector") {
 		t.Fatalf("a connector's identity: %v", err)
 	}
 }

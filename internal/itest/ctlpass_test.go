@@ -144,13 +144,13 @@ func TestControlPassthrough_EndToEnd(t *testing.T) {
 	p.stopGateway()
 	var rec relayed
 	runRole(t, func(ctx context.Context, listening func()) error {
-		return gateway.Run(ctx, gateway.RunOptions{Config: p.gwCfg, Version: "0.1.0", DrainPeriod: 200 * time.Millisecond,
+		return gateway.Run(ctx, gateway.RunOptions{Config: p.gwCfg, Version: "0.1.0", DrainPeriod: 200 * time.Millisecond, Logger: p.c.Logs.Logger(),
 			Listening: listening, ForwardDial: rec.dial})
 	})
 	p.stopConnector()
 	var cut cutter
 	runRole(t, func(ctx context.Context, listening func()) error {
-		return connector.Run(ctx, connector.RunOptions{Config: p.conCfg, Version: marker, Getenv: func(string) string { return "" },
+		return connector.Run(ctx, connector.RunOptions{Config: p.conCfg, Version: marker, Logger: p.c.Logs.Logger(), Getenv: func(string) string { return "" },
 			Listening: listening, ControlDial: cut.dial})
 	})
 	conn := p.dial(t)

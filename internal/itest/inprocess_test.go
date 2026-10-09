@@ -94,7 +94,7 @@ func TestGatewayRole_InProcess(t *testing.T) {
 	var ready atomic.Pointer[func(context.Context) error]
 	reg := telemetry.NewRegistry()
 	runRole(t, func(ctx context.Context, listening func()) error {
-		return gateway.Run(ctx, gateway.RunOptions{Config: cfg, Version: "0.1.0", DrainPeriod: 100 * time.Millisecond, Listening: listening,
+		return gateway.Run(ctx, gateway.RunOptions{Config: cfg, Version: "0.1.0", DrainPeriod: 100 * time.Millisecond, Logger: c.Logs.Logger(), Listening: listening,
 			Dial: r.dial, Registry: reg, Readiness: func(check func(context.Context) error) { ready.Store(&check) },
 			ControllerNames: []string{"panel.example.com"},
 			Controller: func(conn net.Conn) {

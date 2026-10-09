@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"io"
 	"log/slog"
 	"path/filepath"
 	"slices"
@@ -16,6 +17,7 @@ import (
 	agentv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/agent/v1"
 	"github.com/felix-homelab/rpmgr/internal/agent"
 	"github.com/felix-homelab/rpmgr/internal/itest"
+	"github.com/felix-homelab/rpmgr/internal/telemetry/telemetrytest"
 )
 
 // fast is a backoff for tests: the real shape, small numbers.
@@ -42,7 +44,7 @@ func (s *syncBuffer) String() string { s.mu.Lock(); defer s.mu.Unlock(); return 
 func run(t *testing.T, o agent.ClientOptions) (*agent.Client, *syncBuffer, func() (time.Duration, error)) {
 	t.Helper()
 	logs := &syncBuffer{}
-	o.Logger = slog.New(slog.NewTextHandler(logs, nil))
+	o.Logger = slog.New(slog.NewTextHandler(io.MultiWriter(logs, telemetrytest.NewSink(t)), nil))
 	if o.Backoff == nil {
 		o.Backoff = fast()
 	}
@@ -161,7 +163,8 @@ func TestControlSession_Goodbyes(t *testing.T) {
 
 	revoked := itest.StartController(t, itest.Options{})
 	rid := revoked.EnrollConnector(t, filepath.Join(t.TempDir(), "identity"))
-	rc := agent.NewClient(agent.ClientOptions{Identity: rid, Endpoints: []string{revoked.URL}, Version: "0.1.0", Backoff: fast()})
+	rc := agent.NewClient(agent.ClientOptions{Identity: rid, Endpoints: []string{revoked.URL}, Version: "0.1.0", Backoff: fast(),
+		Logger: revoked.Logs.Logger()})
 	done := make(chan error, 1)
 	go func() { done <- rc.Run(context.Background()) }()
 	waitFor(t, "the session", func() bool { return slices.Contains(revoked.Sessions.Connected(), rid.AgentID) })
