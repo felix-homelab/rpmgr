@@ -464,6 +464,11 @@ sequenceDiagram
   snapshot no longer assigns the connector a route of this gateway, no new stream is opened on its
   sessions, and they close after their last stream has ended, at the latest after the route drain
   period: its routes were removed, not revoked.
+- A gateway admits at most **16 data sessions per connector identity**; it refuses one more before
+  its handshake, and the connector retries with backoff. [R] A connector needs at most six: an
+  `auto` link on TCP (two connections) re-probing QUIC (one), a `quic` link (one) and an `h2` link
+  (two). The rest leaves room for sessions a transport switch retired, which close after their
+  last stream. A connector cannot exhaust a gateway by opening sessions without end.
 
 ### One stream per user connection
 
