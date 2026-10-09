@@ -44,6 +44,8 @@ var Kinds = []Kind{
 		IDField: "gateway_group_id", Manifest: "GatewayGroup", Columns: []string{"region"}, Delete: true},
 	{Name: "port-pool", Prefix: "pp_", Service: "rpmgr.v1.GatewayService", Resource: "PortPool", Plural: "PortPools", IDField: "port_pool_id",
 		Manifest: "PortPool", Columns: []string{"gatewayGroupId", "protocol", "portFrom", "portTo", "allocatedPorts"}, Delete: true},
+	{Name: "port-quota", Prefix: "pq_", Service: "rpmgr.v1.GatewayService", Resource: "PortQuota", Plural: "PortQuotas",
+		IDField: "port_quota_id", Columns: []string{"gatewayGroupId", "protocol", "maxPorts", "allocatedPorts"}, Delete: true, NoGet: true},
 	{Name: "domain", Prefix: "dom_", Service: "rpmgr.v1.DomainService", Resource: "Domain", Plural: "Domains", IDField: "domain_id", Manifest: "Domain",
 		Columns: []string{"wildcard", "method", "status"}, Delete: true},
 	{Name: "certificate", Prefix: "crt_", Service: "rpmgr.v1.CertificateService", Resource: "Certificate", Plural: "Certificates",

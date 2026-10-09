@@ -32,15 +32,17 @@ func apiCommands() []*cli.Command {
 	createRoute, updateRoute, enableRoute, disableRoute, previewRoute := routeCommands()
 	createTarget, updateTarget := targetCommands()
 	updateConnector, decommissionConnector, revokeToken := connectorCommands()
-	createInfra, updateInfra := infrastructureCommands()
+	createInfra, updateInfra, more := infrastructureCommands()
 	return []*cli.Command{getCommand(), listCommand(), deleteCommand(),
 		group("create", "create a resource of the public API",
-			append([]*cli.Command{createRoute, createTarget, enrollmentTokenCommand()}, createInfra...)...),
+			append(append([]*cli.Command{createRoute, createTarget, enrollmentTokenCommand()}, createInfra...), more["create"]...)...),
 		group("update", "change a resource of the public API", append([]*cli.Command{updateRoute, updateTarget, updateConnector}, updateInfra...)...),
-		group("decommission", "take an agent out of service for good", decommissionConnector),
+		group("decommission", "take an agent out of service for good", append([]*cli.Command{decommissionConnector}, more["decommission"]...)...),
 		group("revoke", "revoke a credential", revokeToken),
-		group("enable", "serve a resource again", enableRoute),
+		group("enable", "serve a resource again", append([]*cli.Command{enableRoute}, more["enable"]...)...),
 		group("disable", "stop serving a resource, keeping its configuration", disableRoute),
+		group("drain", "stop a gateway taking new connections", more["drain"]...),
+		group("set", "set an org's limit", more["set"]...),
 		group("preview", "show what a change would do, saving nothing", previewRoute)}
 }
 
@@ -217,7 +219,7 @@ func deleteCommand() *cli.Command {
 				return err
 			}
 			fields := map[string]any{k.IDField: args[1]}
-			if !force {
+			if !force && !k.NoGet {
 				res, err := s.get(ctx, k, args[1])
 				if err != nil {
 					return err

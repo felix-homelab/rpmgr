@@ -24,16 +24,21 @@ import (
 )
 
 // gatewayAPI has the group "eu" with four gateways, the gateway "gw1" and a TCP pool 20000–20099,
-// and records the writes.
+// and records the writes; the gateway token needs a step-up.
 type gatewayAPI struct {
 	rpmgrv1connect.UnimplementedGatewayServiceHandler
+	stepUpAPI
 
-	mu          sync.Mutex
-	group       *rpmgrv1.CreateGatewayGroupRequest
-	groupUpdate *rpmgrv1.UpdateGatewayGroupRequest
-	gateway     *rpmgrv1.CreateGatewayRequest
-	gwUpdate    *rpmgrv1.UpdateGatewayRequest
-	pool        *rpmgrv1.CreatePortPoolRequest
+	mu           sync.Mutex
+	group        *rpmgrv1.CreateGatewayGroupRequest
+	groupUpdate  *rpmgrv1.UpdateGatewayGroupRequest
+	gateway      *rpmgrv1.CreateGatewayRequest
+	gwUpdate     *rpmgrv1.UpdateGatewayRequest
+	decommission *rpmgrv1.DecommissionGatewayRequest
+	pool         *rpmgrv1.CreatePortPoolRequest
+	quota        *rpmgrv1.SetPortQuotaRequest
+	quotaDeleted string
+	gwToken      *rpmgrv1.CreateGatewayEnrollmentTokenRequest
 }
 
 var (
@@ -86,6 +91,12 @@ func (a *gatewayAPI) UpdateGateway(_ context.Context, req *connect.Request[rpmgr
 	return connect.NewResponse(&rpmgrv1.UpdateGatewayResponse{Gateway: req.Msg.GetGateway(), Revision: &rpmgrv1.Revision{Seq: 33}}), nil
 }
 
+func (a *gatewayAPI) DecommissionGateway(_ context.Context, req *connect.Request[rpmgrv1.DecommissionGatewayRequest]) (
+	*connect.Response[rpmgrv1.DecommissionGatewayResponse], error) {
+	a.record(func() { a.decommission = req.Msg })
+	return connect.NewResponse(&rpmgrv1.DecommissionGatewayResponse{Revision: &rpmgrv1.Revision{Seq: 34}}), nil
+}
+
 func (a *gatewayAPI) CreatePortPool(_ context.Context, req *connect.Request[rpmgrv1.CreatePortPoolRequest]) (*connect.Response[rpmgrv1.CreatePortPoolResponse], error) {
 	a.record(func() { a.pool = req.Msg })
 	if req.Msg.GetPortPool().GetPortFrom() <= 20099 {
@@ -96,14 +107,39 @@ func (a *gatewayAPI) CreatePortPool(_ context.Context, req *connect.Request[rpmg
 	return connect.NewResponse(&rpmgrv1.CreatePortPoolResponse{PortPool: p, Revision: &rpmgrv1.Revision{Seq: 35}}), nil
 }
 
+func (a *gatewayAPI) SetPortQuota(_ context.Context, req *connect.Request[rpmgrv1.SetPortQuotaRequest]) (*connect.Response[rpmgrv1.SetPortQuotaResponse], error) {
+	a.record(func() { a.quota = req.Msg })
+	return connect.NewResponse(&rpmgrv1.SetPortQuotaResponse{PortQuota: &rpmgrv1.PortQuota{Id: "pq_1", MaxPorts: req.Msg.GetMaxPorts(), AllocatedPorts: 2}}), nil
+}
+
+func (a *gatewayAPI) DeletePortQuota(_ context.Context, req *connect.Request[rpmgrv1.DeletePortQuotaRequest]) (*connect.Response[rpmgrv1.DeletePortQuotaResponse], error) {
+	a.record(func() { a.quotaDeleted = req.Msg.GetPortQuotaId() })
+	return connect.NewResponse(&rpmgrv1.DeletePortQuotaResponse{}), nil
+}
+
+func (a *gatewayAPI) CreateGatewayEnrollmentToken(_ context.Context, req *connect.Request[rpmgrv1.CreateGatewayEnrollmentTokenRequest]) (
+	*connect.Response[rpmgrv1.CreateGatewayEnrollmentTokenResponse], error) {
+	a.stepUpAPI.mu.Lock()
+	stepped := a.stepped
+	a.stepUpAPI.mu.Unlock()
+	if !stepped {
+		return nil, stepUpError()
+	}
+	a.record(func() { a.gwToken = req.Msg })
+	return connect.NewResponse(&rpmgrv1.CreateGatewayEnrollmentTokenResponse{Token: "rpmgr_enr_gateway", //nolint:gosec // G101: a test token
+		EnrollmentToken: &rpmgrv1.EnrollmentToken{Id: "enr_9"}}), nil
+}
+
 // TestInfrastructure (docs/16-cli.md): gateway groups, gateways and port pools are created from
 // flags and updated in the fields their flags name, groups by name; the API's refusal of a fifth
-// gateway and of an overlapping pool is shown; flags the API's rules or the field's type refuse are
-// usage errors.
+// gateway and of an overlapping pool is shown; drain, enable and decommission act on a gateway under
+// its etag; quotas are set, listed and deleted; a gateway's token needs a step-up and is shown once.
 func TestInfrastructure(t *testing.T) {
 	a := &gatewayAPI{}
 	mux := http.NewServeMux()
 	mux.Handle(rpmgrv1connect.NewGatewayServiceHandler(a))
+	mux.Handle(rpmgrv1connect.NewEnrollmentServiceHandler(a))
+	mux.Handle(rpmgrv1connect.NewAuthServiceHandler(a))
 	srv := httptest.NewTLSServer(mux)
 	t.Cleanup(srv.Close)
 	creds := filepath.Join(t.TempDir(), "credentials.yaml")
@@ -141,13 +177,41 @@ func TestInfrastructure(t *testing.T) {
 		t.Errorf("an overlapping pool: %d %q", code, errOut)
 	}
 	for name, args := range map[string][]string{
-		"an unknown protocol":    {"create", "port-pool", "--group", "eu", "--protocol", "sctp", "--from", "1", "--to", "2"},
-		"a port that is not one": {"create", "port-pool", "--group", "eu", "--protocol", "tcp", "--from", "x", "--to", "2"},
-		"a group change":         {"update", "gateway", "--group", "us", "gw_1"},
-		"an update of nothing":   {"update", "gateway-group", "gwg_1"},
+		"an unknown protocol":        {"create", "port-pool", "--group", "eu", "--protocol", "sctp", "--from", "1", "--to", "2"},
+		"a port that is not one":     {"create", "port-pool", "--group", "eu", "--protocol", "tcp", "--from", "x", "--to", "2"},
+		"a group change":             {"update", "gateway", "--group", "us", "gw_1"},
+		"an update of nothing":       {"update", "gateway-group", "gwg_1"},
+		"a quota without a protocol": {"set", "port-quota", "--group", "eu", "--max", "3"},
 	} {
 		if code, _, errOut := run(args...); code != cli.ExitUsage {
 			t.Errorf("%s: %d %q", name, code, errOut)
 		}
+	}
+
+	if code, out, _ := run("drain", "gateway", "gw_1"); code != cli.ExitOK || a.gwUpdate.GetGateway().GetEnabled() || a.gwUpdate.GetEtag() != "5" ||
+		!slices.Equal(a.gwUpdate.GetUpdateMask().GetPaths(), []string{"enabled"}) || !strings.Contains(out, "Drained gateway gw_1") {
+		t.Fatalf("drain: %d %q %v", code, out, a.gwUpdate)
+	}
+	if code, _, _ := run("enable", "gateway", "gw_1"); code != cli.ExitOK || !a.gwUpdate.GetGateway().GetEnabled() {
+		t.Fatalf("enable: %d %v", code, a.gwUpdate)
+	}
+	if code, _, _ := run("decommission", "gateway", "gw_1"); code != cli.ExitOK || a.decommission.GetEtag() != "5" {
+		t.Fatalf("decommission: %d %v", code, a.decommission)
+	}
+	if code, out, _ := run("set", "port-quota", "--group", "eu", "--protocol", "udp", "--max", "5"); code != cli.ExitOK ||
+		a.quota.GetProtocol() != rpmgrv1.PortProtocol_PORT_PROTOCOL_UDP || a.quota.GetMaxPorts() != 5 || !strings.Contains(out, "at most 5 udp ports, 2 held") {
+		t.Fatalf("a quota: %d %q %v", code, out, a.quota)
+	}
+	if code, _, errOut := run("delete", "port-quota", "pq_1"); code != cli.ExitOK || a.quotaDeleted != "pq_1" {
+		t.Fatalf("a quota deleted: %d %q", code, errOut)
+	}
+
+	answer := "right"
+	old := stepUpPrompt
+	stepUpPrompt = func() (string, error) { return answer, nil }
+	t.Cleanup(func() { stepUpPrompt = old })
+	code, out, errOut = run("create", "gateway-token", "--gateway", "gw1", "--ttl", "30m")
+	if code != cli.ExitOK || strings.Count(out, "rpmgr_enr_gateway") != 1 || a.gwToken.GetGatewayId() != "gw_1" || a.gwToken.GetTtl().AsDuration().Minutes() != 30 {
+		t.Fatalf("a gateway token: %d %q %q %v", code, out, errOut, a.gwToken)
 	}
 }
