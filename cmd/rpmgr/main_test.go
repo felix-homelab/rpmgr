@@ -6,14 +6,17 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"runtime"
 	"strings"
 	"testing"
 
 	"github.com/felix-homelab/rpmgr/internal/cli"
+	"github.com/felix-homelab/rpmgr/internal/itest"
 	"github.com/felix-homelab/rpmgr/internal/release"
 )
 
@@ -55,15 +58,15 @@ func TestEveryCommandHasHelp(t *testing.T) {
 	})
 }
 
-func TestUnimplementedCommandsReportIt(t *testing.T) {
-	for _, args := range [][]string{
-		{"leave"}, {"diag", "clock"},
-	} {
-		code, _, stderr := runRpmgr(args...)
-		if code != cli.ExitUsage || !strings.Contains(stderr, "not available in this build") {
-			t.Errorf("rpmgr %s: exit %d, stderr %q; want exit 2, not available", strings.Join(args, " "), code, stderr)
+// TestEveryCommandIsAvailable: with Phase 1's commands built, no command of the tree answers "not
+// available in this build" any more (docs/16-cli.md).
+func TestEveryCommandIsAvailable(t *testing.T) {
+	notAvailable := reflect.ValueOf(cli.NotAvailable).Pointer()
+	walk(commands(), nil, func(c *cli.Command, path []string) {
+		if c.Run != nil && reflect.ValueOf(c.Run).Pointer() == notAvailable {
+			t.Errorf("rpmgr %s is not available", strings.Join(path, " "))
 		}
-	}
+	})
 }
 
 // TestSystemdUnit: the unit of an agent role needs no boot file; a controller's takes the KEK
@@ -143,6 +146,42 @@ func TestController(t *testing.T) {
 	stderr = errOut.String()
 	if code != cli.ExitError || !strings.Contains(stderr, "public_url") {
 		t.Fatalf("a boot file without public_url: exit %d, stderr %q", code, stderr)
+	}
+}
+
+// TestAgentCommands runs status, diag and leave against a connector enrolled with a test
+// controller; they are tested in internal/itest.
+func TestAgentCommands(t *testing.T) {
+	c := itest.StartController(t, itest.Options{})
+	dir := t.TempDir()
+	l := c.EnrollConnector(t, filepath.Join(dir, "identity"))
+	cfg := filepath.Join(dir, "connector.yaml")
+	boot := fmt.Sprintf("version: 1\ncontroller: {endpoints: [%q]}\nidentity_dir: %s\nstate_dir: %s\nlisten: {admin: 127.0.0.1:1}\n",
+		c.URL, l.Dir, dir)
+	if err := os.WriteFile(cfg, []byte(boot), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		args []string
+		code int
+		want string
+	}{
+		{[]string{"status"}, cli.ExitOK, "connector (boot file " + cfg + ")"},
+		{[]string{"status"}, cli.ExitOK, "none received yet"},
+		{[]string{"status"}, cli.ExitOK, "not running"},
+		{[]string{"diag", "clock"}, cli.ExitOK, "ahead of this host's"},
+		{[]string{"diag", "transport"}, cli.ExitError, "no configuration from the controller yet"},
+		{[]string{"leave"}, cli.ExitOK, "The controller revoked " + l.SPIFFE()},
+		{[]string{"status"}, cli.ExitError, "rpmgr enroll"},
+		{[]string{"leave"}, cli.ExitError, "agent.json"},
+	} {
+		code, stdout, stderr := runRpmgr(append(tc.args, "--config", cfg)...)
+		if code != tc.code || !strings.Contains(stdout+stderr, tc.want) {
+			t.Errorf("rpmgr %s: exit %d, no %q in %q %q", strings.Join(tc.args, " "), code, tc.want, stdout, stderr)
+		}
+	}
+	if code, _, stderr := runRpmgr("status", "--config", filepath.Join(dir, "none.yaml")); code != cli.ExitError || !strings.Contains(stderr, "none.yaml") {
+		t.Errorf("a missing boot file: exit %d, %q", code, stderr)
 	}
 }
 
@@ -261,6 +300,7 @@ func TestCommandLineErrors(t *testing.T) {
 		{"systemd-unit", "relay"},    // no such role
 		{"kek", "rotate"},            // no previous KEK
 		{"migrate", "extra"},         // a local command takes no arguments
+		{"status", "extra"},          // an agent command takes no arguments
 		{"restore"},                  // no archive
 		{"backup"},                   // no archive
 	} {

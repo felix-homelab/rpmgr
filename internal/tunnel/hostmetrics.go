@@ -13,6 +13,20 @@ import (
 // [F quic-go v0.63.0 sys_conn_buffers_nonopenbsd.go:5, sys_conn.go:56-75].
 const desiredUDPBuffer = 7 << 20
 
+// Tuning is the host tuning status of a QUIC socket, for `rpmgr diag transport`.
+type Tuning struct {
+	GSO                       bool // quic-go sends with GSO on it
+	ReceiveBuffer, SendBuffer int  // its buffers in bytes, as the kernel reports them; 0 if unknown
+	BufferLow                 bool // a buffer is below what quic-go asks for
+}
+
+// TuningOf reads the tuning status of pc, as RegisterHostMetrics does.
+func TuningOf(pc net.PacketConn) Tuning {
+	t := Tuning{GSO: gsoEnabled(pc), BufferLow: udpBufferLow(pc)}
+	t.ReceiveBuffer, t.SendBuffer = udpBuffers(pc)
+	return t
+}
+
 // RegisterHostMetrics registers the host tuning status of pc, the packet conn of the role's QUIC
 // transport (docs/03-connections.md, "Host tuning applied by the installer"): whether quic-go
 // sends with GSO on it, and whether its buffers stay below what quic-go asks for, which makes
