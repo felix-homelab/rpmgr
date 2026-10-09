@@ -100,6 +100,13 @@ branch fails CI, because `tmp/` branches are never merged.
   PR that supersedes the old one, which they close; a further commit on a pushed branch is allowed
   only when it is a logical change of its own
   ([D54](docs/14-open-decisions.md#project-and-process)).
+- **Until v1.0.0** this is lighter ([D64](docs/14-open-decisions.md#project-and-process)).
+  - Before the first push, assistants run fast checks of what they changed: formatting, `go.mod`,
+    vet and golangci-lint, the tests of the changed packages, the web checks when the web app
+    changed, the link and Mermaid checks when documents changed, the secrets check and the PR
+    metadata checks.
+  - CI runs the rest. A defect it finds is fixed by a further commit on the pushed branch, which
+    stays a commit of its own and builds, instead of a new branch.
 
 ## Commits
 
@@ -167,6 +174,10 @@ reviewed better, reverted more safely and released more predictably.
 
 CI counts the production lines of every PR: 400–800 lines give a warning, more than 800 fail unless
 the PR is labelled `mechanical` ([D53](docs/14-open-decisions.md#project-and-process)).
+
+Until v1.0.0, one PR may carry up to three slices of the same milestone, each its own commit, as
+long as they stay within 800 lines together; the description lists the slices, which replaces the
+explanation asked for above 400 lines ([D64](docs/14-open-decisions.md#project-and-process)).
 
 How to split:
 

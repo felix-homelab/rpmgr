@@ -1,23 +1,65 @@
 # Per-PR checks and checks on main (docs/12-testing-and-quality.md, "Continuous integration"):
-# repository files, documents, workflows and secrets, and the Go stages; the protobuf, build and
-# web stages are added by their Phase 1 slices. Every step is a script in .github/scripts/ that
-# runs the same way locally.
+# repository files, documents, workflows and secrets, the Go, protobuf, store, build and
+# end-to-end stages. Every step is a script in .github/scripts/ that runs the same way locally.
+# Until v1.0.0 (D64) a pull request runs only the stages its changes need, PostgreSQL 18 only and
+# the cross-platform builds as vet only; a push to main runs only the stages that always run; the
+# nightly run calls this workflow with full set to run everything.
 name: ci
 
 on:
   pull_request:
   push:
     branches: [main]
+  workflow_call:
+    inputs:
+      full:
+        description: Run every stage, on every PostgreSQL and with full builds
+        type: boolean
+        default: false
 
 permissions:
   contents: read
 
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  changes:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      go: ${{ steps.areas.outputs.go }}
+      web: ${{ steps.areas.outputs.web }}
+      checks: ${{ steps.areas.outputs.checks }}
+      md: ${{ steps.areas.outputs.md }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Stages the changes need (D64)
+        id: areas
+        env:
+          EVENT: ${{ github.event_name }}
+          FULL: ${{ inputs.full }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          if [[ $FULL == true ]]; then
+            args=(--all)
+          elif [[ $EVENT == pull_request ]]; then
+            args=("$BASE" "$HEAD")
+          else
+            args=(--none)
+          fi
+          .github/scripts/changed-areas.sh "${args[@]}" | tee -a "$GITHUB_OUTPUT"
+
+  # lint and docs are required checks: they run even when the changes job fails, and then run
+  # every step.
   lint:
+    needs: changes
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -37,13 +79,15 @@ jobs:
         if: ${{ !cancelled() }}
         run: .github/scripts/check-security-tests.sh
       - name: Tests of the repository checks
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && needs.changes.outputs.checks != 'false' }}
         env:
           REQUIRE_DOCKER: "1"
           REQUIRE_GO: "1"
         run: .github/scripts/test-checks.sh
 
   go:
+    needs: changes
+    if: ${{ needs.changes.outputs.go == 'true' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
@@ -54,11 +98,20 @@ jobs:
         with:
           go-version-file: go.mod
       - name: Format, tidy, vet, banned settings, race tests
-        if: ${{ !cancelled() }}
         run: .github/scripts/check-go.sh
-      - name: Fuzz smoke runs
-        if: ${{ !cancelled() }}
-        run: .github/scripts/check-fuzz.sh 10s
+
+  go-lint:
+    needs: changes
+    if: ${{ needs.changes.outputs.go == 'true' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
       - name: golangci-lint
         if: ${{ !cancelled() }}
         run: .github/scripts/check-golangci.sh
@@ -66,7 +119,24 @@ jobs:
         if: ${{ !cancelled() }}
         run: .github/scripts/check-govulncheck.sh
 
+  fuzz:
+    needs: changes
+    if: ${{ needs.changes.outputs.go == 'true' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - name: Fuzz smoke runs
+        run: .github/scripts/check-fuzz.sh 10s
+
   proto:
+    needs: changes
+    if: ${{ needs.changes.outputs.go == 'true' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
@@ -95,6 +165,8 @@ jobs:
         run: .github/scripts/check-buf.sh
 
   store:
+    needs: changes
+    if: ${{ needs.changes.outputs.go == 'true' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     services:
@@ -120,16 +192,18 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
-      - name: Store tests on SQLite, PostgreSQL 16 and 18; migrations linted
+      - name: Store tests on SQLite and PostgreSQL 18, and 16 in full runs; migrations linted
         env:
           RPMGR_TEST_PG_URLS: >-
-            postgres://rpmgr:rpmgr@127.0.0.1:5416/postgres?sslmode=disable
+            ${{ inputs.full && 'postgres://rpmgr:rpmgr@127.0.0.1:5416/postgres?sslmode=disable' || '' }}
             postgres://rpmgr:rpmgr@127.0.0.1:5418/postgres?sslmode=disable
           RPMGR_LINT_PG_DEV: postgres://rpmgr:rpmgr@127.0.0.1:5418/lintdev?sslmode=disable
           REQUIRE_PG: "1"
         run: .github/scripts/check-store.sh
 
   e2e:
+    needs: changes
+    if: ${{ needs.changes.outputs.go == 'true' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
@@ -145,8 +219,19 @@ jobs:
         run: .github/scripts/check-e2e.sh
 
   build:
+    needs: changes
+    if: ${{ needs.changes.outputs.go == 'true' }}
+    name: build (${{ matrix.set }})
     runs-on: ubuntu-24.04
     timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - set: linux
+            platforms: linux/amd64 linux/arm64 linux/arm linux/riscv64
+          - set: windows and macos
+            platforms: windows/amd64 darwin/amd64 darwin/arm64
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -154,10 +239,15 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
-      - name: Build and vet for every platform
-        run: .github/scripts/check-build.sh
+      - name: Vet (pull requests) or build and vet (full runs) for every platform
+        env:
+          RPMGR_PLATFORMS: ${{ matrix.platforms }}
+          MODE: ${{ inputs.full && 'full' || 'vet' }}
+        run: .github/scripts/check-build.sh . "$MODE"
 
   go-arm64:
+    needs: changes
+    if: ${{ needs.changes.outputs.go == 'true' }}
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 20
     steps:
@@ -175,6 +265,8 @@ jobs:
         run: .github/scripts/check-test-arch.sh arm
 
   docs:
+    needs: changes
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
@@ -185,7 +277,7 @@ jobs:
         if: ${{ !cancelled() }}
         run: .github/scripts/check-links.sh
       - name: Mermaid diagrams
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && needs.changes.outputs.md != 'false' }}
         run: .github/scripts/check-mermaid.sh
 
   secrets:

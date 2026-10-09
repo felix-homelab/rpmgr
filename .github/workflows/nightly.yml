@@ -1,6 +1,7 @@
-# Nightly correctness runs (docs/12-testing-and-quality.md, "Continuous integration"): govulncheck
-# against the latest vulnerability database, long fuzz runs, the tests for riscv64 under QEMU, and
-# real clients against the gateway's port 443.
+# Nightly correctness runs (docs/12-testing-and-quality.md, "Continuous integration"): every CI
+# stage in full, which pull requests run only in part until v1.0.0 (D64), govulncheck against the
+# latest vulnerability database, long fuzz runs, the tests for riscv64 under QEMU, and real
+# clients against the gateway's port 443.
 # Later Phase 1 slices add the full end-to-end matrix and the other nightly stages here. A failed
 # run opens an issue, or comments on the open one.
 name: nightly
@@ -14,6 +15,14 @@ permissions:
   contents: read
 
 jobs:
+  ci:
+    uses: ./.github/workflows/ci.yml
+    with:
+      full: true
+    permissions:
+      contents: read
+      pull-requests: read # the proto job's breaking-change override reads labels on pull requests
+
   govulncheck:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
@@ -73,7 +82,7 @@ jobs:
         run: .github/scripts/check-real-clients.sh
 
   report:
-    needs: [govulncheck, fuzz, riscv64, real-clients]
+    needs: [ci, govulncheck, fuzz, riscv64, real-clients]
     if: ${{ failure() }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
