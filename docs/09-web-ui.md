@@ -243,6 +243,9 @@ flowchart LR
   - **Removal** first says that the password alone will then sign the user in.
 - When an org's policy refuses a user without a second factor (`MFA_REQUIRED`), the UI opens the
   account page with a notice to set one up.
+- **Sessions:** the user's live sessions, newest first, each with its browser, address and last
+  activity. Any session but the current one can be ended, after a confirmation that names its
+  address; the current one ends by signing out.
 
 **Serving.** The controller serves the UI on every path of its UI name that the API and
 `/.well-known/rpmgr/` do not take:

@@ -13,6 +13,7 @@ import { Theme, UserService, type User } from "@/gen/rpmgr/v1/user_pb";
 import { serverMessage } from "@/lib/link-token";
 import { Authenticator } from "@/pages/authenticator";
 import { passwordProblem } from "@/pages/reset";
+import { Sessions } from "@/pages/sessions";
 import { applyTheme } from "@/theme";
 
 const route = getRouteApi("/app/account");
@@ -23,12 +24,13 @@ export function Account() {
   const { t } = useTranslation();
   const search = route.useSearch();
   return (
-    <div className="grid max-w-xl gap-8">
+    <div className="grid max-w-3xl gap-8">
       <h1 className="text-2xl font-semibold">{t("account.title")}</h1>
       {search.mfa === "required" && <Alert>{t("mfa.required")}</Alert>}
       <Profile />
       <Password />
       <Authenticator />
+      <Sessions />
     </div>
   );
 }

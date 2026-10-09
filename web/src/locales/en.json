@@ -101,5 +101,16 @@
     "removeWarning": "Removing the authenticator lets your password alone sign you in, and ends your other sessions.",
     "remove": "Remove it",
     "required": "An organisation you belong to requires two-factor authentication. Set up an authenticator to continue."
+  },
+  "sessions": {
+    "title": "Sessions",
+    "browser": "Browser",
+    "address": "Address",
+    "lastSeen": "Last active",
+    "actions": "Actions",
+    "current": "This browser",
+    "endAsk": "End…",
+    "ask": "End the session from {{ip}}?",
+    "end": "End it"
   }
 }
