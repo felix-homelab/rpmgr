@@ -45,6 +45,7 @@ func InstanceDefaults() *rpmgrv1.InstanceSettings {
 		UpdateChannel:           rpmgrv1.UpdateChannel_UPDATE_CHANNEL_STABLE.Enum(),
 		HourlyRollupRetention:   durationpb.New(30 * day),
 		DailyRollupRetention:    durationpb.New(400 * day),
+		AuditRetention:          durationpb.New(365 * day),
 		AcmeDirectoryUrl:        proto.String(LetsEncrypt),
 	}
 }

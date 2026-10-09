@@ -230,3 +230,56 @@ func TestCheckpointLog(t *testing.T) {
 		}
 	})
 }
+
+// TestPrune: retention removes a chain's entries only up to its newest checkpoint older than the
+// cutoff, with the checkpoints before it, and the chain still verifies from that checkpoint; a
+// cutoff before every checkpointed entry removes nothing; other chains are untouched.
+func TestPrune(t *testing.T) {
+	withCA(t, func(t *testing.T, e env, ca *pki.CA, trust audit.Trust) {
+		now := time.Now()
+		for range 3 {
+			record(t, e.db, login(e.a, "usr_1"))
+		}
+		record(t, e.db, login(e.b, "usr_2"))
+		checkpoint(t, e, ca, now, audit.Pending)
+		for range 2 {
+			record(t, e.db, login(e.a, "usr_1"))
+		}
+		checkpoint(t, e, ca, now.Add(time.Hour), audit.Pending)
+		record(t, e.db, login(e.a, "usr_1"))
+		prune := func(org string, cutoff time.Time) int64 {
+			t.Helper()
+			var seq int64
+			if err := store.WriteTx(sys(t), e.db, func(tx *ent.Tx) error {
+				var err error
+				seq, err = audit.Prune(sys(t), tx, org, cutoff)
+				return err
+			}); err != nil {
+				t.Fatal(err)
+			}
+			return seq
+		}
+		if seq := prune(e.a, now.Add(-time.Hour)); seq != 0 {
+			t.Fatalf("a cutoff before every entry removed up to %d", seq)
+		}
+		if seq := prune(e.a, time.Now().Add(time.Hour)); seq != 5 {
+			t.Fatalf("pruned up to %d, want the newest checkpoint, 5", seq)
+		}
+		head, last, err := audit.VerifyChain(sys(t), e.db, e.a, trust)
+		if err != nil || head.Seq != 6 || last == nil || last.Seq != 5 {
+			t.Fatalf("after retention: %+v %+v %v", head, last, err)
+		}
+		if n := e.db.Client().AuditEntry.Query().CountX(sys(t)); n != 2 {
+			t.Fatalf("%d entries left, want entry 6 of org A and org B's", n)
+		}
+		if n := e.db.Client().AuditCheckpoint.Query().CountX(sys(t)); n != 2 {
+			t.Fatalf("%d checkpoints left, want org A's at 5 and org B's", n)
+		}
+		if seq := prune(e.a, time.Now().Add(time.Hour)); seq != 0 {
+			t.Fatalf("pruned again up to %d", seq)
+		}
+		if _, _, err := audit.VerifyChain(sys(t), e.db, e.b, trust); err != nil {
+			t.Fatalf("org B's chain: %v", err)
+		}
+	})
+}

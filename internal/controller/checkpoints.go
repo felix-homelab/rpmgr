@@ -4,12 +4,14 @@ package controller
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"time"
 
 	"github.com/felix-homelab/rpmgr/internal/audit"
 	"github.com/felix-homelab/rpmgr/internal/lease"
 	"github.com/felix-homelab/rpmgr/internal/pki"
+	"github.com/felix-homelab/rpmgr/internal/settings"
 	"github.com/felix-homelab/rpmgr/internal/store"
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
 )
@@ -60,4 +62,46 @@ func writeCheckpoints(ctx context.Context, o CheckpointOptions, fence func(*ent.
 		return err
 	}
 	return o.Log.Append(cps)
+}
+
+// RetentionCheckEvery is how often the retention job prunes the audit chains
+// (docs/03-connections.md, "Timeouts, keepalive and backoff").
+const RetentionCheckEvery = time.Hour
+
+// RetentionJob is the singleton job that keeps audit entries for the instance's audit retention
+// (docs/04-security.md, "Audit log"): it prunes each chain to its newest checkpoint older than the
+// retention (audit.Prune) and records that in the chain, in one transaction fenced by its lease.
+func RetentionJob(o CheckpointOptions) lease.Job {
+	return lease.Job{Name: "audit-retention", Reason: "remove audit entries past their retention", Every: RetentionCheckEvery,
+		Run: func(ctx context.Context, l lease.Lease) error {
+			set, _, err := settings.Instance(ctx, o.DB.ReadClient())
+			if err != nil {
+				return err
+			}
+			cutoff := o.Now().Add(-set.GetAuditRetention().AsDuration())
+			return store.WriteTx(ctx, o.DB, func(tx *ent.Tx) error {
+				if err := o.Leases.Fence(ctx, tx, l); err != nil {
+					return err
+				}
+				chains, err := audit.Chains(ctx, tx)
+				if err != nil {
+					return err
+				}
+				for _, org := range chains {
+					seq, err := audit.Prune(ctx, tx, org, cutoff)
+					if err != nil {
+						return err
+					}
+					if seq == 0 {
+						continue
+					}
+					if _, err := audit.Append(ctx, tx, audit.Entry{OrgID: org, ActorType: audit.ActorSystem, ActorID: "audit-retention",
+						Action: "audit.prune", Result: audit.Success,
+						Reason: fmt.Sprintf("entries up to %d removed; the chain verifies from the checkpoint at %d", seq, seq)}); err != nil {
+						return err
+					}
+				}
+				return nil
+			})
+		}}
 }

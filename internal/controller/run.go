@@ -372,6 +372,7 @@ func Run(ctx context.Context, o RunOptions) error {
 	cpOpts := CheckpointOptions{DB: db, CA: ca, Log: &audit.CheckpointLog{Path: filepath.Join(stateDir, "audit-checkpoints.log")},
 		Leases: leases, Now: o.Now, Logger: o.Logger}
 	go leases.Run(sys, CheckpointJob(cpOpts), func(err error) { o.Logger.Warn("audit checkpoint job", "error", err) })
+	go leases.Run(sys, RetentionJob(cpOpts), func(err error) { o.Logger.Warn("audit retention job", "error", err) })
 	go ReloadCA(sys, caOpts)
 	go RenewNodeCertificate(sys, NodeCertOptions{CA: ca, DB: db, Sys: sys, NodeID: nodeID, Holder: holder, Now: o.Now, Logger: o.Logger})
 	serve("agent endpoint", func() error { return agents.Serve(split.Agents()) })

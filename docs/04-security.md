@@ -810,6 +810,12 @@ Phase 3 item ([13](13-roadmap.md#phase-3--advanced)).
 - Only the audit package writes the audit tables: the store refuses every create, update and delete
   through Ent. On PostgreSQL, the application role has no `UPDATE`/`DELETE` permission on the audit
   table.
+- [R] **Retention** is the one deletion. Entries are kept for the instance's audit retention
+  ([10](10-operations.md#runtime-settings-ui--settings)). Past it, a chain loses only a whole prefix:
+  its entries up to its newest checkpoint whose entry is past the retention, and the checkpoints
+  before that one. The chain then verifies from that checkpoint, and the removal is recorded in the
+  chain. With PostgreSQL (Phase 2), the deletion runs through a function the schema owner provides,
+  since the application role has no `DELETE`.
 
 ### Revocation log
 

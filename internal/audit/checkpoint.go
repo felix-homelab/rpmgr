@@ -308,3 +308,53 @@ func ReadCheckpointLog(path string) ([]Checkpoint, error) {
 	}
 	return out, nil
 }
+
+// Chains returns the chains that have entries or had them: their orgs, empty for the instance
+// chain.
+func Chains(ctx context.Context, tx *ent.Tx) ([]string, error) {
+	rows, err := tx.QueryContext(ctx, "SELECT chain FROM audit_heads WHERE seq > 0 ORDER BY chain")
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	var out []string
+	for rows.Next() {
+		var chain string
+		if err := rows.Scan(&chain); err != nil {
+			return nil, err
+		}
+		out = append(out, orgOf(chain))
+	}
+	return out, rows.Err()
+}
+
+// Prune removes, in tx, the entries of the chain of orgID older than cutoff, but only a whole
+// prefix up to the newest checkpoint whose entry is older than cutoff, so that the chain verifies
+// from that checkpoint; the older checkpoints go too. It returns the last seq removed, 0 for none.
+func Prune(ctx context.Context, tx *ent.Tx, orgID string, cutoff time.Time) (int64, error) {
+	cutoff = cutoff.UTC() // SQLite compares the stored text
+	where, args := "c.org_id IS NULL AND e.org_id IS NULL", []any{cutoff}
+	if orgID != "" {
+		where, args = "c.org_id = $2 AND e.org_id = $2", []any{cutoff, orgID}
+	}
+	rows, err := tx.QueryContext(ctx, `SELECT c.seq FROM audit_checkpoints c JOIN audit_log e ON e.seq = c.seq
+		WHERE `+where+` AND e.ts < $1 ORDER BY c.seq DESC LIMIT 1`, args...)
+	if err != nil {
+		return 0, err
+	}
+	var seq int64
+	if found, err := scanFirst(rows, &seq); err != nil || !found {
+		return 0, err
+	}
+	chain, cargs := "org_id IS NULL", []any{seq}
+	if orgID != "" {
+		chain, cargs = "org_id = $2", []any{seq, orgID}
+	}
+	if _, err := tx.ExecContext(ctx, "DELETE FROM audit_log WHERE "+chain+" AND seq <= $1", cargs...); err != nil {
+		return 0, err
+	}
+	if _, err := tx.ExecContext(ctx, "DELETE FROM audit_checkpoints WHERE "+chain+" AND seq < $1", cargs...); err != nil {
+		return 0, err
+	}
+	return seq, nil
+}
