@@ -1,4 +1,4 @@
-h1:Zq5t7SYNKX0CERvJgM0v8n0BhhoinpzJIkhNPNya0+o=
+h1:/n5TzNmuMEFSGK06DLkqMjD5i6SOE+ScY1ZAySjkatE=
 20261007104728_init.sql h1:6jeR95S+59R2NO1vbm6eVqcBaiAFq0laX9cjx4ljQRo=
 20261007110313_config_revisions.sql h1:8mMQJJ5PsYIRtP7o9RJ6IVYgH3r29EMOlCi6dvlf7W0=
 20261007111839_settings.sql h1:AW7TBnWPYmVtPeTExhcg+GulKnZOuVU/pRldCFLv+Dk=
@@ -31,3 +31,6 @@ h1:Zq5t7SYNKX0CERvJgM0v8n0BhhoinpzJIkhNPNya0+o=
 20261008141044_api_tokens.sql h1:F1PecPhrhdpsKB+ewHxY9thwUqg8atbqsoE0q1QElag=
 20261008142902_fleet_versions.sql h1:ma+niCNALvBn0umK1CwyMUpUnmE8X+GVtUMN94jLNBk=
 20261008172500_port_pool_versions.sql h1:B8XSC6DEFnEoL+xrFperOfKrcutFWoZzCfp49Gr4f14=
+20261008175946_resource_status.sql h1:d+MT2y7cSGKCI0nXJEuq4itl5nArjmzw+6YpQwO1lhM=
+20261008180954_data_sessions.sql h1:XzgVMiPz63xdoMZKPAphbtg4LmSYRhn4R1pKRZmy7aE=
+20261008181549_connector_versions.sql h1:xe2ZNyNpxk8wX8z1x0j4k1y+PK+R8h5Svf3o8eZeyg4=

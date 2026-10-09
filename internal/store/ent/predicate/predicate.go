@@ -51,6 +51,9 @@ type ConfigSeq func(*sql.Selector)
 // Connector is the predicate function for connector builders.
 type Connector func(*sql.Selector)
 
+// DataSession is the predicate function for datasession builders.
+type DataSession func(*sql.Selector)
+
 // Domain is the predicate function for domain builders.
 type Domain func(*sql.Selector)
 
@@ -107,6 +110,9 @@ type PortQuota func(*sql.Selector)
 
 // RecoveryCode is the predicate function for recoverycode builders.
 type RecoveryCode func(*sql.Selector)
+
+// ResourceStatus is the predicate function for resourcestatus builders.
+type ResourceStatus func(*sql.Selector)
 
 // RevokedIdentity is the predicate function for revokedidentity builders.
 type RevokedIdentity func(*sql.Selector)

@@ -142,5 +142,11 @@ func (a *Applier) Apply(_ context.Context, snap *agentv1.Snapshot, _ agent.Chang
 	}
 	a.targets.Set(routes)
 	a.sessions.Set(gateways)
+	return a.Readiness()
+}
+
+// Readiness returns the resources that are not ready: routes whose targets the local policy
+// blocks, and routes whose pinned transport has no session.
+func (a *Applier) Readiness() []*agentv1.ResourceStatus {
 	return append(a.targets.Status(), a.sessions.Status()...)
 }

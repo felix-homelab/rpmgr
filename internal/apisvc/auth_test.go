@@ -101,6 +101,12 @@ func newEnv(t *testing.T) *env {
 		}); err != nil {
 		t.Fatal(err)
 	}
+	if err := srv.Mount(mux, rpmgrv1.File_rpmgr_v1_connector_proto.Services().ByName("ConnectorService"),
+		func(o ...connect.HandlerOption) (string, http.Handler) {
+			return rpmgrv1connect.NewConnectorServiceHandler(&apisvc.Connectors{DB: db, API: srv}, o...)
+		}); err != nil {
+		t.Fatal(err)
+	}
 	if err := srv.Mount(mux, rpmgrv1.File_rpmgr_v1_enrollment_proto.Services().ByName("EnrollmentService"),
 		func(o ...connect.HandlerOption) (string, http.Handler) {
 			return rpmgrv1connect.NewEnrollmentServiceHandler(&apisvc.Enrollment{DB: db, API: srv, Now: now,
@@ -144,6 +150,7 @@ type browser struct {
 	token  rpmgrv1connect.TokenServiceClient
 	gw     rpmgrv1connect.GatewayServiceClient
 	enr    rpmgrv1connect.EnrollmentServiceClient
+	con    rpmgrv1connect.ConnectorServiceClient
 }
 
 func (e *env) browser() *browser {
@@ -154,6 +161,7 @@ func (e *env) browser() *browser {
 	b.token = rpmgrv1connect.NewTokenServiceClient(&http.Client{Transport: b}, e.url)
 	b.gw = rpmgrv1connect.NewGatewayServiceClient(&http.Client{Transport: b}, e.url)
 	b.enr = rpmgrv1connect.NewEnrollmentServiceClient(&http.Client{Transport: b}, e.url)
+	b.con = rpmgrv1connect.NewConnectorServiceClient(&http.Client{Transport: b}, e.url)
 	return b
 }
 

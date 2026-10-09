@@ -215,8 +215,8 @@ flowchart LR
 |---|---|
 | `agent_sessions` | agent_id, session_epoch, controller_node, remote_addr, agent_version, capabilities, connected_at, last_seen_at (one row per agent; each new session raises `session_epoch` in the statement that records it, so two replicas never hand out the same epoch) |
 | `agent_state` | agent_id, boot_id, clock_offset_ms; the snapshot applied last (applied_db_epoch, applied_seq, applied_hash, last_ack_at), sent last (pushed_db_epoch, pushed_seq, pushed_hash, pushed_at) and rejected last (rejected_db_epoch, rejected_seq, rejected_hash, last_rejection: the structured errors). The apply status is derived from it ([03](03-connections.md#configuration-reconciliation)) |
-| `resource_status` | agent_id, resource_type, resource_id, state, reason, since |
-| `data_sessions` | gateway_id, connector_id, transport (`quic`, `h2`, `wss`), rtt_ms, established_at |
+| `resource_status` | agent_id, resource_id, reason, detail, since: one row per resource an agent reports not ready, so a resource without one is ready or not reported yet. The limits are in [03](03-connections.md#configuration-reconciliation) |
+| `data_sessions` | gateway_id, connector_id, transport (`quic`, `h2`; `wss` in Phase 2), rtt_ms (0 where the transport does not measure it), established_at (first reported), reported_at: one row per gateway, connector and transport, replaced by each report of the gateway ([03](03-connections.md#configuration-reconciliation)) |
 | `route_traffic_hourly`, `route_traffic_daily` | route_id, bucket, bytes_in, bytes_out, connections, errors |
 | `dns_name_status` | dns_zone_id, org_id, name, status, reason, since |
 

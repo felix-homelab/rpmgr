@@ -364,6 +364,7 @@ var (
 	ConnectorsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeString},
 		{Name: "org_id", Type: field.TypeString},
+		{Name: "version", Type: field.TypeInt64, Default: 1},
 		{Name: "name", Type: field.TypeString},
 		{Name: "labels", Type: field.TypeJSON, Nullable: true},
 		{Name: "spiffe_id", Type: field.TypeString},
@@ -389,7 +390,41 @@ var (
 			{
 				Name:    "connector_org_id_name",
 				Unique:  true,
-				Columns: []*schema.Column{ConnectorsColumns[1], ConnectorsColumns[2]},
+				Columns: []*schema.Column{ConnectorsColumns[1], ConnectorsColumns[3]},
+			},
+		},
+	}
+	// DataSessionsColumns holds the columns for the "data_sessions" table.
+	DataSessionsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeString},
+		{Name: "org_id", Type: field.TypeString},
+		{Name: "gateway_id", Type: field.TypeString},
+		{Name: "connector_id", Type: field.TypeString},
+		{Name: "transport", Type: field.TypeEnum, Enums: []string{"quic", "h2"}},
+		{Name: "rtt_ms", Type: field.TypeInt64, Default: 0},
+		{Name: "established_at", Type: field.TypeTime},
+		{Name: "reported_at", Type: field.TypeTime},
+	}
+	// DataSessionsTable holds the schema information for the "data_sessions" table.
+	DataSessionsTable = &schema.Table{
+		Name:       "data_sessions",
+		Columns:    DataSessionsColumns,
+		PrimaryKey: []*schema.Column{DataSessionsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "datasession_org_id_id",
+				Unique:  true,
+				Columns: []*schema.Column{DataSessionsColumns[1], DataSessionsColumns[0]},
+			},
+			{
+				Name:    "datasession_gateway_id_connector_id_transport",
+				Unique:  true,
+				Columns: []*schema.Column{DataSessionsColumns[2], DataSessionsColumns[3], DataSessionsColumns[4]},
+			},
+			{
+				Name:    "datasession_connector_id",
+				Unique:  false,
+				Columns: []*schema.Column{DataSessionsColumns[3]},
 			},
 		},
 	}
@@ -957,6 +992,34 @@ var (
 			},
 		},
 	}
+	// ResourceStatusColumns holds the columns for the "resource_status" table.
+	ResourceStatusColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeString},
+		{Name: "org_id", Type: field.TypeString},
+		{Name: "agent_id", Type: field.TypeString},
+		{Name: "resource_id", Type: field.TypeString},
+		{Name: "reason", Type: field.TypeString},
+		{Name: "detail", Type: field.TypeString, Default: ""},
+		{Name: "since", Type: field.TypeTime},
+	}
+	// ResourceStatusTable holds the schema information for the "resource_status" table.
+	ResourceStatusTable = &schema.Table{
+		Name:       "resource_status",
+		Columns:    ResourceStatusColumns,
+		PrimaryKey: []*schema.Column{ResourceStatusColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "resourcestatus_org_id_id",
+				Unique:  true,
+				Columns: []*schema.Column{ResourceStatusColumns[1], ResourceStatusColumns[0]},
+			},
+			{
+				Name:    "resourcestatus_agent_id_resource_id",
+				Unique:  true,
+				Columns: []*schema.Column{ResourceStatusColumns[2], ResourceStatusColumns[3]},
+			},
+		},
+	}
 	// RevokedIdentitiesColumns holds the columns for the "revoked_identities" table.
 	RevokedIdentitiesColumns = []*schema.Column{
 		{Name: "spiffe_id", Type: field.TypeString},
@@ -1460,6 +1523,7 @@ var (
 		ConfigRevisionsTable,
 		ConfigSeqTable,
 		ConnectorsTable,
+		DataSessionsTable,
 		DomainsTable,
 		EnrollmentTokensTable,
 		GatewaysTable,
@@ -1479,6 +1543,7 @@ var (
 		PortPoolsTable,
 		PortQuotasTable,
 		RecoveryCodesTable,
+		ResourceStatusTable,
 		RevokedIdentitiesTable,
 		RoutesTable,
 		RouteHTTPTable,
@@ -1534,6 +1599,9 @@ func init() {
 	ConfigSeqTable.Annotation = &entsql.Annotation{
 		Table: "config_seq",
 	}
+	DataSessionsTable.Annotation = &entsql.Annotation{
+		Table: "data_sessions",
+	}
 	DomainsTable.Annotation = &entsql.Annotation{
 		Table: "domains",
 	}
@@ -1576,6 +1644,9 @@ func init() {
 		Table: "port_quotas",
 	}
 	RecoveryCodesTable.ForeignKeys[0].RefTable = UsersTable
+	ResourceStatusTable.Annotation = &entsql.Annotation{
+		Table: "resource_status",
+	}
 	RevokedIdentitiesTable.Annotation = &entsql.Annotation{
 		Table: "revoked_identities",
 	}

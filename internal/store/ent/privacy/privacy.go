@@ -471,6 +471,30 @@ func (f ConnectorMutationRuleFunc) EvalMutation(ctx context.Context, m ent.Mutat
 	return Denyf("ent/privacy: unexpected mutation type %T, expect *ent.ConnectorMutation", m)
 }
 
+// The DataSessionQueryRuleFunc type is an adapter to allow the use of ordinary
+// functions as a query rule.
+type DataSessionQueryRuleFunc func(context.Context, *ent.DataSessionQuery) error
+
+// EvalQuery return f(ctx, q).
+func (f DataSessionQueryRuleFunc) EvalQuery(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.DataSessionQuery); ok {
+		return f(ctx, q)
+	}
+	return Denyf("ent/privacy: unexpected query type %T, expect *ent.DataSessionQuery", q)
+}
+
+// The DataSessionMutationRuleFunc type is an adapter to allow the use of ordinary
+// functions as a mutation rule.
+type DataSessionMutationRuleFunc func(context.Context, *ent.DataSessionMutation) error
+
+// EvalMutation calls f(ctx, m).
+func (f DataSessionMutationRuleFunc) EvalMutation(ctx context.Context, m ent.Mutation) error {
+	if m, ok := m.(*ent.DataSessionMutation); ok {
+		return f(ctx, m)
+	}
+	return Denyf("ent/privacy: unexpected mutation type %T, expect *ent.DataSessionMutation", m)
+}
+
 // The DomainQueryRuleFunc type is an adapter to allow the use of ordinary
 // functions as a query rule.
 type DomainQueryRuleFunc func(context.Context, *ent.DomainQuery) error
@@ -927,6 +951,30 @@ func (f RecoveryCodeMutationRuleFunc) EvalMutation(ctx context.Context, m ent.Mu
 	return Denyf("ent/privacy: unexpected mutation type %T, expect *ent.RecoveryCodeMutation", m)
 }
 
+// The ResourceStatusQueryRuleFunc type is an adapter to allow the use of ordinary
+// functions as a query rule.
+type ResourceStatusQueryRuleFunc func(context.Context, *ent.ResourceStatusQuery) error
+
+// EvalQuery return f(ctx, q).
+func (f ResourceStatusQueryRuleFunc) EvalQuery(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.ResourceStatusQuery); ok {
+		return f(ctx, q)
+	}
+	return Denyf("ent/privacy: unexpected query type %T, expect *ent.ResourceStatusQuery", q)
+}
+
+// The ResourceStatusMutationRuleFunc type is an adapter to allow the use of ordinary
+// functions as a mutation rule.
+type ResourceStatusMutationRuleFunc func(context.Context, *ent.ResourceStatusMutation) error
+
+// EvalMutation calls f(ctx, m).
+func (f ResourceStatusMutationRuleFunc) EvalMutation(ctx context.Context, m ent.Mutation) error {
+	if m, ok := m.(*ent.ResourceStatusMutation); ok {
+		return f(ctx, m)
+	}
+	return Denyf("ent/privacy: unexpected mutation type %T, expect *ent.ResourceStatusMutation", m)
+}
+
 // The RevokedIdentityQueryRuleFunc type is an adapter to allow the use of ordinary
 // functions as a query rule.
 type RevokedIdentityQueryRuleFunc func(context.Context, *ent.RevokedIdentityQuery) error
@@ -1280,6 +1328,8 @@ func queryFilter(q ent.Query) (Filter, error) {
 		return q.Filter(), nil
 	case *ent.ConnectorQuery:
 		return q.Filter(), nil
+	case *ent.DataSessionQuery:
+		return q.Filter(), nil
 	case *ent.DomainQuery:
 		return q.Filter(), nil
 	case *ent.EnrollmentTokenQuery:
@@ -1317,6 +1367,8 @@ func queryFilter(q ent.Query) (Filter, error) {
 	case *ent.PortQuotaQuery:
 		return q.Filter(), nil
 	case *ent.RecoveryCodeQuery:
+		return q.Filter(), nil
+	case *ent.ResourceStatusQuery:
 		return q.Filter(), nil
 	case *ent.RevokedIdentityQuery:
 		return q.Filter(), nil
@@ -1379,6 +1431,8 @@ func mutationFilter(m ent.Mutation) (Filter, error) {
 		return m.Filter(), nil
 	case *ent.ConnectorMutation:
 		return m.Filter(), nil
+	case *ent.DataSessionMutation:
+		return m.Filter(), nil
 	case *ent.DomainMutation:
 		return m.Filter(), nil
 	case *ent.EnrollmentTokenMutation:
@@ -1416,6 +1470,8 @@ func mutationFilter(m ent.Mutation) (Filter, error) {
 	case *ent.PortQuotaMutation:
 		return m.Filter(), nil
 	case *ent.RecoveryCodeMutation:
+		return m.Filter(), nil
+	case *ent.ResourceStatusMutation:
 		return m.Filter(), nil
 	case *ent.RevokedIdentityMutation:
 		return m.Filter(), nil

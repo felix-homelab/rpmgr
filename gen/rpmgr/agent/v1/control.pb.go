@@ -1054,14 +1054,18 @@ func (x *ResourceStatus) GetDetail() string {
 // Status reports readiness and counters.
 type Status struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// Resources whose readiness changed, or all of them in the first Status of a session.
+	// Resources whose readiness changed; with readiness_complete, every resource that is not ready.
 	Readiness []*ResourceStatus `protobuf:"bytes,1,rep,name=readiness,proto3" json:"readiness,omitempty"`
 	// Per-route counters since the agent started.
 	Counters []*RouteCounters `protobuf:"bytes,2,rep,name=counters,proto3" json:"counters,omitempty"`
-	// Gateways: the data sessions of connectors.
-	DataSessions  []*DataSession `protobuf:"bytes,3,rep,name=data_sessions,json=dataSessions,proto3" json:"data_sessions,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	// Gateways: every data session of connectors, one per connector and transport. Each Status a
+	// gateway sends lists them all.
+	DataSessions []*DataSession `protobuf:"bytes,3,rep,name=data_sessions,json=dataSessions,proto3" json:"data_sessions,omitempty"`
+	// Whether readiness names every resource that is not ready, as the first Status of a session
+	// does; the controller then forgets every other.
+	ReadinessComplete bool `protobuf:"varint,4,opt,name=readiness_complete,json=readinessComplete,proto3" json:"readiness_complete,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
 }
 
 func (x *Status) Reset() {
@@ -1113,6 +1117,13 @@ func (x *Status) GetDataSessions() []*DataSession {
 		return x.DataSessions
 	}
 	return nil
+}
+
+func (x *Status) GetReadinessComplete() bool {
+	if x != nil {
+		return x.ReadinessComplete
+	}
+	return false
 }
 
 // RouteCounters are cumulative counters of one route on one agent.
@@ -1829,11 +1840,12 @@ const file_rpmgr_agent_v1_control_proto_rawDesc = "" +
 	"\vresource_id\x18\x01 \x01(\tR\n" +
 	"resourceId\x126\n" +
 	"\x06reason\x18\x02 \x01(\x0e2\x1e.rpmgr.agent.v1.NotReadyReasonR\x06reason\x12\x16\n" +
-	"\x06detail\x18\x03 \x01(\tR\x06detail\"\xc3\x01\n" +
+	"\x06detail\x18\x03 \x01(\tR\x06detail\"\xf2\x01\n" +
 	"\x06Status\x12<\n" +
 	"\treadiness\x18\x01 \x03(\v2\x1e.rpmgr.agent.v1.ResourceStatusR\treadiness\x129\n" +
 	"\bcounters\x18\x02 \x03(\v2\x1d.rpmgr.agent.v1.RouteCountersR\bcounters\x12@\n" +
-	"\rdata_sessions\x18\x03 \x03(\v2\x1b.rpmgr.agent.v1.DataSessionR\fdataSessions\"\xbe\x01\n" +
+	"\rdata_sessions\x18\x03 \x03(\v2\x1b.rpmgr.agent.v1.DataSessionR\fdataSessions\x12-\n" +
+	"\x12readiness_complete\x18\x04 \x01(\bR\x11readinessComplete\"\xbe\x01\n" +
 	"\rRouteCounters\x12\x19\n" +
 	"\broute_id\x18\x01 \x01(\tR\arouteId\x12\x19\n" +
 	"\bbytes_in\x18\x02 \x01(\x04R\abytesIn\x12\x1b\n" +

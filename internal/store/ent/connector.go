@@ -20,6 +20,8 @@ type Connector struct {
 	ID string `json:"id,omitempty"`
 	// OrgID holds the value of the "org_id" field.
 	OrgID string `json:"org_id,omitempty"`
+	// Version holds the value of the "version" field.
+	Version int64 `json:"version,omitempty"`
 	// Name holds the value of the "name" field.
 	Name string `json:"name,omitempty"`
 	// Labels holds the value of the "labels" field.
@@ -52,6 +54,8 @@ func (*Connector) scanValues(columns []string) ([]any, error) {
 			values[i] = new([]byte)
 		case connector.FieldEphemeral, connector.FieldEnabled:
 			values[i] = new(sql.NullBool)
+		case connector.FieldVersion:
+			values[i] = new(sql.NullInt64)
 		case connector.FieldID, connector.FieldOrgID, connector.FieldName, connector.FieldSpiffeID, connector.FieldPubkeySha256, connector.FieldTransport, connector.FieldDesiredVersion:
 			values[i] = new(sql.NullString)
 		case connector.FieldCreatedAt, connector.FieldDecommissionedAt:
@@ -82,6 +86,12 @@ func (_m *Connector) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field org_id", values[i])
 			} else if value.Valid {
 				_m.OrgID = value.String
+			}
+		case connector.FieldVersion:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field version", values[i])
+			} else if value.Valid {
+				_m.Version = value.Int64
 			}
 		case connector.FieldName:
 			if value, ok := values[i].(*sql.NullString); !ok {
@@ -185,6 +195,9 @@ func (_m *Connector) String() string {
 	builder.WriteString(fmt.Sprintf("id=%v, ", _m.ID))
 	builder.WriteString("org_id=")
 	builder.WriteString(_m.OrgID)
+	builder.WriteString(", ")
+	builder.WriteString("version=")
+	builder.WriteString(fmt.Sprintf("%v", _m.Version))
 	builder.WriteString(", ")
 	builder.WriteString("name=")
 	builder.WriteString(_m.Name)

@@ -109,3 +109,66 @@ func (CompiledSnapshot) Fields() []ent.Field {
 func (CompiledSnapshot) Indexes() []ent.Index {
 	return []ent.Index{index.Fields("agent_id", "id")}
 }
+
+// ResourceStatus is one resource that an agent reports not ready, with why (docs/06-data-model.md,
+// "Desired vs observed state"); a resource without a row is ready, or not reported yet. Only the
+// control-session handlers write it. There is no foreign key to the agent, whose row may be gone.
+type ResourceStatus struct{ ent.Schema }
+
+// Mixin makes resource statuses org-owned.
+func (ResourceStatus) Mixin() []ent.Mixin { return []ent.Mixin{OrgMixin{}} }
+
+// Annotations name the table as docs/06-data-model.md does.
+func (ResourceStatus) Annotations() []schema.Annotation {
+	return []schema.Annotation{entsql.Annotation{Table: "resource_status"}}
+}
+
+// Fields of a resource status. reason is the agent protocol's NotReadyReason name.
+func (ResourceStatus) Fields() []ent.Field {
+	return []ent.Field{
+		idField("rst"),
+		field.String("agent_id").NotEmpty().Immutable(),
+		field.String("resource_id").NotEmpty().Immutable(),
+		field.String("reason").NotEmpty(),
+		field.String("detail").Default(""),
+		field.Time("since"),
+	}
+}
+
+// Indexes: one row per agent and resource.
+func (ResourceStatus) Indexes() []ent.Index {
+	return []ent.Index{index.Fields("agent_id", "resource_id").Unique()}
+}
+
+// DataSession is what a gateway last reported of a connector's data sessions to it over one
+// transport (docs/06-data-model.md, "Desired vs observed state"). Only the control-session
+// handlers write it; each report of a gateway replaces its rows. There is no foreign key to the
+// gateway or the connector, whose rows may be gone.
+type DataSession struct{ ent.Schema }
+
+// Mixin makes data sessions org-owned.
+func (DataSession) Mixin() []ent.Mixin { return []ent.Mixin{OrgMixin{}} }
+
+// Annotations name the table as docs/06-data-model.md does.
+func (DataSession) Annotations() []schema.Annotation {
+	return []schema.Annotation{entsql.Annotation{Table: "data_sessions"}}
+}
+
+// Fields of a data session. rtt_ms is 0 where the transport does not measure it; established_at
+// is when the controller first heard of it, reported_at when last.
+func (DataSession) Fields() []ent.Field {
+	return []ent.Field{
+		idField("dss"),
+		field.String("gateway_id").NotEmpty().Immutable(),
+		field.String("connector_id").NotEmpty().Immutable(),
+		field.Enum("transport").Values("quic", "h2").Immutable(),
+		field.Int64("rtt_ms").NonNegative().Default(0),
+		field.Time("established_at").Immutable(),
+		field.Time("reported_at"),
+	}
+}
+
+// Indexes: one row per gateway, connector and transport; a connector's rows are found by it.
+func (DataSession) Indexes() []ent.Index {
+	return []ent.Index{index.Fields("gateway_id", "connector_id", "transport").Unique(), index.Fields("connector_id")}
+}

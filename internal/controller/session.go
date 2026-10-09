@@ -231,6 +231,14 @@ func (s *Sessions) receive(ctx context.Context, st grpc.BidiStreamingServer[agen
 			s.push.rejected(sess, m.GetRejected())
 		case m.GetOpResult() != nil:
 			s.opResult(sess, m.GetOpResult())
+		case m.GetStatus() != nil:
+			st, id := m.GetStatus(), sess.agent.Identity
+			if st.GetReadinessComplete() || len(st.GetReadiness()) > 0 {
+				s.readiness(id, st.GetReadiness(), st.GetReadinessComplete())
+			}
+			if id.Kind == pki.KindGateway {
+				s.dataSessions(id, st.GetDataSessions())
+			}
 		}
 	}
 }

@@ -27,6 +27,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/configrevision"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/configseq"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/connector"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/datasession"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/domain"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/enrollmenttoken"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/gateway"
@@ -46,6 +47,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/portpool"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/portquota"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/recoverycode"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/resourcestatus"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/revokedidentity"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/route"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routehostname"
@@ -133,6 +135,7 @@ func checkColumn(t, c string) error {
 			configrevision.Table:    configrevision.ValidColumn,
 			configseq.Table:         configseq.ValidColumn,
 			connector.Table:         connector.ValidColumn,
+			datasession.Table:       datasession.ValidColumn,
 			domain.Table:            domain.ValidColumn,
 			enrollmenttoken.Table:   enrollmenttoken.ValidColumn,
 			gateway.Table:           gateway.ValidColumn,
@@ -152,6 +155,7 @@ func checkColumn(t, c string) error {
 			portpool.Table:          portpool.ValidColumn,
 			portquota.Table:         portquota.ValidColumn,
 			recoverycode.Table:      recoverycode.ValidColumn,
+			resourcestatus.Table:    resourcestatus.ValidColumn,
 			revokedidentity.Table:   revokedidentity.ValidColumn,
 			route.Table:             route.ValidColumn,
 			routehttp.Table:         routehttp.ValidColumn,
