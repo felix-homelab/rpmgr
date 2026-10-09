@@ -205,6 +205,15 @@ func fieldValue(msg protoreflect.Message, fds []protoreflect.FieldDescriptor) st
 
 type callerKey struct{}
 
+type peerKey struct{}
+
+// PeerAddr returns the address of the client of a request, host:port, as the authenticator sees
+// it.
+func PeerAddr(ctx context.Context) string {
+	a, _ := ctx.Value(peerKey{}).(string)
+	return a
+}
+
 // CallerFrom returns the caller of a request, nil for an anonymous one.
 func CallerFrom(ctx context.Context) *Caller {
 	c, _ := ctx.Value(callerKey{}).(*Caller)

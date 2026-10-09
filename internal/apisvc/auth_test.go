@@ -39,6 +39,8 @@ type env struct {
 	sessions *websession.Sessions
 	auth     *apisvc.Auth
 	orgs     *apisvc.Org
+	tokens   *accounts.Tokens
+	log      string // the revocation log
 	url      string
 	ada      string // the first user's ID
 }
@@ -50,7 +52,8 @@ func newEnv(t *testing.T) *env {
 	sys := storetest.SystemCtx(t)
 	e := &env{clock: time.Now()}
 	now := func() time.Time { return e.clock }
-	rl, err := revlog.Open(filepath.Join(t.TempDir(), "revocations.log"), now)
+	e.log = filepath.Join(t.TempDir(), "revocations.log")
+	rl, err := revlog.Open(e.log, now)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -61,7 +64,9 @@ func newEnv(t *testing.T) *env {
 	kek, _ := secret.NewKEK(key)
 	sealer, _ := secret.NewSealer(kek)
 	e.mfa = &accounts.MFA{Accounts: e.acc, Sealer: sealer, RevLog: rl}
-	srv, err := api.New(api.Options{DB: db, Sys: sys, Sealer: sealer, Authenticator: e.sessions, Now: now,
+	e.tokens = &accounts.Tokens{Accounts: e.acc, RevLog: rl}
+	srv, err := api.New(api.Options{DB: db, Sys: sys, Sealer: sealer, Now: now,
+		Authenticator:      apisvc.Credentials{Sessions: e.sessions, Tokens: e.tokens},
 		Resolver:           api.StoreResolver(db, sys),
 		OperatorsMayEnroll: func(context.Context, string) (bool, error) { return false, nil },
 		Origins:            func(context.Context) ([]string, error) { return []string{"https://panel.example.com"}, nil }})
@@ -82,6 +87,12 @@ func newEnv(t *testing.T) *env {
 			e.orgs = &apisvc.Org{Members: &accounts.Members{Accounts: e.acc, RevLog: rl}, API: srv,
 				PublicURL: "https://panel.example.com", Now: now}
 			return rpmgrv1connect.NewOrgServiceHandler(e.orgs, o...)
+		}); err != nil {
+		t.Fatal(err)
+	}
+	if err := srv.Mount(mux, rpmgrv1.File_rpmgr_v1_token_proto.Services().ByName("TokenService"),
+		func(o ...connect.HandlerOption) (string, http.Handler) {
+			return rpmgrv1connect.NewTokenServiceHandler(&apisvc.Token{Tokens: e.tokens, API: srv}, o...)
 		}); err != nil {
 		t.Fatal(err)
 	}
@@ -107,9 +118,11 @@ func newEnv(t *testing.T) *env {
 // over which a cookie jar would not send a Secure cookie.
 type browser struct {
 	cookie string
+	bearer string // an API token instead of the cookie
 	auth   rpmgrv1connect.AuthServiceClient
 	user   rpmgrv1connect.UserServiceClient
 	org    rpmgrv1connect.OrgServiceClient
+	token  rpmgrv1connect.TokenServiceClient
 }
 
 func (e *env) browser() *browser {
@@ -117,6 +130,7 @@ func (e *env) browser() *browser {
 	b.auth = rpmgrv1connect.NewAuthServiceClient(&http.Client{Transport: b}, e.url)
 	b.user = rpmgrv1connect.NewUserServiceClient(&http.Client{Transport: b}, e.url)
 	b.org = rpmgrv1connect.NewOrgServiceClient(&http.Client{Transport: b}, e.url)
+	b.token = rpmgrv1connect.NewTokenServiceClient(&http.Client{Transport: b}, e.url)
 	return b
 }
 
@@ -124,6 +138,9 @@ func (e *env) browser() *browser {
 func (b *browser) RoundTrip(r *http.Request) (*http.Response, error) {
 	if b.cookie != "" {
 		r.Header.Set("Cookie", websession.CookieName+"="+b.cookie)
+	}
+	if b.bearer != "" {
+		r.Header.Set("Authorization", "Bearer "+b.bearer)
 	}
 	resp, err := http.DefaultTransport.RoundTrip(r)
 	if err != nil {

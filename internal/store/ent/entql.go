@@ -8,6 +8,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/agentsession"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/agentstate"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/apirequest"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/apitoken"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/auditentry"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/audithead"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/cabundle"
@@ -58,7 +59,7 @@ import (
 
 // schemaGraph holds a representation of ent/schema at runtime.
 var schemaGraph = func() *sqlgraph.Schema {
-	graph := &sqlgraph.Schema{Nodes: make([]*sqlgraph.Node, 45)}
+	graph := &sqlgraph.Schema{Nodes: make([]*sqlgraph.Node, 46)}
 	graph.Nodes[0] = &sqlgraph.Node{
 		NodeSpec: sqlgraph.NodeSpec{
 			Table:   acmestorage.Table,
@@ -96,6 +97,32 @@ var schemaGraph = func() *sqlgraph.Schema {
 	}
 	graph.Nodes[2] = &sqlgraph.Node{
 		NodeSpec: sqlgraph.NodeSpec{
+			Table:   apitoken.Table,
+			Columns: apitoken.Columns,
+			ID: &sqlgraph.FieldSpec{
+				Type:   field.TypeString,
+				Column: apitoken.FieldID,
+			},
+		},
+		Type: "APIToken",
+		Fields: map[string]*sqlgraph.FieldSpec{
+			apitoken.FieldOrgID:      {Type: field.TypeString, Column: apitoken.FieldOrgID},
+			apitoken.FieldOwnerType:  {Type: field.TypeEnum, Column: apitoken.FieldOwnerType},
+			apitoken.FieldOwnerID:    {Type: field.TypeString, Column: apitoken.FieldOwnerID},
+			apitoken.FieldName:       {Type: field.TypeString, Column: apitoken.FieldName},
+			apitoken.FieldPrefix:     {Type: field.TypeString, Column: apitoken.FieldPrefix},
+			apitoken.FieldTokenHash:  {Type: field.TypeBytes, Column: apitoken.FieldTokenHash},
+			apitoken.FieldScopes:     {Type: field.TypeJSON, Column: apitoken.FieldScopes},
+			apitoken.FieldMfa:        {Type: field.TypeBool, Column: apitoken.FieldMfa},
+			apitoken.FieldCreatedAt:  {Type: field.TypeTime, Column: apitoken.FieldCreatedAt},
+			apitoken.FieldExpiresAt:  {Type: field.TypeTime, Column: apitoken.FieldExpiresAt},
+			apitoken.FieldLastUsedAt: {Type: field.TypeTime, Column: apitoken.FieldLastUsedAt},
+			apitoken.FieldLastUsedIP: {Type: field.TypeString, Column: apitoken.FieldLastUsedIP},
+			apitoken.FieldRevokedAt:  {Type: field.TypeTime, Column: apitoken.FieldRevokedAt},
+		},
+	}
+	graph.Nodes[3] = &sqlgraph.Node{
+		NodeSpec: sqlgraph.NodeSpec{
 			Table:   accesspolicy.Table,
 			Columns: accesspolicy.Columns,
 			ID: &sqlgraph.FieldSpec{
@@ -111,7 +138,7 @@ var schemaGraph = func() *sqlgraph.Schema {
 			accesspolicy.FieldVersion:     {Type: field.TypeInt64, Column: accesspolicy.FieldVersion},
 		},
 	}
-	graph.Nodes[3] = &sqlgraph.Node{
+	graph.Nodes[4] = &sqlgraph.Node{
 		NodeSpec: sqlgraph.NodeSpec{
 			Table:   agentsession.Table,
 			Columns: agentsession.Columns,
@@ -132,7 +159,7 @@ var schemaGraph = func() *sqlgraph.Schema {
 			agentsession.FieldLastSeenAt:     {Type: field.TypeTime, Column: agentsession.FieldLastSeenAt},
 		},
 	}
-	graph.Nodes[4] = &sqlgraph.Node{
+	graph.Nodes[5] = &sqlgraph.Node{
 		NodeSpec: sqlgraph.NodeSpec{
 			Table:   agentstate.Table,
 			Columns: agentstate.Columns,
@@ -160,7 +187,7 @@ var schemaGraph = func() *sqlgraph.Schema {
 			agentstate.FieldLastRejection:   {Type: field.TypeJSON, Column: agentstate.FieldLastRejection},
 		},
 	}
-	graph.Nodes[5] = &sqlgraph.Node{
+	graph.Nodes[6] = &sqlgraph.Node{
 		NodeSpec: sqlgraph.NodeSpec{
 			Table:   auditentry.Table,
 			Columns: auditentry.Columns,
@@ -191,7 +218,7 @@ var schemaGraph = func() *sqlgraph.Schema {
 			auditentry.FieldReason:       {Type: field.TypeString, Column: auditentry.FieldReason},
 		},
 	}
-	graph.Nodes[6] = &sqlgraph.Node{
+	graph.Nodes[7] = &sqlgraph.Node{
 		NodeSpec: sqlgraph.NodeSpec{
 			Table:   audithead.Table,
 			Columns: audithead.Columns,
@@ -206,7 +233,7 @@ var schemaGraph = func() *sqlgraph.Schema {
 			audithead.FieldHash: {Type: field.TypeBytes, Column: audithead.FieldHash},
 		},
 	}
-	graph.Nodes[7] = &sqlgraph.Node{
+	graph.Nodes[8] = &sqlgraph.Node{
 		NodeSpec: sqlgraph.NodeSpec{
 			Table:   cabundle.Table,
 			Columns: cabundle.Columns,
@@ -224,7 +251,7 @@ var schemaGraph = func() *sqlgraph.Schema {
 			cabundle.FieldVersion:   {Type: field.TypeInt64, Column: cabundle.FieldVersion},
 		},
 	}
-	graph.Nodes[8] = &sqlgraph.Node{
+	graph.Nodes[9] = &sqlgraph.Node{
 		NodeSpec: sqlgraph.NodeSpec{
 			Table:   cakey.Table,
 			Columns: cakey.Columns,
@@ -245,7 +272,7 @@ var schemaGraph = func() *sqlgraph.Schema {
 			cakey.FieldStatus:      {Type: field.TypeEnum, Column: cakey.FieldStatus},
 		},
 	}
-	graph.Nodes[9] = &sqlgraph.Node{
+	graph.Nodes[10] = &sqlgraph.Node{
 		NodeSpec: sqlgraph.NodeSpec{
 			Table:   certificate.Table,
 			Columns: certificate.Columns,
@@ -271,7 +298,7 @@ var schemaGraph = func() *sqlgraph.Schema {
 			certificate.FieldVersion:       {Type: field.TypeInt64, Column: certificate.FieldVersion},
 		},
 	}
-	graph.Nodes[10] = &sqlgraph.Node{
+	graph.Nodes[11] = &sqlgraph.Node{
 		NodeSpec: sqlgraph.NodeSpec{
 			Table:   compiledsnapshot.Table,
 			Columns: compiledsnapshot.Columns,
@@ -294,7 +321,7 @@ var schemaGraph = func() *sqlgraph.Schema {
 			compiledsnapshot.FieldCreatedAt: {Type: field.TypeTime, Column: compiledsnapshot.FieldCreatedAt},
 		},
 	}
-	graph.Nodes[11] = &sqlgraph.Node{
+	graph.Nodes[12] = &sqlgraph.Node{
 		NodeSpec: sqlgraph.NodeSpec{
 			Table:   configrevision.Table,
 			Columns: configrevision.Columns,
@@ -311,7 +338,7 @@ var schemaGraph = func() *sqlgraph.Schema {
 			configrevision.FieldCreatedAt:        {Type: field.TypeTime, Column: configrevision.FieldCreatedAt},
 		},
 	}
-	graph.Nodes[12] = &sqlgraph.Node{
+	graph.Nodes[13] = &sqlgraph.Node{
 		NodeSpec: sqlgraph.NodeSpec{
 			Table:   configseq.Table,
 			Columns: configseq.Columns,
@@ -325,7 +352,7 @@ var schemaGraph = func() *sqlgraph.Schema {
 			configseq.FieldSeq: {Type: field.TypeInt64, Column: configseq.FieldSeq},
 		},
 	}
-	graph.Nodes[13] = &sqlgraph.Node{
+	graph.Nodes[14] = &sqlgraph.Node{
 		NodeSpec: sqlgraph.NodeSpec{
 			Table:   connector.Table,
 			Columns: connector.Columns,
@@ -349,7 +376,7 @@ var schemaGraph = func() *sqlgraph.Schema {
 			connector.FieldDecommissionedAt: {Type: field.TypeTime, Column: connector.FieldDecommissionedAt},
 		},
 	}
-	graph.Nodes[14] = &sqlgraph.Node{
+	graph.Nodes[15] = &sqlgraph.Node{
 		NodeSpec: sqlgraph.NodeSpec{
 			Table:   domain.Table,
 			Columns: domain.Columns,
@@ -372,7 +399,7 @@ var schemaGraph = func() *sqlgraph.Schema {
 			domain.FieldVersion:        {Type: field.TypeInt64, Column: domain.FieldVersion},
 		},
 	}
-	graph.Nodes[15] = &sqlgraph.Node{
+	graph.Nodes[16] = &sqlgraph.Node{
 		NodeSpec: sqlgraph.NodeSpec{
 			Table:   enrollmenttoken.Table,
 			Columns: enrollmenttoken.Columns,
@@ -401,7 +428,7 @@ var schemaGraph = func() *sqlgraph.Schema {
 			enrollmenttoken.FieldRevokedAt:      {Type: field.TypeTime, Column: enrollmenttoken.FieldRevokedAt},
 		},
 	}
-	graph.Nodes[16] = &sqlgraph.Node{
+	graph.Nodes[17] = &sqlgraph.Node{
 		NodeSpec: sqlgraph.NodeSpec{
 			Table:   gateway.Table,
 			Columns: gateway.Columns,
@@ -425,7 +452,7 @@ var schemaGraph = func() *sqlgraph.Schema {
 			gateway.FieldDecommissionedAt: {Type: field.TypeTime, Column: gateway.FieldDecommissionedAt},
 		},
 	}
-	graph.Nodes[17] = &sqlgraph.Node{
+	graph.Nodes[18] = &sqlgraph.Node{
 		NodeSpec: sqlgraph.NodeSpec{
 			Table:   gatewaygroup.Table,
 			Columns: gatewaygroup.Columns,
@@ -443,7 +470,7 @@ var schemaGraph = func() *sqlgraph.Schema {
 			gatewaygroup.FieldTrustedProxyCidrs: {Type: field.TypeJSON, Column: gatewaygroup.FieldTrustedProxyCidrs},
 		},
 	}
-	graph.Nodes[18] = &sqlgraph.Node{
+	graph.Nodes[19] = &sqlgraph.Node{
 		NodeSpec: sqlgraph.NodeSpec{
 			Table:   instance.Table,
 			Columns: instance.Columns,
@@ -459,7 +486,7 @@ var schemaGraph = func() *sqlgraph.Schema {
 			instance.FieldCreatedAt:   {Type: field.TypeTime, Column: instance.FieldCreatedAt},
 		},
 	}
-	graph.Nodes[19] = &sqlgraph.Node{
+	graph.Nodes[20] = &sqlgraph.Node{
 		NodeSpec: sqlgraph.NodeSpec{
 			Table:   instancesecret.Table,
 			Columns: instancesecret.Columns,
@@ -474,7 +501,7 @@ var schemaGraph = func() *sqlgraph.Schema {
 			instancesecret.FieldUpdatedAt: {Type: field.TypeTime, Column: instancesecret.FieldUpdatedAt},
 		},
 	}
-	graph.Nodes[20] = &sqlgraph.Node{
+	graph.Nodes[21] = &sqlgraph.Node{
 		NodeSpec: sqlgraph.NodeSpec{
 			Table:   instancesetting.Table,
 			Columns: instancesetting.Columns,
@@ -491,7 +518,7 @@ var schemaGraph = func() *sqlgraph.Schema {
 			instancesetting.FieldUpdatedAt: {Type: field.TypeTime, Column: instancesetting.FieldUpdatedAt},
 		},
 	}
-	graph.Nodes[21] = &sqlgraph.Node{
+	graph.Nodes[22] = &sqlgraph.Node{
 		NodeSpec: sqlgraph.NodeSpec{
 			Table:   invitation.Table,
 			Columns: invitation.Columns,
@@ -513,7 +540,7 @@ var schemaGraph = func() *sqlgraph.Schema {
 			invitation.FieldAcceptedBy: {Type: field.TypeString, Column: invitation.FieldAcceptedBy},
 		},
 	}
-	graph.Nodes[22] = &sqlgraph.Node{
+	graph.Nodes[23] = &sqlgraph.Node{
 		NodeSpec: sqlgraph.NodeSpec{
 			Table:   issuedcertificate.Table,
 			Columns: issuedcertificate.Columns,
@@ -539,7 +566,7 @@ var schemaGraph = func() *sqlgraph.Schema {
 			issuedcertificate.FieldEnrollmentTokenID: {Type: field.TypeString, Column: issuedcertificate.FieldEnrollmentTokenID},
 		},
 	}
-	graph.Nodes[23] = &sqlgraph.Node{
+	graph.Nodes[24] = &sqlgraph.Node{
 		NodeSpec: sqlgraph.NodeSpec{
 			Table:   lease.Table,
 			Columns: lease.Columns,
@@ -555,7 +582,7 @@ var schemaGraph = func() *sqlgraph.Schema {
 			lease.FieldExpiresAt:    {Type: field.TypeInt64, Column: lease.FieldExpiresAt},
 		},
 	}
-	graph.Nodes[24] = &sqlgraph.Node{
+	graph.Nodes[25] = &sqlgraph.Node{
 		NodeSpec: sqlgraph.NodeSpec{
 			Table:   membership.Table,
 			Columns: membership.Columns,
@@ -573,7 +600,7 @@ var schemaGraph = func() *sqlgraph.Schema {
 			membership.FieldCreatedAt: {Type: field.TypeTime, Column: membership.FieldCreatedAt},
 		},
 	}
-	graph.Nodes[25] = &sqlgraph.Node{
+	graph.Nodes[26] = &sqlgraph.Node{
 		NodeSpec: sqlgraph.NodeSpec{
 			Table:   org.Table,
 			Columns: org.Columns,
@@ -589,7 +616,7 @@ var schemaGraph = func() *sqlgraph.Schema {
 			org.FieldCreatedAt: {Type: field.TypeTime, Column: org.FieldCreatedAt},
 		},
 	}
-	graph.Nodes[26] = &sqlgraph.Node{
+	graph.Nodes[27] = &sqlgraph.Node{
 		NodeSpec: sqlgraph.NodeSpec{
 			Table:   orgsetting.Table,
 			Columns: orgsetting.Columns,
@@ -607,7 +634,7 @@ var schemaGraph = func() *sqlgraph.Schema {
 			orgsetting.FieldUpdatedAt: {Type: field.TypeTime, Column: orgsetting.FieldUpdatedAt},
 		},
 	}
-	graph.Nodes[27] = &sqlgraph.Node{
+	graph.Nodes[28] = &sqlgraph.Node{
 		NodeSpec: sqlgraph.NodeSpec{
 			Table:   passwordreset.Table,
 			Columns: passwordreset.Columns,
@@ -626,7 +653,7 @@ var schemaGraph = func() *sqlgraph.Schema {
 			passwordreset.FieldUsedAt:    {Type: field.TypeTime, Column: passwordreset.FieldUsedAt},
 		},
 	}
-	graph.Nodes[28] = &sqlgraph.Node{
+	graph.Nodes[29] = &sqlgraph.Node{
 		NodeSpec: sqlgraph.NodeSpec{
 			Table:   policyrule.Table,
 			Columns: policyrule.Columns,
@@ -644,7 +671,7 @@ var schemaGraph = func() *sqlgraph.Schema {
 			policyrule.FieldParams:   {Type: field.TypeBytes, Column: policyrule.FieldParams},
 		},
 	}
-	graph.Nodes[29] = &sqlgraph.Node{
+	graph.Nodes[30] = &sqlgraph.Node{
 		NodeSpec: sqlgraph.NodeSpec{
 			Table:   portallocation.Table,
 			Columns: portallocation.Columns,
@@ -662,7 +689,7 @@ var schemaGraph = func() *sqlgraph.Schema {
 			portallocation.FieldRouteID:        {Type: field.TypeString, Column: portallocation.FieldRouteID},
 		},
 	}
-	graph.Nodes[30] = &sqlgraph.Node{
+	graph.Nodes[31] = &sqlgraph.Node{
 		NodeSpec: sqlgraph.NodeSpec{
 			Table:   portpool.Table,
 			Columns: portpool.Columns,
@@ -680,7 +707,7 @@ var schemaGraph = func() *sqlgraph.Schema {
 			portpool.FieldPortTo:         {Type: field.TypeInt, Column: portpool.FieldPortTo},
 		},
 	}
-	graph.Nodes[31] = &sqlgraph.Node{
+	graph.Nodes[32] = &sqlgraph.Node{
 		NodeSpec: sqlgraph.NodeSpec{
 			Table:   portquota.Table,
 			Columns: portquota.Columns,
@@ -697,7 +724,7 @@ var schemaGraph = func() *sqlgraph.Schema {
 			portquota.FieldMaxPorts:       {Type: field.TypeInt, Column: portquota.FieldMaxPorts},
 		},
 	}
-	graph.Nodes[32] = &sqlgraph.Node{
+	graph.Nodes[33] = &sqlgraph.Node{
 		NodeSpec: sqlgraph.NodeSpec{
 			Table:   recoverycode.Table,
 			Columns: recoverycode.Columns,
@@ -714,7 +741,7 @@ var schemaGraph = func() *sqlgraph.Schema {
 			recoverycode.FieldUsedAt:    {Type: field.TypeTime, Column: recoverycode.FieldUsedAt},
 		},
 	}
-	graph.Nodes[33] = &sqlgraph.Node{
+	graph.Nodes[34] = &sqlgraph.Node{
 		NodeSpec: sqlgraph.NodeSpec{
 			Table:   revokedidentity.Table,
 			Columns: revokedidentity.Columns,
@@ -733,7 +760,7 @@ var schemaGraph = func() *sqlgraph.Schema {
 			revokedidentity.FieldNotAfter:    {Type: field.TypeTime, Column: revokedidentity.FieldNotAfter},
 		},
 	}
-	graph.Nodes[34] = &sqlgraph.Node{
+	graph.Nodes[35] = &sqlgraph.Node{
 		NodeSpec: sqlgraph.NodeSpec{
 			Table:   route.Table,
 			Columns: route.Columns,
@@ -758,7 +785,7 @@ var schemaGraph = func() *sqlgraph.Schema {
 			route.FieldUpdatedBy:      {Type: field.TypeString, Column: route.FieldUpdatedBy},
 		},
 	}
-	graph.Nodes[35] = &sqlgraph.Node{
+	graph.Nodes[36] = &sqlgraph.Node{
 		NodeSpec: sqlgraph.NodeSpec{
 			Table:   routehttp.Table,
 			Columns: routehttp.Columns,
@@ -785,7 +812,7 @@ var schemaGraph = func() *sqlgraph.Schema {
 			routehttp.FieldDNSProxied:         {Type: field.TypeBool, Column: routehttp.FieldDNSProxied},
 		},
 	}
-	graph.Nodes[36] = &sqlgraph.Node{
+	graph.Nodes[37] = &sqlgraph.Node{
 		NodeSpec: sqlgraph.NodeSpec{
 			Table:   routehostname.Table,
 			Columns: routehostname.Columns,
@@ -805,7 +832,7 @@ var schemaGraph = func() *sqlgraph.Schema {
 			routehostname.FieldDomainID:       {Type: field.TypeString, Column: routehostname.FieldDomainID},
 		},
 	}
-	graph.Nodes[37] = &sqlgraph.Node{
+	graph.Nodes[38] = &sqlgraph.Node{
 		NodeSpec: sqlgraph.NodeSpec{
 			Table:   routepolicy.Table,
 			Columns: routepolicy.Columns,
@@ -822,7 +849,7 @@ var schemaGraph = func() *sqlgraph.Schema {
 			routepolicy.FieldPosition: {Type: field.TypeInt, Column: routepolicy.FieldPosition},
 		},
 	}
-	graph.Nodes[38] = &sqlgraph.Node{
+	graph.Nodes[39] = &sqlgraph.Node{
 		NodeSpec: sqlgraph.NodeSpec{
 			Table:   routetcp.Table,
 			Columns: routetcp.Columns,
@@ -840,7 +867,7 @@ var schemaGraph = func() *sqlgraph.Schema {
 			routetcp.FieldIdleTimeoutSeconds: {Type: field.TypeInt, Column: routetcp.FieldIdleTimeoutSeconds},
 		},
 	}
-	graph.Nodes[39] = &sqlgraph.Node{
+	graph.Nodes[40] = &sqlgraph.Node{
 		NodeSpec: sqlgraph.NodeSpec{
 			Table:   routetarget.Table,
 			Columns: routetarget.Columns,
@@ -868,7 +895,7 @@ var schemaGraph = func() *sqlgraph.Schema {
 			routetarget.FieldEnabled:          {Type: field.TypeBool, Column: routetarget.FieldEnabled},
 		},
 	}
-	graph.Nodes[40] = &sqlgraph.Node{
+	graph.Nodes[41] = &sqlgraph.Node{
 		NodeSpec: sqlgraph.NodeSpec{
 			Table:   routeudp.Table,
 			Columns: routeudp.Columns,
@@ -885,7 +912,7 @@ var schemaGraph = func() *sqlgraph.Schema {
 			routeudp.FieldFlowIdleTimeoutSeconds: {Type: field.TypeInt, Column: routeudp.FieldFlowIdleTimeoutSeconds},
 		},
 	}
-	graph.Nodes[41] = &sqlgraph.Node{
+	graph.Nodes[42] = &sqlgraph.Node{
 		NodeSpec: sqlgraph.NodeSpec{
 			Table:   secretmeta.Table,
 			Columns: secretmeta.Columns,
@@ -903,7 +930,7 @@ var schemaGraph = func() *sqlgraph.Schema {
 			secretmeta.FieldCreatedAt:  {Type: field.TypeTime, Column: secretmeta.FieldCreatedAt},
 		},
 	}
-	graph.Nodes[42] = &sqlgraph.Node{
+	graph.Nodes[43] = &sqlgraph.Node{
 		NodeSpec: sqlgraph.NodeSpec{
 			Table:   session.Table,
 			Columns: session.Columns,
@@ -927,7 +954,7 @@ var schemaGraph = func() *sqlgraph.Schema {
 			session.FieldRevokedAt:         {Type: field.TypeTime, Column: session.FieldRevokedAt},
 		},
 	}
-	graph.Nodes[43] = &sqlgraph.Node{
+	graph.Nodes[44] = &sqlgraph.Node{
 		NodeSpec: sqlgraph.NodeSpec{
 			Table:   totpcredential.Table,
 			Columns: totpcredential.Columns,
@@ -945,7 +972,7 @@ var schemaGraph = func() *sqlgraph.Schema {
 			totpcredential.FieldLastStep:    {Type: field.TypeInt64, Column: totpcredential.FieldLastStep},
 		},
 	}
-	graph.Nodes[44] = &sqlgraph.Node{
+	graph.Nodes[45] = &sqlgraph.Node{
 		NodeSpec: sqlgraph.NodeSpec{
 			Table:   user.Table,
 			Columns: user.Columns,
@@ -1448,6 +1475,111 @@ func (f *APIRequestFilter) WhereCreatedAt(p entql.TimeP) {
 }
 
 // addPredicate implements the predicateAdder interface.
+func (_q *APITokenQuery) addPredicate(pred func(s *sql.Selector)) {
+	_q.predicates = append(_q.predicates, pred)
+}
+
+// Filter returns a Filter implementation to apply filters on the APITokenQuery builder.
+func (_q *APITokenQuery) Filter() *APITokenFilter {
+	return &APITokenFilter{config: _q.config, predicateAdder: _q}
+}
+
+// addPredicate implements the predicateAdder interface.
+func (m *APITokenMutation) addPredicate(pred func(s *sql.Selector)) {
+	m.predicates = append(m.predicates, pred)
+}
+
+// Filter returns an entql.Where implementation to apply filters on the APITokenMutation builder.
+func (m *APITokenMutation) Filter() *APITokenFilter {
+	return &APITokenFilter{config: m.config, predicateAdder: m}
+}
+
+// APITokenFilter provides a generic filtering capability at runtime for APITokenQuery.
+type APITokenFilter struct {
+	predicateAdder
+	config
+}
+
+// Where applies the entql predicate on the query filter.
+func (f *APITokenFilter) Where(p entql.P) {
+	f.addPredicate(func(s *sql.Selector) {
+		if err := schemaGraph.EvalP(schemaGraph.Nodes[2].Type, p, s); err != nil {
+			s.AddError(err)
+		}
+	})
+}
+
+// WhereID applies the entql string predicate on the id field.
+func (f *APITokenFilter) WhereID(p entql.StringP) {
+	f.Where(p.Field(apitoken.FieldID))
+}
+
+// WhereOrgID applies the entql string predicate on the org_id field.
+func (f *APITokenFilter) WhereOrgID(p entql.StringP) {
+	f.Where(p.Field(apitoken.FieldOrgID))
+}
+
+// WhereOwnerType applies the entql string predicate on the owner_type field.
+func (f *APITokenFilter) WhereOwnerType(p entql.StringP) {
+	f.Where(p.Field(apitoken.FieldOwnerType))
+}
+
+// WhereOwnerID applies the entql string predicate on the owner_id field.
+func (f *APITokenFilter) WhereOwnerID(p entql.StringP) {
+	f.Where(p.Field(apitoken.FieldOwnerID))
+}
+
+// WhereName applies the entql string predicate on the name field.
+func (f *APITokenFilter) WhereName(p entql.StringP) {
+	f.Where(p.Field(apitoken.FieldName))
+}
+
+// WherePrefix applies the entql string predicate on the prefix field.
+func (f *APITokenFilter) WherePrefix(p entql.StringP) {
+	f.Where(p.Field(apitoken.FieldPrefix))
+}
+
+// WhereTokenHash applies the entql []byte predicate on the token_hash field.
+func (f *APITokenFilter) WhereTokenHash(p entql.BytesP) {
+	f.Where(p.Field(apitoken.FieldTokenHash))
+}
+
+// WhereScopes applies the entql json.RawMessage predicate on the scopes field.
+func (f *APITokenFilter) WhereScopes(p entql.BytesP) {
+	f.Where(p.Field(apitoken.FieldScopes))
+}
+
+// WhereMfa applies the entql bool predicate on the mfa field.
+func (f *APITokenFilter) WhereMfa(p entql.BoolP) {
+	f.Where(p.Field(apitoken.FieldMfa))
+}
+
+// WhereCreatedAt applies the entql time.Time predicate on the created_at field.
+func (f *APITokenFilter) WhereCreatedAt(p entql.TimeP) {
+	f.Where(p.Field(apitoken.FieldCreatedAt))
+}
+
+// WhereExpiresAt applies the entql time.Time predicate on the expires_at field.
+func (f *APITokenFilter) WhereExpiresAt(p entql.TimeP) {
+	f.Where(p.Field(apitoken.FieldExpiresAt))
+}
+
+// WhereLastUsedAt applies the entql time.Time predicate on the last_used_at field.
+func (f *APITokenFilter) WhereLastUsedAt(p entql.TimeP) {
+	f.Where(p.Field(apitoken.FieldLastUsedAt))
+}
+
+// WhereLastUsedIP applies the entql string predicate on the last_used_ip field.
+func (f *APITokenFilter) WhereLastUsedIP(p entql.StringP) {
+	f.Where(p.Field(apitoken.FieldLastUsedIP))
+}
+
+// WhereRevokedAt applies the entql time.Time predicate on the revoked_at field.
+func (f *APITokenFilter) WhereRevokedAt(p entql.TimeP) {
+	f.Where(p.Field(apitoken.FieldRevokedAt))
+}
+
+// addPredicate implements the predicateAdder interface.
 func (_q *AccessPolicyQuery) addPredicate(pred func(s *sql.Selector)) {
 	_q.predicates = append(_q.predicates, pred)
 }
@@ -1476,7 +1608,7 @@ type AccessPolicyFilter struct {
 // Where applies the entql predicate on the query filter.
 func (f *AccessPolicyFilter) Where(p entql.P) {
 	f.addPredicate(func(s *sql.Selector) {
-		if err := schemaGraph.EvalP(schemaGraph.Nodes[2].Type, p, s); err != nil {
+		if err := schemaGraph.EvalP(schemaGraph.Nodes[3].Type, p, s); err != nil {
 			s.AddError(err)
 		}
 	})
@@ -1536,7 +1668,7 @@ type AgentSessionFilter struct {
 // Where applies the entql predicate on the query filter.
 func (f *AgentSessionFilter) Where(p entql.P) {
 	f.addPredicate(func(s *sql.Selector) {
-		if err := schemaGraph.EvalP(schemaGraph.Nodes[3].Type, p, s); err != nil {
+		if err := schemaGraph.EvalP(schemaGraph.Nodes[4].Type, p, s); err != nil {
 			s.AddError(err)
 		}
 	})
@@ -1616,7 +1748,7 @@ type AgentStateFilter struct {
 // Where applies the entql predicate on the query filter.
 func (f *AgentStateFilter) Where(p entql.P) {
 	f.addPredicate(func(s *sql.Selector) {
-		if err := schemaGraph.EvalP(schemaGraph.Nodes[4].Type, p, s); err != nil {
+		if err := schemaGraph.EvalP(schemaGraph.Nodes[5].Type, p, s); err != nil {
 			s.AddError(err)
 		}
 	})
@@ -1731,7 +1863,7 @@ type AuditEntryFilter struct {
 // Where applies the entql predicate on the query filter.
 func (f *AuditEntryFilter) Where(p entql.P) {
 	f.addPredicate(func(s *sql.Selector) {
-		if err := schemaGraph.EvalP(schemaGraph.Nodes[5].Type, p, s); err != nil {
+		if err := schemaGraph.EvalP(schemaGraph.Nodes[6].Type, p, s); err != nil {
 			s.AddError(err)
 		}
 	})
@@ -1861,7 +1993,7 @@ type AuditHeadFilter struct {
 // Where applies the entql predicate on the query filter.
 func (f *AuditHeadFilter) Where(p entql.P) {
 	f.addPredicate(func(s *sql.Selector) {
-		if err := schemaGraph.EvalP(schemaGraph.Nodes[6].Type, p, s); err != nil {
+		if err := schemaGraph.EvalP(schemaGraph.Nodes[7].Type, p, s); err != nil {
 			s.AddError(err)
 		}
 	})
@@ -1911,7 +2043,7 @@ type CABundleFilter struct {
 // Where applies the entql predicate on the query filter.
 func (f *CABundleFilter) Where(p entql.P) {
 	f.addPredicate(func(s *sql.Selector) {
-		if err := schemaGraph.EvalP(schemaGraph.Nodes[7].Type, p, s); err != nil {
+		if err := schemaGraph.EvalP(schemaGraph.Nodes[8].Type, p, s); err != nil {
 			s.AddError(err)
 		}
 	})
@@ -1976,7 +2108,7 @@ type CAKeyFilter struct {
 // Where applies the entql predicate on the query filter.
 func (f *CAKeyFilter) Where(p entql.P) {
 	f.addPredicate(func(s *sql.Selector) {
-		if err := schemaGraph.EvalP(schemaGraph.Nodes[8].Type, p, s); err != nil {
+		if err := schemaGraph.EvalP(schemaGraph.Nodes[9].Type, p, s); err != nil {
 			s.AddError(err)
 		}
 	})
@@ -2056,7 +2188,7 @@ type CertificateFilter struct {
 // Where applies the entql predicate on the query filter.
 func (f *CertificateFilter) Where(p entql.P) {
 	f.addPredicate(func(s *sql.Selector) {
-		if err := schemaGraph.EvalP(schemaGraph.Nodes[9].Type, p, s); err != nil {
+		if err := schemaGraph.EvalP(schemaGraph.Nodes[10].Type, p, s); err != nil {
 			s.AddError(err)
 		}
 	})
@@ -2161,7 +2293,7 @@ type CompiledSnapshotFilter struct {
 // Where applies the entql predicate on the query filter.
 func (f *CompiledSnapshotFilter) Where(p entql.P) {
 	f.addPredicate(func(s *sql.Selector) {
-		if err := schemaGraph.EvalP(schemaGraph.Nodes[10].Type, p, s); err != nil {
+		if err := schemaGraph.EvalP(schemaGraph.Nodes[11].Type, p, s); err != nil {
 			s.AddError(err)
 		}
 	})
@@ -2251,7 +2383,7 @@ type ConfigRevisionFilter struct {
 // Where applies the entql predicate on the query filter.
 func (f *ConfigRevisionFilter) Where(p entql.P) {
 	f.addPredicate(func(s *sql.Selector) {
-		if err := schemaGraph.EvalP(schemaGraph.Nodes[11].Type, p, s); err != nil {
+		if err := schemaGraph.EvalP(schemaGraph.Nodes[12].Type, p, s); err != nil {
 			s.AddError(err)
 		}
 	})
@@ -2311,7 +2443,7 @@ type ConfigSeqFilter struct {
 // Where applies the entql predicate on the query filter.
 func (f *ConfigSeqFilter) Where(p entql.P) {
 	f.addPredicate(func(s *sql.Selector) {
-		if err := schemaGraph.EvalP(schemaGraph.Nodes[12].Type, p, s); err != nil {
+		if err := schemaGraph.EvalP(schemaGraph.Nodes[13].Type, p, s); err != nil {
 			s.AddError(err)
 		}
 	})
@@ -2356,7 +2488,7 @@ type ConnectorFilter struct {
 // Where applies the entql predicate on the query filter.
 func (f *ConnectorFilter) Where(p entql.P) {
 	f.addPredicate(func(s *sql.Selector) {
-		if err := schemaGraph.EvalP(schemaGraph.Nodes[13].Type, p, s); err != nil {
+		if err := schemaGraph.EvalP(schemaGraph.Nodes[14].Type, p, s); err != nil {
 			s.AddError(err)
 		}
 	})
@@ -2451,7 +2583,7 @@ type DomainFilter struct {
 // Where applies the entql predicate on the query filter.
 func (f *DomainFilter) Where(p entql.P) {
 	f.addPredicate(func(s *sql.Selector) {
-		if err := schemaGraph.EvalP(schemaGraph.Nodes[14].Type, p, s); err != nil {
+		if err := schemaGraph.EvalP(schemaGraph.Nodes[15].Type, p, s); err != nil {
 			s.AddError(err)
 		}
 	})
@@ -2541,7 +2673,7 @@ type EnrollmentTokenFilter struct {
 // Where applies the entql predicate on the query filter.
 func (f *EnrollmentTokenFilter) Where(p entql.P) {
 	f.addPredicate(func(s *sql.Selector) {
-		if err := schemaGraph.EvalP(schemaGraph.Nodes[15].Type, p, s); err != nil {
+		if err := schemaGraph.EvalP(schemaGraph.Nodes[16].Type, p, s); err != nil {
 			s.AddError(err)
 		}
 	})
@@ -2703,7 +2835,7 @@ type GatewayFilter struct {
 // Where applies the entql predicate on the query filter.
 func (f *GatewayFilter) Where(p entql.P) {
 	f.addPredicate(func(s *sql.Selector) {
-		if err := schemaGraph.EvalP(schemaGraph.Nodes[16].Type, p, s); err != nil {
+		if err := schemaGraph.EvalP(schemaGraph.Nodes[17].Type, p, s); err != nil {
 			s.AddError(err)
 		}
 	})
@@ -2812,7 +2944,7 @@ type GatewayGroupFilter struct {
 // Where applies the entql predicate on the query filter.
 func (f *GatewayGroupFilter) Where(p entql.P) {
 	f.addPredicate(func(s *sql.Selector) {
-		if err := schemaGraph.EvalP(schemaGraph.Nodes[17].Type, p, s); err != nil {
+		if err := schemaGraph.EvalP(schemaGraph.Nodes[18].Type, p, s); err != nil {
 			s.AddError(err)
 		}
 	})
@@ -2877,7 +3009,7 @@ type InstanceFilter struct {
 // Where applies the entql predicate on the query filter.
 func (f *InstanceFilter) Where(p entql.P) {
 	f.addPredicate(func(s *sql.Selector) {
-		if err := schemaGraph.EvalP(schemaGraph.Nodes[18].Type, p, s); err != nil {
+		if err := schemaGraph.EvalP(schemaGraph.Nodes[19].Type, p, s); err != nil {
 			s.AddError(err)
 		}
 	})
@@ -2932,7 +3064,7 @@ type InstanceSecretFilter struct {
 // Where applies the entql predicate on the query filter.
 func (f *InstanceSecretFilter) Where(p entql.P) {
 	f.addPredicate(func(s *sql.Selector) {
-		if err := schemaGraph.EvalP(schemaGraph.Nodes[19].Type, p, s); err != nil {
+		if err := schemaGraph.EvalP(schemaGraph.Nodes[20].Type, p, s); err != nil {
 			s.AddError(err)
 		}
 	})
@@ -2982,7 +3114,7 @@ type InstanceSettingFilter struct {
 // Where applies the entql predicate on the query filter.
 func (f *InstanceSettingFilter) Where(p entql.P) {
 	f.addPredicate(func(s *sql.Selector) {
-		if err := schemaGraph.EvalP(schemaGraph.Nodes[20].Type, p, s); err != nil {
+		if err := schemaGraph.EvalP(schemaGraph.Nodes[21].Type, p, s); err != nil {
 			s.AddError(err)
 		}
 	})
@@ -3042,7 +3174,7 @@ type InvitationFilter struct {
 // Where applies the entql predicate on the query filter.
 func (f *InvitationFilter) Where(p entql.P) {
 	f.addPredicate(func(s *sql.Selector) {
-		if err := schemaGraph.EvalP(schemaGraph.Nodes[21].Type, p, s); err != nil {
+		if err := schemaGraph.EvalP(schemaGraph.Nodes[22].Type, p, s); err != nil {
 			s.AddError(err)
 		}
 	})
@@ -3127,7 +3259,7 @@ type IssuedCertificateFilter struct {
 // Where applies the entql predicate on the query filter.
 func (f *IssuedCertificateFilter) Where(p entql.P) {
 	f.addPredicate(func(s *sql.Selector) {
-		if err := schemaGraph.EvalP(schemaGraph.Nodes[22].Type, p, s); err != nil {
+		if err := schemaGraph.EvalP(schemaGraph.Nodes[23].Type, p, s); err != nil {
 			s.AddError(err)
 		}
 	})
@@ -3246,7 +3378,7 @@ type LeaseFilter struct {
 // Where applies the entql predicate on the query filter.
 func (f *LeaseFilter) Where(p entql.P) {
 	f.addPredicate(func(s *sql.Selector) {
-		if err := schemaGraph.EvalP(schemaGraph.Nodes[23].Type, p, s); err != nil {
+		if err := schemaGraph.EvalP(schemaGraph.Nodes[24].Type, p, s); err != nil {
 			s.AddError(err)
 		}
 	})
@@ -3301,7 +3433,7 @@ type MembershipFilter struct {
 // Where applies the entql predicate on the query filter.
 func (f *MembershipFilter) Where(p entql.P) {
 	f.addPredicate(func(s *sql.Selector) {
-		if err := schemaGraph.EvalP(schemaGraph.Nodes[24].Type, p, s); err != nil {
+		if err := schemaGraph.EvalP(schemaGraph.Nodes[25].Type, p, s); err != nil {
 			s.AddError(err)
 		}
 	})
@@ -3380,7 +3512,7 @@ type OrgFilter struct {
 // Where applies the entql predicate on the query filter.
 func (f *OrgFilter) Where(p entql.P) {
 	f.addPredicate(func(s *sql.Selector) {
-		if err := schemaGraph.EvalP(schemaGraph.Nodes[25].Type, p, s); err != nil {
+		if err := schemaGraph.EvalP(schemaGraph.Nodes[26].Type, p, s); err != nil {
 			s.AddError(err)
 		}
 	})
@@ -3435,7 +3567,7 @@ type OrgSettingFilter struct {
 // Where applies the entql predicate on the query filter.
 func (f *OrgSettingFilter) Where(p entql.P) {
 	f.addPredicate(func(s *sql.Selector) {
-		if err := schemaGraph.EvalP(schemaGraph.Nodes[26].Type, p, s); err != nil {
+		if err := schemaGraph.EvalP(schemaGraph.Nodes[27].Type, p, s); err != nil {
 			s.AddError(err)
 		}
 	})
@@ -3500,7 +3632,7 @@ type PasswordResetFilter struct {
 // Where applies the entql predicate on the query filter.
 func (f *PasswordResetFilter) Where(p entql.P) {
 	f.addPredicate(func(s *sql.Selector) {
-		if err := schemaGraph.EvalP(schemaGraph.Nodes[27].Type, p, s); err != nil {
+		if err := schemaGraph.EvalP(schemaGraph.Nodes[28].Type, p, s); err != nil {
 			s.AddError(err)
 		}
 	})
@@ -3584,7 +3716,7 @@ type PolicyRuleFilter struct {
 // Where applies the entql predicate on the query filter.
 func (f *PolicyRuleFilter) Where(p entql.P) {
 	f.addPredicate(func(s *sql.Selector) {
-		if err := schemaGraph.EvalP(schemaGraph.Nodes[28].Type, p, s); err != nil {
+		if err := schemaGraph.EvalP(schemaGraph.Nodes[29].Type, p, s); err != nil {
 			s.AddError(err)
 		}
 	})
@@ -3663,7 +3795,7 @@ type PortAllocationFilter struct {
 // Where applies the entql predicate on the query filter.
 func (f *PortAllocationFilter) Where(p entql.P) {
 	f.addPredicate(func(s *sql.Selector) {
-		if err := schemaGraph.EvalP(schemaGraph.Nodes[29].Type, p, s); err != nil {
+		if err := schemaGraph.EvalP(schemaGraph.Nodes[30].Type, p, s); err != nil {
 			s.AddError(err)
 		}
 	})
@@ -3742,7 +3874,7 @@ type PortPoolFilter struct {
 // Where applies the entql predicate on the query filter.
 func (f *PortPoolFilter) Where(p entql.P) {
 	f.addPredicate(func(s *sql.Selector) {
-		if err := schemaGraph.EvalP(schemaGraph.Nodes[30].Type, p, s); err != nil {
+		if err := schemaGraph.EvalP(schemaGraph.Nodes[31].Type, p, s); err != nil {
 			s.AddError(err)
 		}
 	})
@@ -3821,7 +3953,7 @@ type PortQuotaFilter struct {
 // Where applies the entql predicate on the query filter.
 func (f *PortQuotaFilter) Where(p entql.P) {
 	f.addPredicate(func(s *sql.Selector) {
-		if err := schemaGraph.EvalP(schemaGraph.Nodes[31].Type, p, s); err != nil {
+		if err := schemaGraph.EvalP(schemaGraph.Nodes[32].Type, p, s); err != nil {
 			s.AddError(err)
 		}
 	})
@@ -3895,7 +4027,7 @@ type RecoveryCodeFilter struct {
 // Where applies the entql predicate on the query filter.
 func (f *RecoveryCodeFilter) Where(p entql.P) {
 	f.addPredicate(func(s *sql.Selector) {
-		if err := schemaGraph.EvalP(schemaGraph.Nodes[32].Type, p, s); err != nil {
+		if err := schemaGraph.EvalP(schemaGraph.Nodes[33].Type, p, s); err != nil {
 			s.AddError(err)
 		}
 	})
@@ -3969,7 +4101,7 @@ type RevokedIdentityFilter struct {
 // Where applies the entql predicate on the query filter.
 func (f *RevokedIdentityFilter) Where(p entql.P) {
 	f.addPredicate(func(s *sql.Selector) {
-		if err := schemaGraph.EvalP(schemaGraph.Nodes[33].Type, p, s); err != nil {
+		if err := schemaGraph.EvalP(schemaGraph.Nodes[34].Type, p, s); err != nil {
 			s.AddError(err)
 		}
 	})
@@ -4039,7 +4171,7 @@ type RouteFilter struct {
 // Where applies the entql predicate on the query filter.
 func (f *RouteFilter) Where(p entql.P) {
 	f.addPredicate(func(s *sql.Selector) {
-		if err := schemaGraph.EvalP(schemaGraph.Nodes[34].Type, p, s); err != nil {
+		if err := schemaGraph.EvalP(schemaGraph.Nodes[35].Type, p, s); err != nil {
 			s.AddError(err)
 		}
 	})
@@ -4153,7 +4285,7 @@ type RouteHTTPFilter struct {
 // Where applies the entql predicate on the query filter.
 func (f *RouteHTTPFilter) Where(p entql.P) {
 	f.addPredicate(func(s *sql.Selector) {
-		if err := schemaGraph.EvalP(schemaGraph.Nodes[35].Type, p, s); err != nil {
+		if err := schemaGraph.EvalP(schemaGraph.Nodes[36].Type, p, s); err != nil {
 			s.AddError(err)
 		}
 	})
@@ -4291,7 +4423,7 @@ type RouteHostnameFilter struct {
 // Where applies the entql predicate on the query filter.
 func (f *RouteHostnameFilter) Where(p entql.P) {
 	f.addPredicate(func(s *sql.Selector) {
-		if err := schemaGraph.EvalP(schemaGraph.Nodes[36].Type, p, s); err != nil {
+		if err := schemaGraph.EvalP(schemaGraph.Nodes[37].Type, p, s); err != nil {
 			s.AddError(err)
 		}
 	})
@@ -4394,7 +4526,7 @@ type RoutePolicyFilter struct {
 // Where applies the entql predicate on the query filter.
 func (f *RoutePolicyFilter) Where(p entql.P) {
 	f.addPredicate(func(s *sql.Selector) {
-		if err := schemaGraph.EvalP(schemaGraph.Nodes[37].Type, p, s); err != nil {
+		if err := schemaGraph.EvalP(schemaGraph.Nodes[38].Type, p, s); err != nil {
 			s.AddError(err)
 		}
 	})
@@ -4482,7 +4614,7 @@ type RouteTCPFilter struct {
 // Where applies the entql predicate on the query filter.
 func (f *RouteTCPFilter) Where(p entql.P) {
 	f.addPredicate(func(s *sql.Selector) {
-		if err := schemaGraph.EvalP(schemaGraph.Nodes[38].Type, p, s); err != nil {
+		if err := schemaGraph.EvalP(schemaGraph.Nodes[39].Type, p, s); err != nil {
 			s.AddError(err)
 		}
 	})
@@ -4575,7 +4707,7 @@ type RouteTargetFilter struct {
 // Where applies the entql predicate on the query filter.
 func (f *RouteTargetFilter) Where(p entql.P) {
 	f.addPredicate(func(s *sql.Selector) {
-		if err := schemaGraph.EvalP(schemaGraph.Nodes[39].Type, p, s); err != nil {
+		if err := schemaGraph.EvalP(schemaGraph.Nodes[40].Type, p, s); err != nil {
 			s.AddError(err)
 		}
 	})
@@ -4732,7 +4864,7 @@ type RouteUDPFilter struct {
 // Where applies the entql predicate on the query filter.
 func (f *RouteUDPFilter) Where(p entql.P) {
 	f.addPredicate(func(s *sql.Selector) {
-		if err := schemaGraph.EvalP(schemaGraph.Nodes[40].Type, p, s); err != nil {
+		if err := schemaGraph.EvalP(schemaGraph.Nodes[41].Type, p, s); err != nil {
 			s.AddError(err)
 		}
 	})
@@ -4820,7 +4952,7 @@ type SecretMetaFilter struct {
 // Where applies the entql predicate on the query filter.
 func (f *SecretMetaFilter) Where(p entql.P) {
 	f.addPredicate(func(s *sql.Selector) {
-		if err := schemaGraph.EvalP(schemaGraph.Nodes[41].Type, p, s); err != nil {
+		if err := schemaGraph.EvalP(schemaGraph.Nodes[42].Type, p, s); err != nil {
 			s.AddError(err)
 		}
 	})
@@ -4885,7 +5017,7 @@ type SessionFilter struct {
 // Where applies the entql predicate on the query filter.
 func (f *SessionFilter) Where(p entql.P) {
 	f.addPredicate(func(s *sql.Selector) {
-		if err := schemaGraph.EvalP(schemaGraph.Nodes[42].Type, p, s); err != nil {
+		if err := schemaGraph.EvalP(schemaGraph.Nodes[43].Type, p, s); err != nil {
 			s.AddError(err)
 		}
 	})
@@ -4994,7 +5126,7 @@ type TOTPCredentialFilter struct {
 // Where applies the entql predicate on the query filter.
 func (f *TOTPCredentialFilter) Where(p entql.P) {
 	f.addPredicate(func(s *sql.Selector) {
-		if err := schemaGraph.EvalP(schemaGraph.Nodes[43].Type, p, s); err != nil {
+		if err := schemaGraph.EvalP(schemaGraph.Nodes[44].Type, p, s); err != nil {
 			s.AddError(err)
 		}
 	})
@@ -5073,7 +5205,7 @@ type UserFilter struct {
 // Where applies the entql predicate on the query filter.
 func (f *UserFilter) Where(p entql.P) {
 	f.addPredicate(func(s *sql.Selector) {
-		if err := schemaGraph.EvalP(schemaGraph.Nodes[44].Type, p, s); err != nil {
+		if err := schemaGraph.EvalP(schemaGraph.Nodes[45].Type, p, s); err != nil {
 			s.AddError(err)
 		}
 	})

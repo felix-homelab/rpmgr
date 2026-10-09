@@ -13,6 +13,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/agentsession"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/agentstate"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/apirequest"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/apitoken"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/auditentry"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/audithead"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/cabundle"
@@ -164,6 +165,33 @@ func (f TraverseAPIRequest) Traverse(ctx context.Context, q ent.Query) error {
 		return f(ctx, q)
 	}
 	return fmt.Errorf("unexpected query type %T. expect *ent.APIRequestQuery", q)
+}
+
+// The APITokenFunc type is an adapter to allow the use of ordinary function as a Querier.
+type APITokenFunc func(context.Context, *ent.APITokenQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f APITokenFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.APITokenQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.APITokenQuery", q)
+}
+
+// The TraverseAPIToken type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseAPIToken func(context.Context, *ent.APITokenQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseAPIToken) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseAPIToken) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.APITokenQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.APITokenQuery", q)
 }
 
 // The AccessPolicyFunc type is an adapter to allow the use of ordinary function as a Querier.
@@ -1334,6 +1362,8 @@ func NewQuery(q ent.Query) (Query, error) {
 		return &query[*ent.ACMEStorageQuery, predicate.ACMEStorage, acmestorage.OrderOption]{typ: ent.TypeACMEStorage, tq: q}, nil
 	case *ent.APIRequestQuery:
 		return &query[*ent.APIRequestQuery, predicate.APIRequest, apirequest.OrderOption]{typ: ent.TypeAPIRequest, tq: q}, nil
+	case *ent.APITokenQuery:
+		return &query[*ent.APITokenQuery, predicate.APIToken, apitoken.OrderOption]{typ: ent.TypeAPIToken, tq: q}, nil
 	case *ent.AccessPolicyQuery:
 		return &query[*ent.AccessPolicyQuery, predicate.AccessPolicy, accesspolicy.OrderOption]{typ: ent.TypeAccessPolicy, tq: q}, nil
 	case *ent.AgentSessionQuery:

@@ -209,15 +209,16 @@ func Run(ctx context.Context, o RunOptions) error {
 		return err
 	}
 	webSessions := websession.New(websession.Options{DB: db, Sys: sys, RevLog: rl, Now: o.Now, Logger: o.Logger})
+	acc := accounts.New(db, sys, o.Now)
+	tokens := &accounts.Tokens{Accounts: acc, RevLog: rl, Logger: o.Logger}
 	apiServer, err := api.New(api.Options{DB: db, Sys: sys, Sealer: sealer, Resolver: api.StoreResolver(db, sys),
 		OperatorsMayEnroll: api.StoreOperatorsMayEnroll(db, sys), PageKey: pageKey, Now: o.Now, Logger: o.Logger,
-		Authenticator: webSessions, Origins: origins(db, sys, public), RequireMFA: api.StoreRequireMFA(db, sys)})
+		Authenticator: apisvc.Credentials{Sessions: webSessions, Tokens: tokens}, Origins: origins(db, sys, public), RequireMFA: api.StoreRequireMFA(db, sys)})
 	if err != nil {
 		return err
 	}
 	mux := http.NewServeMux()
 	mux.Handle("/.well-known/rpmgr/trust-bundle", enroll.TrustBundleHandler(ca.Root()))
-	acc := accounts.New(db, sys, o.Now)
 	mfa := &accounts.MFA{Accounts: acc, Sealer: sealer, RevLog: rl, Logger: o.Logger}
 	relay := &apisvc.Relay{DB: db, Sys: sys, Sealer: sealer}
 	if err := apiServer.Mount(mux, rpmgrv1.File_rpmgr_v1_auth_proto.Services().ByName("AuthService"),
@@ -232,6 +233,12 @@ func Run(ctx context.Context, o RunOptions) error {
 		func(opts ...connect.HandlerOption) (string, http.Handler) {
 			return rpmgrv1connect.NewUserServiceHandler(&apisvc.User{MFA: mfa, Sessions: webSessions,
 				Issuer: "rpmgr " + public.Hostname()}, opts...)
+		}); err != nil {
+		return err
+	}
+	if err := apiServer.Mount(mux, rpmgrv1.File_rpmgr_v1_token_proto.Services().ByName("TokenService"),
+		func(opts ...connect.HandlerOption) (string, http.Handler) {
+			return rpmgrv1connect.NewTokenServiceHandler(&apisvc.Token{Tokens: tokens, API: apiServer}, opts...)
 		}); err != nil {
 		return err
 	}
