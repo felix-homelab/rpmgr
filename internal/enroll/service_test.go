@@ -10,8 +10,10 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -26,6 +28,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/enroll"
 	"github.com/felix-homelab/rpmgr/internal/ids"
 	"github.com/felix-homelab/rpmgr/internal/pki"
+	"github.com/felix-homelab/rpmgr/internal/revlog"
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/auditentry"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/connector"
@@ -261,6 +264,83 @@ func TestEnroll_ReEnrollment(t *testing.T) {
 		}
 		if n := e.db.Client().Connector.Query().Where(connector.OrgID(e.org)).CountX(e.sys); n != 1 {
 			t.Errorf("%d connectors after a re-enrollment", n)
+		}
+	})
+}
+
+// TestEnroll_ReplacedCertificatesRevoked: a token bound to an identity that already holds a
+// certificate, a connector's re-enrollment or a gateway enrolling again, revokes the old
+// certificates by serial, in the revocation log and the audit log, and applies the deny-list; the
+// identity and the new certificate stay valid. A first enrollment revokes nothing.
+func TestEnroll_ReplacedCertificatesRevoked(t *testing.T) {
+	setup(t, func(t *testing.T, e *env) {
+		addr, svc := e.server(t)
+		logPath := filepath.Join(t.TempDir(), "revocations.log")
+		rl, err := revlog.Open(logPath, func() time.Time { return e.clock })
+		if err != nil {
+			t.Fatal(err)
+		}
+		var denied atomic.Int32
+		svc.RevLog, svc.Denied = rl, func() { denied.Add(1) }
+		c, creds := e.client(t, addr)
+		enrol := func(tok string) (*agentv1.EnrollResponse, string) {
+			t.Helper()
+			r, err := c.Enroll(callCtx(t), &agentv1.EnrollRequest{Token: tok, Csr: boundCSR(t, creds), Host: &agentv1.HostFacts{Hostname: "nas"}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			leaf, err := x509.ParseCertificate(r.GetChain()[0])
+			if err != nil {
+				t.Fatal(err)
+			}
+			return r, pki.SerialHex(leaf.SerialNumber)
+		}
+		revoked := func(serial string) bool { return e.db.Client().IssuedCertificate.GetX(e.sys, serial).RevokedAt != nil }
+
+		first, s1 := enrol(e.mint(t, nil))
+		if denied.Load() != 0 {
+			t.Fatal("a first enrollment applied the deny-list")
+		}
+		e.clock = e.clock.Add(time.Minute)
+		_, s2 := enrol(e.mint(t, func(c *ent.EnrollmentTokenCreate) { c.SetConnectorID(first.GetAgentId()) }))
+		e.clock = e.clock.Add(time.Minute)
+		again, s3 := enrol(e.mint(t, func(c *ent.EnrollmentTokenCreate) { c.SetConnectorID(first.GetAgentId()) }))
+		if again.GetAgentId() != first.GetAgentId() || !revoked(s1) || !revoked(s2) || revoked(s3) {
+			t.Fatalf("after two re-enrollments: id %s, revoked %v %v %v", again.GetAgentId(), revoked(s1), revoked(s2), revoked(s3))
+		}
+		if r := e.db.Client().IssuedCertificate.GetX(e.sys, s1).RevocationReason; r != "replaced by a re-enrollment" {
+			t.Errorf("the reason: %q", r)
+		}
+		if n := e.db.Client().RevokedIdentity.Query().CountX(e.sys); n != 0 {
+			t.Fatalf("%d identities revoked; a re-enrollment revokes certificates only", n)
+		}
+		if denied.Load() != 2 {
+			t.Fatalf("the deny-list was applied %d times", denied.Load())
+		}
+
+		group := e.db.Client().GatewayGroup.Create().SetOrgID(e.org).SetName("eu").SaveX(e.sys)
+		gw := e.db.Client().Gateway.Create().SetOrgID(e.org).SetGatewayGroupID(group.ID).SetName("gw1").
+			SetTunnelEndpoints([]string{"gw1.example.com:443"}).SaveX(e.sys)
+		gwToken := func(c *ent.EnrollmentTokenCreate) {
+			c.SetRole("gateway").SetGatewayGroupID(group.ID).SetGatewayID(gw.ID)
+		}
+		_, g1 := enrol(e.mint(t, gwToken))
+		_, g2 := enrol(e.mint(t, gwToken))
+		if !revoked(g1) || revoked(g2) || revoked(s3) {
+			t.Fatalf("a gateway enrolling again: revoked %v %v, the connector's %v", revoked(g1), revoked(g2), revoked(s3))
+		}
+
+		entries, err := revlog.Read(logPath)
+		if err != nil || len(entries) != 3 {
+			t.Fatalf("the revocation log: %v %v", entries, err)
+		}
+		for i, want := range []string{s1, s2, g1} {
+			if entries[i].Kind != revlog.CertificateRevoked || entries[i].Subject != want || entries[i].NotAfter == nil {
+				t.Errorf("entry %d: %+v, want %s", i, entries[i], want)
+			}
+		}
+		if n := e.db.Client().AuditEntry.Query().Where(auditentry.Action("certificate.revoke")).CountX(e.sys); n != 3 {
+			t.Fatalf("%d audit entries of revocations", n)
 		}
 	})
 }

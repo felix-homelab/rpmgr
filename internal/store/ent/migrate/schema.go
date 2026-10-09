@@ -862,6 +862,7 @@ var (
 	PortPoolsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeString},
 		{Name: "org_id", Type: field.TypeString},
+		{Name: "version", Type: field.TypeInt64, Default: 1},
 		{Name: "protocol", Type: field.TypeEnum, Enums: []string{"tcp", "udp"}},
 		{Name: "port_from", Type: field.TypeInt},
 		{Name: "port_to", Type: field.TypeInt},
@@ -875,7 +876,7 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "port_pools_gateway_groups_group",
-				Columns:    []*schema.Column{PortPoolsColumns[5]},
+				Columns:    []*schema.Column{PortPoolsColumns[6]},
 				RefColumns: []*schema.Column{GatewayGroupsColumns[0]},
 				OnDelete:   schema.NoAction,
 			},

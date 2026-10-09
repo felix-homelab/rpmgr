@@ -174,7 +174,9 @@ func Run(ctx context.Context, o RunOptions) error {
 	agents := NewAgentServer(agentTLS, td)
 	agentv1.RegisterControlServer(agents, sessions)
 	agentv1.RegisterReauthServer(agents, NewReauthService(sessions))
-	agentv1.RegisterEnrollmentServer(agents, enroll.NewService(db, ca, endpoints, o.Now))
+	enrollment := enroll.NewService(db, ca, endpoints, o.Now)
+	enrollment.RevLog, enrollment.Logger, enrollment.Denied = rl, o.Logger, sessions.ApplyDenyList
+	agentv1.RegisterEnrollmentServer(agents, enrollment)
 
 	leases := lease.New(db, nodeID, o.Now)
 	acmeStore := acme.NewStorage(db, sys, sealer, leases, o.Now)

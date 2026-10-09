@@ -131,3 +131,58 @@ func TestDenyDigest(t *testing.T) {
 		t.Error("a serial and an identity with the same text have the same digest")
 	}
 }
+
+// TestRevokeReplaced: a replacement revokes every live certificate of the identity but the one it
+// keeps; it leaves expired and already revoked ones as they were, other identities alone, and the
+// identity valid.
+func TestRevokeReplaced(t *testing.T) {
+	withCA(t, func(t *testing.T, db *store.DB, _ secret.KEK, ca *pki.CA) {
+		sys := storetest.SystemCtx(t)
+		org := storetest.Org(t, db, "org-a")
+		a, other := connector(org, ids.New("con")), connector(org, ids.New("con"))
+		var serials []string
+		for _, id := range []pki.Identity{a, a, a, other} {
+			if err := store.WriteTx(sys, db, func(tx *ent.Tx) error {
+				cert, err := ca.Issue(sys, tx, csrFor(t, newKey(t), nil), id, pki.DefaultLeafLifetime)
+				if err == nil {
+					serials = append(serials, pki.SerialHex(cert.SerialNumber))
+				}
+				return err
+			}); err != nil {
+				t.Fatal(err)
+			}
+		}
+		// serials[0] was revoked before, serials[2] is the one kept.
+		db.Client().IssuedCertificate.UpdateOneID(serials[0]).SetRevokedAt(t0.Add(-time.Hour)).SetRevocationReason("key lost").ExecX(sys)
+		var got []*ent.IssuedCertificate
+		if err := store.WriteTx(sys, db, func(tx *ent.Tx) error {
+			if _, err := pki.RevokeReplaced(sys, tx, pki.Identity{TrustDomain: a.TrustDomain, Kind: pki.KindConnector, ID: "Bad ID"}, "", "x", t0); err == nil {
+				t.Error("an invalid identity was accepted")
+			}
+			// Once every certificate has expired there is nothing to revoke.
+			if late, err := pki.RevokeReplaced(sys, tx, a, serials[2], "replaced", t0.Add(pki.DefaultLeafLifetime+time.Hour)); err != nil || len(late) != 0 {
+				t.Errorf("after expiry: %v %v", late, err)
+			}
+			var err error
+			got, err = pki.RevokeReplaced(sys, tx, a, serials[2], "replaced", t0)
+			return err
+		}); err != nil {
+			t.Fatal(err)
+		}
+		if len(got) != 1 || got[0].ID != serials[1] || got[0].RevocationReason != "replaced" || !got[0].RevokedAt.Equal(t0) {
+			t.Fatalf("revoked %+v, want only %s", got, serials[1])
+		}
+		c := db.Client().IssuedCertificate
+		if r := c.GetX(sys, serials[0]); r.RevocationReason != "key lost" || !r.RevokedAt.Equal(t0.Add(-time.Hour)) {
+			t.Errorf("an earlier revocation changed: %+v", r)
+		}
+		for _, s := range []string{serials[2], serials[3]} {
+			if c.GetX(sys, s).RevokedAt != nil {
+				t.Errorf("%s was revoked", s)
+			}
+		}
+		if n := db.Client().RevokedIdentity.Query().CountX(sys); n != 0 {
+			t.Errorf("%d identities revoked", n)
+		}
+	})
+}

@@ -26,6 +26,20 @@ func (_c *PortPoolCreate) SetOrgID(v string) *PortPoolCreate {
 	return _c
 }
 
+// SetVersion sets the "version" field.
+func (_c *PortPoolCreate) SetVersion(v int64) *PortPoolCreate {
+	_c.mutation.SetVersion(v)
+	return _c
+}
+
+// SetNillableVersion sets the "version" field if the given value is not nil.
+func (_c *PortPoolCreate) SetNillableVersion(v *int64) *PortPoolCreate {
+	if v != nil {
+		_c.SetVersion(*v)
+	}
+	return _c
+}
+
 // SetGatewayGroupID sets the "gateway_group_id" field.
 func (_c *PortPoolCreate) SetGatewayGroupID(v string) *PortPoolCreate {
 	_c.mutation.SetGatewayGroupID(v)
@@ -112,6 +126,10 @@ func (_c *PortPoolCreate) ExecX(ctx context.Context) {
 
 // defaults sets the default values of the builder before save.
 func (_c *PortPoolCreate) defaults() error {
+	if _, ok := _c.mutation.Version(); !ok {
+		v := portpool.DefaultVersion
+		_c.mutation.SetVersion(v)
+	}
 	if _, ok := _c.mutation.ID(); !ok {
 		if portpool.DefaultID == nil {
 			return fmt.Errorf("ent: uninitialized portpool.DefaultID (forgotten import ent/runtime?)")
@@ -130,6 +148,14 @@ func (_c *PortPoolCreate) check() error {
 	if v, ok := _c.mutation.OrgID(); ok {
 		if err := portpool.OrgIDValidator(v); err != nil {
 			return &ValidationError{Name: "org_id", err: fmt.Errorf(`ent: validator failed for field "PortPool.org_id": %w`, err)}
+		}
+	}
+	if _, ok := _c.mutation.Version(); !ok {
+		return &ValidationError{Name: "version", err: errors.New(`ent: missing required field "PortPool.version"`)}
+	}
+	if v, ok := _c.mutation.Version(); ok {
+		if err := portpool.VersionValidator(v); err != nil {
+			return &ValidationError{Name: "version", err: fmt.Errorf(`ent: validator failed for field "PortPool.version": %w`, err)}
 		}
 	}
 	if _, ok := _c.mutation.GatewayGroupID(); !ok {
@@ -210,6 +236,10 @@ func (_c *PortPoolCreate) createSpec() (*PortPool, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.OrgID(); ok {
 		_spec.SetField(portpool.FieldOrgID, field.TypeString, value)
 		_node.OrgID = value
+	}
+	if value, ok := _c.mutation.Version(); ok {
+		_spec.SetField(portpool.FieldVersion, field.TypeInt64, value)
+		_node.Version = value
 	}
 	if value, ok := _c.mutation.Protocol(); ok {
 		_spec.SetField(portpool.FieldProtocol, field.TypeEnum, value)

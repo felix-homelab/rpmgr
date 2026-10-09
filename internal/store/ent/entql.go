@@ -703,6 +703,7 @@ var schemaGraph = func() *sqlgraph.Schema {
 		Type: "PortPool",
 		Fields: map[string]*sqlgraph.FieldSpec{
 			portpool.FieldOrgID:          {Type: field.TypeString, Column: portpool.FieldOrgID},
+			portpool.FieldVersion:        {Type: field.TypeInt64, Column: portpool.FieldVersion},
 			portpool.FieldGatewayGroupID: {Type: field.TypeString, Column: portpool.FieldGatewayGroupID},
 			portpool.FieldProtocol:       {Type: field.TypeEnum, Column: portpool.FieldProtocol},
 			portpool.FieldPortFrom:       {Type: field.TypeInt, Column: portpool.FieldPortFrom},
@@ -3900,6 +3901,11 @@ func (f *PortPoolFilter) WhereID(p entql.StringP) {
 // WhereOrgID applies the entql string predicate on the org_id field.
 func (f *PortPoolFilter) WhereOrgID(p entql.StringP) {
 	f.Where(p.Field(portpool.FieldOrgID))
+}
+
+// WhereVersion applies the entql int64 predicate on the version field.
+func (f *PortPoolFilter) WhereVersion(p entql.Int64P) {
+	f.Where(p.Field(portpool.FieldVersion))
 }
 
 // WhereGatewayGroupID applies the entql string predicate on the gateway_group_id field.

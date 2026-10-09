@@ -23664,6 +23664,8 @@ type PortPoolMutation struct {
 	typ           string
 	id            *string
 	org_id        *string
+	version       *int64
+	addversion    *int64
 	protocol      *portpool.Protocol
 	port_from     *int
 	addport_from  *int
@@ -23815,6 +23817,62 @@ func (m *PortPoolMutation) OldOrgID(ctx context.Context) (v string, err error) {
 // ResetOrgID resets all changes to the "org_id" field.
 func (m *PortPoolMutation) ResetOrgID() {
 	m.org_id = nil
+}
+
+// SetVersion sets the "version" field.
+func (m *PortPoolMutation) SetVersion(i int64) {
+	m.version = &i
+	m.addversion = nil
+}
+
+// Version returns the value of the "version" field in the mutation.
+func (m *PortPoolMutation) Version() (r int64, exists bool) {
+	v := m.version
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldVersion returns the old "version" field's value of the PortPool entity.
+// If the PortPool object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *PortPoolMutation) OldVersion(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldVersion is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldVersion requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldVersion: %w", err)
+	}
+	return oldValue.Version, nil
+}
+
+// AddVersion adds i to the "version" field.
+func (m *PortPoolMutation) AddVersion(i int64) {
+	if m.addversion != nil {
+		*m.addversion += i
+	} else {
+		m.addversion = &i
+	}
+}
+
+// AddedVersion returns the value that was added to the "version" field in this mutation.
+func (m *PortPoolMutation) AddedVersion() (r int64, exists bool) {
+	v := m.addversion
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetVersion resets all changes to the "version" field.
+func (m *PortPoolMutation) ResetVersion() {
+	m.version = nil
+	m.addversion = nil
 }
 
 // SetGatewayGroupID sets the "gateway_group_id" field.
@@ -24075,9 +24133,12 @@ func (m *PortPoolMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *PortPoolMutation) Fields() []string {
-	fields := make([]string, 0, 5)
+	fields := make([]string, 0, 6)
 	if m.org_id != nil {
 		fields = append(fields, portpool.FieldOrgID)
+	}
+	if m.version != nil {
+		fields = append(fields, portpool.FieldVersion)
 	}
 	if m.group != nil {
 		fields = append(fields, portpool.FieldGatewayGroupID)
@@ -24101,6 +24162,8 @@ func (m *PortPoolMutation) Field(name string) (ent.Value, bool) {
 	switch name {
 	case portpool.FieldOrgID:
 		return m.OrgID()
+	case portpool.FieldVersion:
+		return m.Version()
 	case portpool.FieldGatewayGroupID:
 		return m.GatewayGroupID()
 	case portpool.FieldProtocol:
@@ -24120,6 +24183,8 @@ func (m *PortPoolMutation) OldField(ctx context.Context, name string) (ent.Value
 	switch name {
 	case portpool.FieldOrgID:
 		return m.OldOrgID(ctx)
+	case portpool.FieldVersion:
+		return m.OldVersion(ctx)
 	case portpool.FieldGatewayGroupID:
 		return m.OldGatewayGroupID(ctx)
 	case portpool.FieldProtocol:
@@ -24143,6 +24208,13 @@ func (m *PortPoolMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetOrgID(v)
+		return nil
+	case portpool.FieldVersion:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetVersion(v)
 		return nil
 	case portpool.FieldGatewayGroupID:
 		v, ok := value.(string)
@@ -24180,6 +24252,9 @@ func (m *PortPoolMutation) SetField(name string, value ent.Value) error {
 // this mutation.
 func (m *PortPoolMutation) AddedFields() []string {
 	var fields []string
+	if m.addversion != nil {
+		fields = append(fields, portpool.FieldVersion)
+	}
 	if m.addport_from != nil {
 		fields = append(fields, portpool.FieldPortFrom)
 	}
@@ -24194,6 +24269,8 @@ func (m *PortPoolMutation) AddedFields() []string {
 // was not set, or was not defined in the schema.
 func (m *PortPoolMutation) AddedField(name string) (ent.Value, bool) {
 	switch name {
+	case portpool.FieldVersion:
+		return m.AddedVersion()
 	case portpool.FieldPortFrom:
 		return m.AddedPortFrom()
 	case portpool.FieldPortTo:
@@ -24207,6 +24284,13 @@ func (m *PortPoolMutation) AddedField(name string) (ent.Value, bool) {
 // type.
 func (m *PortPoolMutation) AddField(name string, value ent.Value) error {
 	switch name {
+	case portpool.FieldVersion:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddVersion(v)
+		return nil
 	case portpool.FieldPortFrom:
 		v, ok := value.(int)
 		if !ok {
@@ -24250,6 +24334,9 @@ func (m *PortPoolMutation) ResetField(name string) error {
 	switch name {
 	case portpool.FieldOrgID:
 		m.ResetOrgID()
+		return nil
+	case portpool.FieldVersion:
+		m.ResetVersion()
 		return nil
 	case portpool.FieldGatewayGroupID:
 		m.ResetGatewayGroupID()

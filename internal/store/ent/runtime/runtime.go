@@ -1783,18 +1783,29 @@ func init() {
 		})
 	}
 	portpoolMixinHooks0 := portpoolMixin[0].Hooks()
+	portpoolMixinHooks1 := portpoolMixin[1].Hooks()
 
 	portpool.Hooks[1] = portpoolMixinHooks0[0]
+
+	portpool.Hooks[2] = portpoolMixinHooks1[0]
 	portpoolMixinInters0 := portpoolMixin[0].Interceptors()
 	portpool.Interceptors[0] = portpoolMixinInters0[0]
 	portpoolMixinFields0 := portpoolMixin[0].Fields()
 	_ = portpoolMixinFields0
+	portpoolMixinFields1 := portpoolMixin[1].Fields()
+	_ = portpoolMixinFields1
 	portpoolFields := schema.PortPool{}.Fields()
 	_ = portpoolFields
 	// portpoolDescOrgID is the schema descriptor for org_id field.
 	portpoolDescOrgID := portpoolMixinFields0[0].Descriptor()
 	// portpool.OrgIDValidator is a validator for the "org_id" field. It is called by the builders before save.
 	portpool.OrgIDValidator = portpoolDescOrgID.Validators[0].(func(string) error)
+	// portpoolDescVersion is the schema descriptor for version field.
+	portpoolDescVersion := portpoolMixinFields1[0].Descriptor()
+	// portpool.DefaultVersion holds the default value on creation for the version field.
+	portpool.DefaultVersion = portpoolDescVersion.Default.(int64)
+	// portpool.VersionValidator is a validator for the "version" field. It is called by the builders before save.
+	portpool.VersionValidator = portpoolDescVersion.Validators[0].(func(int64) error)
 	// portpoolDescGatewayGroupID is the schema descriptor for gateway_group_id field.
 	portpoolDescGatewayGroupID := portpoolFields[1].Descriptor()
 	// portpool.GatewayGroupIDValidator is a validator for the "gateway_group_id" field. It is called by the builders before save.

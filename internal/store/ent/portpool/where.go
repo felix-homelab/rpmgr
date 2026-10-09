@@ -68,6 +68,11 @@ func OrgID(v string) predicate.PortPool {
 	return predicate.PortPool(sql.FieldEQ(FieldOrgID, v))
 }
 
+// Version applies equality check predicate on the "version" field. It's identical to VersionEQ.
+func Version(v int64) predicate.PortPool {
+	return predicate.PortPool(sql.FieldEQ(FieldVersion, v))
+}
+
 // GatewayGroupID applies equality check predicate on the "gateway_group_id" field. It's identical to GatewayGroupIDEQ.
 func GatewayGroupID(v string) predicate.PortPool {
 	return predicate.PortPool(sql.FieldEQ(FieldGatewayGroupID, v))
@@ -146,6 +151,46 @@ func OrgIDEqualFold(v string) predicate.PortPool {
 // OrgIDContainsFold applies the ContainsFold predicate on the "org_id" field.
 func OrgIDContainsFold(v string) predicate.PortPool {
 	return predicate.PortPool(sql.FieldContainsFold(FieldOrgID, v))
+}
+
+// VersionEQ applies the EQ predicate on the "version" field.
+func VersionEQ(v int64) predicate.PortPool {
+	return predicate.PortPool(sql.FieldEQ(FieldVersion, v))
+}
+
+// VersionNEQ applies the NEQ predicate on the "version" field.
+func VersionNEQ(v int64) predicate.PortPool {
+	return predicate.PortPool(sql.FieldNEQ(FieldVersion, v))
+}
+
+// VersionIn applies the In predicate on the "version" field.
+func VersionIn(vs ...int64) predicate.PortPool {
+	return predicate.PortPool(sql.FieldIn(FieldVersion, vs...))
+}
+
+// VersionNotIn applies the NotIn predicate on the "version" field.
+func VersionNotIn(vs ...int64) predicate.PortPool {
+	return predicate.PortPool(sql.FieldNotIn(FieldVersion, vs...))
+}
+
+// VersionGT applies the GT predicate on the "version" field.
+func VersionGT(v int64) predicate.PortPool {
+	return predicate.PortPool(sql.FieldGT(FieldVersion, v))
+}
+
+// VersionGTE applies the GTE predicate on the "version" field.
+func VersionGTE(v int64) predicate.PortPool {
+	return predicate.PortPool(sql.FieldGTE(FieldVersion, v))
+}
+
+// VersionLT applies the LT predicate on the "version" field.
+func VersionLT(v int64) predicate.PortPool {
+	return predicate.PortPool(sql.FieldLT(FieldVersion, v))
+}
+
+// VersionLTE applies the LTE predicate on the "version" field.
+func VersionLTE(v int64) predicate.PortPool {
+	return predicate.PortPool(sql.FieldLTE(FieldVersion, v))
 }
 
 // GatewayGroupIDEQ applies the EQ predicate on the "gateway_group_id" field.

@@ -19,6 +19,8 @@ type PortPool struct {
 	ID string `json:"id,omitempty"`
 	// OrgID holds the value of the "org_id" field.
 	OrgID string `json:"org_id,omitempty"`
+	// Version holds the value of the "version" field.
+	Version int64 `json:"version,omitempty"`
 	// GatewayGroupID holds the value of the "gateway_group_id" field.
 	GatewayGroupID string `json:"gateway_group_id,omitempty"`
 	// Protocol holds the value of the "protocol" field.
@@ -58,7 +60,7 @@ func (*PortPool) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case portpool.FieldPortFrom, portpool.FieldPortTo:
+		case portpool.FieldVersion, portpool.FieldPortFrom, portpool.FieldPortTo:
 			values[i] = new(sql.NullInt64)
 		case portpool.FieldID, portpool.FieldOrgID, portpool.FieldGatewayGroupID, portpool.FieldProtocol:
 			values[i] = new(sql.NullString)
@@ -88,6 +90,12 @@ func (_m *PortPool) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field org_id", values[i])
 			} else if value.Valid {
 				_m.OrgID = value.String
+			}
+		case portpool.FieldVersion:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field version", values[i])
+			} else if value.Valid {
+				_m.Version = value.Int64
 			}
 		case portpool.FieldGatewayGroupID:
 			if value, ok := values[i].(*sql.NullString); !ok {
@@ -156,6 +164,9 @@ func (_m *PortPool) String() string {
 	builder.WriteString(fmt.Sprintf("id=%v, ", _m.ID))
 	builder.WriteString("org_id=")
 	builder.WriteString(_m.OrgID)
+	builder.WriteString(", ")
+	builder.WriteString("version=")
+	builder.WriteString(fmt.Sprintf("%v", _m.Version))
 	builder.WriteString(", ")
 	builder.WriteString("gateway_group_id=")
 	builder.WriteString(_m.GatewayGroupID)

@@ -38,6 +38,31 @@ func RevokeCertificate(ctx context.Context, tx *ent.Tx, serial, reason string, n
 	return row, err == nil, err
 }
 
+// RevokeReplaced revokes, by serial, every certificate of id that is neither revoked nor expired
+// at now, except the one with serial keep: what a re-enrollment replaces (docs/04-security.md,
+// "Tokens"). The identity itself stays valid, so keep and later renewals of it work. It returns
+// the certificates it revoked.
+func RevokeReplaced(ctx context.Context, tx *ent.Tx, id Identity, keep, reason string, now time.Time) ([]*ent.IssuedCertificate, error) {
+	if err := id.Validate(); err != nil {
+		return nil, err
+	}
+	old, err := tx.IssuedCertificate.Query().Where(issuedcertificate.SubjectID(id.ID), issuedcertificate.SpiffeID(id.String()),
+		issuedcertificate.IDNEQ(keep), issuedcertificate.RevokedAtIsNil(), issuedcertificate.NotAfterGT(now)).
+		Order(ent.Asc(issuedcertificate.FieldID)).All(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]*ent.IssuedCertificate, 0, len(old))
+	for _, c := range old {
+		row, err := tx.IssuedCertificate.UpdateOne(c).SetRevokedAt(now).SetRevocationReason(reason).Save(ctx)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, row)
+	}
+	return out, nil
+}
+
 // RevokeIdentity revokes id at now: every certificate of it is refused from then on, also one
 // issued later, and the deny-list names it until its last certificate expires. changed is false
 // if it was revoked already.

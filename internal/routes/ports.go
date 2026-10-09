@@ -26,6 +26,8 @@ var (
 	ErrPoolExhausted = errors.New("routes: the gateway group's pools have no free port")
 	ErrQuotaReached  = errors.New("routes: the org's port quota for the gateway group is reached")
 	ErrPoolOverlap   = errors.New("routes: the port range overlaps another pool of the gateway group")
+	ErrPoolRange     = errors.New("routes: a port range needs 1 <= from <= to <= 65535")
+	ErrPoolInUse     = errors.New("routes: routes hold ports of the pool outside the new range")
 	ErrNoGroup       = errors.New("routes: no such gateway group")
 )
 
@@ -42,21 +44,54 @@ const (
 // overlaps another pool of the group and protocol.
 func AddPool(ctx context.Context, tx *ent.Tx, org, group string, p Protocol, from, to int) (*ent.PortPool, error) {
 	if from < 1 || to > 65535 || from > to {
-		return nil, fmt.Errorf("routes: port range %d-%d, want 1 <= from <= to <= 65535", from, to)
+		return nil, fmt.Errorf("%w: %d-%d", ErrPoolRange, from, to)
 	}
 	if err := ownGroup(ctx, tx, org, group); err != nil {
 		return nil, err
 	}
-	overlap, err := tx.PortPool.Query().Where(portpool.GatewayGroupID(group), portpool.ProtocolEQ(portpool.Protocol(p)),
-		portpool.PortFromLTE(to), portpool.PortToGTE(from)).Exist(ctx)
-	if err != nil {
+	if err := noOverlap(ctx, tx, "", group, portpool.Protocol(p), from, to); err != nil {
 		return nil, err
-	}
-	if overlap {
-		return nil, ErrPoolOverlap
 	}
 	return tx.PortPool.Create().SetOrgID(org).SetGatewayGroupID(group).SetProtocol(portpool.Protocol(p)).
 		SetPortFrom(from).SetPortTo(to).Save(ctx)
+}
+
+// ResizePool changes the range of pool to from to, refusing a range that overlaps another pool of
+// the group and protocol, or that leaves out a port allocated from the pool.
+func ResizePool(ctx context.Context, tx *ent.Tx, pool *ent.PortPool, from, to int) (*ent.PortPool, error) {
+	if from < 1 || to > 65535 || from > to {
+		return nil, fmt.Errorf("%w: %d-%d", ErrPoolRange, from, to)
+	}
+	if err := noOverlap(ctx, tx, pool.ID, pool.GatewayGroupID, pool.Protocol, from, to); err != nil {
+		return nil, err
+	}
+	// Pools never overlap, so the ports of the old range are this pool's.
+	stranded, err := tx.PortAllocation.Query().Where(portallocation.GatewayGroupID(pool.GatewayGroupID),
+		portallocation.ProtocolEQ(portallocation.Protocol(pool.Protocol)), portallocation.PortGTE(pool.PortFrom),
+		portallocation.PortLTE(pool.PortTo), portallocation.Or(portallocation.PortLT(from), portallocation.PortGT(to))).Exist(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if stranded {
+		return nil, ErrPoolInUse
+	}
+	return tx.PortPool.UpdateOneID(pool.ID).Where(portpool.Version(pool.Version)).SetPortFrom(from).SetPortTo(to).Save(ctx)
+}
+
+// noOverlap refuses a range that overlaps a pool of the group and protocol other than except.
+func noOverlap(ctx context.Context, tx *ent.Tx, except, group string, p portpool.Protocol, from, to int) error {
+	q := tx.PortPool.Query().Where(portpool.GatewayGroupID(group), portpool.ProtocolEQ(p), portpool.PortFromLTE(to), portpool.PortToGTE(from))
+	if except != "" {
+		q.Where(portpool.IDNEQ(except))
+	}
+	overlap, err := q.Exist(ctx)
+	if err != nil {
+		return err
+	}
+	if overlap {
+		return ErrPoolOverlap
+	}
+	return nil
 }
 
 // ownGroup refuses a gateway group of another org; shared groups come in Phase 2.
