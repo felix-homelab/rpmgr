@@ -270,6 +270,8 @@ expect fail "no web/package.json" "$w" "$r"
 mkdir -p "$r/web" && echo '{}' >"$r/web/package.json" && echo '{}' >"$r/web/package-lock.json"
 echo 1 >"$r/web/.nvmrc"
 expect fail "another Node major version than web/.nvmrc" "$w" "$r"
+echo '{"devDependencies": {"@playwright/test": "0.0.1"}}' >"$r/web/package.json"
+expect fail "@playwright/test of another version than the Playwright image" "$dir/check-web-e2e.sh" "$r"
 
 # --- Go checks (need the go command) ----------------------------------------------------------
 if ! command -v go >/dev/null 2>&1; then

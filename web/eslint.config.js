@@ -12,7 +12,7 @@ const html = "Render untrusted data as text (docs/09-web-ui.md, \"Security of th
 const storage = "The UI keeps nothing in browser storage (docs/09-web-ui.md, \"Security of the frontend\").";
 
 export default defineConfig(
-  { ignores: ["src/gen/**"] },
+  { ignores: ["src/gen/**", "test-results/**", "playwright-report/**"] },
   js.configs.recommended,
   tseslint.configs.recommended,
   reactHooks.configs.flat.recommended,
@@ -46,4 +46,6 @@ export default defineConfig(
   // Tests look into browser storage to check that it stays empty.
   { files: ["src/**/*.test.{ts,tsx}"], rules: { "no-restricted-globals": "off" } },
   { files: ["*.config.{js,ts}"], languageOptions: { globals: globals.node } },
+  // Browser tests run in Node and look into the page's storage to check that it stays empty.
+  { files: ["e2e/**"], languageOptions: { globals: globals.node }, rules: { "no-restricted-globals": "off" } },
 );
