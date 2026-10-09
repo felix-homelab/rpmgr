@@ -1,0 +1,65 @@
+# The benchmark suite (docs/12-testing-and-quality.md, "Benchmarks") on GitHub-hosted x86-64 and
+# arm64 runners, started by hand (D49). Each runner uploads its results, the summary and the host
+# details as an artifact and shows the summary in the job summary. The regression check against
+# bench/baselines/<testbed>.jsonl is report-only for v0.x releases.
+name: bench
+
+on:
+  workflow_dispatch:
+    inputs:
+      profile:
+        description: "smoke (a few minutes), standard (RTT 1 and 80 ms, loss 0 and 1 %) or full (the axes of docs/12, hours)"
+        type: choice
+        options: [standard, smoke, full]
+        default: standard
+      host-tuning:
+        description: "Raise the UDP buffer limits as the installer does (docs/03, host tuning); off labels the testbed -untuned"
+        type: boolean
+        default: true
+      args:
+        description: "More flags of bench run, such as -gso off"
+        type: string
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: bench
+  cancel-in-progress: false
+
+jobs:
+  bench:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            testbed: gh-amd64
+          - runner: ubuntu-24.04-arm
+            testbed: gh-arm64
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 340
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - name: UDP buffer limits as the installer sets them
+        if: ${{ inputs.host-tuning }}
+        run: sudo sysctl -w net.core.rmem_max=7340032 net.core.wmem_max=7340032
+      - name: Benchmark
+        env:
+          PROFILE: ${{ inputs.profile }}
+          BENCH_ARGS: ${{ inputs.args }}
+          TESTBED: ${{ matrix.testbed }}${{ !inputs.host-tuning && '-untuned' || '' }}
+        run: .github/scripts/run-bench.sh "$TESTBED" bench-results
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: ${{ !cancelled() }}
+        with:
+          name: bench-${{ matrix.testbed }}
+          path: bench-results/
+          if-no-files-found: warn
+          retention-days: 90

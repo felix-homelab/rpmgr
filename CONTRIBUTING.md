@@ -167,7 +167,7 @@ reviewed better, reverted more safely and released more predictably.
 
 | Kind of change | Limit |
 |---|---|
-| Code (production code, excluding tests, generated files, lockfiles and fixtures) | **Should** stay below 400 changed lines. 400–800 lines **must** explain in the description why it cannot be split. Above 800 lines **must** be split, unless the change is mechanical (rename, move, generated) |
+| Code (production code, excluding tests, the benchmark suite in `bench/`, generated files, lockfiles and fixtures) | **Should** stay below 400 changed lines. 400–800 lines **must** explain in the description why it cannot be split. Above 800 lines **must** be split, unless the change is mechanical (rename, move, generated) |
 | Tests | No limit; tests for a change belong in the same PR |
 | Design documents | One feature or one decision per PR. Above about 1 000 changed lines, split into the decision (ADR and main document) and follow-up edits |
 | Dependency updates | One dependency, or one bot-grouped set, per PR |
