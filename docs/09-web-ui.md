@@ -145,6 +145,12 @@ flowchart LR
   - **Validation:** before sending, the form checks the API's rules. The server's violations land
     on their fields, and any it cannot place are shown with the form.
   - **After a save,** the apply status follows live, as for the switch.
+  - **A save that meets a newer version (U6)** opens a panel in the form. It says who changed the
+    route and how long ago, and lists the fields either side changed, with the user's value next to
+    the saved one. Fields both sides changed differently are marked.
+    - "Put my changes on the new version" refills the form with the saved version and the user's
+      changes on top, for a second save.
+    - "Drop my changes" refills it with the saved version.
 
 ### Enroll connector dialog
 
