@@ -10,7 +10,7 @@ set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
 root=${1:-$(repo_root)}
-image='rhysd/actionlint:1.7.12@sha256:b1934ee5f1c509618f2508e6eb47ee0d3520686341fec936f3b79331f9315667'
+image='mirror.gcr.io/rhysd/actionlint:1.7.12@sha256:b1934ee5f1c509618f2508e6eb47ee0d3520686341fec936f3b79331f9315667'
 
 if ! docker run --rm -u "$(id -u):$(id -g)" -v "$root:/repo:ro" -w /repo "$image" -color; then
   fail "actionlint reported problems (see above)"

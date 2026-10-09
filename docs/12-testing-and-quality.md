@@ -323,6 +323,8 @@ Docker-based ones need Docker), and `test-checks.sh` tests the checks with valid
 
 The jobs `pr-rules`, `lint`, `docs` and `secrets` are required status checks of the `main` ruleset;
 the maintainer adds the others once their PRs are merged (verified 2026-10-09: none is yet). A job
-skipped because a PR does not need it counts as passed. Tool images are pinned by digest in the scripts and actions by commit SHA;
-Dependabot updates the actions. The race detector needs cgo for its runtime; release builds stay
+skipped because a PR does not need it counts as passed. Tool images are pinned by digest in the
+scripts and actions by commit SHA; Dependabot updates the actions. Images from Docker Hub are pulled
+through `mirror.gcr.io`, a public Docker Hub mirror that serves the same digests: GitHub-hosted
+runners share Docker Hub's limit for anonymous pulls, which stopped CI on 2026-10-09. The race detector needs cgo for its runtime; release builds stay
 `CGO_ENABLED=0`. The web stage is added by its Phase 1 slice.
