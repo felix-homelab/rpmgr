@@ -1,12 +1,19 @@
 // SPDX-License-Identifier: Apache-2.0
 
-import { useQuery } from "@connectrpc/connect-query";
+import { Code, ConnectError } from "@connectrpc/connect";
+import { useMutation, useQuery } from "@connectrpc/connect-query";
+import { useQueryClient } from "@tanstack/react-query";
 import { getRouteApi } from "@tanstack/react-router";
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
+import { ApplyStatusView, useLiveApplyStatus } from "@/components/apply-status";
+import { Alert } from "@/components/public-page";
 import { RouteStateChip } from "@/components/route-state";
 import { Button } from "@/components/ui/button";
 import { ConnectorService, DataTransport } from "@/gen/rpmgr/v1/connector_pb";
+import type { Revision } from "@/gen/rpmgr/v1/common_pb";
 import { RouteService, RouteState, type Route, type RouteTarget } from "@/gen/rpmgr/v1/route_pb";
+import type { ApplyStatus } from "@/gen/rpmgr/v1/status_pb";
 import { allowCommand, routeAddress, routeType, useAgentNames, useGroupNames } from "@/routes-data";
 import { useOrg } from "@/session";
 
@@ -22,16 +29,43 @@ export function RouteDetail() {
   const got = useQuery(RouteService.method.getRoute, { routeId });
   const groups = useGroupNames(org?.orgId);
   const names = useAgentNames(org?.orgId);
+  const update = useMutation(RouteService.method.updateRoute);
+  const queryClient = useQueryClient();
+  const [write, setWrite] = useState<{ revision?: Revision; status?: ApplyStatus }>();
+  const [error, setError] = useState("");
+  const live = useLiveApplyStatus(org?.orgId ?? "", write?.revision, write?.status);
   const r = got.data?.route;
+  const name = (id: string) => names.data?.get(id) || id;
+
+  // toggle switches the route on or off, the only desired switch (U3), and follows the change to
+  // the agents (U2).
+  async function toggle(current: Route) {
+    setError("");
+    try {
+      const res = await update.mutateAsync({ route: { ...current, enabled: !current.enabled }, updateMask: { paths: ["enabled"] }, etag: current.etag });
+      setWrite({ revision: res.revision, status: res.applyStatus });
+      await queryClient.invalidateQueries();
+    } catch (err) {
+      const e = ConnectError.from(err);
+      setError(e.code === Code.FailedPrecondition ? t("route.changed") : t("link.failed", { message: e.rawMessage }));
+    }
+  }
+
   if (!r) {
     return <p>{got.isError ? t("route.notFound") : t("stepUp.loading")}</p>;
   }
-  const name = (id: string) => names.data?.get(id) || id;
   const status = r.status;
   const gatewayProblems = status?.notServing.filter((n) => !r.targets.some((tg) => tg.id === n.id)) ?? [];
   return (
     <div className="grid gap-6">
-      <h1 className="text-2xl font-semibold">{t("route.title", { name: r.name, type: t(`routeType.${routeType(r) || "unknown"}`) })}</h1>
+      <div className="flex flex-wrap items-center gap-4">
+        <h1 className="text-2xl font-semibold">{t("route.title", { name: r.name, type: t(`routeType.${routeType(r) || "unknown"}`) })}</h1>
+        <Button role="switch" aria-checked={r.enabled} variant="outline" size="sm" disabled={update.isPending} onClick={() => void toggle(r)}>
+          {t("route.enabledSwitch")}: {r.enabled ? t("route.on") : t("route.off")}
+        </Button>
+      </div>
+      {error && <Alert>{error}</Alert>}
+      {live && <ApplyStatusView status={live} revision={write?.revision} name={name} />}
       <dl className="grid grid-cols-[max-content_1fr] gap-x-6 gap-y-1 text-sm">
         <dt className="text-muted-foreground">{t("route.desired")}</dt>
         <dd>

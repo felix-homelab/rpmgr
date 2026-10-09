@@ -131,6 +131,13 @@ flowchart LR
 - **Gateways that do not serve the route, and agents that rejected it,** are listed with their
   reasons.
 - UDP routes show the MTU hint of [03](03-connections.md#udp-routes).
+- **The "Enabled" switch** turns the route on or off; it is the only desired on/off switch (U3).
+  - It sends the route as read, with the mask `enabled` and the route's etag.
+  - The revision's apply status then follows live (U2): the state over the online agents, each
+    agent that has not applied it with its reasons, and the offline agents, through
+    `WatchApplyStatus`, in a live region (U8).
+  - If the route changed since the page read it, the switch says so, and the page shows the route as
+    it is now.
 
 ### Enroll connector dialog
 

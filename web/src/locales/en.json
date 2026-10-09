@@ -208,7 +208,11 @@
     "runOn": "Run on the host of {{connector}}:",
     "gatewaysTitle": "Gateways not serving",
     "rejections": "Rejected by",
-    "noReason": "no reason given"
+    "noReason": "no reason given",
+    "enabledSwitch": "Enabled",
+    "on": "on",
+    "off": "off",
+    "changed": "The route changed since this page loaded it. The page shows it as it is now; try again."
   },
   "notServing": {
     "BLOCKED_BY_LOCAL_POLICY": "blocked by the connector's local policy",
@@ -219,5 +223,18 @@
     "OFFLINE": "offline",
     "DISABLED": "disabled",
     "NO_DATA_SESSION": "no data session to the connector"
+  },
+  "apply": {
+    "unknown": "Apply status unknown.",
+    "pending": "Revision {{seq}}: applied by {{applied}} of {{total}} agents so far.",
+    "applied": "Revision {{seq}}: applied by all {{total}} agents.",
+    "rejected": "Revision {{seq}}: rejected.",
+    "timeout": "Revision {{seq}}: an agent did not answer in time.",
+    "offline": "Offline, they get it when they connect: {{agents}}",
+    "agent": {
+      "PENDING": "pending",
+      "REJECTED": "rejected",
+      "APPLY_TIMEOUT": "did not answer in time"
+    }
   }
 }
