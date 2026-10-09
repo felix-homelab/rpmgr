@@ -13,7 +13,8 @@
     "domains": "Domains & certificates",
     "policies": "Access policies",
     "org": "Organisation",
-    "audit": "Audit log"
+    "audit": "Audit log",
+    "settings": "Settings"
   },
   "overview": {
     "title": "Overview",
@@ -704,5 +705,84 @@
       "requestId": "Request ID",
       "reason": "Reason"
     }
+  },
+  "settings": {
+    "title": "Settings",
+    "org": "Organisation settings",
+    "instance": "Instance settings",
+    "ownerOnly": "Only the organisation's Owner changes these.",
+    "changed": "The settings changed since this page loaded them. The page shows them as they are now; try again.",
+    "requireMfa": "Every member must sign in with a second factor",
+    "operatorsMayEnroll": "Operators may enroll and revoke connectors",
+    "defaultGroup": "Gateway group preselected for new routes",
+    "none": "None",
+    "days": "Enter whole days for: {{fields}}.",
+    "sections": {
+      "agents": "Agents and transport",
+      "updates": "Updates",
+      "endpoints": "Web UI and controller endpoints",
+      "traffic": "Traffic statistics",
+      "acme": "ACME certificates",
+      "mail": "Mail relay",
+      "audit": "Audit log",
+      "pki": "Agent certificates and passwords"
+    },
+    "fields": {
+      "transport": "Default transport",
+      "leafLifetime": "Agent certificate lifetime (days)",
+      "grace": "Grace after expiry (days, 0 for none)",
+      "passwordHash": "Password hashing",
+      "releaseCheck": "Check for releases once a day",
+      "channel": "Release channel",
+      "aliases": "Further public URLs of the web UI",
+      "endpoints": "Controller endpoints for agents",
+      "hourly": "Keep hourly statistics (days)",
+      "daily": "Keep daily statistics (days)",
+      "acmeDirectory": "ACME directory URL",
+      "acmeEmail": "ACME account e-mail address",
+      "smtpServer": "Relay host:port",
+      "smtpFrom": "Sender address",
+      "smtpUser": "User name",
+      "smtpSecurity": "Encryption",
+      "auditRetention": "Keep audit entries (days)"
+    },
+    "hints": {
+      "leafLifetime": "1 to 30 days.",
+      "grace": "0 to 90 days.",
+      "aliases": "One URL per line, accepted as Origin.",
+      "endpoints": "One URL per line, tried in order; empty means the public URL.",
+      "hourly": "1 to 400 days.",
+      "daily": "1 to 3650 days.",
+      "smtpServer": "Empty: the controller sends no mail.",
+      "auditRetention": "30 to 3650 days."
+    },
+    "options": {
+      "transport": {
+        "auto": "QUIC, falling back to TLS and HTTP/2",
+        "quic": "QUIC only",
+        "h2": "TLS and HTTP/2 only"
+      },
+      "passwordHash": {
+        "default": "Default",
+        "lowMemory": "Low memory (below 1 GiB)"
+      },
+      "channel": {
+        "stable": "Stable",
+        "prerelease": "Pre-releases too"
+      },
+      "smtpSecurity": {
+        "starttls": "STARTTLS, usually port 587",
+        "tls": "TLS, usually port 465"
+      }
+    },
+    "smtpPassword": "Relay password",
+    "passwordSet": "set; type to replace",
+    "passwordNone": "not set",
+    "removePassword": "Remove the password",
+    "smtpPasswordSaved": "The relay password is saved.",
+    "smtpPasswordRemoved": "The relay password is removed.",
+    "pages": "Instance pages",
+    "updates": "Updates",
+    "adminOnly": "Only the Instance Admin sees and changes these."
   }
 }

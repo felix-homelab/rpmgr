@@ -66,6 +66,9 @@ export function Layout() {
             <Link to="/audit" search={{}} className="ml-4 text-muted-foreground [&.active]:text-foreground [&.active]:font-medium">
               {t("nav.audit")}
             </Link>
+            <Link to="/settings" className="ml-4 text-muted-foreground [&.active]:text-foreground [&.active]:font-medium">
+              {t("nav.settings")}
+            </Link>
           </nav>
           <div className="ml-auto flex items-center gap-3 text-sm">
             <Link to="/account" className="text-muted-foreground hover:text-foreground [&.active]:text-foreground">
