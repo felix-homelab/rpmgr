@@ -296,10 +296,14 @@ Rules for every boot file:
 - An omitted key takes the value shown above, except `public_url` (controller) and
   `controller.endpoints` (agents), which are required. `listen.http: ""` disables port 80; the
   other listeners cannot be disabled. `tls.cert_file` and `tls.key_file` go together; a pair that
-  does not load at a re-read keeps the certificate in use. Without them, the controller serves a
-  self-signed certificate for the public URL's host and warns; obtaining it with ACME comes with a
-  later version. `rpmgr enroll` downloads the trust bundle from the public URL, so enrollment needs
-  a certificate the agent host trusts ([04](04-security.md#join-command)).
+  does not load at a re-read keeps the certificate in use. Without them, the controller obtains
+  the certificate of the public URL's host with ACME if the host is a public DNS name, which needs
+  port 80 or 443 reachable from the CA, and serves a self-signed certificate until then; for any
+  other host it keeps the self-signed certificate and warns
+  ([04](04-security.md#controller-certificates)). A change of the ACME settings reaches the
+  controller's own certificate at its next start. `rpmgr enroll` downloads the trust bundle from
+  the public URL, so enrollment needs a certificate the agent host trusts
+  ([04](04-security.md#join-command)).
 - `controller.passthrough` is for gateways only and absent from all-in-one: `address` is
   `host:port`; `hostnames` are lower-case DNS names (internationalised ones in their `xn--` form)
   and need an address ([03](03-connections.md#reaching-a-private-controller)).

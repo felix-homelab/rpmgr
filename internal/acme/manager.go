@@ -20,6 +20,7 @@ import (
 	"github.com/caddyserver/certmagic"
 	"go.uber.org/zap"
 
+	rpmgrv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/v1"
 	"github.com/felix-homelab/rpmgr/internal/certs"
 	"github.com/felix-homelab/rpmgr/internal/lease"
 	"github.com/felix-homelab/rpmgr/internal/secret"
@@ -144,7 +145,16 @@ func (m *Manager) config() (*certmagic.Config, func(), error) {
 		}})
 	cfg := certmagic.New(cache, certmagic.Config{Storage: m.o.Storage, Logger: zap.NewNop(), DisableARI: m.o.DisableARI,
 		RenewalWindowRatio: m.o.RenewalWindowRatio})
-	alt := func() int {
+	cfg.Issuers = []certmagic.Issuer{newIssuer(cfg, inst, m.o.TrustedRoots, m.o.Proxy, false, false)}
+	return cfg, cache.Stop, nil
+}
+
+// newIssuer returns certmagic's ACME issuer for cfg with the CA and account of the instance
+// settings. certmagic still starts its own challenge listeners; they go to free ports of 127.0.0.1,
+// where no CA connects, as the gateways or the controller's own servers answer the challenges.
+func newIssuer(cfg *certmagic.Config, inst *rpmgrv1.InstanceSettings, roots *x509.CertPool,
+	proxy func(*http.Request) (*url.URL, error), noHTTP01, noTLSALPN01 bool) *certmagic.ACMEIssuer {
+	free := func() int {
 		ln, err := net.Listen("tcp", "127.0.0.1:0")
 		if err != nil {
 			return 0
@@ -152,14 +162,11 @@ func (m *Manager) config() (*certmagic.Config, func(), error) {
 		defer func() { _ = ln.Close() }()
 		return ln.Addr().(*net.TCPAddr).Port
 	}
-	cfg.Issuers = []certmagic.Issuer{certmagic.NewACMEIssuer(cfg, certmagic.ACMEIssuer{
-		CA: inst.GetAcmeDirectoryUrl(), Email: inst.GetAcmeEmail(), Agreed: true, TrustedRoots: m.o.TrustedRoots,
-		HTTPProxy: m.o.Proxy, Logger: zap.NewNop(),
-		// certmagic still starts its own challenge listeners; they go where no CA connects, as
-		// the gateways answer the challenges (ChallengeStorage).
-		ListenHost: "127.0.0.1", AltHTTPPort: alt(), AltTLSALPNPort: alt(),
-	})}
-	return cfg, cache.Stop, nil
+	return certmagic.NewACMEIssuer(cfg, certmagic.ACMEIssuer{
+		CA: inst.GetAcmeDirectoryUrl(), Email: inst.GetAcmeEmail(), Agreed: true, TrustedRoots: roots, HTTPProxy: proxy,
+		Logger: zap.NewNop(), DisableHTTPChallenge: noHTTP01, DisableTLSALPNChallenge: noTLSALPN01,
+		ListenHost: "127.0.0.1", AltHTTPPort: free(), AltTLSALPNPort: free(),
+	})
 }
 
 // one obtains or renews the certificate of one hostname and records it.

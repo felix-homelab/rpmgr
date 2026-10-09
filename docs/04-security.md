@@ -200,6 +200,21 @@ later.
 ### Controller certificates
 
 - **UI and public API**: an ACME certificate (certmagic) or one the operator supplies.
+- **The controller's own ACME certificate** [R]: without `tls.cert_file` and `tls.key_file`, a
+  controller whose public URL has a public DNS name (two labels or more; not an IP address,
+  `localhost` or a name under `.local`, `.internal` or `.home.arpa`) obtains and renews the
+  certificate of that name from the instance's ACME CA and account, as read at start. It answers
+  the challenges itself: HTTP-01 on `listen.http`, if set, and TLS-ALPN-01 on 443; on all-in-one
+  both reach it through the gateway. The certificate and the account are stored in the database,
+  encrypted, so a restart or another replica serves it without a new order. Until the first
+  certificate arrives, and for a name no public CA certifies, the controller serves a self-signed
+  certificate; a renewal that fails keeps the certificate in use (retry timing in
+  [03](03-connections.md#timeouts-keepalive-and-backoff)).
+- **HSTS on the UI** [R]: while the public URL has a certificate from files or from ACME, every
+  response on it carries `Strict-Transport-Security: max-age=31536000` (one year), without
+  `includeSubDomains`, as other names under the same domain may not be rpmgr's. A browser ignores
+  the header over a connection with certificate errors [F RFC 6797, section 8.1], so a self-signed
+  certificate gets none.
 - **Agent endpoint**: the internal certificate for `controller.<td>`, selected by SNI via
   `GetConfigForClient` on the same 443 listener, which also sets the client-certificate requirement
   per name ([S3](spikes/S3.md)). For `controller.<td>` a client certificate is optional at the TLS

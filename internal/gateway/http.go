@@ -147,8 +147,8 @@ type HTTPOptions struct {
 	// Challenges answers ACME HTTP-01 challenges on port 80 with the key authorization of a
 	// token for a host; nil answers none.
 	Challenges func(host, token string) (keyAuthorization string, ok bool)
-	// Fallback80 takes port-80 requests for names no route serves: all-in-one's controller
-	// redirect; nil answers 404.
+	// Fallback80 takes port-80 requests for names no route serves: all-in-one's controller, which
+	// answers ACME HTTP-01 for its own name and redirects the rest; nil answers 404.
 	Fallback80 http.Handler
 	Logger     *slog.Logger
 }
@@ -248,6 +248,7 @@ func (h *HTTPRoutes) serve80(w http.ResponseWriter, r *http.Request) {
 	if hp, _, err := net.SplitHostPort(host); err == nil {
 		host = hp
 	}
+	rt := h.routeFor(r.Host, r.URL.Path)
 	if token, ok := strings.CutPrefix(r.URL.Path, acmePath); ok {
 		if h.o.Challenges != nil {
 			if ka, ok := h.o.Challenges(strings.ToLower(host), token); ok {
@@ -256,10 +257,14 @@ func (h *HTTPRoutes) serve80(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		}
+		// all-in-one's controller answers for its own name, which no route serves.
+		if rt == nil && h.o.Fallback80 != nil {
+			h.o.Fallback80.ServeHTTP(w, r)
+			return
+		}
 		http.NotFound(w, r)
 		return
 	}
-	rt := h.routeFor(r.Host, r.URL.Path)
 	if rt == nil {
 		if h.o.Fallback80 != nil {
 			h.o.Fallback80.ServeHTTP(w, r)

@@ -610,7 +610,8 @@ func plain(t *testing.T, addr, method, host, target string) (reply, error) {
 
 // TestHTTPRoutes_Port80: plain HTTP redirects to HTTPS keeping path and query (301 for GET, 308
 // otherwise), serves the route, or closes, as the route says; ACME challenges are answered for any
-// name, even with port 80 off; a name without a route goes to the fallback.
+// name, even with port 80 off; a name without a route goes to the fallback, unknown ACME tokens
+// included.
 func TestHTTPRoutes_Port80(t *testing.T) {
 	route := gateway.HTTPRoute{ID: "rt_web", Upstream: "http", Hosts: []gateway.HTTPHost{{Hostname: "app.example.com"}}}
 	p := newPlaneWith(t, service(t, func(c net.Conn, br *bufio.Reader, line string) {
@@ -663,6 +664,11 @@ func TestHTTPRoutes_Port80(t *testing.T) {
 	if r, err := plain(t, addr, http.MethodGet, "app.example.com", "/.well-known/acme-challenge/unknown"); err != nil ||
 		r.status != http.StatusNotFound {
 		t.Errorf("an unknown ACME token: %v %v", r, err)
+	}
+	// all-in-one's controller answers the challenges of its own name, which no route serves.
+	if r, err := plain(t, addr, http.MethodGet, "panel.example.com", "/.well-known/acme-challenge/unknown"); err != nil ||
+		r.status != http.StatusTeapot {
+		t.Errorf("an unknown ACME token for a name without a route: %v %v", r, err)
 	}
 }
 

@@ -59,8 +59,8 @@ type RunOptions struct {
 	// the private controller of controller.passthrough, and the control sessions connectors carry
 	// through their data sessions; nil dials TCP.
 	ForwardDial func(ctx context.Context, addr string) (net.Conn, error)
-	// Port80Fallback takes port-80 requests for names no route serves: all-in-one's controller
-	// redirect; nil answers 404.
+	// Port80Fallback takes port-80 requests for names no route serves: all-in-one's controller,
+	// which answers ACME HTTP-01 for its own name and redirects the rest; nil answers 404.
 	Port80Fallback http.Handler
 	// Registry, if set, receives the gateway's metrics and Run serves no admin listener;
 	// Readiness then gets the gateway's readiness check.

@@ -17,6 +17,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/mholt/acmez/v3"
 	"github.com/prometheus/client_golang/prometheus"
 
 	agentv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/agent/v1"
@@ -60,6 +61,15 @@ type RunOptions struct {
 	// Readiness then gets the controller's readiness check.
 	Registry  *prometheus.Registry
 	Readiness func(check func(context.Context) error)
+	// NoACME keeps Run from obtaining the public URL's certificate: all-in-one's init runs the
+	// controller in memory only.
+	NoACME bool
+	// Port80, if set, receives the controller's port-80 handler (ACME HTTP-01 for the public URL,
+	// then the redirect), which all-in-one's gateway serves for the names no route serves.
+	Port80 func(http.Handler)
+	// ACMEAfter, if set, holds back obtaining the public URL's certificate until it is closed:
+	// all-in-one's gateway, through which the CA validates, must listen first.
+	ACMEAfter <-chan struct{}
 }
 
 // ErrNotInitialised is returned by Run for a database without an installation.
@@ -67,8 +77,9 @@ var ErrNotInitialised = errors.New("controller: the database holds no installati
 
 // Run runs a controller from its boot file until ctx ends (docs/02-architecture.md,
 // docs/10-operations.md): the database with its lifetime lock and migrations, the CA, the agent
-// endpoint and the web server on port 443 split by name, the redirect on port 80, the singleton
-// jobs, and the admin listener. On the way out it drains its control sessions.
+// endpoint and the web server on port 443 split by name, the redirect on port 80, the public URL's
+// certificate, the singleton jobs, and the admin listener. On the way out it drains its control
+// sessions.
 func Run(ctx context.Context, o RunOptions) error {
 	if o.Getenv == nil {
 		o.Getenv = os.Getenv
@@ -157,13 +168,36 @@ func Run(ctx context.Context, o RunOptions) error {
 	agentv1.RegisterReauthServer(agents, NewReauthService(sessions))
 	agentv1.RegisterEnrollmentServer(agents, enroll.NewService(db, ca, endpoints, o.Now))
 
-	cert, err := newWebCert(cfg.TLS.CertFile, cfg.TLS.KeyFile, public.Hostname(), o.Logger)
+	leases := lease.New(db, nodeID, o.Now)
+	acmeStore := acme.NewStorage(db, sys, sealer, leases, o.Now)
+	defer acmeStore.Close()
+	var own *acme.Own
+	if cfg.TLS.CertFile == "" && !o.NoACME && acme.Eligible(public.Hostname()) {
+		if own, err = acme.NewOwn(acme.OwnOptions{DB: db, Sys: sys, Storage: acmeStore, Host: public.Hostname(),
+			NoHTTP01: *cfg.Listen.HTTP == "" && o.Port80 == nil, TrustedRoots: o.ACMERoots, Logger: o.Logger}); err != nil {
+			return err
+		}
+		defer own.Stop()
+		if err := own.Load(sys); err != nil {
+			o.Logger.Warn("cannot load the public URL's stored certificate", "error", err)
+		}
+	}
+	cert, err := newWebCert(cfg.TLS.CertFile, cfg.TLS.KeyFile, public.Hostname(), own, o.Logger)
 	if err != nil {
 		return err
 	}
+	webTLS := &tls.Config{MinVersion: tls.VersionTLS13, GetCertificate: cert.GetCertificate}
+	port80 := RedirectHandler(public)
+	if own != nil {
+		webTLS.NextProtos = []string{"http/1.1", acmez.ACMETLS1Protocol}
+		port80 = own.HTTPHandler(port80)
+	}
+	if o.Port80 != nil {
+		o.Port80(port80)
+	}
 	mux := http.NewServeMux()
 	mux.Handle("/.well-known/rpmgr/trust-bundle", enroll.TrustBundleHandler(ca.Root()))
-	web := &http.Server{Handler: mux, ReadHeaderTimeout: 10 * time.Second, IdleTimeout: 120 * time.Second,
+	web := &http.Server{Handler: cert.HSTS(mux), ReadHeaderTimeout: 10 * time.Second, IdleTimeout: 120 * time.Second,
 		ErrorLog: slog.NewLogLogger(o.Logger.Handler(), slog.LevelDebug)}
 
 	ln := o.Listener
@@ -179,7 +213,7 @@ func Run(ctx context.Context, o RunOptions) error {
 			_ = ln.Close()
 			return err
 		}
-		redirect = &http.Server{Handler: RedirectHandler(public), ReadHeaderTimeout: 10 * time.Second}
+		redirect = &http.Server{Handler: port80, ReadHeaderTimeout: 10 * time.Second}
 	}
 	split := NewSplitter(td, ln.Addr())
 
@@ -195,11 +229,8 @@ func Run(ctx context.Context, o RunOptions) error {
 	}
 	sessionsDone := make(chan struct{})
 	go func() { sessions.Run(run); close(sessionsDone) }()
-	leases := lease.New(db, nodeID, o.Now)
 	caOpts := CAOptions{DB: db, CA: ca, Sealer: sealer, Leases: leases, Now: o.Now, Logger: o.Logger}
 	go leases.Run(sys, CARotation(caOpts), func(err error) { o.Logger.Warn("CA rotation job", "error", err) })
-	acmeStore := acme.NewStorage(db, sys, sealer, leases, o.Now)
-	defer acmeStore.Close()
 	certManager := acme.NewManager(acme.ManagerOptions{DB: db, Sys: sys, Sealer: sealer, TrustedRoots: o.ACMERoots, Logger: o.Logger,
 		Storage: acme.NewChallengeStorage(acmeStore, sessions, acme.GatewaysServing(db, sys))})
 	go leases.Run(sys, certManager.Job(acme.JobEvery), func(err error) { o.Logger.Warn("ACME job", "error", err) })
@@ -207,11 +238,25 @@ func Run(ctx context.Context, o RunOptions) error {
 	go RenewNodeCertificate(sys, NodeCertOptions{CA: ca, DB: db, Sys: sys, NodeID: nodeID, Holder: holder, Now: o.Now, Logger: o.Logger})
 	serve("agent endpoint", func() error { return agents.Serve(split.Agents()) })
 	serve("web server", func() error {
-		return web.Serve(tls.NewListener(split.Web(), &tls.Config{MinVersion: tls.VersionTLS13, GetCertificate: cert.GetCertificate}))
+		return web.Serve(tls.NewListener(split.Web(), webTLS))
 	})
 	serve("port 443", func() error { return split.Serve(ln) })
 	if redirect != nil {
 		serve("port 80", func() error { return redirect.Serve(httpLn) })
+	}
+	if own != nil {
+		go func() {
+			if o.ACMEAfter != nil {
+				select {
+				case <-o.ACMEAfter:
+				case <-run.Done():
+					return
+				}
+			}
+			if err := own.Manage(run); err != nil {
+				o.Logger.Warn("cannot obtain the public URL's certificate with ACME", "error", err)
+			}
+		}()
 	}
 	if o.Registry == nil {
 		serve("admin listener", func() error { return telemetry.ServeAdmin(run, cfg.Listen.Admin, reg, ready.Ready) })

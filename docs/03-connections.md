@@ -643,8 +643,9 @@ sequenceDiagram
   decides: `redirect` sends the same path and query to HTTPS (**301** for GET and HEAD, **308**
   otherwise, which keeps the method and body), `serve` proxies the route as on 443 with
   `X-Forwarded-Proto: http`, and `off` closes the connection without an answer. A name no route
-  serves is **404**; on all-in-one it gets the controller's redirect to its public URL, as the
-  gateway takes port 80 there too.
+  serves is **404**; on all-in-one it goes to the controller, as the gateway takes port 80 there
+  too: the controller answers the HTTP-01 challenges of its own name and redirects everything else
+  to its public URL.
 - **HSTS**: a route with an HSTS max-age sends `Strict-Transport-Security: max-age=<n>` with every
   HTTPS response, its own and the gateway's errors alike, replacing the upstream's; never over plain
   HTTP.
@@ -994,6 +995,7 @@ sequenceDiagram
 | Gateway drain | 60 s | Time for connectors to re-home |
 | Revocation, tightened access policy | immediate | Security beats continuity |
 | ACME job | looks for certificates to obtain or renew every 1 min, on the replica that holds its lease | New routes get their certificates within a minute or so; renewals are never late by more |
+| Controller's own certificate (ACME) | checked for renewal every 1 min; a failed order is retried after 1 min, then at intervals growing to 6 h, for up to 30 days [F certmagic v0.25.6 `async.go:260-290`] | [R] A CA that is down or a name that does not resolve yet is retried without hammering the CA; the certificate in use serves on meanwhile |
 | ACME challenge push | `OpResult` from every gateway of the name within 10 s | [R] A gateway that cannot answer fails the order before the CA validates, instead of a failed validation counted against the account |
 | Imperative operation | `Open` → `Attach` within 10 s; ticket single-use, valid 30 s; shell idle 30 min | No unbounded waits |
 | P2P | punch window 5 s; retry backoff 30 s → 15 min; also on network change | Don't hammer NATs |
