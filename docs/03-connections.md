@@ -488,6 +488,11 @@ sequenceDiagram
   pre-opened connections that could run empty.
 - **The connector dials only what its own snapshot says.** `StreamOpen` names a `route_id`, never an
   address. A compromised gateway cannot turn a connector into an open proxy.
+- **Only for a route of the opening gateway.** The connector's snapshot lists, per gateway, the
+  routes that gateway serves. A stream for any other route gets `ROUTE_UNKNOWN` before anything is
+  dialled, so a gateway of one gateway group never reaches the targets of another group's routes.
+  A route that a newer snapshot takes from a gateway, as when the gateway moves to another group,
+  is accepted from it for the route drain period, like a removed route.
 - **Targets.** The connector tries a route's targets by priority, lowest first, and within a
   priority in a random order weighted by `weight`; a refused target passes the stream on to the
   next one, all within the upstream dial timeout. A target the local policy blocks is never
