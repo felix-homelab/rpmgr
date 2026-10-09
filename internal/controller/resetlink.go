@@ -55,7 +55,7 @@ func ResetPasswordLink(ctx context.Context, path, email string) (Link, error) {
 		if err != nil {
 			return Link{}, err
 		}
-		return Link{URL: accounts.LinkURL(cfg.PublicURL, tok), Valid: "7 days, to create the first user"}, nil
+		return Link{URL: accounts.SetupURL(cfg.PublicURL, tok), Valid: "7 days, to create the first user"}, nil
 	}
 	norm, err := accounts.NormalizeEmail(email)
 	if err != nil {

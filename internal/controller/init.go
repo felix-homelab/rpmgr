@@ -141,7 +141,7 @@ func Init(ctx context.Context, o InitOptions) (InitResult, error) {
 		return InitResult{}, fmt.Errorf("controller: initialised, but no first-user link (run `rpmgr user reset-password`): %w", err)
 	}
 	return InitResult{TrustDomain: td, RootPin: pki.RootPin(ca.Root()), Root: ca.Root(), KEK: where,
-		FirstUserLink: accounts.LinkURL(cfg.PublicURL, tok)}, nil
+		FirstUserLink: accounts.SetupURL(cfg.PublicURL, tok)}, nil
 }
 
 func (o *InitOptions) setDefaults() {

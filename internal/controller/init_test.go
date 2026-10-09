@@ -87,7 +87,7 @@ func (h host) check(t *testing.T, kek secret.KEK, r controller.InitResult) {
 	if err != nil || head.Seq != 3 {
 		t.Errorf("instance audit chain: %d entries, %v; want the grant, the init and the first-user link", head.Seq, err)
 	}
-	if !strings.HasPrefix(r.FirstUserLink, "https://panel.example.com/reset#rpmgr_prs_") {
+	if !strings.HasPrefix(r.FirstUserLink, "https://panel.example.com/setup#rpmgr_prs_") {
 		t.Errorf("the first-user link %q", r.FirstUserLink)
 	}
 }
