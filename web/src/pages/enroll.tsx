@@ -7,6 +7,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { Field } from "@/components/field";
+import { Command, OneTimeToken } from "@/components/one-time-token";
 import { Alert } from "@/components/public-page";
 import { Button } from "@/components/ui/button";
 import { AgentRole, EnrollmentService } from "@/gen/rpmgr/v1/enrollment_pb";
@@ -19,12 +20,6 @@ import { useStepUp } from "@/step-up";
 const lifetimes = [900, 3600, 86400, 7 * 86400, 30 * 86400];
 
 const lines = (v: string) => v.split("\n").map((l) => l.trim()).filter(Boolean);
-
-// mask hides a token but its kind and its checksum (docs/09-web-ui.md, "Enroll connector dialog").
-export function mask(token: string): string {
-  const i = token.lastIndexOf("_");
-  return `${token.slice(0, "rpmgr_enr_".length)}${"•".repeat(12)}${token.slice(i)}`;
-}
 
 // EnrollDialog mints an enrollment token after a step-up and shows the install command, which never
 // holds the token, and the token once, masked; it then waits for the new connector and opens its
@@ -39,7 +34,6 @@ export function EnrollDialog({ orgId, known, onClose }: { orgId: string; known: 
   const queryClient = useQueryClient();
   const [form, setForm] = useState({ labels: "", group: "", ephemeral: false, uses: "1", lifetime: "3600", targets: "" });
   const [result, setResult] = useState<{ token: string; command: string; lifetime: number }>();
-  const [show, setShow] = useState(false);
   const [error, setError] = useState("");
   const [requestId] = useState(() => crypto.randomUUID());
   const [before] = useState(known); // the connectors when the dialog opened
@@ -129,16 +123,9 @@ export function EnrollDialog({ orgId, known, onClose }: { orgId: string; known: 
       ) : (
         <div className="mt-4 grid gap-3 text-sm">
           <p>{t("enroll.step1")}</p>
-          <div className="flex items-start gap-2">
-            <pre aria-label={t("enroll.command")} className="grow overflow-x-auto rounded bg-muted p-2 font-mono text-xs">{result.command}</pre>
-            <Button size="sm" variant="outline" onClick={() => void navigator.clipboard?.writeText(result.command)}>{t("mfa.copy")}</Button>
-          </div>
+          <Command command={result.command} label={t("enroll.command")} />
           <p>{t("enroll.step2")}</p>
-          <div className="flex items-center gap-2">
-            <code aria-label={t("enroll.token")} className="grow break-all rounded bg-muted p-2 font-mono text-xs">{show ? result.token : mask(result.token)}</code>
-            <Button size="sm" variant="outline" onClick={() => void navigator.clipboard?.writeText(result.token)}>{t("mfa.copy")}</Button>
-            <Button size="sm" variant="outline" aria-pressed={show} onClick={() => setShow(!show)}>{t(show ? "enroll.hide" : "enroll.show")}</Button>
-          </div>
+          <OneTimeToken token={result.token} label={t("enroll.token")} />
           <p className="text-muted-foreground">{t(`enroll.note`, { lifetime: t(`enroll.lifetimes.${result.lifetime}`) })}</p>
           <p role="status" className="flex items-center gap-2"><span aria-hidden="true">⧗</span>{t("enroll.waiting")}</p>
           <div className="flex justify-end"><Button variant="outline" onClick={onClose}>{t("enroll.close")}</Button></div>

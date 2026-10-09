@@ -7,13 +7,15 @@ import { useQueryClient } from "@tanstack/react-query";
 import { getRouteApi, Link, useNavigate } from "@tanstack/react-router";
 import { useState, type FormEvent } from "react";
 import { useTranslation } from "react-i18next";
+import { ApplyStatusView, useLiveApplyStatus } from "@/components/apply-status";
 import { Field } from "@/components/field";
 import { LinesField, trimmed } from "@/components/lines-field";
 import { Alert } from "@/components/public-page";
 import { Button } from "@/components/ui/button";
 import { GatewayGroupSchema, GatewayService, type Gateway, type GatewayGroup } from "@/gen/rpmgr/v1/gateway_pb";
 import { when } from "@/lib/format";
-import { useGateways, useGroups } from "@/routes-data";
+import { GatewayActions, GatewayForm, type Written } from "@/pages/gateway-actions";
+import { useAgentNames, useGateways, useGroups } from "@/routes-data";
 import { useOrg } from "@/session";
 
 // The fields of a gateway group the API changes (internal/apisvc groupFields).
@@ -129,6 +131,16 @@ export function GatewayGroupPage() {
   const groups = useGroups(org?.orgId);
   const gateways = useGateways(org?.orgId);
   const group = groups.data?.find((g) => g.id === groupId);
+  const names = useAgentNames(org?.orgId);
+  const queryClient = useQueryClient();
+  const [editing, setEditing] = useState<string>(); // a gateway's ID, or "new"
+  const [write, setWrite] = useState<Written>();
+  const live = useLiveApplyStatus(org?.orgId ?? "", write?.revision, write?.status);
+  const done = async (w: Written) => {
+    setEditing(undefined);
+    setWrite(w);
+    await queryClient.invalidateQueries();
+  };
   if (!group || !org) {
     return <p>{groups.isPending ? t("stepUp.loading") : t("gateways.notFound")}</p>;
   }
@@ -136,11 +148,12 @@ export function GatewayGroupPage() {
   return (
     <div className="grid max-w-4xl gap-6">
       <h1 className="text-2xl font-semibold">{t("gateways.groupTitle", { name: group.name })}</h1>
+      {live && <ApplyStatusView status={live} revision={write?.revision} name={(id) => names.data?.get(id) || id} />}
       <section aria-labelledby="members-title" className="grid gap-2">
         <h2 id="members-title" className="text-lg font-semibold">{t("gateways.members")}</h2>
         <table className="w-full text-left text-sm">
           <thead className="text-muted-foreground">
-            <tr>{["name", "slot", "endpoints", "state", "version", "lastSeen"].map((c) => <th key={c} scope="col" className="py-1 font-medium">{t(`gateways.gw.${c}`)}</th>)}</tr>
+            <tr>{["name", "slot", "endpoints", "state", "version", "lastSeen", "actions"].map((c) => <th key={c} scope="col" className="py-1 font-medium">{t(`gateways.gw.${c}`)}</th>)}</tr>
           </thead>
           <tbody>
             {members.map((g) => (
@@ -151,11 +164,18 @@ export function GatewayGroupPage() {
                 <td className="py-2"><GatewayChip gateway={g} /></td>
                 <td className="py-2">{g.status?.version}</td>
                 <td className="py-2">{when(g.status?.lastSeenTime)}</td>
+                <td className="py-2"><GatewayActions orgId={org.orgId} gateway={g} onEdit={() => setEditing(g.id)} onDone={(w) => void done(w)} /></td>
               </tr>
             ))}
           </tbody>
         </table>
         {members.length === 0 && <p className="text-sm">{t("gateways.noGateways")}</p>}
+        {editing ? (
+          <GatewayForm key={editing} orgId={org.orgId} groupId={group.id} gateway={members.find((g) => g.id === editing)}
+            onDone={(w) => void done(w)} onCancel={() => setEditing(undefined)} />
+        ) : (
+          <Button size="sm" variant="outline" className="justify-self-start" onClick={() => setEditing("new")}>{t("gwActions.addButton")}</Button>
+        )}
       </section>
       <section aria-labelledby="group-settings-title" className="grid gap-2">
         <h2 id="group-settings-title" className="text-lg font-semibold">{t("gateways.settings")}</h2>

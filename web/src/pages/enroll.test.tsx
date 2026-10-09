@@ -9,7 +9,7 @@ import { GatewayService } from "@/gen/rpmgr/v1/gateway_pb";
 import { RouteService } from "@/gen/rpmgr/v1/route_pb";
 import { StatusService } from "@/gen/rpmgr/v1/status_pb";
 import { Theme, UserService } from "@/gen/rpmgr/v1/user_pb";
-import { mask } from "@/pages/enroll";
+import { mask } from "@/components/one-time-token";
 import { apiError, auth, show } from "@/testing/api";
 
 afterEach(cleanup);

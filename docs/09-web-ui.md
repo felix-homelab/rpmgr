@@ -193,6 +193,17 @@ flowchart LR
   connected or offline, and drained), version and last contact. It also edits the group's name,
   region, public hostnames and trusted proxies, as the whole group as read with their mask and the
   etag (U1).
+- **Gateway actions** on a group's page:
+  - **Add a gateway** with its name and its own tunnel endpoints. A group has at most four; the
+    server says so.
+  - **Edit** its name and endpoints.
+  - **Drain or resume** it (R22, [03](03-connections.md#multiple-gateways)). A drained gateway takes
+    no new public connections, and it ends the open ones after the gateway drain period.
+  - **Decommission** it, after a confirmation that names it.
+  - **For a gateway that has not enrolled,** make its enrollment token after a step-up. The token is
+    bound to that gateway and valid for 1 hour, and is shown once next to the install command,
+    which does not hold it.
+  - **After each change,** the apply status follows live.
 
 ### Enroll connector dialog
 

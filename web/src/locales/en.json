@@ -476,7 +476,21 @@
       "endpoints": "Tunnel endpoints",
       "state": "State",
       "version": "Version",
-      "lastSeen": "Last seen"
+      "lastSeen": "Last seen",
+      "actions": "Actions"
     }
+  },
+  "gwActions": {
+    "addTitle": "New gateway",
+    "editTitle": "Edit gateway",
+    "addButton": "Add a gateway",
+    "add": "Add the gateway",
+    "endpointsHint": "One host:port per line: where connectors reach this gateway, its own address, not the group's.",
+    "drain": "Drain",
+    "resume": "Resume",
+    "drainHint": "Stops new public connections, and ends the open ones after the gateway's drain period.",
+    "token": "Enrollment token…",
+    "tokenIntro": "A token that enrolls {{name}} and nothing else, valid for 1 hour. Making it needs you to confirm it is you.",
+    "decommissionWarning": "Decommissioning {{name}} revokes its identity and ends its sessions for good; its tunnel endpoints stop serving."
   }
 }
