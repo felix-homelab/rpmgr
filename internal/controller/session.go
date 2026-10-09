@@ -65,6 +65,7 @@ type Sessions struct {
 
 	mu       sync.Mutex
 	active   map[string]*session // by agent ID
+	ops      map[string]*op      // operations waiting for their OpResult, by ID
 	draining *time.Time
 }
 
@@ -228,6 +229,8 @@ func (s *Sessions) receive(ctx context.Context, st grpc.BidiStreamingServer[agen
 			s.push.applied(sess, m.GetApplied())
 		case m.GetRejected() != nil && s.push != nil:
 			s.push.rejected(sess, m.GetRejected())
+		case m.GetOpResult() != nil:
+			s.opResult(sess, m.GetOpResult())
 		}
 	}
 }

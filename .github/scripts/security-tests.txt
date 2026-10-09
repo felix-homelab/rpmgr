@@ -62,7 +62,7 @@ TestGateway_CFConnectingIPOnlyForProxiedFromCloudflare	p2	-	-	proxied http route
 TestTransport_PinnedRouteUsesPinnedSessions	done	4.14	#84	precedence clause (route over connector over instance) in internal/routes (4.12)
 TestTransport_PinNeverFallsBack	done	4.14	#84
 TestTransport_ChangeKeepsOpenConnections	done	4.14	#84
-TestACME_ValidationWaitsForEveryGateway	pending	6.2	#103
+TestACME_ValidationWaitsForEveryGateway	done	6.2	#103
 TestACME_DNS01OnlyManagedZones	p2	-	-	ACME DNS-01
 TestPolicy_MetadataAlwaysDenied	done	4.6	#76
 TestOTA_ChannelAndVariantEnforced	p2	-	-	OTA

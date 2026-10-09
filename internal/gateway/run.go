@@ -88,8 +88,9 @@ func Run(ctx context.Context, o RunOptions) error {
 	}
 	applier, assign := NewApplier()
 	var sessions *Sessions
+	challenges := NewChallenges()
 	ctl, err := agent.NewControl(agent.ControlOptions{IdentityDir: cfg.IdentityDir, StateDir: cfg.StateDir, Version: o.Version,
-		Capabilities: Capabilities, Applier: applier, Now: o.Now, Logger: o.Logger, Dial: o.Dial,
+		Capabilities: Capabilities, Applier: applier, Now: o.Now, Logger: o.Logger, Dial: o.Dial, OnAcmeChallenge: challenges.Apply,
 		OnDenyList: func() {
 			if sessions != nil {
 				sessions.Recheck()
@@ -150,7 +151,7 @@ func Run(ctx context.Context, o RunOptions) error {
 		return err
 	}
 	httpRoutes := NewHTTPRoutes(HTTPOptions{Sessions: sessions, Certificates: certificates, Default: &def.Certificates[0],
-		Revision: applier.Revision, Fallback80: o.Port80Fallback, Logger: o.Logger})
+		Revision: applier.Revision, Fallback80: o.Port80Fallback, Challenges: challenges.HTTP01, Logger: o.Logger})
 	defer httpRoutes.Close()
 	applier.Bind(Served{TCP: routes, UDP: udpRoutes, Passthrough: pass, HTTP: httpRoutes, Certificates: certificates, Sessions: sessions})
 
@@ -165,7 +166,7 @@ func Run(ctx context.Context, o RunOptions) error {
 	budget := tunnel.NewBudget(tunnel.DefaultWindowBudget)
 	run, stop := context.WithCancel(context.Background()) // outlives ctx by the drain period
 	defer stop()
-	router := &Router{TrustDomain: id.TrustDomain, GatewayID: id.AgentID, TunnelTLS: h2TLS, DefaultTLS: def, Logger: o.Logger,
+	router := &Router{ACME: challenges.ALPN, TrustDomain: id.TrustDomain, GatewayID: id.AgentID, TunnelTLS: h2TLS, DefaultTLS: def, Logger: o.Logger,
 		Controller: toController, ControllerNames: controllerNames, Routes: NewRouteTable(pass, httpRoutes),
 		HTTP: httpRoutes.Serve, HTTPTLS: httpRoutes.TLSConfig(),
 		Tunnel: func(c *tls.Conn) {
