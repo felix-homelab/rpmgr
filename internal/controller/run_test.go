@@ -193,8 +193,8 @@ func (r *running) stop(t *testing.T) {
 }
 
 // TestRun: a running controller serves the trust bundle over the public URL's certificate with
-// HSTS, enrolls an agent at its agent endpoint, redirects port 80, is ready on its admin listener
-// and stops cleanly; a restart keeps its node identity.
+// HSTS, answers /dl/ from its release mirror, enrolls an agent at its agent endpoint, redirects
+// port 80, is ready on its admin listener and stops cleanly; a restart keeps its node identity.
 func TestRun(t *testing.T) {
 	r := startRun(t)
 	resp, err := r.client.Get(r.url + "/.well-known/rpmgr/trust-bundle")
@@ -220,6 +220,17 @@ func TestRun(t *testing.T) {
 			resp.Header.Get("Strict-Transport-Security") == "" {
 			t.Fatalf("%s: %s %v", path, resp.Status, resp.Header)
 		}
+	}
+
+	// /dl/ is the release mirror, not the UI, which would answer 200; without release root keys
+	// in this build the mirror holds nothing.
+	resp, err = r.client.Get(r.url + "/dl/0.1.0/manifest.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusNotFound || resp.Header.Get("Content-Security-Policy") != "" {
+		t.Fatalf("/dl/: %s %v", resp.Status, resp.Header)
 	}
 
 	// Enrollment through the agent endpoint on the same port; the token is written alongside the

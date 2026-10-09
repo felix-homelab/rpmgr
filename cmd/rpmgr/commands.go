@@ -53,7 +53,7 @@ func commands() *cli.Command {
 				leaf("rotate", "re-wrap every stored secret under a new KEK")),
 			group("user", "administer users on the controller host", userResetPassword()),
 			group("release", "administer release artifacts on the controller host",
-				leaf("import", "import a signed release for air-gapped installations")),
+				releaseImport()),
 			versionCommand(),
 		}, append(apiCommands(), testCommands...)...),
 	}
@@ -218,6 +218,32 @@ func controllerInit() *cli.Command {
 			_, err = fmt.Fprintf(env.Stdout, "Initialised the controller.\n  trust domain: %s\n  CA pin:       %s\n"+
 				"  KEK:          %s\nBack up the KEK separately: without it the database cannot be read.\n"+firstUser,
 				r.TrustDomain, r.RootPin, r.KEK, r.FirstUserLink)
+			return err
+		},
+	}
+}
+
+// releaseImport is `rpmgr release import`: the controller's own release from a directory, for
+// air-gapped installations (D59).
+func releaseImport() *cli.Command {
+	var configPath string
+	return &cli.Command{
+		Name:    "import",
+		Summary: "import a signed release for air-gapped installations",
+		Args:    "<dir>",
+		Flags: func(fs *flag.FlagSet) {
+			fs.StringVar(&configPath, "config", "", "the controller's boot file, or all-in-one's (default $RPMGR_CONFIG, else /etc/rpmgr/controller.yaml)")
+		},
+		Run: func(ctx context.Context, env *cli.Env, args []string) error {
+			if len(args) != 1 {
+				return cli.Usagef("release import needs the directory of a release")
+			}
+			v := version.Get().Version
+			m, err := controller.ImportRelease(ctx, config.Path(configPath, "controller", env.Getenv), args[0], v, release.Roots(), time.Now)
+			if err != nil {
+				return err
+			}
+			_, err = fmt.Fprintf(env.Stdout, "Imported rpmgr %s (manifest %d); the controller serves it under /dl/%s/.\n", m.Version, m.Seq, m.Version)
 			return err
 		},
 	}
