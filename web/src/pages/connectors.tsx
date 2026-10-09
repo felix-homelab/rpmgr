@@ -3,6 +3,7 @@
 import { getRouteApi, Link, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
+import { ManifestButton } from "@/components/manifest";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import type { Connector } from "@/gen/rpmgr/v1/connector_pb";
@@ -59,6 +60,7 @@ export function Connectors() {
       <div className="flex items-center gap-4">
         <h1 id="connectors-title" className="text-2xl font-semibold">{t("connectors.title")}</h1>
         <Button size="sm" className="ml-auto" disabled={!org} onClick={() => setEnrolling(true)}>{t("enroll.open")}</Button>
+        {org && <ManifestButton label={t("manifest.export")} title={t("manifest.ofKind", { what: t("connectors.title") })} orgId={org.orgId} kinds={["Connector"]} file="connectors" />}
       </div>
       {enrolling && org && <EnrollDialog orgId={org.orgId} known={new Set((list.data ?? []).map((c) => c.id))} onClose={() => setEnrolling(false)} />}
       <div className="flex flex-wrap items-end gap-3" role="search">

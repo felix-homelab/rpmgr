@@ -2,6 +2,7 @@
 
 import { getRouteApi, Link, useNavigate } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
+import { ManifestButton } from "@/components/manifest";
 import { RouteStateChip, routeStateKey, routeStateKeys } from "@/components/route-state";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -55,6 +56,7 @@ export function Routes() {
       <div className="flex items-center gap-4">
         <h1 id="routes-title" className="text-2xl font-semibold">{t("routes.title")}</h1>
         <Button asChild size="sm" className="ml-auto"><Link to="/routes/new">{t("routes.create")}</Link></Button>
+        {org && <ManifestButton label={t("manifest.export")} title={t("manifest.ofKind", { what: t("routes.title") })} orgId={org.orgId} kinds={["Route"]} file="routes" />}
       </div>
       <div className="flex flex-wrap items-end gap-3" role="search">
         <label className="grid gap-1 text-sm">

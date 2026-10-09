@@ -867,5 +867,17 @@
     "domainsFine": "Every domain is verified.",
     "tokens": "Your API tokens",
     "tokensFine": "None of your API tokens expires within 21 days."
+  },
+  "manifest": {
+    "yaml": "YAML",
+    "export": "Export YAML",
+    "of": "{{name}} as YAML",
+    "ofKind": "{{what}} as YAML",
+    "count_one": "{{count}} resource. Editing and importing YAML come with Phase 2.",
+    "count_other": "{{count}} resources. Editing and importing YAML come with Phase 2.",
+    "loading": "Loading the viewer…",
+    "copied": "Copied",
+    "download": "Download",
+    "close": "Close"
   }
 }

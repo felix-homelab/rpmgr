@@ -9,6 +9,7 @@ import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
 import { ApplyStatusView, useLiveApplyStatus } from "@/components/apply-status";
 import { LinesField, trimmed } from "@/components/lines-field";
+import { ManifestButton } from "@/components/manifest";
 import { Alert } from "@/components/public-page";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -77,6 +78,7 @@ export function Policies() {
       <div className="flex items-center gap-4">
         <h1 id="policies-title" className="text-2xl font-semibold">{t("policies.title")}</h1>
         <Button size="sm" className="ml-auto" disabled={!org} onClick={() => setEditing("new")}>{t("policies.add")}</Button>
+        {org && <ManifestButton label={t("manifest.export")} title={t("manifest.ofKind", { what: t("policies.title") })} orgId={org.orgId} kinds={["AccessPolicy"]} file="access-policies" />}
       </div>
       {live && <ApplyStatusView status={live} revision={write?.revision} name={(id) => names.data?.get(id) || id} />}
       {editing && org && (

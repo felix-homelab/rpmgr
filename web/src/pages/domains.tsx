@@ -6,6 +6,7 @@ import { useMutation, useQuery as useConnectQuery, useTransport } from "@connect
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState, type FormEvent } from "react";
 import { useTranslation } from "react-i18next";
+import { ManifestButton } from "@/components/manifest";
 import { Command } from "@/components/one-time-token";
 import { Alert } from "@/components/public-page";
 import { Button } from "@/components/ui/button";
@@ -60,6 +61,7 @@ export function Domains() {
       <div className="flex items-center gap-4">
         <h2 id="domains-title" className="text-lg font-semibold">{t("domains.title")}</h2>
         <Button size="sm" className="ml-auto" disabled={!org} onClick={() => setClaiming(true)}>{t("domains.claim")}</Button>
+        {org && <ManifestButton label={t("manifest.export")} title={t("manifest.ofKind", { what: t("domains.title") })} orgId={org.orgId} kinds={["Domain"]} file="domains" />}
       </div>
       {claiming && org && <ClaimForm orgId={org.orgId} onDone={() => setClaiming(false)} />}
       <ul className="grid gap-2">

@@ -141,6 +141,16 @@ flowchart LR
   refuses and the lint rule against `dangerouslySetInnerHTML` forbids
   ([Frontend architecture](#frontend-architecture)).
 
+### YAML view
+
+- **"YAML"** on the detail of a route, a connector or a gateway group shows its manifest, with
+  the group's gateways. **"Export YAML"** on the list of routes, connectors, gateways, access
+  policies, domains and CA bundles shows every resource of that list's kinds.
+- **The dialog** shows the manifests read-only, with line numbers and highlighting, and how many
+  there are. It has buttons to copy them and to download them as a `.yaml` file
+  ([07](07-api.md#declarative-manifests)). The text can be selected with the keyboard.
+- **Loading:** CodeMirror loads only when a YAML view opens.
+
 ### Route detail
 
 ```
@@ -522,7 +532,8 @@ In Phase 1 the UI works in the user's first org. The org switcher comes with the
   read it.
 - **Strict Content Security Policy:**
   `default-src 'self'; script-src 'self'; style-src 'self' 'nonce-<per-response>'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'`.
-  CodeMirror injects style elements and must receive the nonce [V VB-07].
+  CodeMirror injects style elements, which carry the page's nonce from its `csp-nonce` meta element
+  (VB-07, resolved in [13](13-roadmap.md#verification-backlog)).
   Also: no inline scripts, no `eval`, no third-party origins (fonts and icons are bundled).
   The nonce is 128 random bits, new for each response.
 - [R] **Other response headers:**

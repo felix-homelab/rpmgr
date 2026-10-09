@@ -61,6 +61,16 @@ test("signs in, creates an API token with a step-up, sets up an authenticator an
   await expect(page.getByRole("cell", { name: "Intermediate", exact: true })).toBeVisible();
   await expectAccessible(page);
 
+  // The YAML view: CodeMirror's style elements carry the page's nonce, so its styles apply (VB-07).
+  await page.getByRole("link", { name: "Routes" }).click();
+  await page.getByRole("button", { name: "Export YAML" }).click();
+  const yaml = page.getByRole("dialog", { name: "Routes as YAML" });
+  await expect(yaml.getByRole("textbox", { name: "Routes as YAML" })).toBeVisible();
+  await expect(yaml.locator(".cm-editor")).toHaveCSS("display", "flex");
+  await expect(yaml.locator(".cm-gutters")).toHaveCSS("border-right-style", "none");
+  await expectAccessible(page);
+  await yaml.getByRole("button", { name: "Close" }).click();
+
   // An API token: its creation needs a step-up, which the dialog asks for in the page.
   await page.getByRole("link", { name: "Ada" }).click();
   await expect(page.getByRole("heading", { name: "Account", level: 1 })).toBeVisible();
