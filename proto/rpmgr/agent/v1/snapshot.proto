@@ -121,6 +121,10 @@ message GatewayHTTPRoute {
   uint64 max_body_bytes = 9;
   // The gateway group's trusted proxies: the CIDRs whose forwarding headers the gateway keeps.
   repeated string trusted_proxies = 10;
+  // What plain HTTP on port 80 does: "redirect" to HTTPS, "serve" the route, or "off".
+  string port80 = 11;
+  // The max-age of Strict-Transport-Security sent over HTTPS; 0 sends none.
+  uint32 hsts_max_age_seconds = 12;
 }
 
 // HTTPHeader is a header name with its value.

@@ -602,6 +602,7 @@ var schemaGraph = func() *sqlgraph.Schema {
 			routehttp.FieldTLSMode:            {Type: field.TypeEnum, Column: routehttp.FieldTLSMode},
 			routehttp.FieldCertificateID:      {Type: field.TypeString, Column: routehttp.FieldCertificateID},
 			routehttp.FieldPort80:             {Type: field.TypeEnum, Column: routehttp.FieldPort80},
+			routehttp.FieldHstsMaxAgeSeconds:  {Type: field.TypeInt, Column: routehttp.FieldHstsMaxAgeSeconds},
 			routehttp.FieldHostHeader:         {Type: field.TypeString, Column: routehttp.FieldHostHeader},
 			routehttp.FieldRequestHeadersSet:  {Type: field.TypeJSON, Column: routehttp.FieldRequestHeadersSet},
 			routehttp.FieldResponseHeadersSet: {Type: field.TypeJSON, Column: routehttp.FieldResponseHeadersSet},
@@ -3199,6 +3200,11 @@ func (f *RouteHTTPFilter) WhereCertificateID(p entql.StringP) {
 // WherePort80 applies the entql string predicate on the port80 field.
 func (f *RouteHTTPFilter) WherePort80(p entql.StringP) {
 	f.Where(p.Field(routehttp.FieldPort80))
+}
+
+// WhereHstsMaxAgeSeconds applies the entql int predicate on the hsts_max_age_seconds field.
+func (f *RouteHTTPFilter) WhereHstsMaxAgeSeconds(p entql.IntP) {
+	f.Where(p.Field(routehttp.FieldHstsMaxAgeSeconds))
 }
 
 // WhereHostHeader applies the entql string predicate on the host_header field.

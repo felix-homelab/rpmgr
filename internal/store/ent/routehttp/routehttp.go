@@ -29,6 +29,8 @@ const (
 	FieldCertificateID = "certificate_id"
 	// FieldPort80 holds the string denoting the port80 field in the database.
 	FieldPort80 = "port80"
+	// FieldHstsMaxAgeSeconds holds the string denoting the hsts_max_age_seconds field in the database.
+	FieldHstsMaxAgeSeconds = "hsts_max_age_seconds"
 	// FieldHostHeader holds the string denoting the host_header field in the database.
 	FieldHostHeader = "host_header"
 	// FieldRequestHeadersSet holds the string denoting the request_headers_set field in the database.
@@ -73,6 +75,7 @@ var Columns = []string{
 	FieldTLSMode,
 	FieldCertificateID,
 	FieldPort80,
+	FieldHstsMaxAgeSeconds,
 	FieldHostHeader,
 	FieldRequestHeadersSet,
 	FieldResponseHeadersSet,
@@ -106,6 +109,10 @@ var (
 	RouteIDValidator func(string) error
 	// DefaultPathPrefix holds the default value on creation for the "path_prefix" field.
 	DefaultPathPrefix string
+	// DefaultHstsMaxAgeSeconds holds the default value on creation for the "hsts_max_age_seconds" field.
+	DefaultHstsMaxAgeSeconds int
+	// HstsMaxAgeSecondsValidator is a validator for the "hsts_max_age_seconds" field. It is called by the builders before save.
+	HstsMaxAgeSecondsValidator func(int) error
 	// DefaultHostHeader holds the default value on creation for the "host_header" field.
 	DefaultHostHeader string
 	// HostHeaderValidator is a validator for the "host_header" field. It is called by the builders before save.
@@ -209,6 +216,11 @@ func ByCertificateID(opts ...sql.OrderTermOption) OrderOption {
 // ByPort80 orders the results by the port80 field.
 func ByPort80(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldPort80, opts...).ToFunc()
+}
+
+// ByHstsMaxAgeSeconds orders the results by the hsts_max_age_seconds field.
+func ByHstsMaxAgeSeconds(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldHstsMaxAgeSeconds, opts...).ToFunc()
 }
 
 // ByHostHeader orders the results by the host_header field.

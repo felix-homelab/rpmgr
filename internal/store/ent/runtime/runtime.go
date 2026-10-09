@@ -1495,24 +1495,30 @@ func init() {
 	routehttpDescPathPrefix := routehttpFields[1].Descriptor()
 	// routehttp.DefaultPathPrefix holds the default value on creation for the path_prefix field.
 	routehttp.DefaultPathPrefix = routehttpDescPathPrefix.Default.(string)
+	// routehttpDescHstsMaxAgeSeconds is the schema descriptor for hsts_max_age_seconds field.
+	routehttpDescHstsMaxAgeSeconds := routehttpFields[6].Descriptor()
+	// routehttp.DefaultHstsMaxAgeSeconds holds the default value on creation for the hsts_max_age_seconds field.
+	routehttp.DefaultHstsMaxAgeSeconds = routehttpDescHstsMaxAgeSeconds.Default.(int)
+	// routehttp.HstsMaxAgeSecondsValidator is a validator for the "hsts_max_age_seconds" field. It is called by the builders before save.
+	routehttp.HstsMaxAgeSecondsValidator = routehttpDescHstsMaxAgeSeconds.Validators[0].(func(int) error)
 	// routehttpDescHostHeader is the schema descriptor for host_header field.
-	routehttpDescHostHeader := routehttpFields[6].Descriptor()
+	routehttpDescHostHeader := routehttpFields[7].Descriptor()
 	// routehttp.DefaultHostHeader holds the default value on creation for the host_header field.
 	routehttp.DefaultHostHeader = routehttpDescHostHeader.Default.(string)
 	// routehttp.HostHeaderValidator is a validator for the "host_header" field. It is called by the builders before save.
 	routehttp.HostHeaderValidator = routehttpDescHostHeader.Validators[0].(func(string) error)
 	// routehttpDescWebsocket is the schema descriptor for websocket field.
-	routehttpDescWebsocket := routehttpFields[9].Descriptor()
+	routehttpDescWebsocket := routehttpFields[10].Descriptor()
 	// routehttp.DefaultWebsocket holds the default value on creation for the websocket field.
 	routehttp.DefaultWebsocket = routehttpDescWebsocket.Default.(bool)
 	// routehttpDescMaxBodyBytes is the schema descriptor for max_body_bytes field.
-	routehttpDescMaxBodyBytes := routehttpFields[10].Descriptor()
+	routehttpDescMaxBodyBytes := routehttpFields[11].Descriptor()
 	// routehttp.DefaultMaxBodyBytes holds the default value on creation for the max_body_bytes field.
 	routehttp.DefaultMaxBodyBytes = routehttpDescMaxBodyBytes.Default.(int64)
 	// routehttp.MaxBodyBytesValidator is a validator for the "max_body_bytes" field. It is called by the builders before save.
 	routehttp.MaxBodyBytesValidator = routehttpDescMaxBodyBytes.Validators[0].(func(int64) error)
 	// routehttpDescDNSProxied is the schema descriptor for dns_proxied field.
-	routehttpDescDNSProxied := routehttpFields[11].Descriptor()
+	routehttpDescDNSProxied := routehttpFields[12].Descriptor()
 	// routehttp.DefaultDNSProxied holds the default value on creation for the dns_proxied field.
 	routehttp.DefaultDNSProxied = routehttpDescDNSProxied.Default.(bool)
 	routehostnameMixin := schema.RouteHostname{}.Mixin()

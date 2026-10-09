@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
+	"net/http"
 	"path/filepath"
 	"time"
 
@@ -58,6 +59,9 @@ type RunOptions struct {
 	// the private controller of controller.passthrough, and the control sessions connectors carry
 	// through their data sessions; nil dials TCP.
 	ForwardDial func(ctx context.Context, addr string) (net.Conn, error)
+	// Port80Fallback takes port-80 requests for names no route serves: all-in-one's controller
+	// redirect; nil answers 404.
+	Port80Fallback http.Handler
 	// Registry, if set, receives the gateway's metrics and Run serves no admin listener;
 	// Readiness then gets the gateway's readiness check.
 	Registry  *prometheus.Registry
@@ -146,7 +150,7 @@ func Run(ctx context.Context, o RunOptions) error {
 		return err
 	}
 	httpRoutes := NewHTTPRoutes(HTTPOptions{Sessions: sessions, Certificates: certificates, Default: &def.Certificates[0],
-		Revision: applier.Revision, Logger: o.Logger})
+		Revision: applier.Revision, Fallback80: o.Port80Fallback, Logger: o.Logger})
 	defer httpRoutes.Close()
 	applier.Bind(Served{TCP: routes, UDP: udpRoutes, Passthrough: pass, HTTP: httpRoutes, Certificates: certificates, Sessions: sessions})
 
@@ -210,6 +214,14 @@ func Run(ctx context.Context, o RunOptions) error {
 		_ = qln.Close()
 		return err
 	}
+	var plain net.Listener // port 80
+	if cfg.Listen.HTTP != nil && *cfg.Listen.HTTP != "" {
+		if plain, err = net.Listen("tcp", *cfg.Listen.HTTP); err != nil {
+			_ = qln.Close()
+			_ = tcp.Close()
+			return err
+		}
+	}
 
 	if err := ctl.Register(reg); err != nil {
 		return err
@@ -230,6 +242,13 @@ func Run(ctx context.Context, o RunOptions) error {
 		o.Readiness(ctl.Ready)
 	}
 	go func() { _ = router.Serve(tcp) }()
+	if plain != nil {
+		go func() {
+			if err := httpRoutes.Serve80(plain); err != nil && !errors.Is(err, net.ErrClosed) {
+				o.Logger.Warn("port 80 stopped", "error", err)
+			}
+		}()
+	}
 	go certificates.Run(run)
 	go func() {
 		for {
@@ -257,6 +276,9 @@ func Run(ctx context.Context, o RunOptions) error {
 	// Drain: no new public connections or data sessions; the open streams get the drain period,
 	// and the gateway stops earlier once none is left.
 	_ = tcp.Close()
+	if plain != nil {
+		_ = plain.Close()
+	}
 	_ = qln.Close()
 	routes.Drain()
 	httpRoutes.Drain()

@@ -10,6 +10,7 @@ import (
 	"crypto/x509"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net"
 	"net/http"
@@ -76,6 +77,10 @@ type HTTPRoute struct {
 	MaxBody int64
 	// TrustedProxies are the clients whose forwarding headers the gateway keeps.
 	TrustedProxies []netip.Prefix
+	// Port80 is what plain HTTP does: "redirect" (also ""), "serve" or "off".
+	Port80 string
+	// HSTS is the max-age, in seconds, of Strict-Transport-Security over HTTPS; 0 sends none.
+	HSTS int
 }
 
 // HTTPHeader is a header name, canonical, and its value; "" removes the header.
@@ -135,18 +140,25 @@ type HTTPOptions struct {
 	// certificate error rather than a reset.
 	Default  *tls.Certificate
 	Revision func() *agentv1.Revision
-	Logger   *slog.Logger
+	// Challenges answers ACME HTTP-01 challenges on port 80 with the key authorization of a
+	// token for a host; nil answers none.
+	Challenges func(host, token string) (keyAuthorization string, ok bool)
+	// Fallback80 takes port-80 requests for names no route serves: all-in-one's controller
+	// redirect; nil answers 404.
+	Fallback80 http.Handler
+	Logger     *slog.Logger
 }
 
 // HTTPRoutes serves the http routes (docs/03-connections.md, "HTTP routes"): it terminates TLS
 // with the route certificate for the server name, routes each request by host and the longest
 // path prefix, and proxies it over a tunnel stream to a connector of the route.
 type HTTPRoutes struct {
-	o      HTTPOptions
-	server *http.Server
-	ln     *connListener
-	table  atomic.Pointer[httpTable]
-	active atomic.Int64 // requests being served
+	o        HTTPOptions
+	server   *http.Server
+	server80 *http.Server
+	ln       *connListener
+	table    atomic.Pointer[httpTable]
+	active   atomic.Int64 // requests being served
 
 	mu         sync.Mutex
 	transports map[string]*routeTransport // by route ID
@@ -184,7 +196,67 @@ func NewHTTPRoutes(o HTTPOptions) *HTTPRoutes {
 	h.server = &http.Server{Handler: h, ReadHeaderTimeout: httpReadHeader, IdleTimeout: httpIdle, Protocols: protocols,
 		ErrorLog: slog.NewLogLogger(o.Logger.Handler(), slog.LevelDebug)}
 	go func() { _ = h.server.Serve(h.ln) }()
+	h.server80 = &http.Server{Handler: http.HandlerFunc(h.serve80), ReadHeaderTimeout: httpReadHeader, IdleTimeout: httpIdle,
+		ErrorLog: slog.NewLogLogger(o.Logger.Handler(), slog.LevelDebug)}
 	return h
+}
+
+// Serve80 serves plain HTTP on port 80 from ln until Drain or Close.
+func (h *HTTPRoutes) Serve80(ln net.Listener) error {
+	if err := h.server80.Serve(ln); !errors.Is(err, http.ErrServerClosed) {
+		return err
+	}
+	return nil
+}
+
+// acmePath is where ACME HTTP-01 challenges are answered (RFC 8555, section 8.3).
+const acmePath = "/.well-known/acme-challenge/"
+
+// serve80 answers plain HTTP (docs/03-connections.md, "HTTP routes"): ACME HTTP-01 challenges for
+// any name, always; then, by the route of the host and path, a redirect to HTTPS that keeps the
+// path and query, the route itself, or a closed connection.
+func (h *HTTPRoutes) serve80(w http.ResponseWriter, r *http.Request) {
+	h.active.Add(1)
+	defer h.active.Add(-1)
+	host := r.Host
+	if hp, _, err := net.SplitHostPort(host); err == nil {
+		host = hp
+	}
+	if token, ok := strings.CutPrefix(r.URL.Path, acmePath); ok {
+		if h.o.Challenges != nil {
+			if ka, ok := h.o.Challenges(strings.ToLower(host), token); ok {
+				w.Header().Set("Content-Type", "text/plain")
+				_, _ = io.WriteString(w, ka)
+				return
+			}
+		}
+		http.NotFound(w, r)
+		return
+	}
+	rt := h.routeFor(r.Host, r.URL.Path)
+	if rt == nil {
+		if h.o.Fallback80 != nil {
+			h.o.Fallback80.ServeHTTP(w, r)
+			return
+		}
+		http.Error(w, "no route for this host and path", http.StatusNotFound)
+		return
+	}
+	switch rt.route.Load().Port80 {
+	case "serve":
+		h.proxy(w, r, rt)
+	case "off":
+		if c, _, err := http.NewResponseController(w).Hijack(); err == nil {
+			_ = c.Close()
+		}
+	default:
+		code := http.StatusPermanentRedirect // keeps the method and body
+		if r.Method == http.MethodGet || r.Method == http.MethodHead {
+			code = http.StatusMovedPermanently
+		}
+		// The host is one a route of this gateway serves, so the redirect stays on the route.
+		http.Redirect(w, r, "https://"+host+r.URL.RequestURI(), code) //nolint:gosec // G710: see above
+	}
 }
 
 // TLSConfig is the configuration the router terminates http routes' TLS with: TLS 1.3, or TLS
@@ -301,7 +373,11 @@ func (h *HTTPRoutes) newTransport(r HTTPRoute) *routeTransport {
 		Transport:     rt.tr,
 		FlushInterval: -1, // stream responses as they come, for server-sent events and gRPC
 		ModifyResponse: func(res *http.Response) error {
-			apply(res.Header, rt.route.Load().ResponseHeaders)
+			route := rt.route.Load()
+			if route.HSTS > 0 {
+				res.Header.Del("Strict-Transport-Security") // the gateway's, set before, applies
+			}
+			apply(res.Header, route.ResponseHeaders)
 			return grpcTrailersOnly(res)
 		},
 		ErrorHandler: h.proxyError,
@@ -320,7 +396,11 @@ func forward(pr *httputil.ProxyRequest, trusted []netip.Prefix) {
 		return
 	}
 	ip := client.Addr().Unmap()
-	proto, host := "https", pr.In.Host
+	scheme := "https"
+	if pr.In.TLS == nil {
+		scheme = "http"
+	}
+	proto, host := scheme, pr.In.Host
 	var chain, prior []string
 	if slices.ContainsFunc(trusted, func(p netip.Prefix) bool { return p.Contains(ip) }) {
 		chain = pr.In.Header.Values("X-Forwarded-For")
@@ -340,7 +420,7 @@ func forward(pr *httputil.ProxyRequest, trusted []netip.Prefix) {
 	if ip.Is6() {
 		node = `"[` + node + `]"`
 	}
-	pr.Out.Header.Set("Forwarded", strings.Join(append(prior, fmt.Sprintf("for=%s;host=%q;proto=%s", node, pr.In.Host, "https")), ", "))
+	pr.Out.Header.Set("Forwarded", strings.Join(append(prior, fmt.Sprintf("for=%s;host=%q;proto=%s", node, pr.In.Host, scheme)), ", "))
 }
 
 // grpcTrailersOnly turns a gRPC "Trailers-Only" response, whose status comes in its only HEADERS
@@ -452,6 +532,14 @@ func (h *HTTPRoutes) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "no route for this host and path", http.StatusNotFound)
 		return
 	}
+	if age := rt.route.Load().HSTS; age > 0 && r.TLS != nil {
+		w.Header().Set("Strict-Transport-Security", "max-age="+strconv.Itoa(age))
+	}
+	h.proxy(w, r, rt)
+}
+
+// proxy sends a request over the route, within its WebSocket and body settings.
+func (h *HTTPRoutes) proxy(w http.ResponseWriter, r *http.Request, rt *routeTransport) {
 	route := rt.route.Load()
 	if !route.WebSocket && r.Header.Get("Upgrade") != "" {
 		http.Error(w, "upgrades are off for this route", http.StatusForbidden)
@@ -513,6 +601,7 @@ func (h *HTTPRoutes) Active() int64 { return h.active.Load() }
 // Drain stops taking connections and keep-alives; requests in flight go on.
 func (h *HTTPRoutes) Drain() {
 	h.server.SetKeepAlivesEnabled(false)
+	h.server80.SetKeepAlivesEnabled(false)
 	h.ln.close()
 }
 
@@ -520,6 +609,7 @@ func (h *HTTPRoutes) Drain() {
 func (h *HTTPRoutes) Close() {
 	h.ln.close()
 	_ = h.server.Close()
+	_ = h.server80.Close()
 	h.mu.Lock()
 	for _, rt := range h.transports {
 		rt.tr.CloseIdleConnections()

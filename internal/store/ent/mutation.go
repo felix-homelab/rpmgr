@@ -20521,29 +20521,31 @@ func (m *RouteMutation) ResetEdge(name string) error {
 // RouteHTTPMutation represents an operation that mutates the RouteHTTP nodes in the graph.
 type RouteHTTPMutation struct {
 	config
-	op                   Op
-	typ                  string
-	id                   *int
-	org_id               *string
-	path_prefix          *string
-	header_matches       *map[string]string
-	tls_mode             *routehttp.TLSMode
-	port80               *routehttp.Port80
-	host_header          *string
-	request_headers_set  *map[string]string
-	response_headers_set *map[string]string
-	websocket            *bool
-	max_body_bytes       *int64
-	addmax_body_bytes    *int64
-	dns_proxied          *bool
-	clearedFields        map[string]struct{}
-	route                *string
-	clearedroute         bool
-	certificate          *string
-	clearedcertificate   bool
-	done                 bool
-	oldValue             func(context.Context) (*RouteHTTP, error)
-	predicates           []predicate.RouteHTTP
+	op                      Op
+	typ                     string
+	id                      *int
+	org_id                  *string
+	path_prefix             *string
+	header_matches          *map[string]string
+	tls_mode                *routehttp.TLSMode
+	port80                  *routehttp.Port80
+	hsts_max_age_seconds    *int
+	addhsts_max_age_seconds *int
+	host_header             *string
+	request_headers_set     *map[string]string
+	response_headers_set    *map[string]string
+	websocket               *bool
+	max_body_bytes          *int64
+	addmax_body_bytes       *int64
+	dns_proxied             *bool
+	clearedFields           map[string]struct{}
+	route                   *string
+	clearedroute            bool
+	certificate             *string
+	clearedcertificate      bool
+	done                    bool
+	oldValue                func(context.Context) (*RouteHTTP, error)
+	predicates              []predicate.RouteHTTP
 }
 
 var _ ent.Mutation = (*RouteHTTPMutation)(nil)
@@ -20922,6 +20924,62 @@ func (m *RouteHTTPMutation) ResetPort80() {
 	m.port80 = nil
 }
 
+// SetHstsMaxAgeSeconds sets the "hsts_max_age_seconds" field.
+func (m *RouteHTTPMutation) SetHstsMaxAgeSeconds(i int) {
+	m.hsts_max_age_seconds = &i
+	m.addhsts_max_age_seconds = nil
+}
+
+// HstsMaxAgeSeconds returns the value of the "hsts_max_age_seconds" field in the mutation.
+func (m *RouteHTTPMutation) HstsMaxAgeSeconds() (r int, exists bool) {
+	v := m.hsts_max_age_seconds
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldHstsMaxAgeSeconds returns the old "hsts_max_age_seconds" field's value of the RouteHTTP entity.
+// If the RouteHTTP object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RouteHTTPMutation) OldHstsMaxAgeSeconds(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldHstsMaxAgeSeconds is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldHstsMaxAgeSeconds requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldHstsMaxAgeSeconds: %w", err)
+	}
+	return oldValue.HstsMaxAgeSeconds, nil
+}
+
+// AddHstsMaxAgeSeconds adds i to the "hsts_max_age_seconds" field.
+func (m *RouteHTTPMutation) AddHstsMaxAgeSeconds(i int) {
+	if m.addhsts_max_age_seconds != nil {
+		*m.addhsts_max_age_seconds += i
+	} else {
+		m.addhsts_max_age_seconds = &i
+	}
+}
+
+// AddedHstsMaxAgeSeconds returns the value that was added to the "hsts_max_age_seconds" field in this mutation.
+func (m *RouteHTTPMutation) AddedHstsMaxAgeSeconds() (r int, exists bool) {
+	v := m.addhsts_max_age_seconds
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetHstsMaxAgeSeconds resets all changes to the "hsts_max_age_seconds" field.
+func (m *RouteHTTPMutation) ResetHstsMaxAgeSeconds() {
+	m.hsts_max_age_seconds = nil
+	m.addhsts_max_age_seconds = nil
+}
+
 // SetHostHeader sets the "host_header" field.
 func (m *RouteHTTPMutation) SetHostHeader(s string) {
 	m.host_header = &s
@@ -21272,7 +21330,7 @@ func (m *RouteHTTPMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *RouteHTTPMutation) Fields() []string {
-	fields := make([]string, 0, 13)
+	fields := make([]string, 0, 14)
 	if m.org_id != nil {
 		fields = append(fields, routehttp.FieldOrgID)
 	}
@@ -21293,6 +21351,9 @@ func (m *RouteHTTPMutation) Fields() []string {
 	}
 	if m.port80 != nil {
 		fields = append(fields, routehttp.FieldPort80)
+	}
+	if m.hsts_max_age_seconds != nil {
+		fields = append(fields, routehttp.FieldHstsMaxAgeSeconds)
 	}
 	if m.host_header != nil {
 		fields = append(fields, routehttp.FieldHostHeader)
@@ -21334,6 +21395,8 @@ func (m *RouteHTTPMutation) Field(name string) (ent.Value, bool) {
 		return m.CertificateID()
 	case routehttp.FieldPort80:
 		return m.Port80()
+	case routehttp.FieldHstsMaxAgeSeconds:
+		return m.HstsMaxAgeSeconds()
 	case routehttp.FieldHostHeader:
 		return m.HostHeader()
 	case routehttp.FieldRequestHeadersSet:
@@ -21369,6 +21432,8 @@ func (m *RouteHTTPMutation) OldField(ctx context.Context, name string) (ent.Valu
 		return m.OldCertificateID(ctx)
 	case routehttp.FieldPort80:
 		return m.OldPort80(ctx)
+	case routehttp.FieldHstsMaxAgeSeconds:
+		return m.OldHstsMaxAgeSeconds(ctx)
 	case routehttp.FieldHostHeader:
 		return m.OldHostHeader(ctx)
 	case routehttp.FieldRequestHeadersSet:
@@ -21439,6 +21504,13 @@ func (m *RouteHTTPMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetPort80(v)
 		return nil
+	case routehttp.FieldHstsMaxAgeSeconds:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetHstsMaxAgeSeconds(v)
+		return nil
 	case routehttp.FieldHostHeader:
 		v, ok := value.(string)
 		if !ok {
@@ -21489,6 +21561,9 @@ func (m *RouteHTTPMutation) SetField(name string, value ent.Value) error {
 // this mutation.
 func (m *RouteHTTPMutation) AddedFields() []string {
 	var fields []string
+	if m.addhsts_max_age_seconds != nil {
+		fields = append(fields, routehttp.FieldHstsMaxAgeSeconds)
+	}
 	if m.addmax_body_bytes != nil {
 		fields = append(fields, routehttp.FieldMaxBodyBytes)
 	}
@@ -21500,6 +21575,8 @@ func (m *RouteHTTPMutation) AddedFields() []string {
 // was not set, or was not defined in the schema.
 func (m *RouteHTTPMutation) AddedField(name string) (ent.Value, bool) {
 	switch name {
+	case routehttp.FieldHstsMaxAgeSeconds:
+		return m.AddedHstsMaxAgeSeconds()
 	case routehttp.FieldMaxBodyBytes:
 		return m.AddedMaxBodyBytes()
 	}
@@ -21511,6 +21588,13 @@ func (m *RouteHTTPMutation) AddedField(name string) (ent.Value, bool) {
 // type.
 func (m *RouteHTTPMutation) AddField(name string, value ent.Value) error {
 	switch name {
+	case routehttp.FieldHstsMaxAgeSeconds:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddHstsMaxAgeSeconds(v)
+		return nil
 	case routehttp.FieldMaxBodyBytes:
 		v, ok := value.(int64)
 		if !ok {
@@ -21592,6 +21676,9 @@ func (m *RouteHTTPMutation) ResetField(name string) error {
 		return nil
 	case routehttp.FieldPort80:
 		m.ResetPort80()
+		return nil
+	case routehttp.FieldHstsMaxAgeSeconds:
+		m.ResetHstsMaxAgeSeconds()
 		return nil
 	case routehttp.FieldHostHeader:
 		m.ResetHostHeader()

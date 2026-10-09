@@ -653,8 +653,12 @@ type GatewayHTTPRoute struct {
 	MaxBodyBytes uint64 `protobuf:"varint,9,opt,name=max_body_bytes,json=maxBodyBytes,proto3" json:"max_body_bytes,omitempty"`
 	// The gateway group's trusted proxies: the CIDRs whose forwarding headers the gateway keeps.
 	TrustedProxies []string `protobuf:"bytes,10,rep,name=trusted_proxies,json=trustedProxies,proto3" json:"trusted_proxies,omitempty"`
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
+	// What plain HTTP on port 80 does: "redirect" to HTTPS, "serve" the route, or "off".
+	Port80 string `protobuf:"bytes,11,opt,name=port80,proto3" json:"port80,omitempty"`
+	// The max-age of Strict-Transport-Security sent over HTTPS; 0 sends none.
+	HstsMaxAgeSeconds uint32 `protobuf:"varint,12,opt,name=hsts_max_age_seconds,json=hstsMaxAgeSeconds,proto3" json:"hsts_max_age_seconds,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
 }
 
 func (x *GatewayHTTPRoute) Reset() {
@@ -755,6 +759,20 @@ func (x *GatewayHTTPRoute) GetTrustedProxies() []string {
 		return x.TrustedProxies
 	}
 	return nil
+}
+
+func (x *GatewayHTTPRoute) GetPort80() string {
+	if x != nil {
+		return x.Port80
+	}
+	return ""
+}
+
+func (x *GatewayHTTPRoute) GetHstsMaxAgeSeconds() uint32 {
+	if x != nil {
+		return x.HstsMaxAgeSeconds
+	}
+	return 0
 }
 
 // HTTPHeader is a header name with its value.
@@ -1595,7 +1613,7 @@ const file_rpmgr_agent_v1_snapshot_proto_rawDesc = "" +
 	"\x19flow_idle_timeout_seconds\x18\x02 \x01(\rR\x16flowIdleTimeoutSeconds\x12\x1e\n" +
 	"\n" +
 	"connectors\x18\x03 \x03(\tR\n" +
-	"connectors\"\xe9\x03\n" +
+	"connectors\"\xb2\x04\n" +
 	"\x10GatewayHTTPRoute\x12.\n" +
 	"\x05hosts\x18\x01 \x03(\v2\x18.rpmgr.agent.v1.HTTPHostR\x05hosts\x12+\n" +
 	"\x11upstream_protocol\x18\x02 \x01(\tR\x10upstreamProtocol\x12\x1e\n" +
@@ -1610,7 +1628,9 @@ const file_rpmgr_agent_v1_snapshot_proto_rawDesc = "" +
 	"\x10response_headers\x18\b \x03(\v2\x1a.rpmgr.agent.v1.HTTPHeaderR\x0fresponseHeaders\x12$\n" +
 	"\x0emax_body_bytes\x18\t \x01(\x04R\fmaxBodyBytes\x12'\n" +
 	"\x0ftrusted_proxies\x18\n" +
-	" \x03(\tR\x0etrustedProxies\"6\n" +
+	" \x03(\tR\x0etrustedProxies\x12\x16\n" +
+	"\x06port80\x18\v \x01(\tR\x06port80\x12/\n" +
+	"\x14hsts_max_age_seconds\x18\f \x01(\rR\x11hstsMaxAgeSeconds\"6\n" +
 	"\n" +
 	"HTTPHeader\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x14\n" +

@@ -176,7 +176,7 @@ func Run(ctx context.Context, o RunOptions) error {
 			_ = ln.Close()
 			return err
 		}
-		redirect = &http.Server{Handler: redirectHandler(public), ReadHeaderTimeout: 10 * time.Second}
+		redirect = &http.Server{Handler: RedirectHandler(public), ReadHeaderTimeout: 10 * time.Second}
 	}
 	split := NewSplitter(td, ln.Addr())
 
@@ -277,11 +277,13 @@ func nodeIdentity(path string) (string, error) {
 	return id, nil
 }
 
-// redirectHandler sends every plain-HTTP request to the same path on the public URL.
-func redirectHandler(public *url.URL) http.Handler {
+// RedirectHandler sends every plain-HTTP request to the same path on the public URL; all-in-one's
+// gateway uses it for the names no route serves.
+func RedirectHandler(public *url.URL) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		target := *public
 		target.Path, target.RawQuery = r.URL.Path, r.URL.RawQuery
-		http.Redirect(w, r, target.String(), http.StatusMovedPermanently)
+		// Only the path and query come from the request; the host is the public URL's.
+		http.Redirect(w, r, target.String(), http.StatusMovedPermanently) //nolint:gosec // G710: see above
 	})
 }
