@@ -123,6 +123,41 @@ blackholed mid-session; NAT rebinding is not covered yet. `check-go.sh` vets the
 and runs the tests of its packages, golangci-lint lints it, and a test of the release build checks
 that no test-only command exists there.
 
+### Upgrade test
+
+`TestUpgrade` in `test/e2e` upgrades an installation from an earlier release to the build under
+test, in the order of [10](10-operations.md#upgrades-and-version-skew), under live traffic.
+
+- **Running it:** `E2E_UPGRADE_FROM=<git revision>`, normally the previous release's tag, runs only
+  this test. Both builds are the `rpmgrtest` build of their revision, so the earlier release seeds
+  its configuration as the other cells do. They report versions of consecutive minors: the tag's
+  version, or 0.1.0, and the next minor. `E2E_UPGRADE_FROM_VERSION` and `E2E_UPGRADE_TO_VERSION`
+  override them.
+- **Before the upgrade:** the earlier release runs:
+  - tcp routes on each transport value, served by both connectors through both gateways;
+  - a udp route;
+  - an http route with an uploaded certificate;
+  - a route whose access rules deny the client.
+- **The upgrade:**
+  1. The controller, after `rpmgr backup`, migrates its database at start.
+  2. Each gateway is drained while the other serves; a test load balancer takes it out of
+     rotation first.
+  3. Each connector restarts.
+- **Assertions:**
+  - Throughout, new connections carry 64 KiB each way through the routes, and none may fail or
+    come back changed.
+  - A connection held through the other gateway survives the controller and gateway upgrades. Only
+    a connector's restart may break the connections held through it.
+- **Afterwards:**
+  - the database has no pending migration and keeps every route;
+  - every agent runs the new version and has applied the configuration of the controller's epoch;
+  - every route, the certificate and the access rules work as before.
+- **A database the new version does not know:** for example, one made before the Phase 1 baseline
+  of [06](06-data-model.md#migrations). The controller refuses to start, and the test fails at the
+  controller step.
+- **First real run:** between v0.1.0 and the next Phase 1 release, as a release candidate test of
+  [RELEASING](../RELEASING.md#release-process). Until then it runs between commits.
+
 ## Benchmarks
 
 The benchmark suite proves or disproves the targets in
