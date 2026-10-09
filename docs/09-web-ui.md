@@ -149,6 +149,9 @@ flowchart LR
 - **Gateways that do not serve the route, and agents that rejected it,** are listed with their
   reasons.
 - UDP routes show the MTU hint of [03](03-connections.md#udp-routes).
+- **Access policies:** the policies the route applies, in order. They are attached from the org's
+  policies, detached, and moved up or down. They are then saved as one change: the route as read,
+  with the mask `policy_ids` and its etag.
 - **The "Enabled" switch** turns the route on or off; it is the only desired on/off switch (U3).
   - It sends the route as read, with the mask `enabled` and the route's etag.
   - The revision's apply status then follows live (U2): the state over the online agents, each

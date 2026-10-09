@@ -624,5 +624,13 @@
     "keep": "unchanged",
     "removeUser": "Remove the user",
     "addUser": "Add a user"
+  },
+  "routePolicies": {
+    "title": "Access policies",
+    "none": "The route applies no access policy: every client reaches it.",
+    "detach": "Detach",
+    "add": "Add a policy",
+    "choose": "Choose a policy",
+    "attach": "Attach"
   }
 }
