@@ -6,6 +6,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"time"
 
 	"github.com/felix-homelab/rpmgr/internal/allinone"
 	"github.com/felix-homelab/rpmgr/internal/cli"
@@ -90,6 +91,11 @@ func runGateway(ctx context.Context, env *cli.Env, path string) error {
 	if err != nil {
 		return err
 	}
+	stop, err := startTracing(ctx, cfg.Tracing, "gateway")
+	if err != nil {
+		return err
+	}
+	defer stop()
 	return gateway.Run(ctx, gateway.RunOptions{Config: cfg, Version: version.Get().Version, Logger: logger})
 }
 
@@ -103,6 +109,11 @@ func runConnector(ctx context.Context, env *cli.Env, path string) error {
 	if err != nil {
 		return err
 	}
+	stop, err := startTracing(ctx, cfg.Tracing, "connector")
+	if err != nil {
+		return err
+	}
+	defer stop()
 	return connector.Run(ctx, connector.RunOptions{Config: cfg, Version: version.Get().Version, Getenv: env.Getenv, Logger: logger})
 }
 
@@ -116,6 +127,11 @@ func runController(ctx context.Context, env *cli.Env, path string) error {
 	if err != nil {
 		return err
 	}
+	stop, err := startTracing(ctx, cfg.Tracing, "controller")
+	if err != nil {
+		return err
+	}
+	defer stop()
 	return controller.Run(ctx, controller.RunOptions{Config: cfg, Version: version.Get().Version, Sources: routes.Sources(),
 		Getenv: env.Getenv, Logger: logger})
 }
@@ -130,7 +146,26 @@ func runAllInOne(ctx context.Context, env *cli.Env, path string) error {
 	if err != nil {
 		return err
 	}
+	stop, err := startTracing(ctx, cfg.Tracing, "all-in-one")
+	if err != nil {
+		return err
+	}
+	defer stop()
 	return allinone.Run(ctx, allinone.RunOptions{Config: cfg, Version: version.Get().Version, Getenv: env.Getenv, Logger: logger})
+}
+
+// startTracing starts the process's tracing from a boot file's section (docs/10-operations.md,
+// "Traces"); stop exports what is left, within 5 s.
+func startTracing(ctx context.Context, cfg config.Tracing, role string) (stop func(), err error) {
+	shutdown, err := telemetry.StartTracing(ctx, cfg, role, version.Get().Version)
+	if err != nil {
+		return nil, err
+	}
+	return func() {
+		sctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+		defer cancel()
+		_ = shutdown(sctx)
+	}, nil
 }
 
 // allInOneInit is `rpmgr all-in-one init`.

@@ -90,7 +90,7 @@ flowchart TB
 |---|---|
 | `log/slog`, JSON in production, with a redacting handler | Structured, standard, secret-safe ([04](04-security.md#secrets-at-rest-and-in-logs)) |
 | Prometheus `client_golang` on the admin listener | De-facto standard; existing Prometheus setups scrape rpmgr without extra tooling |
-| OpenTelemetry (OTLP) traces | Trace context travels in `StreamOpen`, so a request can be followed from gateway to connector ([03](03-connections.md#framing)) |
+| OpenTelemetry (OTLP) traces: `go.opentelemetry.io/otel` with its SDK and the OTLP/HTTP exporter `otlptracehttp` | Trace context travels in `StreamOpen`, so a request can be followed from gateway to connector ([03](03-connections.md#framing)). OTLP over HTTP passes through proxies and needs no second gRPC stack next to the agent protocol's |
 
 ## Frontend
 
