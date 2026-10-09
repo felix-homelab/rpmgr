@@ -783,6 +783,38 @@
     "smtpPasswordRemoved": "The relay password is removed.",
     "pages": "Instance pages",
     "updates": "Updates",
-    "adminOnly": "Only the Instance Admin sees and changes these."
+    "adminOnly": "Only the Instance Admin sees and changes these.",
+    "pki": "PKI"
+  },
+  "pki": {
+    "title": "PKI",
+    "keys": "Certificate authority",
+    "trustDomain": "Trust domain:",
+    "rootPin": "Root pin, for rpmgr enroll --ca-pin",
+    "columns": {
+      "kind": "Key",
+      "state": "State",
+      "subject": "Subject",
+      "valid": "Valid",
+      "rotates": "Replaced on"
+    },
+    "kinds": {
+      "unspecified": "Unknown",
+      "root": "Root",
+      "intermediate": "Intermediate",
+      "configSigning": "Snapshot signing",
+      "auditCheckpoint": "Audit checkpoints"
+    },
+    "states": {
+      "unspecified": "Unknown",
+      "next": "Next",
+      "active": "Active",
+      "retired": "Retired"
+    },
+    "validity": "{{from}} to {{to}}",
+    "rotate": "Rotate the intermediate now…",
+    "rotateAsk": "Make a new intermediate active now? The current one keeps verifying the certificates it issued until they expire.",
+    "rotateIt": "Rotate it",
+    "rotated": "A new intermediate is active."
   }
 }

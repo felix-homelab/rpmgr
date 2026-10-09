@@ -53,6 +53,11 @@ test("signs in, creates an API token with a step-up, sets up an authenticator an
   await page.getByRole("link", { name: "Updates" }).click();
   await expect(page.getByLabel("Check for releases once a day")).toBeVisible();
   await expectAccessible(page);
+  await page.getByRole("main").getByRole("link", { name: "Settings" }).click();
+  await page.getByRole("link", { name: "PKI" }).click();
+  await expect(page.getByRole("cell", { name: "Root", exact: true })).toBeVisible();
+  await expect(page.getByRole("cell", { name: "Intermediate", exact: true })).toBeVisible();
+  await expectAccessible(page);
 
   // An API token: its creation needs a step-up, which the dialog asks for in the page.
   await page.getByRole("link", { name: "Ada" }).click();

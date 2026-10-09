@@ -292,6 +292,13 @@ flowchart LR
   - Emptying the relay's address removes the mail relay.
   - The relay's password is write-only. The page says whether one is set, and replaces or removes
     it.
+- **`/settings/pki`** shows the trust domain and the root's pin, as `rpmgr enroll --ca-pin` takes
+  it. It lists each key whose certificate has not expired, with its kind, state, subject, validity,
+  and when the schedule replaces it ([04](04-security.md#pki-and-identity)).
+  - **"Rotate the intermediate now"** asks for a confirmation and a step-up. The old intermediate
+    keeps verifying the certificates it issued until they expire.
+  - The page also holds the leaf-certificate lifetime, the grace period and the password-hash
+    profile.
 - **`/settings/updates`** holds the release check and the update channel. Uploading a manifest for
   an air-gapped installation is Phase 2; until then `rpmgr release import` does it on the controller
   host ([D59](14-open-decisions.md#security-defaults)).

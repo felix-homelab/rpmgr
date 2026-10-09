@@ -32,7 +32,7 @@ function failure(err: unknown, t: (k: string) => string): Message {
 }
 
 // Settings shows the org's runtime settings, which its Owner changes, and to the Instance Admin
-// the instance's, with a link to the Updates page (docs/09-web-ui.md, "Information
+// the instance's, with links to the PKI and Updates pages (docs/09-web-ui.md, "Information
 // architecture" and "Settings"; docs/10-operations.md, "Runtime settings").
 export function Settings() {
   const { t } = useTranslation();
@@ -45,6 +45,7 @@ export function Settings() {
         <h1 className="text-2xl font-semibold">{t("settings.title")}</h1>
         {admin && (
           <nav aria-label={t("settings.pages")} className="flex gap-4 text-sm">
+            <Link to="/settings/pki" className="underline">{t("settings.pki")}</Link>
             <Link to="/settings/updates" className="underline">{t("settings.updates")}</Link>
           </nav>
         )}
