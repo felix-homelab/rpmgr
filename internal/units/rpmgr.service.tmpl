@@ -1,0 +1,47 @@
+# SPDX-License-Identifier: Apache-2.0
+# rpmgr-{{.Role}}.service, written by `rpmgr systemd-unit {{.Role}}` (docs/10-operations.md,
+# "Hardened systemd units").
+[Unit]
+Description=rpmgr {{.Role}}
+Documentation=https://github.com/felix-homelab/rpmgr
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=rpmgr
+Group=rpmgr
+ExecStart={{.Bin}} {{.Role}} --config /etc/rpmgr/{{.Role}}.yaml
+{{- if .Reload}}
+ExecReload=/bin/kill -HUP $MAINPID
+{{- end}}
+{{- if .BindLow}}
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+{{- else}}
+CapabilityBoundingSet=
+{{- end}}
+{{- if .Credential}}
+LoadCredentialEncrypted={{.Credential}}:/etc/rpmgr/credstore/{{.Credential}}
+{{- end}}
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX AF_NETLINK
+RestrictNamespaces=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+StateDirectory=rpmgr
+StateDirectoryMode=0750
+ReadOnlyPaths=/etc/rpmgr
+LimitNOFILE=1048576
+Restart=on-failure
+RestartSec=2s
+
+[Install]
+WantedBy=multi-user.target

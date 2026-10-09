@@ -26,7 +26,7 @@ A Helm chart is Phase 3 ([13](13-roadmap.md#phase-3--advanced)).
 | Requirement | Value |
 |---|---|
 | Linux kernel | ≥ 5.10 (the updater needs `openat2`, available since 5.6) |
-| systemd | ≥ 249; the KEK source `systemd-credential` needs ≥ 250, otherwise the installer configures `file` [V VB-03] |
+| systemd | ≥ 249; the KEK source `systemd-credential` needs ≥ 250, otherwise `rpmgr controller init` chooses `file`. The units verify on systemd 249 (Ubuntu 22.04) and 257 (Debian 13) (`check-units.sh`, VB-03) |
 | Distributions | Debian 12+, Ubuntu 22.04+, RHEL, Rocky and Alma Linux 9+, Raspberry Pi OS (Debian 12 based) |
 | `/install.sh` | OpenSSL ≥ 3.0 for signature verification [V VB-15] |
 | Windows, macOS | Connectors only, from Phase 2 ([Windows and macOS connectors](#windows-and-macos-connectors-phase-2)) |
@@ -36,12 +36,29 @@ Architectures per role are in [05](05-features.md#platform-support).
 **One instance per role per host.** Paths, unit names and the admin port are fixed per role, so a
 host runs at most one controller (or all-in-one), one gateway and one connector.
 
-A first installation of the controller:
+A first installation of the controller, as root, with the binary verified as in
+[04](04-security.md#release-signing):
 
 ```sh
+install -m 0755 rpmgr /usr/local/bin/rpmgr
+useradd --system --user-group --home-dir /var/lib/rpmgr --shell /usr/sbin/nologin rpmgr
+install -d -m 0755 /etc/rpmgr
+install -d -m 0750 -o rpmgr -g rpmgr /var/lib/rpmgr
 rpmgr controller init --public-url https://panel.example.com   # creates DB, trust domain, root CA, first-user link
+rpmgr systemd-unit controller > /etc/systemd/system/rpmgr-controller.service
+systemctl daemon-reload
 systemctl enable --now rpmgr-controller
 ```
+
+- **KEK source:** for a new boot file without `--kek-source`, `init` chooses the systemd credential
+  from systemd 250, which has encrypted credentials. Below that, or without systemd, it chooses
+  the file `/etc/rpmgr/kek`, which it gives to the user `rpmgr` when that user exists, because
+  the service reads it.
+- **Unit:** `rpmgr systemd-unit <role>` prints the role's hardened unit. For a controller or
+  all-in-one it reads the boot file, and loads the KEK credential when the KEK is one.
+- **State directory:** `init` runs as root, so its database starts out as root's. [V] The unit's
+  `StateDirectory=` gives an existing state directory and its contents to `User=` at start
+  (systemd.exec(5)).
 
 `init` writes the boot file if it does not exist (from `--public-url` and, for a KEK file,
 `--kek-source file --kek-path`), creates the KEK, the database and its migrations, and in one
@@ -77,7 +94,9 @@ with `rpmgr user reset-password` while no user exists. There is no default passw
 
 One unit per role: `rpmgr-controller.service`, `rpmgr-gateway.service`, `rpmgr-connector.service`
 and `rpmgr-all-in-one.service`, plus the root-owned updater pair `rpmgr-update.path` and
-`rpmgr-update.service` (below). Excerpt for a gateway:
+`rpmgr-update.service` (below; Phase 2). `rpmgr systemd-unit <role>` prints the role units,
+which `check-units.sh` verifies with `systemd-analyze verify` on Debian 13 and Ubuntu 22.04.
+Excerpt for a gateway:
 
 ```ini
 [Service]
@@ -109,9 +128,10 @@ RestartSec=2s
 - **Controller**: the same, without `CAP_NET_BIND_SERVICE` if it listens on high ports behind a
   gateway, plus `LoadCredentialEncrypted=rpmgr-kek:/etc/rpmgr/credstore/rpmgr-kek` for the KEK
   ([04](04-security.md#secrets-at-rest-and-in-logs)) [V VB-03].
-- **Connector**: no capabilities at all; `ReadOnlyPaths=/etc/rpmgr` keeps `policy.yaml` out of the
-  service's reach. `ExecReload=/bin/kill -HUP $MAINPID`: `rpmgr policy …` edits the policy file and
-  runs `systemctl reload`; the connector also watches the file and re-evaluates its current snapshot
+- **Connector**: no capabilities at all (`CapabilityBoundingSet=` is empty);
+  `ReadOnlyPaths=/etc/rpmgr` keeps `policy.yaml` out of the service's reach. `ExecReload=/bin/kill -HUP $MAINPID`, with `kill`
+  from procps, which standard installations have: `rpmgr policy …` edits the policy file and runs
+  `systemctl reload`; the connector also watches the file and re-evaluates its current snapshot
   on change ([04](04-security.md#connector-local-policy)). Phase 3 features that need privileges (virtual networks with a kernel TUN device,
   shell) are documented with the exact additional unit settings when they ship; the userspace
   netstack variant needs none.
