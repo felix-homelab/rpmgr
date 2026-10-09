@@ -187,3 +187,89 @@ func (DataSession) Fields() []ent.Field {
 func (DataSession) Indexes() []ent.Index {
 	return []ent.Index{index.Fields("gateway_id", "connector_id", "transport").Unique(), index.Fields("connector_id")}
 }
+
+// TrafficBaseline is the last route counters a gateway reported, cumulative since its process
+// started (docs/06-data-model.md, "Desired vs observed state"): the next report's increase over
+// it goes into the traffic rollups. Only the control-session handlers write it; a new boot_id, or
+// a counter lower than before, starts it anew.
+type TrafficBaseline struct{ ent.Schema }
+
+// Mixin makes baselines org-owned.
+func (TrafficBaseline) Mixin() []ent.Mixin { return []ent.Mixin{OrgMixin{}} }
+
+// Annotations name the table as docs/06-data-model.md does.
+func (TrafficBaseline) Annotations() []schema.Annotation {
+	return []schema.Annotation{entsql.Annotation{Table: "traffic_baselines"}}
+}
+
+// Fields of a baseline.
+func (TrafficBaseline) Fields() []ent.Field {
+	return []ent.Field{
+		idField("tbl"),
+		field.String("gateway_id").NotEmpty().Immutable(),
+		field.String("route_id").NotEmpty().Immutable(),
+		field.String("boot_id").Default(""),
+		field.Int64("bytes_in").NonNegative(),
+		field.Int64("bytes_out").NonNegative(),
+		field.Int64("connections").NonNegative(),
+		field.Int64("errors").NonNegative(),
+		field.Time("reported_at"),
+	}
+}
+
+// Indexes: one baseline per gateway and route.
+func (TrafficBaseline) Indexes() []ent.Index {
+	return []ent.Index{index.Fields("gateway_id", "route_id").Unique()}
+}
+
+// RouteTrafficHourly is a route's traffic in one hour, from every gateway's reports
+// (docs/06-data-model.md, "Desired vs observed state"). There is no foreign key to the route:
+// retention removes a deleted route's rows.
+type RouteTrafficHourly struct{ ent.Schema }
+
+// Mixin makes rollups org-owned.
+func (RouteTrafficHourly) Mixin() []ent.Mixin { return []ent.Mixin{OrgMixin{}} }
+
+// Annotations name the table as docs/06-data-model.md does.
+func (RouteTrafficHourly) Annotations() []schema.Annotation {
+	return []schema.Annotation{entsql.Annotation{Table: "route_traffic_hourly"}}
+}
+
+// Fields of an hourly rollup; bucket is the hour's start in UTC.
+func (RouteTrafficHourly) Fields() []ent.Field { return trafficFields("rth") }
+
+// Indexes: one row per route and hour.
+func (RouteTrafficHourly) Indexes() []ent.Index {
+	return []ent.Index{index.Fields("route_id", "bucket").Unique(), index.Fields("bucket")}
+}
+
+// RouteTrafficDaily is RouteTrafficHourly per day; bucket is the day's start in UTC.
+type RouteTrafficDaily struct{ ent.Schema }
+
+// Mixin makes rollups org-owned.
+func (RouteTrafficDaily) Mixin() []ent.Mixin { return []ent.Mixin{OrgMixin{}} }
+
+// Annotations name the table as docs/06-data-model.md does.
+func (RouteTrafficDaily) Annotations() []schema.Annotation {
+	return []schema.Annotation{entsql.Annotation{Table: "route_traffic_daily"}}
+}
+
+// Fields of a daily rollup.
+func (RouteTrafficDaily) Fields() []ent.Field { return trafficFields("rtd") }
+
+// Indexes: one row per route and day.
+func (RouteTrafficDaily) Indexes() []ent.Index {
+	return []ent.Index{index.Fields("route_id", "bucket").Unique(), index.Fields("bucket")}
+}
+
+func trafficFields(prefix string) []ent.Field {
+	return []ent.Field{
+		idField(prefix),
+		field.String("route_id").NotEmpty().Immutable(),
+		field.Time("bucket").Immutable(),
+		field.Int64("bytes_in").NonNegative(),
+		field.Int64("bytes_out").NonNegative(),
+		field.Int64("connections").NonNegative(),
+		field.Int64("errors").NonNegative(),
+	}
+}

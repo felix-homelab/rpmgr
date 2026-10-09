@@ -53,10 +53,13 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routepolicy"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routetarget"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routetcp"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/routetrafficdaily"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/routetraffichourly"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routeudp"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/secretmeta"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/session"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/totpcredential"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/trafficbaseline"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/user"
 )
 
@@ -1304,6 +1307,60 @@ func (f TraverseRouteTarget) Traverse(ctx context.Context, q ent.Query) error {
 	return fmt.Errorf("unexpected query type %T. expect *ent.RouteTargetQuery", q)
 }
 
+// The RouteTrafficDailyFunc type is an adapter to allow the use of ordinary function as a Querier.
+type RouteTrafficDailyFunc func(context.Context, *ent.RouteTrafficDailyQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f RouteTrafficDailyFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.RouteTrafficDailyQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.RouteTrafficDailyQuery", q)
+}
+
+// The TraverseRouteTrafficDaily type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseRouteTrafficDaily func(context.Context, *ent.RouteTrafficDailyQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseRouteTrafficDaily) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseRouteTrafficDaily) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.RouteTrafficDailyQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.RouteTrafficDailyQuery", q)
+}
+
+// The RouteTrafficHourlyFunc type is an adapter to allow the use of ordinary function as a Querier.
+type RouteTrafficHourlyFunc func(context.Context, *ent.RouteTrafficHourlyQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f RouteTrafficHourlyFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.RouteTrafficHourlyQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.RouteTrafficHourlyQuery", q)
+}
+
+// The TraverseRouteTrafficHourly type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseRouteTrafficHourly func(context.Context, *ent.RouteTrafficHourlyQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseRouteTrafficHourly) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseRouteTrafficHourly) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.RouteTrafficHourlyQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.RouteTrafficHourlyQuery", q)
+}
+
 // The RouteUDPFunc type is an adapter to allow the use of ordinary function as a Querier.
 type RouteUDPFunc func(context.Context, *ent.RouteUDPQuery) (ent.Value, error)
 
@@ -1410,6 +1467,33 @@ func (f TraverseTOTPCredential) Traverse(ctx context.Context, q ent.Query) error
 		return f(ctx, q)
 	}
 	return fmt.Errorf("unexpected query type %T. expect *ent.TOTPCredentialQuery", q)
+}
+
+// The TrafficBaselineFunc type is an adapter to allow the use of ordinary function as a Querier.
+type TrafficBaselineFunc func(context.Context, *ent.TrafficBaselineQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f TrafficBaselineFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.TrafficBaselineQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.TrafficBaselineQuery", q)
+}
+
+// The TraverseTrafficBaseline type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseTrafficBaseline func(context.Context, *ent.TrafficBaselineQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseTrafficBaseline) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseTrafficBaseline) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.TrafficBaselineQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.TrafficBaselineQuery", q)
 }
 
 // The UserFunc type is an adapter to allow the use of ordinary function as a Querier.
@@ -1530,6 +1614,10 @@ func NewQuery(q ent.Query) (Query, error) {
 		return &query[*ent.RouteTCPQuery, predicate.RouteTCP, routetcp.OrderOption]{typ: ent.TypeRouteTCP, tq: q}, nil
 	case *ent.RouteTargetQuery:
 		return &query[*ent.RouteTargetQuery, predicate.RouteTarget, routetarget.OrderOption]{typ: ent.TypeRouteTarget, tq: q}, nil
+	case *ent.RouteTrafficDailyQuery:
+		return &query[*ent.RouteTrafficDailyQuery, predicate.RouteTrafficDaily, routetrafficdaily.OrderOption]{typ: ent.TypeRouteTrafficDaily, tq: q}, nil
+	case *ent.RouteTrafficHourlyQuery:
+		return &query[*ent.RouteTrafficHourlyQuery, predicate.RouteTrafficHourly, routetraffichourly.OrderOption]{typ: ent.TypeRouteTrafficHourly, tq: q}, nil
 	case *ent.RouteUDPQuery:
 		return &query[*ent.RouteUDPQuery, predicate.RouteUDP, routeudp.OrderOption]{typ: ent.TypeRouteUDP, tq: q}, nil
 	case *ent.SecretMetaQuery:
@@ -1538,6 +1626,8 @@ func NewQuery(q ent.Query) (Query, error) {
 		return &query[*ent.SessionQuery, predicate.Session, session.OrderOption]{typ: ent.TypeSession, tq: q}, nil
 	case *ent.TOTPCredentialQuery:
 		return &query[*ent.TOTPCredentialQuery, predicate.TOTPCredential, totpcredential.OrderOption]{typ: ent.TypeTOTPCredential, tq: q}, nil
+	case *ent.TrafficBaselineQuery:
+		return &query[*ent.TrafficBaselineQuery, predicate.TrafficBaseline, trafficbaseline.OrderOption]{typ: ent.TypeTrafficBaseline, tq: q}, nil
 	case *ent.UserQuery:
 		return &query[*ent.UserQuery, predicate.User, user.OrderOption]{typ: ent.TypeUser, tq: q}, nil
 	default:

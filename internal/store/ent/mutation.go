@@ -56,10 +56,13 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routepolicy"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routetarget"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routetcp"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/routetrafficdaily"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/routetraffichourly"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routeudp"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/secretmeta"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/session"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/totpcredential"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/trafficbaseline"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/user"
 )
 
@@ -72,55 +75,58 @@ const (
 	OpUpdateOne = ent.OpUpdateOne
 
 	// Node types.
-	TypeACMEStorage       = "ACMEStorage"
-	TypeAPIRequest        = "APIRequest"
-	TypeAPIToken          = "APIToken"
-	TypeAccessPolicy      = "AccessPolicy"
-	TypeAgentSession      = "AgentSession"
-	TypeAgentState        = "AgentState"
-	TypeAuditCheckpoint   = "AuditCheckpoint"
-	TypeAuditEntry        = "AuditEntry"
-	TypeAuditHead         = "AuditHead"
-	TypeCABundle          = "CABundle"
-	TypeCAKey             = "CAKey"
-	TypeCertificate       = "Certificate"
-	TypeCompiledSnapshot  = "CompiledSnapshot"
-	TypeConfigRevision    = "ConfigRevision"
-	TypeConfigSeq         = "ConfigSeq"
-	TypeConnector         = "Connector"
-	TypeDataSession       = "DataSession"
-	TypeDomain            = "Domain"
-	TypeEnrollmentToken   = "EnrollmentToken"
-	TypeGateway           = "Gateway"
-	TypeGatewayGroup      = "GatewayGroup"
-	TypeInstance          = "Instance"
-	TypeInstanceSecret    = "InstanceSecret"
-	TypeInstanceSetting   = "InstanceSetting"
-	TypeInvitation        = "Invitation"
-	TypeIssuedCertificate = "IssuedCertificate"
-	TypeLease             = "Lease"
-	TypeMembership        = "Membership"
-	TypeOrg               = "Org"
-	TypeOrgSetting        = "OrgSetting"
-	TypePasswordReset     = "PasswordReset"
-	TypePolicyRule        = "PolicyRule"
-	TypePortAllocation    = "PortAllocation"
-	TypePortPool          = "PortPool"
-	TypePortQuota         = "PortQuota"
-	TypeRecoveryCode      = "RecoveryCode"
-	TypeResourceStatus    = "ResourceStatus"
-	TypeRevokedIdentity   = "RevokedIdentity"
-	TypeRoute             = "Route"
-	TypeRouteHTTP         = "RouteHTTP"
-	TypeRouteHostname     = "RouteHostname"
-	TypeRoutePolicy       = "RoutePolicy"
-	TypeRouteTCP          = "RouteTCP"
-	TypeRouteTarget       = "RouteTarget"
-	TypeRouteUDP          = "RouteUDP"
-	TypeSecretMeta        = "SecretMeta"
-	TypeSession           = "Session"
-	TypeTOTPCredential    = "TOTPCredential"
-	TypeUser              = "User"
+	TypeACMEStorage        = "ACMEStorage"
+	TypeAPIRequest         = "APIRequest"
+	TypeAPIToken           = "APIToken"
+	TypeAccessPolicy       = "AccessPolicy"
+	TypeAgentSession       = "AgentSession"
+	TypeAgentState         = "AgentState"
+	TypeAuditCheckpoint    = "AuditCheckpoint"
+	TypeAuditEntry         = "AuditEntry"
+	TypeAuditHead          = "AuditHead"
+	TypeCABundle           = "CABundle"
+	TypeCAKey              = "CAKey"
+	TypeCertificate        = "Certificate"
+	TypeCompiledSnapshot   = "CompiledSnapshot"
+	TypeConfigRevision     = "ConfigRevision"
+	TypeConfigSeq          = "ConfigSeq"
+	TypeConnector          = "Connector"
+	TypeDataSession        = "DataSession"
+	TypeDomain             = "Domain"
+	TypeEnrollmentToken    = "EnrollmentToken"
+	TypeGateway            = "Gateway"
+	TypeGatewayGroup       = "GatewayGroup"
+	TypeInstance           = "Instance"
+	TypeInstanceSecret     = "InstanceSecret"
+	TypeInstanceSetting    = "InstanceSetting"
+	TypeInvitation         = "Invitation"
+	TypeIssuedCertificate  = "IssuedCertificate"
+	TypeLease              = "Lease"
+	TypeMembership         = "Membership"
+	TypeOrg                = "Org"
+	TypeOrgSetting         = "OrgSetting"
+	TypePasswordReset      = "PasswordReset"
+	TypePolicyRule         = "PolicyRule"
+	TypePortAllocation     = "PortAllocation"
+	TypePortPool           = "PortPool"
+	TypePortQuota          = "PortQuota"
+	TypeRecoveryCode       = "RecoveryCode"
+	TypeResourceStatus     = "ResourceStatus"
+	TypeRevokedIdentity    = "RevokedIdentity"
+	TypeRoute              = "Route"
+	TypeRouteHTTP          = "RouteHTTP"
+	TypeRouteHostname      = "RouteHostname"
+	TypeRoutePolicy        = "RoutePolicy"
+	TypeRouteTCP           = "RouteTCP"
+	TypeRouteTarget        = "RouteTarget"
+	TypeRouteTrafficDaily  = "RouteTrafficDaily"
+	TypeRouteTrafficHourly = "RouteTrafficHourly"
+	TypeRouteUDP           = "RouteUDP"
+	TypeSecretMeta         = "SecretMeta"
+	TypeSession            = "Session"
+	TypeTOTPCredential     = "TOTPCredential"
+	TypeTrafficBaseline    = "TrafficBaseline"
+	TypeUser               = "User"
 )
 
 // ACMEStorageMutation represents an operation that mutates the ACMEStorage nodes in the graph.
@@ -34411,6 +34417,1588 @@ func (m *RouteTargetMutation) ResetEdge(name string) error {
 	return fmt.Errorf("unknown RouteTarget edge %s", name)
 }
 
+// RouteTrafficDailyMutation represents an operation that mutates the RouteTrafficDaily nodes in the graph.
+type RouteTrafficDailyMutation struct {
+	config
+	op             Op
+	typ            string
+	id             *string
+	org_id         *string
+	route_id       *string
+	bucket         *time.Time
+	bytes_in       *int64
+	addbytes_in    *int64
+	bytes_out      *int64
+	addbytes_out   *int64
+	connections    *int64
+	addconnections *int64
+	errors         *int64
+	adderrors      *int64
+	clearedFields  map[string]struct{}
+	done           bool
+	oldValue       func(context.Context) (*RouteTrafficDaily, error)
+	predicates     []predicate.RouteTrafficDaily
+}
+
+var _ ent.Mutation = (*RouteTrafficDailyMutation)(nil)
+
+// routetrafficdailyOption allows management of the mutation configuration using functional options.
+type routetrafficdailyOption func(*RouteTrafficDailyMutation)
+
+// newRouteTrafficDailyMutation creates new mutation for the RouteTrafficDaily entity.
+func newRouteTrafficDailyMutation(c config, op Op, opts ...routetrafficdailyOption) *RouteTrafficDailyMutation {
+	m := &RouteTrafficDailyMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeRouteTrafficDaily,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withRouteTrafficDailyID sets the ID field of the mutation.
+func withRouteTrafficDailyID(id string) routetrafficdailyOption {
+	return func(m *RouteTrafficDailyMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *RouteTrafficDaily
+		)
+		m.oldValue = func(ctx context.Context) (*RouteTrafficDaily, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().RouteTrafficDaily.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withRouteTrafficDaily sets the old RouteTrafficDaily of the mutation.
+func withRouteTrafficDaily(node *RouteTrafficDaily) routetrafficdailyOption {
+	return func(m *RouteTrafficDailyMutation) {
+		m.oldValue = func(context.Context) (*RouteTrafficDaily, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m RouteTrafficDailyMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m RouteTrafficDailyMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// SetID sets the value of the id field. Note that this
+// operation is only accepted on creation of RouteTrafficDaily entities.
+func (m *RouteTrafficDailyMutation) SetID(id string) {
+	m.id = &id
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *RouteTrafficDailyMutation) ID() (id string, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *RouteTrafficDailyMutation) IDs(ctx context.Context) ([]string, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []string{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().RouteTrafficDaily.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetOrgID sets the "org_id" field.
+func (m *RouteTrafficDailyMutation) SetOrgID(s string) {
+	m.org_id = &s
+}
+
+// OrgID returns the value of the "org_id" field in the mutation.
+func (m *RouteTrafficDailyMutation) OrgID() (r string, exists bool) {
+	v := m.org_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldOrgID returns the old "org_id" field's value of the RouteTrafficDaily entity.
+// If the RouteTrafficDaily object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RouteTrafficDailyMutation) OldOrgID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldOrgID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldOrgID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldOrgID: %w", err)
+	}
+	return oldValue.OrgID, nil
+}
+
+// ResetOrgID resets all changes to the "org_id" field.
+func (m *RouteTrafficDailyMutation) ResetOrgID() {
+	m.org_id = nil
+}
+
+// SetRouteID sets the "route_id" field.
+func (m *RouteTrafficDailyMutation) SetRouteID(s string) {
+	m.route_id = &s
+}
+
+// RouteID returns the value of the "route_id" field in the mutation.
+func (m *RouteTrafficDailyMutation) RouteID() (r string, exists bool) {
+	v := m.route_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRouteID returns the old "route_id" field's value of the RouteTrafficDaily entity.
+// If the RouteTrafficDaily object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RouteTrafficDailyMutation) OldRouteID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRouteID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRouteID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRouteID: %w", err)
+	}
+	return oldValue.RouteID, nil
+}
+
+// ResetRouteID resets all changes to the "route_id" field.
+func (m *RouteTrafficDailyMutation) ResetRouteID() {
+	m.route_id = nil
+}
+
+// SetBucket sets the "bucket" field.
+func (m *RouteTrafficDailyMutation) SetBucket(t time.Time) {
+	m.bucket = &t
+}
+
+// Bucket returns the value of the "bucket" field in the mutation.
+func (m *RouteTrafficDailyMutation) Bucket() (r time.Time, exists bool) {
+	v := m.bucket
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldBucket returns the old "bucket" field's value of the RouteTrafficDaily entity.
+// If the RouteTrafficDaily object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RouteTrafficDailyMutation) OldBucket(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldBucket is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldBucket requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldBucket: %w", err)
+	}
+	return oldValue.Bucket, nil
+}
+
+// ResetBucket resets all changes to the "bucket" field.
+func (m *RouteTrafficDailyMutation) ResetBucket() {
+	m.bucket = nil
+}
+
+// SetBytesIn sets the "bytes_in" field.
+func (m *RouteTrafficDailyMutation) SetBytesIn(i int64) {
+	m.bytes_in = &i
+	m.addbytes_in = nil
+}
+
+// BytesIn returns the value of the "bytes_in" field in the mutation.
+func (m *RouteTrafficDailyMutation) BytesIn() (r int64, exists bool) {
+	v := m.bytes_in
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldBytesIn returns the old "bytes_in" field's value of the RouteTrafficDaily entity.
+// If the RouteTrafficDaily object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RouteTrafficDailyMutation) OldBytesIn(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldBytesIn is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldBytesIn requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldBytesIn: %w", err)
+	}
+	return oldValue.BytesIn, nil
+}
+
+// AddBytesIn adds i to the "bytes_in" field.
+func (m *RouteTrafficDailyMutation) AddBytesIn(i int64) {
+	if m.addbytes_in != nil {
+		*m.addbytes_in += i
+	} else {
+		m.addbytes_in = &i
+	}
+}
+
+// AddedBytesIn returns the value that was added to the "bytes_in" field in this mutation.
+func (m *RouteTrafficDailyMutation) AddedBytesIn() (r int64, exists bool) {
+	v := m.addbytes_in
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetBytesIn resets all changes to the "bytes_in" field.
+func (m *RouteTrafficDailyMutation) ResetBytesIn() {
+	m.bytes_in = nil
+	m.addbytes_in = nil
+}
+
+// SetBytesOut sets the "bytes_out" field.
+func (m *RouteTrafficDailyMutation) SetBytesOut(i int64) {
+	m.bytes_out = &i
+	m.addbytes_out = nil
+}
+
+// BytesOut returns the value of the "bytes_out" field in the mutation.
+func (m *RouteTrafficDailyMutation) BytesOut() (r int64, exists bool) {
+	v := m.bytes_out
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldBytesOut returns the old "bytes_out" field's value of the RouteTrafficDaily entity.
+// If the RouteTrafficDaily object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RouteTrafficDailyMutation) OldBytesOut(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldBytesOut is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldBytesOut requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldBytesOut: %w", err)
+	}
+	return oldValue.BytesOut, nil
+}
+
+// AddBytesOut adds i to the "bytes_out" field.
+func (m *RouteTrafficDailyMutation) AddBytesOut(i int64) {
+	if m.addbytes_out != nil {
+		*m.addbytes_out += i
+	} else {
+		m.addbytes_out = &i
+	}
+}
+
+// AddedBytesOut returns the value that was added to the "bytes_out" field in this mutation.
+func (m *RouteTrafficDailyMutation) AddedBytesOut() (r int64, exists bool) {
+	v := m.addbytes_out
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetBytesOut resets all changes to the "bytes_out" field.
+func (m *RouteTrafficDailyMutation) ResetBytesOut() {
+	m.bytes_out = nil
+	m.addbytes_out = nil
+}
+
+// SetConnections sets the "connections" field.
+func (m *RouteTrafficDailyMutation) SetConnections(i int64) {
+	m.connections = &i
+	m.addconnections = nil
+}
+
+// Connections returns the value of the "connections" field in the mutation.
+func (m *RouteTrafficDailyMutation) Connections() (r int64, exists bool) {
+	v := m.connections
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldConnections returns the old "connections" field's value of the RouteTrafficDaily entity.
+// If the RouteTrafficDaily object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RouteTrafficDailyMutation) OldConnections(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldConnections is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldConnections requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldConnections: %w", err)
+	}
+	return oldValue.Connections, nil
+}
+
+// AddConnections adds i to the "connections" field.
+func (m *RouteTrafficDailyMutation) AddConnections(i int64) {
+	if m.addconnections != nil {
+		*m.addconnections += i
+	} else {
+		m.addconnections = &i
+	}
+}
+
+// AddedConnections returns the value that was added to the "connections" field in this mutation.
+func (m *RouteTrafficDailyMutation) AddedConnections() (r int64, exists bool) {
+	v := m.addconnections
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetConnections resets all changes to the "connections" field.
+func (m *RouteTrafficDailyMutation) ResetConnections() {
+	m.connections = nil
+	m.addconnections = nil
+}
+
+// SetErrors sets the "errors" field.
+func (m *RouteTrafficDailyMutation) SetErrors(i int64) {
+	m.errors = &i
+	m.adderrors = nil
+}
+
+// Errors returns the value of the "errors" field in the mutation.
+func (m *RouteTrafficDailyMutation) Errors() (r int64, exists bool) {
+	v := m.errors
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldErrors returns the old "errors" field's value of the RouteTrafficDaily entity.
+// If the RouteTrafficDaily object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RouteTrafficDailyMutation) OldErrors(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldErrors is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldErrors requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldErrors: %w", err)
+	}
+	return oldValue.Errors, nil
+}
+
+// AddErrors adds i to the "errors" field.
+func (m *RouteTrafficDailyMutation) AddErrors(i int64) {
+	if m.adderrors != nil {
+		*m.adderrors += i
+	} else {
+		m.adderrors = &i
+	}
+}
+
+// AddedErrors returns the value that was added to the "errors" field in this mutation.
+func (m *RouteTrafficDailyMutation) AddedErrors() (r int64, exists bool) {
+	v := m.adderrors
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetErrors resets all changes to the "errors" field.
+func (m *RouteTrafficDailyMutation) ResetErrors() {
+	m.errors = nil
+	m.adderrors = nil
+}
+
+// Where appends a list predicates to the RouteTrafficDailyMutation builder.
+func (m *RouteTrafficDailyMutation) Where(ps ...predicate.RouteTrafficDaily) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the RouteTrafficDailyMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *RouteTrafficDailyMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.RouteTrafficDaily, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *RouteTrafficDailyMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *RouteTrafficDailyMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (RouteTrafficDaily).
+func (m *RouteTrafficDailyMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *RouteTrafficDailyMutation) Fields() []string {
+	fields := make([]string, 0, 7)
+	if m.org_id != nil {
+		fields = append(fields, routetrafficdaily.FieldOrgID)
+	}
+	if m.route_id != nil {
+		fields = append(fields, routetrafficdaily.FieldRouteID)
+	}
+	if m.bucket != nil {
+		fields = append(fields, routetrafficdaily.FieldBucket)
+	}
+	if m.bytes_in != nil {
+		fields = append(fields, routetrafficdaily.FieldBytesIn)
+	}
+	if m.bytes_out != nil {
+		fields = append(fields, routetrafficdaily.FieldBytesOut)
+	}
+	if m.connections != nil {
+		fields = append(fields, routetrafficdaily.FieldConnections)
+	}
+	if m.errors != nil {
+		fields = append(fields, routetrafficdaily.FieldErrors)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *RouteTrafficDailyMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case routetrafficdaily.FieldOrgID:
+		return m.OrgID()
+	case routetrafficdaily.FieldRouteID:
+		return m.RouteID()
+	case routetrafficdaily.FieldBucket:
+		return m.Bucket()
+	case routetrafficdaily.FieldBytesIn:
+		return m.BytesIn()
+	case routetrafficdaily.FieldBytesOut:
+		return m.BytesOut()
+	case routetrafficdaily.FieldConnections:
+		return m.Connections()
+	case routetrafficdaily.FieldErrors:
+		return m.Errors()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *RouteTrafficDailyMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case routetrafficdaily.FieldOrgID:
+		return m.OldOrgID(ctx)
+	case routetrafficdaily.FieldRouteID:
+		return m.OldRouteID(ctx)
+	case routetrafficdaily.FieldBucket:
+		return m.OldBucket(ctx)
+	case routetrafficdaily.FieldBytesIn:
+		return m.OldBytesIn(ctx)
+	case routetrafficdaily.FieldBytesOut:
+		return m.OldBytesOut(ctx)
+	case routetrafficdaily.FieldConnections:
+		return m.OldConnections(ctx)
+	case routetrafficdaily.FieldErrors:
+		return m.OldErrors(ctx)
+	}
+	return nil, fmt.Errorf("unknown RouteTrafficDaily field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *RouteTrafficDailyMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case routetrafficdaily.FieldOrgID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetOrgID(v)
+		return nil
+	case routetrafficdaily.FieldRouteID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRouteID(v)
+		return nil
+	case routetrafficdaily.FieldBucket:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetBucket(v)
+		return nil
+	case routetrafficdaily.FieldBytesIn:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetBytesIn(v)
+		return nil
+	case routetrafficdaily.FieldBytesOut:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetBytesOut(v)
+		return nil
+	case routetrafficdaily.FieldConnections:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetConnections(v)
+		return nil
+	case routetrafficdaily.FieldErrors:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetErrors(v)
+		return nil
+	}
+	return fmt.Errorf("unknown RouteTrafficDaily field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *RouteTrafficDailyMutation) AddedFields() []string {
+	var fields []string
+	if m.addbytes_in != nil {
+		fields = append(fields, routetrafficdaily.FieldBytesIn)
+	}
+	if m.addbytes_out != nil {
+		fields = append(fields, routetrafficdaily.FieldBytesOut)
+	}
+	if m.addconnections != nil {
+		fields = append(fields, routetrafficdaily.FieldConnections)
+	}
+	if m.adderrors != nil {
+		fields = append(fields, routetrafficdaily.FieldErrors)
+	}
+	return fields
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *RouteTrafficDailyMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case routetrafficdaily.FieldBytesIn:
+		return m.AddedBytesIn()
+	case routetrafficdaily.FieldBytesOut:
+		return m.AddedBytesOut()
+	case routetrafficdaily.FieldConnections:
+		return m.AddedConnections()
+	case routetrafficdaily.FieldErrors:
+		return m.AddedErrors()
+	}
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *RouteTrafficDailyMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	case routetrafficdaily.FieldBytesIn:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddBytesIn(v)
+		return nil
+	case routetrafficdaily.FieldBytesOut:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddBytesOut(v)
+		return nil
+	case routetrafficdaily.FieldConnections:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddConnections(v)
+		return nil
+	case routetrafficdaily.FieldErrors:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddErrors(v)
+		return nil
+	}
+	return fmt.Errorf("unknown RouteTrafficDaily numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *RouteTrafficDailyMutation) ClearedFields() []string {
+	return nil
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *RouteTrafficDailyMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *RouteTrafficDailyMutation) ClearField(name string) error {
+	return fmt.Errorf("unknown RouteTrafficDaily nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *RouteTrafficDailyMutation) ResetField(name string) error {
+	switch name {
+	case routetrafficdaily.FieldOrgID:
+		m.ResetOrgID()
+		return nil
+	case routetrafficdaily.FieldRouteID:
+		m.ResetRouteID()
+		return nil
+	case routetrafficdaily.FieldBucket:
+		m.ResetBucket()
+		return nil
+	case routetrafficdaily.FieldBytesIn:
+		m.ResetBytesIn()
+		return nil
+	case routetrafficdaily.FieldBytesOut:
+		m.ResetBytesOut()
+		return nil
+	case routetrafficdaily.FieldConnections:
+		m.ResetConnections()
+		return nil
+	case routetrafficdaily.FieldErrors:
+		m.ResetErrors()
+		return nil
+	}
+	return fmt.Errorf("unknown RouteTrafficDaily field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *RouteTrafficDailyMutation) AddedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *RouteTrafficDailyMutation) AddedIDs(name string) []ent.Value {
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *RouteTrafficDailyMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *RouteTrafficDailyMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *RouteTrafficDailyMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *RouteTrafficDailyMutation) EdgeCleared(name string) bool {
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *RouteTrafficDailyMutation) ClearEdge(name string) error {
+	return fmt.Errorf("unknown RouteTrafficDaily unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *RouteTrafficDailyMutation) ResetEdge(name string) error {
+	return fmt.Errorf("unknown RouteTrafficDaily edge %s", name)
+}
+
+// RouteTrafficHourlyMutation represents an operation that mutates the RouteTrafficHourly nodes in the graph.
+type RouteTrafficHourlyMutation struct {
+	config
+	op             Op
+	typ            string
+	id             *string
+	org_id         *string
+	route_id       *string
+	bucket         *time.Time
+	bytes_in       *int64
+	addbytes_in    *int64
+	bytes_out      *int64
+	addbytes_out   *int64
+	connections    *int64
+	addconnections *int64
+	errors         *int64
+	adderrors      *int64
+	clearedFields  map[string]struct{}
+	done           bool
+	oldValue       func(context.Context) (*RouteTrafficHourly, error)
+	predicates     []predicate.RouteTrafficHourly
+}
+
+var _ ent.Mutation = (*RouteTrafficHourlyMutation)(nil)
+
+// routetraffichourlyOption allows management of the mutation configuration using functional options.
+type routetraffichourlyOption func(*RouteTrafficHourlyMutation)
+
+// newRouteTrafficHourlyMutation creates new mutation for the RouteTrafficHourly entity.
+func newRouteTrafficHourlyMutation(c config, op Op, opts ...routetraffichourlyOption) *RouteTrafficHourlyMutation {
+	m := &RouteTrafficHourlyMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeRouteTrafficHourly,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withRouteTrafficHourlyID sets the ID field of the mutation.
+func withRouteTrafficHourlyID(id string) routetraffichourlyOption {
+	return func(m *RouteTrafficHourlyMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *RouteTrafficHourly
+		)
+		m.oldValue = func(ctx context.Context) (*RouteTrafficHourly, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().RouteTrafficHourly.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withRouteTrafficHourly sets the old RouteTrafficHourly of the mutation.
+func withRouteTrafficHourly(node *RouteTrafficHourly) routetraffichourlyOption {
+	return func(m *RouteTrafficHourlyMutation) {
+		m.oldValue = func(context.Context) (*RouteTrafficHourly, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m RouteTrafficHourlyMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m RouteTrafficHourlyMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// SetID sets the value of the id field. Note that this
+// operation is only accepted on creation of RouteTrafficHourly entities.
+func (m *RouteTrafficHourlyMutation) SetID(id string) {
+	m.id = &id
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *RouteTrafficHourlyMutation) ID() (id string, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *RouteTrafficHourlyMutation) IDs(ctx context.Context) ([]string, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []string{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().RouteTrafficHourly.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetOrgID sets the "org_id" field.
+func (m *RouteTrafficHourlyMutation) SetOrgID(s string) {
+	m.org_id = &s
+}
+
+// OrgID returns the value of the "org_id" field in the mutation.
+func (m *RouteTrafficHourlyMutation) OrgID() (r string, exists bool) {
+	v := m.org_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldOrgID returns the old "org_id" field's value of the RouteTrafficHourly entity.
+// If the RouteTrafficHourly object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RouteTrafficHourlyMutation) OldOrgID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldOrgID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldOrgID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldOrgID: %w", err)
+	}
+	return oldValue.OrgID, nil
+}
+
+// ResetOrgID resets all changes to the "org_id" field.
+func (m *RouteTrafficHourlyMutation) ResetOrgID() {
+	m.org_id = nil
+}
+
+// SetRouteID sets the "route_id" field.
+func (m *RouteTrafficHourlyMutation) SetRouteID(s string) {
+	m.route_id = &s
+}
+
+// RouteID returns the value of the "route_id" field in the mutation.
+func (m *RouteTrafficHourlyMutation) RouteID() (r string, exists bool) {
+	v := m.route_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRouteID returns the old "route_id" field's value of the RouteTrafficHourly entity.
+// If the RouteTrafficHourly object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RouteTrafficHourlyMutation) OldRouteID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRouteID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRouteID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRouteID: %w", err)
+	}
+	return oldValue.RouteID, nil
+}
+
+// ResetRouteID resets all changes to the "route_id" field.
+func (m *RouteTrafficHourlyMutation) ResetRouteID() {
+	m.route_id = nil
+}
+
+// SetBucket sets the "bucket" field.
+func (m *RouteTrafficHourlyMutation) SetBucket(t time.Time) {
+	m.bucket = &t
+}
+
+// Bucket returns the value of the "bucket" field in the mutation.
+func (m *RouteTrafficHourlyMutation) Bucket() (r time.Time, exists bool) {
+	v := m.bucket
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldBucket returns the old "bucket" field's value of the RouteTrafficHourly entity.
+// If the RouteTrafficHourly object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RouteTrafficHourlyMutation) OldBucket(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldBucket is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldBucket requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldBucket: %w", err)
+	}
+	return oldValue.Bucket, nil
+}
+
+// ResetBucket resets all changes to the "bucket" field.
+func (m *RouteTrafficHourlyMutation) ResetBucket() {
+	m.bucket = nil
+}
+
+// SetBytesIn sets the "bytes_in" field.
+func (m *RouteTrafficHourlyMutation) SetBytesIn(i int64) {
+	m.bytes_in = &i
+	m.addbytes_in = nil
+}
+
+// BytesIn returns the value of the "bytes_in" field in the mutation.
+func (m *RouteTrafficHourlyMutation) BytesIn() (r int64, exists bool) {
+	v := m.bytes_in
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldBytesIn returns the old "bytes_in" field's value of the RouteTrafficHourly entity.
+// If the RouteTrafficHourly object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RouteTrafficHourlyMutation) OldBytesIn(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldBytesIn is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldBytesIn requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldBytesIn: %w", err)
+	}
+	return oldValue.BytesIn, nil
+}
+
+// AddBytesIn adds i to the "bytes_in" field.
+func (m *RouteTrafficHourlyMutation) AddBytesIn(i int64) {
+	if m.addbytes_in != nil {
+		*m.addbytes_in += i
+	} else {
+		m.addbytes_in = &i
+	}
+}
+
+// AddedBytesIn returns the value that was added to the "bytes_in" field in this mutation.
+func (m *RouteTrafficHourlyMutation) AddedBytesIn() (r int64, exists bool) {
+	v := m.addbytes_in
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetBytesIn resets all changes to the "bytes_in" field.
+func (m *RouteTrafficHourlyMutation) ResetBytesIn() {
+	m.bytes_in = nil
+	m.addbytes_in = nil
+}
+
+// SetBytesOut sets the "bytes_out" field.
+func (m *RouteTrafficHourlyMutation) SetBytesOut(i int64) {
+	m.bytes_out = &i
+	m.addbytes_out = nil
+}
+
+// BytesOut returns the value of the "bytes_out" field in the mutation.
+func (m *RouteTrafficHourlyMutation) BytesOut() (r int64, exists bool) {
+	v := m.bytes_out
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldBytesOut returns the old "bytes_out" field's value of the RouteTrafficHourly entity.
+// If the RouteTrafficHourly object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RouteTrafficHourlyMutation) OldBytesOut(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldBytesOut is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldBytesOut requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldBytesOut: %w", err)
+	}
+	return oldValue.BytesOut, nil
+}
+
+// AddBytesOut adds i to the "bytes_out" field.
+func (m *RouteTrafficHourlyMutation) AddBytesOut(i int64) {
+	if m.addbytes_out != nil {
+		*m.addbytes_out += i
+	} else {
+		m.addbytes_out = &i
+	}
+}
+
+// AddedBytesOut returns the value that was added to the "bytes_out" field in this mutation.
+func (m *RouteTrafficHourlyMutation) AddedBytesOut() (r int64, exists bool) {
+	v := m.addbytes_out
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetBytesOut resets all changes to the "bytes_out" field.
+func (m *RouteTrafficHourlyMutation) ResetBytesOut() {
+	m.bytes_out = nil
+	m.addbytes_out = nil
+}
+
+// SetConnections sets the "connections" field.
+func (m *RouteTrafficHourlyMutation) SetConnections(i int64) {
+	m.connections = &i
+	m.addconnections = nil
+}
+
+// Connections returns the value of the "connections" field in the mutation.
+func (m *RouteTrafficHourlyMutation) Connections() (r int64, exists bool) {
+	v := m.connections
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldConnections returns the old "connections" field's value of the RouteTrafficHourly entity.
+// If the RouteTrafficHourly object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RouteTrafficHourlyMutation) OldConnections(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldConnections is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldConnections requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldConnections: %w", err)
+	}
+	return oldValue.Connections, nil
+}
+
+// AddConnections adds i to the "connections" field.
+func (m *RouteTrafficHourlyMutation) AddConnections(i int64) {
+	if m.addconnections != nil {
+		*m.addconnections += i
+	} else {
+		m.addconnections = &i
+	}
+}
+
+// AddedConnections returns the value that was added to the "connections" field in this mutation.
+func (m *RouteTrafficHourlyMutation) AddedConnections() (r int64, exists bool) {
+	v := m.addconnections
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetConnections resets all changes to the "connections" field.
+func (m *RouteTrafficHourlyMutation) ResetConnections() {
+	m.connections = nil
+	m.addconnections = nil
+}
+
+// SetErrors sets the "errors" field.
+func (m *RouteTrafficHourlyMutation) SetErrors(i int64) {
+	m.errors = &i
+	m.adderrors = nil
+}
+
+// Errors returns the value of the "errors" field in the mutation.
+func (m *RouteTrafficHourlyMutation) Errors() (r int64, exists bool) {
+	v := m.errors
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldErrors returns the old "errors" field's value of the RouteTrafficHourly entity.
+// If the RouteTrafficHourly object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RouteTrafficHourlyMutation) OldErrors(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldErrors is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldErrors requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldErrors: %w", err)
+	}
+	return oldValue.Errors, nil
+}
+
+// AddErrors adds i to the "errors" field.
+func (m *RouteTrafficHourlyMutation) AddErrors(i int64) {
+	if m.adderrors != nil {
+		*m.adderrors += i
+	} else {
+		m.adderrors = &i
+	}
+}
+
+// AddedErrors returns the value that was added to the "errors" field in this mutation.
+func (m *RouteTrafficHourlyMutation) AddedErrors() (r int64, exists bool) {
+	v := m.adderrors
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetErrors resets all changes to the "errors" field.
+func (m *RouteTrafficHourlyMutation) ResetErrors() {
+	m.errors = nil
+	m.adderrors = nil
+}
+
+// Where appends a list predicates to the RouteTrafficHourlyMutation builder.
+func (m *RouteTrafficHourlyMutation) Where(ps ...predicate.RouteTrafficHourly) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the RouteTrafficHourlyMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *RouteTrafficHourlyMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.RouteTrafficHourly, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *RouteTrafficHourlyMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *RouteTrafficHourlyMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (RouteTrafficHourly).
+func (m *RouteTrafficHourlyMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *RouteTrafficHourlyMutation) Fields() []string {
+	fields := make([]string, 0, 7)
+	if m.org_id != nil {
+		fields = append(fields, routetraffichourly.FieldOrgID)
+	}
+	if m.route_id != nil {
+		fields = append(fields, routetraffichourly.FieldRouteID)
+	}
+	if m.bucket != nil {
+		fields = append(fields, routetraffichourly.FieldBucket)
+	}
+	if m.bytes_in != nil {
+		fields = append(fields, routetraffichourly.FieldBytesIn)
+	}
+	if m.bytes_out != nil {
+		fields = append(fields, routetraffichourly.FieldBytesOut)
+	}
+	if m.connections != nil {
+		fields = append(fields, routetraffichourly.FieldConnections)
+	}
+	if m.errors != nil {
+		fields = append(fields, routetraffichourly.FieldErrors)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *RouteTrafficHourlyMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case routetraffichourly.FieldOrgID:
+		return m.OrgID()
+	case routetraffichourly.FieldRouteID:
+		return m.RouteID()
+	case routetraffichourly.FieldBucket:
+		return m.Bucket()
+	case routetraffichourly.FieldBytesIn:
+		return m.BytesIn()
+	case routetraffichourly.FieldBytesOut:
+		return m.BytesOut()
+	case routetraffichourly.FieldConnections:
+		return m.Connections()
+	case routetraffichourly.FieldErrors:
+		return m.Errors()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *RouteTrafficHourlyMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case routetraffichourly.FieldOrgID:
+		return m.OldOrgID(ctx)
+	case routetraffichourly.FieldRouteID:
+		return m.OldRouteID(ctx)
+	case routetraffichourly.FieldBucket:
+		return m.OldBucket(ctx)
+	case routetraffichourly.FieldBytesIn:
+		return m.OldBytesIn(ctx)
+	case routetraffichourly.FieldBytesOut:
+		return m.OldBytesOut(ctx)
+	case routetraffichourly.FieldConnections:
+		return m.OldConnections(ctx)
+	case routetraffichourly.FieldErrors:
+		return m.OldErrors(ctx)
+	}
+	return nil, fmt.Errorf("unknown RouteTrafficHourly field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *RouteTrafficHourlyMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case routetraffichourly.FieldOrgID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetOrgID(v)
+		return nil
+	case routetraffichourly.FieldRouteID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRouteID(v)
+		return nil
+	case routetraffichourly.FieldBucket:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetBucket(v)
+		return nil
+	case routetraffichourly.FieldBytesIn:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetBytesIn(v)
+		return nil
+	case routetraffichourly.FieldBytesOut:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetBytesOut(v)
+		return nil
+	case routetraffichourly.FieldConnections:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetConnections(v)
+		return nil
+	case routetraffichourly.FieldErrors:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetErrors(v)
+		return nil
+	}
+	return fmt.Errorf("unknown RouteTrafficHourly field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *RouteTrafficHourlyMutation) AddedFields() []string {
+	var fields []string
+	if m.addbytes_in != nil {
+		fields = append(fields, routetraffichourly.FieldBytesIn)
+	}
+	if m.addbytes_out != nil {
+		fields = append(fields, routetraffichourly.FieldBytesOut)
+	}
+	if m.addconnections != nil {
+		fields = append(fields, routetraffichourly.FieldConnections)
+	}
+	if m.adderrors != nil {
+		fields = append(fields, routetraffichourly.FieldErrors)
+	}
+	return fields
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *RouteTrafficHourlyMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case routetraffichourly.FieldBytesIn:
+		return m.AddedBytesIn()
+	case routetraffichourly.FieldBytesOut:
+		return m.AddedBytesOut()
+	case routetraffichourly.FieldConnections:
+		return m.AddedConnections()
+	case routetraffichourly.FieldErrors:
+		return m.AddedErrors()
+	}
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *RouteTrafficHourlyMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	case routetraffichourly.FieldBytesIn:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddBytesIn(v)
+		return nil
+	case routetraffichourly.FieldBytesOut:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddBytesOut(v)
+		return nil
+	case routetraffichourly.FieldConnections:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddConnections(v)
+		return nil
+	case routetraffichourly.FieldErrors:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddErrors(v)
+		return nil
+	}
+	return fmt.Errorf("unknown RouteTrafficHourly numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *RouteTrafficHourlyMutation) ClearedFields() []string {
+	return nil
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *RouteTrafficHourlyMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *RouteTrafficHourlyMutation) ClearField(name string) error {
+	return fmt.Errorf("unknown RouteTrafficHourly nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *RouteTrafficHourlyMutation) ResetField(name string) error {
+	switch name {
+	case routetraffichourly.FieldOrgID:
+		m.ResetOrgID()
+		return nil
+	case routetraffichourly.FieldRouteID:
+		m.ResetRouteID()
+		return nil
+	case routetraffichourly.FieldBucket:
+		m.ResetBucket()
+		return nil
+	case routetraffichourly.FieldBytesIn:
+		m.ResetBytesIn()
+		return nil
+	case routetraffichourly.FieldBytesOut:
+		m.ResetBytesOut()
+		return nil
+	case routetraffichourly.FieldConnections:
+		m.ResetConnections()
+		return nil
+	case routetraffichourly.FieldErrors:
+		m.ResetErrors()
+		return nil
+	}
+	return fmt.Errorf("unknown RouteTrafficHourly field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *RouteTrafficHourlyMutation) AddedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *RouteTrafficHourlyMutation) AddedIDs(name string) []ent.Value {
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *RouteTrafficHourlyMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *RouteTrafficHourlyMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *RouteTrafficHourlyMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *RouteTrafficHourlyMutation) EdgeCleared(name string) bool {
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *RouteTrafficHourlyMutation) ClearEdge(name string) error {
+	return fmt.Errorf("unknown RouteTrafficHourly unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *RouteTrafficHourlyMutation) ResetEdge(name string) error {
+	return fmt.Errorf("unknown RouteTrafficHourly edge %s", name)
+}
+
 // RouteUDPMutation represents an operation that mutates the RouteUDP nodes in the graph.
 type RouteUDPMutation struct {
 	config
@@ -37231,6 +38819,905 @@ func (m *TOTPCredentialMutation) ResetEdge(name string) error {
 		return nil
 	}
 	return fmt.Errorf("unknown TOTPCredential edge %s", name)
+}
+
+// TrafficBaselineMutation represents an operation that mutates the TrafficBaseline nodes in the graph.
+type TrafficBaselineMutation struct {
+	config
+	op             Op
+	typ            string
+	id             *string
+	org_id         *string
+	gateway_id     *string
+	route_id       *string
+	boot_id        *string
+	bytes_in       *int64
+	addbytes_in    *int64
+	bytes_out      *int64
+	addbytes_out   *int64
+	connections    *int64
+	addconnections *int64
+	errors         *int64
+	adderrors      *int64
+	reported_at    *time.Time
+	clearedFields  map[string]struct{}
+	done           bool
+	oldValue       func(context.Context) (*TrafficBaseline, error)
+	predicates     []predicate.TrafficBaseline
+}
+
+var _ ent.Mutation = (*TrafficBaselineMutation)(nil)
+
+// trafficbaselineOption allows management of the mutation configuration using functional options.
+type trafficbaselineOption func(*TrafficBaselineMutation)
+
+// newTrafficBaselineMutation creates new mutation for the TrafficBaseline entity.
+func newTrafficBaselineMutation(c config, op Op, opts ...trafficbaselineOption) *TrafficBaselineMutation {
+	m := &TrafficBaselineMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeTrafficBaseline,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withTrafficBaselineID sets the ID field of the mutation.
+func withTrafficBaselineID(id string) trafficbaselineOption {
+	return func(m *TrafficBaselineMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *TrafficBaseline
+		)
+		m.oldValue = func(ctx context.Context) (*TrafficBaseline, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().TrafficBaseline.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withTrafficBaseline sets the old TrafficBaseline of the mutation.
+func withTrafficBaseline(node *TrafficBaseline) trafficbaselineOption {
+	return func(m *TrafficBaselineMutation) {
+		m.oldValue = func(context.Context) (*TrafficBaseline, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m TrafficBaselineMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m TrafficBaselineMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// SetID sets the value of the id field. Note that this
+// operation is only accepted on creation of TrafficBaseline entities.
+func (m *TrafficBaselineMutation) SetID(id string) {
+	m.id = &id
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *TrafficBaselineMutation) ID() (id string, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *TrafficBaselineMutation) IDs(ctx context.Context) ([]string, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []string{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().TrafficBaseline.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetOrgID sets the "org_id" field.
+func (m *TrafficBaselineMutation) SetOrgID(s string) {
+	m.org_id = &s
+}
+
+// OrgID returns the value of the "org_id" field in the mutation.
+func (m *TrafficBaselineMutation) OrgID() (r string, exists bool) {
+	v := m.org_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldOrgID returns the old "org_id" field's value of the TrafficBaseline entity.
+// If the TrafficBaseline object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TrafficBaselineMutation) OldOrgID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldOrgID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldOrgID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldOrgID: %w", err)
+	}
+	return oldValue.OrgID, nil
+}
+
+// ResetOrgID resets all changes to the "org_id" field.
+func (m *TrafficBaselineMutation) ResetOrgID() {
+	m.org_id = nil
+}
+
+// SetGatewayID sets the "gateway_id" field.
+func (m *TrafficBaselineMutation) SetGatewayID(s string) {
+	m.gateway_id = &s
+}
+
+// GatewayID returns the value of the "gateway_id" field in the mutation.
+func (m *TrafficBaselineMutation) GatewayID() (r string, exists bool) {
+	v := m.gateway_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldGatewayID returns the old "gateway_id" field's value of the TrafficBaseline entity.
+// If the TrafficBaseline object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TrafficBaselineMutation) OldGatewayID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldGatewayID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldGatewayID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldGatewayID: %w", err)
+	}
+	return oldValue.GatewayID, nil
+}
+
+// ResetGatewayID resets all changes to the "gateway_id" field.
+func (m *TrafficBaselineMutation) ResetGatewayID() {
+	m.gateway_id = nil
+}
+
+// SetRouteID sets the "route_id" field.
+func (m *TrafficBaselineMutation) SetRouteID(s string) {
+	m.route_id = &s
+}
+
+// RouteID returns the value of the "route_id" field in the mutation.
+func (m *TrafficBaselineMutation) RouteID() (r string, exists bool) {
+	v := m.route_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRouteID returns the old "route_id" field's value of the TrafficBaseline entity.
+// If the TrafficBaseline object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TrafficBaselineMutation) OldRouteID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRouteID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRouteID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRouteID: %w", err)
+	}
+	return oldValue.RouteID, nil
+}
+
+// ResetRouteID resets all changes to the "route_id" field.
+func (m *TrafficBaselineMutation) ResetRouteID() {
+	m.route_id = nil
+}
+
+// SetBootID sets the "boot_id" field.
+func (m *TrafficBaselineMutation) SetBootID(s string) {
+	m.boot_id = &s
+}
+
+// BootID returns the value of the "boot_id" field in the mutation.
+func (m *TrafficBaselineMutation) BootID() (r string, exists bool) {
+	v := m.boot_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldBootID returns the old "boot_id" field's value of the TrafficBaseline entity.
+// If the TrafficBaseline object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TrafficBaselineMutation) OldBootID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldBootID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldBootID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldBootID: %w", err)
+	}
+	return oldValue.BootID, nil
+}
+
+// ResetBootID resets all changes to the "boot_id" field.
+func (m *TrafficBaselineMutation) ResetBootID() {
+	m.boot_id = nil
+}
+
+// SetBytesIn sets the "bytes_in" field.
+func (m *TrafficBaselineMutation) SetBytesIn(i int64) {
+	m.bytes_in = &i
+	m.addbytes_in = nil
+}
+
+// BytesIn returns the value of the "bytes_in" field in the mutation.
+func (m *TrafficBaselineMutation) BytesIn() (r int64, exists bool) {
+	v := m.bytes_in
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldBytesIn returns the old "bytes_in" field's value of the TrafficBaseline entity.
+// If the TrafficBaseline object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TrafficBaselineMutation) OldBytesIn(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldBytesIn is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldBytesIn requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldBytesIn: %w", err)
+	}
+	return oldValue.BytesIn, nil
+}
+
+// AddBytesIn adds i to the "bytes_in" field.
+func (m *TrafficBaselineMutation) AddBytesIn(i int64) {
+	if m.addbytes_in != nil {
+		*m.addbytes_in += i
+	} else {
+		m.addbytes_in = &i
+	}
+}
+
+// AddedBytesIn returns the value that was added to the "bytes_in" field in this mutation.
+func (m *TrafficBaselineMutation) AddedBytesIn() (r int64, exists bool) {
+	v := m.addbytes_in
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetBytesIn resets all changes to the "bytes_in" field.
+func (m *TrafficBaselineMutation) ResetBytesIn() {
+	m.bytes_in = nil
+	m.addbytes_in = nil
+}
+
+// SetBytesOut sets the "bytes_out" field.
+func (m *TrafficBaselineMutation) SetBytesOut(i int64) {
+	m.bytes_out = &i
+	m.addbytes_out = nil
+}
+
+// BytesOut returns the value of the "bytes_out" field in the mutation.
+func (m *TrafficBaselineMutation) BytesOut() (r int64, exists bool) {
+	v := m.bytes_out
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldBytesOut returns the old "bytes_out" field's value of the TrafficBaseline entity.
+// If the TrafficBaseline object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TrafficBaselineMutation) OldBytesOut(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldBytesOut is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldBytesOut requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldBytesOut: %w", err)
+	}
+	return oldValue.BytesOut, nil
+}
+
+// AddBytesOut adds i to the "bytes_out" field.
+func (m *TrafficBaselineMutation) AddBytesOut(i int64) {
+	if m.addbytes_out != nil {
+		*m.addbytes_out += i
+	} else {
+		m.addbytes_out = &i
+	}
+}
+
+// AddedBytesOut returns the value that was added to the "bytes_out" field in this mutation.
+func (m *TrafficBaselineMutation) AddedBytesOut() (r int64, exists bool) {
+	v := m.addbytes_out
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetBytesOut resets all changes to the "bytes_out" field.
+func (m *TrafficBaselineMutation) ResetBytesOut() {
+	m.bytes_out = nil
+	m.addbytes_out = nil
+}
+
+// SetConnections sets the "connections" field.
+func (m *TrafficBaselineMutation) SetConnections(i int64) {
+	m.connections = &i
+	m.addconnections = nil
+}
+
+// Connections returns the value of the "connections" field in the mutation.
+func (m *TrafficBaselineMutation) Connections() (r int64, exists bool) {
+	v := m.connections
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldConnections returns the old "connections" field's value of the TrafficBaseline entity.
+// If the TrafficBaseline object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TrafficBaselineMutation) OldConnections(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldConnections is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldConnections requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldConnections: %w", err)
+	}
+	return oldValue.Connections, nil
+}
+
+// AddConnections adds i to the "connections" field.
+func (m *TrafficBaselineMutation) AddConnections(i int64) {
+	if m.addconnections != nil {
+		*m.addconnections += i
+	} else {
+		m.addconnections = &i
+	}
+}
+
+// AddedConnections returns the value that was added to the "connections" field in this mutation.
+func (m *TrafficBaselineMutation) AddedConnections() (r int64, exists bool) {
+	v := m.addconnections
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetConnections resets all changes to the "connections" field.
+func (m *TrafficBaselineMutation) ResetConnections() {
+	m.connections = nil
+	m.addconnections = nil
+}
+
+// SetErrors sets the "errors" field.
+func (m *TrafficBaselineMutation) SetErrors(i int64) {
+	m.errors = &i
+	m.adderrors = nil
+}
+
+// Errors returns the value of the "errors" field in the mutation.
+func (m *TrafficBaselineMutation) Errors() (r int64, exists bool) {
+	v := m.errors
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldErrors returns the old "errors" field's value of the TrafficBaseline entity.
+// If the TrafficBaseline object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TrafficBaselineMutation) OldErrors(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldErrors is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldErrors requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldErrors: %w", err)
+	}
+	return oldValue.Errors, nil
+}
+
+// AddErrors adds i to the "errors" field.
+func (m *TrafficBaselineMutation) AddErrors(i int64) {
+	if m.adderrors != nil {
+		*m.adderrors += i
+	} else {
+		m.adderrors = &i
+	}
+}
+
+// AddedErrors returns the value that was added to the "errors" field in this mutation.
+func (m *TrafficBaselineMutation) AddedErrors() (r int64, exists bool) {
+	v := m.adderrors
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetErrors resets all changes to the "errors" field.
+func (m *TrafficBaselineMutation) ResetErrors() {
+	m.errors = nil
+	m.adderrors = nil
+}
+
+// SetReportedAt sets the "reported_at" field.
+func (m *TrafficBaselineMutation) SetReportedAt(t time.Time) {
+	m.reported_at = &t
+}
+
+// ReportedAt returns the value of the "reported_at" field in the mutation.
+func (m *TrafficBaselineMutation) ReportedAt() (r time.Time, exists bool) {
+	v := m.reported_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldReportedAt returns the old "reported_at" field's value of the TrafficBaseline entity.
+// If the TrafficBaseline object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TrafficBaselineMutation) OldReportedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldReportedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldReportedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldReportedAt: %w", err)
+	}
+	return oldValue.ReportedAt, nil
+}
+
+// ResetReportedAt resets all changes to the "reported_at" field.
+func (m *TrafficBaselineMutation) ResetReportedAt() {
+	m.reported_at = nil
+}
+
+// Where appends a list predicates to the TrafficBaselineMutation builder.
+func (m *TrafficBaselineMutation) Where(ps ...predicate.TrafficBaseline) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the TrafficBaselineMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *TrafficBaselineMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.TrafficBaseline, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *TrafficBaselineMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *TrafficBaselineMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (TrafficBaseline).
+func (m *TrafficBaselineMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *TrafficBaselineMutation) Fields() []string {
+	fields := make([]string, 0, 9)
+	if m.org_id != nil {
+		fields = append(fields, trafficbaseline.FieldOrgID)
+	}
+	if m.gateway_id != nil {
+		fields = append(fields, trafficbaseline.FieldGatewayID)
+	}
+	if m.route_id != nil {
+		fields = append(fields, trafficbaseline.FieldRouteID)
+	}
+	if m.boot_id != nil {
+		fields = append(fields, trafficbaseline.FieldBootID)
+	}
+	if m.bytes_in != nil {
+		fields = append(fields, trafficbaseline.FieldBytesIn)
+	}
+	if m.bytes_out != nil {
+		fields = append(fields, trafficbaseline.FieldBytesOut)
+	}
+	if m.connections != nil {
+		fields = append(fields, trafficbaseline.FieldConnections)
+	}
+	if m.errors != nil {
+		fields = append(fields, trafficbaseline.FieldErrors)
+	}
+	if m.reported_at != nil {
+		fields = append(fields, trafficbaseline.FieldReportedAt)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *TrafficBaselineMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case trafficbaseline.FieldOrgID:
+		return m.OrgID()
+	case trafficbaseline.FieldGatewayID:
+		return m.GatewayID()
+	case trafficbaseline.FieldRouteID:
+		return m.RouteID()
+	case trafficbaseline.FieldBootID:
+		return m.BootID()
+	case trafficbaseline.FieldBytesIn:
+		return m.BytesIn()
+	case trafficbaseline.FieldBytesOut:
+		return m.BytesOut()
+	case trafficbaseline.FieldConnections:
+		return m.Connections()
+	case trafficbaseline.FieldErrors:
+		return m.Errors()
+	case trafficbaseline.FieldReportedAt:
+		return m.ReportedAt()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *TrafficBaselineMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case trafficbaseline.FieldOrgID:
+		return m.OldOrgID(ctx)
+	case trafficbaseline.FieldGatewayID:
+		return m.OldGatewayID(ctx)
+	case trafficbaseline.FieldRouteID:
+		return m.OldRouteID(ctx)
+	case trafficbaseline.FieldBootID:
+		return m.OldBootID(ctx)
+	case trafficbaseline.FieldBytesIn:
+		return m.OldBytesIn(ctx)
+	case trafficbaseline.FieldBytesOut:
+		return m.OldBytesOut(ctx)
+	case trafficbaseline.FieldConnections:
+		return m.OldConnections(ctx)
+	case trafficbaseline.FieldErrors:
+		return m.OldErrors(ctx)
+	case trafficbaseline.FieldReportedAt:
+		return m.OldReportedAt(ctx)
+	}
+	return nil, fmt.Errorf("unknown TrafficBaseline field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *TrafficBaselineMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case trafficbaseline.FieldOrgID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetOrgID(v)
+		return nil
+	case trafficbaseline.FieldGatewayID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetGatewayID(v)
+		return nil
+	case trafficbaseline.FieldRouteID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRouteID(v)
+		return nil
+	case trafficbaseline.FieldBootID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetBootID(v)
+		return nil
+	case trafficbaseline.FieldBytesIn:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetBytesIn(v)
+		return nil
+	case trafficbaseline.FieldBytesOut:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetBytesOut(v)
+		return nil
+	case trafficbaseline.FieldConnections:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetConnections(v)
+		return nil
+	case trafficbaseline.FieldErrors:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetErrors(v)
+		return nil
+	case trafficbaseline.FieldReportedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetReportedAt(v)
+		return nil
+	}
+	return fmt.Errorf("unknown TrafficBaseline field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *TrafficBaselineMutation) AddedFields() []string {
+	var fields []string
+	if m.addbytes_in != nil {
+		fields = append(fields, trafficbaseline.FieldBytesIn)
+	}
+	if m.addbytes_out != nil {
+		fields = append(fields, trafficbaseline.FieldBytesOut)
+	}
+	if m.addconnections != nil {
+		fields = append(fields, trafficbaseline.FieldConnections)
+	}
+	if m.adderrors != nil {
+		fields = append(fields, trafficbaseline.FieldErrors)
+	}
+	return fields
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *TrafficBaselineMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case trafficbaseline.FieldBytesIn:
+		return m.AddedBytesIn()
+	case trafficbaseline.FieldBytesOut:
+		return m.AddedBytesOut()
+	case trafficbaseline.FieldConnections:
+		return m.AddedConnections()
+	case trafficbaseline.FieldErrors:
+		return m.AddedErrors()
+	}
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *TrafficBaselineMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	case trafficbaseline.FieldBytesIn:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddBytesIn(v)
+		return nil
+	case trafficbaseline.FieldBytesOut:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddBytesOut(v)
+		return nil
+	case trafficbaseline.FieldConnections:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddConnections(v)
+		return nil
+	case trafficbaseline.FieldErrors:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddErrors(v)
+		return nil
+	}
+	return fmt.Errorf("unknown TrafficBaseline numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *TrafficBaselineMutation) ClearedFields() []string {
+	return nil
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *TrafficBaselineMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *TrafficBaselineMutation) ClearField(name string) error {
+	return fmt.Errorf("unknown TrafficBaseline nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *TrafficBaselineMutation) ResetField(name string) error {
+	switch name {
+	case trafficbaseline.FieldOrgID:
+		m.ResetOrgID()
+		return nil
+	case trafficbaseline.FieldGatewayID:
+		m.ResetGatewayID()
+		return nil
+	case trafficbaseline.FieldRouteID:
+		m.ResetRouteID()
+		return nil
+	case trafficbaseline.FieldBootID:
+		m.ResetBootID()
+		return nil
+	case trafficbaseline.FieldBytesIn:
+		m.ResetBytesIn()
+		return nil
+	case trafficbaseline.FieldBytesOut:
+		m.ResetBytesOut()
+		return nil
+	case trafficbaseline.FieldConnections:
+		m.ResetConnections()
+		return nil
+	case trafficbaseline.FieldErrors:
+		m.ResetErrors()
+		return nil
+	case trafficbaseline.FieldReportedAt:
+		m.ResetReportedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown TrafficBaseline field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *TrafficBaselineMutation) AddedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *TrafficBaselineMutation) AddedIDs(name string) []ent.Value {
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *TrafficBaselineMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *TrafficBaselineMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *TrafficBaselineMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *TrafficBaselineMutation) EdgeCleared(name string) bool {
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *TrafficBaselineMutation) ClearEdge(name string) error {
+	return fmt.Errorf("unknown TrafficBaseline unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *TrafficBaselineMutation) ResetEdge(name string) error {
+	return fmt.Errorf("unknown TrafficBaseline edge %s", name)
 }
 
 // UserMutation represents an operation that mutates the User nodes in the graph.

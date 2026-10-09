@@ -1167,6 +1167,54 @@ func (f RouteTargetMutationRuleFunc) EvalMutation(ctx context.Context, m ent.Mut
 	return Denyf("ent/privacy: unexpected mutation type %T, expect *ent.RouteTargetMutation", m)
 }
 
+// The RouteTrafficDailyQueryRuleFunc type is an adapter to allow the use of ordinary
+// functions as a query rule.
+type RouteTrafficDailyQueryRuleFunc func(context.Context, *ent.RouteTrafficDailyQuery) error
+
+// EvalQuery return f(ctx, q).
+func (f RouteTrafficDailyQueryRuleFunc) EvalQuery(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.RouteTrafficDailyQuery); ok {
+		return f(ctx, q)
+	}
+	return Denyf("ent/privacy: unexpected query type %T, expect *ent.RouteTrafficDailyQuery", q)
+}
+
+// The RouteTrafficDailyMutationRuleFunc type is an adapter to allow the use of ordinary
+// functions as a mutation rule.
+type RouteTrafficDailyMutationRuleFunc func(context.Context, *ent.RouteTrafficDailyMutation) error
+
+// EvalMutation calls f(ctx, m).
+func (f RouteTrafficDailyMutationRuleFunc) EvalMutation(ctx context.Context, m ent.Mutation) error {
+	if m, ok := m.(*ent.RouteTrafficDailyMutation); ok {
+		return f(ctx, m)
+	}
+	return Denyf("ent/privacy: unexpected mutation type %T, expect *ent.RouteTrafficDailyMutation", m)
+}
+
+// The RouteTrafficHourlyQueryRuleFunc type is an adapter to allow the use of ordinary
+// functions as a query rule.
+type RouteTrafficHourlyQueryRuleFunc func(context.Context, *ent.RouteTrafficHourlyQuery) error
+
+// EvalQuery return f(ctx, q).
+func (f RouteTrafficHourlyQueryRuleFunc) EvalQuery(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.RouteTrafficHourlyQuery); ok {
+		return f(ctx, q)
+	}
+	return Denyf("ent/privacy: unexpected query type %T, expect *ent.RouteTrafficHourlyQuery", q)
+}
+
+// The RouteTrafficHourlyMutationRuleFunc type is an adapter to allow the use of ordinary
+// functions as a mutation rule.
+type RouteTrafficHourlyMutationRuleFunc func(context.Context, *ent.RouteTrafficHourlyMutation) error
+
+// EvalMutation calls f(ctx, m).
+func (f RouteTrafficHourlyMutationRuleFunc) EvalMutation(ctx context.Context, m ent.Mutation) error {
+	if m, ok := m.(*ent.RouteTrafficHourlyMutation); ok {
+		return f(ctx, m)
+	}
+	return Denyf("ent/privacy: unexpected mutation type %T, expect *ent.RouteTrafficHourlyMutation", m)
+}
+
 // The RouteUDPQueryRuleFunc type is an adapter to allow the use of ordinary
 // functions as a query rule.
 type RouteUDPQueryRuleFunc func(context.Context, *ent.RouteUDPQuery) error
@@ -1261,6 +1309,30 @@ func (f TOTPCredentialMutationRuleFunc) EvalMutation(ctx context.Context, m ent.
 		return f(ctx, m)
 	}
 	return Denyf("ent/privacy: unexpected mutation type %T, expect *ent.TOTPCredentialMutation", m)
+}
+
+// The TrafficBaselineQueryRuleFunc type is an adapter to allow the use of ordinary
+// functions as a query rule.
+type TrafficBaselineQueryRuleFunc func(context.Context, *ent.TrafficBaselineQuery) error
+
+// EvalQuery return f(ctx, q).
+func (f TrafficBaselineQueryRuleFunc) EvalQuery(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.TrafficBaselineQuery); ok {
+		return f(ctx, q)
+	}
+	return Denyf("ent/privacy: unexpected query type %T, expect *ent.TrafficBaselineQuery", q)
+}
+
+// The TrafficBaselineMutationRuleFunc type is an adapter to allow the use of ordinary
+// functions as a mutation rule.
+type TrafficBaselineMutationRuleFunc func(context.Context, *ent.TrafficBaselineMutation) error
+
+// EvalMutation calls f(ctx, m).
+func (f TrafficBaselineMutationRuleFunc) EvalMutation(ctx context.Context, m ent.Mutation) error {
+	if m, ok := m.(*ent.TrafficBaselineMutation); ok {
+		return f(ctx, m)
+	}
+	return Denyf("ent/privacy: unexpected mutation type %T, expect *ent.TrafficBaselineMutation", m)
 }
 
 // The UserQueryRuleFunc type is an adapter to allow the use of ordinary
@@ -1410,6 +1482,10 @@ func queryFilter(q ent.Query) (Filter, error) {
 		return q.Filter(), nil
 	case *ent.RouteTargetQuery:
 		return q.Filter(), nil
+	case *ent.RouteTrafficDailyQuery:
+		return q.Filter(), nil
+	case *ent.RouteTrafficHourlyQuery:
+		return q.Filter(), nil
 	case *ent.RouteUDPQuery:
 		return q.Filter(), nil
 	case *ent.SecretMetaQuery:
@@ -1417,6 +1493,8 @@ func queryFilter(q ent.Query) (Filter, error) {
 	case *ent.SessionQuery:
 		return q.Filter(), nil
 	case *ent.TOTPCredentialQuery:
+		return q.Filter(), nil
+	case *ent.TrafficBaselineQuery:
 		return q.Filter(), nil
 	case *ent.UserQuery:
 		return q.Filter(), nil
@@ -1515,6 +1593,10 @@ func mutationFilter(m ent.Mutation) (Filter, error) {
 		return m.Filter(), nil
 	case *ent.RouteTargetMutation:
 		return m.Filter(), nil
+	case *ent.RouteTrafficDailyMutation:
+		return m.Filter(), nil
+	case *ent.RouteTrafficHourlyMutation:
+		return m.Filter(), nil
 	case *ent.RouteUDPMutation:
 		return m.Filter(), nil
 	case *ent.SecretMetaMutation:
@@ -1522,6 +1604,8 @@ func mutationFilter(m ent.Mutation) (Filter, error) {
 	case *ent.SessionMutation:
 		return m.Filter(), nil
 	case *ent.TOTPCredentialMutation:
+		return m.Filter(), nil
+	case *ent.TrafficBaselineMutation:
 		return m.Filter(), nil
 	case *ent.UserMutation:
 		return m.Filter(), nil

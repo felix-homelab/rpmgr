@@ -59,10 +59,13 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routepolicy"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routetarget"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routetcp"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/routetrafficdaily"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/routetraffichourly"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routeudp"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/secretmeta"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/session"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/totpcredential"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/trafficbaseline"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/user"
 
 	stdsql "database/sql"
@@ -161,6 +164,10 @@ type Client struct {
 	RouteTCP *RouteTCPClient
 	// RouteTarget is the client for interacting with the RouteTarget builders.
 	RouteTarget *RouteTargetClient
+	// RouteTrafficDaily is the client for interacting with the RouteTrafficDaily builders.
+	RouteTrafficDaily *RouteTrafficDailyClient
+	// RouteTrafficHourly is the client for interacting with the RouteTrafficHourly builders.
+	RouteTrafficHourly *RouteTrafficHourlyClient
 	// RouteUDP is the client for interacting with the RouteUDP builders.
 	RouteUDP *RouteUDPClient
 	// SecretMeta is the client for interacting with the SecretMeta builders.
@@ -169,6 +176,8 @@ type Client struct {
 	Session *SessionClient
 	// TOTPCredential is the client for interacting with the TOTPCredential builders.
 	TOTPCredential *TOTPCredentialClient
+	// TrafficBaseline is the client for interacting with the TrafficBaseline builders.
+	TrafficBaseline *TrafficBaselineClient
 	// User is the client for interacting with the User builders.
 	User *UserClient
 }
@@ -226,10 +235,13 @@ func (c *Client) init() {
 	c.RoutePolicy = NewRoutePolicyClient(c.config)
 	c.RouteTCP = NewRouteTCPClient(c.config)
 	c.RouteTarget = NewRouteTargetClient(c.config)
+	c.RouteTrafficDaily = NewRouteTrafficDailyClient(c.config)
+	c.RouteTrafficHourly = NewRouteTrafficHourlyClient(c.config)
 	c.RouteUDP = NewRouteUDPClient(c.config)
 	c.SecretMeta = NewSecretMetaClient(c.config)
 	c.Session = NewSessionClient(c.config)
 	c.TOTPCredential = NewTOTPCredentialClient(c.config)
+	c.TrafficBaseline = NewTrafficBaselineClient(c.config)
 	c.User = NewUserClient(c.config)
 }
 
@@ -321,57 +333,60 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 	cfg := c.config
 	cfg.driver = tx
 	return &Tx{
-		ctx:               ctx,
-		config:            cfg,
-		ACMEStorage:       NewACMEStorageClient(cfg),
-		APIRequest:        NewAPIRequestClient(cfg),
-		APIToken:          NewAPITokenClient(cfg),
-		AccessPolicy:      NewAccessPolicyClient(cfg),
-		AgentSession:      NewAgentSessionClient(cfg),
-		AgentState:        NewAgentStateClient(cfg),
-		AuditCheckpoint:   NewAuditCheckpointClient(cfg),
-		AuditEntry:        NewAuditEntryClient(cfg),
-		AuditHead:         NewAuditHeadClient(cfg),
-		CABundle:          NewCABundleClient(cfg),
-		CAKey:             NewCAKeyClient(cfg),
-		Certificate:       NewCertificateClient(cfg),
-		CompiledSnapshot:  NewCompiledSnapshotClient(cfg),
-		ConfigRevision:    NewConfigRevisionClient(cfg),
-		ConfigSeq:         NewConfigSeqClient(cfg),
-		Connector:         NewConnectorClient(cfg),
-		DataSession:       NewDataSessionClient(cfg),
-		Domain:            NewDomainClient(cfg),
-		EnrollmentToken:   NewEnrollmentTokenClient(cfg),
-		Gateway:           NewGatewayClient(cfg),
-		GatewayGroup:      NewGatewayGroupClient(cfg),
-		Instance:          NewInstanceClient(cfg),
-		InstanceSecret:    NewInstanceSecretClient(cfg),
-		InstanceSetting:   NewInstanceSettingClient(cfg),
-		Invitation:        NewInvitationClient(cfg),
-		IssuedCertificate: NewIssuedCertificateClient(cfg),
-		Lease:             NewLeaseClient(cfg),
-		Membership:        NewMembershipClient(cfg),
-		Org:               NewOrgClient(cfg),
-		OrgSetting:        NewOrgSettingClient(cfg),
-		PasswordReset:     NewPasswordResetClient(cfg),
-		PolicyRule:        NewPolicyRuleClient(cfg),
-		PortAllocation:    NewPortAllocationClient(cfg),
-		PortPool:          NewPortPoolClient(cfg),
-		PortQuota:         NewPortQuotaClient(cfg),
-		RecoveryCode:      NewRecoveryCodeClient(cfg),
-		ResourceStatus:    NewResourceStatusClient(cfg),
-		RevokedIdentity:   NewRevokedIdentityClient(cfg),
-		Route:             NewRouteClient(cfg),
-		RouteHTTP:         NewRouteHTTPClient(cfg),
-		RouteHostname:     NewRouteHostnameClient(cfg),
-		RoutePolicy:       NewRoutePolicyClient(cfg),
-		RouteTCP:          NewRouteTCPClient(cfg),
-		RouteTarget:       NewRouteTargetClient(cfg),
-		RouteUDP:          NewRouteUDPClient(cfg),
-		SecretMeta:        NewSecretMetaClient(cfg),
-		Session:           NewSessionClient(cfg),
-		TOTPCredential:    NewTOTPCredentialClient(cfg),
-		User:              NewUserClient(cfg),
+		ctx:                ctx,
+		config:             cfg,
+		ACMEStorage:        NewACMEStorageClient(cfg),
+		APIRequest:         NewAPIRequestClient(cfg),
+		APIToken:           NewAPITokenClient(cfg),
+		AccessPolicy:       NewAccessPolicyClient(cfg),
+		AgentSession:       NewAgentSessionClient(cfg),
+		AgentState:         NewAgentStateClient(cfg),
+		AuditCheckpoint:    NewAuditCheckpointClient(cfg),
+		AuditEntry:         NewAuditEntryClient(cfg),
+		AuditHead:          NewAuditHeadClient(cfg),
+		CABundle:           NewCABundleClient(cfg),
+		CAKey:              NewCAKeyClient(cfg),
+		Certificate:        NewCertificateClient(cfg),
+		CompiledSnapshot:   NewCompiledSnapshotClient(cfg),
+		ConfigRevision:     NewConfigRevisionClient(cfg),
+		ConfigSeq:          NewConfigSeqClient(cfg),
+		Connector:          NewConnectorClient(cfg),
+		DataSession:        NewDataSessionClient(cfg),
+		Domain:             NewDomainClient(cfg),
+		EnrollmentToken:    NewEnrollmentTokenClient(cfg),
+		Gateway:            NewGatewayClient(cfg),
+		GatewayGroup:       NewGatewayGroupClient(cfg),
+		Instance:           NewInstanceClient(cfg),
+		InstanceSecret:     NewInstanceSecretClient(cfg),
+		InstanceSetting:    NewInstanceSettingClient(cfg),
+		Invitation:         NewInvitationClient(cfg),
+		IssuedCertificate:  NewIssuedCertificateClient(cfg),
+		Lease:              NewLeaseClient(cfg),
+		Membership:         NewMembershipClient(cfg),
+		Org:                NewOrgClient(cfg),
+		OrgSetting:         NewOrgSettingClient(cfg),
+		PasswordReset:      NewPasswordResetClient(cfg),
+		PolicyRule:         NewPolicyRuleClient(cfg),
+		PortAllocation:     NewPortAllocationClient(cfg),
+		PortPool:           NewPortPoolClient(cfg),
+		PortQuota:          NewPortQuotaClient(cfg),
+		RecoveryCode:       NewRecoveryCodeClient(cfg),
+		ResourceStatus:     NewResourceStatusClient(cfg),
+		RevokedIdentity:    NewRevokedIdentityClient(cfg),
+		Route:              NewRouteClient(cfg),
+		RouteHTTP:          NewRouteHTTPClient(cfg),
+		RouteHostname:      NewRouteHostnameClient(cfg),
+		RoutePolicy:        NewRoutePolicyClient(cfg),
+		RouteTCP:           NewRouteTCPClient(cfg),
+		RouteTarget:        NewRouteTargetClient(cfg),
+		RouteTrafficDaily:  NewRouteTrafficDailyClient(cfg),
+		RouteTrafficHourly: NewRouteTrafficHourlyClient(cfg),
+		RouteUDP:           NewRouteUDPClient(cfg),
+		SecretMeta:         NewSecretMetaClient(cfg),
+		Session:            NewSessionClient(cfg),
+		TOTPCredential:     NewTOTPCredentialClient(cfg),
+		TrafficBaseline:    NewTrafficBaselineClient(cfg),
+		User:               NewUserClient(cfg),
 	}, nil
 }
 
@@ -389,57 +404,60 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 	cfg := c.config
 	cfg.driver = &txDriver{tx: tx, drv: c.driver}
 	return &Tx{
-		ctx:               ctx,
-		config:            cfg,
-		ACMEStorage:       NewACMEStorageClient(cfg),
-		APIRequest:        NewAPIRequestClient(cfg),
-		APIToken:          NewAPITokenClient(cfg),
-		AccessPolicy:      NewAccessPolicyClient(cfg),
-		AgentSession:      NewAgentSessionClient(cfg),
-		AgentState:        NewAgentStateClient(cfg),
-		AuditCheckpoint:   NewAuditCheckpointClient(cfg),
-		AuditEntry:        NewAuditEntryClient(cfg),
-		AuditHead:         NewAuditHeadClient(cfg),
-		CABundle:          NewCABundleClient(cfg),
-		CAKey:             NewCAKeyClient(cfg),
-		Certificate:       NewCertificateClient(cfg),
-		CompiledSnapshot:  NewCompiledSnapshotClient(cfg),
-		ConfigRevision:    NewConfigRevisionClient(cfg),
-		ConfigSeq:         NewConfigSeqClient(cfg),
-		Connector:         NewConnectorClient(cfg),
-		DataSession:       NewDataSessionClient(cfg),
-		Domain:            NewDomainClient(cfg),
-		EnrollmentToken:   NewEnrollmentTokenClient(cfg),
-		Gateway:           NewGatewayClient(cfg),
-		GatewayGroup:      NewGatewayGroupClient(cfg),
-		Instance:          NewInstanceClient(cfg),
-		InstanceSecret:    NewInstanceSecretClient(cfg),
-		InstanceSetting:   NewInstanceSettingClient(cfg),
-		Invitation:        NewInvitationClient(cfg),
-		IssuedCertificate: NewIssuedCertificateClient(cfg),
-		Lease:             NewLeaseClient(cfg),
-		Membership:        NewMembershipClient(cfg),
-		Org:               NewOrgClient(cfg),
-		OrgSetting:        NewOrgSettingClient(cfg),
-		PasswordReset:     NewPasswordResetClient(cfg),
-		PolicyRule:        NewPolicyRuleClient(cfg),
-		PortAllocation:    NewPortAllocationClient(cfg),
-		PortPool:          NewPortPoolClient(cfg),
-		PortQuota:         NewPortQuotaClient(cfg),
-		RecoveryCode:      NewRecoveryCodeClient(cfg),
-		ResourceStatus:    NewResourceStatusClient(cfg),
-		RevokedIdentity:   NewRevokedIdentityClient(cfg),
-		Route:             NewRouteClient(cfg),
-		RouteHTTP:         NewRouteHTTPClient(cfg),
-		RouteHostname:     NewRouteHostnameClient(cfg),
-		RoutePolicy:       NewRoutePolicyClient(cfg),
-		RouteTCP:          NewRouteTCPClient(cfg),
-		RouteTarget:       NewRouteTargetClient(cfg),
-		RouteUDP:          NewRouteUDPClient(cfg),
-		SecretMeta:        NewSecretMetaClient(cfg),
-		Session:           NewSessionClient(cfg),
-		TOTPCredential:    NewTOTPCredentialClient(cfg),
-		User:              NewUserClient(cfg),
+		ctx:                ctx,
+		config:             cfg,
+		ACMEStorage:        NewACMEStorageClient(cfg),
+		APIRequest:         NewAPIRequestClient(cfg),
+		APIToken:           NewAPITokenClient(cfg),
+		AccessPolicy:       NewAccessPolicyClient(cfg),
+		AgentSession:       NewAgentSessionClient(cfg),
+		AgentState:         NewAgentStateClient(cfg),
+		AuditCheckpoint:    NewAuditCheckpointClient(cfg),
+		AuditEntry:         NewAuditEntryClient(cfg),
+		AuditHead:          NewAuditHeadClient(cfg),
+		CABundle:           NewCABundleClient(cfg),
+		CAKey:              NewCAKeyClient(cfg),
+		Certificate:        NewCertificateClient(cfg),
+		CompiledSnapshot:   NewCompiledSnapshotClient(cfg),
+		ConfigRevision:     NewConfigRevisionClient(cfg),
+		ConfigSeq:          NewConfigSeqClient(cfg),
+		Connector:          NewConnectorClient(cfg),
+		DataSession:        NewDataSessionClient(cfg),
+		Domain:             NewDomainClient(cfg),
+		EnrollmentToken:    NewEnrollmentTokenClient(cfg),
+		Gateway:            NewGatewayClient(cfg),
+		GatewayGroup:       NewGatewayGroupClient(cfg),
+		Instance:           NewInstanceClient(cfg),
+		InstanceSecret:     NewInstanceSecretClient(cfg),
+		InstanceSetting:    NewInstanceSettingClient(cfg),
+		Invitation:         NewInvitationClient(cfg),
+		IssuedCertificate:  NewIssuedCertificateClient(cfg),
+		Lease:              NewLeaseClient(cfg),
+		Membership:         NewMembershipClient(cfg),
+		Org:                NewOrgClient(cfg),
+		OrgSetting:         NewOrgSettingClient(cfg),
+		PasswordReset:      NewPasswordResetClient(cfg),
+		PolicyRule:         NewPolicyRuleClient(cfg),
+		PortAllocation:     NewPortAllocationClient(cfg),
+		PortPool:           NewPortPoolClient(cfg),
+		PortQuota:          NewPortQuotaClient(cfg),
+		RecoveryCode:       NewRecoveryCodeClient(cfg),
+		ResourceStatus:     NewResourceStatusClient(cfg),
+		RevokedIdentity:    NewRevokedIdentityClient(cfg),
+		Route:              NewRouteClient(cfg),
+		RouteHTTP:          NewRouteHTTPClient(cfg),
+		RouteHostname:      NewRouteHostnameClient(cfg),
+		RoutePolicy:        NewRoutePolicyClient(cfg),
+		RouteTCP:           NewRouteTCPClient(cfg),
+		RouteTarget:        NewRouteTargetClient(cfg),
+		RouteTrafficDaily:  NewRouteTrafficDailyClient(cfg),
+		RouteTrafficHourly: NewRouteTrafficHourlyClient(cfg),
+		RouteUDP:           NewRouteUDPClient(cfg),
+		SecretMeta:         NewSecretMetaClient(cfg),
+		Session:            NewSessionClient(cfg),
+		TOTPCredential:     NewTOTPCredentialClient(cfg),
+		TrafficBaseline:    NewTrafficBaselineClient(cfg),
+		User:               NewUserClient(cfg),
 	}, nil
 }
 
@@ -477,8 +495,9 @@ func (c *Client) Use(hooks ...Hook) {
 		c.IssuedCertificate, c.Lease, c.Membership, c.Org, c.OrgSetting,
 		c.PasswordReset, c.PolicyRule, c.PortAllocation, c.PortPool, c.PortQuota,
 		c.RecoveryCode, c.ResourceStatus, c.RevokedIdentity, c.Route, c.RouteHTTP,
-		c.RouteHostname, c.RoutePolicy, c.RouteTCP, c.RouteTarget, c.RouteUDP,
-		c.SecretMeta, c.Session, c.TOTPCredential, c.User,
+		c.RouteHostname, c.RoutePolicy, c.RouteTCP, c.RouteTarget, c.RouteTrafficDaily,
+		c.RouteTrafficHourly, c.RouteUDP, c.SecretMeta, c.Session, c.TOTPCredential,
+		c.TrafficBaseline, c.User,
 	} {
 		n.Use(hooks...)
 	}
@@ -496,8 +515,9 @@ func (c *Client) Intercept(interceptors ...Interceptor) {
 		c.IssuedCertificate, c.Lease, c.Membership, c.Org, c.OrgSetting,
 		c.PasswordReset, c.PolicyRule, c.PortAllocation, c.PortPool, c.PortQuota,
 		c.RecoveryCode, c.ResourceStatus, c.RevokedIdentity, c.Route, c.RouteHTTP,
-		c.RouteHostname, c.RoutePolicy, c.RouteTCP, c.RouteTarget, c.RouteUDP,
-		c.SecretMeta, c.Session, c.TOTPCredential, c.User,
+		c.RouteHostname, c.RoutePolicy, c.RouteTCP, c.RouteTarget, c.RouteTrafficDaily,
+		c.RouteTrafficHourly, c.RouteUDP, c.SecretMeta, c.Session, c.TOTPCredential,
+		c.TrafficBaseline, c.User,
 	} {
 		n.Intercept(interceptors...)
 	}
@@ -594,6 +614,10 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.RouteTCP.mutate(ctx, m)
 	case *RouteTargetMutation:
 		return c.RouteTarget.mutate(ctx, m)
+	case *RouteTrafficDailyMutation:
+		return c.RouteTrafficDaily.mutate(ctx, m)
+	case *RouteTrafficHourlyMutation:
+		return c.RouteTrafficHourly.mutate(ctx, m)
 	case *RouteUDPMutation:
 		return c.RouteUDP.mutate(ctx, m)
 	case *SecretMetaMutation:
@@ -602,6 +626,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.Session.mutate(ctx, m)
 	case *TOTPCredentialMutation:
 		return c.TOTPCredential.mutate(ctx, m)
+	case *TrafficBaselineMutation:
+		return c.TrafficBaseline.mutate(ctx, m)
 	case *UserMutation:
 		return c.User.mutate(ctx, m)
 	default:
@@ -6929,6 +6955,276 @@ func (c *RouteTargetClient) mutate(ctx context.Context, m *RouteTargetMutation) 
 	}
 }
 
+// RouteTrafficDailyClient is a client for the RouteTrafficDaily schema.
+type RouteTrafficDailyClient struct {
+	config
+}
+
+// NewRouteTrafficDailyClient returns a client for the RouteTrafficDaily from the given config.
+func NewRouteTrafficDailyClient(c config) *RouteTrafficDailyClient {
+	return &RouteTrafficDailyClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `routetrafficdaily.Hooks(f(g(h())))`.
+func (c *RouteTrafficDailyClient) Use(hooks ...Hook) {
+	c.hooks.RouteTrafficDaily = append(c.hooks.RouteTrafficDaily, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `routetrafficdaily.Intercept(f(g(h())))`.
+func (c *RouteTrafficDailyClient) Intercept(interceptors ...Interceptor) {
+	c.inters.RouteTrafficDaily = append(c.inters.RouteTrafficDaily, interceptors...)
+}
+
+// Create returns a builder for creating a RouteTrafficDaily entity.
+func (c *RouteTrafficDailyClient) Create() *RouteTrafficDailyCreate {
+	mutation := newRouteTrafficDailyMutation(c.config, OpCreate)
+	return &RouteTrafficDailyCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of RouteTrafficDaily entities.
+func (c *RouteTrafficDailyClient) CreateBulk(builders ...*RouteTrafficDailyCreate) *RouteTrafficDailyCreateBulk {
+	return &RouteTrafficDailyCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *RouteTrafficDailyClient) MapCreateBulk(slice any, setFunc func(*RouteTrafficDailyCreate, int)) *RouteTrafficDailyCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &RouteTrafficDailyCreateBulk{err: fmt.Errorf("calling to RouteTrafficDailyClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*RouteTrafficDailyCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &RouteTrafficDailyCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for RouteTrafficDaily.
+func (c *RouteTrafficDailyClient) Update() *RouteTrafficDailyUpdate {
+	mutation := newRouteTrafficDailyMutation(c.config, OpUpdate)
+	return &RouteTrafficDailyUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *RouteTrafficDailyClient) UpdateOne(_m *RouteTrafficDaily) *RouteTrafficDailyUpdateOne {
+	mutation := newRouteTrafficDailyMutation(c.config, OpUpdateOne, withRouteTrafficDaily(_m))
+	return &RouteTrafficDailyUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *RouteTrafficDailyClient) UpdateOneID(id string) *RouteTrafficDailyUpdateOne {
+	mutation := newRouteTrafficDailyMutation(c.config, OpUpdateOne, withRouteTrafficDailyID(id))
+	return &RouteTrafficDailyUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for RouteTrafficDaily.
+func (c *RouteTrafficDailyClient) Delete() *RouteTrafficDailyDelete {
+	mutation := newRouteTrafficDailyMutation(c.config, OpDelete)
+	return &RouteTrafficDailyDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *RouteTrafficDailyClient) DeleteOne(_m *RouteTrafficDaily) *RouteTrafficDailyDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *RouteTrafficDailyClient) DeleteOneID(id string) *RouteTrafficDailyDeleteOne {
+	builder := c.Delete().Where(routetrafficdaily.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &RouteTrafficDailyDeleteOne{builder}
+}
+
+// Query returns a query builder for RouteTrafficDaily.
+func (c *RouteTrafficDailyClient) Query() *RouteTrafficDailyQuery {
+	return &RouteTrafficDailyQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeRouteTrafficDaily},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a RouteTrafficDaily entity by its id.
+func (c *RouteTrafficDailyClient) Get(ctx context.Context, id string) (*RouteTrafficDaily, error) {
+	return c.Query().Where(routetrafficdaily.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *RouteTrafficDailyClient) GetX(ctx context.Context, id string) *RouteTrafficDaily {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *RouteTrafficDailyClient) Hooks() []Hook {
+	hooks := c.hooks.RouteTrafficDaily
+	return append(hooks[:len(hooks):len(hooks)], routetrafficdaily.Hooks[:]...)
+}
+
+// Interceptors returns the client interceptors.
+func (c *RouteTrafficDailyClient) Interceptors() []Interceptor {
+	inters := c.inters.RouteTrafficDaily
+	return append(inters[:len(inters):len(inters)], routetrafficdaily.Interceptors[:]...)
+}
+
+func (c *RouteTrafficDailyClient) mutate(ctx context.Context, m *RouteTrafficDailyMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&RouteTrafficDailyCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&RouteTrafficDailyUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&RouteTrafficDailyUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&RouteTrafficDailyDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown RouteTrafficDaily mutation op: %q", m.Op())
+	}
+}
+
+// RouteTrafficHourlyClient is a client for the RouteTrafficHourly schema.
+type RouteTrafficHourlyClient struct {
+	config
+}
+
+// NewRouteTrafficHourlyClient returns a client for the RouteTrafficHourly from the given config.
+func NewRouteTrafficHourlyClient(c config) *RouteTrafficHourlyClient {
+	return &RouteTrafficHourlyClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `routetraffichourly.Hooks(f(g(h())))`.
+func (c *RouteTrafficHourlyClient) Use(hooks ...Hook) {
+	c.hooks.RouteTrafficHourly = append(c.hooks.RouteTrafficHourly, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `routetraffichourly.Intercept(f(g(h())))`.
+func (c *RouteTrafficHourlyClient) Intercept(interceptors ...Interceptor) {
+	c.inters.RouteTrafficHourly = append(c.inters.RouteTrafficHourly, interceptors...)
+}
+
+// Create returns a builder for creating a RouteTrafficHourly entity.
+func (c *RouteTrafficHourlyClient) Create() *RouteTrafficHourlyCreate {
+	mutation := newRouteTrafficHourlyMutation(c.config, OpCreate)
+	return &RouteTrafficHourlyCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of RouteTrafficHourly entities.
+func (c *RouteTrafficHourlyClient) CreateBulk(builders ...*RouteTrafficHourlyCreate) *RouteTrafficHourlyCreateBulk {
+	return &RouteTrafficHourlyCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *RouteTrafficHourlyClient) MapCreateBulk(slice any, setFunc func(*RouteTrafficHourlyCreate, int)) *RouteTrafficHourlyCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &RouteTrafficHourlyCreateBulk{err: fmt.Errorf("calling to RouteTrafficHourlyClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*RouteTrafficHourlyCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &RouteTrafficHourlyCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for RouteTrafficHourly.
+func (c *RouteTrafficHourlyClient) Update() *RouteTrafficHourlyUpdate {
+	mutation := newRouteTrafficHourlyMutation(c.config, OpUpdate)
+	return &RouteTrafficHourlyUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *RouteTrafficHourlyClient) UpdateOne(_m *RouteTrafficHourly) *RouteTrafficHourlyUpdateOne {
+	mutation := newRouteTrafficHourlyMutation(c.config, OpUpdateOne, withRouteTrafficHourly(_m))
+	return &RouteTrafficHourlyUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *RouteTrafficHourlyClient) UpdateOneID(id string) *RouteTrafficHourlyUpdateOne {
+	mutation := newRouteTrafficHourlyMutation(c.config, OpUpdateOne, withRouteTrafficHourlyID(id))
+	return &RouteTrafficHourlyUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for RouteTrafficHourly.
+func (c *RouteTrafficHourlyClient) Delete() *RouteTrafficHourlyDelete {
+	mutation := newRouteTrafficHourlyMutation(c.config, OpDelete)
+	return &RouteTrafficHourlyDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *RouteTrafficHourlyClient) DeleteOne(_m *RouteTrafficHourly) *RouteTrafficHourlyDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *RouteTrafficHourlyClient) DeleteOneID(id string) *RouteTrafficHourlyDeleteOne {
+	builder := c.Delete().Where(routetraffichourly.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &RouteTrafficHourlyDeleteOne{builder}
+}
+
+// Query returns a query builder for RouteTrafficHourly.
+func (c *RouteTrafficHourlyClient) Query() *RouteTrafficHourlyQuery {
+	return &RouteTrafficHourlyQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeRouteTrafficHourly},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a RouteTrafficHourly entity by its id.
+func (c *RouteTrafficHourlyClient) Get(ctx context.Context, id string) (*RouteTrafficHourly, error) {
+	return c.Query().Where(routetraffichourly.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *RouteTrafficHourlyClient) GetX(ctx context.Context, id string) *RouteTrafficHourly {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *RouteTrafficHourlyClient) Hooks() []Hook {
+	hooks := c.hooks.RouteTrafficHourly
+	return append(hooks[:len(hooks):len(hooks)], routetraffichourly.Hooks[:]...)
+}
+
+// Interceptors returns the client interceptors.
+func (c *RouteTrafficHourlyClient) Interceptors() []Interceptor {
+	inters := c.inters.RouteTrafficHourly
+	return append(inters[:len(inters):len(inters)], routetraffichourly.Interceptors[:]...)
+}
+
+func (c *RouteTrafficHourlyClient) mutate(ctx context.Context, m *RouteTrafficHourlyMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&RouteTrafficHourlyCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&RouteTrafficHourlyUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&RouteTrafficHourlyUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&RouteTrafficHourlyDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown RouteTrafficHourly mutation op: %q", m.Op())
+	}
+}
+
 // RouteUDPClient is a client for the RouteUDP schema.
 type RouteUDPClient struct {
 	config
@@ -7532,6 +7828,141 @@ func (c *TOTPCredentialClient) mutate(ctx context.Context, m *TOTPCredentialMuta
 	}
 }
 
+// TrafficBaselineClient is a client for the TrafficBaseline schema.
+type TrafficBaselineClient struct {
+	config
+}
+
+// NewTrafficBaselineClient returns a client for the TrafficBaseline from the given config.
+func NewTrafficBaselineClient(c config) *TrafficBaselineClient {
+	return &TrafficBaselineClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `trafficbaseline.Hooks(f(g(h())))`.
+func (c *TrafficBaselineClient) Use(hooks ...Hook) {
+	c.hooks.TrafficBaseline = append(c.hooks.TrafficBaseline, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `trafficbaseline.Intercept(f(g(h())))`.
+func (c *TrafficBaselineClient) Intercept(interceptors ...Interceptor) {
+	c.inters.TrafficBaseline = append(c.inters.TrafficBaseline, interceptors...)
+}
+
+// Create returns a builder for creating a TrafficBaseline entity.
+func (c *TrafficBaselineClient) Create() *TrafficBaselineCreate {
+	mutation := newTrafficBaselineMutation(c.config, OpCreate)
+	return &TrafficBaselineCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of TrafficBaseline entities.
+func (c *TrafficBaselineClient) CreateBulk(builders ...*TrafficBaselineCreate) *TrafficBaselineCreateBulk {
+	return &TrafficBaselineCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *TrafficBaselineClient) MapCreateBulk(slice any, setFunc func(*TrafficBaselineCreate, int)) *TrafficBaselineCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &TrafficBaselineCreateBulk{err: fmt.Errorf("calling to TrafficBaselineClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*TrafficBaselineCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &TrafficBaselineCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for TrafficBaseline.
+func (c *TrafficBaselineClient) Update() *TrafficBaselineUpdate {
+	mutation := newTrafficBaselineMutation(c.config, OpUpdate)
+	return &TrafficBaselineUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *TrafficBaselineClient) UpdateOne(_m *TrafficBaseline) *TrafficBaselineUpdateOne {
+	mutation := newTrafficBaselineMutation(c.config, OpUpdateOne, withTrafficBaseline(_m))
+	return &TrafficBaselineUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *TrafficBaselineClient) UpdateOneID(id string) *TrafficBaselineUpdateOne {
+	mutation := newTrafficBaselineMutation(c.config, OpUpdateOne, withTrafficBaselineID(id))
+	return &TrafficBaselineUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for TrafficBaseline.
+func (c *TrafficBaselineClient) Delete() *TrafficBaselineDelete {
+	mutation := newTrafficBaselineMutation(c.config, OpDelete)
+	return &TrafficBaselineDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *TrafficBaselineClient) DeleteOne(_m *TrafficBaseline) *TrafficBaselineDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *TrafficBaselineClient) DeleteOneID(id string) *TrafficBaselineDeleteOne {
+	builder := c.Delete().Where(trafficbaseline.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &TrafficBaselineDeleteOne{builder}
+}
+
+// Query returns a query builder for TrafficBaseline.
+func (c *TrafficBaselineClient) Query() *TrafficBaselineQuery {
+	return &TrafficBaselineQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeTrafficBaseline},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a TrafficBaseline entity by its id.
+func (c *TrafficBaselineClient) Get(ctx context.Context, id string) (*TrafficBaseline, error) {
+	return c.Query().Where(trafficbaseline.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *TrafficBaselineClient) GetX(ctx context.Context, id string) *TrafficBaseline {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *TrafficBaselineClient) Hooks() []Hook {
+	hooks := c.hooks.TrafficBaseline
+	return append(hooks[:len(hooks):len(hooks)], trafficbaseline.Hooks[:]...)
+}
+
+// Interceptors returns the client interceptors.
+func (c *TrafficBaselineClient) Interceptors() []Interceptor {
+	inters := c.inters.TrafficBaseline
+	return append(inters[:len(inters):len(inters)], trafficbaseline.Interceptors[:]...)
+}
+
+func (c *TrafficBaselineClient) mutate(ctx context.Context, m *TrafficBaselineMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&TrafficBaselineCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&TrafficBaselineUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&TrafficBaselineUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&TrafficBaselineDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown TrafficBaseline mutation op: %q", m.Op())
+	}
+}
+
 // UserClient is a client for the User schema.
 type UserClient struct {
 	config
@@ -7693,8 +8124,8 @@ type (
 		InstanceSetting, Invitation, IssuedCertificate, Lease, Membership, Org,
 		OrgSetting, PasswordReset, PolicyRule, PortAllocation, PortPool, PortQuota,
 		RecoveryCode, ResourceStatus, RevokedIdentity, Route, RouteHTTP, RouteHostname,
-		RoutePolicy, RouteTCP, RouteTarget, RouteUDP, SecretMeta, Session,
-		TOTPCredential, User []ent.Hook
+		RoutePolicy, RouteTCP, RouteTarget, RouteTrafficDaily, RouteTrafficHourly,
+		RouteUDP, SecretMeta, Session, TOTPCredential, TrafficBaseline, User []ent.Hook
 	}
 	inters struct {
 		ACMEStorage, APIRequest, APIToken, AccessPolicy, AgentSession, AgentState,
@@ -7704,8 +8135,9 @@ type (
 		InstanceSetting, Invitation, IssuedCertificate, Lease, Membership, Org,
 		OrgSetting, PasswordReset, PolicyRule, PortAllocation, PortPool, PortQuota,
 		RecoveryCode, ResourceStatus, RevokedIdentity, Route, RouteHTTP, RouteHostname,
-		RoutePolicy, RouteTCP, RouteTarget, RouteUDP, SecretMeta, Session,
-		TOTPCredential, User []ent.Interceptor
+		RoutePolicy, RouteTCP, RouteTarget, RouteTrafficDaily, RouteTrafficHourly,
+		RouteUDP, SecretMeta, Session, TOTPCredential, TrafficBaseline,
+		User []ent.Interceptor
 	}
 )
 

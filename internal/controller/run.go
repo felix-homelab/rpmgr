@@ -385,6 +385,8 @@ func Run(ctx context.Context, o RunOptions) error {
 		Leases: leases, Now: o.Now, Logger: o.Logger}
 	go leases.Run(sys, CheckpointJob(cpOpts), func(err error) { o.Logger.Warn("audit checkpoint job", "error", err) })
 	go leases.Run(sys, RetentionJob(cpOpts), func(err error) { o.Logger.Warn("audit retention job", "error", err) })
+	go leases.Run(sys, RollupJob(RollupOptions{DB: db, Leases: leases, Now: o.Now, Logger: o.Logger}),
+		func(err error) { o.Logger.Warn("traffic rollup job", "error", err) })
 	go ReloadCA(sys, caOpts)
 	go RenewNodeCertificate(sys, NodeCertOptions{CA: ca, DB: db, Sys: sys, NodeID: nodeID, Holder: holder, Now: o.Now, Logger: o.Logger})
 	serve("agent endpoint", func() error { return agents.Serve(split.Agents()) })
