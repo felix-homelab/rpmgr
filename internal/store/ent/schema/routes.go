@@ -217,6 +217,52 @@ func (RouteUDP) Indexes() []ent.Index {
 	return []ent.Index{index.Fields("route_id").Unique(), index.Fields("port_allocation_id").Unique()}
 }
 
+// RouteHTTP is the HTTP part of an http route, one row per route; its hostnames and path
+// prefixes are route_hostnames rows.
+type RouteHTTP struct{ ent.Schema }
+
+// Mixin makes it org-owned.
+func (RouteHTTP) Mixin() []ent.Mixin { return []ent.Mixin{OrgMixin{}} }
+
+// Annotations name the table as docs/06-data-model.md does.
+func (RouteHTTP) Annotations() []schema.Annotation {
+	return []schema.Annotation{entsql.Annotation{Table: "route_http"}}
+}
+
+// Fields of an http route (docs/06-data-model.md, "Routes"). path_prefix applies to every hostname
+// of the route, whose route_hostnames rows copy it. tls_mode acme uses the certificate ACME obtains
+// for the hostnames, certificate the uploaded certificate_id. host_header is "preserve" or the
+// Host value sent upstream; max_body_bytes 0 sets no limit.
+func (RouteHTTP) Fields() []ent.Field {
+	return []ent.Field{
+		field.String("route_id").NotEmpty().Unique().Immutable(),
+		field.String("path_prefix").Default(""),
+		field.JSON("header_matches", map[string]string{}).Optional(),
+		field.Enum("tls_mode").Values("acme", "certificate").Default("acme"),
+		field.String("certificate_id").Optional().Nillable(),
+		field.Enum("port80").Values("redirect", "serve", "off").Default("redirect"),
+		field.String("host_header").NotEmpty().Default("preserve"),
+		field.JSON("request_headers_set", map[string]string{}).Optional(),
+		field.JSON("response_headers_set", map[string]string{}).Optional(),
+		field.Bool("websocket").Default(true),
+		field.Int64("max_body_bytes").NonNegative().Default(0),
+		field.Bool("dns_proxied").Default(false),
+	}
+}
+
+// Edges of an http route.
+func (RouteHTTP) Edges() []ent.Edge {
+	return []ent.Edge{
+		edge.To("route", Route.Type).Field("route_id").Unique().Required().Immutable(),
+		edge.To("certificate", Certificate.Type).Field("certificate_id").Unique(),
+	}
+}
+
+// Indexes: one row per route, and the routes of a certificate.
+func (RouteHTTP) Indexes() []ent.Index {
+	return []ent.Index{index.Fields("route_id").Unique(), index.Fields("certificate_id")}
+}
+
 // RouteTarget is where a connector delivers a route's connections; several targets balance and
 // fail over.
 type RouteTarget struct{ ent.Schema }

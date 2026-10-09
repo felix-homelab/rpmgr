@@ -211,7 +211,8 @@ message Signed { bytes payload = 1; bytes signature = 2; string key_id = 3; }
   re-sent. An agent can fetch only an item that one of its own snapshots names with that hash, among
   those the controller keeps ([06](06-data-model.md#system)); anything else is `NOT_FOUND`, whether
   it exists or not. A gateway gets a route certificate, chain and key together, only for the
-  hostnames of its group's http routes of the certificate's own org that the certificate covers.
+  hostnames of its group's http routes whose TLS mode names it, an uploaded certificate of the
+  route's org or the org's ACME ones, and only those hostnames the certificate covers.
 - **Leaving.** `Leave` lets an agent revoke its own identity; the controller revokes it, pushes the
   deny-list and audits it, and `rpmgr leave` then removes the identity from the host.
 - **ACME challenges** (HTTP-01 and TLS-ALPN-01 for route certificates, D41): the controller sends
@@ -603,8 +604,10 @@ sequenceDiagram
 ```
 
 - The gateway's HTTP engine is Go's `net/http` server plus `httputil.ReverseProxy` whose transport
-  dials **tunnel streams** instead of TCP. HTTP/1.1 keep-alive connections over tunnel streams are
-  pooled per (route, target).
+  dials **tunnel streams** instead of TCP. Keep-alive connections over tunnel streams are pooled
+  per route; each stays with the target its connector chose. Every target of an http route has the
+  same upstream protocol, `http` (HTTP/1.1) or `h2c`, so the gateway knows how to speak to it
+  ([07](07-api.md#example-a-route)).
 - `Forwarded` and `X-Forwarded-For/Proto/Host` are set by the gateway; values arriving from the
   public client are stripped unless the client's address is in the gateway's trusted-proxy CIDRs.
 - For a route with `dns_proxied` (Phase 2), the client address is taken from `CF-Connecting-IP`,

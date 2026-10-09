@@ -711,6 +711,30 @@ func (f RouteMutationRuleFunc) EvalMutation(ctx context.Context, m ent.Mutation)
 	return Denyf("ent/privacy: unexpected mutation type %T, expect *ent.RouteMutation", m)
 }
 
+// The RouteHTTPQueryRuleFunc type is an adapter to allow the use of ordinary
+// functions as a query rule.
+type RouteHTTPQueryRuleFunc func(context.Context, *ent.RouteHTTPQuery) error
+
+// EvalQuery return f(ctx, q).
+func (f RouteHTTPQueryRuleFunc) EvalQuery(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.RouteHTTPQuery); ok {
+		return f(ctx, q)
+	}
+	return Denyf("ent/privacy: unexpected query type %T, expect *ent.RouteHTTPQuery", q)
+}
+
+// The RouteHTTPMutationRuleFunc type is an adapter to allow the use of ordinary
+// functions as a mutation rule.
+type RouteHTTPMutationRuleFunc func(context.Context, *ent.RouteHTTPMutation) error
+
+// EvalMutation calls f(ctx, m).
+func (f RouteHTTPMutationRuleFunc) EvalMutation(ctx context.Context, m ent.Mutation) error {
+	if m, ok := m.(*ent.RouteHTTPMutation); ok {
+		return f(ctx, m)
+	}
+	return Denyf("ent/privacy: unexpected mutation type %T, expect *ent.RouteHTTPMutation", m)
+}
+
 // The RouteHostnameQueryRuleFunc type is an adapter to allow the use of ordinary
 // functions as a query rule.
 type RouteHostnameQueryRuleFunc func(context.Context, *ent.RouteHostnameQuery) error
@@ -916,6 +940,8 @@ func queryFilter(q ent.Query) (Filter, error) {
 		return q.Filter(), nil
 	case *ent.RouteQuery:
 		return q.Filter(), nil
+	case *ent.RouteHTTPQuery:
+		return q.Filter(), nil
 	case *ent.RouteHostnameQuery:
 		return q.Filter(), nil
 	case *ent.RouteTCPQuery:
@@ -982,6 +1008,8 @@ func mutationFilter(m ent.Mutation) (Filter, error) {
 	case *ent.RevokedIdentityMutation:
 		return m.Filter(), nil
 	case *ent.RouteMutation:
+		return m.Filter(), nil
+	case *ent.RouteHTTPMutation:
 		return m.Filter(), nil
 	case *ent.RouteHostnameMutation:
 		return m.Filter(), nil

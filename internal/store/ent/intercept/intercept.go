@@ -35,6 +35,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/revokedidentity"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/route"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routehostname"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/routehttp"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routetarget"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routetcp"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routeudp"
@@ -772,6 +773,33 @@ func (f TraverseRoute) Traverse(ctx context.Context, q ent.Query) error {
 	return fmt.Errorf("unexpected query type %T. expect *ent.RouteQuery", q)
 }
 
+// The RouteHTTPFunc type is an adapter to allow the use of ordinary function as a Querier.
+type RouteHTTPFunc func(context.Context, *ent.RouteHTTPQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f RouteHTTPFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.RouteHTTPQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.RouteHTTPQuery", q)
+}
+
+// The TraverseRouteHTTP type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseRouteHTTP func(context.Context, *ent.RouteHTTPQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseRouteHTTP) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseRouteHTTP) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.RouteHTTPQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.RouteHTTPQuery", q)
+}
+
 // The RouteHostnameFunc type is an adapter to allow the use of ordinary function as a Querier.
 type RouteHostnameFunc func(context.Context, *ent.RouteHostnameQuery) (ent.Value, error)
 
@@ -960,6 +988,8 @@ func NewQuery(q ent.Query) (Query, error) {
 		return &query[*ent.RevokedIdentityQuery, predicate.RevokedIdentity, revokedidentity.OrderOption]{typ: ent.TypeRevokedIdentity, tq: q}, nil
 	case *ent.RouteQuery:
 		return &query[*ent.RouteQuery, predicate.Route, route.OrderOption]{typ: ent.TypeRoute, tq: q}, nil
+	case *ent.RouteHTTPQuery:
+		return &query[*ent.RouteHTTPQuery, predicate.RouteHTTP, routehttp.OrderOption]{typ: ent.TypeRouteHTTP, tq: q}, nil
 	case *ent.RouteHostnameQuery:
 		return &query[*ent.RouteHostnameQuery, predicate.RouteHostname, routehostname.OrderOption]{typ: ent.TypeRouteHostname, tq: q}, nil
 	case *ent.RouteTCPQuery:

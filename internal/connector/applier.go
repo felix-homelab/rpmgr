@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net"
 	"path/filepath"
+	"slices"
 	"strconv"
 
 	agentv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/agent/v1"
@@ -59,7 +60,7 @@ func (a *Applier) Validate(snap *agentv1.Snapshot) []*agentv1.SnapshotError {
 		case res.GetConnectorRoute() != nil:
 			r := res.GetConnectorRoute()
 			udp := r.GetType() == "udp"
-			if r.GetType() != "tcp" && r.GetType() != "tls_passthrough" && !udp {
+			if !slices.Contains([]string{"tcp", "udp", "http", "tls_passthrough"}, r.GetType()) {
 				bad(id, "route type %q is not served by this version", r.GetType())
 			}
 			if _, ok := transportOf(r.GetTransport()); !ok {

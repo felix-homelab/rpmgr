@@ -64,6 +64,8 @@ type Tx struct {
 	RevokedIdentity *RevokedIdentityClient
 	// Route is the client for interacting with the Route builders.
 	Route *RouteClient
+	// RouteHTTP is the client for interacting with the RouteHTTP builders.
+	RouteHTTP *RouteHTTPClient
 	// RouteHostname is the client for interacting with the RouteHostname builders.
 	RouteHostname *RouteHostnameClient
 	// RouteTCP is the client for interacting with the RouteTCP builders.
@@ -230,6 +232,7 @@ func (tx *Tx) init() {
 	tx.PortQuota = NewPortQuotaClient(tx.config)
 	tx.RevokedIdentity = NewRevokedIdentityClient(tx.config)
 	tx.Route = NewRouteClient(tx.config)
+	tx.RouteHTTP = NewRouteHTTPClient(tx.config)
 	tx.RouteHostname = NewRouteHostnameClient(tx.config)
 	tx.RouteTCP = NewRouteTCPClient(tx.config)
 	tx.RouteTarget = NewRouteTargetClient(tx.config)

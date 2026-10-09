@@ -53,8 +53,8 @@ func TestApplier_Validate(t *testing.T) {
 		want string
 	}{
 		{"a gateway's resource", snap(&agentv1.Resource{Id: "rt_1", Kind: &agentv1.Resource_GatewayTcpRoute{GatewayTcpRoute: &agentv1.GatewayTCPRoute{Port: 1}}}), "does not run"},
-		{"an http route", snap(&agentv1.Resource{Id: "rt_1", Kind: &agentv1.Resource_ConnectorRoute{ConnectorRoute: &agentv1.ConnectorRoute{
-			Type: "http", Transport: auto, Targets: []*agentv1.Target{addrTarget("10.0.0.5", 80)}}}}), "not served"},
+		{"an unknown route type", snap(&agentv1.Resource{Id: "rt_1", Kind: &agentv1.Resource_ConnectorRoute{ConnectorRoute: &agentv1.ConnectorRoute{
+			Type: "smtp", Transport: auto, Targets: []*agentv1.Target{addrTarget("10.0.0.5", 25)}}}}), "not served"},
 		{"no transport", snap(routeResource("rt_1", agentv1.TransportPolicy_TRANSPORT_POLICY_UNSPECIFIED, addrTarget("10.0.0.5", 1))), "transport"},
 		{"no targets", snap(routeResource("rt_1", auto)), "without targets"},
 		{"no port", snap(routeResource("rt_1", auto, addrTarget("10.0.0.5", 0))), "host and a port"},

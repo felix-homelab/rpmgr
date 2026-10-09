@@ -38,6 +38,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/revokedidentity"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/route"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routehostname"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/routehttp"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routetarget"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routetcp"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routeudp"
@@ -78,6 +79,7 @@ const (
 	TypePortQuota         = "PortQuota"
 	TypeRevokedIdentity   = "RevokedIdentity"
 	TypeRoute             = "Route"
+	TypeRouteHTTP         = "RouteHTTP"
 	TypeRouteHostname     = "RouteHostname"
 	TypeRouteTCP          = "RouteTCP"
 	TypeRouteTarget       = "RouteTarget"
@@ -19928,6 +19930,1195 @@ func (m *RouteMutation) ResetEdge(name string) error {
 		return nil
 	}
 	return fmt.Errorf("unknown Route edge %s", name)
+}
+
+// RouteHTTPMutation represents an operation that mutates the RouteHTTP nodes in the graph.
+type RouteHTTPMutation struct {
+	config
+	op                   Op
+	typ                  string
+	id                   *int
+	org_id               *string
+	path_prefix          *string
+	header_matches       *map[string]string
+	tls_mode             *routehttp.TLSMode
+	port80               *routehttp.Port80
+	host_header          *string
+	request_headers_set  *map[string]string
+	response_headers_set *map[string]string
+	websocket            *bool
+	max_body_bytes       *int64
+	addmax_body_bytes    *int64
+	dns_proxied          *bool
+	clearedFields        map[string]struct{}
+	route                *string
+	clearedroute         bool
+	certificate          *string
+	clearedcertificate   bool
+	done                 bool
+	oldValue             func(context.Context) (*RouteHTTP, error)
+	predicates           []predicate.RouteHTTP
+}
+
+var _ ent.Mutation = (*RouteHTTPMutation)(nil)
+
+// routehttpOption allows management of the mutation configuration using functional options.
+type routehttpOption func(*RouteHTTPMutation)
+
+// newRouteHTTPMutation creates new mutation for the RouteHTTP entity.
+func newRouteHTTPMutation(c config, op Op, opts ...routehttpOption) *RouteHTTPMutation {
+	m := &RouteHTTPMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeRouteHTTP,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withRouteHTTPID sets the ID field of the mutation.
+func withRouteHTTPID(id int) routehttpOption {
+	return func(m *RouteHTTPMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *RouteHTTP
+		)
+		m.oldValue = func(ctx context.Context) (*RouteHTTP, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().RouteHTTP.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withRouteHTTP sets the old RouteHTTP of the mutation.
+func withRouteHTTP(node *RouteHTTP) routehttpOption {
+	return func(m *RouteHTTPMutation) {
+		m.oldValue = func(context.Context) (*RouteHTTP, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m RouteHTTPMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m RouteHTTPMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *RouteHTTPMutation) ID() (id int, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *RouteHTTPMutation) IDs(ctx context.Context) ([]int, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []int{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().RouteHTTP.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetOrgID sets the "org_id" field.
+func (m *RouteHTTPMutation) SetOrgID(s string) {
+	m.org_id = &s
+}
+
+// OrgID returns the value of the "org_id" field in the mutation.
+func (m *RouteHTTPMutation) OrgID() (r string, exists bool) {
+	v := m.org_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldOrgID returns the old "org_id" field's value of the RouteHTTP entity.
+// If the RouteHTTP object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RouteHTTPMutation) OldOrgID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldOrgID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldOrgID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldOrgID: %w", err)
+	}
+	return oldValue.OrgID, nil
+}
+
+// ResetOrgID resets all changes to the "org_id" field.
+func (m *RouteHTTPMutation) ResetOrgID() {
+	m.org_id = nil
+}
+
+// SetRouteID sets the "route_id" field.
+func (m *RouteHTTPMutation) SetRouteID(s string) {
+	m.route = &s
+}
+
+// RouteID returns the value of the "route_id" field in the mutation.
+func (m *RouteHTTPMutation) RouteID() (r string, exists bool) {
+	v := m.route
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRouteID returns the old "route_id" field's value of the RouteHTTP entity.
+// If the RouteHTTP object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RouteHTTPMutation) OldRouteID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRouteID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRouteID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRouteID: %w", err)
+	}
+	return oldValue.RouteID, nil
+}
+
+// ResetRouteID resets all changes to the "route_id" field.
+func (m *RouteHTTPMutation) ResetRouteID() {
+	m.route = nil
+}
+
+// SetPathPrefix sets the "path_prefix" field.
+func (m *RouteHTTPMutation) SetPathPrefix(s string) {
+	m.path_prefix = &s
+}
+
+// PathPrefix returns the value of the "path_prefix" field in the mutation.
+func (m *RouteHTTPMutation) PathPrefix() (r string, exists bool) {
+	v := m.path_prefix
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldPathPrefix returns the old "path_prefix" field's value of the RouteHTTP entity.
+// If the RouteHTTP object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RouteHTTPMutation) OldPathPrefix(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPathPrefix is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPathPrefix requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPathPrefix: %w", err)
+	}
+	return oldValue.PathPrefix, nil
+}
+
+// ResetPathPrefix resets all changes to the "path_prefix" field.
+func (m *RouteHTTPMutation) ResetPathPrefix() {
+	m.path_prefix = nil
+}
+
+// SetHeaderMatches sets the "header_matches" field.
+func (m *RouteHTTPMutation) SetHeaderMatches(value map[string]string) {
+	m.header_matches = &value
+}
+
+// HeaderMatches returns the value of the "header_matches" field in the mutation.
+func (m *RouteHTTPMutation) HeaderMatches() (r map[string]string, exists bool) {
+	v := m.header_matches
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldHeaderMatches returns the old "header_matches" field's value of the RouteHTTP entity.
+// If the RouteHTTP object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RouteHTTPMutation) OldHeaderMatches(ctx context.Context) (v map[string]string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldHeaderMatches is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldHeaderMatches requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldHeaderMatches: %w", err)
+	}
+	return oldValue.HeaderMatches, nil
+}
+
+// ClearHeaderMatches clears the value of the "header_matches" field.
+func (m *RouteHTTPMutation) ClearHeaderMatches() {
+	m.header_matches = nil
+	m.clearedFields[routehttp.FieldHeaderMatches] = struct{}{}
+}
+
+// HeaderMatchesCleared returns if the "header_matches" field was cleared in this mutation.
+func (m *RouteHTTPMutation) HeaderMatchesCleared() bool {
+	_, ok := m.clearedFields[routehttp.FieldHeaderMatches]
+	return ok
+}
+
+// ResetHeaderMatches resets all changes to the "header_matches" field.
+func (m *RouteHTTPMutation) ResetHeaderMatches() {
+	m.header_matches = nil
+	delete(m.clearedFields, routehttp.FieldHeaderMatches)
+}
+
+// SetTLSMode sets the "tls_mode" field.
+func (m *RouteHTTPMutation) SetTLSMode(rm routehttp.TLSMode) {
+	m.tls_mode = &rm
+}
+
+// TLSMode returns the value of the "tls_mode" field in the mutation.
+func (m *RouteHTTPMutation) TLSMode() (r routehttp.TLSMode, exists bool) {
+	v := m.tls_mode
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldTLSMode returns the old "tls_mode" field's value of the RouteHTTP entity.
+// If the RouteHTTP object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RouteHTTPMutation) OldTLSMode(ctx context.Context) (v routehttp.TLSMode, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldTLSMode is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldTLSMode requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldTLSMode: %w", err)
+	}
+	return oldValue.TLSMode, nil
+}
+
+// ResetTLSMode resets all changes to the "tls_mode" field.
+func (m *RouteHTTPMutation) ResetTLSMode() {
+	m.tls_mode = nil
+}
+
+// SetCertificateID sets the "certificate_id" field.
+func (m *RouteHTTPMutation) SetCertificateID(s string) {
+	m.certificate = &s
+}
+
+// CertificateID returns the value of the "certificate_id" field in the mutation.
+func (m *RouteHTTPMutation) CertificateID() (r string, exists bool) {
+	v := m.certificate
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCertificateID returns the old "certificate_id" field's value of the RouteHTTP entity.
+// If the RouteHTTP object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RouteHTTPMutation) OldCertificateID(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCertificateID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCertificateID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCertificateID: %w", err)
+	}
+	return oldValue.CertificateID, nil
+}
+
+// ClearCertificateID clears the value of the "certificate_id" field.
+func (m *RouteHTTPMutation) ClearCertificateID() {
+	m.certificate = nil
+	m.clearedFields[routehttp.FieldCertificateID] = struct{}{}
+}
+
+// CertificateIDCleared returns if the "certificate_id" field was cleared in this mutation.
+func (m *RouteHTTPMutation) CertificateIDCleared() bool {
+	_, ok := m.clearedFields[routehttp.FieldCertificateID]
+	return ok
+}
+
+// ResetCertificateID resets all changes to the "certificate_id" field.
+func (m *RouteHTTPMutation) ResetCertificateID() {
+	m.certificate = nil
+	delete(m.clearedFields, routehttp.FieldCertificateID)
+}
+
+// SetPort80 sets the "port80" field.
+func (m *RouteHTTPMutation) SetPort80(r routehttp.Port80) {
+	m.port80 = &r
+}
+
+// Port80 returns the value of the "port80" field in the mutation.
+func (m *RouteHTTPMutation) Port80() (r routehttp.Port80, exists bool) {
+	v := m.port80
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldPort80 returns the old "port80" field's value of the RouteHTTP entity.
+// If the RouteHTTP object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RouteHTTPMutation) OldPort80(ctx context.Context) (v routehttp.Port80, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPort80 is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPort80 requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPort80: %w", err)
+	}
+	return oldValue.Port80, nil
+}
+
+// ResetPort80 resets all changes to the "port80" field.
+func (m *RouteHTTPMutation) ResetPort80() {
+	m.port80 = nil
+}
+
+// SetHostHeader sets the "host_header" field.
+func (m *RouteHTTPMutation) SetHostHeader(s string) {
+	m.host_header = &s
+}
+
+// HostHeader returns the value of the "host_header" field in the mutation.
+func (m *RouteHTTPMutation) HostHeader() (r string, exists bool) {
+	v := m.host_header
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldHostHeader returns the old "host_header" field's value of the RouteHTTP entity.
+// If the RouteHTTP object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RouteHTTPMutation) OldHostHeader(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldHostHeader is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldHostHeader requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldHostHeader: %w", err)
+	}
+	return oldValue.HostHeader, nil
+}
+
+// ResetHostHeader resets all changes to the "host_header" field.
+func (m *RouteHTTPMutation) ResetHostHeader() {
+	m.host_header = nil
+}
+
+// SetRequestHeadersSet sets the "request_headers_set" field.
+func (m *RouteHTTPMutation) SetRequestHeadersSet(value map[string]string) {
+	m.request_headers_set = &value
+}
+
+// RequestHeadersSet returns the value of the "request_headers_set" field in the mutation.
+func (m *RouteHTTPMutation) RequestHeadersSet() (r map[string]string, exists bool) {
+	v := m.request_headers_set
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRequestHeadersSet returns the old "request_headers_set" field's value of the RouteHTTP entity.
+// If the RouteHTTP object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RouteHTTPMutation) OldRequestHeadersSet(ctx context.Context) (v map[string]string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRequestHeadersSet is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRequestHeadersSet requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRequestHeadersSet: %w", err)
+	}
+	return oldValue.RequestHeadersSet, nil
+}
+
+// ClearRequestHeadersSet clears the value of the "request_headers_set" field.
+func (m *RouteHTTPMutation) ClearRequestHeadersSet() {
+	m.request_headers_set = nil
+	m.clearedFields[routehttp.FieldRequestHeadersSet] = struct{}{}
+}
+
+// RequestHeadersSetCleared returns if the "request_headers_set" field was cleared in this mutation.
+func (m *RouteHTTPMutation) RequestHeadersSetCleared() bool {
+	_, ok := m.clearedFields[routehttp.FieldRequestHeadersSet]
+	return ok
+}
+
+// ResetRequestHeadersSet resets all changes to the "request_headers_set" field.
+func (m *RouteHTTPMutation) ResetRequestHeadersSet() {
+	m.request_headers_set = nil
+	delete(m.clearedFields, routehttp.FieldRequestHeadersSet)
+}
+
+// SetResponseHeadersSet sets the "response_headers_set" field.
+func (m *RouteHTTPMutation) SetResponseHeadersSet(value map[string]string) {
+	m.response_headers_set = &value
+}
+
+// ResponseHeadersSet returns the value of the "response_headers_set" field in the mutation.
+func (m *RouteHTTPMutation) ResponseHeadersSet() (r map[string]string, exists bool) {
+	v := m.response_headers_set
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldResponseHeadersSet returns the old "response_headers_set" field's value of the RouteHTTP entity.
+// If the RouteHTTP object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RouteHTTPMutation) OldResponseHeadersSet(ctx context.Context) (v map[string]string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldResponseHeadersSet is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldResponseHeadersSet requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldResponseHeadersSet: %w", err)
+	}
+	return oldValue.ResponseHeadersSet, nil
+}
+
+// ClearResponseHeadersSet clears the value of the "response_headers_set" field.
+func (m *RouteHTTPMutation) ClearResponseHeadersSet() {
+	m.response_headers_set = nil
+	m.clearedFields[routehttp.FieldResponseHeadersSet] = struct{}{}
+}
+
+// ResponseHeadersSetCleared returns if the "response_headers_set" field was cleared in this mutation.
+func (m *RouteHTTPMutation) ResponseHeadersSetCleared() bool {
+	_, ok := m.clearedFields[routehttp.FieldResponseHeadersSet]
+	return ok
+}
+
+// ResetResponseHeadersSet resets all changes to the "response_headers_set" field.
+func (m *RouteHTTPMutation) ResetResponseHeadersSet() {
+	m.response_headers_set = nil
+	delete(m.clearedFields, routehttp.FieldResponseHeadersSet)
+}
+
+// SetWebsocket sets the "websocket" field.
+func (m *RouteHTTPMutation) SetWebsocket(b bool) {
+	m.websocket = &b
+}
+
+// Websocket returns the value of the "websocket" field in the mutation.
+func (m *RouteHTTPMutation) Websocket() (r bool, exists bool) {
+	v := m.websocket
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldWebsocket returns the old "websocket" field's value of the RouteHTTP entity.
+// If the RouteHTTP object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RouteHTTPMutation) OldWebsocket(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldWebsocket is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldWebsocket requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldWebsocket: %w", err)
+	}
+	return oldValue.Websocket, nil
+}
+
+// ResetWebsocket resets all changes to the "websocket" field.
+func (m *RouteHTTPMutation) ResetWebsocket() {
+	m.websocket = nil
+}
+
+// SetMaxBodyBytes sets the "max_body_bytes" field.
+func (m *RouteHTTPMutation) SetMaxBodyBytes(i int64) {
+	m.max_body_bytes = &i
+	m.addmax_body_bytes = nil
+}
+
+// MaxBodyBytes returns the value of the "max_body_bytes" field in the mutation.
+func (m *RouteHTTPMutation) MaxBodyBytes() (r int64, exists bool) {
+	v := m.max_body_bytes
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldMaxBodyBytes returns the old "max_body_bytes" field's value of the RouteHTTP entity.
+// If the RouteHTTP object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RouteHTTPMutation) OldMaxBodyBytes(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldMaxBodyBytes is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldMaxBodyBytes requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldMaxBodyBytes: %w", err)
+	}
+	return oldValue.MaxBodyBytes, nil
+}
+
+// AddMaxBodyBytes adds i to the "max_body_bytes" field.
+func (m *RouteHTTPMutation) AddMaxBodyBytes(i int64) {
+	if m.addmax_body_bytes != nil {
+		*m.addmax_body_bytes += i
+	} else {
+		m.addmax_body_bytes = &i
+	}
+}
+
+// AddedMaxBodyBytes returns the value that was added to the "max_body_bytes" field in this mutation.
+func (m *RouteHTTPMutation) AddedMaxBodyBytes() (r int64, exists bool) {
+	v := m.addmax_body_bytes
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetMaxBodyBytes resets all changes to the "max_body_bytes" field.
+func (m *RouteHTTPMutation) ResetMaxBodyBytes() {
+	m.max_body_bytes = nil
+	m.addmax_body_bytes = nil
+}
+
+// SetDNSProxied sets the "dns_proxied" field.
+func (m *RouteHTTPMutation) SetDNSProxied(b bool) {
+	m.dns_proxied = &b
+}
+
+// DNSProxied returns the value of the "dns_proxied" field in the mutation.
+func (m *RouteHTTPMutation) DNSProxied() (r bool, exists bool) {
+	v := m.dns_proxied
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldDNSProxied returns the old "dns_proxied" field's value of the RouteHTTP entity.
+// If the RouteHTTP object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RouteHTTPMutation) OldDNSProxied(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDNSProxied is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDNSProxied requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDNSProxied: %w", err)
+	}
+	return oldValue.DNSProxied, nil
+}
+
+// ResetDNSProxied resets all changes to the "dns_proxied" field.
+func (m *RouteHTTPMutation) ResetDNSProxied() {
+	m.dns_proxied = nil
+}
+
+// ClearRoute clears the "route" edge to the Route entity.
+func (m *RouteHTTPMutation) ClearRoute() {
+	m.clearedroute = true
+	m.clearedFields[routehttp.FieldRouteID] = struct{}{}
+}
+
+// RouteCleared reports if the "route" edge to the Route entity was cleared.
+func (m *RouteHTTPMutation) RouteCleared() bool {
+	return m.clearedroute
+}
+
+// RouteIDs returns the "route" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// RouteID instead. It exists only for internal usage by the builders.
+func (m *RouteHTTPMutation) RouteIDs() (ids []string) {
+	if id := m.route; id != nil {
+		ids = append(ids, *id)
+	}
+	return
+}
+
+// ResetRoute resets all changes to the "route" edge.
+func (m *RouteHTTPMutation) ResetRoute() {
+	m.route = nil
+	m.clearedroute = false
+}
+
+// ClearCertificate clears the "certificate" edge to the Certificate entity.
+func (m *RouteHTTPMutation) ClearCertificate() {
+	m.clearedcertificate = true
+	m.clearedFields[routehttp.FieldCertificateID] = struct{}{}
+}
+
+// CertificateCleared reports if the "certificate" edge to the Certificate entity was cleared.
+func (m *RouteHTTPMutation) CertificateCleared() bool {
+	return m.CertificateIDCleared() || m.clearedcertificate
+}
+
+// CertificateIDs returns the "certificate" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// CertificateID instead. It exists only for internal usage by the builders.
+func (m *RouteHTTPMutation) CertificateIDs() (ids []string) {
+	if id := m.certificate; id != nil {
+		ids = append(ids, *id)
+	}
+	return
+}
+
+// ResetCertificate resets all changes to the "certificate" edge.
+func (m *RouteHTTPMutation) ResetCertificate() {
+	m.certificate = nil
+	m.clearedcertificate = false
+}
+
+// Where appends a list predicates to the RouteHTTPMutation builder.
+func (m *RouteHTTPMutation) Where(ps ...predicate.RouteHTTP) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the RouteHTTPMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *RouteHTTPMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.RouteHTTP, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *RouteHTTPMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *RouteHTTPMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (RouteHTTP).
+func (m *RouteHTTPMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *RouteHTTPMutation) Fields() []string {
+	fields := make([]string, 0, 13)
+	if m.org_id != nil {
+		fields = append(fields, routehttp.FieldOrgID)
+	}
+	if m.route != nil {
+		fields = append(fields, routehttp.FieldRouteID)
+	}
+	if m.path_prefix != nil {
+		fields = append(fields, routehttp.FieldPathPrefix)
+	}
+	if m.header_matches != nil {
+		fields = append(fields, routehttp.FieldHeaderMatches)
+	}
+	if m.tls_mode != nil {
+		fields = append(fields, routehttp.FieldTLSMode)
+	}
+	if m.certificate != nil {
+		fields = append(fields, routehttp.FieldCertificateID)
+	}
+	if m.port80 != nil {
+		fields = append(fields, routehttp.FieldPort80)
+	}
+	if m.host_header != nil {
+		fields = append(fields, routehttp.FieldHostHeader)
+	}
+	if m.request_headers_set != nil {
+		fields = append(fields, routehttp.FieldRequestHeadersSet)
+	}
+	if m.response_headers_set != nil {
+		fields = append(fields, routehttp.FieldResponseHeadersSet)
+	}
+	if m.websocket != nil {
+		fields = append(fields, routehttp.FieldWebsocket)
+	}
+	if m.max_body_bytes != nil {
+		fields = append(fields, routehttp.FieldMaxBodyBytes)
+	}
+	if m.dns_proxied != nil {
+		fields = append(fields, routehttp.FieldDNSProxied)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *RouteHTTPMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case routehttp.FieldOrgID:
+		return m.OrgID()
+	case routehttp.FieldRouteID:
+		return m.RouteID()
+	case routehttp.FieldPathPrefix:
+		return m.PathPrefix()
+	case routehttp.FieldHeaderMatches:
+		return m.HeaderMatches()
+	case routehttp.FieldTLSMode:
+		return m.TLSMode()
+	case routehttp.FieldCertificateID:
+		return m.CertificateID()
+	case routehttp.FieldPort80:
+		return m.Port80()
+	case routehttp.FieldHostHeader:
+		return m.HostHeader()
+	case routehttp.FieldRequestHeadersSet:
+		return m.RequestHeadersSet()
+	case routehttp.FieldResponseHeadersSet:
+		return m.ResponseHeadersSet()
+	case routehttp.FieldWebsocket:
+		return m.Websocket()
+	case routehttp.FieldMaxBodyBytes:
+		return m.MaxBodyBytes()
+	case routehttp.FieldDNSProxied:
+		return m.DNSProxied()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *RouteHTTPMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case routehttp.FieldOrgID:
+		return m.OldOrgID(ctx)
+	case routehttp.FieldRouteID:
+		return m.OldRouteID(ctx)
+	case routehttp.FieldPathPrefix:
+		return m.OldPathPrefix(ctx)
+	case routehttp.FieldHeaderMatches:
+		return m.OldHeaderMatches(ctx)
+	case routehttp.FieldTLSMode:
+		return m.OldTLSMode(ctx)
+	case routehttp.FieldCertificateID:
+		return m.OldCertificateID(ctx)
+	case routehttp.FieldPort80:
+		return m.OldPort80(ctx)
+	case routehttp.FieldHostHeader:
+		return m.OldHostHeader(ctx)
+	case routehttp.FieldRequestHeadersSet:
+		return m.OldRequestHeadersSet(ctx)
+	case routehttp.FieldResponseHeadersSet:
+		return m.OldResponseHeadersSet(ctx)
+	case routehttp.FieldWebsocket:
+		return m.OldWebsocket(ctx)
+	case routehttp.FieldMaxBodyBytes:
+		return m.OldMaxBodyBytes(ctx)
+	case routehttp.FieldDNSProxied:
+		return m.OldDNSProxied(ctx)
+	}
+	return nil, fmt.Errorf("unknown RouteHTTP field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *RouteHTTPMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case routehttp.FieldOrgID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetOrgID(v)
+		return nil
+	case routehttp.FieldRouteID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRouteID(v)
+		return nil
+	case routehttp.FieldPathPrefix:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetPathPrefix(v)
+		return nil
+	case routehttp.FieldHeaderMatches:
+		v, ok := value.(map[string]string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetHeaderMatches(v)
+		return nil
+	case routehttp.FieldTLSMode:
+		v, ok := value.(routehttp.TLSMode)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetTLSMode(v)
+		return nil
+	case routehttp.FieldCertificateID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCertificateID(v)
+		return nil
+	case routehttp.FieldPort80:
+		v, ok := value.(routehttp.Port80)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetPort80(v)
+		return nil
+	case routehttp.FieldHostHeader:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetHostHeader(v)
+		return nil
+	case routehttp.FieldRequestHeadersSet:
+		v, ok := value.(map[string]string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRequestHeadersSet(v)
+		return nil
+	case routehttp.FieldResponseHeadersSet:
+		v, ok := value.(map[string]string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetResponseHeadersSet(v)
+		return nil
+	case routehttp.FieldWebsocket:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetWebsocket(v)
+		return nil
+	case routehttp.FieldMaxBodyBytes:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetMaxBodyBytes(v)
+		return nil
+	case routehttp.FieldDNSProxied:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetDNSProxied(v)
+		return nil
+	}
+	return fmt.Errorf("unknown RouteHTTP field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *RouteHTTPMutation) AddedFields() []string {
+	var fields []string
+	if m.addmax_body_bytes != nil {
+		fields = append(fields, routehttp.FieldMaxBodyBytes)
+	}
+	return fields
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *RouteHTTPMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case routehttp.FieldMaxBodyBytes:
+		return m.AddedMaxBodyBytes()
+	}
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *RouteHTTPMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	case routehttp.FieldMaxBodyBytes:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddMaxBodyBytes(v)
+		return nil
+	}
+	return fmt.Errorf("unknown RouteHTTP numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *RouteHTTPMutation) ClearedFields() []string {
+	var fields []string
+	if m.FieldCleared(routehttp.FieldHeaderMatches) {
+		fields = append(fields, routehttp.FieldHeaderMatches)
+	}
+	if m.FieldCleared(routehttp.FieldCertificateID) {
+		fields = append(fields, routehttp.FieldCertificateID)
+	}
+	if m.FieldCleared(routehttp.FieldRequestHeadersSet) {
+		fields = append(fields, routehttp.FieldRequestHeadersSet)
+	}
+	if m.FieldCleared(routehttp.FieldResponseHeadersSet) {
+		fields = append(fields, routehttp.FieldResponseHeadersSet)
+	}
+	return fields
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *RouteHTTPMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *RouteHTTPMutation) ClearField(name string) error {
+	switch name {
+	case routehttp.FieldHeaderMatches:
+		m.ClearHeaderMatches()
+		return nil
+	case routehttp.FieldCertificateID:
+		m.ClearCertificateID()
+		return nil
+	case routehttp.FieldRequestHeadersSet:
+		m.ClearRequestHeadersSet()
+		return nil
+	case routehttp.FieldResponseHeadersSet:
+		m.ClearResponseHeadersSet()
+		return nil
+	}
+	return fmt.Errorf("unknown RouteHTTP nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *RouteHTTPMutation) ResetField(name string) error {
+	switch name {
+	case routehttp.FieldOrgID:
+		m.ResetOrgID()
+		return nil
+	case routehttp.FieldRouteID:
+		m.ResetRouteID()
+		return nil
+	case routehttp.FieldPathPrefix:
+		m.ResetPathPrefix()
+		return nil
+	case routehttp.FieldHeaderMatches:
+		m.ResetHeaderMatches()
+		return nil
+	case routehttp.FieldTLSMode:
+		m.ResetTLSMode()
+		return nil
+	case routehttp.FieldCertificateID:
+		m.ResetCertificateID()
+		return nil
+	case routehttp.FieldPort80:
+		m.ResetPort80()
+		return nil
+	case routehttp.FieldHostHeader:
+		m.ResetHostHeader()
+		return nil
+	case routehttp.FieldRequestHeadersSet:
+		m.ResetRequestHeadersSet()
+		return nil
+	case routehttp.FieldResponseHeadersSet:
+		m.ResetResponseHeadersSet()
+		return nil
+	case routehttp.FieldWebsocket:
+		m.ResetWebsocket()
+		return nil
+	case routehttp.FieldMaxBodyBytes:
+		m.ResetMaxBodyBytes()
+		return nil
+	case routehttp.FieldDNSProxied:
+		m.ResetDNSProxied()
+		return nil
+	}
+	return fmt.Errorf("unknown RouteHTTP field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *RouteHTTPMutation) AddedEdges() []string {
+	edges := make([]string, 0, 2)
+	if m.route != nil {
+		edges = append(edges, routehttp.EdgeRoute)
+	}
+	if m.certificate != nil {
+		edges = append(edges, routehttp.EdgeCertificate)
+	}
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *RouteHTTPMutation) AddedIDs(name string) []ent.Value {
+	switch name {
+	case routehttp.EdgeRoute:
+		if id := m.route; id != nil {
+			return []ent.Value{*id}
+		}
+	case routehttp.EdgeCertificate:
+		if id := m.certificate; id != nil {
+			return []ent.Value{*id}
+		}
+	}
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *RouteHTTPMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 2)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *RouteHTTPMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *RouteHTTPMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 2)
+	if m.clearedroute {
+		edges = append(edges, routehttp.EdgeRoute)
+	}
+	if m.clearedcertificate {
+		edges = append(edges, routehttp.EdgeCertificate)
+	}
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *RouteHTTPMutation) EdgeCleared(name string) bool {
+	switch name {
+	case routehttp.EdgeRoute:
+		return m.clearedroute
+	case routehttp.EdgeCertificate:
+		return m.clearedcertificate
+	}
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *RouteHTTPMutation) ClearEdge(name string) error {
+	switch name {
+	case routehttp.EdgeRoute:
+		m.ClearRoute()
+		return nil
+	case routehttp.EdgeCertificate:
+		m.ClearCertificate()
+		return nil
+	}
+	return fmt.Errorf("unknown RouteHTTP unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *RouteHTTPMutation) ResetEdge(name string) error {
+	switch name {
+	case routehttp.EdgeRoute:
+		m.ResetRoute()
+		return nil
+	case routehttp.EdgeCertificate:
+		m.ResetCertificate()
+		return nil
+	}
+	return fmt.Errorf("unknown RouteHTTP edge %s", name)
 }
 
 // RouteHostnameMutation represents an operation that mutates the RouteHostname nodes in the graph.

@@ -30,6 +30,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/revokedidentity"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/route"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routehostname"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/routehttp"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routetarget"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routetcp"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routeudp"
@@ -43,7 +44,7 @@ import (
 
 // schemaGraph holds a representation of ent/schema at runtime.
 var schemaGraph = func() *sqlgraph.Schema {
-	graph := &sqlgraph.Schema{Nodes: make([]*sqlgraph.Node, 30)}
+	graph := &sqlgraph.Schema{Nodes: make([]*sqlgraph.Node, 31)}
 	graph.Nodes[0] = &sqlgraph.Node{
 		NodeSpec: sqlgraph.NodeSpec{
 			Table:   agentsession.Table,
@@ -566,6 +567,32 @@ var schemaGraph = func() *sqlgraph.Schema {
 	}
 	graph.Nodes[25] = &sqlgraph.Node{
 		NodeSpec: sqlgraph.NodeSpec{
+			Table:   routehttp.Table,
+			Columns: routehttp.Columns,
+			ID: &sqlgraph.FieldSpec{
+				Type:   field.TypeInt,
+				Column: routehttp.FieldID,
+			},
+		},
+		Type: "RouteHTTP",
+		Fields: map[string]*sqlgraph.FieldSpec{
+			routehttp.FieldOrgID:              {Type: field.TypeString, Column: routehttp.FieldOrgID},
+			routehttp.FieldRouteID:            {Type: field.TypeString, Column: routehttp.FieldRouteID},
+			routehttp.FieldPathPrefix:         {Type: field.TypeString, Column: routehttp.FieldPathPrefix},
+			routehttp.FieldHeaderMatches:      {Type: field.TypeJSON, Column: routehttp.FieldHeaderMatches},
+			routehttp.FieldTLSMode:            {Type: field.TypeEnum, Column: routehttp.FieldTLSMode},
+			routehttp.FieldCertificateID:      {Type: field.TypeString, Column: routehttp.FieldCertificateID},
+			routehttp.FieldPort80:             {Type: field.TypeEnum, Column: routehttp.FieldPort80},
+			routehttp.FieldHostHeader:         {Type: field.TypeString, Column: routehttp.FieldHostHeader},
+			routehttp.FieldRequestHeadersSet:  {Type: field.TypeJSON, Column: routehttp.FieldRequestHeadersSet},
+			routehttp.FieldResponseHeadersSet: {Type: field.TypeJSON, Column: routehttp.FieldResponseHeadersSet},
+			routehttp.FieldWebsocket:          {Type: field.TypeBool, Column: routehttp.FieldWebsocket},
+			routehttp.FieldMaxBodyBytes:       {Type: field.TypeInt64, Column: routehttp.FieldMaxBodyBytes},
+			routehttp.FieldDNSProxied:         {Type: field.TypeBool, Column: routehttp.FieldDNSProxied},
+		},
+	}
+	graph.Nodes[26] = &sqlgraph.Node{
+		NodeSpec: sqlgraph.NodeSpec{
 			Table:   routehostname.Table,
 			Columns: routehostname.Columns,
 			ID: &sqlgraph.FieldSpec{
@@ -584,7 +611,7 @@ var schemaGraph = func() *sqlgraph.Schema {
 			routehostname.FieldDomainID:       {Type: field.TypeString, Column: routehostname.FieldDomainID},
 		},
 	}
-	graph.Nodes[26] = &sqlgraph.Node{
+	graph.Nodes[27] = &sqlgraph.Node{
 		NodeSpec: sqlgraph.NodeSpec{
 			Table:   routetcp.Table,
 			Columns: routetcp.Columns,
@@ -602,7 +629,7 @@ var schemaGraph = func() *sqlgraph.Schema {
 			routetcp.FieldIdleTimeoutSeconds: {Type: field.TypeInt, Column: routetcp.FieldIdleTimeoutSeconds},
 		},
 	}
-	graph.Nodes[27] = &sqlgraph.Node{
+	graph.Nodes[28] = &sqlgraph.Node{
 		NodeSpec: sqlgraph.NodeSpec{
 			Table:   routetarget.Table,
 			Columns: routetarget.Columns,
@@ -629,7 +656,7 @@ var schemaGraph = func() *sqlgraph.Schema {
 			routetarget.FieldEnabled:          {Type: field.TypeBool, Column: routetarget.FieldEnabled},
 		},
 	}
-	graph.Nodes[28] = &sqlgraph.Node{
+	graph.Nodes[29] = &sqlgraph.Node{
 		NodeSpec: sqlgraph.NodeSpec{
 			Table:   routeudp.Table,
 			Columns: routeudp.Columns,
@@ -646,7 +673,7 @@ var schemaGraph = func() *sqlgraph.Schema {
 			routeudp.FieldFlowIdleTimeoutSeconds: {Type: field.TypeInt, Column: routeudp.FieldFlowIdleTimeoutSeconds},
 		},
 	}
-	graph.Nodes[29] = &sqlgraph.Node{
+	graph.Nodes[30] = &sqlgraph.Node{
 		NodeSpec: sqlgraph.NodeSpec{
 			Table:   secretmeta.Table,
 			Columns: secretmeta.Columns,
@@ -771,6 +798,30 @@ var schemaGraph = func() *sqlgraph.Schema {
 		},
 		"Route",
 		"GatewayGroup",
+	)
+	graph.MustAddE(
+		"route",
+		&sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2O,
+			Inverse: false,
+			Table:   routehttp.RouteTable,
+			Columns: []string{routehttp.RouteColumn},
+			Bidi:    false,
+		},
+		"RouteHTTP",
+		"Route",
+	)
+	graph.MustAddE(
+		"certificate",
+		&sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2O,
+			Inverse: false,
+			Table:   routehttp.CertificateTable,
+			Columns: []string{routehttp.CertificateColumn},
+			Bidi:    false,
+		},
+		"RouteHTTP",
+		"Certificate",
 	)
 	graph.MustAddE(
 		"route",
@@ -2979,6 +3030,139 @@ func (f *RouteFilter) WhereHasGroupWith(preds ...predicate.GatewayGroup) {
 }
 
 // addPredicate implements the predicateAdder interface.
+func (_q *RouteHTTPQuery) addPredicate(pred func(s *sql.Selector)) {
+	_q.predicates = append(_q.predicates, pred)
+}
+
+// Filter returns a Filter implementation to apply filters on the RouteHTTPQuery builder.
+func (_q *RouteHTTPQuery) Filter() *RouteHTTPFilter {
+	return &RouteHTTPFilter{config: _q.config, predicateAdder: _q}
+}
+
+// addPredicate implements the predicateAdder interface.
+func (m *RouteHTTPMutation) addPredicate(pred func(s *sql.Selector)) {
+	m.predicates = append(m.predicates, pred)
+}
+
+// Filter returns an entql.Where implementation to apply filters on the RouteHTTPMutation builder.
+func (m *RouteHTTPMutation) Filter() *RouteHTTPFilter {
+	return &RouteHTTPFilter{config: m.config, predicateAdder: m}
+}
+
+// RouteHTTPFilter provides a generic filtering capability at runtime for RouteHTTPQuery.
+type RouteHTTPFilter struct {
+	predicateAdder
+	config
+}
+
+// Where applies the entql predicate on the query filter.
+func (f *RouteHTTPFilter) Where(p entql.P) {
+	f.addPredicate(func(s *sql.Selector) {
+		if err := schemaGraph.EvalP(schemaGraph.Nodes[25].Type, p, s); err != nil {
+			s.AddError(err)
+		}
+	})
+}
+
+// WhereID applies the entql int predicate on the id field.
+func (f *RouteHTTPFilter) WhereID(p entql.IntP) {
+	f.Where(p.Field(routehttp.FieldID))
+}
+
+// WhereOrgID applies the entql string predicate on the org_id field.
+func (f *RouteHTTPFilter) WhereOrgID(p entql.StringP) {
+	f.Where(p.Field(routehttp.FieldOrgID))
+}
+
+// WhereRouteID applies the entql string predicate on the route_id field.
+func (f *RouteHTTPFilter) WhereRouteID(p entql.StringP) {
+	f.Where(p.Field(routehttp.FieldRouteID))
+}
+
+// WherePathPrefix applies the entql string predicate on the path_prefix field.
+func (f *RouteHTTPFilter) WherePathPrefix(p entql.StringP) {
+	f.Where(p.Field(routehttp.FieldPathPrefix))
+}
+
+// WhereHeaderMatches applies the entql json.RawMessage predicate on the header_matches field.
+func (f *RouteHTTPFilter) WhereHeaderMatches(p entql.BytesP) {
+	f.Where(p.Field(routehttp.FieldHeaderMatches))
+}
+
+// WhereTLSMode applies the entql string predicate on the tls_mode field.
+func (f *RouteHTTPFilter) WhereTLSMode(p entql.StringP) {
+	f.Where(p.Field(routehttp.FieldTLSMode))
+}
+
+// WhereCertificateID applies the entql string predicate on the certificate_id field.
+func (f *RouteHTTPFilter) WhereCertificateID(p entql.StringP) {
+	f.Where(p.Field(routehttp.FieldCertificateID))
+}
+
+// WherePort80 applies the entql string predicate on the port80 field.
+func (f *RouteHTTPFilter) WherePort80(p entql.StringP) {
+	f.Where(p.Field(routehttp.FieldPort80))
+}
+
+// WhereHostHeader applies the entql string predicate on the host_header field.
+func (f *RouteHTTPFilter) WhereHostHeader(p entql.StringP) {
+	f.Where(p.Field(routehttp.FieldHostHeader))
+}
+
+// WhereRequestHeadersSet applies the entql json.RawMessage predicate on the request_headers_set field.
+func (f *RouteHTTPFilter) WhereRequestHeadersSet(p entql.BytesP) {
+	f.Where(p.Field(routehttp.FieldRequestHeadersSet))
+}
+
+// WhereResponseHeadersSet applies the entql json.RawMessage predicate on the response_headers_set field.
+func (f *RouteHTTPFilter) WhereResponseHeadersSet(p entql.BytesP) {
+	f.Where(p.Field(routehttp.FieldResponseHeadersSet))
+}
+
+// WhereWebsocket applies the entql bool predicate on the websocket field.
+func (f *RouteHTTPFilter) WhereWebsocket(p entql.BoolP) {
+	f.Where(p.Field(routehttp.FieldWebsocket))
+}
+
+// WhereMaxBodyBytes applies the entql int64 predicate on the max_body_bytes field.
+func (f *RouteHTTPFilter) WhereMaxBodyBytes(p entql.Int64P) {
+	f.Where(p.Field(routehttp.FieldMaxBodyBytes))
+}
+
+// WhereDNSProxied applies the entql bool predicate on the dns_proxied field.
+func (f *RouteHTTPFilter) WhereDNSProxied(p entql.BoolP) {
+	f.Where(p.Field(routehttp.FieldDNSProxied))
+}
+
+// WhereHasRoute applies a predicate to check if query has an edge route.
+func (f *RouteHTTPFilter) WhereHasRoute() {
+	f.Where(entql.HasEdge("route"))
+}
+
+// WhereHasRouteWith applies a predicate to check if query has an edge route with a given conditions (other predicates).
+func (f *RouteHTTPFilter) WhereHasRouteWith(preds ...predicate.Route) {
+	f.Where(entql.HasEdgeWith("route", sqlgraph.WrapFunc(func(s *sql.Selector) {
+		for _, p := range preds {
+			p(s)
+		}
+	})))
+}
+
+// WhereHasCertificate applies a predicate to check if query has an edge certificate.
+func (f *RouteHTTPFilter) WhereHasCertificate() {
+	f.Where(entql.HasEdge("certificate"))
+}
+
+// WhereHasCertificateWith applies a predicate to check if query has an edge certificate with a given conditions (other predicates).
+func (f *RouteHTTPFilter) WhereHasCertificateWith(preds ...predicate.Certificate) {
+	f.Where(entql.HasEdgeWith("certificate", sqlgraph.WrapFunc(func(s *sql.Selector) {
+		for _, p := range preds {
+			p(s)
+		}
+	})))
+}
+
+// addPredicate implements the predicateAdder interface.
 func (_q *RouteHostnameQuery) addPredicate(pred func(s *sql.Selector)) {
 	_q.predicates = append(_q.predicates, pred)
 }
@@ -3007,7 +3191,7 @@ type RouteHostnameFilter struct {
 // Where applies the entql predicate on the query filter.
 func (f *RouteHostnameFilter) Where(p entql.P) {
 	f.addPredicate(func(s *sql.Selector) {
-		if err := schemaGraph.EvalP(schemaGraph.Nodes[25].Type, p, s); err != nil {
+		if err := schemaGraph.EvalP(schemaGraph.Nodes[26].Type, p, s); err != nil {
 			s.AddError(err)
 		}
 	})
@@ -3110,7 +3294,7 @@ type RouteTCPFilter struct {
 // Where applies the entql predicate on the query filter.
 func (f *RouteTCPFilter) Where(p entql.P) {
 	f.addPredicate(func(s *sql.Selector) {
-		if err := schemaGraph.EvalP(schemaGraph.Nodes[26].Type, p, s); err != nil {
+		if err := schemaGraph.EvalP(schemaGraph.Nodes[27].Type, p, s); err != nil {
 			s.AddError(err)
 		}
 	})
@@ -3203,7 +3387,7 @@ type RouteTargetFilter struct {
 // Where applies the entql predicate on the query filter.
 func (f *RouteTargetFilter) Where(p entql.P) {
 	f.addPredicate(func(s *sql.Selector) {
-		if err := schemaGraph.EvalP(schemaGraph.Nodes[27].Type, p, s); err != nil {
+		if err := schemaGraph.EvalP(schemaGraph.Nodes[28].Type, p, s); err != nil {
 			s.AddError(err)
 		}
 	})
@@ -3341,7 +3525,7 @@ type RouteUDPFilter struct {
 // Where applies the entql predicate on the query filter.
 func (f *RouteUDPFilter) Where(p entql.P) {
 	f.addPredicate(func(s *sql.Selector) {
-		if err := schemaGraph.EvalP(schemaGraph.Nodes[28].Type, p, s); err != nil {
+		if err := schemaGraph.EvalP(schemaGraph.Nodes[29].Type, p, s); err != nil {
 			s.AddError(err)
 		}
 	})
@@ -3429,7 +3613,7 @@ type SecretMetaFilter struct {
 // Where applies the entql predicate on the query filter.
 func (f *SecretMetaFilter) Where(p entql.P) {
 	f.addPredicate(func(s *sql.Selector) {
-		if err := schemaGraph.EvalP(schemaGraph.Nodes[29].Type, p, s); err != nil {
+		if err := schemaGraph.EvalP(schemaGraph.Nodes[30].Type, p, s); err != nil {
 			s.AddError(err)
 		}
 	})
