@@ -224,6 +224,10 @@ flowchart LR
   belongs to an account. Without a mail relay, it says to ask an Owner or the Instance Admin.
 - New passwords are checked in the browser for length (12 to 256 characters) and for a matching
   repetition before they are sent.
+- **Step-up.** An action the API answers with `STEP_UP_REQUIRED` opens a dialog over the page
+  (U7). The dialog asks for the password, or for an authenticator or recovery code if the user has
+  an authenticator. After `StepUp` it runs the action again, so the user keeps their place.
+  Cancelling ends the action with the API's error. Pages run such actions through `useStepUp()`.
 
 **Serving.** The controller serves the UI on every path of its UI name that the API and
 `/.well-known/rpmgr/` do not take:
