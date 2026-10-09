@@ -43,15 +43,20 @@ func (a *stepUpAPI) CreateEnrollmentToken(_ context.Context, req *connect.Reques
 	defer a.mu.Unlock()
 	a.attempts++
 	if !a.stepped {
-		err := connect.NewError(connect.CodeUnauthenticated, errors.New("api: step-up required"))
-		if d, derr := connect.NewErrorDetail(&errdetails.ErrorInfo{Reason: "STEP_UP_REQUIRED", Domain: "rpmgr.dev"}); derr == nil {
-			err.AddDetail(d)
-		}
-		return nil, err
+		return nil, stepUpError()
 	}
 	a.minted = req.Msg
 	return connect.NewResponse(&rpmgrv1.CreateEnrollmentTokenResponse{Token: "rpmgr_enr_secret", //nolint:gosec // G101: a test token
 		EnrollmentToken: &rpmgrv1.EnrollmentToken{Id: "enr_1", ExpireTime: timestamppb.New(time.Date(2026, 10, 9, 13, 0, 0, 0, time.UTC))}}), nil
+}
+
+// stepUpError is the API's answer to a change that needs a step-up.
+func stepUpError() error {
+	err := connect.NewError(connect.CodeUnauthenticated, errors.New("api: step-up required"))
+	if d, derr := connect.NewErrorDetail(&errdetails.ErrorInfo{Reason: "STEP_UP_REQUIRED", Domain: "rpmgr.dev"}); derr == nil {
+		err.AddDetail(d)
+	}
+	return err
 }
 
 func (a *stepUpAPI) StepUp(_ context.Context, req *connect.Request[rpmgrv1.StepUpRequest]) (*connect.Response[rpmgrv1.StepUpResponse], error) {

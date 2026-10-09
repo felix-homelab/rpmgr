@@ -32,9 +32,11 @@ func apiCommands() []*cli.Command {
 	createRoute, updateRoute, enableRoute, disableRoute, previewRoute := routeCommands()
 	createTarget, updateTarget := targetCommands()
 	updateConnector, decommissionConnector, revokeToken := connectorCommands()
+	createInfra, updateInfra := infrastructureCommands()
 	return []*cli.Command{getCommand(), listCommand(), deleteCommand(),
-		group("create", "create a resource of the public API", createRoute, createTarget, enrollmentTokenCommand()),
-		group("update", "change a resource of the public API", updateRoute, updateTarget, updateConnector),
+		group("create", "create a resource of the public API",
+			append([]*cli.Command{createRoute, createTarget, enrollmentTokenCommand()}, createInfra...)...),
+		group("update", "change a resource of the public API", append([]*cli.Command{updateRoute, updateTarget, updateConnector}, updateInfra...)...),
 		group("decommission", "take an agent out of service for good", decommissionConnector),
 		group("revoke", "revoke a credential", revokeToken),
 		group("enable", "serve a resource again", enableRoute),

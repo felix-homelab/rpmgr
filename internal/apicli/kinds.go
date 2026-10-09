@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"connectrpc.com/connect"
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/reflect/protoreflect"
 	"google.golang.org/protobuf/reflect/protoregistry"
 	"google.golang.org/protobuf/types/dynamicpb"
@@ -99,6 +100,25 @@ func Call(ctx context.Context, hc *http.Client, base string, md protoreflect.Met
 		}
 		req.Set(fd, protoreflect.ValueOf(v))
 	}
+	return call(ctx, hc, base, md, req, header)
+}
+
+// CallMessage calls a unary method of the API with a request built as a generated message.
+func CallMessage(ctx context.Context, hc *http.Client, base string, md protoreflect.MethodDescriptor, msg proto.Message,
+	header http.Header) (*dynamicpb.Message, error) {
+	b, err := proto.Marshal(msg)
+	if err != nil {
+		return nil, err
+	}
+	req := dynamicpb.NewMessage(md.Input())
+	if err := proto.Unmarshal(b, req); err != nil {
+		return nil, err
+	}
+	return call(ctx, hc, base, md, req, header)
+}
+
+func call(ctx context.Context, hc *http.Client, base string, md protoreflect.MethodDescriptor, req *dynamicpb.Message,
+	header http.Header) (*dynamicpb.Message, error) {
 	c := connect.NewClient[dynamicpb.Message, dynamicpb.Message](hc, base+"/"+string(md.Parent().FullName())+"/"+string(md.Name()),
 		connect.WithSchema(md), connect.WithResponseInitializer(func(_ connect.Spec, msg any) error {
 			if m, ok := msg.(*dynamicpb.Message); ok {
