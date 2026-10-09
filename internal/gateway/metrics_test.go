@@ -13,6 +13,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	dto "github.com/prometheus/client_model/go"
 
+	agentv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/agent/v1"
 	tunnelv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/tunnel/v1"
 	"github.com/felix-homelab/rpmgr/internal/agent"
 	"github.com/felix-homelab/rpmgr/internal/gateway"
@@ -102,6 +103,18 @@ func TestMetrics(t *testing.T) {
 	}
 	if v := value("rpmgr_route_connections_total", map[string]string{"route": "rt_x", "result": "no_session"}); v != 1 {
 		t.Fatalf("connections without a session: %v", v)
+	}
+	// The same, as the route counters a gateway reports to the controller.
+	counters := map[string]*agentv1.RouteCounters{}
+	for _, c := range metrics.Counters() {
+		counters[c.GetRouteId()] = c
+	}
+	if c := counters["rt_1"]; c.GetBytesIn() < 5 || c.GetBytesOut() < 5 || c.GetConnectionsTotal() != 1 || c.GetErrorsTotal() != 0 ||
+		c.GetConnectionsActive() != 0 {
+		t.Fatalf("rt_1's counters: %v", c)
+	}
+	if c := counters["rt_x"]; c.GetConnectionsTotal() != 1 || c.GetErrorsTotal() != 1 || c.GetBytesIn() != 0 {
+		t.Fatalf("rt_x's counters: %v", c)
 	}
 
 	// HTTP requests by status.

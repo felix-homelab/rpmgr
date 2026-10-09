@@ -71,7 +71,7 @@ func TestReporter(t *testing.T) {
 			}
 			sent <- time.Now()
 			return true
-		}, func() []*agentv1.DataSession { return nil })
+		}, func() *agentv1.Status { return &agentv1.Status{} })
 	}()
 	start := time.Now()
 	r.change()
@@ -97,7 +97,7 @@ func TestReporter(t *testing.T) {
 	ctx, cancel = context.WithCancel(context.Background())
 	defer cancel()
 	go r.run(ctx, 50*time.Millisecond, func(*agentv1.AgentMessage) bool { sent <- time.Now(); return true },
-		func() []*agentv1.DataSession { return nil })
+		func() *agentv1.Status { return &agentv1.Status{} })
 	for range 3 {
 		select {
 		case <-sent:

@@ -100,7 +100,7 @@ func Run(ctx context.Context, o RunOptions) error {
 			if sessions == nil {
 				return &agentv1.Status{}
 			}
-			return &agentv1.Status{DataSessions: sessions.Report()}
+			return &agentv1.Status{DataSessions: sessions.Report(), Counters: sessions.metrics().Counters()}
 		}})
 	if err != nil {
 		return err
@@ -265,7 +265,9 @@ func Run(ctx context.Context, o RunOptions) error {
 		}()
 	}
 	go certificates.Run(run)
-	go report.run(run, ReportEvery, ctl.Send, sessions.Report)
+	go report.run(run, ReportEvery, ctl.Send, func() *agentv1.Status {
+		return &agentv1.Status{DataSessions: sessions.Report(), Counters: metrics.Counters()}
+	})
 	go func() {
 		for {
 			s, err := qln.Accept(run)

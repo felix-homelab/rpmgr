@@ -182,6 +182,9 @@ message RouteCounters {
   uint64 connections_total = 4;
   // Connections or UDP flows open now.
   uint64 connections_active = 5;
+  // Of connections_total, those that reached no target: a StreamResult other than NO_ERROR, or
+  // none.
+  uint64 errors_total = 6;
 }
 
 // DataSession is one connector's data session to a gateway.
