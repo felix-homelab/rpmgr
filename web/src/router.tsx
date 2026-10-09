@@ -5,6 +5,8 @@ import type { QueryClient } from "@tanstack/react-query";
 import { createRootRouteWithContext, createRoute, createRouter, Outlet, redirect, type RouterHistory } from "@tanstack/react-router";
 import { Layout } from "@/components/layout";
 import { Account } from "@/pages/account";
+import { ConnectorDetail } from "@/pages/connector-detail";
+import { Connectors, validateConnectorsSearch } from "@/pages/connectors";
 import { Forgot } from "@/pages/forgot";
 import { Login } from "@/pages/login";
 import { NotFound } from "@/pages/not-found";
@@ -45,6 +47,8 @@ const routes = createRoute({ getParentRoute: () => app, path: "/routes", compone
 const routeDetail = createRoute({ getParentRoute: () => app, path: "/routes/$routeId", component: RouteDetail });
 const routeNew = createRoute({ getParentRoute: () => app, path: "/routes/new", component: RouteNew });
 const routeEdit = createRoute({ getParentRoute: () => app, path: "/routes/$routeId/edit", component: RouteEdit });
+const connectors = createRoute({ getParentRoute: () => app, path: "/connectors", component: Connectors, validateSearch: validateConnectorsSearch });
+const connectorDetail = createRoute({ getParentRoute: () => app, path: "/connectors/$connectorId", component: ConnectorDetail });
 const account = createRoute({
   getParentRoute: () => app,
   path: "/account",
@@ -64,7 +68,7 @@ const setup = createRoute({ getParentRoute: () => root, path: "/setup", componen
 const reset = createRoute({ getParentRoute: () => root, path: "/reset", component: Reset });
 const forgot = createRoute({ getParentRoute: () => root, path: "/forgot", component: Forgot });
 
-const routeTree = root.addChildren([app.addChildren([overview, routes, routeNew, routeDetail, routeEdit, account]), login, setup, reset, forgot]);
+const routeTree = root.addChildren([app.addChildren([overview, routes, routeNew, routeDetail, routeEdit, connectors, connectorDetail, account]), login, setup, reset, forgot]);
 
 export function createAppRouter(context: RouterContext, history?: RouterHistory) {
   return createRouter({ routeTree, history, context, defaultPreload: "intent" });

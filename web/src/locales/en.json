@@ -7,7 +7,8 @@
   },
   "nav": {
     "overview": "Overview",
-    "routes": "Routes"
+    "routes": "Routes",
+    "connectors": "Connectors"
   },
   "overview": {
     "title": "Overview",
@@ -354,5 +355,53 @@
     "removeAsk": "Remove…",
     "ask": "Remove the target {{address}}?",
     "remove": "Remove it"
+  },
+  "connectors": {
+    "title": "Connectors",
+    "session": "Session",
+    "connected": "connected",
+    "offline": "offline",
+    "ephemeral": "ephemeral",
+    "none": "No connector matches.",
+    "notFound": "This connector does not exist, or you cannot see it.",
+    "columns": {
+      "name": "Name",
+      "session": "Session",
+      "version": "Version",
+      "lastSeen": "Last seen",
+      "labels": "Labels"
+    },
+    "detailTitle": "Connector {{name}}",
+    "sessions": "Sessions",
+    "controlUp": "Control session up from {{addr}}, last seen {{when}}.",
+    "controlDown": "No control session; last seen {{when}}.",
+    "never": "never",
+    "data": {
+      "gateway": "Gateway",
+      "transport": "Transport",
+      "rtt": "Round trip",
+      "since": "Since"
+    },
+    "transports": {
+      "UNSPECIFIED": "unknown",
+      "AUTO": "auto",
+      "QUIC": "QUIC",
+      "H2": "TLS and HTTP/2"
+    },
+    "transportSetting": {
+      "UNSPECIFIED": "The instance's default",
+      "AUTO": "QUIC, falling back to TLS and HTTP/2",
+      "QUIC": "QUIC only",
+      "H2": "TLS and HTTP/2 only"
+    },
+    "routes": "Routes",
+    "noRoutes": "No route has a target on this connector.",
+    "settings": "Settings",
+    "enabled": "Serves its routes",
+    "changed": "The connector changed since this page loaded it. The page shows it as it is now; try again.",
+    "decommissionTitle": "Decommission",
+    "decommission": "Decommission…",
+    "decommissionWarning": "Decommissioning {{name}} revokes its identity and ends its sessions for good; it cannot enroll again with it. Its route targets stay, serving nothing, until they are removed.",
+    "decommissionNamed": "Decommission {{name}}"
   }
 }

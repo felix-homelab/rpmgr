@@ -170,6 +170,21 @@ flowchart LR
       changes on top, for a second save.
     - "Drop my changes" refills it with the saved version.
 
+### Connectors
+
+- **The list** (`/connectors`) shows the org's connectors in service, sorted by name. Each row has
+  its control session (connected or offline, with an icon and text), version, last contact and
+  labels. A text filter (name or `key=value` label) and a session filter stay in the URL (U9).
+- **The detail page:**
+  - **Sessions:** the control session (address, last contact), and the data sessions per gateway,
+    with transport, round-trip time and start.
+  - **Routes:** those with a target on the connector. Those it reports not ready show their reason,
+    and, for a target its local policy blocks, the command for its host with a copy button (U4).
+  - **Settings:** name, labels, transport policy and whether it serves. They are saved as the whole
+    connector as read, with their mask and the etag (U1).
+  - **Decommission** comes after a confirmation that names the connector and says what it does
+    (U7). The page then returns to the list.
+
 ### Enroll connector dialog
 
 ```

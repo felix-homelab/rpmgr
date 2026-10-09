@@ -105,3 +105,19 @@ export function shellArg(s: string): string {
 export function allowCommand(target: string): string {
   return `sudo rpmgr policy allow-target ${shellArg(target)}`;
 }
+
+// useConnectors reads all connectors of the org in service.
+export function useConnectors(orgId: string | undefined) {
+  const transport = useTransport();
+  return useQuery({
+    queryKey: ["connectors", orgId],
+    enabled: !!orgId,
+    queryFn: () => {
+      const api = createClient(ConnectorService, transport);
+      return listAll(async (pageToken) => {
+        const r = await api.listConnectors({ orgId, pageSize: largestPage, pageToken });
+        return { items: r.connectors, next: r.nextPageToken };
+      });
+    },
+  });
+}
