@@ -8,6 +8,7 @@ import { Alert } from "@/components/public-page";
 import { bytes, filled, hourMs, totals, TotalsLine, TrafficChart } from "@/components/traffic";
 import { AuthService } from "@/gen/rpmgr/v1/auth_pb";
 import { MetricsService } from "@/gen/rpmgr/v1/metrics_pb";
+import { Health } from "@/pages/overview-health";
 import { useRoutes } from "@/routes-data";
 import { useOrg } from "@/session";
 
@@ -27,6 +28,7 @@ export function Overview() {
           </p>
         )}
       </section>
+      {org && <Health orgId={org.orgId} />}
       {org && <Traffic orgId={org.orgId} />}
     </div>
   );

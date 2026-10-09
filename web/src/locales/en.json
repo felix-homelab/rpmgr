@@ -843,5 +843,29 @@
     "connections_other": "{{count, number}} connections",
     "errors_one": "{{count, number}} error",
     "errors_other": "{{count, number}} errors"
+  },
+  "health": {
+    "title": "Needs attention",
+    "agents": "Agents",
+    "agentsFine": "Every agent holds a control session.",
+    "gateways": "Gateways: {{connected}} of {{total}} connected",
+    "connectors": "connectors: {{connected}} of {{total}} connected",
+    "lastSeen": "last seen {{when}}",
+    "neverSeen": "never connected",
+    "notEnrolled": "not enrolled yet",
+    "routes": "Routes",
+    "routesFine_one": "The route serves fully, or is disabled.",
+    "routesFine_other": "All {{count}} routes serve fully, or are disabled.",
+    "rejected_one": "rejected by {{count}} agent",
+    "rejected_other": "rejected by {{count}} agents",
+    "certificates": "Certificates",
+    "certsFine": "No certificate failed or expires within 21 days.",
+    "certFailed": "failed: {{error}}",
+    "expires": "expires {{when}}",
+    "expired": "expired {{when}}",
+    "domains": "Domains",
+    "domainsFine": "Every domain is verified.",
+    "tokens": "Your API tokens",
+    "tokensFine": "None of your API tokens expires within 21 days."
   }
 }

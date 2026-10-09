@@ -112,6 +112,20 @@ flowchart LR
 
 ### Overview
 
+- **Needs attention** lists, each linked to its page, or says that nothing in its area does:
+  - agents without a control session: gateways, with when they were last seen or that they have
+    not enrolled, and connectors, with when they were last seen, under the count of connected ones;
+  - routes that do not serve fully (`pending`, `degraded`, `unavailable`, `error`) or that agents
+    rejected, with their state; disabled routes are left out;
+  - certificates that failed, with the error, or that expire within 21 days, as on the certificates
+    page;
+  - domains not verified, with their status;
+  - the user's own API tokens that expire within 21 days or have expired.
+- [R] Agents below `min_agent_version` are not listed apart in Phase 1, although
+  [03](03-connections.md#versioning-and-capabilities) says the refusal is shown. The API reports
+  neither the minimum nor the reason of the last `Goodbye`. Such an agent shows as without a
+  control session.
+- DNS conflicts, held DNS zones and DNS-provider tokens join the list with managed DNS (Phase 2).
 - **Traffic, last 24 hours:** the org's bytes in and out per hour, their totals with connections
   and errors, and its busiest routes, each linked to its detail.
 
