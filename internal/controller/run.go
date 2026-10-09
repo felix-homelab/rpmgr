@@ -238,7 +238,8 @@ func Run(ctx context.Context, o RunOptions) error {
 	}
 	if err := apiServer.Mount(mux, rpmgrv1.File_rpmgr_v1_gateway_proto.Services().ByName("GatewayService"),
 		func(opts ...connect.HandlerOption) (string, http.Handler) {
-			return rpmgrv1connect.NewGatewayServiceHandler(&apisvc.Gateways{DB: db, API: apiServer}, opts...)
+			return rpmgrv1connect.NewGatewayServiceHandler(&apisvc.Gateways{DB: db, API: apiServer, Sys: sys, RevLog: rl, Logger: o.Logger,
+				Denied: sessions.ApplyDenyList, Now: o.Now}, opts...)
 		}); err != nil {
 		return err
 	}

@@ -6,6 +6,7 @@ package rpmgr.v1;
 
 import "buf/validate/validate.proto";
 import "google/protobuf/field_mask.proto";
+import "google/protobuf/timestamp.proto";
 import "rpmgr/v1/common.proto";
 import "rpmgr/v1/options.proto";
 
@@ -52,6 +53,178 @@ service GatewayService {
       resource_field: "gateway_group_id"
     };
   }
+  // CreateGateway creates a gateway in a group, before it enrolls (R15); a group holds four.
+  rpc CreateGateway(CreateGatewayRequest) returns (CreateGatewayResponse) {
+    option (rpmgr.v1.authz) = {
+      permission: "infrastructure.write"
+      resource_field: "org_id"
+    };
+  }
+  // GetGateway returns a gateway with its status.
+  rpc GetGateway(GetGatewayRequest) returns (GetGatewayResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+    option (rpmgr.v1.authz) = {
+      permission: "org.read"
+      resource_field: "gateway_id"
+    };
+  }
+  // ListGateways lists an org's gateways by ID, those of one group if it names one.
+  rpc ListGateways(ListGatewaysRequest) returns (ListGatewaysResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+    option (rpmgr.v1.authz) = {
+      permission: "org.read"
+      resource_field: "org_id"
+    };
+  }
+  // UpdateGateway changes the fields the mask names. Disabling a gateway drains it (R22): its
+  // routes leave it, and connectors move to the group's other gateways.
+  rpc UpdateGateway(UpdateGatewayRequest) returns (UpdateGatewayResponse) {
+    option (rpmgr.v1.authz) = {
+      permission: "infrastructure.write"
+      resource_field: "gateway.id"
+    };
+  }
+  // DecommissionGateway retires a gateway for good: its identity is revoked, its sessions end, and
+  // it stays as a tombstone that no longer counts towards its group.
+  rpc DecommissionGateway(DecommissionGatewayRequest) returns (DecommissionGatewayResponse) {
+    option (rpmgr.v1.authz) = {
+      permission: "infrastructure.write"
+      resource_field: "gateway_id"
+    };
+  }
+}
+
+// Gateway is one gateway of a group.
+message Gateway {
+  // The gateway's ID, gw_…; output only.
+  string id = 1;
+  // Its group; set at creation.
+  string gateway_group_id = 2;
+  // Its name, unique in the org; required on create.
+  string name = 3 [(buf.validate.field) = {
+    ignore: IGNORE_IF_ZERO_VALUE
+    string: {pattern: "^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$"}
+  }];
+  // Its place in the group, 1 to 4; output only.
+  int32 slot = 4;
+  // The host:port addresses where connectors reach it, over QUIC and TCP; at least one.
+  repeated string tunnel_endpoints = 5 [(buf.validate.field).repeated = {
+    max_items: 8
+    unique: true
+    items: {
+      string: {host_and_port: true}
+    }
+  }];
+  // Whether it serves; false drains it.
+  bool enabled = 6;
+  // Its observed state; output only.
+  GatewayStatus status = 7;
+  // When it was decommissioned; output only, not set for a gateway in service.
+  google.protobuf.Timestamp decommission_time = 8;
+  // When it was created; output only.
+  google.protobuf.Timestamp create_time = 9;
+  // The version to send back with an update; output only.
+  string etag = 10;
+}
+
+// GatewayStatus is what the controller last saw of a gateway.
+message GatewayStatus {
+  // Whether it has enrolled.
+  bool enrolled = 1;
+  // Whether it holds a control session now.
+  bool connected = 2;
+  // The version it runs.
+  string version = 3;
+  // When it was last heard from.
+  google.protobuf.Timestamp last_seen_time = 4;
+  // The address its control session comes from.
+  string remote_addr = 5;
+}
+
+// CreateGatewayRequest is a new gateway.
+message CreateGatewayRequest {
+  // The org.
+  string org_id = 1 [(buf.validate.field).string.min_len = 1];
+  // The gateway: its group, name and tunnel endpoints.
+  Gateway gateway = 2 [(buf.validate.field).required = true];
+  // Makes retries idempotent (docs/07-api.md, "Resource design").
+  string request_id = 3 [(buf.validate.field).string.max_len = 128];
+}
+
+// CreateGatewayResponse is the new gateway.
+message CreateGatewayResponse {
+  // The gateway.
+  Gateway gateway = 1;
+  // The configuration revision of the change.
+  Revision revision = 2;
+}
+
+// GetGatewayRequest names a gateway.
+message GetGatewayRequest {
+  // The gateway's ID.
+  string gateway_id = 1 [(buf.validate.field).string.min_len = 1];
+}
+
+// GetGatewayResponse is the gateway.
+message GetGatewayResponse {
+  // The gateway.
+  Gateway gateway = 1;
+}
+
+// ListGatewaysRequest pages through an org's gateways.
+message ListGatewaysRequest {
+  // The org.
+  string org_id = 1 [(buf.validate.field).string.min_len = 1];
+  // Only this group's, if set.
+  string gateway_group_id = 2;
+  // Decommissioned gateways too.
+  bool show_decommissioned = 3;
+  // At most this many, 50 if not set, 500 at most.
+  int32 page_size = 4;
+  // The page after the one that returned it.
+  string page_token = 5;
+}
+
+// ListGatewaysResponse is one page of gateways.
+message ListGatewaysResponse {
+  // The gateways.
+  repeated Gateway gateways = 1;
+  // The token of the next page; empty after the last.
+  string next_page_token = 2;
+}
+
+// UpdateGatewayRequest is a changed gateway.
+message UpdateGatewayRequest {
+  // The gateway with its ID and the new values of the fields the mask names.
+  Gateway gateway = 1 [(buf.validate.field).required = true];
+  // The fields to change: name, tunnel_endpoints, enabled.
+  google.protobuf.FieldMask update_mask = 2;
+  // The etag the caller read; empty skips the check.
+  string etag = 3;
+}
+
+// UpdateGatewayResponse is the changed gateway.
+message UpdateGatewayResponse {
+  // The gateway.
+  Gateway gateway = 1;
+  // The configuration revision of the change.
+  Revision revision = 2;
+}
+
+// DecommissionGatewayRequest names a gateway.
+message DecommissionGatewayRequest {
+  // The gateway's ID.
+  string gateway_id = 1 [(buf.validate.field).string.min_len = 1];
+  // The etag the caller read; empty skips the check.
+  string etag = 2;
+}
+
+// DecommissionGatewayResponse is the tombstone.
+message DecommissionGatewayResponse {
+  // The decommissioned gateway.
+  Gateway gateway = 1;
+  // The configuration revision of the change.
+  Revision revision = 2;
 }
 
 // GatewayGroup is a set of up to four gateways that publish routes together.

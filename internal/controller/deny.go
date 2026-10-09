@@ -100,6 +100,10 @@ func (s *Sessions) denyLoop(ctx context.Context) {
 	}
 }
 
+// ApplyDenyList applies a revocation written in another transaction at once, rather than at the
+// next revision check.
+func (s *Sessions) ApplyDenyList() { s.applyDeny() }
+
 // applyDeny reloads the deny-list and, if it changed, sends it to every session and ends the
 // sessions of agents it now denies with Goodbye{revoked}.
 func (s *Sessions) applyDeny() {
