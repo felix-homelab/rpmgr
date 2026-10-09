@@ -1,6 +1,7 @@
 # Per-PR checks and checks on main (docs/12-testing-and-quality.md, "Continuous integration"):
 # repository files, documents, workflows and secrets, the Go, protobuf, store, build and
-# end-to-end stages. Every step is a script in .github/scripts/ that runs the same way locally.
+# end-to-end stages, and the web UI. Every step is a script in .github/scripts/ that runs the same
+# way locally.
 # Until v1.0.0 (D64) a pull request runs only the stages its changes need, PostgreSQL 18 only and
 # the cross-platform builds as vet only; a push to main runs only the stages that always run; the
 # nightly run calls this workflow with full set to run everything.
@@ -263,6 +264,24 @@ jobs:
       - name: Tests on armv7, natively on the same host
         if: ${{ !cancelled() }}
         run: .github/scripts/check-test-arch.sh arm
+
+  web:
+    needs: changes
+    if: ${{ needs.changes.outputs.web == 'true' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: web/.nvmrc
+      - name: Install, audit, lint, type-check, test and build the web UI
+        run: .github/scripts/check-web.sh
 
   docs:
     needs: changes

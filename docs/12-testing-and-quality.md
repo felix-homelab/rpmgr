@@ -170,7 +170,7 @@ a missed target is recorded, not hidden.
 | Control | How it is tested |
 |---|---|
 | **Static analysis** | `golangci-lint` with `gosec`, plus `forbidigo` rules that fail the build on: `InsecureSkipVerify` anywhere outside test helpers (tests use a generated test CA instead), `math/rand` in packages handling keys, tokens or nonces, `secret.Value.Reveal()` outside an allow-listed set of packages ([04](04-security.md#secrets-at-rest-and-in-logs)), `privacy.DecisionContext` outside `internal/store`, because it skips Ent's privacy policies ([06](06-data-model.md#tenancy-enforcement)). |
-| **Dependencies** | `govulncheck` on every PR and nightly; dependency updates via Dependabot with the same CI gates. |
+| **Dependencies** | `govulncheck` on every PR and nightly; `npm audit` of the web UI on every PR; dependency updates via Dependabot with the same CI gates. |
 | **Repository hygiene** | OpenSSF Scorecard; CI actions pinned by commit SHA; protected default branch. |
 | **Secret scanning** | gitleaks in CI (and as an optional pre-commit hook), with custom rules for the token prefixes `rpmgr_enr_`, `rpmgr_pat_`, `rpmgr_sat_`, `rpmgr_ses_`, `rpmgr_prs_`, `rpmgr_inv_` (checksum makes matches reliable, [04](04-security.md#tokens)) and for private keys. |
 | **TLS configuration** | Every `tls.Config` and `quic.Config` is built by a small set of constructors; tests assert TLS 1.3 only for internal sessions, client certificates required where specified, no `InsecureSkipVerify`, `Allow0RTT` false and no `ListenEarly`/`DialEarly`, `Renegotiation` never set, and every rpmgr check in `VerifyConnection`, none in `VerifyPeerCertificate` ([03](03-connections.md#properties-common-to-all-rpmgr-internal-sessions)). |
@@ -335,6 +335,7 @@ Docker-based ones need Docker), and `test-checks.sh` tests the checks with valid
 | `ci` / `proto` | `buf lint` (STANDARD); `buf breaking` (FILE) against `main`, passed only by a PR labelled `breaking` with `!` in its title before v1.0.0 (D56); the code in `gen/` regenerated and compared. buf runs at a pinned version through the go command, the generators are tool dependencies in `go.mod` | `check-buf.sh`, `buf.yaml`, `buf.gen.yaml` |
 | `ci` / `store` | The database tests on SQLite and on PostgreSQL 18, and 16 too in full runs (service containers), which are the store's own tests and those of every package that uses `storetest`: tenancy scoping, the embedded migrations from an empty database, regenerating them from the Ent schema yields nothing new, the live schema equals the Ent schema, edited or unlisted migration files refused, failing files rolled back; `atlas migrate lint` (community CLI, image by digest) on both dialects | `check-store.sh`, `check-atlas-lint.sh` |
 | `ci` / `build (linux)`, `build (windows and macos)` | `go vet` of every package, tests included, with `CGO_ENABLED=0` for linux/{amd64,arm64,armv7,riscv64}, windows/amd64 and darwin/{amd64,arm64}; vet type-checks what a build compiles, so only link errors wait for full runs, which also `go build` | `check-build.sh` |
+| `ci` / `web` | When `web` is set, the web UI with the Node version of `web/.nvmrc`: `npm ci` from the lockfile without install scripts; `npm audit`, failing on any advisory of a dependency that reaches the browser and on high or critical ones of the build and test tools; ESLint with the bans of [09](09-web-ui.md#frontend-architecture); the TypeScript type check; the Vitest unit tests; the Vite build, failing on any warning; the Go tests of `internal/webui` on that build, which check its page against the CSP | `check-web.sh` |
 | `ci` / `go-arm64` | Every test natively on a GitHub-hosted arm64 runner, with the race detector, and again for armv7 on the same host | `check-test-arch.sh` |
 | `nightly` / `ci`, `govulncheck`, `fuzz`, `riscv64`, `real-clients` | every `ci` stage in full; govulncheck against the latest vulnerability database; every fuzz target for 10 minutes; every test for riscv64 under QEMU user-mode emulation; Go, curl, headless Chromium and Firefox (images by digest) against the gateway's port 443 router, each reaching two http routes, a TLS-passthrough route and the controller's UI name, and no page for an unknown name. A failure opens the issue "Nightly run failed", or comments on the open one. Also started by hand | `check-govulncheck.sh`, `check-fuzz.sh`, `check-test-arch.sh`, `check-real-clients.sh` |
 | `scorecard` / `analysis` | OpenSSF Scorecard, weekly and on every push to `main`; results in the code-scanning alerts and the public Scorecard API | — |
@@ -343,7 +344,8 @@ Docker-based ones need Docker), and `test-checks.sh` tests the checks with valid
 The jobs `pr-rules`, `lint`, `docs` and `secrets` are required status checks of the `main` ruleset;
 the maintainer adds the others once their PRs are merged (verified 2026-10-09: none is yet). A job
 skipped because a PR does not need it counts as passed. Tool images are pinned by digest in the
-scripts and actions by commit SHA; Dependabot updates the actions. Images from Docker Hub are pulled
-through `mirror.gcr.io`, a public Docker Hub mirror that serves the same digests: GitHub-hosted
-runners share Docker Hub's limit for anonymous pulls, which stopped CI on 2026-10-09. The race detector needs cgo for its runtime; release builds stay
-`CGO_ENABLED=0`. The web stage is added by its Phase 1 slice.
+scripts and actions by commit SHA; Dependabot updates the actions and the web UI's npm packages.
+Images from Docker Hub are pulled through `mirror.gcr.io`, a public Docker Hub mirror that serves
+the same digests: GitHub-hosted runners share Docker Hub's limit for anonymous pulls, which stopped
+CI on 2026-10-09. The race detector needs cgo for its runtime; release builds stay
+`CGO_ENABLED=0`.

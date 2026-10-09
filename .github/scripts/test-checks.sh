@@ -65,6 +65,8 @@ for ok in "ci: add repository-rule and documentation checks" \
   "build(deps): bump the go group with 12 updates" \
   "build(deps): bump the go-sec group across 1 directory with 12 updates" \
   "ci(deps): bump the actions-sec group across 1 directory with 12 updates" \
+  "build(deps): bump the npm group in /web with 12 updates" \
+  "build(deps): bump the npm-sec group across 1 directory with 12 updates" \
   "feat: $(printf 'a%.0s' {1..66})"; do
   expect pass "title '$ok'" "$t" "$ok"
 done
@@ -260,6 +262,14 @@ expect fail "Go file without header" "$s" "$r"
 git -C "$r" rm -q --cached b.go && rm "$r/b.go"
 printf '#!/bin/sh\n\n\n\n\n# SPDX-License-Identifier: Apache-2.0\n' >"$r/late.sh" && git -C "$r" add late.sh
 expect fail "header after line five" "$s" "$r"
+
+# --- Web UI: the refusals before any install; the CI job web runs the whole check ------------
+w="$dir/check-web.sh"
+r=$(new_repo)
+expect fail "no web/package.json" "$w" "$r"
+mkdir -p "$r/web" && echo '{}' >"$r/web/package.json" && echo '{}' >"$r/web/package-lock.json"
+echo 1 >"$r/web/.nvmrc"
+expect fail "another Node major version than web/.nvmrc" "$w" "$r"
 
 # --- Go checks (need the go command) ----------------------------------------------------------
 if ! command -v go >/dev/null 2>&1; then
