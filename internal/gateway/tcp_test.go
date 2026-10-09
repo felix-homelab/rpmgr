@@ -25,6 +25,7 @@ import (
 	conn "github.com/felix-homelab/rpmgr/internal/connector"
 	"github.com/felix-homelab/rpmgr/internal/gateway"
 	"github.com/felix-homelab/rpmgr/internal/policy"
+	"github.com/felix-homelab/rpmgr/internal/testutil/freeport"
 	"github.com/felix-homelab/rpmgr/internal/tunnel"
 )
 
@@ -111,15 +112,7 @@ func newPlaneWith(t *testing.T, target, proxy string, routeIDs ...string) *plane
 }
 
 // freePort returns a port that was free a moment ago.
-func freePort(t *testing.T) uint16 {
-	t.Helper()
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = ln.Close() }()
-	return uint16(ln.Addr().(*net.TCPAddr).Port) //nolint:gosec // G115: a port
-}
+func freePort(t *testing.T) uint16 { return uint16(freeport.Port(t)) } //nolint:gosec // G115: a port
 
 // service accepts connections, strips the PROXY v1 line and hands the rest to serve.
 func service(t *testing.T, serve func(c net.Conn, br *bufio.Reader, proxyLine string)) string {
