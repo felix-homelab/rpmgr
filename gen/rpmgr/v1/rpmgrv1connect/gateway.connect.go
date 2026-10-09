@@ -50,6 +50,21 @@ const (
 	// GatewayServiceDeleteGatewayGroupProcedure is the fully-qualified name of the GatewayService's
 	// DeleteGatewayGroup RPC.
 	GatewayServiceDeleteGatewayGroupProcedure = "/rpmgr.v1.GatewayService/DeleteGatewayGroup"
+	// GatewayServiceCreateGatewayProcedure is the fully-qualified name of the GatewayService's
+	// CreateGateway RPC.
+	GatewayServiceCreateGatewayProcedure = "/rpmgr.v1.GatewayService/CreateGateway"
+	// GatewayServiceGetGatewayProcedure is the fully-qualified name of the GatewayService's GetGateway
+	// RPC.
+	GatewayServiceGetGatewayProcedure = "/rpmgr.v1.GatewayService/GetGateway"
+	// GatewayServiceListGatewaysProcedure is the fully-qualified name of the GatewayService's
+	// ListGateways RPC.
+	GatewayServiceListGatewaysProcedure = "/rpmgr.v1.GatewayService/ListGateways"
+	// GatewayServiceUpdateGatewayProcedure is the fully-qualified name of the GatewayService's
+	// UpdateGateway RPC.
+	GatewayServiceUpdateGatewayProcedure = "/rpmgr.v1.GatewayService/UpdateGateway"
+	// GatewayServiceDecommissionGatewayProcedure is the fully-qualified name of the GatewayService's
+	// DecommissionGateway RPC.
+	GatewayServiceDecommissionGatewayProcedure = "/rpmgr.v1.GatewayService/DecommissionGateway"
 )
 
 // GatewayServiceClient is a client for the rpmgr.v1.GatewayService service.
@@ -65,6 +80,18 @@ type GatewayServiceClient interface {
 	// DeleteGatewayGroup deletes a gateway group that has no gateway, route or port pool left;
 	// decommissioned gateways go with it.
 	DeleteGatewayGroup(context.Context, *connect.Request[v1.DeleteGatewayGroupRequest]) (*connect.Response[v1.DeleteGatewayGroupResponse], error)
+	// CreateGateway creates a gateway in a group, before it enrolls (R15); a group holds four.
+	CreateGateway(context.Context, *connect.Request[v1.CreateGatewayRequest]) (*connect.Response[v1.CreateGatewayResponse], error)
+	// GetGateway returns a gateway with its status.
+	GetGateway(context.Context, *connect.Request[v1.GetGatewayRequest]) (*connect.Response[v1.GetGatewayResponse], error)
+	// ListGateways lists an org's gateways by ID, those of one group if it names one.
+	ListGateways(context.Context, *connect.Request[v1.ListGatewaysRequest]) (*connect.Response[v1.ListGatewaysResponse], error)
+	// UpdateGateway changes the fields the mask names. Disabling a gateway drains it (R22): its
+	// routes leave it, and connectors move to the group's other gateways.
+	UpdateGateway(context.Context, *connect.Request[v1.UpdateGatewayRequest]) (*connect.Response[v1.UpdateGatewayResponse], error)
+	// DecommissionGateway retires a gateway for good: its identity is revoked, its sessions end, and
+	// it stays as a tombstone that no longer counts towards its group.
+	DecommissionGateway(context.Context, *connect.Request[v1.DecommissionGatewayRequest]) (*connect.Response[v1.DecommissionGatewayResponse], error)
 }
 
 // NewGatewayServiceClient constructs a client for the rpmgr.v1.GatewayService service. By default,
@@ -110,16 +137,53 @@ func NewGatewayServiceClient(httpClient connect.HTTPClient, baseURL string, opts
 			connect.WithSchema(gatewayServiceMethods.ByName("DeleteGatewayGroup")),
 			connect.WithClientOptions(opts...),
 		),
+		createGateway: connect.NewClient[v1.CreateGatewayRequest, v1.CreateGatewayResponse](
+			httpClient,
+			baseURL+GatewayServiceCreateGatewayProcedure,
+			connect.WithSchema(gatewayServiceMethods.ByName("CreateGateway")),
+			connect.WithClientOptions(opts...),
+		),
+		getGateway: connect.NewClient[v1.GetGatewayRequest, v1.GetGatewayResponse](
+			httpClient,
+			baseURL+GatewayServiceGetGatewayProcedure,
+			connect.WithSchema(gatewayServiceMethods.ByName("GetGateway")),
+			connect.WithIdempotency(connect.IdempotencyNoSideEffects),
+			connect.WithClientOptions(opts...),
+		),
+		listGateways: connect.NewClient[v1.ListGatewaysRequest, v1.ListGatewaysResponse](
+			httpClient,
+			baseURL+GatewayServiceListGatewaysProcedure,
+			connect.WithSchema(gatewayServiceMethods.ByName("ListGateways")),
+			connect.WithIdempotency(connect.IdempotencyNoSideEffects),
+			connect.WithClientOptions(opts...),
+		),
+		updateGateway: connect.NewClient[v1.UpdateGatewayRequest, v1.UpdateGatewayResponse](
+			httpClient,
+			baseURL+GatewayServiceUpdateGatewayProcedure,
+			connect.WithSchema(gatewayServiceMethods.ByName("UpdateGateway")),
+			connect.WithClientOptions(opts...),
+		),
+		decommissionGateway: connect.NewClient[v1.DecommissionGatewayRequest, v1.DecommissionGatewayResponse](
+			httpClient,
+			baseURL+GatewayServiceDecommissionGatewayProcedure,
+			connect.WithSchema(gatewayServiceMethods.ByName("DecommissionGateway")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
 // gatewayServiceClient implements GatewayServiceClient.
 type gatewayServiceClient struct {
-	createGatewayGroup *connect.Client[v1.CreateGatewayGroupRequest, v1.CreateGatewayGroupResponse]
-	getGatewayGroup    *connect.Client[v1.GetGatewayGroupRequest, v1.GetGatewayGroupResponse]
-	listGatewayGroups  *connect.Client[v1.ListGatewayGroupsRequest, v1.ListGatewayGroupsResponse]
-	updateGatewayGroup *connect.Client[v1.UpdateGatewayGroupRequest, v1.UpdateGatewayGroupResponse]
-	deleteGatewayGroup *connect.Client[v1.DeleteGatewayGroupRequest, v1.DeleteGatewayGroupResponse]
+	createGatewayGroup  *connect.Client[v1.CreateGatewayGroupRequest, v1.CreateGatewayGroupResponse]
+	getGatewayGroup     *connect.Client[v1.GetGatewayGroupRequest, v1.GetGatewayGroupResponse]
+	listGatewayGroups   *connect.Client[v1.ListGatewayGroupsRequest, v1.ListGatewayGroupsResponse]
+	updateGatewayGroup  *connect.Client[v1.UpdateGatewayGroupRequest, v1.UpdateGatewayGroupResponse]
+	deleteGatewayGroup  *connect.Client[v1.DeleteGatewayGroupRequest, v1.DeleteGatewayGroupResponse]
+	createGateway       *connect.Client[v1.CreateGatewayRequest, v1.CreateGatewayResponse]
+	getGateway          *connect.Client[v1.GetGatewayRequest, v1.GetGatewayResponse]
+	listGateways        *connect.Client[v1.ListGatewaysRequest, v1.ListGatewaysResponse]
+	updateGateway       *connect.Client[v1.UpdateGatewayRequest, v1.UpdateGatewayResponse]
+	decommissionGateway *connect.Client[v1.DecommissionGatewayRequest, v1.DecommissionGatewayResponse]
 }
 
 // CreateGatewayGroup calls rpmgr.v1.GatewayService.CreateGatewayGroup.
@@ -147,6 +211,31 @@ func (c *gatewayServiceClient) DeleteGatewayGroup(ctx context.Context, req *conn
 	return c.deleteGatewayGroup.CallUnary(ctx, req)
 }
 
+// CreateGateway calls rpmgr.v1.GatewayService.CreateGateway.
+func (c *gatewayServiceClient) CreateGateway(ctx context.Context, req *connect.Request[v1.CreateGatewayRequest]) (*connect.Response[v1.CreateGatewayResponse], error) {
+	return c.createGateway.CallUnary(ctx, req)
+}
+
+// GetGateway calls rpmgr.v1.GatewayService.GetGateway.
+func (c *gatewayServiceClient) GetGateway(ctx context.Context, req *connect.Request[v1.GetGatewayRequest]) (*connect.Response[v1.GetGatewayResponse], error) {
+	return c.getGateway.CallUnary(ctx, req)
+}
+
+// ListGateways calls rpmgr.v1.GatewayService.ListGateways.
+func (c *gatewayServiceClient) ListGateways(ctx context.Context, req *connect.Request[v1.ListGatewaysRequest]) (*connect.Response[v1.ListGatewaysResponse], error) {
+	return c.listGateways.CallUnary(ctx, req)
+}
+
+// UpdateGateway calls rpmgr.v1.GatewayService.UpdateGateway.
+func (c *gatewayServiceClient) UpdateGateway(ctx context.Context, req *connect.Request[v1.UpdateGatewayRequest]) (*connect.Response[v1.UpdateGatewayResponse], error) {
+	return c.updateGateway.CallUnary(ctx, req)
+}
+
+// DecommissionGateway calls rpmgr.v1.GatewayService.DecommissionGateway.
+func (c *gatewayServiceClient) DecommissionGateway(ctx context.Context, req *connect.Request[v1.DecommissionGatewayRequest]) (*connect.Response[v1.DecommissionGatewayResponse], error) {
+	return c.decommissionGateway.CallUnary(ctx, req)
+}
+
 // GatewayServiceHandler is an implementation of the rpmgr.v1.GatewayService service.
 type GatewayServiceHandler interface {
 	// CreateGatewayGroup creates a gateway group, which holds up to four gateways.
@@ -160,6 +249,18 @@ type GatewayServiceHandler interface {
 	// DeleteGatewayGroup deletes a gateway group that has no gateway, route or port pool left;
 	// decommissioned gateways go with it.
 	DeleteGatewayGroup(context.Context, *connect.Request[v1.DeleteGatewayGroupRequest]) (*connect.Response[v1.DeleteGatewayGroupResponse], error)
+	// CreateGateway creates a gateway in a group, before it enrolls (R15); a group holds four.
+	CreateGateway(context.Context, *connect.Request[v1.CreateGatewayRequest]) (*connect.Response[v1.CreateGatewayResponse], error)
+	// GetGateway returns a gateway with its status.
+	GetGateway(context.Context, *connect.Request[v1.GetGatewayRequest]) (*connect.Response[v1.GetGatewayResponse], error)
+	// ListGateways lists an org's gateways by ID, those of one group if it names one.
+	ListGateways(context.Context, *connect.Request[v1.ListGatewaysRequest]) (*connect.Response[v1.ListGatewaysResponse], error)
+	// UpdateGateway changes the fields the mask names. Disabling a gateway drains it (R22): its
+	// routes leave it, and connectors move to the group's other gateways.
+	UpdateGateway(context.Context, *connect.Request[v1.UpdateGatewayRequest]) (*connect.Response[v1.UpdateGatewayResponse], error)
+	// DecommissionGateway retires a gateway for good: its identity is revoked, its sessions end, and
+	// it stays as a tombstone that no longer counts towards its group.
+	DecommissionGateway(context.Context, *connect.Request[v1.DecommissionGatewayRequest]) (*connect.Response[v1.DecommissionGatewayResponse], error)
 }
 
 // NewGatewayServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -201,6 +302,38 @@ func NewGatewayServiceHandler(svc GatewayServiceHandler, opts ...connect.Handler
 		connect.WithSchema(gatewayServiceMethods.ByName("DeleteGatewayGroup")),
 		connect.WithHandlerOptions(opts...),
 	)
+	gatewayServiceCreateGatewayHandler := connect.NewUnaryHandler(
+		GatewayServiceCreateGatewayProcedure,
+		svc.CreateGateway,
+		connect.WithSchema(gatewayServiceMethods.ByName("CreateGateway")),
+		connect.WithHandlerOptions(opts...),
+	)
+	gatewayServiceGetGatewayHandler := connect.NewUnaryHandler(
+		GatewayServiceGetGatewayProcedure,
+		svc.GetGateway,
+		connect.WithSchema(gatewayServiceMethods.ByName("GetGateway")),
+		connect.WithIdempotency(connect.IdempotencyNoSideEffects),
+		connect.WithHandlerOptions(opts...),
+	)
+	gatewayServiceListGatewaysHandler := connect.NewUnaryHandler(
+		GatewayServiceListGatewaysProcedure,
+		svc.ListGateways,
+		connect.WithSchema(gatewayServiceMethods.ByName("ListGateways")),
+		connect.WithIdempotency(connect.IdempotencyNoSideEffects),
+		connect.WithHandlerOptions(opts...),
+	)
+	gatewayServiceUpdateGatewayHandler := connect.NewUnaryHandler(
+		GatewayServiceUpdateGatewayProcedure,
+		svc.UpdateGateway,
+		connect.WithSchema(gatewayServiceMethods.ByName("UpdateGateway")),
+		connect.WithHandlerOptions(opts...),
+	)
+	gatewayServiceDecommissionGatewayHandler := connect.NewUnaryHandler(
+		GatewayServiceDecommissionGatewayProcedure,
+		svc.DecommissionGateway,
+		connect.WithSchema(gatewayServiceMethods.ByName("DecommissionGateway")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/rpmgr.v1.GatewayService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case GatewayServiceCreateGatewayGroupProcedure:
@@ -213,6 +346,16 @@ func NewGatewayServiceHandler(svc GatewayServiceHandler, opts ...connect.Handler
 			gatewayServiceUpdateGatewayGroupHandler.ServeHTTP(w, r)
 		case GatewayServiceDeleteGatewayGroupProcedure:
 			gatewayServiceDeleteGatewayGroupHandler.ServeHTTP(w, r)
+		case GatewayServiceCreateGatewayProcedure:
+			gatewayServiceCreateGatewayHandler.ServeHTTP(w, r)
+		case GatewayServiceGetGatewayProcedure:
+			gatewayServiceGetGatewayHandler.ServeHTTP(w, r)
+		case GatewayServiceListGatewaysProcedure:
+			gatewayServiceListGatewaysHandler.ServeHTTP(w, r)
+		case GatewayServiceUpdateGatewayProcedure:
+			gatewayServiceUpdateGatewayHandler.ServeHTTP(w, r)
+		case GatewayServiceDecommissionGatewayProcedure:
+			gatewayServiceDecommissionGatewayHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -240,4 +383,24 @@ func (UnimplementedGatewayServiceHandler) UpdateGatewayGroup(context.Context, *c
 
 func (UnimplementedGatewayServiceHandler) DeleteGatewayGroup(context.Context, *connect.Request[v1.DeleteGatewayGroupRequest]) (*connect.Response[v1.DeleteGatewayGroupResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("rpmgr.v1.GatewayService.DeleteGatewayGroup is not implemented"))
+}
+
+func (UnimplementedGatewayServiceHandler) CreateGateway(context.Context, *connect.Request[v1.CreateGatewayRequest]) (*connect.Response[v1.CreateGatewayResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("rpmgr.v1.GatewayService.CreateGateway is not implemented"))
+}
+
+func (UnimplementedGatewayServiceHandler) GetGateway(context.Context, *connect.Request[v1.GetGatewayRequest]) (*connect.Response[v1.GetGatewayResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("rpmgr.v1.GatewayService.GetGateway is not implemented"))
+}
+
+func (UnimplementedGatewayServiceHandler) ListGateways(context.Context, *connect.Request[v1.ListGatewaysRequest]) (*connect.Response[v1.ListGatewaysResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("rpmgr.v1.GatewayService.ListGateways is not implemented"))
+}
+
+func (UnimplementedGatewayServiceHandler) UpdateGateway(context.Context, *connect.Request[v1.UpdateGatewayRequest]) (*connect.Response[v1.UpdateGatewayResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("rpmgr.v1.GatewayService.UpdateGateway is not implemented"))
+}
+
+func (UnimplementedGatewayServiceHandler) DecommissionGateway(context.Context, *connect.Request[v1.DecommissionGatewayRequest]) (*connect.Response[v1.DecommissionGatewayResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("rpmgr.v1.GatewayService.DecommissionGateway is not implemented"))
 }

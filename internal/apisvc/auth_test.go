@@ -11,6 +11,7 @@ import (
 	"net/http/httptest"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -44,7 +45,8 @@ type env struct {
 	tokens   *accounts.Tokens
 	log      string // the revocation log
 	url      string
-	ada      string // the first user's ID
+	ada      string       // the first user's ID
+	denied   atomic.Int32 // how often a service applied a changed deny-list
 }
 
 func newEnv(t *testing.T) *env {
@@ -94,7 +96,8 @@ func newEnv(t *testing.T) *env {
 	}
 	if err := srv.Mount(mux, rpmgrv1.File_rpmgr_v1_gateway_proto.Services().ByName("GatewayService"),
 		func(o ...connect.HandlerOption) (string, http.Handler) {
-			return rpmgrv1connect.NewGatewayServiceHandler(&apisvc.Gateways{DB: db, API: srv}, o...)
+			return rpmgrv1connect.NewGatewayServiceHandler(&apisvc.Gateways{DB: db, API: srv, Sys: sys, RevLog: rl, Now: now,
+				Denied: func() { e.denied.Add(1) }}, o...)
 		}); err != nil {
 		t.Fatal(err)
 	}
