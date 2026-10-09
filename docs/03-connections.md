@@ -614,9 +614,15 @@ sequenceDiagram
   and only when the TCP peer is in Cloudflare's published ranges, which reach the gateway in its
   snapshot. `X-Forwarded-*` from those peers is not trusted. Access policies, rate limits and the
   `Forwarded` headers sent upstream use that address ([15](15-dns.md#proxied-http-routes)).
-- WebSockets and other upgrades pass through. gRPC passes through when the target speaks HTTP/2
-  (h2c, or TLS with ALPN `h2`).
-- Error mapping: no ready session or connector → **503** with `Retry-After`; upstream refused or
+- **Routing.** A request goes to the route of its `Host` and the longest path prefix that matches
+  at a segment boundary (`/api` matches `/api` and `/api/x`, not `/apix`). A hostname a route names
+  exactly comes before a wildcard hostname one label up, which serves a name only if no route
+  names it. No match is **404**. TLS is terminated with the route certificate for the server name
+  ([04](04-security.md#controller-certificates)).
+- WebSockets and other upgrades pass through, unless the route turns them off (**403**). gRPC passes
+  through when the target speaks HTTP/2 (h2c, or TLS with ALPN `h2`); the gateway streams every
+  response as it comes, so it sends a gRPC status that arrived without a body as trailers.
+- Error mapping: no ready session or connector → **503** with `Retry-After: 5`; upstream refused or
   reset → **502**; upstream timeout → **504**.
 
 ### TLS passthrough routes

@@ -223,6 +223,11 @@ later.
   must name at least one valid DNS name; its key must match it and be ECDSA P-256 or P-384, or RSA
   of 2048 to 8192 bits. The key is stored under the KEK; gateways fetch chain and key together by
   their SHA-256, which the controller computes at the upload.
+- **TLS of http routes** [R]: public clients connect with TLS 1.3, or TLS 1.2 with ECDHE and
+  AES-GCM or ChaCha20-Poly1305 only, and ALPN `h2` or `http/1.1`; rpmgr's own sessions stay
+  TLS 1.3 only ([03](03-connections.md#properties-common-to-all-rpmgr-internal-sessions)). A name
+  without a valid certificate gets the gateway's self-signed default certificate, so a browser
+  shows a certificate error rather than a reset.
 - **Route certificates on gateways** [R]: a gateway keeps each fetched chain and key in its state
   directory, readable by the gateway's user only, as any TLS server keeps its keys, so that a
   gateway restarted while the controller is unreachable still terminates TLS. It checks a kept copy

@@ -141,7 +141,14 @@ func Run(ctx context.Context, o RunOptions) error {
 	defer udpRoutes.Close()
 	certificates := NewCertificates(CertificatesOptions{Dir: filepath.Join(cfg.StateDir, ResourcesDir), Fetch: ctl.Fetch,
 		Now: o.Now, Logger: o.Logger})
-	applier.Bind(Served{TCP: routes, UDP: udpRoutes, Passthrough: pass, Certificates: certificates, Sessions: sessions})
+	def, err := DefaultTLS()
+	if err != nil {
+		return err
+	}
+	httpRoutes := NewHTTPRoutes(HTTPOptions{Sessions: sessions, Certificates: certificates, Default: &def.Certificates[0],
+		Revision: applier.Revision, Logger: o.Logger})
+	defer httpRoutes.Close()
+	applier.Bind(Served{TCP: routes, UDP: udpRoutes, Passthrough: pass, HTTP: httpRoutes, Certificates: certificates, Sessions: sessions})
 
 	tunnelTLS := pki.ServerConfig(ctl.Certificate(), id.Roots, pki.Expect{TrustDomain: id.TrustDomain,
 		Kinds: []pki.Kind{pki.KindConnector}, Denied: ctl.DenyList().Denied}, o.Now)
@@ -151,15 +158,12 @@ func Run(ctx context.Context, o RunOptions) error {
 	}
 	h2TLS := tunnelTLS.Clone()
 	h2TLS.NextProtos = []string{tunnel.ALPNH2}
-	def, err := DefaultTLS()
-	if err != nil {
-		return err
-	}
 	budget := tunnel.NewBudget(tunnel.DefaultWindowBudget)
 	run, stop := context.WithCancel(context.Background()) // outlives ctx by the drain period
 	defer stop()
 	router := &Router{TrustDomain: id.TrustDomain, GatewayID: id.AgentID, TunnelTLS: h2TLS, DefaultTLS: def, Logger: o.Logger,
-		Controller: toController, ControllerNames: controllerNames, Routes: pass,
+		Controller: toController, ControllerNames: controllerNames, Routes: NewRouteTable(pass, httpRoutes),
+		HTTP: httpRoutes.Serve, HTTPTLS: httpRoutes.TLSConfig(),
 		Tunnel: func(c *tls.Conn) {
 			defer func() { _ = c.Close() }()
 			hctx, cancel := context.WithTimeout(run, tunnelHandshake)
@@ -255,15 +259,18 @@ func Run(ctx context.Context, o RunOptions) error {
 	_ = tcp.Close()
 	_ = qln.Close()
 	routes.Drain()
+	httpRoutes.Drain()
 	sessions.Drain(o.Now().Add(o.DrainPeriod))
 	deadline := time.Now().Add(o.DrainPeriod)
-	for result == nil && time.Now().Before(deadline) && (routes.Conns() > 0 || pass.Conns() > 0 || sessions.Streams() > 0) {
+	for result == nil && time.Now().Before(deadline) && (routes.Conns() > 0 || pass.Conns() > 0 || httpRoutes.Active() > 0 ||
+		sessions.Streams() > 0) {
 		select {
 		case <-time.After(100 * time.Millisecond):
 		case result = <-errs:
 		}
 	}
 	routes.Close()
+	httpRoutes.Close()
 	udpRoutes.Close()
 	sessions.Close()
 	stop()

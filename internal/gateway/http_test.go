@@ -1,0 +1,428 @@
+// SPDX-License-Identifier: Apache-2.0
+
+package gateway_test
+
+import (
+	"bufio"
+	"context"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/sha256"
+	"crypto/tls"
+	"crypto/x509"
+	"crypto/x509/pkix"
+	"errors"
+	"fmt"
+	"io"
+	"math/big"
+	"net"
+	"net/http"
+	"slices"
+	"strings"
+	"testing"
+	"time"
+
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/health"
+	healthpb "google.golang.org/grpc/health/grpc_health_v1"
+	"google.golang.org/protobuf/proto"
+
+	agentv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/agent/v1"
+	"github.com/felix-homelab/rpmgr/internal/gateway"
+)
+
+// httpFront serves h's routes on a TLS listener, as the router hands them over, and returns its
+// address.
+func httpFront(t *testing.T, h *gateway.HTTPRoutes) string {
+	t.Helper()
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = ln.Close() })
+	cfg := h.TLSConfig()
+	go func() {
+		for {
+			c, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			go h.Serve(tls.Server(c, cfg))
+		}
+	}()
+	return ln.Addr().String()
+}
+
+// routeCert loads a certificate for names into a Certificates and returns it with a pool that
+// trusts it.
+func routeCert(t *testing.T, names ...string) (*gateway.Certificates, *x509.CertPool) {
+	t.Helper()
+	k, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	tmpl := &x509.Certificate{SerialNumber: big.NewInt(1), Subject: pkix.Name{CommonName: names[0]}, DNSNames: names,
+		NotBefore: time.Now().Add(-time.Hour), NotAfter: time.Now().Add(time.Hour)}
+	der, err := x509.CreateCertificate(rand.Reader, tmpl, tmpl, &k.PublicKey, k)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pk, _ := x509.MarshalPKCS8PrivateKey(k)
+	item, _ := proto.MarshalOptions{Deterministic: true}.Marshal(&agentv1.CertificateItem{Chain: [][]byte{der}, PrivateKey: pk})
+	sum := sha256.Sum256(item)
+	c := gateway.NewCertificates(gateway.CertificatesOptions{Fetch: func(context.Context, string, []byte) ([]byte, error) { return item, nil }})
+	if st := c.Apply(t.Context(), []gateway.CertificateRoute{{ID: "crt_1", ContentSHA256: sum[:], Hostnames: names}}); len(st) != 0 {
+		t.Fatal(st)
+	}
+	leaf, _ := x509.ParseCertificate(der)
+	pool := x509.NewCertPool()
+	pool.AddCert(leaf)
+	return c, pool
+}
+
+// httpEnv is a gateway serving one http route to an upstream behind a connector.
+type httpEnv struct {
+	routes *gateway.HTTPRoutes
+	addr   string
+	pool   *x509.CertPool
+}
+
+func newHTTPEnv(t *testing.T, upstream http.Handler, route gateway.HTTPRoute) *httpEnv {
+	t.Helper()
+	up := &http.Server{Handler: upstream, ReadHeaderTimeout: 5 * time.Second}
+	upLn, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if route.Upstream == "h2c" {
+		p := new(http.Protocols)
+		p.SetUnencryptedHTTP2(true)
+		up.Protocols = p
+	}
+	go func() { _ = up.Serve(upLn) }()
+	t.Cleanup(func() { _ = up.Close() })
+	p := newPlaneWith(t, upLn.Addr().String(), "none", route.ID)
+	return newHTTPEnvOn(t, p.sessions, route)
+}
+
+func newHTTPEnvOn(t *testing.T, sessions *gateway.Sessions, routes ...gateway.HTTPRoute) *httpEnv {
+	t.Helper()
+	certs, pool := routeCert(t, "app.example.com", "*.example.com")
+	h := gateway.NewHTTPRoutes(gateway.HTTPOptions{Sessions: sessions, Certificates: certs})
+	t.Cleanup(h.Close)
+	h.Apply(routes)
+	addr := httpFront(t, h)
+	return &httpEnv{routes: h, addr: addr, pool: pool}
+}
+
+// client returns an HTTP client of the env that speaks HTTP/2 when h2 is set.
+func (e *httpEnv) client(h2 bool) *http.Client {
+	tr := &http.Transport{TLSClientConfig: &tls.Config{RootCAs: e.pool, MinVersion: tls.VersionTLS13},
+		DialContext: func(ctx context.Context, network, _ string) (net.Conn, error) {
+			var d net.Dialer
+			return d.DialContext(ctx, network, e.addr)
+		}}
+	p := new(http.Protocols)
+	if h2 {
+		p.SetHTTP2(true)
+	} else {
+		p.SetHTTP1(true)
+	}
+	tr.Protocols = p
+	return &http.Client{Transport: tr, Timeout: 10 * time.Second}
+}
+
+// reply is what a client got.
+type reply struct {
+	status int
+	proto  int
+	header http.Header
+	body   string
+}
+
+func get(t *testing.T, c *http.Client, url string, header http.Header) reply {
+	t.Helper()
+	req, _ := http.NewRequest(http.MethodGet, url, nil)
+	for k, v := range header {
+		req.Header[k] = v
+	}
+	resp, err := c.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	b, _ := io.ReadAll(resp.Body)
+	return reply{status: resp.StatusCode, proto: resp.ProtoMajor, header: resp.Header, body: string(b)}
+}
+
+// TestHTTPRoutes_RoutePrecedence: an exact hostname before a wildcard one, and the longest path
+// prefix at a segment boundary.
+func TestHTTPRoutes_RoutePrecedence(t *testing.T) {
+	h := gateway.NewHTTPRoutes(gateway.HTTPOptions{})
+	t.Cleanup(h.Close)
+	h.Apply([]gateway.HTTPRoute{
+		{ID: "rt_app", Hosts: []gateway.HTTPHost{{Hostname: "app.example.com"}}},
+		{ID: "rt_api", Hosts: []gateway.HTTPHost{{Hostname: "app.example.com", PathPrefix: "/api"}}},
+		{ID: "rt_v2", Hosts: []gateway.HTTPHost{{Hostname: "app.example.com", PathPrefix: "/api/v2/"}}},
+		{ID: "rt_wild", Hosts: []gateway.HTTPHost{{Hostname: "*.example.com"}, {Hostname: "docs.example.com", PathPrefix: "/guide"}}},
+	})
+	for _, tc := range []struct{ host, path, want string }{
+		{"app.example.com", "/", "rt_app"},
+		{"APP.example.com:443", "/x", "rt_app"},
+		{"app.example.com", "/api", "rt_api"},
+		{"app.example.com", "/api/users", "rt_api"},
+		{"app.example.com", "/apix", "rt_app"},
+		{"app.example.com", "/api/v2/x", "rt_v2"},
+		{"app.example.com", "/api/v2", "rt_api"},
+		{"www.example.com", "/", "rt_wild"},
+		{"docs.example.com", "/guide/x", "rt_wild"},
+		{"docs.example.com", "/other", ""}, // docs.example.com is named: no fallback to the wildcard
+		{"a.b.example.com", "/", ""},
+		{"example.com", "/", ""},
+	} {
+		if got := gateway.RouteFor(h, tc.host, tc.path); got != tc.want {
+			t.Errorf("%s%s: %q, want %q", tc.host, tc.path, got, tc.want)
+		}
+	}
+	if !h.Serves("www.example.com") || !h.Serves("app.example.com") || h.Serves("example.com") || h.Serves("other.net") {
+		t.Error("Serves")
+	}
+}
+
+// TestHTTPRoutes_Proxy: HTTP/1.1 and HTTP/2 clients reach the upstream over a tunnel stream with
+// their Host kept and X-Forwarded-* set by the gateway, never taken from the client.
+func TestHTTPRoutes_Proxy(t *testing.T) {
+	upstream := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		//nolint:gosec // G705: the test upstream echoes the request as plain text
+		_, _ = fmt.Fprintf(w, "%s %s %s|%s|%s|%s", r.Method, r.Host, r.URL.Path, r.Header.Get("X-Forwarded-For"),
+			r.Header.Get("X-Forwarded-Proto"), r.Header.Get("X-Forwarded-Host"))
+	})
+	e := newHTTPEnv(t, upstream, gateway.HTTPRoute{ID: "rt_web", Upstream: "http", WebSocket: true,
+		Hosts: []gateway.HTTPHost{{Hostname: "app.example.com"}}})
+	for _, h2 := range []bool{false, true} {
+		r := get(t, e.client(h2), "https://app.example.com/hello", http.Header{"X-Forwarded-For": {"203.0.113.9"}})
+		want := "GET app.example.com /hello|127.0.0.1|https|app.example.com"
+		if r.status != http.StatusOK || r.body != want || r.proto != map[bool]int{false: 1, true: 2}[h2] {
+			t.Errorf("h2 %v: %d %q (HTTP/%d), want %q", h2, r.status, r.body, r.proto, want)
+		}
+	}
+	if r := get(t, e.client(false), "https://other.example.com/", nil); r.status != http.StatusNotFound {
+		t.Errorf("a host without a route: %d", r.status)
+	}
+}
+
+// TestHTTPRoutes_Errors: no ready connector is 503 with Retry-After; a refused upstream 502; an
+// upstream that does not answer in time 504.
+func TestHTTPRoutes_Errors(t *testing.T) {
+	gateway.SetHTTPTimers(t, time.Second, 300*time.Millisecond)
+	route := gateway.HTTPRoute{ID: "rt_web", Upstream: "http", Hosts: []gateway.HTTPHost{{Hostname: "app.example.com"}}}
+	// No data session at all.
+	idle := gateway.NewSessions(gateway.SessionsOptions{TrustDomain: td, GatewayID: "gw_01", Assignment: routeAssignment{"con_x"}})
+	t.Cleanup(idle.Close)
+	e := newHTTPEnvOn(t, idle, route)
+	if r := get(t, e.client(false), "https://app.example.com/", nil); r.status != http.StatusServiceUnavailable ||
+		r.header.Get("Retry-After") != "5" {
+		t.Errorf("no session: %d %v", r.status, r.header)
+	}
+
+	// A connector whose upstream refuses.
+	closed, _ := net.Listen("tcp", "127.0.0.1:0")
+	refusedAddr := closed.Addr().String()
+	_ = closed.Close()
+	p := newPlaneWith(t, refusedAddr, "none", "rt_web")
+	e = newHTTPEnvOn(t, p.sessions, route)
+	if r := get(t, e.client(true), "https://app.example.com/", nil); r.status != http.StatusBadGateway {
+		t.Errorf("refused: %d", r.status)
+	}
+
+	// An upstream that accepts and never answers.
+	silent := service(t, func(c net.Conn, br *bufio.Reader, _ string) { _, _ = io.Copy(io.Discard, br) })
+	p = newPlaneWith(t, silent, "none", "rt_web")
+	e = newHTTPEnvOn(t, p.sessions, route)
+	if r := get(t, e.client(false), "https://app.example.com/", nil); r.status != http.StatusGatewayTimeout {
+		t.Errorf("silent upstream: %d", r.status)
+	}
+}
+
+// TestHTTPRoutes_SlowHeaders: a client that does not finish its request headers in time is
+// closed.
+func TestHTTPRoutes_SlowHeaders(t *testing.T) {
+	gateway.SetHTTPTimers(t, 300*time.Millisecond, time.Minute)
+	e := newHTTPEnv(t, http.NotFoundHandler(), gateway.HTTPRoute{ID: "rt_web", Upstream: "http",
+		Hosts: []gateway.HTTPHost{{Hostname: "app.example.com"}}})
+	c, err := tls.Dial("tcp", e.addr, &tls.Config{ServerName: "app.example.com", RootCAs: e.pool, MinVersion: tls.VersionTLS13,
+		NextProtos: []string{"http/1.1"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = c.Close() }()
+	_, _ = c.Write([]byte("GET / HTTP/1.1\r\nHost: app.example.com\r\n"))
+	_ = c.SetReadDeadline(time.Now().Add(5 * time.Second))
+	start := time.Now()
+	_, err = io.ReadAll(c)
+	if d := time.Since(start); err != nil || d > 3*time.Second {
+		t.Fatalf("a slow client was kept %s (%v)", d, err)
+	}
+}
+
+// websocketEcho answers an Upgrade with 101 and echoes the bytes that follow.
+var websocketEcho = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	if r.Header.Get("Upgrade") != "websocket" {
+		http.Error(w, "not an upgrade", http.StatusBadRequest)
+		return
+	}
+	c, brw, err := http.NewResponseController(w).Hijack()
+	if err != nil {
+		return
+	}
+	defer func() { _ = c.Close() }()
+	_, _ = brw.WriteString("HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n\r\n")
+	_ = brw.Flush()
+	_, _ = io.Copy(c, brw)
+})
+
+// upgrade sends a WebSocket upgrade over HTTP/1.1 and returns the status line and, after a 101,
+// the echo of msg.
+func upgrade(t *testing.T, e *httpEnv, msg string) (string, string) {
+	t.Helper()
+	c, err := tls.Dial("tcp", e.addr, &tls.Config{ServerName: "app.example.com", RootCAs: e.pool, MinVersion: tls.VersionTLS13,
+		NextProtos: []string{"http/1.1"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = c.Close() }()
+	_ = c.SetDeadline(time.Now().Add(10 * time.Second))
+	_, _ = c.Write([]byte("GET /ws HTTP/1.1\r\nHost: app.example.com\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n" +
+		"Sec-WebSocket-Version: 13\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n\r\n"))
+	br := bufio.NewReader(c)
+	resp, err := http.ReadResponse(br, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// A 101's body is the upgraded connection itself; anything else is read and closed here.
+	if resp.StatusCode != http.StatusSwitchingProtocols {
+		_, _ = io.Copy(io.Discard, resp.Body)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusSwitchingProtocols {
+		return resp.Status, ""
+	}
+	_, _ = c.Write([]byte(msg))
+	b := make([]byte, len(msg))
+	if _, err := io.ReadFull(br, b); err != nil {
+		t.Fatal(err)
+	}
+	return resp.Status, string(b)
+}
+
+// TestHTTPRoutes_WebSocket: an upgrade passes through and carries bytes both ways; a route with
+// upgrades off refuses it.
+func TestHTTPRoutes_WebSocket(t *testing.T) {
+	route := gateway.HTTPRoute{ID: "rt_web", Upstream: "http", WebSocket: true, Hosts: []gateway.HTTPHost{{Hostname: "app.example.com"}}}
+	e := newHTTPEnv(t, websocketEcho, route)
+	if status, echo := upgrade(t, e, "over the tunnel"); !strings.HasPrefix(status, "101") || echo != "over the tunnel" {
+		t.Fatalf("%q %q", status, echo)
+	}
+	route.WebSocket = false
+	e.routes.Apply([]gateway.HTTPRoute{route})
+	if status, _ := upgrade(t, e, "x"); !strings.HasPrefix(status, "403") {
+		t.Fatalf("upgrades off: %q", status)
+	}
+}
+
+// TestHTTPRoutes_GRPC: gRPC passes through to an h2c upstream, trailers included.
+func TestHTTPRoutes_GRPC(t *testing.T) {
+	srv := grpc.NewServer()
+	hs := health.NewServer()
+	healthpb.RegisterHealthServer(srv, hs)
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	go func() { _ = srv.Serve(ln) }()
+	t.Cleanup(srv.Stop)
+	p := newPlaneWith(t, ln.Addr().String(), "none", "rt_grpc")
+	e := newHTTPEnvOn(t, p.sessions, gateway.HTTPRoute{ID: "rt_grpc", Upstream: "h2c", Hosts: []gateway.HTTPHost{{Hostname: "app.example.com"}}})
+	cc, err := grpc.NewClient("passthrough:///"+e.addr, grpc.WithTransportCredentials(credentials.NewTLS(
+		&tls.Config{ServerName: "app.example.com", RootCAs: e.pool, MinVersion: tls.VersionTLS13})))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = cc.Close() }()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	resp, err := healthpb.NewHealthClient(cc).Check(ctx, &healthpb.HealthCheckRequest{})
+	if err != nil || resp.GetStatus() != healthpb.HealthCheckResponse_SERVING {
+		t.Fatalf("%v %v", resp, err)
+	}
+	// An unknown service is an error status carried in the trailers.
+	if _, err := healthpb.NewHealthClient(cc).Check(ctx, &healthpb.HealthCheckRequest{Service: "nope"}); err == nil ||
+		!strings.Contains(err.Error(), "NotFound") {
+		t.Fatalf("a gRPC error status: %v", err)
+	}
+}
+
+// TestHTTPRoutes_TLS: TLS 1.2 clients get an AEAD suite with forward secrecy and nothing else;
+// a name without a certificate gets the default one.
+func TestHTTPRoutes_TLS(t *testing.T) {
+	certs, pool := routeCert(t, "app.example.com")
+	def, err := gateway.DefaultTLS()
+	if err != nil {
+		t.Fatal(err)
+	}
+	h := gateway.NewHTTPRoutes(gateway.HTTPOptions{Certificates: certs, Default: &def.Certificates[0]})
+	t.Cleanup(h.Close)
+	addr := httpFront(t, h)
+	//nolint:gosec // G402: the test checks what a TLS 1.2 client gets
+	c, err := tls.Dial("tcp", addr, &tls.Config{ServerName: "app.example.com", RootCAs: pool, MinVersion: tls.VersionTLS12,
+		MaxVersion: tls.VersionTLS12})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st := c.ConnectionState(); st.CipherSuite != tls.TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256 &&
+		st.CipherSuite != tls.TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384 && st.CipherSuite != tls.TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256 {
+		t.Errorf("TLS 1.2 suite %s", tls.CipherSuiteName(st.CipherSuite))
+	}
+	_ = c.Close()
+	//nolint:gosec // G402: the test checks that a CBC suite is refused
+	if c, err := tls.Dial("tcp", addr, &tls.Config{ServerName: "app.example.com", RootCAs: pool, MinVersion: tls.VersionTLS12,
+		MaxVersion: tls.VersionTLS12, CipherSuites: []uint16{tls.TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA}}); err == nil {
+		_ = c.Close()
+		t.Error("a CBC suite was accepted")
+	}
+	//nolint:gosec // G402: the test checks that TLS 1.1 is refused
+	if c, err := tls.Dial("tcp", addr, &tls.Config{ServerName: "app.example.com", RootCAs: pool, MinVersion: tls.VersionTLS11,
+		MaxVersion: tls.VersionTLS11}); err == nil {
+		_ = c.Close()
+		t.Error("TLS 1.1 was accepted")
+	}
+	c, err = tls.Dial("tcp", addr, &tls.Config{ServerName: "other.example.com", RootCAs: pool, MinVersion: tls.VersionTLS13})
+	var wrongName x509.HostnameError
+	if !errors.As(err, &wrongName) || !slices.Contains(wrongName.Certificate.DNSNames, "default.invalid") {
+		t.Errorf("a name without a certificate: %v", err)
+	}
+	if c != nil {
+		_ = c.Close()
+	}
+}
+
+// TestHTTPRoutes_ApplyWhileServing: snapshots change a route while requests are served.
+func TestHTTPRoutes_ApplyWhileServing(t *testing.T) {
+	upstream := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { _, _ = io.WriteString(w, "ok") })
+	route := gateway.HTTPRoute{ID: "rt_web", Upstream: "http", WebSocket: true, Hosts: []gateway.HTTPHost{{Hostname: "app.example.com"}}}
+	e := newHTTPEnv(t, upstream, route)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for i := range 50 {
+			route.WebSocket = i%2 == 0
+			e.routes.Apply([]gateway.HTTPRoute{route})
+		}
+	}()
+	c := e.client(true)
+	for range 20 {
+		if r := get(t, c, "https://app.example.com/", nil); r.status != http.StatusOK || r.body != "ok" {
+			t.Fatalf("%d %q", r.status, r.body)
+		}
+	}
+	<-done
+}

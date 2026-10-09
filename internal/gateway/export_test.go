@@ -38,3 +38,19 @@ func SetMaxFlows(t testing.TB, n int) {
 	maxFlows = n
 	t.Cleanup(func() { maxFlows = old })
 }
+
+// SetHTTPTimers shortens the request-header and upstream-header timeouts for one test, which must
+// not run in parallel with others.
+func SetHTTPTimers(t testing.TB, readHeader, upstreamHeader time.Duration) {
+	oldRead, oldUp := httpReadHeader, httpUpstreamHeader
+	httpReadHeader, httpUpstreamHeader = readHeader, upstreamHeader
+	t.Cleanup(func() { httpReadHeader, httpUpstreamHeader = oldRead, oldUp })
+}
+
+// RouteFor returns the ID of the http route that serves host and path, or "".
+func RouteFor(h *HTTPRoutes, host, path string) string {
+	if rt := h.routeFor(host, path); rt != nil {
+		return rt.route.Load().ID
+	}
+	return ""
+}
