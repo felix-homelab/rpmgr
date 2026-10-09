@@ -74,6 +74,19 @@ func Instance(ctx context.Context, c *ent.Client) (*rpmgrv1.InstanceSettings, in
 	return effective(InstanceDefaults(), stored).(*rpmgrv1.InstanceSettings), version, nil
 }
 
+// InitInstanceTx stores the first instance settings in tx, the transaction that initialises the
+// instance; they must pass validation like any update.
+func InitInstanceTx(ctx context.Context, tx *ent.Tx, initial *rpmgrv1.InstanceSettings) error {
+	if err := protovalidate.Validate(effective(InstanceDefaults(), initial)); err != nil {
+		return fmt.Errorf("settings: %w", err)
+	}
+	value, err := proto.MarshalOptions{Deterministic: true}.Marshal(initial)
+	if err != nil {
+		return err
+	}
+	return tx.InstanceSetting.Create().SetID(1).SetValue(value).SetVersion(1).SetUpdatedBy(actorOf(ctx)).Exec(ctx)
+}
+
 // UpdateInstance applies the fields of upd that mask names; a named field that upd does not set
 // returns to its default. etag must be the version the caller read, or 0 to skip the check.
 func UpdateInstance(ctx context.Context, db *store.DB, upd *rpmgrv1.InstanceSettings, mask *fieldmaskpb.FieldMask, etag int64) (store.Revision, error) {

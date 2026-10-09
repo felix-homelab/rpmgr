@@ -58,10 +58,14 @@ type Tx struct {
 	IssuedCertificate *IssuedCertificateClient
 	// Lease is the client for interacting with the Lease builders.
 	Lease *LeaseClient
+	// Membership is the client for interacting with the Membership builders.
+	Membership *MembershipClient
 	// Org is the client for interacting with the Org builders.
 	Org *OrgClient
 	// OrgSetting is the client for interacting with the OrgSetting builders.
 	OrgSetting *OrgSettingClient
+	// PasswordReset is the client for interacting with the PasswordReset builders.
+	PasswordReset *PasswordResetClient
 	// PolicyRule is the client for interacting with the PolicyRule builders.
 	PolicyRule *PolicyRuleClient
 	// PortAllocation is the client for interacting with the PortAllocation builders.
@@ -88,6 +92,8 @@ type Tx struct {
 	RouteUDP *RouteUDPClient
 	// SecretMeta is the client for interacting with the SecretMeta builders.
 	SecretMeta *SecretMetaClient
+	// User is the client for interacting with the User builders.
+	User *UserClient
 
 	// lazily loaded.
 	client     *Client
@@ -241,8 +247,10 @@ func (tx *Tx) init() {
 	tx.InstanceSetting = NewInstanceSettingClient(tx.config)
 	tx.IssuedCertificate = NewIssuedCertificateClient(tx.config)
 	tx.Lease = NewLeaseClient(tx.config)
+	tx.Membership = NewMembershipClient(tx.config)
 	tx.Org = NewOrgClient(tx.config)
 	tx.OrgSetting = NewOrgSettingClient(tx.config)
+	tx.PasswordReset = NewPasswordResetClient(tx.config)
 	tx.PolicyRule = NewPolicyRuleClient(tx.config)
 	tx.PortAllocation = NewPortAllocationClient(tx.config)
 	tx.PortPool = NewPortPoolClient(tx.config)
@@ -256,6 +264,7 @@ func (tx *Tx) init() {
 	tx.RouteTarget = NewRouteTargetClient(tx.config)
 	tx.RouteUDP = NewRouteUDPClient(tx.config)
 	tx.SecretMeta = NewSecretMetaClient(tx.config)
+	tx.User = NewUserClient(tx.config)
 }
 
 // txDriver wraps the given dialect.Tx with a nop dialect.Driver implementation.

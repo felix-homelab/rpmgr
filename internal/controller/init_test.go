@@ -12,11 +12,13 @@ import (
 	"testing"
 	"time"
 
+	rpmgrv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/v1"
 	"github.com/felix-homelab/rpmgr/internal/audit"
 	"github.com/felix-homelab/rpmgr/internal/config"
 	"github.com/felix-homelab/rpmgr/internal/controller"
 	"github.com/felix-homelab/rpmgr/internal/pki"
 	"github.com/felix-homelab/rpmgr/internal/secret"
+	"github.com/felix-homelab/rpmgr/internal/settings"
 	"github.com/felix-homelab/rpmgr/internal/store"
 	"github.com/felix-homelab/rpmgr/internal/store/storetest"
 )
@@ -301,5 +303,37 @@ func TestInit_RunningControllerRefused(t *testing.T) {
 	}
 	if _, err := os.Stat(h.kek); !errors.Is(err, os.ErrNotExist) {
 		t.Error("init created a KEK although the database was in use")
+	}
+}
+
+// TestInit_PasswordHashProfile: a host with less than 1 GiB of memory gets the low-memory
+// password-hash profile; 1 GiB or more, or an unknown amount, keeps the default.
+func TestInit_PasswordHashProfile(t *testing.T) {
+	for _, c := range []struct {
+		mem   uint64
+		known bool
+		want  rpmgrv1.PasswordHashProfile
+	}{
+		{1<<30 - 1, true, rpmgrv1.PasswordHashProfile_PASSWORD_HASH_PROFILE_LOW_MEMORY},
+		{512 << 20, true, rpmgrv1.PasswordHashProfile_PASSWORD_HASH_PROFILE_LOW_MEMORY},
+		{1 << 30, true, rpmgrv1.PasswordHashProfile_PASSWORD_HASH_PROFILE_DEFAULT},
+		{0, false, rpmgrv1.PasswordHashProfile_PASSWORD_HASH_PROFILE_DEFAULT},
+	} {
+		h := newHost(t)
+		h.writeBoot(t, h.fileKEK())
+		o := h.opts()
+		o.Memory = func() (uint64, bool) { return c.mem, c.known }
+		if _, err := controller.Init(context.Background(), o); err != nil {
+			t.Fatal(err)
+		}
+		db, err := store.OpenSQLite(context.Background(), h.db, store.SQLiteOptions{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		inst, _, err := settings.Instance(storetest.SystemCtx(t), db.Client())
+		_ = db.Close()
+		if err != nil || inst.GetPasswordHashProfile() != c.want {
+			t.Errorf("%d bytes (%v): %v %v", c.mem, c.known, inst.GetPasswordHashProfile(), err)
+		}
 	}
 }
