@@ -6,6 +6,7 @@ import { Link, Outlet, useNavigate } from "@tanstack/react-router";
 import { useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { CommandPalette } from "@/components/command-palette";
+import { RestoreReviewBanner } from "@/components/restore-review";
 import { Button } from "@/components/ui/button";
 import { AuthService } from "@/gen/rpmgr/v1/auth_pb";
 import { UserService } from "@/gen/rpmgr/v1/user_pb";
@@ -83,6 +84,7 @@ export function Layout() {
           </div>
         </div>
       </header>
+      <RestoreReviewBanner />
       <main id="main" className="mx-auto max-w-6xl px-4 py-6">
         <Outlet />
       </main>

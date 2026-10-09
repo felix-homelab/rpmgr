@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
+import type { Timestamp } from "@bufbuild/protobuf/wkt";
 import { Code, ConnectError } from "@connectrpc/connect";
 import { useMutation, useQuery } from "@connectrpc/connect-query";
 import { useQueryClient } from "@tanstack/react-query";
@@ -9,7 +10,7 @@ import { Field } from "@/components/field";
 import { Command } from "@/components/one-time-token";
 import { Alert } from "@/components/public-page";
 import { Button } from "@/components/ui/button";
-import { OrgService, type Member } from "@/gen/rpmgr/v1/org_pb";
+import { OrgService, type Member, type SuspendedAPIToken } from "@/gen/rpmgr/v1/org_pb";
 import { Reason, reasonOf } from "@/lib/errors";
 import { when } from "@/lib/format";
 import { useOrg } from "@/session";
@@ -39,6 +40,14 @@ export function OrgPage() {
   return (
     <div className="grid max-w-4xl gap-6">
       <h1 className="text-2xl font-semibold">{got.data?.org?.name ?? t("org.title")}</h1>
+      {got.data?.org?.restoreReviewTime && (org.role === "owner" ? (
+        <OwnerReview orgId={org.orgId} since={got.data.org.restoreReviewTime} />
+      ) : (
+        <p role="status" className="rounded-md border border-warn p-3 text-sm">
+          {t("review.orgReadOnly", { since: when(got.data.org.restoreReviewTime) })}{" "}
+          <code className="font-mono">rpmgr restore confirm --org {got.data.org.slug}</code>
+        </p>
+      ))}
       {got.data?.org && <OrgName key={got.data.org.name} orgId={org.orgId} name={got.data.org.name} />}
       <section aria-labelledby="members-title" className="grid gap-2">
         <h2 id="members-title" className="text-lg font-semibold">{t("org.members")}</h2>
@@ -51,6 +60,81 @@ export function OrgPage() {
       </section>
       <Invite orgId={org.orgId} />
     </div>
+  );
+}
+
+// OwnerReview is the Owner's restore review of their org (docs/10-operations.md, "Backup and
+// restore"): the members and roles below to check, the API tokens the restore suspended to resume
+// one by one, and the confirmation that ends the org's review. Each needs a step-up.
+function OwnerReview({ orgId, since }: { orgId: string; since: Timestamp }) {
+  const { t } = useTranslation();
+  const stepUp = useStepUp();
+  const tokens = useQuery(OrgService.method.listSuspendedAPITokens, { orgId });
+  const confirm = useMutation(OrgService.method.confirmRestoreReview);
+  const queryClient = useQueryClient();
+  const [error, setError] = useState("");
+  async function confirmed() {
+    setError("");
+    try {
+      await stepUp(() => confirm.mutateAsync({ orgId }));
+      await queryClient.invalidateQueries();
+    } catch (err) {
+      setError(failure(err, t));
+    }
+  }
+  const list = tokens.data?.apiTokens ?? [];
+  return (
+    <section aria-labelledby="review-title" className="grid gap-3 rounded-md border border-warn p-4">
+      <h2 id="review-title" className="text-lg font-semibold">{t("review.orgTitle")}</h2>
+      <p className="text-sm">{t("review.orgIntro", { since: when(since) })}</p>
+      <h3 className="font-medium">{t("review.tokens")}</h3>
+      {list.length === 0 ? (
+        <p className="text-sm text-muted-foreground">{t("review.noTokens")}</p>
+      ) : (
+        <table className="w-full text-left text-sm">
+          <thead className="text-muted-foreground">
+            <tr>{["name", "owner", "scopes", "suspended", "actions"].map((c) => <th key={c} scope="col" className="py-1 font-medium">{t(`review.columns.${c}`)}</th>)}</tr>
+          </thead>
+          <tbody>{list.map((s) => <SuspendedToken key={s.apiToken?.id} orgId={orgId} token={s} />)}</tbody>
+        </table>
+      )}
+      <div>
+        <Button size="sm" onClick={() => void confirmed()} disabled={confirm.isPending}>{t("review.confirm")}</Button>
+      </div>
+      {error && <Alert>{error}</Alert>}
+    </section>
+  );
+}
+
+// SuspendedToken is an API token a restore suspended, which the Owner resumes after a step-up.
+function SuspendedToken({ orgId, token: s }: { orgId: string; token: SuspendedAPIToken }) {
+  const { t } = useTranslation();
+  const stepUp = useStepUp();
+  const resume = useMutation(OrgService.method.resumeAPIToken);
+  const queryClient = useQueryClient();
+  const [error, setError] = useState("");
+  const tok = s.apiToken;
+  async function resumed() {
+    setError("");
+    try {
+      await stepUp(() => resume.mutateAsync({ orgId, tokenId: tok?.id ?? "" }));
+      await queryClient.invalidateQueries();
+    } catch (err) {
+      setError(failure(err, t));
+    }
+  }
+  return (
+    <tr className="border-t border-border align-top">
+      <td className="py-2"><span className="font-medium">{tok?.name}</span> <code className="font-mono text-muted-foreground">{tok?.prefix}</code></td>
+      <td className="py-2">{s.ownerEmail || s.ownerId}</td>
+      <td className="py-2">{tok?.scopes.join(", ")}</td>
+      <td className="py-2">{when(tok?.suspendTime)}</td>
+      <td className="py-2">
+        <Button size="sm" variant="outline" onClick={() => void resumed()} disabled={resume.isPending}
+          aria-label={t("review.resumeOf", { name: tok?.name ?? "" })}>{t("review.resume")}</Button>
+        {error && <Alert>{error}</Alert>}
+      </td>
+    </tr>
   );
 }
 
