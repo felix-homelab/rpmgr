@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { expect, test } from "@playwright/test";
-import { call, email, expectAccessible, password, totp, watchCSP } from "./helpers";
+import { email, expectAccessible, password, totp, watchCSP } from "./helpers";
 
 // The flows of docs/09-web-ui.md, "Testing the UI": first-run setup, sign-in with and without a
-// second factor, sign-out; each page under the controller's CSP, with no violation, nothing in
-// browser storage, and no accessibility violation that axe finds.
+// second factor, the step-up prompt, token creation and revocation, sign-out; each page under the
+// controller's CSP, with no violation, nothing in browser storage, and no accessibility violation
+// that axe finds.
 test.describe.configure({ mode: "serial" });
 
 test("first-run setup creates the first user and signs them in", async ({ page }) => {
@@ -27,7 +28,7 @@ test("first-run setup creates the first user and signs them in", async ({ page }
   expect(violations).toEqual([]);
 });
 
-test("signs in with a password, then with a second factor", async ({ page }) => {
+test("signs in, creates an API token with a step-up, sets up an authenticator and signs in with it", async ({ page }) => {
   const violations = await watchCSP(page);
   await page.goto("/");
   await expect(page).toHaveURL(/\/login\?redirect=/);
@@ -40,10 +41,37 @@ test("signs in with a password, then with a second factor", async ({ page }) => 
   await page.getByRole("button", { name: "Sign in" }).click();
   await expect(page.getByText("Signed in as Ada")).toBeVisible();
 
-  // An authenticator, set up through the API until the account page exists.
-  await call(page, "AuthService/StepUp", { password });
-  const { secret } = await call<{ secret: string }>(page, "UserService/EnrollTOTP", {});
-  const { recoveryCodes } = await call<{ recoveryCodes: string[] }>(page, "UserService/ConfirmTOTP", { code: totp(secret) });
+  // An API token: its creation needs a step-up, which the dialog asks for in the page.
+  await page.getByRole("link", { name: "Ada" }).click();
+  await expect(page.getByRole("heading", { name: "Account", level: 1 })).toBeVisible();
+  await expectAccessible(page);
+  const tokens = page.getByRole("region", { name: "API tokens" });
+  await tokens.getByRole("button", { name: "New token…" }).click();
+  await tokens.getByLabel("Name").fill("e2e");
+  await tokens.getByRole("button", { name: "Create the token" }).click();
+  const dialog = page.getByRole("dialog", { name: "Confirm it is you" });
+  await expect(dialog).toBeVisible();
+  await expectAccessible(page);
+  await dialog.getByLabel("Password").fill(password);
+  await dialog.getByRole("button", { name: "Confirm" }).click();
+  await expect(tokens.getByLabel("The new token")).toHaveText(/^rpmgr_pat_[0-9A-Za-z]{43}_[0-9A-Za-z]{6}$/);
+  await tokens.getByRole("button", { name: "I have copied it" }).click();
+  await tokens.getByRole("button", { name: "Revoke…" }).click();
+  await tokens.getByRole("button", { name: "Revoke it" }).click();
+  await expect(tokens.getByText("You have no API tokens.")).toBeVisible();
+
+  // An authenticator, still within the step-up.
+  const mfa = page.getByRole("region", { name: "Two-factor authentication" });
+  await mfa.getByRole("button", { name: "Set up an authenticator" }).click();
+  await expect(mfa.getByRole("img", { name: "QR code for your authenticator app" })).toBeVisible();
+  await expectAccessible(page);
+  const key = (await mfa.locator("code").innerText()).replace(/\s+/g, "");
+  await mfa.getByLabel("Code from the app").fill(totp(key));
+  await mfa.getByRole("button", { name: "Turn on" }).click();
+  const codes = await mfa.getByRole("list", { name: "Recovery codes" }).getByRole("listitem").allInnerTexts();
+  expect(codes).toHaveLength(10);
+  await mfa.getByRole("button", { name: "I have saved them" }).click();
+  await expect(mfa.getByText("An authenticator is set up.")).toBeVisible();
 
   await page.getByRole("button", { name: "Sign out" }).click();
   await expect(page.getByRole("heading", { name: "Sign in to rpmgr" })).toBeVisible();
@@ -53,8 +81,9 @@ test("signs in with a password, then with a second factor", async ({ page }) => 
   const code = page.getByLabel("Authenticator code or recovery code");
   await expect(code).toBeVisible();
   await expectAccessible(page);
-  await code.fill(recoveryCodes[0]!); // the authenticator's current code was used to confirm it
+  await code.fill(codes[0]!); // the authenticator's current code was used to turn it on
   await page.getByRole("button", { name: "Sign in" }).click();
   await expect(page.getByText("Signed in as Ada")).toBeVisible();
+  expect(await page.evaluate(() => [localStorage.length, sessionStorage.length])).toEqual([0, 0]);
   expect(violations).toEqual([]);
 });

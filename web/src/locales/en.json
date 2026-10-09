@@ -112,5 +112,35 @@
     "endAsk": "End…",
     "ask": "End the session from {{ip}}?",
     "end": "End it"
+  },
+  "tokens": {
+    "title": "API tokens",
+    "intro": "Personal tokens for the command line and scripts. A token can do only what its scopes allow, and never more than your role.",
+    "none": "You have no API tokens.",
+    "new": "New token…",
+    "name": "Name",
+    "validity": "Valid for (days)",
+    "days": "1 to 365 days.",
+    "scopes": "Scopes",
+    "create": "Create the token",
+    "created": "Copy the token now. It is shown only once.",
+    "token": "The new token",
+    "copied": "I have copied it",
+    "expires": "expires {{when}}",
+    "lastUse": "last used {{when}} from {{ip}}",
+    "unused": "never used",
+    "revokeAsk": "Revoke…",
+    "ask": "Revoke the token {{name}}?",
+    "revoke": "Revoke it",
+    "scope": {
+      "org_read": "view resources, status and metrics",
+      "routes_write": "routes, targets, health checks and access policies",
+      "connectors_write": "enroll and revoke connectors",
+      "infrastructure_write": "gateways, gateway groups, port pools, domains and certificates",
+      "members_write": "members and invitations",
+      "audit_read": "read and export the audit log",
+      "org_write": "SSO, the MFA policy and the org's settings",
+      "instance_admin": "the instance: CA, KEK, system gateways and instance settings"
+    }
   }
 }

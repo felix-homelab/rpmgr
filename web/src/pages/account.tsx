@@ -11,6 +11,7 @@ import { Alert } from "@/components/public-page";
 import { Button } from "@/components/ui/button";
 import { Theme, UserService, type User } from "@/gen/rpmgr/v1/user_pb";
 import { serverMessage } from "@/lib/link-token";
+import { APITokens } from "@/pages/api-tokens";
 import { Authenticator } from "@/pages/authenticator";
 import { passwordProblem } from "@/pages/reset";
 import { Sessions } from "@/pages/sessions";
@@ -31,6 +32,7 @@ export function Account() {
       <Password />
       <Authenticator />
       <Sessions />
+      <APITokens />
     </div>
   );
 }
