@@ -14,6 +14,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/connector"
 	"github.com/felix-homelab/rpmgr/internal/controller"
 	"github.com/felix-homelab/rpmgr/internal/gateway"
+	"github.com/felix-homelab/rpmgr/internal/release"
 	"github.com/felix-homelab/rpmgr/internal/routes"
 	"github.com/felix-homelab/rpmgr/internal/telemetry"
 	"github.com/felix-homelab/rpmgr/internal/version"
@@ -53,7 +54,7 @@ func commands() *cli.Command {
 			group("user", "administer users on the controller host", userResetPassword()),
 			group("release", "administer release artifacts on the controller host",
 				leaf("import", "import a signed release for air-gapped installations")),
-			{Name: "version", Summary: "print the version of this binary", Run: runVersion},
+			versionCommand(),
 		}, append(apiCommands(), testCommands...)...),
 	}
 }
@@ -255,7 +256,38 @@ func leaf(name, summary string) *cli.Command {
 	return &cli.Command{Name: name, Summary: summary, Run: cli.NotAvailable}
 }
 
-func runVersion(_ context.Context, env *cli.Env, _ []string) error {
-	_, err := fmt.Fprintln(env.Stdout, version.Get())
-	return err
+// versionCommand is `rpmgr version`; with --verbose it also prints the release root keys
+// compiled into the binary, which the release job checks (D60).
+func versionCommand() *cli.Command {
+	var verbose bool
+	return &cli.Command{
+		Name:    "version",
+		Summary: "print the version of this binary",
+		Flags: func(fs *flag.FlagSet) {
+			fs.BoolVar(&verbose, "verbose", false, "also print the release root keys compiled into this binary")
+		},
+		Run: func(_ context.Context, env *cli.Env, _ []string) error {
+			if _, err := fmt.Fprintln(env.Stdout, version.Get()); err != nil || !verbose {
+				return err
+			}
+			roots := release.Roots()
+			kind := "release root keys"
+			if release.TestBuild {
+				kind = "test release root keys (rpmgrtest build)"
+			}
+			if len(roots) == 0 {
+				_, err := fmt.Fprintf(env.Stdout, "%s: none; this build verifies no release\n", kind)
+				return err
+			}
+			if _, err := fmt.Fprintf(env.Stdout, "%s:\n", kind); err != nil {
+				return err
+			}
+			for _, k := range roots {
+				if _, err := fmt.Fprintf(env.Stdout, "  %s  sha256:%s\n", k.IDString(), k.Fingerprint()); err != nil {
+					return err
+				}
+			}
+			return nil
+		},
+	}
 }
