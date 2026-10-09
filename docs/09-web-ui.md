@@ -236,6 +236,19 @@ flowchart LR
   subjects and expiry and how many targets use it. A bundle is added, changed (name and PEM, as the
   whole bundle as read with mask and etag), or removed after a confirmation.
 
+### Access policies
+
+- **The list** (`/policies`): each policy with its description, its rules in the order they apply
+  (allow or deny addresses, basic auth with its users' names), and the routes that use it.
+- **The form** creates a policy, or changes one as the whole policy as read with its name,
+  description and rules, their mask and the etag (U1).
+  - **Rules** are added, removed and moved up or down.
+  - **Basic auth:** each user has a name and a password. Passwords are write-only: an existing user
+    whose password field stays empty keeps their password.
+- **Removal** comes after a confirmation. The server refuses a policy that routes use, and says
+  which.
+- **After each change,** the apply status follows live.
+
 ### Enroll connector dialog
 
 ```

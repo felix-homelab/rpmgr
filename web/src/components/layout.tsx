@@ -57,6 +57,9 @@ export function Layout() {
             <Link to="/domains" className="ml-4 text-muted-foreground [&.active]:text-foreground [&.active]:font-medium">
               {t("nav.domains")}
             </Link>
+            <Link to="/policies" className="ml-4 text-muted-foreground [&.active]:text-foreground [&.active]:font-medium">
+              {t("nav.policies")}
+            </Link>
           </nav>
           <div className="ml-auto flex items-center gap-3 text-sm">
             <Link to="/account" className="text-muted-foreground hover:text-foreground [&.active]:text-foreground">

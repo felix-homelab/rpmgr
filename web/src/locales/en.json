@@ -10,7 +10,8 @@
     "routes": "Routes",
     "connectors": "Connectors",
     "gateways": "Gateways",
-    "domains": "Domains & certificates"
+    "domains": "Domains & certificates",
+    "policies": "Access policies"
   },
   "overview": {
     "title": "Overview",
@@ -590,5 +591,38 @@
     "targets_one": "used by {{count}} target",
     "targets_other": "used by {{count}} targets",
     "ask": "Remove the CA bundle {{name}}?"
+  },
+  "policies": {
+    "title": "Access policies",
+    "add": "New access policy",
+    "addTitle": "New access policy",
+    "editTitle": "Edit access policy",
+    "addSubmit": "Create the policy",
+    "none": "The org has no access policy.",
+    "summary": {
+      "allow": "allow {{cidrs}}",
+      "deny": "deny {{cidrs}}",
+      "basicAuth": "basic auth: {{users}}"
+    },
+    "usedBy": "used by {{routes}}",
+    "unused": "used by no route",
+    "ask": "Remove the access policy {{name}}?",
+    "rules": "Rules, in the order they apply",
+    "ruleN": "Rule {{n}}",
+    "kind": "Kind",
+    "kinds": {
+      "ipAllow": "Allow addresses",
+      "ipDeny": "Deny addresses",
+      "basicAuth": "Basic auth (HTTP routes)"
+    },
+    "up": "Up",
+    "down": "Down",
+    "removeRule": "Remove the rule",
+    "addRule": "Add a rule",
+    "cidrs": "Addresses (CIDRs, one per line)",
+    "user": "User",
+    "keep": "unchanged",
+    "removeUser": "Remove the user",
+    "addUser": "Add a user"
   }
 }
