@@ -922,7 +922,7 @@ Checkpoints prove tampering but cannot restore content, so revocations get their
   after the backup, is recorded in `revoked_serials` and stays on the deny-list until it expires.
 - **Restore fails closed** if the sink's hash chain is broken, or a replica that reported an
   unshipped backlog has an unreachable local log: all API tokens and service accounts are
-  suspended, all sessions invalidated, every user must reset their password and re-verify MFA, and
-  the instance stays in read-only *restore review* mode. The **Instance Admin** ends the
+  suspended, all sessions invalidated, every user must reset their password and set up their second
+  factor again, and the instance stays in read-only *restore review* mode. The **Instance Admin** ends the
   instance-wide review with `rpmgr restore confirm` on the controller host; each org's Owner
   re-confirms only their own org's memberships and roles, and an org stays read-only until then.

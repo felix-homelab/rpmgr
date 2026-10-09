@@ -26,9 +26,12 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/auditentry"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/membership"
+	entorg "github.com/felix-homelab/rpmgr/internal/store/ent/org"
 	entsession "github.com/felix-homelab/rpmgr/internal/store/ent/session"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/user"
 	"github.com/felix-homelab/rpmgr/internal/store/storetest"
 	"github.com/felix-homelab/rpmgr/internal/token"
+	"github.com/felix-homelab/rpmgr/internal/totp"
 	"github.com/felix-homelab/rpmgr/internal/websession"
 )
 
@@ -204,6 +207,9 @@ func TestRestore_RevocationsReapplied(t *testing.T) {
 	if res.NewEpoch == "" || res.NewEpoch == res.OldEpoch || res.OldEpoch != x.dbEpoch || res.TrustDomain != x.ca.TrustDomain() {
 		t.Errorf("result %+v; the backup's epoch was %s", res, x.dbEpoch)
 	}
+	if len(res.Review) > 0 {
+		t.Errorf("a complete log failed closed: %v", res.Review)
+	}
 	if res.Reapplied != 6 || res.Unknown != 1 {
 		t.Errorf("%d entries applied again, %d unknown; want 6 and 1 (the certificate issued after the backup)", res.Reapplied, res.Unknown)
 	}
@@ -290,9 +296,9 @@ func checkRestored(t *testing.T, r *restoreEnv, ps *people, leaked, late tls.Cer
 	}
 }
 
-// TestRestore_Refusals: a restore refuses while a controller runs, an archive that is not one, and
-// revocations since the backup that may be incomplete: none at all, a broken sink chain, a log
-// that cannot be read. Each refusal leaves the database and the logs as they were.
+// TestRestore_Refusals: a restore refuses while a controller runs and an archive that is not one,
+// and leaves the database and the logs as they were. The sink and a replica's log together apply
+// an entry they both hold once.
 func TestRestore_Refusals(t *testing.T) {
 	ctx := context.Background()
 	x := startRestoreEnv(t, storetest.Migrated(t, store.SQLite))
@@ -306,13 +312,6 @@ func TestRestore_Refusals(t *testing.T) {
 	if _, err := sink.Ship(x.logPath, "ctn_a"); err != nil {
 		t.Fatal(err)
 	}
-	broken := t.TempDir()
-	if _, err := (revlog.Sink{Dir: broken}).Ship(x.logPath, "ctn_a"); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Remove(filepath.Join(broken, "1")); err != nil {
-		t.Fatal(err)
-	}
 	notArchive := filepath.Join(t.TempDir(), "x.backup")
 	if err := os.WriteFile(notArchive, []byte("neither a tar file\nnor a log\n"), 0o600); err != nil {
 		t.Fatal(err)
@@ -322,22 +321,12 @@ func TestRestore_Refusals(t *testing.T) {
 		_, err := controller.Restore(ctx, controller.RestoreOptions{ConfigPath: x.cfg, Archive: archive, RevocationLogs: logs})
 		return err
 	}
-	for name, tc := range map[string]struct {
-		err  error
-		want error
-	}{
-		"a broken sink chain":   {restore(archive, broken), controller.ErrIncompleteLog},
-		"a log not there":       {restore(archive, filepath.Join(t.TempDir(), "gone.log")), controller.ErrIncompleteLog},
-		"not an archive":        {restore(notArchive), nil},
-		"a missing archive":     {restore(filepath.Join(t.TempDir(), "none")), os.ErrNotExist},
-		"a sink and a bad file": {restore(archive, sink.Dir, notArchive), controller.ErrIncompleteLog},
-	} {
-		if tc.err == nil || tc.want != nil && !errors.Is(tc.err, tc.want) {
-			t.Errorf("%s: %v, want %v", name, tc.err, tc.want)
-		}
+	if err := restore(notArchive); err == nil || !strings.Contains(err.Error(), "not a backup archive") {
+		t.Errorf("not an archive: %v", err)
 	}
-
-	// A controller holds the database.
+	if err := restore(filepath.Join(t.TempDir(), "none")); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("a missing archive: %v", err)
+	}
 	running, err := store.OpenSQLite(ctx, x.db.Path, store.SQLiteOptions{Lock: true})
 	if err != nil {
 		t.Fatal(err)
@@ -346,18 +335,6 @@ func TestRestore_Refusals(t *testing.T) {
 		t.Errorf("with a controller running: %v", err)
 	}
 	_ = running.Close()
-
-	// No log since the backup: the old host's log is gone and none is given.
-	if err := os.Rename(x.logPath, x.logPath+".away"); err != nil {
-		t.Fatal(err)
-	}
-	if err := restore(archive); !errors.Is(err, controller.ErrIncompleteLog) || !strings.Contains(err.Error(), "--revocation-log") {
-		t.Errorf("without a log since the backup: %v", err)
-	}
-	if err := os.Rename(x.logPath+".away", x.logPath); err != nil {
-		t.Fatal(err)
-	}
-
 	if after, _ := os.ReadFile(x.db.Path); string(after) != string(before) {
 		t.Error("a refused restore changed the database")
 	}
@@ -367,9 +344,106 @@ func TestRestore_Refusals(t *testing.T) {
 	if left, _ := filepath.Glob(filepath.Join(filepath.Dir(x.db.Path), "*.before-restore-*")); len(left) > 0 {
 		t.Errorf("a refused restore moved %v aside", left)
 	}
+	if _, res := x.restore(t, archive, sink.Dir, x.logPath); res.Reapplied != 2 || len(res.Review) > 0 {
+		t.Errorf("the sink and the local log merged: %d entries applied again, review %v; want 2 and none", res.Reapplied, res.Review)
+	}
+}
 
-	// The sink and the local log together: the entry in both is applied once.
-	if _, res := x.restore(t, archive, sink.Dir, x.logPath); res.Reapplied != 2 {
-		t.Errorf("the sink and the local log merged: %d entries applied again, want 2", res.Reapplied)
+// TestRestore_IncompleteLogFailsClosed (docs/12-testing-and-quality.md, "Security testing"): with
+// a broken sink hash chain, an unreachable replica log, or no log since the backup at all, the
+// restore fails closed: every API token is suspended, every session invalidated, every user must
+// reset their password and set up their second factor again, and the instance and every org are
+// in read-only restore review. Entries present only in a reachable replica's local log are merged
+// and re-applied all the same.
+func TestRestore_IncompleteLogFailsClosed(t *testing.T) {
+	ctx := context.Background()
+	x := startRestoreEnv(t, storetest.Migrated(t, store.SQLite))
+	ps := newPeople(t, x)
+	seed, _, err := ps.mfa.EnrollTOTP(ps.owner, "rpmgr test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ps.mfa.ConfirmTOTP(ps.owner, totp.Code(seed, totp.StepOf(time.Now()))); err != nil {
+		t.Fatal(err)
+	}
+	keep, _, err := ps.tokens.Create(ctx, x.org, ps.owner, "kept", []string{authz.PermOrgRead}, 0, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, gone, err := ps.tokens.Create(ctx, x.org, ps.owner, "gone", []string{authz.PermOrgRead}, 0, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := ps.web.Create(ps.carol, []string{"pwd"}, "192.0.2.1", "test"); err != nil {
+		t.Fatal(err)
+	}
+	archive := x.backup(t)
+
+	// After the backup: a member removal reaches the sink, which then breaks; a token revocation
+	// is only in the local log.
+	if err := ps.members.Remove(ctx, x.org, ps.bob, ps.owner, authz.RoleOwner); err != nil {
+		t.Fatal(err)
+	}
+	if err := ps.members.SetRole(ctx, x.org, ps.carol, authz.RoleViewer, ps.owner, authz.RoleOwner); err != nil {
+		t.Fatal(err)
+	}
+	broken := revlog.Sink{Dir: t.TempDir()}
+	if _, err := broken.Ship(x.logPath, "ctn_a"); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(filepath.Join(broken.Dir, "1")); err != nil {
+		t.Fatal(err)
+	}
+	if err := ps.tokens.Revoke(ctx, x.org, ps.owner, gone.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, tc := range []struct {
+		name    string
+		logs    func() []string
+		applied bool // the local log was read
+	}{
+		{"a broken sink chain", func() []string { return []string{broken.Dir, x.logPath} }, true},
+		{"an unreachable replica log", func() []string { return []string{x.logPath, filepath.Join(t.TempDir(), "replica-b.log")} }, true},
+		{"no log since the backup", func() []string {
+			if err := os.Rename(x.logPath, x.logPath+".lost"); err != nil {
+				t.Fatal(err)
+			}
+			return nil
+		}, false},
+	} {
+		r, res := x.restore(t, archive, tc.logs()...)
+		if len(res.Review) == 0 {
+			t.Errorf("%s: the restore did not fail closed", tc.name)
+			continue
+		}
+		c := r.db.Client()
+		if inst := c.Instance.GetX(r.sys, 1); inst.RestoreReviewSince == nil {
+			t.Errorf("%s: the instance is not in review", tc.name)
+		}
+		if n := c.Org.Query().Where(entorg.RestoreReviewSinceIsNil()).CountX(r.sys); n != 0 {
+			t.Errorf("%s: %d orgs are not in review", tc.name, n)
+		}
+		if _, err := (&accounts.Tokens{Accounts: accounts.New(r.db, r.sys, nil)}).Authenticate(keep, "192.0.2.1"); !errors.Is(err, accounts.ErrToken) {
+			t.Errorf("%s: an API token of the backup works: %v", tc.name, err)
+		}
+		if n := c.Session.Query().Where(entsession.RevokedAtIsNil()).CountX(r.sys); n != 0 {
+			t.Errorf("%s: %d sessions are live", tc.name, n)
+		}
+		if n := c.User.Query().Where(user.PasswordHashNotNil()).CountX(r.sys); n != 0 {
+			t.Errorf("%s: %d users keep their password", tc.name, n)
+		}
+		if c.TOTPCredential.Query().ExistX(r.sys) || c.RecoveryCode.Query().ExistX(r.sys) {
+			t.Errorf("%s: a second factor of the backup is kept", tc.name)
+		}
+		if n := c.AuditEntry.Query().Where(auditentry.Action("instance.restore_review")).CountX(r.sys); n != 1 {
+			t.Errorf("%s: %d audit entries of the review", tc.name, n)
+		}
+		// Merged from the reachable local log.
+		removed := !c.Membership.Query().Where(membership.UserID(ps.bob)).ExistX(r.sys)
+		revoked := c.APIToken.GetX(r.sys, gone.ID).RevokedAt != nil
+		if tc.applied != (removed && revoked) {
+			t.Errorf("%s: the local log's entries applied %v, member removed %v, token revoked %v", tc.name, tc.applied, removed, revoked)
+		}
 	}
 }

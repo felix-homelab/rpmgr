@@ -17,6 +17,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/invitation"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/membership"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/org"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/user"
 	"github.com/felix-homelab/rpmgr/internal/token"
 )
@@ -35,6 +36,8 @@ var (
 	ErrInvitation   = errors.New("accounts: the invitation is not valid, was used or has expired")
 	ErrSignInFirst  = errors.New("accounts: an account with the invited address exists; sign in as it to accept")
 	ErrOtherAddress = errors.New("accounts: the invitation is for another address")
+	ErrOwnerReview  = errors.New("accounts: only an Owner confirms an org's restore review or resumes its tokens")
+	ErrNotInReview  = errors.New("accounts: the org is not in restore review")
 )
 
 // roles, from most to least powerful.
@@ -266,6 +269,26 @@ func (m *Members) audit(tx *ent.Tx, orgID, by, action, targetType, target, reaso
 	_, err := audit.Append(m.sys, tx, audit.Entry{OrgID: orgID, ActorType: actorType(by), ActorID: by, Action: action,
 		TargetType: targetType, TargetID: target, Result: audit.Success, Reason: reason})
 	return err
+}
+
+// ConfirmReview ends an org's restore review: its Owner has checked the org's memberships and
+// roles (docs/10-operations.md, "Backup and restore"). The instance-wide review stays.
+func (m *Members) ConfirmReview(ctx context.Context, orgID, by, byRole string) (*ent.Org, error) {
+	if byRole != authz.RoleOwner {
+		return nil, ErrOwnerReview
+	}
+	var o *ent.Org
+	err := store.WriteTx(store.CarryTxHook(m.sys, ctx), m.db, func(tx *ent.Tx) error {
+		n, err := tx.Org.Update().Where(org.ID(orgID), org.RestoreReviewSinceNotNil()).ClearRestoreReviewSince().Save(m.sys)
+		if err != nil || n == 0 {
+			return errors.Join(err, errIf(n == 0, ErrNotInReview))
+		}
+		if o, err = tx.Org.Get(m.sys, orgID); err != nil {
+			return err
+		}
+		return m.audit(tx, orgID, by, "org.restore_review_confirm", "org", orgID, "memberships and roles confirmed")
+	})
+	return o, err
 }
 
 // Org returns an org.

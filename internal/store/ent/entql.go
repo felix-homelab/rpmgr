@@ -113,20 +113,21 @@ var schemaGraph = func() *sqlgraph.Schema {
 		},
 		Type: "APIToken",
 		Fields: map[string]*sqlgraph.FieldSpec{
-			apitoken.FieldOrgID:      {Type: field.TypeString, Column: apitoken.FieldOrgID},
-			apitoken.FieldOwnerType:  {Type: field.TypeEnum, Column: apitoken.FieldOwnerType},
-			apitoken.FieldOwnerID:    {Type: field.TypeString, Column: apitoken.FieldOwnerID},
-			apitoken.FieldName:       {Type: field.TypeString, Column: apitoken.FieldName},
-			apitoken.FieldPrefix:     {Type: field.TypeString, Column: apitoken.FieldPrefix},
-			apitoken.FieldTokenHash:  {Type: field.TypeBytes, Column: apitoken.FieldTokenHash},
-			apitoken.FieldScopes:     {Type: field.TypeJSON, Column: apitoken.FieldScopes},
-			apitoken.FieldMfa:        {Type: field.TypeBool, Column: apitoken.FieldMfa},
-			apitoken.FieldCreatedAt:  {Type: field.TypeTime, Column: apitoken.FieldCreatedAt},
-			apitoken.FieldExpiresAt:  {Type: field.TypeTime, Column: apitoken.FieldExpiresAt},
-			apitoken.FieldLastUsedAt: {Type: field.TypeTime, Column: apitoken.FieldLastUsedAt},
-			apitoken.FieldLastUsedIP: {Type: field.TypeString, Column: apitoken.FieldLastUsedIP},
-			apitoken.FieldRevokedAt:  {Type: field.TypeTime, Column: apitoken.FieldRevokedAt},
-			apitoken.FieldStepUpAt:   {Type: field.TypeTime, Column: apitoken.FieldStepUpAt},
+			apitoken.FieldOrgID:       {Type: field.TypeString, Column: apitoken.FieldOrgID},
+			apitoken.FieldOwnerType:   {Type: field.TypeEnum, Column: apitoken.FieldOwnerType},
+			apitoken.FieldOwnerID:     {Type: field.TypeString, Column: apitoken.FieldOwnerID},
+			apitoken.FieldName:        {Type: field.TypeString, Column: apitoken.FieldName},
+			apitoken.FieldPrefix:      {Type: field.TypeString, Column: apitoken.FieldPrefix},
+			apitoken.FieldTokenHash:   {Type: field.TypeBytes, Column: apitoken.FieldTokenHash},
+			apitoken.FieldScopes:      {Type: field.TypeJSON, Column: apitoken.FieldScopes},
+			apitoken.FieldMfa:         {Type: field.TypeBool, Column: apitoken.FieldMfa},
+			apitoken.FieldCreatedAt:   {Type: field.TypeTime, Column: apitoken.FieldCreatedAt},
+			apitoken.FieldExpiresAt:   {Type: field.TypeTime, Column: apitoken.FieldExpiresAt},
+			apitoken.FieldLastUsedAt:  {Type: field.TypeTime, Column: apitoken.FieldLastUsedAt},
+			apitoken.FieldLastUsedIP:  {Type: field.TypeString, Column: apitoken.FieldLastUsedIP},
+			apitoken.FieldRevokedAt:   {Type: field.TypeTime, Column: apitoken.FieldRevokedAt},
+			apitoken.FieldStepUpAt:    {Type: field.TypeTime, Column: apitoken.FieldStepUpAt},
+			apitoken.FieldSuspendedAt: {Type: field.TypeTime, Column: apitoken.FieldSuspendedAt},
 		},
 	}
 	graph.Nodes[3] = &sqlgraph.Node{
@@ -534,9 +535,10 @@ var schemaGraph = func() *sqlgraph.Schema {
 		},
 		Type: "Instance",
 		Fields: map[string]*sqlgraph.FieldSpec{
-			instance.FieldTrustDomain: {Type: field.TypeString, Column: instance.FieldTrustDomain},
-			instance.FieldDbEpoch:     {Type: field.TypeString, Column: instance.FieldDbEpoch},
-			instance.FieldCreatedAt:   {Type: field.TypeTime, Column: instance.FieldCreatedAt},
+			instance.FieldTrustDomain:        {Type: field.TypeString, Column: instance.FieldTrustDomain},
+			instance.FieldDbEpoch:            {Type: field.TypeString, Column: instance.FieldDbEpoch},
+			instance.FieldCreatedAt:          {Type: field.TypeTime, Column: instance.FieldCreatedAt},
+			instance.FieldRestoreReviewSince: {Type: field.TypeTime, Column: instance.FieldRestoreReviewSince},
 		},
 	}
 	graph.Nodes[22] = &sqlgraph.Node{
@@ -664,9 +666,10 @@ var schemaGraph = func() *sqlgraph.Schema {
 		},
 		Type: "Org",
 		Fields: map[string]*sqlgraph.FieldSpec{
-			org.FieldName:      {Type: field.TypeString, Column: org.FieldName},
-			org.FieldSlug:      {Type: field.TypeString, Column: org.FieldSlug},
-			org.FieldCreatedAt: {Type: field.TypeTime, Column: org.FieldCreatedAt},
+			org.FieldName:               {Type: field.TypeString, Column: org.FieldName},
+			org.FieldSlug:               {Type: field.TypeString, Column: org.FieldSlug},
+			org.FieldCreatedAt:          {Type: field.TypeTime, Column: org.FieldCreatedAt},
+			org.FieldRestoreReviewSince: {Type: field.TypeTime, Column: org.FieldRestoreReviewSince},
 		},
 	}
 	graph.Nodes[29] = &sqlgraph.Node{
@@ -1736,6 +1739,11 @@ func (f *APITokenFilter) WhereRevokedAt(p entql.TimeP) {
 // WhereStepUpAt applies the entql time.Time predicate on the step_up_at field.
 func (f *APITokenFilter) WhereStepUpAt(p entql.TimeP) {
 	f.Where(p.Field(apitoken.FieldStepUpAt))
+}
+
+// WhereSuspendedAt applies the entql time.Time predicate on the suspended_at field.
+func (f *APITokenFilter) WhereSuspendedAt(p entql.TimeP) {
+	f.Where(p.Field(apitoken.FieldSuspendedAt))
 }
 
 // addPredicate implements the predicateAdder interface.
@@ -3369,6 +3377,11 @@ func (f *InstanceFilter) WhereCreatedAt(p entql.TimeP) {
 	f.Where(p.Field(instance.FieldCreatedAt))
 }
 
+// WhereRestoreReviewSince applies the entql time.Time predicate on the restore_review_since field.
+func (f *InstanceFilter) WhereRestoreReviewSince(p entql.TimeP) {
+	f.Where(p.Field(instance.FieldRestoreReviewSince))
+}
+
 // addPredicate implements the predicateAdder interface.
 func (_q *InstanceSecretQuery) addPredicate(pred func(s *sql.Selector)) {
 	_q.predicates = append(_q.predicates, pred)
@@ -3870,6 +3883,11 @@ func (f *OrgFilter) WhereSlug(p entql.StringP) {
 // WhereCreatedAt applies the entql time.Time predicate on the created_at field.
 func (f *OrgFilter) WhereCreatedAt(p entql.TimeP) {
 	f.Where(p.Field(org.FieldCreatedAt))
+}
+
+// WhereRestoreReviewSince applies the entql time.Time predicate on the restore_review_since field.
+func (f *OrgFilter) WhereRestoreReviewSince(p entql.TimeP) {
+	f.Where(p.Field(org.FieldRestoreReviewSince))
 }
 
 // addPredicate implements the predicateAdder interface.

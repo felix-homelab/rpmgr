@@ -44,6 +44,9 @@ func (Instance) Fields() []ent.Field {
 		field.String("trust_domain").Immutable().Match(trustDomainRe),
 		field.String("db_epoch").NotEmpty(),
 		field.Time("created_at").Immutable().Default(time.Now),
+		// restore_review_since is set by a restore that failed closed; only `rpmgr restore
+		// confirm` on the controller host clears it (docs/10-operations.md, "Backup and restore").
+		field.Time("restore_review_since").Optional().Nillable(),
 	}
 }
 

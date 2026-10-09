@@ -45,7 +45,9 @@ type APIToken struct {
 	// RevokedAt holds the value of the "revoked_at" field.
 	RevokedAt *time.Time `json:"revoked_at,omitempty"`
 	// StepUpAt holds the value of the "step_up_at" field.
-	StepUpAt     *time.Time `json:"step_up_at,omitempty"`
+	StepUpAt *time.Time `json:"step_up_at,omitempty"`
+	// SuspendedAt holds the value of the "suspended_at" field.
+	SuspendedAt  *time.Time `json:"suspended_at,omitempty"`
 	selectValues sql.SelectValues
 }
 
@@ -60,7 +62,7 @@ func (*APIToken) scanValues(columns []string) ([]any, error) {
 			values[i] = new(sql.NullBool)
 		case apitoken.FieldID, apitoken.FieldOrgID, apitoken.FieldOwnerType, apitoken.FieldOwnerID, apitoken.FieldName, apitoken.FieldPrefix, apitoken.FieldLastUsedIP:
 			values[i] = new(sql.NullString)
-		case apitoken.FieldCreatedAt, apitoken.FieldExpiresAt, apitoken.FieldLastUsedAt, apitoken.FieldRevokedAt, apitoken.FieldStepUpAt:
+		case apitoken.FieldCreatedAt, apitoken.FieldExpiresAt, apitoken.FieldLastUsedAt, apitoken.FieldRevokedAt, apitoken.FieldStepUpAt, apitoken.FieldSuspendedAt:
 			values[i] = new(sql.NullTime)
 		default:
 			values[i] = new(sql.UnknownType)
@@ -172,6 +174,13 @@ func (_m *APIToken) assignValues(columns []string, values []any) error {
 				_m.StepUpAt = new(time.Time)
 				*_m.StepUpAt = value.Time
 			}
+		case apitoken.FieldSuspendedAt:
+			if value, ok := values[i].(*sql.NullTime); !ok {
+				return fmt.Errorf("unexpected type %T for field suspended_at", values[i])
+			} else if value.Valid {
+				_m.SuspendedAt = new(time.Time)
+				*_m.SuspendedAt = value.Time
+			}
 		default:
 			_m.selectValues.Set(columns[i], values[i])
 		}
@@ -253,6 +262,11 @@ func (_m *APIToken) String() string {
 	builder.WriteString(", ")
 	if v := _m.StepUpAt; v != nil {
 		builder.WriteString("step_up_at=")
+		builder.WriteString(v.Format(time.ANSIC))
+	}
+	builder.WriteString(", ")
+	if v := _m.SuspendedAt; v != nil {
+		builder.WriteString("suspended_at=")
 		builder.WriteString(v.Format(time.ANSIC))
 	}
 	builder.WriteByte(')')

@@ -159,6 +159,9 @@ message GetMeResponse {
   User user = 1;
   // The memberships.
   repeated Membership memberships = 2;
+  // Since when the instance is in restore review, which only `rpmgr restore confirm` on the
+  // controller host ends; not set otherwise.
+  google.protobuf.Timestamp restore_review_time = 3;
 }
 
 // UpdateMeRequest is a new display name.

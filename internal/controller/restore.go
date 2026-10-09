@@ -60,14 +60,13 @@ type RestoreResult struct {
 	// it; a revoked certificate or identity among them stays on the deny-list all the same.
 	Unknown  int
 	Previous string // the suffix of the replaced database and logs, which stay in the state directory
+	// Review lists why the revocations since the backup may be incomplete. Then the restore failed
+	// closed and the instance is in restore review.
+	Review []string
 }
 
 // ErrControllerRunning is returned by Restore while a controller holds the database.
 var ErrControllerRunning = errors.New("controller: a controller is running on this database; stop every controller before a restore")
-
-// ErrIncompleteLog is returned by Restore when the revocations since the backup may be
-// incomplete: no log since the backup, a broken hash chain, or a log that cannot be read.
-var ErrIncompleteLog = errors.New("controller: the revocations since the backup may be incomplete")
 
 type archive struct {
 	info              BackupInfo
@@ -124,9 +123,10 @@ func readArchive(path string) (archive, error) {
 // logs in place, gives the instance a new db_epoch, invalidates every session and every one-time
 // credential of the backup that can still be used, and applies again every revocation logged after
 // the backup, merged from the given sinks and local logs (docs/10-operations.md, "Backup and
-// restore"). It prepares everything next to the database first and replaces nothing when a step
-// fails; the replaced files are kept with the suffix RestoreResult.Previous. It is local
-// administration, audited as local-cli.
+// restore"). When those revocations may be incomplete it fails closed into restore review. It
+// prepares everything next to the database first and replaces nothing when a step fails; the
+// replaced files are kept with the suffix RestoreResult.Previous. It is local administration,
+// audited as local-cli.
 func Restore(ctx context.Context, o RestoreOptions) (RestoreResult, error) {
 	if o.Now == nil {
 		o.Now = time.Now
@@ -170,11 +170,11 @@ func Restore(ctx context.Context, o RestoreOptions) (RestoreResult, error) {
 			return RestoreResult{}, err
 		}
 	}
-	newer, err := sinceBackup(files[1].staged, files[1].live, o.RevocationLogs)
+	newer, review, err := sinceBackup(files[1].staged, files[1].live, o.RevocationLogs)
 	if err != nil {
 		return RestoreResult{}, err
 	}
-	res := RestoreResult{TrustDomain: a.info.TrustDomain, Backup: a.info.Created, OldEpoch: a.info.DBEpoch}
+	res := RestoreResult{TrustDomain: a.info.TrustDomain, Backup: a.info.Created, OldEpoch: a.info.DBEpoch, Review: review}
 	if err := prepare(ctx, files[0].staged, files[1].staged, a.info, newer, o.Now, &res); err != nil {
 		return RestoreResult{}, err
 	}
@@ -199,27 +199,28 @@ func Restore(ctx context.Context, o RestoreOptions) (RestoreResult, error) {
 }
 
 // sinceBackup returns the entries of the given sinks and local logs that the backup's own log, at
-// backupLog, does not hold, oldest first; without a source it reads the local log at local. A
-// source that cannot be read, has a broken chain or holds an unknown kind is ErrIncompleteLog,
-// and so is no source at all, because then the revocations since the backup are unknown.
-func sinceBackup(backupLog, local string, sources []string) ([]revlog.Entry, error) {
+// backupLog, does not hold, oldest first; without a source it reads the local log at local. It
+// also returns why they may be incomplete: a source that cannot be read, has a broken chain or
+// holds a kind this version does not know, or no source at all. Without a sink a single node's
+// whole log is not off the host, so a lost local log is a backlog that cannot be reached.
+func sinceBackup(backupLog, local string, sources []string) ([]revlog.Entry, []string, error) {
 	before, err := revlog.Read(backupLog)
 	if err != nil {
-		return nil, fmt.Errorf("controller: the backup's revocation log: %w", err)
+		return nil, nil, fmt.Errorf("controller: the backup's revocation log: %w", err)
 	}
 	known := map[string]bool{}
 	for _, e := range before {
 		known[e.Hash] = true
 	}
-	if len(sources) == 0 {
-		if _, err := os.Stat(local); err != nil {
-			return nil, fmt.Errorf("%w: no revocation log since the backup; give the sink or the old host's revocations.log with --revocation-log",
-				ErrIncompleteLog)
-		}
-		sources = []string{local}
-	}
 	var newer []revlog.Entry
 	var problems []string
+	if len(sources) == 0 {
+		if _, err := os.Stat(local); err != nil {
+			problems = append(problems, "no revocation log since the backup: neither a sink nor the old host's revocations.log was given with --revocation-log")
+		} else {
+			sources = []string{local}
+		}
+	}
 	for _, src := range sources {
 		entries, err := readSource(src)
 		if err != nil {
@@ -229,6 +230,7 @@ func sinceBackup(backupLog, local string, sources []string) ([]revlog.Entry, err
 		for _, e := range entries {
 			if !e.Kind.Valid() {
 				problems = append(problems, fmt.Sprintf("%s: entry %d has the unknown kind %q", src, e.Seq, e.Kind))
+				continue
 			}
 			if !known[e.Hash] {
 				known[e.Hash] = true
@@ -236,11 +238,8 @@ func sinceBackup(backupLog, local string, sources []string) ([]revlog.Entry, err
 			}
 		}
 	}
-	if len(problems) > 0 {
-		return nil, fmt.Errorf("%w: %s", ErrIncompleteLog, strings.Join(problems, "; "))
-	}
 	sort.SliceStable(newer, func(i, j int) bool { return newer[i].Time.Before(newer[j].Time) })
-	return newer, nil
+	return newer, problems, nil
 }
 
 // readSource reads a sink directory or a local log, verifying its chain.
@@ -264,7 +263,8 @@ func readSource(path string) ([]revlog.Entry, error) {
 }
 
 // prepare brings the staged database up to date and secures it: migrations, a new epoch, the
-// invalidations and the revocations since the backup, which also go into the staged log.
+// invalidations and the revocations since the backup, which also go into the staged log, and the
+// restore review when res.Review says why they may be incomplete.
 func prepare(ctx context.Context, dbPath, logPath string, info BackupInfo, newer []revlog.Entry, now func() time.Time, res *RestoreResult) error {
 	db, err := store.OpenSQLite(ctx, dbPath, store.SQLiteOptions{})
 	if err != nil {
@@ -303,6 +303,15 @@ func prepare(ctx context.Context, dbPath, logPath string, info BackupInfo, newer
 				res.Unknown++
 			}
 		}
+		if len(res.Review) > 0 {
+			if err := failClosed(sys, tx, now().UTC()); err != nil {
+				return err
+			}
+			if _, err := audit.Append(sys, tx, audit.Entry{ActorType: audit.ActorSystem, ActorID: "local-cli", Action: "instance.restore_review",
+				TargetType: "instance", TargetID: res.NewEpoch, Result: audit.Success, Reason: strings.Join(res.Review, "; ")}); err != nil {
+				return err
+			}
+		}
 		_, err := audit.Append(sys, tx, audit.Entry{ActorType: audit.ActorSystem, ActorID: "local-cli", Action: "instance.restore",
 			TargetType: "instance", TargetID: res.NewEpoch, Result: audit.Success,
 			Reason: fmt.Sprintf("backup of %s, epoch %s; %d revocations since applied again, %d of them to subjects the backup does not hold",
@@ -321,6 +330,30 @@ func prepare(ctx context.Context, dbPath, logPath string, info BackupInfo, newer
 		}
 	}
 	return nil
+}
+
+// failClosed is the restore review after a restore whose revocations since the backup may be
+// incomplete (docs/10-operations.md, "Backup and restore"): every API token is suspended, every
+// user must reset their password and set up their second factor again, and the instance and
+// every org are read-only until they are confirmed. Sessions end anyway.
+func failClosed(ctx context.Context, tx *ent.Tx, now time.Time) error {
+	if err := tx.Instance.Update().SetRestoreReviewSince(now).Exec(ctx); err != nil {
+		return err
+	}
+	if err := tx.Org.Update().SetRestoreReviewSince(now).Exec(ctx); err != nil {
+		return err
+	}
+	if err := tx.APIToken.Update().Where(apitoken.RevokedAtIsNil(), apitoken.SuspendedAtIsNil()).SetSuspendedAt(now).Exec(ctx); err != nil {
+		return err
+	}
+	if err := tx.User.Update().ClearPasswordHash().Exec(ctx); err != nil {
+		return err
+	}
+	if _, err := tx.TOTPCredential.Delete().Exec(ctx); err != nil {
+		return err
+	}
+	_, err := tx.RecoveryCode.Delete().Exec(ctx)
+	return err
 }
 
 // invalidate ends every session and every one-time credential of the backup that can still be

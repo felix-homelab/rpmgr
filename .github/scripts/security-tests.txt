@@ -26,8 +26,8 @@ TestOTA_CrossFilesystemInstall	p2	-	-	OTA
 TestOTA_PackageOwnedBinaryRefused	p2	-	-	OTA
 TestOTA_UpdaterHonoursPolicy	p2	-	-	OTA
 TestRestore_RevocationsReapplied	done	11.6	#160
-TestRestore_IncompleteLogFailsClosed	pending	11.6	#160
-TestRestore_OrgOwnerCannotEndInstanceReview	pending	11.6	#160
+TestRestore_IncompleteLogFailsClosed	done	11.6	#160
+TestRestore_OrgOwnerCannotEndInstanceReview	done	11.6	#160
 TestRevocation_EnforcedWhileSinkDown	done	11.5	#159	the alert reaches the UI through GetInstanceSettings (web/src/pages/settings.test.tsx)
 TestDenyList_PersistedAcrossGatewayRestart	done	3.13	#68	in-process clause (internal/agent; the digest resend: TestDenyList_HelloDigest) and process-level clause (test/e2e) done
 TestEnrollReplace_TokenBoundToConnector	done	8.2	#116

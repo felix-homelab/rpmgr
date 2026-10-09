@@ -22,8 +22,10 @@ type Org struct {
 	// Slug holds the value of the "slug" field.
 	Slug string `json:"slug,omitempty"`
 	// CreatedAt holds the value of the "created_at" field.
-	CreatedAt    time.Time `json:"created_at,omitempty"`
-	selectValues sql.SelectValues
+	CreatedAt time.Time `json:"created_at,omitempty"`
+	// RestoreReviewSince holds the value of the "restore_review_since" field.
+	RestoreReviewSince *time.Time `json:"restore_review_since,omitempty"`
+	selectValues       sql.SelectValues
 }
 
 // scanValues returns the types for scanning values from sql.Rows.
@@ -33,7 +35,7 @@ func (*Org) scanValues(columns []string) ([]any, error) {
 		switch columns[i] {
 		case org.FieldID, org.FieldName, org.FieldSlug:
 			values[i] = new(sql.NullString)
-		case org.FieldCreatedAt:
+		case org.FieldCreatedAt, org.FieldRestoreReviewSince:
 			values[i] = new(sql.NullTime)
 		default:
 			values[i] = new(sql.UnknownType)
@@ -73,6 +75,13 @@ func (_m *Org) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field created_at", values[i])
 			} else if value.Valid {
 				_m.CreatedAt = value.Time
+			}
+		case org.FieldRestoreReviewSince:
+			if value, ok := values[i].(*sql.NullTime); !ok {
+				return fmt.Errorf("unexpected type %T for field restore_review_since", values[i])
+			} else if value.Valid {
+				_m.RestoreReviewSince = new(time.Time)
+				*_m.RestoreReviewSince = value.Time
 			}
 		default:
 			_m.selectValues.Set(columns[i], values[i])
@@ -118,6 +127,11 @@ func (_m *Org) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("created_at=")
 	builder.WriteString(_m.CreatedAt.Format(time.ANSIC))
+	builder.WriteString(", ")
+	if v := _m.RestoreReviewSince; v != nil {
+		builder.WriteString("restore_review_since=")
+		builder.WriteString(v.Format(time.ANSIC))
+	}
 	builder.WriteByte(')')
 	return builder.String()
 }

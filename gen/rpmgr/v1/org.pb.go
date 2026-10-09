@@ -35,9 +35,11 @@ type Org struct {
 	// Its slug.
 	Slug string `protobuf:"bytes,3,opt,name=slug,proto3" json:"slug,omitempty"`
 	// When it was created.
-	CreateTime    *timestamppb.Timestamp `protobuf:"bytes,4,opt,name=create_time,json=createTime,proto3" json:"create_time,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	CreateTime *timestamppb.Timestamp `protobuf:"bytes,4,opt,name=create_time,json=createTime,proto3" json:"create_time,omitempty"`
+	// Since when it is in restore review, read-only until its Owner confirms it; not set otherwise.
+	RestoreReviewTime *timestamppb.Timestamp `protobuf:"bytes,5,opt,name=restore_review_time,json=restoreReviewTime,proto3" json:"restore_review_time,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
 }
 
 func (x *Org) Reset() {
@@ -94,6 +96,13 @@ func (x *Org) GetSlug() string {
 func (x *Org) GetCreateTime() *timestamppb.Timestamp {
 	if x != nil {
 		return x.CreateTime
+	}
+	return nil
+}
+
+func (x *Org) GetRestoreReviewTime() *timestamppb.Timestamp {
+	if x != nil {
+		return x.RestoreReviewTime
 	}
 	return nil
 }
@@ -915,17 +924,358 @@ func (x *AcceptInvitationResponse) GetUserId() string {
 	return ""
 }
 
+// ListSuspendedAPITokensRequest names an org.
+type ListSuspendedAPITokensRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The org's ID.
+	OrgId         string `protobuf:"bytes,1,opt,name=org_id,json=orgId,proto3" json:"org_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListSuspendedAPITokensRequest) Reset() {
+	*x = ListSuspendedAPITokensRequest{}
+	mi := &file_rpmgr_v1_org_proto_msgTypes[16]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListSuspendedAPITokensRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListSuspendedAPITokensRequest) ProtoMessage() {}
+
+func (x *ListSuspendedAPITokensRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_rpmgr_v1_org_proto_msgTypes[16]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListSuspendedAPITokensRequest.ProtoReflect.Descriptor instead.
+func (*ListSuspendedAPITokensRequest) Descriptor() ([]byte, []int) {
+	return file_rpmgr_v1_org_proto_rawDescGZIP(), []int{16}
+}
+
+func (x *ListSuspendedAPITokensRequest) GetOrgId() string {
+	if x != nil {
+		return x.OrgId
+	}
+	return ""
+}
+
+// SuspendedAPIToken is an API token a restore suspended, with its owner.
+type SuspendedAPIToken struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The token, without its secret, with its suspend_time.
+	ApiToken *APIToken `protobuf:"bytes,1,opt,name=api_token,json=apiToken,proto3" json:"api_token,omitempty"`
+	// The ID of the user or service account it belongs to.
+	OwnerId string `protobuf:"bytes,2,opt,name=owner_id,json=ownerId,proto3" json:"owner_id,omitempty"`
+	// The owner's e-mail address; empty for a service account.
+	OwnerEmail    string `protobuf:"bytes,3,opt,name=owner_email,json=ownerEmail,proto3" json:"owner_email,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SuspendedAPIToken) Reset() {
+	*x = SuspendedAPIToken{}
+	mi := &file_rpmgr_v1_org_proto_msgTypes[17]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SuspendedAPIToken) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SuspendedAPIToken) ProtoMessage() {}
+
+func (x *SuspendedAPIToken) ProtoReflect() protoreflect.Message {
+	mi := &file_rpmgr_v1_org_proto_msgTypes[17]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SuspendedAPIToken.ProtoReflect.Descriptor instead.
+func (*SuspendedAPIToken) Descriptor() ([]byte, []int) {
+	return file_rpmgr_v1_org_proto_rawDescGZIP(), []int{17}
+}
+
+func (x *SuspendedAPIToken) GetApiToken() *APIToken {
+	if x != nil {
+		return x.ApiToken
+	}
+	return nil
+}
+
+func (x *SuspendedAPIToken) GetOwnerId() string {
+	if x != nil {
+		return x.OwnerId
+	}
+	return ""
+}
+
+func (x *SuspendedAPIToken) GetOwnerEmail() string {
+	if x != nil {
+		return x.OwnerEmail
+	}
+	return ""
+}
+
+// ListSuspendedAPITokensResponse is the org's suspended tokens.
+type ListSuspendedAPITokensResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The tokens, oldest first.
+	ApiTokens     []*SuspendedAPIToken `protobuf:"bytes,1,rep,name=api_tokens,json=apiTokens,proto3" json:"api_tokens,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListSuspendedAPITokensResponse) Reset() {
+	*x = ListSuspendedAPITokensResponse{}
+	mi := &file_rpmgr_v1_org_proto_msgTypes[18]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListSuspendedAPITokensResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListSuspendedAPITokensResponse) ProtoMessage() {}
+
+func (x *ListSuspendedAPITokensResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_rpmgr_v1_org_proto_msgTypes[18]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListSuspendedAPITokensResponse.ProtoReflect.Descriptor instead.
+func (*ListSuspendedAPITokensResponse) Descriptor() ([]byte, []int) {
+	return file_rpmgr_v1_org_proto_rawDescGZIP(), []int{18}
+}
+
+func (x *ListSuspendedAPITokensResponse) GetApiTokens() []*SuspendedAPIToken {
+	if x != nil {
+		return x.ApiTokens
+	}
+	return nil
+}
+
+// ResumeAPITokenRequest names a suspended token.
+type ResumeAPITokenRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The org's ID.
+	OrgId string `protobuf:"bytes,1,opt,name=org_id,json=orgId,proto3" json:"org_id,omitempty"`
+	// The token's ID.
+	TokenId       string `protobuf:"bytes,2,opt,name=token_id,json=tokenId,proto3" json:"token_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ResumeAPITokenRequest) Reset() {
+	*x = ResumeAPITokenRequest{}
+	mi := &file_rpmgr_v1_org_proto_msgTypes[19]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ResumeAPITokenRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ResumeAPITokenRequest) ProtoMessage() {}
+
+func (x *ResumeAPITokenRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_rpmgr_v1_org_proto_msgTypes[19]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ResumeAPITokenRequest.ProtoReflect.Descriptor instead.
+func (*ResumeAPITokenRequest) Descriptor() ([]byte, []int) {
+	return file_rpmgr_v1_org_proto_rawDescGZIP(), []int{19}
+}
+
+func (x *ResumeAPITokenRequest) GetOrgId() string {
+	if x != nil {
+		return x.OrgId
+	}
+	return ""
+}
+
+func (x *ResumeAPITokenRequest) GetTokenId() string {
+	if x != nil {
+		return x.TokenId
+	}
+	return ""
+}
+
+// ResumeAPITokenResponse is empty.
+type ResumeAPITokenResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ResumeAPITokenResponse) Reset() {
+	*x = ResumeAPITokenResponse{}
+	mi := &file_rpmgr_v1_org_proto_msgTypes[20]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ResumeAPITokenResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ResumeAPITokenResponse) ProtoMessage() {}
+
+func (x *ResumeAPITokenResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_rpmgr_v1_org_proto_msgTypes[20]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ResumeAPITokenResponse.ProtoReflect.Descriptor instead.
+func (*ResumeAPITokenResponse) Descriptor() ([]byte, []int) {
+	return file_rpmgr_v1_org_proto_rawDescGZIP(), []int{20}
+}
+
+// ConfirmRestoreReviewRequest names an org.
+type ConfirmRestoreReviewRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The org's ID.
+	OrgId         string `protobuf:"bytes,1,opt,name=org_id,json=orgId,proto3" json:"org_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ConfirmRestoreReviewRequest) Reset() {
+	*x = ConfirmRestoreReviewRequest{}
+	mi := &file_rpmgr_v1_org_proto_msgTypes[21]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ConfirmRestoreReviewRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ConfirmRestoreReviewRequest) ProtoMessage() {}
+
+func (x *ConfirmRestoreReviewRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_rpmgr_v1_org_proto_msgTypes[21]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ConfirmRestoreReviewRequest.ProtoReflect.Descriptor instead.
+func (*ConfirmRestoreReviewRequest) Descriptor() ([]byte, []int) {
+	return file_rpmgr_v1_org_proto_rawDescGZIP(), []int{21}
+}
+
+func (x *ConfirmRestoreReviewRequest) GetOrgId() string {
+	if x != nil {
+		return x.OrgId
+	}
+	return ""
+}
+
+// ConfirmRestoreReviewResponse is the org, out of review.
+type ConfirmRestoreReviewResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The org.
+	Org           *Org `protobuf:"bytes,1,opt,name=org,proto3" json:"org,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ConfirmRestoreReviewResponse) Reset() {
+	*x = ConfirmRestoreReviewResponse{}
+	mi := &file_rpmgr_v1_org_proto_msgTypes[22]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ConfirmRestoreReviewResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ConfirmRestoreReviewResponse) ProtoMessage() {}
+
+func (x *ConfirmRestoreReviewResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_rpmgr_v1_org_proto_msgTypes[22]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ConfirmRestoreReviewResponse.ProtoReflect.Descriptor instead.
+func (*ConfirmRestoreReviewResponse) Descriptor() ([]byte, []int) {
+	return file_rpmgr_v1_org_proto_rawDescGZIP(), []int{22}
+}
+
+func (x *ConfirmRestoreReviewResponse) GetOrg() *Org {
+	if x != nil {
+		return x.Org
+	}
+	return nil
+}
+
 var File_rpmgr_v1_org_proto protoreflect.FileDescriptor
 
 const file_rpmgr_v1_org_proto_rawDesc = "" +
 	"\n" +
-	"\x12rpmgr/v1/org.proto\x12\brpmgr.v1\x1a\x1bbuf/validate/validate.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x16rpmgr/v1/options.proto\"z\n" +
+	"\x12rpmgr/v1/org.proto\x12\brpmgr.v1\x1a\x1bbuf/validate/validate.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x16rpmgr/v1/options.proto\x1a\x14rpmgr/v1/token.proto\"\xc6\x01\n" +
 	"\x03Org\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12\x12\n" +
 	"\x04slug\x18\x03 \x01(\tR\x04slug\x12;\n" +
 	"\vcreate_time\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\n" +
-	"createTime\"/\n" +
+	"createTime\x12J\n" +
+	"\x13restore_review_time\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\x11restoreReviewTime\"/\n" +
 	"\rGetOrgRequest\x12\x1e\n" +
 	"\x06org_id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x05orgId\"1\n" +
 	"\x0eGetOrgResponse\x12\x1f\n" +
@@ -974,7 +1324,25 @@ const file_rpmgr_v1_org_proto_rawDesc = "" +
 	"\bpassword\x18\x03 \x01(\tB\f\xbaH\x05r\x03\x18\x80\x02\x88\xb5\x18\x01R\bpassword\"J\n" +
 	"\x18AcceptInvitationResponse\x12\x15\n" +
 	"\x06org_id\x18\x01 \x01(\tR\x05orgId\x12\x17\n" +
-	"\auser_id\x18\x02 \x01(\tR\x06userId2\xe3\x05\n" +
+	"\auser_id\x18\x02 \x01(\tR\x06userId\"?\n" +
+	"\x1dListSuspendedAPITokensRequest\x12\x1e\n" +
+	"\x06org_id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x05orgId\"\x80\x01\n" +
+	"\x11SuspendedAPIToken\x12/\n" +
+	"\tapi_token\x18\x01 \x01(\v2\x12.rpmgr.v1.APITokenR\bapiToken\x12\x19\n" +
+	"\bowner_id\x18\x02 \x01(\tR\aownerId\x12\x1f\n" +
+	"\vowner_email\x18\x03 \x01(\tR\n" +
+	"ownerEmail\"\\\n" +
+	"\x1eListSuspendedAPITokensResponse\x12:\n" +
+	"\n" +
+	"api_tokens\x18\x01 \x03(\v2\x1b.rpmgr.v1.SuspendedAPITokenR\tapiTokens\"[\n" +
+	"\x15ResumeAPITokenRequest\x12\x1e\n" +
+	"\x06org_id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x05orgId\x12\"\n" +
+	"\btoken_id\x18\x02 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\atokenId\"\x18\n" +
+	"\x16ResumeAPITokenResponse\"=\n" +
+	"\x1bConfirmRestoreReviewRequest\x12\x1e\n" +
+	"\x06org_id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x05orgId\"?\n" +
+	"\x1cConfirmRestoreReviewResponse\x12\x1f\n" +
+	"\x03org\x18\x01 \x01(\v2\r.rpmgr.v1.OrgR\x03org2\xf4\b\n" +
 	"\n" +
 	"OrgService\x12V\n" +
 	"\x06GetOrg\x12\x17.rpmgr.v1.GetOrgRequest\x1a\x18.rpmgr.v1.GetOrgResponse\"\x19\x8a\xb5\x18\x12\n" +
@@ -982,15 +1350,21 @@ const file_rpmgr_v1_org_proto_rawDesc = "" +
 	"\tUpdateOrg\x12\x1a.rpmgr.v1.UpdateOrgRequest\x1a\x1b.rpmgr.v1.UpdateOrgResponse\"\x17\x8a\xb5\x18\x13\n" +
 	"\torg.write\x12\x06org_id\x12e\n" +
 	"\vListMembers\x12\x1c.rpmgr.v1.ListMembersRequest\x1a\x1d.rpmgr.v1.ListMembersResponse\"\x19\x8a\xb5\x18\x12\n" +
-	"\borg.read\x12\x06org_id\x90\x02\x01\x12j\n" +
-	"\fUpdateMember\x12\x1d.rpmgr.v1.UpdateMemberRequest\x1a\x1e.rpmgr.v1.UpdateMemberResponse\"\x1b\x8a\xb5\x18\x17\n" +
-	"\rmembers.write\x12\x06org_id\x12j\n" +
-	"\fRemoveMember\x12\x1d.rpmgr.v1.RemoveMemberRequest\x1a\x1e.rpmgr.v1.RemoveMemberResponse\"\x1b\x8a\xb5\x18\x17\n" +
-	"\rmembers.write\x12\x06org_id\x12v\n" +
+	"\borg.read\x12\x06org_id\x90\x02\x01\x12l\n" +
+	"\fUpdateMember\x12\x1d.rpmgr.v1.UpdateMemberRequest\x1a\x1e.rpmgr.v1.UpdateMemberResponse\"\x1d\x8a\xb5\x18\x19\n" +
+	"\rmembers.write\x12\x06org_id(\x01\x12l\n" +
+	"\fRemoveMember\x12\x1d.rpmgr.v1.RemoveMemberRequest\x1a\x1e.rpmgr.v1.RemoveMemberResponse\"\x1d\x8a\xb5\x18\x19\n" +
+	"\rmembers.write\x12\x06org_id(\x01\x12v\n" +
 	"\x10CreateInvitation\x12!.rpmgr.v1.CreateInvitationRequest\x1a\".rpmgr.v1.CreateInvitationResponse\"\x1b\x8a\xb5\x18\x17\n" +
 	"\rmembers.write\x12\x06org_id\x12g\n" +
 	"\x10AcceptInvitation\x12!.rpmgr.v1.AcceptInvitationRequest\x1a\".rpmgr.v1.AcceptInvitationResponse\"\f\x8a\xb5\x18\b\n" +
-	"\x06publicB5Z3github.com/felix-homelab/rpmgr/gen/rpmgr/v1;rpmgrv1b\x06proto3"
+	"\x06public\x12\x8b\x01\n" +
+	"\x16ListSuspendedAPITokens\x12'.rpmgr.v1.ListSuspendedAPITokensRequest\x1a(.rpmgr.v1.ListSuspendedAPITokensResponse\"\x1e\x8a\xb5\x18\x17\n" +
+	"\rmembers.write\x12\x06org_id\x90\x02\x01\x12t\n" +
+	"\x0eResumeAPIToken\x12\x1f.rpmgr.v1.ResumeAPITokenRequest\x1a .rpmgr.v1.ResumeAPITokenResponse\"\x1f\x8a\xb5\x18\x1b\n" +
+	"\rmembers.write\x12\x06org_id\x18\x01(\x01\x12\x86\x01\n" +
+	"\x14ConfirmRestoreReview\x12%.rpmgr.v1.ConfirmRestoreReviewRequest\x1a&.rpmgr.v1.ConfirmRestoreReviewResponse\"\x1f\x8a\xb5\x18\x1b\n" +
+	"\rmembers.write\x12\x06org_id\x18\x01(\x01B5Z3github.com/felix-homelab/rpmgr/gen/rpmgr/v1;rpmgrv1b\x06proto3"
 
 var (
 	file_rpmgr_v1_org_proto_rawDescOnce sync.Once
@@ -1004,52 +1378,70 @@ func file_rpmgr_v1_org_proto_rawDescGZIP() []byte {
 	return file_rpmgr_v1_org_proto_rawDescData
 }
 
-var file_rpmgr_v1_org_proto_msgTypes = make([]protoimpl.MessageInfo, 16)
+var file_rpmgr_v1_org_proto_msgTypes = make([]protoimpl.MessageInfo, 23)
 var file_rpmgr_v1_org_proto_goTypes = []any{
-	(*Org)(nil),                      // 0: rpmgr.v1.Org
-	(*GetOrgRequest)(nil),            // 1: rpmgr.v1.GetOrgRequest
-	(*GetOrgResponse)(nil),           // 2: rpmgr.v1.GetOrgResponse
-	(*UpdateOrgRequest)(nil),         // 3: rpmgr.v1.UpdateOrgRequest
-	(*UpdateOrgResponse)(nil),        // 4: rpmgr.v1.UpdateOrgResponse
-	(*Member)(nil),                   // 5: rpmgr.v1.Member
-	(*ListMembersRequest)(nil),       // 6: rpmgr.v1.ListMembersRequest
-	(*ListMembersResponse)(nil),      // 7: rpmgr.v1.ListMembersResponse
-	(*UpdateMemberRequest)(nil),      // 8: rpmgr.v1.UpdateMemberRequest
-	(*UpdateMemberResponse)(nil),     // 9: rpmgr.v1.UpdateMemberResponse
-	(*RemoveMemberRequest)(nil),      // 10: rpmgr.v1.RemoveMemberRequest
-	(*RemoveMemberResponse)(nil),     // 11: rpmgr.v1.RemoveMemberResponse
-	(*CreateInvitationRequest)(nil),  // 12: rpmgr.v1.CreateInvitationRequest
-	(*CreateInvitationResponse)(nil), // 13: rpmgr.v1.CreateInvitationResponse
-	(*AcceptInvitationRequest)(nil),  // 14: rpmgr.v1.AcceptInvitationRequest
-	(*AcceptInvitationResponse)(nil), // 15: rpmgr.v1.AcceptInvitationResponse
-	(*timestamppb.Timestamp)(nil),    // 16: google.protobuf.Timestamp
+	(*Org)(nil),                            // 0: rpmgr.v1.Org
+	(*GetOrgRequest)(nil),                  // 1: rpmgr.v1.GetOrgRequest
+	(*GetOrgResponse)(nil),                 // 2: rpmgr.v1.GetOrgResponse
+	(*UpdateOrgRequest)(nil),               // 3: rpmgr.v1.UpdateOrgRequest
+	(*UpdateOrgResponse)(nil),              // 4: rpmgr.v1.UpdateOrgResponse
+	(*Member)(nil),                         // 5: rpmgr.v1.Member
+	(*ListMembersRequest)(nil),             // 6: rpmgr.v1.ListMembersRequest
+	(*ListMembersResponse)(nil),            // 7: rpmgr.v1.ListMembersResponse
+	(*UpdateMemberRequest)(nil),            // 8: rpmgr.v1.UpdateMemberRequest
+	(*UpdateMemberResponse)(nil),           // 9: rpmgr.v1.UpdateMemberResponse
+	(*RemoveMemberRequest)(nil),            // 10: rpmgr.v1.RemoveMemberRequest
+	(*RemoveMemberResponse)(nil),           // 11: rpmgr.v1.RemoveMemberResponse
+	(*CreateInvitationRequest)(nil),        // 12: rpmgr.v1.CreateInvitationRequest
+	(*CreateInvitationResponse)(nil),       // 13: rpmgr.v1.CreateInvitationResponse
+	(*AcceptInvitationRequest)(nil),        // 14: rpmgr.v1.AcceptInvitationRequest
+	(*AcceptInvitationResponse)(nil),       // 15: rpmgr.v1.AcceptInvitationResponse
+	(*ListSuspendedAPITokensRequest)(nil),  // 16: rpmgr.v1.ListSuspendedAPITokensRequest
+	(*SuspendedAPIToken)(nil),              // 17: rpmgr.v1.SuspendedAPIToken
+	(*ListSuspendedAPITokensResponse)(nil), // 18: rpmgr.v1.ListSuspendedAPITokensResponse
+	(*ResumeAPITokenRequest)(nil),          // 19: rpmgr.v1.ResumeAPITokenRequest
+	(*ResumeAPITokenResponse)(nil),         // 20: rpmgr.v1.ResumeAPITokenResponse
+	(*ConfirmRestoreReviewRequest)(nil),    // 21: rpmgr.v1.ConfirmRestoreReviewRequest
+	(*ConfirmRestoreReviewResponse)(nil),   // 22: rpmgr.v1.ConfirmRestoreReviewResponse
+	(*timestamppb.Timestamp)(nil),          // 23: google.protobuf.Timestamp
+	(*APIToken)(nil),                       // 24: rpmgr.v1.APIToken
 }
 var file_rpmgr_v1_org_proto_depIdxs = []int32{
-	16, // 0: rpmgr.v1.Org.create_time:type_name -> google.protobuf.Timestamp
-	0,  // 1: rpmgr.v1.GetOrgResponse.org:type_name -> rpmgr.v1.Org
-	0,  // 2: rpmgr.v1.UpdateOrgResponse.org:type_name -> rpmgr.v1.Org
-	16, // 3: rpmgr.v1.Member.create_time:type_name -> google.protobuf.Timestamp
-	5,  // 4: rpmgr.v1.ListMembersResponse.members:type_name -> rpmgr.v1.Member
-	16, // 5: rpmgr.v1.CreateInvitationResponse.expire_time:type_name -> google.protobuf.Timestamp
-	1,  // 6: rpmgr.v1.OrgService.GetOrg:input_type -> rpmgr.v1.GetOrgRequest
-	3,  // 7: rpmgr.v1.OrgService.UpdateOrg:input_type -> rpmgr.v1.UpdateOrgRequest
-	6,  // 8: rpmgr.v1.OrgService.ListMembers:input_type -> rpmgr.v1.ListMembersRequest
-	8,  // 9: rpmgr.v1.OrgService.UpdateMember:input_type -> rpmgr.v1.UpdateMemberRequest
-	10, // 10: rpmgr.v1.OrgService.RemoveMember:input_type -> rpmgr.v1.RemoveMemberRequest
-	12, // 11: rpmgr.v1.OrgService.CreateInvitation:input_type -> rpmgr.v1.CreateInvitationRequest
-	14, // 12: rpmgr.v1.OrgService.AcceptInvitation:input_type -> rpmgr.v1.AcceptInvitationRequest
-	2,  // 13: rpmgr.v1.OrgService.GetOrg:output_type -> rpmgr.v1.GetOrgResponse
-	4,  // 14: rpmgr.v1.OrgService.UpdateOrg:output_type -> rpmgr.v1.UpdateOrgResponse
-	7,  // 15: rpmgr.v1.OrgService.ListMembers:output_type -> rpmgr.v1.ListMembersResponse
-	9,  // 16: rpmgr.v1.OrgService.UpdateMember:output_type -> rpmgr.v1.UpdateMemberResponse
-	11, // 17: rpmgr.v1.OrgService.RemoveMember:output_type -> rpmgr.v1.RemoveMemberResponse
-	13, // 18: rpmgr.v1.OrgService.CreateInvitation:output_type -> rpmgr.v1.CreateInvitationResponse
-	15, // 19: rpmgr.v1.OrgService.AcceptInvitation:output_type -> rpmgr.v1.AcceptInvitationResponse
-	13, // [13:20] is the sub-list for method output_type
-	6,  // [6:13] is the sub-list for method input_type
-	6,  // [6:6] is the sub-list for extension type_name
-	6,  // [6:6] is the sub-list for extension extendee
-	0,  // [0:6] is the sub-list for field type_name
+	23, // 0: rpmgr.v1.Org.create_time:type_name -> google.protobuf.Timestamp
+	23, // 1: rpmgr.v1.Org.restore_review_time:type_name -> google.protobuf.Timestamp
+	0,  // 2: rpmgr.v1.GetOrgResponse.org:type_name -> rpmgr.v1.Org
+	0,  // 3: rpmgr.v1.UpdateOrgResponse.org:type_name -> rpmgr.v1.Org
+	23, // 4: rpmgr.v1.Member.create_time:type_name -> google.protobuf.Timestamp
+	5,  // 5: rpmgr.v1.ListMembersResponse.members:type_name -> rpmgr.v1.Member
+	23, // 6: rpmgr.v1.CreateInvitationResponse.expire_time:type_name -> google.protobuf.Timestamp
+	24, // 7: rpmgr.v1.SuspendedAPIToken.api_token:type_name -> rpmgr.v1.APIToken
+	17, // 8: rpmgr.v1.ListSuspendedAPITokensResponse.api_tokens:type_name -> rpmgr.v1.SuspendedAPIToken
+	0,  // 9: rpmgr.v1.ConfirmRestoreReviewResponse.org:type_name -> rpmgr.v1.Org
+	1,  // 10: rpmgr.v1.OrgService.GetOrg:input_type -> rpmgr.v1.GetOrgRequest
+	3,  // 11: rpmgr.v1.OrgService.UpdateOrg:input_type -> rpmgr.v1.UpdateOrgRequest
+	6,  // 12: rpmgr.v1.OrgService.ListMembers:input_type -> rpmgr.v1.ListMembersRequest
+	8,  // 13: rpmgr.v1.OrgService.UpdateMember:input_type -> rpmgr.v1.UpdateMemberRequest
+	10, // 14: rpmgr.v1.OrgService.RemoveMember:input_type -> rpmgr.v1.RemoveMemberRequest
+	12, // 15: rpmgr.v1.OrgService.CreateInvitation:input_type -> rpmgr.v1.CreateInvitationRequest
+	14, // 16: rpmgr.v1.OrgService.AcceptInvitation:input_type -> rpmgr.v1.AcceptInvitationRequest
+	16, // 17: rpmgr.v1.OrgService.ListSuspendedAPITokens:input_type -> rpmgr.v1.ListSuspendedAPITokensRequest
+	19, // 18: rpmgr.v1.OrgService.ResumeAPIToken:input_type -> rpmgr.v1.ResumeAPITokenRequest
+	21, // 19: rpmgr.v1.OrgService.ConfirmRestoreReview:input_type -> rpmgr.v1.ConfirmRestoreReviewRequest
+	2,  // 20: rpmgr.v1.OrgService.GetOrg:output_type -> rpmgr.v1.GetOrgResponse
+	4,  // 21: rpmgr.v1.OrgService.UpdateOrg:output_type -> rpmgr.v1.UpdateOrgResponse
+	7,  // 22: rpmgr.v1.OrgService.ListMembers:output_type -> rpmgr.v1.ListMembersResponse
+	9,  // 23: rpmgr.v1.OrgService.UpdateMember:output_type -> rpmgr.v1.UpdateMemberResponse
+	11, // 24: rpmgr.v1.OrgService.RemoveMember:output_type -> rpmgr.v1.RemoveMemberResponse
+	13, // 25: rpmgr.v1.OrgService.CreateInvitation:output_type -> rpmgr.v1.CreateInvitationResponse
+	15, // 26: rpmgr.v1.OrgService.AcceptInvitation:output_type -> rpmgr.v1.AcceptInvitationResponse
+	18, // 27: rpmgr.v1.OrgService.ListSuspendedAPITokens:output_type -> rpmgr.v1.ListSuspendedAPITokensResponse
+	20, // 28: rpmgr.v1.OrgService.ResumeAPIToken:output_type -> rpmgr.v1.ResumeAPITokenResponse
+	22, // 29: rpmgr.v1.OrgService.ConfirmRestoreReview:output_type -> rpmgr.v1.ConfirmRestoreReviewResponse
+	20, // [20:30] is the sub-list for method output_type
+	10, // [10:20] is the sub-list for method input_type
+	10, // [10:10] is the sub-list for extension type_name
+	10, // [10:10] is the sub-list for extension extendee
+	0,  // [0:10] is the sub-list for field type_name
 }
 
 func init() { file_rpmgr_v1_org_proto_init() }
@@ -1058,13 +1450,14 @@ func file_rpmgr_v1_org_proto_init() {
 		return
 	}
 	file_rpmgr_v1_options_proto_init()
+	file_rpmgr_v1_token_proto_init()
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_rpmgr_v1_org_proto_rawDesc), len(file_rpmgr_v1_org_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   16,
+			NumMessages:   23,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

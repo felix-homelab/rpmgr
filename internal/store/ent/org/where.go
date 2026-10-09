@@ -79,6 +79,11 @@ func CreatedAt(v time.Time) predicate.Org {
 	return predicate.Org(sql.FieldEQ(FieldCreatedAt, v))
 }
 
+// RestoreReviewSince applies equality check predicate on the "restore_review_since" field. It's identical to RestoreReviewSinceEQ.
+func RestoreReviewSince(v time.Time) predicate.Org {
+	return predicate.Org(sql.FieldEQ(FieldRestoreReviewSince, v))
+}
+
 // NameEQ applies the EQ predicate on the "name" field.
 func NameEQ(v string) predicate.Org {
 	return predicate.Org(sql.FieldEQ(FieldName, v))
@@ -247,6 +252,56 @@ func CreatedAtLT(v time.Time) predicate.Org {
 // CreatedAtLTE applies the LTE predicate on the "created_at" field.
 func CreatedAtLTE(v time.Time) predicate.Org {
 	return predicate.Org(sql.FieldLTE(FieldCreatedAt, v))
+}
+
+// RestoreReviewSinceEQ applies the EQ predicate on the "restore_review_since" field.
+func RestoreReviewSinceEQ(v time.Time) predicate.Org {
+	return predicate.Org(sql.FieldEQ(FieldRestoreReviewSince, v))
+}
+
+// RestoreReviewSinceNEQ applies the NEQ predicate on the "restore_review_since" field.
+func RestoreReviewSinceNEQ(v time.Time) predicate.Org {
+	return predicate.Org(sql.FieldNEQ(FieldRestoreReviewSince, v))
+}
+
+// RestoreReviewSinceIn applies the In predicate on the "restore_review_since" field.
+func RestoreReviewSinceIn(vs ...time.Time) predicate.Org {
+	return predicate.Org(sql.FieldIn(FieldRestoreReviewSince, vs...))
+}
+
+// RestoreReviewSinceNotIn applies the NotIn predicate on the "restore_review_since" field.
+func RestoreReviewSinceNotIn(vs ...time.Time) predicate.Org {
+	return predicate.Org(sql.FieldNotIn(FieldRestoreReviewSince, vs...))
+}
+
+// RestoreReviewSinceGT applies the GT predicate on the "restore_review_since" field.
+func RestoreReviewSinceGT(v time.Time) predicate.Org {
+	return predicate.Org(sql.FieldGT(FieldRestoreReviewSince, v))
+}
+
+// RestoreReviewSinceGTE applies the GTE predicate on the "restore_review_since" field.
+func RestoreReviewSinceGTE(v time.Time) predicate.Org {
+	return predicate.Org(sql.FieldGTE(FieldRestoreReviewSince, v))
+}
+
+// RestoreReviewSinceLT applies the LT predicate on the "restore_review_since" field.
+func RestoreReviewSinceLT(v time.Time) predicate.Org {
+	return predicate.Org(sql.FieldLT(FieldRestoreReviewSince, v))
+}
+
+// RestoreReviewSinceLTE applies the LTE predicate on the "restore_review_since" field.
+func RestoreReviewSinceLTE(v time.Time) predicate.Org {
+	return predicate.Org(sql.FieldLTE(FieldRestoreReviewSince, v))
+}
+
+// RestoreReviewSinceIsNil applies the IsNil predicate on the "restore_review_since" field.
+func RestoreReviewSinceIsNil() predicate.Org {
+	return predicate.Org(sql.FieldIsNull(FieldRestoreReviewSince))
+}
+
+// RestoreReviewSinceNotNil applies the NotNil predicate on the "restore_review_since" field.
+func RestoreReviewSinceNotNil() predicate.Org {
+	return predicate.Org(sql.FieldNotNull(FieldRestoreReviewSince))
 }
 
 // And groups predicates with the AND operator between them.

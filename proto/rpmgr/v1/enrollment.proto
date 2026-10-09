@@ -55,6 +55,7 @@ service EnrollmentService {
     option (rpmgr.v1.authz) = {
       permission: "connectors.write"
       resource_field: "enrollment_token_id"
+      during_restore_review: true
     };
   }
 }

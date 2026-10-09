@@ -468,14 +468,24 @@ affect agents take effect through reconciliation and show apply status like any 
     automation entirely, for a copy restored into a test environment that must never touch
     production DNS.
 - **Fail closed** only when the sink's hash chain is broken, or a replica that reported an unshipped
-  backlog has an unreachable local log: all API tokens and service accounts are suspended, all
-  sessions invalidated, every user must reset their password and re-verify MFA, and the instance
-  enters **restore review** mode (read-only):
-  - each org's **Owner** re-confirms only their own org's memberships and roles; an org stays
-    read-only until its Owner (or the Instance Admin) confirms it;
+  backlog has an unreachable local log. Without a sink, a single node's whole log is not off the
+  host, so a restore without that log fails closed too; so does a log entry of a kind the restoring
+  version does not know. The entries of every reachable log are merged and re-applied all the
+  same. Then all API tokens and service accounts are suspended, all sessions invalidated, every
+  user must reset their password and set up their second factor again (re-verify MFA), and the
+  instance enters **restore review** mode (read-only):
+  - **Read-only:** every API method that changes something is refused with `RESTORE_REVIEW`
+    ([07](07-api.md#errors)) while its org, or for an instance setting the instance, is in review.
+    Revocations stay available (revoking API and enrollment tokens, member changes and removals),
+    and so do the review itself and each user's own account: password, second factor, sessions.
+  - **Passwords:** a user resets theirs with a link from `rpmgr user reset-password --email
+    <address>` on the controller host, or with the self-service reset when SMTP is set up.
+  - each org's **Owner** re-confirms only their own org's memberships and roles, and resumes its
+    suspended API tokens one by one; an org stays read-only until its Owner confirms it, or the
+    Instance Admin with `rpmgr restore confirm --org <org>` on the controller host;
   - the instance-wide review is ended by the **Instance Admin** with a local CLI command on the
     controller host, `rpmgr restore confirm`. An org Owner cannot end it, because restored Owner
-    memberships are exactly what is in doubt.
+    memberships are exactly what is in doubt, and no API method ends it.
 - **Running the restore:** every controller must be stopped; the restore takes the controller lock
   and refuses while a controller holds it. It prepares the restored database and logs next to the
   live ones (`*.restoring`) and renames them into place only when every step succeeded, so a failed
@@ -717,14 +727,15 @@ Each runbook: **symptoms → steps → done when**.
 
 - **Steps**: stop all controllers; `rpmgr restore --in <file> --revocation-log <sink-url or file>
   [--revocation-log <replica-local-log> …]` (new random `db_epoch`); the restore merges the sink with
-  every reachable replica's local log. Without a sink (single node), pass the local
-  `revocations.log` from the old host or from the backup. Provide the KEK that matches the backup;
+  every reachable replica's local log. Without a sink (single node), pass the old host's local
+  `revocations.log`; without it, the restore fails closed. Provide the KEK that matches the backup;
   start one controller, check `/readyz`, then the others.
 - **After**: check that the sink's hash chain was intact and that entries newer than the backup were
   re-applied. If the restore failed closed (broken chain, or an unreachable local log of a replica
   that reported an unshipped backlog), the instance is in **restore review** mode: each org's Owner
   re-confirms their own org's memberships and roles and re-enables API tokens and service accounts
-  one by one; users reset passwords and re-verify MFA; the **Instance Admin** ends the instance-wide
+  one by one; users reset passwords and set up their second factor again; the **Instance Admin**
+  confirms orgs without an Owner (`rpmgr restore confirm --org <org>`) and ends the instance-wide
   review on the controller host with `rpmgr restore confirm`. Re-enroll agents enrolled after the
   backup, and agents that renewed their certificate after it, before that certificate expires; tell
   users that sessions were invalidated ([Backup and restore](#backup-and-restore)).

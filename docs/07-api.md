@@ -64,8 +64,8 @@ names.
 | Service | Main methods | Phase |
 |---|---|---|
 | `AuthService` | `Login`, `Logout`, `GetSession`, `StepUp` (a session, or a personal API token for itself, D63), `BeginWebAuthn`/`FinishWebAuthn`, `StartOIDC`/`FinishOIDC`, `ListSessions`, `RevokeSession`, `RequestPasswordReset` (only with SMTP configured; `UNAVAILABLE` without), `CompletePasswordReset` | 1 (WebAuthn, OIDC: 2) |
-| `UserService` | `GetMe`, `UpdateMe` (display name and web UI theme), `ChangePassword`, `EnrollTOTP`, `ConfirmTOTP`, `RemoveTOTP`, `RegenerateRecoveryCodes`, `ListUsers` (instance admin), `CreatePasswordResetLink` (one-time link; Owner/Admin for members, Instance Admin for any user) | 1 |
-| `OrgService` | `GetOrg`, `UpdateOrg`, `ListMembers`, `UpdateMember`, `RemoveMember`, `CreateInvitation` (returns a one-time link; also e-mailed if SMTP is configured), `AcceptInvitation` | 1 (multi-org UI: 2) |
+| `UserService` | `GetMe` (with the instance's restore review), `UpdateMe` (display name and web UI theme), `ChangePassword`, `EnrollTOTP`, `ConfirmTOTP`, `RemoveTOTP`, `RegenerateRecoveryCodes`, `ListUsers` (instance admin), `CreatePasswordResetLink` (one-time link; Owner/Admin for members, Instance Admin for any user) | 1 |
+| `OrgService` | `GetOrg`, `UpdateOrg`, `ListMembers`, `UpdateMember`, `RemoveMember`, `CreateInvitation` (returns a one-time link; also e-mailed if SMTP is configured), `AcceptInvitation`; in restore review ([10](10-operations.md#backup-and-restore)), for an Owner with step-up: `ListSuspendedAPITokens`, `ResumeAPIToken`, `ConfirmRestoreReview` (the org's review only) | 1 (multi-org UI: 2) |
 | `TokenService` | `CreateAPIToken`, `ListAPITokens`, `RevokeAPIToken`, `CreateServiceAccount`, … | Personal API tokens: 1; service accounts: 2 |
 | `EnrollmentService` | `CreateEnrollmentToken` (connectors, also re-enrollment; `connectors.write`), `CreateGatewayEnrollmentToken` (a gateway an Admin created, R15; `infrastructure.write`), both with step-up and shown once; `ListEnrollmentTokens`, `RevokeEnrollmentToken`, `GetInstallCommand` | 1 |
 | `ConnectorService` | `ListConnectors`, `GetConnector` (with its control session), `UpdateConnector` (name, labels, `transport`), `DecommissionConnector`, `GetConnectorStatus` (control session, data sessions as its gateways report them, routes it reports not ready) | 1 |
@@ -207,6 +207,7 @@ API reports both ([03](03-connections.md#configuration-reconciliation)).
 | Step-up required | `UNAUTHENTICATED` | `reason = STEP_UP_REQUIRED` |
 | Second factor needed: at login, or by the org's policy | `UNAUTHENTICATED` (login), `PERMISSION_DENIED` (policy) | `reason = MFA_REQUIRED` |
 | Etag mismatch, dependants exist, domain not verified, port taken | `FAILED_PRECONDITION` | `reason` + metadata |
+| A change while its org or the instance is in restore review ([10](10-operations.md#backup-and-restore)) | `FAILED_PRECONDITION` | `reason = RESTORE_REVIEW` |
 | DNS (Phase 2): zone not managed or not `active`, proxied or wildcard name not allowed by the zone, plan changed since it was shown, provider refuses the token for this zone | `FAILED_PRECONDITION` | `reason` = `ZONE_NOT_MANAGED`, `ZONE_NOT_ACTIVE`, `PROXY_NOT_ALLOWED`, `WILDCARD_NOT_ALLOWED`, `PLAN_CHANGED`, `PROVIDER_PERMISSION_DENIED` |
 | Rate limited | `RESOURCE_EXHAUSTED` | retry-after (`google.rpc.RetryInfo`) |
 | Agent unreachable for an imperative operation; DNS provider unreachable for a live call (`ListProviderZones`, `ListZoneRecords`, `PlanZoneSync`) | `UNAVAILABLE` | — |

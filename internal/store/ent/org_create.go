@@ -46,6 +46,20 @@ func (_c *OrgCreate) SetNillableCreatedAt(v *time.Time) *OrgCreate {
 	return _c
 }
 
+// SetRestoreReviewSince sets the "restore_review_since" field.
+func (_c *OrgCreate) SetRestoreReviewSince(v time.Time) *OrgCreate {
+	_c.mutation.SetRestoreReviewSince(v)
+	return _c
+}
+
+// SetNillableRestoreReviewSince sets the "restore_review_since" field if the given value is not nil.
+func (_c *OrgCreate) SetNillableRestoreReviewSince(v *time.Time) *OrgCreate {
+	if v != nil {
+		_c.SetRestoreReviewSince(*v)
+	}
+	return _c
+}
+
 // SetID sets the "id" field.
 func (_c *OrgCreate) SetID(v string) *OrgCreate {
 	_c.mutation.SetID(v)
@@ -186,6 +200,10 @@ func (_c *OrgCreate) createSpec() (*Org, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.CreatedAt(); ok {
 		_spec.SetField(org.FieldCreatedAt, field.TypeTime, value)
 		_node.CreatedAt = value
+	}
+	if value, ok := _c.mutation.RestoreReviewSince(); ok {
+		_spec.SetField(org.FieldRestoreReviewSince, field.TypeTime, value)
+		_node.RestoreReviewSince = &value
 	}
 	return _node, _spec
 }

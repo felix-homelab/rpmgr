@@ -105,8 +105,8 @@ func TestRestore(t *testing.T) {
 	if code != cli.ExitError || !strings.Contains(stderr, "none.yaml") {
 		t.Errorf("a missing boot file: exit %d, %q", code, stderr)
 	}
-	if code, _, stderr := runRpmgr("restore", "confirm"); code != cli.ExitUsage || !strings.Contains(stderr, "not available in this build") {
-		t.Errorf("restore confirm: exit %d, %q", code, stderr)
+	if code, _, stderr := runRpmgr("restore", "confirm", "--org", "acme", "--config", missing); code != cli.ExitError || !strings.Contains(stderr, "none.yaml") {
+		t.Errorf("restore confirm with a missing boot file: exit %d, %q", code, stderr)
 	}
 }
 

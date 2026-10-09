@@ -144,6 +144,20 @@ func (_c *APITokenCreate) SetNillableStepUpAt(v *time.Time) *APITokenCreate {
 	return _c
 }
 
+// SetSuspendedAt sets the "suspended_at" field.
+func (_c *APITokenCreate) SetSuspendedAt(v time.Time) *APITokenCreate {
+	_c.mutation.SetSuspendedAt(v)
+	return _c
+}
+
+// SetNillableSuspendedAt sets the "suspended_at" field if the given value is not nil.
+func (_c *APITokenCreate) SetNillableSuspendedAt(v *time.Time) *APITokenCreate {
+	if v != nil {
+		_c.SetSuspendedAt(*v)
+	}
+	return _c
+}
+
 // SetID sets the "id" field.
 func (_c *APITokenCreate) SetID(v string) *APITokenCreate {
 	_c.mutation.SetID(v)
@@ -371,6 +385,10 @@ func (_c *APITokenCreate) createSpec() (*APIToken, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.StepUpAt(); ok {
 		_spec.SetField(apitoken.FieldStepUpAt, field.TypeTime, value)
 		_node.StepUpAt = &value
+	}
+	if value, ok := _c.mutation.SuspendedAt(); ok {
+		_spec.SetField(apitoken.FieldSuspendedAt, field.TypeTime, value)
+		_node.SuspendedAt = &value
 	}
 	return _node, _spec
 }
