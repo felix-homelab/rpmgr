@@ -24,6 +24,9 @@ type AgentSession func(*sql.Selector)
 // AgentState is the predicate function for agentstate builders.
 type AgentState func(*sql.Selector)
 
+// AuditCheckpoint is the predicate function for auditcheckpoint builders.
+type AuditCheckpoint func(*sql.Selector)
+
 // AuditEntry is the predicate function for auditentry builders.
 type AuditEntry func(*sql.Selector)
 

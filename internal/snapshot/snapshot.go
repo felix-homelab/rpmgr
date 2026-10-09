@@ -13,7 +13,6 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"crypto/x509"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"slices"
@@ -116,10 +115,7 @@ func Hash(s *agentv1.Signed) []byte {
 }
 
 // KeyID names a signing key: the hexadecimal SHA-256 of its certificate's SubjectPublicKeyInfo.
-func KeyID(cert *x509.Certificate) string {
-	h := sha256.Sum256(cert.RawSubjectPublicKeyInfo)
-	return hex.EncodeToString(h[:])
-}
+func KeyID(cert *x509.Certificate) string { return pki.KeyID(cert) }
 
 // Sign encodes m deterministically and signs it with the config-signing key.
 func Sign(signer pki.KeyPair, m proto.Message) (*agentv1.Signed, error) {

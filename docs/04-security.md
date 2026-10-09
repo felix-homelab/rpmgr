@@ -792,6 +792,12 @@ Phase 3 item ([13](13-roadmap.md#phase-3--advanced)).
 - Signed **checkpoints** (chain head + count, signed with the audit-checkpoint key) are shipped to an
   external sink (syslog, OTLP, webhook, or object storage with retention lock). The external copy
   is what makes tampering evident: anyone with database write access could recompute a chain.
+- [R] A checkpoint's signature covers a version label, the chain's name, the seq, the head's hash
+  and the time. A chain verifies from its genesis, or,
+  once retention removed its first entries, from the signed checkpoint just before the first entry
+  left. Every checkpoint must verify with a key the CA certified for audit checkpoints at its time,
+  and must match its entry while the entry is left, so a chain rewritten under a checkpoint, or a
+  tail cut below one, is found.
 - **Phase 1 has no external sink.** Checkpoints are signed and stored in the database and in
   `/var/lib/rpmgr/audit-checkpoints.log`, which is included in every backup. Until an external sink
   is configured (Phase 2, optional, [14](14-open-decisions.md) D11), an attacker with write access

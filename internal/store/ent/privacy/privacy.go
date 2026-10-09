@@ -255,6 +255,30 @@ func (f AgentStateMutationRuleFunc) EvalMutation(ctx context.Context, m ent.Muta
 	return Denyf("ent/privacy: unexpected mutation type %T, expect *ent.AgentStateMutation", m)
 }
 
+// The AuditCheckpointQueryRuleFunc type is an adapter to allow the use of ordinary
+// functions as a query rule.
+type AuditCheckpointQueryRuleFunc func(context.Context, *ent.AuditCheckpointQuery) error
+
+// EvalQuery return f(ctx, q).
+func (f AuditCheckpointQueryRuleFunc) EvalQuery(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.AuditCheckpointQuery); ok {
+		return f(ctx, q)
+	}
+	return Denyf("ent/privacy: unexpected query type %T, expect *ent.AuditCheckpointQuery", q)
+}
+
+// The AuditCheckpointMutationRuleFunc type is an adapter to allow the use of ordinary
+// functions as a mutation rule.
+type AuditCheckpointMutationRuleFunc func(context.Context, *ent.AuditCheckpointMutation) error
+
+// EvalMutation calls f(ctx, m).
+func (f AuditCheckpointMutationRuleFunc) EvalMutation(ctx context.Context, m ent.Mutation) error {
+	if m, ok := m.(*ent.AuditCheckpointMutation); ok {
+		return f(ctx, m)
+	}
+	return Denyf("ent/privacy: unexpected mutation type %T, expect *ent.AuditCheckpointMutation", m)
+}
+
 // The AuditEntryQueryRuleFunc type is an adapter to allow the use of ordinary
 // functions as a query rule.
 type AuditEntryQueryRuleFunc func(context.Context, *ent.AuditEntryQuery) error
@@ -1310,6 +1334,8 @@ func queryFilter(q ent.Query) (Filter, error) {
 		return q.Filter(), nil
 	case *ent.AgentStateQuery:
 		return q.Filter(), nil
+	case *ent.AuditCheckpointQuery:
+		return q.Filter(), nil
 	case *ent.AuditEntryQuery:
 		return q.Filter(), nil
 	case *ent.AuditHeadQuery:
@@ -1412,6 +1438,8 @@ func mutationFilter(m ent.Mutation) (Filter, error) {
 	case *ent.AgentSessionMutation:
 		return m.Filter(), nil
 	case *ent.AgentStateMutation:
+		return m.Filter(), nil
+	case *ent.AuditCheckpointMutation:
 		return m.Filter(), nil
 	case *ent.AuditEntryMutation:
 		return m.Filter(), nil

@@ -26,6 +26,8 @@ type Tx struct {
 	AgentSession *AgentSessionClient
 	// AgentState is the client for interacting with the AgentState builders.
 	AgentState *AgentStateClient
+	// AuditCheckpoint is the client for interacting with the AuditCheckpoint builders.
+	AuditCheckpoint *AuditCheckpointClient
 	// AuditEntry is the client for interacting with the AuditEntry builders.
 	AuditEntry *AuditEntryClient
 	// AuditHead is the client for interacting with the AuditHead builders.
@@ -247,6 +249,7 @@ func (tx *Tx) init() {
 	tx.AccessPolicy = NewAccessPolicyClient(tx.config)
 	tx.AgentSession = NewAgentSessionClient(tx.config)
 	tx.AgentState = NewAgentStateClient(tx.config)
+	tx.AuditCheckpoint = NewAuditCheckpointClient(tx.config)
 	tx.AuditEntry = NewAuditEntryClient(tx.config)
 	tx.AuditHead = NewAuditHeadClient(tx.config)
 	tx.CABundle = NewCABundleClient(tx.config)
