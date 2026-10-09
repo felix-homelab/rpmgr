@@ -360,6 +360,9 @@ type Route struct {
 	CreateTime *timestamppb.Timestamp `protobuf:"bytes,24,opt,name=create_time,json=createTime,proto3" json:"create_time,omitempty"`
 	// When it was last changed; output only.
 	UpdateTime *timestamppb.Timestamp `protobuf:"bytes,25,opt,name=update_time,json=updateTime,proto3" json:"update_time,omitempty"`
+	// The user who created or last changed it, empty for the system; output only. The UI names them
+	// when a save meets a newer version (docs/09-web-ui.md, U6).
+	UpdateUserId string `protobuf:"bytes,26,opt,name=update_user_id,json=updateUserId,proto3" json:"update_user_id,omitempty"`
 	// The version to send back with an update; output only.
 	Etag string `protobuf:"bytes,30,opt,name=etag,proto3" json:"etag,omitempty"`
 	// What the agents report about it, with GetRoute and ListRoutes; output only.
@@ -516,6 +519,13 @@ func (x *Route) GetUpdateTime() *timestamppb.Timestamp {
 		return x.UpdateTime
 	}
 	return nil
+}
+
+func (x *Route) GetUpdateUserId() string {
+	if x != nil {
+		return x.UpdateUserId
+	}
+	return ""
 }
 
 func (x *Route) GetEtag() string {
@@ -2524,7 +2534,7 @@ var File_rpmgr_v1_route_proto protoreflect.FileDescriptor
 
 const file_rpmgr_v1_route_proto_rawDesc = "" +
 	"\n" +
-	"\x14rpmgr/v1/route.proto\x12\brpmgr.v1\x1a\x1bbuf/validate/validate.proto\x1a google/protobuf/field_mask.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x15rpmgr/v1/common.proto\x1a\x18rpmgr/v1/connector.proto\x1a\x16rpmgr/v1/options.proto\x1a\x15rpmgr/v1/status.proto\"\xaf\a\n" +
+	"\x14rpmgr/v1/route.proto\x12\brpmgr.v1\x1a\x1bbuf/validate/validate.proto\x1a google/protobuf/field_mask.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x15rpmgr/v1/common.proto\x1a\x18rpmgr/v1/connector.proto\x1a\x16rpmgr/v1/options.proto\x1a\x15rpmgr/v1/status.proto\"\xd5\a\n" +
 	"\x05Route\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12B\n" +
 	"\x04name\x18\x02 \x01(\tB.\xbaH+\xd8\x01\x01r&2$^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$R\x04name\x12(\n" +
@@ -2545,7 +2555,8 @@ const file_rpmgr_v1_route_proto_rawDesc = "" +
 	"\vcreate_time\x18\x18 \x01(\v2\x1a.google.protobuf.TimestampR\n" +
 	"createTime\x12;\n" +
 	"\vupdate_time\x18\x19 \x01(\v2\x1a.google.protobuf.TimestampR\n" +
-	"updateTime\x12\x12\n" +
+	"updateTime\x12$\n" +
+	"\x0eupdate_user_id\x18\x1a \x01(\tR\fupdateUserId\x12\x12\n" +
 	"\x04etag\x18\x1e \x01(\tR\x04etag\x12-\n" +
 	"\x06status\x18\x1f \x01(\v2\x15.rpmgr.v1.RouteStatusR\x06status\x1a9\n" +
 	"\vLabelsEntry\x12\x10\n" +
