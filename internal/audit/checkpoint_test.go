@@ -283,3 +283,27 @@ func TestPrune(t *testing.T) {
 		}
 	})
 }
+
+// TestUncovered: the oldest entry no checkpoint covers is found across chains, and none once
+// every chain is checkpointed.
+func TestUncovered(t *testing.T) {
+	withCA(t, func(t *testing.T, e env, ca *pki.CA, trust audit.Trust) {
+		if _, ok, err := audit.Uncovered(sys(t), e.db); err != nil || ok {
+			t.Fatalf("an empty log: %v %v", ok, err)
+		}
+		first := record(t, e.db, login(e.a, "usr_1"))
+		record(t, e.db, login(e.b, "usr_2"))
+		oldest, ok, err := audit.Uncovered(sys(t), e.db)
+		if err != nil || !ok || !oldest.Equal(first.Time) {
+			t.Fatalf("uncovered: %v %v %v, want %v", oldest, ok, err, first.Time)
+		}
+		checkpoint(t, e, ca, time.Now(), audit.Pending)
+		if _, ok, err := audit.Uncovered(sys(t), e.db); err != nil || ok {
+			t.Fatalf("after checkpoints: %v %v", ok, err)
+		}
+		later := record(t, e.db, login(e.b, "usr_2"))
+		if oldest, ok, _ := audit.Uncovered(sys(t), e.db); !ok || !oldest.Equal(later.Time) {
+			t.Fatalf("a new entry: %v %v, want %v", oldest, ok, later.Time)
+		}
+	})
+}

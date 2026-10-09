@@ -478,31 +478,32 @@ affect agents take effect through reconciliation and show apply status like any 
 Prometheus exposition on the admin listener of every role. Labels use stable IDs (`route` = route
 ID); there are never per-connection or per-client-IP labels.
 
-| Metric | Type | Role | Meaning |
-|---|---|---|---|
-| `rpmgr_gateway_sessions{transport}` | gauge | gateway | Data sessions from connectors, by transport (`quic`, `h2`, `wss`) |
-| `rpmgr_gateway_streams_open{route,transport}` | gauge | gateway | Open user streams |
-| `rpmgr_route_connections_total{route,result}` | counter | gateway | User connections, and streams of HTTP routes, by `StreamResult` code name in lower case ([03](03-connections.md#framing)), or `no_session`, `draining`, `timeout` or `error` without one |
-| `rpmgr_route_bytes_total{route,direction}` | counter | gateway | Bytes, `direction` = `in` (public → service) or `out` |
-| `rpmgr_route_connection_setup_seconds{route}` | histogram | gateway | Asking a connector for a stream → its `StreamResult` |
-| `rpmgr_http_requests_total{route,code}` | counter | gateway | Requests of HTTP routes by status, the route's refusals included |
-| `rpmgr_udp_oversize_total{route}` | counter | gateway, connector | UDP payloads too large for a datagram, sent on the flow stream ([03](03-connections.md#udp-routes)) |
-| `rpmgr_udp_datagrams_dropped_total{route,reason}` | counter | gateway, connector | Drops: queue full, flow limit, unknown flow, policy |
-| `rpmgr_connector_session_rtt_seconds{gateway,transport}` | gauge | connector | Smoothed RTT, the lowest of the data sessions to a gateway over a transport: QUIC's own estimate, or for h2 from the session `Ping` and `Pong` ([03](03-connections.md#timeouts-keepalive-and-backoff)) |
-| `rpmgr_connector_target_dial_seconds{route}` | histogram | connector | Upstream dial time; dials the local policy refuses are not timed |
-| `rpmgr_connector_policy_denied_total{route}` | counter | connector | Dials refused by local policy |
-| `rpmgr_agent_applied_revision` | gauge | agent | Last applied revision `seq` |
-| `rpmgr_agent_apply_status{agent,status}` | gauge | controller | 1 for the current status (`pending`, `applied`, `rejected`, `apply_timeout`) |
-| `rpmgr_agent_cert_expiry_timestamp_seconds` | gauge | agent | Own certificate `NotAfter` |
-| `rpmgr_controller_control_sessions` | gauge | controller | Connected agents |
-| `rpmgr_acme_cert_expiry_timestamp_seconds{hostname}` | gauge | controller | Public certificates |
-| `rpmgr_quic_gso_enabled`, `rpmgr_quic_udp_buffer_warning` | gauge | gateway, connector | Host tuning status ([03](03-connections.md#host-tuning-applied-by-the-installer)) |
-| `rpmgr_audit_checkpoint_age_seconds` | gauge | controller | Time since the last checkpoint reached the external sink |
-| `rpmgr_dns_sync_runs_total{zone,result}` | counter | controller | DNS passes per managed zone: `ok`, `held`, `failed`, `rate_limited` |
-| `rpmgr_dns_names{zone,status}` | gauge | controller | Names per `dns_status` ([15](15-dns.md#publication-rules)) |
-| `rpmgr_dns_records{zone,state}` | gauge | controller | Owned records per ledger state |
-| `rpmgr_dns_provider_requests_total{provider,code}` | counter | controller | Provider API calls by HTTP status |
-| `rpmgr_dns_provider_token_expiry_timestamp_seconds{provider}` | gauge | controller | Expiry of the provider's token, if it has one |
+| Metric | Type | Role | Phase | Meaning |
+|---|---|---|---|---|
+| `rpmgr_gateway_sessions{transport}` | gauge | gateway | 1 | Data sessions from connectors, by transport (`quic`, `h2`, `wss`) |
+| `rpmgr_gateway_streams_open{route,transport}` | gauge | gateway | 1 | Open user streams |
+| `rpmgr_route_connections_total{route,result}` | counter | gateway | 1 | User connections, and streams of HTTP routes, by `StreamResult` code name in lower case ([03](03-connections.md#framing)), or `no_session`, `draining`, `timeout` or `error` without one |
+| `rpmgr_route_bytes_total{route,direction}` | counter | gateway | 1 | Bytes, `direction` = `in` (public → service) or `out` |
+| `rpmgr_route_connection_setup_seconds{route}` | histogram | gateway | 1 | Asking a connector for a stream → its `StreamResult` |
+| `rpmgr_http_requests_total{route,code}` | counter | gateway | 1 | Requests of HTTP routes by status, the route's refusals included |
+| `rpmgr_udp_oversize_total{route}` | counter | gateway, connector | 1 | UDP payloads too large for a datagram, sent on the flow stream ([03](03-connections.md#udp-routes)) |
+| `rpmgr_udp_datagrams_dropped_total{route,reason}` | counter | gateway, connector | 1 | Drops: queue full, flow limit, unknown flow, policy |
+| `rpmgr_connector_session_rtt_seconds{gateway,transport}` | gauge | connector | 1 | Smoothed RTT, the lowest of the data sessions to a gateway over a transport: QUIC's own estimate, or for h2 from the session `Ping` and `Pong` ([03](03-connections.md#timeouts-keepalive-and-backoff)) |
+| `rpmgr_connector_target_dial_seconds{route}` | histogram | connector | 1 | Upstream dial time; dials the local policy refuses are not timed |
+| `rpmgr_connector_policy_denied_total{route}` | counter | connector | 1 | Dials refused by local policy |
+| `rpmgr_agent_applied_revision` | gauge | agent | 1 | Last applied revision `seq` |
+| `rpmgr_agent_apply_status{agent,status}` | gauge | controller | 1 | 1 for the current status (`pending`, `applied`, `rejected`, `apply_timeout`) |
+| `rpmgr_agent_cert_expiry_timestamp_seconds` | gauge | agent | 1 | Own certificate `NotAfter` |
+| `rpmgr_controller_control_sessions` | gauge | controller | 1 | Connected agents |
+| `rpmgr_acme_cert_expiry_timestamp_seconds{hostname}` | gauge | controller | 1 | Public certificates |
+| `rpmgr_quic_gso_enabled`, `rpmgr_quic_udp_buffer_warning` | gauge | gateway, connector | 1 | Host tuning status ([03](03-connections.md#host-tuning-applied-by-the-installer)) |
+| `rpmgr_audit_checkpoint_age_seconds` | gauge | controller | 1 | Age of the oldest audit entry no checkpoint covers yet, 0 when every entry is covered ([04](04-security.md#audit-log)); with the external sink (Phase 2), no checkpoint that reached the sink |
+| `rpmgr_ratelimit_refused_total{limit}` | counter | controller | 1 | [R] Requests a rate limit refused: `login` and `password_reset` per address, `account` per account, `enrollment` per address; the audit log leaves them out ([04](04-security.md#audit-log)) |
+| `rpmgr_dns_sync_runs_total{zone,result}` | counter | controller | 2 | DNS passes per managed zone: `ok`, `held`, `failed`, `rate_limited` |
+| `rpmgr_dns_names{zone,status}` | gauge | controller | 2 | Names per `dns_status` ([15](15-dns.md#publication-rules)) |
+| `rpmgr_dns_records{zone,state}` | gauge | controller | 2 | Owned records per ledger state |
+| `rpmgr_dns_provider_requests_total{provider,code}` | counter | controller | 2 | Provider API calls by HTTP status |
+| `rpmgr_dns_provider_token_expiry_timestamp_seconds{provider}` | gauge | controller | 2 | Expiry of the provider's token, if it has one |
 
 ### Traces
 
@@ -535,7 +536,7 @@ followed gateway → connector → service. [R] Head sampling at 1 % by default,
 | Route has no ready connector | A route's ready-connector count is 0 for 2 min |
 | UDP payloads too large | `rpmgr_udp_oversize_total` rate > 0 sustained |
 | Clock skew | Agent clock offset > 30 s |
-| Audit sink behind | `rpmgr_audit_checkpoint_age_seconds` > 1 h |
+| Audit checkpoints behind | `rpmgr_audit_checkpoint_age_seconds` > 1 h |
 | Revocation log not yet off-host | A revocation-log sink is configured and a controller replica has entries not yet shipped to it for > 5 min (without a sink, the UI shows a standing hardening warning instead) |
 | DNS conflict | A name in a managed zone is `conflict` or `ambiguous` for > 15 min |
 | DNS zone held | A managed zone is `held` (after import, restore or the deletion guard) |

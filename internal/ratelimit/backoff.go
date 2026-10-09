@@ -13,6 +13,9 @@ import (
 // delays instead of locking out, so an attacker cannot lock an administrator out for longer than
 // the maximum.
 type Backoff struct {
+	// OnRefuse, if set before the Backoff is used, is called whenever Wait makes a key wait.
+	OnRefuse func()
+
 	free       int
 	first, max time.Duration
 	now        func() time.Time
@@ -36,6 +39,14 @@ func NewBackoff(free int, first, max time.Duration, now func() time.Time) *Backo
 
 // Wait returns how long key must wait before its next attempt; 0 when it may go ahead.
 func (b *Backoff) Wait(key string) time.Duration {
+	d := b.wait(key)
+	if d > 0 && b.OnRefuse != nil {
+		b.OnRefuse()
+	}
+	return d
+}
+
+func (b *Backoff) wait(key string) time.Duration {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	if f, ok := b.keys[key]; ok {
