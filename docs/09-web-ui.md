@@ -141,6 +141,19 @@ flowchart LR
   refuses and the lint rule against `dangerouslySetInnerHTML` forbids
   ([Frontend architecture](#frontend-architecture)).
 
+### Command palette
+
+- **`Ctrl K` or `⌘ K`** on any signed-in page, or "Go to…" in the header, opens the palette (U9).
+- **Without a query** it offers the pages and the actions "Create a route" and "Enroll a
+  connector".
+- **A query** also finds routes, connectors, gateway groups and gateways. They are found by name,
+  labels that start with the query first, or by the start of their ID. At most 50 matches are
+  shown.
+- **Keyboard:** the arrow keys move through the matches, `Enter` runs one and `Escape` closes the
+  palette. It is a combobox with a list box, so screen readers announce the active match.
+- **Linkable dialog:** the enroll dialog's state is in the connectors page's URL, so the palette, or
+  a link, can open it.
+
 ### YAML view
 
 - **"YAML"** on the detail of a route, a connector or a gateway group shows its manifest, with

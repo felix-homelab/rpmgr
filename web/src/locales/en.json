@@ -879,5 +879,21 @@
     "copied": "Copied",
     "download": "Download",
     "close": "Close"
+  },
+  "palette": {
+    "open": "Go to…",
+    "title": "Go to",
+    "search": "Page, resource or action",
+    "results": "Matches",
+    "none": "Nothing matches.",
+    "page": "Page",
+    "action": "Action",
+    "route": "Route",
+    "connector": "Connector",
+    "group": "Gateway group",
+    "gateway": "Gateway",
+    "createRoute": "Create a route",
+    "enroll": "Enroll a connector",
+    "account": "Your account"
   }
 }

@@ -43,8 +43,15 @@ test("signs in, creates an API token with a step-up, sets up an authenticator an
   await expect(page.getByRole("region", { name: "Traffic, last 24 hours" }).getByText(/^In 0 B · out 0 B/)).toBeVisible();
   await expectAccessible(page);
 
-  // The instance settings, which the first user changes as the Instance Admin.
-  await page.getByRole("link", { name: "Settings" }).click();
+  // The command palette (U9) leads to the instance settings, which the first user changes as the
+  // Instance Admin.
+  await page.keyboard.press("Control+K");
+  const palette = page.getByRole("dialog", { name: "Go to" });
+  await palette.getByRole("combobox").fill("sett");
+  await expect(palette.getByRole("option", { selected: true })).toHaveText(/^Settings/);
+  await expectAccessible(page);
+  await palette.getByRole("combobox").press("Enter");
+  await expect(palette).toBeHidden();
   const instance = page.getByRole("region", { name: "Instance settings" });
   await expect(instance.getByLabel("Keep hourly statistics (days)")).toHaveValue(/^\d+$/);
   await expectAccessible(page);
