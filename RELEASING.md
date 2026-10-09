@@ -19,6 +19,7 @@ tagged build on.
 - [Security releases](#security-releases)
 - [Withdrawing a release](#withdrawing-a-release)
 - [Roles](#roles)
+- [Interim signing keys](#interim-signing-keys)
 
 ## Versioning
 
@@ -175,18 +176,53 @@ For a minor or major release. A patch release is the same, starting from the bra
    Green CI ([CONTRIBUTING.md](CONTRIBUTING.md#reviews)), then merge it with a merge commit.
 5. **Tag** the merge commit: `git tag -s vX.Y.0` with the changelog section as the message, and
    push the tag.
-6. **Build** runs on the tag in CI ([12](docs/12-testing-and-quality.md#continuous-integration)):
-   - two independent, reproducible builds whose SHA-256 must match;
-   - SBOM, SLSA provenance, cosign signatures;
+6. **Build** runs on the tag in CI, in the workflow `release`
+   ([12](docs/12-testing-and-quality.md#continuous-integration)):
+   - the tag must match the release pattern, and `CHANGELOG.md` must have its dated section, whose
+     text becomes the release notes;
+   - two builds of the tag, on an x86-64 and an arm64 runner, must give artifacts equal byte for
+     byte; the same two builds also run every night;
+   - the artifacts must be release builds: no build tags, so never `rpmgrtest`, and the release
+     root keys compiled in. The job prints the roots' key IDs and fingerprints, which the signer
+     compares with the record of the [key ceremony](#interim-signing-keys);
+   - an SBOM, SLSA provenance as a GitHub artifact attestation, and keyless cosign signatures of
+     every artifact, the SBOM and `SHA256SUMS`;
+   - a **draft** GitHub release with all of them and the **unsigned** `manifest.json`: `seq` one
+     above the last published release's, that release's `floor`, the `channel` the version
+     implies (`stable`, or `prerelease` for a pre-release), and every artifact with its `variant`,
+     size and SHA-256;
    - container images.
-7. **Sign the release manifest** with the current signing key, which is held on a hardware token
-   outside CI: raise `seq`, set `floor` and `channel` (`stable`, or `prerelease` for a
-   pre-release), and list every artifact with its `variant`
-   ([04](docs/04-security.md#release-signing), [D10](docs/14-open-decisions.md#security-defaults)).
+7. **Sign the release manifest** with the current signing key, outside CI
+   ([04](docs/04-security.md#release-signing), [D10](docs/14-open-decisions.md#security-defaults)):
+   - download the draft's files and check the manifest against them and against the last
+     published release's manifest. For a security release or a withdrawn version, draft it again
+     with a raised floor:
+
+     ```sh
+     go run ./tools/releasemanifest check -dir <files> -previous <last manifest> \
+       <files>/manifest.json
+     go run ./tools/releasemanifest draft -version X.Y.Z -dir <files> -previous <last manifest> \
+       -floor <version> ><files>/manifest.json
+     ```
+
+   - sign it: in Phase 1 on the offline machine with the interim signing key
+     (`minisign -S -s signing.key -m manifest.json`), from the first release with OTA on its
+     hardware token;
+   - add `manifest.json.minisig`, `signing-key.json` and `signing-key.json.minisig` to the draft,
+     and `manifest.json` when it was drafted again.
 8. **Publish.**
-   - GitHub release: the changelog section, upgrade notes, verification instructions,
-     `SHA256SUMS`. For v1.0.0 the notes also state whether an external security review took
-     place ([D28](docs/14-open-decisions.md#project-and-process)).
+   - GitHub release: publish the draft, whose notes are the changelog section; add upgrade notes and
+     the verification instructions, for the provenance and for a cosign signature:
+
+     ```sh
+     gh attestation verify <artifact> --repo felix-homelab/rpmgr
+     cosign verify-blob --bundle <artifact>.sigstore.json \
+       --certificate-identity https://github.com/felix-homelab/rpmgr/.github/workflows/release.yml@refs/tags/vX.Y.Z \
+       --certificate-oidc-issuer https://token.actions.githubusercontent.com <artifact>
+     ```
+
+     For v1.0.0 the notes also state whether an external security review took place
+     ([D28](docs/14-open-decisions.md#project-and-process)).
    - Image tags `X.Y.0`, `X.Y` and `X`, plus `latest` for the highest stable release only.
    - The signed manifest as a release asset. Controllers fetch it from there in their daily
      release check ([D4](docs/14-open-decisions.md#product-and-project)); agents never contact the
@@ -263,3 +299,36 @@ role:
   No key ever enters CI. The v0.x releases of Phase 1, which have no OTA, are signed with interim
   keys kept as encrypted files on offline media; the hardware tokens take over with the first
   release that has OTA ([D48](docs/14-open-decisions.md#security-defaults)).
+
+## Interim signing keys
+
+The v0.x releases of Phase 1 are signed with interim keys kept as encrypted files on offline media
+([D48](docs/14-open-decisions.md#security-defaults)). The key ceremony makes them once, before
+v0.1.0; the formats and the validity of a statement are in
+[04](docs/04-security.md#release-signing).
+
+1. **Prepare the offline machine:** a live system booted from read-only media, with networking
+   off, and minisign 0.12, whose release signature was checked on another machine.
+2. **Generate** two root keys and the signing key, each private key encrypted with its own
+   passphrase: `minisign -G -p root-1.pub -s root-1.key`, then the same for `root-2` and
+   `signing`.
+3. **State the signing key:** write `signing-key.json` as one line of compact JSON and sign it with
+   a root:
+
+   ```sh
+   printf '{"statement":1,"signer":"%s","not_before":"%s","not_after":"%s"}' \
+     "$(tail -n 1 signing.pub)" <start, RFC 3339> <end, RFC 3339> >signing-key.json
+   minisign -S -s root-1.key -m signing-key.json
+   ```
+
+4. **Store** the encrypted private keys on two offline media: one at home with `root-1` and the
+   signing key, one off-site with `root-2`. The passphrases are kept apart from the media.
+5. **Record** the key ID of each public key, from the comment line of its `.pub` file, on paper
+   with the media. The public keys, `signing-key.json` and its signature leave the machine; nothing
+   else does, and the live system keeps no state.
+6. **Compile the roots in:** a PR adds the key lines of `root-1.pub` and `root-2.pub` to
+   `internal/release/roots.go`. `rpmgr version --verbose` of a build from it must print the
+   recorded key IDs. Until then release builds verify no release, and the release workflow
+   drafts no release from a tag.
+7. **Renew the statement** before it ends: on the offline machine, a new statement for the same
+   signing key, or a new signing key, signed by either root; it goes into the next release.
