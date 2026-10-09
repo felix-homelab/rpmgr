@@ -1,0 +1,172 @@
+// SPDX-License-Identifier: Apache-2.0
+
+syntax = "proto3";
+
+package rpmgr.v1;
+
+import "buf/validate/validate.proto";
+import "google/protobuf/timestamp.proto";
+import "rpmgr/v1/options.proto";
+
+option go_package = "github.com/felix-homelab/rpmgr/gen/rpmgr/v1;rpmgrv1";
+
+// AuditService reads and verifies the audit log (docs/07-api.md, "Services"; docs/04-security.md,
+// "Audit log"): an org's chain for its Owners and Admins, the instance chain for the Instance
+// Admin. Exporting comes in Phase 2.
+service AuditService {
+  // ListAuditEntries lists an org's audit entries, newest first.
+  rpc ListAuditEntries(ListAuditEntriesRequest) returns (ListAuditEntriesResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+    option (rpmgr.v1.authz) = {
+      permission: "audit.read"
+      resource_field: "org_id"
+    };
+  }
+  // VerifyAuditChain verifies an org's chain from its anchor, with its checkpoints.
+  rpc VerifyAuditChain(VerifyAuditChainRequest) returns (VerifyAuditChainResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+    option (rpmgr.v1.authz) = {
+      permission: "audit.read"
+      resource_field: "org_id"
+    };
+  }
+  // ListInstanceAuditEntries lists the instance chain's entries, newest first.
+  rpc ListInstanceAuditEntries(ListInstanceAuditEntriesRequest) returns (ListInstanceAuditEntriesResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+    option (rpmgr.v1.authz) = {permission: "instance.admin"};
+  }
+  // VerifyInstanceAuditChain verifies the instance chain as VerifyAuditChain does an org's.
+  rpc VerifyInstanceAuditChain(VerifyInstanceAuditChainRequest) returns (VerifyInstanceAuditChainResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+    option (rpmgr.v1.authz) = {permission: "instance.admin"};
+  }
+}
+
+// AuditEntry is one entry of an audit chain.
+message AuditEntry {
+  // Its ID, aud_….
+  string id = 1;
+  // Its place in its chain, from 1.
+  int64 seq = 2;
+  // When it was recorded.
+  google.protobuf.Timestamp time = 3;
+  // user, agent, system or anonymous.
+  string actor_type = 4;
+  // The user, agent or job that acted; empty for an anonymous actor.
+  string actor_id = 5;
+  // The session or token it acted with, never the secret.
+  string credential_id = 6;
+  // How it authenticated: session, token, pwd+otp, …
+  string auth_method = 7;
+  // The client's address.
+  string ip = 8;
+  // The client's user agent.
+  string user_agent = 9;
+  // The request's ID (Rpmgr-Request-Id).
+  string request_id = 10;
+  // What was done: an RPC's full name, or a named event such as token.create.
+  string action = 11;
+  // The kind of what it was done to.
+  string target_type = 12;
+  // The ID of what it was done to.
+  string target_id = 13;
+  // success, failure or denied.
+  string result = 14;
+  // The request with its secrets redacted.
+  string diff = 15;
+  // A reason or detail.
+  string reason = 16;
+}
+
+// ListAuditEntriesRequest names an org and filters its entries.
+message ListAuditEntriesRequest {
+  // The org.
+  string org_id = 1 [(buf.validate.field).string.min_len = 1];
+  // At most this many, 50 by default, 500 at most.
+  int32 page_size = 2 [(buf.validate.field).int32 = {
+    gte: 0
+    lte: 500
+  }];
+  // The page_token of the previous page.
+  string page_token = 3 [(buf.validate.field).string.max_len = 1024];
+  // Only entries with this action, if set.
+  string action = 4 [(buf.validate.field).string.max_len = 200];
+  // Only entries of this actor, if set.
+  string actor_id = 5 [(buf.validate.field).string.max_len = 200];
+}
+
+// ListInstanceAuditEntriesRequest filters the instance chain's entries.
+message ListInstanceAuditEntriesRequest {
+  // At most this many, 50 by default, 500 at most.
+  int32 page_size = 1 [(buf.validate.field).int32 = {
+    gte: 0
+    lte: 500
+  }];
+  // The page_token of the previous page.
+  string page_token = 2 [(buf.validate.field).string.max_len = 1024];
+  // Only entries with this action, if set.
+  string action = 3 [(buf.validate.field).string.max_len = 200];
+  // Only entries of this actor, if set.
+  string actor_id = 4 [(buf.validate.field).string.max_len = 200];
+}
+
+// ListAuditEntriesResponse is a page of entries, newest first.
+message ListAuditEntriesResponse {
+  // The entries.
+  repeated AuditEntry entries = 1;
+  // The token of the next page; empty after the last.
+  string next_page_token = 2;
+}
+
+// ListInstanceAuditEntriesResponse is a page of the instance chain's entries, newest first.
+message ListInstanceAuditEntriesResponse {
+  // The entries.
+  repeated AuditEntry entries = 1;
+  // The token of the next page; empty after the last.
+  string next_page_token = 2;
+}
+
+// VerifyAuditChainRequest names an org.
+message VerifyAuditChainRequest {
+  // The org.
+  string org_id = 1 [(buf.validate.field).string.min_len = 1];
+}
+
+// VerifyInstanceAuditChainRequest is empty.
+message VerifyInstanceAuditChainRequest {}
+
+// VerifyAuditChainResponse is the outcome of verifying an org's chain.
+message VerifyAuditChainResponse {
+  // The outcome.
+  AuditVerification verification = 1;
+}
+
+// VerifyInstanceAuditChainResponse is the outcome of verifying the instance chain.
+message VerifyInstanceAuditChainResponse {
+  // The outcome.
+  AuditVerification verification = 1;
+}
+
+// AuditVerification is the outcome of verifying a chain.
+message AuditVerification {
+  // Whether the chain verified.
+  bool intact = 1;
+  // The seq of its last entry, if it verified.
+  int64 head_seq = 2;
+  // Its last checkpoint, if it has one.
+  AuditCheckpoint last_checkpoint = 3;
+  // Where it broke, if it did: the first seq that does not fit.
+  int64 broken_at = 4;
+  // What is wrong there.
+  string problem = 5;
+}
+
+// AuditCheckpoint is a signed statement of a chain's head.
+message AuditCheckpoint {
+  // The seq it covers.
+  int64 seq = 1;
+  // When it was signed.
+  google.protobuf.Timestamp time = 2;
+  // The signing key: the SHA-256 of its certificate's public key, in hexadecimal.
+  string key_id = 3;
+}

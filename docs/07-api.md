@@ -82,7 +82,7 @@ names.
 | `StatusService` | `GetApplyStatus`, `WatchApplyStatus` (stream), `WatchEvents` (stream) | 1 |
 | `LogService` | `StreamLogs` (server stream from an agent via an imperative operation) | 2 |
 | `MetricsService` | `GetRouteTraffic`, `GetOverview` (rollups) | 1 |
-| `AuditService` | `ListAuditEntries`, `ExportAudit`, `VerifyAuditChain` | 1 (export: 2) |
+| `AuditService` | `ListAuditEntries`, `VerifyAuditChain` (an org's chain, `audit.read`), `ListInstanceAuditEntries`, `VerifyInstanceAuditChain` (the instance chain, Instance Admin), `ExportAudit` | 1 (export: 2) |
 | `SettingsService` | `GetInstanceSettings`, `UpdateInstanceSettings` (including `default_transport`), `SetSmtpPassword` (write-only; a read says only whether it is set), all for the Instance Admin; `GetOrgSettings` (members), `UpdateOrgSettings` (Owners; a change of the MFA requirement needs a step-up, and a default gateway group must be one of the org's). Updates name their fields in a mask; a named field the request does not set returns to its default | 1 |
 | `ReleaseService` | `ListReleases`, `UploadRelease` (air-gapped installs), `CreateRollout`, `GetRollout`, `PauseRollout`; the release check and update channel are instance settings (`SettingsService`) | 2 |
 | `ManifestService` | `ExportManifests` (an org's resources as YAML manifests: all, of the kinds named, or the resources named), `Plan`, `Apply` (declarative manifests) | 1 (`Plan`, `Apply`: 2) |
