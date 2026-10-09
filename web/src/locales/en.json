@@ -318,5 +318,41 @@
     "connectors": "Connectors its streams would go to: {{names}}",
     "none": "none",
     "ok": "No gateway would refuse it."
+  },
+  "targetForm": {
+    "addTitle": "New target",
+    "editTitle": "Edit target",
+    "addButton": "Add a target",
+    "add": "Add the target",
+    "chooseConnector": "Choose a connector",
+    "connectorNeeded": "Choose the connector that reaches the target.",
+    "address": "Address",
+    "hostPort": "Host and port",
+    "unixPath": "Unix socket",
+    "host": "Host",
+    "port": "Port",
+    "unixPathLabel": "Socket path",
+    "upstream": "Protocol to the target",
+    "upstreams": {
+      "TCP": "TCP",
+      "HTTP": "HTTP",
+      "HTTPS": "HTTPS, verified",
+      "H2C": "HTTP/2 without TLS (h2c)"
+    },
+    "serverName": "TLS server name (empty: the host)",
+    "caBundle": "CA bundle ID (empty: the system's roots)",
+    "spki": "Public key pin, SHA-256 in hex (optional)",
+    "proxy": "PROXY protocol",
+    "proxies": {
+      "NONE": "None",
+      "V1": "Version 1",
+      "V2": "Version 2"
+    },
+    "priority": "Priority",
+    "enabled": "Enabled",
+    "edit": "Edit…",
+    "removeAsk": "Remove…",
+    "ask": "Remove the target {{address}}?",
+    "remove": "Remove it"
   }
 }
