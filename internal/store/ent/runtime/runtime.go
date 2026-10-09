@@ -1069,21 +1069,32 @@ func init() {
 		})
 	}
 	gatewayMixinHooks0 := gatewayMixin[0].Hooks()
+	gatewayMixinHooks1 := gatewayMixin[1].Hooks()
 	gatewayHooks := schema.Gateway{}.Hooks()
 
 	gateway.Hooks[1] = gatewayMixinHooks0[0]
 
-	gateway.Hooks[2] = gatewayHooks[0]
+	gateway.Hooks[2] = gatewayMixinHooks1[0]
+
+	gateway.Hooks[3] = gatewayHooks[0]
 	gatewayMixinInters0 := gatewayMixin[0].Interceptors()
 	gateway.Interceptors[0] = gatewayMixinInters0[0]
 	gatewayMixinFields0 := gatewayMixin[0].Fields()
 	_ = gatewayMixinFields0
+	gatewayMixinFields1 := gatewayMixin[1].Fields()
+	_ = gatewayMixinFields1
 	gatewayFields := schema.Gateway{}.Fields()
 	_ = gatewayFields
 	// gatewayDescOrgID is the schema descriptor for org_id field.
 	gatewayDescOrgID := gatewayMixinFields0[0].Descriptor()
 	// gateway.OrgIDValidator is a validator for the "org_id" field. It is called by the builders before save.
 	gateway.OrgIDValidator = gatewayDescOrgID.Validators[0].(func(string) error)
+	// gatewayDescVersion is the schema descriptor for version field.
+	gatewayDescVersion := gatewayMixinFields1[0].Descriptor()
+	// gateway.DefaultVersion holds the default value on creation for the version field.
+	gateway.DefaultVersion = gatewayDescVersion.Default.(int64)
+	// gateway.VersionValidator is a validator for the "version" field. It is called by the builders before save.
+	gateway.VersionValidator = gatewayDescVersion.Validators[0].(func(int64) error)
 	// gatewayDescGatewayGroupID is the schema descriptor for gateway_group_id field.
 	gatewayDescGatewayGroupID := gatewayFields[1].Descriptor()
 	// gateway.GatewayGroupIDValidator is a validator for the "gateway_group_id" field. It is called by the builders before save.
@@ -1153,18 +1164,29 @@ func init() {
 		})
 	}
 	gatewaygroupMixinHooks0 := gatewaygroupMixin[0].Hooks()
+	gatewaygroupMixinHooks1 := gatewaygroupMixin[1].Hooks()
 
 	gatewaygroup.Hooks[1] = gatewaygroupMixinHooks0[0]
+
+	gatewaygroup.Hooks[2] = gatewaygroupMixinHooks1[0]
 	gatewaygroupMixinInters0 := gatewaygroupMixin[0].Interceptors()
 	gatewaygroup.Interceptors[0] = gatewaygroupMixinInters0[0]
 	gatewaygroupMixinFields0 := gatewaygroupMixin[0].Fields()
 	_ = gatewaygroupMixinFields0
+	gatewaygroupMixinFields1 := gatewaygroupMixin[1].Fields()
+	_ = gatewaygroupMixinFields1
 	gatewaygroupFields := schema.GatewayGroup{}.Fields()
 	_ = gatewaygroupFields
 	// gatewaygroupDescOrgID is the schema descriptor for org_id field.
 	gatewaygroupDescOrgID := gatewaygroupMixinFields0[0].Descriptor()
 	// gatewaygroup.OrgIDValidator is a validator for the "org_id" field. It is called by the builders before save.
 	gatewaygroup.OrgIDValidator = gatewaygroupDescOrgID.Validators[0].(func(string) error)
+	// gatewaygroupDescVersion is the schema descriptor for version field.
+	gatewaygroupDescVersion := gatewaygroupMixinFields1[0].Descriptor()
+	// gatewaygroup.DefaultVersion holds the default value on creation for the version field.
+	gatewaygroup.DefaultVersion = gatewaygroupDescVersion.Default.(int64)
+	// gatewaygroup.VersionValidator is a validator for the "version" field. It is called by the builders before save.
+	gatewaygroup.VersionValidator = gatewaygroupDescVersion.Validators[0].(func(int64) error)
 	// gatewaygroupDescName is the schema descriptor for name field.
 	gatewaygroupDescName := gatewaygroupFields[1].Descriptor()
 	// gatewaygroup.NameValidator is a validator for the "name" field. It is called by the builders before save.

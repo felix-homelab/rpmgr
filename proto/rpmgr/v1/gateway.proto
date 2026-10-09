@@ -1,0 +1,154 @@
+// SPDX-License-Identifier: Apache-2.0
+
+syntax = "proto3";
+
+package rpmgr.v1;
+
+import "buf/validate/validate.proto";
+import "google/protobuf/field_mask.proto";
+import "rpmgr/v1/common.proto";
+import "rpmgr/v1/options.proto";
+
+option go_package = "github.com/felix-homelab/rpmgr/gen/rpmgr/v1;rpmgrv1";
+
+// GatewayService is an org's gateway groups, gateways, port pools and quotas (docs/07-api.md,
+// "Services"; docs/06-data-model.md, "Fleet").
+service GatewayService {
+  // CreateGatewayGroup creates a gateway group, which holds up to four gateways.
+  rpc CreateGatewayGroup(CreateGatewayGroupRequest) returns (CreateGatewayGroupResponse) {
+    option (rpmgr.v1.authz) = {
+      permission: "infrastructure.write"
+      resource_field: "org_id"
+    };
+  }
+  // GetGatewayGroup returns a gateway group.
+  rpc GetGatewayGroup(GetGatewayGroupRequest) returns (GetGatewayGroupResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+    option (rpmgr.v1.authz) = {
+      permission: "org.read"
+      resource_field: "gateway_group_id"
+    };
+  }
+  // ListGatewayGroups lists an org's gateway groups by ID.
+  rpc ListGatewayGroups(ListGatewayGroupsRequest) returns (ListGatewayGroupsResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+    option (rpmgr.v1.authz) = {
+      permission: "org.read"
+      resource_field: "org_id"
+    };
+  }
+  // UpdateGatewayGroup changes the fields the mask names.
+  rpc UpdateGatewayGroup(UpdateGatewayGroupRequest) returns (UpdateGatewayGroupResponse) {
+    option (rpmgr.v1.authz) = {
+      permission: "infrastructure.write"
+      resource_field: "gateway_group.id"
+    };
+  }
+  // DeleteGatewayGroup deletes a gateway group that has no gateway, route or port pool left;
+  // decommissioned gateways go with it.
+  rpc DeleteGatewayGroup(DeleteGatewayGroupRequest) returns (DeleteGatewayGroupResponse) {
+    option (rpmgr.v1.authz) = {
+      permission: "infrastructure.write"
+      resource_field: "gateway_group_id"
+    };
+  }
+}
+
+// GatewayGroup is a set of up to four gateways that publish routes together.
+message GatewayGroup {
+  // The group's ID, gwg_…; output only.
+  string id = 1;
+  // Its name, unique in the org: lower-case letters, digits and hyphens; required on create.
+  string name = 2 [(buf.validate.field) = {
+    ignore: IGNORE_IF_ZERO_VALUE
+    string: {pattern: "^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$"}
+  }];
+  // A free-form region, for people.
+  string region = 3 [(buf.validate.field).string.max_len = 100];
+  // The DNS names or addresses of its public traffic.
+  repeated string public_hostnames = 4 [(buf.validate.field).repeated.max_items = 32];
+  // The proxies in front of it whose forwarding headers its gateways keep, as CIDRs.
+  repeated string trusted_proxy_cidrs = 5 [(buf.validate.field).repeated.max_items = 64];
+  // The version to send back with an update or delete; output only.
+  string etag = 6;
+}
+
+// CreateGatewayGroupRequest is a new gateway group.
+message CreateGatewayGroupRequest {
+  // The org.
+  string org_id = 1 [(buf.validate.field).string.min_len = 1];
+  // The group; its ID and etag are ignored.
+  GatewayGroup gateway_group = 2 [(buf.validate.field).required = true];
+  // Makes retries idempotent (docs/07-api.md, "Resource design").
+  string request_id = 3 [(buf.validate.field).string.max_len = 128];
+}
+
+// CreateGatewayGroupResponse is the new group.
+message CreateGatewayGroupResponse {
+  // The group.
+  GatewayGroup gateway_group = 1;
+  // The configuration revision of the change.
+  Revision revision = 2;
+}
+
+// GetGatewayGroupRequest names a group.
+message GetGatewayGroupRequest {
+  // The group's ID.
+  string gateway_group_id = 1 [(buf.validate.field).string.min_len = 1];
+}
+
+// GetGatewayGroupResponse is the group.
+message GetGatewayGroupResponse {
+  // The group.
+  GatewayGroup gateway_group = 1;
+}
+
+// ListGatewayGroupsRequest pages through an org's groups.
+message ListGatewayGroupsRequest {
+  // The org.
+  string org_id = 1 [(buf.validate.field).string.min_len = 1];
+  // At most this many, 50 if not set, 500 at most.
+  int32 page_size = 2;
+  // The page after the one that returned it.
+  string page_token = 3;
+}
+
+// ListGatewayGroupsResponse is one page of groups.
+message ListGatewayGroupsResponse {
+  // The groups.
+  repeated GatewayGroup gateway_groups = 1;
+  // The token of the next page; empty after the last.
+  string next_page_token = 2;
+}
+
+// UpdateGatewayGroupRequest is a changed group.
+message UpdateGatewayGroupRequest {
+  // The group with its ID and the new values of the fields the mask names.
+  GatewayGroup gateway_group = 1 [(buf.validate.field).required = true];
+  // The fields to change: name, region, public_hostnames, trusted_proxy_cidrs.
+  google.protobuf.FieldMask update_mask = 2;
+  // The etag the caller read; empty skips the check.
+  string etag = 3;
+}
+
+// UpdateGatewayGroupResponse is the changed group.
+message UpdateGatewayGroupResponse {
+  // The group.
+  GatewayGroup gateway_group = 1;
+  // The configuration revision of the change.
+  Revision revision = 2;
+}
+
+// DeleteGatewayGroupRequest names a group.
+message DeleteGatewayGroupRequest {
+  // The group's ID.
+  string gateway_group_id = 1 [(buf.validate.field).string.min_len = 1];
+  // The etag the caller read; empty skips the check.
+  string etag = 2;
+}
+
+// DeleteGatewayGroupResponse is the revision.
+message DeleteGatewayGroupResponse {
+  // The configuration revision of the change.
+  Revision revision = 1;
+}

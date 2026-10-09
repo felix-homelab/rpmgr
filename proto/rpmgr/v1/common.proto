@@ -1,0 +1,16 @@
+// SPDX-License-Identifier: Apache-2.0
+
+syntax = "proto3";
+
+package rpmgr.v1;
+
+option go_package = "github.com/felix-homelab/rpmgr/gen/rpmgr/v1;rpmgrv1";
+
+// Revision is a configuration revision: every configuration change makes one, and agents apply
+// them in order (docs/03-connections.md, "Configuration reconciliation").
+message Revision {
+  // The database epoch; a restore starts a new one.
+  string db_epoch = 1;
+  // The sequence number within the epoch.
+  int64 seq = 2;
+}

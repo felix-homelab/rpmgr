@@ -19,7 +19,7 @@ var slugRe = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$`)
 type GatewayGroup struct{ ent.Schema }
 
 // Mixin makes gateway groups org-owned.
-func (GatewayGroup) Mixin() []ent.Mixin { return []ent.Mixin{OrgMixin{}} }
+func (GatewayGroup) Mixin() []ent.Mixin { return []ent.Mixin{OrgMixin{}, VersionMixin{}} }
 
 // Fields of a gateway group.
 func (GatewayGroup) Fields() []ent.Field {

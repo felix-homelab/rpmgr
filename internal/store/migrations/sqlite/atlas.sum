@@ -1,4 +1,4 @@
-h1:WGgKaX23MKp4AiBUDbrTRDUlJMsc9WYY5pYaXRNdfxQ=
+h1:21s29lYEisFJezJbFb5RhigYGHfq9xEs1i4Wc3rahmY=
 20261007104715_init.sql h1:pF+EZfqVnaVoEYtJTX+eFxkAZNQHtzLrN7GFfoc+GNE=
 20261007110312_config_revisions.sql h1:vyGjNiUBsWooQ4kxjnpkYMWZLX4CLUoGUjFmXl2tGrc=
 20261007111838_settings.sql h1:DZYkkYfp2eUVgo0ZYeZ/5eY7F2XI5yCZ4oKu/LAte6w=
@@ -29,3 +29,4 @@ h1:WGgKaX23MKp4AiBUDbrTRDUlJMsc9WYY5pYaXRNdfxQ=
 20261008134453_invitations.sql h1:CxhLWb2dZlrTHeE/hwx0Xhg+/FcJGBFPA9D+UmhUo8U=
 20261008135725_instance_secrets.sql h1:/iHrBkQ5vSkgG//p5Ws8oSGZdwc0nih+d1GO22CDwyc=
 20261008141043_api_tokens.sql h1:sm0uTSBfgvWz2yUJ8XcUMaFFZu96qSQGRBAklothlzM=
+20261008142901_fleet_versions.sql h1:mbeciLgIuIbUBfN74LqkPPnNTRjHdXtq6/TvNqSkAsY=

@@ -33,6 +33,8 @@ const pw = "correct horse battery staple"
 
 // env serves AuthService behind the API interceptor, as the controller does.
 type env struct {
+	db       *store.DB
+	sys      context.Context
 	clock    time.Time
 	acc      *accounts.Accounts
 	mfa      *accounts.MFA
@@ -50,7 +52,7 @@ func newEnv(t *testing.T) *env {
 	db := storetest.Migrated(t, store.SQLite)
 	storetest.Init(t, db)
 	sys := storetest.SystemCtx(t)
-	e := &env{clock: time.Now()}
+	e := &env{db: db, sys: sys, clock: time.Now()}
 	now := func() time.Time { return e.clock }
 	e.log = filepath.Join(t.TempDir(), "revocations.log")
 	rl, err := revlog.Open(e.log, now)
@@ -90,6 +92,12 @@ func newEnv(t *testing.T) *env {
 		}); err != nil {
 		t.Fatal(err)
 	}
+	if err := srv.Mount(mux, rpmgrv1.File_rpmgr_v1_gateway_proto.Services().ByName("GatewayService"),
+		func(o ...connect.HandlerOption) (string, http.Handler) {
+			return rpmgrv1connect.NewGatewayServiceHandler(&apisvc.Gateways{DB: db, API: srv}, o...)
+		}); err != nil {
+		t.Fatal(err)
+	}
 	if err := srv.Mount(mux, rpmgrv1.File_rpmgr_v1_token_proto.Services().ByName("TokenService"),
 		func(o ...connect.HandlerOption) (string, http.Handler) {
 			return rpmgrv1connect.NewTokenServiceHandler(&apisvc.Token{Tokens: e.tokens, API: srv}, o...)
@@ -124,6 +132,7 @@ type browser struct {
 	user   rpmgrv1connect.UserServiceClient
 	org    rpmgrv1connect.OrgServiceClient
 	token  rpmgrv1connect.TokenServiceClient
+	gw     rpmgrv1connect.GatewayServiceClient
 }
 
 func (e *env) browser() *browser {
@@ -132,6 +141,7 @@ func (e *env) browser() *browser {
 	b.user = rpmgrv1connect.NewUserServiceClient(&http.Client{Transport: b}, e.url)
 	b.org = rpmgrv1connect.NewOrgServiceClient(&http.Client{Transport: b}, e.url)
 	b.token = rpmgrv1connect.NewTokenServiceClient(&http.Client{Transport: b}, e.url)
+	b.gw = rpmgrv1connect.NewGatewayServiceClient(&http.Client{Transport: b}, e.url)
 	return b
 }
 

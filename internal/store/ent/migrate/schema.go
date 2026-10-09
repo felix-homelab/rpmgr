@@ -482,6 +482,7 @@ var (
 	GatewaysColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeString},
 		{Name: "org_id", Type: field.TypeString},
+		{Name: "version", Type: field.TypeInt64, Default: 1},
 		{Name: "name", Type: field.TypeString},
 		{Name: "slot", Type: field.TypeInt},
 		{Name: "tunnel_endpoints", Type: field.TypeJSON},
@@ -501,7 +502,7 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "gateways_gateway_groups_group",
-				Columns:    []*schema.Column{GatewaysColumns[11]},
+				Columns:    []*schema.Column{GatewaysColumns[12]},
 				RefColumns: []*schema.Column{GatewayGroupsColumns[0]},
 				OnDelete:   schema.NoAction,
 			},
@@ -515,12 +516,12 @@ var (
 			{
 				Name:    "gateway_org_id_name",
 				Unique:  true,
-				Columns: []*schema.Column{GatewaysColumns[1], GatewaysColumns[2]},
+				Columns: []*schema.Column{GatewaysColumns[1], GatewaysColumns[3]},
 			},
 			{
 				Name:    "gateway_gateway_group_id_slot",
 				Unique:  true,
-				Columns: []*schema.Column{GatewaysColumns[11], GatewaysColumns[3]},
+				Columns: []*schema.Column{GatewaysColumns[12], GatewaysColumns[4]},
 				Annotation: &entsql.IndexAnnotation{
 					Where: "decommissioned_at IS NULL",
 				},
@@ -531,6 +532,7 @@ var (
 	GatewayGroupsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeString},
 		{Name: "org_id", Type: field.TypeString},
+		{Name: "version", Type: field.TypeInt64, Default: 1},
 		{Name: "name", Type: field.TypeString},
 		{Name: "region", Type: field.TypeString, Nullable: true},
 		{Name: "public_hostnames", Type: field.TypeJSON, Nullable: true},
@@ -550,7 +552,7 @@ var (
 			{
 				Name:    "gatewaygroup_org_id_name",
 				Unique:  true,
-				Columns: []*schema.Column{GatewayGroupsColumns[1], GatewayGroupsColumns[2]},
+				Columns: []*schema.Column{GatewayGroupsColumns[1], GatewayGroupsColumns[3]},
 			},
 		},
 	}

@@ -19,6 +19,8 @@ type GatewayGroup struct {
 	ID string `json:"id,omitempty"`
 	// OrgID holds the value of the "org_id" field.
 	OrgID string `json:"org_id,omitempty"`
+	// Version holds the value of the "version" field.
+	Version int64 `json:"version,omitempty"`
 	// Name holds the value of the "name" field.
 	Name string `json:"name,omitempty"`
 	// Region holds the value of the "region" field.
@@ -37,6 +39,8 @@ func (*GatewayGroup) scanValues(columns []string) ([]any, error) {
 		switch columns[i] {
 		case gatewaygroup.FieldPublicHostnames, gatewaygroup.FieldTrustedProxyCidrs:
 			values[i] = new([]byte)
+		case gatewaygroup.FieldVersion:
+			values[i] = new(sql.NullInt64)
 		case gatewaygroup.FieldID, gatewaygroup.FieldOrgID, gatewaygroup.FieldName, gatewaygroup.FieldRegion:
 			values[i] = new(sql.NullString)
 		default:
@@ -65,6 +69,12 @@ func (_m *GatewayGroup) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field org_id", values[i])
 			} else if value.Valid {
 				_m.OrgID = value.String
+			}
+		case gatewaygroup.FieldVersion:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field version", values[i])
+			} else if value.Valid {
+				_m.Version = value.Int64
 			}
 		case gatewaygroup.FieldName:
 			if value, ok := values[i].(*sql.NullString); !ok {
@@ -132,6 +142,9 @@ func (_m *GatewayGroup) String() string {
 	builder.WriteString(fmt.Sprintf("id=%v, ", _m.ID))
 	builder.WriteString("org_id=")
 	builder.WriteString(_m.OrgID)
+	builder.WriteString(", ")
+	builder.WriteString("version=")
+	builder.WriteString(fmt.Sprintf("%v", _m.Version))
 	builder.WriteString(", ")
 	builder.WriteString("name=")
 	builder.WriteString(_m.Name)

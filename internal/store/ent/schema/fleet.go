@@ -31,7 +31,7 @@ var ErrGroupFull = errors.New("store: the gateway group already has 4 gateways")
 type Gateway struct{ ent.Schema }
 
 // Mixin makes gateways org-owned.
-func (Gateway) Mixin() []ent.Mixin { return []ent.Mixin{OrgMixin{}} }
+func (Gateway) Mixin() []ent.Mixin { return []ent.Mixin{OrgMixin{}, VersionMixin{}} }
 
 // Fields of a gateway.
 func (Gateway) Fields() []ent.Field {

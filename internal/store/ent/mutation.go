@@ -14320,6 +14320,8 @@ type GatewayMutation struct {
 	typ                    string
 	id                     *string
 	org_id                 *string
+	version                *int64
+	addversion             *int64
 	name                   *string
 	slot                   *int
 	addslot                *int
@@ -14477,6 +14479,62 @@ func (m *GatewayMutation) OldOrgID(ctx context.Context) (v string, err error) {
 // ResetOrgID resets all changes to the "org_id" field.
 func (m *GatewayMutation) ResetOrgID() {
 	m.org_id = nil
+}
+
+// SetVersion sets the "version" field.
+func (m *GatewayMutation) SetVersion(i int64) {
+	m.version = &i
+	m.addversion = nil
+}
+
+// Version returns the value of the "version" field in the mutation.
+func (m *GatewayMutation) Version() (r int64, exists bool) {
+	v := m.version
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldVersion returns the old "version" field's value of the Gateway entity.
+// If the Gateway object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GatewayMutation) OldVersion(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldVersion is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldVersion requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldVersion: %w", err)
+	}
+	return oldValue.Version, nil
+}
+
+// AddVersion adds i to the "version" field.
+func (m *GatewayMutation) AddVersion(i int64) {
+	if m.addversion != nil {
+		*m.addversion += i
+	} else {
+		m.addversion = &i
+	}
+}
+
+// AddedVersion returns the value that was added to the "version" field in this mutation.
+func (m *GatewayMutation) AddedVersion() (r int64, exists bool) {
+	v := m.addversion
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetVersion resets all changes to the "version" field.
+func (m *GatewayMutation) ResetVersion() {
+	m.version = nil
+	m.addversion = nil
 }
 
 // SetGatewayGroupID sets the "gateway_group_id" field.
@@ -15000,9 +15058,12 @@ func (m *GatewayMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *GatewayMutation) Fields() []string {
-	fields := make([]string, 0, 11)
+	fields := make([]string, 0, 12)
 	if m.org_id != nil {
 		fields = append(fields, gateway.FieldOrgID)
+	}
+	if m.version != nil {
+		fields = append(fields, gateway.FieldVersion)
 	}
 	if m.group != nil {
 		fields = append(fields, gateway.FieldGatewayGroupID)
@@ -15044,6 +15105,8 @@ func (m *GatewayMutation) Field(name string) (ent.Value, bool) {
 	switch name {
 	case gateway.FieldOrgID:
 		return m.OrgID()
+	case gateway.FieldVersion:
+		return m.Version()
 	case gateway.FieldGatewayGroupID:
 		return m.GatewayGroupID()
 	case gateway.FieldName:
@@ -15075,6 +15138,8 @@ func (m *GatewayMutation) OldField(ctx context.Context, name string) (ent.Value,
 	switch name {
 	case gateway.FieldOrgID:
 		return m.OldOrgID(ctx)
+	case gateway.FieldVersion:
+		return m.OldVersion(ctx)
 	case gateway.FieldGatewayGroupID:
 		return m.OldGatewayGroupID(ctx)
 	case gateway.FieldName:
@@ -15110,6 +15175,13 @@ func (m *GatewayMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetOrgID(v)
+		return nil
+	case gateway.FieldVersion:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetVersion(v)
 		return nil
 	case gateway.FieldGatewayGroupID:
 		v, ok := value.(string)
@@ -15189,6 +15261,9 @@ func (m *GatewayMutation) SetField(name string, value ent.Value) error {
 // this mutation.
 func (m *GatewayMutation) AddedFields() []string {
 	var fields []string
+	if m.addversion != nil {
+		fields = append(fields, gateway.FieldVersion)
+	}
 	if m.addslot != nil {
 		fields = append(fields, gateway.FieldSlot)
 	}
@@ -15200,6 +15275,8 @@ func (m *GatewayMutation) AddedFields() []string {
 // was not set, or was not defined in the schema.
 func (m *GatewayMutation) AddedField(name string) (ent.Value, bool) {
 	switch name {
+	case gateway.FieldVersion:
+		return m.AddedVersion()
 	case gateway.FieldSlot:
 		return m.AddedSlot()
 	}
@@ -15211,6 +15288,13 @@ func (m *GatewayMutation) AddedField(name string) (ent.Value, bool) {
 // type.
 func (m *GatewayMutation) AddField(name string, value ent.Value) error {
 	switch name {
+	case gateway.FieldVersion:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddVersion(v)
+		return nil
 	case gateway.FieldSlot:
 		v, ok := value.(int)
 		if !ok {
@@ -15274,6 +15358,9 @@ func (m *GatewayMutation) ResetField(name string) error {
 	switch name {
 	case gateway.FieldOrgID:
 		m.ResetOrgID()
+		return nil
+	case gateway.FieldVersion:
+		m.ResetVersion()
 		return nil
 	case gateway.FieldGatewayGroupID:
 		m.ResetGatewayGroupID()
@@ -15390,6 +15477,8 @@ type GatewayGroupMutation struct {
 	typ                       string
 	id                        *string
 	org_id                    *string
+	version                   *int64
+	addversion                *int64
 	name                      *string
 	region                    *string
 	public_hostnames          *[]string
@@ -15540,6 +15629,62 @@ func (m *GatewayGroupMutation) OldOrgID(ctx context.Context) (v string, err erro
 // ResetOrgID resets all changes to the "org_id" field.
 func (m *GatewayGroupMutation) ResetOrgID() {
 	m.org_id = nil
+}
+
+// SetVersion sets the "version" field.
+func (m *GatewayGroupMutation) SetVersion(i int64) {
+	m.version = &i
+	m.addversion = nil
+}
+
+// Version returns the value of the "version" field in the mutation.
+func (m *GatewayGroupMutation) Version() (r int64, exists bool) {
+	v := m.version
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldVersion returns the old "version" field's value of the GatewayGroup entity.
+// If the GatewayGroup object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GatewayGroupMutation) OldVersion(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldVersion is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldVersion requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldVersion: %w", err)
+	}
+	return oldValue.Version, nil
+}
+
+// AddVersion adds i to the "version" field.
+func (m *GatewayGroupMutation) AddVersion(i int64) {
+	if m.addversion != nil {
+		*m.addversion += i
+	} else {
+		m.addversion = &i
+	}
+}
+
+// AddedVersion returns the value that was added to the "version" field in this mutation.
+func (m *GatewayGroupMutation) AddedVersion() (r int64, exists bool) {
+	v := m.addversion
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetVersion resets all changes to the "version" field.
+func (m *GatewayGroupMutation) ResetVersion() {
+	m.version = nil
+	m.addversion = nil
 }
 
 // SetName sets the "name" field.
@@ -15791,9 +15936,12 @@ func (m *GatewayGroupMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *GatewayGroupMutation) Fields() []string {
-	fields := make([]string, 0, 5)
+	fields := make([]string, 0, 6)
 	if m.org_id != nil {
 		fields = append(fields, gatewaygroup.FieldOrgID)
+	}
+	if m.version != nil {
+		fields = append(fields, gatewaygroup.FieldVersion)
 	}
 	if m.name != nil {
 		fields = append(fields, gatewaygroup.FieldName)
@@ -15817,6 +15965,8 @@ func (m *GatewayGroupMutation) Field(name string) (ent.Value, bool) {
 	switch name {
 	case gatewaygroup.FieldOrgID:
 		return m.OrgID()
+	case gatewaygroup.FieldVersion:
+		return m.Version()
 	case gatewaygroup.FieldName:
 		return m.Name()
 	case gatewaygroup.FieldRegion:
@@ -15836,6 +15986,8 @@ func (m *GatewayGroupMutation) OldField(ctx context.Context, name string) (ent.V
 	switch name {
 	case gatewaygroup.FieldOrgID:
 		return m.OldOrgID(ctx)
+	case gatewaygroup.FieldVersion:
+		return m.OldVersion(ctx)
 	case gatewaygroup.FieldName:
 		return m.OldName(ctx)
 	case gatewaygroup.FieldRegion:
@@ -15859,6 +16011,13 @@ func (m *GatewayGroupMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetOrgID(v)
+		return nil
+	case gatewaygroup.FieldVersion:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetVersion(v)
 		return nil
 	case gatewaygroup.FieldName:
 		v, ok := value.(string)
@@ -15895,13 +16054,21 @@ func (m *GatewayGroupMutation) SetField(name string, value ent.Value) error {
 // AddedFields returns all numeric fields that were incremented/decremented during
 // this mutation.
 func (m *GatewayGroupMutation) AddedFields() []string {
-	return nil
+	var fields []string
+	if m.addversion != nil {
+		fields = append(fields, gatewaygroup.FieldVersion)
+	}
+	return fields
 }
 
 // AddedField returns the numeric value that was incremented/decremented on a field
 // with the given name. The second boolean return value indicates that this field
 // was not set, or was not defined in the schema.
 func (m *GatewayGroupMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case gatewaygroup.FieldVersion:
+		return m.AddedVersion()
+	}
 	return nil, false
 }
 
@@ -15910,6 +16077,13 @@ func (m *GatewayGroupMutation) AddedField(name string) (ent.Value, bool) {
 // type.
 func (m *GatewayGroupMutation) AddField(name string, value ent.Value) error {
 	switch name {
+	case gatewaygroup.FieldVersion:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddVersion(v)
+		return nil
 	}
 	return fmt.Errorf("unknown GatewayGroup numeric field %s", name)
 }
@@ -15960,6 +16134,9 @@ func (m *GatewayGroupMutation) ResetField(name string) error {
 	switch name {
 	case gatewaygroup.FieldOrgID:
 		m.ResetOrgID()
+		return nil
+	case gatewaygroup.FieldVersion:
+		m.ResetVersion()
 		return nil
 	case gatewaygroup.FieldName:
 		m.ResetName()
