@@ -2,7 +2,7 @@ module github.com/felix-homelab/rpmgr
 
 go 1.26.4
 
-toolchain go1.27.1
+toolchain go1.27.2
 
 tool (
 	connectrpc.com/connect/cmd/protoc-gen-connect-go
@@ -24,7 +24,7 @@ require (
 	go.yaml.in/yaml/v3 v3.0.5
 	golang.org/x/crypto v0.57.0
 	golang.org/x/mod v0.41.0
-	golang.org/x/net v0.59.0
+	golang.org/x/net v0.60.0
 	golang.org/x/term v0.46.0
 	google.golang.org/grpc v1.84.0
 	google.golang.org/protobuf v1.36.12
