@@ -60,7 +60,7 @@ an opaque blob: no foreign system's configuration is embedded, and every field i
 | `memberships` | id, org_id, user_id, role (`owner`, `admin`, `operator`, `viewer`), created_by | Unique (org_id, user_id) |
 | `invitations` | id, org_id, email, role, token_hash, expires_at, accepted_at | The invitation is a one-time link; it is also e-mailed if SMTP is configured |
 | `password_resets` | id, user_id (null: the first-user link), token_hash, created_by, created_at, expires_at, used_at | One-time reset links, created by an Admin, by `rpmgr user reset-password` on the controller host, or by the user through e-mail if SMTP is configured ([04](04-security.md#human-authentication-and-sessions)); a link goes with its user. Only the system scope reads or writes them |
-| `sessions` | id, user_id, token_hash, created_at, last_seen_at, idle_expires_at, absolute_expires_at, elevated_until, amr, ip, user_agent, revoked_at | Server-side sessions ([04](04-security.md#human-authentication-and-sessions)) |
+| `sessions` | id, user_id, token_hash, created_at, last_seen_at, idle_expires_at, absolute_expires_at, elevated_until, amr, ip, user_agent, revoked_at | Server-side sessions ([04](04-security.md#human-authentication-and-sessions)). Use moves `idle_expires_at` on, never past `absolute_expires_at`, and is written at most once a minute. A session goes with its user. Only the system scope reads or writes them |
 | `totp_credentials`, `webauthn_credentials`, `recovery_codes` | user_id, … (TOTP seed encrypted; recovery codes hashed) | |
 | `identity_providers` | id, org_id, issuer, client_id, client_secret_enc, group_role_mapping | OIDC SSO |
 | `external_identities` | idp_id, subject, user_id | Unique (idp_id, subject) |

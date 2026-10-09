@@ -271,3 +271,9 @@ func errIf(cond bool, err error) error {
 	}
 	return nil
 }
+
+// LinkURL is the address of a link's page in the web UI: the token goes in the fragment, which
+// browsers never send to a server, so it stays out of access logs and Referer headers.
+func LinkURL(publicURL, tok string) string {
+	return strings.TrimSuffix(publicURL, "/") + "/reset#" + tok
+}

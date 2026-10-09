@@ -113,8 +113,19 @@ func TestControllerInit(t *testing.T) {
 		t.Fatal(err)
 	}
 	code, stdout, stderr := runRpmgr("controller", "init", "--config", cfg)
-	if code != cli.ExitOK || !strings.Contains(stdout, "trust domain: rpmgr-") || !strings.Contains(stdout, "CA pin:       sha256:") {
+	if code != cli.ExitOK || !strings.Contains(stdout, "trust domain: rpmgr-") || !strings.Contains(stdout, "CA pin:       sha256:") ||
+		!strings.Contains(stdout, "https://panel.example.com/reset#rpmgr_prs_") {
 		t.Fatalf("first init: exit %d, stdout %q, stderr %q", code, stdout, stderr)
+	}
+	// Before the first user exists, reset-password makes another first-user link; an e-mail
+	// address of nobody is refused.
+	code, stdout, stderr = runRpmgr("user", "reset-password", "--config", cfg)
+	if code != cli.ExitOK || !strings.Contains(stdout, "https://panel.example.com/reset#rpmgr_prs_") || !strings.Contains(stdout, "first user") {
+		t.Errorf("reset-password before the first user: exit %d, stdout %q, stderr %q", code, stdout, stderr)
+	}
+	code, _, stderr = runRpmgr("user", "reset-password", "--config", cfg, "--email", "nobody@example.com")
+	if code != cli.ExitError || !strings.Contains(stderr, "no user nobody@example.com") {
+		t.Errorf("reset-password for nobody: exit %d, stderr %q", code, stderr)
 	}
 	code, _, stderr = runRpmgr("controller", "init", "--config", cfg, "--public-url", "https://other.example.com")
 	if code != cli.ExitError || !strings.Contains(stderr, "public_url") {

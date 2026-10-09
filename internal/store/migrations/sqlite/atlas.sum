@@ -1,4 +1,4 @@
-h1:eK7sy/0A+k8rXt7SDCF1YqBtZc5DXf13eCKZJDnCm20=
+h1:O52vUixswCOziG6+CQK1cBaL2PFDrQ0SncvejeMuFlo=
 20261007104715_init.sql h1:pF+EZfqVnaVoEYtJTX+eFxkAZNQHtzLrN7GFfoc+GNE=
 20261007110312_config_revisions.sql h1:vyGjNiUBsWooQ4kxjnpkYMWZLX4CLUoGUjFmXl2tGrc=
 20261007111838_settings.sql h1:DZYkkYfp2eUVgo0ZYeZ/5eY7F2XI5yCZ4oKu/LAte6w=
@@ -24,3 +24,4 @@ h1:eK7sy/0A+k8rXt7SDCF1YqBtZc5DXf13eCKZJDnCm20=
 20261008111210_certificates_pending.sql h1:XagksVB7SrK/LODcNCe8t0Ykk/F43dXmoTsVxCtympM=
 20261008123558_api_requests.sql h1:Qjb5lduVQCMvU9hiIrWh3pcH0sKmDoKi1ooVkbTDiV0=
 20261008125950_users.sql h1:L8pytIm3p1gJOqzwafR2P3RIIFVE6TeCocuq50fkrD8=
+20261008131309_sessions.sql h1:Kwj/7NMIsOmEFifyJz/L0kpYS33P5tzM4N6ReFWpMxA=

@@ -92,6 +92,8 @@ type Tx struct {
 	RouteUDP *RouteUDPClient
 	// SecretMeta is the client for interacting with the SecretMeta builders.
 	SecretMeta *SecretMetaClient
+	// Session is the client for interacting with the Session builders.
+	Session *SessionClient
 	// User is the client for interacting with the User builders.
 	User *UserClient
 
@@ -264,6 +266,7 @@ func (tx *Tx) init() {
 	tx.RouteTarget = NewRouteTargetClient(tx.config)
 	tx.RouteUDP = NewRouteUDPClient(tx.config)
 	tx.SecretMeta = NewSecretMetaClient(tx.config)
+	tx.Session = NewSessionClient(tx.config)
 	tx.User = NewUserClient(tx.config)
 }
 

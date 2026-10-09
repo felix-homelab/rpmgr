@@ -18,6 +18,7 @@ import (
 	"go.yaml.in/yaml/v3"
 
 	rpmgrv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/v1"
+	"github.com/felix-homelab/rpmgr/internal/accounts"
 	"github.com/felix-homelab/rpmgr/internal/audit"
 	"github.com/felix-homelab/rpmgr/internal/authz"
 	"github.com/felix-homelab/rpmgr/internal/config"
@@ -57,6 +58,8 @@ type InitResult struct {
 	RootPin     string
 	Root        *x509.Certificate
 	KEK         string // where the KEK is, and whether init created it
+	// FirstUserLink is the one-time link that creates the first user.
+	FirstUserLink string
 }
 
 // ErrInitialised is returned when the database already holds an installation.
@@ -133,7 +136,12 @@ func Init(ctx context.Context, o InitOptions) (InitResult, error) {
 	if err != nil {
 		return InitResult{}, err
 	}
-	return InitResult{TrustDomain: td, RootPin: pki.RootPin(ca.Root()), Root: ca.Root(), KEK: where}, nil
+	tok, err := accounts.New(db, ctx, o.Now).FirstUserLink("local-cli")
+	if err != nil {
+		return InitResult{}, fmt.Errorf("controller: initialised, but no first-user link (run `rpmgr user reset-password`): %w", err)
+	}
+	return InitResult{TrustDomain: td, RootPin: pki.RootPin(ca.Root()), Root: ca.Root(), KEK: where,
+		FirstUserLink: accounts.LinkURL(cfg.PublicURL, tok)}, nil
 }
 
 func (o *InitOptions) setDefaults() {

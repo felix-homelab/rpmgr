@@ -58,7 +58,7 @@ func (h host) opts() controller.InitOptions {
 }
 
 // check opens the initialised database and verifies what init created: the instance, a CA that
-// opens with kek, and an audit chain with the grant and the init entry.
+// opens with kek, an audit chain with the grant, the init and the first-user link, and the link.
 func (h host) check(t *testing.T, kek secret.KEK, r controller.InitResult) {
 	t.Helper()
 	ctx := context.Background()
@@ -84,8 +84,11 @@ func (h host) check(t *testing.T, kek secret.KEK, r controller.InitResult) {
 		t.Error("the reported pin or trust domain is not the CA's")
 	}
 	head, err := audit.Verify(sys, db, "")
-	if err != nil || head.Seq != 2 {
-		t.Errorf("instance audit chain: %d entries, %v; want the grant and the init", head.Seq, err)
+	if err != nil || head.Seq != 3 {
+		t.Errorf("instance audit chain: %d entries, %v; want the grant, the init and the first-user link", head.Seq, err)
+	}
+	if !strings.HasPrefix(r.FirstUserLink, "https://panel.example.com/reset#rpmgr_prs_") {
+		t.Errorf("the first-user link %q", r.FirstUserLink)
 	}
 }
 

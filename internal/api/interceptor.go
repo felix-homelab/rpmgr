@@ -50,6 +50,7 @@ func (i interceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
 			return nil, err
 		}
 		resp, err := next(rec.hook(ctx), req)
+		err = i.s.sanitize(md, err)
 		rec.finish(ctx, err)
 		return resp, err
 	}
@@ -80,7 +81,7 @@ func (i interceptor) WrapStreamingHandler(next connect.StreamingHandlerFunc) con
 			rec.finish(ctx, err)
 			return err
 		}
-		err = next(rec.hook(ctx), &replay{StreamingHandlerConn: conn, first: msg})
+		err = i.s.sanitize(md, next(rec.hook(ctx), &replay{StreamingHandlerConn: conn, first: msg}))
 		rec.finish(ctx, err)
 		return err
 	}
@@ -222,6 +223,18 @@ func (s *Server) orgOf(ctx context.Context, field, id string) (string, error) {
 		return "", connect.NewError(connect.CodeInternal, errors.New("api: cannot look the resource up"))
 	}
 	return org, nil
+}
+
+// sanitize keeps a handler's connect errors, which it wrote for the client, and turns any other
+// error into INTERNAL without its text, which may hold details of the database or other orgs; the
+// text goes to the log.
+func (s *Server) sanitize(md protoreflect.MethodDescriptor, err error) error {
+	var cerr *connect.Error
+	if err == nil || errors.As(err, &cerr) {
+		return err
+	}
+	s.o.Logger.Error("an API method failed", "method", md.FullName(), "error", err)
+	return connect.NewError(connect.CodeInternal, errors.New("api: internal error"))
 }
 
 // scoped reports whether a token's scopes include p; a session has every permission of its roles.

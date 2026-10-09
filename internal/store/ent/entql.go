@@ -43,6 +43,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routetcp"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routeudp"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/secretmeta"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/session"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/user"
 
 	"entgo.io/ent/dialect/sql"
@@ -53,7 +54,7 @@ import (
 
 // schemaGraph holds a representation of ent/schema at runtime.
 var schemaGraph = func() *sqlgraph.Schema {
-	graph := &sqlgraph.Schema{Nodes: make([]*sqlgraph.Node, 40)}
+	graph := &sqlgraph.Schema{Nodes: make([]*sqlgraph.Node, 41)}
 	graph.Nodes[0] = &sqlgraph.Node{
 		NodeSpec: sqlgraph.NodeSpec{
 			Table:   acmestorage.Table,
@@ -846,6 +847,30 @@ var schemaGraph = func() *sqlgraph.Schema {
 	}
 	graph.Nodes[39] = &sqlgraph.Node{
 		NodeSpec: sqlgraph.NodeSpec{
+			Table:   session.Table,
+			Columns: session.Columns,
+			ID: &sqlgraph.FieldSpec{
+				Type:   field.TypeString,
+				Column: session.FieldID,
+			},
+		},
+		Type: "Session",
+		Fields: map[string]*sqlgraph.FieldSpec{
+			session.FieldUserID:            {Type: field.TypeString, Column: session.FieldUserID},
+			session.FieldTokenHash:         {Type: field.TypeBytes, Column: session.FieldTokenHash},
+			session.FieldCreatedAt:         {Type: field.TypeTime, Column: session.FieldCreatedAt},
+			session.FieldLastSeenAt:        {Type: field.TypeTime, Column: session.FieldLastSeenAt},
+			session.FieldIdleExpiresAt:     {Type: field.TypeTime, Column: session.FieldIdleExpiresAt},
+			session.FieldAbsoluteExpiresAt: {Type: field.TypeTime, Column: session.FieldAbsoluteExpiresAt},
+			session.FieldElevatedUntil:     {Type: field.TypeTime, Column: session.FieldElevatedUntil},
+			session.FieldAmr:               {Type: field.TypeJSON, Column: session.FieldAmr},
+			session.FieldIP:                {Type: field.TypeString, Column: session.FieldIP},
+			session.FieldUserAgent:         {Type: field.TypeString, Column: session.FieldUserAgent},
+			session.FieldRevokedAt:         {Type: field.TypeTime, Column: session.FieldRevokedAt},
+		},
+	}
+	graph.Nodes[40] = &sqlgraph.Node{
+		NodeSpec: sqlgraph.NodeSpec{
 			Table:   user.Table,
 			Columns: user.Columns,
 			ID: &sqlgraph.FieldSpec{
@@ -1163,6 +1188,18 @@ var schemaGraph = func() *sqlgraph.Schema {
 		},
 		"RouteUDP",
 		"PortAllocation",
+	)
+	graph.MustAddE(
+		"user",
+		&sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2O,
+			Inverse: false,
+			Table:   session.UserTable,
+			Columns: []string{session.UserColumn},
+			Bidi:    false,
+		},
+		"Session",
+		"User",
 	)
 	graph.MustAddE(
 		"memberships",
@@ -4511,6 +4548,115 @@ func (f *SecretMetaFilter) WhereCreatedAt(p entql.TimeP) {
 }
 
 // addPredicate implements the predicateAdder interface.
+func (_q *SessionQuery) addPredicate(pred func(s *sql.Selector)) {
+	_q.predicates = append(_q.predicates, pred)
+}
+
+// Filter returns a Filter implementation to apply filters on the SessionQuery builder.
+func (_q *SessionQuery) Filter() *SessionFilter {
+	return &SessionFilter{config: _q.config, predicateAdder: _q}
+}
+
+// addPredicate implements the predicateAdder interface.
+func (m *SessionMutation) addPredicate(pred func(s *sql.Selector)) {
+	m.predicates = append(m.predicates, pred)
+}
+
+// Filter returns an entql.Where implementation to apply filters on the SessionMutation builder.
+func (m *SessionMutation) Filter() *SessionFilter {
+	return &SessionFilter{config: m.config, predicateAdder: m}
+}
+
+// SessionFilter provides a generic filtering capability at runtime for SessionQuery.
+type SessionFilter struct {
+	predicateAdder
+	config
+}
+
+// Where applies the entql predicate on the query filter.
+func (f *SessionFilter) Where(p entql.P) {
+	f.addPredicate(func(s *sql.Selector) {
+		if err := schemaGraph.EvalP(schemaGraph.Nodes[39].Type, p, s); err != nil {
+			s.AddError(err)
+		}
+	})
+}
+
+// WhereID applies the entql string predicate on the id field.
+func (f *SessionFilter) WhereID(p entql.StringP) {
+	f.Where(p.Field(session.FieldID))
+}
+
+// WhereUserID applies the entql string predicate on the user_id field.
+func (f *SessionFilter) WhereUserID(p entql.StringP) {
+	f.Where(p.Field(session.FieldUserID))
+}
+
+// WhereTokenHash applies the entql []byte predicate on the token_hash field.
+func (f *SessionFilter) WhereTokenHash(p entql.BytesP) {
+	f.Where(p.Field(session.FieldTokenHash))
+}
+
+// WhereCreatedAt applies the entql time.Time predicate on the created_at field.
+func (f *SessionFilter) WhereCreatedAt(p entql.TimeP) {
+	f.Where(p.Field(session.FieldCreatedAt))
+}
+
+// WhereLastSeenAt applies the entql time.Time predicate on the last_seen_at field.
+func (f *SessionFilter) WhereLastSeenAt(p entql.TimeP) {
+	f.Where(p.Field(session.FieldLastSeenAt))
+}
+
+// WhereIdleExpiresAt applies the entql time.Time predicate on the idle_expires_at field.
+func (f *SessionFilter) WhereIdleExpiresAt(p entql.TimeP) {
+	f.Where(p.Field(session.FieldIdleExpiresAt))
+}
+
+// WhereAbsoluteExpiresAt applies the entql time.Time predicate on the absolute_expires_at field.
+func (f *SessionFilter) WhereAbsoluteExpiresAt(p entql.TimeP) {
+	f.Where(p.Field(session.FieldAbsoluteExpiresAt))
+}
+
+// WhereElevatedUntil applies the entql time.Time predicate on the elevated_until field.
+func (f *SessionFilter) WhereElevatedUntil(p entql.TimeP) {
+	f.Where(p.Field(session.FieldElevatedUntil))
+}
+
+// WhereAmr applies the entql json.RawMessage predicate on the amr field.
+func (f *SessionFilter) WhereAmr(p entql.BytesP) {
+	f.Where(p.Field(session.FieldAmr))
+}
+
+// WhereIP applies the entql string predicate on the ip field.
+func (f *SessionFilter) WhereIP(p entql.StringP) {
+	f.Where(p.Field(session.FieldIP))
+}
+
+// WhereUserAgent applies the entql string predicate on the user_agent field.
+func (f *SessionFilter) WhereUserAgent(p entql.StringP) {
+	f.Where(p.Field(session.FieldUserAgent))
+}
+
+// WhereRevokedAt applies the entql time.Time predicate on the revoked_at field.
+func (f *SessionFilter) WhereRevokedAt(p entql.TimeP) {
+	f.Where(p.Field(session.FieldRevokedAt))
+}
+
+// WhereHasUser applies a predicate to check if query has an edge user.
+func (f *SessionFilter) WhereHasUser() {
+	f.Where(entql.HasEdge("user"))
+}
+
+// WhereHasUserWith applies a predicate to check if query has an edge user with a given conditions (other predicates).
+func (f *SessionFilter) WhereHasUserWith(preds ...predicate.User) {
+	f.Where(entql.HasEdgeWith("user", sqlgraph.WrapFunc(func(s *sql.Selector) {
+		for _, p := range preds {
+			p(s)
+		}
+	})))
+}
+
+// addPredicate implements the predicateAdder interface.
 func (_q *UserQuery) addPredicate(pred func(s *sql.Selector)) {
 	_q.predicates = append(_q.predicates, pred)
 }
@@ -4539,7 +4685,7 @@ type UserFilter struct {
 // Where applies the entql predicate on the query filter.
 func (f *UserFilter) Where(p entql.P) {
 	f.addPredicate(func(s *sql.Selector) {
-		if err := schemaGraph.EvalP(schemaGraph.Nodes[39].Type, p, s); err != nil {
+		if err := schemaGraph.EvalP(schemaGraph.Nodes[40].Type, p, s); err != nil {
 			s.AddError(err)
 		}
 	})

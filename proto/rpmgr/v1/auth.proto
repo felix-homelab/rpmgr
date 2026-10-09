@@ -1,0 +1,52 @@
+// SPDX-License-Identifier: Apache-2.0
+
+syntax = "proto3";
+
+package rpmgr.v1;
+
+import "buf/validate/validate.proto";
+import "rpmgr/v1/options.proto";
+
+option go_package = "github.com/felix-homelab/rpmgr/gen/rpmgr/v1;rpmgrv1";
+
+// AuthService signs users in and out and completes password resets (docs/07-api.md, "Services";
+// docs/04-security.md, "Human authentication and sessions").
+service AuthService {
+  // CompletePasswordReset sets a user's password with a one-time link, or creates the first user
+  // with the first-user link. A link works once, until it expires.
+  rpc CompletePasswordReset(CompletePasswordResetRequest) returns (CompletePasswordResetResponse) {
+    option (rpmgr.v1.authz) = {permission: "public"};
+  }
+}
+
+// CompletePasswordResetRequest is the token of a link and the new password.
+message CompletePasswordResetRequest {
+  // The link's token, rpmgr_prs_….
+  string token = 1 [
+    (rpmgr.v1.sensitive) = true,
+    (buf.validate.field).string = {
+      min_len: 1
+      max_len: 128
+    }
+  ];
+  // The new password, 12 to 256 characters.
+  string new_password = 2 [
+    (rpmgr.v1.sensitive) = true,
+    (buf.validate.field).string = {
+      min_len: 12
+      max_len: 256
+    }
+  ];
+  // The first user's e-mail address; ignored for a reset of an existing user.
+  string email = 3 [(buf.validate.field).string.max_len = 254];
+  // The first user's display name; ignored for a reset of an existing user.
+  string display_name = 4 [(buf.validate.field).string.max_len = 100];
+}
+
+// CompletePasswordResetResponse names the user whose password was set.
+message CompletePasswordResetResponse {
+  // The user's ID.
+  string user_id = 1;
+  // The user's e-mail address, with which they sign in.
+  string email = 2;
+}

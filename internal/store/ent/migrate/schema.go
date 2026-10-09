@@ -1228,6 +1228,47 @@ var (
 			},
 		},
 	}
+	// SessionsColumns holds the columns for the "sessions" table.
+	SessionsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeString},
+		{Name: "token_hash", Type: field.TypeBytes},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "last_seen_at", Type: field.TypeTime},
+		{Name: "idle_expires_at", Type: field.TypeTime},
+		{Name: "absolute_expires_at", Type: field.TypeTime},
+		{Name: "elevated_until", Type: field.TypeTime, Nullable: true},
+		{Name: "amr", Type: field.TypeJSON},
+		{Name: "ip", Type: field.TypeString, Size: 64},
+		{Name: "user_agent", Type: field.TypeString, Size: 512},
+		{Name: "revoked_at", Type: field.TypeTime, Nullable: true},
+		{Name: "user_id", Type: field.TypeString},
+	}
+	// SessionsTable holds the schema information for the "sessions" table.
+	SessionsTable = &schema.Table{
+		Name:       "sessions",
+		Columns:    SessionsColumns,
+		PrimaryKey: []*schema.Column{SessionsColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "sessions_users_user",
+				Columns:    []*schema.Column{SessionsColumns[11]},
+				RefColumns: []*schema.Column{UsersColumns[0]},
+				OnDelete:   schema.Cascade,
+			},
+		},
+		Indexes: []*schema.Index{
+			{
+				Name:    "session_token_hash",
+				Unique:  true,
+				Columns: []*schema.Column{SessionsColumns[1]},
+			},
+			{
+				Name:    "session_user_id",
+				Unique:  false,
+				Columns: []*schema.Column{SessionsColumns[11]},
+			},
+		},
+	}
 	// UsersColumns holds the columns for the "users" table.
 	UsersColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeString},
@@ -1293,6 +1334,7 @@ var (
 		RouteTargetsTable,
 		RouteUDPTable,
 		SecretsMetaTable,
+		SessionsTable,
 		UsersTable,
 	}
 )
@@ -1416,4 +1458,5 @@ func init() {
 	SecretsMetaTable.Annotation = &entsql.Annotation{
 		Table: "secrets_meta",
 	}
+	SessionsTable.ForeignKeys[0].RefTable = UsersTable
 }

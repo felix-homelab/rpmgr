@@ -47,8 +47,7 @@ func commands() *cli.Command {
 			group("kek", "administer the key-encryption key on the controller host",
 				leaf("status", "show which KEK version wraps the stored secrets"),
 				leaf("rotate", "re-wrap every stored secret under a new KEK")),
-			group("user", "administer users on the controller host",
-				leaf("reset-password", "create a one-time password-reset link")),
+			group("user", "administer users on the controller host", userResetPassword()),
 			group("release", "administer release artifacts on the controller host",
 				leaf("import", "import a signed release for air-gapped installations")),
 			{Name: "version", Summary: "print the version of this binary", Run: runVersion},
@@ -152,8 +151,8 @@ func allInOneInit() *cli.Command {
 				return err
 			}
 			_, err = fmt.Fprintf(env.Stdout, "Initialised the all-in-one installation.\n  trust domain: %s\n  CA pin:       %s\n"+
-				"  gateway:      %s\n  KEK:          %s\nBack up the KEK separately: without it the database cannot be read.\n",
-				r.TrustDomain, r.RootPin, r.GatewayID, r.KEK)
+				"  gateway:      %s\n  KEK:          %s\nBack up the KEK separately: without it the database cannot be read.\n"+firstUser,
+				r.TrustDomain, r.RootPin, r.GatewayID, r.KEK, r.FirstUserLink)
 			return err
 		},
 	}
@@ -179,8 +178,33 @@ func controllerInit() *cli.Command {
 				return err
 			}
 			_, err = fmt.Fprintf(env.Stdout, "Initialised the controller.\n  trust domain: %s\n  CA pin:       %s\n"+
-				"  KEK:          %s\nBack up the KEK separately: without it the database cannot be read.\n",
-				r.TrustDomain, r.RootPin, r.KEK)
+				"  KEK:          %s\nBack up the KEK separately: without it the database cannot be read.\n"+firstUser,
+				r.TrustDomain, r.RootPin, r.KEK, r.FirstUserLink)
+			return err
+		},
+	}
+}
+
+// firstUser ends the output of init with the first-user link.
+const firstUser = "Create the first user, Instance Admin and Owner, with this one-time link (valid 7 days):\n  %s\n"
+
+// userResetPassword is `rpmgr user reset-password`: local administration on the controller host,
+// audited as local-cli (docs/04-security.md, "Roles").
+func userResetPassword() *cli.Command {
+	var configPath, email string
+	return &cli.Command{
+		Name:    "reset-password",
+		Summary: "create a one-time password-reset link; before the first user exists, a first-user link",
+		Flags: func(fs *flag.FlagSet) {
+			fs.StringVar(&configPath, "config", "", "the controller's boot file, or all-in-one's (default $RPMGR_CONFIG, else /etc/rpmgr/controller.yaml)")
+			fs.StringVar(&email, "email", "", "the user's e-mail address; leave it out to create the first user")
+		},
+		Run: func(ctx context.Context, env *cli.Env, _ []string) error {
+			link, err := controller.ResetPasswordLink(ctx, config.Path(configPath, "controller", env.Getenv), email)
+			if err != nil {
+				return err
+			}
+			_, err = fmt.Fprintf(env.Stdout, "One-time link, valid %s:\n  %s\n", link.Valid, link.URL)
 			return err
 		},
 	}

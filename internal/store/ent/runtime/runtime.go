@@ -46,6 +46,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routeudp"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/schema"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/secretmeta"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/session"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/user"
 
 	"entgo.io/ent"
@@ -2138,6 +2139,59 @@ func init() {
 	secretmetaDescCreatedAt := secretmetaFields[4].Descriptor()
 	// secretmeta.DefaultCreatedAt holds the default value on creation for the created_at field.
 	secretmeta.DefaultCreatedAt = secretmetaDescCreatedAt.Default.(func() time.Time)
+	sessionMixin := schema.Session{}.Mixin()
+	session.Policy = privacy.NewPolicies(sessionMixin[0], schema.Session{})
+	session.Hooks[0] = func(next ent.Mutator) ent.Mutator {
+		return ent.MutateFunc(func(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+			if err := session.Policy.EvalMutation(ctx, m); err != nil {
+				return nil, err
+			}
+			return next.Mutate(ctx, m)
+		})
+	}
+	sessionMixinHooks0 := sessionMixin[0].Hooks()
+
+	session.Hooks[1] = sessionMixinHooks0[0]
+	sessionMixinInters0 := sessionMixin[0].Interceptors()
+	session.Interceptors[0] = sessionMixinInters0[0]
+	sessionFields := schema.Session{}.Fields()
+	_ = sessionFields
+	// sessionDescUserID is the schema descriptor for user_id field.
+	sessionDescUserID := sessionFields[1].Descriptor()
+	// session.UserIDValidator is a validator for the "user_id" field. It is called by the builders before save.
+	session.UserIDValidator = sessionDescUserID.Validators[0].(func(string) error)
+	// sessionDescTokenHash is the schema descriptor for token_hash field.
+	sessionDescTokenHash := sessionFields[2].Descriptor()
+	// session.TokenHashValidator is a validator for the "token_hash" field. It is called by the builders before save.
+	session.TokenHashValidator = sessionDescTokenHash.Validators[0].(func([]byte) error)
+	// sessionDescIP is the schema descriptor for ip field.
+	sessionDescIP := sessionFields[9].Descriptor()
+	// session.IPValidator is a validator for the "ip" field. It is called by the builders before save.
+	session.IPValidator = sessionDescIP.Validators[0].(func(string) error)
+	// sessionDescUserAgent is the schema descriptor for user_agent field.
+	sessionDescUserAgent := sessionFields[10].Descriptor()
+	// session.UserAgentValidator is a validator for the "user_agent" field. It is called by the builders before save.
+	session.UserAgentValidator = sessionDescUserAgent.Validators[0].(func(string) error)
+	// sessionDescID is the schema descriptor for id field.
+	sessionDescID := sessionFields[0].Descriptor()
+	// session.DefaultID holds the default value on creation for the id field.
+	session.DefaultID = sessionDescID.Default.(func() string)
+	// session.IDValidator is a validator for the "id" field. It is called by the builders before save.
+	session.IDValidator = func() func(string) error {
+		validators := sessionDescID.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(id string) error {
+			for _, fn := range fns {
+				if err := fn(id); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
 	userMixin := schema.User{}.Mixin()
 	user.Policy = privacy.NewPolicies(userMixin[0], schema.User{})
 	user.Hooks[0] = func(next ent.Mutator) ent.Mutator {

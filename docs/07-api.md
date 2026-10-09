@@ -207,7 +207,8 @@ API reports both ([03](03-connections.md#configuration-reconciliation)).
 
 - [R] A `reason` comes as `google.rpc.ErrorInfo` with domain `rpmgr.v1`; field violations come as
   `buf.validate.Violations`.
-- Error messages never contain secrets or other orgs' data.
+- Error messages never contain secrets or other orgs' data. [R] An error a method did not write
+  for the client is `INTERNAL` without its text, which goes to the log.
 - **Validation is server-authoritative** (protovalidate annotations in the protos). The UI runs its
   own checks for responsiveness only ([09](09-web-ui.md)).
 
