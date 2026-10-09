@@ -23,26 +23,10 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/routes"
 	"github.com/felix-homelab/rpmgr/internal/store"
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
+	"github.com/felix-homelab/rpmgr/internal/testutil/freeport"
 )
 
-func freeTCPUDPPort(t *testing.T) int {
-	t.Helper()
-	for range 20 {
-		ln, err := net.Listen("tcp", "127.0.0.1:0")
-		if err != nil {
-			t.Fatal(err)
-		}
-		port := ln.Addr().(*net.TCPAddr).Port
-		pc, err := net.ListenPacket("udp", ln.Addr().String())
-		_ = ln.Close()
-		if err == nil {
-			_ = pc.Close()
-			return port
-		}
-	}
-	t.Fatal("no free port")
-	return 0
-}
+func freeTCPUDPPort(t *testing.T) int { return freeport.Port(t) }
 
 func addr(port int) string { return net.JoinHostPort("127.0.0.1", strconv.Itoa(port)) }
 

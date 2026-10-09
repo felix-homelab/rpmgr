@@ -36,19 +36,12 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store"
 	"github.com/felix-homelab/rpmgr/internal/store/storetest"
 	"github.com/felix-homelab/rpmgr/internal/telemetry"
+	"github.com/felix-homelab/rpmgr/internal/testutil/freeport"
 	"github.com/felix-homelab/rpmgr/internal/token"
 )
 
 // freeAddr returns a loopback address whose port was free a moment ago.
-func freeAddr(t *testing.T) string {
-	t.Helper()
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = ln.Close() }()
-	return ln.Addr().String()
-}
+func freeAddr(t *testing.T) string { return freeport.Addr(t) }
 
 // webCA is a CA for the public URL's certificate files, which the test's clients trust.
 type webCA struct {
