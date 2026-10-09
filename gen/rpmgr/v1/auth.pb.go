@@ -12,6 +12,7 @@ import (
 	_ "buf.build/gen/go/bufbuild/protovalidate/protocolbuffers/go/buf/validate"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
+	timestamppb "google.golang.org/protobuf/types/known/timestamppb"
 	reflect "reflect"
 	sync "sync"
 	unsafe "unsafe"
@@ -152,11 +153,653 @@ func (x *CompletePasswordResetResponse) GetEmail() string {
 	return ""
 }
 
+// LoginRequest is an e-mail address and a password.
+type LoginRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The e-mail address.
+	Email string `protobuf:"bytes,1,opt,name=email,proto3" json:"email,omitempty"`
+	// The password.
+	Password      string `protobuf:"bytes,2,opt,name=password,proto3" json:"password,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *LoginRequest) Reset() {
+	*x = LoginRequest{}
+	mi := &file_rpmgr_v1_auth_proto_msgTypes[2]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *LoginRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*LoginRequest) ProtoMessage() {}
+
+func (x *LoginRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_rpmgr_v1_auth_proto_msgTypes[2]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use LoginRequest.ProtoReflect.Descriptor instead.
+func (*LoginRequest) Descriptor() ([]byte, []int) {
+	return file_rpmgr_v1_auth_proto_rawDescGZIP(), []int{2}
+}
+
+func (x *LoginRequest) GetEmail() string {
+	if x != nil {
+		return x.Email
+	}
+	return ""
+}
+
+func (x *LoginRequest) GetPassword() string {
+	if x != nil {
+		return x.Password
+	}
+	return ""
+}
+
+// LoginResponse is the new session; its token is only in the cookie.
+type LoginResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The signed-in user's ID.
+	UserId string `protobuf:"bytes,1,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
+	// The new session.
+	Session       *Session `protobuf:"bytes,2,opt,name=session,proto3" json:"session,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *LoginResponse) Reset() {
+	*x = LoginResponse{}
+	mi := &file_rpmgr_v1_auth_proto_msgTypes[3]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *LoginResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*LoginResponse) ProtoMessage() {}
+
+func (x *LoginResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_rpmgr_v1_auth_proto_msgTypes[3]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use LoginResponse.ProtoReflect.Descriptor instead.
+func (*LoginResponse) Descriptor() ([]byte, []int) {
+	return file_rpmgr_v1_auth_proto_rawDescGZIP(), []int{3}
+}
+
+func (x *LoginResponse) GetUserId() string {
+	if x != nil {
+		return x.UserId
+	}
+	return ""
+}
+
+func (x *LoginResponse) GetSession() *Session {
+	if x != nil {
+		return x.Session
+	}
+	return nil
+}
+
+// LogoutRequest is empty.
+type LogoutRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *LogoutRequest) Reset() {
+	*x = LogoutRequest{}
+	mi := &file_rpmgr_v1_auth_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *LogoutRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*LogoutRequest) ProtoMessage() {}
+
+func (x *LogoutRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_rpmgr_v1_auth_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use LogoutRequest.ProtoReflect.Descriptor instead.
+func (*LogoutRequest) Descriptor() ([]byte, []int) {
+	return file_rpmgr_v1_auth_proto_rawDescGZIP(), []int{4}
+}
+
+// LogoutResponse is empty.
+type LogoutResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *LogoutResponse) Reset() {
+	*x = LogoutResponse{}
+	mi := &file_rpmgr_v1_auth_proto_msgTypes[5]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *LogoutResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*LogoutResponse) ProtoMessage() {}
+
+func (x *LogoutResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_rpmgr_v1_auth_proto_msgTypes[5]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use LogoutResponse.ProtoReflect.Descriptor instead.
+func (*LogoutResponse) Descriptor() ([]byte, []int) {
+	return file_rpmgr_v1_auth_proto_rawDescGZIP(), []int{5}
+}
+
+// GetSessionRequest is empty.
+type GetSessionRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetSessionRequest) Reset() {
+	*x = GetSessionRequest{}
+	mi := &file_rpmgr_v1_auth_proto_msgTypes[6]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetSessionRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetSessionRequest) ProtoMessage() {}
+
+func (x *GetSessionRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_rpmgr_v1_auth_proto_msgTypes[6]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetSessionRequest.ProtoReflect.Descriptor instead.
+func (*GetSessionRequest) Descriptor() ([]byte, []int) {
+	return file_rpmgr_v1_auth_proto_rawDescGZIP(), []int{6}
+}
+
+// GetSessionResponse is the caller and their session.
+type GetSessionResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The user's ID.
+	UserId string `protobuf:"bytes,1,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
+	// The user's e-mail address.
+	Email string `protobuf:"bytes,2,opt,name=email,proto3" json:"email,omitempty"`
+	// The user's display name.
+	DisplayName string `protobuf:"bytes,3,opt,name=display_name,json=displayName,proto3" json:"display_name,omitempty"`
+	// Whether the user holds the Instance Admin role.
+	InstanceAdmin bool `protobuf:"varint,4,opt,name=instance_admin,json=instanceAdmin,proto3" json:"instance_admin,omitempty"`
+	// The user's memberships.
+	Memberships []*Membership `protobuf:"bytes,5,rep,name=memberships,proto3" json:"memberships,omitempty"`
+	// The caller's session.
+	Session       *Session `protobuf:"bytes,6,opt,name=session,proto3" json:"session,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetSessionResponse) Reset() {
+	*x = GetSessionResponse{}
+	mi := &file_rpmgr_v1_auth_proto_msgTypes[7]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetSessionResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetSessionResponse) ProtoMessage() {}
+
+func (x *GetSessionResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_rpmgr_v1_auth_proto_msgTypes[7]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetSessionResponse.ProtoReflect.Descriptor instead.
+func (*GetSessionResponse) Descriptor() ([]byte, []int) {
+	return file_rpmgr_v1_auth_proto_rawDescGZIP(), []int{7}
+}
+
+func (x *GetSessionResponse) GetUserId() string {
+	if x != nil {
+		return x.UserId
+	}
+	return ""
+}
+
+func (x *GetSessionResponse) GetEmail() string {
+	if x != nil {
+		return x.Email
+	}
+	return ""
+}
+
+func (x *GetSessionResponse) GetDisplayName() string {
+	if x != nil {
+		return x.DisplayName
+	}
+	return ""
+}
+
+func (x *GetSessionResponse) GetInstanceAdmin() bool {
+	if x != nil {
+		return x.InstanceAdmin
+	}
+	return false
+}
+
+func (x *GetSessionResponse) GetMemberships() []*Membership {
+	if x != nil {
+		return x.Memberships
+	}
+	return nil
+}
+
+func (x *GetSessionResponse) GetSession() *Session {
+	if x != nil {
+		return x.Session
+	}
+	return nil
+}
+
+// Membership is a user's role in an org.
+type Membership struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The org's ID.
+	OrgId string `protobuf:"bytes,1,opt,name=org_id,json=orgId,proto3" json:"org_id,omitempty"`
+	// owner, admin, operator or viewer.
+	Role          string `protobuf:"bytes,2,opt,name=role,proto3" json:"role,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *Membership) Reset() {
+	*x = Membership{}
+	mi := &file_rpmgr_v1_auth_proto_msgTypes[8]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Membership) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Membership) ProtoMessage() {}
+
+func (x *Membership) ProtoReflect() protoreflect.Message {
+	mi := &file_rpmgr_v1_auth_proto_msgTypes[8]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Membership.ProtoReflect.Descriptor instead.
+func (*Membership) Descriptor() ([]byte, []int) {
+	return file_rpmgr_v1_auth_proto_rawDescGZIP(), []int{8}
+}
+
+func (x *Membership) GetOrgId() string {
+	if x != nil {
+		return x.OrgId
+	}
+	return ""
+}
+
+func (x *Membership) GetRole() string {
+	if x != nil {
+		return x.Role
+	}
+	return ""
+}
+
+// Session is a signed-in browser.
+type Session struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The session's ID, ses_….
+	Id string `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	// When it started.
+	CreateTime *timestamppb.Timestamp `protobuf:"bytes,2,opt,name=create_time,json=createTime,proto3" json:"create_time,omitempty"`
+	// When it was last used, to the minute.
+	LastSeenTime *timestamppb.Timestamp `protobuf:"bytes,3,opt,name=last_seen_time,json=lastSeenTime,proto3" json:"last_seen_time,omitempty"`
+	// When it ends if it is not used.
+	IdleExpireTime *timestamppb.Timestamp `protobuf:"bytes,4,opt,name=idle_expire_time,json=idleExpireTime,proto3" json:"idle_expire_time,omitempty"`
+	// When it ends at the latest.
+	ExpireTime *timestamppb.Timestamp `protobuf:"bytes,5,opt,name=expire_time,json=expireTime,proto3" json:"expire_time,omitempty"`
+	// The address it signed in from.
+	Ip string `protobuf:"bytes,6,opt,name=ip,proto3" json:"ip,omitempty"`
+	// The browser's user agent.
+	UserAgent string `protobuf:"bytes,7,opt,name=user_agent,json=userAgent,proto3" json:"user_agent,omitempty"`
+	// Whether this is the session of the request.
+	Current       bool `protobuf:"varint,8,opt,name=current,proto3" json:"current,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *Session) Reset() {
+	*x = Session{}
+	mi := &file_rpmgr_v1_auth_proto_msgTypes[9]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Session) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Session) ProtoMessage() {}
+
+func (x *Session) ProtoReflect() protoreflect.Message {
+	mi := &file_rpmgr_v1_auth_proto_msgTypes[9]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Session.ProtoReflect.Descriptor instead.
+func (*Session) Descriptor() ([]byte, []int) {
+	return file_rpmgr_v1_auth_proto_rawDescGZIP(), []int{9}
+}
+
+func (x *Session) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+func (x *Session) GetCreateTime() *timestamppb.Timestamp {
+	if x != nil {
+		return x.CreateTime
+	}
+	return nil
+}
+
+func (x *Session) GetLastSeenTime() *timestamppb.Timestamp {
+	if x != nil {
+		return x.LastSeenTime
+	}
+	return nil
+}
+
+func (x *Session) GetIdleExpireTime() *timestamppb.Timestamp {
+	if x != nil {
+		return x.IdleExpireTime
+	}
+	return nil
+}
+
+func (x *Session) GetExpireTime() *timestamppb.Timestamp {
+	if x != nil {
+		return x.ExpireTime
+	}
+	return nil
+}
+
+func (x *Session) GetIp() string {
+	if x != nil {
+		return x.Ip
+	}
+	return ""
+}
+
+func (x *Session) GetUserAgent() string {
+	if x != nil {
+		return x.UserAgent
+	}
+	return ""
+}
+
+func (x *Session) GetCurrent() bool {
+	if x != nil {
+		return x.Current
+	}
+	return false
+}
+
+// ListSessionsRequest is empty.
+type ListSessionsRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListSessionsRequest) Reset() {
+	*x = ListSessionsRequest{}
+	mi := &file_rpmgr_v1_auth_proto_msgTypes[10]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListSessionsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListSessionsRequest) ProtoMessage() {}
+
+func (x *ListSessionsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_rpmgr_v1_auth_proto_msgTypes[10]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListSessionsRequest.ProtoReflect.Descriptor instead.
+func (*ListSessionsRequest) Descriptor() ([]byte, []int) {
+	return file_rpmgr_v1_auth_proto_rawDescGZIP(), []int{10}
+}
+
+// ListSessionsResponse is the caller's live sessions.
+type ListSessionsResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The sessions, newest first.
+	Sessions      []*Session `protobuf:"bytes,1,rep,name=sessions,proto3" json:"sessions,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListSessionsResponse) Reset() {
+	*x = ListSessionsResponse{}
+	mi := &file_rpmgr_v1_auth_proto_msgTypes[11]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListSessionsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListSessionsResponse) ProtoMessage() {}
+
+func (x *ListSessionsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_rpmgr_v1_auth_proto_msgTypes[11]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListSessionsResponse.ProtoReflect.Descriptor instead.
+func (*ListSessionsResponse) Descriptor() ([]byte, []int) {
+	return file_rpmgr_v1_auth_proto_rawDescGZIP(), []int{11}
+}
+
+func (x *ListSessionsResponse) GetSessions() []*Session {
+	if x != nil {
+		return x.Sessions
+	}
+	return nil
+}
+
+// RevokeSessionRequest names a session of the caller.
+type RevokeSessionRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The session's ID.
+	SessionId     string `protobuf:"bytes,1,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RevokeSessionRequest) Reset() {
+	*x = RevokeSessionRequest{}
+	mi := &file_rpmgr_v1_auth_proto_msgTypes[12]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RevokeSessionRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RevokeSessionRequest) ProtoMessage() {}
+
+func (x *RevokeSessionRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_rpmgr_v1_auth_proto_msgTypes[12]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RevokeSessionRequest.ProtoReflect.Descriptor instead.
+func (*RevokeSessionRequest) Descriptor() ([]byte, []int) {
+	return file_rpmgr_v1_auth_proto_rawDescGZIP(), []int{12}
+}
+
+func (x *RevokeSessionRequest) GetSessionId() string {
+	if x != nil {
+		return x.SessionId
+	}
+	return ""
+}
+
+// RevokeSessionResponse is empty.
+type RevokeSessionResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RevokeSessionResponse) Reset() {
+	*x = RevokeSessionResponse{}
+	mi := &file_rpmgr_v1_auth_proto_msgTypes[13]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RevokeSessionResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RevokeSessionResponse) ProtoMessage() {}
+
+func (x *RevokeSessionResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_rpmgr_v1_auth_proto_msgTypes[13]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RevokeSessionResponse.ProtoReflect.Descriptor instead.
+func (*RevokeSessionResponse) Descriptor() ([]byte, []int) {
+	return file_rpmgr_v1_auth_proto_rawDescGZIP(), []int{13}
+}
+
 var File_rpmgr_v1_auth_proto protoreflect.FileDescriptor
 
 const file_rpmgr_v1_auth_proto_rawDesc = "" +
 	"\n" +
-	"\x13rpmgr/v1/auth.proto\x12\brpmgr.v1\x1a\x1bbuf/validate/validate.proto\x1a\x16rpmgr/v1/options.proto\"\xc3\x01\n" +
+	"\x13rpmgr/v1/auth.proto\x12\brpmgr.v1\x1a\x1bbuf/validate/validate.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x16rpmgr/v1/options.proto\"\xc3\x01\n" +
 	"\x1cCompletePasswordResetRequest\x12$\n" +
 	"\x05token\x18\x01 \x01(\tB\x0e\xbaH\ar\x05\x10\x01\x18\x80\x01\x88\xb5\x18\x01R\x05token\x121\n" +
 	"\fnew_password\x18\x02 \x01(\tB\x0e\xbaH\ar\x05\x10\f\x18\x80\x02\x88\xb5\x18\x01R\vnewPassword\x12\x1e\n" +
@@ -164,8 +807,59 @@ const file_rpmgr_v1_auth_proto_rawDesc = "" +
 	"\fdisplay_name\x18\x04 \x01(\tB\a\xbaH\x04r\x02\x18dR\vdisplayName\"N\n" +
 	"\x1dCompletePasswordResetResponse\x12\x17\n" +
 	"\auser_id\x18\x01 \x01(\tR\x06userId\x12\x14\n" +
-	"\x05email\x18\x02 \x01(\tR\x05email2\x85\x01\n" +
-	"\vAuthService\x12v\n" +
+	"\x05email\x18\x02 \x01(\tR\x05email\"\\\n" +
+	"\fLoginRequest\x12 \n" +
+	"\x05email\x18\x01 \x01(\tB\n" +
+	"\xbaH\ar\x05\x10\x01\x18\xfe\x01R\x05email\x12*\n" +
+	"\bpassword\x18\x02 \x01(\tB\x0e\xbaH\ar\x05\x10\x01\x18\x80\x02\x88\xb5\x18\x01R\bpassword\"U\n" +
+	"\rLoginResponse\x12\x17\n" +
+	"\auser_id\x18\x01 \x01(\tR\x06userId\x12+\n" +
+	"\asession\x18\x02 \x01(\v2\x11.rpmgr.v1.SessionR\asession\"\x0f\n" +
+	"\rLogoutRequest\"\x10\n" +
+	"\x0eLogoutResponse\"\x13\n" +
+	"\x11GetSessionRequest\"\xf2\x01\n" +
+	"\x12GetSessionResponse\x12\x17\n" +
+	"\auser_id\x18\x01 \x01(\tR\x06userId\x12\x14\n" +
+	"\x05email\x18\x02 \x01(\tR\x05email\x12!\n" +
+	"\fdisplay_name\x18\x03 \x01(\tR\vdisplayName\x12%\n" +
+	"\x0einstance_admin\x18\x04 \x01(\bR\rinstanceAdmin\x126\n" +
+	"\vmemberships\x18\x05 \x03(\v2\x14.rpmgr.v1.MembershipR\vmemberships\x12+\n" +
+	"\asession\x18\x06 \x01(\v2\x11.rpmgr.v1.SessionR\asession\"7\n" +
+	"\n" +
+	"Membership\x12\x15\n" +
+	"\x06org_id\x18\x01 \x01(\tR\x05orgId\x12\x12\n" +
+	"\x04role\x18\x02 \x01(\tR\x04role\"\xe4\x02\n" +
+	"\aSession\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\x12;\n" +
+	"\vcreate_time\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\n" +
+	"createTime\x12@\n" +
+	"\x0elast_seen_time\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\flastSeenTime\x12D\n" +
+	"\x10idle_expire_time\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\x0eidleExpireTime\x12;\n" +
+	"\vexpire_time\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\n" +
+	"expireTime\x12\x0e\n" +
+	"\x02ip\x18\x06 \x01(\tR\x02ip\x12\x1d\n" +
+	"\n" +
+	"user_agent\x18\a \x01(\tR\tuserAgent\x12\x18\n" +
+	"\acurrent\x18\b \x01(\bR\acurrent\"\x15\n" +
+	"\x13ListSessionsRequest\"E\n" +
+	"\x14ListSessionsResponse\x12-\n" +
+	"\bsessions\x18\x01 \x03(\v2\x11.rpmgr.v1.SessionR\bsessions\">\n" +
+	"\x14RevokeSessionRequest\x12&\n" +
+	"\n" +
+	"session_id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\tsessionId\"\x17\n" +
+	"\x15RevokeSessionResponse2\xce\x04\n" +
+	"\vAuthService\x12F\n" +
+	"\x05Login\x12\x16.rpmgr.v1.LoginRequest\x1a\x17.rpmgr.v1.LoginResponse\"\f\x8a\xb5\x18\b\n" +
+	"\x06public\x12P\n" +
+	"\x06Logout\x12\x17.rpmgr.v1.LogoutRequest\x1a\x18.rpmgr.v1.LogoutResponse\"\x13\x8a\xb5\x18\x0f\n" +
+	"\rauthenticated\x12_\n" +
+	"\n" +
+	"GetSession\x12\x1b.rpmgr.v1.GetSessionRequest\x1a\x1c.rpmgr.v1.GetSessionResponse\"\x16\x8a\xb5\x18\x0f\n" +
+	"\rauthenticated\x90\x02\x01\x12e\n" +
+	"\fListSessions\x12\x1d.rpmgr.v1.ListSessionsRequest\x1a\x1e.rpmgr.v1.ListSessionsResponse\"\x16\x8a\xb5\x18\x0f\n" +
+	"\rauthenticated\x90\x02\x01\x12e\n" +
+	"\rRevokeSession\x12\x1e.rpmgr.v1.RevokeSessionRequest\x1a\x1f.rpmgr.v1.RevokeSessionResponse\"\x13\x8a\xb5\x18\x0f\n" +
+	"\rauthenticated\x12v\n" +
 	"\x15CompletePasswordReset\x12&.rpmgr.v1.CompletePasswordResetRequest\x1a'.rpmgr.v1.CompletePasswordResetResponse\"\f\x8a\xb5\x18\b\n" +
 	"\x06publicB5Z3github.com/felix-homelab/rpmgr/gen/rpmgr/v1;rpmgrv1b\x06proto3"
 
@@ -181,19 +875,50 @@ func file_rpmgr_v1_auth_proto_rawDescGZIP() []byte {
 	return file_rpmgr_v1_auth_proto_rawDescData
 }
 
-var file_rpmgr_v1_auth_proto_msgTypes = make([]protoimpl.MessageInfo, 2)
+var file_rpmgr_v1_auth_proto_msgTypes = make([]protoimpl.MessageInfo, 14)
 var file_rpmgr_v1_auth_proto_goTypes = []any{
 	(*CompletePasswordResetRequest)(nil),  // 0: rpmgr.v1.CompletePasswordResetRequest
 	(*CompletePasswordResetResponse)(nil), // 1: rpmgr.v1.CompletePasswordResetResponse
+	(*LoginRequest)(nil),                  // 2: rpmgr.v1.LoginRequest
+	(*LoginResponse)(nil),                 // 3: rpmgr.v1.LoginResponse
+	(*LogoutRequest)(nil),                 // 4: rpmgr.v1.LogoutRequest
+	(*LogoutResponse)(nil),                // 5: rpmgr.v1.LogoutResponse
+	(*GetSessionRequest)(nil),             // 6: rpmgr.v1.GetSessionRequest
+	(*GetSessionResponse)(nil),            // 7: rpmgr.v1.GetSessionResponse
+	(*Membership)(nil),                    // 8: rpmgr.v1.Membership
+	(*Session)(nil),                       // 9: rpmgr.v1.Session
+	(*ListSessionsRequest)(nil),           // 10: rpmgr.v1.ListSessionsRequest
+	(*ListSessionsResponse)(nil),          // 11: rpmgr.v1.ListSessionsResponse
+	(*RevokeSessionRequest)(nil),          // 12: rpmgr.v1.RevokeSessionRequest
+	(*RevokeSessionResponse)(nil),         // 13: rpmgr.v1.RevokeSessionResponse
+	(*timestamppb.Timestamp)(nil),         // 14: google.protobuf.Timestamp
 }
 var file_rpmgr_v1_auth_proto_depIdxs = []int32{
-	0, // 0: rpmgr.v1.AuthService.CompletePasswordReset:input_type -> rpmgr.v1.CompletePasswordResetRequest
-	1, // 1: rpmgr.v1.AuthService.CompletePasswordReset:output_type -> rpmgr.v1.CompletePasswordResetResponse
-	1, // [1:2] is the sub-list for method output_type
-	0, // [0:1] is the sub-list for method input_type
-	0, // [0:0] is the sub-list for extension type_name
-	0, // [0:0] is the sub-list for extension extendee
-	0, // [0:0] is the sub-list for field type_name
+	9,  // 0: rpmgr.v1.LoginResponse.session:type_name -> rpmgr.v1.Session
+	8,  // 1: rpmgr.v1.GetSessionResponse.memberships:type_name -> rpmgr.v1.Membership
+	9,  // 2: rpmgr.v1.GetSessionResponse.session:type_name -> rpmgr.v1.Session
+	14, // 3: rpmgr.v1.Session.create_time:type_name -> google.protobuf.Timestamp
+	14, // 4: rpmgr.v1.Session.last_seen_time:type_name -> google.protobuf.Timestamp
+	14, // 5: rpmgr.v1.Session.idle_expire_time:type_name -> google.protobuf.Timestamp
+	14, // 6: rpmgr.v1.Session.expire_time:type_name -> google.protobuf.Timestamp
+	9,  // 7: rpmgr.v1.ListSessionsResponse.sessions:type_name -> rpmgr.v1.Session
+	2,  // 8: rpmgr.v1.AuthService.Login:input_type -> rpmgr.v1.LoginRequest
+	4,  // 9: rpmgr.v1.AuthService.Logout:input_type -> rpmgr.v1.LogoutRequest
+	6,  // 10: rpmgr.v1.AuthService.GetSession:input_type -> rpmgr.v1.GetSessionRequest
+	10, // 11: rpmgr.v1.AuthService.ListSessions:input_type -> rpmgr.v1.ListSessionsRequest
+	12, // 12: rpmgr.v1.AuthService.RevokeSession:input_type -> rpmgr.v1.RevokeSessionRequest
+	0,  // 13: rpmgr.v1.AuthService.CompletePasswordReset:input_type -> rpmgr.v1.CompletePasswordResetRequest
+	3,  // 14: rpmgr.v1.AuthService.Login:output_type -> rpmgr.v1.LoginResponse
+	5,  // 15: rpmgr.v1.AuthService.Logout:output_type -> rpmgr.v1.LogoutResponse
+	7,  // 16: rpmgr.v1.AuthService.GetSession:output_type -> rpmgr.v1.GetSessionResponse
+	11, // 17: rpmgr.v1.AuthService.ListSessions:output_type -> rpmgr.v1.ListSessionsResponse
+	13, // 18: rpmgr.v1.AuthService.RevokeSession:output_type -> rpmgr.v1.RevokeSessionResponse
+	1,  // 19: rpmgr.v1.AuthService.CompletePasswordReset:output_type -> rpmgr.v1.CompletePasswordResetResponse
+	14, // [14:20] is the sub-list for method output_type
+	8,  // [8:14] is the sub-list for method input_type
+	8,  // [8:8] is the sub-list for extension type_name
+	8,  // [8:8] is the sub-list for extension extendee
+	0,  // [0:8] is the sub-list for field type_name
 }
 
 func init() { file_rpmgr_v1_auth_proto_init() }
@@ -208,7 +933,7 @@ func file_rpmgr_v1_auth_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_rpmgr_v1_auth_proto_rawDesc), len(file_rpmgr_v1_auth_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   2,
+			NumMessages:   14,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

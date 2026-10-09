@@ -5,8 +5,11 @@ package controller_test
 import (
 	"context"
 	"errors"
+	"net/http"
+	"net/http/cookiejar"
 	"strings"
 	"testing"
+	"time"
 
 	"connectrpc.com/connect"
 
@@ -17,7 +20,8 @@ import (
 )
 
 // TestRun_PasswordReset: init prints a first-user link, whose token AuthService accepts once
-// over the controller's public URL; afterwards reset-password needs an e-mail address and makes a
+// over the controller's public URL; the user then signs in with a session cookie, and a
+// cross-site request is refused; afterwards reset-password needs an e-mail address and makes a
 // reset link for that user, and none for nobody.
 func TestRun_PasswordReset(t *testing.T) {
 	var link string
@@ -41,6 +45,26 @@ func TestRun_PasswordReset(t *testing.T) {
 	}
 	if _, err := complete(tok, "correct horse battery staple"); connect.CodeOf(err) != connect.CodeInvalidArgument {
 		t.Fatalf("the link again: %v", err)
+	}
+
+	// A browser signs in over the public URL and keeps the session in its cookie jar.
+	jar, _ := cookiejar.New(nil)
+	browser := rpmgrv1connect.NewAuthServiceClient(&http.Client{Jar: jar, Transport: r.client.Transport, Timeout: 10 * time.Second}, r.url)
+	if _, err := browser.Login(ctx, connect.NewRequest(&rpmgrv1.LoginRequest{Email: "ada@example.com",
+		Password: "correct horse battery staple"})); err != nil {
+		t.Fatalf("login: %v", err)
+	}
+	if s, err := browser.GetSession(ctx, connect.NewRequest(&rpmgrv1.GetSessionRequest{})); err != nil || s.Msg.GetEmail() != "ada@example.com" {
+		t.Fatalf("the session: %v %v", s, err)
+	}
+	// A cross-site POST does not reach the API.
+	req, _ := http.NewRequest(http.MethodPost, r.url+"/rpmgr.v1.AuthService/Logout", strings.NewReader("{}"))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Sec-Fetch-Site", "cross-site")
+	if resp, err := (&http.Client{Jar: jar, Transport: r.client.Transport}).Do(req); err != nil || resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("a cross-site request: %v %v", resp, err)
+	} else {
+		_ = resp.Body.Close()
 	}
 
 	if _, err := controller.ResetPasswordLink(ctx, r.h.cfg, ""); !errors.Is(err, controller.ErrEmailNeeded) {

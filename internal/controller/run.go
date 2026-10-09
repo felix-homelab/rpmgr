@@ -37,10 +37,12 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/pki"
 	"github.com/felix-homelab/rpmgr/internal/revlog"
 	"github.com/felix-homelab/rpmgr/internal/secret"
+	"github.com/felix-homelab/rpmgr/internal/settings"
 	"github.com/felix-homelab/rpmgr/internal/snapshot"
 	"github.com/felix-homelab/rpmgr/internal/store"
 	"github.com/felix-homelab/rpmgr/internal/store/migrations"
 	"github.com/felix-homelab/rpmgr/internal/telemetry"
+	"github.com/felix-homelab/rpmgr/internal/websession"
 )
 
 // drainWait is how long a stopping controller waits after Drain for its agents to move
@@ -206,8 +208,10 @@ func Run(ctx context.Context, o RunOptions) error {
 	if err != nil {
 		return err
 	}
+	webSessions := websession.New(websession.Options{DB: db, Sys: sys, RevLog: rl, Now: o.Now, Logger: o.Logger})
 	apiServer, err := api.New(api.Options{DB: db, Sys: sys, Sealer: sealer, Resolver: api.StoreResolver(db, sys),
-		OperatorsMayEnroll: api.StoreOperatorsMayEnroll(db, sys), PageKey: pageKey, Now: o.Now, Logger: o.Logger})
+		OperatorsMayEnroll: api.StoreOperatorsMayEnroll(db, sys), PageKey: pageKey, Now: o.Now, Logger: o.Logger,
+		Authenticator: webSessions, Origins: origins(db, sys, public)})
 	if err != nil {
 		return err
 	}
@@ -215,7 +219,7 @@ func Run(ctx context.Context, o RunOptions) error {
 	mux.Handle("/.well-known/rpmgr/trust-bundle", enroll.TrustBundleHandler(ca.Root()))
 	if err := apiServer.Mount(mux, rpmgrv1.File_rpmgr_v1_auth_proto.Services().ByName("AuthService"),
 		func(opts ...connect.HandlerOption) (string, http.Handler) {
-			return rpmgrv1connect.NewAuthServiceHandler(&apisvc.Auth{Accounts: accounts.New(db, sys, o.Now)}, opts...)
+			return rpmgrv1connect.NewAuthServiceHandler(apisvc.NewAuth(accounts.New(db, sys, o.Now), webSessions, o.Now), opts...)
 		}); err != nil {
 		return err
 	}
@@ -319,6 +323,25 @@ func Run(ctx context.Context, o RunOptions) error {
 	stop()
 	<-sessionsDone
 	return result
+}
+
+// origins returns the origins a browser may call the API from: the public URL's and those of its
+// aliases in the instance settings.
+func origins(db *store.DB, sys context.Context, public *url.URL) func(context.Context) ([]string, error) {
+	own := public.Scheme + "://" + public.Host
+	return func(context.Context) ([]string, error) {
+		inst, _, err := settings.Instance(sys, db.ReadClient())
+		if err != nil {
+			return nil, err
+		}
+		out := []string{own}
+		for _, a := range inst.GetPublicUrlAliases() {
+			if u, err := url.Parse(a); err == nil && u.Host != "" {
+				out = append(out, u.Scheme+"://"+u.Host)
+			}
+		}
+		return out, nil
+	}
 }
 
 // loadKEK loads the KEK the boot file names; Run never creates one.

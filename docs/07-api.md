@@ -201,7 +201,7 @@ API reports both ([03](03-connections.md#configuration-reconciliation)).
 | Step-up required | `UNAUTHENTICATED` | `reason = STEP_UP_REQUIRED` |
 | Etag mismatch, dependants exist, domain not verified, port taken | `FAILED_PRECONDITION` | `reason` + metadata |
 | DNS (Phase 2): zone not managed or not `active`, proxied or wildcard name not allowed by the zone, plan changed since it was shown, provider refuses the token for this zone | `FAILED_PRECONDITION` | `reason` = `ZONE_NOT_MANAGED`, `ZONE_NOT_ACTIVE`, `PROXY_NOT_ALLOWED`, `WILDCARD_NOT_ALLOWED`, `PLAN_CHANGED`, `PROVIDER_PERMISSION_DENIED` |
-| Rate limited | `RESOURCE_EXHAUSTED` | retry-after |
+| Rate limited | `RESOURCE_EXHAUSTED` | retry-after (`google.rpc.RetryInfo`) |
 | Agent unreachable for an imperative operation; DNS provider unreachable for a live call (`ListProviderZones`, `ListZoneRecords`, `PlanZoneSync`) | `UNAVAILABLE` | — |
 | Operation exceeded its deadline | `DEADLINE_EXCEEDED` | — |
 
