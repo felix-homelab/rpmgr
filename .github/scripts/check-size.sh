@@ -29,7 +29,8 @@ while IFS=$'\t' read -r added deleted path; do
   [[ $added == - ]] && continue # binary
   [[ $path =~ \.(go|proto|ts|tsx|js|jsx|mjs|cjs|css|sh|sql)$ ]] || continue
   [[ $path =~ (_test\.go|\.(test|spec)\.(ts|tsx|js|jsx))$ ]] && continue
-  [[ $path =~ (^|/)(testdata|migrations|node_modules|vendor|e2e)/ || $path =~ ^(gen|\.github)/ ]] && continue
+  # bench/ is the benchmark suite: test code, which has no limit (CONTRIBUTING.md).
+  [[ $path =~ (^|/)(testdata|migrations|node_modules|vendor|e2e)/ || $path =~ ^(gen|\.github|bench)/ ]] && continue
   # The header is read in full before grep looks at it: with pipefail, "git show | head | grep -q"
   # fails whenever head closes the pipe while git show is still writing a large file (SIGPIPE).
   header=$(git show "$head:$path" 2>/dev/null | head -n 10 || true)
