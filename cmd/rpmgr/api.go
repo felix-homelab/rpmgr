@@ -50,6 +50,7 @@ func apiCommands() []*cli.Command {
 	add(moreDomain)
 	createPolicy, updatePolicy := accessPolicyCommands()
 	add(map[string][]*cli.Command{"create": {createPolicy}, "update": {updatePolicy}})
+	add(memberCommands())
 	out := []*cli.Command{getCommand(), listCommand(), deleteCommand()}
 	for _, v := range []struct{ verb, summary string }{
 		{"create", "create a resource of the public API"}, {"update", "change a resource of the public API"},
@@ -57,7 +58,7 @@ func apiCommands() []*cli.Command {
 		{"drain", "stop a gateway taking new connections"}, {"decommission", "take an agent out of service for good"},
 		{"revoke", "revoke a credential"}, {"set", "set an org's limit"}, {"preview", "show what a change would do, saving nothing"},
 		{"verify", "check a proof now"}, {"trust", "trust something without a proof"}, {"upload", "upload a file to the controller"},
-		{"renew", "renew a certificate now"},
+		{"renew", "renew a certificate now"}, {"remove", "remove a member from the org"},
 	} {
 		out = append(out, group(v.verb, v.summary, verbs[v.verb]...))
 	}
@@ -184,8 +185,13 @@ func listCommand() *cli.Command {
 			if err != nil {
 				return err
 			}
+			// Members and tokens come in one answer, without pages.
+			paged := md.Input().Fields().ByName("page_token") != nil
 			for page := ""; ; {
-				fields := map[string]any{"org_id": s.creds.Org, "page_size": int32(500), "page_token": page}
+				fields := map[string]any{"org_id": s.creds.Org}
+				if paged {
+					fields["page_size"], fields["page_token"] = int32(500), page
+				}
 				for _, name := range []string{"show_decommissioned", "show_inactive"} {
 					if all && md.Input().Fields().ByName(protoreflect.Name(name)) != nil {
 						fields[name] = true
@@ -202,7 +208,10 @@ func listCommand() *cli.Command {
 				l := resp.Get(fd).List()
 				for i := range l.Len() {
 					found = append(found, l.Get(i).Message())
-					ids = append(ids, l.Get(i).Message().Get(l.Get(i).Message().Descriptor().Fields().ByName("id")).String())
+					ids = append(ids, idOf(l.Get(i).Message()))
+				}
+				if !paged {
+					break
 				}
 				if page = resp.Get(resp.Descriptor().Fields().ByName("next_page_token")).String(); page == "" {
 					break
@@ -382,17 +391,32 @@ func writeTable(w io.Writer, k apicli.Kind, res []protoreflect.Message) error {
 		if err != nil {
 			return err
 		}
-		name := cell(v, "name")
-		if name == "-" {
-			name = cell(v, "fqdn")
+		id, name := cell(v, "id"), cell(v, "name")
+		if id == "-" {
+			id = cell(v, "userId")
 		}
-		row := []string{cell(v, "id"), name}
+		for _, alt := range []string{"fqdn", "displayName"} {
+			if name == "-" {
+				name = cell(v, alt)
+			}
+		}
+		row := []string{id, name}
 		for _, c := range k.Columns {
 			row = append(row, cell(v, c))
 		}
 		_, _ = fmt.Fprintln(tw, strings.Join(row, "\t"))
 	}
 	return tw.Flush()
+}
+
+// idOf is a resource's ID; a member's is its user's.
+func idOf(m protoreflect.Message) string {
+	for _, name := range []protoreflect.Name{"id", "user_id"} {
+		if fd := m.Descriptor().Fields().ByName(name); fd != nil {
+			return m.Get(fd).String()
+		}
+	}
+	return ""
 }
 
 // cell is the value at a dotted JSON path, a list joined by commas, or "-" if it is not set.
