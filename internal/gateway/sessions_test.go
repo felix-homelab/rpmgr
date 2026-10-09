@@ -160,10 +160,13 @@ func start(t *testing.T, m *gateway.Sessions, id pki.Identity, first *tunnelv1.S
 	if first == nil {
 		return c
 	}
-	c.send(t, first)
 	if first.GetHello() == nil {
+		// The gateway refuses any other first message and may close the session before the
+		// write's flush returns, so the write's error says nothing; serveErr checks the refusal.
+		_ = tunnel.WriteMessage(control, first)
 		return c
 	}
+	c.send(t, first)
 	msg := &tunnelv1.SessionMessage{}
 	if err := tunnel.ReadMessage(control, msg); err != nil || msg.GetWelcome() == nil {
 		t.Fatalf("no SessionWelcome: %v %v", msg, err)
