@@ -52,3 +52,11 @@ func (c Chooser) MayProbe(gw string) bool                    { return c.c.mayPro
 
 // IsBlackhole is isBlackhole.
 var IsBlackhole = isBlackhole
+
+// SetPingInterval shortens the session Ping's interval, for one test that must not run in
+// parallel with others.
+func SetPingInterval(t testing.TB, d time.Duration) {
+	old := pingEvery
+	pingEvery = d
+	t.Cleanup(func() { pingEvery = old })
+}

@@ -82,7 +82,9 @@ type TargetsOptions struct {
 	OnHealth func(*tunnelv1.RouteHealth)
 	// UDPMetrics count the udp flows' oversize and dropped payloads; nil keeps them unregistered.
 	UDPMetrics *tunnel.UDPMetrics
-	Logger     *slog.Logger
+	// Metrics, if set, time the dials and count the refused ones.
+	Metrics *Metrics
+	Logger  *slog.Logger
 }
 
 // Targets serves the streams gateways open (docs/03-connections.md, "One stream per user
@@ -192,6 +194,7 @@ func (t *Targets) report(h *tunnelv1.RouteHealth) {
 
 // blocked marks a route not ready after a dial the policy refused on a resolved address.
 func (t *Targets) blocked(route, target string) {
+	t.o.Metrics.refused(route)
 	h := &tunnelv1.RouteHealth{RouteId: route, Reason: agentv1.NotReadyReason_NOT_READY_REASON_BLOCKED_BY_LOCAL_POLICY, Detail: target}
 	t.mu.Lock()
 	old := t.health[route]
@@ -254,6 +257,11 @@ func (t *Targets) Handle(ctx context.Context, gatewayID string, st tunnel.Stream
 	tunnel.Relay(st, conn)
 }
 
+func isBlocked(err error) bool {
+	var b *policy.BlockedError
+	return errors.As(err, &b)
+}
+
 // open checks the StreamOpen and dials a target of its route; it returns the target's ID with the
 // connection.
 func (t *Targets) open(ctx context.Context, open *tunnelv1.StreamOpen) (tunnelv1.ResultCode, net.Conn, string) {
@@ -284,7 +292,7 @@ func (t *Targets) open(ctx context.Context, open *tunnelv1.StreamOpen) (tunnelv1
 		if tg.UnixPath != "" {
 			network = "unix"
 		}
-		conn, err := d.DialContext(ctx, network, tg.String())
+		conn, err := t.o.Metrics.dial(ctx, d, r.ID, network, tg.String(), isBlocked)
 		if err != nil {
 			var b *policy.BlockedError
 			if errors.As(err, &b) {

@@ -84,7 +84,11 @@ func Run(ctx context.Context, o RunOptions) error {
 	if err != nil {
 		return err
 	}
-	targets = NewTargets(TargetsOptions{Policy: watcher.Current, Logger: o.Logger, UDPMetrics: udpMetrics,
+	metrics, err := NewMetrics(reg)
+	if err != nil {
+		return err
+	}
+	targets = NewTargets(TargetsOptions{Policy: watcher.Current, Logger: o.Logger, UDPMetrics: udpMetrics, Metrics: metrics,
 		OnHealth: func(h *tunnelv1.RouteHealth) {
 			sessions.SetReady(h)
 			if ctl != nil { // a change before the control plane exists goes out with its first session
@@ -102,7 +106,7 @@ func Run(ctx context.Context, o RunOptions) error {
 	if _, err := rand.Read(boot); err != nil {
 		return err
 	}
-	sessions = New(Options{QUIC: tr, Dial: dial, Streams: targets.Handle, Now: o.Now, Logger: o.Logger,
+	sessions = New(Options{QUIC: tr, Dial: dial, Streams: targets.Handle, Now: o.Now, Logger: o.Logger, Metrics: metrics,
 		Hello: func() *tunnelv1.SessionHello {
 			return &tunnelv1.SessionHello{AgentVersion: o.Version, Capabilities: Capabilities, BootId: hex.EncodeToString(boot)}
 		},

@@ -75,8 +75,10 @@ type Options struct {
 	// LocalAddr returns the local source address towards an endpoint, the key of the transport
 	// cache; nil asks the kernel.
 	LocalAddr func(ctx context.Context, endpoint string) (netip.Addr, error)
-	Now       func() time.Time
-	Logger    *slog.Logger
+	// Metrics, if set, report the sessions' round-trip times.
+	Metrics *Metrics
+	Now     func() time.Time
+	Logger  *slog.Logger
 }
 
 // Sessions keeps the connector's data sessions (docs/03-connections.md, "Data session",
@@ -120,6 +122,9 @@ type session struct {
 	send      func(*tunnelv1.SessionMessage) error
 	requests  *tunnel.OpenRequester
 	streams   atomic.Int64
+	pingSeq   atomic.Uint64   // the last Ping sent
+	pingAt    atomic.Int64    // when, in Unix nanoseconds
+	srtt      atomic.Int64    // the smoothed round-trip time from Ping and Pong, 0 before the first
 	announced map[string]bool // routes reported ready on it; under Sessions.mu
 	retired   bool            // under Sessions.mu
 }
@@ -145,8 +150,10 @@ func New(o Options) *Sessions {
 		o.Now = time.Now
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	return &Sessions{o: o, ctx: ctx, cancel: cancel, choose: newChooser(o.Now), gateways: map[string]*gatewayState{},
+	s := &Sessions{o: o, ctx: ctx, cancel: cancel, choose: newChooser(o.Now), gateways: map[string]*gatewayState{},
 		ready: map[string]bool{}}
+	o.Metrics.watch(s)
+	return s
 }
 
 // policies are the transport policies a gateway entry needs links for.
@@ -325,6 +332,62 @@ func (m *Sessions) SetReady(h *tunnelv1.RouteHealth) {
 	}
 	m.mu.Unlock()
 	m.flush(out)
+}
+
+// pingEvery is the session Ping's interval, tunnel.PingInterval; a variable for tests.
+var pingEvery = tunnel.PingInterval
+
+// ping sends a Ping, noting when.
+func (s *session) ping(msg *tunnelv1.SessionMessage) error {
+	if p := msg.GetPing(); p != nil {
+		s.pingAt.Store(time.Now().UnixNano())
+		s.pingSeq.Store(p.GetSeq())
+	}
+	return s.send(msg)
+}
+
+// pong takes the Pong of the last Ping into the smoothed round-trip time, with the gain of
+// RFC 6298, 1/8.
+func (s *session) pong(seq uint64) {
+	if seq != s.pingSeq.Load() {
+		return
+	}
+	sample := time.Now().UnixNano() - s.pingAt.Load()
+	if old := s.srtt.Load(); old > 0 {
+		sample = old + (sample-old)/8
+	}
+	s.srtt.Store(sample)
+}
+
+// rtt is the session's smoothed round-trip time: the transport's if it measures one, as QUIC
+// does, else the Ping's; 0 while unknown.
+func (s *session) rtt() time.Duration {
+	if q, ok := s.s.(interface{ RTT() time.Duration }); ok && q.RTT() > 0 {
+		return q.RTT()
+	}
+	return time.Duration(s.srtt.Load())
+}
+
+// RTTKey names the sessions to one gateway over one transport.
+type RTTKey struct{ Gateway, Transport string }
+
+// RTTs returns the lowest known round-trip time of the established sessions per gateway and
+// transport.
+func (m *Sessions) RTTs() map[RTTKey]time.Duration {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	out := map[RTTKey]time.Duration{}
+	for id, gs := range m.gateways {
+		for _, l := range gs.links {
+			for s := range l.sessions {
+				k := RTTKey{id, s.transport}
+				if rtt := s.rtt(); rtt > 0 && (out[k] == 0 || rtt < out[k]) {
+					out[k] = rtt
+				}
+			}
+		}
+	}
+	return out
 }
 
 // Count returns the number of established sessions that carry routes, per "<gateway>/<transport>".
@@ -719,7 +782,7 @@ func (m *Sessions) serve(ctx context.Context, s *session, drained chan struct{})
 	}()
 	sctx, scancel := context.WithCancel(context.Background())
 	defer scancel()
-	go func() { _ = tunnel.SendPings(sctx, s.send, tunnel.PingInterval) }()
+	go func() { _ = tunnel.SendPings(sctx, s.ping, pingEvery) }()
 	go m.accept(sctx, s)
 	var once sync.Once
 	for {
@@ -730,6 +793,8 @@ func (m *Sessions) serve(ctx context.Context, s *session, drained chan struct{})
 		switch {
 		case msg.GetDrain() != nil:
 			once.Do(func() { close(drained) })
+		case msg.GetPong() != nil:
+			s.pong(msg.GetPong().GetSeq())
 		case msg.GetOpenRejected() != nil:
 			s.requests.Rejected(msg.GetOpenRejected())
 		case msg.GetGoodbye() != nil:

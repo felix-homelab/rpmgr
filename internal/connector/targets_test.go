@@ -122,10 +122,13 @@ type targetsEnv struct {
 	health []*tunnelv1.RouteHealth
 }
 
-func newTargets(p *policy.Policy) *targetsEnv {
+func newTargets(p *policy.Policy) *targetsEnv { return newTargetsWith(p, nil) }
+
+// newTargetsWith is newTargets recording metrics.
+func newTargetsWith(p *policy.Policy, metrics *connector.Metrics) *targetsEnv {
 	e := &targetsEnv{}
 	e.cur.Store(p)
-	e.Targets = connector.NewTargets(connector.TargetsOptions{Policy: e.cur.Load, OnHealth: func(h *tunnelv1.RouteHealth) {
+	e.Targets = connector.NewTargets(connector.TargetsOptions{Policy: e.cur.Load, Metrics: metrics, OnHealth: func(h *tunnelv1.RouteHealth) {
 		e.mu.Lock()
 		e.health = append(e.health, h)
 		e.mu.Unlock()
