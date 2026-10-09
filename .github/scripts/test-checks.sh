@@ -396,6 +396,18 @@ else
   expect pass "documented token format is not a secret" "$dir/check-secrets.sh" "$r" dir
   printf 'token = "%s_%s_%s_%s"\n' rpmgr enr "$(printf 'k7Q2%.0s' {1..10})Zx9" "aB3dE5" >"$r/leak.txt"
   expect fail "rpmgr token detected" "$dir/check-secrets.sh" "$r" dir
+  printf 'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n' >"$r/leak.txt"
+  expect pass "the RFC 6455 sample key is not a secret" "$dir/check-secrets.sh" "$r" dir
+  # Git mode reads the history of a worktree too, whose .git file names a git directory outside
+  # it, and fails outside a repository rather than scanning nothing.
+  r=$(new_repo)
+  printf 'token = "%s_%s_%s_%s"\n' rpmgr enr "$(printf 'k7Q2%.0s' {1..10})Zx9" "aB3dE5" >"$r/leak.txt"
+  git -C "$r" add leak.txt && git -C "$r" commit -q -s -m "chore: leak"
+  git -C "$r" rm -q leak.txt && git -C "$r" commit -q -s -m "chore: remove the leak"
+  wt=$(mktemp -d "$tmproot/wt.XXXXXX")
+  git -C "$r" worktree add -q -b side "$wt"
+  expect fail "a token in a worktree's history" "$dir/check-secrets.sh" "$wt" git
+  expect fail "git mode outside a repository" "$dir/check-secrets.sh" "$(mktemp -d "$tmproot/dir.XXXXXX")" git
 
   # Atlas lint: generated migrations pass, a destructive change is reported.
   r=$(mktemp -d "$tmproot/dir.XXXXXX")

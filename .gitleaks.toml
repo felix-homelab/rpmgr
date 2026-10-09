@@ -14,3 +14,24 @@ id = "rpmgr-token"
 description = "rpmgr enrollment, personal API, service-account or session token"
 regex = '''\brpmgr_(?:enr|pat|sat|ses)_[0-9A-Za-z]{40,46}_[0-9A-Za-z]{6}\b'''
 keywords = ["rpmgr_enr_", "rpmgr_pat_", "rpmgr_sat_", "rpmgr_ses_"]
+
+# The sample nonce of RFC 6455, section 1.3, which WebSocket tests send as Sec-WebSocket-Key: a
+# well-known example value, not a secret.
+[[allowlists]]
+description = "RFC 6455 sample WebSocket key"
+regexes = ['''^dGhlIHNhbXBsZSBub25jZQ==$''']
+
+# The seed of RFC 6238's test vectors, 12345678901234567890, in base32: TOTP tests compare it.
+[[allowlists]]
+description = "RFC 6238 test seed"
+regexes = ['''^GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ$''']
+
+# Go code naming argon2's key derivation function, which the generic rule reads as a key.
+[[allowlists]]
+description = "argon2.IDKey"
+regexes = ['''^argon2\.IDKey$''']
+
+# Atlas migration checksums: hashes of the migration files.
+[[allowlists]]
+description = "Atlas migration checksums"
+paths = ['''(^|/)internal/store/migrations/[^/]+/atlas\.sum$''']
