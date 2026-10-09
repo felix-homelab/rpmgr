@@ -11,6 +11,7 @@ import { NotFound } from "@/pages/not-found";
 import { Overview } from "@/pages/overview";
 import { Reset } from "@/pages/reset";
 import { RouteDetail } from "@/pages/route-detail";
+import { RouteEdit } from "@/pages/route-edit";
 import { Routes, validateRoutesSearch } from "@/pages/routes";
 import { Setup } from "@/pages/setup";
 import { sessionQuery } from "@/session";
@@ -41,6 +42,7 @@ const app = createRoute({
 const overview = createRoute({ getParentRoute: () => app, path: "/", component: Overview });
 const routes = createRoute({ getParentRoute: () => app, path: "/routes", component: Routes, validateSearch: validateRoutesSearch });
 const routeDetail = createRoute({ getParentRoute: () => app, path: "/routes/$routeId", component: RouteDetail });
+const routeEdit = createRoute({ getParentRoute: () => app, path: "/routes/$routeId/edit", component: RouteEdit });
 const account = createRoute({
   getParentRoute: () => app,
   path: "/account",
@@ -60,7 +62,7 @@ const setup = createRoute({ getParentRoute: () => root, path: "/setup", componen
 const reset = createRoute({ getParentRoute: () => root, path: "/reset", component: Reset });
 const forgot = createRoute({ getParentRoute: () => root, path: "/forgot", component: Forgot });
 
-const routeTree = root.addChildren([app.addChildren([overview, routes, routeDetail, account]), login, setup, reset, forgot]);
+const routeTree = root.addChildren([app.addChildren([overview, routes, routeDetail, routeEdit, account]), login, setup, reset, forgot]);
 
 export function createAppRouter(context: RouterContext, history?: RouterHistory) {
   return createRouter({ routeTree, history, context, defaultPreload: "intent" });

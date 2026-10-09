@@ -3,7 +3,7 @@
 import { Code, ConnectError } from "@connectrpc/connect";
 import { useMutation, useQuery } from "@connectrpc/connect-query";
 import { useQueryClient } from "@tanstack/react-query";
-import { getRouteApi } from "@tanstack/react-router";
+import { getRouteApi, Link } from "@tanstack/react-router";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ApplyStatusView, useLiveApplyStatus } from "@/components/apply-status";
@@ -60,6 +60,9 @@ export function RouteDetail() {
     <div className="grid gap-6">
       <div className="flex flex-wrap items-center gap-4">
         <h1 className="text-2xl font-semibold">{t("route.title", { name: r.name, type: t(`routeType.${routeType(r) || "unknown"}`) })}</h1>
+        <Button asChild variant="outline" size="sm">
+          <Link to="/routes/$routeId/edit" params={{ routeId: r.id }}>{t("route.edit")}</Link>
+        </Button>
         <Button role="switch" aria-checked={r.enabled} variant="outline" size="sm" disabled={update.isPending} onClick={() => void toggle(r)}>
           {t("route.enabledSwitch")}: {r.enabled ? t("route.on") : t("route.off")}
         </Button>

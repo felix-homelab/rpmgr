@@ -138,6 +138,13 @@ flowchart LR
     `WatchApplyStatus`, in a live region (U8).
   - If the route changed since the page read it, the switch says so, and the page shows the route as
     it is now.
+- **"Edit"** opens the route's form, with the fields the API lets a route of its type change.
+  - **Full resource (U1):** the form starts from the route as read and sends it whole, with its
+    fields set from the form, the update mask of those fields and the etag. A field the form does
+    not show keeps what the server sent, so a save loses nothing.
+  - **Validation:** before sending, the form checks the API's rules. The server's violations land
+    on their fields, and any it cannot place are shown with the form.
+  - **After a save,** the apply status follows live, as for the switch.
 
 ### Enroll connector dialog
 
