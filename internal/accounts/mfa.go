@@ -121,7 +121,7 @@ func (m *MFA) ConfirmTOTP(userID, code string) ([]string, error) {
 		if codes, err = m.newRecoveryCodes(tx, userID); err != nil {
 			return err
 		}
-		return m.superseded(tx, userID, "user.mfa_enroll", "authenticator set up")
+		return m.superseded(tx, userID, "user.mfa_enroll", revlog.MFA, "authenticator set up")
 	})
 	return codes, err
 }
@@ -136,7 +136,7 @@ func (m *MFA) RemoveTOTP(userID, actor string) error {
 		if _, err := tx.RecoveryCode.Delete().Where(recoverycode.UserID(userID)).Exec(m.sys); err != nil {
 			return err
 		}
-		return m.superseded(tx, userID, "user.mfa_remove", "authenticator removed by "+actor)
+		return m.superseded(tx, userID, "user.mfa_remove", revlog.MFA, "authenticator removed by "+actor)
 	})
 }
 
@@ -151,7 +151,7 @@ func (m *MFA) RegenerateRecoveryCodes(userID string) ([]string, error) {
 		if codes, err = m.newRecoveryCodes(tx, userID); err != nil {
 			return err
 		}
-		return m.superseded(tx, userID, "user.recovery_codes", "recovery codes replaced")
+		return m.superseded(tx, userID, "user.recovery_codes", revlog.RecoveryCodes, "recovery codes replaced")
 	})
 	return codes, err
 }
@@ -224,16 +224,12 @@ func (m *MFA) newRecoveryCodes(tx *ent.Tx, userID string) ([]string, error) {
 	return codes, nil
 }
 
-// superseded records a change of a user's credentials in the audit log and the revocation log.
-func (m *MFA) superseded(tx *ent.Tx, userID, action, detail string) error {
-	if m.RevLog != nil {
-		if _, err := m.RevLog.Append(revlog.Entry{Kind: revlog.CredentialSuperseded, Subject: userID, Detail: detail,
-			Actor: userID}); err != nil && m.Logger != nil {
-			m.Logger.Error("cannot append a credential change to the revocation log; it applies anyway", "user", userID, "error", err)
-		}
-	}
+// superseded records a change of a user's credentials in the audit log and, as what, in the
+// revocation log.
+func (m *MFA) superseded(tx *ent.Tx, userID, action, what, reason string) error {
+	logSuperseded(m.RevLog, m.Logger, userID, what, userID)
 	_, err := audit.Append(m.sys, tx, audit.Entry{ActorType: audit.ActorUser, ActorID: userID, Action: action,
-		TargetType: "user", TargetID: userID, Result: audit.Success, Reason: detail})
+		TargetType: "user", TargetID: userID, Result: audit.Success, Reason: reason})
 	return err
 }
 

@@ -53,6 +53,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/recoverycode"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/resourcestatus"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/revokedidentity"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/revokedserial"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/route"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routehostname"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routehttp"
@@ -152,6 +153,8 @@ type Client struct {
 	ResourceStatus *ResourceStatusClient
 	// RevokedIdentity is the client for interacting with the RevokedIdentity builders.
 	RevokedIdentity *RevokedIdentityClient
+	// RevokedSerial is the client for interacting with the RevokedSerial builders.
+	RevokedSerial *RevokedSerialClient
 	// Route is the client for interacting with the Route builders.
 	Route *RouteClient
 	// RouteHTTP is the client for interacting with the RouteHTTP builders.
@@ -229,6 +232,7 @@ func (c *Client) init() {
 	c.RecoveryCode = NewRecoveryCodeClient(c.config)
 	c.ResourceStatus = NewResourceStatusClient(c.config)
 	c.RevokedIdentity = NewRevokedIdentityClient(c.config)
+	c.RevokedSerial = NewRevokedSerialClient(c.config)
 	c.Route = NewRouteClient(c.config)
 	c.RouteHTTP = NewRouteHTTPClient(c.config)
 	c.RouteHostname = NewRouteHostnameClient(c.config)
@@ -373,6 +377,7 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		RecoveryCode:       NewRecoveryCodeClient(cfg),
 		ResourceStatus:     NewResourceStatusClient(cfg),
 		RevokedIdentity:    NewRevokedIdentityClient(cfg),
+		RevokedSerial:      NewRevokedSerialClient(cfg),
 		Route:              NewRouteClient(cfg),
 		RouteHTTP:          NewRouteHTTPClient(cfg),
 		RouteHostname:      NewRouteHostnameClient(cfg),
@@ -444,6 +449,7 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		RecoveryCode:       NewRecoveryCodeClient(cfg),
 		ResourceStatus:     NewResourceStatusClient(cfg),
 		RevokedIdentity:    NewRevokedIdentityClient(cfg),
+		RevokedSerial:      NewRevokedSerialClient(cfg),
 		Route:              NewRouteClient(cfg),
 		RouteHTTP:          NewRouteHTTPClient(cfg),
 		RouteHostname:      NewRouteHostnameClient(cfg),
@@ -494,10 +500,10 @@ func (c *Client) Use(hooks ...Hook) {
 		c.GatewayGroup, c.Instance, c.InstanceSecret, c.InstanceSetting, c.Invitation,
 		c.IssuedCertificate, c.Lease, c.Membership, c.Org, c.OrgSetting,
 		c.PasswordReset, c.PolicyRule, c.PortAllocation, c.PortPool, c.PortQuota,
-		c.RecoveryCode, c.ResourceStatus, c.RevokedIdentity, c.Route, c.RouteHTTP,
-		c.RouteHostname, c.RoutePolicy, c.RouteTCP, c.RouteTarget, c.RouteTrafficDaily,
-		c.RouteTrafficHourly, c.RouteUDP, c.SecretMeta, c.Session, c.TOTPCredential,
-		c.TrafficBaseline, c.User,
+		c.RecoveryCode, c.ResourceStatus, c.RevokedIdentity, c.RevokedSerial, c.Route,
+		c.RouteHTTP, c.RouteHostname, c.RoutePolicy, c.RouteTCP, c.RouteTarget,
+		c.RouteTrafficDaily, c.RouteTrafficHourly, c.RouteUDP, c.SecretMeta, c.Session,
+		c.TOTPCredential, c.TrafficBaseline, c.User,
 	} {
 		n.Use(hooks...)
 	}
@@ -514,10 +520,10 @@ func (c *Client) Intercept(interceptors ...Interceptor) {
 		c.GatewayGroup, c.Instance, c.InstanceSecret, c.InstanceSetting, c.Invitation,
 		c.IssuedCertificate, c.Lease, c.Membership, c.Org, c.OrgSetting,
 		c.PasswordReset, c.PolicyRule, c.PortAllocation, c.PortPool, c.PortQuota,
-		c.RecoveryCode, c.ResourceStatus, c.RevokedIdentity, c.Route, c.RouteHTTP,
-		c.RouteHostname, c.RoutePolicy, c.RouteTCP, c.RouteTarget, c.RouteTrafficDaily,
-		c.RouteTrafficHourly, c.RouteUDP, c.SecretMeta, c.Session, c.TOTPCredential,
-		c.TrafficBaseline, c.User,
+		c.RecoveryCode, c.ResourceStatus, c.RevokedIdentity, c.RevokedSerial, c.Route,
+		c.RouteHTTP, c.RouteHostname, c.RoutePolicy, c.RouteTCP, c.RouteTarget,
+		c.RouteTrafficDaily, c.RouteTrafficHourly, c.RouteUDP, c.SecretMeta, c.Session,
+		c.TOTPCredential, c.TrafficBaseline, c.User,
 	} {
 		n.Intercept(interceptors...)
 	}
@@ -602,6 +608,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.ResourceStatus.mutate(ctx, m)
 	case *RevokedIdentityMutation:
 		return c.RevokedIdentity.mutate(ctx, m)
+	case *RevokedSerialMutation:
+		return c.RevokedSerial.mutate(ctx, m)
 	case *RouteMutation:
 		return c.Route.mutate(ctx, m)
 	case *RouteHTTPMutation:
@@ -5953,6 +5961,141 @@ func (c *RevokedIdentityClient) mutate(ctx context.Context, m *RevokedIdentityMu
 	}
 }
 
+// RevokedSerialClient is a client for the RevokedSerial schema.
+type RevokedSerialClient struct {
+	config
+}
+
+// NewRevokedSerialClient returns a client for the RevokedSerial from the given config.
+func NewRevokedSerialClient(c config) *RevokedSerialClient {
+	return &RevokedSerialClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `revokedserial.Hooks(f(g(h())))`.
+func (c *RevokedSerialClient) Use(hooks ...Hook) {
+	c.hooks.RevokedSerial = append(c.hooks.RevokedSerial, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `revokedserial.Intercept(f(g(h())))`.
+func (c *RevokedSerialClient) Intercept(interceptors ...Interceptor) {
+	c.inters.RevokedSerial = append(c.inters.RevokedSerial, interceptors...)
+}
+
+// Create returns a builder for creating a RevokedSerial entity.
+func (c *RevokedSerialClient) Create() *RevokedSerialCreate {
+	mutation := newRevokedSerialMutation(c.config, OpCreate)
+	return &RevokedSerialCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of RevokedSerial entities.
+func (c *RevokedSerialClient) CreateBulk(builders ...*RevokedSerialCreate) *RevokedSerialCreateBulk {
+	return &RevokedSerialCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *RevokedSerialClient) MapCreateBulk(slice any, setFunc func(*RevokedSerialCreate, int)) *RevokedSerialCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &RevokedSerialCreateBulk{err: fmt.Errorf("calling to RevokedSerialClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*RevokedSerialCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &RevokedSerialCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for RevokedSerial.
+func (c *RevokedSerialClient) Update() *RevokedSerialUpdate {
+	mutation := newRevokedSerialMutation(c.config, OpUpdate)
+	return &RevokedSerialUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *RevokedSerialClient) UpdateOne(_m *RevokedSerial) *RevokedSerialUpdateOne {
+	mutation := newRevokedSerialMutation(c.config, OpUpdateOne, withRevokedSerial(_m))
+	return &RevokedSerialUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *RevokedSerialClient) UpdateOneID(id string) *RevokedSerialUpdateOne {
+	mutation := newRevokedSerialMutation(c.config, OpUpdateOne, withRevokedSerialID(id))
+	return &RevokedSerialUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for RevokedSerial.
+func (c *RevokedSerialClient) Delete() *RevokedSerialDelete {
+	mutation := newRevokedSerialMutation(c.config, OpDelete)
+	return &RevokedSerialDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *RevokedSerialClient) DeleteOne(_m *RevokedSerial) *RevokedSerialDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *RevokedSerialClient) DeleteOneID(id string) *RevokedSerialDeleteOne {
+	builder := c.Delete().Where(revokedserial.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &RevokedSerialDeleteOne{builder}
+}
+
+// Query returns a query builder for RevokedSerial.
+func (c *RevokedSerialClient) Query() *RevokedSerialQuery {
+	return &RevokedSerialQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeRevokedSerial},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a RevokedSerial entity by its id.
+func (c *RevokedSerialClient) Get(ctx context.Context, id string) (*RevokedSerial, error) {
+	return c.Query().Where(revokedserial.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *RevokedSerialClient) GetX(ctx context.Context, id string) *RevokedSerial {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *RevokedSerialClient) Hooks() []Hook {
+	hooks := c.hooks.RevokedSerial
+	return append(hooks[:len(hooks):len(hooks)], revokedserial.Hooks[:]...)
+}
+
+// Interceptors returns the client interceptors.
+func (c *RevokedSerialClient) Interceptors() []Interceptor {
+	inters := c.inters.RevokedSerial
+	return append(inters[:len(inters):len(inters)], revokedserial.Interceptors[:]...)
+}
+
+func (c *RevokedSerialClient) mutate(ctx context.Context, m *RevokedSerialMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&RevokedSerialCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&RevokedSerialUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&RevokedSerialUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&RevokedSerialDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown RevokedSerial mutation op: %q", m.Op())
+	}
+}
+
 // RouteClient is a client for the Route schema.
 type RouteClient struct {
 	config
@@ -8123,9 +8266,10 @@ type (
 		EnrollmentToken, Gateway, GatewayGroup, Instance, InstanceSecret,
 		InstanceSetting, Invitation, IssuedCertificate, Lease, Membership, Org,
 		OrgSetting, PasswordReset, PolicyRule, PortAllocation, PortPool, PortQuota,
-		RecoveryCode, ResourceStatus, RevokedIdentity, Route, RouteHTTP, RouteHostname,
-		RoutePolicy, RouteTCP, RouteTarget, RouteTrafficDaily, RouteTrafficHourly,
-		RouteUDP, SecretMeta, Session, TOTPCredential, TrafficBaseline, User []ent.Hook
+		RecoveryCode, ResourceStatus, RevokedIdentity, RevokedSerial, Route, RouteHTTP,
+		RouteHostname, RoutePolicy, RouteTCP, RouteTarget, RouteTrafficDaily,
+		RouteTrafficHourly, RouteUDP, SecretMeta, Session, TOTPCredential,
+		TrafficBaseline, User []ent.Hook
 	}
 	inters struct {
 		ACMEStorage, APIRequest, APIToken, AccessPolicy, AgentSession, AgentState,
@@ -8134,10 +8278,10 @@ type (
 		EnrollmentToken, Gateway, GatewayGroup, Instance, InstanceSecret,
 		InstanceSetting, Invitation, IssuedCertificate, Lease, Membership, Org,
 		OrgSetting, PasswordReset, PolicyRule, PortAllocation, PortPool, PortQuota,
-		RecoveryCode, ResourceStatus, RevokedIdentity, Route, RouteHTTP, RouteHostname,
-		RoutePolicy, RouteTCP, RouteTarget, RouteTrafficDaily, RouteTrafficHourly,
-		RouteUDP, SecretMeta, Session, TOTPCredential, TrafficBaseline,
-		User []ent.Interceptor
+		RecoveryCode, ResourceStatus, RevokedIdentity, RevokedSerial, Route, RouteHTTP,
+		RouteHostname, RoutePolicy, RouteTCP, RouteTarget, RouteTrafficDaily,
+		RouteTrafficHourly, RouteUDP, SecretMeta, Session, TOTPCredential,
+		TrafficBaseline, User []ent.Interceptor
 	}
 )
 

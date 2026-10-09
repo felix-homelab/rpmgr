@@ -44,6 +44,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/recoverycode"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/resourcestatus"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/revokedidentity"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/revokedserial"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/route"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routehostname"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routehttp"
@@ -2160,6 +2161,30 @@ func init() {
 	revokedidentityDescID := revokedidentityFields[0].Descriptor()
 	// revokedidentity.IDValidator is a validator for the "id" field. It is called by the builders before save.
 	revokedidentity.IDValidator = revokedidentityDescID.Validators[0].(func(string) error)
+	revokedserial.Policy = privacy.NewPolicies(schema.RevokedSerial{})
+	revokedserial.Hooks[0] = func(next ent.Mutator) ent.Mutator {
+		return ent.MutateFunc(func(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+			if err := revokedserial.Policy.EvalMutation(ctx, m); err != nil {
+				return nil, err
+			}
+			return next.Mutate(ctx, m)
+		})
+	}
+	revokedserialHooks := schema.RevokedSerial{}.Hooks()
+
+	revokedserial.Hooks[1] = revokedserialHooks[0]
+	revokedserialInters := schema.RevokedSerial{}.Interceptors()
+	revokedserial.Interceptors[0] = revokedserialInters[0]
+	revokedserialFields := schema.RevokedSerial{}.Fields()
+	_ = revokedserialFields
+	// revokedserialDescReason is the schema descriptor for reason field.
+	revokedserialDescReason := revokedserialFields[3].Descriptor()
+	// revokedserial.DefaultReason holds the default value on creation for the reason field.
+	revokedserial.DefaultReason = revokedserialDescReason.Default.(string)
+	// revokedserialDescID is the schema descriptor for id field.
+	revokedserialDescID := revokedserialFields[0].Descriptor()
+	// revokedserial.IDValidator is a validator for the "id" field. It is called by the builders before save.
+	revokedserial.IDValidator = revokedserialDescID.Validators[0].(func(string) error)
 	routeMixin := schema.Route{}.Mixin()
 	route.Policy = privacy.NewPolicies(routeMixin[0], schema.Route{})
 	route.Hooks[0] = func(next ent.Mutator) ent.Mutator {

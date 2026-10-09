@@ -16,10 +16,11 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/issuedcertificate"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/revokedidentity"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/revokedserial"
 )
 
 // Revocation (docs/04-security.md, "Revocation"): issued_certificates and revoked_identities are
-// the source of the deny-list.
+// the source of the deny-list, with revoked_serials after a restore.
 
 // ErrIdentityRevoked is returned for a certificate of a revoked identity.
 var ErrIdentityRevoked = errors.New("pki: the identity is revoked")
@@ -108,8 +109,15 @@ func DenyList(ctx context.Context, c *ent.Client, now time.Time) ([]*agentv1.Den
 	if err != nil {
 		return nil, err
 	}
-	out := make([]*agentv1.DenyEntry, 0, len(certs)+len(ids))
+	serials, err := c.RevokedSerial.Query().Where(revokedserial.NotAfterGT(now)).All(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]*agentv1.DenyEntry, 0, len(certs)+len(ids)+len(serials))
 	for _, r := range certs {
+		out = append(out, &agentv1.DenyEntry{Subject: &agentv1.DenyEntry_Serial{Serial: r.ID}, NotAfter: timestamppb.New(r.NotAfter)})
+	}
+	for _, r := range serials {
 		out = append(out, &agentv1.DenyEntry{Subject: &agentv1.DenyEntry_Serial{Serial: r.ID}, NotAfter: timestamppb.New(r.NotAfter)})
 	}
 	for _, r := range ids {

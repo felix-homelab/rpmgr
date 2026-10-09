@@ -37,9 +37,19 @@ const (
 	GrantRemoved         Kind = "grant_removed"         // Subject: the grant ID; Detail: shell or visitor
 )
 
+// What a CredentialSuperseded entry's Detail names.
+const (
+	Password      = "password"       // a password set by its user or by a reset link
+	MFA           = "mfa"            // an authenticator set up or removed, with its recovery codes
+	RecoveryCodes = "recovery_codes" // recovery codes replaced
+)
+
 var kinds = map[Kind]bool{CertificateRevoked: true, IdentityRevoked: true, CertificateSuperseded: true,
 	APITokenRevoked: true, SessionRevoked: true, MemberRemoved: true, RoleDowngraded: true,
 	CredentialSuperseded: true, GrantRemoved: true}
+
+// Valid reports whether k is one of the kinds above.
+func (k Kind) Valid() bool { return kinds[k] }
 
 // MaxField is the longest Org, Subject, Detail or Actor an entry holds, in bytes.
 const MaxField = 512

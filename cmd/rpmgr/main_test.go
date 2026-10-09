@@ -97,6 +97,19 @@ func TestReleaseImport(t *testing.T) {
 	}
 }
 
+// TestRestore: `rpmgr restore` reads the controller's boot file; the restore itself is tested in
+// internal/controller.
+func TestRestore(t *testing.T) {
+	missing := filepath.Join(t.TempDir(), "none.yaml")
+	code, _, stderr := runRpmgr("restore", "--in", "x.backup", "--revocation-log", "a", "--revocation-log", "b", "--config", missing)
+	if code != cli.ExitError || !strings.Contains(stderr, "none.yaml") {
+		t.Errorf("a missing boot file: exit %d, %q", code, stderr)
+	}
+	if code, _, stderr := runRpmgr("restore", "confirm"); code != cli.ExitUsage || !strings.Contains(stderr, "not available in this build") {
+		t.Errorf("restore confirm: exit %d, %q", code, stderr)
+	}
+}
+
 // TestController: the role commands read their boot file from --config, else $RPMGR_CONFIG, and
 // stop with the boot file's problem; running is tested in their packages and internal/itest.
 func TestController(t *testing.T) {
@@ -208,6 +221,8 @@ func TestCommandLineErrors(t *testing.T) {
 		{"release", "import"},        // no directory
 		{"systemd-unit"},             // no role
 		{"systemd-unit", "relay"},    // no such role
+		{"restore"},                  // no archive
+		{"backup"},                   // no archive
 	} {
 		code, stdout, stderr := runRpmgr(args...)
 		if code != cli.ExitUsage || stdout != "" || !strings.Contains(stderr, "Usage:") {

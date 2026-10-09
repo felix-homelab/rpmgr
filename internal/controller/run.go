@@ -232,6 +232,7 @@ func Run(ctx context.Context, o RunOptions) error {
 	}
 	webSessions := websession.New(websession.Options{DB: db, Sys: sys, RevLog: rl, Now: o.Now, Logger: o.Logger})
 	acc := accounts.New(db, sys, o.Now)
+	acc.ResetLog, acc.ResetLogger = rl, o.Logger
 	tokens := &accounts.Tokens{Accounts: acc, RevLog: rl, Logger: o.Logger}
 	apiServer, err := api.New(api.Options{DB: db, Sys: sys, Sealer: sealer, Resolver: api.StoreResolver(db, sys),
 		OperatorsMayEnroll: api.StoreOperatorsMayEnroll(db, sys), PageKey: pageKey, Now: o.Now, Logger: o.Logger,

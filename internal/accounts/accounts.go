@@ -8,6 +8,7 @@ package accounts
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"strings"
 	"time"
 	"unicode"
@@ -16,6 +17,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/audit"
 	"github.com/felix-homelab/rpmgr/internal/authz"
 	"github.com/felix-homelab/rpmgr/internal/password"
+	"github.com/felix-homelab/rpmgr/internal/revlog"
 	"github.com/felix-homelab/rpmgr/internal/settings"
 	"github.com/felix-homelab/rpmgr/internal/store"
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
@@ -47,6 +49,10 @@ type Accounts struct {
 	db  *store.DB
 	sys context.Context // the system scope: users belong to no org
 	now func() time.Time
+	// ResetLog receives the passwords reset links set, as credential supersessions; nil keeps no
+	// revocation log (tests). ResetLogger reports a failed append.
+	ResetLog    *revlog.Log
+	ResetLogger *slog.Logger
 }
 
 // For returns a copy of a whose writes carry the audit record and transaction hook of the API
@@ -154,6 +160,7 @@ func (a *Accounts) CompleteReset(ctx context.Context, tok, newPassword, email, d
 			if u, err = tx.User.UpdateOneID(*link.UserID).SetPasswordHash(hash).Save(a.sys); err != nil {
 				return err
 			}
+			logSuperseded(a.ResetLog, a.ResetLogger, u.ID, revlog.Password, u.ID)
 			_, err = audit.Append(a.sys, tx, audit.Entry{ActorType: audit.ActorUser, ActorID: u.ID, AuthMethod: "reset-link",
 				Action: "user.password_reset", TargetType: "user", TargetID: u.ID, Result: audit.Success, Reason: "link " + link.ID})
 			return err
@@ -165,6 +172,19 @@ func (a *Accounts) CompleteReset(ctx context.Context, tok, newPassword, email, d
 		return nil, err
 	}
 	return u, nil
+}
+
+// logSuperseded appends a change of a user's credentials to the revocation log, before the
+// transaction commits; what is revlog.Password, MFA or RecoveryCodes. A failed append is reported
+// and does not stop the change (docs/04-security.md, "Revocation log").
+func logSuperseded(l *revlog.Log, logger *slog.Logger, userID, what, actor string) {
+	if l == nil {
+		return
+	}
+	if _, err := l.Append(revlog.Entry{Kind: revlog.CredentialSuperseded, Subject: userID, Detail: what, Actor: actor}); err != nil &&
+		logger != nil {
+		logger.Error("cannot append a credential change to the revocation log; it applies anyway", "user", userID, "error", err)
+	}
 }
 
 // createFirst creates the first user in tx, with the Owner role of the first org.

@@ -5,6 +5,7 @@ package accounts_test
 import (
 	"context"
 	"errors"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -14,6 +15,7 @@ import (
 	rpmgrv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/v1"
 	"github.com/felix-homelab/rpmgr/internal/accounts"
 	"github.com/felix-homelab/rpmgr/internal/password"
+	"github.com/felix-homelab/rpmgr/internal/revlog"
 	"github.com/felix-homelab/rpmgr/internal/settings"
 	"github.com/felix-homelab/rpmgr/internal/store"
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
@@ -144,6 +146,12 @@ func TestFirstUser_ExistingOrg(t *testing.T) {
 func TestResetLink(t *testing.T) {
 	e := newEnv(t)
 	ctx := context.Background()
+	log := filepath.Join(t.TempDir(), "revocations.log")
+	rl, err := revlog.Open(log, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	e.acc.ResetLog = rl
 	first, _ := e.acc.FirstUserLink("local-cli")
 	u, err := e.acc.CompleteReset(ctx, first, pw, "ada@example.com", "Ada")
 	if err != nil {
@@ -168,6 +176,11 @@ func TestResetLink(t *testing.T) {
 	}
 	if _, err := e.acc.CompleteReset(ctx, link, pw, "", ""); !errors.Is(err, accounts.ErrLink) {
 		t.Fatalf("a used link: %v", err)
+	}
+	// The reset supersedes the password; creating the first user supersedes nothing.
+	if es, err := revlog.Read(log); err != nil || len(es) != 1 || es[0].Kind != revlog.CredentialSuperseded ||
+		es[0].Subject != u.ID || es[0].Detail != revlog.Password {
+		t.Fatalf("revocation log %+v %v", es, err)
 	}
 
 	expiring, _ := e.acc.ResetLink(u.ID, u.ID)

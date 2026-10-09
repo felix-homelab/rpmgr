@@ -166,7 +166,8 @@ later.
 ### Revocation
 
 - The **database is authoritative**: `issued_certificates` records serial, identity, expiry and
-  revocation.
+  revocation; after a restore, `revoked_serials` adds the certificates revoked since the backup
+  that the backup does not hold ([Revocation log](#revocation-log)).
 - A **deny-list** (revoked serials and identities) is sent to every gateway, connector and
   controller node as a **separate control message**, `DenyListUpdate`, not inside the snapshot. It
   carries the full current set, which stays small because an entry lives only until the covered
@@ -916,7 +917,9 @@ Checkpoints prove tampering but cannot restore content, so revocations get their
   no sink is configured.
 - On restore from an older backup, the sink is merged with every reachable replica's local log;
   every entry newer than the backup is re-applied; all sessions and unused enrollment tokens are
-  invalidated; and a new `db_epoch` is generated ([10](10-operations.md#backup-and-restore)).
+  invalidated; and a new `db_epoch` is generated ([10](10-operations.md#backup-and-restore)). A
+  revoked certificate that the restored `issued_certificates` does not hold, because it was issued
+  after the backup, is recorded in `revoked_serials` and stays on the deny-list until it expires.
 - **Restore fails closed** if the sink's hash chain is broken, or a replica that reported an
   unshipped backlog has an unreachable local log: all API tokens and service accounts are
   suspended, all sessions invalidated, every user must reset their password and re-verify MFA, and

@@ -25,6 +25,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/cakey"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/issuedcertificate"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/revokedidentity"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/revokedserial"
 )
 
 // The CA's keys live in ca_keys, envelope-encrypted under the KEK, and every certificate the CA
@@ -375,11 +376,20 @@ var (
 )
 
 // CheckRenewable checks in issued_certificates that cert was issued by this controller and is
-// neither revoked nor superseded (docs/04-security.md, "Leaf certificates").
+// neither revoked nor superseded (docs/04-security.md, "Leaf certificates"). A serial that
+// issued_certificates does not hold but a restore recorded as revoked is ErrCertRevoked.
 func CheckRenewable(ctx context.Context, c *ent.Client, cert *x509.Certificate) error {
-	row, err := c.IssuedCertificate.Get(ctx, SerialHex(cert.SerialNumber))
+	serial := SerialHex(cert.SerialNumber)
+	row, err := c.IssuedCertificate.Get(ctx, serial)
 	switch {
 	case ent.IsNotFound(err):
+		revoked, err := c.RevokedSerial.Query().Where(revokedserial.ID(serial)).Exist(ctx)
+		if err != nil {
+			return err
+		}
+		if revoked {
+			return ErrCertRevoked
+		}
 		return ErrNotIssued
 	case err != nil:
 		return err

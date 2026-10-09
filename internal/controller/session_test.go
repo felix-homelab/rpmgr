@@ -59,7 +59,17 @@ func startSessionsWith(t *testing.T, db *store.DB, opt func(*controller.Sessions
 	if err := store.WriteTx(sys, db, func(tx *ent.Tx) error { return pki.InitCA(sys, tx, s, td, time.Now().Add(-60*24*time.Hour)) }); err != nil {
 		t.Fatal(err)
 	}
-	ca, err := pki.LoadCA(sys, db, s, time.Now)
+	e := &sessionEnv{db: db, org: storetest.Org(t, db, "org-a"), dbEpoch: rev.DBEpoch, sealer: s, sys: sys}
+	serveSessions(t, e, opt)
+	return e
+}
+
+// serveSessions opens the CA of e's database with e's sealer and serves the agent endpoint of new
+// sessions on it, as a controller starting on that database would.
+func serveSessions(t *testing.T, e *sessionEnv, opt func(*controller.SessionsOptions)) {
+	t.Helper()
+	db, sys := e.db, e.sys
+	ca, err := pki.LoadCA(sys, db, e.sealer, time.Now)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -69,10 +79,11 @@ func startSessionsWith(t *testing.T, db *store.DB, opt func(*controller.Sessions
 	}
 	roots := x509.NewCertPool()
 	roots.AddCert(ca.Root())
-	e := &sessionEnv{db: db, ca: ca, org: storetest.Org(t, db, "org-a"), dbEpoch: rev.DBEpoch, sealer: s, sys: sys}
-	o := controller.SessionsOptions{DB: db, CA: ca, Node: "ctn_test", Sys: sys, Sealer: s}
+	e.ca = ca
+	o := controller.SessionsOptions{DB: db, CA: ca, Node: "ctn_test", Sys: sys, Sealer: e.sealer}
 	opt(&o)
 	e.sessions = controller.NewSessions(o)
+	td := ca.TrustDomain()
 	cfg := pki.AgentEndpointConfig(pki.NewHolder(node), roots, pki.Expect{TrustDomain: td, Kinds: []pki.Kind{pki.KindConnector, pki.KindGateway},
 		Denied: e.sessions.Denied}, nil, controller.ReauthChecks(db, sys))
 	srv := controller.NewAgentServer(cfg, td)
@@ -89,7 +100,6 @@ func startSessionsWith(t *testing.T, db *store.DB, opt func(*controller.Sessions
 	e.addr = ln.Addr().String()
 	go func() { _ = srv.Serve(ln) }()
 	t.Cleanup(srv.Stop)
-	return e
 }
 
 // agentCert issues a connector certificate in the env's org.

@@ -7,6 +7,7 @@ import (
 
 	"github.com/felix-homelab/rpmgr/internal/audit"
 	"github.com/felix-homelab/rpmgr/internal/password"
+	"github.com/felix-homelab/rpmgr/internal/revlog"
 	"github.com/felix-homelab/rpmgr/internal/store"
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/user"
@@ -69,6 +70,6 @@ func (m *MFA) ChangePassword(ctx context.Context, userID, current, next string) 
 		if err := tx.User.UpdateOneID(userID).SetPasswordHash(hash).Exec(m.sys); err != nil {
 			return err
 		}
-		return m.superseded(tx, userID, "user.password_change", "password changed")
+		return m.superseded(tx, userID, "user.password_change", revlog.Password, "password changed")
 	})
 }

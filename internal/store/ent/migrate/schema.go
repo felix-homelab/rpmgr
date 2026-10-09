@@ -1078,6 +1078,20 @@ var (
 		Columns:    RevokedIdentitiesColumns,
 		PrimaryKey: []*schema.Column{RevokedIdentitiesColumns[0]},
 	}
+	// RevokedSerialsColumns holds the columns for the "revoked_serials" table.
+	RevokedSerialsColumns = []*schema.Column{
+		{Name: "serial", Type: field.TypeString},
+		{Name: "org_id", Type: field.TypeString, Nullable: true},
+		{Name: "revoked_at", Type: field.TypeTime},
+		{Name: "reason", Type: field.TypeString, Default: ""},
+		{Name: "not_after", Type: field.TypeTime},
+	}
+	// RevokedSerialsTable holds the schema information for the "revoked_serials" table.
+	RevokedSerialsTable = &schema.Table{
+		Name:       "revoked_serials",
+		Columns:    RevokedSerialsColumns,
+		PrimaryKey: []*schema.Column{RevokedSerialsColumns[0]},
+	}
 	// RoutesColumns holds the columns for the "routes" table.
 	RoutesColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeString},
@@ -1689,6 +1703,7 @@ var (
 		RecoveryCodesTable,
 		ResourceStatusTable,
 		RevokedIdentitiesTable,
+		RevokedSerialsTable,
 		RoutesTable,
 		RouteHTTPTable,
 		RouteHostnamesTable,
@@ -1799,6 +1814,9 @@ func init() {
 	}
 	RevokedIdentitiesTable.Annotation = &entsql.Annotation{
 		Table: "revoked_identities",
+	}
+	RevokedSerialsTable.Annotation = &entsql.Annotation{
+		Table: "revoked_serials",
 	}
 	RoutesTable.ForeignKeys[0].RefTable = GatewayGroupsTable
 	RoutesTable.Annotation = &entsql.Annotation{

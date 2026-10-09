@@ -25,7 +25,7 @@ TestOTA_HostileStagingRefused	p2	-	-	OTA
 TestOTA_CrossFilesystemInstall	p2	-	-	OTA
 TestOTA_PackageOwnedBinaryRefused	p2	-	-	OTA
 TestOTA_UpdaterHonoursPolicy	p2	-	-	OTA
-TestRestore_RevocationsReapplied	pending	11.6	#160
+TestRestore_RevocationsReapplied	done	11.6	#160
 TestRestore_IncompleteLogFailsClosed	pending	11.6	#160
 TestRestore_OrgOwnerCannotEndInstanceReview	pending	11.6	#160
 TestRevocation_EnforcedWhileSinkDown	done	11.5	#159	the alert reaches the UI through GetInstanceSettings (web/src/pages/settings.test.tsx)
@@ -42,8 +42,8 @@ TestOpenRequest_Semantics	done	4.4	#74
 TestH2_ConnectorFINKeepsClientDirection	done	4.3	#73
 TestH2_ResetReturnsConnectionWindow	done	4.3	#73
 TestH2_IdleStreamMemoryBounded	done	4.3	#73
-TestReauth_ExpiredWithinGrace	done	3.12	#67	internal/controller, with the revoked-identity clause (3.13); after-restore clause in 11.6
-TestReauth_SupersededSerialRefused	done	3.12	#67	internal/controller; after-restore clause in 11.6
+TestReauth_ExpiredWithinGrace	done	3.12	#67	internal/controller, with the revoked-identity clause (3.13) and the after-restore clause (11.6)
+TestReauth_SupersededSerialRefused	done	3.12	#67	internal/controller, with the after-restore clause (11.6)
 TestStatelessReset_DetectedWithinPingInterval	done	4.2	#72
 TestDNS_ForeignRecordNeverModified	p2	-	-	DNS automation
 TestDNS_CrossOrgPublishRefused	p2	-	-	DNS automation

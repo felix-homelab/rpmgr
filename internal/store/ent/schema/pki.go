@@ -135,6 +135,38 @@ func (RevokedIdentity) Interceptors() []ent.Interceptor {
 // Hooks scope every mutation to the scope's org.
 func (RevokedIdentity) Hooks() []ent.Hook { return []ent.Hook{orgMutationHook} }
 
+// RevokedSerial records a certificate revoked after the backup a restore came from, which the
+// restored issued_certificates does not hold: the restore keeps it on the deny-list until it
+// expires (docs/10-operations.md, "Backup and restore").
+type RevokedSerial struct{ ent.Schema }
+
+// Annotations name the table as docs/06-data-model.md does.
+func (RevokedSerial) Annotations() []schema.Annotation {
+	return []schema.Annotation{entsql.Annotation{Table: "revoked_serials"}}
+}
+
+// Fields of a revoked serial; the ID is the serial, lower-case hexadecimal.
+func (RevokedSerial) Fields() []ent.Field {
+	return []ent.Field{
+		field.String("id").StorageKey("serial").NotEmpty().Immutable(),
+		field.String("org_id").Optional().Nillable().Immutable(),
+		field.Time("revoked_at").Immutable(),
+		field.String("reason").Default("").Immutable(),
+		field.Time("not_after").Immutable(),
+	}
+}
+
+// Policy denies every query and mutation without a scope.
+func (RevokedSerial) Policy() ent.Policy { return scopePolicy() }
+
+// Interceptors show an org scope only its own org's serials.
+func (RevokedSerial) Interceptors() []ent.Interceptor {
+	return []ent.Interceptor{filterInterceptor("org_id")}
+}
+
+// Hooks scope every mutation to the scope's org.
+func (RevokedSerial) Hooks() []ent.Hook { return []ent.Hook{orgMutationHook} }
+
 // SecretMeta records which KEK version seals each envelope-encrypted column of a row, so that
 // `rpmgr kek status` lists what a KEK rotation has not re-wrapped yet (docs/04-security.md,
 // "Secrets at rest and in logs").
