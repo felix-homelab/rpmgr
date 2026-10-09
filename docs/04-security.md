@@ -387,6 +387,12 @@ Shown in [03-connections.md](03-connections.md#enrollment). Security-relevant ru
   ([06](06-data-model.md#lifecycle-and-deletion)).
 - **Ephemeral connectors** (CI runners, short-lived containers) are purged **30 minutes** after
   their last disconnect by a leader-elected job, and their certificates added to the deny-list.
+  The last disconnect is the session's recorded end, its last-seen time if no controller recorded
+  one, or the enrollment if it never connected. [R] The purge deletes the connector's route
+  targets with it, and an ephemeral connector gets no re-enrollment token, which would hold it.
+- [R] **Tombstones** are deleted after 90 days by the same job, with the records of their
+  certificates, which have all expired by then. A tombstone stays while a route target still names
+  its connector or one of its certificates has not expired.
 
 ## Human authentication and sessions
 

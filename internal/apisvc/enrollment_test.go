@@ -60,6 +60,8 @@ func TestEnrollmentTokens(t *testing.T) {
 
 	con := e.db.Client().Connector.Create().SetOrgID(org).SetName("nas").SetSpiffeID("spiffe://rpmgr-teststor/org/" + org + "/connector/x").
 		SetPubkeySha256("k").SaveX(e.sys)
+	runner := e.db.Client().Connector.Create().SetOrgID(org).SetName("ci").SetSpiffeID("spiffe://rpmgr-teststor/org/" + org + "/connector/z").
+		SetPubkeySha256("k").SetEphemeral(true).SaveX(e.sys)
 	gone := e.db.Client().Connector.Create().SetOrgID(org).SetName("old").SetSpiffeID("spiffe://rpmgr-teststor/org/" + org + "/connector/y").
 		SetPubkeySha256("k").SetDecommissionedAt(e.clock).SaveX(e.sys)
 	if r, err := create(ada, &rpmgrv1.CreateEnrollmentTokenRequest{ConnectorId: con.ID}); err != nil ||
@@ -84,6 +86,7 @@ func TestEnrollmentTokens(t *testing.T) {
 		"re-enrolling, multi-use":    {&rpmgrv1.CreateEnrollmentTokenRequest{ConnectorId: con.ID, MaxUses: ptr[int32](0), Ephemeral: true, Ttl: durationpb.New(time.Hour)}, connect.CodeInvalidArgument},
 		"re-enrolling a missing one": {&rpmgrv1.CreateEnrollmentTokenRequest{ConnectorId: "con_missing"}, connect.CodeNotFound},
 		"re-enrolling a retired one": {&rpmgrv1.CreateEnrollmentTokenRequest{ConnectorId: gone.ID}, connect.CodeFailedPrecondition},
+		"re-enrolling an ephemeral":  {&rpmgrv1.CreateEnrollmentTokenRequest{ConnectorId: runner.ID}, connect.CodeInvalidArgument},
 	} {
 		if _, err := create(ada, c.m); code(err) != c.want {
 			t.Errorf("%s: %v, want %v", name, err, c.want)

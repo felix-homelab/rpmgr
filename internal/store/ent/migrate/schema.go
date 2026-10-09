@@ -127,6 +127,7 @@ var (
 		{Name: "capabilities", Type: field.TypeJSON, Nullable: true},
 		{Name: "connected_at", Type: field.TypeTime},
 		{Name: "last_seen_at", Type: field.TypeTime},
+		{Name: "disconnected_at", Type: field.TypeTime, Nullable: true},
 	}
 	// AgentSessionsTable holds the schema information for the "agent_sessions" table.
 	AgentSessionsTable = &schema.Table{

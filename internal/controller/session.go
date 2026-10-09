@@ -32,6 +32,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/snapshot"
 	"github.com/felix-homelab/rpmgr/internal/store"
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/schema"
 )
 
 // The control session's timing (docs/03-connections.md, "Timeouts, keepalive and backoff").
@@ -61,6 +62,8 @@ type Sessions struct {
 	sealer  *secret.Sealer  // opens route certificate keys for FetchResource; nil serves none
 	log     *slog.Logger
 	every   time.Duration
+	seen    time.Duration // how often live sessions are marked seen
+	started time.Time     // sessions of this node seen before then were left by a stopped run
 	deny    atomic.Pointer[denyState]
 
 	mu       sync.Mutex
@@ -86,7 +89,10 @@ type SessionsOptions struct {
 	RevLog *revlog.Log
 	// Sealer opens the keys of route certificates that gateways fetch; nil serves no item.
 	Sealer *secret.Sealer
-	Logger *slog.Logger
+	// SeenEvery is how often Run marks the live sessions seen; 0 is
+	// schema.AgentSessionSeenEvery.
+	SeenEvery time.Duration
+	Logger    *slog.Logger
 }
 
 // NewSessions returns the control-session server.
@@ -103,9 +109,12 @@ func NewSessions(o SessionsOptions) *Sessions {
 	if o.Logger == nil {
 		o.Logger = slog.New(slog.DiscardHandler)
 	}
+	if o.SeenEvery == 0 {
+		o.SeenEvery = schema.AgentSessionSeenEvery
+	}
 	s := &Sessions{
 		db: o.DB, ca: o.CA, node: o.Node, version: o.Version, now: o.Now, sys: o.Sys, revlog: o.RevLog, sealer: o.Sealer,
-		log: o.Logger, every: o.RevisionCheck,
+		log: o.Logger, every: o.RevisionCheck, seen: o.SeenEvery, started: o.Now().UTC(),
 		admit:  ratelimit.New(time.Second/time.Duration(o.Admission), o.Admission, o.Now),
 		active: map[string]*session{},
 	}
@@ -127,6 +136,7 @@ func (s *Sessions) Run(ctx context.Context) {
 		wg.Go(func() { s.push.run(ctx) })
 	}
 	wg.Go(func() { s.denyLoop(ctx) })
+	wg.Go(func() { s.seenLoop(ctx) })
 	wg.Wait()
 }
 
@@ -162,6 +172,7 @@ func (s *Sessions) Session(st grpc.BidiStreamingServer[agentv1.AgentMessage, age
 	if err != nil {
 		return status.Error(codes.Unavailable, "the controller cannot register sessions now")
 	}
+	defer s.disconnected(agent.Identity.ID, epoch)
 	ctx, cancel := context.WithCancel(st.Context())
 	defer cancel()
 	sess := &session{agent: agent, epoch: epoch, out: make(chan *agentv1.ControllerMessage, sendQueue), cancel: cancel}
@@ -291,7 +302,7 @@ func (s *Sessions) register(ctx context.Context, agent Agent, hello *agentv1.Hel
 			ON CONFLICT (agent_id) DO UPDATE SET session_epoch = agent_sessions.session_epoch + 1,
 			controller_node = excluded.controller_node, remote_addr = excluded.remote_addr,
 			agent_version = excluded.agent_version, capabilities = excluded.capabilities,
-			connected_at = excluded.connected_at, last_seen_at = excluded.last_seen_at
+			connected_at = excluded.connected_at, last_seen_at = excluded.last_seen_at, disconnected_at = NULL
 			RETURNING session_epoch`,
 			agent.Identity.ID, agent.Identity.Org, s.node, addr, hello.GetVersion(), string(caps), now)
 		if err != nil {

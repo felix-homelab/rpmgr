@@ -100,6 +100,20 @@ func (_c *AgentSessionCreate) SetNillableLastSeenAt(v *time.Time) *AgentSessionC
 	return _c
 }
 
+// SetDisconnectedAt sets the "disconnected_at" field.
+func (_c *AgentSessionCreate) SetDisconnectedAt(v time.Time) *AgentSessionCreate {
+	_c.mutation.SetDisconnectedAt(v)
+	return _c
+}
+
+// SetNillableDisconnectedAt sets the "disconnected_at" field if the given value is not nil.
+func (_c *AgentSessionCreate) SetNillableDisconnectedAt(v *time.Time) *AgentSessionCreate {
+	if v != nil {
+		_c.SetDisconnectedAt(*v)
+	}
+	return _c
+}
+
 // SetID sets the "id" field.
 func (_c *AgentSessionCreate) SetID(v string) *AgentSessionCreate {
 	_c.mutation.SetID(v)
@@ -277,6 +291,10 @@ func (_c *AgentSessionCreate) createSpec() (*AgentSession, *sqlgraph.CreateSpec)
 	if value, ok := _c.mutation.LastSeenAt(); ok {
 		_spec.SetField(agentsession.FieldLastSeenAt, field.TypeTime, value)
 		_node.LastSeenAt = value
+	}
+	if value, ok := _c.mutation.DisconnectedAt(); ok {
+		_spec.SetField(agentsession.FieldDisconnectedAt, field.TypeTime, value)
+		_node.DisconnectedAt = &value
 	}
 	return _node, _spec
 }

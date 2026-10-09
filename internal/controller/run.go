@@ -221,6 +221,7 @@ func Run(ctx context.Context, o RunOptions) error {
 	}
 	mux := http.NewServeMux()
 	mux.Handle("/.well-known/rpmgr/trust-bundle", enroll.TrustBundleHandler(ca.Root()))
+	revocations := &apisvc.Revocations{Sys: sys, RevLog: rl, Logger: o.Logger, Denied: sessions.ApplyDenyList}
 	mfa := &accounts.MFA{Accounts: acc, Sealer: sealer, RevLog: rl, Logger: o.Logger}
 	relay := &apisvc.Relay{DB: db, Sys: sys, Sealer: sealer}
 	auth := apisvc.NewAuth(mfa, webSessions, o.Now)
@@ -240,14 +241,13 @@ func Run(ctx context.Context, o RunOptions) error {
 	}
 	if err := apiServer.Mount(mux, rpmgrv1.File_rpmgr_v1_gateway_proto.Services().ByName("GatewayService"),
 		func(opts ...connect.HandlerOption) (string, http.Handler) {
-			return rpmgrv1connect.NewGatewayServiceHandler(&apisvc.Gateways{DB: db, API: apiServer, Sys: sys, RevLog: rl, Logger: o.Logger,
-				Denied: sessions.ApplyDenyList, Now: o.Now}, opts...)
+			return rpmgrv1connect.NewGatewayServiceHandler(&apisvc.Gateways{DB: db, API: apiServer, Revocations: revocations, Now: o.Now}, opts...)
 		}); err != nil {
 		return err
 	}
 	if err := apiServer.Mount(mux, rpmgrv1.File_rpmgr_v1_connector_proto.Services().ByName("ConnectorService"),
 		func(opts ...connect.HandlerOption) (string, http.Handler) {
-			return rpmgrv1connect.NewConnectorServiceHandler(&apisvc.Connectors{DB: db, API: apiServer}, opts...)
+			return rpmgrv1connect.NewConnectorServiceHandler(&apisvc.Connectors{DB: db, API: apiServer, Revocations: revocations, Now: o.Now}, opts...)
 		}); err != nil {
 		return err
 	}
@@ -309,6 +309,8 @@ func Run(ctx context.Context, o RunOptions) error {
 		Storage: acme.NewChallengeStorage(acmeStore, sessions, acme.GatewaysServing(db, sys))})
 	go leases.Run(sys, certManager.Job(acme.JobEvery), func(err error) { o.Logger.Warn("ACME job", "error", err) })
 	go leases.Run(sys, apiServer.PruneJob(api.PruneEvery), func(err error) { o.Logger.Warn("request_id pruning job", "error", err) })
+	go leases.Run(sys, PurgeJob(PurgeOptions{DB: db, RevLog: rl, Logger: o.Logger, Denied: sessions.ApplyDenyList, Now: o.Now}),
+		func(err error) { o.Logger.Warn("agent purge job", "error", err) })
 	go ReloadCA(sys, caOpts)
 	go RenewNodeCertificate(sys, NodeCertOptions{CA: ca, DB: db, Sys: sys, NodeID: nodeID, Holder: holder, Now: o.Now, Logger: o.Logger})
 	serve("agent endpoint", func() error { return agents.Serve(split.Agents()) })

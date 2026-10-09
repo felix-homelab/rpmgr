@@ -20,10 +20,11 @@ const (
 
 // Why a token cannot be minted.
 var (
-	ErrTokenTTL = errors.New("enroll: a token lasts at most 30 days")
-	ErrMultiUse = errors.New("enroll: only an ephemeral connector token with a set lifetime may enroll more than one connector")
-	ErrBound    = errors.New("enroll: a token bound to a gateway or a connector is single-use, not ephemeral and has no labels")
-	ErrRetired  = errors.New("enroll: the gateway or connector is decommissioned")
+	ErrTokenTTL   = errors.New("enroll: a token lasts at most 30 days")
+	ErrMultiUse   = errors.New("enroll: only an ephemeral connector token with a set lifetime may enroll more than one connector")
+	ErrBound      = errors.New("enroll: a token bound to a gateway or a connector is single-use, not ephemeral and has no labels")
+	ErrRetired    = errors.New("enroll: the gateway or connector is decommissioned")
+	ErrDisposable = errors.New("enroll: an ephemeral connector is not re-enrolled; enroll a new one")
 )
 
 // Mint is the scope of a new token. The store's tenancy rules check that the org's gateway
@@ -78,6 +79,10 @@ func MintToken(ctx context.Context, tx *ent.Tx, m Mint, now time.Time) (string, 
 		}
 		if con.DecommissionedAt != nil {
 			return "", nil, ErrRetired
+		}
+		// It is purged soon after its last disconnect, which a token bound to it would block.
+		if con.Ephemeral {
+			return "", nil, ErrDisposable
 		}
 		c.SetConnectorID(con.ID)
 	default:

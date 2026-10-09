@@ -2823,6 +2823,7 @@ type AgentSessionMutation struct {
 	appendcapabilities []string
 	connected_at       *time.Time
 	last_seen_at       *time.Time
+	disconnected_at    *time.Time
 	clearedFields      map[string]struct{}
 	done               bool
 	oldValue           func(context.Context) (*AgentSession, error)
@@ -3270,6 +3271,55 @@ func (m *AgentSessionMutation) ResetLastSeenAt() {
 	m.last_seen_at = nil
 }
 
+// SetDisconnectedAt sets the "disconnected_at" field.
+func (m *AgentSessionMutation) SetDisconnectedAt(t time.Time) {
+	m.disconnected_at = &t
+}
+
+// DisconnectedAt returns the value of the "disconnected_at" field in the mutation.
+func (m *AgentSessionMutation) DisconnectedAt() (r time.Time, exists bool) {
+	v := m.disconnected_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldDisconnectedAt returns the old "disconnected_at" field's value of the AgentSession entity.
+// If the AgentSession object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AgentSessionMutation) OldDisconnectedAt(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDisconnectedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDisconnectedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDisconnectedAt: %w", err)
+	}
+	return oldValue.DisconnectedAt, nil
+}
+
+// ClearDisconnectedAt clears the value of the "disconnected_at" field.
+func (m *AgentSessionMutation) ClearDisconnectedAt() {
+	m.disconnected_at = nil
+	m.clearedFields[agentsession.FieldDisconnectedAt] = struct{}{}
+}
+
+// DisconnectedAtCleared returns if the "disconnected_at" field was cleared in this mutation.
+func (m *AgentSessionMutation) DisconnectedAtCleared() bool {
+	_, ok := m.clearedFields[agentsession.FieldDisconnectedAt]
+	return ok
+}
+
+// ResetDisconnectedAt resets all changes to the "disconnected_at" field.
+func (m *AgentSessionMutation) ResetDisconnectedAt() {
+	m.disconnected_at = nil
+	delete(m.clearedFields, agentsession.FieldDisconnectedAt)
+}
+
 // Where appends a list predicates to the AgentSessionMutation builder.
 func (m *AgentSessionMutation) Where(ps ...predicate.AgentSession) {
 	m.predicates = append(m.predicates, ps...)
@@ -3304,7 +3354,7 @@ func (m *AgentSessionMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *AgentSessionMutation) Fields() []string {
-	fields := make([]string, 0, 8)
+	fields := make([]string, 0, 9)
 	if m.org_id != nil {
 		fields = append(fields, agentsession.FieldOrgID)
 	}
@@ -3328,6 +3378,9 @@ func (m *AgentSessionMutation) Fields() []string {
 	}
 	if m.last_seen_at != nil {
 		fields = append(fields, agentsession.FieldLastSeenAt)
+	}
+	if m.disconnected_at != nil {
+		fields = append(fields, agentsession.FieldDisconnectedAt)
 	}
 	return fields
 }
@@ -3353,6 +3406,8 @@ func (m *AgentSessionMutation) Field(name string) (ent.Value, bool) {
 		return m.ConnectedAt()
 	case agentsession.FieldLastSeenAt:
 		return m.LastSeenAt()
+	case agentsession.FieldDisconnectedAt:
+		return m.DisconnectedAt()
 	}
 	return nil, false
 }
@@ -3378,6 +3433,8 @@ func (m *AgentSessionMutation) OldField(ctx context.Context, name string) (ent.V
 		return m.OldConnectedAt(ctx)
 	case agentsession.FieldLastSeenAt:
 		return m.OldLastSeenAt(ctx)
+	case agentsession.FieldDisconnectedAt:
+		return m.OldDisconnectedAt(ctx)
 	}
 	return nil, fmt.Errorf("unknown AgentSession field %s", name)
 }
@@ -3443,6 +3500,13 @@ func (m *AgentSessionMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetLastSeenAt(v)
 		return nil
+	case agentsession.FieldDisconnectedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetDisconnectedAt(v)
+		return nil
 	}
 	return fmt.Errorf("unknown AgentSession field %s", name)
 }
@@ -3491,6 +3555,9 @@ func (m *AgentSessionMutation) ClearedFields() []string {
 	if m.FieldCleared(agentsession.FieldCapabilities) {
 		fields = append(fields, agentsession.FieldCapabilities)
 	}
+	if m.FieldCleared(agentsession.FieldDisconnectedAt) {
+		fields = append(fields, agentsession.FieldDisconnectedAt)
+	}
 	return fields
 }
 
@@ -3507,6 +3574,9 @@ func (m *AgentSessionMutation) ClearField(name string) error {
 	switch name {
 	case agentsession.FieldCapabilities:
 		m.ClearCapabilities()
+		return nil
+	case agentsession.FieldDisconnectedAt:
+		m.ClearDisconnectedAt()
 		return nil
 	}
 	return fmt.Errorf("unknown AgentSession nullable field %s", name)
@@ -3539,6 +3609,9 @@ func (m *AgentSessionMutation) ResetField(name string) error {
 		return nil
 	case agentsession.FieldLastSeenAt:
 		m.ResetLastSeenAt()
+		return nil
+	case agentsession.FieldDisconnectedAt:
+		m.ResetDisconnectedAt()
 		return nil
 	}
 	return fmt.Errorf("unknown AgentSession field %s", name)

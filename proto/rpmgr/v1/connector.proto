@@ -6,7 +6,9 @@ package rpmgr.v1;
 
 import "buf/validate/validate.proto";
 import "google/protobuf/duration.proto";
+import "google/protobuf/field_mask.proto";
 import "google/protobuf/timestamp.proto";
+import "rpmgr/v1/common.proto";
 import "rpmgr/v1/options.proto";
 
 option go_package = "github.com/felix-homelab/rpmgr/gen/rpmgr/v1;rpmgrv1";
@@ -27,6 +29,22 @@ service ConnectorService {
     option idempotency_level = NO_SIDE_EFFECTS;
     option (rpmgr.v1.authz) = {
       permission: "org.read"
+      resource_field: "connector_id"
+    };
+  }
+  // UpdateConnector changes the fields the mask names. Disabling a connector gives it an empty
+  // snapshot: its routes' streams go to the routes' other connectors.
+  rpc UpdateConnector(UpdateConnectorRequest) returns (UpdateConnectorResponse) {
+    option (rpmgr.v1.authz) = {
+      permission: "connectors.write"
+      resource_field: "connector.id"
+    };
+  }
+  // DecommissionConnector retires a connector for good: its identity is revoked, its sessions end,
+  // and it stays as a tombstone. Its route targets stay, serving nothing, until they are removed.
+  rpc DecommissionConnector(DecommissionConnectorRequest) returns (DecommissionConnectorResponse) {
+    option (rpmgr.v1.authz) = {
+      permission: "connectors.write"
       resource_field: "connector_id"
     };
   }
@@ -59,15 +77,26 @@ message Connector {
   // The connector's ID, con_…; output only.
   string id = 1;
   // Its name, unique in the org.
-  string name = 2;
+  string name = 2 [(buf.validate.field) = {
+    ignore: IGNORE_IF_ZERO_VALUE
+    string: {pattern: "^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$"}
+  }];
   // Its labels.
-  map<string, string> labels = 3;
+  map<string, string> labels = 3 [(buf.validate.field).map = {
+    max_pairs: 32
+    keys: {
+      string: {pattern: "^[a-z0-9]([a-z0-9._-]{0,61}[a-z0-9])?$"}
+    }
+    values: {
+      string: {max_len: 255}
+    }
+  }];
   // Whether it is ephemeral: purged 30 minutes after its last disconnect; output only.
   bool ephemeral = 4;
   // Whether it serves; false gives it an empty snapshot.
   bool enabled = 5;
   // Its transport policy; the instance default if not set.
-  DataTransport transport = 6;
+  DataTransport transport = 6 [(buf.validate.field).enum.defined_only = true];
   // Its control session; output only.
   AgentSession session = 7;
   // When it enrolled; output only.
@@ -169,4 +198,38 @@ message GetConnectorStatusRequest {
 message GetConnectorStatusResponse {
   // The status.
   ConnectorStatus status = 1;
+}
+
+// UpdateConnectorRequest is a changed connector.
+message UpdateConnectorRequest {
+  // The connector with its ID and the new values of the fields the mask names.
+  Connector connector = 1 [(buf.validate.field).required = true];
+  // The fields to change: name, labels, enabled, transport.
+  google.protobuf.FieldMask update_mask = 2;
+  // The etag the caller read; empty skips the check.
+  string etag = 3;
+}
+
+// UpdateConnectorResponse is the changed connector.
+message UpdateConnectorResponse {
+  // The connector.
+  Connector connector = 1;
+  // The configuration revision of the change.
+  Revision revision = 2;
+}
+
+// DecommissionConnectorRequest names a connector.
+message DecommissionConnectorRequest {
+  // The connector's ID.
+  string connector_id = 1 [(buf.validate.field).string.min_len = 1];
+  // The etag the caller read; empty skips the check.
+  string etag = 2;
+}
+
+// DecommissionConnectorResponse is the tombstone.
+message DecommissionConnectorResponse {
+  // The decommissioned connector.
+  Connector connector = 1;
+  // The configuration revision of the change.
+  Revision revision = 2;
 }

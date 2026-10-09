@@ -41,6 +41,12 @@ const (
 	// ConnectorServiceGetConnectorProcedure is the fully-qualified name of the ConnectorService's
 	// GetConnector RPC.
 	ConnectorServiceGetConnectorProcedure = "/rpmgr.v1.ConnectorService/GetConnector"
+	// ConnectorServiceUpdateConnectorProcedure is the fully-qualified name of the ConnectorService's
+	// UpdateConnector RPC.
+	ConnectorServiceUpdateConnectorProcedure = "/rpmgr.v1.ConnectorService/UpdateConnector"
+	// ConnectorServiceDecommissionConnectorProcedure is the fully-qualified name of the
+	// ConnectorService's DecommissionConnector RPC.
+	ConnectorServiceDecommissionConnectorProcedure = "/rpmgr.v1.ConnectorService/DecommissionConnector"
 	// ConnectorServiceGetConnectorStatusProcedure is the fully-qualified name of the ConnectorService's
 	// GetConnectorStatus RPC.
 	ConnectorServiceGetConnectorStatusProcedure = "/rpmgr.v1.ConnectorService/GetConnectorStatus"
@@ -52,6 +58,12 @@ type ConnectorServiceClient interface {
 	ListConnectors(context.Context, *connect.Request[v1.ListConnectorsRequest]) (*connect.Response[v1.ListConnectorsResponse], error)
 	// GetConnector returns a connector with the summary of its status.
 	GetConnector(context.Context, *connect.Request[v1.GetConnectorRequest]) (*connect.Response[v1.GetConnectorResponse], error)
+	// UpdateConnector changes the fields the mask names. Disabling a connector gives it an empty
+	// snapshot: its routes' streams go to the routes' other connectors.
+	UpdateConnector(context.Context, *connect.Request[v1.UpdateConnectorRequest]) (*connect.Response[v1.UpdateConnectorResponse], error)
+	// DecommissionConnector retires a connector for good: its identity is revoked, its sessions end,
+	// and it stays as a tombstone. Its route targets stay, serving nothing, until they are removed.
+	DecommissionConnector(context.Context, *connect.Request[v1.DecommissionConnectorRequest]) (*connect.Response[v1.DecommissionConnectorResponse], error)
 	// GetConnectorStatus returns what the controller knows of a connector's state: its control
 	// session, its data sessions to gateways and the routes it reports not ready.
 	GetConnectorStatus(context.Context, *connect.Request[v1.GetConnectorStatusRequest]) (*connect.Response[v1.GetConnectorStatusResponse], error)
@@ -82,6 +94,18 @@ func NewConnectorServiceClient(httpClient connect.HTTPClient, baseURL string, op
 			connect.WithIdempotency(connect.IdempotencyNoSideEffects),
 			connect.WithClientOptions(opts...),
 		),
+		updateConnector: connect.NewClient[v1.UpdateConnectorRequest, v1.UpdateConnectorResponse](
+			httpClient,
+			baseURL+ConnectorServiceUpdateConnectorProcedure,
+			connect.WithSchema(connectorServiceMethods.ByName("UpdateConnector")),
+			connect.WithClientOptions(opts...),
+		),
+		decommissionConnector: connect.NewClient[v1.DecommissionConnectorRequest, v1.DecommissionConnectorResponse](
+			httpClient,
+			baseURL+ConnectorServiceDecommissionConnectorProcedure,
+			connect.WithSchema(connectorServiceMethods.ByName("DecommissionConnector")),
+			connect.WithClientOptions(opts...),
+		),
 		getConnectorStatus: connect.NewClient[v1.GetConnectorStatusRequest, v1.GetConnectorStatusResponse](
 			httpClient,
 			baseURL+ConnectorServiceGetConnectorStatusProcedure,
@@ -94,9 +118,11 @@ func NewConnectorServiceClient(httpClient connect.HTTPClient, baseURL string, op
 
 // connectorServiceClient implements ConnectorServiceClient.
 type connectorServiceClient struct {
-	listConnectors     *connect.Client[v1.ListConnectorsRequest, v1.ListConnectorsResponse]
-	getConnector       *connect.Client[v1.GetConnectorRequest, v1.GetConnectorResponse]
-	getConnectorStatus *connect.Client[v1.GetConnectorStatusRequest, v1.GetConnectorStatusResponse]
+	listConnectors        *connect.Client[v1.ListConnectorsRequest, v1.ListConnectorsResponse]
+	getConnector          *connect.Client[v1.GetConnectorRequest, v1.GetConnectorResponse]
+	updateConnector       *connect.Client[v1.UpdateConnectorRequest, v1.UpdateConnectorResponse]
+	decommissionConnector *connect.Client[v1.DecommissionConnectorRequest, v1.DecommissionConnectorResponse]
+	getConnectorStatus    *connect.Client[v1.GetConnectorStatusRequest, v1.GetConnectorStatusResponse]
 }
 
 // ListConnectors calls rpmgr.v1.ConnectorService.ListConnectors.
@@ -107,6 +133,16 @@ func (c *connectorServiceClient) ListConnectors(ctx context.Context, req *connec
 // GetConnector calls rpmgr.v1.ConnectorService.GetConnector.
 func (c *connectorServiceClient) GetConnector(ctx context.Context, req *connect.Request[v1.GetConnectorRequest]) (*connect.Response[v1.GetConnectorResponse], error) {
 	return c.getConnector.CallUnary(ctx, req)
+}
+
+// UpdateConnector calls rpmgr.v1.ConnectorService.UpdateConnector.
+func (c *connectorServiceClient) UpdateConnector(ctx context.Context, req *connect.Request[v1.UpdateConnectorRequest]) (*connect.Response[v1.UpdateConnectorResponse], error) {
+	return c.updateConnector.CallUnary(ctx, req)
+}
+
+// DecommissionConnector calls rpmgr.v1.ConnectorService.DecommissionConnector.
+func (c *connectorServiceClient) DecommissionConnector(ctx context.Context, req *connect.Request[v1.DecommissionConnectorRequest]) (*connect.Response[v1.DecommissionConnectorResponse], error) {
+	return c.decommissionConnector.CallUnary(ctx, req)
 }
 
 // GetConnectorStatus calls rpmgr.v1.ConnectorService.GetConnectorStatus.
@@ -120,6 +156,12 @@ type ConnectorServiceHandler interface {
 	ListConnectors(context.Context, *connect.Request[v1.ListConnectorsRequest]) (*connect.Response[v1.ListConnectorsResponse], error)
 	// GetConnector returns a connector with the summary of its status.
 	GetConnector(context.Context, *connect.Request[v1.GetConnectorRequest]) (*connect.Response[v1.GetConnectorResponse], error)
+	// UpdateConnector changes the fields the mask names. Disabling a connector gives it an empty
+	// snapshot: its routes' streams go to the routes' other connectors.
+	UpdateConnector(context.Context, *connect.Request[v1.UpdateConnectorRequest]) (*connect.Response[v1.UpdateConnectorResponse], error)
+	// DecommissionConnector retires a connector for good: its identity is revoked, its sessions end,
+	// and it stays as a tombstone. Its route targets stay, serving nothing, until they are removed.
+	DecommissionConnector(context.Context, *connect.Request[v1.DecommissionConnectorRequest]) (*connect.Response[v1.DecommissionConnectorResponse], error)
 	// GetConnectorStatus returns what the controller knows of a connector's state: its control
 	// session, its data sessions to gateways and the routes it reports not ready.
 	GetConnectorStatus(context.Context, *connect.Request[v1.GetConnectorStatusRequest]) (*connect.Response[v1.GetConnectorStatusResponse], error)
@@ -146,6 +188,18 @@ func NewConnectorServiceHandler(svc ConnectorServiceHandler, opts ...connect.Han
 		connect.WithIdempotency(connect.IdempotencyNoSideEffects),
 		connect.WithHandlerOptions(opts...),
 	)
+	connectorServiceUpdateConnectorHandler := connect.NewUnaryHandler(
+		ConnectorServiceUpdateConnectorProcedure,
+		svc.UpdateConnector,
+		connect.WithSchema(connectorServiceMethods.ByName("UpdateConnector")),
+		connect.WithHandlerOptions(opts...),
+	)
+	connectorServiceDecommissionConnectorHandler := connect.NewUnaryHandler(
+		ConnectorServiceDecommissionConnectorProcedure,
+		svc.DecommissionConnector,
+		connect.WithSchema(connectorServiceMethods.ByName("DecommissionConnector")),
+		connect.WithHandlerOptions(opts...),
+	)
 	connectorServiceGetConnectorStatusHandler := connect.NewUnaryHandler(
 		ConnectorServiceGetConnectorStatusProcedure,
 		svc.GetConnectorStatus,
@@ -159,6 +213,10 @@ func NewConnectorServiceHandler(svc ConnectorServiceHandler, opts ...connect.Han
 			connectorServiceListConnectorsHandler.ServeHTTP(w, r)
 		case ConnectorServiceGetConnectorProcedure:
 			connectorServiceGetConnectorHandler.ServeHTTP(w, r)
+		case ConnectorServiceUpdateConnectorProcedure:
+			connectorServiceUpdateConnectorHandler.ServeHTTP(w, r)
+		case ConnectorServiceDecommissionConnectorProcedure:
+			connectorServiceDecommissionConnectorHandler.ServeHTTP(w, r)
 		case ConnectorServiceGetConnectorStatusProcedure:
 			connectorServiceGetConnectorStatusHandler.ServeHTTP(w, r)
 		default:
@@ -176,6 +234,14 @@ func (UnimplementedConnectorServiceHandler) ListConnectors(context.Context, *con
 
 func (UnimplementedConnectorServiceHandler) GetConnector(context.Context, *connect.Request[v1.GetConnectorRequest]) (*connect.Response[v1.GetConnectorResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("rpmgr.v1.ConnectorService.GetConnector is not implemented"))
+}
+
+func (UnimplementedConnectorServiceHandler) UpdateConnector(context.Context, *connect.Request[v1.UpdateConnectorRequest]) (*connect.Response[v1.UpdateConnectorResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("rpmgr.v1.ConnectorService.UpdateConnector is not implemented"))
+}
+
+func (UnimplementedConnectorServiceHandler) DecommissionConnector(context.Context, *connect.Request[v1.DecommissionConnectorRequest]) (*connect.Response[v1.DecommissionConnectorResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("rpmgr.v1.ConnectorService.DecommissionConnector is not implemented"))
 }
 
 func (UnimplementedConnectorServiceHandler) GetConnectorStatus(context.Context, *connect.Request[v1.GetConnectorStatusRequest]) (*connect.Response[v1.GetConnectorStatusResponse], error) {
