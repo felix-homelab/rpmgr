@@ -32,6 +32,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/gatewaygroup"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/instance"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/instancesetting"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/invitation"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/issuedcertificate"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/lease"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/membership"
@@ -135,6 +136,7 @@ func checkColumn(t, c string) error {
 			gatewaygroup.Table:      gatewaygroup.ValidColumn,
 			instance.Table:          instance.ValidColumn,
 			instancesetting.Table:   instancesetting.ValidColumn,
+			invitation.Table:        invitation.ValidColumn,
 			issuedcertificate.Table: issuedcertificate.ValidColumn,
 			lease.Table:             lease.ValidColumn,
 			membership.Table:        membership.ValidColumn,

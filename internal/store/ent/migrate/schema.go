@@ -541,6 +541,37 @@ var (
 		Columns:    InstanceSettingsColumns,
 		PrimaryKey: []*schema.Column{InstanceSettingsColumns[0]},
 	}
+	// InvitationsColumns holds the columns for the "invitations" table.
+	InvitationsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeString},
+		{Name: "org_id", Type: field.TypeString},
+		{Name: "email", Type: field.TypeString, Size: 254},
+		{Name: "role", Type: field.TypeEnum, Enums: []string{"owner", "admin", "operator", "viewer"}},
+		{Name: "token_hash", Type: field.TypeBytes},
+		{Name: "created_by", Type: field.TypeString},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "expires_at", Type: field.TypeTime},
+		{Name: "accepted_at", Type: field.TypeTime, Nullable: true},
+		{Name: "accepted_by", Type: field.TypeString, Nullable: true},
+	}
+	// InvitationsTable holds the schema information for the "invitations" table.
+	InvitationsTable = &schema.Table{
+		Name:       "invitations",
+		Columns:    InvitationsColumns,
+		PrimaryKey: []*schema.Column{InvitationsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "invitation_org_id_id",
+				Unique:  true,
+				Columns: []*schema.Column{InvitationsColumns[1], InvitationsColumns[0]},
+			},
+			{
+				Name:    "invitation_token_hash",
+				Unique:  true,
+				Columns: []*schema.Column{InvitationsColumns[4]},
+			},
+		},
+	}
 	// IssuedCertificatesColumns holds the columns for the "issued_certificates" table.
 	IssuedCertificatesColumns = []*schema.Column{
 		{Name: "serial", Type: field.TypeString},
@@ -1379,6 +1410,7 @@ var (
 		GatewayGroupsTable,
 		InstanceTable,
 		InstanceSettingsTable,
+		InvitationsTable,
 		IssuedCertificatesTable,
 		LeasesTable,
 		MembershipsTable,

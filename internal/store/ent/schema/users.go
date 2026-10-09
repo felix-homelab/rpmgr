@@ -219,3 +219,30 @@ func (RecoveryCode) Edges() []ent.Edge {
 func (RecoveryCode) Indexes() []ent.Index {
 	return []ent.Index{index.Fields("code_hash").Unique(), index.Fields("user_id")}
 }
+
+// Invitation is a one-time link that makes its holder a member of an org with a role
+// (docs/04-security.md, "Human authentication and sessions"). Only the token's hash is stored.
+type Invitation struct{ ent.Schema }
+
+// Mixin makes invitations org-owned.
+func (Invitation) Mixin() []ent.Mixin { return []ent.Mixin{OrgMixin{}} }
+
+// Fields of an invitation; email is stored lower-case.
+func (Invitation) Fields() []ent.Field {
+	return []ent.Field{
+		idField("inv"),
+		field.String("email").NotEmpty().MaxLen(254).Immutable(),
+		field.Enum("role").Values("owner", "admin", "operator", "viewer").Immutable(),
+		field.Bytes("token_hash").NotEmpty().Immutable(),
+		field.String("created_by").NotEmpty().Immutable(),
+		field.Time("created_at").Immutable(),
+		field.Time("expires_at").Immutable(),
+		field.Time("accepted_at").Optional().Nillable(),
+		field.String("accepted_by").Optional().Nillable(),
+	}
+}
+
+// Indexes: tokens are looked up by hash.
+func (Invitation) Indexes() []ent.Index {
+	return []ent.Index{index.Fields("token_hash").Unique()}
+}
