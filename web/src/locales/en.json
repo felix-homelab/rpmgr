@@ -81,5 +81,25 @@
     "currentPassword": "Current password",
     "changePassword": "Change the password",
     "passwordChanged": "Your password is changed, and your other sessions have ended."
+  },
+  "mfa": {
+    "title": "Two-factor authentication",
+    "none": "Add an authenticator app, so that signing in needs a code from your phone as well as your password.",
+    "setUp": "Set up an authenticator",
+    "scan": "Scan this code with your authenticator app, then enter the 6-digit code it shows.",
+    "qr": "QR code for your authenticator app",
+    "manual": "Or enter this key by hand:",
+    "code": "Code from the app",
+    "confirm": "Turn on",
+    "codesIntro": "Keep these recovery codes somewhere safe. Each works once instead of a code from the app, and they are shown only now. Your other sessions have ended.",
+    "codes": "Recovery codes",
+    "copy": "Copy",
+    "saved": "I have saved them",
+    "active": "An authenticator is set up.",
+    "renew": "New recovery codes",
+    "removeAsk": "Remove the authenticator…",
+    "removeWarning": "Removing the authenticator lets your password alone sign you in, and ends your other sessions.",
+    "remove": "Remove it",
+    "required": "An organisation you belong to requires two-factor authentication. Set up an authenticator to continue."
   }
 }

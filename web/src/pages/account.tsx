@@ -3,6 +3,7 @@
 import { ConnectError, Code } from "@connectrpc/connect";
 import { useMutation, useQuery } from "@connectrpc/connect-query";
 import { useQueryClient } from "@tanstack/react-query";
+import { getRouteApi } from "@tanstack/react-router";
 import { useState, type FormEvent, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { Field } from "@/components/field";
@@ -10,18 +11,24 @@ import { Alert } from "@/components/public-page";
 import { Button } from "@/components/ui/button";
 import { Theme, UserService, type User } from "@/gen/rpmgr/v1/user_pb";
 import { serverMessage } from "@/lib/link-token";
+import { Authenticator } from "@/pages/authenticator";
 import { passwordProblem } from "@/pages/reset";
 import { applyTheme } from "@/theme";
 
+const route = getRouteApi("/app/account");
+
 // Account is the user's own page (docs/09-web-ui.md, "Information architecture"): their profile,
-// theme and password.
+// theme, password and authenticator. ?mfa=required says that an org needs a second factor.
 export function Account() {
   const { t } = useTranslation();
+  const search = route.useSearch();
   return (
     <div className="grid max-w-xl gap-8">
       <h1 className="text-2xl font-semibold">{t("account.title")}</h1>
+      {search.mfa === "required" && <Alert>{t("mfa.required")}</Alert>}
       <Profile />
       <Password />
+      <Authenticator />
     </div>
   );
 }

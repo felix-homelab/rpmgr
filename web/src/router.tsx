@@ -37,7 +37,12 @@ const app = createRoute({
   },
 });
 const overview = createRoute({ getParentRoute: () => app, path: "/", component: Overview });
-const account = createRoute({ getParentRoute: () => app, path: "/account", component: Account });
+const account = createRoute({
+  getParentRoute: () => app,
+  path: "/account",
+  component: Account,
+  validateSearch: (search: Record<string, unknown>): { mfa?: "required" } => (search.mfa === "required" ? { mfa: "required" } : {}),
+});
 const login = createRoute({
   getParentRoute: () => root,
   path: "/login",

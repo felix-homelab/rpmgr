@@ -235,6 +235,14 @@ flowchart LR
 - **The theme** applies at once, and on every page from the profile, so it follows the user to
   every browser. "Like the system" follows the operating system's preference.
 - **Password:** the change needs the current password, and it ends the user's other sessions.
+- **Two-factor authentication:** setting up an authenticator, renewing the recovery codes and
+  removing the authenticator each need a step-up and end the user's other sessions.
+  - **Setup:** a QR code of the authenticator's URI, drawn as SVG, and the key for typing in. A first
+    code turns the authenticator on.
+  - **Recovery codes** are shown once, with a copy button.
+  - **Removal** first says that the password alone will then sign the user in.
+- When an org's policy refuses a user without a second factor (`MFA_REQUIRED`), the UI opens the
+  account page with a notice to set one up.
 
 **Serving.** The controller serves the UI on every path of its UI name that the API and
 `/.well-known/rpmgr/` do not take:
