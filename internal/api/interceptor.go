@@ -226,6 +226,19 @@ func (s *Server) authorize(ctx context.Context, md protoreflect.MethodDescriptor
 // sessions").
 func RequireStepUp(ctx context.Context, now time.Time) error { return stepUp(CallerFrom(ctx), now) }
 
+// Permits reports whether the caller holds the org permission p in org, by its role there and,
+// for a token, by its scopes: the interceptor's check, for a method that needs a second
+// permission only for some requests, such as revoking a gateway's enrollment token. It is not for
+// connectors.write, whose grant to Operators depends on the org's settings.
+func Permits(ctx context.Context, org, p string) bool {
+	c := CallerFrom(ctx)
+	if c == nil || p == authz.PermConnectorsWrite {
+		return false
+	}
+	role, ok := c.Memberships[org]
+	return ok && authz.Grants(role, p, false) && c.scoped(p)
+}
+
 func stepUp(c *Caller, now time.Time) error {
 	if c == nil || c.StepUpAt.IsZero() || now.Sub(c.StepUpAt) > StepUpWindow {
 		return withInfo(connect.NewError(connect.CodeUnauthenticated, errors.New("api: step-up required")), ReasonStepUpRequired, nil)

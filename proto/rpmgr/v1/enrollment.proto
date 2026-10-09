@@ -1,0 +1,232 @@
+// SPDX-License-Identifier: Apache-2.0
+
+syntax = "proto3";
+
+package rpmgr.v1;
+
+import "buf/validate/validate.proto";
+import "google/protobuf/duration.proto";
+import "google/protobuf/timestamp.proto";
+import "rpmgr/v1/options.proto";
+
+option go_package = "github.com/felix-homelab/rpmgr/gen/rpmgr/v1;rpmgrv1";
+
+// EnrollmentService is an org's enrollment tokens (docs/07-api.md, "Services";
+// docs/04-security.md, "Tokens"). A token is shown once, when it is minted; minting needs a
+// step-up.
+service EnrollmentService {
+  // CreateEnrollmentToken mints a token that enrolls a connector, or, with connector_id, one that
+  // re-enrolls that connector with a new key.
+  rpc CreateEnrollmentToken(CreateEnrollmentTokenRequest) returns (CreateEnrollmentTokenResponse) {
+    option (rpmgr.v1.authz) = {
+      permission: "connectors.write"
+      resource_field: "org_id"
+      step_up: true
+    };
+  }
+  // CreateGatewayEnrollmentToken mints the single-use token that enrolls a gateway an Admin
+  // created (R15).
+  rpc CreateGatewayEnrollmentToken(CreateGatewayEnrollmentTokenRequest) returns (CreateGatewayEnrollmentTokenResponse) {
+    option (rpmgr.v1.authz) = {
+      permission: "infrastructure.write"
+      resource_field: "gateway_id"
+      step_up: true
+    };
+  }
+  // ListEnrollmentTokens lists an org's tokens by ID, newest last; never the tokens themselves.
+  rpc ListEnrollmentTokens(ListEnrollmentTokensRequest) returns (ListEnrollmentTokensResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+    option (rpmgr.v1.authz) = {
+      permission: "org.read"
+      resource_field: "org_id"
+    };
+  }
+  // GetInstallCommand returns the command that installs and enrolls an agent on a Linux host. It
+  // holds no token: the installer asks for it.
+  rpc GetInstallCommand(GetInstallCommandRequest) returns (GetInstallCommandResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+    option (rpmgr.v1.authz) = {
+      permission: "org.read"
+      resource_field: "org_id"
+    };
+  }
+  // RevokeEnrollmentToken ends a token. A gateway's token also needs infrastructure.write.
+  rpc RevokeEnrollmentToken(RevokeEnrollmentTokenRequest) returns (RevokeEnrollmentTokenResponse) {
+    option (rpmgr.v1.authz) = {
+      permission: "connectors.write"
+      resource_field: "enrollment_token_id"
+    };
+  }
+}
+
+// AgentRole is the role an enrollment token gives.
+enum AgentRole {
+  // Not set.
+  AGENT_ROLE_UNSPECIFIED = 0;
+  // A connector.
+  AGENT_ROLE_CONNECTOR = 1;
+  // A gateway.
+  AGENT_ROLE_GATEWAY = 2;
+}
+
+// EnrollmentToken is what is known of a token; the token itself is stored only as its hash.
+message EnrollmentToken {
+  // The token's ID, enr_….
+  string id = 1;
+  // The role it gives.
+  AgentRole role = 2;
+  // The gateway group it is scoped to, if any.
+  string gateway_group_id = 3;
+  // The gateway it enrolls, for a gateway token.
+  string gateway_id = 4;
+  // The connector it re-enrolls, for a re-enrollment token.
+  string connector_id = 5;
+  // The labels a connector it enrolls gets.
+  map<string, string> labels = 6;
+  // Whether the connectors it enrolls are ephemeral.
+  bool ephemeral = 7;
+  // How many agents it may enroll; 0 for unlimited.
+  int32 max_uses = 8;
+  // How many it has enrolled.
+  int32 use_count = 9;
+  // When it expires.
+  google.protobuf.Timestamp expire_time = 10;
+  // When it was minted.
+  google.protobuf.Timestamp create_time = 11;
+  // The user who minted it.
+  string created_by = 12;
+  // When it was last used, and from where.
+  google.protobuf.Timestamp last_use_time = 13;
+  // The address of its last use.
+  string last_use_ip = 14;
+  // When it was revoked.
+  google.protobuf.Timestamp revoke_time = 15;
+}
+
+// CreateEnrollmentTokenRequest is the scope of a new connector token.
+message CreateEnrollmentTokenRequest {
+  // The org.
+  string org_id = 1 [(buf.validate.field).string.min_len = 1];
+  // The labels each connector it enrolls gets.
+  map<string, string> labels = 2 [(buf.validate.field).map = {
+    max_pairs: 32
+    keys: {
+      string: {pattern: "^[a-z0-9]([a-z0-9._-]{0,61}[a-z0-9])?$"}
+    }
+    values: {
+      string: {max_len: 255}
+    }
+  }];
+  // Whether the connectors it enrolls are ephemeral: purged 30 minutes after their last
+  // disconnect.
+  bool ephemeral = 3;
+  // How many connectors it may enroll: 1 if not set. More, or 0 for unlimited, only for an
+  // ephemeral token with a ttl.
+  optional int32 max_uses = 4 [(buf.validate.field).int32 = {
+    gte: 0
+    lte: 100000
+  }];
+  // How long it lasts, at most 30 days; 1 hour if not set.
+  google.protobuf.Duration ttl = 5 [(buf.validate.field).duration = {
+    gt: {}
+    lte: {seconds: 2592000}
+  }];
+  // The connector a re-enrollment token replaces the key of; such a token is single-use, not
+  // ephemeral and has no labels.
+  string connector_id = 6;
+  // The gateway group it is scoped to, if any.
+  string gateway_group_id = 7;
+  // Makes retries idempotent (docs/07-api.md, "Resource design").
+  string request_id = 8 [(buf.validate.field).string.max_len = 128];
+}
+
+// CreateEnrollmentTokenResponse is the new token.
+message CreateEnrollmentTokenResponse {
+  // The token, rpmgr_enr_…; it is not stored and cannot be shown again.
+  string token = 1 [(rpmgr.v1.sensitive) = true];
+  // Its details.
+  EnrollmentToken enrollment_token = 2;
+}
+
+// CreateGatewayEnrollmentTokenRequest names the gateway to enroll.
+message CreateGatewayEnrollmentTokenRequest {
+  // The gateway.
+  string gateway_id = 1 [(buf.validate.field).string.min_len = 1];
+  // How long it lasts, at most 30 days; 1 hour if not set.
+  google.protobuf.Duration ttl = 2 [(buf.validate.field).duration = {
+    gt: {}
+    lte: {seconds: 2592000}
+  }];
+  // Makes retries idempotent (docs/07-api.md, "Resource design").
+  string request_id = 3 [(buf.validate.field).string.max_len = 128];
+}
+
+// CreateGatewayEnrollmentTokenResponse is the new token.
+message CreateGatewayEnrollmentTokenResponse {
+  // The token, rpmgr_enr_…; it is not stored and cannot be shown again.
+  string token = 1 [(rpmgr.v1.sensitive) = true];
+  // Its details.
+  EnrollmentToken enrollment_token = 2;
+}
+
+// ListEnrollmentTokensRequest pages through an org's tokens.
+message ListEnrollmentTokensRequest {
+  // The org.
+  string org_id = 1 [(buf.validate.field).string.min_len = 1];
+  // Also tokens that are revoked, expired or used up.
+  bool show_inactive = 2;
+  // At most this many, 50 if not set, 500 at most.
+  int32 page_size = 3;
+  // The page after the one that returned it.
+  string page_token = 4;
+}
+
+// ListEnrollmentTokensResponse is one page of tokens.
+message ListEnrollmentTokensResponse {
+  // The tokens.
+  repeated EnrollmentToken enrollment_tokens = 1;
+  // The token of the next page; empty after the last.
+  string next_page_token = 2;
+}
+
+// RevokeEnrollmentTokenRequest names a token.
+message RevokeEnrollmentTokenRequest {
+  // The token's ID.
+  string enrollment_token_id = 1 [(buf.validate.field).string.min_len = 1];
+}
+
+// RevokeEnrollmentTokenResponse is the revoked token.
+message RevokeEnrollmentTokenResponse {
+  // The token.
+  EnrollmentToken enrollment_token = 1;
+}
+
+// GetInstallCommandRequest is what the install command sets up.
+message GetInstallCommandRequest {
+  // The org.
+  string org_id = 1 [(buf.validate.field).string.min_len = 1];
+  // The role to install; a connector if not set.
+  AgentRole role = 2 [(buf.validate.field).enum.defined_only = true];
+  // The targets a connector may reach, written into its local policy: ip:port, [ipv6]:port or a
+  // socket path. None for a gateway.
+  repeated string allow_targets = 3 [(buf.validate.field).repeated = {
+    max_items: 32
+    unique: true
+    items: {
+      string: {
+        min_len: 1
+        max_len: 256
+      }
+    }
+  }];
+}
+
+// GetInstallCommandResponse is the command.
+message GetInstallCommandResponse {
+  // The command, on several lines joined by backslashes.
+  string command = 1;
+  // The controller's public URL in it.
+  string controller_url = 2;
+  // The --ca-pin in it: "sha256:" and the base64 SHA-256 of the root's public key.
+  string ca_pin = 3;
+}
