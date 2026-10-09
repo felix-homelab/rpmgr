@@ -9,7 +9,8 @@
     "overview": "Overview",
     "routes": "Routes",
     "connectors": "Connectors",
-    "gateways": "Gateways"
+    "gateways": "Gateways",
+    "domains": "Domains & certificates"
   },
   "overview": {
     "title": "Overview",
@@ -513,5 +514,40 @@
     "quotaRange": "A quota is 0 to 65535 ports.",
     "allocated_one": "{{count}} in use",
     "allocated_other": "{{count}} in use"
+  },
+  "domains": {
+    "title": "Domains",
+    "claim": "Claim a domain",
+    "claimTitle": "Claim a domain",
+    "claimSubmit": "Claim it",
+    "none": "The org has no domain claim. Routes need a verified domain for their hostnames.",
+    "fqdn": "Domain",
+    "wildcard": "Also every name below it",
+    "method": "How to prove it is yours",
+    "methods": {
+      "txt": "A DNS TXT record",
+      "http": "An HTTP token, served by your gateways"
+    },
+    "methodName": {
+      "DNS_TXT": "TXT record",
+      "HTTP": "HTTP token",
+      "TRUSTED": "trusted by the Instance Admin",
+      "DELEGATED": "delegated zone"
+    },
+    "status": {
+      "unknown": "unknown",
+      "pending": "pending",
+      "pendingApproval": "waiting for approval",
+      "verified": "verified",
+      "failed": "failed"
+    },
+    "checked": "checked {{when}}",
+    "txtHow": "Create this TXT record at your DNS provider, then check now:",
+    "txtName": "TXT record name",
+    "value": "Value",
+    "httpHow": "Point the name at one of the org's gateways; they serve the token at {{url}}. Then check now. The token is:",
+    "check": "Check now",
+    "trust": "Mark as trusted",
+    "ask": "Remove the claim for {{name}}?"
   }
 }

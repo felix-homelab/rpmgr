@@ -211,6 +211,20 @@ flowchart LR
   - per protocol, the org's quota of the group's ports, with how many are in use. An empty quota is
     removed, so that the pools alone limit the org.
 
+### Domains and certificates
+
+- **Domains** (`/domains`):
+  - **Each claim:** its name (`*.` for a wildcard), status with an icon and text, method, last
+    check and last error.
+  - **A pending or failed claim shows the proof it waits for (U4):** the TXT record's name and
+    value, or the URL at which the org's gateways serve the HTTP token and its value, each with a
+    copy button. "Check now" checks it at once.
+  - **Claiming** takes the name, whether names below it are covered, and the method (TXT record or
+    HTTP token). The name is lower-cased, without a trailing dot.
+  - **Removal** comes after a confirmation that names the claim.
+  - **The Instance Admin** can mark a claim trusted after a step-up
+    ([15](15-dns.md)).
+
 ### Enroll connector dialog
 
 ```
