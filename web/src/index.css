@@ -1,8 +1,8 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 @import "tailwindcss";
 
-/* The colours of both themes; dark follows the OS until the profile setting exists
-   (docs/09-web-ui.md, U10). */
+/* The colours of both themes (docs/09-web-ui.md, U10): dark when the user chose it, or when they
+   follow the operating system and it prefers dark. */
 @theme {
   --color-background: oklch(1 0 0);
   --color-foreground: oklch(0.21 0.03 265);
@@ -17,7 +17,7 @@
 }
 
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme="light"]) {
     --color-background: oklch(0.15 0.02 265);
     --color-foreground: oklch(0.97 0 0);
     --color-muted: oklch(0.25 0.02 265);
@@ -27,4 +27,15 @@
     --color-primary: oklch(0.97 0 0);
     --color-primary-foreground: oklch(0.21 0.03 265);
   }
+}
+
+:root[data-theme="dark"] {
+  --color-background: oklch(0.15 0.02 265);
+  --color-foreground: oklch(0.97 0 0);
+  --color-muted: oklch(0.25 0.02 265);
+  --color-muted-foreground: oklch(0.72 0.02 265);
+  --color-border: oklch(0.3 0.02 265);
+  --color-ring: oklch(0.7 0.12 265);
+  --color-primary: oklch(0.97 0 0);
+  --color-primary-foreground: oklch(0.21 0.03 265);
 }

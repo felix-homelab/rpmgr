@@ -4,6 +4,7 @@ import { Code, ConnectError, type Transport } from "@connectrpc/connect";
 import type { QueryClient } from "@tanstack/react-query";
 import { createRootRouteWithContext, createRoute, createRouter, Outlet, redirect, type RouterHistory } from "@tanstack/react-router";
 import { Layout } from "@/components/layout";
+import { Account } from "@/pages/account";
 import { Forgot } from "@/pages/forgot";
 import { Login } from "@/pages/login";
 import { NotFound } from "@/pages/not-found";
@@ -36,6 +37,7 @@ const app = createRoute({
   },
 });
 const overview = createRoute({ getParentRoute: () => app, path: "/", component: Overview });
+const account = createRoute({ getParentRoute: () => app, path: "/account", component: Account });
 const login = createRoute({
   getParentRoute: () => root,
   path: "/login",
@@ -49,7 +51,7 @@ const setup = createRoute({ getParentRoute: () => root, path: "/setup", componen
 const reset = createRoute({ getParentRoute: () => root, path: "/reset", component: Reset });
 const forgot = createRoute({ getParentRoute: () => root, path: "/forgot", component: Forgot });
 
-const routeTree = root.addChildren([app.addChildren([overview]), login, setup, reset, forgot]);
+const routeTree = root.addChildren([app.addChildren([overview, account]), login, setup, reset, forgot]);
 
 export function createAppRouter(context: RouterContext, history?: RouterHistory) {
   return createRouter({ routeTree, history, context, defaultPreload: "intent" });

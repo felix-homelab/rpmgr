@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
-import { Code, ConnectError, createRouterTransport, type ServiceImpl } from "@connectrpc/connect";
+import { Code, ConnectError, createRouterTransport, type ConnectRouter, type ServiceImpl } from "@connectrpc/connect";
 import { createMemoryHistory } from "@tanstack/react-router";
 import { render } from "@testing-library/react";
 import { create } from "@bufbuild/protobuf";
@@ -37,9 +37,12 @@ export function auth(over: Auth = {}, session = true): Auth {
   };
 }
 
-// show renders the UI at path with an API that serves impl.
-export function show(path: string, impl: Auth) {
+// show renders the UI at path with an API that serves impl, and the services more registers.
+export function show(path: string, impl: Auth, more?: (router: ConnectRouter) => void) {
   const history = createMemoryHistory({ initialEntries: [path] });
-  const transport = createRouterTransport(({ service }) => service(AuthService, impl));
+  const transport = createRouterTransport((router) => {
+    router.service(AuthService, impl);
+    more?.(router);
+  });
   return { history, ...render(<App transport={transport} history={history} />) };
 }

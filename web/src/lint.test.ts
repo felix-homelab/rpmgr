@@ -14,7 +14,8 @@ async function rules(code: string): Promise<string[]> {
 
 // docs/09-web-ui.md, "Security of the frontend": the lint bans that keep untrusted data text and
 // browser storage empty.
-describe("lint bans", () => {
+// The first lint loads typescript-eslint, which takes seconds on a busy machine.
+describe("lint bans", { timeout: 60_000 }, () => {
   it.each([
     ["dangerouslySetInnerHTML", "export const A = (p: { h: string }) => <div dangerouslySetInnerHTML={{ __html: p.h }} />;", "no-restricted-syntax"],
     ["dangerouslySetInnerHTML as a prop", 'import { createElement } from "react"; export const a = (h: string) => createElement("div", { dangerouslySetInnerHTML: { __html: h } });', "no-restricted-syntax"],

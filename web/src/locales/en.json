@@ -65,5 +65,21 @@
     "wrongCode": "The code is wrong or was used already. Try the next code.",
     "cancel": "Cancel",
     "submit": "Confirm"
+  },
+  "account": {
+    "title": "Account",
+    "profile": "Profile",
+    "theme": "Theme",
+    "themes": {
+      "system": "Like the system",
+      "light": "Light",
+      "dark": "Dark"
+    },
+    "save": "Save",
+    "saved": "Saved.",
+    "password": "Password",
+    "currentPassword": "Current password",
+    "changePassword": "Change the password",
+    "passwordChanged": "Your password is changed, and your other sessions have ended."
   }
 }

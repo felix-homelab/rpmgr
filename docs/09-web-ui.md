@@ -229,6 +229,13 @@ flowchart LR
   an authenticator. After `StepUp` it runs the action again, so the user keeps their place.
   Cancelling ends the action with the API's error. Pages run such actions through `useStepUp()`.
 
+**Account** (`/account`, opened by the user's name in the header):
+- **Profile:** the display name and the theme. The e-mail address is shown, but it cannot be
+  changed there.
+- **The theme** applies at once, and on every page from the profile, so it follows the user to
+  every browser. "Like the system" follows the operating system's preference.
+- **Password:** the change needs the current password, and it ends the user's other sessions.
+
 **Serving.** The controller serves the UI on every path of its UI name that the API and
 `/.well-known/rpmgr/` do not take:
 - `npm run build` in `web/` writes the app to `internal/webui/ui/app/`, which is not committed, and
