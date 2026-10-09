@@ -549,5 +549,46 @@
     "check": "Check now",
     "trust": "Mark as trusted",
     "ask": "Remove the claim for {{name}}?"
+  },
+  "pem": {
+    "file": "Or read it from a file:",
+    "fileSecret": "Or read it from a file; it stays in this page until you send it:"
+  },
+  "certs": {
+    "title": "Certificates",
+    "upload": "Upload a certificate",
+    "uploadTitle": "Upload a certificate",
+    "uploadSubmit": "Upload",
+    "none": "The org has no certificate yet. HTTP routes with ACME get theirs on their own.",
+    "chain": "Certificate chain (PEM, the certificate first)",
+    "key": "Private key (PEM)",
+    "acme": "from ACME",
+    "uploaded": "uploaded",
+    "status": {
+      "UNSPECIFIED": "unknown",
+      "PENDING": "being obtained",
+      "ACTIVE": "active",
+      "FAILED": "failed"
+    },
+    "expires": "expires {{when}}",
+    "endingSoon": "expires soon: {{when}}",
+    "usedBy": "used by {{routes}}",
+    "renew": "Renew now",
+    "renewing": "Renewal started.",
+    "renewQueued": "A renewal is under way already.",
+    "ask": "Remove the certificate for {{name}}?"
+  },
+  "bundles": {
+    "title": "CA bundles",
+    "add": "Add a CA bundle",
+    "addTitle": "New CA bundle",
+    "editTitle": "Edit CA bundle",
+    "addSubmit": "Add the bundle",
+    "none": "The org has no CA bundle. HTTPS targets are verified with the system's roots unless they name one.",
+    "pem": "CA certificates (PEM)",
+    "cert": "{{subject}}, expires {{when}}",
+    "targets_one": "used by {{count}} target",
+    "targets_other": "used by {{count}} targets",
+    "ask": "Remove the CA bundle {{name}}?"
   }
 }

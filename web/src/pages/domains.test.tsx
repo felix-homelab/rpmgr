@@ -44,8 +44,13 @@ function page(instanceAdmin = false) {
   return calls;
 }
 
+// domainList is the list of the "Domains" section; the page has other lists too.
+async function domainList() {
+  return within(await screen.findByRole("region", { name: "Domains" })).getByRole("list");
+}
+
 async function item(name: string) {
-  const list = await screen.findByRole("list");
+  const list = await domainList();
   await within(list).findByText(name);
   return within(within(list).getByText(name).closest("li")!);
 }
@@ -53,7 +58,7 @@ async function item(name: string) {
 describe("Domains", () => {
   it("lists the claims by name, and the proof each pending one waits for", async () => {
     page();
-    const list = await screen.findByRole("list");
+    const list = await domainList();
     await waitFor(() => expect(within(list).getAllByRole("listitem")).toHaveLength(3));
     expect(within(list).getAllByRole("listitem").map((li) => li.querySelector(".font-medium")?.textContent)).toEqual(["example.com", "*.example.org", "web.example.net"]);
     const pending = await item("example.com");

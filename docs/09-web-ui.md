@@ -224,6 +224,17 @@ flowchart LR
   - **Removal** comes after a confirmation that names the claim.
   - **The Instance Admin** can mark a claim trusted after a step-up
     ([15](15-dns.md)).
+- **Certificates**, on the same page:
+  - **Each certificate:** its names, source (ACME or uploaded), status, expiry and issuer, its last
+    error, and the routes that use it. An expiry within 21 days is pointed out.
+  - **Uploading** takes the chain and the private key as PEM, pasted or read from a file in the
+    browser. The key leaves the page once it is sent.
+  - **An ACME certificate** can be renewed now.
+  - **Removal** comes after a confirmation that names the certificate. The server refuses a
+    certificate that routes use, and says which.
+- **CA bundles,** which HTTPS targets verify their upstreams with: each with its certificates'
+  subjects and expiry and how many targets use it. A bundle is added, changed (name and PEM, as the
+  whole bundle as read with mask and etag), or removed after a confirmation.
 
 ### Enroll connector dialog
 
