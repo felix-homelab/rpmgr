@@ -6,6 +6,7 @@ package rpmgr.agent.v1;
 
 import "google/protobuf/timestamp.proto";
 import "rpmgr/v1/options.proto";
+import "rpmgr/v1/policy.proto";
 
 option go_package = "github.com/felix-homelab/rpmgr/gen/rpmgr/agent/v1;agentv1";
 
@@ -92,6 +93,18 @@ message GatewayTCPRoute {
 message RouteAccess {
   // The rules, in the order of the route's policies and of each policy's rules.
   repeated IPRule ip_rules = 1;
+  // http routes: a client the IP rules allow must also pass each of these, in order.
+  repeated BasicAuthRule basic_auth = 2;
+}
+
+// BasicAuthRule is a basic_auth rule of an access policy as gateways check it.
+message BasicAuthRule {
+  // The policy the rule belongs to; cached verifications never cross policies.
+  string policy_id = 1;
+  // Changes whenever the rule's users or hashes change, so cached verifications end with it.
+  string credential_version = 2;
+  // The users, each with the argon2id hash of its password in PHC string format.
+  repeated rpmgr.v1.BasicAuthUser users = 3;
 }
 
 // IPRule allows or denies the clients of some addresses.

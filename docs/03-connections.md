@@ -670,7 +670,8 @@ on the inner name.
 ### Access policies
 
 A route applies its access policies in order, and each policy its rules in order
-([06](06-data-model.md#routing)). The gateway enforces IP rules on every route type:
+([06](06-data-model.md#routing)). The gateway enforces IP rules on every route type and basic auth on
+http routes:
 
 - **IP rules.** The first `ip_allow` or `ip_deny` rule whose CIDRs contain the client's address
   decides. If none does, the client is allowed only when no rule allows, so allow rules make an
@@ -682,6 +683,11 @@ A route applies its access policies in order, and each policy its rules in order
 - **Refusals.** A denied TCP or TLS-passthrough connection is reset before any stream opens; a
   denied UDP datagram opens no flow and is counted (`reason="policy"`); a denied HTTP request is
   **403**.
+- **Basic auth.** A request the IP rules allow must then pass each `basic_auth` rule, in order:
+  without credentials or with wrong ones it is **401** with `WWW-Authenticate: Basic`, and a
+  client address that has used its verifications is **429** with `Retry-After`
+  ([04](04-security.md#secrets-at-rest-and-in-logs)). The gateway removes `Authorization` before
+  the request goes upstream. A `basic_auth` rule on another route type denies everyone.
 - **Tightening applies at once**: a snapshot that changes a route's rules resets the connections,
   ends the UDP flows and cancels the HTTP requests, upgraded connections included, of the clients
   the new rules deny ([Configuration reconciliation](#configuration-reconciliation)).

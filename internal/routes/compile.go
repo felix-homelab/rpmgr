@@ -65,7 +65,7 @@ func GatewayTCP(ctx context.Context, tx *ent.Tx, a snapshot.Agent) ([]*agentv1.R
 		if err != nil {
 			return nil, err
 		}
-		access, err := accessOf(ctx, tx, r.ID)
+		access, err := accessOf(ctx, tx, r.ID, false)
 		if err != nil {
 			return nil, err
 		}
@@ -107,7 +107,7 @@ func GatewayUDP(ctx context.Context, tx *ent.Tx, a snapshot.Agent) ([]*agentv1.R
 		if err != nil {
 			return nil, err
 		}
-		access, err := accessOf(ctx, tx, r.ID)
+		access, err := accessOf(ctx, tx, r.ID, false)
 		if err != nil {
 			return nil, err
 		}
@@ -151,7 +151,7 @@ func GatewayPassthrough(ctx context.Context, tx *ent.Tx, a snapshot.Agent) ([]*a
 		if err != nil {
 			return nil, err
 		}
-		access, err := accessOf(ctx, tx, r.ID)
+		access, err := accessOf(ctx, tx, r.ID, false)
 		if err != nil {
 			return nil, err
 		}
@@ -229,7 +229,7 @@ func GatewayHTTP(ctx context.Context, tx *ent.Tx, a snapshot.Agent) ([]*agentv1.
 		if hostHeader == "preserve" {
 			hostHeader = ""
 		}
-		access, err := accessOf(ctx, tx, r.ID)
+		access, err := accessOf(ctx, tx, r.ID, true)
 		if err != nil {
 			return nil, err
 		}
