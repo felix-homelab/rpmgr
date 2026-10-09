@@ -25,7 +25,7 @@ go.work.sum
 
 # --- Web UI (web/, Vite + React) ------------------------------------------------------------------
 node_modules/
-/web/dist/
+/internal/webui/ui/app/
 /web/.vite/
 *.tsbuildinfo
 .eslintcache

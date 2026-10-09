@@ -43,6 +43,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/migrations"
 	"github.com/felix-homelab/rpmgr/internal/telemetry"
 	"github.com/felix-homelab/rpmgr/internal/websession"
+	"github.com/felix-homelab/rpmgr/internal/webui"
 )
 
 // drainWait is how long a stopping controller waits after Drain for its agents to move
@@ -346,6 +347,11 @@ func Run(ctx context.Context, o RunOptions) error {
 		}); err != nil {
 		return err
 	}
+	ui, err := webui.Handler()
+	if err != nil {
+		return err
+	}
+	mux.Handle("/", ui) // every path the API and the trust bundle do not take
 	web := &http.Server{Handler: cert.HSTS(mux), ReadHeaderTimeout: 10 * time.Second, IdleTimeout: 120 * time.Second,
 		ErrorLog: slog.NewLogLogger(o.Logger.Handler(), slog.LevelDebug)}
 

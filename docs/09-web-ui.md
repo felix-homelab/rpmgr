@@ -1,7 +1,7 @@
 # 09 — Web UI
 
-> Status: design, not implemented. Tags: [F] fact · [R] recommendation · [T] target · [V] verify at
-> implementation ([README](../README.md#how-to-read-these-documents)).
+> Status: Phase 1, being implemented. Tags: [F] fact · [R] recommendation · [T] target · [V] verify
+> at implementation ([README](../README.md#how-to-read-these-documents)).
 
 The web UI is the main way most operators use rpmgr. It is a single-page application embedded in the
 `rpmgr` binary and served by the Controller on the same origin as the API. Everything the UI can do
@@ -188,6 +188,17 @@ flowchart LR
 | Charts | Recharts, through the shadcn/ui chart components, for traffic and latency | Same component system as the rest of the UI ([08](08-software-stack.md#frontend)) |
 | i18n | i18next, English source, English fallback; Phase 1 ships English only | See U11 |
 
+**Serving.** The controller serves the UI on every path of its UI name that the API and
+`/.well-known/rpmgr/` do not take:
+- `npm run build` in `web/` writes the app to `internal/webui/ui/app/`, which is not committed, and
+  `go build` embeds it.
+- A binary built without the app serves a placeholder page that says so.
+- A path that is a built file gets that file. Every other path gets the app's page, for the SPA's
+  router to show. Unknown API services (`/rpmgr.…`), other `/.well-known/` paths and missing files
+  under `/assets/` get 404.
+- The page carries the response's nonce wherever the build wrote the placeholder
+  `RPMGR_CSP_NONCE`. A build without that placeholder stops the controller at start.
+
 **Security of the frontend**
 
 - **No credentials in browser storage.** The session is an `HttpOnly` `__Host-` cookie. The SPA
@@ -197,6 +208,12 @@ flowchart LR
   `default-src 'self'; script-src 'self'; style-src 'self' 'nonce-<per-response>'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'`.
   CodeMirror injects style elements and must receive the nonce [V VB-07].
   Also: no inline scripts, no `eval`, no third-party origins (fonts and icons are bundled).
+  The nonce is 128 random bits, new for each response.
+- [R] **Other response headers:**
+  - `X-Content-Type-Options: nosniff` and `Referrer-Policy: same-origin` on every UI response.
+  - The page is `Cache-Control: no-store`, because its nonce changes.
+  - Built files under `/assets/` have content hashes in their names and are cached for a year
+    (`immutable`); other built files are `no-cache`.
 - **Cross-origin protection.** The SPA calls the API on the same origin. CSRF and WebSocket
   protections are described in [04](04-security.md#human-authentication-and-sessions).
 - **Rendering untrusted data.** Hostnames, labels, log lines and audit diffs are rendered as text;
