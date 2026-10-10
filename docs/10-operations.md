@@ -239,6 +239,9 @@ tls:                          # the certificate of public_url from files; withou
 log:
   level: info                 # debug | info | warn | error
   format: json
+tracing:                      # every role's boot file takes this section
+  otlp_endpoint: ""           # OTLP/HTTP traces URL, e.g. https://collector:4318/v1/traces; "" = off
+  sample_ratio: 0.01          # share of new traces sampled; failed spans are exported regardless
 ```
 
 ```yaml
@@ -258,6 +261,7 @@ listen:
   http: ":80"
   admin: "127.0.0.1:7382"
 log: { level: info, format: json }
+tracing: { otlp_endpoint: "", sample_ratio: 0.01 }
 ```
 
 ```yaml
@@ -510,6 +514,16 @@ ID); there are never per-connection or per-client-IP labels.
 OpenTelemetry (OTLP export, off by default). The W3C trace context travels in `StreamOpen`
 ([03](03-connections.md#framing)) and in HTTP `traceparent` headers, so one public request can be
 followed gateway → connector → service. [R] Head sampling at 1 % by default, always-on for errors.
+
+- The `tracing` section of each role's boot file turns it on: `otlp_endpoint` is the collector's
+  OTLP/HTTP traces URL, and `sample_ratio` the share of new traces sampled at their start. A
+  connector continues the gateway's decision, which `StreamOpen` carries; a gateway does not take a
+  public client's decision from its `traceparent`, so that clients cannot have every request
+  exported, and applies its own share. Every span is recorded, so that one that fails is exported
+  even when its trace was not sampled; such spans go out in the background and are dropped when
+  the collector falls behind. When a process stops, it exports what is left within 5 s.
+- The exporter honours `HTTPS_PROXY`, `ALL_PROXY` and `NO_PROXY` [F otlptracehttp v1.47.0
+  client.go:50-51].
 
 ### Health
 

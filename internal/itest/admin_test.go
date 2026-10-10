@@ -33,7 +33,7 @@ func TestAgentReadiness(t *testing.T) {
 				t.Fatal(err)
 			}
 			ctl, err := agent.NewControl(agent.ControlOptions{IdentityDir: id.Dir, StateDir: state, Version: "0.1.0",
-				Applier: tc.applier, Backoff: fast()})
+				Applier: tc.applier, Backoff: fast(), Logger: c.Logs.Logger()})
 			if err != nil {
 				t.Fatal(err)
 			}

@@ -520,7 +520,7 @@ sequenceDiagram
 | `snapshot_rev` | revision | Revision the gateway routed with; the connector also accepts routes still draining |
 | `src_ip`, `src_port`, `dst_ip`, `dst_port` | bytes, uint32 | Original client and listener addresses (for PROXY protocol and logs) |
 | `sni`, `alpn` | string | From the client's TLS ClientHello, if any |
-| `trace_id`, `span_id` | bytes(16), bytes(8) | W3C trace context |
+| `trace_id`, `span_id`, `trace_flags` | bytes(16), bytes(8), uint32 (one byte) | W3C trace context of the gateway's span, which the connector's span continues ([10](10-operations.md#traces)) |
 | `open_timeout_ms` | uint32 | How long the connector may take to connect upstream |
 | `peer_identity` | string | Relay: the visitor's SPIFFE ID. HTTP: the authenticated principal, if any |
 | `open_id` | uint64 | TCP transport only: answers a connector's `OpenRequest` |

@@ -90,6 +90,8 @@ message StreamOpen {
   // Set only with open_id: the outcome of the requested open. The connector then writes no
   // StreamResult.
   StreamResult result = 15;
+  // W3C trace context: the trace flags, of which bit 0 is "sampled".
+  uint32 trace_flags = 16;
 }
 
 // StreamResult is the first message in the return direction, written by the side that received

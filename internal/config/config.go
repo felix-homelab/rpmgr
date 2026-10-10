@@ -89,6 +89,9 @@ func Parse(data []byte, f File) error {
 // Log is the logging section of every role.
 type Log = telemetry.LogConfig
 
+// Tracing is the tracing section of every role's boot file (docs/10-operations.md, "Traces").
+type Tracing = telemetry.TracingConfig
+
 // Controller is /etc/rpmgr/controller.yaml.
 type Controller struct {
 	Version   int    `yaml:"version"`
@@ -112,7 +115,8 @@ type Controller struct {
 		CertFile string `yaml:"cert_file"`
 		KeyFile  string `yaml:"key_file"`
 	} `yaml:"tls"`
-	Log Log `yaml:"log"`
+	Log     Log     `yaml:"log"`
+	Tracing Tracing `yaml:"tracing"`
 }
 
 // The KEK sources of Phase 1 (docs/04-security.md, "Secrets at rest and in logs").
@@ -140,7 +144,7 @@ var portRe = regexp.MustCompile(`^[1-9][0-9]{0,4}$`)
 func (c *Controller) validate() error {
 	errs := []error{checkVersion(c.Version), checkURL("public_url", c.PublicURL),
 		checkAddr("listen.https", c.Listen.HTTPS, false), checkAddr("listen.http", *c.Listen.HTTP, true),
-		checkAdmin(c.Listen.Admin), checkLog(c.Log)}
+		checkAdmin(c.Listen.Admin), checkLog(c.Log), c.Tracing.Check()}
 	switch c.Database.Driver {
 	case "sqlite":
 		if !filepath.IsAbs(c.Database.DSN) || strings.ContainsAny(c.Database.DSN, "?#%") {
@@ -183,9 +187,10 @@ type Agent struct {
 		// Passthrough is for gateways only.
 		Passthrough Passthrough `yaml:"passthrough"`
 	} `yaml:"controller"`
-	IdentityDir string `yaml:"identity_dir"`
-	StateDir    string `yaml:"state_dir"`
-	Log         Log    `yaml:"log"`
+	IdentityDir string  `yaml:"identity_dir"`
+	StateDir    string  `yaml:"state_dir"`
+	Log         Log     `yaml:"log"`
+	Tracing     Tracing `yaml:"tracing"`
 }
 
 func (a *Agent) defaults() {
@@ -194,7 +199,7 @@ func (a *Agent) defaults() {
 }
 
 func (a *Agent) validate() error {
-	errs := []error{checkVersion(a.Version), checkLog(a.Log),
+	errs := []error{checkVersion(a.Version), checkLog(a.Log), a.Tracing.Check(),
 		checkAbs("identity_dir", a.IdentityDir), checkAbs("state_dir", a.StateDir)}
 	if len(a.Controller.Endpoints) == 0 {
 		errs = append(errs, errors.New("controller.endpoints: at least one controller URL is needed"))
@@ -306,8 +311,9 @@ type AllInOne struct {
 		CertFile string `yaml:"cert_file"`
 		KeyFile  string `yaml:"key_file"`
 	} `yaml:"tls"`
-	StateDir string `yaml:"state_dir"`
-	Log      Log    `yaml:"log"`
+	StateDir string  `yaml:"state_dir"`
+	Log      Log     `yaml:"log"`
+	Tracing  Tracing `yaml:"tracing"`
 }
 
 func (a *AllInOne) defaults() {
@@ -332,7 +338,7 @@ func (a *AllInOne) validate() error {
 // Controller is the controller part of the file; its ports 443 and 80 are the gateway's.
 func (a *AllInOne) Controller() Controller {
 	var c Controller
-	c.Version, c.PublicURL, c.Log = a.Version, a.PublicURL, a.Log
+	c.Version, c.PublicURL, c.Log, c.Tracing = a.Version, a.PublicURL, a.Log, a.Tracing
 	none := ""
 	c.Listen.HTTPS, c.Listen.HTTP, c.Listen.Admin = a.Listen.TCP, &none, a.Listen.Admin
 	c.Database.Driver, c.Database.DSN = a.Database.Driver, a.Database.DSN
@@ -346,7 +352,7 @@ func (a *AllInOne) Controller() Controller {
 // serves the http routes there and redirects every other name as the controller would.
 func (a *AllInOne) Gateway() Gateway {
 	var g Gateway
-	g.Version, g.Log = a.Version, a.Log
+	g.Version, g.Log, g.Tracing = a.Version, a.Log, a.Tracing
 	g.Controller.Endpoints = []string{a.PublicURL}
 	g.StateDir = filepath.Join(a.StateDir, "gateway")
 	g.IdentityDir = filepath.Join(g.StateDir, "identity")

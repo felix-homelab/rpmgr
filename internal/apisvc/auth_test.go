@@ -5,6 +5,8 @@ package apisvc_test
 import (
 	"context"
 	"crypto/rand"
+	"encoding/base64"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"net/http"
@@ -27,6 +29,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/secret"
 	"github.com/felix-homelab/rpmgr/internal/store"
 	"github.com/felix-homelab/rpmgr/internal/store/storetest"
+	"github.com/felix-homelab/rpmgr/internal/telemetry/telemetrytest"
 	"github.com/felix-homelab/rpmgr/internal/websession"
 )
 
@@ -51,14 +54,18 @@ type env struct {
 	renew    renewals     // the renewals CertificateService starts
 	sealer   *secret.Sealer
 	pki      *apisvc.Pki
+	logs     *telemetrytest.Sink // where every service logs; a secret in a line fails the test
 }
 
 func newEnv(t *testing.T) *env {
 	t.Helper()
+	logs := telemetrytest.NewSink(t) // first, so that it reports after the server stopped
+	logs.Secret(pw)
+	log := logs.Logger()
 	db := storetest.Migrated(t, store.SQLite)
 	storetest.Init(t, db)
 	sys := storetest.SystemCtx(t)
-	e := &env{db: db, sys: sys, clock: time.Now()}
+	e := &env{db: db, sys: sys, clock: time.Now(), logs: logs}
 	now := func() time.Time { return e.clock }
 	e.log = filepath.Join(t.TempDir(), "revocations.log")
 	rl, err := revlog.Open(e.log, now)
@@ -66,16 +73,17 @@ func newEnv(t *testing.T) *env {
 		t.Fatal(err)
 	}
 	e.acc = accounts.New(db, sys, now)
-	e.sessions = websession.New(websession.Options{DB: db, Sys: sys, RevLog: rl, Now: now})
+	e.sessions = websession.New(websession.Options{DB: db, Sys: sys, RevLog: rl, Now: now, Logger: log})
 	key := make([]byte, 32)
 	_, _ = rand.Read(key)
+	logs.Secret(base64.StdEncoding.EncodeToString(key), base64.RawURLEncoding.EncodeToString(key), hex.EncodeToString(key))
 	kek, _ := secret.NewKEK(key)
 	sealer, _ := secret.NewSealer(kek)
 	e.sealer = sealer
 	e.pki = &apisvc.Pki{DB: db, Sys: sys, Sealer: sealer, Now: now}
-	e.mfa = &accounts.MFA{Accounts: e.acc, Sealer: sealer, RevLog: rl}
-	e.tokens = &accounts.Tokens{Accounts: e.acc, RevLog: rl}
-	srv, err := api.New(api.Options{DB: db, Sys: sys, Sealer: sealer, Now: now,
+	e.mfa = &accounts.MFA{Accounts: e.acc, Sealer: sealer, RevLog: rl, Logger: log}
+	e.tokens = &accounts.Tokens{Accounts: e.acc, RevLog: rl, Logger: log}
+	srv, err := api.New(api.Options{DB: db, Sys: sys, Sealer: sealer, Now: now, Logger: log,
 		Authenticator:      apisvc.Credentials{Sessions: e.sessions, Tokens: e.tokens},
 		TokenStepUp:        e.tokens.StepUpAt,
 		Resolver:           api.StoreResolver(db, sys),
@@ -87,12 +95,13 @@ func newEnv(t *testing.T) *env {
 	if err != nil {
 		t.Fatal(err)
 	}
-	revocations := &apisvc.Revocations{Sys: sys, RevLog: rl, Denied: func() { e.denied.Add(1) }}
+	revocations := &apisvc.Revocations{Sys: sys, RevLog: rl, Denied: func() { e.denied.Add(1) }, Logger: log}
 	mux := http.NewServeMux()
 	if err := srv.Mount(mux, rpmgrv1.File_rpmgr_v1_auth_proto.Services().ByName("AuthService"),
 		func(o ...connect.HandlerOption) (string, http.Handler) {
 			e.auth = apisvc.NewAuth(e.mfa, e.sessions, now)
 			e.auth.Tokens = e.tokens
+			e.auth.Logger = log
 			e.auth.PublicURL = "https://panel.example.com"
 			return rpmgrv1connect.NewAuthServiceHandler(e.auth, o...)
 		}); err != nil {
@@ -100,8 +109,8 @@ func newEnv(t *testing.T) *env {
 	}
 	if err := srv.Mount(mux, rpmgrv1.File_rpmgr_v1_org_proto.Services().ByName("OrgService"),
 		func(o ...connect.HandlerOption) (string, http.Handler) {
-			e.orgs = &apisvc.Org{Members: &accounts.Members{Accounts: e.acc, RevLog: rl}, API: srv,
-				PublicURL: "https://panel.example.com", Now: now}
+			e.orgs = &apisvc.Org{Members: &accounts.Members{Accounts: e.acc, RevLog: rl, Logger: log}, API: srv,
+				PublicURL: "https://panel.example.com", Now: now, Logger: log}
 			return rpmgrv1connect.NewOrgServiceHandler(e.orgs, o...)
 		}); err != nil {
 		t.Fatal(err)

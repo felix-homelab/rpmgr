@@ -89,7 +89,7 @@ func TestPrivateController(t *testing.T) {
 	}
 	var rec relayed
 	runRole(t, func(ctx context.Context, listening func()) error {
-		return gateway.Run(ctx, gateway.RunOptions{Config: cfg, Version: "0.1.0", DrainPeriod: 200 * time.Millisecond,
+		return gateway.Run(ctx, gateway.RunOptions{Config: cfg, Version: "0.1.0", DrainPeriod: 200 * time.Millisecond, Logger: c.Logs.Logger(),
 			Listening: listening, ForwardDial: rec.dial})
 	})
 

@@ -11,6 +11,8 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/base64"
+	"encoding/hex"
 	"fmt"
 	"math/big"
 	"net"
@@ -32,6 +34,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store"
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
 	"github.com/felix-homelab/rpmgr/internal/store/storetest"
+	"github.com/felix-homelab/rpmgr/internal/telemetry/telemetrytest"
 	"github.com/felix-homelab/rpmgr/internal/token"
 )
 
@@ -61,15 +64,19 @@ type Controller struct {
 	UIRoots  *x509.CertPool       // the roots of the UI certificate
 	Org      string
 	Sys      context.Context
-	opts     Options
-	web      *http.Client
-	stops    []func()
-	sealer   *secret.Sealer
+	// Logs is where the replicas log; a test logs the roles it runs there too (Sink.Logger), so
+	// that a secret in any of their lines fails it.
+	Logs   *telemetrytest.Sink
+	opts   Options
+	web    *http.Client
+	stops  []func()
+	sealer *secret.Sealer
 }
 
 // StartController starts a controller on a loopback port; t's cleanup stops it.
 func StartController(t testing.TB, o Options) *Controller {
 	t.Helper()
+	logs := telemetrytest.NewSink(t) // first, so that it reports after the replicas stopped
 	if o.Version == "" {
 		o.Version = "dev"
 	}
@@ -87,6 +94,7 @@ func StartController(t testing.TB, o Options) *Controller {
 	if _, err := rand.Read(raw); err != nil {
 		t.Fatal(err)
 	}
+	logs.Secret(base64.StdEncoding.EncodeToString(raw), base64.RawURLEncoding.EncodeToString(raw), hex.EncodeToString(raw))
 	kek, err := secret.NewKEK(raw)
 	if err != nil {
 		t.Fatal(err)
@@ -111,7 +119,7 @@ func StartController(t testing.TB, o Options) *Controller {
 	if err != nil {
 		t.Fatal(err)
 	}
-	c := &Controller{DB: db, CA: ca, Org: storetest.Org(t, db, "org-a"), Sys: sys, opts: o, sealer: sealer, RevLog: rl}
+	c := &Controller{DB: db, CA: ca, Org: storetest.Org(t, db, "org-a"), Sys: sys, opts: o, sealer: sealer, RevLog: rl, Logs: logs}
 	c.URL, c.Sessions = c.StartReplica(t)
 	return c
 }
@@ -134,7 +142,8 @@ func (c *Controller) StartReplica(t testing.TB) (string, *controller.Sessions) {
 	roots := x509.NewCertPool()
 	roots.AddCert(c.CA.Root())
 	so := controller.SessionsOptions{DB: c.DB, CA: c.CA, Node: nodeID, Version: c.opts.Version,
-		Sys: c.Sys, Now: c.opts.Now, Admission: c.opts.Admission, RevisionCheck: 50 * time.Millisecond, RevLog: c.RevLog, Sealer: c.sealer}
+		Sys: c.Sys, Now: c.opts.Now, Admission: c.opts.Admission, RevisionCheck: 50 * time.Millisecond, RevLog: c.RevLog, Sealer: c.sealer,
+		Logger: c.Logs.Logger()}
 	if len(c.opts.Sources) > 0 {
 		so.Compiler = &snapshot.Compiler{Sources: c.opts.Sources, Endpoints: func() []string { return []string{url} }}
 	}
@@ -148,7 +157,9 @@ func (c *Controller) StartReplica(t testing.TB) (string, *controller.Sessions) {
 	go func() { sessions.Run(runCtx); close(running) }()
 	agentv1.RegisterControlServer(agents, sessions)
 	agentv1.RegisterReauthServer(agents, controller.NewReauthService(sessions))
-	agentv1.RegisterEnrollmentServer(agents, enroll.NewService(c.DB, c.CA, []string{url}, nil))
+	enrollment := enroll.NewService(c.DB, c.CA, []string{url}, nil)
+	enrollment.Logger = c.Logs.Logger()
+	agentv1.RegisterEnrollmentServer(agents, enrollment)
 	mux := http.NewServeMux()
 	mux.Handle("/.well-known/rpmgr/trust-bundle", enroll.TrustBundleHandler(c.CA.Root()))
 	uiCert, uiRoots := webCertificate(t)
@@ -218,6 +229,7 @@ func (c *Controller) EnrollmentToken(t testing.TB, set func(*ent.EnrollmentToken
 		SetExpiresAt(time.Now().Add(time.Hour)).SetCreatedBy("usr_itest")
 	set(tc)
 	tc.ExecX(c.Sys)
+	c.Logs.Secret(tok)
 	return tok
 }
 

@@ -81,7 +81,9 @@ controller database restarts, and clock jumps, while a load generator checks int
 "0 resets on unchanged routes" invariant.
 
 **Where the cells run.** The in-process integration tests live in `internal/itest`, the container
-tests in `test/e2e` (Docker Compose, `tc netem`, IPv4 and IPv6). Each feature adds its cells to the
+tests in `test/e2e` (Docker Compose, `tc netem`, IPv4 and IPv6). Every component of an in-process
+test, and every service of the API tests, logs at the debug level to a sink that fails the test when
+a line holds a secret (`TestSecretsNeverLogged`). Each feature adds its cells to the
 per-PR subset when it is built; the nightly run covers the full cross-product. Cells that need a
 controlled clock (certificate expiry and grace re-authentication, clock skew) run in-process with
 real traffic and a fake clock; clock jumps in chaos tests use the clock-offset hook of the
@@ -189,7 +191,7 @@ Examples of security regression tests:
 | `TestShellRequiresOwnershipGrantAndOptIn` | Shell open fails for another org's connector, without a grant, without host opt-in, without step-up, with a wrong Origin |
 | `TestUnverifiedDomainRejected` | Creating a route on a hostname outside the org's verified domains fails |
 | `TestBadSnapshotKeepsLastKnownGood` | A snapshot that fails preparation leaves all existing routes serving traffic |
-| `TestSecretsNeverLogged` | Running the full integration suite with a log sink that fails on any known secret value or token prefix |
+| `TestSecretsNeverLogged` | Running the full integration suite at the debug level with a log sink that fails on any known secret value, a private key, or a token prefix followed by its random part |
 
 Regression tests for design-review findings:
 
