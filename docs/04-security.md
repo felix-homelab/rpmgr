@@ -661,9 +661,41 @@ redirect them ([15](15-dns.md#cloudflare-specifics)).
     which swaps in generated test roots; release builds refuse that tag, and the release job checks
     the key fingerprints printed by `rpmgr version --verbose`
     ([D60](14-open-decisions.md#security-defaults)).
+- **Formats** (`internal/release`):
+  - **Signatures** are minisign signature files in minisign's default, prehashed form (`ED`: the
+    Ed25519 signature of the file's BLAKE2b-512 hash, then a global signature over that signature
+    and the trusted comment). The legacy unhashed form (`Ed`) is refused. Keys are minisign public
+    keys. [F] minisign 0.12 makes signatures that `internal/release` verifies, and verifies the
+    signatures of its test signer; the test vectors in `internal/release/testdata` were made with
+    throwaway keys, checked 2026-10-09.
+  - **Signing-key statement**, signed by a root:
+    `{"statement": 1, "signer": "<minisign public key>", "not_before": "…", "not_after": "…"}`.
+    `signer` is the signing key's public key; the name has no "key" in it, which secret scanners
+    would read as a secret's name. A key the statement does not know is refused, and it is valid
+    for at most 12 months. Its validity is
+    checked at the current time, so a signing key stops being accepted when its last statement
+    expires; a renewed statement for the same key keeps that key's earlier manifests verifiable.
+  - **Each release** carries `signing-key.json`, `manifest.json` and their `.minisig` files.
+  - **A manifest** must also be well-formed:
+    - `seq` at least 1, and an issue time;
+    - `version` and `floor` as full SemVer without `v` or build metadata, with `floor` ≤ `version`;
+    - a pre-release version only on `prerelease`;
+    - at least one artifact, each with OS, architecture, variant, a size above 0 and a lower-case
+      SHA-256.
+
+    Keys a manifest has beyond these are ignored, so later formats can add fields.
+  - An artifact is accepted only with the manifest's size and SHA-256; reading stops one byte past
+    the size.
+- **Roots in the binary:** release builds carry the interim roots once the maintainer has made
+  them (D48); until then a release build verifies no release.
+  - `rpmgr version --verbose` prints the minisign key ID and SHA-256 fingerprint of each root
+    ([16](16-cli.md)).
+  - `rpmgrtest` builds carry two test roots instead. Their private keys are derived from fixed
+    names in `internal/release/releasetest`, so no private key is stored.
 - `channel` is `stable` or `prerelease`. The root updater installs a manifest only if its channel
-  matches the host's `update_channel` in the local policy, so a prerelease never reaches a stable
-  host, even through a compromised controller. `variant` is `full` or `connector` (the optional
+  matches the host's `update_channel` in the local policy: a host on `stable` takes stable releases
+  only, and a host on `prerelease` takes both. A prerelease therefore never reaches a stable host,
+  even through a compromised controller. `variant` is `full` or `connector` (the optional
   connector-only build, Phase 2); the updater installs only the variant recorded in `install.json`.
   Both builds install as the binary `rpmgr`.
 - `seq` is a **monotonic manifest number**. Agents persist the highest `seq` they have accepted and

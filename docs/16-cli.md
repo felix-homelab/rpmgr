@@ -90,7 +90,7 @@ with exit code 2 until its implementation lands.
 | `rpmgr kek status`, `kek rotate` | Administer the key-encryption key ([04](04-security.md#secrets-at-rest-and-in-logs)) | controller host | not yet |
 | `rpmgr user reset-password [--config <file>] [--email <address>]` | Create a one-time link that sets the password of the user with that address (valid 24 h); before the first user exists, without `--email`, a first-user link (7 days). Reads the controller's or all-in-one's boot file and needs no KEK; audited as `local-cli` ([04](04-security.md#human-authentication-and-sessions)) | controller host | available |
 | `rpmgr release import` | Import a signed release for air-gapped installations ([D59](14-open-decisions.md#security-defaults)) | controller host | not yet |
-| `rpmgr version` | Print the version, commit, Go version and platform of this binary | any | available |
+| `rpmgr version [--verbose]` | Print the version, commit, Go version and platform of this binary; with `--verbose` also the release root keys compiled into it, by minisign key ID and SHA-256 fingerprint, or that it has none ([04](04-security.md#release-signing)) | any | available |
 
 The role commands read their boot file from `--config`, else from `$RPMGR_CONFIG`, else from
 `/etc/rpmgr/<role>.yaml` ([10](10-operations.md#boot-files)). Administration commands on the

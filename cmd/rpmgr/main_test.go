@@ -14,6 +14,7 @@ import (
 	"testing"
 
 	"github.com/felix-homelab/rpmgr/internal/cli"
+	"github.com/felix-homelab/rpmgr/internal/release"
 )
 
 func runRpmgr(args ...string) (int, string, string) {
@@ -185,6 +186,27 @@ func TestVersion(t *testing.T) {
 	code, stdout, stderr := runRpmgr("version")
 	if code != cli.ExitOK || !strings.HasPrefix(stdout, "rpmgr dev (commit ") || stderr != "" {
 		t.Errorf("rpmgr version: exit %d, stdout %q, stderr %q", code, stdout, stderr)
+	}
+}
+
+// TestVersionVerbose: --verbose adds the release root keys, none in a release build until the
+// interim keys exist (D48), the two test roots in an rpmgrtest build (D60).
+func TestVersionVerbose(t *testing.T) {
+	code, stdout, stderr := runRpmgr("version", "--verbose")
+	lines := strings.Split(strings.TrimSpace(stdout), "\n")
+	if code != cli.ExitOK || stderr != "" || !strings.HasPrefix(lines[0], "rpmgr dev (commit ") {
+		t.Fatalf("rpmgr version --verbose: exit %d, stdout %q, stderr %q", code, stdout, stderr)
+	}
+	if !release.TestBuild {
+		if len(lines) != 2 || lines[1] != "release root keys: none; this build verifies no release" {
+			t.Errorf("roots of a release build: %q", lines[1:])
+		}
+		return
+	}
+	roots := release.Roots()
+	if len(lines) != 4 || lines[1] != "test release root keys (rpmgrtest build):" ||
+		lines[2] != "  "+roots[0].IDString()+"  sha256:"+roots[0].Fingerprint() || lines[3] != "  "+roots[1].IDString()+"  sha256:"+roots[1].Fingerprint() {
+		t.Errorf("roots of an rpmgrtest build: %q", lines[1:])
 	}
 }
 
