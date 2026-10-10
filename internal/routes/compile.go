@@ -33,7 +33,23 @@ import (
 // "Configuration reconciliation").
 func Sources() []snapshot.Source {
 	return []snapshot.Source{GatewayTCP, GatewayUDP, GatewayPassthrough, GatewayHTTP, certs.Gateway, domains.GatewayChallenges,
-		ConnectorRoutes, ConnectorGateways}
+		GatewayDrain, ConnectorRoutes, ConnectorGateways}
+}
+
+// GatewayDrain marks the snapshot of a disabled gateway, which drains (R22). A decommissioned
+// gateway gets no mark: its identity is revoked, which ends its sessions at once.
+func GatewayDrain(ctx context.Context, tx *ent.Tx, a snapshot.Agent) ([]*agentv1.Resource, error) {
+	if a.Identity.Kind != pki.KindGateway {
+		return nil, nil
+	}
+	gw, err := tx.Gateway.Get(ctx, a.Identity.ID)
+	if ent.IsNotFound(err) {
+		return nil, nil
+	}
+	if err != nil || gw.Enabled || gw.DecommissionedAt != nil {
+		return nil, err
+	}
+	return []*agentv1.Resource{{Id: gw.ID, Kind: &agentv1.Resource_GatewayDrain{GatewayDrain: &agentv1.GatewayDrain{}}}}, nil
 }
 
 // GatewayTCP compiles a gateway's tcp routes: every enabled tcp route of its gateway group with a

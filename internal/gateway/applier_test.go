@@ -9,6 +9,7 @@ import (
 	"strings"
 	"syscall"
 	"testing"
+	"time"
 
 	agentv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/agent/v1"
 	"github.com/felix-homelab/rpmgr/internal/agent"
@@ -220,5 +221,58 @@ func TestApplier_ValidateHTTP(t *testing.T) {
 		if len(errs) == 0 || !strings.Contains(errs[0].GetMessage(), tc.want) {
 			t.Errorf("%s: %v, want an error about %q", tc.name, errs, tc.want)
 		}
+	}
+}
+
+// TestApplier_Disable (R22): the drain mark of a disabled gateway drains its data sessions rather
+// than closing them, and the connections of its removed tcp routes stay open for the gateway drain
+// period, not the route drain period; a snapshot without the mark enables the gateway again.
+func TestApplier_Disable(t *testing.T) {
+	gateway.SetRouteTimers(t, 100*time.Millisecond, time.Second)
+	a, assign := gateway.NewApplier()
+	m := gateway.NewSessions(gateway.SessionsOptions{TrustDomain: td, GatewayID: "gw_01", Assignment: assign})
+	t.Cleanup(m.Close)
+	routes := gateway.NewTCPRoutes(gateway.TCPOptions{Host: "127.0.0.1", Sessions: m, Revision: a.Revision})
+	t.Cleanup(routes.Close)
+	a.Bind(gateway.Served{TCP: routes, Sessions: m, DrainPeriod: 800 * time.Millisecond})
+	drain := &agentv1.Resource{Id: "gw_01", Kind: &agentv1.Resource_GatewayDrain{GatewayDrain: &agentv1.GatewayDrain{}}}
+	if errs := a.Validate(gatewaySnapshot(2, drain)); len(errs) != 0 {
+		t.Fatalf("the drain mark is refused: %v", errs)
+	}
+	p1 := freePort(t)
+	a.Apply(t.Context(), gatewaySnapshot(1, tcpResource("rt_1", uint32(p1), cid("con_1"))), agent.Changes{})
+	c := start(t, m, connectorID("con_1"), hello("rt_1"))
+	conn := dialPort(t, p1)
+	if err := ping(conn, "before"); err != nil {
+		t.Fatal(err)
+	}
+	begin := time.Now()
+	if st := a.Apply(t.Context(), gatewaySnapshot(2, drain), agent.Changes{}); len(st) != 0 {
+		t.Fatal(st)
+	}
+	if msg := <-c.msgs; msg.GetDrain().GetReason() != "gateway disabled" {
+		t.Fatalf("got %v, want Drain", msg)
+	}
+	if _, err := net.Dial("tcp", net.JoinHostPort("127.0.0.1", strconv.Itoa(int(p1)))); err == nil {
+		t.Fatal("the disabled gateway's port still accepts")
+	}
+	time.Sleep(300 * time.Millisecond)
+	if err := ping(conn, "past the route drain period"); err != nil {
+		t.Fatalf("a connection ended with the route drain period: %v", err)
+	}
+	_ = c.serveErr(t)
+	if took := time.Since(begin); took < 700*time.Millisecond {
+		t.Fatalf("the session closed after %s, before the gateway drain period", took)
+	}
+	if err := ping(conn, "after the gateway drain period"); err == nil {
+		t.Fatal("a connection survived the gateway drain period")
+	}
+
+	a.Apply(t.Context(), gatewaySnapshot(3, tcpResource("rt_1", uint32(p1), cid("con_1"))), agent.Changes{})
+	if again := start(t, m, connectorID("con_1"), hello("rt_1")); again.welcome == nil {
+		t.Fatal("no session admitted once enabled")
+	}
+	if err := ping(dialPort(t, p1), "enabled again"); err != nil {
+		t.Fatal(err)
 	}
 }

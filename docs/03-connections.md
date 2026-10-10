@@ -280,7 +280,9 @@ Rules:
    connections.
 4. **Acknowledge at the swap, then drain.** `Applied` is sent immediately after the swap. Removed
    resources stop accepting new connections at the swap and keep existing ones for the route drain
-   period (see the timeout table) in the background, so draining never delays the acknowledgement.
+   period (see the timeout table), or on a disabled gateway for the gateway drain period
+   ([Multiple gateways](#multiple-gateways)). They drain in the background, so draining never
+   delays the acknowledgement.
    A route whose **access policy was tightened**, or whose agent was revoked, closes affected
    connections **immediately**.
 5. **Two kinds of error, handled differently.**
@@ -919,6 +921,11 @@ when it was closed before both directions ended. Phase 1 gives the whole window 
 - **Planned gateway restart**: the gateway sends `Drain{deadline}` on the session control stream, stops accepting new
   public connections (or lets the load balancer/DNS move them), and keeps existing streams until the
   gateway drain deadline. Connectors reconnect to the restarted gateway when it is back.
+- **Disabled gateway** ("drain" in the CLI and web UI): its snapshot has no routes and carries a
+  drain mark, and connectors leave the gateway out of theirs. The gateway sends `Drain{deadline}`
+  for the gateway drain period, admits no new data session or stream, and keeps open streams,
+  also those of its removed routes, until the deadline, when it closes each drained session.
+  Enabled again, it admits new sessions; a session drained before still closes at its deadline.
 - There is no gateway-to-gateway forwarding in v1: a public connection arriving at gateway G can
   only use connectors that have a session to G.
 

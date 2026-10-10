@@ -3,6 +3,7 @@
 package gateway
 
 import (
+	"cmp"
 	"context"
 	"crypto/sha256"
 	"crypto/x509"
@@ -121,6 +122,8 @@ type Served struct {
 	HTTP         *HTTPRoutes
 	Certificates *Certificates
 	Sessions     *Sessions
+	// DrainPeriod is how long a disabled gateway keeps its streams; 0 is DrainPeriod.
+	DrainPeriod time.Duration
 }
 
 // Bind gives the applier what it updates.
@@ -274,6 +277,7 @@ func (a *Applier) Validate(snap *agentv1.Snapshot) []*agentv1.SnapshotError {
 			if v := c.GetValue(); v == "" || len(v) > 64 || strings.Trim(v, "abcdefghijklmnopqrstuvwxyz234567") != "" {
 				bad(id, "a challenge value that is not lower-case base32")
 			}
+		case res.GetGatewayDrain() != nil:
 		default:
 			bad(id, "a gateway does not run %T resources", res.GetKind())
 		}
@@ -295,6 +299,7 @@ func (a *Applier) Apply(ctx context.Context, snap *agentv1.Snapshot, _ agent.Cha
 		httpRoutes  []HTTPRoute
 		certs       []CertificateRoute
 		tokens      = map[string]DomainToken{}
+		disabled    bool
 	)
 	for _, res := range snap.GetResources() {
 		var connectors []string
@@ -346,6 +351,9 @@ func (a *Applier) Apply(ctx context.Context, snap *agentv1.Snapshot, _ agent.Cha
 			c := res.GetGatewayDomainChallenge()
 			tokens[res.GetId()] = DomainToken{FQDN: c.GetFqdn(), Value: c.GetValue()}
 			continue
+		case res.GetGatewayDrain() != nil:
+			disabled = true
+			continue
 		case res.GetGatewayPassthroughRoute() != nil:
 			p := res.GetGatewayPassthroughRoute()
 			connectors = p.GetConnectors()
@@ -357,9 +365,28 @@ func (a *Applier) Apply(ctx context.Context, snap *agentv1.Snapshot, _ agent.Cha
 		}
 	}
 	a.revision.Store(proto.Clone(snap.GetRevision()).(*agentv1.Revision))
+	s := a.served
+	// A disabled gateway drains (R22): its sessions first, so that the empty assignment does not
+	// close them, and the connections of its removed routes stay for the drain period too.
+	removal := time.Duration(0)
+	if disabled {
+		removal = cmp.Or(s.DrainPeriod, DrainPeriod)
+	}
+	if s.Sessions != nil {
+		if disabled {
+			s.Sessions.Disable(removal)
+		} else {
+			s.Sessions.Enable()
+		}
+	}
+	if s.TCP != nil {
+		s.TCP.SetRemovalDrain(removal)
+	}
+	if s.Passthrough != nil {
+		s.Passthrough.SetRemovalDrain(removal)
+	}
 	a.assign.cur.Store(next)
 	var status []*agentv1.ResourceStatus
-	s := a.served
 	if s.TCP != nil {
 		status = append(status, s.TCP.Apply(tcp)...)
 	}
