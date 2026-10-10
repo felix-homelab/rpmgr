@@ -40,6 +40,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/gatewaygroup"
 	"github.com/felix-homelab/rpmgr/internal/store/storetest"
+	"github.com/felix-homelab/rpmgr/internal/telemetry"
 	"github.com/felix-homelab/rpmgr/internal/testutil/freeport"
 	"github.com/felix-homelab/rpmgr/internal/token"
 )
@@ -76,7 +77,8 @@ type host struct {
 	port, port80         int
 	cfg                  config.AllInOne
 	web                  *http.Client
-	acmeRoots            *x509.CertPool // RunOptions.ACMERoots
+	acmeRoots            *x509.CertPool     // RunOptions.ACMERoots
+	registry             telemetry.Registry // RunOptions.Registry
 }
 
 func newHost(t *testing.T) *host { return newHostAt(t, "") }
@@ -132,7 +134,7 @@ func (h *host) run(t *testing.T) func() {
 	listening, done := make(chan struct{}), make(chan error, 1)
 	go func() {
 		done <- allinone.Run(ctx, allinone.RunOptions{Config: h.cfg, Version: "0.1.0", Getenv: func(string) string { return "" },
-			DrainPeriod: 200 * time.Millisecond, ACMERoots: h.acmeRoots, Listening: func() { close(listening) }})
+			DrainPeriod: 200 * time.Millisecond, ACMERoots: h.acmeRoots, Registry: h.registry, Listening: func() { close(listening) }})
 	}()
 	select {
 	case <-listening:
@@ -225,7 +227,10 @@ func TestAllInOne(t *testing.T) {
 	if _, err := allinone.Init(context.Background(), controller.InitOptions{ConfigPath: h.boot}); !errors.Is(err, controller.ErrInitialised) {
 		t.Fatalf("a second init: %v", err)
 	}
+	aio := newRecorder()
+	h.registry = aio
 	stop := h.run(t)
+	h.registry = nil // a restart registers anew
 	waitFor(t, "not ready", h.ready)
 
 	// Port 80 is the gateway's; a name no route serves gets the controller's redirect.
@@ -289,10 +294,11 @@ func TestAllInOne(t *testing.T) {
 	if err := os.WriteFile(cc.PolicyFile, fmt.Appendf(nil, "version: 1\nallow_targets:\n  - cidr: 127.0.0.1/32\n    ports: [%d]\n", svc), 0o600); err != nil {
 		t.Fatal(err)
 	}
+	conReg := newRecorder()
 	cctx, ccancel := context.WithCancel(context.Background())
 	cdone := make(chan error, 1)
 	go func() {
-		cdone <- connector.Run(cctx, connector.RunOptions{Config: cc, Version: "0.1.0", Getenv: func(string) string { return "" }})
+		cdone <- connector.Run(cctx, connector.RunOptions{Config: cc, Version: "0.1.0", Getenv: func(string) string { return "" }, Registry: conReg})
 	}()
 	defer func() { ccancel(); <-cdone }()
 
@@ -305,6 +311,7 @@ func TestAllInOne(t *testing.T) {
 		return ping(c, "through the all-in-one") == nil
 	}
 	waitFor(t, "the route is not served", served)
+	checkP1Metrics(t, aio, conReg, h.cfg.Listen.Admin, cc.Listen.Admin)
 
 	stop()
 	h.run(t)

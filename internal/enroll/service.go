@@ -52,7 +52,9 @@ type Service struct {
 	Logger *slog.Logger
 	// Denied, if set, applies a changed deny-list to this controller's sessions at once.
 	Denied func()
-	limit  *ratelimit.Limiter
+	// Refused, if set, is called for every enrollment the rate limit refuses.
+	Refused func()
+	limit   *ratelimit.Limiter
 }
 
 // NewService returns the Enrollment service.
@@ -88,6 +90,9 @@ func (s *Service) Enroll(ctx context.Context, req *agentv1.EnrollRequest) (_ *ag
 	}
 	ip := hostOf(p.Addr)
 	if !s.limit.Allow(ip) {
+		if s.Refused != nil {
+			s.Refused()
+		}
 		return nil, status.Error(codes.ResourceExhausted, "too many enrollments from this address")
 	}
 	defer func() {

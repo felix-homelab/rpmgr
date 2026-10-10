@@ -72,3 +72,27 @@ func TestManyKeys(t *testing.T) {
 		t.Error("a new key is refused after the old buckets refilled")
 	}
 }
+
+// TestOnRefuse: a Limiter and a Backoff report each refusal, and nothing else.
+func TestOnRefuse(t *testing.T) {
+	now := time.Now()
+	clock := func() time.Time { return now }
+	refused := 0
+	l := ratelimit.New(time.Minute, 2, clock)
+	l.OnRefuse = func() { refused++ }
+	for range 3 {
+		l.Allow("a")
+	}
+	if refused != 1 {
+		t.Fatalf("the limiter reported %d refusals, want 1", refused)
+	}
+	refused = 0
+	b := ratelimit.NewBackoff(1, time.Second, time.Minute, clock)
+	b.OnRefuse = func() { refused++ }
+	b.Wait("a")
+	b.Fail("a")
+	b.Fail("a")
+	if b.Wait("a") == 0 || refused != 1 {
+		t.Fatalf("the backoff reported %d refusals, want 1", refused)
+	}
+}

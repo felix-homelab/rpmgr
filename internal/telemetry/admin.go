@@ -22,6 +22,13 @@ const (
 	adminHeader  = 10 * time.Second
 )
 
+// Registry is where a role registers its metrics and what its admin listener serves; a
+// *prometheus.Registry is one.
+type Registry interface {
+	prometheus.Registerer
+	prometheus.Gatherer
+}
+
 // NewRegistry returns a role's metrics registry with the Go runtime and process collectors; feature
 // code registers the role's metrics on it. Labels use stable IDs, never per-connection or
 // per-client-IP values.
@@ -33,7 +40,7 @@ func NewRegistry() *prometheus.Registry {
 
 // AdminHandler serves /metrics from reg, /healthz, which answers while the process runs, and
 // /readyz, which answers 503 with the reason while ready returns an error; ready may be nil.
-func AdminHandler(reg *prometheus.Registry, ready func(context.Context) error) http.Handler {
+func AdminHandler(reg prometheus.Gatherer, ready func(context.Context) error) http.Handler {
 	mux := http.NewServeMux()
 	mux.Handle("GET /metrics", promhttp.HandlerFor(reg, promhttp.HandlerOpts{}))
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte("ok\n")) })
@@ -74,7 +81,7 @@ func CheckAdminAddr(addr string) error {
 }
 
 // ServeAdmin serves AdminHandler on addr until ctx ends.
-func ServeAdmin(ctx context.Context, addr string, reg *prometheus.Registry, ready func(context.Context) error) error {
+func ServeAdmin(ctx context.Context, addr string, reg prometheus.Gatherer, ready func(context.Context) error) error {
 	if err := CheckAdminAddr(addr); err != nil {
 		return err
 	}

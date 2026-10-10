@@ -358,3 +358,59 @@ func Prune(ctx context.Context, tx *ent.Tx, orgID string, cutoff time.Time) (int
 	}
 	return seq, nil
 }
+
+// Uncovered returns the time of the oldest entry of any chain that no checkpoint covers yet; ok
+// is false when every entry is covered.
+func Uncovered(ctx context.Context, db *store.DB) (oldest time.Time, ok bool, err error) {
+	err = store.ReadTx(ctx, db, func(tx *ent.Tx, _ store.Revision) error {
+		rows, err := tx.QueryContext(ctx, "SELECT chain, seq FROM audit_heads WHERE seq > 0")
+		if err != nil {
+			return err
+		}
+		heads := map[string]int64{}
+		for rows.Next() {
+			var chain string
+			var seq int64
+			if err := rows.Scan(&chain, &seq); err != nil {
+				_ = rows.Close()
+				return err
+			}
+			heads[chain] = seq
+		}
+		if err := errors.Join(rows.Err(), rows.Close()); err != nil {
+			return err
+		}
+		for chain, head := range heads {
+			org := orgOf(chain)
+			last, err := lastCheckpoint(ctx, tx, org)
+			if err != nil {
+				return err
+			}
+			next := int64(1)
+			if last != nil {
+				next = last.Seq + 1
+			}
+			if next > head {
+				continue
+			}
+			q, args := "SELECT ts FROM audit_log WHERE org_id IS NULL AND seq = $1", []any{next}
+			if org != "" {
+				q, args = "SELECT ts FROM audit_log WHERE org_id = $1 AND seq = $2", []any{org, next}
+			}
+			r, err := tx.QueryContext(ctx, q, args...)
+			if err != nil {
+				return err
+			}
+			var ts time.Time
+			found, err := scanFirst(r, &ts)
+			if err != nil {
+				return err
+			}
+			if found && (!ok || ts.Before(oldest)) {
+				oldest, ok = ts.UTC(), true
+			}
+		}
+		return nil
+	})
+	return oldest, ok, err
+}

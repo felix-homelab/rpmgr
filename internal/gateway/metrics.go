@@ -5,6 +5,7 @@ package gateway
 import (
 	"errors"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -12,7 +13,9 @@ import (
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
+	dto "github.com/prometheus/client_model/go"
 
+	agentv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/agent/v1"
 	tunnelv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/tunnel/v1"
 )
 
@@ -114,6 +117,61 @@ func (m *Metrics) request(route string, code int) {
 	if m != nil {
 		m.routes.Store(route, true)
 		m.requests.WithLabelValues(route, strconv.Itoa(code)).Inc()
+	}
+}
+
+// Counters returns each route's cumulative counters for the controller's traffic rollups
+// (docs/03-connections.md, "Configuration reconciliation"): bytes both ways, connections and
+// those that failed, and the open ones, by route ID.
+func (m *Metrics) Counters() []*agentv1.RouteCounters {
+	if m == nil {
+		return nil
+	}
+	by := map[string]*agentv1.RouteCounters{}
+	of := func(labels map[string]string) *agentv1.RouteCounters {
+		id := labels["route"]
+		if by[id] == nil {
+			by[id] = &agentv1.RouteCounters{RouteId: id}
+		}
+		return by[id]
+	}
+	collect(m.bytes, func(l map[string]string, v float64) {
+		if c := of(l); l["direction"] == "in" {
+			c.BytesIn += uint64(v)
+		} else {
+			c.BytesOut += uint64(v)
+		}
+	})
+	collect(m.conns, func(l map[string]string, v float64) {
+		c := of(l)
+		c.ConnectionsTotal += uint64(v)
+		if l["result"] != "no_error" {
+			c.ErrorsTotal += uint64(v)
+		}
+	})
+	collect(m.streams, func(l map[string]string, v float64) { of(l).ConnectionsActive += uint64(max(v, 0)) })
+	out := make([]*agentv1.RouteCounters, 0, len(by))
+	for _, c := range by {
+		out = append(out, c)
+	}
+	slices.SortFunc(out, func(a, b *agentv1.RouteCounters) int { return strings.Compare(a.GetRouteId(), b.GetRouteId()) })
+	return out
+}
+
+// collect calls f with the labels and value of each series of a counter or gauge vector.
+func collect(c prometheus.Collector, f func(labels map[string]string, v float64)) {
+	ch := make(chan prometheus.Metric, 64)
+	go func() { c.Collect(ch); close(ch) }()
+	for metric := range ch {
+		var d dto.Metric
+		if metric.Write(&d) != nil {
+			continue
+		}
+		labels := map[string]string{}
+		for _, l := range d.GetLabel() {
+			labels[l.GetName()] = l.GetValue()
+		}
+		f(labels, d.GetCounter().GetValue()+d.GetGauge().GetValue())
 	}
 }
 

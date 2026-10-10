@@ -15,8 +15,8 @@ const (
 	reportAfter = time.Second      // how long a report of changes waits for more of them
 )
 
-// reporter sends the gateway's data sessions to the controller: every ReportEvery, and a second
-// after they change.
+// reporter sends the gateway's data sessions and route counters to the controller: every
+// ReportEvery, and a second after the data sessions change.
 type reporter struct {
 	changed chan struct{}
 }
@@ -33,7 +33,7 @@ func (r *reporter) change() {
 
 // run reports until ctx ends; a report the control session cannot take is dropped, as the next
 // one lists every session again.
-func (r *reporter) run(ctx context.Context, every time.Duration, send func(*agentv1.AgentMessage) bool, report func() []*agentv1.DataSession) {
+func (r *reporter) run(ctx context.Context, every time.Duration, send func(*agentv1.AgentMessage) bool, report func() *agentv1.Status) {
 	t := time.NewTicker(every)
 	defer t.Stop()
 	for {
@@ -48,6 +48,6 @@ func (r *reporter) run(ctx context.Context, every time.Duration, send func(*agen
 			case <-time.After(reportAfter):
 			}
 		}
-		send(&agentv1.AgentMessage{Msg: &agentv1.AgentMessage_Status{Status: &agentv1.Status{DataSessions: report()}}})
+		send(&agentv1.AgentMessage{Msg: &agentv1.AgentMessage_Status{Status: report()}})
 	}
 }

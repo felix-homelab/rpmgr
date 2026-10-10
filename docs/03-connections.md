@@ -341,7 +341,9 @@ Rules:
     connectors' data sessions, one per connector and transport with the lowest round-trip time a
     session measures (QUIC does; h2 does not), at the report interval of the timeout table and at
     the start of each control session; the controller keeps the last report, at most 4 096 per
-    gateway.
+    gateway. The same `Status` carries the gateway's route counters, cumulative since it started:
+    bytes both ways, connections, those that reached no target, and the open ones. The controller
+    rolls them up for the traffic charts ([06](06-data-model.md#desired-vs-observed-state)).
 
 ### Revisions and ordering
 
@@ -1017,7 +1019,7 @@ sequenceDiagram
 | Route drain | 30 s | Finish in-flight requests |
 | Gateway drain | 60 s | Time for connectors to re-home |
 | Session liveness | each controller node marks its live sessions seen every 60 s; a session not seen for 3 min is not live | An agent shows as connected while its control session is live; a node that stops without recording its sessions' ends leaves them to age, and ends them when it starts again |
-| Data-session report | every 60 s, and 1 s after a change | A gateway's `Status` listing its connectors' data sessions, for their status in the API |
+| Data-session report | every 60 s, and 1 s after a change | A gateway's `Status` listing its connectors' data sessions, for their status in the API, and its route counters, for the traffic rollups |
 | Revocation, tightened access policy | immediate | Security beats continuity |
 | Mail delivery | dial 10 s; the whole delivery 30 s | [R] A relay that hangs never holds a request or job for long |
 | ACME job | looks for certificates to obtain or renew every 1 min, on the replica that holds its lease | New routes get their certificates within a minute or so; renewals are never late by more |
@@ -1132,7 +1134,9 @@ benchmark result and the decision taken are recorded in the relevant ADR.
 - Gateway: `CAP_NET_BIND_SERVICE` instead of root; `LimitNOFILE` ≥ 1 048 576.
 - [R] `net.ipv4.tcp_congestion_control=bbr` offered on gateways for the TCP transport and public
   TCP through the installer flag `--tcp-bbr`, never set silently.
-- Diagnostics expose whether GSO is active and whether quic-go's buffer-size warning fired.
+- The metrics `rpmgr_quic_gso_enabled` and `rpmgr_quic_udp_buffer_warning` show whether quic-go
+  sends with GSO and whether a UDP buffer of the QUIC socket stays below the 7 MiB quic-go asks
+  for, which makes it warn ([10](10-operations.md#metrics)).
 
 ## Known limitations
 

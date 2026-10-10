@@ -788,7 +788,8 @@ Phase 3 item ([13](13-roadmap.md#phase-3--advanced)).
   with the address and the reason, never the token.
 - [R] **Floods.** A rate limit's refusal of an anonymous caller, at login or enrollment, is not
   recorded: the limit bounds such requests, and an entry for each would let a flood write the log,
-  and lock its chain, at the flood's pace.
+  and lock its chain, at the flood's pace. A metric counts them instead
+  ([10](10-operations.md#metrics)).
 - Signed **checkpoints** (chain head + count, signed with the audit-checkpoint key) are shipped to an
   external sink (syslog, OTLP, webhook, or object storage with retention lock). The external copy
   is what makes tampering evident: anyone with database write access could recompute a chain.

@@ -13,7 +13,6 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/prometheus/client_golang/prometheus"
 	"github.com/quic-go/quic-go"
 
 	agentv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/agent/v1"
@@ -65,7 +64,7 @@ type RunOptions struct {
 	Port80Fallback http.Handler
 	// Registry, if set, receives the gateway's metrics and Run serves no admin listener;
 	// Readiness then gets the gateway's readiness check.
-	Registry  *prometheus.Registry
+	Registry  telemetry.Registry
 	Readiness func(check func(context.Context) error)
 }
 
@@ -101,7 +100,7 @@ func Run(ctx context.Context, o RunOptions) error {
 			if sessions == nil {
 				return &agentv1.Status{}
 			}
-			return &agentv1.Status{DataSessions: sessions.Report()}
+			return &agentv1.Status{DataSessions: sessions.Report(), Counters: sessions.metrics().Counters()}
 		}})
 	if err != nil {
 		return err
@@ -218,6 +217,9 @@ func Run(ctx context.Context, o RunOptions) error {
 	}
 	tr := &quic.Transport{Conn: pc, StatelessResetKey: resetKey}
 	defer func() { _ = tr.Close(); _ = pc.Close() }() // a Transport does not close a conn it was given
+	if err := tunnel.RegisterHostMetrics(reg, pc); err != nil {
+		return err
+	}
 	qln, err := tunnel.ListenQUIC(tr, QUICTLS(id.TrustDomain, id.AgentID, tunnelTLS), budget)
 	if err != nil {
 		return err
@@ -263,7 +265,9 @@ func Run(ctx context.Context, o RunOptions) error {
 		}()
 	}
 	go certificates.Run(run)
-	go report.run(run, ReportEvery, ctl.Send, sessions.Report)
+	go report.run(run, ReportEvery, ctl.Send, func() *agentv1.Status {
+		return &agentv1.Status{DataSessions: sessions.Report(), Counters: metrics.Counters()}
+	})
 	go func() {
 		for {
 			s, err := qln.Accept(run)

@@ -17,6 +17,9 @@ const maxKeys = 100_000
 
 // Limiter allows Burst events at once per key and refills one every Every.
 type Limiter struct {
+	// OnRefuse, if set before the Limiter is used, is called for every refused event.
+	OnRefuse func()
+
 	every time.Duration
 	burst float64
 	now   func() time.Time
@@ -41,6 +44,14 @@ func New(every time.Duration, burst int, now func() time.Time) *Limiter {
 
 // Allow takes one token of key's bucket and reports whether there was one.
 func (l *Limiter) Allow(key string) bool {
+	ok := l.allow(key)
+	if !ok && l.OnRefuse != nil {
+		l.OnRefuse()
+	}
+	return ok
+}
+
+func (l *Limiter) allow(key string) bool {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	now := l.now()

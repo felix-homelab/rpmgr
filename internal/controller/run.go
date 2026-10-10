@@ -19,7 +19,6 @@ import (
 
 	"connectrpc.com/connect"
 	"github.com/mholt/acmez/v3"
-	"github.com/prometheus/client_golang/prometheus"
 
 	agentv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/agent/v1"
 	rpmgrv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/v1"
@@ -68,7 +67,7 @@ type RunOptions struct {
 	Listener net.Listener
 	// Registry, if set, receives the controller's metrics and Run serves no admin listener;
 	// Readiness then gets the controller's readiness check.
-	Registry  *prometheus.Registry
+	Registry  telemetry.Registry
 	Readiness func(check func(context.Context) error)
 	// NoACME keeps Run from obtaining the public URL's certificate: all-in-one's init runs the
 	// controller in memory only.
@@ -166,6 +165,10 @@ func Run(ctx context.Context, o RunOptions) error {
 	if err := sessions.Register(reg); err != nil {
 		return err
 	}
+	metrics, err := NewMetrics(reg, db, sys, o.Now)
+	if err != nil {
+		return err
+	}
 	ready := NewReadiness(db, dir, sys)
 
 	roots := x509.NewCertPool()
@@ -177,6 +180,7 @@ func Run(ctx context.Context, o RunOptions) error {
 	agentv1.RegisterReauthServer(agents, NewReauthService(sessions))
 	enrollment := enroll.NewService(db, ca, endpoints, o.Now)
 	enrollment.RevLog, enrollment.Logger, enrollment.Denied = rl, o.Logger, sessions.ApplyDenyList
+	enrollment.Refused = metrics.Refused(LimitEnrollment)
 	agentv1.RegisterEnrollmentServer(agents, enrollment)
 
 	leases := lease.New(db, nodeID, o.Now)
@@ -232,6 +236,8 @@ func Run(ctx context.Context, o RunOptions) error {
 	relay := &apisvc.Relay{DB: db, Sys: sys, Sealer: sealer}
 	auth := apisvc.NewAuth(mfa, webSessions, o.Now)
 	auth.Tokens = tokens
+	auth.IPLimit.OnRefuse, auth.Backoff.OnRefuse = metrics.Refused(LimitLogin), metrics.Refused(LimitAccount)
+	auth.ResetLimit.OnRefuse = metrics.Refused(LimitPasswordReset)
 	auth.Mail, auth.PublicURL, auth.Logger = relay, cfg.PublicURL, o.Logger
 	if err := apiServer.Mount(mux, rpmgrv1.File_rpmgr_v1_auth_proto.Services().ByName("AuthService"),
 		func(opts ...connect.HandlerOption) (string, http.Handler) {

@@ -218,6 +218,8 @@ type RunOptions struct {
 	Listening func()
 	// ACMERoots, if set, trusts the ACME CA's TLS certificate instead of the system roots (tests).
 	ACMERoots *x509.CertPool
+	// Registry, if set, receives the metrics of both roles instead of a new registry.
+	Registry telemetry.Registry
 }
 
 // Run runs the controller and the gateway until ctx ends; the admin listener reports both.
@@ -231,7 +233,10 @@ func Run(ctx context.Context, o RunOptions) error {
 		return err
 	}
 	mem := newMemListener()
-	reg := telemetry.NewRegistry()
+	reg := o.Registry
+	if reg == nil {
+		reg = telemetry.NewRegistry()
+	}
 	var (
 		mu     sync.Mutex
 		checks []func(context.Context) error

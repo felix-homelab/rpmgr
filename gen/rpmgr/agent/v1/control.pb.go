@@ -1139,8 +1139,11 @@ type RouteCounters struct {
 	ConnectionsTotal uint64 `protobuf:"varint,4,opt,name=connections_total,json=connectionsTotal,proto3" json:"connections_total,omitempty"`
 	// Connections or UDP flows open now.
 	ConnectionsActive uint64 `protobuf:"varint,5,opt,name=connections_active,json=connectionsActive,proto3" json:"connections_active,omitempty"`
-	unknownFields     protoimpl.UnknownFields
-	sizeCache         protoimpl.SizeCache
+	// Of connections_total, those that reached no target: a StreamResult other than NO_ERROR, or
+	// none.
+	ErrorsTotal   uint64 `protobuf:"varint,6,opt,name=errors_total,json=errorsTotal,proto3" json:"errors_total,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *RouteCounters) Reset() {
@@ -1204,6 +1207,13 @@ func (x *RouteCounters) GetConnectionsTotal() uint64 {
 func (x *RouteCounters) GetConnectionsActive() uint64 {
 	if x != nil {
 		return x.ConnectionsActive
+	}
+	return 0
+}
+
+func (x *RouteCounters) GetErrorsTotal() uint64 {
+	if x != nil {
+		return x.ErrorsTotal
 	}
 	return 0
 }
@@ -1845,13 +1855,14 @@ const file_rpmgr_agent_v1_control_proto_rawDesc = "" +
 	"\treadiness\x18\x01 \x03(\v2\x1e.rpmgr.agent.v1.ResourceStatusR\treadiness\x129\n" +
 	"\bcounters\x18\x02 \x03(\v2\x1d.rpmgr.agent.v1.RouteCountersR\bcounters\x12@\n" +
 	"\rdata_sessions\x18\x03 \x03(\v2\x1b.rpmgr.agent.v1.DataSessionR\fdataSessions\x12-\n" +
-	"\x12readiness_complete\x18\x04 \x01(\bR\x11readinessComplete\"\xbe\x01\n" +
+	"\x12readiness_complete\x18\x04 \x01(\bR\x11readinessComplete\"\xe1\x01\n" +
 	"\rRouteCounters\x12\x19\n" +
 	"\broute_id\x18\x01 \x01(\tR\arouteId\x12\x19\n" +
 	"\bbytes_in\x18\x02 \x01(\x04R\abytesIn\x12\x1b\n" +
 	"\tbytes_out\x18\x03 \x01(\x04R\bbytesOut\x12+\n" +
 	"\x11connections_total\x18\x04 \x01(\x04R\x10connectionsTotal\x12-\n" +
-	"\x12connections_active\x18\x05 \x01(\x04R\x11connectionsActive\"\x96\x01\n" +
+	"\x12connections_active\x18\x05 \x01(\x04R\x11connectionsActive\x12!\n" +
+	"\ferrors_total\x18\x06 \x01(\x04R\verrorsTotal\"\x96\x01\n" +
 	"\vDataSession\x12!\n" +
 	"\fconnector_id\x18\x01 \x01(\tR\vconnectorId\x127\n" +
 	"\ttransport\x18\x02 \x01(\x0e2\x19.rpmgr.agent.v1.TransportR\ttransport\x12+\n" +
