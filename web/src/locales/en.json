@@ -6,7 +6,8 @@
     "signOut": "Sign out"
   },
   "nav": {
-    "overview": "Overview"
+    "overview": "Overview",
+    "routes": "Routes"
   },
   "overview": {
     "title": "Overview",
@@ -112,5 +113,111 @@
     "endAsk": "End…",
     "ask": "End the session from {{ip}}?",
     "end": "End it"
+  },
+  "tokens": {
+    "title": "API tokens",
+    "intro": "Personal tokens for the command line and scripts. A token can do only what its scopes allow, and never more than your role.",
+    "none": "You have no API tokens.",
+    "new": "New token…",
+    "name": "Name",
+    "validity": "Valid for (days)",
+    "days": "1 to 365 days.",
+    "scopes": "Scopes",
+    "create": "Create the token",
+    "created": "Copy the token now. It is shown only once.",
+    "token": "The new token",
+    "copied": "I have copied it",
+    "expires": "expires {{when}}",
+    "lastUse": "last used {{when}} from {{ip}}",
+    "unused": "never used",
+    "revokeAsk": "Revoke…",
+    "ask": "Revoke the token {{name}}?",
+    "revoke": "Revoke it",
+    "scope": {
+      "org_read": "view resources, status and metrics",
+      "routes_write": "routes, targets, health checks and access policies",
+      "connectors_write": "enroll and revoke connectors",
+      "infrastructure_write": "gateways, gateway groups, port pools, domains and certificates",
+      "members_write": "members and invitations",
+      "audit_read": "read and export the audit log",
+      "org_write": "SSO, the MFA policy and the org's settings",
+      "instance_admin": "the instance: CA, KEK, system gateways and instance settings"
+    }
+  },
+  "routeState": {
+    "unknown": "unknown",
+    "disabled": "disabled",
+    "pending": "pending",
+    "ready": "ready",
+    "degraded": "degraded",
+    "unavailable": "unavailable",
+    "error": "error"
+  },
+  "routeType": {
+    "http": "HTTP",
+    "tcp": "TCP",
+    "udp": "UDP",
+    "tlsPassthrough": "TLS passthrough",
+    "unknown": "unknown"
+  },
+  "routes": {
+    "title": "Routes",
+    "search": "Search",
+    "type": "Type",
+    "state": "Status",
+    "group": "Gateway group",
+    "all": "All",
+    "columns": {
+      "name": "Name and address",
+      "type": "Type",
+      "group": "Gateway group",
+      "targets": "Targets",
+      "state": "Status"
+    },
+    "ready": "{{ready}}/{{total}} ready",
+    "blocked_one": "{{count}} blocked by local policy",
+    "blocked_other": "{{count}} blocked by local policy",
+    "rejected_one": "rejected by {{count}} agent",
+    "rejected_other": "rejected by {{count}} agents",
+    "pages": "Pages",
+    "count": "{{from}}–{{to}} of {{total}}",
+    "previous": "Previous",
+    "next": "Next"
+  },
+  "route": {
+    "title": "Route {{name}} ({{type}})",
+    "notFound": "This route does not exist, or you cannot see it.",
+    "desired": "Configured",
+    "observed": "Observed",
+    "enabled": "enabled",
+    "disabled": "disabled",
+    "group": "gateway group {{name}}",
+    "gateways": "served by {{serving}} of {{total}} gateways",
+    "mtu": "UDP datagrams travel as QUIC datagrams up to about 1240 bytes, or 1412 bytes once path-MTU discovery has run. Larger ones go over the flow's stream: delivered reliably, but one late packet holds up those after it.",
+    "targets": "Targets",
+    "columns": {
+      "connector": "Connector",
+      "address": "Address",
+      "weight": "Weight",
+      "state": "Status"
+    },
+    "noTargets": "The route has no targets.",
+    "targetReady": "ready",
+    "targetDisabled": "disabled",
+    "fallback": "served over TLS and HTTP/2, the fallback for QUIC",
+    "runOn": "Run on the host of {{connector}}:",
+    "gatewaysTitle": "Gateways not serving",
+    "rejections": "Rejected by",
+    "noReason": "no reason given"
+  },
+  "notServing": {
+    "BLOCKED_BY_LOCAL_POLICY": "blocked by the connector's local policy",
+    "POLICY_INVALID": "the connector's local policy does not load",
+    "PORT_IN_USE": "the port is in use on the gateway",
+    "TRANSPORT_UNAVAILABLE": "no data session over the route's transport",
+    "ENVIRONMENT": "the host cannot serve it",
+    "OFFLINE": "offline",
+    "DISABLED": "disabled",
+    "NO_DATA_SESSION": "no data session to the connector"
   }
 }

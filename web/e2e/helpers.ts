@@ -25,20 +25,6 @@ export async function expectAccessible(page: Page) {
   expect(r.violations.map((v) => `${v.id}: ${v.nodes.map((n) => n.target.join(" ")).join(", ")}`)).toEqual([]);
 }
 
-// call calls an API method from the page, with its session, as the UI does. It runs in the page so
-// that a failure reports the answer, never the request's session cookie.
-export async function call<T>(page: Page, method: string, body: object): Promise<T> {
-  const res = await page.evaluate(
-    async ([m, b]) => {
-      const r = await fetch(`/rpmgr.v1.${m}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(b) });
-      return { status: r.status, text: await r.text() };
-    },
-    [method, body] as const,
-  );
-  expect(res.status, `${method}: ${res.text}`).toBe(200);
-  return JSON.parse(res.text) as T;
-}
-
 // totp is the RFC 6238 code of a base32 secret at time now (SHA-1, 30 s, 6 digits).
 export function totp(secret: string, now = Date.now()): string {
   const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";

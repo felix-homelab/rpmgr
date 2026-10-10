@@ -90,6 +90,17 @@ flowchart LR
 └─────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
+**How the list works.**
+- It reads all of the org's routes and filters them in the browser by text (name or address),
+  type, status and gateway group. It sorts them by name and shows 25 a page. The filters and the
+  page stay in the URL (U9).
+- **Targets** shows how many are ready, and how many a connector's local policy blocks.
+- **Status** shows the observed state, with an icon and text, and how many agents rejected the
+  route.
+- [R] The "Applied" column of the mock-up is left out in Phase 1. It needs the revision that last
+  changed each route, which the API does not report. Rejections show under Status instead, and the
+  apply status of a change shows after each save.
+
 ### Route detail
 
 ```
@@ -107,6 +118,19 @@ flowchart LR
 │ rev 1040  alice  changed target port 5433 → 5432           2026-10-06 09:12  [diff]    │
 └─────────────────────────────────────────────────────────────────────────────────────────┘
 ```
+
+**How the detail works.**
+- It shows the configured settings next to the observed state (U3), and how many of the group's
+  gateways serve the route.
+- **Each target** shows its connector by name, its address and weight, and whether it serves; if
+  not, it says why.
+- **A target that a connector's local policy blocks** shows the command for that connector's host,
+  with a copy button (U4). The target is shell-quoted, for example a socket path with a space.
+- **A target whose connector reaches the gateways only over TLS and HTTP/2** is marked as served
+  over the fallback for QUIC. A route pinned to HTTP/2 is not marked.
+- **Gateways that do not serve the route, and agents that rejected it,** are listed with their
+  reasons.
+- UDP routes show the MTU hint of [03](03-connections.md#udp-routes).
 
 ### Enroll connector dialog
 
@@ -246,6 +270,15 @@ flowchart LR
 - **Sessions:** the user's live sessions, newest first, each with its browser, address and last
   activity. Any session but the current one can be ended, after a confirmation that names its
   address; the current one ends by signing out.
+- **API tokens:** the user's personal tokens of the org, each with its name, prefix, scopes, expiry
+  and last use.
+  - **New tokens:** a name, 1 to 365 days of validity (90 by default) and scopes from the
+    permissions of [04](04-security.md#roles); `org.read` is preselected.
+  - **Creation** needs a step-up. The token is shown once, with a copy button.
+  - **Revocation** comes after a confirmation that names the token.
+
+In Phase 1 the UI works in the user's first org. The org switcher comes with the multi-org UI
+([05](05-features.md), Phase 2).
 
 **Serving.** The controller serves the UI on every path of its UI name that the API and
 `/.well-known/rpmgr/` do not take:
