@@ -42,6 +42,9 @@ const (
 	RouteServiceGetRouteProcedure = "/rpmgr.v1.RouteService/GetRoute"
 	// RouteServiceListRoutesProcedure is the fully-qualified name of the RouteService's ListRoutes RPC.
 	RouteServiceListRoutesProcedure = "/rpmgr.v1.RouteService/ListRoutes"
+	// RouteServiceUpdateRouteProcedure is the fully-qualified name of the RouteService's UpdateRoute
+	// RPC.
+	RouteServiceUpdateRouteProcedure = "/rpmgr.v1.RouteService/UpdateRoute"
 	// RouteServiceDeleteRouteProcedure is the fully-qualified name of the RouteService's DeleteRoute
 	// RPC.
 	RouteServiceDeleteRouteProcedure = "/rpmgr.v1.RouteService/DeleteRoute"
@@ -55,6 +58,8 @@ type RouteServiceClient interface {
 	GetRoute(context.Context, *connect.Request[v1.GetRouteRequest]) (*connect.Response[v1.GetRouteResponse], error)
 	// ListRoutes lists an org's routes by ID.
 	ListRoutes(context.Context, *connect.Request[v1.ListRoutesRequest]) (*connect.Response[v1.ListRoutesResponse], error)
+	// UpdateRoute changes the fields the mask names; a route's type does not change.
+	UpdateRoute(context.Context, *connect.Request[v1.UpdateRouteRequest]) (*connect.Response[v1.UpdateRouteResponse], error)
 	// DeleteRoute deletes a route with its hostnames, targets and port.
 	DeleteRoute(context.Context, *connect.Request[v1.DeleteRouteRequest]) (*connect.Response[v1.DeleteRouteResponse], error)
 }
@@ -90,6 +95,12 @@ func NewRouteServiceClient(httpClient connect.HTTPClient, baseURL string, opts .
 			connect.WithIdempotency(connect.IdempotencyNoSideEffects),
 			connect.WithClientOptions(opts...),
 		),
+		updateRoute: connect.NewClient[v1.UpdateRouteRequest, v1.UpdateRouteResponse](
+			httpClient,
+			baseURL+RouteServiceUpdateRouteProcedure,
+			connect.WithSchema(routeServiceMethods.ByName("UpdateRoute")),
+			connect.WithClientOptions(opts...),
+		),
 		deleteRoute: connect.NewClient[v1.DeleteRouteRequest, v1.DeleteRouteResponse](
 			httpClient,
 			baseURL+RouteServiceDeleteRouteProcedure,
@@ -104,6 +115,7 @@ type routeServiceClient struct {
 	createRoute *connect.Client[v1.CreateRouteRequest, v1.CreateRouteResponse]
 	getRoute    *connect.Client[v1.GetRouteRequest, v1.GetRouteResponse]
 	listRoutes  *connect.Client[v1.ListRoutesRequest, v1.ListRoutesResponse]
+	updateRoute *connect.Client[v1.UpdateRouteRequest, v1.UpdateRouteResponse]
 	deleteRoute *connect.Client[v1.DeleteRouteRequest, v1.DeleteRouteResponse]
 }
 
@@ -122,6 +134,11 @@ func (c *routeServiceClient) ListRoutes(ctx context.Context, req *connect.Reques
 	return c.listRoutes.CallUnary(ctx, req)
 }
 
+// UpdateRoute calls rpmgr.v1.RouteService.UpdateRoute.
+func (c *routeServiceClient) UpdateRoute(ctx context.Context, req *connect.Request[v1.UpdateRouteRequest]) (*connect.Response[v1.UpdateRouteResponse], error) {
+	return c.updateRoute.CallUnary(ctx, req)
+}
+
 // DeleteRoute calls rpmgr.v1.RouteService.DeleteRoute.
 func (c *routeServiceClient) DeleteRoute(ctx context.Context, req *connect.Request[v1.DeleteRouteRequest]) (*connect.Response[v1.DeleteRouteResponse], error) {
 	return c.deleteRoute.CallUnary(ctx, req)
@@ -135,6 +152,8 @@ type RouteServiceHandler interface {
 	GetRoute(context.Context, *connect.Request[v1.GetRouteRequest]) (*connect.Response[v1.GetRouteResponse], error)
 	// ListRoutes lists an org's routes by ID.
 	ListRoutes(context.Context, *connect.Request[v1.ListRoutesRequest]) (*connect.Response[v1.ListRoutesResponse], error)
+	// UpdateRoute changes the fields the mask names; a route's type does not change.
+	UpdateRoute(context.Context, *connect.Request[v1.UpdateRouteRequest]) (*connect.Response[v1.UpdateRouteResponse], error)
 	// DeleteRoute deletes a route with its hostnames, targets and port.
 	DeleteRoute(context.Context, *connect.Request[v1.DeleteRouteRequest]) (*connect.Response[v1.DeleteRouteResponse], error)
 }
@@ -166,6 +185,12 @@ func NewRouteServiceHandler(svc RouteServiceHandler, opts ...connect.HandlerOpti
 		connect.WithIdempotency(connect.IdempotencyNoSideEffects),
 		connect.WithHandlerOptions(opts...),
 	)
+	routeServiceUpdateRouteHandler := connect.NewUnaryHandler(
+		RouteServiceUpdateRouteProcedure,
+		svc.UpdateRoute,
+		connect.WithSchema(routeServiceMethods.ByName("UpdateRoute")),
+		connect.WithHandlerOptions(opts...),
+	)
 	routeServiceDeleteRouteHandler := connect.NewUnaryHandler(
 		RouteServiceDeleteRouteProcedure,
 		svc.DeleteRoute,
@@ -180,6 +205,8 @@ func NewRouteServiceHandler(svc RouteServiceHandler, opts ...connect.HandlerOpti
 			routeServiceGetRouteHandler.ServeHTTP(w, r)
 		case RouteServiceListRoutesProcedure:
 			routeServiceListRoutesHandler.ServeHTTP(w, r)
+		case RouteServiceUpdateRouteProcedure:
+			routeServiceUpdateRouteHandler.ServeHTTP(w, r)
 		case RouteServiceDeleteRouteProcedure:
 			routeServiceDeleteRouteHandler.ServeHTTP(w, r)
 		default:
@@ -201,6 +228,10 @@ func (UnimplementedRouteServiceHandler) GetRoute(context.Context, *connect.Reque
 
 func (UnimplementedRouteServiceHandler) ListRoutes(context.Context, *connect.Request[v1.ListRoutesRequest]) (*connect.Response[v1.ListRoutesResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("rpmgr.v1.RouteService.ListRoutes is not implemented"))
+}
+
+func (UnimplementedRouteServiceHandler) UpdateRoute(context.Context, *connect.Request[v1.UpdateRouteRequest]) (*connect.Response[v1.UpdateRouteResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("rpmgr.v1.RouteService.UpdateRoute is not implemented"))
 }
 
 func (UnimplementedRouteServiceHandler) DeleteRoute(context.Context, *connect.Request[v1.DeleteRouteRequest]) (*connect.Response[v1.DeleteRouteResponse], error) {

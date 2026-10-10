@@ -5,6 +5,7 @@ syntax = "proto3";
 package rpmgr.v1;
 
 import "buf/validate/validate.proto";
+import "google/protobuf/field_mask.proto";
 import "google/protobuf/timestamp.proto";
 import "rpmgr/v1/common.proto";
 import "rpmgr/v1/connector.proto";
@@ -35,6 +36,13 @@ service RouteService {
     option (rpmgr.v1.authz) = {
       permission: "org.read"
       resource_field: "org_id"
+    };
+  }
+  // UpdateRoute changes the fields the mask names; a route's type does not change.
+  rpc UpdateRoute(UpdateRouteRequest) returns (UpdateRouteResponse) {
+    option (rpmgr.v1.authz) = {
+      permission: "routes.write"
+      resource_field: "route.id"
     };
   }
   // DeleteRoute deletes a route with its hostnames, targets and port.
@@ -73,6 +81,12 @@ message Route {
   string description = 6 [(buf.validate.field).string.max_len = 1024];
   // What it serves; its type is set at creation.
   oneof spec {
+    // An HTTP route, TLS terminated at the gateway.
+    HTTPRouteSpec http = 10;
+    // A TCP route on a public port of the group.
+    TCPRouteSpec tcp = 11;
+    // A UDP route on a public port of the group.
+    UDPRouteSpec udp = 12;
     // A TLS route passed through by SNI, TLS ending at the target.
     TLSPassthroughRouteSpec tls_passthrough = 13;
   }
@@ -85,6 +99,86 @@ message Route {
   google.protobuf.Timestamp update_time = 25;
   // The version to send back with an update; output only.
   string etag = 30;
+}
+
+// TLSMode is where an http route's certificate comes from.
+enum TLSMode {
+  // Not set: ACME.
+  TLS_MODE_UNSPECIFIED = 0;
+  // Issued by ACME for the hostnames; not for a wildcard hostname in Phase 1 (R42).
+  TLS_MODE_ACME = 1;
+  // An uploaded certificate.
+  TLS_MODE_CERTIFICATE = 2;
+}
+
+// Port80Mode is what an http route's hostnames do on port 80; ACME HTTP-01 is always answered.
+enum Port80Mode {
+  // Not set: redirect.
+  PORT80_MODE_UNSPECIFIED = 0;
+  // Redirect to HTTPS, keeping path and query.
+  PORT80_MODE_REDIRECT = 1;
+  // Serve the route over plain HTTP too.
+  PORT80_MODE_SERVE = 2;
+  // Close the connection.
+  PORT80_MODE_OFF = 3;
+}
+
+// HTTPRouteSpec is an http route (docs/03-connections.md, "HTTP routes").
+message HTTPRouteSpec {
+  // Its hostnames: names under verified domains of the org, or *.<name> under a wildcard one.
+  repeated string hostnames = 1 [(buf.validate.field).repeated = {
+    min_items: 1
+    max_items: 100
+    unique: true
+    items: {
+      string: {
+        min_len: 1
+        max_len: 255
+      }
+    }
+  }];
+  // The path prefix it serves under its hostnames; the longest prefix wins. Empty is every path.
+  string path_prefix = 2 [(buf.validate.field).string = {
+    max_len: 1024
+    pattern: "^(/[^\\s]*)?$"
+  }];
+  // Where its certificate comes from.
+  TLSMode tls_mode = 3 [(buf.validate.field).enum.defined_only = true];
+  // The uploaded certificate, with TLS_MODE_CERTIFICATE.
+  string certificate_id = 4;
+  // What its hostnames do on port 80.
+  Port80Mode port80 = 5 [(buf.validate.field).enum.defined_only = true];
+  // Strict-Transport-Security max-age; 0 sends none.
+  uint32 hsts_max_age_seconds = 6 [(buf.validate.field).uint32.lte = 63072000];
+  // The Host header towards the upstream: empty or "preserve" keeps the client's.
+  string host_header = 7 [(buf.validate.field).string.max_len = 255];
+  // Request headers set towards the upstream.
+  map<string, string> request_headers_set = 8 [(buf.validate.field).map.max_pairs = 32];
+  // Response headers set towards the client.
+  map<string, string> response_headers_set = 9 [(buf.validate.field).map.max_pairs = 32];
+  // Whether WebSocket upgrades pass; true if not set.
+  optional bool websocket = 10;
+  // The largest request body; 0 is no limit.
+  uint64 max_body_bytes = 11;
+}
+
+// TCPRouteSpec is a tcp route: a public port of the gateway group, from its TCP port pools.
+message TCPRouteSpec {
+  // The port; 0 on create is a random free port of the pools. Within the org's quota.
+  uint32 port = 1 [(buf.validate.field).uint32.lte = 65535];
+  // A connection without traffic for this long is closed; 0 never; 3600 if not set.
+  optional uint32 idle_timeout_seconds = 2 [(buf.validate.field).uint32.lte = 604800];
+}
+
+// UDPRouteSpec is a udp route: a public port of the gateway group, from its UDP port pools.
+message UDPRouteSpec {
+  // The port; 0 on create is a random free port of the pools. Within the org's quota.
+  uint32 port = 1 [(buf.validate.field).uint32.lte = 65535];
+  // A flow without datagrams for this long is forgotten; 60 if not set.
+  optional uint32 flow_idle_timeout_seconds = 2 [(buf.validate.field).uint32 = {
+    gte: 1
+    lte: 86400
+  }];
 }
 
 // TLSPassthroughRouteSpec is a tls_passthrough route: the gateway reads the SNI and passes the
@@ -152,6 +246,25 @@ message ListRoutesResponse {
   repeated Route routes = 1;
   // The token of the next page; empty after the last.
   string next_page_token = 2;
+}
+
+// UpdateRouteRequest is a changed route.
+message UpdateRouteRequest {
+  // The route with its ID and the new values of the fields the mask names.
+  Route route = 1 [(buf.validate.field).required = true];
+  // The fields to change: name, enabled, labels, description, transport, and the fields of the
+  // route's spec by their paths, such as http.hostnames or tls_passthrough.hostnames.
+  google.protobuf.FieldMask update_mask = 2;
+  // The etag the caller read; empty skips the check.
+  string etag = 3;
+}
+
+// UpdateRouteResponse is the changed route.
+message UpdateRouteResponse {
+  // The route.
+  Route route = 1;
+  // The configuration revision of the change.
+  Revision revision = 2;
 }
 
 // DeleteRouteRequest names a route.
