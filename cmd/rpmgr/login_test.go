@@ -48,11 +48,17 @@ func apiServer(t *testing.T) (url, caFile string) {
 	mux.Handle(rpmgrv1connect.NewOrgServiceHandler(orgs{}))
 	srv := httptest.NewTLSServer(mux)
 	t.Cleanup(srv.Close)
-	caFile = filepath.Join(t.TempDir(), "ca.pem")
+	return srv.URL, writeCA(t, srv)
+}
+
+// writeCA writes a test server's certificate to a CA file.
+func writeCA(t *testing.T, srv *httptest.Server) string {
+	t.Helper()
+	caFile := filepath.Join(t.TempDir(), "ca.pem")
 	if err := os.WriteFile(caFile, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: srv.Certificate().Raw}), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	return srv.URL, caFile
+	return caFile
 }
 
 func runWith(env map[string]string, prompt string, args ...string) (int, string, string) {
