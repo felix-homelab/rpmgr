@@ -3,13 +3,23 @@
 import { useMutation, useQuery } from "@connectrpc/connect-query";
 import { useQueryClient } from "@tanstack/react-query";
 import { Link, Outlet, useNavigate } from "@tanstack/react-router";
+import { useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { AuthService } from "@/gen/rpmgr/v1/auth_pb";
+import { UserService } from "@/gen/rpmgr/v1/user_pb";
+import { applyTheme } from "@/theme";
 
 export function Layout() {
   const { t } = useTranslation();
   const session = useQuery(AuthService.method.getSession, {});
+  const me = useQuery(UserService.method.getMe, {});
+  const theme = me.data?.user?.theme;
+  useEffect(() => {
+    if (theme !== undefined) {
+      applyTheme(theme);
+    }
+  }, [theme]);
   const logout = useMutation(AuthService.method.logout);
   const queryClient = useQueryClient();
   const navigate = useNavigate();
@@ -37,7 +47,9 @@ export function Layout() {
             </Link>
           </nav>
           <div className="ml-auto flex items-center gap-3 text-sm">
-            <span className="text-muted-foreground">{session.data?.displayName || session.data?.email}</span>
+            <Link to="/account" className="text-muted-foreground hover:text-foreground [&.active]:text-foreground">
+              {session.data?.displayName || session.data?.email}
+            </Link>
             <Button variant="outline" size="sm" onClick={() => void signOut()} disabled={logout.isPending}>
               {t("app.signOut")}
             </Button>

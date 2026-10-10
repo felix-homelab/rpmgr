@@ -29,6 +29,13 @@ export function App({ transport, history }: AppProps) {
     // A session that ends while the UI is open, by expiry or revocation, sends the user to sign
     // in and back; a step-up the API asks for is handled where it happens.
     const ended = (err: unknown) => {
+      // An org that requires a second factor refuses a user without one until they set one up.
+      if (ConnectError.from(err).code === Code.PermissionDenied && reasonOf(err) === Reason.mfaRequired) {
+        if (router.state.location.pathname !== "/account") {
+          void router.navigate({ to: "/account", search: { mfa: "required" } });
+        }
+        return;
+      }
       if (ConnectError.from(err).code !== Code.Unauthenticated || reasonOf(err) === Reason.stepUpRequired) {
         return;
       }

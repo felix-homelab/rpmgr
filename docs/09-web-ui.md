@@ -229,6 +229,24 @@ flowchart LR
   an authenticator. After `StepUp` it runs the action again, so the user keeps their place.
   Cancelling ends the action with the API's error. Pages run such actions through `useStepUp()`.
 
+**Account** (`/account`, opened by the user's name in the header):
+- **Profile:** the display name and the theme. The e-mail address is shown, but it cannot be
+  changed there.
+- **The theme** applies at once, and on every page from the profile, so it follows the user to
+  every browser. "Like the system" follows the operating system's preference.
+- **Password:** the change needs the current password, and it ends the user's other sessions.
+- **Two-factor authentication:** setting up an authenticator, renewing the recovery codes and
+  removing the authenticator each need a step-up and end the user's other sessions.
+  - **Setup:** a QR code of the authenticator's URI, drawn as SVG, and the key for typing in. A first
+    code turns the authenticator on.
+  - **Recovery codes** are shown once, with a copy button.
+  - **Removal** first says that the password alone will then sign the user in.
+- When an org's policy refuses a user without a second factor (`MFA_REQUIRED`), the UI opens the
+  account page with a notice to set one up.
+- **Sessions:** the user's live sessions, newest first, each with its browser, address and last
+  activity. Any session but the current one can be ended, after a confirmation that names its
+  address; the current one ends by signing out.
+
 **Serving.** The controller serves the UI on every path of its UI name that the API and
 `/.well-known/rpmgr/` do not take:
 - `npm run build` in `web/` writes the app to `internal/webui/ui/app/`, which is not committed, and
