@@ -111,6 +111,43 @@ expect fail "no CHANGELOG change, similar label" in_repo "$r" "$c" "$base" "$noc
 expect pass "no CHANGELOG change, no-changelog label" in_repo "$r" "$c" "$base" "$nochange" "type:docs no-changelog"
 expect pass "CHANGELOG changed" in_repo "$r" "$c" "$base" "$withentry" ""
 
+# --- Release tags ----------------------------------------------------------------------------
+r=$(new_repo)
+cat >"$r/CHANGELOG.md" <<'EOF'
+# Changelog
+
+## [Unreleased]
+
+## [2.0.0]
+
+- No date.
+
+## [1.3.0-rc.1] - 2026-10-01
+
+- A candidate.
+
+## [1.2.3] - 2026-09-01
+
+### Added
+
+- A thing.
+
+## [1.1.0] - 2026-08-01
+
+[Unreleased]: https://example.org/compare
+EOF
+t="$dir/check-release-tag.sh"
+expect pass "a release tag with its changelog section" "$t" v1.2.3 "$r"
+expect pass "a release candidate with its changelog section" "$t" v1.3.0-rc.1 "$r"
+for bad in 1.2.3 v1.2 v1.2.3.4 v01.2.3 v1.02.3 v1.2.3-rc.0 v1.2.3-rc v1.2.3-pre.1 v1.2.3+build.1 spike/s1 ""; do
+  expect fail "tag '$bad'" "$t" "$bad" "$r"
+done
+expect fail "a tag without a changelog section" "$t" v1.2.4 "$r"
+expect fail "a changelog section without a date" "$t" v2.0.0 "$r"
+expect fail "an empty changelog section" "$t" v1.1.0 "$r"
+notes=$("$t" v1.2.3 "$r" 2>/dev/null || true)
+expect pass "the release notes are the section's text" test "$notes" = $'### Added\n\n- A thing.'
+
 # --- Security regression test registry ------------------------------------------------------
 st="$dir/check-security-tests.sh"
 r=$(new_repo)
@@ -415,6 +452,79 @@ EOF
   expect fail "generated code older than the .proto file" env BUF_BREAKING_AGAINST=main "$bc" "$r"
   git -C "$r" checkout -q HEAD -- proto gen
   expect pass "nothing to compare when the base has no buf.yaml" env BUF_BREAKING_AGAINST=does-not-exist "$bc" "$r"
+
+  # Release builds: a module with rpmgr's path, toolchain and version package, whose command
+  # prints what `rpmgr version --verbose` prints, and the test root keys with the rpmgrtest tag.
+  r=$(new_repo)
+  grep -E '^(module|go|toolchain) ' "$dir/../../go.mod" >"$r/go.mod"
+  mkdir -p "$r/cmd/rpmgr" "$r/internal/version"
+  cp "$dir/../../internal/version/version.go" "$r/internal/version/"
+  cat >"$r/cmd/rpmgr/main.go" <<'EOF'
+package main
+
+import (
+	"fmt"
+	"os"
+
+	"github.com/felix-homelab/rpmgr/internal/version"
+)
+
+func main() {
+	fmt.Println(version.Get())
+	if len(os.Args) > 2 && os.Args[2] == "--verbose" {
+		fmt.Println(roots)
+	}
+}
+EOF
+  printf '//go:build !rpmgrtest\n\npackage main\n\nconst roots = "release root keys: none; this build verifies no release"\n' >"$r/cmd/rpmgr/roots.go"
+  printf '//go:build rpmgrtest\n\npackage main\n\nconst roots = "test release root keys (rpmgrtest build):"\n' >"$r/cmd/rpmgr/roots_rpmgrtest.go"
+  git -C "$r" add -A && git -C "$r" commit -q -s -m "feat: fixture"
+  commit=$(git -C "$r" rev-parse HEAD)
+  rb="$dir/build-release.sh" ra="$dir/check-release-artifacts.sh"
+  # GOFLAGS cannot add the rpmgrtest tag to a release build.
+  expect pass "a release build" env GOFLAGS=-tags=rpmgrtest "$rb" 1.2.3 "$commit" "$r/a" "$r"
+  expect pass "its artifacts" "$ra" "$r/a" 1.2.3 "$commit" "$r"
+  expect fail "its artifacts, release root keys required" env REQUIRE_ROOTS=1 "$ra" "$r/a" 1.2.3 "$commit" "$r"
+  expect fail "its artifacts, as another version" "$ra" "$r/a" 1.2.4 "$commit" "$r"
+  expect fail "its artifacts, as another commit" "$ra" "$r/a" 1.2.3 "${commit//[0-9a-f]/0}" "$r"
+  expect fail "a build into an existing directory" "$rb" 1.2.3 "$commit" "$r/a" "$r"
+  expect fail "a version with a leading v" "$rb" v1.2.3 "$commit" "$r/v" "$r"
+  expect fail "a short commit hash" "$rb" 1.2.3 "${commit:0:12}" "$r/s" "$r"
+  expect pass "a second build of the commit" "$rb" 1.2.3 "$commit" "$r/b" "$r"
+  expect pass "the two builds are equal" "$dir/check-reproducible.sh" "$r/a" "$r/b"
+  expect pass "a build stamped with another commit" "$rb" 1.2.3 "${commit//[0-9a-f]/1}" "$r/c" "$r"
+  expect fail "builds stamped with two commits differ" "$dir/check-reproducible.sh" "$r/a" "$r/c"
+  # One artifact replaced, with SHA256SUMS made anew.
+  replaced() { # replaced <description> <go build flags...>
+    local desc=$1 t
+    shift
+    t=$(mktemp -d "$tmproot/release.XXXXXX")
+    cp "$r/a"/* "$t/"
+    env CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go -C "$r" build -buildvcs=false "$@" \
+      -ldflags "-X github.com/felix-homelab/rpmgr/internal/version.Version=1.2.3 -X github.com/felix-homelab/rpmgr/internal/version.Commit=$commit" \
+      -o "$t/rpmgr-1.2.3-linux-amd64" ./cmd/rpmgr
+    (cd "$t" && sha256sum -- rpmgr-* >SHA256SUMS)
+    expect fail "$desc" "$ra" "$t" 1.2.3 "$commit" "$r"
+  }
+  replaced "an artifact built with the rpmgrtest tag" -trimpath -tags rpmgrtest
+  replaced "an artifact built without -trimpath"
+  t=$(mktemp -d "$tmproot/release.XXXXXX")
+  cp "$r/a"/* "$t/"
+  cp "$r/a/rpmgr-1.2.3-linux-arm64" "$t/rpmgr-1.2.3-linux-amd64"
+  (cd "$t" && sha256sum -- rpmgr-* >SHA256SUMS)
+  expect fail "an artifact of another architecture" "$ra" "$t" 1.2.3 "$commit" "$r"
+  t=$(mktemp -d "$tmproot/release.XXXXXX")
+  cp "$r/a"/* "$t/"
+  echo x >>"$t/rpmgr-1.2.3-linux-riscv64"
+  expect fail "an artifact changed after SHA256SUMS" "$ra" "$t" 1.2.3 "$commit" "$r"
+  t=$(mktemp -d "$tmproot/release.XXXXXX")
+  cp "$r/a"/* "$t/"
+  touch "$t/notes.txt"
+  expect fail "a file besides the artifacts" "$ra" "$t" 1.2.3 "$commit" "$r"
+  t=$(mktemp -d "$tmproot/release.XXXXXX")
+  cp "$r/a"/rpmgr-1.2.3-linux-amd64 "$r/a"/rpmgr-1.2.3-linux-arm64 "$r/a"/rpmgr-1.2.3-linux-arm "$t/"
+  (cd "$t" && sha256sum -- rpmgr-* >SHA256SUMS)
+  expect fail "an architecture missing" "$ra" "$t" 1.2.3 "$commit" "$r"
 fi
 
 # --- Docker-based checks -------------------------------------------------------------------

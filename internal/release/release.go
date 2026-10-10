@@ -94,10 +94,12 @@ func Verify(roots []PublicKey, statement, statementSig, manifest, manifestSig []
 	if err := json.Unmarshal(manifest, &m); err != nil { // later fields are ignored, for newer manifests
 		return nil, fmt.Errorf("release: manifest: %w", err)
 	}
-	return &m, m.check()
+	return &m, m.Check()
 }
 
-func (m *Manifest) check() error {
+// Check reports whether a manifest is well-formed (docs/04-security.md, "Release signing"); Verify
+// applies it to every manifest it accepts.
+func (m *Manifest) Check() error {
 	switch {
 	case m.Seq == 0 || m.IssuedAt.IsZero() || len(m.Artifacts) == 0:
 		return errors.New("release: manifest without seq, issue time or artifacts")

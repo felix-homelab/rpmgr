@@ -292,8 +292,8 @@ the reference testbed ([Benchmarks](#benchmarks)).
   (`check-e2e.sh`): tcp routes on each transport policy through two gateways over IPv4 and IPv6,
   changes and removal with open connections, a gateway's drain and SIGKILL, the controller down,
   and the deny-list across a gateway restart.
-- **Reproducibility**: the release build runs twice in separate environments and the artifacts'
-  SHA-256 must match.
+- **Reproducibility**: the release build runs twice in separate environments, on an x86-64 and an
+  arm64 runner, on every release tag and every night, and the artifacts' SHA-256 must match.
 - **Supply chain**: SBOM generation, SLSA provenance, signing of the release manifest and cosign
   signatures happen only on release tags, with the signing keys outside CI
   ([04](04-security.md#supply-chain-and-updates)).
@@ -344,6 +344,7 @@ Docker-based ones need Docker), and `test-checks.sh` tests the checks with valid
 | `nightly` / `ci`, `govulncheck`, `fuzz`, `riscv64`, `real-clients` | every `ci` stage in full; govulncheck against the latest vulnerability database; every fuzz target for 10 minutes; every test for riscv64 under QEMU user-mode emulation; Go, curl, headless Chromium and Firefox (images by digest) against the gateway's port 443 router, each reaching two http routes, a TLS-passthrough route and the controller's UI name, and no page for an unknown name. A failure opens the issue "Nightly run failed", or comments on the open one. Also started by hand | `check-govulncheck.sh`, `check-fuzz.sh`, `check-test-arch.sh`, `check-real-clients.sh` |
 | `scorecard` / `analysis` | OpenSSF Scorecard, weekly and on every push to `main`; results in the code-scanning alerts and the public Scorecard API | — |
 | `bench` / `bench` | The benchmark suite on an x86-64 and an arm64 runner, started by hand with a profile ([Benchmarks](#benchmarks), D49); the measurements and the summary as artifacts, the summary also in the job summary | `run-bench.sh` |
+| `release` / `tag`, `build`, `reproducible`, `publish` | On a release tag: the tag matches the release pattern and the changelog has its dated section; two builds on an x86-64 and an arm64 runner, with the web UI from its lockfile and `CGO_ENABLED=0`, `-trimpath`, no build tags, no VCS stamp and the pinned toolchain, whose artifacts must be equal byte for byte; artifacts that are builds of `cmd/rpmgr` without the `rpmgrtest` tag and carry the release root keys, whose IDs and fingerprints the job prints; an SPDX JSON SBOM (syft, image by digest), SLSA provenance as a GitHub artifact attestation and keyless cosign signatures; a draft release with the unsigned manifest (`tools/releasemanifest`), which the signer signs offline ([RELEASING](../RELEASING.md#release-process)). Every night the two builds and their comparison alone; a failure opens the nightly-failure issue | `check-release-tag.sh`, `build-release.sh`, `check-release-artifacts.sh`, `check-reproducible.sh`, `release-sbom.sh` |
 
 The jobs `pr-rules`, `lint`, `docs` and `secrets` are required status checks of the `main` ruleset;
 the maintainer adds the others once their PRs are merged (verified 2026-10-09: none is yet). A job
