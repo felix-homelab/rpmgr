@@ -27,6 +27,20 @@ func (_c *RouteCreate) SetOrgID(v string) *RouteCreate {
 	return _c
 }
 
+// SetVersion sets the "version" field.
+func (_c *RouteCreate) SetVersion(v int64) *RouteCreate {
+	_c.mutation.SetVersion(v)
+	return _c
+}
+
+// SetNillableVersion sets the "version" field if the given value is not nil.
+func (_c *RouteCreate) SetNillableVersion(v *int64) *RouteCreate {
+	if v != nil {
+		_c.SetVersion(*v)
+	}
+	return _c
+}
+
 // SetName sets the "name" field.
 func (_c *RouteCreate) SetName(v string) *RouteCreate {
 	_c.mutation.SetName(v)
@@ -90,20 +104,6 @@ func (_c *RouteCreate) SetNillableDescription(v *string) *RouteCreate {
 // SetLabels sets the "labels" field.
 func (_c *RouteCreate) SetLabels(v map[string]string) *RouteCreate {
 	_c.mutation.SetLabels(v)
-	return _c
-}
-
-// SetVersion sets the "version" field.
-func (_c *RouteCreate) SetVersion(v int64) *RouteCreate {
-	_c.mutation.SetVersion(v)
-	return _c
-}
-
-// SetNillableVersion sets the "version" field if the given value is not nil.
-func (_c *RouteCreate) SetNillableVersion(v *int64) *RouteCreate {
-	if v != nil {
-		_c.SetVersion(*v)
-	}
 	return _c
 }
 
@@ -211,6 +211,10 @@ func (_c *RouteCreate) ExecX(ctx context.Context) {
 
 // defaults sets the default values of the builder before save.
 func (_c *RouteCreate) defaults() error {
+	if _, ok := _c.mutation.Version(); !ok {
+		v := route.DefaultVersion
+		_c.mutation.SetVersion(v)
+	}
 	if _, ok := _c.mutation.Enabled(); !ok {
 		v := route.DefaultEnabled
 		_c.mutation.SetEnabled(v)
@@ -218,10 +222,6 @@ func (_c *RouteCreate) defaults() error {
 	if _, ok := _c.mutation.Description(); !ok {
 		v := route.DefaultDescription
 		_c.mutation.SetDescription(v)
-	}
-	if _, ok := _c.mutation.Version(); !ok {
-		v := route.DefaultVersion
-		_c.mutation.SetVersion(v)
 	}
 	if _, ok := _c.mutation.CreatedAt(); !ok {
 		if route.DefaultCreatedAt == nil {
@@ -261,6 +261,14 @@ func (_c *RouteCreate) check() error {
 			return &ValidationError{Name: "org_id", err: fmt.Errorf(`ent: validator failed for field "Route.org_id": %w`, err)}
 		}
 	}
+	if _, ok := _c.mutation.Version(); !ok {
+		return &ValidationError{Name: "version", err: errors.New(`ent: missing required field "Route.version"`)}
+	}
+	if v, ok := _c.mutation.Version(); ok {
+		if err := route.VersionValidator(v); err != nil {
+			return &ValidationError{Name: "version", err: fmt.Errorf(`ent: validator failed for field "Route.version": %w`, err)}
+		}
+	}
 	if _, ok := _c.mutation.Name(); !ok {
 		return &ValidationError{Name: "name", err: errors.New(`ent: missing required field "Route.name"`)}
 	}
@@ -295,14 +303,6 @@ func (_c *RouteCreate) check() error {
 	}
 	if _, ok := _c.mutation.Description(); !ok {
 		return &ValidationError{Name: "description", err: errors.New(`ent: missing required field "Route.description"`)}
-	}
-	if _, ok := _c.mutation.Version(); !ok {
-		return &ValidationError{Name: "version", err: errors.New(`ent: missing required field "Route.version"`)}
-	}
-	if v, ok := _c.mutation.Version(); ok {
-		if err := route.VersionValidator(v); err != nil {
-			return &ValidationError{Name: "version", err: fmt.Errorf(`ent: validator failed for field "Route.version": %w`, err)}
-		}
 	}
 	if _, ok := _c.mutation.CreatedAt(); !ok {
 		return &ValidationError{Name: "created_at", err: errors.New(`ent: missing required field "Route.created_at"`)}
@@ -360,6 +360,10 @@ func (_c *RouteCreate) createSpec() (*Route, *sqlgraph.CreateSpec) {
 		_spec.SetField(route.FieldOrgID, field.TypeString, value)
 		_node.OrgID = value
 	}
+	if value, ok := _c.mutation.Version(); ok {
+		_spec.SetField(route.FieldVersion, field.TypeInt64, value)
+		_node.Version = value
+	}
 	if value, ok := _c.mutation.Name(); ok {
 		_spec.SetField(route.FieldName, field.TypeString, value)
 		_node.Name = value
@@ -383,10 +387,6 @@ func (_c *RouteCreate) createSpec() (*Route, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.Labels(); ok {
 		_spec.SetField(route.FieldLabels, field.TypeJSON, value)
 		_node.Labels = value
-	}
-	if value, ok := _c.mutation.Version(); ok {
-		_spec.SetField(route.FieldVersion, field.TypeInt64, value)
-		_node.Version = value
 	}
 	if value, ok := _c.mutation.CreatedAt(); ok {
 		_spec.SetField(route.FieldCreatedAt, field.TypeTime, value)

@@ -52,7 +52,7 @@ func (d *Domains) VerifyDomain(ctx context.Context, req *connect.Request[rpmgrv1
 	if v == nil {
 		return nil, connect.NewError(connect.CodeFailedPrecondition, fmt.Errorf("apisvc: this controller checks no %s proofs", cur.Method))
 	}
-	result := v.Verify(ctx, cur.Fqdn, cur.ChallengeValue)
+	result := v.Verify(ctx, domains.ChallengeOf(cur))
 	var row *ent.Domain
 	err = store.WriteTx(ctx, d.DB, func(tx *ent.Tx) error {
 		latest, err := tx.Domain.Get(ctx, cur.ID)
@@ -82,13 +82,14 @@ func (d *Domains) CreateDomain(ctx context.Context, req *connect.Request[rpmgrv1
 			method = domain.MethodHTTP
 		}
 		var row *ent.Domain
-		err := store.WriteTx(ctx, d.DB, func(tx *ent.Tx) error {
+		// A configuration change: the org's gateways serve the HTTP tokens of its pending claims.
+		_, err := store.ConfigTx(ctx, d.DB, func(tx *ent.Tx) ([]string, error) {
 			var err error
 			if row, err = domains.Claim(ctx, tx, m.GetOrgId(), in.GetFqdn(), in.GetWildcard()); err != nil {
-				return err
+				return nil, err
 			}
 			row, err = tx.Domain.UpdateOne(row).SetMethod(method).Save(ctx)
-			return err
+			return []string{row.ID}, err
 		})
 		switch {
 		case errors.Is(err, domains.ErrInvalid):
@@ -147,18 +148,18 @@ func (d *Domains) ListDomains(ctx context.Context, req *connect.Request[rpmgrv1.
 
 // DeleteDomain implements DomainService.
 func (d *Domains) DeleteDomain(ctx context.Context, req *connect.Request[rpmgrv1.DeleteDomainRequest]) (*connect.Response[rpmgrv1.DeleteDomainResponse], error) {
-	err := store.WriteTx(ctx, d.DB, func(tx *ent.Tx) error {
+	_, err := store.ConfigTx(ctx, d.DB, func(tx *ent.Tx) ([]string, error) {
 		cur, err := tx.Domain.Get(ctx, req.Msg.GetDomainId())
 		if err != nil {
-			return err
+			return nil, err
 		}
 		if err := api.CheckEtag(req.Msg.GetEtag(), cur.Version, domainOf(cur)); err != nil {
-			return err
+			return nil, err
 		}
 		if n, err := tx.RouteHostname.Query().Where(routehostname.DomainID(cur.ID)).Count(ctx); err != nil || n > 0 {
-			return errors.Join(err, errIf(n > 0, dependants(fmt.Sprintf("%d route hostnames lie under the domain", n))))
+			return nil, errors.Join(err, errIf(n > 0, dependants(fmt.Sprintf("%d route hostnames lie under the domain", n))))
 		}
-		return tx.Domain.DeleteOneID(cur.ID).Where(domain.Version(cur.Version)).Exec(ctx)
+		return []string{cur.ID}, tx.Domain.DeleteOneID(cur.ID).Where(domain.Version(cur.Version)).Exec(ctx)
 	})
 	if err != nil {
 		return nil, storeError(err)
@@ -196,15 +197,6 @@ func (d *Domains) now() time.Time {
 	return time.Now()
 }
 
-// ChallengeTXT is the name of a claim's TXT record (docs/04-security.md, "Route and hostname
-// ownership").
-func ChallengeTXT(fqdn string) string { return "_rpmgr-challenge." + fqdn }
-
-// ChallengeURL is where the org's gateways serve a claim's HTTP token (R17).
-func ChallengeURL(fqdn, id string) string {
-	return "http://" + fqdn + "/.well-known/rpmgr-challenge/" + id
-}
-
 func domainOf(r *ent.Domain) *rpmgrv1.Domain {
 	out := &rpmgrv1.Domain{Id: r.ID, Fqdn: r.Fqdn, Wildcard: r.Wildcard, CreateTime: timestamppb.New(r.CreatedAt), Etag: etagOf(r.Version),
 		Status: map[domain.Status]rpmgrv1.DomainStatus{domain.StatusPending: rpmgrv1.DomainStatus_DOMAIN_STATUS_PENDING,
@@ -216,9 +208,9 @@ func domainOf(r *ent.Domain) *rpmgrv1.Domain {
 	if r.Status == domain.StatusPending {
 		out.Challenge = &rpmgrv1.DomainChallenge{Value: r.ChallengeValue}
 		if r.Method == domain.MethodHTTP {
-			out.Challenge.HttpUrl = ChallengeURL(r.Fqdn, r.ID)
+			out.Challenge.HttpUrl = domains.ChallengeURL(r.Fqdn, r.ID)
 		} else {
-			out.Challenge.TxtName = ChallengeTXT(r.Fqdn)
+			out.Challenge.TxtName = domains.ChallengeName(r.Fqdn)
 		}
 	}
 	if r.VerifiedAt != nil {

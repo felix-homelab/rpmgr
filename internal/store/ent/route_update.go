@@ -28,6 +28,27 @@ func (_u *RouteUpdate) Where(ps ...predicate.Route) *RouteUpdate {
 	return _u
 }
 
+// SetVersion sets the "version" field.
+func (_u *RouteUpdate) SetVersion(v int64) *RouteUpdate {
+	_u.mutation.ResetVersion()
+	_u.mutation.SetVersion(v)
+	return _u
+}
+
+// SetNillableVersion sets the "version" field if the given value is not nil.
+func (_u *RouteUpdate) SetNillableVersion(v *int64) *RouteUpdate {
+	if v != nil {
+		_u.SetVersion(*v)
+	}
+	return _u
+}
+
+// AddVersion adds value to the "version" field.
+func (_u *RouteUpdate) AddVersion(v int64) *RouteUpdate {
+	_u.mutation.AddVersion(v)
+	return _u
+}
+
 // SetName sets the "name" field.
 func (_u *RouteUpdate) SetName(v string) *RouteUpdate {
 	_u.mutation.SetName(v)
@@ -102,27 +123,6 @@ func (_u *RouteUpdate) ClearLabels() *RouteUpdate {
 	return _u
 }
 
-// SetVersion sets the "version" field.
-func (_u *RouteUpdate) SetVersion(v int64) *RouteUpdate {
-	_u.mutation.ResetVersion()
-	_u.mutation.SetVersion(v)
-	return _u
-}
-
-// SetNillableVersion sets the "version" field if the given value is not nil.
-func (_u *RouteUpdate) SetNillableVersion(v *int64) *RouteUpdate {
-	if v != nil {
-		_u.SetVersion(*v)
-	}
-	return _u
-}
-
-// AddVersion adds value to the "version" field.
-func (_u *RouteUpdate) AddVersion(v int64) *RouteUpdate {
-	_u.mutation.AddVersion(v)
-	return _u
-}
-
 // SetUpdatedAt sets the "updated_at" field.
 func (_u *RouteUpdate) SetUpdatedAt(v time.Time) *RouteUpdate {
 	_u.mutation.SetUpdatedAt(v)
@@ -185,6 +185,11 @@ func (_u *RouteUpdate) ExecX(ctx context.Context) {
 
 // check runs all checks and user-defined validators on the builder.
 func (_u *RouteUpdate) check() error {
+	if v, ok := _u.mutation.Version(); ok {
+		if err := route.VersionValidator(v); err != nil {
+			return &ValidationError{Name: "version", err: fmt.Errorf(`ent: validator failed for field "Route.version": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.Name(); ok {
 		if err := route.NameValidator(v); err != nil {
 			return &ValidationError{Name: "name", err: fmt.Errorf(`ent: validator failed for field "Route.name": %w`, err)}
@@ -193,11 +198,6 @@ func (_u *RouteUpdate) check() error {
 	if v, ok := _u.mutation.Transport(); ok {
 		if err := route.TransportValidator(v); err != nil {
 			return &ValidationError{Name: "transport", err: fmt.Errorf(`ent: validator failed for field "Route.transport": %w`, err)}
-		}
-	}
-	if v, ok := _u.mutation.Version(); ok {
-		if err := route.VersionValidator(v); err != nil {
-			return &ValidationError{Name: "version", err: fmt.Errorf(`ent: validator failed for field "Route.version": %w`, err)}
 		}
 	}
 	if _u.mutation.GroupCleared() && len(_u.mutation.GroupIDs()) > 0 {
@@ -217,6 +217,12 @@ func (_u *RouteUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 				ps[i](selector)
 			}
 		}
+	}
+	if value, ok := _u.mutation.Version(); ok {
+		_spec.SetField(route.FieldVersion, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedVersion(); ok {
+		_spec.AddField(route.FieldVersion, field.TypeInt64, value)
 	}
 	if value, ok := _u.mutation.Name(); ok {
 		_spec.SetField(route.FieldName, field.TypeString, value)
@@ -238,12 +244,6 @@ func (_u *RouteUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if _u.mutation.LabelsCleared() {
 		_spec.ClearField(route.FieldLabels, field.TypeJSON)
-	}
-	if value, ok := _u.mutation.Version(); ok {
-		_spec.SetField(route.FieldVersion, field.TypeInt64, value)
-	}
-	if value, ok := _u.mutation.AddedVersion(); ok {
-		_spec.AddField(route.FieldVersion, field.TypeInt64, value)
 	}
 	if value, ok := _u.mutation.UpdatedAt(); ok {
 		_spec.SetField(route.FieldUpdatedAt, field.TypeTime, value)
@@ -269,6 +269,27 @@ type RouteUpdateOne struct {
 	fields   []string
 	hooks    []Hook
 	mutation *RouteMutation
+}
+
+// SetVersion sets the "version" field.
+func (_u *RouteUpdateOne) SetVersion(v int64) *RouteUpdateOne {
+	_u.mutation.ResetVersion()
+	_u.mutation.SetVersion(v)
+	return _u
+}
+
+// SetNillableVersion sets the "version" field if the given value is not nil.
+func (_u *RouteUpdateOne) SetNillableVersion(v *int64) *RouteUpdateOne {
+	if v != nil {
+		_u.SetVersion(*v)
+	}
+	return _u
+}
+
+// AddVersion adds value to the "version" field.
+func (_u *RouteUpdateOne) AddVersion(v int64) *RouteUpdateOne {
+	_u.mutation.AddVersion(v)
+	return _u
 }
 
 // SetName sets the "name" field.
@@ -342,27 +363,6 @@ func (_u *RouteUpdateOne) SetLabels(v map[string]string) *RouteUpdateOne {
 // ClearLabels clears the value of the "labels" field.
 func (_u *RouteUpdateOne) ClearLabels() *RouteUpdateOne {
 	_u.mutation.ClearLabels()
-	return _u
-}
-
-// SetVersion sets the "version" field.
-func (_u *RouteUpdateOne) SetVersion(v int64) *RouteUpdateOne {
-	_u.mutation.ResetVersion()
-	_u.mutation.SetVersion(v)
-	return _u
-}
-
-// SetNillableVersion sets the "version" field if the given value is not nil.
-func (_u *RouteUpdateOne) SetNillableVersion(v *int64) *RouteUpdateOne {
-	if v != nil {
-		_u.SetVersion(*v)
-	}
-	return _u
-}
-
-// AddVersion adds value to the "version" field.
-func (_u *RouteUpdateOne) AddVersion(v int64) *RouteUpdateOne {
-	_u.mutation.AddVersion(v)
 	return _u
 }
 
@@ -441,6 +441,11 @@ func (_u *RouteUpdateOne) ExecX(ctx context.Context) {
 
 // check runs all checks and user-defined validators on the builder.
 func (_u *RouteUpdateOne) check() error {
+	if v, ok := _u.mutation.Version(); ok {
+		if err := route.VersionValidator(v); err != nil {
+			return &ValidationError{Name: "version", err: fmt.Errorf(`ent: validator failed for field "Route.version": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.Name(); ok {
 		if err := route.NameValidator(v); err != nil {
 			return &ValidationError{Name: "name", err: fmt.Errorf(`ent: validator failed for field "Route.name": %w`, err)}
@@ -449,11 +454,6 @@ func (_u *RouteUpdateOne) check() error {
 	if v, ok := _u.mutation.Transport(); ok {
 		if err := route.TransportValidator(v); err != nil {
 			return &ValidationError{Name: "transport", err: fmt.Errorf(`ent: validator failed for field "Route.transport": %w`, err)}
-		}
-	}
-	if v, ok := _u.mutation.Version(); ok {
-		if err := route.VersionValidator(v); err != nil {
-			return &ValidationError{Name: "version", err: fmt.Errorf(`ent: validator failed for field "Route.version": %w`, err)}
 		}
 	}
 	if _u.mutation.GroupCleared() && len(_u.mutation.GroupIDs()) > 0 {
@@ -491,6 +491,12 @@ func (_u *RouteUpdateOne) sqlSave(ctx context.Context) (_node *Route, err error)
 			}
 		}
 	}
+	if value, ok := _u.mutation.Version(); ok {
+		_spec.SetField(route.FieldVersion, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedVersion(); ok {
+		_spec.AddField(route.FieldVersion, field.TypeInt64, value)
+	}
 	if value, ok := _u.mutation.Name(); ok {
 		_spec.SetField(route.FieldName, field.TypeString, value)
 	}
@@ -511,12 +517,6 @@ func (_u *RouteUpdateOne) sqlSave(ctx context.Context) (_node *Route, err error)
 	}
 	if _u.mutation.LabelsCleared() {
 		_spec.ClearField(route.FieldLabels, field.TypeJSON)
-	}
-	if value, ok := _u.mutation.Version(); ok {
-		_spec.SetField(route.FieldVersion, field.TypeInt64, value)
-	}
-	if value, ok := _u.mutation.AddedVersion(); ok {
-		_spec.AddField(route.FieldVersion, field.TypeInt64, value)
 	}
 	if value, ok := _u.mutation.UpdatedAt(); ok {
 		_spec.SetField(route.FieldUpdatedAt, field.TypeTime, value)

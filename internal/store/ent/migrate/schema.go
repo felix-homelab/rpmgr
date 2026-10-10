@@ -1042,13 +1042,13 @@ var (
 	RoutesColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeString},
 		{Name: "org_id", Type: field.TypeString},
+		{Name: "version", Type: field.TypeInt64, Default: 1},
 		{Name: "name", Type: field.TypeString},
 		{Name: "type", Type: field.TypeEnum, Enums: []string{"http", "tcp", "udp", "tls_passthrough"}},
 		{Name: "enabled", Type: field.TypeBool, Default: true},
 		{Name: "transport", Type: field.TypeEnum, Nullable: true, Enums: []string{"auto", "quic", "h2"}},
 		{Name: "description", Type: field.TypeString, Default: ""},
 		{Name: "labels", Type: field.TypeJSON, Nullable: true},
-		{Name: "version", Type: field.TypeInt64, Default: 1},
 		{Name: "created_at", Type: field.TypeTime},
 		{Name: "updated_at", Type: field.TypeTime},
 		{Name: "updated_by", Type: field.TypeString, Default: ""},
@@ -1076,7 +1076,7 @@ var (
 			{
 				Name:    "route_org_id_name",
 				Unique:  true,
-				Columns: []*schema.Column{RoutesColumns[1], RoutesColumns[2]},
+				Columns: []*schema.Column{RoutesColumns[1], RoutesColumns[3]},
 			},
 		},
 	}

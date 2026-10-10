@@ -14,6 +14,7 @@ import (
 	agentv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/agent/v1"
 	rpmgrv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/v1"
 	"github.com/felix-homelab/rpmgr/internal/certs"
+	"github.com/felix-homelab/rpmgr/internal/domains"
 	"github.com/felix-homelab/rpmgr/internal/pki"
 	"github.com/felix-homelab/rpmgr/internal/settings"
 	"github.com/felix-homelab/rpmgr/internal/snapshot"
@@ -31,7 +32,8 @@ import (
 // Sources are the snapshot sources of the route types implemented so far (docs/03-connections.md,
 // "Configuration reconciliation").
 func Sources() []snapshot.Source {
-	return []snapshot.Source{GatewayTCP, GatewayUDP, GatewayPassthrough, GatewayHTTP, certs.Gateway, ConnectorRoutes, ConnectorGateways}
+	return []snapshot.Source{GatewayTCP, GatewayUDP, GatewayPassthrough, GatewayHTTP, certs.Gateway, domains.GatewayChallenges,
+		ConnectorRoutes, ConnectorGateways}
 }
 
 // GatewayTCP compiles a gateway's tcp routes: every enabled tcp route of its gateway group with a

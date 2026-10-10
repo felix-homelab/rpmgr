@@ -188,7 +188,8 @@ type fakeVerifier struct {
 	calls int
 }
 
-func (f *fakeVerifier) Verify(_ context.Context, fqdn, _ string) error {
+func (f *fakeVerifier) Verify(_ context.Context, c domains.Challenge) error {
+	fqdn := c.FQDN
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.calls++

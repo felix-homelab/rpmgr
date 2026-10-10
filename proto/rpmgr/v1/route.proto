@@ -1,0 +1,169 @@
+// SPDX-License-Identifier: Apache-2.0
+
+syntax = "proto3";
+
+package rpmgr.v1;
+
+import "buf/validate/validate.proto";
+import "google/protobuf/timestamp.proto";
+import "rpmgr/v1/common.proto";
+import "rpmgr/v1/connector.proto";
+import "rpmgr/v1/options.proto";
+
+option go_package = "github.com/felix-homelab/rpmgr/gen/rpmgr/v1;rpmgrv1";
+
+// RouteService is an org's routes (docs/07-api.md, "Services"; docs/06-data-model.md, "Routes").
+service RouteService {
+  // CreateRoute creates a route. Its hostnames must lie under verified domains of the org.
+  rpc CreateRoute(CreateRouteRequest) returns (CreateRouteResponse) {
+    option (rpmgr.v1.authz) = {
+      permission: "routes.write"
+      resource_field: "org_id"
+    };
+  }
+  // GetRoute returns a route.
+  rpc GetRoute(GetRouteRequest) returns (GetRouteResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+    option (rpmgr.v1.authz) = {
+      permission: "org.read"
+      resource_field: "route_id"
+    };
+  }
+  // ListRoutes lists an org's routes by ID.
+  rpc ListRoutes(ListRoutesRequest) returns (ListRoutesResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+    option (rpmgr.v1.authz) = {
+      permission: "org.read"
+      resource_field: "org_id"
+    };
+  }
+  // DeleteRoute deletes a route with its hostnames, targets and port.
+  rpc DeleteRoute(DeleteRouteRequest) returns (DeleteRouteResponse) {
+    option (rpmgr.v1.authz) = {
+      permission: "routes.write"
+      resource_field: "route_id"
+    };
+  }
+}
+
+// Route is one route of an org.
+message Route {
+  // The route's ID, rt_…; output only.
+  string id = 1;
+  // Its name, unique in the org.
+  string name = 2 [(buf.validate.field) = {
+    ignore: IGNORE_IF_ZERO_VALUE
+    string: {pattern: "^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$"}
+  }];
+  // The gateway group that serves it; set at creation.
+  string gateway_group_id = 3;
+  // Whether it is served: the only desired on/off switch.
+  bool enabled = 4;
+  // Its labels.
+  map<string, string> labels = 5 [(buf.validate.field).map = {
+    max_pairs: 32
+    keys: {
+      string: {pattern: "^[a-z0-9]([a-z0-9._-]{0,61}[a-z0-9])?$"}
+    }
+    values: {
+      string: {max_len: 255}
+    }
+  }];
+  // A description for people.
+  string description = 6 [(buf.validate.field).string.max_len = 1024];
+  // What it serves; its type is set at creation.
+  oneof spec {
+    // A TLS route passed through by SNI, TLS ending at the target.
+    TLSPassthroughRouteSpec tls_passthrough = 13;
+  }
+  // Its transport policy; the connector's if not set (docs/03-connections.md, "Transport
+  // selection").
+  DataTransport transport = 23 [(buf.validate.field).enum.defined_only = true];
+  // When it was created and last changed; output only.
+  google.protobuf.Timestamp create_time = 24;
+  // When it was last changed; output only.
+  google.protobuf.Timestamp update_time = 25;
+  // The version to send back with an update; output only.
+  string etag = 30;
+}
+
+// TLSPassthroughRouteSpec is a tls_passthrough route: the gateway reads the SNI and passes the
+// connection through.
+message TLSPassthroughRouteSpec {
+  // Its hostnames, under verified domains of the org; none is any other route's in the group.
+  repeated string hostnames = 1 [(buf.validate.field).repeated = {
+    min_items: 1
+    max_items: 100
+    unique: true
+    items: {
+      string: {
+        min_len: 1
+        max_len: 255
+      }
+    }
+  }];
+}
+
+// CreateRouteRequest is a new route.
+message CreateRouteRequest {
+  // The org.
+  string org_id = 1 [(buf.validate.field).string.min_len = 1];
+  // The route; its ID and etag are ignored. enabled is ignored too: a new route is enabled.
+  Route route = 2 [(buf.validate.field).required = true];
+  // Makes retries idempotent (docs/07-api.md, "Resource design").
+  string request_id = 3 [(buf.validate.field).string.max_len = 128];
+}
+
+// CreateRouteResponse is the new route.
+message CreateRouteResponse {
+  // The route.
+  Route route = 1;
+  // The configuration revision of the change.
+  Revision revision = 2;
+}
+
+// GetRouteRequest names a route.
+message GetRouteRequest {
+  // The route's ID.
+  string route_id = 1 [(buf.validate.field).string.min_len = 1];
+}
+
+// GetRouteResponse is the route.
+message GetRouteResponse {
+  // The route.
+  Route route = 1;
+}
+
+// ListRoutesRequest pages through an org's routes.
+message ListRoutesRequest {
+  // The org.
+  string org_id = 1 [(buf.validate.field).string.min_len = 1];
+  // Only this gateway group's, if set.
+  string gateway_group_id = 2;
+  // At most this many, 50 if not set, 500 at most.
+  int32 page_size = 3;
+  // The page after the one that returned it.
+  string page_token = 4;
+}
+
+// ListRoutesResponse is one page of routes.
+message ListRoutesResponse {
+  // The routes.
+  repeated Route routes = 1;
+  // The token of the next page; empty after the last.
+  string next_page_token = 2;
+}
+
+// DeleteRouteRequest names a route.
+message DeleteRouteRequest {
+  // The route's ID.
+  string route_id = 1 [(buf.validate.field).string.min_len = 1];
+  // The etag the caller read; empty skips the check.
+  string etag = 2;
+}
+
+// DeleteRouteResponse is the revision of the deletion.
+message DeleteRouteResponse {
+  // The configuration revision of the change.
+  Revision revision = 1;
+}

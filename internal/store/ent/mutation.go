@@ -27741,14 +27741,14 @@ type RouteMutation struct {
 	typ           string
 	id            *string
 	org_id        *string
+	version       *int64
+	addversion    *int64
 	name          *string
 	_type         *route.Type
 	enabled       *bool
 	transport     *route.Transport
 	description   *string
 	labels        *map[string]string
-	version       *int64
-	addversion    *int64
 	created_at    *time.Time
 	updated_at    *time.Time
 	updated_by    *string
@@ -27898,6 +27898,62 @@ func (m *RouteMutation) OldOrgID(ctx context.Context) (v string, err error) {
 // ResetOrgID resets all changes to the "org_id" field.
 func (m *RouteMutation) ResetOrgID() {
 	m.org_id = nil
+}
+
+// SetVersion sets the "version" field.
+func (m *RouteMutation) SetVersion(i int64) {
+	m.version = &i
+	m.addversion = nil
+}
+
+// Version returns the value of the "version" field in the mutation.
+func (m *RouteMutation) Version() (r int64, exists bool) {
+	v := m.version
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldVersion returns the old "version" field's value of the Route entity.
+// If the Route object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RouteMutation) OldVersion(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldVersion is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldVersion requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldVersion: %w", err)
+	}
+	return oldValue.Version, nil
+}
+
+// AddVersion adds i to the "version" field.
+func (m *RouteMutation) AddVersion(i int64) {
+	if m.addversion != nil {
+		*m.addversion += i
+	} else {
+		m.addversion = &i
+	}
+}
+
+// AddedVersion returns the value that was added to the "version" field in this mutation.
+func (m *RouteMutation) AddedVersion() (r int64, exists bool) {
+	v := m.addversion
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetVersion resets all changes to the "version" field.
+func (m *RouteMutation) ResetVersion() {
+	m.version = nil
+	m.addversion = nil
 }
 
 // SetName sets the "name" field.
@@ -28178,62 +28234,6 @@ func (m *RouteMutation) ResetLabels() {
 	delete(m.clearedFields, route.FieldLabels)
 }
 
-// SetVersion sets the "version" field.
-func (m *RouteMutation) SetVersion(i int64) {
-	m.version = &i
-	m.addversion = nil
-}
-
-// Version returns the value of the "version" field in the mutation.
-func (m *RouteMutation) Version() (r int64, exists bool) {
-	v := m.version
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldVersion returns the old "version" field's value of the Route entity.
-// If the Route object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *RouteMutation) OldVersion(ctx context.Context) (v int64, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldVersion is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldVersion requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldVersion: %w", err)
-	}
-	return oldValue.Version, nil
-}
-
-// AddVersion adds i to the "version" field.
-func (m *RouteMutation) AddVersion(i int64) {
-	if m.addversion != nil {
-		*m.addversion += i
-	} else {
-		m.addversion = &i
-	}
-}
-
-// AddedVersion returns the value that was added to the "version" field in this mutation.
-func (m *RouteMutation) AddedVersion() (r int64, exists bool) {
-	v := m.addversion
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// ResetVersion resets all changes to the "version" field.
-func (m *RouteMutation) ResetVersion() {
-	m.version = nil
-	m.addversion = nil
-}
-
 // SetCreatedAt sets the "created_at" field.
 func (m *RouteMutation) SetCreatedAt(t time.Time) {
 	m.created_at = &t
@@ -28420,6 +28420,9 @@ func (m *RouteMutation) Fields() []string {
 	if m.org_id != nil {
 		fields = append(fields, route.FieldOrgID)
 	}
+	if m.version != nil {
+		fields = append(fields, route.FieldVersion)
+	}
 	if m.name != nil {
 		fields = append(fields, route.FieldName)
 	}
@@ -28441,9 +28444,6 @@ func (m *RouteMutation) Fields() []string {
 	if m.labels != nil {
 		fields = append(fields, route.FieldLabels)
 	}
-	if m.version != nil {
-		fields = append(fields, route.FieldVersion)
-	}
 	if m.created_at != nil {
 		fields = append(fields, route.FieldCreatedAt)
 	}
@@ -28463,6 +28463,8 @@ func (m *RouteMutation) Field(name string) (ent.Value, bool) {
 	switch name {
 	case route.FieldOrgID:
 		return m.OrgID()
+	case route.FieldVersion:
+		return m.Version()
 	case route.FieldName:
 		return m.Name()
 	case route.FieldType:
@@ -28477,8 +28479,6 @@ func (m *RouteMutation) Field(name string) (ent.Value, bool) {
 		return m.Description()
 	case route.FieldLabels:
 		return m.Labels()
-	case route.FieldVersion:
-		return m.Version()
 	case route.FieldCreatedAt:
 		return m.CreatedAt()
 	case route.FieldUpdatedAt:
@@ -28496,6 +28496,8 @@ func (m *RouteMutation) OldField(ctx context.Context, name string) (ent.Value, e
 	switch name {
 	case route.FieldOrgID:
 		return m.OldOrgID(ctx)
+	case route.FieldVersion:
+		return m.OldVersion(ctx)
 	case route.FieldName:
 		return m.OldName(ctx)
 	case route.FieldType:
@@ -28510,8 +28512,6 @@ func (m *RouteMutation) OldField(ctx context.Context, name string) (ent.Value, e
 		return m.OldDescription(ctx)
 	case route.FieldLabels:
 		return m.OldLabels(ctx)
-	case route.FieldVersion:
-		return m.OldVersion(ctx)
 	case route.FieldCreatedAt:
 		return m.OldCreatedAt(ctx)
 	case route.FieldUpdatedAt:
@@ -28533,6 +28533,13 @@ func (m *RouteMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetOrgID(v)
+		return nil
+	case route.FieldVersion:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetVersion(v)
 		return nil
 	case route.FieldName:
 		v, ok := value.(string)
@@ -28582,13 +28589,6 @@ func (m *RouteMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetLabels(v)
-		return nil
-	case route.FieldVersion:
-		v, ok := value.(int64)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetVersion(v)
 		return nil
 	case route.FieldCreatedAt:
 		v, ok := value.(time.Time)
@@ -28693,6 +28693,9 @@ func (m *RouteMutation) ResetField(name string) error {
 	case route.FieldOrgID:
 		m.ResetOrgID()
 		return nil
+	case route.FieldVersion:
+		m.ResetVersion()
+		return nil
 	case route.FieldName:
 		m.ResetName()
 		return nil
@@ -28713,9 +28716,6 @@ func (m *RouteMutation) ResetField(name string) error {
 		return nil
 	case route.FieldLabels:
 		m.ResetLabels()
-		return nil
-	case route.FieldVersion:
-		m.ResetVersion()
 		return nil
 	case route.FieldCreatedAt:
 		m.ResetCreatedAt()

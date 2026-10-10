@@ -31,10 +31,16 @@ func gatewaySnapshot(seq uint64, rs ...*agentv1.Resource) *agentv1.Snapshot {
 
 // TestApplier_Validate: a gateway snapshot holds only gateway routes, on valid ports distinct per
 // protocol, with connector IDs.
+// tokenResource is the HTTP token of a domain claim.
+func tokenResource(id, fqdn, value string) *agentv1.Resource {
+	return &agentv1.Resource{Id: id, Kind: &agentv1.Resource_GatewayDomainChallenge{
+		GatewayDomainChallenge: &agentv1.GatewayDomainChallenge{Fqdn: fqdn, Value: value}}}
+}
+
 func TestApplier_Validate(t *testing.T) {
 	a, _ := gateway.NewApplier()
 	if errs := a.Validate(gatewaySnapshot(1, tcpResource("rt_1", 5432, "con_1"), tcpResource("rt_2", 6379, "con_1", "con_2"),
-		udpResource("rt_3", 5432, "con_1"), udpResource("rt_4", 53, "con_2"))); len(errs) != 0 {
+		udpResource("rt_3", 5432, "con_1"), udpResource("rt_4", 53, "con_2"), tokenResource("dom_1", "app.example.com", "c2wkd5yx"))); len(errs) != 0 {
 		t.Fatalf("a valid snapshot: %v", errs)
 	}
 	for _, tc := range []struct {
@@ -52,6 +58,11 @@ func TestApplier_Validate(t *testing.T) {
 		{"udp port 65536", gatewaySnapshot(1, udpResource("rt_1", 65536)), "not a UDP port"},
 		{"a udp port twice", gatewaySnapshot(1, udpResource("rt_1", 53), udpResource("rt_2", 53)), "UDP port 53 is also the port of rt_1"},
 		{"an empty udp connector", gatewaySnapshot(1, udpResource("rt_1", 53, "")), "empty connector"},
+		{"a token for an unnormalised name", gatewaySnapshot(1, tokenResource("dom_1", "App.Example.com", "abc234")), "not normalised"},
+		{"a token for no name", gatewaySnapshot(1, tokenResource("dom_1", "", "abc234")), "not normalised"},
+		{"an empty token", gatewaySnapshot(1, tokenResource("dom_1", "app.example.com", "")), "not lower-case base32"},
+		{"a token with a line break", gatewaySnapshot(1, tokenResource("dom_1", "app.example.com", "abc\n")), "not lower-case base32"},
+		{"an over-long token", gatewaySnapshot(1, tokenResource("dom_1", "app.example.com", strings.Repeat("a", 65))), "not lower-case base32"},
 	} {
 		errs := a.Validate(tc.snap)
 		if len(errs) == 0 || !strings.Contains(errs[0].GetMessage(), tc.want) {

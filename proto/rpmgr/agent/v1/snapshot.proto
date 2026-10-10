@@ -70,9 +70,21 @@ message Resource {
     GatewayCertificate gateway_certificate = 8;
     // Gateways: an http route's hostnames and how to reach its upstream.
     GatewayHTTPRoute gateway_http_route = 9;
+    // Gateways: the HTTP token of a pending domain claim of the gateway's org.
+    GatewayDomainChallenge gateway_domain_challenge = 10;
     // A large item the agent fetches by hash with Control.FetchResource.
     ResourceReference reference = 15;
   }
+}
+
+// GatewayDomainChallenge is the HTTP proof of a pending domain claim (R17): the gateway answers
+// GET http://<fqdn>/.well-known/rpmgr-challenge/<resource ID> with value on port 80. The resource
+// ID is the claim's ID.
+message GatewayDomainChallenge {
+  // The claimed name, lower case without a trailing dot.
+  string fqdn = 1;
+  // The challenge value.
+  string value = 2;
 }
 
 // GatewayTCPRoute is a tcp route as a gateway runs it; the resource ID is the route's ID.

@@ -10,7 +10,7 @@ TestRejectsUnpinnedCA	done	3.8	#63	enrollment (3.8), control-session (3.9, inter
 TestRelaySeesCiphertextOnly	p2	-	-	private services
 TestTokenScopesBoundedByCreator	done	7.7	#112
 TestShellRequiresOwnershipGrantAndOptIn	p3	-	-	remote shell
-TestUnverifiedDomainRejected	pending	8.5a	#119
+TestUnverifiedDomainRejected	done	8.5a	#119
 TestBadSnapshotKeepsLastKnownGood	done	3.11	#66	framework clause (internal/agent) and traffic clause (internal/itest, 4.13) done
 TestSecretsNeverLogged	pending	9.6	#138
 TestEnroll_BundleWithExtraRootRejected	done	3.8	#63
