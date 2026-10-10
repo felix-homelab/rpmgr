@@ -12,19 +12,27 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/user"
 )
 
-// SetDisplayName changes a user's display name.
-func (a *Accounts) SetDisplayName(ctx context.Context, userID, name string) (*ent.User, error) {
+// SetProfile changes a user's display name and, unless it is "", their web UI's theme: system,
+// light or dark.
+func (a *Accounts) SetProfile(ctx context.Context, userID, name, theme string) (*ent.User, error) {
 	name, err := checkDisplayName(name)
 	if err != nil {
 		return nil, err
 	}
+	if theme != "" && user.ThemeValidator(user.Theme(theme)) != nil {
+		return nil, ErrTheme
+	}
 	var u *ent.User
 	err = store.WriteTx(store.CarryTxHook(a.sys, ctx), a.db, func(tx *ent.Tx) error {
-		if u, err = tx.User.UpdateOneID(userID).SetDisplayName(name).Save(a.sys); err != nil {
+		up, reason := tx.User.UpdateOneID(userID).SetDisplayName(name), "display name"
+		if theme != "" {
+			up, reason = up.SetTheme(user.Theme(theme)), "display name, theme"
+		}
+		if u, err = up.Save(a.sys); err != nil {
 			return err
 		}
 		_, err = audit.Append(a.sys, tx, audit.Entry{ActorType: audit.ActorUser, ActorID: userID, Action: "user.update",
-			TargetType: "user", TargetID: userID, Result: audit.Success, Reason: "display name"})
+			TargetType: "user", TargetID: userID, Result: audit.Success, Reason: reason})
 		return err
 	})
 	return u, err

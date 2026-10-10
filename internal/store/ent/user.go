@@ -31,6 +31,8 @@ type User struct {
 	CreatedAt time.Time `json:"created_at,omitempty"`
 	// LastLoginAt holds the value of the "last_login_at" field.
 	LastLoginAt *time.Time `json:"last_login_at,omitempty"`
+	// Theme holds the value of the "theme" field.
+	Theme user.Theme `json:"theme,omitempty"`
 	// Edges holds the relations/edges for other nodes in the graph.
 	// The values are being populated by the UserQuery when eager-loading is set.
 	Edges        UserEdges `json:"edges"`
@@ -62,7 +64,7 @@ func (*User) scanValues(columns []string) ([]any, error) {
 		switch columns[i] {
 		case user.FieldInstanceAdmin:
 			values[i] = new(sql.NullBool)
-		case user.FieldID, user.FieldEmail, user.FieldDisplayName, user.FieldPasswordHash, user.FieldStatus:
+		case user.FieldID, user.FieldEmail, user.FieldDisplayName, user.FieldPasswordHash, user.FieldStatus, user.FieldTheme:
 			values[i] = new(sql.NullString)
 		case user.FieldCreatedAt, user.FieldLastLoginAt:
 			values[i] = new(sql.NullTime)
@@ -131,6 +133,12 @@ func (_m *User) assignValues(columns []string, values []any) error {
 				_m.LastLoginAt = new(time.Time)
 				*_m.LastLoginAt = value.Time
 			}
+		case user.FieldTheme:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field theme", values[i])
+			} else if value.Valid {
+				_m.Theme = user.Theme(value.String)
+			}
 		default:
 			_m.selectValues.Set(columns[i], values[i])
 		}
@@ -193,6 +201,9 @@ func (_m *User) String() string {
 		builder.WriteString("last_login_at=")
 		builder.WriteString(v.Format(time.ANSIC))
 	}
+	builder.WriteString(", ")
+	builder.WriteString("theme=")
+	builder.WriteString(fmt.Sprintf("%v", _m.Theme))
 	builder.WriteByte(')')
 	return builder.String()
 }

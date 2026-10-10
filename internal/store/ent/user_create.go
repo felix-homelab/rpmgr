@@ -103,6 +103,20 @@ func (_c *UserCreate) SetNillableLastLoginAt(v *time.Time) *UserCreate {
 	return _c
 }
 
+// SetTheme sets the "theme" field.
+func (_c *UserCreate) SetTheme(v user.Theme) *UserCreate {
+	_c.mutation.SetTheme(v)
+	return _c
+}
+
+// SetNillableTheme sets the "theme" field if the given value is not nil.
+func (_c *UserCreate) SetNillableTheme(v *user.Theme) *UserCreate {
+	if v != nil {
+		_c.SetTheme(*v)
+	}
+	return _c
+}
+
 // SetID sets the "id" field.
 func (_c *UserCreate) SetID(v string) *UserCreate {
 	_c.mutation.SetID(v)
@@ -184,6 +198,10 @@ func (_c *UserCreate) defaults() error {
 		v := user.DefaultCreatedAt()
 		_c.mutation.SetCreatedAt(v)
 	}
+	if _, ok := _c.mutation.Theme(); !ok {
+		v := user.DefaultTheme
+		_c.mutation.SetTheme(v)
+	}
 	if _, ok := _c.mutation.ID(); !ok {
 		if user.DefaultID == nil {
 			return fmt.Errorf("ent: uninitialized user.DefaultID (forgotten import ent/runtime?)")
@@ -225,6 +243,14 @@ func (_c *UserCreate) check() error {
 	}
 	if _, ok := _c.mutation.CreatedAt(); !ok {
 		return &ValidationError{Name: "created_at", err: errors.New(`ent: missing required field "User.created_at"`)}
+	}
+	if _, ok := _c.mutation.Theme(); !ok {
+		return &ValidationError{Name: "theme", err: errors.New(`ent: missing required field "User.theme"`)}
+	}
+	if v, ok := _c.mutation.Theme(); ok {
+		if err := user.ThemeValidator(v); err != nil {
+			return &ValidationError{Name: "theme", err: fmt.Errorf(`ent: validator failed for field "User.theme": %w`, err)}
+		}
 	}
 	if v, ok := _c.mutation.ID(); ok {
 		if err := user.IDValidator(v); err != nil {
@@ -293,6 +319,10 @@ func (_c *UserCreate) createSpec() (*User, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.LastLoginAt(); ok {
 		_spec.SetField(user.FieldLastLoginAt, field.TypeTime, value)
 		_node.LastLoginAt = &value
+	}
+	if value, ok := _c.mutation.Theme(); ok {
+		_spec.SetField(user.FieldTheme, field.TypeEnum, value)
+		_node.Theme = value
 	}
 	if nodes := _c.mutation.MembershipsIDs(); len(nodes) > 0 {
 		edge := &sqlgraph.EdgeSpec{

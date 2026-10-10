@@ -34,6 +34,8 @@ func (User) Fields() []ent.Field {
 		field.Bool("instance_admin").Default(false),
 		field.Time("created_at").Immutable().Default(time.Now),
 		field.Time("last_login_at").Optional().Nillable(),
+		// theme is the web UI's theme the user chose (docs/09-web-ui.md, U10).
+		field.Enum("theme").Values("system", "light", "dark").Default("system"),
 	}
 }
 

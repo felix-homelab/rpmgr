@@ -252,3 +252,30 @@ func TestLinkURLs(t *testing.T) {
 		}
 	}
 }
+
+// TestSetProfile: the display name and the theme change together; "" keeps the theme, and a theme
+// other than system, light and dark is refused without a change.
+func TestSetProfile(t *testing.T) {
+	e := newEnv(t)
+	ctx := context.Background()
+	first, _ := e.acc.FirstUserLink("local-cli")
+	u, err := e.acc.CompleteReset(ctx, first, pw, "ada@example.com", "Ada")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if u.Theme != "system" {
+		t.Fatalf("a new user's theme: %q", u.Theme)
+	}
+	if got, err := e.acc.SetProfile(ctx, u.ID, "Ada L.", "light"); err != nil || got.DisplayName != "Ada L." || got.Theme != "light" {
+		t.Fatalf("to light: %v %v", got, err)
+	}
+	if got, err := e.acc.SetProfile(ctx, u.ID, "Ada", ""); err != nil || got.DisplayName != "Ada" || got.Theme != "light" {
+		t.Fatalf("without a theme: %v %v", got, err)
+	}
+	if _, err := e.acc.SetProfile(ctx, u.ID, "Eve", "purple"); !errors.Is(err, accounts.ErrTheme) {
+		t.Fatalf("an unknown theme: %v", err)
+	}
+	if got, _, _ := e.acc.User(u.ID); got.DisplayName != "Ada" || got.Theme != "light" {
+		t.Fatalf("after a refused change: %q %q", got.DisplayName, got.Theme)
+	}
+}

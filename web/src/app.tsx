@@ -10,6 +10,7 @@ import { I18nextProvider } from "react-i18next";
 import { i18n } from "@/i18n";
 import { Reason, reasonOf } from "@/lib/errors";
 import { createAppRouter } from "@/router";
+import { StepUpProvider } from "@/step-up";
 
 // The API is on the UI's origin, and the session cookie goes with every call (docs/09-web-ui.md,
 // "Security of the frontend").
@@ -49,7 +50,9 @@ export function App({ transport, history }: AppProps) {
     <I18nextProvider i18n={i18n}>
       <TransportProvider transport={state.api}>
         <QueryClientProvider client={state.queryClient}>
-          <RouterProvider router={state.router} />
+          <StepUpProvider>
+            <RouterProvider router={state.router} />
+          </StepUpProvider>
         </QueryClientProvider>
       </TransportProvider>
     </I18nextProvider>

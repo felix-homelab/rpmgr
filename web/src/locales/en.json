@@ -56,5 +56,14 @@
     "submit": "Send a reset link",
     "sent": "If an account uses this address, a reset link is on its way. It works once, for 24 hours.",
     "noMail": "This controller cannot send e-mail. Ask an Owner or the Instance Admin for a reset link."
+  },
+  "stepUp": {
+    "title": "Confirm it is you",
+    "intro": "This action needs you to confirm your identity again. You stay confirmed for a few minutes.",
+    "loading": "Loading…",
+    "wrongPassword": "The password is wrong.",
+    "wrongCode": "The code is wrong or was used already. Try the next code.",
+    "cancel": "Cancel",
+    "submit": "Confirm"
   }
 }

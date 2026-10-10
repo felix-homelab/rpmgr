@@ -81,22 +81,25 @@ controller database restarts, and clock jumps, while a load generator checks int
 "0 resets on unchanged routes" invariant.
 
 **Where the cells run.** The in-process integration tests live in `internal/itest`, the container
-tests in `test/e2e` (Docker Compose, `tc netem`, IPv4 and IPv6). Every component of an in-process
-test, and every service of the API tests, logs at the debug level to a sink that fails the test when
-a line holds a secret (`TestSecretsNeverLogged`). Each feature adds its cells to the
-per-PR subset when it is built; the nightly run covers the full cross-product. Cells that need a
-controlled clock (certificate expiry and grace re-authentication, clock skew) run in-process with
-real traffic and a fake clock; clock jumps in chaos tests use the clock-offset hook of the
-`rpmgrtest` build. Before the public API exists, end-to-end tests seed their configuration with the
-`rpmgrtest` seeding command ([D60](14-open-decisions.md#security-defaults)): `rpmgr testseed`
-creates gateways with their enrollment tokens, connector tokens, and tcp, udp, http and
-tls_passthrough routes (http routes with verified domains, uploaded certificates and HTTP, h2c or
-verified HTTPS upstreams), sets a route's IP access rules, changes routes and revokes identities,
-writing next to the running controller through configuration transactions. The per-PR subset runs
-every Phase 1 route type, the local-policy block and reload, a tightened access policy, mixed
-transports on one connector and UDP blackholed mid-session; NAT rebinding is not covered yet.
-`check-go.sh` vets the `rpmgrtest` build and runs the tests of its packages, golangci-lint lints it,
-and a test of the release build checks that no test-only command exists there.
+tests in `test/e2e` (Docker Compose, `tc netem`, IPv4 and IPv6). The browser tests of the web UI
+live in `web/e2e` and run with Playwright against an all-in-one in the process of `test/webe2e`. The
+browser trusts the key of that all-in-one's UI certificate only; it does not ignore certificate
+errors. Every component of an in-process test, and every service of the API tests, logs at the debug
+level to a sink that fails the test when a line holds a secret (`TestSecretsNeverLogged`). Each
+feature adds its cells to the per-PR subset when it is built; the nightly run covers the full
+cross-product. Cells that need a controlled clock (certificate expiry and grace re-authentication,
+clock skew) run in-process with real traffic and a fake clock; clock jumps in chaos tests use the
+clock-offset hook of the `rpmgrtest` build. Before the public API exists, end-to-end tests seed
+their configuration with the `rpmgrtest` seeding command
+([D60](14-open-decisions.md#security-defaults)): `rpmgr testseed` creates gateways with their
+enrollment tokens, connector tokens, and tcp, udp, http and tls_passthrough routes (http routes with
+verified domains, uploaded certificates and HTTP, h2c or verified HTTPS upstreams), sets a route's
+IP access rules, changes routes and revokes identities, writing next to the running controller
+through configuration transactions. The per-PR subset runs every Phase 1 route type, the
+local-policy block and reload, a tightened access policy, mixed transports on one connector and UDP
+blackholed mid-session; NAT rebinding is not covered yet. `check-go.sh` vets the `rpmgrtest` build
+and runs the tests of its packages, golangci-lint lints it, and a test of the release build checks
+that no test-only command exists there.
 
 ## Benchmarks
 
@@ -335,7 +338,7 @@ Docker-based ones need Docker), and `test-checks.sh` tests the checks with valid
 | `ci` / `proto` | `buf lint` (STANDARD); `buf breaking` (FILE) against `main`, passed only by a PR labelled `breaking` with `!` in its title before v1.0.0 (D56); the code in `gen/` regenerated and compared. buf runs at a pinned version through the go command, the generators are tool dependencies in `go.mod` | `check-buf.sh`, `buf.yaml`, `buf.gen.yaml` |
 | `ci` / `store` | The database tests on SQLite and on PostgreSQL 18, and 16 too in full runs (service containers), which are the store's own tests and those of every package that uses `storetest`: tenancy scoping, the embedded migrations from an empty database, regenerating them from the Ent schema yields nothing new, the live schema equals the Ent schema, edited or unlisted migration files refused, failing files rolled back; `atlas migrate lint` (community CLI, image by digest) on both dialects | `check-store.sh`, `check-atlas-lint.sh` |
 | `ci` / `build (linux)`, `build (windows and macos)` | `go vet` of every package, tests included, with `CGO_ENABLED=0` for linux/{amd64,arm64,armv7,riscv64}, windows/amd64 and darwin/{amd64,arm64}; vet type-checks what a build compiles, so only link errors wait for full runs, which also `go build` | `check-build.sh` |
-| `ci` / `web` | When `web` is set, the web UI with the Node version of `web/.nvmrc`: `npm ci` from the lockfile without install scripts; `npm audit`, failing on any advisory of a dependency that reaches the browser and on high or critical ones of the build and test tools; ESLint with the bans of [09](09-web-ui.md#frontend-architecture); the TypeScript type check; the Vitest unit tests; the Vite build, failing on any warning; the Go tests of `internal/webui` on that build, which check its page against the CSP | `check-web.sh` |
+| `ci` / `web` | When `web` is set, the web UI with the Node version of `web/.nvmrc`: `npm ci` from the lockfile without install scripts; `npm audit`, failing on any advisory of a dependency that reaches the browser and on high or critical ones of the build and test tools; ESLint with the bans of [09](09-web-ui.md#frontend-architecture); the TypeScript type check; the Vitest unit tests; the Vite build, failing on any warning; the Go tests of `internal/webui` on that build, which check its page against the CSP. Then the browser tests: the Playwright flows of `web/e2e` in the Playwright image, against an all-in-one that `test/webe2e` runs with that build; every page they visit is checked with axe, and a CSP violation or anything in browser storage fails them | `check-web.sh`, `check-web-e2e.sh` |
 | `ci` / `go-arm64` | Every test natively on a GitHub-hosted arm64 runner, with the race detector, and again for armv7 on the same host | `check-test-arch.sh` |
 | `nightly` / `ci`, `govulncheck`, `fuzz`, `riscv64`, `real-clients` | every `ci` stage in full; govulncheck against the latest vulnerability database; every fuzz target for 10 minutes; every test for riscv64 under QEMU user-mode emulation; Go, curl, headless Chromium and Firefox (images by digest) against the gateway's port 443 router, each reaching two http routes, a TLS-passthrough route and the controller's UI name, and no page for an unknown name. A failure opens the issue "Nightly run failed", or comments on the open one. Also started by hand | `check-govulncheck.sh`, `check-fuzz.sh`, `check-test-arch.sh`, `check-real-clients.sh` |
 | `scorecard` / `analysis` | OpenSSF Scorecard, weekly and on every push to `main`; results in the code-scanning alerts and the public Scorecard API | — |

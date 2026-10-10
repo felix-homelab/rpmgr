@@ -30,6 +30,8 @@ const (
 	FieldCreatedAt = "created_at"
 	// FieldLastLoginAt holds the string denoting the last_login_at field in the database.
 	FieldLastLoginAt = "last_login_at"
+	// FieldTheme holds the string denoting the theme field in the database.
+	FieldTheme = "theme"
 	// EdgeMemberships holds the string denoting the memberships edge name in mutations.
 	EdgeMemberships = "memberships"
 	// Table holds the table name of the user in the database.
@@ -53,6 +55,7 @@ var Columns = []string{
 	FieldInstanceAdmin,
 	FieldCreatedAt,
 	FieldLastLoginAt,
+	FieldTheme,
 }
 
 // ValidColumn reports if the column name is valid (part of the table columns).
@@ -114,6 +117,33 @@ func StatusValidator(s Status) error {
 	}
 }
 
+// Theme defines the type for the "theme" enum field.
+type Theme string
+
+// ThemeSystem is the default value of the Theme enum.
+const DefaultTheme = ThemeSystem
+
+// Theme values.
+const (
+	ThemeSystem Theme = "system"
+	ThemeLight  Theme = "light"
+	ThemeDark   Theme = "dark"
+)
+
+func (t Theme) String() string {
+	return string(t)
+}
+
+// ThemeValidator is a validator for the "theme" field enum values. It is called by the builders before save.
+func ThemeValidator(t Theme) error {
+	switch t {
+	case ThemeSystem, ThemeLight, ThemeDark:
+		return nil
+	default:
+		return fmt.Errorf("user: invalid enum value for theme field: %q", t)
+	}
+}
+
 // OrderOption defines the ordering options for the User queries.
 type OrderOption func(*sql.Selector)
 
@@ -155,6 +185,11 @@ func ByCreatedAt(opts ...sql.OrderTermOption) OrderOption {
 // ByLastLoginAt orders the results by the last_login_at field.
 func ByLastLoginAt(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldLastLoginAt, opts...).ToFunc()
+}
+
+// ByTheme orders the results by the theme field.
+func ByTheme(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldTheme, opts...).ToFunc()
 }
 
 // ByMembershipsCount orders the results by memberships count.

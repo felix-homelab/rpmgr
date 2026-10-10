@@ -56,6 +56,25 @@ func TestUser_Profile(t *testing.T) {
 	if _, err := ada.user.UpdateMe(ctx, connect.NewRequest(&rpmgrv1.UpdateMeRequest{})); code(err) != connect.CodeInvalidArgument {
 		t.Fatalf("an empty display name: %v", err)
 	}
+	// The theme: system until chosen, kept when an update leaves it unspecified, and only a defined
+	// value.
+	if me.Msg.GetUser().GetTheme() != rpmgrv1.Theme_THEME_SYSTEM {
+		t.Fatalf("a new user's theme: %v", me.Msg.GetUser().GetTheme())
+	}
+	if r, err := ada.user.UpdateMe(ctx, connect.NewRequest(&rpmgrv1.UpdateMeRequest{DisplayName: "Ada L.", Theme: rpmgrv1.Theme_THEME_DARK})); err != nil ||
+		r.Msg.GetUser().GetTheme() != rpmgrv1.Theme_THEME_DARK {
+		t.Fatalf("UpdateMe to dark: %v %v", r, err)
+	}
+	if r, err := ada.user.UpdateMe(ctx, connect.NewRequest(&rpmgrv1.UpdateMeRequest{DisplayName: "Ada"})); err != nil ||
+		r.Msg.GetUser().GetTheme() != rpmgrv1.Theme_THEME_DARK || r.Msg.GetUser().GetDisplayName() != "Ada" {
+		t.Fatalf("UpdateMe without a theme: %v %v", r, err)
+	}
+	if me, err := other.user.GetMe(ctx, connect.NewRequest(&rpmgrv1.GetMeRequest{})); err != nil || me.Msg.GetUser().GetTheme() != rpmgrv1.Theme_THEME_DARK {
+		t.Fatalf("the theme in another session: %v %v", me, err)
+	}
+	if _, err := ada.user.UpdateMe(ctx, connect.NewRequest(&rpmgrv1.UpdateMeRequest{DisplayName: "Ada", Theme: 9})); code(err) != connect.CodeInvalidArgument {
+		t.Fatalf("an undefined theme: %v", err)
+	}
 	change := func(current, next string) error {
 		_, err := ada.user.ChangePassword(ctx, connect.NewRequest(&rpmgrv1.ChangePasswordRequest{CurrentPassword: current, NewPassword: next}))
 		return err

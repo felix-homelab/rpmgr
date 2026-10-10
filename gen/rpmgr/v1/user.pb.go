@@ -25,6 +25,63 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
+// Theme is the web UI's colour theme.
+type Theme int32
+
+const (
+	// Not set: in UpdateMeRequest, keep the user's theme.
+	Theme_THEME_UNSPECIFIED Theme = 0
+	// Follow the operating system's preference, the default.
+	Theme_THEME_SYSTEM Theme = 1
+	// Light.
+	Theme_THEME_LIGHT Theme = 2
+	// Dark.
+	Theme_THEME_DARK Theme = 3
+)
+
+// Enum value maps for Theme.
+var (
+	Theme_name = map[int32]string{
+		0: "THEME_UNSPECIFIED",
+		1: "THEME_SYSTEM",
+		2: "THEME_LIGHT",
+		3: "THEME_DARK",
+	}
+	Theme_value = map[string]int32{
+		"THEME_UNSPECIFIED": 0,
+		"THEME_SYSTEM":      1,
+		"THEME_LIGHT":       2,
+		"THEME_DARK":        3,
+	}
+)
+
+func (x Theme) Enum() *Theme {
+	p := new(Theme)
+	*p = x
+	return p
+}
+
+func (x Theme) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (Theme) Descriptor() protoreflect.EnumDescriptor {
+	return file_rpmgr_v1_user_proto_enumTypes[0].Descriptor()
+}
+
+func (Theme) Type() protoreflect.EnumType {
+	return &file_rpmgr_v1_user_proto_enumTypes[0]
+}
+
+func (x Theme) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use Theme.Descriptor instead.
+func (Theme) EnumDescriptor() ([]byte, []int) {
+	return file_rpmgr_v1_user_proto_rawDescGZIP(), []int{0}
+}
+
 // EnrollTOTPRequest is empty.
 type EnrollTOTPRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
@@ -384,7 +441,9 @@ type User struct {
 	// When they signed in last; not set if never.
 	LastLoginTime *timestamppb.Timestamp `protobuf:"bytes,7,opt,name=last_login_time,json=lastLoginTime,proto3" json:"last_login_time,omitempty"`
 	// When the account was created.
-	CreateTime    *timestamppb.Timestamp `protobuf:"bytes,8,opt,name=create_time,json=createTime,proto3" json:"create_time,omitempty"`
+	CreateTime *timestamppb.Timestamp `protobuf:"bytes,8,opt,name=create_time,json=createTime,proto3" json:"create_time,omitempty"`
+	// The web UI's theme the user chose (docs/09-web-ui.md, U10).
+	Theme         Theme `protobuf:"varint,9,opt,name=theme,proto3,enum=rpmgr.v1.Theme" json:"theme,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -473,6 +532,13 @@ func (x *User) GetCreateTime() *timestamppb.Timestamp {
 		return x.CreateTime
 	}
 	return nil
+}
+
+func (x *User) GetTheme() Theme {
+	if x != nil {
+		return x.Theme
+	}
+	return Theme_THEME_UNSPECIFIED
 }
 
 // GetMeRequest is empty.
@@ -571,7 +637,9 @@ func (x *GetMeResponse) GetMemberships() []*Membership {
 type UpdateMeRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// The display name.
-	DisplayName   string `protobuf:"bytes,1,opt,name=display_name,json=displayName,proto3" json:"display_name,omitempty"`
+	DisplayName string `protobuf:"bytes,1,opt,name=display_name,json=displayName,proto3" json:"display_name,omitempty"`
+	// The web UI's theme; unspecified keeps the user's theme.
+	Theme         Theme `protobuf:"varint,2,opt,name=theme,proto3,enum=rpmgr.v1.Theme" json:"theme,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -611,6 +679,13 @@ func (x *UpdateMeRequest) GetDisplayName() string {
 		return x.DisplayName
 	}
 	return ""
+}
+
+func (x *UpdateMeRequest) GetTheme() Theme {
+	if x != nil {
+		return x.Theme
+	}
+	return Theme_THEME_UNSPECIFIED
 }
 
 // UpdateMeResponse is the account.
@@ -979,7 +1054,7 @@ const file_rpmgr_v1_user_proto_rawDesc = "" +
 	"\x12RemoveTOTPResponse\" \n" +
 	"\x1eRegenerateRecoveryCodesRequest\"N\n" +
 	"\x1fRegenerateRecoveryCodesResponse\x12+\n" +
-	"\x0erecovery_codes\x18\x01 \x03(\tB\x04\x88\xb5\x18\x01R\rrecoveryCodes\"\xa1\x02\n" +
+	"\x0erecovery_codes\x18\x01 \x03(\tB\x04\x88\xb5\x18\x01R\rrecoveryCodes\"\xc8\x02\n" +
 	"\x04User\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x14\n" +
 	"\x05email\x18\x02 \x01(\tR\x05email\x12!\n" +
@@ -989,13 +1064,15 @@ const file_rpmgr_v1_user_proto_rawDesc = "" +
 	"\x06status\x18\x06 \x01(\tR\x06status\x12B\n" +
 	"\x0flast_login_time\x18\a \x01(\v2\x1a.google.protobuf.TimestampR\rlastLoginTime\x12;\n" +
 	"\vcreate_time\x18\b \x01(\v2\x1a.google.protobuf.TimestampR\n" +
-	"createTime\"\x0e\n" +
+	"createTime\x12%\n" +
+	"\x05theme\x18\t \x01(\x0e2\x0f.rpmgr.v1.ThemeR\x05theme\"\x0e\n" +
 	"\fGetMeRequest\"k\n" +
 	"\rGetMeResponse\x12\"\n" +
 	"\x04user\x18\x01 \x01(\v2\x0e.rpmgr.v1.UserR\x04user\x126\n" +
-	"\vmemberships\x18\x02 \x03(\v2\x14.rpmgr.v1.MembershipR\vmemberships\"?\n" +
+	"\vmemberships\x18\x02 \x03(\v2\x14.rpmgr.v1.MembershipR\vmemberships\"p\n" +
 	"\x0fUpdateMeRequest\x12,\n" +
-	"\fdisplay_name\x18\x01 \x01(\tB\t\xbaH\x06r\x04\x10\x01\x18dR\vdisplayName\"6\n" +
+	"\fdisplay_name\x18\x01 \x01(\tB\t\xbaH\x06r\x04\x10\x01\x18dR\vdisplayName\x12/\n" +
+	"\x05theme\x18\x02 \x01(\x0e2\x0f.rpmgr.v1.ThemeB\b\xbaH\x05\x82\x01\x02\x10\x01R\x05theme\"6\n" +
 	"\x10UpdateMeResponse\x12\"\n" +
 	"\x04user\x18\x01 \x01(\v2\x0e.rpmgr.v1.UserR\x04user\"\x85\x01\n" +
 	"\x15ChangePasswordRequest\x129\n" +
@@ -1014,7 +1091,13 @@ const file_rpmgr_v1_user_proto_rawDesc = "" +
 	"\x1fCreatePasswordResetLinkResponse\x12\x16\n" +
 	"\x03url\x18\x01 \x01(\tB\x04\x88\xb5\x18\x01R\x03url\x12;\n" +
 	"\vexpire_time\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\n" +
-	"expireTime2\xb3\a\n" +
+	"expireTime*Q\n" +
+	"\x05Theme\x12\x15\n" +
+	"\x11THEME_UNSPECIFIED\x10\x00\x12\x10\n" +
+	"\fTHEME_SYSTEM\x10\x01\x12\x0f\n" +
+	"\vTHEME_LIGHT\x10\x02\x12\x0e\n" +
+	"\n" +
+	"THEME_DARK\x10\x032\xb3\a\n" +
 	"\vUserService\x12P\n" +
 	"\x05GetMe\x12\x16.rpmgr.v1.GetMeRequest\x1a\x17.rpmgr.v1.GetMeResponse\"\x16\x8a\xb5\x18\x0f\n" +
 	"\rauthenticated\x90\x02\x01\x12V\n" +
@@ -1049,61 +1132,65 @@ func file_rpmgr_v1_user_proto_rawDescGZIP() []byte {
 	return file_rpmgr_v1_user_proto_rawDescData
 }
 
+var file_rpmgr_v1_user_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
 var file_rpmgr_v1_user_proto_msgTypes = make([]protoimpl.MessageInfo, 19)
 var file_rpmgr_v1_user_proto_goTypes = []any{
-	(*EnrollTOTPRequest)(nil),               // 0: rpmgr.v1.EnrollTOTPRequest
-	(*EnrollTOTPResponse)(nil),              // 1: rpmgr.v1.EnrollTOTPResponse
-	(*ConfirmTOTPRequest)(nil),              // 2: rpmgr.v1.ConfirmTOTPRequest
-	(*ConfirmTOTPResponse)(nil),             // 3: rpmgr.v1.ConfirmTOTPResponse
-	(*RemoveTOTPRequest)(nil),               // 4: rpmgr.v1.RemoveTOTPRequest
-	(*RemoveTOTPResponse)(nil),              // 5: rpmgr.v1.RemoveTOTPResponse
-	(*RegenerateRecoveryCodesRequest)(nil),  // 6: rpmgr.v1.RegenerateRecoveryCodesRequest
-	(*RegenerateRecoveryCodesResponse)(nil), // 7: rpmgr.v1.RegenerateRecoveryCodesResponse
-	(*User)(nil),                            // 8: rpmgr.v1.User
-	(*GetMeRequest)(nil),                    // 9: rpmgr.v1.GetMeRequest
-	(*GetMeResponse)(nil),                   // 10: rpmgr.v1.GetMeResponse
-	(*UpdateMeRequest)(nil),                 // 11: rpmgr.v1.UpdateMeRequest
-	(*UpdateMeResponse)(nil),                // 12: rpmgr.v1.UpdateMeResponse
-	(*ChangePasswordRequest)(nil),           // 13: rpmgr.v1.ChangePasswordRequest
-	(*ChangePasswordResponse)(nil),          // 14: rpmgr.v1.ChangePasswordResponse
-	(*ListUsersRequest)(nil),                // 15: rpmgr.v1.ListUsersRequest
-	(*ListUsersResponse)(nil),               // 16: rpmgr.v1.ListUsersResponse
-	(*CreatePasswordResetLinkRequest)(nil),  // 17: rpmgr.v1.CreatePasswordResetLinkRequest
-	(*CreatePasswordResetLinkResponse)(nil), // 18: rpmgr.v1.CreatePasswordResetLinkResponse
-	(*timestamppb.Timestamp)(nil),           // 19: google.protobuf.Timestamp
-	(*Membership)(nil),                      // 20: rpmgr.v1.Membership
+	(Theme)(0),                              // 0: rpmgr.v1.Theme
+	(*EnrollTOTPRequest)(nil),               // 1: rpmgr.v1.EnrollTOTPRequest
+	(*EnrollTOTPResponse)(nil),              // 2: rpmgr.v1.EnrollTOTPResponse
+	(*ConfirmTOTPRequest)(nil),              // 3: rpmgr.v1.ConfirmTOTPRequest
+	(*ConfirmTOTPResponse)(nil),             // 4: rpmgr.v1.ConfirmTOTPResponse
+	(*RemoveTOTPRequest)(nil),               // 5: rpmgr.v1.RemoveTOTPRequest
+	(*RemoveTOTPResponse)(nil),              // 6: rpmgr.v1.RemoveTOTPResponse
+	(*RegenerateRecoveryCodesRequest)(nil),  // 7: rpmgr.v1.RegenerateRecoveryCodesRequest
+	(*RegenerateRecoveryCodesResponse)(nil), // 8: rpmgr.v1.RegenerateRecoveryCodesResponse
+	(*User)(nil),                            // 9: rpmgr.v1.User
+	(*GetMeRequest)(nil),                    // 10: rpmgr.v1.GetMeRequest
+	(*GetMeResponse)(nil),                   // 11: rpmgr.v1.GetMeResponse
+	(*UpdateMeRequest)(nil),                 // 12: rpmgr.v1.UpdateMeRequest
+	(*UpdateMeResponse)(nil),                // 13: rpmgr.v1.UpdateMeResponse
+	(*ChangePasswordRequest)(nil),           // 14: rpmgr.v1.ChangePasswordRequest
+	(*ChangePasswordResponse)(nil),          // 15: rpmgr.v1.ChangePasswordResponse
+	(*ListUsersRequest)(nil),                // 16: rpmgr.v1.ListUsersRequest
+	(*ListUsersResponse)(nil),               // 17: rpmgr.v1.ListUsersResponse
+	(*CreatePasswordResetLinkRequest)(nil),  // 18: rpmgr.v1.CreatePasswordResetLinkRequest
+	(*CreatePasswordResetLinkResponse)(nil), // 19: rpmgr.v1.CreatePasswordResetLinkResponse
+	(*timestamppb.Timestamp)(nil),           // 20: google.protobuf.Timestamp
+	(*Membership)(nil),                      // 21: rpmgr.v1.Membership
 }
 var file_rpmgr_v1_user_proto_depIdxs = []int32{
-	19, // 0: rpmgr.v1.User.last_login_time:type_name -> google.protobuf.Timestamp
-	19, // 1: rpmgr.v1.User.create_time:type_name -> google.protobuf.Timestamp
-	8,  // 2: rpmgr.v1.GetMeResponse.user:type_name -> rpmgr.v1.User
-	20, // 3: rpmgr.v1.GetMeResponse.memberships:type_name -> rpmgr.v1.Membership
-	8,  // 4: rpmgr.v1.UpdateMeResponse.user:type_name -> rpmgr.v1.User
-	8,  // 5: rpmgr.v1.ListUsersResponse.users:type_name -> rpmgr.v1.User
-	19, // 6: rpmgr.v1.CreatePasswordResetLinkResponse.expire_time:type_name -> google.protobuf.Timestamp
-	9,  // 7: rpmgr.v1.UserService.GetMe:input_type -> rpmgr.v1.GetMeRequest
-	11, // 8: rpmgr.v1.UserService.UpdateMe:input_type -> rpmgr.v1.UpdateMeRequest
-	13, // 9: rpmgr.v1.UserService.ChangePassword:input_type -> rpmgr.v1.ChangePasswordRequest
-	15, // 10: rpmgr.v1.UserService.ListUsers:input_type -> rpmgr.v1.ListUsersRequest
-	17, // 11: rpmgr.v1.UserService.CreatePasswordResetLink:input_type -> rpmgr.v1.CreatePasswordResetLinkRequest
-	0,  // 12: rpmgr.v1.UserService.EnrollTOTP:input_type -> rpmgr.v1.EnrollTOTPRequest
-	2,  // 13: rpmgr.v1.UserService.ConfirmTOTP:input_type -> rpmgr.v1.ConfirmTOTPRequest
-	4,  // 14: rpmgr.v1.UserService.RemoveTOTP:input_type -> rpmgr.v1.RemoveTOTPRequest
-	6,  // 15: rpmgr.v1.UserService.RegenerateRecoveryCodes:input_type -> rpmgr.v1.RegenerateRecoveryCodesRequest
-	10, // 16: rpmgr.v1.UserService.GetMe:output_type -> rpmgr.v1.GetMeResponse
-	12, // 17: rpmgr.v1.UserService.UpdateMe:output_type -> rpmgr.v1.UpdateMeResponse
-	14, // 18: rpmgr.v1.UserService.ChangePassword:output_type -> rpmgr.v1.ChangePasswordResponse
-	16, // 19: rpmgr.v1.UserService.ListUsers:output_type -> rpmgr.v1.ListUsersResponse
-	18, // 20: rpmgr.v1.UserService.CreatePasswordResetLink:output_type -> rpmgr.v1.CreatePasswordResetLinkResponse
-	1,  // 21: rpmgr.v1.UserService.EnrollTOTP:output_type -> rpmgr.v1.EnrollTOTPResponse
-	3,  // 22: rpmgr.v1.UserService.ConfirmTOTP:output_type -> rpmgr.v1.ConfirmTOTPResponse
-	5,  // 23: rpmgr.v1.UserService.RemoveTOTP:output_type -> rpmgr.v1.RemoveTOTPResponse
-	7,  // 24: rpmgr.v1.UserService.RegenerateRecoveryCodes:output_type -> rpmgr.v1.RegenerateRecoveryCodesResponse
-	16, // [16:25] is the sub-list for method output_type
-	7,  // [7:16] is the sub-list for method input_type
-	7,  // [7:7] is the sub-list for extension type_name
-	7,  // [7:7] is the sub-list for extension extendee
-	0,  // [0:7] is the sub-list for field type_name
+	20, // 0: rpmgr.v1.User.last_login_time:type_name -> google.protobuf.Timestamp
+	20, // 1: rpmgr.v1.User.create_time:type_name -> google.protobuf.Timestamp
+	0,  // 2: rpmgr.v1.User.theme:type_name -> rpmgr.v1.Theme
+	9,  // 3: rpmgr.v1.GetMeResponse.user:type_name -> rpmgr.v1.User
+	21, // 4: rpmgr.v1.GetMeResponse.memberships:type_name -> rpmgr.v1.Membership
+	0,  // 5: rpmgr.v1.UpdateMeRequest.theme:type_name -> rpmgr.v1.Theme
+	9,  // 6: rpmgr.v1.UpdateMeResponse.user:type_name -> rpmgr.v1.User
+	9,  // 7: rpmgr.v1.ListUsersResponse.users:type_name -> rpmgr.v1.User
+	20, // 8: rpmgr.v1.CreatePasswordResetLinkResponse.expire_time:type_name -> google.protobuf.Timestamp
+	10, // 9: rpmgr.v1.UserService.GetMe:input_type -> rpmgr.v1.GetMeRequest
+	12, // 10: rpmgr.v1.UserService.UpdateMe:input_type -> rpmgr.v1.UpdateMeRequest
+	14, // 11: rpmgr.v1.UserService.ChangePassword:input_type -> rpmgr.v1.ChangePasswordRequest
+	16, // 12: rpmgr.v1.UserService.ListUsers:input_type -> rpmgr.v1.ListUsersRequest
+	18, // 13: rpmgr.v1.UserService.CreatePasswordResetLink:input_type -> rpmgr.v1.CreatePasswordResetLinkRequest
+	1,  // 14: rpmgr.v1.UserService.EnrollTOTP:input_type -> rpmgr.v1.EnrollTOTPRequest
+	3,  // 15: rpmgr.v1.UserService.ConfirmTOTP:input_type -> rpmgr.v1.ConfirmTOTPRequest
+	5,  // 16: rpmgr.v1.UserService.RemoveTOTP:input_type -> rpmgr.v1.RemoveTOTPRequest
+	7,  // 17: rpmgr.v1.UserService.RegenerateRecoveryCodes:input_type -> rpmgr.v1.RegenerateRecoveryCodesRequest
+	11, // 18: rpmgr.v1.UserService.GetMe:output_type -> rpmgr.v1.GetMeResponse
+	13, // 19: rpmgr.v1.UserService.UpdateMe:output_type -> rpmgr.v1.UpdateMeResponse
+	15, // 20: rpmgr.v1.UserService.ChangePassword:output_type -> rpmgr.v1.ChangePasswordResponse
+	17, // 21: rpmgr.v1.UserService.ListUsers:output_type -> rpmgr.v1.ListUsersResponse
+	19, // 22: rpmgr.v1.UserService.CreatePasswordResetLink:output_type -> rpmgr.v1.CreatePasswordResetLinkResponse
+	2,  // 23: rpmgr.v1.UserService.EnrollTOTP:output_type -> rpmgr.v1.EnrollTOTPResponse
+	4,  // 24: rpmgr.v1.UserService.ConfirmTOTP:output_type -> rpmgr.v1.ConfirmTOTPResponse
+	6,  // 25: rpmgr.v1.UserService.RemoveTOTP:output_type -> rpmgr.v1.RemoveTOTPResponse
+	8,  // 26: rpmgr.v1.UserService.RegenerateRecoveryCodes:output_type -> rpmgr.v1.RegenerateRecoveryCodesResponse
+	18, // [18:27] is the sub-list for method output_type
+	9,  // [9:18] is the sub-list for method input_type
+	9,  // [9:9] is the sub-list for extension type_name
+	9,  // [9:9] is the sub-list for extension extendee
+	0,  // [0:9] is the sub-list for field type_name
 }
 
 func init() { file_rpmgr_v1_user_proto_init() }
@@ -1118,13 +1205,14 @@ func file_rpmgr_v1_user_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_rpmgr_v1_user_proto_rawDesc), len(file_rpmgr_v1_user_proto_rawDesc)),
-			NumEnums:      0,
+			NumEnums:      1,
 			NumMessages:   19,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
 		GoTypes:           file_rpmgr_v1_user_proto_goTypes,
 		DependencyIndexes: file_rpmgr_v1_user_proto_depIdxs,
+		EnumInfos:         file_rpmgr_v1_user_proto_enumTypes,
 		MessageInfos:      file_rpmgr_v1_user_proto_msgTypes,
 	}.Build()
 	File_rpmgr_v1_user_proto = out.File

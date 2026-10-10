@@ -224,6 +224,10 @@ flowchart LR
   belongs to an account. Without a mail relay, it says to ask an Owner or the Instance Admin.
 - New passwords are checked in the browser for length (12 to 256 characters) and for a matching
   repetition before they are sent.
+- **Step-up.** An action the API answers with `STEP_UP_REQUIRED` opens a dialog over the page
+  (U7). The dialog asks for the password, or for an authenticator or recovery code if the user has
+  an authenticator. After `StepUp` it runs the action again, so the user keeps their place.
+  Cancelling ends the action with the API's error. Pages run such actions through `useStepUp()`.
 
 **Serving.** The controller serves the UI on every path of its UI name that the API and
 `/.well-known/rpmgr/` do not take:
@@ -264,6 +268,8 @@ flowchart LR
   HTTP route through to `applied`, a local-policy block (`not_ready`, snapshot still `applied`) shown
   with its command, etag conflict,
   step-up prompt, token creation and revocation.
+- Every page a Playwright flow visits is checked with axe for WCAG 2.2 A and AA. A flow also fails
+  on any CSP violation, and on anything in `localStorage` or `sessionStorage`.
 - Accessibility checks (axe) in CI on every page, plus manual keyboard and screen-reader passes per
   release.
 - Security checks (CSP present, no tokens in storage, `dangerouslySetInnerHTML` lint) are part of

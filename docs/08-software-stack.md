@@ -104,7 +104,7 @@ flowchart TB
 | **CodeMirror 6** for YAML views | Small, extensible, works with a strict CSP [V VB-07] | Monaco (large; rpmgr has no raw JSON editor) |
 | **xterm.js** (Phase 3 terminal) | Standard browser terminal | — |
 | **i18next**, English as the source language | Mature and widely used | — |
-| Unit tests with Vitest, end-to-end tests with Playwright | Standard for Vite projects ([12](12-testing-and-quality.md#test-strategy)) | — |
+| Unit tests with Vitest, end-to-end tests with Playwright and axe-core (`@axe-core/playwright`) | Standard for Vite projects; axe finds WCAG violations on every page a flow visits ([12](12-testing-and-quality.md#test-strategy)) | — |
 | **Protobuf-ES** (`protoc-gen-es` through buf) for the TypeScript API code, generated at build time | One generator for messages and service descriptors, which connect-query uses; generated code is not committed ([09](09-web-ui.md#frontend-architecture)) | A second generated client per service |
 | **TypeScript 6.0**, built with Node 24 (`web/.nvmrc`) and npm with a lockfile | typescript-eslint 8.71 supports TypeScript up to 6.0 [F typescript-eslint 8.71.1 `package.json` peerDependencies `typescript: >=4.8.4 <6.1.0`, npm registry, retrieved 2026-10-09]; TypeScript 7 follows once it does | — |
 | **ESLint** with typescript-eslint and the React hooks rules | Bans the constructs 09 forbids: `dangerouslySetInnerHTML`, `innerHTML`, browser storage, `eval` | — |
