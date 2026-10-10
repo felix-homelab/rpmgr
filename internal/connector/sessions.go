@@ -334,8 +334,11 @@ func (m *Sessions) SetReady(h *tunnelv1.RouteHealth) {
 	m.flush(out)
 }
 
-// pingEvery is the session Ping's interval, tunnel.PingInterval; a variable for tests.
-var pingEvery = tunnel.PingInterval
+// pingEvery is the session Ping's interval in nanoseconds, tunnel.PingInterval. A test changes it,
+// so it is atomic: a session of an earlier test may still start its pings meanwhile.
+var pingEvery atomic.Int64
+
+func init() { pingEvery.Store(int64(tunnel.PingInterval)) }
 
 // ping sends a Ping, noting when.
 func (s *session) ping(msg *tunnelv1.SessionMessage) error {
@@ -782,7 +785,7 @@ func (m *Sessions) serve(ctx context.Context, s *session, drained chan struct{})
 	}()
 	sctx, scancel := context.WithCancel(context.Background())
 	defer scancel()
-	go func() { _ = tunnel.SendPings(sctx, s.ping, pingEvery) }()
+	go func() { _ = tunnel.SendPings(sctx, s.ping, time.Duration(pingEvery.Load())) }()
 	go m.accept(sctx, s)
 	var once sync.Once
 	for {
