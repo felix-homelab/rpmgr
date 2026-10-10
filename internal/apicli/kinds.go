@@ -28,6 +28,7 @@ type Kind struct {
 	Manifest string   // its manifest kind; empty for none
 	Columns  []string // the fields a table shows after its ID and name, as JSON names
 	Delete   bool     // whether Delete<Resource> exists
+	NoGet    bool     // whether Get<Resource> is missing: the kind is only listed
 }
 
 // Kinds are the kinds of the public API's resources, by name.
@@ -48,6 +49,11 @@ var Kinds = []Kind{
 		IDField: "certificate_id", Columns: []string{"source", "status", "sans", "notAfter"}, Delete: true},
 	{Name: "ca-bundle", Prefix: "cab_", Service: "rpmgr.v1.CertificateService", Resource: "CABundle", Plural: "CABundles", IDField: "ca_bundle_id",
 		Manifest: "CABundle", Delete: true},
+	{Name: "route-target", Prefix: "tg_", Service: "rpmgr.v1.RouteService", Resource: "RouteTarget", IDField: "route_target_id",
+		Columns: []string{"connectorId", "upstreamProtocol", "enabled", "weight", "priority"}, Delete: true},
+	{Name: "enrollment-token", Prefix: "enr_", Service: "rpmgr.v1.EnrollmentService", Resource: "EnrollmentToken",
+		Plural: "EnrollmentTokens", IDField: "enrollment_token_id", Columns: []string{"role", "useCount", "maxUses", "expireTime", "revokeTime"},
+		NoGet: true},
 	{Name: "access-policy", Prefix: "ap_", Service: "rpmgr.v1.PolicyService", Resource: "AccessPolicy", Plural: "AccessPolicies",
 		IDField: "access_policy_id", Manifest: "AccessPolicy", Columns: []string{"description"}, Delete: true},
 }

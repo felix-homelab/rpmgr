@@ -49,9 +49,11 @@ type Auth struct {
 	Accounts *accounts.Accounts
 	MFA      *accounts.MFA
 	Sessions *websession.Sessions
-	IPLimit  *ratelimit.Limiter // logins and password resets per client address
-	Backoff  *ratelimit.Backoff // failed logins per account, failed step-ups per user
-	Now      func() time.Time
+	// Tokens record the step-ups of personal API tokens (D63); nil refuses them.
+	Tokens  *accounts.Tokens
+	IPLimit *ratelimit.Limiter // logins and password resets per client address
+	Backoff *ratelimit.Backoff // failed logins per account, failed step-ups per user
+	Now     func() time.Time
 	// Mail sends reset links; ResetLimit bounds the requests per address.
 	Mail       Mailer
 	ResetLimit *ratelimit.Limiter
@@ -130,9 +132,14 @@ func (a *Auth) Login(ctx context.Context, req *connect.Request[rpmgrv1.LoginRequ
 // StepUp implements AuthService. A user with an authenticator steps up with a second factor; the
 // password alone is not enough for them.
 func (a *Auth) StepUp(ctx context.Context, req *connect.Request[rpmgrv1.StepUpRequest]) (*connect.Response[rpmgrv1.StepUpResponse], error) {
-	c, err := sessionCaller(ctx)
-	if err != nil {
-		return nil, err
+	c := api.CallerFrom(ctx)
+	switch {
+	case c == nil:
+		return nil, connect.NewError(connect.CodeUnauthenticated, errors.New("apisvc: sign in first"))
+	case c.AuthMethod == "token" && a.Tokens == nil:
+		return nil, connect.NewError(connect.CodeFailedPrecondition, errors.New("apisvc: this controller steps up no API tokens"))
+	case c.AuthMethod != "token" && c.AuthMethod != "session":
+		return nil, connect.NewError(connect.CodeFailedPrecondition, errors.New("apisvc: the method needs a session or an API token"))
 	}
 	key := "step-up:" + c.UserID
 	if wait := a.Backoff.Wait(key); wait > 0 {
@@ -164,6 +171,14 @@ func (a *Auth) StepUp(ctx context.Context, req *connect.Request[rpmgrv1.StepUpRe
 		return nil, err
 	}
 	a.Backoff.Succeed(key)
+	if c.AuthMethod == "token" {
+		// The token alone: the owner's sessions and other tokens keep their own step-ups.
+		at, err := a.Tokens.StepUp(c.CredentialID)
+		if err != nil {
+			return nil, err
+		}
+		return connect.NewResponse(&rpmgrv1.StepUpResponse{ExpireTime: timestamppb.New(at.Add(api.StepUpWindow))}), nil
+	}
 	tok, sess, err := a.Sessions.Elevate(c.CredentialID, how, api.StepUpWindow)
 	if err != nil {
 		return nil, err

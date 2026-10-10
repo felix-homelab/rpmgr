@@ -119,6 +119,11 @@ func RevokedAt(v time.Time) predicate.APIToken {
 	return predicate.APIToken(sql.FieldEQ(FieldRevokedAt, v))
 }
 
+// StepUpAt applies equality check predicate on the "step_up_at" field. It's identical to StepUpAtEQ.
+func StepUpAt(v time.Time) predicate.APIToken {
+	return predicate.APIToken(sql.FieldEQ(FieldStepUpAt, v))
+}
+
 // OrgIDEQ applies the EQ predicate on the "org_id" field.
 func OrgIDEQ(v string) predicate.APIToken {
 	return predicate.APIToken(sql.FieldEQ(FieldOrgID, v))
@@ -702,6 +707,56 @@ func RevokedAtIsNil() predicate.APIToken {
 // RevokedAtNotNil applies the NotNil predicate on the "revoked_at" field.
 func RevokedAtNotNil() predicate.APIToken {
 	return predicate.APIToken(sql.FieldNotNull(FieldRevokedAt))
+}
+
+// StepUpAtEQ applies the EQ predicate on the "step_up_at" field.
+func StepUpAtEQ(v time.Time) predicate.APIToken {
+	return predicate.APIToken(sql.FieldEQ(FieldStepUpAt, v))
+}
+
+// StepUpAtNEQ applies the NEQ predicate on the "step_up_at" field.
+func StepUpAtNEQ(v time.Time) predicate.APIToken {
+	return predicate.APIToken(sql.FieldNEQ(FieldStepUpAt, v))
+}
+
+// StepUpAtIn applies the In predicate on the "step_up_at" field.
+func StepUpAtIn(vs ...time.Time) predicate.APIToken {
+	return predicate.APIToken(sql.FieldIn(FieldStepUpAt, vs...))
+}
+
+// StepUpAtNotIn applies the NotIn predicate on the "step_up_at" field.
+func StepUpAtNotIn(vs ...time.Time) predicate.APIToken {
+	return predicate.APIToken(sql.FieldNotIn(FieldStepUpAt, vs...))
+}
+
+// StepUpAtGT applies the GT predicate on the "step_up_at" field.
+func StepUpAtGT(v time.Time) predicate.APIToken {
+	return predicate.APIToken(sql.FieldGT(FieldStepUpAt, v))
+}
+
+// StepUpAtGTE applies the GTE predicate on the "step_up_at" field.
+func StepUpAtGTE(v time.Time) predicate.APIToken {
+	return predicate.APIToken(sql.FieldGTE(FieldStepUpAt, v))
+}
+
+// StepUpAtLT applies the LT predicate on the "step_up_at" field.
+func StepUpAtLT(v time.Time) predicate.APIToken {
+	return predicate.APIToken(sql.FieldLT(FieldStepUpAt, v))
+}
+
+// StepUpAtLTE applies the LTE predicate on the "step_up_at" field.
+func StepUpAtLTE(v time.Time) predicate.APIToken {
+	return predicate.APIToken(sql.FieldLTE(FieldStepUpAt, v))
+}
+
+// StepUpAtIsNil applies the IsNil predicate on the "step_up_at" field.
+func StepUpAtIsNil() predicate.APIToken {
+	return predicate.APIToken(sql.FieldIsNull(FieldStepUpAt))
+}
+
+// StepUpAtNotNil applies the NotNil predicate on the "step_up_at" field.
+func StepUpAtNotNil() predicate.APIToken {
+	return predicate.APIToken(sql.FieldNotNull(FieldStepUpAt))
 }
 
 // And groups predicates with the AND operator between them.

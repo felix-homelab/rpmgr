@@ -121,6 +121,7 @@ var schemaGraph = func() *sqlgraph.Schema {
 			apitoken.FieldLastUsedAt: {Type: field.TypeTime, Column: apitoken.FieldLastUsedAt},
 			apitoken.FieldLastUsedIP: {Type: field.TypeString, Column: apitoken.FieldLastUsedIP},
 			apitoken.FieldRevokedAt:  {Type: field.TypeTime, Column: apitoken.FieldRevokedAt},
+			apitoken.FieldStepUpAt:   {Type: field.TypeTime, Column: apitoken.FieldStepUpAt},
 		},
 	}
 	graph.Nodes[3] = &sqlgraph.Node{
@@ -1626,6 +1627,11 @@ func (f *APITokenFilter) WhereLastUsedIP(p entql.StringP) {
 // WhereRevokedAt applies the entql time.Time predicate on the revoked_at field.
 func (f *APITokenFilter) WhereRevokedAt(p entql.TimeP) {
 	f.Where(p.Field(apitoken.FieldRevokedAt))
+}
+
+// WhereStepUpAt applies the entql time.Time predicate on the step_up_at field.
+func (f *APITokenFilter) WhereStepUpAt(p entql.TimeP) {
+	f.Where(p.Field(apitoken.FieldStepUpAt))
 }
 
 // addPredicate implements the predicateAdder interface.

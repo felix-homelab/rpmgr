@@ -1241,6 +1241,7 @@ type APITokenMutation struct {
 	last_used_at  *time.Time
 	last_used_ip  *string
 	revoked_at    *time.Time
+	step_up_at    *time.Time
 	clearedFields map[string]struct{}
 	done          bool
 	oldValue      func(context.Context) (*APIToken, error)
@@ -1873,6 +1874,55 @@ func (m *APITokenMutation) ResetRevokedAt() {
 	delete(m.clearedFields, apitoken.FieldRevokedAt)
 }
 
+// SetStepUpAt sets the "step_up_at" field.
+func (m *APITokenMutation) SetStepUpAt(t time.Time) {
+	m.step_up_at = &t
+}
+
+// StepUpAt returns the value of the "step_up_at" field in the mutation.
+func (m *APITokenMutation) StepUpAt() (r time.Time, exists bool) {
+	v := m.step_up_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldStepUpAt returns the old "step_up_at" field's value of the APIToken entity.
+// If the APIToken object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *APITokenMutation) OldStepUpAt(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldStepUpAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldStepUpAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldStepUpAt: %w", err)
+	}
+	return oldValue.StepUpAt, nil
+}
+
+// ClearStepUpAt clears the value of the "step_up_at" field.
+func (m *APITokenMutation) ClearStepUpAt() {
+	m.step_up_at = nil
+	m.clearedFields[apitoken.FieldStepUpAt] = struct{}{}
+}
+
+// StepUpAtCleared returns if the "step_up_at" field was cleared in this mutation.
+func (m *APITokenMutation) StepUpAtCleared() bool {
+	_, ok := m.clearedFields[apitoken.FieldStepUpAt]
+	return ok
+}
+
+// ResetStepUpAt resets all changes to the "step_up_at" field.
+func (m *APITokenMutation) ResetStepUpAt() {
+	m.step_up_at = nil
+	delete(m.clearedFields, apitoken.FieldStepUpAt)
+}
+
 // Where appends a list predicates to the APITokenMutation builder.
 func (m *APITokenMutation) Where(ps ...predicate.APIToken) {
 	m.predicates = append(m.predicates, ps...)
@@ -1907,7 +1957,7 @@ func (m *APITokenMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *APITokenMutation) Fields() []string {
-	fields := make([]string, 0, 13)
+	fields := make([]string, 0, 14)
 	if m.org_id != nil {
 		fields = append(fields, apitoken.FieldOrgID)
 	}
@@ -1947,6 +1997,9 @@ func (m *APITokenMutation) Fields() []string {
 	if m.revoked_at != nil {
 		fields = append(fields, apitoken.FieldRevokedAt)
 	}
+	if m.step_up_at != nil {
+		fields = append(fields, apitoken.FieldStepUpAt)
+	}
 	return fields
 }
 
@@ -1981,6 +2034,8 @@ func (m *APITokenMutation) Field(name string) (ent.Value, bool) {
 		return m.LastUsedIP()
 	case apitoken.FieldRevokedAt:
 		return m.RevokedAt()
+	case apitoken.FieldStepUpAt:
+		return m.StepUpAt()
 	}
 	return nil, false
 }
@@ -2016,6 +2071,8 @@ func (m *APITokenMutation) OldField(ctx context.Context, name string) (ent.Value
 		return m.OldLastUsedIP(ctx)
 	case apitoken.FieldRevokedAt:
 		return m.OldRevokedAt(ctx)
+	case apitoken.FieldStepUpAt:
+		return m.OldStepUpAt(ctx)
 	}
 	return nil, fmt.Errorf("unknown APIToken field %s", name)
 }
@@ -2116,6 +2173,13 @@ func (m *APITokenMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetRevokedAt(v)
 		return nil
+	case apitoken.FieldStepUpAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetStepUpAt(v)
+		return nil
 	}
 	return fmt.Errorf("unknown APIToken field %s", name)
 }
@@ -2155,6 +2219,9 @@ func (m *APITokenMutation) ClearedFields() []string {
 	if m.FieldCleared(apitoken.FieldRevokedAt) {
 		fields = append(fields, apitoken.FieldRevokedAt)
 	}
+	if m.FieldCleared(apitoken.FieldStepUpAt) {
+		fields = append(fields, apitoken.FieldStepUpAt)
+	}
 	return fields
 }
 
@@ -2177,6 +2244,9 @@ func (m *APITokenMutation) ClearField(name string) error {
 		return nil
 	case apitoken.FieldRevokedAt:
 		m.ClearRevokedAt()
+		return nil
+	case apitoken.FieldStepUpAt:
+		m.ClearStepUpAt()
 		return nil
 	}
 	return fmt.Errorf("unknown APIToken nullable field %s", name)
@@ -2224,6 +2294,9 @@ func (m *APITokenMutation) ResetField(name string) error {
 		return nil
 	case apitoken.FieldRevokedAt:
 		m.ResetRevokedAt()
+		return nil
+	case apitoken.FieldStepUpAt:
+		m.ResetStepUpAt()
 		return nil
 	}
 	return fmt.Errorf("unknown APIToken field %s", name)

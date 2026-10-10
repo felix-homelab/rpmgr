@@ -67,7 +67,7 @@ an opaque blob: no foreign system's configuration is embedded, and every field i
 | `identity_providers` | id, org_id, issuer, client_id, client_secret_enc, group_role_mapping | OIDC SSO |
 | `external_identities` | idp_id, subject, user_id | Unique (idp_id, subject) |
 | `service_accounts` | id, org_id, name, role | Non-human principals for automation |
-| `api_tokens` | id, org_id, owner_type (user, service_account), owner_id, name, prefix, token_hash, scopes, mfa, created_at, expires_at, last_used_at, last_used_ip, revoked_at | Expiry mandatory; `mfa` records that the token was made from a session with a second factor |
+| `api_tokens` | id, org_id, owner_type (user, service_account), owner_id, name, prefix, token_hash, scopes, mfa, created_at, expires_at, last_used_at, last_used_ip, revoked_at, step_up_at (the token's last step-up, [D63](14-open-decisions.md#engineering)) | Expiry mandatory; `mfa` records that the token was made from a session with a second factor |
 | `enrollment_tokens` | id, org_id, token_hash, role (connector, gateway), gateway_group_id, gateway_id (gateway tokens), connector_id (re-enrollment only), labels, ephemeral, max_uses (null: unlimited, ephemeral tokens only), use_count, expires_at, created_by, last_used_at, last_used_ip, revoked_at | Consumed atomically ([04](04-security.md#enrollment)). A gateway token is bound to exactly one gateway, which an Admin created first, so a host chooses neither its identity nor its endpoints; a connector token to no gateway; a re-enrollment token to its connector, and it is single-use |
 
 ### Fleet

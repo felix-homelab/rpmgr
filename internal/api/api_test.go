@@ -443,6 +443,7 @@ func TestCheck(t *testing.T) {
 		"through_a_string":      {name: "M", authz: &rpmgrv1.Authz{Permission: authz.PermOrgRead, ResourceField: "name.id"}},
 		"repeated_field":        {name: "M", authz: &rpmgrv1.Authz{Permission: authz.PermOrgRead, ResourceField: "tags"}},
 		"step_up_on_public":     {name: "M", authz: &rpmgrv1.Authz{Permission: authz.PermPublic, StepUp: true}},
+		"token_on_org_read":     {name: "M", authz: &rpmgrv1.Authz{Permission: authz.PermOrgRead, ResourceField: "org_id", AllowToken: true}},
 		"client_stream":         {name: "M", authz: ok, stream: "client"},
 		"public_with_bad_field": {name: "M", authz: &rpmgrv1.Authz{Permission: authz.PermPublic, ResourceField: "nope"}},
 	} {

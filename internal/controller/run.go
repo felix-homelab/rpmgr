@@ -218,7 +218,7 @@ func Run(ctx context.Context, o RunOptions) error {
 	tokens := &accounts.Tokens{Accounts: acc, RevLog: rl, Logger: o.Logger}
 	apiServer, err := api.New(api.Options{DB: db, Sys: sys, Sealer: sealer, Resolver: api.StoreResolver(db, sys),
 		OperatorsMayEnroll: api.StoreOperatorsMayEnroll(db, sys), PageKey: pageKey, Now: o.Now, Logger: o.Logger,
-		Authenticator: apisvc.Credentials{Sessions: webSessions, Tokens: tokens}, Origins: origins(db, sys, public), RequireMFA: api.StoreRequireMFA(db, sys),
+		Authenticator: apisvc.Credentials{Sessions: webSessions, Tokens: tokens}, TokenStepUp: tokens.StepUpAt, Origins: origins(db, sys, public), RequireMFA: api.StoreRequireMFA(db, sys),
 		ApplyStatus: func(ctx context.Context, org string, rev *rpmgrv1.Revision) (*rpmgrv1.ApplyStatus, error) {
 			return apisvc.ApplyStatusOf(ctx, db.ReadClient(), org, store.Revision{DBEpoch: rev.GetDbEpoch(), Seq: rev.GetSeq()}, o.Now())
 		}})
@@ -231,6 +231,7 @@ func Run(ctx context.Context, o RunOptions) error {
 	mfa := &accounts.MFA{Accounts: acc, Sealer: sealer, RevLog: rl, Logger: o.Logger}
 	relay := &apisvc.Relay{DB: db, Sys: sys, Sealer: sealer}
 	auth := apisvc.NewAuth(mfa, webSessions, o.Now)
+	auth.Tokens = tokens
 	auth.Mail, auth.PublicURL, auth.Logger = relay, cfg.PublicURL, o.Logger
 	if err := apiServer.Mount(mux, rpmgrv1.File_rpmgr_v1_auth_proto.Services().ByName("AuthService"),
 		func(opts ...connect.HandlerOption) (string, http.Handler) {

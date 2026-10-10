@@ -21,6 +21,9 @@ message Authz {
   // Whether the caller needs a step-up re-authentication within the step-up window
   // (docs/04-security.md, "Human authentication and sessions").
   bool step_up = 3;
+  // Whether a personal API token may call a method of the "authenticated" permission, which no
+  // token scope names: only AuthService.StepUp, which steps up the token itself (D63).
+  bool allow_token = 4;
 }
 
 extend google.protobuf.MethodOptions {

@@ -77,6 +77,7 @@ func newEnv(t *testing.T) *env {
 	e.tokens = &accounts.Tokens{Accounts: e.acc, RevLog: rl}
 	srv, err := api.New(api.Options{DB: db, Sys: sys, Sealer: sealer, Now: now,
 		Authenticator:      apisvc.Credentials{Sessions: e.sessions, Tokens: e.tokens},
+		TokenStepUp:        e.tokens.StepUpAt,
 		Resolver:           api.StoreResolver(db, sys),
 		OperatorsMayEnroll: api.StoreOperatorsMayEnroll(db, sys),
 		Origins:            func(context.Context) ([]string, error) { return []string{"https://panel.example.com"}, nil },
@@ -91,6 +92,7 @@ func newEnv(t *testing.T) *env {
 	if err := srv.Mount(mux, rpmgrv1.File_rpmgr_v1_auth_proto.Services().ByName("AuthService"),
 		func(o ...connect.HandlerOption) (string, http.Handler) {
 			e.auth = apisvc.NewAuth(e.mfa, e.sessions, now)
+			e.auth.Tokens = e.tokens
 			e.auth.PublicURL = "https://panel.example.com"
 			return rpmgrv1connect.NewAuthServiceHandler(e.auth, o...)
 		}); err != nil {

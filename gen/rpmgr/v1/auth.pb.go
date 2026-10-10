@@ -1052,12 +1052,12 @@ const file_rpmgr_v1_auth_proto_rawDesc = "" +
 	"\x1bRequestPasswordResetRequest\x12 \n" +
 	"\x05email\x18\x01 \x01(\tB\n" +
 	"\xbaH\ar\x05\x10\x03\x18\xfe\x01R\x05email\"\x1e\n" +
-	"\x1cRequestPasswordResetResponse2\x95\x06\n" +
+	"\x1cRequestPasswordResetResponse2\x97\x06\n" +
 	"\vAuthService\x12F\n" +
 	"\x05Login\x12\x16.rpmgr.v1.LoginRequest\x1a\x17.rpmgr.v1.LoginResponse\"\f\x8a\xb5\x18\b\n" +
-	"\x06public\x12P\n" +
-	"\x06StepUp\x12\x17.rpmgr.v1.StepUpRequest\x1a\x18.rpmgr.v1.StepUpResponse\"\x13\x8a\xb5\x18\x0f\n" +
-	"\rauthenticated\x12P\n" +
+	"\x06public\x12R\n" +
+	"\x06StepUp\x12\x17.rpmgr.v1.StepUpRequest\x1a\x18.rpmgr.v1.StepUpResponse\"\x15\x8a\xb5\x18\x11\n" +
+	"\rauthenticated \x01\x12P\n" +
 	"\x06Logout\x12\x17.rpmgr.v1.LogoutRequest\x1a\x18.rpmgr.v1.LogoutResponse\"\x13\x8a\xb5\x18\x0f\n" +
 	"\rauthenticated\x12_\n" +
 	"\n" +

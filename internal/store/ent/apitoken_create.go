@@ -130,6 +130,20 @@ func (_c *APITokenCreate) SetNillableRevokedAt(v *time.Time) *APITokenCreate {
 	return _c
 }
 
+// SetStepUpAt sets the "step_up_at" field.
+func (_c *APITokenCreate) SetStepUpAt(v time.Time) *APITokenCreate {
+	_c.mutation.SetStepUpAt(v)
+	return _c
+}
+
+// SetNillableStepUpAt sets the "step_up_at" field if the given value is not nil.
+func (_c *APITokenCreate) SetNillableStepUpAt(v *time.Time) *APITokenCreate {
+	if v != nil {
+		_c.SetStepUpAt(*v)
+	}
+	return _c
+}
+
 // SetID sets the "id" field.
 func (_c *APITokenCreate) SetID(v string) *APITokenCreate {
 	_c.mutation.SetID(v)
@@ -353,6 +367,10 @@ func (_c *APITokenCreate) createSpec() (*APIToken, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.RevokedAt(); ok {
 		_spec.SetField(apitoken.FieldRevokedAt, field.TypeTime, value)
 		_node.RevokedAt = &value
+	}
+	if value, ok := _c.mutation.StepUpAt(); ok {
+		_spec.SetField(apitoken.FieldStepUpAt, field.TypeTime, value)
+		_node.StepUpAt = &value
 	}
 	return _node, _spec
 }

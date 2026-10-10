@@ -66,6 +66,7 @@ var (
 		{Name: "last_used_at", Type: field.TypeTime, Nullable: true},
 		{Name: "last_used_ip", Type: field.TypeString, Nullable: true, Size: 64},
 		{Name: "revoked_at", Type: field.TypeTime, Nullable: true},
+		{Name: "step_up_at", Type: field.TypeTime, Nullable: true},
 	}
 	// APITokensTable holds the schema information for the "api_tokens" table.
 	APITokensTable = &schema.Table{

@@ -65,7 +65,8 @@ type AuthServiceClient interface {
 	Login(context.Context, *connect.Request[v1.LoginRequest]) (*connect.Response[v1.LoginResponse], error)
 	// StepUp confirms the caller's identity again for the actions that need it within the next
 	// 10 minutes (docs/04-security.md, "Human authentication and sessions"): with a second factor if
-	// the user has one, else with the password. The session gets a new cookie.
+	// the user has one, else with the password. A session gets a new cookie; a personal API token
+	// steps up itself only (D63).
 	StepUp(context.Context, *connect.Request[v1.StepUpRequest]) (*connect.Response[v1.StepUpResponse], error)
 	// Logout ends the caller's session and clears the cookie.
 	Logout(context.Context, *connect.Request[v1.LogoutRequest]) (*connect.Response[v1.LogoutResponse], error)
@@ -207,7 +208,8 @@ type AuthServiceHandler interface {
 	Login(context.Context, *connect.Request[v1.LoginRequest]) (*connect.Response[v1.LoginResponse], error)
 	// StepUp confirms the caller's identity again for the actions that need it within the next
 	// 10 minutes (docs/04-security.md, "Human authentication and sessions"): with a second factor if
-	// the user has one, else with the password. The session gets a new cookie.
+	// the user has one, else with the password. A session gets a new cookie; a personal API token
+	// steps up itself only (D63).
 	StepUp(context.Context, *connect.Request[v1.StepUpRequest]) (*connect.Response[v1.StepUpResponse], error)
 	// Logout ends the caller's session and clears the cookie.
 	Logout(context.Context, *connect.Request[v1.LogoutRequest]) (*connect.Response[v1.LogoutResponse], error)

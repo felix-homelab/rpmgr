@@ -30,19 +30,23 @@ import (
 // apiCommands are the verb-first commands of the public API (docs/16-cli.md, D51).
 func apiCommands() []*cli.Command {
 	createRoute, updateRoute, enableRoute, disableRoute, previewRoute := routeCommands()
+	createTarget, updateTarget := targetCommands()
+	updateConnector, decommissionConnector, revokeToken := connectorCommands()
 	return []*cli.Command{getCommand(), listCommand(), deleteCommand(),
-		group("create", "create a resource of the public API", createRoute),
-		group("update", "change a resource of the public API", updateRoute),
+		group("create", "create a resource of the public API", createRoute, createTarget),
+		group("update", "change a resource of the public API", updateRoute, updateTarget, updateConnector),
+		group("decommission", "take an agent out of service for good", decommissionConnector),
+		group("revoke", "revoke a credential", revokeToken),
 		group("enable", "serve a resource again", enableRoute),
 		group("disable", "stop serving a resource, keeping its configuration", disableRoute),
 		group("preview", "show what a change would do, saving nothing", previewRoute)}
 }
 
-// kindsHelp lists the kinds for a command's synopsis.
-func kindsHelp(deletable bool) string {
+// kindsHelp lists the kinds a command takes, for its synopsis.
+func kindsHelp(takes func(apicli.Kind) bool) string {
 	var names []string
 	for _, k := range apicli.Kinds {
-		if !deletable || k.Delete {
+		if takes(k) {
 			names = append(names, k.Name)
 		}
 	}
@@ -97,14 +101,26 @@ func (s *apiSession) get(ctx context.Context, k apicli.Kind, id string) (protore
 }
 
 func getCommand() *cli.Command {
-	var output string
+	var output, role string
+	var allow listFlag
 	return &cli.Command{
-		Name: "get", Summary: "show a resource of the public API", Args: "<" + kindsHelp(false) + "> <id>",
-		Flags: func(fs *flag.FlagSet) { outputFlag(fs, &output) },
+		Name: "get", Summary: "show a resource of the public API, or the install command of an agent",
+		Args: "install-command | <" + kindsHelp(func(k apicli.Kind) bool { return !k.NoGet }) + "> <id>",
+		Flags: func(fs *flag.FlagSet) {
+			outputFlag(fs, &output)
+			fs.StringVar(&role, "role", "connector", "install-command: the role to install, connector or gateway")
+			fs.Var(&allow, "allow-target", "install-command: a target the connector may reach, ip:port or a socket path; repeat for more")
+		},
 		Run: func(ctx context.Context, env *cli.Env, args []string) error {
+			if len(args) == 1 && args[0] == "install-command" {
+				return installCommand(ctx, env, role, allow)
+			}
 			k, err := kindArgs(args, 2)
 			if err != nil {
 				return err
+			}
+			if k.NoGet {
+				return cli.Usagef("a %s is only listed: rpmgr list %s", k.Name, k.Name)
 			}
 			s, err := newAPISession(env)
 			if err != nil {
@@ -121,22 +137,39 @@ func getCommand() *cli.Command {
 
 func listCommand() *cli.Command {
 	var output string
+	var all bool
 	return &cli.Command{
-		Name: "list", Summary: "list the resources of a kind in the org", Args: "<" + kindsHelp(false) + ">",
-		Flags: func(fs *flag.FlagSet) { outputFlag(fs, &output) },
+		Name: "list", Summary: "list the resources of a kind in the org", Args: "<" + kindsHelp(func(k apicli.Kind) bool { return k.Plural != "" }) + ">",
+		Flags: func(fs *flag.FlagSet) {
+			outputFlag(fs, &output)
+			fs.BoolVar(&all, "all", false, "also the decommissioned agents, and the used-up, expired and revoked enrollment tokens")
+		},
 		Run: func(ctx context.Context, env *cli.Env, args []string) error {
 			k, err := kindArgs(args, 1)
 			if err != nil {
 				return err
 			}
+			if k.Plural == "" {
+				return cli.Usagef("a %s is listed with what it belongs to; see rpmgr help get", k.Name)
+			}
 			s, err := newAPISession(env)
 			if err != nil {
 				return err
 			}
-			var all []protoreflect.Message
+			var found []protoreflect.Message
 			var ids []string
+			md, err := k.Method("List" + k.Plural)
+			if err != nil {
+				return err
+			}
 			for page := ""; ; {
-				resp, err := s.call(ctx, k, "List"+k.Plural, map[string]any{"org_id": s.creds.Org, "page_size": int32(500), "page_token": page}, nil)
+				fields := map[string]any{"org_id": s.creds.Org, "page_size": int32(500), "page_token": page}
+				for _, name := range []string{"show_decommissioned", "show_inactive"} {
+					if all && md.Input().Fields().ByName(protoreflect.Name(name)) != nil {
+						fields[name] = true
+					}
+				}
+				resp, err := s.call(ctx, k, "List"+k.Plural, fields, nil)
 				if err != nil {
 					return err
 				}
@@ -146,14 +179,14 @@ func listCommand() *cli.Command {
 				}
 				l := resp.Get(fd).List()
 				for i := range l.Len() {
-					all = append(all, l.Get(i).Message())
+					found = append(found, l.Get(i).Message())
 					ids = append(ids, l.Get(i).Message().Get(l.Get(i).Message().Descriptor().Fields().ByName("id")).String())
 				}
 				if page = resp.Get(resp.Descriptor().Fields().ByName("next_page_token")).String(); page == "" {
 					break
 				}
 			}
-			return s.print(ctx, env.Stdout, k, output, all, ids, true)
+			return s.print(ctx, env.Stdout, k, output, found, ids, true)
 		},
 	}
 }
@@ -164,7 +197,7 @@ func deleteCommand() *cli.Command {
 		wait  time.Duration
 	)
 	return &cli.Command{
-		Name: "delete", Summary: "delete a resource of the public API", Args: "<" + kindsHelp(true) + "> <id>",
+		Name: "delete", Summary: "delete a resource of the public API", Args: "<" + kindsHelp(func(k apicli.Kind) bool { return k.Delete }) + "> <id>",
 		Flags: func(fs *flag.FlagSet) {
 			fs.BoolVar(&force, "force", false, "delete without checking that the resource is unchanged since this command read it")
 			fs.DurationVar(&wait, "wait", 0, "wait up to this long, at most 30s, for the agents to apply the change")
