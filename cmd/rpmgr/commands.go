@@ -37,11 +37,9 @@ func commands() *cli.Command {
 			enrollCommand(),
 			loginCommand(promptAPIToken),
 			logoutCommand(),
-			{Name: "leave", Summary: "revoke this agent's identity and remove it from the host", Run: cli.NotAvailable},
-			{Name: "status", Summary: "show the state of the agent on this host", Run: cli.NotAvailable},
-			group("diag", "diagnose this host",
-				leaf("transport", "test the data-session transports to a gateway"),
-				leaf("clock", "compare this host's clock with the controller's")),
+			leaveCommand(),
+			statusCommand(),
+			diagCommand(),
 			policyCommand(),
 			backupCommand(),
 			restoreCommand(),
@@ -425,10 +423,6 @@ func userResetPassword() *cli.Command {
 
 func group(name, summary string, sub ...*cli.Command) *cli.Command {
 	return &cli.Command{Name: name, Summary: summary, Sub: sub}
-}
-
-func leaf(name, summary string) *cli.Command {
-	return &cli.Command{Name: name, Summary: summary, Run: cli.NotAvailable}
 }
 
 // versionCommand is `rpmgr version`; with --verbose it also prints the release root keys
