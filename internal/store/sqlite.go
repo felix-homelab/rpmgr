@@ -52,6 +52,11 @@ func (db *DB) Client() *ent.Client { return db.client }
 // ReadClient returns the Ent client of the read-only pool.
 func (db *DB) ReadClient() *ent.Client { return db.readClient }
 
+// HoldLock takes the controller lock of the SQLite database at path without opening it, for an
+// administration command that replaces the database, such as a restore: no controller can start
+// on it while the lock is held. It returns ErrLocked while a controller runs.
+func HoldLock(path string) (func() error, error) { return lockFile(path + ".lock") }
+
 // ErrLocked is returned when another controller holds the database.
 var ErrLocked = errors.New("store: another controller is using this database")
 

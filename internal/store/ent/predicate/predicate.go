@@ -120,6 +120,9 @@ type ResourceStatus func(*sql.Selector)
 // RevokedIdentity is the predicate function for revokedidentity builders.
 type RevokedIdentity func(*sql.Selector)
 
+// RevokedSerial is the predicate function for revokedserial builders.
+type RevokedSerial func(*sql.Selector)
+
 // Route is the predicate function for route builders.
 type Route func(*sql.Selector)
 

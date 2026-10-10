@@ -165,9 +165,10 @@ func TestMFA_ChangeAndRemove(t *testing.T) {
 	if err != nil || len(entries) != 3 {
 		t.Fatalf("revocation log: %v %v", entries, err)
 	}
-	for _, e := range entries {
-		if e.Kind != revlog.CredentialSuperseded || e.Subject != ada {
-			t.Errorf("entry %+v", e)
+	// The enrolment, the new codes and the removal, each named for the restore that applies it.
+	for i, what := range []string{revlog.MFA, revlog.RecoveryCodes, revlog.MFA} {
+		if e := entries[i]; e.Kind != revlog.CredentialSuperseded || e.Subject != ada || e.Detail != what {
+			t.Errorf("entry %+v, want %s", e, what)
 		}
 	}
 	if n := len(e.actions(t, "user.mfa_enroll")) + len(e.actions(t, "user.recovery_codes")) + len(e.actions(t, "user.mfa_remove")); n != 3 {

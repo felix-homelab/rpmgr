@@ -43,8 +43,7 @@ func commands() *cli.Command {
 				leaf("clock", "compare this host's clock with the controller's")),
 			policyCommand(),
 			backupCommand(),
-			{Name: "restore", Summary: "restore the controller from a backup", Run: cli.NotAvailable,
-				Sub: []*cli.Command{leaf("confirm", "end the instance-wide restore review")}},
+			restoreCommand(),
 			{Name: "migrate", Summary: "apply database migrations", Run: cli.NotAvailable},
 			group("ca", "administer the internal CA on the controller host",
 				leaf("status", "show the CA keys and their validity"),
@@ -300,6 +299,41 @@ func backupCommand() *cli.Command {
 				out, info.TrustDomain, info.DBEpoch)
 			return err
 		},
+	}
+}
+
+// restoreCommand is `rpmgr restore`: the controller's database and logs from a backup, with the
+// revocations since applied again (docs/10-operations.md, "Backup and restore").
+func restoreCommand() *cli.Command {
+	var configPath, in string
+	var logs []string
+	return &cli.Command{
+		Name:    "restore",
+		Summary: "restore the controller from a backup",
+		Flags: func(fs *flag.FlagSet) {
+			fs.StringVar(&in, "in", "", "the archive of rpmgr backup (required)")
+			fs.Func("revocation-log", "the revocation-log sink directory, or a replica's revocations.log; repeat for each (default the state directory's revocations.log)",
+				func(s string) error { logs = append(logs, s); return nil })
+			fs.StringVar(&configPath, "config", "", "the controller's boot file, or all-in-one's (default $RPMGR_CONFIG, else /etc/rpmgr/controller.yaml)")
+		},
+		Run: func(ctx context.Context, env *cli.Env, _ []string) error {
+			if in == "" {
+				return cli.Usagef("restore needs --in")
+			}
+			r, err := controller.Restore(ctx, controller.RestoreOptions{ConfigPath: config.Path(configPath, "controller", env.Getenv),
+				Archive: in, RevocationLogs: logs})
+			if err != nil {
+				return err
+			}
+			_, err = fmt.Fprintf(env.Stdout, "Restored the backup of %s taken %s: new epoch %s (was %s).\n"+
+				"Applied %d revocations since the backup again; %d of them name something the backup does not hold.\n"+
+				"Every session, enrollment token, reset link and open invitation of the backup is invalidated.\n"+
+				"The replaced files are kept with the suffix %s. Start one controller, check /readyz, then the others;\n"+
+				"re-enroll agents enrolled after the backup.\n",
+				r.TrustDomain, r.Backup.UTC().Format(time.RFC3339), r.NewEpoch, r.OldEpoch, r.Reapplied, r.Unknown, r.Previous)
+			return err
+		},
+		Sub: []*cli.Command{leaf("confirm", "end the instance-wide restore review")},
 	}
 }
 

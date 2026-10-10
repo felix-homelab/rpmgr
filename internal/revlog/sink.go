@@ -86,9 +86,10 @@ func (s Sink) Read() ([]SinkEntry, error) {
 }
 
 // Ship copies the entries of the local log at path that the sink does not hold yet for replica
-// into the sink, in order. What a replica has shipped is read from the sink itself, so a crash
-// between publishing an entry and anything else ships nothing twice. It returns the entries still
-// unshipped, none when it succeeds.
+// into the sink, in order. What a replica has shipped is read from the sink itself, by the
+// entries' hashes, so a crash between publishing an entry and anything else ships nothing twice,
+// and the entries a restore appended to a restored log are shipped although their numbers were
+// taken before. It returns the entries still unshipped, none when it succeeds.
 func (s Sink) Ship(path, replica string) ([]Entry, error) {
 	local, err := Read(path)
 	if err != nil {
@@ -96,15 +97,20 @@ func (s Sink) Ship(path, replica string) ([]Entry, error) {
 	}
 	sink, err := s.Read()
 	if err != nil {
-		return pending(local, 0), err
+		return local, err
 	}
-	var shipped uint64
+	shipped := map[string]bool{}
 	for _, e := range sink {
 		if e.Replica == replica {
-			shipped = max(shipped, e.Entry.Seq)
+			shipped[e.Entry.Hash] = true
 		}
 	}
-	todo := pending(local, shipped)
+	var todo []Entry
+	for _, e := range local {
+		if !shipped[e.Hash] {
+			todo = append(todo, e)
+		}
+	}
 	for len(todo) > 0 {
 		next, prev := uint64(len(sink))+1, ""
 		if len(sink) > 0 {
@@ -127,16 +133,6 @@ func (s Sink) Ship(path, replica string) ([]Entry, error) {
 		sink, todo = append(sink, e), todo[1:]
 	}
 	return nil, nil
-}
-
-// pending returns the local entries after seq.
-func pending(local []Entry, seq uint64) []Entry {
-	for i, e := range local {
-		if e.Seq > seq {
-			return local[i:]
-		}
-	}
-	return nil
 }
 
 // publish writes e to a temporary file, syncs it, and links it to its number; taken reports that

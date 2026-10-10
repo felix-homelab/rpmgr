@@ -90,6 +90,8 @@ type Tx struct {
 	ResourceStatus *ResourceStatusClient
 	// RevokedIdentity is the client for interacting with the RevokedIdentity builders.
 	RevokedIdentity *RevokedIdentityClient
+	// RevokedSerial is the client for interacting with the RevokedSerial builders.
+	RevokedSerial *RevokedSerialClient
 	// Route is the client for interacting with the Route builders.
 	Route *RouteClient
 	// RouteHTTP is the client for interacting with the RouteHTTP builders.
@@ -287,6 +289,7 @@ func (tx *Tx) init() {
 	tx.RecoveryCode = NewRecoveryCodeClient(tx.config)
 	tx.ResourceStatus = NewResourceStatusClient(tx.config)
 	tx.RevokedIdentity = NewRevokedIdentityClient(tx.config)
+	tx.RevokedSerial = NewRevokedSerialClient(tx.config)
 	tx.Route = NewRouteClient(tx.config)
 	tx.RouteHTTP = NewRouteHTTPClient(tx.config)
 	tx.RouteHostname = NewRouteHostnameClient(tx.config)

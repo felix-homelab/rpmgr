@@ -50,6 +50,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/recoverycode"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/resourcestatus"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/revokedidentity"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/revokedserial"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/route"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routehostname"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routehttp"
@@ -113,6 +114,7 @@ const (
 	TypeRecoveryCode       = "RecoveryCode"
 	TypeResourceStatus     = "ResourceStatus"
 	TypeRevokedIdentity    = "RevokedIdentity"
+	TypeRevokedSerial      = "RevokedSerial"
 	TypeRoute              = "Route"
 	TypeRouteHTTP          = "RouteHTTP"
 	TypeRouteHostname      = "RouteHostname"
@@ -28546,6 +28548,522 @@ func (m *RevokedIdentityMutation) ClearEdge(name string) error {
 // It returns an error if the edge is not defined in the schema.
 func (m *RevokedIdentityMutation) ResetEdge(name string) error {
 	return fmt.Errorf("unknown RevokedIdentity edge %s", name)
+}
+
+// RevokedSerialMutation represents an operation that mutates the RevokedSerial nodes in the graph.
+type RevokedSerialMutation struct {
+	config
+	op            Op
+	typ           string
+	id            *string
+	org_id        *string
+	revoked_at    *time.Time
+	reason        *string
+	not_after     *time.Time
+	clearedFields map[string]struct{}
+	done          bool
+	oldValue      func(context.Context) (*RevokedSerial, error)
+	predicates    []predicate.RevokedSerial
+}
+
+var _ ent.Mutation = (*RevokedSerialMutation)(nil)
+
+// revokedserialOption allows management of the mutation configuration using functional options.
+type revokedserialOption func(*RevokedSerialMutation)
+
+// newRevokedSerialMutation creates new mutation for the RevokedSerial entity.
+func newRevokedSerialMutation(c config, op Op, opts ...revokedserialOption) *RevokedSerialMutation {
+	m := &RevokedSerialMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeRevokedSerial,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withRevokedSerialID sets the ID field of the mutation.
+func withRevokedSerialID(id string) revokedserialOption {
+	return func(m *RevokedSerialMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *RevokedSerial
+		)
+		m.oldValue = func(ctx context.Context) (*RevokedSerial, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().RevokedSerial.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withRevokedSerial sets the old RevokedSerial of the mutation.
+func withRevokedSerial(node *RevokedSerial) revokedserialOption {
+	return func(m *RevokedSerialMutation) {
+		m.oldValue = func(context.Context) (*RevokedSerial, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m RevokedSerialMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m RevokedSerialMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// SetID sets the value of the id field. Note that this
+// operation is only accepted on creation of RevokedSerial entities.
+func (m *RevokedSerialMutation) SetID(id string) {
+	m.id = &id
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *RevokedSerialMutation) ID() (id string, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *RevokedSerialMutation) IDs(ctx context.Context) ([]string, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []string{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().RevokedSerial.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetOrgID sets the "org_id" field.
+func (m *RevokedSerialMutation) SetOrgID(s string) {
+	m.org_id = &s
+}
+
+// OrgID returns the value of the "org_id" field in the mutation.
+func (m *RevokedSerialMutation) OrgID() (r string, exists bool) {
+	v := m.org_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldOrgID returns the old "org_id" field's value of the RevokedSerial entity.
+// If the RevokedSerial object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RevokedSerialMutation) OldOrgID(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldOrgID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldOrgID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldOrgID: %w", err)
+	}
+	return oldValue.OrgID, nil
+}
+
+// ClearOrgID clears the value of the "org_id" field.
+func (m *RevokedSerialMutation) ClearOrgID() {
+	m.org_id = nil
+	m.clearedFields[revokedserial.FieldOrgID] = struct{}{}
+}
+
+// OrgIDCleared returns if the "org_id" field was cleared in this mutation.
+func (m *RevokedSerialMutation) OrgIDCleared() bool {
+	_, ok := m.clearedFields[revokedserial.FieldOrgID]
+	return ok
+}
+
+// ResetOrgID resets all changes to the "org_id" field.
+func (m *RevokedSerialMutation) ResetOrgID() {
+	m.org_id = nil
+	delete(m.clearedFields, revokedserial.FieldOrgID)
+}
+
+// SetRevokedAt sets the "revoked_at" field.
+func (m *RevokedSerialMutation) SetRevokedAt(t time.Time) {
+	m.revoked_at = &t
+}
+
+// RevokedAt returns the value of the "revoked_at" field in the mutation.
+func (m *RevokedSerialMutation) RevokedAt() (r time.Time, exists bool) {
+	v := m.revoked_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRevokedAt returns the old "revoked_at" field's value of the RevokedSerial entity.
+// If the RevokedSerial object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RevokedSerialMutation) OldRevokedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRevokedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRevokedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRevokedAt: %w", err)
+	}
+	return oldValue.RevokedAt, nil
+}
+
+// ResetRevokedAt resets all changes to the "revoked_at" field.
+func (m *RevokedSerialMutation) ResetRevokedAt() {
+	m.revoked_at = nil
+}
+
+// SetReason sets the "reason" field.
+func (m *RevokedSerialMutation) SetReason(s string) {
+	m.reason = &s
+}
+
+// Reason returns the value of the "reason" field in the mutation.
+func (m *RevokedSerialMutation) Reason() (r string, exists bool) {
+	v := m.reason
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldReason returns the old "reason" field's value of the RevokedSerial entity.
+// If the RevokedSerial object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RevokedSerialMutation) OldReason(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldReason is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldReason requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldReason: %w", err)
+	}
+	return oldValue.Reason, nil
+}
+
+// ResetReason resets all changes to the "reason" field.
+func (m *RevokedSerialMutation) ResetReason() {
+	m.reason = nil
+}
+
+// SetNotAfter sets the "not_after" field.
+func (m *RevokedSerialMutation) SetNotAfter(t time.Time) {
+	m.not_after = &t
+}
+
+// NotAfter returns the value of the "not_after" field in the mutation.
+func (m *RevokedSerialMutation) NotAfter() (r time.Time, exists bool) {
+	v := m.not_after
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldNotAfter returns the old "not_after" field's value of the RevokedSerial entity.
+// If the RevokedSerial object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RevokedSerialMutation) OldNotAfter(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldNotAfter is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldNotAfter requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldNotAfter: %w", err)
+	}
+	return oldValue.NotAfter, nil
+}
+
+// ResetNotAfter resets all changes to the "not_after" field.
+func (m *RevokedSerialMutation) ResetNotAfter() {
+	m.not_after = nil
+}
+
+// Where appends a list predicates to the RevokedSerialMutation builder.
+func (m *RevokedSerialMutation) Where(ps ...predicate.RevokedSerial) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the RevokedSerialMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *RevokedSerialMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.RevokedSerial, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *RevokedSerialMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *RevokedSerialMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (RevokedSerial).
+func (m *RevokedSerialMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *RevokedSerialMutation) Fields() []string {
+	fields := make([]string, 0, 4)
+	if m.org_id != nil {
+		fields = append(fields, revokedserial.FieldOrgID)
+	}
+	if m.revoked_at != nil {
+		fields = append(fields, revokedserial.FieldRevokedAt)
+	}
+	if m.reason != nil {
+		fields = append(fields, revokedserial.FieldReason)
+	}
+	if m.not_after != nil {
+		fields = append(fields, revokedserial.FieldNotAfter)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *RevokedSerialMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case revokedserial.FieldOrgID:
+		return m.OrgID()
+	case revokedserial.FieldRevokedAt:
+		return m.RevokedAt()
+	case revokedserial.FieldReason:
+		return m.Reason()
+	case revokedserial.FieldNotAfter:
+		return m.NotAfter()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *RevokedSerialMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case revokedserial.FieldOrgID:
+		return m.OldOrgID(ctx)
+	case revokedserial.FieldRevokedAt:
+		return m.OldRevokedAt(ctx)
+	case revokedserial.FieldReason:
+		return m.OldReason(ctx)
+	case revokedserial.FieldNotAfter:
+		return m.OldNotAfter(ctx)
+	}
+	return nil, fmt.Errorf("unknown RevokedSerial field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *RevokedSerialMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case revokedserial.FieldOrgID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetOrgID(v)
+		return nil
+	case revokedserial.FieldRevokedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRevokedAt(v)
+		return nil
+	case revokedserial.FieldReason:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetReason(v)
+		return nil
+	case revokedserial.FieldNotAfter:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetNotAfter(v)
+		return nil
+	}
+	return fmt.Errorf("unknown RevokedSerial field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *RevokedSerialMutation) AddedFields() []string {
+	return nil
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *RevokedSerialMutation) AddedField(name string) (ent.Value, bool) {
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *RevokedSerialMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	}
+	return fmt.Errorf("unknown RevokedSerial numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *RevokedSerialMutation) ClearedFields() []string {
+	var fields []string
+	if m.FieldCleared(revokedserial.FieldOrgID) {
+		fields = append(fields, revokedserial.FieldOrgID)
+	}
+	return fields
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *RevokedSerialMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *RevokedSerialMutation) ClearField(name string) error {
+	switch name {
+	case revokedserial.FieldOrgID:
+		m.ClearOrgID()
+		return nil
+	}
+	return fmt.Errorf("unknown RevokedSerial nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *RevokedSerialMutation) ResetField(name string) error {
+	switch name {
+	case revokedserial.FieldOrgID:
+		m.ResetOrgID()
+		return nil
+	case revokedserial.FieldRevokedAt:
+		m.ResetRevokedAt()
+		return nil
+	case revokedserial.FieldReason:
+		m.ResetReason()
+		return nil
+	case revokedserial.FieldNotAfter:
+		m.ResetNotAfter()
+		return nil
+	}
+	return fmt.Errorf("unknown RevokedSerial field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *RevokedSerialMutation) AddedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *RevokedSerialMutation) AddedIDs(name string) []ent.Value {
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *RevokedSerialMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *RevokedSerialMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *RevokedSerialMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *RevokedSerialMutation) EdgeCleared(name string) bool {
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *RevokedSerialMutation) ClearEdge(name string) error {
+	return fmt.Errorf("unknown RevokedSerial unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *RevokedSerialMutation) ResetEdge(name string) error {
+	return fmt.Errorf("unknown RevokedSerial edge %s", name)
 }
 
 // RouteMutation represents an operation that mutates the Route nodes in the graph.

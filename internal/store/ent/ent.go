@@ -50,6 +50,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/recoverycode"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/resourcestatus"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/revokedidentity"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/revokedserial"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/route"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routehostname"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routehttp"
@@ -162,6 +163,7 @@ func checkColumn(t, c string) error {
 			recoverycode.Table:       recoverycode.ValidColumn,
 			resourcestatus.Table:     resourcestatus.ValidColumn,
 			revokedidentity.Table:    revokedidentity.ValidColumn,
+			revokedserial.Table:      revokedserial.ValidColumn,
 			route.Table:              route.ValidColumn,
 			routehttp.Table:          routehttp.ValidColumn,
 			routehostname.Table:      routehostname.ValidColumn,

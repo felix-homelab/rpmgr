@@ -465,6 +465,18 @@ func (f RevokedIdentityFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Va
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.RevokedIdentityMutation", m)
 }
 
+// The RevokedSerialFunc type is an adapter to allow the use of ordinary
+// function as RevokedSerial mutator.
+type RevokedSerialFunc func(context.Context, *ent.RevokedSerialMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f RevokedSerialFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.RevokedSerialMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.RevokedSerialMutation", m)
+}
+
 // The RouteFunc type is an adapter to allow the use of ordinary
 // function as Route mutator.
 type RouteFunc func(context.Context, *ent.RouteMutation) (ent.Value, error)

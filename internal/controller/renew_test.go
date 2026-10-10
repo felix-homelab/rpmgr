@@ -25,6 +25,7 @@ import (
 	rpmgrv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/v1"
 	"github.com/felix-homelab/rpmgr/internal/ids"
 	"github.com/felix-homelab/rpmgr/internal/pki"
+	"github.com/felix-homelab/rpmgr/internal/revlog"
 	"github.com/felix-homelab/rpmgr/internal/settings"
 	"github.com/felix-homelab/rpmgr/internal/store"
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
@@ -224,7 +225,7 @@ func TestRenew_Binding(t *testing.T) {
 // through reauth.controller.<td>, also when a newer certificate was issued but its Renew response
 // was lost; one expired longer, one with grace 0, a revoked serial and a revoked identity are
 // refused at the TLS layer, and the normal control endpoint never accepts an expired certificate.
-// (After a restore: 11.6.)
+// After a restore, revocations since the backup still refuse.
 func TestReauth_ExpiredWithinGrace(t *testing.T) {
 	storetest.ForEachDialect(t, func(t *testing.T, db *store.DB) {
 		e := startSessions(t, db, "0.1.0", 0)
@@ -254,16 +255,7 @@ func TestReauth_ExpiredWithinGrace(t *testing.T) {
 			t.Fatal("no session with the re-issued certificate")
 		}
 
-		// Refused by the TLS layer: the connection fails, no handler answers.
-		refused := func(name string, cert tls.Certificate) {
-			t.Helper()
-			rc, _ := e.dial(t, cert, reauthName(e), false)
-			key, _ := pki.NewKey()
-			der, _ := x509.CreateCertificateRequest(rand.Reader, &x509.CertificateRequest{}, key)
-			if _, err := agentv1.NewReauthClient(rc).Reauth(testCtx(t), &agentv1.ReauthRequest{Csr: der}); code(err) != codes.Unavailable {
-				t.Errorf("%s: %v, want a refused connection", name, err)
-			}
-		}
+		refused := func(name string, cert tls.Certificate) { t.Helper(); e.reauthRefused(t, name, cert) }
 		refused("expired beyond the grace period", e.certAt(t, e.newIdentity(), time.Now().Add(-40*24*time.Hour)))
 
 		revoked := e.certAt(t, e.newIdentity(), time.Now().Add(-8*24*time.Hour))
@@ -286,11 +278,57 @@ func TestReauth_ExpiredWithinGrace(t *testing.T) {
 		}
 		refused("grace 0", e.certAt(t, e.newIdentity(), time.Now().Add(-8*24*time.Hour)))
 	})
+
+	// After a restore (SQLite, as backups are): a certificate of the backup that expired since is
+	// re-issued; one revoked after the backup, one of an identity revoked after it, and one issued
+	// after it are refused, the last revoked or not.
+	x := startRestoreEnv(t, storetest.Migrated(t, store.SQLite))
+	id := x.newIdentity()
+	expired := x.certAt(t, id, time.Now().Add(-8*24*time.Hour))
+	revoked := x.certAt(t, x.newIdentity(), time.Now().Add(-8*24*time.Hour))
+	gone := x.newIdentity()
+	ofRevokedIdentity := x.certAt(t, gone, time.Now().Add(-8*24*time.Hour))
+	archive := x.backup(t)
+	if err := x.revoker.RevokeCertificate(x.sys, pki.SerialHex(revoked.Leaf.SerialNumber), "key leaked", admin); err != nil {
+		t.Fatal(err)
+	}
+	if err := x.revoker.RevokeIdentity(x.sys, gone, "decommissioned", admin); err != nil {
+		t.Fatal(err)
+	}
+	late := x.certAt(t, x.newIdentity(), time.Now().Add(-8*24*time.Hour))
+	if err := x.revoker.RevokeCertificate(x.sys, pki.SerialHex(late.Leaf.SerialNumber), "host lost", admin); err != nil {
+		t.Fatal(err)
+	}
+	unknown := x.certAt(t, x.newIdentity(), time.Now().Add(-8*24*time.Hour))
+	r, _ := x.restore(t, archive)
+	rc, c := r.dial(t, expired, reauthName(r.sessionEnv), true)
+	key, csr := c.boundCSR(t)
+	resp, err := agentv1.NewReauthClient(rc).Reauth(testCtx(t), &agentv1.ReauthRequest{Csr: csr})
+	if err != nil {
+		t.Fatalf("after a restore: %v", err)
+	}
+	r.renewed(t, resp.GetChain(), id, key)
+	r.reauthRefused(t, "after a restore, revoked after the backup", revoked)
+	r.reauthRefused(t, "after a restore, of an identity revoked after the backup", ofRevokedIdentity)
+	r.reauthRefused(t, "after a restore, issued and revoked after the backup", late)
+	r.reauthRefused(t, "after a restore, issued after the backup", unknown)
+}
+
+// reauthRefused checks that Reauth with cert is refused by the TLS layer: the connection fails,
+// no handler answers.
+func (e *sessionEnv) reauthRefused(t *testing.T, name string, cert tls.Certificate) {
+	t.Helper()
+	rc, _ := e.dial(t, cert, reauthName(e), false)
+	key, _ := pki.NewKey()
+	der, _ := x509.CreateCertificateRequest(rand.Reader, &x509.CertificateRequest{}, key)
+	if _, err := agentv1.NewReauthClient(rc).Reauth(testCtx(t), &agentv1.ReauthRequest{Csr: der}); code(err) != codes.Unavailable {
+		t.Errorf("%s: %v, want a refused connection", name, err)
+	}
 }
 
 // TestReauth_SupersededSerialRefused: after a newer certificate of the same identity was used in a
 // session, Reauth with the older one, as a leaked key or a cloned VM would present it, is refused.
-// (After a restore: 11.6.)
+// So it is after a restore.
 func TestReauth_SupersededSerialRefused(t *testing.T) {
 	storetest.ForEachDialect(t, func(t *testing.T, db *store.DB) {
 		e := startSessions(t, db, "0.1.0", 0)
@@ -304,11 +342,31 @@ func TestReauth_SupersededSerialRefused(t *testing.T) {
 		if err := e.renewable(t, old); !errors.Is(err, pki.ErrSuperseded) {
 			t.Fatalf("the older certificate: %v", err)
 		}
-		rc, _ := e.dial(t, old, reauthName(e), false)
-		key, _ := pki.NewKey()
-		der, _ := x509.CreateCertificateRequest(rand.Reader, &x509.CertificateRequest{}, key)
-		if _, err := agentv1.NewReauthClient(rc).Reauth(testCtx(t), &agentv1.ReauthRequest{Csr: der}); code(err) != codes.Unavailable {
-			t.Fatalf("Reauth with a superseded certificate: %v, want a refused connection", err)
-		}
+		e.reauthRefused(t, "Reauth with a superseded certificate", old)
 	})
+
+	// After a restore of a backup taken before the newer serial was seen, the mark comes back
+	// from the revocation log.
+	x := startRestoreEnv(t, storetest.Migrated(t, store.SQLite))
+	id := x.newIdentity()
+	old := x.certAt(t, id, time.Now().Add(-8*24*time.Hour))
+	current := x.certAt(t, id, time.Now().Add(-time.Hour))
+	archive := x.backup(t)
+	st := x.open(t, testCtx(t), current, hello("0.1.0"))
+	if recv(t, st).GetWelcome() == nil {
+		t.Fatal("no session")
+	}
+	for deadline := time.Now().Add(5 * time.Second); ; time.Sleep(10 * time.Millisecond) {
+		if es, _ := revlog.Read(x.logPath); len(es) == 1 && es[0].Kind == revlog.CertificateSuperseded {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("the supersession was not logged")
+		}
+	}
+	r, _ := x.restore(t, archive)
+	if err := r.renewable(t, old); !errors.Is(err, pki.ErrSuperseded) {
+		t.Fatalf("after a restore, the older certificate: %v", err)
+	}
+	r.reauthRefused(t, "after a restore, Reauth with a superseded certificate", old)
 }

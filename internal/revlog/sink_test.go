@@ -61,6 +61,46 @@ func TestSinkShips(t *testing.T) {
 	}
 }
 
+// TestSinkShipsRestoredLog: a restore puts an older log back and appends to it, so new entries
+// take numbers the replica shipped before; they are shipped all the same, and the entries the sink
+// holds already are not shipped twice.
+func TestSinkShipsRestoredLog(t *testing.T) {
+	path, _ := logWith(t, "ses_1", "ses_2", "ses_3")
+	sink := revlog.Sink{Dir: t.TempDir()}
+	if _, err := sink.Ship(path, "node-a"); err != nil {
+		t.Fatal(err)
+	}
+	b, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	first := strings.SplitAfter(string(b), "\n")[0]
+	if err := os.WriteFile(path, []byte(first), 0o600); err != nil { //nolint:gosec // G703: the test's temporary log, now the backup's: ses_1
+		t.Fatal(err)
+	}
+	l, err := revlog.Open(path, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := l.Append(revlog.Entry{Kind: revlog.APITokenRevoked, Subject: "tok_after"}); err != nil { // number 2 again
+		t.Fatal(err)
+	}
+	if left, err := sink.Ship(path, "node-a"); err != nil || len(left) != 0 {
+		t.Fatalf("ship: %v %v", left, err)
+	}
+	got, err := sink.Read()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var subjects []string
+	for _, e := range got {
+		subjects = append(subjects, e.Entry.Subject)
+	}
+	if strings.Join(subjects, " ") != "ses_1 ses_2 ses_3 tok_after" {
+		t.Errorf("sink holds %v", subjects)
+	}
+}
+
 // TestSinkReplicas: two replicas ship into one sink; the numbers stay gapless and each replica's
 // entries keep their order.
 func TestSinkReplicas(t *testing.T) {

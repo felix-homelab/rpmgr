@@ -430,8 +430,9 @@ affect agents take effect through reconciliation and show apply status like any 
     - **Publishing:** each entry is written to a temporary file, synced, then hard-linked to its
       number; the link fails when the number exists, so a crash leaves no empty number.
     - **Contents:** an entry holds the replica, its local entry and the sink's own hash chain.
-    - **Shipping:** every 10 s; a replica finds what it has shipped in the sink itself, so nothing is
-      shipped twice.
+    - **Shipping:** every 10 s; a replica finds what it has shipped in the sink itself, by the
+      entries' hashes, so nothing is shipped twice, and the entries a restore appends to a restored
+      log are shipped although their numbers were used before.
     - **State:** `GetInstanceSettings` reports it as `revocation_log`, and the metrics below
       ([Metrics](#metrics)).
     - [R] A boot setting, not a runtime setting as the settings table lists. The share has to be
@@ -445,10 +446,22 @@ affect agents take effect through reconciliation and show apply status like any 
     refuses to start without one ([High availability](#high-availability)).
 - **Restore side effects**, applied automatically:
   - the restore merges the sink with every reachable replica's local log, checks the sink's hash
-    chain, then re-applies every entry newer than the backup;
-  - all sessions and all **unused enrollment tokens** from the backup are invalidated (a token
-    consumed after the backup would otherwise become usable again);
-  - agents enrolled after the backup are unknown and must re-enroll;
+    chain, then re-applies every entry newer than the backup, with its original time and reason;
+    without `--revocation-log` it reads the local `revocations.log` of the host it runs on. The
+    re-applied entries are appended to the restored local log, so a later restore finds them
+    without the sink.
+  - **Re-applying:** a revoked certificate the backup does not hold, because it was issued after
+    the backup, stays on the deny-list until it expires; so does a revoked identity of an org created
+    after the backup. A role downgrade never raises a role. A password changed after the backup is
+    cleared and must be reset; an authenticator or recovery codes changed after it must be set up
+    again, because the backup's may be the very ones that were compromised.
+  - all sessions and every **enrollment token** from the backup that can still be used are
+    invalidated (a token consumed after the backup would otherwise become usable again). [R] So are
+    unused password-reset links and open invitations, which are one-time credentials too.
+  - agents enrolled after the backup are unknown and must re-enroll. An agent that renewed its
+    certificate after the backup keeps its control session, but `Renew` and `Reauth` refuse a
+    certificate the restored database does not record
+    ([04](04-security.md#leaf-certificates)): re-enroll it before its certificate expires;
   - every managed DNS zone starts **held**: nothing is written at a DNS provider until an Owner or
     Admin approves the zone's plan, which shows records created or deleted since the backup
     ([15](15-dns.md#held-zones-and-plan-approval)). `rpmgr restore --dns-disabled` disables DNS
@@ -463,6 +476,11 @@ affect agents take effect through reconciliation and show apply status like any 
   - the instance-wide review is ended by the **Instance Admin** with a local CLI command on the
     controller host, `rpmgr restore confirm`. An org Owner cannot end it, because restored Owner
     memberships are exactly what is in doubt.
+- **Running the restore:** every controller must be stopped; the restore takes the controller lock
+  and refuses while a controller holds it. It prepares the restored database and logs next to the
+  live ones (`*.restoring`) and renames them into place only when every step succeeded, so a failed
+  restore changes nothing. The replaced database and logs stay in the state directory with the
+  suffix `.before-restore-<time>`; delete them once the restored controller runs.
 - [R] Back up daily and before every controller upgrade; test a restore at least quarterly.
 
 ## High availability
@@ -708,7 +726,8 @@ Each runbook: **symptoms → steps → done when**.
   re-confirms their own org's memberships and roles and re-enables API tokens and service accounts
   one by one; users reset passwords and re-verify MFA; the **Instance Admin** ends the instance-wide
   review on the controller host with `rpmgr restore confirm`. Re-enroll agents enrolled after the
-  backup; tell users that sessions were invalidated ([Backup and restore](#backup-and-restore)).
+  backup, and agents that renewed their certificate after it, before that certificate expires; tell
+  users that sessions were invalidated ([Backup and restore](#backup-and-restore)).
 - **Done when**: agents report `applied` under the new epoch and restore review (if entered) is
   closed by the Instance Admin.
 
