@@ -988,18 +988,29 @@ func init() {
 		})
 	}
 	domainMixinHooks0 := domainMixin[0].Hooks()
+	domainMixinHooks1 := domainMixin[1].Hooks()
 
 	domain.Hooks[1] = domainMixinHooks0[0]
+
+	domain.Hooks[2] = domainMixinHooks1[0]
 	domainMixinInters0 := domainMixin[0].Interceptors()
 	domain.Interceptors[0] = domainMixinInters0[0]
 	domainMixinFields0 := domainMixin[0].Fields()
 	_ = domainMixinFields0
+	domainMixinFields1 := domainMixin[1].Fields()
+	_ = domainMixinFields1
 	domainFields := schema.Domain{}.Fields()
 	_ = domainFields
 	// domainDescOrgID is the schema descriptor for org_id field.
 	domainDescOrgID := domainMixinFields0[0].Descriptor()
 	// domain.OrgIDValidator is a validator for the "org_id" field. It is called by the builders before save.
 	domain.OrgIDValidator = domainDescOrgID.Validators[0].(func(string) error)
+	// domainDescVersion is the schema descriptor for version field.
+	domainDescVersion := domainMixinFields1[0].Descriptor()
+	// domain.DefaultVersion holds the default value on creation for the version field.
+	domain.DefaultVersion = domainDescVersion.Default.(int64)
+	// domain.VersionValidator is a validator for the "version" field. It is called by the builders before save.
+	domain.VersionValidator = domainDescVersion.Validators[0].(func(int64) error)
 	// domainDescFqdn is the schema descriptor for fqdn field.
 	domainDescFqdn := domainFields[1].Descriptor()
 	// domain.FqdnValidator is a validator for the "fqdn" field. It is called by the builders before save.
@@ -1030,12 +1041,12 @@ func init() {
 	domainDescCreatedAt := domainFields[6].Descriptor()
 	// domain.DefaultCreatedAt holds the default value on creation for the created_at field.
 	domain.DefaultCreatedAt = domainDescCreatedAt.Default.(func() time.Time)
-	// domainDescVersion is the schema descriptor for version field.
-	domainDescVersion := domainFields[9].Descriptor()
-	// domain.DefaultVersion holds the default value on creation for the version field.
-	domain.DefaultVersion = domainDescVersion.Default.(int64)
-	// domain.VersionValidator is a validator for the "version" field. It is called by the builders before save.
-	domain.VersionValidator = domainDescVersion.Validators[0].(func(int64) error)
+	// domainDescLastError is the schema descriptor for last_error field.
+	domainDescLastError := domainFields[9].Descriptor()
+	// domain.DefaultLastError holds the default value on creation for the last_error field.
+	domain.DefaultLastError = domainDescLastError.Default.(string)
+	// domain.LastErrorValidator is a validator for the "last_error" field. It is called by the builders before save.
+	domain.LastErrorValidator = domainDescLastError.Validators[0].(func(string) error)
 	// domainDescID is the schema descriptor for id field.
 	domainDescID := domainFields[0].Descriptor()
 	// domain.DefaultID holds the default value on creation for the id field.

@@ -19,6 +19,8 @@ type Domain struct {
 	ID string `json:"id,omitempty"`
 	// OrgID holds the value of the "org_id" field.
 	OrgID string `json:"org_id,omitempty"`
+	// Version holds the value of the "version" field.
+	Version int64 `json:"version,omitempty"`
 	// Fqdn holds the value of the "fqdn" field.
 	Fqdn string `json:"fqdn,omitempty"`
 	// Wildcard holds the value of the "wildcard" field.
@@ -35,8 +37,8 @@ type Domain struct {
 	VerifiedAt *time.Time `json:"verified_at,omitempty"`
 	// LastCheckedAt holds the value of the "last_checked_at" field.
 	LastCheckedAt *time.Time `json:"last_checked_at,omitempty"`
-	// Version holds the value of the "version" field.
-	Version      int64 `json:"version,omitempty"`
+	// LastError holds the value of the "last_error" field.
+	LastError    string `json:"last_error,omitempty"`
 	selectValues sql.SelectValues
 }
 
@@ -49,7 +51,7 @@ func (*Domain) scanValues(columns []string) ([]any, error) {
 			values[i] = new(sql.NullBool)
 		case domain.FieldVersion:
 			values[i] = new(sql.NullInt64)
-		case domain.FieldID, domain.FieldOrgID, domain.FieldFqdn, domain.FieldStatus, domain.FieldMethod, domain.FieldChallengeValue:
+		case domain.FieldID, domain.FieldOrgID, domain.FieldFqdn, domain.FieldStatus, domain.FieldMethod, domain.FieldChallengeValue, domain.FieldLastError:
 			values[i] = new(sql.NullString)
 		case domain.FieldCreatedAt, domain.FieldVerifiedAt, domain.FieldLastCheckedAt:
 			values[i] = new(sql.NullTime)
@@ -79,6 +81,12 @@ func (_m *Domain) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field org_id", values[i])
 			} else if value.Valid {
 				_m.OrgID = value.String
+			}
+		case domain.FieldVersion:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field version", values[i])
+			} else if value.Valid {
+				_m.Version = value.Int64
 			}
 		case domain.FieldFqdn:
 			if value, ok := values[i].(*sql.NullString); !ok {
@@ -130,11 +138,11 @@ func (_m *Domain) assignValues(columns []string, values []any) error {
 				_m.LastCheckedAt = new(time.Time)
 				*_m.LastCheckedAt = value.Time
 			}
-		case domain.FieldVersion:
-			if value, ok := values[i].(*sql.NullInt64); !ok {
-				return fmt.Errorf("unexpected type %T for field version", values[i])
+		case domain.FieldLastError:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field last_error", values[i])
 			} else if value.Valid {
-				_m.Version = value.Int64
+				_m.LastError = value.String
 			}
 		default:
 			_m.selectValues.Set(columns[i], values[i])
@@ -175,6 +183,9 @@ func (_m *Domain) String() string {
 	builder.WriteString("org_id=")
 	builder.WriteString(_m.OrgID)
 	builder.WriteString(", ")
+	builder.WriteString("version=")
+	builder.WriteString(fmt.Sprintf("%v", _m.Version))
+	builder.WriteString(", ")
 	builder.WriteString("fqdn=")
 	builder.WriteString(_m.Fqdn)
 	builder.WriteString(", ")
@@ -203,8 +214,8 @@ func (_m *Domain) String() string {
 		builder.WriteString(v.Format(time.ANSIC))
 	}
 	builder.WriteString(", ")
-	builder.WriteString("version=")
-	builder.WriteString(fmt.Sprintf("%v", _m.Version))
+	builder.WriteString("last_error=")
+	builder.WriteString(_m.LastError)
 	builder.WriteByte(')')
 	return builder.String()
 }

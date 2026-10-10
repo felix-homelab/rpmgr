@@ -275,6 +275,10 @@ verify call does not list permissions: a zone where the provider refuses access 
 - **Authoritative answers.** The `_rpmgr-challenge` TXT record is queried at the zone's
   authoritative nameservers, not through the controller's resolver. Split-horizon DNS and negative
   caching would otherwise give wrong answers. This applies to managed and manual domains alike.
+  The zone's nameservers are the NS records of the closest name, from the claim upwards, that has
+  any; only they are looked up through the resolver. Each is asked without recursion, and only an
+  answer with the authority flag counts; the value may be split into several strings. A claim
+  keeps the error of its last check, such as no authoritative answer or a wrong value.
 - **Managed zones publish the TXT themselves** for pending claims of the same org (publication rule
   2). The proof is still the public answer, so verification means the same thing with or without a
   provider.
@@ -383,7 +387,8 @@ type Provider interface {
 | Drift stop window | a record corrected twice within 1 h is no longer corrected |
 | Adopted-original staleness warning | 30 days |
 | `default_ttl` | 300 s; proxied records: automatic |
-| Pending-claim checks | every 1 min for 15 min, then every 15 min; `failed` after 7 days |
+| Pending-claim checks | every 1 min for 15 min, then every 15 min; `failed` after 7 days; [R] by one controller node, 8 checks at once |
+| [R] TXT proof query | 5 s per nameserver address, over UDP and again over TCP when truncated; at most 8 nameservers of a zone |
 | Token check | every 1 h; expiry warning 14 days ahead |
 | Cloudflare IP ranges | refreshed every 24 h; accepted only if non-empty and at most half of the entries changed |
 | DNS-01 propagation timeout | 2 min (certmagic default [F certmagic:solvers.go:532]) |

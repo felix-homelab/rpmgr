@@ -26,6 +26,20 @@ func (_c *DomainCreate) SetOrgID(v string) *DomainCreate {
 	return _c
 }
 
+// SetVersion sets the "version" field.
+func (_c *DomainCreate) SetVersion(v int64) *DomainCreate {
+	_c.mutation.SetVersion(v)
+	return _c
+}
+
+// SetNillableVersion sets the "version" field if the given value is not nil.
+func (_c *DomainCreate) SetNillableVersion(v *int64) *DomainCreate {
+	if v != nil {
+		_c.SetVersion(*v)
+	}
+	return _c
+}
+
 // SetFqdn sets the "fqdn" field.
 func (_c *DomainCreate) SetFqdn(v string) *DomainCreate {
 	_c.mutation.SetFqdn(v)
@@ -122,16 +136,16 @@ func (_c *DomainCreate) SetNillableLastCheckedAt(v *time.Time) *DomainCreate {
 	return _c
 }
 
-// SetVersion sets the "version" field.
-func (_c *DomainCreate) SetVersion(v int64) *DomainCreate {
-	_c.mutation.SetVersion(v)
+// SetLastError sets the "last_error" field.
+func (_c *DomainCreate) SetLastError(v string) *DomainCreate {
+	_c.mutation.SetLastError(v)
 	return _c
 }
 
-// SetNillableVersion sets the "version" field if the given value is not nil.
-func (_c *DomainCreate) SetNillableVersion(v *int64) *DomainCreate {
+// SetNillableLastError sets the "last_error" field if the given value is not nil.
+func (_c *DomainCreate) SetNillableLastError(v *string) *DomainCreate {
 	if v != nil {
-		_c.SetVersion(*v)
+		_c.SetLastError(*v)
 	}
 	return _c
 }
@@ -187,6 +201,10 @@ func (_c *DomainCreate) ExecX(ctx context.Context) {
 
 // defaults sets the default values of the builder before save.
 func (_c *DomainCreate) defaults() error {
+	if _, ok := _c.mutation.Version(); !ok {
+		v := domain.DefaultVersion
+		_c.mutation.SetVersion(v)
+	}
 	if _, ok := _c.mutation.Wildcard(); !ok {
 		v := domain.DefaultWildcard
 		_c.mutation.SetWildcard(v)
@@ -206,9 +224,9 @@ func (_c *DomainCreate) defaults() error {
 		v := domain.DefaultCreatedAt()
 		_c.mutation.SetCreatedAt(v)
 	}
-	if _, ok := _c.mutation.Version(); !ok {
-		v := domain.DefaultVersion
-		_c.mutation.SetVersion(v)
+	if _, ok := _c.mutation.LastError(); !ok {
+		v := domain.DefaultLastError
+		_c.mutation.SetLastError(v)
 	}
 	if _, ok := _c.mutation.ID(); !ok {
 		if domain.DefaultID == nil {
@@ -228,6 +246,14 @@ func (_c *DomainCreate) check() error {
 	if v, ok := _c.mutation.OrgID(); ok {
 		if err := domain.OrgIDValidator(v); err != nil {
 			return &ValidationError{Name: "org_id", err: fmt.Errorf(`ent: validator failed for field "Domain.org_id": %w`, err)}
+		}
+	}
+	if _, ok := _c.mutation.Version(); !ok {
+		return &ValidationError{Name: "version", err: errors.New(`ent: missing required field "Domain.version"`)}
+	}
+	if v, ok := _c.mutation.Version(); ok {
+		if err := domain.VersionValidator(v); err != nil {
+			return &ValidationError{Name: "version", err: fmt.Errorf(`ent: validator failed for field "Domain.version": %w`, err)}
 		}
 	}
 	if _, ok := _c.mutation.Fqdn(); !ok {
@@ -268,12 +294,12 @@ func (_c *DomainCreate) check() error {
 	if _, ok := _c.mutation.CreatedAt(); !ok {
 		return &ValidationError{Name: "created_at", err: errors.New(`ent: missing required field "Domain.created_at"`)}
 	}
-	if _, ok := _c.mutation.Version(); !ok {
-		return &ValidationError{Name: "version", err: errors.New(`ent: missing required field "Domain.version"`)}
+	if _, ok := _c.mutation.LastError(); !ok {
+		return &ValidationError{Name: "last_error", err: errors.New(`ent: missing required field "Domain.last_error"`)}
 	}
-	if v, ok := _c.mutation.Version(); ok {
-		if err := domain.VersionValidator(v); err != nil {
-			return &ValidationError{Name: "version", err: fmt.Errorf(`ent: validator failed for field "Domain.version": %w`, err)}
+	if v, ok := _c.mutation.LastError(); ok {
+		if err := domain.LastErrorValidator(v); err != nil {
+			return &ValidationError{Name: "last_error", err: fmt.Errorf(`ent: validator failed for field "Domain.last_error": %w`, err)}
 		}
 	}
 	if v, ok := _c.mutation.ID(); ok {
@@ -320,6 +346,10 @@ func (_c *DomainCreate) createSpec() (*Domain, *sqlgraph.CreateSpec) {
 		_spec.SetField(domain.FieldOrgID, field.TypeString, value)
 		_node.OrgID = value
 	}
+	if value, ok := _c.mutation.Version(); ok {
+		_spec.SetField(domain.FieldVersion, field.TypeInt64, value)
+		_node.Version = value
+	}
 	if value, ok := _c.mutation.Fqdn(); ok {
 		_spec.SetField(domain.FieldFqdn, field.TypeString, value)
 		_node.Fqdn = value
@@ -352,9 +382,9 @@ func (_c *DomainCreate) createSpec() (*Domain, *sqlgraph.CreateSpec) {
 		_spec.SetField(domain.FieldLastCheckedAt, field.TypeTime, value)
 		_node.LastCheckedAt = &value
 	}
-	if value, ok := _c.mutation.Version(); ok {
-		_spec.SetField(domain.FieldVersion, field.TypeInt64, value)
-		_node.Version = value
+	if value, ok := _c.mutation.LastError(); ok {
+		_spec.SetField(domain.FieldLastError, field.TypeString, value)
+		_node.LastError = value
 	}
 	return _node, _spec
 }

@@ -1,0 +1,214 @@
+// SPDX-License-Identifier: Apache-2.0
+
+syntax = "proto3";
+
+package rpmgr.v1;
+
+import "buf/validate/validate.proto";
+import "google/protobuf/timestamp.proto";
+import "rpmgr/v1/options.proto";
+
+option go_package = "github.com/felix-homelab/rpmgr/gen/rpmgr/v1;rpmgrv1";
+
+// DomainService is an org's domain claims (docs/07-api.md, "Services"; docs/04-security.md,
+// "Route and hostname ownership"). A route's hostnames must lie under a verified domain of its org,
+// and a claimed name is unique in the instance.
+service DomainService {
+  // CreateDomain claims a domain for the org, pending its proof.
+  rpc CreateDomain(CreateDomainRequest) returns (CreateDomainResponse) {
+    option (rpmgr.v1.authz) = {
+      permission: "infrastructure.write"
+      resource_field: "org_id"
+    };
+  }
+  // GetDomain returns a domain claim with the proof it waits for.
+  rpc GetDomain(GetDomainRequest) returns (GetDomainResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+    option (rpmgr.v1.authz) = {
+      permission: "org.read"
+      resource_field: "domain_id"
+    };
+  }
+  // ListDomains lists an org's domain claims by ID.
+  rpc ListDomains(ListDomainsRequest) returns (ListDomainsResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+    option (rpmgr.v1.authz) = {
+      permission: "org.read"
+      resource_field: "org_id"
+    };
+  }
+  // VerifyDomain checks a claim's proof now, as the schedule does later on its own.
+  rpc VerifyDomain(VerifyDomainRequest) returns (VerifyDomainResponse) {
+    option (rpmgr.v1.authz) = {
+      permission: "infrastructure.write"
+      resource_field: "domain_id"
+    };
+  }
+  // DeleteDomain gives a claim up; refused while route hostnames lie under it.
+  rpc DeleteDomain(DeleteDomainRequest) returns (DeleteDomainResponse) {
+    option (rpmgr.v1.authz) = {
+      permission: "infrastructure.write"
+      resource_field: "domain_id"
+    };
+  }
+  // MarkDomainTrusted verifies a claim without a proof (method trusted, D13). Only an Instance
+  // Admin, after a step-up.
+  rpc MarkDomainTrusted(MarkDomainTrustedRequest) returns (MarkDomainTrustedResponse) {
+    option (rpmgr.v1.authz) = {
+      permission: "instance.admin"
+      step_up: true
+    };
+  }
+}
+
+// DomainStatus is where a claim stands.
+enum DomainStatus {
+  // Not set.
+  DOMAIN_STATUS_UNSPECIFIED = 0;
+  // Waiting for its proof.
+  DOMAIN_STATUS_PENDING = 1;
+  // Waiting for an Instance Admin's approval (Phase 2).
+  DOMAIN_STATUS_PENDING_APPROVAL = 2;
+  // Proved; routes may use names under it.
+  DOMAIN_STATUS_VERIFIED = 3;
+  // Not proved within 7 days.
+  DOMAIN_STATUS_FAILED = 4;
+}
+
+// DomainMethod is how a claim is proved.
+enum DomainMethod {
+  // Not set: a DNS TXT record.
+  DOMAIN_METHOD_UNSPECIFIED = 0;
+  // A TXT record at _rpmgr-challenge.<fqdn>, read at the zone's authoritative nameservers.
+  DOMAIN_METHOD_DNS_TXT = 1;
+  // A token the org's own gateways serve for the name (R17).
+  DOMAIN_METHOD_HTTP = 2;
+  // Marked trusted by an Instance Admin; output only.
+  DOMAIN_METHOD_TRUSTED = 3;
+  // Delegated by an Instance Admin (Phase 2); output only.
+  DOMAIN_METHOD_DELEGATED = 4;
+}
+
+// Domain is one domain claim.
+message Domain {
+  // The claim's ID, dom_…; output only.
+  string id = 1;
+  // The name, lower case without a trailing dot; set at creation.
+  string fqdn = 2;
+  // Whether it covers every name below fqdn too; set at creation.
+  bool wildcard = 3;
+  // Where it stands; output only.
+  DomainStatus status = 4;
+  // How it is proved; set at creation.
+  DomainMethod method = 5 [(buf.validate.field).enum = {
+    defined_only: true
+    in: [
+      0,
+      1,
+      2
+    ]
+  }];
+  // The proof a pending claim waits for; output only.
+  DomainChallenge challenge = 6;
+  // When it was verified; output only.
+  google.protobuf.Timestamp verify_time = 7;
+  // When its proof was last checked; output only.
+  google.protobuf.Timestamp last_check_time = 8;
+  // When it was claimed; output only.
+  google.protobuf.Timestamp create_time = 9;
+  // The version to send back with a deletion; output only.
+  string etag = 10;
+  // Why the last check found no proof; output only.
+  string last_error = 11;
+}
+
+// DomainChallenge is what proves a claim: the TXT record, or the HTTP token.
+message DomainChallenge {
+  // The name of the TXT record: _rpmgr-challenge.<fqdn>.
+  string txt_name = 1;
+  // The value both the TXT record and the HTTP token must carry.
+  string value = 2;
+  // The URL at which the org's gateways serve the HTTP token.
+  string http_url = 3;
+}
+
+// CreateDomainRequest is a new claim.
+message CreateDomainRequest {
+  // The org.
+  string org_id = 1 [(buf.validate.field).string.min_len = 1];
+  // The claim: its fqdn, wildcard and method.
+  Domain domain = 2 [(buf.validate.field).required = true];
+  // Makes retries idempotent (docs/07-api.md, "Resource design").
+  string request_id = 3 [(buf.validate.field).string.max_len = 128];
+}
+
+// CreateDomainResponse is the new claim with its challenge.
+message CreateDomainResponse {
+  // The claim.
+  Domain domain = 1;
+}
+
+// GetDomainRequest names a claim.
+message GetDomainRequest {
+  // The claim's ID.
+  string domain_id = 1 [(buf.validate.field).string.min_len = 1];
+}
+
+// GetDomainResponse is the claim.
+message GetDomainResponse {
+  // The claim.
+  Domain domain = 1;
+}
+
+// ListDomainsRequest pages through an org's claims.
+message ListDomainsRequest {
+  // The org.
+  string org_id = 1 [(buf.validate.field).string.min_len = 1];
+  // At most this many, 50 if not set, 500 at most.
+  int32 page_size = 2;
+  // The page after the one that returned it.
+  string page_token = 3;
+}
+
+// ListDomainsResponse is one page of claims.
+message ListDomainsResponse {
+  // The claims.
+  repeated Domain domains = 1;
+  // The token of the next page; empty after the last.
+  string next_page_token = 2;
+}
+
+// VerifyDomainRequest names a claim.
+message VerifyDomainRequest {
+  // The claim's ID.
+  string domain_id = 1 [(buf.validate.field).string.min_len = 1];
+}
+
+// VerifyDomainResponse is the claim after the check.
+message VerifyDomainResponse {
+  // The claim: verified, or still pending with last_error.
+  Domain domain = 1;
+}
+
+// DeleteDomainRequest names a claim.
+message DeleteDomainRequest {
+  // The claim's ID.
+  string domain_id = 1 [(buf.validate.field).string.min_len = 1];
+  // The etag the caller read; empty skips the check.
+  string etag = 2;
+}
+
+// DeleteDomainResponse is empty.
+message DeleteDomainResponse {}
+
+// MarkDomainTrustedRequest names a claim.
+message MarkDomainTrustedRequest {
+  // The claim's ID, of any org.
+  string domain_id = 1 [(buf.validate.field).string.min_len = 1];
+}
+
+// MarkDomainTrustedResponse is the verified claim.
+message MarkDomainTrustedResponse {
+  // The claim.
+  Domain domain = 1;
+}

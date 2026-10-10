@@ -12758,6 +12758,8 @@ type DomainMutation struct {
 	typ             string
 	id              *string
 	org_id          *string
+	version         *int64
+	addversion      *int64
 	fqdn            *string
 	wildcard        *bool
 	status          *domain.Status
@@ -12766,8 +12768,7 @@ type DomainMutation struct {
 	created_at      *time.Time
 	verified_at     *time.Time
 	last_checked_at *time.Time
-	version         *int64
-	addversion      *int64
+	last_error      *string
 	clearedFields   map[string]struct{}
 	done            bool
 	oldValue        func(context.Context) (*Domain, error)
@@ -12912,6 +12913,62 @@ func (m *DomainMutation) OldOrgID(ctx context.Context) (v string, err error) {
 // ResetOrgID resets all changes to the "org_id" field.
 func (m *DomainMutation) ResetOrgID() {
 	m.org_id = nil
+}
+
+// SetVersion sets the "version" field.
+func (m *DomainMutation) SetVersion(i int64) {
+	m.version = &i
+	m.addversion = nil
+}
+
+// Version returns the value of the "version" field in the mutation.
+func (m *DomainMutation) Version() (r int64, exists bool) {
+	v := m.version
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldVersion returns the old "version" field's value of the Domain entity.
+// If the Domain object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *DomainMutation) OldVersion(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldVersion is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldVersion requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldVersion: %w", err)
+	}
+	return oldValue.Version, nil
+}
+
+// AddVersion adds i to the "version" field.
+func (m *DomainMutation) AddVersion(i int64) {
+	if m.addversion != nil {
+		*m.addversion += i
+	} else {
+		m.addversion = &i
+	}
+}
+
+// AddedVersion returns the value that was added to the "version" field in this mutation.
+func (m *DomainMutation) AddedVersion() (r int64, exists bool) {
+	v := m.addversion
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetVersion resets all changes to the "version" field.
+func (m *DomainMutation) ResetVersion() {
+	m.version = nil
+	m.addversion = nil
 }
 
 // SetFqdn sets the "fqdn" field.
@@ -13228,60 +13285,40 @@ func (m *DomainMutation) ResetLastCheckedAt() {
 	delete(m.clearedFields, domain.FieldLastCheckedAt)
 }
 
-// SetVersion sets the "version" field.
-func (m *DomainMutation) SetVersion(i int64) {
-	m.version = &i
-	m.addversion = nil
+// SetLastError sets the "last_error" field.
+func (m *DomainMutation) SetLastError(s string) {
+	m.last_error = &s
 }
 
-// Version returns the value of the "version" field in the mutation.
-func (m *DomainMutation) Version() (r int64, exists bool) {
-	v := m.version
+// LastError returns the value of the "last_error" field in the mutation.
+func (m *DomainMutation) LastError() (r string, exists bool) {
+	v := m.last_error
 	if v == nil {
 		return
 	}
 	return *v, true
 }
 
-// OldVersion returns the old "version" field's value of the Domain entity.
+// OldLastError returns the old "last_error" field's value of the Domain entity.
 // If the Domain object wasn't provided to the builder, the object is fetched from the database.
 // An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *DomainMutation) OldVersion(ctx context.Context) (v int64, err error) {
+func (m *DomainMutation) OldLastError(ctx context.Context) (v string, err error) {
 	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldVersion is only allowed on UpdateOne operations")
+		return v, errors.New("OldLastError is only allowed on UpdateOne operations")
 	}
 	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldVersion requires an ID field in the mutation")
+		return v, errors.New("OldLastError requires an ID field in the mutation")
 	}
 	oldValue, err := m.oldValue(ctx)
 	if err != nil {
-		return v, fmt.Errorf("querying old value for OldVersion: %w", err)
+		return v, fmt.Errorf("querying old value for OldLastError: %w", err)
 	}
-	return oldValue.Version, nil
+	return oldValue.LastError, nil
 }
 
-// AddVersion adds i to the "version" field.
-func (m *DomainMutation) AddVersion(i int64) {
-	if m.addversion != nil {
-		*m.addversion += i
-	} else {
-		m.addversion = &i
-	}
-}
-
-// AddedVersion returns the value that was added to the "version" field in this mutation.
-func (m *DomainMutation) AddedVersion() (r int64, exists bool) {
-	v := m.addversion
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// ResetVersion resets all changes to the "version" field.
-func (m *DomainMutation) ResetVersion() {
-	m.version = nil
-	m.addversion = nil
+// ResetLastError resets all changes to the "last_error" field.
+func (m *DomainMutation) ResetLastError() {
+	m.last_error = nil
 }
 
 // Where appends a list predicates to the DomainMutation builder.
@@ -13318,9 +13355,12 @@ func (m *DomainMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *DomainMutation) Fields() []string {
-	fields := make([]string, 0, 10)
+	fields := make([]string, 0, 11)
 	if m.org_id != nil {
 		fields = append(fields, domain.FieldOrgID)
+	}
+	if m.version != nil {
+		fields = append(fields, domain.FieldVersion)
 	}
 	if m.fqdn != nil {
 		fields = append(fields, domain.FieldFqdn)
@@ -13346,8 +13386,8 @@ func (m *DomainMutation) Fields() []string {
 	if m.last_checked_at != nil {
 		fields = append(fields, domain.FieldLastCheckedAt)
 	}
-	if m.version != nil {
-		fields = append(fields, domain.FieldVersion)
+	if m.last_error != nil {
+		fields = append(fields, domain.FieldLastError)
 	}
 	return fields
 }
@@ -13359,6 +13399,8 @@ func (m *DomainMutation) Field(name string) (ent.Value, bool) {
 	switch name {
 	case domain.FieldOrgID:
 		return m.OrgID()
+	case domain.FieldVersion:
+		return m.Version()
 	case domain.FieldFqdn:
 		return m.Fqdn()
 	case domain.FieldWildcard:
@@ -13375,8 +13417,8 @@ func (m *DomainMutation) Field(name string) (ent.Value, bool) {
 		return m.VerifiedAt()
 	case domain.FieldLastCheckedAt:
 		return m.LastCheckedAt()
-	case domain.FieldVersion:
-		return m.Version()
+	case domain.FieldLastError:
+		return m.LastError()
 	}
 	return nil, false
 }
@@ -13388,6 +13430,8 @@ func (m *DomainMutation) OldField(ctx context.Context, name string) (ent.Value, 
 	switch name {
 	case domain.FieldOrgID:
 		return m.OldOrgID(ctx)
+	case domain.FieldVersion:
+		return m.OldVersion(ctx)
 	case domain.FieldFqdn:
 		return m.OldFqdn(ctx)
 	case domain.FieldWildcard:
@@ -13404,8 +13448,8 @@ func (m *DomainMutation) OldField(ctx context.Context, name string) (ent.Value, 
 		return m.OldVerifiedAt(ctx)
 	case domain.FieldLastCheckedAt:
 		return m.OldLastCheckedAt(ctx)
-	case domain.FieldVersion:
-		return m.OldVersion(ctx)
+	case domain.FieldLastError:
+		return m.OldLastError(ctx)
 	}
 	return nil, fmt.Errorf("unknown Domain field %s", name)
 }
@@ -13421,6 +13465,13 @@ func (m *DomainMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetOrgID(v)
+		return nil
+	case domain.FieldVersion:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetVersion(v)
 		return nil
 	case domain.FieldFqdn:
 		v, ok := value.(string)
@@ -13478,12 +13529,12 @@ func (m *DomainMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetLastCheckedAt(v)
 		return nil
-	case domain.FieldVersion:
-		v, ok := value.(int64)
+	case domain.FieldLastError:
+		v, ok := value.(string)
 		if !ok {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
-		m.SetVersion(v)
+		m.SetLastError(v)
 		return nil
 	}
 	return fmt.Errorf("unknown Domain field %s", name)
@@ -13567,6 +13618,9 @@ func (m *DomainMutation) ResetField(name string) error {
 	case domain.FieldOrgID:
 		m.ResetOrgID()
 		return nil
+	case domain.FieldVersion:
+		m.ResetVersion()
+		return nil
 	case domain.FieldFqdn:
 		m.ResetFqdn()
 		return nil
@@ -13591,8 +13645,8 @@ func (m *DomainMutation) ResetField(name string) error {
 	case domain.FieldLastCheckedAt:
 		m.ResetLastCheckedAt()
 		return nil
-	case domain.FieldVersion:
-		m.ResetVersion()
+	case domain.FieldLastError:
+		m.ResetLastError()
 		return nil
 	}
 	return fmt.Errorf("unknown Domain field %s", name)
