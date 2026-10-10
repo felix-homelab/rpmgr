@@ -9,7 +9,8 @@
     "overview": "Overview",
     "routes": "Routes",
     "connectors": "Connectors",
-    "gateways": "Gateways"
+    "gateways": "Gateways",
+    "domains": "Domains & certificates"
   },
   "overview": {
     "title": "Overview",
@@ -492,5 +493,102 @@
     "token": "Enrollment token…",
     "tokenIntro": "A token that enrolls {{name}} and nothing else, valid for 1 hour. Making it needs you to confirm it is you.",
     "decommissionWarning": "Decommissioning {{name}} revokes its identity and ends its sessions for good; its tunnel endpoints stop serving."
+  },
+  "pools": {
+    "title": "Port pools",
+    "none": "The group has no port pool: TCP and UDP routes have no public ports.",
+    "add": "Add a port pool",
+    "addTitle": "New port pool",
+    "editTitle": "Edit port pool",
+    "addSubmit": "Add the pool",
+    "protocol": "Protocol",
+    "from": "First port",
+    "to": "Last port",
+    "range": "Ports are 1 to 65535, the first no larger than the last.",
+    "ask": "Remove the pool {{name}}?",
+    "quotas": "Port quotas",
+    "quotasIntro": "How many ports of the group's pools the org's routes may hold. Empty: the pools alone limit them.",
+    "quotaOf": "{{protocol}} quota",
+    "quotaLabel": "{{protocol}} ports at most",
+    "noQuota": "no quota",
+    "quotaRange": "A quota is 0 to 65535 ports.",
+    "allocated_one": "{{count}} in use",
+    "allocated_other": "{{count}} in use"
+  },
+  "domains": {
+    "title": "Domains",
+    "claim": "Claim a domain",
+    "claimTitle": "Claim a domain",
+    "claimSubmit": "Claim it",
+    "none": "The org has no domain claim. Routes need a verified domain for their hostnames.",
+    "fqdn": "Domain",
+    "wildcard": "Also every name below it",
+    "method": "How to prove it is yours",
+    "methods": {
+      "txt": "A DNS TXT record",
+      "http": "An HTTP token, served by your gateways"
+    },
+    "methodName": {
+      "DNS_TXT": "TXT record",
+      "HTTP": "HTTP token",
+      "TRUSTED": "trusted by the Instance Admin",
+      "DELEGATED": "delegated zone"
+    },
+    "status": {
+      "unknown": "unknown",
+      "pending": "pending",
+      "pendingApproval": "waiting for approval",
+      "verified": "verified",
+      "failed": "failed"
+    },
+    "checked": "checked {{when}}",
+    "txtHow": "Create this TXT record at your DNS provider, then check now:",
+    "txtName": "TXT record name",
+    "value": "Value",
+    "httpHow": "Point the name at one of the org's gateways; they serve the token at {{url}}. Then check now. The token is:",
+    "check": "Check now",
+    "trust": "Mark as trusted",
+    "ask": "Remove the claim for {{name}}?"
+  },
+  "pem": {
+    "file": "Or read it from a file:",
+    "fileSecret": "Or read it from a file; it stays in this page until you send it:"
+  },
+  "certs": {
+    "title": "Certificates",
+    "upload": "Upload a certificate",
+    "uploadTitle": "Upload a certificate",
+    "uploadSubmit": "Upload",
+    "none": "The org has no certificate yet. HTTP routes with ACME get theirs on their own.",
+    "chain": "Certificate chain (PEM, the certificate first)",
+    "key": "Private key (PEM)",
+    "acme": "from ACME",
+    "uploaded": "uploaded",
+    "status": {
+      "UNSPECIFIED": "unknown",
+      "PENDING": "being obtained",
+      "ACTIVE": "active",
+      "FAILED": "failed"
+    },
+    "expires": "expires {{when}}",
+    "endingSoon": "expires soon: {{when}}",
+    "usedBy": "used by {{routes}}",
+    "renew": "Renew now",
+    "renewing": "Renewal started.",
+    "renewQueued": "A renewal is under way already.",
+    "ask": "Remove the certificate for {{name}}?"
+  },
+  "bundles": {
+    "title": "CA bundles",
+    "add": "Add a CA bundle",
+    "addTitle": "New CA bundle",
+    "editTitle": "Edit CA bundle",
+    "addSubmit": "Add the bundle",
+    "none": "The org has no CA bundle. HTTPS targets are verified with the system's roots unless they name one.",
+    "pem": "CA certificates (PEM)",
+    "cert": "{{subject}}, expires {{when}}",
+    "targets_one": "used by {{count}} target",
+    "targets_other": "used by {{count}} targets",
+    "ask": "Remove the CA bundle {{name}}?"
   }
 }

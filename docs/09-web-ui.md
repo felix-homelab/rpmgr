@@ -204,6 +204,37 @@ flowchart LR
     bound to that gateway and valid for 1 hour, and is shown once next to the install command,
     which does not hold it.
   - **After each change,** the apply status follows live.
+- **Port pools and quotas** on a group's page:
+  - the group's TCP and UDP port pools, from which TCP and UDP routes get their public ports;
+  - a pool is added, its range changed, or removed after a confirmation that names it;
+  - a range is checked first: 1 to 65535, the first port no larger than the last;
+  - per protocol, the org's quota of the group's ports, with how many are in use. An empty quota is
+    removed, so that the pools alone limit the org.
+
+### Domains and certificates
+
+- **Domains** (`/domains`):
+  - **Each claim:** its name (`*.` for a wildcard), status with an icon and text, method, last
+    check and last error.
+  - **A pending or failed claim shows the proof it waits for (U4):** the TXT record's name and
+    value, or the URL at which the org's gateways serve the HTTP token and its value, each with a
+    copy button. "Check now" checks it at once.
+  - **Claiming** takes the name, whether names below it are covered, and the method (TXT record or
+    HTTP token). The name is lower-cased, without a trailing dot.
+  - **Removal** comes after a confirmation that names the claim.
+  - **The Instance Admin** can mark a claim trusted after a step-up
+    ([15](15-dns.md)).
+- **Certificates**, on the same page:
+  - **Each certificate:** its names, source (ACME or uploaded), status, expiry and issuer, its last
+    error, and the routes that use it. An expiry within 21 days is pointed out.
+  - **Uploading** takes the chain and the private key as PEM, pasted or read from a file in the
+    browser. The key leaves the page once it is sent.
+  - **An ACME certificate** can be renewed now.
+  - **Removal** comes after a confirmation that names the certificate. The server refuses a
+    certificate that routes use, and says which.
+- **CA bundles,** which HTTPS targets verify their upstreams with: each with its certificates'
+  subjects and expiry and how many targets use it. A bundle is added, changed (name and PEM, as the
+  whole bundle as read with mask and etag), or removed after a confirmation.
 
 ### Enroll connector dialog
 
