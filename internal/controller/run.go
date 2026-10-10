@@ -302,6 +302,12 @@ func Run(ctx context.Context, o RunOptions) error {
 		}); err != nil {
 		return err
 	}
+	if err := apiServer.Mount(mux, rpmgrv1.File_rpmgr_v1_metrics_proto.Services().ByName("MetricsService"),
+		func(opts ...connect.HandlerOption) (string, http.Handler) {
+			return rpmgrv1connect.NewMetricsServiceHandler(&apisvc.Metrics{DB: db, Now: o.Now}, opts...)
+		}); err != nil {
+		return err
+	}
 	if err := apiServer.Mount(mux, rpmgrv1.File_rpmgr_v1_audit_proto.Services().ByName("AuditService"),
 		func(opts ...connect.HandlerOption) (string, http.Handler) {
 			return rpmgrv1connect.NewAuditServiceHandler(&apisvc.Audit{DB: db, Sys: sys, API: apiServer}, opts...)
@@ -385,6 +391,8 @@ func Run(ctx context.Context, o RunOptions) error {
 		Leases: leases, Now: o.Now, Logger: o.Logger}
 	go leases.Run(sys, CheckpointJob(cpOpts), func(err error) { o.Logger.Warn("audit checkpoint job", "error", err) })
 	go leases.Run(sys, RetentionJob(cpOpts), func(err error) { o.Logger.Warn("audit retention job", "error", err) })
+	go leases.Run(sys, RollupJob(RollupOptions{DB: db, Leases: leases, Now: o.Now, Logger: o.Logger}),
+		func(err error) { o.Logger.Warn("traffic rollup job", "error", err) })
 	go ReloadCA(sys, caOpts)
 	go RenewNodeCertificate(sys, NodeCertOptions{CA: ca, DB: db, Sys: sys, NodeID: nodeID, Holder: holder, Now: o.Now, Logger: o.Logger})
 	serve("agent endpoint", func() error { return agents.Serve(split.Agents()) })

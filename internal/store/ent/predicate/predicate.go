@@ -138,6 +138,12 @@ type RouteTCP func(*sql.Selector)
 // RouteTarget is the predicate function for routetarget builders.
 type RouteTarget func(*sql.Selector)
 
+// RouteTrafficDaily is the predicate function for routetrafficdaily builders.
+type RouteTrafficDaily func(*sql.Selector)
+
+// RouteTrafficHourly is the predicate function for routetraffichourly builders.
+type RouteTrafficHourly func(*sql.Selector)
+
 // RouteUDP is the predicate function for routeudp builders.
 type RouteUDP func(*sql.Selector)
 
@@ -149,6 +155,9 @@ type Session func(*sql.Selector)
 
 // TOTPCredential is the predicate function for totpcredential builders.
 type TOTPCredential func(*sql.Selector)
+
+// TrafficBaseline is the predicate function for trafficbaseline builders.
+type TrafficBaseline func(*sql.Selector)
 
 // User is the predicate function for user builders.
 type User func(*sql.Selector)

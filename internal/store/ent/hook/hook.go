@@ -537,6 +537,30 @@ func (f RouteTargetFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value,
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.RouteTargetMutation", m)
 }
 
+// The RouteTrafficDailyFunc type is an adapter to allow the use of ordinary
+// function as RouteTrafficDaily mutator.
+type RouteTrafficDailyFunc func(context.Context, *ent.RouteTrafficDailyMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f RouteTrafficDailyFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.RouteTrafficDailyMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.RouteTrafficDailyMutation", m)
+}
+
+// The RouteTrafficHourlyFunc type is an adapter to allow the use of ordinary
+// function as RouteTrafficHourly mutator.
+type RouteTrafficHourlyFunc func(context.Context, *ent.RouteTrafficHourlyMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f RouteTrafficHourlyFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.RouteTrafficHourlyMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.RouteTrafficHourlyMutation", m)
+}
+
 // The RouteUDPFunc type is an adapter to allow the use of ordinary
 // function as RouteUDP mutator.
 type RouteUDPFunc func(context.Context, *ent.RouteUDPMutation) (ent.Value, error)
@@ -583,6 +607,18 @@ func (f TOTPCredentialFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Val
 		return f(ctx, mv)
 	}
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.TOTPCredentialMutation", m)
+}
+
+// The TrafficBaselineFunc type is an adapter to allow the use of ordinary
+// function as TrafficBaseline mutator.
+type TrafficBaselineFunc func(context.Context, *ent.TrafficBaselineMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f TrafficBaselineFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.TrafficBaselineMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.TrafficBaselineMutation", m)
 }
 
 // The UserFunc type is an adapter to allow the use of ordinary

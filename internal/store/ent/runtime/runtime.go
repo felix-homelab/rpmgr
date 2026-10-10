@@ -50,11 +50,14 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routepolicy"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routetarget"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routetcp"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/routetrafficdaily"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/routetraffichourly"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routeudp"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/schema"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/secretmeta"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/session"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/totpcredential"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/trafficbaseline"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/user"
 
 	"entgo.io/ent"
@@ -2539,6 +2542,132 @@ func init() {
 			return nil
 		}
 	}()
+	routetrafficdailyMixin := schema.RouteTrafficDaily{}.Mixin()
+	routetrafficdaily.Policy = privacy.NewPolicies(routetrafficdailyMixin[0], schema.RouteTrafficDaily{})
+	routetrafficdaily.Hooks[0] = func(next ent.Mutator) ent.Mutator {
+		return ent.MutateFunc(func(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+			if err := routetrafficdaily.Policy.EvalMutation(ctx, m); err != nil {
+				return nil, err
+			}
+			return next.Mutate(ctx, m)
+		})
+	}
+	routetrafficdailyMixinHooks0 := routetrafficdailyMixin[0].Hooks()
+
+	routetrafficdaily.Hooks[1] = routetrafficdailyMixinHooks0[0]
+	routetrafficdailyMixinInters0 := routetrafficdailyMixin[0].Interceptors()
+	routetrafficdaily.Interceptors[0] = routetrafficdailyMixinInters0[0]
+	routetrafficdailyMixinFields0 := routetrafficdailyMixin[0].Fields()
+	_ = routetrafficdailyMixinFields0
+	routetrafficdailyFields := schema.RouteTrafficDaily{}.Fields()
+	_ = routetrafficdailyFields
+	// routetrafficdailyDescOrgID is the schema descriptor for org_id field.
+	routetrafficdailyDescOrgID := routetrafficdailyMixinFields0[0].Descriptor()
+	// routetrafficdaily.OrgIDValidator is a validator for the "org_id" field. It is called by the builders before save.
+	routetrafficdaily.OrgIDValidator = routetrafficdailyDescOrgID.Validators[0].(func(string) error)
+	// routetrafficdailyDescRouteID is the schema descriptor for route_id field.
+	routetrafficdailyDescRouteID := routetrafficdailyFields[1].Descriptor()
+	// routetrafficdaily.RouteIDValidator is a validator for the "route_id" field. It is called by the builders before save.
+	routetrafficdaily.RouteIDValidator = routetrafficdailyDescRouteID.Validators[0].(func(string) error)
+	// routetrafficdailyDescBytesIn is the schema descriptor for bytes_in field.
+	routetrafficdailyDescBytesIn := routetrafficdailyFields[3].Descriptor()
+	// routetrafficdaily.BytesInValidator is a validator for the "bytes_in" field. It is called by the builders before save.
+	routetrafficdaily.BytesInValidator = routetrafficdailyDescBytesIn.Validators[0].(func(int64) error)
+	// routetrafficdailyDescBytesOut is the schema descriptor for bytes_out field.
+	routetrafficdailyDescBytesOut := routetrafficdailyFields[4].Descriptor()
+	// routetrafficdaily.BytesOutValidator is a validator for the "bytes_out" field. It is called by the builders before save.
+	routetrafficdaily.BytesOutValidator = routetrafficdailyDescBytesOut.Validators[0].(func(int64) error)
+	// routetrafficdailyDescConnections is the schema descriptor for connections field.
+	routetrafficdailyDescConnections := routetrafficdailyFields[5].Descriptor()
+	// routetrafficdaily.ConnectionsValidator is a validator for the "connections" field. It is called by the builders before save.
+	routetrafficdaily.ConnectionsValidator = routetrafficdailyDescConnections.Validators[0].(func(int64) error)
+	// routetrafficdailyDescErrors is the schema descriptor for errors field.
+	routetrafficdailyDescErrors := routetrafficdailyFields[6].Descriptor()
+	// routetrafficdaily.ErrorsValidator is a validator for the "errors" field. It is called by the builders before save.
+	routetrafficdaily.ErrorsValidator = routetrafficdailyDescErrors.Validators[0].(func(int64) error)
+	// routetrafficdailyDescID is the schema descriptor for id field.
+	routetrafficdailyDescID := routetrafficdailyFields[0].Descriptor()
+	// routetrafficdaily.DefaultID holds the default value on creation for the id field.
+	routetrafficdaily.DefaultID = routetrafficdailyDescID.Default.(func() string)
+	// routetrafficdaily.IDValidator is a validator for the "id" field. It is called by the builders before save.
+	routetrafficdaily.IDValidator = func() func(string) error {
+		validators := routetrafficdailyDescID.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(id string) error {
+			for _, fn := range fns {
+				if err := fn(id); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	routetraffichourlyMixin := schema.RouteTrafficHourly{}.Mixin()
+	routetraffichourly.Policy = privacy.NewPolicies(routetraffichourlyMixin[0], schema.RouteTrafficHourly{})
+	routetraffichourly.Hooks[0] = func(next ent.Mutator) ent.Mutator {
+		return ent.MutateFunc(func(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+			if err := routetraffichourly.Policy.EvalMutation(ctx, m); err != nil {
+				return nil, err
+			}
+			return next.Mutate(ctx, m)
+		})
+	}
+	routetraffichourlyMixinHooks0 := routetraffichourlyMixin[0].Hooks()
+
+	routetraffichourly.Hooks[1] = routetraffichourlyMixinHooks0[0]
+	routetraffichourlyMixinInters0 := routetraffichourlyMixin[0].Interceptors()
+	routetraffichourly.Interceptors[0] = routetraffichourlyMixinInters0[0]
+	routetraffichourlyMixinFields0 := routetraffichourlyMixin[0].Fields()
+	_ = routetraffichourlyMixinFields0
+	routetraffichourlyFields := schema.RouteTrafficHourly{}.Fields()
+	_ = routetraffichourlyFields
+	// routetraffichourlyDescOrgID is the schema descriptor for org_id field.
+	routetraffichourlyDescOrgID := routetraffichourlyMixinFields0[0].Descriptor()
+	// routetraffichourly.OrgIDValidator is a validator for the "org_id" field. It is called by the builders before save.
+	routetraffichourly.OrgIDValidator = routetraffichourlyDescOrgID.Validators[0].(func(string) error)
+	// routetraffichourlyDescRouteID is the schema descriptor for route_id field.
+	routetraffichourlyDescRouteID := routetraffichourlyFields[1].Descriptor()
+	// routetraffichourly.RouteIDValidator is a validator for the "route_id" field. It is called by the builders before save.
+	routetraffichourly.RouteIDValidator = routetraffichourlyDescRouteID.Validators[0].(func(string) error)
+	// routetraffichourlyDescBytesIn is the schema descriptor for bytes_in field.
+	routetraffichourlyDescBytesIn := routetraffichourlyFields[3].Descriptor()
+	// routetraffichourly.BytesInValidator is a validator for the "bytes_in" field. It is called by the builders before save.
+	routetraffichourly.BytesInValidator = routetraffichourlyDescBytesIn.Validators[0].(func(int64) error)
+	// routetraffichourlyDescBytesOut is the schema descriptor for bytes_out field.
+	routetraffichourlyDescBytesOut := routetraffichourlyFields[4].Descriptor()
+	// routetraffichourly.BytesOutValidator is a validator for the "bytes_out" field. It is called by the builders before save.
+	routetraffichourly.BytesOutValidator = routetraffichourlyDescBytesOut.Validators[0].(func(int64) error)
+	// routetraffichourlyDescConnections is the schema descriptor for connections field.
+	routetraffichourlyDescConnections := routetraffichourlyFields[5].Descriptor()
+	// routetraffichourly.ConnectionsValidator is a validator for the "connections" field. It is called by the builders before save.
+	routetraffichourly.ConnectionsValidator = routetraffichourlyDescConnections.Validators[0].(func(int64) error)
+	// routetraffichourlyDescErrors is the schema descriptor for errors field.
+	routetraffichourlyDescErrors := routetraffichourlyFields[6].Descriptor()
+	// routetraffichourly.ErrorsValidator is a validator for the "errors" field. It is called by the builders before save.
+	routetraffichourly.ErrorsValidator = routetraffichourlyDescErrors.Validators[0].(func(int64) error)
+	// routetraffichourlyDescID is the schema descriptor for id field.
+	routetraffichourlyDescID := routetraffichourlyFields[0].Descriptor()
+	// routetraffichourly.DefaultID holds the default value on creation for the id field.
+	routetraffichourly.DefaultID = routetraffichourlyDescID.Default.(func() string)
+	// routetraffichourly.IDValidator is a validator for the "id" field. It is called by the builders before save.
+	routetraffichourly.IDValidator = func() func(string) error {
+		validators := routetraffichourlyDescID.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(id string) error {
+			for _, fn := range fns {
+				if err := fn(id); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
 	routeudpMixin := schema.RouteUDP{}.Mixin()
 	routeudp.Policy = privacy.NewPolicies(routeudpMixin[0], schema.RouteUDP{})
 	routeudp.Hooks[0] = func(next ent.Mutator) ent.Mutator {
@@ -2697,6 +2826,77 @@ func init() {
 	// totpcredential.IDValidator is a validator for the "id" field. It is called by the builders before save.
 	totpcredential.IDValidator = func() func(string) error {
 		validators := totpcredentialDescID.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(id string) error {
+			for _, fn := range fns {
+				if err := fn(id); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	trafficbaselineMixin := schema.TrafficBaseline{}.Mixin()
+	trafficbaseline.Policy = privacy.NewPolicies(trafficbaselineMixin[0], schema.TrafficBaseline{})
+	trafficbaseline.Hooks[0] = func(next ent.Mutator) ent.Mutator {
+		return ent.MutateFunc(func(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+			if err := trafficbaseline.Policy.EvalMutation(ctx, m); err != nil {
+				return nil, err
+			}
+			return next.Mutate(ctx, m)
+		})
+	}
+	trafficbaselineMixinHooks0 := trafficbaselineMixin[0].Hooks()
+
+	trafficbaseline.Hooks[1] = trafficbaselineMixinHooks0[0]
+	trafficbaselineMixinInters0 := trafficbaselineMixin[0].Interceptors()
+	trafficbaseline.Interceptors[0] = trafficbaselineMixinInters0[0]
+	trafficbaselineMixinFields0 := trafficbaselineMixin[0].Fields()
+	_ = trafficbaselineMixinFields0
+	trafficbaselineFields := schema.TrafficBaseline{}.Fields()
+	_ = trafficbaselineFields
+	// trafficbaselineDescOrgID is the schema descriptor for org_id field.
+	trafficbaselineDescOrgID := trafficbaselineMixinFields0[0].Descriptor()
+	// trafficbaseline.OrgIDValidator is a validator for the "org_id" field. It is called by the builders before save.
+	trafficbaseline.OrgIDValidator = trafficbaselineDescOrgID.Validators[0].(func(string) error)
+	// trafficbaselineDescGatewayID is the schema descriptor for gateway_id field.
+	trafficbaselineDescGatewayID := trafficbaselineFields[1].Descriptor()
+	// trafficbaseline.GatewayIDValidator is a validator for the "gateway_id" field. It is called by the builders before save.
+	trafficbaseline.GatewayIDValidator = trafficbaselineDescGatewayID.Validators[0].(func(string) error)
+	// trafficbaselineDescRouteID is the schema descriptor for route_id field.
+	trafficbaselineDescRouteID := trafficbaselineFields[2].Descriptor()
+	// trafficbaseline.RouteIDValidator is a validator for the "route_id" field. It is called by the builders before save.
+	trafficbaseline.RouteIDValidator = trafficbaselineDescRouteID.Validators[0].(func(string) error)
+	// trafficbaselineDescBootID is the schema descriptor for boot_id field.
+	trafficbaselineDescBootID := trafficbaselineFields[3].Descriptor()
+	// trafficbaseline.DefaultBootID holds the default value on creation for the boot_id field.
+	trafficbaseline.DefaultBootID = trafficbaselineDescBootID.Default.(string)
+	// trafficbaselineDescBytesIn is the schema descriptor for bytes_in field.
+	trafficbaselineDescBytesIn := trafficbaselineFields[4].Descriptor()
+	// trafficbaseline.BytesInValidator is a validator for the "bytes_in" field. It is called by the builders before save.
+	trafficbaseline.BytesInValidator = trafficbaselineDescBytesIn.Validators[0].(func(int64) error)
+	// trafficbaselineDescBytesOut is the schema descriptor for bytes_out field.
+	trafficbaselineDescBytesOut := trafficbaselineFields[5].Descriptor()
+	// trafficbaseline.BytesOutValidator is a validator for the "bytes_out" field. It is called by the builders before save.
+	trafficbaseline.BytesOutValidator = trafficbaselineDescBytesOut.Validators[0].(func(int64) error)
+	// trafficbaselineDescConnections is the schema descriptor for connections field.
+	trafficbaselineDescConnections := trafficbaselineFields[6].Descriptor()
+	// trafficbaseline.ConnectionsValidator is a validator for the "connections" field. It is called by the builders before save.
+	trafficbaseline.ConnectionsValidator = trafficbaselineDescConnections.Validators[0].(func(int64) error)
+	// trafficbaselineDescErrors is the schema descriptor for errors field.
+	trafficbaselineDescErrors := trafficbaselineFields[7].Descriptor()
+	// trafficbaseline.ErrorsValidator is a validator for the "errors" field. It is called by the builders before save.
+	trafficbaseline.ErrorsValidator = trafficbaselineDescErrors.Validators[0].(func(int64) error)
+	// trafficbaselineDescID is the schema descriptor for id field.
+	trafficbaselineDescID := trafficbaselineFields[0].Descriptor()
+	// trafficbaseline.DefaultID holds the default value on creation for the id field.
+	trafficbaseline.DefaultID = trafficbaselineDescID.Default.(func() string)
+	// trafficbaseline.IDValidator is a validator for the "id" field. It is called by the builders before save.
+	trafficbaseline.IDValidator = func() func(string) error {
+		validators := trafficbaselineDescID.Validators
 		fns := [...]func(string) error{
 			validators[0].(func(string) error),
 			validators[1].(func(string) error),

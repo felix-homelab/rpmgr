@@ -102,6 +102,10 @@ type Tx struct {
 	RouteTCP *RouteTCPClient
 	// RouteTarget is the client for interacting with the RouteTarget builders.
 	RouteTarget *RouteTargetClient
+	// RouteTrafficDaily is the client for interacting with the RouteTrafficDaily builders.
+	RouteTrafficDaily *RouteTrafficDailyClient
+	// RouteTrafficHourly is the client for interacting with the RouteTrafficHourly builders.
+	RouteTrafficHourly *RouteTrafficHourlyClient
 	// RouteUDP is the client for interacting with the RouteUDP builders.
 	RouteUDP *RouteUDPClient
 	// SecretMeta is the client for interacting with the SecretMeta builders.
@@ -110,6 +114,8 @@ type Tx struct {
 	Session *SessionClient
 	// TOTPCredential is the client for interacting with the TOTPCredential builders.
 	TOTPCredential *TOTPCredentialClient
+	// TrafficBaseline is the client for interacting with the TrafficBaseline builders.
+	TrafficBaseline *TrafficBaselineClient
 	// User is the client for interacting with the User builders.
 	User *UserClient
 
@@ -287,10 +293,13 @@ func (tx *Tx) init() {
 	tx.RoutePolicy = NewRoutePolicyClient(tx.config)
 	tx.RouteTCP = NewRouteTCPClient(tx.config)
 	tx.RouteTarget = NewRouteTargetClient(tx.config)
+	tx.RouteTrafficDaily = NewRouteTrafficDailyClient(tx.config)
+	tx.RouteTrafficHourly = NewRouteTrafficHourlyClient(tx.config)
 	tx.RouteUDP = NewRouteUDPClient(tx.config)
 	tx.SecretMeta = NewSecretMetaClient(tx.config)
 	tx.Session = NewSessionClient(tx.config)
 	tx.TOTPCredential = NewTOTPCredentialClient(tx.config)
+	tx.TrafficBaseline = NewTrafficBaselineClient(tx.config)
 	tx.User = NewUserClient(tx.config)
 }
 

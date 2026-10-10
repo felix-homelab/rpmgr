@@ -1,0 +1,100 @@
+// SPDX-License-Identifier: Apache-2.0
+
+syntax = "proto3";
+
+package rpmgr.v1;
+
+import "buf/validate/validate.proto";
+import "google/protobuf/timestamp.proto";
+import "rpmgr/v1/options.proto";
+
+option go_package = "github.com/felix-homelab/rpmgr/gen/rpmgr/v1;rpmgrv1";
+
+// MetricsService serves the route traffic rollups for charts (docs/07-api.md, "Services";
+// docs/06-data-model.md, "Desired vs observed state"). Buckets without traffic are left out.
+service MetricsService {
+  // GetRouteTraffic returns a route's traffic per hour or per day, oldest first.
+  rpc GetRouteTraffic(GetRouteTrafficRequest) returns (GetRouteTrafficResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+    option (rpmgr.v1.authz) = {
+      permission: "org.read"
+      resource_field: "route_id"
+    };
+  }
+  // GetOverview returns an org's traffic of the last 24 hours: per hour, in total, and its busiest
+  // routes.
+  rpc GetOverview(GetOverviewRequest) returns (GetOverviewResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+    option (rpmgr.v1.authz) = {
+      permission: "org.read"
+      resource_field: "org_id"
+    };
+  }
+}
+
+// TrafficResolution is the size of a bucket.
+enum TrafficResolution {
+  // Not set: hourly.
+  TRAFFIC_RESOLUTION_UNSPECIFIED = 0;
+  // One bucket per hour.
+  TRAFFIC_RESOLUTION_HOURLY = 1;
+  // One bucket per day.
+  TRAFFIC_RESOLUTION_DAILY = 2;
+}
+
+// TrafficBucket is the traffic of one hour or day.
+message TrafficBucket {
+  // Its start, in UTC.
+  google.protobuf.Timestamp start = 1;
+  // Bytes from clients to the targets.
+  uint64 bytes_in = 2;
+  // Bytes from the targets to clients.
+  uint64 bytes_out = 3;
+  // Connections, or streams of http routes and UDP flows.
+  uint64 connections = 4;
+  // Of the connections, those that reached no target.
+  uint64 errors = 5;
+}
+
+// GetRouteTrafficRequest names a route and a time range.
+message GetRouteTrafficRequest {
+  // The route.
+  string route_id = 1 [(buf.validate.field).string.min_len = 1];
+  // The bucket size; hourly if not set.
+  TrafficResolution resolution = 2 [(buf.validate.field).enum.defined_only = true];
+  // The start of the range: the last 24 hours, or 30 days for daily buckets, if not set. At most
+  // 31 days of hourly or 400 days of daily buckets.
+  google.protobuf.Timestamp from = 3;
+  // The end of the range; now if not set.
+  google.protobuf.Timestamp to = 4;
+}
+
+// GetRouteTrafficResponse is the route's buckets with traffic in the range, oldest first.
+message GetRouteTrafficResponse {
+  // The buckets.
+  repeated TrafficBucket buckets = 1;
+}
+
+// GetOverviewRequest names an org.
+message GetOverviewRequest {
+  // The org.
+  string org_id = 1 [(buf.validate.field).string.min_len = 1];
+}
+
+// RouteTraffic is one route's traffic in a range.
+message RouteTraffic {
+  // The route.
+  string route_id = 1;
+  // Its traffic; start is the range's.
+  TrafficBucket total = 2;
+}
+
+// GetOverviewResponse is the org's traffic of the last 24 hours.
+message GetOverviewResponse {
+  // Per hour, oldest first, the hours with traffic.
+  repeated TrafficBucket hours = 1;
+  // In total; start is the first hour's.
+  TrafficBucket total = 2;
+  // Its 10 routes with the most bytes, most first.
+  repeated RouteTraffic busiest_routes = 3;
+}

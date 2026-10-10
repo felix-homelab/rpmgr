@@ -1387,6 +1387,74 @@ var (
 			},
 		},
 	}
+	// RouteTrafficDailyColumns holds the columns for the "route_traffic_daily" table.
+	RouteTrafficDailyColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeString},
+		{Name: "org_id", Type: field.TypeString},
+		{Name: "route_id", Type: field.TypeString},
+		{Name: "bucket", Type: field.TypeTime},
+		{Name: "bytes_in", Type: field.TypeInt64},
+		{Name: "bytes_out", Type: field.TypeInt64},
+		{Name: "connections", Type: field.TypeInt64},
+		{Name: "errors", Type: field.TypeInt64},
+	}
+	// RouteTrafficDailyTable holds the schema information for the "route_traffic_daily" table.
+	RouteTrafficDailyTable = &schema.Table{
+		Name:       "route_traffic_daily",
+		Columns:    RouteTrafficDailyColumns,
+		PrimaryKey: []*schema.Column{RouteTrafficDailyColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "routetrafficdaily_org_id_id",
+				Unique:  true,
+				Columns: []*schema.Column{RouteTrafficDailyColumns[1], RouteTrafficDailyColumns[0]},
+			},
+			{
+				Name:    "routetrafficdaily_route_id_bucket",
+				Unique:  true,
+				Columns: []*schema.Column{RouteTrafficDailyColumns[2], RouteTrafficDailyColumns[3]},
+			},
+			{
+				Name:    "routetrafficdaily_bucket",
+				Unique:  false,
+				Columns: []*schema.Column{RouteTrafficDailyColumns[3]},
+			},
+		},
+	}
+	// RouteTrafficHourlyColumns holds the columns for the "route_traffic_hourly" table.
+	RouteTrafficHourlyColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeString},
+		{Name: "org_id", Type: field.TypeString},
+		{Name: "route_id", Type: field.TypeString},
+		{Name: "bucket", Type: field.TypeTime},
+		{Name: "bytes_in", Type: field.TypeInt64},
+		{Name: "bytes_out", Type: field.TypeInt64},
+		{Name: "connections", Type: field.TypeInt64},
+		{Name: "errors", Type: field.TypeInt64},
+	}
+	// RouteTrafficHourlyTable holds the schema information for the "route_traffic_hourly" table.
+	RouteTrafficHourlyTable = &schema.Table{
+		Name:       "route_traffic_hourly",
+		Columns:    RouteTrafficHourlyColumns,
+		PrimaryKey: []*schema.Column{RouteTrafficHourlyColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "routetraffichourly_org_id_id",
+				Unique:  true,
+				Columns: []*schema.Column{RouteTrafficHourlyColumns[1], RouteTrafficHourlyColumns[0]},
+			},
+			{
+				Name:    "routetraffichourly_route_id_bucket",
+				Unique:  true,
+				Columns: []*schema.Column{RouteTrafficHourlyColumns[2], RouteTrafficHourlyColumns[3]},
+			},
+			{
+				Name:    "routetraffichourly_bucket",
+				Unique:  false,
+				Columns: []*schema.Column{RouteTrafficHourlyColumns[3]},
+			},
+		},
+	}
 	// RouteUDPColumns holds the columns for the "route_udp" table.
 	RouteUDPColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeInt, Increment: true},
@@ -1525,6 +1593,37 @@ var (
 			},
 		},
 	}
+	// TrafficBaselinesColumns holds the columns for the "traffic_baselines" table.
+	TrafficBaselinesColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeString},
+		{Name: "org_id", Type: field.TypeString},
+		{Name: "gateway_id", Type: field.TypeString},
+		{Name: "route_id", Type: field.TypeString},
+		{Name: "boot_id", Type: field.TypeString, Default: ""},
+		{Name: "bytes_in", Type: field.TypeInt64},
+		{Name: "bytes_out", Type: field.TypeInt64},
+		{Name: "connections", Type: field.TypeInt64},
+		{Name: "errors", Type: field.TypeInt64},
+		{Name: "reported_at", Type: field.TypeTime},
+	}
+	// TrafficBaselinesTable holds the schema information for the "traffic_baselines" table.
+	TrafficBaselinesTable = &schema.Table{
+		Name:       "traffic_baselines",
+		Columns:    TrafficBaselinesColumns,
+		PrimaryKey: []*schema.Column{TrafficBaselinesColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "trafficbaseline_org_id_id",
+				Unique:  true,
+				Columns: []*schema.Column{TrafficBaselinesColumns[1], TrafficBaselinesColumns[0]},
+			},
+			{
+				Name:    "trafficbaseline_gateway_id_route_id",
+				Unique:  true,
+				Columns: []*schema.Column{TrafficBaselinesColumns[2], TrafficBaselinesColumns[3]},
+			},
+		},
+	}
 	// UsersColumns holds the columns for the "users" table.
 	UsersColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeString},
@@ -1595,10 +1694,13 @@ var (
 		RoutePoliciesTable,
 		RouteTCPTable,
 		RouteTargetsTable,
+		RouteTrafficDailyTable,
+		RouteTrafficHourlyTable,
 		RouteUDPTable,
 		SecretsMetaTable,
 		SessionsTable,
 		TotpCredentialsTable,
+		TrafficBaselinesTable,
 		UsersTable,
 	}
 )
@@ -1727,6 +1829,12 @@ func init() {
 	RouteTargetsTable.Annotation = &entsql.Annotation{
 		Table: "route_targets",
 	}
+	RouteTrafficDailyTable.Annotation = &entsql.Annotation{
+		Table: "route_traffic_daily",
+	}
+	RouteTrafficHourlyTable.Annotation = &entsql.Annotation{
+		Table: "route_traffic_hourly",
+	}
 	RouteUDPTable.ForeignKeys[0].RefTable = RoutesTable
 	RouteUDPTable.ForeignKeys[1].RefTable = PortAllocationsTable
 	RouteUDPTable.Annotation = &entsql.Annotation{
@@ -1739,5 +1847,8 @@ func init() {
 	TotpCredentialsTable.ForeignKeys[0].RefTable = UsersTable
 	TotpCredentialsTable.Annotation = &entsql.Annotation{
 		Table: "totp_credentials",
+	}
+	TrafficBaselinesTable.Annotation = &entsql.Annotation{
+		Table: "traffic_baselines",
 	}
 }

@@ -48,10 +48,13 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routepolicy"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routetarget"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routetcp"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/routetrafficdaily"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/routetraffichourly"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routeudp"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/secretmeta"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/session"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/totpcredential"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/trafficbaseline"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/user"
 
 	"entgo.io/ent/dialect/sql"
@@ -62,7 +65,7 @@ import (
 
 // schemaGraph holds a representation of ent/schema at runtime.
 var schemaGraph = func() *sqlgraph.Schema {
-	graph := &sqlgraph.Schema{Nodes: make([]*sqlgraph.Node, 49)}
+	graph := &sqlgraph.Schema{Nodes: make([]*sqlgraph.Node, 52)}
 	graph.Nodes[0] = &sqlgraph.Node{
 		NodeSpec: sqlgraph.NodeSpec{
 			Table:   acmestorage.Table,
@@ -967,6 +970,46 @@ var schemaGraph = func() *sqlgraph.Schema {
 	}
 	graph.Nodes[44] = &sqlgraph.Node{
 		NodeSpec: sqlgraph.NodeSpec{
+			Table:   routetrafficdaily.Table,
+			Columns: routetrafficdaily.Columns,
+			ID: &sqlgraph.FieldSpec{
+				Type:   field.TypeString,
+				Column: routetrafficdaily.FieldID,
+			},
+		},
+		Type: "RouteTrafficDaily",
+		Fields: map[string]*sqlgraph.FieldSpec{
+			routetrafficdaily.FieldOrgID:       {Type: field.TypeString, Column: routetrafficdaily.FieldOrgID},
+			routetrafficdaily.FieldRouteID:     {Type: field.TypeString, Column: routetrafficdaily.FieldRouteID},
+			routetrafficdaily.FieldBucket:      {Type: field.TypeTime, Column: routetrafficdaily.FieldBucket},
+			routetrafficdaily.FieldBytesIn:     {Type: field.TypeInt64, Column: routetrafficdaily.FieldBytesIn},
+			routetrafficdaily.FieldBytesOut:    {Type: field.TypeInt64, Column: routetrafficdaily.FieldBytesOut},
+			routetrafficdaily.FieldConnections: {Type: field.TypeInt64, Column: routetrafficdaily.FieldConnections},
+			routetrafficdaily.FieldErrors:      {Type: field.TypeInt64, Column: routetrafficdaily.FieldErrors},
+		},
+	}
+	graph.Nodes[45] = &sqlgraph.Node{
+		NodeSpec: sqlgraph.NodeSpec{
+			Table:   routetraffichourly.Table,
+			Columns: routetraffichourly.Columns,
+			ID: &sqlgraph.FieldSpec{
+				Type:   field.TypeString,
+				Column: routetraffichourly.FieldID,
+			},
+		},
+		Type: "RouteTrafficHourly",
+		Fields: map[string]*sqlgraph.FieldSpec{
+			routetraffichourly.FieldOrgID:       {Type: field.TypeString, Column: routetraffichourly.FieldOrgID},
+			routetraffichourly.FieldRouteID:     {Type: field.TypeString, Column: routetraffichourly.FieldRouteID},
+			routetraffichourly.FieldBucket:      {Type: field.TypeTime, Column: routetraffichourly.FieldBucket},
+			routetraffichourly.FieldBytesIn:     {Type: field.TypeInt64, Column: routetraffichourly.FieldBytesIn},
+			routetraffichourly.FieldBytesOut:    {Type: field.TypeInt64, Column: routetraffichourly.FieldBytesOut},
+			routetraffichourly.FieldConnections: {Type: field.TypeInt64, Column: routetraffichourly.FieldConnections},
+			routetraffichourly.FieldErrors:      {Type: field.TypeInt64, Column: routetraffichourly.FieldErrors},
+		},
+	}
+	graph.Nodes[46] = &sqlgraph.Node{
+		NodeSpec: sqlgraph.NodeSpec{
 			Table:   routeudp.Table,
 			Columns: routeudp.Columns,
 			ID: &sqlgraph.FieldSpec{
@@ -982,7 +1025,7 @@ var schemaGraph = func() *sqlgraph.Schema {
 			routeudp.FieldFlowIdleTimeoutSeconds: {Type: field.TypeInt, Column: routeudp.FieldFlowIdleTimeoutSeconds},
 		},
 	}
-	graph.Nodes[45] = &sqlgraph.Node{
+	graph.Nodes[47] = &sqlgraph.Node{
 		NodeSpec: sqlgraph.NodeSpec{
 			Table:   secretmeta.Table,
 			Columns: secretmeta.Columns,
@@ -1000,7 +1043,7 @@ var schemaGraph = func() *sqlgraph.Schema {
 			secretmeta.FieldCreatedAt:  {Type: field.TypeTime, Column: secretmeta.FieldCreatedAt},
 		},
 	}
-	graph.Nodes[46] = &sqlgraph.Node{
+	graph.Nodes[48] = &sqlgraph.Node{
 		NodeSpec: sqlgraph.NodeSpec{
 			Table:   session.Table,
 			Columns: session.Columns,
@@ -1024,7 +1067,7 @@ var schemaGraph = func() *sqlgraph.Schema {
 			session.FieldRevokedAt:         {Type: field.TypeTime, Column: session.FieldRevokedAt},
 		},
 	}
-	graph.Nodes[47] = &sqlgraph.Node{
+	graph.Nodes[49] = &sqlgraph.Node{
 		NodeSpec: sqlgraph.NodeSpec{
 			Table:   totpcredential.Table,
 			Columns: totpcredential.Columns,
@@ -1042,7 +1085,29 @@ var schemaGraph = func() *sqlgraph.Schema {
 			totpcredential.FieldLastStep:    {Type: field.TypeInt64, Column: totpcredential.FieldLastStep},
 		},
 	}
-	graph.Nodes[48] = &sqlgraph.Node{
+	graph.Nodes[50] = &sqlgraph.Node{
+		NodeSpec: sqlgraph.NodeSpec{
+			Table:   trafficbaseline.Table,
+			Columns: trafficbaseline.Columns,
+			ID: &sqlgraph.FieldSpec{
+				Type:   field.TypeString,
+				Column: trafficbaseline.FieldID,
+			},
+		},
+		Type: "TrafficBaseline",
+		Fields: map[string]*sqlgraph.FieldSpec{
+			trafficbaseline.FieldOrgID:       {Type: field.TypeString, Column: trafficbaseline.FieldOrgID},
+			trafficbaseline.FieldGatewayID:   {Type: field.TypeString, Column: trafficbaseline.FieldGatewayID},
+			trafficbaseline.FieldRouteID:     {Type: field.TypeString, Column: trafficbaseline.FieldRouteID},
+			trafficbaseline.FieldBootID:      {Type: field.TypeString, Column: trafficbaseline.FieldBootID},
+			trafficbaseline.FieldBytesIn:     {Type: field.TypeInt64, Column: trafficbaseline.FieldBytesIn},
+			trafficbaseline.FieldBytesOut:    {Type: field.TypeInt64, Column: trafficbaseline.FieldBytesOut},
+			trafficbaseline.FieldConnections: {Type: field.TypeInt64, Column: trafficbaseline.FieldConnections},
+			trafficbaseline.FieldErrors:      {Type: field.TypeInt64, Column: trafficbaseline.FieldErrors},
+			trafficbaseline.FieldReportedAt:  {Type: field.TypeTime, Column: trafficbaseline.FieldReportedAt},
+		},
+	}
+	graph.Nodes[51] = &sqlgraph.Node{
 		NodeSpec: sqlgraph.NodeSpec{
 			Table:   user.Table,
 			Columns: user.Columns,
@@ -5166,6 +5231,156 @@ func (f *RouteTargetFilter) WhereHasCaBundleWith(preds ...predicate.CABundle) {
 }
 
 // addPredicate implements the predicateAdder interface.
+func (_q *RouteTrafficDailyQuery) addPredicate(pred func(s *sql.Selector)) {
+	_q.predicates = append(_q.predicates, pred)
+}
+
+// Filter returns a Filter implementation to apply filters on the RouteTrafficDailyQuery builder.
+func (_q *RouteTrafficDailyQuery) Filter() *RouteTrafficDailyFilter {
+	return &RouteTrafficDailyFilter{config: _q.config, predicateAdder: _q}
+}
+
+// addPredicate implements the predicateAdder interface.
+func (m *RouteTrafficDailyMutation) addPredicate(pred func(s *sql.Selector)) {
+	m.predicates = append(m.predicates, pred)
+}
+
+// Filter returns an entql.Where implementation to apply filters on the RouteTrafficDailyMutation builder.
+func (m *RouteTrafficDailyMutation) Filter() *RouteTrafficDailyFilter {
+	return &RouteTrafficDailyFilter{config: m.config, predicateAdder: m}
+}
+
+// RouteTrafficDailyFilter provides a generic filtering capability at runtime for RouteTrafficDailyQuery.
+type RouteTrafficDailyFilter struct {
+	predicateAdder
+	config
+}
+
+// Where applies the entql predicate on the query filter.
+func (f *RouteTrafficDailyFilter) Where(p entql.P) {
+	f.addPredicate(func(s *sql.Selector) {
+		if err := schemaGraph.EvalP(schemaGraph.Nodes[44].Type, p, s); err != nil {
+			s.AddError(err)
+		}
+	})
+}
+
+// WhereID applies the entql string predicate on the id field.
+func (f *RouteTrafficDailyFilter) WhereID(p entql.StringP) {
+	f.Where(p.Field(routetrafficdaily.FieldID))
+}
+
+// WhereOrgID applies the entql string predicate on the org_id field.
+func (f *RouteTrafficDailyFilter) WhereOrgID(p entql.StringP) {
+	f.Where(p.Field(routetrafficdaily.FieldOrgID))
+}
+
+// WhereRouteID applies the entql string predicate on the route_id field.
+func (f *RouteTrafficDailyFilter) WhereRouteID(p entql.StringP) {
+	f.Where(p.Field(routetrafficdaily.FieldRouteID))
+}
+
+// WhereBucket applies the entql time.Time predicate on the bucket field.
+func (f *RouteTrafficDailyFilter) WhereBucket(p entql.TimeP) {
+	f.Where(p.Field(routetrafficdaily.FieldBucket))
+}
+
+// WhereBytesIn applies the entql int64 predicate on the bytes_in field.
+func (f *RouteTrafficDailyFilter) WhereBytesIn(p entql.Int64P) {
+	f.Where(p.Field(routetrafficdaily.FieldBytesIn))
+}
+
+// WhereBytesOut applies the entql int64 predicate on the bytes_out field.
+func (f *RouteTrafficDailyFilter) WhereBytesOut(p entql.Int64P) {
+	f.Where(p.Field(routetrafficdaily.FieldBytesOut))
+}
+
+// WhereConnections applies the entql int64 predicate on the connections field.
+func (f *RouteTrafficDailyFilter) WhereConnections(p entql.Int64P) {
+	f.Where(p.Field(routetrafficdaily.FieldConnections))
+}
+
+// WhereErrors applies the entql int64 predicate on the errors field.
+func (f *RouteTrafficDailyFilter) WhereErrors(p entql.Int64P) {
+	f.Where(p.Field(routetrafficdaily.FieldErrors))
+}
+
+// addPredicate implements the predicateAdder interface.
+func (_q *RouteTrafficHourlyQuery) addPredicate(pred func(s *sql.Selector)) {
+	_q.predicates = append(_q.predicates, pred)
+}
+
+// Filter returns a Filter implementation to apply filters on the RouteTrafficHourlyQuery builder.
+func (_q *RouteTrafficHourlyQuery) Filter() *RouteTrafficHourlyFilter {
+	return &RouteTrafficHourlyFilter{config: _q.config, predicateAdder: _q}
+}
+
+// addPredicate implements the predicateAdder interface.
+func (m *RouteTrafficHourlyMutation) addPredicate(pred func(s *sql.Selector)) {
+	m.predicates = append(m.predicates, pred)
+}
+
+// Filter returns an entql.Where implementation to apply filters on the RouteTrafficHourlyMutation builder.
+func (m *RouteTrafficHourlyMutation) Filter() *RouteTrafficHourlyFilter {
+	return &RouteTrafficHourlyFilter{config: m.config, predicateAdder: m}
+}
+
+// RouteTrafficHourlyFilter provides a generic filtering capability at runtime for RouteTrafficHourlyQuery.
+type RouteTrafficHourlyFilter struct {
+	predicateAdder
+	config
+}
+
+// Where applies the entql predicate on the query filter.
+func (f *RouteTrafficHourlyFilter) Where(p entql.P) {
+	f.addPredicate(func(s *sql.Selector) {
+		if err := schemaGraph.EvalP(schemaGraph.Nodes[45].Type, p, s); err != nil {
+			s.AddError(err)
+		}
+	})
+}
+
+// WhereID applies the entql string predicate on the id field.
+func (f *RouteTrafficHourlyFilter) WhereID(p entql.StringP) {
+	f.Where(p.Field(routetraffichourly.FieldID))
+}
+
+// WhereOrgID applies the entql string predicate on the org_id field.
+func (f *RouteTrafficHourlyFilter) WhereOrgID(p entql.StringP) {
+	f.Where(p.Field(routetraffichourly.FieldOrgID))
+}
+
+// WhereRouteID applies the entql string predicate on the route_id field.
+func (f *RouteTrafficHourlyFilter) WhereRouteID(p entql.StringP) {
+	f.Where(p.Field(routetraffichourly.FieldRouteID))
+}
+
+// WhereBucket applies the entql time.Time predicate on the bucket field.
+func (f *RouteTrafficHourlyFilter) WhereBucket(p entql.TimeP) {
+	f.Where(p.Field(routetraffichourly.FieldBucket))
+}
+
+// WhereBytesIn applies the entql int64 predicate on the bytes_in field.
+func (f *RouteTrafficHourlyFilter) WhereBytesIn(p entql.Int64P) {
+	f.Where(p.Field(routetraffichourly.FieldBytesIn))
+}
+
+// WhereBytesOut applies the entql int64 predicate on the bytes_out field.
+func (f *RouteTrafficHourlyFilter) WhereBytesOut(p entql.Int64P) {
+	f.Where(p.Field(routetraffichourly.FieldBytesOut))
+}
+
+// WhereConnections applies the entql int64 predicate on the connections field.
+func (f *RouteTrafficHourlyFilter) WhereConnections(p entql.Int64P) {
+	f.Where(p.Field(routetraffichourly.FieldConnections))
+}
+
+// WhereErrors applies the entql int64 predicate on the errors field.
+func (f *RouteTrafficHourlyFilter) WhereErrors(p entql.Int64P) {
+	f.Where(p.Field(routetraffichourly.FieldErrors))
+}
+
+// addPredicate implements the predicateAdder interface.
 func (_q *RouteUDPQuery) addPredicate(pred func(s *sql.Selector)) {
 	_q.predicates = append(_q.predicates, pred)
 }
@@ -5194,7 +5409,7 @@ type RouteUDPFilter struct {
 // Where applies the entql predicate on the query filter.
 func (f *RouteUDPFilter) Where(p entql.P) {
 	f.addPredicate(func(s *sql.Selector) {
-		if err := schemaGraph.EvalP(schemaGraph.Nodes[44].Type, p, s); err != nil {
+		if err := schemaGraph.EvalP(schemaGraph.Nodes[46].Type, p, s); err != nil {
 			s.AddError(err)
 		}
 	})
@@ -5282,7 +5497,7 @@ type SecretMetaFilter struct {
 // Where applies the entql predicate on the query filter.
 func (f *SecretMetaFilter) Where(p entql.P) {
 	f.addPredicate(func(s *sql.Selector) {
-		if err := schemaGraph.EvalP(schemaGraph.Nodes[45].Type, p, s); err != nil {
+		if err := schemaGraph.EvalP(schemaGraph.Nodes[47].Type, p, s); err != nil {
 			s.AddError(err)
 		}
 	})
@@ -5347,7 +5562,7 @@ type SessionFilter struct {
 // Where applies the entql predicate on the query filter.
 func (f *SessionFilter) Where(p entql.P) {
 	f.addPredicate(func(s *sql.Selector) {
-		if err := schemaGraph.EvalP(schemaGraph.Nodes[46].Type, p, s); err != nil {
+		if err := schemaGraph.EvalP(schemaGraph.Nodes[48].Type, p, s); err != nil {
 			s.AddError(err)
 		}
 	})
@@ -5456,7 +5671,7 @@ type TOTPCredentialFilter struct {
 // Where applies the entql predicate on the query filter.
 func (f *TOTPCredentialFilter) Where(p entql.P) {
 	f.addPredicate(func(s *sql.Selector) {
-		if err := schemaGraph.EvalP(schemaGraph.Nodes[47].Type, p, s); err != nil {
+		if err := schemaGraph.EvalP(schemaGraph.Nodes[49].Type, p, s); err != nil {
 			s.AddError(err)
 		}
 	})
@@ -5507,6 +5722,91 @@ func (f *TOTPCredentialFilter) WhereHasUserWith(preds ...predicate.User) {
 }
 
 // addPredicate implements the predicateAdder interface.
+func (_q *TrafficBaselineQuery) addPredicate(pred func(s *sql.Selector)) {
+	_q.predicates = append(_q.predicates, pred)
+}
+
+// Filter returns a Filter implementation to apply filters on the TrafficBaselineQuery builder.
+func (_q *TrafficBaselineQuery) Filter() *TrafficBaselineFilter {
+	return &TrafficBaselineFilter{config: _q.config, predicateAdder: _q}
+}
+
+// addPredicate implements the predicateAdder interface.
+func (m *TrafficBaselineMutation) addPredicate(pred func(s *sql.Selector)) {
+	m.predicates = append(m.predicates, pred)
+}
+
+// Filter returns an entql.Where implementation to apply filters on the TrafficBaselineMutation builder.
+func (m *TrafficBaselineMutation) Filter() *TrafficBaselineFilter {
+	return &TrafficBaselineFilter{config: m.config, predicateAdder: m}
+}
+
+// TrafficBaselineFilter provides a generic filtering capability at runtime for TrafficBaselineQuery.
+type TrafficBaselineFilter struct {
+	predicateAdder
+	config
+}
+
+// Where applies the entql predicate on the query filter.
+func (f *TrafficBaselineFilter) Where(p entql.P) {
+	f.addPredicate(func(s *sql.Selector) {
+		if err := schemaGraph.EvalP(schemaGraph.Nodes[50].Type, p, s); err != nil {
+			s.AddError(err)
+		}
+	})
+}
+
+// WhereID applies the entql string predicate on the id field.
+func (f *TrafficBaselineFilter) WhereID(p entql.StringP) {
+	f.Where(p.Field(trafficbaseline.FieldID))
+}
+
+// WhereOrgID applies the entql string predicate on the org_id field.
+func (f *TrafficBaselineFilter) WhereOrgID(p entql.StringP) {
+	f.Where(p.Field(trafficbaseline.FieldOrgID))
+}
+
+// WhereGatewayID applies the entql string predicate on the gateway_id field.
+func (f *TrafficBaselineFilter) WhereGatewayID(p entql.StringP) {
+	f.Where(p.Field(trafficbaseline.FieldGatewayID))
+}
+
+// WhereRouteID applies the entql string predicate on the route_id field.
+func (f *TrafficBaselineFilter) WhereRouteID(p entql.StringP) {
+	f.Where(p.Field(trafficbaseline.FieldRouteID))
+}
+
+// WhereBootID applies the entql string predicate on the boot_id field.
+func (f *TrafficBaselineFilter) WhereBootID(p entql.StringP) {
+	f.Where(p.Field(trafficbaseline.FieldBootID))
+}
+
+// WhereBytesIn applies the entql int64 predicate on the bytes_in field.
+func (f *TrafficBaselineFilter) WhereBytesIn(p entql.Int64P) {
+	f.Where(p.Field(trafficbaseline.FieldBytesIn))
+}
+
+// WhereBytesOut applies the entql int64 predicate on the bytes_out field.
+func (f *TrafficBaselineFilter) WhereBytesOut(p entql.Int64P) {
+	f.Where(p.Field(trafficbaseline.FieldBytesOut))
+}
+
+// WhereConnections applies the entql int64 predicate on the connections field.
+func (f *TrafficBaselineFilter) WhereConnections(p entql.Int64P) {
+	f.Where(p.Field(trafficbaseline.FieldConnections))
+}
+
+// WhereErrors applies the entql int64 predicate on the errors field.
+func (f *TrafficBaselineFilter) WhereErrors(p entql.Int64P) {
+	f.Where(p.Field(trafficbaseline.FieldErrors))
+}
+
+// WhereReportedAt applies the entql time.Time predicate on the reported_at field.
+func (f *TrafficBaselineFilter) WhereReportedAt(p entql.TimeP) {
+	f.Where(p.Field(trafficbaseline.FieldReportedAt))
+}
+
+// addPredicate implements the predicateAdder interface.
 func (_q *UserQuery) addPredicate(pred func(s *sql.Selector)) {
 	_q.predicates = append(_q.predicates, pred)
 }
@@ -5535,7 +5835,7 @@ type UserFilter struct {
 // Where applies the entql predicate on the query filter.
 func (f *UserFilter) Where(p entql.P) {
 	f.addPredicate(func(s *sql.Selector) {
-		if err := schemaGraph.EvalP(schemaGraph.Nodes[48].Type, p, s); err != nil {
+		if err := schemaGraph.EvalP(schemaGraph.Nodes[51].Type, p, s); err != nil {
 			s.AddError(err)
 		}
 	})

@@ -217,7 +217,8 @@ flowchart LR
 | `agent_state` | agent_id, boot_id, clock_offset_ms; the snapshot applied last (applied_db_epoch, applied_seq, applied_hash, last_ack_at), sent last (pushed_db_epoch, pushed_seq, pushed_hash, pushed_at) and rejected last (rejected_db_epoch, rejected_seq, rejected_hash, last_rejection: the structured errors). The apply status is derived from it ([03](03-connections.md#configuration-reconciliation)) |
 | `resource_status` | agent_id, resource_id, reason, detail, since: one row per resource an agent reports not ready, so a resource without one is ready or not reported yet. The limits are in [03](03-connections.md#configuration-reconciliation) |
 | `data_sessions` | gateway_id, connector_id, transport (`quic`, `h2`; `wss` in Phase 2), rtt_ms (0 where the transport does not measure it), established_at (first reported), reported_at: one row per gateway, connector and transport, replaced by each report of the gateway ([03](03-connections.md#configuration-reconciliation)) |
-| `route_traffic_hourly`, `route_traffic_daily` | route_id, bucket, bytes_in, bytes_out, connections, errors |
+| `route_traffic_hourly`, `route_traffic_daily` | org_id, route_id, bucket, bytes_in, bytes_out, connections, errors | One row per route and hour or day; `bucket` is its start in UTC. No foreign key to the route: retention removes a deleted route's rows |
+| `traffic_baselines` | org_id, gateway_id, route_id, boot_id, bytes_in, bytes_out, connections, errors, reported_at | A gateway's last reported route counters, which the next report's increase is taken over |
 | `dns_name_status` | dns_zone_id, org_id, name, status, reason, since |
 
 **Derived route status** (computed, never stored as desired state):
@@ -256,6 +257,14 @@ changes the route status, which describes whether the gateways can serve the rou
 
 High-resolution metrics live in Prometheus; the database holds only hourly and daily rollups for
 the UI. [R] Retention: hourly rollups 30 days, daily rollups 400 days, both configurable.
+
+[R] **Traffic rollups.** Gateways report their route counters, cumulative since their process
+started ([03](03-connections.md#configuration-reconciliation)). The controller adds each counter's
+increase over the gateway's last report to the route's hourly and daily buckets of the time it
+receives the report. A new `boot_id` of the gateway, or a counter lower than before (a route the
+gateway forgot and serves again), counts the whole report. Counters of a route that no longer
+exists are not kept. A singleton job removes buckets past their retention, and the baselines of
+routes not reported within the hourly retention.
 
 ## Tenancy enforcement
 

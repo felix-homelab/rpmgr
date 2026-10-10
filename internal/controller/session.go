@@ -249,6 +249,7 @@ func (s *Sessions) receive(ctx context.Context, st grpc.BidiStreamingServer[agen
 			}
 			if id.Kind == pki.KindGateway {
 				s.dataSessions(id, st.GetDataSessions())
+				s.counters(id, st.GetCounters())
 			}
 		}
 	}
