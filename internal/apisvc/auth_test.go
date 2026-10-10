@@ -49,6 +49,8 @@ type env struct {
 	denied   atomic.Int32 // how often a service applied a changed deny-list
 	txt      fakeVerifier // the TXT proofs DomainService finds
 	renew    renewals     // the renewals CertificateService starts
+	sealer   *secret.Sealer
+	pki      *apisvc.Pki
 }
 
 func newEnv(t *testing.T) *env {
@@ -69,6 +71,8 @@ func newEnv(t *testing.T) *env {
 	_, _ = rand.Read(key)
 	kek, _ := secret.NewKEK(key)
 	sealer, _ := secret.NewSealer(kek)
+	e.sealer = sealer
+	e.pki = &apisvc.Pki{DB: db, Sys: sys, Sealer: sealer, Now: now}
 	e.mfa = &accounts.MFA{Accounts: e.acc, Sealer: sealer, RevLog: rl}
 	e.tokens = &accounts.Tokens{Accounts: e.acc, RevLog: rl}
 	srv, err := api.New(api.Options{DB: db, Sys: sys, Sealer: sealer, Now: now,
@@ -137,6 +141,12 @@ func newEnv(t *testing.T) *env {
 		}); err != nil {
 		t.Fatal(err)
 	}
+	if err := srv.Mount(mux, rpmgrv1.File_rpmgr_v1_pki_proto.Services().ByName("PkiService"),
+		func(o ...connect.HandlerOption) (string, http.Handler) {
+			return rpmgrv1connect.NewPkiServiceHandler(e.pki, o...)
+		}); err != nil {
+		t.Fatal(err)
+	}
 	if err := srv.Mount(mux, rpmgrv1.File_rpmgr_v1_settings_proto.Services().ByName("SettingsService"),
 		func(o ...connect.HandlerOption) (string, http.Handler) {
 			return rpmgrv1connect.NewSettingsServiceHandler(&apisvc.Settings{DB: db, Sys: sys, Sealer: sealer, Now: now}, o...)
@@ -199,6 +209,7 @@ type browser struct {
 	pol    rpmgrv1connect.PolicyServiceClient
 	crt    rpmgrv1connect.CertificateServiceClient
 	set    rpmgrv1connect.SettingsServiceClient
+	pki    rpmgrv1connect.PkiServiceClient
 }
 
 func (e *env) browser() *browser {
@@ -216,6 +227,7 @@ func (e *env) browser() *browser {
 	b.pol = rpmgrv1connect.NewPolicyServiceClient(&http.Client{Transport: b}, e.url)
 	b.crt = rpmgrv1connect.NewCertificateServiceClient(&http.Client{Transport: b}, e.url)
 	b.set = rpmgrv1connect.NewSettingsServiceClient(&http.Client{Transport: b}, e.url)
+	b.pki = rpmgrv1connect.NewPkiServiceClient(&http.Client{Transport: b}, e.url)
 	return b
 }
 

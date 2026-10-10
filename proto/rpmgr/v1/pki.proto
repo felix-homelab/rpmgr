@@ -1,0 +1,94 @@
+// SPDX-License-Identifier: Apache-2.0
+
+syntax = "proto3";
+
+package rpmgr.v1;
+
+import "google/protobuf/timestamp.proto";
+import "rpmgr/v1/options.proto";
+
+option go_package = "github.com/felix-homelab/rpmgr/gen/rpmgr/v1;rpmgrv1";
+
+// PkiService is the instance's internal CA (docs/07-api.md, "Services"; docs/04-security.md,
+// "CA hierarchy", "CA rotation"), for the Instance Admin.
+service PkiService {
+  // GetPkiStatus returns the CA's keys: the root, the intermediates that still verify, and the
+  // config-signing and audit-checkpoint keys.
+  rpc GetPkiStatus(GetPkiStatusRequest) returns (GetPkiStatusResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+    option (rpmgr.v1.authz) = {permission: "instance.admin"};
+  }
+  // RotateIntermediate replaces the active intermediate now, before its half-life; the old one
+  // keeps verifying the leaves it issued until it expires.
+  rpc RotateIntermediate(RotateIntermediateRequest) returns (RotateIntermediateResponse) {
+    option (rpmgr.v1.authz) = {
+      permission: "instance.admin"
+      step_up: true
+    };
+  }
+}
+
+// CAKeyKind is what a key of the CA does.
+enum CAKeyKind {
+  // Not set.
+  CA_KEY_KIND_UNSPECIFIED = 0;
+  // The root, which agents pin.
+  CA_KEY_KIND_ROOT = 1;
+  // An intermediate, which issues the leaves.
+  CA_KEY_KIND_INTERMEDIATE = 2;
+  // The key that signs snapshots.
+  CA_KEY_KIND_CONFIG_SIGNING = 3;
+  // The key that signs audit checkpoints.
+  CA_KEY_KIND_AUDIT_CHECKPOINT = 4;
+}
+
+// CAKeyState is where a key of the CA stands.
+enum CAKeyState {
+  // Not set.
+  CA_KEY_STATE_UNSPECIFIED = 0;
+  // Created ahead and announced to agents; it signs once it replaces the active key.
+  CA_KEY_STATE_NEXT = 1;
+  // In use.
+  CA_KEY_STATE_ACTIVE = 2;
+  // Replaced; it still verifies until its certificate expires.
+  CA_KEY_STATE_RETIRED = 3;
+}
+
+// CAKey is one key of the CA, as its certificate shows it.
+message CAKey {
+  // What it does.
+  CAKeyKind kind = 1;
+  // Where it stands.
+  CAKeyState state = 2;
+  // Its certificate's subject.
+  string subject = 3;
+  // Its certificate's validity.
+  google.protobuf.Timestamp not_before = 4;
+  // Its certificate's expiry.
+  google.protobuf.Timestamp not_after = 5;
+  // When the schedule replaces an active intermediate or signing key; not set for the root and
+  // keys that are not active.
+  google.protobuf.Timestamp rotate_time = 6;
+}
+
+// GetPkiStatusRequest is empty.
+message GetPkiStatusRequest {}
+
+// GetPkiStatusResponse is the CA's state.
+message GetPkiStatusResponse {
+  // The trust domain.
+  string trust_domain = 1;
+  // The root's pin, as `rpmgr enroll --ca-pin` takes it.
+  string root_pin = 2;
+  // The keys whose certificates have not expired: active and next first, by kind.
+  repeated CAKey keys = 3;
+}
+
+// RotateIntermediateRequest is empty.
+message RotateIntermediateRequest {}
+
+// RotateIntermediateResponse is the new intermediate.
+message RotateIntermediateResponse {
+  // The new active intermediate.
+  CAKey intermediate = 1;
+}

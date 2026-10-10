@@ -73,7 +73,7 @@ names.
 | `RouteService` | CRUD on routes (`CreateRoute`, `GetRoute`, `ListRoutes`, `UpdateRoute`, `DeleteRoute`) and their targets (`CreateRouteTarget`, `UpdateRouteTarget`, `DeleteRouteTarget`; a route shows its targets), `PreviewRoute` (compile without saving: the write's checks and each gateway's own, the route as it would be stored, the gateways and connectors it would reach). A hostname outside the org's verified domains is refused with `DOMAIN_NOT_VERIFIED`; ACME for a wildcard hostname with `WILDCARD_NEEDS_CERTIFICATE` (R42); a route in certificate mode names an uploaded certificate that covers each of its hostnames, or is refused with `CERTIFICATE_NOT_COVERING`. A tcp or udp route takes an explicit or a random port of its group's pools; `PORT_NOT_IN_POOL`, `POOL_EXHAUSTED` and `QUOTA_REACHED` refuse one. A route applies access policies of its org in the order of `policy_ids`, each once; one with a `basic_auth` rule only on an http route (`BASIC_AUTH_NOT_HTTP`) | 1 |
 | `DomainService` | `CreateDomain` (returns the TXT record or HTTP token that proves the claim), `GetDomain`, `VerifyDomain`, `ListDomains`, `DeleteDomain` (refused while route hostnames lie under it), `MarkDomainTrusted` (Instance Admin, step-up), `DelegateDomain` and `ApproveDomainClaim` (Instance Admin, step-up) | 1 (`DelegateDomain`, `ApproveDomainClaim`: 2) |
 | `CertificateService` | `UploadCertificate` (a chain and its key, checked as [04](04-security.md#controller-certificates) requires; the key is kept under the KEK and never returned), `GetCertificate`, `ListCertificates` (source, names, validity, status and the last ACME error; an uploaded certificate with the routes that serve it), `DeleteCertificate` (an uploaded certificate no route serves), `RenewCertificate` (an ACME certificate of a route in acme mode, renewed now even if not due, or obtained if it has none; the answer comes at once, and the outcome shows in the certificate); CRUD on CA bundles for HTTPS upstreams (`CreateCABundle`, `GetCABundle`, `ListCABundles`, `UpdateCABundle`, `DeleteCABundle`; shown with their certificates' subjects and expiry and the targets that use them, not deleted while one does) | 1 |
-| `PkiService` | `GetPkiStatus`, `RotateIntermediate` (Instance Admin, step-up) | 1 |
+| `PkiService` | `GetPkiStatus` (the trust domain, the root's pin, and the CA's keys that have not expired, with their state and when the schedule replaces them), `RotateIntermediate` (replaces the intermediate before its half-life; the old one keeps verifying its leaves until it expires); Instance Admin, the rotation with step-up | 1 |
 | `DnsProviderService` | `ConnectDnsProvider`, `ListDnsProviders`, `UpdateDnsProvider` (rename, rotate token), `DeleteDnsProvider`, `ListProviderZones` | 2 |
 | `DnsZoneService` | `ImportZone`, `ListZones`, `UpdateZone` (gates), `RemoveZone` (keep or remove records), `PlanZoneSync`, `ApproveZonePlan` (plan hash), `SyncZone`, `ListZoneRecords` (owned and foreign, read live; Owner/Admin), `AdoptRecords`, `ReleaseRecord` (optionally restore the original) | 2 |
 | `DnsNameService` | `CreateDnsName`, `GetDnsName`, `ListDnsNames`, `UpdateDnsName`, `DeleteDnsName` | 2 |
@@ -258,13 +258,25 @@ spec:
   gatewayGroup: eu
   http:
     hostnames: [nas.example.com]
-    tlsMode: ACME
+    tlsMode: TLS_MODE_ACME
   targets:
     - connector: home-connector
       hostPort: { host: 192.168.10.20, port: 5000 }
-      upstreamProtocol: HTTP
+      upstreamProtocol: UPSTREAM_PROTOCOL_HTTP
   policies: [office-ip-only]
 ```
+
+- [R] **Phase 1 writes manifests; it does not apply them** ([D58](14-open-decisions.md#project-and-process)).
+  The kinds are `Route` (with its targets), `AccessPolicy`, `GatewayGroup`, `Gateway`,
+  `PortPool`, `Domain`, `Connector` and `CABundle`.
+  - `metadata.name` is the resource's name, a domain's FQDN, or the ID of a resource without a
+    name (a port pool).
+  - The spec has no field the server sets: no ID, etag, status, times or lists of dependants.
+  - It names gateway groups, access policies, connectors and CA bundles by their names
+    (`gatewayGroup`, `policies`, `connector`, `caBundle`). A certificate, which has no name, keeps
+    its ID.
+  - Fields marked `sensitive` are never written, so a basic-auth user appears without a
+    password. Certificates and their keys are not a kind.
 
 - `ManifestService.Plan` returns the diff against the current state; `Apply` performs it in **one
   transaction** (one revision). Manifests reference other resources by name; the server resolves

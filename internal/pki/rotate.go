@@ -5,6 +5,7 @@ package pki
 import (
 	"context"
 	"crypto/x509"
+	"errors"
 	"fmt"
 	"time"
 
@@ -55,17 +56,7 @@ func Rotate(ctx context.Context, tx *ent.Tx, s *secret.Sealer, now time.Time) ([
 	old := active[cakey.KindIntermediate]
 	var inter KeyPair
 	if !now.Before(old.NotBefore.Add(old.NotAfter.Sub(old.NotBefore) / 2)) {
-		rootKP, err := openKey(s, active[cakey.KindRoot])
-		if err != nil {
-			return nil, err
-		}
-		if inter, err = NewIntermediate(rootKP, now); err != nil {
-			return nil, err
-		}
-		if err := tx.CAKey.UpdateOne(old).SetStatus(cakey.StatusRetired).Exec(ctx); err != nil {
-			return nil, err
-		}
-		if err := saveKey(ctx, tx, s, cakey.KindIntermediate, inter, cakey.StatusActive); err != nil {
+		if inter, err = replaceIntermediate(ctx, tx, s, active[cakey.KindRoot], old, now); err != nil {
 			return nil, err
 		}
 		done = append(done, "intermediate rotated")
@@ -108,4 +99,46 @@ func Rotate(ctx context.Context, tx *ent.Tx, s *secret.Sealer, now time.Time) ([
 		}
 	}
 	return done, nil
+}
+
+// ErrRotated is returned when the active intermediate changed while it was being replaced: another
+// rotation came first.
+var ErrRotated = errors.New("pki: the intermediate was rotated meanwhile")
+
+// RotateIntermediate replaces the active intermediate now, before its half-life, in tx: the old
+// one is retired and keeps verifying the leaves it issued until it expires (docs/04-security.md,
+// "CA rotation"). It needs the system scope; the caller reloads the CA afterwards.
+func RotateIntermediate(ctx context.Context, tx *ent.Tx, s *secret.Sealer, now time.Time) error {
+	root, err := tx.CAKey.Query().Where(cakey.KindEQ(cakey.KindRoot), cakey.StatusEQ(cakey.StatusActive)).Only(ctx)
+	if err != nil {
+		return err
+	}
+	old, err := tx.CAKey.Query().Where(cakey.KindEQ(cakey.KindIntermediate), cakey.StatusEQ(cakey.StatusActive)).Only(ctx)
+	if err != nil {
+		return err
+	}
+	_, err = replaceIntermediate(ctx, tx, s, root, old, now)
+	return err
+}
+
+// replaceIntermediate retires old and saves a new active intermediate signed by root. The old
+// one is retired only while it is still active, so of two rotations at once one fails with
+// ErrRotated instead of leaving two active intermediates.
+func replaceIntermediate(ctx context.Context, tx *ent.Tx, s *secret.Sealer, root, old *ent.CAKey, now time.Time) (KeyPair, error) {
+	rootKP, err := openKey(s, root)
+	if err != nil {
+		return KeyPair{}, err
+	}
+	inter, err := NewIntermediate(rootKP, now)
+	if err != nil {
+		return KeyPair{}, err
+	}
+	n, err := tx.CAKey.Update().Where(cakey.ID(old.ID), cakey.StatusEQ(cakey.StatusActive)).SetStatus(cakey.StatusRetired).Save(ctx)
+	if err != nil {
+		return KeyPair{}, err
+	}
+	if n != 1 {
+		return KeyPair{}, ErrRotated
+	}
+	return inter, saveKey(ctx, tx, s, cakey.KindIntermediate, inter, cakey.StatusActive)
 }

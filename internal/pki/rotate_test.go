@@ -4,6 +4,7 @@ package pki_test
 
 import (
 	"crypto/x509"
+	"errors"
 	"slices"
 	"testing"
 	"time"
@@ -136,6 +137,36 @@ func TestRotate(t *testing.T) {
 		n := db.Client().CAKey.Query().Where(cakey.StatusEQ(cakey.StatusActive)).CountX(sys)
 		if n != 4 {
 			t.Fatalf("%d active keys", n)
+		}
+	})
+}
+
+// TestRotateIntermediate: the intermediate is replaced on request before its half-life, and the
+// old one is retired; a rotation that started from an intermediate another rotation has retired
+// meanwhile fails with ErrRotated and leaves one active intermediate.
+func TestRotateIntermediate(t *testing.T) {
+	withCA(t, func(t *testing.T, db *store.DB, kek secret.KEK, _ *pki.CA) {
+		sys := storetest.SystemCtx(t)
+		s := sealer(t, kek)
+		active := func() []*ent.CAKey {
+			return db.Client().CAKey.Query().Where(cakey.KindEQ(cakey.KindIntermediate), cakey.StatusEQ(cakey.StatusActive)).AllX(sys)
+		}
+		before := active()[0]
+		if err := store.WriteTx(sys, db, func(tx *ent.Tx) error { return pki.RotateIntermediate(sys, tx, s, t0.Add(day)) }); err != nil {
+			t.Fatal(err)
+		}
+		after := active()
+		if len(after) != 1 || after[0].ID == before.ID || after[0].NotBefore.After(t0.Add(day)) || after[0].NotBefore.Before(t0.Add(day-time.Hour)) ||
+			db.Client().CAKey.GetX(sys, before.ID).Status != cakey.StatusRetired {
+			t.Fatalf("after a rotation on request: %v, the old one %s", after, db.Client().CAKey.GetX(sys, before.ID).Status)
+		}
+		root := db.Client().CAKey.Query().Where(cakey.KindEQ(cakey.KindRoot)).OnlyX(sys)
+		err := store.WriteTx(sys, db, func(tx *ent.Tx) error {
+			_, err := pki.ReplaceIntermediate(sys, tx, s, root, before, t0.Add(2*day))
+			return err
+		})
+		if !errors.Is(err, pki.ErrRotated) || len(active()) != 1 || active()[0].ID != after[0].ID {
+			t.Fatalf("a rotation from a retired intermediate: %v, active %v", err, active())
 		}
 	})
 }
