@@ -157,6 +157,29 @@ func TestInit_WritesBootFile(t *testing.T) {
 	}
 }
 
+// TestInit_KEKSourceBySystemdVersion: without --kek-source, a new boot file takes the systemd
+// credential from systemd 250, which has encrypted credentials, and a KEK file below it or
+// without systemd (docs/10-operations.md, "Supported platforms").
+func TestInit_KEKSourceBySystemdVersion(t *testing.T) {
+	if _, err := os.Stat("/var/lib/rpmgr"); err == nil {
+		t.Skip("/var/lib/rpmgr exists on this host")
+	}
+	for version, want := range map[int]string{0: config.KEKFile, 249: config.KEKFile, 250: config.KEKSystemdCredential, 257: config.KEKSystemdCredential} {
+		h := newHost(t)
+		o := h.opts()
+		o.PublicURL, o.ConfigPath = "https://panel.example.com", filepath.Join(h.dir, "new.yaml")
+		o.SystemdVersion = func() int { return version }
+		_, _ = controller.Init(context.Background(), o) // fails on the default paths; the boot file is what counts
+		var c config.Controller
+		if err := config.Load(o.ConfigPath, &c); err != nil {
+			t.Fatalf("systemd %d: %v", version, err)
+		}
+		if c.KEK.Source != want {
+			t.Errorf("systemd %d: KEK source %s, want %s", version, c.KEK.Source, want)
+		}
+	}
+}
+
 func TestInit_Refusals(t *testing.T) {
 	cases := map[string]func(t *testing.T, h host, o *controller.InitOptions){
 		"no boot file and no URL": func(_ *testing.T, h host, o *controller.InitOptions) {

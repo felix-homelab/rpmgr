@@ -34,7 +34,7 @@ import (
 type InitOptions struct {
 	ConfigPath string // the boot file; written if it does not exist
 	PublicURL  string // required unless the boot file exists; must match it if both are given
-	KEKSource  string // for a new boot file: systemd-credential (default) or file
+	KEKSource  string // for a new boot file: systemd-credential or file; default by the systemd version
 	KEKPath    string // for a new boot file with the file source; default /etc/rpmgr/kek
 	// AllInOne reads and writes an all-in-one boot file (config.AllInOne) instead of a
 	// controller's.
@@ -46,6 +46,8 @@ type InitOptions struct {
 	Encrypt        func(ctx context.Context, name, path string, b []byte) error // systemd-creds encrypt
 	Now            func() time.Time                                             // time.Now
 	Memory         func() (uint64, bool)                                        // the host's memory in bytes, if known
+	SystemdVersion func() int                                                   // systemctl --version; 0 without systemd
+	ServiceUser    string                                                       // rpmgr: owns a new KEK file
 }
 
 // lowMemory is the host memory below which init picks the low-memory password-hash profile
@@ -160,6 +162,30 @@ func (o *InitOptions) setDefaults() {
 	if o.Memory == nil {
 		o.Memory = hostMemory
 	}
+	if o.SystemdVersion == nil {
+		o.SystemdVersion = systemdVersion
+	}
+	if o.ServiceUser == "" {
+		o.ServiceUser = "rpmgr"
+	}
+}
+
+// credentialSystemd is the first systemd version with encrypted credentials
+// (LoadCredentialEncrypted=); below it, init writes the KEK to a file (docs/10-operations.md,
+// "Supported platforms").
+const credentialSystemd = 250
+
+// systemdVersion returns the version systemctl reports, or 0 without systemd.
+func systemdVersion() int {
+	out, err := exec.Command("systemctl", "--version").Output()
+	if err != nil {
+		return 0
+	}
+	var v int
+	if _, err := fmt.Sscanf(string(out), "systemd %d", &v); err != nil {
+		return 0
+	}
+	return v
 }
 
 // bootFile reads the boot file, or writes it from the options if it does not exist.
@@ -188,6 +214,9 @@ func bootFile(o InitOptions, cfg *config.Controller) error {
 		return fmt.Errorf("%s does not exist; --public-url is needed to write it", o.ConfigPath)
 	}
 	doc := map[string]any{"version": config.Version, "public_url": o.PublicURL}
+	if o.KEKSource == "" && o.SystemdVersion() < credentialSystemd {
+		o.KEKSource = config.KEKFile
+	}
 	switch o.KEKSource {
 	case "", config.KEKSystemdCredential:
 	case config.KEKFile:
@@ -227,6 +256,9 @@ func obtainKEK(ctx context.Context, o InitOptions, cfg config.Controller) (secre
 			return secret.KEK{}, "", err
 		}
 		if err := writeNew(cfg.KEK.Path, enc, 0o600); err != nil {
+			return secret.KEK{}, "", err
+		}
+		if err := giveTo(cfg.KEK.Path, o.ServiceUser); err != nil {
 			return secret.KEK{}, "", err
 		}
 		return k, "new file " + cfg.KEK.Path, nil

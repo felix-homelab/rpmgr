@@ -17,6 +17,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/release"
 	"github.com/felix-homelab/rpmgr/internal/routes"
 	"github.com/felix-homelab/rpmgr/internal/telemetry"
+	"github.com/felix-homelab/rpmgr/internal/units"
 	"github.com/felix-homelab/rpmgr/internal/version"
 )
 
@@ -54,6 +55,7 @@ func commands() *cli.Command {
 			group("user", "administer users on the controller host", userResetPassword()),
 			group("release", "administer release artifacts on the controller host",
 				releaseImport()),
+			systemdUnit(),
 			versionCommand(),
 		}, append(apiCommands(), testCommands...)...),
 	}
@@ -218,6 +220,57 @@ func controllerInit() *cli.Command {
 			_, err = fmt.Fprintf(env.Stdout, "Initialised the controller.\n  trust domain: %s\n  CA pin:       %s\n"+
 				"  KEK:          %s\nBack up the KEK separately: without it the database cannot be read.\n"+firstUser,
 				r.TrustDomain, r.RootPin, r.KEK, r.FirstUserLink)
+			return err
+		},
+	}
+}
+
+// systemdUnit is `rpmgr systemd-unit`: a role's hardened unit, for a script or manual install
+// (docs/10-operations.md, "Hardened systemd units").
+func systemdUnit() *cli.Command {
+	var configPath, bin string
+	return &cli.Command{
+		Name:    "systemd-unit",
+		Summary: "print the hardened systemd unit of a role",
+		Args:    "controller | gateway | connector | all-in-one",
+		Flags: func(fs *flag.FlagSet) {
+			fs.StringVar(&bin, "bin", "/usr/local/bin/rpmgr", "the installed binary")
+			fs.StringVar(&configPath, "config", "", "the controller's or all-in-one's boot file, for its KEK credential (default $RPMGR_CONFIG, else /etc/rpmgr/<role>.yaml)")
+		},
+		Run: func(_ context.Context, env *cli.Env, args []string) error {
+			if len(args) != 1 {
+				return cli.Usagef("systemd-unit needs a role")
+			}
+			o := units.Options{Bin: bin}
+			switch role := args[0]; role {
+			case "controller", "all-in-one":
+				var kek struct{ Source, Name string }
+				path := config.Path(configPath, role, env.Getenv)
+				if role == "controller" {
+					var c config.Controller
+					if err := config.Load(path, &c); err != nil {
+						return fmt.Errorf("%w; run `rpmgr %s init` first", err, role)
+					}
+					kek.Source, kek.Name = c.KEK.Source, c.KEK.Name
+				} else {
+					var a config.AllInOne
+					if err := config.Load(path, &a); err != nil {
+						return fmt.Errorf("%w; run `rpmgr %s init` first", err, role)
+					}
+					kek.Source, kek.Name = a.Controller().KEK.Source, a.Controller().KEK.Name
+				}
+				if kek.Source == config.KEKSystemdCredential {
+					o.Credential = kek.Name
+				}
+			case "gateway", "connector":
+			default:
+				return cli.Usagef("no role %q: controller, gateway, connector or all-in-one", role)
+			}
+			b, err := units.Render(args[0], o)
+			if err != nil {
+				return err
+			}
+			_, err = env.Stdout.Write(b)
 			return err
 		},
 	}

@@ -66,6 +66,27 @@ func TestUnimplementedCommandsReportIt(t *testing.T) {
 	}
 }
 
+// TestSystemdUnit: the unit of an agent role needs no boot file; a controller's takes the KEK
+// credential from its boot file, and needs one.
+func TestSystemdUnit(t *testing.T) {
+	code, stdout, stderr := runRpmgr("systemd-unit", "--bin", "/usr/bin/rpmgr", "connector")
+	if code != cli.ExitOK || !strings.Contains(stdout, "ExecStart=/usr/bin/rpmgr connector --config /etc/rpmgr/connector.yaml\n") {
+		t.Errorf("connector: exit %d, %q, %q", code, stdout, stderr)
+	}
+	boot := filepath.Join(t.TempDir(), "controller.yaml")
+	if err := os.WriteFile(boot, []byte("version: 1\npublic_url: https://panel.example.com\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	code, stdout, _ = runRpmgr("systemd-unit", "--config", boot, "controller")
+	if code != cli.ExitOK || !strings.Contains(stdout, "LoadCredentialEncrypted=rpmgr-kek:/etc/rpmgr/credstore/rpmgr-kek\n") {
+		t.Errorf("controller with a credential KEK: exit %d, %q", code, stdout)
+	}
+	code, _, stderr = runRpmgr("systemd-unit", "--config", filepath.Join(t.TempDir(), "none.yaml"), "controller")
+	if code != cli.ExitError || !strings.Contains(stderr, "init") {
+		t.Errorf("controller without a boot file: exit %d, %q", code, stderr)
+	}
+}
+
 // TestReleaseImport: `rpmgr release import` reads the controller's boot file; a development
 // build imports nothing; the import itself is tested in internal/controller.
 func TestReleaseImport(t *testing.T) {
@@ -185,6 +206,8 @@ func TestCommandLineErrors(t *testing.T) {
 		{"version", "extra"},         // unexpected argument
 		{"controller", "positional"}, // a role takes no arguments
 		{"release", "import"},        // no directory
+		{"systemd-unit"},             // no role
+		{"systemd-unit", "relay"},    // no such role
 	} {
 		code, stdout, stderr := runRpmgr(args...)
 		if code != cli.ExitUsage || stdout != "" || !strings.Contains(stderr, "Usage:") {

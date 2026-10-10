@@ -7,6 +7,8 @@ package controller
 import (
 	"io/fs"
 	"os"
+	"os/user"
+	"strconv"
 	"syscall"
 )
 
@@ -35,4 +37,23 @@ func ownLike(dir, ref string) error {
 		}
 		return root.Lchown(p, int(sys.Uid), int(sys.Gid))
 	})
+}
+
+// giveTo gives a file to the system user name, which the service runs as, when the process runs
+// as root and the user exists; the controller then reads the KEK file the unit's ReadOnlyPaths
+// leaves it.
+func giveTo(path, name string) error {
+	if os.Geteuid() != 0 {
+		return nil
+	}
+	u, err := user.Lookup(name)
+	if err != nil {
+		return nil //nolint:nilerr // without the user, the operator gives the file to the service's user
+	}
+	uid, err1 := strconv.Atoi(u.Uid)
+	gid, err2 := strconv.Atoi(u.Gid)
+	if err1 != nil || err2 != nil {
+		return nil
+	}
+	return os.Chown(path, uid, gid)
 }
