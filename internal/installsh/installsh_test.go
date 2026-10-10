@@ -14,7 +14,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -28,8 +27,18 @@ import (
 var (
 	root    = releasetest.Key("install root")
 	signing = releasetest.Key("install signing")
-	arch    = map[string]string{"amd64": "amd64", "arm64": "arm64", "arm": "arm", "riscv64": "riscv64"}[runtime.GOARCH]
+	arch    = kernelArch()
 )
+
+// kernelArch is the architecture of the release the script installs on this host, from uname -m as
+// the script reads it: an armv7 test binary on an arm64 kernel gets the arm64 release.
+func kernelArch() string {
+	out, err := exec.Command("uname", "-m").Output()
+	if err != nil {
+		return ""
+	}
+	return map[string]string{"x86_64": "amd64", "aarch64": "arm64", "arm64": "arm64", "armv7l": "arm", "riscv64": "riscv64"}[strings.TrimSpace(string(out))]
+}
 
 func pubkey(t *testing.T, s releasetest.Signer) release.PublicKey {
 	t.Helper()
@@ -106,7 +115,7 @@ func run(t *testing.T, s *server, path string, args ...string) (string, error) {
 func needTools(t *testing.T) {
 	t.Helper()
 	if arch == "" {
-		t.Skip("no rpmgr build for " + runtime.GOARCH)
+		t.Skip("no rpmgr build for this kernel's architecture")
 	}
 	for _, tool := range []string{"sh", "curl", "openssl"} {
 		if _, err := exec.LookPath(tool); err != nil {
