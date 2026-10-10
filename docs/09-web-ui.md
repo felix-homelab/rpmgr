@@ -267,6 +267,50 @@ flowchart LR
     password, and the user then signs in.
   - Pages that need no session never send the user to sign in.
 
+### Audit log
+
+- **`/audit`** shows the org's audit log, newest first, 100 entries at a time with "Older entries".
+  The Instance Admin can switch to the instance's log.
+- **Each entry** shows time, action, target, actor (by name for members) and result. Opened, it
+  shows the entry number, credential, authentication, address, user agent, request ID, reason, and
+  the redacted request, as text.
+- **Filters:** action (exact) and actor ID, kept in the URL (U9).
+- **"Verify the chain"** checks the hash chain from its last signed checkpoint. It says whether the
+  chain is intact up to which entry, with the checkpoint, or where it broke and why
+  ([04](04-security.md#audit-log)).
+- [R] The export of the information architecture is left out in Phase 1: the API has no export
+  method, and the log is read in pages.
+
+### Settings
+
+- **`/settings`** shows the org's settings to every member; only the Owner changes them. They are
+  "every member must sign in with a second factor", whose change needs a step-up, "Operators may
+  enroll connectors", and the gateway group preselected for new routes.
+- **Instance settings** are shown to the Instance Admin only, in sections: transport, web UI and
+  controller endpoints, traffic statistics, ACME, mail relay and audit log. Each field states its
+  range ([10](10-operations.md#runtime-settings-ui--settings)).
+  - Emptying the relay's address removes the mail relay.
+  - The relay's password is write-only. The page says whether one is set, and replaces or removes
+    it.
+- **`/settings/pki`** shows the trust domain and the root's pin, as `rpmgr enroll --ca-pin` takes
+  it. It lists each key whose certificate has not expired, with its kind, state, subject, validity,
+  and when the schedule replaces it ([04](04-security.md#pki-and-identity)).
+  - **"Rotate the intermediate now"** asks for a confirmation and a step-up. The old intermediate
+    keeps verifying the certificates it issued until they expire.
+  - The page also holds the leaf-certificate lifetime, the grace period and the password-hash
+    profile.
+- **`/settings/updates`** holds the release check and the update channel. Uploading a manifest for
+  an air-gapped installation is Phase 2; until then `rpmgr release import` does it on the controller
+  host ([D59](14-open-decisions.md#security-defaults)).
+- **Saving** sends the settings as read with the page's fields changed, the mask of those fields and
+  the etag (U1); a page never saves another page's fields. If the settings changed since they were
+  read, the page says so and shows them as they are now.
+- [R] The boot settings of the information architecture are not shown in Phase 1: no API method
+  returns them. Showing them needs a method that returns the boot file without its secrets.
+- [R] The revocation-log warning and alert ([10](10-operations.md#backup-and-restore)) come with the
+  slice that adds the revocation-log sink, which is the first to report the log's state through the
+  API.
+
 ### Enroll connector dialog
 
 ```

@@ -4,9 +4,9 @@ import { expect, test } from "@playwright/test";
 import { email, expectAccessible, password, totp, watchCSP } from "./helpers";
 
 // The flows of docs/09-web-ui.md, "Testing the UI": first-run setup, sign-in with and without a
-// second factor, the step-up prompt, token creation and revocation, sign-out; each page under the
-// controller's CSP, with no violation, nothing in browser storage, and no accessibility violation
-// that axe finds.
+// second factor, the step-up prompt, token creation and revocation, the settings, sign-out; each
+// page under the controller's CSP, with no violation, nothing in browser storage, and no
+// accessibility violation that axe finds.
 test.describe.configure({ mode: "serial" });
 
 test("first-run setup creates the first user and signs them in", async ({ page }) => {
@@ -40,6 +40,24 @@ test("signs in, creates an API token with a step-up, sets up an authenticator an
   await page.getByLabel("Password", { exact: true }).fill(password);
   await page.getByRole("button", { name: "Sign in" }).click();
   await expect(page.getByText("Signed in as Ada")).toBeVisible();
+
+  // The instance settings, which the first user changes as the Instance Admin.
+  await page.getByRole("link", { name: "Settings" }).click();
+  const instance = page.getByRole("region", { name: "Instance settings" });
+  await expect(instance.getByLabel("Keep hourly statistics (days)")).toHaveValue(/^\d+$/);
+  await expectAccessible(page);
+  await instance.getByLabel("Keep hourly statistics (days)").fill("30");
+  await instance.getByRole("button", { name: "Save" }).click();
+  await expect(instance.getByRole("status")).toHaveText("Saved.");
+  await expect(instance.getByLabel("Keep hourly statistics (days)")).toHaveValue("30");
+  await page.getByRole("link", { name: "Updates" }).click();
+  await expect(page.getByLabel("Check for releases once a day")).toBeVisible();
+  await expectAccessible(page);
+  await page.getByRole("main").getByRole("link", { name: "Settings" }).click();
+  await page.getByRole("link", { name: "PKI" }).click();
+  await expect(page.getByRole("cell", { name: "Root", exact: true })).toBeVisible();
+  await expect(page.getByRole("cell", { name: "Intermediate", exact: true })).toBeVisible();
+  await expectAccessible(page);
 
   // An API token: its creation needs a step-up, which the dialog asks for in the page.
   await page.getByRole("link", { name: "Ada" }).click();
