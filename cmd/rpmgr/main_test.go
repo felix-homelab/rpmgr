@@ -57,7 +57,7 @@ func TestEveryCommandHasHelp(t *testing.T) {
 
 func TestUnimplementedCommandsReportIt(t *testing.T) {
 	for _, args := range [][]string{
-		{"leave"}, {"ca", "status"},
+		{"leave"}, {"diag", "clock"},
 	} {
 		code, _, stderr := runRpmgr(args...)
 		if code != cli.ExitUsage || !strings.Contains(stderr, "not available in this build") {
@@ -146,6 +146,44 @@ func TestController(t *testing.T) {
 	}
 }
 
+// TestLocalAdmin runs the local administration commands against an initialised controller; they
+// are tested in internal/controller.
+func TestLocalAdmin(t *testing.T) {
+	dir := t.TempDir()
+	cfg := filepath.Join(dir, "controller.yaml")
+	boot := "version: 1\npublic_url: https://panel.example.com\n" +
+		"database: {dsn: " + filepath.Join(dir, "controller.db") + "}\n" +
+		"kek: {source: file, path: " + filepath.Join(dir, "kek") + "}\n"
+	if err := os.WriteFile(cfg, []byte(boot), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if code, _, stderr := runRpmgr("controller", "init", "--config", cfg); code != cli.ExitOK {
+		t.Fatalf("init: %q", stderr)
+	}
+	for _, tc := range []struct {
+		args []string
+		want []string
+	}{
+		{[]string{"ca", "status"}, []string{"Trust domain: rpmgr-", "Root pin:     sha256:", "root ", "intermediate ", "config-signing ", "active"}},
+		{[]string{"ca", "rotate-intermediate"}, []string{"The new issuing intermediate", "retired"}},
+		{[]string{"kek", "status"}, []string{"The boot file's KEK: version ", "(the boot file's)"}},
+		{[]string{"migrate"}, []string{"The database is up to date."}},
+	} {
+		code, stdout, stderr := runRpmgr(append(tc.args, "--config", cfg)...)
+		for _, w := range tc.want {
+			if code != cli.ExitOK || !strings.Contains(stdout, w) {
+				t.Errorf("rpmgr %s: exit %d, no %q in %q (stderr %q)", strings.Join(tc.args, " "), code, w, stdout, stderr)
+			}
+		}
+	}
+	missing := filepath.Join(t.TempDir(), "none.yaml")
+	for _, args := range [][]string{{"ca", "status"}, {"kek", "status"}, {"migrate"}, {"kek", "rotate", "--previous-file", "x"}} {
+		if code, _, stderr := runRpmgr(append(args, "--config", missing)...); code != cli.ExitError || !strings.Contains(stderr, "none.yaml") {
+			t.Errorf("rpmgr %s without a boot file: exit %d, %q", strings.Join(args, " "), code, stderr)
+		}
+	}
+}
+
 // TestControllerInit runs `rpmgr controller init` against a boot file in a temporary directory.
 // The initialisation itself is tested in internal/controller.
 func TestControllerInit(t *testing.T) {
@@ -221,6 +259,8 @@ func TestCommandLineErrors(t *testing.T) {
 		{"release", "import"},        // no directory
 		{"systemd-unit"},             // no role
 		{"systemd-unit", "relay"},    // no such role
+		{"kek", "rotate"},            // no previous KEK
+		{"migrate", "extra"},         // a local command takes no arguments
 		{"restore"},                  // no archive
 		{"backup"},                   // no archive
 	} {

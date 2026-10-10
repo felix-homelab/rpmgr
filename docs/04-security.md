@@ -600,7 +600,9 @@ Rules:
 | `file`: a 0600 file | P1 | Containers mount secrets as files. The file holds the base64 encoding of 32 random bytes; symbolic links are followed (container platforms mount secrets that way), but the file must be regular and closed to its group and other users (0600 or 0400) |
 
 **Not** an environment variable: no secret is kept in the environment of a long-running process.
-`rpmgr kek rotate` re-wraps all data keys. [R] With HKDF-SHA256 and one label per purpose, the KEK
+`rpmgr kek rotate` re-wraps all data keys, in one transaction, with every controller stopped: a
+running controller holds the old KEK and could neither open the re-wrapped secrets nor seal new
+ones under the new KEK. [R] With HKDF-SHA256 and one label per purpose, the KEK
 also yields keys that need no storage: the key that authenticates API page tokens. They change
 with the KEK.
 
