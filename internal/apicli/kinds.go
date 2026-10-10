@@ -24,6 +24,7 @@ type Kind struct {
 	Resource string   // the message, and the stem of its methods: Get<Resource>, Delete<Resource>
 	Plural   string   // the stem of List<Plural>
 	IDField  string   // the request field that names one, e.g. "gateway_group_id"
+	Prefix   string   // the prefix of its IDs, e.g. "gwg_"
 	Manifest string   // its manifest kind; empty for none
 	Columns  []string // the fields a table shows after its ID and name, as JSON names
 	Delete   bool     // whether Delete<Resource> exists
@@ -31,23 +32,23 @@ type Kind struct {
 
 // Kinds are the kinds of the public API's resources, by name.
 var Kinds = []Kind{
-	{Name: "route", Service: "rpmgr.v1.RouteService", Resource: "Route", Plural: "Routes", IDField: "route_id", Manifest: "Route",
+	{Name: "route", Prefix: "rt_", Service: "rpmgr.v1.RouteService", Resource: "Route", Plural: "Routes", IDField: "route_id", Manifest: "Route",
 		Columns: []string{"gatewayGroupId", "enabled", "status.state"}, Delete: true},
-	{Name: "connector", Service: "rpmgr.v1.ConnectorService", Resource: "Connector", Plural: "Connectors", IDField: "connector_id",
+	{Name: "connector", Prefix: "con_", Service: "rpmgr.v1.ConnectorService", Resource: "Connector", Plural: "Connectors", IDField: "connector_id",
 		Manifest: "Connector", Columns: []string{"enabled", "session.connected", "session.version"}},
-	{Name: "gateway", Service: "rpmgr.v1.GatewayService", Resource: "Gateway", Plural: "Gateways", IDField: "gateway_id",
+	{Name: "gateway", Prefix: "gw_", Service: "rpmgr.v1.GatewayService", Resource: "Gateway", Plural: "Gateways", IDField: "gateway_id",
 		Manifest: "Gateway", Columns: []string{"gatewayGroupId", "enabled", "status.connected"}},
-	{Name: "gateway-group", Service: "rpmgr.v1.GatewayService", Resource: "GatewayGroup", Plural: "GatewayGroups",
+	{Name: "gateway-group", Prefix: "gwg_", Service: "rpmgr.v1.GatewayService", Resource: "GatewayGroup", Plural: "GatewayGroups",
 		IDField: "gateway_group_id", Manifest: "GatewayGroup", Columns: []string{"region"}, Delete: true},
-	{Name: "port-pool", Service: "rpmgr.v1.GatewayService", Resource: "PortPool", Plural: "PortPools", IDField: "port_pool_id",
+	{Name: "port-pool", Prefix: "pp_", Service: "rpmgr.v1.GatewayService", Resource: "PortPool", Plural: "PortPools", IDField: "port_pool_id",
 		Manifest: "PortPool", Columns: []string{"gatewayGroupId", "protocol", "portFrom", "portTo", "allocatedPorts"}, Delete: true},
-	{Name: "domain", Service: "rpmgr.v1.DomainService", Resource: "Domain", Plural: "Domains", IDField: "domain_id", Manifest: "Domain",
+	{Name: "domain", Prefix: "dom_", Service: "rpmgr.v1.DomainService", Resource: "Domain", Plural: "Domains", IDField: "domain_id", Manifest: "Domain",
 		Columns: []string{"wildcard", "method", "status"}, Delete: true},
-	{Name: "certificate", Service: "rpmgr.v1.CertificateService", Resource: "Certificate", Plural: "Certificates",
+	{Name: "certificate", Prefix: "crt_", Service: "rpmgr.v1.CertificateService", Resource: "Certificate", Plural: "Certificates",
 		IDField: "certificate_id", Columns: []string{"source", "status", "sans", "notAfter"}, Delete: true},
-	{Name: "ca-bundle", Service: "rpmgr.v1.CertificateService", Resource: "CABundle", Plural: "CABundles", IDField: "ca_bundle_id",
+	{Name: "ca-bundle", Prefix: "cab_", Service: "rpmgr.v1.CertificateService", Resource: "CABundle", Plural: "CABundles", IDField: "ca_bundle_id",
 		Manifest: "CABundle", Delete: true},
-	{Name: "access-policy", Service: "rpmgr.v1.PolicyService", Resource: "AccessPolicy", Plural: "AccessPolicies",
+	{Name: "access-policy", Prefix: "ap_", Service: "rpmgr.v1.PolicyService", Resource: "AccessPolicy", Plural: "AccessPolicies",
 		IDField: "access_policy_id", Manifest: "AccessPolicy", Columns: []string{"description"}, Delete: true},
 }
 
@@ -122,4 +123,36 @@ func (k Kind) Field(m protoreflect.Message) (protoreflect.FieldDescriptor, error
 		}
 	}
 	return nil, fmt.Errorf("%s holds no %s", m.Descriptor().FullName(), k.Resource)
+}
+
+// Resolve returns the ID of the org's resource of the kind that ref names: ref itself if it has
+// the kind's ID prefix, else the ID of the one whose name it is.
+func (k Kind) Resolve(ctx context.Context, hc *http.Client, base, org, ref string) (string, error) {
+	if strings.HasPrefix(ref, k.Prefix) {
+		return ref, nil
+	}
+	md, err := k.Method("List" + k.Plural)
+	if err != nil {
+		return "", err
+	}
+	for page := ""; ; {
+		resp, err := Call(ctx, hc, base, md, map[string]any{"org_id": org, "page_size": int32(500), "page_token": page}, nil)
+		if err != nil {
+			return "", err
+		}
+		fd, err := k.Field(resp)
+		if err != nil {
+			return "", err
+		}
+		l := resp.Get(fd).List()
+		for i := range l.Len() {
+			m := l.Get(i).Message()
+			if name := m.Descriptor().Fields().ByName("name"); name != nil && m.Get(name).String() == ref {
+				return m.Get(m.Descriptor().Fields().ByName("id")).String(), nil
+			}
+		}
+		if page = resp.Get(resp.Descriptor().Fields().ByName("next_page_token")).String(); page == "" {
+			return "", fmt.Errorf("no %s named %q", k.Name, ref)
+		}
+	}
 }

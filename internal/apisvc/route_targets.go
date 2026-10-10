@@ -113,6 +113,16 @@ func (r *Routes) UpdateRouteTarget(ctx context.Context, req *connect.Request[rpm
 	return connect.NewResponse(&rpmgrv1.UpdateRouteTargetResponse{Target: out, Revision: revisionOf(rev)}), nil
 }
 
+// GetRouteTarget implements RouteService.
+func (r *Routes) GetRouteTarget(ctx context.Context, req *connect.Request[rpmgrv1.GetRouteTargetRequest]) (
+	*connect.Response[rpmgrv1.GetRouteTargetResponse], error) {
+	row, err := r.DB.ReadClient().RouteTarget.Get(ctx, req.Msg.GetRouteTargetId())
+	if err != nil {
+		return nil, storeError(err)
+	}
+	return connect.NewResponse(&rpmgrv1.GetRouteTargetResponse{Target: targetOf(row), RouteId: row.RouteID}), nil
+}
+
 // DeleteRouteTarget implements RouteService.
 func (r *Routes) DeleteRouteTarget(ctx context.Context, req *connect.Request[rpmgrv1.DeleteRouteTargetRequest]) (
 	*connect.Response[rpmgrv1.DeleteRouteTargetResponse], error) {

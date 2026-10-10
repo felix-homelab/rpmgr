@@ -60,6 +60,14 @@ service RouteService {
       resource_field: "target.id"
     };
   }
+  // GetRouteTarget returns a target with the route it belongs to.
+  rpc GetRouteTarget(GetRouteTargetRequest) returns (GetRouteTargetResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+    option (rpmgr.v1.authz) = {
+      permission: "org.read"
+      resource_field: "route_target_id"
+    };
+  }
   // DeleteRouteTarget removes a target from its route.
   rpc DeleteRouteTarget(DeleteRouteTargetRequest) returns (DeleteRouteTargetResponse) {
     option (rpmgr.v1.authz) = {
@@ -504,6 +512,20 @@ message UpdateRouteTargetResponse {
   // The apply status of the revision; with the request header Rpmgr-Wait-Applied, once it is
   // final or the wait is over (docs/07-api.md, "Writes and apply status").
   ApplyStatus apply_status = 3;
+}
+
+// GetRouteTargetRequest names a target.
+message GetRouteTargetRequest {
+  // The target's ID.
+  string route_target_id = 1 [(buf.validate.field).string.min_len = 1];
+}
+
+// GetRouteTargetResponse is the target.
+message GetRouteTargetResponse {
+  // The target.
+  RouteTarget target = 1;
+  // The ID of its route.
+  string route_id = 2;
 }
 
 // DeleteRouteTargetRequest names a target.
