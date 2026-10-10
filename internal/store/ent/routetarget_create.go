@@ -28,6 +28,20 @@ func (_c *RouteTargetCreate) SetOrgID(v string) *RouteTargetCreate {
 	return _c
 }
 
+// SetVersion sets the "version" field.
+func (_c *RouteTargetCreate) SetVersion(v int64) *RouteTargetCreate {
+	_c.mutation.SetVersion(v)
+	return _c
+}
+
+// SetNillableVersion sets the "version" field if the given value is not nil.
+func (_c *RouteTargetCreate) SetNillableVersion(v *int64) *RouteTargetCreate {
+	if v != nil {
+		_c.SetVersion(*v)
+	}
+	return _c
+}
+
 // SetRouteID sets the "route_id" field.
 func (_c *RouteTargetCreate) SetRouteID(v string) *RouteTargetCreate {
 	_c.mutation.SetRouteID(v)
@@ -280,6 +294,10 @@ func (_c *RouteTargetCreate) ExecX(ctx context.Context) {
 
 // defaults sets the default values of the builder before save.
 func (_c *RouteTargetCreate) defaults() error {
+	if _, ok := _c.mutation.Version(); !ok {
+		v := routetarget.DefaultVersion
+		_c.mutation.SetVersion(v)
+	}
 	if _, ok := _c.mutation.Host(); !ok {
 		v := routetarget.DefaultHost
 		_c.mutation.SetHost(v)
@@ -338,6 +356,14 @@ func (_c *RouteTargetCreate) check() error {
 	if v, ok := _c.mutation.OrgID(); ok {
 		if err := routetarget.OrgIDValidator(v); err != nil {
 			return &ValidationError{Name: "org_id", err: fmt.Errorf(`ent: validator failed for field "RouteTarget.org_id": %w`, err)}
+		}
+	}
+	if _, ok := _c.mutation.Version(); !ok {
+		return &ValidationError{Name: "version", err: errors.New(`ent: missing required field "RouteTarget.version"`)}
+	}
+	if v, ok := _c.mutation.Version(); ok {
+		if err := routetarget.VersionValidator(v); err != nil {
+			return &ValidationError{Name: "version", err: fmt.Errorf(`ent: validator failed for field "RouteTarget.version": %w`, err)}
 		}
 	}
 	if _, ok := _c.mutation.RouteID(); !ok {
@@ -468,6 +494,10 @@ func (_c *RouteTargetCreate) createSpec() (*RouteTarget, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.OrgID(); ok {
 		_spec.SetField(routetarget.FieldOrgID, field.TypeString, value)
 		_node.OrgID = value
+	}
+	if value, ok := _c.mutation.Version(); ok {
+		_spec.SetField(routetarget.FieldVersion, field.TypeInt64, value)
+		_node.Version = value
 	}
 	if value, ok := _c.mutation.Kind(); ok {
 		_spec.SetField(routetarget.FieldKind, field.TypeEnum, value)

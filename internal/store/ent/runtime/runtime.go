@@ -2395,18 +2395,29 @@ func init() {
 		})
 	}
 	routetargetMixinHooks0 := routetargetMixin[0].Hooks()
+	routetargetMixinHooks1 := routetargetMixin[1].Hooks()
 
 	routetarget.Hooks[1] = routetargetMixinHooks0[0]
+
+	routetarget.Hooks[2] = routetargetMixinHooks1[0]
 	routetargetMixinInters0 := routetargetMixin[0].Interceptors()
 	routetarget.Interceptors[0] = routetargetMixinInters0[0]
 	routetargetMixinFields0 := routetargetMixin[0].Fields()
 	_ = routetargetMixinFields0
+	routetargetMixinFields1 := routetargetMixin[1].Fields()
+	_ = routetargetMixinFields1
 	routetargetFields := schema.RouteTarget{}.Fields()
 	_ = routetargetFields
 	// routetargetDescOrgID is the schema descriptor for org_id field.
 	routetargetDescOrgID := routetargetMixinFields0[0].Descriptor()
 	// routetarget.OrgIDValidator is a validator for the "org_id" field. It is called by the builders before save.
 	routetarget.OrgIDValidator = routetargetDescOrgID.Validators[0].(func(string) error)
+	// routetargetDescVersion is the schema descriptor for version field.
+	routetargetDescVersion := routetargetMixinFields1[0].Descriptor()
+	// routetarget.DefaultVersion holds the default value on creation for the version field.
+	routetarget.DefaultVersion = routetargetDescVersion.Default.(int64)
+	// routetarget.VersionValidator is a validator for the "version" field. It is called by the builders before save.
+	routetarget.VersionValidator = routetargetDescVersion.Validators[0].(func(int64) error)
 	// routetargetDescRouteID is the schema descriptor for route_id field.
 	routetargetDescRouteID := routetargetFields[1].Descriptor()
 	// routetarget.RouteIDValidator is a validator for the "route_id" field. It is called by the builders before save.

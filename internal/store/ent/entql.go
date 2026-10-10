@@ -926,6 +926,7 @@ var schemaGraph = func() *sqlgraph.Schema {
 		Type: "RouteTarget",
 		Fields: map[string]*sqlgraph.FieldSpec{
 			routetarget.FieldOrgID:            {Type: field.TypeString, Column: routetarget.FieldOrgID},
+			routetarget.FieldVersion:          {Type: field.TypeInt64, Column: routetarget.FieldVersion},
 			routetarget.FieldRouteID:          {Type: field.TypeString, Column: routetarget.FieldRouteID},
 			routetarget.FieldConnectorID:      {Type: field.TypeString, Column: routetarget.FieldConnectorID},
 			routetarget.FieldKind:             {Type: field.TypeEnum, Column: routetarget.FieldKind},
@@ -4943,6 +4944,11 @@ func (f *RouteTargetFilter) WhereID(p entql.StringP) {
 // WhereOrgID applies the entql string predicate on the org_id field.
 func (f *RouteTargetFilter) WhereOrgID(p entql.StringP) {
 	f.Where(p.Field(routetarget.FieldOrgID))
+}
+
+// WhereVersion applies the entql int64 predicate on the version field.
+func (f *RouteTargetFilter) WhereVersion(p entql.Int64P) {
+	f.Where(p.Field(routetarget.FieldVersion))
 }
 
 // WhereRouteID applies the entql string predicate on the route_id field.

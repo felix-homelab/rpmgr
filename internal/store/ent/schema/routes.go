@@ -268,8 +268,8 @@ func (RouteHTTP) Indexes() []ent.Index {
 // fail over.
 type RouteTarget struct{ ent.Schema }
 
-// Mixin makes route targets org-owned.
-func (RouteTarget) Mixin() []ent.Mixin { return []ent.Mixin{OrgMixin{}} }
+// Mixin makes route targets org-owned and versioned.
+func (RouteTarget) Mixin() []ent.Mixin { return []ent.Mixin{OrgMixin{}, VersionMixin{}} }
 
 // Annotations name the table as docs/06-data-model.md does.
 func (RouteTarget) Annotations() []schema.Annotation {

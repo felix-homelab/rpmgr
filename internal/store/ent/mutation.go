@@ -32152,6 +32152,8 @@ type RouteTargetMutation struct {
 	typ               string
 	id                *string
 	org_id            *string
+	version           *int64
+	addversion        *int64
 	kind              *routetarget.Kind
 	host              *string
 	port              *int
@@ -32316,6 +32318,62 @@ func (m *RouteTargetMutation) OldOrgID(ctx context.Context) (v string, err error
 // ResetOrgID resets all changes to the "org_id" field.
 func (m *RouteTargetMutation) ResetOrgID() {
 	m.org_id = nil
+}
+
+// SetVersion sets the "version" field.
+func (m *RouteTargetMutation) SetVersion(i int64) {
+	m.version = &i
+	m.addversion = nil
+}
+
+// Version returns the value of the "version" field in the mutation.
+func (m *RouteTargetMutation) Version() (r int64, exists bool) {
+	v := m.version
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldVersion returns the old "version" field's value of the RouteTarget entity.
+// If the RouteTarget object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RouteTargetMutation) OldVersion(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldVersion is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldVersion requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldVersion: %w", err)
+	}
+	return oldValue.Version, nil
+}
+
+// AddVersion adds i to the "version" field.
+func (m *RouteTargetMutation) AddVersion(i int64) {
+	if m.addversion != nil {
+		*m.addversion += i
+	} else {
+		m.addversion = &i
+	}
+}
+
+// AddedVersion returns the value that was added to the "version" field in this mutation.
+func (m *RouteTargetMutation) AddedVersion() (r int64, exists bool) {
+	v := m.addversion
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetVersion resets all changes to the "version" field.
+func (m *RouteTargetMutation) ResetVersion() {
+	m.version = nil
+	m.addversion = nil
 }
 
 // SetRouteID sets the "route_id" field.
@@ -33023,9 +33081,12 @@ func (m *RouteTargetMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *RouteTargetMutation) Fields() []string {
-	fields := make([]string, 0, 15)
+	fields := make([]string, 0, 16)
 	if m.org_id != nil {
 		fields = append(fields, routetarget.FieldOrgID)
+	}
+	if m.version != nil {
+		fields = append(fields, routetarget.FieldVersion)
 	}
 	if m.route != nil {
 		fields = append(fields, routetarget.FieldRouteID)
@@ -33079,6 +33140,8 @@ func (m *RouteTargetMutation) Field(name string) (ent.Value, bool) {
 	switch name {
 	case routetarget.FieldOrgID:
 		return m.OrgID()
+	case routetarget.FieldVersion:
+		return m.Version()
 	case routetarget.FieldRouteID:
 		return m.RouteID()
 	case routetarget.FieldConnectorID:
@@ -33118,6 +33181,8 @@ func (m *RouteTargetMutation) OldField(ctx context.Context, name string) (ent.Va
 	switch name {
 	case routetarget.FieldOrgID:
 		return m.OldOrgID(ctx)
+	case routetarget.FieldVersion:
+		return m.OldVersion(ctx)
 	case routetarget.FieldRouteID:
 		return m.OldRouteID(ctx)
 	case routetarget.FieldConnectorID:
@@ -33161,6 +33226,13 @@ func (m *RouteTargetMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetOrgID(v)
+		return nil
+	case routetarget.FieldVersion:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetVersion(v)
 		return nil
 	case routetarget.FieldRouteID:
 		v, ok := value.(string)
@@ -33268,6 +33340,9 @@ func (m *RouteTargetMutation) SetField(name string, value ent.Value) error {
 // this mutation.
 func (m *RouteTargetMutation) AddedFields() []string {
 	var fields []string
+	if m.addversion != nil {
+		fields = append(fields, routetarget.FieldVersion)
+	}
 	if m.addport != nil {
 		fields = append(fields, routetarget.FieldPort)
 	}
@@ -33285,6 +33360,8 @@ func (m *RouteTargetMutation) AddedFields() []string {
 // was not set, or was not defined in the schema.
 func (m *RouteTargetMutation) AddedField(name string) (ent.Value, bool) {
 	switch name {
+	case routetarget.FieldVersion:
+		return m.AddedVersion()
 	case routetarget.FieldPort:
 		return m.AddedPort()
 	case routetarget.FieldWeight:
@@ -33300,6 +33377,13 @@ func (m *RouteTargetMutation) AddedField(name string) (ent.Value, bool) {
 // type.
 func (m *RouteTargetMutation) AddField(name string, value ent.Value) error {
 	switch name {
+	case routetarget.FieldVersion:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddVersion(v)
+		return nil
 	case routetarget.FieldPort:
 		v, ok := value.(int)
 		if !ok {
@@ -33359,6 +33443,9 @@ func (m *RouteTargetMutation) ResetField(name string) error {
 	switch name {
 	case routetarget.FieldOrgID:
 		m.ResetOrgID()
+		return nil
+	case routetarget.FieldVersion:
+		m.ResetVersion()
 		return nil
 	case routetarget.FieldRouteID:
 		m.ResetRouteID()

@@ -106,12 +106,14 @@ func TestCrossTenantLeaks(t *testing.T) {
 		SetExpiresAt(time.Now().Add(time.Hour)).SetCreatedBy(ada.GetUserId()).SaveX(sys)
 	domainA := db.Client().Domain.Create().SetOrgID(orgA).SetFqdn("org-a.example").SetChallengeValue("leak").SaveX(sys)
 	routeA := db.Client().Route.Create().SetOrgID(orgA).SetName("web-a").SetType("tls_passthrough").SetGatewayGroupID(groupA.ID).SaveX(sys)
+	targetA := db.Client().RouteTarget.Create().SetOrgID(orgA).SetRouteID(routeA.ID).SetConnectorID(connectorA.ID).SetKind("address").
+		SetHost("10.0.0.5").SetPort(5432).SaveX(sys)
 	fill := map[string]string{
 		"org_id": orgA, "user_id": ada.GetUserId(), "token_id": adaToken.Msg.GetApiToken().GetId(),
 		"session_id": ada.GetSession().GetId(), "gateway_group_id": groupA.ID, "gateway_id": gatewayA.ID,
-		"port_pool_id": poolA.ID, "port_quota_id": quotaA.ID, "connector_id": connectorA.ID, "domain_id": domainA.ID, "route_id": routeA.ID, "enrollment_token_id": tokenA.ID,
+		"port_pool_id": poolA.ID, "port_quota_id": quotaA.ID, "connector_id": connectorA.ID, "domain_id": domainA.ID, "route_id": routeA.ID, "route_target_id": targetA.ID, "target_id": targetA.ID, "enrollment_token_id": tokenA.ID,
 	}
-	secrets := []string{orgA, groupA.ID, gatewayA.ID, "gw1.org-a.example", poolA.ID, quotaA.ID, connectorA.ID, domainA.ID, "org-a.example", routeA.ID, "web-a", tokenA.ID, ada.GetUserId(), "ada@example.com", adaToken.Msg.GetApiToken().GetId(), ada.GetSession().GetId(),
+	secrets := []string{orgA, groupA.ID, gatewayA.ID, "gw1.org-a.example", poolA.ID, quotaA.ID, connectorA.ID, domainA.ID, "org-a.example", routeA.ID, "web-a", targetA.ID, "10.0.0.5", tokenA.ID, ada.GetUserId(), "ada@example.com", adaToken.Msg.GetApiToken().GetId(), ada.GetSession().GetId(),
 		invitation.Msg.GetUrl()[strings.Index(invitation.Msg.GetUrl(), "#")+1:]}
 	before := orgRows(t, db, orgA)
 

@@ -445,6 +445,11 @@ func routeOf(ctx context.Context, c *ent.Client, row *ent.Route) (*rpmgrv1.Route
 			}
 		}
 	}
+	targets, err := targetsOf(ctx, c, row.ID)
+	if err != nil {
+		return nil, err
+	}
+	out.Targets = targets
 	hs, err := c.RouteHostname.Query().Where(routehostname.RouteID(row.ID)).Order(ent.Asc(routehostname.FieldHostname)).All(ctx)
 	if err != nil {
 		return nil, err
