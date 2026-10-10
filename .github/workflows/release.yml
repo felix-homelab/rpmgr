@@ -1,0 +1,171 @@
+# Release builds (RELEASING.md, "Release process"; docs/12-testing-and-quality.md, "Continuous
+# integration"). On a release tag: the tag and changelog checks, two builds on runners of two
+# architectures whose artifacts must be equal byte for byte, then a draft release with the
+# artifacts, SHA256SUMS, an SBOM, SLSA provenance, cosign signatures and the unsigned release
+# manifest, which the signer signs offline before publishing it (D48). No signing key enters CI:
+# cosign signs keylessly with this workflow's identity. Nightly, the two builds and their
+# comparison run alone, and a failure opens the nightly-failure issue, or comments on it.
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+  schedule:
+    - cron: "47 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  tag:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Release tag and changelog section
+        id: version
+        env:
+          EVENT: ${{ github.event_name }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          if [[ $EVENT == push ]]; then
+            .github/scripts/check-release-tag.sh "$TAG"
+            echo "version=${TAG#v}" >>"$GITHUB_OUTPUT"
+          else
+            echo "version=0.0.0-nightly" >>"$GITHUB_OUTPUT"
+          fi
+
+  build:
+    needs: tag
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-24.04, ubuntu-24.04-arm]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false # each build starts from nothing
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: web/.nvmrc
+      - name: Release build
+        env:
+          VERSION: ${{ needs.tag.outputs.version }}
+        run: .github/scripts/build-release.sh "$VERSION" "$GITHUB_SHA" dist
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: build-${{ matrix.runner }}
+          path: dist/
+          if-no-files-found: error
+          retention-days: 7
+
+  reproducible:
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          path: builds
+      - name: The two builds are equal
+        run: .github/scripts/check-reproducible.sh builds/build-ubuntu-24.04 builds/build-ubuntu-24.04-arm
+
+  publish:
+    if: ${{ github.event_name == 'push' }}
+    needs: [tag, reproducible]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: write # the draft release
+      id-token: write # the keyless cosign signatures and the provenance attestation
+      attestations: write
+    env:
+      VERSION: ${{ needs.tag.outputs.version }}
+      TAG: ${{ github.ref_name }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: build-ubuntu-24.04
+          path: dist
+      - name: Artifacts with the release root keys (D48, D60)
+        env:
+          REQUIRE_ROOTS: "1"
+        run: .github/scripts/check-release-artifacts.sh dist "$VERSION" "$GITHUB_SHA" | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: SBOM
+        run: .github/scripts/release-sbom.sh "$VERSION" "dist/rpmgr-$VERSION.spdx.json"
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: dist/rpmgr-${{ needs.tag.outputs.version }}-linux-*
+      - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+      - name: Keyless cosign signatures
+        run: |
+          for f in dist/rpmgr-* dist/SHA256SUMS; do
+            cosign sign-blob --yes --bundle "$f.sigstore.json" "$f"
+          done
+      - name: Unsigned release manifest, one seq above the last published release's
+        run: |
+          previous=$(gh release list --repo "$GITHUB_REPOSITORY" --exclude-drafts --limit 1 --json tagName --jq '.[0].tagName // empty')
+          args=()
+          if [[ -n $previous ]]; then
+            gh release download "$previous" --repo "$GITHUB_REPOSITORY" --pattern manifest.json --dir previous
+            args=(-previous previous/manifest.json)
+          fi
+          go run ./tools/releasemanifest draft -version "$VERSION" -dir dist "${args[@]}" >dist/manifest.json
+          cat dist/manifest.json
+      - name: Draft release
+        run: |
+          .github/scripts/check-release-tag.sh "$TAG" >notes.md
+          pre=()
+          if [[ $VERSION == *-* ]]; then
+            pre=(--prerelease)
+          fi
+          gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --draft --verify-tag --title "rpmgr $VERSION" \
+            --notes-file notes.md "${pre[@]}" dist/*
+
+  report:
+    needs: [tag, build, reproducible]
+    if: ${{ failure() && github.event_name == 'schedule' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      issues: write
+    steps:
+      - name: Open the nightly-failure issue, or comment on it
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          title="Nightly run failed"
+          number=$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --search "in:title \"$title\"" \
+            --json number,title --jq "map(select(.title == \"$title\")) | .[0].number // empty")
+          if [[ -n $number ]]; then
+            gh issue comment "$number" --repo "$GITHUB_REPOSITORY" --body "Failed again (release reproducibility): $RUN_URL"
+          else
+            gh issue create --repo "$GITHUB_REPOSITORY" --title "$title" --label type:bug \
+              --body "The nightly release reproducibility check failed: $RUN_URL. Close this issue when the cause is fixed; the next failure opens a new one."
+          fi
