@@ -718,9 +718,15 @@ Each runbook: **symptoms → steps → done when**.
 
 ### Rotate the KEK
 
-- **Steps**: provision the new KEK in its source; `rpmgr kek rotate` re-wraps every data key
-  ([04](04-security.md#secrets-at-rest-and-in-logs)); back up the new KEK separately; retire the old
-  one after a successful backup and test restore.
+- **Steps**: keep the old KEK in a file of the `file` format, mode 0600 (for a systemd credential,
+  `systemd-creds decrypt --name=rpmgr-kek /etc/rpmgr/credstore/rpmgr-kek <file>`); stop every
+  controller; provision the new KEK in its source; `rpmgr kek rotate --previous-file <file>`
+  re-wraps every data key in one transaction ([04](04-security.md#secrets-at-rest-and-in-logs));
+  start the controllers; back up the new KEK separately; delete the old KEK's file and retire it
+  after a successful backup and test restore.
+- **A systemd credential** is loaded only inside a unit: run a command that needs the KEK, such as
+  `kek rotate` or `ca rotate-intermediate`, under `systemd-run --pipe --wait
+  --property=LoadCredentialEncrypted=rpmgr-kek:/etc/rpmgr/credstore/rpmgr-kek`.
 - **Done when**: no data key is wrapped with the old KEK version (`rpmgr kek status`).
 
 ### Restore from backup

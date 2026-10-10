@@ -189,7 +189,7 @@ erDiagram
 | `api_requests` | id, caller_id, method, request_id, request_hash, response_enc, created_at | The `request_id`s of `Create` calls within the deduplication window ([07](07-api.md#resource-design)), unique per caller and method. The first request's transactions insert the row, so the change and the row commit together; `response_enc` is its response under the KEK, null until it answered. Only the system scope reads or writes it |
 | `leases` | name, holder, fencing_token, expires_at (Unix milliseconds, so both dialects compare numbers) | Singleton jobs in HA, including the DNS job's `dns` lease ([10](10-operations.md#high-availability)). A takeover raises the fencing token; a job commits its work in a transaction that first checks the lease is still its own, so a replica that lost it commits nothing |
 | `controller_nodes` | node_id (`ctn_`), internal_address, last_seen_at | HA: where a replica can be reached by the others over controller-to-controller mutual TLS |
-| `secrets_meta` | table_name, row_id, column_name, kek_version, created_at | Bookkeeping for KEK rotation: one row per sealed column of a row, written in the transaction that writes the sealed value |
+| `secrets_meta` | table_name, row_id, column_name, kek_version, created_at | Bookkeeping for KEK rotation: one row per sealed column of a row, written in the transaction that writes the sealed value; `rpmgr kek status` reads it. The stored responses of `request_id`s, kept for a day, are not recorded; `rpmgr kek rotate` re-wraps every sealed column all the same and rewrites these rows ([04](04-security.md#secrets-at-rest-and-in-logs)) |
 
 ## Desired vs observed state
 

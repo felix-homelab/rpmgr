@@ -14,3 +14,12 @@ func SetRunTimers(t testing.TB, drain, reload time.Duration) {
 	drainWait, webCertReload = drain, reload
 	t.Cleanup(func() { drainWait, webCertReload = oldDrain, oldReload })
 }
+
+// SealedColumns lists the sealed columns `rpmgr kek rotate` re-wraps, as "table.column".
+func SealedColumns() []string {
+	out := make([]string, len(sealedColumns))
+	for i, c := range sealedColumns {
+		out[i] = c.table + "." + c.column
+	}
+	return out
+}

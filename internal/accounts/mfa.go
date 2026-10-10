@@ -79,8 +79,8 @@ func (m *MFA) EnrollTOTP(userID, issuer string) ([]byte, string, error) {
 				return err
 			}
 		}
-		id := ids.New("tot") // the seed is sealed for its row
-		sealed, err := m.Sealer.Seal(seedContext(id), secret.FromBytes(seed))
+		id := ids.New("tot") // the seed is sealed for its row, recorded for `rpmgr kek status`
+		sealed, err := store.Seal(m.sys, tx, m.Sealer, seedContext(id), secret.FromBytes(seed))
 		if err != nil {
 			return err
 		}
