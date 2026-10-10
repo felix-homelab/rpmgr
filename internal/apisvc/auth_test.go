@@ -141,6 +141,12 @@ func newEnv(t *testing.T) *env {
 		}); err != nil {
 		t.Fatal(err)
 	}
+	if err := srv.Mount(mux, rpmgrv1.File_rpmgr_v1_manifest_proto.Services().ByName("ManifestService"),
+		func(o ...connect.HandlerOption) (string, http.Handler) {
+			return rpmgrv1connect.NewManifestServiceHandler(&apisvc.Manifests{DB: db}, o...)
+		}); err != nil {
+		t.Fatal(err)
+	}
 	if err := srv.Mount(mux, rpmgrv1.File_rpmgr_v1_pki_proto.Services().ByName("PkiService"),
 		func(o ...connect.HandlerOption) (string, http.Handler) {
 			return rpmgrv1connect.NewPkiServiceHandler(e.pki, o...)
@@ -210,6 +216,7 @@ type browser struct {
 	crt    rpmgrv1connect.CertificateServiceClient
 	set    rpmgrv1connect.SettingsServiceClient
 	pki    rpmgrv1connect.PkiServiceClient
+	man    rpmgrv1connect.ManifestServiceClient
 }
 
 func (e *env) browser() *browser {
@@ -228,6 +235,7 @@ func (e *env) browser() *browser {
 	b.crt = rpmgrv1connect.NewCertificateServiceClient(&http.Client{Transport: b}, e.url)
 	b.set = rpmgrv1connect.NewSettingsServiceClient(&http.Client{Transport: b}, e.url)
 	b.pki = rpmgrv1connect.NewPkiServiceClient(&http.Client{Transport: b}, e.url)
+	b.man = rpmgrv1connect.NewManifestServiceClient(&http.Client{Transport: b}, e.url)
 	return b
 }
 

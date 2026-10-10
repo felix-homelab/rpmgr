@@ -72,6 +72,10 @@ linters:
       - path: internal/api/dedup\.go
         text: Reveal
         linters: [forbidigo]
+      # The command line's API token is written to its credentials file and sent as a Bearer header.
+      - path: internal/apicli/apicli\.go
+        text: Reveal
+        linters: [forbidigo]
       - path: internal/store/
         text: DecisionContext
         linters: [forbidigo]
