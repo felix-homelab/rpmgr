@@ -18,6 +18,9 @@ function originTransport(): Transport {
   return createConnectTransport({ baseUrl: window.location.origin });
 }
 
+// The pages that need no session, where an UNAUTHENTICATED answer is no reason to go to sign in.
+const publicPaths = new Set(["/login", "/setup", "/reset", "/forgot", "/invite"]);
+
 export interface AppProps {
   transport?: Transport; // tests pass a router transport
   history?: RouterHistory; // tests pass a memory history
@@ -40,7 +43,7 @@ export function App({ transport, history }: AppProps) {
         return;
       }
       const at = router.state.location;
-      if (at.pathname !== "/login") {
+      if (!publicPaths.has(at.pathname)) {
         queryClient.clear();
         void router.navigate({ to: "/login", search: { redirect: at.href } });
       }

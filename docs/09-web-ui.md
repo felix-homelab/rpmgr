@@ -149,6 +149,9 @@ flowchart LR
 - **Gateways that do not serve the route, and agents that rejected it,** are listed with their
   reasons.
 - UDP routes show the MTU hint of [03](03-connections.md#udp-routes).
+- **Access policies:** the policies the route applies, in order. They are attached from the org's
+  policies, detached, and moved up or down. They are then saved as one change: the route as read,
+  with the mask `policy_ids` and its etag.
 - **The "Enabled" switch** turns the route on or off; it is the only desired on/off switch (U3).
   - It sends the route as read, with the mask `enabled` and the route's etag.
   - The revision's apply status then follows live (U2): the state over the online agents, each
@@ -235,6 +238,34 @@ flowchart LR
 - **CA bundles,** which HTTPS targets verify their upstreams with: each with its certificates'
   subjects and expiry and how many targets use it. A bundle is added, changed (name and PEM, as the
   whole bundle as read with mask and etag), or removed after a confirmation.
+
+### Access policies
+
+- **The list** (`/policies`): each policy with its description, its rules in the order they apply
+  (allow or deny addresses, basic auth with its users' names), and the routes that use it.
+- **The form** creates a policy, or changes one as the whole policy as read with its name,
+  description and rules, their mask and the etag (U1).
+  - **Rules** are added, removed and moved up or down.
+  - **Basic auth:** each user has a name and a password. Passwords are write-only: an existing user
+    whose password field stays empty keeps their password.
+- **Removal** comes after a confirmation. The server refuses a policy that routes use, and says
+  which.
+- **After each change,** the apply status follows live.
+
+### Organisation
+
+- **`/org`** shows the org's name, which the Owner can change.
+- **Members:** each with name, e-mail address, role and since when. A member's role is changed with
+  a step-up where [04](04-security.md#roles) requires one (granting Admin or Owner). A member is
+  removed after a confirmation that names them.
+- **Invitations:** an address and a role. The step-up rule is the same.
+  - The answer is a one-time link with its expiry. It is shown with a copy button.
+  - The page says whether the controller e-mailed the link, or whether it must be sent by hand.
+- **The invitation link** opens `/invite#<token>`.
+  - A signed-in user joins with their account.
+  - Without a session, the page creates an account for the invited address, with a name and a
+    password, and the user then signs in.
+  - Pages that need no session never send the user to sign in.
 
 ### Enroll connector dialog
 

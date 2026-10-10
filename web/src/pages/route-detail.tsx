@@ -14,6 +14,7 @@ import { ConnectorService, DataTransport } from "@/gen/rpmgr/v1/connector_pb";
 import type { Revision } from "@/gen/rpmgr/v1/common_pb";
 import { RouteService, RouteState, type Route, type RouteTarget } from "@/gen/rpmgr/v1/route_pb";
 import type { ApplyStatus } from "@/gen/rpmgr/v1/status_pb";
+import { RoutePolicies } from "@/route-form/route-policies";
 import { TargetForm, type Written } from "@/route-form/target-form";
 import { allowCommand, routeAddress, routeType, useAgentNames, useGroupNames } from "@/routes-data";
 import { useOrg } from "@/session";
@@ -118,6 +119,8 @@ export function RouteDetail() {
           <Button variant="outline" size="sm" className="justify-self-start" onClick={() => setEditing("new")}>{t("targetForm.addButton")}</Button>
         )}
       </section>
+
+      {org && <RoutePolicies key={r.etag} orgId={org.orgId} route={r} onDone={(w) => void done(w)} />}
 
       {gatewayProblems.length > 0 && (
         <section aria-labelledby="gateways-title" className="grid gap-2">

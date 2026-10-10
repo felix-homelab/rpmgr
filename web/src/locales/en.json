@@ -10,7 +10,9 @@
     "routes": "Routes",
     "connectors": "Connectors",
     "gateways": "Gateways",
-    "domains": "Domains & certificates"
+    "domains": "Domains & certificates",
+    "policies": "Access policies",
+    "org": "Organisation"
   },
   "overview": {
     "title": "Overview",
@@ -590,5 +592,79 @@
     "targets_one": "used by {{count}} target",
     "targets_other": "used by {{count}} targets",
     "ask": "Remove the CA bundle {{name}}?"
+  },
+  "policies": {
+    "title": "Access policies",
+    "add": "New access policy",
+    "addTitle": "New access policy",
+    "editTitle": "Edit access policy",
+    "addSubmit": "Create the policy",
+    "none": "The org has no access policy.",
+    "summary": {
+      "allow": "allow {{cidrs}}",
+      "deny": "deny {{cidrs}}",
+      "basicAuth": "basic auth: {{users}}"
+    },
+    "usedBy": "used by {{routes}}",
+    "unused": "used by no route",
+    "ask": "Remove the access policy {{name}}?",
+    "rules": "Rules, in the order they apply",
+    "ruleN": "Rule {{n}}",
+    "kind": "Kind",
+    "kinds": {
+      "ipAllow": "Allow addresses",
+      "ipDeny": "Deny addresses",
+      "basicAuth": "Basic auth (HTTP routes)"
+    },
+    "up": "Up",
+    "down": "Down",
+    "removeRule": "Remove the rule",
+    "addRule": "Add a rule",
+    "cidrs": "Addresses (CIDRs, one per line)",
+    "user": "User",
+    "keep": "unchanged",
+    "removeUser": "Remove the user",
+    "addUser": "Add a user"
+  },
+  "routePolicies": {
+    "title": "Access policies",
+    "none": "The route applies no access policy: every client reaches it.",
+    "detach": "Detach",
+    "add": "Add a policy",
+    "choose": "Choose a policy",
+    "attach": "Attach"
+  },
+  "org": {
+    "title": "Organisation",
+    "nameTitle": "The organisation's name",
+    "name": "Name",
+    "members": "Members",
+    "columns": {
+      "name": "Name",
+      "email": "E-mail address",
+      "role": "Role",
+      "since": "Member since",
+      "actions": "Actions"
+    },
+    "roles": {
+      "owner": "Owner",
+      "admin": "Admin",
+      "operator": "Operator",
+      "viewer": "Viewer"
+    },
+    "roleOf": "Role of {{name}}",
+    "removeAsk": "Remove {{name}} from the organisation?",
+    "invite": "Invite someone",
+    "inviteSubmit": "Make the invitation",
+    "mailed": "The invitation is e-mailed. Its one-time link works until {{until}}:",
+    "notMailed": "This controller cannot send e-mail. Send this one-time link yourself; it works until {{until}}:",
+    "link": "Invitation link"
+  },
+  "invite": {
+    "title": "Join an organisation",
+    "asYou": "You join as {{name}}.",
+    "newAccount": "An account is created for the address you were invited at.",
+    "join": "Join",
+    "created": "Your account is ready. Sign in with the address you were invited at."
   }
 }

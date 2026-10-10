@@ -9,6 +9,9 @@ import { ConnectorDetail } from "@/pages/connector-detail";
 import { Connectors, validateConnectorsSearch } from "@/pages/connectors";
 import { DomainsPage } from "@/pages/domains-page";
 import { Forgot } from "@/pages/forgot";
+import { Invite } from "@/pages/invite";
+import { OrgPage } from "@/pages/org";
+import { Policies } from "@/pages/policies";
 import { GatewayGroupPage, Gateways } from "@/pages/gateways";
 import { Login } from "@/pages/login";
 import { NotFound } from "@/pages/not-found";
@@ -54,6 +57,8 @@ const connectorDetail = createRoute({ getParentRoute: () => app, path: "/connect
 const gateways = createRoute({ getParentRoute: () => app, path: "/gateways", component: Gateways });
 const gatewayGroup = createRoute({ getParentRoute: () => app, path: "/gateways/$groupId", component: GatewayGroupPage });
 const domains = createRoute({ getParentRoute: () => app, path: "/domains", component: DomainsPage });
+const policies = createRoute({ getParentRoute: () => app, path: "/policies", component: Policies });
+const orgPage = createRoute({ getParentRoute: () => app, path: "/org", component: OrgPage });
 const account = createRoute({
   getParentRoute: () => app,
   path: "/account",
@@ -72,8 +77,9 @@ const login = createRoute({
 const setup = createRoute({ getParentRoute: () => root, path: "/setup", component: Setup });
 const reset = createRoute({ getParentRoute: () => root, path: "/reset", component: Reset });
 const forgot = createRoute({ getParentRoute: () => root, path: "/forgot", component: Forgot });
+const invite = createRoute({ getParentRoute: () => root, path: "/invite", component: Invite });
 
-const routeTree = root.addChildren([app.addChildren([overview, routes, routeNew, routeDetail, routeEdit, connectors, connectorDetail, gateways, gatewayGroup, domains, account]), login, setup, reset, forgot]);
+const routeTree = root.addChildren([app.addChildren([overview, routes, routeNew, routeDetail, routeEdit, connectors, connectorDetail, gateways, gatewayGroup, domains, policies, orgPage, account]), login, setup, reset, forgot, invite]);
 
 export function createAppRouter(context: RouterContext, history?: RouterHistory) {
   return createRouter({ routeTree, history, context, defaultPreload: "intent" });
