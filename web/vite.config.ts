@@ -28,6 +28,8 @@ export default defineConfig({
             // The form validation's CEL and RE2 engines, which only the forms need.
             { name: "validation", test: /node_modules[\\/]@bufbuild[\\/](protovalidate|cel|re2)[\\/]/, priority: 1 },
             { name: "protobuf", test: /node_modules[\\/](@bufbuild|@connectrpc)[\\/]/ },
+            // Recharts and the libraries it draws and keeps its state with.
+            { name: "charts", test: /node_modules[\\/](recharts|victory-vendor|d3-[a-z-]+|internmap|@reduxjs|redux|react-redux|redux-thunk|immer|reselect|es-toolkit|decimal\.js-light|eventemitter3|tiny-invariant|use-sync-external-store|react-is)[\\/]/ },
             { name: "api", test: /[\\/]src[\\/]gen[\\/]/ },
           ],
         },

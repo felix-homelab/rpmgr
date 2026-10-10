@@ -7,6 +7,7 @@ import { create } from "@bufbuild/protobuf";
 import { App } from "@/app";
 import { ErrorInfoSchema, RetryInfoSchema } from "@/gen/google/rpc/error_details_pb";
 import { AuthService } from "@/gen/rpmgr/v1/auth_pb";
+import { MetricsService } from "@/gen/rpmgr/v1/metrics_pb";
 
 type Auth = Partial<ServiceImpl<typeof AuthService>>;
 
@@ -37,11 +38,13 @@ export function auth(over: Auth = {}, session = true): Auth {
   };
 }
 
-// show renders the UI at path with an API that serves impl, and the services more registers.
+// show renders the UI at path with an API that serves impl, and the services more registers. Pages
+// that show traffic get none, unless more registers MetricsService: the later registration wins.
 export function show(path: string, impl: Auth, more?: (router: ConnectRouter) => void) {
   const history = createMemoryHistory({ initialEntries: [path] });
   const transport = createRouterTransport((router) => {
     router.service(AuthService, impl);
+    router.service(MetricsService, { getOverview: () => ({}), getRouteTraffic: () => ({}) });
     more?.(router);
   });
   return { history, ...render(<App transport={transport} history={history} />) };

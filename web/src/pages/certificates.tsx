@@ -19,11 +19,20 @@ import { largestPage, listAll } from "@/lib/list-all";
 import { useRoutes } from "@/routes-data";
 import { useOrg } from "@/session";
 
-// soon is when a certificate's expiry is near enough to point out: 21 days.
-const soon = 21 * 86400_000;
+// soon is when a certificate's or a token's expiry is near enough to point out: 21 days.
+export const soon = 21 * 86400_000;
 
 function useList<T>(key: string, orgId: string | undefined, page: (token: string) => Promise<{ items: T[]; next: string }>) {
   return useQuery({ queryKey: [key, orgId], enabled: !!orgId, queryFn: () => listAll(page) });
+}
+
+// useCertificates reads all of the org's certificates.
+export function useCertificates(orgId: string | undefined) {
+  const transport = useTransport();
+  return useList("certificates", orgId, async (pageToken) => {
+    const r = await createClient(CertificateService, transport).listCertificates({ orgId, pageSize: largestPage, pageToken });
+    return { items: r.certificates, next: r.nextPageToken };
+  });
 }
 
 // Certificates lists the org's certificates, from ACME or uploaded, with their names, expiry and the
@@ -32,12 +41,7 @@ function useList<T>(key: string, orgId: string | undefined, page: (token: string
 export function Certificates() {
   const { t } = useTranslation();
   const org = useOrg();
-  const transport = useTransport();
-  const api = createClient(CertificateService, transport);
-  const list = useList("certificates", org?.orgId, async (pageToken) => {
-    const r = await api.listCertificates({ orgId: org?.orgId, pageSize: largestPage, pageToken });
-    return { items: r.certificates, next: r.nextPageToken };
-  });
+  const list = useCertificates(org?.orgId);
   const routes = useRoutes(org?.orgId);
   const [uploading, setUploading] = useState(false);
   const routeName = (id: string) => routes.data?.find((r) => r.id === id)?.name ?? id;

@@ -40,6 +40,8 @@ test("signs in, creates an API token with a step-up, sets up an authenticator an
   await page.getByLabel("Password", { exact: true }).fill(password);
   await page.getByRole("button", { name: "Sign in" }).click();
   await expect(page.getByText("Signed in as Ada")).toBeVisible();
+  await expect(page.getByRole("region", { name: "Traffic, last 24 hours" }).getByText(/^In 0 B · out 0 B/)).toBeVisible();
+  await expectAccessible(page);
 
   // The instance settings, which the first user changes as the Instance Admin.
   await page.getByRole("link", { name: "Settings" }).click();

@@ -2,9 +2,16 @@
 
 import { configure } from "@testing-library/react";
 
-// jsdom has no scrolling, which the router's scroll restoration calls, and no modal dialogs.
+// jsdom has no scrolling, which the router's scroll restoration calls, no modal dialogs, and no
+// ResizeObserver, which the charts' containers use; charts therefore draw nothing in tests, and
+// tests read their tables.
 if (typeof window !== "undefined") {
   window.scrollTo = () => {};
+  window.ResizeObserver ??= class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  };
   HTMLDialogElement.prototype.showModal ??= function (this: HTMLDialogElement) {
     this.open = true;
   };

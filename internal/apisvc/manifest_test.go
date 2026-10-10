@@ -21,7 +21,7 @@ import (
 // TestExportManifests (docs/07-api.md, "Declarative manifests"): an org's resources are exported
 // as YAML manifests, every kind in order or the kinds or resources named, naming what they refer
 // to and never holding a password or its hash; decommissioned agents are left out; another org's
-// resource is not found; a Viewer exports.
+// resource is not found; a Viewer exports; an export that matches nothing is an empty stream.
 func TestExportManifests(t *testing.T) {
 	e, ada, org, group := gatewayEnv(t)
 	ctx := context.Background()
@@ -109,6 +109,10 @@ func TestExportManifests(t *testing.T) {
 		GatewayGroup: &rpmgrv1.GatewayGroup{Name: "b"}}))
 	if err != nil {
 		t.Fatal(err)
+	}
+	if r, err := bob.man.ExportManifests(ctx, connect.NewRequest(&rpmgrv1.ExportManifestsRequest{OrgId: orgB, Kinds: []string{"Route"}})); err != nil ||
+		r.Msg.GetYaml() != "" || r.Msg.GetCount() != 0 {
+		t.Errorf("an org without routes: %v %v", r, err)
 	}
 	if _, _, err := export(ada, &rpmgrv1.ExportManifestsRequest{ResourceIds: []string{rt.GetId(), theirs.Msg.GetGatewayGroup().GetId()}}); code(err) != connect.CodeNotFound {
 		t.Errorf("another org's resource: %v", err)

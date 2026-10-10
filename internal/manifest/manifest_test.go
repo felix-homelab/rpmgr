@@ -172,3 +172,14 @@ func TestRefused(t *testing.T) {
 		}
 	}
 }
+
+// TestEmpty: no manifests are written as an empty stream, which reads back as none.
+func TestEmpty(t *testing.T) {
+	var b strings.Builder
+	if err := manifest.Write(&b, nil); err != nil || b.String() != "" {
+		t.Fatalf("no manifests: %q %v", b.String(), err)
+	}
+	if docs, err := manifest.Read(strings.NewReader(b.String())); err != nil || len(docs) != 0 {
+		t.Fatalf("read back: %v %v", docs, err)
+	}
+}

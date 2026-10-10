@@ -5,6 +5,7 @@ import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/re
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ConnectorService, DataTransport } from "@/gen/rpmgr/v1/connector_pb";
 import { GatewayService } from "@/gen/rpmgr/v1/gateway_pb";
+import { MetricsService, TrafficResolution, type GetRouteTrafficRequest } from "@/gen/rpmgr/v1/metrics_pb";
 import { RouteService, RouteState } from "@/gen/rpmgr/v1/route_pb";
 import { Theme, UserService } from "@/gen/rpmgr/v1/user_pb";
 import { allowCommand, shellArg } from "@/routes-data";
@@ -29,8 +30,9 @@ const postgres = {
   },
 };
 
-// detail renders the route's page; the connectors' data sessions use the transports given.
-function detail(r: object, transports: Record<string, DataTransport[]> = {}) {
+// detail renders the route's page; the connectors' data sessions use the transports given, and
+// the route's traffic is recorded in traffic.
+function detail(r: object, transports: Record<string, DataTransport[]> = {}, traffic: GetRouteTrafficRequest[] = []) {
   return show("/routes/rte_2", auth({
     getSession: () => ({ userId: "usr_ada", displayName: "Ada", memberships: [{ orgId: "org_1", role: "owner" }] }),
   }), (router) => {
@@ -42,6 +44,13 @@ function detail(r: object, transports: Record<string, DataTransport[]> = {}) {
     router.service(ConnectorService, {
       listConnectors: () => ({ connectors: [{ id: "con_db", name: "db-host-1" }, { id: "con_app", name: "app-host" }] }),
       getConnectorStatus: (req) => ({ status: { dataSessions: (transports[req.connectorId] ?? []).map((transport) => ({ transport })) } }),
+    });
+    router.service(MetricsService, {
+      getRouteTraffic: (req) => (traffic.push(req), {
+        // the bucket that holds from, as the API rounds it down
+        buckets: [{ start: { seconds: req.from!.seconds - (req.from!.seconds % (req.resolution === TrafficResolution.DAILY ? 86400n : 3600n)) },
+          bytesIn: BigInt(req.resolution) * 1000n, bytesOut: 5n, connections: 2n }],
+      }),
     });
     router.service(RouteService, {
       getRoute: (req) => {
@@ -104,6 +113,19 @@ describe("RouteDetail", () => {
       router.service(RouteService, { getRoute: () => { throw apiError(Code.NotFound); } });
     });
     expect(await screen.findByText("This route does not exist, or you cannot see it.")).toBeTruthy();
+  });
+
+  it("shows the route's traffic of the last 24 hours, or per day of the last 30 days", async () => {
+    const traffic: GetRouteTrafficRequest[] = [];
+    detail(postgres, {}, traffic);
+    const section = within(await screen.findByRole("region", { name: "Traffic" }));
+    expect(await section.findByText("In 1 kB · out 5 B · 2 connections · 0 errors")).toBeTruthy();
+    expect(section.getByRole("button", { name: "24 hours" }).getAttribute("aria-pressed")).toBe("true");
+    fireEvent.click(section.getByRole("button", { name: "30 days" }));
+    expect(await section.findByText("In 2 kB · out 5 B · 2 connections · 0 errors")).toBeTruthy();
+    const spans = traffic.map((r) => [r.routeId, r.resolution, Number(r.to!.seconds - r.from!.seconds) / 3600]);
+    expect(spans).toEqual([["rte_2", TrafficResolution.HOURLY, 24], ["rte_2", TrafficResolution.DAILY, 720]]);
+    expect(traffic[0]!.to).toEqual(traffic[1]!.to);
   });
 });
 

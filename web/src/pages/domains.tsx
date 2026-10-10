@@ -26,21 +26,33 @@ const looks: Record<DomainStatus, [string, string, string]> = {
   [DomainStatus.FAILED]: ["✕", "failed", "text-destructive"],
 };
 
+// DomainStatusLabel shows a claim's status with its sign.
+export function DomainStatusLabel({ status }: { status: DomainStatus }) {
+  const { t } = useTranslation();
+  const [icon, key, tone] = looks[status];
+  return <span className={tone}><span aria-hidden="true">{icon} </span>{t(`domains.status.${key}`)}</span>;
+}
+
+// useDomains reads all of the org's domain claims.
+export function useDomains(orgId: string | undefined) {
+  const transport = useTransport();
+  return useQuery({
+    queryKey: ["domains", orgId],
+    enabled: !!orgId,
+    queryFn: () => listAll(async (pageToken) => {
+      const r = await createClient(DomainService, transport).listDomains({ orgId, pageSize: largestPage, pageToken });
+      return { items: r.domains, next: r.nextPageToken };
+    }),
+  });
+}
+
 // Domains lists the org's domain claims and the proof each pending one waits for, claims a domain,
 // checks a claim now, deletes one, and lets the Instance Admin mark one trusted
 // (docs/09-web-ui.md, "Information architecture"; docs/15-dns.md).
 export function Domains() {
   const { t } = useTranslation();
   const org = useOrg();
-  const transport = useTransport();
-  const list = useQuery({
-    queryKey: ["domains", org?.orgId],
-    enabled: !!org,
-    queryFn: () => listAll(async (pageToken) => {
-      const r = await createClient(DomainService, transport).listDomains({ orgId: org?.orgId, pageSize: largestPage, pageToken });
-      return { items: r.domains, next: r.nextPageToken };
-    }),
-  });
+  const list = useDomains(org?.orgId);
   const session = useConnectQuery(AuthService.method.getSession, {});
   const [claiming, setClaiming] = useState(false);
   return (
@@ -112,7 +124,6 @@ function DomainRow({ domain: d, instanceAdmin }: { domain: Domain; instanceAdmin
   const trust = useMutation(DomainService.method.markDomainTrusted);
   const [asking, setAsking] = useState(false);
   const [error, setError] = useState("");
-  const [icon, key, tone] = looks[d.status];
   const name = (d.wildcard ? "*." : "") + d.fqdn;
   async function act(run: () => Promise<unknown>) {
     setError("");
@@ -130,7 +141,7 @@ function DomainRow({ domain: d, instanceAdmin }: { domain: Domain; instanceAdmin
     <li className="grid gap-2 rounded-md border border-border p-3 text-sm">
       <div className="flex flex-wrap items-center gap-3">
         <span className="font-medium">{name}</span>
-        <span className={tone}><span aria-hidden="true">{icon} </span>{t(`domains.status.${key}`)}</span>
+        <DomainStatusLabel status={d.status} />
         <span className="text-muted-foreground">{t(`domains.methodName.${DomainMethod[d.method]}`, { defaultValue: DomainMethod[d.method] })}</span>
         {d.lastCheckTime && <span className="text-muted-foreground">{t("domains.checked", { when: when(d.lastCheckTime) })}</span>}
       </div>

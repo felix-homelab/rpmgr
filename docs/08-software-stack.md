@@ -100,7 +100,7 @@ flowchart TB
 | **TanStack Router + TanStack Query**, with **connect-query** for generated hooks | Type-safe routes, caching, invalidation driven by `WatchEvents`; connect-query works with the generated descriptors (VB-06, resolved in [13](13-roadmap.md#verification-backlog)) | Hand-written fetch wrappers |
 | **shadcn/ui + Tailwind CSS** (Radix primitives) | Accessible components, owned in the repo | Heavy component frameworks |
 | **react-hook-form** with **protovalidate-es** as its resolver | Fast feedback in forms from the same protovalidate rules the server enforces, so client and server cannot drift; the server's result remains authoritative. protovalidate-es runs under the strict CSP (VB-16, resolved in [13](13-roadmap.md#verification-backlog)) | Hand-written zod schemas: a second copy of the rules |
-| **Recharts**, through the shadcn/ui chart components | Traffic and latency charts in the same component system as the rest of the UI | — |
+| **Recharts**, in the UI's theme colours | Traffic and latency charts in the same look as the rest of the UI; not through shadcn/ui's chart component, which writes a `<style>` element that the CSP refuses ([09](09-web-ui.md#charts)) | — |
 | **CodeMirror 6** for YAML views | Small, extensible, works with a strict CSP [V VB-07] | Monaco (large; rpmgr has no raw JSON editor) |
 | **xterm.js** (Phase 3 terminal) | Standard browser terminal | — |
 | **i18next**, English as the source language | Mature and widely used | — |
