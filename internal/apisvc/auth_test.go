@@ -137,6 +137,12 @@ func newEnv(t *testing.T) *env {
 		}); err != nil {
 		t.Fatal(err)
 	}
+	if err := srv.Mount(mux, rpmgrv1.File_rpmgr_v1_settings_proto.Services().ByName("SettingsService"),
+		func(o ...connect.HandlerOption) (string, http.Handler) {
+			return rpmgrv1connect.NewSettingsServiceHandler(&apisvc.Settings{DB: db, Sys: sys, Sealer: sealer, Now: now}, o...)
+		}); err != nil {
+		t.Fatal(err)
+	}
 	if err := srv.Mount(mux, rpmgrv1.File_rpmgr_v1_policy_proto.Services().ByName("PolicyService"),
 		func(o ...connect.HandlerOption) (string, http.Handler) {
 			return rpmgrv1connect.NewPolicyServiceHandler(&apisvc.Policies{DB: db, API: srv, Sys: sys}, o...)
@@ -192,6 +198,7 @@ type browser struct {
 	st     rpmgrv1connect.StatusServiceClient
 	pol    rpmgrv1connect.PolicyServiceClient
 	crt    rpmgrv1connect.CertificateServiceClient
+	set    rpmgrv1connect.SettingsServiceClient
 }
 
 func (e *env) browser() *browser {
@@ -208,6 +215,7 @@ func (e *env) browser() *browser {
 	b.st = rpmgrv1connect.NewStatusServiceClient(&http.Client{Transport: b}, e.url)
 	b.pol = rpmgrv1connect.NewPolicyServiceClient(&http.Client{Transport: b}, e.url)
 	b.crt = rpmgrv1connect.NewCertificateServiceClient(&http.Client{Transport: b}, e.url)
+	b.set = rpmgrv1connect.NewSettingsServiceClient(&http.Client{Transport: b}, e.url)
 	return b
 }
 

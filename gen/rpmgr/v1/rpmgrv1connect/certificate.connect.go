@@ -50,6 +50,21 @@ const (
 	// CertificateServiceDeleteCertificateProcedure is the fully-qualified name of the
 	// CertificateService's DeleteCertificate RPC.
 	CertificateServiceDeleteCertificateProcedure = "/rpmgr.v1.CertificateService/DeleteCertificate"
+	// CertificateServiceCreateCABundleProcedure is the fully-qualified name of the CertificateService's
+	// CreateCABundle RPC.
+	CertificateServiceCreateCABundleProcedure = "/rpmgr.v1.CertificateService/CreateCABundle"
+	// CertificateServiceGetCABundleProcedure is the fully-qualified name of the CertificateService's
+	// GetCABundle RPC.
+	CertificateServiceGetCABundleProcedure = "/rpmgr.v1.CertificateService/GetCABundle"
+	// CertificateServiceListCABundlesProcedure is the fully-qualified name of the CertificateService's
+	// ListCABundles RPC.
+	CertificateServiceListCABundlesProcedure = "/rpmgr.v1.CertificateService/ListCABundles"
+	// CertificateServiceUpdateCABundleProcedure is the fully-qualified name of the CertificateService's
+	// UpdateCABundle RPC.
+	CertificateServiceUpdateCABundleProcedure = "/rpmgr.v1.CertificateService/UpdateCABundle"
+	// CertificateServiceDeleteCABundleProcedure is the fully-qualified name of the CertificateService's
+	// DeleteCABundle RPC.
+	CertificateServiceDeleteCABundleProcedure = "/rpmgr.v1.CertificateService/DeleteCABundle"
 )
 
 // CertificateServiceClient is a client for the rpmgr.v1.CertificateService service.
@@ -67,6 +82,16 @@ type CertificateServiceClient interface {
 	// DeleteCertificate deletes an uploaded certificate; refused while a route uses it, and for an
 	// ACME certificate, which the ACME job keeps.
 	DeleteCertificate(context.Context, *connect.Request[v1.DeleteCertificateRequest]) (*connect.Response[v1.DeleteCertificateResponse], error)
+	// CreateCABundle creates a CA bundle.
+	CreateCABundle(context.Context, *connect.Request[v1.CreateCABundleRequest]) (*connect.Response[v1.CreateCABundleResponse], error)
+	// GetCABundle returns a CA bundle.
+	GetCABundle(context.Context, *connect.Request[v1.GetCABundleRequest]) (*connect.Response[v1.GetCABundleResponse], error)
+	// ListCABundles lists an org's CA bundles by ID.
+	ListCABundles(context.Context, *connect.Request[v1.ListCABundlesRequest]) (*connect.Response[v1.ListCABundlesResponse], error)
+	// UpdateCABundle changes the fields the mask names: name, pem.
+	UpdateCABundle(context.Context, *connect.Request[v1.UpdateCABundleRequest]) (*connect.Response[v1.UpdateCABundleResponse], error)
+	// DeleteCABundle deletes a CA bundle; refused while a route target uses it.
+	DeleteCABundle(context.Context, *connect.Request[v1.DeleteCABundleRequest]) (*connect.Response[v1.DeleteCABundleResponse], error)
 }
 
 // NewCertificateServiceClient constructs a client for the rpmgr.v1.CertificateService service. By
@@ -112,6 +137,38 @@ func NewCertificateServiceClient(httpClient connect.HTTPClient, baseURL string, 
 			connect.WithSchema(certificateServiceMethods.ByName("DeleteCertificate")),
 			connect.WithClientOptions(opts...),
 		),
+		createCABundle: connect.NewClient[v1.CreateCABundleRequest, v1.CreateCABundleResponse](
+			httpClient,
+			baseURL+CertificateServiceCreateCABundleProcedure,
+			connect.WithSchema(certificateServiceMethods.ByName("CreateCABundle")),
+			connect.WithClientOptions(opts...),
+		),
+		getCABundle: connect.NewClient[v1.GetCABundleRequest, v1.GetCABundleResponse](
+			httpClient,
+			baseURL+CertificateServiceGetCABundleProcedure,
+			connect.WithSchema(certificateServiceMethods.ByName("GetCABundle")),
+			connect.WithIdempotency(connect.IdempotencyNoSideEffects),
+			connect.WithClientOptions(opts...),
+		),
+		listCABundles: connect.NewClient[v1.ListCABundlesRequest, v1.ListCABundlesResponse](
+			httpClient,
+			baseURL+CertificateServiceListCABundlesProcedure,
+			connect.WithSchema(certificateServiceMethods.ByName("ListCABundles")),
+			connect.WithIdempotency(connect.IdempotencyNoSideEffects),
+			connect.WithClientOptions(opts...),
+		),
+		updateCABundle: connect.NewClient[v1.UpdateCABundleRequest, v1.UpdateCABundleResponse](
+			httpClient,
+			baseURL+CertificateServiceUpdateCABundleProcedure,
+			connect.WithSchema(certificateServiceMethods.ByName("UpdateCABundle")),
+			connect.WithClientOptions(opts...),
+		),
+		deleteCABundle: connect.NewClient[v1.DeleteCABundleRequest, v1.DeleteCABundleResponse](
+			httpClient,
+			baseURL+CertificateServiceDeleteCABundleProcedure,
+			connect.WithSchema(certificateServiceMethods.ByName("DeleteCABundle")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -122,6 +179,11 @@ type certificateServiceClient struct {
 	listCertificates  *connect.Client[v1.ListCertificatesRequest, v1.ListCertificatesResponse]
 	renewCertificate  *connect.Client[v1.RenewCertificateRequest, v1.RenewCertificateResponse]
 	deleteCertificate *connect.Client[v1.DeleteCertificateRequest, v1.DeleteCertificateResponse]
+	createCABundle    *connect.Client[v1.CreateCABundleRequest, v1.CreateCABundleResponse]
+	getCABundle       *connect.Client[v1.GetCABundleRequest, v1.GetCABundleResponse]
+	listCABundles     *connect.Client[v1.ListCABundlesRequest, v1.ListCABundlesResponse]
+	updateCABundle    *connect.Client[v1.UpdateCABundleRequest, v1.UpdateCABundleResponse]
+	deleteCABundle    *connect.Client[v1.DeleteCABundleRequest, v1.DeleteCABundleResponse]
 }
 
 // UploadCertificate calls rpmgr.v1.CertificateService.UploadCertificate.
@@ -149,6 +211,31 @@ func (c *certificateServiceClient) DeleteCertificate(ctx context.Context, req *c
 	return c.deleteCertificate.CallUnary(ctx, req)
 }
 
+// CreateCABundle calls rpmgr.v1.CertificateService.CreateCABundle.
+func (c *certificateServiceClient) CreateCABundle(ctx context.Context, req *connect.Request[v1.CreateCABundleRequest]) (*connect.Response[v1.CreateCABundleResponse], error) {
+	return c.createCABundle.CallUnary(ctx, req)
+}
+
+// GetCABundle calls rpmgr.v1.CertificateService.GetCABundle.
+func (c *certificateServiceClient) GetCABundle(ctx context.Context, req *connect.Request[v1.GetCABundleRequest]) (*connect.Response[v1.GetCABundleResponse], error) {
+	return c.getCABundle.CallUnary(ctx, req)
+}
+
+// ListCABundles calls rpmgr.v1.CertificateService.ListCABundles.
+func (c *certificateServiceClient) ListCABundles(ctx context.Context, req *connect.Request[v1.ListCABundlesRequest]) (*connect.Response[v1.ListCABundlesResponse], error) {
+	return c.listCABundles.CallUnary(ctx, req)
+}
+
+// UpdateCABundle calls rpmgr.v1.CertificateService.UpdateCABundle.
+func (c *certificateServiceClient) UpdateCABundle(ctx context.Context, req *connect.Request[v1.UpdateCABundleRequest]) (*connect.Response[v1.UpdateCABundleResponse], error) {
+	return c.updateCABundle.CallUnary(ctx, req)
+}
+
+// DeleteCABundle calls rpmgr.v1.CertificateService.DeleteCABundle.
+func (c *certificateServiceClient) DeleteCABundle(ctx context.Context, req *connect.Request[v1.DeleteCABundleRequest]) (*connect.Response[v1.DeleteCABundleResponse], error) {
+	return c.deleteCABundle.CallUnary(ctx, req)
+}
+
 // CertificateServiceHandler is an implementation of the rpmgr.v1.CertificateService service.
 type CertificateServiceHandler interface {
 	// UploadCertificate stores a certificate chain with its key, which the controller keeps under
@@ -164,6 +251,16 @@ type CertificateServiceHandler interface {
 	// DeleteCertificate deletes an uploaded certificate; refused while a route uses it, and for an
 	// ACME certificate, which the ACME job keeps.
 	DeleteCertificate(context.Context, *connect.Request[v1.DeleteCertificateRequest]) (*connect.Response[v1.DeleteCertificateResponse], error)
+	// CreateCABundle creates a CA bundle.
+	CreateCABundle(context.Context, *connect.Request[v1.CreateCABundleRequest]) (*connect.Response[v1.CreateCABundleResponse], error)
+	// GetCABundle returns a CA bundle.
+	GetCABundle(context.Context, *connect.Request[v1.GetCABundleRequest]) (*connect.Response[v1.GetCABundleResponse], error)
+	// ListCABundles lists an org's CA bundles by ID.
+	ListCABundles(context.Context, *connect.Request[v1.ListCABundlesRequest]) (*connect.Response[v1.ListCABundlesResponse], error)
+	// UpdateCABundle changes the fields the mask names: name, pem.
+	UpdateCABundle(context.Context, *connect.Request[v1.UpdateCABundleRequest]) (*connect.Response[v1.UpdateCABundleResponse], error)
+	// DeleteCABundle deletes a CA bundle; refused while a route target uses it.
+	DeleteCABundle(context.Context, *connect.Request[v1.DeleteCABundleRequest]) (*connect.Response[v1.DeleteCABundleResponse], error)
 }
 
 // NewCertificateServiceHandler builds an HTTP handler from the service implementation. It returns
@@ -205,6 +302,38 @@ func NewCertificateServiceHandler(svc CertificateServiceHandler, opts ...connect
 		connect.WithSchema(certificateServiceMethods.ByName("DeleteCertificate")),
 		connect.WithHandlerOptions(opts...),
 	)
+	certificateServiceCreateCABundleHandler := connect.NewUnaryHandler(
+		CertificateServiceCreateCABundleProcedure,
+		svc.CreateCABundle,
+		connect.WithSchema(certificateServiceMethods.ByName("CreateCABundle")),
+		connect.WithHandlerOptions(opts...),
+	)
+	certificateServiceGetCABundleHandler := connect.NewUnaryHandler(
+		CertificateServiceGetCABundleProcedure,
+		svc.GetCABundle,
+		connect.WithSchema(certificateServiceMethods.ByName("GetCABundle")),
+		connect.WithIdempotency(connect.IdempotencyNoSideEffects),
+		connect.WithHandlerOptions(opts...),
+	)
+	certificateServiceListCABundlesHandler := connect.NewUnaryHandler(
+		CertificateServiceListCABundlesProcedure,
+		svc.ListCABundles,
+		connect.WithSchema(certificateServiceMethods.ByName("ListCABundles")),
+		connect.WithIdempotency(connect.IdempotencyNoSideEffects),
+		connect.WithHandlerOptions(opts...),
+	)
+	certificateServiceUpdateCABundleHandler := connect.NewUnaryHandler(
+		CertificateServiceUpdateCABundleProcedure,
+		svc.UpdateCABundle,
+		connect.WithSchema(certificateServiceMethods.ByName("UpdateCABundle")),
+		connect.WithHandlerOptions(opts...),
+	)
+	certificateServiceDeleteCABundleHandler := connect.NewUnaryHandler(
+		CertificateServiceDeleteCABundleProcedure,
+		svc.DeleteCABundle,
+		connect.WithSchema(certificateServiceMethods.ByName("DeleteCABundle")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/rpmgr.v1.CertificateService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case CertificateServiceUploadCertificateProcedure:
@@ -217,6 +346,16 @@ func NewCertificateServiceHandler(svc CertificateServiceHandler, opts ...connect
 			certificateServiceRenewCertificateHandler.ServeHTTP(w, r)
 		case CertificateServiceDeleteCertificateProcedure:
 			certificateServiceDeleteCertificateHandler.ServeHTTP(w, r)
+		case CertificateServiceCreateCABundleProcedure:
+			certificateServiceCreateCABundleHandler.ServeHTTP(w, r)
+		case CertificateServiceGetCABundleProcedure:
+			certificateServiceGetCABundleHandler.ServeHTTP(w, r)
+		case CertificateServiceListCABundlesProcedure:
+			certificateServiceListCABundlesHandler.ServeHTTP(w, r)
+		case CertificateServiceUpdateCABundleProcedure:
+			certificateServiceUpdateCABundleHandler.ServeHTTP(w, r)
+		case CertificateServiceDeleteCABundleProcedure:
+			certificateServiceDeleteCABundleHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -244,4 +383,24 @@ func (UnimplementedCertificateServiceHandler) RenewCertificate(context.Context, 
 
 func (UnimplementedCertificateServiceHandler) DeleteCertificate(context.Context, *connect.Request[v1.DeleteCertificateRequest]) (*connect.Response[v1.DeleteCertificateResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("rpmgr.v1.CertificateService.DeleteCertificate is not implemented"))
+}
+
+func (UnimplementedCertificateServiceHandler) CreateCABundle(context.Context, *connect.Request[v1.CreateCABundleRequest]) (*connect.Response[v1.CreateCABundleResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("rpmgr.v1.CertificateService.CreateCABundle is not implemented"))
+}
+
+func (UnimplementedCertificateServiceHandler) GetCABundle(context.Context, *connect.Request[v1.GetCABundleRequest]) (*connect.Response[v1.GetCABundleResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("rpmgr.v1.CertificateService.GetCABundle is not implemented"))
+}
+
+func (UnimplementedCertificateServiceHandler) ListCABundles(context.Context, *connect.Request[v1.ListCABundlesRequest]) (*connect.Response[v1.ListCABundlesResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("rpmgr.v1.CertificateService.ListCABundles is not implemented"))
+}
+
+func (UnimplementedCertificateServiceHandler) UpdateCABundle(context.Context, *connect.Request[v1.UpdateCABundleRequest]) (*connect.Response[v1.UpdateCABundleResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("rpmgr.v1.CertificateService.UpdateCABundle is not implemented"))
+}
+
+func (UnimplementedCertificateServiceHandler) DeleteCABundle(context.Context, *connect.Request[v1.DeleteCABundleRequest]) (*connect.Response[v1.DeleteCABundleResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("rpmgr.v1.CertificateService.DeleteCABundle is not implemented"))
 }

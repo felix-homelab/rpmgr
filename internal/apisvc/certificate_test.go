@@ -13,6 +13,7 @@ import (
 	"crypto/x509/pkix"
 	"encoding/pem"
 	"math/big"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -260,5 +261,115 @@ func TestRenewCertificate(t *testing.T) {
 	if _, err := (&apisvc.Certificates{DB: e.db}).RenewCertificate(e.sys, connect.NewRequest(&rpmgrv1.RenewCertificateRequest{
 		CertificateId: acmeCert.ID})); code(err) != connect.CodeUnavailable {
 		t.Errorf("a controller without ACME: %v", err)
+	}
+}
+
+// TestCABundles (docs/04-security.md, "Controller certificates"): a CA bundle holds 1 to 100 PEM
+// certificates, shown with their subjects and expiry; a bundle that is not one is refused; the
+// targets that use it are shown, a change of it names them in its revision, and it is not deleted
+// while one does; only Owners and Admins change bundles.
+func TestCABundles(t *testing.T) {
+	e, ada, org, group := gatewayEnv(t)
+	ctx := context.Background()
+	c := e.db.Client()
+	ca, _ := testCert(t, &x509.Certificate{Subject: pkix.Name{CommonName: "Upstream CA"}, IsCA: true, BasicConstraintsValid: true,
+		KeyUsage: x509.KeyUsageCertSign}, nil, nil, e.clock.Add(-time.Hour), e.clock.Add(365*24*time.Hour))
+	other, _ := testCert(t, &x509.Certificate{Subject: pkix.Name{CommonName: "Other CA"}, IsCA: true, BasicConstraintsValid: true,
+		KeyUsage: x509.KeyUsageCertSign}, nil, nil, e.clock.Add(-time.Hour), e.clock.Add(30*24*time.Hour))
+	create := func(b *browser, name, pemText string) (*rpmgrv1.CreateCABundleResponse, error) {
+		r, err := b.crt.CreateCABundle(ctx, connect.NewRequest(&rpmgrv1.CreateCABundleRequest{OrgId: org,
+			CaBundle: &rpmgrv1.CABundle{Name: name, Pem: pemText}}))
+		if err != nil {
+			return nil, err
+		}
+		return r.Msg, nil
+	}
+	created, err := create(ada, "internal", certPEM(ca))
+	bundle := created.GetCaBundle()
+	if err != nil || !strings.HasPrefix(bundle.GetId(), "cab_") || len(bundle.GetCertificates()) != 1 ||
+		bundle.GetCertificates()[0].GetSubject() != "CN=Upstream CA" || !bundle.GetCertificates()[0].GetNotAfter().AsTime().Equal(ca.NotAfter) ||
+		bundle.GetEtag() != "1" || created.GetRevision().GetSeq() == 0 {
+		t.Fatalf("created: %v %v", created, err)
+	}
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	keyText, _ := keyPEMOf(t, key)
+	for name, in := range map[string][2]string{"not PEM": {"x", "not a certificate"}, "a key": {"y", keyText},
+		"no name": {"", certPEM(ca)}} {
+		if _, err := create(ada, in[0], in[1]); code(err) != connect.CodeInvalidArgument {
+			t.Errorf("%s: %v, want INVALID_ARGUMENT", name, err)
+		}
+	}
+	if _, err := create(ada, "internal", certPEM(ca)); code(err) != connect.CodeAlreadyExists {
+		t.Errorf("a taken name: %v", err)
+	}
+	op, _ := e.join(t, ada, org, "op@example.com", "operator")
+	if _, err := create(op, "mine", certPEM(ca)); code(err) != connect.CodePermissionDenied {
+		t.Errorf("an Operator creates: %v", err)
+	}
+
+	// An HTTPS target uses it.
+	e.verified(t, org, "example.com", true)
+	rt, err := createRoute(ada, org, httpRoute("app", group, "app.example.com"), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	tg := addressTarget(e.addConnector(t, org, "nas", nil).ID, "10.0.0.5", 8443)
+	tg.UpstreamProtocol, tg.Tls = rpmgrv1.UpstreamProtocol_UPSTREAM_PROTOCOL_HTTPS, &rpmgrv1.UpstreamTLSSettings{ServerName: "app.internal",
+		CaBundleId: bundle.GetId()}
+	target, err := ada.rt.CreateRouteTarget(ctx, connect.NewRequest(&rpmgrv1.CreateRouteTargetRequest{RouteId: rt.GetId(), Target: tg}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	targetID := target.Msg.GetTarget().GetId()
+	got, err := op.crt.GetCABundle(ctx, connect.NewRequest(&rpmgrv1.GetCABundleRequest{CaBundleId: bundle.GetId()}))
+	if err != nil || len(got.Msg.GetCaBundle().GetTargetIds()) != 1 || got.Msg.GetCaBundle().GetTargetIds()[0] != targetID {
+		t.Fatalf("the targets that use it: %v %v", got, err)
+	}
+	update := func(paths []string, in *rpmgrv1.CABundle, etag string) (*rpmgrv1.UpdateCABundleResponse, error) {
+		in.Id = bundle.GetId()
+		r, err := ada.crt.UpdateCABundle(ctx, connect.NewRequest(&rpmgrv1.UpdateCABundleRequest{CaBundle: in,
+			UpdateMask: &fieldmaskpb.FieldMask{Paths: paths}, Etag: etag}))
+		if err != nil {
+			return nil, err
+		}
+		return r.Msg, nil
+	}
+	up, err := update([]string{"pem"}, &rpmgrv1.CABundle{Pem: certPEM(ca, other)}, "1")
+	if err != nil || len(up.GetCaBundle().GetCertificates()) != 2 || up.GetCaBundle().GetName() != "internal" || up.GetCaBundle().GetEtag() != "2" {
+		t.Fatalf("a second CA: %v %v", up, err)
+	}
+	if changed := c.ConfigRevision.GetX(e.sys, up.GetRevision().GetSeq()).ChangedResources; !slices.Contains(changed, targetID) {
+		t.Errorf("the revision of the change names %v, not the target", changed)
+	}
+	if _, err := update([]string{"pem"}, &rpmgrv1.CABundle{Pem: "not PEM"}, ""); code(err) != connect.CodeInvalidArgument {
+		t.Errorf("a broken bundle: %v", err)
+	}
+	if _, err := update([]string{"name"}, &rpmgrv1.CABundle{Name: "renamed"}, "1"); code(err) != connect.CodeFailedPrecondition {
+		t.Errorf("a stale etag: %v", err)
+	}
+	if _, err := update([]string{"target_ids"}, &rpmgrv1.CABundle{TargetIds: []string{"rtt_x"}}, ""); code(err) != connect.CodeInvalidArgument {
+		t.Errorf("an output-only field: %v", err)
+	}
+	del := func(b *browser) error {
+		_, err := b.crt.DeleteCABundle(ctx, connect.NewRequest(&rpmgrv1.DeleteCABundleRequest{CaBundleId: bundle.GetId()}))
+		return err
+	}
+	if err := del(ada); code(err) != connect.CodeFailedPrecondition || reason(err) != apisvc.ReasonDependantsExist {
+		t.Errorf("a bundle a target uses deleted: %v", err)
+	}
+	if err := del(op); code(err) != connect.CodePermissionDenied {
+		t.Errorf("an Operator deletes: %v", err)
+	}
+	if _, err := ada.rt.DeleteRouteTarget(ctx, connect.NewRequest(&rpmgrv1.DeleteRouteTargetRequest{RouteTargetId: targetID})); err != nil {
+		t.Fatal(err)
+	}
+	if err := del(ada); err != nil {
+		t.Fatal(err)
+	}
+	if list, err := ada.crt.ListCABundles(ctx, connect.NewRequest(&rpmgrv1.ListCABundlesRequest{OrgId: org})); err != nil || len(list.Msg.GetCaBundles()) != 0 {
+		t.Fatalf("after the delete: %v %v", list, err)
 	}
 }

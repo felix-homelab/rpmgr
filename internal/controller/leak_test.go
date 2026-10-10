@@ -111,13 +111,14 @@ func TestCrossTenantLeaks(t *testing.T) {
 	policyA := db.Client().AccessPolicy.Create().SetOrgID(orgA).SetName("office-a").SaveX(sys)
 	certA := db.Client().Certificate.Create().SetOrgID(orgA).SetSource("acme").SetSans([]string{"shop.org-a.example"}).SetStatus("failed").
 		SetLastError("leak").SaveX(sys)
+	bundleA := db.Client().CABundle.Create().SetOrgID(orgA).SetName("internal-a").SetPem([]byte("leak")).SaveX(sys)
 	fill := map[string]string{
 		"org_id": orgA, "user_id": ada.GetUserId(), "token_id": adaToken.Msg.GetApiToken().GetId(),
 		"session_id": ada.GetSession().GetId(), "gateway_group_id": groupA.ID, "gateway_id": gatewayA.ID,
 		"port_pool_id": poolA.ID, "port_quota_id": quotaA.ID, "connector_id": connectorA.ID, "domain_id": domainA.ID, "route_id": routeA.ID, "route_target_id": targetA.ID, "target_id": targetA.ID, "enrollment_token_id": tokenA.ID,
-		"access_policy_id": policyA.ID, "certificate_id": certA.ID,
+		"access_policy_id": policyA.ID, "certificate_id": certA.ID, "ca_bundle_id": bundleA.ID,
 	}
-	secrets := []string{orgA, groupA.ID, gatewayA.ID, "gw1.org-a.example", poolA.ID, quotaA.ID, connectorA.ID, domainA.ID, "org-a.example", routeA.ID, "web-a", targetA.ID, "10.0.0.5", tokenA.ID, policyA.ID, "office-a", certA.ID, "shop.org-a.example", ada.GetUserId(), "ada@example.com", adaToken.Msg.GetApiToken().GetId(), ada.GetSession().GetId(),
+	secrets := []string{orgA, groupA.ID, gatewayA.ID, "gw1.org-a.example", poolA.ID, quotaA.ID, connectorA.ID, domainA.ID, "org-a.example", routeA.ID, "web-a", targetA.ID, "10.0.0.5", tokenA.ID, policyA.ID, "office-a", certA.ID, "shop.org-a.example", bundleA.ID, "internal-a", ada.GetUserId(), "ada@example.com", adaToken.Msg.GetApiToken().GetId(), ada.GetSession().GetId(),
 		invitation.Msg.GetUrl()[strings.Index(invitation.Msg.GetUrl(), "#")+1:]}
 	before := orgRows(t, db, orgA)
 

@@ -248,10 +248,10 @@ var schemaGraph = func() *sqlgraph.Schema {
 		Type: "CABundle",
 		Fields: map[string]*sqlgraph.FieldSpec{
 			cabundle.FieldOrgID:     {Type: field.TypeString, Column: cabundle.FieldOrgID},
+			cabundle.FieldVersion:   {Type: field.TypeInt64, Column: cabundle.FieldVersion},
 			cabundle.FieldName:      {Type: field.TypeString, Column: cabundle.FieldName},
 			cabundle.FieldPem:       {Type: field.TypeBytes, Column: cabundle.FieldPem},
 			cabundle.FieldCreatedAt: {Type: field.TypeTime, Column: cabundle.FieldCreatedAt},
-			cabundle.FieldVersion:   {Type: field.TypeInt64, Column: cabundle.FieldVersion},
 		},
 	}
 	graph.Nodes[9] = &sqlgraph.Node{
@@ -2113,6 +2113,11 @@ func (f *CABundleFilter) WhereOrgID(p entql.StringP) {
 	f.Where(p.Field(cabundle.FieldOrgID))
 }
 
+// WhereVersion applies the entql int64 predicate on the version field.
+func (f *CABundleFilter) WhereVersion(p entql.Int64P) {
+	f.Where(p.Field(cabundle.FieldVersion))
+}
+
 // WhereName applies the entql string predicate on the name field.
 func (f *CABundleFilter) WhereName(p entql.StringP) {
 	f.Where(p.Field(cabundle.FieldName))
@@ -2126,11 +2131,6 @@ func (f *CABundleFilter) WherePem(p entql.BytesP) {
 // WhereCreatedAt applies the entql time.Time predicate on the created_at field.
 func (f *CABundleFilter) WhereCreatedAt(p entql.TimeP) {
 	f.Where(p.Field(cabundle.FieldCreatedAt))
-}
-
-// WhereVersion applies the entql int64 predicate on the version field.
-func (f *CABundleFilter) WhereVersion(p entql.Int64P) {
-	f.Where(p.Field(cabundle.FieldVersion))
 }
 
 // addPredicate implements the predicateAdder interface.

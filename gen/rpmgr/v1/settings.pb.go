@@ -13,6 +13,7 @@ import (
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	durationpb "google.golang.org/protobuf/types/known/durationpb"
+	fieldmaskpb "google.golang.org/protobuf/types/known/fieldmaskpb"
 	reflect "reflect"
 	sync "sync"
 	unsafe "unsafe"
@@ -546,11 +547,571 @@ func (x *OrgSettings) GetDefaultGatewayGroupId() string {
 	return ""
 }
 
+// GetInstanceSettingsRequest is empty.
+type GetInstanceSettingsRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetInstanceSettingsRequest) Reset() {
+	*x = GetInstanceSettingsRequest{}
+	mi := &file_rpmgr_v1_settings_proto_msgTypes[3]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetInstanceSettingsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetInstanceSettingsRequest) ProtoMessage() {}
+
+func (x *GetInstanceSettingsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_rpmgr_v1_settings_proto_msgTypes[3]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetInstanceSettingsRequest.ProtoReflect.Descriptor instead.
+func (*GetInstanceSettingsRequest) Descriptor() ([]byte, []int) {
+	return file_rpmgr_v1_settings_proto_rawDescGZIP(), []int{3}
+}
+
+// GetInstanceSettingsResponse is the instance settings.
+type GetInstanceSettingsResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The settings, defaults filled in.
+	Settings *InstanceSettings `protobuf:"bytes,1,opt,name=settings,proto3" json:"settings,omitempty"`
+	// The version to send back with an update.
+	Etag string `protobuf:"bytes,2,opt,name=etag,proto3" json:"etag,omitempty"`
+	// Whether the mail relay's password is set; the password itself is never returned.
+	SmtpPasswordSet bool `protobuf:"varint,3,opt,name=smtp_password_set,json=smtpPasswordSet,proto3" json:"smtp_password_set,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
+}
+
+func (x *GetInstanceSettingsResponse) Reset() {
+	*x = GetInstanceSettingsResponse{}
+	mi := &file_rpmgr_v1_settings_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetInstanceSettingsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetInstanceSettingsResponse) ProtoMessage() {}
+
+func (x *GetInstanceSettingsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_rpmgr_v1_settings_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetInstanceSettingsResponse.ProtoReflect.Descriptor instead.
+func (*GetInstanceSettingsResponse) Descriptor() ([]byte, []int) {
+	return file_rpmgr_v1_settings_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *GetInstanceSettingsResponse) GetSettings() *InstanceSettings {
+	if x != nil {
+		return x.Settings
+	}
+	return nil
+}
+
+func (x *GetInstanceSettingsResponse) GetEtag() string {
+	if x != nil {
+		return x.Etag
+	}
+	return ""
+}
+
+func (x *GetInstanceSettingsResponse) GetSmtpPasswordSet() bool {
+	if x != nil {
+		return x.SmtpPasswordSet
+	}
+	return false
+}
+
+// UpdateInstanceSettingsRequest changes the instance settings.
+type UpdateInstanceSettingsRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The settings to change.
+	Settings *InstanceSettings `protobuf:"bytes,1,opt,name=settings,proto3" json:"settings,omitempty"`
+	// The fields to change, by their names.
+	UpdateMask *fieldmaskpb.FieldMask `protobuf:"bytes,2,opt,name=update_mask,json=updateMask,proto3" json:"update_mask,omitempty"`
+	// The etag the caller read; empty skips the check.
+	Etag          string `protobuf:"bytes,3,opt,name=etag,proto3" json:"etag,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *UpdateInstanceSettingsRequest) Reset() {
+	*x = UpdateInstanceSettingsRequest{}
+	mi := &file_rpmgr_v1_settings_proto_msgTypes[5]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *UpdateInstanceSettingsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*UpdateInstanceSettingsRequest) ProtoMessage() {}
+
+func (x *UpdateInstanceSettingsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_rpmgr_v1_settings_proto_msgTypes[5]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use UpdateInstanceSettingsRequest.ProtoReflect.Descriptor instead.
+func (*UpdateInstanceSettingsRequest) Descriptor() ([]byte, []int) {
+	return file_rpmgr_v1_settings_proto_rawDescGZIP(), []int{5}
+}
+
+func (x *UpdateInstanceSettingsRequest) GetSettings() *InstanceSettings {
+	if x != nil {
+		return x.Settings
+	}
+	return nil
+}
+
+func (x *UpdateInstanceSettingsRequest) GetUpdateMask() *fieldmaskpb.FieldMask {
+	if x != nil {
+		return x.UpdateMask
+	}
+	return nil
+}
+
+func (x *UpdateInstanceSettingsRequest) GetEtag() string {
+	if x != nil {
+		return x.Etag
+	}
+	return ""
+}
+
+// UpdateInstanceSettingsResponse is the changed settings.
+type UpdateInstanceSettingsResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The settings, defaults filled in.
+	Settings *InstanceSettings `protobuf:"bytes,1,opt,name=settings,proto3" json:"settings,omitempty"`
+	// The new etag.
+	Etag string `protobuf:"bytes,2,opt,name=etag,proto3" json:"etag,omitempty"`
+	// The revision of the change.
+	Revision      *Revision `protobuf:"bytes,3,opt,name=revision,proto3" json:"revision,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *UpdateInstanceSettingsResponse) Reset() {
+	*x = UpdateInstanceSettingsResponse{}
+	mi := &file_rpmgr_v1_settings_proto_msgTypes[6]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *UpdateInstanceSettingsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*UpdateInstanceSettingsResponse) ProtoMessage() {}
+
+func (x *UpdateInstanceSettingsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_rpmgr_v1_settings_proto_msgTypes[6]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use UpdateInstanceSettingsResponse.ProtoReflect.Descriptor instead.
+func (*UpdateInstanceSettingsResponse) Descriptor() ([]byte, []int) {
+	return file_rpmgr_v1_settings_proto_rawDescGZIP(), []int{6}
+}
+
+func (x *UpdateInstanceSettingsResponse) GetSettings() *InstanceSettings {
+	if x != nil {
+		return x.Settings
+	}
+	return nil
+}
+
+func (x *UpdateInstanceSettingsResponse) GetEtag() string {
+	if x != nil {
+		return x.Etag
+	}
+	return ""
+}
+
+func (x *UpdateInstanceSettingsResponse) GetRevision() *Revision {
+	if x != nil {
+		return x.Revision
+	}
+	return nil
+}
+
+// SetSmtpPasswordRequest sets the mail relay's password.
+type SetSmtpPasswordRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The password; empty removes it.
+	Password      string `protobuf:"bytes,1,opt,name=password,proto3" json:"password,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SetSmtpPasswordRequest) Reset() {
+	*x = SetSmtpPasswordRequest{}
+	mi := &file_rpmgr_v1_settings_proto_msgTypes[7]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SetSmtpPasswordRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SetSmtpPasswordRequest) ProtoMessage() {}
+
+func (x *SetSmtpPasswordRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_rpmgr_v1_settings_proto_msgTypes[7]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SetSmtpPasswordRequest.ProtoReflect.Descriptor instead.
+func (*SetSmtpPasswordRequest) Descriptor() ([]byte, []int) {
+	return file_rpmgr_v1_settings_proto_rawDescGZIP(), []int{7}
+}
+
+func (x *SetSmtpPasswordRequest) GetPassword() string {
+	if x != nil {
+		return x.Password
+	}
+	return ""
+}
+
+// SetSmtpPasswordResponse is empty.
+type SetSmtpPasswordResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SetSmtpPasswordResponse) Reset() {
+	*x = SetSmtpPasswordResponse{}
+	mi := &file_rpmgr_v1_settings_proto_msgTypes[8]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SetSmtpPasswordResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SetSmtpPasswordResponse) ProtoMessage() {}
+
+func (x *SetSmtpPasswordResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_rpmgr_v1_settings_proto_msgTypes[8]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SetSmtpPasswordResponse.ProtoReflect.Descriptor instead.
+func (*SetSmtpPasswordResponse) Descriptor() ([]byte, []int) {
+	return file_rpmgr_v1_settings_proto_rawDescGZIP(), []int{8}
+}
+
+// GetOrgSettingsRequest names an org.
+type GetOrgSettingsRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The org.
+	OrgId         string `protobuf:"bytes,1,opt,name=org_id,json=orgId,proto3" json:"org_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetOrgSettingsRequest) Reset() {
+	*x = GetOrgSettingsRequest{}
+	mi := &file_rpmgr_v1_settings_proto_msgTypes[9]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetOrgSettingsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetOrgSettingsRequest) ProtoMessage() {}
+
+func (x *GetOrgSettingsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_rpmgr_v1_settings_proto_msgTypes[9]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetOrgSettingsRequest.ProtoReflect.Descriptor instead.
+func (*GetOrgSettingsRequest) Descriptor() ([]byte, []int) {
+	return file_rpmgr_v1_settings_proto_rawDescGZIP(), []int{9}
+}
+
+func (x *GetOrgSettingsRequest) GetOrgId() string {
+	if x != nil {
+		return x.OrgId
+	}
+	return ""
+}
+
+// GetOrgSettingsResponse is the org's settings.
+type GetOrgSettingsResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The settings, defaults filled in.
+	Settings *OrgSettings `protobuf:"bytes,1,opt,name=settings,proto3" json:"settings,omitempty"`
+	// The version to send back with an update.
+	Etag          string `protobuf:"bytes,2,opt,name=etag,proto3" json:"etag,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetOrgSettingsResponse) Reset() {
+	*x = GetOrgSettingsResponse{}
+	mi := &file_rpmgr_v1_settings_proto_msgTypes[10]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetOrgSettingsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetOrgSettingsResponse) ProtoMessage() {}
+
+func (x *GetOrgSettingsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_rpmgr_v1_settings_proto_msgTypes[10]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetOrgSettingsResponse.ProtoReflect.Descriptor instead.
+func (*GetOrgSettingsResponse) Descriptor() ([]byte, []int) {
+	return file_rpmgr_v1_settings_proto_rawDescGZIP(), []int{10}
+}
+
+func (x *GetOrgSettingsResponse) GetSettings() *OrgSettings {
+	if x != nil {
+		return x.Settings
+	}
+	return nil
+}
+
+func (x *GetOrgSettingsResponse) GetEtag() string {
+	if x != nil {
+		return x.Etag
+	}
+	return ""
+}
+
+// UpdateOrgSettingsRequest changes an org's settings.
+type UpdateOrgSettingsRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The org.
+	OrgId string `protobuf:"bytes,1,opt,name=org_id,json=orgId,proto3" json:"org_id,omitempty"`
+	// The settings to change.
+	Settings *OrgSettings `protobuf:"bytes,2,opt,name=settings,proto3" json:"settings,omitempty"`
+	// The fields to change, by their names.
+	UpdateMask *fieldmaskpb.FieldMask `protobuf:"bytes,3,opt,name=update_mask,json=updateMask,proto3" json:"update_mask,omitempty"`
+	// The etag the caller read; empty skips the check.
+	Etag          string `protobuf:"bytes,4,opt,name=etag,proto3" json:"etag,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *UpdateOrgSettingsRequest) Reset() {
+	*x = UpdateOrgSettingsRequest{}
+	mi := &file_rpmgr_v1_settings_proto_msgTypes[11]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *UpdateOrgSettingsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*UpdateOrgSettingsRequest) ProtoMessage() {}
+
+func (x *UpdateOrgSettingsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_rpmgr_v1_settings_proto_msgTypes[11]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use UpdateOrgSettingsRequest.ProtoReflect.Descriptor instead.
+func (*UpdateOrgSettingsRequest) Descriptor() ([]byte, []int) {
+	return file_rpmgr_v1_settings_proto_rawDescGZIP(), []int{11}
+}
+
+func (x *UpdateOrgSettingsRequest) GetOrgId() string {
+	if x != nil {
+		return x.OrgId
+	}
+	return ""
+}
+
+func (x *UpdateOrgSettingsRequest) GetSettings() *OrgSettings {
+	if x != nil {
+		return x.Settings
+	}
+	return nil
+}
+
+func (x *UpdateOrgSettingsRequest) GetUpdateMask() *fieldmaskpb.FieldMask {
+	if x != nil {
+		return x.UpdateMask
+	}
+	return nil
+}
+
+func (x *UpdateOrgSettingsRequest) GetEtag() string {
+	if x != nil {
+		return x.Etag
+	}
+	return ""
+}
+
+// UpdateOrgSettingsResponse is the changed settings.
+type UpdateOrgSettingsResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The settings, defaults filled in.
+	Settings *OrgSettings `protobuf:"bytes,1,opt,name=settings,proto3" json:"settings,omitempty"`
+	// The new etag.
+	Etag string `protobuf:"bytes,2,opt,name=etag,proto3" json:"etag,omitempty"`
+	// The revision of the change.
+	Revision *Revision `protobuf:"bytes,3,opt,name=revision,proto3" json:"revision,omitempty"`
+	// The apply status of the revision; with the request header Rpmgr-Wait-Applied, once it is
+	// final or the wait is over (docs/07-api.md, "Writes and apply status").
+	ApplyStatus   *ApplyStatus `protobuf:"bytes,4,opt,name=apply_status,json=applyStatus,proto3" json:"apply_status,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *UpdateOrgSettingsResponse) Reset() {
+	*x = UpdateOrgSettingsResponse{}
+	mi := &file_rpmgr_v1_settings_proto_msgTypes[12]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *UpdateOrgSettingsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*UpdateOrgSettingsResponse) ProtoMessage() {}
+
+func (x *UpdateOrgSettingsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_rpmgr_v1_settings_proto_msgTypes[12]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use UpdateOrgSettingsResponse.ProtoReflect.Descriptor instead.
+func (*UpdateOrgSettingsResponse) Descriptor() ([]byte, []int) {
+	return file_rpmgr_v1_settings_proto_rawDescGZIP(), []int{12}
+}
+
+func (x *UpdateOrgSettingsResponse) GetSettings() *OrgSettings {
+	if x != nil {
+		return x.Settings
+	}
+	return nil
+}
+
+func (x *UpdateOrgSettingsResponse) GetEtag() string {
+	if x != nil {
+		return x.Etag
+	}
+	return ""
+}
+
+func (x *UpdateOrgSettingsResponse) GetRevision() *Revision {
+	if x != nil {
+		return x.Revision
+	}
+	return nil
+}
+
+func (x *UpdateOrgSettingsResponse) GetApplyStatus() *ApplyStatus {
+	if x != nil {
+		return x.ApplyStatus
+	}
+	return nil
+}
+
 var File_rpmgr_v1_settings_proto protoreflect.FileDescriptor
 
 const file_rpmgr_v1_settings_proto_rawDesc = "" +
 	"\n" +
-	"\x17rpmgr/v1/settings.proto\x12\brpmgr.v1\x1a\x1bbuf/validate/validate.proto\x1a\x1egoogle/protobuf/duration.proto\"\x91\t\n" +
+	"\x17rpmgr/v1/settings.proto\x12\brpmgr.v1\x1a\x1bbuf/validate/validate.proto\x1a\x1egoogle/protobuf/duration.proto\x1a google/protobuf/field_mask.proto\x1a\x15rpmgr/v1/common.proto\x1a\x16rpmgr/v1/options.proto\x1a\x15rpmgr/v1/status.proto\"\x91\t\n" +
 	"\x10InstanceSettings\x12W\n" +
 	"\x11default_transport\x18\x01 \x01(\x0e2\x19.rpmgr.v1.TransportPolicyB\n" +
 	"\xbaH\a\x82\x01\x04\x10\x01 \x00H\x00R\x10defaultTransport\x88\x01\x01\x12j\n" +
@@ -591,7 +1152,40 @@ const file_rpmgr_v1_settings_proto_rawDesc = "" +
 	"\x14operators_may_enroll\x18\x02 \x01(\bH\x01R\x12operatorsMayEnroll\x88\x01\x01\x12d\n" +
 	"\x18default_gateway_group_id\x18\x03 \x01(\tB+\xbaH(r&2$^(gwg_[0-7][0-9A-HJKMNP-TV-Z]{25})?$R\x15defaultGatewayGroupIdB\x0e\n" +
 	"\f_require_mfaB\x17\n" +
-	"\x15_operators_may_enroll*\x82\x01\n" +
+	"\x15_operators_may_enroll\"\x1c\n" +
+	"\x1aGetInstanceSettingsRequest\"\x95\x01\n" +
+	"\x1bGetInstanceSettingsResponse\x126\n" +
+	"\bsettings\x18\x01 \x01(\v2\x1a.rpmgr.v1.InstanceSettingsR\bsettings\x12\x12\n" +
+	"\x04etag\x18\x02 \x01(\tR\x04etag\x12*\n" +
+	"\x11smtp_password_set\x18\x03 \x01(\bR\x0fsmtpPasswordSet\"\xb0\x01\n" +
+	"\x1dUpdateInstanceSettingsRequest\x12>\n" +
+	"\bsettings\x18\x01 \x01(\v2\x1a.rpmgr.v1.InstanceSettingsB\x06\xbaH\x03\xc8\x01\x01R\bsettings\x12;\n" +
+	"\vupdate_mask\x18\x02 \x01(\v2\x1a.google.protobuf.FieldMaskR\n" +
+	"updateMask\x12\x12\n" +
+	"\x04etag\x18\x03 \x01(\tR\x04etag\"\x9c\x01\n" +
+	"\x1eUpdateInstanceSettingsResponse\x126\n" +
+	"\bsettings\x18\x01 \x01(\v2\x1a.rpmgr.v1.InstanceSettingsR\bsettings\x12\x12\n" +
+	"\x04etag\x18\x02 \x01(\tR\x04etag\x12.\n" +
+	"\brevision\x18\x03 \x01(\v2\x12.rpmgr.v1.RevisionR\brevision\"B\n" +
+	"\x16SetSmtpPasswordRequest\x12(\n" +
+	"\bpassword\x18\x01 \x01(\tB\f\xbaH\x05r\x03\x18\x80\b\x88\xb5\x18\x01R\bpassword\"\x19\n" +
+	"\x17SetSmtpPasswordResponse\"7\n" +
+	"\x15GetOrgSettingsRequest\x12\x1e\n" +
+	"\x06org_id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x05orgId\"_\n" +
+	"\x16GetOrgSettingsResponse\x121\n" +
+	"\bsettings\x18\x01 \x01(\v2\x15.rpmgr.v1.OrgSettingsR\bsettings\x12\x12\n" +
+	"\x04etag\x18\x02 \x01(\tR\x04etag\"\xc6\x01\n" +
+	"\x18UpdateOrgSettingsRequest\x12\x1e\n" +
+	"\x06org_id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x05orgId\x129\n" +
+	"\bsettings\x18\x02 \x01(\v2\x15.rpmgr.v1.OrgSettingsB\x06\xbaH\x03\xc8\x01\x01R\bsettings\x12;\n" +
+	"\vupdate_mask\x18\x03 \x01(\v2\x1a.google.protobuf.FieldMaskR\n" +
+	"updateMask\x12\x12\n" +
+	"\x04etag\x18\x04 \x01(\tR\x04etag\"\xcc\x01\n" +
+	"\x19UpdateOrgSettingsResponse\x121\n" +
+	"\bsettings\x18\x01 \x01(\v2\x15.rpmgr.v1.OrgSettingsR\bsettings\x12\x12\n" +
+	"\x04etag\x18\x02 \x01(\tR\x04etag\x12.\n" +
+	"\brevision\x18\x03 \x01(\v2\x12.rpmgr.v1.RevisionR\brevision\x128\n" +
+	"\fapply_status\x18\x04 \x01(\v2\x15.rpmgr.v1.ApplyStatusR\vapplyStatus*\x82\x01\n" +
 	"\x0fTransportPolicy\x12 \n" +
 	"\x1cTRANSPORT_POLICY_UNSPECIFIED\x10\x00\x12\x19\n" +
 	"\x15TRANSPORT_POLICY_AUTO\x10\x01\x12\x19\n" +
@@ -608,7 +1202,18 @@ const file_rpmgr_v1_settings_proto_rawDesc = "" +
 	"\fSmtpSecurity\x12\x1d\n" +
 	"\x19SMTP_SECURITY_UNSPECIFIED\x10\x00\x12\x1a\n" +
 	"\x16SMTP_SECURITY_STARTTLS\x10\x01\x12\x15\n" +
-	"\x11SMTP_SECURITY_TLS\x10\x02B5Z3github.com/felix-homelab/rpmgr/gen/rpmgr/v1;rpmgrv1b\x06proto3"
+	"\x11SMTP_SECURITY_TLS\x10\x022\xe7\x04\n" +
+	"\x0fSettingsService\x12{\n" +
+	"\x13GetInstanceSettings\x12$.rpmgr.v1.GetInstanceSettingsRequest\x1a%.rpmgr.v1.GetInstanceSettingsResponse\"\x17\x8a\xb5\x18\x10\n" +
+	"\x0einstance.admin\x90\x02\x01\x12\x81\x01\n" +
+	"\x16UpdateInstanceSettings\x12'.rpmgr.v1.UpdateInstanceSettingsRequest\x1a(.rpmgr.v1.UpdateInstanceSettingsResponse\"\x14\x8a\xb5\x18\x10\n" +
+	"\x0einstance.admin\x12l\n" +
+	"\x0fSetSmtpPassword\x12 .rpmgr.v1.SetSmtpPasswordRequest\x1a!.rpmgr.v1.SetSmtpPasswordResponse\"\x14\x8a\xb5\x18\x10\n" +
+	"\x0einstance.admin\x12n\n" +
+	"\x0eGetOrgSettings\x12\x1f.rpmgr.v1.GetOrgSettingsRequest\x1a .rpmgr.v1.GetOrgSettingsResponse\"\x19\x8a\xb5\x18\x12\n" +
+	"\borg.read\x12\x06org_id\x90\x02\x01\x12u\n" +
+	"\x11UpdateOrgSettings\x12\".rpmgr.v1.UpdateOrgSettingsRequest\x1a#.rpmgr.v1.UpdateOrgSettingsResponse\"\x17\x8a\xb5\x18\x13\n" +
+	"\torg.write\x12\x06org_idB5Z3github.com/felix-homelab/rpmgr/gen/rpmgr/v1;rpmgrv1b\x06proto3"
 
 var (
 	file_rpmgr_v1_settings_proto_rawDescOnce sync.Once
@@ -623,32 +1228,66 @@ func file_rpmgr_v1_settings_proto_rawDescGZIP() []byte {
 }
 
 var file_rpmgr_v1_settings_proto_enumTypes = make([]protoimpl.EnumInfo, 4)
-var file_rpmgr_v1_settings_proto_msgTypes = make([]protoimpl.MessageInfo, 3)
+var file_rpmgr_v1_settings_proto_msgTypes = make([]protoimpl.MessageInfo, 13)
 var file_rpmgr_v1_settings_proto_goTypes = []any{
-	(TransportPolicy)(0),        // 0: rpmgr.v1.TransportPolicy
-	(PasswordHashProfile)(0),    // 1: rpmgr.v1.PasswordHashProfile
-	(UpdateChannel)(0),          // 2: rpmgr.v1.UpdateChannel
-	(SmtpSecurity)(0),           // 3: rpmgr.v1.SmtpSecurity
-	(*InstanceSettings)(nil),    // 4: rpmgr.v1.InstanceSettings
-	(*SmtpSettings)(nil),        // 5: rpmgr.v1.SmtpSettings
-	(*OrgSettings)(nil),         // 6: rpmgr.v1.OrgSettings
-	(*durationpb.Duration)(nil), // 7: google.protobuf.Duration
+	(TransportPolicy)(0),                   // 0: rpmgr.v1.TransportPolicy
+	(PasswordHashProfile)(0),               // 1: rpmgr.v1.PasswordHashProfile
+	(UpdateChannel)(0),                     // 2: rpmgr.v1.UpdateChannel
+	(SmtpSecurity)(0),                      // 3: rpmgr.v1.SmtpSecurity
+	(*InstanceSettings)(nil),               // 4: rpmgr.v1.InstanceSettings
+	(*SmtpSettings)(nil),                   // 5: rpmgr.v1.SmtpSettings
+	(*OrgSettings)(nil),                    // 6: rpmgr.v1.OrgSettings
+	(*GetInstanceSettingsRequest)(nil),     // 7: rpmgr.v1.GetInstanceSettingsRequest
+	(*GetInstanceSettingsResponse)(nil),    // 8: rpmgr.v1.GetInstanceSettingsResponse
+	(*UpdateInstanceSettingsRequest)(nil),  // 9: rpmgr.v1.UpdateInstanceSettingsRequest
+	(*UpdateInstanceSettingsResponse)(nil), // 10: rpmgr.v1.UpdateInstanceSettingsResponse
+	(*SetSmtpPasswordRequest)(nil),         // 11: rpmgr.v1.SetSmtpPasswordRequest
+	(*SetSmtpPasswordResponse)(nil),        // 12: rpmgr.v1.SetSmtpPasswordResponse
+	(*GetOrgSettingsRequest)(nil),          // 13: rpmgr.v1.GetOrgSettingsRequest
+	(*GetOrgSettingsResponse)(nil),         // 14: rpmgr.v1.GetOrgSettingsResponse
+	(*UpdateOrgSettingsRequest)(nil),       // 15: rpmgr.v1.UpdateOrgSettingsRequest
+	(*UpdateOrgSettingsResponse)(nil),      // 16: rpmgr.v1.UpdateOrgSettingsResponse
+	(*durationpb.Duration)(nil),            // 17: google.protobuf.Duration
+	(*fieldmaskpb.FieldMask)(nil),          // 18: google.protobuf.FieldMask
+	(*Revision)(nil),                       // 19: rpmgr.v1.Revision
+	(*ApplyStatus)(nil),                    // 20: rpmgr.v1.ApplyStatus
 }
 var file_rpmgr_v1_settings_proto_depIdxs = []int32{
-	0, // 0: rpmgr.v1.InstanceSettings.default_transport:type_name -> rpmgr.v1.TransportPolicy
-	7, // 1: rpmgr.v1.InstanceSettings.leaf_certificate_lifetime:type_name -> google.protobuf.Duration
-	7, // 2: rpmgr.v1.InstanceSettings.expired_certificate_grace:type_name -> google.protobuf.Duration
-	1, // 3: rpmgr.v1.InstanceSettings.password_hash_profile:type_name -> rpmgr.v1.PasswordHashProfile
-	2, // 4: rpmgr.v1.InstanceSettings.update_channel:type_name -> rpmgr.v1.UpdateChannel
-	7, // 5: rpmgr.v1.InstanceSettings.hourly_rollup_retention:type_name -> google.protobuf.Duration
-	7, // 6: rpmgr.v1.InstanceSettings.daily_rollup_retention:type_name -> google.protobuf.Duration
-	5, // 7: rpmgr.v1.InstanceSettings.smtp:type_name -> rpmgr.v1.SmtpSettings
-	3, // 8: rpmgr.v1.SmtpSettings.security:type_name -> rpmgr.v1.SmtpSecurity
-	9, // [9:9] is the sub-list for method output_type
-	9, // [9:9] is the sub-list for method input_type
-	9, // [9:9] is the sub-list for extension type_name
-	9, // [9:9] is the sub-list for extension extendee
-	0, // [0:9] is the sub-list for field type_name
+	0,  // 0: rpmgr.v1.InstanceSettings.default_transport:type_name -> rpmgr.v1.TransportPolicy
+	17, // 1: rpmgr.v1.InstanceSettings.leaf_certificate_lifetime:type_name -> google.protobuf.Duration
+	17, // 2: rpmgr.v1.InstanceSettings.expired_certificate_grace:type_name -> google.protobuf.Duration
+	1,  // 3: rpmgr.v1.InstanceSettings.password_hash_profile:type_name -> rpmgr.v1.PasswordHashProfile
+	2,  // 4: rpmgr.v1.InstanceSettings.update_channel:type_name -> rpmgr.v1.UpdateChannel
+	17, // 5: rpmgr.v1.InstanceSettings.hourly_rollup_retention:type_name -> google.protobuf.Duration
+	17, // 6: rpmgr.v1.InstanceSettings.daily_rollup_retention:type_name -> google.protobuf.Duration
+	5,  // 7: rpmgr.v1.InstanceSettings.smtp:type_name -> rpmgr.v1.SmtpSettings
+	3,  // 8: rpmgr.v1.SmtpSettings.security:type_name -> rpmgr.v1.SmtpSecurity
+	4,  // 9: rpmgr.v1.GetInstanceSettingsResponse.settings:type_name -> rpmgr.v1.InstanceSettings
+	4,  // 10: rpmgr.v1.UpdateInstanceSettingsRequest.settings:type_name -> rpmgr.v1.InstanceSettings
+	18, // 11: rpmgr.v1.UpdateInstanceSettingsRequest.update_mask:type_name -> google.protobuf.FieldMask
+	4,  // 12: rpmgr.v1.UpdateInstanceSettingsResponse.settings:type_name -> rpmgr.v1.InstanceSettings
+	19, // 13: rpmgr.v1.UpdateInstanceSettingsResponse.revision:type_name -> rpmgr.v1.Revision
+	6,  // 14: rpmgr.v1.GetOrgSettingsResponse.settings:type_name -> rpmgr.v1.OrgSettings
+	6,  // 15: rpmgr.v1.UpdateOrgSettingsRequest.settings:type_name -> rpmgr.v1.OrgSettings
+	18, // 16: rpmgr.v1.UpdateOrgSettingsRequest.update_mask:type_name -> google.protobuf.FieldMask
+	6,  // 17: rpmgr.v1.UpdateOrgSettingsResponse.settings:type_name -> rpmgr.v1.OrgSettings
+	19, // 18: rpmgr.v1.UpdateOrgSettingsResponse.revision:type_name -> rpmgr.v1.Revision
+	20, // 19: rpmgr.v1.UpdateOrgSettingsResponse.apply_status:type_name -> rpmgr.v1.ApplyStatus
+	7,  // 20: rpmgr.v1.SettingsService.GetInstanceSettings:input_type -> rpmgr.v1.GetInstanceSettingsRequest
+	9,  // 21: rpmgr.v1.SettingsService.UpdateInstanceSettings:input_type -> rpmgr.v1.UpdateInstanceSettingsRequest
+	11, // 22: rpmgr.v1.SettingsService.SetSmtpPassword:input_type -> rpmgr.v1.SetSmtpPasswordRequest
+	13, // 23: rpmgr.v1.SettingsService.GetOrgSettings:input_type -> rpmgr.v1.GetOrgSettingsRequest
+	15, // 24: rpmgr.v1.SettingsService.UpdateOrgSettings:input_type -> rpmgr.v1.UpdateOrgSettingsRequest
+	8,  // 25: rpmgr.v1.SettingsService.GetInstanceSettings:output_type -> rpmgr.v1.GetInstanceSettingsResponse
+	10, // 26: rpmgr.v1.SettingsService.UpdateInstanceSettings:output_type -> rpmgr.v1.UpdateInstanceSettingsResponse
+	12, // 27: rpmgr.v1.SettingsService.SetSmtpPassword:output_type -> rpmgr.v1.SetSmtpPasswordResponse
+	14, // 28: rpmgr.v1.SettingsService.GetOrgSettings:output_type -> rpmgr.v1.GetOrgSettingsResponse
+	16, // 29: rpmgr.v1.SettingsService.UpdateOrgSettings:output_type -> rpmgr.v1.UpdateOrgSettingsResponse
+	25, // [25:30] is the sub-list for method output_type
+	20, // [20:25] is the sub-list for method input_type
+	20, // [20:20] is the sub-list for extension type_name
+	20, // [20:20] is the sub-list for extension extendee
+	0,  // [0:20] is the sub-list for field type_name
 }
 
 func init() { file_rpmgr_v1_settings_proto_init() }
@@ -656,6 +1295,9 @@ func file_rpmgr_v1_settings_proto_init() {
 	if File_rpmgr_v1_settings_proto != nil {
 		return
 	}
+	file_rpmgr_v1_common_proto_init()
+	file_rpmgr_v1_options_proto_init()
+	file_rpmgr_v1_status_proto_init()
 	file_rpmgr_v1_settings_proto_msgTypes[0].OneofWrappers = []any{}
 	file_rpmgr_v1_settings_proto_msgTypes[2].OneofWrappers = []any{}
 	type x struct{}
@@ -664,9 +1306,9 @@ func file_rpmgr_v1_settings_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_rpmgr_v1_settings_proto_rawDesc), len(file_rpmgr_v1_settings_proto_rawDesc)),
 			NumEnums:      4,
-			NumMessages:   3,
+			NumMessages:   13,
 			NumExtensions: 0,
-			NumServices:   0,
+			NumServices:   1,
 		},
 		GoTypes:           file_rpmgr_v1_settings_proto_goTypes,
 		DependencyIndexes: file_rpmgr_v1_settings_proto_depIdxs,

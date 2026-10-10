@@ -6759,11 +6759,11 @@ type CABundleMutation struct {
 	typ           string
 	id            *string
 	org_id        *string
+	version       *int64
+	addversion    *int64
 	name          *string
 	pem           *[]byte
 	created_at    *time.Time
-	version       *int64
-	addversion    *int64
 	clearedFields map[string]struct{}
 	done          bool
 	oldValue      func(context.Context) (*CABundle, error)
@@ -6910,6 +6910,62 @@ func (m *CABundleMutation) ResetOrgID() {
 	m.org_id = nil
 }
 
+// SetVersion sets the "version" field.
+func (m *CABundleMutation) SetVersion(i int64) {
+	m.version = &i
+	m.addversion = nil
+}
+
+// Version returns the value of the "version" field in the mutation.
+func (m *CABundleMutation) Version() (r int64, exists bool) {
+	v := m.version
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldVersion returns the old "version" field's value of the CABundle entity.
+// If the CABundle object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CABundleMutation) OldVersion(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldVersion is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldVersion requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldVersion: %w", err)
+	}
+	return oldValue.Version, nil
+}
+
+// AddVersion adds i to the "version" field.
+func (m *CABundleMutation) AddVersion(i int64) {
+	if m.addversion != nil {
+		*m.addversion += i
+	} else {
+		m.addversion = &i
+	}
+}
+
+// AddedVersion returns the value that was added to the "version" field in this mutation.
+func (m *CABundleMutation) AddedVersion() (r int64, exists bool) {
+	v := m.addversion
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetVersion resets all changes to the "version" field.
+func (m *CABundleMutation) ResetVersion() {
+	m.version = nil
+	m.addversion = nil
+}
+
 // SetName sets the "name" field.
 func (m *CABundleMutation) SetName(s string) {
 	m.name = &s
@@ -7018,62 +7074,6 @@ func (m *CABundleMutation) ResetCreatedAt() {
 	m.created_at = nil
 }
 
-// SetVersion sets the "version" field.
-func (m *CABundleMutation) SetVersion(i int64) {
-	m.version = &i
-	m.addversion = nil
-}
-
-// Version returns the value of the "version" field in the mutation.
-func (m *CABundleMutation) Version() (r int64, exists bool) {
-	v := m.version
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldVersion returns the old "version" field's value of the CABundle entity.
-// If the CABundle object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *CABundleMutation) OldVersion(ctx context.Context) (v int64, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldVersion is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldVersion requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldVersion: %w", err)
-	}
-	return oldValue.Version, nil
-}
-
-// AddVersion adds i to the "version" field.
-func (m *CABundleMutation) AddVersion(i int64) {
-	if m.addversion != nil {
-		*m.addversion += i
-	} else {
-		m.addversion = &i
-	}
-}
-
-// AddedVersion returns the value that was added to the "version" field in this mutation.
-func (m *CABundleMutation) AddedVersion() (r int64, exists bool) {
-	v := m.addversion
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// ResetVersion resets all changes to the "version" field.
-func (m *CABundleMutation) ResetVersion() {
-	m.version = nil
-	m.addversion = nil
-}
-
 // Where appends a list predicates to the CABundleMutation builder.
 func (m *CABundleMutation) Where(ps ...predicate.CABundle) {
 	m.predicates = append(m.predicates, ps...)
@@ -7112,6 +7112,9 @@ func (m *CABundleMutation) Fields() []string {
 	if m.org_id != nil {
 		fields = append(fields, cabundle.FieldOrgID)
 	}
+	if m.version != nil {
+		fields = append(fields, cabundle.FieldVersion)
+	}
 	if m.name != nil {
 		fields = append(fields, cabundle.FieldName)
 	}
@@ -7120,9 +7123,6 @@ func (m *CABundleMutation) Fields() []string {
 	}
 	if m.created_at != nil {
 		fields = append(fields, cabundle.FieldCreatedAt)
-	}
-	if m.version != nil {
-		fields = append(fields, cabundle.FieldVersion)
 	}
 	return fields
 }
@@ -7134,14 +7134,14 @@ func (m *CABundleMutation) Field(name string) (ent.Value, bool) {
 	switch name {
 	case cabundle.FieldOrgID:
 		return m.OrgID()
+	case cabundle.FieldVersion:
+		return m.Version()
 	case cabundle.FieldName:
 		return m.Name()
 	case cabundle.FieldPem:
 		return m.Pem()
 	case cabundle.FieldCreatedAt:
 		return m.CreatedAt()
-	case cabundle.FieldVersion:
-		return m.Version()
 	}
 	return nil, false
 }
@@ -7153,14 +7153,14 @@ func (m *CABundleMutation) OldField(ctx context.Context, name string) (ent.Value
 	switch name {
 	case cabundle.FieldOrgID:
 		return m.OldOrgID(ctx)
+	case cabundle.FieldVersion:
+		return m.OldVersion(ctx)
 	case cabundle.FieldName:
 		return m.OldName(ctx)
 	case cabundle.FieldPem:
 		return m.OldPem(ctx)
 	case cabundle.FieldCreatedAt:
 		return m.OldCreatedAt(ctx)
-	case cabundle.FieldVersion:
-		return m.OldVersion(ctx)
 	}
 	return nil, fmt.Errorf("unknown CABundle field %s", name)
 }
@@ -7176,6 +7176,13 @@ func (m *CABundleMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetOrgID(v)
+		return nil
+	case cabundle.FieldVersion:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetVersion(v)
 		return nil
 	case cabundle.FieldName:
 		v, ok := value.(string)
@@ -7197,13 +7204,6 @@ func (m *CABundleMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetCreatedAt(v)
-		return nil
-	case cabundle.FieldVersion:
-		v, ok := value.(int64)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetVersion(v)
 		return nil
 	}
 	return fmt.Errorf("unknown CABundle field %s", name)
@@ -7272,6 +7272,9 @@ func (m *CABundleMutation) ResetField(name string) error {
 	case cabundle.FieldOrgID:
 		m.ResetOrgID()
 		return nil
+	case cabundle.FieldVersion:
+		m.ResetVersion()
+		return nil
 	case cabundle.FieldName:
 		m.ResetName()
 		return nil
@@ -7280,9 +7283,6 @@ func (m *CABundleMutation) ResetField(name string) error {
 		return nil
 	case cabundle.FieldCreatedAt:
 		m.ResetCreatedAt()
-		return nil
-	case cabundle.FieldVersion:
-		m.ResetVersion()
 		return nil
 	}
 	return fmt.Errorf("unknown CABundle field %s", name)

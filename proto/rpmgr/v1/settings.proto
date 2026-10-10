@@ -6,8 +6,46 @@ package rpmgr.v1;
 
 import "buf/validate/validate.proto";
 import "google/protobuf/duration.proto";
+import "google/protobuf/field_mask.proto";
+import "rpmgr/v1/common.proto";
+import "rpmgr/v1/options.proto";
+import "rpmgr/v1/status.proto";
 
 option go_package = "github.com/felix-homelab/rpmgr/gen/rpmgr/v1;rpmgrv1";
+
+// SettingsService is the runtime settings of the instance and of each org (docs/07-api.md,
+// "Services"; docs/10-operations.md, "Runtime settings").
+service SettingsService {
+  // GetInstanceSettings returns the instance settings, defaults filled in.
+  rpc GetInstanceSettings(GetInstanceSettingsRequest) returns (GetInstanceSettingsResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+    option (rpmgr.v1.authz) = {permission: "instance.admin"};
+  }
+  // UpdateInstanceSettings changes the fields the mask names; a named field that the request does
+  // not set returns to its default.
+  rpc UpdateInstanceSettings(UpdateInstanceSettingsRequest) returns (UpdateInstanceSettingsResponse) {
+    option (rpmgr.v1.authz) = {permission: "instance.admin"};
+  }
+  // SetSmtpPassword stores the mail relay's password under the KEK, or removes it; write-only.
+  rpc SetSmtpPassword(SetSmtpPasswordRequest) returns (SetSmtpPasswordResponse) {
+    option (rpmgr.v1.authz) = {permission: "instance.admin"};
+  }
+  // GetOrgSettings returns an org's settings, defaults filled in.
+  rpc GetOrgSettings(GetOrgSettingsRequest) returns (GetOrgSettingsResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+    option (rpmgr.v1.authz) = {
+      permission: "org.read"
+      resource_field: "org_id"
+    };
+  }
+  // UpdateOrgSettings changes the fields the mask names; a change of require_mfa needs a step-up.
+  rpc UpdateOrgSettings(UpdateOrgSettingsRequest) returns (UpdateOrgSettingsResponse) {
+    option (rpmgr.v1.authz) = {
+      permission: "org.write"
+      resource_field: "org_id"
+    };
+  }
+}
 
 // TransportPolicy selects the data-session transport between connectors and gateways
 // (docs/03-connections.md, "Transport selection").
@@ -171,4 +209,88 @@ message OrgSettings {
   string default_gateway_group_id = 3 [(buf.validate.field).string = {
     pattern: "^(gwg_[0-7][0-9A-HJKMNP-TV-Z]{25})?$"
   }];
+}
+
+// GetInstanceSettingsRequest is empty.
+message GetInstanceSettingsRequest {}
+
+// GetInstanceSettingsResponse is the instance settings.
+message GetInstanceSettingsResponse {
+  // The settings, defaults filled in.
+  InstanceSettings settings = 1;
+  // The version to send back with an update.
+  string etag = 2;
+  // Whether the mail relay's password is set; the password itself is never returned.
+  bool smtp_password_set = 3;
+}
+
+// UpdateInstanceSettingsRequest changes the instance settings.
+message UpdateInstanceSettingsRequest {
+  // The settings to change.
+  InstanceSettings settings = 1 [(buf.validate.field).required = true];
+  // The fields to change, by their names.
+  google.protobuf.FieldMask update_mask = 2;
+  // The etag the caller read; empty skips the check.
+  string etag = 3;
+}
+
+// UpdateInstanceSettingsResponse is the changed settings.
+message UpdateInstanceSettingsResponse {
+  // The settings, defaults filled in.
+  InstanceSettings settings = 1;
+  // The new etag.
+  string etag = 2;
+  // The revision of the change.
+  Revision revision = 3;
+}
+
+// SetSmtpPasswordRequest sets the mail relay's password.
+message SetSmtpPasswordRequest {
+  // The password; empty removes it.
+  string password = 1 [
+    (rpmgr.v1.sensitive) = true,
+    (buf.validate.field).string.max_len = 1024
+  ];
+}
+
+// SetSmtpPasswordResponse is empty.
+message SetSmtpPasswordResponse {}
+
+// GetOrgSettingsRequest names an org.
+message GetOrgSettingsRequest {
+  // The org.
+  string org_id = 1 [(buf.validate.field).string.min_len = 1];
+}
+
+// GetOrgSettingsResponse is the org's settings.
+message GetOrgSettingsResponse {
+  // The settings, defaults filled in.
+  OrgSettings settings = 1;
+  // The version to send back with an update.
+  string etag = 2;
+}
+
+// UpdateOrgSettingsRequest changes an org's settings.
+message UpdateOrgSettingsRequest {
+  // The org.
+  string org_id = 1 [(buf.validate.field).string.min_len = 1];
+  // The settings to change.
+  OrgSettings settings = 2 [(buf.validate.field).required = true];
+  // The fields to change, by their names.
+  google.protobuf.FieldMask update_mask = 3;
+  // The etag the caller read; empty skips the check.
+  string etag = 4;
+}
+
+// UpdateOrgSettingsResponse is the changed settings.
+message UpdateOrgSettingsResponse {
+  // The settings, defaults filled in.
+  OrgSettings settings = 1;
+  // The new etag.
+  string etag = 2;
+  // The revision of the change.
+  Revision revision = 3;
+  // The apply status of the revision; with the request header Rpmgr-Wait-Applied, once it is
+  // final or the wait is over (docs/07-api.md, "Writes and apply status").
+  ApplyStatus apply_status = 4;
 }

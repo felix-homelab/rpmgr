@@ -12,6 +12,7 @@ import (
 	_ "buf.build/gen/go/bufbuild/protovalidate/protocolbuffers/go/buf/validate"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
+	fieldmaskpb "google.golang.org/protobuf/types/known/fieldmaskpb"
 	timestamppb "google.golang.org/protobuf/types/known/timestamppb"
 	reflect "reflect"
 	sync "sync"
@@ -833,11 +834,747 @@ func (x *DeleteCertificateResponse) GetApplyStatus() *ApplyStatus {
 	return nil
 }
 
+// CABundle is a set of an org's CA certificates that verify the certificates of HTTPS upstreams
+// (docs/04-security.md, "Controller certificates"); route targets name it.
+type CABundle struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Its ID, cab_…; output only.
+	Id string `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	// Its name, unique in the org.
+	Name string `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
+	// 1 to 100 PEM certificates, each a trust anchor.
+	Pem string `protobuf:"bytes,3,opt,name=pem,proto3" json:"pem,omitempty"`
+	// Its certificates' subjects and expiry, in order; output only.
+	Certificates []*CACertificate `protobuf:"bytes,4,rep,name=certificates,proto3" json:"certificates,omitempty"`
+	// The route targets that use it; output only.
+	TargetIds []string `protobuf:"bytes,5,rep,name=target_ids,json=targetIds,proto3" json:"target_ids,omitempty"`
+	// When it was created; output only.
+	CreateTime *timestamppb.Timestamp `protobuf:"bytes,6,opt,name=create_time,json=createTime,proto3" json:"create_time,omitempty"`
+	// The version to send back with an update; output only.
+	Etag          string `protobuf:"bytes,7,opt,name=etag,proto3" json:"etag,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CABundle) Reset() {
+	*x = CABundle{}
+	mi := &file_rpmgr_v1_certificate_proto_msgTypes[11]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CABundle) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CABundle) ProtoMessage() {}
+
+func (x *CABundle) ProtoReflect() protoreflect.Message {
+	mi := &file_rpmgr_v1_certificate_proto_msgTypes[11]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CABundle.ProtoReflect.Descriptor instead.
+func (*CABundle) Descriptor() ([]byte, []int) {
+	return file_rpmgr_v1_certificate_proto_rawDescGZIP(), []int{11}
+}
+
+func (x *CABundle) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+func (x *CABundle) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *CABundle) GetPem() string {
+	if x != nil {
+		return x.Pem
+	}
+	return ""
+}
+
+func (x *CABundle) GetCertificates() []*CACertificate {
+	if x != nil {
+		return x.Certificates
+	}
+	return nil
+}
+
+func (x *CABundle) GetTargetIds() []string {
+	if x != nil {
+		return x.TargetIds
+	}
+	return nil
+}
+
+func (x *CABundle) GetCreateTime() *timestamppb.Timestamp {
+	if x != nil {
+		return x.CreateTime
+	}
+	return nil
+}
+
+func (x *CABundle) GetEtag() string {
+	if x != nil {
+		return x.Etag
+	}
+	return ""
+}
+
+// CACertificate is one certificate of a CA bundle.
+type CACertificate struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Its subject.
+	Subject string `protobuf:"bytes,1,opt,name=subject,proto3" json:"subject,omitempty"`
+	// When it expires.
+	NotAfter      *timestamppb.Timestamp `protobuf:"bytes,2,opt,name=not_after,json=notAfter,proto3" json:"not_after,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CACertificate) Reset() {
+	*x = CACertificate{}
+	mi := &file_rpmgr_v1_certificate_proto_msgTypes[12]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CACertificate) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CACertificate) ProtoMessage() {}
+
+func (x *CACertificate) ProtoReflect() protoreflect.Message {
+	mi := &file_rpmgr_v1_certificate_proto_msgTypes[12]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CACertificate.ProtoReflect.Descriptor instead.
+func (*CACertificate) Descriptor() ([]byte, []int) {
+	return file_rpmgr_v1_certificate_proto_rawDescGZIP(), []int{12}
+}
+
+func (x *CACertificate) GetSubject() string {
+	if x != nil {
+		return x.Subject
+	}
+	return ""
+}
+
+func (x *CACertificate) GetNotAfter() *timestamppb.Timestamp {
+	if x != nil {
+		return x.NotAfter
+	}
+	return nil
+}
+
+// CreateCABundleRequest creates a CA bundle in an org.
+type CreateCABundleRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The org.
+	OrgId string `protobuf:"bytes,1,opt,name=org_id,json=orgId,proto3" json:"org_id,omitempty"`
+	// The bundle: its name and PEM.
+	CaBundle *CABundle `protobuf:"bytes,2,opt,name=ca_bundle,json=caBundle,proto3" json:"ca_bundle,omitempty"`
+	// Makes retries idempotent (docs/07-api.md, "Resource design").
+	RequestId     string `protobuf:"bytes,3,opt,name=request_id,json=requestId,proto3" json:"request_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CreateCABundleRequest) Reset() {
+	*x = CreateCABundleRequest{}
+	mi := &file_rpmgr_v1_certificate_proto_msgTypes[13]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CreateCABundleRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CreateCABundleRequest) ProtoMessage() {}
+
+func (x *CreateCABundleRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_rpmgr_v1_certificate_proto_msgTypes[13]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CreateCABundleRequest.ProtoReflect.Descriptor instead.
+func (*CreateCABundleRequest) Descriptor() ([]byte, []int) {
+	return file_rpmgr_v1_certificate_proto_rawDescGZIP(), []int{13}
+}
+
+func (x *CreateCABundleRequest) GetOrgId() string {
+	if x != nil {
+		return x.OrgId
+	}
+	return ""
+}
+
+func (x *CreateCABundleRequest) GetCaBundle() *CABundle {
+	if x != nil {
+		return x.CaBundle
+	}
+	return nil
+}
+
+func (x *CreateCABundleRequest) GetRequestId() string {
+	if x != nil {
+		return x.RequestId
+	}
+	return ""
+}
+
+// CreateCABundleResponse is the new bundle.
+type CreateCABundleResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The bundle.
+	CaBundle *CABundle `protobuf:"bytes,1,opt,name=ca_bundle,json=caBundle,proto3" json:"ca_bundle,omitempty"`
+	// The revision of the change.
+	Revision *Revision `protobuf:"bytes,2,opt,name=revision,proto3" json:"revision,omitempty"`
+	// The apply status of the revision; with the request header Rpmgr-Wait-Applied, once it is
+	// final or the wait is over (docs/07-api.md, "Writes and apply status").
+	ApplyStatus   *ApplyStatus `protobuf:"bytes,3,opt,name=apply_status,json=applyStatus,proto3" json:"apply_status,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CreateCABundleResponse) Reset() {
+	*x = CreateCABundleResponse{}
+	mi := &file_rpmgr_v1_certificate_proto_msgTypes[14]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CreateCABundleResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CreateCABundleResponse) ProtoMessage() {}
+
+func (x *CreateCABundleResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_rpmgr_v1_certificate_proto_msgTypes[14]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CreateCABundleResponse.ProtoReflect.Descriptor instead.
+func (*CreateCABundleResponse) Descriptor() ([]byte, []int) {
+	return file_rpmgr_v1_certificate_proto_rawDescGZIP(), []int{14}
+}
+
+func (x *CreateCABundleResponse) GetCaBundle() *CABundle {
+	if x != nil {
+		return x.CaBundle
+	}
+	return nil
+}
+
+func (x *CreateCABundleResponse) GetRevision() *Revision {
+	if x != nil {
+		return x.Revision
+	}
+	return nil
+}
+
+func (x *CreateCABundleResponse) GetApplyStatus() *ApplyStatus {
+	if x != nil {
+		return x.ApplyStatus
+	}
+	return nil
+}
+
+// GetCABundleRequest names a CA bundle.
+type GetCABundleRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The bundle's ID.
+	CaBundleId    string `protobuf:"bytes,1,opt,name=ca_bundle_id,json=caBundleId,proto3" json:"ca_bundle_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetCABundleRequest) Reset() {
+	*x = GetCABundleRequest{}
+	mi := &file_rpmgr_v1_certificate_proto_msgTypes[15]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetCABundleRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetCABundleRequest) ProtoMessage() {}
+
+func (x *GetCABundleRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_rpmgr_v1_certificate_proto_msgTypes[15]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetCABundleRequest.ProtoReflect.Descriptor instead.
+func (*GetCABundleRequest) Descriptor() ([]byte, []int) {
+	return file_rpmgr_v1_certificate_proto_rawDescGZIP(), []int{15}
+}
+
+func (x *GetCABundleRequest) GetCaBundleId() string {
+	if x != nil {
+		return x.CaBundleId
+	}
+	return ""
+}
+
+// GetCABundleResponse is the bundle.
+type GetCABundleResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The bundle.
+	CaBundle      *CABundle `protobuf:"bytes,1,opt,name=ca_bundle,json=caBundle,proto3" json:"ca_bundle,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetCABundleResponse) Reset() {
+	*x = GetCABundleResponse{}
+	mi := &file_rpmgr_v1_certificate_proto_msgTypes[16]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetCABundleResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetCABundleResponse) ProtoMessage() {}
+
+func (x *GetCABundleResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_rpmgr_v1_certificate_proto_msgTypes[16]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetCABundleResponse.ProtoReflect.Descriptor instead.
+func (*GetCABundleResponse) Descriptor() ([]byte, []int) {
+	return file_rpmgr_v1_certificate_proto_rawDescGZIP(), []int{16}
+}
+
+func (x *GetCABundleResponse) GetCaBundle() *CABundle {
+	if x != nil {
+		return x.CaBundle
+	}
+	return nil
+}
+
+// ListCABundlesRequest pages through an org's CA bundles.
+type ListCABundlesRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The org.
+	OrgId string `protobuf:"bytes,1,opt,name=org_id,json=orgId,proto3" json:"org_id,omitempty"`
+	// At most this many, 50 if not set, 500 at most.
+	PageSize int32 `protobuf:"varint,2,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
+	// The page after the one that returned it.
+	PageToken     string `protobuf:"bytes,3,opt,name=page_token,json=pageToken,proto3" json:"page_token,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListCABundlesRequest) Reset() {
+	*x = ListCABundlesRequest{}
+	mi := &file_rpmgr_v1_certificate_proto_msgTypes[17]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListCABundlesRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListCABundlesRequest) ProtoMessage() {}
+
+func (x *ListCABundlesRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_rpmgr_v1_certificate_proto_msgTypes[17]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListCABundlesRequest.ProtoReflect.Descriptor instead.
+func (*ListCABundlesRequest) Descriptor() ([]byte, []int) {
+	return file_rpmgr_v1_certificate_proto_rawDescGZIP(), []int{17}
+}
+
+func (x *ListCABundlesRequest) GetOrgId() string {
+	if x != nil {
+		return x.OrgId
+	}
+	return ""
+}
+
+func (x *ListCABundlesRequest) GetPageSize() int32 {
+	if x != nil {
+		return x.PageSize
+	}
+	return 0
+}
+
+func (x *ListCABundlesRequest) GetPageToken() string {
+	if x != nil {
+		return x.PageToken
+	}
+	return ""
+}
+
+// ListCABundlesResponse is one page of CA bundles.
+type ListCABundlesResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The bundles.
+	CaBundles []*CABundle `protobuf:"bytes,1,rep,name=ca_bundles,json=caBundles,proto3" json:"ca_bundles,omitempty"`
+	// The token of the next page; empty after the last.
+	NextPageToken string `protobuf:"bytes,2,opt,name=next_page_token,json=nextPageToken,proto3" json:"next_page_token,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListCABundlesResponse) Reset() {
+	*x = ListCABundlesResponse{}
+	mi := &file_rpmgr_v1_certificate_proto_msgTypes[18]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListCABundlesResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListCABundlesResponse) ProtoMessage() {}
+
+func (x *ListCABundlesResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_rpmgr_v1_certificate_proto_msgTypes[18]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListCABundlesResponse.ProtoReflect.Descriptor instead.
+func (*ListCABundlesResponse) Descriptor() ([]byte, []int) {
+	return file_rpmgr_v1_certificate_proto_rawDescGZIP(), []int{18}
+}
+
+func (x *ListCABundlesResponse) GetCaBundles() []*CABundle {
+	if x != nil {
+		return x.CaBundles
+	}
+	return nil
+}
+
+func (x *ListCABundlesResponse) GetNextPageToken() string {
+	if x != nil {
+		return x.NextPageToken
+	}
+	return ""
+}
+
+// UpdateCABundleRequest changes a CA bundle.
+type UpdateCABundleRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The bundle, with its ID and the fields to change.
+	CaBundle *CABundle `protobuf:"bytes,1,opt,name=ca_bundle,json=caBundle,proto3" json:"ca_bundle,omitempty"`
+	// The fields to change: name, pem.
+	UpdateMask *fieldmaskpb.FieldMask `protobuf:"bytes,2,opt,name=update_mask,json=updateMask,proto3" json:"update_mask,omitempty"`
+	// The etag the caller read; empty skips the check.
+	Etag          string `protobuf:"bytes,3,opt,name=etag,proto3" json:"etag,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *UpdateCABundleRequest) Reset() {
+	*x = UpdateCABundleRequest{}
+	mi := &file_rpmgr_v1_certificate_proto_msgTypes[19]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *UpdateCABundleRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*UpdateCABundleRequest) ProtoMessage() {}
+
+func (x *UpdateCABundleRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_rpmgr_v1_certificate_proto_msgTypes[19]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use UpdateCABundleRequest.ProtoReflect.Descriptor instead.
+func (*UpdateCABundleRequest) Descriptor() ([]byte, []int) {
+	return file_rpmgr_v1_certificate_proto_rawDescGZIP(), []int{19}
+}
+
+func (x *UpdateCABundleRequest) GetCaBundle() *CABundle {
+	if x != nil {
+		return x.CaBundle
+	}
+	return nil
+}
+
+func (x *UpdateCABundleRequest) GetUpdateMask() *fieldmaskpb.FieldMask {
+	if x != nil {
+		return x.UpdateMask
+	}
+	return nil
+}
+
+func (x *UpdateCABundleRequest) GetEtag() string {
+	if x != nil {
+		return x.Etag
+	}
+	return ""
+}
+
+// UpdateCABundleResponse is the changed bundle.
+type UpdateCABundleResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The bundle.
+	CaBundle *CABundle `protobuf:"bytes,1,opt,name=ca_bundle,json=caBundle,proto3" json:"ca_bundle,omitempty"`
+	// The revision of the change.
+	Revision *Revision `protobuf:"bytes,2,opt,name=revision,proto3" json:"revision,omitempty"`
+	// The apply status of the revision; with the request header Rpmgr-Wait-Applied, once it is
+	// final or the wait is over (docs/07-api.md, "Writes and apply status").
+	ApplyStatus   *ApplyStatus `protobuf:"bytes,3,opt,name=apply_status,json=applyStatus,proto3" json:"apply_status,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *UpdateCABundleResponse) Reset() {
+	*x = UpdateCABundleResponse{}
+	mi := &file_rpmgr_v1_certificate_proto_msgTypes[20]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *UpdateCABundleResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*UpdateCABundleResponse) ProtoMessage() {}
+
+func (x *UpdateCABundleResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_rpmgr_v1_certificate_proto_msgTypes[20]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use UpdateCABundleResponse.ProtoReflect.Descriptor instead.
+func (*UpdateCABundleResponse) Descriptor() ([]byte, []int) {
+	return file_rpmgr_v1_certificate_proto_rawDescGZIP(), []int{20}
+}
+
+func (x *UpdateCABundleResponse) GetCaBundle() *CABundle {
+	if x != nil {
+		return x.CaBundle
+	}
+	return nil
+}
+
+func (x *UpdateCABundleResponse) GetRevision() *Revision {
+	if x != nil {
+		return x.Revision
+	}
+	return nil
+}
+
+func (x *UpdateCABundleResponse) GetApplyStatus() *ApplyStatus {
+	if x != nil {
+		return x.ApplyStatus
+	}
+	return nil
+}
+
+// DeleteCABundleRequest names a CA bundle.
+type DeleteCABundleRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The bundle's ID.
+	CaBundleId string `protobuf:"bytes,1,opt,name=ca_bundle_id,json=caBundleId,proto3" json:"ca_bundle_id,omitempty"`
+	// The etag the caller read; empty skips the check.
+	Etag          string `protobuf:"bytes,2,opt,name=etag,proto3" json:"etag,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DeleteCABundleRequest) Reset() {
+	*x = DeleteCABundleRequest{}
+	mi := &file_rpmgr_v1_certificate_proto_msgTypes[21]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DeleteCABundleRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DeleteCABundleRequest) ProtoMessage() {}
+
+func (x *DeleteCABundleRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_rpmgr_v1_certificate_proto_msgTypes[21]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DeleteCABundleRequest.ProtoReflect.Descriptor instead.
+func (*DeleteCABundleRequest) Descriptor() ([]byte, []int) {
+	return file_rpmgr_v1_certificate_proto_rawDescGZIP(), []int{21}
+}
+
+func (x *DeleteCABundleRequest) GetCaBundleId() string {
+	if x != nil {
+		return x.CaBundleId
+	}
+	return ""
+}
+
+func (x *DeleteCABundleRequest) GetEtag() string {
+	if x != nil {
+		return x.Etag
+	}
+	return ""
+}
+
+// DeleteCABundleResponse is the revision of the deletion.
+type DeleteCABundleResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The revision of the change.
+	Revision *Revision `protobuf:"bytes,1,opt,name=revision,proto3" json:"revision,omitempty"`
+	// The apply status of the revision; with the request header Rpmgr-Wait-Applied, once it is
+	// final or the wait is over (docs/07-api.md, "Writes and apply status").
+	ApplyStatus   *ApplyStatus `protobuf:"bytes,2,opt,name=apply_status,json=applyStatus,proto3" json:"apply_status,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DeleteCABundleResponse) Reset() {
+	*x = DeleteCABundleResponse{}
+	mi := &file_rpmgr_v1_certificate_proto_msgTypes[22]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DeleteCABundleResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DeleteCABundleResponse) ProtoMessage() {}
+
+func (x *DeleteCABundleResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_rpmgr_v1_certificate_proto_msgTypes[22]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DeleteCABundleResponse.ProtoReflect.Descriptor instead.
+func (*DeleteCABundleResponse) Descriptor() ([]byte, []int) {
+	return file_rpmgr_v1_certificate_proto_rawDescGZIP(), []int{22}
+}
+
+func (x *DeleteCABundleResponse) GetRevision() *Revision {
+	if x != nil {
+		return x.Revision
+	}
+	return nil
+}
+
+func (x *DeleteCABundleResponse) GetApplyStatus() *ApplyStatus {
+	if x != nil {
+		return x.ApplyStatus
+	}
+	return nil
+}
+
 var File_rpmgr_v1_certificate_proto protoreflect.FileDescriptor
 
 const file_rpmgr_v1_certificate_proto_rawDesc = "" +
 	"\n" +
-	"\x1arpmgr/v1/certificate.proto\x12\brpmgr.v1\x1a\x1bbuf/validate/validate.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x15rpmgr/v1/common.proto\x1a\x16rpmgr/v1/options.proto\x1a\x15rpmgr/v1/status.proto\"\xb4\x03\n" +
+	"\x1arpmgr/v1/certificate.proto\x12\brpmgr.v1\x1a\x1bbuf/validate/validate.proto\x1a google/protobuf/field_mask.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x15rpmgr/v1/common.proto\x1a\x16rpmgr/v1/options.proto\x1a\x15rpmgr/v1/status.proto\"\xb4\x03\n" +
 	"\vCertificate\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x123\n" +
 	"\x06source\x18\x02 \x01(\x0e2\x1b.rpmgr.v1.CertificateSourceR\x06source\x12\x12\n" +
@@ -886,6 +1623,58 @@ const file_rpmgr_v1_certificate_proto_rawDesc = "" +
 	"\x04etag\x18\x02 \x01(\tR\x04etag\"\x85\x01\n" +
 	"\x19DeleteCertificateResponse\x12.\n" +
 	"\brevision\x18\x01 \x01(\v2\x12.rpmgr.v1.RevisionR\brevision\x128\n" +
+	"\fapply_status\x18\x02 \x01(\v2\x15.rpmgr.v1.ApplyStatusR\vapplyStatus\"\xa8\x02\n" +
+	"\bCABundle\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\x12B\n" +
+	"\x04name\x18\x02 \x01(\tB.\xbaH+\xd8\x01\x01r&2$^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$R\x04name\x12\x1b\n" +
+	"\x03pem\x18\x03 \x01(\tB\t\xbaH\x06r\x04\x18\x80\x80 R\x03pem\x12;\n" +
+	"\fcertificates\x18\x04 \x03(\v2\x17.rpmgr.v1.CACertificateR\fcertificates\x12\x1d\n" +
+	"\n" +
+	"target_ids\x18\x05 \x03(\tR\ttargetIds\x12;\n" +
+	"\vcreate_time\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\n" +
+	"createTime\x12\x12\n" +
+	"\x04etag\x18\a \x01(\tR\x04etag\"b\n" +
+	"\rCACertificate\x12\x18\n" +
+	"\asubject\x18\x01 \x01(\tR\asubject\x127\n" +
+	"\tnot_after\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\bnotAfter\"\x99\x01\n" +
+	"\x15CreateCABundleRequest\x12\x1e\n" +
+	"\x06org_id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x05orgId\x127\n" +
+	"\tca_bundle\x18\x02 \x01(\v2\x12.rpmgr.v1.CABundleB\x06\xbaH\x03\xc8\x01\x01R\bcaBundle\x12'\n" +
+	"\n" +
+	"request_id\x18\x03 \x01(\tB\b\xbaH\x05r\x03\x18\x80\x01R\trequestId\"\xb3\x01\n" +
+	"\x16CreateCABundleResponse\x12/\n" +
+	"\tca_bundle\x18\x01 \x01(\v2\x12.rpmgr.v1.CABundleR\bcaBundle\x12.\n" +
+	"\brevision\x18\x02 \x01(\v2\x12.rpmgr.v1.RevisionR\brevision\x128\n" +
+	"\fapply_status\x18\x03 \x01(\v2\x15.rpmgr.v1.ApplyStatusR\vapplyStatus\"?\n" +
+	"\x12GetCABundleRequest\x12)\n" +
+	"\fca_bundle_id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\n" +
+	"caBundleId\"F\n" +
+	"\x13GetCABundleResponse\x12/\n" +
+	"\tca_bundle\x18\x01 \x01(\v2\x12.rpmgr.v1.CABundleR\bcaBundle\"r\n" +
+	"\x14ListCABundlesRequest\x12\x1e\n" +
+	"\x06org_id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x05orgId\x12\x1b\n" +
+	"\tpage_size\x18\x02 \x01(\x05R\bpageSize\x12\x1d\n" +
+	"\n" +
+	"page_token\x18\x03 \x01(\tR\tpageToken\"r\n" +
+	"\x15ListCABundlesResponse\x121\n" +
+	"\n" +
+	"ca_bundles\x18\x01 \x03(\v2\x12.rpmgr.v1.CABundleR\tcaBundles\x12&\n" +
+	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"\xa1\x01\n" +
+	"\x15UpdateCABundleRequest\x127\n" +
+	"\tca_bundle\x18\x01 \x01(\v2\x12.rpmgr.v1.CABundleB\x06\xbaH\x03\xc8\x01\x01R\bcaBundle\x12;\n" +
+	"\vupdate_mask\x18\x02 \x01(\v2\x1a.google.protobuf.FieldMaskR\n" +
+	"updateMask\x12\x12\n" +
+	"\x04etag\x18\x03 \x01(\tR\x04etag\"\xb3\x01\n" +
+	"\x16UpdateCABundleResponse\x12/\n" +
+	"\tca_bundle\x18\x01 \x01(\v2\x12.rpmgr.v1.CABundleR\bcaBundle\x12.\n" +
+	"\brevision\x18\x02 \x01(\v2\x12.rpmgr.v1.RevisionR\brevision\x128\n" +
+	"\fapply_status\x18\x03 \x01(\v2\x15.rpmgr.v1.ApplyStatusR\vapplyStatus\"V\n" +
+	"\x15DeleteCABundleRequest\x12)\n" +
+	"\fca_bundle_id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\n" +
+	"caBundleId\x12\x12\n" +
+	"\x04etag\x18\x02 \x01(\tR\x04etag\"\x82\x01\n" +
+	"\x16DeleteCABundleResponse\x12.\n" +
+	"\brevision\x18\x01 \x01(\v2\x12.rpmgr.v1.RevisionR\brevision\x128\n" +
 	"\fapply_status\x18\x02 \x01(\v2\x15.rpmgr.v1.ApplyStatusR\vapplyStatus*u\n" +
 	"\x11CertificateSource\x12\"\n" +
 	"\x1eCERTIFICATE_SOURCE_UNSPECIFIED\x10\x00\x12\x1b\n" +
@@ -895,7 +1684,7 @@ const file_rpmgr_v1_certificate_proto_rawDesc = "" +
 	"\x1eCERTIFICATE_STATUS_UNSPECIFIED\x10\x00\x12\x1e\n" +
 	"\x1aCERTIFICATE_STATUS_PENDING\x10\x01\x12\x1d\n" +
 	"\x19CERTIFICATE_STATUS_ACTIVE\x10\x02\x12\x1d\n" +
-	"\x19CERTIFICATE_STATUS_FAILED\x10\x032\x98\x05\n" +
+	"\x19CERTIFICATE_STATUS_FAILED\x10\x032\xe9\t\n" +
 	"\x12CertificateService\x12\x80\x01\n" +
 	"\x11UploadCertificate\x12\".rpmgr.v1.UploadCertificateRequest\x1a#.rpmgr.v1.UploadCertificateResponse\"\"\x8a\xb5\x18\x1e\n" +
 	"\x14infrastructure.write\x12\x06org_id\x12v\n" +
@@ -906,7 +1695,17 @@ const file_rpmgr_v1_certificate_proto_rawDesc = "" +
 	"\x10RenewCertificate\x12!.rpmgr.v1.RenewCertificateRequest\x1a\".rpmgr.v1.RenewCertificateResponse\"*\x8a\xb5\x18&\n" +
 	"\x14infrastructure.write\x12\x0ecertificate_id\x12\x88\x01\n" +
 	"\x11DeleteCertificate\x12\".rpmgr.v1.DeleteCertificateRequest\x1a#.rpmgr.v1.DeleteCertificateResponse\"*\x8a\xb5\x18&\n" +
-	"\x14infrastructure.write\x12\x0ecertificate_idB5Z3github.com/felix-homelab/rpmgr/gen/rpmgr/v1;rpmgrv1b\x06proto3"
+	"\x14infrastructure.write\x12\x0ecertificate_id\x12w\n" +
+	"\x0eCreateCABundle\x12\x1f.rpmgr.v1.CreateCABundleRequest\x1a .rpmgr.v1.CreateCABundleResponse\"\"\x8a\xb5\x18\x1e\n" +
+	"\x14infrastructure.write\x12\x06org_id\x12k\n" +
+	"\vGetCABundle\x12\x1c.rpmgr.v1.GetCABundleRequest\x1a\x1d.rpmgr.v1.GetCABundleResponse\"\x1f\x8a\xb5\x18\x18\n" +
+	"\borg.read\x12\fca_bundle_id\x90\x02\x01\x12k\n" +
+	"\rListCABundles\x12\x1e.rpmgr.v1.ListCABundlesRequest\x1a\x1f.rpmgr.v1.ListCABundlesResponse\"\x19\x8a\xb5\x18\x12\n" +
+	"\borg.read\x12\x06org_id\x90\x02\x01\x12}\n" +
+	"\x0eUpdateCABundle\x12\x1f.rpmgr.v1.UpdateCABundleRequest\x1a .rpmgr.v1.UpdateCABundleResponse\"(\x8a\xb5\x18$\n" +
+	"\x14infrastructure.write\x12\fca_bundle.id\x12}\n" +
+	"\x0eDeleteCABundle\x12\x1f.rpmgr.v1.DeleteCABundleRequest\x1a .rpmgr.v1.DeleteCABundleResponse\"(\x8a\xb5\x18$\n" +
+	"\x14infrastructure.write\x12\fca_bundle_idB5Z3github.com/felix-homelab/rpmgr/gen/rpmgr/v1;rpmgrv1b\x06proto3"
 
 var (
 	file_rpmgr_v1_certificate_proto_rawDescOnce sync.Once
@@ -921,7 +1720,7 @@ func file_rpmgr_v1_certificate_proto_rawDescGZIP() []byte {
 }
 
 var file_rpmgr_v1_certificate_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
-var file_rpmgr_v1_certificate_proto_msgTypes = make([]protoimpl.MessageInfo, 11)
+var file_rpmgr_v1_certificate_proto_msgTypes = make([]protoimpl.MessageInfo, 23)
 var file_rpmgr_v1_certificate_proto_goTypes = []any{
 	(CertificateSource)(0),            // 0: rpmgr.v1.CertificateSource
 	(CertificateStatus)(0),            // 1: rpmgr.v1.CertificateStatus
@@ -936,39 +1735,78 @@ var file_rpmgr_v1_certificate_proto_goTypes = []any{
 	(*RenewCertificateResponse)(nil),  // 10: rpmgr.v1.RenewCertificateResponse
 	(*DeleteCertificateRequest)(nil),  // 11: rpmgr.v1.DeleteCertificateRequest
 	(*DeleteCertificateResponse)(nil), // 12: rpmgr.v1.DeleteCertificateResponse
-	(*timestamppb.Timestamp)(nil),     // 13: google.protobuf.Timestamp
-	(*Revision)(nil),                  // 14: rpmgr.v1.Revision
-	(*ApplyStatus)(nil),               // 15: rpmgr.v1.ApplyStatus
+	(*CABundle)(nil),                  // 13: rpmgr.v1.CABundle
+	(*CACertificate)(nil),             // 14: rpmgr.v1.CACertificate
+	(*CreateCABundleRequest)(nil),     // 15: rpmgr.v1.CreateCABundleRequest
+	(*CreateCABundleResponse)(nil),    // 16: rpmgr.v1.CreateCABundleResponse
+	(*GetCABundleRequest)(nil),        // 17: rpmgr.v1.GetCABundleRequest
+	(*GetCABundleResponse)(nil),       // 18: rpmgr.v1.GetCABundleResponse
+	(*ListCABundlesRequest)(nil),      // 19: rpmgr.v1.ListCABundlesRequest
+	(*ListCABundlesResponse)(nil),     // 20: rpmgr.v1.ListCABundlesResponse
+	(*UpdateCABundleRequest)(nil),     // 21: rpmgr.v1.UpdateCABundleRequest
+	(*UpdateCABundleResponse)(nil),    // 22: rpmgr.v1.UpdateCABundleResponse
+	(*DeleteCABundleRequest)(nil),     // 23: rpmgr.v1.DeleteCABundleRequest
+	(*DeleteCABundleResponse)(nil),    // 24: rpmgr.v1.DeleteCABundleResponse
+	(*timestamppb.Timestamp)(nil),     // 25: google.protobuf.Timestamp
+	(*Revision)(nil),                  // 26: rpmgr.v1.Revision
+	(*ApplyStatus)(nil),               // 27: rpmgr.v1.ApplyStatus
+	(*fieldmaskpb.FieldMask)(nil),     // 28: google.protobuf.FieldMask
 }
 var file_rpmgr_v1_certificate_proto_depIdxs = []int32{
 	0,  // 0: rpmgr.v1.Certificate.source:type_name -> rpmgr.v1.CertificateSource
-	13, // 1: rpmgr.v1.Certificate.not_before:type_name -> google.protobuf.Timestamp
-	13, // 2: rpmgr.v1.Certificate.not_after:type_name -> google.protobuf.Timestamp
+	25, // 1: rpmgr.v1.Certificate.not_before:type_name -> google.protobuf.Timestamp
+	25, // 2: rpmgr.v1.Certificate.not_after:type_name -> google.protobuf.Timestamp
 	1,  // 3: rpmgr.v1.Certificate.status:type_name -> rpmgr.v1.CertificateStatus
-	13, // 4: rpmgr.v1.Certificate.create_time:type_name -> google.protobuf.Timestamp
+	25, // 4: rpmgr.v1.Certificate.create_time:type_name -> google.protobuf.Timestamp
 	2,  // 5: rpmgr.v1.UploadCertificateResponse.certificate:type_name -> rpmgr.v1.Certificate
-	14, // 6: rpmgr.v1.UploadCertificateResponse.revision:type_name -> rpmgr.v1.Revision
-	15, // 7: rpmgr.v1.UploadCertificateResponse.apply_status:type_name -> rpmgr.v1.ApplyStatus
+	26, // 6: rpmgr.v1.UploadCertificateResponse.revision:type_name -> rpmgr.v1.Revision
+	27, // 7: rpmgr.v1.UploadCertificateResponse.apply_status:type_name -> rpmgr.v1.ApplyStatus
 	2,  // 8: rpmgr.v1.GetCertificateResponse.certificate:type_name -> rpmgr.v1.Certificate
 	2,  // 9: rpmgr.v1.ListCertificatesResponse.certificates:type_name -> rpmgr.v1.Certificate
 	2,  // 10: rpmgr.v1.RenewCertificateResponse.certificate:type_name -> rpmgr.v1.Certificate
-	14, // 11: rpmgr.v1.DeleteCertificateResponse.revision:type_name -> rpmgr.v1.Revision
-	15, // 12: rpmgr.v1.DeleteCertificateResponse.apply_status:type_name -> rpmgr.v1.ApplyStatus
-	3,  // 13: rpmgr.v1.CertificateService.UploadCertificate:input_type -> rpmgr.v1.UploadCertificateRequest
-	5,  // 14: rpmgr.v1.CertificateService.GetCertificate:input_type -> rpmgr.v1.GetCertificateRequest
-	7,  // 15: rpmgr.v1.CertificateService.ListCertificates:input_type -> rpmgr.v1.ListCertificatesRequest
-	9,  // 16: rpmgr.v1.CertificateService.RenewCertificate:input_type -> rpmgr.v1.RenewCertificateRequest
-	11, // 17: rpmgr.v1.CertificateService.DeleteCertificate:input_type -> rpmgr.v1.DeleteCertificateRequest
-	4,  // 18: rpmgr.v1.CertificateService.UploadCertificate:output_type -> rpmgr.v1.UploadCertificateResponse
-	6,  // 19: rpmgr.v1.CertificateService.GetCertificate:output_type -> rpmgr.v1.GetCertificateResponse
-	8,  // 20: rpmgr.v1.CertificateService.ListCertificates:output_type -> rpmgr.v1.ListCertificatesResponse
-	10, // 21: rpmgr.v1.CertificateService.RenewCertificate:output_type -> rpmgr.v1.RenewCertificateResponse
-	12, // 22: rpmgr.v1.CertificateService.DeleteCertificate:output_type -> rpmgr.v1.DeleteCertificateResponse
-	18, // [18:23] is the sub-list for method output_type
-	13, // [13:18] is the sub-list for method input_type
-	13, // [13:13] is the sub-list for extension type_name
-	13, // [13:13] is the sub-list for extension extendee
-	0,  // [0:13] is the sub-list for field type_name
+	26, // 11: rpmgr.v1.DeleteCertificateResponse.revision:type_name -> rpmgr.v1.Revision
+	27, // 12: rpmgr.v1.DeleteCertificateResponse.apply_status:type_name -> rpmgr.v1.ApplyStatus
+	14, // 13: rpmgr.v1.CABundle.certificates:type_name -> rpmgr.v1.CACertificate
+	25, // 14: rpmgr.v1.CABundle.create_time:type_name -> google.protobuf.Timestamp
+	25, // 15: rpmgr.v1.CACertificate.not_after:type_name -> google.protobuf.Timestamp
+	13, // 16: rpmgr.v1.CreateCABundleRequest.ca_bundle:type_name -> rpmgr.v1.CABundle
+	13, // 17: rpmgr.v1.CreateCABundleResponse.ca_bundle:type_name -> rpmgr.v1.CABundle
+	26, // 18: rpmgr.v1.CreateCABundleResponse.revision:type_name -> rpmgr.v1.Revision
+	27, // 19: rpmgr.v1.CreateCABundleResponse.apply_status:type_name -> rpmgr.v1.ApplyStatus
+	13, // 20: rpmgr.v1.GetCABundleResponse.ca_bundle:type_name -> rpmgr.v1.CABundle
+	13, // 21: rpmgr.v1.ListCABundlesResponse.ca_bundles:type_name -> rpmgr.v1.CABundle
+	13, // 22: rpmgr.v1.UpdateCABundleRequest.ca_bundle:type_name -> rpmgr.v1.CABundle
+	28, // 23: rpmgr.v1.UpdateCABundleRequest.update_mask:type_name -> google.protobuf.FieldMask
+	13, // 24: rpmgr.v1.UpdateCABundleResponse.ca_bundle:type_name -> rpmgr.v1.CABundle
+	26, // 25: rpmgr.v1.UpdateCABundleResponse.revision:type_name -> rpmgr.v1.Revision
+	27, // 26: rpmgr.v1.UpdateCABundleResponse.apply_status:type_name -> rpmgr.v1.ApplyStatus
+	26, // 27: rpmgr.v1.DeleteCABundleResponse.revision:type_name -> rpmgr.v1.Revision
+	27, // 28: rpmgr.v1.DeleteCABundleResponse.apply_status:type_name -> rpmgr.v1.ApplyStatus
+	3,  // 29: rpmgr.v1.CertificateService.UploadCertificate:input_type -> rpmgr.v1.UploadCertificateRequest
+	5,  // 30: rpmgr.v1.CertificateService.GetCertificate:input_type -> rpmgr.v1.GetCertificateRequest
+	7,  // 31: rpmgr.v1.CertificateService.ListCertificates:input_type -> rpmgr.v1.ListCertificatesRequest
+	9,  // 32: rpmgr.v1.CertificateService.RenewCertificate:input_type -> rpmgr.v1.RenewCertificateRequest
+	11, // 33: rpmgr.v1.CertificateService.DeleteCertificate:input_type -> rpmgr.v1.DeleteCertificateRequest
+	15, // 34: rpmgr.v1.CertificateService.CreateCABundle:input_type -> rpmgr.v1.CreateCABundleRequest
+	17, // 35: rpmgr.v1.CertificateService.GetCABundle:input_type -> rpmgr.v1.GetCABundleRequest
+	19, // 36: rpmgr.v1.CertificateService.ListCABundles:input_type -> rpmgr.v1.ListCABundlesRequest
+	21, // 37: rpmgr.v1.CertificateService.UpdateCABundle:input_type -> rpmgr.v1.UpdateCABundleRequest
+	23, // 38: rpmgr.v1.CertificateService.DeleteCABundle:input_type -> rpmgr.v1.DeleteCABundleRequest
+	4,  // 39: rpmgr.v1.CertificateService.UploadCertificate:output_type -> rpmgr.v1.UploadCertificateResponse
+	6,  // 40: rpmgr.v1.CertificateService.GetCertificate:output_type -> rpmgr.v1.GetCertificateResponse
+	8,  // 41: rpmgr.v1.CertificateService.ListCertificates:output_type -> rpmgr.v1.ListCertificatesResponse
+	10, // 42: rpmgr.v1.CertificateService.RenewCertificate:output_type -> rpmgr.v1.RenewCertificateResponse
+	12, // 43: rpmgr.v1.CertificateService.DeleteCertificate:output_type -> rpmgr.v1.DeleteCertificateResponse
+	16, // 44: rpmgr.v1.CertificateService.CreateCABundle:output_type -> rpmgr.v1.CreateCABundleResponse
+	18, // 45: rpmgr.v1.CertificateService.GetCABundle:output_type -> rpmgr.v1.GetCABundleResponse
+	20, // 46: rpmgr.v1.CertificateService.ListCABundles:output_type -> rpmgr.v1.ListCABundlesResponse
+	22, // 47: rpmgr.v1.CertificateService.UpdateCABundle:output_type -> rpmgr.v1.UpdateCABundleResponse
+	24, // 48: rpmgr.v1.CertificateService.DeleteCABundle:output_type -> rpmgr.v1.DeleteCABundleResponse
+	39, // [39:49] is the sub-list for method output_type
+	29, // [29:39] is the sub-list for method input_type
+	29, // [29:29] is the sub-list for extension type_name
+	29, // [29:29] is the sub-list for extension extendee
+	0,  // [0:29] is the sub-list for field type_name
 }
 
 func init() { file_rpmgr_v1_certificate_proto_init() }
@@ -985,7 +1823,7 @@ func file_rpmgr_v1_certificate_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_rpmgr_v1_certificate_proto_rawDesc), len(file_rpmgr_v1_certificate_proto_rawDesc)),
 			NumEnums:      2,
-			NumMessages:   11,
+			NumMessages:   23,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
