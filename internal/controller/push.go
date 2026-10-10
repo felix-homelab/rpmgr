@@ -23,39 +23,26 @@ import (
 // The snapshot push (docs/03-connections.md, "Configuration reconciliation", "Timeouts, keepalive
 // and backoff").
 const (
-	ApplyTimeout  = 30 * time.Second // an unacknowledged snapshot is apply_timeout after it
-	RevisionCheck = time.Second      // how often the controller looks for a new revision
-	keepCompiled  = 5                // compiled snapshots kept per agent
-	maxRejection  = 32               // errors of a Rejected that are stored
-	maxErrorText  = 512              // bytes of an error's message and resource ID that are stored
+	ApplyTimeout  = snapshot.ApplyTimeout // an unacknowledged snapshot is apply_timeout after it
+	RevisionCheck = time.Second           // how often the controller looks for a new revision
+	keepCompiled  = 5                     // compiled snapshots kept per agent
+	maxRejection  = 32                    // errors of a Rejected that are stored
+	maxErrorText  = 512                   // bytes of an error's message and resource ID that are stored
 )
 
-// ApplyState is an agent's apply status of the snapshot it was sent last (docs/03-connections.md,
-// "Configuration reconciliation", rule 7).
-type ApplyState string
+// ApplyState is snapshot.ApplyState.
+type ApplyState = snapshot.ApplyState
 
 // The apply states.
 const (
-	ApplyPending  ApplyState = "pending"
-	ApplyApplied  ApplyState = "applied"
-	ApplyRejected ApplyState = "rejected"
-	ApplyTimedOut ApplyState = "apply_timeout"
+	ApplyPending  = snapshot.ApplyPending
+	ApplyApplied  = snapshot.ApplyApplied
+	ApplyRejected = snapshot.ApplyRejected
+	ApplyTimedOut = snapshot.ApplyTimedOut
 )
 
-// ApplyStatus derives the apply status from an agent's state at time now.
-func ApplyStatus(st *ent.AgentState, now time.Time) ApplyState {
-	switch {
-	case len(st.PushedHash) == 0 || st.PushedAt == nil:
-		return ApplyPending
-	case bytes.Equal(st.PushedHash, st.AppliedHash):
-		return ApplyApplied
-	case bytes.Equal(st.PushedHash, st.RejectedHash):
-		return ApplyRejected
-	case now.Sub(*st.PushedAt) >= ApplyTimeout:
-		return ApplyTimedOut
-	}
-	return ApplyPending
-}
+// ApplyStatus is snapshot.ApplyStatus.
+var ApplyStatus = snapshot.ApplyStatus
 
 // pusher sends every agent with a session here its snapshot: when the session starts and at every
 // new revision. A snapshot equal to the one the agent runs, or to the one it was sent last, is not

@@ -54,6 +54,9 @@ func (i interceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
 		resp, err := next(rec.hook(ctx), req)
 		err = i.s.sanitize(md, err)
 		rec.finish(ctx, err)
+		if err == nil {
+			i.s.applyStatus(ctx, req.Header(), resp)
+		}
 		return resp, err
 	}
 }

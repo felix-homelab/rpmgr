@@ -74,7 +74,10 @@ func newEnv(t *testing.T) *env {
 		Authenticator:      apisvc.Credentials{Sessions: e.sessions, Tokens: e.tokens},
 		Resolver:           api.StoreResolver(db, sys),
 		OperatorsMayEnroll: api.StoreOperatorsMayEnroll(db, sys),
-		Origins:            func(context.Context) ([]string, error) { return []string{"https://panel.example.com"}, nil }})
+		Origins:            func(context.Context) ([]string, error) { return []string{"https://panel.example.com"}, nil },
+		ApplyStatus: func(ctx context.Context, org string, rev *rpmgrv1.Revision) (*rpmgrv1.ApplyStatus, error) {
+			return apisvc.ApplyStatusOf(ctx, db.ReadClient(), org, store.Revision{DBEpoch: rev.GetDbEpoch(), Seq: rev.GetSeq()}, now())
+		}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -111,6 +114,12 @@ func newEnv(t *testing.T) *env {
 	if err := srv.Mount(mux, rpmgrv1.File_rpmgr_v1_domain_proto.Services().ByName("DomainService"),
 		func(o ...connect.HandlerOption) (string, http.Handler) {
 			return rpmgrv1connect.NewDomainServiceHandler(&apisvc.Domains{DB: db, API: srv, Sys: sys, Now: now, TXT: &e.txt}, o...)
+		}); err != nil {
+		t.Fatal(err)
+	}
+	if err := srv.Mount(mux, rpmgrv1.File_rpmgr_v1_status_proto.Services().ByName("StatusService"),
+		func(o ...connect.HandlerOption) (string, http.Handler) {
+			return rpmgrv1connect.NewStatusServiceHandler(&apisvc.Status{DB: db, Now: now, Every: 20 * time.Millisecond}, o...)
 		}); err != nil {
 		t.Fatal(err)
 	}
@@ -166,6 +175,7 @@ type browser struct {
 	con    rpmgrv1connect.ConnectorServiceClient
 	dom    rpmgrv1connect.DomainServiceClient
 	rt     rpmgrv1connect.RouteServiceClient
+	st     rpmgrv1connect.StatusServiceClient
 }
 
 func (e *env) browser() *browser {
@@ -179,6 +189,7 @@ func (e *env) browser() *browser {
 	b.con = rpmgrv1connect.NewConnectorServiceClient(&http.Client{Transport: b}, e.url)
 	b.dom = rpmgrv1connect.NewDomainServiceClient(&http.Client{Transport: b}, e.url)
 	b.rt = rpmgrv1connect.NewRouteServiceClient(&http.Client{Transport: b}, e.url)
+	b.st = rpmgrv1connect.NewStatusServiceClient(&http.Client{Transport: b}, e.url)
 	return b
 }
 

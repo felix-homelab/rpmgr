@@ -9,6 +9,7 @@ import "google/protobuf/field_mask.proto";
 import "google/protobuf/timestamp.proto";
 import "rpmgr/v1/common.proto";
 import "rpmgr/v1/options.proto";
+import "rpmgr/v1/status.proto";
 
 option go_package = "github.com/felix-homelab/rpmgr/gen/rpmgr/v1;rpmgrv1";
 
@@ -218,6 +219,9 @@ message CreateGatewayResponse {
   Gateway gateway = 1;
   // The configuration revision of the change.
   Revision revision = 2;
+  // The apply status of the revision; with the request header Rpmgr-Wait-Applied, once it is
+  // final or the wait is over (docs/07-api.md, "Writes and apply status").
+  ApplyStatus apply_status = 3;
 }
 
 // GetGatewayRequest names a gateway.
@@ -270,6 +274,9 @@ message UpdateGatewayResponse {
   Gateway gateway = 1;
   // The configuration revision of the change.
   Revision revision = 2;
+  // The apply status of the revision; with the request header Rpmgr-Wait-Applied, once it is
+  // final or the wait is over (docs/07-api.md, "Writes and apply status").
+  ApplyStatus apply_status = 3;
 }
 
 // DecommissionGatewayRequest names a gateway.
@@ -286,6 +293,9 @@ message DecommissionGatewayResponse {
   Gateway gateway = 1;
   // The configuration revision of the change.
   Revision revision = 2;
+  // The apply status of the revision; with the request header Rpmgr-Wait-Applied, once it is
+  // final or the wait is over (docs/07-api.md, "Writes and apply status").
+  ApplyStatus apply_status = 3;
 }
 
 // GatewayGroup is a set of up to four gateways that publish routes together.
@@ -323,6 +333,9 @@ message CreateGatewayGroupResponse {
   GatewayGroup gateway_group = 1;
   // The configuration revision of the change.
   Revision revision = 2;
+  // The apply status of the revision; with the request header Rpmgr-Wait-Applied, once it is
+  // final or the wait is over (docs/07-api.md, "Writes and apply status").
+  ApplyStatus apply_status = 3;
 }
 
 // GetGatewayGroupRequest names a group.
@@ -371,6 +384,9 @@ message UpdateGatewayGroupResponse {
   GatewayGroup gateway_group = 1;
   // The configuration revision of the change.
   Revision revision = 2;
+  // The apply status of the revision; with the request header Rpmgr-Wait-Applied, once it is
+  // final or the wait is over (docs/07-api.md, "Writes and apply status").
+  ApplyStatus apply_status = 3;
 }
 
 // DeleteGatewayGroupRequest names a group.
@@ -385,6 +401,9 @@ message DeleteGatewayGroupRequest {
 message DeleteGatewayGroupResponse {
   // The configuration revision of the change.
   Revision revision = 1;
+  // The apply status of the revision; with the request header Rpmgr-Wait-Applied, once it is
+  // final or the wait is over (docs/07-api.md, "Writes and apply status").
+  ApplyStatus apply_status = 2;
 }
 
 // PortProtocol is the protocol of public ports.
@@ -443,6 +462,9 @@ message CreatePortPoolResponse {
   PortPool port_pool = 1;
   // The configuration revision of the change.
   Revision revision = 2;
+  // The apply status of the revision; with the request header Rpmgr-Wait-Applied, once it is
+  // final or the wait is over (docs/07-api.md, "Writes and apply status").
+  ApplyStatus apply_status = 3;
 }
 
 // GetPortPoolRequest names a port pool.
@@ -493,6 +515,9 @@ message UpdatePortPoolResponse {
   PortPool port_pool = 1;
   // The configuration revision of the change.
   Revision revision = 2;
+  // The apply status of the revision; with the request header Rpmgr-Wait-Applied, once it is
+  // final or the wait is over (docs/07-api.md, "Writes and apply status").
+  ApplyStatus apply_status = 3;
 }
 
 // DeletePortPoolRequest names a port pool.
@@ -507,6 +532,9 @@ message DeletePortPoolRequest {
 message DeletePortPoolResponse {
   // The configuration revision of the change.
   Revision revision = 1;
+  // The apply status of the revision; with the request header Rpmgr-Wait-Applied, once it is
+  // final or the wait is over (docs/07-api.md, "Writes and apply status").
+  ApplyStatus apply_status = 2;
 }
 
 // PortQuota caps the ports of one protocol an org may allocate in a gateway group.
@@ -548,6 +576,9 @@ message SetPortQuotaResponse {
   PortQuota port_quota = 1;
   // The configuration revision of the change.
   Revision revision = 2;
+  // The apply status of the revision; with the request header Rpmgr-Wait-Applied, once it is
+  // final or the wait is over (docs/07-api.md, "Writes and apply status").
+  ApplyStatus apply_status = 3;
 }
 
 // ListPortQuotasRequest pages through an org's port quotas.
@@ -580,4 +611,7 @@ message DeletePortQuotaRequest {
 message DeletePortQuotaResponse {
   // The configuration revision of the change.
   Revision revision = 1;
+  // The apply status of the revision; with the request header Rpmgr-Wait-Applied, once it is
+  // final or the wait is over (docs/07-api.md, "Writes and apply status").
+  ApplyStatus apply_status = 2;
 }
