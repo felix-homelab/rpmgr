@@ -14,6 +14,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"regexp"
 	"strings"
 	"time"
 
@@ -106,12 +107,16 @@ func (m *Manifest) check() error {
 		return fmt.Errorf("release: version %s on channel %q", m.Version, m.Channel)
 	}
 	for _, a := range m.Artifacts {
-		if a.OS == "" || a.Arch == "" || a.Variant == "" || a.Size <= 0 || len(a.SHA256) != 64 || strings.ToLower(a.SHA256) != a.SHA256 {
+		if !partRe.MatchString(a.OS) || !partRe.MatchString(a.Arch) || !partRe.MatchString(a.Variant) || a.Size <= 0 ||
+			len(a.SHA256) != 64 || strings.ToLower(a.SHA256) != a.SHA256 {
 			return fmt.Errorf("release: manifest lists a bad artifact %+v", a)
 		}
 	}
 	return nil
 }
+
+// partRe is what an artifact's OS, architecture and variant may be, as they form its file name.
+var partRe = regexp.MustCompile(`^[a-z0-9]+$`)
 
 // valid reports whether v is a full semantic version without a "v" and without build metadata.
 func valid(v string) bool {

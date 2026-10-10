@@ -162,6 +162,8 @@ func TestManifestChecked(t *testing.T) {
 		"an empty artifact":        func(m *release.Manifest) { m.Artifacts[0].Size = 0 },
 		"an artifact without OS":   func(m *release.Manifest) { m.Artifacts[0].OS = "" },
 		"an artifact without arch": func(m *release.Manifest) { m.Artifacts[0].Arch = "" },
+		"a path in the arch":       func(m *release.Manifest) { m.Artifacts[0].Arch = "../x" },
+		"an upper-case variant":    func(m *release.Manifest) { m.Artifacts[0].Variant = "Full" },
 	} {
 		if _, err := signed(t, edit); err == nil {
 			t.Errorf("a manifest with %s was accepted", name)

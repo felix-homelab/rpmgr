@@ -29,13 +29,9 @@ var ErrEmailNeeded = errors.New("controller: users exist; name one with --email"
 // controller's or all-in-one's boot file at path and needs no KEK; a running controller may hold
 // the database meanwhile.
 func ResetPasswordLink(ctx context.Context, path, email string) (Link, error) {
-	var cfg config.Controller
-	if err := config.Load(path, &cfg); err != nil {
-		var a config.AllInOne
-		if config.Load(path, &a) != nil {
-			return Link{}, err
-		}
-		cfg = a.Controller()
+	cfg, err := loadController(path)
+	if err != nil {
+		return Link{}, err
 	}
 	db, err := store.OpenSQLite(ctx, cfg.Database.DSN, store.SQLiteOptions{})
 	if err != nil {
@@ -70,4 +66,17 @@ func ResetPasswordLink(ctx context.Context, path, email string) (Link, error) {
 		return Link{}, err
 	}
 	return Link{URL: accounts.LinkURL(cfg.PublicURL, tok), Valid: "24 hours"}, nil
+}
+
+// loadController reads a controller's boot file, or all-in-one's.
+func loadController(path string) (config.Controller, error) {
+	var cfg config.Controller
+	if err := config.Load(path, &cfg); err != nil {
+		var a config.AllInOne
+		if config.Load(path, &a) != nil {
+			return cfg, err
+		}
+		cfg = a.Controller()
+	}
+	return cfg, nil
 }

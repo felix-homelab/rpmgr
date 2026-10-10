@@ -675,7 +675,9 @@ redirect them ([15](15-dns.md#cloudflare-specifics)).
     for at most 12 months. Its validity is
     checked at the current time, so a signing key stops being accepted when its last statement
     expires; a renewed statement for the same key keeps that key's earlier manifests verifiable.
-  - **Each release** carries `signing-key.json`, `manifest.json` and their `.minisig` files.
+  - **Each release** carries `signing-key.json`, `manifest.json` and their `.minisig` files. Its
+    artifacts are named `rpmgr-<version>-<os>-<arch>`, followed by `-<variant>` for variants other
+    than `full`; OS, architecture and variant are lower-case letters and digits.
   - **A manifest** must also be well-formed:
     - `seq` at least 1, and an issue time;
     - `version` and `floor` as full SemVer without `v` or build metadata, with `floor` ≤ `version`;
@@ -723,7 +725,17 @@ Phase 3 item ([13](13-roadmap.md#phase-3--advanced)).
    signature and mirrors the artifacts under `/dl/`. Agents never contact the release source.
    Phase 1, which has no rollouts, mirrors only the controller's own version, which `/install.sh`
    installs; air-gapped installations import it with `rpmgr release import <dir>` on the
-   controller host ([D59](14-open-decisions.md#security-defaults)).
+   controller host ([D59](14-open-decisions.md#security-defaults)). **The Phase 1 mirror:**
+   - **What it serves:** `/dl/<version>/` serves `signing-key.json`, `manifest.json`, their
+     `.minisig` files and the full Linux artifacts, and nothing else. A development build serves
+     nothing.
+   - **When it checks:** at start, then daily, while the release check is on. Each controller keeps
+     its own copy on its disk, so each one checks.
+   - **How it keeps files:** a file is kept only after the whole chain verifies and the file matches
+     its size and SHA-256. The manifest is written last, so a version with a manifest is complete,
+     and a failed check keeps what was there. The directories of other versions go once a new one
+     is complete.
+   - **Import:** run as root, it gives the files to the state directory's owner.
 2. An admin approves a **staged rollout** (canary agents, then a percentage, then all). The target
    version becomes desired state.
 3. The agent (running as the unprivileged service user) downloads the artifact and manifest from

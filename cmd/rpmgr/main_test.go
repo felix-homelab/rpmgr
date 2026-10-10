@@ -66,6 +66,16 @@ func TestUnimplementedCommandsReportIt(t *testing.T) {
 	}
 }
 
+// TestReleaseImport: `rpmgr release import` reads the controller's boot file; a development
+// build imports nothing; the import itself is tested in internal/controller.
+func TestReleaseImport(t *testing.T) {
+	missing := filepath.Join(t.TempDir(), "none.yaml")
+	code, _, stderr := runRpmgr("release", "import", "--config", missing, t.TempDir())
+	if code != cli.ExitError || !strings.Contains(stderr, "none.yaml") {
+		t.Errorf("a missing boot file: exit %d, %q", code, stderr)
+	}
+}
+
 // TestController: the role commands read their boot file from --config, else $RPMGR_CONFIG, and
 // stop with the boot file's problem; running is tested in their packages and internal/itest.
 func TestController(t *testing.T) {
@@ -174,6 +184,7 @@ func TestCommandLineErrors(t *testing.T) {
 		{"gateway", "--config"},      // flag without value
 		{"version", "extra"},         // unexpected argument
 		{"controller", "positional"}, // a role takes no arguments
+		{"release", "import"},        // no directory
 	} {
 		code, stdout, stderr := runRpmgr(args...)
 		if code != cli.ExitUsage || stdout != "" || !strings.Contains(stderr, "Usage:") {

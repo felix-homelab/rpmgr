@@ -35,6 +35,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/ids"
 	"github.com/felix-homelab/rpmgr/internal/lease"
 	"github.com/felix-homelab/rpmgr/internal/pki"
+	"github.com/felix-homelab/rpmgr/internal/release"
 	"github.com/felix-homelab/rpmgr/internal/revlog"
 	"github.com/felix-homelab/rpmgr/internal/secret"
 	"github.com/felix-homelab/rpmgr/internal/settings"
@@ -79,6 +80,10 @@ type RunOptions struct {
 	// ACMEAfter, if set, holds back obtaining the public URL's certificate until it is closed:
 	// all-in-one's gateway, through which the CA validates, must listen first.
 	ACMEAfter <-chan struct{}
+	// ReleaseSource and ReleaseRoots, if set, replace GitHub and the compiled-in root keys of the
+	// release check (tests).
+	ReleaseSource release.Source
+	ReleaseRoots  []release.PublicKey
 }
 
 // ErrNotInitialised is returned by Run for a database without an installation.
@@ -351,7 +356,12 @@ func Run(ctx context.Context, o RunOptions) error {
 	if err != nil {
 		return err
 	}
-	mux.Handle("/", ui) // every path the API and the trust bundle do not take
+	mirror := &release.Mirror{Dir: filepath.Join(stateDir, "dl"), Version: o.Version, Roots: o.ReleaseRoots, Now: o.Now}
+	if mirror.Roots == nil {
+		mirror.Roots = release.Roots()
+	}
+	mux.Handle("/dl/", mirror.Handler()) // the controller's own release, for /install.sh (D59)
+	mux.Handle("/", ui)                  // every path the API, the trust bundle and /dl/ do not take
 	web := &http.Server{Handler: cert.HSTS(mux), ReadHeaderTimeout: 10 * time.Second, IdleTimeout: 120 * time.Second,
 		ErrorLog: slog.NewLogLogger(o.Logger.Handler(), slog.LevelDebug)}
 
@@ -400,6 +410,7 @@ func Run(ctx context.Context, o RunOptions) error {
 	go leases.Run(sys, RollupJob(RollupOptions{DB: db, Leases: leases, Now: o.Now, Logger: o.Logger}),
 		func(err error) { o.Logger.Warn("traffic rollup job", "error", err) })
 	go ReloadCA(sys, caOpts)
+	go ReleaseCheck(sys, ReleaseCheckOptions{DB: db, Mirror: mirror, Source: o.ReleaseSource, Logger: o.Logger})
 	go RenewNodeCertificate(sys, NodeCertOptions{CA: ca, DB: db, Sys: sys, NodeID: nodeID, Holder: holder, Now: o.Now, Logger: o.Logger})
 	serve("agent endpoint", func() error { return agents.Serve(split.Agents()) })
 	serve("web server", func() error {
