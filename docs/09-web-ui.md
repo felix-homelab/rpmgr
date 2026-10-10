@@ -185,6 +185,26 @@ flowchart LR
   - **Decommission** comes after a confirmation that names the connector and says what it does
     (U7). The page then returns to the list.
 
+### Gateways
+
+- **The groups** (`/gateways`): each with its region, public hostnames, and how many of its gateways
+  are connected. A new group is created there, and the page then opens it.
+- **A group's page** lists its gateways by slot, with their tunnel endpoints, state (not enrolled,
+  connected or offline, and drained), version and last contact. It also edits the group's name,
+  region, public hostnames and trusted proxies, as the whole group as read with their mask and the
+  etag (U1).
+- **Gateway actions** on a group's page:
+  - **Add a gateway** with its name and its own tunnel endpoints. A group has at most four; the
+    server says so.
+  - **Edit** its name and endpoints.
+  - **Drain or resume** it (R22, [03](03-connections.md#multiple-gateways)). A drained gateway takes
+    no new public connections, and it ends the open ones after the gateway drain period.
+  - **Decommission** it, after a confirmation that names it.
+  - **For a gateway that has not enrolled,** make its enrollment token after a step-up. The token is
+    bound to that gateway and valid for 1 hour, and is shown once next to the install command,
+    which does not hold it.
+  - **After each change,** the apply status follows live.
+
 ### Enroll connector dialog
 
 ```
@@ -217,6 +237,18 @@ flowchart LR
   policy is `allow_targets: []` ([04](04-security.md#connector-local-policy)).
 - The dialog waits on the enrollment event and switches to the new connector's detail page when it
   connects.
+- **Making the token:**
+  - it needs a step-up;
+  - its creation is one request, however often it is retried;
+  - it is valid for 15 minutes up to 30 days, 1 hour by default, and can be scoped to a gateway
+    group;
+  - an ephemeral token may enroll several connectors, 0 meaning any number;
+  - the dialog asks for the install command with the targets as `--allow-target`.
+- [R] The mock-up's "Name" field is left out. A token does not name the connector it enrolls: the
+  connector takes its host's name, and it is renamed on its page.
+- **The connectors page lists the enrollment tokens** that can still enroll, with creation, expiry,
+  uses, labels and last use. A token is revoked after a confirmation. Tokens that re-enroll one
+  connector belong to that connector and are not listed.
 
 ### Managed DNS zone (Phase 2)
 

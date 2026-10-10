@@ -1,10 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { getRouteApi, Link, useNavigate } from "@tanstack/react-router";
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import type { Connector } from "@/gen/rpmgr/v1/connector_pb";
 import { when } from "@/lib/format";
+import { EnrollDialog } from "@/pages/enroll";
+import { EnrollmentTokens } from "@/pages/enrollment-tokens";
 import { useConnectors } from "@/routes-data";
 import { useOrg } from "@/session";
 
@@ -43,6 +47,7 @@ export function Connectors() {
   const navigate = useNavigate({ from: "/connectors" });
   const org = useOrg();
   const list = useConnectors(org?.orgId);
+  const [enrolling, setEnrolling] = useState(false);
   const set = (patch: Partial<ConnectorsSearch>) => void navigate({ search: (s: ConnectorsSearch) => ({ ...s, ...patch }), replace: true });
   const q = search.q?.toLowerCase() ?? "";
   const rows = (list.data ?? [])
@@ -51,7 +56,11 @@ export function Connectors() {
     .sort((a, b) => a.name.localeCompare(b.name));
   return (
     <section aria-labelledby="connectors-title" className="grid gap-4">
-      <h1 id="connectors-title" className="text-2xl font-semibold">{t("connectors.title")}</h1>
+      <div className="flex items-center gap-4">
+        <h1 id="connectors-title" className="text-2xl font-semibold">{t("connectors.title")}</h1>
+        <Button size="sm" className="ml-auto" disabled={!org} onClick={() => setEnrolling(true)}>{t("enroll.open")}</Button>
+      </div>
+      {enrolling && org && <EnrollDialog orgId={org.orgId} known={new Set((list.data ?? []).map((c) => c.id))} onClose={() => setEnrolling(false)} />}
       <div className="flex flex-wrap items-end gap-3" role="search">
         <label className="grid gap-1 text-sm">
           {t("routes.search")}
@@ -90,6 +99,7 @@ export function Connectors() {
         </table>
       )}
       {list.data && rows.length === 0 && <p className="text-sm">{t("connectors.none")}</p>}
+      {org && <EnrollmentTokens orgId={org.orgId} />}
     </section>
   );
 }

@@ -121,3 +121,35 @@ export function useConnectors(orgId: string | undefined) {
     },
   });
 }
+
+// useGateways reads all gateways of the org in service.
+export function useGateways(orgId: string | undefined) {
+  const transport = useTransport();
+  return useQuery({
+    queryKey: ["gateways", orgId],
+    enabled: !!orgId,
+    queryFn: () => {
+      const api = createClient(GatewayService, transport);
+      return listAll(async (pageToken) => {
+        const r = await api.listGateways({ orgId, pageSize: largestPage, pageToken });
+        return { items: r.gateways, next: r.nextPageToken };
+      });
+    },
+  });
+}
+
+// useGroups reads all gateway groups of the org.
+export function useGroups(orgId: string | undefined) {
+  const transport = useTransport();
+  return useQuery({
+    queryKey: ["gateway-groups", orgId],
+    enabled: !!orgId,
+    queryFn: () => {
+      const api = createClient(GatewayService, transport);
+      return listAll(async (pageToken) => {
+        const r = await api.listGatewayGroups({ orgId, pageSize: largestPage, pageToken });
+        return { items: r.gatewayGroups, next: r.nextPageToken };
+      });
+    },
+  });
+}

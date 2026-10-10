@@ -8,7 +8,8 @@
   "nav": {
     "overview": "Overview",
     "routes": "Routes",
-    "connectors": "Connectors"
+    "connectors": "Connectors",
+    "gateways": "Gateways"
   },
   "overview": {
     "title": "Overview",
@@ -403,5 +404,93 @@
     "decommission": "Decommission…",
     "decommissionWarning": "Decommissioning {{name}} revokes its identity and ends its sessions for good; it cannot enroll again with it. Its route targets stay, serving nothing, until they are removed.",
     "decommissionNamed": "Decommission {{name}}"
+  },
+  "enroll": {
+    "open": "Enroll a connector",
+    "title": "Enroll a connector",
+    "anyGroup": "Any gateway group",
+    "kind": "Kind",
+    "permanent": "Permanent",
+    "ephemeral": "Ephemeral: removed 30 minutes after it last disconnects",
+    "lifetime": "The token is valid for",
+    "lifetimes": {
+      "900": "15 minutes",
+      "3600": "1 hour",
+      "86400": "1 day",
+      "604800": "7 days",
+      "2592000": "30 days"
+    },
+    "usesLabel": "Connectors it may enroll",
+    "usesHint": "0 for any number.",
+    "uses": "Enter a whole number, 0 for any number.",
+    "targets": "Targets the connector may reach",
+    "targetsHint": "One per line, as ip:port, [ipv6]:port or a socket path. The installer writes them into the host's local policy; without any, the connector reaches nothing until one is allowed.",
+    "create": "Create the token",
+    "step1": "1. On the host, run:",
+    "command": "Install command",
+    "step2": "2. When the installer asks for it, paste this token. It is shown only now.",
+    "token": "Enrollment token",
+    "show": "Show",
+    "hide": "Hide",
+    "note": "The token is never part of the command line, and it expires in {{lifetime}}.",
+    "waiting": "Waiting for the connector to enroll and connect…",
+    "close": "Close",
+    "tokensTitle": "Enrollment tokens",
+    "noTokens": "No enrollment token can enroll a connector now.",
+    "createdAt": "created {{when}}",
+    "expiresAt": "expires {{when}}",
+    "expired": "expired {{when}}",
+    "used": "used {{count}} of {{max}}",
+    "usedUnlimited": "used {{count}} times",
+    "revokeAsk": "Revoke the token created {{when}}?"
+  },
+  "gateways": {
+    "title": "Gateway groups",
+    "newGroup": "New gateway group",
+    "create": "Create the group",
+    "noGroups": "The org has no gateway group yet.",
+    "notFound": "This gateway group does not exist, or you cannot see it.",
+    "columns": {
+      "name": "Name",
+      "region": "Region",
+      "hostnames": "Public hostnames",
+      "gateways": "Gateways"
+    },
+    "count": "{{connected}} of {{total}} connected",
+    "hostnamesHint": "One per line: the names public traffic reaches the group's gateways by.",
+    "cidrs": "Trusted proxies",
+    "cidrsHint": "One CIDR per line: proxies in front of the gateways whose X-Forwarded-For the gateways keep.",
+    "groupTitle": "Gateway group {{name}}",
+    "members": "Gateways",
+    "noGateways": "The group has no gateway yet.",
+    "settings": "Settings",
+    "drained": "drained",
+    "state": {
+      "notEnrolled": "not enrolled",
+      "connected": "connected",
+      "offline": "offline"
+    },
+    "gw": {
+      "name": "Name",
+      "slot": "Slot",
+      "endpoints": "Tunnel endpoints",
+      "state": "State",
+      "version": "Version",
+      "lastSeen": "Last seen",
+      "actions": "Actions"
+    }
+  },
+  "gwActions": {
+    "addTitle": "New gateway",
+    "editTitle": "Edit gateway",
+    "addButton": "Add a gateway",
+    "add": "Add the gateway",
+    "endpointsHint": "One host:port per line: where connectors reach this gateway, its own address, not the group's.",
+    "drain": "Drain",
+    "resume": "Resume",
+    "drainHint": "Stops new public connections, and ends the open ones after the gateway's drain period.",
+    "token": "Enrollment token…",
+    "tokenIntro": "A token that enrolls {{name}} and nothing else, valid for 1 hour. Making it needs you to confirm it is you.",
+    "decommissionWarning": "Decommissioning {{name}} revokes its identity and ends its sessions for good; its tunnel endpoints stop serving."
   }
 }
