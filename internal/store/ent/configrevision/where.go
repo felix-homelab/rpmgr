@@ -64,6 +64,11 @@ func Actor(v string) predicate.ConfigRevision {
 	return predicate.ConfigRevision(sql.FieldEQ(FieldActor, v))
 }
 
+// OrgID applies equality check predicate on the "org_id" field. It's identical to OrgIDEQ.
+func OrgID(v string) predicate.ConfigRevision {
+	return predicate.ConfigRevision(sql.FieldEQ(FieldOrgID, v))
+}
+
 // CreatedAt applies equality check predicate on the "created_at" field. It's identical to CreatedAtEQ.
 func CreatedAt(v time.Time) predicate.ConfigRevision {
 	return predicate.ConfigRevision(sql.FieldEQ(FieldCreatedAt, v))
@@ -207,6 +212,81 @@ func ChangedResourcesIsNil() predicate.ConfigRevision {
 // ChangedResourcesNotNil applies the NotNil predicate on the "changed_resources" field.
 func ChangedResourcesNotNil() predicate.ConfigRevision {
 	return predicate.ConfigRevision(sql.FieldNotNull(FieldChangedResources))
+}
+
+// OrgIDEQ applies the EQ predicate on the "org_id" field.
+func OrgIDEQ(v string) predicate.ConfigRevision {
+	return predicate.ConfigRevision(sql.FieldEQ(FieldOrgID, v))
+}
+
+// OrgIDNEQ applies the NEQ predicate on the "org_id" field.
+func OrgIDNEQ(v string) predicate.ConfigRevision {
+	return predicate.ConfigRevision(sql.FieldNEQ(FieldOrgID, v))
+}
+
+// OrgIDIn applies the In predicate on the "org_id" field.
+func OrgIDIn(vs ...string) predicate.ConfigRevision {
+	return predicate.ConfigRevision(sql.FieldIn(FieldOrgID, vs...))
+}
+
+// OrgIDNotIn applies the NotIn predicate on the "org_id" field.
+func OrgIDNotIn(vs ...string) predicate.ConfigRevision {
+	return predicate.ConfigRevision(sql.FieldNotIn(FieldOrgID, vs...))
+}
+
+// OrgIDGT applies the GT predicate on the "org_id" field.
+func OrgIDGT(v string) predicate.ConfigRevision {
+	return predicate.ConfigRevision(sql.FieldGT(FieldOrgID, v))
+}
+
+// OrgIDGTE applies the GTE predicate on the "org_id" field.
+func OrgIDGTE(v string) predicate.ConfigRevision {
+	return predicate.ConfigRevision(sql.FieldGTE(FieldOrgID, v))
+}
+
+// OrgIDLT applies the LT predicate on the "org_id" field.
+func OrgIDLT(v string) predicate.ConfigRevision {
+	return predicate.ConfigRevision(sql.FieldLT(FieldOrgID, v))
+}
+
+// OrgIDLTE applies the LTE predicate on the "org_id" field.
+func OrgIDLTE(v string) predicate.ConfigRevision {
+	return predicate.ConfigRevision(sql.FieldLTE(FieldOrgID, v))
+}
+
+// OrgIDContains applies the Contains predicate on the "org_id" field.
+func OrgIDContains(v string) predicate.ConfigRevision {
+	return predicate.ConfigRevision(sql.FieldContains(FieldOrgID, v))
+}
+
+// OrgIDHasPrefix applies the HasPrefix predicate on the "org_id" field.
+func OrgIDHasPrefix(v string) predicate.ConfigRevision {
+	return predicate.ConfigRevision(sql.FieldHasPrefix(FieldOrgID, v))
+}
+
+// OrgIDHasSuffix applies the HasSuffix predicate on the "org_id" field.
+func OrgIDHasSuffix(v string) predicate.ConfigRevision {
+	return predicate.ConfigRevision(sql.FieldHasSuffix(FieldOrgID, v))
+}
+
+// OrgIDIsNil applies the IsNil predicate on the "org_id" field.
+func OrgIDIsNil() predicate.ConfigRevision {
+	return predicate.ConfigRevision(sql.FieldIsNull(FieldOrgID))
+}
+
+// OrgIDNotNil applies the NotNil predicate on the "org_id" field.
+func OrgIDNotNil() predicate.ConfigRevision {
+	return predicate.ConfigRevision(sql.FieldNotNull(FieldOrgID))
+}
+
+// OrgIDEqualFold applies the EqualFold predicate on the "org_id" field.
+func OrgIDEqualFold(v string) predicate.ConfigRevision {
+	return predicate.ConfigRevision(sql.FieldEqualFold(FieldOrgID, v))
+}
+
+// OrgIDContainsFold applies the ContainsFold predicate on the "org_id" field.
+func OrgIDContainsFold(v string) predicate.ConfigRevision {
+	return predicate.ConfigRevision(sql.FieldContainsFold(FieldOrgID, v))
 }
 
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.

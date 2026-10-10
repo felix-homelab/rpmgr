@@ -70,7 +70,7 @@ names.
 | `EnrollmentService` | `CreateEnrollmentToken` (connectors, also re-enrollment; `connectors.write`), `CreateGatewayEnrollmentToken` (a gateway an Admin created, R15; `infrastructure.write`), both with step-up and shown once; `ListEnrollmentTokens`, `RevokeEnrollmentToken`, `GetInstallCommand` | 1 |
 | `ConnectorService` | `ListConnectors`, `GetConnector` (with its control session), `UpdateConnector` (name, labels, `transport`), `DecommissionConnector`, `GetConnectorStatus` (control session, data sessions as its gateways report them, routes it reports not ready) | 1 |
 | `GatewayService` | `CreateGateway`, `GetGateway`, `ListGateways`, `UpdateGateway` (name, tunnel endpoints, `enabled`), `DecommissionGateway` (revokes the gateway's identity); CRUD on gateway groups and port pools; `SetPortQuota`, `ListPortQuotas`, `DeletePortQuota`; shared-group grants | 1 (shared-group grants: 2) |
-| `RouteService` | CRUD on routes (`CreateRoute`, `GetRoute`, `ListRoutes`, `UpdateRoute`, `DeleteRoute`) and their targets (`CreateRouteTarget`, `UpdateRouteTarget`, `DeleteRouteTarget`; a route shows its targets), `PreviewRoute` (compile without saving). A hostname outside the org's verified domains is refused with `DOMAIN_NOT_VERIFIED`; ACME for a wildcard hostname with `WILDCARD_NEEDS_CERTIFICATE` (R42). A tcp or udp route takes an explicit or a random port of its group's pools; `PORT_NOT_IN_POOL`, `POOL_EXHAUSTED` and `QUOTA_REACHED` refuse one | 1 |
+| `RouteService` | CRUD on routes (`CreateRoute`, `GetRoute`, `ListRoutes`, `UpdateRoute`, `DeleteRoute`) and their targets (`CreateRouteTarget`, `UpdateRouteTarget`, `DeleteRouteTarget`; a route shows its targets), `PreviewRoute` (compile without saving: the write's checks and each gateway's own, the route as it would be stored, the gateways and connectors it would reach). A hostname outside the org's verified domains is refused with `DOMAIN_NOT_VERIFIED`; ACME for a wildcard hostname with `WILDCARD_NEEDS_CERTIFICATE` (R42). A tcp or udp route takes an explicit or a random port of its group's pools; `PORT_NOT_IN_POOL`, `POOL_EXHAUSTED` and `QUOTA_REACHED` refuse one | 1 |
 | `DomainService` | `CreateDomain` (returns the TXT record or HTTP token that proves the claim), `GetDomain`, `VerifyDomain`, `ListDomains`, `DeleteDomain` (refused while route hostnames lie under it), `MarkDomainTrusted` (Instance Admin, step-up), `DelegateDomain` and `ApproveDomainClaim` (Instance Admin, step-up) | 1 (`DelegateDomain`, `ApproveDomainClaim`: 2) |
 | `CertificateService` | `ListCertificates`, `UploadCertificate`, `RenewCertificate` | 1 |
 | `PkiService` | `GetPkiStatus`, `RotateIntermediate` (Instance Admin, step-up) | 1 |
@@ -222,8 +222,18 @@ API reports both ([03](03-connections.md#configuration-reconciliation)).
 ## Events and streaming
 
 - `StatusService.WatchEvents` is a server stream of resource changes and status changes for the
-  caller's org (filtered by the caller's permissions). It carries a resume token so a reconnecting
-  UI misses nothing. The UI uses it instead of polling.
+  caller's org. It needs `org.read`, which lets every role read every resource of the org, so P1
+  filters it no further. The UI uses it instead of polling.
+  - **Resource changes:** one event per configuration revision of the org, in revision order, with
+    the IDs of the resources it changed, the actor and the time. The client reads those resources
+    again. A revision that a controller job makes for an org, such as an ACME renewal or the purge
+    of an ephemeral connector, belongs to that org. Instance-wide revisions are in no org's
+    stream.
+  - **Resume:** every event carries a resume token. A client that reconnects with its last token
+    gets every change since, so it misses nothing. Without a token, the stream starts with the next
+    change. A token of another database epoch (after a restore) gets one `reset` event first, and
+    the client reads everything again. A token the stream did not give is refused with
+    `INVALID_ARGUMENT`.
 - `LogService.StreamLogs(connector_id, filter)` opens an imperative log operation on the agent
   ([03](03-connections.md#control-session)) and streams lines. Log lines pass through the agent's
   redaction before they leave the host.

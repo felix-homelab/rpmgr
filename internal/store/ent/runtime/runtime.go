@@ -801,7 +801,7 @@ func init() {
 	// configrevision.ActorValidator is a validator for the "actor" field. It is called by the builders before save.
 	configrevision.ActorValidator = configrevisionDescActor.Validators[0].(func(string) error)
 	// configrevisionDescCreatedAt is the schema descriptor for created_at field.
-	configrevisionDescCreatedAt := configrevisionFields[4].Descriptor()
+	configrevisionDescCreatedAt := configrevisionFields[5].Descriptor()
 	// configrevision.DefaultCreatedAt holds the default value on creation for the created_at field.
 	configrevision.DefaultCreatedAt = configrevisionDescCreatedAt.Default.(func() time.Time)
 	// configrevisionDescID is the schema descriptor for id field.

@@ -38,6 +38,20 @@ func (_c *ConfigRevisionCreate) SetChangedResources(v []string) *ConfigRevisionC
 	return _c
 }
 
+// SetOrgID sets the "org_id" field.
+func (_c *ConfigRevisionCreate) SetOrgID(v string) *ConfigRevisionCreate {
+	_c.mutation.SetOrgID(v)
+	return _c
+}
+
+// SetNillableOrgID sets the "org_id" field if the given value is not nil.
+func (_c *ConfigRevisionCreate) SetNillableOrgID(v *string) *ConfigRevisionCreate {
+	if v != nil {
+		_c.SetOrgID(*v)
+	}
+	return _c
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (_c *ConfigRevisionCreate) SetCreatedAt(v time.Time) *ConfigRevisionCreate {
 	_c.mutation.SetCreatedAt(v)
@@ -174,6 +188,10 @@ func (_c *ConfigRevisionCreate) createSpec() (*ConfigRevision, *sqlgraph.CreateS
 	if value, ok := _c.mutation.ChangedResources(); ok {
 		_spec.SetField(configrevision.FieldChangedResources, field.TypeJSON, value)
 		_node.ChangedResources = value
+	}
+	if value, ok := _c.mutation.OrgID(); ok {
+		_spec.SetField(configrevision.FieldOrgID, field.TypeString, value)
+		_node.OrgID = &value
 	}
 	if value, ok := _c.mutation.CreatedAt(); ok {
 		_spec.SetField(configrevision.FieldCreatedAt, field.TypeTime, value)

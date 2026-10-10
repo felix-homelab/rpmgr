@@ -32,9 +32,12 @@ const (
 // Status is StatusService. Its methods run in the org scope the interceptor gives them.
 type Status struct {
 	rpmgrv1connect.UnimplementedStatusServiceHandler
-	DB  *store.DB
+	DB *store.DB
+	// Sys is the controller's system scope: the revisions WatchEvents reads are instance rows.
+	Sys context.Context
 	Now func() time.Time
-	// Every is how often WatchApplyStatus looks again; 0 is 500 ms.
+	// Every is how often the streams look again; 0 is 500 ms for WatchApplyStatus and 1 s for
+	// WatchEvents.
 	Every time.Duration
 }
 

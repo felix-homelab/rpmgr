@@ -685,3 +685,87 @@ func TestRouteTargets(t *testing.T) {
 		t.Fatalf("after the delete: %v", read.Msg.GetRoute().GetTargets())
 	}
 }
+
+// TestPreviewRoute: a preview runs the write's checks and refuses what it would refuse, shows the
+// route as it would be stored, the gateways that would serve it and the connectors its streams
+// would go to, and saves nothing: no route, no change, no revision.
+func TestPreviewRoute(t *testing.T) {
+	e, ada, org, group := gatewayEnv(t)
+	ctx := context.Background()
+	e.verified(t, org, "example.com", true)
+	gw, err := createGateway(ada, org, group, "gw1", "gw1.example.com:443")
+	if err != nil {
+		t.Fatal(err)
+	}
+	off, err := createGateway(ada, org, group, "gw2", "gw2.example.com:443")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ada.gw.UpdateGateway(ctx, connect.NewRequest(&rpmgrv1.UpdateGatewayRequest{Gateway: &rpmgrv1.Gateway{Id: off.GetId()},
+		UpdateMask: &fieldmaskpb.FieldMask{Paths: []string{"enabled"}}})); err != nil {
+		t.Fatal(err)
+	}
+	con := e.addConnector(t, org, "nas", nil).ID
+	web, err := createRoute(ada, org, httpRoute("web", group, "web.example.com"), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ada.rt.CreateRouteTarget(ctx, connect.NewRequest(&rpmgrv1.CreateRouteTargetRequest{RouteId: web.GetId(),
+		Target: addressTarget(con, "10.0.0.5", 8080)})); err != nil {
+		t.Fatal(err)
+	}
+	revision := func() store.Revision {
+		var rev store.Revision
+		if err := store.ReadTx(e.sys, e.db, func(_ *ent.Tx, r store.Revision) error { rev = r; return nil }); err != nil {
+			t.Fatal(err)
+		}
+		return rev
+	}
+	before := revision()
+	preview := func(b *browser, rt *rpmgrv1.Route, mask []string, etag string) (*rpmgrv1.PreviewRouteResponse, error) {
+		req := &rpmgrv1.PreviewRouteRequest{OrgId: org, Route: rt, Etag: etag}
+		if mask != nil {
+			req.UpdateMask = &fieldmaskpb.FieldMask{Paths: mask}
+		}
+		r, err := b.rt.PreviewRoute(ctx, connect.NewRequest(req))
+		if err != nil {
+			return nil, err
+		}
+		return r.Msg, nil
+	}
+	p, err := preview(ada, httpRoute("new", group, "New.example.com"), nil, "")
+	if err != nil || p.GetRoute().GetId() != "" || p.GetRoute().GetHttp().GetHostnames()[0] != "new.example.com" ||
+		!slices.Equal(p.GetGatewayIds(), []string{gw.GetId()}) || len(p.GetConnectorIds()) != 0 || len(p.GetProblems()) != 0 {
+		t.Fatalf("a new route: %v %v", p, err)
+	}
+	if _, err := preview(ada, httpRoute("bad", group, "nowhere.example"), nil, ""); reason(err) != apisvc.ReasonDomainNotVerified {
+		t.Fatalf("an unverified hostname: %v", err)
+	}
+	if _, err := preview(ada, httpRoute("web", group, "other.example.com"), nil, ""); code(err) != connect.CodeAlreadyExists {
+		t.Fatalf("a taken name: %v", err)
+	}
+	change := httpRoute("", "", "web.example.com", "www.example.com")
+	change.Id = web.GetId()
+	p, err = preview(ada, change, []string{"http.hostnames"}, "")
+	if err != nil || p.GetRoute().GetId() != web.GetId() || len(p.GetRoute().GetHttp().GetHostnames()) != 2 ||
+		!slices.Equal(p.GetConnectorIds(), []string{con}) || !slices.Equal(p.GetGatewayIds(), []string{gw.GetId()}) {
+		t.Fatalf("a change: %v %v", p, err)
+	}
+	if _, err := preview(ada, change, []string{"http.hostnames"}, "7"); reason(err) != api.ReasonEtagMismatch {
+		t.Fatalf("a change with a stale etag: %v", err)
+	}
+	if after := revision(); after != before {
+		t.Fatalf("a preview made revision %v after %v", after, before)
+	}
+	got, err := ada.rt.GetRoute(ctx, connect.NewRequest(&rpmgrv1.GetRouteRequest{RouteId: web.GetId()}))
+	if err != nil || len(got.Msg.GetRoute().GetHttp().GetHostnames()) != 1 || got.Msg.GetRoute().GetEtag() != web.GetEtag() {
+		t.Fatalf("a preview changed the route: %v %v", got, err)
+	}
+	if list, _ := ada.rt.ListRoutes(ctx, connect.NewRequest(&rpmgrv1.ListRoutesRequest{OrgId: org})); len(list.Msg.GetRoutes()) != 1 {
+		t.Fatalf("a preview created a route: %v", list.Msg.GetRoutes())
+	}
+	vwr, _ := e.join(t, ada, org, "vwr@example.com", "viewer")
+	if _, err := preview(vwr, httpRoute("v", group, "v.example.com"), nil, ""); code(err) != connect.CodePermissionDenied {
+		t.Fatalf("a Viewer previews: %v", err)
+	}
+}

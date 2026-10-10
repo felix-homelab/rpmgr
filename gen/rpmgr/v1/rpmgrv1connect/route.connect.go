@@ -54,6 +54,9 @@ const (
 	// RouteServiceDeleteRouteTargetProcedure is the fully-qualified name of the RouteService's
 	// DeleteRouteTarget RPC.
 	RouteServiceDeleteRouteTargetProcedure = "/rpmgr.v1.RouteService/DeleteRouteTarget"
+	// RouteServicePreviewRouteProcedure is the fully-qualified name of the RouteService's PreviewRoute
+	// RPC.
+	RouteServicePreviewRouteProcedure = "/rpmgr.v1.RouteService/PreviewRoute"
 	// RouteServiceDeleteRouteProcedure is the fully-qualified name of the RouteService's DeleteRoute
 	// RPC.
 	RouteServiceDeleteRouteProcedure = "/rpmgr.v1.RouteService/DeleteRoute"
@@ -75,6 +78,9 @@ type RouteServiceClient interface {
 	UpdateRouteTarget(context.Context, *connect.Request[v1.UpdateRouteTargetRequest]) (*connect.Response[v1.UpdateRouteTargetResponse], error)
 	// DeleteRouteTarget removes a target from its route.
 	DeleteRouteTarget(context.Context, *connect.Request[v1.DeleteRouteTargetRequest]) (*connect.Response[v1.DeleteRouteTargetResponse], error)
+	// PreviewRoute checks a new route, or with an update mask a change of one, as the write would,
+	// and compiles it for the gateways, without saving anything.
+	PreviewRoute(context.Context, *connect.Request[v1.PreviewRouteRequest]) (*connect.Response[v1.PreviewRouteResponse], error)
 	// DeleteRoute deletes a route with its hostnames, targets and port.
 	DeleteRoute(context.Context, *connect.Request[v1.DeleteRouteRequest]) (*connect.Response[v1.DeleteRouteResponse], error)
 }
@@ -134,6 +140,13 @@ func NewRouteServiceClient(httpClient connect.HTTPClient, baseURL string, opts .
 			connect.WithSchema(routeServiceMethods.ByName("DeleteRouteTarget")),
 			connect.WithClientOptions(opts...),
 		),
+		previewRoute: connect.NewClient[v1.PreviewRouteRequest, v1.PreviewRouteResponse](
+			httpClient,
+			baseURL+RouteServicePreviewRouteProcedure,
+			connect.WithSchema(routeServiceMethods.ByName("PreviewRoute")),
+			connect.WithIdempotency(connect.IdempotencyNoSideEffects),
+			connect.WithClientOptions(opts...),
+		),
 		deleteRoute: connect.NewClient[v1.DeleteRouteRequest, v1.DeleteRouteResponse](
 			httpClient,
 			baseURL+RouteServiceDeleteRouteProcedure,
@@ -152,6 +165,7 @@ type routeServiceClient struct {
 	createRouteTarget *connect.Client[v1.CreateRouteTargetRequest, v1.CreateRouteTargetResponse]
 	updateRouteTarget *connect.Client[v1.UpdateRouteTargetRequest, v1.UpdateRouteTargetResponse]
 	deleteRouteTarget *connect.Client[v1.DeleteRouteTargetRequest, v1.DeleteRouteTargetResponse]
+	previewRoute      *connect.Client[v1.PreviewRouteRequest, v1.PreviewRouteResponse]
 	deleteRoute       *connect.Client[v1.DeleteRouteRequest, v1.DeleteRouteResponse]
 }
 
@@ -190,6 +204,11 @@ func (c *routeServiceClient) DeleteRouteTarget(ctx context.Context, req *connect
 	return c.deleteRouteTarget.CallUnary(ctx, req)
 }
 
+// PreviewRoute calls rpmgr.v1.RouteService.PreviewRoute.
+func (c *routeServiceClient) PreviewRoute(ctx context.Context, req *connect.Request[v1.PreviewRouteRequest]) (*connect.Response[v1.PreviewRouteResponse], error) {
+	return c.previewRoute.CallUnary(ctx, req)
+}
+
 // DeleteRoute calls rpmgr.v1.RouteService.DeleteRoute.
 func (c *routeServiceClient) DeleteRoute(ctx context.Context, req *connect.Request[v1.DeleteRouteRequest]) (*connect.Response[v1.DeleteRouteResponse], error) {
 	return c.deleteRoute.CallUnary(ctx, req)
@@ -211,6 +230,9 @@ type RouteServiceHandler interface {
 	UpdateRouteTarget(context.Context, *connect.Request[v1.UpdateRouteTargetRequest]) (*connect.Response[v1.UpdateRouteTargetResponse], error)
 	// DeleteRouteTarget removes a target from its route.
 	DeleteRouteTarget(context.Context, *connect.Request[v1.DeleteRouteTargetRequest]) (*connect.Response[v1.DeleteRouteTargetResponse], error)
+	// PreviewRoute checks a new route, or with an update mask a change of one, as the write would,
+	// and compiles it for the gateways, without saving anything.
+	PreviewRoute(context.Context, *connect.Request[v1.PreviewRouteRequest]) (*connect.Response[v1.PreviewRouteResponse], error)
 	// DeleteRoute deletes a route with its hostnames, targets and port.
 	DeleteRoute(context.Context, *connect.Request[v1.DeleteRouteRequest]) (*connect.Response[v1.DeleteRouteResponse], error)
 }
@@ -266,6 +288,13 @@ func NewRouteServiceHandler(svc RouteServiceHandler, opts ...connect.HandlerOpti
 		connect.WithSchema(routeServiceMethods.ByName("DeleteRouteTarget")),
 		connect.WithHandlerOptions(opts...),
 	)
+	routeServicePreviewRouteHandler := connect.NewUnaryHandler(
+		RouteServicePreviewRouteProcedure,
+		svc.PreviewRoute,
+		connect.WithSchema(routeServiceMethods.ByName("PreviewRoute")),
+		connect.WithIdempotency(connect.IdempotencyNoSideEffects),
+		connect.WithHandlerOptions(opts...),
+	)
 	routeServiceDeleteRouteHandler := connect.NewUnaryHandler(
 		RouteServiceDeleteRouteProcedure,
 		svc.DeleteRoute,
@@ -288,6 +317,8 @@ func NewRouteServiceHandler(svc RouteServiceHandler, opts ...connect.HandlerOpti
 			routeServiceUpdateRouteTargetHandler.ServeHTTP(w, r)
 		case RouteServiceDeleteRouteTargetProcedure:
 			routeServiceDeleteRouteTargetHandler.ServeHTTP(w, r)
+		case RouteServicePreviewRouteProcedure:
+			routeServicePreviewRouteHandler.ServeHTTP(w, r)
 		case RouteServiceDeleteRouteProcedure:
 			routeServiceDeleteRouteHandler.ServeHTTP(w, r)
 		default:
@@ -325,6 +356,10 @@ func (UnimplementedRouteServiceHandler) UpdateRouteTarget(context.Context, *conn
 
 func (UnimplementedRouteServiceHandler) DeleteRouteTarget(context.Context, *connect.Request[v1.DeleteRouteTargetRequest]) (*connect.Response[v1.DeleteRouteTargetResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("rpmgr.v1.RouteService.DeleteRouteTarget is not implemented"))
+}
+
+func (UnimplementedRouteServiceHandler) PreviewRoute(context.Context, *connect.Request[v1.PreviewRouteRequest]) (*connect.Response[v1.PreviewRouteResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("rpmgr.v1.RouteService.PreviewRoute is not implemented"))
 }
 
 func (UnimplementedRouteServiceHandler) DeleteRoute(context.Context, *connect.Request[v1.DeleteRouteRequest]) (*connect.Response[v1.DeleteRouteResponse], error) {

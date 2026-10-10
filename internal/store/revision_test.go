@@ -86,8 +86,28 @@ func TestConfigTx_RecordsRevision(t *testing.T) {
 			t.Fatalf("revision %+v, want seq 1 in epoch %s", rev, init.DBEpoch)
 		}
 		r := c.ConfigRevision.GetX(systemCtx(t), 1)
-		if r.Actor != "usr_of_"+a.org || r.DbEpoch != init.DBEpoch || len(r.ChangedResources) != 1 {
+		if r.Actor != "usr_of_"+a.org || r.DbEpoch != init.DBEpoch || len(r.ChangedResources) != 1 || r.OrgID == nil || *r.OrgID != a.org {
 			t.Errorf("recorded revision: %+v", r)
+		}
+
+		// A system scope's change belongs to no org.
+		if _, err := store.ConfigTx(systemCtx(t), db, func(*ent.Tx) ([]string, error) { return nil, nil }); err != nil {
+			t.Fatal(err)
+		}
+		if r := c.ConfigRevision.GetX(systemCtx(t), 2); r.OrgID != nil {
+			t.Errorf("a system scope's revision has the org %q", *r.OrgID)
+		}
+		// Unless it names the org it changes; an org scope cannot name another.
+		if _, err := store.ConfigTx(store.RevisionOrg(systemCtx(t), a.org), db, func(*ent.Tx) ([]string, error) { return nil, nil }); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := store.ConfigTx(store.RevisionOrg(ctxA, "org_other"), db, func(*ent.Tx) ([]string, error) { return nil, nil }); err != nil {
+			t.Fatal(err)
+		}
+		for _, seq := range []int64{3, 4} {
+			if r := c.ConfigRevision.GetX(systemCtx(t), seq); r.OrgID == nil || *r.OrgID != a.org {
+				t.Errorf("revision %d: org %v, want %s", seq, r.OrgID, a.org)
+			}
 		}
 	})
 }

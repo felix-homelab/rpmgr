@@ -119,7 +119,7 @@ func newEnv(t *testing.T) *env {
 	}
 	if err := srv.Mount(mux, rpmgrv1.File_rpmgr_v1_status_proto.Services().ByName("StatusService"),
 		func(o ...connect.HandlerOption) (string, http.Handler) {
-			return rpmgrv1connect.NewStatusServiceHandler(&apisvc.Status{DB: db, Now: now, Every: 20 * time.Millisecond}, o...)
+			return rpmgrv1connect.NewStatusServiceHandler(&apisvc.Status{DB: db, Sys: sys, Now: now, Every: 20 * time.Millisecond}, o...)
 		}); err != nil {
 		t.Fatal(err)
 	}

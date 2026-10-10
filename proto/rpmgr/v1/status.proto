@@ -30,6 +30,15 @@ service StatusService {
       resource_field: "org_id"
     };
   }
+  // WatchEvents streams the org's configuration changes as they are committed, one event per
+  // revision, from the resume token on, so a client that reconnects misses none.
+  rpc WatchEvents(WatchEventsRequest) returns (stream WatchEventsResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+    option (rpmgr.v1.authz) = {
+      permission: "org.read"
+      resource_field: "org_id"
+    };
+  }
 }
 
 // ApplyState is where a revision stands on the agents.
@@ -114,4 +123,29 @@ message WatchApplyStatusRequest {
 message WatchApplyStatusResponse {
   // The status.
   ApplyStatus apply_status = 1;
+}
+
+// WatchEventsRequest names an org and where to start.
+message WatchEventsRequest {
+  // The org.
+  string org_id = 1 [(buf.validate.field).string.min_len = 1];
+  // The resume_token of the last event the client has; empty starts with the next change.
+  string resume_token = 2 [(buf.validate.field).string.max_len = 128];
+}
+
+// WatchEventsResponse is one configuration change of the org, or a reset.
+message WatchEventsResponse {
+  // The revision of the change.
+  Revision revision = 1;
+  // The IDs of the resources it changed; the client reads them again.
+  repeated string changed_resources = 2;
+  // Who changed them.
+  string actor = 3;
+  // When.
+  google.protobuf.Timestamp time = 4;
+  // Where to resume after this event.
+  string resume_token = 5;
+  // The resume token was of another database epoch, after a restore: the client reads everything
+  // again. Such an event names no change.
+  bool reset = 6;
 }

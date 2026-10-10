@@ -237,7 +237,7 @@ func (m *Manager) record(w wanted, cert *certmagic.Certificate, attempt error) e
 		return err
 	})
 	if err == nil && changed {
-		_, err = store.ConfigTx(m.o.Sys, m.o.DB, write)
+		_, err = store.ConfigTx(store.RevisionOrg(m.o.Sys, w.org), m.o.DB, write)
 	}
 	if err != nil {
 		return errors.Join(attempt, err)

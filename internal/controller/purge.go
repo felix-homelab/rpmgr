@@ -137,7 +137,7 @@ var errKept = errors.New("kept")
 // It reports whether it revoked the identity.
 func purgeAgent(ctx context.Context, o PurgeOptions, a agentRow, now time.Time) (bool, error) {
 	revoked := false
-	_, err := store.ConfigTx(ctx, o.DB, func(tx *ent.Tx) ([]string, error) {
+	_, err := store.ConfigTx(store.RevisionOrg(ctx, a.org), o.DB, func(tx *ent.Tx) ([]string, error) {
 		if !a.ephemeral {
 			if a.kind == pki.KindConnector {
 				if n, err := tx.RouteTarget.Query().Where(routetarget.ConnectorID(a.id)).Count(ctx); err != nil || n > 0 {

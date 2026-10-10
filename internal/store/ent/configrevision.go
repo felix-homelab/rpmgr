@@ -24,6 +24,8 @@ type ConfigRevision struct {
 	Actor string `json:"actor,omitempty"`
 	// ChangedResources holds the value of the "changed_resources" field.
 	ChangedResources []string `json:"changed_resources,omitempty"`
+	// OrgID holds the value of the "org_id" field.
+	OrgID *string `json:"org_id,omitempty"`
 	// CreatedAt holds the value of the "created_at" field.
 	CreatedAt    time.Time `json:"created_at,omitempty"`
 	selectValues sql.SelectValues
@@ -38,7 +40,7 @@ func (*ConfigRevision) scanValues(columns []string) ([]any, error) {
 			values[i] = new([]byte)
 		case configrevision.FieldID:
 			values[i] = new(sql.NullInt64)
-		case configrevision.FieldDbEpoch, configrevision.FieldActor:
+		case configrevision.FieldDbEpoch, configrevision.FieldActor, configrevision.FieldOrgID:
 			values[i] = new(sql.NullString)
 		case configrevision.FieldCreatedAt:
 			values[i] = new(sql.NullTime)
@@ -82,6 +84,13 @@ func (_m *ConfigRevision) assignValues(columns []string, values []any) error {
 				if err := json.Unmarshal(*value, &_m.ChangedResources); err != nil {
 					return fmt.Errorf("unmarshal field changed_resources: %w", err)
 				}
+			}
+		case configrevision.FieldOrgID:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field org_id", values[i])
+			} else if value.Valid {
+				_m.OrgID = new(string)
+				*_m.OrgID = value.String
 			}
 		case configrevision.FieldCreatedAt:
 			if value, ok := values[i].(*sql.NullTime); !ok {
@@ -133,6 +142,11 @@ func (_m *ConfigRevision) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("changed_resources=")
 	builder.WriteString(fmt.Sprintf("%v", _m.ChangedResources))
+	builder.WriteString(", ")
+	if v := _m.OrgID; v != nil {
+		builder.WriteString("org_id=")
+		builder.WriteString(*v)
+	}
 	builder.WriteString(", ")
 	builder.WriteString("created_at=")
 	builder.WriteString(_m.CreatedAt.Format(time.ANSIC))

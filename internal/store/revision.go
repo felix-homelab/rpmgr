@@ -76,7 +76,7 @@ func NewEpoch(ctx context.Context, db *DB) (string, error) {
 // increments config_seq with a row lock as its first statement, so every configuration write
 // holds that lock until it commits and commit order equals revision order; then fn makes its
 // changes and returns the IDs of the resources it changed; then the revision is recorded with the
-// scope's actor. If fn fails, nothing of it, the revision included, is committed.
+// scope's actor and org (see RevisionOrg). If fn fails, nothing of it, the revision included, is committed.
 func ConfigTx(ctx context.Context, db *DB, fn func(tx *ent.Tx) ([]string, error)) (Revision, error) {
 	s, ok := authz.FromContext(ctx)
 	if !ok {
@@ -100,8 +100,13 @@ func ConfigTx(ctx context.Context, db *DB, fn func(tx *ent.Tx) ([]string, error)
 		if err != nil {
 			return err
 		}
-		if err := tx.ConfigRevision.Create().SetID(rev.Seq).SetDbEpoch(rev.DBEpoch).
-			SetActor(s.Actor()).SetChangedResources(changed).Exec(ctx); err != nil {
+		c := tx.ConfigRevision.Create().SetID(rev.Seq).SetDbEpoch(rev.DBEpoch).SetActor(s.Actor()).SetChangedResources(changed)
+		if !s.System() {
+			c.SetOrgID(s.OrgID())
+		} else if org, _ := ctx.Value(revisionOrgKey{}).(string); org != "" {
+			c.SetOrgID(org)
+		}
+		if err := c.Exec(ctx); err != nil {
 			return err
 		}
 		return runTxHook(ctx, tx)
@@ -110,6 +115,15 @@ func ConfigTx(ctx context.Context, db *DB, fn func(tx *ent.Tx) ([]string, error)
 		return Revision{}, err
 	}
 	return rev, nil
+}
+
+type revisionOrgKey struct{}
+
+// RevisionOrg names the org whose resources a system scope's configuration transaction changes,
+// so that its revision belongs to the org and reaches the org's event stream
+// (docs/07-api.md, "Events and streaming"). An org scope's revision always belongs to its org.
+func RevisionOrg(ctx context.Context, org string) context.Context {
+	return context.WithValue(ctx, revisionOrgKey{}, org)
 }
 
 // WriteTx runs fn as a write transaction that is not a configuration change, so it records no
