@@ -213,8 +213,10 @@ message Signed { bytes payload = 1; bytes signature = 2; string key_id = 3; }
   it exists or not. A gateway gets a route certificate, chain and key together, only for the
   hostnames of its group's http routes whose TLS mode names it, an uploaded certificate of the
   route's org or the org's ACME ones, and only those hostnames the certificate covers.
-- **Leaving.** `Leave` lets an agent revoke its own identity; the controller revokes it, pushes the
-  deny-list and audits it, and `rpmgr leave` then removes the identity from the host.
+- **Leaving.** `Leave` lets an agent revoke its own identity; the controller revokes it,
+  decommissions the connector or gateway as an admin's decommission does, pushes the deny-list and
+  audits it with the agent as the actor. Only after that answer does `rpmgr leave` remove the
+  identity, the stored snapshot and the deny-list from the host; without it, nothing is removed.
 - **ACME challenges** (HTTP-01 and TLS-ALPN-01 for route certificates, D41): the controller sends
   `AcmeChallenge{op_id, add, type, identifier, token, key_authorization}` to **every gateway that
   serves the name** and lets the CA validate only after each of them acknowledged with

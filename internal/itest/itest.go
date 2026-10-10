@@ -61,9 +61,11 @@ type Controller struct {
 	Sessions *controller.Sessions // of the first replica
 	URL      string               // https://127.0.0.1:<port> of the first replica
 	RevLog   *revlog.Log          // the replicas' revocation log
-	UIRoots  *x509.CertPool       // the roots of the UI certificate
-	Org      string
-	Sys      context.Context
+	// RevLogPath is where it is.
+	RevLogPath string
+	UIRoots    *x509.CertPool // the roots of the UI certificate
+	Org        string
+	Sys        context.Context
 	// Logs is where the replicas log; a test logs the roles it runs there too (Sink.Logger), so
 	// that a secret in any of their lines fails it.
 	Logs   *telemetrytest.Sink
@@ -115,11 +117,13 @@ func StartController(t testing.TB, o Options) *Controller {
 	if err != nil {
 		t.Fatal(err)
 	}
-	rl, err := revlog.Open(filepath.Join(t.TempDir(), "revocations.log"), nil)
+	rlPath := filepath.Join(t.TempDir(), "revocations.log")
+	rl, err := revlog.Open(rlPath, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	c := &Controller{DB: db, CA: ca, Org: storetest.Org(t, db, "org-a"), Sys: sys, opts: o, sealer: sealer, RevLog: rl, Logs: logs}
+	c := &Controller{DB: db, CA: ca, Org: storetest.Org(t, db, "org-a"), Sys: sys, opts: o, sealer: sealer, RevLog: rl, RevLogPath: rlPath,
+		Logs: logs}
 	c.URL, c.Sessions = c.StartReplica(t)
 	return c
 }

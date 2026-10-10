@@ -34,17 +34,21 @@ func gsoEnabled(pc net.PacketConn) bool {
 
 // udpBufferLow reports whether the receive or the send buffer of pc is below desiredUDPBuffer.
 func udpBufferLow(pc net.PacketConn) bool {
-	low := false
-	if err := control(pc, func(fd int) {
-		for _, opt := range []int{unix.SO_RCVBUF, unix.SO_SNDBUF} {
-			if n, err := unix.GetsockoptInt(fd, unix.SOL_SOCKET, opt); err != nil || n < desiredUDPBuffer {
-				low = true
-			}
+	rcv, snd := udpBuffers(pc)
+	return rcv < desiredUDPBuffer || snd < desiredUDPBuffer
+}
+
+// udpBuffers returns the receive and send buffer sizes of pc; 0 for one that cannot be read.
+func udpBuffers(pc net.PacketConn) (rcv, snd int) {
+	_ = control(pc, func(fd int) {
+		if n, err := unix.GetsockoptInt(fd, unix.SOL_SOCKET, unix.SO_RCVBUF); err == nil {
+			rcv = n
 		}
-	}); err != nil {
-		return true
-	}
-	return low
+		if n, err := unix.GetsockoptInt(fd, unix.SOL_SOCKET, unix.SO_SNDBUF); err == nil {
+			snd = n
+		}
+	})
+	return rcv, snd
 }
 
 func control(pc net.PacketConn, f func(fd int)) error {

@@ -11,3 +11,6 @@ func gsoEnabled(net.PacketConn) bool { return false }
 
 // udpBufferLow is false: the installer tunes the buffers on Linux only, and nothing is known here.
 func udpBufferLow(net.PacketConn) bool { return false }
+
+// udpBuffers reports nothing outside Linux.
+func udpBuffers(net.PacketConn) (rcv, snd int) { return 0, 0 }
