@@ -363,9 +363,12 @@ flowchart LR
   read, the page says so and shows them as they are now.
 - [R] The boot settings of the information architecture are not shown in Phase 1: no API method
   returns them. Showing them needs a method that returns the boot file without its secrets.
-- [R] The revocation-log warning and alert ([10](10-operations.md#backup-and-restore)) come with the
-  slice that adds the revocation-log sink, which is the first to report the log's state through the
-  API.
+- **The revocation log** ([10](10-operations.md#backup-and-restore)) is shown to the Instance Admin
+  above the settings:
+  - **No sink:** the standing warning that the log has no copy off the host.
+  - **Waiting entries:** the alert "not yet off-host", with how many entries have waited since
+    when, once an entry has waited more than 5 minutes.
+  - **Otherwise:** nothing.
 
 ### Enroll connector dialog
 

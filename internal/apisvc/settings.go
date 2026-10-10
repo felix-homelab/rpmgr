@@ -9,10 +9,12 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
+	"google.golang.org/protobuf/types/known/timestamppb"
 
 	rpmgrv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/v1"
 	"github.com/felix-homelab/rpmgr/gen/rpmgr/v1/rpmgrv1connect"
 	"github.com/felix-homelab/rpmgr/internal/api"
+	"github.com/felix-homelab/rpmgr/internal/revlog"
 	"github.com/felix-homelab/rpmgr/internal/secret"
 	"github.com/felix-homelab/rpmgr/internal/settings"
 	"github.com/felix-homelab/rpmgr/internal/store"
@@ -26,6 +28,8 @@ type Settings struct {
 	Sys    context.Context
 	Sealer *secret.Sealer
 	Now    func() time.Time
+	// RevocationLog reports where the revocation log stands; nil reports a log without a sink.
+	RevocationLog func() revlog.Status
 }
 
 // GetInstanceSettings implements SettingsService.
@@ -40,7 +44,16 @@ func (s *Settings) GetInstanceSettings(ctx context.Context, _ *connect.Request[r
 	if err != nil {
 		return nil, err
 	}
-	return connect.NewResponse(&rpmgrv1.GetInstanceSettingsResponse{Settings: inst, Etag: etagOf(version), SmtpPasswordSet: !pw.IsZero()}), nil
+	var st revlog.Status
+	if s.RevocationLog != nil {
+		st = s.RevocationLog()
+	}
+	rl := &rpmgrv1.RevocationLogStatus{Sink: st.Sink, Unshipped: int64(st.Unshipped), Alert: st.Alerting(s.now())}
+	if !st.Oldest.IsZero() {
+		rl.OldestUnshippedTime = timestamppb.New(st.Oldest)
+	}
+	return connect.NewResponse(&rpmgrv1.GetInstanceSettingsResponse{Settings: inst, Etag: etagOf(version), SmtpPasswordSet: !pw.IsZero(),
+		RevocationLog: rl}), nil
 }
 
 // UpdateInstanceSettings implements SettingsService. The revision belongs to no org: the settings

@@ -7,6 +7,7 @@ package rpmgr.v1;
 import "buf/validate/validate.proto";
 import "google/protobuf/duration.proto";
 import "google/protobuf/field_mask.proto";
+import "google/protobuf/timestamp.proto";
 import "rpmgr/v1/common.proto";
 import "rpmgr/v1/options.proto";
 import "rpmgr/v1/status.proto";
@@ -228,6 +229,22 @@ message GetInstanceSettingsResponse {
   string etag = 2;
   // Whether the mail relay's password is set; the password itself is never returned.
   bool smtp_password_set = 3;
+  // Where this controller's revocation log stands (docs/10-operations.md, "Backup and restore").
+  RevocationLogStatus revocation_log = 4;
+}
+
+// RevocationLogStatus is where a controller's revocation log stands: whether a sink keeps a copy
+// off the host, and what it does not hold yet.
+message RevocationLogStatus {
+  // Whether a sink keeps a copy off the host; without one, the UI shows a standing warning.
+  bool sink = 1;
+  // How many entries the sink does not hold yet.
+  int64 unshipped = 2;
+  // When the oldest of them was logged; unset when there are none.
+  google.protobuf.Timestamp oldest_unshipped_time = 3;
+  // Whether the alert "revocation log not yet off-host" fires: an entry has waited longer than
+  // 5 minutes.
+  bool alert = 4;
 }
 
 // UpdateInstanceSettingsRequest changes the instance settings.

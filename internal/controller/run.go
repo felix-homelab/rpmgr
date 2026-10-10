@@ -161,6 +161,7 @@ func Run(ctx context.Context, o RunOptions) error {
 	}
 	holder := pki.NewHolder(node)
 	endpoints := []string{cfg.PublicURL}
+	shipper := &RevocationShipper{Path: filepath.Join(stateDir, "revocations.log"), Sink: cfg.RevocationLog.Sink, Replica: nodeID, Logger: o.Logger}
 
 	sessions := NewSessions(SessionsOptions{DB: db, CA: ca, Node: nodeID, Version: o.Version, Sys: sys, Now: o.Now, RevLog: rl, Sealer: sealer,
 		Logger:   o.Logger,
@@ -168,6 +169,11 @@ func Run(ctx context.Context, o RunOptions) error {
 	reg := o.Registry
 	if reg == nil {
 		reg = telemetry.NewRegistry()
+	}
+	for _, c := range shipper.Collectors() {
+		if err := reg.Register(c); err != nil {
+			return err
+		}
 	}
 	if err := sessions.Register(reg); err != nil {
 		return err
@@ -323,7 +329,7 @@ func Run(ctx context.Context, o RunOptions) error {
 	}
 	if err := apiServer.Mount(mux, rpmgrv1.File_rpmgr_v1_settings_proto.Services().ByName("SettingsService"),
 		func(opts ...connect.HandlerOption) (string, http.Handler) {
-			return rpmgrv1connect.NewSettingsServiceHandler(&apisvc.Settings{DB: db, Sys: sys, Sealer: sealer, Now: o.Now}, opts...)
+			return rpmgrv1connect.NewSettingsServiceHandler(&apisvc.Settings{DB: db, Sys: sys, Sealer: sealer, Now: o.Now, RevocationLog: shipper.Status}, opts...)
 		}); err != nil {
 		return err
 	}
@@ -412,6 +418,7 @@ func Run(ctx context.Context, o RunOptions) error {
 	go leases.Run(sys, RollupJob(RollupOptions{DB: db, Leases: leases, Now: o.Now, Logger: o.Logger}),
 		func(err error) { o.Logger.Warn("traffic rollup job", "error", err) })
 	go ReloadCA(sys, caOpts)
+	go shipper.Run(sys)
 	go ReleaseCheck(sys, ReleaseCheckOptions{DB: db, Mirror: mirror, Source: o.ReleaseSource, Logger: o.Logger})
 	go RenewNodeCertificate(sys, NodeCertOptions{CA: ca, DB: db, Sys: sys, NodeID: nodeID, Holder: holder, Now: o.Now, Logger: o.Logger})
 	serve("agent endpoint", func() error { return agents.Serve(split.Agents()) })

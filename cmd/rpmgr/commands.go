@@ -42,7 +42,7 @@ func commands() *cli.Command {
 				leaf("transport", "test the data-session transports to a gateway"),
 				leaf("clock", "compare this host's clock with the controller's")),
 			policyCommand(),
-			{Name: "backup", Summary: "write a consistent backup of the controller", Run: cli.NotAvailable},
+			backupCommand(),
 			{Name: "restore", Summary: "restore the controller from a backup", Run: cli.NotAvailable,
 				Sub: []*cli.Command{leaf("confirm", "end the instance-wide restore review")}},
 			{Name: "migrate", Summary: "apply database migrations", Run: cli.NotAvailable},
@@ -271,6 +271,33 @@ func systemdUnit() *cli.Command {
 				return err
 			}
 			_, err = env.Stdout.Write(b)
+			return err
+		},
+	}
+}
+
+// backupCommand is `rpmgr backup`: the controller's database and logs in one archive, written
+// while it runs (docs/10-operations.md, "Backup and restore").
+func backupCommand() *cli.Command {
+	var configPath, out string
+	return &cli.Command{
+		Name:    "backup",
+		Summary: "write a consistent backup of the controller",
+		Flags: func(fs *flag.FlagSet) {
+			fs.StringVar(&out, "out", "", "the archive to write; it must not exist (required)")
+			fs.StringVar(&configPath, "config", "", "the controller's boot file, or all-in-one's (default $RPMGR_CONFIG, else /etc/rpmgr/controller.yaml)")
+		},
+		Run: func(ctx context.Context, env *cli.Env, _ []string) error {
+			if out == "" {
+				return cli.Usagef("backup needs --out")
+			}
+			info, err := controller.Backup(ctx, config.Path(configPath, "controller", env.Getenv), out, version.Get().Version, time.Now)
+			if err != nil {
+				return err
+			}
+			_, err = fmt.Fprintf(env.Stdout, "Wrote %s: the database of %s (epoch %s) with its revocation log and audit checkpoints.\n"+
+				"Back up the KEK separately and keep it apart from this archive: without it the archive's secrets cannot be read.\n",
+				out, info.TrustDomain, info.DBEpoch)
 			return err
 		},
 	}

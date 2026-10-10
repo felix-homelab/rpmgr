@@ -784,7 +784,10 @@
     "pages": "Instance pages",
     "updates": "Updates",
     "adminOnly": "Only the Instance Admin sees and changes these.",
-    "pki": "PKI"
+    "pki": "PKI",
+    "revlogNoSink": "The revocation log has no copy off this host. Every backup includes it, but a sink on a share (revocation_log.sink in the boot file) keeps a copy should this host be lost.",
+    "revlogAlert_one": "The revocation log is not yet off-host: {{count}} entry has waited since {{since}} to reach the sink. Revocations are still enforced.",
+    "revlogAlert_other": "The revocation log is not yet off-host: {{count}} entries have waited since {{since}} to reach the sink. Revocations are still enforced."
   },
   "pki": {
     "title": "PKI",
