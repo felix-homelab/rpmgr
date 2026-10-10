@@ -43,8 +43,15 @@ test("signs in, creates an API token with a step-up, sets up an authenticator an
   await expect(page.getByRole("region", { name: "Traffic, last 24 hours" }).getByText(/^In 0 B · out 0 B/)).toBeVisible();
   await expectAccessible(page);
 
-  // The instance settings, which the first user changes as the Instance Admin.
-  await page.getByRole("link", { name: "Settings" }).click();
+  // The command palette (U9) leads to the instance settings, which the first user changes as the
+  // Instance Admin.
+  await page.keyboard.press("Control+K");
+  const palette = page.getByRole("dialog", { name: "Go to" });
+  await palette.getByRole("combobox").fill("sett");
+  await expect(palette.getByRole("option", { selected: true })).toHaveText(/^Settings/);
+  await expectAccessible(page);
+  await palette.getByRole("combobox").press("Enter");
+  await expect(palette).toBeHidden();
   const instance = page.getByRole("region", { name: "Instance settings" });
   await expect(instance.getByLabel("Keep hourly statistics (days)")).toHaveValue(/^\d+$/);
   await expectAccessible(page);
@@ -60,6 +67,16 @@ test("signs in, creates an API token with a step-up, sets up an authenticator an
   await expect(page.getByRole("cell", { name: "Root", exact: true })).toBeVisible();
   await expect(page.getByRole("cell", { name: "Intermediate", exact: true })).toBeVisible();
   await expectAccessible(page);
+
+  // The YAML view: CodeMirror's style elements carry the page's nonce, so its styles apply (VB-07).
+  await page.getByRole("link", { name: "Routes" }).click();
+  await page.getByRole("button", { name: "Export YAML" }).click();
+  const yaml = page.getByRole("dialog", { name: "Routes as YAML" });
+  await expect(yaml.getByRole("textbox", { name: "Routes as YAML" })).toBeVisible();
+  await expect(yaml.locator(".cm-editor")).toHaveCSS("display", "flex");
+  await expect(yaml.locator(".cm-gutters")).toHaveCSS("border-right-style", "none");
+  await expectAccessible(page);
+  await yaml.getByRole("button", { name: "Close" }).click();
 
   // An API token: its creation needs a step-up, which the dialog asks for in the page.
   await page.getByRole("link", { name: "Ada" }).click();

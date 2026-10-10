@@ -10,6 +10,7 @@ import { useTranslation } from "react-i18next";
 import { ApplyStatusView, useLiveApplyStatus } from "@/components/apply-status";
 import { Field } from "@/components/field";
 import { LinesField, trimmed } from "@/components/lines-field";
+import { ManifestButton } from "@/components/manifest";
 import { Alert } from "@/components/public-page";
 import { Button } from "@/components/ui/button";
 import { GatewayGroupSchema, GatewayService, type Gateway, type GatewayGroup } from "@/gen/rpmgr/v1/gateway_pb";
@@ -48,6 +49,8 @@ export function Gateways() {
       <div className="flex items-center gap-4">
         <h1 id="gateways-title" className="text-2xl font-semibold">{t("gateways.title")}</h1>
         <Button size="sm" className="ml-auto" onClick={() => setAdding(true)} disabled={!org}>{t("gateways.newGroup")}</Button>
+        {org && <ManifestButton label={t("manifest.export")} title={t("manifest.ofKind", { what: t("gateways.title") })} orgId={org.orgId}
+          kinds={["GatewayGroup", "Gateway", "PortPool"]} file="gateways" />}
       </div>
       {adding && org && <GroupForm orgId={org.orgId} onCancel={() => setAdding(false)} />}
       {groups.isPending ? <p>{t("stepUp.loading")}</p> : (
@@ -148,7 +151,10 @@ export function GatewayGroupPage() {
   const members = (gateways.data ?? []).filter((g) => g.gatewayGroupId === group.id).sort((a, b) => a.slot - b.slot);
   return (
     <div className="grid max-w-4xl gap-6">
-      <h1 className="text-2xl font-semibold">{t("gateways.groupTitle", { name: group.name })}</h1>
+      <div className="flex flex-wrap items-center gap-4">
+        <h1 className="text-2xl font-semibold">{t("gateways.groupTitle", { name: group.name })}</h1>
+        <ManifestButton label={t("manifest.yaml")} title={t("manifest.of", { name: group.name })} orgId={org.orgId} ids={[group.id, ...members.map((g) => g.id)]} file={group.name} />
+      </div>
       {live && <ApplyStatusView status={live} revision={write?.revision} name={(id) => names.data?.get(id) || id} />}
       <section aria-labelledby="members-title" className="grid gap-2">
         <h2 id="members-title" className="text-lg font-semibold">{t("gateways.members")}</h2>

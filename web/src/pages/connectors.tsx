@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { getRouteApi, Link, useNavigate } from "@tanstack/react-router";
-import { useState } from "react";
 import { useTranslation } from "react-i18next";
+import { ManifestButton } from "@/components/manifest";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import type { Connector } from "@/gen/rpmgr/v1/connector_pb";
@@ -17,12 +17,15 @@ const route = getRouteApi("/app/connectors");
 export interface ConnectorsSearch {
   q?: string;
   session?: "connected" | "offline";
+  // Whether the enroll dialog is open, so the command palette can open it.
+  enroll?: true;
 }
 
 export function validateConnectorsSearch(s: Record<string, unknown>): ConnectorsSearch {
   return {
     q: typeof s.q === "string" && s.q !== "" ? s.q : undefined,
     session: s.session === "connected" || s.session === "offline" ? s.session : undefined,
+    enroll: s.enroll === true || s.enroll === "true" ? true : undefined,
   };
 }
 
@@ -47,7 +50,6 @@ export function Connectors() {
   const navigate = useNavigate({ from: "/connectors" });
   const org = useOrg();
   const list = useConnectors(org?.orgId);
-  const [enrolling, setEnrolling] = useState(false);
   const set = (patch: Partial<ConnectorsSearch>) => void navigate({ search: (s: ConnectorsSearch) => ({ ...s, ...patch }), replace: true });
   const q = search.q?.toLowerCase() ?? "";
   const rows = (list.data ?? [])
@@ -58,9 +60,11 @@ export function Connectors() {
     <section aria-labelledby="connectors-title" className="grid gap-4">
       <div className="flex items-center gap-4">
         <h1 id="connectors-title" className="text-2xl font-semibold">{t("connectors.title")}</h1>
-        <Button size="sm" className="ml-auto" disabled={!org} onClick={() => setEnrolling(true)}>{t("enroll.open")}</Button>
+        <Button size="sm" className="ml-auto" disabled={!org} onClick={() => set({ enroll: true })}>{t("enroll.open")}</Button>
+        {org && <ManifestButton label={t("manifest.export")} title={t("manifest.ofKind", { what: t("connectors.title") })} orgId={org.orgId} kinds={["Connector"]} file="connectors" />}
       </div>
-      {enrolling && org && <EnrollDialog orgId={org.orgId} known={new Set((list.data ?? []).map((c) => c.id))} onClose={() => setEnrolling(false)} />}
+      {/* The dialog tells new connectors from the known ones, so it waits for the list. */}
+      {search.enroll && org && list.data && <EnrollDialog orgId={org.orgId} known={new Set(list.data.map((c) => c.id))} onClose={() => set({ enroll: undefined })} />}
       <div className="flex flex-wrap items-end gap-3" role="search">
         <label className="grid gap-1 text-sm">
           {t("routes.search")}

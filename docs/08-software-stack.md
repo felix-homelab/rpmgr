@@ -101,7 +101,7 @@ flowchart TB
 | **shadcn/ui + Tailwind CSS** (Radix primitives) | Accessible components, owned in the repo | Heavy component frameworks |
 | **react-hook-form** with **protovalidate-es** as its resolver | Fast feedback in forms from the same protovalidate rules the server enforces, so client and server cannot drift; the server's result remains authoritative. protovalidate-es runs under the strict CSP (VB-16, resolved in [13](13-roadmap.md#verification-backlog)) | Hand-written zod schemas: a second copy of the rules |
 | **Recharts**, in the UI's theme colours | Traffic and latency charts in the same look as the rest of the UI; not through shadcn/ui's chart component, which writes a `<style>` element that the CSP refuses ([09](09-web-ui.md#charts)) | — |
-| **CodeMirror 6** for YAML views | Small, extensible, works with a strict CSP [V VB-07] | Monaco (large; rpmgr has no raw JSON editor) |
+| **CodeMirror 6** for YAML views | Small, extensible, works with a strict CSP: its style elements carry the page's nonce (VB-07, resolved in [13](13-roadmap.md#verification-backlog)) | Monaco (large; rpmgr has no raw JSON editor) |
 | **xterm.js** (Phase 3 terminal) | Standard browser terminal | — |
 | **i18next**, English as the source language | Mature and widely used | — |
 | Unit tests with Vitest, end-to-end tests with Playwright and axe-core (`@axe-core/playwright`) | Standard for Vite projects; axe finds WCAG violations on every page a flow visits ([12](12-testing-and-quality.md#test-strategy)) | — |

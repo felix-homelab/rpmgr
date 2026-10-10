@@ -7,6 +7,7 @@ import { getRouteApi, Link } from "@tanstack/react-router";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ApplyStatusView, useLiveApplyStatus } from "@/components/apply-status";
+import { ManifestButton } from "@/components/manifest";
 import { Alert } from "@/components/public-page";
 import { RouteStateChip } from "@/components/route-state";
 import { Button } from "@/components/ui/button";
@@ -74,6 +75,7 @@ export function RouteDetail() {
         <Button asChild variant="outline" size="sm">
           <Link to="/routes/$routeId/edit" params={{ routeId: r.id }}>{t("route.edit")}</Link>
         </Button>
+        {org && <ManifestButton label={t("manifest.yaml")} title={t("manifest.of", { name: r.name })} orgId={org.orgId} ids={[r.id]} file={r.name} />}
         <Button role="switch" aria-checked={r.enabled} variant="outline" size="sm" disabled={update.isPending} onClick={() => void toggle(r)}>
           {t("route.enabledSwitch")}: {r.enabled ? t("route.on") : t("route.off")}
         </Button>

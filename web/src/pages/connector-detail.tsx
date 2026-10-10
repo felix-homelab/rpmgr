@@ -9,6 +9,7 @@ import { useState, type FormEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { ApplyStatusView, useLiveApplyStatus } from "@/components/apply-status";
 import { Field } from "@/components/field";
+import { ManifestButton } from "@/components/manifest";
 import { Alert } from "@/components/public-page";
 import { Button } from "@/components/ui/button";
 import type { Revision } from "@/gen/rpmgr/v1/common_pb";
@@ -57,6 +58,7 @@ export function ConnectorDetail() {
         <h1 className="text-2xl font-semibold">{t("connectors.detailTitle", { name: c.name })}</h1>
         <SessionChip connector={c} />
         {c.session?.version && <span className="text-sm text-muted-foreground">{c.session.version}</span>}
+        {org && <ManifestButton label={t("manifest.yaml")} title={t("manifest.of", { name: c.name })} orgId={org.orgId} ids={[c.id]} file={c.name} />}
       </div>
       {live && <ApplyStatusView status={live} revision={write?.revision} name={name} />}
 

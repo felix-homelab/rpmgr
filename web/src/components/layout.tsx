@@ -5,6 +5,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { Link, Outlet, useNavigate } from "@tanstack/react-router";
 import { useEffect } from "react";
 import { useTranslation } from "react-i18next";
+import { CommandPalette } from "@/components/command-palette";
 import { Button } from "@/components/ui/button";
 import { AuthService } from "@/gen/rpmgr/v1/auth_pb";
 import { UserService } from "@/gen/rpmgr/v1/user_pb";
@@ -41,36 +42,38 @@ export function Layout() {
       <header className="border-b border-border">
         <div className="mx-auto flex max-w-6xl items-center gap-6 px-4 py-3">
           <span className="font-semibold">{t("app.name")}</span>
+          {/* Each link is at least 24 px high, the target size of WCAG 2.2 AA, however the header wraps. */}
           <nav aria-label={t("app.nav")}>
-            <Link to="/" className="text-muted-foreground [&.active]:text-foreground [&.active]:font-medium">
+            <Link to="/" className="inline-block min-h-6 py-0.5 text-muted-foreground [&.active]:text-foreground [&.active]:font-medium">
               {t("nav.overview")}
             </Link>
-            <Link to="/routes" search={{}} className="ml-4 text-muted-foreground [&.active]:text-foreground [&.active]:font-medium">
+            <Link to="/routes" search={{}} className="ml-4 inline-block min-h-6 py-0.5 text-muted-foreground [&.active]:text-foreground [&.active]:font-medium">
               {t("nav.routes")}
             </Link>
-            <Link to="/connectors" search={{}} className="ml-4 text-muted-foreground [&.active]:text-foreground [&.active]:font-medium">
+            <Link to="/connectors" search={{}} className="ml-4 inline-block min-h-6 py-0.5 text-muted-foreground [&.active]:text-foreground [&.active]:font-medium">
               {t("nav.connectors")}
             </Link>
-            <Link to="/gateways" className="ml-4 text-muted-foreground [&.active]:text-foreground [&.active]:font-medium">
+            <Link to="/gateways" className="ml-4 inline-block min-h-6 py-0.5 text-muted-foreground [&.active]:text-foreground [&.active]:font-medium">
               {t("nav.gateways")}
             </Link>
-            <Link to="/domains" className="ml-4 text-muted-foreground [&.active]:text-foreground [&.active]:font-medium">
+            <Link to="/domains" className="ml-4 inline-block min-h-6 py-0.5 text-muted-foreground [&.active]:text-foreground [&.active]:font-medium">
               {t("nav.domains")}
             </Link>
-            <Link to="/policies" className="ml-4 text-muted-foreground [&.active]:text-foreground [&.active]:font-medium">
+            <Link to="/policies" className="ml-4 inline-block min-h-6 py-0.5 text-muted-foreground [&.active]:text-foreground [&.active]:font-medium">
               {t("nav.policies")}
             </Link>
-            <Link to="/org" className="ml-4 text-muted-foreground [&.active]:text-foreground [&.active]:font-medium">
+            <Link to="/org" className="ml-4 inline-block min-h-6 py-0.5 text-muted-foreground [&.active]:text-foreground [&.active]:font-medium">
               {t("nav.org")}
             </Link>
-            <Link to="/audit" search={{}} className="ml-4 text-muted-foreground [&.active]:text-foreground [&.active]:font-medium">
+            <Link to="/audit" search={{}} className="ml-4 inline-block min-h-6 py-0.5 text-muted-foreground [&.active]:text-foreground [&.active]:font-medium">
               {t("nav.audit")}
             </Link>
-            <Link to="/settings" className="ml-4 text-muted-foreground [&.active]:text-foreground [&.active]:font-medium">
+            <Link to="/settings" className="ml-4 inline-block min-h-6 py-0.5 text-muted-foreground [&.active]:text-foreground [&.active]:font-medium">
               {t("nav.settings")}
             </Link>
           </nav>
           <div className="ml-auto flex items-center gap-3 text-sm">
+            <CommandPalette />
             <Link to="/account" className="text-muted-foreground hover:text-foreground [&.active]:text-foreground">
               {session.data?.displayName || session.data?.email}
             </Link>

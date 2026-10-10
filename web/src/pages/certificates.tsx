@@ -7,6 +7,7 @@ import { useMutation, useTransport } from "@connectrpc/connect-query";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState, type FormEvent } from "react";
 import { useTranslation } from "react-i18next";
+import { ManifestButton } from "@/components/manifest";
 import { PemField } from "@/components/pem-field";
 import { Alert } from "@/components/public-page";
 import { Button } from "@/components/ui/button";
@@ -168,6 +169,7 @@ export function CABundles() {
       <div className="flex items-center gap-4">
         <h2 id="bundles-title" className="text-lg font-semibold">{t("bundles.title")}</h2>
         <Button size="sm" className="ml-auto" disabled={!org} onClick={() => setEditing("new")}>{t("bundles.add")}</Button>
+        {org && <ManifestButton label={t("manifest.export")} title={t("manifest.ofKind", { what: t("bundles.title") })} orgId={org.orgId} kinds={["CABundle"]} file="ca-bundles" />}
       </div>
       {editing && org && (
         <BundleForm key={editing} orgId={org.orgId} bundle={list.data?.find((b) => b.id === editing)} onDone={() => setEditing(undefined)} />
