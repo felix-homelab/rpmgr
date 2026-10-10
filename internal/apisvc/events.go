@@ -6,17 +6,20 @@ import (
 	"context"
 	"encoding/base64"
 	"errors"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
 
 	"connectrpc.com/connect"
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	rpmgrv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/v1"
 	"github.com/felix-homelab/rpmgr/internal/store"
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/configrevision"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/route"
 )
 
 // The event stream (docs/07-api.md, "Events and streaming").
@@ -64,6 +67,11 @@ func (s *Status) WatchEvents(ctx context.Context, req *connect.Request[rpmgrv1.W
 			return err
 		}
 	}
+	// The status the changes are seen against; the client reads it when it opens the stream.
+	status, err := s.statusOf(ctx, org)
+	if err != nil {
+		return storeError(err)
+	}
 	// The headers go out at once, so a client knows that the stream is open before the first event.
 	if err := stream.Send(nil); err != nil {
 		return err
@@ -100,10 +108,66 @@ func (s *Status) WatchEvents(ctx context.Context, req *connect.Request[rpmgrv1.W
 		if len(rows) == eventsBatch {
 			continue
 		}
+		next, err := s.statusOf(ctx, org)
+		if err != nil {
+			if ctx.Err() != nil {
+				return nil
+			}
+			return storeError(err)
+		}
+		if changed := statusChanges(status, next); len(changed) > 0 {
+			if err := stream.Send(&rpmgrv1.WatchEventsResponse{StatusChanged: changed, Time: timestamppb.New(s.now()),
+				ResumeToken: resumeToken(cur.DBEpoch, after)}); err != nil {
+				return err
+			}
+		}
+		status = next
 		select {
 		case <-ctx.Done():
 			return nil
 		case <-time.After(every):
 		}
 	}
+}
+
+// statusOf is the status of the org's routes and the control sessions of its agents, by ID, each
+// in a form that changes when it does.
+func (s *Status) statusOf(ctx context.Context, org string) (map[string]string, error) {
+	c := s.DB.ReadClient()
+	routes, err := c.Route.Query().Where(route.OrgID(org)).All(ctx)
+	if err != nil {
+		return nil, err
+	}
+	st, err := newRouteStatuses(ctx, s.Sys, c, org, routes, s.now())
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[string]string, len(routes)+len(st.gateways)+len(st.enabled))
+	for _, r := range routes {
+		b, err := proto.MarshalOptions{Deterministic: true}.Marshal(st.of(r))
+		if err != nil {
+			return nil, err
+		}
+		out[r.ID] = string(b)
+	}
+	for _, g := range st.gateways {
+		out[g.ID] = strconv.FormatBool(st.online[g.ID])
+	}
+	for id := range st.enabled {
+		out[id] = strconv.FormatBool(st.online[id])
+	}
+	return out, nil
+}
+
+// statusChanges are the IDs whose status differs between two readings, sorted. One that comes or
+// goes is a configuration change, which its revision's event names.
+func statusChanges(before, after map[string]string) []string {
+	var out []string
+	for id, v := range after {
+		if old, ok := before[id]; ok && old != v {
+			out = append(out, id)
+		}
+	}
+	slices.Sort(out)
+	return out
 }

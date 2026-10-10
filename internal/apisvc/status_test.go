@@ -292,3 +292,57 @@ func TestWatchEvents(t *testing.T) {
 		t.Fatalf("a malformed token: %v", err)
 	}
 }
+
+// TestWatchEvents_Status (docs/07-api.md, "Events and streaming"): the stream names the routes and
+// agents whose status changes, against the status when it opened: an agent's control session going
+// up, and the routes whose derived status that changes; an event without changes is never sent.
+func TestWatchEvents_Status(t *testing.T) {
+	e, ada, org, group := gatewayEnv(t)
+	ctx := context.Background()
+	if _, err := ada.gw.CreatePortPool(ctx, connect.NewRequest(&rpmgrv1.CreatePortPoolRequest{OrgId: org,
+		PortPool: &rpmgrv1.PortPool{GatewayGroupId: group, Protocol: tcp, PortFrom: 20000, PortTo: 20001}})); err != nil {
+		t.Fatal(err)
+	}
+	gw, err := createGateway(ada, org, group, "gw1", "gw1.example.com:443")
+	if err != nil {
+		t.Fatal(err)
+	}
+	con := e.addConnector(t, org, "c1", nil).ID
+	pg, err := createRoute(ada, org, tcpRoute("pg", group, 20000), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ada.rt.CreateRouteTarget(ctx, connect.NewRequest(&rpmgrv1.CreateRouteTargetRequest{RouteId: pg.GetId(),
+		Target: addressTarget(con, "10.0.0.5", 5432)})); err != nil {
+		t.Fatal(err)
+	}
+	ch, stop := events(t, ada, org, "")
+	online := func(id string) {
+		e.db.Client().AgentSession.Create().SetID(id).SetOrgID(org).SetSessionEpoch(1).SetControllerNode("ctn_1").SetConnectedAt(e.clock).
+			SetLastSeenAt(e.clock).ExecX(e.sys)
+	}
+	// The gateway comes online: it is no longer an offline gateway of the route.
+	online(gw.GetId())
+	ev := next(t, ch)
+	if !slices.Equal(ev.GetStatusChanged(), sorted(gw.GetId(), pg.GetId())) || ev.GetRevision() != nil || ev.GetResumeToken() == "" {
+		t.Fatalf("a gateway online: %v", ev)
+	}
+	// The connector comes online, its target is ready.
+	online(con)
+	if ev := next(t, ch); !slices.Equal(ev.GetStatusChanged(), sorted(con, pg.GetId())) {
+		t.Fatalf("a connector online: %v", ev)
+	}
+	select {
+	case ev := <-ch:
+		t.Fatalf("an event without a change: %v", ev)
+	case <-time.After(200 * time.Millisecond):
+	}
+	if err := stop(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func sorted(ids ...string) []string {
+	slices.Sort(ids)
+	return ids
+}

@@ -49,6 +49,8 @@ type Routes struct {
 	rpmgrv1connect.UnimplementedRouteServiceHandler
 	DB  *store.DB
 	API *api.Server
+	// Sys is the controller's system scope, for the revisions a route status reads.
+	Sys context.Context
 	Now func() time.Time
 }
 
@@ -348,6 +350,11 @@ func (r *Routes) GetRoute(ctx context.Context, req *connect.Request[rpmgrv1.GetR
 	if err != nil {
 		return nil, storeError(err)
 	}
+	st, err := newRouteStatuses(ctx, r.Sys, c, row.OrgID, []*ent.Route{row}, r.now())
+	if err != nil {
+		return nil, storeError(err)
+	}
+	out.Status = st.of(row)
 	return connect.NewResponse(&rpmgrv1.GetRouteResponse{Route: out}), nil
 }
 
@@ -379,11 +386,16 @@ func (r *Routes) ListRoutes(ctx context.Context, req *connect.Request[rpmgrv1.Li
 		rows = rows[:size]
 		out.NextPageToken = r.API.PageToken(rows[size-1].ID, m)
 	}
+	st, err := newRouteStatuses(ctx, r.Sys, c, m.GetOrgId(), rows, r.now())
+	if err != nil {
+		return nil, storeError(err)
+	}
 	for _, row := range rows {
 		rt, err := routeOf(ctx, c, row)
 		if err != nil {
 			return nil, storeError(err)
 		}
+		rt.Status = st.of(row)
 		out.Routes = append(out.Routes, rt)
 	}
 	return connect.NewResponse(out), nil

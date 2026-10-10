@@ -601,7 +601,7 @@ func (x *WatchEventsRequest) GetResumeToken() string {
 	return ""
 }
 
-// WatchEventsResponse is one configuration change of the org, or a reset.
+// WatchEventsResponse is one configuration change of the org, a reset, or status changes.
 type WatchEventsResponse struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// The revision of the change.
@@ -616,7 +616,11 @@ type WatchEventsResponse struct {
 	ResumeToken string `protobuf:"bytes,5,opt,name=resume_token,json=resumeToken,proto3" json:"resume_token,omitempty"`
 	// The resume token was of another database epoch, after a restore: the client reads everything
 	// again. Such an event names no change.
-	Reset_        bool `protobuf:"varint,6,opt,name=reset,proto3" json:"reset,omitempty"`
+	Reset_ bool `protobuf:"varint,6,opt,name=reset,proto3" json:"reset,omitempty"`
+	// The routes, gateways and connectors whose status changed: a route's derived status, an
+	// agent's control session going up or down. Such an event has no revision, and its resume token
+	// is the last one. Status changes are not replayed after a reconnect.
+	StatusChanged []string `protobuf:"bytes,7,rep,name=status_changed,json=statusChanged,proto3" json:"status_changed,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -693,6 +697,13 @@ func (x *WatchEventsResponse) GetReset_() bool {
 	return false
 }
 
+func (x *WatchEventsResponse) GetStatusChanged() []string {
+	if x != nil {
+		return x.StatusChanged
+	}
+	return nil
+}
+
 var File_rpmgr_v1_status_proto protoreflect.FileDescriptor
 
 const file_rpmgr_v1_status_proto_rawDesc = "" +
@@ -728,14 +739,15 @@ const file_rpmgr_v1_status_proto_rawDesc = "" +
 	"\fapply_status\x18\x01 \x01(\v2\x15.rpmgr.v1.ApplyStatusR\vapplyStatus\"a\n" +
 	"\x12WatchEventsRequest\x12\x1e\n" +
 	"\x06org_id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x05orgId\x12+\n" +
-	"\fresume_token\x18\x02 \x01(\tB\b\xbaH\x05r\x03\x18\x80\x01R\vresumeToken\"\xf1\x01\n" +
+	"\fresume_token\x18\x02 \x01(\tB\b\xbaH\x05r\x03\x18\x80\x01R\vresumeToken\"\x98\x02\n" +
 	"\x13WatchEventsResponse\x12.\n" +
 	"\brevision\x18\x01 \x01(\v2\x12.rpmgr.v1.RevisionR\brevision\x12+\n" +
 	"\x11changed_resources\x18\x02 \x03(\tR\x10changedResources\x12\x14\n" +
 	"\x05actor\x18\x03 \x01(\tR\x05actor\x12.\n" +
 	"\x04time\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\x04time\x12!\n" +
 	"\fresume_token\x18\x05 \x01(\tR\vresumeToken\x12\x14\n" +
-	"\x05reset\x18\x06 \x01(\bR\x05reset*\x94\x01\n" +
+	"\x05reset\x18\x06 \x01(\bR\x05reset\x12%\n" +
+	"\x0estatus_changed\x18\a \x03(\tR\rstatusChanged*\x94\x01\n" +
 	"\n" +
 	"ApplyState\x12\x1b\n" +
 	"\x17APPLY_STATE_UNSPECIFIED\x10\x00\x12\x17\n" +

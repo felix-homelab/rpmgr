@@ -234,6 +234,12 @@ API reports both ([03](03-connections.md#configuration-reconciliation)).
     change. A token of another database epoch (after a restore) gets one `reset` event first, and
     the client reads everything again. A token the stream did not give is refused with
     `INVALID_ARGUMENT`.
+  - **Status changes:** an event without a revision names the routes, gateways and connectors
+    whose status changed: a route's derived status
+    ([06](06-data-model.md#desired-vs-observed-state)) or an agent's control session going up or
+    down. The stream compares the status with the one it saw when it opened, so a client reads the
+    status it shows when it opens the stream. Status changes are not replayed after a reconnect,
+    and their events carry the last resume token.
 - `LogService.StreamLogs(connector_id, filter)` opens an imperative log operation on the agent
   ([03](03-connections.md#control-session)) and streams lines. Log lines pass through the agent's
   redaction before they leave the host.

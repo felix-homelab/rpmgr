@@ -226,10 +226,29 @@ flowchart LR
 |---|---|
 | `disabled` | `enabled = false` |
 | `pending` | The latest revision touching the route is not yet applied by every agent involved |
-| `ready` | Enabled, applied, at least one ready target, at least one gateway session |
-| `degraded` | Ready, but some targets unhealthy or some gateways without a session |
-| `unavailable` | Enabled and applied, but no ready target (all unhealthy, blocked by local policy, or connectors offline) |
+| `ready` | Enabled and applied; every enabled target is ready and every enabled gateway of the group serves the route |
+| `degraded` | Enabled and applied; at least one target is ready and one gateway serves the route, but not all |
+| `unavailable` | Enabled and applied, but no ready target (all unhealthy, blocked by local policy, or connectors offline), or no gateway that serves the route |
 | `error` | An agent rejected the revision; the rejection reasons are attached |
+
+The terms of the table:
+
+- **Agents involved:** the enabled gateways of the route's group and the connectors of its enabled
+  targets, if they have a live control session. Offline agents get the revision when they connect,
+  so they hold neither `pending` nor `error`, as for the apply status
+  ([07](07-api.md#writes-and-apply-status)).
+- **The latest revision touching the route:** the newest revision whose changed resources name the
+  route or one of its targets. Only the org's revisions after the oldest one an agent involved has
+  applied are read, at most 1 000. If more are there, a change not read counts as the oldest one
+  read, so an agent that far behind shows the route `pending` or `error`.
+- **Ready target:** its connector is enabled, online and reports the route ready (no
+  `resource_status` row). A target that is not ready shows its reason: `OFFLINE`, `DISABLED`, or
+  the connector's own, such as `BLOCKED_BY_LOCAL_POLICY`.
+- **Serving gateway:** online, reporting the route ready, and with a data session to the connector
+  of a ready target. A gateway that does not serve shows `OFFLINE`, its own reason, or
+  `NO_DATA_SESSION`.
+
+`GetRoute` and `ListRoutes` return the status with the route ([07](07-api.md#example-a-route)).
 
 DNS publication is reported separately, as `dns_status` per hostname (`not_managed`, `pending`,
 `published`, `conflict`, `ambiguous`, `held`, `error`; [15](15-dns.md#publication-rules)). It never
