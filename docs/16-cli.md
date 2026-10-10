@@ -20,6 +20,10 @@
 - Commands of the public API put the verb first, `rpmgr <verb> <kind>` (`get`, `list`, `create`,
   `update`, `delete`, …), so they never collide with the role commands or with the host's
   `rpmgr policy` ([D51](14-open-decisions.md#engineering)). They arrive with the resource API.
+- A change that needs a step-up ([04](04-security.md#human-authentication-and-sessions)) asks for it
+  on the terminal when the API answers `STEP_UP_REQUIRED`: the authenticator or a recovery code, or
+  the password of a user without a second factor. The stored token then steps up for 10 minutes
+  ([D63](14-open-decisions.md#engineering)) and the change runs again.
 
 | Exit code | Meaning |
 |---|---|
@@ -54,6 +58,14 @@ with exit code 2 until its implementation lands.
 | `rpmgr update route-target [--force] [flags] <id>` | Change the fields of a target that the flags name, under its etag; its connector stays | any | available |
 | `rpmgr update connector [--force] [--name <name>] [--label key=value]… [--transport auto\|quic\|h2] <id>` | Change a connector's name, labels (they replace the old ones) or transport, under its etag | any | available |
 | `rpmgr decommission connector [--force] [--wait <duration>] <id>` | Take a connector out of service for good: its identity is revoked and its sessions closed ([04](04-security.md#revocation)) | any | available |
+| `rpmgr create enrollment-token [--ttl <duration>] [--max-uses <n>] [--ephemeral] [--label key=value]… [--connector <connector>] [--gateway-group <group>]` | Make a token that enrolls connectors, with a step-up, and print it once. `--connector` makes a single-use token that re-enrolls that connector with a new key | any | available |
+| `rpmgr create gateway-group --name <name> [--region] [--public-hostname]… [--trusted-proxy <cidr>]…`, `update gateway-group [--force] [flags] <id>` | Create a gateway group, or change the fields its flags name | any | available |
+| `rpmgr create gateway --group <group> --name <name> --tunnel-endpoint <host:port>…`, `update gateway [--force] [--name] [--tunnel-endpoint]… <id>` | Create a gateway in a group (at most four), or change its name or tunnel endpoints | any | available |
+| `rpmgr drain gateway`, `enable gateway [--force] [--wait <duration>] <id>` | Stop a gateway taking new connections while the open ones drain ([03](03-connections.md#multiple-gateways)), or let it take them again | any | available |
+| `rpmgr decommission gateway [--force] <id>` | Take a gateway out of service for good: its identity is revoked and its slot is free | any | available |
+| `rpmgr create gateway-token --gateway <gateway> [--ttl <duration>]` | Make the token that enrolls that gateway, with a step-up, and print it once | any | available |
+| `rpmgr create port-pool --group <group> --protocol tcp\|udp --from <port> --to <port>`, `update port-pool [--force] [--from] [--to] <id>` | Create a pool of public ports of a group, or resize it | any | available |
+| `rpmgr set port-quota --group <group> --protocol tcp\|udp --max <n>` | Set how many ports of a group's pools the org may hold; `list port-quota` and `delete port-quota <id>` show and remove them | any | available |
 | `rpmgr revoke enrollment-token <id>` | Revoke an enrollment token, so that it enrolls nothing more | any | available |
 | `rpmgr leave` | Revoke this agent's identity and remove it from the host | agent host | not yet |
 | `rpmgr status` | Show the state of the agent on this host | agent host | not yet |
