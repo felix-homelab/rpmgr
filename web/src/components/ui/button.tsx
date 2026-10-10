@@ -27,7 +27,11 @@ export interface ButtonProps extends ComponentProps<"button">, VariantProps<type
   asChild?: boolean; // render the child element, such as a link, with the button's styles
 }
 
-export function Button({ className, variant, size, asChild = false, ...props }: ButtonProps) {
-  const Comp = asChild ? Slot : "button";
-  return <Comp className={cn(buttonVariants({ variant, size }), className)} {...props} />;
+// Button is a plain button unless it says type="submit": inside a form, a button that does not
+// submit it must not.
+export function Button({ className, variant, size, asChild = false, type, ...props }: ButtonProps) {
+  if (asChild) {
+    return <Slot className={cn(buttonVariants({ variant, size }), className)} {...props} />;
+  }
+  return <button type={type ?? "button"} className={cn(buttonVariants({ variant, size }), className)} {...props} />;
 }

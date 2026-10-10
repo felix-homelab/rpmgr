@@ -52,7 +52,10 @@ export function Routes() {
 
   return (
     <section aria-labelledby="routes-title" className="grid gap-4">
-      <h1 id="routes-title" className="text-2xl font-semibold">{t("routes.title")}</h1>
+      <div className="flex items-center gap-4">
+        <h1 id="routes-title" className="text-2xl font-semibold">{t("routes.title")}</h1>
+        <Button asChild size="sm" className="ml-auto"><Link to="/routes/new">{t("routes.create")}</Link></Button>
+      </div>
       <div className="flex flex-wrap items-end gap-3" role="search">
         <label className="grid gap-1 text-sm">
           {t("routes.search")}

@@ -530,7 +530,7 @@ var storeRouteTransports = map[rpmgrv1.DataTransport]route.Transport{rpmgrv1.Dat
 // routeOf is a route as the API shows it, with its spec and hostnames.
 func routeOf(ctx context.Context, c *ent.Client, row *ent.Route) (*rpmgrv1.Route, error) {
 	out := &rpmgrv1.Route{Id: row.ID, Name: row.Name, GatewayGroupId: row.GatewayGroupID, Enabled: row.Enabled, Labels: row.Labels,
-		Description: row.Description, CreateTime: timestamppb.New(row.CreatedAt), UpdateTime: timestamppb.New(row.UpdatedAt), Etag: etagOf(row.Version)}
+		Description: row.Description, CreateTime: timestamppb.New(row.CreatedAt), UpdateTime: timestamppb.New(row.UpdatedAt), UpdateUserId: row.UpdatedBy, Etag: etagOf(row.Version)}
 	if row.Transport != nil {
 		for api, st := range storeRouteTransports {
 			if st == *row.Transport {

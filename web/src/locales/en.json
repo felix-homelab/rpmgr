@@ -182,7 +182,8 @@
     "pages": "Pages",
     "count": "{{from}}–{{to}} of {{total}}",
     "previous": "Previous",
-    "next": "Next"
+    "next": "Next",
+    "create": "Create a route"
   },
   "route": {
     "title": "Route {{name}} ({{type}})",
@@ -290,5 +291,32 @@
       "true": "On",
       "false": "Off"
     }
+  },
+  "conflict": {
+    "title": "The route changed since you opened it",
+    "changedBy": "Changed by {{by}} {{when}}. Your changes are not saved yet.",
+    "changed": "Changed {{when}}. Your changes are not saved yet.",
+    "field": "Field",
+    "mine": "Your change",
+    "theirs": "Now saved",
+    "both": "changed by both",
+    "onTop": "Put my changes on the new version",
+    "discard": "Drop my changes"
+  },
+  "routeNew": {
+    "title": "New route",
+    "chooseGroup": "Choose a gateway group",
+    "groupNeeded": "Choose the gateway group that serves the route.",
+    "create": "Create the route",
+    "open": "Open {{name}} to add its targets"
+  },
+  "preview": {
+    "title": "Preview",
+    "button": "Preview",
+    "address": "Reached at {{address}}",
+    "gateways": "Gateways that would serve it: {{names}}",
+    "connectors": "Connectors its streams would go to: {{names}}",
+    "none": "none",
+    "ok": "No gateway would refuse it."
   }
 }

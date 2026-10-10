@@ -38,5 +38,6 @@ export default defineConfig({
     environment: "jsdom",
     include: ["src/**/*.test.{ts,tsx}"],
     setupFiles: ["src/test-setup.ts"],
+    testTimeout: 20_000, // above the 5 s of findBy and waitFor (test-setup.ts)
   },
 });

@@ -388,6 +388,9 @@ func TestUpdateRoute(t *testing.T) {
 		up.GetEtag() != "2" || up.GetHttp().GetPathPrefix() != "/api" {
 		t.Fatalf("a description and a transport: %v %v", up, err)
 	}
+	if up.GetUpdateUserId() != e.ada || up.GetUpdateUserId() == "" {
+		t.Fatalf("the route's last editor: %q, want %q", up.GetUpdateUserId(), e.ada)
+	}
 	if _, err := update(ada, got.GetId(), []string{"description"}, &rpmgrv1.Route{}, "1"); reason(err) != api.ReasonEtagMismatch {
 		t.Fatalf("a stale etag: %v", err)
 	}

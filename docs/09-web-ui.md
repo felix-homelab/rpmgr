@@ -97,6 +97,15 @@ flowchart LR
 - **Targets** shows how many are ready, and how many a connector's local policy blocks.
 - **Status** shows the observed state, with an icon and text, and how many agents rejected the
   route.
+- **"Create a route"** opens a form: the type, the gateway group, and the fields of that type.
+  - **Defaults:** HTTP routes start with ACME certificates and a redirect on port 80. TCP and UDP
+    routes start on port 0, a free port of the group's pools.
+  - **Retries:** the creation carries one request ID, however often it is retried.
+  - **After creating,** the apply status follows live, and a link opens the new route to add its
+    targets.
+- **Preview** (`PreviewRoute`), in the create and edit forms, checks the route as the save would,
+  without saving. It shows where the route would be reached, the gateways and connectors that would
+  carry it, and anything a gateway would refuse.
 - [R] The "Applied" column of the mock-up is left out in Phase 1. It needs the revision that last
   changed each route, which the API does not report. Rejections show under Status instead, and the
   apply status of a change shows after each save.
@@ -145,6 +154,12 @@ flowchart LR
   - **Validation:** before sending, the form checks the API's rules. The server's violations land
     on their fields, and any it cannot place are shown with the form.
   - **After a save,** the apply status follows live, as for the switch.
+  - **A save that meets a newer version (U6)** opens a panel in the form. It says who changed the
+    route and how long ago, and lists the fields either side changed, with the user's value next to
+    the saved one. Fields both sides changed differently are marked.
+    - "Put my changes on the new version" refills the form with the saved version and the user's
+      changes on top, for a second save.
+    - "Drop my changes" refills it with the saved version.
 
 ### Enroll connector dialog
 

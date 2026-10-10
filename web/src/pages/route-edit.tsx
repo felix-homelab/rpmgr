@@ -1,22 +1,25 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { create } from "@bufbuild/protobuf";
-import { Code, ConnectError } from "@connectrpc/connect";
-import { useMutation, useQuery } from "@connectrpc/connect-query";
+import { Code, ConnectError, createClient } from "@connectrpc/connect";
+import { useMutation, useQuery, useTransport } from "@connectrpc/connect-query";
 import { useQueryClient } from "@tanstack/react-query";
 import { getRouteApi, Link } from "@tanstack/react-router";
-import { useId, useState } from "react";
-import { useForm, type Resolver, type UseFormReturn } from "react-hook-form";
+import { useState } from "react";
+import { useForm, type Resolver } from "react-hook-form";
 import { useTranslation } from "react-i18next";
 import { ApplyStatusView, useLiveApplyStatus } from "@/components/apply-status";
 import { Alert } from "@/components/public-page";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import type { Revision } from "@/gen/rpmgr/v1/common_pb";
-import { RouteService, UpdateRouteRequestSchema, type Route } from "@/gen/rpmgr/v1/route_pb";
+import { RouteService, UpdateRouteRequestSchema, type PreviewRouteResponse, type Route } from "@/gen/rpmgr/v1/route_pb";
 import type { ApplyStatus } from "@/gen/rpmgr/v1/status_pb";
+import { reasonOf } from "@/lib/errors";
 import { protoResolver, serverFieldErrors, type FieldOf } from "@/lib/proto-form";
-import { numberProblems, routeFields, routeWith, valuesOf, type RouteField, type RouteValues } from "@/route-form/fields";
+import { Conflict, onTop } from "@/route-form/conflict";
+import { numberProblems, routeFields, routeWith, valuesOf, type RouteValues } from "@/route-form/fields";
+import { FormField } from "@/route-form/form-field";
+import { PreviewPanel } from "@/route-form/preview";
 import { routeType, useAgentNames } from "@/routes-data";
 import { useOrg } from "@/session";
 
@@ -28,11 +31,15 @@ export function RouteEdit() {
   const { t } = useTranslation();
   const { routeId } = page.useParams();
   const got = useQuery(RouteService.method.getRoute, { routeId });
-  const base = got.data?.route;
-  if (!base) {
+  const [restart, setRestart] = useState<{ base: Route; values?: RouteValues; n: number }>();
+  const start = restart ?? (got.data?.route && { base: got.data.route, values: undefined, n: 0 });
+  if (!start) {
     return <p>{got.isError ? t("route.notFound") : t("stepUp.loading")}</p>;
   }
-  return <RouteForm key={base.etag} base={base} />;
+  return (
+    <RouteForm key={start.n} base={start.base} initial={start.values}
+      onRestart={(base, values) => setRestart({ base, values, n: start.n + 1 })} />
+  );
 }
 
 // updateRequest is the UpdateRoute request of the form's values.
@@ -44,12 +51,14 @@ export function updateRequest(base: Route, values: RouteValues) {
   });
 }
 
-function RouteForm({ base }: { base: Route }) {
+function RouteForm({ base, initial, onRestart }: { base: Route; initial?: RouteValues; onRestart: (base: Route, values?: RouteValues) => void }) {
   const { t } = useTranslation();
   const org = useOrg();
   const names = useAgentNames(org?.orgId);
   const queryClient = useQueryClient();
   const update = useMutation(RouteService.method.updateRoute);
+  const preview = useMutation(RouteService.method.previewRoute);
+  const [previewed, setPreviewed] = useState<PreviewRouteResponse>();
   const fields = routeFields(base);
   const fieldOf: FieldOf<RouteValues> = (path) => {
     const p = path.replace(/^route\./, "");
@@ -63,10 +72,24 @@ function RouteForm({ base }: { base: Route }) {
     }
     return checks(values, ctx, opts);
   };
-  const form = useForm<RouteValues>({ defaultValues: valuesOf(base), resolver });
+  const form = useForm<RouteValues>({ defaultValues: initial ?? valuesOf(base), resolver });
+  const transport = useTransport();
+  const [conflict, setConflict] = useState<{ theirs: Route; mine: RouteValues }>();
   const [write, setWrite] = useState<{ revision?: Revision; status?: ApplyStatus }>();
   const [other, setOther] = useState<string[]>([]);
   const live = useLiveApplyStatus(org?.orgId ?? "", write?.revision, write?.status);
+
+  // check previews the change as the save would make it, without saving.
+  async function check(values: RouteValues) {
+    setOther([]);
+    try {
+      const req = updateRequest(base, values);
+      setPreviewed(await preview.mutateAsync({ orgId: org?.orgId ?? "", route: req.route, updateMask: req.updateMask, etag: req.etag }));
+    } catch (err) {
+      setPreviewed(undefined);
+      setOther([ConnectError.from(err).rawMessage]);
+    }
+  }
 
   async function save(values: RouteValues) {
     setOther([]);
@@ -80,8 +103,11 @@ function RouteForm({ base }: { base: Route }) {
         const { fields: bad, other } = serverFieldErrors(err, UpdateRouteRequestSchema, fieldOf);
         bad.forEach(([f, message]) => form.setError(f, { type: "server", message }));
         setOther(other.length > 0 || bad.length > 0 ? other : [e.rawMessage]);
-      } else if (e.code === Code.FailedPrecondition) {
-        setOther([t("route.changed")]);
+      } else if (e.code === Code.FailedPrecondition && reasonOf(err) === "ETAG_MISMATCH") {
+        const now = await createClient(RouteService, transport).getRoute({ routeId: base.id });
+        if (now.route) {
+          setConflict({ theirs: now.route, mine: values });
+        }
       } else {
         setOther([t("link.failed", { message: e.rawMessage })]);
       }
@@ -98,55 +124,20 @@ function RouteForm({ base }: { base: Route }) {
         </>
       ) : (
         <form onSubmit={form.handleSubmit(save)} className="grid gap-4" noValidate>
+          {conflict && (
+            <Conflict base={base} mine={conflict.mine} theirs={conflict.theirs}
+              onTop={() => onRestart(conflict.theirs, onTop(base, conflict.mine, conflict.theirs))} onDiscard={() => onRestart(conflict.theirs)} />
+          )}
           {fields.map((f) => <FormField key={f.key} field={f} form={form} />)}
           {other.map((m) => <Alert key={m}>{m}</Alert>)}
+          {previewed && <PreviewPanel preview={previewed} name={(id) => names.data?.get(id) || id} />}
           <div className="flex gap-2">
             <Button type="submit" disabled={update.isPending}>{t("routeForm.save")}</Button>
+            <Button variant="outline" disabled={preview.isPending} onClick={() => void form.handleSubmit(check)()}>{t("preview.button")}</Button>
             <Button asChild variant="outline"><Link to="/routes/$routeId" params={{ routeId: base.id }}>{t("stepUp.cancel")}</Link></Button>
           </div>
         </form>
       )}
-    </div>
-  );
-}
-
-// FormField is one labelled field of the route form, with its error.
-function FormField({ field, form }: { field: RouteField; form: UseFormReturn<RouteValues> }) {
-  const { t } = useTranslation();
-  const id = useId();
-  const error = form.formState.errors[field.key]?.message;
-  const common = { id, "aria-invalid": error ? true : undefined, "aria-describedby": `${id}-hint ${id}-error`, ...form.register(field.key) };
-  const box = "rounded-md border border-border bg-background px-3 py-1.5 text-sm";
-  let input;
-  switch (field.kind) {
-    case "longtext":
-    case "lines":
-    case "pairs":
-      input = <textarea rows={field.kind === "longtext" ? 2 : 3} className={box} {...common} />;
-      break;
-    case "select":
-      input = (
-        <select className={`h-9 ${box}`} {...common}>
-          {field.options?.map(([v, k]) => <option key={v} value={v}>{t(`routeForm.options.${field.key}.${k}`)}</option>)}
-        </select>
-      );
-      break;
-    case "tristate":
-      input = (
-        <select className={`h-9 ${box}`} {...common}>
-          {["", "true", "false"].map((v) => <option key={v} value={v}>{t(`routeForm.tristate.${v || "default"}`)}</option>)}
-        </select>
-      );
-      break;
-    default:
-      input = <Input inputMode={field.kind.endsWith("umber") ? "numeric" : undefined} {...common} />;
-  }
-  return (
-    <div className="grid gap-1.5">
-      <label htmlFor={id} className="text-sm font-medium">{t(`routeForm.fields.${field.key}`)}</label>
-      {input}
-      <p id={`${id}-hint`} className="text-xs text-muted-foreground">{t(`routeForm.hints.${field.kind}`, { defaultValue: "" })}</p>
-      {error && <p id={`${id}-error`} role="alert" className="text-sm text-destructive">{error}</p>}
     </div>
   );
 }

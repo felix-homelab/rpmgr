@@ -144,6 +144,9 @@ message Route {
   google.protobuf.Timestamp create_time = 24;
   // When it was last changed; output only.
   google.protobuf.Timestamp update_time = 25;
+  // The user who created or last changed it, empty for the system; output only. The UI names them
+  // when a save meets a newer version (docs/09-web-ui.md, U6).
+  string update_user_id = 26;
   // The version to send back with an update; output only.
   string etag = 30;
   // What the agents report about it, with GetRoute and ListRoutes; output only.
