@@ -6,6 +6,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/felix-homelab/rpmgr/internal/allinone"
@@ -331,9 +332,47 @@ func restoreCommand() *cli.Command {
 				"The replaced files are kept with the suffix %s. Start one controller, check /readyz, then the others;\n"+
 				"re-enroll agents enrolled after the backup.\n",
 				r.TrustDomain, r.Backup.UTC().Format(time.RFC3339), r.NewEpoch, r.OldEpoch, r.Reapplied, r.Unknown, r.Previous)
+			if err != nil || len(r.Review) == 0 {
+				return err
+			}
+			_, err = fmt.Fprintf(env.Stdout, "\nFAILED CLOSED: the revocations since the backup may be incomplete:\n  - %s\n"+
+				"The instance and every org are in restore review and read-only; every API token is suspended; every user\n"+
+				"must reset their password (rpmgr user reset-password --email …) and set up their second factor again.\n"+
+				"Each org's Owner confirms its members and roles and resumes its tokens; end the review here with\n"+
+				"rpmgr restore confirm.\n", strings.Join(r.Review, "\n  - "))
 			return err
 		},
-		Sub: []*cli.Command{leaf("confirm", "end the instance-wide restore review")},
+		Sub: []*cli.Command{restoreConfirm()},
+	}
+}
+
+// restoreConfirm is `rpmgr restore confirm`: the Instance Admin ends the restore review on the
+// controller host, the instance-wide one or, with --org, an org's.
+func restoreConfirm() *cli.Command {
+	var configPath, org string
+	return &cli.Command{
+		Name:    "confirm",
+		Summary: "end the instance-wide restore review",
+		Flags: func(fs *flag.FlagSet) {
+			fs.StringVar(&org, "org", "", "confirm this org's members and roles instead, by ID or slug")
+			fs.StringVar(&configPath, "config", "", "the controller's boot file, or all-in-one's (default $RPMGR_CONFIG, else /etc/rpmgr/controller.yaml)")
+		},
+		Run: func(ctx context.Context, env *cli.Env, _ []string) error {
+			pending, err := controller.ConfirmRestore(ctx, config.Path(configPath, "controller", env.Getenv), org)
+			if err != nil {
+				return err
+			}
+			what := "Ended the instance-wide restore review."
+			if org != "" {
+				what = "Confirmed the members and roles of " + org + "."
+			}
+			if len(pending) == 0 {
+				_, err = fmt.Fprintf(env.Stdout, "%s No org is in review.\n", what)
+			} else {
+				_, err = fmt.Fprintf(env.Stdout, "%s Orgs still in review, until their Owner confirms them: %s.\n", what, strings.Join(pending, ", "))
+			}
+			return err
+		},
 	}
 }
 

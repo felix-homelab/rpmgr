@@ -25,7 +25,8 @@ import (
 type Org struct {
 	rpmgrv1connect.UnimplementedOrgServiceHandler
 	Members   *accounts.Members
-	API       *api.Server // for request_id deduplication
+	Tokens    *accounts.Tokens // the tokens a restore suspended
+	API       *api.Server      // for request_id deduplication
 	PublicURL string
 	Now       func() time.Time
 	Mail      Mailer // e-mails invitations when there is a relay
@@ -155,6 +156,51 @@ func (o *Org) mailInvitation(ctx context.Context, orgID, to, role, link string) 
 	return err == nil
 }
 
+// ListSuspendedAPITokens implements OrgService.
+func (o *Org) ListSuspendedAPITokens(_ context.Context, req *connect.Request[rpmgrv1.ListSuspendedAPITokensRequest]) (
+	*connect.Response[rpmgrv1.ListSuspendedAPITokensResponse], error) {
+	rows, err := o.Tokens.ListSuspended(req.Msg.GetOrgId())
+	if err != nil {
+		return nil, err
+	}
+	emails := map[string]string{}
+	if ms, err := o.Members.List(req.Msg.GetOrgId()); err == nil {
+		for _, m := range ms {
+			emails[m.UserID] = m.Email
+		}
+	}
+	out := &rpmgrv1.ListSuspendedAPITokensResponse{}
+	for _, r := range rows {
+		out.ApiTokens = append(out.ApiTokens, &rpmgrv1.SuspendedAPIToken{ApiToken: tokenOf(r), OwnerId: r.OwnerID, OwnerEmail: emails[r.OwnerID]})
+	}
+	return connect.NewResponse(out), nil
+}
+
+// ResumeAPIToken implements OrgService.
+func (o *Org) ResumeAPIToken(ctx context.Context, req *connect.Request[rpmgrv1.ResumeAPITokenRequest]) (
+	*connect.Response[rpmgrv1.ResumeAPITokenResponse], error) {
+	c := api.CallerFrom(ctx)
+	err := o.Tokens.Resume(ctx, req.Msg.GetOrgId(), req.Msg.GetTokenId(), c.UserID, c.Memberships[req.Msg.GetOrgId()])
+	if errors.Is(err, accounts.ErrNoToken) {
+		return nil, connect.NewError(connect.CodeNotFound, err)
+	}
+	if err != nil {
+		return nil, memberError(err)
+	}
+	return connect.NewResponse(&rpmgrv1.ResumeAPITokenResponse{}), nil
+}
+
+// ConfirmRestoreReview implements OrgService.
+func (o *Org) ConfirmRestoreReview(ctx context.Context, req *connect.Request[rpmgrv1.ConfirmRestoreReviewRequest]) (
+	*connect.Response[rpmgrv1.ConfirmRestoreReviewResponse], error) {
+	c := api.CallerFrom(ctx)
+	org, err := o.Members.ConfirmReview(ctx, req.Msg.GetOrgId(), c.UserID, c.Memberships[req.Msg.GetOrgId()])
+	if err != nil {
+		return nil, memberError(err)
+	}
+	return connect.NewResponse(&rpmgrv1.ConfirmRestoreReviewResponse{Org: orgOf(org)}), nil
+}
+
 // acting returns the caller and their role in the org, after the step-up that granting Admin or
 // Owner needs (docs/04-security.md, "Human authentication and sessions").
 func (o *Org) acting(ctx context.Context, orgID, grants string) (*api.Caller, string, error) {
@@ -177,9 +223,9 @@ func (o *Org) now() time.Time {
 // memberError gives the member rules their codes.
 func memberError(err error) error {
 	switch {
-	case errors.Is(err, accounts.ErrOwnerOnly):
+	case errors.Is(err, accounts.ErrOwnerOnly), errors.Is(err, accounts.ErrOwnerReview):
 		return connect.NewError(connect.CodePermissionDenied, err)
-	case errors.Is(err, accounts.ErrLastOwner):
+	case errors.Is(err, accounts.ErrLastOwner), errors.Is(err, accounts.ErrNotInReview):
 		return connect.NewError(connect.CodeFailedPrecondition, err)
 	case errors.Is(err, accounts.ErrNoMember):
 		return connect.NewError(connect.CodeNotFound, err)
@@ -190,5 +236,9 @@ func memberError(err error) error {
 }
 
 func orgOf(o *ent.Org) *rpmgrv1.Org {
-	return &rpmgrv1.Org{Id: o.ID, Name: o.Name, Slug: o.Slug, CreateTime: timestamppb.New(o.CreatedAt)}
+	out := &rpmgrv1.Org{Id: o.ID, Name: o.Name, Slug: o.Slug, CreateTime: timestamppb.New(o.CreatedAt)}
+	if o.RestoreReviewSince != nil {
+		out.RestoreReviewTime = timestamppb.New(*o.RestoreReviewSince)
+	}
+	return out
 }

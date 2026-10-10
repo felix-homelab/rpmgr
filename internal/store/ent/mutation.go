@@ -1252,6 +1252,7 @@ type APITokenMutation struct {
 	last_used_ip  *string
 	revoked_at    *time.Time
 	step_up_at    *time.Time
+	suspended_at  *time.Time
 	clearedFields map[string]struct{}
 	done          bool
 	oldValue      func(context.Context) (*APIToken, error)
@@ -1933,6 +1934,55 @@ func (m *APITokenMutation) ResetStepUpAt() {
 	delete(m.clearedFields, apitoken.FieldStepUpAt)
 }
 
+// SetSuspendedAt sets the "suspended_at" field.
+func (m *APITokenMutation) SetSuspendedAt(t time.Time) {
+	m.suspended_at = &t
+}
+
+// SuspendedAt returns the value of the "suspended_at" field in the mutation.
+func (m *APITokenMutation) SuspendedAt() (r time.Time, exists bool) {
+	v := m.suspended_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSuspendedAt returns the old "suspended_at" field's value of the APIToken entity.
+// If the APIToken object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *APITokenMutation) OldSuspendedAt(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSuspendedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSuspendedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSuspendedAt: %w", err)
+	}
+	return oldValue.SuspendedAt, nil
+}
+
+// ClearSuspendedAt clears the value of the "suspended_at" field.
+func (m *APITokenMutation) ClearSuspendedAt() {
+	m.suspended_at = nil
+	m.clearedFields[apitoken.FieldSuspendedAt] = struct{}{}
+}
+
+// SuspendedAtCleared returns if the "suspended_at" field was cleared in this mutation.
+func (m *APITokenMutation) SuspendedAtCleared() bool {
+	_, ok := m.clearedFields[apitoken.FieldSuspendedAt]
+	return ok
+}
+
+// ResetSuspendedAt resets all changes to the "suspended_at" field.
+func (m *APITokenMutation) ResetSuspendedAt() {
+	m.suspended_at = nil
+	delete(m.clearedFields, apitoken.FieldSuspendedAt)
+}
+
 // Where appends a list predicates to the APITokenMutation builder.
 func (m *APITokenMutation) Where(ps ...predicate.APIToken) {
 	m.predicates = append(m.predicates, ps...)
@@ -1967,7 +2017,7 @@ func (m *APITokenMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *APITokenMutation) Fields() []string {
-	fields := make([]string, 0, 14)
+	fields := make([]string, 0, 15)
 	if m.org_id != nil {
 		fields = append(fields, apitoken.FieldOrgID)
 	}
@@ -2010,6 +2060,9 @@ func (m *APITokenMutation) Fields() []string {
 	if m.step_up_at != nil {
 		fields = append(fields, apitoken.FieldStepUpAt)
 	}
+	if m.suspended_at != nil {
+		fields = append(fields, apitoken.FieldSuspendedAt)
+	}
 	return fields
 }
 
@@ -2046,6 +2099,8 @@ func (m *APITokenMutation) Field(name string) (ent.Value, bool) {
 		return m.RevokedAt()
 	case apitoken.FieldStepUpAt:
 		return m.StepUpAt()
+	case apitoken.FieldSuspendedAt:
+		return m.SuspendedAt()
 	}
 	return nil, false
 }
@@ -2083,6 +2138,8 @@ func (m *APITokenMutation) OldField(ctx context.Context, name string) (ent.Value
 		return m.OldRevokedAt(ctx)
 	case apitoken.FieldStepUpAt:
 		return m.OldStepUpAt(ctx)
+	case apitoken.FieldSuspendedAt:
+		return m.OldSuspendedAt(ctx)
 	}
 	return nil, fmt.Errorf("unknown APIToken field %s", name)
 }
@@ -2190,6 +2247,13 @@ func (m *APITokenMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetStepUpAt(v)
 		return nil
+	case apitoken.FieldSuspendedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSuspendedAt(v)
+		return nil
 	}
 	return fmt.Errorf("unknown APIToken field %s", name)
 }
@@ -2232,6 +2296,9 @@ func (m *APITokenMutation) ClearedFields() []string {
 	if m.FieldCleared(apitoken.FieldStepUpAt) {
 		fields = append(fields, apitoken.FieldStepUpAt)
 	}
+	if m.FieldCleared(apitoken.FieldSuspendedAt) {
+		fields = append(fields, apitoken.FieldSuspendedAt)
+	}
 	return fields
 }
 
@@ -2257,6 +2324,9 @@ func (m *APITokenMutation) ClearField(name string) error {
 		return nil
 	case apitoken.FieldStepUpAt:
 		m.ClearStepUpAt()
+		return nil
+	case apitoken.FieldSuspendedAt:
+		m.ClearSuspendedAt()
 		return nil
 	}
 	return fmt.Errorf("unknown APIToken nullable field %s", name)
@@ -2307,6 +2377,9 @@ func (m *APITokenMutation) ResetField(name string) error {
 		return nil
 	case apitoken.FieldStepUpAt:
 		m.ResetStepUpAt()
+		return nil
+	case apitoken.FieldSuspendedAt:
+		m.ResetSuspendedAt()
 		return nil
 	}
 	return fmt.Errorf("unknown APIToken field %s", name)
@@ -17934,16 +18007,17 @@ func (m *GatewayGroupMutation) ResetEdge(name string) error {
 // InstanceMutation represents an operation that mutates the Instance nodes in the graph.
 type InstanceMutation struct {
 	config
-	op            Op
-	typ           string
-	id            *int
-	trust_domain  *string
-	db_epoch      *string
-	created_at    *time.Time
-	clearedFields map[string]struct{}
-	done          bool
-	oldValue      func(context.Context) (*Instance, error)
-	predicates    []predicate.Instance
+	op                   Op
+	typ                  string
+	id                   *int
+	trust_domain         *string
+	db_epoch             *string
+	created_at           *time.Time
+	restore_review_since *time.Time
+	clearedFields        map[string]struct{}
+	done                 bool
+	oldValue             func(context.Context) (*Instance, error)
+	predicates           []predicate.Instance
 }
 
 var _ ent.Mutation = (*InstanceMutation)(nil)
@@ -18158,6 +18232,55 @@ func (m *InstanceMutation) ResetCreatedAt() {
 	m.created_at = nil
 }
 
+// SetRestoreReviewSince sets the "restore_review_since" field.
+func (m *InstanceMutation) SetRestoreReviewSince(t time.Time) {
+	m.restore_review_since = &t
+}
+
+// RestoreReviewSince returns the value of the "restore_review_since" field in the mutation.
+func (m *InstanceMutation) RestoreReviewSince() (r time.Time, exists bool) {
+	v := m.restore_review_since
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRestoreReviewSince returns the old "restore_review_since" field's value of the Instance entity.
+// If the Instance object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *InstanceMutation) OldRestoreReviewSince(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRestoreReviewSince is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRestoreReviewSince requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRestoreReviewSince: %w", err)
+	}
+	return oldValue.RestoreReviewSince, nil
+}
+
+// ClearRestoreReviewSince clears the value of the "restore_review_since" field.
+func (m *InstanceMutation) ClearRestoreReviewSince() {
+	m.restore_review_since = nil
+	m.clearedFields[instance.FieldRestoreReviewSince] = struct{}{}
+}
+
+// RestoreReviewSinceCleared returns if the "restore_review_since" field was cleared in this mutation.
+func (m *InstanceMutation) RestoreReviewSinceCleared() bool {
+	_, ok := m.clearedFields[instance.FieldRestoreReviewSince]
+	return ok
+}
+
+// ResetRestoreReviewSince resets all changes to the "restore_review_since" field.
+func (m *InstanceMutation) ResetRestoreReviewSince() {
+	m.restore_review_since = nil
+	delete(m.clearedFields, instance.FieldRestoreReviewSince)
+}
+
 // Where appends a list predicates to the InstanceMutation builder.
 func (m *InstanceMutation) Where(ps ...predicate.Instance) {
 	m.predicates = append(m.predicates, ps...)
@@ -18192,7 +18315,7 @@ func (m *InstanceMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *InstanceMutation) Fields() []string {
-	fields := make([]string, 0, 3)
+	fields := make([]string, 0, 4)
 	if m.trust_domain != nil {
 		fields = append(fields, instance.FieldTrustDomain)
 	}
@@ -18201,6 +18324,9 @@ func (m *InstanceMutation) Fields() []string {
 	}
 	if m.created_at != nil {
 		fields = append(fields, instance.FieldCreatedAt)
+	}
+	if m.restore_review_since != nil {
+		fields = append(fields, instance.FieldRestoreReviewSince)
 	}
 	return fields
 }
@@ -18216,6 +18342,8 @@ func (m *InstanceMutation) Field(name string) (ent.Value, bool) {
 		return m.DbEpoch()
 	case instance.FieldCreatedAt:
 		return m.CreatedAt()
+	case instance.FieldRestoreReviewSince:
+		return m.RestoreReviewSince()
 	}
 	return nil, false
 }
@@ -18231,6 +18359,8 @@ func (m *InstanceMutation) OldField(ctx context.Context, name string) (ent.Value
 		return m.OldDbEpoch(ctx)
 	case instance.FieldCreatedAt:
 		return m.OldCreatedAt(ctx)
+	case instance.FieldRestoreReviewSince:
+		return m.OldRestoreReviewSince(ctx)
 	}
 	return nil, fmt.Errorf("unknown Instance field %s", name)
 }
@@ -18261,6 +18391,13 @@ func (m *InstanceMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetCreatedAt(v)
 		return nil
+	case instance.FieldRestoreReviewSince:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRestoreReviewSince(v)
+		return nil
 	}
 	return fmt.Errorf("unknown Instance field %s", name)
 }
@@ -18290,7 +18427,11 @@ func (m *InstanceMutation) AddField(name string, value ent.Value) error {
 // ClearedFields returns all nullable fields that were cleared during this
 // mutation.
 func (m *InstanceMutation) ClearedFields() []string {
-	return nil
+	var fields []string
+	if m.FieldCleared(instance.FieldRestoreReviewSince) {
+		fields = append(fields, instance.FieldRestoreReviewSince)
+	}
+	return fields
 }
 
 // FieldCleared returns a boolean indicating if a field with the given name was
@@ -18303,6 +18444,11 @@ func (m *InstanceMutation) FieldCleared(name string) bool {
 // ClearField clears the value of the field with the given name. It returns an
 // error if the field is not defined in the schema.
 func (m *InstanceMutation) ClearField(name string) error {
+	switch name {
+	case instance.FieldRestoreReviewSince:
+		m.ClearRestoreReviewSince()
+		return nil
+	}
 	return fmt.Errorf("unknown Instance nullable field %s", name)
 }
 
@@ -18318,6 +18464,9 @@ func (m *InstanceMutation) ResetField(name string) error {
 		return nil
 	case instance.FieldCreatedAt:
 		m.ResetCreatedAt()
+		return nil
+	case instance.FieldRestoreReviewSince:
+		m.ResetRestoreReviewSince()
 		return nil
 	}
 	return fmt.Errorf("unknown Instance field %s", name)
@@ -22357,16 +22506,17 @@ func (m *MembershipMutation) ResetEdge(name string) error {
 // OrgMutation represents an operation that mutates the Org nodes in the graph.
 type OrgMutation struct {
 	config
-	op            Op
-	typ           string
-	id            *string
-	name          *string
-	slug          *string
-	created_at    *time.Time
-	clearedFields map[string]struct{}
-	done          bool
-	oldValue      func(context.Context) (*Org, error)
-	predicates    []predicate.Org
+	op                   Op
+	typ                  string
+	id                   *string
+	name                 *string
+	slug                 *string
+	created_at           *time.Time
+	restore_review_since *time.Time
+	clearedFields        map[string]struct{}
+	done                 bool
+	oldValue             func(context.Context) (*Org, error)
+	predicates           []predicate.Org
 }
 
 var _ ent.Mutation = (*OrgMutation)(nil)
@@ -22581,6 +22731,55 @@ func (m *OrgMutation) ResetCreatedAt() {
 	m.created_at = nil
 }
 
+// SetRestoreReviewSince sets the "restore_review_since" field.
+func (m *OrgMutation) SetRestoreReviewSince(t time.Time) {
+	m.restore_review_since = &t
+}
+
+// RestoreReviewSince returns the value of the "restore_review_since" field in the mutation.
+func (m *OrgMutation) RestoreReviewSince() (r time.Time, exists bool) {
+	v := m.restore_review_since
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRestoreReviewSince returns the old "restore_review_since" field's value of the Org entity.
+// If the Org object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *OrgMutation) OldRestoreReviewSince(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRestoreReviewSince is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRestoreReviewSince requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRestoreReviewSince: %w", err)
+	}
+	return oldValue.RestoreReviewSince, nil
+}
+
+// ClearRestoreReviewSince clears the value of the "restore_review_since" field.
+func (m *OrgMutation) ClearRestoreReviewSince() {
+	m.restore_review_since = nil
+	m.clearedFields[org.FieldRestoreReviewSince] = struct{}{}
+}
+
+// RestoreReviewSinceCleared returns if the "restore_review_since" field was cleared in this mutation.
+func (m *OrgMutation) RestoreReviewSinceCleared() bool {
+	_, ok := m.clearedFields[org.FieldRestoreReviewSince]
+	return ok
+}
+
+// ResetRestoreReviewSince resets all changes to the "restore_review_since" field.
+func (m *OrgMutation) ResetRestoreReviewSince() {
+	m.restore_review_since = nil
+	delete(m.clearedFields, org.FieldRestoreReviewSince)
+}
+
 // Where appends a list predicates to the OrgMutation builder.
 func (m *OrgMutation) Where(ps ...predicate.Org) {
 	m.predicates = append(m.predicates, ps...)
@@ -22615,7 +22814,7 @@ func (m *OrgMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *OrgMutation) Fields() []string {
-	fields := make([]string, 0, 3)
+	fields := make([]string, 0, 4)
 	if m.name != nil {
 		fields = append(fields, org.FieldName)
 	}
@@ -22624,6 +22823,9 @@ func (m *OrgMutation) Fields() []string {
 	}
 	if m.created_at != nil {
 		fields = append(fields, org.FieldCreatedAt)
+	}
+	if m.restore_review_since != nil {
+		fields = append(fields, org.FieldRestoreReviewSince)
 	}
 	return fields
 }
@@ -22639,6 +22841,8 @@ func (m *OrgMutation) Field(name string) (ent.Value, bool) {
 		return m.Slug()
 	case org.FieldCreatedAt:
 		return m.CreatedAt()
+	case org.FieldRestoreReviewSince:
+		return m.RestoreReviewSince()
 	}
 	return nil, false
 }
@@ -22654,6 +22858,8 @@ func (m *OrgMutation) OldField(ctx context.Context, name string) (ent.Value, err
 		return m.OldSlug(ctx)
 	case org.FieldCreatedAt:
 		return m.OldCreatedAt(ctx)
+	case org.FieldRestoreReviewSince:
+		return m.OldRestoreReviewSince(ctx)
 	}
 	return nil, fmt.Errorf("unknown Org field %s", name)
 }
@@ -22684,6 +22890,13 @@ func (m *OrgMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetCreatedAt(v)
 		return nil
+	case org.FieldRestoreReviewSince:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRestoreReviewSince(v)
+		return nil
 	}
 	return fmt.Errorf("unknown Org field %s", name)
 }
@@ -22713,7 +22926,11 @@ func (m *OrgMutation) AddField(name string, value ent.Value) error {
 // ClearedFields returns all nullable fields that were cleared during this
 // mutation.
 func (m *OrgMutation) ClearedFields() []string {
-	return nil
+	var fields []string
+	if m.FieldCleared(org.FieldRestoreReviewSince) {
+		fields = append(fields, org.FieldRestoreReviewSince)
+	}
+	return fields
 }
 
 // FieldCleared returns a boolean indicating if a field with the given name was
@@ -22726,6 +22943,11 @@ func (m *OrgMutation) FieldCleared(name string) bool {
 // ClearField clears the value of the field with the given name. It returns an
 // error if the field is not defined in the schema.
 func (m *OrgMutation) ClearField(name string) error {
+	switch name {
+	case org.FieldRestoreReviewSince:
+		m.ClearRestoreReviewSince()
+		return nil
+	}
 	return fmt.Errorf("unknown Org nullable field %s", name)
 }
 
@@ -22741,6 +22963,9 @@ func (m *OrgMutation) ResetField(name string) error {
 		return nil
 	case org.FieldCreatedAt:
 		m.ResetCreatedAt()
+		return nil
+	case org.FieldRestoreReviewSince:
+		m.ResetRestoreReviewSince()
 		return nil
 	}
 	return fmt.Errorf("unknown Org field %s", name)

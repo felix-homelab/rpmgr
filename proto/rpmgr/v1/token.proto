@@ -38,6 +38,7 @@ service TokenService {
     option (rpmgr.v1.authz) = {
       permission: "org.read"
       resource_field: "org_id"
+      during_restore_review: true
     };
   }
 }
@@ -60,6 +61,9 @@ message APIToken {
   google.protobuf.Timestamp last_use_time = 7;
   // The address it was last used from.
   string last_use_ip = 8;
+  // When a restore suspended it; not set unless it is suspended (docs/10-operations.md, "Backup
+  // and restore").
+  google.protobuf.Timestamp suspend_time = 9;
 }
 
 // CreateAPITokenRequest names a token, its scopes and its lifetime.

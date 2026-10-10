@@ -966,7 +966,7 @@ const file_rpmgr_v1_enrollment_proto_rawDesc = "" +
 	"\tAgentRole\x12\x1a\n" +
 	"\x16AGENT_ROLE_UNSPECIFIED\x10\x00\x12\x18\n" +
 	"\x14AGENT_ROLE_CONNECTOR\x10\x01\x12\x16\n" +
-	"\x12AGENT_ROLE_GATEWAY\x10\x022\xde\x05\n" +
+	"\x12AGENT_ROLE_GATEWAY\x10\x022\xe0\x05\n" +
 	"\x11EnrollmentService\x12\x8a\x01\n" +
 	"\x15CreateEnrollmentToken\x12&.rpmgr.v1.CreateEnrollmentTokenRequest\x1a'.rpmgr.v1.CreateEnrollmentTokenResponse\" \x8a\xb5\x18\x1c\n" +
 	"\x10connectors.write\x12\x06org_id\x18\x01\x12\xa7\x01\n" +
@@ -976,9 +976,9 @@ const file_rpmgr_v1_enrollment_proto_rawDesc = "" +
 	"\x14ListEnrollmentTokens\x12%.rpmgr.v1.ListEnrollmentTokensRequest\x1a&.rpmgr.v1.ListEnrollmentTokensResponse\"\x19\x8a\xb5\x18\x12\n" +
 	"\borg.read\x12\x06org_id\x90\x02\x01\x12w\n" +
 	"\x11GetInstallCommand\x12\".rpmgr.v1.GetInstallCommandRequest\x1a#.rpmgr.v1.GetInstallCommandResponse\"\x19\x8a\xb5\x18\x12\n" +
-	"\borg.read\x12\x06org_id\x90\x02\x01\x12\x95\x01\n" +
-	"\x15RevokeEnrollmentToken\x12&.rpmgr.v1.RevokeEnrollmentTokenRequest\x1a'.rpmgr.v1.RevokeEnrollmentTokenResponse\"+\x8a\xb5\x18'\n" +
-	"\x10connectors.write\x12\x13enrollment_token_idB5Z3github.com/felix-homelab/rpmgr/gen/rpmgr/v1;rpmgrv1b\x06proto3"
+	"\borg.read\x12\x06org_id\x90\x02\x01\x12\x97\x01\n" +
+	"\x15RevokeEnrollmentToken\x12&.rpmgr.v1.RevokeEnrollmentTokenRequest\x1a'.rpmgr.v1.RevokeEnrollmentTokenResponse\"-\x8a\xb5\x18)\n" +
+	"\x10connectors.write\x12\x13enrollment_token_id(\x01B5Z3github.com/felix-homelab/rpmgr/gen/rpmgr/v1;rpmgrv1b\x06proto3"
 
 var (
 	file_rpmgr_v1_enrollment_proto_rawDescOnce sync.Once

@@ -106,6 +106,18 @@ func StoreOperatorsMayEnroll(db *store.DB, sys context.Context) func(context.Con
 	}
 }
 
+// StoreRestoreReview reads whether an org, or the instance, is in restore review from db.
+func StoreRestoreReview(db *store.DB, sys context.Context) func(context.Context, string) (bool, error) {
+	return func(_ context.Context, orgID string) (bool, error) {
+		if orgID == "" {
+			inst, err := db.ReadClient().Instance.Get(sys, 1)
+			return err == nil && inst.RestoreReviewSince != nil, err
+		}
+		o, err := db.ReadClient().Org.Get(sys, orgID)
+		return err == nil && o.RestoreReviewSince != nil, err
+	}
+}
+
 // StoreRequireMFA reads an org's policy that its members sign in with a second factor from the
 // store, under sys.
 func StoreRequireMFA(db *store.DB, sys context.Context) func(context.Context, string) (bool, error) {

@@ -124,6 +124,11 @@ func StepUpAt(v time.Time) predicate.APIToken {
 	return predicate.APIToken(sql.FieldEQ(FieldStepUpAt, v))
 }
 
+// SuspendedAt applies equality check predicate on the "suspended_at" field. It's identical to SuspendedAtEQ.
+func SuspendedAt(v time.Time) predicate.APIToken {
+	return predicate.APIToken(sql.FieldEQ(FieldSuspendedAt, v))
+}
+
 // OrgIDEQ applies the EQ predicate on the "org_id" field.
 func OrgIDEQ(v string) predicate.APIToken {
 	return predicate.APIToken(sql.FieldEQ(FieldOrgID, v))
@@ -757,6 +762,56 @@ func StepUpAtIsNil() predicate.APIToken {
 // StepUpAtNotNil applies the NotNil predicate on the "step_up_at" field.
 func StepUpAtNotNil() predicate.APIToken {
 	return predicate.APIToken(sql.FieldNotNull(FieldStepUpAt))
+}
+
+// SuspendedAtEQ applies the EQ predicate on the "suspended_at" field.
+func SuspendedAtEQ(v time.Time) predicate.APIToken {
+	return predicate.APIToken(sql.FieldEQ(FieldSuspendedAt, v))
+}
+
+// SuspendedAtNEQ applies the NEQ predicate on the "suspended_at" field.
+func SuspendedAtNEQ(v time.Time) predicate.APIToken {
+	return predicate.APIToken(sql.FieldNEQ(FieldSuspendedAt, v))
+}
+
+// SuspendedAtIn applies the In predicate on the "suspended_at" field.
+func SuspendedAtIn(vs ...time.Time) predicate.APIToken {
+	return predicate.APIToken(sql.FieldIn(FieldSuspendedAt, vs...))
+}
+
+// SuspendedAtNotIn applies the NotIn predicate on the "suspended_at" field.
+func SuspendedAtNotIn(vs ...time.Time) predicate.APIToken {
+	return predicate.APIToken(sql.FieldNotIn(FieldSuspendedAt, vs...))
+}
+
+// SuspendedAtGT applies the GT predicate on the "suspended_at" field.
+func SuspendedAtGT(v time.Time) predicate.APIToken {
+	return predicate.APIToken(sql.FieldGT(FieldSuspendedAt, v))
+}
+
+// SuspendedAtGTE applies the GTE predicate on the "suspended_at" field.
+func SuspendedAtGTE(v time.Time) predicate.APIToken {
+	return predicate.APIToken(sql.FieldGTE(FieldSuspendedAt, v))
+}
+
+// SuspendedAtLT applies the LT predicate on the "suspended_at" field.
+func SuspendedAtLT(v time.Time) predicate.APIToken {
+	return predicate.APIToken(sql.FieldLT(FieldSuspendedAt, v))
+}
+
+// SuspendedAtLTE applies the LTE predicate on the "suspended_at" field.
+func SuspendedAtLTE(v time.Time) predicate.APIToken {
+	return predicate.APIToken(sql.FieldLTE(FieldSuspendedAt, v))
+}
+
+// SuspendedAtIsNil applies the IsNil predicate on the "suspended_at" field.
+func SuspendedAtIsNil() predicate.APIToken {
+	return predicate.APIToken(sql.FieldIsNull(FieldSuspendedAt))
+}
+
+// SuspendedAtNotNil applies the NotNil predicate on the "suspended_at" field.
+func SuspendedAtNotNil() predicate.APIToken {
+	return predicate.APIToken(sql.FieldNotNull(FieldSuspendedAt))
 }
 
 // And groups predicates with the AND operator between them.

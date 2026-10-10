@@ -115,6 +115,13 @@ func (u *User) GetMe(ctx context.Context, _ *connect.Request[rpmgrv1.GetMeReques
 	for _, m := range ms {
 		out.Memberships = append(out.Memberships, &rpmgrv1.Membership{OrgId: m.OrgID, Role: string(m.Role)})
 	}
+	since, err := u.MFA.RestoreReview()
+	if err != nil {
+		return nil, err
+	}
+	if since != nil {
+		out.RestoreReviewTime = timestamppb.New(*since)
+	}
 	return connect.NewResponse(out), nil
 }
 

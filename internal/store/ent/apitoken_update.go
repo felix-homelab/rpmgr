@@ -122,6 +122,26 @@ func (_u *APITokenUpdate) ClearStepUpAt() *APITokenUpdate {
 	return _u
 }
 
+// SetSuspendedAt sets the "suspended_at" field.
+func (_u *APITokenUpdate) SetSuspendedAt(v time.Time) *APITokenUpdate {
+	_u.mutation.SetSuspendedAt(v)
+	return _u
+}
+
+// SetNillableSuspendedAt sets the "suspended_at" field if the given value is not nil.
+func (_u *APITokenUpdate) SetNillableSuspendedAt(v *time.Time) *APITokenUpdate {
+	if v != nil {
+		_u.SetSuspendedAt(*v)
+	}
+	return _u
+}
+
+// ClearSuspendedAt clears the value of the "suspended_at" field.
+func (_u *APITokenUpdate) ClearSuspendedAt() *APITokenUpdate {
+	_u.mutation.ClearSuspendedAt()
+	return _u
+}
+
 // Mutation returns the APITokenMutation object of the builder.
 func (_u *APITokenUpdate) Mutation() *APITokenMutation {
 	return _u.mutation
@@ -207,6 +227,12 @@ func (_u *APITokenUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if _u.mutation.StepUpAtCleared() {
 		_spec.ClearField(apitoken.FieldStepUpAt, field.TypeTime)
+	}
+	if value, ok := _u.mutation.SuspendedAt(); ok {
+		_spec.SetField(apitoken.FieldSuspendedAt, field.TypeTime, value)
+	}
+	if _u.mutation.SuspendedAtCleared() {
+		_spec.ClearField(apitoken.FieldSuspendedAt, field.TypeTime)
 	}
 	if _node, err = sqlgraph.UpdateNodes(ctx, _u.driver, _spec); err != nil {
 		if _, ok := err.(*sqlgraph.NotFoundError); ok {
@@ -319,6 +345,26 @@ func (_u *APITokenUpdateOne) SetNillableStepUpAt(v *time.Time) *APITokenUpdateOn
 // ClearStepUpAt clears the value of the "step_up_at" field.
 func (_u *APITokenUpdateOne) ClearStepUpAt() *APITokenUpdateOne {
 	_u.mutation.ClearStepUpAt()
+	return _u
+}
+
+// SetSuspendedAt sets the "suspended_at" field.
+func (_u *APITokenUpdateOne) SetSuspendedAt(v time.Time) *APITokenUpdateOne {
+	_u.mutation.SetSuspendedAt(v)
+	return _u
+}
+
+// SetNillableSuspendedAt sets the "suspended_at" field if the given value is not nil.
+func (_u *APITokenUpdateOne) SetNillableSuspendedAt(v *time.Time) *APITokenUpdateOne {
+	if v != nil {
+		_u.SetSuspendedAt(*v)
+	}
+	return _u
+}
+
+// ClearSuspendedAt clears the value of the "suspended_at" field.
+func (_u *APITokenUpdateOne) ClearSuspendedAt() *APITokenUpdateOne {
+	_u.mutation.ClearSuspendedAt()
 	return _u
 }
 
@@ -437,6 +483,12 @@ func (_u *APITokenUpdateOne) sqlSave(ctx context.Context) (_node *APIToken, err 
 	}
 	if _u.mutation.StepUpAtCleared() {
 		_spec.ClearField(apitoken.FieldStepUpAt, field.TypeTime)
+	}
+	if value, ok := _u.mutation.SuspendedAt(); ok {
+		_spec.SetField(apitoken.FieldSuspendedAt, field.TypeTime, value)
+	}
+	if _u.mutation.SuspendedAtCleared() {
+		_spec.ClearField(apitoken.FieldSuspendedAt, field.TypeTime)
 	}
 	_node = &APIToken{config: _u.config}
 	_spec.Assign = _node.assignValues

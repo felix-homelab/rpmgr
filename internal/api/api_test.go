@@ -573,3 +573,50 @@ func TestServer_RequireMFA(t *testing.T) {
 		}
 	}
 }
+
+// TestServer_RestoreReview: in an org in restore review, a method that changes state is refused
+// with RESTORE_REVIEW unless it stays available during the review, and a read passes; an instance
+// method is refused while the instance is in review; a review that cannot be read refuses.
+func TestServer_RestoreReview(t *testing.T) {
+	inReview, open, broken := ids.New("org"), ids.New("org"), ids.New("org")
+	roles := map[string]string{inReview: authz.RoleOwner, open: authz.RoleOwner, broken: authz.RoleOwner}
+	sd := testFile(t, "review",
+		method{name: "Write", authz: &rpmgrv1.Authz{Permission: authz.PermRoutesWrite, ResourceField: "org_id"}},
+		method{name: "Revoke", authz: &rpmgrv1.Authz{Permission: authz.PermMembersWrite, ResourceField: "org_id", DuringRestoreReview: true}},
+		method{name: "Read", authz: &rpmgrv1.Authz{Permission: authz.PermOrgRead, ResourceField: "org_id"}, readOnly: true},
+		method{name: "Instance", authz: &rpmgrv1.Authz{Permission: authz.PermInstanceAdmin}},
+		method{name: "Me", authz: &rpmgrv1.Authz{Permission: authz.PermAuthenticated}})
+	srv, err := api.New(api.Options{DB: storetest.Migrated(t, store.SQLite), Sys: storetest.SystemCtx(t), Sealer: testSealer(t),
+		Authenticator:      bearer{"admin": {Principal: authz.Principal{UserID: "usr_a", Memberships: roles}, InstanceAdmin: true}},
+		Resolver:           func(context.Context, string) (string, error) { return "", api.ErrNotFound },
+		OperatorsMayEnroll: func(context.Context, string) (bool, error) { return false, nil },
+		RestoreReview: func(_ context.Context, org string) (bool, error) {
+			if org == broken {
+				return false, errors.New("the database is gone")
+			}
+			return org == inReview || org == "", nil
+		}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	mux := http.NewServeMux()
+	if err := srv.Mount(mux, sd, handlers(sd)); err != nil {
+		t.Fatal(err)
+	}
+	hs := httptest.NewServer(mux)
+	t.Cleanup(hs.Close)
+	for _, c := range []call{
+		{token: "admin", method: "Write", orgID: inReview, wantCode: connect.CodeFailedPrecondition, wantError: "restore review"},
+		{token: "admin", method: "Revoke", orgID: inReview, wantOrg: inReview},
+		{token: "admin", method: "Read", orgID: inReview, wantOrg: inReview},
+		{token: "admin", method: "Write", orgID: open, wantOrg: open},
+		{token: "admin", method: "Write", orgID: broken, wantCode: connect.CodeInternal},
+		{token: "admin", method: "Instance", wantCode: connect.CodeFailedPrecondition, wantError: "restore review"},
+		{token: "admin", method: "Me"},
+	} {
+		code, org, err := invoke(hs.URL, sd, c)
+		if code != c.wantCode || c.wantCode == 0 && org != c.wantOrg || c.wantError != "" && !strings.Contains(err.Error(), c.wantError) {
+			t.Errorf("%s %s: %v %q %v", c.method, c.orgID, code, org, err)
+		}
+	}
+}

@@ -44,7 +44,10 @@ type APIToken struct {
 	// When it was last used, to the minute; not set if never.
 	LastUseTime *timestamppb.Timestamp `protobuf:"bytes,7,opt,name=last_use_time,json=lastUseTime,proto3" json:"last_use_time,omitempty"`
 	// The address it was last used from.
-	LastUseIp     string `protobuf:"bytes,8,opt,name=last_use_ip,json=lastUseIp,proto3" json:"last_use_ip,omitempty"`
+	LastUseIp string `protobuf:"bytes,8,opt,name=last_use_ip,json=lastUseIp,proto3" json:"last_use_ip,omitempty"`
+	// When a restore suspended it; not set unless it is suspended (docs/10-operations.md, "Backup
+	// and restore").
+	SuspendTime   *timestamppb.Timestamp `protobuf:"bytes,9,opt,name=suspend_time,json=suspendTime,proto3" json:"suspend_time,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -133,6 +136,13 @@ func (x *APIToken) GetLastUseIp() string {
 		return x.LastUseIp
 	}
 	return ""
+}
+
+func (x *APIToken) GetSuspendTime() *timestamppb.Timestamp {
+	if x != nil {
+		return x.SuspendTime
+	}
+	return nil
 }
 
 // CreateAPITokenRequest names a token, its scopes and its lifetime.
@@ -460,7 +470,7 @@ var File_rpmgr_v1_token_proto protoreflect.FileDescriptor
 
 const file_rpmgr_v1_token_proto_rawDesc = "" +
 	"\n" +
-	"\x14rpmgr/v1/token.proto\x12\brpmgr.v1\x1a\x1bbuf/validate/validate.proto\x1a\x1egoogle/protobuf/duration.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x16rpmgr/v1/options.proto\"\xb8\x02\n" +
+	"\x14rpmgr/v1/token.proto\x12\brpmgr.v1\x1a\x1bbuf/validate/validate.proto\x1a\x1egoogle/protobuf/duration.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x16rpmgr/v1/options.proto\"\xf7\x02\n" +
 	"\bAPIToken\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12\x16\n" +
@@ -471,7 +481,8 @@ const file_rpmgr_v1_token_proto_rawDesc = "" +
 	"\vexpire_time\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\n" +
 	"expireTime\x12>\n" +
 	"\rlast_use_time\x18\a \x01(\v2\x1a.google.protobuf.TimestampR\vlastUseTime\x12\x1e\n" +
-	"\vlast_use_ip\x18\b \x01(\tR\tlastUseIp\"\xe3\x01\n" +
+	"\vlast_use_ip\x18\b \x01(\tR\tlastUseIp\x12=\n" +
+	"\fsuspend_time\x18\t \x01(\v2\x1a.google.protobuf.TimestampR\vsuspendTime\"\xe3\x01\n" +
 	"\x15CreateAPITokenRequest\x12\x1e\n" +
 	"\x06org_id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x05orgId\x12\x1d\n" +
 	"\x04name\x18\x02 \x01(\tB\t\xbaH\x06r\x04\x10\x01\x18dR\x04name\x12$\n" +
@@ -490,14 +501,14 @@ const file_rpmgr_v1_token_proto_rawDesc = "" +
 	"\x15RevokeAPITokenRequest\x12\x1e\n" +
 	"\x06org_id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x05orgId\x12\"\n" +
 	"\btoken_id\x18\x02 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\atokenId\"\x18\n" +
-	"\x16RevokeAPITokenResponse2\xd7\x02\n" +
+	"\x16RevokeAPITokenResponse2\xd9\x02\n" +
 	"\fTokenService\x12m\n" +
 	"\x0eCreateAPIToken\x12\x1f.rpmgr.v1.CreateAPITokenRequest\x1a .rpmgr.v1.CreateAPITokenResponse\"\x18\x8a\xb5\x18\x14\n" +
 	"\borg.read\x12\x06org_id\x18\x01\x12k\n" +
 	"\rListAPITokens\x12\x1e.rpmgr.v1.ListAPITokensRequest\x1a\x1f.rpmgr.v1.ListAPITokensResponse\"\x19\x8a\xb5\x18\x12\n" +
-	"\borg.read\x12\x06org_id\x90\x02\x01\x12k\n" +
-	"\x0eRevokeAPIToken\x12\x1f.rpmgr.v1.RevokeAPITokenRequest\x1a .rpmgr.v1.RevokeAPITokenResponse\"\x16\x8a\xb5\x18\x12\n" +
-	"\borg.read\x12\x06org_idB5Z3github.com/felix-homelab/rpmgr/gen/rpmgr/v1;rpmgrv1b\x06proto3"
+	"\borg.read\x12\x06org_id\x90\x02\x01\x12m\n" +
+	"\x0eRevokeAPIToken\x12\x1f.rpmgr.v1.RevokeAPITokenRequest\x1a .rpmgr.v1.RevokeAPITokenResponse\"\x18\x8a\xb5\x18\x14\n" +
+	"\borg.read\x12\x06org_id(\x01B5Z3github.com/felix-homelab/rpmgr/gen/rpmgr/v1;rpmgrv1b\x06proto3"
 
 var (
 	file_rpmgr_v1_token_proto_rawDescOnce sync.Once
@@ -524,23 +535,24 @@ var file_rpmgr_v1_token_proto_goTypes = []any{
 	(*durationpb.Duration)(nil),    // 8: google.protobuf.Duration
 }
 var file_rpmgr_v1_token_proto_depIdxs = []int32{
-	7, // 0: rpmgr.v1.APIToken.create_time:type_name -> google.protobuf.Timestamp
-	7, // 1: rpmgr.v1.APIToken.expire_time:type_name -> google.protobuf.Timestamp
-	7, // 2: rpmgr.v1.APIToken.last_use_time:type_name -> google.protobuf.Timestamp
-	8, // 3: rpmgr.v1.CreateAPITokenRequest.ttl:type_name -> google.protobuf.Duration
-	0, // 4: rpmgr.v1.CreateAPITokenResponse.api_token:type_name -> rpmgr.v1.APIToken
-	0, // 5: rpmgr.v1.ListAPITokensResponse.api_tokens:type_name -> rpmgr.v1.APIToken
-	1, // 6: rpmgr.v1.TokenService.CreateAPIToken:input_type -> rpmgr.v1.CreateAPITokenRequest
-	3, // 7: rpmgr.v1.TokenService.ListAPITokens:input_type -> rpmgr.v1.ListAPITokensRequest
-	5, // 8: rpmgr.v1.TokenService.RevokeAPIToken:input_type -> rpmgr.v1.RevokeAPITokenRequest
-	2, // 9: rpmgr.v1.TokenService.CreateAPIToken:output_type -> rpmgr.v1.CreateAPITokenResponse
-	4, // 10: rpmgr.v1.TokenService.ListAPITokens:output_type -> rpmgr.v1.ListAPITokensResponse
-	6, // 11: rpmgr.v1.TokenService.RevokeAPIToken:output_type -> rpmgr.v1.RevokeAPITokenResponse
-	9, // [9:12] is the sub-list for method output_type
-	6, // [6:9] is the sub-list for method input_type
-	6, // [6:6] is the sub-list for extension type_name
-	6, // [6:6] is the sub-list for extension extendee
-	0, // [0:6] is the sub-list for field type_name
+	7,  // 0: rpmgr.v1.APIToken.create_time:type_name -> google.protobuf.Timestamp
+	7,  // 1: rpmgr.v1.APIToken.expire_time:type_name -> google.protobuf.Timestamp
+	7,  // 2: rpmgr.v1.APIToken.last_use_time:type_name -> google.protobuf.Timestamp
+	7,  // 3: rpmgr.v1.APIToken.suspend_time:type_name -> google.protobuf.Timestamp
+	8,  // 4: rpmgr.v1.CreateAPITokenRequest.ttl:type_name -> google.protobuf.Duration
+	0,  // 5: rpmgr.v1.CreateAPITokenResponse.api_token:type_name -> rpmgr.v1.APIToken
+	0,  // 6: rpmgr.v1.ListAPITokensResponse.api_tokens:type_name -> rpmgr.v1.APIToken
+	1,  // 7: rpmgr.v1.TokenService.CreateAPIToken:input_type -> rpmgr.v1.CreateAPITokenRequest
+	3,  // 8: rpmgr.v1.TokenService.ListAPITokens:input_type -> rpmgr.v1.ListAPITokensRequest
+	5,  // 9: rpmgr.v1.TokenService.RevokeAPIToken:input_type -> rpmgr.v1.RevokeAPITokenRequest
+	2,  // 10: rpmgr.v1.TokenService.CreateAPIToken:output_type -> rpmgr.v1.CreateAPITokenResponse
+	4,  // 11: rpmgr.v1.TokenService.ListAPITokens:output_type -> rpmgr.v1.ListAPITokensResponse
+	6,  // 12: rpmgr.v1.TokenService.RevokeAPIToken:output_type -> rpmgr.v1.RevokeAPITokenResponse
+	10, // [10:13] is the sub-list for method output_type
+	7,  // [7:10] is the sub-list for method input_type
+	7,  // [7:7] is the sub-list for extension type_name
+	7,  // [7:7] is the sub-list for extension extendee
+	0,  // [0:7] is the sub-list for field type_name
 }
 
 func init() { file_rpmgr_v1_token_proto_init() }

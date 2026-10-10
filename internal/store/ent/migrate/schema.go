@@ -67,6 +67,7 @@ var (
 		{Name: "last_used_ip", Type: field.TypeString, Nullable: true, Size: 64},
 		{Name: "revoked_at", Type: field.TypeTime, Nullable: true},
 		{Name: "step_up_at", Type: field.TypeTime, Nullable: true},
+		{Name: "suspended_at", Type: field.TypeTime, Nullable: true},
 	}
 	// APITokensTable holds the schema information for the "api_tokens" table.
 	APITokensTable = &schema.Table{
@@ -639,6 +640,7 @@ var (
 		{Name: "trust_domain", Type: field.TypeString},
 		{Name: "db_epoch", Type: field.TypeString},
 		{Name: "created_at", Type: field.TypeTime},
+		{Name: "restore_review_since", Type: field.TypeTime, Nullable: true},
 	}
 	// InstanceTable holds the schema information for the "instance" table.
 	InstanceTable = &schema.Table{
@@ -800,6 +802,7 @@ var (
 		{Name: "name", Type: field.TypeString},
 		{Name: "slug", Type: field.TypeString, Unique: true},
 		{Name: "created_at", Type: field.TypeTime},
+		{Name: "restore_review_since", Type: field.TypeTime, Nullable: true},
 	}
 	// OrgsTable holds the schema information for the "orgs" table.
 	OrgsTable = &schema.Table{

@@ -72,8 +72,11 @@ type Options struct {
 	ApplyStatus ApplyStatusFunc
 	// TokenStepUp returns a personal API token's last step-up (D63); nil gives tokens none.
 	TokenStepUp func(ctx context.Context, tokenID string) (time.Time, error)
-	Now         func() time.Time
-	Logger      *slog.Logger
+	// RestoreReview reports whether an org, or for "" the instance, is in restore review, which
+	// makes it read-only; StoreRestoreReview is the controller's. Nil is never in review.
+	RestoreReview func(ctx context.Context, orgID string) (bool, error)
+	Now           func() time.Time
+	Logger        *slog.Logger
 }
 
 // Server holds the interceptor every method of the public API goes through.
