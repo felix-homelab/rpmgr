@@ -342,11 +342,12 @@ internal/secret/           secret.Value, envelope encryption, KEK providers
 internal/dns/              DNS job, desired-record compiler, Provider interface, certmagic adapter
 internal/dns/cloudflare/   Cloudflare REST client (Provider implementation)
 internal/telemetry/        slog setup, metrics, tracing
+internal/webui/            the embedded web UI (the built SPA or a placeholder), served with its CSP
 proto/rpmgr/v1/              public API (.proto)
 proto/rpmgr/agent/v1/        agent protocol (.proto)
 proto/rpmgr/tunnel/v1/       data-session protocol (.proto)
 gen/                       Go code generated from proto/ (committed; checked for drift)
-web/                       Vite + React SPA (embedded via embed.FS)
+web/                       Vite + React SPA (built into internal/webui, embedded via embed.FS)
 docs/                      these documents
 ```
 

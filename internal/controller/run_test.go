@@ -209,6 +209,18 @@ func TestRun(t *testing.T) {
 	if v := resp.Header.Get("Strict-Transport-Security"); v != "max-age=31536000" {
 		t.Fatalf("HSTS with certificate files: %q", v)
 	}
+	// The UI on every other path, with its CSP; an unknown API service is not the UI.
+	for path, want := range map[string]int{"/": http.StatusOK, "/routes/rt_1": http.StatusOK, "/rpmgr.v1.NoService/Get": http.StatusNotFound} {
+		resp, err := r.client.Get(r.url + path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_ = resp.Body.Close()
+		if resp.StatusCode != want || !strings.Contains(resp.Header.Get("Content-Security-Policy"), "frame-ancestors 'none'") ||
+			resp.Header.Get("Strict-Transport-Security") == "" {
+			t.Fatalf("%s: %s %v", path, resp.Status, resp.Header)
+		}
+	}
 
 	// Enrollment through the agent endpoint on the same port; the token is written alongside the
 	// running controller, as admin commands may.

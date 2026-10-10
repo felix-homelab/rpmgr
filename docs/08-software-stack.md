@@ -97,7 +97,7 @@ flowchart TB
 | Choice | Rationale | Rejected |
 |---|---|---|
 | **Vite + React + TypeScript**, a single-page app embedded with `embed.FS` ([ADR-0014](adr/0014-vite-react-spa.md)) | The UI is a static SPA served by the controller; nothing needs server rendering | Next.js static export: `output: 'export'` disables server rendering, middleware and API routes, so the framework adds build complexity without its main features |
-| **TanStack Router + TanStack Query**, with **connect-query** for generated hooks | Type-safe routes, caching, invalidation driven by `WatchEvents` [V VB-06] | Hand-written fetch wrappers |
+| **TanStack Router + TanStack Query**, with **connect-query** for generated hooks | Type-safe routes, caching, invalidation driven by `WatchEvents`; connect-query works with the generated descriptors (VB-06, resolved in [13](13-roadmap.md#verification-backlog)) | Hand-written fetch wrappers |
 | **shadcn/ui + Tailwind CSS** (Radix primitives) | Accessible components, owned in the repo | Heavy component frameworks |
 | **react-hook-form** with **protovalidate-es** as its resolver | Fast feedback in forms from the same protovalidate rules the server enforces, so client and server cannot drift; the server's result remains authoritative [V VB-16] | Hand-written zod schemas: a second copy of the rules; kept only as the fallback if VB-16 fails |
 | **Recharts**, through the shadcn/ui chart components | Traffic and latency charts in the same component system as the rest of the UI | — |
@@ -105,6 +105,9 @@ flowchart TB
 | **xterm.js** (Phase 3 terminal) | Standard browser terminal | — |
 | **i18next**, English as the source language | Mature and widely used | — |
 | Unit tests with Vitest, end-to-end tests with Playwright | Standard for Vite projects ([12](12-testing-and-quality.md#test-strategy)) | — |
+| **Protobuf-ES** (`protoc-gen-es` through buf) for the TypeScript API code, generated at build time | One generator for messages and service descriptors, which connect-query uses; generated code is not committed ([09](09-web-ui.md#frontend-architecture)) | A second generated client per service |
+| **TypeScript 6.0**, built with Node 24 (`web/.nvmrc`) and npm with a lockfile | typescript-eslint 8.71 supports TypeScript up to 6.0 [F typescript-eslint 8.71.1 `package.json` peerDependencies `typescript: >=4.8.4 <6.1.0`, npm registry, retrieved 2026-10-09]; TypeScript 7 follows once it does | — |
+| **ESLint** with typescript-eslint and the React hooks rules | Bans the constructs 09 forbids: `dangerouslySetInnerHTML`, `innerHTML`, browser storage, `eval` | — |
 
 ## Build, packaging, delivery
 
