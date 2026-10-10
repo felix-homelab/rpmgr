@@ -1,0 +1,201 @@
+// SPDX-License-Identifier: Apache-2.0
+
+syntax = "proto3";
+
+package rpmgr.v1;
+
+import "buf/validate/validate.proto";
+import "google/protobuf/timestamp.proto";
+import "rpmgr/v1/common.proto";
+import "rpmgr/v1/options.proto";
+import "rpmgr/v1/status.proto";
+
+option go_package = "github.com/felix-homelab/rpmgr/gen/rpmgr/v1;rpmgrv1";
+
+// CertificateService is an org's route certificates (docs/07-api.md, "Services";
+// docs/04-security.md, "Controller certificates"): those ACME obtains for http route hostnames, and
+// those uploaded for routes in certificate mode.
+service CertificateService {
+  // UploadCertificate stores a certificate chain with its key, which the controller keeps under
+  // the KEK and never returns.
+  rpc UploadCertificate(UploadCertificateRequest) returns (UploadCertificateResponse) {
+    option (rpmgr.v1.authz) = {
+      permission: "infrastructure.write"
+      resource_field: "org_id"
+    };
+  }
+  // GetCertificate returns a certificate, without its key.
+  rpc GetCertificate(GetCertificateRequest) returns (GetCertificateResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+    option (rpmgr.v1.authz) = {
+      permission: "org.read"
+      resource_field: "certificate_id"
+    };
+  }
+  // ListCertificates lists an org's certificates by ID.
+  rpc ListCertificates(ListCertificatesRequest) returns (ListCertificatesResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+    option (rpmgr.v1.authz) = {
+      permission: "org.read"
+      resource_field: "org_id"
+    };
+  }
+  // RenewCertificate has the controller renew an ACME certificate now, or obtain it if it has none;
+  // the outcome shows in the certificate's validity, status and last_error once it is known.
+  rpc RenewCertificate(RenewCertificateRequest) returns (RenewCertificateResponse) {
+    option (rpmgr.v1.authz) = {
+      permission: "infrastructure.write"
+      resource_field: "certificate_id"
+    };
+  }
+  // DeleteCertificate deletes an uploaded certificate; refused while a route uses it, and for an
+  // ACME certificate, which the ACME job keeps.
+  rpc DeleteCertificate(DeleteCertificateRequest) returns (DeleteCertificateResponse) {
+    option (rpmgr.v1.authz) = {
+      permission: "infrastructure.write"
+      resource_field: "certificate_id"
+    };
+  }
+}
+
+// CertificateSource is where a certificate comes from.
+enum CertificateSource {
+  // Not set.
+  CERTIFICATE_SOURCE_UNSPECIFIED = 0;
+  // Obtained and renewed by ACME for one route hostname.
+  CERTIFICATE_SOURCE_ACME = 1;
+  // Uploaded.
+  CERTIFICATE_SOURCE_UPLOADED = 2;
+}
+
+// CertificateStatus is whether a certificate serves.
+enum CertificateStatus {
+  // Not set.
+  CERTIFICATE_STATUS_UNSPECIFIED = 0;
+  // ACME has not obtained it yet.
+  CERTIFICATE_STATUS_PENDING = 1;
+  // It has a chain and a key.
+  CERTIFICATE_STATUS_ACTIVE = 2;
+  // ACME could not obtain it; last_error says why.
+  CERTIFICATE_STATUS_FAILED = 3;
+}
+
+// Certificate is a route certificate as the API shows it: never its key.
+message Certificate {
+  // Its ID, crt_…
+  string id = 1;
+  // Where it comes from.
+  CertificateSource source = 2;
+  // The leaf's DNS names, normalised and sorted.
+  repeated string sans = 3;
+  // When the leaf becomes valid; not set before ACME obtained it.
+  google.protobuf.Timestamp not_before = 4;
+  // When the leaf expires; not set before ACME obtained it.
+  google.protobuf.Timestamp not_after = 5;
+  // The leaf's issuer.
+  string issuer = 6;
+  // Whether it serves.
+  CertificateStatus status = 7;
+  // ACME's last error; also on an active certificate whose renewal failed.
+  string last_error = 8;
+  // An uploaded certificate's http routes, which serve it.
+  repeated string route_ids = 9;
+  // When it was stored.
+  google.protobuf.Timestamp create_time = 10;
+  // Its version, for a delete's etag.
+  string etag = 11;
+}
+
+// UploadCertificateRequest uploads a certificate to an org (docs/04-security.md, "Uploaded route
+// certificates").
+message UploadCertificateRequest {
+  // The org.
+  string org_id = 1 [(buf.validate.field).string.min_len = 1];
+  // The PEM chain, leaf first, at most 10 certificates, each signed by the next.
+  string chain_pem = 2 [(buf.validate.field).string = {
+    min_len: 1
+    max_len: 65536
+  }];
+  // The leaf's PEM private key: ECDSA P-256 or P-384, or RSA of 2048 to 8192 bits.
+  string private_key_pem = 3 [
+    (rpmgr.v1.sensitive) = true,
+    (buf.validate.field).string = {
+      min_len: 1
+      max_len: 16384
+    }
+  ];
+  // Makes retries idempotent (docs/07-api.md, "Resource design").
+  string request_id = 4 [(buf.validate.field).string.max_len = 128];
+}
+
+// UploadCertificateResponse is the stored certificate.
+message UploadCertificateResponse {
+  // The certificate.
+  Certificate certificate = 1;
+  // The revision of the change.
+  Revision revision = 2;
+  // The apply status of the revision; with the request header Rpmgr-Wait-Applied, once it is
+  // final or the wait is over (docs/07-api.md, "Writes and apply status").
+  ApplyStatus apply_status = 3;
+}
+
+// GetCertificateRequest names a certificate.
+message GetCertificateRequest {
+  // The certificate's ID.
+  string certificate_id = 1 [(buf.validate.field).string.min_len = 1];
+}
+
+// GetCertificateResponse is the certificate.
+message GetCertificateResponse {
+  // The certificate.
+  Certificate certificate = 1;
+}
+
+// ListCertificatesRequest pages through an org's certificates.
+message ListCertificatesRequest {
+  // The org.
+  string org_id = 1 [(buf.validate.field).string.min_len = 1];
+  // At most this many, 50 if not set, 500 at most.
+  int32 page_size = 2;
+  // The page after the one that returned it.
+  string page_token = 3;
+}
+
+// ListCertificatesResponse is one page of certificates.
+message ListCertificatesResponse {
+  // The certificates.
+  repeated Certificate certificates = 1;
+  // The token of the next page; empty after the last.
+  string next_page_token = 2;
+}
+
+// RenewCertificateRequest names an ACME certificate.
+message RenewCertificateRequest {
+  // The certificate's ID.
+  string certificate_id = 1 [(buf.validate.field).string.min_len = 1];
+}
+
+// RenewCertificateResponse is the certificate as it is when the renewal starts.
+message RenewCertificateResponse {
+  // The certificate.
+  Certificate certificate = 1;
+  // Whether this request started the renewal; false while one runs already.
+  bool started = 2;
+}
+
+// DeleteCertificateRequest names an uploaded certificate.
+message DeleteCertificateRequest {
+  // The certificate's ID.
+  string certificate_id = 1 [(buf.validate.field).string.min_len = 1];
+  // The etag the caller read; empty skips the check.
+  string etag = 2;
+}
+
+// DeleteCertificateResponse is the revision of the deletion.
+message DeleteCertificateResponse {
+  // The revision of the change.
+  Revision revision = 1;
+  // The apply status of the revision; with the request header Rpmgr-Wait-Applied, once it is
+  // final or the wait is over (docs/07-api.md, "Writes and apply status").
+  ApplyStatus apply_status = 2;
+}

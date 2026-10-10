@@ -182,6 +182,8 @@ func Run(ctx context.Context, o RunOptions) error {
 	leases := lease.New(db, nodeID, o.Now)
 	acmeStore := acme.NewStorage(db, sys, sealer, leases, o.Now)
 	defer acmeStore.Close()
+	certManager := acme.NewManager(acme.ManagerOptions{DB: db, Sys: sys, Sealer: sealer, TrustedRoots: o.ACMERoots, Logger: o.Logger,
+		Storage: acme.NewChallengeStorage(acmeStore, sessions, acme.GatewaysServing(db, sys))})
 	var own *acme.Own
 	if cfg.TLS.CertFile == "" && !o.NoACME && acme.Eligible(public.Hostname()) {
 		if own, err = acme.NewOwn(acme.OwnOptions{DB: db, Sys: sys, Storage: acmeStore, Host: public.Hostname(),
@@ -274,6 +276,13 @@ func Run(ctx context.Context, o RunOptions) error {
 		}); err != nil {
 		return err
 	}
+	if err := apiServer.Mount(mux, rpmgrv1.File_rpmgr_v1_certificate_proto.Services().ByName("CertificateService"),
+		func(opts ...connect.HandlerOption) (string, http.Handler) {
+			return rpmgrv1connect.NewCertificateServiceHandler(&apisvc.Certificates{DB: db, API: apiServer, Sealer: sealer,
+				Renewer: certManager, Background: sys, Now: o.Now}, opts...)
+		}); err != nil {
+		return err
+	}
 	if err := apiServer.Mount(mux, rpmgrv1.File_rpmgr_v1_policy_proto.Services().ByName("PolicyService"),
 		func(opts ...connect.HandlerOption) (string, http.Handler) {
 			return rpmgrv1connect.NewPolicyServiceHandler(&apisvc.Policies{DB: db, API: apiServer, Sys: sys}, opts...)
@@ -334,8 +343,6 @@ func Run(ctx context.Context, o RunOptions) error {
 	go func() { sessions.Run(run); close(sessionsDone) }()
 	caOpts := CAOptions{DB: db, CA: ca, Sealer: sealer, Leases: leases, Now: o.Now, Logger: o.Logger}
 	go leases.Run(sys, CARotation(caOpts), func(err error) { o.Logger.Warn("CA rotation job", "error", err) })
-	certManager := acme.NewManager(acme.ManagerOptions{DB: db, Sys: sys, Sealer: sealer, TrustedRoots: o.ACMERoots, Logger: o.Logger,
-		Storage: acme.NewChallengeStorage(acmeStore, sessions, acme.GatewaysServing(db, sys))})
 	go leases.Run(sys, certManager.Job(acme.JobEvery), func(err error) { o.Logger.Warn("ACME job", "error", err) })
 	go leases.Run(sys, apiServer.PruneJob(api.PruneEvery), func(err error) { o.Logger.Warn("request_id pruning job", "error", err) })
 	go leases.Run(sys, DomainCheckJob(DomainCheckOptions{DB: db, TXT: &domains.TXTVerifier{},
