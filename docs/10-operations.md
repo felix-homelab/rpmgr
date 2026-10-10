@@ -482,14 +482,14 @@ ID); there are never per-connection or per-client-IP labels.
 |---|---|---|---|
 | `rpmgr_gateway_sessions{transport}` | gauge | gateway | Data sessions from connectors, by transport (`quic`, `h2`, `wss`) |
 | `rpmgr_gateway_streams_open{route,transport}` | gauge | gateway | Open user streams |
-| `rpmgr_route_connections_total{route,result}` | counter | gateway | User connections by `StreamResult` code name ([03](03-connections.md#framing)) |
+| `rpmgr_route_connections_total{route,result}` | counter | gateway | User connections, and streams of HTTP routes, by `StreamResult` code name in lower case ([03](03-connections.md#framing)), or `no_session`, `draining`, `timeout` or `error` without one |
 | `rpmgr_route_bytes_total{route,direction}` | counter | gateway | Bytes, `direction` = `in` (public → service) or `out` |
-| `rpmgr_route_connection_setup_seconds{route}` | histogram | gateway | Accept → `StreamResult` |
-| `rpmgr_http_requests_total{route,code}` | counter | gateway | HTTP routes |
+| `rpmgr_route_connection_setup_seconds{route}` | histogram | gateway | Asking a connector for a stream → its `StreamResult` |
+| `rpmgr_http_requests_total{route,code}` | counter | gateway | Requests of HTTP routes by status, the route's refusals included |
 | `rpmgr_udp_oversize_total{route}` | counter | gateway, connector | UDP payloads too large for a datagram, sent on the flow stream ([03](03-connections.md#udp-routes)) |
 | `rpmgr_udp_datagrams_dropped_total{route,reason}` | counter | gateway, connector | Drops: queue full, flow limit, unknown flow, policy |
-| `rpmgr_connector_session_rtt_seconds{gateway,transport}` | gauge | connector | Smoothed RTT per data session |
-| `rpmgr_connector_target_dial_seconds{route}` | histogram | connector | Upstream dial time |
+| `rpmgr_connector_session_rtt_seconds{gateway,transport}` | gauge | connector | Smoothed RTT, the lowest of the data sessions to a gateway over a transport: QUIC's own estimate, or for h2 from the session `Ping` and `Pong` ([03](03-connections.md#timeouts-keepalive-and-backoff)) |
+| `rpmgr_connector_target_dial_seconds{route}` | histogram | connector | Upstream dial time; dials the local policy refuses are not timed |
 | `rpmgr_connector_policy_denied_total{route}` | counter | connector | Dials refused by local policy |
 | `rpmgr_agent_applied_revision` | gauge | agent | Last applied revision `seq` |
 | `rpmgr_agent_apply_status{agent,status}` | gauge | controller | 1 for the current status (`pending`, `applied`, `rejected`, `apply_timeout`) |

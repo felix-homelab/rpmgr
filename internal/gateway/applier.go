@@ -386,6 +386,11 @@ func (a *Applier) Apply(ctx context.Context, snap *agentv1.Snapshot, _ agent.Cha
 		s.Passthrough.SetRemovalDrain(removal)
 	}
 	a.assign.cur.Store(next)
+	keep := map[string]bool{}
+	for id := range next.routes {
+		keep[id] = true
+	}
+	s.Sessions.metrics().retain(keep)
 	var status []*agentv1.ResourceStatus
 	if s.TCP != nil {
 		status = append(status, s.TCP.Apply(tcp)...)

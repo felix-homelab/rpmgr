@@ -44,7 +44,7 @@ func (t *Targets) dialUDP(ctx context.Context, r Route, open *tunnelv1.StreamOpe
 		if tg.UnixPath != "" {
 			continue
 		}
-		conn, err := d.DialContext(ctx, "udp", tg.String())
+		conn, err := t.o.Metrics.dial(ctx, d, r.ID, "udp", tg.String(), isBlocked)
 		if err != nil {
 			var b *policy.BlockedError
 			if errors.As(err, &b) {

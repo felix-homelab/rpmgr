@@ -125,8 +125,16 @@ func Run(ctx context.Context, o RunOptions) error {
 		defer own.Close()
 		carried = own.Serve
 	}
+	reg := o.Registry
+	if reg == nil {
+		reg = telemetry.NewRegistry()
+	}
+	metrics, err := NewMetrics(reg)
+	if err != nil {
+		return err
+	}
 	sessions = NewSessions(SessionsOptions{TrustDomain: id.TrustDomain, GatewayID: id.AgentID, Assignment: assign,
-		Denied: ctl.DenyList().Denied, Capabilities: Capabilities, Now: o.Now, Logger: o.Logger,
+		Denied: ctl.DenyList().Denied, Capabilities: Capabilities, Now: o.Now, Logger: o.Logger, Metrics: metrics,
 		OnOpenRequest: NewControlStreams(carried).Decide, OnChange: report.change})
 	host, _, err := net.SplitHostPort(cfg.Listen.TCP)
 	if err != nil {
@@ -139,10 +147,6 @@ func Run(ctx context.Context, o RunOptions) error {
 	udpHost, _, err := net.SplitHostPort(cfg.Listen.UDP)
 	if err != nil {
 		return err
-	}
-	reg := o.Registry
-	if reg == nil {
-		reg = telemetry.NewRegistry()
 	}
 	udpMetrics, err := tunnel.NewUDPMetrics(reg)
 	if err != nil {
