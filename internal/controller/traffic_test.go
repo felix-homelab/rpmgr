@@ -103,8 +103,10 @@ func TestTrafficRollups(t *testing.T) {
 		report(st2, 30, 6, 1, 0)
 		wait("after a restart", func() row { return hourly(hour.Add(time.Hour)) }, row{100, 31, 3, 0})
 
-		// The next day starts a new daily bucket.
-		nextDay := day.Add(24 * time.Hour)
+		// The next day starts a new daily bucket: the day after the second hour's, which is already
+		// the next one when the test starts in the last hour of a day in UTC.
+		second := end.Add(31 * time.Second)
+		nextDay := time.Date(second.Year(), second.Month(), second.Day(), 0, 0, 0, 0, time.UTC).Add(24 * time.Hour)
 		set(nextDay.Add(time.Second))
 		report(st2, 40, 6, 1, 0)
 		wait("the next day", func() row { return daily(nextDay) }, row{10, 0, 0, 0})
