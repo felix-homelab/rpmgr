@@ -59,6 +59,10 @@ var Kinds = []Kind{
 		NoGet: true},
 	{Name: "access-policy", Prefix: "ap_", Service: "rpmgr.v1.PolicyService", Resource: "AccessPolicy", Plural: "AccessPolicies",
 		IDField: "access_policy_id", Manifest: "AccessPolicy", Columns: []string{"description"}, Delete: true},
+	{Name: "member", Service: "rpmgr.v1.OrgService", Resource: "Member", Plural: "Members", IDField: "user_id",
+		Columns: []string{"email", "role", "createTime"}, NoGet: true},
+	{Name: "token", Prefix: "atk_", Service: "rpmgr.v1.TokenService", Resource: "APIToken", Plural: "APITokens", IDField: "token_id",
+		Columns: []string{"prefix", "scopes", "expireTime", "lastUseTime"}, NoGet: true},
 }
 
 // KindOf returns the kind with name.
