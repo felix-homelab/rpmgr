@@ -102,6 +102,50 @@ func (AuditHead) Interceptors() []ent.Interceptor {
 // Hooks refuse every Ent mutation.
 func (AuditHead) Hooks() []ent.Hook { return []ent.Hook{auditOnlyHook} }
 
+// AuditCheckpoint is a signed statement of a chain's head (docs/04-security.md, "Audit log"): the
+// chain's seq and hash at a time, signed with the audit-checkpoint key named by key_id. A chain
+// whose first entries retention removed verifies from the checkpoint just before them. Only
+// internal/audit writes checkpoints, with plain SQL.
+type AuditCheckpoint struct{ ent.Schema }
+
+// Annotations name the table as docs/06-data-model.md does.
+func (AuditCheckpoint) Annotations() []schema.Annotation {
+	return []schema.Annotation{entsql.Annotation{Table: "audit_checkpoints"}}
+}
+
+// Fields of a checkpoint; org_id is NULL for the instance chain.
+func (AuditCheckpoint) Fields() []ent.Field {
+	return []ent.Field{
+		idField("acp"),
+		field.String("org_id").Optional().Nillable().Immutable(),
+		field.Int64("seq").Positive().Immutable(),
+		field.Bytes("head_hash").Immutable(),
+		field.Time("ts").Immutable(),
+		field.String("key_id").NotEmpty().Immutable(),
+		field.Bytes("signature").Immutable(),
+	}
+}
+
+// Indexes allow one checkpoint per chain and seq.
+func (AuditCheckpoint) Indexes() []ent.Index {
+	return []ent.Index{
+		index.Fields("org_id", "seq").Unique(),
+		index.Fields("seq").Unique().StorageKey("auditcheckpoint_instance_seq").
+			Annotations(entsql.IndexWhere("org_id IS NULL")),
+	}
+}
+
+// Policy denies every query without a scope.
+func (AuditCheckpoint) Policy() ent.Policy { return scopePolicy() }
+
+// Interceptors show an org scope only its own org's checkpoints.
+func (AuditCheckpoint) Interceptors() []ent.Interceptor {
+	return []ent.Interceptor{filterInterceptor("org_id")}
+}
+
+// Hooks refuse every Ent mutation.
+func (AuditCheckpoint) Hooks() []ent.Hook { return []ent.Hook{auditOnlyHook} }
+
 // auditOnlyHook refuses every Ent mutation of the audit tables: internal/audit appends with plain
 // SQL, and nothing updates or deletes.
 func auditOnlyHook(ent.Mutator) ent.Mutator {

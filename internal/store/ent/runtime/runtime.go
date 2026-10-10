@@ -12,6 +12,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/agentstate"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/apirequest"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/apitoken"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/auditcheckpoint"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/auditentry"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/audithead"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/cabundle"
@@ -445,6 +446,50 @@ func init() {
 	agentstateDescID := agentstateFields[0].Descriptor()
 	// agentstate.IDValidator is a validator for the "id" field. It is called by the builders before save.
 	agentstate.IDValidator = agentstateDescID.Validators[0].(func(string) error)
+	auditcheckpoint.Policy = privacy.NewPolicies(schema.AuditCheckpoint{})
+	auditcheckpoint.Hooks[0] = func(next ent.Mutator) ent.Mutator {
+		return ent.MutateFunc(func(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+			if err := auditcheckpoint.Policy.EvalMutation(ctx, m); err != nil {
+				return nil, err
+			}
+			return next.Mutate(ctx, m)
+		})
+	}
+	auditcheckpointHooks := schema.AuditCheckpoint{}.Hooks()
+
+	auditcheckpoint.Hooks[1] = auditcheckpointHooks[0]
+	auditcheckpointInters := schema.AuditCheckpoint{}.Interceptors()
+	auditcheckpoint.Interceptors[0] = auditcheckpointInters[0]
+	auditcheckpointFields := schema.AuditCheckpoint{}.Fields()
+	_ = auditcheckpointFields
+	// auditcheckpointDescSeq is the schema descriptor for seq field.
+	auditcheckpointDescSeq := auditcheckpointFields[2].Descriptor()
+	// auditcheckpoint.SeqValidator is a validator for the "seq" field. It is called by the builders before save.
+	auditcheckpoint.SeqValidator = auditcheckpointDescSeq.Validators[0].(func(int64) error)
+	// auditcheckpointDescKeyID is the schema descriptor for key_id field.
+	auditcheckpointDescKeyID := auditcheckpointFields[5].Descriptor()
+	// auditcheckpoint.KeyIDValidator is a validator for the "key_id" field. It is called by the builders before save.
+	auditcheckpoint.KeyIDValidator = auditcheckpointDescKeyID.Validators[0].(func(string) error)
+	// auditcheckpointDescID is the schema descriptor for id field.
+	auditcheckpointDescID := auditcheckpointFields[0].Descriptor()
+	// auditcheckpoint.DefaultID holds the default value on creation for the id field.
+	auditcheckpoint.DefaultID = auditcheckpointDescID.Default.(func() string)
+	// auditcheckpoint.IDValidator is a validator for the "id" field. It is called by the builders before save.
+	auditcheckpoint.IDValidator = func() func(string) error {
+		validators := auditcheckpointDescID.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(id string) error {
+			for _, fn := range fns {
+				if err := fn(id); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
 	auditentry.Policy = privacy.NewPolicies(schema.AuditEntry{})
 	auditentry.Hooks[0] = func(next ent.Mutator) ent.Mutator {
 		return ent.MutateFunc(func(ctx context.Context, m ent.Mutation) (ent.Value, error) {

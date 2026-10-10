@@ -21,6 +21,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/agentstate"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/apirequest"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/apitoken"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/auditcheckpoint"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/auditentry"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/audithead"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/cabundle"
@@ -84,6 +85,8 @@ type Client struct {
 	AgentSession *AgentSessionClient
 	// AgentState is the client for interacting with the AgentState builders.
 	AgentState *AgentStateClient
+	// AuditCheckpoint is the client for interacting with the AuditCheckpoint builders.
+	AuditCheckpoint *AuditCheckpointClient
 	// AuditEntry is the client for interacting with the AuditEntry builders.
 	AuditEntry *AuditEntryClient
 	// AuditHead is the client for interacting with the AuditHead builders.
@@ -185,6 +188,7 @@ func (c *Client) init() {
 	c.AccessPolicy = NewAccessPolicyClient(c.config)
 	c.AgentSession = NewAgentSessionClient(c.config)
 	c.AgentState = NewAgentStateClient(c.config)
+	c.AuditCheckpoint = NewAuditCheckpointClient(c.config)
 	c.AuditEntry = NewAuditEntryClient(c.config)
 	c.AuditHead = NewAuditHeadClient(c.config)
 	c.CABundle = NewCABundleClient(c.config)
@@ -325,6 +329,7 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		AccessPolicy:      NewAccessPolicyClient(cfg),
 		AgentSession:      NewAgentSessionClient(cfg),
 		AgentState:        NewAgentStateClient(cfg),
+		AuditCheckpoint:   NewAuditCheckpointClient(cfg),
 		AuditEntry:        NewAuditEntryClient(cfg),
 		AuditHead:         NewAuditHeadClient(cfg),
 		CABundle:          NewCABundleClient(cfg),
@@ -392,6 +397,7 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		AccessPolicy:      NewAccessPolicyClient(cfg),
 		AgentSession:      NewAgentSessionClient(cfg),
 		AgentState:        NewAgentStateClient(cfg),
+		AuditCheckpoint:   NewAuditCheckpointClient(cfg),
 		AuditEntry:        NewAuditEntryClient(cfg),
 		AuditHead:         NewAuditHeadClient(cfg),
 		CABundle:          NewCABundleClient(cfg),
@@ -464,15 +470,15 @@ func (c *Client) Close() error {
 func (c *Client) Use(hooks ...Hook) {
 	for _, n := range []interface{ Use(...Hook) }{
 		c.ACMEStorage, c.APIRequest, c.APIToken, c.AccessPolicy, c.AgentSession,
-		c.AgentState, c.AuditEntry, c.AuditHead, c.CABundle, c.CAKey, c.Certificate,
-		c.CompiledSnapshot, c.ConfigRevision, c.ConfigSeq, c.Connector, c.DataSession,
-		c.Domain, c.EnrollmentToken, c.Gateway, c.GatewayGroup, c.Instance,
-		c.InstanceSecret, c.InstanceSetting, c.Invitation, c.IssuedCertificate,
-		c.Lease, c.Membership, c.Org, c.OrgSetting, c.PasswordReset, c.PolicyRule,
-		c.PortAllocation, c.PortPool, c.PortQuota, c.RecoveryCode, c.ResourceStatus,
-		c.RevokedIdentity, c.Route, c.RouteHTTP, c.RouteHostname, c.RoutePolicy,
-		c.RouteTCP, c.RouteTarget, c.RouteUDP, c.SecretMeta, c.Session,
-		c.TOTPCredential, c.User,
+		c.AgentState, c.AuditCheckpoint, c.AuditEntry, c.AuditHead, c.CABundle,
+		c.CAKey, c.Certificate, c.CompiledSnapshot, c.ConfigRevision, c.ConfigSeq,
+		c.Connector, c.DataSession, c.Domain, c.EnrollmentToken, c.Gateway,
+		c.GatewayGroup, c.Instance, c.InstanceSecret, c.InstanceSetting, c.Invitation,
+		c.IssuedCertificate, c.Lease, c.Membership, c.Org, c.OrgSetting,
+		c.PasswordReset, c.PolicyRule, c.PortAllocation, c.PortPool, c.PortQuota,
+		c.RecoveryCode, c.ResourceStatus, c.RevokedIdentity, c.Route, c.RouteHTTP,
+		c.RouteHostname, c.RoutePolicy, c.RouteTCP, c.RouteTarget, c.RouteUDP,
+		c.SecretMeta, c.Session, c.TOTPCredential, c.User,
 	} {
 		n.Use(hooks...)
 	}
@@ -483,15 +489,15 @@ func (c *Client) Use(hooks ...Hook) {
 func (c *Client) Intercept(interceptors ...Interceptor) {
 	for _, n := range []interface{ Intercept(...Interceptor) }{
 		c.ACMEStorage, c.APIRequest, c.APIToken, c.AccessPolicy, c.AgentSession,
-		c.AgentState, c.AuditEntry, c.AuditHead, c.CABundle, c.CAKey, c.Certificate,
-		c.CompiledSnapshot, c.ConfigRevision, c.ConfigSeq, c.Connector, c.DataSession,
-		c.Domain, c.EnrollmentToken, c.Gateway, c.GatewayGroup, c.Instance,
-		c.InstanceSecret, c.InstanceSetting, c.Invitation, c.IssuedCertificate,
-		c.Lease, c.Membership, c.Org, c.OrgSetting, c.PasswordReset, c.PolicyRule,
-		c.PortAllocation, c.PortPool, c.PortQuota, c.RecoveryCode, c.ResourceStatus,
-		c.RevokedIdentity, c.Route, c.RouteHTTP, c.RouteHostname, c.RoutePolicy,
-		c.RouteTCP, c.RouteTarget, c.RouteUDP, c.SecretMeta, c.Session,
-		c.TOTPCredential, c.User,
+		c.AgentState, c.AuditCheckpoint, c.AuditEntry, c.AuditHead, c.CABundle,
+		c.CAKey, c.Certificate, c.CompiledSnapshot, c.ConfigRevision, c.ConfigSeq,
+		c.Connector, c.DataSession, c.Domain, c.EnrollmentToken, c.Gateway,
+		c.GatewayGroup, c.Instance, c.InstanceSecret, c.InstanceSetting, c.Invitation,
+		c.IssuedCertificate, c.Lease, c.Membership, c.Org, c.OrgSetting,
+		c.PasswordReset, c.PolicyRule, c.PortAllocation, c.PortPool, c.PortQuota,
+		c.RecoveryCode, c.ResourceStatus, c.RevokedIdentity, c.Route, c.RouteHTTP,
+		c.RouteHostname, c.RoutePolicy, c.RouteTCP, c.RouteTarget, c.RouteUDP,
+		c.SecretMeta, c.Session, c.TOTPCredential, c.User,
 	} {
 		n.Intercept(interceptors...)
 	}
@@ -512,6 +518,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.AgentSession.mutate(ctx, m)
 	case *AgentStateMutation:
 		return c.AgentState.mutate(ctx, m)
+	case *AuditCheckpointMutation:
+		return c.AuditCheckpoint.mutate(ctx, m)
 	case *AuditEntryMutation:
 		return c.AuditEntry.mutate(ctx, m)
 	case *AuditHeadMutation:
@@ -1408,6 +1416,141 @@ func (c *AgentStateClient) mutate(ctx context.Context, m *AgentStateMutation) (V
 		return (&AgentStateDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
 	default:
 		return nil, fmt.Errorf("ent: unknown AgentState mutation op: %q", m.Op())
+	}
+}
+
+// AuditCheckpointClient is a client for the AuditCheckpoint schema.
+type AuditCheckpointClient struct {
+	config
+}
+
+// NewAuditCheckpointClient returns a client for the AuditCheckpoint from the given config.
+func NewAuditCheckpointClient(c config) *AuditCheckpointClient {
+	return &AuditCheckpointClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `auditcheckpoint.Hooks(f(g(h())))`.
+func (c *AuditCheckpointClient) Use(hooks ...Hook) {
+	c.hooks.AuditCheckpoint = append(c.hooks.AuditCheckpoint, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `auditcheckpoint.Intercept(f(g(h())))`.
+func (c *AuditCheckpointClient) Intercept(interceptors ...Interceptor) {
+	c.inters.AuditCheckpoint = append(c.inters.AuditCheckpoint, interceptors...)
+}
+
+// Create returns a builder for creating a AuditCheckpoint entity.
+func (c *AuditCheckpointClient) Create() *AuditCheckpointCreate {
+	mutation := newAuditCheckpointMutation(c.config, OpCreate)
+	return &AuditCheckpointCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of AuditCheckpoint entities.
+func (c *AuditCheckpointClient) CreateBulk(builders ...*AuditCheckpointCreate) *AuditCheckpointCreateBulk {
+	return &AuditCheckpointCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *AuditCheckpointClient) MapCreateBulk(slice any, setFunc func(*AuditCheckpointCreate, int)) *AuditCheckpointCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &AuditCheckpointCreateBulk{err: fmt.Errorf("calling to AuditCheckpointClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*AuditCheckpointCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &AuditCheckpointCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for AuditCheckpoint.
+func (c *AuditCheckpointClient) Update() *AuditCheckpointUpdate {
+	mutation := newAuditCheckpointMutation(c.config, OpUpdate)
+	return &AuditCheckpointUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *AuditCheckpointClient) UpdateOne(_m *AuditCheckpoint) *AuditCheckpointUpdateOne {
+	mutation := newAuditCheckpointMutation(c.config, OpUpdateOne, withAuditCheckpoint(_m))
+	return &AuditCheckpointUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *AuditCheckpointClient) UpdateOneID(id string) *AuditCheckpointUpdateOne {
+	mutation := newAuditCheckpointMutation(c.config, OpUpdateOne, withAuditCheckpointID(id))
+	return &AuditCheckpointUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for AuditCheckpoint.
+func (c *AuditCheckpointClient) Delete() *AuditCheckpointDelete {
+	mutation := newAuditCheckpointMutation(c.config, OpDelete)
+	return &AuditCheckpointDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *AuditCheckpointClient) DeleteOne(_m *AuditCheckpoint) *AuditCheckpointDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *AuditCheckpointClient) DeleteOneID(id string) *AuditCheckpointDeleteOne {
+	builder := c.Delete().Where(auditcheckpoint.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &AuditCheckpointDeleteOne{builder}
+}
+
+// Query returns a query builder for AuditCheckpoint.
+func (c *AuditCheckpointClient) Query() *AuditCheckpointQuery {
+	return &AuditCheckpointQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeAuditCheckpoint},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a AuditCheckpoint entity by its id.
+func (c *AuditCheckpointClient) Get(ctx context.Context, id string) (*AuditCheckpoint, error) {
+	return c.Query().Where(auditcheckpoint.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *AuditCheckpointClient) GetX(ctx context.Context, id string) *AuditCheckpoint {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *AuditCheckpointClient) Hooks() []Hook {
+	hooks := c.hooks.AuditCheckpoint
+	return append(hooks[:len(hooks):len(hooks)], auditcheckpoint.Hooks[:]...)
+}
+
+// Interceptors returns the client interceptors.
+func (c *AuditCheckpointClient) Interceptors() []Interceptor {
+	inters := c.inters.AuditCheckpoint
+	return append(inters[:len(inters):len(inters)], auditcheckpoint.Interceptors[:]...)
+}
+
+func (c *AuditCheckpointClient) mutate(ctx context.Context, m *AuditCheckpointMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&AuditCheckpointCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&AuditCheckpointUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&AuditCheckpointUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&AuditCheckpointDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown AuditCheckpoint mutation op: %q", m.Op())
 	}
 }
 
@@ -7544,24 +7687,25 @@ func (c *UserClient) mutate(ctx context.Context, m *UserMutation) (Value, error)
 type (
 	hooks struct {
 		ACMEStorage, APIRequest, APIToken, AccessPolicy, AgentSession, AgentState,
-		AuditEntry, AuditHead, CABundle, CAKey, Certificate, CompiledSnapshot,
-		ConfigRevision, ConfigSeq, Connector, DataSession, Domain, EnrollmentToken,
-		Gateway, GatewayGroup, Instance, InstanceSecret, InstanceSetting, Invitation,
-		IssuedCertificate, Lease, Membership, Org, OrgSetting, PasswordReset,
-		PolicyRule, PortAllocation, PortPool, PortQuota, RecoveryCode, ResourceStatus,
-		RevokedIdentity, Route, RouteHTTP, RouteHostname, RoutePolicy, RouteTCP,
-		RouteTarget, RouteUDP, SecretMeta, Session, TOTPCredential, User []ent.Hook
+		AuditCheckpoint, AuditEntry, AuditHead, CABundle, CAKey, Certificate,
+		CompiledSnapshot, ConfigRevision, ConfigSeq, Connector, DataSession, Domain,
+		EnrollmentToken, Gateway, GatewayGroup, Instance, InstanceSecret,
+		InstanceSetting, Invitation, IssuedCertificate, Lease, Membership, Org,
+		OrgSetting, PasswordReset, PolicyRule, PortAllocation, PortPool, PortQuota,
+		RecoveryCode, ResourceStatus, RevokedIdentity, Route, RouteHTTP, RouteHostname,
+		RoutePolicy, RouteTCP, RouteTarget, RouteUDP, SecretMeta, Session,
+		TOTPCredential, User []ent.Hook
 	}
 	inters struct {
 		ACMEStorage, APIRequest, APIToken, AccessPolicy, AgentSession, AgentState,
-		AuditEntry, AuditHead, CABundle, CAKey, Certificate, CompiledSnapshot,
-		ConfigRevision, ConfigSeq, Connector, DataSession, Domain, EnrollmentToken,
-		Gateway, GatewayGroup, Instance, InstanceSecret, InstanceSetting, Invitation,
-		IssuedCertificate, Lease, Membership, Org, OrgSetting, PasswordReset,
-		PolicyRule, PortAllocation, PortPool, PortQuota, RecoveryCode, ResourceStatus,
-		RevokedIdentity, Route, RouteHTTP, RouteHostname, RoutePolicy, RouteTCP,
-		RouteTarget, RouteUDP, SecretMeta, Session, TOTPCredential,
-		User []ent.Interceptor
+		AuditCheckpoint, AuditEntry, AuditHead, CABundle, CAKey, Certificate,
+		CompiledSnapshot, ConfigRevision, ConfigSeq, Connector, DataSession, Domain,
+		EnrollmentToken, Gateway, GatewayGroup, Instance, InstanceSecret,
+		InstanceSetting, Invitation, IssuedCertificate, Lease, Membership, Org,
+		OrgSetting, PasswordReset, PolicyRule, PortAllocation, PortPool, PortQuota,
+		RecoveryCode, ResourceStatus, RevokedIdentity, Route, RouteHTTP, RouteHostname,
+		RoutePolicy, RouteTCP, RouteTarget, RouteUDP, SecretMeta, Session,
+		TOTPCredential, User []ent.Interceptor
 	}
 )
 

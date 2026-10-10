@@ -1010,6 +1010,8 @@ sequenceDiagram
 | Certificate renewal | a failed attempt is retried with full jitter, base 1 s, cap 5 min; at most one renewal per 10 min | A controller outage delays renewal without a retry storm; a clock far ahead cannot make the agent renew in a loop ([04](04-security.md#leaf-certificates)) |
 | Controller node certificate renewal | at half its lifetime; a failed renewal is retried every 1 min | Weeks of margin before the certificate expires ([04](04-security.md#leaf-certificates)) |
 | CA rotation | the schedule checked every 1 h on one replica (singleton job); every replica reloads the keys every 1 min | A rotation takes effect on every replica within a minute ([04](04-security.md#ca-rotation)) |
+| Audit checkpoint | a chain with new entries gets one 1 h after its last, or after 1 000 new entries, checked every 1 min (singleton job); one more at shutdown | Bounds what a rewrite of the database could hide ([04](04-security.md#audit-log)) |
+| Audit retention | checked every 1 h (singleton job); the retention itself is an instance setting ([10](10-operations.md#runtime-settings-ui--settings)) | Entries past it go within the hour, up to a checkpoint ([04](04-security.md#audit-log)) |
 | Connector-local policy file | checked every 2 s; `SIGHUP` (`systemctl reload`) reloads it at once | An edit takes effect without a new revision ([04](04-security.md#connector-local-policy)) |
 | Revision and deny-list check | every 1 s | A revision or a revocation written by another process reaches the agents without a notification channel |
 | Route drain | 30 s | Finish in-flight requests |

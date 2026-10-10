@@ -301,24 +301,29 @@ func Verify(ctx context.Context, db *store.DB, orgID string) (Head, error) {
 	var head Head
 	err := store.ReadTx(ctx, db, func(tx *ent.Tx, _ store.Revision) error {
 		var err error
-		head, err = verify(ctx, tx, orgID)
+		head, err = verify(ctx, tx, orgID, Head{}, nil)
 		return err
 	})
 	return head, err
 }
 
-func verify(ctx context.Context, tx *ent.Tx, orgID string) (Head, error) {
+// verify walks the chain of orgID from the head from, its genesis if from.Seq is 0, and calls
+// seen, if set, with the seq and hash of every entry.
+func verify(ctx context.Context, tx *ent.Tx, orgID string, from Head, seen func(seq int64, hash []byte)) (Head, error) {
 	chain := chainOf(orgID)
-	q, args := "SELECT "+entryColumns+" FROM audit_log WHERE org_id IS NULL ORDER BY seq", []any(nil)
+	q, args := "SELECT "+entryColumns+" FROM audit_log WHERE org_id IS NULL AND seq > $1 ORDER BY seq", []any{from.Seq}
 	if orgID != "" {
-		q, args = "SELECT "+entryColumns+" FROM audit_log WHERE org_id = $1 ORDER BY seq", []any{orgID}
+		q, args = "SELECT "+entryColumns+" FROM audit_log WHERE org_id = $1 AND seq > $2 ORDER BY seq", []any{orgID, from.Seq}
 	}
 	rows, err := tx.QueryContext(ctx, q, args...)
 	if err != nil {
 		return Head{}, err
 	}
 	defer func() { _ = rows.Close() }()
-	h := Head{Chain: chain, Hash: genesis(chain)}
+	h := Head{Chain: chain, Seq: from.Seq, Hash: from.Hash}
+	if from.Seq == 0 {
+		h.Hash = genesis(chain)
+	}
 	for rows.Next() {
 		e, err := scanEntry(rows)
 		if err != nil {
@@ -336,6 +341,9 @@ func verify(ctx context.Context, tx *ent.Tx, orgID string) (Head, error) {
 			return Head{}, &ChainError{chain, e.Seq, "the hash does not match the entry"}
 		}
 		h.Seq, h.Hash = e.Seq, e.Hash
+		if seen != nil {
+			seen(e.Seq, e.Hash)
+		}
 	}
 	if err := rows.Err(); err != nil {
 		return Head{}, err

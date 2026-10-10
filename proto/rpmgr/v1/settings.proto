@@ -163,6 +163,12 @@ message InstanceSettings {
   // The relay the controller sends mail through; not set by default, and then the controller
   // sends none.
   SmtpSettings smtp = 13;
+  // How long audit entries are kept, 30 to 3650 days; default 365 days. Retention removes only
+  // whole prefixes of a chain up to a checkpoint (docs/04-security.md, "Audit log").
+  google.protobuf.Duration audit_retention = 14 [(buf.validate.field).duration = {
+    gte: {seconds: 2592000}
+    lte: {seconds: 315360000}
+  }];
 }
 
 // SmtpSettings are a mail relay (docs/04-security.md, "Human authentication and sessions"). Its

@@ -175,6 +175,37 @@ var (
 			},
 		},
 	}
+	// AuditCheckpointsColumns holds the columns for the "audit_checkpoints" table.
+	AuditCheckpointsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeString},
+		{Name: "org_id", Type: field.TypeString, Nullable: true},
+		{Name: "seq", Type: field.TypeInt64},
+		{Name: "head_hash", Type: field.TypeBytes},
+		{Name: "ts", Type: field.TypeTime},
+		{Name: "key_id", Type: field.TypeString},
+		{Name: "signature", Type: field.TypeBytes},
+	}
+	// AuditCheckpointsTable holds the schema information for the "audit_checkpoints" table.
+	AuditCheckpointsTable = &schema.Table{
+		Name:       "audit_checkpoints",
+		Columns:    AuditCheckpointsColumns,
+		PrimaryKey: []*schema.Column{AuditCheckpointsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "auditcheckpoint_org_id_seq",
+				Unique:  true,
+				Columns: []*schema.Column{AuditCheckpointsColumns[1], AuditCheckpointsColumns[2]},
+			},
+			{
+				Name:    "auditcheckpoint_instance_seq",
+				Unique:  true,
+				Columns: []*schema.Column{AuditCheckpointsColumns[2]},
+				Annotation: &entsql.IndexAnnotation{
+					Where: "org_id IS NULL",
+				},
+			},
+		},
+	}
 	// AuditLogColumns holds the columns for the "audit_log" table.
 	AuditLogColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeString},
@@ -1526,6 +1557,7 @@ var (
 		AccessPoliciesTable,
 		AgentSessionsTable,
 		AgentStateTable,
+		AuditCheckpointsTable,
 		AuditLogTable,
 		AuditHeadsTable,
 		CaBundlesTable,
@@ -1589,6 +1621,9 @@ func init() {
 	}
 	AgentStateTable.Annotation = &entsql.Annotation{
 		Table: "agent_state",
+	}
+	AuditCheckpointsTable.Annotation = &entsql.Annotation{
+		Table: "audit_checkpoints",
 	}
 	AuditLogTable.Annotation = &entsql.Annotation{
 		Table: "audit_log",

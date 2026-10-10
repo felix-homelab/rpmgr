@@ -369,6 +369,10 @@ func Run(ctx context.Context, o RunOptions) error {
 		func(err error) { o.Logger.Warn("domain check job", "error", err) })
 	go leases.Run(sys, PurgeJob(PurgeOptions{DB: db, RevLog: rl, Logger: o.Logger, Denied: sessions.ApplyDenyList, Now: o.Now}),
 		func(err error) { o.Logger.Warn("agent purge job", "error", err) })
+	cpOpts := CheckpointOptions{DB: db, CA: ca, Log: &audit.CheckpointLog{Path: filepath.Join(stateDir, "audit-checkpoints.log")},
+		Leases: leases, Now: o.Now, Logger: o.Logger}
+	go leases.Run(sys, CheckpointJob(cpOpts), func(err error) { o.Logger.Warn("audit checkpoint job", "error", err) })
+	go leases.Run(sys, RetentionJob(cpOpts), func(err error) { o.Logger.Warn("audit retention job", "error", err) })
 	go ReloadCA(sys, caOpts)
 	go RenewNodeCertificate(sys, NodeCertOptions{CA: ca, DB: db, Sys: sys, NodeID: nodeID, Holder: holder, Now: o.Now, Logger: o.Logger})
 	serve("agent endpoint", func() error { return agents.Serve(split.Agents()) })
@@ -428,6 +432,10 @@ func Run(ctx context.Context, o RunOptions) error {
 	shut, cancel := context.WithTimeout(context.Background(), drainWait)
 	defer cancel()
 	_ = web.Shutdown(shut)
+	// The last requests are recorded; a checkpoint covers them.
+	if err := FinalCheckpoints(context.WithoutCancel(sys), cpOpts); err != nil {
+		o.Logger.Error("cannot write the final audit checkpoints", "error", err)
+	}
 	stop()
 	<-sessionsDone
 	return result
