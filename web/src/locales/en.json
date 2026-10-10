@@ -2,20 +2,59 @@
   "app": {
     "name": "rpmgr",
     "skip": "Skip to content",
-    "nav": "Main navigation"
+    "nav": "Main navigation",
+    "signOut": "Sign out"
   },
   "nav": {
     "overview": "Overview"
   },
   "overview": {
     "title": "Overview",
-    "signedIn": "Signed in as {{name}}",
-    "signedOut": "You are not signed in.",
-    "loading": "Loading…",
-    "error": "The controller could not be reached: {{message}}"
+    "signedIn": "Signed in as {{name}}"
+  },
+  "login": {
+    "title": "Sign in to rpmgr",
+    "email": "E-mail address",
+    "password": "Password",
+    "code": "Authenticator code or recovery code",
+    "codeHint": "Enter the code your authenticator app shows, or one of your recovery codes.",
+    "submit": "Sign in",
+    "wrongPassword": "The e-mail address or the password is wrong.",
+    "wrongCode": "The code is wrong or was used already. Try the next code.",
+    "tooMany_one": "Too many attempts. Try again in {{count}} second.",
+    "tooMany_other": "Too many attempts. Try again in {{count}} seconds.",
+    "failed": "Signing in failed: {{message}}",
+    "forgot": "Forgot your password?"
   },
   "notFound": {
     "title": "Page not found",
     "back": "Go to the overview"
+  },
+  "link": {
+    "incomplete": "This link is incomplete. Open the whole link you were given, or ask for a new one.",
+    "failed": "That did not work: {{message}}"
+  },
+  "setup": {
+    "title": "Create the first account",
+    "intro": "This account becomes the Owner of the first organisation and the Instance Admin.",
+    "name": "Your name",
+    "exists": "The first account exists already. Sign in with it, or ask for a reset link.",
+    "submit": "Create the account"
+  },
+  "reset": {
+    "title": "Set a new password",
+    "password": "New password",
+    "passwordHint": "12 to 256 characters. A passphrase of several words is easy to type and hard to guess.",
+    "confirm": "Repeat the new password",
+    "length": "A password has 12 to 256 characters.",
+    "mismatch": "The two passwords differ.",
+    "submit": "Set the password",
+    "done": "Your password is set, and your other sessions have ended. Sign in with the new password."
+  },
+  "forgot": {
+    "title": "Reset your password",
+    "submit": "Send a reset link",
+    "sent": "If an account uses this address, a reset link is on its way. It works once, for 24 hours.",
+    "noMail": "This controller cannot send e-mail. Ask an Owner or the Instance Admin for a reset link."
   }
 }

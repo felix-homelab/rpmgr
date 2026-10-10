@@ -26,7 +26,7 @@ import (
 func TestRun_PasswordReset(t *testing.T) {
 	var link string
 	r := startRunWith(t, runSetup{prepare: func(r *running) { link = r.firstUserLink }})
-	_, tok, ok := strings.Cut(link, "/reset#")
+	_, tok, ok := strings.Cut(link, "/setup#")
 	if !ok || !strings.HasPrefix(link, r.url) || !strings.HasPrefix(tok, "rpmgr_prs_") {
 		t.Fatalf("the first-user link %q", link)
 	}

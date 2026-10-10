@@ -1,18 +1,58 @@
 // SPDX-License-Identifier: Apache-2.0
 
-import { createRootRoute, createRoute, createRouter, type RouterHistory } from "@tanstack/react-router";
+import { Code, ConnectError, type Transport } from "@connectrpc/connect";
+import type { QueryClient } from "@tanstack/react-query";
+import { createRootRouteWithContext, createRoute, createRouter, Outlet, redirect, type RouterHistory } from "@tanstack/react-router";
 import { Layout } from "@/components/layout";
+import { Forgot } from "@/pages/forgot";
+import { Login } from "@/pages/login";
 import { NotFound } from "@/pages/not-found";
 import { Overview } from "@/pages/overview";
+import { Reset } from "@/pages/reset";
+import { Setup } from "@/pages/setup";
+import { sessionQuery } from "@/session";
 
-// The pages of docs/09-web-ui.md, "Information architecture"; each slice adds its own.
-const root = createRootRoute({ component: Layout, notFoundComponent: NotFound });
-const overview = createRoute({ getParentRoute: () => root, path: "/", component: Overview });
+export interface RouterContext {
+  queryClient: QueryClient;
+  transport: Transport;
+}
 
-const routeTree = root.addChildren([overview]);
+// The pages of docs/09-web-ui.md, "Information architecture"; each slice adds its own. Pages
+// under app need a session: without one, they send the user to sign in and back.
+const root = createRootRouteWithContext<RouterContext>()({ component: Outlet, notFoundComponent: NotFound });
+const app = createRoute({
+  getParentRoute: () => root,
+  id: "app",
+  component: Layout,
+  beforeLoad: async ({ context, location }) => {
+    try {
+      await context.queryClient.ensureQueryData(sessionQuery(context.transport));
+    } catch (err) {
+      if (ConnectError.from(err).code === Code.Unauthenticated) {
+        throw redirect({ to: "/login", search: { redirect: location.href } });
+      }
+      throw err;
+    }
+  },
+});
+const overview = createRoute({ getParentRoute: () => app, path: "/", component: Overview });
+const login = createRoute({
+  getParentRoute: () => root,
+  path: "/login",
+  component: Login,
+  validateSearch: (search: Record<string, unknown>): { redirect?: string } =>
+    typeof search.redirect === "string" ? { redirect: search.redirect } : {},
+});
 
-export function createAppRouter(history?: RouterHistory) {
-  return createRouter({ routeTree, history, defaultPreload: "intent" });
+// The pages of one-time links (docs/10-operations.md, "Install") and the reset request.
+const setup = createRoute({ getParentRoute: () => root, path: "/setup", component: Setup });
+const reset = createRoute({ getParentRoute: () => root, path: "/reset", component: Reset });
+const forgot = createRoute({ getParentRoute: () => root, path: "/forgot", component: Forgot });
+
+const routeTree = root.addChildren([app.addChildren([overview]), login, setup, reset, forgot]);
+
+export function createAppRouter(context: RouterContext, history?: RouterHistory) {
+  return createRouter({ routeTree, history, context, defaultPreload: "intent" });
 }
 
 declare module "@tanstack/react-router" {

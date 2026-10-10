@@ -280,10 +280,16 @@ func errIf(cond bool, err error) error {
 	return nil
 }
 
-// LinkURL is the address of a link's page in the web UI: the token goes in the fragment, which
-// browsers never send to a server, so it stays out of access logs and Referer headers.
+// LinkURL is the address of a reset link's page in the web UI: the token goes in the fragment,
+// which browsers never send to a server, so it stays out of access logs and Referer headers.
 func LinkURL(publicURL, tok string) string {
 	return strings.TrimSuffix(publicURL, "/") + "/reset#" + tok
+}
+
+// SetupURL is the address of a first-user link's page in the web UI, which asks for the first
+// user's e-mail address and name too; the token goes in the fragment, as in LinkURL.
+func SetupURL(publicURL, tok string) string {
+	return strings.TrimSuffix(publicURL, "/") + "/setup#" + tok
 }
 
 // User returns a user and their memberships.

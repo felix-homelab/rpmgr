@@ -1,9 +1,15 @@
 # SPDX-License-Identifier: Apache-2.0
 # TypeScript code of the public API for the web UI: messages and the service descriptors that
-# connect-query calls (docs/09-web-ui.md, "Frontend architecture"). `npm run generate` writes it to
-# src/gen/, which is not committed (CONTRIBUTING.md, "Commits").
+# connect-query calls, and the google.rpc error details the API sends (docs/09-web-ui.md, "Frontend
+# architecture"). `npm run generate` writes it to src/gen/, which is not committed
+# (CONTRIBUTING.md, "Commits").
 version: v2
 clean: true
+inputs:
+  - directory: ..
+    paths: [../proto/rpmgr/v1]
+  - module: buf.build/googleapis/googleapis:c17df5b2beca46928cc87d5656bd5343 # gitleaks:allow (a commit ID, not a key)
+    paths: [google/rpc/error_details.proto]
 plugins:
   - local: protoc-gen-es
     out: src/gen

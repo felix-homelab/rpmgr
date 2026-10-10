@@ -239,3 +239,16 @@ func TestNormalizeEmail(t *testing.T) {
 		}
 	}
 }
+
+// TestLinkURLs: reset links and first-user links open their own pages of the web UI, with the
+// token in the fragment, whether or not the public URL ends in a slash.
+func TestLinkURLs(t *testing.T) {
+	for _, public := range []string{"https://panel.example.com", "https://panel.example.com/"} {
+		if got := accounts.LinkURL(public, "rpmgr_prs_x"); got != "https://panel.example.com/reset#rpmgr_prs_x" {
+			t.Errorf("LinkURL(%q): %q", public, got)
+		}
+		if got := accounts.SetupURL(public, "rpmgr_prs_x"); got != "https://panel.example.com/setup#rpmgr_prs_x" {
+			t.Errorf("SetupURL(%q): %q", public, got)
+		}
+	}
+}
