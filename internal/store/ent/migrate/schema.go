@@ -94,9 +94,9 @@ var (
 	AccessPoliciesColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeString},
 		{Name: "org_id", Type: field.TypeString},
+		{Name: "version", Type: field.TypeInt64, Default: 1},
 		{Name: "name", Type: field.TypeString, Size: 100},
 		{Name: "description", Type: field.TypeString, Size: 1000, Default: ""},
-		{Name: "version", Type: field.TypeInt64, Default: 1},
 	}
 	// AccessPoliciesTable holds the schema information for the "access_policies" table.
 	AccessPoliciesTable = &schema.Table{
@@ -112,7 +112,7 @@ var (
 			{
 				Name:    "accesspolicy_org_id_name",
 				Unique:  true,
-				Columns: []*schema.Column{AccessPoliciesColumns[1], AccessPoliciesColumns[2]},
+				Columns: []*schema.Column{AccessPoliciesColumns[1], AccessPoliciesColumns[3]},
 			},
 		},
 	}

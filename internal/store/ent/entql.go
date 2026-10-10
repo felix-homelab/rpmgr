@@ -135,9 +135,9 @@ var schemaGraph = func() *sqlgraph.Schema {
 		Type: "AccessPolicy",
 		Fields: map[string]*sqlgraph.FieldSpec{
 			accesspolicy.FieldOrgID:       {Type: field.TypeString, Column: accesspolicy.FieldOrgID},
+			accesspolicy.FieldVersion:     {Type: field.TypeInt64, Column: accesspolicy.FieldVersion},
 			accesspolicy.FieldName:        {Type: field.TypeString, Column: accesspolicy.FieldName},
 			accesspolicy.FieldDescription: {Type: field.TypeString, Column: accesspolicy.FieldDescription},
-			accesspolicy.FieldVersion:     {Type: field.TypeInt64, Column: accesspolicy.FieldVersion},
 		},
 	}
 	graph.Nodes[4] = &sqlgraph.Node{
@@ -1673,6 +1673,11 @@ func (f *AccessPolicyFilter) WhereOrgID(p entql.StringP) {
 	f.Where(p.Field(accesspolicy.FieldOrgID))
 }
 
+// WhereVersion applies the entql int64 predicate on the version field.
+func (f *AccessPolicyFilter) WhereVersion(p entql.Int64P) {
+	f.Where(p.Field(accesspolicy.FieldVersion))
+}
+
 // WhereName applies the entql string predicate on the name field.
 func (f *AccessPolicyFilter) WhereName(p entql.StringP) {
 	f.Where(p.Field(accesspolicy.FieldName))
@@ -1681,11 +1686,6 @@ func (f *AccessPolicyFilter) WhereName(p entql.StringP) {
 // WhereDescription applies the entql string predicate on the description field.
 func (f *AccessPolicyFilter) WhereDescription(p entql.StringP) {
 	f.Where(p.Field(accesspolicy.FieldDescription))
-}
-
-// WhereVersion applies the entql int64 predicate on the version field.
-func (f *AccessPolicyFilter) WhereVersion(p entql.Int64P) {
-	f.Where(p.Field(accesspolicy.FieldVersion))
 }
 
 // addPredicate implements the predicateAdder interface.

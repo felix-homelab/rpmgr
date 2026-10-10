@@ -5,9 +5,202 @@ syntax = "proto3";
 package rpmgr.v1;
 
 import "buf/validate/validate.proto";
+import "google/protobuf/field_mask.proto";
+import "rpmgr/v1/common.proto";
 import "rpmgr/v1/options.proto";
+import "rpmgr/v1/status.proto";
 
 option go_package = "github.com/felix-homelab/rpmgr/gen/rpmgr/v1;rpmgrv1";
+
+// PolicyService is an org's access policies (docs/07-api.md, "Services"; docs/03-connections.md,
+// "Access policies"). A route applies its policies in order, and each policy its rules in order.
+service PolicyService {
+  // CreateAccessPolicy creates an access policy. The controller hashes the passwords of its
+  // basic_auth users and keeps only the hashes.
+  rpc CreateAccessPolicy(CreateAccessPolicyRequest) returns (CreateAccessPolicyResponse) {
+    option (rpmgr.v1.authz) = {
+      permission: "routes.write"
+      resource_field: "org_id"
+    };
+  }
+  // GetAccessPolicy returns an access policy, without passwords.
+  rpc GetAccessPolicy(GetAccessPolicyRequest) returns (GetAccessPolicyResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+    option (rpmgr.v1.authz) = {
+      permission: "org.read"
+      resource_field: "access_policy_id"
+    };
+  }
+  // ListAccessPolicies lists an org's access policies by ID.
+  rpc ListAccessPolicies(ListAccessPoliciesRequest) returns (ListAccessPoliciesResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+    option (rpmgr.v1.authz) = {
+      permission: "org.read"
+      resource_field: "org_id"
+    };
+  }
+  // UpdateAccessPolicy changes the fields the mask names; rules are replaced as a whole.
+  rpc UpdateAccessPolicy(UpdateAccessPolicyRequest) returns (UpdateAccessPolicyResponse) {
+    option (rpmgr.v1.authz) = {
+      permission: "routes.write"
+      resource_field: "access_policy.id"
+    };
+  }
+  // DeleteAccessPolicy deletes an access policy; refused while routes apply it.
+  rpc DeleteAccessPolicy(DeleteAccessPolicyRequest) returns (DeleteAccessPolicyResponse) {
+    option (rpmgr.v1.authz) = {
+      permission: "routes.write"
+      resource_field: "access_policy_id"
+    };
+  }
+}
+
+// AccessPolicy is an org's list of rules that routes apply.
+message AccessPolicy {
+  // Its ID, ap_…; output only.
+  string id = 1;
+  // Its name, unique in the org.
+  string name = 2 [(buf.validate.field) = {
+    ignore: IGNORE_IF_ZERO_VALUE
+    string: {pattern: "^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$"}
+  }];
+  // A description for people.
+  string description = 3 [(buf.validate.field).string.max_len = 1000];
+  // Its rules, applied in order.
+  repeated AccessRule rules = 4 [(buf.validate.field).repeated.max_items = 50];
+  // The routes that apply it; output only.
+  repeated string route_ids = 5;
+  // The version to send back with an update; output only.
+  string etag = 6;
+}
+
+// AccessRule is one rule of an access policy (docs/03-connections.md, "Access policies").
+message AccessRule {
+  // The rule.
+  oneof rule {
+    option (buf.validate.oneof).required = true;
+    // Allows the client addresses in its CIDRs.
+    IPRuleParams ip_allow = 1;
+    // Denies the client addresses in its CIDRs.
+    IPRuleParams ip_deny = 2;
+    // On an http route, lets pass the users with their passwords.
+    BasicAuthRule basic_auth = 3;
+  }
+}
+
+// BasicAuthRule is a basic_auth rule as the API takes and shows it.
+message BasicAuthRule {
+  // The users, with distinct names.
+  repeated BasicAuthCredential users = 1 [(buf.validate.field).repeated = {
+    min_items: 1
+    max_items: 100
+  }];
+}
+
+// BasicAuthCredential is one user of a basic_auth rule.
+message BasicAuthCredential {
+  // The user name; no colon (RFC 7617).
+  string name = 1 [(buf.validate.field).string = {
+    min_len: 1
+    max_len: 128
+    not_contains: ":"
+  }];
+  // The password, 12 to 256 characters; write-only, never returned. In an update, a user without
+  // one keeps the password of the user of that name in the policy's basic_auth rules.
+  string password = 2 [
+    (rpmgr.v1.sensitive) = true,
+    (buf.validate.field).string.max_len = 1024
+  ];
+}
+
+// CreateAccessPolicyRequest creates an access policy in an org.
+message CreateAccessPolicyRequest {
+  // The org.
+  string org_id = 1 [(buf.validate.field).string.min_len = 1];
+  // The policy: its name, description and rules.
+  AccessPolicy access_policy = 2 [(buf.validate.field).required = true];
+  // Makes retries idempotent (docs/07-api.md, "Resource design").
+  string request_id = 3 [(buf.validate.field).string.max_len = 128];
+}
+
+// CreateAccessPolicyResponse is the new policy.
+message CreateAccessPolicyResponse {
+  // The policy.
+  AccessPolicy access_policy = 1;
+  // The revision of the change.
+  Revision revision = 2;
+  // The apply status of the revision; with the request header Rpmgr-Wait-Applied, once it is
+  // final or the wait is over (docs/07-api.md, "Writes and apply status").
+  ApplyStatus apply_status = 3;
+}
+
+// GetAccessPolicyRequest names an access policy.
+message GetAccessPolicyRequest {
+  // The policy's ID.
+  string access_policy_id = 1 [(buf.validate.field).string.min_len = 1];
+}
+
+// GetAccessPolicyResponse is the policy.
+message GetAccessPolicyResponse {
+  // The policy.
+  AccessPolicy access_policy = 1;
+}
+
+// ListAccessPoliciesRequest pages through an org's access policies.
+message ListAccessPoliciesRequest {
+  // The org.
+  string org_id = 1 [(buf.validate.field).string.min_len = 1];
+  // At most this many, 50 if not set, 500 at most.
+  int32 page_size = 2;
+  // The page after the one that returned it.
+  string page_token = 3;
+}
+
+// ListAccessPoliciesResponse is one page of access policies.
+message ListAccessPoliciesResponse {
+  // The policies.
+  repeated AccessPolicy access_policies = 1;
+  // The token of the next page; empty after the last.
+  string next_page_token = 2;
+}
+
+// UpdateAccessPolicyRequest changes an access policy.
+message UpdateAccessPolicyRequest {
+  // The policy, with its ID and the fields to change.
+  AccessPolicy access_policy = 1 [(buf.validate.field).required = true];
+  // The fields to change: name, description, rules.
+  google.protobuf.FieldMask update_mask = 2;
+  // The etag the caller read; empty skips the check.
+  string etag = 3;
+}
+
+// UpdateAccessPolicyResponse is the changed policy.
+message UpdateAccessPolicyResponse {
+  // The policy.
+  AccessPolicy access_policy = 1;
+  // The revision of the change.
+  Revision revision = 2;
+  // The apply status of the revision; with the request header Rpmgr-Wait-Applied, once it is
+  // final or the wait is over (docs/07-api.md, "Writes and apply status").
+  ApplyStatus apply_status = 3;
+}
+
+// DeleteAccessPolicyRequest names an access policy.
+message DeleteAccessPolicyRequest {
+  // The policy's ID.
+  string access_policy_id = 1 [(buf.validate.field).string.min_len = 1];
+  // The etag the caller read; empty skips the check.
+  string etag = 2;
+}
+
+// DeleteAccessPolicyResponse is the revision of the deletion.
+message DeleteAccessPolicyResponse {
+  // The revision of the change.
+  Revision revision = 1;
+  // The apply status of the revision; with the request header Rpmgr-Wait-Applied, once it is
+  // final or the wait is over (docs/07-api.md, "Writes and apply status").
+  ApplyStatus apply_status = 2;
+}
 
 // PolicyRuleParams are the parameters of one rule of an access policy (docs/06-data-model.md,
 // "Routing"), stored in policy_rules.params; the rule's kind decides which one is set. The kinds

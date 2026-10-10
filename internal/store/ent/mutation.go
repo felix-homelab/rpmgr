@@ -2284,10 +2284,10 @@ type AccessPolicyMutation struct {
 	typ           string
 	id            *string
 	org_id        *string
-	name          *string
-	description   *string
 	version       *int64
 	addversion    *int64
+	name          *string
+	description   *string
 	clearedFields map[string]struct{}
 	done          bool
 	oldValue      func(context.Context) (*AccessPolicy, error)
@@ -2434,6 +2434,62 @@ func (m *AccessPolicyMutation) ResetOrgID() {
 	m.org_id = nil
 }
 
+// SetVersion sets the "version" field.
+func (m *AccessPolicyMutation) SetVersion(i int64) {
+	m.version = &i
+	m.addversion = nil
+}
+
+// Version returns the value of the "version" field in the mutation.
+func (m *AccessPolicyMutation) Version() (r int64, exists bool) {
+	v := m.version
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldVersion returns the old "version" field's value of the AccessPolicy entity.
+// If the AccessPolicy object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AccessPolicyMutation) OldVersion(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldVersion is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldVersion requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldVersion: %w", err)
+	}
+	return oldValue.Version, nil
+}
+
+// AddVersion adds i to the "version" field.
+func (m *AccessPolicyMutation) AddVersion(i int64) {
+	if m.addversion != nil {
+		*m.addversion += i
+	} else {
+		m.addversion = &i
+	}
+}
+
+// AddedVersion returns the value that was added to the "version" field in this mutation.
+func (m *AccessPolicyMutation) AddedVersion() (r int64, exists bool) {
+	v := m.addversion
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetVersion resets all changes to the "version" field.
+func (m *AccessPolicyMutation) ResetVersion() {
+	m.version = nil
+	m.addversion = nil
+}
+
 // SetName sets the "name" field.
 func (m *AccessPolicyMutation) SetName(s string) {
 	m.name = &s
@@ -2506,62 +2562,6 @@ func (m *AccessPolicyMutation) ResetDescription() {
 	m.description = nil
 }
 
-// SetVersion sets the "version" field.
-func (m *AccessPolicyMutation) SetVersion(i int64) {
-	m.version = &i
-	m.addversion = nil
-}
-
-// Version returns the value of the "version" field in the mutation.
-func (m *AccessPolicyMutation) Version() (r int64, exists bool) {
-	v := m.version
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldVersion returns the old "version" field's value of the AccessPolicy entity.
-// If the AccessPolicy object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *AccessPolicyMutation) OldVersion(ctx context.Context) (v int64, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldVersion is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldVersion requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldVersion: %w", err)
-	}
-	return oldValue.Version, nil
-}
-
-// AddVersion adds i to the "version" field.
-func (m *AccessPolicyMutation) AddVersion(i int64) {
-	if m.addversion != nil {
-		*m.addversion += i
-	} else {
-		m.addversion = &i
-	}
-}
-
-// AddedVersion returns the value that was added to the "version" field in this mutation.
-func (m *AccessPolicyMutation) AddedVersion() (r int64, exists bool) {
-	v := m.addversion
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// ResetVersion resets all changes to the "version" field.
-func (m *AccessPolicyMutation) ResetVersion() {
-	m.version = nil
-	m.addversion = nil
-}
-
 // Where appends a list predicates to the AccessPolicyMutation builder.
 func (m *AccessPolicyMutation) Where(ps ...predicate.AccessPolicy) {
 	m.predicates = append(m.predicates, ps...)
@@ -2600,14 +2600,14 @@ func (m *AccessPolicyMutation) Fields() []string {
 	if m.org_id != nil {
 		fields = append(fields, accesspolicy.FieldOrgID)
 	}
+	if m.version != nil {
+		fields = append(fields, accesspolicy.FieldVersion)
+	}
 	if m.name != nil {
 		fields = append(fields, accesspolicy.FieldName)
 	}
 	if m.description != nil {
 		fields = append(fields, accesspolicy.FieldDescription)
-	}
-	if m.version != nil {
-		fields = append(fields, accesspolicy.FieldVersion)
 	}
 	return fields
 }
@@ -2619,12 +2619,12 @@ func (m *AccessPolicyMutation) Field(name string) (ent.Value, bool) {
 	switch name {
 	case accesspolicy.FieldOrgID:
 		return m.OrgID()
+	case accesspolicy.FieldVersion:
+		return m.Version()
 	case accesspolicy.FieldName:
 		return m.Name()
 	case accesspolicy.FieldDescription:
 		return m.Description()
-	case accesspolicy.FieldVersion:
-		return m.Version()
 	}
 	return nil, false
 }
@@ -2636,12 +2636,12 @@ func (m *AccessPolicyMutation) OldField(ctx context.Context, name string) (ent.V
 	switch name {
 	case accesspolicy.FieldOrgID:
 		return m.OldOrgID(ctx)
+	case accesspolicy.FieldVersion:
+		return m.OldVersion(ctx)
 	case accesspolicy.FieldName:
 		return m.OldName(ctx)
 	case accesspolicy.FieldDescription:
 		return m.OldDescription(ctx)
-	case accesspolicy.FieldVersion:
-		return m.OldVersion(ctx)
 	}
 	return nil, fmt.Errorf("unknown AccessPolicy field %s", name)
 }
@@ -2658,6 +2658,13 @@ func (m *AccessPolicyMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetOrgID(v)
 		return nil
+	case accesspolicy.FieldVersion:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetVersion(v)
+		return nil
 	case accesspolicy.FieldName:
 		v, ok := value.(string)
 		if !ok {
@@ -2671,13 +2678,6 @@ func (m *AccessPolicyMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetDescription(v)
-		return nil
-	case accesspolicy.FieldVersion:
-		v, ok := value.(int64)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetVersion(v)
 		return nil
 	}
 	return fmt.Errorf("unknown AccessPolicy field %s", name)
@@ -2746,14 +2746,14 @@ func (m *AccessPolicyMutation) ResetField(name string) error {
 	case accesspolicy.FieldOrgID:
 		m.ResetOrgID()
 		return nil
+	case accesspolicy.FieldVersion:
+		m.ResetVersion()
+		return nil
 	case accesspolicy.FieldName:
 		m.ResetName()
 		return nil
 	case accesspolicy.FieldDescription:
 		m.ResetDescription()
-		return nil
-	case accesspolicy.FieldVersion:
-		m.ResetVersion()
 		return nil
 	}
 	return fmt.Errorf("unknown AccessPolicy field %s", name)

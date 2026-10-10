@@ -27,6 +27,27 @@ func (_u *AccessPolicyUpdate) Where(ps ...predicate.AccessPolicy) *AccessPolicyU
 	return _u
 }
 
+// SetVersion sets the "version" field.
+func (_u *AccessPolicyUpdate) SetVersion(v int64) *AccessPolicyUpdate {
+	_u.mutation.ResetVersion()
+	_u.mutation.SetVersion(v)
+	return _u
+}
+
+// SetNillableVersion sets the "version" field if the given value is not nil.
+func (_u *AccessPolicyUpdate) SetNillableVersion(v *int64) *AccessPolicyUpdate {
+	if v != nil {
+		_u.SetVersion(*v)
+	}
+	return _u
+}
+
+// AddVersion adds value to the "version" field.
+func (_u *AccessPolicyUpdate) AddVersion(v int64) *AccessPolicyUpdate {
+	_u.mutation.AddVersion(v)
+	return _u
+}
+
 // SetName sets the "name" field.
 func (_u *AccessPolicyUpdate) SetName(v string) *AccessPolicyUpdate {
 	_u.mutation.SetName(v)
@@ -52,27 +73,6 @@ func (_u *AccessPolicyUpdate) SetNillableDescription(v *string) *AccessPolicyUpd
 	if v != nil {
 		_u.SetDescription(*v)
 	}
-	return _u
-}
-
-// SetVersion sets the "version" field.
-func (_u *AccessPolicyUpdate) SetVersion(v int64) *AccessPolicyUpdate {
-	_u.mutation.ResetVersion()
-	_u.mutation.SetVersion(v)
-	return _u
-}
-
-// SetNillableVersion sets the "version" field if the given value is not nil.
-func (_u *AccessPolicyUpdate) SetNillableVersion(v *int64) *AccessPolicyUpdate {
-	if v != nil {
-		_u.SetVersion(*v)
-	}
-	return _u
-}
-
-// AddVersion adds value to the "version" field.
-func (_u *AccessPolicyUpdate) AddVersion(v int64) *AccessPolicyUpdate {
-	_u.mutation.AddVersion(v)
 	return _u
 }
 
@@ -110,6 +110,11 @@ func (_u *AccessPolicyUpdate) ExecX(ctx context.Context) {
 
 // check runs all checks and user-defined validators on the builder.
 func (_u *AccessPolicyUpdate) check() error {
+	if v, ok := _u.mutation.Version(); ok {
+		if err := accesspolicy.VersionValidator(v); err != nil {
+			return &ValidationError{Name: "version", err: fmt.Errorf(`ent: validator failed for field "AccessPolicy.version": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.Name(); ok {
 		if err := accesspolicy.NameValidator(v); err != nil {
 			return &ValidationError{Name: "name", err: fmt.Errorf(`ent: validator failed for field "AccessPolicy.name": %w`, err)}
@@ -118,11 +123,6 @@ func (_u *AccessPolicyUpdate) check() error {
 	if v, ok := _u.mutation.Description(); ok {
 		if err := accesspolicy.DescriptionValidator(v); err != nil {
 			return &ValidationError{Name: "description", err: fmt.Errorf(`ent: validator failed for field "AccessPolicy.description": %w`, err)}
-		}
-	}
-	if v, ok := _u.mutation.Version(); ok {
-		if err := accesspolicy.VersionValidator(v); err != nil {
-			return &ValidationError{Name: "version", err: fmt.Errorf(`ent: validator failed for field "AccessPolicy.version": %w`, err)}
 		}
 	}
 	return nil
@@ -140,17 +140,17 @@ func (_u *AccessPolicyUpdate) sqlSave(ctx context.Context) (_node int, err error
 			}
 		}
 	}
-	if value, ok := _u.mutation.Name(); ok {
-		_spec.SetField(accesspolicy.FieldName, field.TypeString, value)
-	}
-	if value, ok := _u.mutation.Description(); ok {
-		_spec.SetField(accesspolicy.FieldDescription, field.TypeString, value)
-	}
 	if value, ok := _u.mutation.Version(); ok {
 		_spec.SetField(accesspolicy.FieldVersion, field.TypeInt64, value)
 	}
 	if value, ok := _u.mutation.AddedVersion(); ok {
 		_spec.AddField(accesspolicy.FieldVersion, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.Name(); ok {
+		_spec.SetField(accesspolicy.FieldName, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.Description(); ok {
+		_spec.SetField(accesspolicy.FieldDescription, field.TypeString, value)
 	}
 	if _node, err = sqlgraph.UpdateNodes(ctx, _u.driver, _spec); err != nil {
 		if _, ok := err.(*sqlgraph.NotFoundError); ok {
@@ -170,6 +170,27 @@ type AccessPolicyUpdateOne struct {
 	fields   []string
 	hooks    []Hook
 	mutation *AccessPolicyMutation
+}
+
+// SetVersion sets the "version" field.
+func (_u *AccessPolicyUpdateOne) SetVersion(v int64) *AccessPolicyUpdateOne {
+	_u.mutation.ResetVersion()
+	_u.mutation.SetVersion(v)
+	return _u
+}
+
+// SetNillableVersion sets the "version" field if the given value is not nil.
+func (_u *AccessPolicyUpdateOne) SetNillableVersion(v *int64) *AccessPolicyUpdateOne {
+	if v != nil {
+		_u.SetVersion(*v)
+	}
+	return _u
+}
+
+// AddVersion adds value to the "version" field.
+func (_u *AccessPolicyUpdateOne) AddVersion(v int64) *AccessPolicyUpdateOne {
+	_u.mutation.AddVersion(v)
+	return _u
 }
 
 // SetName sets the "name" field.
@@ -197,27 +218,6 @@ func (_u *AccessPolicyUpdateOne) SetNillableDescription(v *string) *AccessPolicy
 	if v != nil {
 		_u.SetDescription(*v)
 	}
-	return _u
-}
-
-// SetVersion sets the "version" field.
-func (_u *AccessPolicyUpdateOne) SetVersion(v int64) *AccessPolicyUpdateOne {
-	_u.mutation.ResetVersion()
-	_u.mutation.SetVersion(v)
-	return _u
-}
-
-// SetNillableVersion sets the "version" field if the given value is not nil.
-func (_u *AccessPolicyUpdateOne) SetNillableVersion(v *int64) *AccessPolicyUpdateOne {
-	if v != nil {
-		_u.SetVersion(*v)
-	}
-	return _u
-}
-
-// AddVersion adds value to the "version" field.
-func (_u *AccessPolicyUpdateOne) AddVersion(v int64) *AccessPolicyUpdateOne {
-	_u.mutation.AddVersion(v)
 	return _u
 }
 
@@ -268,6 +268,11 @@ func (_u *AccessPolicyUpdateOne) ExecX(ctx context.Context) {
 
 // check runs all checks and user-defined validators on the builder.
 func (_u *AccessPolicyUpdateOne) check() error {
+	if v, ok := _u.mutation.Version(); ok {
+		if err := accesspolicy.VersionValidator(v); err != nil {
+			return &ValidationError{Name: "version", err: fmt.Errorf(`ent: validator failed for field "AccessPolicy.version": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.Name(); ok {
 		if err := accesspolicy.NameValidator(v); err != nil {
 			return &ValidationError{Name: "name", err: fmt.Errorf(`ent: validator failed for field "AccessPolicy.name": %w`, err)}
@@ -276,11 +281,6 @@ func (_u *AccessPolicyUpdateOne) check() error {
 	if v, ok := _u.mutation.Description(); ok {
 		if err := accesspolicy.DescriptionValidator(v); err != nil {
 			return &ValidationError{Name: "description", err: fmt.Errorf(`ent: validator failed for field "AccessPolicy.description": %w`, err)}
-		}
-	}
-	if v, ok := _u.mutation.Version(); ok {
-		if err := accesspolicy.VersionValidator(v); err != nil {
-			return &ValidationError{Name: "version", err: fmt.Errorf(`ent: validator failed for field "AccessPolicy.version": %w`, err)}
 		}
 	}
 	return nil
@@ -315,17 +315,17 @@ func (_u *AccessPolicyUpdateOne) sqlSave(ctx context.Context) (_node *AccessPoli
 			}
 		}
 	}
-	if value, ok := _u.mutation.Name(); ok {
-		_spec.SetField(accesspolicy.FieldName, field.TypeString, value)
-	}
-	if value, ok := _u.mutation.Description(); ok {
-		_spec.SetField(accesspolicy.FieldDescription, field.TypeString, value)
-	}
 	if value, ok := _u.mutation.Version(); ok {
 		_spec.SetField(accesspolicy.FieldVersion, field.TypeInt64, value)
 	}
 	if value, ok := _u.mutation.AddedVersion(); ok {
 		_spec.AddField(accesspolicy.FieldVersion, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.Name(); ok {
+		_spec.SetField(accesspolicy.FieldName, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.Description(); ok {
+		_spec.SetField(accesspolicy.FieldDescription, field.TypeString, value)
 	}
 	_node = &AccessPolicy{config: _u.config}
 	_spec.Assign = _node.assignValues

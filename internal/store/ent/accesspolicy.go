@@ -18,12 +18,12 @@ type AccessPolicy struct {
 	ID string `json:"id,omitempty"`
 	// OrgID holds the value of the "org_id" field.
 	OrgID string `json:"org_id,omitempty"`
+	// Version holds the value of the "version" field.
+	Version int64 `json:"version,omitempty"`
 	// Name holds the value of the "name" field.
 	Name string `json:"name,omitempty"`
 	// Description holds the value of the "description" field.
-	Description string `json:"description,omitempty"`
-	// Version holds the value of the "version" field.
-	Version      int64 `json:"version,omitempty"`
+	Description  string `json:"description,omitempty"`
 	selectValues sql.SelectValues
 }
 
@@ -63,6 +63,12 @@ func (_m *AccessPolicy) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.OrgID = value.String
 			}
+		case accesspolicy.FieldVersion:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field version", values[i])
+			} else if value.Valid {
+				_m.Version = value.Int64
+			}
 		case accesspolicy.FieldName:
 			if value, ok := values[i].(*sql.NullString); !ok {
 				return fmt.Errorf("unexpected type %T for field name", values[i])
@@ -74,12 +80,6 @@ func (_m *AccessPolicy) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field description", values[i])
 			} else if value.Valid {
 				_m.Description = value.String
-			}
-		case accesspolicy.FieldVersion:
-			if value, ok := values[i].(*sql.NullInt64); !ok {
-				return fmt.Errorf("unexpected type %T for field version", values[i])
-			} else if value.Valid {
-				_m.Version = value.Int64
 			}
 		default:
 			_m.selectValues.Set(columns[i], values[i])
@@ -120,14 +120,14 @@ func (_m *AccessPolicy) String() string {
 	builder.WriteString("org_id=")
 	builder.WriteString(_m.OrgID)
 	builder.WriteString(", ")
+	builder.WriteString("version=")
+	builder.WriteString(fmt.Sprintf("%v", _m.Version))
+	builder.WriteString(", ")
 	builder.WriteString("name=")
 	builder.WriteString(_m.Name)
 	builder.WriteString(", ")
 	builder.WriteString("description=")
 	builder.WriteString(_m.Description)
-	builder.WriteString(", ")
-	builder.WriteString("version=")
-	builder.WriteString(fmt.Sprintf("%v", _m.Version))
 	builder.WriteByte(')')
 	return builder.String()
 }

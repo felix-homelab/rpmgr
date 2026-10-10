@@ -129,6 +129,12 @@ func newEnv(t *testing.T) *env {
 		}); err != nil {
 		t.Fatal(err)
 	}
+	if err := srv.Mount(mux, rpmgrv1.File_rpmgr_v1_policy_proto.Services().ByName("PolicyService"),
+		func(o ...connect.HandlerOption) (string, http.Handler) {
+			return rpmgrv1connect.NewPolicyServiceHandler(&apisvc.Policies{DB: db, API: srv, Sys: sys}, o...)
+		}); err != nil {
+		t.Fatal(err)
+	}
 	if err := srv.Mount(mux, rpmgrv1.File_rpmgr_v1_enrollment_proto.Services().ByName("EnrollmentService"),
 		func(o ...connect.HandlerOption) (string, http.Handler) {
 			return rpmgrv1connect.NewEnrollmentServiceHandler(&apisvc.Enrollment{DB: db, API: srv, Now: now,
@@ -176,6 +182,7 @@ type browser struct {
 	dom    rpmgrv1connect.DomainServiceClient
 	rt     rpmgrv1connect.RouteServiceClient
 	st     rpmgrv1connect.StatusServiceClient
+	pol    rpmgrv1connect.PolicyServiceClient
 }
 
 func (e *env) browser() *browser {
@@ -190,6 +197,7 @@ func (e *env) browser() *browser {
 	b.dom = rpmgrv1connect.NewDomainServiceClient(&http.Client{Transport: b}, e.url)
 	b.rt = rpmgrv1connect.NewRouteServiceClient(&http.Client{Transport: b}, e.url)
 	b.st = rpmgrv1connect.NewStatusServiceClient(&http.Client{Transport: b}, e.url)
+	b.pol = rpmgrv1connect.NewPolicyServiceClient(&http.Client{Transport: b}, e.url)
 	return b
 }
 

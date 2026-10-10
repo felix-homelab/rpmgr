@@ -269,9 +269,9 @@ func TestHTTPRoutes(t *testing.T) {
 	}
 }
 
-// TestRoutes_GatewayAcceptsThem: routes the API accepts, with every http setting and a target
-// each, an HTTPS one verified by a pin, compile into a snapshot the gateway validates without an
-// error.
+// TestRoutes_GatewayAcceptsThem: routes the API accepts, with every http setting, access
+// policies and a target each, an HTTPS one verified by a pin, compile into a snapshot the gateway
+// validates without an error.
 func TestRoutes_GatewayAcceptsThem(t *testing.T) {
 	e, ada, org, group := gatewayEnv(t)
 	e.verified(t, org, "example.com", true)
@@ -293,8 +293,20 @@ func TestRoutes_GatewayAcceptsThem(t *testing.T) {
 		}
 	}
 	con := e.addConnector(t, org, "nas", nil).ID
+	policy := func(name string, rules ...*rpmgrv1.AccessRule) string {
+		r, err := ada.pol.CreateAccessPolicy(context.Background(), connect.NewRequest(&rpmgrv1.CreateAccessPolicyRequest{OrgId: org,
+			AccessPolicy: &rpmgrv1.AccessPolicy{Name: name, Rules: rules}}))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return r.Msg.GetAccessPolicy().GetId()
+	}
+	ips := policy("ips", ipAllow("10.0.0.0/8"), &rpmgrv1.AccessRule{Rule: &rpmgrv1.AccessRule_IpDeny{IpDeny: &rpmgrv1.IPRuleParams{Cidrs: []string{"::/0"}}}})
+	full.PolicyIds = []string{policy("auth", basicAuth(user("alice", "correct horse battery"))), ips}
+	pg := tcpRoute("pg", group, 0)
+	pg.PolicyIds = []string{ips}
 	for _, rt := range []*rpmgrv1.Route{full, httpRoute("plain", group, "plain.example.com"), passthroughRoute("db", group, "db.example.com"),
-		tcpRoute("pg", group, 0), udpRoute("dns", group, 0)} {
+		pg, udpRoute("dns", group, 0)} {
 		created, err := createRoute(ada, org, rt, "")
 		if err != nil {
 			t.Fatal(err)
@@ -329,6 +341,14 @@ func TestRoutes_GatewayAcceptsThem(t *testing.T) {
 	}
 	if len(snap.GetResources()) != 5 {
 		t.Fatalf("compiled %d resources, want 5", len(snap.GetResources()))
+	}
+	for _, res := range snap.GetResources() {
+		if h := res.GetGatewayHttpRoute(); h.GetHostHeader() == "upstream.internal" && (len(h.GetAccess().GetBasicAuth()) != 1 || len(h.GetAccess().GetIpRules()) != 2) {
+			t.Fatalf("the access policies of the full route: %v", h.GetAccess())
+		}
+		if r := res.GetGatewayTcpRoute(); r != nil && len(r.GetAccess().GetIpRules()) != 2 {
+			t.Fatalf("the access policy of the tcp route: %v", r.GetAccess())
+		}
 	}
 	a, _ := gateway.NewApplier()
 	if errs := a.Validate(snap); len(errs) != 0 {
