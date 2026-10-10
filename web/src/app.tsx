@@ -8,7 +8,8 @@ import { RouterProvider, type RouterHistory } from "@tanstack/react-router";
 import { useState } from "react";
 import { I18nextProvider } from "react-i18next";
 import { i18n } from "@/i18n";
-import { Reason, reasonOf } from "@/lib/errors";
+import { RefusedInReview } from "@/components/restore-review";
+import { Reason, reasonOf, refusedInReview } from "@/lib/errors";
 import { createAppRouter } from "@/router";
 import { StepUpProvider } from "@/step-up";
 
@@ -27,11 +28,18 @@ export interface AppProps {
 }
 
 export function App({ transport, history }: AppProps) {
+  // Whether the API refused a change because of the restore review, which the banner explains.
+  const [refused, setRefused] = useState(false);
   const [state] = useState(() => {
     const api = transport ?? originTransport();
     // A session that ends while the UI is open, by expiry or revocation, sends the user to sign
     // in and back; a step-up the API asks for is handled where it happens.
     const ended = (err: unknown) => {
+      if (refusedInReview(err)) {
+        setRefused(true);
+        void queryClient.invalidateQueries();
+        return;
+      }
       // An org that requires a second factor refuses a user without one until they set one up.
       if (ConnectError.from(err).code === Code.PermissionDenied && reasonOf(err) === Reason.mfaRequired) {
         if (router.state.location.pathname !== "/account") {
@@ -61,7 +69,9 @@ export function App({ transport, history }: AppProps) {
       <TransportProvider transport={state.api}>
         <QueryClientProvider client={state.queryClient}>
           <StepUpProvider>
-            <RouterProvider router={state.router} />
+            <RefusedInReview.Provider value={{ refused, dismiss: () => setRefused(false) }}>
+              <RouterProvider router={state.router} />
+            </RefusedInReview.Provider>
           </StepUpProvider>
         </QueryClientProvider>
       </TransportProvider>
