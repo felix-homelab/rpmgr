@@ -133,6 +133,15 @@ flowchart LR
   gateways serve the route.
 - **Each target** shows its connector by name, its address and weight, and whether it serves; if
   not, it says why.
+- **Targets are added, edited and removed** on the page.
+  - **The form:** the connector (fixed once the target exists), a host and port or a socket path,
+    the protocol to the target (HTTP, verified HTTPS with its server name, CA bundle and key pin,
+    or h2c for HTTP routes; TCP otherwise), the PROXY protocol for TCP and TLS-passthrough routes,
+    weight, priority and whether it is enabled.
+  - **Edits** send the whole target as read, with the update mask of those fields and its etag
+    (U1).
+  - **Removal** first asks, naming the target's address.
+  - **After each change,** the apply status follows live.
 - **A target that a connector's local policy blocks** shows the command for that connector's host,
   with a copy button (U4). The target is shell-quoted, for example a socket path with a space.
 - **A target whose connector reaches the gateways only over TLS and HTTP/2** is marked as served
@@ -160,6 +169,21 @@ flowchart LR
     - "Put my changes on the new version" refills the form with the saved version and the user's
       changes on top, for a second save.
     - "Drop my changes" refills it with the saved version.
+
+### Connectors
+
+- **The list** (`/connectors`) shows the org's connectors in service, sorted by name. Each row has
+  its control session (connected or offline, with an icon and text), version, last contact and
+  labels. A text filter (name or `key=value` label) and a session filter stay in the URL (U9).
+- **The detail page:**
+  - **Sessions:** the control session (address, last contact), and the data sessions per gateway,
+    with transport, round-trip time and start.
+  - **Routes:** those with a target on the connector. Those it reports not ready show their reason,
+    and, for a target its local policy blocks, the command for its host with a copy button (U4).
+  - **Settings:** name, labels, transport policy and whether it serves. They are saved as the whole
+    connector as read, with their mask and the etag (U1).
+  - **Decommission** comes after a confirmation that names the connector and says what it does
+    (U7). The page then returns to the list.
 
 ### Enroll connector dialog
 

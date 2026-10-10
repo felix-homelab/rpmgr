@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
-import { create, equals } from "@bufbuild/protobuf";
+import { clone, create, equals } from "@bufbuild/protobuf";
 import { timestampFromDate } from "@bufbuild/protobuf/wkt";
 import { Code, ConnectError } from "@connectrpc/connect";
 import { FieldDescriptorProto_Type } from "@bufbuild/protobuf/wkt";
@@ -71,7 +71,7 @@ describe("RouteEdit", () => {
     fireEvent.change(screen.getByLabelText("Request headers to set"), { target: { value: "X-A: 2\nX-C: x: y" } });
     save();
     await waitFor(() => expect(updates).toHaveLength(1));
-    const want = create(RouteSchema, routes.http!);
+    const want = clone(RouteSchema, routes.http!); // create would return the route itself
     want.name = "docs";
     want.labels = { team: "web" };
     if (want.spec.case === "http") {

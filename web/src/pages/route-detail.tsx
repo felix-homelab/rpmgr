@@ -14,6 +14,7 @@ import { ConnectorService, DataTransport } from "@/gen/rpmgr/v1/connector_pb";
 import type { Revision } from "@/gen/rpmgr/v1/common_pb";
 import { RouteService, RouteState, type Route, type RouteTarget } from "@/gen/rpmgr/v1/route_pb";
 import type { ApplyStatus } from "@/gen/rpmgr/v1/status_pb";
+import { TargetForm, type Written } from "@/route-form/target-form";
 import { allowCommand, routeAddress, routeType, useAgentNames, useGroupNames } from "@/routes-data";
 import { useOrg } from "@/session";
 
@@ -32,10 +33,18 @@ export function RouteDetail() {
   const update = useMutation(RouteService.method.updateRoute);
   const queryClient = useQueryClient();
   const [write, setWrite] = useState<{ revision?: Revision; status?: ApplyStatus }>();
+  const [editing, setEditing] = useState<string>(); // a target's ID, or "new"
+  const remove = useMutation(RouteService.method.deleteRouteTarget);
+  const done = async (w: Written) => {
+    setEditing(undefined);
+    setWrite(w);
+    await queryClient.invalidateQueries();
+  };
   const [error, setError] = useState("");
   const live = useLiveApplyStatus(org?.orgId ?? "", write?.revision, write?.status);
   const r = got.data?.route;
   const name = (id: string) => names.data?.get(id) || id;
+  const connectors = [...(names.data ?? new Map<string, string>())].filter(([id]) => id.startsWith("con_"));
 
   // toggle switches the route on or off, the only desired switch (U3), and follows the change to
   // the agents (U2).
@@ -94,10 +103,20 @@ export function RouteDetail() {
             </tr>
           </thead>
           <tbody>
-            {r.targets.map((tg) => <TargetRow key={tg.id} route={r} target={tg} connector={name(tg.connectorId)} />)}
+            {r.targets.map((tg) => (
+              <TargetRow key={tg.id} route={r} target={tg} connector={name(tg.connectorId)}
+                onEdit={() => setEditing(tg.id)}
+                onRemove={() => remove.mutateAsync({ routeTargetId: tg.id, etag: tg.etag }).then((res) => done({ revision: res.revision, status: res.applyStatus }))} />
+            ))}
           </tbody>
         </table>
         {r.targets.length === 0 && <p className="text-sm">{t("route.noTargets")}</p>}
+        {editing ? (
+          <TargetForm route={r} target={r.targets.find((tg) => tg.id === editing)} connectors={connectors}
+            onDone={(w) => void done(w)} onCancel={() => setEditing(undefined)} />
+        ) : (
+          <Button variant="outline" size="sm" className="justify-self-start" onClick={() => setEditing("new")}>{t("targetForm.addButton")}</Button>
+        )}
       </section>
 
       {gatewayProblems.length > 0 && (
@@ -127,13 +146,16 @@ export function RouteDetail() {
 
 // TargetRow shows a target and whether it serves; a blocked one gets the command for its host, and
 // a served one the transport its connector uses.
-function TargetRow({ route: r, target, connector }: { route: Route; target: RouteTarget; connector: string }) {
+function TargetRow({ route: r, target, connector, onEdit, onRemove }: {
+  route: Route; target: RouteTarget; connector: string; onEdit: () => void; onRemove: () => Promise<void>;
+}) {
   const { t } = useTranslation();
   const problem = r.status?.notServing.find((n) => n.id === target.id);
   const status = useQuery(ConnectorService.method.getConnectorStatus, { connectorId: target.connectorId });
   const transports = new Set(status.data?.status?.dataSessions.map((s) => s.transport));
   const address = target.address.case === "hostPort" ? `${target.address.value.host}:${target.address.value.port}` : target.address.value ?? "";
   const fallback = transports.has(DataTransport.H2) && !transports.has(DataTransport.QUIC) && r.transport !== DataTransport.H2;
+  const [asking, setAsking] = useState(false);
   return (
     <tr className="border-t border-border align-top">
       <td className="py-2">{connector}</td>
@@ -148,6 +170,20 @@ function TargetRow({ route: r, target, connector }: { route: Route; target: Rout
           <span className="text-ok">{t("route.targetReady")}</span>
         )}
         {fallback && <div className="text-muted-foreground">{t("route.fallback")}</div>}
+        <div className="mt-1 flex items-center gap-2">
+          {asking ? (
+            <>
+              <span>{t("targetForm.ask", { address })}</span>
+              <Button size="sm" variant="destructive" onClick={() => void onRemove().finally(() => setAsking(false))}>{t("targetForm.remove")}</Button>
+              <Button size="sm" variant="outline" onClick={() => setAsking(false)}>{t("stepUp.cancel")}</Button>
+            </>
+          ) : (
+            <>
+              <Button size="sm" variant="outline" onClick={onEdit}>{t("targetForm.edit")}</Button>
+              <Button size="sm" variant="outline" onClick={() => setAsking(true)}>{t("targetForm.removeAsk")}</Button>
+            </>
+          )}
+        </div>
         {problem?.reason === "BLOCKED_BY_LOCAL_POLICY" && problem.detail && (
           <div className="mt-1 grid gap-1">
             <span>{t("route.runOn", { connector })}</span>
