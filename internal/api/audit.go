@@ -35,10 +35,15 @@ type record struct {
 	appended atomic.Bool
 }
 
+// sideEffectFree reports whether a method changes nothing: idempotency_level NO_SIDE_EFFECTS.
+func sideEffectFree(md protoreflect.MethodDescriptor) bool {
+	opts, ok := md.Options().(*descriptorpb.MethodOptions)
+	return ok && opts.GetIdempotencyLevel() == descriptorpb.MethodOptions_NO_SIDE_EFFECTS
+}
+
 // newRecord starts the record of a request, or returns nil for a method without side effects.
 func (s *Server) newRecord(md protoreflect.MethodDescriptor, header http.Header, peer connect.Peer, msg proto.Message) *record {
-	if opts, ok := md.Options().(*descriptorpb.MethodOptions); ok &&
-		opts.GetIdempotencyLevel() == descriptorpb.MethodOptions_NO_SIDE_EFFECTS {
+	if sideEffectFree(md) {
 		return nil
 	}
 	ip := peer.Addr

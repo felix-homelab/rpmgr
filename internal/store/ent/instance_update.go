@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
@@ -38,6 +39,26 @@ func (_u *InstanceUpdate) SetNillableDbEpoch(v *string) *InstanceUpdate {
 	if v != nil {
 		_u.SetDbEpoch(*v)
 	}
+	return _u
+}
+
+// SetRestoreReviewSince sets the "restore_review_since" field.
+func (_u *InstanceUpdate) SetRestoreReviewSince(v time.Time) *InstanceUpdate {
+	_u.mutation.SetRestoreReviewSince(v)
+	return _u
+}
+
+// SetNillableRestoreReviewSince sets the "restore_review_since" field if the given value is not nil.
+func (_u *InstanceUpdate) SetNillableRestoreReviewSince(v *time.Time) *InstanceUpdate {
+	if v != nil {
+		_u.SetRestoreReviewSince(*v)
+	}
+	return _u
+}
+
+// ClearRestoreReviewSince clears the value of the "restore_review_since" field.
+func (_u *InstanceUpdate) ClearRestoreReviewSince() *InstanceUpdate {
+	_u.mutation.ClearRestoreReviewSince()
 	return _u
 }
 
@@ -98,6 +119,12 @@ func (_u *InstanceUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	if value, ok := _u.mutation.DbEpoch(); ok {
 		_spec.SetField(instance.FieldDbEpoch, field.TypeString, value)
 	}
+	if value, ok := _u.mutation.RestoreReviewSince(); ok {
+		_spec.SetField(instance.FieldRestoreReviewSince, field.TypeTime, value)
+	}
+	if _u.mutation.RestoreReviewSinceCleared() {
+		_spec.ClearField(instance.FieldRestoreReviewSince, field.TypeTime)
+	}
 	if _node, err = sqlgraph.UpdateNodes(ctx, _u.driver, _spec); err != nil {
 		if _, ok := err.(*sqlgraph.NotFoundError); ok {
 			err = &NotFoundError{instance.Label}
@@ -129,6 +156,26 @@ func (_u *InstanceUpdateOne) SetNillableDbEpoch(v *string) *InstanceUpdateOne {
 	if v != nil {
 		_u.SetDbEpoch(*v)
 	}
+	return _u
+}
+
+// SetRestoreReviewSince sets the "restore_review_since" field.
+func (_u *InstanceUpdateOne) SetRestoreReviewSince(v time.Time) *InstanceUpdateOne {
+	_u.mutation.SetRestoreReviewSince(v)
+	return _u
+}
+
+// SetNillableRestoreReviewSince sets the "restore_review_since" field if the given value is not nil.
+func (_u *InstanceUpdateOne) SetNillableRestoreReviewSince(v *time.Time) *InstanceUpdateOne {
+	if v != nil {
+		_u.SetRestoreReviewSince(*v)
+	}
+	return _u
+}
+
+// ClearRestoreReviewSince clears the value of the "restore_review_since" field.
+func (_u *InstanceUpdateOne) ClearRestoreReviewSince() *InstanceUpdateOne {
+	_u.mutation.ClearRestoreReviewSince()
 	return _u
 }
 
@@ -218,6 +265,12 @@ func (_u *InstanceUpdateOne) sqlSave(ctx context.Context) (_node *Instance, err 
 	}
 	if value, ok := _u.mutation.DbEpoch(); ok {
 		_spec.SetField(instance.FieldDbEpoch, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.RestoreReviewSince(); ok {
+		_spec.SetField(instance.FieldRestoreReviewSince, field.TypeTime, value)
+	}
+	if _u.mutation.RestoreReviewSinceCleared() {
+		_spec.ClearField(instance.FieldRestoreReviewSince, field.TypeTime)
 	}
 	_node = &Instance{config: _u.config}
 	_spec.Assign = _node.assignValues

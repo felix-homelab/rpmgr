@@ -1,4 +1,4 @@
-h1:bg6IAoqHagycHTPXz0y2jTM+APc1oiU902JqiK/mAdY=
+h1:rExtBnM7K9edF7bhyhx2+B355N5UzP3OMhDHSPFzrJQ=
 20261007104715_init.sql h1:pF+EZfqVnaVoEYtJTX+eFxkAZNQHtzLrN7GFfoc+GNE=
 20261007110312_config_revisions.sql h1:vyGjNiUBsWooQ4kxjnpkYMWZLX4CLUoGUjFmXl2tGrc=
 20261007111838_settings.sql h1:DZYkkYfp2eUVgo0ZYeZ/5eY7F2XI5yCZ4oKu/LAte6w=
@@ -43,3 +43,4 @@ h1:bg6IAoqHagycHTPXz0y2jTM+APc1oiU902JqiK/mAdY=
 20261009093637_traffic_rollups.sql h1:poCrp4Jsqjt3Q4zFSK55LU1qG8tVIXk0RKajTv4o02Q=
 20261009120400_user_theme.sql h1:uzbRoAz2wBquAnFPyDYT7GPKv1wOSIENpYpbsM7BxC4=
 20261009202252_revoked_serials.sql h1:dabtqTM9fsg0laf1Poq1WUeUjvYjEJdBnZiHBcqaW1M=
+20261009204209_restore_review.sql h1:NtBn9QOg6+5wxRxTlLGl9xx13jutPC2xxzZB9j2aF8I=

@@ -24,6 +24,10 @@ message Authz {
   // Whether a personal API token may call a method of the "authenticated" permission, which no
   // token scope names: only AuthService.StepUp, which steps up the token itself (D63).
   bool allow_token = 4;
+  // Whether a method that changes state stays available while its org or the instance is in
+  // restore review, which refuses every other such method (docs/10-operations.md, "Backup and
+  // restore"): revocations and the review itself.
+  bool during_restore_review = 5;
 }
 
 extend google.protobuf.MethodOptions {

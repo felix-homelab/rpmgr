@@ -174,6 +174,16 @@ func (a *Accounts) CompleteReset(ctx context.Context, tok, newPassword, email, d
 	return u, nil
 }
 
+// RestoreReview returns since when the instance is in restore review, nil when it is not
+// (docs/10-operations.md, "Backup and restore").
+func (a *Accounts) RestoreReview() (*time.Time, error) {
+	inst, err := a.db.ReadClient().Instance.Get(a.sys, 1)
+	if err != nil {
+		return nil, err
+	}
+	return inst.RestoreReviewSince, nil
+}
+
 // logSuperseded appends a change of a user's credentials to the revocation log, before the
 // transaction commits; what is revlog.Password, MFA or RecoveryCodes. A failed append is reported
 // and does not stop the change (docs/04-security.md, "Revocation log").

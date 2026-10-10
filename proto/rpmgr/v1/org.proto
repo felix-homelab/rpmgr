@@ -7,6 +7,7 @@ package rpmgr.v1;
 import "buf/validate/validate.proto";
 import "google/protobuf/timestamp.proto";
 import "rpmgr/v1/options.proto";
+import "rpmgr/v1/token.proto";
 
 option go_package = "github.com/felix-homelab/rpmgr/gen/rpmgr/v1;rpmgrv1";
 
@@ -42,6 +43,7 @@ service OrgService {
     option (rpmgr.v1.authz) = {
       permission: "members.write"
       resource_field: "org_id"
+      during_restore_review: true
     };
   }
   // RemoveMember ends a membership; only an Owner removes an Owner, and an org keeps one.
@@ -49,6 +51,7 @@ service OrgService {
     option (rpmgr.v1.authz) = {
       permission: "members.write"
       resource_field: "org_id"
+      during_restore_review: true
     };
   }
   // CreateInvitation returns a one-time link that makes its holder a member with a role; an
@@ -64,6 +67,34 @@ service OrgService {
   rpc AcceptInvitation(AcceptInvitationRequest) returns (AcceptInvitationResponse) {
     option (rpmgr.v1.authz) = {permission: "public"};
   }
+  // ListSuspendedAPITokens lists the API tokens of an org that a restore suspended, of every
+  // member, for its Owner's review (docs/10-operations.md, "Backup and restore").
+  rpc ListSuspendedAPITokens(ListSuspendedAPITokensRequest) returns (ListSuspendedAPITokensResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+    option (rpmgr.v1.authz) = {
+      permission: "members.write"
+      resource_field: "org_id"
+    };
+  }
+  // ResumeAPIToken lets a suspended API token act again; only an Owner resumes one.
+  rpc ResumeAPIToken(ResumeAPITokenRequest) returns (ResumeAPITokenResponse) {
+    option (rpmgr.v1.authz) = {
+      permission: "members.write"
+      resource_field: "org_id"
+      step_up: true
+      during_restore_review: true
+    };
+  }
+  // ConfirmRestoreReview ends an org's restore review: its Owner confirms its memberships and
+  // roles. It does not end the instance-wide review, which only `rpmgr restore confirm` ends.
+  rpc ConfirmRestoreReview(ConfirmRestoreReviewRequest) returns (ConfirmRestoreReviewResponse) {
+    option (rpmgr.v1.authz) = {
+      permission: "members.write"
+      resource_field: "org_id"
+      step_up: true
+      during_restore_review: true
+    };
+  }
 }
 
 // Org is an organisation.
@@ -76,6 +107,8 @@ message Org {
   string slug = 3;
   // When it was created.
   google.protobuf.Timestamp create_time = 4;
+  // Since when it is in restore review, read-only until its Owner confirms it; not set otherwise.
+  google.protobuf.Timestamp restore_review_time = 5;
 }
 
 // GetOrgRequest names an org.
@@ -212,4 +245,49 @@ message AcceptInvitationResponse {
   string org_id = 1;
   // The member's user ID.
   string user_id = 2;
+}
+
+// ListSuspendedAPITokensRequest names an org.
+message ListSuspendedAPITokensRequest {
+  // The org's ID.
+  string org_id = 1 [(buf.validate.field).string.min_len = 1];
+}
+
+// SuspendedAPIToken is an API token a restore suspended, with its owner.
+message SuspendedAPIToken {
+  // The token, without its secret, with its suspend_time.
+  APIToken api_token = 1;
+  // The ID of the user or service account it belongs to.
+  string owner_id = 2;
+  // The owner's e-mail address; empty for a service account.
+  string owner_email = 3;
+}
+
+// ListSuspendedAPITokensResponse is the org's suspended tokens.
+message ListSuspendedAPITokensResponse {
+  // The tokens, oldest first.
+  repeated SuspendedAPIToken api_tokens = 1;
+}
+
+// ResumeAPITokenRequest names a suspended token.
+message ResumeAPITokenRequest {
+  // The org's ID.
+  string org_id = 1 [(buf.validate.field).string.min_len = 1];
+  // The token's ID.
+  string token_id = 2 [(buf.validate.field).string.min_len = 1];
+}
+
+// ResumeAPITokenResponse is empty.
+message ResumeAPITokenResponse {}
+
+// ConfirmRestoreReviewRequest names an org.
+message ConfirmRestoreReviewRequest {
+  // The org's ID.
+  string org_id = 1 [(buf.validate.field).string.min_len = 1];
+}
+
+// ConfirmRestoreReviewResponse is the org, out of review.
+message ConfirmRestoreReviewResponse {
+  // The org.
+  Org org = 1;
 }

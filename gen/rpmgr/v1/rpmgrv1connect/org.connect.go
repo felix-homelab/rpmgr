@@ -51,6 +51,15 @@ const (
 	// OrgServiceAcceptInvitationProcedure is the fully-qualified name of the OrgService's
 	// AcceptInvitation RPC.
 	OrgServiceAcceptInvitationProcedure = "/rpmgr.v1.OrgService/AcceptInvitation"
+	// OrgServiceListSuspendedAPITokensProcedure is the fully-qualified name of the OrgService's
+	// ListSuspendedAPITokens RPC.
+	OrgServiceListSuspendedAPITokensProcedure = "/rpmgr.v1.OrgService/ListSuspendedAPITokens"
+	// OrgServiceResumeAPITokenProcedure is the fully-qualified name of the OrgService's ResumeAPIToken
+	// RPC.
+	OrgServiceResumeAPITokenProcedure = "/rpmgr.v1.OrgService/ResumeAPIToken"
+	// OrgServiceConfirmRestoreReviewProcedure is the fully-qualified name of the OrgService's
+	// ConfirmRestoreReview RPC.
+	OrgServiceConfirmRestoreReviewProcedure = "/rpmgr.v1.OrgService/ConfirmRestoreReview"
 )
 
 // OrgServiceClient is a client for the rpmgr.v1.OrgService service.
@@ -72,6 +81,14 @@ type OrgServiceClient interface {
 	// AcceptInvitation uses an invitation: a signed-in caller joins with their account; without
 	// one, an account is created for the invited address.
 	AcceptInvitation(context.Context, *connect.Request[v1.AcceptInvitationRequest]) (*connect.Response[v1.AcceptInvitationResponse], error)
+	// ListSuspendedAPITokens lists the API tokens of an org that a restore suspended, of every
+	// member, for its Owner's review (docs/10-operations.md, "Backup and restore").
+	ListSuspendedAPITokens(context.Context, *connect.Request[v1.ListSuspendedAPITokensRequest]) (*connect.Response[v1.ListSuspendedAPITokensResponse], error)
+	// ResumeAPIToken lets a suspended API token act again; only an Owner resumes one.
+	ResumeAPIToken(context.Context, *connect.Request[v1.ResumeAPITokenRequest]) (*connect.Response[v1.ResumeAPITokenResponse], error)
+	// ConfirmRestoreReview ends an org's restore review: its Owner confirms its memberships and
+	// roles. It does not end the instance-wide review, which only `rpmgr restore confirm` ends.
+	ConfirmRestoreReview(context.Context, *connect.Request[v1.ConfirmRestoreReviewRequest]) (*connect.Response[v1.ConfirmRestoreReviewResponse], error)
 }
 
 // NewOrgServiceClient constructs a client for the rpmgr.v1.OrgService service. By default, it uses
@@ -129,18 +146,40 @@ func NewOrgServiceClient(httpClient connect.HTTPClient, baseURL string, opts ...
 			connect.WithSchema(orgServiceMethods.ByName("AcceptInvitation")),
 			connect.WithClientOptions(opts...),
 		),
+		listSuspendedAPITokens: connect.NewClient[v1.ListSuspendedAPITokensRequest, v1.ListSuspendedAPITokensResponse](
+			httpClient,
+			baseURL+OrgServiceListSuspendedAPITokensProcedure,
+			connect.WithSchema(orgServiceMethods.ByName("ListSuspendedAPITokens")),
+			connect.WithIdempotency(connect.IdempotencyNoSideEffects),
+			connect.WithClientOptions(opts...),
+		),
+		resumeAPIToken: connect.NewClient[v1.ResumeAPITokenRequest, v1.ResumeAPITokenResponse](
+			httpClient,
+			baseURL+OrgServiceResumeAPITokenProcedure,
+			connect.WithSchema(orgServiceMethods.ByName("ResumeAPIToken")),
+			connect.WithClientOptions(opts...),
+		),
+		confirmRestoreReview: connect.NewClient[v1.ConfirmRestoreReviewRequest, v1.ConfirmRestoreReviewResponse](
+			httpClient,
+			baseURL+OrgServiceConfirmRestoreReviewProcedure,
+			connect.WithSchema(orgServiceMethods.ByName("ConfirmRestoreReview")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
 // orgServiceClient implements OrgServiceClient.
 type orgServiceClient struct {
-	getOrg           *connect.Client[v1.GetOrgRequest, v1.GetOrgResponse]
-	updateOrg        *connect.Client[v1.UpdateOrgRequest, v1.UpdateOrgResponse]
-	listMembers      *connect.Client[v1.ListMembersRequest, v1.ListMembersResponse]
-	updateMember     *connect.Client[v1.UpdateMemberRequest, v1.UpdateMemberResponse]
-	removeMember     *connect.Client[v1.RemoveMemberRequest, v1.RemoveMemberResponse]
-	createInvitation *connect.Client[v1.CreateInvitationRequest, v1.CreateInvitationResponse]
-	acceptInvitation *connect.Client[v1.AcceptInvitationRequest, v1.AcceptInvitationResponse]
+	getOrg                 *connect.Client[v1.GetOrgRequest, v1.GetOrgResponse]
+	updateOrg              *connect.Client[v1.UpdateOrgRequest, v1.UpdateOrgResponse]
+	listMembers            *connect.Client[v1.ListMembersRequest, v1.ListMembersResponse]
+	updateMember           *connect.Client[v1.UpdateMemberRequest, v1.UpdateMemberResponse]
+	removeMember           *connect.Client[v1.RemoveMemberRequest, v1.RemoveMemberResponse]
+	createInvitation       *connect.Client[v1.CreateInvitationRequest, v1.CreateInvitationResponse]
+	acceptInvitation       *connect.Client[v1.AcceptInvitationRequest, v1.AcceptInvitationResponse]
+	listSuspendedAPITokens *connect.Client[v1.ListSuspendedAPITokensRequest, v1.ListSuspendedAPITokensResponse]
+	resumeAPIToken         *connect.Client[v1.ResumeAPITokenRequest, v1.ResumeAPITokenResponse]
+	confirmRestoreReview   *connect.Client[v1.ConfirmRestoreReviewRequest, v1.ConfirmRestoreReviewResponse]
 }
 
 // GetOrg calls rpmgr.v1.OrgService.GetOrg.
@@ -178,6 +217,21 @@ func (c *orgServiceClient) AcceptInvitation(ctx context.Context, req *connect.Re
 	return c.acceptInvitation.CallUnary(ctx, req)
 }
 
+// ListSuspendedAPITokens calls rpmgr.v1.OrgService.ListSuspendedAPITokens.
+func (c *orgServiceClient) ListSuspendedAPITokens(ctx context.Context, req *connect.Request[v1.ListSuspendedAPITokensRequest]) (*connect.Response[v1.ListSuspendedAPITokensResponse], error) {
+	return c.listSuspendedAPITokens.CallUnary(ctx, req)
+}
+
+// ResumeAPIToken calls rpmgr.v1.OrgService.ResumeAPIToken.
+func (c *orgServiceClient) ResumeAPIToken(ctx context.Context, req *connect.Request[v1.ResumeAPITokenRequest]) (*connect.Response[v1.ResumeAPITokenResponse], error) {
+	return c.resumeAPIToken.CallUnary(ctx, req)
+}
+
+// ConfirmRestoreReview calls rpmgr.v1.OrgService.ConfirmRestoreReview.
+func (c *orgServiceClient) ConfirmRestoreReview(ctx context.Context, req *connect.Request[v1.ConfirmRestoreReviewRequest]) (*connect.Response[v1.ConfirmRestoreReviewResponse], error) {
+	return c.confirmRestoreReview.CallUnary(ctx, req)
+}
+
 // OrgServiceHandler is an implementation of the rpmgr.v1.OrgService service.
 type OrgServiceHandler interface {
 	// GetOrg returns an org.
@@ -197,6 +251,14 @@ type OrgServiceHandler interface {
 	// AcceptInvitation uses an invitation: a signed-in caller joins with their account; without
 	// one, an account is created for the invited address.
 	AcceptInvitation(context.Context, *connect.Request[v1.AcceptInvitationRequest]) (*connect.Response[v1.AcceptInvitationResponse], error)
+	// ListSuspendedAPITokens lists the API tokens of an org that a restore suspended, of every
+	// member, for its Owner's review (docs/10-operations.md, "Backup and restore").
+	ListSuspendedAPITokens(context.Context, *connect.Request[v1.ListSuspendedAPITokensRequest]) (*connect.Response[v1.ListSuspendedAPITokensResponse], error)
+	// ResumeAPIToken lets a suspended API token act again; only an Owner resumes one.
+	ResumeAPIToken(context.Context, *connect.Request[v1.ResumeAPITokenRequest]) (*connect.Response[v1.ResumeAPITokenResponse], error)
+	// ConfirmRestoreReview ends an org's restore review: its Owner confirms its memberships and
+	// roles. It does not end the instance-wide review, which only `rpmgr restore confirm` ends.
+	ConfirmRestoreReview(context.Context, *connect.Request[v1.ConfirmRestoreReviewRequest]) (*connect.Response[v1.ConfirmRestoreReviewResponse], error)
 }
 
 // NewOrgServiceHandler builds an HTTP handler from the service implementation. It returns the path
@@ -250,6 +312,25 @@ func NewOrgServiceHandler(svc OrgServiceHandler, opts ...connect.HandlerOption) 
 		connect.WithSchema(orgServiceMethods.ByName("AcceptInvitation")),
 		connect.WithHandlerOptions(opts...),
 	)
+	orgServiceListSuspendedAPITokensHandler := connect.NewUnaryHandler(
+		OrgServiceListSuspendedAPITokensProcedure,
+		svc.ListSuspendedAPITokens,
+		connect.WithSchema(orgServiceMethods.ByName("ListSuspendedAPITokens")),
+		connect.WithIdempotency(connect.IdempotencyNoSideEffects),
+		connect.WithHandlerOptions(opts...),
+	)
+	orgServiceResumeAPITokenHandler := connect.NewUnaryHandler(
+		OrgServiceResumeAPITokenProcedure,
+		svc.ResumeAPIToken,
+		connect.WithSchema(orgServiceMethods.ByName("ResumeAPIToken")),
+		connect.WithHandlerOptions(opts...),
+	)
+	orgServiceConfirmRestoreReviewHandler := connect.NewUnaryHandler(
+		OrgServiceConfirmRestoreReviewProcedure,
+		svc.ConfirmRestoreReview,
+		connect.WithSchema(orgServiceMethods.ByName("ConfirmRestoreReview")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/rpmgr.v1.OrgService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case OrgServiceGetOrgProcedure:
@@ -266,6 +347,12 @@ func NewOrgServiceHandler(svc OrgServiceHandler, opts ...connect.HandlerOption) 
 			orgServiceCreateInvitationHandler.ServeHTTP(w, r)
 		case OrgServiceAcceptInvitationProcedure:
 			orgServiceAcceptInvitationHandler.ServeHTTP(w, r)
+		case OrgServiceListSuspendedAPITokensProcedure:
+			orgServiceListSuspendedAPITokensHandler.ServeHTTP(w, r)
+		case OrgServiceResumeAPITokenProcedure:
+			orgServiceResumeAPITokenHandler.ServeHTTP(w, r)
+		case OrgServiceConfirmRestoreReviewProcedure:
+			orgServiceConfirmRestoreReviewHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -301,4 +388,16 @@ func (UnimplementedOrgServiceHandler) CreateInvitation(context.Context, *connect
 
 func (UnimplementedOrgServiceHandler) AcceptInvitation(context.Context, *connect.Request[v1.AcceptInvitationRequest]) (*connect.Response[v1.AcceptInvitationResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("rpmgr.v1.OrgService.AcceptInvitation is not implemented"))
+}
+
+func (UnimplementedOrgServiceHandler) ListSuspendedAPITokens(context.Context, *connect.Request[v1.ListSuspendedAPITokensRequest]) (*connect.Response[v1.ListSuspendedAPITokensResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("rpmgr.v1.OrgService.ListSuspendedAPITokens is not implemented"))
+}
+
+func (UnimplementedOrgServiceHandler) ResumeAPIToken(context.Context, *connect.Request[v1.ResumeAPITokenRequest]) (*connect.Response[v1.ResumeAPITokenResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("rpmgr.v1.OrgService.ResumeAPIToken is not implemented"))
+}
+
+func (UnimplementedOrgServiceHandler) ConfirmRestoreReview(context.Context, *connect.Request[v1.ConfirmRestoreReviewRequest]) (*connect.Response[v1.ConfirmRestoreReviewResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("rpmgr.v1.OrgService.ConfirmRestoreReview is not implemented"))
 }

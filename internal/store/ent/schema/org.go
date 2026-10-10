@@ -23,5 +23,8 @@ func (Org) Fields() []ent.Field {
 		field.String("name").NotEmpty(),
 		field.String("slug").NotEmpty().Unique().Match(slugRe),
 		field.Time("created_at").Immutable().Default(time.Now),
+		// restore_review_since is set by a restore that failed closed: the org is read-only until
+		// its Owner, or the Instance Admin, confirms its memberships and roles.
+		field.Time("restore_review_since").Optional().Nillable(),
 	}
 }

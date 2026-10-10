@@ -237,6 +237,7 @@ func Run(ctx context.Context, o RunOptions) error {
 	apiServer, err := api.New(api.Options{DB: db, Sys: sys, Sealer: sealer, Resolver: api.StoreResolver(db, sys),
 		OperatorsMayEnroll: api.StoreOperatorsMayEnroll(db, sys), PageKey: pageKey, Now: o.Now, Logger: o.Logger,
 		Authenticator: apisvc.Credentials{Sessions: webSessions, Tokens: tokens}, TokenStepUp: tokens.StepUpAt, Origins: origins(db, sys, public), RequireMFA: api.StoreRequireMFA(db, sys),
+		RestoreReview: api.StoreRestoreReview(db, sys),
 		ApplyStatus: func(ctx context.Context, org string, rev *rpmgrv1.Revision) (*rpmgrv1.ApplyStatus, error) {
 			return apisvc.ApplyStatusOf(ctx, db.ReadClient(), org, store.Revision{DBEpoch: rev.GetDbEpoch(), Seq: rev.GetSeq()}, o.Now())
 		}})
@@ -355,7 +356,7 @@ func Run(ctx context.Context, o RunOptions) error {
 	}
 	if err := apiServer.Mount(mux, rpmgrv1.File_rpmgr_v1_org_proto.Services().ByName("OrgService"),
 		func(opts ...connect.HandlerOption) (string, http.Handler) {
-			return rpmgrv1connect.NewOrgServiceHandler(&apisvc.Org{Members: &accounts.Members{Accounts: acc, RevLog: rl, Logger: o.Logger},
+			return rpmgrv1connect.NewOrgServiceHandler(&apisvc.Org{Members: &accounts.Members{Accounts: acc, RevLog: rl, Logger: o.Logger}, Tokens: tokens,
 				API: apiServer, PublicURL: cfg.PublicURL, Now: o.Now, Mail: relay, Logger: o.Logger}, opts...)
 		}); err != nil {
 		return err

@@ -662,6 +662,29 @@
     "notMailed": "This controller cannot send e-mail. Send this one-time link yourself; it works until {{until}}:",
     "link": "Invitation link"
   },
+  "review": {
+    "title": "Restore review",
+    "banner": "The instance is in restore review since {{since}}: the restore could not prove that every revocation since the backup was applied again.",
+    "bannerHow": "Each organisation is read-only until its Owner confirms its members and roles. Only the Instance Admin ends the review, on the controller host, with",
+    "toOrg": "Review your organisation",
+    "refused": "That change was not saved: the organisation, or the instance, is read-only until its restore review is confirmed.",
+    "dismiss": "Dismiss",
+    "orgTitle": "Review this organisation after the restore",
+    "orgIntro": "A restore on {{since}} could not prove that every revocation since its backup was applied again. Check the members and roles below, and remove or downgrade anyone who should not have access. Resume only the API tokens you trust. Then confirm: until then the organisation is read-only.",
+    "orgReadOnly": "This organisation is read-only since the restore on {{since}}, until its Owner confirms its members and roles, or the Instance Admin on the controller host with",
+    "tokens": "Suspended API tokens",
+    "noTokens": "No API token of this organisation is suspended.",
+    "columns": {
+      "name": "Token",
+      "owner": "Owner",
+      "scopes": "Permissions",
+      "suspended": "Suspended",
+      "actions": "Actions"
+    },
+    "resume": "Resume",
+    "resumeOf": "Resume {{name}}",
+    "confirm": "Confirm members and roles"
+  },
   "invite": {
     "title": "Join an organisation",
     "asYou": "You join as {{name}}.",

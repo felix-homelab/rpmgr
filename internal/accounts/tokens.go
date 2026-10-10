@@ -145,7 +145,7 @@ func (t *Tokens) Authenticate(tok, ip string) (*TokenOwner, error) {
 		return nil, ErrToken
 	}
 	row, err := t.db.ReadClient().APIToken.Query().Where(apitoken.TokenHash(token.Hash(tok))).Only(t.sys)
-	if ent.IsNotFound(err) || err == nil && (row.RevokedAt != nil || !row.ExpiresAt.After(t.now())) {
+	if ent.IsNotFound(err) || err == nil && (row.RevokedAt != nil || row.SuspendedAt != nil || !row.ExpiresAt.After(t.now())) {
 		return nil, ErrToken
 	}
 	if err != nil {
@@ -182,6 +182,30 @@ func (t *Tokens) Authenticate(tok, ip string) (*TokenOwner, error) {
 		}
 	}
 	return &TokenOwner{Token: row, User: u, Role: role, InstanceAdmin: u.InstanceAdmin}, nil
+}
+
+// ListSuspended returns the live tokens of an org that a restore suspended, of every owner, oldest
+// first.
+func (t *Tokens) ListSuspended(orgID string) ([]*ent.APIToken, error) {
+	return t.db.ReadClient().APIToken.Query().Where(apitoken.OrgID(orgID), apitoken.SuspendedAtNotNil(), apitoken.RevokedAtIsNil(),
+		apitoken.ExpiresAtGT(t.now())).Order(ent.Asc(apitoken.FieldCreatedAt), ent.Asc(apitoken.FieldID)).All(t.sys)
+}
+
+// Resume lets a token that a restore suspended act again; only an Owner of its org resumes one.
+func (t *Tokens) Resume(ctx context.Context, orgID, tokenID, by, byRole string) error {
+	if byRole != authz.RoleOwner {
+		return ErrOwnerReview
+	}
+	return store.WriteTx(store.CarryTxHook(t.sys, ctx), t.db, func(tx *ent.Tx) error {
+		n, err := tx.APIToken.Update().Where(apitoken.ID(tokenID), apitoken.OrgID(orgID), apitoken.SuspendedAtNotNil(),
+			apitoken.RevokedAtIsNil()).ClearSuspendedAt().Save(t.sys)
+		if err != nil || n == 0 {
+			return errors.Join(err, errIf(n == 0, ErrNoToken))
+		}
+		_, err = audit.Append(t.sys, tx, audit.Entry{OrgID: orgID, ActorType: audit.ActorUser, ActorID: by,
+			Action: "token.resume", TargetType: "api_token", TargetID: tokenID, Result: audit.Success})
+		return err
+	})
 }
 
 // StepUp records a step-up of a token now (D63) and returns when it was made; the caller has

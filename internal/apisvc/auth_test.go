@@ -88,6 +88,7 @@ func newEnv(t *testing.T) *env {
 	srv, err := api.New(api.Options{DB: db, Sys: sys, Sealer: sealer, Now: now, Logger: log,
 		Authenticator:      apisvc.Credentials{Sessions: e.sessions, Tokens: e.tokens},
 		TokenStepUp:        e.tokens.StepUpAt,
+		RestoreReview:      api.StoreRestoreReview(db, sys),
 		Resolver:           api.StoreResolver(db, sys),
 		OperatorsMayEnroll: api.StoreOperatorsMayEnroll(db, sys),
 		Origins:            func(context.Context) ([]string, error) { return []string{"https://panel.example.com"}, nil },
@@ -111,7 +112,7 @@ func newEnv(t *testing.T) *env {
 	}
 	if err := srv.Mount(mux, rpmgrv1.File_rpmgr_v1_org_proto.Services().ByName("OrgService"),
 		func(o ...connect.HandlerOption) (string, http.Handler) {
-			e.orgs = &apisvc.Org{Members: &accounts.Members{Accounts: e.acc, RevLog: rl, Logger: log}, API: srv,
+			e.orgs = &apisvc.Org{Members: &accounts.Members{Accounts: e.acc, RevLog: rl, Logger: log}, Tokens: e.tokens, API: srv,
 				PublicURL: "https://panel.example.com", Now: now, Logger: log}
 			return rpmgrv1connect.NewOrgServiceHandler(e.orgs, o...)
 		}); err != nil {

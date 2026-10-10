@@ -32,6 +32,7 @@ const (
 	ReasonStepUpRequired    = "STEP_UP_REQUIRED"
 	ReasonPermissionMissing = "PERMISSION_MISSING"
 	ReasonMFARequired       = "MFA_REQUIRED"
+	ReasonRestoreReview     = "RESTORE_REVIEW"
 )
 
 func (s *Server) interceptor() connect.Interceptor { return interceptor{s} }
@@ -192,6 +193,9 @@ func (s *Server) authorize(ctx context.Context, md protoreflect.MethodDescriptor
 		if !caller.InstanceAdmin || !caller.scoped(p) {
 			return nil, denied(p)
 		}
+		if err := s.inReview(ctx, md, a, ""); err != nil {
+			return nil, err
+		}
 	default:
 		fds, err := fieldPath(md.Input(), a.GetResourceField())
 		if err != nil {
@@ -227,6 +231,9 @@ func (s *Server) authorize(ctx context.Context, md protoreflect.MethodDescriptor
 					errors.New("api: the org requires signing in with a second factor")), ReasonMFARequired, nil)
 			}
 		}
+		if err := s.inReview(ctx, md, a, org); err != nil {
+			return nil, err
+		}
 		if ctx, err = authz.ForOrg(ctx, caller.Principal, org); err != nil {
 			return nil, errNotFound()
 		}
@@ -237,6 +244,25 @@ func (s *Server) authorize(ctx context.Context, md protoreflect.MethodDescriptor
 		}
 	}
 	return ctx, nil
+}
+
+// inReview refuses a method that changes state while its org, or for an instance method the
+// instance, is in restore review, unless the method stays available then (docs/10-operations.md,
+// "Backup and restore").
+func (s *Server) inReview(ctx context.Context, md protoreflect.MethodDescriptor, a *rpmgrv1.Authz, org string) error {
+	if s.o.RestoreReview == nil || a.GetDuringRestoreReview() || sideEffectFree(md) {
+		return nil
+	}
+	review, err := s.o.RestoreReview(ctx, org)
+	if err != nil {
+		s.o.Logger.Error("cannot read the restore review", "org", org, "error", err)
+		return connect.NewError(connect.CodeInternal, errors.New("api: cannot read the restore review"))
+	}
+	if review {
+		return withInfo(connect.NewError(connect.CodeFailedPrecondition,
+			errors.New("api: read-only until the restore review is confirmed")), ReasonRestoreReview, nil)
+	}
+	return nil
 }
 
 // RequireStepUp is the interceptor's step-up check, for a method that needs a step-up only for

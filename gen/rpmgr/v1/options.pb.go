@@ -41,9 +41,13 @@ type Authz struct {
 	StepUp bool `protobuf:"varint,3,opt,name=step_up,json=stepUp,proto3" json:"step_up,omitempty"`
 	// Whether a personal API token may call a method of the "authenticated" permission, which no
 	// token scope names: only AuthService.StepUp, which steps up the token itself (D63).
-	AllowToken    bool `protobuf:"varint,4,opt,name=allow_token,json=allowToken,proto3" json:"allow_token,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	AllowToken bool `protobuf:"varint,4,opt,name=allow_token,json=allowToken,proto3" json:"allow_token,omitempty"`
+	// Whether a method that changes state stays available while its org or the instance is in
+	// restore review, which refuses every other such method (docs/10-operations.md, "Backup and
+	// restore"): revocations and the review itself.
+	DuringRestoreReview bool `protobuf:"varint,5,opt,name=during_restore_review,json=duringRestoreReview,proto3" json:"during_restore_review,omitempty"`
+	unknownFields       protoimpl.UnknownFields
+	sizeCache           protoimpl.SizeCache
 }
 
 func (x *Authz) Reset() {
@@ -104,6 +108,13 @@ func (x *Authz) GetAllowToken() bool {
 	return false
 }
 
+func (x *Authz) GetDuringRestoreReview() bool {
+	if x != nil {
+		return x.DuringRestoreReview
+	}
+	return false
+}
+
 var file_rpmgr_v1_options_proto_extTypes = []protoimpl.ExtensionInfo{
 	{
 		ExtendedType:  (*descriptorpb.MethodOptions)(nil),
@@ -144,7 +155,7 @@ var File_rpmgr_v1_options_proto protoreflect.FileDescriptor
 
 const file_rpmgr_v1_options_proto_rawDesc = "" +
 	"\n" +
-	"\x16rpmgr/v1/options.proto\x12\brpmgr.v1\x1a google/protobuf/descriptor.proto\"\x88\x01\n" +
+	"\x16rpmgr/v1/options.proto\x12\brpmgr.v1\x1a google/protobuf/descriptor.proto\"\xbc\x01\n" +
 	"\x05Authz\x12\x1e\n" +
 	"\n" +
 	"permission\x18\x01 \x01(\tR\n" +
@@ -152,7 +163,8 @@ const file_rpmgr_v1_options_proto_rawDesc = "" +
 	"\x0eresource_field\x18\x02 \x01(\tR\rresourceField\x12\x17\n" +
 	"\astep_up\x18\x03 \x01(\bR\x06stepUp\x12\x1f\n" +
 	"\vallow_token\x18\x04 \x01(\bR\n" +
-	"allowToken:G\n" +
+	"allowToken\x122\n" +
+	"\x15during_restore_review\x18\x05 \x01(\bR\x13duringRestoreReview:G\n" +
 	"\x05authz\x12\x1e.google.protobuf.MethodOptions\x18ц\x03 \x01(\v2\x0f.rpmgr.v1.AuthzR\x05authz:=\n" +
 	"\tsensitive\x12\x1d.google.protobuf.FieldOptions\x18ц\x03 \x01(\bR\tsensitiveB5Z3github.com/felix-homelab/rpmgr/gen/rpmgr/v1;rpmgrv1b\x06proto3"
 

@@ -81,5 +81,8 @@ func tokenOf(r *ent.APIToken) *rpmgrv1.APIToken {
 	if r.LastUsedAt != nil {
 		out.LastUseTime = timestamppb.New(*r.LastUsedAt)
 	}
+	if r.SuspendedAt != nil {
+		out.SuspendTime = timestamppb.New(*r.SuspendedAt)
+	}
 	return out
 }

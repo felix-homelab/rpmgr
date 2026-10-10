@@ -22,8 +22,10 @@ type Instance struct {
 	// DbEpoch holds the value of the "db_epoch" field.
 	DbEpoch string `json:"db_epoch,omitempty"`
 	// CreatedAt holds the value of the "created_at" field.
-	CreatedAt    time.Time `json:"created_at,omitempty"`
-	selectValues sql.SelectValues
+	CreatedAt time.Time `json:"created_at,omitempty"`
+	// RestoreReviewSince holds the value of the "restore_review_since" field.
+	RestoreReviewSince *time.Time `json:"restore_review_since,omitempty"`
+	selectValues       sql.SelectValues
 }
 
 // scanValues returns the types for scanning values from sql.Rows.
@@ -35,7 +37,7 @@ func (*Instance) scanValues(columns []string) ([]any, error) {
 			values[i] = new(sql.NullInt64)
 		case instance.FieldTrustDomain, instance.FieldDbEpoch:
 			values[i] = new(sql.NullString)
-		case instance.FieldCreatedAt:
+		case instance.FieldCreatedAt, instance.FieldRestoreReviewSince:
 			values[i] = new(sql.NullTime)
 		default:
 			values[i] = new(sql.UnknownType)
@@ -75,6 +77,13 @@ func (_m *Instance) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field created_at", values[i])
 			} else if value.Valid {
 				_m.CreatedAt = value.Time
+			}
+		case instance.FieldRestoreReviewSince:
+			if value, ok := values[i].(*sql.NullTime); !ok {
+				return fmt.Errorf("unexpected type %T for field restore_review_since", values[i])
+			} else if value.Valid {
+				_m.RestoreReviewSince = new(time.Time)
+				*_m.RestoreReviewSince = value.Time
 			}
 		default:
 			_m.selectValues.Set(columns[i], values[i])
@@ -120,6 +129,11 @@ func (_m *Instance) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("created_at=")
 	builder.WriteString(_m.CreatedAt.Format(time.ANSIC))
+	builder.WriteString(", ")
+	if v := _m.RestoreReviewSince; v != nil {
+		builder.WriteString("restore_review_since=")
+		builder.WriteString(v.Format(time.ANSIC))
+	}
 	builder.WriteByte(')')
 	return builder.String()
 }

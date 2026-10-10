@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
@@ -52,6 +53,26 @@ func (_u *OrgUpdate) SetNillableSlug(v *string) *OrgUpdate {
 	if v != nil {
 		_u.SetSlug(*v)
 	}
+	return _u
+}
+
+// SetRestoreReviewSince sets the "restore_review_since" field.
+func (_u *OrgUpdate) SetRestoreReviewSince(v time.Time) *OrgUpdate {
+	_u.mutation.SetRestoreReviewSince(v)
+	return _u
+}
+
+// SetNillableRestoreReviewSince sets the "restore_review_since" field if the given value is not nil.
+func (_u *OrgUpdate) SetNillableRestoreReviewSince(v *time.Time) *OrgUpdate {
+	if v != nil {
+		_u.SetRestoreReviewSince(*v)
+	}
+	return _u
+}
+
+// ClearRestoreReviewSince clears the value of the "restore_review_since" field.
+func (_u *OrgUpdate) ClearRestoreReviewSince() *OrgUpdate {
+	_u.mutation.ClearRestoreReviewSince()
 	return _u
 }
 
@@ -120,6 +141,12 @@ func (_u *OrgUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	if value, ok := _u.mutation.Slug(); ok {
 		_spec.SetField(org.FieldSlug, field.TypeString, value)
 	}
+	if value, ok := _u.mutation.RestoreReviewSince(); ok {
+		_spec.SetField(org.FieldRestoreReviewSince, field.TypeTime, value)
+	}
+	if _u.mutation.RestoreReviewSinceCleared() {
+		_spec.ClearField(org.FieldRestoreReviewSince, field.TypeTime)
+	}
 	if _node, err = sqlgraph.UpdateNodes(ctx, _u.driver, _spec); err != nil {
 		if _, ok := err.(*sqlgraph.NotFoundError); ok {
 			err = &NotFoundError{org.Label}
@@ -165,6 +192,26 @@ func (_u *OrgUpdateOne) SetNillableSlug(v *string) *OrgUpdateOne {
 	if v != nil {
 		_u.SetSlug(*v)
 	}
+	return _u
+}
+
+// SetRestoreReviewSince sets the "restore_review_since" field.
+func (_u *OrgUpdateOne) SetRestoreReviewSince(v time.Time) *OrgUpdateOne {
+	_u.mutation.SetRestoreReviewSince(v)
+	return _u
+}
+
+// SetNillableRestoreReviewSince sets the "restore_review_since" field if the given value is not nil.
+func (_u *OrgUpdateOne) SetNillableRestoreReviewSince(v *time.Time) *OrgUpdateOne {
+	if v != nil {
+		_u.SetRestoreReviewSince(*v)
+	}
+	return _u
+}
+
+// ClearRestoreReviewSince clears the value of the "restore_review_since" field.
+func (_u *OrgUpdateOne) ClearRestoreReviewSince() *OrgUpdateOne {
+	_u.mutation.ClearRestoreReviewSince()
 	return _u
 }
 
@@ -262,6 +309,12 @@ func (_u *OrgUpdateOne) sqlSave(ctx context.Context) (_node *Org, err error) {
 	}
 	if value, ok := _u.mutation.Slug(); ok {
 		_spec.SetField(org.FieldSlug, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.RestoreReviewSince(); ok {
+		_spec.SetField(org.FieldRestoreReviewSince, field.TypeTime, value)
+	}
+	if _u.mutation.RestoreReviewSinceCleared() {
+		_spec.ClearField(org.FieldRestoreReviewSince, field.TypeTime)
 	}
 	_node = &Org{config: _u.config}
 	_spec.Assign = _node.assignValues

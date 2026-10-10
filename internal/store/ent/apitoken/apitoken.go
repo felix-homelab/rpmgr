@@ -42,6 +42,8 @@ const (
 	FieldRevokedAt = "revoked_at"
 	// FieldStepUpAt holds the string denoting the step_up_at field in the database.
 	FieldStepUpAt = "step_up_at"
+	// FieldSuspendedAt holds the string denoting the suspended_at field in the database.
+	FieldSuspendedAt = "suspended_at"
 	// Table holds the table name of the apitoken in the database.
 	Table = "api_tokens"
 )
@@ -63,6 +65,7 @@ var Columns = []string{
 	FieldLastUsedIP,
 	FieldRevokedAt,
 	FieldStepUpAt,
+	FieldSuspendedAt,
 }
 
 // ValidColumn reports if the column name is valid (part of the table columns).
@@ -193,4 +196,9 @@ func ByRevokedAt(opts ...sql.OrderTermOption) OrderOption {
 // ByStepUpAt orders the results by the step_up_at field.
 func ByStepUpAt(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldStepUpAt, opts...).ToFunc()
+}
+
+// BySuspendedAt orders the results by the suspended_at field.
+func BySuspendedAt(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldSuspendedAt, opts...).ToFunc()
 }
