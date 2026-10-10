@@ -346,7 +346,7 @@ func TestEnroll_ReplacedCertificatesRevoked(t *testing.T) {
 }
 
 // TestEnroll_RateLimit: an address gets ten enrollments a minute, then ResourceExhausted, before
-// the token is even looked at.
+// the token is even looked at; the refusals before are recorded, the rate limit's are not.
 func TestEnroll_RateLimit(t *testing.T) {
 	setup(t, func(t *testing.T, e *env) {
 		addr, _ := e.server(t)
@@ -359,6 +359,20 @@ func TestEnroll_RateLimit(t *testing.T) {
 		tok := e.mint(t, nil)
 		if _, err := c.Enroll(callCtx(t), &agentv1.EnrollRequest{Token: tok, Csr: boundCSR(t, creds)}); status.Code(err) != codes.ResourceExhausted {
 			t.Fatalf("request %d: %v, want ResourceExhausted", enroll.RateBurst+1, err)
+		}
+		// Each refusal but the rate limit's is recorded, without the token.
+		failed := e.db.Client().AuditEntry.Query().Where(auditentry.Action("agent.enroll")).AllX(e.sys)
+		invalid := 0
+		for _, f := range failed {
+			if f.IP == "" || f.ActorType != "anonymous" || f.OrgID != nil || strings.Contains(f.Reason+f.Diff, "bad") {
+				t.Fatalf("a failed enrollment: %+v", f)
+			}
+			if f.Reason == "invalid token" && f.Result == "denied" {
+				invalid++
+			}
+		}
+		if len(failed) != enroll.RateBurst || invalid != enroll.RateBurst-1 {
+			t.Fatalf("%d failed enrollments recorded, %d with an invalid token; want %d and %d", len(failed), invalid, enroll.RateBurst, enroll.RateBurst-1)
 		}
 		e.clock = e.clock.Add(enroll.RateEvery)
 		if _, err := c.Enroll(callCtx(t), &agentv1.EnrollRequest{Token: tok, Csr: boundCSR(t, creds)}); err != nil {

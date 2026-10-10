@@ -168,6 +168,18 @@ func (t *Tokens) Authenticate(tok, ip string) (*TokenOwner, error) {
 		if err := t.db.Client().APIToken.UpdateOneID(row.ID).SetLastUsedAt(now).SetLastUsedIP(truncateIP(ip)).Exec(t.sys); err != nil {
 			return nil, err
 		}
+		// The first use, and a use from another address than the last one written, are recorded
+		// (docs/04-security.md, "Audit log").
+		if reason := "first use"; row.LastUsedAt == nil || row.LastUsedIP != truncateIP(ip) {
+			if row.LastUsedAt != nil {
+				reason = "used before from " + row.LastUsedIP
+			}
+			if _, err := audit.Record(t.sys, t.db, audit.Entry{OrgID: row.OrgID, ActorType: audit.ActorUser, ActorID: u.ID, CredentialID: row.ID,
+				AuthMethod: "token", IP: ip, Action: "token.use", TargetType: "api_token", TargetID: row.ID, Result: audit.Success,
+				Reason: reason}); err != nil {
+				return nil, err
+			}
+		}
 	}
 	return &TokenOwner{Token: row, User: u, Role: role, InstanceAdmin: u.InstanceAdmin}, nil
 }

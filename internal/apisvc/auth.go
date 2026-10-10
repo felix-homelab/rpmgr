@@ -12,6 +12,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"strings"
 	"time"
 
 	"connectrpc.com/connect"
@@ -124,6 +125,7 @@ func (a *Auth) Login(ctx context.Context, req *connect.Request[rpmgrv1.LoginRequ
 	if err != nil {
 		return nil, err
 	}
+	api.SignedIn(ctx, u.ID, sess.ID, strings.Join(amr, "+"))
 	resp := connect.NewResponse(&rpmgrv1.LoginResponse{UserId: u.ID, Session: sessionOf(sess, sess.ID)})
 	resp.Header().Add("Set-Cookie", websession.Cookie(tok, sess).String())
 	return resp, nil
@@ -171,6 +173,7 @@ func (a *Auth) StepUp(ctx context.Context, req *connect.Request[rpmgrv1.StepUpRe
 		return nil, err
 	}
 	a.Backoff.Succeed(key)
+	api.AuditReason(ctx, "step-up with "+how)
 	if c.AuthMethod == "token" {
 		// The token alone: the owner's sessions and other tokens keep their own step-ups.
 		at, err := a.Tokens.StepUp(c.CredentialID)
@@ -299,7 +302,7 @@ func (a *Auth) mailReset(ctx context.Context, addr string) {
 	u, err := a.Accounts.UserByEmail(addr)
 	if err == nil {
 		var tok string
-		if tok, err = a.Accounts.ResetLink(u.ID, "email-request"); err == nil {
+		if tok, err = a.Accounts.For(ctx).ResetLink(u.ID, "email-request"); err == nil {
 			err = a.Mail.Send(ctx, resetMail(addr, accounts.LinkURL(a.PublicURL, tok), accounts.ResetLinkTTL))
 		}
 		if err != nil {

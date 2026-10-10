@@ -771,6 +771,24 @@ Phase 3 item ([13](13-roadmap.md#phase-3--advanced)).
   A request that changes nothing, fails or is refused gets its entry in a transaction of its own,
   in the chain of the org the caller is a member of, else in the instance chain. The diff is the
   request as JSON with its sensitive fields redacted, until a method records a before and after.
+- [R] **Each change is recorded once.** A service that records a change itself, such as a token
+  made or revoked, a member's role, an authenticator or a revoked identity, appends its entry in
+  the request's transaction. That entry takes the request's IP, user agent, request ID and diff,
+  and its session or token when the request's actor acted. The request's own entry is then left
+  out for that transaction.
+- [R] **Sign-ins.** A login's entry names the user who signed in, the session they got and the
+  factors they used, such as `pwd+otp`. A failed login is an anonymous refusal in the instance
+  chain with the address given and the password redacted. It is the same for an unknown address
+  as for a wrong password, so the log tells no more than the answer did. A step-up's entry names
+  its factor; a failed one names its user. A logout's entry names the session it ends.
+- [R] **Token use.** A personal API token's use is recorded when its last use is written, at most
+  once a minute per token: its first use, and a use from another address than the last one
+  written. Every recorded request a token makes names it as the credential.
+- [R] **Enrollments.** A refused or failed enrollment is an anonymous entry in the instance chain
+  with the address and the reason, never the token.
+- [R] **Floods.** A rate limit's refusal of an anonymous caller, at login or enrollment, is not
+  recorded: the limit bounds such requests, and an entry for each would let a flood write the log,
+  and lock its chain, at the flood's pace.
 - Signed **checkpoints** (chain head + count, signed with the audit-checkpoint key) are shipped to an
   external sink (syslog, OTLP, webhook, or object storage with retention lock). The external copy
   is what makes tampering evident: anyone with database write access could recompute a chain.
