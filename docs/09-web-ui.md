@@ -131,6 +131,20 @@ flowchart LR
 - **Gateways that do not serve the route, and agents that rejected it,** are listed with their
   reasons.
 - UDP routes show the MTU hint of [03](03-connections.md#udp-routes).
+- **The "Enabled" switch** turns the route on or off; it is the only desired on/off switch (U3).
+  - It sends the route as read, with the mask `enabled` and the route's etag.
+  - The revision's apply status then follows live (U2): the state over the online agents, each
+    agent that has not applied it with its reasons, and the offline agents, through
+    `WatchApplyStatus`, in a live region (U8).
+  - If the route changed since the page read it, the switch says so, and the page shows the route as
+    it is now.
+- **"Edit"** opens the route's form, with the fields the API lets a route of its type change.
+  - **Full resource (U1):** the form starts from the route as read and sends it whole, with its
+    fields set from the form, the update mask of those fields and the etag. A field the form does
+    not show keeps what the server sent, so a save loses nothing.
+  - **Validation:** before sending, the form checks the API's rules. The server's violations land
+    on their fields, and any it cannot place are shown with the form.
+  - **After a save,** the apply status follows live, as for the switch.
 
 ### Enroll connector dialog
 
@@ -206,7 +220,7 @@ flowchart LR
 | Server state | TanStack Query through **connect-query**, with generated clients for `rpmgr.v1` | One generated client; no hand-written API layer |
 | Live updates | Connect **server streaming** for events (apply status, agent status) and live logs | WebSockets only for the Phase 3 shell |
 | Components | shadcn/ui on Radix primitives, styled with Tailwind | — |
-| Forms | react-hook-form with **protovalidate-es** as its resolver, so the form checks the same proto rules the server enforces, for immediate feedback only [V VB-16]. **The server's protovalidate result is authoritative**, and the server's field errors are mapped back onto form fields | Forms submit the full typed resource (U1). Fallback if VB-16 fails: hand-written zod schemas, which then must not strip unknown keys |
+| Forms | react-hook-form with **protovalidate-es** as its resolver, so the form checks the same proto rules the server enforces, for immediate feedback only (VB-16, resolved). **The server's protovalidate result is authoritative**, and the server's field errors (`buf.validate.Violations`) are mapped back onto form fields; a violation of a field the form does not edit is shown with the form | Forms submit the full typed resource (U1) |
 | YAML editing | CodeMirror 6 with a YAML mode and schema-driven completion | Smaller than Monaco ([08](08-software-stack.md#frontend)) |
 | Terminal (Phase 3) | xterm.js over a WebSocket with a single-use ticket ([04](04-security.md#human-authentication-and-sessions)) | — |
 | Charts | Recharts, through the shadcn/ui chart components, for traffic and latency | Same component system as the rest of the UI ([08](08-software-stack.md#frontend)) |

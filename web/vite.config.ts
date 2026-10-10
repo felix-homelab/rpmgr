@@ -25,6 +25,8 @@ export default defineConfig({
           groups: [
             { name: "react", test: /node_modules[\\/](react|react-dom|scheduler)[\\/]/ },
             { name: "tanstack", test: /node_modules[\\/]@tanstack[\\/]/ },
+            // The form validation's CEL and RE2 engines, which only the forms need.
+            { name: "validation", test: /node_modules[\\/]@bufbuild[\\/](protovalidate|cel|re2)[\\/]/, priority: 1 },
             { name: "protobuf", test: /node_modules[\\/](@bufbuild|@connectrpc)[\\/]/ },
             { name: "api", test: /[\\/]src[\\/]gen[\\/]/ },
           ],

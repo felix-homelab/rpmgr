@@ -208,7 +208,12 @@
     "runOn": "Run on the host of {{connector}}:",
     "gatewaysTitle": "Gateways not serving",
     "rejections": "Rejected by",
-    "noReason": "no reason given"
+    "noReason": "no reason given",
+    "enabledSwitch": "Enabled",
+    "on": "on",
+    "off": "off",
+    "changed": "The route changed since this page loaded it. The page shows it as it is now; try again.",
+    "edit": "Edit"
   },
   "notServing": {
     "BLOCKED_BY_LOCAL_POLICY": "blocked by the connector's local policy",
@@ -219,5 +224,71 @@
     "OFFLINE": "offline",
     "DISABLED": "disabled",
     "NO_DATA_SESSION": "no data session to the connector"
+  },
+  "apply": {
+    "unknown": "Apply status unknown.",
+    "pending": "Revision {{seq}}: applied by {{applied}} of {{total}} agents so far.",
+    "applied": "Revision {{seq}}: applied by all {{total}} agents.",
+    "rejected": "Revision {{seq}}: rejected.",
+    "timeout": "Revision {{seq}}: an agent did not answer in time.",
+    "offline": "Offline, they get it when they connect: {{agents}}",
+    "agent": {
+      "PENDING": "pending",
+      "REJECTED": "rejected",
+      "APPLY_TIMEOUT": "did not answer in time"
+    }
+  },
+  "routeForm": {
+    "title": "Edit route {{name}} ({{type}})",
+    "save": "Save",
+    "back": "Back to the route",
+    "number": "Enter a whole number.",
+    "fields": {
+      "name": "Name",
+      "description": "Description",
+      "labels": "Labels",
+      "transport": "Transport",
+      "hostnames": "Hostnames",
+      "pathPrefix": "Path prefix",
+      "tlsMode": "TLS certificate",
+      "certificateId": "Uploaded certificate ID",
+      "port80": "Port 80",
+      "hsts": "HSTS max-age (seconds)",
+      "hostHeader": "Host header to the target",
+      "requestHeaders": "Request headers to set",
+      "responseHeaders": "Response headers to set",
+      "websocket": "WebSocket",
+      "maxBody": "Largest request body (bytes, 0 for no limit)",
+      "port": "Public port",
+      "idleTimeout": "Idle timeout (seconds)",
+      "flowIdleTimeout": "Flow idle timeout (seconds)"
+    },
+    "hints": {
+      "lines": "One per line.",
+      "pairs": "One per line, as key=value or Name: value.",
+      "optionalNumber": "Empty for the default."
+    },
+    "options": {
+      "transport": {
+        "default": "The connector's or the instance's default",
+        "auto": "QUIC, falling back to TLS and HTTP/2",
+        "quic": "QUIC only",
+        "h2": "TLS and HTTP/2 only"
+      },
+      "tlsMode": {
+        "acme": "From ACME",
+        "certificate": "Uploaded"
+      },
+      "port80": {
+        "redirect": "Redirect to HTTPS",
+        "serve": "Serve the route",
+        "off": "Closed"
+      }
+    },
+    "tristate": {
+      "default": "Default",
+      "true": "On",
+      "false": "Off"
+    }
   }
 }
