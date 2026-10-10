@@ -33,6 +33,7 @@ jobs:
       go: ${{ steps.areas.outputs.go }}
       web: ${{ steps.areas.outputs.web }}
       checks: ${{ steps.areas.outputs.checks }}
+      ops: ${{ steps.areas.outputs.ops }}
       md: ${{ steps.areas.outputs.md }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -264,6 +265,25 @@ jobs:
       - name: Tests on armv7, natively on the same host
         if: ${{ !cancelled() }}
         run: .github/scripts/check-test-arch.sh arm
+
+  ops:
+    needs: changes
+    if: ${{ needs.changes.outputs.ops == 'true' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - name: The role units, verified by systemd-analyze on Debian 13 and Ubuntu 22.04
+        if: ${{ !cancelled() }}
+        run: .github/scripts/check-units.sh
+      - name: The install script on every supported distribution
+        if: ${{ !cancelled() }}
+        run: .github/scripts/check-install.sh
 
   web:
     needs: changes

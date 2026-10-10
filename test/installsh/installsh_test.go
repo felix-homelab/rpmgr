@@ -51,13 +51,13 @@ var distros = []struct {
 	name, image, prepare string
 	oldOpenSSL           bool
 }{
-	{"debian-12", "debian@sha256:2c037a04925515fdd6ea85ea14a682d0e79931f5e9f5d07b6dbfc6ba12f9e858", apt, false},
-	{"debian-13", "debian@sha256:913f6706df59a68922d1dd08f78c2476560a8d367897200a6005b00e5f67c2d5", apt, false},
-	{"ubuntu-22.04", "ubuntu@sha256:5ec03bb3441e8b0bf3b4f9cd4629a1ae763010dc3035bb8da3ae6cf026486401", apt, false},
-	{"ubuntu-24.04", "ubuntu@sha256:534baea6a22c03a63003dbc8dbe78fe34bc0d7e595d9a9dc9834884ff530eb55", apt, false},
+	{"debian-12", "mirror.gcr.io/library/debian@sha256:2c037a04925515fdd6ea85ea14a682d0e79931f5e9f5d07b6dbfc6ba12f9e858", apt, false},
+	{"debian-13", "mirror.gcr.io/library/debian@sha256:913f6706df59a68922d1dd08f78c2476560a8d367897200a6005b00e5f67c2d5", apt, false},
+	{"ubuntu-22.04", "mirror.gcr.io/library/ubuntu@sha256:5ec03bb3441e8b0bf3b4f9cd4629a1ae763010dc3035bb8da3ae6cf026486401", apt, false},
+	{"ubuntu-24.04", "mirror.gcr.io/library/ubuntu@sha256:534baea6a22c03a63003dbc8dbe78fe34bc0d7e595d9a9dc9834884ff530eb55", apt, false},
 	// The image has OpenSSL 3 and curl; no package install, whose mirrors once hung for 15 min.
-	{"rocky-9", "rockylinux/rockylinux@sha256:8101994123cf3d0a8fee517bee7f39e555c7d92bd2d9eb3303cc988a0eeed00f", "true", false},
-	{"ubuntu-20.04", "ubuntu@sha256:8feb4d8ca5354def3d8fce243717141ce31e2c428701f6682bd2fafe15388214", apt, true},
+	{"rocky-9", "mirror.gcr.io/rockylinux/rockylinux@sha256:8101994123cf3d0a8fee517bee7f39e555c7d92bd2d9eb3303cc988a0eeed00f", "true", false},
+	{"ubuntu-20.04", "mirror.gcr.io/library/ubuntu@sha256:8feb4d8ca5354def3d8fce243717141ce31e2c428701f6682bd2fafe15388214", apt, true},
 }
 
 const apt = "apt-get update -qq >/dev/null && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends curl openssl ca-certificates >/dev/null"
