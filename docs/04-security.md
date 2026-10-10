@@ -777,7 +777,26 @@ Phase 3 item ([13](13-roadmap.md#phase-3--advanced)).
 - `/install.sh` (Linux) is **served by the controller** from an embedded template and downloads from
   the controller's own mirror, on the same endpoint as the UI. It verifies the chain **root key**
   (embedded in the script) → **signing-key statement** → **manifest signature** → artifact
-  **SHA-256** with OpenSSL ≥ 3.0, and refuses to install when OpenSSL is missing or older [V VB-15].
+  **SHA-256** with OpenSSL ≥ 3.0, and refuses to install when OpenSSL is missing or older (VB-15,
+  resolved in [13](13-roadmap.md#verification-backlog)).
+  - **What it trusts:** it embeds the version and the root keys of the controller's own binary. It
+    downloads over HTTPS only, from `--controller`'s `/dl/<version>/`.
+  - **How it verifies:** with `openssl dgst -blake2b512` and `openssl pkeyutl -rawin` for each
+    signature and its trusted comment. The statement must be valid now and for at most 12 months,
+    the manifest of that version, and the binary of the manifest's size and SHA-256.
+  - **What it can read:** statement and manifest as compact JSON, with the artifact keys in the
+    order of the example above (`os`, `arch`, `variant`, `sha256`, `size`), as `json.Marshal`
+    writes `release.Manifest`. Anything else it refuses.
+  - **Options:** `--controller <url> --ca-pin <pin> [--role gateway|connector]
+    [--allow-target <target>]... [--token-file <file>] [--tcp-bbr] [--verify-only]`.
+    `--verify-only` stops after the verification, and needs neither root nor a pin.
+  - **What it installs:** the binary in `/usr/local/bin`, the boot file, the policy file, the
+    updater's state and the host tuning ([10](10-operations.md#filesystem-layout)). It then enrolls
+    with `rpmgr enroll`, which reads the token itself, so the token never passes through the
+    script. Last come the unit of `rpmgr systemd-unit`, enabled and started.
+  - **A controller that cannot serve installs** (a development build, or no root keys) serves a
+    script that says so and fails, because `curl … | sh` would run an error page's empty body and
+    exit 0.
 - There is no `/install.ps1`. Windows connectors are installed with winget or an MSI, macOS
   connectors with a Homebrew tap (Phase 2, [10](10-operations.md#install)).
 - No third-party download proxy, and no download URL chosen at runtime by the controller.

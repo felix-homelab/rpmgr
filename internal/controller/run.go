@@ -33,6 +33,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/domains"
 	"github.com/felix-homelab/rpmgr/internal/enroll"
 	"github.com/felix-homelab/rpmgr/internal/ids"
+	"github.com/felix-homelab/rpmgr/internal/installsh"
 	"github.com/felix-homelab/rpmgr/internal/lease"
 	"github.com/felix-homelab/rpmgr/internal/pki"
 	"github.com/felix-homelab/rpmgr/internal/release"
@@ -361,7 +362,8 @@ func Run(ctx context.Context, o RunOptions) error {
 		mirror.Roots = release.Roots()
 	}
 	mux.Handle("/dl/", mirror.Handler()) // the controller's own release, for /install.sh (D59)
-	mux.Handle("/", ui)                  // every path the API, the trust bundle and /dl/ do not take
+	mux.Handle("/install.sh", installsh.Handler(o.Version, mirror.Roots))
+	mux.Handle("/", ui) // every path the API, the trust bundle and /dl/ do not take
 	web := &http.Server{Handler: cert.HSTS(mux), ReadHeaderTimeout: 10 * time.Second, IdleTimeout: 120 * time.Second,
 		ErrorLog: slog.NewLogLogger(o.Logger.Handler(), slog.LevelDebug)}
 
