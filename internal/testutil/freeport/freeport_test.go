@@ -29,3 +29,17 @@ func TestPort(t *testing.T) {
 		_ = pc.Close()
 	}
 }
+
+// TestPort_NeverTwice: one process never gets the same port twice, which a test that listens on
+// two of them later would find in use. 300 random picks of the 12 768 ports repeat one with a
+// probability of about 97 %.
+func TestPort_NeverTwice(t *testing.T) {
+	seen := map[int]bool{}
+	for range 300 {
+		p := freeport.Port(t)
+		if seen[p] {
+			t.Fatalf("port %d handed out twice", p)
+		}
+		seen[p] = true
+	}
+}
