@@ -366,8 +366,10 @@ the reference testbed ([Benchmarks](#benchmarks)).
   line of its author (commits of the dependency bot are exempt); every source file starts with an
   `SPDX-License-Identifier: Apache-2.0` header; on release tags, the tag matches the release pattern
   and the changelog has a section for it. The dependency bot groups its updates per ecosystem under
-  the prefix `build(deps)` (`ci(deps)` for actions), so its titles pass the same rules
-  ([D55](14-open-decisions.md#project-and-process)).
+  the prefix `build(deps)` (`ci(deps)` for actions)
+  ([D55](14-open-decisions.md#project-and-process)); its commits and titles may start their
+  subject with a capital letter and be longer than 72 characters
+  ([D65](14-open-decisions.md#project-and-process)).
 - **Gate**: nothing merges to `main` unless all per-PR stages pass; nightly failures open an issue
   automatically.
 - **Until v1.0.0** a pull request runs only the stages its changes need, and the nightly run runs

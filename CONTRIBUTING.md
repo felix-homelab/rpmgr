@@ -136,7 +136,9 @@ Commit messages follow [Conventional Commits 1.0.0](https://www.conventionalcomm
 - **Scope** is optional and uses the `area:` label values (`dns`, `gateway`, `api`, …), or `adr`,
   `deps`, `release`.
 - **Subject**: imperative mood ("add", not "added"), lowercase start, no trailing period, English.
-  The whole first line is at most **72 characters**.
+  The whole first line is at most **72 characters**. The dependency bot's commits and titles are
+  exempt from the lowercase start and the length
+  ([D65](docs/14-open-decisions.md#project-and-process)).
 - **Body**: explains *why*; the diff shows *what*. Required for `feat`, `fix` and anything
   non-obvious.
 - **Breaking changes** add `!` after the type or scope **and** a `BREAKING CHANGE:` footer that
