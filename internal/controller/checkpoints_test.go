@@ -108,16 +108,9 @@ func TestRetentionJob(t *testing.T) {
 	}
 	run := func() {
 		t.Helper()
-		ctx, cancel := context.WithCancel(context.Background())
-		done := make(chan struct{})
-		go func() {
-			leases.Run(ctx, controller.RetentionJob(o), func(err error) { t.Errorf("job: %v", err) })
-			close(done)
-		}()
-		waitUntil(t, func() bool { return e.db.Client().Lease.Query().CountX(e.sys) > 0 })
-		time.Sleep(200 * time.Millisecond)
-		cancel()
-		<-done
+		if err := runOnce(t, leases, controller.RetentionJob(o)); err != nil {
+			t.Errorf("job: %v", err)
+		}
 	}
 	run()
 	if n := e.db.Client().AuditEntry.Query().Where(auditentry.Action("audit.prune")).CountX(e.sys); n != 0 {
