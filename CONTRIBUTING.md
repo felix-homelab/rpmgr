@@ -425,8 +425,9 @@ The repository is `github.com/felix-homelab/rpmgr`
 the rules above are enforced, not just written down:
 
 - **`main` ruleset:** pull request required, with **no required approval**
-  ([Reviews](#reviews)); conversations resolved; required status checks (all per-PR CI stages,
-  currently `pr-rules`, `lint`, `docs` and `secrets`,
+  ([Reviews](#reviews)); conversations resolved; required status checks: `pr-rules`, `lint`,
+  `docs` and `secrets`, the stages every PR runs, while the others stay advisory until v1.0.0 and
+  then become required ([D68](docs/14-open-decisions.md#project-and-process),
   [12](docs/12-testing-and-quality.md#continuous-integration)); branch up to date before merge;
   force pushes and deletion blocked. There is no CODEOWNERS file, and no linear-history rule,
   because PRs are merged with merge commits.

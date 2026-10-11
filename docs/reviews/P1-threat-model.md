@@ -170,10 +170,10 @@ The finding text is kept as found at `09b260a`, so the record shows what the rev
 |---|---|---|---|---|
 | G1 | Medium | A connector serves a `StreamOpen` for any of its routes from any gateway it has a data session with. A compromised gateway can reach the targets of the connector's routes in other gateway groups (`internal/connector/sessions.go` `Sessions.accept`; `internal/connector/targets.go` `Targets.open`). | Issue draft 1 | Fixed in #393: `Sessions.accept` refuses a stream for a route the opening gateway does not serve, with a grace of the route drain period |
 | G2 | Medium | 04 claims per-identity stream and bandwidth quotas. Phase 1 limits streams per data session only. A connector the gateway knows can open any number of data sessions. Bandwidth limits are Phase 2. | Issue draft 2; decision proposal 1 | Fixed in #393: a per-connector cap on data sessions, its value in 03; 04 reworded with bandwidth limits in Phase 2 |
-| G3 | Low | The threat model says roles are grantable only by higher roles. The roles table and the code let an Admin grant Admin. | Decision proposal 2 | Open |
-| G4 | Low | The threat model says the admin listener is bound to localhost; the code and 10 also allow a private address. | Decision proposal 3 | Open |
-| G5 | Low | The required status checks are only `pr-rules`, `lint`, `docs` and `secrets`. A failing go, govulncheck, store or e2e job does not block a merge mechanically; only the merge process does (D64). | Decision proposal 4 | Open |
-| G6 | Low | `ca_keys.key_enc` is not marked `Sensitive()` in the Ent schema, unlike the other sealed columns. It holds ciphertext, so a printed row leaks no key. | Issue draft 3 | Open |
+| G3 | Low | The threat model says roles are grantable only by higher roles. The roles table and the code let an Admin grant Admin. | Decision proposal 2 | Fixed: 04 reworded ([D66](../14-open-decisions.md#security-defaults)) |
+| G4 | Low | The threat model says the admin listener is bound to localhost; the code and 10 also allow a private address. | Decision proposal 3 | Fixed: 04 reworded ([D67](../14-open-decisions.md#security-defaults)) |
+| G5 | Low | The required status checks are only `pr-rules`, `lint`, `docs` and `secrets`. A failing go, govulncheck, store or e2e job does not block a merge mechanically; only the merge process does (D64). | Decision proposal 4 | Decided: advisory until v1.0.0, required from then on ([D68](../14-open-decisions.md#project-and-process)) |
+| G6 | Low | `ca_keys.key_enc` is not marked `Sensitive()` in the Ent schema, unlike the other sealed columns. It holds ciphertext, so a printed row leaks no key. | Issue draft 3 | Fixed: `key_enc` and also `api_requests.response_enc` are `Sensitive()`, and `TestSecretColumnsAreSensitive` requires it of every sealed column |
 | G7 | Open | The API's authenticator (`internal/apisvc/credentials.go`) was not reviewed. Unchecked are limits and uniform errors for bearer tokens, and how sessions and tokens become a caller. | Issue draft 4 | Open |
 
 ### Issue drafts
@@ -186,8 +186,8 @@ The finding text is kept as found at `09b260a`, so the record shows what the rev
    at most a fixed number of data sessions per connector identity and refuses more before the
    handshake. The value lives only in 03. Test: a connector above the cap is refused, and its
    existing sessions keep working.
-3. **`refactor(store): mark sealed CA keys sensitive`** (G6). `CAKey.key_enc` gets `Sensitive()`,
-   as `seed_enc`, `key_enc` and `value_enc` have. Generated code only; no migration.
+3. **`refactor(store): mark sealed CA keys sensitive`** (G6; done). `CAKey.key_enc` gets
+   `Sensitive()`, as `seed_enc`, `key_enc` and `value_enc` have. Generated code only; no migration.
 4. **`refactor(apisvc): rename credentials.go`** (G7). Rename it, for example to `callers.go`, so
    that review tools that refuse files named `credentials*` can read the API's authenticator. Then
    review it against the "Internet attacker" row: per-IP limits and uniform errors for bearer
@@ -195,17 +195,17 @@ The finding text is kept as found at `09b260a`, so the record shows what the rev
 
 ### Decision proposals
 
-1. **Quotas in the threat model** (G2). Reword the compromised-connector row of 04 to "per-session
-   stream limits and a per-connector session cap (Phase 1); bandwidth quotas (Phase 2)". #393 did
-   so together with the cap. [R] Accept #393's wording.
-2. **Role grants** (G3). Reword "roles only grantable by higher roles" to "Owner only grantable by
-   an Owner; Admin and lower by Owners and Admins, Admin and Owner with step-up". This matches the
-   roles table and the code. [R] Reword.
-3. **Admin listener** (G4). Reword "admin listener bound to localhost" to "admin listener never on
-   a public address (loopback by default)", as 10 states. [R] Reword.
-4. **Required checks** (G5). Add `go`, `store` and `e2e` to the required status checks of `main`,
-   or record that D64's selective CI keeps them advisory until v1.0.0 and the merge process guards
-   them. [R] Record it under D64, and require them again from v1.0.0.
+1. **Quotas in the threat model** (G2; accepted). Reword the compromised-connector row of 04 to
+   "per-session stream limits and a per-connector session cap (Phase 1); bandwidth quotas (Phase
+   2)". #393 did so together with the cap. [R] Accept #393's wording.
+2. **Role grants** (G3; accepted as D66). Reword "roles only grantable by higher roles" to "Owner
+   only grantable by an Owner; Admin and lower by Owners and Admins, Admin and Owner with step-up".
+   This matches the roles table and the code. [R] Reword.
+3. **Admin listener** (G4; accepted as D67). Reword "admin listener bound to localhost" to "admin
+   listener never on a public address (loopback by default)", as 10 states. [R] Reword.
+4. **Required checks** (G5; accepted as D68). Add `go`, `store` and `e2e` to the required status
+   checks of `main`, or record that D64's selective CI keeps them advisory until v1.0.0 and the
+   merge process guards them. [R] Record it under D64, and require them again from v1.0.0.
 
 ## Open items
 
