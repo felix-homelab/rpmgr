@@ -15,6 +15,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"connectrpc.com/connect"
@@ -445,8 +446,13 @@ func Run(ctx context.Context, o RunOptions) error {
 			}
 		}()
 	}
+	var admin sync.WaitGroup
 	if o.Registry == nil {
-		serve("admin listener", func() error { return telemetry.ServeAdmin(run, cfg.Listen.Admin, reg, ready.Ready) })
+		admin.Go(func() {
+			if err := telemetry.ServeAdmin(run, cfg.Listen.Admin, reg, ready.Ready); err != nil {
+				errs <- fmt.Errorf("controller: admin listener: %w", err)
+			}
+		})
 	} else if o.Readiness != nil {
 		o.Readiness(ready.Ready)
 	}
@@ -486,6 +492,7 @@ func Run(ctx context.Context, o RunOptions) error {
 	}
 	stop()
 	<-sessionsDone
+	admin.Wait() // the admin listener is closed: its address is free again once Run returns
 	return result
 }
 
