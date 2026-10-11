@@ -273,6 +273,18 @@ func outputFlag(fs *flag.FlagSet, p *string) {
 	fs.StringVar(p, "o", "table", "output: table, yaml (the manifest, where the kind has one) or json")
 }
 
+// notes is where a command with -o writes what it says about the resource: standard output for
+// the table, standard error for yaml and json, so that standard output holds the resource alone
+// and a script can parse it.
+func notes(env *cli.Env, output string) *cli.Env {
+	if output == "table" {
+		return env
+	}
+	e := *env
+	e.Stdout = env.Stderr
+	return &e
+}
+
 // kindArgs checks the positional arguments: a kind, and an ID if n is 2.
 func kindArgs(args []string, n int) (apicli.Kind, error) {
 	if len(args) != n {

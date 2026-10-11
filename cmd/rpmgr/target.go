@@ -236,7 +236,7 @@ func (s *apiSession) resolve(ctx context.Context, kind, ref string, dst *string)
 // writtenTarget prints a written target and how far the agents are with the change.
 func (s *apiSession) writtenTarget(ctx context.Context, env *cli.Env, verb string, t *rpmgrv1.RouteTarget, resp protoreflect.Message, output string) error {
 	k, _ := apicli.KindOf("route-target")
-	if _, err := fmt.Fprintf(env.Stdout, "%s route target %s%s.\n", verb, t.GetId(), applied(resp)); err != nil {
+	if _, err := fmt.Fprintf(notes(env, output).Stdout, "%s route target %s%s.\n", verb, t.GetId(), applied(resp)); err != nil {
 		return err
 	}
 	return s.print(ctx, env.Stdout, k, output, []protoreflect.Message{t.ProtoReflect()}, []string{t.GetId()}, false)
