@@ -105,8 +105,10 @@ test("signs in, creates an API token with a step-up, sets up an authenticator an
   const key = (await mfa.locator("code").innerText()).replace(/\s+/g, "");
   await mfa.getByLabel("Code from the app").fill(totp(key));
   await mfa.getByRole("button", { name: "Turn on" }).click();
-  const codes = await mfa.getByRole("list", { name: "Recovery codes" }).getByRole("listitem").allInnerTexts();
-  expect(codes).toHaveLength(10);
+  // The codes appear once the server has turned the authenticator on.
+  const shown = mfa.getByRole("list", { name: "Recovery codes" }).getByRole("listitem");
+  await expect(shown).toHaveCount(10);
+  const codes = await shown.allInnerTexts();
   await mfa.getByRole("button", { name: "I have saved them" }).click();
   await expect(mfa.getByText("An authenticator is set up.")).toBeVisible();
 
