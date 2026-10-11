@@ -164,7 +164,9 @@ For a minor or major release. A patch release is the same, starting from the bra
    publish it to the pre-release channel, and test:
    - a fresh install;
    - an upgrade from the latest release of the previous minor, with live traffic, in the upgrade
-     order of [10](docs/10-operations.md#upgrades-and-version-skew).
+     order of [10](docs/10-operations.md#upgrades-and-version-skew): `TestUpgrade` with
+     `E2E_UPGRADE_FROM=vPREVIOUS`
+     ([12](docs/12-testing-and-quality.md#upgrade-test)).
 
    Fixes go to `main` as normal PRs, followed by `rc.2` if needed.
 4. **Release PR** from `improvement/release-vX.Y.0`, titled `chore(release): vX.Y.0`:

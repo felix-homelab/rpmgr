@@ -8,7 +8,8 @@
 //
 //	go test -tags e2e -timeout 20m ./test/e2e
 //
-// E2E_KEEP=1 leaves the containers and the run directory for inspection.
+// E2E_KEEP=1 leaves the containers and the run directory for inspection. E2E_UPGRADE_FROM runs
+// the upgrade test instead (upgrade_test.go).
 package e2e
 
 import (
@@ -19,6 +20,7 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/pem"
+	"flag"
 	"fmt"
 	"math/big"
 	"os"
@@ -56,6 +58,12 @@ const connectorPolicy = "version: 1\nallow_targets:\n  - cidr: 172.31.0.7/32\n  
 
 func TestMain(m *testing.M) {
 	code := 1
+	if upgradeFrom != "" {
+		// An upgrade run starts the topology on an earlier release, which the other cells do not
+		// expect.
+		flag.Parse()
+		_ = flag.Set("test.run", "^TestUpgrade$")
+	}
 	if err := setUp(); err != nil {
 		fmt.Fprintln(os.Stderr, "e2e set-up:", err)
 	} else {
@@ -99,7 +107,7 @@ func in(node string, args ...string) (string, error) {
 // startRole starts an rpmgr role in node in the background, its output appended to <role>.log.
 func startRole(node, role string) error {
 	_, err := compose("exec", "-d", "-T", node, "sh", "-c",
-		fmt.Sprintf("exec rpmgr %s --config /var/lib/rpmgr/%s.yaml >> /var/lib/rpmgr/%s.log 2>&1", role, role, role))
+		fmt.Sprintf("exec %s %s --config /var/lib/rpmgr/%s.yaml >> /var/lib/rpmgr/%s.log 2>&1", binOf(node), role, role, role))
 	return err
 }
 
@@ -125,7 +133,7 @@ func ready(node string, port int) error {
 
 // seed runs `rpmgr testseed <verb> <args>` against the controller's boot file.
 func seed(verb string, args ...string) (string, error) {
-	out, err := in("ctl", append([]string{"rpmgr", "testseed", verb, "--config", "/var/lib/rpmgr/controller.yaml"}, args...)...)
+	out, err := in("ctl", append([]string{binOf("ctl"), "testseed", verb, "--config", "/var/lib/rpmgr/controller.yaml"}, args...)...)
 	return strings.TrimSpace(out), err
 }
 
@@ -149,12 +157,15 @@ func setUp() error {
 	}
 	// The rpmgrtest build and the client, for the containers' platform.
 	for _, b := range [][]string{{"rpmgr", "../../cmd/rpmgr"}, {"e2eclient", "./e2eclient"}} {
-		cmd := exec.Command("go", "build", "-trimpath", "-tags", "rpmgrtest", "-o", filepath.Join("bin", b[0]), b[1])
+		cmd := exec.Command("go", "build", "-trimpath", "-tags", "rpmgrtest", "-ldflags", versionFlags(toVersion), "-o", filepath.Join("bin", b[0]), b[1])
 		cmd.Dir = here
 		cmd.Env = append(os.Environ(), "CGO_ENABLED=0", "GOOS=linux", "GOARCH="+runtime.GOARCH)
 		if out, err := cmd.CombinedOutput(); err != nil {
 			return fmt.Errorf("go build %s: %w\n%s", b[1], err, out)
 		}
+	}
+	if err := buildFrom(); err != nil {
+		return err
 	}
 	if err := webCertificate(); err != nil {
 		return err
@@ -174,7 +185,7 @@ tls: {cert_file: /var/lib/rpmgr/web.crt, key_file: /var/lib/rpmgr/web.key}
 	if _, err := compose("up", "--detach", "--build", "--wait"); err != nil {
 		return err
 	}
-	out, err := in("ctl", "rpmgr", "controller", "init", "--config", "/var/lib/rpmgr/controller.yaml")
+	out, err := in("ctl", binOf("ctl"), "controller", "init", "--config", "/var/lib/rpmgr/controller.yaml")
 	if err != nil {
 		return err
 	}
@@ -245,7 +256,7 @@ func enroll(node, tok string) error {
 	if err := writeFile(node, "token", tok+"\n"); err != nil {
 		return err
 	}
-	_, err := in(node, "rpmgr", "enroll", "--controller", controllerURL, "--ca-pin", pin, "--token-file", "/var/lib/rpmgr/token")
+	_, err := in(node, binOf(node), "enroll", "--controller", controllerURL, "--ca-pin", pin, "--token-file", "/var/lib/rpmgr/token")
 	return err
 }
 
