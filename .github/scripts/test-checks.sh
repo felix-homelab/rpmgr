@@ -273,15 +273,18 @@ areas() {
     failed=$((failed + 1))
   fi
 }
-areas "go=false web=false checks=false md=true" docs/03-connections.md README.md
-areas "go=false web=true checks=false md=false" web/src/app.tsx web/e2e/a.spec.ts
-areas "go=false web=true checks=true md=false" web/package.json
-areas "go=true web=true checks=false md=false" internal/x/x.go proto/rpmgr/v1/x.proto
-areas "go=true web=true checks=true md=false" .github/scripts/check-go.sh
-areas "go=true web=true checks=true md=true" go.mod docs/x.md
+areas "go=false web=false checks=false ops=false md=true" docs/03-connections.md README.md
+areas "go=false web=true checks=false ops=false md=false" web/src/app.tsx web/e2e/a.spec.ts
+areas "go=false web=true checks=true ops=false md=false" web/package.json
+areas "go=true web=true checks=false ops=false md=false" internal/x/x.go proto/rpmgr/v1/x.proto
+areas "go=true web=true checks=true ops=false md=false" .github/scripts/check-go.sh
+areas "go=true web=true checks=true ops=false md=true" go.mod docs/x.md
+areas "go=true web=true checks=false ops=true md=false" internal/units/units.go
+areas "go=true web=true checks=false ops=true md=false" test/installsh/installsh_test.go
+areas "go=true web=true checks=true ops=true md=false" .github/scripts/check-install.sh
 expect pass "every stage" "$dir/changed-areas.sh" --all
 expect fail "one commit only" "$dir/changed-areas.sh" HEAD
-[[ $("$dir/changed-areas.sh" --none | tr '\n' ' ') == "go=false web=false checks=false md=false " ]] && passed=$((passed + 1)) ||
+[[ $("$dir/changed-areas.sh" --none | tr '\n' ' ') == "go=false web=false checks=false ops=false md=false " ]] && passed=$((passed + 1)) ||
   { echo "FAIL: changed areas --none"; failed=$((failed + 1)); }
 
 # --- SPDX headers --------------------------------------------------------------------------

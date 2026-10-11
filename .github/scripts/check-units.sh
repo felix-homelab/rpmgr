@@ -13,8 +13,8 @@ source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
 root=$(cd "${1:-$(repo_root)}" && pwd)
 given=${2-}
-debian='debian@sha256:913f6706df59a68922d1dd08f78c2476560a8d367897200a6005b00e5f67c2d5'
-ubuntu='ubuntu@sha256:5ec03bb3441e8b0bf3b4f9cd4629a1ae763010dc3035bb8da3ae6cf026486401'
+debian='mirror.gcr.io/library/debian@sha256:913f6706df59a68922d1dd08f78c2476560a8d367897200a6005b00e5f67c2d5'
+ubuntu='mirror.gcr.io/library/ubuntu@sha256:5ec03bb3441e8b0bf3b4f9cd4629a1ae763010dc3035bb8da3ae6cf026486401'
 work=$(mktemp -d)
 cleanup() {
   rm -f "$work"/bin/rpmgr "$work"/rpmgr-host "$work"/*.yaml "$work"/credential/*.service "$work"/file/*.service
