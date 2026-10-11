@@ -19,8 +19,14 @@ import (
 // rpmgr needs no Atlas CLI at run time (S5).
 const RevisionTable = "rpmgr_schema_revisions"
 
+// ErrUnknownMigration is returned for a database with an applied migration that this version
+// does not have: one made by a newer version, or by a development build before the Phase 1
+// migrations were squashed into one baseline (docs/06-data-model.md, "Migrations").
+var ErrUnknownMigration = errors.New("store: the database has a migration this version does not know")
+
 // Pending returns the migrations of dir that db has not applied yet. It refuses a directory whose
-// atlas.sum does not match its files (an edited or unlisted migration), before anything runs.
+// atlas.sum does not match its files (an edited or unlisted migration), and a database with an
+// applied migration the directory does not hold, before anything runs.
 func Pending(ctx context.Context, db *DB, dir migrate.Dir) ([]migrate.File, error) {
 	if err := migrate.Validate(dir); err != nil {
 		return nil, fmt.Errorf("store: migration directory: %w", err)
@@ -28,6 +34,23 @@ func Pending(ctx context.Context, db *DB, dir migrate.Dir) ([]migrate.File, erro
 	rrw := &revisions{db: db.Writer, dialect: db.Dialect}
 	if err := rrw.init(ctx); err != nil {
 		return nil, err
+	}
+	files, err := dir.Files()
+	if err != nil {
+		return nil, err
+	}
+	known := map[string]bool{}
+	for _, f := range files {
+		known[f.Version()] = true
+	}
+	applied, err := rrw.ReadRevisions(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for _, r := range applied {
+		if !known[r.Version] {
+			return nil, fmt.Errorf("%w: %s", ErrUnknownMigration, r.Version)
+		}
 	}
 	drv, err := atlasDriver(db.Dialect, db.Writer)
 	if err != nil {

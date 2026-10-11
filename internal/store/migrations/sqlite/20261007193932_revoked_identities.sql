@@ -1,2 +1,0 @@
--- Create "revoked_identities" table
-CREATE TABLE `revoked_identities` (`spiffe_id` text NOT NULL, `org_id` text NULL, `subject_type` text NOT NULL, `subject_id` text NOT NULL, `revoked_at` datetime NOT NULL, `reason` text NOT NULL DEFAULT (''), `not_after` datetime NOT NULL, PRIMARY KEY (`spiffe_id`), CONSTRAINT `revoked_identities_orgs` FOREIGN KEY (`org_id`) REFERENCES `orgs` (`id`) ON UPDATE NO ACTION ON DELETE NO ACTION);

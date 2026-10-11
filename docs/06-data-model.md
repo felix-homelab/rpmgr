@@ -368,9 +368,12 @@ method, list filter or search returns or modifies the other org's data
   the `db_epoch`, because the content is unchanged ([10](10-operations.md#high-availability)).
 - CI applies every migration to an empty database and to a database seeded at the previous release,
   on both dialects ([12](12-testing-and-quality.md#continuous-integration)).
-- The migrations written while Phase 1 is developed are squashed into one baseline before
-  `v0.1.0-rc.1`, because no release had them; from then on migrations are forward-only
-  ([D57](14-open-decisions.md#engineering)).
+- The migrations written while Phase 1 was developed are squashed into one baseline per dialect,
+  `…_baseline.sql`, before `v0.1.0-rc.1`, because no release had them; from then on migrations are
+  forward-only ([D57](14-open-decisions.md#engineering)).
+- A database with an applied migration that the running version does not have is refused before
+  anything runs: one made by a newer version, or by a development build before the squash, which
+  must be created again.
 
 ## Database engines
 
