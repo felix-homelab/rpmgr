@@ -114,6 +114,10 @@ func TestChaos(t *testing.T) {
 		t.Logf("%s: %s", time.Now().Format(time.TimeOnly), ev.name)
 		var held <-chan error
 		if ev.soft {
+			// The held route must answer first: a hard event before may still be recovering.
+			eventually(t, 90*time.Second, "chaos-held before the "+ev.name, func() error {
+				return client("check", "-addr", addr("gw2", 22004))
+			})
 			held = background(func() error {
 				return client("hold", "-addr", addr("gw2", 22004), "-duration", "25s", "-every", "500ms")
 			})
