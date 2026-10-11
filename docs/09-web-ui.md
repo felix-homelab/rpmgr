@@ -524,7 +524,9 @@ flowchart LR
   and last use.
   - **New tokens:** a name, 1 to 365 days of validity (90 by default) and scopes from the
     permissions of [04](04-security.md#roles); `org.read` is preselected.
-  - **Creation** needs a step-up. The token is shown once, with a copy button.
+  - **Creation** needs a step-up. The token is shown once, with a copy button, and with the
+    `rpmgr login` command for it, which names the controller and the org ID, shown nowhere else,
+    and leaves the token out, so that the command asks for it ([16](16-cli.md)).
   - **Revocation** comes after a confirmation that names the token.
 
 In Phase 1 the UI works in the user's first org. The org switcher comes with the multi-org UI

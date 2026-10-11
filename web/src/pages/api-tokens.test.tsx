@@ -69,9 +69,14 @@ describe("API tokens", () => {
     fireEvent.change(dialog.getByLabelText("Password"), { target: { value: "pw-ok" } });
     fireEvent.click(dialog.getByRole("button", { name: "Confirm" }));
     expect((await s.findByLabelText("The new token")).textContent).toBe("rpmgr_pat_WxYzSECRET");
+    // The org ID is shown nowhere else; the command asks for the token rather than naming it.
+    const login = s.getByLabelText("The login command").textContent;
+    expect(login).toBe(`rpmgr login --controller ${window.location.origin} --org org_1`);
+    expect(login).not.toContain("SECRET");
     expect(await s.findByText("deploy")).toBeTruthy();
     fireEvent.click(s.getByRole("button", { name: "I have copied it" }));
     expect(s.queryByText("rpmgr_pat_WxYzSECRET")).toBeNull();
+    expect(s.queryByLabelText("The login command")).toBeNull();
     expect(creates.map((c) => [c.orgId, c.name, c.scopes, c.ttl?.seconds])).toEqual([
       ["org_1", "deploy", ["org.read", "routes.write"], 30n * 86400n],
       ["org_1", "deploy", ["org.read", "routes.write"], 30n * 86400n],

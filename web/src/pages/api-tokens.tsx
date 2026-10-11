@@ -34,6 +34,12 @@ export function APITokens() {
         <div className="grid gap-2 rounded-md border border-border p-3">
           <p role="status" className="text-sm">{t("tokens.created")}</p>
           <code aria-label={t("tokens.token")} className="break-all font-mono text-sm">{created}</code>
+          {/* The org ID is shown nowhere else, and rpmgr login needs it; the command leaves the
+              token out, so that it asks for it rather than keeping it in the shell's history. */}
+          <p className="text-sm">{t("tokens.login")}</p>
+          <code aria-label={t("tokens.loginCommand")} className="break-all font-mono text-sm">
+            {`rpmgr login --controller ${window.location.origin} --org ${org!.orgId}`}
+          </code>
           <div className="flex gap-2">
             <Button variant="outline" size="sm" onClick={() => void navigator.clipboard?.writeText(created)}>{t("mfa.copy")}</Button>
             <Button size="sm" onClick={() => setCreated(undefined)}>{t("tokens.copied")}</Button>
