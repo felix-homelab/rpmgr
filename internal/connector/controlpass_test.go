@@ -8,6 +8,7 @@ import (
 	"io"
 	"net"
 	"testing"
+	"time"
 
 	tunnelv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/tunnel/v1"
 	"github.com/felix-homelab/rpmgr/internal/connector"
@@ -80,9 +81,13 @@ func TestControlConn(t *testing.T) {
 			}
 			eventually(t, "the carried session stays open at the gateway", func() bool { return carried.Open(w.con.ID) == 0 })
 
-			// A gateway that carries no control sessions refuses.
+			// A gateway that carries no control sessions refuses. The old sessions drain before they
+			// close, as at a gateway's shutdown: on h2 the connector keeps two sessions, and the
+			// second may still be in its handshake with the old ones; draining refuses it, where
+			// Close alone would miss it and leave it carrying control sessions.
 			old := g.sessions.Load()
 			g.sessions.Store(w.sessions(id))
+			old.Drain(time.Now())
 			old.Close()
 			eventually(t, "no new data session", func() bool {
 				return g.sessions.Load().Count()[want] >= 1 && m.Count()[id.ID+"/"+want] >= 1
