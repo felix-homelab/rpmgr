@@ -12,6 +12,7 @@ import (
 	"log/slog"
 	"net"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/quic-go/quic-go"
@@ -140,11 +141,14 @@ func Run(ctx context.Context, o RunOptions) error {
 	defer stop()
 	errs := make(chan error, 2)
 	go watcher.Run(run)
-	go func() {
+	var admin sync.WaitGroup
+	admin.Go(func() {
 		if err := telemetry.ServeAdmin(run, cfg.Listen.Admin, reg, ctl.Ready); err != nil {
 			errs <- fmt.Errorf("connector: admin listener: %w", err)
 		}
-	}()
+	})
+	// Run returns only once the admin listener is closed, so that its address is free again.
+	defer func() { stop(); admin.Wait() }()
 	done := make(chan error, 1)
 	go func() { done <- ctl.Run(run) }()
 	o.Logger.Info("connector running", "connector", ctl.Identity().AgentID, "policy", cfg.PolicyFile)
