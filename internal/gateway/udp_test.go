@@ -96,10 +96,13 @@ func newUDPEcho(t *testing.T, m *gateway.Sessions, w *world, route string) *udpE
 				defer dg.Register(id, func(b []byte) { e.datagrams.Add(1); dg.Send(id, b) })()
 				for {
 					b, err := tunnel.ReadFrame(st)
-					if err != nil || tunnel.WriteFrame(st, b) != nil {
+					if err != nil {
 						return
 					}
-					e.frames.Add(1)
+					e.frames.Add(1) // before the echo, which the test may see at once
+					if tunnel.WriteFrame(st, b) != nil {
+						return
+					}
 				}
 			}()
 		}

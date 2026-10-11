@@ -90,9 +90,11 @@ func TestMetrics(t *testing.T) {
 		t.Fatalf("setup observations: %v", v)
 	}
 	for _, dir := range []string{"in", "out"} {
-		if v := value("rpmgr_route_bytes_total", map[string]string{"route": "rt_1", "direction": dir}); v < 5 {
-			t.Fatalf("bytes %s: %v", dir, v)
-		}
+		// A stream counts the bytes it wrote once the write has returned, which can be after the
+		// echo came back.
+		eventually(t, "bytes "+dir+" not counted", func() bool {
+			return value("rpmgr_route_bytes_total", map[string]string{"route": "rt_1", "direction": dir}) >= 5
+		})
 	}
 	_ = c.Close()
 	eventually(t, "the stream stayed open", func() bool {
