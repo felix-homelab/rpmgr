@@ -181,6 +181,11 @@ regression check compares runner baselines and is reported, not blocking, for v0
 - **Topology:** `bench run` starts a controller, a gateway and two connectors of the `rpmgrtest`
   build in Docker containers on one host, seeds their routes with `rpmgr testseed` and shapes the
   gateway↔connector link with `tc netem`.
+- **Fresh sessions per cell:** once the link is shaped for a cell, the connectors restart, so that
+  each cell's data sessions are made on its RTT and loss, as an installation's are on its path. A
+  QUIC session keeps the smallest RTT it ever saw, and quic-go's hybrid slow start takes any later
+  rise for queueing: a session made before netem added its delay ended slow start at once and ran
+  at a tenth of its rate.
 - **Workflow:** `bench` is started by hand with a profile: smoke, standard (RTT 1 and 80 ms, loss
   0 and 1 %) or full (the axes below). It runs on an x86-64 and an arm64 runner and uploads the
   measurements, the host's details and a summary with the targets of 03 and the regression check

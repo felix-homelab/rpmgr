@@ -4,7 +4,10 @@ The suite measures the targets of [03](../docs/03-connections.md#targets-t) and 
 transports with each other and with a direct TCP connection
 ([12](../docs/12-testing-and-quality.md#benchmarks)). It drives real `rpmgr` processes of the
 `rpmgrtest` build, configured with `rpmgr testseed`, in Docker containers on one host, with
-`tc netem` on the gateway↔connector link.
+`tc netem` on the gateway↔connector link. Each cell restarts the connectors after shaping the
+link, so that its data sessions are made on the cell's RTT and loss: a QUIC session made before
+netem added its delay keeps the shorter RTT as its minimum, and quic-go's hybrid slow start then
+ends at the first round trip.
 
 It is the harness of spike S1 (tag `spike/s1`, [S1](../docs/spikes/S1.md)), moved here as
 [D36](../docs/14-open-decisions.md#project-and-process) planned:

@@ -24,8 +24,10 @@ on:
 permissions:
   contents: read
 
+# Runs with different arguments may overlap: each job has runner machines of its own, so the full
+# profile can be split by RTT into runs that each fit the job's time limit and run side by side.
 concurrency:
-  group: bench
+  group: bench-${{ inputs.profile }}-${{ inputs.args }}
   cancel-in-progress: false
 
 jobs:
