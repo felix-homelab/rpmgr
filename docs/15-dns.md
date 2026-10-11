@@ -1,7 +1,7 @@
 # 15 — DNS automation
 
-> Status: design, not implemented. Tags: [F] fact · [R] recommendation · [T] target · [V] verify at
-> implementation ([README](../README.md#how-to-read-these-documents)).
+> Status: design for Phase 2, not implemented. Tags: [F] fact · [R] recommendation · [T] target ·
+> [V] verify at implementation ([README](../README.md#how-to-read-these-documents)).
 >
 > **This document is the single source of truth for DNS automation timers and limits.** The
 > decision is [ADR-0015](adr/0015-dns-provider-integration.md). Tables live in

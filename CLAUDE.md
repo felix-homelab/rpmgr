@@ -11,8 +11,9 @@ authority and win on any conflict. Personal settings belong in the ignored `CLAU
   managed from one control plane. One Go binary, `rpmgr`, runs every role: controller, gateway,
   connector, all-in-one ([02](docs/02-architecture.md)).
 - **Status:** **Phase 0** (spikes, [13](docs/13-roadmap.md#phase-0--spikes)) is complete;
-  **Phase 1** (MVP, [13](docs/13-roadmap.md#phase-1--mvp)) is being implemented, slice by slice,
-  along the GitHub milestones `P1-M01` … `P1-M12`; one issue per slice. Decisions for it: D48–D61.
+  **Phase 1** (MVP, [13](docs/13-roadmap.md#phase-1--mvp)) is implemented along the GitHub
+  milestones `P1-M01` … `P1-M12`, one issue per slice; its exit criteria and the first release,
+  v0.1.0, are in progress. Decisions for it: D48–D65.
 - A personal open-source project with one maintainer, the product owner, who decides; Apache-2.0.
 - Read first: [README](README.md) → [00](docs/00-vision-and-scope.md) →
   [02](docs/02-architecture.md) → [03](docs/03-connections.md) → [04](docs/04-security.md); phases

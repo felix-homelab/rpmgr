@@ -4,8 +4,8 @@ How rpmgr is versioned, how the changelog is kept, and how a release is cut, pub
 and, if necessary, withdrawn. Branch, commit and review rules are in
 [CONTRIBUTING.md](CONTRIBUTING.md).
 
-Nothing has been released yet: rpmgr is in its design phase. These rules apply from the first
-tagged build on.
+Nothing has been released yet; the first release, v0.1.0, is being prepared. These rules apply
+from the first tagged build on.
 
 ## Contents
 
