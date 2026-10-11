@@ -457,6 +457,9 @@ sequenceDiagram
   QUIC it is the first bidirectional stream, opened by the connector ("stream 0"). On the TCP
   transport it is the first request the gateway opens after the connection is up, because there the
   connector is the HTTP/2 server and cannot open streams ([Transports and fallback](#transports-and-fallback)).
+- `SessionHello` lists as many of the connector's ready routes as the message limit
+  ([Framing](#framing)) leaves room for; `RouteHealth` messages right after `SessionWelcome`
+  report the others, so a connector with any number of routes establishes its sessions.
 - The gateway opens user streams for a route only if (a) its snapshot assigns that route to this
   connector's identity and (b) the connector reported the route `ready`. A connector whose local
   policy blocks a target reports `not_ready(blocked_by_local_policy)`, and the UI shows the reason.

@@ -8,6 +8,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"errors"
+	"fmt"
 	"io"
 	"net"
 	"sync"
@@ -450,6 +451,35 @@ func TestSessions_RouteHealth(t *testing.T) {
 	if _, code, err := g2.sessions.Load().OpenStream(context.Background(), &tunnelv1.StreamOpen{RouteId: "rt_1"}); err != nil ||
 		code != tunnelv1.ResultCode_RESULT_CODE_ROUTE_UNKNOWN {
 		t.Fatalf("%s %v, want ROUTE_UNKNOWN", code, err)
+	}
+}
+
+// TestSessions_ManyReadyRoutes (docs/03-connections.md, "Framing"): a connector with more ready
+// routes than one SessionHello can list within the message limit still establishes its sessions,
+// on both transports; the hello carries what fits and RouteHealth the rest, so every route is
+// served.
+func TestSessions_ManyReadyRoutes(t *testing.T) {
+	w := newWorld(t)
+	for _, tr := range []string{connector.TransportQUIC, connector.TransportH2} {
+		t.Run(tr, func(t *testing.T) {
+			id := w.gatewayID()
+			g := startGateway(t, w, id, w.leaf(t, w.is, w.inter, id))
+			m := newConnector(t, w)
+			routes := map[string]string{}
+			var ids []string
+			for i := range 1500 { // about 46 KB of route IDs, almost three times the limit
+				r := fmt.Sprintf("rt_%026d", i)
+				ids = append(ids, r)
+				routes[r] = tr
+				m.SetReady(&tunnelv1.RouteHealth{RouteId: r, Ready: true})
+			}
+			m.Set([]connector.Gateway{{ID: id.ID, Endpoints: []string{g.addr}, Routes: routes}})
+			eventually(t, "no session with 1500 ready routes", func() bool { return g.sessions.Load().Count()[tr] > 0 })
+			gs := g.sessions.Load()
+			for _, r := range []string{ids[0], ids[len(ids)/2], ids[len(ids)-1]} {
+				eventually(t, r+" is not served", func() bool { return echo(t, gs, r) == nil })
+			}
+		})
 	}
 }
 

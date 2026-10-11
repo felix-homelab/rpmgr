@@ -19,6 +19,8 @@ import (
 	"time"
 
 	"github.com/quic-go/quic-go"
+	"google.golang.org/protobuf/encoding/protowire"
+	"google.golang.org/protobuf/proto"
 
 	agentv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/agent/v1"
 	tunnelv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/tunnel/v1"
@@ -752,6 +754,37 @@ func (m *Sessions) dialTransport(ctx context.Context, gs *gatewayState, tr strin
 	return nil, errors.Join(errs...)
 }
 
+// fitReady lists in hello as many of the ready routes as the message limit leaves room for, in
+// order, and returns them; RouteHealth messages after the welcome announce the others, so that a
+// connector with any number of routes keeps its SessionHello within tunnel.MaxMessage
+// (docs/03-connections.md, "Framing").
+func fitReady(hello *tunnelv1.SessionHello, ready []string) map[string]bool {
+	msg := &tunnelv1.SessionMessage{Msg: &tunnelv1.SessionMessage_Hello{Hello: hello}}
+	hello.ReadyRoutes = nil
+	// The hello is a field of the SessionMessage, whose length prefix grows with it: keep a margin
+	// for that, and check the result below.
+	room := tunnel.MaxMessage - proto.Size(msg) - 8
+	n := 0
+	for _, r := range ready {
+		size := protowire.SizeTag(5) + protowire.SizeBytes(len(r)) // field 5, ready_routes
+		if size > room {
+			break
+		}
+		room -= size
+		n++
+	}
+	hello.ReadyRoutes = ready[:n]
+	for n > 0 && proto.Size(msg) > tunnel.MaxMessage {
+		n--
+		hello.ReadyRoutes = ready[:n]
+	}
+	sent := make(map[string]bool, n)
+	for _, r := range ready[:n] {
+		sent[r] = true
+	}
+	return sent
+}
+
 // serve runs an established session: SessionHello with the ready routes of the link's policy, the
 // SessionWelcome from the expected gateway, Pings, the streams the gateway opens and the messages
 // it sends. It closes drained once the gateway sends Drain and returns when the session ends. ctx
@@ -782,7 +815,7 @@ func (m *Sessions) serve(ctx context.Context, s *session, drained chan struct{})
 	m.mu.Lock()
 	want := m.wanted(s)
 	m.mu.Unlock()
-	hello.ReadyRoutes = slices.Sorted(maps.Keys(want))
+	sent := fitReady(hello, slices.Sorted(maps.Keys(want)))
 	if err := s.send(&tunnelv1.SessionMessage{Msg: &tunnelv1.SessionMessage_Hello{Hello: hello}}); err != nil {
 		return err
 	}
@@ -798,10 +831,10 @@ func (m *Sessions) serve(ctx context.Context, s *session, drained chan struct{})
 		m.mu.Unlock()
 		return ctx.Err()
 	}
-	s.announced = want
+	s.announced = sent
 	s.l.sessions[s] = true
 	s.l.failed = nil
-	out := m.announce(s) // readiness that changed during the handshake
+	out := m.announce(s) // the ready routes the hello had no room for, and changes during the handshake
 	m.mu.Unlock()
 	m.flush(out)
 	defer func() {
