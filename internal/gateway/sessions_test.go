@@ -651,3 +651,37 @@ func TestSessions_DroppedConnectorKeepsStreams(t *testing.T) {
 	}
 	_ = st.Close()
 }
+
+// TestSessions_ConnectorCap: a connector holds at most MaxConnectorSessions data sessions to a
+// gateway; one more is refused before its handshake, another connector is not affected, and a
+// session that ends frees a slot.
+func TestSessions_ConnectorCap(t *testing.T) {
+	a := &assignment{known: map[string]bool{cid("con_busy"): true, cid("con_other"): true}}
+	m := newSessions(a, nil)
+	busy := connectorID("con_busy")
+	var held []*connector
+	for range gateway.MaxConnectorSessions {
+		held = append(held, start(t, m, busy, hello()))
+	}
+	if got := m.Count()["h2"]; got != gateway.MaxConnectorSessions {
+		t.Fatalf("%d sessions admitted, want %d", got, gateway.MaxConnectorSessions)
+	}
+	gw, _ := h2Session(t)
+	if err := m.Serve(context.Background(), gw, certOf(busy)); !errors.Is(err, gateway.ErrSessionCap) {
+		t.Fatalf("one session more: %v, want ErrSessionCap", err)
+	}
+	other := start(t, m, connectorID("con_other"), hello())
+	if other.welcome.GetGatewayId() != "gw_01" {
+		t.Fatalf("another connector: %v", other.welcome)
+	}
+
+	held[0].send(t, &tunnelv1.SessionMessage{Msg: &tunnelv1.SessionMessage_Goodbye{Goodbye: &tunnelv1.Goodbye{}}})
+	if err := held[0].serveErr(t); err != nil {
+		t.Fatal(err)
+	}
+	busyLeft, others := gateway.MaxConnectorSessions-1, 1
+	eventually(t, "the ended session still counts", func() bool { return m.Count()["h2"] == busyLeft+others })
+	if again := start(t, m, busy, hello()); again.welcome == nil {
+		t.Fatal("no session after one ended")
+	}
+}

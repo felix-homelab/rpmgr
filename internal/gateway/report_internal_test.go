@@ -36,7 +36,9 @@ func TestReport(t *testing.T) {
 		{connector: "con_a", s: fakeSession{transport: "h2"}},
 		{connector: "con_a", s: rttSession{fakeSession{transport: "quic", rtt: 5 * time.Millisecond}}},
 	} {
-		m.add(d)
+		if err := m.add(d); err != nil {
+			t.Fatal(err)
+		}
 	}
 	got := m.Report()
 	want := []struct {

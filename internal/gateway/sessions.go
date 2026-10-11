@@ -38,6 +38,11 @@ const (
 	// and is passed over for new streams [V VB-18].
 	blockedAfter = 200 * time.Millisecond
 	protoMinor   = 0
+	// MaxConnectorSessions is how many data sessions one connector identity may hold to a gateway
+	// at once (docs/03-connections.md, "Establishment").
+	MaxConnectorSessions = 16
+	// capWarnEvery limits the warnings about one connector at the cap.
+	capWarnEvery = time.Minute
 )
 
 // Variables for tests.
@@ -56,6 +61,8 @@ var (
 	ErrNoSession     = errors.New("gateway: no ready data session for the route")
 	ErrDraining      = errors.New("gateway: the gateway is draining")
 	ErrResultTimeout = errors.New("gateway: no StreamResult in time")
+	// ErrSessionCap refuses a data session beyond MaxConnectorSessions.
+	ErrSessionCap = fmt.Errorf("gateway: the connector already holds %d data sessions to this gateway", MaxConnectorSessions)
 )
 
 // Assignment is what the gateway's snapshot says about connectors.
@@ -95,8 +102,9 @@ type Sessions struct {
 
 	mu          sync.Mutex
 	byConnector map[string][]*dataSession
-	draining    bool // the gateway stops
-	disabled    bool // the gateway is disabled (R22) until Enable
+	capWarned   map[string]time.Time // when a connector at the cap was last warned about
+	draining    bool                 // the gateway stops
+	disabled    bool                 // the gateway is disabled (R22) until Enable
 }
 
 // NewSessions returns the session manager.
@@ -107,7 +115,7 @@ func NewSessions(o SessionsOptions) *Sessions {
 	if o.Logger == nil {
 		o.Logger = slog.New(slog.DiscardHandler)
 	}
-	s := &Sessions{o: o, byConnector: map[string][]*dataSession{}}
+	s := &Sessions{o: o, byConnector: map[string][]*dataSession{}, capWarned: map[string]time.Time{}}
 	o.Metrics.watch(s)
 	return s
 }
@@ -172,11 +180,8 @@ func (m *Sessions) Serve(ctx context.Context, s tunnel.Session, peer *x509.Certi
 	if err != nil {
 		return err
 	}
-	m.mu.Lock()
-	draining := m.draining || m.disabled
-	m.mu.Unlock()
-	if draining {
-		return ErrDraining
+	if err := m.admits(id.ID); err != nil {
+		return err
 	}
 	hctx, cancel := context.WithTimeout(ctx, helloTimeout)
 	control, err := s.Control(hctx)
@@ -199,8 +204,8 @@ func (m *Sessions) Serve(ctx context.Context, s tunnel.Session, peer *x509.Certi
 		d.ready[r] = true
 	}
 	// Registered before the welcome, so that a Drain or Recheck from now on reaches the session.
-	if !m.add(d) {
-		return ErrDraining
+	if err := m.add(d); err != nil {
+		return err
 	}
 	defer m.remove(d)
 	if err := send(&tunnelv1.SessionMessage{Msg: &tunnelv1.SessionMessage_Welcome{Welcome: &tunnelv1.SessionWelcome{
@@ -327,18 +332,42 @@ func readHello(control tunnel.Stream) (*tunnelv1.SessionHello, error) {
 	}
 }
 
-// add registers d unless the gateway started draining meanwhile.
-func (m *Sessions) add(d *dataSession) bool {
+// admits reports why the gateway takes no new data session from the connector id: it is
+// draining or disabled, or the connector holds MaxConnectorSessions already.
+func (m *Sessions) admits(id string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	if m.draining || m.disabled {
-		return false
+	return m.admitsLocked(id)
+}
+
+// admitsLocked is admits under m.mu.
+func (m *Sessions) admitsLocked(id string) error {
+	switch {
+	case m.draining || m.disabled:
+		return ErrDraining
+	case len(m.byConnector[id]) >= MaxConnectorSessions:
+		if now := m.o.Now(); now.Sub(m.capWarned[id]) >= capWarnEvery {
+			m.capWarned[id] = now
+			m.o.Logger.Warn("refusing a data session of a connector at the cap", "connector", id, "sessions", MaxConnectorSessions)
+		}
+		return ErrSessionCap
+	}
+	return nil
+}
+
+// add registers d unless the gateway started draining or the connector reached the cap
+// meanwhile.
+func (m *Sessions) add(d *dataSession) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if err := m.admitsLocked(d.connector); err != nil {
+		return err
 	}
 	m.byConnector[d.connector] = append(m.byConnector[d.connector], d)
 	if m.o.OnChange != nil {
 		defer m.o.OnChange()
 	}
-	return true
+	return nil
 }
 
 // Recheck applies a new deny-list or snapshot to the live sessions; the gateway calls it after
@@ -398,6 +427,7 @@ func (m *Sessions) remove(d *dataSession) {
 	m.byConnector[d.connector] = slices.DeleteFunc(m.byConnector[d.connector], func(x *dataSession) bool { return x == d })
 	if len(m.byConnector[d.connector]) == 0 {
 		delete(m.byConnector, d.connector)
+		delete(m.capWarned, d.connector)
 	}
 	if m.o.OnChange != nil {
 		defer m.o.OnChange()

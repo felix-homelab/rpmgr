@@ -102,6 +102,9 @@ type Sessions struct {
 type gatewayState struct {
 	g     Gateway
 	links map[string]*link // by transport policy
+	// gone are the routes a newer snapshot took from the gateway, until the end of their route
+	// drain period, during which the gateway may still open streams for them.
+	gone map[string]time.Time
 }
 
 // link keeps the sessions of one transport policy to one gateway.
@@ -180,6 +183,17 @@ func (m *Sessions) Set(gws []Gateway) {
 		g, ok := want[id]
 		if ok && slices.Equal(g.Endpoints, gs.g.Endpoints) {
 			delete(want, id)
+			now := m.o.Now()
+			for r := range gs.g.Routes {
+				if _, still := g.Routes[r]; !still {
+					gs.gone[r] = now.Add(routeDrain)
+				}
+			}
+			for r, until := range gs.gone {
+				if _, back := g.Routes[r]; back || !now.Before(until) {
+					delete(gs.gone, r)
+				}
+			}
 			gs.g = g
 			need := policies(g)
 			for p, l := range gs.links {
@@ -206,7 +220,7 @@ func (m *Sessions) Set(gws []Gateway) {
 		delete(m.gateways, id)
 	}
 	for _, g := range want {
-		gs := &gatewayState{g: g, links: map[string]*link{}}
+		gs := &gatewayState{g: g, links: map[string]*link{}, gone: map[string]time.Time{}}
 		m.gateways[g.ID] = gs
 		for p := range policies(g) {
 			m.startLink(gs, p)
@@ -275,6 +289,18 @@ func (m *Sessions) retire(s *session) []outgoing {
 
 func health(route string, ready bool) *tunnelv1.SessionMessage {
 	return &tunnelv1.SessionMessage{Msg: &tunnelv1.SessionMessage_RouteHealth{RouteHealth: &tunnelv1.RouteHealth{RouteId: route, Ready: ready}}}
+}
+
+// serves reports whether the gateway of s serves route by the applied snapshot, or did until less
+// than the route drain period ago. A retired session keeps the gateway entry it was retired with.
+func (m *Sessions) serves(s *session, route string) bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if _, ok := s.l.gs.g.Routes[route]; ok {
+		return true
+	}
+	until, ok := s.l.gs.gone[route]
+	return ok && m.o.Now().Before(until)
 }
 
 // wanted are the routes s should announce: the ready routes of its link's policy. Under m.mu.
@@ -824,7 +850,9 @@ func readWelcome(ctx context.Context, control tunnel.Stream) (*tunnelv1.SessionW
 }
 
 // accept reads the StreamOpen of every stream the gateway opens and hands the stream to the answer
-// of an OpenRequest or to Streams.
+// of an OpenRequest or to Streams. A stream for a route that the gateway does not serve gets
+// ROUTE_UNKNOWN: a gateway of one group never reaches the targets of another group's routes
+// (docs/04-security.md, "Threat model").
 func (m *Sessions) accept(ctx context.Context, s *session) {
 	for {
 		st, err := s.s.AcceptStream(ctx)
@@ -845,14 +873,28 @@ func (m *Sessions) accept(ctx context.Context, s *session) {
 			}
 			s.streams.Add(1)
 			cs := &countedStream{Stream: st, s: s}
-			if m.o.Streams == nil {
+			foreign := m.o.Streams != nil && routed(open) && !m.serves(s, open.GetRouteId())
+			if m.o.Streams == nil || foreign {
+				if foreign {
+					m.o.Logger.Warn("refused a stream for a route the gateway does not serve", "gateway", s.l.gw, "route", open.GetRouteId())
+				}
 				_ = tunnel.WriteMessage(cs, &tunnelv1.StreamResult{Code: tunnelv1.ResultCode_RESULT_CODE_ROUTE_UNKNOWN})
+				cs.SetReliableBoundary()
+				_ = cs.CloseWrite()
 				_ = cs.Close()
 				return
 			}
 			m.o.Streams(ctx, s.l.gw, cs, open)
 		}()
 	}
+}
+
+// routed reports whether open is a well-formed stream of a route, which the gateway must serve;
+// Streams answers any other with its own code.
+func routed(open *tunnelv1.StreamOpen) bool {
+	k := open.GetKind()
+	return (k == tunnelv1.StreamKind_STREAM_KIND_TCP || k == tunnelv1.StreamKind_STREAM_KIND_UDP_FLOW) &&
+		tunnel.CheckStreamOpen(open) == tunnelv1.ResultCode_RESULT_CODE_NO_ERROR
 }
 
 // countedStream ends its count in the session's streams when it is closed or aborted.

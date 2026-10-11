@@ -464,6 +464,11 @@ sequenceDiagram
   snapshot no longer assigns the connector a route of this gateway, no new stream is opened on its
   sessions, and they close after their last stream has ended, at the latest after the route drain
   period: its routes were removed, not revoked.
+- A gateway admits at most **16 data sessions per connector identity**; it refuses one more before
+  its handshake, and the connector retries with backoff. [R] A connector needs at most six: an
+  `auto` link on TCP (two connections) re-probing QUIC (one), a `quic` link (one) and an `h2` link
+  (two). The rest leaves room for sessions a transport switch retired, which close after their
+  last stream. A connector cannot exhaust a gateway by opening sessions without end.
 
 ### One stream per user connection
 
@@ -488,6 +493,11 @@ sequenceDiagram
   pre-opened connections that could run empty.
 - **The connector dials only what its own snapshot says.** `StreamOpen` names a `route_id`, never an
   address. A compromised gateway cannot turn a connector into an open proxy.
+- **Only for a route of the opening gateway.** The connector's snapshot lists, per gateway, the
+  routes that gateway serves. A stream for any other route gets `ROUTE_UNKNOWN` before anything is
+  dialled, so a gateway of one gateway group never reaches the targets of another group's routes.
+  A route that a newer snapshot takes from a gateway, as when the gateway moves to another group,
+  is accepted from it for the route drain period, like a removed route.
 - **Targets.** The connector tries a route's targets by priority, lowest first, and within a
   priority in a random order weighted by `weight`; a refused target passes the stream on to the
   next one, all within the upstream dial timeout. A target the local policy blocks is never

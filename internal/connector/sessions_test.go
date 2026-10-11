@@ -111,7 +111,8 @@ type testGateway struct {
 	serverName   chan string // the SNI of every TCP handshake
 	tcpErrs      chan error  // failed TCP handshakes
 	quicConns    atomic.Int64
-	tcpEnded     atomic.Int64 // TCP sessions the gateway served and removed
+	tcpEnded     atomic.Int64                       // TCP sessions the gateway served and removed
+	lastQUIC     atomic.Pointer[tunnel.QUICSession] // the last QUIC session accepted, for a gateway that misbehaves
 }
 
 // startGateway serves data sessions for the gateway id with the certificate cert, which a test
@@ -232,6 +233,7 @@ func (g *testGateway) serveQUIC(t *testing.T, pc net.PacketConn) {
 				return
 			}
 			g.quicConns.Add(1)
+			g.lastQUIC.Store(s)
 			sessions := g.sessions.Load()
 			if q := g.quicSessions.Load(); q != nil {
 				sessions = q
@@ -550,4 +552,87 @@ func TestSessions_Endpoints(t *testing.T) {
 	m := newConnector(t, w)
 	m.Set([]connector.Gateway{{ID: id.ID, Endpoints: []string{deadAddr, "not-a-port:x", g.addr}, Routes: map[string]string{"rt_1": connector.TransportH2}}})
 	eventually(t, "the third endpoint was not used", func() bool { return g.sessions.Load().Count()["h2"] == 2 })
+}
+
+// rawOpen opens a stream for route on s as a gateway that ignores what the connector announced
+// would, and returns the connector's StreamResult code.
+func rawOpen(t *testing.T, s tunnel.Session, route string) tunnelv1.ResultCode {
+	t.Helper()
+	st, err := s.OpenStream(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = st.Close() }()
+	if err := tunnel.WriteMessage(st, &tunnelv1.StreamOpen{Kind: tunnelv1.StreamKind_STREAM_KIND_TCP, RouteId: route}); err != nil {
+		t.Fatal(err)
+	}
+	res := &tunnelv1.StreamResult{}
+	if err := tunnel.ReadMessage(st, res); err != nil {
+		t.Fatal(err)
+	}
+	return res.GetCode()
+}
+
+// TestSessions_StreamsOnlyForTheGatewaysRoutes: the connector serves a stream only for a route
+// that the opening gateway serves by the connector's snapshot. A gateway that opens one for a
+// route of another gateway group, as a compromised gateway would, gets ROUTE_UNKNOWN; a route that
+// both groups serve works through either. A route taken from the gateway by a newer snapshot, as
+// when the gateway moves to another group, still works for the route drain period and then no
+// longer.
+func TestSessions_StreamsOnlyForTheGatewaysRoutes(t *testing.T) {
+	connector.SetRouteDrain(t, 500*time.Millisecond)
+	w := newWorld(t)
+	idA, idB := w.gatewayID(), w.gatewayID()
+	a := startGateway(t, w, idA, w.leaf(t, w.is, w.inter, idA))
+	b := startGateway(t, w, idB, w.leaf(t, w.is, w.inter, idB))
+	m := newConnector(t, w)
+	for _, r := range []string{"rt_a", "rt_b", "rt_both", "rt_next"} {
+		m.SetReady(&tunnelv1.RouteHealth{RouteId: r, Ready: true})
+	}
+	quic := connector.TransportQUIC
+	entryA := connector.Gateway{ID: idA.ID, Endpoints: []string{a.addr}, Routes: map[string]string{"rt_a": quic, "rt_both": quic}}
+	entryB := connector.Gateway{ID: idB.ID, Endpoints: []string{b.addr}, Routes: map[string]string{"rt_b": quic, "rt_both": quic}}
+	m.Set([]connector.Gateway{entryA, entryB})
+	eventually(t, "no sessions", func() bool {
+		return a.sessions.Load().Count()["quic"] == 1 && b.sessions.Load().Count()["quic"] == 1
+	})
+	sa, sb := a.lastQUIC.Load(), b.lastQUIC.Load()
+	for _, c := range []struct {
+		s     tunnel.Session
+		route string
+		want  tunnelv1.ResultCode
+	}{
+		{sa, "rt_a", tunnelv1.ResultCode_RESULT_CODE_NO_ERROR},
+		{sa, "rt_b", tunnelv1.ResultCode_RESULT_CODE_ROUTE_UNKNOWN}, // the other group's route
+		{sb, "rt_a", tunnelv1.ResultCode_RESULT_CODE_ROUTE_UNKNOWN},
+		{sa, "rt_both", tunnelv1.ResultCode_RESULT_CODE_NO_ERROR},
+		{sb, "rt_both", tunnelv1.ResultCode_RESULT_CODE_NO_ERROR},
+		{sa, "rt_nowhere", tunnelv1.ResultCode_RESULT_CODE_ROUTE_UNKNOWN},
+	} {
+		if got := rawOpen(t, c.s, c.route); got != c.want {
+			t.Errorf("%s through %s: %s, want %s", c.route, map[tunnel.Session]string{sa: "A", sb: "B"}[c.s], got, c.want)
+		}
+	}
+
+	// Gateway A moves to another group: its routes are now rt_next only.
+	entryA.Routes = map[string]string{"rt_next": quic}
+	m.Set([]connector.Gateway{entryA, entryB})
+	if a.lastQUIC.Load() != sa {
+		t.Fatal("the session was redialled")
+	}
+	if got := rawOpen(t, sa, "rt_a"); got != tunnelv1.ResultCode_RESULT_CODE_NO_ERROR {
+		t.Errorf("a route taken from the gateway, within the drain period: %s", got)
+	}
+	if got := rawOpen(t, sa, "rt_next"); got != tunnelv1.ResultCode_RESULT_CODE_NO_ERROR {
+		t.Errorf("the gateway's new route: %s", got)
+	}
+	time.Sleep(600 * time.Millisecond)
+	for _, r := range []string{"rt_a", "rt_both"} {
+		if got := rawOpen(t, sa, r); got != tunnelv1.ResultCode_RESULT_CODE_ROUTE_UNKNOWN {
+			t.Errorf("%s after the drain period: %s", r, got)
+		}
+	}
+	if got := rawOpen(t, sb, "rt_both"); got != tunnelv1.ResultCode_RESULT_CODE_NO_ERROR {
+		t.Errorf("rt_both through B after A moved: %s", got)
+	}
 }
