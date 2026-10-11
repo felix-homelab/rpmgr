@@ -133,6 +133,8 @@
     "create": "Create the token",
     "created": "Copy the token now. It is shown only once.",
     "token": "The new token",
+    "login": "To use it from the command line, run this command; it asks for the token:",
+    "loginCommand": "The login command",
     "copied": "I have copied it",
     "expires": "expires {{when}}",
     "lastUse": "last used {{when}} from {{ip}}",

@@ -236,7 +236,10 @@ later.
 - **ACME route certificates** [R]: the singleton job `acme` gives every hostname of an enabled
   http route in `acme` mode a certificate of its own from the instance's ACME CA (Let's Encrypt
   by default) and account, obtained and renewed with certmagic: renewal follows ACME Renewal
-  Information where the CA offers it, else a third of the lifetime left. The certificate goes
+  Information where the CA offers it, else a third of the lifetime left. A renewal's order names
+  the certificate it replaces when the directory is the same; a CA refuses that for a certificate
+  of another account, as after a change of the account's e-mail address, and the job then orders
+  once more without naming it, before any challenge is tried. The certificate goes
   into the certificates of the route's org and from there to the gateways. A hostname that gets
   none has a `failed` row with the CA's error, and one whose renewal fails keeps serving its
   certificate with the error recorded. A wildcard hostname in `acme` mode is refused with that

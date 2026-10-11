@@ -200,6 +200,91 @@ func TestACME_Issuance(t *testing.T) {
 	}
 }
 
+// TestACME_RenewalAfterAccountChange: once the instance's ACME account changes, here by its
+// e-mail address, a renewal still succeeds. certmagic names the certificate an order replaces
+// (ARI), and the CA refuses that for a certificate of another account, so the manager orders once
+// more without naming it.
+func TestACME_RenewalAfterAccountChange(t *testing.T) {
+	p := newDataPlane(t)
+	c := p.c
+	port80 := freeTCPUDPPort(t)
+	http80 := addr(port80)
+	p.stopGateway()
+	p.gwCfg.Listen.HTTP = &http80
+	p.startGateway(t)
+	_, port443, _ := net.SplitHostPort(p.gwCfg.Listen.TCP)
+	tlsPort, _ := strconv.Atoi(port443)
+	dns, err := acmetest.StartDNS([]string{"example.com"}, func(string) []string { return nil })
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(dns.Close)
+	pebble, err := acmetest.Start(acmetest.Options{HTTPPort: port80, TLSPort: tlsPort, Resolver: dns.Addr})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(pebble.Close)
+	account := func(email string) {
+		t.Helper()
+		if _, err := settings.UpdateInstance(c.Sys, c.DB, &rpmgrv1.InstanceSettings{AcmeDirectoryUrl: proto.String(pebble.DirectoryURL),
+			AcmeEmail: proto.String(email)}, &fieldmaskpb.FieldMask{Paths: []string{"acme_directory_url", "acme_email"}}, 0); err != nil {
+			t.Fatal(err)
+		}
+	}
+	account("ops@example.com")
+	if _, err := store.ConfigTx(c.Sys, c.DB, func(tx *ent.Tx) ([]string, error) {
+		tcp, err := tx.Route.Get(c.Sys, p.routeID)
+		if err != nil {
+			return nil, err
+		}
+		d, err := domains.Claim(c.Sys, tx, c.Org, "example.com", true)
+		if err != nil {
+			return nil, err
+		}
+		if err := tx.Domain.UpdateOne(d).SetStatus(domain.StatusVerified).Exec(c.Sys); err != nil {
+			return nil, err
+		}
+		r, err := tx.Route.Create().SetOrgID(c.Org).SetName("web").SetType("http").SetGatewayGroupID(tcp.GatewayGroupID).Save(c.Sys)
+		if err != nil {
+			return nil, err
+		}
+		if err := tx.RouteHTTP.Create().SetOrgID(c.Org).SetRouteID(r.ID).Exec(c.Sys); err != nil { // acme mode by default
+			return nil, err
+		}
+		_, err = routes.AddHostname(c.Sys, tx, r.ID, "app.example.com", "")
+		return []string{r.ID}, err
+	}); err != nil {
+		t.Fatal(err)
+	}
+	storage := acme.NewChallengeStorage(acme.NewStorage(c.DB, c.Sys, c.Sealer(), lease.New(c.DB, "ctn_test", nil), nil),
+		c.Sessions, acme.GatewaysServing(c.DB, c.Sys))
+	t.Cleanup(storage.Close)
+	m := acme.NewManager(acme.ManagerOptions{DB: c.DB, Sys: c.Sys, Sealer: c.Sealer(), Storage: storage, TrustedRoots: pebble.ServerRoots,
+		Logger: c.Logs.Logger()}) // ARI on, as in production
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	waitFor(t, "the certificate of app.example.com was never obtained", func() bool {
+		_ = m.Sync(ctx)
+		row := acmeRow(t, p, "app.example.com")
+		return row != nil && row.Status == certificate.StatusActive && len(row.ContentSha256) > 0
+	})
+	first := acmeRow(t, p, "app.example.com")
+
+	account("other@example.com")
+	if started, err := m.RenewAsync(ctx, first.OrgID, "app.example.com"); err != nil || !started {
+		t.Fatalf("a renewal on demand: %t %v", started, err)
+	}
+	var last *ent.Certificate
+	for deadline := time.Now().Add(time.Minute); time.Now().Before(deadline); time.Sleep(200 * time.Millisecond) {
+		if last = acmeRow(t, p, "app.example.com"); string(last.ContentSha256) != string(first.ContentSha256) || last.LastError != "" {
+			break
+		}
+	}
+	if string(last.ContentSha256) == string(first.ContentSha256) || last.Status != certificate.StatusActive || last.LastError != "" {
+		t.Fatalf("not renewed with the new account: status %s, last error %q", last.Status, last.LastError)
+	}
+}
+
 // writePolicy allows the connector to reach ports of 127.0.0.1.
 func writePolicy(p *dataPlane, ports ...int) error {
 	list := make([]string, len(ports))
