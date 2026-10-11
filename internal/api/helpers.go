@@ -59,7 +59,9 @@ func (s *Server) AfterPage(token string, req proto.Message) (string, error) {
 	}
 	bad := connect.NewError(connect.CodeInvalidArgument, errors.New("api: the page_token is not valid for this request"))
 	b, err := base64.RawURLEncoding.DecodeString(token)
-	if err != nil {
+	// The decoder skips line breaks and ignores the unused bits of the last character, so only the
+	// one encoding PageToken makes is accepted.
+	if err != nil || base64.RawURLEncoding.EncodeToString(b) != token {
 		return "", bad
 	}
 	n, k := binary.Uvarint(b)
