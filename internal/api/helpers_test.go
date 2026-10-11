@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/base64"
 	"errors"
+	"strings"
 	"testing"
 
 	"connectrpc.com/connect"
@@ -80,21 +81,31 @@ func TestPageToken(t *testing.T) {
 		b[i] ^= 1
 		return base64.RawURLEncoding.EncodeToString(b)
 	}
+	// The same bytes, encoded otherwise: unused bits of the last character set, when it has any.
+	const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
+	otherBits := tok[:5] + "\n" + tok[5:] // a token without unused bits gets a line break instead
+	if len(raw)%3 != 0 {
+		last := strings.IndexByte(alphabet, tok[len(tok)-1])
+		otherBits = tok[:len(tok)-1] + string(alphabet[last^1])
+	}
 	for name, c := range map[string]struct {
 		token string
 		query proto.Message
 		srv   *api.Server
 	}{
-		"key changed":        {flip(3), query, s},
-		"mac changed":        {flip(len(raw) - 1), query, s},
-		"length changed":     {flip(0), query, s},
-		"truncated":          {tok[:len(tok)-4], query, s},
-		"longer":             {tok + "AAAA", query, s},
-		"not base64":         {"%%%", query, s},
-		"empty after decode": {"AA", query, s},
-		"another filter":     {tok, request(t, sd, map[string]any{"org_id": "org_a", "name": "y"}), s},
-		"another org":        {tok, request(t, sd, map[string]any{"org_id": "org_b", "name": "x"}), s},
-		"another key":        {tok, query, helperServer(t, nil)},
+		"a line break inside": {tok[:5] + "\n" + tok[5:], query, s},
+		"a carriage return":   {tok[:5] + "\r\n" + tok[5:], query, s},
+		"other unused bits":   {otherBits, query, s},
+		"key changed":         {flip(3), query, s},
+		"mac changed":         {flip(len(raw) - 1), query, s},
+		"length changed":      {flip(0), query, s},
+		"truncated":           {tok[:len(tok)-4], query, s},
+		"longer":              {tok + "AAAA", query, s},
+		"not base64":          {"%%%", query, s},
+		"empty after decode":  {"AA", query, s},
+		"another filter":      {tok, request(t, sd, map[string]any{"org_id": "org_a", "name": "y"}), s},
+		"another org":         {tok, request(t, sd, map[string]any{"org_id": "org_b", "name": "x"}), s},
+		"another key":         {tok, query, helperServer(t, nil)},
 	} {
 		if _, err := c.srv.AfterPage(c.token, c.query); connect.CodeOf(err) != connect.CodeInvalidArgument {
 			t.Errorf("%s: %v", name, err)
@@ -202,7 +213,9 @@ func FuzzAfterPage(f *testing.F) {
 		f.Fatal(err)
 	}
 	query := &rpmgrv1.BasicAuthUser{Name: "q"}
-	f.Add(s.PageToken("rt_1", query))
+	tok := s.PageToken("rt_1", query)
+	f.Add(tok)
+	f.Add(tok[:5] + "\n" + tok[5:]) // the nightly run's finding: a line break the decoder skips
 	f.Add("")
 	f.Add("AA")
 	f.Fuzz(func(t *testing.T, token string) {
