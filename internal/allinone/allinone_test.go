@@ -217,7 +217,7 @@ func ping(c net.Conn, msg string) error {
 // TestAllInOne: `init` sets up the controller and enrolls its gateway through it; `Run` serves the
 // controller through the gateway's port 443, so a connector enrolls and runs against the public URL;
 // a tcp route on the default group then reaches a service behind the connector, also after a
-// restart.
+// restart, which finds the admin address free once Run has returned.
 func TestAllInOne(t *testing.T) {
 	h := newHost(t)
 	r := h.init(t)
@@ -314,6 +314,11 @@ func TestAllInOne(t *testing.T) {
 	checkP1Metrics(t, aio, conReg, h.cfg.Listen.Admin, cc.Listen.Admin)
 
 	stop()
+	ln, err := net.Listen("tcp", h.cfg.Listen.Admin)
+	if err != nil {
+		t.Fatalf("the admin address after Run returned: %v", err)
+	}
+	_ = ln.Close()
 	h.run(t)
 	waitFor(t, "the route is not served after a restart", served)
 }
