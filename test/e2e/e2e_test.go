@@ -116,13 +116,18 @@ func signal(node, sig string) error {
 	if _, err := in(node, "pkill", "-"+sig, "-x", "rpmgr"); err != nil {
 		return err
 	}
-	for range 150 {
+	// A gateway stopped with TERM drains for up to the gateway drain period of
+	// docs/03-connections.md, as long as connections or UDP flows through it last.
+	wait := 30 * time.Second
+	if sig == "TERM" {
+		wait = 75 * time.Second
+	}
+	for end := time.Now().Add(wait); time.Now().Before(end); time.Sleep(200 * time.Millisecond) {
 		if _, err := in(node, "pgrep", "-x", "rpmgr"); err != nil {
 			return nil
 		}
-		time.Sleep(200 * time.Millisecond)
 	}
-	return fmt.Errorf("rpmgr in %s did not end after SIG%s", node, sig)
+	return fmt.Errorf("rpmgr in %s did not end within %s of SIG%s", node, wait, sig)
 }
 
 // ready waits for the admin listener of node's role on port.
