@@ -58,6 +58,10 @@ func commands() *cli.Command {
 // testCommands are the commands of the rpmgrtest build only (D60).
 var testCommands []*cli.Command
 
+// clock is the roles' clock: nil, which is time.Now, except in the rpmgrtest build, whose
+// chaos tests shift it (D60).
+var clock func() time.Time
+
 // role is a command that runs one role from its boot file; run nil is not available yet.
 func role(name, summary string, run func(ctx context.Context, env *cli.Env, configPath string) error, sub ...*cli.Command) *cli.Command {
 	var path string
@@ -93,7 +97,7 @@ func runGateway(ctx context.Context, env *cli.Env, path string) error {
 		return err
 	}
 	defer stop()
-	return gateway.Run(ctx, gateway.RunOptions{Config: cfg, Version: version.Get().Version, Logger: logger})
+	return gateway.Run(ctx, gateway.RunOptions{Config: cfg, Version: version.Get().Version, Logger: logger, Now: clock})
 }
 
 // runConnector is `rpmgr connector`: it runs until SIGINT or SIGTERM.
@@ -111,7 +115,8 @@ func runConnector(ctx context.Context, env *cli.Env, path string) error {
 		return err
 	}
 	defer stop()
-	return connector.Run(ctx, connector.RunOptions{Config: cfg, Version: version.Get().Version, Getenv: env.Getenv, Logger: logger})
+	return connector.Run(ctx, connector.RunOptions{Config: cfg, Version: version.Get().Version, Getenv: env.Getenv, Logger: logger,
+		Now: clock})
 }
 
 // runController is `rpmgr controller`: it runs until SIGINT or SIGTERM, then drains.
@@ -130,7 +135,7 @@ func runController(ctx context.Context, env *cli.Env, path string) error {
 	}
 	defer stop()
 	return controller.Run(ctx, controller.RunOptions{Config: cfg, Version: version.Get().Version, Sources: routes.Sources(),
-		Getenv: env.Getenv, Logger: logger})
+		Getenv: env.Getenv, Logger: logger, Now: clock})
 }
 
 // runAllInOne is `rpmgr all-in-one`: it runs until SIGINT or SIGTERM; the gateway drains first.

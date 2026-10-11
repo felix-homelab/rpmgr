@@ -1,9 +1,8 @@
 # Nightly correctness runs (docs/12-testing-and-quality.md, "Continuous integration"): every CI
 # stage in full, which pull requests run only in part until v1.0.0 (D64), govulncheck against the
 # latest vulnerability database, long fuzz runs, the tests for riscv64 under QEMU, and real
-# clients against the gateway's port 443.
-# Later Phase 1 slices add the full end-to-end matrix and the other nightly stages here. A failed
-# run opens an issue, or comments on the open one.
+# clients against the gateway's port 443. The full CI run includes the whole end-to-end matrix and
+# the chaos tests (E2E_FULL). A failed run opens an issue, or comments on the open one.
 name: nightly
 
 on:

@@ -206,7 +206,7 @@ jobs:
     needs: changes
     if: ${{ needs.changes.outputs.go == 'true' }}
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: ${{ inputs.full && 150 || 30 }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -214,9 +214,10 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
-      - name: Container end-to-end tests
+      - name: Container end-to-end tests; in full runs the whole matrix and the chaos tests
         env:
           REQUIRE_DOCKER: "1"
+          E2E_FULL: ${{ inputs.full && '1' || '' }}
         run: .github/scripts/check-e2e.sh
 
   build:
