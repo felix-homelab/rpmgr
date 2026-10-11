@@ -43,9 +43,15 @@ updates:
   - package-ecosystem: npm
     directory: /web
     # @playwright/test follows the Playwright image pinned in .github/scripts/lib.sh, which is
-    # updated by hand with it.
+    # updated by hand with it. @types/node follows the Node major of web/.nvmrc, also updated by
+    # hand. TypeScript 7 waits until typescript-eslint supports it: 8.71.1 accepts TypeScript
+    # below 6.1 only.
     ignore:
       - dependency-name: "@playwright/test"
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "typescript"
+        versions: [">= 7.0.0"]
     schedule:
       interval: weekly
     commit-message:
