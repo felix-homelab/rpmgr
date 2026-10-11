@@ -5,6 +5,7 @@ package lease_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -15,6 +16,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store"
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/auditentry"
+	entlease "github.com/felix-homelab/rpmgr/internal/store/ent/lease"
 	"github.com/felix-homelab/rpmgr/internal/store/storetest"
 )
 
@@ -273,5 +275,35 @@ func TestRun_ShutdownIsNoError(t *testing.T) {
 	}
 	if _, ok, err := lease.New(db, "ctn_b", nil).TryAcquire(context.Background(), "slow"); err != nil || !ok {
 		t.Errorf("the lease after shutdown: %v, %v; want it released", ok, err)
+	}
+}
+
+// TestRun_ShutdownDuringTheGrant: a shutdown that ends the audited grant of the job's system
+// scope, right after the lease was taken, is not reported as a failure either, and the lease is
+// released.
+func TestRun_ShutdownDuringTheGrant(t *testing.T) {
+	db := storetest.Migrated(t, store.SQLite)
+	storetest.Init(t, db)
+	sys := storetest.SystemCtx(t)
+	for i := range 20 {
+		name := fmt.Sprintf("grant-%d", i)
+		l := lease.New(db, "ctn_a", nil)
+		job := lease.Job{Name: name, Reason: "a job stopped as it starts", Every: time.Hour,
+			Run: func(context.Context, lease.Lease) error { return nil }}
+		ctx, cancel := context.WithCancel(context.Background())
+		var reported []error
+		done := make(chan struct{})
+		go func() { defer close(done); l.Run(ctx, job, func(err error) { reported = append(reported, err) }) }()
+		for !db.Client().Lease.Query().Where(entlease.ID(name)).ExistX(sys) {
+			time.Sleep(time.Millisecond)
+		}
+		cancel() // most often while the grant is being recorded
+		<-done
+		if len(reported) != 0 {
+			t.Fatalf("round %d: errors reported at shutdown: %v", i, reported)
+		}
+		if _, ok, err := lease.New(db, "ctn_b", nil).TryAcquire(context.Background(), name); err != nil || !ok {
+			t.Fatalf("round %d: the lease after shutdown: %v, %v; want it released", i, ok, err)
+		}
 	}
 }

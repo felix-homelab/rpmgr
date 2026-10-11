@@ -4,6 +4,8 @@ package controller_test
 
 import (
 	"context"
+	"errors"
+	"sync"
 	"testing"
 	"time"
 
@@ -23,37 +25,19 @@ func TestCARotation(t *testing.T) {
 	first := e.ca.Intermediate()
 	at := time.Now()
 	o := controller.CAOptions{DB: db, CA: e.ca, Sealer: e.sealer, Leases: leases, Now: func() time.Time { return at }}
-	// run runs the job until done reports true, at most 10 s, and at least 200 ms.
-	run := func(done func() bool) {
+	run := func() {
 		t.Helper()
-		ctx, cancel := context.WithCancel(context.Background())
-		ended := make(chan struct{})
-		var errs []error
-		go func() {
-			leases.Run(ctx, controller.CARotation(o), func(err error) { errs = append(errs, err) })
-			close(ended)
-		}()
-		waitUntil(t, func() bool {
-			return e.db.Client().Lease.Query().CountX(e.sys) > 0
-		})
-		time.Sleep(200 * time.Millisecond)
-		deadline := time.Now().Add(10 * time.Second)
-		for !done() && time.Now().Before(deadline) {
-			time.Sleep(20 * time.Millisecond)
-		}
-		cancel()
-		<-ended
-		if len(errs) > 0 {
-			t.Fatalf("job errors: %v", errs)
+		if err := runOnce(t, leases, controller.CARotation(o)); err != nil {
+			t.Fatalf("job errors: %v", err)
 		}
 	}
 	rotated := func() bool { return !e.ca.Intermediate().Equal(first) }
-	run(func() bool { return true })
+	run()
 	if rotated() {
 		t.Fatal("the intermediate was rotated before it was due")
 	}
 	at = first.NotBefore.Add(first.NotAfter.Sub(first.NotBefore)/2 + time.Hour)
-	run(rotated) // a slow machine needs more than 200 ms for the new keys
+	run()
 	if !rotated() {
 		t.Fatal("the intermediate was not rotated when it was due")
 	}
@@ -71,4 +55,35 @@ func waitUntil(t *testing.T, cond func() bool) {
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
+}
+
+// runOnce runs job under leases until its Run has returned once, at most 10 s, then stops it. It
+// returns the errors of that run and those the job reported. Stopping the job only after a whole
+// run keeps a slow machine from cancelling the run, or the grant of its scope, half-way.
+func runOnce(t *testing.T, leases *lease.Leases, job lease.Job) error {
+	t.Helper()
+	ran := make(chan struct{})
+	var first error
+	var once sync.Once
+	inner := job.Run
+	job.Run = func(ctx context.Context, l lease.Lease) error {
+		err := inner(ctx, l)
+		once.Do(func() { first = err; close(ran) })
+		return err
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	var reported []error
+	ended := make(chan struct{})
+	go func() {
+		defer close(ended)
+		leases.Run(ctx, job, func(err error) { reported = append(reported, err) })
+	}()
+	select {
+	case <-ran:
+	case <-time.After(10 * time.Second):
+		t.Error("the job did not run within 10 s")
+	}
+	cancel()
+	<-ended
+	return errors.Join(append([]error{first}, reported...)...)
 }

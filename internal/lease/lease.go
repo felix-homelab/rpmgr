@@ -161,7 +161,10 @@ func (l *Leases) Run(ctx context.Context, job Job, onErr func(error)) {
 // hold runs job while lease is held, and releases it when ctx ends.
 func (l *Leases) hold(ctx context.Context, job Job, lease Lease, onErr func(error)) error {
 	sys, err := authz.System(ctx, job.Name, job.Reason, audit.SystemScopes(l.db))
-	if err != nil {
+	switch {
+	case err != nil && ctx.Err() != nil:
+		return l.release(ctx, lease) // a shutdown during the grant, not a failure
+	case err != nil:
 		return err
 	}
 	renew := time.NewTicker(RenewEvery)
@@ -171,10 +174,7 @@ func (l *Leases) hold(ctx context.Context, job Job, lease Lease, onErr func(erro
 	for {
 		select {
 		case <-ctx.Done():
-			// The context is over; release with a short context of its own.
-			rctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), time.Second)
-			defer cancel()
-			return l.Release(rctx, lease)
+			return l.release(ctx, lease)
 		case <-renew.C:
 			if err := l.Renew(ctx, lease); err != nil {
 				return err
@@ -192,6 +192,13 @@ func (l *Leases) hold(ctx context.Context, job Job, lease Lease, onErr func(erro
 			run.Reset(job.Every)
 		}
 	}
+}
+
+// release gives lease up once ctx is over, with a short context of its own.
+func (l *Leases) release(ctx context.Context, lease Lease) error {
+	rctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), time.Second)
+	defer cancel()
+	return l.Release(rctx, lease)
 }
 
 func sleep(ctx context.Context, d time.Duration) bool {
