@@ -184,7 +184,8 @@ regression check compares runner baselines and is reported, not blocking, for v0
 - **Workflow:** `bench` is started by hand with a profile: smoke, standard (RTT 1 and 80 ms, loss
   0 and 1 %) or full (the axes below). It runs on an x86-64 and an arm64 runner and uploads the
   measurements, the host's details and a summary with the targets of 03 and the regression check
-  against `bench/baselines/`.
+  against `bench/baselines/`; a run that reaches its time limit still uploads the measurements
+  written so far.
 - **Scaled down on one runner:** in the full profile, 20 idle connectors, and 1 000 routes in the
   configuration-change workload.
 - **CPU:** read as each process's CPU time, not with `perf stat`.
