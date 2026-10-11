@@ -51,6 +51,9 @@ jobs:
         if: ${{ inputs.host-tuning }}
         run: sudo sysctl -w net.core.rmem_max=7340032 net.core.wmem_max=7340032
       - name: Benchmark
+        # Below the job's limit: a run that reaches it fails here rather than being cancelled, so the
+        # measurements written so far, which bench run appends one by one, are still uploaded.
+        timeout-minutes: 320
         env:
           PROFILE: ${{ inputs.profile }}
           BENCH_ARGS: ${{ inputs.args }}
