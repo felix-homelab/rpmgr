@@ -138,7 +138,7 @@ cat >"$r/CHANGELOG.md" <<'EOF'
 EOF
 t="$dir/check-release-tag.sh"
 expect pass "a release tag with its changelog section" "$t" v1.2.3 "$r"
-expect pass "a release candidate with its changelog section" "$t" v1.3.0-rc.1 "$r"
+expect fail "a pre-release while Unreleased is empty, despite a section of its own" "$t" v1.3.0-rc.1 "$r"
 for bad in 1.2.3 v1.2 v1.2.3.4 v01.2.3 v1.02.3 v1.2.3-rc.0 v1.2.3-rc v1.2.3-pre.1 v1.2.3+build.1 spike/s1 ""; do
   expect fail "tag '$bad'" "$t" "$bad" "$r"
 done
@@ -147,6 +147,16 @@ expect fail "a changelog section without a date" "$t" v2.0.0 "$r"
 expect fail "an empty changelog section" "$t" v1.1.0 "$r"
 notes=$("$t" v1.2.3 "$r" 2>/dev/null || true)
 expect pass "the release notes are the section's text" test "$notes" = $'### Added\n\n- A thing.'
+# A pre-release's notes are the Unreleased section at the time of the tag.
+printf '# Changelog\n\n## [Unreleased]\n\n### Added\n\n- A new thing.\n\n## [1.2.3] - 2026-09-01\n\n- A thing.\n' \
+  >"$r/CHANGELOG.md"
+expect pass "a pre-release with Unreleased entries" "$t" v1.3.0-rc.2 "$r"
+expect pass "an alpha with Unreleased entries" "$t" v2.0.0-alpha.1 "$r"
+expect fail "a release without its own section, despite Unreleased entries" "$t" v1.3.0 "$r"
+notes=$("$t" v1.3.0-rc.2 "$r" 2>/dev/null || true)
+expect pass "a pre-release's notes are the Unreleased section" test "$notes" = $'### Added\n\n- A new thing.'
+printf '# Changelog\n\n## [1.2.3] - 2026-09-01\n\n- A thing.\n' >"$r/CHANGELOG.md"
+expect fail "a pre-release without an Unreleased section" "$t" v1.3.0-rc.1 "$r"
 
 # --- Image tags ------------------------------------------------------------------------------
 it="$dir/image-tags.sh"
