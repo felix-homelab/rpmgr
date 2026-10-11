@@ -22,6 +22,9 @@ case $arch in
     ;;
 esac
 echo "go test linux/$arch ${flags[*]}"
+# Tests listen on ports from internal/testutil/freeport, below the kernel's ephemeral range; a
+# runner whose range reaches lower would take them for outgoing connections.
+echo "ephemeral ports: $(cat /proc/sys/net/ipv4/ip_local_port_range 2>/dev/null || echo unknown)"
 if ! env GOOS=linux GOARCH="$arch" GOARM=7 CGO_ENABLED="$cgo" go test "${flags[@]}" -count=1 ./...; then
   fail "tests failed on linux/$arch"
 fi
