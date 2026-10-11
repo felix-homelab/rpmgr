@@ -65,6 +65,9 @@ type Sessions struct {
 	seen    time.Duration // how often live sessions are marked seen
 	started time.Time     // sessions of this node seen before then were left by a stopped run
 	deny    atomic.Pointer[denyState]
+	// denyMu serialises the deny-list's refreshes: two running at once could otherwise store the
+	// older list last, and a revoked certificate would pass until the next revision check.
+	denyMu sync.Mutex
 
 	mu       sync.Mutex
 	active   map[string]*session // by agent ID

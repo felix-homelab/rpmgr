@@ -6,6 +6,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
@@ -214,5 +215,49 @@ func TestSuperseded_Logged(t *testing.T) {
 	if len(es) != 1 || es[0].Kind != revlog.CertificateSuperseded || es[0].Subject != pki.SerialHex(old.Leaf.SerialNumber) ||
 		es[0].Actor != id.String() {
 		t.Fatalf("revocation log %+v", es)
+	}
+}
+
+// TestDenyList_ConcurrentRefreshes: refreshes of the deny-list that run at the same time as a
+// revocation, as the revision check's does, never leave the older list in place: the revoked
+// certificate is refused once the revocation returned.
+func TestDenyList_ConcurrentRefreshes(t *testing.T) {
+	db := storetest.Migrated(t, store.SQLite)
+	path := filepath.Join(t.TempDir(), "revocations.log")
+	rl, err := revlog.Open(path, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	e := startSessionsWith(t, db, func(o *controller.SessionsOptions) { o.Version, o.RevLog, o.RevisionCheck = "0.1.0", rl, time.Hour })
+	r := controller.Revoker{Sessions: e.sessions, Log: rl}
+	for i := range 40 {
+		cert, _ := e.agentCert(t)
+		stop := make(chan struct{})
+		var wg sync.WaitGroup
+		for range 4 {
+			wg.Go(func() {
+				for {
+					select {
+					case <-stop:
+						return
+					default:
+						e.sessions.ApplyDenyList()
+					}
+				}
+			})
+		}
+		err := r.RevokeCertificate(e.sys, pki.SerialHex(cert.Leaf.SerialNumber), "test", admin)
+		denied := true
+		for end := time.Now().Add(30 * time.Millisecond); err == nil && denied && time.Now().Before(end); {
+			denied = e.sessions.Denied(cert.Leaf) // while the other refreshes still run
+		}
+		close(stop)
+		wg.Wait()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !denied || !e.sessions.Denied(cert.Leaf) {
+			t.Fatalf("round %d: a certificate revoked a moment ago passed", i)
+		}
 	}
 }

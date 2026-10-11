@@ -117,6 +117,13 @@ func (c *connector) send(t *testing.T, msg *tunnelv1.SessionMessage) {
 	}
 }
 
+// goodbye ends the session. The gateway closes it as soon as it reads the Goodbye, which can be
+// before the write learns that its frame went out; the write then reports the closed connection, so
+// its error says nothing and serveErr checks that the gateway took the Goodbye.
+func (c *connector) goodbye() {
+	_ = tunnel.WriteMessage(c.control, &tunnelv1.SessionMessage{Msg: &tunnelv1.SessionMessage_Goodbye{Goodbye: &tunnelv1.Goodbye{}}})
+}
+
 // health reports a route's readiness and waits until the gateway has read it: the control stream
 // is read in order, so a Pong after it means it took effect.
 func (c *connector) health(t *testing.T, route string, ready bool) {
@@ -276,7 +283,7 @@ func TestSessions_Admission(t *testing.T) {
 	if msg := <-c.msgs; msg.GetPong().GetSeq() != 7 {
 		t.Fatalf("answer to Ping{7}: %v", msg)
 	}
-	c.send(t, &tunnelv1.SessionMessage{Msg: &tunnelv1.SessionMessage_Goodbye{Goodbye: &tunnelv1.Goodbye{}}})
+	c.goodbye()
 	if err := c.serveErr(t); err != nil {
 		t.Fatalf("after Goodbye: %v", err)
 	}
@@ -675,7 +682,7 @@ func TestSessions_ConnectorCap(t *testing.T) {
 		t.Fatalf("another connector: %v", other.welcome)
 	}
 
-	held[0].send(t, &tunnelv1.SessionMessage{Msg: &tunnelv1.SessionMessage_Goodbye{Goodbye: &tunnelv1.Goodbye{}}})
+	held[0].goodbye()
 	if err := held[0].serveErr(t); err != nil {
 		t.Fatal(err)
 	}
