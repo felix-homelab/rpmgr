@@ -575,11 +575,15 @@ func (b *bench) netem(ctx context.Context, rtt, loss float64, extra ...string) e
 
 // matrix runs the cells: every RTT × loss × repetition × system for throughput and setup, the
 // HTTP and UDP workloads per transport, then the other workloads on the first RTT without loss.
+// Each cell starts with fresh data sessions (freshSessions).
 func (b *bench) matrix(ctx context.Context) error {
 	w := b.o.workloads
 	for _, rtt := range b.o.rtts {
 		for _, loss := range b.o.losses {
 			if err := b.netem(ctx, rtt, loss); err != nil {
+				return err
+			}
+			if err := b.freshSessions(ctx); err != nil {
 				return err
 			}
 			for rep := 1; rep <= b.o.reps; rep++ {
@@ -611,6 +615,9 @@ func (b *bench) matrix(ctx context.Context) error {
 	if err := b.netem(ctx, b.o.rtts[0], 0); err != nil {
 		return err
 	}
+	if err := b.freshSessions(ctx); err != nil {
+		return err
+	}
 	for _, step := range []struct {
 		name string
 		run  func(context.Context, string) error
@@ -622,6 +629,63 @@ func (b *bench) matrix(ctx context.Context) error {
 			if err := step.run(ctx, t); err != nil {
 				return fmt.Errorf("%s %s: %w", step.name, t, err)
 			}
+		}
+	}
+	return nil
+}
+
+// freshSessions restarts the connectors once the link is shaped, so that their data sessions, of
+// both transports, are made on the cell's path, as an installation's sessions are made on its own.
+// A QUIC session keeps the smallest RTT it ever saw: one made before netem added its delay would
+// take every round trip of the cell for a delay increase and end slow start at once (quic-go's
+// hybrid slow start), and its window would then grow by about one packet per round trip. A
+// connector stops with SIGTERM, which closes its sessions; the gateway's session count shows when
+// they are gone and when the restarted connector has all of them again.
+func (b *bench) freshSessions(ctx context.Context) error {
+	sessions := func() (float64, error) {
+		m, err := b.metrics(ctx, "gw", 7382, "rpmgr_gateway_sessions")
+		return m["rpmgr_gateway_sessions"], err
+	}
+	all, err := sessions()
+	if err != nil {
+		return err
+	}
+	for _, con := range []string{"con1", "con2"} {
+		if _, err := b.in(ctx, con, "pkill", "-TERM", "-x", "rpmgr"); err != nil {
+			return err
+		}
+		if err := b.until(ctx, 30*time.Second, "the end of the connector on "+con, func() error {
+			if _, err := b.in(ctx, con, "pgrep", "-x", "rpmgr"); err == nil {
+				return errors.New("still running")
+			}
+			switch n, err := sessions(); {
+			case err != nil:
+				return err
+			case n >= all:
+				return fmt.Errorf("%v sessions of %v", n, all)
+			}
+			return nil
+		}); err != nil {
+			return err
+		}
+		if err := b.start(ctx, con, "connector", "connector"); err != nil {
+			return err
+		}
+		if err := b.until(ctx, 60*time.Second, "the sessions of "+con, func() error {
+			switch n, err := sessions(); {
+			case err != nil:
+				return err
+			case n < all:
+				return fmt.Errorf("%v sessions of %v", n, all)
+			}
+			return nil
+		}); err != nil {
+			return err
+		}
+	}
+	for t, r := range routesOf {
+		if err := b.until(ctx, 60*time.Second, "the "+t+" routes on fresh sessions", func() error { return b.answers(ctx, r.echo) }); err != nil {
+			return err
 		}
 	}
 	return nil
