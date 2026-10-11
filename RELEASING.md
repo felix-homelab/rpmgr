@@ -181,7 +181,8 @@ For a minor or major release. A patch release is the same, starting from the bra
 6. **Build** runs on the tag in CI, in the workflow `release`
    ([12](docs/12-testing-and-quality.md#continuous-integration)):
    - the tag must match the release pattern, and `CHANGELOG.md` must have its dated section, whose
-     text becomes the release notes;
+     text becomes the release notes. A pre-release takes them from `## [Unreleased]`, which must
+     not be empty;
    - two builds of the tag, on an x86-64 and an arm64 runner, must give artifacts equal byte for
      byte; the same two builds also run every night;
    - the artifacts must be release builds: no build tags, so never `rpmgrtest`, and the release
