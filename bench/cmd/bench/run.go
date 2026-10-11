@@ -412,10 +412,26 @@ func (b *bench) enroll(ctx context.Context, node, tok, identity string) error {
 	if err := b.writeFile(node, "token", tok+"\n"); err != nil {
 		return err
 	}
-	_, err := b.in(ctx, node, "rpmgr", "enroll", "--controller", ctlURL, "--ca-pin", b.pin, "--token-file", bootDir+"/token",
-		"--identity-dir", identity)
-	return err
+	// The controller admits a burst of enrollments per address, then one every few seconds
+	// (internal/enroll, RateBurst and RateEvery). The idle workload enrolls more connectors from one
+	// container, so an enrollment that limit refuses waits and tries again.
+	for tries := 0; ; tries++ {
+		out, err := b.in(ctx, node, "rpmgr", "enroll", "--controller", ctlURL, "--ca-pin", b.pin, "--token-file", bootDir+"/token",
+			"--identity-dir", identity)
+		if err == nil || !strings.Contains(out, "too many enrollments") || tries == 30 {
+			return err
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(enrollRetry):
+		}
+	}
 }
+
+// enrollRetry is a little longer than the controller's enrollment refill interval
+// (internal/enroll.RateEvery), so a retry finds a token.
+const enrollRetry = 7 * time.Second
 
 // routes seeds the routes of both transports and waits until each answers.
 func (b *bench) routes(ctx context.Context) error {
