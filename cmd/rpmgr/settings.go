@@ -115,7 +115,7 @@ func settingsCommands() map[string][]*cli.Command {
 			if instance {
 				whose = "the instance's"
 			}
-			if _, err := fmt.Fprintf(env.Stdout, "Updated %s settings%s.\n", whose, applied(resp)); err != nil {
+			if _, err := fmt.Fprintf(notes(env, output).Stdout, "Updated %s settings%s.\n", whose, applied(resp)); err != nil {
 				return err
 			}
 			return s.writeSettings(ctx, env.Stdout, res, output, nil)

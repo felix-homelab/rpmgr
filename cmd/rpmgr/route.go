@@ -305,12 +305,13 @@ func routeCommands() (create, update, enable, disable, preview *cli.Command) {
 			if err != nil {
 				return apiError(err)
 			}
-			if _, err := fmt.Fprintf(env.Stdout, "Gateways that would serve it: %s\nConnectors it would reach: %s\n",
+			info := notes(env, pf.output).Stdout
+			if _, err := fmt.Fprintf(info, "Gateways that would serve it: %s\nConnectors it would reach: %s\n",
 				listOrNone(resp.Msg.GetGatewayIds()), listOrNone(resp.Msg.GetConnectorIds())); err != nil {
 				return err
 			}
 			for _, p := range resp.Msg.GetProblems() {
-				if _, err := fmt.Fprintf(env.Stdout, "Problem: %s: %s\n", p.GetResourceId(), p.GetMessage()); err != nil {
+				if _, err := fmt.Fprintf(info, "Problem: %s: %s\n", p.GetResourceId(), p.GetMessage()); err != nil {
 					return err
 				}
 			}
@@ -423,7 +424,7 @@ func setWait(h map[string][]string, wait time.Duration) {
 // written prints a written route and how far the agents are with the change.
 func (s *apiSession) written(ctx context.Context, env *cli.Env, verb string, r *rpmgrv1.Route, resp protoreflect.Message, output string) error {
 	k, _ := apicli.KindOf("route")
-	if _, err := fmt.Fprintf(env.Stdout, "%s route %s%s.\n", verb, r.GetId(), applied(resp)); err != nil {
+	if _, err := fmt.Fprintf(notes(env, output).Stdout, "%s route %s%s.\n", verb, r.GetId(), applied(resp)); err != nil {
 		return err
 	}
 	return s.print(ctx, env.Stdout, k, output, []protoreflect.Message{r.ProtoReflect()}, []string{r.GetId()}, false)

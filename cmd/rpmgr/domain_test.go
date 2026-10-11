@@ -4,6 +4,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -137,6 +138,11 @@ func TestDomainsAndCertificates(t *testing.T) {
 	if code, out, _ := run("create", "domain", "--fqdn", "app.example.org", "--method", "http"); code != cli.ExitOK ||
 		a.domain.GetDomain().GetMethod() != rpmgrv1.DomainMethod_DOMAIN_METHOD_HTTP || !strings.Contains(out, "/.well-known/rpmgr-challenge/dom_1") {
 		t.Fatalf("an HTTP claim: %d %q", code, out)
+	}
+	// With -o json, the proof steps go to standard error and standard output is the domain alone.
+	if code, out, errOut := run("create", "domain", "--fqdn", "example.com", "--wildcard", "-o", "json"); code != cli.ExitOK ||
+		!json.Valid([]byte(out)) || !strings.Contains(errOut, `_rpmgr-challenge.example.com  TXT  "v123"`) || !strings.Contains(errOut, "Created domain") {
+		t.Fatalf("a TXT claim with -o json: %d %q %q", code, out, errOut)
 	}
 	if code, _, _ := run("create", "domain", "--fqdn", "x.example.com", "--method", "smoke-signal"); code != cli.ExitUsage {
 		t.Errorf("an unknown method: %d", code)

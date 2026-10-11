@@ -4,6 +4,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -114,6 +115,14 @@ func TestCreateRoute(t *testing.T) {
 		r.GetTransport() != rpmgrv1.DataTransport_DATA_TRANSPORT_QUIC {
 		t.Fatalf("an http route: %d %q %q\n%v", code, out, errOut, a.created)
 	}
+	// With -o json or yaml, standard output is the route alone and the confirmation goes to standard
+	// error, so that a script can parse it (yaml is the manifest, which this fake API does not export).
+	code, out, errOut = runWith(env, "", "create", "route", "--http", "--name", "web", "--group", "eu", "--hostname", "web.example.com", "-o", "json")
+	var created map[string]any
+	if code != cli.ExitOK || json.Unmarshal([]byte(out), &created) != nil || created["id"] != "rt_new" ||
+		!strings.Contains(errOut, "Created route rt_new in revision 7") {
+		t.Fatalf("an http route with -o json: %d %q %q", code, out, errOut)
+	}
 	if code, _, errOut := runWith(env, "", "create", "route", "--tcp", "--name", "pg", "--group", "gwg_1", "--port", "20001", "--idle-timeout", "10m"); code != cli.ExitError ||
 		!strings.Contains(errOut, "already exists") || a.created.GetRoute().GetTcp().GetIdleTimeoutSeconds() != 600 {
 		t.Fatalf("a taken port: %d %q", code, errOut)
@@ -203,6 +212,10 @@ func TestPreviewRoute(t *testing.T) {
 		a.preview.GetEtag() != "4" || !slices.Equal(a.preview.GetUpdateMask().GetPaths(), []string{"http.hostnames"}) ||
 		a.preview.GetRoute().GetId() != "rt_1" || !strings.Contains(out, "web.example.com") || a.calls != 0 {
 		t.Fatalf("a change: %d %q %q %v", code, out, errOut, a.preview)
+	}
+	code, out, errOut = runWith(env, "", "preview", "route", "--tcp", "--name", "pg", "--group", "eu", "--port", "20001", "-o", "json")
+	if code != cli.ExitOK || !json.Valid([]byte(out)) || !strings.Contains(errOut, "Problem: gw_2: port 20001 is taken") {
+		t.Fatalf("a new route with -o json: %d %q %q", code, out, errOut)
 	}
 	if code, _, errOut := runWith(env, "", "preview", "route", "--route", "rt_1"); code != cli.ExitUsage {
 		t.Errorf("a change of nothing: %d %q", code, errOut)

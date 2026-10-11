@@ -264,14 +264,15 @@ func (s *apiSession) send(ctx context.Context, env *cli.Env, k apicli.Kind, md p
 	}
 	res := resp.Get(fd).Message()
 	id := res.Get(res.Descriptor().Fields().ByName("id")).String()
-	if _, err := fmt.Fprintf(env.Stdout, "%s %s %s%s.\n", verb, strings.ReplaceAll(k.Name, "-", " "), id, applied(resp)); err != nil {
+	info := notes(env, output)
+	if _, err := fmt.Fprintf(info.Stdout, "%s %s %s%s.\n", verb, strings.ReplaceAll(k.Name, "-", " "), id, applied(resp)); err != nil {
 		return err
 	}
 	if err := s.print(ctx, env.Stdout, k, output, []protoreflect.Message{res}, []string{id}, false); err != nil {
 		return err
 	}
 	for _, f := range after {
-		if err := f(env, res); err != nil {
+		if err := f(info, res); err != nil {
 			return err
 		}
 	}
