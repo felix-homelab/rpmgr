@@ -44,6 +44,7 @@ every role.
 | [16 — Command line](docs/16-cli.md) | Every `rpmgr` command, its flags and exit codes |
 | [ADRs](docs/adr/) | One record per load-bearing decision (0001–0016) |
 | [Spikes](docs/spikes/) | Phase 0 spike results, written from the [template](docs/spikes/TEMPLATE.md) |
+| [Reviews](docs/reviews/) | Reviews of the implementation against the documents, such as the [Phase 1 threat-model review](docs/reviews/P1-threat-model.md) |
 
 Suggested reading order: 00 → 02 → 03 → 04, then whatever you need.
 
