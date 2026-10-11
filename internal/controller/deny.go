@@ -51,6 +51,8 @@ func (s *Sessions) Denied(cert *x509.Certificate) bool {
 // refreshDeny loads the deny-list from the database and signs it; changed reports whether it
 // differs from the one before.
 func (s *Sessions) refreshDeny() (changed bool, err error) {
+	s.denyMu.Lock()
+	defer s.denyMu.Unlock()
 	entries, err := pki.DenyList(s.sys, s.db.Client(), s.now())
 	if err != nil {
 		return false, err
