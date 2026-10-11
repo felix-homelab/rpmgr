@@ -571,8 +571,10 @@ Rules:
   changes it.
 - `rpmgr policy …` edits the file as root, under a lock file, atomically and keeping its comments
   and other keys, and triggers a reload (`systemctl reload`, i.e. SIGHUP); the connector also
-  watches the file. On reload it re-evaluates the current snapshot and reports the
-  new readiness.
+  watches the file. On reload it re-evaluates the current snapshot, reports the new readiness, and
+  resets the open connections to targets the policy no longer allows. A target taken out is then
+  not reachable through a connection opened before, such as an upstream's pooled HTTP/2
+  connection.
 - The policy only protects if the binary enforcing it is genuine: OTA installs only signed binaries
   at or above a locally persisted version floor, and `auto_update` lets the host refuse automatic
   updates entirely ([Supply chain and updates](#supply-chain-and-updates)).

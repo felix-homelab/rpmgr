@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: Apache-2.0
 #
-# The per-PR subset of the container end-to-end tests (docs/12-testing-and-quality.md, "Where the
-# cells run"): Docker Compose with a controller, two gateways, two connectors, a service and a
-# client, running the rpmgrtest build. Needs Docker with Compose; without it the check is skipped,
-# unless REQUIRE_DOCKER=1.
+# The container end-to-end tests (docs/12-testing-and-quality.md, "Where the cells run"): Docker
+# Compose with a controller, two gateways, two connectors, a service and a client, running the
+# rpmgrtest build. The per-PR subset by default; with E2E_FULL=1 also the whole matrix and the chaos
+# tests, as nightly. Needs Docker with Compose; without it the check is skipped, unless
+# REQUIRE_DOCKER=1.
 #
 # Usage: check-e2e.sh [<repository root>]
 set -euo pipefail
@@ -23,7 +24,12 @@ if ! docker compose version >/dev/null 2>&1; then
   echo "skipped: no Docker with Compose"
   exit 0
 fi
-if ! (cd test/e2e && go test -tags e2e -count=1 -timeout 25m .); then
+# With E2E_FULL=1 (nightly) the whole matrix and the chaos tests run too.
+timeout=25m
+if [[ -n ${E2E_FULL-} ]]; then
+  timeout=140m
+fi
+if ! (cd test/e2e && go test -tags e2e -count=1 -timeout "$timeout" .); then
   fail "end-to-end tests failed"
 fi
 finish

@@ -103,6 +103,7 @@ type Targets struct {
 	routes   map[string]Route
 	draining map[string]drainingRoute
 	health   map[string]*tunnelv1.RouteHealth
+	live     map[net.Conn]struct{} // the relayed target connections, which a stricter policy closes
 }
 
 type drainingRoute struct {
@@ -118,7 +119,8 @@ func NewTargets(o TargetsOptions) *Targets {
 	if o.UDPMetrics == nil {
 		o.UDPMetrics, _ = tunnel.NewUDPMetrics(nil)
 	}
-	return &Targets{o: o, routes: map[string]Route{}, draining: map[string]drainingRoute{}, health: map[string]*tunnelv1.RouteHealth{}}
+	return &Targets{o: o, routes: map[string]Route{}, draining: map[string]drainingRoute{}, health: map[string]*tunnelv1.RouteHealth{},
+		live: map[net.Conn]struct{}{}}
 }
 
 // Set makes routes the snapshot's routes. A route no longer among them is reported not ready at
@@ -153,7 +155,9 @@ func (t *Targets) Set(routes []Route) {
 }
 
 // Recheck evaluates every route's readiness against the policy in force and reports the changes;
-// the connector calls it when the policy file changed.
+// the connector calls it when the policy file changed. It also resets every relayed connection to
+// a target the policy no longer allows, so that a target taken out of the policy is not reachable
+// through a connection opened before, such as an upstream's pooled HTTP/2 connection.
 func (t *Targets) Recheck() {
 	p := t.o.Policy()
 	t.mu.Lock()
@@ -165,10 +169,54 @@ func (t *Targets) Recheck() {
 			changed = append(changed, h)
 		}
 	}
+	var blocked []net.Conn
+	for c := range t.live {
+		if !connAllowed(c, p) {
+			blocked = append(blocked, c)
+		}
+	}
 	t.mu.Unlock()
 	for _, h := range changed {
 		t.report(h)
 	}
+	for _, c := range blocked {
+		t.o.Logger.Info("the local policy no longer allows a target: its connection is reset", "target", c.RemoteAddr().String())
+		if l, ok := c.(interface{ SetLinger(sec int) error }); ok {
+			_ = l.SetLinger(0)
+		}
+		_ = c.Close()
+	}
+}
+
+// track records a relayed target connection until the returned function is called.
+func (t *Targets) track(c net.Conn) func() {
+	t.mu.Lock()
+	t.live[c] = struct{}{}
+	t.mu.Unlock()
+	return func() {
+		t.mu.Lock()
+		delete(t.live, c)
+		t.mu.Unlock()
+	}
+}
+
+// connAllowed reports whether the policy allows the address a target connection goes to.
+func connAllowed(c net.Conn, p *policy.Policy) bool {
+	if p == nil || p.Invalid != nil {
+		return false
+	}
+	var ap netip.AddrPort
+	switch a := c.RemoteAddr().(type) {
+	case *net.UnixAddr:
+		return p.AllowsUnix(a.Name)
+	case *net.TCPAddr:
+		ap = a.AddrPort()
+	case *net.UDPAddr:
+		ap = a.AddrPort()
+	default:
+		return true
+	}
+	return p.Allows(ap.Addr().Unmap(), ap.Port())
 }
 
 func readiness(r Route, p *policy.Policy) *tunnelv1.RouteHealth {
@@ -260,6 +308,7 @@ func (t *Targets) Handle(ctx context.Context, gatewayID string, st tunnel.Stream
 		return
 	}
 	st.SetReliableBoundary()
+	defer t.track(conn)()
 	if open.GetKind() == tunnelv1.StreamKind_STREAM_KIND_UDP_FLOW {
 		t.relayUDP(ctx, open.GetRouteId(), st, conn)
 		return

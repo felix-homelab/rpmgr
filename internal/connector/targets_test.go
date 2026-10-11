@@ -489,3 +489,56 @@ func TestTargets_Timeout(t *testing.T) {
 		t.Fatalf("%s", code)
 	}
 }
+
+// TestTargets_PolicyReloadResetsBlocked: when a reloaded policy takes a target out, the open
+// connections to it are reset, as a pooled upstream connection would otherwise keep it reachable;
+// a connection to a target the policy still allows carries on, and a policy that does not load
+// resets every connection.
+func TestTargets_PolicyReloadResetsBlocked(t *testing.T) {
+	kept, removed := startService(t, echoService), startService(t, echoService)
+	e := newTargets(allowLoopback(t, kept.port(), removed.port()))
+	e.Set([]connector.Route{
+		{ID: "rt_kept", Targets: []connector.Target{target("127.0.0.1", kept.port())}},
+		{ID: "rt_removed", Targets: []connector.Target{target("127.0.0.1", removed.port())}},
+	})
+	echoes := func(gw *net.TCPConn) error {
+		_ = gw.SetDeadline(time.Now().Add(5 * time.Second))
+		if _, err := gw.Write([]byte("ping")); err != nil {
+			return err
+		}
+		buf := make([]byte, 4)
+		_, err := io.ReadFull(gw, buf)
+		return err
+	}
+	open := func(route string) *net.TCPConn {
+		code, gw := e.handle(t, tcpOpen(route))
+		if code != tunnelv1.ResultCode_RESULT_CODE_NO_ERROR {
+			t.Fatalf("%s: %v", route, code)
+		}
+		if err := echoes(gw); err != nil {
+			t.Fatalf("%s before the reload: %v", route, err)
+		}
+		return gw
+	}
+	a, b := open("rt_kept"), open("rt_removed")
+
+	e.cur.Store(allowLoopback(t, kept.port()))
+	e.Recheck()
+	if err := echoes(a); err != nil {
+		t.Errorf("a target the policy still allows: %v", err)
+	}
+	_ = b.SetDeadline(time.Now().Add(5 * time.Second))
+	if _, err := io.ReadAll(b); err == nil || errors.Is(err, os.ErrDeadlineExceeded) {
+		t.Errorf("a target the policy took out: %v, want a reset", err)
+	}
+	if h := e.last(); h.GetRouteId() != "rt_removed" || h.GetReady() {
+		t.Errorf("readiness after the reload: %v", h)
+	}
+
+	e.cur.Store(&policy.Policy{Invalid: errors.New("the file does not parse")})
+	e.Recheck()
+	_ = a.SetDeadline(time.Now().Add(5 * time.Second))
+	if _, err := io.ReadAll(a); err == nil || errors.Is(err, os.ErrDeadlineExceeded) {
+		t.Errorf("a policy that does not load: %v, want a reset", err)
+	}
+}

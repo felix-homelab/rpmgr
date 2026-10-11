@@ -298,8 +298,9 @@ Rules:
      host's policy changes. One occupied port or one disallowed target must not block unrelated
      changes.
    - When the host's local policy file changes (`rpmgr policy …` triggers a reload; the connector
-     also watches the file), the connector re-evaluates the current snapshot and reports the new
-     readiness. No new revision is needed ([04](04-security.md#connector-local-policy)).
+     also watches the file), the connector re-evaluates the current snapshot, reports the new
+     readiness and resets the open connections to targets the policy no longer allows. No new
+     revision is needed ([04](04-security.md#connector-local-policy)).
 6. **Last-known-good is persisted.** Agents store the newest applied snapshot on disk, as it was
    signed by the controller's configuration-signing key, and verify it like a new one when loading
    it after a restart, before any session; a copy that does not verify is not run. An agent can

@@ -15,6 +15,8 @@ x-node: &node
   cap_add: [NET_ADMIN]
   environment:
     SSL_CERT_FILE: /var/lib/rpmgr/web-ca.pem
+    # The chaos tests' clock jumps: a duration the rpmgrtest build adds to its clock.
+    RPMGR_TEST_CLOCK_FILE: /var/lib/rpmgr/clock-offset
 
 networks:
   public:

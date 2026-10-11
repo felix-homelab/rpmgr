@@ -164,7 +164,9 @@ For a minor or major release. A patch release is the same, starting from the bra
    publish it to the pre-release channel, and test:
    - a fresh install;
    - an upgrade from the latest release of the previous minor, with live traffic, in the upgrade
-     order of [10](docs/10-operations.md#upgrades-and-version-skew).
+     order of [10](docs/10-operations.md#upgrades-and-version-skew): `TestUpgrade` with
+     `E2E_UPGRADE_FROM=vPREVIOUS`
+     ([12](docs/12-testing-and-quality.md#upgrade-test)).
 
    Fixes go to `main` as normal PRs, followed by `rc.2` if needed.
 4. **Release PR** from `improvement/release-vX.Y.0`, titled `chore(release): vX.Y.0`:
@@ -190,8 +192,7 @@ For a minor or major release. A patch release is the same, starting from the bra
    - a **draft** GitHub release with all of them and the **unsigned** `manifest.json`: `seq` one
      above the last published release's, that release's `floor`, the `channel` the version
      implies (`stable`, or `prerelease` for a pre-release), and every artifact with its `variant`,
-     size and SHA-256;
-   - container images.
+     size and SHA-256.
 7. **Sign the release manifest** with the current signing key, outside CI
    ([04](docs/04-security.md#release-signing), [D10](docs/14-open-decisions.md#security-defaults)):
    - download the draft's files and check the manifest against them and against the last
@@ -223,7 +224,11 @@ For a minor or major release. A patch release is the same, starting from the bra
 
      For v1.0.0 the notes also state whether an external security review took place
      ([D28](docs/14-open-decisions.md#project-and-process)).
-   - Image tags `X.Y.0`, `X.Y` and `X`, plus `latest` for the highest stable release only.
+   - Publishing the draft starts the workflow `images`. It checks the release's artifacts again,
+     tests the image built from them on every platform, and pushes the multi-arch image
+     `ghcr.io/felix-homelab/rpmgr`, signed keylessly with cosign and with SLSA provenance. Tags:
+     `X.Y.Z`; for a stable release also `X.Y`, `X` and `latest`, each only when no published stable
+     release above it shares it, so a patch of an older minor moves `X.Y` alone.
    - The signed manifest as a release asset. Controllers fetch it from there in their daily
      release check ([D4](docs/14-open-decisions.md#product-and-project)); agents never contact the
      release source and download only from their controller's `/dl/` mirror.

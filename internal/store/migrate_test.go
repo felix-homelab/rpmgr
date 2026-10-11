@@ -126,6 +126,32 @@ func TestMigrate_ChecksumMismatchRefused(t *testing.T) {
 	})
 }
 
+// TestMigrate_UnknownMigrationRefused: a database with an applied migration that the directory does
+// not hold, as one a newer version or a development build before the baseline made, is refused
+// before anything runs, also when the directory has newer files.
+func TestMigrate_UnknownMigrationRefused(t *testing.T) {
+	forEachStoreDB(t, func(t *testing.T, db *store.DB) {
+		ctx := context.Background()
+		if _, err := store.Migrate(ctx, db, testDir(t, "20261001000000_one.sql", m1, "20261002000000_two.sql", m2)); err != nil {
+			t.Fatal(err)
+		}
+		squashed := testDir(t, "20261003000000_baseline.sql", "CREATE TABLE baseline (id varchar(8));\n")
+		if _, err := store.Pending(ctx, db, squashed); !errors.Is(err, store.ErrUnknownMigration) || !strings.Contains(err.Error(), "20261001000000") {
+			t.Errorf("pending: %v, want ErrUnknownMigration naming 20261001000000", err)
+		}
+		if _, err := store.Migrate(ctx, db, squashed); !errors.Is(err, store.ErrUnknownMigration) {
+			t.Errorf("migrate: %v, want ErrUnknownMigration", err)
+		}
+		if _, err := db.Reader.Exec("SELECT 1 FROM baseline"); err == nil {
+			t.Error("the refused directory ran")
+		}
+		older := testDir(t, "20261001000000_one.sql", m1)
+		if _, err := store.Migrate(ctx, db, older); !errors.Is(err, store.ErrUnknownMigration) {
+			t.Errorf("a directory without the newest applied migration: %v, want ErrUnknownMigration", err)
+		}
+	})
+}
+
 func TestMigrate_FailingFileRollsBack(t *testing.T) {
 	forEachStoreDB(t, func(t *testing.T, db *store.DB) {
 		ctx := context.Background()

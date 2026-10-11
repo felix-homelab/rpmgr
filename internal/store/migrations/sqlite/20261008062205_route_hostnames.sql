@@ -1,8 +1,0 @@
--- Create "route_hostnames" table
-CREATE TABLE `route_hostnames` (`id` integer NOT NULL PRIMARY KEY AUTOINCREMENT, `org_id` text NOT NULL, `gateway_group_id` text NOT NULL, `route_type` text NOT NULL, `hostname` text NOT NULL, `path_prefix` text NOT NULL DEFAULT (''), `route_id` text NOT NULL, `domain_id` text NOT NULL, CONSTRAINT `route_hostnames_routes_route` FOREIGN KEY (`org_id`, `route_id`) REFERENCES `routes` (`org_id`, `id`) ON UPDATE NO ACTION ON DELETE NO ACTION, CONSTRAINT `route_hostnames_domains_domain` FOREIGN KEY (`org_id`, `domain_id`) REFERENCES `domains` (`org_id`, `id`) ON UPDATE NO ACTION ON DELETE NO ACTION, CONSTRAINT `route_hostnames_orgs` FOREIGN KEY (`org_id`) REFERENCES `orgs` (`id`) ON UPDATE NO ACTION ON DELETE NO ACTION);
--- Create index "routehostname_org_id_id" to table: "route_hostnames"
-CREATE UNIQUE INDEX `routehostname_org_id_id` ON `route_hostnames` (`org_id`, `id`);
--- Create index "routehostname_gateway_group_id_hostname_path_prefix" to table: "route_hostnames"
-CREATE UNIQUE INDEX `routehostname_gateway_group_id_hostname_path_prefix` ON `route_hostnames` (`gateway_group_id`, `hostname`, `path_prefix`);
--- Create index "routehostname_route_id" to table: "route_hostnames"
-CREATE INDEX `routehostname_route_id` ON `route_hostnames` (`route_id`);

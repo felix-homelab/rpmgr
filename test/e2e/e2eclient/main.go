@@ -18,12 +18,15 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 )
 
 func main() {
 	if len(os.Args) < 2 {
-		fail(errors.New("usage: e2eclient serve|check|hold|gone|ready|udp|http|ws|grpc|tls [flags]"))
+		fail(errors.New("usage: e2eclient serve|check|hold|gone|ready|udp|http|ws|grpc|tls|load [flags]"))
 	}
 	fs := flag.NewFlagSet(os.Args[1], flag.ExitOnError)
 	addr := fs.String("addr", "", "the route's address, host:port")
@@ -41,6 +44,8 @@ func main() {
 	size := fs.Int("bytes", 1<<20, "check: bytes to send")
 	duration := fs.Duration("duration", 5*time.Second, "hold: how long to hold the connection; gone: how long to wait")
 	every := fs.Duration("every", 200*time.Millisecond, "hold: how often to send a ping")
+	addrs := fs.String("addrs", "", "load: the routes' addresses, comma-separated")
+	conns := fs.Int("conns", 2, "load: connections per address")
 	_ = fs.Parse(os.Args[2:])
 	var err error
 	switch os.Args[1] {
@@ -64,6 +69,8 @@ func main() {
 		err = grpcCheck(*addr, *host)
 	case "tls":
 		err = tlsCheck(*addr, *host, *expect)
+	case "load":
+		err = load(*addrs, *conns, *size, *duration)
 	default:
 		err = fmt.Errorf("unknown command %q", os.Args[1])
 	}
@@ -191,4 +198,56 @@ func ready(url string, d time.Duration) error {
 		last = fmt.Errorf("%s: %s", resp.Status, bytes.TrimSpace(body))
 	}
 	return last
+}
+
+// load keeps conns connections per address busy for d: each sends size random bytes, expects them
+// back and repeats on the same connection, and dials again after an error. Errors, such as resets
+// while a process is killed, are counted; bytes that come back changed fail the run.
+func load(addrs string, conns, size int, d time.Duration) error {
+	var trips, errs atomic.Int64
+	var corrupt atomic.Pointer[error]
+	end := time.Now().Add(d)
+	var wg sync.WaitGroup
+	for _, a := range strings.Split(addrs, ",") {
+		for range conns {
+			wg.Go(func() {
+				up, down := make([]byte, size), make([]byte, size)
+				for time.Now().Before(end) && corrupt.Load() == nil {
+					c, err := net.DialTimeout("tcp", a, 5*time.Second) //nolint:gosec // G704: the route under test
+					if err != nil {
+						errs.Add(1)
+						time.Sleep(200 * time.Millisecond)
+						continue
+					}
+					for time.Now().Before(end) && corrupt.Load() == nil {
+						_, _ = rand.Read(up)
+						_ = c.SetDeadline(time.Now().Add(20 * time.Second))
+						werr := make(chan error, 1)
+						go func() { _, err := c.Write(up); werr <- err }()
+						_, rerr := io.ReadFull(c, down)
+						if err := errors.Join(<-werr, rerr); err != nil {
+							errs.Add(1)
+							break
+						}
+						if !bytes.Equal(down, up) {
+							err := fmt.Errorf("%s: %d bytes came back changed", a, size)
+							corrupt.Store(&err)
+							break
+						}
+						trips.Add(1)
+					}
+					_ = c.Close()
+				}
+			})
+		}
+	}
+	wg.Wait()
+	fmt.Printf("round trips %d, errors %d\n", trips.Load(), errs.Load())
+	if err := corrupt.Load(); err != nil {
+		return *err
+	}
+	if trips.Load() == 0 {
+		return errors.New("no round trip")
+	}
+	return nil
 }

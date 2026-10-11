@@ -80,6 +80,15 @@ restarts, kills and network impairment are real.
 controller database restarts, and clock jumps, while a load generator checks integrity and the
 "0 resets on unchanged routes" invariant.
 
+- **As built (`TestChaos`):** routes on each transport, through both gateways, carry a load
+  generator's traffic, which fails the test on any byte that comes back changed. A seeded random
+  sequence of events runs for six minutes; `E2E_CHAOS_SEED` repeats a run and
+  `E2E_CHAOS_DURATION` changes its length.
+- **Soft events:** controller restarts, clock jumps of up to five minutes either way, and latency
+  spikes. A connection held through one gateway and one connector must survive each of them.
+- **Hard events:** gateway and connector kills, and loss and reordering bursts. These may reset the
+  connections through the process they hit. Afterwards every route answers again.
+
 **Where the cells run.** The in-process integration tests live in `internal/itest`, the container
 tests in `test/e2e` (Docker Compose, `tc netem`, IPv4 and IPv6). The browser tests of the web UI
 live in `web/e2e` and run with Playwright against an all-in-one in the process of `test/webe2e`. The
@@ -87,10 +96,23 @@ browser trusts the key of that all-in-one's UI certificate only; it does not ign
 errors. Every component of an in-process test, and every service of the API tests, logs at the debug
 level to a sink that fails the test when a line holds a secret (`TestSecretsNeverLogged`). Each
 feature adds its cells to the per-PR subset when it is built; the nightly run covers the full
-cross-product. Cells that need a controlled clock (certificate expiry and grace re-authentication,
-clock skew) run in-process with real traffic and a fake clock; clock jumps in chaos tests use the
-clock-offset hook of the `rpmgrtest` build. Before the public API exists, end-to-end tests seed
-their configuration with the `rpmgrtest` seeding command
+cross-product. [R] As built (`TestMatrix`, `E2E_FULL=1` in the nightly run):
+- **A cell per scenario:** a tcp, a udp, two http routes (HTTP/1.1, HTTP/2 and WebSocket clients;
+  gRPC to an h2c upstream) and a `tls_passthrough` route, each on `auto`, `quic` and `h2`. Both
+  connectors serve them, and both gateways are checked.
+- **Scenarios run:** steady state, unrelated and same-route changes, route removal, gateway drain
+  and kill, controller down, controller restore, tightened access, and the local-policy block and
+  reload.
+- **Their own per-PR cells:** connector revocation, which would leave one connector for the rest,
+  and UDP blackholed mid-session, which needs a connector without `h2` links: its window budget
+  leaves no room for an `auto` link's fallback to TLS next to an `h2` link.
+- **`apply_status`:** checked by the in-process tests, which have the API.
+
+Cells that need a controlled clock (certificate expiry and grace re-authentication, clock skew) run
+in-process with real traffic and a fake clock. Clock jumps in chaos tests use the clock-offset hook
+of the `rpmgrtest` build: the roles add the duration in the file that `RPMGR_TEST_CLOCK_FILE` names
+to their clock. Before the public API exists, end-to-end tests seed their configuration with the
+`rpmgrtest` seeding command
 ([D60](14-open-decisions.md#security-defaults)): `rpmgr testseed` creates gateways with their
 enrollment tokens, connector tokens, and tcp, udp, http and tls_passthrough routes (http routes with
 verified domains, uploaded certificates and HTTP, h2c or verified HTTPS upstreams), sets a route's
@@ -100,6 +122,41 @@ local-policy block and reload, a tightened access policy, mixed transports on on
 blackholed mid-session; NAT rebinding is not covered yet. `check-go.sh` vets the `rpmgrtest` build
 and runs the tests of its packages, golangci-lint lints it, and a test of the release build checks
 that no test-only command exists there.
+
+### Upgrade test
+
+`TestUpgrade` in `test/e2e` upgrades an installation from an earlier release to the build under
+test, in the order of [10](10-operations.md#upgrades-and-version-skew), under live traffic.
+
+- **Running it:** `E2E_UPGRADE_FROM=<git revision>`, normally the previous release's tag, runs only
+  this test. Both builds are the `rpmgrtest` build of their revision, so the earlier release seeds
+  its configuration as the other cells do. They report versions of consecutive minors: the tag's
+  version, or 0.1.0, and the next minor. `E2E_UPGRADE_FROM_VERSION` and `E2E_UPGRADE_TO_VERSION`
+  override them.
+- **Before the upgrade:** the earlier release runs:
+  - tcp routes on each transport value, served by both connectors through both gateways;
+  - a udp route;
+  - an http route with an uploaded certificate;
+  - a route whose access rules deny the client.
+- **The upgrade:**
+  1. The controller, after `rpmgr backup`, migrates its database at start.
+  2. Each gateway is drained while the other serves; a test load balancer takes it out of
+     rotation first.
+  3. Each connector restarts.
+- **Assertions:**
+  - Throughout, new connections carry 64 KiB each way through the routes, and none may fail or
+    come back changed.
+  - A connection held through the other gateway survives the controller and gateway upgrades. Only
+    a connector's restart may break the connections held through it.
+- **Afterwards:**
+  - the database has no pending migration and keeps every route;
+  - every agent runs the new version and has applied the configuration of the controller's epoch;
+  - every route, the certificate and the access rules work as before.
+- **A database the new version does not know:** for example, one made before the Phase 1 baseline
+  of [06](06-data-model.md#migrations). The controller refuses to start, and the test fails at the
+  controller step.
+- **First real run:** between v0.1.0 and the next Phase 1 release, as a release candidate test of
+  [RELEASING](../RELEASING.md#release-process). Until then it runs between commits.
 
 ## Benchmarks
 
@@ -344,6 +401,7 @@ Docker-based ones need Docker), and `test-checks.sh` tests the checks with valid
 | `nightly` / `ci`, `govulncheck`, `fuzz`, `riscv64`, `real-clients` | every `ci` stage in full; govulncheck against the latest vulnerability database; every fuzz target for 10 minutes; every test for riscv64 under QEMU user-mode emulation; Go, curl, headless Chromium and Firefox (images by digest) against the gateway's port 443 router, each reaching two http routes, a TLS-passthrough route and the controller's UI name, and no page for an unknown name. A failure opens the issue "Nightly run failed", or comments on the open one. Also started by hand | `check-govulncheck.sh`, `check-fuzz.sh`, `check-test-arch.sh`, `check-real-clients.sh` |
 | `scorecard` / `analysis` | OpenSSF Scorecard, weekly and on every push to `main`; results in the code-scanning alerts and the public Scorecard API | — |
 | `bench` / `bench` | The benchmark suite on an x86-64 and an arm64 runner, started by hand with a profile ([Benchmarks](#benchmarks), D49); the measurements and the summary as artifacts, the summary also in the job summary | `run-bench.sh` |
+| `images` / `test`, `publish` | The OCI image of [10](10-operations.md#install), from release artifacts on distroless static (image by digest): on every released platform, under QEMU emulation, the binary runs as the nonroot user without a shell and every role starts and looks for its boot file; on x86-64 an all-in-one is initialised and run as the nonroot user and answers on the ports 80 and 443 that Docker publishes. On a pull request that changes the image, with binaries built from it; when a release is published, with its artifacts, which are then pushed as one multi-arch image with the tags of [RELEASING](../RELEASING.md#release-process), signed keylessly with cosign and attested | `check-images.sh`, `image-tags.sh`, `release-images.sh` |
 | `release` / `tag`, `build`, `reproducible`, `publish` | On a release tag: the tag matches the release pattern and the changelog has its dated section; two builds on an x86-64 and an arm64 runner, with the web UI from its lockfile and `CGO_ENABLED=0`, `-trimpath`, no build tags, no VCS stamp and the pinned toolchain, whose artifacts must be equal byte for byte; artifacts that are builds of `cmd/rpmgr` without the `rpmgrtest` tag and carry the release root keys, whose IDs and fingerprints the job prints; an SPDX JSON SBOM (syft, image by digest), SLSA provenance as a GitHub artifact attestation and keyless cosign signatures; a draft release with the unsigned manifest (`tools/releasemanifest`), which the signer signs offline ([RELEASING](../RELEASING.md#release-process)). Every night the two builds and their comparison alone; a failure opens the nightly-failure issue | `check-release-tag.sh`, `build-release.sh`, `check-release-artifacts.sh`, `check-reproducible.sh`, `release-sbom.sh` |
 
 The jobs `pr-rules`, `lint`, `docs` and `secrets` are required status checks of the `main` ruleset;
