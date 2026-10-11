@@ -218,7 +218,18 @@ func (m *Manager) one(ctx context.Context, cfg *certmagic.Config, w wanted, forc
 		return m.record(w, nil, err)
 	}
 	if force && had || cert.NeedsRenewal(cfg) {
-		if err := cfg.RenewCertSync(ctx, w.name, force); err != nil {
+		err := cfg.RenewCertSync(ctx, w.name, force)
+		if err != nil && !cfg.DisableARI && strings.Contains(err.Error(), "creating new order") {
+			// The order named the certificate it replaces (ARI), and a CA refuses that for a
+			// certificate of another account of the same directory, as after a change of the
+			// account's e-mail address; certmagic names it only for the same directory. No
+			// challenge was tried yet, so renew once more without naming it, as certmagic's own
+			// background retries do.
+			cfg.DisableARI = true
+			err = cfg.RenewCertSync(ctx, w.name, true)
+			cfg.DisableARI = false
+		}
+		if err != nil {
 			return m.record(w, &cert, err) // the old certificate serves on while it is valid
 		}
 		if cert, err = cfg.CacheManagedCertificate(ctx, w.name); err != nil {
