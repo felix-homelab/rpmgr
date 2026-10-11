@@ -66,6 +66,15 @@ func h2Session(t *testing.T, w tunnel.H2Windows) (gw *tunnel.H2Gateway, con *tun
 	if _, err := io.ReadFull(cc, buf); err != nil {
 		t.Fatal(err)
 	}
+	// The answer comes after the connector's SETTINGS on the connection, so once the gateway has
+	// read it, it knows the connector's stream limit and windows, as a gateway that has read the
+	// SessionHello does. Until then HTTP/2 lets it assume 100 streams.
+	if _, err := cc.Write([]byte("hello")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := io.ReadFull(gc, buf); err != nil {
+		t.Fatal(err)
+	}
 	return gw, con, gc, cc
 }
 
