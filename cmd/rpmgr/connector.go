@@ -174,7 +174,7 @@ func installCommand(ctx context.Context, env *cli.Env, role string, allow []stri
 func (s *apiSession) writtenAs(ctx context.Context, env *cli.Env, verb, kind string, res proto.Message, resp protoreflect.Message, output string) error {
 	k, _ := apicli.KindOf(kind)
 	id := res.ProtoReflect().Get(res.ProtoReflect().Descriptor().Fields().ByName("id")).String()
-	if _, err := fmt.Fprintf(env.Stdout, "%s %s%s.\n", verb, id, applied(resp)); err != nil {
+	if _, err := fmt.Fprintf(notes(env, output).Stdout, "%s %s%s.\n", verb, id, applied(resp)); err != nil {
 		return err
 	}
 	return s.print(ctx, env.Stdout, k, output, []protoreflect.Message{res.ProtoReflect()}, []string{id}, false)

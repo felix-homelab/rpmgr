@@ -20,6 +20,9 @@
 - Commands of the public API put the verb first, `rpmgr <verb> <kind>` (`get`, `list`, `create`,
   `update`, `delete`, …), so they never collide with the role commands or with the host's
   `rpmgr policy` ([D51](14-open-decisions.md#engineering)). They arrive with the resource API.
+- With `-o yaml` or `-o json`, standard output carries the resources alone, so that a script can
+  parse it; what a write command says about the change, such as "Created route …" or the steps that
+  prove a domain, goes to standard error. With the default `-o table` both go to standard output.
 - A change that needs a step-up ([04](04-security.md#human-authentication-and-sessions)) asks for it
   on the terminal when the API answers `STEP_UP_REQUIRED`: the authenticator or a recovery code, or
   the password of a user without a second factor. The stored token then steps up for 10 minutes
