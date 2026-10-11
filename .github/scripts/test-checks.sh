@@ -76,6 +76,15 @@ for bad in "" "Add feature" "feat: Add thing" "feat: add thing." "feature: add t
   "feat: $(printf 'a%.0s' {1..67})"; do
   expect fail "title '$bad'" "$t" "$bad"
 done
+# The dependency bot capitalises its subjects, and names the dependency of a one-update group (D65).
+long_bot="ci(deps): Bump github/codeql-action/upload-sarif from 4.38.2 to 4.38.3 in the actions group across 1 directory"
+for ok in "build(deps): Bump the go group across 1 directory with 3 updates" "$long_bot"; do
+  expect pass "bot title '$ok'" "$t" --bot "$ok"
+  expect fail "the same title from anyone else: '$ok'" "$t" "$ok"
+done
+for bad in "Bump the go group" "build(go): Bump the go group" "build(deps): Bump the go group." ""; do
+  expect fail "bot title '$bad'" "$t" --bot "$bad"
+done
 
 # --- Branch names --------------------------------------------------------------------------
 b="$dir/check-branch-name.sh"
@@ -277,6 +286,20 @@ expect fail "commit header that is not a Conventional Commit" in_repo "$r" "$m" 
 git -C "$r" reset -q --hard "$good"
 echo 3 >>"$r/file.txt" && git -C "$r" commit -q -s -am "fixup! feat(dns): publish route hostnames"
 expect fail "fix-up commit" in_repo "$r" "$m" "$base" "$(git -C "$r" rev-parse HEAD)"
+git -C "$r" reset -q --hard "$good"
+bot_commit() { # bot_commit <header>: a commit of the dependency bot
+  echo "$1" >>"$r/file.txt"
+  GIT_AUTHOR_NAME="dependabot[bot]" GIT_AUTHOR_EMAIL="49699333+dependabot[bot]@users.noreply.github.com" \
+    git -C "$r" commit -q -am "$1"
+}
+bot_commit "build(deps): Bump the go group across 1 directory with 3 updates"
+expect pass "a dependency-bot commit with a capitalised subject (D65)" in_repo "$r" "$m" "$base" "$(git -C "$r" rev-parse HEAD)"
+git -C "$r" reset -q --hard "$good"
+bot_commit "Bump the go group across 1 directory with 3 updates"
+expect fail "a dependency-bot commit without a type" in_repo "$r" "$m" "$base" "$(git -C "$r" rev-parse HEAD)"
+git -C "$r" reset -q --hard "$good"
+echo 4 >>"$r/file.txt" && git -C "$r" commit -q -s -am "build(deps): Bump the go group with 3 updates"
+expect fail "a capitalised subject from anyone else" in_repo "$r" "$m" "$base" "$(git -C "$r" rev-parse HEAD)"
 
 # --- Changed areas (D64) --------------------------------------------------------------------
 # areas <expected output on one line> <file>...: a pull request that adds the files needs exactly

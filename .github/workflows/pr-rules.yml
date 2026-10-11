@@ -31,7 +31,13 @@ jobs:
         if: ${{ !cancelled() }}
         env:
           TITLE: ${{ github.event.pull_request.title }}
-        run: .github/scripts/check-pr-title.sh "$TITLE"
+          HEAD_REF: ${{ github.head_ref }}
+        run: |
+          bot=()
+          if [[ $HEAD_REF == dependabot/* ]]; then
+            bot=(--bot) # D65
+          fi
+          .github/scripts/check-pr-title.sh "${bot[@]}" "$TITLE"
       - name: Branch names
         if: ${{ !cancelled() }}
         env:
