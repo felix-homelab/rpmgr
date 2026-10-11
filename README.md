@@ -1,7 +1,7 @@
 # rpmgr — Reverse Proxy Manager
 
-**Status: Phase 0 (spikes) is complete; Phase 1 (MVP) is being implemented, along the milestones
-`P1-M01` … `P1-M12`. Nothing is released yet.**
+**Status: Phase 1 (MVP) is implemented; its exit criteria and the first release, v0.1.0, are in
+progress ([13](docs/13-roadmap.md#phase-1--mvp)). Nothing is released yet.**
 
 rpmgr publishes services that run on private networks — behind NAT, CGNAT or firewalls — through
 public gateways, and manages them from one control plane. It is built as **one product**: one
@@ -47,6 +47,22 @@ every role.
 | [Reviews](docs/reviews/) | Reviews of the implementation against the documents, such as the [Phase 1 threat-model review](docs/reviews/P1-threat-model.md) |
 
 Suggested reading order: 00 → 02 → 03 → 04, then whatever you need.
+
+## Building from source
+
+Until v0.1.0 is released, rpmgr is built from source: Node of the version in `web/.nvmrc` for the
+web UI, and Go of the version `go.mod` pins.
+
+```sh
+npm --prefix web ci && npm --prefix web run build   # the web UI, embedded from internal/webui/ui
+CGO_ENABLED=0 go build -trimpath -o rpmgr ./cmd/rpmgr
+```
+
+A binary built without the web UI serves a placeholder page instead. A build from source carries
+no release root keys, so it verifies no release: the controller's install script and release check
+need a signed release ([04](docs/04-security.md#release-signing)). Installation, the boot files
+and the hardened systemd units are in [10](docs/10-operations.md#install); every command is in
+[16](docs/16-cli.md).
 
 ## How to read these documents
 

@@ -1,7 +1,8 @@
 # 13 — Roadmap
 
-> Status: design, not implemented. Tags: [F] fact · [R] recommendation · [T] target · [V] verify at
-> implementation ([README](../README.md#how-to-read-these-documents)).
+> Status: Phase 0 is complete and Phase 1 implemented; Phases 2 and 3 are design. Tags: [F] fact ·
+> [R] recommendation · [T] target · [V] verify at implementation
+> ([README](../README.md#how-to-read-these-documents)).
 
 ## Approach
 
@@ -29,8 +30,7 @@ public API (`rpmgr.v1`) and the agent protocol (`rpmgr-tunnel/1`) follow the com
 
 **Status: complete (2026-10-07).** S1–S8 have written results in [spikes](spikes/), their code is
 archived as `spike/s1` … `spike/s8` (and `spike/s8-arm64`), no ADR is *Proposed*, and the decisions
-taken along the way are D35–D47 in [14](14-open-decisions.md). Phase 1 is in progress; S9 runs at
-the start of Phase 2.
+taken along the way are D35–D47 in [14](14-open-decisions.md). S9 runs at the start of Phase 2.
 
 Small, throw-away prototypes that answer the questions the design depends on. The maintainer runs
 every spike. Each spike produces a short written result (`docs/spikes/Sx.md`, from
@@ -129,6 +129,23 @@ Each milestone holds one issue per PR-sized slice. A feature stays inert until i
 - Threat model reviewed against the implementation, recorded in `docs/reviews/`.
 - An upgrade from one P1 release to the next tested with live traffic, as an automated end-to-end
   test ([D61](14-open-decisions.md#project-and-process)).
+
+**Status (2026-10-11):** the milestones `P1-M01` … `P1-M11` and the slices of `P1-M12` that need no
+release are merged. The exit criteria stand as follows:
+
+| Criterion | State |
+|---|---|
+| End-to-end matrix | The per-PR cells pass on every PR; the full cross-product and the chaos test run nightly (12.1). The first nightly run found two faults of its cells and a race in the controller, fixed in #397; a green nightly run confirms the fix |
+| [T] targets | The benchmark matrix runs on GitHub-hosted runners since 2026-10-11; slice 12.3 records the results and a decision per miss in ADR-0004 and ADR-0005 |
+| Security regression tests | Every test of 12 in P1 scope is implemented and marked `done` in `.github/scripts/security-tests.txt`, which CI checks |
+| Lint bans | Active in CI: golangci's rules and `tools/bannedapi` |
+| Threat model reviewed | [P1-threat-model](reviews/P1-threat-model.md); its two medium gaps are fixed, the low ones have proposals for the product owner |
+| Upgrade with live traffic | `TestUpgrade` exists (12.7); its run needs two signed releases, v0.1.0 and the next |
+
+Before v0.1.0 (#170, [RELEASING](../RELEASING.md#release-process)), the maintainer makes the
+interim signing keys offline ([D48](14-open-decisions.md#security-defaults)) and runs the
+HTTP-01/TLS-ALPN-01 part of VB-19 on a public host by its
+[run sheet](../test/vb19/README.md) ([D50](14-open-decisions.md#project-and-process)).
 
 ## Phase 2 — production
 

@@ -1,7 +1,7 @@
 # 00 — Vision and scope
 
-> Status: design, not implemented. Claim tags ([F] [R] [T] [V]) are explained in the
-> [README](../README.md#how-to-read-these-documents).
+> Status: Phase 1 is implemented ([13](13-roadmap.md#phase-1--mvp)); later phases are design. Claim
+> tags ([F] [R] [T] [V]) are explained in the [README](../README.md#how-to-read-these-documents).
 
 ## What rpmgr is
 

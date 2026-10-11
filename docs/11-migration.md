@@ -1,8 +1,8 @@
 # 11 — Migration from frp and frp-panel
 
-> Status: design, not implemented. Tags: [F] fact · [R] recommendation · [T] target · [V] verify at
-> implementation ([README](../README.md#how-to-read-these-documents)). frp field names are verified
-> against frp **v0.70.1** `pkg/config/v1`; frp-panel facts against frp-panel (fork
+> Status: design for Phase 2, not implemented. Tags: [F] fact · [R] recommendation · [T] target ·
+> [V] verify at implementation ([README](../README.md#how-to-read-these-documents)). frp field names
+> are verified against frp **v0.70.1** `pkg/config/v1`; frp-panel facts against frp-panel (fork
 > `felix-homelab/frp-panel` at commit `6631a75`).
 >
 > **Sources.** This is the only document that names frp and frp-panel, because the importer reads

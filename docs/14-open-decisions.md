@@ -1,9 +1,9 @@
 # 14 — Open decisions
 
-> Status: design, not implemented. **No decision is open as of 2026-10-07.** Each row records a
-> decision that was open, the options, the outcome and where the outcome is written down. A new
-> open question gets the next free number and a recommended default, which the other
-> documents then assume; it is closed by recording its outcome here
+> Status: Phase 1 is implemented ([13](13-roadmap.md#phase-1--mvp)). **No decision is open as of
+> 2026-10-07.** Each row records a decision that was open, the options, the outcome and where the
+> outcome is written down. A new open question gets the next free number and a recommended default,
+> which the other documents then assume; it is closed by recording its outcome here
 > ([CONTRIBUTING](../CONTRIBUTING.md#feature-documentation-checklist)).
 >
 > Decisions that depend on a measurement (D17–D20) are closed by a **pre-agreed rule**: the
