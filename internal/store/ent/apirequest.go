@@ -26,7 +26,7 @@ type APIRequest struct {
 	// RequestHash holds the value of the "request_hash" field.
 	RequestHash []byte `json:"request_hash,omitempty"`
 	// ResponseEnc holds the value of the "response_enc" field.
-	ResponseEnc *[]byte `json:"response_enc,omitempty"`
+	ResponseEnc *[]byte `json:"-"`
 	// CreatedAt holds the value of the "created_at" field.
 	CreatedAt    time.Time `json:"created_at,omitempty"`
 	selectValues sql.SelectValues
@@ -148,10 +148,7 @@ func (_m *APIRequest) String() string {
 	builder.WriteString("request_hash=")
 	builder.WriteString(fmt.Sprintf("%v", _m.RequestHash))
 	builder.WriteString(", ")
-	if v := _m.ResponseEnc; v != nil {
-		builder.WriteString("response_enc=")
-		builder.WriteString(fmt.Sprintf("%v", *v))
-	}
+	builder.WriteString("response_enc=<sensitive>")
 	builder.WriteString(", ")
 	builder.WriteString("created_at=")
 	builder.WriteString(_m.CreatedAt.Format(time.ANSIC))

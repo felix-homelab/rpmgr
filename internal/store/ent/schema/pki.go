@@ -36,7 +36,7 @@ func (CAKey) Fields() []ent.Field {
 		field.String("algorithm").NotEmpty().Immutable(),
 		field.Bytes("public_key").NotEmpty().Immutable(),
 		field.Bytes("certificate").NotEmpty().Immutable(),
-		field.Bytes("key_enc").Optional().Nillable(),
+		field.Bytes("key_enc").Optional().Nillable().Sensitive(),
 		field.Time("not_before").Immutable(),
 		field.Time("not_after").Immutable(),
 		field.Enum("status").Values("next", "active", "retired"),
