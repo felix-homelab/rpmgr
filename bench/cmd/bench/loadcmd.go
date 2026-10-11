@@ -59,7 +59,7 @@ type Record struct {
 type loadArgs struct {
 	target, url, ca                     string
 	streams, rate, size, workers, conns int
-	dur                                 time.Duration
+	dur, hold                           time.Duration
 }
 
 func cmdLoad(ctx context.Context, args []string) error {
@@ -75,6 +75,7 @@ func cmdLoad(ctx context.Context, args []string) error {
 	fs.StringVar(&a.url, "url", "", "the URL to get (http); -target is the gateway it is sent to")
 	fs.StringVar(&a.ca, "ca", "", "PEM file of the CA the route's certificate chains to (http)")
 	fs.IntVar(&a.conns, "conns", 8, "connections to hold (hold)")
+	fs.DurationVar(&a.hold, "hold", 0, "how long each connection stays open after the answer (who)")
 	r := Record{}
 	fs.StringVar(&r.Testbed, "testbed", "local", "label: testbed")
 	fs.StringVar(&r.System, "system", "direct", "label: direct, quic or h2")
@@ -140,7 +141,7 @@ func measure(ctx context.Context, r *Record, a loadArgs) error {
 		}
 		r.Conns, r.Lost = res.Conns, res.Lost
 	case "who":
-		res, err := load.Who(ctx, a.target, a.rate, a.dur)
+		res, err := load.Who(ctx, a.target, a.rate, a.dur, a.hold)
 		if err != nil {
 			return err
 		}

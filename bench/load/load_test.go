@@ -137,14 +137,20 @@ func TestHold(t *testing.T) {
 
 func TestWho(t *testing.T) {
 	addr := listen(t, func(ln net.Listener) error { return load.ServeWho(ln, "con1") })
-	r, err := load.Who(context.Background(), addr, 50, 200*time.Millisecond)
+	r, err := load.Who(context.Background(), addr, 50, 200*time.Millisecond, 0)
 	if err != nil || r.By["con1"] != 10 || r.Failures != 0 {
 		t.Fatalf("%+v %v", r, err)
 	}
-	if r, _ := load.Who(context.Background(), "127.0.0.1:1", 20, 100*time.Millisecond); r.Failures != 2 {
+	if r, _ := load.Who(context.Background(), "127.0.0.1:1", 20, 100*time.Millisecond, 0); r.Failures != 2 {
 		t.Errorf("no service: %+v", r)
 	}
-	if _, err := load.Who(context.Background(), addr, 0, time.Second); err == nil {
+	if _, err := load.Who(context.Background(), addr, 0, time.Second, 0); err == nil {
 		t.Error("rate 0 accepted")
+	}
+	// With hold, each connection stays open after its answer.
+	start := time.Now()
+	if r, err := load.Who(context.Background(), addr, 20, 100*time.Millisecond, 300*time.Millisecond); err != nil || r.By["con1"] != 2 ||
+		time.Since(start) < 300*time.Millisecond {
+		t.Errorf("held connections: %+v %v after %s", r, err, time.Since(start))
 	}
 }
