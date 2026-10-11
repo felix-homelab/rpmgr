@@ -816,11 +816,15 @@ func (b *bench) udp(ctx context.Context, t string, size int) error {
 
 // vb18 measures the share of new connections con2 gets on a route both connectors serve, before
 // and while its session's writers are blocked by uploads through its link limited to 10 Mbit/s.
+// Each connection stays open for a second: with only short connections, no stream is in flight
+// and the gateway's choice (smoothed RTT × in-flight streams + 1) always takes the session with
+// the lower RTT, so on QUIC con2 got all new connections or none, and the share showed nothing.
 func (b *bench) vb18(ctx context.Context, t string) error {
 	r := routesOf[t]
 	half := b.o.extra / 2
 	who := func() (float64, error) {
-		rec, err := b.load(ctx, "client", t, 1, "-workload", "who", "-target", gwPub+":"+strconv.Itoa(r.who), "-rate", "50", "-duration", half.String())
+		rec, err := b.load(ctx, "client", t, 1, "-workload", "who", "-target", gwPub+":"+strconv.Itoa(r.who), "-rate", "50", "-hold", "1s",
+			"-duration", half.String())
 		return rec.Share["con2"], err
 	}
 	before, err := who()

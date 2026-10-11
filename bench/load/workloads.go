@@ -224,8 +224,10 @@ type WhoResult struct {
 }
 
 // Who opens connections to a "who" route at rate per second for dur and counts the connectors
-// that answer (VB-18: a connector whose session is blocked gets fewer new streams).
-func Who(ctx context.Context, target string, rate int, dur time.Duration) (WhoResult, error) {
+// that answer (VB-18: a connector whose session is blocked gets fewer new streams). Each connection
+// stays open for hold after the answer, so that the gateway's streams are in flight as under load,
+// and its choice among sessions weighs their in-flight streams, not only their round-trip times.
+func Who(ctx context.Context, target string, rate int, dur, hold time.Duration) (WhoResult, error) {
 	if rate < 1 {
 		return WhoResult{}, fmt.Errorf("load: rate must be ≥ 1, got %d", rate)
 	}
@@ -242,7 +244,7 @@ func Who(ctx context.Context, target string, rate int, dur time.Duration) (WhoRe
 		wg.Go(func() {
 			cctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 			defer cancel()
-			name, err := who(cctx, target)
+			name, err := who(cctx, target, hold)
 			mu.Lock()
 			defer mu.Unlock()
 			if err != nil {
@@ -256,7 +258,7 @@ func Who(ctx context.Context, target string, rate int, dur time.Duration) (WhoRe
 	return res, nil
 }
 
-func who(ctx context.Context, target string) (string, error) {
+func who(ctx context.Context, target string, hold time.Duration) (string, error) {
 	c, err := dial(ctx, target)
 	if err != nil {
 		return "", err
@@ -266,6 +268,10 @@ func who(ctx context.Context, target string) (string, error) {
 	line, err := bufio.NewReader(c).ReadString('\n')
 	if err != nil {
 		return "", err
+	}
+	select {
+	case <-ctx.Done():
+	case <-time.After(hold):
 	}
 	return strings.TrimSpace(line), nil
 }
