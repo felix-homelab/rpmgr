@@ -297,7 +297,7 @@ func Run(ctx context.Context, o RunOptions) error {
 		o.Listening()
 	}
 	var gwErr, ctlErr, adminErr error
-	gwEnded, ctlEnded := false, false
+	gwEnded, ctlEnded, adminEnded := false, false, false
 	select {
 	case <-ctx.Done():
 	case gwErr = <-gwDone:
@@ -305,6 +305,7 @@ func Run(ctx context.Context, o RunOptions) error {
 	case ctlErr = <-ctlDone:
 		ctlEnded = true
 	case adminErr = <-adminDone:
+		adminEnded = true
 	}
 	stopGw()
 	if !gwEnded {
@@ -315,6 +316,9 @@ func Run(ctx context.Context, o RunOptions) error {
 		ctlErr = <-ctlDone
 	}
 	stopAdmin()
+	if !adminEnded { // the admin listener is closed: its address is free again once Run returns
+		adminErr = <-adminDone
+	}
 	_ = mem.Close()
 	return errors.Join(gwErr, ctlErr, adminErr)
 }

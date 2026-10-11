@@ -11,6 +11,7 @@ import (
 	"net"
 	"net/http"
 	"path/filepath"
+	"sync"
 	"time"
 
 	"github.com/quic-go/quic-go"
@@ -247,12 +248,15 @@ func Run(ctx context.Context, o RunOptions) error {
 			errs <- fmt.Errorf("gateway: control plane: %w", err)
 		}
 	}()
+	var admin sync.WaitGroup
 	if o.Registry == nil {
-		go func() {
+		admin.Go(func() {
 			if err := telemetry.ServeAdmin(run, cfg.Listen.Admin, reg, ctl.Ready); err != nil {
 				errs <- fmt.Errorf("gateway: admin listener: %w", err)
 			}
-		}()
+		})
+		// Run returns only once the admin listener is closed, so that its address is free again.
+		defer func() { stop(); admin.Wait() }()
 	} else if o.Readiness != nil {
 		o.Readiness(ctl.Ready)
 	}

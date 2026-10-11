@@ -266,6 +266,31 @@ func TestTCPRoute_EndToEnd(t *testing.T) {
 	}
 }
 
+// TestRoles_RestartOnTheSameAdminAddress: once Run has returned, a gateway or connector holds its
+// admin address no longer, so the role starts again at once in the same process, as the tests that
+// restart a role do; the route works through the restarted roles.
+func TestRoles_RestartOnTheSameAdminAddress(t *testing.T) {
+	p := newDataPlane(t)
+	p.dial(t)
+	free := func(role, admin string) {
+		t.Helper()
+		ln, err := net.Listen("tcp", admin)
+		if err != nil {
+			t.Fatalf("the %s's admin address after Run returned: %v", role, err)
+		}
+		_ = ln.Close()
+	}
+	for range 5 {
+		p.stopGateway()
+		free("gateway", p.gwCfg.Listen.Admin)
+		p.startGateway(t)
+		p.stopConnector()
+		free("connector", p.conCfg.Listen.Admin)
+		p.startConnector(t, nil)
+	}
+	p.dial(t)
+}
+
 // TestBadSnapshotKeepsLastKnownGood (traffic clause): a snapshot the gateway rejects changes
 // nothing it runs: an open connection keeps working and new connections are still served; a
 // gateway restarted while the controller is down serves the route from its last-known-good copy.

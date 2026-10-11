@@ -194,8 +194,8 @@ func (r *running) stop(t *testing.T) {
 
 // TestRun: a running controller serves the trust bundle over the public URL's certificate with
 // HSTS, answers /dl/ from its release mirror, is backed up while it runs, enrolls an agent at its
-// agent endpoint, redirects port 80, is ready on its admin listener and stops cleanly; a restart
-// keeps its node identity.
+// agent endpoint, redirects port 80, is ready on its admin listener and stops cleanly, its
+// listeners closed once Run returns; a restart keeps its node identity.
 func TestRun(t *testing.T) {
 	r := startRun(t)
 	resp, err := r.client.Get(r.url + "/.well-known/rpmgr/trust-bundle")
@@ -288,6 +288,13 @@ func TestRun(t *testing.T) {
 	if resp, err := r.client.Get(r.url + "/.well-known/rpmgr/trust-bundle"); err == nil {
 		_ = resp.Body.Close()
 		t.Fatal("still serving after Run returned")
+	}
+	for _, a := range []string{r.https, r.http, r.admin} {
+		ln, err := net.Listen("tcp", a)
+		if err != nil {
+			t.Fatalf("a listener's address after Run returned: %v", err)
+		}
+		_ = ln.Close()
 	}
 	r.start(t)
 	again, _ := os.ReadFile(filepath.Join(filepath.Dir(r.h.db), "controller-node.id"))
