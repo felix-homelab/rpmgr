@@ -32,7 +32,7 @@ func (APIRequest) Fields() []ent.Field {
 		field.String("method").NotEmpty().Immutable(),
 		field.String("request_id").NotEmpty().MaxLen(128).Immutable(),
 		field.Bytes("request_hash").Immutable(),
-		field.Bytes("response_enc").Optional().Nillable(),
+		field.Bytes("response_enc").Optional().Nillable().Sensitive(),
 		field.Time("created_at").Immutable(),
 	}
 }

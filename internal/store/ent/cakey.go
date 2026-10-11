@@ -26,7 +26,7 @@ type CAKey struct {
 	// Certificate holds the value of the "certificate" field.
 	Certificate []byte `json:"certificate,omitempty"`
 	// KeyEnc holds the value of the "key_enc" field.
-	KeyEnc *[]byte `json:"key_enc,omitempty"`
+	KeyEnc *[]byte `json:"-"`
 	// NotBefore holds the value of the "not_before" field.
 	NotBefore time.Time `json:"not_before,omitempty"`
 	// NotAfter holds the value of the "not_after" field.
@@ -164,10 +164,7 @@ func (_m *CAKey) String() string {
 	builder.WriteString("certificate=")
 	builder.WriteString(fmt.Sprintf("%v", _m.Certificate))
 	builder.WriteString(", ")
-	if v := _m.KeyEnc; v != nil {
-		builder.WriteString("key_enc=")
-		builder.WriteString(fmt.Sprintf("%v", *v))
-	}
+	builder.WriteString("key_enc=<sensitive>")
 	builder.WriteString(", ")
 	builder.WriteString("not_before=")
 	builder.WriteString(_m.NotBefore.Format(time.ANSIC))
