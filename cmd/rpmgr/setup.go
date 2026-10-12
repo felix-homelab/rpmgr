@@ -3,13 +3,10 @@
 package main
 
 import (
-	"bufio"
 	"context"
-	"errors"
 	"flag"
 	"fmt"
 	"io"
-	"os"
 	"strings"
 
 	"github.com/felix-homelab/rpmgr/internal/agent"
@@ -20,12 +17,10 @@ import (
 // setupHost is the host `rpmgr setup` changes; tests replace it.
 var setupHost = setup.Host{}
 
-// setupConfirm asks the operator to confirm the plan; tests replace it.
-var setupConfirm = confirmOnTerminal
-
-// setupCommand is `rpmgr setup` (docs/16-cli.md): it sets this host up for a role from its flags,
-// shows the plan, and on confirmation runs it. The token never comes from the command line: it comes
-// from --token-file, $RPMGR_ENROLL_TOKEN or the terminal, as for `rpmgr enroll`.
+// setupCommand is `rpmgr setup` (docs/16-cli.md): it asks for the values in forms pre-filled with
+// its flags, shows the plan, and on confirmation runs it; with --yes it asks nothing and takes every
+// value from the flags. The token never comes from the command line: it comes from --token-file,
+// $RPMGR_ENROLL_TOKEN or the terminal, as for `rpmgr enroll`.
 func setupCommand() *cli.Command {
 	var v setup.Values
 	var role, tokenFile string
@@ -35,7 +30,7 @@ func setupCommand() *cli.Command {
 		Name:    "setup",
 		Summary: "set this host up for a role: boot file, init or enrollment, systemd unit",
 		Flags: func(fs *flag.FlagSet) {
-			fs.StringVar(&role, "role", "", "all-in-one, controller, gateway or connector (required)")
+			fs.StringVar(&role, "role", "", "all-in-one, controller, gateway or connector (required with --yes)")
 			fs.StringVar(&v.PublicURL, "public-url", "", "controller, all-in-one: https URL of the web UI, the API and the agents")
 			fs.StringVar(&v.KEKSource, "kek-source", "", "controller, all-in-one: systemd-credential or file (default by the systemd version)")
 			fs.StringVar(&v.KEKPath, "kek-path", "", "controller, all-in-one: the KEK file with --kek-source file (default /etc/rpmgr/kek)")
@@ -56,16 +51,27 @@ func setupCommand() *cli.Command {
 			fs.StringVar(&v.Proxy, "proxy", "", "connector: HTTPS_PROXY of its service, http://, https:// or socks5://")
 			fs.BoolVar(&v.NoUnit, "no-unit", false, "install no systemd unit and start nothing")
 			fs.BoolVar(&v.Force, "force", false, "replace an existing boot file (kept beside it) or an agent's identity")
-			fs.BoolVar(&yes, "yes", false, "run the plan without asking")
+			fs.BoolVar(&yes, "yes", false, "ask nothing: take every value from the flags and run the plan")
 		},
 		Run: func(ctx context.Context, env *cli.Env, args []string) error {
 			if len(args) > 0 {
 				return cli.Usagef("unexpected argument %q", args[0])
 			}
-			if role == "" {
-				return cli.Usagef("setup needs --role: all-in-one, controller, gateway or connector")
+			if role == "" && yes {
+				return cli.Usagef("setup --yes needs --role: all-in-one, controller, gateway or connector")
 			}
 			v.Role, v.AllowTargets = setup.Role(role), targets
+			var form *setupForm
+			if !yes {
+				facts, err := setup.Preflight(setupHost)
+				if err != nil {
+					return err
+				}
+				form = newSetupForm(ctx, env.Stdout, facts)
+				if err := form.values(&v); err != nil {
+					return err
+				}
+			}
 			if v.Role.Initialises() && tokenFile != "" {
 				return cli.Usagef("--token-file is a gateway's or a connector's")
 			}
@@ -75,8 +81,12 @@ func setupCommand() *cli.Command {
 					v.TLS = setup.TLSACME
 				}
 			}
-			if !v.Role.Initialises() && setup.CheckRole(role) == nil {
-				tok, err := agent.ReadToken(tokenFile, env.Getenv, promptToken,
+			if !v.Role.Initialises() && setup.CheckRole(string(v.Role)) == nil {
+				prompt := promptToken
+				if form != nil {
+					prompt = form.token
+				}
+				tok, err := agent.ReadToken(tokenFile, env.Getenv, prompt,
 					func(w string) { _, _ = fmt.Fprintln(env.Stderr, "warning:", w) })
 				if err != nil {
 					return err
@@ -87,8 +97,8 @@ func setupCommand() *cli.Command {
 			if err != nil {
 				return err
 			}
-			if !yes {
-				if err := setupConfirm(env.Stdout, plan); err != nil {
+			if form != nil {
+				if err := form.confirm(plan); err != nil {
 					return err
 				}
 			}
@@ -130,41 +140,6 @@ func printSetup(w io.Writer, v setup.Values, r setup.Result) error {
 			b.WriteString("; allow more targets with rpmgr policy allow-target <target>")
 		}
 		b.WriteString(".\n")
-	}
-	_, err := io.WriteString(w, b.String())
-	return err
-}
-
-// confirmOnTerminal shows the plan and asks on the terminal whether to run it.
-func confirmOnTerminal(w io.Writer, plan *setup.Plan) error {
-	tty, err := os.OpenFile("/dev/tty", os.O_RDWR, 0)
-	if err != nil {
-		return errors.New("no terminal to confirm the plan on: run setup with --yes")
-	}
-	defer func() { _ = tty.Close() }()
-	if err := writePlan(w, plan); err != nil {
-		return err
-	}
-	if _, err := fmt.Fprint(tty, "Run it? [y/N] "); err != nil {
-		return err
-	}
-	line, _ := bufio.NewReader(tty).ReadString('\n')
-	if a := strings.ToLower(strings.TrimSpace(line)); a != "y" && a != "yes" {
-		return errors.New("setup: not confirmed; nothing was changed")
-	}
-	return nil
-}
-
-// writePlan prints the summary and the steps of a plan.
-func writePlan(w io.Writer, plan *setup.Plan) error {
-	var b strings.Builder
-	b.WriteString("rpmgr setup will set this host up as follows.\n\n")
-	for _, kv := range plan.Summary() {
-		fmt.Fprintf(&b, "  %-16s %s\n", kv[0]+":", kv[1])
-	}
-	b.WriteString("\nSteps:\n")
-	for i, s := range plan.Steps() {
-		fmt.Fprintf(&b, "  %d. %s\n", i+1, s)
 	}
 	_, err := io.WriteString(w, b.String())
 	return err

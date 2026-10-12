@@ -42,16 +42,17 @@ global install script has installed the binary, the user and the directories:
 
 ```sh
 curl -fsSLO https://github.com/felix-homelab/rpmgr/releases/latest/download/install.sh
-sh install.sh --no-setup        # verifies, then installs the binary, the user, the directories
-rpmgr setup --role all-in-one --public-url https://panel.example.com
+sh install.sh                   # verifies and installs, then offers to run rpmgr setup
 ```
 
-It shows its plan and asks before it changes anything (`--yes` does not ask). It writes the boot
-file, runs `init` (or `rpmgr enroll` for a gateway or connector), installs and starts the unit,
-waits until the role is ready, and prints the trust domain, the CA pin and the first-user link. A
-public name orders its certificate from Let's Encrypt production at the first start;
-`--acme-directory staging` tries a setup first with certificates no browser trusts. The same, step
-by step, for a controller:
+`rpmgr setup` asks for the role and its values in forms, pre-filled with any flags, shows its plan
+and asks before it changes anything ([D73](14-open-decisions.md#engineering)); with `--yes` it asks
+nothing, as in `rpmgr setup --role all-in-one --public-url https://panel.example.com --yes`. It
+writes the boot file, runs `init` (or `rpmgr enroll` for a gateway or connector), installs and
+starts the unit, waits until the role is ready, and prints the trust domain, the CA pin and the
+first-user link. A public name orders its certificate from Let's Encrypt production at the first
+start; `--acme-directory staging` tries a setup first with certificates no browser trusts. The
+same, step by step, for a controller:
 
 ```sh
 sh install.sh --no-setup
