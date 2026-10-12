@@ -145,6 +145,9 @@ history and the [ADRs](docs/adr/).
   default), verifies the signed release and mirrors it under `/dl/` for installs.
   `rpmgr release import` fills the mirror from a directory for air-gapped installations. (#373,
   #374)
+- Install: a global install script, attached to every release as `install.sh`, downloads the
+  release from GitHub, verifies it with the release root keys it embeds, installs the binary, the
+  user `rpmgr` and its directories, and offers to run `rpmgr setup`. (#436)
 - Releases: reproducible builds with an SPDX SBOM, SLSA provenance attestations and a signed
   release manifest; distroless, nonroot multi-arch images at `ghcr.io/felix-homelab/rpmgr`, signed
   with cosign. (#384, #385)

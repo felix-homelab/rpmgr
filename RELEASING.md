@@ -191,6 +191,8 @@ For a minor or major release. A patch release is the same, starting from the bra
    - an SBOM, and SLSA provenance as GitHub artifact attestations of every artifact, the SBOM and
      `SHA256SUMS`: their keyless signatures with this workflow's identity. The release carries no
      separate signature files ([D72](docs/14-open-decisions.md#project-and-process));
+   - the global install script `install.sh`, pinned to the version, with its attestation
+     ([D74](docs/14-open-decisions.md#project-and-process));
    - a **draft** GitHub release with all of them and the **unsigned** `manifest.json`: `seq` one
      above the last published release's, that release's `floor`, the `channel` the version
      implies (`stable`, or `prerelease` for a pre-release), and every artifact with its `variant`,

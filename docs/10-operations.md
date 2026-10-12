@@ -12,6 +12,7 @@
 
 | Path | For | Notes |
 |---|---|---|
+| **Global install script** | The first host on Linux: a controller or all-in-one, or any role without a controller to install from | `deploy/install.sh` in the repository, attached to every release as `install.sh` and pinned to it ([D74](14-open-decisions.md#project-and-process)): `curl -fsSLO https://github.com/felix-homelab/rpmgr/releases/latest/download/install.sh && sudo sh install.sh`. It downloads the release from GitHub, verifies it as the controller-hosted script does, and installs the binary, the user `rpmgr`, `/etc/rpmgr` and `/var/lib/rpmgr`; then it offers `rpmgr setup` ([D75](14-open-decisions.md#project-and-process), [04](04-security.md#install-scripts)) |
 | **Controller-hosted install script** | Gateways and connectors on Linux (`/install.sh`) | Served by the controller from embedded templates; downloads from the controller's `/dl/` mirror and verifies root key → signing-key statement → manifest signature → artifact SHA-256 with OpenSSL ≥ 3.0, and refuses to install without it (VB-15, resolved in [13](13-roadmap.md#verification-backlog)) ([04](04-security.md#install-scripts)). The UI generates the full command with `--controller` and `--ca-pin` ([04](04-security.md#join-command)). There is no `/install.ps1`: Windows and macOS connectors are installed from packages (Phase 2) |
 | **Distribution packages** (`.deb`, `.rpm`; Phase 2) | High-assurance installs | [R] Package name `rpmgr` (never `rpm`, [ADR-0001](adr/0001-name-rpmgr.md)); availability checked as VB-14. Built with nfpm and served from a signed apt/yum repository on GitHub Pages, signed with a key on the release signing token. The package installs the binary and the hardened units; enrollment is a separate step. Package installs are **updated by the package manager from the signed repository, not by OTA**: the updater refuses to replace a package-owned binary, because the next package run would silently revert it ([04](04-security.md#over-the-air-updates)). `.apk` packages are not planned |
 | **Homebrew tap** (Phase 2) | Connectors on macOS | Updated with `brew upgrade`; no OTA on macOS before Phase 3 ([Windows and macOS connectors](#windows-and-macos-connectors-phase-2)) |
@@ -36,18 +37,25 @@ Architectures per role are in [05](05-features.md#platform-support).
 **One instance per role per host.** Paths, unit names and the admin port are fixed per role, so a
 host runs at most one controller (or all-in-one), one gateway and one connector.
 
-A first installation of the controller, as root, with the binary verified as in
-[04](04-security.md#release-signing):
+A first installation of the controller, as root:
+
+```sh
+curl -fsSLO https://github.com/felix-homelab/rpmgr/releases/latest/download/install.sh
+sh install.sh --no-setup        # verifies, then installs the binary, the user, the directories
+rpmgr controller init --public-url https://panel.example.com   # creates DB, trust domain, root CA, first-user link
+rpmgr systemd-unit controller > /etc/systemd/system/rpmgr-controller.service
+systemctl daemon-reload
+systemctl enable --now rpmgr-controller
+```
+
+By hand, with the binary verified as in [04](04-security.md#release-signing), `sh install.sh`
+stands for:
 
 ```sh
 install -m 0755 rpmgr /usr/local/bin/rpmgr
 useradd --system --user-group --home-dir /var/lib/rpmgr --shell /usr/sbin/nologin rpmgr
 install -d -m 0755 /etc/rpmgr
 install -d -m 0750 -o rpmgr -g rpmgr /var/lib/rpmgr
-rpmgr controller init --public-url https://panel.example.com   # creates DB, trust domain, root CA, first-user link
-rpmgr systemd-unit controller > /etc/systemd/system/rpmgr-controller.service
-systemctl daemon-reload
-systemctl enable --now rpmgr-controller
 ```
 
 - **KEK source:** for a new boot file without `--kek-source`, `init` chooses the systemd credential

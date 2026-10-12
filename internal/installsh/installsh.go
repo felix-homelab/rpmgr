@@ -1,14 +1,19 @@
 // SPDX-License-Identifier: Apache-2.0
 
-// Package installsh writes the controller's /install.sh (docs/04-security.md, "Install scripts"):
-// a POSIX shell script that installs a gateway or a connector from the controller's /dl/ mirror,
-// with the binary's release root keys embedded to verify what it downloads.
+// Package installsh writes rpmgr's install scripts (docs/04-security.md, "Install scripts"): the
+// controller's /install.sh, a POSIX shell script that installs a gateway or a connector from the
+// controller's /dl/ mirror, and the global deploy/install.sh, which installs the binary of a
+// GitHub release. Both embed the release root keys and share the verification of what they
+// download (verify.sh.tmpl).
 package installsh
+
+// The repository's copy of the global install script, with the compiled-in release root keys.
+//go:generate go run ../../tools/installscript -o ../../deploy/install.sh
 
 import (
 	"bytes"
 	"crypto/x509"
-	_ "embed"
+	"embed"
 	"encoding/hex"
 	"encoding/pem"
 	"errors"
@@ -19,18 +24,32 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/release"
 )
 
-//go:embed install.sh.tmpl
-var text string
+//go:embed *.sh.tmpl
+var files embed.FS
 
-var script = template.Must(template.New("install.sh").Parse(text))
+var scripts = template.Must(template.ParseFS(files, "*.sh.tmpl"))
 
 type root struct{ ID, PEM string }
 
-// Render returns the install script of a release version, which trusts roots.
+// Render returns the controller's install script of a release version, which trusts roots.
 func Render(version string, roots []release.PublicKey) ([]byte, error) {
 	if !release.Releasable(version) {
 		return nil, release.ErrDevelopment
 	}
+	return render("install.sh.tmpl", version, roots)
+}
+
+// RenderGlobal returns the global install script, which trusts roots: pinned to a release version,
+// as the release attaches it, or with version "" the copy in the repository, deploy/install.sh,
+// which installs the latest release unless told otherwise.
+func RenderGlobal(version string, roots []release.PublicKey) ([]byte, error) {
+	if version != "" && !release.Releasable(version) {
+		return nil, release.ErrDevelopment
+	}
+	return render("global.sh.tmpl", version, roots)
+}
+
+func render(name, version string, roots []release.PublicKey) ([]byte, error) {
 	if len(roots) == 0 {
 		return nil, errors.New("installsh: this build has no release root keys")
 	}
@@ -46,7 +65,7 @@ func Render(version string, roots []release.PublicKey) ([]byte, error) {
 		data.Roots = append(data.Roots, root{ID: hex.EncodeToString(k.ID[:]), PEM: string(pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: der}))})
 	}
 	var b bytes.Buffer
-	if err := script.Execute(&b, data); err != nil {
+	if err := scripts.ExecuteTemplate(&b, name, data); err != nil {
 		return nil, err
 	}
 	return b.Bytes(), nil

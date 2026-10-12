@@ -808,6 +808,25 @@ Phase 3 item ([13](13-roadmap.md#phase-3--advanced)).
   - **A controller that cannot serve installs** (a development build, or no root keys) serves a
     script that says so and fails, because `curl … | sh` would run an error page's empty body and
     exit 0.
+- The **global install script**, `deploy/install.sh`, installs the first host from a GitHub release
+  ([D74](14-open-decisions.md#project-and-process)). It shares the verification above, root keys
+  included: both scripts are rendered from one template (`internal/installsh`), and a test keeps
+  the repository's copy equal to the rendering with the keys of `internal/release/roots.go`.
+  - **What it trusts:** the script itself is trust on first use, fetched over HTTPS from GitHub; the
+    copy attached to a release is pinned to that release's version and carries a provenance
+    attestation of the release workflow ([D72](14-open-decisions.md#project-and-process)), which
+    `gh attestation verify` checks before it runs. What it downloads, it verifies against the root
+    keys it embeds, from `https://github.com/felix-homelab/rpmgr/releases/download/v<version>/`
+    only, over HTTPS with curl or wget.
+  - **Which release:** the pinned version, or `--version`; the repository's copy asks the GitHub
+    API for the latest release, and with `--prerelease` for the latest including pre-releases.
+  - **Options:** `[--version <version>] [--prerelease] [--no-setup] [--dir <directory>]
+    [--verify-only]`.
+  - **What it installs,** only after the verification: the binary in `/usr/local/bin` (replaced in
+    one rename), the system user `rpmgr`, `/etc/rpmgr` and `/var/lib/rpmgr`. It writes no
+    configuration, and running it again leaves the user, the directories and the configuration as
+    they are. It then offers `rpmgr setup` on the terminal
+    ([D75](14-open-decisions.md#project-and-process)).
 - There is no `/install.ps1`. Windows connectors are installed with winget or an MSI, macOS
   connectors with a Homebrew tap (Phase 2, [10](10-operations.md#install)).
 - No third-party download proxy, and no download URL chosen at runtime by the controller.
