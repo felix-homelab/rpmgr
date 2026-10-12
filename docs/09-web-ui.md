@@ -143,6 +143,8 @@ flowchart LR
 - It reads all of the org's routes and filters them in the browser by text (name or address),
   type, status and gateway group. It sorts them by name and shows 25 a page. The filters and the
   page stay in the URL (U9).
+- **Without routes,** the list offers to create the first. When the filters match none, it says so
+  and offers to clear them.
 - **Targets** shows how many are ready, and how many a connector's local policy blocks.
 - **Status** shows the observed state, with an icon and text, and how many agents rejected the
   route.
@@ -243,11 +245,15 @@ flowchart LR
 ```
 
 **How the detail works.**
+- **Layout:** a link back to all routes; the route's name and type with the "Enabled" switch,
+  "YAML" and "Edit"; the configured settings next to the observed state; then cards for the
+  gateways not serving it and the agents that rejected it, when there are any, and for its targets,
+  traffic and access policies.
 - It shows the configured settings next to the observed state (U3), and how many of the group's
   gateways serve the route.
 - **Each target** shows its connector by name, its address and weight, and whether it serves; if
   not, it says why.
-- **Targets are added, edited and removed** on the page.
+- **Targets are added, edited and removed** on the page, in the targets card, one form at a time.
   - **The form:** the connector (fixed once the target exists), a host and port or a socket path,
     the protocol to the target (HTTP, verified HTTPS with its server name, CA bundle and key pin,
     or h2c for HTTP routes; TCP otherwise), the PROXY protocol for TCP and TLS-passthrough routes,

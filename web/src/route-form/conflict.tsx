@@ -62,26 +62,26 @@ export function Conflict({ base, mine, theirs, onTop: reapply, onDiscard }: {
   const when = theirs.updateTime ? ago(timestampDate(theirs.updateTime)) : "";
   const list = changes(base, mine, theirs);
   return (
-    <section aria-labelledby="conflict-title" className="grid gap-3 rounded-md border border-destructive p-4">
+    <section aria-labelledby="conflict-title" className="grid gap-3 rounded-xl border border-destructive/40 bg-destructive/5 p-4">
       <h2 id="conflict-title" className="font-semibold">{t("conflict.title")}</h2>
       <p role="alert" className="text-sm">{by ? t("conflict.changedBy", { by, when }) : t("conflict.changed", { when })}</p>
-      <table className="w-full text-left text-sm">
-        <thead className="text-muted-foreground">
+      <table className="w-full overflow-hidden rounded-lg bg-card text-left text-sm">
+        <thead className="bg-muted/50 text-muted-foreground">
           <tr>
-            <th scope="col" className="py-1 font-medium">{t("conflict.field")}</th>
-            <th scope="col" className="py-1 font-medium">{t("conflict.mine")}</th>
-            <th scope="col" className="py-1 font-medium">{t("conflict.theirs")}</th>
+            <th scope="col" className="px-3 py-2 font-medium">{t("conflict.field")}</th>
+            <th scope="col" className="px-3 py-2 font-medium">{t("conflict.mine")}</th>
+            <th scope="col" className="px-3 py-2 font-medium">{t("conflict.theirs")}</th>
           </tr>
         </thead>
         <tbody>
           {list.map((c) => (
             <tr key={c.key} className="border-t border-border align-top">
-              <th scope="row" className="py-1 font-medium">
+              <th scope="row" className="px-3 py-2 font-medium">
                 {t(`routeForm.fields.${c.key}`)}
                 {c.mine !== undefined && c.theirs !== undefined && c.mine !== c.theirs && <span className="ml-1 text-destructive">({t("conflict.both")})</span>}
               </th>
-              <td className="whitespace-pre-wrap py-1">{c.mine ?? "—"}</td>
-              <td className="whitespace-pre-wrap py-1">{c.theirs ?? "—"}</td>
+              <td className="px-3 py-2 whitespace-pre-wrap">{c.mine ?? "—"}</td>
+              <td className="px-3 py-2 whitespace-pre-wrap">{c.theirs ?? "—"}</td>
             </tr>
           ))}
         </tbody>

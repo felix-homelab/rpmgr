@@ -93,4 +93,23 @@ describe("Routes", () => {
     expect((await rows())[0]).toMatch(/^r25/);
     expect(screen.getByRole("button", { name: "Next" })).toHaveProperty("disabled", true);
   });
+
+  it("offers the first route when there is none", async () => {
+    routes("/routes", []);
+    expect(await screen.findByText("No routes yet.")).toBeTruthy();
+    expect(screen.queryByRole("table")).toBeNull();
+    expect(screen.queryByRole("navigation", { name: "Pages" })).toBeNull();
+    const create = screen.getAllByRole("link", { name: "Create a route" });
+    expect(create.map((a) => a.getAttribute("href"))).toEqual(["/routes/new", "/routes/new"]); // the header's and the empty list's
+  });
+
+  it("says when no route matches the filters, and clears them", async () => {
+    const { history } = routes("/routes?q=nothing&type=udp", [wiki, postgres, dns]);
+    expect(await screen.findByText("No route matches the filters.")).toBeTruthy();
+    expect(screen.queryByRole("table")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Clear the filters" }));
+    await waitFor(async () => expect(await rows()).toHaveLength(3));
+    expect(history.location.search).toBe("");
+    expect((screen.getByLabelText("Search") as HTMLInputElement).value).toBe("");
+  });
 });

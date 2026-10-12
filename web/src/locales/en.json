@@ -209,6 +209,7 @@
   },
   "routes": {
     "title": "Routes",
+    "intro": "Each route publishes a private service on a gateway group, by hostname or by port.",
     "search": "Search",
     "type": "Type",
     "state": "Status",
@@ -230,10 +231,14 @@
     "count": "{{from}}–{{to}} of {{total}}",
     "previous": "Previous",
     "next": "Next",
-    "create": "Create a route"
+    "create": "Create a route",
+    "none": "No routes yet.",
+    "noMatch": "No route matches the filters.",
+    "clear": "Clear the filters"
   },
   "route": {
     "title": "Route {{name}} ({{type}})",
+    "back": "All routes",
     "notFound": "This route does not exist, or you cannot see it.",
     "desired": "Configured",
     "observed": "Observed",

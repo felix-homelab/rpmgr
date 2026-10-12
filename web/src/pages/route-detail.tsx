@@ -4,13 +4,19 @@ import { Code, ConnectError } from "@connectrpc/connect";
 import { useMutation, useQuery } from "@connectrpc/connect-query";
 import { useQueryClient } from "@tanstack/react-query";
 import { getRouteApi, Link } from "@tanstack/react-router";
+import { ChevronLeft, Pencil, Plus } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ApplyStatusView, useLiveApplyStatus } from "@/components/apply-status";
 import { ManifestButton } from "@/components/manifest";
+import { PageHeader } from "@/components/page-header";
 import { Alert } from "@/components/public-page";
 import { RouteStateChip } from "@/components/route-state";
+import { Status } from "@/components/status";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Switch } from "@/components/ui/switch";
+import { Table, TD, TH, THead, TR } from "@/components/ui/table";
 import { ConnectorService, DataTransport } from "@/gen/rpmgr/v1/connector_pb";
 import type { Revision } from "@/gen/rpmgr/v1/common_pb";
 import { RouteService, RouteState, type Route, type RouteTarget } from "@/gen/rpmgr/v1/route_pb";
@@ -64,90 +70,96 @@ export function RouteDetail() {
   }
 
   if (!r) {
-    return <p>{got.isError ? t("route.notFound") : t("stepUp.loading")}</p>;
+    return <p className="text-sm text-muted-foreground">{got.isError ? t("route.notFound") : t("stepUp.loading")}</p>;
   }
   const status = r.status;
   const gatewayProblems = status?.notServing.filter((n) => !r.targets.some((tg) => tg.id === n.id)) ?? [];
   return (
     <div className="grid gap-6">
-      <div className="flex flex-wrap items-center gap-4">
-        <h1 className="text-2xl font-semibold">{t("route.title", { name: r.name, type: t(`routeType.${routeType(r) || "unknown"}`) })}</h1>
-        <Button asChild variant="outline" size="sm">
-          <Link to="/routes/$routeId/edit" params={{ routeId: r.id }}>{t("route.edit")}</Link>
-        </Button>
-        {org && <ManifestButton label={t("manifest.yaml")} title={t("manifest.of", { name: r.name })} orgId={org.orgId} ids={[r.id]} file={r.name} />}
-        <Button role="switch" aria-checked={r.enabled} variant="outline" size="sm" disabled={update.isPending} onClick={() => void toggle(r)}>
-          {t("route.enabledSwitch")}: {r.enabled ? t("route.on") : t("route.off")}
-        </Button>
+      <div className="grid gap-2">
+        <Link to="/routes" search={{}} className="inline-flex w-fit items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
+          <ChevronLeft aria-hidden="true" className="size-4" />{t("route.back")}
+        </Link>
+        <PageHeader title={t("route.title", { name: r.name, type: t(`routeType.${routeType(r) || "unknown"}`) })} actions={<>
+          <Switch checked={r.enabled} disabled={update.isPending} onClick={() => void toggle(r)}>{t("route.enabledSwitch")}</Switch>
+          {org && <ManifestButton label={t("manifest.yaml")} title={t("manifest.of", { name: r.name })} orgId={org.orgId} ids={[r.id]} file={r.name} />}
+          <Button asChild size="sm">
+            <Link to="/routes/$routeId/edit" params={{ routeId: r.id }}><Pencil aria-hidden="true" />{t("route.edit")}</Link>
+          </Button>
+        </>} />
       </div>
       {error && <Alert>{error}</Alert>}
       {live && <ApplyStatusView status={live} revision={write?.revision} name={name} />}
-      <dl className="grid grid-cols-[max-content_1fr] gap-x-6 gap-y-1 text-sm">
-        <dt className="text-muted-foreground">{t("route.desired")}</dt>
-        <dd>
-          {[r.enabled ? t("route.enabled") : t("route.disabled"), t("route.group", { name: groups.data?.get(r.gatewayGroupId) ?? r.gatewayGroupId }),
-            ...routeAddress(r)].join(" · ")}
-        </dd>
-        <dt className="text-muted-foreground">{t("route.observed")}</dt>
-        <dd>
-          <RouteStateChip state={status?.state ?? RouteState.UNSPECIFIED} />
-          {status && status.gatewaysTotal > 0 && (
-            <span className="ml-2 text-muted-foreground">{t("route.gateways", { serving: status.gatewaysServing, total: status.gatewaysTotal })}</span>
-          )}
-        </dd>
+      <dl className="grid gap-4 rounded-xl border border-border bg-card p-5 text-sm shadow-xs sm:grid-cols-2">
+        <div className="grid gap-1.5">
+          <dt className="text-muted-foreground">{t("route.desired")}</dt>
+          <dd>
+            {[r.enabled ? t("route.enabled") : t("route.disabled"), t("route.group", { name: groups.data?.get(r.gatewayGroupId) ?? r.gatewayGroupId }),
+              ...routeAddress(r)].join(" · ")}
+          </dd>
+        </div>
+        <div className="grid gap-1.5">
+          <dt className="text-muted-foreground">{t("route.observed")}</dt>
+          <dd className="flex flex-wrap items-center gap-2">
+            <RouteStateChip state={status?.state ?? RouteState.UNSPECIFIED} />
+            {status && status.gatewaysTotal > 0 && (
+              <span className="text-muted-foreground">{t("route.gateways", { serving: status.gatewaysServing, total: status.gatewaysTotal })}</span>
+            )}
+          </dd>
+        </div>
       </dl>
       {r.spec.case === "udp" && <p className="text-sm text-muted-foreground">{t("route.mtu")}</p>}
 
-      <section aria-labelledby="targets-title" className="grid gap-2">
-        <h2 id="targets-title" className="text-lg font-semibold">{t("route.targets")}</h2>
-        <table className="w-full text-left text-sm">
-          <thead className="text-muted-foreground">
-            <tr>
-              {["connector", "address", "weight", "state"].map((c) => <th key={c} scope="col" className="py-1 font-medium">{t(`route.columns.${c}`)}</th>)}
-            </tr>
-          </thead>
-          <tbody>
-            {r.targets.map((tg) => (
-              <TargetRow key={tg.id} route={r} target={tg} connector={name(tg.connectorId)}
-                onEdit={() => setEditing(tg.id)}
-                onRemove={() => remove.mutateAsync({ routeTargetId: tg.id, etag: tg.etag }).then((res) => done({ revision: res.revision, status: res.applyStatus }))} />
-            ))}
-          </tbody>
-        </table>
-        {r.targets.length === 0 && <p className="text-sm">{t("route.noTargets")}</p>}
-        {editing ? (
-          <TargetForm route={r} target={r.targets.find((tg) => tg.id === editing)} connectors={connectors}
-            onDone={(w) => void done(w)} onCancel={() => setEditing(undefined)} />
-        ) : (
-          <Button variant="outline" size="sm" className="justify-self-start" onClick={() => setEditing("new")}>{t("targetForm.addButton")}</Button>
-        )}
-      </section>
-
-      <RouteTraffic routeId={r.id} />
-
-      {org && <RoutePolicies key={r.etag} orgId={org.orgId} route={r} onDone={(w) => void done(w)} />}
-
       {gatewayProblems.length > 0 && (
-        <section aria-labelledby="gateways-title" className="grid gap-2">
-          <h2 id="gateways-title" className="text-lg font-semibold">{t("route.gatewaysTitle")}</h2>
-          <ul className="text-sm">
+        <Card title={t("route.gatewaysTitle")}>
+          <ul className="grid gap-1.5 text-sm">
             {gatewayProblems.map((g) => <li key={g.id}>{name(g.id)}: {t(`notServing.${g.reason}`, { defaultValue: g.reason })}</li>)}
           </ul>
-        </section>
+        </Card>
       )}
 
       {(status?.rejections.length ?? 0) > 0 && (
-        <section aria-labelledby="rejections-title" className="grid gap-2">
-          <h2 id="rejections-title" className="text-lg font-semibold">{t("route.rejections")}</h2>
-          <ul className="grid gap-1 text-sm">
+        <Card title={t("route.rejections")}>
+          <ul className="grid gap-1.5 text-sm">
             {status!.rejections.map((a) => (
               <li key={a.agentId}>
                 <span className="font-medium">{name(a.agentId)}</span>: {a.errors.map((e) => e.message).join("; ") || t("route.noReason")}
               </li>
             ))}
           </ul>
-        </section>
+        </Card>
       )}
+
+      <Card title={t("route.targets")} actions={!editing && (
+        <Button variant="outline" size="sm" onClick={() => setEditing("new")}><Plus aria-hidden="true" />{t("targetForm.addButton")}</Button>
+      )}>
+        {r.targets.length === 0 ? (
+          <p className="text-sm text-muted-foreground">{t("route.noTargets")}</p>
+        ) : (
+          <Table framed={false}>
+            <THead>
+              <tr>
+                {["connector", "address", "weight", "state"].map((c) => <TH key={c}>{t(`route.columns.${c}`)}</TH>)}
+              </tr>
+            </THead>
+            <tbody>
+              {r.targets.map((tg) => (
+                <TargetRow key={tg.id} route={r} target={tg} connector={name(tg.connectorId)}
+                  onEdit={() => setEditing(tg.id)}
+                  onRemove={() => remove.mutateAsync({ routeTargetId: tg.id, etag: tg.etag }).then((res) => done({ revision: res.revision, status: res.applyStatus }))} />
+              ))}
+            </tbody>
+          </Table>
+        )}
+        {editing && (
+          <TargetForm route={r} target={r.targets.find((tg) => tg.id === editing)} connectors={connectors}
+            onDone={(w) => void done(w)} onCancel={() => setEditing(undefined)} />
+        )}
+      </Card>
+
+      <RouteTraffic routeId={r.id} />
+
+      {org && <RoutePolicies key={r.etag} orgId={org.orgId} route={r} onDone={(w) => void done(w)} />}
     </div>
   );
 }
@@ -165,20 +177,20 @@ function TargetRow({ route: r, target, connector, onEdit, onRemove }: {
   const fallback = transports.has(DataTransport.H2) && !transports.has(DataTransport.QUIC) && r.transport !== DataTransport.H2;
   const [asking, setAsking] = useState(false);
   return (
-    <tr className="border-t border-border align-top">
-      <td className="py-2">{connector}</td>
-      <td className="py-2 font-mono">{address}</td>
-      <td className="py-2">{target.weight}</td>
-      <td className="py-2">
+    <TR>
+      <TD className="font-medium">{connector}</TD>
+      <TD className="font-mono">{address}</TD>
+      <TD>{target.weight}</TD>
+      <TD>
         {!target.enabled ? (
-          t("route.targetDisabled")
+          <Status look="off">{t("route.targetDisabled")}</Status>
         ) : problem ? (
-          <span className="text-warn">{t(`notServing.${problem.reason}`, { defaultValue: problem.reason })}</span>
+          <Status look="warn">{t(`notServing.${problem.reason}`, { defaultValue: problem.reason })}</Status>
         ) : (
-          <span className="text-ok">{t("route.targetReady")}</span>
+          <Status look="ok">{t("route.targetReady")}</Status>
         )}
-        {fallback && <div className="text-muted-foreground">{t("route.fallback")}</div>}
-        <div className="mt-1 flex items-center gap-2">
+        {fallback && <div className="mt-1 text-muted-foreground">{t("route.fallback")}</div>}
+        <div className="mt-2 flex flex-wrap items-center gap-2">
           {asking ? (
             <>
               <span>{t("targetForm.ask", { address })}</span>
@@ -193,15 +205,15 @@ function TargetRow({ route: r, target, connector, onEdit, onRemove }: {
           )}
         </div>
         {problem?.reason === "BLOCKED_BY_LOCAL_POLICY" && problem.detail && (
-          <div className="mt-1 grid gap-1">
+          <div className="mt-2 grid gap-1.5">
             <span>{t("route.runOn", { connector })}</span>
-            <span className="flex items-center gap-2">
-              <code className="rounded bg-muted px-1.5 py-0.5 font-mono">{allowCommand(problem.detail)}</code>
+            <span className="flex flex-wrap items-center gap-2">
+              <code className="rounded-md bg-muted px-2 py-1 font-mono">{allowCommand(problem.detail)}</code>
               <Button size="sm" variant="outline" onClick={() => void navigator.clipboard?.writeText(allowCommand(problem.detail))}>{t("mfa.copy")}</Button>
             </span>
           </div>
         )}
-      </td>
-    </tr>
+      </TD>
+    </TR>
   );
 }

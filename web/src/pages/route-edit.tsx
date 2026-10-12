@@ -5,10 +5,12 @@ import { Code, ConnectError, createClient } from "@connectrpc/connect";
 import { useMutation, useQuery, useTransport } from "@connectrpc/connect-query";
 import { useQueryClient } from "@tanstack/react-query";
 import { getRouteApi, Link } from "@tanstack/react-router";
+import { ChevronLeft } from "lucide-react";
 import { useState } from "react";
 import { useForm, type Resolver } from "react-hook-form";
 import { useTranslation } from "react-i18next";
 import { ApplyStatusView, useLiveApplyStatus } from "@/components/apply-status";
+import { PageHeader } from "@/components/page-header";
 import { Alert } from "@/components/public-page";
 import { Button } from "@/components/ui/button";
 import type { Revision } from "@/gen/rpmgr/v1/common_pb";
@@ -115,15 +117,22 @@ function RouteForm({ base, initial, onRestart }: { base: Route; initial?: RouteV
   }
 
   return (
-    <div className="grid max-w-2xl gap-6">
-      <h1 className="text-2xl font-semibold">{t("routeForm.title", { name: base.name, type: t(`routeType.${routeType(base) || "unknown"}`) })}</h1>
+    <div className="grid max-w-3xl gap-6">
+      <div className="grid gap-2">
+        <Link to="/routes/$routeId" params={{ routeId: base.id }} className="inline-flex w-fit items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
+          <ChevronLeft aria-hidden="true" className="size-4" />{base.name}
+        </Link>
+        <PageHeader title={t("routeForm.title", { name: base.name, type: t(`routeType.${routeType(base) || "unknown"}`) })} />
+      </div>
       {live ? (
         <>
           <ApplyStatusView status={live} revision={write?.revision} name={(id) => names.data?.get(id) || id} />
-          <Link to="/routes/$routeId" params={{ routeId: base.id }} className="underline">{t("routeForm.back")}</Link>
+          <Button asChild className="justify-self-start">
+            <Link to="/routes/$routeId" params={{ routeId: base.id }}>{t("routeForm.back")}</Link>
+          </Button>
         </>
       ) : (
-        <form onSubmit={form.handleSubmit(save)} className="grid gap-4" noValidate>
+        <form onSubmit={form.handleSubmit(save)} className="grid gap-4 rounded-xl border border-border bg-card p-5 shadow-xs" noValidate>
           {conflict && (
             <Conflict base={base} mine={conflict.mine} theirs={conflict.theirs}
               onTop={() => onRestart(conflict.theirs, onTop(base, conflict.mine, conflict.theirs))} onDiscard={() => onRestart(conflict.theirs)} />
@@ -131,7 +140,7 @@ function RouteForm({ base, initial, onRestart }: { base: Route; initial?: RouteV
           {fields.map((f) => <FormField key={f.key} field={f} form={form} />)}
           {other.map((m) => <Alert key={m}>{m}</Alert>)}
           {previewed && <PreviewPanel preview={previewed} name={(id) => names.data?.get(id) || id} />}
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2 border-t border-border pt-4">
             <Button type="submit" disabled={update.isPending}>{t("routeForm.save")}</Button>
             <Button variant="outline" disabled={preview.isPending} onClick={() => void form.handleSubmit(check)()}>{t("preview.button")}</Button>
             <Button asChild variant="outline"><Link to="/routes/$routeId" params={{ routeId: base.id }}>{t("stepUp.cancel")}</Link></Button>
