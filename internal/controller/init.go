@@ -62,6 +62,9 @@ type InitResult struct {
 	KEK         string // where the KEK is, and whether init created it
 	// FirstUserLink is the one-time link that creates the first user.
 	FirstUserLink string
+	// Key is the KEK itself, for all-in-one's init, whose in-memory controller cannot load a new
+	// systemd credential outside a service; never printed.
+	Key secret.KEK
 }
 
 // ErrInitialised is returned when the database already holds an installation.
@@ -143,7 +146,7 @@ func Init(ctx context.Context, o InitOptions) (InitResult, error) {
 		return InitResult{}, fmt.Errorf("controller: initialised, but no first-user link (run `rpmgr user reset-password`): %w", err)
 	}
 	return InitResult{TrustDomain: td, RootPin: pki.RootPin(ca.Root()), Root: ca.Root(), KEK: where,
-		FirstUserLink: accounts.SetupURL(cfg.PublicURL, tok)}, nil
+		FirstUserLink: accounts.SetupURL(cfg.PublicURL, tok), Key: kek}, nil
 }
 
 func (o *InitOptions) setDefaults() {

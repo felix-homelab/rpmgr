@@ -87,6 +87,9 @@ type RunOptions struct {
 	// release check (tests).
 	ReleaseSource release.Source
 	ReleaseRoots  []release.PublicKey
+	// KEK, if set, is used instead of loading the boot file's: all-in-one's init passes the KEK it
+	// has just obtained, as a new systemd credential is readable only inside a service.
+	KEK *secret.KEK
 }
 
 // ErrNotInitialised is returned by Run for a database without an installation.
@@ -112,8 +115,10 @@ func Run(ctx context.Context, o RunOptions) error {
 	if err != nil {
 		return err
 	}
-	kek, err := loadKEK(cfg, o.Getenv)
-	if err != nil {
+	var kek secret.KEK
+	if o.KEK != nil {
+		kek = *o.KEK
+	} else if kek, err = loadKEK(cfg, o.Getenv); err != nil {
 		return err
 	}
 	sealer, err := secret.NewSealer(kek)
