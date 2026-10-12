@@ -59,6 +59,9 @@ curl -fsSLO https://github.com/felix-homelab/rpmgr/releases/latest/download/inst
 sudo sh install.sh            # --prerelease for a release candidate, --help for the options
 ```
 
+`sudo rpmgr setup --role <role>` sets a host up for its role, from the boot file to the running
+unit, and shows its plan before it changes anything ([10](docs/10-operations.md#install)).
+
 ## Building from source
 
 rpmgr can also be built from source: Node of the version in `web/.nvmrc` for the web UI, and Go of

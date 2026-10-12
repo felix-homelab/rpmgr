@@ -178,6 +178,15 @@ func (o *InitOptions) setDefaults() {
 // "Supported platforms").
 const credentialSystemd = 250
 
+// KEKSourceFor is the KEK source a new boot file takes on a host with that systemd version: the
+// systemd credential where systemd has encrypted credentials, else a file.
+func KEKSourceFor(systemd int) string {
+	if systemd < credentialSystemd {
+		return config.KEKFile
+	}
+	return config.KEKSystemdCredential
+}
+
 // SystemdVersion returns the version systemctl reports, or 0 without systemd.
 func SystemdVersion() int {
 	out, err := exec.Command("systemctl", "--version").Output()
@@ -217,8 +226,8 @@ func bootFile(o InitOptions, cfg *config.Controller) error {
 		return fmt.Errorf("%s does not exist; --public-url is needed to write it", o.ConfigPath)
 	}
 	doc := map[string]any{"version": config.Version, "public_url": o.PublicURL}
-	if o.KEKSource == "" && o.SystemdVersion() < credentialSystemd {
-		o.KEKSource = config.KEKFile
+	if o.KEKSource == "" {
+		o.KEKSource = KEKSourceFor(o.SystemdVersion())
 	}
 	switch o.KEKSource {
 	case "", config.KEKSystemdCredential:

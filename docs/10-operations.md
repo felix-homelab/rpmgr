@@ -37,11 +37,24 @@ Architectures per role are in [05](05-features.md#platform-support).
 **One instance per role per host.** Paths, unit names and the admin port are fixed per role, so a
 host runs at most one controller (or all-in-one), one gateway and one connector.
 
-A first installation of the controller, as root:
+A first installation sets the host up with `rpmgr setup` ([16](16-cli.md)), as root, once the
+global install script has installed the binary, the user and the directories:
 
 ```sh
 curl -fsSLO https://github.com/felix-homelab/rpmgr/releases/latest/download/install.sh
 sh install.sh --no-setup        # verifies, then installs the binary, the user, the directories
+rpmgr setup --role all-in-one --public-url https://panel.example.com
+```
+
+It shows its plan and asks before it changes anything (`--yes` does not ask). It writes the boot
+file, runs `init` (or `rpmgr enroll` for a gateway or connector), installs and starts the unit,
+waits until the role is ready, and prints the trust domain, the CA pin and the first-user link. A
+public name orders its certificate from Let's Encrypt production at the first start;
+`--acme-directory staging` tries a setup first with certificates no browser trusts. The same, step
+by step, for a controller:
+
+```sh
+sh install.sh --no-setup
 rpmgr controller init --public-url https://panel.example.com   # creates DB, trust domain, root CA, first-user link
 rpmgr systemd-unit controller > /etc/systemd/system/rpmgr-controller.service
 systemctl daemon-reload
@@ -49,7 +62,8 @@ systemctl enable --now rpmgr-controller
 ```
 
 By hand, with the binary verified as in [04](04-security.md#release-signing), `sh install.sh`
-stands for:
+stands for the following; `rpmgr setup` also creates the user and the directories when they are
+missing:
 
 ```sh
 install -m 0755 rpmgr /usr/local/bin/rpmgr

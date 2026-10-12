@@ -9,6 +9,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/pem"
 	"fmt"
 	"log/slog"
 	"math/big"
@@ -122,6 +123,21 @@ func (w *webCert) HSTS(next http.Handler) http.Handler {
 		}
 		next.ServeHTTP(rw, r)
 	})
+}
+
+// SelfSignedPEM makes a self-signed certificate for host as selfSigned does, PEM-encoded, for
+// `rpmgr setup` to write as the boot file's certificate files.
+func SelfSignedPEM(host string) (cert, key []byte, err error) {
+	c, err := selfSigned(host)
+	if err != nil {
+		return nil, nil, err
+	}
+	der, err := x509.MarshalPKCS8PrivateKey(c.PrivateKey)
+	if err != nil {
+		return nil, nil, err
+	}
+	return pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: c.Certificate[0]}),
+		pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: der}), nil
 }
 
 // selfSigned makes a certificate for host that no client trusts, so a browser warns rather than

@@ -4,6 +4,7 @@ package setup
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"os"
@@ -15,8 +16,11 @@ import (
 
 	agentv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/agent/v1"
 	"github.com/felix-homelab/rpmgr/internal/agent"
+	"github.com/felix-homelab/rpmgr/internal/allinone"
 	"github.com/felix-homelab/rpmgr/internal/config"
+	"github.com/felix-homelab/rpmgr/internal/controller"
 	"github.com/felix-homelab/rpmgr/internal/policy"
+	"github.com/felix-homelab/rpmgr/internal/settings"
 	"github.com/felix-homelab/rpmgr/internal/units"
 	"github.com/felix-homelab/rpmgr/internal/version"
 )
@@ -37,6 +41,7 @@ type Plan struct {
 type booted struct {
 	admin  string // the admin listener
 	policy string // the connector-local policy file
+	cred   string // the KEK's systemd credential, for the unit; empty for a KEK file
 }
 
 type step struct {
@@ -46,6 +51,8 @@ type step struct {
 
 // Result is what setup did, and what the operator needs next.
 type Result struct {
+	// Controller and all-in-one: as `rpmgr <role> init` prints them.
+	TrustDomain, Pin, FirstUserLink, KEK, GatewayID string
 	// Gateway and connector: the enrolled identity.
 	AgentID, AgentKind string
 	Unit               string // the unit setup installed and started; empty without one
@@ -72,7 +79,11 @@ func New(v Values, h Host) (*Plan, error) {
 		return nil, err
 	}
 	p.prepare()
-	p.agentSteps()
+	if v.Role.Initialises() {
+		p.initSteps()
+	} else {
+		p.agentSteps()
+	}
 	if !v.NoUnit {
 		p.unitSteps()
 	}
@@ -121,6 +132,7 @@ func (p *Plan) bootFile() error {
 			listen[key] = val
 		}
 	}
+	set("https", v.ListenHTTPS)
 	set("tcp", v.ListenTCP)
 	set("udp", v.ListenUDP)
 	set("http", v.ListenHTTP)
@@ -131,6 +143,43 @@ func (p *Plan) bootFile() error {
 	nonDefaultLib := paths.Lib != defaults.Lib
 	var parse func([]byte) (booted, error)
 	switch v.Role {
+	case Controller, AllInOne:
+		doc["public_url"] = strings.TrimSuffix(v.PublicURL, "/")
+		if nonDefaultLib {
+			doc["database"] = map[string]string{"dsn": filepath.Join(paths.Lib, "controller.db")}
+		}
+		source := v.KEKSource
+		if source == "" {
+			source = controller.KEKSourceFor(p.h.SystemdVersion())
+		}
+		if source == config.KEKFile {
+			path := v.KEKPath
+			if path == "" {
+				path = filepath.Join(paths.Etc, "kek")
+			}
+			doc["kek"] = map[string]string{"source": config.KEKFile, "path": path}
+		} else {
+			doc["kek"] = map[string]string{"source": config.KEKSystemdCredential}
+		}
+		if cert, key := p.tlsFiles(); cert != "" {
+			doc["tls"] = map[string]string{"cert_file": cert, "key_file": key}
+		}
+		if v.Role == AllInOne {
+			if nonDefaultLib {
+				doc["state_dir"] = paths.Lib
+			}
+			parse = func(b []byte) (booted, error) {
+				var c config.AllInOne
+				err := config.Parse(b, &c)
+				return booted{admin: c.Listen.Admin, cred: credential(c.KEK.Source, c.KEK.Name)}, err
+			}
+		} else {
+			parse = func(b []byte) (booted, error) {
+				var c config.Controller
+				err := config.Parse(b, &c)
+				return booted{admin: c.Listen.Admin, cred: credential(c.KEK.Source, c.KEK.Name)}, err
+			}
+		}
 	case Gateway, Connector:
 		doc["controller"] = map[string]any{"endpoints": []string{strings.TrimSuffix(v.ControllerURL, "/")}}
 		if nonDefaultLib {
@@ -170,6 +219,30 @@ func (p *Plan) bootFile() error {
 	return nil
 }
 
+func credential(source, name string) string {
+	if source == config.KEKSystemdCredential {
+		return name
+	}
+	return ""
+}
+
+// tlsFiles returns the certificate and key files of the boot file: the operator's, or for a
+// self-signed certificate of a public name the ones setup makes, which keep the controller from
+// ordering one from its ACME CA at the first start. A controller whose name no public CA can
+// certify makes its own self-signed certificate, so it needs none.
+func (p *Plan) tlsFiles() (string, string) {
+	switch p.v.TLS {
+	case TLSFiles:
+		return p.v.CertFile, p.v.KeyFile
+	case TLSSelfSigned:
+		if host, public := PublicHost(p.v.PublicURL); public {
+			dir := filepath.Join(p.h.Paths.Etc, "tls")
+			return filepath.Join(dir, host+".crt"), filepath.Join(dir, host+".key")
+		}
+	}
+	return "", ""
+}
+
 // hostChecks refuses what setup must not overwrite, and what the host cannot do.
 func (p *Plan) hostChecks() error {
 	v, h := p.v, p.h
@@ -177,7 +250,20 @@ func (p *Plan) hostChecks() error {
 	if p.again && !v.Force {
 		errs = append(errs, fmt.Errorf("%s exists; setup replaces it only with --force (keeping the old one beside it)", p.boot))
 	}
-	if _, err := os.Lstat(filepath.Join(h.Paths.Lib, "identity", agent.ChainFile)); err == nil && !v.Force {
+	if v.Role.Initialises() {
+		db := filepath.Join(h.Paths.Lib, "controller.db")
+		if exists(db) {
+			errs = append(errs, fmt.Errorf("%s exists: this host holds an installation already, which setup never initialises again", db))
+		}
+		if v.KEKSource == config.KEKSystemdCredential && h.SystemdVersion() < 250 {
+			errs = append(errs, errors.New("a KEK in a systemd credential needs systemd 250 or newer; choose the file"))
+		}
+		if v.TLS == TLSFiles && v.CertFile != "" && v.KeyFile != "" {
+			if _, err := tls.LoadX509KeyPair(v.CertFile, v.KeyFile); err != nil {
+				errs = append(errs, fmt.Errorf("the certificate and key files: %w", err))
+			}
+		}
+	} else if exists(filepath.Join(h.Paths.Lib, "identity", agent.ChainFile)) && !v.Force {
 		errs = append(errs, errors.New("this host is enrolled already; setup enrolls it again only with --force"))
 	}
 	if !v.NoUnit && h.SystemdVersion() == 0 {
@@ -239,6 +325,63 @@ func (p *Plan) writeBoot() {
 	})
 }
 
+// initSteps initialise a controller or all-in-one through `rpmgr <role> init`'s code.
+func (p *Plan) initSteps() {
+	v, h := p.v, p.h
+	// A certificate an earlier run made is kept.
+	if cert, key := p.tlsFiles(); cert != "" && v.TLS == TLSSelfSigned && (!exists(cert) || !exists(key)) {
+		host, _ := PublicHost(v.PublicURL)
+		p.add("make a self-signed certificate for "+host+" in "+filepath.Dir(cert), func(_ context.Context, r *Result) error {
+			r.created(cert)
+			r.created(key)
+			return selfSigned(host, cert, key, h)
+		})
+	}
+	p.writeBoot()
+	what := "initialise the controller: KEK, database, trust domain and CA"
+	if v.Role == AllInOne {
+		what = "initialise the all-in-one: KEK, database, trust domain and CA, and enroll its gateway"
+	}
+	p.add(what, func(ctx context.Context, r *Result) error {
+		o := controller.InitOptions{ConfigPath: p.boot, CredentialsDir: filepath.Join(h.Paths.Etc, "credstore"), Getenv: h.Getenv,
+			Encrypt: h.Encrypt, SystemdVersion: h.SystemdVersion, ServiceUser: ServiceUser, Now: h.Now}
+		var ir controller.InitResult
+		if v.Role == AllInOne {
+			a, err := allinone.Init(ctx, o)
+			if err != nil {
+				return p.initFailed(r, err)
+			}
+			ir, r.GatewayID = a.InitResult, a.GatewayID
+		} else {
+			c, err := controller.Init(ctx, o)
+			if err != nil {
+				return p.initFailed(r, err)
+			}
+			ir = c
+		}
+		r.TrustDomain, r.Pin, r.FirstUserLink, r.KEK = ir.TrustDomain, ir.RootPin, ir.FirstUserLink, ir.KEK
+		return nil
+	})
+	// The instance's ACME CA certifies the routes too, whatever certifies the public URL.
+	dir, _ := Directory(v.ACMEDirectory)
+	if dir != "" || v.ACMEEmail != "" {
+		p.add("set the instance's ACME directory and e-mail address", func(ctx context.Context, _ *Result) error {
+			return controller.SetACME(ctx, p.boot, dir, v.ACMEEmail)
+		})
+	}
+}
+
+// initFailed adds what a failed init may have created to the result.
+func (p *Plan) initFailed(r *Result, err error) error {
+	for _, f := range []string{filepath.Join(p.h.Paths.Lib, "controller.db"), filepath.Join(p.h.Paths.Etc, "kek"),
+		filepath.Join(p.h.Paths.Etc, "credstore")} {
+		if exists(f) {
+			r.Written = append(r.Written, f)
+		}
+	}
+	return err
+}
+
 // agentSteps enroll a gateway or connector through `rpmgr enroll`'s code, then write its files.
 func (p *Plan) agentSteps() {
 	v, h := p.v, p.h
@@ -297,7 +440,7 @@ func (p *Plan) unitSteps() {
 		title += ", restart " + name
 	}
 	p.add(title, func(ctx context.Context, r *Result) error {
-		unit, err := units.Render(role, units.Options{Bin: h.Paths.Bin})
+		unit, err := units.Render(role, units.Options{Bin: h.Paths.Bin, Credential: p.cred})
 		if err != nil {
 			return err
 		}
@@ -354,8 +497,13 @@ func writeNew(path string, data []byte, perm os.FileMode) error {
 // Summary lists the choices for the confirmation, in order; the token only as given.
 func (p *Plan) Summary() [][2]string {
 	v := p.v
-	out := [][2]string{{"role", string(v.Role)},
-		{"controller", v.ControllerURL}, {"CA pin", v.Pin}, {"token", "given (not shown)"}}
+	out := [][2]string{{"role", string(v.Role)}}
+	if v.Role.Initialises() {
+		out = append(out, [2]string{"public URL", v.PublicURL}, [2]string{"KEK", p.kekSummary()}, [2]string{"certificate", p.tlsSummary()},
+			[2]string{"ACME CA", p.acmeSummary()})
+	} else {
+		out = append(out, [2]string{"controller", v.ControllerURL}, [2]string{"CA pin", v.Pin}, [2]string{"token", "given (not shown)"})
+	}
 	if v.Role == Connector {
 		targets := "none yet (rpmgr policy allow-target adds them)"
 		if len(v.AllowTargets) > 0 {
@@ -372,4 +520,36 @@ func (p *Plan) Summary() [][2]string {
 		unit = "none (--no-unit)"
 	}
 	return append(out, [2]string{"systemd unit", unit})
+}
+
+func (p *Plan) kekSummary() string {
+	var doc struct {
+		KEK struct{ Source, Path string } `yaml:"kek"`
+	}
+	_ = yaml.Unmarshal(p.data, &doc)
+	if doc.KEK.Source == config.KEKFile {
+		return "file " + doc.KEK.Path
+	}
+	return "systemd credential " + filepath.Join(p.h.Paths.Etc, "credstore", "rpmgr-kek")
+}
+
+func (p *Plan) tlsSummary() string {
+	switch p.v.TLS {
+	case TLSFiles:
+		return "files " + p.v.CertFile + ", " + p.v.KeyFile
+	case TLSACME:
+		return "from the instance's ACME CA at the first start"
+	}
+	return "self-signed, until a certificate replaces it"
+}
+
+func (p *Plan) acmeSummary() string {
+	dir, _ := Directory(p.v.ACMEDirectory)
+	if dir == "" {
+		dir = settings.LetsEncrypt + " (the default)"
+	}
+	if p.v.ACMEEmail != "" {
+		dir += ", account " + p.v.ACMEEmail
+	}
+	return dir
 }
