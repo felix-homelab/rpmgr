@@ -37,8 +37,8 @@ during this run.
   again, through the one port left open.
 - **Keys:** the public keys of the two interim roots from the key ceremony
   ([RELEASING](../../RELEASING.md#interim-signing-keys)), and the key IDs recorded on paper.
-- **Workstation:** a second machine for the checks "from the internet". With `gh` and `cosign`, it
-  also verifies the release's provenance and signatures.
+- **Workstation:** a second machine for the checks "from the internet". With `gh`, it also
+  verifies the release's provenance attestation, the keyless signature of each release file.
 
 Below, `<ip>` is the VM's public address, `v` the version and `a` the architecture:
 
@@ -73,13 +73,11 @@ h=$(sha256sum rpmgr-$v-linux-$a | cut -d' ' -f1)
 grep -q "\"sha256\": *\"$h\"" manifest.json && echo "the manifest lists the artifact"
 ```
 
-On the workstation, after downloading the artifact and its `.sigstore.json`:
+On the workstation, after downloading the artifact:
 
 ```sh
-gh attestation verify rpmgr-$v-linux-$a --repo felix-homelab/rpmgr
-cosign verify-blob --bundle rpmgr-$v-linux-$a.sigstore.json \
-  --certificate-identity https://github.com/felix-homelab/rpmgr/.github/workflows/release.yml@refs/tags/v$v \
-  --certificate-oidc-issuer https://token.actions.githubusercontent.com rpmgr-$v-linux-$a
+gh attestation verify rpmgr-$v-linux-$a --repo felix-homelab/rpmgr \
+  --signer-workflow felix-homelab/rpmgr/.github/workflows/release.yml
 ```
 
 Record every verification's output. A failure ends the run: the release is not used.

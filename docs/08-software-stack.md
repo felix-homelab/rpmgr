@@ -119,7 +119,7 @@ flowchart TB
 | Containers | Distroless, non-root OCI images `ghcr.io/felix-homelab/rpmgr` (multi-arch), signed |
 | Packages | Phase 2: `.deb` and `.rpm` built with nfpm, served from a signed apt/yum repository on GitHub Pages; a Homebrew tap (macOS connector) and winget/MSI (Windows connector). `.apk` is not planned; a Helm chart is Phase 3 ([10](10-operations.md#install)) |
 | Services | Hardened systemd units; Windows service and macOS launchd daemon for connectors in Phase 2 ([10](10-operations.md#install)) |
-| Signing | Ed25519 release manifests (in-binary verification); cosign, an SPDX JSON SBOM generated with syft, SLSA provenance for the ecosystem [V VB-05] |
+| Signing | Ed25519 release manifests (in-binary verification); an SPDX JSON SBOM generated with syft and SLSA provenance attestations for the ecosystem, cosign for the container images [V VB-05] |
 | CI | GitHub Actions: lint (golangci-lint with gosec and forbidigo rules), `govulncheck`, `-race` tests, fuzzing, `buf lint`/`buf breaking`, migrations on both dialects, e2e topology matrix, Playwright, gitleaks secret scanning; nightly correctness runs; benchmarks on the reference testbed before each release ([12](12-testing-and-quality.md#continuous-integration)) |
 | Repository hosting | GitHub, `github.com/felix-homelab/rpmgr`, without a mirror ([D3](14-open-decisions.md#product-and-project)); Go module path `github.com/felix-homelab/rpmgr` |
 
