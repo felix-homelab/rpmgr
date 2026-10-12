@@ -47,6 +47,16 @@ function page() {
   return calls;
 }
 
+// empty shows the page of an org without domain claims, certificates and CA bundles.
+function empty() {
+  show("/domains", auth({ getSession: () => ({ userId: "usr_ada", memberships: [{ orgId: "org_1", role: "owner" }] }) }), (router) => {
+    router.service(UserService, { getMe: () => ({ user: { id: "usr_ada", theme: Theme.SYSTEM } }) });
+    router.service(DomainService, { listDomains: () => ({}) });
+    router.service(RouteService, { listRoutes: () => ({}) });
+    router.service(CertificateService, { listCertificates: () => ({}), listCABundles: () => ({}) });
+  });
+}
+
 async function cert(name: string) {
   const s = within(await screen.findByRole("region", { name: "Certificates" }));
   await s.findByText(name);
@@ -111,5 +121,19 @@ describe("CABundles", () => {
     await waitFor(() => expect(calls.updateBundle).toHaveLength(1));
     const u = calls.updateBundle[0]!;
     expect([u.caBundle?.id, u.caBundle?.name, u.caBundle?.pem, u.caBundle?.targetIds, u.updateMask?.paths, u.etag]).toEqual(["cab_1", "office-2", chain, ["tgt_1", "tgt_2"], ["name", "pem"], "5"]);
+  });
+
+  it("says what each empty section is for, and still offers to add the first", async () => {
+    empty();
+    for (const [region, text, add] of [
+      ["Domains", "The org has no domain claim. Routes need a verified domain for their hostnames.", "Claim a domain"],
+      ["Certificates", "The org has no certificate yet. HTTP routes with ACME get theirs on their own.", "Upload a certificate"],
+      ["CA bundles", "The org has no CA bundle. HTTPS targets are verified with the system's roots unless they name one.", "Add a CA bundle"],
+    ]) {
+      const s = within(await screen.findByRole("region", { name: region }));
+      expect(await s.findByText(text!)).toBeTruthy();
+      expect(s.queryByRole("listitem")).toBeNull();
+      expect(s.getByRole("button", { name: add })).toBeTruthy();
+    }
   });
 });

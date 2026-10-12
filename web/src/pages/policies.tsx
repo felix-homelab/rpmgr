@@ -7,12 +7,17 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState, type FormEvent } from "react";
 import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
+import { Plus, ShieldCheck } from "lucide-react";
 import { ApplyStatusView, useLiveApplyStatus } from "@/components/apply-status";
+import { EmptyState } from "@/components/empty-state";
+import { Field } from "@/components/field";
 import { LinesField, trimmed } from "@/components/lines-field";
 import { ManifestButton } from "@/components/manifest";
+import { PageHeader } from "@/components/page-header";
 import { Alert } from "@/components/public-page";
+import { Row, RowList } from "@/components/row-list";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { Input, Select } from "@/components/ui/input";
 import type { Revision } from "@/gen/rpmgr/v1/common_pb";
 import { AccessPolicySchema, AccessRuleSchema, PolicyService, type AccessPolicy, type AccessRule } from "@/gen/rpmgr/v1/policy_pb";
 import type { ApplyStatus } from "@/gen/rpmgr/v1/status_pb";
@@ -73,24 +78,27 @@ export function Policies() {
   const [write, setWrite] = useState<{ revision?: Revision; status?: ApplyStatus }>();
   const live = useLiveApplyStatus(org?.orgId ?? "", write?.revision, write?.status);
   const routeName = (id: string) => routes.data?.find((r) => r.id === id)?.name ?? id;
+  const add = (
+    <Button size="sm" disabled={!org} onClick={() => setEditing("new")}><Plus aria-hidden="true" />{t("policies.add")}</Button>
+  );
   return (
-    <section aria-labelledby="policies-title" className="grid max-w-4xl gap-4">
-      <div className="flex items-center gap-4">
-        <h1 id="policies-title" className="text-2xl font-semibold">{t("policies.title")}</h1>
-        <Button size="sm" className="ml-auto" disabled={!org} onClick={() => setEditing("new")}>{t("policies.add")}</Button>
+    <section aria-labelledby="policies-title" className="grid max-w-5xl gap-6">
+      <PageHeader id="policies-title" title={t("policies.title")} description={t("policies.intro")} actions={<>
         {org && <ManifestButton label={t("manifest.export")} title={t("manifest.ofKind", { what: t("policies.title") })} orgId={org.orgId} kinds={["AccessPolicy"]} file="access-policies" />}
-      </div>
+        {add}
+      </>} />
       {live && <ApplyStatusView status={live} revision={write?.revision} name={(id) => names.data?.get(id) || id} />}
       {editing && org && (
         <PolicyForm key={editing} orgId={org.orgId} policy={list.data?.find((p) => p.id === editing)}
           onDone={(w) => (setEditing(undefined), w && setWrite(w))} />
       )}
-      <ul className="grid gap-2">
-        {[...(list.data ?? [])].sort((a, b) => a.name.localeCompare(b.name)).map((p) => (
-          <PolicyRow key={p.id} policy={p} routeName={routeName} onEdit={() => setEditing(p.id)} onDone={setWrite} />
-        ))}
-      </ul>
-      {list.data?.length === 0 && <p className="text-sm">{t("policies.none")}</p>}
+      {list.data?.length === 0 ? <EmptyState icon={ShieldCheck} action={!editing && add}>{t("policies.none")}</EmptyState> : (
+        <RowList framed>
+          {[...(list.data ?? [])].sort((a, b) => a.name.localeCompare(b.name)).map((p) => (
+            <PolicyRow key={p.id} policy={p} routeName={routeName} onEdit={() => setEditing(p.id)} onDone={setWrite} />
+          ))}
+        </RowList>
+      )}
     </section>
   );
 }
@@ -113,27 +121,31 @@ function PolicyRow({ policy: p, routeName, onEdit, onDone }: {
   const [asking, setAsking] = useState(false);
   const [error, setError] = useState("");
   return (
-    <li className="grid gap-1 rounded-md border border-border p-3 text-sm">
-      <span className="font-medium">{p.name}</span>
-      {p.description && <span className="text-muted-foreground">{p.description}</span>}
-      <ol className="list-decimal pl-5">{p.rules.map((r, i) => <li key={i}>{summary(t, r)}</li>)}</ol>
-      <span className="text-muted-foreground">{p.routeIds.length ? t("policies.usedBy", { routes: p.routeIds.map(routeName).join(", ") }) : t("policies.unused")}</span>
-      <div className="flex flex-wrap items-center gap-2">
-        <Button size="sm" variant="outline" onClick={onEdit}>{t("targetForm.edit")}</Button>
-        {asking ? (
-          <>
-            <span>{t("policies.ask", { name: p.name })}</span>
-            <Button size="sm" variant="destructive" onClick={() => void remove.mutateAsync({ accessPolicyId: p.id, etag: p.etag }).then(
-              async (res) => (onDone({ revision: res.revision, status: res.applyStatus }), await queryClient.invalidateQueries()),
-              (err: unknown) => setError(ConnectError.from(err).rawMessage))}>{t("targetForm.remove")}</Button>
-            <Button size="sm" variant="outline" onClick={() => setAsking(false)}>{t("stepUp.cancel")}</Button>
-          </>
-        ) : (
-          <Button size="sm" variant="outline" onClick={() => setAsking(true)}>{t("targetForm.removeAsk")}</Button>
-        )}
+    <Row>
+      <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
+        <div className="grid gap-1">
+          <span className="font-medium">{p.name}</span>
+          {p.description && <span className="text-muted-foreground">{p.description}</span>}
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button size="sm" variant="outline" onClick={onEdit}>{t("targetForm.edit")}</Button>
+          {asking ? (
+            <>
+              <span>{t("policies.ask", { name: p.name })}</span>
+              <Button size="sm" variant="destructive" onClick={() => void remove.mutateAsync({ accessPolicyId: p.id, etag: p.etag }).then(
+                async (res) => (onDone({ revision: res.revision, status: res.applyStatus }), await queryClient.invalidateQueries()),
+                (err: unknown) => setError(ConnectError.from(err).rawMessage))}>{t("targetForm.remove")}</Button>
+              <Button size="sm" variant="outline" onClick={() => setAsking(false)}>{t("stepUp.cancel")}</Button>
+            </>
+          ) : (
+            <Button size="sm" variant="outline" onClick={() => setAsking(true)}>{t("targetForm.removeAsk")}</Button>
+          )}
+        </div>
       </div>
+      <ol className="grid list-decimal gap-0.5 pl-5 marker:text-muted-foreground">{p.rules.map((r, i) => <li key={i}>{summary(t, r)}</li>)}</ol>
+      <span className="text-muted-foreground">{p.routeIds.length ? t("policies.usedBy", { routes: p.routeIds.map(routeName).join(", ") }) : t("policies.unused")}</span>
       {error && <Alert>{error}</Alert>}
-    </li>
+    </Row>
   );
 }
 
@@ -171,30 +183,36 @@ function PolicyForm({ orgId, policy, onDone }: { orgId: string; policy?: AccessP
     }
   }
   return (
-    <form onSubmit={save} aria-label={t(policy ? "policies.editTitle" : "policies.addTitle")} className="grid gap-3 rounded-md border border-border p-3" noValidate>
-      <label className="grid gap-1 text-sm font-medium">{t("routeForm.fields.name")}<Input value={name} onChange={(e) => setName(e.target.value)} /></label>
-      <label className="grid gap-1 text-sm font-medium">{t("routeForm.fields.description")}<Input value={description} onChange={(e) => setDescription(e.target.value)} /></label>
+    <form onSubmit={save} aria-label={t(policy ? "policies.editTitle" : "policies.addTitle")}
+      className="grid gap-4 rounded-xl border border-border bg-card p-5 shadow-xs" noValidate>
+      <h2 className="font-semibold">{t(policy ? "policies.editTitle" : "policies.addTitle")}</h2>
+      <div className="grid gap-4 sm:grid-cols-2">
+        <Field label={t("routeForm.fields.name")} value={name} onChange={(e) => setName(e.target.value)} />
+        <Field label={t("routeForm.fields.description")} value={description} onChange={(e) => setDescription(e.target.value)} />
+      </div>
       <fieldset className="grid gap-3">
-        <legend className="text-sm font-medium">{t("policies.rules")}</legend>
+        <legend className="mb-1 text-sm font-medium">{t("policies.rules")}</legend>
         {rules.map((r, i) => (
-          <div key={i} role="group" aria-label={t("policies.ruleN", { n: i + 1 })} className="grid gap-2 rounded border border-border p-2">
+          <div key={i} role="group" aria-label={t("policies.ruleN", { n: i + 1 })} className="grid gap-3 rounded-lg border border-border bg-muted/40 p-3">
             <div className="flex flex-wrap items-center gap-2">
-              <select aria-label={t("policies.kind")} className="h-8 rounded-md border border-border bg-background px-2 text-sm" value={r.kind}
-                onChange={(e) => setRule(i, { kind: e.target.value as Kind })}>
+              <span aria-hidden="true" className="grid size-6 place-items-center rounded-full bg-muted text-xs font-medium text-muted-foreground">{i + 1}</span>
+              <Select aria-label={t("policies.kind")} className="w-56" value={r.kind} onChange={(e) => setRule(i, { kind: e.target.value as Kind })}>
                 {(["ipAllow", "ipDeny", "basicAuth"] as Kind[]).map((k) => <option key={k} value={k}>{t(`policies.kinds.${k}`)}</option>)}
-              </select>
-              <Button size="sm" variant="outline" disabled={i === 0} onClick={() => move(i, -1)}>{t("policies.up")}</Button>
-              <Button size="sm" variant="outline" disabled={i === rules.length - 1} onClick={() => move(i, 1)}>{t("policies.down")}</Button>
-              <Button size="sm" variant="outline" onClick={() => setRules(rules.filter((_, j) => j !== i))}>{t("policies.removeRule")}</Button>
+              </Select>
+              <span className="ml-auto flex flex-wrap gap-1">
+                <Button size="sm" variant="ghost" disabled={i === 0} onClick={() => move(i, -1)}>{t("policies.up")}</Button>
+                <Button size="sm" variant="ghost" disabled={i === rules.length - 1} onClick={() => move(i, 1)}>{t("policies.down")}</Button>
+                <Button size="sm" variant="ghost" onClick={() => setRules(rules.filter((_, j) => j !== i))}>{t("policies.removeRule")}</Button>
+              </span>
             </div>
             {r.kind === "basicAuth" ? (
               <div className="grid gap-2">
                 {r.users.map((u, k) => (
                   <div key={k} className="flex flex-wrap items-end gap-2">
-                    <label className="grid gap-1 text-sm">{t("policies.user")}
+                    <label className="grid gap-1.5 text-sm font-medium">{t("policies.user")}
                       <Input value={u.name} onChange={(e) => setRule(i, { users: r.users.map((x, m) => (m === k ? { ...x, name: e.target.value } : x)) })} />
                     </label>
-                    <label className="grid gap-1 text-sm">{t("login.password")}
+                    <label className="grid gap-1.5 text-sm font-medium">{t("login.password")}
                       <Input type="password" autoComplete="new-password" placeholder={policy ? t("policies.keep") : ""} value={u.password}
                         onChange={(e) => setRule(i, { users: r.users.map((x, m) => (m === k ? { ...x, password: e.target.value } : x)) })} />
                     </label>

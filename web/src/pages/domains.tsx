@@ -4,14 +4,18 @@ import { create } from "@bufbuild/protobuf";
 import { Code, ConnectError, createClient } from "@connectrpc/connect";
 import { useMutation, useQuery as useConnectQuery, useTransport } from "@connectrpc/connect-query";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Globe, Plus } from "lucide-react";
 import { useState, type FormEvent } from "react";
 import { useTranslation } from "react-i18next";
+import { EmptyState } from "@/components/empty-state";
+import { Field } from "@/components/field";
 import { ManifestButton } from "@/components/manifest";
 import { Command } from "@/components/one-time-token";
 import { Alert } from "@/components/public-page";
+import { panel, Row, RowList } from "@/components/row-list";
 import { Status, type Look } from "@/components/status";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { Card } from "@/components/ui/card";
 import { AuthService } from "@/gen/rpmgr/v1/auth_pb";
 import { DomainMethod, DomainSchema, DomainService, DomainStatus, type Domain } from "@/gen/rpmgr/v1/domain_pb";
 import { Reason, reasonOf } from "@/lib/errors";
@@ -58,20 +62,19 @@ export function Domains() {
   const session = useConnectQuery(AuthService.method.getSession, {});
   const [claiming, setClaiming] = useState(false);
   return (
-    <section aria-labelledby="domains-title" className="grid gap-3">
-      <div className="flex items-center gap-4">
-        <h2 id="domains-title" className="text-lg font-semibold">{t("domains.title")}</h2>
-        <Button size="sm" className="ml-auto" disabled={!org} onClick={() => setClaiming(true)}>{t("domains.claim")}</Button>
-        {org && <ManifestButton label={t("manifest.export")} title={t("manifest.ofKind", { what: t("domains.title") })} orgId={org.orgId} kinds={["Domain"]} file="domains" />}
-      </div>
+    <Card title={t("domains.title")} actions={<>
+      {org && <ManifestButton label={t("manifest.export")} title={t("manifest.ofKind", { what: t("domains.title") })} orgId={org.orgId} kinds={["Domain"]} file="domains" />}
+      <Button size="sm" disabled={!org} onClick={() => setClaiming(true)}><Plus aria-hidden="true" />{t("domains.claim")}</Button>
+    </>}>
       {claiming && org && <ClaimForm orgId={org.orgId} onDone={() => setClaiming(false)} />}
-      <ul className="grid gap-2">
-        {[...(list.data ?? [])].sort((a, b) => a.fqdn.localeCompare(b.fqdn)).map((d) => (
-          <DomainRow key={d.id} domain={d} instanceAdmin={session.data?.instanceAdmin ?? false} />
-        ))}
-      </ul>
-      {list.data?.length === 0 && <p className="text-sm">{t("domains.none")}</p>}
-    </section>
+      {list.data?.length === 0 ? <EmptyState icon={Globe}>{t("domains.none")}</EmptyState> : (
+        <RowList>
+          {[...(list.data ?? [])].sort((a, b) => a.fqdn.localeCompare(b.fqdn)).map((d) => (
+            <DomainRow key={d.id} domain={d} instanceAdmin={session.data?.instanceAdmin ?? false} />
+          ))}
+        </RowList>
+      )}
+    </Card>
   );
 }
 
@@ -96,14 +99,17 @@ function ClaimForm({ orgId, onDone }: { orgId: string; onDone: () => void }) {
     }
   }
   return (
-    <form onSubmit={save} aria-label={t("domains.claimTitle")} className="grid max-w-xl gap-3 rounded-md border border-border p-3" noValidate>
-      <label className="grid gap-1 text-sm font-medium">{t("domains.fqdn")}<Input value={form.fqdn} onChange={(e) => setForm({ ...form, fqdn: e.target.value })} /></label>
-      <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={form.wildcard} onChange={(e) => setForm({ ...form, wildcard: e.target.checked })} />{t("domains.wildcard")}</label>
-      <fieldset className="grid gap-1.5">
-        <legend className="text-sm font-medium">{t("domains.method")}</legend>
+    <form onSubmit={save} aria-label={t("domains.claimTitle")} className={panel} noValidate>
+      <Field label={t("domains.fqdn")} className="max-w-md" value={form.fqdn} onChange={(e) => setForm({ ...form, fqdn: e.target.value })} />
+      <label className="flex items-center gap-2 text-sm">
+        <input type="checkbox" className="size-4 accent-primary" checked={form.wildcard} onChange={(e) => setForm({ ...form, wildcard: e.target.checked })} />
+        {t("domains.wildcard")}
+      </label>
+      <fieldset className="grid gap-2">
+        <legend className="mb-1 text-sm font-medium">{t("domains.method")}</legend>
         {[[DomainMethod.DNS_TXT, "txt"], [DomainMethod.HTTP, "http"]].map(([m, k]) => (
           <label key={k} className="flex items-center gap-2 text-sm">
-            <input type="radio" name="method" checked={form.method === String(m)} onChange={() => setForm({ ...form, method: String(m) })} />
+            <input type="radio" name="method" className="size-4 accent-primary" checked={form.method === String(m)} onChange={() => setForm({ ...form, method: String(m) })} />
             {t(`domains.methods.${k}`)}
           </label>
         ))}
@@ -141,42 +147,48 @@ function DomainRow({ domain: d, instanceAdmin }: { domain: Domain; instanceAdmin
   }
   const pending = d.status === DomainStatus.PENDING || d.status === DomainStatus.FAILED;
   return (
-    <li className="grid gap-2 rounded-md border border-border p-3 text-sm">
-      <div className="flex flex-wrap items-center gap-3">
-        <span className="font-medium">{name}</span>
-        <DomainStatusLabel status={d.status} />
-        <span className="text-muted-foreground">{t(`domains.methodName.${DomainMethod[d.method]}`, { defaultValue: DomainMethod[d.method] })}</span>
-        {d.lastCheckTime && <span className="text-muted-foreground">{t("domains.checked", { when: when(d.lastCheckTime) })}</span>}
+    <Row>
+      <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
+        <div className="grid gap-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="font-medium">{name}</span>
+            <DomainStatusLabel status={d.status} />
+          </div>
+          <div className="flex flex-wrap gap-x-3 text-muted-foreground">
+            <span>{t(`domains.methodName.${DomainMethod[d.method]}`, { defaultValue: DomainMethod[d.method] })}</span>
+            {d.lastCheckTime && <span>{t("domains.checked", { when: when(d.lastCheckTime) })}</span>}
+          </div>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          {pending && <Button size="sm" variant="outline" disabled={verify.isPending} onClick={() => void act(() => verify.mutateAsync({ domainId: d.id }))}>{t("domains.check")}</Button>}
+          {instanceAdmin && d.status !== DomainStatus.VERIFIED && (
+            <Button size="sm" variant="outline" onClick={() => void act(() => stepUp(() => trust.mutateAsync({ domainId: d.id })))}>{t("domains.trust")}</Button>
+          )}
+          {asking ? (
+            <>
+              <span>{t("domains.ask", { name })}</span>
+              <Button size="sm" variant="destructive" onClick={() => void act(() => remove.mutateAsync({ domainId: d.id, etag: d.etag }))}>{t("targetForm.remove")}</Button>
+              <Button size="sm" variant="outline" onClick={() => setAsking(false)}>{t("stepUp.cancel")}</Button>
+            </>
+          ) : (
+            <Button size="sm" variant="outline" onClick={() => setAsking(true)}>{t("targetForm.removeAsk")}</Button>
+          )}
+        </div>
       </div>
       {d.lastError && <p className="text-destructive">{d.lastError}</p>}
       {pending && d.challenge && (d.method === DomainMethod.HTTP ? (
-        <div className="grid gap-1">
+        <div className={panel}>
           <p>{t("domains.httpHow", { url: d.challenge.httpUrl })}</p>
           <Command command={d.challenge.value} label={t("domains.value")} />
         </div>
       ) : (
-        <div className="grid gap-1">
+        <div className={panel}>
           <p>{t("domains.txtHow")}</p>
           <Command command={d.challenge.txtName} label={t("domains.txtName")} />
           <Command command={d.challenge.value} label={t("domains.value")} />
         </div>
       ))}
-      <div className="flex flex-wrap gap-2">
-        {pending && <Button size="sm" variant="outline" disabled={verify.isPending} onClick={() => void act(() => verify.mutateAsync({ domainId: d.id }))}>{t("domains.check")}</Button>}
-        {instanceAdmin && d.status !== DomainStatus.VERIFIED && (
-          <Button size="sm" variant="outline" onClick={() => void act(() => stepUp(() => trust.mutateAsync({ domainId: d.id })))}>{t("domains.trust")}</Button>
-        )}
-        {asking ? (
-          <>
-            <span>{t("domains.ask", { name })}</span>
-            <Button size="sm" variant="destructive" onClick={() => void act(() => remove.mutateAsync({ domainId: d.id, etag: d.etag }))}>{t("targetForm.remove")}</Button>
-            <Button size="sm" variant="outline" onClick={() => setAsking(false)}>{t("stepUp.cancel")}</Button>
-          </>
-        ) : (
-          <Button size="sm" variant="outline" onClick={() => setAsking(true)}>{t("targetForm.removeAsk")}</Button>
-        )}
-      </div>
       {error && <Alert>{error}</Alert>}
-    </li>
+    </Row>
   );
 }

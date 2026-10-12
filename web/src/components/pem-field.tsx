@@ -2,6 +2,7 @@
 
 import { useId } from "react";
 import { useTranslation } from "react-i18next";
+import { Textarea } from "@/components/ui/input";
 
 // PemField takes PEM text, pasted or read from a file in the browser; nothing is uploaded until the
 // form is sent.
@@ -11,11 +12,12 @@ export function PemField({ label, value, onChange, secret }: { label: string; va
   return (
     <div className="grid gap-1.5">
       <label htmlFor={id} className="text-sm font-medium">{label}</label>
-      <textarea id={id} rows={4} spellCheck={false} autoComplete="off" className="rounded-md border border-border bg-background px-3 py-1.5 font-mono text-xs"
+      <Textarea id={id} rows={4} spellCheck={false} autoComplete="off" className="font-mono text-xs"
         value={value} onChange={(e) => onChange(e.target.value)} />
-      <label className="text-xs text-muted-foreground">
-        {t(secret ? "pem.fileSecret" : "pem.file")}{" "}
-        <input type="file" accept=".pem,.crt,.key,text/plain" className="text-xs"
+      <label className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+        {t(secret ? "pem.fileSecret" : "pem.file")}
+        <input type="file" accept=".pem,.crt,.key,text/plain"
+          className="text-xs file:mr-2 file:rounded-md file:border file:border-border file:bg-card file:px-2.5 file:py-1 file:text-xs file:font-medium file:text-foreground hover:file:bg-muted"
           onChange={(e) => void e.target.files?.[0]?.text().then(onChange)} />
       </label>
     </div>

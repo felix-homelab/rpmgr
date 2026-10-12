@@ -5,13 +5,18 @@ import { timestampDate } from "@bufbuild/protobuf/wkt";
 import { ConnectError, createClient } from "@connectrpc/connect";
 import { useMutation, useTransport } from "@connectrpc/connect-query";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { FileBadge, FileKey, Plus, Upload } from "lucide-react";
 import { useState, type FormEvent } from "react";
 import { useTranslation } from "react-i18next";
+import { EmptyState } from "@/components/empty-state";
+import { Field } from "@/components/field";
 import { ManifestButton } from "@/components/manifest";
 import { PemField } from "@/components/pem-field";
 import { Alert } from "@/components/public-page";
+import { panel, Row, RowList } from "@/components/row-list";
+import { Status, type Look } from "@/components/status";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { Card } from "@/components/ui/card";
 import {
   CABundleSchema, CertificateService, CertificateSource, CertificateStatus, type CABundle, type Certificate,
 } from "@/gen/rpmgr/v1/certificate_pb";
@@ -22,6 +27,13 @@ import { useOrg } from "@/session";
 
 // soon is when a certificate's or a token's expiry is near enough to point out: 21 days.
 export const soon = 21 * 86400_000;
+
+const looks: Record<CertificateStatus, Look> = {
+  [CertificateStatus.UNSPECIFIED]: "unknown",
+  [CertificateStatus.PENDING]: "pending",
+  [CertificateStatus.ACTIVE]: "ok",
+  [CertificateStatus.FAILED]: "failed",
+};
 
 function useList<T>(key: string, orgId: string | undefined, page: (token: string) => Promise<{ items: T[]; next: string }>) {
   return useQuery({ queryKey: [key, orgId], enabled: !!orgId, queryFn: () => listAll(page) });
@@ -47,17 +59,16 @@ export function Certificates() {
   const [uploading, setUploading] = useState(false);
   const routeName = (id: string) => routes.data?.find((r) => r.id === id)?.name ?? id;
   return (
-    <section aria-labelledby="certs-title" className="grid gap-3">
-      <div className="flex items-center gap-4">
-        <h2 id="certs-title" className="text-lg font-semibold">{t("certs.title")}</h2>
-        <Button size="sm" className="ml-auto" disabled={!org} onClick={() => setUploading(true)}>{t("certs.upload")}</Button>
-      </div>
+    <Card title={t("certs.title")} actions={
+      <Button size="sm" disabled={!org} onClick={() => setUploading(true)}><Upload aria-hidden="true" />{t("certs.upload")}</Button>
+    }>
       {uploading && org && <UploadForm orgId={org.orgId} onDone={() => setUploading(false)} />}
-      <ul className="grid gap-2">
-        {(list.data ?? []).map((c) => <CertificateRow key={c.id} cert={c} routeName={routeName} />)}
-      </ul>
-      {list.data?.length === 0 && <p className="text-sm">{t("certs.none")}</p>}
-    </section>
+      {list.data?.length === 0 ? <EmptyState icon={FileBadge}>{t("certs.none")}</EmptyState> : (
+        <RowList>
+          {(list.data ?? []).map((c) => <CertificateRow key={c.id} cert={c} routeName={routeName} />)}
+        </RowList>
+      )}
+    </Card>
   );
 }
 
@@ -83,7 +94,7 @@ function UploadForm({ orgId, onDone }: { orgId: string; onDone: () => void }) {
     }
   }
   return (
-    <form onSubmit={save} aria-label={t("certs.uploadTitle")} className="grid gap-3 rounded-md border border-border p-3" noValidate>
+    <form onSubmit={save} aria-label={t("certs.uploadTitle")} className={panel} noValidate>
       <PemField label={t("certs.chain")} value={chain} onChange={setChain} />
       <PemField label={t("certs.key")} value={key} onChange={setKey} secret />
       {error && <Alert>{error}</Alert>}
@@ -119,36 +130,40 @@ function CertificateRow({ cert: c, routeName }: { cert: Certificate; routeName: 
     }
   }
   return (
-    <li className="grid gap-1 rounded-md border border-border p-3 text-sm">
-      <div className="flex flex-wrap items-center gap-3">
-        <span className="font-medium">{c.sans.join(", ")}</span>
-        <span className="text-muted-foreground">{t(c.source === CertificateSource.ACME ? "certs.acme" : "certs.uploaded")}</span>
-        <span className={c.status === CertificateStatus.FAILED ? "text-destructive" : c.status === CertificateStatus.ACTIVE ? "text-ok" : "text-muted-foreground"}>
-          {t(`certs.status.${CertificateStatus[c.status]}`)}
-        </span>
+    <Row>
+      <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
+        <div className="grid gap-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="font-medium">{c.sans.join(", ")}</span>
+            <Status look={looks[c.status]}>{t(`certs.status.${CertificateStatus[c.status]}`)}</Status>
+          </div>
+          <div className="flex flex-wrap gap-x-3 text-muted-foreground">
+            <span>{t(c.source === CertificateSource.ACME ? "certs.acme" : "certs.uploaded")}</span>
+            {expires && <span className={ending ? "font-medium text-warn" : undefined}>{t(ending ? "certs.endingSoon" : "certs.expires", { when: when(c.notAfter) })} · {c.issuer}</span>}
+            {c.routeIds.length > 0 && <span>{t("certs.usedBy", { routes: c.routeIds.map(routeName).join(", ") })}</span>}
+          </div>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          {c.source === CertificateSource.ACME && (
+            <Button size="sm" variant="outline" disabled={renew.isPending}
+              onClick={() => void act(async () => ({ text: t((await renew.mutateAsync({ certificateId: c.id })).started ? "certs.renewing" : "certs.renewQueued") }))}>
+              {t("certs.renew")}
+            </Button>
+          )}
+          {asking ? (
+            <>
+              <span>{t("certs.ask", { name })}</span>
+              <Button size="sm" variant="destructive" onClick={() => void act(async () => void (await remove.mutateAsync({ certificateId: c.id, etag: c.etag })))}>{t("targetForm.remove")}</Button>
+              <Button size="sm" variant="outline" onClick={() => setAsking(false)}>{t("stepUp.cancel")}</Button>
+            </>
+          ) : (
+            <Button size="sm" variant="outline" onClick={() => setAsking(true)}>{t("targetForm.removeAsk")}</Button>
+          )}
+        </div>
       </div>
-      {expires && <div className={ending ? "text-warn" : "text-muted-foreground"}>{t(ending ? "certs.endingSoon" : "certs.expires", { when: when(c.notAfter) })} · {c.issuer}</div>}
-      {c.lastError && <div className="text-destructive">{c.lastError}</div>}
-      {c.routeIds.length > 0 && <div className="text-muted-foreground">{t("certs.usedBy", { routes: c.routeIds.map(routeName).join(", ") })}</div>}
-      <div className="flex flex-wrap items-center gap-2">
-        {c.source === CertificateSource.ACME && (
-          <Button size="sm" variant="outline" disabled={renew.isPending}
-            onClick={() => void act(async () => ({ text: t((await renew.mutateAsync({ certificateId: c.id })).started ? "certs.renewing" : "certs.renewQueued") }))}>
-            {t("certs.renew")}
-          </Button>
-        )}
-        {asking ? (
-          <>
-            <span>{t("certs.ask", { name })}</span>
-            <Button size="sm" variant="destructive" onClick={() => void act(async () => void (await remove.mutateAsync({ certificateId: c.id, etag: c.etag })))}>{t("targetForm.remove")}</Button>
-            <Button size="sm" variant="outline" onClick={() => setAsking(false)}>{t("stepUp.cancel")}</Button>
-          </>
-        ) : (
-          <Button size="sm" variant="outline" onClick={() => setAsking(true)}>{t("targetForm.removeAsk")}</Button>
-        )}
-      </div>
+      {c.lastError && <p className="text-destructive">{c.lastError}</p>}
       {message && <Alert tone={message.tone}>{message.text}</Alert>}
-    </li>
+    </Row>
   );
 }
 
@@ -165,20 +180,19 @@ export function CABundles() {
   });
   const [editing, setEditing] = useState<string>(); // a bundle's ID, or "new"
   return (
-    <section aria-labelledby="bundles-title" className="grid gap-3">
-      <div className="flex items-center gap-4">
-        <h2 id="bundles-title" className="text-lg font-semibold">{t("bundles.title")}</h2>
-        <Button size="sm" className="ml-auto" disabled={!org} onClick={() => setEditing("new")}>{t("bundles.add")}</Button>
-        {org && <ManifestButton label={t("manifest.export")} title={t("manifest.ofKind", { what: t("bundles.title") })} orgId={org.orgId} kinds={["CABundle"]} file="ca-bundles" />}
-      </div>
+    <Card title={t("bundles.title")} description={t("bundles.intro")} actions={<>
+      {org && <ManifestButton label={t("manifest.export")} title={t("manifest.ofKind", { what: t("bundles.title") })} orgId={org.orgId} kinds={["CABundle"]} file="ca-bundles" />}
+      <Button size="sm" disabled={!org} onClick={() => setEditing("new")}><Plus aria-hidden="true" />{t("bundles.add")}</Button>
+    </>}>
       {editing && org && (
         <BundleForm key={editing} orgId={org.orgId} bundle={list.data?.find((b) => b.id === editing)} onDone={() => setEditing(undefined)} />
       )}
-      <ul className="grid gap-2">
-        {(list.data ?? []).map((b) => <BundleRow key={b.id} bundle={b} onEdit={() => setEditing(b.id)} />)}
-      </ul>
-      {list.data?.length === 0 && <p className="text-sm">{t("bundles.none")}</p>}
-    </section>
+      {list.data?.length === 0 ? <EmptyState icon={FileKey}>{t("bundles.none")}</EmptyState> : (
+        <RowList>
+          {(list.data ?? []).map((b) => <BundleRow key={b.id} bundle={b} onEdit={() => setEditing(b.id)} />)}
+        </RowList>
+      )}
+    </Card>
   );
 }
 
@@ -209,8 +223,8 @@ function BundleForm({ orgId, bundle, onDone }: { orgId: string; bundle?: CABundl
     }
   }
   return (
-    <form onSubmit={save} aria-label={t(bundle ? "bundles.editTitle" : "bundles.addTitle")} className="grid gap-3 rounded-md border border-border p-3" noValidate>
-      <label className="grid gap-1 text-sm font-medium">{t("routeForm.fields.name")}<Input value={name} onChange={(e) => setName(e.target.value)} /></label>
+    <form onSubmit={save} aria-label={t(bundle ? "bundles.editTitle" : "bundles.addTitle")} className={panel} noValidate>
+      <Field label={t("routeForm.fields.name")} className="max-w-md" value={name} onChange={(e) => setName(e.target.value)} />
       <PemField label={t("bundles.pem")} value={pem} onChange={setPem} />
       {error && <Alert>{error}</Alert>}
       <div className="flex gap-2">
@@ -228,28 +242,32 @@ function BundleRow({ bundle: b, onEdit }: { bundle: CABundle; onEdit: () => void
   const [asking, setAsking] = useState(false);
   const [error, setError] = useState("");
   return (
-    <li className="grid gap-1 rounded-md border border-border p-3 text-sm">
-      <span className="font-medium">{b.name}</span>
-      <ul className="text-muted-foreground">
-        {b.certificates.map((c, i) => <li key={i}>{t("bundles.cert", { subject: c.subject, when: when(c.notAfter) })}</li>)}
-      </ul>
-      <div className="text-muted-foreground">{t("bundles.targets", { count: b.targetIds.length })}</div>
-      <div className="flex flex-wrap items-center gap-2">
-        <Button size="sm" variant="outline" onClick={onEdit}>{t("targetForm.edit")}</Button>
-        {asking ? (
-          <>
-            <span>{t("bundles.ask", { name: b.name })}</span>
-            <Button size="sm" variant="destructive"
-              onClick={() => void remove.mutateAsync({ caBundleId: b.id, etag: b.etag }).then(() => queryClient.invalidateQueries(), (err: unknown) => setError(ConnectError.from(err).rawMessage))}>
-              {t("targetForm.remove")}
-            </Button>
-            <Button size="sm" variant="outline" onClick={() => setAsking(false)}>{t("stepUp.cancel")}</Button>
-          </>
-        ) : (
-          <Button size="sm" variant="outline" onClick={() => setAsking(true)}>{t("targetForm.removeAsk")}</Button>
-        )}
+    <Row>
+      <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
+        <div className="grid gap-1">
+          <span className="font-medium">{b.name}</span>
+          <ul className="text-muted-foreground">
+            {b.certificates.map((c, i) => <li key={i}>{t("bundles.cert", { subject: c.subject, when: when(c.notAfter) })}</li>)}
+          </ul>
+          <div className="text-muted-foreground">{t("bundles.targets", { count: b.targetIds.length })}</div>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button size="sm" variant="outline" onClick={onEdit}>{t("targetForm.edit")}</Button>
+          {asking ? (
+            <>
+              <span>{t("bundles.ask", { name: b.name })}</span>
+              <Button size="sm" variant="destructive"
+                onClick={() => void remove.mutateAsync({ caBundleId: b.id, etag: b.etag }).then(() => queryClient.invalidateQueries(), (err: unknown) => setError(ConnectError.from(err).rawMessage))}>
+                {t("targetForm.remove")}
+              </Button>
+              <Button size="sm" variant="outline" onClick={() => setAsking(false)}>{t("stepUp.cancel")}</Button>
+            </>
+          ) : (
+            <Button size="sm" variant="outline" onClick={() => setAsking(true)}>{t("targetForm.removeAsk")}</Button>
+          )}
+        </div>
       </div>
       {error && <Alert>{error}</Alert>}
-    </li>
+    </Row>
   );
 }

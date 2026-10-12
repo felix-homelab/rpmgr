@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { useTranslation } from "react-i18next";
+import { PageHeader } from "@/components/page-header";
 import { CABundles, Certificates } from "@/pages/certificates";
 import { Domains } from "@/pages/domains";
 
@@ -8,8 +9,8 @@ import { Domains } from "@/pages/domains";
 export function DomainsPage() {
   const { t } = useTranslation();
   return (
-    <div className="grid max-w-4xl gap-6">
-      <h1 className="text-2xl font-semibold">{t("nav.domains")}</h1>
+    <div className="grid max-w-5xl gap-6">
+      <PageHeader title={t("nav.domains")} description={t("domains.intro")} />
       <Domains />
       <Certificates />
       <CABundles />

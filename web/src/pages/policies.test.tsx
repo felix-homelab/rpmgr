@@ -25,7 +25,9 @@ const office = {
   ],
 };
 
-function page() {
+const admins = { id: "pol_2", name: "admins", etag: "1", rules: [{ rule: { case: "ipAllow" as const, value: { cidrs: ["192.0.2.0/24"] } } }] };
+
+function page(policies: object[] = [office, admins]) {
   const calls = { create: [] as CreateAccessPolicyRequest[], update: [] as UpdateAccessPolicyRequest[], remove: [] as DeleteAccessPolicyRequest[] };
   show("/policies", auth({ getSession: () => ({ userId: "usr_ada", memberships: [{ orgId: "org_1", role: "owner" }] }) }), (router) => {
     router.service(UserService, { getMe: () => ({ user: { id: "usr_ada", theme: Theme.SYSTEM } }) });
@@ -34,7 +36,7 @@ function page() {
     router.service(StatusService, { async *watchApplyStatus() {} });
     router.service(RouteService, { listRoutes: () => ({ routes: [{ id: "rte_1", name: "wiki" }] }) });
     router.service(PolicyService, {
-      listAccessPolicies: () => ({ accessPolicies: [office, { id: "pol_2", name: "admins", etag: "1", rules: [{ rule: { case: "ipAllow", value: { cidrs: ["192.0.2.0/24"] } } }] }] }),
+      listAccessPolicies: () => ({ accessPolicies: policies }),
       createAccessPolicy: (req) => (calls.create.push(req), { accessPolicy: req.accessPolicy, ...applied }),
       updateAccessPolicy: (req) => (calls.update.push(req), { accessPolicy: req.accessPolicy, ...applied }),
       deleteAccessPolicy: (req) => {
@@ -109,5 +111,17 @@ describe("Policies", () => {
     fireEvent.click(p.getByRole("button", { name: "Remove it" }));
     expect((await p.findByRole("alert")).textContent).toBe("apisvc: routes use the policy: wiki");
     expect(calls.remove.map((r) => [r.accessPolicyId, r.etag])).toEqual([["pol_1", "3"]]);
+  });
+
+  it("offers the first policy when there is none", async () => {
+    page([]);
+    const region = within(await screen.findByRole("region", { name: "Access policies" }));
+    expect(await region.findByText("The org has no access policy.")).toBeTruthy();
+    expect(region.queryByRole("list")).toBeNull();
+    const add = region.getAllByRole("button", { name: "New access policy" }); // the header's and the empty list's
+    expect(add).toHaveLength(2);
+    fireEvent.click(add[1]!);
+    expect(await region.findByRole("form", { name: "New access policy" })).toBeTruthy();
+    expect(region.getAllByRole("button", { name: "New access policy" })).toHaveLength(1); // the empty list's goes while the form is open
   });
 });
