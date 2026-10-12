@@ -26,9 +26,10 @@ gap ends in a fix, an issue draft or a decision proposal for the product owner.
   - **Gap:** the control is missing in Phase 1.
   - **Later phase:** the capability the control protects does not exist in Phase 1, so neither
     does the threat; the phase that adds it adds the control.
-- **Not read:** `internal/apisvc/credentials.go`, which turns a session cookie or a bearer token
-  into the API's caller. A read rule of the review environment refuses every file whose name starts
-  with `credentials`. Rows that depend on it say so ([Open items](#open-items)).
+- **Read late:** the API's authenticator, which turns a session cookie or a bearer token into the
+  API's caller, was at first not read: a read rule of the review environment refuses every file
+  whose name starts with `credentials`, its old name. The maintainer renamed it to
+  `internal/apisvc/callers.go`, and the review read it then (G7).
 
 ## Security goals
 
@@ -49,7 +50,7 @@ gap ends in a fix, an issue draft or a decision proposal for the product owner.
 |---|---|---|---|
 | Call agent APIs without mutual TLS, except `Enroll` | `internal/pki/tls.go` `AgentEndpointConfig` (line 113: a certificate is optional only for `Enroll`); `internal/controller/agentserver.go` `authorizer.authorize`: a method allow-list, each with its certificate rule, `Leave` included | `TestAgentServer_Access`, `TestAgentServer_EveryMethodHasARule` | Holds |
 | Guess tokens: 256-bit random, hashed lookup | `internal/token/token.go` `New` (32 random bytes from `crypto/rand`, line 48), `Hash` (SHA-256, line 78); every token table stores only `token_hash` | `internal/token` tests | Holds |
-| Guess tokens: per-IP and per-account limits, uniform errors | Logins and resets: `internal/apisvc/auth.go` `Auth.IPLimit` and `Auth.Backoff` (lines 80 and 87). Unknown e-mail and wrong password give one error after one hash (`internal/accounts/accounts.go` `Authenticate`, line 236; `internal/password/password.go` `Verify`, line 103). Enrollment: 10 per minute per address (`internal/enroll/service.go`, line 92) and one "invalid token" for every bad token (line 121). | `TestAuth_Limits`, `TestAuthenticate`, `internal/enroll` tests | Holds for logins and enrollment. API bearer tokens: `[V]`, because their limits and errors are in `credentials.go` |
+| Guess tokens: per-IP and per-account limits, uniform errors | Logins and resets: `internal/apisvc/auth.go` `Auth.IPLimit` and `Auth.Backoff` (lines 80 and 87). Unknown e-mail and wrong password give one error after one hash (`internal/accounts/accounts.go` `Authenticate`, line 236; `internal/password/password.go` `Verify`, line 103). Enrollment: 10 per minute per address (`internal/enroll/service.go`, line 92) and one "invalid token" for every bad token (line 121). API tokens: 256 bits from `crypto/rand` (`internal/token/token.go`, lines 33 and 53), found by their hash (`internal/accounts/tokens.go` `Tokens.Authenticate`, line 147); malformed, unknown, revoked, suspended and expired tokens and inactive owners all give `ErrToken` (lines 144 to 156), which the API reports as one "the credentials are not valid" (`internal/api/interceptor.go`, line 152); since this review, failed tokens delay their address, after the 5th before any lookup (`internal/apisvc/callers.go` `Credentials.Authenticate`, lines 45 to 56). A guessed token names no account, so the per-account delay does not apply to it. | `TestAuth_Limits`, `TestAuthenticate`, `internal/enroll` tests, `TestTokenScopesBoundedByCreator`, `TestTokens_FailedAddressesWait` | Fixed: API tokens had no per-address limit; now they have one, as 04 states |
 | Reach metrics or pprof | `internal/telemetry/admin.go` `CheckAdminAddr` (line 63) refuses all interfaces and public addresses; defaults are loopback (`internal/config/config.go`). No pprof handler exists in Phase 1. | `internal/telemetry` admin tests | Holds. 04 says "bound to localhost"; code and [10](../10-operations.md#ports) also allow a private address ([G4](#gaps-and-follow-ups)) |
 | Claim a hostname | Routes refuse a hostname outside the org's verified domains (`internal/apisvc/route.go`, `DOMAIN_NOT_VERIFIED`, line 214); `domains.fqdn` is unique across orgs (`internal/store/ent/schema/domains.go`, line 51) | `TestUnverifiedDomainRejected`, `TestDomains`, `TestDomain_TrustedOnlyByInstanceAdmin` | Holds |
 
@@ -174,7 +175,7 @@ The finding text is kept as found at `09b260a`, so the record shows what the rev
 | G4 | Low | The threat model says the admin listener is bound to localhost; the code and 10 also allow a private address. | Decision proposal 3 | Fixed: 04 reworded ([D67](../14-open-decisions.md#security-defaults)) |
 | G5 | Low | The required status checks are only `pr-rules`, `lint`, `docs` and `secrets`. A failing go, govulncheck, store or e2e job does not block a merge mechanically; only the merge process does (D64). | Decision proposal 4 | Decided: advisory until v1.0.0, required from then on ([D68](../14-open-decisions.md#project-and-process)) |
 | G6 | Low | `ca_keys.key_enc` is not marked `Sensitive()` in the Ent schema, unlike the other sealed columns. It holds ciphertext, so a printed row leaks no key. | Issue draft 3 | Fixed: `key_enc` and also `api_requests.response_enc` are `Sensitive()`, and `TestSecretColumnsAreSensitive` requires it of every sealed column |
-| G7 | Open | The API's authenticator (`internal/apisvc/credentials.go`) was not reviewed. Unchecked are limits and uniform errors for bearer tokens, and how sessions and tokens become a caller. | Issue draft 4 | Open |
+| G7 | Low | The API's authenticator (`internal/apisvc/credentials.go`, now `callers.go`) was not reviewed. Unchecked were limits and uniform errors for bearer tokens, and how sessions and tokens become a caller. | Issue draft 4 | Fixed: reviewed after the rename. Failed API tokens had no per-address limit, which `Credentials.Failures` now adds (`TestTokens_FailedAddressesWait`). The rest holds: a token counts only as `Authorization: Bearer` (`callers.go`, line 40) and acts with its owner's current role in its org and its scopes (`internal/accounts/tokens.go`, line 162; `TestTokenScopesBoundedByCreator`); a suspended token is refused (line 148; `TestRestore_OrgOwnerCannotEndInstanceReview`); a cookie becomes the user's live session with their current memberships, refused for a disabled user (`internal/websession/authenticator.go` `Sessions.Authenticate`; `TestAuthenticate`, `TestSessions_Revoke`), and cross-site requests are refused (`internal/api/csrf.go`; `TestCSRF`) |
 
 ### Issue drafts
 
@@ -188,10 +189,10 @@ The finding text is kept as found at `09b260a`, so the record shows what the rev
    existing sessions keep working.
 3. **`refactor(store): mark sealed CA keys sensitive`** (G6; done). `CAKey.key_enc` gets
    `Sensitive()`, as `seed_enc`, `key_enc` and `value_enc` have. Generated code only; no migration.
-4. **`refactor(apisvc): rename credentials.go`** (G7). Rename it, for example to `callers.go`, so
-   that review tools that refuse files named `credentials*` can read the API's authenticator. Then
-   review it against the "Internet attacker" row: per-IP limits and uniform errors for bearer
-   tokens.
+4. **`refactor(apisvc): rename credentials.go`** (G7; done, to `callers.go`). Rename it, for example
+   to `callers.go`, so that review tools that refuse files named `credentials*` can read the API's
+   authenticator. Then review it against the "Internet attacker" row: per-IP limits and uniform
+   errors for bearer tokens.
 
 ### Decision proposals
 
@@ -209,8 +210,6 @@ The finding text is kept as found at `09b260a`, so the record shows what the rev
 
 ## Open items
 
-- **`credentials.go`:** not reviewed (issue draft 4). Until then, the bearer-token parts of the
-  "Internet attacker" row are `[V]`.
 - **Maintainer actions before v0.1.0** (#170):
   - the offline release root and signing keys, compiled into `internal/release/roots.go`;
   - VB-19 against Let's Encrypt staging.
