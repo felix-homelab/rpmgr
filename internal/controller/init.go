@@ -331,13 +331,18 @@ func newKEK() (secret.KEK, []byte, error) {
 	return k, []byte(base64.StdEncoding.EncodeToString(raw) + "\n"), nil
 }
 
-// writeNew writes a file that must not exist yet.
+// writeNew writes a file that must not exist yet, with mode perm whatever the umask: the boot file
+// must stay readable by the service user when init runs under a strict umask.
 func writeNew(path string, data []byte, perm os.FileMode) error {
 	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, perm) //nolint:gosec // G304: the operator's paths
 	if err != nil {
 		return err
 	}
 	if _, err := f.Write(data); err != nil {
+		_ = f.Close()
+		return err
+	}
+	if err := f.Chmod(perm); err != nil {
 		_ = f.Close()
 		return err
 	}
