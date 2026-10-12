@@ -61,6 +61,22 @@ type Result struct {
 	Written []string
 }
 
+var errRoot = errors.New("setup: run it as root (sudo rpmgr setup)")
+
+// Facts are what a form needs to know about the host before it asks.
+type Facts struct {
+	Systemd int // systemctl's version; 0 without systemd
+}
+
+// Preflight refuses, before anything is asked, what no value can fix: setup runs as root.
+func Preflight(h Host) (Facts, error) {
+	h.defaults()
+	if !h.IsRoot() {
+		return Facts{}, errRoot
+	}
+	return Facts{Systemd: h.SystemdVersion()}, nil
+}
+
 // New checks the values against the host and returns the plan, or every problem it found.
 func New(v Values, h Host) (*Plan, error) {
 	h.defaults()
@@ -68,7 +84,7 @@ func New(v Values, h Host) (*Plan, error) {
 		return nil, err
 	}
 	if !h.IsRoot() {
-		return nil, errors.New("setup: run it as root (sudo rpmgr setup)")
+		return nil, errRoot
 	}
 	p := &Plan{v: v, h: h, boot: filepath.Join(h.Paths.Etc, string(v.Role)+".yaml")}
 	p.again = exists(p.boot)

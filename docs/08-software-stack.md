@@ -92,6 +92,12 @@ flowchart TB
 | Prometheus `client_golang` on the admin listener | De-facto standard; existing Prometheus setups scrape rpmgr without extra tooling |
 | OpenTelemetry (OTLP) traces: `go.opentelemetry.io/otel` with its SDK and the OTLP/HTTP exporter `otlptracehttp` | Trace context travels in `StreamOpen`, so a request can be followed from gateway to connector ([03](03-connections.md#framing)). OTLP over HTTP passes through proxies and needs no second gRPC stack next to the agent protocol's |
 
+## Command line
+
+| Choice | Rationale | Rejected |
+|---|---|---|
+| **huh** (`charm.land/huh/v2`, with Bubble Tea and Lip Gloss) for the forms of `rpmgr setup` ([D73](14-open-decisions.md#engineering)) | One definition of each form gives full-screen forms with selects, a check on every field and hidden input on a terminal, and plain prompts without one (its accessible mode). MIT-licensed and maintained. It adds about 3 MiB and 20 modules to the binary, for one command | Plain `bufio` prompts: no selection, every value typed. Bubble Tea alone: the same widgets written by hand. survey: archived [F GitHub `AlecAivazis/survey`, archived, retrieved 2026-10-12]. tview: a widget toolkit for full-screen applications, with no plain mode |
+
 ## Frontend
 
 | Choice | Rationale | Rejected |
