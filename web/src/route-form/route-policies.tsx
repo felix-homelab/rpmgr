@@ -8,6 +8,8 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Alert } from "@/components/public-page";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Select } from "@/components/ui/input";
 import { RouteSchema, RouteService, type Route } from "@/gen/rpmgr/v1/route_pb";
 import { usePolicies } from "@/pages/policies";
 import type { Written } from "@/route-form/target-form";
@@ -43,13 +45,12 @@ export function RoutePolicies({ orgId, route: r, onDone }: { orgId: string; rout
     }
   }
   return (
-    <section aria-labelledby="route-policies-title" className="grid gap-2">
-      <h2 id="route-policies-title" className="text-lg font-semibold">{t("routePolicies.title")}</h2>
-      {ids.length === 0 ? <p className="text-sm">{t("routePolicies.none")}</p> : (
-        <ol className="grid gap-1 text-sm">
+    <Card title={t("routePolicies.title")}>
+      {ids.length === 0 ? <p className="text-sm text-muted-foreground">{t("routePolicies.none")}</p> : (
+        <ol className="grid divide-y divide-border rounded-lg border border-border text-sm">
           {ids.map((id, i) => (
-            <li key={id} className="flex flex-wrap items-center gap-2">
-              <span className="font-medium">{i + 1}. {name(id)}</span>
+            <li key={id} className="flex flex-wrap items-center gap-2 px-3 py-2">
+              <span className="mr-auto font-medium">{i + 1}. {name(id)}</span>
               <Button size="sm" variant="outline" disabled={i === 0} onClick={() => move(i, -1)}>{t("policies.up")}</Button>
               <Button size="sm" variant="outline" disabled={i === ids.length - 1} onClick={() => move(i, 1)}>{t("policies.down")}</Button>
               <Button size="sm" variant="outline" onClick={() => setIds(ids.filter((x) => x !== id))}>{t("routePolicies.detach")}</Button>
@@ -58,17 +59,17 @@ export function RoutePolicies({ orgId, route: r, onDone }: { orgId: string; rout
         </ol>
       )}
       <div className="flex flex-wrap items-end gap-2">
-        <label className="grid gap-1 text-sm">
+        <label className="grid gap-1.5 text-sm font-medium">
           {t("routePolicies.add")}
-          <select className="h-9 rounded-md border border-border bg-background px-2" value={adding} onChange={(e) => setAdding(e.target.value)}>
+          <Select className="min-w-48 font-normal" value={adding} onChange={(e) => setAdding(e.target.value)}>
             <option value="">{t("routePolicies.choose")}</option>
             {(policies.data ?? []).filter((p) => !ids.includes(p.id)).map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-          </select>
+          </Select>
         </label>
         <Button size="sm" variant="outline" disabled={!adding} onClick={() => (setIds([...ids, adding]), setAdding(""))}>{t("routePolicies.attach")}</Button>
         <Button size="sm" disabled={!changed || update.isPending} onClick={() => void save()}>{t("routeForm.save")}</Button>
       </div>
       {error && <Alert>{error}</Alert>}
-    </section>
+    </Card>
   );
 }

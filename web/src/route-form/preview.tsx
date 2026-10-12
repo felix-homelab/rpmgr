@@ -10,7 +10,7 @@ export function PreviewPanel({ preview, name }: { preview: PreviewRouteResponse;
   const { t } = useTranslation();
   const where = preview.route ? routeAddress(preview.route) : [];
   return (
-    <section aria-labelledby="preview-title" className="grid gap-1 rounded-md border border-border p-3 text-sm">
+    <section aria-labelledby="preview-title" className="grid gap-1.5 rounded-xl border border-border bg-muted/50 p-4 text-sm">
       <h2 id="preview-title" className="font-semibold">{t("preview.title")}</h2>
       {where.length > 0 && <p>{t("preview.address", { address: where.join(", ") })}</p>}
       <p>{t("preview.gateways", { names: preview.gatewayIds.map(name).join(", ") || t("preview.none") })}</p>

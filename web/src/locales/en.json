@@ -238,6 +238,7 @@
   },
   "route": {
     "title": "Route {{name}} ({{type}})",
+    "back": "All routes",
     "notFound": "This route does not exist, or you cannot see it.",
     "desired": "Configured",
     "observed": "Observed",

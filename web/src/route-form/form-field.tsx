@@ -3,7 +3,7 @@
 import { useId } from "react";
 import type { Path, UseFormReturn } from "react-hook-form";
 import { useTranslation } from "react-i18next";
-import { Input } from "@/components/ui/input";
+import { Input, Select, Textarea } from "@/components/ui/input";
 import type { RouteField, RouteValues } from "@/route-form/fields";
 
 // FormField is one labelled field of the route form, with its hint, if its kind has one, and its
@@ -17,26 +17,25 @@ export function FormField<V extends RouteValues>({ field, form }: { field: Route
   const hint = i18n.exists(hintKey) ? t(hintKey) : "";
   const described = [hint && `${id}-hint`, error && `${id}-error`].filter(Boolean).join(" ") || undefined;
   const common = { id, "aria-invalid": error ? true : undefined, "aria-describedby": described, ...form.register(field.key as Path<V>) };
-  const box = "rounded-md border border-border bg-background px-3 py-1.5 text-sm";
   let input;
   switch (field.kind) {
     case "longtext":
     case "lines":
     case "pairs":
-      input = <textarea rows={field.kind === "longtext" ? 2 : 3} className={box} {...common} />;
+      input = <Textarea rows={field.kind === "longtext" ? 2 : 3} {...common} />;
       break;
     case "select":
       input = (
-        <select className={`h-9 ${box}`} {...common}>
+        <Select {...common}>
           {field.options?.map(([v, k]) => <option key={v} value={v}>{t(`routeForm.options.${field.key}.${k}`)}</option>)}
-        </select>
+        </Select>
       );
       break;
     case "tristate":
       input = (
-        <select className={`h-9 ${box}`} {...common}>
+        <Select {...common}>
           {["", "true", "false"].map((v) => <option key={v} value={v}>{t(`routeForm.tristate.${v || "default"}`)}</option>)}
-        </select>
+        </Select>
       );
       break;
     default:

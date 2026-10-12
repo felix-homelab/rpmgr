@@ -63,6 +63,10 @@ function detail(r: object, transports: Record<string, DataTransport[]> = {}, tra
   });
 }
 
+// stats reads the traffic's figures: each term with its value.
+const stats = (section: ReturnType<typeof within>) =>
+  section.getAllByRole("term").map((dt: HTMLElement) => [dt.textContent, dt.nextElementSibling?.textContent]);
+
 describe("RouteDetail", () => {
   it("shows the desired settings next to the observed state, and the gateways and agents that do not serve", async () => {
     detail(postgres);
@@ -119,13 +123,28 @@ describe("RouteDetail", () => {
     const traffic: GetRouteTrafficRequest[] = [];
     detail(postgres, {}, traffic);
     const section = within(await screen.findByRole("region", { name: "Traffic" }));
-    expect(await section.findByText("In 1 kB · out 5 B · 2 connections · 0 errors")).toBeTruthy();
+    await section.findByText("1 kB");
+    expect(stats(section)).toEqual([["In", "1 kB"], ["Out", "5 B"], ["Connections", "2"], ["Errors", "0"]]);
     expect(section.getByRole("button", { name: "24 hours" }).getAttribute("aria-pressed")).toBe("true");
     fireEvent.click(section.getByRole("button", { name: "30 days" }));
-    expect(await section.findByText("In 2 kB · out 5 B · 2 connections · 0 errors")).toBeTruthy();
+    await section.findByText("2 kB");
+    expect(stats(section)).toEqual([["In", "2 kB"], ["Out", "5 B"], ["Connections", "2"], ["Errors", "0"]]);
     const spans = traffic.map((r) => [r.routeId, r.resolution, Number(r.to!.seconds - r.from!.seconds) / 3600]);
     expect(spans).toEqual([["rte_2", TrafficResolution.HOURLY, 24], ["rte_2", TrafficResolution.DAILY, 720]]);
     expect(traffic[0]!.to).toEqual(traffic[1]!.to);
+  });
+
+  it("leads back to all routes and to the route's form, and adds targets from the targets card", async () => {
+    detail({ ...postgres, targets: [] });
+    await screen.findByRole("heading", { name: "Route postgres (TCP)" });
+    expect(screen.getByRole("link", { name: "All routes" }).getAttribute("href")).toBe("/routes");
+    expect(screen.getByRole("link", { name: "Edit" }).getAttribute("href")).toBe("/routes/rte_2/edit");
+    const targets = within(screen.getByRole("region", { name: "Targets" }));
+    expect(targets.getByText("The route has no targets.")).toBeTruthy();
+    expect(targets.queryByRole("table")).toBeNull();
+    fireEvent.click(targets.getByRole("button", { name: "Add a target" }));
+    expect(targets.getByRole("form", { name: "New target" })).toBeTruthy();
+    expect(targets.queryByRole("button", { name: "Add a target" })).toBeNull(); // one form at a time
   });
 });
 

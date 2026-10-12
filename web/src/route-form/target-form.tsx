@@ -8,7 +8,7 @@ import { useForm, useWatch, type Path, type Resolver, type UseFormReturn } from 
 import { useTranslation } from "react-i18next";
 import { Alert } from "@/components/public-page";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { Input, Select as SelectBox } from "@/components/ui/input";
 import type { Revision } from "@/gen/rpmgr/v1/common_pb";
 import {
   CreateRouteTargetRequestSchema, ProxyProtocol, RouteService, RouteTargetSchema, UpdateRouteTargetRequestSchema, UpstreamProtocol,
@@ -142,7 +142,7 @@ export function TargetForm({ route, target, connectors, onDone, onCancel }: {
 
   return (
     <form onSubmit={form.handleSubmit(save)} aria-label={t(target ? "targetForm.editTitle" : "targetForm.addTitle")}
-      className="grid gap-3 rounded-md border border-border p-3" noValidate>
+      className="grid gap-4 rounded-lg border border-border bg-muted/40 p-4" noValidate>
       <Select form={form} name="connector" label={t("route.columns.connector")} disabled={!!target}
         options={[["", t("targetForm.chooseConnector")], ...connectors]} />
       <Select form={form} name="address" label={t("targetForm.address")} options={[["hostPort", t("targetForm.hostPort")], ["unixPath", t("targetForm.unixPath")]]} />
@@ -169,7 +169,7 @@ export function TargetForm({ route, target, connectors, onDone, onCancel }: {
         <Text form={form} name="weight" label={t("route.columns.weight")} />
         <Text form={form} name="priority" label={t("targetForm.priority")} />
       </div>
-      <label className="flex items-center gap-2 text-sm"><input type="checkbox" {...form.register("enabled")} />{t("targetForm.enabled")}</label>
+      <label className="flex items-center gap-2 text-sm"><input type="checkbox" className="size-4 accent-primary" {...form.register("enabled")} />{t("targetForm.enabled")}</label>
       {other.map((m) => <Alert key={m}>{m}</Alert>)}
       <div className="flex gap-2">
         <Button type="submit" disabled={add.isPending || update.isPending}>{t(target ? "routeForm.save" : "targetForm.add")}</Button>
@@ -183,7 +183,7 @@ function Text({ form, name, label }: { form: UseFormReturn<TargetValues>; name: 
   const id = useId();
   const error = form.formState.errors[name as keyof TargetValues]?.message;
   return (
-    <div className="grid gap-1">
+    <div className="grid gap-1.5">
       <label htmlFor={id} className="text-sm font-medium">{label}</label>
       <Input id={id} aria-invalid={error ? true : undefined} aria-describedby={`${id}-error`} {...form.register(name)} />
       {error && <p id={`${id}-error`} role="alert" className="text-sm text-destructive">{error}</p>}
@@ -195,11 +195,11 @@ function Select({ form, name, label, options, disabled }: { form: UseFormReturn<
   const id = useId();
   const error = form.formState.errors[name as keyof TargetValues]?.message;
   return (
-    <div className="grid gap-1">
+    <div className="grid gap-1.5">
       <label htmlFor={id} className="text-sm font-medium">{label}</label>
-      <select id={id} disabled={disabled} aria-invalid={error ? true : undefined} className="h-9 rounded-md border border-border bg-background px-2 text-sm" {...form.register(name)}>
+      <SelectBox id={id} disabled={disabled} aria-invalid={error ? true : undefined} {...form.register(name)}>
         {options.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-      </select>
+      </SelectBox>
       {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
     </div>
   );

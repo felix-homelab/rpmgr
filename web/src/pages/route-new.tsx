@@ -5,12 +5,16 @@ import { Code, ConnectError } from "@connectrpc/connect";
 import { useMutation } from "@connectrpc/connect-query";
 import { useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
+import { ChevronLeft } from "lucide-react";
 import { useState } from "react";
 import { useForm, type Resolver } from "react-hook-form";
 import { useTranslation } from "react-i18next";
 import { ApplyStatusView, useLiveApplyStatus } from "@/components/apply-status";
+import { PageHeader } from "@/components/page-header";
 import { Alert } from "@/components/public-page";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Select } from "@/components/ui/input";
 import type { Revision } from "@/gen/rpmgr/v1/common_pb";
 import {
   CreateRouteRequestSchema, Port80Mode, RouteSchema, RouteService, TLSMode, type PreviewRouteResponse, type Route,
@@ -43,20 +47,27 @@ export function RouteNew() {
   const { t } = useTranslation();
   const [type, setType] = useState<RouteType>("http");
   return (
-    <div className="grid max-w-2xl gap-6">
-      <h1 className="text-2xl font-semibold">{t("routeNew.title")}</h1>
-      <fieldset className="grid gap-1.5">
-        <legend className="text-sm font-medium">{t("routes.type")}</legend>
-        <div className="flex flex-wrap gap-4 text-sm">
-          {routeTypes.map((rt) => (
-            <label key={rt} className="flex items-center gap-1.5">
-              <input type="radio" name="type" checked={type === rt} onChange={() => setType(rt)} />
-              {t(`routeType.${rt}`)}
-            </label>
-          ))}
-        </div>
-      </fieldset>
-      <NewRouteForm key={type} type={type} />
+    <div className="grid max-w-3xl gap-6">
+      <div className="grid gap-2">
+        <Link to="/routes" search={{}} className="inline-flex w-fit items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
+          <ChevronLeft aria-hidden="true" className="size-4" />{t("route.back")}
+        </Link>
+        <PageHeader title={t("routeNew.title")} />
+      </div>
+      <Card>
+        <fieldset className="grid gap-2">
+          <legend className="mb-2 text-sm font-medium">{t("routes.type")}</legend>
+          <div className="grid gap-2 sm:grid-cols-4">
+            {routeTypes.map((rt) => (
+              <label key={rt} className="flex cursor-pointer items-center gap-2 rounded-lg border border-border px-3 py-2.5 text-sm font-medium transition-colors hover:bg-muted has-checked:border-ring has-checked:bg-accent has-checked:text-accent-foreground has-focus-visible:outline-2 has-focus-visible:outline-ring">
+                <input type="radio" name="type" className="accent-primary" checked={type === rt} onChange={() => setType(rt)} />
+                {t(`routeType.${rt}`)}
+              </label>
+            ))}
+          </div>
+        </fieldset>
+        <NewRouteForm key={type} type={type} />
+      </Card>
     </div>
   );
 }
@@ -132,7 +143,9 @@ function NewRouteForm({ type }: { type: RouteType }) {
     return (
       <div className="grid gap-3">
         {live && <ApplyStatusView status={live} revision={created.revision} name={name} />}
-        <Link to="/routes/$routeId" params={{ routeId: created.route.id }} className="underline">{t("routeNew.open", { name: created.route.name })}</Link>
+        <Button asChild className="justify-self-start">
+          <Link to="/routes/$routeId" params={{ routeId: created.route.id }}>{t("routeNew.open", { name: created.route.name })}</Link>
+        </Button>
       </div>
     );
   }
@@ -141,17 +154,16 @@ function NewRouteForm({ type }: { type: RouteType }) {
     <form onSubmit={form.handleSubmit(save)} className="grid gap-4" noValidate>
       <div className="grid gap-1.5">
         <label htmlFor="route-group" className="text-sm font-medium">{t("routes.group")}</label>
-        <select id="route-group" className="h-9 rounded-md border border-border bg-background px-2 text-sm" aria-invalid={groupError ? true : undefined}
-          {...form.register("group")}>
+        <Select id="route-group" aria-invalid={groupError ? true : undefined} {...form.register("group")}>
           <option value="">{t("routeNew.chooseGroup")}</option>
           {[...(groups.data ?? new Map<string, string>())].map(([id, n]) => <option key={id} value={id}>{n}</option>)}
-        </select>
+        </Select>
         {groupError && <p role="alert" className="text-sm text-destructive">{groupError}</p>}
       </div>
       {fields.map((f) => <FormField key={f.key} field={f} form={form} />)}
       {other.map((m) => <Alert key={m}>{m}</Alert>)}
       {previewed && <PreviewPanel preview={previewed} name={name} />}
-      <div className="flex gap-2">
+      <div className="flex flex-wrap gap-2 border-t border-border pt-4">
         <Button type="submit" disabled={createRoute.isPending}>{t("routeNew.create")}</Button>
         <Button variant="outline" disabled={preview.isPending} onClick={() => void form.handleSubmit(check)()}>{t("preview.button")}</Button>
         <Button asChild variant="outline"><Link to="/routes" search={{}}>{t("stepUp.cancel")}</Link></Button>

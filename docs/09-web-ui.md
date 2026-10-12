@@ -245,11 +245,15 @@ flowchart LR
 ```
 
 **How the detail works.**
+- **Layout:** a link back to all routes; the route's name and type with the "Enabled" switch,
+  "YAML" and "Edit"; the configured settings next to the observed state; then cards for the
+  gateways not serving it and the agents that rejected it, when there are any, and for its targets,
+  traffic and access policies.
 - It shows the configured settings next to the observed state (U3), and how many of the group's
   gateways serve the route.
 - **Each target** shows its connector by name, its address and weight, and whether it serves; if
   not, it says why.
-- **Targets are added, edited and removed** on the page.
+- **Targets are added, edited and removed** on the page, in the targets card, one form at a time.
   - **The form:** the connector (fixed once the target exists), a host and port or a socket path,
     the protocol to the target (HTTP, verified HTTPS with its server name, CA bundle and key pin,
     or h2c for HTTP routes; TCP otherwise), the PROXY protocol for TCP and TLS-passthrough routes,

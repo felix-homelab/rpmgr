@@ -79,7 +79,7 @@ describe("the route's switch", () => {
 
   it("turns the route off and follows the change to the agents", async () => {
     const updates = detail(() => ({ route: { ...route, enabled: false }, revision: { dbEpoch: "e", seq: 43n }, applyStatus: { state: ApplyState.PENDING, agentsTotal: 2 } }));
-    const toggle = await screen.findByRole("switch", { name: "Enabled: on" });
+    const toggle = await screen.findByRole("switch", { name: "Enabled" });
     expect(toggle.getAttribute("aria-checked")).toBe("true");
     fireEvent.click(toggle);
     await waitFor(() => expect(screen.getByRole("status").textContent).toContain("Revision 43: applied by all 2 agents."));
@@ -88,7 +88,7 @@ describe("the route's switch", () => {
 
   it("says when the route changed meanwhile", async () => {
     detail(() => { throw apiError(Code.FailedPrecondition, "ETAG_MISMATCH"); });
-    fireEvent.click(await screen.findByRole("switch", { name: "Enabled: on" }));
+    fireEvent.click(await screen.findByRole("switch", { name: "Enabled" }));
     expect((await screen.findByRole("alert")).textContent).toContain("The route changed since this page loaded it.");
   });
 });

@@ -3,6 +3,7 @@
 import { create } from "@bufbuild/protobuf";
 import { createClient } from "@connectrpc/connect";
 import { useTransport } from "@connectrpc/connect-query";
+import { CircleCheck, CircleHelp, CircleX, Hourglass, Timer } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { Revision } from "@/gen/rpmgr/v1/common_pb";
@@ -42,21 +43,22 @@ export function useLiveApplyStatus(orgId: string, revision: Revision | undefined
 // agents, which get it when they connect. Screen readers hear each change (U8).
 export function ApplyStatusView({ status, revision, name }: { status: ApplyStatus; revision?: Revision; name: (id: string) => string }) {
   const { t } = useTranslation();
-  const look = {
-    [ApplyState.UNSPECIFIED]: ["?", "unknown", ""],
-    [ApplyState.PENDING]: ["⧗", "pending", "text-muted-foreground"],
-    [ApplyState.APPLIED]: ["✓", "applied", "text-ok"],
-    [ApplyState.REJECTED]: ["✕", "rejected", "text-destructive"],
-    [ApplyState.APPLY_TIMEOUT]: ["⏱", "timeout", "text-destructive"],
-  }[status.state];
+  const look = ({
+    [ApplyState.UNSPECIFIED]: [CircleHelp, "unknown", "text-muted-foreground"],
+    [ApplyState.PENDING]: [Hourglass, "pending", "text-muted-foreground"],
+    [ApplyState.APPLIED]: [CircleCheck, "applied", "text-ok"],
+    [ApplyState.REJECTED]: [CircleX, "rejected", "text-destructive"],
+    [ApplyState.APPLY_TIMEOUT]: [Timer, "timeout", "text-destructive"],
+  } as const)[status.state];
+  const Icon = look[0];
   return (
-    <div role="status" aria-live="polite" className="grid gap-1 text-sm">
-      <p className={cn("font-medium", look[2])}>
-        <span aria-hidden="true">{look[0]} </span>
+    <div role="status" aria-live="polite" className="grid gap-1.5 rounded-xl border border-border bg-card p-4 text-sm shadow-xs">
+      <p className="flex items-center gap-2 font-medium">
+        <Icon aria-hidden="true" className={cn("size-4 shrink-0", look[2])} />
         {t(`apply.${look[1]}`, { applied: status.agentsApplied, total: status.agentsTotal, seq: revision ? String(revision.seq) : "" })}
       </p>
       {status.agents.length > 0 && (
-        <ul className="grid gap-0.5">
+        <ul className="grid gap-0.5 pl-6">
           {status.agents.map((a) => (
             <li key={a.agentId}>
               {name(a.agentId)}: {t(`apply.agent.${ApplyState[a.state]}`, { defaultValue: ApplyState[a.state] })}
@@ -66,7 +68,7 @@ export function ApplyStatusView({ status, revision, name }: { status: ApplyStatu
         </ul>
       )}
       {status.offline.length > 0 && (
-        <p className="text-muted-foreground">
+        <p className="pl-6 text-muted-foreground">
           {t("apply.offline", { agents: status.offline.map((o) => (o.lastSeenTime ? `${name(o.agentId)} (${when(o.lastSeenTime)})` : name(o.agentId))).join(", ") })}
         </p>
       )}
