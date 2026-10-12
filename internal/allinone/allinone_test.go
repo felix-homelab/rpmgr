@@ -20,6 +20,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -212,6 +213,46 @@ func ping(c net.Conn, msg string) error {
 		return errors.New("wrong echo")
 	}
 	return nil
+}
+
+// TestInit_SystemdCredential (docs/16-cli.md, `all-in-one init`): with the KEK in a new systemd
+// credential, init enrolls its gateway through the in-memory controller with the KEK it has just
+// made: outside a service no credential is loaded (no CREDENTIALS_DIRECTORY), so the controller
+// cannot load it again.
+func TestInit_SystemdCredential(t *testing.T) {
+	h := newHost(t)
+	boot, err := os.ReadFile(h.boot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fileKEK := fmt.Sprintf("kek: {source: file, path: %s}\n", filepath.Join(h.dir, "kek"))
+	if !strings.Contains(string(boot), fileKEK) {
+		t.Fatalf("boot file %q", boot)
+	}
+	boot = []byte(strings.Replace(string(boot), fileKEK, "kek: {source: systemd-credential}\n", 1))
+	if err := os.WriteFile(h.boot, boot, 0o600); err != nil { //nolint:gosec // G703: the test's own boot file
+		t.Fatal(err)
+	}
+	credstore := filepath.Join(h.dir, "credstore")
+	var encrypted []string
+	r, err := allinone.Init(context.Background(), controller.InitOptions{ConfigPath: h.boot, CredentialsDir: credstore,
+		Getenv: func(string) string { return "" }, SystemdVersion: func() int { return 255 },
+		Encrypt: func(_ context.Context, name, path string, b []byte) error {
+			encrypted = append(encrypted, name)
+			return os.WriteFile(path, b, 0o600) // stands in for systemd-creds encrypt
+		}})
+	if err != nil {
+		t.Fatalf("init with a new systemd credential: %v", err)
+	}
+	if len(encrypted) != 1 || encrypted[0] != "rpmgr-kek" || r.GatewayID == "" {
+		t.Fatalf("credentials %v, gateway %q", encrypted, r.GatewayID)
+	}
+	if err := config.Load(h.boot, &h.cfg); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := agent.Load(h.cfg.Gateway().IdentityDir); err != nil {
+		t.Fatalf("the gateway's identity: %v", err)
+	}
 }
 
 // TestAllInOne: `init` sets up the controller and enrolls its gateway through it; `Run` serves the

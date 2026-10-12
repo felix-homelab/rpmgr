@@ -144,7 +144,7 @@ func Init(ctx context.Context, o controller.InitOptions) (InitResult, error) {
 	ccfg.Listen.HTTP = &none
 	go func() {
 		done <- controller.Run(rctx, controller.RunOptions{Config: ccfg, Getenv: o.Getenv, Listener: mem, NoACME: true,
-			Registry: telemetry.NewRegistry(), Listening: func() { close(listening) }})
+			Registry: telemetry.NewRegistry(), Listening: func() { close(listening) }, KEK: &r.Key})
 	}()
 	select {
 	case <-listening:
