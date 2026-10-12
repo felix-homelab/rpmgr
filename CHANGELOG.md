@@ -129,7 +129,8 @@ history and the [ADRs](docs/adr/).
 - UI: a sidebar groups the pages, and is a menu on narrow screens. The top bar holds "Go to…", a
   switch for the light, dark or system theme, which saves it to the profile, and the user menu.
   Both themes keep text contrast at WCAG 2.2 AA. The overview leads with a figure per area, the
-  traffic of the last 24 hours and what needs attention. (#459)
+  traffic of the last 24 hours and what needs attention. Every page uses the same page header,
+  cards, tables, status badges and empty states. (#459)
 - Controller: every change, sign-in and token use is recorded once in a hash-chained audit log per
   org and one for the instance, with signed checkpoints and retention. The API and the UI list and
   verify the chains. (#194, #311, #350, #351, #352)
