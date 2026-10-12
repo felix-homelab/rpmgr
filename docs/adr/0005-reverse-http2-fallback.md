@@ -172,3 +172,9 @@ FIN are lost. With the connector's FIN carried in-band, every criterion passes. 
 foresee that variant; the product owner chose reverse HTTP/2 with the in-band connector FIN over
 the rule's yamux fallback on 2026-10-07 ([D40](../14-open-decisions.md#engineering)), and the
 decision above includes it.
+
+**Phase 1 measurements** (2026-10-11 and 12, GitHub-hosted runners, D49): the TCP + h2 transport
+carried a single stream at 1.1 to 1.7 Gbit/s at 1 ms and at 80 to 145 % of a well-behaved direct
+TCP baseline from 20 ms on, at 0.45 to 2.0 CPU s per Gbit, against 1.2 to 5.8 for QUIC. Its routes
+answered again 1.0 to 1.5 s after a SIGKILL of the gateway. The results, the misses and their
+decisions are in [ADR-0004](0004-quic-default-transport-policy.md#phase-1-measurements).

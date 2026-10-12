@@ -126,3 +126,72 @@ congestion control. "QUIC is faster" is therefore a **hypothesis**, not a premis
   settings through `GetConfigForClient` and per-ALPN window budgets; tunnels share UDP/443 by
   default, and `listen.tunnel_udp` remains the option for tunnel transport parameters that differ
   from public HTTP/3.
+
+### Phase 1 measurements
+
+**Runner measurements** (2026-10-11 and 12, slice 12.3): the benchmark suite of
+[12](../12-testing-and-quality.md#benchmarks), full profile, on GitHub-hosted x86-64 and arm64
+runners, not the reference testbed ([D49](../14-open-decisions.md#project-and-process); VB-20 in
+[13](../13-roadmap.md#verification-backlog)). Each run puts the client, the gateway, two connectors
+and the services in containers on one runner, with `tc netem` on the gateway↔connector link. The
+full profile ran in parts, one per RTT, on the harness of #415, #418 and #419: `bench` workflow
+runs 38166921665, 38166927250, 38166933320 and 38166939366, and for the workloads that run after
+the cells, 38176585179 and 38179217082. Their artifacts hold the records and `bench summarize`
+tables for 90 days; the tables below are taken from them.
+
+| Target of [03](../03-connections.md#targets-t) | Result | Met |
+|---|---|---|
+| Added connection-setup latency p99 ≤ 1 × RTT + 2 ms | +0.95 to +1.77 ms at RTT 1, 20, 80 and 200 ms, both transports, both runners | yes |
+| Snapshot apply p99 ≤ 2 s, 1 000 routes | 0.41 to 0.54 s | yes |
+| 0 resets on unchanged routes during changes | 0 of 8 held connections lost | yes |
+| Single stream ≥ 80 % of direct TCP, 0 % loss | not met: see below | no |
+| 32 streams at 1 % loss: QUIC ≥ 1.5 × TCP + h2 | 0.38 to 1.07 × | no |
+| CPU per Gbit/s | recorded as the baseline: QUIC 1.2 to 5.8, TCP + h2 0.45 to 2.0 CPU s per Gbit | — |
+
+**Single stream, 0 % loss** (Mbit/s, the median of three runs, the lower of the two directions):
+
+| Runner | RTT | Direct | QUIC | TCP + h2 |
+|---|---|---|---|---|
+| gh-amd64 | 1 ms | 18 102 | 1 104 | 1 738 |
+| gh-amd64 | 20 ms | 88 | 231 | 1 169 |
+| gh-amd64 | 80 ms | 369 | 159 | 323 |
+| gh-amd64 | 200 ms | 133 | 189 | 128 |
+| gh-arm64 | 1 ms | 24 065 | 1 046 | 1 507 |
+| gh-arm64 | 20 ms | 1 414 | 287 | 1 134 |
+| gh-arm64 | 80 ms | 47 | 140 | 327 |
+| gh-arm64 | 200 ms | 8.2 | 139 | 135 |
+
+- **At 1 ms** the direct path is the kernel's path between containers of one host, at 18 to
+  24 Gbit/s. The tunnel crosses two user-space relays with TLS and is bound by the runner's four
+  CPUs, at 1.0 to 1.7 Gbit/s.
+- **From 20 ms on**, TCP + h2 reaches 80 to 145 % of a well-behaved direct baseline. QUIC reaches
+  140 to 290 Mbit/s. A qlog showed quic-go's Cubic sender ending slow start with losses and then
+  marked application-limited thousands of times, which keeps resetting its growth; neither flow
+  control nor rpmgr's relay was the limit (#421).
+- **The direct baseline is erratic** on the runners: one TCP connection through the same shaped
+  link measured 8 to 1 414 Mbit/s in comparable cells, so a ratio to it says little there.
+
+**32 streams at 1 % loss** (Mbit/s): direct 29 to 424 at RTT 20 to 200 ms against 1.6 to 17 for
+either transport. Every stream to a gateway shares one congestion-controlled connection (one QUIC
+connection, or the two TCP connections of h2), so loss throttles all of them together, and QUIC's
+per-stream loss recovery cannot make up for it (#422).
+
+**Decisions on the misses** ([14](../14-open-decisions.md#engineering)):
+- **D69, single stream:** recorded as a runner measurement. The target stays and the reference
+  testbed (VB-20) decides it; #421 studies QUIC's single-stream behaviour in Phase 2.
+- **D70, 32 streams at 1 % loss:** recorded as a runner measurement. The target stays for VB-20;
+  #422 evaluates several data sessions per gateway in Phase 2.
+- **D71, the default:** stays `auto`, QUIC first, as D45 decided. QUIC served HTTP better under
+  loss: in 22 of the 24 cells with 0.5 to 2 % loss it handled more requests per second (up to
+  1.4 ×) at a lower p99 latency (up to a third lower). TCP + h2 carried bulk transfers better from
+  20 ms on. Routes and connectors that carry bulk transfers over high-delay paths can pin `h2`
+  ([10](../10-operations.md#runtime-settings-ui--settings)).
+
+**Other results:**
+- **VB-18:** the signal works on both transports. A connector whose session's writers were
+  blocked got 11 to 13 % of new connections on QUIC and 23 % on TCP + h2, from 50 % before.
+- **SIGKILL of the gateway:** QUIC routes answered again after 10.2 and 15.2 s: a connector
+  notices the restarted gateway by a stateless reset within one session ping interval
+  ([03](../03-connections.md#failure-modes)), then reconnects. TCP + h2 routes answered again after
+  1.0 and 1.5 s. A SIGKILL of the controller cost no held connection.
+- **20 idle connectors** added 7 to 10 MiB to the gateway, at 0.006 to 0.007 CPU s/s.
