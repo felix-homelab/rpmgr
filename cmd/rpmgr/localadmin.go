@@ -4,9 +4,12 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"maps"
+	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"text/tabwriter"
@@ -21,7 +24,31 @@ import (
 // Local administration on the controller host (docs/16-cli.md): each command reads the
 // controller's or all-in-one's boot file.
 
-const bootFlagHelp = "the controller's boot file, or all-in-one's (default $RPMGR_CONFIG, else /etc/rpmgr/controller.yaml)"
+const bootFlagHelp = "the controller's boot file, or all-in-one's (default $RPMGR_CONFIG, else /etc/rpmgr/controller.yaml, else /etc/rpmgr/all-in-one.yaml)"
+
+// bootDir is where the boot files are; a test replaces it.
+var bootDir = "/etc/rpmgr"
+
+// controllerBoot is the boot file of a command on the controller host: the --config flag if set,
+// else $RPMGR_CONFIG, else /etc/rpmgr/controller.yaml, else, on an all-in-one host,
+// /etc/rpmgr/all-in-one.yaml.
+func controllerBoot(flagPath string, getenv func(string) string) string {
+	if flagPath != "" || getenv("RPMGR_CONFIG") != "" {
+		return config.Path(flagPath, "controller", getenv)
+	}
+	path := filepath.Join(bootDir, "controller.yaml")
+	if _, err := os.Stat(path); errors.Is(err, os.ErrNotExist) {
+		if aio := filepath.Join(bootDir, "all-in-one.yaml"); fileExists(aio) {
+			return aio
+		}
+	}
+	return path
+}
+
+func fileExists(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
+}
 
 // localCommand is a command of the controller host that takes --config and no arguments.
 func localCommand(name, summary string, flags func(fs *flag.FlagSet), run func(ctx context.Context, env *cli.Env, path string) error) *cli.Command {
@@ -36,7 +63,7 @@ func localCommand(name, summary string, flags func(fs *flag.FlagSet), run func(c
 			}
 		},
 		Run: func(ctx context.Context, env *cli.Env, _ []string) error {
-			return run(ctx, env, config.Path(configPath, "controller", env.Getenv))
+			return run(ctx, env, controllerBoot(configPath, env.Getenv))
 		},
 	}
 }
