@@ -409,11 +409,14 @@
   },
   "connectors": {
     "title": "Connectors",
+    "intro": "Connectors run next to private services and carry their traffic to the gateways.",
+    "back": "All connectors",
     "session": "Session",
     "connected": "connected",
     "offline": "offline",
     "ephemeral": "ephemeral",
     "none": "No connector matches.",
+    "noneYet": "No connectors yet.",
     "notFound": "This connector does not exist, or you cannot see it.",
     "columns": {
       "name": "Name",
@@ -496,6 +499,8 @@
   },
   "gateways": {
     "title": "Gateway groups",
+    "intro": "Gateway groups take public traffic and pass it to the connectors.",
+    "back": "All gateway groups",
     "newGroup": "New gateway group",
     "create": "Create the group",
     "noGroups": "The org has no gateway group yet.",

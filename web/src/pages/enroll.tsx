@@ -4,12 +4,14 @@ import { Code, ConnectError, createClient } from "@connectrpc/connect";
 import { useMutation, useTransport } from "@connectrpc/connect-query";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
+import { LoaderCircle } from "lucide-react";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { Field } from "@/components/field";
 import { Command, OneTimeToken } from "@/components/one-time-token";
 import { Alert } from "@/components/public-page";
 import { Button } from "@/components/ui/button";
+import { Select, Textarea } from "@/components/ui/input";
 import { AgentRole, EnrollmentService } from "@/gen/rpmgr/v1/enrollment_pb";
 import { StatusService } from "@/gen/rpmgr/v1/status_pb";
 import { Reason, reasonOf } from "@/lib/errors";
@@ -76,21 +78,20 @@ export function EnrollDialog({ orgId, known, onClose }: { orgId: string; known: 
 
   return (
     <dialog ref={dialog} aria-labelledby="enroll-title" onCancel={onClose}
-      className="m-auto w-full max-w-2xl rounded-lg border border-border bg-background p-6 text-foreground backdrop:bg-black/50">
+      className="m-auto w-[calc(100%-2rem)] max-w-2xl rounded-xl border border-border bg-card p-6 shadow-2xl">
       <h2 id="enroll-title" className="text-lg font-semibold">{t("enroll.title")}</h2>
       {!result ? (
-        <form onSubmit={submit} className="mt-4 grid gap-3" noValidate>
+        <form onSubmit={submit} className="mt-5 grid gap-4" noValidate>
           <label className="grid gap-1.5 text-sm font-medium">
             {t("routeForm.fields.labels")}
-            <textarea rows={2} className="rounded-md border border-border bg-background px-3 py-1.5 font-normal" value={form.labels}
-              onChange={(e) => setForm({ ...form, labels: e.target.value })} />
+            <Textarea rows={2} className="font-normal" value={form.labels} onChange={(e) => setForm({ ...form, labels: e.target.value })} />
           </label>
           <label className="grid gap-1.5 text-sm font-medium">
             {t("routes.group")}
-            <select className="h-9 rounded-md border border-border bg-background px-2 font-normal" value={form.group} onChange={(e) => setForm({ ...form, group: e.target.value })}>
+            <Select className="font-normal" value={form.group} onChange={(e) => setForm({ ...form, group: e.target.value })}>
               <option value="">{t("enroll.anyGroup")}</option>
               {[...(groups.data ?? new Map<string, string>())].map(([id, n]) => <option key={id} value={id}>{n}</option>)}
-            </select>
+            </Select>
           </label>
           <fieldset className="grid gap-1.5">
             <legend className="text-sm font-medium">{t("enroll.kind")}</legend>
@@ -101,17 +102,16 @@ export function EnrollDialog({ orgId, known, onClose }: { orgId: string; known: 
           </fieldset>
           <label className="grid gap-1.5 text-sm font-medium">
             {t("enroll.lifetime")}
-            <select className="h-9 rounded-md border border-border bg-background px-2 font-normal" value={form.lifetime} onChange={(e) => setForm({ ...form, lifetime: e.target.value })}>
+            <Select className="font-normal" value={form.lifetime} onChange={(e) => setForm({ ...form, lifetime: e.target.value })}>
               {lifetimes.map((s) => <option key={s} value={String(s)}>{t(`enroll.lifetimes.${s}`)}</option>)}
-            </select>
+            </Select>
           </label>
           {form.ephemeral && (
             <Field label={t("enroll.usesLabel")} hint={t("enroll.usesHint")} inputMode="numeric" value={form.uses} onChange={(e) => setForm({ ...form, uses: e.target.value })} />
           )}
           <label className="grid gap-1.5 text-sm font-medium">
             {t("enroll.targets")}
-            <textarea rows={2} className="rounded-md border border-border bg-background px-3 py-1.5 font-normal" value={form.targets}
-              onChange={(e) => setForm({ ...form, targets: e.target.value })} />
+            <Textarea rows={2} className="font-normal" value={form.targets} onChange={(e) => setForm({ ...form, targets: e.target.value })} />
             <span className="text-xs font-normal text-muted-foreground">{t("enroll.targetsHint")}</span>
           </label>
           {error && <Alert>{error}</Alert>}
@@ -121,13 +121,15 @@ export function EnrollDialog({ orgId, known, onClose }: { orgId: string; known: 
           </div>
         </form>
       ) : (
-        <div className="mt-4 grid gap-3 text-sm">
+        <div className="mt-5 grid gap-3 text-sm">
           <p>{t("enroll.step1")}</p>
           <Command command={result.command} label={t("enroll.command")} />
           <p>{t("enroll.step2")}</p>
           <OneTimeToken token={result.token} label={t("enroll.token")} />
           <p className="text-muted-foreground">{t(`enroll.note`, { lifetime: t(`enroll.lifetimes.${result.lifetime}`) })}</p>
-          <p role="status" className="flex items-center gap-2"><span aria-hidden="true">⧗</span>{t("enroll.waiting")}</p>
+          <p role="status" className="flex items-center gap-2 text-muted-foreground">
+            <LoaderCircle aria-hidden="true" className="size-4 animate-spin motion-reduce:animate-none" />{t("enroll.waiting")}
+          </p>
           <div className="flex justify-end"><Button variant="outline" onClick={onClose}>{t("enroll.close")}</Button></div>
         </div>
       )}

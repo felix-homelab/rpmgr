@@ -5,13 +5,18 @@ import { Code, ConnectError } from "@connectrpc/connect";
 import { useMutation, useQuery } from "@connectrpc/connect-query";
 import { useQueryClient } from "@tanstack/react-query";
 import { getRouteApi, Link, useNavigate } from "@tanstack/react-router";
+import { ChevronLeft, Copy } from "lucide-react";
 import { useState, type FormEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { ApplyStatusView, useLiveApplyStatus } from "@/components/apply-status";
 import { Field } from "@/components/field";
 import { ManifestButton } from "@/components/manifest";
+import { PageHeader } from "@/components/page-header";
 import { Alert } from "@/components/public-page";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Select, Textarea } from "@/components/ui/input";
+import { Table, TD, TH, THead, TR } from "@/components/ui/table";
 import type { Revision } from "@/gen/rpmgr/v1/common_pb";
 import { ConnectorSchema, ConnectorService, DataTransport, UpdateConnectorRequestSchema, type Connector } from "@/gen/rpmgr/v1/connector_pb";
 import type { ApplyStatus } from "@/gen/rpmgr/v1/status_pb";
@@ -46,7 +51,7 @@ export function ConnectorDetail() {
   const live = useLiveApplyStatus(org?.orgId ?? "", write?.revision, write?.status);
   const c = got.data?.connector;
   if (!c) {
-    return <p>{got.isError ? t("connectors.notFound") : t("stepUp.loading")}</p>;
+    return <p className="text-sm text-muted-foreground">{got.isError ? t("connectors.notFound") : t("stepUp.loading")}</p>;
   }
   const name = (id: string) => names.data?.get(id) || id;
   const routeName = (id: string) => routes.data?.find((r) => r.id === id)?.name ?? id;
@@ -54,59 +59,61 @@ export function ConnectorDetail() {
   const s = status.data?.status;
   return (
     <div className="grid max-w-4xl gap-6">
-      <div className="flex flex-wrap items-center gap-4">
-        <h1 className="text-2xl font-semibold">{t("connectors.detailTitle", { name: c.name })}</h1>
-        <SessionChip connector={c} />
-        {c.session?.version && <span className="text-sm text-muted-foreground">{c.session.version}</span>}
-        {org && <ManifestButton label={t("manifest.yaml")} title={t("manifest.of", { name: c.name })} orgId={org.orgId} ids={[c.id]} file={c.name} />}
+      <div className="grid gap-2">
+        <Link to="/connectors" search={{}} className="inline-flex w-fit items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
+          <ChevronLeft aria-hidden="true" className="size-4" />{t("connectors.back")}
+        </Link>
+        <PageHeader title={t("connectors.detailTitle", { name: c.name })}
+          description={<span className="flex flex-wrap items-center gap-2"><SessionChip connector={c} />{c.session?.version}</span>}
+          actions={org && <ManifestButton label={t("manifest.yaml")} title={t("manifest.of", { name: c.name })} orgId={org.orgId} ids={[c.id]} file={c.name} />} />
       </div>
       {live && <ApplyStatusView status={live} revision={write?.revision} name={name} />}
 
-      <section aria-labelledby="sessions-title" className="grid gap-2">
-        <h2 id="sessions-title" className="text-lg font-semibold">{t("connectors.sessions")}</h2>
+      <Card title={t("connectors.sessions")}>
         <p className="text-sm">
           {c.session?.connected
             ? t("connectors.controlUp", { addr: c.session.remoteAddr, when: when(c.session.lastSeenTime) })
             : t("connectors.controlDown", { when: when(c.session?.lastSeenTime) || t("connectors.never") })}
         </p>
         {(s?.dataSessions.length ?? 0) > 0 && (
-          <table className="w-full text-left text-sm">
-            <thead className="text-muted-foreground">
-              <tr>{["gateway", "transport", "rtt", "since"].map((k) => <th key={k} scope="col" className="py-1 font-medium">{t(`connectors.data.${k}`)}</th>)}</tr>
-            </thead>
+          <Table framed={false}>
+            <THead>
+              <tr>{["gateway", "transport", "rtt", "since"].map((k) => <TH key={k}>{t(`connectors.data.${k}`)}</TH>)}</tr>
+            </THead>
             <tbody>
               {s!.dataSessions.map((d) => (
-                <tr key={d.gatewayId + d.transport} className="border-t border-border">
-                  <td className="py-1">{name(d.gatewayId)}</td>
-                  <td className="py-1">{t(`connectors.transports.${DataTransport[d.transport]}`)}</td>
-                  <td className="py-1">{d.rtt ? `${Math.round(Number(d.rtt.seconds) * 1000 + d.rtt.nanos / 1e6)} ms` : ""}</td>
-                  <td className="py-1">{when(d.establishTime)}</td>
-                </tr>
+                <TR key={d.gatewayId + d.transport}>
+                  <TD className="font-medium">{name(d.gatewayId)}</TD>
+                  <TD>{t(`connectors.transports.${DataTransport[d.transport]}`)}</TD>
+                  <TD className="tabular-nums">{d.rtt ? `${Math.round(Number(d.rtt.seconds) * 1000 + d.rtt.nanos / 1e6)} ms` : ""}</TD>
+                  <TD>{when(d.establishTime)}</TD>
+                </TR>
               ))}
             </tbody>
-          </table>
+          </Table>
         )}
-      </section>
+      </Card>
 
-      <section aria-labelledby="served-title" className="grid gap-2">
-        <h2 id="served-title" className="text-lg font-semibold">{t("connectors.routes")}</h2>
-        {served.length === 0 ? <p className="text-sm">{t("connectors.noRoutes")}</p> : (
-          <ul className="text-sm">
-            {served.map((r) => <li key={r.id}><Link to="/routes/$routeId" params={{ routeId: r.id }} className="underline">{r.name}</Link></li>)}
+      <Card title={t("connectors.routes")}>
+        {served.length === 0 ? <p className="text-sm text-muted-foreground">{t("connectors.noRoutes")}</p> : (
+          <ul className="grid gap-1.5 text-sm">
+            {served.map((r) => <li key={r.id}><Link to="/routes/$routeId" params={{ routeId: r.id }} className="font-medium hover:underline">{r.name}</Link></li>)}
           </ul>
         )}
         {(s?.notReady ?? []).map((n) => (
-          <div key={n.resourceId} className="grid gap-1 text-sm">
+          <div key={n.resourceId} className="grid gap-2 rounded-lg border border-warn/30 bg-warn/10 p-3 text-sm">
             <span className="text-warn">{routeName(n.resourceId)}: {t(`notServing.${n.reason}`, { defaultValue: n.reason })}</span>
             {n.reason === "BLOCKED_BY_LOCAL_POLICY" && n.detail && (
-              <span className="flex items-center gap-2">
-                <code className="rounded bg-muted px-1.5 py-0.5 font-mono">{allowCommand(n.detail)}</code>
-                <Button size="sm" variant="outline" onClick={() => void navigator.clipboard?.writeText(allowCommand(n.detail))}>{t("mfa.copy")}</Button>
+              <span className="flex flex-wrap items-center gap-2">
+                <code className="rounded-md bg-card px-2 py-1 font-mono">{allowCommand(n.detail)}</code>
+                <Button size="sm" variant="outline" onClick={() => void navigator.clipboard?.writeText(allowCommand(n.detail))}>
+                  <Copy aria-hidden="true" />{t("mfa.copy")}
+                </Button>
               </span>
             )}
           </div>
         ))}
-      </section>
+      </Card>
 
       <Settings connector={c} onWrite={setWrite} />
       <Decommission connector={c} />
@@ -138,21 +145,18 @@ function Settings({ connector: c, onWrite }: { connector: Connector; onWrite: (w
   }
   const transports = [DataTransport.UNSPECIFIED, DataTransport.AUTO, DataTransport.QUIC, DataTransport.H2];
   return (
-    <section aria-labelledby="settings-title" className="grid gap-3">
-      <h2 id="settings-title" className="text-lg font-semibold">{t("connectors.settings")}</h2>
-      <form onSubmit={save} className="grid max-w-xl gap-3" noValidate>
+    <Card title={t("connectors.settings")}>
+      <form onSubmit={save} className="grid max-w-xl gap-4" noValidate>
         <Field label={t("routeForm.fields.name")} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
         <label className="grid gap-1.5 text-sm font-medium">
           {t("routeForm.fields.labels")}
-          <textarea rows={2} className="rounded-md border border-border bg-background px-3 py-1.5 font-normal" value={form.labels}
-            onChange={(e) => setForm({ ...form, labels: e.target.value })} />
+          <Textarea rows={2} className="font-normal" value={form.labels} onChange={(e) => setForm({ ...form, labels: e.target.value })} />
         </label>
         <label className="grid gap-1.5 text-sm font-medium">
           {t("routeForm.fields.transport")}
-          <select className="h-9 rounded-md border border-border bg-background px-2 font-normal" value={form.transport}
-            onChange={(e) => setForm({ ...form, transport: e.target.value })}>
+          <Select className="font-normal" value={form.transport} onChange={(e) => setForm({ ...form, transport: e.target.value })}>
             {transports.map((v) => <option key={v} value={String(v)}>{t(`connectors.transportSetting.${DataTransport[v]}`)}</option>)}
-          </select>
+          </Select>
         </label>
         <label className="flex items-center gap-2 text-sm">
           <input type="checkbox" checked={form.enabled} onChange={(e) => setForm({ ...form, enabled: e.target.checked })} />
@@ -161,7 +165,7 @@ function Settings({ connector: c, onWrite }: { connector: Connector; onWrite: (w
         {error && <Alert>{error}</Alert>}
         <Button type="submit" className="justify-self-start" disabled={update.isPending}>{t("routeForm.save")}</Button>
       </form>
-    </section>
+    </Card>
   );
 }
 
@@ -183,8 +187,7 @@ function Decommission({ connector: c }: { connector: Connector }) {
     }
   }
   return (
-    <section aria-labelledby="decommission-title" className="grid gap-2">
-      <h2 id="decommission-title" className="text-lg font-semibold">{t("connectors.decommissionTitle")}</h2>
+    <Card title={t("connectors.decommissionTitle")} className="border-destructive/30">
       {asking ? (
         <div className="grid gap-2">
           <Alert>{t("connectors.decommissionWarning", { name: c.name })}</Alert>
@@ -197,6 +200,6 @@ function Decommission({ connector: c }: { connector: Connector }) {
         <Button variant="outline" className="justify-self-start" onClick={() => setAsking(true)}>{t("connectors.decommission")}</Button>
       )}
       {error && <Alert>{error}</Alert>}
-    </section>
+    </Card>
   );
 }

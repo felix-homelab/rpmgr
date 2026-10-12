@@ -59,7 +59,7 @@ export function GatewayForm({ orgId, groupId, gateway, onDone, onCancel }: {
     }
   }
   return (
-    <form onSubmit={save} aria-label={t(gateway ? "gwActions.editTitle" : "gwActions.addTitle")} className="grid max-w-xl gap-3 rounded-md border border-border p-3" noValidate>
+    <form onSubmit={save} aria-label={t(gateway ? "gwActions.editTitle" : "gwActions.addTitle")} className="grid max-w-xl gap-4 rounded-lg border border-border bg-muted/40 p-4" noValidate>
       <Field label={t("routeForm.fields.name")} value={name} onChange={(e) => setName(e.target.value)} />
       <LinesField label={t("gateways.gw.endpoints")} hint={t("gwActions.endpointsHint")} value={endpoints} onChange={setEndpoints} />
       {error && <Alert>{error}</Alert>}
@@ -148,7 +148,7 @@ function GatewayToken({ orgId, gateway: g, onClose }: { orgId: string; gateway: 
     }
   }
   return (
-    <div className="grid gap-2 rounded-md border border-border p-3 text-sm">
+    <div className="grid gap-3 rounded-lg border border-border bg-muted/40 p-4 text-sm">
       {result ? (
         <>
           <p>{t("enroll.step1")}</p>

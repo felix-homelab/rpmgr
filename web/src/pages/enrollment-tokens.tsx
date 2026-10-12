@@ -6,7 +6,9 @@ import { useMutation, useTransport } from "@connectrpc/connect-query";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import { EnrollmentService, type EnrollmentToken } from "@/gen/rpmgr/v1/enrollment_pb";
 import { when } from "@/lib/format";
 import { largestPage, listAll } from "@/lib/list-all";
@@ -28,12 +30,11 @@ export function EnrollmentTokens({ orgId }: { orgId: string }) {
   });
   const tokens = (list.data ?? []).filter((tok) => tok.connectorId === "" && tok.gatewayId === "");
   return (
-    <section aria-labelledby="tokens-title" className="grid gap-2">
-      <h2 id="tokens-title" className="text-lg font-semibold">{t("enroll.tokensTitle")}</h2>
-      {tokens.length === 0 ? <p className="text-sm">{t("enroll.noTokens")}</p> : (
-        <ul className="grid gap-2">{tokens.map((tok) => <TokenRow key={tok.id} token={tok} />)}</ul>
+    <Card title={t("enroll.tokensTitle")}>
+      {tokens.length === 0 ? <p className="text-sm text-muted-foreground">{t("enroll.noTokens")}</p> : (
+        <ul className="-mx-5 divide-y divide-border">{tokens.map((tok) => <TokenRow key={tok.id} token={tok} />)}</ul>
       )}
-    </section>
+    </Card>
   );
 }
 
@@ -45,17 +46,17 @@ function TokenRow({ token: tok }: { token: EnrollmentToken }) {
   const uses = tok.maxUses === 0 ? t("enroll.usedUnlimited", { count: tok.useCount }) : t("enroll.used", { count: tok.useCount, max: tok.maxUses });
   const expired = tok.expireTime ? timestampDate(tok.expireTime) < new Date() : false;
   return (
-    <li className="grid gap-1 rounded-md border border-border p-3 text-sm">
-      <div className="flex flex-wrap gap-x-4">
-        <span>{t("enroll.createdAt", { when: when(tok.createTime) })}</span>
-        <span>{t(expired ? "enroll.expired" : "enroll.expiresAt", { when: when(tok.expireTime) })}</span>
-        <span>{uses}</span>
-        {tok.ephemeral && <span>{t("enroll.ephemeral")}</span>}
+    <li className="grid gap-1.5 px-5 py-3 text-sm">
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+        <span className="font-medium">{t("enroll.createdAt", { when: when(tok.createTime) })}</span>
+        <span className={expired ? "text-destructive" : "text-muted-foreground"}>{t(expired ? "enroll.expired" : "enroll.expiresAt", { when: when(tok.expireTime) })}</span>
+        <span className="text-muted-foreground">{uses}</span>
+        {tok.ephemeral && <Badge>{t("enroll.ephemeral")}</Badge>}
       </div>
       {Object.keys(tok.labels).length > 0 && <div className="text-muted-foreground">{Object.entries(tok.labels).map(([k, v]) => `${k}=${v}`).join(", ")}</div>}
       {tok.lastUseTime && <div className="text-muted-foreground">{t("tokens.lastUse", { when: when(tok.lastUseTime), ip: tok.lastUseIp })}</div>}
       {asking ? (
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {t("enroll.revokeAsk", { when: when(tok.createTime) })}
           <Button size="sm" variant="destructive" disabled={revoke.isPending}
             onClick={() => void revoke.mutateAsync({ enrollmentTokenId: tok.id }).then(() => queryClient.invalidateQueries())}>{t("tokens.revoke")}</Button>
