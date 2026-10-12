@@ -166,7 +166,7 @@ func (o *InitOptions) setDefaults() {
 		o.Memory = hostMemory
 	}
 	if o.SystemdVersion == nil {
-		o.SystemdVersion = systemdVersion
+		o.SystemdVersion = SystemdVersion
 	}
 	if o.ServiceUser == "" {
 		o.ServiceUser = "rpmgr"
@@ -178,8 +178,8 @@ func (o *InitOptions) setDefaults() {
 // "Supported platforms").
 const credentialSystemd = 250
 
-// systemdVersion returns the version systemctl reports, or 0 without systemd.
-func systemdVersion() int {
+// SystemdVersion returns the version systemctl reports, or 0 without systemd.
+func SystemdVersion() int {
 	out, err := exec.Command("systemctl", "--version").Output()
 	if err != nil {
 		return 0
