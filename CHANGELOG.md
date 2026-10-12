@@ -5,10 +5,12 @@ follows [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.1.0/), versions
 [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.html), and the rules for entries are in
 [RELEASING.md](RELEASING.md#changelog).
 
-Nothing has been released yet. Changes to the design documents are not recorded here: see the git
-history and the [ADRs](docs/adr/).
+Changes to the design documents are not recorded here: see the git history and the
+[ADRs](docs/adr/).
 
 ## [Unreleased]
+
+## [0.1.0] - 2026-10-12
 
 ### Added
 
@@ -16,7 +18,7 @@ history and the [ADRs](docs/adr/).
   the controller's init or the agent's enrollment, a connector's local policy and proxy, and the
   systemd unit, started and checked for readiness. It asks in full-screen forms, or in plain
   prompts without a terminal, and shows the plan before it changes anything; with `--yes` it takes
-  every value from its flags. (#435)
+  every value from its flags. (#446, #448, #449)
 - All roles: one `rpmgr` binary for Linux on amd64, arm64, armv7 and riscv64 runs every role:
   `rpmgr controller`, `gateway`, `connector` and `all-in-one`, each from a strictly checked YAML
   boot file. `rpmgr version` names the build. (#174, #196, #260, #266, #267, #384)
@@ -130,7 +132,7 @@ history and the [ADRs](docs/adr/).
   switch for the light, dark or system theme, which saves it to the profile, and the user menu.
   Both themes keep text contrast at WCAG 2.2 AA. The overview leads with a figure per area, the
   traffic of the last 24 hours and what needs attention. Every page uses the same page header,
-  cards, tables, status badges and empty states. (#459)
+  cards, tables, status badges and empty states. (#460, #461, #462, #463, #464, #465)
 - Controller: every change, sign-in and token use is recorded once in a hash-chained audit log per
   org and one for the instance, with signed checkpoints and retention. The API and the UI list and
   verify the chains. (#194, #311, #350, #351, #352)
@@ -157,9 +159,10 @@ history and the [ADRs](docs/adr/).
   #374)
 - Install: a global install script, attached to every release as `install.sh`, downloads the
   release from GitHub, verifies it with the release root keys it embeds, installs the binary, the
-  user `rpmgr` and its directories, and offers to run `rpmgr setup`. (#436)
+  user `rpmgr` and its directories, and offers to run `rpmgr setup`. (#445)
 - Releases: reproducible builds with an SPDX SBOM, SLSA provenance attestations and a signed
   release manifest; distroless, nonroot multi-arch images at `ghcr.io/felix-homelab/rpmgr`, signed
-  with cosign. (#384, #385)
+  with cosign. (#384, #385, #434)
 
-[Unreleased]: https://github.com/felix-homelab/rpmgr/commits/main
+[Unreleased]: https://github.com/felix-homelab/rpmgr/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/felix-homelab/rpmgr/releases/tag/v0.1.0
