@@ -1,0 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+#
+# run.sh sources the flows, which share its variables, and the hosts run the single-quoted
+# scripts, which expand there.
+disable=SC2016,SC2034,SC2154

@@ -1,0 +1,16 @@
+# SPDX-License-Identifier: Apache-2.0
+#
+# Docker mounts a container's root privately. systemd moves each service's credentials (ramfs) into
+# /run/credentials from a namespace of its own, which reaches the service only through a shared
+# mount, as on a real host, where systemd makes / shared at boot. Containers only.
+[Unit]
+Description=Make the root mount shared, as on a real host
+DefaultDependencies=no
+Before=sysinit.target local-fs.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/mount --make-rshared /
+
+[Install]
+WantedBy=sysinit.target

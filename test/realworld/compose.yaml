@@ -1,0 +1,83 @@
+# SPDX-License-Identifier: Apache-2.0
+#
+# The real-world topology (README.md): an all-in-one on Debian 12 and a second gateway on Ubuntu
+# 24.04 on the public network; connectors on Ubuntu 24.04 and Rocky Linux 9 on both networks; the
+# services on the private network only; a client and the ACME CA (Pebble) on the public one. The
+# hosts run systemd as PID 1, as real hosts do: privileged, with a private cgroup namespace.
+name: rpmgr-rw
+
+x-host: &host
+  privileged: true
+  cgroup: private
+  tmpfs: [/tmp]
+  volumes: ["${RW_RUN:?}:/rw:ro"]
+
+x-tools: &tools
+  image: rpmgr-rw-tools
+  init: true
+  volumes: ["${RW_RUN:?}:/rw:ro"]
+
+# Both networks are internal: nothing reaches the internet, so no host can contact Let's Encrypt
+# or GitHub by mistake.
+networks:
+  public:
+    internal: true
+    ipam:
+      config:
+        - subnet: 172.40.0.0/24
+  private:
+    internal: true
+    ipam:
+      config:
+        - subnet: 172.41.0.0/24
+
+services:
+  ca:
+    <<: *tools
+    hostname: ca
+    networks:
+      public:
+        ipv4_address: 172.40.0.5
+        aliases: [pebble]
+  aio:
+    <<: *host
+    image: rpmgr-rw-debian12
+    hostname: aio
+    networks:
+      public:
+        ipv4_address: 172.40.0.10
+        aliases: [rw.test, panel.rw.test, app.rw.test, cert.rw.test, pt.rw.test]
+  gw2:
+    <<: *host
+    image: rpmgr-rw-ubuntu2404
+    hostname: gw2
+    networks:
+      public:
+        ipv4_address: 172.40.0.11
+        aliases: [gw2.rw.test, app2.rw.test]
+  con1:
+    <<: *host
+    image: rpmgr-rw-ubuntu2404
+    hostname: con1
+    networks:
+      public: {ipv4_address: 172.40.0.21}
+      private: {ipv4_address: 172.41.0.21}
+  con2:
+    <<: *host
+    image: rpmgr-rw-rocky9
+    hostname: con2
+    networks:
+      public: {ipv4_address: 172.40.0.22}
+      private: {ipv4_address: 172.41.0.22}
+  svc:
+    <<: *tools
+    hostname: svc
+    command: ["/rw/bin/e2eclient", "serve", "-listen", ":7007", "-udp", ":7008", "-http", ":7080", "-tls", ":7443",
+      "-cert", "/rw/svc/tls.crt", "-key", "/rw/svc/tls.key"]
+    networks:
+      private: {ipv4_address: 172.41.0.30}
+  client:
+    <<: *tools
+    hostname: client
+    networks:
+      public: {ipv4_address: 172.40.0.40}
