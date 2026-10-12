@@ -243,11 +243,14 @@ func Run(ctx context.Context, o RunOptions) error {
 		return err
 	}
 	errs := make(chan error, 4)
-	go func() {
+	// Run returns only once these have ended: the control plane writes the last-known-good snapshot
+	// and the deny-list into the state directory, and the certificates their files.
+	var background sync.WaitGroup
+	background.Go(func() {
 		if err := ctl.Run(run); err != nil && !errors.Is(err, context.Canceled) {
 			errs <- fmt.Errorf("gateway: control plane: %w", err)
 		}
-	}()
+	})
 	var admin sync.WaitGroup
 	if o.Registry == nil {
 		admin.Go(func() {
@@ -268,9 +271,11 @@ func Run(ctx context.Context, o RunOptions) error {
 			}
 		}()
 	}
-	go certificates.Run(run)
-	go report.run(run, ReportEvery, ctl.Send, func() *agentv1.Status {
-		return &agentv1.Status{DataSessions: sessions.Report(), Counters: metrics.Counters()}
+	background.Go(func() { certificates.Run(run) })
+	background.Go(func() {
+		report.run(run, ReportEvery, ctl.Send, func() *agentv1.Status {
+			return &agentv1.Status{DataSessions: sessions.Report(), Counters: metrics.Counters()}
+		})
 	})
 	go func() {
 		for {
@@ -318,5 +323,6 @@ func Run(ctx context.Context, o RunOptions) error {
 	udpRoutes.Close()
 	sessions.Close()
 	stop()
+	background.Wait()
 	return result
 }
