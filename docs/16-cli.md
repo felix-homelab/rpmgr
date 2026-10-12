@@ -88,7 +88,7 @@ with exit code 2 until its implementation lands.
 | `rpmgr set smtp-password [--password-file <file>] [--remove]` | Set the mail relay's password from the first line of the file, else from the terminal, or remove it; for an Instance Admin. A file other users can read is warned about | any | available |
 | `rpmgr revoke enrollment-token <id>` | Revoke an enrollment token, so that it enrolls nothing more | any | available |
 | `rpmgr leave [--config <file>]` | Have the controller revoke this agent's identity and decommission its connector or gateway, then remove the identity and the stored configuration and deny-list from the host. When no controller endpoint confirms, for example because the controller is unreachable or the identity is revoked already, nothing is removed ([03](03-connections.md#service-sketch)) | agent host | available |
-| `rpmgr status [--config <file>]` | Show the agent on this host: role, identity, certificate expiry, controller endpoints, the stored configuration's revision (verified as at start), the deny-list's size, and whether the running agent's admin listener reports it ready | agent host | available |
+| `rpmgr status [--config <file>]` | Show the agent on this host: role (for a boot file that would do for both roles, the role its identity records), identity, certificate expiry, controller endpoints, the stored configuration's revision (verified as at start), the deny-list's size, and whether the running agent's admin listener reports it ready | agent host | available |
 | `rpmgr diag transport [--gateway <id>] [--config <file>]` | On a connector host: open a QUIC and a TCP data session to each tunnel endpoint of the gateway, or of every gateway of the stored configuration, and close them; show each handshake's result and time, QUIC's round-trip time, the UDP socket's buffers and GSO, and the MTU towards the gateway ([10](10-operations.md#udp-blocked-or-degraded)) | connector host | available |
 | `rpmgr diag clock [--config <file>]` | Compare this host's clock with the controller's `Welcome` time, over a control session opened for it; a running agent's own session reconnects once ([10](10-operations.md#certificate-expiry-or-clock-skew)) | agent host | available |
 | `rpmgr policy show [--file <file>]` | Print the effective connector-local policy: the allowed targets and the update keys, or that the file is missing (the defaults apply) or invalid (nothing is allowed) ([04](04-security.md#connector-local-policy)) | connector host | available |
@@ -108,6 +108,6 @@ with exit code 2 until its implementation lands.
 
 The role commands read their boot file from `--config`, else from `$RPMGR_CONFIG`, else from
 `/etc/rpmgr/<role>.yaml` ([10](10-operations.md#boot-files)); the commands of an agent host read
-the connector's boot file, else the gateway's. Administration commands on the
-controller host are authorised by host access and audited as `local-cli`
-([04](04-security.md#roles)).
+the connector's boot file, else the gateway's, and those of the controller host the controller's,
+else the all-in-one's. Administration commands on the controller host are authorised by host
+access and audited as `local-cli` ([04](04-security.md#roles)).

@@ -166,6 +166,19 @@ type Loaded struct {
 	Signing     []*x509.Certificate // the config-signing certificates and their intermediates
 }
 
+// ReadIdentity reads agent.json of the identity in dir, without the key and certificates.
+func ReadIdentity(dir string) (Identity, error) {
+	var id Identity
+	b, err := os.ReadFile(filepath.Join(dir, AgentFile)) //nolint:gosec // G304: the configured identity directory
+	if err != nil {
+		return id, err
+	}
+	if err := json.Unmarshal(b, &id); err != nil {
+		return id, fmt.Errorf("agent: %s: %w", AgentFile, err)
+	}
+	return id, nil
+}
+
 // SPIFFE returns the agent's SPIFFE ID, from its certificate.
 func (l Loaded) SPIFFE() string {
 	if l.Certificate.Leaf == nil || len(l.Certificate.Leaf.URIs) != 1 {
@@ -177,12 +190,9 @@ func (l Loaded) SPIFFE() string {
 // Load reads the identity in dir. The key file must be closed to the group and other users.
 func Load(dir string) (Loaded, error) {
 	l := Loaded{Dir: dir}
-	b, err := os.ReadFile(filepath.Join(dir, AgentFile)) //nolint:gosec // G304: the configured identity directory
-	if err != nil {
+	var err error
+	if l.Identity, err = ReadIdentity(dir); err != nil {
 		return l, err
-	}
-	if err := json.Unmarshal(b, &l.Identity); err != nil {
-		return l, fmt.Errorf("agent: %s: %w", AgentFile, err)
 	}
 	keyPath := filepath.Join(dir, KeyFile)
 	st, err := os.Stat(keyPath)

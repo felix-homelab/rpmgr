@@ -285,13 +285,13 @@ func backupCommand() *cli.Command {
 		Summary: "write a consistent backup of the controller",
 		Flags: func(fs *flag.FlagSet) {
 			fs.StringVar(&out, "out", "", "the archive to write; it must not exist (required)")
-			fs.StringVar(&configPath, "config", "", "the controller's boot file, or all-in-one's (default $RPMGR_CONFIG, else /etc/rpmgr/controller.yaml)")
+			fs.StringVar(&configPath, "config", "", bootFlagHelp)
 		},
 		Run: func(ctx context.Context, env *cli.Env, _ []string) error {
 			if out == "" {
 				return cli.Usagef("backup needs --out")
 			}
-			info, err := controller.Backup(ctx, config.Path(configPath, "controller", env.Getenv), out, version.Get().Version, time.Now)
+			info, err := controller.Backup(ctx, controllerBoot(configPath, env.Getenv), out, version.Get().Version, time.Now)
 			if err != nil {
 				return err
 			}
@@ -315,13 +315,13 @@ func restoreCommand() *cli.Command {
 			fs.StringVar(&in, "in", "", "the archive of rpmgr backup (required)")
 			fs.Func("revocation-log", "the revocation-log sink directory, or a replica's revocations.log; repeat for each (default the state directory's revocations.log)",
 				func(s string) error { logs = append(logs, s); return nil })
-			fs.StringVar(&configPath, "config", "", "the controller's boot file, or all-in-one's (default $RPMGR_CONFIG, else /etc/rpmgr/controller.yaml)")
+			fs.StringVar(&configPath, "config", "", bootFlagHelp)
 		},
 		Run: func(ctx context.Context, env *cli.Env, _ []string) error {
 			if in == "" {
 				return cli.Usagef("restore needs --in")
 			}
-			r, err := controller.Restore(ctx, controller.RestoreOptions{ConfigPath: config.Path(configPath, "controller", env.Getenv),
+			r, err := controller.Restore(ctx, controller.RestoreOptions{ConfigPath: controllerBoot(configPath, env.Getenv),
 				Archive: in, RevocationLogs: logs})
 			if err != nil {
 				return err
@@ -355,10 +355,10 @@ func restoreConfirm() *cli.Command {
 		Summary: "end the instance-wide restore review",
 		Flags: func(fs *flag.FlagSet) {
 			fs.StringVar(&org, "org", "", "confirm this org's members and roles instead, by ID or slug")
-			fs.StringVar(&configPath, "config", "", "the controller's boot file, or all-in-one's (default $RPMGR_CONFIG, else /etc/rpmgr/controller.yaml)")
+			fs.StringVar(&configPath, "config", "", bootFlagHelp)
 		},
 		Run: func(ctx context.Context, env *cli.Env, _ []string) error {
-			pending, err := controller.ConfirmRestore(ctx, config.Path(configPath, "controller", env.Getenv), org)
+			pending, err := controller.ConfirmRestore(ctx, controllerBoot(configPath, env.Getenv), org)
 			if err != nil {
 				return err
 			}
@@ -385,14 +385,14 @@ func releaseImport() *cli.Command {
 		Summary: "import a signed release for air-gapped installations",
 		Args:    "<dir>",
 		Flags: func(fs *flag.FlagSet) {
-			fs.StringVar(&configPath, "config", "", "the controller's boot file, or all-in-one's (default $RPMGR_CONFIG, else /etc/rpmgr/controller.yaml)")
+			fs.StringVar(&configPath, "config", "", bootFlagHelp)
 		},
 		Run: func(ctx context.Context, env *cli.Env, args []string) error {
 			if len(args) != 1 {
 				return cli.Usagef("release import needs the directory of a release")
 			}
 			v := version.Get().Version
-			m, err := controller.ImportRelease(ctx, config.Path(configPath, "controller", env.Getenv), args[0], v, release.Roots(), time.Now)
+			m, err := controller.ImportRelease(ctx, controllerBoot(configPath, env.Getenv), args[0], v, release.Roots(), time.Now)
 			if err != nil {
 				return err
 			}
@@ -413,11 +413,11 @@ func userResetPassword() *cli.Command {
 		Name:    "reset-password",
 		Summary: "create a one-time password-reset link; before the first user exists, a first-user link",
 		Flags: func(fs *flag.FlagSet) {
-			fs.StringVar(&configPath, "config", "", "the controller's boot file, or all-in-one's (default $RPMGR_CONFIG, else /etc/rpmgr/controller.yaml)")
+			fs.StringVar(&configPath, "config", "", bootFlagHelp)
 			fs.StringVar(&email, "email", "", "the user's e-mail address; leave it out to create the first user")
 		},
 		Run: func(ctx context.Context, env *cli.Env, _ []string) error {
-			link, err := controller.ResetPasswordLink(ctx, config.Path(configPath, "controller", env.Getenv), email)
+			link, err := controller.ResetPasswordLink(ctx, controllerBoot(configPath, env.Getenv), email)
 			if err != nil {
 				return err
 			}

@@ -18,6 +18,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/cli"
 	"github.com/felix-homelab/rpmgr/internal/config"
 	"github.com/felix-homelab/rpmgr/internal/connector"
+	"github.com/felix-homelab/rpmgr/internal/pki"
 	"github.com/felix-homelab/rpmgr/internal/version"
 )
 
@@ -34,24 +35,39 @@ type agentBoot struct {
 }
 
 // loadAgentBoot reads the boot file given, else $RPMGR_CONFIG, else the connector's or the
-// gateway's in /etc/rpmgr, whichever exists.
+// gateway's in /etc/rpmgr, whichever exists. A file that is valid for both roles, such as the
+// one /install.sh writes for a gateway, has the role its identity records, else the connector's
+// unless it is the gateway's in /etc/rpmgr.
 func loadAgentBoot(flagPath string, getenv func(string) string) (agentBoot, error) {
-	path := config.Path(flagPath, "connector", getenv)
+	path, gatewayPath := config.Path(flagPath, "connector", getenv), false
 	if flagPath == "" && getenv("RPMGR_CONFIG") == "" {
 		if _, err := os.Stat(path); errors.Is(err, os.ErrNotExist) {
-			path = config.Path("", "gateway", getenv)
+			path, gatewayPath = config.Path("", "gateway", getenv), true
 		}
 	}
 	var c config.Connector
-	cerr := config.Load(path, &c)
-	if cerr == nil {
-		return agentBoot{path: path, role: "connector", Agent: c.Agent, admin: c.Listen.Admin}, nil
-	}
 	var g config.Gateway
-	if err := config.Load(path, &g); err == nil {
-		return agentBoot{path: path, role: "gateway", Agent: g.Agent, admin: g.Listen.Admin}, nil
+	cerr, gerr := config.Load(path, &c), config.Load(path, &g)
+	connector := agentBoot{path: path, role: "connector", Agent: c.Agent, admin: c.Listen.Admin}
+	gateway := agentBoot{path: path, role: "gateway", Agent: g.Agent, admin: g.Listen.Admin}
+	switch {
+	case cerr != nil && gerr != nil:
+		return agentBoot{}, cerr
+	case gerr != nil:
+		return connector, nil
+	case cerr != nil:
+		return gateway, nil
 	}
-	return agentBoot{}, cerr
+	if id, err := agent.ReadIdentity(c.IdentityDir); err == nil && id.Kind != "" {
+		if id.Kind == string(pki.KindGateway) {
+			return gateway, nil
+		}
+		return connector, nil
+	}
+	if gatewayPath {
+		return gateway, nil
+	}
+	return connector, nil
 }
 
 // agentCommand is a command of an agent host that takes --config.

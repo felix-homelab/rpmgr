@@ -223,6 +223,44 @@ func TestLocalAdmin(t *testing.T) {
 	}
 }
 
+// TestControllerBootDefault (docs/16-cli.md): without --config and $RPMGR_CONFIG, the commands of
+// the controller host read /etc/rpmgr/controller.yaml, else, on an all-in-one host,
+// /etc/rpmgr/all-in-one.yaml. The test's boot files are not valid, so each command names the one
+// it read.
+func TestControllerBootDefault(t *testing.T) {
+	commands := [][]string{{"backup", "--out", filepath.Join(t.TempDir(), "b")}, {"restore", "--in", filepath.Join(t.TempDir(), "b")},
+		{"restore", "confirm"}, {"user", "reset-password"}, {"migrate"}, {"ca", "status"}, {"ca", "rotate-intermediate"},
+		{"kek", "status"}, {"kek", "rotate", "--previous-file", filepath.Join(t.TempDir(), "k")}}
+	t.Cleanup(func() { bootDir = "/etc/rpmgr" })
+	for _, tc := range []struct {
+		present []string
+		want    string
+	}{
+		{[]string{"all-in-one.yaml"}, "all-in-one.yaml"},
+		{[]string{"controller.yaml", "all-in-one.yaml"}, "controller.yaml"},
+		{nil, "controller.yaml"},
+	} {
+		bootDir = t.TempDir()
+		for _, f := range tc.present {
+			if err := os.WriteFile(filepath.Join(bootDir, f), []byte("version: 99\n"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+		}
+		want := filepath.Join(bootDir, tc.want)
+		for _, args := range commands {
+			if code, _, stderr := runRpmgr(args...); code != cli.ExitError || !strings.Contains(stderr, want) {
+				t.Errorf("rpmgr %s with %v: exit %d, %q; want %s read", strings.Join(args, " "), tc.present, code, stderr, want)
+			}
+		}
+	}
+	if got := controllerBoot("", func(k string) string { return map[string]string{"RPMGR_CONFIG": "/srv/aio.yaml"}[k] }); got != "/srv/aio.yaml" {
+		t.Errorf("with $RPMGR_CONFIG: %s", got)
+	}
+	if got := controllerBoot("/srv/c.yaml", func(string) string { return "/srv/aio.yaml" }); got != "/srv/c.yaml" {
+		t.Errorf("with --config: %s", got)
+	}
+}
+
 // TestControllerInit runs `rpmgr controller init` against a boot file in a temporary directory.
 // The initialisation itself is tested in internal/controller.
 func TestControllerInit(t *testing.T) {
