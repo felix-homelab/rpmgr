@@ -46,6 +46,20 @@ function page(path: string, create?: (req: CreateRouteRequest) => object) {
 }
 
 describe("RouteNew", () => {
+  it("shows a hint only where a field's kind has one, and describes each field by what is there", async () => {
+    page("/routes/new");
+    const labels = await screen.findByLabelText("Labels");
+    expect(screen.queryByText(/^routeForm\./)).toBeNull(); // never a key instead of text (U11)
+    expect(document.getElementById(labels.getAttribute("aria-describedby")!)?.textContent).toBe("One per line, as key=value or Name: value.");
+    const hsts = screen.getByLabelText("HSTS max-age (seconds)");
+    expect(hsts.getAttribute("aria-describedby")).toBeNull(); // a number field has no hint
+    await chooseGroup();
+    fireEvent.change(hsts, { target: { value: "soon" } });
+    fireEvent.click(screen.getByRole("button", { name: "Create the route" }));
+    await waitFor(() => expect(hsts.getAttribute("aria-describedby")).not.toBeNull());
+    expect(document.getElementById(hsts.getAttribute("aria-describedby")!)?.textContent).toBe("Enter a whole number.");
+  });
+
   it("creates an HTTP route with ACME and a port-80 redirect, then follows it to the agents", async () => {
     const { creates } = page("/routes/new");
     await chooseGroup();
