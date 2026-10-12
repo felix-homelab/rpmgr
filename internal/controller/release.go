@@ -70,11 +70,13 @@ func ReleaseCheck(ctx context.Context, o ReleaseCheckOptions) {
 	}
 }
 
-// CheckRelease runs one release check and logs its outcome.
+// CheckRelease runs one release check and logs its outcome; a check that ctx ends is no failure.
 func CheckRelease(ctx context.Context, o ReleaseCheckOptions) error {
 	set, _, err := settings.Instance(ctx, o.DB.ReadClient())
 	if err != nil {
-		o.Logger.Warn("release check: settings", "error", err)
+		if ctx.Err() == nil {
+			o.Logger.Warn("release check: settings", "error", err)
+		}
 		return err
 	}
 	if !set.GetReleaseCheck() {
@@ -82,7 +84,9 @@ func CheckRelease(ctx context.Context, o ReleaseCheckOptions) error {
 	}
 	m, err := o.Mirror.Sync(ctx, o.source())
 	if err != nil {
-		o.Logger.Warn("release check failed; the mirror keeps what it has", "version", o.Mirror.Version, "error", err)
+		if ctx.Err() == nil {
+			o.Logger.Warn("release check failed; the mirror keeps what it has", "version", o.Mirror.Version, "error", err)
+		}
 		return err
 	}
 	o.Logger.Info("release mirrored under /dl/", "version", m.Version, "seq", m.Seq)

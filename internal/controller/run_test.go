@@ -13,13 +13,16 @@ import (
 	"encoding/pem"
 	"errors"
 	"io"
+	"log/slog"
 	"math/big"
 	"net"
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -32,6 +35,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/agent"
 	"github.com/felix-homelab/rpmgr/internal/config"
 	"github.com/felix-homelab/rpmgr/internal/controller"
+	"github.com/felix-homelab/rpmgr/internal/release"
 	"github.com/felix-homelab/rpmgr/internal/settings"
 	"github.com/felix-homelab/rpmgr/internal/store"
 	"github.com/felix-homelab/rpmgr/internal/store/storetest"
@@ -99,6 +103,8 @@ type running struct {
 	pin, trustDomain, url string
 	acmeRoots             *x509.CertPool
 	firstUserLink         string
+	logger                *slog.Logger
+	release               release.Source
 }
 
 // runSetup varies startRunWith.
@@ -108,6 +114,8 @@ type runSetup struct {
 	https, http string           // the listeners; "" picks free ports
 	acmeRoots   *x509.CertPool   // RunOptions.ACMERoots
 	prepare     func(r *running) // after the initialisation, before Run
+	logger      *slog.Logger     // RunOptions.Logger
+	release     release.Source   // RunOptions.ReleaseSource
 }
 
 // startRun initialises a controller in a temporary directory and runs it.
@@ -118,7 +126,7 @@ func startRunWith(t *testing.T, o runSetup) *running {
 	controller.SetRunTimers(t, 500*time.Millisecond, 50*time.Millisecond)
 	h := newHost(t)
 	r := &running{h: h, https: o.https, http: o.http, admin: freeAddr(t), ca: newWebCA(t),
-		certFile: filepath.Join(h.dir, "ui.crt"), keyFile: filepath.Join(h.dir, "ui.key"), acmeRoots: o.acmeRoots}
+		certFile: filepath.Join(h.dir, "ui.crt"), keyFile: filepath.Join(h.dir, "ui.key"), acmeRoots: o.acmeRoots, logger: o.logger, release: o.release}
 	if r.https == "" {
 		r.https = freeAddr(t)
 	}
@@ -166,7 +174,7 @@ func (r *running) start(t *testing.T) {
 	listening := make(chan struct{})
 	go func() {
 		r.err = controller.Run(ctx, controller.RunOptions{Config: r.cfg, Version: "0.1.0", Getenv: func(string) string { return "" },
-			ACMERoots: r.acmeRoots, Listening: func() { close(listening) }})
+			ACMERoots: r.acmeRoots, Logger: r.logger, ReleaseSource: r.release, Listening: func() { close(listening) }})
 		close(ended)
 	}()
 	t.Cleanup(func() { cancel(); <-ended })
@@ -189,6 +197,56 @@ func (r *running) stop(t *testing.T) {
 		}
 	case <-time.After(10 * time.Second):
 		t.Fatal("Run did not stop")
+	}
+}
+
+// warnings is a log handler that keeps the warnings and errors.
+type warnings struct {
+	mu  sync.Mutex
+	got []string
+}
+
+func (w *warnings) Enabled(context.Context, slog.Level) bool { return true }
+func (w *warnings) WithAttrs([]slog.Attr) slog.Handler       { return w }
+func (w *warnings) WithGroup(string) slog.Handler            { return w }
+func (w *warnings) Handle(_ context.Context, rec slog.Record) error {
+	if rec.Level >= slog.LevelWarn {
+		msg := rec.Message
+		rec.Attrs(func(a slog.Attr) bool { msg += " " + a.String(); return true })
+		w.mu.Lock()
+		w.got = append(w.got, msg)
+		w.mu.Unlock()
+	}
+	return nil
+}
+
+func (w *warnings) all() []string {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return slices.Clone(w.got)
+}
+
+// stalledRelease is a release source that answers no request until it is cancelled.
+type stalledRelease struct{}
+
+func (stalledRelease) Open(ctx context.Context, _ string) (io.ReadCloser, error) {
+	<-ctx.Done()
+	return nil, ctx.Err()
+}
+
+// TestRun_CleanStop: a controller that stops while its background jobs run, and a release check
+// waits for its source, logs no warning or error, also after Run has returned: it waits for the
+// jobs before it closes the database.
+func TestRun_CleanStop(t *testing.T) {
+	for i := range 3 {
+		w := &warnings{}
+		r := startRunWith(t, runSetup{logger: slog.New(w), release: stalledRelease{}})
+		time.Sleep(time.Duration(100+100*i) * time.Millisecond) // the jobs take their leases and run
+		r.stop(t)
+		time.Sleep(300 * time.Millisecond) // what still runs after Run has returned
+		if got := w.all(); len(got) != 0 {
+			t.Fatalf("round %d: a clean stop logged:\n%s", i, strings.Join(got, "\n"))
+		}
 	}
 }
 
