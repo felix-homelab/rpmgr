@@ -14,7 +14,9 @@ import (
 
 	rpmgrv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/v1"
 	"github.com/felix-homelab/rpmgr/internal/api"
+	"github.com/felix-homelab/rpmgr/internal/apisvc"
 	"github.com/felix-homelab/rpmgr/internal/revlog"
+	"github.com/felix-homelab/rpmgr/internal/token"
 )
 
 // TestTokenScopesBoundedByCreator (docs/12-testing-and-quality.md, "Security testing"): a token's
@@ -164,5 +166,58 @@ func TestTokenScopesBoundedByCreator(t *testing.T) {
 	e.clock = e.clock.Add(time.Hour)
 	if _, err := cli.org.GetOrg(ctx, connect.NewRequest(&rpmgrv1.GetOrgRequest{OrgId: org})); code(err) != connect.CodeUnauthenticated {
 		t.Fatalf("an expired token: %v", err)
+	}
+}
+
+// TestTokens_FailedAddressesWait (docs/04-security.md, "Human authentication and sessions", rate
+// limiting): after the free failures, an address that sent API tokens the controller refused
+// waits before its next token is even looked up, with the error of any refused token; once the
+// wait is over, a valid token goes through and forgets the failures.
+func TestTokens_FailedAddressesWait(t *testing.T) {
+	e := newEnv(t)
+	ctx := context.Background()
+	ada := e.browser()
+	if err := ada.login("ada@example.com", pw); err != nil {
+		t.Fatal(err)
+	}
+	if err := ada.stepUp(pw, ""); err != nil {
+		t.Fatal(err)
+	}
+	s, _ := ada.session()
+	org := s.GetMemberships()[0].GetOrgId()
+	r, err := ada.token.CreateAPIToken(ctx, connect.NewRequest(&rpmgrv1.CreateAPITokenRequest{OrgId: org, Name: "ci",
+		Scopes: []string{"org.read"}}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	good := r.Msg.GetToken()
+	unknown, err := token.New(token.PersonalAPI)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cli := e.browser()
+	get := func(tok string) error {
+		cli.bearer = tok
+		_, err := cli.org.GetOrg(ctx, connect.NewRequest(&rpmgrv1.GetOrgRequest{OrgId: org}))
+		return err
+	}
+	for i := range apisvc.FreeFailures {
+		if err := get(unknown); code(err) != connect.CodeUnauthenticated {
+			t.Fatalf("unknown token %d: %v", i+1, err)
+		}
+	}
+	if err := get(good); code(err) != connect.CodeUnauthenticated {
+		t.Fatalf("a valid token from an address that waits: %v", err)
+	}
+	e.clock = e.clock.Add(apisvc.FirstDelay)
+	if err := get(good); err != nil {
+		t.Fatalf("a valid token after the wait: %v", err)
+	}
+	// The success forgot the failures: one more refused token costs no wait.
+	if err := get(unknown); code(err) != connect.CodeUnauthenticated {
+		t.Fatalf("an unknown token after the success: %v", err)
+	}
+	if err := get(good); err != nil {
+		t.Fatalf("a valid token after one failure: %v", err)
 	}
 }

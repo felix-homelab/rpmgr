@@ -25,6 +25,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/accounts"
 	"github.com/felix-homelab/rpmgr/internal/api"
 	"github.com/felix-homelab/rpmgr/internal/apisvc"
+	"github.com/felix-homelab/rpmgr/internal/ratelimit"
 	"github.com/felix-homelab/rpmgr/internal/revlog"
 	"github.com/felix-homelab/rpmgr/internal/secret"
 	"github.com/felix-homelab/rpmgr/internal/store"
@@ -86,7 +87,8 @@ func newEnv(t *testing.T) *env {
 	e.mfa = &accounts.MFA{Accounts: e.acc, Sealer: sealer, RevLog: rl, Logger: log}
 	e.tokens = &accounts.Tokens{Accounts: e.acc, RevLog: rl, Logger: log}
 	srv, err := api.New(api.Options{DB: db, Sys: sys, Sealer: sealer, Now: now, Logger: log,
-		Authenticator:      apisvc.Credentials{Sessions: e.sessions, Tokens: e.tokens},
+		Authenticator: apisvc.Credentials{Sessions: e.sessions, Tokens: e.tokens,
+			Failures: ratelimit.NewBackoff(apisvc.FreeFailures, apisvc.FirstDelay, apisvc.MaxDelay, now)},
 		TokenStepUp:        e.tokens.StepUpAt,
 		RestoreReview:      api.StoreRestoreReview(db, sys),
 		Resolver:           api.StoreResolver(db, sys),
