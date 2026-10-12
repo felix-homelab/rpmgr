@@ -78,6 +78,12 @@ func (a *routeAPI) ListGatewayGroups(context.Context, *connect.Request[rpmgrv1.L
 	return connect.NewResponse(&rpmgrv1.ListGatewayGroupsResponse{GatewayGroups: []*rpmgrv1.GatewayGroup{{Id: "gwg_1", Name: "eu"}}}), nil
 }
 
+func (a *routeAPI) ListRoutes(context.Context, *connect.Request[rpmgrv1.ListRoutesRequest]) (*connect.Response[rpmgrv1.ListRoutesResponse], error) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return connect.NewResponse(&rpmgrv1.ListRoutesResponse{Routes: []*rpmgrv1.Route{a.route}}), nil
+}
+
 func (a *routeAPI) ListAccessPolicies(context.Context, *connect.Request[rpmgrv1.ListAccessPoliciesRequest]) (*connect.Response[rpmgrv1.ListAccessPoliciesResponse], error) {
 	return connect.NewResponse(&rpmgrv1.ListAccessPoliciesResponse{AccessPolicies: []*rpmgrv1.AccessPolicy{{Id: "ap_1", Name: "office"}}}), nil
 }
@@ -179,11 +185,39 @@ func TestUpdateRoute(t *testing.T) {
 		!slices.Equal(a.updated.GetRoute().GetPolicyIds(), []string{"ap_1"}) {
 		t.Fatalf("a policy: %d %q", code, errOut)
 	}
+	// An empty value of a repeatable flag sets an empty list or map: the policies come off.
+	a.route.PolicyIds, a.route.Labels = []string{"ap_1"}, map[string]string{"site": "home"}
+	a.route.GetHttp().RequestHeadersSet = map[string]string{"X-Env": "prod"}
+	if code, _, errOut := runWith(env, "", "update", "route", "--policy", "", "--label", "", "--set-request-header", "", "rt_1"); code != cli.ExitOK ||
+		len(a.updated.GetRoute().GetPolicyIds()) != 0 || len(a.updated.GetRoute().GetLabels()) != 0 ||
+		len(a.updated.GetRoute().GetHttp().GetRequestHeadersSet()) != 0 ||
+		!slices.Equal(slices.Sorted(slices.Values(a.updated.GetUpdateMask().GetPaths())), []string{"http.request_headers_set", "labels", "policy_ids"}) {
+		t.Fatalf("lists emptied: %d %q %v", code, errOut, a.updated)
+	}
+	// Given with other values, an empty one adds nothing.
+	if code, _, errOut := runWith(env, "", "update", "route", "--policy", "", "--policy", "office", "rt_1"); code != cli.ExitOK ||
+		!slices.Equal(a.updated.GetRoute().GetPolicyIds(), []string{"ap_1"}) {
+		t.Fatalf("an empty and a named policy: %d %q %v", code, errOut, a.updated)
+	}
+	a.route.PolicyIds, a.route.Labels = nil, nil
+	a.route.GetHttp().RequestHeadersSet = nil
+	// A route is named by its ID or its name.
+	if code, _, errOut := runWith(env, "", "update", "route", "--port80", "redirect", "web"); code != cli.ExitOK ||
+		a.updated.GetRoute().GetId() != "rt_1" || a.updated.GetRoute().GetHttp().GetPort80() != rpmgrv1.Port80Mode_PORT80_MODE_REDIRECT {
+		t.Fatalf("an update by name: %d %q %v", code, errOut, a.updated)
+	}
+	if code, out, errOut := runWith(env, "", "get", "route", "web"); code != cli.ExitOK || !strings.Contains(out, "rt_1") {
+		t.Fatalf("get by name: %d %q %q", code, out, errOut)
+	}
+	if code, _, errOut := runWith(env, "", "disable", "route", "nope"); code != cli.ExitError || !strings.Contains(errOut, `no route named "nope"`) {
+		t.Fatalf("an unknown name: %d %q", code, errOut)
+	}
 	for name, args := range map[string][]string{
 		"no field":          {"rt_1"},
 		"only --force":      {"--force", "rt_1"},
 		"--force alone":     {"--force", "--wait", "1s", "rt_1"},
 		"a port on http":    {"--port", "443", "rt_1"},
+		"a label not k=v":   {"--label", "site", "rt_1"},
 		"no ID":             {"--name", "x"},
 		"an unknown policy": {"--policy", "nope", "rt_1"},
 	} {

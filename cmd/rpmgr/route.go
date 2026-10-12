@@ -22,17 +22,27 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/cli"
 )
 
-// listFlag is a flag that may be given more than once.
+// listFlag is a flag that may be given more than once. An empty value adds nothing, so the flag
+// given once with an empty value sets an empty list (docs/16-cli.md).
 type listFlag []string
 
-func (l *listFlag) String() string     { return strings.Join(*l, ",") }
-func (l *listFlag) Set(v string) error { *l = append(*l, v); return nil }
+func (l *listFlag) String() string { return strings.Join(*l, ",") }
+func (l *listFlag) Set(v string) error {
+	if v != "" {
+		*l = append(*l, v)
+	}
+	return nil
+}
 
-// mapFlag is a key=value flag that may be given more than once.
+// mapFlag is a key=value flag that may be given more than once. An empty value adds nothing, so
+// the flag given once with an empty value sets an empty map.
 type mapFlag map[string]string
 
 func (m mapFlag) String() string { return "" }
 func (m mapFlag) Set(v string) error {
+	if v == "" {
+		return nil
+	}
 	k, val, ok := strings.Cut(v, "=")
 	if !ok || k == "" {
 		return fmt.Errorf("%q is not key=value", v)
@@ -245,11 +255,11 @@ func routeCommands() (create, update, enable, disable, preview *cli.Command) {
 		},
 	}
 	update = &cli.Command{
-		Name: "route", Summary: "change the fields of a route that the flags name", Args: "<id>",
+		Name: "route", Summary: "change the fields of a route that the flags name", Args: "<id or name>",
 		Flags: func(fs *flag.FlagSet) { ufs = fs; uf.flags(fs, false) },
 		Run: func(ctx context.Context, env *cli.Env, args []string) error {
 			if len(args) != 1 {
-				return cli.Usagef("expected the route's ID")
+				return cli.Usagef("expected the route's ID or name")
 			}
 			return updateRoute(ctx, env, args[0], &uf, setFlags(ufs))
 		},
@@ -257,7 +267,7 @@ func routeCommands() (create, update, enable, disable, preview *cli.Command) {
 	toggle := func(name string, enabled bool) *cli.Command {
 		var f routeFlags
 		return &cli.Command{
-			Name: "route", Summary: name + " a route", Args: "<id>",
+			Name: "route", Summary: name + " a route", Args: "<id or name>",
 			Flags: func(fs *flag.FlagSet) {
 				fs.BoolVar(&f.force, "force", false, "change it without checking that it is unchanged since this command read it")
 				fs.DurationVar(&f.wait, "wait", 0, "wait up to this long, at most 30s, for the agents to apply the change")
@@ -265,7 +275,7 @@ func routeCommands() (create, update, enable, disable, preview *cli.Command) {
 			},
 			Run: func(ctx context.Context, env *cli.Env, args []string) error {
 				if len(args) != 1 {
-					return cli.Usagef("expected the route's ID")
+					return cli.Usagef("expected the route's ID or name")
 				}
 				f.disabled = !enabled
 				return updateRoute(ctx, env, args[0], &f, map[string]bool{"disabled": true})
@@ -365,6 +375,10 @@ func (s *apiSession) changedRoute(ctx context.Context, id string, f *routeFlags,
 	}
 	if len(set) == 0 {
 		return nil, cli.Usagef("name a field to change")
+	}
+	id, err := s.ref(ctx, kindOf("route"), id)
+	if err != nil {
+		return nil, err
 	}
 	cur, err := rpmgrv1connect.NewRouteServiceClient(s.hc, s.creds.Controller).GetRoute(ctx, connect.NewRequest(&rpmgrv1.GetRouteRequest{RouteId: id}))
 	if err != nil {

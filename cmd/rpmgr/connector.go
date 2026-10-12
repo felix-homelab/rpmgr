@@ -30,7 +30,7 @@ func connectorCommands() (update, decommission, revoke *cli.Command) {
 		ufs                     *flag.FlagSet
 	)
 	update = &cli.Command{
-		Name: "connector", Summary: "change a connector's name, labels or transport", Args: "<id>",
+		Name: "connector", Summary: "change a connector's name, labels or transport", Args: "<id or name>",
 		Flags: func(fs *flag.FlagSet) {
 			ufs = fs
 			fs.StringVar(&name, "name", "", "the connector's name, unique in the org")
@@ -42,15 +42,19 @@ func connectorCommands() (update, decommission, revoke *cli.Command) {
 		},
 		Run: func(ctx context.Context, env *cli.Env, args []string) error {
 			if len(args) != 1 {
-				return cli.Usagef("expected the connector's ID")
+				return cli.Usagef("expected the connector's ID or name")
 			}
 			set := setFlags(ufs)
 			s, err := newAPISession(env)
 			if err != nil {
 				return err
 			}
+			id, err := s.ref(ctx, kindOf("connector"), args[0])
+			if err != nil {
+				return err
+			}
 			cc := rpmgrv1connect.NewConnectorServiceClient(s.hc, s.creds.Controller)
-			cur, err := cc.GetConnector(ctx, connect.NewRequest(&rpmgrv1.GetConnectorRequest{ConnectorId: args[0]}))
+			cur, err := cc.GetConnector(ctx, connect.NewRequest(&rpmgrv1.GetConnectorRequest{ConnectorId: id}))
 			if err != nil {
 				return apiError(err)
 			}
@@ -91,23 +95,27 @@ func connectorCommands() (update, decommission, revoke *cli.Command) {
 	var dforce bool
 	var dwait time.Duration
 	decommission = &cli.Command{
-		Name: "connector", Summary: "take a connector out of service for good, revoking its identity", Args: "<id>",
+		Name: "connector", Summary: "take a connector out of service for good, revoking its identity", Args: "<id or name>",
 		Flags: func(fs *flag.FlagSet) {
 			fs.BoolVar(&dforce, "force", false, "decommission without checking that the connector is unchanged since this command read it")
 			fs.DurationVar(&dwait, "wait", 0, "wait up to this long, at most 30s, for the agents to apply the change")
 		},
 		Run: func(ctx context.Context, env *cli.Env, args []string) error {
 			if len(args) != 1 {
-				return cli.Usagef("expected the connector's ID")
+				return cli.Usagef("expected the connector's ID or name")
 			}
 			s, err := newAPISession(env)
 			if err != nil {
 				return err
 			}
+			id, err := s.ref(ctx, kindOf("connector"), args[0])
+			if err != nil {
+				return err
+			}
 			cc := rpmgrv1connect.NewConnectorServiceClient(s.hc, s.creds.Controller)
-			req := &rpmgrv1.DecommissionConnectorRequest{ConnectorId: args[0]}
+			req := &rpmgrv1.DecommissionConnectorRequest{ConnectorId: id}
 			if !dforce {
-				cur, err := cc.GetConnector(ctx, connect.NewRequest(&rpmgrv1.GetConnectorRequest{ConnectorId: args[0]}))
+				cur, err := cc.GetConnector(ctx, connect.NewRequest(&rpmgrv1.GetConnectorRequest{ConnectorId: id}))
 				if err != nil {
 					return apiError(err)
 				}
@@ -119,7 +127,7 @@ func connectorCommands() (update, decommission, revoke *cli.Command) {
 			if err != nil {
 				return apiError(err)
 			}
-			_, err = fmt.Fprintf(env.Stdout, "Decommissioned connector %s%s; its identity is revoked and its sessions closed.\n", args[0],
+			_, err = fmt.Fprintf(env.Stdout, "Decommissioned connector %s%s; its identity is revoked and its sessions closed.\n", id,
 				applied(resp.Msg.ProtoReflect()))
 			return err
 		},
