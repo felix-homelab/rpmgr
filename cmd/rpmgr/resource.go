@@ -129,7 +129,7 @@ func resourceCommands(kind string, fields []field, after ...func(env *cli.Env, r
 		},
 	}
 	update = &cli.Command{
-		Name: kind, Summary: "change the fields of a " + strings.ReplaceAll(kind, "-", " ") + " that the flags name", Args: "<id>",
+		Name: kind, Summary: "change the fields of a " + strings.ReplaceAll(kind, "-", " ") + " that the flags name", Args: "<id or name>",
 		Flags: func(fs *flag.FlagSet) {
 			ufs = fs
 			register(fs, true)
@@ -137,14 +137,18 @@ func resourceCommands(kind string, fields []field, after ...func(env *cli.Env, r
 		},
 		Run: func(ctx context.Context, env *cli.Env, args []string) error {
 			if len(args) != 1 {
-				return cli.Usagef("expected the %s's ID", kind)
+				return cli.Usagef("expected the %s's ID or name", kind)
 			}
 			set := setFlags(ufs)
 			s, err := newAPISession(env)
 			if err != nil {
 				return err
 			}
-			cur, err := s.get(ctx, k, args[0])
+			id, err := s.ref(ctx, k, args[0])
+			if err != nil {
+				return err
+			}
+			cur, err := s.get(ctx, k, id)
 			if err != nil {
 				return err
 			}

@@ -185,11 +185,11 @@ func accessPolicyCommands() (create, update *cli.Command) {
 		},
 	}
 	update = &cli.Command{
-		Name: "access-policy", Summary: "change an access policy's name, description or rules", Args: "<id>",
+		Name: "access-policy", Summary: "change an access policy's name, description or rules", Args: "<id or name>",
 		Flags: func(fs *flag.FlagSet) { uf.register(fs, true) },
 		Run: func(ctx context.Context, env *cli.Env, args []string) error {
 			if len(args) != 1 {
-				return cli.Usagef("expected the policy's ID")
+				return cli.Usagef("expected the policy's ID or name")
 			}
 			set := setFlags(uf.fs)
 			if !set["name"] && !set["description"] && !set["rule"] {
@@ -203,8 +203,12 @@ func accessPolicyCommands() (create, update *cli.Command) {
 			if err != nil {
 				return err
 			}
+			id, err := s.ref(ctx, kindOf("access-policy"), args[0])
+			if err != nil {
+				return err
+			}
 			cur, err := rpmgrv1connect.NewPolicyServiceClient(s.hc, s.creds.Controller).GetAccessPolicy(ctx,
-				connect.NewRequest(&rpmgrv1.GetAccessPolicyRequest{AccessPolicyId: args[0]}))
+				connect.NewRequest(&rpmgrv1.GetAccessPolicyRequest{AccessPolicyId: id}))
 			if err != nil {
 				return apiError(err)
 			}

@@ -63,21 +63,25 @@ func gatewaySwitch(verb string, enabled bool) *cli.Command {
 		summary = "let a drained gateway take connections again"
 	}
 	return &cli.Command{
-		Name: "gateway", Summary: summary, Args: "<id>",
+		Name: "gateway", Summary: summary, Args: "<id or name>",
 		Flags: func(fs *flag.FlagSet) {
 			fs.BoolVar(&force, "force", false, "change it without checking that it is unchanged since this command read it")
 			fs.DurationVar(&wait, "wait", 0, "wait up to this long, at most 30s, for the agents to apply the change")
 		},
 		Run: func(ctx context.Context, env *cli.Env, args []string) error {
 			if len(args) != 1 {
-				return cli.Usagef("expected the gateway's ID")
+				return cli.Usagef("expected the gateway's ID or name")
 			}
 			s, err := newAPISession(env)
 			if err != nil {
 				return err
 			}
+			id, err := s.ref(ctx, kindOf("gateway"), args[0])
+			if err != nil {
+				return err
+			}
 			gc := rpmgrv1connect.NewGatewayServiceClient(s.hc, s.creds.Controller)
-			cur, err := gc.GetGateway(ctx, connect.NewRequest(&rpmgrv1.GetGatewayRequest{GatewayId: args[0]}))
+			cur, err := gc.GetGateway(ctx, connect.NewRequest(&rpmgrv1.GetGatewayRequest{GatewayId: id}))
 			if err != nil {
 				return apiError(err)
 			}
@@ -93,7 +97,7 @@ func gatewaySwitch(verb string, enabled bool) *cli.Command {
 			if err != nil {
 				return apiError(err)
 			}
-			_, err = fmt.Fprintf(env.Stdout, "%s gateway %s%s.\n", map[bool]string{true: "Enabled", false: "Drained"}[enabled], args[0],
+			_, err = fmt.Fprintf(env.Stdout, "%s gateway %s%s.\n", map[bool]string{true: "Enabled", false: "Drained"}[enabled], id,
 				applied(resp.Msg.ProtoReflect()))
 			return err
 		},
@@ -103,22 +107,26 @@ func gatewaySwitch(verb string, enabled bool) *cli.Command {
 func decommissionGateway() *cli.Command {
 	var force bool
 	return &cli.Command{
-		Name: "gateway", Summary: "take a gateway out of service for good, revoking its identity", Args: "<id>",
+		Name: "gateway", Summary: "take a gateway out of service for good, revoking its identity", Args: "<id or name>",
 		Flags: func(fs *flag.FlagSet) {
 			fs.BoolVar(&force, "force", false, "decommission without checking that the gateway is unchanged since this command read it")
 		},
 		Run: func(ctx context.Context, env *cli.Env, args []string) error {
 			if len(args) != 1 {
-				return cli.Usagef("expected the gateway's ID")
+				return cli.Usagef("expected the gateway's ID or name")
 			}
 			s, err := newAPISession(env)
 			if err != nil {
 				return err
 			}
+			id, err := s.ref(ctx, kindOf("gateway"), args[0])
+			if err != nil {
+				return err
+			}
 			gc := rpmgrv1connect.NewGatewayServiceClient(s.hc, s.creds.Controller)
-			req := &rpmgrv1.DecommissionGatewayRequest{GatewayId: args[0]}
+			req := &rpmgrv1.DecommissionGatewayRequest{GatewayId: id}
 			if !force {
-				cur, err := gc.GetGateway(ctx, connect.NewRequest(&rpmgrv1.GetGatewayRequest{GatewayId: args[0]}))
+				cur, err := gc.GetGateway(ctx, connect.NewRequest(&rpmgrv1.GetGatewayRequest{GatewayId: id}))
 				if err != nil {
 					return apiError(err)
 				}
@@ -128,7 +136,7 @@ func decommissionGateway() *cli.Command {
 			if err != nil {
 				return apiError(err)
 			}
-			_, err = fmt.Fprintf(env.Stdout, "Decommissioned gateway %s%s; its identity is revoked and its slot free.\n", args[0],
+			_, err = fmt.Fprintf(env.Stdout, "Decommissioned gateway %s%s; its identity is revoked and its slot free.\n", id,
 				applied(resp.Msg.ProtoReflect()))
 			return err
 		},

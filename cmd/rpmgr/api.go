@@ -111,6 +111,25 @@ func (s *apiSession) call(ctx context.Context, k apicli.Kind, method string, fie
 	return resp, nil
 }
 
+// kindOf is the kind of a name the commands use.
+func kindOf(name string) apicli.Kind {
+	k, _ := apicli.KindOf(name)
+	return k
+}
+
+// ref returns the ID of the org's resource of the kind that ref names, by its ID or its name; a
+// kind that is not listed on its own is named by ID only (docs/16-cli.md).
+func (s *apiSession) ref(ctx context.Context, k apicli.Kind, ref string) (string, error) {
+	if k.Plural == "" {
+		return ref, nil
+	}
+	id, err := k.Resolve(ctx, s.hc, s.creds.Controller, s.creds.Org, ref)
+	if err != nil {
+		return "", apiError(err)
+	}
+	return id, nil
+}
+
 // get reads one resource.
 func (s *apiSession) get(ctx context.Context, k apicli.Kind, id string) (protoreflect.Message, error) {
 	resp, err := s.call(ctx, k, "Get"+k.Resource, map[string]any{k.IDField: id}, nil)
@@ -130,7 +149,7 @@ func getCommand() *cli.Command {
 	var instance bool
 	return &cli.Command{
 		Name: "get", Summary: "show a resource of the public API, the settings, or the install command of an agent",
-		Args: "install-command | settings | <" + kindsHelp(func(k apicli.Kind) bool { return !k.NoGet }) + "> <id>",
+		Args: "install-command | settings | <" + kindsHelp(func(k apicli.Kind) bool { return !k.NoGet }) + "> <id or name>",
 		Flags: func(fs *flag.FlagSet) {
 			outputFlag(fs, &output)
 			fs.BoolVar(&instance, "instance", false, "settings: the instance's settings, for an Instance Admin, instead of the org's")
@@ -155,11 +174,15 @@ func getCommand() *cli.Command {
 			if err != nil {
 				return err
 			}
-			res, err := s.get(ctx, k, args[1])
+			id, err := s.ref(ctx, k, args[1])
 			if err != nil {
 				return err
 			}
-			return s.print(ctx, env.Stdout, k, output, []protoreflect.Message{res}, []string{args[1]}, false)
+			res, err := s.get(ctx, k, id)
+			if err != nil {
+				return err
+			}
+			return s.print(ctx, env.Stdout, k, output, []protoreflect.Message{res}, []string{id}, false)
 		},
 	}
 }
@@ -251,9 +274,13 @@ func deleteCommand() *cli.Command {
 			if err != nil {
 				return err
 			}
-			fields := map[string]any{k.IDField: args[1]}
+			id, err := s.ref(ctx, k, args[1])
+			if err != nil {
+				return err
+			}
+			fields := map[string]any{k.IDField: id}
 			if !force && !k.NoGet {
-				res, err := s.get(ctx, k, args[1])
+				res, err := s.get(ctx, k, id)
 				if err != nil {
 					return err
 				}
@@ -263,7 +290,7 @@ func deleteCommand() *cli.Command {
 			if err != nil {
 				return err
 			}
-			_, err = fmt.Fprintf(env.Stdout, "Deleted %s %s%s.\n", k.Name, args[1], applied(resp))
+			_, err = fmt.Fprintf(env.Stdout, "Deleted %s %s%s.\n", k.Name, id, applied(resp))
 			return err
 		},
 	}
