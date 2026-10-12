@@ -37,7 +37,7 @@ function page(path: string, instanceAdmin = false, verification: object = { inta
 }
 
 async function entries() {
-  const list = within(await screen.findByRole("region", { name: "Audit log" })).getAllByRole("list")[0]!;
+  const list = (await within(await screen.findByRole("region", { name: "Audit log" })).findAllByRole("list"))[0]!;
   return within(list);
 }
 
@@ -74,7 +74,21 @@ describe("Audit", () => {
     cleanup();
     page("/audit", false, { intact: false, brokenAt: 7n, problem: "hash mismatch" });
     fireEvent.click(await screen.findByRole("button", { name: "Verify the chain" }));
-    expect((await screen.findByRole("status")).textContent).toBe("✕ The chain is broken at entry 7: hash mismatch");
+    const status = await screen.findByRole("status");
+    expect(status.textContent).toBe("The chain is broken at entry 7: hash mismatch"); // the icon is a drawing
+    expect(status.querySelector("svg")?.getAttribute("aria-hidden")).toBe("true");
+  });
+
+  it("says when no entry matches, without an empty list", async () => {
+    show("/audit?action=nothing", auth({ getSession: () => ({ userId: "usr_ada", memberships: [{ orgId: "org_1", role: "owner" }] }) }), (router) => {
+      router.service(UserService, { getMe: () => ({ user: { id: "usr_ada", theme: Theme.SYSTEM } }) });
+      router.service(OrgService, { listMembers: () => ({ members: [] }) });
+      router.service(AuditService, { listAuditEntries: () => ({ entries: [] }) });
+    });
+    const region = within(await screen.findByRole("region", { name: "Audit log" }));
+    expect(await region.findByText("No entry matches.")).toBeTruthy();
+    expect(region.queryByRole("list")).toBeNull();
+    expect(region.queryByRole("button", { name: "Older entries" })).toBeNull();
   });
 
   it("shows the instance's log to the Instance Admin only", async () => {

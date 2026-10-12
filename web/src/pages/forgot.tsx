@@ -2,6 +2,7 @@
 
 import { Code, ConnectError } from "@connectrpc/connect";
 import { useMutation } from "@connectrpc/connect-query";
+import { Link } from "@tanstack/react-router";
 import { useState, type FormEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { Field } from "@/components/field";
@@ -40,6 +41,11 @@ export function Forgot() {
         {result && <Alert tone={result.tone}>{result.text}</Alert>}
         <Button type="submit" disabled={request.isPending}>{t("forgot.submit")}</Button>
       </form>
+      <p className="mt-5 text-center">
+        <Link to="/login" search={{}} className="text-sm text-muted-foreground underline underline-offset-4 hover:text-foreground">
+          {t("forgot.back")}
+        </Link>
+      </p>
     </PublicPage>
   );
 }

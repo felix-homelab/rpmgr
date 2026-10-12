@@ -56,7 +56,7 @@ export function Invite() {
     return (
       <PublicPage title={t("invite.title")}>
         <Alert tone="info">{t("invite.created")}</Alert>
-        <Button asChild className="mt-4"><Link to="/login" search={{}}>{t("login.submit")}</Link></Button>
+        <Button asChild className="mt-4 w-full"><Link to="/login" search={{}}>{t("login.submit")}</Link></Button>
       </PublicPage>
     );
   }

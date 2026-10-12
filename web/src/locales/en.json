@@ -70,6 +70,7 @@
   },
   "notFound": {
     "title": "Page not found",
+    "text": "The page you asked for does not exist, or its link is out of date.",
     "back": "Go to the overview"
   },
   "link": {
@@ -97,7 +98,8 @@
     "title": "Reset your password",
     "submit": "Send a reset link",
     "sent": "If an account uses this address, a reset link is on its way. It works once, for 24 hours.",
-    "noMail": "This controller cannot send e-mail. Ask an Owner or the Instance Admin for a reset link."
+    "noMail": "This controller cannot send e-mail. Ask an Owner or the Instance Admin for a reset link.",
+    "back": "Back to sign in"
   },
   "stepUp": {
     "title": "Confirm it is you",
@@ -691,6 +693,7 @@
   },
   "org": {
     "title": "Organisation",
+    "intro": "Its members, their roles and invitations.",
     "nameTitle": "The organisation's name",
     "name": "Name",
     "members": "Members",
@@ -710,6 +713,7 @@
     "roleOf": "Role of {{name}}",
     "removeAsk": "Remove {{name}} from the organisation?",
     "invite": "Invite someone",
+    "inviteIntro": "The invitation is a one-time link for one address and one role.",
     "inviteSubmit": "Make the invitation",
     "mailed": "The invitation is e-mailed. Its one-time link works until {{until}}:",
     "notMailed": "This controller cannot send e-mail. Send this one-time link yourself; it works until {{until}}:",
@@ -748,6 +752,7 @@
   "audit": {
     "title": "Audit log",
     "instanceTitle": "Instance audit log",
+    "intro": "Every change, sign-in and token use, newest first, in a hash chain that can be verified.",
     "which": "Which log",
     "orgLog": "This organisation",
     "instanceLog": "The instance",
@@ -784,6 +789,7 @@
   },
   "settings": {
     "title": "Settings",
+    "intro": "Runtime settings of the organisation and the instance, stored in the database.",
     "org": "Organisation settings",
     "instance": "Instance settings",
     "ownerOnly": "Only the organisation's Owner changes these.",

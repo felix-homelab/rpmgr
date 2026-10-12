@@ -8,8 +8,12 @@ import { useState, type FormEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { Field } from "@/components/field";
 import { Command } from "@/components/one-time-token";
+import { PageHeader } from "@/components/page-header";
 import { Alert } from "@/components/public-page";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Select } from "@/components/ui/input";
+import { Table, TD, TH, THead, TR } from "@/components/ui/table";
 import { OrgService, type Member, type SuspendedAPIToken } from "@/gen/rpmgr/v1/org_pb";
 import { Reason, reasonOf } from "@/lib/errors";
 import { when } from "@/lib/format";
@@ -35,29 +39,28 @@ export function OrgPage() {
   const got = useQuery(OrgService.method.getOrg, { orgId: org?.orgId ?? "" }, { enabled: !!org });
   const members = useQuery(OrgService.method.listMembers, { orgId: org?.orgId ?? "" }, { enabled: !!org });
   if (!org) {
-    return <p>{t("stepUp.loading")}</p>;
+    return <p className="text-sm text-muted-foreground">{t("stepUp.loading")}</p>;
   }
   return (
-    <div className="grid max-w-4xl gap-6">
-      <h1 className="text-2xl font-semibold">{got.data?.org?.name ?? t("org.title")}</h1>
+    <div className="grid max-w-5xl gap-6">
+      <PageHeader title={got.data?.org?.name ?? t("org.title")} description={t("org.intro")} />
       {got.data?.org?.restoreReviewTime && (org.role === "owner" ? (
         <OwnerReview orgId={org.orgId} since={got.data.org.restoreReviewTime} />
       ) : (
-        <p role="status" className="rounded-md border border-warn p-3 text-sm">
+        <p role="status" className="rounded-xl border border-warn/40 bg-warn/10 p-4 text-sm">
           {t("review.orgReadOnly", { since: when(got.data.org.restoreReviewTime) })}{" "}
           <code className="font-mono">rpmgr restore confirm --org {got.data.org.slug}</code>
         </p>
       ))}
       {got.data?.org && <OrgName key={got.data.org.name} orgId={org.orgId} name={got.data.org.name} />}
-      <section aria-labelledby="members-title" className="grid gap-2">
-        <h2 id="members-title" className="text-lg font-semibold">{t("org.members")}</h2>
-        <table className="w-full text-left text-sm">
-          <thead className="text-muted-foreground">
-            <tr>{["name", "email", "role", "since", "actions"].map((c) => <th key={c} scope="col" className="py-1 font-medium">{t(`org.columns.${c}`)}</th>)}</tr>
-          </thead>
+      <Card title={t("org.members")}>
+        <Table framed={false}>
+          <THead>
+            <tr>{["name", "email", "role", "since", "actions"].map((c) => <TH key={c}>{t(`org.columns.${c}`)}</TH>)}</tr>
+          </THead>
           <tbody>{(members.data?.members ?? []).map((m) => <MemberRow key={m.userId} orgId={org.orgId} member={m} />)}</tbody>
-        </table>
-      </section>
+        </Table>
+      </Card>
       <Invite orgId={org.orgId} />
     </div>
   );
@@ -84,25 +87,23 @@ function OwnerReview({ orgId, since }: { orgId: string; since: Timestamp }) {
   }
   const list = tokens.data?.apiTokens ?? [];
   return (
-    <section aria-labelledby="review-title" className="grid gap-3 rounded-md border border-warn p-4">
-      <h2 id="review-title" className="text-lg font-semibold">{t("review.orgTitle")}</h2>
-      <p className="text-sm">{t("review.orgIntro", { since: when(since) })}</p>
-      <h3 className="font-medium">{t("review.tokens")}</h3>
+    <Card title={t("review.orgTitle")} description={t("review.orgIntro", { since: when(since) })} className="border-warn/40">
+      <h3 className="text-sm font-medium">{t("review.tokens")}</h3>
       {list.length === 0 ? (
         <p className="text-sm text-muted-foreground">{t("review.noTokens")}</p>
       ) : (
-        <table className="w-full text-left text-sm">
-          <thead className="text-muted-foreground">
-            <tr>{["name", "owner", "scopes", "suspended", "actions"].map((c) => <th key={c} scope="col" className="py-1 font-medium">{t(`review.columns.${c}`)}</th>)}</tr>
-          </thead>
+        <Table framed={false}>
+          <THead>
+            <tr>{["name", "owner", "scopes", "suspended", "actions"].map((c) => <TH key={c}>{t(`review.columns.${c}`)}</TH>)}</tr>
+          </THead>
           <tbody>{list.map((s) => <SuspendedToken key={s.apiToken?.id} orgId={orgId} token={s} />)}</tbody>
-        </table>
+        </Table>
       )}
       <div>
         <Button size="sm" onClick={() => void confirmed()} disabled={confirm.isPending}>{t("review.confirm")}</Button>
       </div>
       {error && <Alert>{error}</Alert>}
-    </section>
+    </Card>
   );
 }
 
@@ -124,17 +125,17 @@ function SuspendedToken({ orgId, token: s }: { orgId: string; token: SuspendedAP
     }
   }
   return (
-    <tr className="border-t border-border align-top">
-      <td className="py-2"><span className="font-medium">{tok?.name}</span> <code className="font-mono text-muted-foreground">{tok?.prefix}</code></td>
-      <td className="py-2">{s.ownerEmail || s.ownerId}</td>
-      <td className="py-2">{tok?.scopes.join(", ")}</td>
-      <td className="py-2">{when(tok?.suspendTime)}</td>
-      <td className="py-2">
+    <TR>
+      <TD><span className="font-medium">{tok?.name}</span> <code className="font-mono text-muted-foreground">{tok?.prefix}</code></TD>
+      <TD>{s.ownerEmail || s.ownerId}</TD>
+      <TD>{tok?.scopes.join(", ")}</TD>
+      <TD>{when(tok?.suspendTime)}</TD>
+      <TD>
         <Button size="sm" variant="outline" onClick={() => void resumed()} disabled={resume.isPending}
           aria-label={t("review.resumeOf", { name: tok?.name ?? "" })}>{t("review.resume")}</Button>
-        {error && <Alert>{error}</Alert>}
-      </td>
-    </tr>
+        {error && <div className="mt-2"><Alert>{error}</Alert></div>}
+      </TD>
+    </TR>
   );
 }
 
@@ -156,11 +157,13 @@ function OrgName({ orgId, name: was }: { orgId: string; name: string }) {
     }
   }
   return (
-    <form onSubmit={save} aria-label={t("org.nameTitle")} className="flex flex-wrap items-end gap-2" noValidate>
-      <div className="w-72"><Field label={t("org.name")} value={name} onChange={(e) => setName(e.target.value)} /></div>
-      <Button type="submit" size="sm" variant="outline" disabled={update.isPending || name.trim() === was}>{t("routeForm.save")}</Button>
-      {message && <div className="w-full"><Alert tone={message.tone}>{message.text}</Alert></div>}
-    </form>
+    <Card title={t("org.nameTitle")}>
+      <form onSubmit={save} aria-label={t("org.nameTitle")} className="flex flex-wrap items-end gap-2" noValidate>
+        <div className="w-72"><Field label={t("org.name")} value={name} onChange={(e) => setName(e.target.value)} /></div>
+        <Button type="submit" variant="outline" disabled={update.isPending || name.trim() === was}>{t("routeForm.save")}</Button>
+        {message && <div className="w-full"><Alert tone={message.tone}>{message.text}</Alert></div>}
+      </form>
+    </Card>
   );
 }
 
@@ -185,20 +188,20 @@ function MemberRow({ orgId, member: m }: { orgId: string; member: Member }) {
   }
   const who = m.displayName || m.email;
   return (
-    <tr className="border-t border-border align-top">
-      <td className="py-2 font-medium">{m.displayName}</td>
-      <td className="py-2">{m.email}</td>
-      <td className="py-2">
-        <select aria-label={t("org.roleOf", { name: who })} className="h-8 rounded-md border border-border bg-background px-2" value={m.role}
+    <TR className="align-middle">
+      <TD className="font-medium">{m.displayName}</TD>
+      <TD>{m.email}</TD>
+      <TD>
+        <Select aria-label={t("org.roleOf", { name: who })} className="w-36" value={m.role}
           onChange={(e) => {
             const role = e.target.value; // the select shows the stored role again until the change is saved
             void act(() => update.mutateAsync({ orgId, userId: m.userId, role }));
           }}>
           {roles.map((r) => <option key={r} value={r}>{t(`org.roles.${r}`)}</option>)}
-        </select>
-      </td>
-      <td className="py-2">{when(m.createTime)}</td>
-      <td className="py-2">
+        </Select>
+      </TD>
+      <TD className="whitespace-nowrap">{when(m.createTime)}</TD>
+      <TD>
         {asking ? (
           <span className="flex flex-wrap items-center gap-2">
             {t("org.removeAsk", { name: who })}
@@ -208,9 +211,9 @@ function MemberRow({ orgId, member: m }: { orgId: string; member: Member }) {
         ) : (
           <Button size="sm" variant="outline" onClick={() => setAsking(true)}>{t("targetForm.removeAsk")}</Button>
         )}
-        {error && <Alert>{error}</Alert>}
-      </td>
-    </tr>
+        {error && <div className="mt-2"><Alert>{error}</Alert></div>}
+      </TD>
+    </TR>
   );
 }
 
@@ -237,17 +240,16 @@ function Invite({ orgId }: { orgId: string }) {
     }
   }
   return (
-    <section aria-labelledby="invite-title" className="grid gap-2">
-      <h2 id="invite-title" className="text-lg font-semibold">{t("org.invite")}</h2>
+    <Card title={t("org.invite")} description={t("org.inviteIntro")}>
       <form onSubmit={save} className="flex flex-wrap items-end gap-2" noValidate>
         <div className="w-72"><Field label={t("login.email")} type="email" value={email} onChange={(e) => setEmail(e.target.value)} /></div>
-        <label className="grid gap-1 text-sm font-medium">
+        <label className="grid gap-1.5 text-sm font-medium">
           {t("org.columns.role")}
-          <select className="h-9 rounded-md border border-border bg-background px-2 font-normal" value={role} onChange={(e) => setRole(e.target.value)}>
+          <Select className="w-36 font-normal" value={role} onChange={(e) => setRole(e.target.value)}>
             {roles.map((r) => <option key={r} value={r}>{t(`org.roles.${r}`)}</option>)}
-          </select>
+          </Select>
         </label>
-        <Button type="submit" size="sm" disabled={invite.isPending || !email}>{t("org.inviteSubmit")}</Button>
+        <Button type="submit" disabled={invite.isPending || !email}>{t("org.inviteSubmit")}</Button>
       </form>
       {error && <Alert>{error}</Alert>}
       {result && (
@@ -256,6 +258,6 @@ function Invite({ orgId }: { orgId: string }) {
           <Command command={result.url} label={t("org.link")} />
         </div>
       )}
-    </section>
+    </Card>
   );
 }

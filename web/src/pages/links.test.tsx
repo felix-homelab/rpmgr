@@ -131,6 +131,13 @@ describe("Forgot", () => {
     await waitFor(() => expect(screen.getByText((t) => t.startsWith(want))).toBeTruthy());
     expect(asked).toBe("ada@example.com");
   });
+
+  it("leads back to sign in", async () => {
+    const { history } = show("/forgot", auth({}, false));
+    fireEvent.click(await screen.findByRole("link", { name: "Back to sign in" }));
+    expect(await screen.findByRole("heading", { name: "Sign in to rpmgr" })).toBeTruthy();
+    expect(history.location.pathname).toBe("/login");
+  });
 });
 
 describe("passwordProblem", () => {

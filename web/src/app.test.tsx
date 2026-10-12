@@ -60,6 +60,7 @@ describe("App", () => {
   it("shows a page that does not exist as not found", async () => {
     show("/no/such/page", auth());
     expect(await screen.findByRole("heading", { name: "Page not found" })).toBeTruthy();
+    expect(screen.getByText("The page you asked for does not exist, or its link is out of date.")).toBeTruthy();
     expect(screen.getByRole("link", { name: "Go to the overview" }).getAttribute("href")).toBe("/");
   });
 

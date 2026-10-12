@@ -7,9 +7,11 @@ import { useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { useId, useState, type FormEvent, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
+import { PageHeader } from "@/components/page-header";
 import { Alert } from "@/components/public-page";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { Card } from "@/components/ui/card";
+import { Input, Select, Textarea } from "@/components/ui/input";
 import { AuthService } from "@/gen/rpmgr/v1/auth_pb";
 import { InstanceSettingsSchema, OrgSettingsSchema, SettingsService, type InstanceSettings, type OrgSettings } from "@/gen/rpmgr/v1/settings_pb";
 import { Reason, reasonOf } from "@/lib/errors";
@@ -20,6 +22,9 @@ import { useOrg } from "@/session";
 import { useStepUp } from "@/step-up";
 
 type Message = { tone: "info" | "error"; text: string } | undefined;
+
+// check is the look of a checkbox with its label.
+const check = "flex items-center gap-2.5 text-sm";
 
 const etagMismatch = "ETAG_MISMATCH";
 
@@ -41,20 +46,26 @@ export function Settings() {
   const session = useQuery(AuthService.method.getSession, {});
   const admin = session.data?.instanceAdmin ?? false;
   return (
-    <div className="grid max-w-3xl gap-8">
-      <div className="flex flex-wrap items-baseline gap-4">
-        <h1 className="text-2xl font-semibold">{t("settings.title")}</h1>
-        {admin && (
-          <nav aria-label={t("settings.pages")} className="flex gap-4 text-sm">
-            <Link to="/settings/pki" className="underline">{t("settings.pki")}</Link>
-            <Link to="/settings/updates" className="underline">{t("settings.updates")}</Link>
-          </nav>
-        )}
-      </div>
+    <div className="grid max-w-3xl gap-6">
+      <PageHeader title={t("settings.title")} description={t("settings.intro")} />
+      {admin && <Tabs />}
       {admin && <RevocationLogNotice />}
       {org && <OrgSettingsSection orgId={org.orgId} owner={org.role === "owner"} />}
       {admin && <InstanceSettingsSection title={t("settings.instance")} sections={["agents", "endpoints", "traffic", "acme", "mail", "audit"]} />}
     </div>
+  );
+}
+
+// Tabs lead the Instance Admin between the settings and the instance's PKI and Updates pages.
+function Tabs() {
+  const { t } = useTranslation();
+  const tab = "-mb-px border-b-2 border-transparent px-1 pb-2.5 font-medium text-muted-foreground transition-colors hover:text-foreground [&.active]:border-primary [&.active]:text-foreground";
+  return (
+    <nav aria-label={t("settings.pages")} className="flex gap-6 border-b border-border text-sm">
+      <Link to="/settings" activeOptions={{ exact: true }} className={tab}>{t("settings.title")}</Link>
+      <Link to="/settings/pki" className={tab}>{t("settings.pki")}</Link>
+      <Link to="/settings/updates" className={tab}>{t("settings.updates")}</Link>
+    </nav>
   );
 }
 
@@ -70,13 +81,13 @@ function RevocationLogNotice() {
   }
   if (st.alert) {
     return (
-      <p role="alert" className="rounded-md border border-destructive p-3 text-sm text-destructive">
+      <p role="alert" className="rounded-xl border border-destructive/30 bg-destructive/8 p-4 text-sm text-destructive">
         {t("settings.revlogAlert", { count: Number(st.unshipped), since: when(st.oldestUnshippedTime) })}
       </p>
     );
   }
   if (!st.sink) {
-    return <p role="status" className="rounded-md border border-warn p-3 text-sm">{t("settings.revlogNoSink")}</p>;
+    return <p role="status" className="rounded-xl border border-warn/40 bg-warn/10 p-4 text-sm">{t("settings.revlogNoSink")}</p>;
   }
   return null;
 }
@@ -97,13 +108,12 @@ export function Updates() {
 export function InstanceAdminPage({ title, children }: { title: string; children: ReactNode }) {
   const { t } = useTranslation();
   const session = useQuery(AuthService.method.getSession, {});
+  const admin = session.data?.instanceAdmin;
   return (
     <div className="grid max-w-3xl gap-6">
-      <div className="flex items-baseline gap-4">
-        <h1 className="text-2xl font-semibold">{title}</h1>
-        <Link to="/settings" className="text-sm underline">{t("settings.title")}</Link>
-      </div>
-      {session.data && (session.data.instanceAdmin ? children : <p className="text-sm text-muted-foreground">{t("settings.adminOnly")}</p>)}
+      <PageHeader title={title} />
+      {admin ? <Tabs /> : <Link to="/settings" className="justify-self-start text-sm underline">{t("settings.title")}</Link>}
+      {session.data && (admin ? children : <p className="text-sm text-muted-foreground">{t("settings.adminOnly")}</p>)}
     </div>
   );
 }
@@ -115,14 +125,12 @@ function OrgSettingsSection({ orgId, owner }: { orgId: string; owner: boolean })
   const got = useQuery(SettingsService.method.getOrgSettings, { orgId });
   const [message, setMessage] = useState<Message>();
   return (
-    <section aria-labelledby="org-settings-title" className="grid gap-3">
-      <h2 id="org-settings-title" className="text-lg font-semibold">{t("settings.org")}</h2>
-      {!owner && <p className="text-sm text-muted-foreground">{t("settings.ownerOnly")}</p>}
+    <Card title={t("settings.org")} description={!owner && t("settings.ownerOnly")}>
       {got.data?.settings && (
         <OrgForm key={got.data.etag} orgId={orgId} settings={got.data.settings} etag={got.data.etag} disabled={!owner} onDone={setMessage} />
       )}
       {message && <Alert tone={message.tone}>{message.text}</Alert>}
-    </section>
+    </Card>
   );
 }
 
@@ -155,22 +163,21 @@ function OrgForm({ orgId, settings, etag, disabled, onDone }: {
   }
   return (
     <form onSubmit={save} aria-label={t("settings.org")} noValidate>
-      <fieldset disabled={disabled} className="grid gap-3">
-        <label className="flex items-center gap-2 text-sm">
-          <input type="checkbox" checked={form.mfa} onChange={(e) => setForm({ ...form, mfa: e.target.checked })} />
+      <fieldset disabled={disabled} className="grid gap-4">
+        <label className={check}>
+          <input type="checkbox" className="size-4 accent-primary" checked={form.mfa} onChange={(e) => setForm({ ...form, mfa: e.target.checked })} />
           {t("settings.requireMfa")}
         </label>
-        <label className="flex items-center gap-2 text-sm">
-          <input type="checkbox" checked={form.enroll} onChange={(e) => setForm({ ...form, enroll: e.target.checked })} />
+        <label className={check}>
+          <input type="checkbox" className="size-4 accent-primary" checked={form.enroll} onChange={(e) => setForm({ ...form, enroll: e.target.checked })} />
           {t("settings.operatorsMayEnroll")}
         </label>
-        <label className="grid gap-1 text-sm font-medium">
+        <label className="grid gap-1.5 text-sm font-medium">
           {t("settings.defaultGroup")}
-          <select className="h-9 rounded-md border border-border bg-background px-2 font-normal" value={form.group}
-            onChange={(e) => setForm({ ...form, group: e.target.value })}>
+          <Select className="font-normal" value={form.group} onChange={(e) => setForm({ ...form, group: e.target.value })}>
             <option value="">{t("settings.none")}</option>
             {(groups.data ?? []).map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
-          </select>
+          </Select>
         </label>
         <Button type="submit" className="justify-self-start" disabled={update.isPending}>{t("routeForm.save")}</Button>
       </fieldset>
@@ -180,19 +187,17 @@ function OrgForm({ orgId, settings, etag, disabled, onDone }: {
 
 // InstanceSettingsSection edits the instance settings of the given sections, and only those.
 export function InstanceSettingsSection({ title, sections }: { title: string; sections: Section[] }) {
-  const id = useId();
   const got = useQuery(SettingsService.method.getInstanceSettings, {});
   const [message, setMessage] = useState<Message>();
   const fields = settingFields.filter((f) => sections.includes(f.section));
   return (
-    <section aria-labelledby={id} className="grid gap-3">
-      <h2 id={id} className="text-lg font-semibold">{title}</h2>
+    <Card title={title}>
       {got.data?.settings && (
         <InstanceForm key={got.data.etag} title={title} sections={sections} fields={fields} settings={got.data.settings} etag={got.data.etag} onDone={setMessage} />
       )}
       {message && <Alert tone={message.tone}>{message.text}</Alert>}
       {got.data && sections.includes("mail") && <SmtpPassword set={got.data.smtpPasswordSet} />}
-    </section>
+    </Card>
   );
 }
 
@@ -229,8 +234,8 @@ function InstanceForm({ title, sections, fields, settings, etag, onDone }: {
   return (
     <form onSubmit={save} aria-label={title} className="grid gap-5" noValidate>
       {sections.map((sec) => (
-        <fieldset key={sec} className="grid gap-3">
-          {sections.length > 1 && <legend className="font-semibold">{t(`settings.sections.${sec}`)}</legend>}
+        <fieldset key={sec} className="grid gap-4 border-border not-first:border-t not-first:pt-5">
+          {sections.length > 1 && <legend className="float-left w-full text-sm font-semibold">{t(`settings.sections.${sec}`)}</legend>}
           {fields.filter((f) => f.section === sec).map((f) => (
             <SettingInput key={f.key} field={f} value={values[f.key] ?? ""} onChange={(v) => setValues({ ...values, [f.key]: v })} />
           ))}
@@ -242,32 +247,35 @@ function InstanceForm({ title, sections, fields, settings, etag, onDone }: {
 }
 
 function SettingInput({ field: f, value, onChange }: { field: SettingField; value: string; onChange: (v: string) => void }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const id = useId();
   const label = t(`settings.fields.${f.key}`);
   if (f.kind === "bool") {
     return (
-      <label className="flex items-center gap-2 text-sm">
-        <input type="checkbox" checked={value === "true"} onChange={(e) => onChange(String(e.target.checked))} />
+      <label className={check}>
+        <input type="checkbox" className="size-4 accent-primary" checked={value === "true"} onChange={(e) => onChange(String(e.target.checked))} />
         {label}
       </label>
     );
   }
-  const box = "rounded-md border border-border bg-background px-3 py-1.5 text-sm";
-  const hint = t(`settings.hints.${f.key}`, { defaultValue: "" });
+  // Most fields have no hint. i18next treats an empty default as missing (returnEmptyString:
+  // false) and returns the key, so the hint is asked for only when its key exists (U11).
+  const hintKey = `settings.hints.${f.key}`;
+  const hint = i18n.exists(hintKey) ? t(hintKey) : "";
+  const described = hint ? `${id}-hint` : undefined;
   return (
-    <div className="grid gap-1">
+    <div className="grid gap-1.5">
       <label htmlFor={id} className="text-sm font-medium">{label}</label>
       {f.kind === "select" ? (
-        <select id={id} className={`h-9 ${box}`} value={value} onChange={(e) => onChange(e.target.value)}>
+        <Select id={id} aria-describedby={described} value={value} onChange={(e) => onChange(e.target.value)}>
           {f.options?.map(([v, k]) => <option key={v} value={String(v)}>{t(`settings.options.${f.key}.${k}`)}</option>)}
-        </select>
+        </Select>
       ) : f.kind === "lines" ? (
-        <textarea id={id} rows={2} className={box} value={value} onChange={(e) => onChange(e.target.value)} />
+        <Textarea id={id} aria-describedby={described} rows={2} value={value} onChange={(e) => onChange(e.target.value)} />
       ) : (
-        <Input id={id} inputMode={f.kind === "days" ? "numeric" : undefined} value={value} onChange={(e) => onChange(e.target.value)} />
+        <Input id={id} aria-describedby={described} inputMode={f.kind === "days" ? "numeric" : undefined} value={value} onChange={(e) => onChange(e.target.value)} />
       )}
-      {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
+      {hint && <p id={described} className="text-xs text-muted-foreground">{hint}</p>}
     </div>
   );
 }
@@ -291,13 +299,13 @@ function SmtpPassword({ set }: { set: boolean }) {
     }
   }
   return (
-    <form onSubmit={submit} aria-label={t("settings.smtpPassword")} className="flex flex-wrap items-end gap-2" noValidate>
-      <label className="grid gap-1 text-sm font-medium">
+    <form onSubmit={submit} aria-label={t("settings.smtpPassword")} className="flex flex-wrap items-end gap-2 border-t border-border pt-4" noValidate>
+      <label className="grid gap-1.5 text-sm font-medium">
         {t("settings.smtpPassword")}
         <Input type="password" autoComplete="new-password" className="w-64" placeholder={t(set ? "settings.passwordSet" : "settings.passwordNone")}
           value={password} onChange={(e) => setPassword(e.target.value)} />
       </label>
-      <Button type="submit" size="sm" variant="outline" disabled={save.isPending || (!password && !set)}>
+      <Button type="submit" variant="outline" disabled={save.isPending || (!password && !set)}>
         {t(password ? "routeForm.save" : "settings.removePassword")}
       </Button>
       {message && <div className="w-full"><Alert tone={message.tone}>{message.text}</Alert></div>}

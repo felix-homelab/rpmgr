@@ -71,9 +71,11 @@ export function Login() {
           {t("login.submit")}
         </Button>
       </form>
-      <Link to="/forgot" className="mt-4 inline-block text-sm text-muted-foreground underline">
-        {t("login.forgot")}
-      </Link>
+      <p className="mt-5 text-center">
+        <Link to="/forgot" className="text-sm text-muted-foreground underline underline-offset-4 hover:text-foreground">
+          {t("login.forgot")}
+        </Link>
+      </p>
     </PublicPage>
   );
 }

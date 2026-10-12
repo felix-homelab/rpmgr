@@ -58,7 +58,7 @@ export function Setup() {
     return (
       <PublicPage title={t("setup.title")}>
         <Alert>{t("setup.exists")}</Alert>
-        <Button asChild className="mt-4"><Link to="/login" search={{}}>{t("login.submit")}</Link></Button>
+        <Button asChild className="mt-4 w-full"><Link to="/login" search={{}}>{t("login.submit")}</Link></Button>
       </PublicPage>
     );
   }
