@@ -3,7 +3,6 @@
 package setup
 
 import (
-	"os"
 	"path/filepath"
 
 	"github.com/felix-homelab/rpmgr/internal/controller"
@@ -16,7 +15,7 @@ func selfSigned(host, certFile, keyFile string, h Host) error {
 	if err != nil {
 		return err
 	}
-	if err := os.MkdirAll(filepath.Dir(certFile), 0o755); err != nil { //nolint:gosec // G301: certificates are public
+	if err := mkdirMode(filepath.Dir(certFile), 0o755); err != nil { // certificates are public
 		return err
 	}
 	if err := writeNew(certFile, cert, 0o644); err != nil {

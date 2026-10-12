@@ -306,13 +306,13 @@ func (p *Plan) prepare() {
 	if _, err := os.Stat(h.Paths.Etc); err != nil {
 		p.add("create "+h.Paths.Etc, func(_ context.Context, r *Result) error {
 			r.Written = append(r.Written, h.Paths.Etc)
-			return os.MkdirAll(h.Paths.Etc, 0o755) //nolint:gosec // G301: boot files are not secret (docs/10-operations.md)
+			return mkdirMode(h.Paths.Etc, 0o755) // boot files are not secret (docs/10-operations.md)
 		})
 	}
 	if _, err := os.Stat(h.Paths.Lib); err != nil {
 		p.add("create "+h.Paths.Lib+", owned by "+ServiceUser, func(_ context.Context, r *Result) error {
 			r.Written = append(r.Written, h.Paths.Lib)
-			if err := os.MkdirAll(h.Paths.Lib, 0o750); err != nil {
+			if err := mkdirMode(h.Paths.Lib, 0o750); err != nil {
 				return err
 			}
 			return h.GiveTo(h.Paths.Lib)
@@ -436,7 +436,7 @@ func (p *Plan) agentSteps() {
 	if v.Proxy != "" {
 		dropIn := filepath.Join(h.Paths.Units, "rpmgr-connector.service.d", "proxy.conf")
 		p.add("set the connector's proxy in "+dropIn, func(_ context.Context, r *Result) error {
-			if err := os.MkdirAll(filepath.Dir(dropIn), 0o755); err != nil { //nolint:gosec // G301: a unit directory
+			if err := mkdirMode(filepath.Dir(dropIn), 0o755); err != nil { // a unit directory
 				return err
 			}
 			r.created(dropIn)
@@ -460,7 +460,7 @@ func (p *Plan) unitSteps() {
 		if err != nil {
 			return err
 		}
-		if err := os.MkdirAll(h.Paths.Units, 0o755); err != nil { //nolint:gosec // G301: minimal systems may lack it
+		if err := mkdirMode(h.Paths.Units, 0o755); err != nil { // minimal systems may lack it
 			return err
 		}
 		r.created(path)
@@ -521,6 +521,27 @@ func writeMode(path string, data []byte, perm os.FileMode) error {
 		return err
 	}
 	return os.Chmod(path, perm)
+}
+
+// mkdirMode creates dir and its missing parents with mode perm whatever the umask (#458): a umask
+// such as 027 would keep the service user out of the directories setup creates for it. A directory
+// that exists keeps its mode.
+func mkdirMode(dir string, perm os.FileMode) error {
+	if fi, err := os.Stat(dir); err == nil {
+		if !fi.IsDir() {
+			return fmt.Errorf("%s exists and is no directory", dir)
+		}
+		return nil
+	}
+	if parent := filepath.Dir(dir); parent != dir {
+		if err := mkdirMode(parent, perm); err != nil {
+			return err
+		}
+	}
+	if err := os.Mkdir(dir, perm); err != nil {
+		return err
+	}
+	return os.Chmod(dir, perm)
 }
 
 // Summary lists the choices for the confirmation, in order; the token only as given.
