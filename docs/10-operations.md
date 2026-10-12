@@ -64,7 +64,8 @@ systemctl enable --now rpmgr-controller
 
 By hand, with the binary verified as in [04](04-security.md#release-signing), `sh install.sh`
 stands for the following; `rpmgr setup` also creates the user and the directories when they are
-missing:
+missing, each with the mode of [Filesystem layout](#filesystem-layout) whatever the umask, and
+leaves the mode of a directory that exists:
 
 ```sh
 install -m 0755 rpmgr /usr/local/bin/rpmgr
@@ -105,7 +106,9 @@ with `rpmgr user reset-password` while no user exists. There is no default passw
 | Path | Owner / mode | Contents |
 |---|---|---|
 | `/usr/bin/rpmgr` (packages) or `/usr/local/bin/rpmgr` (script installs) | root, 0755 | The binary; `.prev` kept next to it during OTA. **Never writable by the service user**: for script installs and standalone binaries only the root-owned updater replaces it, at the path recorded in `install.json`; package installs are updated by the package manager ([04](04-security.md#over-the-air-updates)) |
+| `/etc/rpmgr/` | root, 0755 | Boot files and the connector-local policy; the service user reads them |
 | `/etc/rpmgr/<role>.yaml` | root, 0644 | Boot configuration ([Configuration](#configuration)) |
+| `/etc/rpmgr/tls/` | root, 0755 | The certificate `rpmgr setup --tls self-signed` makes for the UI: `<host>.crt` (root, 0644) and `<host>.key` (rpmgr, 0600) |
 | `/etc/rpmgr/policy.yaml` | root, 0644 | Connector-local policy, read-only for the service user; the root updater also reads `auto_update` from it ([04](04-security.md#connector-local-policy)) |
 | `/var/lib/rpmgr/identity/` | rpmgr, 0700 | Agent identity, written by `rpmgr enroll`: `key.pem` (private key, 0600) and `chain.pem` (certificate and intermediates), both replaced at every renewal (`*.new` files are a renewal in progress, finished at the next start), `roots.pem` (the pinned root and roots it cross-signed), `signing.pem` (the config-signing certificates, replaced by those of every `Welcome`), `agent.json` (agent ID, trust domain, controller endpoints). Enrollment refuses a directory open to the group or other users, and an existing identity without `--replace` |
 | `/var/lib/rpmgr/` | rpmgr, 0750 | Last-known-good snapshot (`snapshot.signed`, 0600) and **deny-list** (`denylist.signed`, 0600) (both signed; the deny-list is loaded before any session is accepted), stateless reset key (gateways: `quic-reset.key`, 0600, created at the first start), route certificates with their keys that the gateway fetched (gateways: `resources/`, 0700, one 0600 file per item, named by its SHA-256, removed when no route needs it), SQLite database and its lock file `controller.db.lock`, held by the running controller (controller) |
