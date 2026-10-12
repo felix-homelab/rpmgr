@@ -12,9 +12,15 @@ import (
 	"syscall"
 )
 
+// geteuid and lchown are replaced by a test, which does not run as root.
+var (
+	geteuid = os.Geteuid
+	lchown  = func(r *os.Root, name string, uid, gid int) error { return r.Lchown(name, uid, gid) }
+)
+
 // ownLike gives dir and everything in it to the owner of ref, when the process runs as root.
 func ownLike(dir, ref string) error {
-	if os.Geteuid() != 0 {
+	if geteuid() != 0 {
 		return nil
 	}
 	st, err := os.Stat(ref)
@@ -35,7 +41,7 @@ func ownLike(dir, ref string) error {
 		if err != nil {
 			return err
 		}
-		return root.Lchown(p, int(sys.Uid), int(sys.Gid))
+		return lchown(root, p, int(sys.Uid), int(sys.Gid))
 	})
 }
 

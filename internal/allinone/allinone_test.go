@@ -19,6 +19,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -252,6 +253,87 @@ func TestInit_SystemdCredential(t *testing.T) {
 	}
 	if _, err := agent.Load(h.cfg.Gateway().IdentityDir); err != nil {
 		t.Fatalf("the gateway's identity: %v", err)
+	}
+}
+
+// TestInit_GivesStateToOwner (docs/10-operations.md, "Install"): init runs as root, so what it
+// creates in the state directory goes to the directory's owner, the service user: last, when the
+// in-memory controller has stopped and the gateway's identity is there. An init that cannot do it
+// fails.
+func TestInit_GivesStateToOwner(t *testing.T) {
+	ctx := context.Background()
+	h := newHost(t)
+	state := filepath.Join(h.dir, "lib")
+	var given []string
+	var identity bool
+	own := func(dir string) error {
+		given = append(given, dir)
+		_, err := os.Stat(filepath.Join(state, "gateway", "identity", agent.AgentFile))
+		identity = err == nil
+		// No controller holds the database: its lock is free.
+		db, err := store.OpenSQLite(ctx, filepath.Join(state, "controller.db"), store.SQLiteOptions{Lock: true})
+		if err != nil {
+			return err
+		}
+		return db.Close()
+	}
+	if _, err := allinone.Init(ctx, controller.InitOptions{ConfigPath: h.boot, Getenv: func(string) string { return "" },
+		OwnState: own}); err != nil {
+		t.Fatal(err)
+	}
+	// The controller's part gives it away, then the all-in-one's once more.
+	if want := []string{state, state}; !slices.Equal(given, want) || !identity {
+		t.Fatalf("given %v, the gateway's identity there at the end: %v; want %v and true", given, identity, want)
+	}
+
+	h = newHost(t)
+	calls := 0
+	refuseSecond := func(string) error {
+		if calls++; calls == 2 {
+			return errors.New("chown refused")
+		}
+		return nil
+	}
+	if _, err := allinone.Init(ctx, controller.InitOptions{ConfigPath: h.boot, Getenv: func(string) string { return "" },
+		OwnState: refuseSecond}); err == nil || !strings.Contains(err.Error(), "stays root's") {
+		t.Fatalf("init that cannot give the state directory away: %v", err)
+	}
+}
+
+// TestInit_FailureIsUndone (docs/10-operations.md, "Install"): when the gateway's part of init
+// fails, the database and what init created beside it go again, while the boot file, the KEK and
+// what was there before stay; init then runs again.
+func TestInit_FailureIsUndone(t *testing.T) {
+	ctx := context.Background()
+	h := newHost(t)
+	state := filepath.Join(h.dir, "lib")
+	// A file where the gateway's state directory belongs makes the gateway's part fail.
+	blocker := filepath.Join(state, "gateway")
+	if err := os.WriteFile(blocker, []byte("in the way\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	o := controller.InitOptions{ConfigPath: h.boot, Getenv: func(string) string { return "" }}
+	if _, err := allinone.Init(ctx, o); err == nil {
+		t.Fatal("init with the gateway's state directory blocked succeeded")
+	}
+	left, err := os.ReadDir(state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(left) != 1 || left[0].Name() != "gateway" || left[0].IsDir() {
+		t.Fatalf("after the failure, the state directory holds %v; want only the file that was there", left)
+	}
+	for _, f := range []string{h.boot, filepath.Join(h.dir, "kek")} {
+		if _, err := os.Stat(f); err != nil {
+			t.Errorf("the boot file or KEK after the failure: %v", err)
+		}
+	}
+	if err := os.Remove(blocker); err != nil {
+		t.Fatal(err)
+	}
+	r, err := allinone.Init(ctx, o)
+	if err != nil || r.GatewayID == "" {
+		t.Fatalf("init after the cause is gone: %+v, %v", r, err)
 	}
 }
 

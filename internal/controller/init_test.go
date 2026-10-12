@@ -8,6 +8,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -361,5 +362,45 @@ func TestInit_PasswordHashProfile(t *testing.T) {
 		if err != nil || inst.GetPasswordHashProfile() != c.want {
 			t.Errorf("%d bytes (%v): %v %v", c.mem, c.known, inst.GetPasswordHashProfile(), err)
 		}
+	}
+}
+
+// TestInit_GivesStateToOwner (docs/10-operations.md, "Install"): init runs as root, so it gives
+// the database's directory to the directory's owner, the service user, once the database is
+// closed; also after a failure, and an init that cannot do it fails.
+func TestInit_GivesStateToOwner(t *testing.T) {
+	ctx := context.Background()
+	h := newHost(t)
+	h.writeBoot(t, h.fileKEK())
+	o := h.opts()
+	var given []string
+	o.OwnState = func(dir string) error {
+		given = append(given, dir)
+		// The database is closed: its lock is free.
+		db, err := store.OpenSQLite(ctx, h.db, store.SQLiteOptions{Lock: true})
+		if err != nil {
+			return err
+		}
+		return db.Close()
+	}
+	if _, err := controller.Init(ctx, o); err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{filepath.Dir(h.db)}; !slices.Equal(given, want) {
+		t.Fatalf("given %v, want %v", given, want)
+	}
+
+	given = nil
+	if _, err := controller.Init(ctx, o); !errors.Is(err, controller.ErrInitialised) || len(given) != 1 {
+		t.Fatalf("a refused init: %v, given %v; want ErrInitialised, and the directory given all the same", err, given)
+	}
+
+	h = newHost(t)
+	h.writeBoot(t, h.fileKEK())
+	o = h.opts()
+	o.OwnState = func(string) error { return errors.New("chown refused") }
+	if _, err := controller.Init(ctx, o); err == nil || !strings.Contains(err.Error(), "stays root's") ||
+		!strings.Contains(err.Error(), "chown refused") {
+		t.Fatalf("init that cannot give the directory away: %v", err)
 	}
 }
