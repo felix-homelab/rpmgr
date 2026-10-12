@@ -1,11 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { getRouteApi, Link, useNavigate } from "@tanstack/react-router";
+import { Plus, Route as RouteIcon, Search } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { EmptyState } from "@/components/empty-state";
 import { ManifestButton } from "@/components/manifest";
+import { PageHeader } from "@/components/page-header";
 import { RouteStateChip, routeStateKey, routeStateKeys } from "@/components/route-state";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { Input, Select } from "@/components/ui/input";
+import { Table, TD, TH, THead, TR } from "@/components/ui/table";
 import { RouteState } from "@/gen/rpmgr/v1/route_pb";
 import { useOrg } from "@/session";
 import { blockedTargets, routeAddress, routeType, routeTypes, useGroupNames, useRoutes } from "@/routes-data";
@@ -52,16 +56,18 @@ export function Routes() {
   const rows = shown.slice((page - 1) * pageSize, page * pageSize);
 
   return (
-    <section aria-labelledby="routes-title" className="grid gap-4">
-      <div className="flex items-center gap-4">
-        <h1 id="routes-title" className="text-2xl font-semibold">{t("routes.title")}</h1>
-        <Button asChild size="sm" className="ml-auto"><Link to="/routes/new">{t("routes.create")}</Link></Button>
+    <section aria-labelledby="routes-title" className="grid gap-6">
+      <PageHeader id="routes-title" title={t("routes.title")} description={t("routes.intro")} actions={<>
         {org && <ManifestButton label={t("manifest.export")} title={t("manifest.ofKind", { what: t("routes.title") })} orgId={org.orgId} kinds={["Route"]} file="routes" />}
-      </div>
+        <Button asChild size="sm"><Link to="/routes/new"><Plus aria-hidden="true" />{t("routes.create")}</Link></Button>
+      </>} />
       <div className="flex flex-wrap items-end gap-3" role="search">
-        <label className="grid gap-1 text-sm">
+        <label className="grid gap-1.5 text-xs font-medium text-muted-foreground">
           {t("routes.search")}
-          <Input type="search" className="w-64" value={search.q ?? ""} onChange={(e) => set({ q: e.target.value || undefined })} />
+          <span className="relative">
+            <Search aria-hidden="true" className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2" />
+            <Input type="search" className="w-72 pl-9 text-foreground" value={search.q ?? ""} onChange={(e) => set({ q: e.target.value || undefined })} />
+          </span>
         </label>
         <Filter label={t("routes.type")} value={search.type} onChange={(type) => set({ type })}
           options={routeTypes.map((v) => [v, t(`routeType.${v}`)])} />
@@ -71,45 +77,53 @@ export function Routes() {
           options={[...(groups.data ?? new Map<string, string>())].map(([id, name]) => [id, name])} />
       </div>
       {routes.isPending ? (
-        <p>{t("stepUp.loading")}</p>
+        <p className="text-sm text-muted-foreground">{t("stepUp.loading")}</p>
+      ) : routes.data?.length === 0 ? (
+        <EmptyState icon={RouteIcon} action={<Button asChild size="sm"><Link to="/routes/new">{t("routes.create")}</Link></Button>}>{t("routes.none")}</EmptyState>
+      ) : rows.length === 0 ? (
+        <EmptyState action={<Button size="sm" variant="outline" onClick={() => void navigate({ search: {}, replace: true })}>{t("routes.clear")}</Button>}>
+          {t("routes.noMatch")}
+        </EmptyState>
       ) : (
-        <table className="w-full text-left text-sm">
-          <thead className="text-muted-foreground">
+        <Table>
+          <THead>
             <tr>
-              {["name", "type", "group", "targets", "state"].map((c) => (
-                <th key={c} scope="col" className="py-1 font-medium">{t(`routes.columns.${c}`)}</th>
-              ))}
+              {["name", "type", "group", "targets", "state"].map((c) => <TH key={c}>{t(`routes.columns.${c}`)}</TH>)}
             </tr>
-          </thead>
+          </THead>
           <tbody>
             {rows.map((r) => (
-              <tr key={r.id} className="border-t border-border align-top">
-                <td className="py-2">
-                  <Link to="/routes/$routeId" params={{ routeId: r.id }} className="font-medium underline-offset-2 hover:underline">{r.name}</Link>
+              <TR key={r.id}>
+                <TD>
+                  <Link to="/routes/$routeId" params={{ routeId: r.id }} className="font-medium hover:underline">{r.name}</Link>
                   {routeAddress(r).map((a) => <div key={a} className="text-muted-foreground">{a}</div>)}
-                </td>
-                <td className="py-2">{t(`routeType.${routeType(r) || "unknown"}`)}</td>
-                <td className="py-2">{groups.data?.get(r.gatewayGroupId) ?? r.gatewayGroupId}</td>
-                <td className="py-2">
+                </TD>
+                <TD>{t(`routeType.${routeType(r) || "unknown"}`)}</TD>
+                <TD>{groups.data?.get(r.gatewayGroupId) ?? r.gatewayGroupId}</TD>
+                <TD>
                   {t("routes.ready", { ready: r.status?.targetsReady ?? 0, total: r.status?.targetsTotal ?? 0 })}
                   {blockedTargets(r) > 0 && <div className="text-warn">{t("routes.blocked", { count: blockedTargets(r) })}</div>}
-                </td>
-                <td className="py-2">
+                </TD>
+                <TD>
                   <RouteStateChip state={r.status?.state ?? RouteState.UNSPECIFIED} />
                   {(r.status?.rejections.length ?? 0) > 0 && (
-                    <div className="text-destructive">{t("routes.rejected", { count: r.status?.rejections.length })}</div>
+                    <div className="mt-1 text-destructive">{t("routes.rejected", { count: r.status?.rejections.length })}</div>
                   )}
-                </td>
-              </tr>
+                </TD>
+              </TR>
             ))}
           </tbody>
-        </table>
+        </Table>
       )}
-      <nav aria-label={t("routes.pages")} className="flex items-center gap-3 text-sm">
-        <span>{t("routes.count", { from: shown.length ? (page - 1) * pageSize + 1 : 0, to: (page - 1) * pageSize + rows.length, total: shown.length })}</span>
-        <Button size="sm" variant="outline" disabled={page <= 1} onClick={() => set({ page: page - 1 > 1 ? page - 1 : undefined })}>{t("routes.previous")}</Button>
-        <Button size="sm" variant="outline" disabled={page >= pages} onClick={() => set({ page: page + 1 })}>{t("routes.next")}</Button>
-      </nav>
+      {rows.length > 0 && (
+        <nav aria-label={t("routes.pages")} className="flex items-center gap-2 text-sm">
+          <span className="mr-auto text-muted-foreground">
+            {t("routes.count", { from: (page - 1) * pageSize + 1, to: (page - 1) * pageSize + rows.length, total: shown.length })}
+          </span>
+          <Button size="sm" variant="outline" disabled={page <= 1} onClick={() => set({ page: page - 1 > 1 ? page - 1 : undefined })}>{t("routes.previous")}</Button>
+          <Button size="sm" variant="outline" disabled={page >= pages} onClick={() => set({ page: page + 1 })}>{t("routes.next")}</Button>
+        </nav>
+      )}
     </section>
   );
 }
@@ -117,12 +131,12 @@ export function Routes() {
 function Filter({ label, value, options, onChange }: { label: string; value?: string; options: [string, string][]; onChange: (v?: string) => void }) {
   const { t } = useTranslation();
   return (
-    <label className="grid gap-1 text-sm">
+    <label className="grid gap-1.5 text-xs font-medium text-muted-foreground">
       {label}
-      <select className="h-9 rounded-md border border-border bg-background px-2" value={value ?? ""} onChange={(e) => onChange(e.target.value || undefined)}>
+      <Select className="min-w-36 text-foreground" value={value ?? ""} onChange={(e) => onChange(e.target.value || undefined)}>
         <option value="">{t("routes.all")}</option>
         {options.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-      </select>
+      </Select>
     </label>
   );
 }

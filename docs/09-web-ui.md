@@ -143,6 +143,8 @@ flowchart LR
 - It reads all of the org's routes and filters them in the browser by text (name or address),
   type, status and gateway group. It sorts them by name and shows 25 a page. The filters and the
   page stay in the URL (U9).
+- **Without routes,** the list offers to create the first. When the filters match none, it says so
+  and offers to clear them.
 - **Targets** shows how many are ready, and how many a connector's local policy blocks.
 - **Status** shows the observed state, with an icon and text, and how many agents rejected the
   route.
