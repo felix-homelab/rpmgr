@@ -121,8 +121,8 @@ openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:P-256 -nodes -days 2 -su
 chgrp rpmgr /etc/rpmgr/tls/panel.key && chmod 0640 /etc/rpmgr/tls/panel.key
 printf 'tls:\n  cert_file: %s\n  key_file: %s\n' /etc/rpmgr/tls/panel.crt /etc/rpmgr/tls/panel.key \
   >>/etc/rpmgr/all-in-one.yaml
-# The state directory to the service user, as the unit's StateDirectory= does at start.
-chown -R rpmgr:rpmgr /var/lib/rpmgr
+# init gives what it created in the state directory to the service user (docs/10, "Install").
+[[ -z $(find /var/lib/rpmgr ! -user rpmgr) ]] || fail "init left files in /var/lib/rpmgr that rpmgr does not own"
 
 # start runs the all-in-one as the unit does: as the user rpmgr, with CAP_NET_BIND_SERVICE only. It
 # trusts Pebble's TLS certificate through SSL_CERT_FILE, a copy the user can read.
