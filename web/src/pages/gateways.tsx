@@ -5,14 +5,21 @@ import { Code, ConnectError } from "@connectrpc/connect";
 import { useMutation } from "@connectrpc/connect-query";
 import { useQueryClient } from "@tanstack/react-query";
 import { getRouteApi, Link, useNavigate } from "@tanstack/react-router";
+import { ChevronLeft, Plus, Server } from "lucide-react";
 import { useState, type FormEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { ApplyStatusView, useLiveApplyStatus } from "@/components/apply-status";
+import { EmptyState } from "@/components/empty-state";
 import { Field } from "@/components/field";
 import { LinesField, trimmed } from "@/components/lines-field";
 import { ManifestButton } from "@/components/manifest";
+import { PageHeader } from "@/components/page-header";
 import { Alert } from "@/components/public-page";
+import { Status } from "@/components/status";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Table, TD, TH, THead, TR } from "@/components/ui/table";
 import { GatewayGroupSchema, GatewayService, type Gateway, type GatewayGroup } from "@/gen/rpmgr/v1/gateway_pb";
 import { when } from "@/lib/format";
 import { GatewayActions, GatewayForm, type Written } from "@/pages/gateway-actions";
@@ -27,11 +34,11 @@ const groupMask = ["name", "region", "public_hostnames", "trusted_proxy_cidrs"];
 // drained (docs/09-web-ui.md, U8).
 export function GatewayChip({ gateway: g }: { gateway: Gateway }) {
   const { t } = useTranslation();
-  const [icon, key, tone] = !g.status?.enrolled ? ["◌", "notEnrolled", "text-muted-foreground"]
-    : g.status.connected ? ["●", "connected", "text-ok"] : ["○", "offline", "text-muted-foreground"];
+  const [look, key] = !g.status?.enrolled ? ["pending", "notEnrolled"] as const : g.status.connected ? ["ok", "connected"] as const : ["off", "offline"] as const;
   return (
-    <span className={tone}>
-      <span aria-hidden="true">{icon} </span>{t(`gateways.state.${key}`)}{!g.enabled && ` · ${t("gateways.drained")}`}
+    <span className="flex flex-wrap gap-1.5">
+      <Status look={look}>{t(`gateways.state.${key}`)}</Status>
+      {!g.enabled && <Badge tone="warn">{t("gateways.drained")}</Badge>}
     </span>
   );
 }
@@ -45,35 +52,37 @@ export function Gateways() {
   const gateways = useGateways(org?.orgId);
   const [adding, setAdding] = useState(false);
   return (
-    <section aria-labelledby="gateways-title" className="grid gap-4">
-      <div className="flex items-center gap-4">
-        <h1 id="gateways-title" className="text-2xl font-semibold">{t("gateways.title")}</h1>
-        <Button size="sm" className="ml-auto" onClick={() => setAdding(true)} disabled={!org}>{t("gateways.newGroup")}</Button>
+    <section aria-labelledby="gateways-title" className="grid gap-6">
+      <PageHeader id="gateways-title" title={t("gateways.title")} description={t("gateways.intro")} actions={<>
         {org && <ManifestButton label={t("manifest.export")} title={t("manifest.ofKind", { what: t("gateways.title") })} orgId={org.orgId}
           kinds={["GatewayGroup", "Gateway", "PortPool"]} file="gateways" />}
-      </div>
-      {adding && org && <GroupForm orgId={org.orgId} onCancel={() => setAdding(false)} />}
-      {groups.isPending ? <p>{t("stepUp.loading")}</p> : (
-        <table className="w-full text-left text-sm">
-          <thead className="text-muted-foreground">
-            <tr>{["name", "region", "hostnames", "gateways"].map((c) => <th key={c} scope="col" className="py-1 font-medium">{t(`gateways.columns.${c}`)}</th>)}</tr>
-          </thead>
+        <Button size="sm" onClick={() => setAdding(true)} disabled={!org}><Plus aria-hidden="true" />{t("gateways.newGroup")}</Button>
+      </>} />
+      {adding && org && <Card><GroupForm orgId={org.orgId} onCancel={() => setAdding(false)} /></Card>}
+      {groups.isPending ? <p className="text-sm text-muted-foreground">{t("stepUp.loading")}</p> : groups.data?.length === 0 ? (
+        !adding && <EmptyState icon={Server} action={<Button size="sm" disabled={!org} onClick={() => setAdding(true)}>{t("gateways.newGroup")}</Button>}>
+          {t("gateways.noGroups")}
+        </EmptyState>
+      ) : (
+        <Table>
+          <THead>
+            <tr>{["name", "region", "hostnames", "gateways"].map((c) => <TH key={c}>{t(`gateways.columns.${c}`)}</TH>)}</tr>
+          </THead>
           <tbody>
             {[...(groups.data ?? [])].sort((a, b) => a.name.localeCompare(b.name)).map((g) => {
               const of = (gateways.data ?? []).filter((gw) => gw.gatewayGroupId === g.id);
               return (
-                <tr key={g.id} className="border-t border-border align-top">
-                  <td className="py-2"><Link to="/gateways/$groupId" params={{ groupId: g.id }} className="font-medium underline-offset-2 hover:underline">{g.name}</Link></td>
-                  <td className="py-2">{g.region}</td>
-                  <td className="py-2">{g.publicHostnames.join(", ")}</td>
-                  <td className="py-2">{t("gateways.count", { connected: of.filter((gw) => gw.status?.connected).length, total: of.length })}</td>
-                </tr>
+                <TR key={g.id}>
+                  <TD><Link to="/gateways/$groupId" params={{ groupId: g.id }} className="font-medium hover:underline">{g.name}</Link></TD>
+                  <TD>{g.region}</TD>
+                  <TD className="text-muted-foreground">{g.publicHostnames.join(", ")}</TD>
+                  <TD>{t("gateways.count", { connected: of.filter((gw) => gw.status?.connected).length, total: of.length })}</TD>
+                </TR>
               );
             })}
           </tbody>
-        </table>
+        </Table>
       )}
-      {groups.data?.length === 0 && <p className="text-sm">{t("gateways.noGroups")}</p>}
     </section>
   );
 }
@@ -111,7 +120,7 @@ export function GroupForm({ orgId, group, onCancel }: { orgId: string; group?: G
     }
   }
   return (
-    <form onSubmit={save} aria-label={t(group ? "gateways.settings" : "gateways.newGroup")} className="grid max-w-xl gap-3 rounded-md border border-border p-3" noValidate>
+    <form onSubmit={save} aria-label={t(group ? "gateways.settings" : "gateways.newGroup")} className="grid max-w-xl gap-4" noValidate>
       <Field label={t("routeForm.fields.name")} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
       <Field label={t("gateways.columns.region")} value={form.region} onChange={(e) => setForm({ ...form, region: e.target.value })} />
       <LinesField label={t("gateways.columns.hostnames")} hint={t("gateways.hostnamesHint")} value={form.hostnames} onChange={(hostnames) => setForm({ ...form, hostnames })} />
@@ -146,49 +155,51 @@ export function GatewayGroupPage() {
     await queryClient.invalidateQueries();
   };
   if (!group || !org) {
-    return <p>{groups.isPending ? t("stepUp.loading") : t("gateways.notFound")}</p>;
+    return <p className="text-sm text-muted-foreground">{groups.isPending ? t("stepUp.loading") : t("gateways.notFound")}</p>;
   }
   const members = (gateways.data ?? []).filter((g) => g.gatewayGroupId === group.id).sort((a, b) => a.slot - b.slot);
   return (
-    <div className="grid max-w-4xl gap-6">
-      <div className="flex flex-wrap items-center gap-4">
-        <h1 className="text-2xl font-semibold">{t("gateways.groupTitle", { name: group.name })}</h1>
-        <ManifestButton label={t("manifest.yaml")} title={t("manifest.of", { name: group.name })} orgId={org.orgId} ids={[group.id, ...members.map((g) => g.id)]} file={group.name} />
+    <div className="grid max-w-5xl gap-6">
+      <div className="grid gap-2">
+        <Link to="/gateways" className="inline-flex w-fit items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
+          <ChevronLeft aria-hidden="true" className="size-4" />{t("gateways.back")}
+        </Link>
+        <PageHeader title={t("gateways.groupTitle", { name: group.name })} description={group.region || undefined}
+          actions={<ManifestButton label={t("manifest.yaml")} title={t("manifest.of", { name: group.name })} orgId={org.orgId} ids={[group.id, ...members.map((g) => g.id)]} file={group.name} />} />
       </div>
       {live && <ApplyStatusView status={live} revision={write?.revision} name={(id) => names.data?.get(id) || id} />}
-      <section aria-labelledby="members-title" className="grid gap-2">
-        <h2 id="members-title" className="text-lg font-semibold">{t("gateways.members")}</h2>
-        <table className="w-full text-left text-sm">
-          <thead className="text-muted-foreground">
-            <tr>{["name", "slot", "endpoints", "state", "version", "lastSeen", "actions"].map((c) => <th key={c} scope="col" className="py-1 font-medium">{t(`gateways.gw.${c}`)}</th>)}</tr>
-          </thead>
-          <tbody>
-            {members.map((g) => (
-              <tr key={g.id} className="border-t border-border align-top">
-                <td className="py-2 font-medium">{g.name}</td>
-                <td className="py-2">{g.slot}</td>
-                <td className="py-2 font-mono">{g.tunnelEndpoints.join(", ")}</td>
-                <td className="py-2"><GatewayChip gateway={g} /></td>
-                <td className="py-2">{g.status?.version}</td>
-                <td className="py-2">{when(g.status?.lastSeenTime)}</td>
-                <td className="py-2"><GatewayActions orgId={org.orgId} gateway={g} onEdit={() => setEditing(g.id)} onDone={(w) => void done(w)} /></td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        {members.length === 0 && <p className="text-sm">{t("gateways.noGateways")}</p>}
+      <Card title={t("gateways.members")}>
+        {members.length === 0 ? <p className="text-sm text-muted-foreground">{t("gateways.noGateways")}</p> : (
+          <Table framed={false}>
+            <THead>
+              <tr>{["name", "slot", "endpoints", "state", "version", "lastSeen", "actions"].map((c) => <TH key={c}>{t(`gateways.gw.${c}`)}</TH>)}</tr>
+            </THead>
+            <tbody>
+              {members.map((g) => (
+                <TR key={g.id}>
+                  <TD className="font-medium">{g.name}</TD>
+                  <TD>{g.slot}</TD>
+                  <TD className="font-mono text-xs">{g.tunnelEndpoints.join(", ")}</TD>
+                  <TD><GatewayChip gateway={g} /></TD>
+                  <TD>{g.status?.version}</TD>
+                  <TD>{when(g.status?.lastSeenTime)}</TD>
+                  <TD><GatewayActions orgId={org.orgId} gateway={g} onEdit={() => setEditing(g.id)} onDone={(w) => void done(w)} /></TD>
+                </TR>
+              ))}
+            </tbody>
+          </Table>
+        )}
         {editing ? (
           <GatewayForm key={editing} orgId={org.orgId} groupId={group.id} gateway={members.find((g) => g.id === editing)}
             onDone={(w) => void done(w)} onCancel={() => setEditing(undefined)} />
         ) : (
-          <Button size="sm" variant="outline" className="justify-self-start" onClick={() => setEditing("new")}>{t("gwActions.addButton")}</Button>
+          <Button size="sm" variant="outline" className="justify-self-start" onClick={() => setEditing("new")}><Plus aria-hidden="true" />{t("gwActions.addButton")}</Button>
         )}
-      </section>
+      </Card>
       <PortPools orgId={org.orgId} groupId={group.id} />
-      <section aria-labelledby="group-settings-title" className="grid gap-2">
-        <h2 id="group-settings-title" className="text-lg font-semibold">{t("gateways.settings")}</h2>
+      <Card title={t("gateways.settings")}>
         <GroupForm key={group.etag} orgId={org.orgId} group={group} />
-      </section>
+      </Card>
     </div>
   );
 }

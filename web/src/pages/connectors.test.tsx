@@ -21,7 +21,7 @@ const db = create(ConnectorSchema, {
 });
 const lab = create(ConnectorSchema, { id: "con_lab", name: "lab", labels: { site: "home" }, enabled: false, ephemeral: true, session: { connected: false } });
 
-function page(path: string) {
+function page(path: string, connectors = [lab, db]) {
   const updates: UpdateConnectorRequest[] = [];
   const decommissions: DecommissionConnectorRequest[] = [];
   const view = show(path, auth({ getSession: () => ({ userId: "usr_ada", memberships: [{ orgId: "org_1", role: "owner" }] }) }), (router) => {
@@ -35,7 +35,7 @@ function page(path: string) {
       ] }),
     });
     router.service(ConnectorService, {
-      listConnectors: () => ({ connectors: [lab, db] }),
+      listConnectors: () => ({ connectors }),
       getConnector: (req) => ({ connector: req.connectorId === "con_db" ? db : lab }),
       getConnectorStatus: () => ({ status: {
         dataSessions: [{ gatewayId: "gtw_1", transport: DataTransport.QUIC, rtt: { seconds: 0n, nanos: 23_400_000 } }],
@@ -54,8 +54,8 @@ describe("Connectors", () => {
     const table = await screen.findByRole("table");
     await waitFor(() => expect(within(table).getAllByRole("row")).toHaveLength(3));
     expect(within(table).getAllByRole("row").slice(1).map((r) => r.textContent)).toEqual([
-      expect.stringMatching(/^db-host-1● connected0\.1\.0.*site=office$/),
-      "lab(disabled)(ephemeral)○ offlinesite=home",
+      expect.stringMatching(/^db-host-1connected0\.1\.0.*site=office$/), // the badges' icons are drawings, hidden from screen readers
+      "labdisabledephemeralofflinesite=home",
     ]);
     fireEvent.change(screen.getByLabelText("Search"), { target: { value: "site=home" } });
     await waitFor(() => expect(within(table).getAllByRole("row")).toHaveLength(2));
@@ -63,6 +63,31 @@ describe("Connectors", () => {
     fireEvent.change(screen.getByLabelText("Session"), { target: { value: "connected" } });
     await waitFor(() => expect(within(table).getAllByRole("row").slice(1).map((r) => r.textContent?.slice(0, 9))).toEqual(["db-host-1"]));
     expect(new URLSearchParams(history.location.search).get("session")).toBe("connected");
+  });
+
+  it("offers to enroll the first connector when there is none", async () => {
+    const { history } = page("/connectors", []);
+    expect(await screen.findByText("No connectors yet.")).toBeTruthy();
+    expect(screen.queryByRole("table")).toBeNull();
+    const enroll = screen.getAllByRole("button", { name: "Enroll a connector" });
+    expect(enroll).toHaveLength(2); // the header's and the empty list's
+    fireEvent.click(enroll[1]!);
+    await waitFor(() => expect(new URLSearchParams(history.location.search).get("enroll")).toBe("true"));
+  });
+
+  it("says when no connector matches the filters, and clears them", async () => {
+    const { history } = page("/connectors?q=nothing&session=offline");
+    expect(await screen.findByText("No connector matches.")).toBeTruthy();
+    expect(screen.queryByRole("table")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Clear the filters" }));
+    await waitFor(() => expect(within(screen.getByRole("table")).getAllByRole("row")).toHaveLength(3));
+    expect(history.location.search).toBe("");
+  });
+
+  it("leads back to the list from a connector's page", async () => {
+    page("/connectors/con_db");
+    const back = await screen.findByRole("link", { name: "All connectors" });
+    expect(back.getAttribute("href")).toBe("/connectors");
   });
 
   it("shows a connector's sessions, routes and the fix for a blocked target", async () => {

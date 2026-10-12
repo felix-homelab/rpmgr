@@ -300,7 +300,9 @@ flowchart LR
 - **The list** (`/connectors`) shows the org's connectors in service, sorted by name. Each row has
   its control session (connected or offline, with an icon and text), version, last contact and
   labels. A text filter (name or `key=value` label) and a session filter stay in the URL (U9).
-- **The detail page:**
+  Without connectors, the list offers to enroll the first. When the filters match none, it says so
+  and offers to clear them.
+- **The detail page** has a link back to the list above its title, and:
   - **Sessions:** the control session (address, last contact), and the data sessions per gateway,
     with transport, round-trip time and start.
   - **Routes:** those with a target on the connector. Those it reports not ready show their reason,
@@ -313,11 +315,12 @@ flowchart LR
 ### Gateways
 
 - **The groups** (`/gateways`): each with its region, public hostnames, and how many of its gateways
-  are connected. A new group is created there, and the page then opens it.
-- **A group's page** lists its gateways by slot, with their tunnel endpoints, state (not enrolled,
-  connected or offline, and drained), version and last contact. It also edits the group's name,
-  region, public hostnames and trusted proxies, as the whole group as read with their mask and the
-  etag (U1).
+  are connected. A new group is created there, and the page then opens it. Without groups, the
+  page offers to create the first.
+- **A group's page** has a link back to the groups above its title. It lists its gateways by slot,
+  with their tunnel endpoints, state (not enrolled, connected or offline, and drained), version and
+  last contact. It also edits the group's name, region, public hostnames and trusted proxies, as
+  the whole group as read with their mask and the etag (U1).
 - **Gateway actions** on a group's page:
   - **Add a gateway** with its name and its own tunnel endpoints. A group has at most four; the
     server says so.
