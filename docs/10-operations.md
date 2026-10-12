@@ -79,16 +79,18 @@ install -d -m 0750 -o rpmgr -g rpmgr /var/lib/rpmgr
   the service reads it.
 - **Unit:** `rpmgr systemd-unit <role>` prints the role's hardened unit. For a controller or
   all-in-one it reads the boot file, and loads the KEK credential when the KEK is one.
-- **State directory:** `init` runs as root, so its database starts out as root's. [V] The unit's
-  `StateDirectory=` gives an existing state directory and its contents to `User=` at start
-  (systemd.exec(5)).
+- **State directory:** `init` runs as root. It gives what it creates in the state directory to the
+  directory's owner, the user `rpmgr` the installer gave it to, also when it fails: the database
+  and the files beside it, and on an all-in-one the gateway's identity. So the service, which runs
+  as `rpmgr`, starts without a `chown`.
 
 `init` writes the boot file if it does not exist (from `--public-url` and, for a KEK file,
 `--kek-source file --kek-path`), creates the KEK, the database and its migrations, and in one
 transaction the trust domain, the database epoch, the CA with its signing keys, and the audit
 entry. It never overwrites a boot file or a KEK: an existing one is read and used, so `init` can run
 again after a failure, and it refuses a database that is already initialised or in use by a running
-controller. A new systemd credential is encrypted with `systemd-creds encrypt` into
+controller. When the gateway's part of `all-in-one init` fails, it removes the database and what it
+created beside it, so the same `init` can run again once the cause is fixed. A new systemd credential is encrypted with `systemd-creds encrypt` into
 `/etc/rpmgr/credstore/<name>`; an existing one is readable only where systemd loads it, so `init`
 then has to run under `systemd-run --pipe --wait --property=LoadCredentialEncrypted=…`.
 

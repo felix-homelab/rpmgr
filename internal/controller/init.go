@@ -48,6 +48,17 @@ type InitOptions struct {
 	Memory         func() (uint64, bool)                                        // the host's memory in bytes, if known
 	SystemdVersion func() int                                                   // systemctl --version; 0 without systemd
 	ServiceUser    string                                                       // rpmgr: owns a new KEK file
+	OwnState       func(dir string) error                                       // gives dir and its contents to dir's owner, as root
+}
+
+// Own gives the state directory dir, and everything init put into it, to the directory's owner,
+// the service user, when init runs as root: the unit's StateDirectory= leaves the contents of a
+// directory that the service user owns already as they are (docs/10-operations.md, "Install").
+func (o InitOptions) Own(dir string) error {
+	if o.OwnState != nil {
+		return o.OwnState(dir)
+	}
+	return ownLike(dir, dir)
 }
 
 // lowMemory is the host memory below which init picks the low-memory password-hash profile
@@ -73,13 +84,20 @@ var ErrInitialised = store.ErrInitialised
 // Init initialises a controller (docs/10-operations.md, "Install"): the boot file, the KEK, the
 // database and its migrations, and in one transaction the instance with its trust domain and
 // epoch, the CA and its signing keys, and the audit entry. It never overwrites a boot file or a
-// KEK: an existing file is read and used, so init can run again after a failure.
-func Init(ctx context.Context, o InitOptions) (InitResult, error) {
+// KEK: an existing file is read and used, so init can run again after a failure. What it creates
+// in the database's directory goes to the directory's owner, also after a failure.
+func Init(ctx context.Context, o InitOptions) (res InitResult, err error) {
 	o.setDefaults()
 	var cfg config.Controller
 	if err := bootFile(o, &cfg); err != nil {
 		return InitResult{}, err
 	}
+	// Deferred before the database's Close, so it runs after it.
+	defer func() {
+		if oerr := o.Own(filepath.Dir(cfg.Database.DSN)); oerr != nil && err == nil {
+			res, err = InitResult{}, fmt.Errorf("controller: initialised, but the state directory stays root's; give it to the service user before the first start: %w", oerr)
+		}
+	}()
 	// The database's directory must exist: the installer creates /var/lib/rpmgr with its owner.
 	db, err := store.OpenSQLite(ctx, cfg.Database.DSN, store.SQLiteOptions{Lock: true})
 	if err != nil {

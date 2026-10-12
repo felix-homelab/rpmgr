@@ -17,6 +17,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -107,8 +108,10 @@ type InitResult struct {
 // from an all-in-one boot file, then its gateway, which an Admin would otherwise create: a gateway
 // group "default" with the gateway "local", whose tunnel endpoint is the public URL's host on
 // the port of listen.tcp, enrolled into <state_dir>/gateway/identity through the in-process
-// controller.
-func Init(ctx context.Context, o controller.InitOptions) (InitResult, error) {
+// controller. What the gateway's part adds to the state directory goes to the directory's owner, as
+// controller.Init's own files do. When the gateway's part fails, the database and what this init
+// created beside it go again, so init can run again (docs/10-operations.md, "Install").
+func Init(ctx context.Context, o controller.InitOptions) (res InitResult, err error) {
 	o.AllInOne = true
 	r, err := controller.Init(ctx, o)
 	if err != nil {
@@ -118,6 +121,29 @@ func Init(ctx context.Context, o controller.InitOptions) (InitResult, error) {
 	if err := config.Load(o.ConfigPath, &cfg); err != nil {
 		return InitResult{}, err
 	}
+	// Deferred first, so it runs after the in-memory controller has stopped.
+	defer func() {
+		dirs := []string{cfg.StateDir}
+		if db := filepath.Dir(cfg.Database.DSN); db != cfg.StateDir {
+			dirs = append(dirs, db)
+		}
+		for _, dir := range dirs {
+			if oerr := o.Own(dir); oerr != nil && err == nil {
+				res, err = InitResult{}, fmt.Errorf("allinone: initialised, but %s stays root's; give it to the service user before the first start: %w", dir, oerr)
+			}
+		}
+	}()
+	before, err := os.ReadDir(cfg.StateDir)
+	if err != nil {
+		return InitResult{}, err
+	}
+	defer func() {
+		if err != nil {
+			if uerr := undoInit(cfg, before); uerr != nil {
+				err = fmt.Errorf("%w; undoing the init: %w", err, uerr)
+			}
+		}
+	}()
 	gw := cfg.Gateway()
 	if err := os.MkdirAll(gw.StateDir, 0o750); err != nil {
 		return InitResult{}, err
@@ -162,6 +188,31 @@ func Init(ctx context.Context, o controller.InitOptions) (InitResult, error) {
 		return InitResult{}, fmt.Errorf("allinone: enroll the gateway: %w", err)
 	}
 	return InitResult{InitResult: r, GatewayID: gatewayID}, nil
+}
+
+// undoInit removes the database of a failed init, and what the init created in the state directory
+// after the controller's part: the entries that are not among before.
+func undoInit(cfg config.AllInOne, before []os.DirEntry) error {
+	had := map[string]bool{}
+	for _, e := range before {
+		had[e.Name()] = true
+	}
+	now, err := os.ReadDir(cfg.StateDir)
+	if err != nil {
+		return err
+	}
+	var errs []error
+	for _, e := range now {
+		if !had[e.Name()] {
+			errs = append(errs, os.RemoveAll(filepath.Join(cfg.StateDir, e.Name())))
+		}
+	}
+	for _, suffix := range []string{"", "-wal", "-shm", ".lock"} {
+		if err := os.Remove(cfg.Database.DSN + suffix); err != nil && !errors.Is(err, os.ErrNotExist) {
+			errs = append(errs, err)
+		}
+	}
+	return errors.Join(errs...)
 }
 
 // createGateway creates the gateway group and the gateway, and a single-use token bound to it.
