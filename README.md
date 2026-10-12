@@ -48,10 +48,21 @@ every role.
 
 Suggested reading order: 00 → 02 → 03 → 04, then whatever you need.
 
+## Installing
+
+On Linux, as root, the global install script downloads a release from GitHub, verifies it with the
+release root keys it carries, installs the binary, the user `rpmgr` and its directories, and offers
+to set up the host's role ([10](docs/10-operations.md#install-paths)):
+
+```sh
+curl -fsSLO https://github.com/felix-homelab/rpmgr/releases/latest/download/install.sh
+sudo sh install.sh            # --prerelease for a release candidate, --help for the options
+```
+
 ## Building from source
 
-Until v0.1.0 is released, rpmgr is built from source: Node of the version in `web/.nvmrc` for the
-web UI, and Go of the version `go.mod` pins.
+rpmgr can also be built from source: Node of the version in `web/.nvmrc` for the web UI, and Go of
+the version `go.mod` pins.
 
 ```sh
 npm --prefix web ci && npm --prefix web run build   # the web UI, embedded from internal/webui/ui

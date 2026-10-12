@@ -1,10 +1,11 @@
 # Release builds (RELEASING.md, "Release process"; docs/12-testing-and-quality.md, "Continuous
 # integration"). On a release tag: the tag and changelog checks, two builds on runners of two
 # architectures whose artifacts must be equal byte for byte, then a draft release with the
-# artifacts, SHA256SUMS, an SBOM, SLSA provenance and the unsigned release manifest, which the
-# signer signs offline before publishing it (D48). No signing key enters CI: the provenance
-# attestations sign the artifacts, the SBOM and SHA256SUMS keylessly with this workflow's identity. Nightly, the two builds and their
-# comparison run alone, and a failure opens the nightly-failure issue, or comments on it.
+# artifacts, SHA256SUMS, an SBOM, the global install script, SLSA provenance and the unsigned
+# release manifest, which the signer signs offline before publishing it (D48). No signing key
+# enters CI: the provenance attestations sign the artifacts, the SBOM, SHA256SUMS and install.sh
+# keylessly with this workflow's identity. Nightly, the two builds and their comparison run alone,
+# and a failure opens the nightly-failure issue, or comments on it.
 name: release
 
 on:
@@ -118,6 +119,10 @@ jobs:
         run: .github/scripts/check-release-artifacts.sh dist "$VERSION" "$GITHUB_SHA" | tee -a "$GITHUB_STEP_SUMMARY"
       - name: SBOM
         run: .github/scripts/release-sbom.sh "$VERSION" "dist/rpmgr-$VERSION.spdx.json"
+      # The global install script, pinned to this release, with the root keys this build compiles in
+      # (D74); the release manifest does not list it.
+      - name: Global install script
+        run: go run ./tools/installscript -version "$VERSION" -o dist/install.sh
       # The attestations are the release files' keyless signatures; the release carries no separate
       # signature files (D72).
       - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
@@ -126,6 +131,7 @@ jobs:
             dist/rpmgr-${{ needs.tag.outputs.version }}-linux-*
             dist/rpmgr-${{ needs.tag.outputs.version }}.spdx.json
             dist/SHA256SUMS
+            dist/install.sh
       - name: Unsigned release manifest, one seq above the last published release's
         run: |
           previous=$(gh release list --repo "$GITHUB_REPOSITORY" --exclude-drafts --limit 1 --json tagName --jq '.[0].tagName // empty')
