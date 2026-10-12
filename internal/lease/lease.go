@@ -145,10 +145,11 @@ func (l *Leases) Run(ctx context.Context, job Job, onErr func(error)) {
 	for ctx.Err() == nil {
 		lease, ok, err := l.TryAcquire(ctx, job.Name)
 		switch {
+		case err != nil && ctx.Err() != nil: // a shutdown, not a failure
 		case err != nil:
 			onErr(err)
 		case ok:
-			if err := l.hold(ctx, job, lease, onErr); err != nil {
+			if err := l.hold(ctx, job, lease, onErr); err != nil && ctx.Err() == nil {
 				onErr(err)
 			}
 		}
@@ -177,6 +178,9 @@ func (l *Leases) hold(ctx context.Context, job Job, lease Lease, onErr func(erro
 			return l.release(ctx, lease)
 		case <-renew.C:
 			if err := l.Renew(ctx, lease); err != nil {
+				if ctx.Err() != nil {
+					return l.release(ctx, lease) // a shutdown during the renewal
+				}
 				return err
 			}
 		case <-run.C:

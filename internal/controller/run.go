@@ -412,25 +412,33 @@ func Run(ctx context.Context, o RunOptions) error {
 	}
 	sessionsDone := make(chan struct{})
 	go func() { sessions.Run(run); close(sessionsDone) }()
+	// The background jobs end with jobs; Run waits for them before it closes the database.
+	jobs, stopJobs := context.WithCancel(sys)
+	defer stopJobs()
+	var bg sync.WaitGroup
+	job := func(j lease.Job, name string) {
+		bg.Go(func() { leases.Run(jobs, j, func(err error) { o.Logger.Warn(name, "error", err) }) })
+	}
 	caOpts := CAOptions{DB: db, CA: ca, Sealer: sealer, Leases: leases, Now: o.Now, Logger: o.Logger}
-	go leases.Run(sys, CARotation(caOpts), func(err error) { o.Logger.Warn("CA rotation job", "error", err) })
-	go leases.Run(sys, certManager.Job(acme.JobEvery), func(err error) { o.Logger.Warn("ACME job", "error", err) })
-	go leases.Run(sys, apiServer.PruneJob(api.PruneEvery), func(err error) { o.Logger.Warn("request_id pruning job", "error", err) })
-	go leases.Run(sys, DomainCheckJob(DomainCheckOptions{DB: db, TXT: &domains.TXTVerifier{},
-		HTTP: &domains.HTTPVerifier{}, Now: o.Now, Logger: o.Logger}),
-		func(err error) { o.Logger.Warn("domain check job", "error", err) })
-	go leases.Run(sys, PurgeJob(PurgeOptions{DB: db, RevLog: rl, Logger: o.Logger, Denied: sessions.ApplyDenyList, Now: o.Now}),
-		func(err error) { o.Logger.Warn("agent purge job", "error", err) })
+	job(CARotation(caOpts), "CA rotation job")
+	job(certManager.Job(acme.JobEvery), "ACME job")
+	job(apiServer.PruneJob(api.PruneEvery), "request_id pruning job")
+	job(DomainCheckJob(DomainCheckOptions{DB: db, TXT: &domains.TXTVerifier{}, HTTP: &domains.HTTPVerifier{}, Now: o.Now,
+		Logger: o.Logger}), "domain check job")
+	job(PurgeJob(PurgeOptions{DB: db, RevLog: rl, Logger: o.Logger, Denied: sessions.ApplyDenyList, Now: o.Now}), "agent purge job")
 	cpOpts := CheckpointOptions{DB: db, CA: ca, Log: &audit.CheckpointLog{Path: filepath.Join(stateDir, "audit-checkpoints.log")},
 		Leases: leases, Now: o.Now, Logger: o.Logger}
-	go leases.Run(sys, CheckpointJob(cpOpts), func(err error) { o.Logger.Warn("audit checkpoint job", "error", err) })
-	go leases.Run(sys, RetentionJob(cpOpts), func(err error) { o.Logger.Warn("audit retention job", "error", err) })
-	go leases.Run(sys, RollupJob(RollupOptions{DB: db, Leases: leases, Now: o.Now, Logger: o.Logger}),
-		func(err error) { o.Logger.Warn("traffic rollup job", "error", err) })
-	go ReloadCA(sys, caOpts)
-	go shipper.Run(sys)
-	go ReleaseCheck(sys, ReleaseCheckOptions{DB: db, Mirror: mirror, Source: o.ReleaseSource, Logger: o.Logger})
-	go RenewNodeCertificate(sys, NodeCertOptions{CA: ca, DB: db, Sys: sys, NodeID: nodeID, Holder: holder, Now: o.Now, Logger: o.Logger})
+	job(CheckpointJob(cpOpts), "audit checkpoint job")
+	job(RetentionJob(cpOpts), "audit retention job")
+	job(RollupJob(RollupOptions{DB: db, Leases: leases, Now: o.Now, Logger: o.Logger}), "traffic rollup job")
+	bg.Go(func() { ReloadCA(jobs, caOpts) })
+	bg.Go(func() { shipper.Run(jobs) })
+	bg.Go(func() {
+		ReleaseCheck(jobs, ReleaseCheckOptions{DB: db, Mirror: mirror, Source: o.ReleaseSource, Logger: o.Logger})
+	})
+	bg.Go(func() {
+		RenewNodeCertificate(jobs, NodeCertOptions{CA: ca, DB: db, Sys: sys, NodeID: nodeID, Holder: holder, Now: o.Now, Logger: o.Logger})
+	})
 	serve("agent endpoint", func() error { return agents.Serve(split.Agents()) })
 	serve("web server", func() error {
 		return web.Serve(tls.NewListener(split.Web(), webTLS))
@@ -499,6 +507,8 @@ func Run(ctx context.Context, o RunOptions) error {
 	}
 	stop()
 	<-sessionsDone
+	stopJobs()
+	bg.Wait()
 	admin.Wait() // the admin listener is closed: its address is free again once Run returns
 	return result
 }

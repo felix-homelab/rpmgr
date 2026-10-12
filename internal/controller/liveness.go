@@ -12,13 +12,20 @@ import (
 )
 
 // disconnected records that the agent's session with epoch ended, unless a newer one replaced it.
+// The sessions of a stopping controller end while it drains, after the stop has cancelled s.sys
+// and before the database closes, so the record does not depend on s.sys.
 func (s *Sessions) disconnected(agentID string, epoch int64) {
 	now := s.now().UTC()
-	err := store.WriteTx(s.sys, s.db, func(tx *ent.Tx) error {
+	ctx := context.WithoutCancel(s.sys)
+	err := store.WriteTx(ctx, s.db, func(tx *ent.Tx) error {
 		return tx.AgentSession.Update().Where(agentsession.ID(agentID), agentsession.SessionEpoch(epoch)).
-			SetDisconnectedAt(now).SetLastSeenAt(now).Exec(s.sys)
+			SetDisconnectedAt(now).SetLastSeenAt(now).Exec(ctx)
 	})
-	if err != nil {
+	switch {
+	case err == nil:
+	case s.sys.Err() != nil: // stopped beyond the drain: seenLoop ends the session at the next start
+		s.log.Info("the agent's disconnect is recorded at the next start", "agent", agentID, "error", err)
+	default:
 		s.log.Error("cannot record that an agent disconnected", "agent", agentID, "error", err)
 	}
 }

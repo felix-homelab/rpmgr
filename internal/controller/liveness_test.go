@@ -4,6 +4,8 @@ package controller_test
 
 import (
 	"context"
+	"log/slog"
+	"strings"
 	"testing"
 	"time"
 
@@ -85,4 +87,31 @@ func TestSessionLiveness(t *testing.T) {
 			t.Fatalf("after a superseded session ended: %+v", r)
 		}
 	})
+}
+
+// TestSessionLiveness_StopDrain (docs/03-connections.md, "Service sketch"): a stop cancels the
+// system scope first, then drains the sessions; their ends are still recorded, with no error.
+func TestSessionLiveness_StopDrain(t *testing.T) {
+	db := storetest.Migrated(t, store.SQLite)
+	w := &warnings{}
+	sys, stop := context.WithCancel(storetest.SystemCtx(t))
+	defer stop()
+	e := startSessionsWith(t, db, func(o *controller.SessionsOptions) {
+		o.Sys = sys
+		o.Logger = slog.New(w)
+	})
+	cert, id := e.agentCert(t)
+	ctx, cancel := context.WithCancel(testCtx(t))
+	defer cancel()
+	st := e.open(t, ctx, cert, hello("0.1.0"))
+	if recv(t, st).GetWelcome() == nil {
+		t.Fatal("no Welcome")
+	}
+	stop()
+	cancel()
+	read := storetest.SystemCtx(t)
+	waitUntil(t, func() bool { return db.Client().AgentSession.GetX(read, id.ID).DisconnectedAt != nil })
+	if got := w.all(); len(got) != 0 {
+		t.Errorf("the drain logged:\n%s", strings.Join(got, "\n"))
+	}
 }
