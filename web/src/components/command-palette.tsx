@@ -96,7 +96,11 @@ function Palette({ onClose }: { onClose: () => void }) {
   const [active, setActive] = useState(0);
   const shown = matches(useCommands(), query).slice(0, most);
   const current = Math.min(active, shown.length - 1);
-  useEffect(() => document.getElementById(`${list}-${current}`)?.scrollIntoView?.({ block: "nearest" }), [list, current]);
+  // The effect returns nothing: browsers whose scrollIntoView returns a promise would otherwise
+  // hand React the promise as its cleanup.
+  useEffect(() => {
+    document.getElementById(`${list}-${current}`)?.scrollIntoView?.({ block: "nearest" });
+  }, [list, current]);
   function run(c: Command | undefined) {
     if (c) {
       onClose();
