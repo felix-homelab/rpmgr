@@ -130,16 +130,16 @@ Each milestone holds one issue per PR-sized slice. A feature stays inert until i
 - An upgrade from one P1 release to the next tested with live traffic, as an automated end-to-end
   test ([D61](14-open-decisions.md#project-and-process)).
 
-**Status (2026-10-11):** the milestones `P1-M01` … `P1-M11` and the slices of `P1-M12` that need no
+**Status (2026-10-12):** the milestones `P1-M01` … `P1-M11` and the slices of `P1-M12` that need no
 release are merged. The exit criteria stand as follows:
 
 | Criterion | State |
 |---|---|
-| End-to-end matrix | The per-PR cells pass on every PR; the full cross-product and the chaos test run nightly (12.1). The first nightly run found two faults of its cells and a race in the controller, fixed in #397; a green nightly run confirms the fix |
+| End-to-end matrix | The per-PR cells pass on every PR; the full cross-product and the chaos test run nightly (12.1). The first nightly run found two faults of its cells and a race in the controller, fixed in #397; the nightly run of 2026-10-12 passed both |
 | [T] targets | Measured on GitHub-hosted runners on 2026-10-11 and 12 ([ADR-0004](adr/0004-quic-default-transport-policy.md#phase-1-measurements)): setup latency, snapshot apply and resets met; the single-stream and the 32-stream targets missed, with decisions D69 and D70 |
 | Security regression tests | Every test of 12 in P1 scope is implemented and marked `done` in `.github/scripts/security-tests.txt`, which CI checks |
 | Lint bans | Active in CI: golangci's rules and `tools/bannedapi` |
-| Threat model reviewed | [P1-threat-model](reviews/P1-threat-model.md); its two medium gaps are fixed, the low ones have proposals for the product owner |
+| Threat model reviewed | [P1-threat-model](reviews/P1-threat-model.md); its medium gaps G1 and G2 are fixed, G3 to G6 resolved by the product owner's decisions (D66 to D68) and a fix; G7, the review of the API's authenticator, waits for a rename of its file |
 | Upgrade with live traffic | `TestUpgrade` exists (12.7); its run needs two signed releases, v0.1.0 and the next |
 
 Before v0.1.0 (#170, [RELEASING](../RELEASING.md#release-process)), the maintainer makes the
