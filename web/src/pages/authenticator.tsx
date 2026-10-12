@@ -9,6 +9,7 @@ import { Field } from "@/components/field";
 import { Alert } from "@/components/public-page";
 import { QRCode } from "@/components/qr-code";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import { UserService } from "@/gen/rpmgr/v1/user_pb";
 import { Reason, reasonOf } from "@/lib/errors";
 import { serverMessage } from "@/lib/link-token";
@@ -120,10 +121,9 @@ export function Authenticator() {
     );
   }
   return (
-    <section aria-labelledby="section-mfa" className="grid gap-4">
-      <h2 id="section-mfa" className="text-lg font-semibold">{t("mfa.title")}</h2>
+    <Card title={t("mfa.title")}>
       {body}
       {error && <Alert>{error}</Alert>}
-    </section>
+    </Card>
   );
 }

@@ -161,7 +161,13 @@ flowchart LR
 
 ### Overview
 
-- **Needs attention** lists, each linked to its page, or says that nothing in its area does:
+- **The summary** is a row of four figures, each leading to its page: the enabled routes that
+  serve fully, the agents in service that are connected, the certificates that have not failed and
+  do not expire within 21 days, and the verified domains, each of how many there are. A status
+  badge under each figure says how many need attention, that all is well, or that the area has
+  nothing yet. Disabled routes and decommissioned agents are not counted.
+- **Needs attention** is a card next to the traffic. Each area is marked as fine or as needing
+  attention, and lists what needs it, each linked to its page, or says that nothing in it does:
   - agents without a control session: gateways, with when they were last seen or that they have
     not enrolled, and connectors, with when they were last seen, under the count of connected ones;
   - routes that do not serve fully (`pending`, `degraded`, `unavailable`, `error`) or that agents
@@ -175,13 +181,17 @@ flowchart LR
   neither the minimum nor the reason of the last `Goodbye`. Such an agent shows as without a
   control session.
 - DNS conflicts, held DNS zones and DNS-provider tokens join the list with managed DNS (Phase 2).
-- **Traffic, last 24 hours:** the org's bytes in and out per hour, their totals with connections
-  and errors, and its busiest routes, each linked to its detail.
+- **Traffic, last 24 hours:** the org's bytes in and out, connections and errors as figures, the
+  bytes in and out per hour as a chart, and its busiest routes, each linked to its detail.
 
 ### Charts
 
-- **Drawing:** Recharts draws traffic in the UI's theme colours. The tooltip writes in the text
-  colour, because the series' colours are too light for text.
+- **Drawing:** Recharts draws traffic in the UI's theme colours: a 2 px line per series over a light
+  wash, on hairline grid lines. The figures above the chart name the series next to their colours,
+  so they are its legend. The two colours stay apart for every kind of colour vision, in both
+  themes. The tooltip writes in the text colour, because the series' colours are too light for
+  text.
+- **No traffic:** a period without any traffic shows a note instead of a flat line.
 - **Gaps:** the API sends only buckets with traffic. The chart fills the others with zeros, so time
   runs evenly along its axis.
 - **Accessibility (U8):** the drawing is hidden from screen readers. The same values are in a table
@@ -524,8 +534,8 @@ flowchart LR
 - **Text.** Every string is `t("key")` with its English text in `src/locales/en.json`. A unit test
   fails when the code uses a key without English text.
 - **Components.** shadcn/ui components are copied into `src/components/ui/` with their MIT license
-  notice. Pages build on them and on the shared parts in `src/components/`, such as the sidebar's
-  list of pages, which the command palette also offers.
+  notice. Pages build on them and on the shared parts in `src/components/`: the page header, cards,
+  status badges and the sidebar's list of pages, which the command palette also offers.
 - **Colours.** Both themes are custom properties in `src/index.css`. The dark ones are written once,
   for the user's choice and for the system's preference alike, and Tailwind's `dark:` variant
   follows the same rule. A unit test checks the contrast of each theme's pairs (U8).

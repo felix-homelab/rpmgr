@@ -17,7 +17,8 @@
 
 /* The look of docs/09-web-ui.md, "Layout and navigation": slate surfaces with an indigo accent.
    Each text colour keeps a contrast of at least 4.5:1 on the surfaces it is used on, in both
-   themes (U8); theme.test.ts checks the pairs. */
+   themes (U8); colours.test.ts checks the pairs. The two chart colours stay apart for every kind
+   of colour vision, inside each theme's lightness band. */
 @theme {
   --color-background: oklch(0.984 0.003 247.858);
   --color-foreground: oklch(0.208 0.042 265.755);
@@ -64,8 +65,8 @@
     --color-destructive-foreground: oklch(0.165 0.02 265);
     --color-ok: oklch(0.792 0.209 151.711);
     --color-warn: oklch(0.828 0.189 84.429);
-    --color-chart-in: oklch(0.673 0.182 276.935);
-    --color-chart-out: oklch(0.777 0.152 181.912);
+    --color-chart-in: oklch(0.65 0.18 277);
+    --color-chart-out: oklch(0.66 0.13 182);
     --color-code-key: oklch(0.8 0.1 265);
     --color-code-string: oklch(0.82 0.12 155);
     --color-code-atom: oklch(0.82 0.12 60);

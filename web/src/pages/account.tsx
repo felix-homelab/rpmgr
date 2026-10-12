@@ -4,11 +4,13 @@ import { ConnectError, Code } from "@connectrpc/connect";
 import { useMutation, useQuery } from "@connectrpc/connect-query";
 import { useQueryClient } from "@tanstack/react-query";
 import { getRouteApi } from "@tanstack/react-router";
-import { useState, type FormEvent, type ReactNode } from "react";
+import { useState, type FormEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { Field } from "@/components/field";
+import { PageHeader } from "@/components/page-header";
 import { Alert } from "@/components/public-page";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import { UserService, type User } from "@/gen/rpmgr/v1/user_pb";
 import { serverMessage } from "@/lib/link-token";
 import { APITokens } from "@/pages/api-tokens";
@@ -26,7 +28,7 @@ export function Account() {
   const search = route.useSearch();
   return (
     <div className="grid max-w-3xl gap-8">
-      <h1 className="text-2xl font-semibold">{t("account.title")}</h1>
+      <PageHeader title={t("account.title")} />
       {search.mfa === "required" && <Alert>{t("mfa.required")}</Alert>}
       <Profile />
       <Password />
@@ -37,26 +39,15 @@ export function Account() {
   );
 }
 
-function Section({ title, children }: { title: string; children: ReactNode }) {
-  const id = `section-${title.replace(/\W+/g, "-").toLowerCase()}`;
-  return (
-    <section aria-labelledby={id} className="grid gap-4">
-      <h2 id={id} className="text-lg font-semibold">{title}</h2>
-      {children}
-    </section>
-  );
-}
-
 // Profile changes the display name.
 function Profile() {
   const { t } = useTranslation();
   const me = useQuery(UserService.method.getMe, {});
   const user = me.data?.user;
   return (
-    <Section title={t("account.profile")}>
-      <p className="text-sm text-muted-foreground">{t("account.themeHint")}</p>
+    <Card title={t("account.profile")} description={t("account.themeHint")}>
       {user ? <ProfileForm user={user} /> : <p>{t("stepUp.loading")}</p>}
-    </Section>
+    </Card>
   );
 }
 
@@ -116,7 +107,7 @@ function Password() {
   }
 
   return (
-    <Section title={t("account.password")}>
+    <Card title={t("account.password")}>
       <form onSubmit={submit} className="grid gap-4" noValidate>
         <Field label={t("account.currentPassword")} type="password" autoComplete="current-password" required value={form.current} onChange={set("current")} />
         <Field label={t("reset.password")} hint={t("reset.passwordHint")} type="password" autoComplete="new-password" required value={form.next} onChange={set("next")} />
@@ -124,6 +115,6 @@ function Password() {
         {result && <Alert tone={result.tone}>{result.text}</Alert>}
         <Button type="submit" className="justify-self-start" disabled={change.isPending}>{t("account.changePassword")}</Button>
       </form>
-    </Section>
+    </Card>
   );
 }

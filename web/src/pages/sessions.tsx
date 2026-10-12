@@ -7,6 +7,7 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Alert } from "@/components/public-page";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import { AuthService, type Session } from "@/gen/rpmgr/v1/auth_pb";
 import { when } from "@/lib/format";
 
@@ -16,8 +17,7 @@ export function Sessions() {
   const { t } = useTranslation();
   const list = useQuery(AuthService.method.listSessions, {});
   return (
-    <section aria-labelledby="section-sessions" className="grid gap-4">
-      <h2 id="section-sessions" className="text-lg font-semibold">{t("sessions.title")}</h2>
+    <Card title={t("sessions.title")}>
       {list.data ? (
         <table className="w-full text-left text-sm">
           <thead className="text-muted-foreground">
@@ -35,7 +35,7 @@ export function Sessions() {
       ) : (
         <p>{t("stepUp.loading")}</p>
       )}
-    </section>
+    </Card>
   );
 }
 

@@ -58,9 +58,9 @@ describe("Routes", () => {
     const { requests } = routes("/routes", [wiki, postgres, dns]);
     await waitFor(async () => expect(await rows()).toHaveLength(3));
     expect(await rows()).toEqual([
-      "dns:53UDPus0/0 ready○disabled", // the icons are hidden from screen readers
-      "postgres:25432TCPeu0/1 ready1 blocked by local policy▲unavailablerejected by 1 agent",
-      "wikiwiki.example.comHTTPeu2/2 ready●ready",
+      "dns:53UDPus0/0 readydisabled", // the icons are drawings, hidden from screen readers
+      "postgres:25432TCPeu0/1 ready1 blocked by local policyunavailablerejected by 1 agent",
+      "wikiwiki.example.comHTTPeu2/2 readyready",
     ]);
     expect(requests.map((r) => [r.orgId, r.pageSize, r.pageToken])).toEqual([["org_1", 500, ""], ["org_1", 500, "2"]]);
     expect(screen.getByText("1–3 of 3")).toBeTruthy();
