@@ -326,13 +326,14 @@ func TestVersionVerbose(t *testing.T) {
 	if code != cli.ExitOK || stderr != "" || !strings.HasPrefix(lines[0], "rpmgr dev (commit ") {
 		t.Fatalf("rpmgr version --verbose: exit %d, stdout %q, stderr %q", code, stdout, stderr)
 	}
+	roots := release.Roots()
 	if !release.TestBuild {
-		if len(lines) != 2 || lines[1] != "release root keys: none; this build verifies no release" {
+		if len(lines) != 4 || lines[1] != "release root keys:" ||
+			lines[2] != "  7485D509E3D91A07  sha256:"+roots[0].Fingerprint() || lines[3] != "  E4C68FF1029A58D5  sha256:"+roots[1].Fingerprint() {
 			t.Errorf("roots of a release build: %q", lines[1:])
 		}
 		return
 	}
-	roots := release.Roots()
 	if len(lines) != 4 || lines[1] != "test release root keys (rpmgrtest build):" ||
 		lines[2] != "  "+roots[0].IDString()+"  sha256:"+roots[0].Fingerprint() || lines[3] != "  "+roots[1].IDString()+"  sha256:"+roots[1].Fingerprint() {
 		t.Errorf("roots of an rpmgrtest build: %q", lines[1:])

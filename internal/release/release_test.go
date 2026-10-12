@@ -241,13 +241,22 @@ func (c *countingReader) Read(p []byte) (int, error) {
 	return len(p), nil
 }
 
-// TestRoots: release builds have no roots until the interim keys are added (D48); rpmgrtest
-// builds have the two test roots, with which a test chain verifies (D60).
+// TestRoots: release builds have the two interim root keys of Phase 1 (D48), by their key IDs and
+// fingerprints; rpmgrtest builds have the two test roots, with which a test chain verifies (D60).
 func TestRoots(t *testing.T) {
 	roots := release.Roots()
 	if !release.TestBuild {
-		if len(roots) != 0 {
+		want := [][2]string{
+			{"7485D509E3D91A07", "7cb0c1f3749a8c5e1fa1d835e0f9a79a095efc7c8cce041cac2f5ccdc8206ce2"},
+			{"E4C68FF1029A58D5", "1227c79fa4584fc8f10b668a7fa24bb8aa46a4d32b32ac28cb0c69a45073d9f0"},
+		}
+		if len(roots) != len(want) {
 			t.Fatalf("roots %v", roots)
+		}
+		for i, k := range roots {
+			if k.IDString() != want[i][0] || k.Fingerprint() != want[i][1] {
+				t.Errorf("root %d: %s sha256:%s, want %s sha256:%s", i+1, k.IDString(), k.Fingerprint(), want[i][0], want[i][1])
+			}
 		}
 		return
 	}
