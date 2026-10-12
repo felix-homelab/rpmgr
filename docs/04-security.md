@@ -715,9 +715,12 @@ redirect them ([15](15-dns.md#cloudflare-specifics)).
 
 - This works fully offline (air-gapped installations), the verifier is small, and signing keys can
   rotate without a new binary.
-- For the wider ecosystem, releases also carry **cosign** signatures, **SLSA provenance** and an
-  **SBOM** (SPDX JSON, generated with syft) [V VB-05]. These are not used for in-binary OTA because
-  verifying them needs a transparency-log trust root and a large dependency tree.
+- For the wider ecosystem, releases also carry **SLSA provenance** and an **SBOM** (SPDX JSON,
+  generated with syft) [V VB-05]. The provenance attestations sign every release file keylessly
+  with the release workflow's identity, and no separate signature files are published
+  ([D72](14-open-decisions.md#project-and-process)); container images are signed with **cosign**.
+  These are not used for in-binary OTA because verifying them needs a transparency-log trust root
+  and a large dependency tree.
 - Builds: `CGO_ENABLED=0`, `-trimpath`, pinned toolchain, reproducibility check in CI, signed
   `SHA256SUMS`, CI actions pinned by commit SHA.
 
@@ -809,7 +812,7 @@ Phase 3 item ([13](13-roadmap.md#phase-3--advanced)).
   connectors with a Homebrew tap (Phase 2, [10](10-operations.md#install)).
 - No third-party download proxy, and no download URL chosen at runtime by the controller.
 - Caveat: a compromised controller can serve a malicious install script. High-assurance installs
-  should use distribution packages or verify the release (GitHub release + `cosign verify-blob`)
+  should use distribution packages or verify the release (GitHub release + `gh attestation verify`)
   before running it. After installation, updates are protected by the compiled-in keys.
 
 ## Audit log

@@ -188,8 +188,9 @@ For a minor or major release. A patch release is the same, starting from the bra
    - the artifacts must be release builds: no build tags, so never `rpmgrtest`, and the release
      root keys compiled in. The job prints the roots' key IDs and fingerprints, which the signer
      compares with the record of the [key ceremony](#interim-signing-keys);
-   - an SBOM, SLSA provenance as a GitHub artifact attestation, and keyless cosign signatures of
-     every artifact, the SBOM and `SHA256SUMS`;
+   - an SBOM, and SLSA provenance as GitHub artifact attestations of every artifact, the SBOM and
+     `SHA256SUMS`: their keyless signatures with this workflow's identity. The release carries no
+     separate signature files ([D72](docs/14-open-decisions.md#project-and-process));
    - a **draft** GitHub release with all of them and the **unsigned** `manifest.json`: `seq` one
      above the last published release's, that release's `floor`, the `channel` the version
      implies (`stable`, or `prerelease` for a pre-release), and every artifact with its `variant`,
@@ -214,13 +215,11 @@ For a minor or major release. A patch release is the same, starting from the bra
      and `manifest.json` when it was drafted again.
 8. **Publish.**
    - GitHub release: publish the draft, whose notes are the changelog section; add upgrade notes and
-     the verification instructions, for the provenance and for a cosign signature:
+     the verification instructions, for the provenance of any release file:
 
      ```sh
-     gh attestation verify <artifact> --repo felix-homelab/rpmgr
-     cosign verify-blob --bundle <artifact>.sigstore.json \
-       --certificate-identity https://github.com/felix-homelab/rpmgr/.github/workflows/release.yml@refs/tags/vX.Y.Z \
-       --certificate-oidc-issuer https://token.actions.githubusercontent.com <artifact>
+     gh attestation verify <file> --repo felix-homelab/rpmgr \
+       --signer-workflow felix-homelab/rpmgr/.github/workflows/release.yml
      ```
 
      For v1.0.0 the notes also state whether an external security review took place

@@ -145,7 +145,7 @@ history and the [ADRs](docs/adr/).
   default), verifies the signed release and mirrors it under `/dl/` for installs.
   `rpmgr release import` fills the mirror from a directory for air-gapped installations. (#373,
   #374)
-- Releases: reproducible builds with an SPDX SBOM, SLSA provenance, cosign signatures and a signed
+- Releases: reproducible builds with an SPDX SBOM, SLSA provenance attestations and a signed
   release manifest; distroless, nonroot multi-arch images at `ghcr.io/felix-homelab/rpmgr`, signed
   with cosign. (#384, #385)
 
