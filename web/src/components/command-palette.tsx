@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { useNavigate } from "@tanstack/react-router";
+import { Search } from "lucide-react";
 import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
 import { useTranslation } from "react-i18next";
-import { Button } from "@/components/ui/button";
+import { navGroups } from "@/components/nav";
 import { useConnectors, useGateways, useGroups, useRoutes } from "@/routes-data";
 import { useOrg } from "@/session";
 
@@ -46,9 +47,12 @@ export function CommandPalette() {
   }, []);
   return (
     <>
-      <Button variant="outline" size="sm" aria-keyshortcuts="Control+K Meta+K" onClick={() => setOpen(true)}>
-        {t("palette.open")} <kbd className="text-xs text-muted-foreground">Ctrl K</kbd>
-      </Button>
+      <button type="button" aria-keyshortcuts="Control+K Meta+K" onClick={() => setOpen(true)}
+        className="flex h-9 w-full max-w-md items-center gap-2 rounded-lg border border-input bg-card px-3 text-sm text-muted-foreground shadow-xs transition-colors hover:bg-muted">
+        <Search aria-hidden="true" className="size-4 shrink-0" />
+        <span className="flex-1 truncate text-left">{t("palette.open")}</span>
+        <kbd className="hidden rounded border border-border bg-muted px-1.5 font-sans text-xs sm:inline">Ctrl K</kbd>
+      </button>
       {open && <Palette onClose={() => setOpen(false)} />}
     </>
   );
@@ -66,15 +70,7 @@ function useCommands(): Command[] {
   return [
     { kind: t("palette.action"), label: t("palette.createRoute"), run: () => void navigate({ to: "/routes/new" }) },
     { kind: t("palette.action"), label: t("palette.enroll"), run: () => void navigate({ to: "/connectors", search: { enroll: true } }) },
-    page(t("nav.overview"), () => navigate({ to: "/" })),
-    page(t("nav.routes"), () => navigate({ to: "/routes", search: {} })),
-    page(t("nav.connectors"), () => navigate({ to: "/connectors", search: {} })),
-    page(t("nav.gateways"), () => navigate({ to: "/gateways" })),
-    page(t("nav.domains"), () => navigate({ to: "/domains" })),
-    page(t("nav.policies"), () => navigate({ to: "/policies" })),
-    page(t("nav.org"), () => navigate({ to: "/org" })),
-    page(t("nav.audit"), () => navigate({ to: "/audit", search: {} })),
-    page(t("nav.settings"), () => navigate({ to: "/settings" })),
+    ...navGroups.flatMap((g) => g.items).map((item) => page(t(`nav.${item.key}`), () => navigate(item.link))),
     page(t("palette.account"), () => navigate({ to: "/account" })),
     ...routes.map((r) => ({ kind: t("palette.route"), label: r.name, id: r.id, run: () => void navigate({ to: "/routes/$routeId", params: { routeId: r.id } }) })),
     ...connectors.map((c) => ({ kind: t("palette.connector"), label: c.name, id: c.id,
@@ -96,7 +92,11 @@ function Palette({ onClose }: { onClose: () => void }) {
   const [active, setActive] = useState(0);
   const shown = matches(useCommands(), query).slice(0, most);
   const current = Math.min(active, shown.length - 1);
-  useEffect(() => document.getElementById(`${list}-${current}`)?.scrollIntoView?.({ block: "nearest" }), [list, current]);
+  // The effect returns nothing: browsers whose scrollIntoView returns a promise would otherwise
+  // hand React the promise as its cleanup.
+  useEffect(() => {
+    document.getElementById(`${list}-${current}`)?.scrollIntoView?.({ block: "nearest" });
+  }, [list, current]);
   function run(c: Command | undefined) {
     if (c) {
       onClose();
@@ -114,23 +114,26 @@ function Palette({ onClose }: { onClose: () => void }) {
     }
   }
   return (
-    <dialog ref={dialog} aria-label={t("palette.title")} onCancel={onClose}
-      className="mx-auto mt-24 w-full max-w-xl rounded-lg border border-border bg-background p-3 text-foreground backdrop:bg-black/50">
-      <input role="combobox" aria-expanded="true" aria-controls={list} aria-autocomplete="list" aria-label={t("palette.search")}
-        aria-activedescendant={current >= 0 ? `${list}-${current}` : undefined} value={query} autoFocus
-        onChange={(e) => { setQuery(e.target.value); setActive(0); }} onKeyDown={onKey}
-        className="h-10 w-full rounded-md border border-border bg-background px-3 text-sm" />
-      <ul id={list} role="listbox" aria-label={t("palette.results")} className="mt-2 max-h-80 overflow-y-auto text-sm">
+    <dialog ref={dialog} aria-label={t("palette.title")} onCancel={onClose} onClick={(e) => e.target === e.currentTarget && onClose()}
+      className="mx-auto mt-[12vh] w-[calc(100%-2rem)] max-w-xl overflow-hidden rounded-xl border border-border bg-card p-0 shadow-2xl">
+      <div className="flex items-center gap-2 border-b border-border px-4 focus-within:border-ring">
+        <Search aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
+        <input role="combobox" aria-expanded="true" aria-controls={list} aria-autocomplete="list" aria-label={t("palette.search")}
+          aria-activedescendant={current >= 0 ? `${list}-${current}` : undefined} value={query} autoFocus placeholder={t("palette.search")}
+          onChange={(e) => { setQuery(e.target.value); setActive(0); }} onKeyDown={onKey}
+          className="h-12 w-full bg-transparent text-sm placeholder:text-muted-foreground focus-visible:outline-none" />
+      </div>
+      <ul id={list} role="listbox" aria-label={t("palette.results")} className="max-h-80 overflow-y-auto p-2 text-sm">
         {shown.map((c, i) => (
           <li key={`${c.kind}-${c.id ?? c.label}`} id={`${list}-${i}`} role="option" aria-selected={i === current}
             onClick={() => run(c)} onMouseMove={() => setActive(i)}
-            className={`flex cursor-pointer justify-between gap-4 rounded px-3 py-2 ${i === current ? "bg-muted" : ""}`}>
-            <span>{c.label}</span>
-            <span className="text-muted-foreground">{c.id ? `${c.kind} · ${c.id}` : c.kind}</span>
+            className="flex cursor-pointer items-center justify-between gap-4 rounded-lg px-3 py-2 aria-selected:bg-accent aria-selected:text-accent-foreground">
+            <span className="truncate font-medium">{c.label}</span>
+            <span className="shrink-0 text-xs text-muted-foreground">{c.id ? `${c.kind} · ${c.id}` : c.kind}</span>
           </li>
         ))}
       </ul>
-      {shown.length === 0 && <p className="px-3 py-2 text-sm text-muted-foreground">{t("palette.none")}</p>}
+      {shown.length === 0 && <p className="px-5 pb-5 text-sm text-muted-foreground">{t("palette.none")}</p>}
     </dialog>
   );
 }

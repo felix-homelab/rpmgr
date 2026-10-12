@@ -1,62 +1,93 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 @import "tailwindcss";
 
-/* The colours of both themes (docs/09-web-ui.md, U10): dark when the user chose it, or when they
-   follow the operating system and it prefers dark. */
+/* dark is the dark theme (docs/09-web-ui.md, U10): the user chose it, or they follow the operating
+   system and it prefers dark. The colours below and the dark: utilities both use it, so the two
+   ways to dark are written once. */
+@custom-variant dark {
+  &:where([data-theme="dark"], [data-theme="dark"] *) {
+    @slot;
+  }
+  @media (prefers-color-scheme: dark) {
+    &:where(:not([data-theme="light"], [data-theme="light"] *, [data-theme="dark"], [data-theme="dark"] *)) {
+      @slot;
+    }
+  }
+}
+
+/* The look of docs/09-web-ui.md, "Layout and navigation": slate surfaces with an indigo accent.
+   Each text colour keeps a contrast of at least 4.5:1 on the surfaces it is used on, in both
+   themes (U8); theme.test.ts checks the pairs. */
 @theme {
-  --color-background: oklch(1 0 0);
-  --color-foreground: oklch(0.21 0.03 265);
-  --color-muted: oklch(0.97 0.01 265);
-  --color-muted-foreground: oklch(0.45 0.03 265);
-  --color-border: oklch(0.92 0.01 265);
-  --color-ring: oklch(0.55 0.15 265);
-  --color-primary: oklch(0.21 0.03 265);
-  --color-primary-foreground: oklch(0.98 0 0);
-  --color-destructive: oklch(0.55 0.22 27);
-  --color-destructive-foreground: oklch(0.98 0 0);
-  --color-ok: oklch(0.48 0.13 155);
-  --color-warn: oklch(0.52 0.12 70);
-  --color-chart-in: oklch(0.55 0.15 255);
-  --color-chart-out: oklch(0.62 0.16 45);
+  --color-background: oklch(0.984 0.003 247.858);
+  --color-foreground: oklch(0.208 0.042 265.755);
+  --color-card: oklch(1 0 0);
+  --color-sidebar: oklch(1 0 0);
+  --color-muted: oklch(0.968 0.007 247.896);
+  --color-muted-foreground: oklch(0.446 0.043 257.281);
+  --color-border: oklch(0.929 0.013 255.508);
+  --color-input: oklch(0.64 0.03 257);
+  --color-ring: oklch(0.585 0.233 277.117);
+  --color-primary: oklch(0.511 0.262 276.966);
+  --color-primary-foreground: oklch(1 0 0);
+  --color-accent: oklch(0.962 0.018 272.314);
+  --color-accent-foreground: oklch(0.457 0.24 277.023);
+  --color-destructive: oklch(0.505 0.213 27.518);
+  --color-destructive-foreground: oklch(1 0 0);
+  --color-ok: oklch(0.448 0.119 151.328);
+  --color-warn: oklch(0.473 0.137 46.201);
+  --color-chart-in: oklch(0.585 0.233 277.117);
+  --color-chart-out: oklch(0.6 0.118 184.704);
   --color-code-key: oklch(0.42 0.16 265);
   --color-code-string: oklch(0.42 0.11 155);
   --color-code-atom: oklch(0.47 0.15 40);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    --color-background: oklch(0.15 0.02 265);
-    --color-foreground: oklch(0.97 0 0);
-    --color-muted: oklch(0.25 0.02 265);
-    --color-muted-foreground: oklch(0.72 0.02 265);
-    --color-border: oklch(0.3 0.02 265);
-    --color-ring: oklch(0.7 0.12 265);
-    --color-primary: oklch(0.97 0 0);
-    --color-primary-foreground: oklch(0.21 0.03 265);
-    --color-ok: oklch(0.8 0.15 155);
-    --color-warn: oklch(0.82 0.14 80);
-    --color-chart-in: oklch(0.72 0.13 255);
-    --color-chart-out: oklch(0.78 0.14 55);
+:root {
+  color-scheme: light;
+  @variant dark {
+    color-scheme: dark;
+    --color-background: oklch(0.165 0.02 265);
+    --color-foreground: oklch(0.968 0.007 247.896);
+    --color-card: oklch(0.205 0.024 265);
+    --color-sidebar: oklch(0.185 0.022 265);
+    --color-muted: oklch(0.265 0.025 265);
+    --color-muted-foreground: oklch(0.72 0.035 257);
+    --color-border: oklch(0.3 0.026 265);
+    --color-input: oklch(0.52 0.03 265);
+    --color-ring: oklch(0.673 0.182 276.935);
+    --color-primary: oklch(0.673 0.182 276.935);
+    --color-primary-foreground: oklch(0.165 0.02 265);
+    --color-accent: oklch(0.28 0.07 277);
+    --color-accent-foreground: oklch(0.87 0.065 274.039);
+    --color-destructive: oklch(0.704 0.191 22.216);
+    --color-destructive-foreground: oklch(0.165 0.02 265);
+    --color-ok: oklch(0.792 0.209 151.711);
+    --color-warn: oklch(0.828 0.189 84.429);
+    --color-chart-in: oklch(0.673 0.182 276.935);
+    --color-chart-out: oklch(0.777 0.152 181.912);
     --color-code-key: oklch(0.8 0.1 265);
     --color-code-string: oklch(0.82 0.12 155);
     --color-code-atom: oklch(0.82 0.12 60);
   }
 }
 
-:root[data-theme="dark"] {
-  --color-ok: oklch(0.8 0.15 155);
-  --color-warn: oklch(0.82 0.14 80);
-  --color-chart-in: oklch(0.72 0.13 255);
-  --color-chart-out: oklch(0.78 0.14 55);
-  --color-code-key: oklch(0.8 0.1 265);
-  --color-code-string: oklch(0.82 0.12 155);
-  --color-code-atom: oklch(0.82 0.12 60);
-  --color-background: oklch(0.15 0.02 265);
-  --color-foreground: oklch(0.97 0 0);
-  --color-muted: oklch(0.25 0.02 265);
-  --color-muted-foreground: oklch(0.72 0.02 265);
-  --color-border: oklch(0.3 0.02 265);
-  --color-ring: oklch(0.7 0.12 265);
-  --color-primary: oklch(0.97 0 0);
-  --color-primary-foreground: oklch(0.21 0.03 265);
+@layer base {
+  body {
+    @apply bg-background text-foreground antialiased;
+  }
+  /* One focus outline for every control and link, in the accent colour (U8). */
+  :focus-visible {
+    outline: 2px solid var(--color-ring);
+    outline-offset: 2px;
+  }
+  ::selection {
+    background: color-mix(in oklab, var(--color-primary) 25%, transparent);
+  }
+  dialog {
+    color: var(--color-foreground);
+  }
+  dialog::backdrop {
+    background: oklch(0.13 0.03 265 / 0.6);
+  }
 }

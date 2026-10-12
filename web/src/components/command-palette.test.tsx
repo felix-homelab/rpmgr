@@ -102,4 +102,33 @@ describe("CommandPalette", () => {
     fireEvent(screen.getByRole("dialog", { name: "Go to" }), new Event("cancel"));
     await waitFor(() => expect(screen.queryByRole("dialog", { name: "Go to" })).toBeNull());
   });
+
+  it("closes on a click beside it, but not on a click in it", async () => {
+    page();
+    const { box } = await open();
+    fireEvent.click(box);
+    expect(screen.getByRole("dialog", { name: "Go to" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("dialog", { name: "Go to" })); // the backdrop is the dialog's own box
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Go to" })).toBeNull());
+  });
+
+  // Browsers whose scrollIntoView returns a promise: the page stays when the palette closes,
+  // although it scrolled the active match into view.
+  it("keeps the page when it closes after scrolling a match into view", async () => {
+    const scroll = Element.prototype.scrollIntoView;
+    Element.prototype.scrollIntoView = function () {
+      return Promise.resolve() as unknown as void;
+    };
+    try {
+      page();
+      const { box } = await open();
+      fireEvent.change(box, { target: { value: "post" } });
+      fireEvent.keyDown(box, { key: "ArrowDown" });
+      fireEvent(screen.getByRole("dialog", { name: "Go to" }), new Event("cancel"));
+      await waitFor(() => expect(screen.queryByRole("dialog", { name: "Go to" })).toBeNull());
+      expect(screen.getByRole("heading", { level: 1, name: "Overview" })).toBeTruthy();
+    } finally {
+      Element.prototype.scrollIntoView = scroll;
+    }
+  });
 });

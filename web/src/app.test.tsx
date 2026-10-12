@@ -28,10 +28,11 @@ describe("App", () => {
     expect(new URLSearchParams(history.location.search).get("redirect")).toBe("/?view=1");
   });
 
-  it("signs out", async () => {
+  it("signs out from the user menu", async () => {
     let calls = 0;
     const { history } = show("/", auth({ logout: () => ((calls += 1), {}) }));
-    fireEvent.click(await screen.findByRole("button", { name: "Sign out" }));
+    fireEvent.click(await screen.findByRole("button", { name: "User menu: Ada" }));
+    fireEvent.click(screen.getByRole("button", { name: "Sign out" }));
     await waitFor(() => expect(history.location.pathname).toBe("/login"));
     expect(calls).toBe(1);
   });

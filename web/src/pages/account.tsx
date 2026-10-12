@@ -9,18 +9,18 @@ import { useTranslation } from "react-i18next";
 import { Field } from "@/components/field";
 import { Alert } from "@/components/public-page";
 import { Button } from "@/components/ui/button";
-import { Theme, UserService, type User } from "@/gen/rpmgr/v1/user_pb";
+import { UserService, type User } from "@/gen/rpmgr/v1/user_pb";
 import { serverMessage } from "@/lib/link-token";
 import { APITokens } from "@/pages/api-tokens";
 import { Authenticator } from "@/pages/authenticator";
 import { passwordProblem } from "@/pages/reset";
 import { Sessions } from "@/pages/sessions";
-import { applyTheme } from "@/theme";
 
 const route = getRouteApi("/app/account");
 
 // Account is the user's own page (docs/09-web-ui.md, "Information architecture"): their profile,
-// theme, password and authenticator. ?mfa=required says that an org needs a second factor.
+// password and authenticator; the theme is the top bar's. ?mfa=required says that an org needs a
+// second factor.
 export function Account() {
   const { t } = useTranslation();
   const search = route.useSearch();
@@ -47,13 +47,14 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
   );
 }
 
-// Profile changes the display name and the theme, which applies at once.
+// Profile changes the display name.
 function Profile() {
   const { t } = useTranslation();
   const me = useQuery(UserService.method.getMe, {});
   const user = me.data?.user;
   return (
     <Section title={t("account.profile")}>
+      <p className="text-sm text-muted-foreground">{t("account.themeHint")}</p>
       {user ? <ProfileForm user={user} /> : <p>{t("stepUp.loading")}</p>}
     </Section>
   );
@@ -64,14 +65,13 @@ function ProfileForm({ user }: { user: User }) {
   const update = useMutation(UserService.method.updateMe);
   const queryClient = useQueryClient();
   const [name, setName] = useState(user.displayName);
-  const [theme, setTheme] = useState(user.theme || Theme.SYSTEM);
   const [result, setResult] = useState<{ tone: "info" | "error"; text: string }>();
 
   async function submit(e: FormEvent) {
     e.preventDefault();
     try {
-      await update.mutateAsync({ displayName: name, theme });
-      applyTheme(theme);
+      // Without a theme, UpdateMe keeps the user's theme.
+      await update.mutateAsync({ displayName: name });
       await queryClient.invalidateQueries();
       setResult({ tone: "info", text: t("account.saved") });
     } catch (err) {
@@ -80,22 +80,10 @@ function ProfileForm({ user }: { user: User }) {
     }
   }
 
-  const themes = [[Theme.SYSTEM, "system"], [Theme.LIGHT, "light"], [Theme.DARK, "dark"]] as const;
   return (
     <form onSubmit={submit} className="grid gap-4" noValidate>
       <Field label={t("login.email")} value={user.email} readOnly />
       <Field label={t("setup.name")} autoComplete="name" required maxLength={100} value={name} onChange={(e) => setName(e.target.value)} />
-      <fieldset className="grid gap-1.5">
-        <legend className="text-sm font-medium">{t("account.theme")}</legend>
-        <div className="flex gap-4 text-sm">
-          {themes.map(([value, key]) => (
-            <label key={key} className="flex items-center gap-1.5">
-              <input type="radio" name="theme" checked={theme === value} onChange={() => setTheme(value)} />
-              {t(`account.themes.${key}`)}
-            </label>
-          ))}
-        </div>
-      </fieldset>
       {result && <Alert tone={result.tone}>{result.text}</Alert>}
       <Button type="submit" className="justify-self-start" disabled={update.isPending}>{t("account.save")}</Button>
     </form>

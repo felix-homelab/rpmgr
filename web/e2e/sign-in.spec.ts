@@ -43,10 +43,29 @@ test("signs in, creates an API token with a step-up, sets up an authenticator an
   await expect(page.getByRole("region", { name: "Traffic, last 24 hours" }).getByText(/^In 0 B · out 0 B/)).toBeVisible();
   await expectAccessible(page);
 
-  // The command palette (U9) leads to the instance settings, which the first user changes as the
-  // Instance Admin.
+  // The theme switch (U10) applies the dark theme at once and saves it, so the page keeps it after a
+  // reload; axe checks the dark theme as well.
+  const saved = page.waitForResponse((r) => r.url().endsWith("/rpmgr.v1.UserService/UpdateMe") && r.ok());
+  await page.getByTitle("Dark").click(); // the icon, which labels the radio button
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+  await saved;
+  await page.reload();
+  await expect(page.getByRole("radio", { name: "Dark" })).toBeChecked();
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+  await expectAccessible(page);
+  await page.getByTitle("Like the system").click();
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "system");
+
+  // The command palette (U9) closes on Escape, the page staying as it was, and leads to the
+  // instance settings, which the first user changes as the Instance Admin.
   await page.keyboard.press("Control+K");
   const palette = page.getByRole("dialog", { name: "Go to" });
+  await palette.getByRole("combobox").fill("o");
+  await palette.getByRole("combobox").press("ArrowDown");
+  await palette.getByRole("combobox").press("Escape");
+  await expect(palette).toBeHidden();
+  await expect(page.getByRole("heading", { name: "Overview", level: 1 })).toBeVisible();
+  await page.keyboard.press("Control+K");
   await palette.getByRole("combobox").fill("sett");
   await expect(palette.getByRole("option", { selected: true })).toHaveText(/^Settings/);
   await expectAccessible(page);
@@ -79,7 +98,9 @@ test("signs in, creates an API token with a step-up, sets up an authenticator an
   await yaml.getByRole("button", { name: "Close" }).click();
 
   // An API token: its creation needs a step-up, which the dialog asks for in the page.
-  await page.getByRole("link", { name: "Ada" }).click();
+  await page.getByRole("button", { name: "User menu: Ada" }).click();
+  await expectAccessible(page);
+  await page.getByRole("link", { name: "Your account" }).click();
   await expect(page.getByRole("heading", { name: "Account", level: 1 })).toBeVisible();
   await expectAccessible(page);
   const tokens = page.getByRole("region", { name: "API tokens" });
@@ -112,6 +133,7 @@ test("signs in, creates an API token with a step-up, sets up an authenticator an
   await mfa.getByRole("button", { name: "I have saved them" }).click();
   await expect(mfa.getByText("An authenticator is set up.")).toBeVisible();
 
+  await page.getByRole("button", { name: "User menu: Ada" }).click();
   await page.getByRole("button", { name: "Sign out" }).click();
   await expect(page.getByRole("heading", { name: "Sign in to rpmgr" })).toBeVisible();
   await page.getByLabel("E-mail address").fill(email);
