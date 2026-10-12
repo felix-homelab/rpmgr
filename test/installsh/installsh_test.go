@@ -121,7 +121,8 @@ func TestInstall(t *testing.T) {
 				for f in /etc/rpmgr/connector.yaml /etc/rpmgr/policy.yaml /var/lib/rpmgr-update/install.json \
 				  /var/lib/rpmgr-update/state.json /etc/sysctl.d/60-rpmgr.conf /etc/systemd/system/rpmgr-connector.service \
 				  /tmp/rpmgr-calls /tmp/rpmgr-policy /tmp/systemctl-calls; do echo "== $f"; cat "$f" 2>&1; done
-				echo "== owner"; stat -c '%U %a' /var/lib/rpmgr/identity /var/lib/rpmgr /var/lib/rpmgr-update /usr/local/bin/rpmgr
+				echo "== owner"; stat -c '%U %a' /var/lib/rpmgr/identity /var/lib/rpmgr /var/lib/rpmgr-update /usr/local/bin/rpmgr \
+				  /etc/sysctl.d/60-rpmgr.conf /etc/rpmgr/connector.yaml /etc/rpmgr/policy.yaml
 				echo "== binary"; openssl dgst -sha256 -r /usr/local/bin/rpmgr | cut -d' ' -f1`).CombinedOutput()
 			text := string(out)
 			if i := strings.Index(text, "== openssl: "); i >= 0 {
@@ -146,7 +147,7 @@ func TestInstall(t *testing.T) {
 				"argv: enroll --controller " + srv.URL + " --ca-pin sha256:pin --token-file /root/token",
 				"argv: systemd-unit --bin /usr/local/bin/rpmgr connector",
 				"systemctl daemon-reload", "systemctl enable --now rpmgr-connector",
-				"== owner\nrpmgr ", "\nrpmgr 750\nroot 700\nroot 755\n", "== binary\n" + hex.EncodeToString(sum[:]),
+				"== owner\nrpmgr ", "\nrpmgr 750\nroot 700\nroot 755\nroot 644\nroot 644\nroot 644\n", "== binary\n" + hex.EncodeToString(sum[:]),
 			} {
 				if !strings.Contains(text, want) {
 					t.Errorf("no %q in:\n%s", want, text)
