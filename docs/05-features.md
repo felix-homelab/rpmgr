@@ -150,6 +150,7 @@
 | systemd units (hardened), OCI images | P1 |
 | Windows service and macOS launchd connector (winget/MSI, Homebrew) | P2 |
 | Install script (`/install.sh`, Linux) served by the controller from its own signed binary mirror | P1 |
+| `rpmgr setup`: sets a host up for its role, from the boot file to the running unit ([16](16-cli.md)) | P1 |
 | Distribution packages (`.deb`, `.rpm`) from a signed repository | P2 |
 | Backup and restore (`rpmgr backup`/`restore`) | P1 |
 | Revocation log with a filesystem sink | P1 |

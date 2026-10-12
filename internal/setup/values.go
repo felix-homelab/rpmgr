@@ -9,11 +9,15 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"net/mail"
 	"net/url"
 	"strings"
 
+	"github.com/felix-homelab/rpmgr/internal/acme"
+	"github.com/felix-homelab/rpmgr/internal/config"
 	"github.com/felix-homelab/rpmgr/internal/pki"
 	"github.com/felix-homelab/rpmgr/internal/policy"
+	"github.com/felix-homelab/rpmgr/internal/settings"
 	"github.com/felix-homelab/rpmgr/internal/token"
 )
 
@@ -22,8 +26,10 @@ type Role string
 
 // The roles, as `rpmgr <role>` names them.
 const (
-	Gateway   Role = "gateway"
-	Connector Role = "connector"
+	AllInOne   Role = "all-in-one"
+	Controller Role = "controller"
+	Gateway    Role = "gateway"
+	Connector  Role = "connector"
 )
 
 // Roles are the roles in the order the form offers them, each with one line about it.
@@ -31,18 +37,40 @@ var Roles = []struct {
 	Role  Role
 	About string
 }{
+	{AllInOne, "controller and gateway in one process: the homelab default"},
+	{Controller, "web UI, API, CA and configuration, with gateways on other hosts"},
 	{Gateway, "public listeners for routes, enrolled with a gateway token"},
 	{Connector, "reaches the services of its network, enrolled with an enrollment token"},
 }
+
+// The certificate of a controller's public URL.
+const (
+	TLSACME       = "acme"        // ordered from the instance's ACME CA at the first start
+	TLSFiles      = "files"       // the operator's certificate and key files
+	TLSSelfSigned = "self-signed" // a certificate no browser trusts, until the operator switches
+)
+
+// StagingDirectory is Let's Encrypt's staging ACME directory, whose certificates no browser trusts.
+const StagingDirectory = "https://acme-staging-v02.api.letsencrypt.org/directory"
 
 // Values are everything setup asks for. Empty values keep the defaults of docs/10-operations.md.
 type Values struct {
 	Role Role
 
+	// Controller and all-in-one.
+	PublicURL         string
+	KEKSource         string // systemd-credential or file; empty picks by the systemd version
+	KEKPath           string // with the file source; default <etc>/kek
+	TLS               string // acme, files or self-signed
+	CertFile, KeyFile string // with files
+	ACMEDirectory     string // production, staging or an https URL; empty keeps the instance's
+	ACMEEmail         string
+
 	// Listeners (docs/10-operations.md, "Ports"); "off" disables listen.http.
-	ListenTCP   string // gateway
-	ListenUDP   string // gateway
-	ListenHTTP  string // gateway
+	ListenHTTPS string // controller
+	ListenTCP   string // all-in-one and gateway
+	ListenUDP   string // all-in-one and gateway
+	ListenHTTP  string // controller, all-in-one and gateway
 	ListenAdmin string
 
 	// Gateway and connector.
@@ -56,6 +84,9 @@ type Values struct {
 	Force  bool // replace an existing boot file, or an agent's identity
 }
 
+// Initialises reports whether the role initialises a controller, rather than enrolling an agent.
+func (r Role) Initialises() bool { return r == AllInOne || r == Controller }
+
 // CheckRole checks a role's name.
 func CheckRole(s string) error {
 	for _, r := range Roles {
@@ -63,7 +94,7 @@ func CheckRole(s string) error {
 			return nil
 		}
 	}
-	return fmt.Errorf("no role %q: gateway or connector", s)
+	return fmt.Errorf("no role %q: all-in-one, controller, gateway or connector", s)
 }
 
 // CheckControllerURL checks the controller URL an agent enrolls with: https://<host>[:<port>],
@@ -75,6 +106,9 @@ func CheckControllerURL(s string) error {
 	}
 	return nil
 }
+
+// CheckPublicURL checks a controller's public URL, as CheckControllerURL does.
+func CheckPublicURL(s string) error { return CheckControllerURL(s) }
 
 // CheckPin checks a CA pin as `rpmgr enroll --ca-pin` takes it.
 func CheckPin(s string) error {
@@ -118,6 +152,42 @@ func CheckProxy(s string) error {
 	return nil
 }
 
+// CheckEmail checks the ACME account's address; empty is allowed.
+func CheckEmail(s string) error {
+	if s == "" {
+		return nil
+	}
+	if a, err := mail.ParseAddress(s); err != nil || a.Address != s {
+		return fmt.Errorf("%q is not an e-mail address", s)
+	}
+	return nil
+}
+
+// Directory returns the ACME directory URL of a name: production, staging or a URL.
+func Directory(s string) (string, error) {
+	switch s {
+	case "":
+		return "", nil
+	case "production":
+		return settings.LetsEncrypt, nil
+	case "staging":
+		return StagingDirectory, nil
+	}
+	if u, err := url.Parse(s); err != nil || u.Scheme != "https" || u.Host == "" {
+		return "", fmt.Errorf("ACME directory %q: want production, staging or an https URL", s)
+	}
+	return s, nil
+}
+
+// PublicHost returns the host of a public URL and whether a public CA can certify it.
+func PublicHost(publicURL string) (string, bool) {
+	u, err := url.Parse(publicURL)
+	if err != nil {
+		return "", false
+	}
+	return u.Hostname(), acme.Eligible(u.Hostname())
+}
+
 // check returns every problem of the values for their role, joined.
 func (v *Values) check() error {
 	var errs []error
@@ -129,13 +199,28 @@ func (v *Values) check() error {
 	add("role", CheckRole(string(v.Role)))
 	add("listen.admin", CheckAddr(v.ListenAdmin, false))
 	add("listen.http", CheckAddr(v.ListenHTTP, true))
+	add("listen.https", CheckAddr(v.ListenHTTPS, false))
 	add("listen.tcp", CheckAddr(v.ListenTCP, false))
 	add("listen.udp", CheckAddr(v.ListenUDP, false))
 	if v.Role == Connector && (v.ListenTCP != "" || v.ListenUDP != "" || v.ListenHTTP != "") {
 		errs = append(errs, errors.New("a connector has no listen.tcp, listen.udp or listen.http"))
 	}
+	if v.ListenHTTPS != "" && v.Role != Controller {
+		errs = append(errs, errors.New("listen.https is a controller's; an all-in-one or gateway has listen.tcp and listen.udp"))
+	}
+	if v.Role == Controller && (v.ListenTCP != "" || v.ListenUDP != "") {
+		errs = append(errs, errors.New("listen.tcp and listen.udp are an all-in-one's or a gateway's; a controller has listen.https"))
+	}
+	if v.Role.Initialises() {
+		v.checkController(add)
+		return errors.Join(errs...)
+	}
 	if v.Role == "" {
 		return errors.Join(errs...)
+	}
+	if v.PublicURL != "" || v.KEKSource != "" || v.KEKPath != "" || v.TLS != "" || v.CertFile != "" || v.KeyFile != "" ||
+		v.ACMEDirectory != "" || v.ACMEEmail != "" {
+		errs = append(errs, errors.New("a public URL and the KEK, TLS and ACME values are a controller's or an all-in-one's"))
 	}
 	add("controller URL", CheckControllerURL(v.ControllerURL))
 	add("CA pin", CheckPin(v.Pin))
@@ -149,4 +234,31 @@ func (v *Values) check() error {
 		errs = append(errs, errors.New("allowed targets and a proxy are a connector's"))
 	}
 	return errors.Join(errs...)
+}
+
+// checkController checks the values of a controller or all-in-one.
+func (v *Values) checkController(add func(string, error)) {
+	add("public URL", CheckPublicURL(v.PublicURL))
+	if v.ControllerURL != "" || v.Pin != "" || v.Token != "" || len(v.AllowTargets) > 0 || v.Proxy != "" {
+		add("values", errors.New("a controller URL, CA pin, token, allowed targets and a proxy are a gateway's or a connector's"))
+	}
+	if v.KEKSource != "" && v.KEKSource != config.KEKFile && v.KEKSource != config.KEKSystemdCredential {
+		add("KEK source", fmt.Errorf("%q: want systemd-credential or file", v.KEKSource))
+	}
+	_, err := Directory(v.ACMEDirectory)
+	add("ACME directory", err)
+	add("ACME e-mail", CheckEmail(v.ACMEEmail))
+	switch host, public := PublicHost(v.PublicURL); v.TLS {
+	case TLSACME:
+		if !public && v.PublicURL != "" {
+			add("TLS", fmt.Errorf("%s cannot have a certificate from a public CA; choose files or self-signed", host))
+		}
+	case TLSFiles:
+		if v.CertFile == "" || v.KeyFile == "" {
+			add("TLS", errors.New("files needs the certificate and the key file"))
+		}
+	case TLSSelfSigned:
+	default:
+		add("TLS", fmt.Errorf("%q: want acme, files or self-signed", v.TLS))
+	}
 }

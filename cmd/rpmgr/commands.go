@@ -34,6 +34,7 @@ func commands() *cli.Command {
 			role("gateway", "run a gateway: public listeners and data sessions from connectors", runGateway),
 			role("connector", "run a connector: data sessions to gateways and the local targets", runConnector),
 			role("all-in-one", "run a controller and a gateway in one process", runAllInOne, allInOneInit()),
+			setupCommand(),
 			enrollCommand(),
 			loginCommand(promptAPIToken),
 			logoutCommand(),
