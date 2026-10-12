@@ -601,7 +601,7 @@ Rules:
 | Source (`kek.source`) | Phase | Notes |
 |---|---|---|
 | `kms`: HashiCorp Vault or OpenBao Transit | P2 | Plugin interface; cloud KMS (AWS, GCP, Azure) added by demand |
-| `systemd-credential`: systemd `LoadCredentialEncrypted=` | P1 | TPM-sealable where available [V VB-03]; needs systemd ≥ 250, otherwise the installer falls back to `file` (VB-03: Ubuntu 22.04 has 249). The credential `<name>` is read from `$CREDENTIALS_DIRECTORY`, in the format of `file` |
+| `systemd-credential`: systemd `LoadCredentialEncrypted=` | P1 | TPM-sealable where available [V VB-03]; needs systemd ≥ 250, otherwise the installer falls back to `file` (VB-03: Ubuntu 22.04 has 249). The credential `<name>` is read from `$CREDENTIALS_DIRECTORY`, in the format of `file`; as newer systemd versions pass it to a service that runs as another user with mode 0440 in the service's group, a credential that its own group may read is accepted, one other users may read is not |
 | `file`: a 0600 file | P1 | Containers mount secrets as files. The file holds the base64 encoding of 32 random bytes; symbolic links are followed (container platforms mount secrets that way), but the file must be regular and closed to its group and other users (0600 or 0400) |
 
 **Not** an environment variable: no secret is kept in the environment of a long-running process.

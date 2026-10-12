@@ -9,6 +9,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -232,6 +233,41 @@ func TestLoadSystemdCredential(t *testing.T) {
 	}
 	if _, err := LoadSystemdCredential("other", env(dir)); err == nil {
 		t.Error("missing credential accepted")
+	}
+}
+
+// TestLoadSystemdCredential_GroupReadable (#455): newer systemd versions pass a service that runs
+// as another user its credential with mode 0440, in the service's group. A credential that its own
+// group may read is accepted; one other users may read, or its group may write, is not; and a KEK
+// file is still held to 0600 or 0400.
+func TestLoadSystemdCredential_GroupReadable(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("no Unix groups")
+	}
+	key := base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{9}, 32))
+	env := func(v string) func(string) string {
+		return func(k string) string {
+			if k == "CREDENTIALS_DIRECTORY" {
+				return v
+			}
+			return ""
+		}
+	}
+	for _, c := range []struct {
+		mode os.FileMode
+		ok   bool
+	}{{0o440, true}, {0o400, true}, {0o444, false}, {0o460, false}, {0o404, false}} {
+		dir := t.TempDir() // the file gets this process's group
+		writeKEK(t, dir, "rpmgr-kek", key, c.mode)
+		_, err := LoadSystemdCredential("rpmgr-kek", env(dir))
+		if (err == nil) != c.ok {
+			t.Errorf("credential with mode %04o: %v, want accepted %v", c.mode, err, c.ok)
+		}
+	}
+	dir := t.TempDir()
+	writeKEK(t, dir, "kek", key, 0o440)
+	if _, err := LoadKEKFile(filepath.Join(dir, "kek")); err == nil {
+		t.Error("a KEK file with mode 0440 accepted")
 	}
 }
 

@@ -158,6 +158,6 @@ fi
 printf 'Run rpmgr setup now? [Y/n] ' >/dev/tty
 read -r answer </dev/tty || answer=n
 case $answer in
-  '' | [Yy] | [Yy][Ee][Ss]) exec "$BIN" setup </dev/tty >/dev/tty 2>&1 ;;
+  '' | [Yy] | [Yy][Ee][Ss]) umask 022; exec "$BIN" setup </dev/tty >/dev/tty 2>&1 ;; # not this script's 077
   *) next ;;
 esac

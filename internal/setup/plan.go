@@ -441,7 +441,7 @@ func (p *Plan) agentSteps() {
 			}
 			r.created(dropIn)
 			unit := fmt.Sprintf("[Service]\nEnvironment=\"HTTPS_PROXY=%s\"\n", v.Proxy)
-			return os.WriteFile(dropIn, []byte(unit), 0o644) //nolint:gosec // G306: units are world-readable
+			return writeMode(dropIn, []byte(unit), 0o644)
 		})
 	}
 }
@@ -464,7 +464,7 @@ func (p *Plan) unitSteps() {
 			return err
 		}
 		r.created(path)
-		if err := os.WriteFile(path, unit, 0o644); err != nil { //nolint:gosec // G306: units are world-readable
+		if err := writeMode(path, unit, 0o644); err != nil {
 			return err
 		}
 		if err := h.Run(ctx, "systemctl", "daemon-reload"); err != nil {
@@ -497,7 +497,8 @@ func exists(path string) bool {
 	return err == nil
 }
 
-// writeNew writes a file that must not exist.
+// writeNew writes a file that must not exist, with mode perm whatever the umask: setup may run
+// under a strict one, as install.sh's, and the service user must read what setup writes.
 func writeNew(path string, data []byte, perm os.FileMode) error {
 	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, perm) //nolint:gosec // G304: setup's own paths
 	if err != nil {
@@ -507,7 +508,19 @@ func writeNew(path string, data []byte, perm os.FileMode) error {
 		_ = f.Close()
 		return err
 	}
+	if err := f.Chmod(perm); err != nil {
+		_ = f.Close()
+		return err
+	}
 	return f.Close()
+}
+
+// writeMode writes a file, new or not, with mode perm whatever the umask.
+func writeMode(path string, data []byte, perm os.FileMode) error {
+	if err := os.WriteFile(path, data, perm); err != nil { //nolint:gosec // G306: callers pass the mode a unit needs
+		return err
+	}
+	return os.Chmod(path, perm)
 }
 
 // Summary lists the choices for the confirmation, in order; the token only as given.
