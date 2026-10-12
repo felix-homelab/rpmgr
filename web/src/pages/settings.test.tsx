@@ -79,6 +79,15 @@ const orgForm = () => within(screen.getByRole("form", { name: "Organisation sett
 const instanceForm = async () => within(await screen.findByRole("form", { name: "Instance settings" }));
 
 describe("Settings", () => {
+  it("describes a field by its hint, and shows no key for a field without one", async () => {
+    page({ admin: true });
+    const form = await instanceForm();
+    const hourly = form.getByLabelText("Keep hourly statistics (days)");
+    expect(document.getElementById(hourly.getAttribute("aria-describedby") ?? "")?.textContent).toBe("1 to 400 days.");
+    expect(form.getByLabelText("ACME account e-mail address").getAttribute("aria-describedby")).toBeNull();
+    expect(screen.queryAllByText(/^settings\./)).toEqual([]); // U11: never a raw key
+  });
+
   it("saves the org's settings with their mask and etag, and asks for a step-up to require MFA", async () => {
     const { calls } = page();
     await screen.findByRole("option", { name: "edge" });

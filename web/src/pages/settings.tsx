@@ -247,7 +247,7 @@ function InstanceForm({ title, sections, fields, settings, etag, onDone }: {
 }
 
 function SettingInput({ field: f, value, onChange }: { field: SettingField; value: string; onChange: (v: string) => void }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const id = useId();
   const label = t(`settings.fields.${f.key}`);
   if (f.kind === "bool") {
@@ -258,20 +258,24 @@ function SettingInput({ field: f, value, onChange }: { field: SettingField; valu
       </label>
     );
   }
-  const hint = t(`settings.hints.${f.key}`, { defaultValue: "" });
+  // Most fields have no hint. i18next treats an empty default as missing (returnEmptyString:
+  // false) and returns the key, so the hint is asked for only when its key exists (U11).
+  const hintKey = `settings.hints.${f.key}`;
+  const hint = i18n.exists(hintKey) ? t(hintKey) : "";
+  const described = hint ? `${id}-hint` : undefined;
   return (
     <div className="grid gap-1.5">
       <label htmlFor={id} className="text-sm font-medium">{label}</label>
       {f.kind === "select" ? (
-        <Select id={id} value={value} onChange={(e) => onChange(e.target.value)}>
+        <Select id={id} aria-describedby={described} value={value} onChange={(e) => onChange(e.target.value)}>
           {f.options?.map(([v, k]) => <option key={v} value={String(v)}>{t(`settings.options.${f.key}.${k}`)}</option>)}
         </Select>
       ) : f.kind === "lines" ? (
-        <Textarea id={id} rows={2} value={value} onChange={(e) => onChange(e.target.value)} />
+        <Textarea id={id} aria-describedby={described} rows={2} value={value} onChange={(e) => onChange(e.target.value)} />
       ) : (
-        <Input id={id} inputMode={f.kind === "days" ? "numeric" : undefined} value={value} onChange={(e) => onChange(e.target.value)} />
+        <Input id={id} aria-describedby={described} inputMode={f.kind === "days" ? "numeric" : undefined} value={value} onChange={(e) => onChange(e.target.value)} />
       )}
-      {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
+      {hint && <p id={described} className="text-xs text-muted-foreground">{hint}</p>}
     </div>
   );
 }
