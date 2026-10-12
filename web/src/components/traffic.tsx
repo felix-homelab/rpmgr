@@ -61,14 +61,45 @@ export function TotalsLine({ t: sum }: { t: Totals }) {
   );
 }
 
-// TrafficChart draws the bytes in and out of each bucket. The drawing is for the eye only; the
-// same values are in a table, for screen readers and keyboards (docs/09-web-ui.md, U8), made when
-// it is opened.
+// TrafficStats sums traffic up as figures: bytes in and out, each with its series' colour, so that
+// they are the chart's legend, connections and errors.
+export function TrafficStats({ t: sum }: { t: Totals }) {
+  const { t } = useTranslation();
+  const count = (n: bigint) => n.toLocaleString(i18n.language);
+  const stats: [string, string, string?][] = [
+    [t("traffic.in"), bytes(sum.in), "bg-chart-in"],
+    [t("traffic.out"), bytes(sum.out), "bg-chart-out"],
+    [t("traffic.columns.connections"), count(sum.connections)],
+    [t("traffic.columns.errors"), count(sum.errors)],
+  ];
+  return (
+    <dl className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+      {stats.map(([label, value, swatch]) => (
+        <div key={label} className="grid gap-0.5">
+          <dt className="flex items-center gap-2 text-sm text-muted-foreground">
+            {swatch && <span aria-hidden="true" className={`h-1 w-3 rounded-full ${swatch}`} />}
+            {label}
+          </dt>
+          <dd className="text-lg font-semibold">{value}</dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
+// TrafficChart draws the bytes in and out of each bucket: two lines over a light wash, on hairline
+// grid lines, with a tooltip. The drawing is for the eye only; the same values are in a table, for
+// screen readers and keyboards (docs/09-web-ui.md, U8), made when it is opened. A period without
+// any traffic gets a note instead of a flat line.
 export function TrafficChart({ buckets, daily = false }: { buckets: TrafficBucket[]; daily?: boolean }) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
-  if (buckets.length === 0) {
-    return <p className="text-sm text-muted-foreground">{t("traffic.empty")}</p>;
+  if (buckets.every((b) => !b.bytesIn && !b.bytesOut && !b.connections && !b.errors)) {
+    return (
+      <p className="grid h-48 place-items-center rounded-lg border border-dashed border-border text-sm text-muted-foreground">
+        {t("traffic.empty")}
+      </p>
+    );
   }
   const label = new Intl.DateTimeFormat(i18n.language, daily ? { dateStyle: "short" } : { hour: "2-digit", minute: "2-digit" });
   const points = buckets.map((b) => ({
@@ -76,36 +107,41 @@ export function TrafficChart({ buckets, daily = false }: { buckets: TrafficBucke
     in: Number(b.bytesIn),
     out: Number(b.bytesOut),
   }));
+  const tick = { fill: "var(--color-muted-foreground)", fontSize: 12 };
+  const dot = { r: 4, strokeWidth: 2, stroke: "var(--color-card)" };
   return (
-    <div className="grid gap-2">
-      <div aria-hidden="true" className="h-48 w-full">
+    <div className="grid gap-3">
+      <div aria-hidden="true" className="h-56 w-full">
         <ResponsiveContainer width="100%" height="100%">
-          <AreaChart data={points} accessibilityLayer={false} margin={{ top: 4, right: 8, bottom: 0, left: 8 }}>
+          <AreaChart data={points} accessibilityLayer={false} margin={{ top: 8, right: 4, bottom: 0, left: 0 }}>
             <CartesianGrid vertical={false} stroke="var(--color-border)" />
-            <XAxis dataKey="at" tickLine={false} axisLine={false} minTickGap={24} tick={{ fill: "var(--color-muted-foreground)", fontSize: 12 }} />
-            <YAxis tickFormatter={(v: number) => bytes(v)} tickLine={false} axisLine={false} width={64} tick={{ fill: "var(--color-muted-foreground)", fontSize: 12 }} />
+            <XAxis dataKey="at" tickLine={false} axisLine={false} minTickGap={32} tick={tick} />
+            <YAxis tickFormatter={(v: number) => bytes(v)} tickLine={false} axisLine={false} width={64} tick={tick} />
             {/* The series' colours are too light for text, so the tooltip writes in the text colour. */}
-            <Tooltip formatter={(v) => bytes(Number(v))} contentStyle={{ background: "var(--color-background)", borderColor: "var(--color-border)" }}
-              itemStyle={{ color: "var(--color-foreground)" }} labelStyle={{ color: "var(--color-foreground)" }} />
-            <Area type="monotone" dataKey="in" name={t("traffic.in")} stroke="var(--color-chart-in)" fill="var(--color-chart-in)" fillOpacity={0.2} isAnimationActive={false} />
-            <Area type="monotone" dataKey="out" name={t("traffic.out")} stroke="var(--color-chart-out)" fill="var(--color-chart-out)" fillOpacity={0.2} isAnimationActive={false} />
+            <Tooltip formatter={(v) => bytes(Number(v))} cursor={{ stroke: "var(--color-input)" }}
+              contentStyle={{ background: "var(--color-card)", borderColor: "var(--color-border)", borderRadius: 8, fontSize: 13 }}
+              itemStyle={{ color: "var(--color-foreground)" }} labelStyle={{ color: "var(--color-muted-foreground)" }} />
+            <Area type="monotone" dataKey="in" name={t("traffic.in")} stroke="var(--color-chart-in)" strokeWidth={2} fill="var(--color-chart-in)"
+              fillOpacity={0.1} activeDot={dot} isAnimationActive={false} />
+            <Area type="monotone" dataKey="out" name={t("traffic.out")} stroke="var(--color-chart-out)" strokeWidth={2} fill="var(--color-chart-out)"
+              fillOpacity={0.1} activeDot={dot} isAnimationActive={false} />
           </AreaChart>
         </ResponsiveContainer>
       </div>
       <details className="text-sm" onToggle={(e) => setOpen(e.currentTarget.open)}>
-        <summary className="cursor-pointer text-muted-foreground">{t("traffic.table")}</summary>
-        {open && <table className="mt-2 w-full text-left">
+        <summary className="cursor-pointer text-muted-foreground hover:text-foreground">{t("traffic.table")}</summary>
+        {open && <table className="mt-3 w-full text-left tabular-nums">
           <thead className="text-muted-foreground">
-            <tr>{["at", "in", "out", "connections", "errors"].map((c) => <th key={c} scope="col" className="py-1 font-medium">{t(`traffic.columns.${c}`)}</th>)}</tr>
+            <tr>{["at", "in", "out", "connections", "errors"].map((c) => <th key={c} scope="col" className="py-1.5 font-medium">{t(`traffic.columns.${c}`)}</th>)}</tr>
           </thead>
           <tbody>
             {buckets.map((b, i) => (
               <tr key={i} className="border-t border-border">
-                <td className="py-1">{points[i]!.at}</td>
-                <td className="py-1">{bytes(b.bytesIn)}</td>
-                <td className="py-1">{bytes(b.bytesOut)}</td>
-                <td className="py-1">{b.connections.toLocaleString(i18n.language)}</td>
-                <td className="py-1">{b.errors.toLocaleString(i18n.language)}</td>
+                <td className="py-1.5">{points[i]!.at}</td>
+                <td className="py-1.5">{bytes(b.bytesIn)}</td>
+                <td className="py-1.5">{bytes(b.bytesOut)}</td>
+                <td className="py-1.5">{b.connections.toLocaleString(i18n.language)}</td>
+                <td className="py-1.5">{b.errors.toLocaleString(i18n.language)}</td>
               </tr>
             ))}
           </tbody>

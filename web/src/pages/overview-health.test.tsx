@@ -48,6 +48,59 @@ async function card(title: string) {
 
 const items = (c: ReturnType<typeof within>) => c.getAllByRole("listitem").map((li: HTMLElement) => li.textContent);
 
+// tiles reads the summary's figures: each tile's text and where it leads.
+async function tiles() {
+  const list = await screen.findByRole("list", { name: "Summary" });
+  return within(list).getAllByRole("link").map((a) => [a.textContent, a.getAttribute("href")]);
+}
+
+describe("Summary", () => {
+  it("counts what is well of each area, and says what needs attention", async () => {
+    page({
+      gateways: [
+        { id: "gtw_1", gatewayGroupId: "ggr_eu", name: "gw-eu-1", status: { enrolled: true, connected: true } },
+        { id: "gtw_2", gatewayGroupId: "ggr_eu", name: "gw-eu-2", status: { enrolled: true, connected: false } },
+      ],
+      connectors: [
+        { id: "con_1", name: "db-host", session: { connected: true } },
+        { id: "con_2", name: "laptop" },
+        { id: "con_3", name: "old", decommissionTime: inDays(-1) }, // not counted
+      ],
+      routes: [
+        { id: "rte_1", name: "web", status: { state: RouteState.READY } },
+        { id: "rte_2", name: "api", status: { state: RouteState.READY, rejections: [{ agentId: "gtw_1" }] } },
+        { id: "rte_3", name: "old", status: { state: RouteState.DISABLED } }, // not counted
+      ],
+      certificates: [
+        { id: "crt_1", sans: ["a.example.com"], status: CertificateStatus.ACTIVE, notAfter: inDays(60) },
+        { id: "crt_2", sans: ["b.example.com"], status: CertificateStatus.FAILED },
+        { id: "crt_3", sans: ["c.example.com"], status: CertificateStatus.ACTIVE, notAfter: inDays(3) },
+      ],
+      domains: [{ id: "dom_1", fqdn: "example.com", status: DomainStatus.VERIFIED }],
+    });
+    await waitFor(async () => expect((await tiles()).map(([text]) => text)).toEqual([
+      "Routes serving1of 21 needs attention",
+      "Agents connected2of 42 offline",
+      "Certificates in order1of 32 failed or expire soon",
+      "Domains verified1of 1All verified",
+    ]));
+    expect((await tiles()).map(([, href]) => href)).toEqual(["/routes", "/connectors", "/domains", "/domains"]);
+  });
+
+  it("says when an area has nothing yet, and when everything is well", async () => {
+    page({
+      routes: [{ id: "rte_1", name: "web", status: { state: RouteState.READY } }],
+      gateways: [{ id: "gtw_1", gatewayGroupId: "ggr_eu", name: "gw-eu-1", status: { enrolled: true, connected: true } }],
+    });
+    await waitFor(async () => expect((await tiles()).map(([text]) => text)).toEqual([
+      "Routes serving1of 1All enabled routes serve",
+      "Agents connected1of 1All connected",
+      "Certificates in order0No certificates yet", // no "of 0"
+      "Domains verified0No domains yet",
+    ]));
+  });
+});
+
 describe("Health", () => {
   it("lists the agents without a control session, with when they were last seen", async () => {
     page({
@@ -81,7 +134,7 @@ describe("Health", () => {
     });
     const routes = await card("Routes");
     await waitFor(() => expect(routes.getAllByRole("listitem")).toHaveLength(3));
-    expect(items(routes)).toEqual(["postgres◐degraded", "new⧗pending", "api●readyrejected by 2 agents"]);
+    expect(items(routes)).toEqual(["postgresdegraded", "newpending", "apireadyrejected by 2 agents"]);
   });
 
   it("points out failed certificates and those that expire within 21 days", async () => {
@@ -113,7 +166,7 @@ describe("Health", () => {
     });
     const domains = await card("Domains");
     await waitFor(() => expect(domains.getAllByRole("listitem")).toHaveLength(2));
-    expect(items(domains)).toEqual(["*.example.net⧗ pending", "example.org✕ failed"]);
+    expect(items(domains)).toEqual(["*.example.netpending", "example.orgfailed"]);
     const tokens = await card("Your API tokens");
     await waitFor(() => expect(tokens.getAllByRole("listitem")).toHaveLength(2));
     expect(items(tokens)).toEqual([expect.stringMatching(/^ciexpires /), expect.stringMatching(/^backupexpired /)]);

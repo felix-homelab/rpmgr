@@ -8,6 +8,7 @@ import { useTranslation } from "react-i18next";
 import { Field } from "@/components/field";
 import { Alert } from "@/components/public-page";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import { TokenService, type APIToken } from "@/gen/rpmgr/v1/token_pb";
 import { Reason, reasonOf } from "@/lib/errors";
 import { when } from "@/lib/format";
@@ -27,8 +28,7 @@ export function APITokens() {
   const [created, setCreated] = useState<string>();
   const [adding, setAdding] = useState(false);
   return (
-    <section aria-labelledby="section-tokens" className="grid gap-4">
-      <h2 id="section-tokens" className="text-lg font-semibold">{t("tokens.title")}</h2>
+    <Card title={t("tokens.title")}>
       <p className="text-sm text-muted-foreground">{t("tokens.intro")}</p>
       {created && (
         <div className="grid gap-2 rounded-md border border-border p-3">
@@ -55,7 +55,7 @@ export function APITokens() {
       {org && (adding
         ? <NewToken orgId={org.orgId} instanceAdmin={org.instanceAdmin} onDone={(tok) => (setAdding(false), setCreated(tok))} onCancel={() => setAdding(false)} />
         : <Button variant="outline" className="justify-self-start" onClick={() => setAdding(true)}>{t("tokens.new")}</Button>)}
-    </section>
+    </Card>
   );
 }
 

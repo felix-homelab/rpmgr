@@ -9,6 +9,7 @@ import { useTranslation } from "react-i18next";
 import { ManifestButton } from "@/components/manifest";
 import { Command } from "@/components/one-time-token";
 import { Alert } from "@/components/public-page";
+import { Status, type Look } from "@/components/status";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { AuthService } from "@/gen/rpmgr/v1/auth_pb";
@@ -19,19 +20,19 @@ import { largestPage, listAll } from "@/lib/list-all";
 import { useOrg } from "@/session";
 import { useStepUp } from "@/step-up";
 
-const looks: Record<DomainStatus, [string, string, string]> = {
-  [DomainStatus.UNSPECIFIED]: ["?", "unknown", ""],
-  [DomainStatus.PENDING]: ["⧗", "pending", "text-muted-foreground"],
-  [DomainStatus.PENDING_APPROVAL]: ["⧗", "pendingApproval", "text-muted-foreground"],
-  [DomainStatus.VERIFIED]: ["✓", "verified", "text-ok"],
-  [DomainStatus.FAILED]: ["✕", "failed", "text-destructive"],
+const looks: Record<DomainStatus, [Look, string]> = {
+  [DomainStatus.UNSPECIFIED]: ["unknown", "unknown"],
+  [DomainStatus.PENDING]: ["pending", "pending"],
+  [DomainStatus.PENDING_APPROVAL]: ["pending", "pendingApproval"],
+  [DomainStatus.VERIFIED]: ["ok", "verified"],
+  [DomainStatus.FAILED]: ["failed", "failed"],
 };
 
-// DomainStatusLabel shows a claim's status with its sign.
+// DomainStatusLabel shows a claim's status as a badge.
 export function DomainStatusLabel({ status }: { status: DomainStatus }) {
   const { t } = useTranslation();
-  const [icon, key, tone] = looks[status];
-  return <span className={tone}><span aria-hidden="true">{icon} </span>{t(`domains.status.${key}`)}</span>;
+  const [look, key] = looks[status];
+  return <Status look={look}>{t(`domains.status.${key}`)}</Status>;
 }
 
 // useDomains reads all of the org's domain claims.

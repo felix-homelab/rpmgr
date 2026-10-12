@@ -26,6 +26,10 @@ function page(answer: () => MessageInitShape<typeof GetOverviewResponseSchema>) 
 
 const at = (iso: string) => timestampFromDate(new Date(iso));
 
+// stats reads the traffic's figures: each term with its value.
+const stats = (traffic: ReturnType<typeof within>) =>
+  traffic.getAllByRole("term").map((dt: HTMLElement) => [dt.textContent, dt.nextElementSibling?.textContent]);
+
 describe("Overview", () => {
   it("summarises the org's last 24 hours and links its busiest routes by name", async () => {
     const { asked } = page(() => ({
@@ -40,7 +44,8 @@ describe("Overview", () => {
       ],
     }));
     const traffic = within(await screen.findByRole("region", { name: "Traffic, last 24 hours" }));
-    expect(await traffic.findByText("In 1.2 GB · out 10.3 MB · 42 connections · 1 error")).toBeTruthy();
+    await traffic.findByText("1.2 GB");
+    expect(stats(traffic)).toEqual([["In", "1.2 GB"], ["Out", "10.3 MB"], ["Connections", "42"], ["Errors", "1"]]);
     const busiest = within(traffic.getByRole("list", { name: "Busiest routes" })).getAllByRole("listitem");
     await within(busiest[0]!).findByText("postgres");
     expect(busiest.map((li) => li.textContent)).toEqual(["postgresin 1.1 GB · out 300 kB", "rte_9in 5 kB · out 0 B"]);
@@ -59,7 +64,14 @@ describe("Overview", () => {
     const traffic = within(await screen.findByRole("region", { name: "Traffic, last 24 hours" }));
     expect(await traffic.findByText("No route had traffic.")).toBeTruthy();
     expect(traffic.getByText("No traffic in this period.")).toBeTruthy();
-    expect(traffic.getByText("In 0 B · out 0 B · 0 connections · 0 errors")).toBeTruthy();
+    expect(stats(traffic)).toEqual([["In", "0 B"], ["Out", "0 B"], ["Connections", "0"], ["Errors", "0"]]);
+  });
+
+  it("notes a day without traffic instead of drawing a flat line", async () => {
+    page(() => ({ total: { start: at("2026-10-08T12:00:00Z") }, hours: [], busiestRoutes: [] })); // the API sends no empty hours
+    const traffic = within(await screen.findByRole("region", { name: "Traffic, last 24 hours" }));
+    expect(await traffic.findByText("No traffic in this period.")).toBeTruthy();
+    expect(traffic.queryByText("Show the values as a table")).toBeNull();
   });
 
   it("shows why the traffic could not be read", async () => {

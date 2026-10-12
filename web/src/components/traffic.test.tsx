@@ -4,7 +4,7 @@ import { create } from "@bufbuild/protobuf";
 import { timestampFromDate } from "@bufbuild/protobuf/wkt";
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
-import { bytes, dayMs, filled, hourMs, totals, TotalsLine, TrafficChart } from "@/components/traffic";
+import { bytes, dayMs, filled, hourMs, totals, TotalsLine, TrafficChart, TrafficStats } from "@/components/traffic";
 import { TrafficBucketSchema } from "@/gen/rpmgr/v1/metrics_pb";
 
 afterEach(cleanup);
@@ -49,6 +49,27 @@ describe("TrafficChart", () => {
     render(<TrafficChart buckets={[]} />);
     expect(screen.getByText("No traffic in this period.")).toBeTruthy();
     expect(screen.queryByText("Show the values as a table")).toBeNull();
+  });
+
+  it("says so when every bucket is empty, but draws a period with only failed connections", () => {
+    const { unmount } = render(<TrafficChart buckets={[bucket("2026-10-09T10:00:00Z", 0n, 0n, 0n), bucket("2026-10-09T11:00:00Z", 0n, 0n, 0n)]} />);
+    expect(screen.getByText("No traffic in this period.")).toBeTruthy();
+    unmount();
+    render(<TrafficChart buckets={[bucket("2026-10-09T10:00:00Z", 0n, 0n, 2n, 2n)]} />);
+    expect(screen.queryByText("No traffic in this period.")).toBeNull();
+    open();
+    expect(within(screen.getByRole("table")).getAllByRole("row")).toHaveLength(2);
+  });
+});
+
+describe("TrafficStats", () => {
+  it("shows each figure under its name, with the series' colour as the chart's legend", () => {
+    render(<TrafficStats t={{ in: 1_500n, out: 0n, connections: 12_345n, errors: 1n }} />);
+    const terms = screen.getAllByRole("term");
+    expect(terms.map((dt) => [dt.textContent, dt.nextElementSibling?.textContent])).toEqual([
+      ["In", "1.5 kB"], ["Out", "0 B"], ["Connections", "12,345"], ["Errors", "1"],
+    ]);
+    expect(terms.map((dt) => dt.querySelector("[aria-hidden]")?.className.match(/bg-chart-\w+/)?.[0])).toEqual(["bg-chart-in", "bg-chart-out", undefined, undefined]);
   });
 });
 
