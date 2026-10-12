@@ -81,6 +81,8 @@ jobs:
             patterns+=(--pattern "rpmgr-$version-linux-$arch")
           done
           gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --dir dist "${patterns[@]}"
+          # Downloads carry no executable bit, and the check runs the host's artifact.
+          chmod 0755 "dist/rpmgr-$version-linux-"*
           .github/scripts/check-release-artifacts.sh dist "$version" "$GITHUB_SHA"
       - name: Register QEMU user-mode emulation for the other platforms
         run: >-
