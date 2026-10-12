@@ -1,7 +1,7 @@
 # 03 — Connections: fast and secure
 
 > Status: Phase 1, being implemented. Tags: [F] fact · [R] recommendation · [T] target · [V] verify
-> at implementation ([README](../README.md#how-to-read-these-documents)). Library facts were checked
+> at implementation ([README](README.md#how-to-read-these-documents)). Library facts were checked
 > against **quic-go v0.61.0**, **hashicorp/yamux v0.1.1**, **grpc-go v1.67.1**, **golang.org/x/net
 > v0.57.0**; the HTTP/2 facts of the TCP transport were re-checked at **Go 1.27.1** by spike S2 and
 > cite that version. Every **[V]** item is tracked in [13-roadmap.md](13-roadmap.md): load-bearing

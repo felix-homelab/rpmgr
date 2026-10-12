@@ -1,7 +1,7 @@
 # 11 — Migration from frp and frp-panel
 
 > Status: design for Phase 2, not implemented. Tags: [F] fact · [R] recommendation · [T] target ·
-> [V] verify at implementation ([README](../README.md#how-to-read-these-documents)). frp field names
+> [V] verify at implementation ([README](README.md#how-to-read-these-documents)). frp field names
 > are verified against frp **v0.70.1** `pkg/config/v1`; frp-panel facts against frp-panel (fork
 > `felix-homelab/frp-panel` at commit `6631a75`).
 >
@@ -9,7 +9,7 @@
 > their configurations. Citations `[F frp:<path>:<line>]` refer to
 > [fatedier/frp](https://github.com/fatedier/frp) v0.70.1, and `[F frp-panel:<path>:<line>]` to
 > [felix-homelab/frp-panel](https://github.com/felix-homelab/frp-panel) at commit `6631a75`; these
-> prefixes are not in the README's citation table.
+> prefixes are not in the [citation table](README.md#citations).
 
 rpmgr is not wire-compatible with frp ([ADR-0003](adr/0003-clean-slate-protocol.md)): stock `frpc`
 cannot connect to an rpmgr gateway. Migration therefore means **converting configuration** and

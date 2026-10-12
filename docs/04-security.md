@@ -1,7 +1,7 @@
 # 04 — Security
 
 > Status: Phase 1, being implemented. Tags: [F] fact · [R] recommendation · [T] target · [V] verify
-> at implementation ([README](../README.md#how-to-read-these-documents)).
+> at implementation ([README](README.md#how-to-read-these-documents)).
 >
 > **This document is the single source of truth for identities, lifetimes, cryptographic parameters
 > and authorization rules.** Connection timeouts and sizes live in

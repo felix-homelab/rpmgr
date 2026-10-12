@@ -2,7 +2,7 @@
 
 > Status: Phase 0 is complete and Phase 1 implemented; Phases 2 and 3 are design. Tags: [F] fact ·
 > [R] recommendation · [T] target · [V] verify at implementation
-> ([README](../README.md#how-to-read-these-documents)).
+> ([README](README.md#how-to-read-these-documents)).
 
 ## Approach
 

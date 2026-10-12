@@ -1,7 +1,7 @@
 # 16 — Command line
 
 > Status: Phase 1, being implemented. Tags: [F] fact · [R] recommendation · [T] target · [V] verify
-> at implementation ([README](../README.md#how-to-read-these-documents)).
+> at implementation ([README](README.md#how-to-read-these-documents)).
 >
 > This document lists every `rpmgr` command, its flags and its exit codes. It is written from the
 > commands' `--help` output and changes in the same PR as the command. Configuration keys are in

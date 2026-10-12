@@ -2,7 +2,7 @@
 
 > Status: the P1 rows are implemented ([13](13-roadmap.md#phase-1--mvp)); P2 and P3 rows are design.
 > Tags: [F] fact · [R] recommendation · [T] target · [V] verify at implementation
-> ([README](../README.md#how-to-read-these-documents)).
+> ([README](README.md#how-to-read-these-documents)).
 >
 > **Phases** (details and exit criteria in [13-roadmap.md](13-roadmap.md)): **P1** MVP · **P2**
 > production · **P3** advanced. "—" means not planned.
