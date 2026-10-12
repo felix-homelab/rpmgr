@@ -14,7 +14,10 @@ import (
 
 	"github.com/felix-homelab/rpmgr/internal/agent"
 	"github.com/felix-homelab/rpmgr/internal/config"
+	"github.com/felix-homelab/rpmgr/internal/settings"
 	"github.com/felix-homelab/rpmgr/internal/setup"
+	"github.com/felix-homelab/rpmgr/internal/store"
+	"github.com/felix-homelab/rpmgr/internal/store/storetest"
 	"github.com/felix-homelab/rpmgr/internal/token"
 )
 
@@ -48,6 +51,9 @@ func newHost(t *testing.T, f *fakeHost) setup.Host {
 		GiveTo:         func(string) error { return nil },
 		IsRoot:         func() bool { return true },
 		SystemdVersion: func() int { return 255 },
+		Encrypt: func(_ context.Context, _, path string, b []byte) error {
+			return os.WriteFile(path, b, 0o600) // stands in for systemd-creds encrypt
+		},
 		Enroll: func(_ context.Context, o agent.EnrollOptions) (agent.Identity, error) {
 			f.mu.Lock()
 			defer f.mu.Unlock()
@@ -64,6 +70,7 @@ func newHost(t *testing.T, f *fakeHost) setup.Host {
 			return f.notReady
 		},
 		PortFree: func(string) bool { return true },
+		Getenv:   func(string) string { return "" },
 	}
 }
 
@@ -91,6 +98,9 @@ func TestChecks(t *testing.T) {
 		"off where it is not": setup.CheckAddr("off", false),
 		"ftp proxy":           setup.CheckProxy("ftp://proxy:21"),
 		"proxy without host":  setup.CheckProxy("http://"),
+		"public URL":          setup.CheckPublicURL("https://panel.example.com/ui"),
+		"e-mail":              setup.CheckEmail("not an address"),
+		"named e-mail":        setup.CheckEmail("Ops <ops@example.com>"),
 		"role":                setup.CheckRole("router"),
 	} {
 		if err == nil {
@@ -107,10 +117,24 @@ func TestChecks(t *testing.T) {
 		"http off":    setup.CheckAddr("off", true),
 		"socks proxy": setup.CheckProxy("socks5://proxy:1080"),
 		"no proxy":    setup.CheckProxy(""),
+		"e-mail":      setup.CheckEmail("ops@example.com"),
+		"no e-mail":   setup.CheckEmail(""),
 	} {
 		if err != nil {
 			t.Errorf("%s: %v", name, err)
 		}
+	}
+	if d, err := setup.Directory("staging"); err != nil || d != setup.StagingDirectory {
+		t.Errorf("staging: %q %v", d, err)
+	}
+	if d, err := setup.Directory("production"); err != nil || d != settings.LetsEncrypt {
+		t.Errorf("production: %q %v", d, err)
+	}
+	if _, err := setup.Directory("http://acme.example.com/dir"); err == nil {
+		t.Error("an http directory accepted")
+	}
+	if host, public := setup.PublicHost("https://rpmgr.internal:8443"); host != "rpmgr.internal" || public {
+		t.Errorf("rpmgr.internal: %q %v", host, public)
 	}
 }
 
@@ -140,6 +164,19 @@ func TestNew_Refuses(t *testing.T) {
 		"no systemd":        {gw, func(h *setup.Host) { h.SystemdVersion = func() int { return 0 } }, "--no-unit"},
 		"no binary":         {gw, func(h *setup.Host) { h.Paths.Bin = filepath.Join(h.Paths.Lib, "rpmgr") }, "install the binary"},
 		"admin taken":       {gw, func(h *setup.Host) { h.PortFree = func(string) bool { return false } }, "--listen-admin"},
+		"gateway with KEK":  {with(func(v *setup.Values) { v.KEKSource = config.KEKFile }), nil, "controller's"},
+		"bad public URL":    {setup.Values{Role: setup.Controller, PublicURL: "panel", TLS: setup.TLSSelfSigned}, nil, "public URL"},
+		"ACME for an IP":    {setup.Values{Role: setup.AllInOne, PublicURL: "https://192.0.2.10", TLS: setup.TLSACME}, nil, "public CA"},
+		"files without":     {setup.Values{Role: setup.AllInOne, PublicURL: "https://panel.example.com", TLS: setup.TLSFiles}, nil, "certificate and the key"},
+		"files unreadable":  {setup.Values{Role: setup.AllInOne, PublicURL: "https://panel.example.com", TLS: setup.TLSFiles, CertFile: "/nonexistent.crt", KeyFile: "/nonexistent.key"}, nil, "certificate and key files"},
+		"no TLS":            {setup.Values{Role: setup.Controller, PublicURL: "https://panel.example.com"}, nil, "want acme"},
+		"KEK source":        {setup.Values{Role: setup.Controller, PublicURL: "https://panel.example.com", TLS: setup.TLSACME, KEKSource: "tpm"}, nil, "KEK source"},
+		"listen.https":      {setup.Values{Role: setup.AllInOne, PublicURL: "https://panel.example.com", TLS: setup.TLSACME, ListenHTTPS: ":443"}, nil, "listen.https"},
+		"controller tcp":    {setup.Values{Role: setup.Controller, PublicURL: "https://panel.example.com", TLS: setup.TLSACME, ListenTCP: ":443"}, nil, "listen.tcp"},
+		"controller pin":    {setup.Values{Role: setup.Controller, PublicURL: "https://panel.example.com", TLS: setup.TLSACME, Pin: pin(t)}, nil, "gateway's"},
+		"ACME e-mail":       {setup.Values{Role: setup.Controller, PublicURL: "https://panel.example.com", TLS: setup.TLSACME, ACMEEmail: "ops"}, nil, "e-mail"},
+		"old systemd": {setup.Values{Role: setup.AllInOne, PublicURL: "https://panel.example.com", KEKSource: config.KEKSystemdCredential, TLS: setup.TLSSelfSigned},
+			func(h *setup.Host) { h.SystemdVersion = func() int { return 249 } }, "systemd 250"},
 	}
 	for name, c := range cases {
 		h := newHost(t, f)
@@ -170,6 +207,127 @@ func TestNew_Refuses(t *testing.T) {
 	write(t, filepath.Join(h.Paths.Lib, "identity", agent.ChainFile), "")
 	if _, err := setup.New(conn, h); err == nil || !strings.Contains(err.Error(), "enrolled already") {
 		t.Errorf("an existing identity: %v", err)
+	}
+	// An installation: never initialised again, not even with --force.
+	aio := setup.Values{Role: setup.AllInOne, PublicURL: "https://panel.example.com", KEKSource: config.KEKFile, TLS: setup.TLSSelfSigned, Force: true}
+	write(t, filepath.Join(h.Paths.Lib, "controller.db"), "")
+	if _, err := setup.New(aio, h); err == nil || !strings.Contains(err.Error(), "holds an installation") {
+		t.Errorf("an existing database: %v", err)
+	}
+}
+
+// TestPlan_AllInOne: an all-in-one with a KEK file and a self-signed certificate for a public name
+// writes its boot file, makes the certificate, initialises through `rpmgr all-in-one init`'s code,
+// installs and starts its unit and waits until it is ready.
+func TestPlan_AllInOne(t *testing.T) {
+	f := &fakeHost{}
+	h := newHost(t, f)
+	p, err := setup.New(setup.Values{Role: setup.AllInOne, PublicURL: "https://panel.example.com", KEKSource: config.KEKFile,
+		TLS: setup.TLSSelfSigned, ListenAdmin: "127.0.0.1:17381"}, h)
+	if err != nil {
+		t.Fatal(err)
+	}
+	steps := strings.Join(p.Steps(), "\n")
+	for _, want := range []string{"create " + h.Paths.Etc, "self-signed certificate for panel.example.com", "write the boot file",
+		"initialise the all-in-one", "enable --now rpmgr-all-in-one", "127.0.0.1:17381/readyz"} {
+		if !strings.Contains(steps, want) {
+			t.Errorf("no step %q in\n%s", want, steps)
+		}
+	}
+	var progress []string
+	r, err := p.Run(context.Background(), func(s string) { progress = append(progress, s) })
+	if err != nil {
+		t.Fatalf("run: %v (wrote %v)", err, r.Written)
+	}
+	if len(progress) != len(p.Steps()) || r.TrustDomain == "" || !strings.HasPrefix(r.Pin, "sha256:") ||
+		!strings.HasPrefix(r.FirstUserLink, "https://panel.example.com/setup#") || r.GatewayID == "" || r.Unit != "rpmgr-all-in-one" {
+		t.Fatalf("result %+v after %v", r, progress)
+	}
+	var cfg config.AllInOne
+	if err := config.Load(filepath.Join(h.Paths.Etc, "all-in-one.yaml"), &cfg); err != nil {
+		t.Fatal(err)
+	}
+	if cfg.KEK.Source != config.KEKFile || cfg.TLS.CertFile != filepath.Join(h.Paths.Etc, "tls", "panel.example.com.crt") ||
+		cfg.Listen.Admin != "127.0.0.1:17381" || cfg.Database.DSN != filepath.Join(h.Paths.Lib, "controller.db") {
+		t.Errorf("boot file %+v", cfg)
+	}
+	unit, err := os.ReadFile(filepath.Join(h.Paths.Units, "rpmgr-all-in-one.service"))
+	if err != nil || !strings.Contains(string(unit), "ExecStart="+h.Paths.Bin+" all-in-one") || strings.Contains(string(unit), "LoadCredentialEncrypted") {
+		t.Errorf("unit %q %v", unit, err)
+	}
+	if !slices.EqualFunc(f.commands, [][]string{{"systemctl", "daemon-reload"}, {"systemctl", "enable", "--now", "rpmgr-all-in-one"}}, slices.Equal) ||
+		!slices.Equal(f.ready, []string{"127.0.0.1:17381"}) {
+		t.Errorf("commands %q, ready %q", f.commands, f.ready)
+	}
+}
+
+// TestPlan_ControllerACME: a controller with a KEK in a systemd credential and ACME from Let's
+// Encrypt staging initialises, sets the instance's ACME directory and e-mail before its first
+// start, and loads the credential in its unit; without a unit nothing is started.
+func TestPlan_ControllerACME(t *testing.T) {
+	f := &fakeHost{}
+	h := newHost(t, f)
+	p, err := setup.New(setup.Values{Role: setup.Controller, PublicURL: "https://panel.example.com", TLS: setup.TLSACME,
+		ACMEDirectory: "staging", ACMEEmail: "ops@example.com", NoUnit: true}, h)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r, err := p.Run(context.Background(), nil); err != nil || r.Unit != "" || r.FirstUserLink == "" {
+		t.Fatalf("run: %+v %v", r, err)
+	}
+	db, err := store.OpenSQLite(context.Background(), filepath.Join(h.Paths.Lib, "controller.db"), store.SQLiteOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+	inst, _, err := settings.Instance(storetest.SystemCtx(t), db.ReadClient())
+	if err != nil || inst.GetAcmeDirectoryUrl() != setup.StagingDirectory || inst.GetAcmeEmail() != "ops@example.com" {
+		t.Fatalf("instance settings %v %v", inst, err)
+	}
+	if _, err := os.Stat(filepath.Join(h.Paths.Etc, "credstore", "rpmgr-kek")); err != nil {
+		t.Errorf("the KEK credential: %v", err)
+	}
+	if len(f.commands) != 0 || len(f.ready) != 0 {
+		t.Errorf("without a unit: commands %q, ready %q", f.commands, f.ready)
+	}
+}
+
+// TestPlan_PrivateName: a controller whose name no public CA certifies makes its own self-signed
+// certificate, so setup writes no certificate files for it.
+func TestPlan_PrivateName(t *testing.T) {
+	h := newHost(t, &fakeHost{})
+	p, err := setup.New(setup.Values{Role: setup.Controller, PublicURL: "https://rpmgr.home.arpa", KEKSource: config.KEKFile,
+		TLS: setup.TLSSelfSigned, ListenHTTP: "off", NoUnit: true}, h)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, data := p.BootFile()
+	var cfg config.Controller
+	if err := config.Parse(data, &cfg); err != nil || cfg.TLS.CertFile != "" || *cfg.Listen.HTTP != "" {
+		t.Errorf("boot file %q: %v", data, err)
+	}
+	if steps := strings.Join(p.Steps(), "\n"); strings.Contains(steps, "self-signed") {
+		t.Errorf("steps\n%s", steps)
+	}
+}
+
+// TestPlan_KeepsCertificate: a self-signed certificate an earlier run made is used, not made again.
+func TestPlan_KeepsCertificate(t *testing.T) {
+	h := newHost(t, &fakeHost{})
+	dir := filepath.Join(h.Paths.Etc, "tls")
+	write(t, filepath.Join(dir, "panel.example.com.crt"), "")
+	write(t, filepath.Join(dir, "panel.example.com.key"), "")
+	p, err := setup.New(setup.Values{Role: setup.Controller, PublicURL: "https://panel.example.com", KEKSource: config.KEKFile,
+		TLS: setup.TLSSelfSigned, NoUnit: true}, h)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if steps := strings.Join(p.Steps(), "\n"); strings.Contains(steps, "self-signed") {
+		t.Errorf("steps\n%s", steps)
+	}
+	_, data := p.BootFile()
+	if !strings.Contains(string(data), filepath.Join(dir, "panel.example.com.crt")) {
+		t.Errorf("boot file %q", data)
 	}
 }
 

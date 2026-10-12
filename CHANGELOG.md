@@ -12,6 +12,10 @@ history and the [ADRs](docs/adr/).
 
 ### Added
 
+- All roles: `rpmgr setup --role <role>` sets a host up from its flags: the user and directories,
+  the boot file, the controller's init or the agent's enrollment, a connector's local policy and
+  proxy, and the systemd unit, started and checked for readiness. It shows the plan before it
+  changes anything. (#435)
 - All roles: one `rpmgr` binary for Linux on amd64, arm64, armv7 and riscv64 runs every role:
   `rpmgr controller`, `gateway`, `connector` and `all-in-one`, each from a strictly checked YAML
   boot file. `rpmgr version` names the build. (#174, #196, #260, #266, #267, #384)

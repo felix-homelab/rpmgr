@@ -47,12 +47,16 @@ type Host struct {
 	IsRoot func() bool
 	// SystemdVersion is systemctl's version; 0 without systemd.
 	SystemdVersion func() int
+	// Encrypt is `systemd-creds encrypt`, for a KEK in a systemd credential.
+	Encrypt func(ctx context.Context, name, path string, b []byte) error
 	// Enroll enrolls a gateway or connector (agent.Enroll).
 	Enroll func(ctx context.Context, o agent.EnrollOptions) (agent.Identity, error)
 	// Ready waits until the admin listener at addr reports ready.
 	Ready func(ctx context.Context, addr string) error
 	// PortFree reports whether a TCP address can be listened on.
 	PortFree func(addr string) bool
+	Getenv   func(string) string
+	Now      func() time.Time
 }
 
 func (h *Host) defaults() {
@@ -95,6 +99,12 @@ func (h *Host) defaults() {
 			_ = ln.Close()
 			return true
 		}
+	}
+	if h.Getenv == nil {
+		h.Getenv = os.Getenv
+	}
+	if h.Now == nil {
+		h.Now = time.Now
 	}
 }
 
