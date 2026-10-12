@@ -4,9 +4,13 @@ import { createClient } from "@connectrpc/connect";
 import { useMutation, useQuery as useConnectQuery, useTransport } from "@connectrpc/connect-query";
 import { useInfiniteQuery } from "@tanstack/react-query";
 import { getRouteApi, useNavigate } from "@tanstack/react-router";
+import { CircleCheck, CircleX, ScrollText } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
+import { EmptyState } from "@/components/empty-state";
+import { PageHeader } from "@/components/page-header";
 import { Alert } from "@/components/public-page";
+import { Status, type Look } from "@/components/status";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { AuditService, type AuditEntry, type AuditVerification } from "@/gen/rpmgr/v1/audit_pb";
@@ -16,6 +20,9 @@ import { when } from "@/lib/format";
 import { useOrg } from "@/session";
 
 const route = getRouteApi("/app/audit");
+
+// The look of each result an entry records.
+const results: Record<string, Look> = { success: "ok", failure: "failed", denied: "alert" };
 
 export interface AuditSearch {
   log?: "instance";
@@ -55,26 +62,32 @@ export function Audit() {
   });
   const name = (id: string) => members.data?.members.find((m) => m.userId === id)?.displayName || id;
   const [filters, setFilters] = useState({ action: search.action ?? "", actor: search.actor ?? "" });
+  const shown = (entries.data?.pages ?? []).flatMap((p) => p.items);
+  const label = "grid gap-1.5 text-xs font-medium text-muted-foreground";
   return (
-    <section aria-labelledby="audit-title" className="grid gap-4">
-      <h1 id="audit-title" className="text-2xl font-semibold">{t(instance ? "audit.instanceTitle" : "audit.title")}</h1>
-      {session.data?.instanceAdmin && (
-        <div className="flex gap-2 text-sm" role="group" aria-label={t("audit.which")}>
-          <Button size="sm" variant={instance ? "outline" : "default"} aria-pressed={!instance} onClick={() => set({ log: undefined })}>{t("audit.orgLog")}</Button>
-          <Button size="sm" variant={instance ? "default" : "outline"} aria-pressed={instance} onClick={() => set({ log: "instance" })}>{t("audit.instanceLog")}</Button>
-        </div>
+    <section aria-labelledby="audit-title" className="grid gap-6">
+      <PageHeader id="audit-title" title={t(instance ? "audit.instanceTitle" : "audit.title")} description={t("audit.intro")}
+        actions={session.data?.instanceAdmin && (
+          <div className="flex rounded-lg border border-border bg-card p-0.5 text-sm" role="group" aria-label={t("audit.which")}>
+            <Button size="sm" variant={instance ? "ghost" : "secondary"} aria-pressed={!instance} onClick={() => set({ log: undefined })}>{t("audit.orgLog")}</Button>
+            <Button size="sm" variant={instance ? "secondary" : "ghost"} aria-pressed={instance} onClick={() => set({ log: "instance" })}>{t("audit.instanceLog")}</Button>
+          </div>
+        )} />
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <form role="search" className="flex flex-wrap items-end gap-3"
+          onSubmit={(e) => (e.preventDefault(), set({ action: filters.action.trim() || undefined, actor: filters.actor.trim() || undefined }))}>
+          <label className={label}>{t("audit.action")}<Input className="w-72 text-foreground" value={filters.action} onChange={(e) => setFilters({ ...filters, action: e.target.value })} /></label>
+          <label className={label}>{t("audit.actor")}<Input className="w-48 text-foreground" value={filters.actor} onChange={(e) => setFilters({ ...filters, actor: e.target.value })} /></label>
+          <Button type="submit" variant="outline">{t("audit.filter")}</Button>
+        </form>
+        <Verify key={instance ? "instance" : "org"} orgId={org?.orgId ?? ""} instance={instance} />
+      </div>
+      {shown.length > 0 && (
+        <ol className="divide-y divide-border rounded-xl border border-border bg-card shadow-xs">
+          {shown.map((e) => <Entry key={e.id} entry={e} actor={name(e.actorId)} />)}
+        </ol>
       )}
-      <Verify key={instance ? "instance" : "org"} orgId={org?.orgId ?? ""} instance={instance} />
-      <form role="search" className="flex flex-wrap items-end gap-2"
-        onSubmit={(e) => (e.preventDefault(), set({ action: filters.action.trim() || undefined, actor: filters.actor.trim() || undefined }))}>
-        <label className="grid gap-1 text-sm">{t("audit.action")}<Input className="w-72" value={filters.action} onChange={(e) => setFilters({ ...filters, action: e.target.value })} /></label>
-        <label className="grid gap-1 text-sm">{t("audit.actor")}<Input className="w-48" value={filters.actor} onChange={(e) => setFilters({ ...filters, actor: e.target.value })} /></label>
-        <Button type="submit" size="sm" variant="outline">{t("audit.filter")}</Button>
-      </form>
-      <ol className="grid gap-1">
-        {(entries.data?.pages ?? []).flatMap((p) => p.items).map((e) => <Entry key={e.id} entry={e} actor={name(e.actorId)} />)}
-      </ol>
-      {entries.data?.pages[0]?.items.length === 0 && <p className="text-sm">{t("audit.none")}</p>}
+      {entries.data?.pages[0]?.items.length === 0 && <EmptyState icon={ScrollText}>{t("audit.none")}</EmptyState>}
       {entries.hasNextPage && (
         <Button variant="outline" size="sm" className="justify-self-start" disabled={entries.isFetchingNextPage} onClick={() => void entries.fetchNextPage()}>
           {t("audit.more")}
@@ -87,24 +100,23 @@ export function Audit() {
 // Entry is one audit entry; its details, with the redacted request, open below it.
 function Entry({ entry: e, actor }: { entry: AuditEntry; actor: string }) {
   const { t } = useTranslation();
-  const tone = e.result === "success" ? "text-ok" : "text-destructive";
   return (
-    <li className="rounded-md border border-border px-3 py-2 text-sm">
+    <li className="px-5 py-3 text-sm">
       <details>
-        <summary className="flex cursor-pointer flex-wrap gap-x-3">
-          <span className="text-muted-foreground">{when(e.time)}</span>
-          <span className="font-medium">{e.action}</span>
-          <span>{e.targetType && `${e.targetType} ${e.targetId}`}</span>
+        <summary className="flex cursor-pointer flex-wrap items-center gap-x-4 gap-y-1">
+          <span className="text-muted-foreground tabular-nums">{when(e.time)}</span>
+          <span className="font-medium break-all">{e.action}</span>
+          <span className="text-muted-foreground">{e.targetType && `${e.targetType} ${e.targetId}`}</span>
           <span>{actor || t(`audit.actorTypes.${e.actorType}`, { defaultValue: e.actorType })}</span>
-          <span className={tone}>{t(`audit.results.${e.result}`, { defaultValue: e.result })}</span>
+          <Status look={results[e.result] ?? "unknown"}>{t(`audit.results.${e.result}`, { defaultValue: e.result })}</Status>
         </summary>
-        <dl className="mt-2 grid grid-cols-[max-content_1fr] gap-x-4 gap-y-0.5">
+        <dl className="mt-3 grid grid-cols-[max-content_1fr] gap-x-4 gap-y-1">
           {([["seq", String(e.seq)], ["actorType", e.actorType], ["credential", e.credentialId], ["authMethod", e.authMethod], ["ip", e.ip],
             ["userAgent", e.userAgent], ["requestId", e.requestId], ["reason", e.reason]] as const).filter(([, v]) => v).map(([k, v]) => (
             <div key={k} className="contents"><dt className="text-muted-foreground">{t(`audit.fields.${k}`)}</dt><dd className="break-all">{v}</dd></div>
           ))}
         </dl>
-        {e.diff && <pre className="mt-2 overflow-x-auto rounded bg-muted p-2 font-mono text-xs">{e.diff}</pre>}
+        {e.diff && <pre className="mt-3 overflow-x-auto rounded-lg bg-muted p-3 font-mono text-xs">{e.diff}</pre>}
       </details>
     </li>
   );
@@ -127,14 +139,14 @@ function Verify({ orgId, instance }: { orgId: string; instance: boolean }) {
     }
   }
   return (
-    <div className="grid gap-1 text-sm">
-      <Button size="sm" variant="outline" className="justify-self-start" disabled={org.isPending || inst.isPending} onClick={() => void go()}>{t("audit.verify")}</Button>
+    <div className="grid w-full gap-2 text-sm sm:w-auto sm:max-w-md sm:justify-items-end">
+      <Button variant="outline" disabled={org.isPending || inst.isPending} onClick={() => void go()}>{t("audit.verify")}</Button>
       {result && (
-        <p role="status" className={result.intact ? "text-ok" : "text-destructive"}>
-          <span aria-hidden="true">{result.intact ? "✓ " : "✕ "}</span>
-          {result.intact
+        <p role="status" className={`flex items-start gap-2 ${result.intact ? "text-ok" : "text-destructive"}`}>
+          {result.intact ? <CircleCheck aria-hidden="true" className="mt-0.5 size-4 shrink-0" /> : <CircleX aria-hidden="true" className="mt-0.5 size-4 shrink-0" />}
+          <span>{result.intact
             ? t("audit.intact", { seq: String(result.headSeq) }) + (result.lastCheckpoint ? ` ${t("audit.checkpoint", { seq: String(result.lastCheckpoint.seq), when: when(result.lastCheckpoint.time) })}` : "")
-            : t("audit.broken", { seq: String(result.brokenAt), problem: result.problem })}
+            : t("audit.broken", { seq: String(result.brokenAt), problem: result.problem })}</span>
         </p>
       )}
       {error && <Alert>{error}</Alert>}

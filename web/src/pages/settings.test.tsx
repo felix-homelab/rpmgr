@@ -212,6 +212,23 @@ describe("Settings", () => {
     page({ path: "/settings/updates" });
     expect(await screen.findByText("Only the Instance Admin sees and changes these.")).toBeTruthy();
     expect(screen.queryByRole("form", { name: "Updates" })).toBeNull();
+    // Others get no tabs to the instance's pages, only the way back.
+    expect(screen.queryByRole("navigation", { name: "Instance pages" })).toBeNull();
+    expect(within(screen.getByRole("main")).getByRole("link", { name: "Settings" }).getAttribute("href")).toBe("/settings");
+  });
+
+  it("leads the Instance Admin between the settings, PKI and Updates, marking the current page", async () => {
+    page({ admin: true, path: "/settings/updates" });
+    const tabs = within(await screen.findByRole("navigation", { name: "Instance pages" }));
+    expect(tabs.getAllByRole("link").map((a) => [a.textContent, a.getAttribute("href")])).toEqual([
+      ["Settings", "/settings"], ["PKI", "/settings/pki"], ["Updates", "/settings/updates"],
+    ]);
+    await waitFor(() => expect(tabs.getByRole("link", { name: "Updates" }).getAttribute("aria-current")).toBe("page"));
+    expect(tabs.getByRole("link", { name: "Settings" }).getAttribute("aria-current")).toBeNull(); // not on every page under /settings
+    cleanup();
+    page({ path: "/settings" });
+    await screen.findByRole("form", { name: "Organisation settings" });
+    expect(screen.queryByRole("navigation", { name: "Instance pages" })).toBeNull();
   });
 
   it("warns the Instance Admin of a revocation log without an off-host copy, and alerts on one waiting for its sink", async () => {

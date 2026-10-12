@@ -397,10 +397,11 @@ flowchart LR
 
 - **`/audit`** shows the org's audit log, newest first, 100 entries at a time with "Older entries".
   The Instance Admin can switch to the instance's log.
-- **Each entry** shows time, action, target, actor (by name for members) and result. Opened, it
-  shows the entry number, credential, authentication, address, user agent, request ID, reason, and
-  the redacted request, as text.
-- **Filters:** action (exact) and actor ID, kept in the URL (U9).
+- **Each entry** shows time, action, target, actor (by name for members) and result, the result as
+  a status badge. Opened, it shows the entry number, credential, authentication, address, user
+  agent, request ID, reason, and the redacted request, as text.
+- **Filters:** action (exact) and actor ID, kept in the URL (U9). When no entry matches, the page
+  says so instead of showing an empty list.
 - **"Verify the chain"** checks the hash chain from its last signed checkpoint. It says whether the
   chain is intact up to which entry, with the checkpoint, or where it broke and why
   ([04](04-security.md#audit-log)).
@@ -418,6 +419,8 @@ flowchart LR
   - Emptying the relay's address removes the mail relay.
   - The relay's password is write-only. The page says whether one is set, and replaces or removes
     it.
+- **The Instance Admin** moves between `/settings`, `/settings/pki` and `/settings/updates` by tabs
+  under the page header, which mark the current page. Others see no tabs.
 - **`/settings/pki`** shows the trust domain and the root's pin, as `rpmgr enroll --ca-pin` takes
   it. It lists each key whose certificate has not expired, with its kind, state, subject, validity,
   and when the schedule replaces it ([04](04-security.md#pki-and-identity)).
@@ -569,7 +572,8 @@ flowchart LR
   - A reset link opens `/reset#<token>`, which sets a new password. The user then signs in again,
     because the reset ended every session.
 - `/forgot` asks for a reset link by e-mail. Its answer does not depend on whether the address
-  belongs to an account. Without a mail relay, it says to ask an Owner or the Instance Admin.
+  belongs to an account. Without a mail relay, it says to ask an Owner or the Instance Admin. A
+  link leads back to sign in.
 - New passwords are checked in the browser for length (12 to 256 characters) and for a matching
   repetition before they are sent.
 - **Step-up.** An action the API answers with `STEP_UP_REQUIRED` opens a dialog over the page

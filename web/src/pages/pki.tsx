@@ -7,7 +7,10 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Command } from "@/components/one-time-token";
 import { Alert } from "@/components/public-page";
+import { Status, type Look } from "@/components/status";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Table, TD, TH, THead, TR } from "@/components/ui/table";
 import { CAKeyKind, CAKeyState, PkiService, type CAKey } from "@/gen/rpmgr/v1/pki_pb";
 import { Reason, reasonOf } from "@/lib/errors";
 import { when } from "@/lib/format";
@@ -22,11 +25,11 @@ const kinds: Record<CAKeyKind, string> = {
   [CAKeyKind.CA_KEY_KIND_AUDIT_CHECKPOINT]: "auditCheckpoint",
 };
 
-const states: Record<CAKeyState, string> = {
-  [CAKeyState.CA_KEY_STATE_UNSPECIFIED]: "unspecified",
-  [CAKeyState.CA_KEY_STATE_NEXT]: "next",
-  [CAKeyState.CA_KEY_STATE_ACTIVE]: "active",
-  [CAKeyState.CA_KEY_STATE_RETIRED]: "retired",
+const states: Record<CAKeyState, [string, Look]> = {
+  [CAKeyState.CA_KEY_STATE_UNSPECIFIED]: ["unspecified", "unknown"],
+  [CAKeyState.CA_KEY_STATE_NEXT]: ["next", "pending"],
+  [CAKeyState.CA_KEY_STATE_ACTIVE]: ["active", "ok"],
+  [CAKeyState.CA_KEY_STATE_RETIRED]: ["retired", "off"],
 };
 
 // Pki shows the Instance Admin the CA's keys and the root's pin, rotates the intermediate, and
@@ -47,41 +50,40 @@ function Keys() {
   const status = useQuery(PkiService.method.getPkiStatus, {});
   const s = status.data;
   return (
-    <section aria-labelledby="pki-keys" className="grid gap-3">
-      <h2 id="pki-keys" className="text-lg font-semibold">{t("pki.keys")}</h2>
+    <Card title={t("pki.keys")}>
       {status.error && <Alert>{status.error.rawMessage}</Alert>}
       {s && (
         <>
           <p className="text-sm">{t("pki.trustDomain")} <code className="font-mono">{s.trustDomain}</code></p>
-          <div className="grid gap-1 text-sm">
+          <div className="grid gap-1.5 text-sm font-medium">
             {t("pki.rootPin")}
             <Command command={s.rootPin} label={t("pki.rootPin")} />
           </div>
-          <table className="w-full text-left text-sm">
-            <thead className="text-muted-foreground">
-              <tr>{["kind", "state", "subject", "valid", "rotates"].map((c) => <th key={c} scope="col" className="py-1 font-medium">{t(`pki.columns.${c}`)}</th>)}</tr>
-            </thead>
+          <Table framed={false}>
+            <THead>
+              <tr>{["kind", "state", "subject", "valid", "rotates"].map((c) => <TH key={c}>{t(`pki.columns.${c}`)}</TH>)}</tr>
+            </THead>
             <tbody>
               {s.keys.map((k, i) => <KeyRow key={i} k={k} />)}
             </tbody>
-          </table>
+          </Table>
           <Rotate />
         </>
       )}
-    </section>
+    </Card>
   );
 }
 
 function KeyRow({ k }: { k: CAKey }) {
   const { t } = useTranslation();
   return (
-    <tr className="border-t border-border align-top">
-      <td className="py-2 font-medium">{t(`pki.kinds.${kinds[k.kind]}`)}</td>
-      <td className="py-2">{t(`pki.states.${states[k.state]}`)}</td>
-      <td className="py-2 font-mono text-xs break-all">{k.subject}</td>
-      <td className="py-2">{t("pki.validity", { from: when(k.notBefore), to: when(k.notAfter) })}</td>
-      <td className="py-2">{k.rotateTime ? when(k.rotateTime) : "—"}</td>
-    </tr>
+    <TR>
+      <TD className="font-medium">{t(`pki.kinds.${kinds[k.kind]}`)}</TD>
+      <TD><Status look={states[k.state][1]}>{t(`pki.states.${states[k.state][0]}`)}</Status></TD>
+      <TD className="font-mono text-xs break-all">{k.subject}</TD>
+      <TD>{t("pki.validity", { from: when(k.notBefore), to: when(k.notAfter) })}</TD>
+      <TD>{k.rotateTime ? when(k.rotateTime) : "—"}</TD>
+    </TR>
   );
 }
 
@@ -110,8 +112,8 @@ function Rotate() {
   return (
     <div className="grid gap-2">
       {asking ? (
-        <div className="flex flex-wrap items-center gap-2 text-sm">
-          {t("pki.rotateAsk")}
+        <div className="flex flex-wrap items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/8 p-3 text-sm">
+          <span className="w-full sm:w-auto sm:flex-1">{t("pki.rotateAsk")}</span>
           <Button size="sm" variant="destructive" disabled={rotate.isPending} onClick={() => void run()}>{t("pki.rotateIt")}</Button>
           <Button size="sm" variant="outline" onClick={() => setAsking(false)}>{t("stepUp.cancel")}</Button>
         </div>

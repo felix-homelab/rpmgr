@@ -53,7 +53,7 @@ export function Reset() {
     return (
       <PublicPage title={t("reset.title")}>
         {token ? <Alert tone="info">{t("reset.done")}</Alert> : <Alert>{t("link.incomplete")}</Alert>}
-        <Button asChild className="mt-4"><Link to="/login" search={{}}>{t("login.submit")}</Link></Button>
+        <Button asChild className="mt-4 w-full"><Link to="/login" search={{}}>{t("login.submit")}</Link></Button>
       </PublicPage>
     );
   }
