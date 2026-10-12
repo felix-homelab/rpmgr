@@ -571,6 +571,7 @@
   },
   "domains": {
     "title": "Domains",
+    "intro": "Routes may use a hostname only under a domain the org has proved is its own. The org's certificates and CA bundles are here too.",
     "claim": "Claim a domain",
     "claimTitle": "Claim a domain",
     "claimSubmit": "Claim it",
@@ -634,6 +635,7 @@
   },
   "bundles": {
     "title": "CA bundles",
+    "intro": "The CAs that HTTPS targets verify their upstreams with.",
     "add": "Add a CA bundle",
     "addTitle": "New CA bundle",
     "editTitle": "Edit CA bundle",
@@ -647,6 +649,7 @@
   },
   "policies": {
     "title": "Access policies",
+    "intro": "Who may reach a route: by address, or with a password on HTTP routes.",
     "add": "New access policy",
     "addTitle": "New access policy",
     "editTitle": "Edit access policy",

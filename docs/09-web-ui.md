@@ -368,6 +368,7 @@ flowchart LR
 
 - **The list** (`/policies`): each policy with its description, its rules in the order they apply
   (allow or deny addresses, basic auth with its users' names), and the routes that use it.
+  Without policies, the page offers to create the first.
 - **The form** creates a policy, or changes one as the whole policy as read with its name,
   description and rules, their mask and the etag (U1).
   - **Rules** are added, removed and moved up or down.

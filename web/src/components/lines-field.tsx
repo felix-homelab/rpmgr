@@ -9,7 +9,7 @@ export function LinesField({ label, hint, value, onChange }: { label: string; hi
   return (
     <div className="grid gap-1.5">
       <label htmlFor={id} className="text-sm font-medium">{label}</label>
-      <Textarea id={id} rows={2} aria-describedby={hint ? `${id}-hint` : undefined} value={value.join("\n")}
+      <Textarea id={id} rows={2} aria-describedby={hint ? `${id}-hint` : undefined} className="min-h-16" value={value.join("\n")}
         onChange={(e) => onChange(e.target.value.split("\n").map((l) => l.trim()).filter((l, i, all) => l !== "" || i === all.length - 1))} />
       {hint && <p id={`${id}-hint`} className="text-xs text-muted-foreground">{hint}</p>}
     </div>
