@@ -11,6 +11,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -289,6 +290,36 @@ func TestRoles_RestartOnTheSameAdminAddress(t *testing.T) {
 		p.startConnector(t, nil)
 	}
 	p.dial(t)
+}
+
+// TestRoles_RunWaitsForBackgroundWork: once the gateway's or the connector's Run has returned,
+// none of its background work runs on: not its control plane, which writes the last-known-good
+// snapshot and the deny-list into the state directory, nor the gateway's certificate store and
+// status reporter. A test's temporary directory, or a restarted role, then finds the state
+// directory as the role left it.
+func TestRoles_RunWaitsForBackgroundWork(t *testing.T) {
+	work := []string{"internal/agent.(*Control).Run", "internal/gateway.(*Certificates).Run", "internal/gateway.(*reporter).run"}
+	running := func() map[string]int {
+		buf := make([]byte, 4<<20)
+		stacks := string(buf[:runtime.Stack(buf, true)])
+		n := map[string]int{}
+		for _, w := range work {
+			n[w] = strings.Count(stacks, w+"(")
+		}
+		return n
+	}
+	before := running() // left by earlier tests, if any
+	for range 5 {
+		p := newDataPlane(t)
+		p.dial(t)
+		p.stopConnector()
+		p.stopGateway()
+		for w, n := range running() {
+			if n > before[w] {
+				t.Fatalf("%s still runs after the roles' Run returned", w)
+			}
+		}
+	}
 }
 
 // TestBadSnapshotKeepsLastKnownGood (traffic clause): a snapshot the gateway rejects changes
