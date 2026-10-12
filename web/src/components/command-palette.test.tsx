@@ -103,6 +103,15 @@ describe("CommandPalette", () => {
     await waitFor(() => expect(screen.queryByRole("dialog", { name: "Go to" })).toBeNull());
   });
 
+  it("closes on a click beside it, but not on a click in it", async () => {
+    page();
+    const { box } = await open();
+    fireEvent.click(box);
+    expect(screen.getByRole("dialog", { name: "Go to" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("dialog", { name: "Go to" })); // the backdrop is the dialog's own box
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Go to" })).toBeNull());
+  });
+
   // Browsers whose scrollIntoView returns a promise: the page stays when the palette closes,
   // although it scrolled the active match into view.
   it("keeps the page when it closes after scrolling a match into view", async () => {

@@ -81,7 +81,7 @@ function StepUpDialog({ onDone, onCancel }: { onDone: () => void; onCancel: () =
 
   return (
     <dialog ref={dialog} aria-labelledby="step-up-title" onCancel={onCancel}
-      className="m-auto w-full max-w-sm rounded-lg border border-border bg-background p-6 text-foreground backdrop:bg-black/50">
+      className="m-auto w-[calc(100%-2rem)] max-w-sm rounded-xl border border-border bg-card p-6 shadow-2xl">
       <h2 id="step-up-title" className="text-lg font-semibold">{t("stepUp.title")}</h2>
       <p className="mt-2 text-sm text-muted-foreground">{t("stepUp.intro")}</p>
       <form onSubmit={submit} className="mt-4 grid gap-4" noValidate>

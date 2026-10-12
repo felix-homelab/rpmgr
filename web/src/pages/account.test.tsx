@@ -41,19 +41,34 @@ describe("Account", () => {
     await waitFor(() => expect(document.documentElement.dataset.theme).toBe("dark"));
   });
 
-  it("changes the name and the theme together, and applies the theme at once", async () => {
-    const { updates } = account(Theme.SYSTEM);
+  it("changes the name and keeps the theme, which the top bar's switch chooses", async () => {
+    const { updates } = account(Theme.DARK);
     const profile = await section("Profile");
     const name = await profile.findByLabelText("Your name");
     expect((name as HTMLInputElement).value).toBe("Ada");
     expect((profile.getByLabelText("E-mail address") as HTMLInputElement).readOnly).toBe(true);
-    expect((profile.getByLabelText("Like the system") as HTMLInputElement).checked).toBe(true);
+    expect(profile.getByText("The theme is chosen with the switch in the top bar.")).toBeTruthy();
+    expect(profile.queryByRole("radio")).toBeNull();
     fireEvent.change(name, { target: { value: "Ada L." } });
-    fireEvent.click(profile.getByLabelText("Light"));
     fireEvent.click(profile.getByRole("button", { name: "Save" }));
     expect((await profile.findByRole("status")).textContent).toBe("Saved.");
-    expect(updates.map((u) => [u.displayName, u.theme])).toEqual([["Ada L.", Theme.LIGHT]]);
-    expect(document.documentElement.dataset.theme).toBe("light");
+    expect(updates.map((u) => [u.displayName, u.theme])).toEqual([["Ada L.", Theme.UNSPECIFIED]]);
+    expect(document.documentElement.dataset.theme).toBe("dark");
+  });
+
+  it("says why the name was not saved", async () => {
+    show("/account", auth(), (router) =>
+      router.service(UserService, {
+        getMe: () => ({ user: { id: "usr_ada", email: "ada@example.com", displayName: "Ada", theme: Theme.SYSTEM } }),
+        updateMe: () => {
+          throw new ConnectError("display_name: value length must be at most 100 characters", Code.InvalidArgument);
+        },
+      }),
+    );
+    const profile = await section("Profile");
+    fireEvent.change(await profile.findByLabelText("Your name"), { target: { value: "x".repeat(101) } });
+    fireEvent.click(profile.getByRole("button", { name: "Save" }));
+    expect((await profile.findByRole("alert")).textContent).toMatch(/at most 100 characters/);
   });
 
   it("changes the password", async () => {
@@ -85,8 +100,9 @@ describe("Account", () => {
     await waitFor(() => expect(password.getByRole("alert").textContent).toBe("The current password is wrong."));
   });
 
-  it("is linked from the header", async () => {
+  it("is linked from the user menu", async () => {
     show("/", auth(), (router) => router.service(UserService, { getMe: () => ({ user: { id: "usr_ada", theme: Theme.SYSTEM } }) }));
-    expect((await screen.findByRole("link", { name: "Ada" })).getAttribute("href")).toBe("/account");
+    fireEvent.click(await screen.findByRole("button", { name: "User menu: Ada" }));
+    expect(screen.getByRole("link", { name: "Your account" }).getAttribute("href")).toBe("/account");
   });
 });

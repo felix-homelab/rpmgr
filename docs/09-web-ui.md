@@ -21,7 +21,7 @@ endpoints.
 | U7 | **Dangerous actions are deliberate** | Deleting, revoking, minting enrollment tokens, granting roles, opening a shell, adopting or releasing DNS records and approving a held DNS zone's plan need a confirmation that names the object. Where [04](04-security.md#human-authentication-and-sessions) requires step-up re-authentication, the UI asks for it inline and keeps the user's place. |
 | U8 | **Accessible** | [T] WCAG 2.2 AA: full keyboard operation, visible focus, labels on every control, ARIA live regions for apply-status changes, contrast in both themes, no information carried by colour alone (status chips have an icon and text). |
 | U9 | **Fast to navigate** | A command palette (`Ctrl/⌘ K`) jumps to any resource by name or ID and runs common actions ("create route", "enroll connector"). Lists are paginated on the server, filterable and sortable, and keep their filter state in the URL. |
-| U10 | **Light, dark and system themes** | Follows the OS preference by default; the user's choice is stored server-side in their profile. |
+| U10 | **Light, dark and system themes** | Follows the OS preference by default; the user's choice is stored server-side in their profile and is changed with the switch in the top bar ([Layout and navigation](#layout-and-navigation)). |
 | U11 | **Localised** | English is the source language. Translations use i18next with the same keys. Missing keys fall back to **English**, so a partial translation never shows raw keys or another language. Phase 1 ships English only ([D32](14-open-decisions.md#project-and-process)); every string is keyed from the start, so further languages are translation files without code changes. |
 
 ## Information architecture
@@ -70,6 +70,55 @@ flowchart LR
 | **Phase 3: Shell** | A tab in the connector detail. It appears only when the connector's local policy allows it and the user has an explicit `connector.shell` grant. Opening it needs step-up re-authentication. | Explicit grant |
 
 ## Key screens
+
+### Layout and navigation
+
+```
+┌────────────────┬───────────────────────────────────────────────────────────────────────┐
+│ ◆ rpmgr        │ [⌕ Go to…                     Ctrl K]            [▣|☀|☾]  (A) Ada ▾   │
+│                ├───────────────────────────────────────────────────────────────────────┤
+│ ▣ Overview     │ Routes                                              [+ Create route]  │
+│                │                                                                       │
+│ NETWORK        │ ┌───────────────────────────────────────────────────────────────────┐ │
+│ ⇄ Routes       │ │ the page's content: cards, tables and forms                       │ │
+│ ⌁ Connectors   │ └───────────────────────────────────────────────────────────────────┘ │
+│ ▤ Gateways     │                                                                       │
+│                │                                                                       │
+│ SECURITY       │                                                                       │
+│ ◎ Domains & c… │                                                                       │
+│ ⛨ Access pol…  │                                                                       │
+│                │                                                                       │
+│ ADMINISTRATION │                                                                       │
+│ ⚇ Organisation │                                                                       │
+│ ≡ Audit log    │                                                                       │
+│ ⚙ Settings     │                                                                       │
+└────────────────┴───────────────────────────────────────────────────────────────────────┘
+```
+
+- **The sidebar** lists the pages in groups, each with an icon and its name: Overview; *Network*
+  with Routes, Connectors and Gateways; *Security* with Domains & certificates and Access policies;
+  *Administration* with Organisation, Audit log and Settings. The current page is marked, also for
+  screen readers (`aria-current`).
+- **On screens narrower than 1024 px** the sidebar is a menu behind a button in the top bar. It
+  opens from the left as a modal dialog, and Escape, a click beside it, its close button and
+  choosing a page close it.
+- **The top bar** holds "Go to…", which opens the [command palette](#command-palette), the theme
+  switch and the user menu. It stays at the top while the page scrolls.
+- **The theme switch** chooses *like the system*, *light* or *dark* (U10). It is a group of radio
+  buttons, so the arrow keys move through the themes. The choice applies at once and is saved to
+  the profile, with the display name unchanged, so it follows the user to every browser. If it
+  cannot be saved, the stored theme comes back and the switch says why.
+- **The user menu** shows the user's name and e-mail address, and leads to the account page and to
+  signing out. Escape, a click elsewhere or a choice close it.
+- **The look:** slate surfaces with an indigo accent, in a light and a dark theme. Every text colour
+  keeps a contrast of at least 4.5:1 on the surfaces it is drawn on, and control borders, the focus
+  outline and chart lines at least 3:1, in both themes (U8). Pages are built from a header with the
+  page's actions, cards, tables and status badges. A status badge always has an icon and text.
+- **Icons** come from lucide-react and are bundled with the UI, so the CSP needs no other origin
+  ([Frontend architecture](#frontend-architecture)). They are hidden from screen readers; their
+  name is always in the text next to them or in the control's label.
+- **Pages that need no session** (sign-in, setup, resets, invitations) show their form as a card in
+  the middle of the page, under the product's mark.
 
 ### Routes list
 
@@ -143,14 +192,15 @@ flowchart LR
 
 ### Command palette
 
-- **`Ctrl K` or `⌘ K`** on any signed-in page, or "Go to…" in the header, opens the palette (U9).
+- **`Ctrl K` or `⌘ K`** on any signed-in page, or "Go to…" in the top bar, opens the palette (U9).
 - **Without a query** it offers the pages and the actions "Create a route" and "Enroll a
   connector".
 - **A query** also finds routes, connectors, gateway groups and gateways. They are found by name,
   labels that start with the query first, or by the start of their ID. At most 50 matches are
   shown.
 - **Keyboard:** the arrow keys move through the matches, `Enter` runs one and `Escape` closes the
-  palette. It is a combobox with a list box, so screen readers announce the active match.
+  palette, as does a click beside it. It is a combobox with a list box, so screen readers announce
+  the active match.
 - **Linkable dialog:** the enroll dialog's state is in the connectors page's URL, so the palette, or
   a link, can open it.
 
@@ -455,7 +505,7 @@ flowchart LR
 | Routing | TanStack Router, with typed routes and URL search params for list filters | — |
 | Server state | TanStack Query through **connect-query**, with generated clients for `rpmgr.v1` | One generated client; no hand-written API layer |
 | Live updates | Connect **server streaming** for events (apply status, agent status) and live logs | WebSockets only for the Phase 3 shell |
-| Components | shadcn/ui on Radix primitives, styled with Tailwind | — |
+| Components | shadcn/ui on Radix primitives, styled with Tailwind; icons from lucide-react | The look of [Layout and navigation](#layout-and-navigation) |
 | Forms | react-hook-form with **protovalidate-es** as its resolver, so the form checks the same proto rules the server enforces, for immediate feedback only (VB-16, resolved). **The server's protovalidate result is authoritative**, and the server's field errors (`buf.validate.Violations`) are mapped back onto form fields; a violation of a field the form does not edit is shown with the form | Forms submit the full typed resource (U1) |
 | YAML editing | CodeMirror 6 with a YAML mode and schema-driven completion | Smaller than Monaco ([08](08-software-stack.md#frontend)) |
 | Terminal (Phase 3) | xterm.js over a WebSocket with a single-use ticket ([04](04-security.md#human-authentication-and-sessions)) | — |
@@ -474,7 +524,11 @@ flowchart LR
 - **Text.** Every string is `t("key")` with its English text in `src/locales/en.json`. A unit test
   fails when the code uses a key without English text.
 - **Components.** shadcn/ui components are copied into `src/components/ui/` with their MIT license
-  notice.
+  notice. Pages build on them and on the shared parts in `src/components/`, such as the sidebar's
+  list of pages, which the command palette also offers.
+- **Colours.** Both themes are custom properties in `src/index.css`. The dark ones are written once,
+  for the user's choice and for the system's preference alike, and Tailwind's `dark:` variant
+  follows the same rule. A unit test checks the contrast of each theme's pairs (U8).
 - **Tests.** Vitest with jsdom. The API is answered by Connect's router transport, so tests need
   no server.
 - **Libraries in chunks of their own.** React, TanStack, Protobuf-ES with Connect, and the
@@ -503,11 +557,11 @@ flowchart LR
   an authenticator. After `StepUp` it runs the action again, so the user keeps their place.
   Cancelling ends the action with the API's error. Pages run such actions through `useStepUp()`.
 
-**Account** (`/account`, opened by the user's name in the header):
-- **Profile:** the display name and the theme. The e-mail address is shown, but it cannot be
-  changed there.
-- **The theme** applies at once, and on every page from the profile, so it follows the user to
-  every browser. "Like the system" follows the operating system's preference.
+**Account** (`/account`, opened from the user menu in the top bar):
+- **Profile:** the display name. The e-mail address is shown, but it cannot be changed there. The
+  theme is chosen with the switch in the top bar ([Layout and navigation](#layout-and-navigation));
+  every page applies it from the profile, so it follows the user to every browser. "Like the
+  system" follows the operating system's preference.
 - **Password:** the change needs the current password, and it ends the user's other sessions.
 - **Two-factor authentication:** setting up an authenticator, renewing the recovery codes and
   removing the authenticator each need a step-up and end the user's other sessions.
@@ -574,6 +628,8 @@ In Phase 1 the UI works in the user's first org. The org switcher comes with the
   step-up prompt, token creation and revocation.
 - Every page a Playwright flow visits is checked with axe for WCAG 2.2 A and AA. A flow also fails
   on any CSP violation, and on anything in `localStorage` or `sessionStorage`.
+- A unit test computes the contrast of every text colour on its surfaces, 4.5:1, and of control
+  borders, the focus outline and chart lines, 3:1, in both themes.
 - Accessibility checks (axe) in CI on every page, plus manual keyboard and screen-reader passes per
   release.
 - Security checks (CSP present, no tokens in storage, `dangerouslySetInnerHTML` lint) are part of

@@ -1,93 +1,78 @@
 // SPDX-License-Identifier: Apache-2.0
 
-import { useMutation, useQuery } from "@connectrpc/connect-query";
-import { useQueryClient } from "@tanstack/react-query";
-import { Link, Outlet, useNavigate } from "@tanstack/react-router";
-import { useEffect } from "react";
+import { useQuery } from "@connectrpc/connect-query";
+import { Outlet } from "@tanstack/react-router";
+import { Menu, X } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { CommandPalette } from "@/components/command-palette";
+import { Brand, Nav } from "@/components/nav";
 import { RestoreReviewBanner } from "@/components/restore-review";
+import { ThemeSwitch } from "@/components/theme-switch";
 import { Button } from "@/components/ui/button";
-import { AuthService } from "@/gen/rpmgr/v1/auth_pb";
+import { UserMenu } from "@/components/user-menu";
 import { UserService } from "@/gen/rpmgr/v1/user_pb";
 import { applyTheme } from "@/theme";
 
+// Layout frames every signed-in page (docs/09-web-ui.md, "Layout and navigation"): the sidebar,
+// which is a menu behind a button on small screens, and the top bar with "Go to…", the theme switch
+// and the user menu.
 export function Layout() {
   const { t } = useTranslation();
-  const session = useQuery(AuthService.method.getSession, {});
-  const me = useQuery(UserService.method.getMe, {});
-  const theme = me.data?.user?.theme;
+  const theme = useQuery(UserService.method.getMe, {}).data?.user?.theme;
   useEffect(() => {
     if (theme !== undefined) {
       applyTheme(theme);
     }
   }, [theme]);
-  const logout = useMutation(AuthService.method.logout);
-  const queryClient = useQueryClient();
-  const navigate = useNavigate();
-
-  async function signOut() {
-    try {
-      await logout.mutateAsync({});
-    } finally {
-      queryClient.clear();
-      await navigate({ to: "/login", search: {} });
-    }
-  }
+  const [menu, setMenu] = useState(false);
 
   return (
-    <div className="min-h-screen bg-background text-foreground">
-      <a href="#main" className="sr-only focus:not-sr-only focus:absolute focus:p-2">
+    <div className="min-h-dvh">
+      <a href="#main" className="sr-only focus:not-sr-only focus:fixed focus:top-3 focus:left-3 focus:z-50 focus:rounded-lg focus:bg-card focus:px-3 focus:py-2 focus:shadow-lg">
         {t("app.skip")}
       </a>
-      <header className="border-b border-border">
-        <div className="mx-auto flex max-w-6xl items-center gap-6 px-4 py-3">
-          <span className="font-semibold">{t("app.name")}</span>
-          {/* Each link is at least 24 px high, the target size of WCAG 2.2 AA, however the header wraps. */}
-          <nav aria-label={t("app.nav")}>
-            <Link to="/" className="inline-block min-h-6 py-0.5 text-muted-foreground [&.active]:text-foreground [&.active]:font-medium">
-              {t("nav.overview")}
-            </Link>
-            <Link to="/routes" search={{}} className="ml-4 inline-block min-h-6 py-0.5 text-muted-foreground [&.active]:text-foreground [&.active]:font-medium">
-              {t("nav.routes")}
-            </Link>
-            <Link to="/connectors" search={{}} className="ml-4 inline-block min-h-6 py-0.5 text-muted-foreground [&.active]:text-foreground [&.active]:font-medium">
-              {t("nav.connectors")}
-            </Link>
-            <Link to="/gateways" className="ml-4 inline-block min-h-6 py-0.5 text-muted-foreground [&.active]:text-foreground [&.active]:font-medium">
-              {t("nav.gateways")}
-            </Link>
-            <Link to="/domains" className="ml-4 inline-block min-h-6 py-0.5 text-muted-foreground [&.active]:text-foreground [&.active]:font-medium">
-              {t("nav.domains")}
-            </Link>
-            <Link to="/policies" className="ml-4 inline-block min-h-6 py-0.5 text-muted-foreground [&.active]:text-foreground [&.active]:font-medium">
-              {t("nav.policies")}
-            </Link>
-            <Link to="/org" className="ml-4 inline-block min-h-6 py-0.5 text-muted-foreground [&.active]:text-foreground [&.active]:font-medium">
-              {t("nav.org")}
-            </Link>
-            <Link to="/audit" search={{}} className="ml-4 inline-block min-h-6 py-0.5 text-muted-foreground [&.active]:text-foreground [&.active]:font-medium">
-              {t("nav.audit")}
-            </Link>
-            <Link to="/settings" className="ml-4 inline-block min-h-6 py-0.5 text-muted-foreground [&.active]:text-foreground [&.active]:font-medium">
-              {t("nav.settings")}
-            </Link>
-          </nav>
-          <div className="ml-auto flex items-center gap-3 text-sm">
+      <aside className="fixed inset-y-0 left-0 z-30 hidden w-64 flex-col border-r border-border bg-sidebar lg:flex">
+        <Brand />
+        <Nav className="flex-1 overflow-y-auto px-3 pt-2 pb-6" />
+      </aside>
+      {menu && <MenuDrawer onClose={() => setMenu(false)} />}
+      <div className="lg:pl-64">
+        <header className="sticky top-0 z-20 flex h-16 items-center gap-2 border-b border-border bg-background/85 px-4 backdrop-blur sm:gap-3 sm:px-6 lg:px-8">
+          <Button variant="ghost" size="icon" className="-ml-2 lg:hidden" aria-label={t("app.openMenu")} onClick={() => setMenu(true)}>
+            <Menu aria-hidden="true" />
+          </Button>
+          <div className="min-w-0 flex-1">
             <CommandPalette />
-            <Link to="/account" className="text-muted-foreground hover:text-foreground [&.active]:text-foreground">
-              {session.data?.displayName || session.data?.email}
-            </Link>
-            <Button variant="outline" size="sm" onClick={() => void signOut()} disabled={logout.isPending}>
-              {t("app.signOut")}
-            </Button>
           </div>
-        </div>
-      </header>
-      <RestoreReviewBanner />
-      <main id="main" className="mx-auto max-w-6xl px-4 py-6">
-        <Outlet />
-      </main>
+          <ThemeSwitch />
+          <UserMenu />
+        </header>
+        <RestoreReviewBanner />
+        <main id="main" tabIndex={-1} className="mx-auto w-full max-w-7xl px-4 py-6 focus:outline-none sm:px-6 lg:px-8 lg:py-8">
+          <Outlet />
+        </main>
+      </div>
     </div>
+  );
+}
+
+// MenuDrawer is the sidebar on small screens: a modal dialog from the left, which Escape, a click
+// beside it, its close button and choosing a page close.
+function MenuDrawer({ onClose }: { onClose: () => void }) {
+  const { t } = useTranslation();
+  const dialog = useRef<HTMLDialogElement>(null);
+  useEffect(() => dialog.current?.showModal(), []);
+  return (
+    <dialog ref={dialog} aria-label={t("app.menu")} onCancel={onClose} onClick={(e) => e.target === e.currentTarget && onClose()}
+      className="m-0 h-dvh max-h-dvh w-72 max-w-[85vw] border-r border-border bg-sidebar p-0 shadow-xl">
+      <div className="flex items-center justify-between pr-3">
+        <Brand />
+        <Button variant="ghost" size="icon" aria-label={t("app.closeMenu")} onClick={onClose}>
+          <X aria-hidden="true" />
+        </Button>
+      </div>
+      <Nav className="px-3 pt-2 pb-6" onNavigate={onClose} />
+    </dialog>
   );
 }

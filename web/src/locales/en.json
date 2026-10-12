@@ -3,6 +3,11 @@
     "name": "rpmgr",
     "skip": "Skip to content",
     "nav": "Main navigation",
+    "menu": "Menu",
+    "openMenu": "Open the menu",
+    "closeMenu": "Close the menu",
+    "userMenu": "User menu: {{name}}",
+    "account": "Your account",
     "signOut": "Sign out"
   },
   "nav": {
@@ -14,7 +19,12 @@
     "policies": "Access policies",
     "org": "Organisation",
     "audit": "Audit log",
-    "settings": "Settings"
+    "settings": "Settings",
+    "groups": {
+      "network": "Network",
+      "security": "Security",
+      "admin": "Administration"
+    }
   },
   "overview": {
     "title": "Overview",
@@ -83,12 +93,16 @@
       "light": "Light",
       "dark": "Dark"
     },
+    "themeHint": "The theme is chosen with the switch in the top bar.",
     "save": "Save",
     "saved": "Saved.",
     "password": "Password",
     "currentPassword": "Current password",
     "changePassword": "Change the password",
     "passwordChanged": "Your password is changed, and your other sessions have ended."
+  },
+  "theme": {
+    "failed": "The theme was not saved: {{message}}"
   },
   "mfa": {
     "title": "Two-factor authentication",

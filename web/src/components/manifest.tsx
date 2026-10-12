@@ -49,7 +49,7 @@ function ManifestDialog({ title, what, onClose }: { title: string; what: What; o
   }
   return (
     <dialog ref={dialog} aria-labelledby={id} onCancel={onClose}
-      className="m-auto w-full max-w-3xl rounded-lg border border-border bg-background p-6 text-foreground backdrop:bg-black/50">
+      className="m-auto w-[calc(100%-2rem)] max-w-3xl rounded-xl border border-border bg-card p-6 shadow-2xl">
       <div className="grid gap-3">
         <h2 id={id} className="text-lg font-semibold">{title}</h2>
         {exported.error && <Alert>{exported.error.rawMessage}</Alert>}
