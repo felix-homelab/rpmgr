@@ -1,71 +1,330 @@
 # rpmgr — Reverse Proxy Manager
 
-**Status: Phase 1 (MVP) is implemented; its exit criteria and the first release, v0.1.0, are in
-progress ([13](docs/13-roadmap.md#phase-1--mvp)). Nothing is released yet.**
+**Publish the services on your private network on the internet, securely, from one web UI.**
 
-rpmgr publishes services that run on private networks — behind NAT, CGNAT or firewalls — through
-public gateways, and manages them from one control plane. It is built as **one product**: one
-identity system, one typed configuration model, one protocol, one UI.
+rpmgr makes services that run behind NAT, CGNAT or a firewall reachable from the internet: a NAS,
+a dashboard, an internal API, a game server. An agent in your network dials out to a public server
+you own, and that server passes the traffic through. You need no port forwarding, no
+public IP address at home and no inbound firewall rule.
+
+> [!NOTE]
+> rpmgr has no stable release yet. The current builds are release candidates of v0.1.0
+> ([Releases](https://github.com/felix-homelab/rpmgr/releases)). Try it out, expect rough edges,
+> and [report what you find](https://github.com/felix-homelab/rpmgr/issues).
+
+## Why rpmgr
+
+- **Nothing to open at home.** Connectors only dial out, on port 443. They work behind NAT, CGNAT
+  and strict firewalls, and through an HTTP or SOCKS5 proxy where only a proxy leads out.
+- **HTTPS without effort.** Gateways obtain and renew certificates from Let's Encrypt, or any other
+  ACME CA, for every hostname you publish.
+- **Any protocol.** Websites and APIs over HTTP/1.1, HTTP/2, WebSocket and gRPC; raw TCP and UDP
+  ports; TLS passed through to your service still encrypted.
+- **One place to manage it all.** A web UI, a command line and an API for routes, connectors,
+  gateways, domains, certificates, access rules, members and the audit log.
+- **Changes you can trust.** Preview a route before you save it and watch every gateway and
+  connector apply it. A change never interrupts the routes it does not touch, and an agent that
+  rejects a change keeps running its last good configuration.
+- **Secure by default.** No default password and no shared secret: every gateway and connector has
+  its own short-lived certificate, and every link between them is mutual TLS 1.3. A file on each
+  connector host decides what that connector may reach, whatever the server tells it.
+- **One binary.** `rpmgr` is a single static binary for every role, for Linux on amd64, arm64,
+  armv7 and riscv64: from a cloud server to a Raspberry Pi.
+
+## How it works
 
 ```mermaid
 flowchart LR
-  P[Public clients] --> G[Gateway<br/>public ingress]
-  G <-->|QUIC or TLS + HTTP/2<br/>mutual TLS| C[Connector<br/>private network]
-  C --> S[Your services]
-  CTL[Controller<br/>UI · API · CA · config] -.control, mutual TLS.- G
-  CTL -.control, mutual TLS.- C
+  V[Visitors] -->|https://app.example.com| G
+  subgraph Public server
+    G[Gateway]
+  end
+  subgraph Your network
+    C[Connector] --> S[Your service<br/>192.168.1.20:8080]
+  end
+  G <-->|tunnel, opened by the connector<br/>QUIC or TLS, mutual TLS| C
+  CTL[Controller<br/>web UI · API] -.configuration.- G
+  CTL -.configuration.- C
 ```
 
-In one paragraph: agents only dial out; every connection is TLS 1.3 with per-agent certificates from
-an internal CA; configuration is desired state, compiled per agent, applied atomically and
-acknowledged, and a bad change never takes working tunnels down; a root-owned policy file on each
-connector host limits what even a compromised controller can make it do. One binary, `rpmgr`, runs
-every role.
+| Part | What it does | Where it runs |
+|---|---|---|
+| **Gateway** | Takes the public traffic on ports 80 and 443, and on the TCP and UDP ports you publish, and passes it to the connectors | A server with a public IP address, such as a small VPS |
+| **Connector** | Dials out to the gateways and forwards each connection to your service | A Linux host in your private network that can reach the service |
+| **Controller** | Web UI, API, accounts, certificates and configuration; tells the gateways and connectors what to do | Usually on the gateway's server: the **all-in-one** runs controller and gateway in one process |
 
-## Documents
+Visitor traffic goes from the gateway to the connector and on to your service; it never passes
+through the controller. If the controller is down, every tunnel keeps running on its last
+configuration ([02](docs/02-architecture.md)).
 
-| Document | What it answers |
-|---|---|
-| [00 — Vision and scope](docs/00-vision-and-scope.md) | What rpmgr is, for whom, goals and non-goals, principles, naming, glossary |
-| [02 — Architecture](docs/02-architecture.md) | Roles, planes, components, deployment topologies, trust boundaries, source layout |
-| [03 — Connections](docs/03-connections.md) | **How connections work, fast and securely**: enrollment, control and data sessions, framing, UDP, HTTP, port 443, fallback, private services, P2P, timeouts, failure modes, performance budget |
-| [04 — Security](docs/04-security.md) | Threat model, PKI, enrollment, human authentication, authorization, local policy, secrets, supply chain, audit |
-| [05 — Features](docs/05-features.md) | Feature catalogue by phase; platform support |
-| [06 — Data model](docs/06-data-model.md) | Entities, desired vs observed state, tenancy enforcement, migrations |
-| [07 — API](docs/07-api.md) | Public API and agent protocol, apply status, concurrency, errors, manifests, versioning |
-| [08 — Software stack](docs/08-software-stack.md) | Every technology choice with rationale and rejected alternatives |
-| [09 — Web UI](docs/09-web-ui.md) | UX rules, information architecture, key screens, frontend architecture |
-| [10 — Operations](docs/10-operations.md) | Install, ports, configuration, upgrades, backup, HA, observability, hardening, runbooks |
-| [11 — Migration](docs/11-migration.md) | The importer for existing tunnel configurations; cutover plan |
-| [12 — Testing and quality](docs/12-testing-and-quality.md) | Test strategy, end-to-end matrix, benchmarks, security testing, CI |
-| [13 — Roadmap](docs/13-roadmap.md) | Phase 0 spikes, MVP, production, advanced; exit criteria; verification backlog; risks |
-| [14 — Open decisions](docs/14-open-decisions.md) | Every decision that was open, with its outcome; currently none is open |
-| [15 — DNS automation](docs/15-dns.md) | Cloudflare integration: managed zones, records for route hostnames, ownership and conflicts, plan approval, DNS-01, proxied routes |
-| [16 — Command line](docs/16-cli.md) | Every `rpmgr` command, its flags and exit codes |
-| [ADRs](docs/adr/) | One record per load-bearing decision (0001–0016) |
-| [Spikes](docs/spikes/) | Phase 0 spike results, written from the [template](docs/spikes/TEMPLATE.md) |
-| [Reviews](docs/reviews/) | Reviews of the implementation against the documents, such as the [Phase 1 threat-model review](docs/reviews/P1-threat-model.md) |
+## Features
 
-Suggested reading order: 00 → 02 → 03 → 04, then whatever you need.
+What v0.1.0 brings; the full catalogue, with what comes later, is in [05](docs/05-features.md).
 
-## Installing
+**Publishing services**
 
-On Linux, as root, the global install script downloads a release from GitHub, verifies it with the
-release root keys it carries, installs the binary, the user `rpmgr` and its directories, and offers
-to set up the host's role ([10](docs/10-operations.md#install-paths)):
+- `http` routes by hostname and path prefix, to HTTP, h2c or HTTPS services; HTTPS services are
+  verified, against your own CA if you have one.
+- `tcp` and `udp` routes on public ports from a port pool, and `tls_passthrough` routes chosen by
+  the TLS server name.
+- Redirects from HTTP to HTTPS, HSTS, request and response headers, `Forwarded` and
+  `X-Forwarded-*` headers, and the PROXY protocol towards the service.
+- Switch a route off and on with one click; the other routes carry on undisturbed.
+
+**Certificates and domains**
+
+- Certificates from Let's Encrypt or another ACME CA, renewed automatically, or your own uploaded
+  ones.
+- Hostnames only under domains your organisation has proved are its own, by a DNS TXT record or an
+  HTTP token.
+
+**Access control**
+
+- Access policies with IP allow and deny lists, and basic auth with argon2id-hashed passwords.
+  Tightening a policy also ends the open connections it no longer allows.
+
+**Gateways and connectors**
+
+- Enroll a connector with one command and a token from the web UI.
+- Up to four gateways per gateway group, with a tunnel from each connector to each of them; drain
+  a gateway for maintenance.
+- QUIC by default, and TLS with HTTP/2 over TCP where UDP is blocked, chosen automatically.
+- Ephemeral connectors that remove themselves, and decommissioning with immediate effect.
+
+**Accounts and teams**
+
+- Local accounts with an authenticator app (TOTP) and recovery codes, and a renewed sign-in before
+  sensitive changes.
+- The roles Owner, Admin, Operator and Viewer; invitations and password resets by one-time link,
+  or by e-mail when a mail relay is configured.
+- Personal API tokens for the command line and scripts.
+
+**Operations**
+
+- An overview with the health of every part, the traffic of the last 24 hours and what needs
+  attention; traffic per route; a light and a dark theme.
+- A tamper-evident audit log of every change, sign-in and token use.
+- Prometheus metrics, health endpoints and OpenTelemetry traces.
+- Online backups, restore, key rotation and a YAML export of every resource.
+
+## Requirements
+
+- **A public server** for the gateway, or the all-in-one: Linux with a public IP address and the
+  ports 80/tcp, 443/tcp and 443/udp open, plus the port ranges you publish for `tcp` and `udp`
+  routes ([10](docs/10-operations.md#ports)).
+- **Connector hosts** need no open port: they reach the gateways and the controller on port 443,
+  over UDP and TCP, or over TCP alone.
+- **A domain name** whose DNS records you can set, for the web UI (such as `panel.example.com`) and
+  the hostnames you publish.
+- **Linux** with kernel 5.10 or later and systemd 249 or later: Debian 12+, Ubuntu 22.04+, RHEL,
+  Rocky and Alma Linux 9+, or Raspberry Pi OS. The install scripts need `curl` or `wget`, and
+  OpenSSL 3.
+- **Architectures:** amd64 and arm64 for every role; armv7 and riscv64 for connectors, and best
+  effort for the other roles ([05](docs/05-features.md#platform-support)).
+
+Windows and macOS connectors are planned ([13](docs/13-roadmap.md#phase-2--production)).
+
+## Quick start
+
+This sets up an all-in-one on a public server, connects a machine at home, and publishes a web app
+of that network, `192.168.1.20:8080`, as `https://app.example.com`. Use your own names and
+addresses instead.
+
+### 1. Point the names at the server
+
+At your DNS provider, create A (and AAAA) records for `panel.example.com`, the web UI, and
+`app.example.com`, the app, with the server's public IP address. The certificates need them, so
+create them first.
+
+### 2. Install rpmgr on the server
 
 ```sh
 curl -fsSLO https://github.com/felix-homelab/rpmgr/releases/latest/download/install.sh
-sudo sh install.sh            # --prerelease for a release candidate, --help for the options
+sudo sh install.sh
 ```
 
-`sudo rpmgr setup --role <role>` sets a host up for its role, from the boot file to the running
-unit, and shows its plan before it changes anything ([10](docs/10-operations.md#install)).
+> [!IMPORTANT]
+> Until v0.1.0 is released, `releases/latest` finds no release. Take `install.sh` from the newest
+> release candidate on the [Releases page](https://github.com/felix-homelab/rpmgr/releases)
+> instead, such as
+> `https://github.com/felix-homelab/rpmgr/releases/download/v0.1.0-rc.4/install.sh`.
+
+The script downloads the release, checks its signatures before it installs anything, and installs
+the `rpmgr` binary, the system user `rpmgr` and its directories. Then it offers to run
+`rpmgr setup`.
+
+### 3. Set the server up as an all-in-one
+
+Let the script run `rpmgr setup`, choose the role **all-in-one** and enter the public URL
+`https://panel.example.com`. Setup shows its plan and asks before it changes anything. Then it
+writes the configuration, creates the database and the internal CA, installs and starts the
+service `rpmgr-all-in-one`, and waits until it is ready. The same without questions:
+
+```sh
+sudo rpmgr setup --role all-in-one --public-url https://panel.example.com \
+  --acme-email you@example.com --yes
+```
+
+At the end, setup prints a one-time link, `https://panel.example.com/setup#…`. To try rpmgr out
+without using up Let's Encrypt's rate limits, add `--acme-directory staging`; browsers do not
+trust its certificates.
+
+### 4. Create your account
+
+Open the link within 7 days and create the first account. It becomes the Owner of your
+organisation and the Instance Admin, who administers the whole installation. On your **Account**
+page, add an authenticator app. If the link is lost before the account exists,
+`sudo rpmgr user reset-password` prints a new one.
+
+### 5. Claim your domain
+
+A route can only use hostnames under a domain your organisation has proved is its own. Under
+**Security → Domains & certificates**, choose **Claim a domain**, enter `example.com` and tick
+**Also every name below it**; without it, the claim covers `example.com` alone. Then prove the
+domain with the DNS TXT record the page shows and **Check now**, or, as the Instance Admin, choose
+**Mark as trusted** to skip the proof.
+
+### 6. Connect a machine at home
+
+Under **Network → Connectors**, choose **Enroll a connector**. Enter `192.168.1.20:8080` as a target
+the connector may reach, and choose **Create the token**. On the machine at home, run the command
+the dialog shows; it looks like this:
+
+```sh
+curl -fsSL 'https://panel.example.com/install.sh' | sudo sh -s -- \
+  --controller 'https://panel.example.com' --ca-pin 'sha256:…' \
+  --allow-target '192.168.1.20:8080'
+```
+
+When the installer asks for it, paste the token from the dialog. The token is shown only once, is
+never part of a command line, and by default enrolls one connector within an hour. The connector
+appears under its host's name.
+
+The targets you entered go into the connector's local policy, `/etc/rpmgr/policy.yaml`, and the
+connector reaches nothing else. To allow another target later, run
+`sudo rpmgr policy allow-target 192.168.1.30:80` on that machine.
+
+### 7. Publish the app
+
+Under **Network → Routes**, choose **Create a route**: an `http` route for the hostname
+`app.example.com` on the gateway group `default`. Then **Add a target**: the connector, host
+`192.168.1.20`, port `8080`, protocol HTTP. The gateway obtains a certificate for the name, and
+`https://app.example.com` serves your app.
+
+For `tcp` and `udp` routes, first give the gateway group a port pool under **Network → Gateways**,
+and open those ports in the server's firewall.
+
+## Other setups
+
+- **Separate servers.** The controller can run on its own host, with gateways on others; the
+  controller can even stay in a private network and be reached through a gateway. Add a gateway
+  under **Network → Gateways**, make its enrollment token, and run
+  `sudo rpmgr setup --role gateway` on its server
+  ([02](docs/02-architecture.md#deployment-topologies)).
+- **Several gateways.** Up to four gateways in a gateway group serve the same routes; further
+  groups serve other regions.
+- **Restricted networks.** Connectors fall back to TCP when UDP is blocked, and reach the gateways
+  through an HTTP CONNECT or SOCKS5 proxy: `rpmgr setup --role connector --proxy <url>`.
+- **Containers.** Signed multi-arch images at `ghcr.io/felix-homelab/rpmgr` run as a non-root user,
+  with the role as the command, such as `docker run … ghcr.io/felix-homelab/rpmgr gateway`
+  ([10](docs/10-operations.md#install-paths)).
+- **No internet access for the controller.** `rpmgr release import` gives the controller the
+  release files that the install scripts download from it ([16](docs/16-cli.md)).
+
+## Command line
+
+The `rpmgr` binary is also the command line for everything the web UI manages. Make a personal API
+token on your **Account** page; the page shows the `rpmgr login` command that goes with it:
+
+```sh
+rpmgr login --controller https://panel.example.com --org <org ID>   # asks for the token
+rpmgr list route
+rpmgr create route --name app --group default --http --hostname app.example.com
+rpmgr create route-target --route app --connector home-server \
+  --address 192.168.1.20:8080 --upstream http
+rpmgr disable route app
+```
+
+Results come as a table, or with `-o yaml` or `-o json` for scripts. Secrets are never taken from
+the command line: tokens and passwords come from a file, an environment variable or a prompt. Every
+command and flag is in [16](docs/16-cli.md).
+
+## Security
+
+- **No default credentials.** The first account is made through a one-time link; accounts can add
+  an authenticator app, and sensitive changes ask you to sign in again.
+- **An identity for every agent.** Each gateway and connector holds its own key and a short-lived
+  certificate from rpmgr's internal CA, renewed automatically and revocable at once.
+- **Mutual TLS 1.3 between all parts.** Connectors only dial out, and on every connection between
+  the controller, gateways and connectors both ends prove who they are.
+- **The host has the last word.** A connector's local policy, a root-owned file on its host, limits
+  the services it reaches, even if the controller is compromised.
+- **Signed configuration.** Agents accept only configuration the controller has signed, and keep
+  their last good copy.
+- **Secrets encrypted at rest.** Keys and passwords in the database are encrypted with a key kept
+  outside it, and logs leave them out.
+- **Verifiable releases.** Releases are signed and built reproducibly, with an SBOM and build
+  provenance; the install scripts verify the signatures before they install anything.
+
+The threat model and every mechanism are in [04](docs/04-security.md). Please report
+vulnerabilities privately, as [SECURITY.md](SECURITY.md) describes.
+
+## Running rpmgr
+
+**Health.** The overview in the web UI shows what needs attention. On a gateway or connector host,
+`rpmgr status` shows its identity, certificate expiry, configuration and readiness;
+`rpmgr diag transport` tests the tunnel to each gateway over QUIC and TCP, and `rpmgr diag clock`
+checks the host's clock. Every role serves `/healthz`, `/readyz` and Prometheus metrics on
+localhost ([10](docs/10-operations.md#observability)), and the runbooks cover common problems
+([10](docs/10-operations.md#runbooks)).
+
+**Backups.** On the controller's host:
+
+```sh
+sudo rpmgr backup --out /root/rpmgr-backup.tar
+```
+
+The backup holds the database, the revocation log and the audit checkpoints, and is written while
+the controller runs. The key that encrypts the secrets in the database is not part of it: back it
+up separately and keep it apart. `rpmgr restore` brings a backup back
+([10](docs/10-operations.md#backup-and-restore)).
+
+**Upgrades.** rpmgr does not update itself yet; signed automatic updates are planned. Back up
+first, then upgrade the controller, then the gateways, then the connectors: on each host, run the
+new release's `install.sh` with `--no-setup`, which replaces the binary, and restart the service:
+
+```sh
+sudo sh install.sh --no-setup
+sudo systemctl restart rpmgr-all-in-one   # or rpmgr-controller, rpmgr-gateway, rpmgr-connector
+```
+
+A controller works with agents of its own minor version and of the one before
+([10](docs/10-operations.md#upgrades-and-version-skew)).
+
+## Roadmap
+
+v0.1.0 completes the first phase. The next one brings DNS records managed in Cloudflare, wildcard
+certificates through DNS-01, single sign-on and passkeys, private services between connectors,
+health checks and failover between targets, rate and bandwidth limits, Windows and macOS
+connectors, `.deb` and `.rpm` packages, signed automatic updates, and PostgreSQL with several
+controllers. Virtual networks, HTTP/3, a Helm chart and a Terraform provider follow after that
+([13](docs/13-roadmap.md)).
+
+## Documentation
+
+| Document | Read it to |
+|---|---|
+| [10 — Operations](docs/10-operations.md) | Install, configure, upgrade, back up, monitor and troubleshoot rpmgr |
+| [16 — Command line](docs/16-cli.md) | Look up a command, its flags and its exit codes |
+| [05 — Features](docs/05-features.md) | See every feature, the release phase it comes in, and the supported platforms |
+| [04 — Security](docs/04-security.md) | Understand the threat model, identities, roles and what protects you |
+| [02 — Architecture](docs/02-architecture.md) | Understand the roles and the ways to deploy them |
+| [CHANGELOG](CHANGELOG.md) | See what changed in each release |
+| [All documents](docs/README.md) | Read the whole design: connections, data model, API, web UI, testing and decisions |
 
 ## Building from source
 
-rpmgr can also be built from source: Node of the version in `web/.nvmrc` for the web UI, and Go of
-the version `go.mod` pins.
+You need Node of the version in `web/.nvmrc` for the web UI, and Go of the version `go.mod` pins:
 
 ```sh
 npm --prefix web ci && npm --prefix web run build   # the web UI, embedded from internal/webui/ui
@@ -74,78 +333,21 @@ CGO_ENABLED=0 go build -trimpath -o rpmgr ./cmd/rpmgr
 
 A binary built without the web UI serves a placeholder page instead. A build from source carries
 no release root keys, so it verifies no release: the controller's install script and release check
-need a signed release ([04](docs/04-security.md#release-signing)). Installation, the boot files
-and the hardened systemd units are in [10](docs/10-operations.md#install); every command is in
-[16](docs/16-cli.md).
+need a signed release ([04](docs/04-security.md#release-signing)).
 
-## How to read these documents
+## Contributing and support
 
-Statements carry a tag when it matters whether they are known, chosen, hoped for or still to be
-checked:
+- **Questions, bugs and ideas:** [GitHub issues](https://github.com/felix-homelab/rpmgr/issues).
+- **Security vulnerabilities:** privately, never in a public issue ([SECURITY.md](SECURITY.md)).
+- **Contributions:** welcome, under the rules in [CONTRIBUTING.md](CONTRIBUTING.md); the design
+  documents are introduced in [docs](docs/README.md).
 
-| Tag | Meaning |
-|---|---|
-| **[F]** | **Fact**, verified during the design by reading source code or a library at the cited version and line, or a vendor's published documentation or API schema at the cited retrieval date |
-| **[R]** | **Recommendation**: a design choice with its reasoning; can be changed via [14](docs/14-open-decisions.md) or an ADR |
-| **[T]** | **Target**: a performance or quality goal to be measured, not a claim about current behaviour |
-| **[V Sx]** / **[V VB-xx]** | **Verify at implementation**: an assumption about a library, platform or behaviour that was not verifiable here; tracked as a Phase 0 spike (S1–S9) or in the verification backlog (VB-01–20) in [13](docs/13-roadmap.md) |
-
-Untagged statements are the design itself.
-
-**Single sources of truth.** Connection timeouts, sizes and limits are defined only in
-[03](docs/03-connections.md); security lifetimes and cryptographic parameters only in
-[04](docs/04-security.md); DNS automation timers and limits only in [15](docs/15-dns.md). Other
-documents link to them.
-
-## Citations
-
-`[F <prefix>:<path>:<line>]` points at a line in one of these sources:
-
-| Prefix | Source | Version reviewed |
-|---|---|---|
-| `quic-go:` | [quic-go/quic-go](https://github.com/quic-go/quic-go) | v0.61.0 |
-| `yamux:` | [hashicorp/yamux](https://github.com/hashicorp/yamux) | v0.1.1 |
-| `grpc:` | [grpc/grpc-go](https://github.com/grpc/grpc-go) | v1.67.1 |
-| `x/net:` | [golang.org/x/net](https://pkg.go.dev/golang.org/x/net) | v0.57.0 |
-| `certmagic:` | [caddyserver/certmagic](https://github.com/caddyserver/certmagic) | v0.25.6 |
-| `libdns:` | [libdns/libdns](https://github.com/libdns/libdns) | v1.1.1 |
-| `libdns-cloudflare:` | [libdns/cloudflare](https://github.com/libdns/cloudflare) | v0.2.2 |
-| `cf:` | [Cloudflare developer documentation](https://developers.cloudflare.com/); the path follows the prefix | retrieved 2026-10-06 |
-| `cf-api:` | [cloudflare/api-schemas](https://github.com/cloudflare/api-schemas), `openapi.json` on `main` | retrieved 2026-10-06 |
-
-Library facts without a line (for example "`google/uuid` v1.6.0 has `NewV7`") name the version
-instead. Line numbers refer to the versions above; later versions may differ. A fact re-checked
-at a later version, for example by a Phase 0 spike, cites that version inline, as in
-`[F quic-go v0.63.0 stream.go:183]` ([D39](docs/14-open-decisions.md#project-and-process)).
-Documentation citations (`cf:`, `cf-api:`) describe the vendor's documented behaviour on the
-retrieval date; behaviour the documentation does not guarantee is tagged [V].
-
-## Changing the design
-
-- Small corrections: edit the document, keeping tags and citations accurate.
-- Changing a load-bearing decision: write or update an ADR in [docs/adr](docs/adr/) (from the
-  [template](docs/adr/0000-template.md)), then update every document it affects. Phase 0 spikes
-  move ADRs from *Proposed* to *Accepted*.
-- Closing an open decision: record the outcome in [14](docs/14-open-decisions.md).
-- Documenting a feature: follow the
-  [feature documentation checklist](CONTRIBUTING.md#documenting-features).
-
-## Contributing and releases
-
-| File | What it covers |
-|---|---|
-| [LICENSE](LICENSE) | Apache License 2.0 |
-| [CONTRIBUTING.md](CONTRIBUTING.md) | Issues, branch names, Conventional Commits, size of changes, pull requests and merge commits, reviews, how features are documented, ADRs, spikes, definition of done |
-| [RELEASING.md](RELEASING.md) | Semantic versioning, tags, changelog rules, the release process, patch and security releases, supported versions, withdrawing a release |
-| [CHANGELOG.md](CHANGELOG.md) | The release history for operators and API users |
-| [SECURITY.md](SECURITY.md) | How to report a vulnerability privately |
-| [CLAUDE.md](CLAUDE.md) | The project's rules, summarised for AI coding assistants |
+rpmgr is a personal open-source project with one maintainer
+([D26, D27](docs/14-open-decisions.md#project-and-process)).
 
 ## License
 
-rpmgr — code and documentation — is licensed under the [Apache License 2.0](LICENSE)
+rpmgr, code and documentation, is licensed under the [Apache License 2.0](LICENSE)
 ([D1](docs/14-open-decisions.md#product-and-project)). Contributions are accepted under the same
 license with a Developer Certificate of Origin sign-off
-([CONTRIBUTING](CONTRIBUTING.md#license-sign-off-and-third-party-code)). rpmgr is a personal
-open-source project with one maintainer
-([D26, D27](docs/14-open-decisions.md#project-and-process)).
+([CONTRIBUTING](CONTRIBUTING.md#license-sign-off-and-third-party-code)).

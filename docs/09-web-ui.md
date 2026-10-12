@@ -1,7 +1,7 @@
 # 09 — Web UI
 
 > Status: Phase 1, being implemented. Tags: [F] fact · [R] recommendation · [T] target · [V] verify
-> at implementation ([README](../README.md#how-to-read-these-documents)).
+> at implementation ([README](README.md#how-to-read-these-documents)).
 
 The web UI is the main way most operators use rpmgr. It is a single-page application embedded in the
 `rpmgr` binary and served by the Controller on the same origin as the API. Everything the UI can do

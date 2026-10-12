@@ -1,7 +1,7 @@
 # 06 — Data model
 
 > Status: Phase 1, being implemented. Tags: [F] fact · [R] recommendation · [T] target · [V] verify
-> at implementation ([README](../README.md#how-to-read-these-documents)).
+> at implementation ([README](README.md#how-to-read-these-documents)).
 
 ## Principles
 
