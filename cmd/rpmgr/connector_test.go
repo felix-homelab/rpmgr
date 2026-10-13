@@ -57,7 +57,8 @@ func (a *connectorAPI) DecommissionConnector(_ context.Context, req *connect.Req
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	a.decommission = req.Msg
-	return connect.NewResponse(&rpmgrv1.DecommissionConnectorResponse{Connector: con1, Revision: &rpmgrv1.Revision{Seq: 22}}), nil
+	return connect.NewResponse(&rpmgrv1.DecommissionConnectorResponse{Connector: con1, Revision: &rpmgrv1.Revision{Seq: 22},
+		DeletedRoutes: []*rpmgrv1.DeletedRoute{{Id: "rte_pg", Name: "pg"}}}), nil
 }
 
 func (a *connectorAPI) ListConnectors(_ context.Context, req *connect.Request[rpmgrv1.ListConnectorsRequest]) (*connect.Response[rpmgrv1.ListConnectorsResponse], error) {
@@ -129,7 +130,8 @@ func TestConnectors(t *testing.T) {
 		}
 	}
 	code, out, _ = runWith(env, "", "decommission", "connector", "con_1")
-	if code != cli.ExitOK || a.decommission.GetEtag() != "2" || !strings.Contains(out, "Decommissioned connector con_1 in revision 22") {
+	if code != cli.ExitOK || a.decommission.GetEtag() != "2" || !strings.Contains(out, "Decommissioned connector con_1 in revision 22") ||
+		!strings.Contains(out, "Deleted route pg (rte_pg): it had no other target.") { // D78
 		t.Fatalf("decommission: %d %q %v", code, out, a.decommission)
 	}
 	gets := a.gets

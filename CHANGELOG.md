@@ -110,6 +110,10 @@ history and the [ADRs](docs/adr/).
   commands, connectors (status, data sessions, decommissioning, purging ephemeral ones), domains,
   routes and their targets, access policies, certificates, CA bundles, settings and the PKI status.
   (#322, #323, #326, #328, #329, #330, #331, #332, #333, #334, #338, #339, #340, #341)
+- Controller: decommissioning a connector, `rpmgr leave` and the purge delete its route targets
+  and each route left with no target, so its ports and hostnames are free again; the UI names
+  those routes before, the API and the CLI after. Gateways listen only on the ports of routes a
+  connector serves, and a refused port names the route that holds it. (#485)
 - API: every write returns its revision, and the apply status says how far the agents are with it.
   A route can be previewed before it is saved, routes report their observed status, and
   configuration and status changes stream to clients. (#335, #336, #337)

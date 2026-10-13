@@ -12,6 +12,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/audit"
 	"github.com/felix-homelab/rpmgr/internal/pki"
 	"github.com/felix-homelab/rpmgr/internal/revlog"
+	"github.com/felix-homelab/rpmgr/internal/routes"
 	"github.com/felix-homelab/rpmgr/internal/store"
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/connector"
@@ -35,10 +36,20 @@ func (s *Sessions) Leave(ctx context.Context, _ *agentv1.LeaveRequest) (*agentv1
 	now := s.now()
 	revoked := false
 	_, err := store.ConfigTx(store.RevisionOrg(s.sys, id.Org), s.db, func(tx *ent.Tx) ([]string, error) {
-		var err error
+		var (
+			err  error
+			n    int
+			left = []string{id.ID}
+		)
 		if id.Kind == pki.KindConnector {
-			_, err = tx.Connector.Update().Where(connector.ID(id.ID), connector.DecommissionedAtIsNil()).
+			n, err = tx.Connector.Update().Where(connector.ID(id.ID), connector.DecommissionedAtIsNil()).
 				SetDecommissionedAt(now).SetEnabled(false).Save(s.sys)
+			if err == nil && n > 0 { // its routes go as with an admin's decommission (D78)
+				var changed []string
+				_, changed, err = routes.RetireConnector(s.sys, tx, id.ID, audit.Entry{OrgID: id.Org, ActorType: audit.ActorAgent,
+					ActorID: id.ID, Reason: "connector " + id.ID + " left with rpmgr leave"})
+				left = append(left, changed...)
+			}
 		} else {
 			_, err = tx.Gateway.Update().Where(gateway.ID(id.ID), gateway.DecommissionedAtIsNil()).
 				SetDecommissionedAt(now).SetEnabled(false).Save(s.sys)
@@ -48,14 +59,14 @@ func (s *Sessions) Leave(ctx context.Context, _ *agentv1.LeaveRequest) (*agentv1
 		}
 		row, changed, err := pki.RevokeIdentity(s.sys, tx, id, "left", now)
 		if err != nil || !changed {
-			return []string{id.ID}, err
+			return left, err
 		}
 		revoked = true
 		appendLog(s.revlog, s.log, revlog.Entry{Kind: revlog.IdentityRevoked, Org: id.Org, Subject: id.String(), Detail: "left",
 			NotAfter: &row.NotAfter, Actor: id.ID})
 		_, err = audit.Append(s.sys, tx, audit.Entry{OrgID: id.Org, ActorType: audit.ActorAgent, ActorID: id.ID, Action: "identity.revoke",
 			TargetType: string(id.Kind), TargetID: id.ID, Result: audit.Success, Reason: "left with rpmgr leave"})
-		return []string{id.ID}, err
+		return left, err
 	})
 	if err != nil {
 		s.log.Error("an agent could not leave", "agent", id.String(), "error", err)

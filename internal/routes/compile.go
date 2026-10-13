@@ -53,7 +53,8 @@ func GatewayDrain(ctx context.Context, tx *ent.Tx, a snapshot.Agent) ([]*agentv1
 }
 
 // GatewayTCP compiles a gateway's tcp routes: every enabled tcp route of its gateway group with a
-// port, and the connectors that serve it. A disabled or decommissioned gateway gets none.
+// port and a connector that serves it, and those connectors. A disabled or decommissioned gateway
+// gets none.
 func GatewayTCP(ctx context.Context, tx *ent.Tx, a snapshot.Agent) ([]*agentv1.Resource, error) {
 	if a.Identity.Kind != pki.KindGateway {
 		return nil, nil
@@ -83,6 +84,9 @@ func GatewayTCP(ctx context.Context, tx *ent.Tx, a snapshot.Agent) ([]*agentv1.R
 		if err != nil {
 			return nil, err
 		}
+		if len(connectors) == 0 { // no gateway holds a port that no one serves (D78)
+			continue
+		}
 		access, err := accessOf(ctx, tx, r.ID, false)
 		if err != nil {
 			return nil, err
@@ -95,7 +99,8 @@ func GatewayTCP(ctx context.Context, tx *ent.Tx, a snapshot.Agent) ([]*agentv1.R
 }
 
 // GatewayUDP compiles a gateway's udp routes: every enabled udp route of its gateway group with a
-// port, and the connectors that serve it. A disabled or decommissioned gateway gets none.
+// port and a connector that serves it, and those connectors. A disabled or decommissioned gateway
+// gets none.
 func GatewayUDP(ctx context.Context, tx *ent.Tx, a snapshot.Agent) ([]*agentv1.Resource, error) {
 	if a.Identity.Kind != pki.KindGateway {
 		return nil, nil
@@ -124,6 +129,9 @@ func GatewayUDP(ctx context.Context, tx *ent.Tx, a snapshot.Agent) ([]*agentv1.R
 		connectors, err := serving(ctx, tx, r.ID)
 		if err != nil {
 			return nil, err
+		}
+		if len(connectors) == 0 { // no gateway holds a port that no one serves (D78)
+			continue
 		}
 		access, err := accessOf(ctx, tx, r.ID, false)
 		if err != nil {

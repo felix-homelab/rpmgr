@@ -56,6 +56,10 @@ func TestLeave(t *testing.T) {
 	ctx := context.Background()
 	c := itest.StartController(t, itest.Options{})
 	con, state := enrolledWithState(t, c)
+	// A route the connector alone serves goes with it (D78).
+	served := c.DB.Client().Route.Create().SetOrgID(c.Org).SetName("served").SetType("tcp").SetGatewayGroupID(c.GatewayGroup(t, "leave")).SaveX(c.Sys)
+	c.DB.Client().RouteTarget.Create().SetOrgID(c.Org).SetRouteID(served.ID).SetConnectorID(con.AgentID).SetKind("address").SetHost("10.0.0.5").
+		SetPort(5432).ExecX(c.Sys)
 	left, err := agent.Leave(ctx, con.Dir, state, nil)
 	if err != nil || left.AgentID != con.AgentID {
 		t.Fatalf("leave: %v %v", left.AgentID, err)
@@ -68,6 +72,10 @@ func TestLeave(t *testing.T) {
 	id := identityOf(t, con)
 	if row := c.DB.Client().Connector.GetX(c.Sys, con.AgentID); row.DecommissionedAt == nil || row.Enabled {
 		t.Errorf("the connector after leaving: %+v", row)
+	}
+	if c.DB.Client().Route.Query().CountX(c.Sys) != 0 || c.DB.Client().AuditEntry.Query().Where(auditentry.Action("route.delete"),
+		auditentry.TargetID(served.ID), auditentry.ActorID(con.AgentID)).CountX(c.Sys) != 1 {
+		t.Error("the route the connector served stayed, or its deletion is not audited")
 	}
 	if !c.DB.Client().RevokedIdentity.Query().Where(revokedidentity.ID(id.String())).ExistX(c.Sys) {
 		t.Error("the identity is not revoked")

@@ -4,6 +4,7 @@ package apisvc_test
 
 import (
 	"context"
+	"slices"
 	"testing"
 	"time"
 
@@ -223,5 +224,91 @@ func TestConnectors_Write(t *testing.T) {
 	}
 	if _, err := update(ada, []string{"enabled"}, &rpmgrv1.Connector{Enabled: true}, ""); code(err) != connect.CodeFailedPrecondition {
 		t.Fatalf("an update of a tombstone: %v", err)
+	}
+}
+
+// TestConnectors_DecommissionDeletesRoutes (D78): a decommission deletes the connector's targets and
+// each route it leaves with no target, whose ports and hostnames are free again; a route with a
+// target on another connector keeps that one, and a route that had no target stays; each deleted
+// route is audited and named in the response, and a second decommission deletes nothing.
+func TestConnectors_DecommissionDeletesRoutes(t *testing.T) {
+	e, ada, org, group := gatewayEnv(t)
+	ctx := context.Background()
+	e.verified(t, org, "example.com", true)
+	for _, p := range []*rpmgrv1.PortPool{{GatewayGroupId: group, Protocol: tcp, PortFrom: 20000, PortTo: 20009},
+		{GatewayGroupId: group, Protocol: udp, PortFrom: 30000, PortTo: 30009}} {
+		if _, err := ada.gw.CreatePortPool(ctx, connect.NewRequest(&rpmgrv1.CreatePortPoolRequest{OrgId: org, PortPool: p})); err != nil {
+			t.Fatal(err)
+		}
+	}
+	nas := e.addConnector(t, org, "nas", nil)
+	pi := e.addConnector(t, org, "pi", nil)
+	ids := map[string]string{}
+	for _, rt := range []*rpmgrv1.Route{tcpRoute("pg", group, 20005), udpRoute("dns", group, 30000), httpRoute("web", group, "web.example.com"),
+		tcpRoute("shared", group, 20006), tcpRoute("idle", group, 20007)} {
+		got, err := createRoute(ada, org, rt, "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		ids[rt.GetName()] = got.GetId()
+	}
+	for _, tg := range []struct{ route, connector string }{{"pg", nas.ID}, {"dns", nas.ID}, {"web", nas.ID}, {"shared", nas.ID}, {"shared", pi.ID}} {
+		if _, err := ada.rt.CreateRouteTarget(ctx, connect.NewRequest(&rpmgrv1.CreateRouteTargetRequest{RouteId: ids[tg.route],
+			Target: addressTarget(tg.connector, "10.0.0.5", 5432)})); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := createRoute(ada, org, tcpRoute("pg-2", group, 20005), ""); code(err) != connect.CodeAlreadyExists {
+		t.Fatalf("the port of a served route: %v", err)
+	}
+
+	r, err := ada.con.DecommissionConnector(ctx, connect.NewRequest(&rpmgrv1.DecommissionConnectorRequest{ConnectorId: nas.ID}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var deleted []string
+	for _, d := range r.Msg.GetDeletedRoutes() {
+		if d.GetId() != ids[d.GetName()] {
+			t.Errorf("deleted route %v", d)
+		}
+		deleted = append(deleted, d.GetName())
+	}
+	if slices.Sort(deleted); !slices.Equal(deleted, []string{"dns", "pg", "web"}) {
+		t.Fatalf("deleted routes %v", deleted)
+	}
+	for _, name := range []string{"pg", "dns", "web"} {
+		if _, err := ada.rt.GetRoute(ctx, connect.NewRequest(&rpmgrv1.GetRouteRequest{RouteId: ids[name]})); code(err) != connect.CodeNotFound {
+			t.Errorf("route %s after the decommission: %v", name, err)
+		}
+	}
+	shared, err := ada.rt.GetRoute(ctx, connect.NewRequest(&rpmgrv1.GetRouteRequest{RouteId: ids["shared"]}))
+	if err != nil || len(shared.Msg.GetRoute().GetTargets()) != 1 || shared.Msg.GetRoute().GetTargets()[0].GetConnectorId() != pi.ID {
+		t.Fatalf("the shared route: %v %v", shared, err)
+	}
+	if _, err := ada.rt.GetRoute(ctx, connect.NewRequest(&rpmgrv1.GetRouteRequest{RouteId: ids["idle"]})); err != nil {
+		t.Fatalf("the route without targets: %v", err)
+	}
+	pools, err := ada.gw.ListPortPools(ctx, connect.NewRequest(&rpmgrv1.ListPortPoolsRequest{OrgId: org, GatewayGroupId: group}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range pools.Msg.GetPortPools() {
+		if want := map[rpmgrv1.PortProtocol]int32{tcp: 2, udp: 0}[p.GetProtocol()]; p.GetAllocatedPorts() != want {
+			t.Errorf("%v pool: %d ports allocated, want %d", p.GetProtocol(), p.GetAllocatedPorts(), want)
+		}
+	}
+	for _, rt := range []*rpmgrv1.Route{tcpRoute("pg-2", group, 20005), udpRoute("dns-2", group, 30000), httpRoute("web-2", group, "web.example.com")} {
+		if _, err := createRoute(ada, org, rt, ""); err != nil {
+			t.Errorf("%s on what a deleted route held: %v", rt.GetName(), err)
+		}
+	}
+	s, _ := ada.session()
+	if n := e.db.Client().AuditEntry.Query().Where(auditentry.Action("route.delete"), auditentry.TargetIDIn(ids["pg"], ids["dns"], ids["web"]),
+		auditentry.ActorID(s.GetUserId())).CountX(e.sys); n != 3 {
+		t.Fatalf("%d audit entries for the deleted routes", n)
+	}
+	again, err := ada.con.DecommissionConnector(ctx, connect.NewRequest(&rpmgrv1.DecommissionConnectorRequest{ConnectorId: nas.ID}))
+	if err != nil || len(again.Msg.GetDeletedRoutes()) != 0 {
+		t.Fatalf("a second decommission: %v %v", again, err)
 	}
 }

@@ -420,10 +420,13 @@ Shown in [03-connections.md](03-connections.md#enrollment). Security-relevant ru
   their last disconnect by a leader-elected job, and their certificates added to the deny-list.
   The last disconnect is the session's recorded end, its last-seen time if no controller recorded
   one, or the enrollment if it never connected. [R] The purge deletes the connector's route
-  targets with it, and an ephemeral connector gets no re-enrollment token, which would hold it.
+  targets with it, and each route left with no target, as a decommission does
+  ([06](06-data-model.md#lifecycle-and-deletion)). An ephemeral connector gets no re-enrollment
+  token, which would hold it.
 - [R] **Tombstones** are deleted after 90 days by the same job, with the records of their
-  certificates, which have all expired by then. A tombstone stays while a route target still names
-  its connector or one of its certificates has not expired.
+  certificates, which have all expired by then. A tombstone stays while one of its certificates
+  has not expired. The job also deletes the route targets a decommissioned connector still has,
+  left by a controller from before D78, and each route left with no target.
 
 ## Human authentication and sessions
 

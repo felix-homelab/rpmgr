@@ -12,6 +12,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/lease"
 	"github.com/felix-homelab/rpmgr/internal/pki"
 	"github.com/felix-homelab/rpmgr/internal/revlog"
+	"github.com/felix-homelab/rpmgr/internal/routes"
 	"github.com/felix-homelab/rpmgr/internal/store"
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/agentsession"
@@ -68,6 +69,9 @@ type agentRow struct {
 func purge(ctx context.Context, o PurgeOptions) error {
 	now := o.Now().UTC()
 	c := o.DB.Client()
+	if err := retireStale(ctx, o); err != nil {
+		return err
+	}
 	var due []agentRow
 	ephemeral, err := c.Connector.Query().Where(connector.Ephemeral(true)).All(ctx)
 	if err != nil {
@@ -127,23 +131,42 @@ func gone(con *ent.Connector, s *ent.AgentSession, now time.Time) bool {
 	}
 }
 
+// retireStale deletes the route targets a decommissioned connector still has, and each route left
+// with no target (D78): a decommission by an older controller left them, holding their ports.
+func retireStale(ctx context.Context, o PurgeOptions) error {
+	stale, err := o.DB.Client().RouteTarget.Query().Where(routetarget.HasConnectorWith(connector.DecommissionedAtNotNil())).All(ctx)
+	if err != nil {
+		return err
+	}
+	done := map[string]bool{}
+	for _, t := range stale {
+		if done[t.ConnectorID] {
+			continue
+		}
+		done[t.ConnectorID] = true
+		if _, err := store.ConfigTx(store.RevisionOrg(ctx, t.OrgID), o.DB, func(tx *ent.Tx) ([]string, error) {
+			_, changed, err := routes.RetireConnector(ctx, tx, t.ConnectorID, audit.Entry{OrgID: t.OrgID, ActorType: audit.ActorSystem,
+				ActorID: "purge-agents", Reason: "connector " + t.ConnectorID + " is decommissioned"})
+			return changed, err
+		}); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // errKept is a tombstone the purge keeps for now.
 var errKept = errors.New("kept")
 
 // purgeAgent deletes an agent in one configuration transaction: its identity revoked if it was
-// not yet, its route targets if it is ephemeral, its bound enrollment tokens, what the controller
-// observed of it and its row. A tombstone whose connector still has route targets, or with a
-// certificate that has not expired, is kept, as are its certificate records otherwise deleted.
-// It reports whether it revoked the identity.
+// not yet, a connector's route targets and each route left with no target (D78), its bound
+// enrollment tokens, what the controller observed of it and its row. A tombstone with a
+// certificate that has not expired is kept, as are its certificate records otherwise deleted. It
+// reports whether it revoked the identity.
 func purgeAgent(ctx context.Context, o PurgeOptions, a agentRow, now time.Time) (bool, error) {
 	revoked := false
 	_, err := store.ConfigTx(store.RevisionOrg(ctx, a.org), o.DB, func(tx *ent.Tx) ([]string, error) {
 		if !a.ephemeral {
-			if a.kind == pki.KindConnector {
-				if n, err := tx.RouteTarget.Query().Where(routetarget.ConnectorID(a.id)).Count(ctx); err != nil || n > 0 {
-					return nil, errors.Join(err, errIf(n > 0, errKept))
-				}
-			}
 			live, err := tx.IssuedCertificate.Query().Where(issuedcertificate.SubjectID(a.id), issuedcertificate.NotAfterGTE(now)).Count(ctx)
 			if err != nil || live > 0 {
 				return nil, errors.Join(err, errIf(live > 0, errKept))
@@ -170,12 +193,21 @@ func purgeAgent(ctx context.Context, o PurgeOptions, a agentRow, now time.Time) 
 				return nil, err
 			}
 		}
+		purged := []string{a.id}
+		if a.kind == pki.KindConnector { // its routes go as with a decommission (D78)
+			_, changed, err := routes.RetireConnector(ctx, tx, a.id, audit.Entry{OrgID: a.org, ActorType: audit.ActorSystem,
+				ActorID: "purge-agents", Reason: "connector " + a.id + " was purged"})
+			if err != nil {
+				return nil, err
+			}
+			purged = append(purged, changed...)
+		}
 		if err := deleteAgent(ctx, tx, a); err != nil {
 			return nil, err
 		}
 		_, err = audit.Append(ctx, tx, audit.Entry{OrgID: a.org, ActorType: audit.ActorSystem, ActorID: "purge-agents",
 			Action: string(a.kind) + ".purge", TargetType: string(a.kind), TargetID: a.id, Result: audit.Success})
-		return []string{a.id}, err
+		return purged, err
 	})
 	if errors.Is(err, errKept) {
 		return false, nil

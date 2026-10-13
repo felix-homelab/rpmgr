@@ -21,7 +21,12 @@ const db = create(ConnectorSchema, {
 });
 const lab = create(ConnectorSchema, { id: "con_lab", name: "lab", labels: { site: "home" }, enabled: false, ephemeral: true, session: { connected: false } });
 
-function page(path: string, connectors = [lab, db]) {
+const routes = [
+  { id: "rte_pg", name: "postgres", targets: [{ connectorId: "con_db" }] },
+  { id: "rte_web", name: "web", targets: [{ connectorId: "con_lab" }] },
+];
+
+function page(path: string, connectors = [lab, db], routeList = routes) {
   const updates: UpdateConnectorRequest[] = [];
   const decommissions: DecommissionConnectorRequest[] = [];
   const view = show(path, auth({ getSession: () => ({ userId: "usr_ada", memberships: [{ orgId: "org_1", role: "owner" }] }) }), (router) => {
@@ -29,10 +34,7 @@ function page(path: string, connectors = [lab, db]) {
     router.service(GatewayService, { listGateways: () => ({ gateways: [{ id: "gtw_1", name: "gw-eu-1" }] }) });
     router.service(StatusService, { async *watchApplyStatus() {} });
     router.service(RouteService, {
-      listRoutes: () => ({ routes: [
-        { id: "rte_pg", name: "postgres", targets: [{ connectorId: "con_db" }] },
-        { id: "rte_web", name: "web", targets: [{ connectorId: "con_lab" }] },
-      ] }),
+      listRoutes: () => ({ routes: routeList }),
     });
     router.service(ConnectorService, {
       listConnectors: () => ({ connectors }),
@@ -124,5 +126,28 @@ describe("Connectors", () => {
     fireEvent.click(section.getByRole("button", { name: "Decommission db-host-1" }));
     await waitFor(() => expect(history.location.pathname).toBe("/connectors"));
     expect(decommissions.map((d) => [d.connectorId, d.etag])).toEqual([["con_db", "4"]]);
+  });
+
+  // D78: the routes it leaves with no target go with it; a route with another target stays.
+  it("names the routes a decommission deletes, and only those", async () => {
+    page("/connectors/con_db", [lab, db], [
+      ...routes,
+      { id: "rte_dns", name: "dns", targets: [{ connectorId: "con_db" }, { connectorId: "con_db" }] },
+      { id: "rte_shared", name: "shared", targets: [{ connectorId: "con_db" }, { connectorId: "con_lab" }] },
+    ]);
+    const section = within(await screen.findByRole("region", { name: "Decommission" }));
+    await screen.findByRole("link", { name: "shared" }); // the routes have loaded
+    fireEvent.click(section.getByRole("button", { name: "Decommission…" }));
+    expect(section.getByRole("alert").textContent).toContain(
+      "These 2 routes have no other target and are deleted with it, which frees their ports and hostnames: postgres, dns.");
+    expect(section.getByRole("alert").textContent).not.toContain("shared");
+  });
+
+  it("names no route when every route it serves has another target", async () => {
+    page("/connectors/con_db", [lab, db], [{ id: "rte_shared", name: "shared", targets: [{ connectorId: "con_db" }, { connectorId: "con_lab" }] }]);
+    const section = within(await screen.findByRole("region", { name: "Decommission" }));
+    await screen.findByRole("link", { name: "shared" });
+    fireEvent.click(section.getByRole("button", { name: "Decommission…" }));
+    expect(section.getByRole("alert").textContent).toMatch(/Its route targets are deleted\.$/);
   });
 });

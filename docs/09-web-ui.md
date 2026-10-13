@@ -321,7 +321,8 @@ flowchart LR
   - **Settings:** name, labels, transport policy and whether it serves. They are saved as the whole
     connector as read, with their mask and the etag (U1).
   - **Decommission** comes after a confirmation that names the connector and says what it does
-    (U7). The page then returns to the list.
+    (U7), including the routes that are deleted with it because they have no other target
+    ([06](06-data-model.md#lifecycle-and-deletion)). The page then returns to the list.
 
 ### Gateways
 

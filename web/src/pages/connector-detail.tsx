@@ -116,7 +116,7 @@ export function ConnectorDetail() {
       </Card>
 
       <Settings connector={c} onWrite={setWrite} />
-      <Decommission connector={c} />
+      <Decommission connector={c} doomed={served.filter((r) => r.targets.every((tg) => tg.connectorId === c.id)).map((r) => r.name)} />
     </div>
   );
 }
@@ -169,8 +169,9 @@ function Settings({ connector: c, onWrite }: { connector: Connector; onWrite: (w
   );
 }
 
-// Decommission retires the connector for good, after a confirmation that names it (U7).
-function Decommission({ connector: c }: { connector: Connector }) {
+// Decommission retires the connector for good, after a confirmation that names it (U7) and the
+// routes that go with it: those it leaves with no target, whose ports and hostnames are freed (D78).
+function Decommission({ connector: c, doomed }: { connector: Connector; doomed: string[] }) {
   const { t } = useTranslation();
   const decommission = useMutation(ConnectorService.method.decommissionConnector);
   const queryClient = useQueryClient();
@@ -190,7 +191,10 @@ function Decommission({ connector: c }: { connector: Connector }) {
     <Card title={t("connectors.decommissionTitle")} className="border-destructive/30">
       {asking ? (
         <div className="grid gap-2">
-          <Alert>{t("connectors.decommissionWarning", { name: c.name })}</Alert>
+          <Alert>
+            {t("connectors.decommissionWarning", { name: c.name })}
+            {doomed.length > 0 && ` ${t("connectors.decommissionRoutes", { count: doomed.length, routes: doomed.join(", ") })}`}
+          </Alert>
           <div className="flex gap-2">
             <Button variant="destructive" disabled={decommission.isPending} onClick={() => void go()}>{t("connectors.decommissionNamed", { name: c.name })}</Button>
             <Button variant="outline" onClick={() => setAsking(false)}>{t("stepUp.cancel")}</Button>

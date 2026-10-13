@@ -513,6 +513,10 @@ func TestPortRoutes(t *testing.T) {
 			t.Errorf("%s: %v, want %v %s", name, err, c.code, c.reason)
 		}
 	}
+	// A taken port names the route that holds it, so that its owner knows what to change (D78).
+	if _, err := createRoute(ada, org, tcpRoute("taken", group, 20005), ""); err == nil || !strings.Contains(err.Error(), `route "pg" holds it`) {
+		t.Fatalf("a taken port does not name its route: %v", err)
+	}
 	third, err := createRoute(ada, org, tcpRoute("third", group, 0), "")
 	if err != nil {
 		t.Fatalf("the third tcp port, within the quota: %v", err)

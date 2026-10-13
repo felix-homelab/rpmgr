@@ -62,7 +62,8 @@ type ConnectorServiceClient interface {
 	// snapshot: its routes' streams go to the routes' other connectors.
 	UpdateConnector(context.Context, *connect.Request[v1.UpdateConnectorRequest]) (*connect.Response[v1.UpdateConnectorResponse], error)
 	// DecommissionConnector retires a connector for good: its identity is revoked, its sessions end,
-	// and it stays as a tombstone. Its route targets stay, serving nothing, until they are removed.
+	// and it stays as a tombstone. Its route targets are deleted, and so is each route left with no
+	// target, which frees its ports and hostnames (D78).
 	DecommissionConnector(context.Context, *connect.Request[v1.DecommissionConnectorRequest]) (*connect.Response[v1.DecommissionConnectorResponse], error)
 	// GetConnectorStatus returns what the controller knows of a connector's state: its control
 	// session, its data sessions to gateways and the routes it reports not ready.
@@ -160,7 +161,8 @@ type ConnectorServiceHandler interface {
 	// snapshot: its routes' streams go to the routes' other connectors.
 	UpdateConnector(context.Context, *connect.Request[v1.UpdateConnectorRequest]) (*connect.Response[v1.UpdateConnectorResponse], error)
 	// DecommissionConnector retires a connector for good: its identity is revoked, its sessions end,
-	// and it stays as a tombstone. Its route targets stay, serving nothing, until they are removed.
+	// and it stays as a tombstone. Its route targets are deleted, and so is each route left with no
+	// target, which frees its ports and hostnames (D78).
 	DecommissionConnector(context.Context, *connect.Request[v1.DecommissionConnectorRequest]) (*connect.Response[v1.DecommissionConnectorResponse], error)
 	// GetConnectorStatus returns what the controller knows of a connector's state: its control
 	// session, its data sessions to gateways and the routes it reports not ready.

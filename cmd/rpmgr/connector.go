@@ -127,9 +127,17 @@ func connectorCommands() (update, decommission, revoke *cli.Command) {
 			if err != nil {
 				return apiError(err)
 			}
-			_, err = fmt.Fprintf(env.Stdout, "Decommissioned connector %s%s; its identity is revoked and its sessions closed.\n", id,
-				applied(resp.Msg.ProtoReflect()))
-			return err
+			if _, err = fmt.Fprintf(env.Stdout, "Decommissioned connector %s%s; its identity is revoked and its sessions closed.\n", id,
+				applied(resp.Msg.ProtoReflect())); err != nil {
+				return err
+			}
+			// The routes it left with no target are gone, with their ports and hostnames (D78).
+			for _, r := range resp.Msg.GetDeletedRoutes() {
+				if _, err = fmt.Fprintf(env.Stdout, "Deleted route %s (%s): it had no other target.\n", r.GetName(), r.GetId()); err != nil {
+					return err
+				}
+			}
+			return nil
 		},
 	}
 	revoke = &cli.Command{

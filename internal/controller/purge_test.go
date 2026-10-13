@@ -13,22 +13,26 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/controller"
 	"github.com/felix-homelab/rpmgr/internal/lease"
 	"github.com/felix-homelab/rpmgr/internal/revlog"
+	"github.com/felix-homelab/rpmgr/internal/routes"
 	"github.com/felix-homelab/rpmgr/internal/store"
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/auditentry"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/configrevision"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/connector"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/issuedcertificate"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/portpool"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/predicate"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/route"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/routetarget"
 	"github.com/felix-homelab/rpmgr/internal/store/storetest"
 )
 
 // TestPurge (docs/04-security.md, "Lifecycle"): an ephemeral connector is purged 30 minutes after
 // its last disconnect, by its recorded end, by a session no controller has seen since, or by its
 // enrollment if it never connected, with its identity revoked and its route targets, observed
-// rows and tokens gone; a tombstone goes after 90 days with its expired certificate records,
-// unless a route target still names it or a certificate has not expired; a second run changes
-// nothing.
+// rows and tokens gone; a decommissioned connector's targets go at once, and a route left with no
+// target goes with them (D78); a tombstone goes after 90 days with its expired certificate
+// records, unless a certificate has not expired; a second run changes nothing.
 func TestPurge(t *testing.T) {
 	storetest.ForEachDialect(t, func(t *testing.T, db *store.DB) {
 		storetest.Init(t, db)
@@ -122,13 +126,13 @@ func TestPurge(t *testing.T) {
 		}
 		exists := func(id string) bool { return c.Connector.Query().Where(connectorID(id)).ExistX(sys) }
 		for name, id := range map[string]string{"ended 31 min ago": goneByEnd, "unseen for 40 min": unseen, "never connected, 31 min": neverOld,
-			"a 91-day tombstone": old} {
+			"a 91-day tombstone": old, "a tombstone that had a target": withTarget} {
 			if exists(id) {
 				t.Errorf("%s: kept", name)
 			}
 		}
 		for name, id := range map[string]string{"ended 29 min ago": recentEnd, "live": live, "never connected, 5 min": neverNew,
-			"a tombstone with a target": withTarget, "an 89-day tombstone": young, "a tombstone with a live certificate": unexpired} {
+			"an 89-day tombstone": young, "a tombstone with a live certificate": unexpired} {
 			if !exists(id) {
 				t.Errorf("%s: purged", name)
 			}
@@ -137,7 +141,11 @@ func TestPurge(t *testing.T) {
 			t.Fatalf("the gateway tombstone or the bound tokens are left: %d gateways, %d tokens",
 				c.Gateway.Query().CountX(sys), c.EnrollmentToken.Query().CountX(sys))
 		}
-		if c.RouteTarget.Query().CountX(sys) != 1 || c.ResourceStatus.Query().CountX(sys) != 0 || c.DataSession.Query().CountX(sys) != 0 ||
+		// The route lost its last target, so it went too.
+		if c.Route.Query().CountX(sys) != 0 || c.AuditEntry.Query().Where(auditentry.Action("route.delete"), auditentry.TargetID(route.ID)).CountX(sys) != 1 {
+			t.Fatalf("the route without targets: %d routes left", c.Route.Query().CountX(sys))
+		}
+		if c.RouteTarget.Query().CountX(sys) != 0 || c.ResourceStatus.Query().CountX(sys) != 0 || c.DataSession.Query().CountX(sys) != 0 ||
 			c.AgentSession.Query().CountX(sys) != 2 {
 			t.Fatalf("left behind: %d targets, %d statuses, %d data sessions, %d sessions", c.RouteTarget.Query().CountX(sys),
 				c.ResourceStatus.Query().CountX(sys), c.DataSession.Query().CountX(sys), c.AgentSession.Query().CountX(sys))
@@ -148,15 +156,15 @@ func TestPurge(t *testing.T) {
 		}
 		revokedIDs := c.RevokedIdentity.Query().CountX(sys)
 		entries, err := revlog.Read(logPath)
-		if err != nil || revokedIDs != 5 || len(entries) != 5 || denied.Load() != 1 {
+		if err != nil || revokedIDs != 6 || len(entries) != 6 || denied.Load() != 1 {
 			t.Fatalf("%d identities revoked, %d log entries (%v), deny-list applied %d times", revokedIDs, len(entries), err, denied.Load())
 		}
-		if n := c.AuditEntry.Query().Where(auditentry.Action("connector.purge")).CountX(sys); n != 4 {
+		if n := c.AuditEntry.Query().Where(auditentry.Action("connector.purge")).CountX(sys); n != 5 {
 			t.Fatalf("%d connector purges audited", n)
 		}
 
 		run()
-		if c.Connector.Query().CountX(sys) != 6 || denied.Load() != 1 {
+		if c.Connector.Query().CountX(sys) != 5 || denied.Load() != 1 {
 			t.Fatalf("a second run: %d connectors, deny-list applied %d times", c.Connector.Query().CountX(sys), denied.Load())
 		}
 	})
@@ -167,3 +175,89 @@ func connectorID(id string) predicate.Connector { return connector.ID(id) }
 func issuedSubject(kind string) issuedcertificate.SubjectType {
 	return issuedcertificate.SubjectType(kind)
 }
+
+// TestPurge_RetiresRoutes (D78): a connector decommissioned before D78 keeps route targets that
+// hold their routes' ports; the purge deletes them at once, and each route left with no target,
+// freeing its port, while the tombstone stays for its 90 days; a route with a target on another
+// connector keeps that one; a purged ephemeral connector's routes go the same way.
+func TestPurge_RetiresRoutes(t *testing.T) {
+	storetest.ForEachDialect(t, func(t *testing.T, db *store.DB) {
+		storetest.Init(t, db)
+		sys := storetest.SystemCtx(t)
+		org := storetest.Org(t, db, "org-a")
+		c := db.Client()
+		now := time.Date(2026, 10, 8, 12, 0, 0, 0, time.UTC)
+		group := c.GatewayGroup.Create().SetOrgID(org).SetName("eu").SaveX(sys).ID
+		for _, p := range []routes.Protocol{routes.TCP, routes.UDP} {
+			c.PortPool.Create().SetOrgID(org).SetGatewayGroupID(group).SetProtocol(portpool.Protocol(p)).SetPortFrom(20000).SetPortTo(20009).ExecX(sys)
+		}
+		addConnector := func(name string, edit func(*ent.ConnectorCreate)) string {
+			cc := c.Connector.Create().SetOrgID(org).SetName(name).SetSpiffeID("spiffe://rpmgr-teststor/org/" + org + "/connector/" + name).
+				SetPubkeySha256("k").SetCreatedAt(now.Add(-time.Hour))
+			if edit != nil {
+				edit(cc)
+			}
+			return cc.SaveX(sys).ID
+		}
+		legacy := addConnector("legacy", func(cc *ent.ConnectorCreate) { cc.SetDecommissionedAt(now.Add(-24 * time.Hour)).SetEnabled(false) })
+		pi := addConnector("pi", nil)
+		runner := addConnector("runner", func(cc *ent.ConnectorCreate) { cc.SetEphemeral(true) })
+		c.AgentSession.Create().SetID(runner).SetOrgID(org).SetSessionEpoch(1).SetControllerNode("ctn_1").SetConnectedAt(now.Add(-time.Hour)).
+			SetLastSeenAt(now.Add(-31 * time.Minute)).SetDisconnectedAt(now.Add(-31 * time.Minute)).ExecX(sys)
+		portRoute := func(name string, p routes.Protocol, port int, connectors ...string) string {
+			r := c.Route.Create().SetOrgID(org).SetName(name).SetType(route.Type(p)).SetGatewayGroupID(group).SaveX(sys)
+			tx, err := c.Tx(sys)
+			if err != nil {
+				t.Fatal(err)
+			}
+			a, err := routes.Allocate(sys, tx, org, group, p, port)
+			if err == nil {
+				if _, err = tx.PortAllocation.UpdateOne(a).SetRouteID(r.ID).Save(sys); err == nil {
+					if p == routes.TCP {
+						err = tx.RouteTCP.Create().SetOrgID(org).SetRouteID(r.ID).SetPortAllocationID(a.ID).Exec(sys)
+					} else {
+						err = tx.RouteUDP.Create().SetOrgID(org).SetRouteID(r.ID).SetPortAllocationID(a.ID).Exec(sys)
+					}
+				}
+			}
+			if err != nil {
+				_ = tx.Rollback()
+				t.Fatal(err)
+			}
+			if err := tx.Commit(); err != nil {
+				t.Fatal(err)
+			}
+			for _, con := range connectors {
+				c.RouteTarget.Create().SetOrgID(org).SetRouteID(r.ID).SetConnectorID(con).SetKind("address").SetHost("10.0.0.5").SetPort(5432).ExecX(sys)
+			}
+			return r.ID
+		}
+		pg := portRoute("pg", routes.TCP, 20005, legacy)
+		shared := portRoute("shared", routes.TCP, 20006, legacy, pi)
+		ci := portRoute("ci", routes.UDP, 20005, runner)
+
+		job := controller.PurgeJob(controller.PurgeOptions{DB: db, Now: func() time.Time { return now }})
+		if err := job.Run(context.WithoutCancel(sys), lease.Lease{}); err != nil {
+			t.Fatal(err)
+		}
+		for name, id := range map[string]string{"pg": pg, "ci": ci} {
+			if c.Route.Query().Where(routeID(id)).ExistX(sys) {
+				t.Errorf("route %s with no target left: kept", name)
+			}
+		}
+		if got := c.RouteTarget.Query().Where(routetarget.RouteID(shared)).AllX(sys); len(got) != 1 || got[0].ConnectorID != pi {
+			t.Fatalf("the shared route's targets: %v", got)
+		}
+		if ports := c.PortAllocation.Query().AllX(sys); len(ports) != 1 || ports[0].Port != 20006 {
+			t.Fatalf("port allocations left: %v, want only the shared route's", ports)
+		}
+		if !c.Connector.Query().Where(connectorID(legacy)).ExistX(sys) || c.Connector.Query().Where(connectorID(runner)).ExistX(sys) {
+			t.Fatal("the legacy tombstone went, or the ephemeral connector stayed")
+		}
+		if n := c.AuditEntry.Query().Where(auditentry.Action("route.delete"), auditentry.ActorID("purge-agents")).CountX(sys); n != 2 {
+			t.Fatalf("%d route deletions audited", n)
+		}
+	})
+}
+
+func routeID(id string) predicate.Route { return route.ID(id) }
