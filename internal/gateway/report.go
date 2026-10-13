@@ -15,15 +15,15 @@ const (
 	reportAfter = time.Second      // how long a report of changes waits for more of them
 )
 
-// reporter sends the gateway's data sessions and route counters to the controller: every
-// ReportEvery, and a second after the data sessions change.
+// reporter sends the gateway's data sessions, route counters and readiness to the controller:
+// every ReportEvery, and a second after the data sessions change or a resource becomes ready.
 type reporter struct {
 	changed chan struct{}
 }
 
 func newReporter() *reporter { return &reporter{changed: make(chan struct{}, 1)} }
 
-// change notes that the data sessions changed.
+// change notes that the data sessions or the readiness changed.
 func (r *reporter) change() {
 	select {
 	case r.changed <- struct{}{}:

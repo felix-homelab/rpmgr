@@ -43,6 +43,9 @@ type UDPOptions struct {
 	Sessions *Sessions
 	Revision func() *agentv1.Revision
 	Metrics  *tunnel.UDPMetrics
+	// OnChange is told that a route became ready without a new snapshot: its port was bound after
+	// all. It must not block; it may be nil.
+	OnChange func()
 	Logger   *slog.Logger
 }
 
@@ -167,6 +170,7 @@ func (u *UDPRoutes) rebind() {
 	if u.closed {
 		return
 	}
+	bound := false
 	for _, port := range slices.Sorted(maps.Keys(u.pending)) {
 		r := u.pending[port]
 		conn, err := u.listen(port)
@@ -177,6 +181,10 @@ func (u *UDPRoutes) rebind() {
 		delete(u.status, r.ID)
 		u.serve(conn, r)
 		u.o.Logger.Info("listening on a route's udp port after all", "route", r.ID, "port", port)
+		bound = true
+	}
+	if bound && u.o.OnChange != nil {
+		u.o.OnChange()
 	}
 	if len(u.pending) > 0 {
 		u.retry = time.AfterFunc(rebindEvery, u.rebind)

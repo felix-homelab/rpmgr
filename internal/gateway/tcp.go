@@ -47,6 +47,9 @@ type TCPOptions struct {
 	Sessions *Sessions
 	// Revision returns the revision of the applied snapshot, which every StreamOpen carries.
 	Revision func() *agentv1.Revision
+	// OnChange is told that a route became ready without a new snapshot: its port was bound after
+	// all. It must not block; it may be nil.
+	OnChange func()
 	Logger   *slog.Logger
 }
 
@@ -160,6 +163,7 @@ func (t *TCPRoutes) rebind() {
 	if t.closed {
 		return
 	}
+	bound := false
 	for _, port := range slices.Sorted(maps.Keys(t.pending)) {
 		r := t.pending[port]
 		ln, err := t.listen(port)
@@ -170,6 +174,10 @@ func (t *TCPRoutes) rebind() {
 		delete(t.status, r.ID)
 		t.serve(ln, r)
 		t.o.Logger.Info("listening on a route's port after all", "route", r.ID, "port", port)
+		bound = true
+	}
+	if bound && t.o.OnChange != nil {
+		t.o.OnChange()
 	}
 	if len(t.pending) > 0 {
 		t.retry = time.AfterFunc(rebindEvery, t.rebind)

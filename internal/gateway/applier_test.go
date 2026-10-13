@@ -120,6 +120,9 @@ func TestApplier_Apply(t *testing.T) {
 	if len(st) != 1 || st[0].GetResourceId() != "rt_3" || st[0].GetReason() != agentv1.NotReadyReason_NOT_READY_REASON_PORT_IN_USE {
 		t.Fatalf("an occupied udp port: %v", st)
 	}
+	if r := a.Readiness(); len(r) != 1 || r[0].GetResourceId() != "rt_3" {
+		t.Fatalf("readiness with an occupied udp port: %v", r)
+	}
 
 	c := start(t, m, connectorID("con_2"), hello("rt_2"))
 	a.Apply(t.Context(), gatewaySnapshot(8, tcpResource("rt_1", uint32(p1), cid("con_1"))), agent.Changes{})

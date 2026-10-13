@@ -340,9 +340,12 @@ Rules:
     a detail. After that an agent sends a `Status` with each change, such as a connector whose
     local policy was reloaded, and at the start of every session a complete one, which names
     every resource that is not ready, so that a change made while there was no session is not
-    lost. The controller keeps, per agent, at most 1 024 resources that are not ready, each
-    resource ID and detail at most 512 bytes; a resource it does not keep is shown as ready. It
-    records an `Applied` only for a snapshot the same session was sent
+    lost. An agent that is sent the snapshot it already runs answers `Applied` again, with the
+    resources not ready now. A gateway's every `Status` is a complete one; it sends one a second
+    after a resource becomes ready without a new snapshot, as a route port bound after all or a
+    certificate a retry fetched. The controller keeps, per agent, at most 1 024 resources that are
+    not ready, each resource ID and detail at most 512 bytes; a resource it does not keep is shown
+    as ready. It records an `Applied` only for a snapshot the same session was sent
     ([06](06-data-model.md#desired-vs-observed-state)). A gateway's every `Status` lists its
     connectors' data sessions, one per connector and transport with the lowest round-trip time a
     session measures (QUIC does; h2 does not), at the report interval of the timeout table and at
@@ -1040,7 +1043,7 @@ sequenceDiagram
 | Route port in use | a `tcp` or `udp` route port the gateway cannot bind (`not_ready(port_in_use)`) is tried again every 5 s | [R] A port another process frees is taken within seconds, without a new revision |
 | Gateway drain | 60 s | Time for connectors to re-home |
 | Session liveness | each controller node marks its live sessions seen every 60 s; a session not seen for 3 min is not live | An agent shows as connected while its control session is live; a node that stops without recording its sessions' ends leaves them to age, and ends them when it starts again |
-| Data-session report | every 60 s, and 1 s after a change | A gateway's `Status` listing its connectors' data sessions, for their status in the API, and its route counters, for the traffic rollups |
+| Data-session report | every 60 s, and 1 s after a change | A gateway's `Status` listing its connectors' data sessions, for their status in the API, its route counters, for the traffic rollups, and the resources that are not ready |
 | Revocation, tightened access policy | immediate | Security beats continuity |
 | Mail delivery | dial 10 s; the whole delivery 30 s | [R] A relay that hangs never holds a request or job for long |
 | ACME job | looks for certificates to obtain or renew every 1 min, on the replica that holds its lease | New routes get their certificates within a minute or so; renewals are never late by more |
