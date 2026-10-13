@@ -47,9 +47,12 @@ type CertificatesOptions struct {
 	// "" keeps them in memory only.
 	Dir string
 	// Fetch fetches an item by ID and content hash, normally agent.Control.Fetch.
-	Fetch  func(ctx context.Context, id string, hash []byte) ([]byte, error)
-	Now    func() time.Time
-	Logger *slog.Logger
+	Fetch func(ctx context.Context, id string, hash []byte) ([]byte, error)
+	// OnChange is told that a certificate became ready without a new snapshot: a retry loaded it.
+	// It must not block; it may be nil.
+	OnChange func()
+	Now      func() time.Time
+	Logger   *slog.Logger
 }
 
 // Certificates holds the route certificates of the gateway's snapshot and chooses one for a TLS
@@ -63,7 +66,13 @@ type Certificates struct {
 	want    []CertificateRoute
 	loaded  map[string]*tls.Certificate // by hex content hash
 	byHost  map[string][]*tls.Certificate
-	missing map[string]CertificateRoute // by hex content hash
+	missing map[string]missingCert // by hex content hash
+}
+
+// missingCert is a certificate that could not be loaded yet, and why.
+type missingCert struct {
+	route CertificateRoute
+	err   string
 }
 
 // NewCertificates returns an empty set; Run retries what Apply could not load.
@@ -75,7 +84,7 @@ func NewCertificates(o CertificatesOptions) *Certificates {
 		o.Logger = slog.New(slog.DiscardHandler)
 	}
 	return &Certificates{o: o, retry: make(chan struct{}, 1), loaded: map[string]*tls.Certificate{},
-		byHost: map[string][]*tls.Certificate{}, missing: map[string]CertificateRoute{}}
+		byHost: map[string][]*tls.Certificate{}, missing: map[string]missingCert{}}
 }
 
 // Apply makes routes the served certificates: each comes from memory, from Dir, or from Fetch, and
@@ -88,13 +97,17 @@ func (c *Certificates) Apply(ctx context.Context, routes []CertificateRoute) []*
 	var status []*agentv1.ResourceStatus
 	for _, r := range routes {
 		if err := c.load(ctx, r); err != nil {
-			status = append(status, &agentv1.ResourceStatus{ResourceId: r.ID, Reason: agentv1.NotReadyReason_NOT_READY_REASON_ENVIRONMENT,
-				Detail: "certificate not loaded: " + err.Error()})
+			status = append(status, notLoaded(r.ID, err.Error()))
 		}
 	}
 	c.rebuild()
 	c.prune()
 	return status
+}
+
+func notLoaded(id, err string) *agentv1.ResourceStatus {
+	return &agentv1.ResourceStatus{ResourceId: id, Reason: agentv1.NotReadyReason_NOT_READY_REASON_ENVIRONMENT,
+		Detail: "certificate not loaded: " + err}
 }
 
 // load makes one certificate available, or records it as missing.
@@ -120,17 +133,22 @@ func (c *Certificates) load(ctx context.Context, r CertificateRoute) error {
 		}
 	}
 	c.mu.Lock()
-	defer c.mu.Unlock()
 	if err != nil {
-		c.missing[key] = r
+		c.missing[key] = missingCert{route: r, err: err.Error()}
+		c.mu.Unlock()
 		select {
 		case c.retry <- struct{}{}:
 		default:
 		}
 		return err
 	}
+	_, was := c.missing[key]
 	delete(c.missing, key)
 	c.loaded[key] = cert
+	c.mu.Unlock()
+	if was && c.o.OnChange != nil {
+		c.o.OnChange()
+	}
 	return nil
 }
 
@@ -228,8 +246,8 @@ func (c *Certificates) Run(ctx context.Context) {
 		for {
 			c.mu.Lock()
 			var missing []CertificateRoute
-			for _, r := range c.missing {
-				missing = append(missing, r)
+			for _, m := range c.missing {
+				missing = append(missing, m.route)
 			}
 			c.mu.Unlock()
 			if len(missing) == 0 {
@@ -255,6 +273,19 @@ func (c *Certificates) Run(ctx context.Context) {
 			}
 		}
 	}
+}
+
+// Status returns the certificates of the snapshot that are not loaded, as not ready.
+func (c *Certificates) Status() []*agentv1.ResourceStatus {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	var out []*agentv1.ResourceStatus
+	for _, r := range c.want {
+		if m, ok := c.missing[hex.EncodeToString(r.ContentSHA256)]; ok {
+			out = append(out, notLoaded(r.ID, m.err))
+		}
+	}
+	return out
 }
 
 // Missing returns how many certificates of the snapshot are not loaded.

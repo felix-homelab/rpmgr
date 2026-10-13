@@ -101,7 +101,8 @@ func Run(ctx context.Context, o RunOptions) error {
 			if sessions == nil {
 				return &agentv1.Status{}
 			}
-			return &agentv1.Status{DataSessions: sessions.Report(), Counters: sessions.metrics().Counters()}
+			return &agentv1.Status{DataSessions: sessions.Report(), Counters: sessions.metrics().Counters(),
+				Readiness: applier.Readiness(), ReadinessComplete: true}
 		}})
 	if err != nil {
 		return err
@@ -140,7 +141,7 @@ func Run(ctx context.Context, o RunOptions) error {
 	if err != nil {
 		return err
 	}
-	routes := NewTCPRoutes(TCPOptions{Host: host, Sessions: sessions, Revision: applier.Revision, Logger: o.Logger})
+	routes := NewTCPRoutes(TCPOptions{Host: host, Sessions: sessions, Revision: applier.Revision, OnChange: report.change, Logger: o.Logger})
 	defer routes.Close()
 	pass := NewPassthrough(sessions, applier.Revision, o.Logger)
 	defer pass.Close()
@@ -153,10 +154,10 @@ func Run(ctx context.Context, o RunOptions) error {
 		return err
 	}
 	udpRoutes := NewUDPRoutes(UDPOptions{Host: udpHost, Sessions: sessions, Revision: applier.Revision, Metrics: udpMetrics,
-		Logger: o.Logger})
+		OnChange: report.change, Logger: o.Logger})
 	defer udpRoutes.Close()
 	certificates := NewCertificates(CertificatesOptions{Dir: filepath.Join(cfg.StateDir, ResourcesDir), Fetch: ctl.Fetch,
-		Now: o.Now, Logger: o.Logger})
+		OnChange: report.change, Now: o.Now, Logger: o.Logger})
 	def, err := DefaultTLS()
 	if err != nil {
 		return err
@@ -274,7 +275,8 @@ func Run(ctx context.Context, o RunOptions) error {
 	background.Go(func() { certificates.Run(run) })
 	background.Go(func() {
 		report.run(run, ReportEvery, ctl.Send, func() *agentv1.Status {
-			return &agentv1.Status{DataSessions: sessions.Report(), Counters: metrics.Counters()}
+			return &agentv1.Status{DataSessions: sessions.Report(), Counters: metrics.Counters(), Readiness: applier.Readiness(),
+				ReadinessComplete: true}
 		})
 	})
 	go func() {

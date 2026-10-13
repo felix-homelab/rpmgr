@@ -129,6 +129,23 @@ type Served struct {
 // Bind gives the applier what it updates.
 func (a *Applier) Bind(s Served) { a.served = s }
 
+// Readiness implements agent.Applier: the tcp and udp routes whose port is not bound, and the
+// certificates not loaded.
+func (a *Applier) Readiness() []*agentv1.ResourceStatus {
+	s := a.served
+	var status []*agentv1.ResourceStatus
+	if s.TCP != nil {
+		status = append(status, s.TCP.Status()...)
+	}
+	if s.UDP != nil {
+		status = append(status, s.UDP.Status()...)
+	}
+	if s.Certificates != nil {
+		status = append(status, s.Certificates.Status()...)
+	}
+	return status
+}
+
 // Revision returns the revision of the applied snapshot; it is TCPOptions.Revision.
 func (a *Applier) Revision() *agentv1.Revision { return a.revision.Load() }
 

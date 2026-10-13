@@ -33,6 +33,8 @@ func (rejecter) Apply(context.Context, *agentv1.Snapshot, agent.Changes) []*agen
 	return nil
 }
 
+func (rejecter) Readiness() []*agentv1.ResourceStatus { return nil }
+
 // TestDenyList_AppliedDespiteRejectedSnapshot: an agent that rejects its snapshots still applies
 // and stores every deny-list; after a restore that lost the revocation (a new database epoch and a
 // list without the entry), the agent still denies the certificate.

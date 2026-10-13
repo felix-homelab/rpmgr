@@ -41,6 +41,7 @@ type plane struct {
 	sessions *gateway.Sessions
 	routes   *gateway.TCPRoutes
 	targets  *conn.Targets
+	changes  atomic.Int32 // how often the routes said that one became ready
 }
 
 // newPlane starts the gateway and the connector; route IDs map to the service at target, which
@@ -83,7 +84,7 @@ func planeWith(t *testing.T, target, proxy string, metrics *gateway.Metrics, rou
 		}
 	}()
 	p.routes = gateway.NewTCPRoutes(gateway.TCPOptions{Host: "127.0.0.1", Sessions: p.sessions,
-		Revision: func() *agentv1.Revision { return &agentv1.Revision{Seq: 7} }})
+		Revision: func() *agentv1.Revision { return &agentv1.Revision{Seq: 7} }, OnChange: func() { p.changes.Add(1) }})
 	t.Cleanup(p.routes.Close)
 
 	host, portStr, _ := net.SplitHostPort(target)
@@ -268,7 +269,7 @@ func TestTCPRoutes_RemovedRouteDrains(t *testing.T) {
 }
 
 // TestTCPRoutes_PortInUse: a port that is taken makes its route not_ready(port_in_use) without
-// holding up the others, and is bound once it is free.
+// holding up the others, and is bound once it is free, which OnChange is told.
 func TestTCPRoutes_PortInUse(t *testing.T) {
 	gateway.SetRouteTimers(t, time.Second, 200*time.Millisecond)
 	p := newPlane(t, service(t, echoService), "rt_1", "rt_2")
@@ -286,10 +287,16 @@ func TestTCPRoutes_PortInUse(t *testing.T) {
 	if err := ping(dialPort(t, free), "the other route"); err != nil {
 		t.Fatal(err)
 	}
+	if p.changes.Load() != 0 {
+		t.Fatal("a change while the port is taken")
+	}
 	_ = busy.Close()
 	eventually(t, "the freed port was not bound", func() bool { return len(p.routes.Status()) == 0 })
 	if err := ping(dialPort(t, taken), "once free"); err != nil {
 		t.Fatal(err)
+	}
+	if n := p.changes.Load(); n != 1 {
+		t.Fatalf("%d changes, want 1", n)
 	}
 }
 

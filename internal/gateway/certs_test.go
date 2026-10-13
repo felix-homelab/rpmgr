@@ -15,6 +15,7 @@ import (
 	"math/big"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -195,27 +196,37 @@ func TestCertificates_FetchAndKeep(t *testing.T) {
 	}
 }
 
-// TestCertificates_Retry: a certificate that cannot be fetched is reported not ready and loaded by
-// Run once the controller answers again.
+// TestCertificates_Retry: a certificate that cannot be fetched is reported not ready, also by
+// Status for each route that names it, and loaded by Run once the controller answers again, which
+// OnChange is told.
 func TestCertificates_Retry(t *testing.T) {
 	now := time.Now()
 	f := &fakeFetch{}
 	f.fail.Store(true)
 	item, hash := certItem(t, "app.example.com", now.Add(-time.Hour), now.Add(time.Hour), false)
 	f.add(item, hash)
-	c := gateway.NewCertificates(gateway.CertificatesOptions{Fetch: f.fetch})
+	var changes atomic.Int32
+	c := gateway.NewCertificates(gateway.CertificatesOptions{Fetch: f.fetch, OnChange: func() { changes.Add(1) }})
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 	go c.Run(ctx)
-	st := c.Apply(t.Context(), []gateway.CertificateRoute{{ID: "crt_app", ContentSHA256: hash, Hostnames: []string{"app.example.com"}}})
-	if len(st) != 1 || st[0].GetResourceId() != "crt_app" || c.Missing() != 1 || c.ForName("app.example.com") != nil {
+	st := c.Apply(t.Context(), []gateway.CertificateRoute{{ID: "crt_app", ContentSHA256: hash, Hostnames: []string{"app.example.com"}},
+		{ID: "crt_same", ContentSHA256: hash, Hostnames: []string{"app.example.com"}}})
+	if len(st) != 2 || st[0].GetResourceId() != "crt_app" || c.Missing() != 1 || c.ForName("app.example.com") != nil {
 		t.Fatalf("an unreachable controller: %v", st)
 	}
+	if st := c.Status(); len(st) != 2 || st[0].GetResourceId() != "crt_app" || st[1].GetResourceId() != "crt_same" ||
+		st[0].GetReason() != agentv1.NotReadyReason_NOT_READY_REASON_ENVIRONMENT || !strings.HasPrefix(st[0].GetDetail(), "certificate not loaded: ") {
+		t.Fatalf("status while missing: %v", st)
+	}
 	time.Sleep(1500 * time.Millisecond) // at least one failed retry
+	if changes.Load() != 0 || len(c.Status()) != 2 {
+		t.Fatalf("after a failed retry: %d changes, status %v", changes.Load(), c.Status())
+	}
 	f.fail.Store(false)
 	eventually(t, "the certificate was never loaded", func() bool { return c.ForName("app.example.com") != nil })
-	if c.Missing() != 0 {
-		t.Fatalf("%d still missing", c.Missing())
+	if c.Missing() != 0 || len(c.Status()) != 0 || changes.Load() != 1 {
+		t.Fatalf("%d still missing, status %v, %d changes", c.Missing(), c.Status(), changes.Load())
 	}
 }
 
@@ -254,5 +265,8 @@ func TestApplier_Certificates(t *testing.T) {
 	st := a.Apply(t.Context(), gatewaySnapshot(2, crt(good, "app.example.com")), agent.Changes{})
 	if len(st) != 1 || st[0].GetResourceId() != "crt_1" {
 		t.Fatalf("status %v", st)
+	}
+	if r := a.Readiness(); len(r) != 1 || r[0].GetResourceId() != "crt_1" {
+		t.Fatalf("readiness %v", r)
 	}
 }
