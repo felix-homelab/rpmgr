@@ -158,7 +158,9 @@ export function TargetForm({ route, target, connectors, onDone, onCancel }: {
       <Select form={form} name="upstream" label={t("targetForm.upstream")} options={upstreams.map((u) => [String(u), t(`targetForm.upstreams.${UpstreamProtocol[u]}`)])} />
       {https && (
         <>
-          <Text form={form} name="serverName" label={t("targetForm.serverName")} required={address === "unixPath"} />
+          {/* A socket has no host to name, so an HTTPS target on one needs a server name. */}
+          <Text form={form} name="serverName" label={t("targetForm.serverName")} required={address === "unixPath"}
+            hint={address === "hostPort" ? t("targetForm.serverNameHint") : undefined} />
           <Text form={form} name="caBundle" label={t("targetForm.caBundle")} />
           <Text form={form} name="spki" label={t("targetForm.spki")} />
         </>
@@ -181,13 +183,16 @@ export function TargetForm({ route, target, connectors, onDone, onCancel }: {
 }
 
 // Text and Select are a field of the target form; a required one's label ends in a red asterisk.
-function Text({ form, name, label, required }: { form: UseFormReturn<TargetValues>; name: Path<TargetValues>; label: string; required?: boolean }) {
+function Text({ form, name, label, hint, required }: {
+  form: UseFormReturn<TargetValues>; name: Path<TargetValues>; label: string; hint?: string; required?: boolean;
+}) {
   const id = useId();
   const error = form.formState.errors[name as keyof TargetValues]?.message;
   return (
     <div className="grid gap-1.5">
       <label htmlFor={id} className={labelClass(required)}>{label}</label>
-      <Input id={id} required={required} aria-invalid={error ? true : undefined} aria-describedby={`${id}-error`} {...form.register(name)} />
+      <Input id={id} required={required} aria-invalid={error ? true : undefined} aria-describedby={hint ? `${id}-hint ${id}-error` : `${id}-error`} {...form.register(name)} />
+      {hint && <p id={`${id}-hint`} className="text-xs text-muted-foreground">{hint}</p>}
       {error && <p id={`${id}-error`} role="alert" className="text-sm text-destructive">{error}</p>}
     </div>
   );

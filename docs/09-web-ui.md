@@ -125,8 +125,10 @@ flowchart LR
   a target's host and port or its socket path, an HTTPS target's server name on a socket, the mail
   relay's sender address, and the password of a basic-auth user the policy does not have yet. A
   number field that is filled in with its default, such as a port of 0 for any free port, is
-  required too, since an empty one is refused. Selects and radio buttons that always hold a value,
-  and search and filter fields, have none. Forms do not explain the asterisk.
+  required too, since an empty one is refused. A group of checkboxes of which one must be chosen,
+  such as an API token's scopes, has the asterisk after its legend, and the legend says "required"
+  to screen readers, since no checkbox can be marked required. Selects and radio buttons that
+  always hold a value, and search and filter fields, have none. Forms do not explain the asterisk.
 - **Icons** come from lucide-react and are bundled with the UI, so the CSP needs no other origin
   ([Frontend architecture](#frontend-architecture)). They are hidden from screen readers; their
   name is always in the text next to them or in the control's label.

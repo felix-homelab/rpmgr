@@ -26,7 +26,7 @@ history and the [ADRs](docs/adr/).
   and logs redact them. (#183, #184, #186, #187, #189, #199, #313, #375)
 - Controller: all-in-one, the homelab default, runs a controller and a gateway in one process.
   `rpmgr all-in-one init` also creates the gateway group `default`, its public hostname the public
-  URL's host, with the enrolled gateway `local`. (#268, #269, #484)
+  URL's host if that is a valid one, with the enrolled gateway `local`. (#268, #269, #484, #493)
 - Controller: a controller without a public address can stay on a private network, published
   through a gateway that passes its hostnames through to it. (#285)
 - Controller: serves `/install.sh`. The script downloads the controller's own release from the
@@ -126,7 +126,7 @@ history and the [ADRs](docs/adr/).
 - UI: routes can be listed, created with a preview, edited with conflict resolution, switched on
   and off while the apply status follows live, given targets, and deleted after a confirmation.
   TCP and UDP routes are shown at their gateway group's public hostnames, such as
-  `eu.example.net:25432`. (#363, #364, #365, #366, #471, #484)
+  `eu.example.net:25432`. (#363, #364, #365, #366, #471, #484, #493)
 - UI: pages for connectors with an enrollment dialog, gateway groups, gateways and port pools,
   domains, certificates and CA bundles, access policies, and members and invitations. (#366, #367,
   #368, #369)
@@ -141,7 +141,7 @@ history and the [ADRs](docs/adr/).
   columns on wide screens. (#459, #481)
 - UI: a field a form needs has a red asterisk after its label, also while it is needed only
   because of another field, such as the sender address once a mail relay is set. Screen readers
-  announce the field as required. (#483)
+  announce the field as required. (#483, #493)
 - Controller: every change, sign-in and token use is recorded once in a hash-chained audit log per
   org and one for the instance, with signed checkpoints and retention. The API and the UI list and
   verify the chains. (#194, #311, #350, #351, #352)
