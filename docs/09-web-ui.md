@@ -143,8 +143,8 @@ flowchart LR
 ├──────────────────────┼────────┼───────────────┼────────────┼──────────────┼─────────────┤
 │ wiki                 │ http   │ eu            │ 2/2 ready  │ ● ready      │ ✓ rev 1042  │
 │  wiki.example.com    │        │               │            │              │             │
-│ postgres             │ tcp    │ eu  :25432    │ 0/1 ready  │ ▲ unavailable │ ✓ rev 1040 │
-│                      │        │               │ 1 blocked by local policy                 │
+│ postgres             │ tcp    │ eu            │ 0/1 ready  │ ▲ unavailable │ ✓ rev 1040 │
+│  eu.example.net:25432│        │               │ 1 blocked by local policy                 │
 │ grafana              │ http   │ eu            │ 1/1 ready  │ ○ disabled   │ ⧗ pending   │
 │  grafana.example.com │        │               │            │              │  2/3 agents │
 ├──────────────────────┴────────┴───────────────┴────────────┴──────────────┴─────────────┤
@@ -156,6 +156,9 @@ flowchart LR
 - It reads all of the org's routes and filters them in the browser by text (name or address),
   type, status and gateway group. It sorts them by name and shows 25 a page. The filters and the
   page stay in the URL (U9).
+- **The address** of an HTTP or TLS passthrough route is its hostnames. A TCP or UDP route shows
+  its public port at each public hostname of its gateway group, such as `eu.example.net:25432`, an
+  IPv6 address in brackets; while the group has none, only `:25432` (D79).
 - **Without routes,** the list offers to create the first. When the filters match none, it says so
   and offers to clear them.
 - **Targets** shows how many are ready, and how many a connector's local policy blocks.
@@ -243,7 +246,7 @@ flowchart LR
 
 ```
 ┌ Route: postgres (tcp)                      [Enabled ●━]  [Edit]  [YAML]  [⋯ Delete]   ┐
-│ Desired: enabled · gateway group eu · port 25432          Observed: ▲ unavailable      │
+│ Desired: enabled · gateway group eu · eu.example.net:25432   Observed: ▲ unavailable   │
 ├ Targets & health ─────────────────────────────────────────────────────────────────────┤
 │ Connector   Address          Weight  Health       Status                                │
 │ db-host-1   10.0.0.5:5432    100     tcp / 10 s   ▲ not_ready: blocked by local policy  │
@@ -264,6 +267,8 @@ flowchart LR
   targets, traffic and access policies.
 - It shows the configured settings next to the observed state (U3), and how many of the group's
   gateways serve the route.
+- **The address** is the list's. A TCP or UDP route whose gateway group has no public hostname
+  shows only its port, says so, and links to the group, where they are set.
 - **Each target** shows its connector by name, its address and weight, and whether it serves; if
   not, it says why.
 - **Targets are added, edited and removed** on the page, in the targets card, one form at a time.

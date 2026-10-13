@@ -2,13 +2,15 @@
 
 import { useTranslation } from "react-i18next";
 import type { PreviewRouteResponse } from "@/gen/rpmgr/v1/route_pb";
-import { routeAddress } from "@/routes-data";
+import { routeAddress, useGroupHostnames } from "@/routes-data";
+import { useOrg } from "@/session";
 
 // PreviewPanel shows what PreviewRoute found, without anything saved: where the route would be
 // reached, the gateways and connectors that would carry it, and what a gateway would refuse.
 export function PreviewPanel({ preview, name }: { preview: PreviewRouteResponse; name: (id: string) => string }) {
   const { t } = useTranslation();
-  const where = preview.route ? routeAddress(preview.route) : [];
+  const hosts = useGroupHostnames(useOrg()?.orgId);
+  const where = preview.route ? routeAddress(preview.route, hosts.data?.get(preview.route.gatewayGroupId)) : [];
   return (
     <section aria-labelledby="preview-title" className="grid gap-1.5 rounded-xl border border-border bg-muted/50 p-4 text-sm">
       <h2 id="preview-title" className="font-semibold">{t("preview.title")}</h2>
