@@ -168,7 +168,8 @@ flowchart LR
   route.
 - **"Create a route"** opens a form: the type, the gateway group, and the fields of that type.
   - **Defaults:** HTTP routes start with ACME certificates and a redirect on port 80. TCP and UDP
-    routes start on port 0, a free port of the group's pools.
+    routes start on port 0, a free port of the group's pools. The org's default gateway group
+    ([Settings](#settings)) is preselected unless a group was chosen first.
   - **Retries:** the creation carries one request ID, however often it is retried.
   - **After creating,** the apply status follows live, and a link opens the new route to add its
     targets.
