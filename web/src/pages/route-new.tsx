@@ -2,11 +2,11 @@
 
 import { create } from "@bufbuild/protobuf";
 import { Code, ConnectError } from "@connectrpc/connect";
-import { useMutation } from "@connectrpc/connect-query";
+import { useMutation, useQuery } from "@connectrpc/connect-query";
 import { useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { ChevronLeft } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useForm, type Resolver } from "react-hook-form";
 import { useTranslation } from "react-i18next";
 import { ApplyStatusView, useLiveApplyStatus } from "@/components/apply-status";
@@ -20,6 +20,7 @@ import type { Revision } from "@/gen/rpmgr/v1/common_pb";
 import {
   CreateRouteRequestSchema, Port80Mode, RouteSchema, RouteService, TLSMode, type PreviewRouteResponse, type Route,
 } from "@/gen/rpmgr/v1/route_pb";
+import { SettingsService } from "@/gen/rpmgr/v1/settings_pb";
 import type { ApplyStatus } from "@/gen/rpmgr/v1/status_pb";
 import { protoResolver, serverFieldErrors, type FieldOf } from "@/lib/proto-form";
 import { numberProblems, routeFields, routeWith, valuesOf, type RouteValues } from "@/route-form/fields";
@@ -80,6 +81,7 @@ function NewRouteForm({ type }: { type: RouteType }) {
   const org = useOrg();
   const groups = useGroupNames(org?.orgId);
   const names = useAgentNames(org?.orgId);
+  const settings = useQuery(SettingsService.method.getOrgSettings, { orgId: org?.orgId ?? "" }, { enabled: !!org });
   const queryClient = useQueryClient();
   const createRoute = useMutation(RouteService.method.createRoute);
   const preview = useMutation(RouteService.method.previewRoute);
@@ -104,6 +106,16 @@ function NewRouteForm({ type }: { type: RouteType }) {
     return checks(values, ctx, opts);
   };
   const form = useForm<NewValues>({ defaultValues: { ...valuesOf(base), group: "" }, resolver });
+  // The org's default gateway group is preselected once it and the groups are read, unless a group
+  // was chosen first; a default that names no group of the org is ignored. It is preselected once,
+  // so the form never takes back a choice.
+  const preset = settings.data?.settings?.defaultGatewayGroupId ?? "";
+  const listed = !!preset && !!groups.data?.has(preset);
+  useEffect(() => {
+    if (listed && !form.getValues("group")) {
+      form.resetField("group", { defaultValue: preset });
+    }
+  }, [listed, preset, form]);
   const [created, setCreated] = useState<{ route?: Route; revision?: Revision; status?: ApplyStatus }>();
   const [previewed, setPreviewed] = useState<PreviewRouteResponse>();
   const [other, setOther] = useState<string[]>([]);
