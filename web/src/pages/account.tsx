@@ -27,12 +27,15 @@ export function Account() {
   const { t } = useTranslation();
   const search = route.useSearch();
   return (
-    <div className="grid max-w-3xl gap-8">
+    <div className="grid gap-8">
       <PageHeader title={t("account.title")} />
       {search.mfa === "required" && <Alert>{t("mfa.required")}</Alert>}
-      <Profile />
-      <Password />
-      <Authenticator />
+      {/* Side by side on wide screens; in two columns the authenticator takes a row of its own. */}
+      <div className="grid gap-8 xl:grid-cols-2 xl:[&>:last-child]:col-span-2 2xl:grid-cols-3 2xl:[&>:last-child]:col-span-1">
+        <Profile />
+        <Password />
+        <Authenticator />
+      </div>
       <Sessions />
       <APITokens />
     </div>

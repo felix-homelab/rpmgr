@@ -39,6 +39,32 @@ export async function sideways(page: Page): Promise<string[]> {
   });
 }
 
+// unfilled lists what leaves the window's width unused on a signed-in page wider than 1024 px: the
+// main area, which spans from the sidebar to the window's right edge, and the page in it, which
+// fills the main area's content box (docs/09-web-ui.md, "Layout and navigation").
+export async function unfilled(page: Page): Promise<string[]> {
+  return page.evaluate(() => {
+    const px = (n: number) => Math.round(n);
+    const main = document.querySelector("main")!;
+    const box = main.getBoundingClientRect();
+    const from = document.querySelector("aside")!.getBoundingClientRect().right;
+    const to = document.documentElement.clientWidth;
+    const out: string[] = [];
+    if (Math.abs(box.left - from) > 1 || Math.abs(box.right - to) > 1) {
+      out.push(`main ${px(box.left)}–${px(box.right)}, window ${px(from)}–${px(to)}`);
+    }
+    const style = getComputedStyle(main);
+    const inner = box.width - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
+    for (const e of [...main.children].filter((e) => e.getClientRects().length > 0)) {
+      const width = e.getBoundingClientRect().width;
+      if (inner - width > 1) {
+        out.push(`${e.tagName.toLowerCase()} ${px(width)} of ${px(inner)} px`);
+      }
+    }
+    return out;
+  });
+}
+
 // totp is the RFC 6238 code of a base32 secret at time now (SHA-1, 30 s, 6 digits).
 export function totp(secret: string, now = Date.now()): string {
   const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";

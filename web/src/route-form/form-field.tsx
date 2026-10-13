@@ -1,10 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0
 
-import { useId } from "react";
+import { useId, type ReactNode } from "react";
 import type { Path, UseFormReturn } from "react-hook-form";
 import { useTranslation } from "react-i18next";
 import { Input, Select, Textarea } from "@/components/ui/input";
 import type { RouteField, RouteValues } from "@/route-form/fields";
+
+// FieldGrid lays the route form's fields out in two columns on wide screens; they read across, row
+// by row, in the form's order.
+export function FieldGrid({ children }: { children: ReactNode }) {
+  return <div className="grid gap-4 xl:grid-cols-2 xl:items-start">{children}</div>;
+}
 
 // FormField is one labelled field of the route form, with its hint, if its kind has one, and its
 // error. Screen readers hear both with the field.

@@ -102,6 +102,10 @@ flowchart LR
 - **On screens narrower than 1024 px** the sidebar is a menu behind a button in the top bar. It
   opens from the left as a modal dialog, and Escape, a click beside it, its close button and
   choosing a page close it.
+- **The page fills the window** beside the sidebar, however wide the screen is. From 1280 px, the
+  route form and the instance settings stand in two columns, and the account page sets its profile,
+  password and authenticator cards side by side. Short forms keep a readable width inside their
+  card.
 - **The top bar** holds "Go to…", which opens the [command palette](#command-palette), the theme
   switch and the user menu. It stays at the top while the page scrolls.
 - **The theme switch** chooses *like the system*, *light* or *dark* (U10). It is a group of radio
@@ -664,6 +668,8 @@ In Phase 1 the UI works in the user's first org. The org switcher comes with the
   step-up prompt, token creation and revocation.
 - Every page a Playwright flow visits is checked with axe for WCAG 2.2 A and AA. A flow also fails
   on any CSP violation, and on anything in `localStorage` or `sessionStorage`.
+- A flow checks, in a window 2560 px wide, that each page it visits fills the width beside the
+  sidebar, and that the route form stands in two columns there and in one on a phone.
 - A unit test computes the contrast of every text colour on its surfaces, 4.5:1, and of control
   borders, the focus outline and chart lines, 3:1, in both themes.
 - Accessibility checks (axe) in CI on every page, plus manual keyboard and screen-reader passes per

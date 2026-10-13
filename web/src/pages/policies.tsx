@@ -82,7 +82,7 @@ export function Policies() {
     <Button size="sm" disabled={!org} onClick={() => setEditing("new")}><Plus aria-hidden="true" />{t("policies.add")}</Button>
   );
   return (
-    <section aria-labelledby="policies-title" className="grid max-w-5xl gap-6">
+    <section aria-labelledby="policies-title" className="grid gap-6">
       <PageHeader id="policies-title" title={t("policies.title")} description={t("policies.intro")} actions={<>
         {org && <ManifestButton label={t("manifest.export")} title={t("manifest.ofKind", { what: t("policies.title") })} orgId={org.orgId} kinds={["AccessPolicy"]} file="access-policies" />}
         {add}

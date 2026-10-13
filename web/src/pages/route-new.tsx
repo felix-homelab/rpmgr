@@ -22,7 +22,7 @@ import {
 import type { ApplyStatus } from "@/gen/rpmgr/v1/status_pb";
 import { protoResolver, serverFieldErrors, type FieldOf } from "@/lib/proto-form";
 import { numberProblems, routeFields, routeWith, valuesOf, type RouteValues } from "@/route-form/fields";
-import { FormField } from "@/route-form/form-field";
+import { FieldGrid, FormField } from "@/route-form/form-field";
 import { PreviewPanel } from "@/route-form/preview";
 import { routeTypes, useAgentNames, useGroupNames } from "@/routes-data";
 import { useOrg } from "@/session";
@@ -47,7 +47,7 @@ export function RouteNew() {
   const { t } = useTranslation();
   const [type, setType] = useState<RouteType>("http");
   return (
-    <div className="grid max-w-3xl gap-6">
+    <div className="grid gap-6">
       <div className="grid gap-2">
         <Link to="/routes" search={{}} className="inline-flex w-fit items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
           <ChevronLeft aria-hidden="true" className="size-4" />{t("route.back")}
@@ -152,15 +152,17 @@ function NewRouteForm({ type }: { type: RouteType }) {
   const groupError = form.formState.errors.group?.message;
   return (
     <form onSubmit={form.handleSubmit(save)} className="grid gap-4" noValidate>
-      <div className="grid gap-1.5">
-        <label htmlFor="route-group" className="text-sm font-medium">{t("routes.group")}</label>
-        <Select id="route-group" aria-invalid={groupError ? true : undefined} {...form.register("group")}>
-          <option value="">{t("routeNew.chooseGroup")}</option>
-          {[...(groups.data ?? new Map<string, string>())].map(([id, n]) => <option key={id} value={id}>{n}</option>)}
-        </Select>
-        {groupError && <p role="alert" className="text-sm text-destructive">{groupError}</p>}
-      </div>
-      {fields.map((f) => <FormField key={f.key} field={f} form={form} />)}
+      <FieldGrid>
+        <div className="grid gap-1.5">
+          <label htmlFor="route-group" className="text-sm font-medium">{t("routes.group")}</label>
+          <Select id="route-group" aria-invalid={groupError ? true : undefined} {...form.register("group")}>
+            <option value="">{t("routeNew.chooseGroup")}</option>
+            {[...(groups.data ?? new Map<string, string>())].map(([id, n]) => <option key={id} value={id}>{n}</option>)}
+          </Select>
+          {groupError && <p role="alert" className="text-sm text-destructive">{groupError}</p>}
+        </div>
+        {fields.map((f) => <FormField key={f.key} field={f} form={form} />)}
+      </FieldGrid>
       {other.map((m) => <Alert key={m}>{m}</Alert>)}
       {previewed && <PreviewPanel preview={previewed} name={name} />}
       <div className="flex flex-wrap gap-2 border-t border-border pt-4">

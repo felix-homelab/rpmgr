@@ -159,7 +159,7 @@ export function GatewayGroupPage() {
   }
   const members = (gateways.data ?? []).filter((g) => g.gatewayGroupId === group.id).sort((a, b) => a.slot - b.slot);
   return (
-    <div className="grid max-w-5xl gap-6">
+    <div className="grid gap-6">
       <div className="grid gap-2">
         <Link to="/gateways" className="inline-flex w-fit items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
           <ChevronLeft aria-hidden="true" className="size-4" />{t("gateways.back")}

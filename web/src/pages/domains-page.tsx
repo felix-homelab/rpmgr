@@ -9,7 +9,7 @@ import { Domains } from "@/pages/domains";
 export function DomainsPage() {
   const { t } = useTranslation();
   return (
-    <div className="grid max-w-5xl gap-6">
+    <div className="grid gap-6">
       <PageHeader title={t("nav.domains")} description={t("domains.intro")} />
       <Domains />
       <Certificates />

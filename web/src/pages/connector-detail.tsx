@@ -58,7 +58,7 @@ export function ConnectorDetail() {
   const served = (routes.data ?? []).filter((r) => r.targets.some((tg) => tg.connectorId === c.id));
   const s = status.data?.status;
   return (
-    <div className="grid max-w-4xl gap-6">
+    <div className="grid gap-6">
       <div className="grid gap-2">
         <Link to="/connectors" search={{}} className="inline-flex w-fit items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
           <ChevronLeft aria-hidden="true" className="size-4" />{t("connectors.back")}
