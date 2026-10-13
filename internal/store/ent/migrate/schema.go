@@ -433,6 +433,9 @@ var (
 				Name:    "connector_org_id_name",
 				Unique:  true,
 				Columns: []*schema.Column{ConnectorsColumns[1], ConnectorsColumns[3]},
+				Annotation: &entsql.IndexAnnotation{
+					Where: "decommissioned_at IS NULL",
+				},
 			},
 		},
 	}
@@ -595,6 +598,9 @@ var (
 				Name:    "gateway_org_id_name",
 				Unique:  true,
 				Columns: []*schema.Column{GatewaysColumns[1], GatewaysColumns[3]},
+				Annotation: &entsql.IndexAnnotation{
+					Where: "decommissioned_at IS NULL",
+				},
 			},
 			{
 				Name:    "gateway_gateway_group_id_slot",

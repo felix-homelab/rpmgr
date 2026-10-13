@@ -119,7 +119,8 @@ func callCtx(t *testing.T) context.Context {
 }
 
 // TestEnroll_Connector: an enrollment over the agent protocol creates the connector, names it after
-// the host, and returns its chain, the trust bundle, the signing certificates and the endpoints.
+// the host, and returns its chain, the trust bundle, the signing certificates and the endpoints. A
+// name an active connector holds gets the next free suffix; a decommissioned connector's does not.
 func TestEnroll_Connector(t *testing.T) {
 	setup(t, func(t *testing.T, e *env) {
 		addr, _ := e.server(t)
@@ -172,6 +173,19 @@ func TestEnroll_Connector(t *testing.T) {
 		}
 		if n := e.db.Client().Connector.GetX(e.sys, resp2.AgentId).Name; n != "nas-local-2" {
 			t.Errorf("second connector named %q", n)
+		}
+
+		// A decommissioned connector's name is free again; the active ones' names are not.
+		e.db.Client().Connector.UpdateOneID(resp.AgentId).SetDecommissionedAt(e.clock).ExecX(e.sys)
+		for _, want := range []string{"nas-local", "nas-local-3"} {
+			r, err := c.Enroll(callCtx(t), &agentv1.EnrollRequest{Token: e.mint(t, nil), Csr: boundCSR(t, creds),
+				Host: &agentv1.HostFacts{Hostname: "nas.local"}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if n := e.db.Client().Connector.GetX(e.sys, r.AgentId).Name; n != want {
+				t.Errorf("connector named %q, want %q", n, want)
+			}
 		}
 	})
 }

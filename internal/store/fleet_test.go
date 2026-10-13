@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -17,6 +18,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/gateway"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/schema"
+	"github.com/felix-homelab/rpmgr/internal/store/migrations"
 )
 
 func newGateway(ctx context.Context, c *ent.Client, org, group, name string) (*ent.Gateway, error) {
@@ -112,16 +114,22 @@ func TestFleet_CompositeKeys(t *testing.T) {
 	})
 }
 
+// tokenSQL inserts an enrollment token that names id in column; its hash, unique as token hashes
+// are, comes from its own ID.
 func tokenSQL(org, column, id, now string) string {
+	enr := ids.New("enr")
 	return "INSERT INTO enrollment_tokens (id, org_id, token_hash, role, " + column + ", ephemeral, max_uses, use_count, expires_at, created_by, created_at, last_used_ip) " +
-		"VALUES ('" + ids.New("enr") + "', '" + org + "', '\\x01', 'connector', '" + id + "', false, 1, 0, '" + now + "', 'u', '" + now + "', '')"
+		"VALUES ('" + enr + "', '" + org + "', '\\x" + fmt.Sprintf("%x", sha256.Sum256([]byte(enr))) + "', 'connector', '" + id + "', false, 1, 0, '" + now + "', 'u', '" + now + "', '')"
 }
 
+// TestFleet_NamesUniquePerOrg: gateway and connector names are unique per org among the active
+// ones; a decommissioned agent's name is free again, also when several tombstones hold it.
 func TestFleet_NamesUniquePerOrg(t *testing.T) {
 	forEachDialect(t, func(t *testing.T, c *ent.Client, _ *store.DB) {
 		a, b := seed(t, c)
 		ctxA, ctxB := orgCtx(t, a.org), orgCtx(t, b.org)
-		if _, err := newGateway(ctxA, c, a.org, a.gwg, "edge"); err != nil {
+		edge, err := newGateway(ctxA, c, a.org, a.gwg, "edge")
+		if err != nil {
 			t.Fatal(err)
 		}
 		if _, err := newGateway(ctxA, c, a.org, a.gwg, "edge"); !ent.IsConstraintError(err) {
@@ -130,19 +138,123 @@ func TestFleet_NamesUniquePerOrg(t *testing.T) {
 		if _, err := newGateway(ctxB, c, b.org, b.gwg, "edge"); err != nil {
 			t.Errorf("gateway named edge in org B: %v", err)
 		}
-		con := func(ctx context.Context, org string) error {
-			return c.Connector.Create().SetOrgID(org).SetName("nas").SetSpiffeID("spiffe://x").SetPubkeySha256("h").Exec(ctx)
+		for i := range 2 { // two tombstones named edge, then an active one
+			c.Gateway.UpdateOne(edge).SetDecommissionedAt(time.Now()).ExecX(ctxA)
+			if edge, err = newGateway(ctxA, c, a.org, a.gwg, "edge"); err != nil {
+				t.Fatalf("gateway named edge after %d decommissions: %v", i+1, err)
+			}
 		}
-		if err := con(ctxA, a.org); err != nil {
+		if _, err := newGateway(ctxA, c, a.org, a.gwg, "edge"); !ent.IsConstraintError(err) {
+			t.Errorf("a second active gateway named edge beside tombstones: %v", err)
+		}
+
+		con := func(ctx context.Context, org string) (*ent.Connector, error) {
+			return c.Connector.Create().SetOrgID(org).SetName("nas").SetSpiffeID("spiffe://x").SetPubkeySha256("h").Save(ctx)
+		}
+		nas, err := con(ctxA, a.org)
+		if err != nil {
 			t.Fatal(err)
 		}
-		if err := con(ctxA, a.org); !ent.IsConstraintError(err) {
+		if _, err := con(ctxA, a.org); !ent.IsConstraintError(err) {
 			t.Errorf("second connector named nas in org A: %v", err)
 		}
-		if err := con(ctxB, b.org); err != nil {
+		if _, err := con(ctxB, b.org); err != nil {
 			t.Errorf("connector named nas in org B: %v", err)
 		}
+		c.Connector.UpdateOne(nas).SetDecommissionedAt(time.Now()).ExecX(ctxA)
+		if _, err := con(ctxA, a.org); err != nil {
+			t.Errorf("connector named nas after a decommission: %v", err)
+		}
+		if _, err := con(ctxA, a.org); !ent.IsConstraintError(err) {
+			t.Errorf("a second active connector named nas beside a tombstone: %v", err)
+		}
 	})
+}
+
+// TestMigrate_AgentNamesFromBaseline: the migrations after the baseline, which v0.1.0-rc.1 to rc.4
+// shipped, keep a fleet with tombstones and the enrollment tokens that reference it, on SQLite by
+// rebuilding both tables; afterwards a tombstone's name is free, an active agent's is not, and the
+// tokens' foreign keys still hold.
+func TestMigrate_AgentNamesFromBaseline(t *testing.T) {
+	forEachStoreDB(t, func(t *testing.T, db *store.DB) {
+		ctx := context.Background()
+		full, err := migrations.Dir(db.Dialect)
+		if err != nil {
+			t.Fatal(err)
+		}
+		files, err := full.Files()
+		if err != nil || len(files) < 2 || !strings.HasSuffix(files[0].Name(), "_baseline.sql") {
+			t.Fatalf("the migrations: %v %v", files, err)
+		}
+		if _, err := store.Migrate(ctx, db, testDir(t, files[0].Name(), string(files[0].Bytes()))); err != nil {
+			t.Fatal(err)
+		}
+		now := time.Now().UTC().Format("2006-01-02 15:04:05")
+		org, gwg, oldGW, oldCon, pi := ids.New("org"), ids.New("gwg"), ids.New("gw"), ids.New("con"), ids.New("con")
+		for _, q := range []string{
+			"INSERT INTO orgs (id, name, slug, created_at) VALUES ('" + org + "', 'a', 'a', '" + now + "')",
+			"INSERT INTO gateway_groups (id, org_id, name) VALUES ('" + gwg + "', '" + org + "', 'eu')",
+			baselineGateway(oldGW, org, gwg, "old", "'"+now+"'", now),
+			baselineGateway(ids.New("gw"), org, gwg, "edge", "NULL", now),
+			baselineConnector(oldCon, org, "nas", "'"+now+"'", now),
+			baselineConnector(pi, org, "pi", "NULL", now),
+			tokenSQL(org, "gateway_id", oldGW, now),
+			tokenSQL(org, "connector_id", pi, now),
+		} {
+			if _, err := db.Writer.ExecContext(ctx, q); err != nil {
+				t.Fatalf("%s: %v", q, err)
+			}
+		}
+
+		pending, err := store.Pending(ctx, db, full)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if n, err := store.Migrate(ctx, db, full); err != nil || n == 0 || n != len(pending) {
+			t.Fatalf("%d of %d migrations applied: %v", n, len(pending), err)
+		}
+		for q, want := range map[string]int{
+			"SELECT count(*) FROM gateways WHERE org_id = '" + org + "'":                                               2,
+			"SELECT count(*) FROM connectors WHERE org_id = '" + org + "'":                                             2,
+			"SELECT count(*) FROM enrollment_tokens WHERE gateway_id = '" + oldGW + "' OR connector_id = '" + pi + "'": 2,
+		} {
+			if got := count(t, db, q); got != want {
+				t.Errorf("%s: %d, want %d", q, got, want)
+			}
+		}
+		if _, err := db.Writer.ExecContext(ctx, tokenSQL(org, "gateway_id", ids.New("gw"), now)); !store.IsForeignKeyViolation(err) {
+			t.Errorf("a token for a gateway that does not exist: %v", err)
+		}
+
+		c, octx := store.NewClient(db.Dialect, db.Writer), orgCtx(t, org)
+		conn := func(name string) error {
+			return c.Connector.Create().SetOrgID(org).SetName(name).SetSpiffeID("spiffe://x").SetPubkeySha256("h").Exec(octx)
+		}
+		if _, err := newGateway(octx, c, org, gwg, "old"); err != nil {
+			t.Errorf("a gateway named like the tombstone: %v", err)
+		}
+		if _, err := newGateway(octx, c, org, gwg, "edge"); !ent.IsConstraintError(err) {
+			t.Errorf("a gateway named like an active one: %v", err)
+		}
+		if err := conn("nas"); err != nil {
+			t.Errorf("a connector named like the tombstone: %v", err)
+		}
+		if err := conn("pi"); !ent.IsConstraintError(err) {
+			t.Errorf("a connector named like an active one: %v", err)
+		}
+	})
+}
+
+// baselineGateway and baselineConnector insert a row in the baseline schema; decommissioned is
+// NULL or a quoted time.
+func baselineGateway(id, org, group, name, decommissioned, now string) string {
+	return "INSERT INTO gateways (id, org_id, gateway_group_id, name, slot, tunnel_endpoints, enabled, created_at, decommissioned_at) " +
+		"VALUES ('" + id + "', '" + org + "', '" + group + "', '" + name + "', 1, '[]', true, '" + now + "', " + decommissioned + ")"
+}
+
+func baselineConnector(id, org, name, decommissioned, now string) string {
+	return "INSERT INTO connectors (id, org_id, name, spiffe_id, pubkey_sha256, created_at, decommissioned_at) " +
+		"VALUES ('" + id + "', '" + org + "', '" + name + "', 'spiffe://x', 'h', '" + now + "', " + decommissioned + ")"
 }
 
 // TestEnrollmentToken_Binding: a gateway token is bound to exactly one gateway, a connector token

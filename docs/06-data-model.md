@@ -28,7 +28,9 @@ an opaque blob: no foreign system's configuration is embedded, and every field i
   `rte_01JA2Z8Q6W7Y3V9K4M5N6P7Q8R`. They sort by creation time, are globally unique, show their type
   in logs and URLs, and behave the same on SQLite and PostgreSQL. `uuid.NewV7` is available in
   `google/uuid` [F google/uuid v1.6.0 `version7.go:23`].
-- Names (`routes.name`, `connectors.name`) are unique per org and may be changed; IDs never change.
+- Names (`routes.name`, `connectors.name`, `gateways.name`) are unique per org and may be changed;
+  IDs never change. A connector's or gateway's name is unique among those not decommissioned, so a
+  tombstone's name is free for a new one ([Lifecycle and deletion](#lifecycle-and-deletion)).
 
 | Prefix | Entity | Prefix | Entity |
 |---|---|---|---|
@@ -74,10 +76,10 @@ an opaque blob: no foreign system's configuration is embedded, and every field i
 
 | Table | Key fields | Notes |
 |---|---|---|
-| `connectors` | id, org_id, name, labels, spiffe_id, pubkey_sha256, ephemeral, enabled, transport, desired_version, created_at, decommissioned_at | One row per enrolled connector. `transport` (`auto`, `quic`, `h2`; null = the instance default) overrides the data-session transport ([03](03-connections.md#transport-selection)) |
+| `connectors` | id, org_id, name, labels, spiffe_id, pubkey_sha256, ephemeral, enabled, transport, desired_version, created_at, decommissioned_at | One row per enrolled connector. `name` is unique among the org's connectors that are not decommissioned; enrollment names a connector after its host, with the next free suffix (`nas`, `nas-2`, …) when an active connector holds the name. `transport` (`auto`, `quic`, `h2`; null = the instance default) overrides the data-session transport ([03](03-connections.md#transport-selection)) |
 | `gateway_groups` | id, org_id, version, name, region, public_hostnames (DNS names or anycast addresses for **public** traffic), trusted_proxy_cidrs (the proxies whose forwarding headers gateways keep, [03](03-connections.md#http-routes)), dns_target (typed `oneof`: `cname` FQDN, or `addresses` list of IPv4/IPv6; unset = nothing is published) | Shared groups belong to the system org. `dns_target` is where managed DNS records for this group point ([15](15-dns.md#publication-rules)). A group has **at most 4 gateways**, enforced by the store, because connectors keep a session to every gateway of the group ([03](03-connections.md#multiple-gateways)) |
 | `gateway_group_grants` | gateway_group_id, org_id | Which orgs may publish routes on a shared group |
-| `gateways` | id, org_id, version, gateway_group_id, name, slot, spiffe_id, pubkey_sha256, **tunnel_endpoints** (this gateway's own `host:port` addresses for connectors; its WSS hostname in Phase 2), enabled, desired_version, created_at, decommissioned_at | Connectors dial each gateway at its own endpoint, because they must know which gateway ID they reach ([03](03-connections.md#establishment)). An Admin creates a gateway before it enrolls, so its identity columns are empty until then. `slot` (1–4) is unique among a group's gateways that are not decommissioned: the store gives a new gateway the lowest free slot, and the unique index keeps a group at four gateways under concurrent creates. `enabled = false` takes a gateway out of service: its snapshot has no routes, connectors leave it out of theirs, and it drains its data sessions for the gateway drain period ([03](03-connections.md#multiple-gateways)). Decommissioning sets `decommissioned_at`, frees the slot and revokes the gateway's identity in the same transaction ([04](04-security.md#revocation)) |
+| `gateways` | id, org_id, version, gateway_group_id, name, slot, spiffe_id, pubkey_sha256, **tunnel_endpoints** (this gateway's own `host:port` addresses for connectors; its WSS hostname in Phase 2), enabled, desired_version, created_at, decommissioned_at | Connectors dial each gateway at its own endpoint, because they must know which gateway ID they reach ([03](03-connections.md#establishment)). An Admin creates a gateway before it enrolls, so its identity columns are empty until then. `name` is unique among the org's gateways that are not decommissioned. `slot` (1–4) is unique among a group's gateways that are not decommissioned: the store gives a new gateway the lowest free slot, and the unique index keeps a group at four gateways under concurrent creates. `enabled = false` takes a gateway out of service: its snapshot has no routes, connectors leave it out of theirs, and it drains its data sessions for the gateway drain period ([03](03-connections.md#multiple-gateways)). Decommissioning sets `decommissioned_at`, frees the slot and the name, and revokes the gateway's identity in the same transaction ([04](04-security.md#revocation)) |
 | `port_pools` | id, version, gateway_group_id, protocol (tcp, udp), port_from, port_to, org_id (nullable = any granted org) | Pools of one group and protocol never overlap. A pool's range may change as long as every port allocated from it stays inside, and a pool with allocated ports cannot be deleted. In Phase 1 every gateway group, and so every pool, belongs to one org; pools without an org come with shared groups (Phase 2) |
 | `port_allocations` | id, org_id, gateway_group_id, protocol, port, route_id | Unique (gateway_group_id, protocol, port) |
 | `port_quotas` | org_id, gateway_group_id, protocol, max_ports | Maximum ports an org may allocate in a gateway group (Phase 1). Unique (org_id, gateway_group_id, protocol); no row = limited only by the pools. A lowered limit keeps the ports already allocated and refuses new ones; a route moving to another port does not count its old one |
@@ -325,8 +327,10 @@ method, list filter or search returns or modifies the other org's data
 - **Ephemeral connectors** are hard-deleted 30 minutes after their last disconnect
   ([04](04-security.md#lifecycle)).
 - **Decommissioning** a connector or gateway sets `decommissioned_at` and revokes its identity in
-  the same transaction ([04](04-security.md#revocation)). [R] A decommissioned connector's route
-  targets stay, serving nothing, until they are removed.
+  the same transaction ([04](04-security.md#revocation)). It is final, so its name is free at once
+  for a new or renamed agent; the tombstone keeps it, and lists and lookups by name show only
+  active agents unless asked for tombstones. [R] A decommissioned connector's route targets stay,
+  serving nothing, until they are removed.
 - **Deleting a connector** that still serves route targets is refused with a list of the affected
   routes, unless the request explicitly cascades.
 - **Deleting a route** removes its DNS records in managed zones on the next DNS pass, unless another
