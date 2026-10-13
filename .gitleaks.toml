@@ -35,3 +35,11 @@ regexes = ['''^argon2\.IDKey$''']
 [[allowlists]]
 description = "Atlas migration checksums"
 paths = ['''(^|/)internal/store/migrations/[^/]+/atlas\.sum$''']
+
+# The test fixture of commit 4814e34, a made-up enrollment token random enough for the generic rule.
+# The commit is only on bugfix/473-enroll-dialog-width, the branch of the closed PR #474, which
+# #475 replaced (D54) with a low-entropy fixture; it never reaches main. Since CI fetches every
+# branch, the scan finds it until the maintainer deletes that branch; this entry can go with it.
+[[allowlists]]
+description = "fake token in a commit of the closed PR #474"
+commits = ["4814e34e9c23151b1df339ff4f88dd3565bda486"]
