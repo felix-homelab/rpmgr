@@ -8,9 +8,6 @@ import "testing"
 // the background work is done.
 func SetSent(a *Auth, f func(error)) { a.sent = f }
 
-// ShellQuote is shellQuote, for a test that runs a shell on its output.
-var ShellQuote = shellQuote
-
 // SetStatusWindow lowers how many revisions a route status reads, for one test that must not run
 // in parallel with others.
 func SetStatusWindow(t testing.TB, n int) {

@@ -89,7 +89,7 @@ func (a *connectorAPI) GetInstallCommand(_ context.Context, req *connect.Request
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	a.install = req.Msg
-	return connect.NewResponse(&rpmgrv1.GetInstallCommandResponse{Command: "curl -fsSL https://panel.example.com/install.sh | sh -s -- --role " +
+	return connect.NewResponse(&rpmgrv1.GetInstallCommandResponse{Command: "curl -fsSLO https://panel.example.com/install.sh && sudo sh install.sh --role " +
 		strings.ToLower(strings.TrimPrefix(req.Msg.GetRole().String(), "AGENT_ROLE_"))}), nil
 }
 
