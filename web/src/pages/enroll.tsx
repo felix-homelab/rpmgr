@@ -78,7 +78,7 @@ export function EnrollDialog({ orgId, known, onClose }: { orgId: string; known: 
 
   return (
     <dialog ref={dialog} aria-labelledby="enroll-title" onCancel={onClose}
-      className="m-auto w-[calc(100%-2rem)] max-w-2xl rounded-xl border border-border bg-card p-6 shadow-2xl">
+      className="m-auto w-[calc(100%-2rem)] max-w-3xl rounded-xl border border-border bg-card p-6 shadow-2xl">
       <h2 id="enroll-title" className="text-lg font-semibold">{t("enroll.title")}</h2>
       {!result ? (
         <form onSubmit={submit} className="mt-5 grid gap-4" noValidate>

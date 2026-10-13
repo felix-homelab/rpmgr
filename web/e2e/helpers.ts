@@ -25,6 +25,20 @@ export async function expectAccessible(page: Page) {
   expect(r.violations.map((v) => `${v.id}: ${v.nodes.map((n) => n.target.join(" ")).join(", ")}`)).toEqual([]);
 }
 
+// sideways lists what in the open dialog is wider than its box: the dialog itself, or a part of it
+// that scrolls, so that a user would have to scroll sideways to read it.
+export async function sideways(page: Page): Promise<string[]> {
+  return page.evaluate(() => {
+    const dialog = document.querySelector("dialog[open]");
+    if (!dialog) {
+      return ["no open dialog"];
+    }
+    return [dialog, ...dialog.querySelectorAll("*")]
+      .filter((e) => e.scrollWidth > e.clientWidth + 1 && (e === dialog || getComputedStyle(e).overflowX !== "visible"))
+      .map((e) => `${e.tagName.toLowerCase()} ${e.getAttribute("aria-label") ?? ""}: ${e.scrollWidth} > ${e.clientWidth}`);
+  });
+}
+
 // totp is the RFC 6238 code of a base32 secret at time now (SHA-1, 30 s, 6 digits).
 export function totp(secret: string, now = Date.now()): string {
   const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
