@@ -31,8 +31,19 @@ import (
 
 // Sources are the snapshot sources of the route types implemented so far (docs/03-connections.md,
 // "Configuration reconciliation").
-func Sources() []snapshot.Source {
-	return []snapshot.Source{GatewayTCP, GatewayUDP, GatewayPassthrough, GatewayHTTP, certs.Gateway, domains.GatewayChallenges,
+func Sources() []snapshot.Source { return PreviewSources("") }
+
+// PreviewSources are Sources for the preview of the route previewed, which they compile for its
+// gateways even while no connector serves it: a new route has no target yet, and the gateway's
+// checks of its port must still see it.
+func PreviewSources(previewed string) []snapshot.Source {
+	tcp := func(ctx context.Context, tx *ent.Tx, a snapshot.Agent) ([]*agentv1.Resource, error) {
+		return gatewayTCP(ctx, tx, a, previewed)
+	}
+	udp := func(ctx context.Context, tx *ent.Tx, a snapshot.Agent) ([]*agentv1.Resource, error) {
+		return gatewayUDP(ctx, tx, a, previewed)
+	}
+	return []snapshot.Source{tcp, udp, GatewayPassthrough, GatewayHTTP, certs.Gateway, domains.GatewayChallenges,
 		GatewayDrain, ConnectorRoutes, ConnectorGateways}
 }
 
@@ -52,10 +63,10 @@ func GatewayDrain(ctx context.Context, tx *ent.Tx, a snapshot.Agent) ([]*agentv1
 	return []*agentv1.Resource{{Id: gw.ID, Kind: &agentv1.Resource_GatewayDrain{GatewayDrain: &agentv1.GatewayDrain{}}}}, nil
 }
 
-// GatewayTCP compiles a gateway's tcp routes: every enabled tcp route of its gateway group with a
-// port and a connector that serves it, and those connectors. A disabled or decommissioned gateway
-// gets none.
-func GatewayTCP(ctx context.Context, tx *ent.Tx, a snapshot.Agent) ([]*agentv1.Resource, error) {
+// gatewayTCP compiles a gateway's tcp routes: every enabled tcp route of its gateway group with a
+// port and a connector that serves it, and those connectors; the route previewed also without one.
+// A disabled or decommissioned gateway gets none.
+func gatewayTCP(ctx context.Context, tx *ent.Tx, a snapshot.Agent, previewed string) ([]*agentv1.Resource, error) {
 	if a.Identity.Kind != pki.KindGateway {
 		return nil, nil
 	}
@@ -84,7 +95,7 @@ func GatewayTCP(ctx context.Context, tx *ent.Tx, a snapshot.Agent) ([]*agentv1.R
 		if err != nil {
 			return nil, err
 		}
-		if len(connectors) == 0 { // no gateway holds a port that no one serves (D78)
+		if len(connectors) == 0 && r.ID != previewed { // no gateway holds a port that no one serves (D78)
 			continue
 		}
 		access, err := accessOf(ctx, tx, r.ID, false)
@@ -98,10 +109,10 @@ func GatewayTCP(ctx context.Context, tx *ent.Tx, a snapshot.Agent) ([]*agentv1.R
 	return out, nil
 }
 
-// GatewayUDP compiles a gateway's udp routes: every enabled udp route of its gateway group with a
-// port and a connector that serves it, and those connectors. A disabled or decommissioned gateway
-// gets none.
-func GatewayUDP(ctx context.Context, tx *ent.Tx, a snapshot.Agent) ([]*agentv1.Resource, error) {
+// gatewayUDP compiles a gateway's udp routes: every enabled udp route of its gateway group with a
+// port and a connector that serves it, and those connectors; the route previewed also without one.
+// A disabled or decommissioned gateway gets none.
+func gatewayUDP(ctx context.Context, tx *ent.Tx, a snapshot.Agent, previewed string) ([]*agentv1.Resource, error) {
 	if a.Identity.Kind != pki.KindGateway {
 		return nil, nil
 	}
@@ -130,7 +141,7 @@ func GatewayUDP(ctx context.Context, tx *ent.Tx, a snapshot.Agent) ([]*agentv1.R
 		if err != nil {
 			return nil, err
 		}
-		if len(connectors) == 0 { // no gateway holds a port that no one serves (D78)
+		if len(connectors) == 0 && r.ID != previewed { // no gateway holds a port that no one serves (D78)
 			continue
 		}
 		access, err := accessOf(ctx, tx, r.ID, false)

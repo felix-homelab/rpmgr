@@ -471,6 +471,7 @@
     "decommissionWarning": "Decommissioning {{name}} revokes its identity and ends its sessions for good; it cannot enroll again with it. Its route targets are deleted.",
     "decommissionRoutes_one": "This route has no other target and is deleted with it, which frees its port or hostnames: {{routes}}.",
     "decommissionRoutes_other": "These {{count}} routes have no other target and are deleted with it, which frees their ports and hostnames: {{routes}}.",
+    "decommissionRoutesFailed": "The routes could not be read, so it is not known which of them would be deleted with it. Reload the page to try again.",
     "decommissionNamed": "Decommission {{name}}"
   },
   "enroll": {

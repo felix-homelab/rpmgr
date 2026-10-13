@@ -4,6 +4,7 @@ package apisvc_test
 
 import (
 	"context"
+	"errors"
 	"slices"
 	"testing"
 	"time"
@@ -13,11 +14,15 @@ import (
 
 	rpmgrv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/v1"
 	"github.com/felix-homelab/rpmgr/internal/api"
+	"github.com/felix-homelab/rpmgr/internal/pki"
 	"github.com/felix-homelab/rpmgr/internal/revlog"
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/auditentry"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/connector"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/datasession"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/hook"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/route"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/routetarget"
 )
 
 // addConnector adds an enrolled connector to the org, as enrollment does.
@@ -229,8 +234,10 @@ func TestConnectors_Write(t *testing.T) {
 
 // TestConnectors_DecommissionDeletesRoutes (D78): a decommission deletes the connector's targets and
 // each route it leaves with no target, whose ports and hostnames are free again; a route with a
-// target on another connector keeps that one, and a route that had no target stays; each deleted
-// route is audited and named in the response, and a second decommission deletes nothing.
+// target on another connector keeps that one, also a disabled target or one on a disabled
+// connector, and a route that had no target stays; the decommission and each deleted route are
+// audited, also when the identity was revoked already, the response names the routes, and a
+// second decommission deletes nothing.
 func TestConnectors_DecommissionDeletesRoutes(t *testing.T) {
 	e, ada, org, group := gatewayEnv(t)
 	ctx := context.Background()
@@ -243,16 +250,18 @@ func TestConnectors_DecommissionDeletesRoutes(t *testing.T) {
 	}
 	nas := e.addConnector(t, org, "nas", nil)
 	pi := e.addConnector(t, org, "pi", nil)
+	off := e.addConnector(t, org, "off", func(c *ent.ConnectorCreate) { c.SetEnabled(false) })
 	ids := map[string]string{}
 	for _, rt := range []*rpmgrv1.Route{tcpRoute("pg", group, 20005), udpRoute("dns", group, 30000), httpRoute("web", group, "web.example.com"),
-		tcpRoute("shared", group, 20006), tcpRoute("idle", group, 20007)} {
+		tcpRoute("shared", group, 20006), tcpRoute("idle", group, 20007), tcpRoute("standby", group, 20008), tcpRoute("paused", group, 20009)} {
 		got, err := createRoute(ada, org, rt, "")
 		if err != nil {
 			t.Fatal(err)
 		}
 		ids[rt.GetName()] = got.GetId()
 	}
-	for _, tg := range []struct{ route, connector string }{{"pg", nas.ID}, {"dns", nas.ID}, {"web", nas.ID}, {"shared", nas.ID}, {"shared", pi.ID}} {
+	for _, tg := range []struct{ route, connector string }{{"pg", nas.ID}, {"dns", nas.ID}, {"web", nas.ID}, {"shared", nas.ID}, {"shared", pi.ID},
+		{"standby", nas.ID}, {"standby", pi.ID}, {"paused", nas.ID}, {"paused", off.ID}} {
 		if _, err := ada.rt.CreateRouteTarget(ctx, connect.NewRequest(&rpmgrv1.CreateRouteTargetRequest{RouteId: ids[tg.route],
 			Target: addressTarget(tg.connector, "10.0.0.5", 5432)})); err != nil {
 			t.Fatal(err)
@@ -261,6 +270,7 @@ func TestConnectors_DecommissionDeletesRoutes(t *testing.T) {
 	if _, err := createRoute(ada, org, tcpRoute("pg-2", group, 20005), ""); code(err) != connect.CodeAlreadyExists {
 		t.Fatalf("the port of a served route: %v", err)
 	}
+	e.db.Client().RouteTarget.Update().Where(routetarget.RouteID(ids["standby"]), routetarget.ConnectorID(pi.ID)).SetEnabled(false).ExecX(e.sys)
 
 	r, err := ada.con.DecommissionConnector(ctx, connect.NewRequest(&rpmgrv1.DecommissionConnectorRequest{ConnectorId: nas.ID}))
 	if err != nil {
@@ -281,9 +291,11 @@ func TestConnectors_DecommissionDeletesRoutes(t *testing.T) {
 			t.Errorf("route %s after the decommission: %v", name, err)
 		}
 	}
-	shared, err := ada.rt.GetRoute(ctx, connect.NewRequest(&rpmgrv1.GetRouteRequest{RouteId: ids["shared"]}))
-	if err != nil || len(shared.Msg.GetRoute().GetTargets()) != 1 || shared.Msg.GetRoute().GetTargets()[0].GetConnectorId() != pi.ID {
-		t.Fatalf("the shared route: %v %v", shared, err)
+	for name, other := range map[string]string{"shared": pi.ID, "standby": pi.ID, "paused": off.ID} {
+		kept, err := ada.rt.GetRoute(ctx, connect.NewRequest(&rpmgrv1.GetRouteRequest{RouteId: ids[name]}))
+		if err != nil || len(kept.Msg.GetRoute().GetTargets()) != 1 || kept.Msg.GetRoute().GetTargets()[0].GetConnectorId() != other {
+			t.Errorf("the %s route: %v %v", name, kept, err)
+		}
 	}
 	if _, err := ada.rt.GetRoute(ctx, connect.NewRequest(&rpmgrv1.GetRouteRequest{RouteId: ids["idle"]})); err != nil {
 		t.Fatalf("the route without targets: %v", err)
@@ -293,7 +305,7 @@ func TestConnectors_DecommissionDeletesRoutes(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, p := range pools.Msg.GetPortPools() {
-		if want := map[rpmgrv1.PortProtocol]int32{tcp: 2, udp: 0}[p.GetProtocol()]; p.GetAllocatedPorts() != want {
+		if want := map[rpmgrv1.PortProtocol]int32{tcp: 4, udp: 0}[p.GetProtocol()]; p.GetAllocatedPorts() != want {
 			t.Errorf("%v pool: %d ports allocated, want %d", p.GetProtocol(), p.GetAllocatedPorts(), want)
 		}
 	}
@@ -310,5 +322,73 @@ func TestConnectors_DecommissionDeletesRoutes(t *testing.T) {
 	again, err := ada.con.DecommissionConnector(ctx, connect.NewRequest(&rpmgrv1.DecommissionConnectorRequest{ConnectorId: nas.ID}))
 	if err != nil || len(again.Msg.GetDeletedRoutes()) != 0 {
 		t.Fatalf("a second decommission: %v %v", again, err)
+	}
+
+	// After a restore an identity can be revoked already, which records nothing; the decommission
+	// is audited all the same.
+	restored := e.addConnector(t, org, "restored", nil)
+	tx, err := e.db.Client().Tx(e.sys)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := pki.RevokeIdentity(e.sys, tx, pki.Identity{TrustDomain: "rpmgr-teststor", Org: org, Kind: pki.KindConnector, ID: restored.ID},
+		"restored", time.Now()); err != nil {
+		_ = tx.Rollback()
+		t.Fatal(err)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ada.con.DecommissionConnector(ctx, connect.NewRequest(&rpmgrv1.DecommissionConnectorRequest{ConnectorId: restored.ID})); err != nil {
+		t.Fatal(err)
+	}
+	if n := e.db.Client().AuditEntry.Query().Where(auditentry.Action("identity.revoke"), auditentry.TargetID(restored.ID)).CountX(e.sys); n != 0 {
+		t.Fatalf("the restored identity was revoked again: %d entries", n)
+	}
+	for _, id := range []string{nas.ID, restored.ID} {
+		if n := e.db.Client().AuditEntry.Query().Where(auditentry.Action("connector.decommission"), auditentry.TargetID(id),
+			auditentry.ActorID(s.GetUserId())).CountX(e.sys); n != 1 {
+			t.Errorf("%d decommission audit entries for %s", n, id)
+		}
+	}
+}
+
+// TestConnectors_DecommissionRollsBack: a route the decommission cannot delete fails it as a whole,
+// so the connector, its identity, its targets and its routes stay as they were.
+func TestConnectors_DecommissionRollsBack(t *testing.T) {
+	e, ada, org, group := gatewayEnv(t)
+	ctx := context.Background()
+	if _, err := ada.gw.CreatePortPool(ctx, connect.NewRequest(&rpmgrv1.CreatePortPoolRequest{OrgId: org, PortPool: &rpmgrv1.PortPool{
+		GatewayGroupId: group, Protocol: tcp, PortFrom: 20000, PortTo: 20009}})); err != nil {
+		t.Fatal(err)
+	}
+	nas := e.addConnector(t, org, "nas", nil)
+	pg, err := createRoute(ada, org, tcpRoute("pg", group, 20005), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ada.rt.CreateRouteTarget(ctx, connect.NewRequest(&rpmgrv1.CreateRouteTargetRequest{RouteId: pg.GetId(),
+		Target: addressTarget(nas.ID, "10.0.0.5", 5432)})); err != nil {
+		t.Fatal(err)
+	}
+	e.db.Client().Route.Use(func(next ent.Mutator) ent.Mutator {
+		return hook.RouteFunc(func(ctx context.Context, m *ent.RouteMutation) (ent.Value, error) {
+			if m.Op().Is(ent.OpDeleteOne) {
+				return nil, errors.New("the store failed")
+			}
+			return next.Mutate(ctx, m)
+		})
+	})
+	if _, err := ada.con.DecommissionConnector(ctx, connect.NewRequest(&rpmgrv1.DecommissionConnectorRequest{ConnectorId: nas.ID})); err == nil {
+		t.Fatal("a decommission whose route could not go succeeded")
+	}
+	c := e.db.Client()
+	if row := c.Connector.GetX(e.sys, nas.ID); row.DecommissionedAt != nil || !row.Enabled || c.RevokedIdentity.Query().CountX(e.sys) != 0 ||
+		e.denied.Load() != 0 {
+		t.Fatalf("the connector after a failed decommission: %+v, %d revoked", row, c.RevokedIdentity.Query().CountX(e.sys))
+	}
+	if !c.Route.Query().Where(route.ID(pg.GetId())).ExistX(e.sys) || c.RouteTarget.Query().Where(routetarget.ConnectorID(nas.ID)).CountX(e.sys) != 1 ||
+		c.PortAllocation.Query().CountX(e.sys) != 1 {
+		t.Fatal("the route, its target or its port changed with a failed decommission")
 	}
 }

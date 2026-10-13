@@ -69,9 +69,8 @@ type agentRow struct {
 func purge(ctx context.Context, o PurgeOptions) error {
 	now := o.Now().UTC()
 	c := o.DB.Client()
-	if err := retireStale(ctx, o); err != nil {
-		return err
-	}
+	// A failure leaves stale targets for the next run; the purges go ahead, as their own do.
+	errs := []error{retireStale(ctx, o)}
 	var due []agentRow
 	ephemeral, err := c.Connector.Query().Where(connector.Ephemeral(true)).All(ctx)
 	if err != nil {
@@ -101,7 +100,6 @@ func purge(ctx context.Context, o PurgeOptions) error {
 	for _, gw := range gws {
 		due = append(due, agentRow{pki.KindGateway, gw.OrgID, gw.ID, false})
 	}
-	var errs []error
 	revoked := false
 	for _, a := range due {
 		r, err := purgeAgent(ctx, o, a, now)
@@ -132,12 +130,14 @@ func gone(con *ent.Connector, s *ent.AgentSession, now time.Time) bool {
 }
 
 // retireStale deletes the route targets a decommissioned connector still has, and each route left
-// with no target (D78): a decommission by an older controller left them, holding their ports.
+// with no target (D78): a decommission by an older controller left them, holding their ports. Each
+// connector goes in a transaction of its own, so one that fails holds up no other.
 func retireStale(ctx context.Context, o PurgeOptions) error {
 	stale, err := o.DB.Client().RouteTarget.Query().Where(routetarget.HasConnectorWith(connector.DecommissionedAtNotNil())).All(ctx)
 	if err != nil {
 		return err
 	}
+	var errs []error
 	done := map[string]bool{}
 	for _, t := range stale {
 		if done[t.ConnectorID] {
@@ -149,10 +149,10 @@ func retireStale(ctx context.Context, o PurgeOptions) error {
 				ActorID: "purge-agents", Reason: "connector " + t.ConnectorID + " is decommissioned"})
 			return changed, err
 		}); err != nil {
-			return err
+			errs = append(errs, err)
 		}
 	}
-	return nil
+	return errors.Join(errs...)
 }
 
 // errKept is a tombstone the purge keeps for now.

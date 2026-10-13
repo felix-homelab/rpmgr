@@ -693,8 +693,8 @@ func TestCompile_Passthrough(t *testing.T) {
 }
 
 // TestCompile_UnservedPorts (D78): a gateway does not listen on the port of a tcp or udp route that
-// no connector serves: one whose only target is on a decommissioned connector, or disabled; a
-// target that serves it again brings the port back.
+// no connector serves: one whose only target is on a decommissioned or a disabled connector, or is
+// disabled; a target that serves it again brings the port back.
 func TestCompile_UnservedPorts(t *testing.T) {
 	storetest.ForEachDialect(t, func(t *testing.T, db *store.DB) {
 		f := newFleet(t, db)
@@ -726,6 +726,7 @@ func TestCompile_UnservedPorts(t *testing.T) {
 		idle := portRoute("idle", routes.TCP, 20011, f.c1, false)
 		dns := portRoute("dns", routes.UDP, 30000, f.c2, true)
 		ntp := portRoute("ntp", routes.UDP, 30001, gone, true)
+		held := portRoute("held", routes.TCP, 20012, f.c3, true) // c3 is disabled, not decommissioned
 		listened := func() []string {
 			var ids []string
 			for _, r := range f.compile(t, pki.KindGateway, f.gateway) {
@@ -739,7 +740,7 @@ func TestCompile_UnservedPorts(t *testing.T) {
 		want := []string{f.r1, dns}
 		slices.Sort(want)
 		if got := listened(); !slices.Equal(got, want) {
-			t.Fatalf("listened on %v, want only the served %v; not %s, %s, %s", got, want, orphan, idle, ntp)
+			t.Fatalf("listened on %v, want only the served %v; not %s, %s, %s, %s", got, want, orphan, idle, ntp, held)
 		}
 		c.RouteTarget.Update().Where(routetarget.RouteID(idle)).SetEnabled(true).ExecX(f.sys)
 		if got := listened(); !slices.Contains(got, idle) {

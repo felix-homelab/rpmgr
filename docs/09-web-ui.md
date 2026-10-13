@@ -336,7 +336,8 @@ flowchart LR
     connector as read, with their mask and the etag (U1).
   - **Decommission** comes after a confirmation that names the connector and says what it does
     (U7), including the routes that are deleted with it because they have no other target
-    ([06](06-data-model.md#lifecycle-and-deletion)). The page then returns to the list.
+    ([06](06-data-model.md#lifecycle-and-deletion)). It can be confirmed only once the routes are
+    read; if they cannot be, it says so. The page then returns to the list.
 
 ### Gateways
 

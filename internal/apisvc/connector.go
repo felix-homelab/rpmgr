@@ -112,6 +112,12 @@ func (c *Connectors) DecommissionConnector(ctx context.Context, req *connect.Req
 		if revoked, err = c.Revocations.agent(tx, pki.KindConnector, cur.OrgID, cur.ID, "decommissioned", actor, now); err != nil {
 			return nil, err
 		}
+		// The service records the change, so the request's own entry is left out: the decommission
+		// gets one of its own, also when the identity was revoked already, as after a restore.
+		if _, err := audit.Append(ctx, tx, audit.Entry{OrgID: cur.OrgID, ActorType: audit.ActorUser, ActorID: actor,
+			Action: "connector.decommission", TargetType: "connector", TargetID: cur.ID, Result: audit.Success}); err != nil {
+			return nil, err
+		}
 		var changed []string
 		deleted, changed, err = routes.RetireConnector(ctx, tx, cur.ID, audit.Entry{OrgID: cur.OrgID, ActorType: audit.ActorUser,
 			ActorID: actor, Reason: "connector " + cur.ID + " was decommissioned"})

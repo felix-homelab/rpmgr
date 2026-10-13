@@ -116,7 +116,8 @@ export function ConnectorDetail() {
       </Card>
 
       <Settings connector={c} onWrite={setWrite} />
-      <Decommission connector={c} doomed={served.filter((r) => r.targets.every((tg) => tg.connectorId === c.id)).map((r) => r.name)} />
+      <Decommission connector={c} routesFailed={routes.isError}
+        doomed={routes.isSuccess ? served.filter((r) => r.targets.every((tg) => tg.connectorId === c.id)).map((r) => r.name) : undefined} />
     </div>
   );
 }
@@ -171,7 +172,8 @@ function Settings({ connector: c, onWrite }: { connector: Connector; onWrite: (w
 
 // Decommission retires the connector for good, after a confirmation that names it (U7) and the
 // routes that go with it: those it leaves with no target, whose ports and hostnames are freed (D78).
-function Decommission({ connector: c, doomed }: { connector: Connector; doomed: string[] }) {
+// doomed is undefined until the routes are read; until then, or if they cannot be, it does not go.
+function Decommission({ connector: c, doomed, routesFailed }: { connector: Connector; doomed?: string[]; routesFailed: boolean }) {
   const { t } = useTranslation();
   const decommission = useMutation(ConnectorService.method.decommissionConnector);
   const queryClient = useQueryClient();
@@ -193,10 +195,11 @@ function Decommission({ connector: c, doomed }: { connector: Connector; doomed: 
         <div className="grid gap-2">
           <Alert>
             {t("connectors.decommissionWarning", { name: c.name })}
-            {doomed.length > 0 && ` ${t("connectors.decommissionRoutes", { count: doomed.length, routes: doomed.join(", ") })}`}
+            {!!doomed?.length && ` ${t("connectors.decommissionRoutes", { count: doomed.length, routes: doomed.join(", ") })}`}
           </Alert>
+          {routesFailed && <Alert>{t("connectors.decommissionRoutesFailed")}</Alert>}
           <div className="flex gap-2">
-            <Button variant="destructive" disabled={decommission.isPending} onClick={() => void go()}>{t("connectors.decommissionNamed", { name: c.name })}</Button>
+            <Button variant="destructive" disabled={decommission.isPending || !doomed} onClick={() => void go()}>{t("connectors.decommissionNamed", { name: c.name })}</Button>
             <Button variant="outline" onClick={() => setAsking(false)}>{t("stepUp.cancel")}</Button>
           </div>
         </div>

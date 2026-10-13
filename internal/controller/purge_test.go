@@ -4,6 +4,7 @@ package controller_test
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"path/filepath"
 	"sync/atomic"
@@ -19,6 +20,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/auditentry"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/configrevision"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/connector"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/hook"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/issuedcertificate"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/portpool"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/predicate"
@@ -237,6 +239,28 @@ func TestPurge_RetiresRoutes(t *testing.T) {
 		ci := portRoute("ci", routes.UDP, 20005, runner)
 
 		job := controller.PurgeJob(controller.PurgeOptions{DB: db, Now: func() time.Time { return now }})
+		// A connector whose route cannot go fails alone: its targets stay, rolled back, for the next
+		// run, and the ephemeral connector is purged all the same, its identity revoked.
+		var fail atomic.Bool
+		fail.Store(true)
+		c.Route.Use(func(next ent.Mutator) ent.Mutator {
+			return hook.RouteFunc(func(ctx context.Context, m *ent.RouteMutation) (ent.Value, error) {
+				if id, ok := m.ID(); ok && id == pg && fail.Load() && m.Op().Is(ent.OpDeleteOne) {
+					return nil, errors.New("the store failed")
+				}
+				return next.Mutate(ctx, m)
+			})
+		})
+		if err := job.Run(context.WithoutCancel(sys), lease.Lease{}); err == nil {
+			t.Fatal("a failed retirement went unreported")
+		}
+		if !c.Route.Query().Where(routeID(pg)).ExistX(sys) || c.RouteTarget.Query().Where(routetarget.ConnectorID(legacy)).CountX(sys) != 2 {
+			t.Fatal("a failed retirement was not rolled back")
+		}
+		if c.Connector.Query().Where(connectorID(runner)).ExistX(sys) || c.RevokedIdentity.Query().CountX(sys) != 1 {
+			t.Fatal("the ephemeral connector was not purged and revoked after another connector failed")
+		}
+		fail.Store(false)
 		if err := job.Run(context.WithoutCancel(sys), lease.Lease{}); err != nil {
 			t.Fatal(err)
 		}
