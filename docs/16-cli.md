@@ -16,7 +16,9 @@
   `rpmgr help <command> …` does the same.
 - A command names a resource by its ID or by its name, in an argument as in a flag such as
   `--group`: `get`, `delete`, `update`, `enable`, `disable`, `drain` and `decommission` take
-  either. A value that starts with the kind's ID prefix, such as `rt_` for a route, is an ID.
+  either. A value that starts with the kind's ID prefix, such as `rt_` for a route, is an ID. A
+  name names an active connector or gateway: a decommissioned one, whose name a new one may have
+  taken, is named by its ID.
 - A flag that may be repeated, such as `--policy` or `--label`, sets a list or map. An empty value
   adds nothing, so the flag given once with an empty value sets an empty one: `rpmgr update route
   --policy '' <id>` takes every access policy off the route.

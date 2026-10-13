@@ -272,7 +272,12 @@
     "on": "on",
     "off": "off",
     "changed": "The route changed since this page loaded it. The page shows it as it is now; try again.",
-    "edit": "Edit"
+    "edit": "Edit",
+    "delete": "Delete…",
+    "deleteAsk": "Delete the route {{name}} with its hostnames, targets and port? This cannot be undone.",
+    "deleteConfirm": "Delete it",
+    "deletedTitle": "Route {{name}} deleted",
+    "deletedNote": "Its gateways stop serving it once they apply the change."
   },
   "notServing": {
     "BLOCKED_BY_LOCAL_POLICY": "blocked by the connector's local policy",

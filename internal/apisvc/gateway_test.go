@@ -275,8 +275,9 @@ func TestGateways(t *testing.T) {
 
 // TestDecommissionGateway: decommissioning revokes the gateway's identity in the same
 // transaction, records it in the revocation log and the audit log, applies the deny-list at once
-// and frees the slot; the tombstone is listed only on request, cannot be changed, and a second
-// decommission changes nothing.
+// and frees the slot and the name; the tombstone is listed only on request, cannot be changed, and a
+// second decommission changes nothing. A new or renamed gateway takes a tombstone's name, never an
+// active gateway's.
 func TestDecommissionGateway(t *testing.T) {
 	e, ada, org, group := gatewayEnv(t)
 	ctx := context.Background()
@@ -348,6 +349,33 @@ func TestDecommissionGateway(t *testing.T) {
 	}
 	if _, err := createGateway(ada, org, group, "gw2", "gw2.example.com:443"); code(err) != connect.CodeFailedPrecondition {
 		t.Fatalf("a sixth gateway: %v", err)
+	}
+
+	us, err := ada.gw.CreateGatewayGroup(ctx, connect.NewRequest(&rpmgrv1.CreateGatewayGroupRequest{OrgId: org,
+		GatewayGroup: &rpmgrv1.GatewayGroup{Name: "us"}}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	reused, err := createGateway(ada, org, us.Msg.GetGatewayGroup().GetId(), "gw2", "gw2.us.example.com:443")
+	if err != nil || reused.GetId() == id {
+		t.Fatalf("the name of a decommissioned gateway: %v %v", reused, err)
+	}
+	if _, err := createGateway(ada, org, us.Msg.GetGatewayGroup().GetId(), "gw1", "gw1.us.example.com:443"); code(err) != connect.CodeAlreadyExists {
+		t.Fatalf("the name of an active gateway: %v", err)
+	}
+	rename := func(gw *rpmgrv1.Gateway, name string) error {
+		_, err := ada.gw.UpdateGateway(ctx, connect.NewRequest(&rpmgrv1.UpdateGatewayRequest{Gateway: &rpmgrv1.Gateway{Id: gw.GetId(), Name: name},
+			UpdateMask: &fieldmaskpb.FieldMask{Paths: []string{"name"}}}))
+		return err
+	}
+	if err := rename(next, "gw2"); code(err) != connect.CodeAlreadyExists {
+		t.Fatalf("a rename to an active gateway's name: %v", err)
+	}
+	if _, err := ada.gw.DecommissionGateway(ctx, connect.NewRequest(&rpmgrv1.DecommissionGatewayRequest{GatewayId: reused.GetId()})); err != nil {
+		t.Fatal(err)
+	}
+	if err := rename(next, "gw2"); err != nil {
+		t.Fatalf("a rename to the name two tombstones hold: %v", err)
 	}
 	if _, err := ada.gw.DecommissionGateway(ctx, connect.NewRequest(&rpmgrv1.DecommissionGatewayRequest{GatewayId: "gw_missing"})); code(err) !=
 		connect.CodeNotFound {

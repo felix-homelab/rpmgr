@@ -246,9 +246,9 @@ flowchart LR
 
 **How the detail works.**
 - **Layout:** a link back to all routes; the route's name and type with the "Enabled" switch,
-  "YAML" and "Edit"; the configured settings next to the observed state; then cards for the
-  gateways not serving it and the agents that rejected it, when there are any, and for its targets,
-  traffic and access policies.
+  "YAML", "Delete…" and "Edit"; the configured settings next to the observed state; then cards for
+  the gateways not serving it and the agents that rejected it, when there are any, and for its
+  targets, traffic and access policies.
 - It shows the configured settings next to the observed state (U3), and how many of the group's
   gateways serve the route.
 - **Each target** shows its connector by name, its address and weight, and whether it serves; if
@@ -294,6 +294,13 @@ flowchart LR
     - "Put my changes on the new version" refills the form with the saved version and the user's
       changes on top, for a second save.
     - "Drop my changes" refills it with the saved version.
+- **"Delete…"** asks first, naming the route and saying that its hostnames, targets and port go
+  with it (U7). The question takes the place of the page's actions until it is answered or
+  cancelled.
+  - It sends the route's ID with the etag as read (U6). A route that changed since the page read it
+    is not deleted; the page says so and shows the route as it is now.
+  - **After the deletion,** the page says the route is deleted and follows the revision's apply
+    status live (U2), with the link back to all routes.
 
 ### Connectors
 
