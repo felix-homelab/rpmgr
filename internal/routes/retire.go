@@ -23,7 +23,10 @@ import (
 // row. r's version guards against a concurrent change.
 func Delete(ctx context.Context, tx *ent.Tx, r *ent.Route) error {
 	steps := []func() error{
-		func() error { _, err := tx.RouteHostname.Delete().Where(routehostname.RouteID(r.ID)).Exec(ctx); return err },
+		func() error {
+			_, err := tx.RouteHostname.Delete().Where(routehostname.RouteID(r.ID)).Exec(ctx)
+			return err
+		},
 		func() error { _, err := tx.RouteHTTP.Delete().Where(routehttp.RouteID(r.ID)).Exec(ctx); return err },
 		func() error { _, err := tx.RouteTCP.Delete().Where(routetcp.RouteID(r.ID)).Exec(ctx); return err },
 		func() error { _, err := tx.RouteUDP.Delete().Where(routeudp.RouteID(r.ID)).Exec(ctx); return err },
