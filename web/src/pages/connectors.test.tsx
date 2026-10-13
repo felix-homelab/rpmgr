@@ -12,6 +12,7 @@ import { RouteService } from "@/gen/rpmgr/v1/route_pb";
 import { ApplyState, StatusService } from "@/gen/rpmgr/v1/status_pb";
 import { Theme, UserService } from "@/gen/rpmgr/v1/user_pb";
 import { auth, show } from "@/testing/api";
+import { marked, unmatched } from "@/testing/required";
 
 afterEach(cleanup);
 
@@ -107,6 +108,7 @@ describe("Connectors", () => {
   it("saves the connector's settings as a whole", async () => {
     const { updates } = page("/connectors/con_db");
     const settings = within(await screen.findByRole("region", { name: "Settings" }));
+    expect([marked(screen.getByRole("region", { name: "Settings" })), unmatched(screen.getByRole("region", { name: "Settings" }))]).toEqual([["Name"], []]);
     fireEvent.change(settings.getByLabelText("Name"), { target: { value: "db-host-2" } });
     fireEvent.change(settings.getByLabelText("Transport"), { target: { value: String(DataTransport.H2) } });
     fireEvent.click(settings.getByRole("button", { name: "Save" }));

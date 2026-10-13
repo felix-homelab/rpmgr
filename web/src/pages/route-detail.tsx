@@ -25,7 +25,7 @@ import { RouteTraffic } from "@/pages/route-traffic";
 import { RoutePolicies } from "@/route-form/route-policies";
 import { Reason, reasonOf } from "@/lib/errors";
 import { TargetForm, type Written } from "@/route-form/target-form";
-import { allowCommand, routeAddress, routeType, useAgentNames, useGroupNames } from "@/routes-data";
+import { allowCommand, routeAddress, routeType, useAgentNames, useGroupHostnames, useGroupNames } from "@/routes-data";
 import { useOrg } from "@/session";
 
 const route = getRouteApi("/app/routes/$routeId");
@@ -41,6 +41,7 @@ export function RouteDetail() {
   const [deleted, setDeleted] = useState<string>(); // the deleted route's name
   const got = useQuery(RouteService.method.getRoute, { routeId }, { enabled: !deleted });
   const groups = useGroupNames(org?.orgId);
+  const hosts = useGroupHostnames(org?.orgId);
   const names = useAgentNames(org?.orgId);
   const update = useMutation(RouteService.method.updateRoute);
   const del = useMutation(RouteService.method.deleteRoute);
@@ -137,7 +138,7 @@ export function RouteDetail() {
           <dt className="text-muted-foreground">{t("route.desired")}</dt>
           <dd>
             {[r.enabled ? t("route.enabled") : t("route.disabled"), t("route.group", { name: groups.data?.get(r.gatewayGroupId) ?? r.gatewayGroupId }),
-              ...routeAddress(r)].join(" · ")}
+              ...routeAddress(r, hosts.data?.get(r.gatewayGroupId))].join(" · ")}
           </dd>
         </div>
         <div className="grid gap-1.5">
@@ -150,6 +151,12 @@ export function RouteDetail() {
           </dd>
         </div>
       </dl>
+      {(r.spec.case === "tcp" || r.spec.case === "udp") && r.spec.value.port > 0 && hosts.data?.get(r.gatewayGroupId)?.length === 0 && (
+        <p className="text-sm text-muted-foreground">
+          {t("route.noHostname")}{" "}
+          <Link to="/gateways/$groupId" params={{ groupId: r.gatewayGroupId }} className="underline">{t("route.setHostname")}</Link>
+        </p>
+      )}
       {r.spec.case === "udp" && <p className="text-sm text-muted-foreground">{t("route.mtu")}</p>}
 
       {gatewayProblems.length > 0 && (

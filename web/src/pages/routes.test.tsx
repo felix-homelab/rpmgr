@@ -27,7 +27,8 @@ const dns = {
   status: { state: RouteState.DISABLED },
 };
 
-// routes renders path with the org's routes, served two to a page as the API pages them.
+// routes renders path with the org's routes, served two to a page as the API pages them; the
+// gateway group eu has a public hostname, us none.
 function routes(path: string, all: object[]) {
   const requests: ListRoutesRequest[] = [];
   const view = show(path, auth({
@@ -35,7 +36,7 @@ function routes(path: string, all: object[]) {
   }), (router) => {
     router.service(UserService, { getMe: () => ({ user: { id: "usr_ada", theme: Theme.SYSTEM } }) });
     router.service(GatewayService, {
-      listGatewayGroups: () => ({ gatewayGroups: [{ id: "ggr_eu", name: "eu" }, { id: "ggr_us", name: "us" }] }),
+      listGatewayGroups: () => ({ gatewayGroups: [{ id: "ggr_eu", name: "eu", publicHostnames: ["edge.example.net"] }, { id: "ggr_us", name: "us" }] }),
     });
     router.service(RouteService, {
       listRoutes: (req) => {
@@ -59,7 +60,7 @@ describe("Routes", () => {
     await waitFor(async () => expect(await rows()).toHaveLength(3));
     expect(await rows()).toEqual([
       "dns:53UDPus0/0 readydisabled", // the icons are drawings, hidden from screen readers
-      "postgres:25432TCPeu0/1 ready1 blocked by local policyunavailablerejected by 1 agent",
+      "postgresedge.example.net:25432TCPeu0/1 ready1 blocked by local policyunavailablerejected by 1 agent",
       "wikiwiki.example.comHTTPeu2/2 readyready",
     ]);
     expect(requests.map((r) => [r.orgId, r.pageSize, r.pageToken])).toEqual([["org_1", 500, ""], ["org_1", 500, "2"]]);
@@ -73,6 +74,11 @@ describe("Routes", () => {
     fireEvent.change(screen.getByLabelText("Search"), { target: { value: "EXAMPLE.com" } });
     await waitFor(async () => expect(await rows()).toEqual([expect.stringMatching(/^wiki/)]));
     expect(new URLSearchParams(history.location.search).get("q")).toBe("EXAMPLE.com");
+    // A TCP or UDP route is found by its group's public hostname and its port too.
+    fireEvent.change(screen.getByLabelText("Search"), { target: { value: "edge.example.net:25432" } });
+    await waitFor(async () => expect(await rows()).toEqual([expect.stringMatching(/^postgres/)]));
+    fireEvent.change(screen.getByLabelText("Search"), { target: { value: ":53" } });
+    await waitFor(async () => expect(await rows()).toEqual([expect.stringMatching(/^dns/)]));
     fireEvent.change(screen.getByLabelText("Search"), { target: { value: "" } });
     fireEvent.change(screen.getByLabelText("Status"), { target: { value: "disabled" } });
     await waitFor(async () => expect(await rows()).toEqual([expect.stringMatching(/^dns/)]));

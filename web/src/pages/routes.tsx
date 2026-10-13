@@ -10,9 +10,9 @@ import { RouteStateChip, routeStateKey, routeStateKeys } from "@/components/rout
 import { Button } from "@/components/ui/button";
 import { Input, Select } from "@/components/ui/input";
 import { Table, TD, TH, THead, TR } from "@/components/ui/table";
-import { RouteState } from "@/gen/rpmgr/v1/route_pb";
+import { RouteState, type Route } from "@/gen/rpmgr/v1/route_pb";
 import { useOrg } from "@/session";
-import { blockedTargets, routeAddress, routeType, routeTypes, useGroupNames, useRoutes } from "@/routes-data";
+import { blockedTargets, routeAddress, routeType, routeTypes, useGroupHostnames, useGroupNames, useRoutes } from "@/routes-data";
 
 export const pageSize = 25;
 
@@ -42,11 +42,13 @@ export function Routes() {
   const org = useOrg();
   const routes = useRoutes(org?.orgId);
   const groups = useGroupNames(org?.orgId);
+  const hosts = useGroupHostnames(org?.orgId);
+  const address = (r: Route) => routeAddress(r, hosts.data?.get(r.gatewayGroupId));
   const set = (patch: Partial<RoutesSearch>) => void navigate({ search: (s: RoutesSearch) => ({ ...s, ...patch, page: patch.page }), replace: true });
 
   const q = search.q?.toLowerCase() ?? "";
   const shown = (routes.data ?? [])
-    .filter((r) => !q || r.name.includes(q) || routeAddress(r).some((a) => a.toLowerCase().includes(q)))
+    .filter((r) => !q || r.name.includes(q) || address(r).some((a) => a.toLowerCase().includes(q)))
     .filter((r) => !search.type || routeType(r) === search.type)
     .filter((r) => !search.state || routeStateKey(r.status?.state ?? RouteState.UNSPECIFIED) === search.state)
     .filter((r) => !search.group || r.gatewayGroupId === search.group)
@@ -96,7 +98,7 @@ export function Routes() {
               <TR key={r.id}>
                 <TD>
                   <Link to="/routes/$routeId" params={{ routeId: r.id }} className="font-medium hover:underline">{r.name}</Link>
-                  {routeAddress(r).map((a) => <div key={a} className="text-muted-foreground">{a}</div>)}
+                  {address(r).map((a) => <div key={a} className="text-muted-foreground">{a}</div>)}
                 </TD>
                 <TD>{t(`routeType.${routeType(r) || "unknown"}`)}</TD>
                 <TD>{groups.data?.get(r.gatewayGroupId) ?? r.gatewayGroupId}</TD>

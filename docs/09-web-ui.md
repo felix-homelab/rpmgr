@@ -118,6 +118,15 @@ flowchart LR
   keeps a contrast of at least 4.5:1 on the surfaces it is drawn on, and control borders, the focus
   outline and chart lines at least 3:1, in both themes (U8). Pages are built from a header with the
   page's actions, cards, tables and status badges. A status badge always has an icon and text.
+- **Required fields:** a field the form or the server refuses to leave empty has a red asterisk
+  after its label ([D77](14-open-decisions.md#engineering)). The control is marked required, so
+  screen readers say so; the asterisk itself has an empty alternative text and is not read. A field
+  required only in some cases has the asterisk while the case holds: an uploaded certificate's ID,
+  a target's host and port or its socket path, an HTTPS target's server name on a socket, the mail
+  relay's sender address, and the password of a basic-auth user the policy does not have yet. A
+  number field that is filled in with its default, such as a port of 0 for any free port, is
+  required too, since an empty one is refused. Selects and radio buttons that always hold a value,
+  and search and filter fields, have none. Forms do not explain the asterisk.
 - **Icons** come from lucide-react and are bundled with the UI, so the CSP needs no other origin
   ([Frontend architecture](#frontend-architecture)). They are hidden from screen readers; their
   name is always in the text next to them or in the control's label.
@@ -134,8 +143,8 @@ flowchart LR
 ├──────────────────────┼────────┼───────────────┼────────────┼──────────────┼─────────────┤
 │ wiki                 │ http   │ eu            │ 2/2 ready  │ ● ready      │ ✓ rev 1042  │
 │  wiki.example.com    │        │               │            │              │             │
-│ postgres             │ tcp    │ eu  :25432    │ 0/1 ready  │ ▲ unavailable │ ✓ rev 1040 │
-│                      │        │               │ 1 blocked by local policy                 │
+│ postgres             │ tcp    │ eu            │ 0/1 ready  │ ▲ unavailable │ ✓ rev 1040 │
+│  eu.example.net:25432│        │               │ 1 blocked by local policy                 │
 │ grafana              │ http   │ eu            │ 1/1 ready  │ ○ disabled   │ ⧗ pending   │
 │  grafana.example.com │        │               │            │              │  2/3 agents │
 ├──────────────────────┴────────┴───────────────┴────────────┴──────────────┴─────────────┤
@@ -147,6 +156,9 @@ flowchart LR
 - It reads all of the org's routes and filters them in the browser by text (name or address),
   type, status and gateway group. It sorts them by name and shows 25 a page. The filters and the
   page stay in the URL (U9).
+- **The address** of an HTTP or TLS passthrough route is its hostnames. A TCP or UDP route shows
+  its public port at each public hostname of its gateway group, such as `eu.example.net:25432`, an
+  IPv6 address in brackets; while the group has none, only `:25432` (D79).
 - **Without routes,** the list offers to create the first. When the filters match none, it says so
   and offers to clear them.
 - **Targets** shows how many are ready, and how many a connector's local policy blocks.
@@ -234,7 +246,7 @@ flowchart LR
 
 ```
 ┌ Route: postgres (tcp)                      [Enabled ●━]  [Edit]  [YAML]  [⋯ Delete]   ┐
-│ Desired: enabled · gateway group eu · port 25432          Observed: ▲ unavailable      │
+│ Desired: enabled · gateway group eu · eu.example.net:25432   Observed: ▲ unavailable   │
 ├ Targets & health ─────────────────────────────────────────────────────────────────────┤
 │ Connector   Address          Weight  Health       Status                                │
 │ db-host-1   10.0.0.5:5432    100     tcp / 10 s   ▲ not_ready: blocked by local policy  │
@@ -255,6 +267,8 @@ flowchart LR
   targets, traffic and access policies.
 - It shows the configured settings next to the observed state (U3), and how many of the group's
   gateways serve the route.
+- **The address** is the list's. A TCP or UDP route whose gateway group has no public hostname
+  shows only its port, says so, and links to the group, where they are set.
 - **Each target** shows its connector by name, its address and weight, and whether it serves; if
   not, it says why.
 - **Targets are added, edited and removed** on the page, in the targets card, one form at a time.
@@ -671,6 +685,9 @@ In Phase 1 the UI works in the user's first org. The org switcher comes with the
   on any CSP violation, and on anything in `localStorage` or `sessionStorage`.
 - A flow checks, in a window 2560 px wide, that each page it visits fills the width beside the
   sidebar, and that the route form stands in two columns there and in one on a phone.
+- Flows check that every required control has the red asterisk, drawn with an empty alternative
+  text, and that no other control has one; component tests check the same for each form, including
+  the fields required only in some cases.
 - A unit test computes the contrast of every text colour on its surfaces, 4.5:1, and of control
   borders, the focus outline and chart lines, 3:1, in both themes.
 - Accessibility checks (axe) in CI on every page, plus manual keyboard and screen-reader passes per

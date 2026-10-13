@@ -100,7 +100,7 @@ function ClaimForm({ orgId, onDone }: { orgId: string; onDone: () => void }) {
   }
   return (
     <form onSubmit={save} aria-label={t("domains.claimTitle")} className={panel} noValidate>
-      <Field label={t("domains.fqdn")} className="max-w-md" value={form.fqdn} onChange={(e) => setForm({ ...form, fqdn: e.target.value })} />
+      <Field label={t("domains.fqdn")} className="max-w-md" required value={form.fqdn} onChange={(e) => setForm({ ...form, fqdn: e.target.value })} />
       <label className="flex items-center gap-2 text-sm">
         <input type="checkbox" className="size-4 accent-primary" checked={form.wildcard} onChange={(e) => setForm({ ...form, wildcard: e.target.checked })} />
         {t("domains.wildcard")}

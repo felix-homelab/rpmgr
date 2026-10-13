@@ -18,6 +18,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -31,6 +32,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/routes"
 	"github.com/felix-homelab/rpmgr/internal/store"
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/gatewaygroup"
 	"github.com/felix-homelab/rpmgr/internal/telemetry"
 	"github.com/felix-homelab/rpmgr/internal/token"
 )
@@ -156,7 +158,7 @@ func Init(ctx context.Context, o controller.InitOptions) (res InitResult, err er
 	if err != nil {
 		return InitResult{}, err
 	}
-	gatewayID, tok, err := createGateway(ctx, cfg, net.JoinHostPort(public.Hostname(), port))
+	gatewayID, tok, err := createGateway(ctx, cfg, net.JoinHostPort(public.Hostname(), port), groupHostnames(public))
 	if err != nil {
 		return InitResult{}, err
 	}
@@ -215,8 +217,20 @@ func undoInit(cfg config.AllInOne, before []os.DirEntry) error {
 	return errors.Join(errs...)
 }
 
-// createGateway creates the gateway group and the gateway, and a single-use token bound to it.
-func createGateway(ctx context.Context, cfg config.AllInOne, endpoint string) (string, string, error) {
+// groupHostnames are the public hostnames init gives the gateway group: the public URL's host,
+// where clients reach this host's TCP and UDP routes as well (D79), unless the group refuses it,
+// as it does a single-label name such as localhost.
+func groupHostnames(public *url.URL) []string {
+	host := []string{strings.ToLower(public.Hostname())}
+	if host[0] == "" || gatewaygroup.PublicHostnamesValidator(host) != nil {
+		return nil
+	}
+	return host
+}
+
+// createGateway creates the gateway group with its public hostnames and the gateway, and a
+// single-use token bound to it.
+func createGateway(ctx context.Context, cfg config.AllInOne, endpoint string, hostnames []string) (string, string, error) {
 	db, err := store.OpenSQLite(ctx, cfg.Database.DSN, store.SQLiteOptions{})
 	if err != nil {
 		return "", "", err
@@ -236,7 +250,7 @@ func createGateway(ctx context.Context, cfg config.AllInOne, endpoint string) (s
 		if err != nil {
 			return nil, err
 		}
-		group, err := tx.GatewayGroup.Create().SetOrgID(org.ID).SetName(GroupName).Save(sys)
+		group, err := tx.GatewayGroup.Create().SetOrgID(org.ID).SetName(GroupName).SetPublicHostnames(hostnames).Save(sys)
 		if err != nil {
 			return nil, err
 		}

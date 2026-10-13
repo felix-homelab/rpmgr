@@ -11,6 +11,7 @@ import { ConnectorService } from "@/gen/rpmgr/v1/connector_pb";
 import { ApplyState, StatusService } from "@/gen/rpmgr/v1/status_pb";
 import { Theme, UserService } from "@/gen/rpmgr/v1/user_pb";
 import { apiError, auth, show } from "@/testing/api";
+import { marked, unmatched } from "@/testing/required";
 
 afterEach(cleanup);
 
@@ -72,6 +73,8 @@ describe("gateway actions", () => {
     const { creates } = page();
     fireEvent.click(await screen.findByRole("button", { name: "Add a gateway" }));
     const form = within(await screen.findByRole("form", { name: "New gateway" }));
+    const added = screen.getByRole("form", { name: "New gateway" });
+    expect([marked(added), unmatched(added)]).toEqual([["Name", "Tunnel endpoints"], []]);
     fireEvent.change(form.getByLabelText("Name"), { target: { value: "gw-eu-3" } });
     fireEvent.change(form.getByLabelText("Tunnel endpoints"), { target: { value: "198.51.100.3:443" } });
     fireEvent.click(form.getByRole("button", { name: "Add the gateway" }));

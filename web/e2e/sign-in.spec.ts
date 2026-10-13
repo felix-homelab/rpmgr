@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { expect, test } from "@playwright/test";
-import { email, expectAccessible, password, sideways, totp, unfilled, watchCSP } from "./helpers";
+import { email, expectAccessible, password, sideways, totp, unfilled, unmarked, watchCSP } from "./helpers";
 
 // The flows of docs/09-web-ui.md, "Testing the UI": first-run setup, sign-in with and without a
 // second factor, the step-up prompt, token creation and revocation, the enroll dialog, the
@@ -16,6 +16,10 @@ test("first-run setup creates the first user and signs them in", async ({ page }
   await expect(page.getByRole("heading", { name: "Create the first account" })).toBeVisible();
   await expect(page).toHaveURL(/\/setup$/); // the token left the address bar
   await expectAccessible(page);
+  // Every field is required: its label ends in a red asterisk, which is not part of its name.
+  await expect(page.locator(".required-mark")).toHaveText(["E-mail address", "Your name", "New password", "Repeat the new password"]);
+  expect(await unmarked(page)).toEqual([]);
+  await expect(page.getByRole("textbox", { name: "Your name", exact: true })).toBeVisible();
 
   await page.getByLabel("E-mail address").fill(email);
   await page.getByLabel("Your name").fill("Ada");
@@ -33,6 +37,7 @@ test("signs in, creates an API token with a step-up, sets up an authenticator an
   await page.goto("/");
   await expect(page).toHaveURL(/\/login\?redirect=/);
   await expectAccessible(page);
+  expect(await unmarked(page)).toEqual([]);
   await page.getByLabel("E-mail address").fill(email);
   await page.getByLabel("Password", { exact: true }).fill("wrong password!");
   await page.getByRole("button", { name: "Sign in" }).click();
@@ -75,6 +80,12 @@ test("signs in, creates an API token with a step-up, sets up an authenticator an
   const instance = page.getByRole("region", { name: "Instance settings" });
   await expect(instance.getByLabel("Keep hourly statistics (days)")).toHaveValue(/^\d+$/);
   await expectAccessible(page);
+  // A mail relay needs a sender address, so it is marked only while a relay is set.
+  await instance.getByLabel("Relay host:port").fill("mail.example.com:587");
+  await expect(page.locator(".required-mark")).toHaveText(["Sender address"]);
+  expect(await unmarked(page)).toEqual([]);
+  await instance.getByLabel("Relay host:port").fill("");
+  await expect(page.locator(".required-mark")).toHaveCount(0);
   await instance.getByLabel("Keep hourly statistics (days)").fill("30");
   await instance.getByRole("button", { name: "Save" }).click();
   await expect(instance.getByRole("status")).toHaveText("Saved.");
@@ -98,6 +109,8 @@ test("signs in, creates an API token with a step-up, sets up an authenticator an
     expect(await unfilled(page), path).toEqual([]);
   }
   await page.goto("/routes/new");
+  await expect(page.locator(".required-mark")).toHaveText(["Gateway group", "Name", "Hostnames", "HSTS max-age (seconds)", "Largest request body (bytes, 0 for no limit)"]);
+  expect(await unmarked(page)).toEqual([]);
   const top = async (label: string) => (await page.getByLabel(label, { exact: true }).boundingBox())!.y;
   expect(await top("Name")).toBe(await top("Gateway group"));
   await page.setViewportSize({ width: 390, height: desktop.height });

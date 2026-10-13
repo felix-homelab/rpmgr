@@ -2,17 +2,20 @@
 
 import { useId } from "react";
 import { useTranslation } from "react-i18next";
+import { labelClass } from "@/components/field";
 import { Textarea } from "@/components/ui/input";
 
 // PemField takes PEM text, pasted or read from a file in the browser; nothing is uploaded until the
 // form is sent.
-export function PemField({ label, value, onChange, secret }: { label: string; value: string; onChange: (v: string) => void; secret?: boolean }) {
+export function PemField({ label, value, onChange, secret, required }: {
+  label: string; value: string; onChange: (v: string) => void; secret?: boolean; required?: boolean;
+}) {
   const { t } = useTranslation();
   const id = useId();
   return (
     <div className="grid gap-1.5">
-      <label htmlFor={id} className="text-sm font-medium">{label}</label>
-      <Textarea id={id} rows={4} spellCheck={false} autoComplete="off" className="font-mono text-xs"
+      <label htmlFor={id} className={labelClass(required)}>{label}</label>
+      <Textarea id={id} rows={4} required={required} spellCheck={false} autoComplete="off" className="font-mono text-xs"
         value={value} onChange={(e) => onChange(e.target.value)} />
       <label className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
         {t(secret ? "pem.fileSecret" : "pem.file")}

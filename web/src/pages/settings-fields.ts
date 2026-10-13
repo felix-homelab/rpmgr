@@ -18,6 +18,7 @@ export interface SettingField {
   mask: string;
   kind: "days" | "select" | "bool" | "lines" | "text";
   options?: [number, string][];
+  required?: (values: Record<string, string>) => boolean; // whether the form needs a value
   get: (s: InstanceSettings) => string;
   set: (s: InstanceSettings, v: string) => void;
 }
@@ -29,8 +30,8 @@ const toDays = (v: string): Duration | undefined =>
 const lines = (v: string) => v.split("\n").map((l) => l.trim()).filter(Boolean);
 const smtp = (s: InstanceSettings) => s.smtp ?? create(SmtpSettingsSchema);
 // smtpField edits a field of the mail relay; a relay without a server is none.
-const smtpField = (key: string, field: "server" | "from" | "username"): SettingField => ({
-  key, section: "mail", mask: "smtp", kind: "text", get: (s) => s.smtp?.[field] ?? "",
+const smtpField = (key: string, field: "server" | "from" | "username", required?: SettingField["required"]): SettingField => ({
+  key, section: "mail", required, mask: "smtp", kind: "text", get: (s) => s.smtp?.[field] ?? "",
   set: (s, v) => {
     s.smtp = { ...smtp(s), [field]: v.trim() };
   },
@@ -56,7 +57,8 @@ export const settingFields: SettingField[] = [
   { key: "acmeDirectory", section: "acme", mask: "acme_directory_url", kind: "text", get: (s) => s.acmeDirectoryUrl ?? "", set: (s, v) => (s.acmeDirectoryUrl = v.trim() || undefined) },
   { key: "acmeEmail", section: "acme", mask: "acme_email", kind: "text", get: (s) => s.acmeEmail ?? "", set: (s, v) => (s.acmeEmail = v.trim() || undefined) },
   smtpField("smtpServer", "server"),
-  smtpField("smtpFrom", "from"),
+  // A relay needs a sender address.
+  smtpField("smtpFrom", "from", (v) => (v.smtpServer ?? "").trim() !== ""),
   smtpField("smtpUser", "username"),
   { key: "smtpSecurity", section: "mail", mask: "smtp", kind: "select", options: [[SmtpSecurity.STARTTLS, "starttls"], [SmtpSecurity.TLS, "tls"]],
     get: (s) => String(s.smtp?.security || SmtpSecurity.STARTTLS), set: (s, v) => (s.smtp = { ...smtp(s), security: Number(v) }) },

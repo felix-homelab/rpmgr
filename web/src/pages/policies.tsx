@@ -161,6 +161,8 @@ function PolicyForm({ orgId, policy, onDone }: { orgId: string; policy?: AccessP
   const [description, setDescription] = useState(policy?.description ?? "");
   const [rules, setRules] = useState<RuleDraft[]>(policy?.rules.map(draftOf) ?? [{ kind: "ipAllow", cidrs: [], users: [] }]);
   const [error, setError] = useState("");
+  // A user the stored policy already has keeps their password when it is left empty; a new one needs one.
+  const stored = new Set(policy?.rules.flatMap((r) => (r.rule.case === "basicAuth" ? r.rule.value.users.map((u) => u.name) : [])));
   const setRule = (i: number, r: Partial<RuleDraft>) => setRules(rules.map((x, j) => (j === i ? { ...x, ...r } : x)));
   const move = (i: number, by: number) => {
     const next = [...rules];
@@ -187,7 +189,7 @@ function PolicyForm({ orgId, policy, onDone }: { orgId: string; policy?: AccessP
       className="grid gap-4 rounded-xl border border-border bg-card p-5 shadow-xs" noValidate>
       <h2 className="font-semibold">{t(policy ? "policies.editTitle" : "policies.addTitle")}</h2>
       <div className="grid gap-4 sm:grid-cols-2">
-        <Field label={t("routeForm.fields.name")} value={name} onChange={(e) => setName(e.target.value)} />
+        <Field label={t("routeForm.fields.name")} required value={name} onChange={(e) => setName(e.target.value)} />
         <Field label={t("routeForm.fields.description")} value={description} onChange={(e) => setDescription(e.target.value)} />
       </div>
       <fieldset className="grid gap-3">
@@ -209,11 +211,11 @@ function PolicyForm({ orgId, policy, onDone }: { orgId: string; policy?: AccessP
               <div className="grid gap-2">
                 {r.users.map((u, k) => (
                   <div key={k} className="flex flex-wrap items-end gap-2">
-                    <label className="grid gap-1.5 text-sm font-medium">{t("policies.user")}
-                      <Input value={u.name} onChange={(e) => setRule(i, { users: r.users.map((x, m) => (m === k ? { ...x, name: e.target.value } : x)) })} />
+                    <label className="grid gap-1.5 text-sm font-medium"><span className="required-mark">{t("policies.user")}</span>
+                      <Input required value={u.name} onChange={(e) => setRule(i, { users: r.users.map((x, m) => (m === k ? { ...x, name: e.target.value } : x)) })} />
                     </label>
-                    <label className="grid gap-1.5 text-sm font-medium">{t("login.password")}
-                      <Input type="password" autoComplete="new-password" placeholder={policy ? t("policies.keep") : ""} value={u.password}
+                    <label className="grid gap-1.5 text-sm font-medium"><span className={stored.has(u.name.trim()) ? undefined : "required-mark"}>{t("login.password")}</span>
+                      <Input type="password" autoComplete="new-password" required={!stored.has(u.name.trim())} placeholder={policy ? t("policies.keep") : ""} value={u.password}
                         onChange={(e) => setRule(i, { users: r.users.map((x, m) => (m === k ? { ...x, password: e.target.value } : x)) })} />
                     </label>
                     <Button size="sm" variant="outline" onClick={() => setRule(i, { users: r.users.filter((_, m) => m !== k) })}>{t("policies.removeUser")}</Button>
@@ -222,7 +224,7 @@ function PolicyForm({ orgId, policy, onDone }: { orgId: string; policy?: AccessP
                 <Button size="sm" variant="outline" className="justify-self-start" onClick={() => setRule(i, { users: [...r.users, { name: "", password: "" }] })}>{t("policies.addUser")}</Button>
               </div>
             ) : (
-              <LinesField label={t("policies.cidrs")} value={r.cidrs} onChange={(cidrs) => setRule(i, { cidrs })} />
+              <LinesField label={t("policies.cidrs")} required value={r.cidrs} onChange={(cidrs) => setRule(i, { cidrs })} />
             )}
           </div>
         ))}

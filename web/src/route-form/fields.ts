@@ -11,6 +11,7 @@ export interface RouteField {
   path: string;
   kind: "text" | "longtext" | "lines" | "pairs" | "number" | "optionalNumber" | "select" | "tristate";
   options?: [string, string][]; // value and i18n key, for select
+  required?: (values: RouteValues) => boolean; // whether the form needs a value; see needsValue
   get: (r: Route) => string;
   set: (r: Route, v: string) => void;
 }
@@ -50,18 +51,19 @@ const transports: [string, string][] = [
 ];
 
 const common: RouteField[] = [
-  { key: "name", path: "name", kind: "text", get: (r) => r.name, set: (r, v) => (r.name = v.trim()) },
+  { key: "name", path: "name", kind: "text", required: () => true, get: (r) => r.name, set: (r, v) => (r.name = v.trim()) },
   { key: "description", path: "description", kind: "longtext", get: (r) => r.description, set: (r, v) => (r.description = v) },
   { key: "labels", path: "labels", kind: "pairs", get: (r) => showPairs(r.labels, "="), set: (r, v) => (r.labels = pairs(v, "=")) },
   { key: "transport", path: "transport", kind: "select", options: transports, get: (r) => String(r.transport), set: (r, v) => (r.transport = Number(v)) },
 ];
 
 const http: RouteField[] = [
-  spec("http", { key: "hostnames", path: "http.hostnames", kind: "lines", get: (s) => s.hostnames.join("\n"), set: (s, v) => (s.hostnames = lines(v)) }),
+  spec("http", { key: "hostnames", path: "http.hostnames", kind: "lines", required: () => true, get: (s) => s.hostnames.join("\n"), set: (s, v) => (s.hostnames = lines(v)) }),
   spec("http", { key: "pathPrefix", path: "http.path_prefix", kind: "text", get: (s) => s.pathPrefix, set: (s, v) => (s.pathPrefix = v.trim()) }),
   spec("http", { key: "tlsMode", path: "http.tls_mode", kind: "select", options: [[String(TLSMode.TLS_MODE_ACME), "acme"], [String(TLSMode.TLS_MODE_CERTIFICATE), "certificate"]],
     get: (s) => String(s.tlsMode), set: (s, v) => (s.tlsMode = Number(v)) }),
-  spec("http", { key: "certificateId", path: "http.certificate_id", kind: "text", get: (s) => s.certificateId, set: (s, v) => (s.certificateId = v.trim()) }),
+  spec("http", { key: "certificateId", path: "http.certificate_id", kind: "text",
+    required: (v) => v.tlsMode === String(TLSMode.TLS_MODE_CERTIFICATE), get: (s) => s.certificateId, set: (s, v) => (s.certificateId = v.trim()) }),
   spec("http", { key: "port80", path: "http.port80", kind: "select",
     options: [[String(Port80Mode.REDIRECT), "redirect"], [String(Port80Mode.SERVE), "serve"], [String(Port80Mode.OFF), "off"]],
     get: (s) => String(s.port80), set: (s, v) => (s.port80 = Number(v)) }),
@@ -86,7 +88,7 @@ const byType: Record<string, RouteField[]> = {
     get: (s) => (s.idleTimeoutSeconds === undefined ? "" : String(s.idleTimeoutSeconds)), set: (s, v) => (s.idleTimeoutSeconds = optional(v)) })],
   udp: [portField("udp"), spec("udp", { key: "flowIdleTimeout", path: "udp.flow_idle_timeout_seconds", kind: "optionalNumber",
     get: (s) => (s.flowIdleTimeoutSeconds === undefined ? "" : String(s.flowIdleTimeoutSeconds)), set: (s, v) => (s.flowIdleTimeoutSeconds = optional(v)) })],
-  tlsPassthrough: [spec("tlsPassthrough", { key: "hostnames", path: "tls_passthrough.hostnames", kind: "lines",
+  tlsPassthrough: [spec("tlsPassthrough", { key: "hostnames", path: "tls_passthrough.hostnames", kind: "lines", required: () => true,
     get: (s) => s.hostnames.join("\n"), set: (s, v) => (s.hostnames = lines(v)) })],
 };
 
@@ -96,6 +98,14 @@ export function routeFields(r: Route): RouteField[] {
 }
 
 export type RouteValues = Record<string, string>;
+
+// needsValue says whether the form needs a value in a field, given the form's values: the name and
+// the hostnames always, a whole number since an empty one is refused, an uploaded certificate's ID
+// when the route uses one. Its label then ends in a red asterisk (docs/09-web-ui.md, "Layout and
+// navigation").
+export function needsValue(f: RouteField, values: RouteValues): boolean {
+  return f.kind === "number" || (f.required?.(values) ?? false);
+}
 
 export function valuesOf(r: Route): RouteValues {
   return Object.fromEntries(routeFields(r).map((f) => [f.key, f.get(r)]));
