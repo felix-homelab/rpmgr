@@ -32,8 +32,10 @@ history and the [ADRs](docs/adr/).
 - Controller: serves `/install.sh`. The script downloads the controller's own release from the
   controller, verifies its signatures with OpenSSL 3, installs the binary, the boot file, the
   connector-local policy and a hardened systemd unit, and enrolls the host. It reads the
-  enrollment token from a file, the environment or the terminal. It is tested on Debian 12 and 13,
-  Ubuntu 22.04 and 24.04, and Rocky Linux 9. (#328, #374, #376)
+  enrollment token from a file, the environment or the terminal. The command the web UI shows
+  downloads the script and runs it with `sudo`, so that a token typed at the prompt also arrives
+  under sudo-rs, Ubuntu's `sudo` since 25.10. It is tested on Debian 12 and 13, Ubuntu 22.04, 24.04
+  and 26.04, and Rocky Linux 9. (#328, #374, #376, #476)
 - All roles: `rpmgr systemd-unit <role>` prints a hardened systemd unit for each role. (#375)
 - All roles: an internal CA gives every controller, gateway and connector a short-lived certificate
   with a SPIFFE identity in the instance's trust domain. Agents renew it in time; an agent that

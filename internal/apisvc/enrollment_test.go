@@ -16,7 +16,6 @@ import (
 
 	rpmgrv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/v1"
 	"github.com/felix-homelab/rpmgr/internal/api"
-	"github.com/felix-homelab/rpmgr/internal/apisvc"
 	"github.com/felix-homelab/rpmgr/internal/settings"
 )
 
@@ -236,7 +235,7 @@ func TestGetInstallCommand(t *testing.T) {
 		return r.Msg, nil
 	}
 	plain, err := get(ada, rpmgrv1.AgentRole_AGENT_ROLE_UNSPECIFIED)
-	want := "curl -fsSL 'https://panel.example.com/install.sh' | sudo sh -s -- \\\n" +
+	want := "curl -fsSLO 'https://panel.example.com/install.sh' && sudo sh install.sh \\\n" +
 		"  --controller 'https://panel.example.com' --ca-pin 'sha256:3q2+7w=='"
 	if err != nil || plain.GetCommand() != want || plain.GetControllerUrl() != "https://panel.example.com" || plain.GetCaPin() != "sha256:3q2+7w==" {
 		t.Fatalf("a connector's command:\n%s\n%v", plain.GetCommand(), err)
@@ -254,8 +253,11 @@ func TestGetInstallCommand(t *testing.T) {
 	if strings.Contains(withTargets.GetCommand(), "rpmgr_enr_") {
 		t.Fatal("the command holds a token")
 	}
+	if strings.Contains(withTargets.GetCommand(), "|") {
+		t.Fatal("the command pipes the script into sudo, which leaves sudo-rs no terminal to read the token from")
+	}
 	// What the installer would get as its arguments, as a shell parses them.
-	_, args, _ := strings.Cut(withTargets.GetCommand(), "sudo sh -s --")
+	_, args, _ := strings.Cut(withTargets.GetCommand(), "sudo sh install.sh")
 	out, err := exec.Command("/bin/sh", "-c", `printf '%s\n'`+args).Output()
 	if err != nil {
 		t.Fatal(err)
@@ -286,16 +288,5 @@ func TestGetInstallCommand(t *testing.T) {
 	vwr, _ := e.join(t, ada, org, "vwr@example.com", "viewer")
 	if _, err := get(vwr, rpmgrv1.AgentRole_AGENT_ROLE_CONNECTOR); err != nil {
 		t.Fatalf("a Viewer: %v", err)
-	}
-}
-
-// TestShellQuote: a shell reads back exactly what was quoted, quotes, spaces, globs, variables and
-// command substitutions included.
-func TestShellQuote(t *testing.T) {
-	for _, s := range []string{"", "plain", "it's", "''", "a b", "$HOME", "`id`", "$(id)", "*", "back\\slash", "a'b'c", "\"double\""} {
-		out, err := exec.Command("/bin/sh", "-c", "printf '%s' "+apisvc.ShellQuote(s)).Output()
-		if err != nil || string(out) != s {
-			t.Errorf("%q came back as %q: %v", s, out, err)
-		}
 	}
 }

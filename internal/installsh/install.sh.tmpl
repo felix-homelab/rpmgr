@@ -7,9 +7,13 @@
 # manifest -> SHA-256 of the binary. The enrollment token never passes through this script:
 # rpmgr enroll reads it from --token-file, from RPMGR_ENROLL_TOKEN, or from the terminal.
 #
-#   curl -fsSL <controller>/install.sh | sudo sh -s -- --controller <url> --ca-pin <pin> \
+#   curl -fsSLO <controller>/install.sh && sudo sh install.sh --controller <url> --ca-pin <pin> \
 #     [--role gateway|connector] [--allow-target <target>]... [--token-file <file>] [--tcp-bbr]
 #     [--verify-only]
+#
+# Run it from a file, not piped into sudo: sudo-rs, Ubuntu's sudo since 25.10, passes nothing typed
+# at the terminal on to a command whose standard input is a pipe, so the token prompt would wait
+# for good.
 set -eu
 
 VERSION='{{.Version}}'
@@ -154,6 +158,10 @@ else
   if [ -n "$token_file" ]; then
     "$BIN" enroll --controller "$controller" --ca-pin "$pin" --token-file "$token_file"
   else
+    if [ ! -t 0 ] && [ -z "${RPMGR_ENROLL_TOKEN:-}" ]; then
+      say "this script is piped into sh; if the token prompt takes nothing you type (as under sudo-rs),"
+      say "stop it with Ctrl-C and run it from a file: curl -fsSLO $controller/install.sh && sudo sh install.sh ..."
+    fi
     "$BIN" enroll --controller "$controller" --ca-pin "$pin"
   fi
   chown -R rpmgr:rpmgr /var/lib/rpmgr/identity

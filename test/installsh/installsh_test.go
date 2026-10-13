@@ -30,12 +30,19 @@ import (
 )
 
 // stub is the "binary" of the test release: it records its arguments and whether the token is in
-// its environment, and plays the parts of rpmgr the script uses.
+// its environment, and plays the parts of rpmgr the script uses. Without --token-file, enroll asks
+// for the token on the terminal with echo off, as rpmgr enroll does, and records its length.
 const stub = `#!/bin/sh
 echo "argv: $*" >>/tmp/rpmgr-calls
 env | grep -q not-a-real-token && echo "token in env" >>/tmp/rpmgr-calls
 case $1 in
-  enroll) mkdir -p /var/lib/rpmgr/identity && echo chain >/var/lib/rpmgr/identity/chain.pem ;;
+  enroll)
+    case " $* " in
+      *" --token-file "*) ;;
+      *) printf 'Enrollment token: ' >/dev/tty; stty -echo </dev/tty; IFS= read -r tok </dev/tty; stty echo </dev/tty
+        echo >/dev/tty; echo "typed a token of ${#tok} characters" >>/tmp/rpmgr-calls ;;
+    esac
+    mkdir -p /var/lib/rpmgr/identity && echo chain >/var/lib/rpmgr/identity/chain.pem ;;
   systemd-unit) echo "[Service]"; echo "ExecStart=$3 $4" ;;
   policy) echo "  - target $5" >>/tmp/rpmgr-policy ;;
 esac
@@ -55,6 +62,7 @@ var distros = []struct {
 	{"debian-13", "mirror.gcr.io/library/debian@sha256:913f6706df59a68922d1dd08f78c2476560a8d367897200a6005b00e5f67c2d5", apt, false},
 	{"ubuntu-22.04", "mirror.gcr.io/library/ubuntu@sha256:5ec03bb3441e8b0bf3b4f9cd4629a1ae763010dc3035bb8da3ae6cf026486401", apt, false},
 	{"ubuntu-24.04", "mirror.gcr.io/library/ubuntu@sha256:534baea6a22c03a63003dbc8dbe78fe34bc0d7e595d9a9dc9834884ff530eb55", apt, false},
+	{"ubuntu-26.04", ubuntu2604, apt, false},
 	// The image has OpenSSL 3 and curl; no package install, whose mirrors once hung for 15 min.
 	{"rocky-9", "mirror.gcr.io/rockylinux/rockylinux@sha256:8101994123cf3d0a8fee517bee7f39e555c7d92bd2d9eb3303cc988a0eeed00f", "true", false},
 	{"ubuntu-20.04", "mirror.gcr.io/library/ubuntu@sha256:8feb4d8ca5354def3d8fce243717141ce31e2c428701f6682bd2fafe15388214", apt, true},
@@ -62,43 +70,24 @@ var distros = []struct {
 
 const apt = "apt-get update -qq >/dev/null && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends curl openssl ca-certificates >/dev/null"
 
+// image is the image of the distribution called name in distros.
+func image(name string) string {
+	for _, d := range distros {
+		if d.name == name {
+			return d.image
+		}
+	}
+	panic("installsh: no distribution " + name)
+}
+
+// Ubuntu 26.04 LTS, whose sudo is sudo-rs.
+const ubuntu2604 = "mirror.gcr.io/library/ubuntu@sha256:f144425ff09be612d6d9ad965196e9cdc23dae1f42110a8a11a3e9a8198759f7"
+
 func TestInstall(t *testing.T) {
 	if _, err := exec.LookPath("docker"); err != nil {
 		t.Fatal("docker is needed")
 	}
-	root, signing := releasetest.Key("installsh root"), releasetest.Key("installsh signing")
-	rootKey, _ := release.ParsePublicKey(root.Public())
-	now := time.Now().UTC()
-	st, _ := json.Marshal(release.Statement{Statement: 1, SigningKey: signing.Public(), NotBefore: now.Add(-time.Hour), NotAfter: now.Add(30 * 24 * time.Hour)})
-	sum := sha256.Sum256([]byte(stub))
-	man, _ := json.Marshal(release.Manifest{Seq: 87, Version: "1.4.2", Floor: "1.4.0", Channel: release.Stable, IssuedAt: now,
-		Artifacts: []release.Artifact{{OS: "linux", Arch: "amd64", Variant: "full", SHA256: hex.EncodeToString(sum[:]), Size: int64(len(stub))}}})
-	files := map[string][]byte{"signing-key.json": st, "signing-key.json.minisig": root.Sign(st), "manifest.json": man,
-		"manifest.json.minisig": signing.Sign(man), "rpmgr-1.4.2-linux-amd64": []byte(stub)}
-	script, err := installsh.Render("1.4.2", []release.PublicKey{rootKey})
-	if err != nil {
-		t.Fatal(err)
-	}
-	srv := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if b, ok := files[strings.TrimPrefix(r.URL.Path, "/dl/1.4.2/")]; ok {
-			_, _ = w.Write(b)
-			return
-		}
-		http.NotFound(w, r)
-	}))
-	srv.StartTLS()
-	t.Cleanup(srv.Close) // after the parallel subtests, which run once this function returns
-
-	dir := t.TempDir()
-	write := func(name, body string, mode os.FileMode) {
-		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), mode); err != nil {
-			t.Fatal(err)
-		}
-	}
-	write("install.sh", string(script), 0o644)
-	write("ca.pem", string(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: srv.Certificate().Raw})), 0o644)
-	write("systemctl", systemctl, 0o755)
-	write("token", "not-a-real-token-value\n", 0o600)
+	srv, dir, sum := testRelease(t)
 
 	// The connector's admin port is taken, as by another program; the script must pick the next.
 	busy, err := net.Listen("tcp", "127.0.0.1:7383")
@@ -160,4 +149,130 @@ func TestInstall(t *testing.T) {
 			}
 		})
 	}
+}
+
+// typist runs a command in a pseudo-terminal as a person at a terminal would: it waits for the
+// token prompt, types a token and Enter, and waits up to 2 minutes for the command to end. It prints
+// what the terminal showed, and "ended: <status>" or "still running".
+const typist = `import os, pty, select, sys, time
+pid, fd = pty.fork()
+if pid == 0:
+    os.execvp(sys.argv[1], sys.argv[1:])
+out, typed, end = b"", False, time.time() + 120
+while time.time() < end:
+    if select.select([fd], [], [], 0.2)[0]:
+        try:
+            data = os.read(fd, 4096)
+        except OSError:
+            data = b""
+        if not data:
+            break
+        out += data
+    if not typed and b"Enrollment token:" in out:
+        time.sleep(0.5)
+        os.write(fd, b"typed-by-hand\r")
+        typed = True
+sys.stdout.write(out.decode(errors="replace"))
+if time.time() < end:
+    print("ended:", os.waitpid(pid, 0)[1])
+else:
+    print("still running")
+`
+
+// TestInstall_TypedToken (docs/04-security.md, "Join command"): a user with sudo pastes the command
+// the controller shows into a terminal, without a token file, and types the token at the prompt;
+// the token reaches rpmgr enroll and the install ends, under classic sudo and under sudo-rs, which
+// passes no typed input on to a command whose standard input is a pipe.
+func TestInstall_TypedToken(t *testing.T) {
+	if _, err := exec.LookPath("docker"); err != nil {
+		t.Fatal("docker is needed")
+	}
+	srv, dir, _ := testRelease(t)
+	command, err := installsh.Command(srv.URL, "sha256:pin", false, []string{"10.0.0.5:5432"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, body := range map[string]string{"command.sh": command + "\n", "typist.py": typist} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o644); err != nil { //nolint:gosec // G306: read in the container
+			t.Fatal(err)
+		}
+	}
+	// The package that provides sudo, and how sudo -V names it: Ubuntu's sudo is sudo-rs since
+	// 25.10, while its package sudo is the classic one.
+	for _, d := range []struct{ name, image, pkg, version string }{
+		{"debian-13 sudo", "mirror.gcr.io/library/debian@sha256:913f6706df59a68922d1dd08f78c2476560a8d367897200a6005b00e5f67c2d5", "sudo", "== Sudo version "},
+		{"ubuntu-26.04 sudo-rs", ubuntu2604, "sudo-rs", "== sudo-rs "},
+	} {
+		t.Run(d.name, func(t *testing.T) {
+			t.Parallel()
+			ctx, cancel := context.WithTimeout(context.Background(), 8*time.Minute)
+			defer cancel()
+			out, err := exec.CommandContext(ctx, "docker", "run", "--rm", "--network", "host", "-v", dir+":/t:ro", d.image, "sh", "-c",
+				`apt-get update -qq >/dev/null && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends \
+				  curl openssl ca-certificates python3 `+d.pkg+` >/dev/null &&
+				cp /t/ca.pem /usr/local/share/ca-certificates/test.crt && update-ca-certificates >/dev/null 2>&1 &&
+				cp /t/systemctl /usr/local/sbin/systemctl && useradd -m u && echo 'u ALL=(ALL) NOPASSWD:ALL' >/etc/sudoers.d/u &&
+				echo "== $(sudo -V | head -1)" &&
+				su u -s /bin/sh -c 'cd && python3 /t/typist.py sh /t/command.sh'
+				echo "== calls"; cat /tmp/rpmgr-calls`).CombinedOutput()
+			text := string(out)
+			if !strings.Contains(text, d.version) {
+				t.Fatalf("not the sudo of this case (%q):\n%s", d.version, text)
+			}
+			if err != nil || !strings.Contains(text, "ended: 0") {
+				t.Fatalf("the install did not end: %v\n%s", err, text)
+			}
+			for _, want := range []string{"Enrollment token:", "typed a token of 13 characters",
+				"argv: enroll --controller " + srv.URL + " --ca-pin sha256:pin\n", "argv: systemd-unit --bin /usr/local/bin/rpmgr connector"} {
+				if !strings.Contains(text, want) {
+					t.Errorf("no %q in:\n%s", want, text)
+				}
+			}
+			if strings.Contains(text, "typed-by-hand") {
+				t.Errorf("the typed token was echoed:\n%s", text)
+			}
+		})
+	}
+}
+
+// testRelease serves a signed test release of version 1.4.2, whose binary is the stub, and the
+// controller's /install.sh that trusts its root, over TLS; it returns the server, a directory with
+// the files the containers mount at /t, and the stub's SHA-256.
+func testRelease(t *testing.T) (*httptest.Server, string, [32]byte) {
+	t.Helper()
+	root, signing := releasetest.Key("installsh root"), releasetest.Key("installsh signing")
+	rootKey, _ := release.ParsePublicKey(root.Public())
+	now := time.Now().UTC()
+	st, _ := json.Marshal(release.Statement{Statement: 1, SigningKey: signing.Public(), NotBefore: now.Add(-time.Hour), NotAfter: now.Add(30 * 24 * time.Hour)})
+	sum := sha256.Sum256([]byte(stub))
+	man, _ := json.Marshal(release.Manifest{Seq: 87, Version: "1.4.2", Floor: "1.4.0", Channel: release.Stable, IssuedAt: now,
+		Artifacts: []release.Artifact{{OS: "linux", Arch: "amd64", Variant: "full", SHA256: hex.EncodeToString(sum[:]), Size: int64(len(stub))}}})
+	files := map[string][]byte{"signing-key.json": st, "signing-key.json.minisig": root.Sign(st), "manifest.json": man,
+		"manifest.json.minisig": signing.Sign(man), "rpmgr-1.4.2-linux-amd64": []byte(stub)}
+	script, err := installsh.Render("1.4.2", []release.PublicKey{rootKey})
+	if err != nil {
+		t.Fatal(err)
+	}
+	files["/install.sh"] = script // outside /dl/, so the prefix below leaves its path whole
+	srv := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if b, ok := files[strings.TrimPrefix(r.URL.Path, "/dl/1.4.2/")]; ok {
+			_, _ = w.Write(b)
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	srv.StartTLS()
+	t.Cleanup(srv.Close) // after the parallel subtests, which run once this function returns
+
+	dir := t.TempDir()
+	write := func(name, body string, mode os.FileMode) {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), mode); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("install.sh", string(script), 0o644)
+	write("ca.pem", string(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: srv.Certificate().Raw})), 0o644)
+	write("systemctl", systemctl, 0o755)
+	write("token", "not-a-real-token-value\n", 0o600)
+	return srv, dir, sum
 }

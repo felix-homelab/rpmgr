@@ -462,7 +462,7 @@ flowchart LR
 │ [ 10.0.0.5:5432 ] [+]                                                              │
 ├────────────────────────────────────────────────────────────────────────────────────┤
 │ 1. On the host, run:                                                       [Copy]  │
-│   curl -fsSL https://panel.example.com/install.sh | sudo sh -s -- \                │
+│   curl -fsSLO https://panel.example.com/install.sh && sudo sh install.sh \         │
 │     --controller https://panel.example.com --ca-pin sha256:3q2+7w… \               │
 │     --allow-target 10.0.0.5:5432                                                   │
 │ 2. When the installer asks for it, paste this token (shown once):          [Copy]  │
@@ -474,10 +474,11 @@ flowchart LR
 ```
 
 - The token is shown once, masked by default, and is never put into the command. This keeps it out
-  of argv, unit files and shell history ([04](04-security.md#join-command)). Because `curl … | sh`
-  occupies the script's standard input, the install script reads the token from the terminal
-  (`/dev/tty`) with echo off. Unattended installs use `--token-file`, or `RPMGR_ENROLL_TOKEN`
-  passed through explicitly (`sudo --preserve-env=RPMGR_ENROLL_TOKEN …`).
+  of argv, unit files and shell history ([04](04-security.md#join-command)). The install script
+  reads the token from the terminal (`/dev/tty`) with echo off. The command downloads the script
+  and runs the file with `sudo` instead of piping it in, so that what is typed reaches the prompt
+  under sudo-rs too ([04](04-security.md#join-command)). Unattended installs use `--token-file`,
+  or `RPMGR_ENROLL_TOKEN` passed through explicitly (`sudo --preserve-env=RPMGR_ENROLL_TOKEN …`).
 - Targets entered in the dialog become `--allow-target` flags. Without any, the default local
   policy is `allow_targets: []` ([04](04-security.md#connector-local-policy)).
 - The dialog waits on the enrollment event and switches to the new connector's detail page when it

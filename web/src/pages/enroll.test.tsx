@@ -15,7 +15,7 @@ import { apiError, auth, show } from "@/testing/api";
 afterEach(cleanup);
 
 const token = "rpmgr_enr_fakefakefake0123456789_8f2k1a"; // not token-shaped, so the secrets scan passes it
-const command = "curl -fsSL https://panel.example.com/install.sh | sudo sh -s -- \\\n  --controller https://panel.example.com --ca-pin sha256:3q2+7w== \\\n  --allow-target 10.0.0.5:5432";
+const command = "curl -fsSLO https://panel.example.com/install.sh && sudo sh install.sh \\\n  --controller https://panel.example.com --ca-pin sha256:3q2+7w== \\\n  --allow-target 10.0.0.5:5432";
 
 function page() {
   const creates: CreateEnrollmentTokenRequest[] = [];

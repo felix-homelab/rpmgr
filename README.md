@@ -191,7 +191,7 @@ the connector may reach, and choose **Create the token**. On the machine at home
 the dialog shows; it looks like this:
 
 ```sh
-curl -fsSL 'https://panel.example.com/install.sh' | sudo sh -s -- \
+curl -fsSLO 'https://panel.example.com/install.sh' && sudo sh install.sh \
   --controller 'https://panel.example.com' --ca-pin 'sha256:…' \
   --allow-target '192.168.1.20:8080'
 ```
