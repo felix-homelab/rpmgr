@@ -6,7 +6,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { ConnectorService, DataTransport } from "@/gen/rpmgr/v1/connector_pb";
 import { GatewayService } from "@/gen/rpmgr/v1/gateway_pb";
 import { MetricsService, TrafficResolution, type GetRouteTrafficRequest } from "@/gen/rpmgr/v1/metrics_pb";
-import { RouteService, RouteState } from "@/gen/rpmgr/v1/route_pb";
+import { RouteService, RouteState, type DeleteRouteRequest } from "@/gen/rpmgr/v1/route_pb";
+import { ApplyState } from "@/gen/rpmgr/v1/status_pb";
 import { Theme, UserService } from "@/gen/rpmgr/v1/user_pb";
 import { allowCommand, shellArg } from "@/routes-data";
 import { apiError, auth, show } from "@/testing/api";
@@ -30,9 +31,10 @@ const postgres = {
   },
 };
 
-// detail renders the route's page; the connectors' data sessions use the transports given, and
-// the route's traffic is recorded in traffic.
-function detail(r: object, transports: Record<string, DataTransport[]> = {}, traffic: GetRouteTrafficRequest[] = []) {
+// detail renders the route's page; the connectors' data sessions use the transports given, the
+// route's traffic is recorded in traffic, and deleteRoute answers a deletion.
+function detail(r: object, transports: Record<string, DataTransport[]> = {}, traffic: GetRouteTrafficRequest[] = [],
+  deleteRoute: (req: DeleteRouteRequest) => object = () => { throw apiError(Code.Unimplemented); }) {
   return show("/routes/rte_2", auth({
     getSession: () => ({ userId: "usr_ada", displayName: "Ada", memberships: [{ orgId: "org_1", role: "owner" }] }),
   }), (router) => {
@@ -59,6 +61,7 @@ function detail(r: object, transports: Record<string, DataTransport[]> = {}, tra
         }
         return { route: r };
       },
+      deleteRoute,
     });
   });
 }
@@ -145,6 +148,45 @@ describe("RouteDetail", () => {
     fireEvent.click(targets.getByRole("button", { name: "Add a target" }));
     expect(targets.getByRole("form", { name: "New target" })).toBeTruthy();
     expect(targets.queryByRole("button", { name: "Add a target" })).toBeNull(); // one form at a time
+  });
+
+  it("deletes the route under its etag after a confirmation that names it, and follows the deletion", async () => {
+    const deletes: DeleteRouteRequest[] = [];
+    detail({ ...postgres, etag: "4" }, {}, [], (req) => (deletes.push(req),
+      { revision: { dbEpoch: "e", seq: 12n }, applyStatus: { state: ApplyState.APPLIED, agentsTotal: 3, agentsApplied: 3 } }));
+    await screen.findByRole("heading", { name: "Route postgres (TCP)" });
+    fireEvent.click(screen.getByRole("button", { name: "Delete…" }));
+    expect(screen.getByText("Delete the route postgres with its hostnames, targets and port? This cannot be undone.")).toBeTruthy();
+    expect(screen.queryByRole("link", { name: "Edit" })).toBeNull(); // the question replaces the actions
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(screen.queryByText(/^Delete the route/)).toBeNull();
+    expect(deletes).toHaveLength(0);
+
+    fireEvent.click(screen.getByRole("button", { name: "Delete…" }));
+    fireEvent.click(screen.getByRole("button", { name: "Delete it" }));
+    expect(await screen.findByRole("heading", { name: "Route postgres deleted" })).toBeTruthy();
+    expect(deletes.map((d) => [d.routeId, d.etag])).toEqual([["rte_2", "4"]]);
+    expect(screen.getByText("Revision 12: applied by all 3 agents.")).toBeTruthy();
+    expect(screen.getByRole("link", { name: "All routes" }).getAttribute("href")).toBe("/routes");
+    expect(screen.queryByText("This route does not exist, or you cannot see it.")).toBeNull();
+  });
+
+  it("keeps the route and says why when the deletion is refused", async () => {
+    let refusal = apiError(Code.FailedPrecondition, "ETAG_MISMATCH");
+    detail({ ...postgres, etag: "4" }, {}, [], () => { throw refusal; });
+    await screen.findByRole("heading", { name: "Route postgres (TCP)" });
+    fireEvent.click(screen.getByRole("button", { name: "Delete…" }));
+    fireEvent.click(screen.getByRole("button", { name: "Delete it" }));
+    expect((await screen.findByRole("alert")).textContent).toBe("The route changed since this page loaded it. The page shows it as it is now; try again.");
+    expect(screen.getByRole("heading", { name: "Route postgres (TCP)" })).toBeTruthy();
+    expect(screen.queryByText(/^Delete the route/)).toBeNull();
+
+    refusal = apiError(Code.PermissionDenied, "PERMISSION_MISSING");
+    fireEvent.click(screen.getByRole("button", { name: "Delete…" }));
+    expect(screen.queryByRole("alert")).toBeNull(); // asking again clears the last error
+    fireEvent.click(screen.getByRole("button", { name: "Delete it" }));
+    expect((await screen.findByRole("alert")).textContent).toBe("That did not work: api error");
+    expect(screen.getByRole("heading", { name: "Route postgres (TCP)" })).toBeTruthy();
   });
 });
 

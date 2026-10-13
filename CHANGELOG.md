@@ -119,7 +119,8 @@ history and the [ADRs](docs/adr/).
   page for profile, theme, password, authenticator, recovery codes, sessions and API tokens. (#356,
   #359, #360, #362, #363)
 - UI: routes can be listed, created with a preview, edited with conflict resolution, switched on
-  and off while the apply status follows live, and given targets. (#363, #364, #365, #366)
+  and off while the apply status follows live, given targets, and deleted after a confirmation.
+  (#363, #364, #365, #366, #471)
 - UI: pages for connectors with an enrollment dialog, gateway groups, gateways and port pools,
   domains, certificates and CA bundles, access policies, and members and invitations. (#366, #367,
   #368, #369)
