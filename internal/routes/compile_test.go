@@ -691,3 +691,60 @@ func TestCompile_Passthrough(t *testing.T) {
 		}
 	})
 }
+
+// TestCompile_UnservedPorts (D78): a gateway does not listen on the port of a tcp or udp route that
+// no connector serves: one whose only target is on a decommissioned or a disabled connector, or is
+// disabled; a target that serves it again brings the port back.
+func TestCompile_UnservedPorts(t *testing.T) {
+	storetest.ForEachDialect(t, func(t *testing.T, db *store.DB) {
+		f := newFleet(t, db)
+		c := db.Client()
+		if err := f.pool(t, f.orgA, f.groupA, routes.UDP, 30000, 30099); err != nil {
+			t.Fatal(err)
+		}
+		gone := c.Connector.Create().SetOrgID(f.orgA).SetName("gone").SetSpiffeID("spiffe://x/gone").SetPubkeySha256("gone").
+			SetEnabled(false).SetDecommissionedAt(time.Now()).SaveX(f.sys).ID
+		portRoute := func(name string, p routes.Protocol, port int, con string, enabled bool) string {
+			r := c.Route.Create().SetOrgID(f.orgA).SetName(name).SetType(route.Type(p)).SetGatewayGroupID(f.groupA).SaveX(f.sys)
+			if err := f.tx(t, func(tx *ent.Tx) error {
+				a, err := routes.Allocate(f.sys, tx, f.orgA, f.groupA, p, port)
+				if err != nil {
+					return err
+				}
+				if p == routes.TCP {
+					return tx.RouteTCP.Create().SetOrgID(f.orgA).SetRouteID(r.ID).SetPortAllocationID(a.ID).Exec(f.sys)
+				}
+				return tx.RouteUDP.Create().SetOrgID(f.orgA).SetRouteID(r.ID).SetPortAllocationID(a.ID).Exec(f.sys)
+			}); err != nil {
+				t.Fatal(err)
+			}
+			c.RouteTarget.Create().SetOrgID(f.orgA).SetRouteID(r.ID).SetConnectorID(con).SetKind("address").SetHost("10.0.0.5").
+				SetPort(5432).SetEnabled(enabled).ExecX(f.sys)
+			return r.ID
+		}
+		orphan := portRoute("orphan", routes.TCP, 20010, gone, true)
+		idle := portRoute("idle", routes.TCP, 20011, f.c1, false)
+		dns := portRoute("dns", routes.UDP, 30000, f.c2, true)
+		ntp := portRoute("ntp", routes.UDP, 30001, gone, true)
+		held := portRoute("held", routes.TCP, 20012, f.c3, true) // c3 is disabled, not decommissioned
+		listened := func() []string {
+			var ids []string
+			for _, r := range f.compile(t, pki.KindGateway, f.gateway) {
+				if r.GetGatewayTcpRoute() != nil || r.GetGatewayUdpRoute() != nil {
+					ids = append(ids, r.GetId())
+				}
+			}
+			slices.Sort(ids)
+			return ids
+		}
+		want := []string{f.r1, dns}
+		slices.Sort(want)
+		if got := listened(); !slices.Equal(got, want) {
+			t.Fatalf("listened on %v, want only the served %v; not %s, %s, %s, %s", got, want, orphan, idle, ntp, held)
+		}
+		c.RouteTarget.Update().Where(routetarget.RouteID(idle)).SetEnabled(true).ExecX(f.sys)
+		if got := listened(); !slices.Contains(got, idle) {
+			t.Fatalf("a route served again: %v", got)
+		}
+	})
+}

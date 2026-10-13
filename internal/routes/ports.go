@@ -156,7 +156,7 @@ func AllocateReplacing(ctx context.Context, tx *ent.Tx, org, group string, p Pro
 			return nil, ErrNotInPool
 		}
 		if taken[port] {
-			return nil, ErrPortTaken
+			return nil, holder(ctx, tx, group, proto, port)
 		}
 	} else if port, err = randomFree(pools, taken); err != nil {
 		return nil, err
@@ -166,6 +166,25 @@ func AllocateReplacing(ctx context.Context, tx *ent.Tx, org, group string, p Pro
 		return nil, ErrPortTaken // allocated concurrently
 	}
 	return a, err
+}
+
+// holder is ErrPortTaken naming the route that holds the port, so that its owner knows what to
+// change or delete; the group is the org's own, so the route is too.
+func holder(ctx context.Context, tx *ent.Tx, group string, proto portallocation.Protocol, port int) error {
+	a, err := tx.PortAllocation.Query().Where(portallocation.GatewayGroupID(group), portallocation.ProtocolEQ(proto),
+		portallocation.Port(port)).Only(ctx)
+	var r *ent.Route
+	if err == nil && a.RouteID != nil {
+		r, err = tx.Route.Get(ctx, *a.RouteID)
+	}
+	switch {
+	case r != nil:
+		return fmt.Errorf("%w: route %q holds it", ErrPortTaken, r.Name)
+	case err == nil || ent.IsNotFound(err):
+		return ErrPortTaken
+	default:
+		return err
+	}
 }
 
 func inPools(pools []*ent.PortPool, port int) bool {

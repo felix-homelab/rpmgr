@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { clone, create, equals } from "@bufbuild/protobuf";
+import { Code, ConnectError } from "@connectrpc/connect";
 import { timestampFromDate } from "@bufbuild/protobuf/wkt";
 import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
@@ -22,7 +23,12 @@ const db = create(ConnectorSchema, {
 });
 const lab = create(ConnectorSchema, { id: "con_lab", name: "lab", labels: { site: "home" }, enabled: false, ephemeral: true, session: { connected: false } });
 
-function page(path: string, connectors = [lab, db]) {
+const routes: { id: string; name: string; targets: { connectorId: string; enabled?: boolean }[] }[] = [
+  { id: "rte_pg", name: "postgres", targets: [{ connectorId: "con_db" }] },
+  { id: "rte_web", name: "web", targets: [{ connectorId: "con_lab" }] },
+];
+
+function page(path: string, connectors = [lab, db], routeList = routes, routesState: "ok" | "loading" | "failed" = "ok") {
   const updates: UpdateConnectorRequest[] = [];
   const decommissions: DecommissionConnectorRequest[] = [];
   const view = show(path, auth({ getSession: () => ({ userId: "usr_ada", memberships: [{ orgId: "org_1", role: "owner" }] }) }), (router) => {
@@ -30,10 +36,12 @@ function page(path: string, connectors = [lab, db]) {
     router.service(GatewayService, { listGateways: () => ({ gateways: [{ id: "gtw_1", name: "gw-eu-1" }] }) });
     router.service(StatusService, { async *watchApplyStatus() {} });
     router.service(RouteService, {
-      listRoutes: () => ({ routes: [
-        { id: "rte_pg", name: "postgres", targets: [{ connectorId: "con_db" }] },
-        { id: "rte_web", name: "web", targets: [{ connectorId: "con_lab" }] },
-      ] }),
+      listRoutes: () => {
+        if (routesState === "failed") {
+          throw new ConnectError("unavailable", Code.Unavailable);
+        }
+        return routesState === "loading" ? new Promise<never>(() => {}) : { routes: routeList };
+      },
     });
     router.service(ConnectorService, {
       listConnectors: () => ({ connectors }),
@@ -121,10 +129,57 @@ describe("Connectors", () => {
   it("decommissions after a confirmation that names the connector", async () => {
     const { decommissions, history } = page("/connectors/con_db");
     const section = within(await screen.findByRole("region", { name: "Decommission" }));
+    await screen.findByRole("link", { name: "postgres" }); // the routes have loaded
     fireEvent.click(section.getByRole("button", { name: "Decommission…" }));
     expect(section.getByRole("alert").textContent).toContain("Decommissioning db-host-1 revokes its identity");
     fireEvent.click(section.getByRole("button", { name: "Decommission db-host-1" }));
     await waitFor(() => expect(history.location.pathname).toBe("/connectors"));
     expect(decommissions.map((d) => [d.connectorId, d.etag])).toEqual([["con_db", "4"]]);
+  });
+
+  // D78: the routes it leaves with no target go with it; a route with another target stays.
+  it("names the routes a decommission deletes, and only those", async () => {
+    page("/connectors/con_db", [lab, db], [
+      ...routes,
+      { id: "rte_dns", name: "dns", targets: [{ connectorId: "con_db" }, { connectorId: "con_db" }] },
+      { id: "rte_shared", name: "shared", targets: [{ connectorId: "con_db" }, { connectorId: "con_lab" }] },
+      // A disabled target, here also on a disabled connector, still keeps its route.
+      { id: "rte_standby", name: "standby", targets: [{ connectorId: "con_db" }, { connectorId: "con_lab", enabled: false }] },
+    ]);
+    const section = within(await screen.findByRole("region", { name: "Decommission" }));
+    await screen.findByRole("link", { name: "shared" }); // the routes have loaded
+    fireEvent.click(section.getByRole("button", { name: "Decommission…" }));
+    expect(section.getByRole("alert").textContent).toContain(
+      "These 2 routes have no other target and are deleted with it, which frees their ports and hostnames: postgres, dns.");
+    expect(section.getByRole("alert").textContent).not.toMatch(/shared|standby/);
+  });
+
+  // Until the routes are read, it is not known which go with it, so it cannot be decommissioned.
+  it("waits for the routes before it decommissions", async () => {
+    const { decommissions } = page("/connectors/con_db", [lab, db], routes, "loading");
+    const section = within(await screen.findByRole("region", { name: "Decommission" }));
+    fireEvent.click(section.getByRole("button", { name: "Decommission…" }));
+    const confirm = section.getByRole("button", { name: "Decommission db-host-1" }) as HTMLButtonElement;
+    expect(confirm.disabled).toBe(true);
+    fireEvent.click(confirm);
+    expect(decommissions).toEqual([]);
+  });
+
+  it("says so and does not decommission when the routes cannot be read", async () => {
+    const { decommissions } = page("/connectors/con_db", [lab, db], routes, "failed");
+    const section = within(await screen.findByRole("region", { name: "Decommission" }));
+    fireEvent.click(section.getByRole("button", { name: "Decommission…" }));
+    await waitFor(() => expect(section.getAllByRole("alert").map((a) => a.textContent)).toContain(
+      "The routes could not be read, so it is not known which of them would be deleted with it. Reload the page to try again."));
+    expect((section.getByRole("button", { name: "Decommission db-host-1" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(decommissions).toEqual([]);
+  });
+
+  it("names no route when every route it serves has another target", async () => {
+    page("/connectors/con_db", [lab, db], [{ id: "rte_shared", name: "shared", targets: [{ connectorId: "con_db" }, { connectorId: "con_lab" }] }]);
+    const section = within(await screen.findByRole("region", { name: "Decommission" }));
+    await screen.findByRole("link", { name: "shared" });
+    fireEvent.click(section.getByRole("button", { name: "Decommission…" }));
+    expect(section.getByRole("alert").textContent).toMatch(/Its route targets are deleted\.$/);
   });
 });

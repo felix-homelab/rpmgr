@@ -15,7 +15,9 @@ import (
 	rpmgrv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/v1"
 	"github.com/felix-homelab/rpmgr/gen/rpmgr/v1/rpmgrv1connect"
 	"github.com/felix-homelab/rpmgr/internal/api"
+	"github.com/felix-homelab/rpmgr/internal/audit"
 	"github.com/felix-homelab/rpmgr/internal/pki"
+	"github.com/felix-homelab/rpmgr/internal/routes"
 	"github.com/felix-homelab/rpmgr/internal/store"
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/agentsession"
@@ -81,13 +83,15 @@ func (c *Connectors) UpdateConnector(ctx context.Context, req *connect.Request[r
 }
 
 // DecommissionConnector implements ConnectorService. The identity is revoked in the same
-// transaction; a second call changes nothing.
+// transaction, which also deletes the connector's route targets and each route left with no
+// target (D78); a second call changes nothing.
 func (c *Connectors) DecommissionConnector(ctx context.Context, req *connect.Request[rpmgrv1.DecommissionConnectorRequest]) (
 	*connect.Response[rpmgrv1.DecommissionConnectorResponse], error) {
 	actor := api.CallerFrom(ctx).UserID
 	var (
 		row     *ent.Connector
 		revoked bool
+		deleted []*ent.Route
 	)
 	rev, err := store.ConfigTx(ctx, c.DB, func(tx *ent.Tx) ([]string, error) {
 		cur, err := tx.Connector.Get(ctx, req.Msg.GetConnectorId())
@@ -105,8 +109,19 @@ func (c *Connectors) DecommissionConnector(ctx context.Context, req *connect.Req
 			SetEnabled(false).Save(ctx); err != nil {
 			return nil, err
 		}
-		revoked, err = c.Revocations.agent(tx, pki.KindConnector, cur.OrgID, cur.ID, "decommissioned", actor, now)
-		return []string{cur.ID}, err
+		if revoked, err = c.Revocations.agent(tx, pki.KindConnector, cur.OrgID, cur.ID, "decommissioned", actor, now); err != nil {
+			return nil, err
+		}
+		// The service records the change, so the request's own entry is left out: the decommission
+		// gets one of its own, also when the identity was revoked already, as after a restore.
+		if _, err := audit.Append(ctx, tx, audit.Entry{OrgID: cur.OrgID, ActorType: audit.ActorUser, ActorID: actor,
+			Action: "connector.decommission", TargetType: "connector", TargetID: cur.ID, Result: audit.Success}); err != nil {
+			return nil, err
+		}
+		var changed []string
+		deleted, changed, err = routes.RetireConnector(ctx, tx, cur.ID, audit.Entry{OrgID: cur.OrgID, ActorType: audit.ActorUser,
+			ActorID: actor, Reason: "connector " + cur.ID + " was decommissioned"})
+		return append([]string{cur.ID}, changed...), err
 	})
 	if err != nil {
 		return nil, storeError(err)
@@ -114,7 +129,11 @@ func (c *Connectors) DecommissionConnector(ctx context.Context, req *connect.Req
 	if revoked {
 		c.Revocations.applied()
 	}
-	return connect.NewResponse(&rpmgrv1.DecommissionConnectorResponse{Connector: connectorOf(row, nil, c.now()), Revision: revisionOf(rev)}), nil
+	out := &rpmgrv1.DecommissionConnectorResponse{Connector: connectorOf(row, nil, c.now()), Revision: revisionOf(rev)}
+	for _, r := range deleted {
+		out.DeletedRoutes = append(out.DeletedRoutes, &rpmgrv1.DeletedRoute{Id: r.ID, Name: r.Name})
+	}
+	return connect.NewResponse(out), nil
 }
 
 func (c *Connectors) now() time.Time {

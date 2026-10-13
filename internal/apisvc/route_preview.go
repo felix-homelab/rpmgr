@@ -97,7 +97,7 @@ func previewGateways(ctx context.Context, tx *ent.Tx, row *ent.Route) ([]string,
 	for _, gw := range gws {
 		snap := &agentv1.Snapshot{}
 		a := snapshot.Agent{Identity: pki.Identity{Org: gw.OrgID, Kind: pki.KindGateway, ID: gw.ID}}
-		for _, src := range routes.Sources() {
+		for _, src := range routes.PreviewSources(row.ID) {
 			rs, err := src(ctx, tx, a)
 			if err != nil {
 				return nil, nil, err
