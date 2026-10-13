@@ -1040,6 +1040,7 @@ sequenceDiagram
 | Revocation, tightened access policy | immediate | Security beats continuity |
 | Mail delivery | dial 10 s; the whole delivery 30 s | [R] A relay that hangs never holds a request or job for long |
 | ACME job | looks for certificates to obtain or renew every 1 min, on the replica that holds its lease | New routes get their certificates within a minute or so; renewals are never late by more |
+| ACME route certificate retry | a hostname whose attempt failed is tried again after 1 min, then after waits doubling to at most 6 h (1, 2, 4 … 256 min, then 6 h); every retry rehearses at the CA's test directory first ([04](04-security.md#controller-certificates)); "Renew now" does not wait | [R] A name the CA cannot validate yet costs the account no further failure at the CA, while a short hiccup still clears within a minute or so |
 | Controller's own certificate (ACME) | checked for renewal every 1 min; a failed order is retried after 1 min, then at intervals growing to 6 h, for up to 30 days [F certmagic v0.25.6 `async.go:260-290`] | [R] A CA that is down or a name that does not resolve yet is retried without hammering the CA; the certificate in use serves on meanwhile |
 | ACME challenge push | `OpResult` from every gateway of the name within 10 s | [R] A gateway that cannot answer fails the order before the CA validates, instead of a failed validation counted against the account |
 | Imperative operation | `Open` → `Attach` within 10 s; ticket single-use, valid 30 s; shell idle 30 min | No unbounded waits |

@@ -821,6 +821,40 @@ Each runbook: **symptoms → steps → done when**.
   otherwise re-enroll.
 - **Done when**: clock offset < 30 s and the agent renews.
 
+### A route certificate is not obtained
+
+- **Symptoms**: under Security → Domains & certificates, the hostname's certificate is `failed`
+  with the CA's error; HTTPS to the hostname fails.
+- **Steps**: the name's A and AAAA records must point at the gateway group's public addresses, and
+  80/tcp or 443/tcp must be reachable from the internet. A name of a private address, such as a
+  `nip.io` name of `172.18.0.5`, can never be validated: give its route an uploaded certificate
+  instead. Meanwhile the job retries with growing waits and rehearses each retry at the CA's test
+  directory, so the failures cost the account nothing at the CA
+  ([04](04-security.md#controller-certificates)); the waits are in
+  [03](03-connections.md#timeouts-keepalive-and-backoff). Once DNS is fixed, "Renew now" tries at
+  once (`rpmgr renew certificate <id>`).
+- **Done when**: the certificate is `active`.
+
+### Many hostnames under one domain
+
+- **When**: many routes under one domain, or a CA limit on new certificates per domain is near
+  (Let's Encrypt: 50 in 7 days for a registered domain [F le:docs/rate-limits]). Every hostname
+  of a route in `acme` mode has a certificate of its own, so each new hostname orders one; ACME
+  wildcard certificates need DNS-01, which comes with DNS automation in Phase 2
+  ([15](15-dns.md#acme-dns-01)).
+- **Steps**:
+  1. Obtain one certificate for `example.com` and `*.example.com` outside rpmgr, for example with
+     certbot and the DNS plugin of the domain's DNS host.
+  2. Upload it: Security → Domains & certificates → "Upload a certificate", or
+     `rpmgr upload certificate --chain fullchain.pem --key privkey.pem`.
+  3. Give each route under the domain that certificate: in the route's form, "TLS certificate",
+     or `rpmgr update route --tls-mode certificate --certificate <id> <route>`. These routes ask
+     the CA nothing.
+  4. Before the certificate expires, upload the renewed one, move the routes to it as in step 3,
+     and delete the old one; rpmgr does not renew an uploaded certificate.
+- **Done when**: the routes serve the uploaded certificate, and new hostnames under the domain
+  order nothing.
+
 ### UDP blocked or degraded
 
 - **Symptoms**: connectors on `auto` use `h2` instead of `quic`; UDP routes flagged as served over
