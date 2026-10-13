@@ -11,11 +11,16 @@ export function marked(root: ParentNode = document): string[] {
 }
 
 // unmatched lists the fields under root whose control and label disagree: a required control whose
-// label has no asterisk, or an asterisk on the label of a control that is not required.
+// label has no asterisk, or an asterisk on the label of a control that is not required. A group's
+// legend with the asterisk must say "required" to screen readers, since no checkbox can.
 export function unmatched(root: ParentNode = document): string[] {
   const controls = [...root.querySelectorAll<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>("input, select, textarea")];
-  return controls
+  const fields = controls
     .filter((c) => c.labels !== null && c.labels.length > 0)
     .filter((c) => c.required !== [...c.labels!].some(hasMark))
     .map((c) => `${c.labels![0]!.textContent?.trim()}: ${c.required ? "required, no asterisk" : "asterisk, not required"}`);
+  const groups = [...root.querySelectorAll("legend.required-mark")]
+    .filter((l) => l.querySelector(".sr-only") === null)
+    .map((l) => `${l.textContent?.trim()}: asterisk, not said to screen readers`);
+  return [...fields, ...groups];
 }

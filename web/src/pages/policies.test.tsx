@@ -111,14 +111,21 @@ describe("Policies", () => {
     const rule = within(within(form).getByRole("group", { name: "Rule 3" }));
     expect(marked(form)).toEqual(["Name", "Addresses (CIDRs, one per line)", "Addresses (CIDRs, one per line)", "User", "User"]);
     expect(unmatched(form)).toEqual([]);
+    const placeholders = (r: typeof rule) => (r.getAllByLabelText("Password") as HTMLInputElement[]).map((p) => p.placeholder);
     fireEvent.click(rule.getByRole("button", { name: "Add a user" }));
-    await waitFor(() => expect(marked(form)).toContain("Password"));
-    const names = rule.getAllByLabelText("User");
-    // A new row named like a stored user keeps that user's password.
-    fireEvent.change(names[2]!, { target: { value: "ada" } });
-    await waitFor(() => expect(marked(form)).not.toContain("Password"));
-    fireEvent.change(names[2]!, { target: { value: "carol" } });
+    fireEvent.change(rule.getAllByLabelText("User")[2]!, { target: { value: "carol" } });
+    // A new user needs a password, so nothing is kept for them.
     await waitFor(() => expect(marked(form).filter((m) => m === "Password")).toHaveLength(1));
+    expect(placeholders(rule)).toEqual(["unchanged", "unchanged", ""]);
+    expect(unmatched(form)).toEqual([]);
+    // The policy keeps a stored user's password by name, also in another rule.
+    fireEvent.click(within(form).getByRole("button", { name: "Add a rule" }));
+    const added = within(within(form).getByRole("group", { name: "Rule 4" }));
+    fireEvent.change(added.getByLabelText("Kind"), { target: { value: "basicAuth" } });
+    fireEvent.click(added.getByRole("button", { name: "Add a user" }));
+    fireEvent.change(added.getByLabelText("User"), { target: { value: "ada" } });
+    await waitFor(() => expect(placeholders(added)).toEqual(["unchanged"]));
+    expect(marked(form).filter((m) => m === "Password")).toHaveLength(1);
     expect(unmatched(form)).toEqual([]);
   });
 

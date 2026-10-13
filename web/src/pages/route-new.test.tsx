@@ -26,14 +26,14 @@ function page(path: string, create?: (req: CreateRouteRequest) => object) {
   const view = show(path, auth({ getSession: () => ({ userId: "usr_ada", memberships: [{ orgId: "org_1", role: "owner" }] }) }), (router) => {
     router.service(UserService, { getMe: () => ({ user: { id: "usr_ada", theme: Theme.SYSTEM } }) });
     router.service(GatewayService, {
-      listGatewayGroups: () => ({ gatewayGroups: [{ id: "ggr_eu", name: "eu" }] }),
+      listGatewayGroups: () => ({ gatewayGroups: [{ id: "ggr_eu", name: "eu", publicHostnames: ["edge.example.net"] }] }),
       listGateways: () => ({ gateways: [{ id: "gtw_1", name: "gw-eu-1" }] }),
     });
     router.service(ConnectorService, { listConnectors: () => ({ connectors: [{ id: "con_1", name: "db-host-1" }] }) });
     router.service(StatusService, { async *watchApplyStatus() {} });
     router.service(RouteService, {
       listRoutes: () => ({}),
-      getRoute: () => ({ route: { id: "rte_1", name: "wiki", etag: "7", spec: { case: "tcp", value: { port: 25432 } } } }),
+      getRoute: () => ({ route: { id: "rte_1", name: "wiki", gatewayGroupId: "ggr_eu", etag: "7", spec: { case: "tcp", value: { port: 25432 } } } }),
       createRoute: (req) => (creates.push(req), create ? create(req) : {
         route: { ...req.route, id: "rte_new" }, revision: { dbEpoch: "e", seq: 5n }, applyStatus: { state: ApplyState.APPLIED, agentsTotal: 1, agentsApplied: 1 },
       }),
@@ -87,6 +87,19 @@ describe("RouteNew", () => {
     expect(creates[0]!.route?.spec).toMatchObject({ case: "tcp", value: { port: 0 } });
   });
 
+  it("sends no certificate ID once the route is back on ACME", async () => {
+    const { creates } = page("/routes/new");
+    await chooseGroup();
+    fireEvent.change(screen.getByLabelText("Name"), { target: { value: "wiki" } });
+    fireEvent.change(screen.getByLabelText("Hostnames"), { target: { value: "wiki.example.com" } });
+    fireEvent.change(screen.getByLabelText("TLS certificate"), { target: { value: String(TLSMode.TLS_MODE_CERTIFICATE) } });
+    fireEvent.change(screen.getByLabelText("Uploaded certificate ID"), { target: { value: "crt_1" } });
+    fireEvent.change(screen.getByLabelText("TLS certificate"), { target: { value: String(TLSMode.TLS_MODE_ACME) } });
+    fireEvent.click(screen.getByRole("button", { name: "Create the route" }));
+    await waitFor(() => expect(creates).toHaveLength(1));
+    expect(creates[0]!.route?.spec).toMatchObject({ case: "http", value: { tlsMode: TLSMode.TLS_MODE_ACME, certificateId: "" } });
+  });
+
   it("needs a gateway group, and shows the server's refusal", async () => {
     const { creates } = page("/routes/new", () => { throw new ConnectError("apisvc: the org's port quota is used up", Code.ResourceExhausted); });
     fireEvent.change(await screen.findByLabelText("Name"), { target: { value: "wiki" } });
@@ -119,6 +132,7 @@ describe("RouteNew", () => {
     fireEvent.click(screen.getByRole("button", { name: "Preview" }));
     const panel = within(await screen.findByRole("region", { name: "Preview" }));
     expect(panel.getByText("Connectors its streams would go to: db-host-1")).toBeTruthy();
+    expect(await panel.findByText("Reached at edge.example.net:25433")).toBeTruthy(); // at the group's public hostname (D79)
     expect(previews[0]!.etag).toBe("7");
     expect(previews[0]!.updateMask?.paths).toContain("tcp.port");
     expect(previews[0]!.route?.spec).toMatchObject({ case: "tcp", value: { port: 25433 } });

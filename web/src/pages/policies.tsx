@@ -161,7 +161,8 @@ function PolicyForm({ orgId, policy, onDone }: { orgId: string; policy?: AccessP
   const [description, setDescription] = useState(policy?.description ?? "");
   const [rules, setRules] = useState<RuleDraft[]>(policy?.rules.map(draftOf) ?? [{ kind: "ipAllow", cidrs: [], users: [] }]);
   const [error, setError] = useState("");
-  // A user the stored policy already has keeps their password when it is left empty; a new one needs one.
+  // A user the stored policy already has keeps their password when it is left empty; a new one
+  // needs one.
   const stored = new Set(policy?.rules.flatMap((r) => (r.rule.case === "basicAuth" ? r.rule.value.users.map((u) => u.name) : [])));
   const setRule = (i: number, r: Partial<RuleDraft>) => setRules(rules.map((x, j) => (j === i ? { ...x, ...r } : x)));
   const move = (i: number, by: number) => {
@@ -215,7 +216,7 @@ function PolicyForm({ orgId, policy, onDone }: { orgId: string; policy?: AccessP
                       <Input required value={u.name} onChange={(e) => setRule(i, { users: r.users.map((x, m) => (m === k ? { ...x, name: e.target.value } : x)) })} />
                     </label>
                     <label className="grid gap-1.5 text-sm font-medium"><span className={stored.has(u.name.trim()) ? undefined : "required-mark"}>{t("login.password")}</span>
-                      <Input type="password" autoComplete="new-password" required={!stored.has(u.name.trim())} placeholder={policy ? t("policies.keep") : ""} value={u.password}
+                      <Input type="password" autoComplete="new-password" required={!stored.has(u.name.trim())} placeholder={stored.has(u.name.trim()) ? t("policies.keep") : ""} value={u.password}
                         onChange={(e) => setRule(i, { users: r.users.map((x, m) => (m === k ? { ...x, password: e.target.value } : x)) })} />
                     </label>
                     <Button size="sm" variant="outline" onClick={() => setRule(i, { users: r.users.filter((_, m) => m !== k) })}>{t("policies.removeUser")}</Button>

@@ -62,8 +62,11 @@ const http: RouteField[] = [
   spec("http", { key: "pathPrefix", path: "http.path_prefix", kind: "text", get: (s) => s.pathPrefix, set: (s, v) => (s.pathPrefix = v.trim()) }),
   spec("http", { key: "tlsMode", path: "http.tls_mode", kind: "select", options: [[String(TLSMode.TLS_MODE_ACME), "acme"], [String(TLSMode.TLS_MODE_CERTIFICATE), "certificate"]],
     get: (s) => String(s.tlsMode), set: (s, v) => (s.tlsMode = Number(v)) }),
+  // The ID goes with an uploaded certificate only; the server refuses one with ACME. tlsMode is set
+  // first, so the ID follows the mode chosen.
   spec("http", { key: "certificateId", path: "http.certificate_id", kind: "text",
-    required: (v) => v.tlsMode === String(TLSMode.TLS_MODE_CERTIFICATE), get: (s) => s.certificateId, set: (s, v) => (s.certificateId = v.trim()) }),
+    required: (v) => v.tlsMode === String(TLSMode.TLS_MODE_CERTIFICATE), get: (s) => s.certificateId,
+    set: (s, v) => (s.certificateId = s.tlsMode === TLSMode.TLS_MODE_CERTIFICATE ? v.trim() : "") }),
   spec("http", { key: "port80", path: "http.port80", kind: "select",
     options: [[String(Port80Mode.REDIRECT), "redirect"], [String(Port80Mode.SERVE), "serve"], [String(Port80Mode.OFF), "off"]],
     get: (s) => String(s.port80), set: (s, v) => (s.port80 = Number(v)) }),

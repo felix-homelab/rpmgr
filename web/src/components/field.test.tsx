@@ -47,8 +47,10 @@ describe("required fields", () => {
         <input id="a" />
         <label htmlFor="b">Plain</label>
         <input id="b" required />
+        <fieldset><legend className="required-mark">Silent</legend><input type="checkbox" aria-label="one" /></fieldset>
+        <fieldset><legend className="required-mark">Said<span className="sr-only"> (required)</span></legend><input type="checkbox" aria-label="two" /></fieldset>
       </form>,
     );
-    expect(unmatched()).toEqual(["Marked: asterisk, not required", "Plain: required, no asterisk"]);
+    expect(unmatched()).toEqual(["Marked: asterisk, not required", "Plain: required, no asterisk", "Silent: asterisk, not said to screen readers"]);
   });
 });

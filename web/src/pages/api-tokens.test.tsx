@@ -54,7 +54,7 @@ async function section() {
 async function fillNew(s: Awaited<ReturnType<typeof section>>, days = "30") {
   fireEvent.click(await s.findByRole("button", { name: "New token…" }));
   fireEvent.change(s.getByLabelText("Name"), { target: { value: "deploy" } });
-  expect([marked(screen.getByRole("region", { name: "API tokens" })), unmatched(screen.getByRole("region", { name: "API tokens" }))]).toEqual([["Name", "Valid for (days)", "Scopes"], []]);
+  expect([marked(screen.getByRole("region", { name: "API tokens" })), unmatched(screen.getByRole("region", { name: "API tokens" }))]).toEqual([["Name", "Valid for (days)", "Scopes (required)"], []]);
   fireEvent.change(s.getByLabelText("Valid for (days)"), { target: { value: days } });
   fireEvent.click(s.getByLabelText(/^routes\.write/));
   fireEvent.click(s.getByRole("button", { name: "Create the token" }));

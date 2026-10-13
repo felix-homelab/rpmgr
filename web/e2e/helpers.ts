@@ -77,7 +77,8 @@ export async function unmarked(page: Page): Promise<string[]> {
     const out: string[] = [];
     for (const mark of document.querySelectorAll(".required-mark")) {
       const after = getComputedStyle(mark, "::after");
-      if (after.content !== '"*" / ""' || after.color !== red) {
+      // Without the colour token both would be the label's own colour.
+      if (after.content !== '"*" / ""' || after.color !== red || after.color === getComputedStyle(mark).color) {
         out.push(`${mark.textContent}: drawn as ${after.content} in ${after.color}`);
       }
     }
@@ -85,6 +86,12 @@ export async function unmarked(page: Page): Promise<string[]> {
     for (const c of document.querySelectorAll<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>("input, select, textarea")) {
       if (c.labels && c.labels.length > 0 && c.required !== [...c.labels].some(hasMark)) {
         out.push(`${c.labels[0]!.textContent}: ${c.required ? "required, no asterisk" : "asterisk, not required"}`);
+      }
+    }
+    // No checkbox of a group can be required, so its legend says it to screen readers.
+    for (const legend of document.querySelectorAll("legend.required-mark")) {
+      if (legend.querySelector(".sr-only") === null) {
+        out.push(`${legend.textContent}: asterisk, not said to screen readers`);
       }
     }
     return out;

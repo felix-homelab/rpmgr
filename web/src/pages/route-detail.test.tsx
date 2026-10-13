@@ -33,15 +33,20 @@ const postgres = {
 
 // detail renders the route's page; the connectors' data sessions use the transports given, the
 // route's traffic is recorded in traffic, deleteRoute answers a deletion, and the gateway group eu
-// has the public hostnames given.
+// has the public hostnames given; with null, the gateway groups cannot be read.
 function detail(r: object, transports: Record<string, DataTransport[]> = {}, traffic: GetRouteTrafficRequest[] = [],
-  deleteRoute: (req: DeleteRouteRequest) => object = () => { throw apiError(Code.Unimplemented); }, publicHostnames: string[] = []) {
+  deleteRoute: (req: DeleteRouteRequest) => object = () => { throw apiError(Code.Unimplemented); }, publicHostnames: string[] | null = []) {
   return show("/routes/rte_2", auth({
     getSession: () => ({ userId: "usr_ada", displayName: "Ada", memberships: [{ orgId: "org_1", role: "owner" }] }),
   }), (router) => {
     router.service(UserService, { getMe: () => ({ user: { id: "usr_ada", theme: Theme.SYSTEM } }) });
     router.service(GatewayService, {
-      listGatewayGroups: () => ({ gatewayGroups: [{ id: "ggr_eu", name: "eu", publicHostnames }] }),
+      listGatewayGroups: () => {
+        if (publicHostnames === null) {
+          throw apiError(Code.Unavailable);
+        }
+        return { gatewayGroups: [{ id: "ggr_eu", name: "eu", publicHostnames }] };
+      },
       listGateways: () => ({ gateways: [{ id: "gtw_1", name: "gw-eu-1" }, { id: "gtw_2", name: "gw-eu-2" }] }),
     });
     router.service(ConnectorService, {
@@ -90,6 +95,13 @@ describe("RouteDetail", () => {
   it("shows a TCP route's port at each public hostname of its gateway group, an IPv6 address in brackets", async () => {
     detail(postgres, {}, [], undefined, ["edge.example.com", "2001:db8::7"]);
     await waitFor(() => expect(screen.getByText("enabled · gateway group eu · edge.example.com:25432 · [2001:db8::7]:25432")).toBeTruthy());
+    expect(screen.queryByText(/has no public hostname/)).toBeNull();
+  });
+
+  it("shows only the port, and no hint, while the gateway groups cannot be read", async () => {
+    detail(postgres, {}, [], undefined, null);
+    expect(await screen.findByText(/:25432$/)).toBeTruthy();
+    await new Promise((r) => setTimeout(r, 50)); // the groups' request has failed by now
     expect(screen.queryByText(/has no public hostname/)).toBeNull();
   });
 

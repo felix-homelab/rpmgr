@@ -8,7 +8,8 @@
     "closeMenu": "Close the menu",
     "userMenu": "User menu: {{name}}",
     "account": "Your account",
-    "signOut": "Sign out"
+    "signOut": "Sign out",
+    "required": "required"
   },
   "nav": {
     "overview": "Overview",
@@ -404,7 +405,8 @@
       "HTTPS": "HTTPS, verified",
       "H2C": "HTTP/2 without TLS (h2c)"
     },
-    "serverName": "TLS server name (empty: the host)",
+    "serverName": "TLS server name",
+    "serverNameHint": "Empty: the host's name.",
     "caBundle": "CA bundle ID (empty: the system's roots)",
     "spki": "Public key pin, SHA-256 in hex (optional)",
     "proxy": "PROXY protocol",

@@ -116,12 +116,16 @@ describe("targets", () => {
     expect(unmatched(added)).toEqual([]);
     fireEvent.change(within(added).getByLabelText("Address"), { target: { value: "unixPath" } });
     await waitFor(() => expect(marked(added)).toEqual(["Connector", "Socket path", "Weight", "Priority"]));
-    // An HTTPS target on a socket has no host to name, so it needs a server name.
+    // An HTTPS target on a socket has no host to name, so it needs a server name, without the hint
+    // that an empty one is the host's.
     fireEvent.change(within(added).getByLabelText("Protocol to the target"), { target: { value: String(UpstreamProtocol.HTTPS) } });
-    await waitFor(() => expect(marked(added)).toContain("TLS server name (empty: the host)"));
+    await waitFor(() => expect(marked(added)).toContain("TLS server name"));
+    expect(within(added).queryByText("Empty: the host's name.")).toBeNull();
     expect(unmatched(added)).toEqual([]);
     fireEvent.change(within(added).getByLabelText("Address"), { target: { value: "hostPort" } });
     await waitFor(() => expect(marked(added)).toEqual(["Connector", "Host", "Port", "Weight", "Priority"]));
+    const serverName = within(added).getByLabelText("TLS server name");
+    expect(document.getElementById(serverName.getAttribute("aria-describedby")!.split(" ")[0]!)?.textContent).toBe("Empty: the host's name.");
   });
 
   it("does not mark the connector of a target being edited, which cannot change", async () => {
