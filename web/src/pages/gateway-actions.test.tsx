@@ -55,7 +55,7 @@ function page(full = false) {
         }
         return { token };
       },
-      getInstallCommand: (req) => (commands.push(req), { command: "curl -fsSL https://panel.example.com/install.sh | sudo sh -s -- --role gateway --ca-pin sha256:x" }),
+      getInstallCommand: (req) => (commands.push(req), { command: "curl -fsSLO https://panel.example.com/install.sh && sudo sh install.sh --role gateway --ca-pin sha256:x" }),
     });
   });
   return { creates, updates, decommissions, tokens, commands };

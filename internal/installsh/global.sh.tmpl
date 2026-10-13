@@ -149,9 +149,10 @@ if ! "$BIN" setup --help >/dev/null 2>&1; then
   say "  rpmgr all-in-one init --public-url https://<name>, or rpmgr controller init, or rpmgr enroll"
   exit 0
 fi
-# Asked on the terminal, so that "curl ... | sudo sh" can answer too; without one, nothing is asked.
-# (A subshell: a failed redirection of the special built-in ":" would end the script itself.)
-if ! (: </dev/tty) 2>/dev/null; then
+# Asked only when standard input is the terminal: piped into sudo-rs, Ubuntu's sudo since 25.10, the
+# terminal passes nothing typed on, so the question would wait for good. Without a terminal, nothing
+# is asked. (A subshell: a failed redirection of the special built-in ":" would end the script.)
+if [ ! -t 0 ] || ! (: </dev/tty) 2>/dev/null; then
   next
   exit 0
 fi

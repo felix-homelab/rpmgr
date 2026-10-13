@@ -325,12 +325,20 @@ same CSR public key within 10 minutes returns the same certificate.
 ### Join command
 
 ```sh
-curl -fsSL https://panel.example.com/install.sh | sudo sh -s -- \
+curl -fsSLO https://panel.example.com/install.sh && sudo sh install.sh \
   --controller https://panel.example.com --ca-pin sha256:3q2+7w...   # prompts for the token
 ```
 
-- **Token delivery.** With `curl … | sh`, the script's standard input *is* the script, and `sudo`
-  resets the environment. The install script therefore takes the token from, in order:
+- **Download, then run.** The command saves the script in the current directory and runs the file
+  with `sudo`; it does not pipe it into `sudo sh`. Piped, `sudo`'s standard input is the script,
+  and sudo-rs, Ubuntu's `sudo` since 25.10, then passes nothing typed at the terminal on to the
+  command: the token prompt would wait for good, while classic sudo passes the input on.
+  `TestInstall_TypedToken` types the token under both
+  ([12](12-testing-and-quality.md#continuous-integration)).
+  A script that is piped all the same says so before it prompts, and how to stop and run it from a
+  file.
+- **Token delivery.** `sudo` resets the environment, and a piped script's standard input is the
+  script itself. The install script therefore takes the token from, in order:
   1. `--token-file <path>` (unattended installs; the file should be 0600 and deleted afterwards);
   2. `RPMGR_ENROLL_TOKEN`, if explicitly passed through (`sudo --preserve-env=RPMGR_ENROLL_TOKEN …`);
   3. otherwise an interactive prompt on the terminal (`/dev/tty`) with echo off.
