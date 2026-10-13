@@ -60,23 +60,33 @@ func createPortRoute(ctx context.Context, tx *ent.Tx, row *ent.Route, in *rpmgrv
 		if err != nil {
 			return err
 		}
-		idle := uint32(defaultIdleTimeout)
-		if in.GetTcp().IdleTimeoutSeconds != nil {
-			idle = in.GetTcp().GetIdleTimeoutSeconds()
-		}
-		return tx.RouteTCP.Create().SetOrgID(row.OrgID).SetRouteID(row.ID).SetPortAllocationID(a.ID).SetIdleTimeoutSeconds(int(idle)).Exec(ctx)
+		return tx.RouteTCP.Create().SetOrgID(row.OrgID).SetRouteID(row.ID).SetPortAllocationID(a.ID).SetIdleTimeoutSeconds(idleTimeout(in.GetTcp())).Exec(ctx)
 	case in.GetUdp() != nil:
 		a, err := allocate(ctx, tx, row, routes.UDP, in.GetUdp().GetPort(), "")
 		if err != nil {
 			return err
 		}
-		idle := uint32(defaultFlowIdleTimer)
-		if in.GetUdp().FlowIdleTimeoutSeconds != nil {
-			idle = in.GetUdp().GetFlowIdleTimeoutSeconds()
-		}
-		return tx.RouteUDP.Create().SetOrgID(row.OrgID).SetRouteID(row.ID).SetPortAllocationID(a.ID).SetFlowIdleTimeoutSeconds(int(idle)).Exec(ctx)
+		return tx.RouteUDP.Create().SetOrgID(row.OrgID).SetRouteID(row.ID).SetPortAllocationID(a.ID).SetFlowIdleTimeoutSeconds(flowIdleTimeout(in.GetUdp())).Exec(ctx)
 	}
 	return nil
+}
+
+// idleTimeout is a tcp route's idle timeout in seconds: the default when it is not set, on create
+// and when an update clears it.
+func idleTimeout(s *rpmgrv1.TCPRouteSpec) int {
+	if s.IdleTimeoutSeconds == nil {
+		return defaultIdleTimeout
+	}
+	return int(s.GetIdleTimeoutSeconds())
+}
+
+// flowIdleTimeout is a udp route's flow idle timeout in seconds: the default when it is not set, on
+// create and when an update clears it.
+func flowIdleTimeout(s *rpmgrv1.UDPRouteSpec) int {
+	if s.FlowIdleTimeoutSeconds == nil {
+		return defaultFlowIdleTimer
+	}
+	return int(s.GetFlowIdleTimeoutSeconds())
 }
 
 // updatePortRoute changes a tcp or udp route's settings, and its port: the new one is allocated,
@@ -89,7 +99,7 @@ func updatePortRoute(ctx context.Context, tx *ent.Tx, row *ent.Route, was, next 
 		if err != nil {
 			return err
 		}
-		u := tx.RouteTCP.UpdateOne(cur).SetIdleTimeoutSeconds(int(next.GetTcp().GetIdleTimeoutSeconds()))
+		u := tx.RouteTCP.UpdateOne(cur).SetIdleTimeoutSeconds(idleTimeout(next.GetTcp()))
 		if p := next.GetTcp().GetPort(); p != was.GetTcp().GetPort() {
 			a, err := allocate(ctx, tx, row, routes.TCP, p, cur.PortAllocationID)
 			if err != nil {
@@ -107,7 +117,7 @@ func updatePortRoute(ctx context.Context, tx *ent.Tx, row *ent.Route, was, next 
 		if err != nil {
 			return err
 		}
-		u := tx.RouteUDP.UpdateOne(cur).SetFlowIdleTimeoutSeconds(int(next.GetUdp().GetFlowIdleTimeoutSeconds()))
+		u := tx.RouteUDP.UpdateOne(cur).SetFlowIdleTimeoutSeconds(flowIdleTimeout(next.GetUdp()))
 		if p := next.GetUdp().GetPort(); p != was.GetUdp().GetPort() {
 			a, err := allocate(ctx, tx, row, routes.UDP, p, cur.PortAllocationID)
 			if err != nil {
