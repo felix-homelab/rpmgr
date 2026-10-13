@@ -463,7 +463,8 @@ func udpRoute(name, group string, port uint32) *rpmgrv1.Route {
 
 // TestPortRoutes: tcp and udp routes take an explicit or a random port of the group's pools,
 // within the org's quota; a port changes by allocating the new one before freeing the old, so a
-// refused port leaves the route as it was; a deleted route frees its port.
+// refused port leaves the route as it was; an idle timeout an update clears is the default again;
+// a deleted route frees its port.
 func TestPortRoutes(t *testing.T) {
 	_, ada, org, group := gatewayEnv(t)
 	ctx := context.Background()
@@ -539,6 +540,26 @@ func TestPortRoutes(t *testing.T) {
 		Port: free, IdleTimeoutSeconds: &zero}}})
 	if err != nil || up.GetTcp().GetPort() != free || up.GetTcp().GetIdleTimeoutSeconds() != 0 {
 		t.Fatalf("a new port and no idle timeout: %v %v", up, err)
+	}
+	// A cleared timeout is the default again, as on create; a zero flow idle time stays refused.
+	if up, err := update(pg.GetId(), []string{"tcp.idle_timeout_seconds"}, tcpRoute("", "", 0)); err != nil ||
+		up.GetTcp().GetIdleTimeoutSeconds() != 3600 || up.GetTcp().GetPort() != free {
+		t.Fatalf("a cleared idle timeout: %v %v", up, err)
+	}
+	flowIdle := func(s uint32) *rpmgrv1.Route {
+		r := udpRoute("", "", 0)
+		r.GetUdp().FlowIdleTimeoutSeconds = &s
+		return r
+	}
+	if up, err := update(dns.GetId(), []string{"udp.flow_idle_timeout_seconds"}, flowIdle(30)); err != nil || up.GetUdp().GetFlowIdleTimeoutSeconds() != 30 {
+		t.Fatalf("a flow idle time of 30 s: %v %v", up, err)
+	}
+	if _, err := update(dns.GetId(), []string{"udp.flow_idle_timeout_seconds"}, flowIdle(0)); code(err) != connect.CodeInvalidArgument {
+		t.Fatalf("a zero flow idle time: %v", err)
+	}
+	if up, err := update(dns.GetId(), []string{"udp.flow_idle_timeout_seconds"}, udpRoute("", "", 0)); err != nil ||
+		up.GetUdp().GetFlowIdleTimeoutSeconds() != 60 || up.GetUdp().GetPort() != dns.GetUdp().GetPort() {
+		t.Fatalf("a cleared flow idle time: %v %v", up, err)
 	}
 	if _, err := update(pg.GetId(), []string{"tcp.port"}, tcpRoute("", "", random.GetTcp().GetPort())); code(err) != connect.CodeAlreadyExists {
 		t.Fatalf("a taken port: %v", err)
