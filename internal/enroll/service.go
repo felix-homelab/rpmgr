@@ -239,8 +239,8 @@ func tokenLabels(ctx context.Context, tx *ent.Tx, tokenID string) (map[string]st
 
 var notSlug = regexp.MustCompile(`[^a-z0-9-]+`)
 
-// freeName derives a connector name from the host name and makes it unique in the org: "nas",
-// then "nas-2", "nas-3" and so on.
+// freeName derives a connector name from the host name and makes it unique among the org's active
+// connectors: "nas", then "nas-2", "nas-3" and so on. A decommissioned connector's name is free.
 func freeName(ctx context.Context, tx *ent.Tx, org, hostname string) (string, error) {
 	base := strings.Trim(notSlug.ReplaceAllString(strings.ToLower(hostname), "-"), "-")
 	if len(base) > 50 {
@@ -254,7 +254,7 @@ func freeName(ctx context.Context, tx *ent.Tx, org, hostname string) (string, er
 		if n > 1 {
 			name = fmt.Sprintf("%s-%d", base, n)
 		}
-		taken, err := tx.Connector.Query().Where(connector.OrgID(org), connector.Name(name)).Exist(ctx)
+		taken, err := tx.Connector.Query().Where(connector.OrgID(org), connector.Name(name), connector.DecommissionedAtIsNil()).Exist(ctx)
 		if err != nil {
 			return "", err
 		}
