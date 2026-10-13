@@ -4,7 +4,7 @@ import { createClient } from "@connectrpc/connect";
 import { useTransport } from "@connectrpc/connect-query";
 import { useQuery } from "@tanstack/react-query";
 import { ConnectorService } from "@/gen/rpmgr/v1/connector_pb";
-import { GatewayService } from "@/gen/rpmgr/v1/gateway_pb";
+import { GatewayService, type GatewayGroup } from "@/gen/rpmgr/v1/gateway_pb";
 import { RouteService, type Route } from "@/gen/rpmgr/v1/route_pb";
 import { largestPage, listAll } from "@/lib/list-all";
 
@@ -26,19 +26,12 @@ export function useRoutes(orgId: string | undefined) {
 
 // useGroupNames maps the org's gateway group IDs to their names.
 export function useGroupNames(orgId: string | undefined) {
-  const transport = useTransport();
-  return useQuery({
-    queryKey: ["gateway-group-names", orgId],
-    enabled: !!orgId,
-    queryFn: async () => {
-      const api = createClient(GatewayService, transport);
-      const groups = await listAll(async (pageToken) => {
-        const r = await api.listGatewayGroups({ orgId, pageSize: largestPage, pageToken });
-        return { items: r.gatewayGroups, next: r.nextPageToken };
-      });
-      return new Map(groups.map((g) => [g.id, g.name]));
-    },
-  });
+  return useGroupsAs(orgId, (gs) => new Map(gs.map((g) => [g.id, g.name])));
+}
+
+// useGroupHostnames maps the org's gateway group IDs to their public hostnames.
+export function useGroupHostnames(orgId: string | undefined) {
+  return useGroupsAs(orgId, (gs) => new Map(gs.map((g) => [g.id, g.publicHostnames])));
 }
 
 // The route types, by the case of Route.spec.
@@ -49,8 +42,12 @@ export function routeType(r: Route): string {
   return r.spec.case ?? "";
 }
 
-// routeAddress is where a route is reached: its hostnames, or its public port.
-export function routeAddress(r: Route): string[] {
+// hostPort joins a host and a port, an IPv6 address in brackets.
+export const hostPort = (host: string, port: number) => (host.includes(":") ? `[${host}]:${port}` : `${host}:${port}`);
+
+// routeAddress is where a route is reached: its hostnames, or its public port at each public
+// hostname of its gateway group, given as groupHosts; only the port while the group has none (D79).
+export function routeAddress(r: Route, groupHosts: readonly string[] = []): string[] {
   switch (r.spec.case) {
     case "http": {
       const { hostnames, pathPrefix } = r.spec.value;
@@ -59,8 +56,13 @@ export function routeAddress(r: Route): string[] {
     case "tlsPassthrough":
       return r.spec.value.hostnames;
     case "tcp":
-    case "udp":
-      return r.spec.value.port ? [`:${r.spec.value.port}`] : [];
+    case "udp": {
+      const { port } = r.spec.value;
+      if (!port) {
+        return [];
+      }
+      return groupHosts.length > 0 ? groupHosts.map((h) => hostPort(h, port)) : [`:${port}`];
+    }
     default:
       return [];
   }
@@ -140,6 +142,12 @@ export function useGateways(orgId: string | undefined) {
 
 // useGroups reads all gateway groups of the org.
 export function useGroups(orgId: string | undefined) {
+  return useGroupsAs(orgId, (gs) => gs);
+}
+
+// useGroupsAs reads all gateway groups of the org, in one request that useGroups, useGroupNames and
+// useGroupHostnames share, and gives them as select makes them.
+function useGroupsAs<T>(orgId: string | undefined, select: (groups: GatewayGroup[]) => T) {
   const transport = useTransport();
   return useQuery({
     queryKey: ["gateway-groups", orgId],
@@ -151,5 +159,6 @@ export function useGroups(orgId: string | undefined) {
         return { items: r.gatewayGroups, next: r.nextPageToken };
       });
     },
+    select,
   });
 }

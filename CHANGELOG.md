@@ -25,8 +25,8 @@ history and the [ADRs](docs/adr/).
   one-time link that creates the first user. Secrets in the database are encrypted under the KEK,
   and logs redact them. (#183, #184, #186, #187, #189, #199, #313, #375)
 - Controller: all-in-one, the homelab default, runs a controller and a gateway in one process.
-  `rpmgr all-in-one init` also creates the gateway group `default` with the enrolled gateway
-  `local`. (#268, #269)
+  `rpmgr all-in-one init` also creates the gateway group `default`, its public hostname the public
+  URL's host, with the enrolled gateway `local`. (#268, #269, #484)
 - Controller: a controller without a public address can stay on a private network, published
   through a gateway that passes its hostnames through to it. (#285)
 - Controller: serves `/install.sh`. The script downloads the controller's own release from the
@@ -125,7 +125,8 @@ history and the [ADRs](docs/adr/).
   #359, #360, #362, #363)
 - UI: routes can be listed, created with a preview, edited with conflict resolution, switched on
   and off while the apply status follows live, given targets, and deleted after a confirmation.
-  (#363, #364, #365, #366, #471)
+  TCP and UDP routes are shown at their gateway group's public hostnames, such as
+  `eu.example.net:25432`. (#363, #364, #365, #366, #471, #484)
 - UI: pages for connectors with an enrollment dialog, gateway groups, gateways and port pools,
   domains, certificates and CA bundles, access policies, and members and invitations. (#366, #367,
   #368, #369)

@@ -208,7 +208,8 @@ router hands the controller's hostnames to the in-process controller. The in-pro
 ordinary enrolled agent: `rpmgr all-in-one init` creates it (gateway group `default`, gateway
 `local`, its tunnel endpoint the public URL's host on port 443) and enrolls it, and its control
 session reaches the controller over an in-memory mutual-TLS connection, so both topologies run the
-same code (R16).
+same code (R16). The group's public hostname is the public URL's host, unless the group refuses
+it, as it does a single label such as `localhost`; the UI shows TCP and UDP routes at it (D79).
 
 ### Split: private controller
 
