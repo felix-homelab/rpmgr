@@ -8,6 +8,7 @@ import {
 } from "@/gen/rpmgr/v1/gateway_pb";
 import { Theme, UserService } from "@/gen/rpmgr/v1/user_pb";
 import { auth, show } from "@/testing/api";
+import { marked, unmatched } from "@/testing/required";
 
 afterEach(cleanup);
 
@@ -63,6 +64,7 @@ describe("Gateways", () => {
     const { creates, history } = page("/gateways");
     fireEvent.click(await screen.findByRole("button", { name: "New gateway group" }));
     const form = within(await screen.findByRole("form", { name: "New gateway group" }));
+    expect([marked(screen.getByRole("form", { name: "New gateway group" })), unmatched(screen.getByRole("form", { name: "New gateway group" }))]).toEqual([["Name"], []]);
     fireEvent.change(form.getByLabelText("Name"), { target: { value: "ap" } });
     fireEvent.change(form.getByLabelText("Region"), { target: { value: "Tokyo" } });
     fireEvent.change(form.getByLabelText("Public hostnames"), { target: { value: "ap.example.com\n\n" } });

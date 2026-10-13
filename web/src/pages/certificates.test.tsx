@@ -12,6 +12,7 @@ import { DomainService } from "@/gen/rpmgr/v1/domain_pb";
 import { RouteService } from "@/gen/rpmgr/v1/route_pb";
 import { Theme, UserService } from "@/gen/rpmgr/v1/user_pb";
 import { auth, show } from "@/testing/api";
+import { marked, unmatched } from "@/testing/required";
 
 afterEach(cleanup);
 
@@ -79,6 +80,7 @@ describe("Certificates", () => {
     const calls = page();
     fireEvent.click(await screen.findByRole("button", { name: "Upload a certificate" }));
     const form = within(await screen.findByRole("form", { name: "Upload a certificate" }));
+    expect([marked(screen.getByRole("form", { name: "Upload a certificate" })), unmatched(screen.getByRole("form", { name: "Upload a certificate" }))]).toEqual([["Certificate chain (PEM, the certificate first)", "Private key (PEM)"], []]);
     fireEvent.change(form.getByLabelText("Certificate chain (PEM, the certificate first)"), { target: { value: chain } });
     fireEvent.change(form.getByLabelText("Private key (PEM)"), { target: { value: key } });
     fireEvent.click(form.getByRole("button", { name: "Upload" }));
@@ -110,6 +112,7 @@ describe("CABundles", () => {
     expect(s.getByText("used by 2 targets")).toBeTruthy();
     fireEvent.click(s.getByRole("button", { name: "Add a CA bundle" }));
     let form = within(s.getByRole("form", { name: "New CA bundle" }));
+    expect([marked(screen.getByRole("form", { name: "New CA bundle" })), unmatched(screen.getByRole("form", { name: "New CA bundle" }))]).toEqual([["Name", "CA certificates (PEM)"], []]);
     fireEvent.change(form.getByLabelText("Name"), { target: { value: " lab " } });
     fireEvent.change(form.getByLabelText("CA certificates (PEM)"), { target: { value: chain } });
     fireEvent.click(form.getByRole("button", { name: "Add the bundle" }));

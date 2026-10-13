@@ -9,6 +9,7 @@ import { Port80Mode, RouteService, TLSMode, type CreateRouteRequest, type Previe
 import { ApplyState, StatusService } from "@/gen/rpmgr/v1/status_pb";
 import { Theme, UserService } from "@/gen/rpmgr/v1/user_pb";
 import { auth, show } from "@/testing/api";
+import { marked, unmatched } from "@/testing/required";
 
 afterEach(cleanup);
 
@@ -121,5 +122,30 @@ describe("RouteNew", () => {
     expect(previews[0]!.etag).toBe("7");
     expect(previews[0]!.updateMask?.paths).toContain("tcp.port");
     expect(previews[0]!.route?.spec).toMatchObject({ case: "tcp", value: { port: 25433 } });
+  });
+
+  it("marks the fields a route needs, an uploaded certificate's ID only while the route uses one", async () => {
+    page("/routes/new");
+    await screen.findByLabelText("Labels");
+    const always = ["Gateway group", "Name", "Hostnames"];
+    const numbers = ["HSTS max-age (seconds)", "Largest request body (bytes, 0 for no limit)"];
+    expect(marked()).toEqual([...always, ...numbers]);
+    expect(unmatched()).toEqual([]);
+    fireEvent.change(screen.getByLabelText("TLS certificate"), { target: { value: String(TLSMode.TLS_MODE_CERTIFICATE) } });
+    await waitFor(() => expect(marked()).toEqual([...always, "Uploaded certificate ID", ...numbers]));
+    expect(unmatched()).toEqual([]);
+    fireEvent.change(screen.getByLabelText("TLS certificate"), { target: { value: String(TLSMode.TLS_MODE_ACME) } });
+    await waitFor(() => expect(marked()).toEqual([...always, ...numbers]));
+    // A TCP route needs its port, which may be 0 for any free one, and no hostnames.
+    fireEvent.click(screen.getByLabelText("TCP"));
+    await waitFor(() => expect(marked()).toEqual(["Gateway group", "Name", "Public port"]));
+    expect(unmatched()).toEqual([]);
+  });
+
+  it("marks the same fields when a route is edited, without the gateway group it keeps", async () => {
+    page("/routes/rte_1/edit");
+    await screen.findByLabelText("Public port");
+    expect(marked()).toEqual(["Name", "Public port"]);
+    expect(unmatched()).toEqual([]);
   });
 });

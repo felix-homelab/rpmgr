@@ -13,6 +13,7 @@ import { ApplyState, StatusService } from "@/gen/rpmgr/v1/status_pb";
 import { Theme, UserService } from "@/gen/rpmgr/v1/user_pb";
 import { targetMask } from "@/route-form/target-form";
 import { auth, show } from "@/testing/api";
+import { marked, unmatched } from "@/testing/required";
 
 afterEach(cleanup);
 
@@ -105,5 +106,29 @@ describe("targets", () => {
     fireEvent.click(screen.getByRole("button", { name: "Remove it" }));
     expect(await screen.findByText("Revision 11: applied by all 1 agents.")).toBeTruthy();
     expect(deletes.map((d) => [d.routeTargetId, d.etag])).toEqual([["tgt_1", "3"]]);
+  });
+
+  it("marks what a target needs: a connector when it is added, then a host and port or a socket", async () => {
+    detail({ case: "http", value: { hostnames: ["app.example.com"] } });
+    fireEvent.click(await screen.findByRole("button", { name: "Add a target" }));
+    const added = await screen.findByRole("form", { name: "New target" });
+    expect(marked(added)).toEqual(["Connector", "Host", "Port", "Weight", "Priority"]);
+    expect(unmatched(added)).toEqual([]);
+    fireEvent.change(within(added).getByLabelText("Address"), { target: { value: "unixPath" } });
+    await waitFor(() => expect(marked(added)).toEqual(["Connector", "Socket path", "Weight", "Priority"]));
+    // An HTTPS target on a socket has no host to name, so it needs a server name.
+    fireEvent.change(within(added).getByLabelText("Protocol to the target"), { target: { value: String(UpstreamProtocol.HTTPS) } });
+    await waitFor(() => expect(marked(added)).toContain("TLS server name (empty: the host)"));
+    expect(unmatched(added)).toEqual([]);
+    fireEvent.change(within(added).getByLabelText("Address"), { target: { value: "hostPort" } });
+    await waitFor(() => expect(marked(added)).toEqual(["Connector", "Host", "Port", "Weight", "Priority"]));
+  });
+
+  it("does not mark the connector of a target being edited, which cannot change", async () => {
+    detail({ case: "http", value: { hostnames: ["app.example.com"] } });
+    fireEvent.click(await screen.findByRole("button", { name: "Edit…" }));
+    const edited = await screen.findByRole("form", { name: "Edit target" });
+    expect(marked(edited)).toEqual(["Host", "Port", "Weight", "Priority"]);
+    expect(unmatched(edited)).toEqual([]);
   });
 });

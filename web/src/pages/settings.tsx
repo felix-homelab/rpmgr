@@ -7,6 +7,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { useId, useState, type FormEvent, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
+import { labelClass } from "@/components/field";
 import { PageHeader } from "@/components/page-header";
 import { Alert } from "@/components/public-page";
 import { Button } from "@/components/ui/button";
@@ -239,7 +240,7 @@ function InstanceForm({ title, sections, fields, settings, etag, onDone }: {
           <fieldset key={sec} className="grid content-start gap-4 border-border not-first:border-t not-first:pt-5 xl:nth-2:border-t-0 xl:nth-2:pt-0">
             {sections.length > 1 && <legend className="float-left w-full text-sm font-semibold">{t(`settings.sections.${sec}`)}</legend>}
             {fields.filter((f) => f.section === sec).map((f) => (
-              <SettingInput key={f.key} field={f} value={values[f.key] ?? ""} onChange={(v) => setValues({ ...values, [f.key]: v })} />
+              <SettingInput key={f.key} field={f} required={f.required?.(values) ?? false} value={values[f.key] ?? ""} onChange={(v) => setValues({ ...values, [f.key]: v })} />
             ))}
           </fieldset>
         ))}
@@ -249,7 +250,7 @@ function InstanceForm({ title, sections, fields, settings, etag, onDone }: {
   );
 }
 
-function SettingInput({ field: f, value, onChange }: { field: SettingField; value: string; onChange: (v: string) => void }) {
+function SettingInput({ field: f, required, value, onChange }: { field: SettingField; required: boolean; value: string; onChange: (v: string) => void }) {
   const { t, i18n } = useTranslation();
   const id = useId();
   const label = t(`settings.fields.${f.key}`);
@@ -268,15 +269,15 @@ function SettingInput({ field: f, value, onChange }: { field: SettingField; valu
   const described = hint ? `${id}-hint` : undefined;
   return (
     <div className="grid gap-1.5">
-      <label htmlFor={id} className="text-sm font-medium">{label}</label>
+      <label htmlFor={id} className={labelClass(required)}>{label}</label>
       {f.kind === "select" ? (
         <Select id={id} aria-describedby={described} value={value} onChange={(e) => onChange(e.target.value)}>
           {f.options?.map(([v, k]) => <option key={v} value={String(v)}>{t(`settings.options.${f.key}.${k}`)}</option>)}
         </Select>
       ) : f.kind === "lines" ? (
-        <Textarea id={id} aria-describedby={described} rows={2} value={value} onChange={(e) => onChange(e.target.value)} />
+        <Textarea id={id} required={required} aria-describedby={described} rows={2} value={value} onChange={(e) => onChange(e.target.value)} />
       ) : (
-        <Input id={id} aria-describedby={described} inputMode={f.kind === "days" ? "numeric" : undefined} value={value} onChange={(e) => onChange(e.target.value)} />
+        <Input id={id} required={required} aria-describedby={described} inputMode={f.kind === "days" ? "numeric" : undefined} value={value} onChange={(e) => onChange(e.target.value)} />
       )}
       {hint && <p id={described} className="text-xs text-muted-foreground">{hint}</p>}
     </div>

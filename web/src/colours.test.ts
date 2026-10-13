@@ -60,7 +60,7 @@ const text: [string, string[]][] = [
   ["primary-foreground", ["primary"]],
   ["accent-foreground", ["accent"]],
   ["destructive-foreground", ["destructive"]],
-  ["destructive", ["background", "card"]],
+  ["destructive", ["background", "card", "muted"]], // muted: a required field's asterisk on a target form
   ["ok", ["background", "card"]],
   ["warn", ["background", "card"]],
 ];

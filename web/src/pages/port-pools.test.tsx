@@ -9,6 +9,7 @@ import {
 } from "@/gen/rpmgr/v1/gateway_pb";
 import { Theme, UserService } from "@/gen/rpmgr/v1/user_pb";
 import { auth, show } from "@/testing/api";
+import { marked, unmatched } from "@/testing/required";
 
 afterEach(cleanup);
 
@@ -44,6 +45,7 @@ describe("PortPools", () => {
     const s = await section();
     fireEvent.click(await s.findByRole("button", { name: "Add a port pool" }));
     const form = within(s.getByRole("form", { name: "New port pool" }));
+    expect([marked(screen.getByRole("form", { name: "New port pool" })), unmatched(screen.getByRole("form", { name: "New port pool" }))]).toEqual([["First port", "Last port"], []]);
     fireEvent.change(form.getByLabelText("Protocol"), { target: { value: String(PortProtocol.UDP) } });
     fireEvent.change(form.getByLabelText("First port"), { target: { value: "30999" } });
     fireEvent.change(form.getByLabelText("Last port"), { target: { value: "30000" } });

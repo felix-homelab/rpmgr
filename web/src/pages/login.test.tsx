@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import type { LoginRequest } from "@/gen/rpmgr/v1/auth_pb";
 import { safeRedirect } from "@/lib/redirect";
 import { apiError, auth, show } from "@/testing/api";
+import { marked, unmatched } from "@/testing/required";
 
 afterEach(cleanup);
 
@@ -29,6 +30,7 @@ async function signIn(path: string, answer: (req: LoginRequest) => object) {
     },
   });
   fireEvent.change(await screen.findByLabelText("E-mail address"), { target: { value: "ada@example.com" } });
+  expect([marked(), unmatched()]).toEqual([["E-mail address", "Password"], []]);
   fireEvent.change(screen.getByLabelText("Password"), { target: { value: "correct horse battery" } });
   fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
   return { ...view, calls };

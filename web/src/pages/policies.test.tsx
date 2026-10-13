@@ -12,6 +12,7 @@ import { RouteService } from "@/gen/rpmgr/v1/route_pb";
 import { ApplyState, StatusService } from "@/gen/rpmgr/v1/status_pb";
 import { Theme, UserService } from "@/gen/rpmgr/v1/user_pb";
 import { auth, show } from "@/testing/api";
+import { marked, unmatched } from "@/testing/required";
 
 afterEach(cleanup);
 
@@ -101,6 +102,24 @@ describe("Policies", () => {
     expect([u.accessPolicy?.id, u.accessPolicy?.routeIds, u.updateMask?.paths, u.etag]).toEqual(["pol_1", ["rte_1"], ["name", "description", "rules"], "3"]);
     const users = u.accessPolicy?.rules[2]?.rule.case === "basicAuth" ? u.accessPolicy.rules[2].rule.value.users : [];
     expect(users.map((x) => [x.name, x.password])).toEqual([["ada", ""], ["bob", "bob's new password"]]);
+  });
+
+  it("marks a new user's password as required, but not a password the policy keeps", async () => {
+    page();
+    fireEvent.click((await policy("office")).getByRole("button", { name: "Edit…" }));
+    const form = await screen.findByRole("form", { name: "Edit access policy" });
+    const rule = within(within(form).getByRole("group", { name: "Rule 3" }));
+    expect(marked(form)).toEqual(["Name", "Addresses (CIDRs, one per line)", "Addresses (CIDRs, one per line)", "User", "User"]);
+    expect(unmatched(form)).toEqual([]);
+    fireEvent.click(rule.getByRole("button", { name: "Add a user" }));
+    await waitFor(() => expect(marked(form)).toContain("Password"));
+    const names = rule.getAllByLabelText("User");
+    // A new row named like a stored user keeps that user's password.
+    fireEvent.change(names[2]!, { target: { value: "ada" } });
+    await waitFor(() => expect(marked(form)).not.toContain("Password"));
+    fireEvent.change(names[2]!, { target: { value: "carol" } });
+    await waitFor(() => expect(marked(form).filter((m) => m === "Password")).toHaveLength(1));
+    expect(unmatched(form)).toEqual([]);
   });
 
   it("shows why a policy in use is not removed", async () => {

@@ -6,6 +6,7 @@ import { useMutation } from "@connectrpc/connect-query";
 import { useId, useState } from "react";
 import { useForm, useWatch, type Path, type Resolver, type UseFormReturn } from "react-hook-form";
 import { useTranslation } from "react-i18next";
+import { labelClass } from "@/components/field";
 import { Alert } from "@/components/public-page";
 import { Button } from "@/components/ui/button";
 import { Input, Select as SelectBox } from "@/components/ui/input";
@@ -143,21 +144,21 @@ export function TargetForm({ route, target, connectors, onDone, onCancel }: {
   return (
     <form onSubmit={form.handleSubmit(save)} aria-label={t(target ? "targetForm.editTitle" : "targetForm.addTitle")}
       className="grid gap-4 rounded-lg border border-border bg-muted/40 p-4" noValidate>
-      <Select form={form} name="connector" label={t("route.columns.connector")} disabled={!!target}
+      <Select form={form} name="connector" label={t("route.columns.connector")} disabled={!!target} required={!target}
         options={[["", t("targetForm.chooseConnector")], ...connectors]} />
       <Select form={form} name="address" label={t("targetForm.address")} options={[["hostPort", t("targetForm.hostPort")], ["unixPath", t("targetForm.unixPath")]]} />
       {address === "hostPort" ? (
         <div className="grid grid-cols-[1fr_8rem] gap-2">
-          <Text form={form} name="host" label={t("targetForm.host")} />
-          <Text form={form} name="port" label={t("targetForm.port")} />
+          <Text form={form} name="host" label={t("targetForm.host")} required />
+          <Text form={form} name="port" label={t("targetForm.port")} required />
         </div>
       ) : (
-        <Text form={form} name="unixPath" label={t("targetForm.unixPathLabel")} />
+        <Text form={form} name="unixPath" label={t("targetForm.unixPathLabel")} required />
       )}
       <Select form={form} name="upstream" label={t("targetForm.upstream")} options={upstreams.map((u) => [String(u), t(`targetForm.upstreams.${UpstreamProtocol[u]}`)])} />
       {https && (
         <>
-          <Text form={form} name="serverName" label={t("targetForm.serverName")} />
+          <Text form={form} name="serverName" label={t("targetForm.serverName")} required={address === "unixPath"} />
           <Text form={form} name="caBundle" label={t("targetForm.caBundle")} />
           <Text form={form} name="spki" label={t("targetForm.spki")} />
         </>
@@ -166,8 +167,8 @@ export function TargetForm({ route, target, connectors, onDone, onCancel }: {
         <Select form={form} name="proxy" label={t("targetForm.proxy")} options={proxies.map((p) => [String(p), t(`targetForm.proxies.${ProxyProtocol[p]}`)])} />
       )}
       <div className="grid grid-cols-2 gap-2">
-        <Text form={form} name="weight" label={t("route.columns.weight")} />
-        <Text form={form} name="priority" label={t("targetForm.priority")} />
+        <Text form={form} name="weight" label={t("route.columns.weight")} required />
+        <Text form={form} name="priority" label={t("targetForm.priority")} required />
       </div>
       <label className="flex items-center gap-2 text-sm"><input type="checkbox" className="size-4 accent-primary" {...form.register("enabled")} />{t("targetForm.enabled")}</label>
       {other.map((m) => <Alert key={m}>{m}</Alert>)}
@@ -179,25 +180,28 @@ export function TargetForm({ route, target, connectors, onDone, onCancel }: {
   );
 }
 
-function Text({ form, name, label }: { form: UseFormReturn<TargetValues>; name: Path<TargetValues>; label: string }) {
+// Text and Select are a field of the target form; a required one's label ends in a red asterisk.
+function Text({ form, name, label, required }: { form: UseFormReturn<TargetValues>; name: Path<TargetValues>; label: string; required?: boolean }) {
   const id = useId();
   const error = form.formState.errors[name as keyof TargetValues]?.message;
   return (
     <div className="grid gap-1.5">
-      <label htmlFor={id} className="text-sm font-medium">{label}</label>
-      <Input id={id} aria-invalid={error ? true : undefined} aria-describedby={`${id}-error`} {...form.register(name)} />
+      <label htmlFor={id} className={labelClass(required)}>{label}</label>
+      <Input id={id} required={required} aria-invalid={error ? true : undefined} aria-describedby={`${id}-error`} {...form.register(name)} />
       {error && <p id={`${id}-error`} role="alert" className="text-sm text-destructive">{error}</p>}
     </div>
   );
 }
 
-function Select({ form, name, label, options, disabled }: { form: UseFormReturn<TargetValues>; name: Path<TargetValues>; label: string; options: [string, string][]; disabled?: boolean }) {
+function Select({ form, name, label, options, disabled, required }: {
+  form: UseFormReturn<TargetValues>; name: Path<TargetValues>; label: string; options: [string, string][]; disabled?: boolean; required?: boolean;
+}) {
   const id = useId();
   const error = form.formState.errors[name as keyof TargetValues]?.message;
   return (
     <div className="grid gap-1.5">
-      <label htmlFor={id} className="text-sm font-medium">{label}</label>
-      <SelectBox id={id} disabled={disabled} aria-invalid={error ? true : undefined} {...form.register(name)}>
+      <label htmlFor={id} className={labelClass(required)}>{label}</label>
+      <SelectBox id={id} disabled={disabled} required={required} aria-invalid={error ? true : undefined} {...form.register(name)}>
         {options.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
       </SelectBox>
       {error && <p role="alert" className="text-sm text-destructive">{error}</p>}

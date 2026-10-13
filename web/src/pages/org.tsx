@@ -159,7 +159,7 @@ function OrgName({ orgId, name: was }: { orgId: string; name: string }) {
   return (
     <Card title={t("org.nameTitle")}>
       <form onSubmit={save} aria-label={t("org.nameTitle")} className="flex flex-wrap items-end gap-2" noValidate>
-        <div className="w-72"><Field label={t("org.name")} value={name} onChange={(e) => setName(e.target.value)} /></div>
+        <div className="w-72"><Field label={t("org.name")} required value={name} onChange={(e) => setName(e.target.value)} /></div>
         <Button type="submit" variant="outline" disabled={update.isPending || name.trim() === was}>{t("routeForm.save")}</Button>
         {message && <div className="w-full"><Alert tone={message.tone}>{message.text}</Alert></div>}
       </form>
@@ -242,7 +242,7 @@ function Invite({ orgId }: { orgId: string }) {
   return (
     <Card title={t("org.invite")} description={t("org.inviteIntro")}>
       <form onSubmit={save} className="flex flex-wrap items-end gap-2" noValidate>
-        <div className="w-72"><Field label={t("login.email")} type="email" value={email} onChange={(e) => setEmail(e.target.value)} /></div>
+        <div className="w-72"><Field label={t("login.email")} type="email" required value={email} onChange={(e) => setEmail(e.target.value)} /></div>
         <label className="grid gap-1.5 text-sm font-medium">
           {t("org.columns.role")}
           <Select className="w-36 font-normal" value={role} onChange={(e) => setRole(e.target.value)}>

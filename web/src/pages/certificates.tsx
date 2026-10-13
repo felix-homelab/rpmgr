@@ -95,8 +95,8 @@ function UploadForm({ orgId, onDone }: { orgId: string; onDone: () => void }) {
   }
   return (
     <form onSubmit={save} aria-label={t("certs.uploadTitle")} className={panel} noValidate>
-      <PemField label={t("certs.chain")} value={chain} onChange={setChain} />
-      <PemField label={t("certs.key")} value={key} onChange={setKey} secret />
+      <PemField label={t("certs.chain")} required value={chain} onChange={setChain} />
+      <PemField label={t("certs.key")} required value={key} onChange={setKey} secret />
       {error && <Alert>{error}</Alert>}
       <div className="flex gap-2">
         <Button type="submit" disabled={upload.isPending || !chain || !key}>{t("certs.uploadSubmit")}</Button>
@@ -224,8 +224,8 @@ function BundleForm({ orgId, bundle, onDone }: { orgId: string; bundle?: CABundl
   }
   return (
     <form onSubmit={save} aria-label={t(bundle ? "bundles.editTitle" : "bundles.addTitle")} className={panel} noValidate>
-      <Field label={t("routeForm.fields.name")} className="max-w-md" value={name} onChange={(e) => setName(e.target.value)} />
-      <PemField label={t("bundles.pem")} value={pem} onChange={setPem} />
+      <Field label={t("routeForm.fields.name")} className="max-w-md" required value={name} onChange={(e) => setName(e.target.value)} />
+      <PemField label={t("bundles.pem")} required value={pem} onChange={setPem} />
       {error && <Alert>{error}</Alert>}
       <div className="flex gap-2">
         <Button type="submit" disabled={add.isPending || update.isPending}>{t(bundle ? "routeForm.save" : "bundles.addSubmit")}</Button>
