@@ -19,8 +19,15 @@ export async function watchCSP(page: Page): Promise<string[]> {
   return seen;
 }
 
-// expectAccessible fails on any WCAG 2.2 A or AA violation axe finds (docs/09-web-ui.md, U8).
+// expectAccessible fails on any WCAG 2.2 A or AA violation axe finds (docs/09-web-ui.md, U8). It
+// lets running transitions finish first: axe measured a colour halfway through one after the theme
+// changed, and reported too little contrast. An endless animation, such as a spinner, is not waited
+// for.
 export async function expectAccessible(page: Page) {
+  await page.evaluate(async () => {
+    const finite = document.getAnimations().filter((a) => Number.isFinite(a.effect?.getComputedTiming().endTime));
+    await Promise.all(finite.map((a) => a.finished.catch(() => undefined)));
+  });
   const r = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"]).analyze();
   expect(r.violations.map((v) => `${v.id}: ${v.nodes.map((n) => n.target.join(" ")).join(", ")}`)).toEqual([]);
 }
