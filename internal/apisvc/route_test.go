@@ -513,6 +513,10 @@ func TestPortRoutes(t *testing.T) {
 			t.Errorf("%s: %v, want %v %s", name, err, c.code, c.reason)
 		}
 	}
+	// A taken port names the route that holds it, so that its owner knows what to change (D78).
+	if _, err := createRoute(ada, org, tcpRoute("taken", group, 20005), ""); err == nil || !strings.Contains(err.Error(), `route "pg" holds it`) {
+		t.Fatalf("a taken port does not name its route: %v", err)
+	}
 	third, err := createRoute(ada, org, tcpRoute("third", group, 0), "")
 	if err != nil {
 		t.Fatalf("the third tcp port, within the quota: %v", err)
@@ -749,6 +753,12 @@ func TestPreviewRoute(t *testing.T) {
 		Target: addressTarget(con, "10.0.0.5", 8080)})); err != nil {
 		t.Fatal(err)
 	}
+	for _, pool := range []*rpmgrv1.PortPool{{GatewayGroupId: group, Protocol: tcp, PortFrom: 20000, PortTo: 20009},
+		{GatewayGroupId: group, Protocol: udp, PortFrom: 30000, PortTo: 30009}} {
+		if _, err := ada.gw.CreatePortPool(ctx, connect.NewRequest(&rpmgrv1.CreatePortPoolRequest{OrgId: org, PortPool: pool})); err != nil {
+			t.Fatal(err)
+		}
+	}
 	revision := func() store.Revision {
 		var rev store.Revision
 		if err := store.ReadTx(e.sys, e.db, func(_ *ent.Tx, r store.Revision) error { rev = r; return nil }); err != nil {
@@ -772,6 +782,12 @@ func TestPreviewRoute(t *testing.T) {
 	if err != nil || p.GetRoute().GetId() != "" || p.GetRoute().GetHttp().GetHostnames()[0] != "new.example.com" ||
 		!slices.Equal(p.GetGatewayIds(), []string{gw.GetId()}) || len(p.GetConnectorIds()) != 0 || len(p.GetProblems()) != 0 {
 		t.Fatalf("a new route: %v %v", p, err)
+	}
+	// A new tcp or udp route has no target yet, and its gateways still check its port (D78).
+	for _, rt := range []*rpmgrv1.Route{tcpRoute("pg", group, 20005), udpRoute("dns", group, 30005)} {
+		if p, err := preview(ada, rt, nil, ""); err != nil || !slices.Equal(p.GetGatewayIds(), []string{gw.GetId()}) || len(p.GetProblems()) != 0 {
+			t.Fatalf("a new %s route without targets: %v %v", rt.GetName(), p, err)
+		}
 	}
 	if _, err := preview(ada, httpRoute("bad", group, "nowhere.example"), nil, ""); reason(err) != apisvc.ReasonDomainNotVerified {
 		t.Fatalf("an unverified hostname: %v", err)

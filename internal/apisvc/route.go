@@ -31,9 +31,6 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routehostname"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routehttp"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routepolicy"
-	"github.com/felix-homelab/rpmgr/internal/store/ent/routetarget"
-	"github.com/felix-homelab/rpmgr/internal/store/ent/routetcp"
-	"github.com/felix-homelab/rpmgr/internal/store/ent/routeudp"
 )
 
 // The reasons of refused routes.
@@ -475,40 +472,7 @@ func (r *Routes) DeleteRoute(ctx context.Context, req *connect.Request[rpmgrv1.D
 		if err := api.CheckEtag(req.Msg.GetEtag(), cur.Version, &rpmgrv1.Route{Id: cur.ID, Etag: etagOf(cur.Version)}); err != nil {
 			return nil, err
 		}
-		var ports []string
-		if t, err := tx.RouteTCP.Query().Where(routetcp.RouteID(cur.ID)).Only(ctx); err == nil {
-			ports = append(ports, t.PortAllocationID)
-		}
-		if u, err := tx.RouteUDP.Query().Where(routeudp.RouteID(cur.ID)).Only(ctx); err == nil {
-			ports = append(ports, u.PortAllocationID)
-		}
-		for _, del := range []func() error{
-			func() error {
-				_, err := tx.RouteHostname.Delete().Where(routehostname.RouteID(cur.ID)).Exec(ctx)
-				return err
-			},
-			func() error { _, err := tx.RouteHTTP.Delete().Where(routehttp.RouteID(cur.ID)).Exec(ctx); return err },
-			func() error { _, err := tx.RouteTCP.Delete().Where(routetcp.RouteID(cur.ID)).Exec(ctx); return err },
-			func() error { _, err := tx.RouteUDP.Delete().Where(routeudp.RouteID(cur.ID)).Exec(ctx); return err },
-			func() error {
-				_, err := tx.RouteTarget.Delete().Where(routetarget.RouteID(cur.ID)).Exec(ctx)
-				return err
-			},
-			func() error {
-				_, err := tx.RoutePolicy.Delete().Where(routepolicy.RouteID(cur.ID)).Exec(ctx)
-				return err
-			},
-		} {
-			if err := del(); err != nil {
-				return nil, err
-			}
-		}
-		for _, p := range ports {
-			if err := routes.Release(ctx, tx, p); err != nil {
-				return nil, err
-			}
-		}
-		return []string{cur.ID}, tx.Route.DeleteOneID(cur.ID).Where(route.Version(cur.Version)).Exec(ctx)
+		return []string{cur.ID}, routes.Delete(ctx, tx, cur)
 	})
 	if err != nil {
 		return nil, storeError(err)

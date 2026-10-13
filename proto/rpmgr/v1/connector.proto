@@ -42,7 +42,8 @@ service ConnectorService {
     };
   }
   // DecommissionConnector retires a connector for good: its identity is revoked, its sessions end,
-  // and it stays as a tombstone. Its route targets stay, serving nothing, until they are removed.
+  // and it stays as a tombstone. Its route targets are deleted, and so is each route left with no
+  // target, which frees its ports and hostnames (D78).
   rpc DecommissionConnector(DecommissionConnectorRequest) returns (DecommissionConnectorResponse) {
     option (rpmgr.v1.authz) = {
       permission: "connectors.write"
@@ -239,4 +240,14 @@ message DecommissionConnectorResponse {
   // The apply status of the revision; with the request header Rpmgr-Wait-Applied, once it is
   // final or the wait is over (docs/07-api.md, "Writes and apply status").
   ApplyStatus apply_status = 3;
+  // The routes the decommission deleted, as it left them with no target; empty on a second call.
+  repeated DeletedRoute deleted_routes = 4;
+}
+
+// DeletedRoute names a route that is gone.
+message DeletedRoute {
+  // The route's ID.
+  string id = 1;
+  // The route's name.
+  string name = 2;
 }
