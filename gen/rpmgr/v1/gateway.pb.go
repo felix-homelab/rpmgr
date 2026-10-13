@@ -86,7 +86,7 @@ type Gateway struct {
 	Id string `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
 	// Its group; set at creation.
 	GatewayGroupId string `protobuf:"bytes,2,opt,name=gateway_group_id,json=gatewayGroupId,proto3" json:"gateway_group_id,omitempty"`
-	// Its name, unique in the org; required on create.
+	// Its name, unique among the org's gateways that are not decommissioned; required on create.
 	Name string `protobuf:"bytes,3,opt,name=name,proto3" json:"name,omitempty"`
 	// Its place in the group, 1 to 4; output only.
 	Slot int32 `protobuf:"varint,4,opt,name=slot,proto3" json:"slot,omitempty"`

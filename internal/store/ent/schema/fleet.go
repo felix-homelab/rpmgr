@@ -61,10 +61,12 @@ func (Gateway) Edges() []ent.Edge {
 	}
 }
 
-// Indexes: names are unique per org, slots per group among active gateways.
+// Indexes: names are unique per org and slots per group, both among active gateways, so a
+// decommissioned gateway's name and slot are free again.
 func (Gateway) Indexes() []ent.Index {
 	return []ent.Index{
-		index.Fields("org_id", "name").Unique(),
+		index.Fields("org_id", "name").Unique().
+			Annotations(entsql.IndexWhere("decommissioned_at IS NULL")),
 		index.Fields("gateway_group_id", "slot").Unique().
 			Annotations(entsql.IndexWhere("decommissioned_at IS NULL")),
 	}
@@ -105,9 +107,11 @@ func (Connector) Fields() []ent.Field {
 	}
 }
 
-// Indexes: names are unique per org.
+// Indexes: names are unique per org among active connectors, so a decommissioned connector's name
+// is free again.
 func (Connector) Indexes() []ent.Index {
-	return []ent.Index{index.Fields("org_id", "name").Unique()}
+	return []ent.Index{index.Fields("org_id", "name").Unique().
+		Annotations(entsql.IndexWhere("decommissioned_at IS NULL"))}
 }
 
 // EnrollmentToken is a token that enrolls one agent or, if multi-use, several

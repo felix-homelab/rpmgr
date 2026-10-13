@@ -90,7 +90,7 @@ type Connector struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// The connector's ID, con_…; output only.
 	Id string `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
-	// Its name, unique in the org.
+	// Its name, unique among the org's connectors that are not decommissioned.
 	Name string `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
 	// Its labels.
 	Labels map[string]string `protobuf:"bytes,3,rep,name=labels,proto3" json:"labels,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
