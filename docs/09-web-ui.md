@@ -118,6 +118,15 @@ flowchart LR
   keeps a contrast of at least 4.5:1 on the surfaces it is drawn on, and control borders, the focus
   outline and chart lines at least 3:1, in both themes (U8). Pages are built from a header with the
   page's actions, cards, tables and status badges. A status badge always has an icon and text.
+- **Required fields:** a field the form or the server refuses to leave empty has a red asterisk
+  after its label ([D77](14-open-decisions.md#engineering)). The control is marked required, so
+  screen readers say so; the asterisk itself has an empty alternative text and is not read. A field
+  required only in some cases has the asterisk while the case holds: an uploaded certificate's ID,
+  a target's host and port or its socket path, an HTTPS target's server name on a socket, the mail
+  relay's sender address, and the password of a basic-auth user the policy does not have yet. A
+  number field that is filled in with its default, such as a port of 0 for any free port, is
+  required too, since an empty one is refused. Selects and radio buttons that always hold a value,
+  and search and filter fields, have none. Forms do not explain the asterisk.
 - **Icons** come from lucide-react and are bundled with the UI, so the CSP needs no other origin
   ([Frontend architecture](#frontend-architecture)). They are hidden from screen readers; their
   name is always in the text next to them or in the control's label.
@@ -675,6 +684,9 @@ In Phase 1 the UI works in the user's first org. The org switcher comes with the
   on any CSP violation, and on anything in `localStorage` or `sessionStorage`.
 - A flow checks, in a window 2560 px wide, that each page it visits fills the width beside the
   sidebar, and that the route form stands in two columns there and in one on a phone.
+- Flows check that every required control has the red asterisk, drawn with an empty alternative
+  text, and that no other control has one; component tests check the same for each form, including
+  the fields required only in some cases.
 - A unit test computes the contrast of every text colour on its surfaces, 4.5:1, and of control
   borders, the focus outline and chart lines, 3:1, in both themes.
 - Accessibility checks (axe) in CI on every page, plus manual keyboard and screen-reader passes per

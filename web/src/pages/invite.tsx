@@ -68,10 +68,10 @@ export function Invite() {
         ) : (
           <>
             <p className="text-sm text-muted-foreground">{t("invite.newAccount")}</p>
-            <Field label={t("setup.name")} autoComplete="name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
-            <Field label={t("reset.password")} hint={t("reset.passwordHint")} type="password" autoComplete="new-password" value={form.password}
+            <Field label={t("setup.name")} autoComplete="name" required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+            <Field label={t("reset.password")} hint={t("reset.passwordHint")} type="password" autoComplete="new-password" required value={form.password}
               onChange={(e) => setForm({ ...form, password: e.target.value })} />
-            <Field label={t("reset.confirm")} type="password" autoComplete="new-password" value={form.confirm} onChange={(e) => setForm({ ...form, confirm: e.target.value })} />
+            <Field label={t("reset.confirm")} type="password" autoComplete="new-password" required value={form.confirm} onChange={(e) => setForm({ ...form, confirm: e.target.value })} />
           </>
         )}
         {error && <Alert>{error}</Alert>}

@@ -5,7 +5,7 @@ import { useMutation, useQuery } from "@connectrpc/connect-query";
 import { useQueryClient } from "@tanstack/react-query";
 import { useState, type FormEvent } from "react";
 import { useTranslation } from "react-i18next";
-import { Field } from "@/components/field";
+import { Field, labelClass } from "@/components/field";
 import { Alert } from "@/components/public-page";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -97,7 +97,7 @@ function NewToken({ orgId, instanceAdmin, onDone, onCancel }: { orgId: string; i
       <Field label={t("tokens.validity")} hint={t("tokens.days")} type="number" min={1} max={365} required value={days}
         onChange={(e) => setDays(e.target.value)} />
       <fieldset className="grid gap-1.5">
-        <legend className="text-sm font-medium">{t("tokens.scopes")}</legend>
+        <legend className={labelClass(true)}>{t("tokens.scopes")}</legend>
         {all.map((p) => (
           <label key={p} className="flex items-start gap-2 text-sm">
             <input type="checkbox" className="mt-1" checked={scopes.includes(p)} onChange={() => toggle(p)} />

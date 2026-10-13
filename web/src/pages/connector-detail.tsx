@@ -147,7 +147,7 @@ function Settings({ connector: c, onWrite }: { connector: Connector; onWrite: (w
   return (
     <Card title={t("connectors.settings")}>
       <form onSubmit={save} className="grid max-w-xl gap-4" noValidate>
-        <Field label={t("routeForm.fields.name")} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+        <Field label={t("routeForm.fields.name")} required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
         <label className="grid gap-1.5 text-sm font-medium">
           {t("routeForm.fields.labels")}
           <Textarea rows={2} className="font-normal" value={form.labels} onChange={(e) => setForm({ ...form, labels: e.target.value })} />

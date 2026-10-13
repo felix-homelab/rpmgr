@@ -139,6 +139,9 @@ history and the [ADRs](docs/adr/).
   traffic of the last 24 hours and what needs attention. Every page uses the same page header,
   cards, tables, status badges and empty states, and fills the window's width, with long forms in
   columns on wide screens. (#459, #481)
+- UI: a field a form needs has a red asterisk after its label, also while it is needed only
+  because of another field, such as the sender address once a mail relay is set. Screen readers
+  announce the field as required. (#483)
 - Controller: every change, sign-in and token use is recorded once in a hash-chained audit log per
   org and one for the instance, with signed checkpoints and retention. The API and the UI list and
   verify the chains. (#194, #311, #350, #351, #352)

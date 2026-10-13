@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { OrgService, type AcceptInvitationRequest, type CreateInvitationRequest, type UpdateMemberRequest } from "@/gen/rpmgr/v1/org_pb";
 import { Theme, UserService } from "@/gen/rpmgr/v1/user_pb";
 import { apiError, auth, show } from "@/testing/api";
+import { marked, unmatched } from "@/testing/required";
 
 afterEach(cleanup);
 
@@ -70,6 +71,7 @@ describe("OrgPage", () => {
   it("makes an invitation link to send by hand when no mail can go out", async () => {
     const { calls } = page("/org");
     const section = within(await screen.findByRole("region", { name: "Invite someone" }));
+    expect([marked(screen.getByRole("region", { name: "Invite someone" })), unmatched(screen.getByRole("region", { name: "Invite someone" }))]).toEqual([["E-mail address"], []]);
     fireEvent.change(section.getByLabelText("E-mail address"), { target: { value: " carol@example.com " } });
     fireEvent.change(section.getByLabelText("Role"), { target: { value: "operator" } });
     fireEvent.click(section.getByRole("button", { name: "Make the invitation" }));
@@ -91,6 +93,7 @@ describe("Invite", () => {
   it("creates an account without a session, and stays on the page", async () => {
     const { calls, history } = page("/invite#rpmgr_inv_tok", false);
     fireEvent.change(await screen.findByLabelText("Your name"), { target: { value: "Carol" } });
+    expect([marked(document), unmatched(document)]).toEqual([["Your name", "New password", "Repeat the new password"], []]);
     fireEvent.change(screen.getByLabelText("New password"), { target: { value: "correct horse battery" } });
     fireEvent.change(screen.getByLabelText("Repeat the new password"), { target: { value: "correct horse battery" } });
     fireEvent.click(screen.getByRole("button", { name: "Join" }));

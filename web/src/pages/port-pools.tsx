@@ -89,8 +89,8 @@ function PoolForm({ orgId, groupId, pool, onDone }: { orgId: string; groupId: st
           {protocols.map((p) => <option key={p} value={String(p)}>{PortProtocol[p]}</option>)}
         </Select>
       </label>
-      <label className="grid gap-1.5 text-sm font-medium">{t("pools.from")}<Input className="w-28 font-normal" inputMode="numeric" value={form.from} onChange={(e) => setForm({ ...form, from: e.target.value })} /></label>
-      <label className="grid gap-1.5 text-sm font-medium">{t("pools.to")}<Input className="w-28 font-normal" inputMode="numeric" value={form.to} onChange={(e) => setForm({ ...form, to: e.target.value })} /></label>
+      <label className="grid gap-1.5 text-sm font-medium"><span className="required-mark">{t("pools.from")}</span><Input required className="w-28 font-normal" inputMode="numeric" value={form.from} onChange={(e) => setForm({ ...form, from: e.target.value })} /></label>
+      <label className="grid gap-1.5 text-sm font-medium"><span className="required-mark">{t("pools.to")}</span><Input required className="w-28 font-normal" inputMode="numeric" value={form.to} onChange={(e) => setForm({ ...form, to: e.target.value })} /></label>
       <Button type="submit" size="sm" disabled={add.isPending || update.isPending}>{t(pool ? "routeForm.save" : "pools.addSubmit")}</Button>
       <Button size="sm" variant="outline" onClick={onDone}>{t("stepUp.cancel")}</Button>
       {error && <div className="w-full"><Alert>{error}</Alert></div>}

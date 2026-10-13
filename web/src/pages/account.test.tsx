@@ -5,6 +5,7 @@ import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/re
 import { afterEach, describe, expect, it } from "vitest";
 import { Theme, UserService, type ChangePasswordRequest, type UpdateMeRequest } from "@/gen/rpmgr/v1/user_pb";
 import { auth, show } from "@/testing/api";
+import { marked, unmatched } from "@/testing/required";
 
 afterEach(() => {
   cleanup();
@@ -76,6 +77,7 @@ describe("Account", () => {
     account(Theme.SYSTEM, (req) => (calls.push(req), {}));
     const password = await section("Password");
     fireEvent.change(await password.findByLabelText("Current password"), { target: { value: "old password!" } });
+    expect([marked(screen.getByRole("region", { name: "Password" })), unmatched(screen.getByRole("region", { name: "Password" }))]).toEqual([["Current password", "New password", "Repeat the new password"], []]);
     fireEvent.change(password.getByLabelText("New password"), { target: { value: pw } });
     fireEvent.change(password.getByLabelText("Repeat the new password"), { target: { value: pw } });
     fireEvent.click(password.getByRole("button", { name: "Change the password" }));

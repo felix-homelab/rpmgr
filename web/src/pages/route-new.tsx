@@ -10,6 +10,7 @@ import { useState } from "react";
 import { useForm, type Resolver } from "react-hook-form";
 import { useTranslation } from "react-i18next";
 import { ApplyStatusView, useLiveApplyStatus } from "@/components/apply-status";
+import { labelClass } from "@/components/field";
 import { PageHeader } from "@/components/page-header";
 import { Alert } from "@/components/public-page";
 import { Button } from "@/components/ui/button";
@@ -154,8 +155,8 @@ function NewRouteForm({ type }: { type: RouteType }) {
     <form onSubmit={form.handleSubmit(save)} className="grid gap-4" noValidate>
       <FieldGrid>
         <div className="grid gap-1.5">
-          <label htmlFor="route-group" className="text-sm font-medium">{t("routes.group")}</label>
-          <Select id="route-group" aria-invalid={groupError ? true : undefined} {...form.register("group")}>
+          <label htmlFor="route-group" className={labelClass(true)}>{t("routes.group")}</label>
+          <Select id="route-group" required aria-invalid={groupError ? true : undefined} {...form.register("group")}>
             <option value="">{t("routeNew.chooseGroup")}</option>
             {[...(groups.data ?? new Map<string, string>())].map(([id, n]) => <option key={id} value={id}>{n}</option>)}
           </Select>

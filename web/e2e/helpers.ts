@@ -65,6 +65,32 @@ export async function unfilled(page: Page): Promise<string[]> {
   });
 }
 
+// unmarked lists the fields on the page whose required control and red asterisk disagree, and every
+// asterisk not drawn as a red "*" that screen readers skip (docs/09-web-ui.md, "Layout and
+// navigation").
+export async function unmarked(page: Page): Promise<string[]> {
+  return page.evaluate(() => {
+    const probe = document.body.appendChild(document.createElement("span"));
+    probe.style.color = "var(--color-destructive)";
+    const red = getComputedStyle(probe).color;
+    probe.remove();
+    const out: string[] = [];
+    for (const mark of document.querySelectorAll(".required-mark")) {
+      const after = getComputedStyle(mark, "::after");
+      if (after.content !== '"*" / ""' || after.color !== red) {
+        out.push(`${mark.textContent}: drawn as ${after.content} in ${after.color}`);
+      }
+    }
+    const hasMark = (e: Element) => e.classList.contains("required-mark") || e.querySelector(".required-mark") !== null;
+    for (const c of document.querySelectorAll<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>("input, select, textarea")) {
+      if (c.labels && c.labels.length > 0 && c.required !== [...c.labels].some(hasMark)) {
+        out.push(`${c.labels[0]!.textContent}: ${c.required ? "required, no asterisk" : "asterisk, not required"}`);
+      }
+    }
+    return out;
+  });
+}
+
 // totp is the RFC 6238 code of a base32 secret at time now (SHA-1, 30 s, 6 digits).
 export function totp(secret: string, now = Date.now()): string {
   const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
