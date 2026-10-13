@@ -234,9 +234,9 @@ func TestTCPRoutes_ChangesKeepConnections(t *testing.T) {
 	}
 }
 
-// TestTCPRoutes_RemovedRouteDrains: a removed route's port refuses new connections at once, and
-// its open connections work until the drain period ends, then are reset; a route that moves to
-// another port is served there.
+// TestTCPRoutes_RemovedRouteDrains: a removed route's port refuses new connections at once and is
+// free for another listener, and its open connections work until the drain period ends, then are
+// reset; a route that moves to another port is served there.
 func TestTCPRoutes_RemovedRouteDrains(t *testing.T) {
 	gateway.SetRouteTimers(t, 500*time.Millisecond, time.Second)
 	p := newPlane(t, service(t, echoService), "rt_1")
@@ -250,6 +250,11 @@ func TestTCPRoutes_RemovedRouteDrains(t *testing.T) {
 	if _, err := net.Dial("tcp", net.JoinHostPort("127.0.0.1", strconv.Itoa(int(p1)))); err == nil {
 		t.Fatal("the old port still accepts")
 	}
+	ln, err := net.Listen("tcp", net.JoinHostPort("127.0.0.1", strconv.Itoa(int(p1))))
+	if err != nil {
+		t.Fatalf("the old port is still bound: %v", err)
+	}
+	_ = ln.Close()
 	if err := ping(dialPort(t, p2), "on the new port"); err != nil {
 		t.Fatal(err)
 	}

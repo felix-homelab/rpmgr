@@ -329,10 +329,13 @@ method, list filter or search returns or modifies the other org's data
 - **Decommissioning** a connector or gateway sets `decommissioned_at` and revokes its identity in
   the same transaction ([04](04-security.md#revocation)). It is final, so its name is free at once
   for a new or renamed agent; the tombstone keeps it, and lists and lookups by name show only
-  active agents unless asked for tombstones. [R] A decommissioned connector's route targets stay,
-  serving nothing, until they are removed.
-- **Deleting a connector** that still serves route targets is refused with a list of the affected
-  routes, unless the request explicitly cascades.
+  active agents unless asked for tombstones. Decommissioning a connector, also by `rpmgr leave`,
+  deletes its route targets and each route left with no target, with its hostnames, port and
+  policy links, so that its ports and hostnames are free again
+  ([D78](14-open-decisions.md#engineering)). A route with a target on another connector keeps that
+  one. Each deleted route is audited as `route.delete`, and the response names it.
+- **Connectors are not deleted** through the API: a decommissioned one stays as a tombstone until
+  the purge ([04](04-security.md#lifecycle)).
 - **Deleting a route** removes its DNS records in managed zones on the next DNS pass, unless another
   source still needs the name ([15](15-dns.md#publication-rules)).
 - **Removing a managed zone or a DNS provider** keeps the records at the provider and drops the
