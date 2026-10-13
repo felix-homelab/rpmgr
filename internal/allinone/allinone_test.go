@@ -226,6 +226,8 @@ func TestInit_GroupHostnames(t *testing.T) {
 		{"localhost", nil},
 		{"panel", nil},
 		{"Panel.Example.COM", []string{"panel.example.com"}},
+		{"panel.example.com.", []string{"panel.example.com"}},
+		{"localhost.", nil},
 		{"203.0.113.7", []string{"203.0.113.7"}},
 		{"[2001:db8::7]", []string{"2001:db8::7"}},
 	} {

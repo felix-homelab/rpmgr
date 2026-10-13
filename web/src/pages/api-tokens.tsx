@@ -97,7 +97,8 @@ function NewToken({ orgId, instanceAdmin, onDone, onCancel }: { orgId: string; i
       <Field label={t("tokens.validity")} hint={t("tokens.days")} type="number" min={1} max={365} required value={days}
         onChange={(e) => setDays(e.target.value)} />
       <fieldset className="grid gap-1.5">
-        <legend className={labelClass(true)}>{t("tokens.scopes")}</legend>
+        {/* A token needs a scope. No checkbox can be marked required, so the legend says it. */}
+        <legend className={labelClass(true)}>{t("tokens.scopes")}<span className="sr-only"> ({t("app.required")})</span></legend>
         {all.map((p) => (
           <label key={p} className="flex items-start gap-2 text-sm">
             <input type="checkbox" className="mt-1" checked={scopes.includes(p)} onChange={() => toggle(p)} />

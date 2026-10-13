@@ -219,10 +219,11 @@ func undoInit(cfg config.AllInOne, before []os.DirEntry) error {
 
 // groupHostnames are the public hostnames init gives the gateway group: the public URL's host,
 // where clients reach this host's TCP and UDP routes as well (D79), unless the group refuses it,
-// as it does a single-label name such as localhost.
+// as it does a single-label name such as localhost. A fully qualified name's final dot is dropped,
+// as the group's names have none.
 func groupHostnames(public *url.URL) []string {
-	host := []string{strings.ToLower(public.Hostname())}
-	if host[0] == "" || gatewaygroup.PublicHostnamesValidator(host) != nil {
+	host := []string{strings.TrimSuffix(strings.ToLower(public.Hostname()), ".")}
+	if gatewaygroup.PublicHostnamesValidator(host) != nil {
 		return nil
 	}
 	return host

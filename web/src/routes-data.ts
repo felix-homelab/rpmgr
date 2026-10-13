@@ -47,6 +47,7 @@ export const hostPort = (host: string, port: number) => (host.includes(":") ? `[
 
 // routeAddress is where a route is reached: its hostnames, or its public port at each public
 // hostname of its gateway group, given as groupHosts; only the port while the group has none (D79).
+// A hostname the group lists twice gives one address.
 export function routeAddress(r: Route, groupHosts: readonly string[] = []): string[] {
   switch (r.spec.case) {
     case "http": {
@@ -61,7 +62,7 @@ export function routeAddress(r: Route, groupHosts: readonly string[] = []): stri
       if (!port) {
         return [];
       }
-      return groupHosts.length > 0 ? groupHosts.map((h) => hostPort(h, port)) : [`:${port}`];
+      return groupHosts.length > 0 ? [...new Set(groupHosts)].map((h) => hostPort(h, port)) : [`:${port}`];
     }
     default:
       return [];

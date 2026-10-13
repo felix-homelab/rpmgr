@@ -13,6 +13,10 @@ describe("routeAddress", () => {
     expect(routeAddress(create(RouteSchema, { spec: { case: "udp", value: { port: 53 } } }), ["dns.example.com"])).toEqual(["dns.example.com:53"]);
   });
 
+  it("gives a hostname the group lists twice once", () => {
+    expect(routeAddress(tcp(25432), ["edge.example.com", "edge.example.com"])).toEqual(["edge.example.com:25432"]);
+  });
+
   it("puts an IPv6 address in brackets", () => {
     expect(routeAddress(tcp(25432), ["2001:db8::7"])).toEqual(["[2001:db8::7]:25432"]);
   });

@@ -136,6 +136,9 @@ test("signs in, creates an API token with a step-up, sets up an authenticator an
   await expectAccessible(page);
   const tokens = page.getByRole("region", { name: "API tokens" });
   await tokens.getByRole("button", { name: "New token…" }).click();
+  // No scope checkbox can be required, so the group's name says it.
+  await expect(tokens.getByRole("group", { name: "Scopes (required)" })).toBeVisible();
+  expect(await unmarked(page)).toEqual([]);
   await tokens.getByLabel("Name").fill("e2e");
   await tokens.getByRole("button", { name: "Create the token" }).click();
   const dialog = page.getByRole("dialog", { name: "Confirm it is you" });
