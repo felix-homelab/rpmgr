@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { expect, test } from "@playwright/test";
-import { email, expectAccessible, password, sideways, totp, watchCSP } from "./helpers";
+import { email, expectAccessible, password, sideways, totp, unfilled, watchCSP } from "./helpers";
 
 // The flows of docs/09-web-ui.md, "Testing the UI": first-run setup, sign-in with and without a
 // second factor, the step-up prompt, token creation and revocation, the enroll dialog, the
@@ -87,6 +87,23 @@ test("signs in, creates an API token with a step-up, sets up an authenticator an
   await expect(page.getByRole("cell", { name: "Root", exact: true })).toBeVisible();
   await expect(page.getByRole("cell", { name: "Intermediate", exact: true })).toBeVisible();
   await expectAccessible(page);
+
+  // On a wide screen every page fills the window beside the sidebar, and the route form stands in
+  // two columns, which a phone stacks.
+  const desktop = page.viewportSize()!;
+  await page.setViewportSize({ width: 2560, height: 1440 });
+  for (const path of ["/", "/routes", "/routes/new", "/gateways", "/settings", "/account", "/settings/pki"]) {
+    await page.goto(path);
+    await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+    expect(await unfilled(page), path).toEqual([]);
+  }
+  await page.goto("/routes/new");
+  const top = async (label: string) => (await page.getByLabel(label, { exact: true }).boundingBox())!.y;
+  expect(await top("Name")).toBe(await top("Gateway group"));
+  await page.setViewportSize({ width: 390, height: desktop.height });
+  expect(await top("Name")).toBeGreaterThan(await top("Gateway group"));
+  await page.setViewportSize(desktop);
+  await page.goto("/settings/pki");
 
   // The YAML view: CodeMirror's style elements carry the page's nonce, so its styles apply (VB-07).
   await page.getByRole("link", { name: "Routes" }).click();

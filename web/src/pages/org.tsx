@@ -42,7 +42,7 @@ export function OrgPage() {
     return <p className="text-sm text-muted-foreground">{t("stepUp.loading")}</p>;
   }
   return (
-    <div className="grid max-w-5xl gap-6">
+    <div className="grid gap-6">
       <PageHeader title={got.data?.org?.name ?? t("org.title")} description={t("org.intro")} />
       {got.data?.org?.restoreReviewTime && (org.role === "owner" ? (
         <OwnerReview orgId={org.orgId} since={got.data.org.restoreReviewTime} />
