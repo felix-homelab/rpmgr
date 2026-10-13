@@ -87,7 +87,10 @@ history and the [ADRs](docs/adr/).
   now denies. (#299, #300, #338)
 - Controller: `http` routes get certificates through ACME, by HTTP-01 or TLS-ALPN-01 answered by
   every gateway that serves the name, from Let's Encrypt or another ACME directory. Renewal is
-  automatic and can also be started on demand. (#303, #304, #305, #339)
+  automatic and can also be started on demand. A name that fails is tried again after waits
+  growing from 1 min to 6 h, and each retry rehearses at Let's Encrypt's staging directory first,
+  so a name the CA cannot validate yet does not use up the account's limits. (#303, #304, #305,
+  #339, #478)
 - Controller: obtains its own certificate through ACME when its public URL has a public DNS name;
   otherwise it uses the configured certificate or a self-signed one. (#306)
 - Controller: `http` routes can use uploaded certificates instead, whose keys are encrypted under

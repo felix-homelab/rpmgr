@@ -245,6 +245,25 @@ later.
   certificate with the error recorded. A wildcard hostname in `acme` mode is refused with that
   reason, as its certificate needs DNS-01 (Phase 2, R42). The ACME client honours `HTTPS_PROXY`,
   `ALL_PROXY` and `NO_PROXY` (R44).
+- **Failed ACME attempts** [R]: a hostname whose attempt failed, such as one whose DNS does not
+  point at its gateways yet, must not use up the account's limits at the CA. Let's Encrypt allows
+  5 failed authorizations per name and account an hour, and pauses a name after 1 152 failures in
+  a row [F le:docs/rate-limits]; a failed attempt of the job orders once per challenge type.
+  - **Waits.** The job tries such a hostname again only after a wait that doubles with each
+    failure in a row; the waits are in [03](03-connections.md#timeouts-keepalive-and-backoff).
+    "Renew now" tries at once. A success ends the waits.
+  - **Rehearsal.** Every retry rehearses at the CA's test directory first, and orders at the CA
+    only once the test directory validated the name: the job marks the attempt as a retry, and
+    certmagic then uses the test directory and orders at the CA after a success there
+    [F certmagic v0.25.6 `acmeissuer.go:380-399`, `acmeissuer.go:448`]. The test directory is
+    Let's Encrypt's staging one when the CA is Let's Encrypt's production one
+    [F certmagic v0.25.6 `acmeissuer.go:194-199`]; for another CA there is none, and a retry
+    orders at the CA [F certmagic v0.25.6 `acmeclient.go:178`].
+  - **Memory.** The job keeps the failures in memory. A hostname whose row is `failed`, without a
+    certificate, counts as failed already, so that a controller that starts or takes the job over
+    rehearses it as well.
+  - Many hostnames under one domain are best served by one uploaded wildcard certificate, which
+    asks the CA nothing ([10](10-operations.md#many-hostnames-under-one-domain)).
 - **Uploaded route certificates** [R]: the controller accepts a PEM chain, leaf first, of at most
   10 certificates, each signed by the next, and the leaf's PEM key. The leaf must be valid at the
   upload, must not be a CA, must allow TLS server use (no extended key usage, or `serverAuth`) and

@@ -65,13 +65,14 @@ link to them.
 | `libdns-cloudflare:` | [libdns/cloudflare](https://github.com/libdns/cloudflare) | v0.2.2 |
 | `cf:` | [Cloudflare developer documentation](https://developers.cloudflare.com/); the path follows the prefix | retrieved 2026-10-06 |
 | `cf-api:` | [cloudflare/api-schemas](https://github.com/cloudflare/api-schemas), `openapi.json` on `main` | retrieved 2026-10-06 |
+| `le:` | [Let's Encrypt documentation](https://letsencrypt.org/docs/); the path follows `letsencrypt.org/` | retrieved 2026-10-13 |
 
 Library facts without a line (for example "`google/uuid` v1.6.0 has `NewV7`") name the version
 instead. Line numbers refer to the versions above; later versions may differ. A fact re-checked
 at a later version, for example by a Phase 0 spike, cites that version inline, as in
 `[F quic-go v0.63.0 stream.go:183]` ([D39](14-open-decisions.md#project-and-process)).
-Documentation citations (`cf:`, `cf-api:`) describe the vendor's documented behaviour on the
-retrieval date; behaviour the documentation does not guarantee is tagged [V].
+Documentation citations (`cf:`, `cf-api:`, `le:`) describe the vendor's documented behaviour on
+the retrieval date; behaviour the documentation does not guarantee is tagged [V].
 
 ## Changing the design
 
