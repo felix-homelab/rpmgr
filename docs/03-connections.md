@@ -293,9 +293,10 @@ Rules:
      revision; an invalid snapshot is a controller bug or an incompatibility, never a host setting.
    - *Resource-level problems* are reported **per resource** in `Applied.resource_status`, and the
      rest of the snapshot is applied. This covers environmental errors (port in use, upstream
-     unreachable, DNS failure), which are retried with backoff, and targets **blocked by the
-     connector's local policy**, which are `not_ready(blocked_by_local_policy: <ip:port>)` until the
-     host's policy changes. One occupied port or one disallowed target must not block unrelated
+     unreachable, DNS failure), which are retried
+     ([Timeouts, keepalive and backoff](#timeouts-keepalive-and-backoff)), and targets **blocked by
+     the connector's local policy**, which are `not_ready(blocked_by_local_policy: <ip:port>)` until
+     the host's policy changes. One occupied port or one disallowed target must not block unrelated
      changes.
    - When the host's local policy file changes (`rpmgr policy …` triggers a reload; the connector
      also watches the file), the connector re-evaluates the current snapshot, reports the new
@@ -1036,6 +1037,7 @@ sequenceDiagram
 | Connector-local policy file | checked every 2 s; `SIGHUP` (`systemctl reload`) reloads it at once | An edit takes effect without a new revision ([04](04-security.md#connector-local-policy)) |
 | Revision and deny-list check | every 1 s | A revision or a revocation written by another process reaches the agents without a notification channel |
 | Route drain | 30 s | Finish in-flight requests |
+| Route port in use | a `tcp` or `udp` route port the gateway cannot bind (`not_ready(port_in_use)`) is tried again every 5 s | [R] A port another process frees is taken within seconds, without a new revision |
 | Gateway drain | 60 s | Time for connectors to re-home |
 | Session liveness | each controller node marks its live sessions seen every 60 s; a session not seen for 3 min is not live | An agent shows as connected while its control session is live; a node that stops without recording its sessions' ends leaves them to age, and ends them when it starts again |
 | Data-session report | every 60 s, and 1 s after a change | A gateway's `Status` listing its connectors' data sessions, for their status in the API, and its route counters, for the traffic rollups |
