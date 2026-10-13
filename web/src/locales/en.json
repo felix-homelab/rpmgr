@@ -110,6 +110,10 @@
     "cancel": "Cancel",
     "submit": "Confirm"
   },
+  "copy": {
+    "copied": "Copied",
+    "failed": "The browser did not copy it. Select the text and copy it by hand."
+  },
   "account": {
     "title": "Account",
     "profile": "Profile",

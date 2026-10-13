@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { expect, test } from "@playwright/test";
-import { email, expectAccessible, password, totp, watchCSP } from "./helpers";
+import { email, expectAccessible, password, sideways, totp, watchCSP } from "./helpers";
 
 // The flows of docs/09-web-ui.md, "Testing the UI": first-run setup, sign-in with and without a
-// second factor, the step-up prompt, token creation and revocation, the settings, sign-out; each
-// page under the controller's CSP, with no violation, nothing in browser storage, and no
-// accessibility violation that axe finds.
+// second factor, the step-up prompt, token creation and revocation, the enroll dialog, the
+// settings, sign-out; each page under the controller's CSP, with no violation, nothing in browser
+// storage, and no accessibility violation that axe finds.
 test.describe.configure({ mode: "serial" });
 
 test("first-run setup creates the first user and signs them in", async ({ page }) => {
@@ -118,6 +118,27 @@ test("signs in, creates an API token with a step-up, sets up an authenticator an
   await tokens.getByRole("button", { name: "Revoke…" }).click();
   await tokens.getByRole("button", { name: "Revoke it" }).click();
   await expect(tokens.getByText("You have no API tokens.")).toBeVisible();
+
+  // The enroll dialog, still within the step-up: the install command and the token wrap, so neither
+  // the dialog nor a part of it scrolls sideways, in a desktop window or on a phone.
+  await page.getByRole("link", { name: "Connectors", exact: true }).click();
+  await page.getByRole("button", { name: "Enroll a connector" }).first().click();
+  const enroll = page.getByRole("dialog", { name: "Enroll a connector" });
+  await enroll.getByLabel("Targets the connector may reach").fill("10.0.0.5:5432\n192.168.100.200:8443");
+  await enroll.getByRole("button", { name: "Create the token" }).click();
+  await expect(enroll.getByLabel("Install command")).toContainText("--allow-target '192.168.100.200:8443'");
+  await enroll.getByRole("button", { name: "Show" }).click();
+  await expect(enroll.getByLabel("Enrollment token")).toHaveText(/^rpmgr_enr_/);
+  await expectAccessible(page);
+  const size = page.viewportSize()!;
+  for (const width of [size.width, 390]) {
+    await page.setViewportSize({ width, height: size.height });
+    expect(await sideways(page), `${width} px wide`).toEqual([]);
+  }
+  await page.setViewportSize(size);
+  await enroll.getByRole("button", { name: "Close" }).click();
+  await page.getByRole("button", { name: "User menu: Ada" }).click();
+  await page.getByRole("link", { name: "Your account" }).click();
 
   // An authenticator, still within the step-up.
   const mfa = page.getByRole("region", { name: "Two-factor authentication" });
