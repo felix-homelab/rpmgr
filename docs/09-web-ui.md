@@ -471,6 +471,10 @@ flowchart LR
   occupies the script's standard input, the install script reads the token from the terminal
   (`/dev/tty`) with echo off. Unattended installs use `--token-file`, or `RPMGR_ENROLL_TOKEN`
   passed through explicitly (`sudo --preserve-env=RPMGR_ENROLL_TOKEN …`).
+- **The command and the token wrap,** so neither the dialog nor a part of it scrolls sideways, also
+  on a phone. The same holds for the gateway's token and every other command the UI shows.
+- **"Copy"** says "Copied" for a moment. Where the browser does not copy, because the page has no
+  clipboard or the browser refuses it, the dialog says to copy by hand and shows the token.
 - Targets entered in the dialog become `--allow-target` flags. Without any, the default local
   policy is `allow_targets: []` ([04](04-security.md#connector-local-policy)).
 - The dialog waits on the enrollment event and switches to the new connector's detail page when it
