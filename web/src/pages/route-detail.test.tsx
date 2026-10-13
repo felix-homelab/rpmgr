@@ -32,15 +32,16 @@ const postgres = {
 };
 
 // detail renders the route's page; the connectors' data sessions use the transports given, the
-// route's traffic is recorded in traffic, and deleteRoute answers a deletion.
+// route's traffic is recorded in traffic, deleteRoute answers a deletion, and the gateway group eu
+// has the public hostnames given.
 function detail(r: object, transports: Record<string, DataTransport[]> = {}, traffic: GetRouteTrafficRequest[] = [],
-  deleteRoute: (req: DeleteRouteRequest) => object = () => { throw apiError(Code.Unimplemented); }) {
+  deleteRoute: (req: DeleteRouteRequest) => object = () => { throw apiError(Code.Unimplemented); }, publicHostnames: string[] = []) {
   return show("/routes/rte_2", auth({
     getSession: () => ({ userId: "usr_ada", displayName: "Ada", memberships: [{ orgId: "org_1", role: "owner" }] }),
   }), (router) => {
     router.service(UserService, { getMe: () => ({ user: { id: "usr_ada", theme: Theme.SYSTEM } }) });
     router.service(GatewayService, {
-      listGatewayGroups: () => ({ gatewayGroups: [{ id: "ggr_eu", name: "eu" }] }),
+      listGatewayGroups: () => ({ gatewayGroups: [{ id: "ggr_eu", name: "eu", publicHostnames }] }),
       listGateways: () => ({ gateways: [{ id: "gtw_1", name: "gw-eu-1" }, { id: "gtw_2", name: "gw-eu-2" }] }),
     });
     router.service(ConnectorService, {
@@ -75,11 +76,27 @@ describe("RouteDetail", () => {
     detail(postgres);
     expect(await screen.findByRole("heading", { name: "Route postgres (TCP)" })).toBeTruthy();
     await waitFor(() => expect(screen.getByText("enabled · gateway group eu · :25432")).toBeTruthy());
+    // Without a public hostname on its group, the route shows only its port and says where to set one.
+    expect(screen.getByText(/has no public hostname/).textContent).toBe(
+      "The gateway group has no public hostname, so only the port is shown. Set the names clients reach it by");
+    expect(screen.getByRole("link", { name: "Set the names clients reach it by" }).getAttribute("href")).toBe("/gateways/ggr_eu");
     expect(screen.getByText("degraded")).toBeTruthy();
     expect(screen.getByText("served by 1 of 2 gateways")).toBeTruthy();
     expect((await screen.findByText(/^gw-eu-2/)).textContent).toBe("gw-eu-2: offline");
     expect(screen.getByText("gw-eu-1").parentElement?.textContent).toBe("gw-eu-1: port 25432 in use");
     expect(screen.queryByText(/UDP datagrams/)).toBeNull();
+  });
+
+  it("shows a TCP route's port at each public hostname of its gateway group, an IPv6 address in brackets", async () => {
+    detail(postgres, {}, [], undefined, ["edge.example.com", "2001:db8::7"]);
+    await waitFor(() => expect(screen.getByText("enabled · gateway group eu · edge.example.com:25432 · [2001:db8::7]:25432")).toBeTruthy());
+    expect(screen.queryByText(/has no public hostname/)).toBeNull();
+  });
+
+  it("gives a route without a public port no address and no hint", async () => {
+    detail({ ...postgres, spec: { case: "tcp", value: { port: 0 } } });
+    await waitFor(() => expect(screen.getByText("enabled · gateway group eu")).toBeTruthy());
+    expect(screen.queryByText(/has no public hostname/)).toBeNull();
   });
 
   it("gives a target that a local policy blocks the command for its host", async () => {

@@ -216,6 +216,38 @@ func ping(c net.Conn, msg string) error {
 	return nil
 }
 
+// TestInit_GroupHostnames (D79): init gives the gateway group "default" the public URL's host,
+// in lower case, as its public hostname, unless the group refuses it, as it does a single label.
+func TestInit_GroupHostnames(t *testing.T) {
+	for _, c := range []struct {
+		host string
+		want []string
+	}{
+		{"localhost", nil},
+		{"panel", nil},
+		{"Panel.Example.COM", []string{"panel.example.com"}},
+		{"203.0.113.7", []string{"203.0.113.7"}},
+		{"[2001:db8::7]", []string{"2001:db8::7"}},
+	} {
+		t.Run(c.host, func(t *testing.T) {
+			h := newHostAt(t, c.host)
+			h.init(t)
+			db, err := store.OpenSQLite(context.Background(), h.cfg.Database.DSN, store.SQLiteOptions{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer func() { _ = db.Close() }()
+			g, err := db.Client().GatewayGroup.Query().Where(gatewaygroup.Name(allinone.GroupName)).Only(storetest.SystemCtx(t))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !slices.Equal(g.PublicHostnames, c.want) {
+				t.Errorf("public hostnames %q, want %q", g.PublicHostnames, c.want)
+			}
+		})
+	}
+}
+
 // TestInit_SystemdCredential (docs/16-cli.md, `all-in-one init`): with the KEK in a new systemd
 // credential, init enrolls its gateway through the in-memory controller with the KEK it has just
 // made: outside a service no credential is loaded (no CREDENTIALS_DIRECTORY), so the controller
