@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { ConnectorService } from "@/gen/rpmgr/v1/connector_pb";
 import { GatewayService } from "@/gen/rpmgr/v1/gateway_pb";
 import { Port80Mode, RouteService, TLSMode, type CreateRouteRequest, type PreviewRouteRequest } from "@/gen/rpmgr/v1/route_pb";
+import { SettingsService } from "@/gen/rpmgr/v1/settings_pb";
 import { ApplyState, StatusService } from "@/gen/rpmgr/v1/status_pb";
 import { Theme, UserService } from "@/gen/rpmgr/v1/user_pb";
 import { auth, show } from "@/testing/api";
@@ -19,18 +20,22 @@ async function chooseGroup() {
   fireEvent.change(screen.getByLabelText("Gateway group"), { target: { value: "ggr_eu" } });
 }
 
-// page renders path with a gateway group "eu"; CreateRoute answers with create, if given.
-function page(path: string, create?: (req: CreateRouteRequest) => object) {
+// page renders path with the gateway groups "eu" and "us"; CreateRoute answers with create, and
+// GetOrgSettings with orgSettings, if given: without, the org's settings cannot be read.
+function page(path: string, create?: (req: CreateRouteRequest) => object, orgSettings?: () => object | Promise<object>) {
   const creates: CreateRouteRequest[] = [];
   const previews: PreviewRouteRequest[] = [];
   const view = show(path, auth({ getSession: () => ({ userId: "usr_ada", memberships: [{ orgId: "org_1", role: "owner" }] }) }), (router) => {
     router.service(UserService, { getMe: () => ({ user: { id: "usr_ada", theme: Theme.SYSTEM } }) });
     router.service(GatewayService, {
-      listGatewayGroups: () => ({ gatewayGroups: [{ id: "ggr_eu", name: "eu", publicHostnames: ["edge.example.net"] }] }),
+      listGatewayGroups: () => ({ gatewayGroups: [{ id: "ggr_eu", name: "eu", publicHostnames: ["edge.example.net"] }, { id: "ggr_us", name: "us" }] }),
       listGateways: () => ({ gateways: [{ id: "gtw_1", name: "gw-eu-1" }] }),
     });
     router.service(ConnectorService, { listConnectors: () => ({ connectors: [{ id: "con_1", name: "db-host-1" }] }) });
     router.service(StatusService, { async *watchApplyStatus() {} });
+    if (orgSettings) {
+      router.service(SettingsService, { getOrgSettings: orgSettings });
+    }
     router.service(RouteService, {
       listRoutes: () => ({}),
       getRoute: () => ({ route: { id: "rte_1", name: "wiki", gatewayGroupId: "ggr_eu", etag: "7", spec: { case: "tcp", value: { port: 25432 } } } }),
@@ -98,6 +103,51 @@ describe("RouteNew", () => {
     fireEvent.click(screen.getByRole("button", { name: "Create the route" }));
     await waitFor(() => expect(creates).toHaveLength(1));
     expect(creates[0]!.route?.spec).toMatchObject({ case: "http", value: { tlsMode: TLSMode.TLS_MODE_ACME, certificateId: "" } });
+  });
+
+  it("preselects the org's default gateway group", async () => {
+    const { creates } = page("/routes/new", undefined, () => ({ settings: { defaultGatewayGroupId: "ggr_us" } }));
+    const group = await screen.findByLabelText<HTMLSelectElement>("Gateway group");
+    await waitFor(() => expect(group.value).toBe("ggr_us"));
+    fireEvent.change(screen.getByLabelText("Name"), { target: { value: "wiki" } });
+    fireEvent.change(screen.getByLabelText("Hostnames"), { target: { value: "wiki.example.com" } });
+    fireEvent.click(screen.getByRole("button", { name: "Create the route" }));
+    await waitFor(() => expect(creates).toHaveLength(1));
+    expect(creates[0]!.route?.gatewayGroupId).toBe("ggr_us");
+    // A route of another type starts from the default as well.
+    fireEvent.click(screen.getByLabelText("TCP"));
+    expect(screen.getByLabelText<HTMLSelectElement>("Gateway group").value).toBe("ggr_us");
+  });
+
+  it("keeps a gateway group chosen before the org's default is read", async () => {
+    let answer = () => {};
+    const asked = new Promise<void>((r) => (answer = r));
+    let read = false;
+    page("/routes/new", undefined, async () => {
+      await asked;
+      read = true;
+      return { settings: { defaultGatewayGroupId: "ggr_us" } };
+    });
+    await chooseGroup();
+    answer();
+    await waitFor(() => expect(read).toBe(true));
+    await new Promise((r) => setTimeout(r, 50)); // the form has the default by now
+    expect(screen.getByLabelText<HTMLSelectElement>("Gateway group").value).toBe("ggr_eu");
+    fireEvent.click(screen.getByLabelText("TCP")); // a new form takes the default
+    expect(screen.getByLabelText<HTMLSelectElement>("Gateway group").value).toBe("ggr_us");
+  });
+
+  it("preselects no gateway group when the default is not one of the org's or the settings cannot be read", async () => {
+    let read = false;
+    page("/routes/new", undefined, () => ((read = true), { settings: { defaultGatewayGroupId: "ggr_gone" } }));
+    await screen.findByRole("option", { name: "us" });
+    await waitFor(() => expect(read).toBe(true));
+    await new Promise((r) => setTimeout(r, 50)); // the form has the default by now
+    expect(screen.getByLabelText<HTMLSelectElement>("Gateway group").value).toBe("");
+    cleanup();
+    page("/routes/new"); // GetOrgSettings fails
+    await screen.findByRole("option", { name: "us" });
+    expect(screen.getByLabelText<HTMLSelectElement>("Gateway group").value).toBe("");
   });
 
   it("needs a gateway group, and shows the server's refusal", async () => {
