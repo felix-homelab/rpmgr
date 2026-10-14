@@ -283,9 +283,10 @@ flowchart LR
   not, it says why.
 - **Targets are added, edited and removed** on the page, in the targets card, one form at a time.
   - **The form:** the connector (fixed once the target exists), a host and port or a socket path,
-    the protocol to the target (HTTP, verified HTTPS with its server name, CA bundle and key pin,
-    or h2c for HTTP routes; TCP otherwise), the PROXY protocol for TCP and TLS-passthrough routes,
-    weight, priority and whether it is enabled.
+    for HTTP routes the protocol to the target (HTTP, verified HTTPS with its server name, CA
+    bundle and key pin, or h2c; other routes pass the bytes, or for UDP the datagrams, as they
+    come, and show no such field), the PROXY protocol for TCP and TLS-passthrough routes, weight,
+    priority and whether it is enabled.
   - **Edits** send the whole target as read, with the update mask of those fields and its etag
     (U1).
   - **Removal** first asks, naming the target's address.

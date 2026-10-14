@@ -81,7 +81,9 @@ export function targetWith(base: RouteTarget, v: TargetValues): RouteTarget {
   return t;
 }
 
-// The upstream protocols and PROXY versions a route's type allows.
+// The upstream protocols and PROXY versions a route's type allows. Only http routes choose a
+// protocol; the others have one, the bytes as they come (datagrams for udp routes), which the form
+// sends without showing it.
 function choices(r: Route) {
   const http = r.spec.case === "http";
   return {
@@ -155,7 +157,9 @@ export function TargetForm({ route, target, connectors, onDone, onCancel }: {
       ) : (
         <Text form={form} name="unixPath" label={t("targetForm.unixPathLabel")} required />
       )}
-      <Select form={form} name="upstream" label={t("targetForm.upstream")} options={upstreams.map((u) => [String(u), t(`targetForm.upstreams.${UpstreamProtocol[u]}`)])} />
+      {upstreams.length > 1 && (
+        <Select form={form} name="upstream" label={t("targetForm.upstream")} options={upstreams.map((u) => [String(u), t(`targetForm.upstreams.${UpstreamProtocol[u]}`)])} />
+      )}
       {https && (
         <>
           {/* A socket has no host to name, so an HTTPS target on one needs a server name. */}
