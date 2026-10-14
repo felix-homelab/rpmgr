@@ -46,7 +46,7 @@ test("signs in, creates an API token with a step-up, sets up an authenticator an
   await page.getByRole("button", { name: "Sign in" }).click();
   await expect(page.getByText("Signed in as Ada")).toBeVisible();
   await expect(page.getByRole("region", { name: "Traffic, last 24 hours" }).getByText("No traffic in this period.")).toBeVisible();
-  await expect(page.getByRole("list", { name: "Summary" }).getByRole("link", { name: /^Agents connected\s*1\s*of 1\b/ })).toBeVisible();
+  await expect(page.getByRole("list", { name: "Summary" }).getByRole("link", { name: /^Agents connected\s*2\s*of 2\b/ })).toBeVisible();
   await expectAccessible(page);
 
   // The theme switch (U10) applies the dark theme at once and saves it, so the page keeps it after a
