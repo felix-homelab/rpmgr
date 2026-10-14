@@ -57,6 +57,9 @@ const (
 	// RouteServiceDeleteRouteTargetProcedure is the fully-qualified name of the RouteService's
 	// DeleteRouteTarget RPC.
 	RouteServiceDeleteRouteTargetProcedure = "/rpmgr.v1.RouteService/DeleteRouteTarget"
+	// RouteServiceProbeTargetCertificateProcedure is the fully-qualified name of the RouteService's
+	// ProbeTargetCertificate RPC.
+	RouteServiceProbeTargetCertificateProcedure = "/rpmgr.v1.RouteService/ProbeTargetCertificate"
 	// RouteServicePreviewRouteProcedure is the fully-qualified name of the RouteService's PreviewRoute
 	// RPC.
 	RouteServicePreviewRouteProcedure = "/rpmgr.v1.RouteService/PreviewRoute"
@@ -83,6 +86,10 @@ type RouteServiceClient interface {
 	GetRouteTarget(context.Context, *connect.Request[v1.GetRouteTargetRequest]) (*connect.Response[v1.GetRouteTargetResponse], error)
 	// DeleteRouteTarget removes a target from its route.
 	DeleteRouteTarget(context.Context, *connect.Request[v1.DeleteRouteTargetRequest]) (*connect.Response[v1.DeleteRouteTargetResponse], error)
+	// ProbeTargetCertificate asks a connector for the certificate a target presents, so that its user
+	// can pin its key (docs/07-api.md, "Services"; ADR-0018). The connector dials the target under its
+	// local policy and sends nothing but a TLS handshake.
+	ProbeTargetCertificate(context.Context, *connect.Request[v1.ProbeTargetCertificateRequest]) (*connect.Response[v1.ProbeTargetCertificateResponse], error)
 	// PreviewRoute checks a new route, or with an update mask a change of one, as the write would,
 	// and compiles it for the gateways, without saving anything.
 	PreviewRoute(context.Context, *connect.Request[v1.PreviewRouteRequest]) (*connect.Response[v1.PreviewRouteResponse], error)
@@ -152,6 +159,12 @@ func NewRouteServiceClient(httpClient connect.HTTPClient, baseURL string, opts .
 			connect.WithSchema(routeServiceMethods.ByName("DeleteRouteTarget")),
 			connect.WithClientOptions(opts...),
 		),
+		probeTargetCertificate: connect.NewClient[v1.ProbeTargetCertificateRequest, v1.ProbeTargetCertificateResponse](
+			httpClient,
+			baseURL+RouteServiceProbeTargetCertificateProcedure,
+			connect.WithSchema(routeServiceMethods.ByName("ProbeTargetCertificate")),
+			connect.WithClientOptions(opts...),
+		),
 		previewRoute: connect.NewClient[v1.PreviewRouteRequest, v1.PreviewRouteResponse](
 			httpClient,
 			baseURL+RouteServicePreviewRouteProcedure,
@@ -170,16 +183,17 @@ func NewRouteServiceClient(httpClient connect.HTTPClient, baseURL string, opts .
 
 // routeServiceClient implements RouteServiceClient.
 type routeServiceClient struct {
-	createRoute       *connect.Client[v1.CreateRouteRequest, v1.CreateRouteResponse]
-	getRoute          *connect.Client[v1.GetRouteRequest, v1.GetRouteResponse]
-	listRoutes        *connect.Client[v1.ListRoutesRequest, v1.ListRoutesResponse]
-	updateRoute       *connect.Client[v1.UpdateRouteRequest, v1.UpdateRouteResponse]
-	createRouteTarget *connect.Client[v1.CreateRouteTargetRequest, v1.CreateRouteTargetResponse]
-	updateRouteTarget *connect.Client[v1.UpdateRouteTargetRequest, v1.UpdateRouteTargetResponse]
-	getRouteTarget    *connect.Client[v1.GetRouteTargetRequest, v1.GetRouteTargetResponse]
-	deleteRouteTarget *connect.Client[v1.DeleteRouteTargetRequest, v1.DeleteRouteTargetResponse]
-	previewRoute      *connect.Client[v1.PreviewRouteRequest, v1.PreviewRouteResponse]
-	deleteRoute       *connect.Client[v1.DeleteRouteRequest, v1.DeleteRouteResponse]
+	createRoute            *connect.Client[v1.CreateRouteRequest, v1.CreateRouteResponse]
+	getRoute               *connect.Client[v1.GetRouteRequest, v1.GetRouteResponse]
+	listRoutes             *connect.Client[v1.ListRoutesRequest, v1.ListRoutesResponse]
+	updateRoute            *connect.Client[v1.UpdateRouteRequest, v1.UpdateRouteResponse]
+	createRouteTarget      *connect.Client[v1.CreateRouteTargetRequest, v1.CreateRouteTargetResponse]
+	updateRouteTarget      *connect.Client[v1.UpdateRouteTargetRequest, v1.UpdateRouteTargetResponse]
+	getRouteTarget         *connect.Client[v1.GetRouteTargetRequest, v1.GetRouteTargetResponse]
+	deleteRouteTarget      *connect.Client[v1.DeleteRouteTargetRequest, v1.DeleteRouteTargetResponse]
+	probeTargetCertificate *connect.Client[v1.ProbeTargetCertificateRequest, v1.ProbeTargetCertificateResponse]
+	previewRoute           *connect.Client[v1.PreviewRouteRequest, v1.PreviewRouteResponse]
+	deleteRoute            *connect.Client[v1.DeleteRouteRequest, v1.DeleteRouteResponse]
 }
 
 // CreateRoute calls rpmgr.v1.RouteService.CreateRoute.
@@ -222,6 +236,11 @@ func (c *routeServiceClient) DeleteRouteTarget(ctx context.Context, req *connect
 	return c.deleteRouteTarget.CallUnary(ctx, req)
 }
 
+// ProbeTargetCertificate calls rpmgr.v1.RouteService.ProbeTargetCertificate.
+func (c *routeServiceClient) ProbeTargetCertificate(ctx context.Context, req *connect.Request[v1.ProbeTargetCertificateRequest]) (*connect.Response[v1.ProbeTargetCertificateResponse], error) {
+	return c.probeTargetCertificate.CallUnary(ctx, req)
+}
+
 // PreviewRoute calls rpmgr.v1.RouteService.PreviewRoute.
 func (c *routeServiceClient) PreviewRoute(ctx context.Context, req *connect.Request[v1.PreviewRouteRequest]) (*connect.Response[v1.PreviewRouteResponse], error) {
 	return c.previewRoute.CallUnary(ctx, req)
@@ -250,6 +269,10 @@ type RouteServiceHandler interface {
 	GetRouteTarget(context.Context, *connect.Request[v1.GetRouteTargetRequest]) (*connect.Response[v1.GetRouteTargetResponse], error)
 	// DeleteRouteTarget removes a target from its route.
 	DeleteRouteTarget(context.Context, *connect.Request[v1.DeleteRouteTargetRequest]) (*connect.Response[v1.DeleteRouteTargetResponse], error)
+	// ProbeTargetCertificate asks a connector for the certificate a target presents, so that its user
+	// can pin its key (docs/07-api.md, "Services"; ADR-0018). The connector dials the target under its
+	// local policy and sends nothing but a TLS handshake.
+	ProbeTargetCertificate(context.Context, *connect.Request[v1.ProbeTargetCertificateRequest]) (*connect.Response[v1.ProbeTargetCertificateResponse], error)
 	// PreviewRoute checks a new route, or with an update mask a change of one, as the write would,
 	// and compiles it for the gateways, without saving anything.
 	PreviewRoute(context.Context, *connect.Request[v1.PreviewRouteRequest]) (*connect.Response[v1.PreviewRouteResponse], error)
@@ -315,6 +338,12 @@ func NewRouteServiceHandler(svc RouteServiceHandler, opts ...connect.HandlerOpti
 		connect.WithSchema(routeServiceMethods.ByName("DeleteRouteTarget")),
 		connect.WithHandlerOptions(opts...),
 	)
+	routeServiceProbeTargetCertificateHandler := connect.NewUnaryHandler(
+		RouteServiceProbeTargetCertificateProcedure,
+		svc.ProbeTargetCertificate,
+		connect.WithSchema(routeServiceMethods.ByName("ProbeTargetCertificate")),
+		connect.WithHandlerOptions(opts...),
+	)
 	routeServicePreviewRouteHandler := connect.NewUnaryHandler(
 		RouteServicePreviewRouteProcedure,
 		svc.PreviewRoute,
@@ -346,6 +375,8 @@ func NewRouteServiceHandler(svc RouteServiceHandler, opts ...connect.HandlerOpti
 			routeServiceGetRouteTargetHandler.ServeHTTP(w, r)
 		case RouteServiceDeleteRouteTargetProcedure:
 			routeServiceDeleteRouteTargetHandler.ServeHTTP(w, r)
+		case RouteServiceProbeTargetCertificateProcedure:
+			routeServiceProbeTargetCertificateHandler.ServeHTTP(w, r)
 		case RouteServicePreviewRouteProcedure:
 			routeServicePreviewRouteHandler.ServeHTTP(w, r)
 		case RouteServiceDeleteRouteProcedure:
@@ -389,6 +420,10 @@ func (UnimplementedRouteServiceHandler) GetRouteTarget(context.Context, *connect
 
 func (UnimplementedRouteServiceHandler) DeleteRouteTarget(context.Context, *connect.Request[v1.DeleteRouteTargetRequest]) (*connect.Response[v1.DeleteRouteTargetResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("rpmgr.v1.RouteService.DeleteRouteTarget is not implemented"))
+}
+
+func (UnimplementedRouteServiceHandler) ProbeTargetCertificate(context.Context, *connect.Request[v1.ProbeTargetCertificateRequest]) (*connect.Response[v1.ProbeTargetCertificateResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("rpmgr.v1.RouteService.ProbeTargetCertificate is not implemented"))
 }
 
 func (UnimplementedRouteServiceHandler) PreviewRoute(context.Context, *connect.Request[v1.PreviewRouteRequest]) (*connect.Response[v1.PreviewRouteResponse], error) {

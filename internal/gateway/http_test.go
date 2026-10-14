@@ -461,10 +461,11 @@ func newUpstreamCA(t *testing.T) upstreamCA {
 // TestHTTPRoutes_HTTPSUpstream: an https upstream is verified with the settings of the target the
 // connector chose: its CA bundle, server name and SPKI pin; any mismatch, a target without
 // settings, or the host's trust store for a private CA is 502. A target marked unverified passes
-// whatever its certificate, and still gets its server name. A target's settings apply only to a
-// stream its own connector answered: when another connector's target is named, or unverified
-// settings name no connector, the stream is closed, verified or not (ADR-0017). ALPN brings
-// HTTP/2.
+// whatever its certificate, and still gets its server name; a pinned-key target passes with its
+// key whatever its chain and name, and fails with another. A target's settings apply only to a
+// stream its own connector answered: when another connector's target is named, or unverified or
+// pinned-key settings name no connector, the stream is closed, whatever the mode (ADR-0017). ALPN
+// brings HTTP/2.
 func TestHTTPRoutes_HTTPSUpstream(t *testing.T) {
 	ca := newUpstreamCA(t)
 	var sni atomic.Value
@@ -510,6 +511,16 @@ func TestHTTPRoutes_HTTPSUpstream(t *testing.T) {
 			Verify: gateway.VerifyNothing, Connector: "con_other"}}, http.StatusBadGateway},
 		{"unverified, of no connector", map[string]gateway.UpstreamTLS{"tg_rt_tls": {ServerName: "other.internal",
 			Verify: gateway.VerifyNothing}}, http.StatusBadGateway},
+		{"its pinned key only", map[string]gateway.UpstreamTLS{"tg_rt_tls": {ServerName: "other.internal", SPKISHA256: pin[:],
+			Verify: gateway.VerifyPinnedKey, Connector: p.connector}}, http.StatusOK},
+		{"its pinned key, of another connector", map[string]gateway.UpstreamTLS{"tg_rt_tls": {ServerName: "other.internal",
+			SPKISHA256: pin[:], Verify: gateway.VerifyPinnedKey, Connector: "con_other"}}, http.StatusBadGateway},
+		{"its pinned key, of no connector", map[string]gateway.UpstreamTLS{"tg_rt_tls": {ServerName: "other.internal",
+			SPKISHA256: pin[:], Verify: gateway.VerifyPinnedKey}}, http.StatusBadGateway},
+		{"another pinned key", map[string]gateway.UpstreamTLS{"tg_rt_tls": {ServerName: "upstream.internal", SPKISHA256: make([]byte, 32),
+			Verify: gateway.VerifyPinnedKey, Connector: p.connector}}, http.StatusBadGateway},
+		{"a pinned key without a pin", map[string]gateway.UpstreamTLS{"tg_rt_tls": {ServerName: "upstream.internal",
+			Verify: gateway.VerifyPinnedKey, Connector: p.connector}}, http.StatusBadGateway},
 		{"unverified", map[string]gateway.UpstreamTLS{"tg_rt_tls": {ServerName: "other.internal", Verify: gateway.VerifyNothing,
 			Connector: p.connector}}, http.StatusOK}, // last: the server name is checked below
 	} {

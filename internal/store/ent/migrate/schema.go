@@ -1354,7 +1354,7 @@ var (
 		{Name: "upstream_protocol", Type: field.TypeEnum, Enums: []string{"tcp", "http", "https", "h2c"}, Default: "tcp"},
 		{Name: "tls_server_name", Type: field.TypeString, Default: ""},
 		{Name: "tls_spki_sha256", Type: field.TypeString, Default: ""},
-		{Name: "tls_verification", Type: field.TypeEnum, Enums: []string{"verified", "unverified"}, Default: "verified"},
+		{Name: "tls_verification", Type: field.TypeEnum, Enums: []string{"verified", "unverified", "pinned_key"}, Default: "verified"},
 		{Name: "proxy_protocol", Type: field.TypeEnum, Enums: []string{"none", "v1", "v2"}, Default: "none"},
 		{Name: "weight", Type: field.TypeInt, Default: 1},
 		{Name: "priority", Type: field.TypeInt, Default: 0},

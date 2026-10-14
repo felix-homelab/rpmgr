@@ -271,8 +271,11 @@ func (a *Applier) Validate(snap *agentv1.Snapshot) []*agentv1.SnapshotError {
 					bad(id, "upstream TLS for target %s without a server name", u.GetTargetId())
 				case u.GetVerification() == agentv1.UpstreamVerification_UPSTREAM_VERIFICATION_UNVERIFIED && (len(u.GetCaPem()) > 0 || len(u.GetSpkiSha256()) > 0):
 					bad(id, "the unverified target %s has a CA bundle or a pin", u.GetTargetId())
-				case u.GetVerification() == agentv1.UpstreamVerification_UPSTREAM_VERIFICATION_UNVERIFIED && u.GetConnectorId() == "":
-					bad(id, "the unverified target %s names no connector", u.GetTargetId())
+				case (u.GetVerification() == agentv1.UpstreamVerification_UPSTREAM_VERIFICATION_UNVERIFIED ||
+					u.GetVerification() == agentv1.UpstreamVerification_UPSTREAM_VERIFICATION_PINNED_KEY) && u.GetConnectorId() == "":
+					bad(id, "the target %s, not verified by its chain, names no connector", u.GetTargetId())
+				case u.GetVerification() == agentv1.UpstreamVerification_UPSTREAM_VERIFICATION_PINNED_KEY && (len(u.GetCaPem()) > 0 || len(u.GetSpkiSha256()) != sha256.Size):
+					bad(id, "the pinned-key target %s has a CA bundle or no SHA-256 pin", u.GetTargetId())
 				case len(u.GetCaPem()) > 0 && !x509.NewCertPool().AppendCertsFromPEM(u.GetCaPem()):
 					bad(id, "the CA bundle of target %s holds no certificate", u.GetTargetId())
 				case len(u.GetSpkiSha256()) != 0 && len(u.GetSpkiSha256()) != sha256.Size:
@@ -372,8 +375,11 @@ func (a *Applier) Apply(ctx context.Context, snap *agentv1.Snapshot, _ agent.Cha
 				hr.TLS = map[string]UpstreamTLS{}
 				for _, u := range r.GetUpstreamTls() {
 					v := VerifyChain // also for a way this gateway does not know: the target fails closed
-					if u.GetVerification() == agentv1.UpstreamVerification_UPSTREAM_VERIFICATION_UNVERIFIED {
+					switch u.GetVerification() {
+					case agentv1.UpstreamVerification_UPSTREAM_VERIFICATION_UNVERIFIED:
 						v = VerifyNothing
+					case agentv1.UpstreamVerification_UPSTREAM_VERIFICATION_PINNED_KEY:
+						v = VerifyPinnedKey
 					}
 					hr.TLS[u.GetTargetId()] = UpstreamTLS{ServerName: u.GetServerName(), CAPEM: u.GetCaPem(), SPKISHA256: u.GetSpkiSha256(), Verify: v,
 						Connector: u.GetConnectorId()}

@@ -45,7 +45,7 @@ func (f *targetFlags) flags(fs *flag.FlagSet, create bool) {
 	fs.StringVar(&f.caBundle, "ca-bundle", "", "https: the CA bundle that verifies it, by name or ID; empty is the gateway's roots")
 	fs.StringVar(&f.spki, "spki", "", "https: the SHA-256 of its public key, 64 hex digits, checked as well")
 	fs.StringVar(&f.verification, "verification", "",
-		"https: how its certificate is checked: verified, or unverified, which lets anyone between the connector and the target read and change the traffic")
+		"https: how its certificate is checked: verified; pinned-key, its --spki only; or unverified, which lets anyone between the connector and the target read and change the traffic")
 	fs.StringVar(&f.proxy, "proxy-protocol", "", "the PROXY header sent first: none, v1 or v2")
 	fs.UintVar(&f.weight, "weight", 0, "its share of the streams among targets of the same priority")
 	fs.UintVar(&f.priority, "priority", 0, "lower first; a higher one gets streams only when no lower one is ready")
@@ -57,7 +57,7 @@ func (f *targetFlags) flags(fs *flag.FlagSet, create bool) {
 func init() {
 	enums["upstream"] = map[string]int32{"tcp": 1, "http": 2, "https": 3, "h2c": 4}
 	enums["proxy-protocol"] = map[string]int32{"none": 1, "v1": 2, "v2": 3}
-	enums["verification"] = map[string]int32{"verified": 1, "unverified": 2}
+	enums["verification"] = map[string]int32{"verified": 1, "unverified": 2, "pinned-key": 3}
 }
 
 // targetOf applies the flags that set names to a copy of base and returns it with the update mask

@@ -645,6 +645,10 @@ func TestRouteTargets(t *testing.T) {
 		tg.GetTls().GetVerification() != rpmgrv1.UpstreamVerification_UPSTREAM_VERIFICATION_UNVERIFIED || tg.GetTls().GetServerName() != "nas.local" {
 		t.Fatalf("an unverified https target: %v %v", tg, err)
 	}
+	if tg, err := add(ada, "secure", https("10.0.0.11", &rpmgrv1.UpstreamTLSSettings{SpkiSha256: pin, Verification: rpmgrv1.UpstreamVerification_UPSTREAM_VERIFICATION_PINNED_KEY})); err != nil ||
+		tg.GetTls().GetVerification() != rpmgrv1.UpstreamVerification_UPSTREAM_VERIFICATION_PINNED_KEY || tg.GetTls().GetSpkiSha256() != pin {
+		t.Fatalf("a pinned-key https target: %v %v", tg, err)
+	}
 	proxied := addressTarget(con, "10.0.0.7", 5432)
 	proxied.ProxyProtocol, proxied.Priority = rpmgrv1.ProxyProtocol_PROXY_PROTOCOL_V2, 1
 	if _, err := add(ada, "pg", proxied); err != nil {
@@ -683,6 +687,10 @@ func TestRouteTargets(t *testing.T) {
 		"unverified with a CA bundle": {"secure", https("10.0.0.9", &rpmgrv1.UpstreamTLSSettings{CaBundleId: "cab_missing", Verification: rpmgrv1.UpstreamVerification_UPSTREAM_VERIFICATION_UNVERIFIED}),
 			connect.CodeInvalidArgument},
 		"an unknown verification": {"secure", https("10.0.0.9", &rpmgrv1.UpstreamTLSSettings{Verification: 99}), connect.CodeInvalidArgument},
+		"a pinned key without a pin": {"secure", https("10.0.0.9", &rpmgrv1.UpstreamTLSSettings{Verification: rpmgrv1.UpstreamVerification_UPSTREAM_VERIFICATION_PINNED_KEY}),
+			connect.CodeInvalidArgument},
+		"a pinned key with a CA bundle": {"secure", https("10.0.0.9", &rpmgrv1.UpstreamTLSSettings{SpkiSha256: pin, CaBundleId: "cab_missing",
+			Verification: rpmgrv1.UpstreamVerification_UPSTREAM_VERIFICATION_PINNED_KEY}), connect.CodeInvalidArgument},
 		"a verification for HTTP": {"web", func() *rpmgrv1.RouteTarget {
 			tg := addressTarget(con, "h", 80)
 			tg.Tls = &rpmgrv1.UpstreamTLSSettings{Verification: rpmgrv1.UpstreamVerification_UPSTREAM_VERIFICATION_UNVERIFIED}

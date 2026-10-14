@@ -292,10 +292,24 @@ later.
   target ([03](03-connections.md#http-routes)). So only the network between the connector and the
   target can read and change the traffic, and a compromised connector cannot make the gateway skip
   verification for a verified target's traffic. Nothing is unverified by default; the web UI warns
-  when the mode is chosen and marks such targets. The only `InsecureSkipVerify` in rpmgr serves this
-  mode: `tools/bannedapi` allows it in `UpstreamTLS.config` of `internal/gateway/upstreamtls.go`
-  alone, and golangci's forbidigo skips that one file
-  ([ADR-0017](adr/0017-upstream-tls-verification-modes.md)).
+  when the mode is chosen and marks such targets.
+- **Pinned-key HTTPS upstreams** [R]: a target's user may instead pin the key it presents
+  ([ADR-0018](adr/0018-pin-the-key-a-target-presents.md)). The gateway then accepts exactly that
+  SubjectPublicKeyInfo, by its SHA-256, and checks neither chain nor name; a CA bundle cannot go
+  with it, a new key fails until it is pinned, and the settings apply only to the target's own
+  connector's streams, as for an unverified target. "Trust the certificate it shows now" asks the
+  target's connector to read the certificate: the connector dials it under its local policy and
+  sends nothing but a TLS handshake ([03](03-connections.md#service-sketch)), and the user confirms
+  the names, issuer, expiry and key fingerprint before the key is pinned. Probing takes
+  `routes.write`.
+- **The exceptions to the ban** of `InsecureSkipVerify` serve these two modes alone:
+  `UpstreamTLS.config` of `internal/gateway/upstreamtls.go`
+  ([ADR-0017](adr/0017-upstream-tls-verification-modes.md)) and the connector's `readCertificate`
+  of `internal/connector/probe.go` ([ADR-0018](adr/0018-pin-the-key-a-target-presents.md)).
+  `tools/bannedapi` allows them in those functions of the rpmgr module and nowhere else, a module
+  nested in the repository included. golangci skips forbidigo's findings in `upstreamtls.go` and
+  gosec's G402 finding in `probe.go` (forbidigo does not see the field there); in both files
+  `tools/bannedapi` still reports any other use.
 - **Route certificates on gateways** [R]: a gateway keeps each fetched chain and key in its state
   directory, readable by the gateway's user only, as any TLS server keeps its keys, so that a
   gateway restarted while the controller is unreachable still terminates TLS. It checks a kept copy

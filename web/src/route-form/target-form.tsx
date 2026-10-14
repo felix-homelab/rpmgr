@@ -14,9 +14,10 @@ import { Input, Select as SelectBox } from "@/components/ui/input";
 import type { Revision } from "@/gen/rpmgr/v1/common_pb";
 import {
   CreateRouteTargetRequestSchema, ProxyProtocol, RouteService, RouteTargetSchema, UpdateRouteTargetRequestSchema, UpstreamProtocol,
-  UpstreamVerification, type Route, type RouteTarget,
+  UpstreamVerification, type Route, type RouteTarget, type TargetCertificate,
 } from "@/gen/rpmgr/v1/route_pb";
 import type { ApplyStatus } from "@/gen/rpmgr/v1/status_pb";
+import { when } from "@/lib/format";
 import { protoResolver, serverFieldErrors, type FieldOf } from "@/lib/proto-form";
 
 export interface TargetValues {
@@ -51,10 +52,15 @@ export const targetFieldOf: FieldOf<TargetValues> = (path) => {
 // UNVERIFIED is the choice "HTTPS, unverified" of "Protocol to the target": HTTPS whose certificate
 // the gateway does not check (D82).
 export const UNVERIFIED = "https-unverified";
+// PINNED is the choice "HTTPS, pinned key": HTTPS whose key alone the gateway checks (D82).
+export const PINNED = "https-pinned";
 
 // upstreamChoice is a target's choice of "Protocol to the target".
 export function upstreamChoice(t: RouteTarget): string {
-  return t.upstreamProtocol === UpstreamProtocol.HTTPS && t.tls?.verification === UpstreamVerification.UNVERIFIED ? UNVERIFIED : String(t.upstreamProtocol);
+  if (t.upstreamProtocol === UpstreamProtocol.HTTPS && t.tls?.verification === UpstreamVerification.UNVERIFIED) {
+    return UNVERIFIED;
+  }
+  return t.upstreamProtocol === UpstreamProtocol.HTTPS && t.tls?.verification === UpstreamVerification.PINNED_KEY ? PINNED : String(t.upstreamProtocol);
 }
 
 export function targetValues(t: RouteTarget): TargetValues {
@@ -82,10 +88,11 @@ export function targetWith(base: RouteTarget, v: TargetValues): RouteTarget {
   const t = clone(RouteTargetSchema, base);
   t.connectorId = base.connectorId || v.connector; // a target keeps its connector
   t.address = v.address === "unixPath" ? { case: "unixPath", value: v.unixPath.trim() } : { case: "hostPort", value: { $typeName: "rpmgr.v1.HostPort", host: v.host.trim(), port: whole(v.port) } };
-  const unverified = v.upstream === UNVERIFIED;
-  t.upstreamProtocol = unverified ? UpstreamProtocol.HTTPS : Number(v.upstream);
-  t.tls = unverified
-    ? { $typeName: "rpmgr.v1.UpstreamTLSSettings", serverName: v.serverName.trim(), caBundleId: "", spkiSha256: "", verification: UpstreamVerification.UNVERIFIED }
+  const unverified = v.upstream === UNVERIFIED, pinned = v.upstream === PINNED;
+  t.upstreamProtocol = unverified || pinned ? UpstreamProtocol.HTTPS : Number(v.upstream);
+  t.tls = unverified || pinned
+    ? { $typeName: "rpmgr.v1.UpstreamTLSSettings", serverName: v.serverName.trim(), caBundleId: "", spkiSha256: pinned ? v.spki.trim().toLowerCase() : "",
+      verification: pinned ? UpstreamVerification.PINNED_KEY : UpstreamVerification.UNVERIFIED }
     : t.upstreamProtocol === UpstreamProtocol.HTTPS
       ? { $typeName: "rpmgr.v1.UpstreamTLSSettings", serverName: v.serverName.trim(), caBundleId: v.caBundle.trim(), spkiSha256: v.spki.trim().toLowerCase(), verification: UpstreamVerification.VERIFIED }
       : undefined;
@@ -102,7 +109,7 @@ export function targetWith(base: RouteTarget, v: TargetValues): RouteTarget {
 function choices(r: Route) {
   const http = r.spec.case === "http";
   return {
-    upstreams: http ? [String(UpstreamProtocol.HTTP), String(UpstreamProtocol.HTTPS), UNVERIFIED, String(UpstreamProtocol.H2C)] : [String(UpstreamProtocol.TCP)],
+    upstreams: http ? [String(UpstreamProtocol.HTTP), String(UpstreamProtocol.HTTPS), PINNED, UNVERIFIED, String(UpstreamProtocol.H2C)] : [String(UpstreamProtocol.TCP)],
     proxies: r.spec.case === "tcp" || r.spec.case === "tlsPassthrough" ? [ProxyProtocol.NONE, ProxyProtocol.V1, ProxyProtocol.V2] : [],
   };
 }
@@ -139,8 +146,8 @@ export function TargetForm({ route, target, connectors, onDone, onCancel }: {
   const [other, setOther] = useState<string[]>([]);
   const address = useWatch({ control: form.control, name: "address" });
   const upstream = useWatch({ control: form.control, name: "upstream" });
-  const unverified = upstream === UNVERIFIED;
-  const https = unverified || Number(upstream) === UpstreamProtocol.HTTPS;
+  const unverified = upstream === UNVERIFIED, pinned = upstream === PINNED;
+  const https = unverified || pinned || Number(upstream) === UpstreamProtocol.HTTPS;
   const warning = useId();
 
   async function save(v: TargetValues) {
@@ -177,7 +184,8 @@ export function TargetForm({ route, target, connectors, onDone, onCancel }: {
       )}
       {upstreams.length > 1 && (
         <Select form={form} name="upstream" label={t("targetForm.upstream")} describedBy={unverified ? warning : undefined}
-          options={upstreams.map((u) => [u, t(u === UNVERIFIED ? "targetForm.upstreams.UNVERIFIED" : `targetForm.upstreams.${UpstreamProtocol[Number(u)]}`)])} />
+          options={upstreams.map((u) => [u, t(u === UNVERIFIED ? "targetForm.upstreams.UNVERIFIED" : u === PINNED ? "targetForm.upstreams.PINNED"
+            : `targetForm.upstreams.${UpstreamProtocol[Number(u)]}`)])} />
       )}
       {unverified && (
         <p id={warning} className="flex items-start gap-2 rounded-lg border border-warn/30 bg-warn/10 px-3 py-2 text-sm">
@@ -189,8 +197,13 @@ export function TargetForm({ route, target, connectors, onDone, onCancel }: {
         <>
           {/* A socket has no host to name, so an HTTPS target on one needs a server name. */}
           <Text form={form} name="serverName" label={t("targetForm.serverName")} required={address === "unixPath"}
-            hint={address === "hostPort" ? t(unverified ? "targetForm.serverNameSentHint" : "targetForm.serverNameHint") : undefined} />
-          {!unverified && (
+            hint={address === "hostPort" ? t(unverified || pinned ? "targetForm.serverNameSentHint" : "targetForm.serverNameHint") : undefined} />
+          {pinned ? (
+            <>
+              <Text form={form} name="spki" label={t("targetForm.pinnedKey")} required />
+              <TrustCertificate form={form} connector={target?.connectorId ?? ""} />
+            </>
+          ) : !unverified && (
             <>
               <Text form={form} name="caBundle" label={t("targetForm.caBundle")} />
               <Text form={form} name="spki" label={t("targetForm.spki")} />
@@ -212,6 +225,64 @@ export function TargetForm({ route, target, connectors, onDone, onCancel }: {
         <Button variant="outline" onClick={onCancel}>{t("stepUp.cancel")}</Button>
       </div>
     </form>
+  );
+}
+
+// TrustCertificate reads the certificate the target in the form presents, through its connector,
+// shows it, and pins its key once the user trusts it (D82); the target need not be saved yet. A
+// certificate shows only while the form still names the target it was read from, so that another
+// target's key is never pinned.
+function TrustCertificate({ form, connector }: { form: UseFormReturn<TargetValues>; connector: string }) {
+  const { t } = useTranslation();
+  const probe = useMutation(RouteService.method.probeTargetCertificate);
+  const [shown, setShown] = useState<{ cert: TargetCertificate; of: string }>();
+  const [error, setError] = useState<string>();
+  const watched = useWatch({ control: form.control, name: ["connector", "address", "host", "port", "unixPath", "serverName"] });
+  const of = [connector, ...watched.map((w) => String(w ?? "").trim())].join("\n");
+  const cert = shown?.of === of ? shown.cert : undefined;
+  const setCert = (c?: TargetCertificate) => setShown(c && { cert: c, of });
+  async function read() {
+    const v = form.getValues();
+    setError(undefined);
+    setCert(undefined);
+    const hostPort = v.address === "hostPort";
+    if (!(connector || v.connector) || (hostPort ? !v.host.trim() || Number.isNaN(whole(v.port)) : !v.unixPath.trim())) {
+      setError(t("targetForm.trustNeeds"));
+      return;
+    }
+    try {
+      const res = await probe.mutateAsync({
+        connectorId: connector || v.connector, serverName: v.serverName.trim(),
+        address: hostPort ? { case: "hostPort", value: { host: v.host.trim(), port: whole(v.port) } } : { case: "unixPath", value: v.unixPath.trim() },
+      });
+      setCert(res.certificate);
+    } catch (err) {
+      setError(t("targetForm.trustFailed", { message: ConnectError.from(err).rawMessage }));
+    }
+  }
+  return (
+    <div className="grid gap-2">
+      <Button variant="outline" className="justify-self-start" disabled={probe.isPending} onClick={() => void read()}>{t("targetForm.trust")}</Button>
+      {error && <Alert>{error}</Alert>}
+      {cert && (
+        <section aria-label={t("targetForm.trustTitle")} className="grid gap-2 rounded-lg border border-border bg-card p-3 text-sm">
+          <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
+            <dt className="text-muted-foreground">{t("targetForm.certSubject")}</dt><dd className="break-all">{cert.subject}</dd>
+            <dt className="text-muted-foreground">{t("targetForm.certNames")}</dt><dd className="break-all">{[...cert.dnsNames, ...cert.ipAddresses].join(", ") || "—"}</dd>
+            <dt className="text-muted-foreground">{t("targetForm.certIssuer")}</dt>
+            <dd className="break-all">{cert.selfSigned ? t("targetForm.certSelfSigned") : cert.issuer}</dd>
+            <dt className="text-muted-foreground">{t("targetForm.certValid")}</dt><dd>{when(cert.notAfter)}</dd>
+            <dt className="text-muted-foreground">{t("targetForm.certKey")}</dt><dd className="font-mono break-all">{cert.spkiSha256}</dd>
+          </dl>
+          <div className="flex gap-2">
+            <Button size="sm" onClick={() => { form.setValue("spki", cert.spkiSha256, { shouldDirty: true, shouldValidate: true }); setCert(undefined); }}>
+              {t("targetForm.trustIt")}
+            </Button>
+            <Button size="sm" variant="outline" onClick={() => setCert(undefined)}>{t("stepUp.cancel")}</Button>
+          </div>
+        </section>
+      )}
+    </div>
   );
 }
 

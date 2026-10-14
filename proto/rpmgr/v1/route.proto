@@ -75,6 +75,15 @@ service RouteService {
       resource_field: "route_target_id"
     };
   }
+  // ProbeTargetCertificate asks a connector for the certificate a target presents, so that its user
+  // can pin its key (docs/07-api.md, "Services"; ADR-0018). The connector dials the target under its
+  // local policy and sends nothing but a TLS handshake.
+  rpc ProbeTargetCertificate(ProbeTargetCertificateRequest) returns (ProbeTargetCertificateResponse) {
+    option (rpmgr.v1.authz) = {
+      permission: "routes.write"
+      resource_field: "connector_id"
+    };
+  }
   // PreviewRoute checks a new route, or with an update mask a change of one, as the write would,
   // and compiles it for the gateways, without saving anything.
   rpc PreviewRoute(PreviewRouteRequest) returns (PreviewRouteResponse) {
@@ -398,15 +407,15 @@ message UpstreamTLSSettings {
   // The CA bundle its certificate must chain to; the gateway host's roots if not set. Only with
   // VERIFIED.
   string ca_bundle_id = 2;
-  // The SHA-256 of its public key, 64 hexadecimal digits, which it must match if set. Only with
-  // VERIFIED.
+  // The SHA-256 of its public key, 64 hexadecimal digits, which it must match if set. Not with
+  // UNVERIFIED; needed with PINNED_KEY.
   string spki_sha256 = 3 [(buf.validate.field).string.pattern = "^([0-9a-f]{64})?$"];
   // How its certificate is checked; VERIFIED if not set.
   UpstreamVerification verification = 4 [(buf.validate.field).enum.defined_only = true];
 }
 
 // UpstreamVerification is how the gateway checks an HTTPS upstream's certificate
-// (docs/04-security.md, "HTTPS upstreams"; ADR-0017).
+// (docs/04-security.md, "HTTPS upstreams"; ADR-0017, ADR-0018).
 enum UpstreamVerification {
   // Not set: VERIFIED.
   UPSTREAM_VERIFICATION_UNSPECIFIED = 0;
@@ -416,6 +425,54 @@ enum UpstreamVerification {
   // Not at all: the traffic is encrypted, but anyone on the path from the connector to the target
   // can read and change it. The target's user chose this, for a certificate nothing can verify.
   UPSTREAM_VERIFICATION_UNVERIFIED = 2;
+  // Only its key, against the pin, which must be set: neither the chain nor the name. The pin is
+  // usually the key the target presents now (ProbeTargetCertificate); a new key fails until it is
+  // pinned.
+  UPSTREAM_VERIFICATION_PINNED_KEY = 3;
+}
+
+// ProbeTargetCertificateRequest names a target as a connector of the org reaches it.
+message ProbeTargetCertificateRequest {
+  // The connector that dials the target.
+  string connector_id = 1 [(buf.validate.field).string.min_len = 1];
+  // The target.
+  oneof address {
+    option (buf.validate.oneof).required = true;
+    // A host and port.
+    HostPort host_port = 2;
+    // A Unix socket, an absolute path.
+    string unix_path = 3 [(buf.validate.field).string = {
+      max_len: 1024
+      pattern: "^/"
+    }];
+  }
+  // The name sent to it (SNI); the host if not set and the host is a name.
+  string server_name = 4 [(buf.validate.field).string.max_len = 253];
+}
+
+// ProbeTargetCertificateResponse is the certificate the target presented.
+message ProbeTargetCertificateResponse {
+  // The certificate.
+  TargetCertificate certificate = 1;
+}
+
+// TargetCertificate describes a certificate a target presented.
+message TargetCertificate {
+  // The SHA-256 of its public key (SubjectPublicKeyInfo), 64 hexadecimal digits: the pin.
+  string spki_sha256 = 1;
+  // The SHA-256 of the whole certificate, 64 hexadecimal digits.
+  string sha256 = 2;
+  // Its subject and issuer, as distinguished names.
+  string subject = 3;
+  string issuer = 4;
+  // The DNS names and IP addresses it names.
+  repeated string dns_names = 5;
+  repeated string ip_addresses = 6;
+  // When it is valid.
+  google.protobuf.Timestamp not_before = 7;
+  google.protobuf.Timestamp not_after = 8;
+  // Whether it is signed by its own key.
+  bool self_signed = 9;
 }
 
 // CreateRouteRequest is a new route.

@@ -28,8 +28,9 @@ Design goals, in priority order:
 
 1. **Secure.** Every connection between rpmgr components is TLS 1.3 with mutual authentication and
    per-component identities. No shared secrets, no timestamp tokens, no `InsecureSkipVerify`
-   (its one exception concerns HTTPS upstreams a user marks unverified, not rpmgr's own sessions:
-   [ADR-0017](adr/0017-upstream-tls-verification-modes.md)).
+   (its exceptions concern HTTPS upstreams a user marks unverified or pins by key, not rpmgr's own
+   sessions: [ADR-0017](adr/0017-upstream-tls-verification-modes.md),
+   [ADR-0018](adr/0018-pin-the-key-a-target-presents.md)).
 2. **Correct under change.** Configuration changes are validated, applied atomically, acknowledged,
    and never disturb unchanged tunnels.
 3. **Fast.** No extra round trip per user connection; no cross-stream head-of-line blocking on the
@@ -186,6 +187,7 @@ message ControllerMessage {
     Goodbye goodbye = 5;            // superseded, revoked, upgrade_required, shutdown, overloaded
     Signed deny_list = 6;           // a DenyList; applied unconditionally, never shrinks early
     AcmeChallenge acme_challenge = 7; // gateways: add | remove, acknowledged with OpResult
+    ProbeTarget probe_target = 8;   // connectors: read a target's certificate, OpResult has it
   }
 }
 
@@ -232,6 +234,16 @@ message Signed { bytes payload = 1; bytes signature = 2; string key_id = 3; }
   every name and TLS-ALPN-01 on port 443 for a ClientHello with ALPN `acme-tls/1`, before any
   route of the name; it keeps at most 1 000 challenges and refuses identifiers that are not DNS
   names. An agent that answers no challenges, such as a connector, refuses them in its `OpResult`.
+- **Target certificate probe** ([ADR-0018](adr/0018-pin-the-key-a-target-presents.md)): for a
+  user who pins an HTTPS target's key, the controller sends
+  `ProbeTarget{op_id, host_port | unix_path, server_name}` to a connector that announced
+  `probe.target`. The connector dials the target under its local policy, as a stream would,
+  completes a TLS handshake that checks nothing, sends nothing else and closes the connection.
+  It answers `OpResult{op_id, certificate}` with the leaf it was shown, or with why it could not:
+  the local policy, an unreachable target, or no TLS. The probe runs apart from the control
+  session, within the time and the number at once of the timeout table. A disabled or
+  decommissioned connector is not asked. Only the replica that holds the connector's control
+  session can send it; another one answers that the connector has no session there.
 - **Revocations travel separately from snapshots.** `DenyListUpdate` carries the full current set
   (deltas above 1 MiB) and is applied unconditionally, merged by union; an entry is removed only
   after the covered certificate's `NotAfter`. An agent that rejects a snapshot still receives every
@@ -1045,6 +1057,7 @@ sequenceDiagram
 | Idle UDP flow | 60 s (per route) | Typical UDP NAT behaviour |
 | Apply acknowledgement | 30 s → `apply_timeout` | Visible instead of silent |
 | Snapshot item fetch | 10 s per `FetchResource`; a failed fetch is retried after 1 s, doubling up to 1 min, and its resource is `not_ready(environment)` until then | A controller outage delays a new certificate without a retry storm |
+| Target certificate probe | the connector's dial and TLS handshake together 10 s; at most 4 at once per connector, another is refused at once; `ProbeTargetCertificate` waits at most 15 s for the connector's answer | [R] A silent target or connector answers within the time a user waits for a button; a user who may change routes cannot make a connector open many dials at once |
 | Certificate renewal | a failed attempt is retried with full jitter, base 1 s, cap 5 min; at most one renewal per 10 min | A controller outage delays renewal without a retry storm; a clock far ahead cannot make the agent renew in a loop ([04](04-security.md#leaf-certificates)) |
 | Controller node certificate renewal | at half its lifetime; a failed renewal is retried every 1 min | Weeks of margin before the certificate expires ([04](04-security.md#leaf-certificates)) |
 | CA rotation | the schedule checked every 1 h on one replica (singleton job); every replica reloads the keys every 1 min | A rotation takes effect on every replica within a minute ([04](04-security.md#ca-rotation)) |
@@ -1087,6 +1100,7 @@ sequenceDiagram
 | `proxyproto.v1` | P1 | PROXY protocol v1 towards targets |
 | `proxyproto.v2` | P1 | PROXY protocol v2 towards targets |
 | `control-passthrough` | P1 | The control session inside a data session ([ADR-0006](adr/0006-separate-control-session.md)) |
+| `probe.target` | P1 | Reads the certificate a target presents (`ProbeTarget`, [Service sketch](#service-sketch)) |
 | `p2p.v1` | P3 | Direct connector-to-connector sessions ([Private services](#private-services)) |
 
 - Protobuf rules: fields are only added; unknown fields are ignored; an unknown `StreamOpen.kind`

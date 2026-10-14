@@ -63,6 +63,9 @@ message ControllerMessage {
     Signed deny_list = 6;
     // Gateways: add or remove an ACME challenge, answered with OpResult.
     AcmeChallenge acme_challenge = 7;
+    // Connectors with the capability "probe.target": read the certificate a target presents,
+    // answered with OpResult.
+    ProbeTarget probe_target = 8;
   }
 }
 
@@ -213,6 +216,8 @@ message OpResult {
   string op_id = 1;
   // Empty on success.
   string error = 2;
+  // ProbeTarget: the leaf certificate the target presented, DER.
+  bytes certificate = 3;
 }
 
 // Drain asks the agent to reconnect to another controller endpoint.
@@ -243,6 +248,23 @@ enum GoodbyeReason {
   GOODBYE_REASON_SHUTDOWN = 4;
   // Too many new sessions; retry after retry_after.
   GOODBYE_REASON_OVERLOADED = 5;
+}
+
+// ProbeTarget asks a connector for the certificate a target presents, for a key pin
+// (docs/03-connections.md, "Service sketch"): the connector dials the target under its
+// local policy, completes a TLS handshake that checks nothing, sends nothing else, and closes.
+message ProbeTarget {
+  // The operation, answered with OpResult.
+  string op_id = 1;
+  // The target.
+  oneof address {
+    // A host and port, host:port.
+    string host_port = 2;
+    // A Unix socket.
+    string unix_path = 3;
+  }
+  // The name sent to the target (SNI); none if empty.
+  string server_name = 4;
 }
 
 // AcmeChallenge adds or removes a challenge a gateway answers (docs/03-connections.md, "Service
