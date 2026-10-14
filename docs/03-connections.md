@@ -1073,7 +1073,7 @@ sequenceDiagram
 | Gateway drain | 60 s | Time for connectors to re-home |
 | Session liveness | each controller node marks its live sessions seen every 60 s; a session not seen for 3 min is not live | An agent shows as connected while its control session is live; a node that stops without recording its sessions' ends leaves them to age, and ends them when it starts again |
 | Data-session report | every 60 s, and 1 s after a change | A gateway's `Status` listing its connectors' data sessions, for their status in the API, its route counters, for the traffic rollups, and the resources that are not ready |
-| Revocation, tightened access policy | immediate | Security beats continuity |
+| Revocation, tightened access policy, stricter TLS settings of an HTTPS target | immediate; a target's TLS settings that change, unless to unverified ones of the same connector, end the connections earlier ones checked | Security beats continuity |
 | Mail delivery | dial 10 s; the whole delivery 30 s | [R] A relay that hangs never holds a request or job for long |
 | ACME job | looks for certificates to obtain or renew every 1 min, on the replica that holds its lease | New routes get their certificates within a minute or so; renewals are never late by more |
 | ACME route certificate retry | a hostname whose attempt failed is tried again after 1 min, then after waits doubling to at most 6 h (1, 2, 4 … 256 min, then 6 h); every retry rehearses at the CA's test directory first ([04](04-security.md#controller-certificates)); "Renew now" does not wait | [R] A name the CA cannot validate yet costs the account no further failure at the CA, while a short hiccup still clears within a minute or so |
