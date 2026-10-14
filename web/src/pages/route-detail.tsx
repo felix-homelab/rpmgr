@@ -63,8 +63,8 @@ export function RouteDetail() {
   const name = (id: string) => names.data?.get(id) || id;
   const connectors = [...(names.data ?? new Map<string, string>())].filter(([id]) => id.startsWith("con_"));
 
-  // toggle switches the route on or off, the only desired switch (U3), or an http route in and out
-  // of maintenance (D88), and follows the change to the agents (U2).
+  // toggle switches the route on or off, its only on/off switch (U3), or switches an http route's
+  // maintenance, which changes what it answers (D88); it follows the change to the agents (U2).
   async function toggle(current: Route, what: "enabled" | "maintenance" = "enabled") {
     setError("");
     const next = what === "enabled" ? { ...current, enabled: !current.enabled }

@@ -749,7 +749,9 @@ sequenceDiagram
   basic auth included, gets **503** with `Retry-After: 300` and the "Down for maintenance" page,
   which shows the route's message as text; a client that does not ask for HTML gets the message as
   text. No stream is opened to a connector. Requests already running, WebSockets included, finish as
-  they do when a route changes.
+  they do when a route changes. A request with a body gets its answer without the body being read,
+  and an HTTP/1.1 connection closes. A gateway of a release candidate ignores maintenance and serves
+  the route until it is upgraded.
 
 ### TLS passthrough routes
 

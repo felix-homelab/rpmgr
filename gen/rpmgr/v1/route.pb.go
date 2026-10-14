@@ -854,8 +854,9 @@ type HTTPRouteSpec struct {
 	// Whether it is in maintenance: its gateways answer every request a client's access policies
 	// admit with the maintenance page, 503, and send nothing to its targets.
 	Maintenance bool `protobuf:"varint,12,opt,name=maintenance,proto3" json:"maintenance,omitempty"`
-	// Plain text the maintenance page shows, such as when the service is back; line feeds are the
-	// only control characters.
+	// Plain text the maintenance page shows, such as when the service is back: line feeds are its
+	// only control characters, and the bidirectional embeddings, overrides and isolates
+	// (U+202A-U+202E, U+2066-U+2069) are refused too.
 	MaintenanceMessage string `protobuf:"bytes,13,opt,name=maintenance_message,json=maintenanceMessage,proto3" json:"maintenance_message,omitempty"`
 	unknownFields      protoimpl.UnknownFields
 	sizeCache          protoimpl.SizeCache
@@ -3028,7 +3029,7 @@ const file_rpmgr_v1_route_proto_rawDesc = "" +
 	"\x0fRouteNotServing\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x16\n" +
 	"\x06reason\x18\x02 \x01(\tR\x06reason\x12\x16\n" +
-	"\x06detail\x18\x03 \x01(\tR\x06detail\"\xb2\a\n" +
+	"\x06detail\x18\x03 \x01(\tR\x06detail\"\xb7\a\n" +
 	"\rHTTPRouteSpec\x123\n" +
 	"\thostnames\x18\x01 \x03(\tB\x15\xbaH\x12\x92\x01\x0f\b\x01\x10d\x18\x01\"\ar\x05\x10\x01\x18\xff\x01R\thostnames\x127\n" +
 	"\vpath_prefix\x18\x02 \x01(\tB\x16\xbaH\x13r\x11\x18\x80\b2\f^(/[^\\s]*)?$R\n" +
@@ -3045,8 +3046,8 @@ const file_rpmgr_v1_route_proto_rawDesc = "" +
 	"\twebsocket\x18\n" +
 	" \x01(\bH\x00R\twebsocket\x88\x01\x01\x12$\n" +
 	"\x0emax_body_bytes\x18\v \x01(\x04R\fmaxBodyBytes\x12 \n" +
-	"\vmaintenance\x18\f \x01(\bR\vmaintenance\x12W\n" +
-	"\x13maintenance_message\x18\r \x01(\tB&\xbaH#r!\x18\xf4\x032\x1c^[^\\x00-\\x09\\x0B-\\x1F\\x7F]*$R\x12maintenanceMessage\x1aD\n" +
+	"\vmaintenance\x18\f \x01(\bR\vmaintenance\x12\\\n" +
+	"\x13maintenance_message\x18\r \x01(\tB+\xbaH(r&\x18\xf4\x032!^[^\\x00-\\x09\\x0B-\\x1F\\x7F-\\x9F]*$R\x12maintenanceMessage\x1aD\n" +
 	"\x16RequestHeadersSetEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\x1aE\n" +

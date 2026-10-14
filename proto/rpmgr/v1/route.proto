@@ -279,11 +279,12 @@ message HTTPRouteSpec {
   // Whether it is in maintenance: its gateways answer every request a client's access policies
   // admit with the maintenance page, 503, and send nothing to its targets.
   bool maintenance = 12;
-  // Plain text the maintenance page shows, such as when the service is back; line feeds are the
-  // only control characters.
+  // Plain text the maintenance page shows, such as when the service is back: line feeds are its
+  // only control characters, and the bidirectional embeddings, overrides and isolates
+  // (U+202A-U+202E, U+2066-U+2069) are refused too.
   string maintenance_message = 13 [(buf.validate.field).string = {
     max_len: 500
-    pattern: "^[^\\x00-\\x09\\x0B-\\x1F\\x7F]*$"
+    pattern: "^[^\\x00-\\x09\\x0B-\\x1F\\x7F-\\x9F]*$"
   }];
 }
 

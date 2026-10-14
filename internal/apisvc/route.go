@@ -173,6 +173,12 @@ func checkSpec(in *rpmgrv1.Route) error {
 	if hh := h.GetHostHeader(); hh != "" && hh != "preserve" && !httpguts.ValidHostHeader(hh) {
 		return invalid("host header %q", hh)
 	}
+	// The pattern refuses control characters; these would turn the text around where it is shown.
+	if i := strings.IndexFunc(h.GetMaintenanceMessage(), func(r rune) bool {
+		return r >= 0x202A && r <= 0x202E || r >= 0x2066 && r <= 0x2069
+	}); i >= 0 {
+		return invalid("the maintenance message has a bidirectional formatting character at byte %d", i)
+	}
 	switch h.GetTlsMode() {
 	case rpmgrv1.TLSMode_TLS_MODE_CERTIFICATE:
 		if h.GetCertificateId() == "" {

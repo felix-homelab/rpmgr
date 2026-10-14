@@ -79,7 +79,8 @@ function Summary({ orgId }: { orgId: string }) {
       {tiles.map(([key, link, total]) => {
         const n = bad[key] ?? 0;
         const state: [Look, string] | undefined = total === undefined ? undefined
-          : total === 0 ? ["off", t(`summary.${key}None`)] : n > 0 ? ["warn", t(`summary.${key}Bad`, { count: n })] : ["ok", t(`summary.${key}Good`)];
+          : total === 0 ? (key === "routes" && maintenance > 0 ? undefined : ["off", t(`summary.${key}None`)])
+          : n > 0 ? ["warn", t(`summary.${key}Bad`, { count: n })] : ["ok", t(`summary.${key}Good`)];
         const note = key === "routes" && maintenance > 0 ? t("summary.routesMaintenance", { count: maintenance }) : undefined;
         return <Tile key={key} label={t(`summary.${key}`)} link={link} value={total === undefined ? undefined : [total - n, total]} state={state} note={note} />;
       })}

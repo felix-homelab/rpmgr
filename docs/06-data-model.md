@@ -234,7 +234,7 @@ flowchart LR
 | `degraded` | Enabled and applied; at least one target is ready and one gateway serves the route, but not all |
 | `unavailable` | Enabled and applied, but no ready target (all unhealthy, blocked by local policy, or connectors offline), or no gateway that serves the route |
 | `error` | An agent rejected the revision; the rejection reasons are attached |
-| `maintenance` | Enabled and applied, an `http` route in maintenance: its gateways answer with the maintenance page whatever its targets are, whose counts it still reports; `pending` and `error` come first ([D88](14-open-decisions.md#engineering)) |
+| `maintenance` | Enabled and applied, an `http` route in maintenance that an online gateway of its group reports ready: that gateway answers with the maintenance page whatever the route's targets are, whose counts it still reports. Without such a gateway the other rules decide, as `unavailable` when none serves it; `pending` and `error` come first ([D88](14-open-decisions.md#engineering)) |
 
 The terms of the table:
 

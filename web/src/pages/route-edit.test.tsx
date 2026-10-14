@@ -97,17 +97,15 @@ describe("RouteEdit", () => {
     expect(updates[0]!.updateMask?.paths).toEqual(expect.arrayContaining(["http.maintenance", "http.maintenance_message"]));
   });
 
-  it("refuses a maintenance message above 500 characters or with control characters before sending", async () => {
-    const updates = edit(routes.http!);
-    const message = await screen.findByLabelText("Maintenance message (plain text, at most 500 characters)");
-    fireEvent.change(message, { target: { value: "x".repeat(501) } });
-    save();
-    await waitFor(() => expect(message.getAttribute("aria-invalid")).toBe("true"));
-    fireEvent.change(message, { target: { value: "back\tsoon" } });
-    save();
-    expect((await screen.findByRole("alert")).textContent).toMatch(/regex/);
-    expect(updates).toEqual([]);
-  });
+  it.each([["above 500 characters", "x".repeat(501)], ["with a tab", "back\tsoon"], ["with a C1 control", "back \u009b31msoon"]])(
+    "refuses a maintenance message %s before sending", async (_, bad) => {
+      const updates = edit(routes.http!);
+      const message = await screen.findByLabelText("Maintenance message (plain text, at most 500 characters)");
+      fireEvent.change(message, { target: { value: bad } });
+      save();
+      await waitFor(() => expect(message.getAttribute("aria-invalid")).toBe("true"));
+      expect(updates).toEqual([]);
+    });
 
   it("moves a TCP and UDP route to a new port and clears its UDP flow idle timeout", async () => {
     const updates = edit(routes.tcpUdp!);

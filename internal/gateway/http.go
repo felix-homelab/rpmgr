@@ -918,6 +918,9 @@ func (h *HTTPRoutes) proxy(rw http.ResponseWriter, r *http.Request, rt *routeTra
 	}
 	r = r.WithContext(ctx)
 	if route.Maintenance {
+		if r.ContentLength != 0 {
+			closeUnread(w, r) // nothing reads the body
+		}
 		w.Header().Set("Retry-After", strconv.Itoa(maintenanceRetryAfter))
 		writeMaintenance(w, r, route.MaintenanceMessage)
 		return

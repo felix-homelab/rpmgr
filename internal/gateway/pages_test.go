@@ -436,3 +436,33 @@ func TestPages_Maintenance(t *testing.T) {
 		t.Errorf("after maintenance: %d %q", r.status, r.body)
 	}
 }
+
+// TestPages_MaintenanceWithheldBody: a request to a route in maintenance that announces a body it
+// does not send gets its 503 at once, and the connection closes rather than wait for the body.
+func TestPages_MaintenanceWithheldBody(t *testing.T) {
+	e := newHTTPEnv(t, http.NotFoundHandler(), gateway.HTTPRoute{ID: "rt_web", Upstream: "http", Maintenance: true,
+		Hosts: []gateway.HTTPHost{{Hostname: "app.example.com"}}})
+	c, err := tls.Dial("tcp", e.addr, &tls.Config{ServerName: "app.example.com", RootCAs: e.pool, MinVersion: tls.VersionTLS13,
+		NextProtos: []string{"http/1.1"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = c.Close() }()
+	if _, err := io.WriteString(c, "POST / HTTP/1.1\r\nHost: app.example.com\r\nContent-Length: 100\r\n\r\nabc"); err != nil {
+		t.Fatal(err)
+	}
+	_ = c.SetReadDeadline(time.Now().Add(5 * time.Second))
+	br := bufio.NewReader(c)
+	resp, err := http.ReadResponse(br, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _ = io.Copy(io.Discard, resp.Body)
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusServiceUnavailable || !resp.Close {
+		t.Errorf("%d, close %v; want 503 and a close", resp.StatusCode, resp.Close)
+	}
+	if _, err := br.ReadByte(); !errors.Is(err, io.EOF) {
+		t.Errorf("%v, want the gateway to close", err)
+	}
+}

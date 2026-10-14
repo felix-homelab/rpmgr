@@ -201,6 +201,16 @@ func TestUpdateRoute(t *testing.T) {
 		!slices.Equal(a.updated.GetUpdateMask().GetPaths(), []string{"http.maintenance"}) || a.updated.GetRoute().GetHttp().GetMaintenance() {
 		t.Fatalf("out of maintenance: %d %q %v", code, errOut, a.updated)
 	}
+	// A message the API's rules refuse is refused before anything is sent.
+	calls := a.calls
+	for name, msg := range map[string]string{"501 characters": strings.Repeat("a", 501), "a tab": "back\tsoon"} {
+		if code, _, errOut := runWith(env, "", "update", "route", "--maintenance-message", msg, "rt_1"); code != cli.ExitUsage {
+			t.Errorf("a message with %s: exit %d %q", name, code, errOut)
+		}
+	}
+	if a.calls != calls {
+		t.Errorf("refused messages reached the API %d times", a.calls-calls)
+	}
 	if code, _, errOut := runWith(env, "", "update", "route", "--policy", "office", "rt_1"); code != cli.ExitOK ||
 		!slices.Equal(a.updated.GetRoute().GetPolicyIds(), []string{"ap_1"}) {
 		t.Fatalf("a policy: %d %q", code, errOut)

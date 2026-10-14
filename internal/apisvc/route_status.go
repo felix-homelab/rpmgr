@@ -220,7 +220,9 @@ func (v *routeStatuses) of(r *ent.Route) *rpmgrv1.RouteStatus {
 		}
 	}
 
-	// Gateways: serving when online, reporting the route ready, and linked to a ready target.
+	// Gateways: serving when online, reporting the route ready, and linked to a ready target. In
+	// maintenance one that is online and reports it ready answers for it without a target.
+	answering := 0
 	for _, g := range v.gateways {
 		if g.GatewayGroupID != r.GatewayGroupID || !g.Enabled {
 			continue
@@ -233,10 +235,12 @@ func (v *routeStatuses) of(r *ent.Route) *rpmgrv1.RouteStatus {
 		case nr != nil:
 			out.NotServing = append(out.NotServing, &rpmgrv1.RouteNotServing{Id: g.ID, Reason: notReadyReason(nr.Reason), Detail: nr.Detail})
 		case !v.linked(g.ID, ready):
+			answering++
 			if len(ready) > 0 {
 				out.NotServing = append(out.NotServing, &rpmgrv1.RouteNotServing{Id: g.ID, Reason: notServingNoDataSession})
 			}
 		default:
+			answering++
 			out.GatewaysServing++
 		}
 	}
@@ -246,8 +250,9 @@ func (v *routeStatuses) of(r *ent.Route) *rpmgrv1.RouteStatus {
 		out.State = rpmgrv1.RouteState_ROUTE_STATE_ERROR
 	case pending:
 		out.State = rpmgrv1.RouteState_ROUTE_STATE_PENDING
-	case v.maintenance[r.ID]:
-		// Its gateways answer for it whatever its targets are: the counts still tell.
+	case v.maintenance[r.ID] && answering > 0:
+		// A gateway answers for it, whatever its targets are; the counts still tell. Without one,
+		// the rules below say why no one answers.
 		out.State = rpmgrv1.RouteState_ROUTE_STATE_MAINTENANCE
 	case out.TargetsReady == 0 || out.GatewaysServing == 0:
 		out.State = rpmgrv1.RouteState_ROUTE_STATE_UNAVAILABLE
