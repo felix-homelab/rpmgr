@@ -32,6 +32,7 @@ const routes: Record<string, Route> = {
     responseHeadersSet: { "X-B": "a: b" }, websocket: false, maxBodyBytes: 1024n } } }),
   tcp: create(RouteSchema, { ...common, spec: { case: "tcp", value: { port: 25432, idleTimeoutSeconds: 600 } } }),
   udp: create(RouteSchema, { ...common, spec: { case: "udp", value: { port: 53, flowIdleTimeoutSeconds: 30 } } }),
+  tcpUdp: create(RouteSchema, { ...common, spec: { case: "tcpUdp", value: { port: 5353, idleTimeoutSeconds: 600, flowIdleTimeoutSeconds: 30 } } }),
   tlsPassthrough: create(RouteSchema, { ...common, spec: { case: "tlsPassthrough", value: { hostnames: ["db.example.com"] } } }),
 };
 
@@ -81,6 +82,18 @@ describe("RouteEdit", () => {
     }
     expect(equals(RouteSchema, updates[0]!.route!, want)).toBe(true);
     expect(updates[0]!.updateMask?.paths).toContain("http.websocket");
+  });
+
+  it("moves a TCP and UDP route to a new port and clears its UDP flow idle timeout", async () => {
+    const updates = edit(routes.tcpUdp!);
+    fireEvent.change(await screen.findByLabelText("Public port"), { target: { value: "5354" } });
+    expect((screen.getByLabelText("TCP idle timeout (seconds)") as HTMLInputElement).value).toBe("600");
+    fireEvent.change(screen.getByLabelText("UDP flow idle timeout (seconds)"), { target: { value: "" } });
+    save();
+    await waitFor(() => expect(updates).toHaveLength(1));
+    const spec = updates[0]!.route?.spec;
+    expect(spec?.case === "tcpUdp" && [spec.value.port, spec.value.idleTimeoutSeconds, spec.value.flowIdleTimeoutSeconds]).toEqual([5354, 600, undefined]);
+    expect(updates[0]!.updateMask?.paths).toEqual(expect.arrayContaining(["tcp_udp.port", "tcp_udp.flow_idle_timeout_seconds"]));
   });
 
   it("checks the API's rules before sending", async () => {

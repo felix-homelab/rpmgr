@@ -8,8 +8,10 @@ import (
 	"crypto/rand"
 	"encoding/binary"
 	"errors"
+	"io"
 	"net"
 	"os"
+	"strconv"
 	"sync"
 	"testing"
 	"time"
@@ -300,5 +302,52 @@ func TestUDPFlows_Cancelled(t *testing.T) {
 	case <-done:
 	case <-time.After(5 * time.Second):
 		t.Fatal("the flow outlived the connector")
+	}
+}
+
+// TestTargets_TCPAndUDP: a tcp_udp route takes TCP streams and UDP flows to the same target
+// address, the TCP stream reaching the TCP service and the flow the UDP service on that port; a
+// tcp or a udp route still refuses the other kind.
+func TestTargets_TCPAndUDP(t *testing.T) {
+	svc := startUDPService(t)
+	ln, err := net.Listen("tcp", net.JoinHostPort("127.0.0.1", strconv.Itoa(int(svc.port()))))
+	if err != nil {
+		t.Skipf("the UDP service's port is taken for TCP: %v", err)
+	}
+	t.Cleanup(func() { _ = ln.Close() })
+	go func() {
+		for {
+			c, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			go func() { defer func() { _ = c.Close() }(); _, _ = io.Copy(c, c) }()
+		}
+	}()
+	e := newTargets(allowLoopback(t, svc.port()))
+	e.Set([]connector.Route{
+		{ID: "rt_both", Both: true, Targets: []connector.Target{target("127.0.0.1", svc.port())}},
+		{ID: "rt_udp", UDP: true, Targets: []connector.Target{target("127.0.0.1", svc.port())}},
+		{ID: "rt_tcp", Targets: []connector.Target{target("127.0.0.1", svc.port())}},
+	})
+	code, gw := e.handle(t, tcpOpen("rt_both"))
+	if code != tunnelv1.ResultCode_RESULT_CODE_NO_ERROR {
+		t.Fatalf("a TCP stream on a tcp_udp route: %v", code)
+	}
+	_ = gw.SetDeadline(time.Now().Add(10 * time.Second))
+	buf := make([]byte, 4)
+	if _, err := gw.Write([]byte("both")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := io.ReadFull(gw, buf); err != nil || string(buf) != "both" {
+		t.Fatalf("the TCP service echoed %q: %v", buf, err)
+	}
+	if code, _ := e.handle(t, udpOpen("rt_both")); code != tunnelv1.ResultCode_RESULT_CODE_NO_ERROR {
+		t.Fatalf("a UDP flow on a tcp_udp route: %v", code)
+	}
+	for _, tc := range []*tunnelv1.StreamOpen{udpOpen("rt_tcp"), tcpOpen("rt_udp")} {
+		if code, _ := e.handle(t, tc); code != tunnelv1.ResultCode_RESULT_CODE_PROTOCOL {
+			t.Errorf("%v on %s: %v", tc.GetKind(), tc.GetRouteId(), code)
+		}
 	}
 }

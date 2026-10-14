@@ -82,15 +82,20 @@ const http: RouteField[] = [
     set: (s, v) => (s.maxBodyBytes = /^\d+$/.test(v.trim()) ? BigInt(v.trim()) : -1n) }),
 ];
 
-const portField = <C extends "tcp" | "udp">(c: C) =>
-  spec(c, { key: "port", path: `${c}.port`, kind: "number", get: (s) => String(s.port), set: (s, v) => (s.port = num(v)) });
+const portField = <C extends "tcp" | "udp" | "tcpUdp">(c: C, path: string) =>
+  spec(c, { key: "port", path: `${path}.port`, kind: "number", get: (s) => String(s.port), set: (s, v) => (s.port = num(v)) });
 
 const byType: Record<string, RouteField[]> = {
   http,
-  tcp: [portField("tcp"), spec("tcp", { key: "idleTimeout", path: "tcp.idle_timeout_seconds", kind: "optionalNumber",
+  tcp: [portField("tcp", "tcp"), spec("tcp", { key: "idleTimeout", path: "tcp.idle_timeout_seconds", kind: "optionalNumber",
     get: (s) => (s.idleTimeoutSeconds === undefined ? "" : String(s.idleTimeoutSeconds)), set: (s, v) => (s.idleTimeoutSeconds = optional(v)) })],
-  udp: [portField("udp"), spec("udp", { key: "flowIdleTimeout", path: "udp.flow_idle_timeout_seconds", kind: "optionalNumber",
+  udp: [portField("udp", "udp"), spec("udp", { key: "flowIdleTimeout", path: "udp.flow_idle_timeout_seconds", kind: "optionalNumber",
     get: (s) => (s.flowIdleTimeoutSeconds === undefined ? "" : String(s.flowIdleTimeoutSeconds)), set: (s, v) => (s.flowIdleTimeoutSeconds = optional(v)) })],
+  tcpUdp: [portField("tcpUdp", "tcp_udp"),
+    spec("tcpUdp", { key: "tcpIdleTimeout", path: "tcp_udp.idle_timeout_seconds", kind: "optionalNumber",
+      get: (s) => (s.idleTimeoutSeconds === undefined ? "" : String(s.idleTimeoutSeconds)), set: (s, v) => (s.idleTimeoutSeconds = optional(v)) }),
+    spec("tcpUdp", { key: "udpFlowIdleTimeout", path: "tcp_udp.flow_idle_timeout_seconds", kind: "optionalNumber",
+      get: (s) => (s.flowIdleTimeoutSeconds === undefined ? "" : String(s.flowIdleTimeoutSeconds)), set: (s, v) => (s.flowIdleTimeoutSeconds = optional(v)) })],
   tlsPassthrough: [spec("tlsPassthrough", { key: "hostnames", path: "tls_passthrough.hostnames", kind: "lines", required: () => true,
     get: (s) => s.hostnames.join("\n"), set: (s, v) => (s.hostnames = lines(v)) })],
 };

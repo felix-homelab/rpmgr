@@ -11,6 +11,8 @@ describe("routeAddress", () => {
   it("gives a TCP or UDP route's port at each public hostname of its gateway group (D79)", () => {
     expect(routeAddress(tcp(25432), ["edge.example.com", "203.0.113.7"])).toEqual(["edge.example.com:25432", "203.0.113.7:25432"]);
     expect(routeAddress(create(RouteSchema, { spec: { case: "udp", value: { port: 53 } } }), ["dns.example.com"])).toEqual(["dns.example.com:53"]);
+    expect(routeAddress(create(RouteSchema, { spec: { case: "tcpUdp", value: { port: 53 } } }), ["dns.example.com"])).toEqual(["dns.example.com:53"]);
+    expect(routeAddress(create(RouteSchema, { spec: { case: "tcpUdp", value: { port: 0 } } }), ["dns.example.com"])).toEqual([]);
   });
 
   it("gives a hostname the group lists twice once", () => {

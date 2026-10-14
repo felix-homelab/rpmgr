@@ -54,7 +54,7 @@ flowchart LR
 | Area | Contents | Minimum role to view / change ([04](04-security.md#roles)) |
 |---|---|---|
 | **Overview** | Health of agents, sessions and certificates; routes not `ready`; pending, rejected or timed-out applies; expiring certificates and tokens; unverified domains; DNS conflicts, held DNS zones and expiring DNS-provider tokens; agents below `min_agent_version`; a traffic summary | Viewer |
-| **Routes** | List; create wizard per type (`http`, `tls_passthrough`, `tcp`, `udp`); detail with targets, health checks, traffic, access policies, transport override (advanced), per-agent apply status, YAML, change history | Viewer / Operator |
+| **Routes** | List; create wizard per type (`http`, `tls_passthrough`, `tcp`, `udp`, `tcp_udp`); detail with targets, health checks, traffic, access policies, transport override (advanced), per-agent apply status, YAML, change history | Viewer / Operator |
 | **Private services** | Services, visitor grants, relay vs P2P state per grant | Viewer / Operator |
 | **Connectors** | List with status, version, transport, RTT, last seen; enroll dialog; detail with data and control sessions, served routes, local-policy status, transport override (`auto`, `quic`, `h2` or the instance default), live logs, version and staged upgrade | Viewer / Admin to enroll or revoke (Operator if the org allows it) |
 | **Gateways** | Gateway groups (region, public hostnames for route traffic, DNS target for managed DNS records, port pools), gateways (own tunnel endpoints — address/port and, for WSS, the gateway's own hostname — status, version, sessions, listeners), drain action. Connectors dial each gateway at its own tunnel endpoints; group-level DNS or anycast names are for public traffic only ([03](03-connections.md#establishment)) | Viewer / Admin |
@@ -163,18 +163,22 @@ flowchart LR
 - It reads all of the org's routes and filters them in the browser by text (name or address),
   type, status and gateway group. It sorts them by name and shows 25 a page. The filters and the
   page stay in the URL (U9).
-- **The address** of an HTTP or TLS passthrough route is its hostnames. A TCP or UDP route shows
-  its public port at each public hostname of its gateway group, such as `eu.example.net:25432`, an
-  IPv6 address in brackets; while the group has none, only `:25432` (D79).
+- **The address** of an HTTP or TLS passthrough route is its hostnames. A TCP, UDP or "TCP and UDP"
+  route shows its public port at each public hostname of its gateway group, such as
+  `eu.example.net:25432`, an IPv6 address in brackets; while the group has none, only `:25432`
+  (D79).
 - **Without routes,** the list offers to create the first. When the filters match none, it says so
   and offers to clear them.
 - **Targets** shows how many are ready, and how many a connector's local policy blocks.
 - **Status** shows the observed state, with an icon and text, and how many agents rejected the
   route.
 - **"Create a route"** opens a form: the type, the gateway group, and the fields of that type.
-  - **Defaults:** HTTP routes start with ACME certificates and a redirect on port 80. TCP and UDP
-    routes start on port 0, a free port of the group's pools. The org's default gateway group
-    ([Settings](#settings)) is preselected unless a group was chosen first.
+  - **Types:** HTTP, TCP, UDP, "TCP and UDP" ([D83](14-open-decisions.md#engineering)) and TLS
+    passthrough. A "TCP and UDP" route has one public port and both idle timeouts, TCP and UDP.
+  - **Defaults:** HTTP routes start with ACME certificates and a redirect on port 80. Routes on a
+    port start on port 0, a free port of the group's pools, free in both for "TCP and UDP". The
+    org's default gateway group ([Settings](#settings)) is preselected unless a group was chosen
+    first.
   - **Retries:** the creation carries one request ID, however often it is retried.
   - **After creating,** the apply status follows live, and a link opens the new route to add its
     targets.
@@ -277,7 +281,7 @@ flowchart LR
   targets, traffic and access policies.
 - It shows the configured settings next to the observed state (U3), and how many of the group's
   gateways serve the route.
-- **The address** is the list's. A TCP or UDP route whose gateway group has no public hostname
+- **The address** is the list's. A route on a port whose gateway group has no public hostname
   shows only its port, says so, and links to the group, where they are set.
 - **Each target** shows its connector by name, its address and weight, and whether it serves; if
   not, it says why.
@@ -297,7 +301,7 @@ flowchart LR
   over the fallback for QUIC. A route pinned to HTTP/2 is not marked.
 - **Gateways that do not serve the route, and agents that rejected it,** are listed with their
   reasons.
-- UDP routes show the MTU hint of [03](03-connections.md#udp-routes).
+- UDP and "TCP and UDP" routes show the MTU hint of [03](03-connections.md#udp-routes).
 - **Traffic:** the bytes in and out of the last 24 hours per hour, or of the last 30 days per day,
   with their totals, connections and errors ([Charts](#charts)).
 - **Access policies:** the policies the route applies, in order. They are attached from the org's

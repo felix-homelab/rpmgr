@@ -32,12 +32,13 @@ import { useOrg } from "@/session";
 type RouteType = (typeof routeTypes)[number];
 
 // template is a new route of a type, with the defaults the form starts from: ACME certificates and a
-// redirect on port 80 for HTTP; port 0, a free port of the pools, for TCP and UDP.
+// redirect on port 80 for HTTP; port 0, a free port of the pools, for routes on a port.
 function template(type: RouteType): Route {
   const specs = {
     http: { case: "http" as const, value: { tlsMode: TLSMode.TLS_MODE_ACME, port80: Port80Mode.REDIRECT } },
     tcp: { case: "tcp" as const, value: {} },
     udp: { case: "udp" as const, value: {} },
+    tcpUdp: { case: "tcpUdp" as const, value: {} },
     tlsPassthrough: { case: "tlsPassthrough" as const, value: {} },
   };
   return create(RouteSchema, { enabled: true, spec: specs[type] });
@@ -59,7 +60,7 @@ export function RouteNew() {
       <Card>
         <fieldset className="grid gap-2">
           <legend className="mb-2 text-sm font-medium">{t("routes.type")}</legend>
-          <div className="grid gap-2 sm:grid-cols-4">
+          <div className="grid gap-2 sm:grid-cols-3 lg:grid-cols-5">
             {routeTypes.map((rt) => (
               <label key={rt} className="flex cursor-pointer items-center gap-2 rounded-lg border border-border px-3 py-2.5 text-sm font-medium transition-colors hover:bg-muted has-checked:border-ring has-checked:bg-accent has-checked:text-accent-foreground has-focus-visible:outline-2 has-focus-visible:outline-ring">
                 <input type="radio" name="type" className="accent-primary" checked={type === rt} onChange={() => setType(rt)} />

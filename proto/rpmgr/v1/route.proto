@@ -128,6 +128,8 @@ message Route {
     UDPRouteSpec udp = 12;
     // A TLS route passed through by SNI, TLS ending at the target.
     TLSPassthroughRouteSpec tls_passthrough = 13;
+    // A route on one public port number of the group, with both TCP and UDP.
+    TCPUDPRouteSpec tcp_udp = 14;
   }
   // Its targets, by priority; output only: they change with the target methods.
   repeated RouteTarget targets = 20;
@@ -283,6 +285,21 @@ message UDPRouteSpec {
   }];
 }
 
+// TCPUDPRouteSpec is a tcp_udp route: one public port number of the gateway group, taken from both
+// its TCP and its UDP port pools; TCP connections and UDP flows on it go to the same targets.
+message TCPUDPRouteSpec {
+  // The port, the same for TCP and UDP; 0 on create is a random port free in both. Within the
+  // org's TCP and UDP quotas.
+  uint32 port = 1 [(buf.validate.field).uint32.lte = 65535];
+  // A TCP connection without traffic for this long is closed; 0 never; 3600 if not set.
+  optional uint32 idle_timeout_seconds = 2 [(buf.validate.field).uint32.lte = 604800];
+  // A UDP flow without datagrams for this long is forgotten; 60 if not set.
+  optional uint32 flow_idle_timeout_seconds = 3 [(buf.validate.field).uint32 = {
+    gte: 1
+    lte: 86400
+  }];
+}
+
 // TLSPassthroughRouteSpec is a tls_passthrough route: the gateway reads the SNI and passes the
 // connection through.
 message TLSPassthroughRouteSpec {
@@ -302,9 +319,10 @@ message TLSPassthroughRouteSpec {
 
 // UpstreamProtocol is how a connector speaks to a target.
 enum UpstreamProtocol {
-  // Not set: TCP for tcp, udp and tls_passthrough routes, HTTP for http routes.
+  // Not set: TCP for tcp, udp, tcp_udp and tls_passthrough routes, HTTP for http routes.
   UPSTREAM_PROTOCOL_UNSPECIFIED = 0;
-  // The bytes as they come, for tcp and tls_passthrough routes; datagrams for udp routes.
+  // The bytes as they come, for tcp and tls_passthrough routes; datagrams for udp routes; both for
+  // tcp_udp routes.
   UPSTREAM_PROTOCOL_TCP = 1;
   // Plain HTTP, for http routes.
   UPSTREAM_PROTOCOL_HTTP = 2;

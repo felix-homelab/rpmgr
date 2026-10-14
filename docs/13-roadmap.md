@@ -83,7 +83,7 @@ a homelab or a small team.
 - Control session with reconciliation, revisions, apply status, last-known-good.
 - Data sessions: QUIC and TLS + reverse HTTP/2, happy eyeballs; multiple gateways per group
   (the WSS transport for TLS-intercepting proxies follows in Phase 2).
-- Routes: `http` (ACME HTTP-01/TLS-ALPN-01 and uploaded certificates), `tcp`, `udp`,
+- Routes: `http` (ACME HTTP-01/TLS-ALPN-01 and uploaded certificates), `tcp`, `udp`, `tcp_udp`,
   `tls_passthrough`; port pools; TCP/UDP/443 multiplexing.
 - Targets: address and unix socket; HTTP/HTTPS (verified)/h2c upstreams; PROXY protocol.
 - Access policies: IP rules and basic auth. Domain verification; trusted domains (D13). Port

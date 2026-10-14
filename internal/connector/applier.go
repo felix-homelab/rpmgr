@@ -41,8 +41,8 @@ func transportOf(p agentv1.TransportPolicy) (string, bool) {
 
 // Validate implements agent.Applier: every resource must be a route or a gateway; a route needs a
 // known transport and targets that are an address and port or an absolute socket path with a
-// known PROXY protocol version, and a udp route's targets are addresses without one; a gateway needs host:port endpoints and names only routes of the
-// snapshot.
+// known PROXY protocol version, and a udp or tcp_udp route's targets are addresses without one; a
+// gateway needs host:port endpoints and names only routes of the snapshot.
 func (a *Applier) Validate(snap *agentv1.Snapshot) []*agentv1.SnapshotError {
 	var errs []*agentv1.SnapshotError
 	bad := func(id, format string, args ...any) {
@@ -59,8 +59,8 @@ func (a *Applier) Validate(snap *agentv1.Snapshot) []*agentv1.SnapshotError {
 		switch {
 		case res.GetConnectorRoute() != nil:
 			r := res.GetConnectorRoute()
-			udp := r.GetType() == "udp"
-			if !slices.Contains([]string{"tcp", "udp", "http", "tls_passthrough"}, r.GetType()) {
+			udp := r.GetType() == "udp" || r.GetType() == "tcp_udp"
+			if !slices.Contains([]string{"tcp", "udp", "tcp_udp", "http", "tls_passthrough"}, r.GetType()) {
 				bad(id, "route type %q is not served by this version", r.GetType())
 			}
 			if _, ok := transportOf(r.GetTransport()); !ok {
@@ -123,7 +123,7 @@ func (a *Applier) Apply(_ context.Context, snap *agentv1.Snapshot, _ agent.Chang
 	for _, res := range snap.GetResources() {
 		if r := res.GetConnectorRoute(); r != nil {
 			transport[res.GetId()], _ = transportOf(r.GetTransport())
-			route := Route{ID: res.GetId(), UDP: r.GetType() == "udp"}
+			route := Route{ID: res.GetId(), UDP: r.GetType() == "udp", Both: r.GetType() == "tcp_udp"}
 			for _, t := range r.GetTargets() {
 				route.Targets = append(route.Targets, Target{ID: t.GetId(), Host: t.GetHost(), Port: uint16(t.GetPort()), //nolint:gosec // G115: Validate bounds the port
 					UnixPath: t.GetUnixPath(), ProxyProtocol: t.GetProxyProtocol(), Weight: t.GetWeight(), Priority: t.GetPriority()})

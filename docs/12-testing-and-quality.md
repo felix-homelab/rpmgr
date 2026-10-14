@@ -57,7 +57,7 @@ restarts, kills and network impairment are real.
 
 | Dimension | Values |
 |---|---|
-| Route type | `tcp`, `udp` (payloads below and above the datagram limit, [03](03-connections.md#udp-routes)), `http` (h1, h2, WebSocket, gRPC), `http` with ACME (against Pebble, the local ACME test server, as in [S6](spikes/S6.md); Phase 2: DNS-01 through the fake Cloudflare API with a test DNS server answering the challenges), `tls_passthrough`, private TCP, private UDP; Phase 2: `tcp` with `http_connect`, load-balanced routes with health checks |
+| Route type | `tcp`, `udp` (payloads below and above the datagram limit, [03](03-connections.md#udp-routes)), `tcp_udp` (both on one port), `http` (h1, h2, WebSocket, gRPC), `http` with ACME (against Pebble, the local ACME test server, as in [S6](spikes/S6.md); Phase 2: DNS-01 through the fake Cloudflare API with a test DNS server answering the challenges), `tls_passthrough`, private TCP, private UDP; Phase 2: `tcp` with `http_connect`, load-balanced routes with health checks |
 | Transport | Each value of the transport setting: `auto`, `quic`, `h2`, also mixed per route on one connector ([03](03-connections.md#transport-selection)); QUIC; TLS + reverse HTTP/2 (all streams gateway-opened, connector-initiated streams via `OpenRequest`); WSS through a TLS-intercepting proxy test double, Phase 2 ([03](03-connections.md#transports-and-fallback)) |
 | Scenario | Steady state; configuration change on an **unrelated** route; change on the **same** route; route removed (drain); gateway planned restart (`Drain`); gateway `SIGKILL`; controller down; controller restore with a new `db_epoch`; connector revoked; tightened access policy; target blocked by local policy; policy file edited and reloaded (no new revision); certificate expiry and grace re-authentication (fake clock); clock skew; UDP blackholed mid-session; NAT rebinding (source port change) |
 
@@ -114,10 +114,10 @@ of the `rpmgrtest` build: the roles add the duration in the file that `RPMGR_TES
 to their clock. Before the public API exists, end-to-end tests seed their configuration with the
 `rpmgrtest` seeding command
 ([D60](14-open-decisions.md#security-defaults)): `rpmgr testseed` creates gateways with their
-enrollment tokens, connector tokens, and tcp, udp, http and tls_passthrough routes (http routes with
-verified domains, uploaded certificates and HTTP, h2c or verified HTTPS upstreams), sets a route's
-IP access rules, changes routes and revokes identities, writing next to the running controller
-through configuration transactions. The per-PR subset runs every Phase 1 route type, the
+enrollment tokens, connector tokens, and tcp, udp, tcp_udp, http and tls_passthrough routes (http
+routes with verified domains, uploaded certificates and HTTP, h2c or verified HTTPS upstreams),
+sets a route's IP access rules, changes routes and revokes identities, writing next to the running
+controller through configuration transactions. The per-PR subset runs every Phase 1 route type, the
 local-policy block and reload, a tightened access policy, mixed transports on one connector and UDP
 blackholed mid-session; NAT rebinding is not covered yet. `check-go.sh` vets the `rpmgrtest` build
 and runs the tests of its packages, golangci-lint lints it, and a test of the release build checks

@@ -748,3 +748,69 @@ func TestCompile_UnservedPorts(t *testing.T) {
 		}
 	})
 }
+
+// TestCompile_TCPUDP: a gateway gets an enabled tcp_udp route of its group as one resource, with
+// its one port, both timeouts and the connectors that serve it, and only while one does (D78); a
+// connector gets it as a route of type tcp_udp; a disabled one and one without its UDP part are
+// left out.
+func TestCompile_TCPUDP(t *testing.T) {
+	storetest.ForEachDialect(t, func(t *testing.T, db *store.DB) {
+		f := newFleet(t, db)
+		c := db.Client()
+		if err := f.pool(t, f.orgA, f.groupA, routes.UDP, 20000, 20099); err != nil {
+			t.Fatal(err)
+		}
+		bothRoute := func(name string, port int, enabled, withUDP bool) string {
+			r := c.Route.Create().SetOrgID(f.orgA).SetName(name).SetType(route.TypeTCPUDP).SetGatewayGroupID(f.groupA).SetEnabled(enabled).
+				SaveX(f.sys)
+			if err := f.tx(t, func(tx *ent.Tx) error {
+				tcp, udp, err := routes.AllocateBoth(f.sys, tx, f.orgA, f.groupA, port, "", "")
+				if err != nil {
+					return err
+				}
+				if err := tx.RouteTCP.Create().SetOrgID(f.orgA).SetRouteID(r.ID).SetPortAllocationID(tcp.ID).SetIdleTimeoutSeconds(600).
+					Exec(f.sys); err != nil || !withUDP {
+					return err
+				}
+				return tx.RouteUDP.Create().SetOrgID(f.orgA).SetRouteID(r.ID).SetPortAllocationID(udp.ID).SetFlowIdleTimeoutSeconds(30).
+					Exec(f.sys)
+			}); err != nil {
+				t.Fatal(err)
+			}
+			c.RouteTarget.Create().SetOrgID(f.orgA).SetRouteID(r.ID).SetConnectorID(f.c2).SetKind("address").SetHost("10.0.0.53").
+				SetPort(53).ExecX(f.sys)
+			return r.ID
+		}
+		dns := bothRoute("dns", 20053, true, true)
+		bothRoute("dns-off", 20054, false, true)
+		bothRoute("dns-half", 20055, true, false)
+		var got []*agentv1.GatewayTCPUDPRoute
+		for _, r := range f.compile(t, pki.KindGateway, f.gateway) {
+			if b := r.GetGatewayTcpUdpRoute(); b != nil {
+				if r.GetId() != dns {
+					t.Fatalf("a tcp_udp route that should be left out: %v", r)
+				}
+				got = append(got, b)
+			}
+		}
+		if len(got) != 1 || got[0].GetPort() != 20053 || got[0].GetIdleTimeoutSeconds() != 600 || got[0].GetFlowIdleTimeoutSeconds() != 30 ||
+			!slices.Equal(got[0].GetConnectors(), []string{f.c2}) {
+			t.Fatalf("the gateway's tcp_udp routes: %v", got)
+		}
+		var types []string
+		for _, r := range routesOf(f.compile(t, pki.KindConnector, f.c2)) {
+			if r.GetId() == dns {
+				types = append(types, r.GetConnectorRoute().GetType())
+			}
+		}
+		if !slices.Equal(types, []string{"tcp_udp"}) {
+			t.Fatalf("the connector's route types: %v", types)
+		}
+		c.RouteTarget.Update().Where(routetarget.RouteID(dns)).SetEnabled(false).ExecX(f.sys)
+		for _, r := range f.compile(t, pki.KindGateway, f.gateway) {
+			if r.GetGatewayTcpUdpRoute() != nil {
+				t.Fatalf("a tcp_udp route no connector serves: %v", r)
+			}
+		}
+	})
+}
