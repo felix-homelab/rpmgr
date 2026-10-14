@@ -280,9 +280,11 @@ later.
   against the target's server name; a target may also pin the SHA-256 of its leaf's
   SubjectPublicKeyInfo, checked in addition. A CA bundle holds 1 to 100 PEM certificates, each of
   which counts as a trust anchor, so a self-signed upstream certificate can trust itself. A
-  connection whose verification settings change is not reused, and one still open ends at once,
-  with what it carries, unless the target becomes unverified: the old settings checked it, the
-  new ones may not accept it ([03](03-connections.md#timeouts-keepalive-and-backoff)).
+  connection whose verification settings change is not reused. One still open, of any earlier
+  settings, ends at once with what it carries when the target's new settings would not accept it:
+  any change but to unverified settings of the same connector. A connection whose dial ends after
+  a change is checked against the settings then. When the target or the route's HTTPS goes, its
+  connections finish ([03](03-connections.md#timeouts-keepalive-and-backoff)).
 - **Unverified HTTPS upstreams** [R]: a target's user may mark it unverified
   ([ADR-0017](adr/0017-upstream-tls-verification-modes.md),
   [D82](14-open-decisions.md#engineering)). The gateway then speaks TLS to it and sends its
