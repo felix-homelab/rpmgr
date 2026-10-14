@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
+	"net/netip"
 	"os"
 	"sync"
 	"time"
@@ -52,6 +53,9 @@ type RunOptions struct {
 	Readiness func(check func(context.Context) error)
 	// InProcess, if set, is a gateway in the same process, which the data sessions reach in memory.
 	InProcess *InProcess
+	// Own, if set, reports the addresses and ports the connector never dials, whatever its local
+	// policy allows: all-in-one's own listeners (ADR-0019).
+	Own func(netip.AddrPort) bool
 }
 
 // Run runs a connector from its boot file until ctx ends (docs/02-architecture.md): its control
@@ -77,7 +81,7 @@ func Run(ctx context.Context, o RunOptions) error {
 		targets  *Targets
 		ctl      *agent.Control
 	)
-	watcher := policy.NewWatcher(cfg.PolicyFile, func(p *policy.Policy, err error) {
+	watcher := policy.NewGuardedWatcher(cfg.PolicyFile, o.Own, func(p *policy.Policy, err error) {
 		if err != nil {
 			o.Logger.Error("the local policy does not load: every target is blocked", "file", cfg.PolicyFile, "error", err)
 		}

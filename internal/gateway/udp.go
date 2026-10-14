@@ -143,6 +143,15 @@ func (u *UDPRoutes) Apply(routes []UDPRoute) []*agentv1.ResourceStatus {
 	return u.statusLocked()
 }
 
+// Wants reports whether a route of the snapshot has the port, bound or waiting for it.
+func (u *UDPRoutes) Wants(port uint16) bool {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	_, bound := u.ports[port]
+	_, waiting := u.pending[port]
+	return bound || waiting
+}
+
 func (u *UDPRoutes) listen(port uint16) (*net.UDPConn, error) {
 	addr, err := net.ResolveUDPAddr("udp", net.JoinHostPort(u.o.Host, strconv.Itoa(int(port))))
 	if err != nil {

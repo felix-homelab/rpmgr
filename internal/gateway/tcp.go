@@ -73,6 +73,15 @@ type TCPRoutes struct {
 	removal removalDrain
 }
 
+// Wants reports whether a route of the snapshot has the port, bound or waiting for it.
+func (r *TCPRoutes) Wants(port uint16) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	_, bound := r.ports[port]
+	_, waiting := r.pending[port]
+	return bound || waiting
+}
+
 // portListener is one public port and its connections.
 type portListener struct {
 	ln    net.Listener

@@ -299,9 +299,10 @@ func (c *Connector) validate() error {
 		checkAdmin(c.Listen.Admin))...)
 }
 
-// AllInOne is /etc/rpmgr/all-in-one.yaml: a controller and a gateway in one process
-// (docs/02-architecture.md, "All-in-one"). The controller is reached through the gateway's port
-// 443; the gateway's identity and state live under state_dir.
+// AllInOne is /etc/rpmgr/all-in-one.yaml: a controller, a gateway and a connector in one process
+// (docs/02-architecture.md, "All-in-one"; ADR-0019). The controller is reached through the
+// gateway's port 443; the gateway's and the connector's identities and state live under
+// state_dir, and policy_file is the connector's local policy.
 type AllInOne struct {
 	Version   int    `yaml:"version"`
 	PublicURL string `yaml:"public_url"`
@@ -326,6 +327,7 @@ type AllInOne struct {
 		KeyFile  string `yaml:"key_file"`
 	} `yaml:"tls"`
 	StateDir      string        `yaml:"state_dir"`
+	PolicyFile    string        `yaml:"policy_file"`
 	Log           Log           `yaml:"log"`
 	Tracing       Tracing       `yaml:"tracing"`
 	RevocationLog RevocationLog `yaml:"revocation_log"`
@@ -337,6 +339,7 @@ func (a *AllInOne) defaults() {
 	setDefaultPtr(&a.Listen.HTTP, ":80")
 	setDefault(&a.Listen.Admin, "127.0.0.1:7381")
 	setDefault(&a.StateDir, "/var/lib/rpmgr")
+	setDefault(&a.PolicyFile, "/etc/rpmgr/policy.yaml")
 	setDefault(&a.Database.Driver, "sqlite")
 	setDefault(&a.Database.DSN, "/var/lib/rpmgr/controller.db")
 	setDefault(&a.KEK.Source, KEKSystemdCredential)
@@ -346,8 +349,8 @@ func (a *AllInOne) defaults() {
 }
 
 func (a *AllInOne) validate() error {
-	c, g := a.Controller(), a.Gateway()
-	return errors.Join(checkAbs("state_dir", a.StateDir), c.validate(), g.validate())
+	c, g, n := a.Controller(), a.Gateway(), a.Connector()
+	return errors.Join(checkAbs("state_dir", a.StateDir), c.validate(), g.validate(), n.validate())
 }
 
 // Controller is the controller part of the file; its ports 443 and 80 are the gateway's.
@@ -375,6 +378,20 @@ func (a *AllInOne) Gateway() Gateway {
 	g.Listen.TCP, g.Listen.UDP, g.Listen.TunnelUDP, g.Listen.Admin = a.Listen.TCP, a.Listen.UDP, a.Listen.TunnelUDP, a.Listen.Admin
 	g.Listen.HTTP = a.Listen.HTTP
 	return g
+}
+
+// Connector is the connector part of the file: its identity in <state_dir>/connector/identity,
+// its state in <state_dir>/connector, its local policy in policy_file, the controller at the public
+// URL. It serves no admin listener of its own: the all-in-one's reports it.
+func (a *AllInOne) Connector() Connector {
+	var c Connector
+	c.Version, c.Log, c.Tracing = a.Version, a.Log, a.Tracing
+	c.Controller.Endpoints = []string{a.PublicURL}
+	c.StateDir = filepath.Join(a.StateDir, "connector")
+	c.IdentityDir = filepath.Join(c.StateDir, "identity")
+	c.PolicyFile = a.PolicyFile
+	c.Listen.Admin = a.Listen.Admin
+	return c
 }
 
 func setDefault(s *string, v string) {

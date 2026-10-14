@@ -1,0 +1,194 @@
+// SPDX-License-Identifier: Apache-2.0
+
+package allinone_test
+
+import (
+	"context"
+	"fmt"
+	"net"
+	"os"
+	"path/filepath"
+	"strconv"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/felix-homelab/rpmgr/internal/agent"
+	"github.com/felix-homelab/rpmgr/internal/allinone"
+	"github.com/felix-homelab/rpmgr/internal/policy"
+	"github.com/felix-homelab/rpmgr/internal/routes"
+	"github.com/felix-homelab/rpmgr/internal/store"
+	"github.com/felix-homelab/rpmgr/internal/store/ent"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/enrollmenttoken"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/gatewaygroup"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/resourcestatus"
+	"github.com/felix-homelab/rpmgr/internal/store/storetest"
+)
+
+// db opens the host's database next to its Run.
+func (h *host) db(t *testing.T) (*store.DB, context.Context, *ent.GatewayGroup) {
+	t.Helper()
+	db, err := store.OpenSQLite(context.Background(), h.cfg.Database.DSN, store.SQLiteOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	sys := storetest.SystemCtx(t)
+	return db, sys, db.Client().GatewayGroup.Query().Where(gatewaygroup.Name(allinone.GroupName)).OnlyX(sys)
+}
+
+// tcpRoute adds a tcp route on the default group from port to target through the connector.
+func tcpRoute(t *testing.T, db *store.DB, sys context.Context, group *ent.GatewayGroup, name string, port int, connectorID, target string) string {
+	t.Helper()
+	host, p, err := net.SplitHostPort(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	targetPort, _ := strconv.Atoi(p)
+	var id string
+	if _, err := store.ConfigTx(sys, db, func(tx *ent.Tx) ([]string, error) {
+		if _, err := routes.AddPool(sys, tx, group.OrgID, group.ID, routes.TCP, port, port); err != nil {
+			return nil, err
+		}
+		alloc, err := routes.Allocate(sys, tx, group.OrgID, group.ID, routes.TCP, port)
+		if err != nil {
+			return nil, err
+		}
+		rt, err := tx.Route.Create().SetOrgID(group.OrgID).SetName(name).SetType("tcp").SetGatewayGroupID(group.ID).Save(sys)
+		if err != nil {
+			return nil, err
+		}
+		id = rt.ID
+		if err := tx.RouteTCP.Create().SetOrgID(group.OrgID).SetRouteID(rt.ID).SetPortAllocationID(alloc.ID).Exec(sys); err != nil {
+			return nil, err
+		}
+		return []string{rt.ID}, tx.RouteTarget.Create().SetOrgID(group.OrgID).SetRouteID(rt.ID).SetConnectorID(connectorID).
+			SetKind("address").SetHost(host).SetPort(targetPort).Exec(sys)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	return id
+}
+
+// echoes reports whether the public port answers through the data plane.
+func echoes(port int) bool {
+	c, err := net.Dial("tcp", net.JoinHostPort("127.0.0.1", strconv.Itoa(port)))
+	if err != nil {
+		return false
+	}
+	defer func() { _ = c.Close() }()
+	return ping(c, "through the built-in connector") == nil
+}
+
+// blocked returns the readiness detail with which the connector reports the route blocked by its
+// local policy, or "".
+func blocked(db *store.DB, sys context.Context, connectorID, routeID string) string {
+	st, err := db.Client().ResourceStatus.Query().Where(resourcestatus.AgentID(connectorID), resourcestatus.ResourceID(routeID)).Only(sys)
+	if err != nil || !strings.Contains(strings.ToLower(st.Reason), "blocked") {
+		return ""
+	}
+	return st.Detail
+}
+
+// TestAllInOne_OwnConnector (ADR-0019): init enrolls the built-in connector "local" next to the
+// built-in gateway; Run serves a tcp route to a service on the host through it, in memory. Its
+// local policy decides: without a file nothing is allowed, and with everything allowed rpmgr's own
+// ports, which are the admin listener, port 443, port 80 and a route's port, stay refused.
+func TestAllInOne_OwnConnector(t *testing.T) {
+	h := newHost(t)
+	r := h.init(t)
+	db, sys, group := h.db(t)
+	con, gw := db.Client().Connector.GetX(sys, r.ConnectorID), db.Client().Gateway.GetX(sys, r.GatewayID)
+	if con.Name != allinone.ConnectorName || !con.BuiltIn || con.OrgID != group.OrgID || !gw.BuiltIn {
+		t.Fatalf("the built-in agents: %+v %+v", con, gw)
+	}
+	if id, err := agent.ReadIdentity(h.cfg.Connector().IdentityDir); err != nil || id.AgentID != r.ConnectorID {
+		t.Fatalf("the connector's identity: %+v %v", id, err)
+	}
+	svc, public := echoService(t), freePort(t)
+	route := tcpRoute(t, db, sys, group, "echo", public, r.ConnectorID, "127.0.0.1:"+strconv.Itoa(svc))
+	h.run(t)
+	waitFor(t, "not ready", h.ready)
+	waitFor(t, "the route is not blocked without a policy file", func() bool {
+		return blocked(db, sys, r.ConnectorID, route) == "127.0.0.1:"+strconv.Itoa(svc)
+	})
+	if echoes(public) {
+		t.Fatal("served without a policy file")
+	}
+	if err := os.WriteFile(h.cfg.PolicyFile, []byte("version: 1\nallow_targets: [0.0.0.0/0, \"[::/0]\"]\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, "the route is not served through the built-in connector", func() bool { return echoes(public) })
+
+	_, adminPort, _ := net.SplitHostPort(h.cfg.Listen.Admin)
+	for i, port := range []string{adminPort, strconv.Itoa(h.port), strconv.Itoa(h.port80), strconv.Itoa(public)} {
+		loop := tcpRoute(t, db, sys, group, fmt.Sprintf("own-%d", i), freePort(t), r.ConnectorID, "127.0.0.1:"+port)
+		waitFor(t, "port "+port+" is not refused as rpmgr's own", func() bool {
+			return blocked(db, sys, r.ConnectorID, loop) == "127.0.0.1:"+port+policy.OwnPort
+		})
+	}
+	if !echoes(public) {
+		t.Fatal("the allowed route stopped")
+	}
+}
+
+// TestAllInOne_EnrollsItsConnector (ADR-0019): Run enrolls the built-in connector when its
+// identity is missing, as on an installation initialised before it: again as the same connector
+// while that is in service, as a new one once it was decommissioned, and only once. It also marks
+// an older installation's gateway built in.
+func TestAllInOne_EnrollsItsConnector(t *testing.T) {
+	h := newHost(t)
+	r := h.init(t)
+	db, sys, _ := h.db(t)
+	db.Client().Gateway.UpdateOneID(r.GatewayID).SetBuiltIn(false).ExecX(sys)
+	identity := h.cfg.Connector().IdentityDir
+	tokens := func() int {
+		return db.Client().EnrollmentToken.Query().Where(enrollmenttoken.RoleEQ(enrollmenttoken.RoleConnector)).CountX(sys)
+	}
+	if err := os.RemoveAll(identity); err != nil {
+		t.Fatal(err)
+	}
+	stop := h.run(t)
+	waitFor(t, "not ready", h.ready)
+	id, err := agent.ReadIdentity(identity)
+	if err != nil || id.AgentID != r.ConnectorID {
+		t.Fatalf("the connector enrolled again as %+v, %v; want %s", id, err, r.ConnectorID)
+	}
+	if !db.Client().Gateway.GetX(sys, r.GatewayID).BuiltIn || tokens() != 2 {
+		t.Fatalf("gateway built in: %v, %d connector tokens", db.Client().Gateway.GetX(sys, r.GatewayID).BuiltIn, tokens())
+	}
+	stop()
+
+	h.run(t)() // a start with an identity enrolls nothing
+	if tokens() != 2 {
+		t.Fatalf("%d connector tokens after a plain restart", tokens())
+	}
+
+	db.Client().Connector.UpdateOneID(r.ConnectorID).SetDecommissionedAt(time.Now()).SetEnabled(false).ExecX(sys)
+	if err := os.RemoveAll(identity); err != nil {
+		t.Fatal(err)
+	}
+	h.run(t)
+	waitFor(t, "not ready", h.ready)
+	id, err = agent.ReadIdentity(identity)
+	if err != nil || id.AgentID == r.ConnectorID {
+		t.Fatalf("a new connector: %+v, %v", id, err)
+	}
+	if c := db.Client().Connector.GetX(sys, id.AgentID); c.Name != allinone.ConnectorName || !c.BuiltIn {
+		t.Fatalf("the new connector: %+v", c)
+	}
+}
+
+// TestAllInOne_NeedsItsGateway: Run refuses to start without the gateway's identity, which only
+// init makes.
+func TestAllInOne_NeedsItsGateway(t *testing.T) {
+	h := newHost(t)
+	h.init(t)
+	if err := os.RemoveAll(filepath.Join(h.cfg.StateDir, "gateway")); err != nil {
+		t.Fatal(err)
+	}
+	err := allinone.Run(context.Background(), allinone.RunOptions{Config: h.cfg, Getenv: func(string) string { return "" }})
+	if err == nil || !strings.Contains(err.Error(), "rpmgr all-in-one init") {
+		t.Fatalf("Run without the gateway's identity: %v", err)
+	}
+}

@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 
-// Package allinone runs a controller and a gateway in one process (docs/02-architecture.md,
-// "All-in-one"): the gateway owns the public ports and hands the controller's names to the
-// in-process controller, and the gateway's own control session reaches the controller over an
-// in-memory mutual-TLS connection, so both topologies share one code path (R16).
+// Package allinone runs a controller, a gateway and a connector in one process
+// (docs/02-architecture.md, "All-in-one"; ADR-0019): the gateway owns the public ports and hands
+// the controller's names to the in-process controller, and the agents' control sessions and the
+// connector's data sessions reach the controller and the gateway over in-memory mutual-TLS
+// connections, so both topologies share one code path (R16).
 package allinone
 
 import (
@@ -22,11 +23,14 @@ import (
 	"sync"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
+
 	agentv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/agent/v1"
 	"github.com/felix-homelab/rpmgr/internal/agent"
 	"github.com/felix-homelab/rpmgr/internal/audit"
 	"github.com/felix-homelab/rpmgr/internal/authz"
 	"github.com/felix-homelab/rpmgr/internal/config"
+	"github.com/felix-homelab/rpmgr/internal/connector"
 	"github.com/felix-homelab/rpmgr/internal/controller"
 	"github.com/felix-homelab/rpmgr/internal/gateway"
 	"github.com/felix-homelab/rpmgr/internal/memnet"
@@ -47,16 +51,17 @@ const (
 // InitResult is what init reports to the operator.
 type InitResult struct {
 	controller.InitResult
-	GatewayID string
+	GatewayID, ConnectorID string
 }
 
 // Init initialises an all-in-one installation: the controller as `rpmgr controller init` does,
-// from an all-in-one boot file, then its gateway, which an Admin would otherwise create: a gateway
+// from an all-in-one boot file, then its own agents, which are built in (ADR-0019): a gateway
 // group "default" with the gateway "local", whose tunnel endpoint is the public URL's host on
-// the port of listen.tcp, enrolled into <state_dir>/gateway/identity through the in-process
-// controller. What the gateway's part adds to the state directory goes to the directory's owner, as
-// controller.Init's own files do. When the gateway's part fails, the database and what this init
-// created beside it go again, so init can run again (docs/10-operations.md, "Install").
+// the port of listen.tcp, enrolled into <state_dir>/gateway/identity, and the connector "local",
+// enrolled into <state_dir>/connector/identity, both through the in-process controller. What the
+// agents' part adds to the state directory goes to the directory's owner, as controller.Init's own
+// files do. When the agents' part fails, the database and what this init created beside it go
+// again, so init can run again (docs/10-operations.md, "Install").
 func Init(ctx context.Context, o controller.InitOptions) (res InitResult, err error) {
 	o.AllInOne = true
 	r, err := controller.Init(ctx, o)
@@ -90,9 +95,11 @@ func Init(ctx context.Context, o controller.InitOptions) (res InitResult, err er
 			}
 		}
 	}()
-	gw := cfg.Gateway()
-	if err := os.MkdirAll(gw.StateDir, 0o750); err != nil {
-		return InitResult{}, err
+	gw, con := cfg.Gateway(), cfg.Connector()
+	for _, dir := range []string{gw.StateDir, con.StateDir} {
+		if err := os.MkdirAll(dir, 0o750); err != nil {
+			return InitResult{}, err
+		}
 	}
 	public, err := url.Parse(cfg.PublicURL)
 	if err != nil {
@@ -102,7 +109,7 @@ func Init(ctx context.Context, o controller.InitOptions) (res InitResult, err er
 	if err != nil {
 		return InitResult{}, err
 	}
-	gatewayID, tok, err := createGateway(ctx, cfg, net.JoinHostPort(public.Hostname(), port), groupHostnames(public))
+	gatewayID, tok, conTok, err := createGateway(ctx, cfg, net.JoinHostPort(public.Hostname(), port), groupHostnames(public))
 	if err != nil {
 		return InitResult{}, err
 	}
@@ -126,14 +133,23 @@ func Init(ctx context.Context, o controller.InitOptions) (res InitResult, err er
 	_, err = agent.Enroll(ctx, agent.EnrollOptions{Controller: cfg.PublicURL, Pin: r.RootPin, Token: tok, IdentityDir: gw.IdentityDir,
 		Bundle: pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: r.Root.Raw}), Dial: mem.Dial,
 		Host: &agentv1.HostFacts{Hostname: "all-in-one"}, Now: o.Now})
+	if err != nil {
+		err = fmt.Errorf("allinone: enroll the gateway: %w", err)
+	} else {
+		err = local{token: conTok, root: r.Root}.enroll(ctx, cfg, mem.Dial)
+	}
 	stop()
 	if rerr := <-done; err == nil {
 		err = rerr
 	}
 	if err != nil {
-		return InitResult{}, fmt.Errorf("allinone: enroll the gateway: %w", err)
+		return InitResult{}, err
 	}
-	return InitResult{InitResult: r, GatewayID: gatewayID}, nil
+	conID, err := agent.ReadIdentity(con.IdentityDir)
+	if err != nil {
+		return InitResult{}, err
+	}
+	return InitResult{InitResult: r, GatewayID: gatewayID, ConnectorID: conID.AgentID}, nil
 }
 
 // undoInit removes the database of a failed init, and what the init created in the state directory
@@ -173,23 +189,21 @@ func groupHostnames(public *url.URL) []string {
 	return host
 }
 
-// createGateway creates the gateway group with its public hostnames and the gateway, and a
-// single-use token bound to it.
-func createGateway(ctx context.Context, cfg config.AllInOne, endpoint string, hostnames []string) (string, string, error) {
+// createGateway creates the gateway group with its public hostnames and the built-in gateway, a
+// single-use token bound to it, and a single-use token that enrolls the built-in connector.
+func createGateway(ctx context.Context, cfg config.AllInOne, endpoint string, hostnames []string) (gatewayID, tok, conTok string, err error) {
 	db, err := store.OpenSQLite(ctx, cfg.Database.DSN, store.SQLiteOptions{})
 	if err != nil {
-		return "", "", err
+		return "", "", "", err
 	}
 	defer func() { _ = db.Close() }()
 	sys, err := authz.System(ctx, "local-cli", "rpmgr all-in-one init", audit.SystemScopes(db))
 	if err != nil {
-		return "", "", err
+		return "", "", "", err
 	}
-	tok, err := token.New(token.Enrollment)
-	if err != nil {
-		return "", "", err
+	if tok, err = token.New(token.Enrollment); err != nil {
+		return "", "", "", err
 	}
-	var gatewayID string
 	_, err = store.ConfigTx(sys, db, func(tx *ent.Tx) ([]string, error) {
 		org, err := tx.Org.Create().SetName("Default").SetSlug("default").Save(sys)
 		if err != nil {
@@ -200,20 +214,23 @@ func createGateway(ctx context.Context, cfg config.AllInOne, endpoint string, ho
 			return nil, err
 		}
 		gw, err := tx.Gateway.Create().SetOrgID(org.ID).SetGatewayGroupID(group.ID).SetName(GatewayName).
-			SetTunnelEndpoints([]string{endpoint}).Save(sys)
+			SetTunnelEndpoints([]string{endpoint}).SetBuiltIn(true).Save(sys)
 		if err != nil {
 			return nil, err
 		}
 		gatewayID = gw.ID
 		if err := tx.EnrollmentToken.Create().SetOrgID(org.ID).SetTokenHash(token.Hash(tok)).SetRole("gateway").
-			SetGatewayID(gw.ID).SetMaxUses(1).SetExpiresAt(time.Now().Add(10 * time.Minute)).SetCreatedBy("local-cli").Exec(sys); err != nil {
+			SetGatewayID(gw.ID).SetMaxUses(1).SetExpiresAt(time.Now().Add(tokenTTL)).SetCreatedBy("local-cli").Exec(sys); err != nil {
 			return nil, err
 		}
-		_, err = audit.Append(sys, tx, audit.Entry{ActorType: audit.ActorSystem, ActorID: "local-cli", Action: "gateway.create",
-			TargetType: "gateway", TargetID: gw.ID, Result: audit.Success, Reason: "rpmgr all-in-one init"})
+		if _, err := audit.Append(sys, tx, audit.Entry{ActorType: audit.ActorSystem, ActorID: "local-cli", Action: "gateway.create",
+			TargetType: "gateway", TargetID: gw.ID, Result: audit.Success, Reason: "rpmgr all-in-one init"}); err != nil {
+			return nil, err
+		}
+		conTok, err = connectorToken(sys, tx, org.ID, "", "local-cli")
 		return []string{org.ID, group.ID, gw.ID}, err
 	})
-	return gatewayID, tok, err
+	return gatewayID, tok, conTok, err
 }
 
 // RunOptions configure Run.
@@ -224,15 +241,43 @@ type RunOptions struct {
 	Logger  *slog.Logger
 	// DrainPeriod is the gateway's; 0 is gateway.DrainPeriod.
 	DrainPeriod time.Duration
-	// Listening, if set, is called once the controller and the gateway listen.
+	// Listening, if set, is called once the controller, the gateway and the connector run.
 	Listening func()
 	// ACMERoots, if set, trusts the ACME CA's TLS certificate instead of the system roots (tests).
 	ACMERoots *x509.CertPool
-	// Registry, if set, receives the metrics of both roles instead of a new registry.
+	// Registry, if set, receives the metrics of all three roles instead of a new registry.
 	Registry telemetry.Registry
 }
 
-// Run runs the controller and the gateway until ctx ends; the admin listener reports both.
+// part is one role that Run runs.
+type part struct {
+	stop  context.CancelFunc
+	done  chan error
+	ended bool
+	err   error
+}
+
+func start(run func(ctx context.Context) error) *part {
+	ctx, cancel := context.WithCancel(context.Background())
+	p := &part{stop: cancel, done: make(chan error, 1)}
+	go func() { p.done <- run(ctx) }()
+	return p
+}
+
+// end stops the part and waits for it.
+func (p *part) end() error {
+	p.stop()
+	if !p.ended {
+		p.err, p.ended = <-p.done, true
+	}
+	return p.err
+}
+
+// Run runs the controller, the gateway and the connector until ctx ends or one of them ends, which
+// ends the others; the admin listener reports all three. Before the controller starts, it marks
+// the gateway built in and, when the connector has no identity, prepares its enrollment, which it
+// completes through the in-process controller (ADR-0019). On the way out the gateway drains first,
+// while the connector serves its streams and the controller answers.
 func Run(ctx context.Context, o RunOptions) error {
 	if o.Logger == nil {
 		o.Logger = slog.New(slog.DiscardHandler)
@@ -242,7 +287,16 @@ func Run(ctx context.Context, o RunOptions) error {
 	if err != nil {
 		return err
 	}
-	mem := memnet.NewListener()
+	own, err := newOwnPorts(cfg)
+	if err != nil {
+		return err
+	}
+	l, err := prepare(ctx, cfg)
+	if err != nil {
+		return err
+	}
+	mem, tunnels := memnet.NewListener(), memnet.NewListener()
+	defer func() { _, _ = mem.Close(), tunnels.Close() }()
 	reg := o.Registry
 	if reg == nil {
 		reg = telemetry.NewRegistry()
@@ -256,44 +310,47 @@ func Run(ctx context.Context, o RunOptions) error {
 		checks = append(checks, c)
 		mu.Unlock()
 	}
-	// Separate lifetimes: on the way out the gateway drains first, while its controller answers.
-	ctlCtx, stopCtl := context.WithCancel(context.Background())
-	defer stopCtl()
-	gwCtx, stopGw := context.WithCancel(context.Background())
-	defer stopGw()
 	// The controller's port-80 handler goes to the gateway, which serves port 80; the CA validates
 	// the public URL's certificate through the gateway, so ACME waits for it.
 	port80 := controller.RedirectHandler(public)
-	ctlListening, ctlDone, gwListening := make(chan struct{}), make(chan error, 1), make(chan struct{})
-	go func() {
-		ctlDone <- controller.Run(ctlCtx, controller.RunOptions{Config: cfg.Controller(), Version: o.Version, Sources: routes.Sources(),
+	ctlListening, gwListening, conListening := make(chan struct{}), make(chan struct{}), make(chan struct{})
+	ctl := start(func(ctx context.Context) error {
+		return controller.Run(ctx, controller.RunOptions{Config: cfg.Controller(), Version: o.Version, Sources: routes.Sources(),
 			Getenv: o.Getenv, Logger: o.Logger.With("role", "controller"), Listener: mem, Registry: reg, Readiness: readiness,
 			ACMERoots: o.ACMERoots, Port80: func(h http.Handler) { port80 = h }, ACMEAfter: gwListening,
 			Listening: func() { close(ctlListening) }})
-	}()
-	select {
-	case <-ctlListening:
-	case err := <-ctlDone:
+	})
+	if err := wait(ctlListening, ctl); err != nil {
 		return err
 	}
-	gwDone := make(chan error, 1)
-	go func() {
-		gwDone <- gateway.Run(gwCtx, gateway.RunOptions{Config: cfg.Gateway(), Version: o.Version, Logger: o.Logger.With("role", "gateway"),
-			DrainPeriod: o.DrainPeriod, Controller: mem.Deliver, ControllerNames: []string{public.Hostname()}, Dial: mem.Dial,
-			Port80Fallback: port80,
-			Registry:       reg, Readiness: readiness, Listening: func() { close(gwListening) }})
-	}()
-	select {
-	case <-gwListening:
-	case err := <-gwDone:
-		stopCtl()
-		return errors.Join(err, <-ctlDone)
+	if l.token != "" {
+		if err := l.enroll(ctx, cfg, mem.Dial); err != nil {
+			return errors.Join(err, ctl.end())
+		}
+		o.Logger.Info("enrolled all-in-one's own connector", "identity", cfg.Connector().IdentityDir)
 	}
-	adminCtx, stopAdmin := context.WithCancel(context.Background())
-	defer stopAdmin()
-	adminDone := make(chan error, 1)
-	go func() {
-		adminDone <- telemetry.ServeAdmin(adminCtx, cfg.Listen.Admin, reg, func(ctx context.Context) error {
+	gw := start(func(ctx context.Context) error {
+		return gateway.Run(ctx, gateway.RunOptions{Config: cfg.Gateway(), Version: o.Version, Logger: o.Logger.With("role", "gateway"),
+			DrainPeriod: o.DrainPeriod, Controller: mem.Deliver, ControllerNames: []string{public.Hostname()}, Dial: mem.Dial,
+			Port80Fallback: port80, Tunnels: tunnels, RoutePorts: func(wants func(uint16) bool) { own.routes.Store(&wants) },
+			Registry: telemetry.WithLabels(reg, prometheus.Labels{"role": "gateway"}), Readiness: readiness,
+			Listening: func() { close(gwListening) }})
+	})
+	if err := wait(gwListening, gw); err != nil {
+		return errors.Join(err, ctl.end())
+	}
+	con := start(func(ctx context.Context) error {
+		return connector.Run(ctx, connector.RunOptions{Config: cfg.Connector(), Version: o.Version, Getenv: o.Getenv,
+			Logger: o.Logger.With("role", "connector"), ControlDial: mem.Dial, Own: own.own,
+			InProcess: &connector.InProcess{GatewayID: l.gatewayID, Dial: func(ctx context.Context) (net.Conn, error) { return tunnels.Dial(ctx, "") }},
+			Registry: telemetry.WithLabels(reg, prometheus.Labels{"role": "connector"}), Readiness: readiness,
+			Listening: func() { close(conListening) }})
+	})
+	if err := wait(conListening, con); err != nil {
+		return errors.Join(err, gw.end(), ctl.end())
+	}
+	admin := start(func(ctx context.Context) error {
+		return telemetry.ServeAdmin(ctx, cfg.Listen.Admin, reg, func(ctx context.Context) error {
 			mu.Lock()
 			defer mu.Unlock()
 			var errs []error
@@ -302,33 +359,35 @@ func Run(ctx context.Context, o RunOptions) error {
 			}
 			return errors.Join(errs...)
 		})
-	}()
+	})
 	if o.Listening != nil {
 		o.Listening()
 	}
-	var gwErr, ctlErr, adminErr error
-	gwEnded, ctlEnded, adminEnded := false, false, false
 	select {
 	case <-ctx.Done():
-	case gwErr = <-gwDone:
-		gwEnded = true
-	case ctlErr = <-ctlDone:
-		ctlEnded = true
-	case adminErr = <-adminDone:
-		adminEnded = true
+	case gw.err = <-gw.done:
+		gw.ended = true
+	case ctl.err = <-ctl.done:
+		ctl.ended = true
+	case con.err = <-con.done:
+		con.ended = true
+	case admin.err = <-admin.done:
+		admin.ended = true
 	}
-	stopGw()
-	if !gwEnded {
-		gwErr = <-gwDone
+	// The admin listener is closed last: its address is free again once Run returns.
+	return errors.Join(gw.end(), con.end(), ctl.end(), admin.end())
+}
+
+// wait returns once listening is closed, or the part's error if it ends first.
+func wait(listening chan struct{}, p *part) error {
+	select {
+	case <-listening:
+		return nil
+	case err := <-p.done:
+		p.err, p.ended = err, true
+		if err == nil {
+			err = errors.New("allinone: a role ended before it ran")
+		}
+		return err
 	}
-	stopCtl()
-	if !ctlEnded {
-		ctlErr = <-ctlDone
-	}
-	stopAdmin()
-	if !adminEnded { // the admin listener is closed: its address is free again once Run returns
-		adminErr = <-adminDone
-	}
-	_ = mem.Close()
-	return errors.Join(gwErr, ctlErr, adminErr)
 }

@@ -45,6 +45,23 @@ type Policy struct {
 	// Invalid is set for the policy that stands in for a file that does not parse: it denies
 	// everything, and every target reports not_ready(policy_invalid).
 	Invalid error
+	// own, if set, reports rpmgr's own ports, which all-in-one's connector never dials whatever
+	// the file allows (ADR-0019).
+	own func(netip.AddrPort) bool
+}
+
+// Guarded returns a copy of p that also refuses every address and port own reports: all-in-one's
+// own listeners on this host's addresses.
+func (p *Policy) Guarded(own func(netip.AddrPort) bool) *Policy {
+	c := *p
+	c.own = own
+	return &c
+}
+
+// Own reports whether ip:port is one of rpmgr's own ports, which the policy refuses whatever it
+// allows.
+func (p *Policy) Own(ip netip.Addr, port uint16) bool {
+	return p != nil && p.own != nil && p.own(netip.AddrPortFrom(ip.Unmap(), port))
 }
 
 // target is an entry of allow_targets or deny_targets: a unix socket, or an address or subnet
@@ -362,14 +379,14 @@ var protected = []netip.Prefix{
 	netip.MustParsePrefix("100.100.100.200/32"),
 }
 
-// Allows reports whether the connector may connect to ip:port: no entry of deny_targets matches it,
-// and one of allow_targets does.
+// Allows reports whether the connector may connect to ip:port: it is not one of rpmgr's own ports,
+// no entry of deny_targets matches it, and one of allow_targets does.
 func (p *Policy) Allows(ip netip.Addr, port uint16) bool {
 	if p == nil || p.Invalid != nil {
 		return false
 	}
 	ip = ip.Unmap()
-	if p.DeniedBy(ip, port) != "" {
+	if p.DeniedBy(ip, port) != "" || p.Own(ip, port) {
 		return false
 	}
 	var guard *netip.Prefix
@@ -432,9 +449,16 @@ func (p *Policy) DeniedByUnix(path string) string {
 type BlockedError struct {
 	Target string
 	Denied string // the deny_targets entry, "" if no allow_targets entry allows the target
+	Own    bool   // the target is one of rpmgr's own ports
 }
 
+// OwnPort ends the readiness detail of a target that is one of rpmgr's own ports.
+const OwnPort = " is one of rpmgr's own ports"
+
 func (e *BlockedError) Error() string {
+	if e.Own {
+		return "policy: " + e.Target + OwnPort + ", which all-in-one's connector never dials"
+	}
 	if e.Denied != "" {
 		return "policy: the connector-local policy denies " + e.Target + " (deny_targets entry " + e.Denied + ")"
 	}
@@ -442,8 +466,11 @@ func (e *BlockedError) Error() string {
 }
 
 // Detail is the readiness detail of the refused target: the target, followed by " denied by " and
-// the entry of deny_targets if one refused it.
+// the entry of deny_targets if one refused it, or by OwnPort.
 func (e *BlockedError) Detail() string {
+	if e.Own {
+		return e.Target + OwnPort
+	}
 	if e.Denied != "" {
 		return e.Target + " denied by " + e.Denied
 	}
@@ -516,7 +543,8 @@ func (p *Policy) blocked(ap netip.AddrPort) error {
 	if p.Allows(ap.Addr(), ap.Port()) {
 		return nil
 	}
-	return &BlockedError{Target: netip.AddrPortFrom(ap.Addr().Unmap(), ap.Port()).String(), Denied: p.DeniedBy(ap.Addr(), ap.Port())}
+	return &BlockedError{Target: netip.AddrPortFrom(ap.Addr().Unmap(), ap.Port()).String(), Denied: p.DeniedBy(ap.Addr(), ap.Port()),
+		Own: p.Own(ap.Addr(), ap.Port())}
 }
 
 // Describe returns the policy in the form `rpmgr policy show` prints: its subnets normalised, and
