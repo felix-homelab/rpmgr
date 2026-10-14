@@ -96,6 +96,8 @@ func (s *Sessions) ask(ctx context.Context, agentID, need string, msg func(opID 
 	select {
 	case r := <-o.result:
 		return r, nil
+	case <-sess.done: // the agent cannot answer any more (#527)
+		return nil, fmt.Errorf("%w: the session ended before the agent answered", ErrNotConnected)
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	}
