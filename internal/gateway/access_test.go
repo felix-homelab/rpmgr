@@ -32,8 +32,10 @@ func access(t *testing.T, rules ...*agentv1.IPRule) gateway.Access {
 func allow(cidrs ...string) *agentv1.IPRule { return &agentv1.IPRule{Allow: true, Cidrs: cidrs} }
 func deny(cidrs ...string) *agentv1.IPRule  { return &agentv1.IPRule{Cidrs: cidrs} }
 
-// TestAccess: the first matching rule decides; without a match a client is allowed only when no
-// rule allows; IPv4-mapped addresses and CIDRs count as IPv4.
+// TestAccess (D85): a matching deny rule refuses a client whatever allows it and in whatever order,
+// as when the rules come from several policies; otherwise a matching allow admits it; without a
+// match a client is allowed only when no rule allows; IPv4-mapped addresses and CIDRs count as IPv4,
+// and an IPv6 zone does not count, so a zoned link-local client meets every rule.
 func TestAccess(t *testing.T) {
 	for _, tc := range []struct {
 		name  string
@@ -47,8 +49,23 @@ func TestAccess(t *testing.T) {
 		{"allow list, listed", []*agentv1.IPRule{allow("10.0.0.0/8")}, "10.1.2.3", true},
 		{"allow list, not listed", []*agentv1.IPRule{allow("10.0.0.0/8")}, "198.51.100.1", false},
 		{"deny before allow", []*agentv1.IPRule{deny("10.0.0.5/32"), allow("10.0.0.0/8")}, "10.0.0.5", false},
-		{"allow before deny", []*agentv1.IPRule{allow("10.0.0.0/8"), deny("10.0.0.5/32")}, "10.0.0.5", true},
+		{"allow before deny", []*agentv1.IPRule{allow("10.0.0.0/8"), deny("10.0.0.5/32")}, "10.0.0.5", false},
+		{"allow, then deny a subnet: inside", []*agentv1.IPRule{allow("10.0.0.0/8"), deny("10.0.5.0/24")}, "10.0.5.9", false},
+		{"allow, then deny a subnet: outside", []*agentv1.IPRule{allow("10.0.0.0/8"), deny("10.0.5.0/24")}, "10.1.2.3", true},
+		{"deny a subnet, then allow: inside", []*agentv1.IPRule{deny("10.0.5.0/24"), allow("10.0.0.0/8")}, "10.0.5.9", false},
+		{"deny a subnet, then allow: outside", []*agentv1.IPRule{deny("10.0.5.0/24"), allow("10.0.0.0/8")}, "10.1.2.3", true},
 		{"deny then allow, other", []*agentv1.IPRule{deny("10.0.0.5/32"), allow("10.0.0.0/8")}, "192.0.2.1", false},
+		{"two policies, allow one first", []*agentv1.IPRule{allow("0.0.0.0/0"), allow("192.0.2.0/24"), deny("192.0.2.66/32")}, "192.0.2.66", false},
+		{"two policies, deny one first", []*agentv1.IPRule{deny("192.0.2.66/32"), allow("0.0.0.0/0")}, "192.0.2.65", true},
+		{"a deny inside a rule of several CIDRs", []*agentv1.IPRule{allow("10.0.0.0/8"), deny("192.0.2.0/24", "10.9.0.0/16")}, "10.9.1.1", false},
+		{"mapped client, allow then deny", []*agentv1.IPRule{allow("192.0.2.0/24"), deny("192.0.2.9/32")}, "::ffff:192.0.2.9", false},
+		{"only deny rules, others", []*agentv1.IPRule{deny("10.0.0.0/8"), deny("192.0.2.0/24")}, "198.51.100.1", true},
+		{"only allow rules, others", []*agentv1.IPRule{allow("10.0.0.0/8"), allow("192.0.2.0/24")}, "198.51.100.1", false},
+		{"zoned link-local, denied", []*agentv1.IPRule{deny("fe80::/10")}, "fe80::1%eth0", false},
+		{"zoned link-local, deny-all", []*agentv1.IPRule{deny("0.0.0.0/0", "::/0")}, "fe80::1%eth0", false},
+		{"zoned link-local, deny-all behind an allow", []*agentv1.IPRule{allow("::/0"), deny("0.0.0.0/0", "::/0")}, "fe80::1%eth0", false},
+		{"zoned link-local, allowed", []*agentv1.IPRule{allow("fe80::/10")}, "fe80::1%eth0", true},
+		{"zoned link-local, outside an allow list", []*agentv1.IPRule{allow("10.0.0.0/8")}, "fe80::1%eth0", false},
 		{"IPv6", []*agentv1.IPRule{allow("2001:db8::/32")}, "2001:db8::1", true},
 		{"IPv6 outside", []*agentv1.IPRule{allow("2001:db8::/32")}, "2001:db9::1", false},
 		{"mapped client, IPv4 rule", []*agentv1.IPRule{deny("192.0.2.0/24")}, "::ffff:192.0.2.9", false},
@@ -69,6 +86,10 @@ func TestAccess(t *testing.T) {
 			t.Errorf("%s: accepted", name)
 		}
 	}
+	zoned := &net.TCPAddr{IP: net.ParseIP("fe80::1"), Zone: "eth0", Port: 40000}
+	if access(t, deny("fe80::/10")).AllowsAddr(zoned) || !access(t, allow("fe80::/10")).AllowsAddr(zoned) {
+		t.Error("AllowsAddr with a zoned link-local address")
+	}
 	a, b := access(t, deny("10.0.0.0/8")), access(t, deny("10.0.0.0/8"))
 	if !a.Same(b) || a.Same(access(t, allow("10.0.0.0/8"))) || a.Same(access(t)) {
 		t.Error("Same")
@@ -76,7 +97,8 @@ func TestAccess(t *testing.T) {
 }
 
 // TestTCPRoutes_Access: a client the route's access rules deny is reset at once; tightening the
-// rules resets the open connections they no longer allow, loosening them keeps every one.
+// rules resets the open connections they no longer allow, loosening them keeps every one; a deny
+// behind an allow that admits the client still refuses it (D85).
 func TestTCPRoutes_Access(t *testing.T) {
 	p := newPlane(t, service(t, echoService), "rt_1")
 	port := freePort(t)
@@ -104,10 +126,20 @@ func TestTCPRoutes_Access(t *testing.T) {
 	if err := ping(c, "after tightening"); err == nil {
 		t.Fatal("a connection the tightened rules deny went on")
 	}
+	// A deny after an allow that admits the client still refuses it, also an open connection (D85).
+	p.routes.Apply([]gateway.TCPRoute{{ID: "rt_1", Port: port, Access: access(t, allow("127.0.0.0/8"))}})
+	c = dialPort(t, port)
+	if err := ping(c, "allowed again"); err != nil {
+		t.Fatal(err)
+	}
+	p.routes.Apply([]gateway.TCPRoute{{ID: "rt_1", Port: port, Access: access(t, allow("127.0.0.0/8"), deny("127.0.0.1/32"))}})
+	if err := ping(c, "after a deny behind the allow"); err == nil {
+		t.Fatal("a connection a deny behind an allow refuses went on")
+	}
 }
 
-// TestPassthrough_Access: a passthrough client the rules deny is reset; tightening resets the
-// open connections they no longer allow.
+// TestPassthrough_Access: a passthrough client the rules deny, also by a deny behind an allow that
+// admits it, is reset; tightening resets the open connections they no longer allow.
 func TestPassthrough_Access(t *testing.T) {
 	addr, pool := backend(t, "db.example.com")
 	p := newPlaneWith(t, addr, "none", "rt_db")
@@ -118,7 +150,7 @@ func TestPassthrough_Access(t *testing.T) {
 		t.Fatal(err)
 	}
 	front := serve(t, &gateway.Router{TrustDomain: td, GatewayID: "gw_01", Routes: pass, DefaultTLS: def})
-	route := gateway.PassthroughRoute{ID: "rt_db", Hostnames: []string{"db.example.com"}, Access: access(t, deny("127.0.0.0/8"))}
+	route := gateway.PassthroughRoute{ID: "rt_db", Hostnames: []string{"db.example.com"}, Access: access(t, allow("127.0.0.0/8"), deny("127.0.0.1/32"))}
 	pass.Apply([]gateway.PassthroughRoute{route})
 	dial := func() (*tls.Conn, error) {
 		return tls.Dial("tcp", front, &tls.Config{ServerName: "db.example.com", RootCAs: pool, MinVersion: tls.VersionTLS13})
@@ -148,8 +180,8 @@ func TestPassthrough_Access(t *testing.T) {
 	}
 }
 
-// TestUDPRoutes_Access: a client the rules deny opens no flow, counted as a policy drop;
-// tightening ends the flows they no longer allow.
+// TestUDPRoutes_Access: a client the rules deny, also by a deny behind an allow that admits it,
+// opens no flow, counted as a policy drop; tightening ends the flows they no longer allow.
 func TestUDPRoutes_Access(t *testing.T) {
 	route := ids.New("rt")
 	m := newSessions(&assignment{known: map[string]bool{cid("udp-acl"): true}, routes: map[string][]string{route: {cid("udp-acl")}}}, nil)
@@ -157,7 +189,7 @@ func TestUDPRoutes_Access(t *testing.T) {
 	start(t, m, connectorID("udp-acl"), hello(route))
 	u, addr, reg := udpGateway(t, m, route, time.Minute)
 	port := uint16(addr.Port) //nolint:gosec // G115: a port
-	u.Apply([]gateway.UDPRoute{{ID: route, Port: port, FlowIdle: time.Minute, Access: access(t, deny("127.0.0.0/8"))}})
+	u.Apply([]gateway.UDPRoute{{ID: route, Port: port, FlowIdle: time.Minute, Access: access(t, allow("127.0.0.0/8"), deny("127.0.0.1/32"))}})
 	c := client(t)
 	if _, err := c.WriteToUDP([]byte("x"), addr); err != nil {
 		t.Fatal(err)
@@ -265,12 +297,13 @@ func TestHTTPRoutes_AccessDuringAdmission(t *testing.T) {
 	}
 }
 
-// TestHTTPRoutes_Access: a client the rules deny gets 403; behind a trusted proxy the client is the
-// last untrusted address of X-Forwarded-For; tightening cancels the requests it no longer allows,
-// an upgraded connection included.
+// TestHTTPRoutes_Access: a client the rules deny, also by a deny behind an allow that admits it,
+// gets 403; behind a trusted proxy the client is the last untrusted address of X-Forwarded-For,
+// a zoned one included;
+// tightening cancels the requests it no longer allows, an upgraded connection included.
 func TestHTTPRoutes_Access(t *testing.T) {
 	route := gateway.HTTPRoute{ID: "rt_web", Upstream: "http", WebSocket: true, Hosts: []gateway.HTTPHost{{Hostname: "app.example.com"}},
-		Access: access(t, deny("127.0.0.0/8"))}
+		Access: access(t, allow("127.0.0.0/8"), deny("127.0.0.1/32"))}
 	e := newHTTPEnv(t, websocketEcho, route)
 	if r := get(t, e.client(false), "https://app.example.com/", nil); r.status != http.StatusForbidden {
 		t.Fatalf("a denied client: %d", r.status)
@@ -287,6 +320,15 @@ func TestHTTPRoutes_Access(t *testing.T) {
 	} {
 		if r := get(t, e.client(false), "https://app.example.com/", http.Header{"X-Forwarded-For": {xff}}); r.status != want {
 			t.Errorf("X-Forwarded-For %q: %d, want %d", xff, r.status, want)
+		}
+	}
+	// A zoned link-local client behind the trusted proxy meets a deny of its range.
+	route.Access = access(t, deny("fe80::/10"))
+	e.routes.Apply([]gateway.HTTPRoute{route})
+	for xff, want := range map[string]int{"fe80::1%eth0": http.StatusForbidden, "fe80::1": http.StatusForbidden,
+		"203.0.113.9": http.StatusBadRequest} {
+		if r := get(t, e.client(false), "https://app.example.com/", http.Header{"X-Forwarded-For": {xff}}); r.status != want {
+			t.Errorf("X-Forwarded-For %q with fe80::/10 denied: %d, want %d", xff, r.status, want)
 		}
 	}
 	route.TrustedProxies, route.Access = nil, access(t)

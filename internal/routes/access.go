@@ -19,8 +19,9 @@ import (
 
 // accessOf compiles who may use a route (docs/03-connections.md, "Access policies"): the IP rules
 // and, for an http route, the basic_auth rules of its access policies, in the order of the
-// policies and of each policy's rules. A basic_auth rule on another route type, which the API does
-// not create, denies everyone: no client could pass it. Kinds of later phases are compiled with
+// policies and of each policy's rules, which the gateway does not depend on: a deny rule wins
+// (D85). A basic_auth rule on another route type, which the API does not create, denies everyone:
+// no client could pass it. Kinds of later phases are compiled with
 // them; until then the API does not create them.
 func accessOf(ctx context.Context, tx *ent.Tx, routeID string, http bool) (*agentv1.RouteAccess, error) {
 	rps, err := tx.RoutePolicy.Query().Where(routepolicy.RouteID(routeID)).Order(ent.Asc(routepolicy.FieldPosition)).All(ctx)

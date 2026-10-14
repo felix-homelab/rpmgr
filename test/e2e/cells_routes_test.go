@@ -123,14 +123,15 @@ func TestLocalPolicy(t *testing.T) {
 }
 
 // TestAccess_Tightened: a tightened access policy closes the open connections of the clients it
-// no longer allows at once and refuses new ones; clearing it serves them again.
+// no longer allows at once and refuses new ones, also with its deny behind an allow that admits
+// everyone (D85); clearing it serves them again.
 func TestAccess_Tightened(t *testing.T) {
 	port := 21003
 	addRoute(t, "acl", port, "auto", "con1", "con2")
 	eventually(t, 30*time.Second, "the route", func() error { return client("check", "-addr", addr("gw1", port)) })
 	held := background(func() error { return client("hold", "-addr", addr("gw1", port), "-duration", "20s") })
 	time.Sleep(time.Second)
-	if _, err := seed("access", "--route", "acl", "--rule", "deny=172.30.0.30/32,fd00:30::30/128"); err != nil {
+	if _, err := seed("access", "--route", "acl", "--rule", "allow=0.0.0.0/0,::/0", "--rule", "deny=172.30.0.30/32,fd00:30::30/128"); err != nil {
 		t.Fatal(err)
 	}
 	select {

@@ -86,7 +86,7 @@ func (f *routeFlags) flags(fs *flag.FlagSet, create bool) {
 	fs.StringVar(&f.description, "description", "", "a description for people")
 	fs.Var(f.labels, "label", "a label key=value; repeat for more")
 	fs.StringVar(&f.transport, "transport", "", "the data-session transport: auto, quic or h2; empty is the connector's")
-	fs.Var(&f.policies, "policy", "an access policy, by name or ID, in the order given; repeat for more")
+	fs.Var(&f.policies, "policy", "an access policy, by name or ID; repeat for more")
 	fs.BoolVar(&f.disabled, "disabled", false, "the route is not served")
 	fs.Var(&f.hostnames, "hostname", "a hostname of an http or tls-passthrough route; repeat for more")
 	fs.StringVar(&f.pathPrefix, "path-prefix", "", "http: the path prefix it serves")

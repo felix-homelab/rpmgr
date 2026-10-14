@@ -13,7 +13,8 @@ import "rpmgr/v1/status.proto";
 option go_package = "github.com/felix-homelab/rpmgr/gen/rpmgr/v1;rpmgrv1";
 
 // PolicyService is an org's access policies (docs/07-api.md, "Services"; docs/03-connections.md,
-// "Access policies"). A route applies its policies in order, and each policy its rules in order.
+// "Access policies"). A deny rule of any policy a route applies wins over every allow rule, in
+// whatever order the policies and their rules come; a CIDR is kept in its masked form.
 service PolicyService {
   // CreateAccessPolicy creates an access policy. The controller hashes the passwords of its
   // basic_auth users and keeps only the hashes.
@@ -66,7 +67,7 @@ message AccessPolicy {
   }];
   // A description for people.
   string description = 3 [(buf.validate.field).string.max_len = 1000];
-  // Its rules, applied in order.
+  // Its rules, kept in the order given; for IP rules the order does not matter, as a deny wins.
   repeated AccessRule rules = 4 [(buf.validate.field).repeated.max_items = 50];
   // The routes that apply it; output only.
   repeated string route_ids = 5;
