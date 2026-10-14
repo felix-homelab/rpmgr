@@ -7,6 +7,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -141,7 +142,16 @@ func TestDiagClock(t *testing.T) {
 func TestDiagTransport(t *testing.T) {
 	p := newDataPlane(t)
 	p.dial(t) // the connector runs with its configuration
-	d, err := connector.Diagnose(context.Background(), p.conCfg.IdentityDir, p.conCfg.StateDir, p.gatewayID, time.Now)
+	// It stores the configuration only after applying it, so a first route may answer before diag
+	// can read it.
+	var d connector.Diagnosis
+	var err error
+	for deadline := time.Now().Add(10 * time.Second); ; time.Sleep(50 * time.Millisecond) {
+		d, err = connector.Diagnose(context.Background(), p.conCfg.IdentityDir, p.conCfg.StateDir, p.gatewayID, time.Now)
+		if err == nil || !strings.Contains(err.Error(), "no configuration from the controller yet") || time.Now().After(deadline) {
+			break
+		}
+	}
 	if err != nil {
 		t.Fatal(err)
 	}
