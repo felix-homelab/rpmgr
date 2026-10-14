@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 
+import { useQuery } from "@connectrpc/connect-query";
 import { Link, linkOptions, type LinkOptions } from "@tanstack/react-router";
 import { Cable, Globe, LayoutDashboard, Route, ScrollText, Server, Settings, ShieldCheck, Users, Waypoints, type LucideIcon } from "lucide-react";
 import { useId } from "react";
 import { useTranslation } from "react-i18next";
+import { AuthService } from "@/gen/rpmgr/v1/auth_pb";
 import { cn } from "@/lib/utils";
 
 export interface NavItem {
@@ -59,6 +61,17 @@ export function Brand() {
       {t("app.name")}
     </Link>
   );
+}
+
+// Version is the version of rpmgr the controller runs, at the foot of the sidebar (D80); nothing
+// until the session is read.
+export function Version() {
+  const { t } = useTranslation();
+  const version = useQuery(AuthService.method.getSession, {}).data?.controllerVersion;
+  if (!version) {
+    return null;
+  }
+  return <p className="shrink-0 border-t border-border px-5 py-3 text-xs text-muted-foreground">{t("app.version", { version })}</p>;
 }
 
 // Nav is the main navigation; the current page is marked for the eye and, by the router's
