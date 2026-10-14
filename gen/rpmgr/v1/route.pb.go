@@ -1199,7 +1199,8 @@ type RouteTarget struct {
 	UpstreamProtocol UpstreamProtocol `protobuf:"varint,5,opt,name=upstream_protocol,json=upstreamProtocol,proto3,enum=rpmgr.v1.UpstreamProtocol" json:"upstream_protocol,omitempty"`
 	// How an HTTPS upstream is verified.
 	Tls *UpstreamTLSSettings `protobuf:"bytes,6,opt,name=tls,proto3" json:"tls,omitempty"`
-	// The PROXY protocol header, for tcp and tls_passthrough routes.
+	// The PROXY protocol header, for tcp and tls_passthrough routes, and for the TCP connections of
+	// a tcp_udp route; never on UDP.
 	ProxyProtocol ProxyProtocol `protobuf:"varint,7,opt,name=proxy_protocol,json=proxyProtocol,proto3,enum=rpmgr.v1.ProxyProtocol" json:"proxy_protocol,omitempty"`
 	// Its share among the targets of its priority, 1 to 1000; 1 if not set.
 	Weight uint32 `protobuf:"varint,8,opt,name=weight,proto3" json:"weight,omitempty"`

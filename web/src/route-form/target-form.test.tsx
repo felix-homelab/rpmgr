@@ -26,7 +26,7 @@ const applied = { revision: { dbEpoch: "e", seq: 11n }, applyStatus: { state: Ap
 
 // detail renders the detail of a route of type case with targets, by default the target above;
 // ProbeTargetCertificate answers with probe, if given.
-function detail(spec: { case: "http" | "tcp" | "udp" | "tlsPassthrough"; value: object }, targets = [target], probe?: () => object) {
+function detail(spec: { case: "http" | "tcp" | "udp" | "tcpUdp" | "tlsPassthrough"; value: object }, targets = [target], probe?: () => object) {
   const probes: ProbeTargetCertificateRequest[] = [];
   const creates: CreateRouteTargetRequest[] = [];
   const updates: UpdateRouteTargetRequest[] = [];
@@ -104,6 +104,33 @@ describe("targets", () => {
     fireEvent.click(f.getByRole("button", { name: "Add the target" }));
     expect(await screen.findByText("Revision 11: applied by all 1 agents.")).toBeTruthy();
     expect([creates[0]!.target!.upstreamProtocol, creates[0]!.target!.proxyProtocol]).toEqual([UpstreamProtocol.TCP, ProxyProtocol.UNSPECIFIED]);
+  });
+
+  it("offers a PROXY header on a TCP and UDP route, for its TCP connections only (D86)", async () => {
+    const { creates } = detail({ case: "tcpUdp", value: { port: 5353 } });
+    fireEvent.click(await screen.findByRole("button", { name: "Add a target" }));
+    const f = await form("New target");
+    expect(f.queryByLabelText("Protocol to the target")).toBeNull();
+    const proxy = f.getByLabelText("PROXY protocol");
+    expect(within(proxy).getAllByRole("option").map((o) => o.textContent)).toEqual(["None", "Version 1", "Version 2"]);
+    const hint = f.getByText("TCP connections only; UDP datagrams get no header.");
+    expect(proxy.getAttribute("aria-describedby")).toBe(hint.id);
+    await f.findByRole("option", { name: "app-host" });
+    fireEvent.change(f.getByLabelText("Connector"), { target: { value: "con_app" } });
+    fireEvent.change(f.getByLabelText("Host"), { target: { value: "10.0.0.7" } });
+    fireEvent.change(f.getByLabelText("Port"), { target: { value: "53" } });
+    fireEvent.change(proxy, { target: { value: String(ProxyProtocol.V1) } });
+    fireEvent.click(f.getByRole("button", { name: "Add the target" }));
+    expect(await screen.findByText("Revision 11: applied by all 1 agents.")).toBeTruthy();
+    expect([creates[0]!.target!.upstreamProtocol, creates[0]!.target!.proxyProtocol]).toEqual([UpstreamProtocol.TCP, ProxyProtocol.V1]);
+  });
+
+  it("shows the TCP-only note on a TCP and UDP route alone", async () => {
+    detail({ case: "tcp", value: { port: 25432 } });
+    fireEvent.click(await screen.findByRole("button", { name: "Add a target" }));
+    const f = await form("New target");
+    expect(f.getByLabelText("PROXY protocol").getAttribute("aria-describedby")).toBeNull();
+    expect(f.queryByText("TCP connections only; UDP datagrams get no header.")).toBeNull();
   });
 
   it("sends a target back unchanged when nothing was edited", async () => {

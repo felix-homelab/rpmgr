@@ -374,7 +374,8 @@ message RouteTarget {
   UpstreamProtocol upstream_protocol = 5 [(buf.validate.field).enum.defined_only = true];
   // How an HTTPS upstream is verified.
   UpstreamTLSSettings tls = 6;
-  // The PROXY protocol header, for tcp and tls_passthrough routes.
+  // The PROXY protocol header, for tcp and tls_passthrough routes, and for the TCP connections of
+  // a tcp_udp route; never on UDP.
   ProxyProtocol proxy_protocol = 7 [(buf.validate.field).enum.defined_only = true];
   // Its share among the targets of its priority, 1 to 1000; 1 if not set.
   uint32 weight = 8 [(buf.validate.field).uint32.lte = 1000];
