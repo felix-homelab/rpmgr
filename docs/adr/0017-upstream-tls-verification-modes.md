@@ -36,11 +36,13 @@ the lint rule of [ADR-0008](0008-internal-ca-mtls-spiffe.md) in part
   `UNVERIFIED` is chosen and marks such targets "unverified" in the route's targets.
 - A gateway that does not know a mode verifies the target, so it fails closed.
 
-**The ban stays, with one exception**
-- `InsecureSkipVerify` stays banned by `tools/bannedapi` and golangci's forbidigo. Both allow it in
-  one function, `UpstreamTLS.config` in `internal/gateway/upstreamtls.go`, which builds the TLS
-  configuration of an upstream from its mode. An exception names its file, its function and its
-  decision, and a test keeps it from widening.
+**The ban stays, with narrow exceptions**
+- `InsecureSkipVerify` stays banned by `tools/bannedapi` and golangci's forbidigo. Both allow it
+  only in the functions that serve these modes: the gateway's `UpstreamTLS.config` in
+  `internal/gateway/upstreamtls.go`, which builds the TLS configuration of an upstream from its
+  mode, and the connector's function that reads the certificate a target presents for a key pin,
+  which sends nothing else. An exception names its file, its function and this decision, and a
+  test keeps it from widening.
 - rpmgr's own sessions never skip verification
   ([03](../03-connections.md#properties-common-to-all-rpmgr-internal-sessions)).
 
