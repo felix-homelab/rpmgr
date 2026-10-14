@@ -91,8 +91,9 @@ history and the [ADRs](docs/adr/).
   (#273, #276, #331, #332)
 - Gateway: access policies hold IP allow and deny rules for every route type, and basic auth with
   argon2id-hashed passwords for `http` routes. A deny rule wins over every allow rule, whatever the
-  order of the rules and of a route's policies. A tightened policy also ends the open connections it
-  now denies. (#299, #300, #338, #520)
+  order of the rules and of a route's policies; a gateway of a release candidate still lets the
+  first matching rule decide until it is upgraded. A tightened policy also ends the open
+  connections it now denies. (#299, #300, #338, #520)
 - Controller: `http` routes get certificates through ACME, by HTTP-01 or TLS-ALPN-01 answered by
   every gateway that serves the name, from Let's Encrypt or another ACME directory. Renewal is
   automatic and can also be started on demand. A name that fails is tried again after waits

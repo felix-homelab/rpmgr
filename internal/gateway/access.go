@@ -55,9 +55,10 @@ func AccessOf(a *agentv1.RouteAccess) (Access, error) {
 }
 
 // Allows reports whether a client address may use the route: no deny rule matches it, and an
-// allow rule does, or no rule allows.
+// allow rule does, or no rule allows. An IPv6 zone does not count: a prefix never contains a zoned
+// address, so a link-local client at fe80::1%eth0 would otherwise pass every deny.
 func (a Access) Allows(ip netip.Addr) bool {
-	ip = ip.Unmap()
+	ip = ip.Unmap().WithZone("")
 	anyAllow, allowed := false, false
 	for _, r := range a.rules {
 		anyAllow = anyAllow || r.allow

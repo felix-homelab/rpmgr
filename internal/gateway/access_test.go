@@ -34,7 +34,8 @@ func deny(cidrs ...string) *agentv1.IPRule  { return &agentv1.IPRule{Cidrs: cidr
 
 // TestAccess (D85): a matching deny rule refuses a client whatever allows it and in whatever order,
 // as when the rules come from several policies; otherwise a matching allow admits it; without a
-// match a client is allowed only when no rule allows; IPv4-mapped addresses and CIDRs count as IPv4.
+// match a client is allowed only when no rule allows; IPv4-mapped addresses and CIDRs count as IPv4,
+// and an IPv6 zone does not count, so a zoned link-local client meets every rule.
 func TestAccess(t *testing.T) {
 	for _, tc := range []struct {
 		name  string
@@ -60,6 +61,11 @@ func TestAccess(t *testing.T) {
 		{"mapped client, allow then deny", []*agentv1.IPRule{allow("192.0.2.0/24"), deny("192.0.2.9/32")}, "::ffff:192.0.2.9", false},
 		{"only deny rules, others", []*agentv1.IPRule{deny("10.0.0.0/8"), deny("192.0.2.0/24")}, "198.51.100.1", true},
 		{"only allow rules, others", []*agentv1.IPRule{allow("10.0.0.0/8"), allow("192.0.2.0/24")}, "198.51.100.1", false},
+		{"zoned link-local, denied", []*agentv1.IPRule{deny("fe80::/10")}, "fe80::1%eth0", false},
+		{"zoned link-local, deny-all", []*agentv1.IPRule{deny("0.0.0.0/0", "::/0")}, "fe80::1%eth0", false},
+		{"zoned link-local, deny-all behind an allow", []*agentv1.IPRule{allow("::/0"), deny("0.0.0.0/0", "::/0")}, "fe80::1%eth0", false},
+		{"zoned link-local, allowed", []*agentv1.IPRule{allow("fe80::/10")}, "fe80::1%eth0", true},
+		{"zoned link-local, outside an allow list", []*agentv1.IPRule{allow("10.0.0.0/8")}, "fe80::1%eth0", false},
 		{"IPv6", []*agentv1.IPRule{allow("2001:db8::/32")}, "2001:db8::1", true},
 		{"IPv6 outside", []*agentv1.IPRule{allow("2001:db8::/32")}, "2001:db9::1", false},
 		{"mapped client, IPv4 rule", []*agentv1.IPRule{deny("192.0.2.0/24")}, "::ffff:192.0.2.9", false},
@@ -79,6 +85,10 @@ func TestAccess(t *testing.T) {
 		if _, err := gateway.AccessOf(&agentv1.RouteAccess{IpRules: rules}); err == nil {
 			t.Errorf("%s: accepted", name)
 		}
+	}
+	zoned := &net.TCPAddr{IP: net.ParseIP("fe80::1"), Zone: "eth0", Port: 40000}
+	if access(t, deny("fe80::/10")).AllowsAddr(zoned) || !access(t, allow("fe80::/10")).AllowsAddr(zoned) {
+		t.Error("AllowsAddr with a zoned link-local address")
 	}
 	a, b := access(t, deny("10.0.0.0/8")), access(t, deny("10.0.0.0/8"))
 	if !a.Same(b) || a.Same(access(t, allow("10.0.0.0/8"))) || a.Same(access(t)) {
@@ -199,7 +209,8 @@ func TestUDPRoutes_Access(t *testing.T) {
 }
 
 // TestHTTPRoutes_Access: a client the rules deny, also by a deny behind an allow that admits it,
-// gets 403; behind a trusted proxy the client is the last untrusted address of X-Forwarded-For;
+// gets 403; behind a trusted proxy the client is the last untrusted address of X-Forwarded-For,
+// a zoned one included;
 // tightening cancels the requests it no longer allows, an upgraded connection included.
 func TestHTTPRoutes_Access(t *testing.T) {
 	route := gateway.HTTPRoute{ID: "rt_web", Upstream: "http", WebSocket: true, Hosts: []gateway.HTTPHost{{Hostname: "app.example.com"}},
@@ -220,6 +231,15 @@ func TestHTTPRoutes_Access(t *testing.T) {
 	} {
 		if r := get(t, e.client(false), "https://app.example.com/", http.Header{"X-Forwarded-For": {xff}}); r.status != want {
 			t.Errorf("X-Forwarded-For %q: %d, want %d", xff, r.status, want)
+		}
+	}
+	// A zoned link-local client behind the trusted proxy meets a deny of its range.
+	route.Access = access(t, deny("fe80::/10"))
+	e.routes.Apply([]gateway.HTTPRoute{route})
+	for xff, want := range map[string]int{"fe80::1%eth0": http.StatusForbidden, "fe80::1": http.StatusForbidden,
+		"203.0.113.9": http.StatusBadRequest} {
+		if r := get(t, e.client(false), "https://app.example.com/", http.Header{"X-Forwarded-For": {xff}}); r.status != want {
+			t.Errorf("X-Forwarded-For %q with fe80::/10 denied: %d, want %d", xff, r.status, want)
 		}
 	}
 	route.TrustedProxies, route.Access = nil, access(t)
