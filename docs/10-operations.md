@@ -404,6 +404,11 @@ affect agents take effect through reconciliation and show apply status like any 
   ([03](03-connections.md#versioning-and-capabilities)), so skew beyond N−1 is visible, not silent.
 - A protocol change that would break N−1 ships behind a capability flag first; the old behaviour is
   removed one minor release later.
+- Before the first release, one change of meaning shipped without a capability: access policies'
+  deny rules win ([D85](14-open-decisions.md#engineering)). A gateway of a release candidate
+  (v0.1.0-rc.1 to rc.6) applies the first matching rule to the same snapshot, so a deny placed
+  after an allow is ignored there until that gateway is upgraded; upgrade gateways with the
+  controller.
 
 **Upgrade order**: controller(s) → gateways → connectors.
 

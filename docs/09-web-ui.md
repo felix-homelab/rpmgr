@@ -314,9 +314,10 @@ flowchart LR
 - UDP and "TCP and UDP" routes show the MTU hint of [03](03-connections.md#udp-routes).
 - **Traffic:** the bytes in and out of the last 24 hours per hour, or of the last 30 days per day,
   with their totals, connections and errors ([Charts](#charts)).
-- **Access policies:** the policies the route applies, in order. They are attached from the org's
-  policies, detached, and moved up or down. They are then saved as one change: the route as read,
-  with the mask `policy_ids` and its etag.
+- **Access policies:** the policies the route applies. They are attached from the org's policies
+  and detached, with no order to set: a deny rule of any of them wins
+  ([D85](14-open-decisions.md#engineering)), which the card says once two apply. They are then saved
+  as one change: the route as read, with the mask `policy_ids` and its etag.
 - **The "Enabled" switch** turns the route on or off; it is the only desired on/off switch (U3).
   - It sends the route as read, with the mask `enabled` and the route's etag.
   - The revision's apply status then follows live (U2): the state over the online agents, each
@@ -420,12 +421,13 @@ flowchart LR
 
 ### Access policies
 
-- **The list** (`/policies`): each policy with its description, its rules in the order they apply
-  (allow or deny addresses, basic auth with its users' names), and the routes that use it.
+- **The list** (`/policies`): each policy with its description, its rules (allow or deny
+  addresses, basic auth with its users' names), and the routes that use it.
   Without policies, the page offers to create the first.
 - **The form** creates a policy, or changes one as the whole policy as read with its name,
   description and rules, their mask and the etag (U1).
-  - **Rules** are added, removed and moved up or down.
+  - **Rules** are added and removed. They have no order to set: the form says that a deny rule
+    wins over every allow rule ([D85](14-open-decisions.md#engineering)).
   - **Basic auth:** each user has a name and a password. Passwords are write-only: an existing user
     whose password field stays empty keeps their password.
 - **Removal** comes after a confirmation. The server refuses a policy that routes use, and says

@@ -705,7 +705,8 @@
     "usedBy": "used by {{routes}}",
     "unused": "used by no route",
     "ask": "Remove the access policy {{name}}?",
-    "rules": "Rules, in the order they apply",
+    "rules": "Rules",
+    "denyWins": "A deny rule wins: an address it matches is refused, whatever allows it.",
     "ruleN": "Rule {{n}}",
     "kind": "Kind",
     "kinds": {
@@ -713,8 +714,6 @@
       "ipDeny": "Deny addresses",
       "basicAuth": "Basic auth (HTTP routes)"
     },
-    "up": "Up",
-    "down": "Down",
     "removeRule": "Remove the rule",
     "addRule": "Add a rule",
     "cidrs": "Addresses (CIDRs, one per line)",
@@ -726,6 +725,7 @@
   "routePolicies": {
     "title": "Access policies",
     "none": "The route applies no access policy: every client reaches it.",
+    "denyWins": "A deny rule of any policy wins over every allow rule.",
     "detach": "Detach",
     "add": "Add a policy",
     "choose": "Choose a policy",

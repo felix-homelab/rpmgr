@@ -109,11 +109,13 @@ message GatewayTCPRoute {
   RouteAccess access = 4;
 }
 
-// RouteAccess is who may use a route: the IP rules of its access policies, in order. The first
-// rule that matches the client's address decides; if none does, the client is allowed only when
-// no rule allows. No rules allow everyone.
+// RouteAccess is who may use a route: the IP rules of its access policies. A deny rule that matches
+// the client's address refuses it, whatever allows it and in whatever order; otherwise an allow
+// rule that matches admits it; if none matches, the client is allowed only when no rule allows. No
+// rules allow everyone.
 message RouteAccess {
-  // The rules, in the order of the route's policies and of each policy's rules.
+  // The rules, in the order of the route's policies and of each policy's rules, which does not
+  // matter.
   repeated IPRule ip_rules = 1;
   // http routes: a client the IP rules allow must also pass each of these, in order.
   repeated BasicAuthRule basic_auth = 2;
