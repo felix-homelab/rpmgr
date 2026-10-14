@@ -94,7 +94,7 @@ func (e *Enrollment) mint(ctx context.Context, m enroll.Mint) (string, *ent.Enro
 	case errors.Is(err, enroll.ErrTokenTTL), errors.Is(err, enroll.ErrMultiUse), errors.Is(err, enroll.ErrBound),
 		errors.Is(err, enroll.ErrDisposable):
 		return "", nil, connect.NewError(connect.CodeInvalidArgument, err)
-	case errors.Is(err, enroll.ErrRetired):
+	case errors.Is(err, enroll.ErrRetired), errors.Is(err, enroll.ErrBuiltIn):
 		return "", nil, connect.NewError(connect.CodeFailedPrecondition, err)
 	case err != nil:
 		return "", nil, storeError(err)

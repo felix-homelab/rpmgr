@@ -120,6 +120,20 @@ func (_c *ConnectorCreate) SetNillableDesiredVersion(v *string) *ConnectorCreate
 	return _c
 }
 
+// SetBuiltIn sets the "built_in" field.
+func (_c *ConnectorCreate) SetBuiltIn(v bool) *ConnectorCreate {
+	_c.mutation.SetBuiltIn(v)
+	return _c
+}
+
+// SetNillableBuiltIn sets the "built_in" field if the given value is not nil.
+func (_c *ConnectorCreate) SetNillableBuiltIn(v *bool) *ConnectorCreate {
+	if v != nil {
+		_c.SetBuiltIn(*v)
+	}
+	return _c
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (_c *ConnectorCreate) SetCreatedAt(v time.Time) *ConnectorCreate {
 	_c.mutation.SetCreatedAt(v)
@@ -211,6 +225,10 @@ func (_c *ConnectorCreate) defaults() error {
 		v := connector.DefaultEnabled
 		_c.mutation.SetEnabled(v)
 	}
+	if _, ok := _c.mutation.BuiltIn(); !ok {
+		v := connector.DefaultBuiltIn
+		_c.mutation.SetBuiltIn(v)
+	}
 	if _, ok := _c.mutation.CreatedAt(); !ok {
 		if connector.DefaultCreatedAt == nil {
 			return fmt.Errorf("ent: uninitialized connector.DefaultCreatedAt (forgotten import ent/runtime?)")
@@ -280,6 +298,9 @@ func (_c *ConnectorCreate) check() error {
 		if err := connector.TransportValidator(v); err != nil {
 			return &ValidationError{Name: "transport", err: fmt.Errorf(`ent: validator failed for field "Connector.transport": %w`, err)}
 		}
+	}
+	if _, ok := _c.mutation.BuiltIn(); !ok {
+		return &ValidationError{Name: "built_in", err: errors.New(`ent: missing required field "Connector.built_in"`)}
 	}
 	if _, ok := _c.mutation.CreatedAt(); !ok {
 		return &ValidationError{Name: "created_at", err: errors.New(`ent: missing required field "Connector.created_at"`)}
@@ -363,6 +384,10 @@ func (_c *ConnectorCreate) createSpec() (*Connector, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.DesiredVersion(); ok {
 		_spec.SetField(connector.FieldDesiredVersion, field.TypeString, value)
 		_node.DesiredVersion = value
+	}
+	if value, ok := _c.mutation.BuiltIn(); ok {
+		_spec.SetField(connector.FieldBuiltIn, field.TypeBool, value)
+		_node.BuiltIn = value
 	}
 	if value, ok := _c.mutation.CreatedAt(); ok {
 		_spec.SetField(connector.FieldCreatedAt, field.TypeTime, value)

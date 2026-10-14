@@ -39,6 +39,8 @@ type Gateway struct {
 	Enabled bool `json:"enabled,omitempty"`
 	// DesiredVersion holds the value of the "desired_version" field.
 	DesiredVersion string `json:"desired_version,omitempty"`
+	// BuiltIn holds the value of the "built_in" field.
+	BuiltIn bool `json:"built_in,omitempty"`
 	// CreatedAt holds the value of the "created_at" field.
 	CreatedAt time.Time `json:"created_at,omitempty"`
 	// DecommissionedAt holds the value of the "decommissioned_at" field.
@@ -76,7 +78,7 @@ func (*Gateway) scanValues(columns []string) ([]any, error) {
 		switch columns[i] {
 		case gateway.FieldTunnelEndpoints:
 			values[i] = new([]byte)
-		case gateway.FieldEnabled:
+		case gateway.FieldEnabled, gateway.FieldBuiltIn:
 			values[i] = new(sql.NullBool)
 		case gateway.FieldVersion, gateway.FieldSlot:
 			values[i] = new(sql.NullInt64)
@@ -167,6 +169,12 @@ func (_m *Gateway) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.DesiredVersion = value.String
 			}
+		case gateway.FieldBuiltIn:
+			if value, ok := values[i].(*sql.NullBool); !ok {
+				return fmt.Errorf("unexpected type %T for field built_in", values[i])
+			} else if value.Valid {
+				_m.BuiltIn = value.Bool
+			}
 		case gateway.FieldCreatedAt:
 			if value, ok := values[i].(*sql.NullTime); !ok {
 				return fmt.Errorf("unexpected type %T for field created_at", values[i])
@@ -250,6 +258,9 @@ func (_m *Gateway) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("desired_version=")
 	builder.WriteString(_m.DesiredVersion)
+	builder.WriteString(", ")
+	builder.WriteString("built_in=")
+	builder.WriteString(fmt.Sprintf("%v", _m.BuiltIn))
 	builder.WriteString(", ")
 	builder.WriteString("created_at=")
 	builder.WriteString(_m.CreatedAt.Format(time.ANSIC))

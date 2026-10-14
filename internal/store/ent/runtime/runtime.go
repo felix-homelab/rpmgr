@@ -955,8 +955,12 @@ func init() {
 	connectorDescEnabled := connectorFields[6].Descriptor()
 	// connector.DefaultEnabled holds the default value on creation for the enabled field.
 	connector.DefaultEnabled = connectorDescEnabled.Default.(bool)
+	// connectorDescBuiltIn is the schema descriptor for built_in field.
+	connectorDescBuiltIn := connectorFields[9].Descriptor()
+	// connector.DefaultBuiltIn holds the default value on creation for the built_in field.
+	connector.DefaultBuiltIn = connectorDescBuiltIn.Default.(bool)
 	// connectorDescCreatedAt is the schema descriptor for created_at field.
-	connectorDescCreatedAt := connectorFields[9].Descriptor()
+	connectorDescCreatedAt := connectorFields[10].Descriptor()
 	// connector.DefaultCreatedAt holds the default value on creation for the created_at field.
 	connector.DefaultCreatedAt = connectorDescCreatedAt.Default.(func() time.Time)
 	// connectorDescID is the schema descriptor for id field.
@@ -1160,22 +1164,26 @@ func init() {
 	enrollmenttokenDescEphemeral := enrollmenttokenFields[7].Descriptor()
 	// enrollmenttoken.DefaultEphemeral holds the default value on creation for the ephemeral field.
 	enrollmenttoken.DefaultEphemeral = enrollmenttokenDescEphemeral.Default.(bool)
+	// enrollmenttokenDescBuiltIn is the schema descriptor for built_in field.
+	enrollmenttokenDescBuiltIn := enrollmenttokenFields[8].Descriptor()
+	// enrollmenttoken.DefaultBuiltIn holds the default value on creation for the built_in field.
+	enrollmenttoken.DefaultBuiltIn = enrollmenttokenDescBuiltIn.Default.(bool)
 	// enrollmenttokenDescMaxUses is the schema descriptor for max_uses field.
-	enrollmenttokenDescMaxUses := enrollmenttokenFields[8].Descriptor()
+	enrollmenttokenDescMaxUses := enrollmenttokenFields[9].Descriptor()
 	// enrollmenttoken.MaxUsesValidator is a validator for the "max_uses" field. It is called by the builders before save.
 	enrollmenttoken.MaxUsesValidator = enrollmenttokenDescMaxUses.Validators[0].(func(int) error)
 	// enrollmenttokenDescUseCount is the schema descriptor for use_count field.
-	enrollmenttokenDescUseCount := enrollmenttokenFields[9].Descriptor()
+	enrollmenttokenDescUseCount := enrollmenttokenFields[10].Descriptor()
 	// enrollmenttoken.DefaultUseCount holds the default value on creation for the use_count field.
 	enrollmenttoken.DefaultUseCount = enrollmenttokenDescUseCount.Default.(int)
 	// enrollmenttoken.UseCountValidator is a validator for the "use_count" field. It is called by the builders before save.
 	enrollmenttoken.UseCountValidator = enrollmenttokenDescUseCount.Validators[0].(func(int) error)
 	// enrollmenttokenDescCreatedBy is the schema descriptor for created_by field.
-	enrollmenttokenDescCreatedBy := enrollmenttokenFields[11].Descriptor()
+	enrollmenttokenDescCreatedBy := enrollmenttokenFields[12].Descriptor()
 	// enrollmenttoken.CreatedByValidator is a validator for the "created_by" field. It is called by the builders before save.
 	enrollmenttoken.CreatedByValidator = enrollmenttokenDescCreatedBy.Validators[0].(func(string) error)
 	// enrollmenttokenDescCreatedAt is the schema descriptor for created_at field.
-	enrollmenttokenDescCreatedAt := enrollmenttokenFields[12].Descriptor()
+	enrollmenttokenDescCreatedAt := enrollmenttokenFields[13].Descriptor()
 	// enrollmenttoken.DefaultCreatedAt holds the default value on creation for the created_at field.
 	enrollmenttoken.DefaultCreatedAt = enrollmenttokenDescCreatedAt.Default.(func() time.Time)
 	// enrollmenttokenDescID is the schema descriptor for id field.
@@ -1269,8 +1277,12 @@ func init() {
 	gatewayDescEnabled := gatewayFields[7].Descriptor()
 	// gateway.DefaultEnabled holds the default value on creation for the enabled field.
 	gateway.DefaultEnabled = gatewayDescEnabled.Default.(bool)
+	// gatewayDescBuiltIn is the schema descriptor for built_in field.
+	gatewayDescBuiltIn := gatewayFields[9].Descriptor()
+	// gateway.DefaultBuiltIn holds the default value on creation for the built_in field.
+	gateway.DefaultBuiltIn = gatewayDescBuiltIn.Default.(bool)
 	// gatewayDescCreatedAt is the schema descriptor for created_at field.
-	gatewayDescCreatedAt := gatewayFields[9].Descriptor()
+	gatewayDescCreatedAt := gatewayFields[10].Descriptor()
 	// gateway.DefaultCreatedAt holds the default value on creation for the created_at field.
 	gateway.DefaultCreatedAt = gatewayDescCreatedAt.Default.(func() time.Time)
 	// gatewayDescID is the schema descriptor for id field.

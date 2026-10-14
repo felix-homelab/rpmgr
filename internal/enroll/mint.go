@@ -25,6 +25,7 @@ var (
 	ErrBound      = errors.New("enroll: a token bound to a gateway or a connector is single-use, not ephemeral and has no labels")
 	ErrRetired    = errors.New("enroll: the gateway or connector is decommissioned")
 	ErrDisposable = errors.New("enroll: an ephemeral connector is not re-enrolled; enroll a new one")
+	ErrBuiltIn    = errors.New("enroll: all-in-one's own gateway and connector enroll only through rpmgr all-in-one")
 )
 
 // Mint is the scope of a new token. The store's tenancy rules check that the org's gateway
@@ -71,6 +72,9 @@ func MintToken(ctx context.Context, tx *ent.Tx, m Mint, now time.Time) (string, 
 		if gw.DecommissionedAt != nil {
 			return "", nil, ErrRetired
 		}
+		if gw.BuiltIn {
+			return "", nil, ErrBuiltIn
+		}
 		c.SetRole(enrollmenttoken.RoleGateway).SetGatewayID(gw.ID).SetGatewayGroupID(gw.GatewayGroupID)
 	case m.ConnectorID != "":
 		con, err := tx.Connector.Get(ctx, m.ConnectorID)
@@ -79,6 +83,9 @@ func MintToken(ctx context.Context, tx *ent.Tx, m Mint, now time.Time) (string, 
 		}
 		if con.DecommissionedAt != nil {
 			return "", nil, ErrRetired
+		}
+		if con.BuiltIn {
+			return "", nil, ErrBuiltIn
 		}
 		// It is purged soon after its last disconnect, which a token bound to it would block.
 		if con.Ephemeral {

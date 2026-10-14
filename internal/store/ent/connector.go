@@ -38,6 +38,8 @@ type Connector struct {
 	Transport *connector.Transport `json:"transport,omitempty"`
 	// DesiredVersion holds the value of the "desired_version" field.
 	DesiredVersion string `json:"desired_version,omitempty"`
+	// BuiltIn holds the value of the "built_in" field.
+	BuiltIn bool `json:"built_in,omitempty"`
 	// CreatedAt holds the value of the "created_at" field.
 	CreatedAt time.Time `json:"created_at,omitempty"`
 	// DecommissionedAt holds the value of the "decommissioned_at" field.
@@ -52,7 +54,7 @@ func (*Connector) scanValues(columns []string) ([]any, error) {
 		switch columns[i] {
 		case connector.FieldLabels:
 			values[i] = new([]byte)
-		case connector.FieldEphemeral, connector.FieldEnabled:
+		case connector.FieldEphemeral, connector.FieldEnabled, connector.FieldBuiltIn:
 			values[i] = new(sql.NullBool)
 		case connector.FieldVersion:
 			values[i] = new(sql.NullInt64)
@@ -144,6 +146,12 @@ func (_m *Connector) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.DesiredVersion = value.String
 			}
+		case connector.FieldBuiltIn:
+			if value, ok := values[i].(*sql.NullBool); !ok {
+				return fmt.Errorf("unexpected type %T for field built_in", values[i])
+			} else if value.Valid {
+				_m.BuiltIn = value.Bool
+			}
 		case connector.FieldCreatedAt:
 			if value, ok := values[i].(*sql.NullTime); !ok {
 				return fmt.Errorf("unexpected type %T for field created_at", values[i])
@@ -224,6 +232,9 @@ func (_m *Connector) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("desired_version=")
 	builder.WriteString(_m.DesiredVersion)
+	builder.WriteString(", ")
+	builder.WriteString("built_in=")
+	builder.WriteString(fmt.Sprintf("%v", _m.BuiltIn))
 	builder.WriteString(", ")
 	builder.WriteString("created_at=")
 	builder.WriteString(_m.CreatedAt.Format(time.ANSIC))
