@@ -500,3 +500,35 @@ func pin(t *testing.T) string {
 	t.Helper()
 	return "sha256:" + strings.Repeat("A", 43) + "="
 }
+
+// TestPlan_DenyFirst: a connector's denied targets are written before its allowed ones, so that an
+// allow never stands without the denials that narrow it, and a failed denial writes no allow.
+func TestPlan_DenyFirst(t *testing.T) {
+	for _, failDeny := range []bool{false, true} {
+		var calls []string
+		setup.SetPolicyEdits(t, func(path, target string) (bool, error) {
+			calls = append(calls, "allow "+target)
+			return policy.AllowTarget(path, target)
+		}, func(path, target string) (bool, error) {
+			calls = append(calls, "deny "+target)
+			if failDeny {
+				return false, errors.New("no deny")
+			}
+			return policy.DenyTarget(path, target)
+		})
+		h := newHost(t, &fakeHost{})
+		p, err := setup.New(setup.Values{Role: setup.Connector, ControllerURL: "https://panel.example.com", Pin: pin(t), Token: newToken(t),
+			AllowTargets: []string{"10.0.0.0/16"}, DenyTargets: []string{"10.0.9.0/24"}}, h)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, err = p.Run(context.Background(), nil)
+		want := []string{"deny 10.0.9.0/24", "allow 10.0.0.0/16"}
+		if failDeny {
+			want = want[:1]
+		}
+		if !slices.Equal(calls, want) || (err != nil) != failDeny {
+			t.Errorf("failing deny %v: calls %q, %v", failDeny, calls, err)
+		}
+	}
+}

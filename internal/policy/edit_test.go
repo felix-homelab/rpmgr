@@ -239,3 +239,19 @@ func TestEdit_SubnetsRangesAndDeny(t *testing.T) {
 		t.Fatalf("the old file:\n%s", p.Describe())
 	}
 }
+
+// TestEdit_DuplicateKey: a file whose entry gives a key twice is invalid and not edited, so that an
+// edit never reads the first value while the connector would read another.
+func TestEdit_DuplicateKey(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "policy.yaml")
+	orig := "version: 1\nallow_targets: [{cidr: 10.0.0.0/8, ports: [80], cidr: 192.168.0.0/16}]\n"
+	if err := os.WriteFile(path, []byte(orig), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := policy.AllowTarget(path, "10.0.0.0/8:443"); err == nil {
+		t.Fatal("a file with a duplicate key was edited")
+	}
+	if b, _ := os.ReadFile(path); string(b) != orig {
+		t.Fatalf("the file changed:\n%s", b)
+	}
+}

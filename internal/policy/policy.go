@@ -67,9 +67,10 @@ func (t target) matches(ip netip.Addr, port uint16) bool {
 	})
 }
 
-// String is t in the form of the target syntax, its subnet normalised: an address alone, IPv6 in
-// brackets when a port follows, and no port for all ports.
-func (t target) String() string {
+// text is t with only its port range r as a target string, which parseTarget reads back and the
+// editing commands take: its subnet normalised, an address alone, IPv6 in brackets, and no port
+// for all ports.
+func (t target) text(r portRange) string {
 	if t.unix != "" {
 		return t.unix
 	}
@@ -77,17 +78,13 @@ func (t target) String() string {
 	if t.prefix.IsSingleIP() {
 		host = t.prefix.Addr().String()
 	}
-	if slices.Equal(t.ports, allPorts) {
-		return host
-	}
 	if t.prefix.Addr().Is6() {
 		host = "[" + host + "]"
 	}
-	ports := make([]string, 0, len(t.ports))
-	for _, r := range t.ports {
-		ports = append(ports, r.String())
+	if r == allPorts[0] {
+		return host
 	}
-	return host + ":" + strings.Join(ports, ",")
+	return host + ":" + r.String()
 }
 
 func (r portRange) String() string {
@@ -234,6 +231,9 @@ func Parse(data []byte) (*Policy, error) {
 // parseEntry reads an entry of allow_targets or deny_targets: a target as a string, or a mapping
 // of cidr, an address or subnet, and ports, all of them if none, or of unix, a socket path.
 func parseEntry(n *yaml.Node) (target, error) {
+	for n.Kind == yaml.AliasNode && n.Alias != nil {
+		n = n.Alias
+	}
 	if n.Kind == yaml.ScalarNode {
 		return parseTarget(n.Value)
 	}
@@ -242,8 +242,13 @@ func parseEntry(n *yaml.Node) (target, error) {
 	}
 	var cidr, unix string
 	var ports []any
+	seen := map[string]bool{}
 	for i := 0; i+1 < len(n.Content); i += 2 {
 		k, v := n.Content[i].Value, n.Content[i+1]
+		if seen[k] {
+			return target{}, fmt.Errorf("key %q given twice", k)
+		}
+		seen[k] = true
 		var err error
 		switch k {
 		case "cidr":
@@ -273,7 +278,10 @@ func parseEntry(n *yaml.Node) (target, error) {
 		return target{}, fmt.Errorf("cidr: %w", err)
 	}
 	t := target{prefix: prefix, ports: allPorts}
-	if len(ports) > 0 {
+	if seen["ports"] {
+		if len(ports) == 0 {
+			return target{}, errors.New("ports is empty; leave the key out for all ports")
+		}
 		t.ports = nil
 	}
 	for _, raw := range ports {
@@ -364,15 +372,18 @@ func (p *Policy) Allows(ip netip.Addr, port uint16) bool {
 	return false
 }
 
-// DeniedBy returns the entry of deny_targets that matches ip:port, in the target syntax, or "".
+// DeniedBy returns the entry of deny_targets that matches ip:port, with the port or range that
+// matched, as a target string `rpmgr policy remove-deny-target` takes, or "".
 func (p *Policy) DeniedBy(ip netip.Addr, port uint16) string {
 	if p == nil {
 		return ""
 	}
 	ip = ip.Unmap()
 	for _, t := range p.denied {
-		if t.matches(ip, port) {
-			return t.String()
+		for _, r := range t.ports {
+			if t.prefix.IsValid() && t.prefix.Contains(ip) && port >= r.lo && port <= r.hi {
+				return t.text(r)
+			}
 		}
 	}
 	return ""

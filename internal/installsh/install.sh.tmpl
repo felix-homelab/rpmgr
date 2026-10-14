@@ -133,11 +133,12 @@ update_channel: stable
 EOF
     chmod 0644 "$policy"
   fi
-  printf %s "$targets" | while IFS= read -r t; do
-    [ -n "$t" ] && "$BIN" policy allow-target --no-reload -- "$t"
-  done
+  # Denials first, so that an allow never stands without the denials that narrow it.
   printf %s "$denied" | while IFS= read -r t; do
     [ -n "$t" ] && "$BIN" policy deny-target --no-reload -- "$t"
+  done
+  printf %s "$targets" | while IFS= read -r t; do
+    [ -n "$t" ] && "$BIN" policy allow-target --no-reload -- "$t"
   done
 fi
 

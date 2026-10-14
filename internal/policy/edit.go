@@ -135,9 +135,8 @@ func withoutKey(content []*yaml.Node, key string) []*yaml.Node {
 }
 
 // ErrInRange is returned when removing a target that only a broader entry or a port range takes
-// in, which an edit cannot split.
-var ErrInRange = errors.New("policy: the target is part of a broader entry or port range; " +
-	"deny it with `rpmgr policy deny-target`, or edit the file to split the entry")
+// in, which an edit cannot split; the error says what to do instead.
+var ErrInRange = errors.New("policy: the target is part of a broader entry or port range")
 
 // removeTarget removes target from the list key and reports whether the file changed: an entry of
 // exactly that socket, subnet and ports, or that port or range of an entry of the subnet, and an
@@ -183,8 +182,11 @@ func removeTarget(path, key, s string) (bool, error) {
 			kept = append(kept, e)
 		}
 		targets.Content = kept
-		if !changed && covered {
-			return false, ErrInRange
+		switch {
+		case !changed && covered && key == "deny_targets":
+			return false, fmt.Errorf("%w; remove that deny entry, or edit the file to split it", ErrInRange)
+		case !changed && covered:
+			return false, fmt.Errorf("%w; deny it with `rpmgr policy deny-target`, or edit the file to split the entry", ErrInRange)
 		}
 		return changed, nil
 	})

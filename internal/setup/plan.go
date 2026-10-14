@@ -63,6 +63,9 @@ type Result struct {
 
 var errRoot = errors.New("setup: run it as root (sudo rpmgr setup)")
 
+// The edits of the connector-local policy, replaced in tests.
+var allowTarget, denyTarget = policy.AllowTarget, policy.DenyTarget
+
 // Facts are what a form needs to know about the host before it asks.
 type Facts struct {
 	Systemd int // systemctl's version; 0 without systemd
@@ -425,13 +428,15 @@ func (p *Plan) agentSteps() {
 		p.add(fmt.Sprintf("allow %d and deny %d target(s) in the connector-local policy %s", len(v.AllowTargets), len(v.DenyTargets),
 			p.policy), func(_ context.Context, r *Result) error {
 			r.created(p.policy)
-			for _, t := range v.AllowTargets {
-				if _, err := policy.AllowTarget(p.policy, t); err != nil {
+			// Denials first: an allow never stands, not even for a moment, without the denials
+			// that narrow it.
+			for _, t := range v.DenyTargets {
+				if _, err := denyTarget(p.policy, t); err != nil {
 					return err
 				}
 			}
-			for _, t := range v.DenyTargets {
-				if _, err := policy.DenyTarget(p.policy, t); err != nil {
+			for _, t := range v.AllowTargets {
+				if _, err := allowTarget(p.policy, t); err != nil {
 					return err
 				}
 			}

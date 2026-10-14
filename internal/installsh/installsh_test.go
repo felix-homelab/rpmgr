@@ -234,6 +234,12 @@ func TestHandler(t *testing.T) {
 		return w
 	}
 	w := get(installsh.Handler("1.4.2", []release.PublicKey{pubkey(t, root)}), http.MethodGet)
+	// A connector's denied targets go into its policy before the allowed ones, so that an allow never
+	// stands without the denials that narrow it.
+	if deny, allow := strings.Index(w.Body.String(), `"$BIN" policy deny-target`), strings.Index(w.Body.String(), `"$BIN" policy allow-target`); deny < 0 ||
+		allow < deny {
+		t.Errorf("the script writes the denials at %d, the allows at %d", deny, allow)
+	}
 	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "VERSION='1.4.2'") ||
 		!strings.Contains(w.Body.String(), "BEGIN PUBLIC KEY") || w.Header().Get("Content-Type") != "text/x-shellscript; charset=utf-8" {
 		t.Errorf("a release: %d %v", w.Code, w.Header())

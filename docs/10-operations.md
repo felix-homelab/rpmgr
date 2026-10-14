@@ -189,7 +189,11 @@ RestartSec=2s
   7. polls the agent's admin `/readyz` (ready only with an established control session and an
      applied snapshot, see [Health](#health)) for up to 5 min, otherwise rolls back to `.prev`. The
      automatic rollback is exempt from the floor, because floor and `seq` are only raised after a
-     successful health check.
+     successful health check. A connector's local policy is not rolled back with the binary: a
+     `deny_targets` list, a target string, an entry without ports or a subnet with host bits set
+     ([D84](14-open-decisions.md#engineering)), written while the new binary ran, makes a binary
+     from before D84 read the file as invalid and dial nothing until the file is changed back or
+     the binary updated again ([04](04-security.md#connector-local-policy)).
 
   The role service's `NoNewPrivileges=yes` and `ProtectSystem=strict` stay intact; the service user
   can never write the binary or the updater state.

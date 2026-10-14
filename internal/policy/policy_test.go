@@ -116,6 +116,10 @@ func TestParse_Refused(t *testing.T) {
 		"reversed deny":     "version: 1\ndeny_targets: [\"10.0.0.1:500-200\"]\n",
 		"relative deny":     "version: 1\ndeny_targets: [{unix: run/app.sock}]\n",
 		"deny not a list":   "version: 1\ndeny_targets: 10.0.0.1\n",
+		"empty ports":       "version: 1\nallow_targets: [{cidr: 10.0.0.0/8, ports: []}]\n",
+		"null ports":        "version: 1\nallow_targets: [{cidr: 10.0.0.0/8, ports: ~}]\n",
+		"duplicate cidr":    "version: 1\nallow_targets: [{cidr: 10.0.0.0/8, ports: [80], cidr: 192.168.0.0/16}]\n",
+		"duplicate ports":   "version: 1\ndeny_targets: [{cidr: 10.0.0.0/8, ports: [80], ports: [443]}]\n",
 		"port 0":            "version: 1\nallow_targets: [{cidr: 10.0.0.0/24, ports: [0]}]\n",
 		"port 65536":        "version: 1\nallow_targets: [{cidr: 10.0.0.0/24, ports: [65536]}]\n",
 		"reversed range":    "version: 1\nallow_targets: [{cidr: 10.0.0.0/24, ports: [\"90-80\"]}]\n",
@@ -360,5 +364,58 @@ deny_targets:
 	}
 	if bad, err := policy.Load(path); err == nil || bad.Invalid == nil || bad.Allows(netip.MustParseAddr("10.0.0.2"), 80) {
 		t.Fatalf("a bad deny entry: %v", err)
+	}
+}
+
+// TestDeny_HintsRoundTrip: the deny entry a refusal names is a target string parseTarget reads
+// back, IPv6 in brackets and with only the port or range that matched, so that the UI's
+// `rpmgr policy remove-deny-target` command takes exactly that out.
+func TestDeny_HintsRoundTrip(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "policy.yaml")
+	if err := os.WriteFile(path, []byte(`version: 1
+allow_targets: ["0.0.0.0/0", "[::/0]"]
+deny_targets:
+  - "[fd00::/64]"
+  - {cidr: "2001:db8::1"}
+  - {cidr: 10.0.0.0/8, ports: [80, "400-500"]}
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	for target, want := range map[string]string{"[fd00::9]:22": "[fd00::/64]", "[2001:db8::1]:443": "[2001:db8::1]",
+		"10.1.2.3:80": "10.0.0.0/8:80", "10.1.2.3:450": "10.0.0.0/8:400-500"} {
+		var blocked *policy.BlockedError
+		if err := load(t, path).Check(target); !errors.As(err, &blocked) || blocked.Denied != want || policy.CheckTarget(blocked.Denied) != nil {
+			t.Errorf("%s: %v, want the entry %s", target, err, want)
+		}
+	}
+	changed, err := policy.RemoveDenyTarget(path, "10.0.0.0/8:400-500")
+	if err != nil || !changed {
+		t.Fatalf("removing the hinted range: %v %v", changed, err)
+	}
+	if p := load(t, path); p.Check("10.1.2.3:450") != nil || p.Check("10.1.2.3:80") == nil {
+		t.Fatalf("after removing the range:\n%s", p.Describe())
+	}
+	for _, target := range []string{"[fd00::/64]", "[2001:db8::1]"} {
+		if changed, err := policy.RemoveDenyTarget(path, target); err != nil || !changed {
+			t.Errorf("removing the hinted %s: %v %v", target, changed, err)
+		}
+	}
+	if _, err := policy.RemoveDenyTarget(path, "10.1.0.0/16:80"); !errors.Is(err, policy.ErrInRange) ||
+		!strings.Contains(err.Error(), "remove that deny entry") || strings.Contains(err.Error(), "deny-target") {
+		t.Errorf("a denial inside a broader deny entry: %v", err)
+	}
+}
+
+// TestParse_Aliases: YAML anchors and aliases name entries, and ports, as they did before D84.
+func TestParse_Aliases(t *testing.T) {
+	p := parse(t, `version: 1
+allow_targets:
+  - &web {cidr: 10.0.0.0/8, ports: &ports [80, 443]}
+  - *web
+  - {cidr: 192.168.0.0/16, ports: *ports}
+deny_targets: [*web]
+`)
+	if allows(p, "10.1.1.1:80") || !allows(p, "192.168.1.1:443") || allows(p, "192.168.1.1:22") {
+		t.Fatalf("aliases:\n%s", p.Describe())
 	}
 }
