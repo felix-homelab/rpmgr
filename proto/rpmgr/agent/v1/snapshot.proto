@@ -211,12 +211,27 @@ message HTTPHeader {
 message UpstreamTLS {
   // The route target.
   string target_id = 1;
-  // The name the upstream's certificate must carry.
+  // The name the upstream's certificate must carry, and the name sent to it (SNI).
   string server_name = 2;
   // PEM CA certificates to verify it with; empty is the gateway host's trust store.
   bytes ca_pem = 3;
   // If set, the SHA-256 of the leaf's SubjectPublicKeyInfo must equal it.
   bytes spki_sha256 = 4;
+  // How the certificate is checked; a gateway that does not know the field verifies it.
+  UpstreamVerification verification = 5;
+  // The target's connector: the gateway applies these settings only to a stream that connector
+  // answered. Needed unless the target is verified.
+  string connector_id = 6;
+}
+
+// UpstreamVerification is how the gateway checks an HTTPS upstream's certificate (ADR-0017).
+enum UpstreamVerification {
+  // Not set: VERIFIED.
+  UPSTREAM_VERIFICATION_UNSPECIFIED = 0;
+  // The chain against ca_pem or the host's trust store, the name, and the pin if set.
+  UPSTREAM_VERIFICATION_VERIFIED = 1;
+  // Not at all: neither ca_pem nor a pin goes with it.
+  UPSTREAM_VERIFICATION_UNVERIFIED = 2;
 }
 
 // HTTPHost is one hostname of an http route with its path prefix; "" is every path.

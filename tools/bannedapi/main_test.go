@@ -5,8 +5,11 @@ package main
 import (
 	"bytes"
 	"go/token"
+	"maps"
 	"os"
 	"path/filepath"
+	"slices"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -65,6 +68,66 @@ func f() { InsecureSkipVerify := true; _ = InsecureSkipVerify }`, ""},
 				t.Errorf("banned names = %q, want %q", got, tt.want)
 			}
 		})
+	}
+}
+
+// TestExceptions: exactly one use is allowed, InsecureSkipVerify in UpstreamTLS.config of the
+// rpmgr module's internal/gateway/upstreamtls.go (ADR-0017).
+func TestExceptions(t *testing.T) {
+	want := []exception{{Source: "github.com/felix-homelab/rpmgr/internal/gateway/upstreamtls.go", Func: "UpstreamTLS.config",
+		Name: "InsecureSkipVerify"}}
+	if !slices.Equal(exceptions, want) {
+		t.Fatalf("exceptions %v, want %v", exceptions, want)
+	}
+}
+
+// exceptionSrc uses InsecureSkipVerify in the allowed function (line 4) and elsewhere, and another
+// banned name in the allowed function.
+const exceptionSrc = `package gateway
+import "crypto/tls"
+type UpstreamTLS struct{}
+func (u UpstreamTLS) config() *tls.Config { c := &tls.Config{}; c.InsecureSkipVerify = true; return c }
+func (u *UpstreamTLS) pointer() { _ = tls.Config{InsecureSkipVerify: true} }
+func other(c *tls.Config) { c.InsecureSkipVerify = true }
+func (u UpstreamTLS) renegotiate(c *tls.Config) { c.Renegotiation = 0 }
+var v = tls.Config{InsecureSkipVerify: true}
+`
+
+// TestCheckTree_Exception: the allowed use passes only in its function of its file of the rpmgr
+// module, whichever directory the check starts in. Every other use in that file, the same function
+// in another file of the package, a path that only ends alike, a spike's module with the same
+// layout, and a file in no module are still reported.
+func TestCheckTree_Exception(t *testing.T) {
+	root := t.TempDir()
+	write(t, filepath.Join(root, "go.mod"), "module github.com/felix-homelab/rpmgr\n\ngo 1.26\n")
+	write(t, filepath.Join(root, "internal", "gateway", "upstreamtls.go"), exceptionSrc)
+	write(t, filepath.Join(root, "internal", "gateway", "http.go"), exceptionSrc)
+	write(t, filepath.Join(root, "x", "internal", "gateway", "upstreamtls.go"), exceptionSrc)
+	write(t, filepath.Join(root, "spikes", "s9", "go.mod"), "module \"github.com/felix-homelab/rpmgr/spikes/s9\"\n")
+	write(t, filepath.Join(root, "spikes", "s9", "internal", "gateway", "upstreamtls.go"), exceptionSrc)
+	lines := func(dir string) map[string]string {
+		t.Helper()
+		findings, err := CheckTree(dir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		got := map[string]string{}
+		for _, f := range findings {
+			rel, _ := filepath.Rel(root, f.Pos.Filename)
+			got[filepath.ToSlash(rel)] += strconv.Itoa(f.Pos.Line)
+		}
+		return got
+	}
+	want := map[string]string{"internal/gateway/upstreamtls.go": "5678", "internal/gateway/http.go": "45678",
+		"x/internal/gateway/upstreamtls.go": "45678", "spikes/s9/internal/gateway/upstreamtls.go": "45678"}
+	if got := lines(root); !maps.Equal(got, want) {
+		t.Errorf("from the root: %v, want %v", got, want)
+	}
+	if got := lines(filepath.Join(root, "internal", "gateway")); got["internal/gateway/upstreamtls.go"] != "5678" {
+		t.Errorf("from the package: %v", got)
+	}
+	if got := strings.Join(names(t, exceptionSrc), ","); got != strings.Repeat("InsecureSkipVerify,", 2)+"InsecureSkipVerify,Renegotiation,InsecureSkipVerify" {
+		t.Errorf("a file in no module: %s", got)
 	}
 }
 

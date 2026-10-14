@@ -1,6 +1,7 @@
 # ADR-0008: Internal CA, mutual TLS everywhere, SPIFFE identities
 
-Status: Accepted (spike S7, 2026-10-06) · Date: 2026-10-06
+Status: Accepted (spike S7, 2026-10-06) · Date: 2026-10-06 · Lint rule superseded in part by
+[ADR-0017](0017-upstream-tls-verification-modes.md)
 
 ## Context
 

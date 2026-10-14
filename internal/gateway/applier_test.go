@@ -166,7 +166,10 @@ func TestApplier_ValidateHTTP(t *testing.T) {
 	a, _ := gateway.NewApplier()
 	ok := gatewaySnapshot(1, httpResource("rt_1", "http", "app.example.com", "app.example.com|/api", "*.example.com"),
 		httpResource("rt_2", "h2c", "app.example.com|/grpc"), passResource("rt_3", "db.example.com"),
-		httpsResource("rt_4", &agentv1.UpstreamTLS{TargetId: "tg_1", ServerName: "a.internal", SpkiSha256: make([]byte, 32)}))
+		httpsResource("rt_4", &agentv1.UpstreamTLS{TargetId: "tg_1", ServerName: "a.internal", SpkiSha256: make([]byte, 32)},
+			&agentv1.UpstreamTLS{TargetId: "tg_2", ServerName: "b.internal", Verification: agentv1.UpstreamVerification_UPSTREAM_VERIFICATION_UNVERIFIED,
+				ConnectorId: "con_1"},
+			&agentv1.UpstreamTLS{TargetId: "tg_3", ServerName: "c.internal", Verification: agentv1.UpstreamVerification(99)}))
 	if errs := a.Validate(ok); len(errs) != 0 {
 		t.Fatal(errs)
 	}
@@ -210,6 +213,12 @@ func TestApplier_ValidateHTTP(t *testing.T) {
 		})), "not a CIDR"},
 		{"a short pin", gatewaySnapshot(1, httpsResource("rt_1", &agentv1.UpstreamTLS{TargetId: "tg_1", ServerName: "a",
 			SpkiSha256: make([]byte, 16)})), "not a SHA-256"},
+		{"an unverified target with a pin", gatewaySnapshot(1, httpsResource("rt_1", &agentv1.UpstreamTLS{TargetId: "tg_1", ServerName: "a",
+			SpkiSha256: make([]byte, 32), Verification: agentv1.UpstreamVerification_UPSTREAM_VERIFICATION_UNVERIFIED})), "has a CA bundle or a pin"},
+		{"an unverified target of no connector", gatewaySnapshot(1, httpsResource("rt_1", &agentv1.UpstreamTLS{TargetId: "tg_1", ServerName: "a",
+			Verification: agentv1.UpstreamVerification_UPSTREAM_VERIFICATION_UNVERIFIED})), "names no connector"},
+		{"an unverified target with a CA bundle", gatewaySnapshot(1, httpsResource("rt_1", &agentv1.UpstreamTLS{TargetId: "tg_1", ServerName: "a",
+			CaPem: []byte("x"), Verification: agentv1.UpstreamVerification_UPSTREAM_VERIFICATION_UNVERIFIED})), "has a CA bundle or a pin"},
 		{"no upstream", gatewaySnapshot(1, httpResource("rt_1", "", "app.example.com")), "upstream protocol"},
 		{"upper case", gatewaySnapshot(1, httpResource("rt_1", "http", "App.example.com")), "not normalised"},
 		{"a relative prefix", gatewaySnapshot(1, httpResource("rt_1", "http", "app.example.com|api")), "start with /"},

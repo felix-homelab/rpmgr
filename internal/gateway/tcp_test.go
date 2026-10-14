@@ -42,6 +42,8 @@ type plane struct {
 	routes   *gateway.TCPRoutes
 	targets  *conn.Targets
 	changes  atomic.Int32 // how often the routes said that one became ready
+	// connector is the ID of the plane's connector, whose targets are "tg_" and the route ID.
+	connector string
 }
 
 // newPlane starts the gateway and the connector; route IDs map to the service at target, which
@@ -61,7 +63,7 @@ func newPlaneWith(t *testing.T, target, proxy string, routeIDs ...string) *plane
 func planeWith(t *testing.T, target, proxy string, metrics *gateway.Metrics, routeIDs ...string) *plane {
 	t.Helper()
 	w := newWorld(t)
-	p := &plane{sessions: gateway.NewSessions(gateway.SessionsOptions{TrustDomain: td, GatewayID: w.gw.ID,
+	p := &plane{connector: w.con.ID, sessions: gateway.NewSessions(gateway.SessionsOptions{TrustDomain: td, GatewayID: w.gw.ID,
 		Assignment: routeAssignment{w.con.ID}, Metrics: metrics})}
 	t.Cleanup(p.sessions.Close)
 	pc, err := net.ListenPacket("udp", "127.0.0.1:0")

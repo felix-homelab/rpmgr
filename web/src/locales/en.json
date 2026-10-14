@@ -268,6 +268,8 @@
     "noTargets": "The route has no targets.",
     "targetReady": "ready",
     "targetDisabled": "disabled",
+    "unverified": "unverified",
+    "unverifiedTitle": "HTTPS without checking the target's certificate",
     "fallback": "served over TLS and HTTP/2, the fallback for QUIC",
     "runOn": "Run on the host of {{connector}}:",
     "gatewaysTitle": "Gateways not serving",
@@ -406,10 +408,13 @@
     "upstreams": {
       "HTTP": "HTTP",
       "HTTPS": "HTTPS, verified",
+      "UNVERIFIED": "HTTPS, unverified",
       "H2C": "HTTP/2 without TLS (h2c)"
     },
+    "unverifiedWarning": "The gateway will not check the target's certificate. The traffic stays encrypted, but anyone on the network between the connector and the target can read and change it. Choose this only for a target whose certificate nothing can verify, such as a self-signed one.",
     "serverName": "TLS server name",
     "serverNameHint": "Empty: the host's name.",
+    "serverNameSentHint": "Sent to the target; empty: the host's name.",
     "caBundle": "CA bundle ID (empty: the system's roots)",
     "spki": "Public key pin, SHA-256 in hex (optional)",
     "proxy": "PROXY protocol",

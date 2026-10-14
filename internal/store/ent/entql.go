@@ -983,6 +983,7 @@ var schemaGraph = func() *sqlgraph.Schema {
 			routetarget.FieldTLSServerName:    {Type: field.TypeString, Column: routetarget.FieldTLSServerName},
 			routetarget.FieldTLSCaBundleID:    {Type: field.TypeString, Column: routetarget.FieldTLSCaBundleID},
 			routetarget.FieldTLSSpkiSha256:    {Type: field.TypeString, Column: routetarget.FieldTLSSpkiSha256},
+			routetarget.FieldTLSVerification:  {Type: field.TypeEnum, Column: routetarget.FieldTLSVerification},
 			routetarget.FieldProxyProtocol:    {Type: field.TypeEnum, Column: routetarget.FieldProxyProtocol},
 			routetarget.FieldWeight:           {Type: field.TypeInt, Column: routetarget.FieldWeight},
 			routetarget.FieldPriority:         {Type: field.TypeInt, Column: routetarget.FieldPriority},
@@ -5263,6 +5264,11 @@ func (f *RouteTargetFilter) WhereTLSCaBundleID(p entql.StringP) {
 // WhereTLSSpkiSha256 applies the entql string predicate on the tls_spki_sha256 field.
 func (f *RouteTargetFilter) WhereTLSSpkiSha256(p entql.StringP) {
 	f.Where(p.Field(routetarget.FieldTLSSpkiSha256))
+}
+
+// WhereTLSVerification applies the entql string predicate on the tls_verification field.
+func (f *RouteTargetFilter) WhereTLSVerification(p entql.StringP) {
+	f.Where(p.Field(routetarget.FieldTLSVerification))
 }
 
 // WhereProxyProtocol applies the entql string predicate on the proxy_protocol field.

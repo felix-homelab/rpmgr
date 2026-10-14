@@ -33719,6 +33719,7 @@ type RouteTargetMutation struct {
 	upstream_protocol *routetarget.UpstreamProtocol
 	tls_server_name   *string
 	tls_spki_sha256   *string
+	tls_verification  *routetarget.TLSVerification
 	proxy_protocol    *routetarget.ProxyProtocol
 	weight            *int
 	addweight         *int
@@ -34326,6 +34327,42 @@ func (m *RouteTargetMutation) ResetTLSSpkiSha256() {
 	m.tls_spki_sha256 = nil
 }
 
+// SetTLSVerification sets the "tls_verification" field.
+func (m *RouteTargetMutation) SetTLSVerification(rv routetarget.TLSVerification) {
+	m.tls_verification = &rv
+}
+
+// TLSVerification returns the value of the "tls_verification" field in the mutation.
+func (m *RouteTargetMutation) TLSVerification() (r routetarget.TLSVerification, exists bool) {
+	v := m.tls_verification
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldTLSVerification returns the old "tls_verification" field's value of the RouteTarget entity.
+// If the RouteTarget object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RouteTargetMutation) OldTLSVerification(ctx context.Context) (v routetarget.TLSVerification, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldTLSVerification is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldTLSVerification requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldTLSVerification: %w", err)
+	}
+	return oldValue.TLSVerification, nil
+}
+
+// ResetTLSVerification resets all changes to the "tls_verification" field.
+func (m *RouteTargetMutation) ResetTLSVerification() {
+	m.tls_verification = nil
+}
+
 // SetProxyProtocol sets the "proxy_protocol" field.
 func (m *RouteTargetMutation) SetProxyProtocol(rp routetarget.ProxyProtocol) {
 	m.proxy_protocol = &rp
@@ -34638,7 +34675,7 @@ func (m *RouteTargetMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *RouteTargetMutation) Fields() []string {
-	fields := make([]string, 0, 16)
+	fields := make([]string, 0, 17)
 	if m.org_id != nil {
 		fields = append(fields, routetarget.FieldOrgID)
 	}
@@ -34674,6 +34711,9 @@ func (m *RouteTargetMutation) Fields() []string {
 	}
 	if m.tls_spki_sha256 != nil {
 		fields = append(fields, routetarget.FieldTLSSpkiSha256)
+	}
+	if m.tls_verification != nil {
+		fields = append(fields, routetarget.FieldTLSVerification)
 	}
 	if m.proxy_protocol != nil {
 		fields = append(fields, routetarget.FieldProxyProtocol)
@@ -34719,6 +34759,8 @@ func (m *RouteTargetMutation) Field(name string) (ent.Value, bool) {
 		return m.TLSCaBundleID()
 	case routetarget.FieldTLSSpkiSha256:
 		return m.TLSSpkiSha256()
+	case routetarget.FieldTLSVerification:
+		return m.TLSVerification()
 	case routetarget.FieldProxyProtocol:
 		return m.ProxyProtocol()
 	case routetarget.FieldWeight:
@@ -34760,6 +34802,8 @@ func (m *RouteTargetMutation) OldField(ctx context.Context, name string) (ent.Va
 		return m.OldTLSCaBundleID(ctx)
 	case routetarget.FieldTLSSpkiSha256:
 		return m.OldTLSSpkiSha256(ctx)
+	case routetarget.FieldTLSVerification:
+		return m.OldTLSVerification(ctx)
 	case routetarget.FieldProxyProtocol:
 		return m.OldProxyProtocol(ctx)
 	case routetarget.FieldWeight:
@@ -34860,6 +34904,13 @@ func (m *RouteTargetMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetTLSSpkiSha256(v)
+		return nil
+	case routetarget.FieldTLSVerification:
+		v, ok := value.(routetarget.TLSVerification)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetTLSVerification(v)
 		return nil
 	case routetarget.FieldProxyProtocol:
 		v, ok := value.(routetarget.ProxyProtocol)
@@ -35033,6 +35084,9 @@ func (m *RouteTargetMutation) ResetField(name string) error {
 		return nil
 	case routetarget.FieldTLSSpkiSha256:
 		m.ResetTLSSpkiSha256()
+		return nil
+	case routetarget.FieldTLSVerification:
+		m.ResetTLSVerification()
 		return nil
 	case routetarget.FieldProxyProtocol:
 		m.ResetProxyProtocol()
