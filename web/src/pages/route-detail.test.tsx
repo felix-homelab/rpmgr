@@ -234,6 +234,10 @@ describe("policyCommand", () => {
     expect(policyCommand(target)).toBe(want);
   });
 
+  it("has no command for one of rpmgr's own ports", () => {
+    expect(policyCommand("127.0.0.1:7381 is one of rpmgr's own ports")).toBeUndefined();
+  });
+
   it("leaves plain words unquoted", () => {
     expect(shellArg("a-b_c.d")).toBe("a-b_c.d");
   });

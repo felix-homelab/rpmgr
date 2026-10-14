@@ -294,7 +294,8 @@
     "ENVIRONMENT": "the host cannot serve it",
     "OFFLINE": "offline",
     "DISABLED": "disabled",
-    "NO_DATA_SESSION": "no data session to the connector"
+    "NO_DATA_SESSION": "no data session to the connector",
+    "ownPort": "{{target}} is one of rpmgr's own ports, which the all-in-one's connector never dials, whatever its policy allows. Point the target at the service itself."
   },
   "apply": {
     "unknown": "Apply status unknown.",
@@ -453,6 +454,8 @@
     "offline": "offline",
     "disabled": "disabled",
     "ephemeral": "ephemeral",
+    "builtIn": "built in",
+    "builtInHint": "The all-in-one's own agent: it runs in the controller's process and cannot be decommissioned. Switch it off instead.",
     "none": "No connector matches.",
     "noneYet": "No connectors yet.",
     "notFound": "This connector does not exist, or you cannot see it.",

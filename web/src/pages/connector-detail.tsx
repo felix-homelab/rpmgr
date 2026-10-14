@@ -5,14 +5,16 @@ import { Code, ConnectError } from "@connectrpc/connect";
 import { useMutation, useQuery } from "@connectrpc/connect-query";
 import { useQueryClient } from "@tanstack/react-query";
 import { getRouteApi, Link, useNavigate } from "@tanstack/react-router";
-import { ChevronLeft, Copy } from "lucide-react";
+import { ChevronLeft } from "lucide-react";
 import { useState, type FormEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { ApplyStatusView, useLiveApplyStatus } from "@/components/apply-status";
 import { Field } from "@/components/field";
 import { ManifestButton } from "@/components/manifest";
 import { PageHeader } from "@/components/page-header";
+import { PolicyHint } from "@/components/policy-hint";
 import { Alert } from "@/components/public-page";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
@@ -23,7 +25,7 @@ import { ConnectorSchema, ConnectorService, DataTransport, UpdateConnectorReques
 import type { ApplyStatus } from "@/gen/rpmgr/v1/status_pb";
 import { when } from "@/lib/format";
 import { SessionChip } from "@/pages/connectors";
-import { policyCommand, useAgentNames, useRoutes } from "@/routes-data";
+import { useAgentNames, useRoutes } from "@/routes-data";
 import { useOrg } from "@/session";
 
 const page = getRouteApi("/app/connectors/$connectorId");
@@ -84,7 +86,8 @@ export function ConnectorDetail() {
           <ChevronLeft aria-hidden="true" className="size-4" />{t("connectors.back")}
         </Link>
         <PageHeader title={t("connectors.detailTitle", { name: c.name })}
-          description={<span className="flex flex-wrap items-center gap-2"><SessionChip connector={c} />{c.session?.version}</span>}
+          description={<span className="flex flex-wrap items-center gap-2"><SessionChip connector={c} />{c.session?.version}
+            {c.builtIn && <Badge title={t("connectors.builtInHint")}>{t("connectors.builtIn")}</Badge>}</span>}
           actions={<>
             <Switch checked={c.enabled} disabled={update.isPending} onClick={() => void toggle(c)}>{t("connectors.enabled")}</Switch>
             {org && <ManifestButton label={t("manifest.yaml")} title={t("manifest.of", { name: c.name })} orgId={org.orgId} ids={[c.id]} file={c.name} />}
@@ -127,21 +130,16 @@ export function ConnectorDetail() {
         {(s?.notReady ?? []).map((n) => (
           <div key={n.resourceId} className="grid gap-2 rounded-lg border border-warn/30 bg-warn/10 p-3 text-sm">
             <span className="text-warn">{routeName(n.resourceId)}: {t(`notServing.${n.reason}`, { defaultValue: n.reason })}</span>
-            {n.reason === "BLOCKED_BY_LOCAL_POLICY" && n.detail && (
-              <span className="flex flex-wrap items-center gap-2">
-                <code className="rounded-md bg-card px-2 py-1 font-mono">{policyCommand(n.detail)}</code>
-                <Button size="sm" variant="outline" onClick={() => void navigator.clipboard?.writeText(policyCommand(n.detail))}>
-                  <Copy aria-hidden="true" />{t("mfa.copy")}
-                </Button>
-              </span>
-            )}
+            {n.reason === "BLOCKED_BY_LOCAL_POLICY" && n.detail && <PolicyHint detail={n.detail} />}
           </div>
         ))}
       </Card>
 
       <Settings connector={c} onWrite={setWrite} />
-      <Decommission connector={c} routesFailed={routes.isError}
-        doomed={routes.isSuccess ? served.filter((r) => r.targets.every((tg) => tg.connectorId === c.id)).map((r) => r.name) : undefined} />
+      {c.builtIn ? <p className="text-sm text-muted-foreground">{t("connectors.builtInHint")}</p> : (
+        <Decommission connector={c} routesFailed={routes.isError}
+          doomed={routes.isSuccess ? served.filter((r) => r.targets.every((tg) => tg.connectorId === c.id)).map((r) => r.name) : undefined} />
+      )}
     </div>
   );
 }
