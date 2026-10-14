@@ -4,14 +4,17 @@ package apisvc_test
 
 import (
 	"context"
+	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"connectrpc.com/connect"
 	"google.golang.org/protobuf/types/known/fieldmaskpb"
 
 	rpmgrv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/v1"
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
+	"github.com/felix-homelab/rpmgr/internal/token"
 )
 
 // TestBuiltInAgents (ADR-0019): all-in-one's own gateway and connector show as built in, cannot be
@@ -85,6 +88,57 @@ func TestBuiltInAgents(t *testing.T) {
 	}
 	if _, err := ada.con.UpdateConnector(ctx, connect.NewRequest(&rpmgrv1.UpdateConnectorRequest{Connector: &rpmgrv1.Connector{Id: con.ID},
 		UpdateMask: &fieldmaskpb.FieldMask{Paths: []string{"built_in"}}})); code(err) != connect.CodeInvalidArgument {
-		t.Fatalf("an update of built_in: %v", err)
+		t.Fatalf("an update of a connector's built_in: %v", err)
+	}
+	for _, id := range []string{gw.GetId(), other.GetId()} {
+		if _, err := ada.gw.UpdateGateway(ctx, connect.NewRequest(&rpmgrv1.UpdateGatewayRequest{Gateway: &rpmgrv1.Gateway{Id: id, BuiltIn: id != gw.GetId()},
+			UpdateMask: &fieldmaskpb.FieldMask{Paths: []string{"built_in"}}})); code(err) != connect.CodeInvalidArgument {
+			t.Fatalf("an update of a gateway's built_in: %v", err)
+		}
+	}
+	if e.db.Client().Gateway.GetX(e.sys, gw.GetId()).BuiltIn != true || e.db.Client().Gateway.GetX(e.sys, other.GetId()).BuiltIn {
+		t.Fatal("an update changed built_in")
+	}
+}
+
+// TestBuiltInTokens (ADR-0019): the tokens all-in-one makes for its own connector are neither
+// listed nor revocable through the API; the org's other tokens are.
+func TestBuiltInTokens(t *testing.T) {
+	e, ada, org, _ := gatewayEnv(t)
+	ctx := context.Background()
+	if err := ada.stepUp(pw, ""); err != nil {
+		t.Fatal(err)
+	}
+	mine, err := ada.enr.CreateEnrollmentToken(ctx, connect.NewRequest(&rpmgrv1.CreateEnrollmentTokenRequest{OrgId: org}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	tok, err := token.New(token.Enrollment)
+	if err != nil {
+		t.Fatal(err)
+	}
+	builtIn := e.db.Client().EnrollmentToken.Create().SetOrgID(org).SetTokenHash(token.Hash(tok)).SetRole("connector").SetBuiltIn(true).
+		SetMaxUses(1).SetExpiresAt(e.clock.Add(time.Hour)).SetCreatedBy("local-cli").SaveX(e.sys)
+	for _, inactive := range []bool{false, true} {
+		r, err := ada.enr.ListEnrollmentTokens(ctx, connect.NewRequest(&rpmgrv1.ListEnrollmentTokensRequest{OrgId: org, ShowInactive: inactive}))
+		if err != nil {
+			t.Fatal(err)
+		}
+		var ids []string
+		for _, tk := range r.Msg.GetEnrollmentTokens() {
+			ids = append(ids, tk.GetId())
+		}
+		if !slices.Contains(ids, mine.Msg.GetEnrollmentToken().GetId()) || slices.Contains(ids, builtIn.ID) {
+			t.Fatalf("listed (inactive too: %v): %v", inactive, ids)
+		}
+	}
+	if _, err := ada.enr.RevokeEnrollmentToken(ctx, connect.NewRequest(&rpmgrv1.RevokeEnrollmentTokenRequest{EnrollmentTokenId: builtIn.ID})); code(err) != connect.CodeNotFound {
+		t.Fatalf("revoking a built-in token: %v", err)
+	}
+	if e.db.Client().EnrollmentToken.GetX(e.sys, builtIn.ID).RevokedAt != nil {
+		t.Fatal("the built-in token was revoked")
+	}
+	if _, err := ada.enr.RevokeEnrollmentToken(ctx, connect.NewRequest(&rpmgrv1.RevokeEnrollmentTokenRequest{EnrollmentTokenId: mine.Msg.GetEnrollmentToken().GetId()})); err != nil {
+		t.Fatalf("revoking another token: %v", err)
 	}
 }

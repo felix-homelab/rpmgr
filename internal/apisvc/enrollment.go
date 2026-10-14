@@ -114,7 +114,8 @@ func (e *Enrollment) ListEnrollmentTokens(ctx context.Context, req *connect.Requ
 	if err != nil {
 		return nil, err
 	}
-	q := e.DB.ReadClient().EnrollmentToken.Query().Where(enrollmenttoken.OrgID(m.GetOrgId())).
+	// All-in-one's tokens for its own connector are its business alone (ADR-0019).
+	q := e.DB.ReadClient().EnrollmentToken.Query().Where(enrollmenttoken.OrgID(m.GetOrgId()), enrollmenttoken.BuiltIn(false)).
 		Order(ent.Asc(enrollmenttoken.FieldID)).Limit(size + 1)
 	if !m.GetShowInactive() {
 		// UTC, as the store keeps expires_at: SQLite compares the text.
@@ -146,6 +147,9 @@ func (e *Enrollment) RevokeEnrollmentToken(ctx context.Context, req *connect.Req
 		cur, err := tx.EnrollmentToken.Get(ctx, req.Msg.GetEnrollmentTokenId())
 		if err != nil {
 			return err
+		}
+		if cur.BuiltIn {
+			return connect.NewError(connect.CodeNotFound, errors.New("apisvc: not found"))
 		}
 		if cur.Role == enrollmenttoken.RoleGateway && !api.Permits(ctx, cur.OrgID, authz.PermInfrastructureWrite) {
 			return connect.NewError(connect.CodePermissionDenied, errors.New("apisvc: a gateway's token needs infrastructure.write"))
