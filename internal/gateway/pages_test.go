@@ -20,6 +20,7 @@ import (
 	"net/netip"
 	"slices"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -133,16 +134,40 @@ func TestPages_NoRoute443(t *testing.T) {
 			t.Errorf("%s, not a browser: %d %q", url, r.status, r.body)
 		}
 	}
-	c, err := tls.Dial("tcp", e.addr, &tls.Config{ServerName: "app.example.com", RootCAs: e.pool, MinVersion: tls.VersionTLS13})
+	dial := func() net.Conn {
+		c, err := tls.Dial("tcp", e.addr, &tls.Config{ServerName: "app.example.com", RootCAs: e.pool, MinVersion: tls.VersionTLS13})
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = c.Close() })
+		return c
+	}
+	expectMisdirected(t, dial(), "other.example.com")
+	if rep := roundTrip(t, dial(), "app.example.com:443"); rep.status != http.StatusNotFound || !isPage(rep, "Site not available") {
+		t.Errorf("an unrouted path on its name's connection: %d", rep.status)
+	}
+}
+
+// expectMisdirected sends a request for host on c and expects 421, after which the gateway closes
+// the HTTP/1.1 connection, so that the client connects anew.
+func expectMisdirected(t *testing.T, c net.Conn, host string) {
+	t.Helper()
+	_ = c.SetReadDeadline(time.Now().Add(5 * time.Second))
+	if _, err := fmt.Fprintf(c, "GET / HTTP/1.1\r\nHost: %s\r\nAccept: text/html\r\n\r\n", host); err != nil {
+		t.Fatal(err)
+	}
+	br := bufio.NewReader(c)
+	resp, err := http.ReadResponse(br, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() { _ = c.Close() }()
-	if rep := roundTrip(t, c, "other.example.com"); rep.status != http.StatusMisdirectedRequest {
-		t.Errorf("an unrouted name on a routed name's connection: %d", rep.status)
+	_, _ = io.Copy(io.Discard, resp.Body)
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusMisdirectedRequest || !resp.Close {
+		t.Errorf("%s: %d, close %v; want 421 and a close", host, resp.StatusCode, resp.Close)
 	}
-	if rep := roundTrip(t, c, "app.example.com:443"); rep.status != http.StatusNotFound || !isPage(rep, "Site not available") {
-		t.Errorf("an unrouted path on its name's connection: %d", rep.status)
+	if _, err := br.ReadByte(); !errors.Is(err, io.EOF) {
+		t.Errorf("%s: %v after the 421, want the gateway to close", host, err)
 	}
 }
 
@@ -204,8 +229,8 @@ func TestPages_Unrouted(t *testing.T) {
 		return c, err
 	}
 
-	// A covered name: the wildcard certificate, the page, a misdirected request for the routed
-	// name and for another covered name, and the page again, all on one connection.
+	// A covered name: the wildcard certificate and the page, twice on one connection; a request
+	// for the routed name or for another covered name is misdirected.
 	c, err := dial("foo.example.com", pool)
 	if err != nil {
 		t.Fatal(err)
@@ -217,13 +242,15 @@ func TestPages_Unrouted(t *testing.T) {
 		!strings.Contains(rep.body, ">foo.example.com</span>") {
 		t.Errorf("foo.example.com: %d %v", rep.status, rep.header)
 	}
-	for _, host := range []string{"app.example.com", "bar.example.com", "app.example.com:443"} {
-		if rep := roundTrip(t, c, host); rep.status != http.StatusMisdirectedRequest {
-			t.Errorf("%s on foo.example.com's connection: %d", host, rep.status)
-		}
-	}
 	if rep := roundTrip(t, c, "FOO.example.com.:443"); rep.status != http.StatusNotFound {
 		t.Errorf("foo.example.com again: %d", rep.status)
+	}
+	for _, host := range []string{"app.example.com", "bar.example.com", "app.example.com:443"} {
+		c, err := dial("foo.example.com", pool)
+		if err != nil {
+			t.Fatal(err)
+		}
+		expectMisdirected(t, c, host)
 	}
 	h2 := &http.Transport{TLSClientConfig: &tls.Config{RootCAs: pool, MinVersion: tls.VersionTLS12},
 		DialContext: func(ctx context.Context, network, _ string) (net.Conn, error) {
@@ -252,16 +279,67 @@ func TestPages_Unrouted(t *testing.T) {
 		if rep := roundTrip(t, c, name); rep.status != http.StatusNotFound || !isPage(rep, "Site not available") {
 			t.Errorf("%s: %d %v", name, rep.status, rep.header)
 		}
-		if rep := roundTrip(t, c, "app.example.com"); rep.status != http.StatusMisdirectedRequest {
-			t.Errorf("app.example.com on %s's connection: %d", name, rep.status)
-		}
+		expectMisdirected(t, c, "app.example.com")
 	}
 }
 
-// TestPages_UnroutedSlowBody: an unrouted connection's request must arrive whole within the
-// header timeout, its body included, as nothing reads it; a client that stops sending is closed.
+// servesOf is the router's table of h's routes alone.
+type servesOf struct{ h *gateway.HTTPRoutes }
+
+func (s servesOf) Passthrough(string) (func(net.Conn), bool) { return nil, false }
+func (s servesOf) HTTP(sni string) bool                      { return s.h.Serves(sni) }
+
+// TestPages_RoutedAfterConnect: a connection made before a route served its name, with the
+// certificate the gateway already held for it, serves the route once the route is applied, so
+// that a client's keep-alive connection reaches it instead of an answer it would never redial on;
+// over HTTP/1.1 and HTTP/2.
+func TestPages_RoutedAfterConnect(t *testing.T) {
+	up := &http.Server{ReadHeaderTimeout: 5 * time.Second, Handler: http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = io.WriteString(w, "app")
+	})}
+	upLn, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	go func() { _ = up.Serve(upLn) }()
+	t.Cleanup(func() { _ = up.Close() })
+	p := newPlaneWith(t, upLn.Addr().String(), "none", "rt_web")
+	certs, pool := routeCert(t, "app.example.com")
+	h := gateway.NewHTTPRoutes(gateway.HTTPOptions{Sessions: p.sessions, Certificates: certs})
+	t.Cleanup(h.Close)
+	addr := serve(t, &gateway.Router{TrustDomain: td, GatewayID: "gw_01", Routes: servesOf{h}, HTTP: h.Serve, HTTPTLS: h.TLSConfig(),
+		Unrouted: h.ServeUnrouted, UnroutedTLS: h.UnroutedTLSConfig()})
+	route := gateway.HTTPRoute{ID: "rt_web", Upstream: "http", Hosts: []gateway.HTTPHost{{Hostname: "app.example.com"}}}
+	for _, h2 := range []bool{false, true} {
+		h.Apply(nil)
+		var dials atomic.Int32
+		tr := &http.Transport{TLSClientConfig: &tls.Config{RootCAs: pool, MinVersion: tls.VersionTLS13},
+			DialContext: func(ctx context.Context, network, _ string) (net.Conn, error) {
+				dials.Add(1)
+				var d net.Dialer
+				return d.DialContext(ctx, network, addr)
+			}}
+		tr.Protocols = new(http.Protocols)
+		tr.Protocols.SetHTTP1(!h2)
+		tr.Protocols.SetHTTP2(h2)
+		client := &http.Client{Transport: tr, Timeout: 10 * time.Second}
+		if r := get(t, client, "https://app.example.com/", browser); r.status != http.StatusNotFound || !isPage(r, "Site not available") {
+			t.Fatalf("h2 %v, before the route: %d %v", h2, r.status, r.header)
+		}
+		h.Apply([]gateway.HTTPRoute{route})
+		if r := get(t, client, "https://app.example.com/", nil); r.status != http.StatusOK || r.body != "app" || r.proto != map[bool]int{false: 1, true: 2}[h2] {
+			t.Errorf("h2 %v, after the route: HTTP/%d %d %q", h2, r.proto, r.status, r.body)
+		}
+		if n := dials.Load(); n != 1 {
+			t.Errorf("h2 %v: %d connections, want the one kept alive", h2, n)
+		}
+		tr.CloseIdleConnections()
+	}
+}
+
+// TestPages_UnroutedSlowBody: nothing reads the body of a request that gets the page, so the gateway
+// answers and closes the connection rather than wait for a body the client stops sending.
 func TestPages_UnroutedSlowBody(t *testing.T) {
-	gateway.SetHTTPTimers(t, 300*time.Millisecond, time.Minute)
 	certs, pool := routeCert(t, "*.example.com")
 	h := gateway.NewHTTPRoutes(gateway.HTTPOptions{Certificates: certs})
 	t.Cleanup(h.Close)
@@ -275,7 +353,6 @@ func TestPages_UnroutedSlowBody(t *testing.T) {
 	if _, err := io.WriteString(c, "POST / HTTP/1.1\r\nHost: foo.example.com\r\nContent-Length: 100\r\n\r\nabc"); err != nil {
 		t.Fatal(err)
 	}
-	// The server answers once it has given up reading the body.
 	_ = c.SetReadDeadline(time.Now().Add(5 * time.Second))
 	start := time.Now()
 	br := bufio.NewReader(c)
