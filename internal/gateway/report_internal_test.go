@@ -108,3 +108,39 @@ func TestReporter(t *testing.T) {
 		}
 	}
 }
+
+// TestReporter_ChangeDuringWait: a change signalled while a report waits is in that report, so it
+// makes no second one (#542); a change after the report makes the next.
+func TestReporter_ChangeDuringWait(t *testing.T) {
+	r := newReporter()
+	sent := make(chan time.Time, 16)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go r.run(ctx, time.Hour, func(*agentv1.AgentMessage) bool { sent <- time.Now(); return true },
+		func() *agentv1.Status { return &agentv1.Status{} })
+	r.change()
+	deadline := time.Now().Add(5 * time.Second)
+	for len(r.changed) != 0 { // until the reporter has taken the signal and waits
+		if time.Now().After(deadline) {
+			t.Fatal("the reporter never took the change")
+		}
+		time.Sleep(time.Millisecond)
+	}
+	r.change()
+	select {
+	case <-sent:
+	case <-time.After(5 * time.Second):
+		t.Fatal("no report of the changes")
+	}
+	select {
+	case <-sent:
+		t.Fatal("a change made during the wait made a second report")
+	case <-time.After(2 * reportAfter):
+	}
+	r.change()
+	select {
+	case <-sent:
+	case <-time.After(5 * time.Second):
+		t.Fatal("no report of a change after the report")
+	}
+}
