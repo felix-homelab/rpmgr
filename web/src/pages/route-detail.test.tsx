@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { ConnectorService, DataTransport } from "@/gen/rpmgr/v1/connector_pb";
 import { GatewayService } from "@/gen/rpmgr/v1/gateway_pb";
 import { MetricsService, TrafficResolution, type GetRouteTrafficRequest } from "@/gen/rpmgr/v1/metrics_pb";
-import { RouteService, RouteState, type DeleteRouteRequest } from "@/gen/rpmgr/v1/route_pb";
+import { RouteService, RouteState, type DeleteRouteRequest, type UpdateRouteRequest } from "@/gen/rpmgr/v1/route_pb";
 import { ApplyState } from "@/gen/rpmgr/v1/status_pb";
 import { Theme, UserService } from "@/gen/rpmgr/v1/user_pb";
 import { policyCommand, shellArg } from "@/routes-data";
@@ -32,10 +32,12 @@ const postgres = {
 };
 
 // detail renders the route's page; the connectors' data sessions use the transports given, the
-// route's traffic is recorded in traffic, deleteRoute answers a deletion, and the gateway group eu
-// has the public hostnames given; with null, the gateway groups cannot be read.
+// route's traffic is recorded in traffic, deleteRoute answers a deletion, updateRoute an update,
+// and the gateway group eu has the public hostnames given; with null, the gateway groups cannot be
+// read.
 function detail(r: object, transports: Record<string, DataTransport[]> = {}, traffic: GetRouteTrafficRequest[] = [],
-  deleteRoute: (req: DeleteRouteRequest) => object = () => { throw apiError(Code.Unimplemented); }, publicHostnames: string[] | null = []) {
+  deleteRoute: (req: DeleteRouteRequest) => object = () => { throw apiError(Code.Unimplemented); }, publicHostnames: string[] | null = [],
+  updateRoute: (req: UpdateRouteRequest) => object = () => { throw apiError(Code.Unimplemented); }) {
   return show("/routes/rte_2", auth({
     getSession: () => ({ userId: "usr_ada", displayName: "Ada", memberships: [{ orgId: "org_1", role: "owner" }] }),
   }), (router) => {
@@ -68,6 +70,7 @@ function detail(r: object, transports: Record<string, DataTransport[]> = {}, tra
         return { route: r };
       },
       deleteRoute,
+      updateRoute,
     });
   });
 }
@@ -198,6 +201,36 @@ describe("RouteDetail", () => {
     expect(screen.getByText("Revision 12: applied by all 3 agents.")).toBeTruthy();
     expect(screen.getByRole("link", { name: "All routes" }).getAttribute("href")).toBe("/routes");
     expect(screen.queryByText("This route does not exist, or you cannot see it.")).toBeNull();
+  });
+
+  it("puts an http route into maintenance with its own switch, under the etag it read, and changes nothing else", async () => {
+    const updates: UpdateRouteRequest[] = [];
+    const web = { ...postgres, etag: "4", spec: { case: "http" as const, value: { hostnames: ["app.example.com"], maintenanceMessage: "Back at 18:00." } },
+      status: { state: RouteState.READY } };
+    detail(web, {}, [], undefined, [], (req) => (updates.push(req),
+      { route: req.route, revision: { dbEpoch: "e", seq: 13n }, applyStatus: { state: ApplyState.APPLIED, agentsTotal: 2, agentsApplied: 2 } }));
+    const toggle = await screen.findByRole("switch", { name: "Maintenance" });
+    expect(toggle.getAttribute("aria-checked")).toBe("false");
+    expect(screen.queryByText(/The maintenance page says/)).toBeNull(); // only while in maintenance
+    fireEvent.click(toggle);
+    await waitFor(() => expect(updates).toHaveLength(1));
+    const req = updates[0]!;
+    expect([req.updateMask?.paths, req.etag, req.route?.enabled, req.route?.spec.case]).toEqual([["http.maintenance"], "4", true, "http"]);
+    expect(req.route?.spec.case === "http" && [req.route.spec.value.maintenance, req.route.spec.value.maintenanceMessage]).toEqual([true, "Back at 18:00."]);
+    expect(await screen.findByText("Revision 13: applied by all 2 agents.")).toBeTruthy();
+  });
+
+  it("shows a route in maintenance with its message, and gives other route types no maintenance switch", async () => {
+    detail({ ...postgres, spec: { case: "http" as const, value: { hostnames: ["app.example.com"], maintenance: true, maintenanceMessage: "Back at 18:00.\nSorry." } },
+      status: { state: RouteState.MAINTENANCE } });
+    expect(await screen.findByText(/^enabled · in maintenance · gateway group eu/)).toBeTruthy();
+    expect(screen.getByText("The maintenance page says: Back at 18:00. Sorry.", { normalizer: (s) => s.replace(/\s+/g, " ") })).toBeTruthy();
+    expect(screen.getByRole("switch", { name: "Maintenance" }).getAttribute("aria-checked")).toBe("true");
+    expect(screen.getAllByText("maintenance").length).toBeGreaterThan(0); // the observed state
+    cleanup();
+    detail(postgres);
+    await screen.findByRole("switch", { name: "Enabled" });
+    expect(screen.queryByRole("switch", { name: "Maintenance" })).toBeNull();
   });
 
   it("keeps the route and says why when the deletion is refused", async () => {

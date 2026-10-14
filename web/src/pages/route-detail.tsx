@@ -62,12 +62,15 @@ export function RouteDetail() {
   const name = (id: string) => names.data?.get(id) || id;
   const connectors = [...(names.data ?? new Map<string, string>())].filter(([id]) => id.startsWith("con_"));
 
-  // toggle switches the route on or off, the only desired switch (U3), and follows the change to
-  // the agents (U2).
-  async function toggle(current: Route) {
+  // toggle switches the route on or off, the only desired switch (U3), or an http route in and out
+  // of maintenance (D88), and follows the change to the agents (U2).
+  async function toggle(current: Route, what: "enabled" | "maintenance" = "enabled") {
     setError("");
+    const next = what === "enabled" ? { ...current, enabled: !current.enabled }
+      : current.spec.case === "http" ? { ...current, spec: { case: "http" as const, value: { ...current.spec.value, maintenance: !current.spec.value.maintenance } } }
+      : current;
     try {
-      const res = await update.mutateAsync({ route: { ...current, enabled: !current.enabled }, updateMask: { paths: ["enabled"] }, etag: current.etag });
+      const res = await update.mutateAsync({ route: next, updateMask: { paths: [what === "enabled" ? "enabled" : "http.maintenance"] }, etag: current.etag });
       setWrite({ revision: res.revision, status: res.applyStatus });
       await queryClient.invalidateQueries();
     } catch (err) {
@@ -125,6 +128,9 @@ export function RouteDetail() {
           <Button size="sm" variant="outline" onClick={() => setAsking(false)}>{t("stepUp.cancel")}</Button>
         </> : <>
           <Switch checked={r.enabled} disabled={update.isPending} onClick={() => void toggle(r)}>{t("route.enabledSwitch")}</Switch>
+          {r.spec.case === "http" && (
+            <Switch checked={r.spec.value.maintenance} disabled={update.isPending} onClick={() => void toggle(r, "maintenance")}>{t("route.maintenanceSwitch")}</Switch>
+          )}
           {org && <ManifestButton label={t("manifest.yaml")} title={t("manifest.of", { name: r.name })} orgId={org.orgId} ids={[r.id]} file={r.name} />}
           <Button size="sm" variant="outline" onClick={() => { setError(""); setAsking(true); }}><Trash2 aria-hidden="true" />{t("route.delete")}</Button>
           <Button asChild size="sm">
@@ -138,8 +144,11 @@ export function RouteDetail() {
         <div className="grid gap-1.5">
           <dt className="text-muted-foreground">{t("route.desired")}</dt>
           <dd>
-            {[r.enabled ? t("route.enabled") : t("route.disabled"), t("route.group", { name: groups.data?.get(r.gatewayGroupId) ?? r.gatewayGroupId }),
-              ...routeAddress(r, hosts.data?.get(r.gatewayGroupId))].join(" · ")}
+            {[r.enabled ? t("route.enabled") : t("route.disabled"), ...(r.spec.case === "http" && r.spec.value.maintenance ? [t("route.inMaintenance")] : []),
+              t("route.group", { name: groups.data?.get(r.gatewayGroupId) ?? r.gatewayGroupId }), ...routeAddress(r, hosts.data?.get(r.gatewayGroupId))].join(" · ")}
+            {r.spec.case === "http" && r.spec.value.maintenance && r.spec.value.maintenanceMessage && (
+              <p className="mt-1.5 whitespace-pre-wrap text-muted-foreground">{t("route.maintenanceMessage", { message: r.spec.value.maintenanceMessage })}</p>
+            )}
           </dd>
         </div>
         <div className="grid gap-1.5">

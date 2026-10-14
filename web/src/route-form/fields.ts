@@ -80,6 +80,11 @@ const http: RouteField[] = [
     set: (s, v) => (s.websocket = v === "" ? undefined : v === "true") }),
   spec("http", { key: "maxBody", path: "http.max_body_bytes", kind: "number", get: (s) => String(s.maxBodyBytes),
     set: (s, v) => (s.maxBodyBytes = /^\d+$/.test(v.trim()) ? BigInt(v.trim()) : -1n) }),
+  // Maintenance answers every request with the maintenance page and its message (D88).
+  spec("http", { key: "maintenance", path: "http.maintenance", kind: "select", options: [["false", "off"], ["true", "on"]],
+    get: (s) => String(s.maintenance), set: (s, v) => (s.maintenance = v === "true") }),
+  spec("http", { key: "maintenanceMessage", path: "http.maintenance_message", kind: "longtext", get: (s) => s.maintenanceMessage,
+    set: (s, v) => (s.maintenanceMessage = v) }),
 ];
 
 const portField = <C extends "tcp" | "udp" | "tcpUdp">(c: C, path: string) =>

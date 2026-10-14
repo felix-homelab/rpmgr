@@ -58,7 +58,9 @@ function Summary({ orgId }: { orgId: string }) {
 
   // Disabled routes, disabled connectors and drained gateways are left out, as in "Needs attention"
   // (D81).
-  const enabled = routes?.filter((r) => r.status?.state !== RouteState.DISABLED);
+  // Routes in maintenance are left out too, as they are on purpose, and counted apart (D88).
+  const enabled = routes?.filter((r) => r.status?.state !== RouteState.DISABLED && r.status?.state !== RouteState.MAINTENANCE);
+  const maintenance = routes?.filter((r) => r.status?.state === RouteState.MAINTENANCE).length ?? 0;
   const agents = gateways && connectors && [...gateways.map((g) => !!g.status?.connected), ...connectors.map((c) => !!c.session?.connected)];
   const bad = {
     routes: enabled?.filter((r) => r.status?.state !== RouteState.READY || r.status.rejections.length > 0).length,
@@ -78,13 +80,14 @@ function Summary({ orgId }: { orgId: string }) {
         const n = bad[key] ?? 0;
         const state: [Look, string] | undefined = total === undefined ? undefined
           : total === 0 ? ["off", t(`summary.${key}None`)] : n > 0 ? ["warn", t(`summary.${key}Bad`, { count: n })] : ["ok", t(`summary.${key}Good`)];
-        return <Tile key={key} label={t(`summary.${key}`)} link={link} value={total === undefined ? undefined : [total - n, total]} state={state} />;
+        const note = key === "routes" && maintenance > 0 ? t("summary.routesMaintenance", { count: maintenance }) : undefined;
+        return <Tile key={key} label={t(`summary.${key}`)} link={link} value={total === undefined ? undefined : [total - n, total]} state={state} note={note} />;
       })}
     </ul>
   );
 }
 
-function Tile({ label, link, value, state }: { label: string; link: LinkOptions; value?: [number, number]; state?: [Look, string] }) {
+function Tile({ label, link, value, state, note }: { label: string; link: LinkOptions; value?: [number, number]; state?: [Look, string]; note?: string }) {
   const { t } = useTranslation();
   const n = (v: number) => v.toLocaleString(i18n.language);
   return (
@@ -96,6 +99,7 @@ function Tile({ label, link, value, state }: { label: string; link: LinkOptions;
           {value && value[1] > 0 && <span className="text-sm text-muted-foreground">{t("summary.of", { total: n(value[1]) })}</span>}
         </span>
         {state && <Status look={state[0]}>{state[1]}</Status>}
+        {note && <span className="text-sm text-muted-foreground">{note}</span>}
       </Link>
     </li>
   );

@@ -89,6 +89,19 @@ describe("Summary", () => {
     expect((await tiles()).map(([, href]) => href)).toEqual(["/routes", "/connectors", "/domains", "/domains"]);
   });
 
+  it("counts routes in maintenance apart, not as needing attention (D88)", async () => {
+    page({
+      routes: [
+        { id: "rte_1", name: "web", status: { state: RouteState.READY } },
+        { id: "rte_2", name: "docs", status: { state: RouteState.MAINTENANCE } },
+        { id: "rte_3", name: "wiki", status: { state: RouteState.MAINTENANCE } },
+      ],
+    });
+    await waitFor(async () => expect((await tiles())[0]![0]).toBe("Routes serving1of 1All enabled routes serve2 in maintenance"));
+    const routes = await card("Routes");
+    expect(routes.queryByRole("listitem")).toBeNull();
+  });
+
   it("says when an area has nothing yet, and when everything is well", async () => {
     page({
       routes: [{ id: "rte_1", name: "web", status: { state: RouteState.READY } }],

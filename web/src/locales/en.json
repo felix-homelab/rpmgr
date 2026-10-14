@@ -40,6 +40,8 @@
     "routesBad_other": "{{count}} need attention",
     "routesGood": "All enabled routes serve",
     "routesNone": "No routes yet",
+    "routesMaintenance_one": "{{count}} in maintenance",
+    "routesMaintenance_other": "{{count}} in maintenance",
     "agents": "Agents connected",
     "agentsBad_one": "{{count}} offline",
     "agentsBad_other": "{{count}} offline",
@@ -206,7 +208,8 @@
     "ready": "ready",
     "degraded": "degraded",
     "unavailable": "unavailable",
-    "error": "error"
+    "error": "error",
+    "maintenance": "maintenance"
   },
   "routeType": {
     "http": "HTTP",
@@ -276,6 +279,9 @@
     "rejections": "Rejected by",
     "noReason": "no reason given",
     "enabledSwitch": "Enabled",
+    "maintenanceSwitch": "Maintenance",
+    "inMaintenance": "in maintenance",
+    "maintenanceMessage": "The maintenance page says: {{message}}",
     "on": "on",
     "off": "off",
     "changed": "The route changed since this page loaded it. The page shows it as it is now; try again.",
@@ -330,6 +336,8 @@
       "responseHeaders": "Response headers to set",
       "websocket": "WebSocket",
       "maxBody": "Largest request body (bytes, 0 for no limit)",
+      "maintenance": "Maintenance",
+      "maintenanceMessage": "Maintenance message (plain text, at most 500 characters)",
       "port": "Public port",
       "idleTimeout": "Idle timeout (seconds)",
       "flowIdleTimeout": "Flow idle timeout (seconds)",
@@ -356,6 +364,10 @@
         "redirect": "Redirect to HTTPS",
         "serve": "Serve the route",
         "off": "Closed"
+      },
+      "maintenance": {
+        "off": "Off: serve the route",
+        "on": "On: show the maintenance page"
       }
     },
     "tristate": {
