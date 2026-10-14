@@ -542,3 +542,26 @@ func TestTargets_PolicyReloadResetsBlocked(t *testing.T) {
 		t.Errorf("a policy that does not load: %v, want a reset", err)
 	}
 }
+
+// TestTargets_ReloadAfterDial (#525): a connection is recorded before its stream is answered, and
+// checked against the policy in force then, so a reload that stops allowing its target after the
+// dial refuses it, rather than relaying a connection the reload's Recheck could not yet see. The
+// dial looks the policy up first; every later lookup sees the reload.
+func TestTargets_ReloadAfterDial(t *testing.T) {
+	svc := startService(t, echoService)
+	allow := policyOf(t, "allow_targets:\n  - cidr: 127.0.0.0/8\n    ports: ["+strconv.Itoa(int(svc.port()))+"]\n")
+	deny := policyOf(t, "allow_targets: []\n")
+	var lookups atomic.Int32
+	e := &targetsEnv{}
+	e.Targets = connector.NewTargets(connector.TargetsOptions{Policy: func() *policy.Policy {
+		if lookups.Add(1) == 1 {
+			return allow // the dial
+		}
+		return deny
+	}})
+	e.Set([]connector.Route{{ID: "rt_1", Targets: []connector.Target{target("127.0.0.1", svc.port())}}})
+	lookups.Store(0)
+	if code, _ := e.handle(t, tcpOpen("rt_1")); code != tunnelv1.ResultCode_RESULT_CODE_UPSTREAM_REFUSED {
+		t.Fatalf("a connection the reload after its dial no longer allows: %v, want refused", code)
+	}
+}

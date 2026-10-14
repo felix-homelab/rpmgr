@@ -645,7 +645,8 @@ Rules:
   watches the file. On reload it re-evaluates the current snapshot, reports the new readiness, and
   resets the open connections to targets the policy no longer allows. A target taken out is then
   not reachable through a connection opened before, such as an upstream's pooled HTTP/2
-  connection.
+  connection, nor one being set up: a connection is recorded before its stream is answered and
+  checked against the policy in force then.
 - The policy only protects if the binary enforcing it is genuine: OTA installs only signed binaries
   at or above a locally persisted version floor, and `auto_update` lets the host refuse automatic
   updates entirely ([Supply chain and updates](#supply-chain-and-updates)).
