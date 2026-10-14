@@ -286,9 +286,8 @@ func NewHTTPRoutes(o HTTPOptions) *HTTPRoutes {
 	go func() { _ = h.server.Serve(h.ln) }()
 	h.server80 = &http.Server{Handler: http.HandlerFunc(h.serve80), ReadHeaderTimeout: httpReadHeader, IdleTimeout: httpIdle,
 		ErrorLog: slog.NewLogLogger(o.Logger.Handler(), slog.LevelDebug)}
-	// Its requests' bodies are never read, so the whole request must arrive in time too.
-	h.unrouted = &http.Server{Handler: http.HandlerFunc(h.serveUnrouted), ReadHeaderTimeout: httpReadHeader, ReadTimeout: httpReadHeader,
-		IdleTimeout: httpIdle, Protocols: protocols, ErrorLog: slog.NewLogLogger(o.Logger.Handler(), slog.LevelDebug)}
+	h.unrouted = &http.Server{Handler: http.HandlerFunc(h.serveUnrouted), ReadHeaderTimeout: httpReadHeader, IdleTimeout: httpIdle,
+		Protocols: protocols, ErrorLog: slog.NewLogLogger(o.Logger.Handler(), slog.LevelDebug)}
 	go func() { _ = h.unrouted.Serve(h.lnNone) }()
 	return h
 }
@@ -450,22 +449,50 @@ func (h *HTTPRoutes) ServeUnrouted(c *tls.Conn) {
 }
 
 // serveUnrouted answers the requests of such a connection with the 404 page for their name. A
-// request for another name than the connection's, or for a name a route serves by now, is
-// misdirected (RFC 9110, section 15.5.20): a browser that reused the connection for a name its
-// certificate covers asks again on a connection of its own, which reaches the route.
+// route that serves the connection's own name by now, added by a snapshot after the client
+// connected, is served as on a connection of its own: the certificate the connection got is the
+// one the name gets. A request for another name than the connection's, or for a name a route
+// serves on a connection without a name, is misdirected (RFC 9110, section 15.5.20): a client that
+// reused the connection for a name its certificate covers asks again on a connection of its own.
 func (h *HTTPRoutes) serveUnrouted(w http.ResponseWriter, r *http.Request) {
-	h.active.Add(1)
-	defer h.active.Add(-1)
 	host := strings.TrimSuffix(hostOnly(r.Host), ".")
 	sni := ""
 	if r.TLS != nil {
 		sni = strings.TrimSuffix(r.TLS.ServerName, ".")
 	}
-	if h.Serves(host) || sni != "" && !strings.EqualFold(sni, host) {
-		http.Error(w, http.StatusText(http.StatusMisdirectedRequest), http.StatusMisdirectedRequest)
+	own := sni != "" && strings.EqualFold(sni, host)
+	switch {
+	case own && h.Serves(host):
+		h.ServeHTTP(w, r)
+	case !own && (sni != "" || h.Serves(host)):
+		misdirected(w, r)
+	default:
+		h.active.Add(1)
+		defer h.active.Add(-1)
+		if r.ContentLength != 0 {
+			closeUnread(w, r)
+		}
+		writePage(w, r, http.StatusNotFound, pageNotFound, noRouteText)
+	}
+}
+
+// misdirected answers 421 and closes an HTTP/1.1 connection, on which a client would otherwise send
+// the name again rather than connect anew.
+func misdirected(w http.ResponseWriter, r *http.Request) {
+	closeUnread(w, r)
+	http.Error(w, http.StatusText(http.StatusMisdirectedRequest), http.StatusMisdirectedRequest)
+}
+
+// closeUnread closes an HTTP/1.1 connection after the answer, without reading the rest of a request
+// body that nothing reads: the server would wait for it, as long as a client cared to hold it.
+func closeUnread(w http.ResponseWriter, r *http.Request) {
+	if r.ProtoMajor != 1 {
 		return
 	}
-	writePage(w, r, http.StatusNotFound, pageNotFound, noRouteText)
+	w.Header().Set("Connection", "close")
+	if r.ContentLength != 0 {
+		_ = http.NewResponseController(w).SetReadDeadline(time.Now())
+	}
 }
 
 // Serves reports whether an http route serves the name, exactly or by its wildcard hostname.
@@ -817,7 +844,7 @@ func (h *HTTPRoutes) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		// 15.5.20).
 		if host := strings.TrimSuffix(hostOnly(r.Host), "."); r.TLS != nil && r.TLS.ServerName != "" &&
 			!strings.EqualFold(strings.TrimSuffix(r.TLS.ServerName, "."), host) && !h.Serves(host) {
-			http.Error(w, http.StatusText(http.StatusMisdirectedRequest), http.StatusMisdirectedRequest)
+			misdirected(w, r)
 			return
 		}
 		writePage(w, r, http.StatusNotFound, pageNotFound, noRouteText)

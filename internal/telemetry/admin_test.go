@@ -13,6 +13,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
+
 	"github.com/felix-homelab/rpmgr/internal/telemetry"
 )
 
@@ -51,6 +53,38 @@ func TestAdminHandler(t *testing.T) {
 	}
 	if code, _ := get(t, telemetry.AdminHandler(reg, nil), http.MethodGet, "/readyz"); code != http.StatusOK {
 		t.Errorf("/readyz without a check: %d", code)
+	}
+}
+
+// TestWithLabels: two registrations of the same metric through registries with different role
+// labels both succeed and both show on /metrics, while a second one with the same label, or one
+// without labels next to them, is refused.
+func TestWithLabels(t *testing.T) {
+	reg := telemetry.NewRegistry()
+	gauge := func() prometheus.Gauge {
+		return prometheus.NewGauge(prometheus.GaugeOpts{Name: "rpmgr_agent_applied_revision", Help: "Last applied revision."})
+	}
+	gw, con := telemetry.WithLabels(reg, prometheus.Labels{"role": "gateway"}), telemetry.WithLabels(reg, prometheus.Labels{"role": "connector"})
+	g1, g2 := gauge(), gauge()
+	if err := gw.Register(g1); err != nil {
+		t.Fatal(err)
+	}
+	if err := con.Register(g2); err != nil {
+		t.Fatalf("the same metric for another role: %v", err)
+	}
+	g1.Set(3)
+	g2.Set(4)
+	if err := gw.Register(gauge()); err == nil {
+		t.Error("a second registration for the same role succeeded")
+	}
+	if err := reg.Register(gauge()); err == nil {
+		t.Error("a registration without the role label next to labelled ones succeeded")
+	}
+	_, body := get(t, telemetry.AdminHandler(gw, nil), http.MethodGet, "/metrics")
+	for _, want := range []string{`rpmgr_agent_applied_revision{role="gateway"} 3`, `rpmgr_agent_applied_revision{role="connector"} 4`, "go_goroutines"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("/metrics lacks %s", want)
+		}
 	}
 }
 

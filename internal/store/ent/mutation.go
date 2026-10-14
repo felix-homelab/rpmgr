@@ -11924,6 +11924,7 @@ type ConnectorMutation struct {
 	enabled           *bool
 	transport         *connector.Transport
 	desired_version   *string
+	built_in          *bool
 	created_at        *time.Time
 	decommissioned_at *time.Time
 	clearedFields     map[string]struct{}
@@ -12455,6 +12456,42 @@ func (m *ConnectorMutation) ResetDesiredVersion() {
 	delete(m.clearedFields, connector.FieldDesiredVersion)
 }
 
+// SetBuiltIn sets the "built_in" field.
+func (m *ConnectorMutation) SetBuiltIn(b bool) {
+	m.built_in = &b
+}
+
+// BuiltIn returns the value of the "built_in" field in the mutation.
+func (m *ConnectorMutation) BuiltIn() (r bool, exists bool) {
+	v := m.built_in
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldBuiltIn returns the old "built_in" field's value of the Connector entity.
+// If the Connector object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ConnectorMutation) OldBuiltIn(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldBuiltIn is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldBuiltIn requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldBuiltIn: %w", err)
+	}
+	return oldValue.BuiltIn, nil
+}
+
+// ResetBuiltIn resets all changes to the "built_in" field.
+func (m *ConnectorMutation) ResetBuiltIn() {
+	m.built_in = nil
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (m *ConnectorMutation) SetCreatedAt(t time.Time) {
 	m.created_at = &t
@@ -12574,7 +12611,7 @@ func (m *ConnectorMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *ConnectorMutation) Fields() []string {
-	fields := make([]string, 0, 12)
+	fields := make([]string, 0, 13)
 	if m.org_id != nil {
 		fields = append(fields, connector.FieldOrgID)
 	}
@@ -12604,6 +12641,9 @@ func (m *ConnectorMutation) Fields() []string {
 	}
 	if m.desired_version != nil {
 		fields = append(fields, connector.FieldDesiredVersion)
+	}
+	if m.built_in != nil {
+		fields = append(fields, connector.FieldBuiltIn)
 	}
 	if m.created_at != nil {
 		fields = append(fields, connector.FieldCreatedAt)
@@ -12639,6 +12679,8 @@ func (m *ConnectorMutation) Field(name string) (ent.Value, bool) {
 		return m.Transport()
 	case connector.FieldDesiredVersion:
 		return m.DesiredVersion()
+	case connector.FieldBuiltIn:
+		return m.BuiltIn()
 	case connector.FieldCreatedAt:
 		return m.CreatedAt()
 	case connector.FieldDecommissionedAt:
@@ -12672,6 +12714,8 @@ func (m *ConnectorMutation) OldField(ctx context.Context, name string) (ent.Valu
 		return m.OldTransport(ctx)
 	case connector.FieldDesiredVersion:
 		return m.OldDesiredVersion(ctx)
+	case connector.FieldBuiltIn:
+		return m.OldBuiltIn(ctx)
 	case connector.FieldCreatedAt:
 		return m.OldCreatedAt(ctx)
 	case connector.FieldDecommissionedAt:
@@ -12754,6 +12798,13 @@ func (m *ConnectorMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetDesiredVersion(v)
+		return nil
+	case connector.FieldBuiltIn:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetBuiltIn(v)
 		return nil
 	case connector.FieldCreatedAt:
 		v, ok := value.(time.Time)
@@ -12889,6 +12940,9 @@ func (m *ConnectorMutation) ResetField(name string) error {
 		return nil
 	case connector.FieldDesiredVersion:
 		m.ResetDesiredVersion()
+		return nil
+	case connector.FieldBuiltIn:
+		m.ResetBuiltIn()
 		return nil
 	case connector.FieldCreatedAt:
 		m.ResetCreatedAt()
@@ -14600,6 +14654,7 @@ type EnrollmentTokenMutation struct {
 	role             *enrollmenttoken.Role
 	labels           *map[string]string
 	ephemeral        *bool
+	built_in         *bool
 	max_uses         *int
 	addmax_uses      *int
 	use_count        *int
@@ -15064,6 +15119,42 @@ func (m *EnrollmentTokenMutation) OldEphemeral(ctx context.Context) (v bool, err
 // ResetEphemeral resets all changes to the "ephemeral" field.
 func (m *EnrollmentTokenMutation) ResetEphemeral() {
 	m.ephemeral = nil
+}
+
+// SetBuiltIn sets the "built_in" field.
+func (m *EnrollmentTokenMutation) SetBuiltIn(b bool) {
+	m.built_in = &b
+}
+
+// BuiltIn returns the value of the "built_in" field in the mutation.
+func (m *EnrollmentTokenMutation) BuiltIn() (r bool, exists bool) {
+	v := m.built_in
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldBuiltIn returns the old "built_in" field's value of the EnrollmentToken entity.
+// If the EnrollmentToken object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *EnrollmentTokenMutation) OldBuiltIn(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldBuiltIn is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldBuiltIn requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldBuiltIn: %w", err)
+	}
+	return oldValue.BuiltIn, nil
+}
+
+// ResetBuiltIn resets all changes to the "built_in" field.
+func (m *EnrollmentTokenMutation) ResetBuiltIn() {
+	m.built_in = nil
 }
 
 // SetMaxUses sets the "max_uses" field.
@@ -15575,7 +15666,7 @@ func (m *EnrollmentTokenMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *EnrollmentTokenMutation) Fields() []string {
-	fields := make([]string, 0, 16)
+	fields := make([]string, 0, 17)
 	if m.org_id != nil {
 		fields = append(fields, enrollmenttoken.FieldOrgID)
 	}
@@ -15599,6 +15690,9 @@ func (m *EnrollmentTokenMutation) Fields() []string {
 	}
 	if m.ephemeral != nil {
 		fields = append(fields, enrollmenttoken.FieldEphemeral)
+	}
+	if m.built_in != nil {
+		fields = append(fields, enrollmenttoken.FieldBuiltIn)
 	}
 	if m.max_uses != nil {
 		fields = append(fields, enrollmenttoken.FieldMaxUses)
@@ -15648,6 +15742,8 @@ func (m *EnrollmentTokenMutation) Field(name string) (ent.Value, bool) {
 		return m.Labels()
 	case enrollmenttoken.FieldEphemeral:
 		return m.Ephemeral()
+	case enrollmenttoken.FieldBuiltIn:
+		return m.BuiltIn()
 	case enrollmenttoken.FieldMaxUses:
 		return m.MaxUses()
 	case enrollmenttoken.FieldUseCount:
@@ -15689,6 +15785,8 @@ func (m *EnrollmentTokenMutation) OldField(ctx context.Context, name string) (en
 		return m.OldLabels(ctx)
 	case enrollmenttoken.FieldEphemeral:
 		return m.OldEphemeral(ctx)
+	case enrollmenttoken.FieldBuiltIn:
+		return m.OldBuiltIn(ctx)
 	case enrollmenttoken.FieldMaxUses:
 		return m.OldMaxUses(ctx)
 	case enrollmenttoken.FieldUseCount:
@@ -15769,6 +15867,13 @@ func (m *EnrollmentTokenMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetEphemeral(v)
+		return nil
+	case enrollmenttoken.FieldBuiltIn:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetBuiltIn(v)
 		return nil
 	case enrollmenttoken.FieldMaxUses:
 		v, ok := value.(int)
@@ -15977,6 +16082,9 @@ func (m *EnrollmentTokenMutation) ResetField(name string) error {
 	case enrollmenttoken.FieldEphemeral:
 		m.ResetEphemeral()
 		return nil
+	case enrollmenttoken.FieldBuiltIn:
+		m.ResetBuiltIn()
+		return nil
 	case enrollmenttoken.FieldMaxUses:
 		m.ResetMaxUses()
 		return nil
@@ -16133,6 +16241,7 @@ type GatewayMutation struct {
 	pubkey_sha256          *string
 	enabled                *bool
 	desired_version        *string
+	built_in               *bool
 	created_at             *time.Time
 	decommissioned_at      *time.Time
 	clearedFields          map[string]struct{}
@@ -16701,6 +16810,42 @@ func (m *GatewayMutation) ResetDesiredVersion() {
 	delete(m.clearedFields, gateway.FieldDesiredVersion)
 }
 
+// SetBuiltIn sets the "built_in" field.
+func (m *GatewayMutation) SetBuiltIn(b bool) {
+	m.built_in = &b
+}
+
+// BuiltIn returns the value of the "built_in" field in the mutation.
+func (m *GatewayMutation) BuiltIn() (r bool, exists bool) {
+	v := m.built_in
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldBuiltIn returns the old "built_in" field's value of the Gateway entity.
+// If the Gateway object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GatewayMutation) OldBuiltIn(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldBuiltIn is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldBuiltIn requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldBuiltIn: %w", err)
+	}
+	return oldValue.BuiltIn, nil
+}
+
+// ResetBuiltIn resets all changes to the "built_in" field.
+func (m *GatewayMutation) ResetBuiltIn() {
+	m.built_in = nil
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (m *GatewayMutation) SetCreatedAt(t time.Time) {
 	m.created_at = &t
@@ -16860,7 +17005,7 @@ func (m *GatewayMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *GatewayMutation) Fields() []string {
-	fields := make([]string, 0, 12)
+	fields := make([]string, 0, 13)
 	if m.org_id != nil {
 		fields = append(fields, gateway.FieldOrgID)
 	}
@@ -16890,6 +17035,9 @@ func (m *GatewayMutation) Fields() []string {
 	}
 	if m.desired_version != nil {
 		fields = append(fields, gateway.FieldDesiredVersion)
+	}
+	if m.built_in != nil {
+		fields = append(fields, gateway.FieldBuiltIn)
 	}
 	if m.created_at != nil {
 		fields = append(fields, gateway.FieldCreatedAt)
@@ -16925,6 +17073,8 @@ func (m *GatewayMutation) Field(name string) (ent.Value, bool) {
 		return m.Enabled()
 	case gateway.FieldDesiredVersion:
 		return m.DesiredVersion()
+	case gateway.FieldBuiltIn:
+		return m.BuiltIn()
 	case gateway.FieldCreatedAt:
 		return m.CreatedAt()
 	case gateway.FieldDecommissionedAt:
@@ -16958,6 +17108,8 @@ func (m *GatewayMutation) OldField(ctx context.Context, name string) (ent.Value,
 		return m.OldEnabled(ctx)
 	case gateway.FieldDesiredVersion:
 		return m.OldDesiredVersion(ctx)
+	case gateway.FieldBuiltIn:
+		return m.OldBuiltIn(ctx)
 	case gateway.FieldCreatedAt:
 		return m.OldCreatedAt(ctx)
 	case gateway.FieldDecommissionedAt:
@@ -17040,6 +17192,13 @@ func (m *GatewayMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetDesiredVersion(v)
+		return nil
+	case gateway.FieldBuiltIn:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetBuiltIn(v)
 		return nil
 	case gateway.FieldCreatedAt:
 		v, ok := value.(time.Time)
@@ -17187,6 +17346,9 @@ func (m *GatewayMutation) ResetField(name string) error {
 		return nil
 	case gateway.FieldDesiredVersion:
 		m.ResetDesiredVersion()
+		return nil
+	case gateway.FieldBuiltIn:
+		m.ResetBuiltIn()
 		return nil
 	case gateway.FieldCreatedAt:
 		m.ResetCreatedAt()

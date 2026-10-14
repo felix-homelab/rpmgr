@@ -403,6 +403,7 @@ var schemaGraph = func() *sqlgraph.Schema {
 			connector.FieldEnabled:          {Type: field.TypeBool, Column: connector.FieldEnabled},
 			connector.FieldTransport:        {Type: field.TypeEnum, Column: connector.FieldTransport},
 			connector.FieldDesiredVersion:   {Type: field.TypeString, Column: connector.FieldDesiredVersion},
+			connector.FieldBuiltIn:          {Type: field.TypeBool, Column: connector.FieldBuiltIn},
 			connector.FieldCreatedAt:        {Type: field.TypeTime, Column: connector.FieldCreatedAt},
 			connector.FieldDecommissionedAt: {Type: field.TypeTime, Column: connector.FieldDecommissionedAt},
 		},
@@ -470,6 +471,7 @@ var schemaGraph = func() *sqlgraph.Schema {
 			enrollmenttoken.FieldConnectorID:    {Type: field.TypeString, Column: enrollmenttoken.FieldConnectorID},
 			enrollmenttoken.FieldLabels:         {Type: field.TypeJSON, Column: enrollmenttoken.FieldLabels},
 			enrollmenttoken.FieldEphemeral:      {Type: field.TypeBool, Column: enrollmenttoken.FieldEphemeral},
+			enrollmenttoken.FieldBuiltIn:        {Type: field.TypeBool, Column: enrollmenttoken.FieldBuiltIn},
 			enrollmenttoken.FieldMaxUses:        {Type: field.TypeInt, Column: enrollmenttoken.FieldMaxUses},
 			enrollmenttoken.FieldUseCount:       {Type: field.TypeInt, Column: enrollmenttoken.FieldUseCount},
 			enrollmenttoken.FieldExpiresAt:      {Type: field.TypeTime, Column: enrollmenttoken.FieldExpiresAt},
@@ -501,6 +503,7 @@ var schemaGraph = func() *sqlgraph.Schema {
 			gateway.FieldPubkeySha256:     {Type: field.TypeString, Column: gateway.FieldPubkeySha256},
 			gateway.FieldEnabled:          {Type: field.TypeBool, Column: gateway.FieldEnabled},
 			gateway.FieldDesiredVersion:   {Type: field.TypeString, Column: gateway.FieldDesiredVersion},
+			gateway.FieldBuiltIn:          {Type: field.TypeBool, Column: gateway.FieldBuiltIn},
 			gateway.FieldCreatedAt:        {Type: field.TypeTime, Column: gateway.FieldCreatedAt},
 			gateway.FieldDecommissionedAt: {Type: field.TypeTime, Column: gateway.FieldDecommissionedAt},
 		},
@@ -2799,6 +2802,11 @@ func (f *ConnectorFilter) WhereDesiredVersion(p entql.StringP) {
 	f.Where(p.Field(connector.FieldDesiredVersion))
 }
 
+// WhereBuiltIn applies the entql bool predicate on the built_in field.
+func (f *ConnectorFilter) WhereBuiltIn(p entql.BoolP) {
+	f.Where(p.Field(connector.FieldBuiltIn))
+}
+
 // WhereCreatedAt applies the entql time.Time predicate on the created_at field.
 func (f *ConnectorFilter) WhereCreatedAt(p entql.TimeP) {
 	f.Where(p.Field(connector.FieldCreatedAt))
@@ -3059,6 +3067,11 @@ func (f *EnrollmentTokenFilter) WhereEphemeral(p entql.BoolP) {
 	f.Where(p.Field(enrollmenttoken.FieldEphemeral))
 }
 
+// WhereBuiltIn applies the entql bool predicate on the built_in field.
+func (f *EnrollmentTokenFilter) WhereBuiltIn(p entql.BoolP) {
+	f.Where(p.Field(enrollmenttoken.FieldBuiltIn))
+}
+
 // WhereMaxUses applies the entql int predicate on the max_uses field.
 func (f *EnrollmentTokenFilter) WhereMaxUses(p entql.IntP) {
 	f.Where(p.Field(enrollmenttoken.FieldMaxUses))
@@ -3229,6 +3242,11 @@ func (f *GatewayFilter) WhereEnabled(p entql.BoolP) {
 // WhereDesiredVersion applies the entql string predicate on the desired_version field.
 func (f *GatewayFilter) WhereDesiredVersion(p entql.StringP) {
 	f.Where(p.Field(gateway.FieldDesiredVersion))
+}
+
+// WhereBuiltIn applies the entql bool predicate on the built_in field.
+func (f *GatewayFilter) WhereBuiltIn(p entql.BoolP) {
+	f.Where(p.Field(gateway.FieldBuiltIn))
 }
 
 // WhereCreatedAt applies the entql time.Time predicate on the created_at field.

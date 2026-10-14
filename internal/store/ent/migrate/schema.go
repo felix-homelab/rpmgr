@@ -415,6 +415,7 @@ var (
 		{Name: "enabled", Type: field.TypeBool, Default: true},
 		{Name: "transport", Type: field.TypeEnum, Nullable: true, Enums: []string{"auto", "quic", "h2"}},
 		{Name: "desired_version", Type: field.TypeString, Nullable: true},
+		{Name: "built_in", Type: field.TypeBool, Default: false},
 		{Name: "created_at", Type: field.TypeTime},
 		{Name: "decommissioned_at", Type: field.TypeTime, Nullable: true},
 	}
@@ -514,6 +515,7 @@ var (
 		{Name: "role", Type: field.TypeEnum, Enums: []string{"connector", "gateway"}},
 		{Name: "labels", Type: field.TypeJSON, Nullable: true},
 		{Name: "ephemeral", Type: field.TypeBool, Default: false},
+		{Name: "built_in", Type: field.TypeBool, Default: false},
 		{Name: "max_uses", Type: field.TypeInt, Nullable: true},
 		{Name: "use_count", Type: field.TypeInt, Default: 0},
 		{Name: "expires_at", Type: field.TypeTime},
@@ -534,19 +536,19 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "enrollment_tokens_gateway_groups_group",
-				Columns:    []*schema.Column{EnrollmentTokensColumns[14]},
+				Columns:    []*schema.Column{EnrollmentTokensColumns[15]},
 				RefColumns: []*schema.Column{GatewayGroupsColumns[0]},
 				OnDelete:   schema.SetNull,
 			},
 			{
 				Symbol:     "enrollment_tokens_gateways_gateway",
-				Columns:    []*schema.Column{EnrollmentTokensColumns[15]},
+				Columns:    []*schema.Column{EnrollmentTokensColumns[16]},
 				RefColumns: []*schema.Column{GatewaysColumns[0]},
 				OnDelete:   schema.SetNull,
 			},
 			{
 				Symbol:     "enrollment_tokens_connectors_connector",
-				Columns:    []*schema.Column{EnrollmentTokensColumns[16]},
+				Columns:    []*schema.Column{EnrollmentTokensColumns[17]},
 				RefColumns: []*schema.Column{ConnectorsColumns[0]},
 				OnDelete:   schema.SetNull,
 			},
@@ -571,6 +573,7 @@ var (
 		{Name: "pubkey_sha256", Type: field.TypeString, Nullable: true},
 		{Name: "enabled", Type: field.TypeBool, Default: true},
 		{Name: "desired_version", Type: field.TypeString, Nullable: true},
+		{Name: "built_in", Type: field.TypeBool, Default: false},
 		{Name: "created_at", Type: field.TypeTime},
 		{Name: "decommissioned_at", Type: field.TypeTime, Nullable: true},
 		{Name: "gateway_group_id", Type: field.TypeString},
@@ -583,7 +586,7 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "gateways_gateway_groups_group",
-				Columns:    []*schema.Column{GatewaysColumns[12]},
+				Columns:    []*schema.Column{GatewaysColumns[13]},
 				RefColumns: []*schema.Column{GatewayGroupsColumns[0]},
 				OnDelete:   schema.NoAction,
 			},
@@ -605,7 +608,7 @@ var (
 			{
 				Name:    "gateway_gateway_group_id_slot",
 				Unique:  true,
-				Columns: []*schema.Column{GatewaysColumns[12], GatewaysColumns[4]},
+				Columns: []*schema.Column{GatewaysColumns[13], GatewaysColumns[4]},
 				Annotation: &entsql.IndexAnnotation{
 					Where: "decommissioned_at IS NULL",
 				},

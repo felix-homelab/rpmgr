@@ -171,8 +171,18 @@ func TestEnroll_Connector(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if n := e.db.Client().Connector.GetX(e.sys, resp2.AgentId).Name; n != "nas-local-2" {
-			t.Errorf("second connector named %q", n)
+		if c := e.db.Client().Connector.GetX(e.sys, resp2.AgentId); c.Name != "nas-local-2" || c.BuiltIn || con.BuiltIn {
+			t.Errorf("second connector named %q, built in: %v %v", c.Name, c.BuiltIn, con.BuiltIn)
+		}
+
+		// A token that all-in-one made for its own connector makes a built-in one (ADR-0019).
+		local, err := c.Enroll(callCtx(t), &agentv1.EnrollRequest{Token: e.mint(t, func(c *ent.EnrollmentTokenCreate) { c.SetBuiltIn(true) }),
+			Csr: boundCSR(t, creds), Host: &agentv1.HostFacts{Hostname: "local"}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if c := e.db.Client().Connector.GetX(e.sys, local.AgentId); c.Name != "local" || !c.BuiltIn {
+			t.Errorf("all-in-one's connector: %+v", c)
 		}
 
 		// A decommissioned connector's name is free again; the active ones' names are not.

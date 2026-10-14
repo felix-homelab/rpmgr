@@ -702,9 +702,10 @@ sequenceDiagram
   exactly comes before a wildcard hostname one label up, which serves a name only if no route
   names it. No match is **404**, with the site-not-available page, unless the request names
   another host than the connection's server name and no route serves that host: then it is
-  **421**, so that a client that reused the connection, such as an HTTP/2 one under a wildcard
-  certificate, asks again on a connection of its own. TLS is terminated with the route
-  certificate for the server name ([04](04-security.md#controller-certificates)).
+  **421**, and an HTTP/1.1 connection closes, so that a client that reused the connection, such as
+  an HTTP/2 one under a wildcard certificate, asks again on a connection of its own. TLS is
+  terminated with the route certificate for the server name
+  ([04](04-security.md#controller-certificates)).
 - **HTTPS upstreams.** For an `https` target the gateway speaks TLS over the stream, end to end
   with the upstream, verified with the settings of the target the connector reached, which
   `StreamResult` names: the target's server name (its host by default), its CA bundle or else the
@@ -812,7 +813,7 @@ path with a 1500-byte MTU they arrive in two TCP segments ([S3](spikes/S3.md)).
 | SNI = this gateway's WSS tunnel hostname | HTTP engine; `/.rpmgr/tunnel` upgrades to the WSS transport (Phase 2) |
 | SNI matches a TLS-passthrough route | Splice raw bytes to a connector |
 | SNI matches an HTTP route hostname | Terminate TLS (ACME or uploaded certificate), hand to HTTP engine |
-| No SNI, unknown SNI | There is no configurable fallback route. Complete the handshake as for an http route, with a valid certificate the gateway holds whose own names cover the name, such as a route's wildcard certificate, or else with the default certificate (self-signed for `default.invalid`, generated at every start), which no client trusts. Then answer every request with the site-not-available page ([HTTP routes](#http-routes)); a request for a name a route serves, or for another name than the connection's, is **421**, so that a client that reused the connection asks again on its own one. Such a connection never reaches a route |
+| No SNI, unknown SNI | There is no configurable fallback route. Complete the handshake as for an http route, with a valid certificate the gateway holds whose own names cover the name, such as a route's wildcard certificate, or else with the default certificate (self-signed for `default.invalid`, generated at every start), which no client trusts. Then answer each request with the site-not-available page ([HTTP routes](#http-routes)). A request for the connection's own name that a route serves by now, which a snapshot added after the client connected, is served as on the route's own connection. A request for another name than the connection's, or on a connection without a name for a name a route serves, is **421**, and an HTTP/1.1 connection closes, so that the client asks again on a connection of its own. A request with a body gets its answer without the body being read, and an HTTP/1.1 connection closes |
 | Not TLS | Close |
 
 The ClientHello is parsed with `golang.org/x/crypto/cryptobyte` from the recorded records, which
@@ -893,6 +894,17 @@ Which transport a connector uses is a setting
   once; connections already open finish on their session; a session no route needs any more is
   closed after its last stream has ended. Unchanged routes are untouched.
 - Phase 2 adds `wss` as a fourth value and as the last step of `auto`.
+- **The all-in-one's own connector** ([ADR-0019](adr/0019-all-in-one-runs-a-connector.md),
+  [D89](14-open-decisions.md#engineering)) reaches the gateway of its own process in memory: a
+  pipe that buffers 1 MiB each way, with the same TLS handshake, gateway pin, ALPN
+  `rpmgr-tunnel-h2/1` and reverse HTTP/2 as over TCP, and never through the gateway's endpoints.
+  One such session carries every route to that gateway, whatever the route's transport; a failed
+  one is `not_ready(transport_unavailable: memory)`. Metrics, the data sessions and the UI report
+  it as h2, and its remote address, like that of the all-in-one's control sessions, as
+  `in-process`. The gateway accepts only data sessions to itself on these connections and closes
+  anything else. The connector opens no UDP socket for QUIC, so a gateway elsewhere in its group
+  is reached over TLS + reverse HTTP/2 only: `auto` falls back at once, and a route pinned to
+  `quic` is `not_ready(transport_unavailable: quic)` there.
 
 **Reverse HTTP/2** ([ADR-0005](adr/0005-reverse-http2-fallback.md)). The connector dials the
 gateway and then acts as the **HTTP/2 server** on that connection; the gateway acts as the client
@@ -1083,7 +1095,7 @@ sequenceDiagram
 | ClientHello peek | 16 KiB within 5 s | Slowloris protection |
 | `StreamOpen` → `StreamResult` | 10 s; upstream dial 5 s; a stream the connector opens brings its `StreamOpen` within the same 10 s | Bounded connection setup |
 | Forwarding to the controller (private controller, carried control sessions) | dial 5 s; no idle timeout, the control session's keepalive keeps it alive | An unreachable controller fails fast, so the agent tries its next endpoint |
-| HTTP server | header read 10 s; idle 120 s; upstream response header 60 s; no total write timeout; on a connection of a name no route serves, the whole request, body included, within 10 s | Long downloads and streaming must work; nothing reads the body of a request that only gets the 404 page |
+| HTTP server | header read 10 s; idle 120 s; upstream response header 60 s; no total write timeout | Long downloads and streaming must work |
 | Idle TCP route connection | 1 h (per route; 0 disables) | Reclaim half-open connections |
 | Idle UDP flow | 60 s (per route) | Typical UDP NAT behaviour |
 | Apply acknowledgement | 30 s → `apply_timeout` | Visible instead of silent |

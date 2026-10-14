@@ -110,6 +110,11 @@ func DesiredVersion(v string) predicate.Gateway {
 	return predicate.Gateway(sql.FieldEQ(FieldDesiredVersion, v))
 }
 
+// BuiltIn applies equality check predicate on the "built_in" field. It's identical to BuiltInEQ.
+func BuiltIn(v bool) predicate.Gateway {
+	return predicate.Gateway(sql.FieldEQ(FieldBuiltIn, v))
+}
+
 // CreatedAt applies equality check predicate on the "created_at" field. It's identical to CreatedAtEQ.
 func CreatedAt(v time.Time) predicate.Gateway {
 	return predicate.Gateway(sql.FieldEQ(FieldCreatedAt, v))
@@ -628,6 +633,16 @@ func DesiredVersionEqualFold(v string) predicate.Gateway {
 // DesiredVersionContainsFold applies the ContainsFold predicate on the "desired_version" field.
 func DesiredVersionContainsFold(v string) predicate.Gateway {
 	return predicate.Gateway(sql.FieldContainsFold(FieldDesiredVersion, v))
+}
+
+// BuiltInEQ applies the EQ predicate on the "built_in" field.
+func BuiltInEQ(v bool) predicate.Gateway {
+	return predicate.Gateway(sql.FieldEQ(FieldBuiltIn, v))
+}
+
+// BuiltInNEQ applies the NEQ predicate on the "built_in" field.
+func BuiltInNEQ(v bool) predicate.Gateway {
+	return predicate.Gateway(sql.FieldNEQ(FieldBuiltIn, v))
 }
 
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.

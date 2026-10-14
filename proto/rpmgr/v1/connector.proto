@@ -107,6 +107,9 @@ message Connector {
   google.protobuf.Timestamp decommission_time = 9;
   // The version to send back with an update; output only.
   string etag = 10;
+  // Whether it is all-in-one's own connector, which runs in the controller's process and cannot be
+  // decommissioned; output only.
+  bool built_in = 11;
 }
 
 // AgentSession is what the controller knows of an agent's control session.

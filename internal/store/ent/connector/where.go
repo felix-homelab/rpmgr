@@ -104,6 +104,11 @@ func DesiredVersion(v string) predicate.Connector {
 	return predicate.Connector(sql.FieldEQ(FieldDesiredVersion, v))
 }
 
+// BuiltIn applies equality check predicate on the "built_in" field. It's identical to BuiltInEQ.
+func BuiltIn(v bool) predicate.Connector {
+	return predicate.Connector(sql.FieldEQ(FieldBuiltIn, v))
+}
+
 // CreatedAt applies equality check predicate on the "created_at" field. It's identical to CreatedAtEQ.
 func CreatedAt(v time.Time) predicate.Connector {
 	return predicate.Connector(sql.FieldEQ(FieldCreatedAt, v))
@@ -547,6 +552,16 @@ func DesiredVersionEqualFold(v string) predicate.Connector {
 // DesiredVersionContainsFold applies the ContainsFold predicate on the "desired_version" field.
 func DesiredVersionContainsFold(v string) predicate.Connector {
 	return predicate.Connector(sql.FieldContainsFold(FieldDesiredVersion, v))
+}
+
+// BuiltInEQ applies the EQ predicate on the "built_in" field.
+func BuiltInEQ(v bool) predicate.Connector {
+	return predicate.Connector(sql.FieldEQ(FieldBuiltIn, v))
+}
+
+// BuiltInNEQ applies the NEQ predicate on the "built_in" field.
+func BuiltInNEQ(v bool) predicate.Connector {
+	return predicate.Connector(sql.FieldNEQ(FieldBuiltIn, v))
 }
 
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.

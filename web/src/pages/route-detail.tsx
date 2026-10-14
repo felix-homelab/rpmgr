@@ -10,6 +10,7 @@ import { useTranslation } from "react-i18next";
 import { ApplyStatusView, useLiveApplyStatus } from "@/components/apply-status";
 import { ManifestButton } from "@/components/manifest";
 import { PageHeader } from "@/components/page-header";
+import { PolicyHint } from "@/components/policy-hint";
 import { Alert } from "@/components/public-page";
 import { RouteStateChip } from "@/components/route-state";
 import { Status } from "@/components/status";
@@ -270,11 +271,8 @@ function TargetRow({ route: r, target, connector, onEdit, onRemove }: {
         </div>
         {problem?.reason === "BLOCKED_BY_LOCAL_POLICY" && problem.detail && (
           <div className="mt-2 grid gap-1.5">
-            <span>{t("route.runOn", { connector })}</span>
-            <span className="flex flex-wrap items-center gap-2">
-              <code className="rounded-md bg-muted px-2 py-1 font-mono">{policyCommand(problem.detail)}</code>
-              <Button size="sm" variant="outline" onClick={() => void navigator.clipboard?.writeText(policyCommand(problem.detail))}>{t("mfa.copy")}</Button>
-            </span>
+            {policyCommand(problem.detail) !== undefined && <span>{t("route.runOn", { connector })}</span>}
+            <PolicyHint detail={problem.detail} className="bg-muted" />
           </div>
         )}
       </TD>

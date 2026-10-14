@@ -39,6 +39,7 @@ export function GatewayChip({ gateway: g }: { gateway: Gateway }) {
     <span className="flex flex-wrap gap-1.5">
       <Status look={look}>{t(`gateways.state.${key}`)}</Status>
       {!g.enabled && <Badge tone="warn">{t("gateways.drained")}</Badge>}
+      {g.builtIn && <Badge title={t("connectors.builtInHint")}>{t("connectors.builtIn")}</Badge>}
     </span>
   );
 }

@@ -157,6 +157,20 @@ func (_u *ConnectorUpdate) ClearDesiredVersion() *ConnectorUpdate {
 	return _u
 }
 
+// SetBuiltIn sets the "built_in" field.
+func (_u *ConnectorUpdate) SetBuiltIn(v bool) *ConnectorUpdate {
+	_u.mutation.SetBuiltIn(v)
+	return _u
+}
+
+// SetNillableBuiltIn sets the "built_in" field if the given value is not nil.
+func (_u *ConnectorUpdate) SetNillableBuiltIn(v *bool) *ConnectorUpdate {
+	if v != nil {
+		_u.SetBuiltIn(*v)
+	}
+	return _u
+}
+
 // SetDecommissionedAt sets the "decommissioned_at" field.
 func (_u *ConnectorUpdate) SetDecommissionedAt(v time.Time) *ConnectorUpdate {
 	_u.mutation.SetDecommissionedAt(v)
@@ -286,6 +300,9 @@ func (_u *ConnectorUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if _u.mutation.DesiredVersionCleared() {
 		_spec.ClearField(connector.FieldDesiredVersion, field.TypeString)
+	}
+	if value, ok := _u.mutation.BuiltIn(); ok {
+		_spec.SetField(connector.FieldBuiltIn, field.TypeBool, value)
 	}
 	if value, ok := _u.mutation.DecommissionedAt(); ok {
 		_spec.SetField(connector.FieldDecommissionedAt, field.TypeTime, value)
@@ -439,6 +456,20 @@ func (_u *ConnectorUpdateOne) SetNillableDesiredVersion(v *string) *ConnectorUpd
 // ClearDesiredVersion clears the value of the "desired_version" field.
 func (_u *ConnectorUpdateOne) ClearDesiredVersion() *ConnectorUpdateOne {
 	_u.mutation.ClearDesiredVersion()
+	return _u
+}
+
+// SetBuiltIn sets the "built_in" field.
+func (_u *ConnectorUpdateOne) SetBuiltIn(v bool) *ConnectorUpdateOne {
+	_u.mutation.SetBuiltIn(v)
+	return _u
+}
+
+// SetNillableBuiltIn sets the "built_in" field if the given value is not nil.
+func (_u *ConnectorUpdateOne) SetNillableBuiltIn(v *bool) *ConnectorUpdateOne {
+	if v != nil {
+		_u.SetBuiltIn(*v)
+	}
 	return _u
 }
 
@@ -601,6 +632,9 @@ func (_u *ConnectorUpdateOne) sqlSave(ctx context.Context) (_node *Connector, er
 	}
 	if _u.mutation.DesiredVersionCleared() {
 		_spec.ClearField(connector.FieldDesiredVersion, field.TypeString)
+	}
+	if value, ok := _u.mutation.BuiltIn(); ok {
+		_spec.SetField(connector.FieldBuiltIn, field.TypeBool, value)
 	}
 	if value, ok := _u.mutation.DecommissionedAt(); ok {
 		_spec.SetField(connector.FieldDecommissionedAt, field.TypeTime, value)

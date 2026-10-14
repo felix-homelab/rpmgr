@@ -187,6 +187,9 @@ message Gateway {
   google.protobuf.Timestamp create_time = 9;
   // The version to send back with an update; output only.
   string etag = 10;
+  // Whether it is all-in-one's own gateway, which runs in the controller's process and cannot be
+  // decommissioned; output only.
+  bool built_in = 11;
 }
 
 // GatewayStatus is what the controller last saw of a gateway.
