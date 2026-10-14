@@ -726,8 +726,6 @@ func (m *Sessions) Count() map[string]int {
 	return out
 }
 
-// trackedStream counts a stream in its session's load and its route's metrics, and notes blocked
-// writes.
 // StreamConnector returns the connector a stream of OpenStreamResult goes to, as the certificate of
 // its data session names it; "" for another stream.
 func StreamConnector(st tunnel.Stream) string {
@@ -737,6 +735,8 @@ func StreamConnector(st tunnel.Stream) string {
 	return ""
 }
 
+// trackedStream counts a stream in its session's load and its route's metrics, and notes blocked
+// writes.
 type trackedStream struct {
 	tunnel.Stream
 	d       *dataSession

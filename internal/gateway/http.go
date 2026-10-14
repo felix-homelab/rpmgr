@@ -572,7 +572,10 @@ func (h *HTTPRoutes) dialTLS(ctx context.Context, rt *routeTransport) (net.Conn,
 	case !ok:
 		_ = c.Close()
 		return nil, fmt.Errorf("route %s: no TLS settings for target %q", route, target)
-	case u.connector != connector && (u.connector != "" || u.verify != VerifyChain):
+	case u.verify != VerifyChain && u.connector == "":
+		_ = c.Close()
+		return nil, fmt.Errorf("route %s: target %s is not verified and names no connector", route, target)
+	case u.connector != "" && u.connector != connector:
 		_ = c.Close()
 		return nil, fmt.Errorf("route %s: connector %s answered for target %s, which is not its own", route, connector, target)
 	}

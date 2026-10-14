@@ -292,9 +292,10 @@ later.
   target ([03](03-connections.md#http-routes)). So only the network between the connector and the
   target can read and change the traffic, and a compromised connector cannot make the gateway skip
   verification for a verified target's traffic. Nothing is unverified by default; the web UI warns
-  when the mode is chosen and marks such targets. The only `InsecureSkipVerify` in rpmgr, allowed
-  by `tools/bannedapi` and golangci in `UpstreamTLS.config` of `internal/gateway/upstreamtls.go`
-  alone, serves this mode.
+  when the mode is chosen and marks such targets. The only `InsecureSkipVerify` in rpmgr serves this
+  mode: `tools/bannedapi` allows it in `UpstreamTLS.config` of `internal/gateway/upstreamtls.go`
+  alone, and golangci's forbidigo skips that one file
+  ([ADR-0017](adr/0017-upstream-tls-verification-modes.md)).
 - **Route certificates on gateways** [R]: a gateway keeps each fetched chain and key in its state
   directory, readable by the gateway's user only, as any TLS server keeps its keys, so that a
   gateway restarted while the controller is unreachable still terminates TLS. It checks a kept copy

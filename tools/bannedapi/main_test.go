@@ -96,7 +96,8 @@ var v = tls.Config{InsecureSkipVerify: true}
 // TestCheckTree_Exception: the allowed use passes only in its function of its file of the rpmgr
 // module, whichever directory the check starts in. Every other use in that file, the same function
 // in another file of the package, a path that only ends alike, a spike's module with the same
-// layout, and a file in no module are still reported.
+// layout, a nested module that declares rpmgr's own path, and a file in no module are still
+// reported.
 func TestCheckTree_Exception(t *testing.T) {
 	root := t.TempDir()
 	write(t, filepath.Join(root, "go.mod"), "module github.com/felix-homelab/rpmgr\n\ngo 1.26\n")
@@ -105,6 +106,8 @@ func TestCheckTree_Exception(t *testing.T) {
 	write(t, filepath.Join(root, "x", "internal", "gateway", "upstreamtls.go"), exceptionSrc)
 	write(t, filepath.Join(root, "spikes", "s9", "go.mod"), "module \"github.com/felix-homelab/rpmgr/spikes/s9\"\n")
 	write(t, filepath.Join(root, "spikes", "s9", "internal", "gateway", "upstreamtls.go"), exceptionSrc)
+	write(t, filepath.Join(root, "tools", "x", "go.mod"), "module github.com/felix-homelab/rpmgr\n")
+	write(t, filepath.Join(root, "tools", "x", "internal", "gateway", "upstreamtls.go"), exceptionSrc)
 	lines := func(dir string) map[string]string {
 		t.Helper()
 		findings, err := CheckTree(dir)
@@ -119,7 +122,8 @@ func TestCheckTree_Exception(t *testing.T) {
 		return got
 	}
 	want := map[string]string{"internal/gateway/upstreamtls.go": "5678", "internal/gateway/http.go": "45678",
-		"x/internal/gateway/upstreamtls.go": "45678", "spikes/s9/internal/gateway/upstreamtls.go": "45678"}
+		"x/internal/gateway/upstreamtls.go": "45678", "spikes/s9/internal/gateway/upstreamtls.go": "45678",
+		"tools/x/internal/gateway/upstreamtls.go": "45678"}
 	if got := lines(root); !maps.Equal(got, want) {
 		t.Errorf("from the root: %v, want %v", got, want)
 	}

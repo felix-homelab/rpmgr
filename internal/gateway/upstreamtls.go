@@ -42,8 +42,9 @@ type UpstreamTLS struct {
 // and the pin, or none.
 //
 // It is the only place in rpmgr that turns crypto/tls's own verification off, and only for a
-// target its user marked unverified; tools/bannedapi and .golangci.yml allow InsecureSkipVerify
-// in this function alone (ADR-0017). rpmgr's own sessions never skip verification.
+// target its user marked unverified; tools/bannedapi allows InsecureSkipVerify in this function
+// alone, and .golangci.yml lets forbidigo skip this file, where bannedapi still reports any other
+// use (ADR-0017). rpmgr's own sessions never skip verification.
 func (u UpstreamTLS) config() (*tls.Config, error) {
 	cfg := &tls.Config{MinVersion: tls.VersionTLS12, ServerName: u.ServerName, NextProtos: []string{"h2", "http/1.1"}}
 	if u.Verify == VerifyNothing {

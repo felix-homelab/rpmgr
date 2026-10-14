@@ -363,7 +363,7 @@ func upstreamTLSOf(ctx context.Context, tx *ent.Tx, routeID string) ([]*agentv1.
 			u.ServerName = t.Host
 		}
 		if t.TLSVerification == routetarget.TLSVerificationUnverified {
-			// Verified stays unset, the default, so the snapshots of verified targets keep their hash.
+			// Verified stays unset, the default, which a gateway that knows no modes applies too.
 			u.Verification = agentv1.UpstreamVerification_UPSTREAM_VERIFICATION_UNVERIFIED
 			out = append(out, u)
 			continue

@@ -9,7 +9,8 @@
 // selectors (x.Name), so comments and strings never match. A reviewed decision may allow one name
 // in one function of one file of a module (exceptions); a file is known by its module, which the
 // nearest go.mod above it declares, and its path from that module's root, so neither another
-// module, such as a spike's, nor a path that only ends alike matches.
+// module, such as a spike's, nor a path that only ends alike matches. A module inside another is
+// known by no path, whatever its go.mod declares, so it cannot borrow an exception.
 //
 // Usage: go run ./tools/bannedapi [<dir> ...]   (default: the current directory)
 package main
@@ -63,13 +64,31 @@ func allowed(source, fn, name string) bool {
 }
 
 // sourceOf returns a file's module path and path from the module's root, joined by "/", or ""
-// outside a module; modules caches the module path by directory.
+// outside a module and inside a module that lies in another; modules caches the module path by
+// directory.
 func sourceOf(path string, modules map[string]string) string {
 	abs, err := filepath.Abs(path)
 	if err != nil {
 		return ""
 	}
-	for dir := filepath.Dir(abs); ; dir = filepath.Dir(dir) {
+	dir := moduleRoot(filepath.Dir(abs), modules)
+	if dir == "" {
+		return ""
+	}
+	if up := filepath.Dir(dir); up != dir && moduleRoot(up, modules) != "" {
+		return "" // a module inside another
+	}
+	rel, err := filepath.Rel(dir, abs)
+	if err != nil {
+		return ""
+	}
+	return modules[dir] + "/" + filepath.ToSlash(rel)
+}
+
+// moduleRoot returns the nearest directory from dir up whose go.mod declares a module, "" if none;
+// modules caches the module path by directory.
+func moduleRoot(dir string, modules map[string]string) string {
+	for ; ; dir = filepath.Dir(dir) {
 		mod, ok := modules[dir]
 		if !ok {
 			b, err := os.ReadFile(filepath.Join(dir, "go.mod")) //nolint:gosec // G304: a developer tool that reads the tree it is given
@@ -79,11 +98,7 @@ func sourceOf(path string, modules map[string]string) string {
 			modules[dir] = mod
 		}
 		if mod != "" {
-			rel, err := filepath.Rel(dir, abs)
-			if err != nil {
-				return ""
-			}
-			return mod + "/" + filepath.ToSlash(rel)
+			return dir
 		}
 		if filepath.Dir(dir) == dir {
 			return ""
