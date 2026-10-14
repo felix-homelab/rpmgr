@@ -79,8 +79,8 @@ history and the [ADRs](docs/adr/).
   bundle, optional SPKI pin). A target whose certificate nothing can verify, such as a
   self-signed one, may be checked by its pinned key alone, which "Trust the certificate it shows
   now" reads through the connector, or be marked unverified: the gateway then checks no
-  certificate, and the web UI warns about it and marks the target. (#292, #294, #296, #333, #504,
-  #505)
+  certificate, and the web UI warns about it and marks the target. Stricter TLS settings end the
+  target's open connections at once. (#292, #294, #296, #333, #504, #505, #517)
 - Gateway: `http` routes set `Forwarded` and `X-Forwarded-*` and keep a client's own only from the
   gateway group's trusted proxies. They can replace the `Host` header, set request and response
   headers, redirect or serve port 80, and send HSTS. (#297, #298)

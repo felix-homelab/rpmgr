@@ -536,6 +536,110 @@ func TestHTTPRoutes_HTTPSUpstream(t *testing.T) {
 	}
 }
 
+// TestHTTPRoutes_StricterUpstreamTLS (#517): when a target's TLS settings change for ones that
+// would not accept a connection the old ones checked, a response still streaming over it ends at
+// once, also when the connection belongs to a transport an earlier change replaced; a change to
+// unverified settings of the same connector, and a change of another target's settings, let it
+// finish. The upstream connection speaks HTTP/1.1 or HTTP/2, the client either.
+func TestHTTPRoutes_StricterUpstreamTLS(t *testing.T) {
+	ca := newUpstreamCA(t)
+	for _, alpn := range [][]string{{"http/1.1"}, {"h2", "http/1.1"}} {
+		release := make(chan struct{})
+		var proto atomic.Value
+		ln, err := tls.Listen("tcp", "127.0.0.1:0", &tls.Config{MinVersion: tls.VersionTLS13, NextProtos: alpn, Certificates: []tls.Certificate{ca.leaf}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		up := &http.Server{ReadHeaderTimeout: 5 * time.Second, Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			proto.Store(r.Proto)
+			_, _ = io.WriteString(w, "start\n")
+			w.(http.Flusher).Flush()
+			select {
+			case <-release:
+				_, _ = io.WriteString(w, "end\n")
+			case <-r.Context().Done():
+			}
+		})}
+		if len(alpn) == 1 {
+			up.TLSNextProto = map[string]func(*http.Server, *tls.Conn, http.Handler){} // HTTP/1.1 only
+		}
+		go func() { _ = up.Serve(ln) }()
+		t.Cleanup(func() { _ = up.Close() })
+		p := newPlaneWith(t, ln.Addr().String(), "none", "rt_tls")
+		unverified := gateway.UpstreamTLS{ServerName: "upstream.internal", Verify: gateway.VerifyNothing, Connector: p.connector}
+		verified := gateway.UpstreamTLS{ServerName: "upstream.internal", CAPEM: ca.pem, Connector: p.connector}
+		renamed := gateway.UpstreamTLS{ServerName: "other.internal", CAPEM: ca.pem, Connector: p.connector}
+		elsewhere := gateway.UpstreamTLS{ServerName: "upstream.internal", Verify: gateway.VerifyNothing, Connector: "con_other"}
+		route := func(a gateway.UpstreamTLS, b *gateway.UpstreamTLS) gateway.HTTPRoute {
+			r := gateway.HTTPRoute{ID: "rt_tls", Upstream: "https", Hosts: []gateway.HTTPHost{{Hostname: "app.example.com"}},
+				TLS: map[string]gateway.UpstreamTLS{"tg_rt_tls": a}}
+			if b != nil {
+				r.TLS["tg_other"] = *b
+			}
+			return r
+		}
+		for _, tc := range []struct {
+			name    string
+			steps   []gateway.HTTPRoute // the first opens the response, the others follow while it streams
+			wantEnd bool                // it finishes rather than breaking off
+		}{
+			{"unverified to verified", []gateway.HTTPRoute{route(unverified, nil), route(verified, nil)}, false},
+			{"verified to another server name", []gateway.HTTPRoute{route(verified, nil), route(renamed, nil)}, false},
+			{"verified to unverified", []gateway.HTTPRoute{route(verified, nil), route(unverified, nil)}, true},
+			{"to unverified of another connector", []gateway.HTTPRoute{route(verified, nil), route(elsewhere, nil)}, false},
+			{"another target's settings", []gateway.HTTPRoute{route(verified, &unverified), route(verified, &verified)}, true},
+			{"stricter after another target's change", []gateway.HTTPRoute{route(unverified, &unverified), route(unverified, &verified),
+				route(verified, &verified)}, false},
+		} {
+			t.Run(alpn[0]+"/"+tc.name, func(t *testing.T) {
+				e := newHTTPEnvOn(t, p.sessions, tc.steps[0])
+				for _, h2 := range []bool{false, true} {
+					e.routes.Apply([]gateway.HTTPRoute{tc.steps[0]})
+					res, err := e.client(h2).Get("https://app.example.com/stream")
+					if err != nil {
+						t.Fatal(err)
+					}
+					body := bufio.NewReader(res.Body)
+					if line, err := body.ReadString('\n'); err != nil || line != "start\n" {
+						t.Fatalf("h2 %v: first line %q %v", h2, line, err)
+					}
+					if want := map[bool]string{true: "HTTP/1.1", false: "HTTP/2.0"}[len(alpn) == 1]; proto.Load() != want {
+						t.Fatalf("the upstream spoke %v, want %s", proto.Load(), want)
+					}
+					rest := make(chan string, 1)
+					go func() {
+						b, _ := io.ReadAll(body)
+						rest <- string(b)
+					}()
+					for i, step := range tc.steps[1:] {
+						e.routes.Apply([]gateway.HTTPRoute{step})
+						if i < len(tc.steps)-2 {
+							select {
+							case got := <-rest:
+								t.Fatalf("h2 %v: step %d ended the response early: %q", h2, i+1, got)
+							case <-time.After(150 * time.Millisecond):
+							}
+						}
+					}
+					if tc.wantEnd {
+						time.Sleep(200 * time.Millisecond)
+						release <- struct{}{}
+					}
+					select {
+					case got := <-rest:
+						if (got == "end\n") != tc.wantEnd {
+							t.Errorf("h2 %v: the rest %q, want it to finish %v", h2, got, tc.wantEnd)
+						}
+					case <-time.After(3 * time.Second):
+						t.Errorf("h2 %v: the response stayed open", h2)
+					}
+					_ = res.Body.Close()
+				}
+			})
+		}
+	}
+}
+
 // headerEcho answers with the request's Host, forwarding headers, two test headers and body size,
 // and sets a Server header.
 var headerEcho = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
