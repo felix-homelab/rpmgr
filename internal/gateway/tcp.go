@@ -210,11 +210,14 @@ func (t *TCPRoutes) serve(ln net.Listener, r TCPRoute) {
 			if err != nil {
 				return
 			}
+			// Checked and recorded under pl.mu, which enforce takes after Apply swapped the route
+			// in: either enforce sees the connection, or the check sees the new rules (#523).
+			pl.mu.Lock()
 			if !pl.route.Load().Access.AllowsAddr(c.RemoteAddr()) {
+				pl.mu.Unlock()
 				abort(c)
 				continue
 			}
-			pl.mu.Lock()
 			pl.conns[c] = struct{}{}
 			pl.mu.Unlock()
 			t.wg.Go(func() {
