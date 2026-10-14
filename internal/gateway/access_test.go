@@ -176,6 +176,44 @@ func TestUDPRoutes_Access(t *testing.T) {
 	}
 }
 
+// TestHTTPRoutes_AccessDuringAdmission (#523): rules tightened while a request is being admitted,
+// here during its slow basic-auth check, refuse it although its first check passed.
+func TestHTTPRoutes_AccessDuringAdmission(t *testing.T) {
+	slow := gateway.BasicAuthRule{PolicyID: "ap_1", CredentialVersion: "v1", Users: map[string]gateway.PHC{}}
+	h, err := gateway.ParsePHC(phc(t, "pw", 192*1024, 10)) // the most the gateway takes: a second or more to verify
+	if err != nil {
+		t.Fatal(err)
+	}
+	slow.Users["ada"] = h
+	route := gateway.HTTPRoute{ID: "rt_web", Upstream: "http", Hosts: []gateway.HTTPHost{{Hostname: "app.example.com"}},
+		Access: access(t, allow("127.0.0.0/8")), BasicAuth: []gateway.BasicAuthRule{slow}}
+	e := newHTTPEnv(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { _, _ = io.WriteString(w, "served") }), route)
+	done := make(chan reply, 1)
+	go func() {
+		req, _ := http.NewRequest(http.MethodGet, "https://app.example.com/", nil)
+		req.SetBasicAuth("ada", "pw")
+		res, err := e.client(false).Do(req)
+		if err != nil {
+			done <- reply{}
+			return
+		}
+		defer func() { _ = res.Body.Close() }()
+		b, _ := io.ReadAll(res.Body)
+		done <- reply{status: res.StatusCode, body: string(b)}
+	}()
+	time.Sleep(300 * time.Millisecond) // the request is past its first check, in the basic-auth check
+	route.Access = access(t, deny("127.0.0.0/8"))
+	e.routes.Apply([]gateway.HTTPRoute{route})
+	select {
+	case r := <-done:
+		if r.status != http.StatusForbidden {
+			t.Fatalf("a request the tightened rules deny: %d %q", r.status, r.body)
+		}
+	case <-time.After(30 * time.Second):
+		t.Fatal("no answer")
+	}
+}
+
 // TestHTTPRoutes_Access: a client the rules deny gets 403; behind a trusted proxy the client is the
 // last untrusted address of X-Forwarded-For; tightening cancels the requests it no longer allows,
 // an upgraded connection included.

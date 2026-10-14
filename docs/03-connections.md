@@ -301,7 +301,8 @@ Rules:
    ([Multiple gateways](#multiple-gateways)). They drain in the background, so draining never
    delays the acknowledgement.
    A route whose **access policy was tightened**, or whose agent was revoked, closes affected
-   connections **immediately**.
+   connections **immediately**, also those being admitted while the rules change: a connection or
+   request is checked again as it is recorded, so the change either finds it or refuses it.
 5. **Two kinds of error, handled differently.**
    - *Invalid snapshots* (malformed, semantically invalid, bad signature, unparsable certificate)
      are rejected **whole**: `Rejected`, last-known-good stays. The controller must issue a new

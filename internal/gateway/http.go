@@ -163,6 +163,7 @@ type routeTransport struct {
 	tls   map[string]upstreamTLS // by route target ID
 
 	mu       sync.Mutex
+	access   Access // the route's access rules in force, which enforce sets
 	active   map[*activeRequest]struct{}
 	upstream *upstreamConns // the route's TLS connections to its targets, of every transport
 }
@@ -244,6 +245,7 @@ type activeRequest struct {
 func (rt *routeTransport) enforce(a Access) {
 	rt.mu.Lock()
 	defer rt.mu.Unlock()
+	rt.access = a
 	for ar := range rt.active {
 		if !a.Allows(ar.client) {
 			ar.cancel()
@@ -461,7 +463,7 @@ func (h *HTTPRoutes) upstreamOf(route string) *upstreamConns {
 
 // newTransport returns the proxy of a route; its transport dials tunnel streams to the route.
 func (h *HTTPRoutes) newTransport(r HTTPRoute) *routeTransport {
-	rt := &routeTransport{active: map[*activeRequest]struct{}{}, upstream: h.upstreamOf(r.ID)}
+	rt := &routeTransport{access: r.Access, active: map[*activeRequest]struct{}{}, upstream: h.upstreamOf(r.ID)}
 	rt.route.Store(&r)
 	rt.tr = &http.Transport{
 		DialContext:           func(ctx context.Context, _, _ string) (net.Conn, error) { return h.dial(ctx, r.ID) },
@@ -776,12 +778,19 @@ func (h *HTTPRoutes) proxy(rw http.ResponseWriter, r *http.Request, rt *routeTra
 	ar := &activeRequest{client: client, cancel: cancel}
 	rt.mu.Lock()
 	rt.active[ar] = struct{}{}
+	// The rules may have changed while the request was checked, basic auth taking a while; under
+	// rt.mu, either enforce sees the request, or this check sees the rules it set (#523).
+	allowed := rt.access.Allows(client)
 	rt.mu.Unlock()
 	defer func() {
 		rt.mu.Lock()
 		delete(rt.active, ar)
 		rt.mu.Unlock()
 	}()
+	if !allowed {
+		http.Error(w, http.StatusText(http.StatusForbidden), http.StatusForbidden)
+		return
+	}
 	r = r.WithContext(ctx)
 	if !route.WebSocket && r.Header.Get("Upgrade") != "" {
 		http.Error(w, "upgrades are off for this route", http.StatusForbidden)
