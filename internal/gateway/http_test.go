@@ -536,6 +536,87 @@ func TestHTTPRoutes_HTTPSUpstream(t *testing.T) {
 	}
 }
 
+// TestHTTPRoutes_StricterUpstreamTLS (#517): when a target's TLS settings change for stricter ones,
+// a response still streaming over a connection the old settings checked ends at once; a change to
+// unverified, and a change of another target's settings, let it finish.
+func TestHTTPRoutes_StricterUpstreamTLS(t *testing.T) {
+	ca := newUpstreamCA(t)
+	release := make(chan struct{})
+	ln, err := tls.Listen("tcp", "127.0.0.1:0", &tls.Config{MinVersion: tls.VersionTLS13, NextProtos: []string{"h2", "http/1.1"},
+		Certificates: []tls.Certificate{ca.leaf}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	up := &http.Server{ReadHeaderTimeout: 5 * time.Second, Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.WriteString(w, "start\n")
+		w.(http.Flusher).Flush()
+		select {
+		case <-release:
+			_, _ = io.WriteString(w, "end\n")
+		case <-r.Context().Done():
+		}
+	})}
+	go func() { _ = up.Serve(ln) }()
+	t.Cleanup(func() { _ = up.Close() })
+	p := newPlaneWith(t, ln.Addr().String(), "none", "rt_tls")
+	unverified := gateway.UpstreamTLS{ServerName: "upstream.internal", Verify: gateway.VerifyNothing, Connector: p.connector}
+	verified := gateway.UpstreamTLS{ServerName: "upstream.internal", CAPEM: ca.pem, Connector: p.connector}
+	route := func(settings gateway.UpstreamTLS, other *gateway.UpstreamTLS) gateway.HTTPRoute {
+		r := gateway.HTTPRoute{ID: "rt_tls", Upstream: "https", Hosts: []gateway.HTTPHost{{Hostname: "app.example.com"}},
+			TLS: map[string]gateway.UpstreamTLS{"tg_rt_tls": settings}}
+		if other != nil {
+			r.TLS["tg_other"] = *other
+		}
+		return r
+	}
+	for _, tc := range []struct {
+		name        string
+		from, to    gateway.HTTPRoute
+		wantEnd     bool // the response finishes rather than breaking off
+		description string
+	}{
+		{"unverified to verified", route(unverified, nil), route(verified, nil), false, "a stricter change"},
+		{"verified to another server name", route(verified, nil), route(gateway.UpstreamTLS{ServerName: "other.internal", CAPEM: ca.pem,
+			Connector: p.connector}, nil), false, "changed checks"},
+		{"verified to unverified", route(verified, nil), route(unverified, nil), true, "a laxer change"},
+		{"another target's settings", route(verified, &unverified), route(verified, &verified), true, "another target"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			e := newHTTPEnvOn(t, p.sessions, tc.from)
+			for _, h2 := range []bool{false, true} {
+				e.routes.Apply([]gateway.HTTPRoute{tc.from})
+				res, err := e.client(h2).Get("https://app.example.com/stream")
+				if err != nil {
+					t.Fatal(err)
+				}
+				body := bufio.NewReader(res.Body)
+				if line, err := body.ReadString('\n'); err != nil || line != "start\n" {
+					t.Fatalf("h2 %v: first line %q %v", h2, line, err)
+				}
+				e.routes.Apply([]gateway.HTTPRoute{tc.to})
+				rest := make(chan string, 1)
+				go func() {
+					b, _ := io.ReadAll(body)
+					rest <- string(b)
+				}()
+				if tc.wantEnd {
+					time.Sleep(200 * time.Millisecond)
+					release <- struct{}{}
+				}
+				select {
+				case got := <-rest:
+					if (got == "end\n") != tc.wantEnd {
+						t.Errorf("h2 %v: %s left the rest %q", h2, tc.description, got)
+					}
+				case <-time.After(3 * time.Second):
+					t.Errorf("h2 %v: %s left the response open", h2, tc.description)
+				}
+				_ = res.Body.Close()
+			}
+		})
+	}
+}
+
 // headerEcho answers with the request's Host, forwarding headers, two test headers and body size,
 // and sets a Server header.
 var headerEcho = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
