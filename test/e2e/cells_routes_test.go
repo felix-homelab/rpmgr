@@ -12,8 +12,8 @@ import (
 
 // The cells of every Phase 1 route type and of the local policy, access policy and transport
 // scenarios (docs/12-testing-and-quality.md, "End-to-end topology matrix"). Their routes use the
-// ports from 21001 and the service's ports: TCP echo 7007 and 7009, UDP echo 7008, the HTTP
-// upstream 7080 and the TLS backend 7443.
+// ports from 21001 and the service's ports: TCP echo 7007 and 7009, UDP echo 7008 and 7007, the
+// HTTP upstream 7080 and the TLS backend 7443.
 
 const svcHost = "172.31.0.7"
 
@@ -33,6 +33,22 @@ func TestUDP(t *testing.T) {
 	for _, a := range []string{addr("gw1", port), addr("gw2", port), addr("[fd00:30::11]", port), addr("[fd00:30::12]", port)} {
 		eventually(t, 30*time.Second, "the udp route through "+a, func() error {
 			return client("udp", "-addr", a, "-sizes", "100,1200,3000,60000", "-duration", "5s")
+		})
+	}
+}
+
+// TestTCPUDP: a tcp_udp route answers TCP and UDP on one public port, through both gateways and
+// over IPv4 and IPv6, to a target that echoes both on one port.
+func TestTCPUDP(t *testing.T) {
+	port := 21007
+	if _, err := seed("tcp-udp-route", "--name", "tcp-udp", "--port", strconv.Itoa(port), "--target", svcHost+":7007",
+		"--connector", "con1", "--connector", "con2"); err != nil {
+		t.Fatal(err)
+	}
+	for _, a := range []string{addr("gw1", port), addr("gw2", port), addr("[fd00:30::11]", port), addr("[fd00:30::12]", port)} {
+		eventually(t, 30*time.Second, "tcp through "+a, func() error { return client("check", "-addr", a) })
+		eventually(t, 30*time.Second, "udp through "+a, func() error {
+			return client("udp", "-addr", a, "-sizes", "100,1200,3000", "-duration", "3s")
 		})
 	}
 }
