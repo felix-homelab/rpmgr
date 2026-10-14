@@ -132,8 +132,9 @@ history and the [ADRs](docs/adr/).
   TCP and UDP routes are shown at their gateway group's public hostnames, such as
   `eu.example.net:25432`. (#363, #364, #365, #366, #471, #484, #493)
 - UI: pages for connectors with an enrollment dialog, gateway groups, gateways and port pools,
-  domains, certificates and CA bundles, access policies, and members and invitations. (#366, #367,
-  #368, #369)
+  domains, certificates and CA bundles, access policies, and members and invitations. A connector
+  is switched on and off on its page; the overview counts neither disabled connectors nor drained
+  gateways as offline. (#366, #367, #368, #369, #503)
 - UI: an overview with traffic and what needs attention, traffic per route, the audit log with
   chain verification, org and instance settings, the PKI page, read-only YAML views with export,
   and a command palette. (#370, #371, #372)

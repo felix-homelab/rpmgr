@@ -51,12 +51,13 @@ function Summary({ orgId }: { orgId: string }) {
   const { t } = useTranslation();
   const [now] = useState(() => Date.now());
   const routes = useRoutes(orgId).data;
-  const connectors = useConnectors(orgId).data?.filter((c) => !c.decommissionTime);
-  const gateways = useGateways(orgId).data?.filter((g) => !g.decommissionTime);
+  const connectors = useConnectors(orgId).data?.filter((c) => !c.decommissionTime && c.enabled);
+  const gateways = useGateways(orgId).data?.filter((g) => !g.decommissionTime && g.enabled);
   const certificates = useCertificates(orgId).data;
   const domains = useDomains(orgId).data;
 
-  // Disabled routes are left out, as in "Needs attention".
+  // Disabled routes, disabled connectors and drained gateways are left out, as in "Needs attention"
+  // (D81).
   const enabled = routes?.filter((r) => r.status?.state !== RouteState.DISABLED);
   const agents = gateways && connectors && [...gateways.map((g) => !!g.status?.connected), ...connectors.map((c) => !!c.session?.connected)];
   const bad = {

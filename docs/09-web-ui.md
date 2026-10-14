@@ -186,11 +186,13 @@ flowchart LR
   serve fully, the agents in service that are connected, the certificates that have not failed and
   do not expire within 21 days, and the verified domains, each of how many there are. A status
   badge under each figure says how many need attention, that all is well, or that the area has
-  nothing yet. Disabled routes and decommissioned agents are not counted.
+  nothing yet. Disabled routes, disabled connectors, drained gateways and decommissioned agents are
+  not counted ([D81](14-open-decisions.md#engineering)).
 - **Needs attention** is a card next to the traffic. Each area is marked as fine or as needing
   attention, and lists what needs it, each linked to its page, or says that nothing in it does:
   - agents without a control session: gateways, with when they were last seen or that they have
     not enrolled, and connectors, with when they were last seen, under the count of connected ones;
+    disabled connectors and drained gateways are left out, since none is expected to connect;
   - routes that do not serve fully (`pending`, `degraded`, `unavailable`, `error`) or that agents
     rejected, with their state; disabled routes are left out;
   - certificates that failed, with the error, or that expire within 21 days, as on the certificates
@@ -326,17 +328,19 @@ flowchart LR
 ### Connectors
 
 - **The list** (`/connectors`) shows the org's connectors in service, sorted by name. Each row has
-  its control session (connected or offline, with an icon and text), version, last contact and
-  labels. A text filter (name or `key=value` label) and a session filter stay in the URL (U9).
+  its state (disabled, else whether its control session is connected or offline, with an icon and
+  text), version, last contact and labels. A text filter (name or `key=value` label) and a state
+  filter stay in the URL (U9).
   Without connectors, the list offers to enroll the first. When the filters match none, it says so
   and offers to clear them.
-- **The detail page** has a link back to the list above its title, and:
+- **The detail page** has a link back to the list above its title, an **Enabled** switch next to it,
+  as a route has (U3, [D81](14-open-decisions.md#engineering)), and:
   - **Sessions:** the control session (address, last contact), and the data sessions per gateway,
     with transport, round-trip time and start.
   - **Routes:** those with a target on the connector. Those it reports not ready show their reason,
     and, for a target its local policy blocks, the command for its host with a copy button (U4).
-  - **Settings:** name, labels, transport policy and whether it serves. They are saved as the whole
-    connector as read, with their mask and the etag (U1).
+  - **Settings:** name, labels and transport policy. They are saved as the whole connector as
+    read, with their mask and the etag (U1).
   - **Decommission** comes after a confirmation that names the connector and says what it does
     (U7), including the routes that are deleted with it because they have no other target
     ([06](06-data-model.md#lifecycle-and-deletion)). It can be confirmed only once the routes are
