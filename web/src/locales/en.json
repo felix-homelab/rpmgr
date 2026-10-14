@@ -403,7 +403,6 @@
     "unixPathLabel": "Socket path",
     "upstream": "Protocol to the target",
     "upstreams": {
-      "TCP": "TCP",
       "HTTP": "HTTP",
       "HTTPS": "HTTPS, verified",
       "UNVERIFIED": "HTTPS, unverified",

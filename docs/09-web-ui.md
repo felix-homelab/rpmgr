@@ -283,9 +283,10 @@ flowchart LR
   not, it says why.
 - **Targets are added, edited and removed** on the page, in the targets card, one form at a time.
   - **The form:** the connector (fixed once the target exists), a host and port or a socket path,
-    the protocol to the target (HTTP, verified HTTPS with its server name, CA bundle and key pin,
-    unverified HTTPS with its server name, or h2c for HTTP routes; TCP otherwise), the PROXY
-    protocol for TCP and TLS-passthrough routes, weight, priority and whether it is enabled.
+    for HTTP routes the protocol to the target (HTTP, verified HTTPS with its server name, CA
+    bundle and key pin, unverified HTTPS with its server name, or h2c; other routes pass the bytes,
+    or for UDP the datagrams, as they come, and show no such field), the PROXY protocol for TCP and
+    TLS-passthrough routes, weight, priority and whether it is enabled.
   - **Unverified HTTPS** ([ADR-0017](adr/0017-upstream-tls-verification-modes.md)): choosing it
     shows a warning that anyone on the network between the connector and the target can read and
     change the traffic, and the target shows an "unverified" badge next to its address.

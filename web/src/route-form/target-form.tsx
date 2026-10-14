@@ -97,7 +97,8 @@ export function targetWith(base: RouteTarget, v: TargetValues): RouteTarget {
 }
 
 // The upstream protocols, as choices of "Protocol to the target", and PROXY versions a route's type
-// allows.
+// allows. Only http routes choose a protocol; the others have one, the bytes as they come
+// (datagrams for udp routes), which the form sends without showing it.
 function choices(r: Route) {
   const http = r.spec.case === "http";
   return {
@@ -174,8 +175,10 @@ export function TargetForm({ route, target, connectors, onDone, onCancel }: {
       ) : (
         <Text form={form} name="unixPath" label={t("targetForm.unixPathLabel")} required />
       )}
-      <Select form={form} name="upstream" label={t("targetForm.upstream")} describedBy={unverified ? warning : undefined}
-        options={upstreams.map((u) => [u, t(u === UNVERIFIED ? "targetForm.upstreams.UNVERIFIED" : `targetForm.upstreams.${UpstreamProtocol[Number(u)]}`)])} />
+      {upstreams.length > 1 && (
+        <Select form={form} name="upstream" label={t("targetForm.upstream")} describedBy={unverified ? warning : undefined}
+          options={upstreams.map((u) => [u, t(u === UNVERIFIED ? "targetForm.upstreams.UNVERIFIED" : `targetForm.upstreams.${UpstreamProtocol[Number(u)]}`)])} />
+      )}
       {unverified && (
         <p id={warning} className="flex items-start gap-2 rounded-lg border border-warn/30 bg-warn/10 px-3 py-2 text-sm">
           <TriangleAlert aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-warn" />

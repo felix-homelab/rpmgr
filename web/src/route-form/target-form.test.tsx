@@ -24,7 +24,7 @@ const target = create(RouteTargetSchema, {
 const applied = { revision: { dbEpoch: "e", seq: 11n }, applyStatus: { state: ApplyState.APPLIED, agentsTotal: 1, agentsApplied: 1 } };
 
 // detail renders the detail of a route of type case with targets, by default the target above.
-function detail(spec: { case: "http" | "tcp"; value: object }, targets = [target]) {
+function detail(spec: { case: "http" | "tcp" | "udp" | "tlsPassthrough"; value: object }, targets = [target]) {
   const creates: CreateRouteTargetRequest[] = [];
   const updates: UpdateRouteTargetRequest[] = [];
   const deletes: DeleteRouteTargetRequest[] = [];
@@ -71,6 +71,35 @@ describe("targets", () => {
     expect([creates[0]!.routeId, t.connectorId, t.address, t.upstreamProtocol, t.proxyProtocol, t.weight, t.enabled])
       .toEqual(["rte_1", "con_app", { case: "hostPort", value: expect.objectContaining({ host: "10.0.0.6", port: 5432 }) }, UpstreamProtocol.TCP, ProxyProtocol.V2, 100, true]);
     expect(creates[0]!.requestId).toMatch(/^[0-9a-f-]{36}$/);
+  });
+
+  it("asks for the protocol to the target only on HTTP routes (#509)", async () => {
+    detail({ case: "http", value: { hostnames: ["app.example.com"] } });
+    fireEvent.click(await screen.findByRole("button", { name: "Add a target" }));
+    const options = within((await form("New target")).getByLabelText("Protocol to the target")).getAllByRole("option");
+    expect(options.map((o) => o.textContent)).toEqual(["HTTP", "HTTPS, verified", "HTTPS, unverified", "HTTP/2 without TLS (h2c)"]);
+    for (const spec of [{ case: "tcp", value: { port: 25432 } }, { case: "tlsPassthrough", value: { hostnames: ["db.example.com"] } }] as const) {
+      cleanup();
+      detail(spec);
+      fireEvent.click(await screen.findByRole("button", { name: "Add a target" }));
+      expect((await form("New target")).queryByLabelText("Protocol to the target")).toBeNull();
+    }
+  });
+
+  it("adds a target to a UDP route without naming a protocol, and sends its datagrams as they come", async () => {
+    const { creates } = detail({ case: "udp", value: { port: 5353 } });
+    fireEvent.click(await screen.findByRole("button", { name: "Add a target" }));
+    const f = await form("New target");
+    expect(f.queryByLabelText("Protocol to the target")).toBeNull();
+    expect(f.queryByLabelText("PROXY protocol")).toBeNull();
+    expect(f.queryByText("TCP")).toBeNull();
+    await f.findByRole("option", { name: "app-host" });
+    fireEvent.change(f.getByLabelText("Connector"), { target: { value: "con_app" } });
+    fireEvent.change(f.getByLabelText("Host"), { target: { value: "10.0.0.7" } });
+    fireEvent.change(f.getByLabelText("Port"), { target: { value: "53" } });
+    fireEvent.click(f.getByRole("button", { name: "Add the target" }));
+    expect(await screen.findByText("Revision 11: applied by all 1 agents.")).toBeTruthy();
+    expect([creates[0]!.target!.upstreamProtocol, creates[0]!.target!.proxyProtocol]).toEqual([UpstreamProtocol.TCP, ProxyProtocol.UNSPECIFIED]);
   });
 
   it("sends a target back unchanged when nothing was edited", async () => {
