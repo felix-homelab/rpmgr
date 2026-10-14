@@ -140,8 +140,9 @@ type HTTPRoutes struct {
 	active   atomic.Int64                           // requests being served
 
 	mu         sync.Mutex
-	transports map[string]*routeTransport // by route ID
-	upstream   map[string]*upstreamConns  // by route ID, kept while their connections are open
+	transports map[string]*routeTransport   // by route ID
+	replaced   map[string][]*routeTransport // by route ID: transports a change replaced, while requests run on them
+	upstream   map[string]*upstreamConns    // by route ID, kept while their connections are open
 }
 
 type httpTable struct {
@@ -163,6 +164,7 @@ type routeTransport struct {
 	tls   map[string]upstreamTLS // by route target ID
 
 	mu       sync.Mutex
+	access   Access // the route's access rules in force, which enforce sets
 	active   map[*activeRequest]struct{}
 	upstream *upstreamConns // the route's TLS connections to its targets, of every transport
 }
@@ -244,11 +246,19 @@ type activeRequest struct {
 func (rt *routeTransport) enforce(a Access) {
 	rt.mu.Lock()
 	defer rt.mu.Unlock()
+	rt.access = a
 	for ar := range rt.active {
 		if !a.Allows(ar.client) {
 			ar.cancel()
 		}
 	}
+}
+
+// idle reports whether no request runs on the transport.
+func (rt *routeTransport) idle() bool {
+	rt.mu.Lock()
+	defer rt.mu.Unlock()
+	return len(rt.active) == 0
 }
 
 // NewHTTPRoutes returns the http routes' server; Close stops it.
@@ -257,7 +267,7 @@ func NewHTTPRoutes(o HTTPOptions) *HTTPRoutes {
 		o.Logger = slog.New(slog.DiscardHandler)
 	}
 	h := &HTTPRoutes{o: o, ln: newConnListener(), transports: map[string]*routeTransport{},
-		upstream: map[string]*upstreamConns{}, basic: NewBasicAuth(nil)}
+		replaced: map[string][]*routeTransport{}, upstream: map[string]*upstreamConns{}, basic: NewBasicAuth(nil)}
 	h.table.Store(&httpTable{byHost: map[string][]httpEntry{}})
 	protocols := new(http.Protocols)
 	protocols.SetHTTP1(true)
@@ -410,12 +420,18 @@ func (h *HTTPRoutes) Apply(routes []HTTPRoute) {
 		rt := h.transports[r.ID]
 		if rt == nil || rt.route.Load().Upstream != r.Upstream || !reflect.DeepEqual(rt.route.Load().TLS, r.TLS) {
 			if rt != nil {
-				rt.enforce(r.Access) // its requests finish on the old transport, unless h.upstream ends them
+				// Its requests finish on the old transport, unless h.upstream ends them, under the
+				// route's rules of this and every later snapshot (#523).
+				h.replaced[r.ID] = append(h.replaced[r.ID], rt)
 			}
 			rt = h.newTransport(r)
 		} else if old := rt.route.Swap(&r); !old.Access.Same(r.Access) {
 			rt.enforce(r.Access)
 		}
+		h.replaced[r.ID] = slices.DeleteFunc(h.replaced[r.ID], func(old *routeTransport) bool {
+			old.enforce(r.Access)
+			return old.idle()
+		})
 		next[r.ID] = rt
 		h.upstreamOf(r.ID).set(r.TLS)
 		for _, host := range r.Hosts {
@@ -437,6 +453,11 @@ func (h *HTTPRoutes) Apply(routes []HTTPRoute) {
 		}
 	}
 	h.transports = next
+	for id := range h.replaced {
+		if next[id] == nil {
+			delete(h.replaced, id) // a removed route's requests finish
+		}
+	}
 	for id, u := range h.upstream {
 		if next[id] == nil {
 			u.set(nil) // a removed route's connections finish
@@ -461,7 +482,7 @@ func (h *HTTPRoutes) upstreamOf(route string) *upstreamConns {
 
 // newTransport returns the proxy of a route; its transport dials tunnel streams to the route.
 func (h *HTTPRoutes) newTransport(r HTTPRoute) *routeTransport {
-	rt := &routeTransport{active: map[*activeRequest]struct{}{}, upstream: h.upstreamOf(r.ID)}
+	rt := &routeTransport{access: r.Access, active: map[*activeRequest]struct{}{}, upstream: h.upstreamOf(r.ID)}
 	rt.route.Store(&r)
 	rt.tr = &http.Transport{
 		DialContext:           func(ctx context.Context, _, _ string) (net.Conn, error) { return h.dial(ctx, r.ID) },
@@ -776,12 +797,19 @@ func (h *HTTPRoutes) proxy(rw http.ResponseWriter, r *http.Request, rt *routeTra
 	ar := &activeRequest{client: client, cancel: cancel}
 	rt.mu.Lock()
 	rt.active[ar] = struct{}{}
+	// The rules may have changed while the request was checked, basic auth taking a while; under
+	// rt.mu, either enforce sees the request, or this check sees the rules it set (#523).
+	allowed := rt.access.Allows(client)
 	rt.mu.Unlock()
 	defer func() {
 		rt.mu.Lock()
 		delete(rt.active, ar)
 		rt.mu.Unlock()
 	}()
+	if !allowed {
+		http.Error(w, http.StatusText(http.StatusForbidden), http.StatusForbidden)
+		return
+	}
 	r = r.WithContext(ctx)
 	if !route.WebSocket && r.Header.Get("Upgrade") != "" {
 		http.Error(w, "upgrades are off for this route", http.StatusForbidden)

@@ -202,16 +202,19 @@ func (t *Targets) Recheck() {
 	}
 }
 
-// track records a relayed target connection until the returned function is called.
-func (t *Targets) track(c net.Conn) func() {
+// trackAllowed records a target connection until the returned function is called, and reports
+// whether the policy in force allows it. It checks under the lock Recheck takes after the policy
+// changed, so either Recheck finds the connection or this check sees the new policy.
+func (t *Targets) trackAllowed(c net.Conn) (func(), bool) {
 	t.mu.Lock()
 	t.live[c] = struct{}{}
+	allowed := connAllowed(c, t.o.Policy())
 	t.mu.Unlock()
 	return func() {
 		t.mu.Lock()
 		delete(t.live, c)
 		t.mu.Unlock()
-	}
+	}, allowed
 }
 
 // connAllowed reports whether the policy allows the address a target connection goes to.
@@ -305,6 +308,18 @@ func (t *Targets) Handle(ctx context.Context, gatewayID string, st tunnel.Stream
 	_, span := otel.Tracer("github.com/felix-homelab/rpmgr/internal/connector").Start(tunnel.TraceContext(ctx, open), "rpmgr.connector.dial",
 		trace.WithSpanKind(trace.SpanKindServer), trace.WithAttributes(attribute.String("rpmgr.route", open.GetRouteId())))
 	code, conn, target := t.open(ctx, open)
+	// The connection is recorded before the answer and checked against the policy in force then,
+	// so a reload either finds it or refuses it here (#525).
+	untrack := func() {}
+	if conn != nil {
+		var allowed bool
+		if untrack, allowed = t.trackAllowed(conn); !allowed {
+			untrack()
+			_ = conn.Close()
+			conn, code, target = nil, tunnelv1.ResultCode_RESULT_CODE_UPSTREAM_REFUSED, ""
+		}
+	}
+	defer untrack()
 	if code != tunnelv1.ResultCode_RESULT_CODE_NO_ERROR {
 		span.SetStatus(codes.Error, code.String())
 	}
@@ -322,7 +337,6 @@ func (t *Targets) Handle(ctx context.Context, gatewayID string, st tunnel.Stream
 		return
 	}
 	st.SetReliableBoundary()
-	defer t.track(conn)()
 	if open.GetKind() == tunnelv1.StreamKind_STREAM_KIND_UDP_FLOW {
 		t.relayUDP(ctx, open.GetRouteId(), st, conn)
 		return

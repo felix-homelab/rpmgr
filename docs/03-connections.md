@@ -243,7 +243,8 @@ message Signed { bytes payload = 1; bytes signature = 2; string key_id = 3; }
   the local policy, an unreachable target, or no TLS. The probe runs apart from the control
   session, within the time and the number at once of the timeout table. A disabled or
   decommissioned connector is not asked. Only the replica that holds the connector's control
-  session can send it; another one answers that the connector has no session there.
+  session can send it; another one answers that the connector has no session there, and so does
+  the replica when the session ends before the connector answers.
 - **Revocations travel separately from snapshots.** `DenyListUpdate` carries the full current set
   (deltas above 1 MiB) and is applied unconditionally, merged by union; an entry is removed only
   after the covered certificate's `NotAfter`. An agent that rejects a snapshot still receives every
@@ -301,7 +302,11 @@ Rules:
    ([Multiple gateways](#multiple-gateways)). They drain in the background, so draining never
    delays the acknowledgement.
    A route whose **access policy was tightened**, or whose agent was revoked, closes affected
-   connections **immediately**.
+   connections **immediately**, also those being admitted while the rules change: a connection or
+   request is checked under the lock the change takes, and an http request again once its basic
+   auth has passed, so the change either finds it or refuses it. Requests still running on an http
+   transport that a change of upstream protocol or TLS settings replaced stay under the route's
+   rules of every later snapshot.
 5. **Two kinds of error, handled differently.**
    - *Invalid snapshots* (malformed, semantically invalid, bad signature, unparsable certificate)
      are rejected **whole**: `Rejected`, last-known-good stays. The controller must issue a new
