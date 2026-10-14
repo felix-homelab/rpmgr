@@ -243,7 +243,8 @@ message Signed { bytes payload = 1; bytes signature = 2; string key_id = 3; }
   the local policy, an unreachable target, or no TLS. The probe runs apart from the control
   session, within the time and the number at once of the timeout table. A disabled or
   decommissioned connector is not asked. Only the replica that holds the connector's control
-  session can send it; another one answers that the connector has no session there.
+  session can send it; another one answers that the connector has no session there, and so does
+  the replica when the session ends before the connector answers.
 - **Revocations travel separately from snapshots.** `DenyListUpdate` carries the full current set
   (deltas above 1 MiB) and is applied unconditionally, merged by union; an entry is removed only
   after the covered certificate's `NotAfter`. An agent that rejects a snapshot still receives every

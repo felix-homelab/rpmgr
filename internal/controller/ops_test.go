@@ -126,5 +126,28 @@ func TestProbeTarget(t *testing.T) {
 		if _, err := e.sessions.ProbeTarget(testCtx(t), "con_unknown", target); !errors.Is(err, apisvc.ErrProbeNotConnected) {
 			t.Fatalf("an agent without a session: %v", err)
 		}
+
+		// A session that ends before the agent answers ends the probe at once (#527).
+		sessCtx, endSession := context.WithCancel(testCtx(t))
+		stC := e.open(t, sessCtx, certA, withProbe)
+		recv(t, stC)
+		done := make(chan error, 1)
+		start := time.Now()
+		go func() {
+			_, err := e.sessions.ProbeTarget(testCtx(t), a.ID, target)
+			done <- err
+		}()
+		if m := recv(t, stC).GetProbeTarget(); m == nil {
+			t.Fatal("no probe arrived")
+		}
+		endSession()
+		select {
+		case err := <-done:
+			if !errors.Is(err, apisvc.ErrProbeNotConnected) || time.Since(start) > 5*time.Second {
+				t.Fatalf("a session that ended: %v after %v", err, time.Since(start))
+			}
+		case <-time.After(10 * time.Second):
+			t.Fatal("the probe outlived its session")
+		}
 	})
 }
