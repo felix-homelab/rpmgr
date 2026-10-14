@@ -114,6 +114,7 @@ export function Connectors() {
                   <span className="flex flex-wrap items-center gap-2">
                     <Link to="/connectors/$connectorId" params={{ connectorId: c.id }} className="font-medium hover:underline">{c.name}</Link>
                     {c.ephemeral && <Badge>{t("connectors.ephemeral")}</Badge>}
+                    {c.builtIn && <Badge title={t("connectors.builtInHint")}>{t("connectors.builtIn")}</Badge>}
                   </span>
                 </TD>
                 <TD><SessionChip connector={c} /></TD>

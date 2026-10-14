@@ -888,6 +888,17 @@ Which transport a connector uses is a setting
   once; connections already open finish on their session; a session no route needs any more is
   closed after its last stream has ended. Unchanged routes are untouched.
 - Phase 2 adds `wss` as a fourth value and as the last step of `auto`.
+- **The all-in-one's own connector** ([ADR-0019](adr/0019-all-in-one-runs-a-connector.md),
+  [D89](14-open-decisions.md#engineering)) reaches the gateway of its own process in memory: a
+  pipe that buffers 1 MiB each way, with the same TLS handshake, gateway pin, ALPN
+  `rpmgr-tunnel-h2/1` and reverse HTTP/2 as over TCP, and never through the gateway's endpoints.
+  One such session carries every route to that gateway, whatever the route's transport; a failed
+  one is `not_ready(transport_unavailable: memory)`. Metrics, the data sessions and the UI report
+  it as h2, and its remote address, like that of the all-in-one's control sessions, as
+  `in-process`. The gateway accepts only data sessions to itself on these connections and closes
+  anything else. The connector opens no UDP socket for QUIC, so a gateway elsewhere in its group
+  is reached over TLS + reverse HTTP/2 only: `auto` falls back at once, and a route pinned to
+  `quic` is `not_ready(transport_unavailable: quic)` there.
 
 **Reverse HTTP/2** ([ADR-0005](adr/0005-reverse-http2-fallback.md)). The connector dials the
 gateway and then acts as the **HTTP/2 server** on that connection; the gateway acts as the client

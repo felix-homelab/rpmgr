@@ -180,12 +180,12 @@ func (s *Service) issue(csr *x509.CertificateRequest, req *agentv1.EnrollRequest
 			if err != nil {
 				return nil, err
 			}
-			labels, err := tokenLabels(ctx, tx, g.TokenID)
+			tok, err := tx.EnrollmentToken.Get(ctx, g.TokenID)
 			if err != nil {
 				return nil, err
 			}
-			if err := tx.Connector.Create().SetID(id.ID).SetOrgID(g.OrgID).SetName(name).SetLabels(labels).
-				SetSpiffeID(id.String()).SetPubkeySha256(key).SetEphemeral(g.Ephemeral).Exec(ctx); err != nil {
+			if err := tx.Connector.Create().SetID(id.ID).SetOrgID(g.OrgID).SetName(name).SetLabels(tok.Labels).
+				SetSpiffeID(id.String()).SetPubkeySha256(key).SetEphemeral(g.Ephemeral).SetBuiltIn(tok.BuiltIn).Exec(ctx); err != nil {
 				return nil, err
 			}
 		}
@@ -227,14 +227,6 @@ func (s *Service) issue(csr *x509.CertificateRequest, req *agentv1.EnrollRequest
 		*replaced = old
 		return cert, nil
 	}
-}
-
-func tokenLabels(ctx context.Context, tx *ent.Tx, tokenID string) (map[string]string, error) {
-	t, err := tx.EnrollmentToken.Get(ctx, tokenID)
-	if err != nil {
-		return nil, err
-	}
-	return t.Labels, nil
 }
 
 var notSlug = regexp.MustCompile(`[^a-z0-9-]+`)

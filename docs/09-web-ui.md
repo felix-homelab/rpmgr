@@ -361,13 +361,18 @@ flowchart LR
   - **Sessions:** the control session (address, last contact), and the data sessions per gateway,
     with transport, round-trip time and start.
   - **Routes:** those with a target on the connector. Those it reports not ready show their reason,
-    and, for a target its local policy blocks, the command for its host with a copy button (U4).
+    and, for a target its local policy blocks, the command for its host with a copy button (U4); a
+    target that is one of rpmgr's own ports gets no command but says that the all-in-one's
+    connector never dials it ([04](04-security.md#connector-local-policy)).
   - **Settings:** name, labels and transport policy. They are saved as the whole connector as
     read, with their mask and the etag (U1).
   - **Decommission** comes after a confirmation that names the connector and says what it does
     (U7), including the routes that are deleted with it because they have no other target
     ([06](06-data-model.md#lifecycle-and-deletion)). It can be confirmed only once the routes are
     read; if they cannot be, it says so. The page then returns to the list.
+  - **The all-in-one's own connector** is marked "built in", in the list too, and offers no
+    decommission, which the API refuses; its switch still turns it off
+    ([ADR-0019](adr/0019-all-in-one-runs-a-connector.md)).
 
 ### Gateways
 
@@ -384,7 +389,9 @@ flowchart LR
   - **Edit** its name and endpoints.
   - **Drain or resume** it (R22, [03](03-connections.md#multiple-gateways)). A drained gateway takes
     no new public connections, and it ends the open ones after the gateway drain period.
-  - **Decommission** it, after a confirmation that names it.
+  - **Decommission** it, after a confirmation that names it. The all-in-one's own gateway is marked
+    "built in" and offers neither a decommission nor an enrollment token; it can be drained
+    ([ADR-0019](adr/0019-all-in-one-runs-a-connector.md)).
   - **For a gateway that has not enrolled,** make its enrollment token after a step-up. The token is
     bound to that gateway and valid for 1 hour, and is shown once next to the install command,
     which does not hold it.

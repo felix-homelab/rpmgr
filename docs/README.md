@@ -25,7 +25,7 @@ the [README](../README.md).
 | [14 — Open decisions](14-open-decisions.md) | Every decision that was open, with its outcome; currently none is open |
 | [15 — DNS automation](15-dns.md) | Cloudflare integration: managed zones, records for route hostnames, ownership and conflicts, plan approval, DNS-01, proxied routes |
 | [16 — Command line](16-cli.md) | Every `rpmgr` command, its flags and exit codes |
-| [ADRs](adr/) | One record per load-bearing decision (0001–0018) |
+| [ADRs](adr/) | One record per load-bearing decision (0001–0019) |
 | [Spikes](spikes/) | Phase 0 spike results, written from the [template](spikes/TEMPLATE.md) |
 | [Reviews](reviews/) | Reviews of the implementation against the documents, such as the [Phase 1 threat-model review](reviews/P1-threat-model.md) |
 
