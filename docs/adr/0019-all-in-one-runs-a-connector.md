@@ -44,10 +44,12 @@ the all-in-one clause of [ADR-0002](0002-one-binary-three-roles.md) in part
   the unit reloads on SIGHUP, and `rpmgr policy` reloads the all-in-one's unit on a host without a
   connector.
 - Whatever the policy allows, the connector never dials one of rpmgr's own ports on an address of
-  the host: the admin listener, the gateway's ports 443 (TCP and UDP), 80 and tunnel UDP, and the
-  ports of the gateway's tcp and udp routes. The addresses of the host are loopback, the
-  unspecified addresses and the addresses of its interfaces
+  the host. The ports are those rpmgr listens on: the admin listener, 80, 443 (TCP and UDP),
+  tunnel UDP, and every route port the gateway has bound. The addresses of the host are loopback,
+  the unspecified addresses, the addresses of its interfaces, and those the public URL's host and
+  the group's public hostnames resolve to (hairpin NAT)
   ([04](../04-security.md#connector-local-policy)).
+- A signal to reload the policy (SIGHUP) never ends the process, also while it starts or stops.
 
 **Built-in agents**
 - The all-in-one's gateway and connector are marked built in. The API refuses to decommission
@@ -67,6 +69,10 @@ the all-in-one clause of [ADR-0002](0002-one-binary-three-roles.md) in part
 - The public host's own network becomes reachable through routes, as far as its local policy
   allows. The policy allows nothing by default, and rpmgr's own ports stay closed whatever it says,
   but a broad allowance exposes the host's other loopback services.
+- Another path to rpmgr's ports, such as a router or container that forwards an address of its own
+  to them (DNAT), is not detected; such a target must not be allowed for those ports.
+- The local policy does not survive a compromised controller on an all-in-one, which shares the
+  connector's process; it limits the routes made through the API, not an attacker in the process.
 - The connector's control and data sessions show "in-process" as their remote address, and its
   data session reports the h2 transport, though it never leaves the process.
 - `rpmgr status`, `diag` and `leave` still cover only separately installed agents.

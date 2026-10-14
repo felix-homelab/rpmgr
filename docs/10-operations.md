@@ -96,7 +96,9 @@ controller. When the agents' part of `all-in-one init` fails, the gateway's or t
 removes the database and what it created beside it, so the same `init` can run again once the
 cause is fixed. `rpmgr all-in-one` enrolls its connector at start when its identity is missing,
 as on an all-in-one initialised before
-[ADR-0019](adr/0019-all-in-one-runs-a-connector.md). A new systemd credential is encrypted with `systemd-creds encrypt` into
+[ADR-0019](adr/0019-all-in-one-runs-a-connector.md). So a connector identity that cannot be used
+any more, revoked or unreadable, is replaced by deleting `<state_dir>/connector/identity` and
+restarting the service; the connector keeps its ID and routes. A new systemd credential is encrypted with `systemd-creds encrypt` into
 `/etc/rpmgr/credstore/<name>`; an existing one is readable only where systemd loads it, so `init`
 then has to run under `systemd-run --pipe --wait --property=LoadCredentialEncrypted=…`.
 
@@ -252,7 +254,7 @@ In Phase 1, CI only builds these targets; end-to-end tests on Windows and macOS 
 | Every role | 127.0.0.1:7381 (controller, all-in-one), 127.0.0.1:7382 (gateway), 127.0.0.1:7383 (connector) | TCP | Admin listener: `/metrics`, `/healthz`, `/readyz`, pprof (off unless enabled). One port per role, so roles on the same host never collide, and none is 9090, Prometheus's own port. If the default is taken, the installer picks the next free port and writes it to the boot file. The ports are registered in Prometheus's port registry once public code exists | Localhost by default; may be bound to a private interface for scrapers and load-balancer checks, **never** public: a boot file that binds it to all interfaces, a public address or a host name is refused |
 | Connector | — | — | No inbound ports. Outbound: 443/TCP+UDP to gateways, 443/TCP to the controller | — |
 | Connector | per `allow_listen` | TCP/UDP | Visitor listeners for private services | Local or LAN, as the policy allows |
-| All-in-one | 80, 443/TCP, 443/UDP, port pools, admin | | Gateway ports; the controller is reached through the gateway's SNI router in-process; its connector opens no port and never dials these ([04](04-security.md#connector-local-policy)) | Public (except admin) |
+| All-in-one | 80, 443/TCP, 443/UDP, port pools, admin | | Gateway ports; the controller is reached through the gateway's SNI router in-process; its connector opens no port and never dials the ports rpmgr listens on: admin, 80, 443, tunnel UDP and every route port the gateway has bound ([04](04-security.md#connector-local-policy)) | Public (except admin) |
 
 **Controller outbound connections.** The controller dials out only for these, all through
 `HTTPS_PROXY`/`ALL_PROXY` when set:

@@ -594,7 +594,8 @@ provider and never stored.
 
 The **local policy** is a file on each connector host that limits what the connector does,
 whatever any snapshot says ([ADR-0009](adr/0009-connector-local-policy.md)). It is the one control
-that survives a compromised controller.
+that survives a compromised controller, except on an all-in-one, where the controller and the
+connector share a process ([below](#connector-local-policy)).
 
 ```yaml
 # /etc/rpmgr/policy.yaml — owner root, mode 0644; read-only for the rpmgr service user
@@ -661,13 +662,21 @@ Rules:
   let them through.
 - **The all-in-one's own connector** ([ADR-0019](adr/0019-all-in-one-runs-a-connector.md)) reads
   the policy at the all-in-one boot file's `policy_file`, `/etc/rpmgr/policy.yaml` by default, and
-  never dials one of rpmgr's own ports on an address of its host, whatever the policy allows: the
-  admin listener, the gateway's ports 443 (TCP and UDP), 80 and tunnel UDP, and the ports of the
-  gateway's tcp and udp routes. The host's addresses are loopback, the unspecified addresses and
-  the addresses of its interfaces, looked up again at most every 10 s. Such a target is
-  `not_ready(blocked_by_local_policy: 127.0.0.1:7381 is one of rpmgr's own ports)`, and the UI
-  offers no command for it. This keeps the metrics out of reach and routes from looping through
-  the gateway; the host's other loopback services are reachable as far as the policy allows.
+  never dials one of rpmgr's own ports on an address of its host, whatever the policy allows. The
+  ports are those rpmgr listens on: the admin listener, 80, 443 (TCP and UDP), tunnel UDP, and
+  every route port the gateway has bound. The host's addresses are loopback, the unspecified
+  addresses, the addresses of its interfaces, and those the public URL's host and the gateway
+  group's public hostnames resolve to, for a host that reaches its public address through its
+  router (hairpin NAT); they are looked up again at most every 10 s, and after a failed lookup at
+  the next dial. Such a target is `not_ready(blocked_by_local_policy: 127.0.0.1:7381 is one of
+  rpmgr's own ports)`, and the UI offers no command for it. This keeps the metrics out of reach
+  and routes from looping through the gateway; the host's other loopback services are reachable as
+  far as the policy allows. Another path to these ports, such as a router or a container that
+  forwards an address of its own to them (DNAT), is not detected: never allow such a target for
+  rpmgr's ports.
+- On an all-in-one the policy does **not** survive a compromised controller: the controller runs
+  in the same process and could dial anything the `rpmgr` user can. There it limits the routes made
+  through the API and the configuration, not an attacker inside the process.
 - A target the policy forbids does **not** reject the snapshot. The snapshot is applied, and the
   affected target reports `not_ready(blocked_by_local_policy: 10.0.0.5:5432)`; the UI shows the
   reason and the exact command to allow it: `sudo rpmgr policy allow-target 10.0.0.5:5432`. One
