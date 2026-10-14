@@ -25,6 +25,12 @@ func udpRouteResource(id string, targets ...*agentv1.Target) *agentv1.Resource {
 	return r
 }
 
+func tcpUDPRouteResource(id string, targets ...*agentv1.Target) *agentv1.Resource {
+	r := routeResource(id, agentv1.TransportPolicy_TRANSPORT_POLICY_AUTO, targets...)
+	r.GetConnectorRoute().Type = "tcp_udp"
+	return r
+}
+
 func gatewayResource(id string, endpoints []string, routes ...string) *agentv1.Resource {
 	return &agentv1.Resource{Id: id, Kind: &agentv1.Resource_ConnectorGateway{ConnectorGateway: &agentv1.ConnectorGateway{
 		TunnelEndpoints: endpoints, Routes: routes}}}
@@ -41,7 +47,8 @@ func TestApplier_Validate(t *testing.T) {
 	ok := &agentv1.Snapshot{Resources: []*agentv1.Resource{
 		routeResource("rt_1", auto, addrTarget("10.0.0.5", 5432), &agentv1.Target{Id: "tg_2", UnixPath: "/run/db.sock", ProxyProtocol: "v2"}),
 		udpRouteResource("rt_2", addrTarget("10.0.0.53", 53), &agentv1.Target{Id: "tg_2", Host: "10.0.0.54", Port: 53}),
-		gatewayResource("gw_1", []string{"gw1.example:443", "[2001:db8::1]:443"}, "rt_1", "rt_2"),
+		tcpUDPRouteResource("rt_3", addrTarget("10.0.0.53", 53)),
+		gatewayResource("gw_1", []string{"gw1.example:443", "[2001:db8::1]:443"}, "rt_1", "rt_2", "rt_3"),
 	}}
 	if errs := a.Validate(ok); len(errs) != 0 {
 		t.Fatalf("a valid snapshot: %v", errs)
@@ -65,6 +72,8 @@ func TestApplier_Validate(t *testing.T) {
 		{"PROXY v3", snap(routeResource("rt_1", auto, &agentv1.Target{Id: "tg", Host: "h", Port: 1, ProxyProtocol: "v3"})), "PROXY"},
 		{"a udp socket target", snap(udpRouteResource("rt_1", &agentv1.Target{Id: "tg", UnixPath: "/run/dns.sock"})), "not a socket path"},
 		{"a udp PROXY header", snap(udpRouteResource("rt_1", &agentv1.Target{Id: "tg", Host: "h", Port: 53, ProxyProtocol: "v2"})), "no PROXY protocol"},
+		{"a tcp_udp socket target", snap(tcpUDPRouteResource("rt_1", &agentv1.Target{Id: "tg", UnixPath: "/run/dns.sock"})), "not a socket path"},
+		{"a tcp_udp PROXY header", snap(tcpUDPRouteResource("rt_1", &agentv1.Target{Id: "tg", Host: "h", Port: 53, ProxyProtocol: "v1"})), "no PROXY protocol"},
 		{"gateway without endpoints", snap(gatewayResource("gw_1", nil)), "without tunnel endpoints"},
 		{"endpoint without a port", snap(gatewayResource("gw_1", []string{"gw1.example"})), "not host:port"},
 		{"endpoint port 0", snap(gatewayResource("gw_1", []string{"gw1.example:0"})), "not host:port"},

@@ -35,7 +35,7 @@ export function useGroupHostnames(orgId: string | undefined) {
 }
 
 // The route types, by the case of Route.spec.
-export const routeTypes = ["http", "tcp", "udp", "tlsPassthrough"] as const;
+export const routeTypes = ["http", "tcp", "udp", "tcpUdp", "tlsPassthrough"] as const;
 
 // routeType names a route's type; "" for a route without a spec.
 export function routeType(r: Route): string {
@@ -57,7 +57,8 @@ export function routeAddress(r: Route, groupHosts: readonly string[] = []): stri
     case "tlsPassthrough":
       return r.spec.value.hostnames;
     case "tcp":
-    case "udp": {
+    case "udp":
+    case "tcpUdp": {
       const { port } = r.spec.value;
       if (!port) {
         return [];

@@ -74,6 +74,8 @@ message Resource {
     GatewayDomainChallenge gateway_domain_challenge = 10;
     // Gateways: the gateway is disabled and drains.
     GatewayDrain gateway_drain = 11;
+    // Gateways: a tcp_udp route's public port, for TCP and for UDP.
+    GatewayTCPUDPRoute gateway_tcp_udp_route = 12;
     // A large item the agent fetches by hash with Control.FetchResource.
     ResourceReference reference = 15;
   }
@@ -133,6 +135,21 @@ message IPRule {
   bool allow = 1;
   // CIDRs; an IPv4-mapped IPv6 client matches the IPv4 ones.
   repeated string cidrs = 2;
+}
+
+// GatewayTCPUDPRoute is a tcp_udp route as a gateway serves it: a tcp route and a udp route on one
+// port number, both with the route's ID, which is the resource ID.
+message GatewayTCPUDPRoute {
+  // The public port, for TCP and for UDP.
+  uint32 port = 1;
+  // A TCP connection without traffic for this long is closed; 0 never.
+  uint32 idle_timeout_seconds = 2;
+  // A UDP flow without datagrams for this long ends.
+  uint32 flow_idle_timeout_seconds = 3;
+  // The connectors that serve the route, sorted.
+  repeated string connectors = 4;
+  // Who may connect and send.
+  RouteAccess access = 5;
 }
 
 // GatewayUDPRoute is a udp route as a gateway serves it.
@@ -256,7 +273,8 @@ enum TransportPolicy {
 
 // ConnectorRoute is a route as a connector serves it; the resource ID is the route's ID.
 message ConnectorRoute {
-  // The route's type: "tcp", "udp" or "tls_passthrough" in this version.
+  // The route's type: "http", "tcp", "udp", "tcp_udp" or "tls_passthrough"; a tcp_udp route takes
+  // TCP and UDP_FLOW streams.
   string type = 1;
   // Where the connector delivers the route's streams, by priority, then ID.
   repeated Target targets = 2;

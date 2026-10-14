@@ -151,13 +151,13 @@ export function RouteDetail() {
           </dd>
         </div>
       </dl>
-      {(r.spec.case === "tcp" || r.spec.case === "udp") && r.spec.value.port > 0 && hosts.data?.get(r.gatewayGroupId)?.length === 0 && (
+      {(r.spec.case === "tcp" || r.spec.case === "udp" || r.spec.case === "tcpUdp") && r.spec.value.port > 0 && hosts.data?.get(r.gatewayGroupId)?.length === 0 && (
         <p className="text-sm text-muted-foreground">
           {t("route.noHostname")}{" "}
           <Link to="/gateways/$groupId" params={{ groupId: r.gatewayGroupId }} className="underline">{t("route.setHostname")}</Link>
         </p>
       )}
-      {r.spec.case === "udp" && <p className="text-sm text-muted-foreground">{t("route.mtu")}</p>}
+      {(r.spec.case === "udp" || r.spec.case === "tcpUdp") && <p className="text-sm text-muted-foreground">{t("route.mtu")}</p>}
 
       {gatewayProblems.length > 0 && (
         <Card title={t("route.gatewaysTitle")}>

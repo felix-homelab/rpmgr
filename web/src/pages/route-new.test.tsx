@@ -92,6 +92,20 @@ describe("RouteNew", () => {
     expect(creates[0]!.route?.spec).toMatchObject({ case: "tcp", value: { port: 0 } });
   });
 
+  it("creates a TCP and UDP route with both idle timeouts, empty for their defaults", async () => {
+    const { creates } = page("/routes/new");
+    fireEvent.click(await screen.findByLabelText("TCP and UDP"));
+    await chooseGroup();
+    fireEvent.change(screen.getByLabelText("Name"), { target: { value: "dns" } });
+    fireEvent.change(screen.getByLabelText("Public port"), { target: { value: "53" } });
+    fireEvent.change(screen.getByLabelText("UDP flow idle timeout (seconds)"), { target: { value: "30" } });
+    expect((screen.getByLabelText("TCP idle timeout (seconds)") as HTMLInputElement).value).toBe("");
+    fireEvent.click(screen.getByRole("button", { name: "Create the route" }));
+    await waitFor(() => expect(creates).toHaveLength(1));
+    const spec = creates[0]!.route?.spec;
+    expect(spec?.case === "tcpUdp" && [spec.value.port, spec.value.idleTimeoutSeconds, spec.value.flowIdleTimeoutSeconds]).toEqual([53, undefined, 30]);
+  });
+
   it("sends no certificate ID once the route is back on ACME", async () => {
     const { creates } = page("/routes/new");
     await chooseGroup();

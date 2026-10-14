@@ -40,8 +40,9 @@ var routeDrain = 30 * time.Second
 // Route is a route as the connector serves it, from its snapshot.
 type Route struct {
 	ID string
-	// UDP routes take UDP_FLOW streams, every other route TCP streams.
-	UDP bool
+	// UDP routes take UDP_FLOW streams, tcp_udp routes (Both) both kinds, every other route TCP
+	// streams.
+	UDP, Both bool
 	// Targets are tried by priority, lowest first, and by weight within a priority.
 	Targets []Target
 }
@@ -333,9 +334,9 @@ func (t *Targets) open(ctx context.Context, open *tunnelv1.StreamOpen) (tunnelv1
 		return tunnelv1.ResultCode_RESULT_CODE_PROTOCOL, nil, ""
 	case !ok:
 		return tunnelv1.ResultCode_RESULT_CODE_ROUTE_UNKNOWN, nil, ""
-	case r.UDP != (kind == tunnelv1.StreamKind_STREAM_KIND_UDP_FLOW):
+	case !r.Both && r.UDP != (kind == tunnelv1.StreamKind_STREAM_KIND_UDP_FLOW):
 		return tunnelv1.ResultCode_RESULT_CODE_PROTOCOL, nil, ""
-	case r.UDP:
+	case kind == tunnelv1.StreamKind_STREAM_KIND_UDP_FLOW:
 		return t.dialUDP(ctx, r, open)
 	}
 	timeout := dialUpstream

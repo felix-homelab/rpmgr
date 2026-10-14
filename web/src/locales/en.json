@@ -212,6 +212,7 @@
     "http": "HTTP",
     "tcp": "TCP",
     "udp": "UDP",
+    "tcpUdp": "TCP and UDP",
     "tlsPassthrough": "TLS passthrough",
     "unknown": "unknown"
   },
@@ -329,7 +330,9 @@
       "maxBody": "Largest request body (bytes, 0 for no limit)",
       "port": "Public port",
       "idleTimeout": "Idle timeout (seconds)",
-      "flowIdleTimeout": "Flow idle timeout (seconds)"
+      "flowIdleTimeout": "Flow idle timeout (seconds)",
+      "tcpIdleTimeout": "TCP idle timeout (seconds)",
+      "udpFlowIdleTimeout": "UDP flow idle timeout (seconds)"
     },
     "hints": {
       "lines": "One per line.",

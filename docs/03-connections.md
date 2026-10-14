@@ -329,7 +329,8 @@ Rules:
     a port and a connector that serves it: the port, the idle timeout and the connectors that
     serve the route (enabled connectors with an enabled target on it); the gateway opens streams
     only to those. A route no connector serves is left out, so no gateway holds its port
-    ([D78](14-open-decisions.md#engineering)); the same holds for `udp` routes. A
+    ([D78](14-open-decisions.md#engineering)); the same holds for `udp` and `tcp_udp` routes. A
+    `tcp_udp` route comes as one resource, with its port, both idle timeouts and its connectors. A
     connector gets every enabled route with an enabled target on it: its targets, by priority,
     and the effective transport policy, the route's, else the connector's, else the instance
     default ([Transport selection](#transport-selection)). A gateway also gets the HTTP tokens of
@@ -629,6 +630,12 @@ sequenceDiagram
 - Over the TCP fallback (no datagrams), UDP payloads are always length-prefixed frames on the flow
   stream. This works, but loss on the TCP connection delays every UDP flow on it; the UI flags
   UDP routes served over the fallback.
+- A **`tcp_udp` route** is a tcp route and a udp route on one port number, with one list of
+  targets ([D83](14-open-decisions.md#engineering)). The gateway listens on the port with TCP and
+  with UDP: a connection becomes a TCP stream and a flow a `UDP_FLOW` stream, both with the route's
+  ID, and the connector takes both kinds for it, to the same target address. Its targets are
+  addresses and get no PROXY protocol header, as a udp route's. A port that one protocol cannot
+  bind makes the route `not_ready(port_in_use)` while the other protocol serves.
 
 ### HTTP routes
 

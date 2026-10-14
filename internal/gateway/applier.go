@@ -85,6 +85,8 @@ func accessOf(res *agentv1.Resource) *agentv1.RouteAccess {
 		return res.GetGatewayTcpRoute().GetAccess()
 	case res.GetGatewayUdpRoute() != nil:
 		return res.GetGatewayUdpRoute().GetAccess()
+	case res.GetGatewayTcpUdpRoute() != nil:
+		return res.GetGatewayTcpUdpRoute().GetAccess()
 	case res.GetGatewayPassthroughRoute() != nil:
 		return res.GetGatewayPassthroughRoute().GetAccess()
 	case res.GetGatewayHttpRoute() != nil:
@@ -197,6 +199,10 @@ func (a *Applier) Validate(snap *agentv1.Snapshot) []*agentv1.SnapshotError {
 		case res.GetGatewayUdpRoute() != nil:
 			port(id, "UDP", res.GetGatewayUdpRoute().GetPort())
 			connectors = res.GetGatewayUdpRoute().GetConnectors()
+		case res.GetGatewayTcpUdpRoute() != nil:
+			port(id, "TCP", res.GetGatewayTcpUdpRoute().GetPort())
+			port(id, "UDP", res.GetGatewayTcpUdpRoute().GetPort())
+			connectors = res.GetGatewayTcpUdpRoute().GetConnectors()
 		case res.GetGatewayCertificate() != nil:
 			c := res.GetGatewayCertificate()
 			if len(c.GetContentSha256()) != sha256.Size {
@@ -330,6 +336,14 @@ func (a *Applier) Apply(ctx context.Context, snap *agentv1.Snapshot, _ agent.Cha
 		case res.GetGatewayUdpRoute() != nil:
 			r := res.GetGatewayUdpRoute()
 			connectors = r.GetConnectors()
+			udp = append(udp, UDPRoute{ID: res.GetId(), Port: uint16(r.GetPort()), //nolint:gosec // G115: Validate bounds the port
+				FlowIdle: time.Duration(r.GetFlowIdleTimeoutSeconds()) * time.Second, Access: access})
+		case res.GetGatewayTcpUdpRoute() != nil:
+			// A tcp route and a udp route with the route's ID, on one port number.
+			r := res.GetGatewayTcpUdpRoute()
+			connectors = r.GetConnectors()
+			tcp = append(tcp, TCPRoute{ID: res.GetId(), Port: uint16(r.GetPort()), //nolint:gosec // G115: Validate bounds the port
+				IdleTimeout: time.Duration(r.GetIdleTimeoutSeconds()) * time.Second, Access: access})
 			udp = append(udp, UDPRoute{ID: res.GetId(), Port: uint16(r.GetPort()), //nolint:gosec // G115: Validate bounds the port
 				FlowIdle: time.Duration(r.GetFlowIdleTimeoutSeconds()) * time.Second, Access: access})
 		case res.GetGatewayHttpRoute() != nil:

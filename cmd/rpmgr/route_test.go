@@ -133,9 +133,17 @@ func TestCreateRoute(t *testing.T) {
 		!strings.Contains(errOut, "already exists") || a.created.GetRoute().GetTcp().GetIdleTimeoutSeconds() != 600 {
 		t.Fatalf("a taken port: %d %q", code, errOut)
 	}
+	if code, _, errOut := runWith(env, "", "create", "route", "--tcp-udp", "--name", "dns", "--group", "eu", "--port", "5353",
+		"--idle-timeout", "10m", "--flow-idle-timeout", "30s"); code != cli.ExitOK || a.created.GetRoute().GetTcpUdp().GetPort() != 5353 ||
+		a.created.GetRoute().GetTcpUdp().GetIdleTimeoutSeconds() != 600 || a.created.GetRoute().GetTcpUdp().GetFlowIdleTimeoutSeconds() != 30 {
+		t.Fatalf("a tcp_udp route: %d %q %v", code, errOut, a.created)
+	}
 	calls := a.calls
 	for name, args := range map[string][]string{
 		"no type":                {"--name", "x", "--group", "eu"},
+		"tcp-udp and udp":        {"--tcp-udp", "--udp", "--name", "x", "--group", "eu"},
+		"a flow idle on tcp":     {"--tcp", "--name", "x", "--group", "eu", "--flow-idle-timeout", "30s"},
+		"a zero flow idle":       {"--tcp-udp", "--name", "x", "--group", "eu", "--flow-idle-timeout", "0s"},
 		"two types":              {"--tcp", "--udp", "--name", "x", "--group", "eu"},
 		"a hostname on tcp":      {"--tcp", "--name", "x", "--group", "eu", "--hostname", "a.example.com"},
 		"a port on http":         {"--http", "--name", "x", "--group", "eu", "--hostname", "a.example.com", "--port", "80"},
