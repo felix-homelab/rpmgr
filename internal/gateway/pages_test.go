@@ -4,6 +4,7 @@ package gateway_test
 
 import (
 	"bufio"
+	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
@@ -36,8 +37,9 @@ func isPage(r reply, title string) bool {
 
 // TestPages_Errors: the errors the gateway makes itself, 503 without a ready connector (with
 // Retry-After and the route's HSTS), 502 for a refused upstream and 504 for a silent one, are the
-// service-unavailable page for a browser and text for other clients; the upstream's own errors
-// pass through unchanged, and so does the 413 of the body limit.
+// service-unavailable page for a browser and text for other clients, decided by the client's own
+// Host and Accept, not those the route sends upstream; the upstream's own errors pass through
+// unchanged, and so does the 413 of the body limit, announced or streamed.
 func TestPages_Errors(t *testing.T) {
 	gateway.SetHTTPTimers(t, time.Second, 300*time.Millisecond)
 	route := gateway.HTTPRoute{ID: "rt_web", Upstream: "http", HSTS: 600, MaxBody: 4, Hosts: []gateway.HTTPHost{{Hostname: "app.example.com"}}}
@@ -54,6 +56,21 @@ func TestPages_Errors(t *testing.T) {
 	if r := get(t, e.client(false), "https://app.example.com/", http.Header{"Accept": {"application/json"}}); r.status != http.StatusServiceUnavailable ||
 		r.body != "Service Unavailable\n" || r.header.Get("Retry-After") != "5" {
 		t.Errorf("no session, not a browser: %d %q", r.status, r.body)
+	}
+	// A route that rewrites Host and Accept towards the upstream: the page names the client's host
+	// and follows the client's Accept, never the internal name.
+	rewriting := route
+	rewriting.HostHeader = "nas.internal.lan:5000"
+	rewriting.RequestHeaders = []gateway.HTTPHeader{{Name: "Accept", Value: "application/json"}}
+	e = newHTTPEnvOn(t, idle, rewriting)
+	if r := get(t, e.client(false), "https://app.example.com/", browser); !isPage(r, "Service unavailable") ||
+		!strings.Contains(r.body, ">app.example.com</span>") || strings.Contains(r.body, "internal") {
+		t.Errorf("a rewritten Host and Accept: %d %s", r.status, r.body)
+	}
+	rewriting.RequestHeaders = []gateway.HTTPHeader{{Name: "Accept", Value: "text/html"}}
+	e = newHTTPEnvOn(t, idle, rewriting)
+	if r := get(t, e.client(false), "https://app.example.com/", http.Header{"Accept": {"application/json"}}); r.body != "Service Unavailable\n" {
+		t.Errorf("an Accept the route sets to text/html: %q", r.body)
 	}
 
 	closed, _ := net.Listen("tcp", "127.0.0.1:0")
@@ -75,7 +92,10 @@ func TestPages_Errors(t *testing.T) {
 	}
 
 	// The upstream's own 503 and the body limit's 413 are not the gateway's page.
-	e = newHTTPEnv(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	e = newHTTPEnv(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if _, err := io.ReadAll(r.Body); err != nil {
+			return
+		}
 		w.Header().Set("Content-Type", "text/html")
 		w.WriteHeader(http.StatusServiceUnavailable)
 		_, _ = io.WriteString(w, "<p>the upstream's own</p>")
@@ -84,20 +104,23 @@ func TestPages_Errors(t *testing.T) {
 		r.body != "<p>the upstream's own</p>" || r.header.Get("Content-Security-Policy") != "" {
 		t.Errorf("the upstream's 503: %d %q %v", r.status, r.body, r.header)
 	}
-	req, _ := http.NewRequest(http.MethodPost, "https://app.example.com/", strings.NewReader("too large"))
-	req.Header = browser.Clone()
-	resp, err := e.client(false).Do(req)
-	if err != nil {
-		t.Fatal(err)
-	}
-	_ = resp.Body.Close()
-	if resp.StatusCode != http.StatusRequestEntityTooLarge || !strings.HasPrefix(resp.Header.Get("Content-Type"), "text/plain") {
-		t.Errorf("413: %d %v", resp.StatusCode, resp.Header)
+	for _, body := range []io.Reader{strings.NewReader("too large"), io.MultiReader(strings.NewReader("too large"))} {
+		req, _ := http.NewRequest(http.MethodPost, "https://app.example.com/", body)
+		req.Header = browser.Clone()
+		resp, err := e.client(false).Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_ = resp.Body.Close()
+		if resp.StatusCode != http.StatusRequestEntityTooLarge || !strings.HasPrefix(resp.Header.Get("Content-Type"), "text/plain") {
+			t.Errorf("413, %T body: %d %v", body, resp.StatusCode, resp.Header)
+		}
 	}
 }
 
-// TestPages_NoRoute443: a name or path no route serves, on a connection of a routed name, is the
-// site-not-available page for a browser, without the route's HSTS, and the text for others.
+// TestPages_NoRoute443: a name or path no route serves, on a connection of its own name, is the
+// site-not-available page for a browser, without the route's HSTS, and the text for others; on a
+// connection of another name it is misdirected.
 func TestPages_NoRoute443(t *testing.T) {
 	e := newHTTPEnv(t, http.NotFoundHandler(), gateway.HTTPRoute{ID: "rt_web", Upstream: "http", HSTS: 600,
 		Hosts: []gateway.HTTPHost{{Hostname: "app.example.com", PathPrefix: "/app"}}})
@@ -109,6 +132,17 @@ func TestPages_NoRoute443(t *testing.T) {
 		if r := get(t, e.client(false), url, nil); r.status != http.StatusNotFound || r.body != "no route for this host and path\n" {
 			t.Errorf("%s, not a browser: %d %q", url, r.status, r.body)
 		}
+	}
+	c, err := tls.Dial("tcp", e.addr, &tls.Config{ServerName: "app.example.com", RootCAs: e.pool, MinVersion: tls.VersionTLS13})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = c.Close() }()
+	if rep := roundTrip(t, c, "other.example.com"); rep.status != http.StatusMisdirectedRequest {
+		t.Errorf("an unrouted name on a routed name's connection: %d", rep.status)
+	}
+	if rep := roundTrip(t, c, "app.example.com:443"); rep.status != http.StatusNotFound || !isPage(rep, "Site not available") {
+		t.Errorf("an unrouted path on its name's connection: %d", rep.status)
 	}
 }
 
@@ -191,8 +225,17 @@ func TestPages_Unrouted(t *testing.T) {
 	if rep := roundTrip(t, c, "FOO.example.com.:443"); rep.status != http.StatusNotFound {
 		t.Errorf("foo.example.com again: %d", rep.status)
 	}
-	if c, err := dial("foo.example.com", pool, "h2"); err != nil || c.ConnectionState().NegotiatedProtocol != "h2" {
-		t.Errorf("HTTP/2: %v", err)
+	h2 := &http.Transport{TLSClientConfig: &tls.Config{RootCAs: pool, MinVersion: tls.VersionTLS12},
+		DialContext: func(ctx context.Context, network, _ string) (net.Conn, error) {
+			var d net.Dialer
+			return d.DialContext(ctx, network, addr)
+		}}
+	h2.Protocols = new(http.Protocols)
+	h2.Protocols.SetHTTP2(true)
+	t.Cleanup(h2.CloseIdleConnections)
+	if rep := get(t, &http.Client{Transport: h2, Timeout: 10 * time.Second}, "https://foo.example.com/", browser); rep.proto != 2 ||
+		rep.status != http.StatusNotFound || !isPage(rep, "Site not available") {
+		t.Errorf("HTTP/2: HTTP/%d %d %v", rep.proto, rep.status, rep.header)
 	}
 
 	// A name nothing covers gets the default certificate, which a client refuses for it, as a
@@ -212,5 +255,37 @@ func TestPages_Unrouted(t *testing.T) {
 		if rep := roundTrip(t, c, "app.example.com"); rep.status != http.StatusMisdirectedRequest {
 			t.Errorf("app.example.com on %s's connection: %d", name, rep.status)
 		}
+	}
+}
+
+// TestPages_UnroutedSlowBody: an unrouted connection's request must arrive whole within the
+// header timeout, its body included, as nothing reads it; a client that stops sending is closed.
+func TestPages_UnroutedSlowBody(t *testing.T) {
+	gateway.SetHTTPTimers(t, 300*time.Millisecond, time.Minute)
+	certs, pool := routeCert(t, "*.example.com")
+	h := gateway.NewHTTPRoutes(gateway.HTTPOptions{Certificates: certs})
+	t.Cleanup(h.Close)
+	addr := serve(t, &gateway.Router{TrustDomain: td, GatewayID: "gw_01", Routes: fakeRoutes{}, Unrouted: h.ServeUnrouted,
+		UnroutedTLS: h.UnroutedTLSConfig()})
+	c, err := tls.Dial("tcp", addr, &tls.Config{ServerName: "foo.example.com", RootCAs: pool, MinVersion: tls.VersionTLS13})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = c.Close() }()
+	if _, err := io.WriteString(c, "POST / HTTP/1.1\r\nHost: foo.example.com\r\nContent-Length: 100\r\n\r\nabc"); err != nil {
+		t.Fatal(err)
+	}
+	// The server answers once it has given up reading the body.
+	_ = c.SetReadDeadline(time.Now().Add(5 * time.Second))
+	start := time.Now()
+	br := bufio.NewReader(c)
+	resp, err := http.ReadResponse(br, nil)
+	if err != nil {
+		t.Fatalf("after %v: %v", time.Since(start), err)
+	}
+	_, _ = io.Copy(io.Discard, resp.Body)
+	_ = resp.Body.Close()
+	if _, err := br.ReadByte(); !errors.Is(err, io.EOF) {
+		t.Fatalf("after %v: %v, want the gateway to close", time.Since(start), err)
 	}
 }

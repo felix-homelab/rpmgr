@@ -700,8 +700,11 @@ sequenceDiagram
 - **Routing.** A request goes to the route of its `Host` and the longest path prefix that matches
   at a segment boundary (`/api` matches `/api` and `/api/x`, not `/apix`). A hostname a route names
   exactly comes before a wildcard hostname one label up, which serves a name only if no route
-  names it. No match is **404**, with the site-not-available page. TLS is terminated with the
-  route certificate for the server name ([04](04-security.md#controller-certificates)).
+  names it. No match is **404**, with the site-not-available page, unless the request names
+  another host than the connection's server name and no route serves that host: then it is
+  **421**, so that a client that reused the connection, such as an HTTP/2 one under a wildcard
+  certificate, asks again on a connection of its own. TLS is terminated with the route
+  certificate for the server name ([04](04-security.md#controller-certificates)).
 - **HTTPS upstreams.** For an `https` target the gateway speaks TLS over the stream, end to end
   with the upstream, verified with the settings of the target the connector reached, which
   `StreamResult` names: the target's server name (its host by default), its CA bundle or else the
@@ -734,9 +737,10 @@ sequenceDiagram
   bare text, for a name or path no route serves ("Site not available", 404) and for the errors
   above ("Service unavailable"). A page is self-contained HTML in English: one inline style, which
   the `Content-Security-Policy` allows by its SHA-256 (`default-src 'none'`, no script, nothing
-  loaded from elsewhere), light and dark themes, the requested hostname as escaped text, and
-  `Cache-Control: no-store`. Only a client whose `Accept` names `text/html` gets it; any other,
-  such as curl or an API client, gets the plain text it got before. HEAD gets the headers alone.
+  loaded from elsewhere), light and dark themes, the hostname the client asked for as escaped
+  text, never one the route sends upstream, and `Cache-Control: no-store`. Only a client whose
+  own `Accept` names `text/html` gets it; any other, such as curl or an API client, gets the plain
+  text it got before. HEAD gets the headers alone.
   The pages are built in; pages of one's own per gateway group come in Phase 2
   ([05](05-features.md#http-features)).
 
@@ -1073,7 +1077,7 @@ sequenceDiagram
 | ClientHello peek | 16 KiB within 5 s | Slowloris protection |
 | `StreamOpen` → `StreamResult` | 10 s; upstream dial 5 s; a stream the connector opens brings its `StreamOpen` within the same 10 s | Bounded connection setup |
 | Forwarding to the controller (private controller, carried control sessions) | dial 5 s; no idle timeout, the control session's keepalive keeps it alive | An unreachable controller fails fast, so the agent tries its next endpoint |
-| HTTP server | header read 10 s; idle 120 s; upstream response header 60 s; no total write timeout | Long downloads and streaming must work |
+| HTTP server | header read 10 s; idle 120 s; upstream response header 60 s; no total write timeout; on a connection of a name no route serves, the whole request, body included, within 10 s | Long downloads and streaming must work; nothing reads the body of a request that only gets the 404 page |
 | Idle TCP route connection | 1 h (per route; 0 disables) | Reclaim half-open connections |
 | Idle UDP flow | 60 s (per route) | Typical UDP NAT behaviour |
 | Apply acknowledgement | 30 s → `apply_timeout` | Visible instead of silent |

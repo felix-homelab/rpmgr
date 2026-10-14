@@ -128,8 +128,8 @@ func TestCertificates_ForName(t *testing.T) {
 
 // TestCertificates_Covering: a name no route serves is covered by a certificate of the snapshot
 // whose own names cover it, a wildcard one label up included; among several, the valid one that
-// expires last; expired certificates, deeper names and certificates a later snapshot dropped
-// cover nothing.
+// expires last; expired certificates, ones not valid yet, ones not loaded, deeper names and
+// certificates a later snapshot dropped cover nothing.
 func TestCertificates_Covering(t *testing.T) {
 	now := time.Now()
 	f := &fakeFetch{}
@@ -142,14 +142,18 @@ func TestCertificates_Covering(t *testing.T) {
 	wildLater := mk("*.example.com", now.Add(-time.Hour), now.Add(48*time.Hour))
 	expired := mk("*.old.example.com", now.Add(-48*time.Hour), now.Add(-time.Hour))
 	exact := mk("exact.example.org", now.Add(-time.Hour), now.Add(time.Hour))
+	notYet := mk("*.soon.example.com", now.Add(time.Hour), now.Add(48*time.Hour))
+	_, unloaded := certItem(t, "*.lost.example.com", now.Add(-time.Hour), now.Add(48*time.Hour), false) // the fetch does not know it
 	c := gateway.NewCertificates(gateway.CertificatesOptions{Fetch: f.fetch})
 	routes := []gateway.CertificateRoute{
 		{ID: "crt_wild", ContentSHA256: wild, Hostnames: []string{"app.example.com"}},
 		{ID: "crt_later", ContentSHA256: wildLater, Hostnames: []string{"www.example.com"}},
 		{ID: "crt_expired", ContentSHA256: expired, Hostnames: []string{"x.old.example.com"}},
 		{ID: "crt_exact", ContentSHA256: exact, Hostnames: []string{"exact.example.org"}},
+		{ID: "crt_soon", ContentSHA256: notYet, Hostnames: []string{"a.soon.example.com"}},
+		{ID: "crt_lost", ContentSHA256: unloaded, Hostnames: []string{"a.lost.example.com"}},
 	}
-	if st := c.Apply(t.Context(), routes); len(st) != 0 {
+	if st := c.Apply(t.Context(), routes); len(st) != 1 || st[0].GetResourceId() != "crt_lost" {
 		t.Fatal(st)
 	}
 	notAfter := func(name string) time.Time {
@@ -170,13 +174,14 @@ func TestCertificates_Covering(t *testing.T) {
 	if c.Covering("exact.example.org") == nil {
 		t.Error("exact.example.org: not covered by its own certificate")
 	}
-	for _, name := range []string{"a.b.example.com", "example.com", "y.old.example.com", "www.example.org", "other.net", ""} {
+	for _, name := range []string{"a.b.example.com", "example.com", "y.old.example.com", "b.soon.example.com", "b.lost.example.com",
+		"www.example.org", "other.net", ""} {
 		if got := notAfter(name); !got.IsZero() {
 			t.Errorf("%q: covered by a certificate that expires at %v", name, got)
 		}
 	}
 	// A later snapshot without the certificate that expired last: the other wildcard covers.
-	if st := c.Apply(t.Context(), slices.Delete(slices.Clone(routes), 1, 2)); len(st) != 0 {
+	if st := c.Apply(t.Context(), slices.Delete(slices.Clone(routes), 1, 2)); len(st) != 1 {
 		t.Fatal(st)
 	}
 	if got := c.Covering("foo.example.com"); got == nil || got == later {

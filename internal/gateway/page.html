@@ -17,20 +17,13 @@ main{width:100%;max-width:36rem;background:var(--card);border:1px solid var(--li
 h1{margin:20px 0 12px;font-size:1.75rem;line-height:1.25;letter-spacing:-.01em}
 p{margin:0 0 12px;color:var(--muted)}
 .host{color:var(--text);font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:.95em;overflow-wrap:anywhere}
-.note{margin:20px 0 0;padding:14px 16px;border-left:3px solid var(--accent);border-radius:4px;background:var(--tint);color:var(--text);white-space:pre-wrap;overflow-wrap:anywhere}
 @media (max-width:480px){main{padding:28px 22px}h1{font-size:1.5rem}}
 </style>
 </head>
 <body>
 <main>
 <p class="status">{{.Status}} · {{.StatusText}}</p>
-{{- if eq .Kind "maintenance"}}
-<h1>{{.Title}}</h1>
-<p>The service at <span class="host">{{.Host}}</span> is undergoing maintenance and will be back soon.</p>
-{{- if .Message}}
-<p class="note">{{.Message}}</p>
-{{- end}}
-{{- else if eq .Kind "unavailable"}}
+{{- if eq .Kind "unavailable"}}
 <h1>{{.Title}}</h1>
 <p>The service at <span class="host">{{.Host}}</span> cannot be reached right now.</p>
 <p>Please try again in a few minutes.</p>

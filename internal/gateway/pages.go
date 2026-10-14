@@ -4,6 +4,7 @@ package gateway
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	_ "embed" // the page template
 	"encoding/base64"
@@ -50,8 +51,31 @@ const noRouteText = "no route for this host and path"
 
 // page is what the template shows.
 type page struct {
-	Kind, Title, StatusText, Host, Message string
-	Status                                 int
+	Kind, Title, StatusText, Host string
+	Status                        int
+}
+
+// pageRequest is what a page answers to: the client's host and whether it asked for HTML. The
+// proxy calls its error handler with the request it sent upstream, whose Host and headers the
+// route may have rewritten; proxy keeps the client's in the context.
+type pageRequest struct {
+	host string
+	html bool
+}
+
+type pageRequestKey struct{}
+
+// withPageRequest keeps r's own host and Accept in ctx for a page answered later.
+func withPageRequest(ctx context.Context, r *http.Request) context.Context {
+	return context.WithValue(ctx, pageRequestKey{}, pageRequest{host: r.Host, html: wantsHTML(r)})
+}
+
+// pageRequestOf is the client's host and Accept: those kept in r's context, or else r's own.
+func pageRequestOf(r *http.Request) pageRequest {
+	if p, ok := r.Context().Value(pageRequestKey{}).(pageRequest); ok {
+		return p
+	}
+	return pageRequest{host: r.Host, html: wantsHTML(r)}
 }
 
 // maxShownHost bounds the hostname a page repeats: a DNS name is at most 253 characters.
@@ -60,11 +84,12 @@ const maxShownHost = 253
 // writePage answers a request with one of the gateway's pages if the client asks for HTML, and with
 // text, as before the pages existed, if it does not.
 func writePage(w http.ResponseWriter, r *http.Request, status int, kind, text string) {
-	if !wantsHTML(r) {
+	client := pageRequestOf(r)
+	if !client.html {
 		http.Error(w, text, status)
 		return
 	}
-	host := hostOnly(r.Host)
+	host := hostOnly(client.host)
 	if len(host) > maxShownHost {
 		host = host[:maxShownHost]
 	}
@@ -107,10 +132,13 @@ func wantsHTML(r *http.Request) bool {
 	return false
 }
 
-// hostOnly returns a Host header without its port.
+// hostOnly returns a Host header without its port, and an IPv6 literal without its brackets.
 func hostOnly(host string) string {
 	if h, _, err := net.SplitHostPort(host); err == nil {
 		return h
+	}
+	if strings.HasPrefix(host, "[") && strings.HasSuffix(host, "]") {
+		return host[1 : len(host)-1]
 	}
 	return host
 }

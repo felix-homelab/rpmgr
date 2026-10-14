@@ -771,7 +771,7 @@ func TestHTTPRoutes_Port80(t *testing.T) {
 	h := gateway.NewHTTPRoutes(gateway.HTTPOptions{Sessions: p.sessions, Certificates: certs,
 		Challenges:    func(host, token string) (string, bool) { return token + ".thumbprint", token == "tok" && host != "" },
 		Fallback80:    http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { http.Error(w, "fallback", http.StatusTeapot) }),
-		FallbackNames: []string{"Panel.example.com."}})
+		FallbackNames: []string{"Panel.example.com.", "2001:db8::1"}})
 	t.Cleanup(h.Close)
 	e := &httpEnv{routes: h, addr: httpFront(t, h), pool: pool}
 	addr := e.serve80(t)
@@ -785,7 +785,7 @@ func TestHTTPRoutes_Port80(t *testing.T) {
 		r.header.Get("Location") != "https://app.example.com/form" {
 		t.Errorf("redirect of a POST: %v %v", r, err)
 	}
-	for _, host := range []string{"panel.example.com", "PANEL.example.com:80", "panel.example.com."} {
+	for _, host := range []string{"panel.example.com", "PANEL.example.com:80", "panel.example.com.", "[2001:db8::1]", "[2001:db8::1]:80"} {
 		if r, err := plain(t, addr, http.MethodGet, host, "/"); err != nil || r.status != http.StatusTeapot {
 			t.Errorf("the fallback's name %s without a route: %v %v", host, r, err)
 		}

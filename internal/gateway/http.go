@@ -281,8 +281,9 @@ func NewHTTPRoutes(o HTTPOptions) *HTTPRoutes {
 	go func() { _ = h.server.Serve(h.ln) }()
 	h.server80 = &http.Server{Handler: http.HandlerFunc(h.serve80), ReadHeaderTimeout: httpReadHeader, IdleTimeout: httpIdle,
 		ErrorLog: slog.NewLogLogger(o.Logger.Handler(), slog.LevelDebug)}
-	h.unrouted = &http.Server{Handler: http.HandlerFunc(h.serveUnrouted), ReadHeaderTimeout: httpReadHeader, IdleTimeout: httpIdle,
-		Protocols: protocols, ErrorLog: slog.NewLogLogger(o.Logger.Handler(), slog.LevelDebug)}
+	// Its requests' bodies are never read, so the whole request must arrive in time too.
+	h.unrouted = &http.Server{Handler: http.HandlerFunc(h.serveUnrouted), ReadHeaderTimeout: httpReadHeader, ReadTimeout: httpReadHeader,
+		IdleTimeout: httpIdle, Protocols: protocols, ErrorLog: slog.NewLogLogger(o.Logger.Handler(), slog.LevelDebug)}
 	go func() { _ = h.unrouted.Serve(h.lnNone) }()
 	return h
 }
@@ -805,6 +806,15 @@ func (h *HTTPRoutes) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	defer h.active.Add(-1)
 	rt := h.routeFor(r.Host, r.URL.Path)
 	if rt == nil {
+		// A name this gateway does not route, on a connection of another name: a client that
+		// reused the connection, such as an HTTP/2 one under a wildcard certificate, asks again
+		// on a connection of its own, which reaches the name's own handler (RFC 9110, section
+		// 15.5.20).
+		if host := strings.TrimSuffix(hostOnly(r.Host), "."); r.TLS != nil && r.TLS.ServerName != "" &&
+			!strings.EqualFold(strings.TrimSuffix(r.TLS.ServerName, "."), host) && !h.Serves(host) {
+			http.Error(w, http.StatusText(http.StatusMisdirectedRequest), http.StatusMisdirectedRequest)
+			return
+		}
 		writePage(w, r, http.StatusNotFound, pageNotFound, noRouteText)
 		return
 	}
@@ -856,7 +866,7 @@ func (h *HTTPRoutes) proxy(rw http.ResponseWriter, r *http.Request, rt *routeTra
 			return
 		}
 	}
-	ctx, cancel := context.WithCancel(r.Context())
+	ctx, cancel := context.WithCancel(withPageRequest(r.Context(), r))
 	defer cancel()
 	ar := &activeRequest{client: client, cancel: cancel}
 	rt.mu.Lock()
