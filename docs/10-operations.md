@@ -35,7 +35,9 @@ A Helm chart is Phase 3 ([13](13-roadmap.md#phase-3--advanced)).
 Architectures per role are in [05](05-features.md#platform-support).
 
 **One instance per role per host.** Paths, unit names and the admin port are fixed per role, so a
-host runs at most one controller (or all-in-one), one gateway and one connector.
+host runs at most one controller (or all-in-one), one gateway and one connector. An all-in-one runs
+a connector of its own, so a separate connector on its host is rarely needed; both would read
+`/etc/rpmgr/policy.yaml` unless the all-in-one's `policy_file` names another file.
 
 A first installation sets the host up with `rpmgr setup` ([16](16-cli.md)), as root, once the
 global install script has installed the binary, the user and the directories:
@@ -82,16 +84,19 @@ install -d -m 0750 -o rpmgr -g rpmgr /var/lib/rpmgr
   all-in-one it reads the boot file, and loads the KEK credential when the KEK is one.
 - **State directory:** `init` runs as root. It gives what it creates in the state directory to the
   directory's owner, the user `rpmgr` the installer gave it to, also when it fails: the database
-  and the files beside it, and on an all-in-one the gateway's identity. So the service, which runs
-  as `rpmgr`, starts without a `chown`.
+  and the files beside it, and on an all-in-one the gateway's and the connector's identities. So
+  the service, which runs as `rpmgr`, starts without a `chown`.
 
 `init` writes the boot file if it does not exist (from `--public-url` and, for a KEK file,
 `--kek-source file --kek-path`), creates the KEK, the database and its migrations, and in one
 transaction the trust domain, the database epoch, the CA with its signing keys, and the audit
 entry. It never overwrites a boot file or a KEK: an existing one is read and used, so `init` can run
 again after a failure, and it refuses a database that is already initialised or in use by a running
-controller. When the gateway's part of `all-in-one init` fails, it removes the database and what it
-created beside it, so the same `init` can run again once the cause is fixed. A new systemd credential is encrypted with `systemd-creds encrypt` into
+controller. When the agents' part of `all-in-one init` fails, the gateway's or the connector's, it
+removes the database and what it created beside it, so the same `init` can run again once the
+cause is fixed. `rpmgr all-in-one` enrolls its connector at start when its identity is missing,
+as on an all-in-one initialised before
+[ADR-0019](adr/0019-all-in-one-runs-a-connector.md). A new systemd credential is encrypted with `systemd-creds encrypt` into
 `/etc/rpmgr/credstore/<name>`; an existing one is readable only where systemd loads it, so `init`
 then has to run under `systemd-run --pipe --wait --property=LoadCredentialEncrypted=…`.
 
@@ -164,6 +169,10 @@ RestartSec=2s
   on change ([04](04-security.md#connector-local-policy)). Phase 3 features that need privileges (virtual networks with a kernel TUN device,
   shell) are documented with the exact additional unit settings when they ship; the userspace
   netstack variant needs none.
+- **All-in-one**: the controller's settings with `CAP_NET_BIND_SERVICE`, and the connector's
+  `ExecReload`: its own connector reads `policy.yaml`, and `rpmgr policy …` reloads
+  `rpmgr-all-in-one.service` on a host with an all-in-one boot file and no connector's
+  ([ADR-0019](adr/0019-all-in-one-runs-a-connector.md)).
 - **Updater** (every role): a root-owned pair `rpmgr-update.path` (watches `/var/lib/rpmgr/update/`)
   and oneshot `rpmgr-update.service` ([04](04-security.md#over-the-air-updates)). It:
   1. reads `auto_update` from `/etc/rpmgr/policy.yaml` **itself** and stops if updates are not
@@ -243,7 +252,7 @@ In Phase 1, CI only builds these targets; end-to-end tests on Windows and macOS 
 | Every role | 127.0.0.1:7381 (controller, all-in-one), 127.0.0.1:7382 (gateway), 127.0.0.1:7383 (connector) | TCP | Admin listener: `/metrics`, `/healthz`, `/readyz`, pprof (off unless enabled). One port per role, so roles on the same host never collide, and none is 9090, Prometheus's own port. If the default is taken, the installer picks the next free port and writes it to the boot file. The ports are registered in Prometheus's port registry once public code exists | Localhost by default; may be bound to a private interface for scrapers and load-balancer checks, **never** public: a boot file that binds it to all interfaces, a public address or a host name is refused |
 | Connector | — | — | No inbound ports. Outbound: 443/TCP+UDP to gateways, 443/TCP to the controller | — |
 | Connector | per `allow_listen` | TCP/UDP | Visitor listeners for private services | Local or LAN, as the policy allows |
-| All-in-one | 80, 443/TCP, 443/UDP, port pools, admin | | Gateway ports; the controller is reached through the gateway's SNI router in-process | Public (except admin) |
+| All-in-one | 80, 443/TCP, 443/UDP, port pools, admin | | Gateway ports; the controller is reached through the gateway's SNI router in-process; its connector opens no port and never dials these ([04](04-security.md#connector-local-policy)) | Public (except admin) |
 
 **Controller outbound connections.** The controller dials out only for these, all through
 `HTTPS_PROXY`/`ALL_PROXY` when set:
@@ -343,11 +352,13 @@ listen:
   udp: ":443"
   tunnel_udp: ""
   http: ":80"                 # the gateway's: http routes, and the controller's redirect for the rest
-  admin: "127.0.0.1:7381"     # reports the controller and the gateway
+  admin: "127.0.0.1:7381"     # reports the controller, the gateway and the connector
 database: { driver: sqlite, dsn: /var/lib/rpmgr/controller.db }
 kek: { source: systemd-credential, name: rpmgr-kek }
 tls: { cert_file: /etc/rpmgr/tls/panel.crt, key_file: /etc/rpmgr/tls/panel.key }   # optional
-state_dir: /var/lib/rpmgr     # the gateway's identity in gateway/identity, its state in gateway/
+state_dir: /var/lib/rpmgr     # the gateway's identity in gateway/identity, its state in gateway/;
+                              # the connector's in connector/identity and connector/
+policy_file: /etc/rpmgr/policy.yaml   # the connector's local policy (04)
 log: { level: info, format: json }
 ```
 
@@ -585,7 +596,12 @@ affect agents take effect through reconciliation and show apply status like any 
 ### Metrics
 
 Prometheus exposition on the admin listener of every role. Labels use stable IDs (`route` = route
-ID); there are never per-connection or per-client-IP labels.
+ID); there are never per-connection or per-client-IP labels. An all-in-one serves the metrics of
+all three roles on its one listener, and adds a `role` label (`gateway` or `connector`) to every
+series its gateway and its connector register: every metric of the table whose role is gateway,
+connector or agent, the Go runtime and process collectors excepted, which it registers once. The
+controller's series have no `role` label. The connector's in-memory data session to its own
+gateway counts as `transport="h2"` ([03](03-connections.md#transport-selection)).
 
 | Metric | Type | Role | Phase | Meaning |
 |---|---|---|---|---|

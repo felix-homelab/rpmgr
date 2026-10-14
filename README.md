@@ -51,7 +51,7 @@ flowchart LR
 |---|---|---|
 | **Gateway** | Takes the public traffic on ports 80 and 443, and on the TCP and UDP ports you publish, and passes it to the connectors | A server with a public IP address, such as a small VPS |
 | **Connector** | Dials out to the gateways and forwards each connection to your service | A Linux host in your private network that can reach the service |
-| **Controller** | Web UI, API, accounts, certificates and configuration; tells the gateways and connectors what to do | Usually on the gateway's server: the **all-in-one** runs controller and gateway in one process |
+| **Controller** | Web UI, API, accounts, certificates and configuration; tells the gateways and connectors what to do | Usually on the gateway's server: the **all-in-one** runs controller, gateway and a connector for the server's own services in one process |
 
 Visitor traffic goes from the gateway to the connector and on to your service; it never passes
 through the controller. If the controller is down, every tunnel keeps running on its last
@@ -164,6 +164,10 @@ service `rpmgr-all-in-one`, and waits until it is ready. The same without questi
 sudo rpmgr setup --role all-in-one --public-url https://panel.example.com \
   --acme-email you@example.com --yes
 ```
+
+Services on the server itself, such as containers next to rpmgr, go through the all-in-one's own
+connector, which reaches only the targets you allow, for example with `--allow-target
+127.0.0.1:8080`, or later with `sudo rpmgr policy allow-target 127.0.0.1:8080`.
 
 At the end, setup prints a one-time link, `https://panel.example.com/setup#…`. To try rpmgr out
 without using up Let's Encrypt's rate limits, add `--acme-directory staging`; browsers do not

@@ -659,6 +659,15 @@ Rules:
   metadata addresses (169.254.0.0/16, fe80::/10, `fd00:ec2::254/128`, `100.100.100.200/32`) are denied unless listed
   explicitly, by an entry no broader than the protected range; `0.0.0.0/0` without ports does not
   let them through.
+- **The all-in-one's own connector** ([ADR-0019](adr/0019-all-in-one-runs-a-connector.md)) reads
+  the policy at the all-in-one boot file's `policy_file`, `/etc/rpmgr/policy.yaml` by default, and
+  never dials one of rpmgr's own ports on an address of its host, whatever the policy allows: the
+  admin listener, the gateway's ports 443 (TCP and UDP), 80 and tunnel UDP, and the ports of the
+  gateway's tcp and udp routes. The host's addresses are loopback, the unspecified addresses and
+  the addresses of its interfaces, looked up again at most every 10 s. Such a target is
+  `not_ready(blocked_by_local_policy: 127.0.0.1:7381 is one of rpmgr's own ports)`, and the UI
+  offers no command for it. This keeps the metrics out of reach and routes from looping through
+  the gateway; the host's other loopback services are reachable as far as the policy allows.
 - A target the policy forbids does **not** reject the snapshot. The snapshot is applied, and the
   affected target reports `not_ready(blocked_by_local_policy: 10.0.0.5:5432)`; the UI shows the
   reason and the exact command to allow it: `sudo rpmgr policy allow-target 10.0.0.5:5432`. One
