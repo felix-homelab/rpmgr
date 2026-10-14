@@ -14,8 +14,9 @@ import { RouteSchema, RouteService, type Route } from "@/gen/rpmgr/v1/route_pb";
 import { usePolicies } from "@/pages/policies";
 import type { Written } from "@/route-form/target-form";
 
-// RoutePolicies shows the access policies a route applies, in order, and changes them: added,
-// removed and moved, then saved as the route as read with the mask policy_ids and its etag (U1).
+// RoutePolicies shows the access policies a route applies and changes them: added and removed,
+// then saved as the route as read with the mask policy_ids and its etag (U1). Their order does not
+// matter, as a deny rule of any of them wins (D85).
 export function RoutePolicies({ orgId, route: r, onDone }: { orgId: string; route: Route; onDone: (w: Written) => void }) {
   const { t } = useTranslation();
   const policies = usePolicies(orgId);
@@ -26,11 +27,6 @@ export function RoutePolicies({ orgId, route: r, onDone }: { orgId: string; rout
   const [error, setError] = useState("");
   const name = (id: string) => policies.data?.find((p) => p.id === id)?.name ?? id;
   const changed = ids.join() !== r.policyIds.join();
-  const move = (i: number, by: number) => {
-    const next = [...ids];
-    [next[i], next[i + by]] = [next[i + by]!, next[i]!];
-    setIds(next);
-  };
   async function save() {
     setError("");
     const next = clone(RouteSchema, r);
@@ -45,18 +41,16 @@ export function RoutePolicies({ orgId, route: r, onDone }: { orgId: string; rout
     }
   }
   return (
-    <Card title={t("routePolicies.title")}>
+    <Card title={t("routePolicies.title")} description={ids.length > 1 && t("routePolicies.denyWins")}>
       {ids.length === 0 ? <p className="text-sm text-muted-foreground">{t("routePolicies.none")}</p> : (
-        <ol className="grid divide-y divide-border rounded-lg border border-border text-sm">
-          {ids.map((id, i) => (
+        <ul className="grid divide-y divide-border rounded-lg border border-border text-sm">
+          {ids.map((id) => (
             <li key={id} className="flex flex-wrap items-center gap-2 px-3 py-2">
-              <span className="mr-auto font-medium">{i + 1}. {name(id)}</span>
-              <Button size="sm" variant="outline" disabled={i === 0} onClick={() => move(i, -1)}>{t("policies.up")}</Button>
-              <Button size="sm" variant="outline" disabled={i === ids.length - 1} onClick={() => move(i, 1)}>{t("policies.down")}</Button>
+              <span className="mr-auto font-medium">{name(id)}</span>
               <Button size="sm" variant="outline" onClick={() => setIds(ids.filter((x) => x !== id))}>{t("routePolicies.detach")}</Button>
             </li>
           ))}
-        </ol>
+        </ul>
       )}
       <div className="flex flex-wrap items-end gap-2">
         <label className="grid gap-1.5 text-sm font-medium">

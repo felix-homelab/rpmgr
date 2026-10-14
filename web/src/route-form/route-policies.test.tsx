@@ -33,19 +33,20 @@ function page() {
 }
 
 describe("RoutePolicies", () => {
-  it("attaches, detaches and reorders the route's policies, then saves them as one change", async () => {
+  it("attaches and detaches the route's policies, with no order to set (D85), then saves them as one change", async () => {
     const updates = page();
     const s = within(await screen.findByRole("region", { name: "Access policies" }));
-    await waitFor(() => expect(s.getAllByRole("listitem").map((li) => li.querySelector("span")?.textContent)).toEqual(["1. office", "2. admins"]));
+    await waitFor(() => expect(s.getAllByRole("listitem").map((li) => li.querySelector("span")?.textContent)).toEqual(["office", "admins"]));
+    expect(s.getByText("A deny rule of any policy wins over every allow rule.")).toBeTruthy();
+    expect(s.queryByRole("button", { name: "Up" })).toBeNull();
     expect(s.getByRole("button", { name: "Save" })).toHaveProperty("disabled", true);
     fireEvent.change(s.getByLabelText("Add a policy"), { target: { value: "pol_c" } });
     fireEvent.click(s.getByRole("button", { name: "Attach" }));
     fireEvent.click(within(s.getAllByRole("listitem")[0]!).getByRole("button", { name: "Detach" }));
-    fireEvent.click(within(s.getAllByRole("listitem")[1]!).getByRole("button", { name: "Up" }));
-    expect(s.getAllByRole("listitem").map((li) => li.querySelector("span")?.textContent)).toEqual(["1. lab", "2. admins"]);
+    expect(s.getAllByRole("listitem").map((li) => li.querySelector("span")?.textContent)).toEqual(["admins", "lab"]);
     fireEvent.click(s.getByRole("button", { name: "Save" }));
     expect(await screen.findByText("Revision 41: applied by all 1 agents.")).toBeTruthy();
-    const want = create(RouteSchema, { ...route, policyIds: ["pol_c", "pol_b"] });
+    const want = create(RouteSchema, { ...route, policyIds: ["pol_b", "pol_c"] });
     expect(equals(RouteSchema, updates[0]!.route!, want)).toBe(true);
     expect([updates[0]!.updateMask?.paths, updates[0]!.etag]).toEqual([["policy_ids"], "7"]);
   });

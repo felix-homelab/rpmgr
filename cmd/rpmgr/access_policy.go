@@ -55,7 +55,7 @@ func (f *policyFlags) register(fs *flag.FlagSet, update bool) {
 	f.fs = fs
 	fs.StringVar(&f.name, "name", "", "the policy's name, unique in the org")
 	fs.StringVar(&f.description, "description", "", "a description for people")
-	fs.Var(&f.rules, "rule", "a rule: allow:<cidr>,…, deny:<cidr>,… or basic-auth:<user>,…; repeat for more, applied in the order given")
+	fs.Var(&f.rules, "rule", "a rule: allow:<cidr>,…, deny:<cidr>,… or basic-auth:<user>,…; repeat for more; a deny wins over every allow")
 	fs.StringVar(&f.passwords, "passwords-file", "", "a file of user:password lines for the basic-auth users; the others are asked for")
 	fs.DurationVar(&f.wait, "wait", 0, "wait up to this long, at most 30s, for the agents to apply the change")
 	if update {
@@ -158,7 +158,7 @@ func accessPolicyCommands() (create, update *cli.Command) {
 	}
 	var cf, uf policyFlags
 	create = &cli.Command{
-		Name: "access-policy", Summary: "create an access policy of IP rules and basic auth, applied in order",
+		Name: "access-policy", Summary: "create an access policy of IP rules, where a deny wins, and basic auth",
 		Flags: func(fs *flag.FlagSet) { cf.register(fs, false) },
 		Run: func(ctx context.Context, env *cli.Env, args []string) error {
 			if len(args) > 0 {

@@ -34,7 +34,7 @@ type AccessPolicy struct {
 	Name string `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
 	// A description for people.
 	Description string `protobuf:"bytes,3,opt,name=description,proto3" json:"description,omitempty"`
-	// Its rules, applied in order.
+	// Its rules, kept in the order given; for IP rules the order does not matter, as a deny wins.
 	Rules []*AccessRule `protobuf:"bytes,4,rep,name=rules,proto3" json:"rules,omitempty"`
 	// The routes that apply it; output only.
 	RouteIds []string `protobuf:"bytes,5,rep,name=route_ids,json=routeIds,proto3" json:"route_ids,omitempty"`

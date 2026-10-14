@@ -189,7 +189,7 @@ func testseedCommand() *cli.Command {
 		}),
 		verb("access", "set the IP rules of a route's own access policy", func(fs *flag.FlagSet) {
 			fs.StringVar(&name, "route", "", "route name")
-			fs.Var(&rules, "rule", "allow=<cidr>[,<cidr>] or deny=<cidr>[,<cidr>], in order (repeatable); none clears them")
+			fs.Var(&rules, "rule", "allow=<cidr>[,<cidr>] or deny=<cidr>[,<cidr>]; a deny wins (repeatable); none clears them")
 		}, func(s *testseed.Seeder, _ *cli.Env) error {
 			var rs []testseed.IPRule
 			for _, r := range rules {
