@@ -201,6 +201,25 @@ describe("targets", () => {
       .toEqual([UpstreamProtocol.HTTPS, UpstreamVerification.PINNED_KEY, pin, "", "pve.local"]);
   });
 
+  it("drops a certificate it read once the form names another target, so another target's key is never pinned", async () => {
+    const pin = "cd".repeat(32);
+    const { probes } = detail({ case: "http", value: { hostnames: ["app.example.com"] } }, [target], () => ({
+      certificate: { spkiSha256: pin, subject: "CN=pve.local", issuer: "CN=pve.local", dnsNames: ["pve.local"], selfSigned: true },
+    }));
+    fireEvent.click(await screen.findByRole("button", { name: "Edit…" }));
+    const f = await form("Edit target");
+    fireEvent.change(f.getByLabelText("Protocol to the target"), { target: { value: PINNED } });
+    const key = await f.findByLabelText("Pinned public key, SHA-256 in hex");
+    for (const [label, value] of [["Host", "10.0.0.6"], ["Port", "8443"], ["TLS server name", "other.local"]] as const) {
+      fireEvent.click(f.getByRole("button", { name: "Trust the certificate it shows now" }));
+      await f.findByRole("region", { name: "The certificate the target shows" });
+      fireEvent.change(f.getByLabelText(label), { target: { value } });
+      await waitFor(() => expect(f.queryByRole("region", { name: "The certificate the target shows" })).toBeNull());
+    }
+    expect(probes).toHaveLength(3);
+    expect((key as HTMLInputElement).value).toBe("");
+  });
+
   it("says why no certificate was read, and asks for a connector and an address first", async () => {
     const { probes } = detail({ case: "http", value: { hostnames: ["app.example.com"] } }, [target], () => {
       throw new ConnectError("apisvc: the connector read no certificate: the connector's local policy does not allow 10.0.0.5:8080", Code.FailedPrecondition);

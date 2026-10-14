@@ -55,8 +55,11 @@ func (r *Routes) ProbeTargetCertificate(ctx context.Context, req *connect.Reques
 	if err != nil {
 		return nil, storeError(err)
 	}
-	if con.DecommissionedAt != nil {
+	switch {
+	case con.DecommissionedAt != nil:
 		return nil, connect.NewError(connect.CodeFailedPrecondition, errors.New("apisvc: the connector is decommissioned"))
+	case !con.Enabled: // switched off, it dials nothing (D81)
+		return nil, connect.NewError(connect.CodeFailedPrecondition, errors.New("apisvc: the connector is disabled"))
 	}
 	p := &agentv1.ProbeTarget{ServerName: m.GetServerName()}
 	if hp := m.GetHostPort(); hp != nil {

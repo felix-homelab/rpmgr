@@ -105,6 +105,7 @@ type Targets struct {
 	draining map[string]drainingRoute
 	health   map[string]*tunnelv1.RouteHealth
 	live     map[net.Conn]struct{} // the relayed target connections, which a stricter policy closes
+	probes   chan struct{}         // the certificate probes running, at most maxProbes
 }
 
 type drainingRoute struct {
@@ -121,7 +122,7 @@ func NewTargets(o TargetsOptions) *Targets {
 		o.UDPMetrics, _ = tunnel.NewUDPMetrics(nil)
 	}
 	return &Targets{o: o, routes: map[string]Route{}, draining: map[string]drainingRoute{}, health: map[string]*tunnelv1.RouteHealth{},
-		live: map[net.Conn]struct{}{}}
+		live: map[net.Conn]struct{}{}, probes: make(chan struct{}, maxProbes)}
 }
 
 // Set makes routes the snapshot's routes. A route no longer among them is reported not ready at

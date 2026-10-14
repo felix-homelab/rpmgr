@@ -250,8 +250,6 @@ enum GoodbyeReason {
   GOODBYE_REASON_OVERLOADED = 5;
 }
 
-// AcmeChallenge adds or removes a challenge a gateway answers (docs/03-connections.md, "Service
-// sketch").
 // ProbeTarget asks a connector for the certificate a target presents, for a key pin
 // (docs/03-connections.md, "Service sketch"): the connector dials the target under its
 // local policy, completes a TLS handshake that checks nothing, sends nothing else, and closes.
@@ -269,6 +267,8 @@ message ProbeTarget {
   string server_name = 4;
 }
 
+// AcmeChallenge adds or removes a challenge a gateway answers (docs/03-connections.md, "Service
+// sketch").
 message AcmeChallenge {
   // The operation, acknowledged with OpResult.
   string op_id = 1;

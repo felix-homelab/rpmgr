@@ -82,13 +82,14 @@ func selfSigned(t *testing.T, name string, ip net.IP) ([]byte, string) {
 // TestProbeTargetCertificate: a connector of the org reads the certificate a target presents,
 // which comes back with its key pin, names, issuer and validity. A host name is sent as the server
 // name unless another one is given; an IP address is not. A connector without a session here, of
-// an older version, one whose probe fails or does not answer in time, a decommissioned one, another
-// org's, and a certificate that does not parse are refused, and a Viewer may not probe.
+// an older version, one whose probe fails or does not answer in time, a decommissioned or disabled
+// one, another org's, and a certificate that does not parse are refused, and a Viewer may not probe.
 func TestProbeTargetCertificate(t *testing.T) {
 	e, ada, org, _ := gatewayEnv(t)
 	ctx := context.Background()
 	con := e.addConnector(t, org, "nas", nil).ID
 	gone := e.addConnector(t, org, "old", func(c *ent.ConnectorCreate) { c.SetDecommissionedAt(e.clock) }).ID
+	off := e.addConnector(t, org, "off", func(c *ent.ConnectorCreate) { c.SetEnabled(false) }).ID
 	theirs := e.addConnector(t, storetest.Org(t, e.db, "org-b"), "theirs", nil).ID
 	der, pin := selfSigned(t, "pve.local", net.ParseIP("10.0.0.5"))
 	probe := func(b *browser, req *rpmgrv1.ProbeTargetCertificateRequest) (*rpmgrv1.TargetCertificate, error) {
@@ -152,6 +153,7 @@ func TestProbeTargetCertificate(t *testing.T) {
 		"another error":     {err: errors.New("boom"), code: connect.CodeInternal},
 		"no certificate":    {der: []byte("not DER"), code: connect.CodeFailedPrecondition, text: "does not parse"},
 		"decommissioned":    {der: der, req: at(gone, "pve.local", 8006, ""), code: connect.CodeFailedPrecondition, text: "decommissioned"},
+		"disabled":          {der: der, req: at(off, "pve.local", 8006, ""), code: connect.CodeFailedPrecondition, text: "disabled"},
 		"another org's":     {der: der, req: at(theirs, "pve.local", 8006, ""), code: connect.CodeNotFound},
 		"no address":        {der: der, req: &rpmgrv1.ProbeTargetCertificateRequest{ConnectorId: con}, code: connect.CodeInvalidArgument},
 		"a relative socket": {der: der, req: &rpmgrv1.ProbeTargetCertificateRequest{ConnectorId: con,

@@ -307,8 +307,9 @@ later.
   ([ADR-0017](adr/0017-upstream-tls-verification-modes.md)) and the connector's `readCertificate`
   of `internal/connector/probe.go` ([ADR-0018](adr/0018-pin-the-key-a-target-presents.md)).
   `tools/bannedapi` allows them in those functions of the rpmgr module and nowhere else, a module
-  nested in the repository included. golangci skips only its one finding in each of those two
-  files, where `tools/bannedapi` still reports any other use.
+  nested in the repository included. golangci skips forbidigo's findings in `upstreamtls.go` and
+  gosec's G402 finding in `probe.go` (forbidigo does not see the field there); in both files
+  `tools/bannedapi` still reports any other use.
 - **Route certificates on gateways** [R]: a gateway keeps each fetched chain and key in its state
   directory, readable by the gateway's user only, as any TLS server keeps its keys, so that a
   gateway restarted while the controller is unreachable still terminates TLS. It checks a kept copy

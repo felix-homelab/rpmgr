@@ -4,6 +4,7 @@ package connector_test
 
 import (
 	"bytes"
+	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
@@ -143,5 +144,57 @@ func TestTargets_Probe(t *testing.T) {
 		if d := time.Since(start); d > 2*time.Second {
 			t.Errorf("%s: took %v", name, d)
 		}
+	}
+}
+
+// TestTargets_ProbeLimit: a connector runs at most four probes at once; a fifth is refused at once,
+// and once one ends, a probe runs again.
+func TestTargets_ProbeLimit(t *testing.T) {
+	connector.SetProbeTimeout(t, 5*time.Second)
+	silent, err := net.Listen("tcp", "127.0.0.1:0") // accepts and holds connections, never answers
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = silent.Close() })
+	var accepted atomic.Int32
+	go func() {
+		for {
+			c, err := silent.Accept()
+			if err != nil {
+				return
+			}
+			t.Cleanup(func() { _ = c.Close() })
+			accepted.Add(1)
+		}
+	}()
+	allow := policyOf(t, fmt.Sprintf("allow_targets:\n  - cidr: 127.0.0.0/8\n    ports: [%d]\n", silent.Addr().(*net.TCPAddr).Port))
+	tg := connector.NewTargets(connector.TargetsOptions{Policy: func() *policy.Policy { return allow }})
+	probe := func(ctx context.Context) error {
+		_, err := tg.Probe(ctx, &agentv1.ProbeTarget{Address: &agentv1.ProbeTarget_HostPort{HostPort: silent.Addr().String()}})
+		return err
+	}
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	running := make(chan error, 4)
+	for range 4 {
+		go func() { running <- probe(ctx) }()
+	}
+	for deadline := time.Now().Add(2 * time.Second); accepted.Load() < 4; time.Sleep(5 * time.Millisecond) {
+		if time.Now().After(deadline) {
+			t.Fatalf("%d probes reached the target", accepted.Load())
+		}
+	}
+	start := time.Now()
+	if err := probe(t.Context()); err == nil || !strings.Contains(err.Error(), "runs 4 probes already") || time.Since(start) > time.Second {
+		t.Fatalf("a fifth probe while four ran: %v after %v", err, time.Since(start))
+	}
+	cancel()
+	for range 4 {
+		<-running
+	}
+	short, stop := context.WithTimeout(t.Context(), 200*time.Millisecond)
+	defer stop()
+	if err := probe(short); err == nil || strings.Contains(err.Error(), "probes already") || accepted.Load() != 5 {
+		t.Fatalf("a probe after the others ended: %v, %d connections", err, accepted.Load())
 	}
 }

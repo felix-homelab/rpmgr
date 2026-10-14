@@ -1465,8 +1465,6 @@ func (x *Goodbye) GetRetryAfter() *durationpb.Duration {
 	return nil
 }
 
-// AcmeChallenge adds or removes a challenge a gateway answers (docs/03-connections.md, "Service
-// sketch").
 // ProbeTarget asks a connector for the certificate a target presents, for a key pin
 // (docs/03-connections.md, "Service sketch"): the connector dials the target under its
 // local policy, completes a TLS handshake that checks nothing, sends nothing else, and closes.
@@ -1574,6 +1572,8 @@ func (*ProbeTarget_HostPort) isProbeTarget_Address() {}
 
 func (*ProbeTarget_UnixPath) isProbeTarget_Address() {}
 
+// AcmeChallenge adds or removes a challenge a gateway answers (docs/03-connections.md, "Service
+// sketch").
 type AcmeChallenge struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// The operation, acknowledged with OpResult.

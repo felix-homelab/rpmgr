@@ -18,10 +18,20 @@ import (
 // (docs/03-connections.md, "Timeouts, keepalive and backoff"); a variable for tests.
 var probeTimeout = 10 * time.Second
 
+// maxProbes is how many certificate probes a connector runs at once; another is refused at once
+// (docs/03-connections.md, "Timeouts, keepalive and backoff").
+const maxProbes = 4
+
 // Probe reads the leaf certificate a target presents, for a key pin (ADR-0018): it dials the
 // target under the local policy, as a stream does, completes a TLS handshake that checks nothing,
 // sends nothing else and closes the connection.
 func (t *Targets) Probe(ctx context.Context, p *agentv1.ProbeTarget) ([]byte, error) {
+	select {
+	case t.probes <- struct{}{}:
+		defer func() { <-t.probes }()
+	default:
+		return nil, fmt.Errorf("the connector runs %d probes already; try again shortly", maxProbes)
+	}
 	ctx, cancel := context.WithTimeout(ctx, probeTimeout)
 	defer cancel()
 	network, address := "tcp", p.GetHostPort()
@@ -46,8 +56,8 @@ func (t *Targets) Probe(ctx context.Context, p *agentv1.ProbeTarget) ([]byte, er
 
 // readCertificate completes a TLS handshake on conn and returns the leaf the peer presented. It
 // checks nothing, so that a self-signed certificate can be read, and sends nothing after the
-// handshake; tools/bannedapi and .golangci.yml allow InsecureSkipVerify here and in the gateway's
-// UpstreamTLS.config alone (ADR-0018).
+// handshake; tools/bannedapi allows InsecureSkipVerify here and in the gateway's
+// UpstreamTLS.config alone, and .golangci.yml lets gosec skip its one finding here (ADR-0018).
 func readCertificate(ctx context.Context, conn net.Conn, serverName string) ([]byte, error) {
 	tc := tls.Client(conn, &tls.Config{MinVersion: tls.VersionTLS12, ServerName: serverName, InsecureSkipVerify: true})
 	if err := tc.HandshakeContext(ctx); err != nil {

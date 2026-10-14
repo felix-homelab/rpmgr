@@ -229,12 +229,18 @@ export function TargetForm({ route, target, connectors, onDone, onCancel }: {
 }
 
 // TrustCertificate reads the certificate the target in the form presents, through its connector,
-// shows it, and pins its key once the user trusts it (D82); the target need not be saved yet.
+// shows it, and pins its key once the user trusts it (D82); the target need not be saved yet. A
+// certificate shows only while the form still names the target it was read from, so that another
+// target's key is never pinned.
 function TrustCertificate({ form, connector }: { form: UseFormReturn<TargetValues>; connector: string }) {
   const { t } = useTranslation();
   const probe = useMutation(RouteService.method.probeTargetCertificate);
-  const [cert, setCert] = useState<TargetCertificate>();
+  const [shown, setShown] = useState<{ cert: TargetCertificate; of: string }>();
   const [error, setError] = useState<string>();
+  const watched = useWatch({ control: form.control, name: ["connector", "address", "host", "port", "unixPath", "serverName"] });
+  const of = [connector, ...watched.map((w) => String(w ?? "").trim())].join("\n");
+  const cert = shown?.of === of ? shown.cert : undefined;
+  const setCert = (c?: TargetCertificate) => setShown(c && { cert: c, of });
   async function read() {
     const v = form.getValues();
     setError(undefined);
