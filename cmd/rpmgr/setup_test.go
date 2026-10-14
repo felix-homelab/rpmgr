@@ -13,6 +13,7 @@ import (
 
 	"github.com/felix-homelab/rpmgr/internal/agent"
 	"github.com/felix-homelab/rpmgr/internal/cli"
+	"github.com/felix-homelab/rpmgr/internal/policy"
 	"github.com/felix-homelab/rpmgr/internal/setup"
 	"github.com/felix-homelab/rpmgr/internal/token"
 )
@@ -172,6 +173,8 @@ func TestSetup_Form(t *testing.T) {
 		"",                               // KEK file: the default
 		"2",                              // ACME CA: staging
 		"ops@example.com",                // ACME e-mail
+		"127.0.0.1:8080 10.0.0.0/24",     // the connector's allowed targets
+		"10.0.0.9",                       // and denied ones
 		"", "", "off", "127.0.0.1:17381", // listen.tcp, udp, http, admin
 		"",  // install the unit: yes
 		"y", // run it
@@ -183,16 +186,23 @@ func TestSetup_Form(t *testing.T) {
 	if strings.Contains(out, "\x1b[") {
 		t.Errorf("plain prompts with styles:\n%q", out)
 	}
-	for _, want := range []string{"all-in-one: controller and gateway in one process", "want https://", "back the KEK up apart from the database",
-		"Steps:", "→ make a self-signed certificate for panel.example.com", "→ set the instance's ACME directory", "CA pin:       sha256:"} {
+	for _, want := range []string{"all-in-one: controller, gateway and connector in one process", "want https://", "back the KEK up apart from the database",
+		"Steps:", "→ make a self-signed certificate for panel.example.com", "→ set the instance's ACME directory", "CA pin:       sha256:",
+		"enroll its gateway and connector", "→ allow 2 and deny 1 target(s) in the connector-local policy", "allowed targets: 127.0.0.1:8080, 10.0.0.0/24",
+		"connector:    con_", "rpmgr policy allow-target"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("no %q in\n%s", want, out)
 		}
 	}
+	policyFile := filepath.Join(f.root, "etc", "policy.yaml")
 	boot, err := os.ReadFile(filepath.Join(f.root, "etc", "all-in-one.yaml"))
 	if err != nil || !strings.Contains(string(boot), "source: file") || !strings.Contains(string(boot), `http: ""`) ||
-		!strings.Contains(string(boot), "admin: 127.0.0.1:17381") {
+		!strings.Contains(string(boot), "admin: 127.0.0.1:17381") || !strings.Contains(string(boot), "policy_file: "+policyFile) {
 		t.Errorf("boot file %q %v", boot, err)
+	}
+	p, err := policy.Load(policyFile)
+	if err != nil || p.Check("127.0.0.1:8080") != nil || p.Check("10.0.0.5:22") != nil || p.Check("10.0.0.9:22") == nil {
+		t.Errorf("the connector's policy: %v", err)
 	}
 }
 

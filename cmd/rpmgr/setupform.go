@@ -98,7 +98,8 @@ func (f *setupForm) values(v *setup.Values) error {
 	return nil
 }
 
-// controller asks a controller's or all-in-one's public URL, KEK, certificate and ACME CA.
+// controller asks a controller's or all-in-one's public URL, KEK, certificate and ACME CA, and an
+// all-in-one's connector targets.
 func (f *setupForm) controller(v *setup.Values) error {
 	if err := f.ask(huh.NewInput().Title("Public URL: https://<host>[:<port>] of the web UI, the API and the agents").
 		Placeholder("https://rpmgr.example.com").Validate(keep(v.PublicURL, setup.CheckPublicURL)).Value(&v.PublicURL)); err != nil {
@@ -155,13 +156,31 @@ func (f *setupForm) controller(v *setup.Values) error {
 	more = append(more, huh.NewSelect[string]().Title("ACME CA of the instance, for the public URL and the routes").
 		Options(directories...).Value(&directory),
 		huh.NewInput().Title("ACME account e-mail address (optional)").Validate(setup.CheckEmail).Value(&v.ACMEEmail))
+	targets, denied := strings.Join(v.AllowTargets, " "), strings.Join(v.DenyTargets, " ")
+	if v.Role == setup.AllInOne {
+		more = append(more, huh.NewNote().Title("Its connector").Description("The all-in-one's own connector reaches services on this "+
+			"host, such as containers, but only the targets its local policy allows; rpmgr's own ports never."))
+		more = append(more, targetFields(&targets, &denied)...)
+	}
 	if err := f.ask(more...); err != nil {
 		return err
 	}
 	if directory != "production" || v.ACMEDirectory != "" {
 		v.ACMEDirectory = directory
 	}
+	v.AllowTargets, v.DenyTargets = strings.Fields(targets), strings.Fields(denied)
 	return nil
+}
+
+// targetFields ask a connector's allowed and denied targets, separated by spaces.
+func targetFields(targets, denied *string) []huh.Field {
+	return []huh.Field{
+		huh.NewInput().Title("Allowed targets, separated by spaces (optional)").
+			Description("10.0.0.5:5432, 10.0.0.0/16 (all ports), 127.0.0.1:200-500, [fd00::1]:443 or /run/app.sock").
+			Validate(func(s string) error { return checkEach(s, setup.CheckTarget) }).Value(targets),
+		huh.NewInput().Title("Denied targets, which win over allowed ones (optional)").Placeholder("127.0.0.1:345").
+			Validate(func(s string) error { return checkEach(s, setup.CheckTarget) }).Value(denied),
+	}
 }
 
 // agent asks a gateway's or connector's controller, CA pin, and a connector's targets and proxy.
@@ -175,12 +194,7 @@ func (f *setupForm) agent(v *setup.Values) error {
 	}
 	targets, denied := strings.Join(v.AllowTargets, " "), strings.Join(v.DenyTargets, " ")
 	if v.Role == setup.Connector {
-		fields = append(fields,
-			huh.NewInput().Title("Allowed targets, separated by spaces (optional)").
-				Description("10.0.0.5:5432, 10.0.0.0/16 (all ports), 127.0.0.1:200-500, [fd00::1]:443 or /run/app.sock").
-				Validate(func(s string) error { return checkEach(s, setup.CheckTarget) }).Value(&targets),
-			huh.NewInput().Title("Denied targets, which win over allowed ones (optional)").Placeholder("127.0.0.1:345").
-				Validate(func(s string) error { return checkEach(s, setup.CheckTarget) }).Value(&denied),
+		fields = append(append(fields, targetFields(&targets, &denied)...),
 			huh.NewInput().Title("Proxy for the connection to the controller (optional)").Placeholder("http://proxy.lan:3128").
 				Validate(setup.CheckProxy).Value(&v.Proxy))
 	}
