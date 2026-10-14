@@ -7,94 +7,86 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
-	"net"
 	"net/netip"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
-	"strings"
 
 	"go.yaml.in/yaml/v3"
 )
 
-// newFile is what AllowTarget writes when there is no policy file: the update keys always
-// explicit, as the installer writes them.
+// newFile is what AllowTarget and DenyTarget write when there is no policy file: the update keys
+// always explicit, as the installer writes them.
 const newFile = `# Connector-local policy (docs/04-security.md, "Connector-local policy"). Edit with
-# "rpmgr policy allow-target" and "rpmgr policy remove-target", or by hand as root.
+# "rpmgr policy allow-target", "deny-target" and their "remove-" forms, or by hand as root.
 version: 1
 allow_targets: []
+deny_targets: []
 auto_update: auto
 update_channel: stable
 `
 
-// target is an edited target: a unix socket, or an address and a port.
-type editTarget struct {
-	unix string
-	cidr string
-	port uint16
-}
-
-// parseEditTarget reads ip:port, [ipv6]:port or an absolute socket path.
-func parseEditTarget(s string) (editTarget, error) {
-	if strings.HasPrefix(s, "/") {
-		if filepath.Clean(s) != s {
-			return editTarget{}, fmt.Errorf("policy: %q is not a clean absolute path", s)
-		}
-		return editTarget{unix: s}, nil
-	}
-	host, port, err := net.SplitHostPort(s)
-	if err != nil {
-		return editTarget{}, fmt.Errorf("policy: target %q: want <ip>:<port>, [<ipv6>]:<port> or a socket path", s)
-	}
-	ip, err := netip.ParseAddr(host)
-	if err != nil || ip.Zone() != "" {
-		return editTarget{}, fmt.Errorf("policy: target %q: %q is not an IP address without a zone", s, host)
-	}
-	n, err := strconv.Atoi(port)
-	if err != nil || n < 1 || n > 65535 {
-		return editTarget{}, fmt.Errorf("policy: target %q: port %q is not in 1-65535", s, port)
-	}
-	ip = ip.Unmap()
-	return editTarget{cidr: netip.PrefixFrom(ip, ip.BitLen()).String(), port: uint16(n)}, nil //nolint:gosec // G115: checked
-}
-
-// CheckTarget checks a target as AllowTarget reads it: ip:port, [ipv6]:port or a clean absolute
-// socket path.
+// CheckTarget checks a target in the syntax AllowTarget and DenyTarget read: an address or subnet
+// with an optional port or port range, or a clean absolute socket path.
 func CheckTarget(target string) error {
-	_, err := parseEditTarget(target)
+	_, err := parseTarget(target)
 	return err
 }
 
-// AllowTarget allows target, ip:port or a socket path, in the policy file at path, keeping the
-// rest of the file and its comments, and reports whether the file changed. Without a file it
-// writes a new one.
-func AllowTarget(path, target string) (bool, error) {
-	t, err := parseEditTarget(target)
+// AllowTarget allows target in the policy file at path, keeping the rest of the file and its
+// comments, and reports whether the file changed. Without a file it writes a new one.
+func AllowTarget(path, target string) (bool, error) { return addTarget(path, "allow_targets", target) }
+
+// DenyTarget denies target in deny_targets, which wins over allow_targets (D84).
+func DenyTarget(path, target string) (bool, error) { return addTarget(path, "deny_targets", target) }
+
+// RemoveTarget stops allowing target and reports whether the file changed.
+func RemoveTarget(path, target string) (bool, error) {
+	return removeTarget(path, "allow_targets", target)
+}
+
+// RemoveDenyTarget stops denying target and reports whether the file changed.
+func RemoveDenyTarget(path, target string) (bool, error) {
+	return removeTarget(path, "deny_targets", target)
+}
+
+// addTarget adds target to the list key, unless an entry covers it already. Ports go to the
+// mapping entry of the same subnet, if there is one; a target of all ports makes it one.
+func addTarget(path, key, s string) (bool, error) {
+	t, err := parseTarget(s)
 	if err != nil {
 		return false, err
 	}
-	return edit(path, func(targets *yaml.Node) (bool, error) {
+	return edit(path, key, func(targets *yaml.Node) (bool, error) {
 		for _, e := range targets.Content {
-			switch {
-			case t.unix != "" && value(e, "unix") == t.unix:
+			if et, err := parseEntry(e); err == nil && covers(et, t, key == "allow_targets") {
 				return false, nil
-			case t.unix == "" && value(e, "cidr") == t.cidr:
-				ports := field(e, "ports")
-				for _, p := range ports.Content {
-					if r, err := parsePorts(scalar(p)); err == nil && t.port >= r.lo && t.port <= r.hi {
-						return false, nil
-					}
-				}
-				ports.Content = append(ports.Content, &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!int", Value: strconv.Itoa(int(t.port))})
+			}
+		}
+		for _, e := range targets.Content {
+			if t.unix != "" || e.Kind != yaml.MappingNode || field(e, "unix") != nil {
+				continue
+			}
+			if p, err := parseHost(value(e, "cidr")); err != nil || p != t.prefix {
+				continue
+			}
+			if ports := field(e, "ports"); ports != nil && !slices.Equal(t.ports, allPorts) {
+				ports.Content = append(ports.Content, portNode(t.ports[0]))
 				return true, nil
 			}
+			e.Content = withoutKey(e.Content, "ports") // all ports
+			return true, nil
 		}
 		entry := &yaml.Node{Kind: yaml.MappingNode, Style: yaml.FlowStyle}
 		if t.unix != "" {
 			entry.Content = []*yaml.Node{str("unix"), str(t.unix)}
 		} else {
-			entry.Content = []*yaml.Node{str("cidr"), str(t.cidr), str("ports"), {Kind: yaml.SequenceNode, Style: yaml.FlowStyle,
-				Content: []*yaml.Node{{Kind: yaml.ScalarNode, Tag: "!!int", Value: strconv.Itoa(int(t.port))}}}}
+			entry.Content = []*yaml.Node{str("cidr"), str(t.prefix.String())}
+			if !slices.Equal(t.ports, allPorts) {
+				entry.Content = append(entry.Content, str("ports"), &yaml.Node{Kind: yaml.SequenceNode, Style: yaml.FlowStyle,
+					Content: []*yaml.Node{portNode(t.ports[0])}})
+			}
 		}
 		targets.Content = append(targets.Content, entry)
 		targets.Style = 0 // block style once it has entries
@@ -102,53 +94,105 @@ func AllowTarget(path, target string) (bool, error) {
 	})
 }
 
-// ErrInRange is returned by RemoveTarget for a port that only a port range allows.
-var ErrInRange = errors.New("policy: the port is part of a port range; edit the file to split it")
+// covers reports whether entry e takes in all of t: the same socket, or a subnet that holds t's
+// and port ranges that each hold one of t's. For allow_targets, a broad subnet does not cover a
+// target in a protected range, as Allows does not let it through.
+func covers(e, t target, allow bool) bool {
+	if e.unix != "" || t.unix != "" {
+		return e.unix == t.unix
+	}
+	if e.prefix.Bits() > t.prefix.Bits() || !e.prefix.Contains(t.prefix.Addr()) {
+		return false
+	}
+	if allow {
+		for _, r := range protected {
+			if r.Overlaps(t.prefix) && (e.prefix.Bits() < r.Bits() || !r.Contains(e.prefix.Addr())) {
+				return false
+			}
+		}
+	}
+	return !slices.ContainsFunc(t.ports, func(tr portRange) bool {
+		return !slices.ContainsFunc(e.ports, func(er portRange) bool { return tr.lo >= er.lo && tr.hi <= er.hi })
+	})
+}
 
-// RemoveTarget stops allowing target, ip:port or a socket path, and reports whether the file
-// changed. It removes the exact port, and an entry left without ports.
-func RemoveTarget(path, target string) (bool, error) {
-	t, err := parseEditTarget(target)
+func portNode(r portRange) *yaml.Node {
+	if r.lo == r.hi {
+		return &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!int", Value: strconv.Itoa(int(r.lo))}
+	}
+	return str(r.String())
+}
+
+// withoutKey returns the content of a mapping without key and its value.
+func withoutKey(content []*yaml.Node, key string) []*yaml.Node {
+	out := make([]*yaml.Node, 0, len(content))
+	for i := 0; i+1 < len(content); i += 2 {
+		if content[i].Value != key {
+			out = append(out, content[i], content[i+1])
+		}
+	}
+	return out
+}
+
+// ErrInRange is returned when removing a target that only a broader entry or a port range takes
+// in, which an edit cannot split.
+var ErrInRange = errors.New("policy: the target is part of a broader entry or port range; " +
+	"deny it with `rpmgr policy deny-target`, or edit the file to split the entry")
+
+// removeTarget removes target from the list key and reports whether the file changed: an entry of
+// exactly that socket, subnet and ports, or that port or range of an entry of the subnet, and an
+// entry left without ports. A target of all ports removes every entry of its subnet.
+func removeTarget(path, key, s string) (bool, error) {
+	t, err := parseTarget(s)
 	if err != nil {
 		return false, err
 	}
-	return edit(path, func(targets *yaml.Node) (bool, error) {
-		changed := false
+	all := slices.Equal(t.ports, allPorts)
+	return edit(path, key, func(targets *yaml.Node) (bool, error) {
+		changed, covered := false, false
 		kept := targets.Content[:0]
 		for _, e := range targets.Content {
+			et, err := parseEntry(e)
 			switch {
-			case t.unix != "" && value(e, "unix") == t.unix:
-				changed = true
-				continue
-			case t.unix == "" && value(e, "cidr") == t.cidr:
-				ports := field(e, "ports")
-				var rest []*yaml.Node
-				for _, p := range ports.Content {
-					r, err := parsePorts(scalar(p))
-					switch {
-					case err == nil && r.lo == t.port && r.hi == t.port:
-						changed = true
-						continue
-					case err == nil && t.port >= r.lo && t.port <= r.hi:
-						return false, ErrInRange
-					}
-					rest = append(rest, p)
-				}
-				ports.Content = rest
-				if len(rest) == 0 {
+			case err != nil:
+			case t.unix != "" || et.unix != "":
+				if et.unix == t.unix {
+					changed = true
 					continue
 				}
+			case et.prefix == t.prefix && (all || slices.Equal(et.ports, t.ports)):
+				changed = true
+				continue
+			case et.prefix == t.prefix && e.Kind == yaml.MappingNode && field(e, "ports") != nil:
+				ports := field(e, "ports")
+				rest := slices.DeleteFunc(slices.Clone(ports.Content), func(n *yaml.Node) bool {
+					r, err := parsePorts(scalar(n))
+					return err == nil && r == t.ports[0]
+				})
+				if len(rest) < len(ports.Content) {
+					changed = true
+					if ports.Content = rest; len(rest) == 0 {
+						continue
+					}
+				} else {
+					covered = covered || covers(et, t, false)
+				}
+			default:
+				covered = covered || covers(et, t, false)
 			}
 			kept = append(kept, e)
 		}
 		targets.Content = kept
+		if !changed && covered {
+			return false, ErrInRange
+		}
 		return changed, nil
 	})
 }
 
-// edit applies change to the allow_targets of the file at path under its lock, validates the
-// result and writes it atomically with mode 0644.
-func edit(path string, change func(targets *yaml.Node) (bool, error)) (bool, error) {
+// edit applies change to the list key, allow_targets or deny_targets, of the file at path under
+// its lock, validates the result and writes it atomically with mode 0644.
+func edit(path, key string, change func(targets *yaml.Node) (bool, error)) (bool, error) {
 	unlock, err := lockPolicy(path + ".lock")
 	if err != nil {
 		return false, err
@@ -168,13 +212,13 @@ func edit(path string, change func(targets *yaml.Node) (bool, error)) (bool, err
 		return false, err
 	}
 	root := doc.Content[0]
-	targets := field(root, "allow_targets")
+	targets := field(root, key)
 	if targets == nil {
 		targets = &yaml.Node{Kind: yaml.SequenceNode}
-		root.Content = append(root.Content, str("allow_targets"), targets)
+		root.Content = append(root.Content, str(key), targets)
 	}
 	if targets.Kind != yaml.SequenceNode {
-		return false, errors.New("policy: allow_targets is not a list")
+		return false, fmt.Errorf("policy: %s is not a list", key)
 	}
 	changed, err := change(targets)
 	if err != nil || !changed {

@@ -104,11 +104,10 @@ update_channel: prerelease
 			t.Errorf("the edit lost %q:\n%s", keep, b)
 		}
 	}
-	if _, err := policy.RemoveTarget(path, "192.168.10.0:8050"); err != nil {
-		t.Fatalf("an address the CIDR entry does not name exactly: %v", err)
-	}
-	if _, err := policy.RemoveTarget(path, "192.168.10.0/24:8050"); err == nil {
-		t.Fatal("a CIDR as a target was accepted")
+	for _, target := range []string{"192.168.10.0:8050", "192.168.10.0/24:8050"} {
+		if _, err := policy.RemoveTarget(path, target); !errors.Is(err, policy.ErrInRange) {
+			t.Fatalf("%s, inside the subnet's port range: %v", target, err)
+		}
 	}
 
 	bad := filepath.Join(t.TempDir(), "bad.yaml")
@@ -133,8 +132,9 @@ func TestEdit_RangeAndBadTargets(t *testing.T) {
 	}
 	changed, err := policy.AllowTarget(path, "10.0.0.1:85")
 	mustChange(t, changed, err, false) // already allowed by the range
-	for _, target := range []string{"10.0.0.1", "host.example:80", "10.0.0.1:0", "10.0.0.1:65536", "run/app.sock",
-		"/run/../app.sock", "", "[fe80::1%eth0]:80"} {
+	for _, target := range []string{"host.example:80", "10.0.0.1:0", "10.0.0.1:65536", "run/app.sock", "/run/../app.sock", "",
+		"[fe80::1%eth0]:80", "10.0.0.1:500-200", "10.0.0.1:", "10.0.0.1:80-", "10.0.0.0/33", "fd00::1:80", "[fd00::1", "[fd00::1]80",
+		"[fd00::1]:", "10.0.0.1:http"} {
 		if _, err := policy.AllowTarget(path, target); err == nil {
 			t.Errorf("%q accepted", target)
 		}
@@ -159,5 +159,83 @@ func TestEdit_Concurrent(t *testing.T) {
 		if !allows(p, fmt.Sprintf("10.0.0.%d:80", i+1)) {
 			t.Errorf("10.0.0.%d:80 lost", i+1)
 		}
+	}
+}
+
+// TestEdit_SubnetsRangesAndDeny (D84): the editing commands take subnets, which are normalised,
+// port ranges and targets without a port; a covered target is not added twice; deny-target writes
+// deny_targets, which then wins; a target inside a broader entry is not removed but named.
+func TestEdit_SubnetsRangesAndDeny(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "policy.yaml")
+	steps := []struct {
+		do      func(path, target string) (bool, error)
+		target  string
+		changed bool
+	}{
+		{policy.AllowTarget, "10.0.0.1/16", true},
+		{policy.AllowTarget, "10.0.7.7:22", false}, // inside 10.0.0.0/16, all ports
+		{policy.AllowTarget, "127.0.0.1:200-500", true},
+		{policy.AllowTarget, "127.0.0.1:300-400", false},
+		{policy.AllowTarget, "127.0.0.1:600", true}, // to the same entry
+		{policy.AllowTarget, "[fd00::/64]:8000-8099", true},
+		{policy.DenyTarget, "127.0.0.1:345", true},
+		{policy.DenyTarget, "127.0.0.1:345", false},
+		{policy.DenyTarget, "/run/app.sock", true},
+		{policy.DenyTarget, "10.0.9.0/24", true},
+	}
+	for _, s := range steps {
+		changed, err := s.do(path, s.target)
+		if err != nil || changed != s.changed {
+			t.Fatalf("%s: changed %v, %v; want %v", s.target, changed, err, s.changed)
+		}
+	}
+	b, _ := os.ReadFile(path)
+	for _, want := range []string{"cidr: 10.0.0.0/16}", "cidr: 127.0.0.1/32, ports: [200-500, 600]}", "deny_targets:"} {
+		if !strings.Contains(string(b), want) {
+			t.Errorf("the file lacks %q:\n%s", want, b)
+		}
+	}
+	p := load(t, path)
+	for target, want := range map[string]bool{"10.0.200.1:443": true, "10.0.9.1:443": false, "127.0.0.1:344": true,
+		"127.0.0.1:345": false, "127.0.0.1:600": true, "[fd00::1]:8000": true} {
+		if allows(p, target) != want {
+			t.Errorf("%s: allowed %v, want %v", target, !want, want)
+		}
+	}
+	if _, err := policy.RemoveTarget(path, "10.0.7.7:22"); !errors.Is(err, policy.ErrInRange) {
+		t.Fatalf("a target inside a subnet entry: %v", err)
+	}
+	if _, err := policy.RemoveTarget(path, "127.0.0.1:250"); !errors.Is(err, policy.ErrInRange) {
+		t.Fatalf("a port inside a range: %v", err)
+	}
+	changed, err := policy.RemoveTarget(path, "127.0.0.1:200-500")
+	mustChange(t, changed, err, true)
+	changed, err = policy.RemoveDenyTarget(path, "127.0.0.1:345")
+	mustChange(t, changed, err, true)
+	changed, err = policy.AllowTarget(path, "127.0.0.1") // all ports: the entry loses its ports
+	mustChange(t, changed, err, true)
+	changed, err = policy.RemoveTarget(path, "10.0.0.0/16") // all ports: the whole entry
+	mustChange(t, changed, err, true)
+	p = load(t, path)
+	if !allows(p, "127.0.0.1:1") || allows(p, "10.0.200.1:443") || p.AllowsUnix("/run/app.sock") {
+		t.Fatalf("after the removals:\n%s", p.Describe())
+	}
+	b, _ = os.ReadFile(path)
+	if strings.Contains(string(b), "200-500") || strings.Contains(string(b), "345") {
+		t.Fatalf("removed entries stayed:\n%s", b)
+	}
+	// Into a file without deny_targets the key is added; a protected address a broad entry does not
+	// let through is still added for allow_targets.
+	old := filepath.Join(t.TempDir(), "old.yaml")
+	if err := os.WriteFile(old, []byte("version: 1\nallow_targets: [0.0.0.0/0]\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	changed, err = policy.AllowTarget(old, "169.254.169.254:80")
+	mustChange(t, changed, err, true)
+	changed, err = policy.DenyTarget(old, "192.0.2.1")
+	mustChange(t, changed, err, true)
+	p = load(t, old)
+	if !allows(p, "169.254.169.254:80") || allows(p, "192.0.2.1:1") || !allows(p, "192.0.2.2:1") {
+		t.Fatalf("the old file:\n%s", p.Describe())
 	}
 }

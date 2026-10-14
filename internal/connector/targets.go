@@ -67,6 +67,18 @@ func (t Target) String() string {
 	return net.JoinHostPort(t.Host, strconv.Itoa(int(t.Port)))
 }
 
+// blockDetail is the readiness detail of a target the policy does not allow: the target, and the
+// entry of deny_targets that refuses it if one does (policy.BlockedError.Detail).
+func (t Target) blockDetail(p *policy.Policy) string {
+	denied := ""
+	if t.UnixPath != "" {
+		denied = p.DeniedByUnix(t.UnixPath)
+	} else if ip, err := netip.ParseAddr(t.Host); err == nil {
+		denied = p.DeniedBy(ip, t.Port)
+	}
+	return (&policy.BlockedError{Target: t.String(), Denied: denied}).Detail()
+}
+
 // allowed reports whether the policy allows the target as far as it is known before dialling: a
 // name is checked on its resolved address when it is dialled.
 func (t Target) allowed(p *policy.Policy) bool {
@@ -233,7 +245,7 @@ func readiness(r Route, p *policy.Policy) *tunnelv1.RouteHealth {
 			return h
 		}
 		if h.Detail == "" {
-			h.Detail = tg.String()
+			h.Detail = tg.blockDetail(p)
 		}
 	}
 	h.Reason = agentv1.NotReadyReason_NOT_READY_REASON_BLOCKED_BY_LOCAL_POLICY
@@ -357,7 +369,7 @@ func (t *Targets) open(ctx context.Context, open *tunnelv1.StreamOpen) (tunnelv1
 		if err != nil {
 			var b *policy.BlockedError
 			if errors.As(err, &b) {
-				t.blocked(r.ID, b.Target)
+				t.blocked(r.ID, b.Detail())
 				continue
 			}
 			code = codeOf(err)

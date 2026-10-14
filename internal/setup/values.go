@@ -77,7 +77,8 @@ type Values struct {
 	ControllerURL string
 	Pin           string
 	Token         string   // the enrollment or gateway token; never shown, logged or passed as an argument
-	AllowTargets  []string // connector: the connector-local policy's targets
+	AllowTargets  []string // connector: the connector-local policy's allow_targets
+	DenyTargets   []string // connector: its deny_targets, which win over allow_targets (D84)
 	Proxy         string   // connector: HTTPS_PROXY of its service
 
 	NoUnit bool // install no systemd unit and start nothing
@@ -126,7 +127,8 @@ func CheckToken(s string) error {
 	return nil
 }
 
-// CheckTarget checks one connector-local policy target: ip:port, [ipv6]:port or a socket path.
+// CheckTarget checks one connector-local policy target: an address or subnet with an optional port
+// or port range, IPv6 in brackets, or a socket path.
 func CheckTarget(s string) error { return policy.CheckTarget(s) }
 
 // CheckAddr checks a listen address host:port; with off, "off" is allowed and disables it.
@@ -229,9 +231,12 @@ func (v *Values) check() error {
 		for _, t := range v.AllowTargets {
 			add("allowed target", CheckTarget(t))
 		}
+		for _, t := range v.DenyTargets {
+			add("denied target", CheckTarget(t))
+		}
 		add("proxy", CheckProxy(v.Proxy))
-	} else if len(v.AllowTargets) > 0 || v.Proxy != "" {
-		errs = append(errs, errors.New("allowed targets and a proxy are a connector's"))
+	} else if len(v.AllowTargets) > 0 || len(v.DenyTargets) > 0 || v.Proxy != "" {
+		errs = append(errs, errors.New("allowed and denied targets and a proxy are a connector's"))
 	}
 	return errors.Join(errs...)
 }
@@ -239,8 +244,8 @@ func (v *Values) check() error {
 // checkController checks the values of a controller or all-in-one.
 func (v *Values) checkController(add func(string, error)) {
 	add("public URL", CheckPublicURL(v.PublicURL))
-	if v.ControllerURL != "" || v.Pin != "" || v.Token != "" || len(v.AllowTargets) > 0 || v.Proxy != "" {
-		add("values", errors.New("a controller URL, CA pin, token, allowed targets and a proxy are a gateway's or a connector's"))
+	if v.ControllerURL != "" || v.Pin != "" || v.Token != "" || len(v.AllowTargets) > 0 || len(v.DenyTargets) > 0 || v.Proxy != "" {
+		add("values", errors.New("a controller URL, CA pin, token, allowed and denied targets and a proxy are a gateway's or a connector's"))
 	}
 	if v.KEKSource != "" && v.KEKSource != config.KEKFile && v.KEKSource != config.KEKSystemdCredential {
 		add("KEK source", fmt.Errorf("%q: want systemd-credential or file", v.KEKSource))

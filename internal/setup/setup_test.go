@@ -14,6 +14,7 @@ import (
 
 	"github.com/felix-homelab/rpmgr/internal/agent"
 	"github.com/felix-homelab/rpmgr/internal/config"
+	"github.com/felix-homelab/rpmgr/internal/policy"
 	"github.com/felix-homelab/rpmgr/internal/settings"
 	"github.com/felix-homelab/rpmgr/internal/setup"
 	"github.com/felix-homelab/rpmgr/internal/store"
@@ -86,22 +87,23 @@ func newToken(t *testing.T) string {
 // TestChecks: the field checks the form and the flags share refuse what the roles would refuse.
 func TestChecks(t *testing.T) {
 	for name, err := range map[string]error{
-		"http URL":            setup.CheckControllerURL("http://panel.example.com"),
-		"URL with a path":     setup.CheckControllerURL("https://panel.example.com/ui"),
-		"URL without a host":  setup.CheckControllerURL("https://"),
-		"short pin":           setup.CheckPin("sha256:abc"),
-		"pin without prefix":  setup.CheckPin("abc"),
-		"mistyped token":      setup.CheckToken("rpmgr_enr_0123"),
-		"target without port": setup.CheckTarget("10.0.0.5"),
-		"relative socket":     setup.CheckTarget("run/app.sock"),
-		"address":             setup.CheckAddr("443", false),
-		"off where it is not": setup.CheckAddr("off", false),
-		"ftp proxy":           setup.CheckProxy("ftp://proxy:21"),
-		"proxy without host":  setup.CheckProxy("http://"),
-		"public URL":          setup.CheckPublicURL("https://panel.example.com/ui"),
-		"e-mail":              setup.CheckEmail("not an address"),
-		"named e-mail":        setup.CheckEmail("Ops <ops@example.com>"),
-		"role":                setup.CheckRole("router"),
+		"http URL":                setup.CheckControllerURL("http://panel.example.com"),
+		"URL with a path":         setup.CheckControllerURL("https://panel.example.com/ui"),
+		"URL without a host":      setup.CheckControllerURL("https://"),
+		"short pin":               setup.CheckPin("sha256:abc"),
+		"pin without prefix":      setup.CheckPin("abc"),
+		"mistyped token":          setup.CheckToken("rpmgr_enr_0123"),
+		"IPv6 target unbracketed": setup.CheckTarget("fd00::1:80"),
+		"reversed port range":     setup.CheckTarget("10.0.0.5:500-200"),
+		"relative socket":         setup.CheckTarget("run/app.sock"),
+		"address":                 setup.CheckAddr("443", false),
+		"off where it is not":     setup.CheckAddr("off", false),
+		"ftp proxy":               setup.CheckProxy("ftp://proxy:21"),
+		"proxy without host":      setup.CheckProxy("http://"),
+		"public URL":              setup.CheckPublicURL("https://panel.example.com/ui"),
+		"e-mail":                  setup.CheckEmail("not an address"),
+		"named e-mail":            setup.CheckEmail("Ops <ops@example.com>"),
+		"role":                    setup.CheckRole("router"),
 	} {
 		if err == nil {
 			t.Errorf("%s: accepted", name)
@@ -114,6 +116,10 @@ func TestChecks(t *testing.T) {
 		"token":       setup.CheckToken(newToken(t)),
 		"target":      setup.CheckTarget("10.0.0.5:8080"),
 		"socket":      setup.CheckTarget("/run/app.sock"),
+		"subnet":      setup.CheckTarget("10.0.0.1/16"),
+		"port range":  setup.CheckTarget("127.0.0.1:200-500"),
+		"all ports":   setup.CheckTarget("10.0.0.5"),
+		"IPv6 subnet": setup.CheckTarget("[fd00::/64]:8000-8099"),
 		"http off":    setup.CheckAddr("off", true),
 		"socks proxy": setup.CheckProxy("socks5://proxy:1080"),
 		"no proxy":    setup.CheckProxy(""),
@@ -157,8 +163,10 @@ func TestNew_Refuses(t *testing.T) {
 		"agent values":      {setup.Values{Role: setup.Gateway, ControllerURL: "https://panel.example.com", Pin: "x", Token: "y"}, nil, "CA pin"},
 		"wrong token":       {with(func(v *setup.Values) { v.Token = "y" }), nil, "token"},
 		"gateway targets":   {with(func(v *setup.Values) { v.AllowTargets = []string{"10.0.0.5:80"} }), nil, "connector's"},
+		"gateway denials":   {with(func(v *setup.Values) { v.DenyTargets = []string{"10.0.0.5"} }), nil, "connector's"},
 		"connector listens": {with(func(v *setup.Values) { v.Role, v.ListenTCP = setup.Connector, ":443" }), nil, "no listen.tcp"},
-		"bad target":        {with(func(v *setup.Values) { v.Role, v.AllowTargets = setup.Connector, []string{"10.0.0.5"} }), nil, "allowed target"},
+		"bad target":        {with(func(v *setup.Values) { v.Role, v.AllowTargets = setup.Connector, []string{"10.0.0.5:0"} }), nil, "allowed target"},
+		"bad denial":        {with(func(v *setup.Values) { v.Role, v.DenyTargets = setup.Connector, []string{"fd00::1:80"} }), nil, "denied target"},
 		"bad address":       {with(func(v *setup.Values) { v.ListenAdmin = "7382" }), nil, "listen.admin"},
 		"not root":          {gw, func(h *setup.Host) { h.IsRoot = func() bool { return false } }, "as root"},
 		"no systemd":        {gw, func(h *setup.Host) { h.SystemdVersion = func() int { return 0 } }, "--no-unit"},
@@ -339,9 +347,12 @@ func TestPlan_Connector(t *testing.T) {
 	h := newHost(t, f)
 	tok := newToken(t)
 	p, err := setup.New(setup.Values{Role: setup.Connector, ControllerURL: "https://panel.example.com/", Pin: pin(t), Token: " " + tok + "\n",
-		AllowTargets: []string{"10.0.0.5:8080", "/run/app.sock"}, Proxy: "http://proxy.lan:3128"}, h)
+		AllowTargets: []string{"10.0.0.5:8080", "/run/app.sock", "10.1.0.1/16"}, DenyTargets: []string{"10.1.2.3:22"}, Proxy: "http://proxy.lan:3128"}, h)
 	if err != nil {
 		t.Fatal(err)
+	}
+	if !slices.Contains(p.Summary(), [2]string{"denied targets", "10.1.2.3:22"}) {
+		t.Errorf("the summary does not show the denied target: %q", p.Summary())
 	}
 	for _, kv := range p.Summary() {
 		if strings.Contains(kv[1], tok) {
@@ -366,6 +377,9 @@ func TestPlan_Connector(t *testing.T) {
 	pol, err := os.ReadFile(cfg.PolicyFile)
 	if err != nil || !strings.Contains(string(pol), "10.0.0.5") || !strings.Contains(string(pol), "/run/app.sock") {
 		t.Errorf("policy %q %v", pol, err)
+	}
+	if lp, err := policy.Load(cfg.PolicyFile); err != nil || lp.Check("10.1.2.3:22") == nil || lp.Check("10.1.2.3:23") != nil {
+		t.Errorf("the policy's deny over its subnet: %v\n%s", err, pol)
 	}
 	proxy, err := os.ReadFile(filepath.Join(h.Paths.Units, "rpmgr-connector.service.d", "proxy.conf"))
 	if err != nil || !strings.Contains(string(proxy), `Environment="HTTPS_PROXY=http://proxy.lan:3128"`) {

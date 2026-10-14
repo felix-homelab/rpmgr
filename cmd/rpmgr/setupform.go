@@ -173,18 +173,21 @@ func (f *setupForm) agent(v *setup.Values) error {
 		huh.NewInput().Title("CA pin, as the controller's init printed it").Placeholder("sha256:…").
 			Validate(keep(v.Pin, setup.CheckPin)).Value(&v.Pin),
 	}
-	targets := strings.Join(v.AllowTargets, " ")
+	targets, denied := strings.Join(v.AllowTargets, " "), strings.Join(v.DenyTargets, " ")
 	if v.Role == setup.Connector {
 		fields = append(fields,
-			huh.NewInput().Title("Allowed targets: ip:port or socket paths, separated by spaces (optional)").
+			huh.NewInput().Title("Allowed targets, separated by spaces (optional)").
+				Description("10.0.0.5:5432, 10.0.0.0/16 (all ports), 127.0.0.1:200-500, [fd00::1]:443 or /run/app.sock").
 				Validate(func(s string) error { return checkEach(s, setup.CheckTarget) }).Value(&targets),
+			huh.NewInput().Title("Denied targets, which win over allowed ones (optional)").Placeholder("127.0.0.1:345").
+				Validate(func(s string) error { return checkEach(s, setup.CheckTarget) }).Value(&denied),
 			huh.NewInput().Title("Proxy for the connection to the controller (optional)").Placeholder("http://proxy.lan:3128").
 				Validate(setup.CheckProxy).Value(&v.Proxy))
 	}
 	if err := f.ask(fields...); err != nil {
 		return err
 	}
-	v.AllowTargets = strings.Fields(targets)
+	v.AllowTargets, v.DenyTargets = strings.Fields(targets), strings.Fields(denied)
 	return nil
 }
 

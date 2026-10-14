@@ -46,13 +46,15 @@ func TestCommand(t *testing.T) {
 		return string(calls), err
 	}
 
-	cmd, err := installsh.Command("https://panel.example.com/", "sha256:3q2+7w==", false, []string{"10.0.0.5:5432", "/run/a b.sock"})
+	cmd, err := installsh.Command("https://panel.example.com/", "sha256:3q2+7w==", false, []string{"10.0.0.5:5432", "/run/a b.sock", "10.0.0.1/16",
+		"127.0.0.1:200-500"}, []string{"127.0.0.1:345", "[fd00::/64]"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	calls, err := run(cmd)
 	want := "curl -fsSLO https://panel.example.com/install.sh\n" +
-		"sudo sh install.sh --controller https://panel.example.com --ca-pin sha256:3q2+7w== --allow-target 10.0.0.5:5432 --allow-target /run/a b.sock\n"
+		"sudo sh install.sh --controller https://panel.example.com --ca-pin sha256:3q2+7w== --allow-target 10.0.0.5:5432 --allow-target /run/a b.sock " +
+		"--allow-target 10.0.0.1/16 --allow-target 127.0.0.1:200-500 --deny-target 127.0.0.1:345 --deny-target [fd00::/64]\n"
 	if err != nil || calls != want {
 		t.Fatalf("calls:\n%s\nwant:\n%s(%v)", calls, want, err)
 	}
@@ -60,16 +62,21 @@ func TestCommand(t *testing.T) {
 		t.Fatalf("a failed download: %v\n%s", err, calls)
 	}
 
-	gw, err := installsh.Command("https://panel.example.com", "sha256:3q2+7w==", true, nil)
+	gw, err := installsh.Command("https://panel.example.com", "sha256:3q2+7w==", true, nil, nil)
 	if err != nil || !strings.HasSuffix(gw, " \\\n  --role gateway") {
 		t.Fatalf("a gateway's command:\n%s\n%v", gw, err)
 	}
-	if _, err := installsh.Command("https://panel.example.com", "sha256:3q2+7w==", true, []string{"10.0.0.5:5432"}); err == nil {
-		t.Fatal("a gateway took a target")
+	for _, c := range []struct{ allow, deny []string }{{[]string{"10.0.0.5:5432"}, nil}, {nil, []string{"10.0.0.5"}}} {
+		if _, err := installsh.Command("https://panel.example.com", "sha256:3q2+7w==", true, c.allow, c.deny); err == nil {
+			t.Fatalf("a gateway took targets %v", c)
+		}
 	}
-	for _, tg := range []string{"10.0.0.5", "/run/a'b.sock", "/run/a\nb.sock"} {
-		if _, err := installsh.Command("https://panel.example.com", "sha256:3q2+7w==", false, []string{tg}); err == nil {
-			t.Errorf("the target %q was taken", tg)
+	for _, tg := range []string{"fd00::1:80", "10.0.0.5:500-200", "/run/a'b.sock", "/run/a\nb.sock", "host.example:80"} {
+		if _, err := installsh.Command("https://panel.example.com", "sha256:3q2+7w==", false, []string{tg}, nil); err == nil {
+			t.Errorf("the allowed target %q was taken", tg)
+		}
+		if _, err := installsh.Command("https://panel.example.com", "sha256:3q2+7w==", false, nil, []string{tg}); err == nil {
+			t.Errorf("the denied target %q was taken", tg)
 		}
 	}
 }

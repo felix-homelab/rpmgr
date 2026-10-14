@@ -104,10 +104,14 @@ export function shellArg(s: string): string {
   return /^[A-Za-z0-9_.:/@%+=,[\]-]+$/.test(s) ? s : `'${s.replace(/'/g, `'\\''`)}'`;
 }
 
-// allowCommand is the command that lets a connector's local policy reach a target it blocks
-// (docs/04-security.md, "Connector-local policy"; docs/09-web-ui.md, U4).
-export function allowCommand(target: string): string {
-  return `sudo rpmgr policy allow-target ${shellArg(target)}`;
+// policyCommand is the command that lets a connector's local policy reach a target it blocks
+// (docs/04-security.md, "Connector-local policy"; docs/09-web-ui.md, U4), from the readiness
+// detail: allow-target for a target nothing allows, remove-deny-target for the entry of
+// deny_targets that refuses it, which the detail names after " denied by " (D84).
+export function policyCommand(detail: string): string {
+  const at = detail.lastIndexOf(" denied by ");
+  return at < 0 ? `sudo rpmgr policy allow-target ${shellArg(detail)}`
+    : `sudo rpmgr policy remove-deny-target ${shellArg(detail.slice(at + " denied by ".length))}`;
 }
 
 // useConnectors reads all connectors of the org in service.

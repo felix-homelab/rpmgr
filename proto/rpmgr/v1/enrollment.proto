@@ -208,9 +208,22 @@ message GetInstallCommandRequest {
   string org_id = 1 [(buf.validate.field).string.min_len = 1];
   // The role to install; a connector if not set.
   AgentRole role = 2 [(buf.validate.field).enum.defined_only = true];
-  // The targets a connector may reach, written into its local policy: ip:port, [ipv6]:port or a
-  // socket path. None for a gateway.
+  // The targets a connector may reach, written into its local policy's allow_targets: an address or
+  // subnet with an optional port or port range, IPv6 in brackets, or a socket path
+  // (docs/04-security.md, "Connector-local policy"). None for a gateway.
   repeated string allow_targets = 3 [(buf.validate.field).repeated = {
+    max_items: 32
+    unique: true
+    items: {
+      string: {
+        min_len: 1
+        max_len: 256
+      }
+    }
+  }];
+  // The targets a connector must not reach, written into deny_targets, which win over
+  // allow_targets; the same form. None for a gateway.
+  repeated string deny_targets = 4 [(buf.validate.field).repeated = {
     max_items: 32
     unique: true
     items: {

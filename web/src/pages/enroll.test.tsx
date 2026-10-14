@@ -72,7 +72,8 @@ describe("EnrollDialog", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Enroll a connector" }));
     const dialog = within(await screen.findByRole("dialog", { name: "Enroll a connector" }));
     fireEvent.change(dialog.getByLabelText("Labels"), { target: { value: "site=office" } });
-    fireEvent.change(dialog.getByLabelText(/^Targets the connector may reach/), { target: { value: "10.0.0.5:5432\n" } });
+    fireEvent.change(dialog.getByLabelText(/^Targets the connector may reach/), { target: { value: "10.0.0.5:5432\n10.0.0.1/16\n" } });
+    fireEvent.change(dialog.getByLabelText(/^Targets the connector must not reach/), { target: { value: " 10.0.9.0/24 \n\n" } });
     fireEvent.click(dialog.getByRole("button", { name: "Create the token" }));
     const stepUp = within(await screen.findByRole("dialog", { name: "Confirm it is you" }));
     fireEvent.change(stepUp.getByLabelText("Password"), { target: { value: "pw" } });
@@ -94,7 +95,7 @@ describe("EnrollDialog", () => {
     expect(creates[1]!.requestId).toBe(creates[0]!.requestId);
     const c = creates[1]!;
     expect([c.orgId, c.labels, c.ephemeral, c.maxUses, c.ttl?.seconds]).toEqual(["org_1", { site: "office" }, false, 1, 3600n]);
-    expect(commands.map((x) => [x.role, x.allowTargets])).toEqual([[AgentRole.CONNECTOR, ["10.0.0.5:5432"]]]);
+    expect(commands.map((x) => [x.role, x.allowTargets, x.denyTargets])).toEqual([[AgentRole.CONNECTOR, ["10.0.0.5:5432", "10.0.0.1/16"], ["10.0.9.0/24"]]]);
 
     release();
     await waitFor(() => expect(history.location.pathname).toBe("/connectors/con_new"));

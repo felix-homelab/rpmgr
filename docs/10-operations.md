@@ -380,7 +380,7 @@ the boot file.
 | Org (Owner) | MFA requirement, OIDC providers and group→role mapping, default gateway group, Operator may enroll connectors, branding ([04](04-security.md#roles)) |
 | Gateway group (Admin) | Port pools, trusted-proxy CIDRs, DNS target for managed records, default TLS options, per-route limit defaults |
 | DNS (Owner/Admin; Instance Admin for the system org) | DNS providers and their tokens, managed zones and their gates. These are resources with their own pages, not settings ([15](15-dns.md)) |
-| Install command generator | Install prefix, gateway group, labels, ephemeral flag, `--allow-target` entries — the install location lives here, because it is a property of the install command, not of a running agent. There is no service-name suffix: one instance per role per host ([Supported platforms](#supported-platforms)) |
+| Install command generator | Install prefix, gateway group, labels, ephemeral flag, `--allow-target` and `--deny-target` entries — the install location lives here, because it is a property of the install command, not of a running agent. There is no service-name suffix: one instance per role per host ([Supported platforms](#supported-platforms)) |
 
 Secret fields are write-only ([04](04-security.md#secrets-at-rest-and-in-logs)). Settings that
 affect agents take effect through reconciliation and show apply status like any other change
@@ -668,8 +668,9 @@ followed gateway → connector → service. [R] Head sampling at 1 % by default,
 - [ ] External audit sink configured (Phase 2); revocation-log sink configured (required for more
       than one controller replica).
 - [ ] Every connector's `policy.yaml` reviewed: `allow_targets` as narrow as possible (the default
-      is `[]`, nothing; loopback is not allowed unless listed); shell, functions, egress proxy and
-      virtual-network routes off unless needed.
+      is `[]`, nothing; loopback is not allowed unless listed; a subnet without ports allows all of
+      them), `deny_targets` for what a broad entry must not reach; shell, functions, egress proxy
+      and virtual-network routes off unless needed.
 - [ ] `auto_update` chosen deliberately per host; staged rollout policy set.
 - [ ] Gateway groups expose only the port pools they need; trusted-proxy CIDRs set if gateways sit
       behind another proxy.

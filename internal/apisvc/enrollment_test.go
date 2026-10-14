@@ -245,7 +245,8 @@ func TestGetInstallCommand(t *testing.T) {
 		t.Fatalf("a gateway's command:\n%s\n%v", gw.GetCommand(), err)
 	}
 
-	targets := []string{"10.0.0.5:5432", "[2001:db8::5]:443", "/run/postgresql/.s.PGSQL.5432", "/run/a b/$HOME*.sock"}
+	targets := []string{"10.0.0.5:5432", "[2001:db8::5]:443", "/run/postgresql/.s.PGSQL.5432", "/run/a b/$HOME*.sock", "10.0.0.1/16",
+		"127.0.0.1:200-500"}
 	withTargets, err := get(ada, rpmgrv1.AgentRole_AGENT_ROLE_CONNECTOR, targets...)
 	if err != nil {
 		t.Fatal(err)
@@ -270,8 +271,16 @@ func TestGetInstallCommand(t *testing.T) {
 		t.Fatalf("the shell parses %q, want %q", got, wantArgs)
 	}
 
+	denied, err := installDeny(ctx, ada, org, []string{"127.0.0.1:345", "[fd00::/64]"})
+	if err != nil || !strings.HasSuffix(denied, " \\\n  --deny-target '127.0.0.1:345' \\\n  --deny-target '[fd00::/64]'") {
+		t.Fatalf("denied targets:\n%s\n%v", denied, err)
+	}
+	if _, err := installDeny(ctx, ada, org, []string{"fd00::1:80"}); code(err) != connect.CodeInvalidArgument {
+		t.Fatalf("an unbracketed IPv6 denial: %v", err)
+	}
+
 	for name, tg := range map[string]string{
-		"no port": "10.0.0.5", "a name": "db.example.com:5432", "port 0": "10.0.0.5:0", "port 65536": "10.0.0.5:65536",
+		"IPv6 unbracketed": "fd00::1:80", "a reversed range": "10.0.0.5:500-200", "a name": "db.example.com:5432", "port 0": "10.0.0.5:0", "port 65536": "10.0.0.5:65536",
 		"a relative path": "run/x.sock", "an unclean path": "/run/../x.sock", "a quote": "/run/a'b.sock",
 		"a line break": "/run/a\nb.sock", "a zone": "[fe80::1%eth0]:22",
 	} {
@@ -282,6 +291,10 @@ func TestGetInstallCommand(t *testing.T) {
 	if _, err := get(ada, rpmgrv1.AgentRole_AGENT_ROLE_GATEWAY, "10.0.0.5:5432"); code(err) != connect.CodeInvalidArgument {
 		t.Fatalf("a gateway with targets: %v", err)
 	}
+	if _, err := ada.enr.GetInstallCommand(ctx, connect.NewRequest(&rpmgrv1.GetInstallCommandRequest{OrgId: org,
+		Role: rpmgrv1.AgentRole_AGENT_ROLE_GATEWAY, DenyTargets: []string{"10.0.0.5"}})); code(err) != connect.CodeInvalidArgument {
+		t.Fatalf("a gateway with denied targets: %v", err)
+	}
 	if _, err := get(ada, rpmgrv1.AgentRole(9)); code(err) != connect.CodeInvalidArgument {
 		t.Fatalf("an undefined role: %v", err)
 	}
@@ -289,4 +302,13 @@ func TestGetInstallCommand(t *testing.T) {
 	if _, err := get(vwr, rpmgrv1.AgentRole_AGENT_ROLE_CONNECTOR); err != nil {
 		t.Fatalf("a Viewer: %v", err)
 	}
+}
+
+// installDeny asks b's install command for a connector with only the denied targets deny.
+func installDeny(ctx context.Context, b *browser, org string, deny []string) (string, error) {
+	r, err := b.enr.GetInstallCommand(ctx, connect.NewRequest(&rpmgrv1.GetInstallCommandRequest{OrgId: org, DenyTargets: deny}))
+	if err != nil {
+		return "", err
+	}
+	return r.Msg.GetCommand(), nil
 }

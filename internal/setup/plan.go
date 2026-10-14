@@ -421,17 +421,22 @@ func (p *Plan) agentSteps() {
 	if v.Role != Connector {
 		return
 	}
-	if len(v.AllowTargets) > 0 {
-		p.add(fmt.Sprintf("allow %d target(s) in the connector-local policy %s", len(v.AllowTargets), p.policy),
-			func(_ context.Context, r *Result) error {
-				r.created(p.policy)
-				for _, t := range v.AllowTargets {
-					if _, err := policy.AllowTarget(p.policy, t); err != nil {
-						return err
-					}
+	if len(v.AllowTargets) > 0 || len(v.DenyTargets) > 0 {
+		p.add(fmt.Sprintf("allow %d and deny %d target(s) in the connector-local policy %s", len(v.AllowTargets), len(v.DenyTargets),
+			p.policy), func(_ context.Context, r *Result) error {
+			r.created(p.policy)
+			for _, t := range v.AllowTargets {
+				if _, err := policy.AllowTarget(p.policy, t); err != nil {
+					return err
 				}
-				return nil
-			})
+			}
+			for _, t := range v.DenyTargets {
+				if _, err := policy.DenyTarget(p.policy, t); err != nil {
+					return err
+				}
+			}
+			return nil
+		})
 	}
 	if v.Proxy != "" {
 		dropIn := filepath.Join(h.Paths.Units, "rpmgr-connector.service.d", "proxy.conf")
@@ -560,6 +565,9 @@ func (p *Plan) Summary() [][2]string {
 			targets = strings.Join(v.AllowTargets, ", ")
 		}
 		out = append(out, [2]string{"allowed targets", targets})
+		if len(v.DenyTargets) > 0 {
+			out = append(out, [2]string{"denied targets", strings.Join(v.DenyTargets, ", ")})
+		}
 		if v.Proxy != "" {
 			out = append(out, [2]string{"proxy", v.Proxy})
 		}

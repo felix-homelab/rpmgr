@@ -26,7 +26,7 @@ import { RouteTraffic } from "@/pages/route-traffic";
 import { RoutePolicies } from "@/route-form/route-policies";
 import { Reason, reasonOf } from "@/lib/errors";
 import { TargetForm, type Written } from "@/route-form/target-form";
-import { allowCommand, routeAddress, routeType, useAgentNames, useGroupHostnames, useGroupNames } from "@/routes-data";
+import { policyCommand, routeAddress, routeType, useAgentNames, useGroupHostnames, useGroupNames } from "@/routes-data";
 import { useOrg } from "@/session";
 
 const route = getRouteApi("/app/routes/$routeId");
@@ -263,8 +263,8 @@ function TargetRow({ route: r, target, connector, onEdit, onRemove }: {
           <div className="mt-2 grid gap-1.5">
             <span>{t("route.runOn", { connector })}</span>
             <span className="flex flex-wrap items-center gap-2">
-              <code className="rounded-md bg-muted px-2 py-1 font-mono">{allowCommand(problem.detail)}</code>
-              <Button size="sm" variant="outline" onClick={() => void navigator.clipboard?.writeText(allowCommand(problem.detail))}>{t("mfa.copy")}</Button>
+              <code className="rounded-md bg-muted px-2 py-1 font-mono">{policyCommand(problem.detail)}</code>
+              <Button size="sm" variant="outline" onClick={() => void navigator.clipboard?.writeText(policyCommand(problem.detail))}>{t("mfa.copy")}</Button>
             </span>
           </div>
         )}

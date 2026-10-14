@@ -303,7 +303,10 @@ flowchart LR
   - **Removal** first asks, naming the target's address.
   - **After each change,** the apply status follows live.
 - **A target that a connector's local policy blocks** shows the command for that connector's host,
-  with a copy button (U4). The target is shell-quoted, for example a socket path with a space.
+  with a copy button (U4): `rpmgr policy allow-target` for a target nothing allows, and
+  `rpmgr policy remove-deny-target` with the deny entry for one a `deny_targets` entry refuses
+  ([D84](14-open-decisions.md#engineering)). The value is shell-quoted, for example a socket path
+  with a space.
 - **A target whose connector reaches the gateways only over TLS and HTTP/2** is marked as served
   over the fallback for QUIC. A route pinned to HTTP/2 is not marked.
 - **Gateways that do not serve the route, and agents that rejected it,** are listed with their
@@ -527,8 +530,10 @@ flowchart LR
   on a phone. The same holds for the gateway's token and every other command the UI shows.
 - **"Copy"** says "Copied" for a moment. Where the browser does not copy, because the page has no
   clipboard or the browser refuses it, the dialog says to copy by hand and shows the token.
-- Targets entered in the dialog become `--allow-target` flags. Without any, the default local
-  policy is `allow_targets: []` ([04](04-security.md#connector-local-policy)).
+- Targets entered in the dialog become `--allow-target` flags, and denied targets `--deny-target`
+  flags, in the target forms of the local policy, such as `10.0.0.0/16` or `127.0.0.1:200-500`.
+  Without any, the default local policy is `allow_targets: []`
+  ([04](04-security.md#connector-local-policy)).
 - The dialog waits on the enrollment event and switches to the new connector's detail page when it
   connects.
 - **Making the token:**
@@ -537,7 +542,8 @@ flowchart LR
   - it is valid for 15 minutes up to 30 days, 1 hour by default, and can be scoped to a gateway
     group;
   - an ephemeral token may enroll several connectors, 0 meaning any number;
-  - the dialog asks for the install command with the targets as `--allow-target`.
+  - the dialog asks for the install command with the targets as `--allow-target` and
+    `--deny-target`.
 - [R] The mock-up's "Name" field is left out. A token does not name the connector it enrolls: the
   connector takes its host's name, and it is renamed on its page.
 - **The connectors page lists the enrollment tokens** that can still enroll, with creation, expiry,

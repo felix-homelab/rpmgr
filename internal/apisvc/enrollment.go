@@ -174,7 +174,8 @@ func (e *Enrollment) GetInstallCommand(_ context.Context, req *connect.Request[r
 	*connect.Response[rpmgrv1.GetInstallCommandResponse], error) {
 	m := req.Msg
 	base := strings.TrimSuffix(e.PublicURL, "/")
-	cmd, err := installsh.Command(base, e.RootPin, m.GetRole() == rpmgrv1.AgentRole_AGENT_ROLE_GATEWAY, m.GetAllowTargets())
+	cmd, err := installsh.Command(base, e.RootPin, m.GetRole() == rpmgrv1.AgentRole_AGENT_ROLE_GATEWAY, m.GetAllowTargets(),
+		m.GetDenyTargets())
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	}

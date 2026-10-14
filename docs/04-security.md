@@ -404,8 +404,9 @@ curl -fsSLO https://panel.example.com/install.sh && sudo sh install.sh \
   ([Supply chain and updates](#supply-chain-and-updates)).
 - The command comes from `GetInstallCommand` ([07](07-api.md#services)): the controller's URL and
   the pin, `--role gateway` for a gateway, and for a connector one `--allow-target` per target it
-  may reach. A target is checked as the local policy reads it, and every value is quoted for the
-  shell, so a pasted command runs nothing but the installer.
+  may reach and one `--deny-target` per target it must not reach. A target is checked as the local
+  policy reads it, and every value is quoted for the shell, so a pasted command runs nothing but
+  the installer.
 
 ### Flow
 
@@ -599,7 +600,12 @@ allow_targets:                  # what the connector may dial for routes and pri
     ports: [8080]
   - cidr: 192.168.10.0/24
     ports: [80, 443, 8000-8099]
+  - 127.0.0.1:200-500           # an entry may also be a target string
+  - 10.0.0.0/16                 # no port: all ports
   - unix: /run/app/app.sock
+deny_targets:                   # wins over allow_targets; the same forms
+  - 127.0.0.1:345
+  - 10.0.9.0/24
 allow_listen:                   # where visitor listeners for private services may bind
   - 127.0.0.1:20000-20999
 allow_remote_shell: false       # Phase 3; default false
@@ -621,13 +627,28 @@ Rules:
   or asks interactively, and always writes `auto_update` and `update_channel` explicitly.
 - Windows and macOS connectors (Phase 2) keep the same file in a platform-specific location with
   equivalent permissions ([10](10-operations.md#install)).
+- **Targets** ([D84](14-open-decisions.md#engineering)) are written the same way in the file's
+  string entries, `rpmgr policy`, `rpmgr setup` and the install command: an address or a subnet,
+  optionally followed by a port or a port range, IPv6 always in brackets, or an absolute socket
+  path: `127.0.0.1`, `10.0.0.1/16`, `127.0.0.1:200-500`, `10.0.0.0/16:443`, `[fd00::/64]:8000-8099`,
+  `/run/app/app.sock`. A mapping entry gives `cidr` (an address or a subnet) and `ports` (numbers or
+  ranges), or `unix`. A subnet's host bits are cleared, so `10.0.0.1/16` means and is shown as
+  `10.0.0.0/16`. An entry **without ports allows all of them**; `rpmgr policy show` says "all
+  ports".
+- **`deny_targets` wins.** A target that any of its entries matches is refused, whatever
+  `allow_targets` says, so with `127.0.0.1:200-500` allowed and `127.0.0.1:345` denied, port 345 is
+  refused. A deny entry without ports denies all of them; a deny entry may name a socket. The
+  refusal names the deny entry: `not_ready(blocked_by_local_policy: 127.0.0.1:345 denied by
+  127.0.0.1:345)`, and the UI's command is then `sudo rpmgr policy remove-deny-target
+  127.0.0.1:345`.
 - A file that does not parse, or that its group or other users may write, means **deny
   everything**: every target becomes `not_ready(policy_invalid)`; the snapshot itself is still
-  applied. Unknown keys and values are parse errors.
+  applied. Unknown keys and values, and a bad entry in either list, are parse errors.
 - Checks happen **at dial time on the resolved IP and port** (`net.Dialer.Control`), which defeats
   DNS rebinding. IPv4-mapped IPv6 addresses are unmapped before checking. Link-local and cloud
   metadata addresses (169.254.0.0/16, fe80::/10, `fd00:ec2::254/128`, `100.100.100.200/32`) are denied unless listed
-  explicitly.
+  explicitly, by an entry no broader than the protected range; `0.0.0.0/0` without ports does not
+  let them through.
 - A target the policy forbids does **not** reject the snapshot. The snapshot is applied, and the
   affected target reports `not_ready(blocked_by_local_policy: 10.0.0.5:5432)`; the UI shows the
   reason and the exact command to allow it: `sudo rpmgr policy allow-target 10.0.0.5:5432`. One
@@ -636,12 +657,15 @@ Rules:
   allowed until a dial is refused on its resolved address; the route is then
   `not_ready(blocked_by_local_policy: <ip:port>)` until the policy is reloaded or a snapshot
   changes it.
-- `rpmgr policy …` edits the file as root, under a lock file, atomically and keeping its comments
-  and other keys, and triggers a reload (`systemctl reload`, i.e. SIGHUP); the connector also
-  watches the file. On reload it re-evaluates the current snapshot, reports the new readiness, and
-  resets the open connections to targets the policy no longer allows. A target taken out is then
-  not reachable through a connection opened before, such as an upstream's pooled HTTP/2
-  connection.
+- `rpmgr policy allow-target`, `remove-target`, `deny-target` and `remove-deny-target` edit the file
+  as root, under a lock file, atomically and keeping its comments and other keys. A target an entry
+  already covers is not added twice; a port goes into the entry of its subnet. A target that only a
+  broader entry or a port range covers cannot be removed by splitting the entry: the command says so
+  and suggests `deny-target`. Each edit triggers a reload (`systemctl reload`, i.e. SIGHUP); the
+  connector also watches the file. On reload it re-evaluates the current snapshot, reports the new
+  readiness, and resets the open connections to targets the policy no longer allows, a target a new
+  deny entry matches included. A target taken out is then not reachable through a connection opened
+  before, such as an upstream's pooled HTTP/2 connection.
 - The policy only protects if the binary enforcing it is genuine: OTA installs only signed binaries
   at or above a locally persisted version floor, and `auto_update` lets the host refuse automatic
   updates entirely ([Supply chain and updates](#supply-chain-and-updates)).
@@ -863,7 +887,8 @@ Phase 3 item ([13](13-roadmap.md#phase-3--advanced)).
     order of the example above (`os`, `arch`, `variant`, `sha256`, `size`), as `json.Marshal`
     writes `release.Manifest`. Anything else it refuses.
   - **Options:** `--controller <url> --ca-pin <pin> [--role gateway|connector]
-    [--allow-target <target>]... [--token-file <file>] [--tcp-bbr] [--verify-only]`.
+    [--allow-target <target>]... [--deny-target <target>]... [--token-file <file>] [--tcp-bbr]
+    [--verify-only]`.
     `--verify-only` stops after the verification, and needs neither root nor a pin.
   - **What it installs:** the binary in `/usr/local/bin`, the boot file, the policy file, the
     updater's state and the host tuning ([10](10-operations.md#filesystem-layout)). It then enrolls
