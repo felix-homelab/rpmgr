@@ -133,6 +133,18 @@ func testseedCommand() *cli.Command {
 			return s.AddUDPRoute(testseed.Route{Name: name, Group: group, Port: port, Connectors: connectors, Target: target,
 				Transport: transport, Idle: idle})
 		}),
+		verb("tcp-udp-route", "create a route on one port with TCP and UDP", func(fs *flag.FlagSet) {
+			fs.StringVar(&name, "name", "", "route name")
+			fs.StringVar(&group, "group", "e2e", "gateway group")
+			fs.IntVar(&port, "port", 0, "public port, for both protocols")
+			fs.Var(&connectors, "connector", "connector name that serves the route (repeatable)")
+			fs.StringVar(&target, "target", "", "target host:port on the connectors' side, for both protocols")
+			fs.StringVar(&transport, "transport", "", "auto, quic or h2; empty inherits")
+			fs.DurationVar(&idle, "idle", 0, "TCP idle timeout; 0 keeps the default")
+		}, func(s *testseed.Seeder, _ *cli.Env) error {
+			return s.AddTCPUDPRoute(testseed.Route{Name: name, Group: group, Port: port, Connectors: connectors, Target: target,
+				Transport: transport, Idle: idle})
+		}),
 		verb("http-route", "create an http route with an uploaded certificate", func(fs *flag.FlagSet) {
 			fs.StringVar(&name, "name", "", "route name")
 			fs.StringVar(&group, "group", "e2e", "gateway group")

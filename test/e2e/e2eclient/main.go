@@ -31,7 +31,7 @@ func main() {
 	fs := flag.NewFlagSet(os.Args[1], flag.ExitOnError)
 	addr := fs.String("addr", "", "the route's address, host:port")
 	listen := fs.String("listen", ":7", "serve: the TCP echo service's addresses, comma-separated")
-	udpAddr := fs.String("udp", "", "serve: the UDP echo service's address")
+	udpAddr := fs.String("udp", "", "serve: the UDP echo service's addresses, comma-separated")
 	httpAddr := fs.String("http", "", "serve: the HTTP upstream's address, HTTP/1.1 and h2c")
 	tlsAddr := fs.String("tls", "", "serve: the TLS backend's address, HTTP/1.1 and HTTP/2")
 	certFile := fs.String("cert", "", "serve: the TLS backend's certificate")

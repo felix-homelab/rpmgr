@@ -30,7 +30,9 @@ func serveAll(listen, udpAddr, httpAddr, tlsAddr, certFile, keyFile string) erro
 		go func() { errs <- serve(a) }()
 	}
 	if udpAddr != "" {
-		go func() { errs <- serveUDP(udpAddr) }()
+		for _, a := range strings.Split(udpAddr, ",") {
+			go func() { errs <- serveUDP(a) }()
+		}
 	}
 	h := upstream()
 	if httpAddr != "" {

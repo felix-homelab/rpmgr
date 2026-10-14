@@ -21,6 +21,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/route"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routetarget"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routetcp"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/routeudp"
 	"github.com/felix-homelab/rpmgr/internal/store/storetest"
 	"github.com/felix-homelab/rpmgr/internal/testseed"
 	"github.com/felix-homelab/rpmgr/internal/token"
@@ -88,6 +89,14 @@ func TestTestseed(t *testing.T) {
 	if *rt.Transport != "quic" || rt.Enabled || tcp.IdleTimeoutSeconds != 120 {
 		t.Fatalf("updated route %+v, tcp %+v", rt, tcp)
 	}
+	seed(t, boot, "tcp-udp-route", "--name", "dns", "--group", "eu", "--port", "20053", "--connector", "con1", "--target", "10.0.0.5:53")
+	dns := c.Route.Query().Where(route.Name("dns")).OnlyX(sys)
+	dnsTCP := c.RouteTCP.Query().Where(routetcp.RouteID(dns.ID)).WithPort().OnlyX(sys)
+	dnsUDP := c.RouteUDP.Query().Where(routeudp.RouteID(dns.ID)).WithPort().OnlyX(sys)
+	if dns.Type != route.TypeTCPUDP || dnsTCP.Edges.Port.Port != 20053 || dnsUDP.Edges.Port.Port != 20053 ||
+		dnsTCP.IdleTimeoutSeconds != 3600 || dnsUDP.FlowIdleTimeoutSeconds != 60 {
+		t.Fatalf("tcp_udp route %+v, tcp %+v, udp %+v", dns, dnsTCP, dnsUDP)
+	}
 	seed(t, boot, "revoke", "--kind", "connector", "--name", "con1")
 	if n := c.RevokedIdentity.Query().CountX(sys); n != 1 {
 		t.Fatalf("%d revoked identities", n)
@@ -96,7 +105,7 @@ func TestTestseed(t *testing.T) {
 	if err != nil || len(entries) != 1 || entries[0].Kind != revlog.IdentityRevoked {
 		t.Fatalf("revocation log %v %v", entries, err)
 	}
-	if seq := c.ConfigRevision.Query().CountX(sys); seq != 4 {
+	if seq := c.ConfigRevision.Query().CountX(sys); seq != 5 {
 		t.Fatalf("%d revisions, want one per configuration write", seq)
 	}
 
