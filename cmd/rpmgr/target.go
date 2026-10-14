@@ -25,10 +25,10 @@ import (
 // targetFlags are the flags of `create route-target` and `update route-target`.
 type targetFlags struct {
 	route, connector, address, unix, upstream, serverName, caBundle, spki, verification, proxy string
-	weight, priority                                                             uint
-	disabled, force                                                              bool
-	wait                                                                         time.Duration
-	output                                                                       string
+	weight, priority                                                                           uint
+	disabled, force                                                                            bool
+	wait                                                                                       time.Duration
+	output                                                                                     string
 }
 
 func (f *targetFlags) flags(fs *flag.FlagSet, create bool) {
