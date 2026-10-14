@@ -45,7 +45,9 @@ func (t *Targets) Probe(ctx context.Context, p *agentv1.ProbeTarget) ([]byte, er
 	conn, err := d.DialContext(ctx, network, address)
 	if err != nil {
 		var b *policy.BlockedError
-		if errors.As(err, &b) {
+		if errors.As(err, &b) && b.Denied != "" {
+			return nil, fmt.Errorf("the connector's local policy denies %s (deny_targets entry %s)", b.Target, b.Denied)
+		} else if b != nil {
 			return nil, fmt.Errorf("the connector's local policy does not allow %s", b.Target)
 		}
 		return nil, fmt.Errorf("cannot reach %s: %w", address, err)

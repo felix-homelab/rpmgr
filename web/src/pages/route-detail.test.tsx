@@ -9,7 +9,7 @@ import { MetricsService, TrafficResolution, type GetRouteTrafficRequest } from "
 import { RouteService, RouteState, type DeleteRouteRequest } from "@/gen/rpmgr/v1/route_pb";
 import { ApplyState } from "@/gen/rpmgr/v1/status_pb";
 import { Theme, UserService } from "@/gen/rpmgr/v1/user_pb";
-import { allowCommand, shellArg } from "@/routes-data";
+import { policyCommand, shellArg } from "@/routes-data";
 import { apiError, auth, show } from "@/testing/api";
 
 afterEach(cleanup);
@@ -219,14 +219,19 @@ describe("RouteDetail", () => {
   });
 });
 
-describe("allowCommand", () => {
+describe("policyCommand", () => {
   it.each([
     ["10.0.0.5:5432", "sudo rpmgr policy allow-target 10.0.0.5:5432"],
-    ["[2001:db8::5]:5432", "sudo rpmgr policy allow-target [2001:db8::5]:5432"],
+    ["127.0.0.1:345 denied by 127.0.0.1:345", "sudo rpmgr policy remove-deny-target 127.0.0.1:345"],
+    ["10.9.0.7:22 denied by 10.9.0.0/16", "sudo rpmgr policy remove-deny-target 10.9.0.0/16"],
+    ["/run/app.sock denied by /run/app.sock", "sudo rpmgr policy remove-deny-target /run/app.sock"],
+    ["/run/a b.sock denied by /run/a b.sock", "sudo rpmgr policy remove-deny-target '/run/a b.sock'"],
+    ["[2001:db8::5]:5432", "sudo rpmgr policy allow-target '[2001:db8::5]:5432'"],
+    ["[fd00::9]:443 denied by [fd00::/64]:443", "sudo rpmgr policy remove-deny-target '[fd00::/64]:443'"],
     ["/run/pg sock", "sudo rpmgr policy allow-target '/run/pg sock'"],
     ["/tmp/x';rm -rf /;'", "sudo rpmgr policy allow-target '/tmp/x'\\'';rm -rf /;'\\'''"],
   ])("%s", (target, want) => {
-    expect(allowCommand(target)).toBe(want);
+    expect(policyCommand(target)).toBe(want);
   });
 
   it("leaves plain words unquoted", () => {

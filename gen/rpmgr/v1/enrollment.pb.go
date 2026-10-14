@@ -764,9 +764,13 @@ type GetInstallCommandRequest struct {
 	OrgId string `protobuf:"bytes,1,opt,name=org_id,json=orgId,proto3" json:"org_id,omitempty"`
 	// The role to install; a connector if not set.
 	Role AgentRole `protobuf:"varint,2,opt,name=role,proto3,enum=rpmgr.v1.AgentRole" json:"role,omitempty"`
-	// The targets a connector may reach, written into its local policy: ip:port, [ipv6]:port or a
-	// socket path. None for a gateway.
-	AllowTargets  []string `protobuf:"bytes,3,rep,name=allow_targets,json=allowTargets,proto3" json:"allow_targets,omitempty"`
+	// The targets a connector may reach, written into its local policy's allow_targets: an address or
+	// subnet with an optional port or port range, IPv6 in brackets, or a socket path
+	// (docs/04-security.md, "Connector-local policy"). None for a gateway.
+	AllowTargets []string `protobuf:"bytes,3,rep,name=allow_targets,json=allowTargets,proto3" json:"allow_targets,omitempty"`
+	// The targets a connector must not reach, written into deny_targets, which win over
+	// allow_targets; the same form. None for a gateway.
+	DenyTargets   []string `protobuf:"bytes,4,rep,name=deny_targets,json=denyTargets,proto3" json:"deny_targets,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -818,6 +822,13 @@ func (x *GetInstallCommandRequest) GetRole() AgentRole {
 func (x *GetInstallCommandRequest) GetAllowTargets() []string {
 	if x != nil {
 		return x.AllowTargets
+	}
+	return nil
+}
+
+func (x *GetInstallCommandRequest) GetDenyTargets() []string {
+	if x != nil {
+		return x.DenyTargets
 	}
 	return nil
 }
@@ -954,11 +965,12 @@ const file_rpmgr_v1_enrollment_proto_rawDesc = "" +
 	"\x1cRevokeEnrollmentTokenRequest\x127\n" +
 	"\x13enrollment_token_id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x11enrollmentTokenId\"e\n" +
 	"\x1dRevokeEnrollmentTokenResponse\x12D\n" +
-	"\x10enrollment_token\x18\x01 \x01(\v2\x19.rpmgr.v1.EnrollmentTokenR\x0fenrollmentToken\"\xa7\x01\n" +
+	"\x10enrollment_token\x18\x01 \x01(\v2\x19.rpmgr.v1.EnrollmentTokenR\x0fenrollmentToken\"\xdf\x01\n" +
 	"\x18GetInstallCommandRequest\x12\x1e\n" +
 	"\x06org_id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x05orgId\x121\n" +
 	"\x04role\x18\x02 \x01(\x0e2\x13.rpmgr.v1.AgentRoleB\b\xbaH\x05\x82\x01\x02\x10\x01R\x04role\x128\n" +
-	"\rallow_targets\x18\x03 \x03(\tB\x13\xbaH\x10\x92\x01\r\x10 \x18\x01\"\ar\x05\x10\x01\x18\x80\x02R\fallowTargets\"s\n" +
+	"\rallow_targets\x18\x03 \x03(\tB\x13\xbaH\x10\x92\x01\r\x10 \x18\x01\"\ar\x05\x10\x01\x18\x80\x02R\fallowTargets\x126\n" +
+	"\fdeny_targets\x18\x04 \x03(\tB\x13\xbaH\x10\x92\x01\r\x10 \x18\x01\"\ar\x05\x10\x01\x18\x80\x02R\vdenyTargets\"s\n" +
 	"\x19GetInstallCommandResponse\x12\x18\n" +
 	"\acommand\x18\x01 \x01(\tR\acommand\x12%\n" +
 	"\x0econtroller_url\x18\x02 \x01(\tR\rcontrollerUrl\x12\x15\n" +

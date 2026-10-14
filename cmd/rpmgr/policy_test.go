@@ -56,6 +56,28 @@ func TestPolicyCommands(t *testing.T) {
 	if code != 0 || !strings.Contains(out, "updated") {
 		t.Fatalf("remove-target: %d %q", code, out)
 	}
+	// D84: a subnet with host bits and no port, a port range, and a deny that wins over them.
+	for _, args := range [][]string{{"allow-target", "10.0.0.1/16"}, {"allow-target", "127.0.0.1:200-500"},
+		{"deny-target", "127.0.0.1:345"}} {
+		if code, out, errOut := runRpmgr(append([]string{"policy", args[0], "--file", path, "--no-reload"}, args[1:]...)...); code != 0 ||
+			!strings.Contains(out, "updated") {
+			t.Fatalf("%v: %d %q %q", args, code, out, errOut)
+		}
+	}
+	code, out, _ = runRpmgr("policy", "show", "--file", path)
+	for _, want := range []string{"10.0.0.0/16 all ports", "127.0.0.1/32 ports 200-500", "denied targets, which win over allowed ones:\n  127.0.0.1/32 ports 345"} {
+		if code != 0 || !strings.Contains(out, want) {
+			t.Fatalf("show lacks %q: %d %q", want, code, out)
+		}
+	}
+	if code, _, errOut := runRpmgr("policy", "remove-target", "--file", path, "--no-reload", "10.0.3.3:22"); code != cli.ExitError ||
+		!strings.Contains(errOut, "deny-target") {
+		t.Fatalf("a target inside a subnet: %d %q", code, errOut)
+	}
+	if code, out, _ := runRpmgr("policy", "remove-deny-target", "--file", path, "--no-reload", "127.0.0.1:345"); code != 0 ||
+		!strings.Contains(out, "updated") {
+		t.Fatalf("remove-deny-target: %d %q", code, out)
+	}
 
 	if err := os.WriteFile(path, []byte("version: 2\n"), 0o644); err != nil {
 		t.Fatal(err)

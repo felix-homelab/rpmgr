@@ -29,7 +29,7 @@ func policyCommand() *cli.Command {
 	pathFlag := func(fs *flag.FlagSet) { fs.StringVar(&path, "file", policy.DefaultPath, "the policy file") }
 	edit := func(name, summary string, do func(path, target string) (bool, error)) *cli.Command {
 		var noReload bool
-		return &cli.Command{Name: name, Summary: summary, Args: "<ip>:<port> | <socket path>",
+		return &cli.Command{Name: name, Summary: summary, Args: "<ip or subnet>[:<port or range>] | [<ipv6 or subnet>][:<port or range>] | <socket path>",
 			Flags: func(fs *flag.FlagSet) {
 				pathFlag(fs)
 				fs.BoolVar(&noReload, "no-reload", false, "do not ask the running connector to reload the policy")
@@ -75,7 +75,9 @@ func policyCommand() *cli.Command {
 				_, _ = fmt.Fprint(env.Stdout, p.Describe())
 				return nil
 			}},
-		edit("allow-target", "allow the connector to dial a target", policy.AllowTarget),
+		edit("allow-target", "allow the connector to dial a target; without a port, all its ports", policy.AllowTarget),
 		edit("remove-target", "stop allowing a target", policy.RemoveTarget),
+		edit("deny-target", "deny a target, whatever allows it", policy.DenyTarget),
+		edit("remove-deny-target", "stop denying a target", policy.RemoveDenyTarget),
 	)
 }

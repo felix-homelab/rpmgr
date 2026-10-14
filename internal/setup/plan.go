@@ -63,6 +63,9 @@ type Result struct {
 
 var errRoot = errors.New("setup: run it as root (sudo rpmgr setup)")
 
+// The edits of the connector-local policy, replaced in tests.
+var allowTarget, denyTarget = policy.AllowTarget, policy.DenyTarget
+
 // Facts are what a form needs to know about the host before it asks.
 type Facts struct {
 	Systemd int // systemctl's version; 0 without systemd
@@ -421,17 +424,24 @@ func (p *Plan) agentSteps() {
 	if v.Role != Connector {
 		return
 	}
-	if len(v.AllowTargets) > 0 {
-		p.add(fmt.Sprintf("allow %d target(s) in the connector-local policy %s", len(v.AllowTargets), p.policy),
-			func(_ context.Context, r *Result) error {
-				r.created(p.policy)
-				for _, t := range v.AllowTargets {
-					if _, err := policy.AllowTarget(p.policy, t); err != nil {
-						return err
-					}
+	if len(v.AllowTargets) > 0 || len(v.DenyTargets) > 0 {
+		p.add(fmt.Sprintf("allow %d and deny %d target(s) in the connector-local policy %s", len(v.AllowTargets), len(v.DenyTargets),
+			p.policy), func(_ context.Context, r *Result) error {
+			r.created(p.policy)
+			// Denials first: an allow never stands, not even for a moment, without the denials
+			// that narrow it.
+			for _, t := range v.DenyTargets {
+				if _, err := denyTarget(p.policy, t); err != nil {
+					return err
 				}
-				return nil
-			})
+			}
+			for _, t := range v.AllowTargets {
+				if _, err := allowTarget(p.policy, t); err != nil {
+					return err
+				}
+			}
+			return nil
+		})
 	}
 	if v.Proxy != "" {
 		dropIn := filepath.Join(h.Paths.Units, "rpmgr-connector.service.d", "proxy.conf")
@@ -560,6 +570,9 @@ func (p *Plan) Summary() [][2]string {
 			targets = strings.Join(v.AllowTargets, ", ")
 		}
 		out = append(out, [2]string{"allowed targets", targets})
+		if len(v.DenyTargets) > 0 {
+			out = append(out, [2]string{"denied targets", strings.Join(v.DenyTargets, ", ")})
+		}
 		if v.Proxy != "" {
 			out = append(out, [2]string{"proxy", v.Proxy})
 		}

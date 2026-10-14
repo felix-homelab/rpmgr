@@ -23,7 +23,7 @@ import { ConnectorSchema, ConnectorService, DataTransport, UpdateConnectorReques
 import type { ApplyStatus } from "@/gen/rpmgr/v1/status_pb";
 import { when } from "@/lib/format";
 import { SessionChip } from "@/pages/connectors";
-import { allowCommand, useAgentNames, useRoutes } from "@/routes-data";
+import { policyCommand, useAgentNames, useRoutes } from "@/routes-data";
 import { useOrg } from "@/session";
 
 const page = getRouteApi("/app/connectors/$connectorId");
@@ -129,8 +129,8 @@ export function ConnectorDetail() {
             <span className="text-warn">{routeName(n.resourceId)}: {t(`notServing.${n.reason}`, { defaultValue: n.reason })}</span>
             {n.reason === "BLOCKED_BY_LOCAL_POLICY" && n.detail && (
               <span className="flex flex-wrap items-center gap-2">
-                <code className="rounded-md bg-card px-2 py-1 font-mono">{allowCommand(n.detail)}</code>
-                <Button size="sm" variant="outline" onClick={() => void navigator.clipboard?.writeText(allowCommand(n.detail))}>
+                <code className="rounded-md bg-card px-2 py-1 font-mono">{policyCommand(n.detail)}</code>
+                <Button size="sm" variant="outline" onClick={() => void navigator.clipboard?.writeText(policyCommand(n.detail))}>
                   <Copy aria-hidden="true" />{t("mfa.copy")}
                 </Button>
               </span>

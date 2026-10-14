@@ -202,7 +202,9 @@ appears under its host's name.
 
 The targets you entered go into the connector's local policy, `/etc/rpmgr/policy.yaml`, and the
 connector reaches nothing else. To allow another target later, run
-`sudo rpmgr policy allow-target 192.168.1.30:80` on that machine.
+`sudo rpmgr policy allow-target 192.168.1.30:80` on that machine. A target may also be a subnet or
+a port range, such as `192.168.1.0/24` (all ports) or `192.168.1.30:8000-8099`, and
+`sudo rpmgr policy deny-target 192.168.1.30:8022` takes a port out again.
 
 ### 7. Publish the app
 

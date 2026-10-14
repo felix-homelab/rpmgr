@@ -62,9 +62,15 @@ history and the [ADRs](docs/adr/).
   `ALL_PROXY`) where only a proxy leads out, and carries its control session inside a data session
   when no controller endpoint is reachable. (#245, #267, #286)
 - Connector: the connector-local policy, `/etc/rpmgr/policy.yaml`, limits the targets a connector
-  dials, even for a compromised controller. `rpmgr policy show` and `rpmgr policy allow-target`
+  dials, even for a compromised controller. A target is an address or a subnet, such as
+  `10.0.0.1/16` (stored as `10.0.0.0/16`), with an optional port or port range such as
+  `127.0.0.1:200-500`; without a port it means all ports. `deny_targets` refuses what it matches,
+  whatever allows it. `rpmgr policy show`, `allow-target`, `deny-target` and their `remove-` forms
   edit it and reload the connector; a reload ends relayed connections the policy no longer allows.
-  (#247, #248, #249, #388)
+  `rpmgr setup` and the install command take `--allow-target` and `--deny-target`. YAML anchors,
+  aliases and merge keys make the file invalid. A connector of an earlier build reads a file that
+  uses `deny_targets`, a target string, an entry without ports or a subnet with host bits as invalid
+  and dials nothing, also after an automatic update rolls it back. (#247, #248, #249, #388, #519)
 - Gateway: `tcp` routes take a public port from their gateway group's port pools, within the org's
   port quota, and carry each connection as one stream to a connector. (#234, #235, #254, #326)
 - Gateway: `udp` routes carry each client flow as QUIC datagrams, or as frames on the `h2`
