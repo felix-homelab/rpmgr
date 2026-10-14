@@ -29,6 +29,18 @@ type Registry interface {
 	prometheus.Gatherer
 }
 
+// WithLabels returns reg with the constant labels added to every metric registered through it;
+// gathering reads all of reg. All-in-one gives each agent it runs a role label, so that the metrics
+// both register stay apart on its one registry (docs/10-operations.md, "Metrics").
+func WithLabels(reg Registry, labels prometheus.Labels) Registry {
+	return labelled{Registerer: prometheus.WrapRegistererWith(labels, reg), Gatherer: reg}
+}
+
+type labelled struct {
+	prometheus.Registerer
+	prometheus.Gatherer
+}
+
 // NewRegistry returns a role's metrics registry with the Go runtime and process collectors; feature
 // code registers the role's metrics on it. Labels use stable IDs, never per-connection or
 // per-client-IP values.

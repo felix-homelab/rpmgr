@@ -68,6 +68,10 @@ type RunOptions struct {
 	// Readiness then gets the gateway's readiness check.
 	Registry  telemetry.Registry
 	Readiness func(check func(context.Context) error)
+	// Tunnels, if set, accepts in-memory connections that can only be data sessions to this
+	// gateway: all-in-one's connector's (Router.HandleTunnel). Run closes it when it drains or
+	// fails, so that a dial to it does not wait for a gateway that is gone.
+	Tunnels net.Listener
 }
 
 // Run runs a gateway from its boot file until ctx ends (docs/02-architecture.md): its control
@@ -83,6 +87,9 @@ func Run(ctx context.Context, o RunOptions) error {
 	}
 	if o.DrainPeriod == 0 {
 		o.DrainPeriod = DrainPeriod
+	}
+	if o.Tunnels != nil {
+		defer func() { _ = o.Tunnels.Close() }()
 	}
 	cfg := o.Config
 	if cfg.Controller.Passthrough.Address != "" && o.Controller != nil {
@@ -186,6 +193,10 @@ func Run(ctx context.Context, o RunOptions) error {
 		HTTP: httpRoutes.Serve, HTTPTLS: httpRoutes.TLSConfig(), Unrouted: httpRoutes.ServeUnrouted, UnroutedTLS: httpRoutes.UnroutedTLSConfig(),
 		Tunnel: func(c *tls.Conn) {
 			defer func() { _ = c.Close() }()
+			over := "TCP" // or memory: all-in-one's connector (ServeTunnels)
+			if c.RemoteAddr().Network() == "memory" {
+				over = "memory"
+			}
 			hctx, cancel := context.WithTimeout(run, tunnelHandshake)
 			err := c.HandshakeContext(hctx)
 			cancel()
@@ -194,7 +205,7 @@ func Run(ctx context.Context, o RunOptions) error {
 			}
 			windows, release, err := budget.AdmitH2(tunnel.DefaultH2Windows())
 			if err != nil {
-				o.Logger.Warn("refusing a data session over TCP", "error", err)
+				o.Logger.Warn("refusing a data session over "+over, "error", err)
 				return
 			}
 			defer release()
@@ -203,7 +214,7 @@ func Run(ctx context.Context, o RunOptions) error {
 				return
 			}
 			if err := sessions.Serve(run, s, c.ConnectionState().PeerCertificates[0]); err != nil {
-				o.Logger.Debug("data session over TCP ended", "error", err)
+				o.Logger.Debug("data session over "+over+" ended", "error", err)
 			}
 		}}
 
@@ -267,6 +278,13 @@ func Run(ctx context.Context, o RunOptions) error {
 		o.Readiness(ctl.Ready)
 	}
 	go func() { _ = router.Serve(tcp) }()
+	if o.Tunnels != nil {
+		go func() {
+			if err := router.ServeTunnels(o.Tunnels); err != nil {
+				o.Logger.Warn("in-memory data sessions stopped", "error", err)
+			}
+		}()
+	}
 	if plain != nil {
 		go func() {
 			if err := httpRoutes.Serve80(plain); err != nil && !errors.Is(err, net.ErrClosed) {
@@ -309,6 +327,9 @@ func Run(ctx context.Context, o RunOptions) error {
 	_ = tcp.Close()
 	if plain != nil {
 		_ = plain.Close()
+	}
+	if o.Tunnels != nil {
+		_ = o.Tunnels.Close() // no new data sessions in memory either; closing twice is harmless
 	}
 	_ = qln.Close()
 	routes.Drain()

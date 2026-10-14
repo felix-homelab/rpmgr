@@ -46,11 +46,17 @@ type RunOptions struct {
 	ControlDial func(ctx context.Context, addr string) (net.Conn, error)
 	// Registry, if set, receives the connector's metrics instead of a new registry.
 	Registry telemetry.Registry
+	// Readiness, if set, gets the connector's readiness check, and Run serves no admin listener:
+	// the caller's serves Registry. Unlike a gateway's, a Registry alone keeps the connector's own
+	// admin listener, which then serves it.
+	Readiness func(check func(context.Context) error)
+	// InProcess, if set, is a gateway in the same process, which the data sessions reach in memory.
+	InProcess *InProcess
 }
 
 // Run runs a connector from its boot file until ctx ends (docs/02-architecture.md): its control
 // plane, its data sessions to the gateways of its routes, the targets those routes deliver to as
-// its local policy allows, the policy watcher, and the admin listener.
+// its local policy allows, the policy watcher, and the admin listener unless Readiness is set.
 func Run(ctx context.Context, o RunOptions) error {
 	if o.Getenv == nil {
 		o.Getenv = os.Getenv
@@ -115,7 +121,7 @@ func Run(ctx context.Context, o RunOptions) error {
 	if _, err := rand.Read(boot); err != nil {
 		return err
 	}
-	sessions = New(Options{QUIC: tr, Dial: dial, Streams: targets.Handle, Now: o.Now, Logger: o.Logger, Metrics: metrics,
+	sessions = New(Options{QUIC: tr, Dial: dial, InProcess: o.InProcess, Streams: targets.Handle, Now: o.Now, Logger: o.Logger, Metrics: metrics,
 		Hello: func() *tunnelv1.SessionHello {
 			return &tunnelv1.SessionHello{AgentVersion: o.Version, Capabilities: Capabilities, BootId: hex.EncodeToString(boot)}
 		},
@@ -142,13 +148,17 @@ func Run(ctx context.Context, o RunOptions) error {
 	errs := make(chan error, 2)
 	go watcher.Run(run)
 	var admin sync.WaitGroup
-	admin.Go(func() {
-		if err := telemetry.ServeAdmin(run, cfg.Listen.Admin, reg, ctl.Ready); err != nil {
-			errs <- fmt.Errorf("connector: admin listener: %w", err)
-		}
-	})
-	// Run returns only once the admin listener is closed, so that its address is free again.
-	defer func() { stop(); admin.Wait() }()
+	if o.Readiness == nil {
+		admin.Go(func() {
+			if err := telemetry.ServeAdmin(run, cfg.Listen.Admin, reg, ctl.Ready); err != nil {
+				errs <- fmt.Errorf("connector: admin listener: %w", err)
+			}
+		})
+		// Run returns only once the admin listener is closed, so that its address is free again.
+		defer func() { stop(); admin.Wait() }()
+	} else {
+		o.Readiness(ctl.Ready)
+	}
 	done := make(chan error, 1)
 	go func() { done <- ctl.Run(run) }()
 	o.Logger.Info("connector running", "connector", ctl.Identity().AgentID, "policy", cfg.PolicyFile)
