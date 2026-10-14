@@ -341,6 +341,9 @@ func (g *Gateways) DecommissionGateway(ctx context.Context, req *connect.Request
 		if row = cur; cur.DecommissionedAt != nil {
 			return []string{cur.ID}, nil
 		}
+		if cur.BuiltIn {
+			return nil, connect.NewError(connect.CodeFailedPrecondition, errBuiltIn)
+		}
 		now := g.now()
 		if row, err = tx.Gateway.UpdateOneID(cur.ID).Where(gateway.Version(cur.Version)).SetDecommissionedAt(now).
 			SetEnabled(false).Save(ctx); err != nil {
@@ -358,6 +361,10 @@ func (g *Gateways) DecommissionGateway(ctx context.Context, req *connect.Request
 	return connect.NewResponse(&rpmgrv1.DecommissionGatewayResponse{Gateway: g.gatewayOf(ctx, row), Revision: revisionOf(rev)}), nil
 }
 
+// errBuiltIn refuses to decommission all-in-one's own gateway or connector: it runs in the
+// controller's process, which would stop with it (ADR-0019).
+var errBuiltIn = errors.New("all-in-one's own gateway and connector run in the controller's process and cannot be decommissioned; disable it instead")
+
 func (g *Gateways) now() time.Time {
 	if g.Now != nil {
 		return g.Now()
@@ -370,7 +377,7 @@ func (g *Gateways) now() time.Time {
 func (g *Gateways) gatewayOf(ctx context.Context, r *ent.Gateway) *rpmgrv1.Gateway {
 	out := &rpmgrv1.Gateway{Id: r.ID, GatewayGroupId: r.GatewayGroupID, Name: r.Name, Slot: int32(r.Slot), //nolint:gosec // G115: 1 to 4
 		TunnelEndpoints: r.TunnelEndpoints, Enabled: r.Enabled, CreateTime: timestamppb.New(r.CreatedAt), Etag: etagOf(r.Version),
-		Status: &rpmgrv1.GatewayStatus{Enrolled: r.SpiffeID != ""}}
+		Status: &rpmgrv1.GatewayStatus{Enrolled: r.SpiffeID != ""}, BuiltIn: r.BuiltIn}
 	if r.DecommissionedAt != nil {
 		out.DecommissionTime = timestamppb.New(*r.DecommissionedAt)
 	}

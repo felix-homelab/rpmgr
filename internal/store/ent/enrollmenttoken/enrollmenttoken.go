@@ -32,6 +32,8 @@ const (
 	FieldLabels = "labels"
 	// FieldEphemeral holds the string denoting the ephemeral field in the database.
 	FieldEphemeral = "ephemeral"
+	// FieldBuiltIn holds the string denoting the built_in field in the database.
+	FieldBuiltIn = "built_in"
 	// FieldMaxUses holds the string denoting the max_uses field in the database.
 	FieldMaxUses = "max_uses"
 	// FieldUseCount holds the string denoting the use_count field in the database.
@@ -90,6 +92,7 @@ var Columns = []string{
 	FieldConnectorID,
 	FieldLabels,
 	FieldEphemeral,
+	FieldBuiltIn,
 	FieldMaxUses,
 	FieldUseCount,
 	FieldExpiresAt,
@@ -125,6 +128,8 @@ var (
 	TokenHashValidator func([]byte) error
 	// DefaultEphemeral holds the default value on creation for the "ephemeral" field.
 	DefaultEphemeral bool
+	// DefaultBuiltIn holds the default value on creation for the "built_in" field.
+	DefaultBuiltIn bool
 	// MaxUsesValidator is a validator for the "max_uses" field. It is called by the builders before save.
 	MaxUsesValidator func(int) error
 	// DefaultUseCount holds the default value on creation for the "use_count" field.
@@ -200,6 +205,11 @@ func ByConnectorID(opts ...sql.OrderTermOption) OrderOption {
 // ByEphemeral orders the results by the ephemeral field.
 func ByEphemeral(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldEphemeral, opts...).ToFunc()
+}
+
+// ByBuiltIn orders the results by the built_in field.
+func ByBuiltIn(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldBuiltIn, opts...).ToFunc()
 }
 
 // ByMaxUses orders the results by the max_uses field.

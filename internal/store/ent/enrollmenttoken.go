@@ -37,6 +37,8 @@ type EnrollmentToken struct {
 	Labels map[string]string `json:"labels,omitempty"`
 	// Ephemeral holds the value of the "ephemeral" field.
 	Ephemeral bool `json:"ephemeral,omitempty"`
+	// BuiltIn holds the value of the "built_in" field.
+	BuiltIn bool `json:"built_in,omitempty"`
 	// MaxUses holds the value of the "max_uses" field.
 	MaxUses *int `json:"max_uses,omitempty"`
 	// UseCount holds the value of the "use_count" field.
@@ -112,7 +114,7 @@ func (*EnrollmentToken) scanValues(columns []string) ([]any, error) {
 		switch columns[i] {
 		case enrollmenttoken.FieldTokenHash, enrollmenttoken.FieldLabels:
 			values[i] = new([]byte)
-		case enrollmenttoken.FieldEphemeral:
+		case enrollmenttoken.FieldEphemeral, enrollmenttoken.FieldBuiltIn:
 			values[i] = new(sql.NullBool)
 		case enrollmenttoken.FieldMaxUses, enrollmenttoken.FieldUseCount:
 			values[i] = new(sql.NullInt64)
@@ -193,6 +195,12 @@ func (_m *EnrollmentToken) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field ephemeral", values[i])
 			} else if value.Valid {
 				_m.Ephemeral = value.Bool
+			}
+		case enrollmenttoken.FieldBuiltIn:
+			if value, ok := values[i].(*sql.NullBool); !ok {
+				return fmt.Errorf("unexpected type %T for field built_in", values[i])
+			} else if value.Valid {
+				_m.BuiltIn = value.Bool
 			}
 		case enrollmenttoken.FieldMaxUses:
 			if value, ok := values[i].(*sql.NullInt64); !ok {
@@ -325,6 +333,9 @@ func (_m *EnrollmentToken) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("ephemeral=")
 	builder.WriteString(fmt.Sprintf("%v", _m.Ephemeral))
+	builder.WriteString(", ")
+	builder.WriteString("built_in=")
+	builder.WriteString(fmt.Sprintf("%v", _m.BuiltIn))
 	builder.WriteString(", ")
 	if v := _m.MaxUses; v != nil {
 		builder.WriteString("max_uses=")

@@ -35,6 +35,8 @@ const (
 	FieldTransport = "transport"
 	// FieldDesiredVersion holds the string denoting the desired_version field in the database.
 	FieldDesiredVersion = "desired_version"
+	// FieldBuiltIn holds the string denoting the built_in field in the database.
+	FieldBuiltIn = "built_in"
 	// FieldCreatedAt holds the string denoting the created_at field in the database.
 	FieldCreatedAt = "created_at"
 	// FieldDecommissionedAt holds the string denoting the decommissioned_at field in the database.
@@ -56,6 +58,7 @@ var Columns = []string{
 	FieldEnabled,
 	FieldTransport,
 	FieldDesiredVersion,
+	FieldBuiltIn,
 	FieldCreatedAt,
 	FieldDecommissionedAt,
 }
@@ -95,6 +98,8 @@ var (
 	DefaultEphemeral bool
 	// DefaultEnabled holds the default value on creation for the "enabled" field.
 	DefaultEnabled bool
+	// DefaultBuiltIn holds the default value on creation for the "built_in" field.
+	DefaultBuiltIn bool
 	// DefaultCreatedAt holds the default value on creation for the "created_at" field.
 	DefaultCreatedAt func() time.Time
 	// DefaultID holds the default value on creation for the "id" field.
@@ -178,6 +183,11 @@ func ByTransport(opts ...sql.OrderTermOption) OrderOption {
 // ByDesiredVersion orders the results by the desired_version field.
 func ByDesiredVersion(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldDesiredVersion, opts...).ToFunc()
+}
+
+// ByBuiltIn orders the results by the built_in field.
+func ByBuiltIn(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldBuiltIn, opts...).ToFunc()
 }
 
 // ByCreatedAt orders the results by the created_at field.

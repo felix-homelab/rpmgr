@@ -104,6 +104,9 @@ func (c *Connectors) DecommissionConnector(ctx context.Context, req *connect.Req
 		if row = cur; cur.DecommissionedAt != nil {
 			return []string{cur.ID}, nil
 		}
+		if cur.BuiltIn {
+			return nil, connect.NewError(connect.CodeFailedPrecondition, errBuiltIn)
+		}
 		now := c.now()
 		if row, err = tx.Connector.UpdateOneID(cur.ID).Where(connector.Version(cur.Version)).SetDecommissionedAt(now).
 			SetEnabled(false).Save(ctx); err != nil {
@@ -280,7 +283,7 @@ func agentSessionOf(s *ent.AgentSession, now time.Time) *rpmgrv1.AgentSession {
 
 func connectorOf(r *ent.Connector, s *ent.AgentSession, now time.Time) *rpmgrv1.Connector {
 	out := &rpmgrv1.Connector{Id: r.ID, Name: r.Name, Labels: r.Labels, Ephemeral: r.Ephemeral, Enabled: r.Enabled,
-		Session: agentSessionOf(s, now), CreateTime: timestamppb.New(r.CreatedAt), Etag: etagOf(r.Version)}
+		Session: agentSessionOf(s, now), CreateTime: timestamppb.New(r.CreatedAt), Etag: etagOf(r.Version), BuiltIn: r.BuiltIn}
 	if r.Transport != nil {
 		out.Transport = map[connector.Transport]rpmgrv1.DataTransport{connector.TransportAuto: rpmgrv1.DataTransport_DATA_TRANSPORT_AUTO,
 			connector.TransportQuic: rpmgrv1.DataTransport_DATA_TRANSPORT_QUIC, connector.TransportH2: rpmgrv1.DataTransport_DATA_TRANSPORT_H2}[*r.Transport]

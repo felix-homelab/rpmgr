@@ -103,6 +103,20 @@ func (_c *EnrollmentTokenCreate) SetNillableEphemeral(v *bool) *EnrollmentTokenC
 	return _c
 }
 
+// SetBuiltIn sets the "built_in" field.
+func (_c *EnrollmentTokenCreate) SetBuiltIn(v bool) *EnrollmentTokenCreate {
+	_c.mutation.SetBuiltIn(v)
+	return _c
+}
+
+// SetNillableBuiltIn sets the "built_in" field if the given value is not nil.
+func (_c *EnrollmentTokenCreate) SetNillableBuiltIn(v *bool) *EnrollmentTokenCreate {
+	if v != nil {
+		_c.SetBuiltIn(*v)
+	}
+	return _c
+}
+
 // SetMaxUses sets the "max_uses" field.
 func (_c *EnrollmentTokenCreate) SetMaxUses(v int) *EnrollmentTokenCreate {
 	_c.mutation.SetMaxUses(v)
@@ -283,6 +297,10 @@ func (_c *EnrollmentTokenCreate) defaults() error {
 		v := enrollmenttoken.DefaultEphemeral
 		_c.mutation.SetEphemeral(v)
 	}
+	if _, ok := _c.mutation.BuiltIn(); !ok {
+		v := enrollmenttoken.DefaultBuiltIn
+		_c.mutation.SetBuiltIn(v)
+	}
 	if _, ok := _c.mutation.UseCount(); !ok {
 		v := enrollmenttoken.DefaultUseCount
 		_c.mutation.SetUseCount(v)
@@ -332,6 +350,9 @@ func (_c *EnrollmentTokenCreate) check() error {
 	}
 	if _, ok := _c.mutation.Ephemeral(); !ok {
 		return &ValidationError{Name: "ephemeral", err: errors.New(`ent: missing required field "EnrollmentToken.ephemeral"`)}
+	}
+	if _, ok := _c.mutation.BuiltIn(); !ok {
+		return &ValidationError{Name: "built_in", err: errors.New(`ent: missing required field "EnrollmentToken.built_in"`)}
 	}
 	if v, ok := _c.mutation.MaxUses(); ok {
 		if err := enrollmenttoken.MaxUsesValidator(v); err != nil {
@@ -419,6 +440,10 @@ func (_c *EnrollmentTokenCreate) createSpec() (*EnrollmentToken, *sqlgraph.Creat
 	if value, ok := _c.mutation.Ephemeral(); ok {
 		_spec.SetField(enrollmenttoken.FieldEphemeral, field.TypeBool, value)
 		_node.Ephemeral = value
+	}
+	if value, ok := _c.mutation.BuiltIn(); ok {
+		_spec.SetField(enrollmenttoken.FieldBuiltIn, field.TypeBool, value)
+		_node.BuiltIn = value
 	}
 	if value, ok := _c.mutation.MaxUses(); ok {
 		_spec.SetField(enrollmenttoken.FieldMaxUses, field.TypeInt, value)

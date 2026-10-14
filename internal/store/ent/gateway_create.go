@@ -121,6 +121,20 @@ func (_c *GatewayCreate) SetNillableDesiredVersion(v *string) *GatewayCreate {
 	return _c
 }
 
+// SetBuiltIn sets the "built_in" field.
+func (_c *GatewayCreate) SetBuiltIn(v bool) *GatewayCreate {
+	_c.mutation.SetBuiltIn(v)
+	return _c
+}
+
+// SetNillableBuiltIn sets the "built_in" field if the given value is not nil.
+func (_c *GatewayCreate) SetNillableBuiltIn(v *bool) *GatewayCreate {
+	if v != nil {
+		_c.SetBuiltIn(*v)
+	}
+	return _c
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (_c *GatewayCreate) SetCreatedAt(v time.Time) *GatewayCreate {
 	_c.mutation.SetCreatedAt(v)
@@ -219,6 +233,10 @@ func (_c *GatewayCreate) defaults() error {
 		v := gateway.DefaultEnabled
 		_c.mutation.SetEnabled(v)
 	}
+	if _, ok := _c.mutation.BuiltIn(); !ok {
+		v := gateway.DefaultBuiltIn
+		_c.mutation.SetBuiltIn(v)
+	}
 	if _, ok := _c.mutation.CreatedAt(); !ok {
 		if gateway.DefaultCreatedAt == nil {
 			return fmt.Errorf("ent: uninitialized gateway.DefaultCreatedAt (forgotten import ent/runtime?)")
@@ -288,6 +306,9 @@ func (_c *GatewayCreate) check() error {
 	}
 	if _, ok := _c.mutation.Enabled(); !ok {
 		return &ValidationError{Name: "enabled", err: errors.New(`ent: missing required field "Gateway.enabled"`)}
+	}
+	if _, ok := _c.mutation.BuiltIn(); !ok {
+		return &ValidationError{Name: "built_in", err: errors.New(`ent: missing required field "Gateway.built_in"`)}
 	}
 	if _, ok := _c.mutation.CreatedAt(); !ok {
 		return &ValidationError{Name: "created_at", err: errors.New(`ent: missing required field "Gateway.created_at"`)}
@@ -370,6 +391,10 @@ func (_c *GatewayCreate) createSpec() (*Gateway, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.DesiredVersion(); ok {
 		_spec.SetField(gateway.FieldDesiredVersion, field.TypeString, value)
 		_node.DesiredVersion = value
+	}
+	if value, ok := _c.mutation.BuiltIn(); ok {
+		_spec.SetField(gateway.FieldBuiltIn, field.TypeBool, value)
+		_node.BuiltIn = value
 	}
 	if value, ok := _c.mutation.CreatedAt(); ok {
 		_spec.SetField(gateway.FieldCreatedAt, field.TypeTime, value)

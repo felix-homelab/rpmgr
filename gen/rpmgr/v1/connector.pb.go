@@ -107,7 +107,10 @@ type Connector struct {
 	// When it was decommissioned; output only, not set for a connector in service.
 	DecommissionTime *timestamppb.Timestamp `protobuf:"bytes,9,opt,name=decommission_time,json=decommissionTime,proto3" json:"decommission_time,omitempty"`
 	// The version to send back with an update; output only.
-	Etag          string `protobuf:"bytes,10,opt,name=etag,proto3" json:"etag,omitempty"`
+	Etag string `protobuf:"bytes,10,opt,name=etag,proto3" json:"etag,omitempty"`
+	// Whether it is all-in-one's own connector, which runs in the controller's process and cannot be
+	// decommissioned; output only.
+	BuiltIn       bool `protobuf:"varint,11,opt,name=built_in,json=builtIn,proto3" json:"built_in,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -210,6 +213,13 @@ func (x *Connector) GetEtag() string {
 		return x.Etag
 	}
 	return ""
+}
+
+func (x *Connector) GetBuiltIn() bool {
+	if x != nil {
+		return x.BuiltIn
+	}
+	return false
 }
 
 // AgentSession is what the controller knows of an agent's control session.
@@ -1134,7 +1144,7 @@ var File_rpmgr_v1_connector_proto protoreflect.FileDescriptor
 
 const file_rpmgr_v1_connector_proto_rawDesc = "" +
 	"\n" +
-	"\x18rpmgr/v1/connector.proto\x12\brpmgr.v1\x1a\x1bbuf/validate/validate.proto\x1a\x1egoogle/protobuf/duration.proto\x1a google/protobuf/field_mask.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x15rpmgr/v1/common.proto\x1a\x16rpmgr/v1/options.proto\x1a\x15rpmgr/v1/status.proto\"\xd5\x04\n" +
+	"\x18rpmgr/v1/connector.proto\x12\brpmgr.v1\x1a\x1bbuf/validate/validate.proto\x1a\x1egoogle/protobuf/duration.proto\x1a google/protobuf/field_mask.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x15rpmgr/v1/common.proto\x1a\x16rpmgr/v1/options.proto\x1a\x15rpmgr/v1/status.proto\"\xf0\x04\n" +
 	"\tConnector\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12B\n" +
 	"\x04name\x18\x02 \x01(\tB.\xbaH+\xd8\x01\x01r&2$^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$R\x04name\x12t\n" +
@@ -1147,7 +1157,8 @@ const file_rpmgr_v1_connector_proto_rawDesc = "" +
 	"createTime\x12G\n" +
 	"\x11decommission_time\x18\t \x01(\v2\x1a.google.protobuf.TimestampR\x10decommissionTime\x12\x12\n" +
 	"\x04etag\x18\n" +
-	" \x01(\tR\x04etag\x1a9\n" +
+	" \x01(\tR\x04etag\x12\x19\n" +
+	"\bbuilt_in\x18\v \x01(\bR\abuiltIn\x1a9\n" +
 	"\vLabelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xa9\x01\n" +

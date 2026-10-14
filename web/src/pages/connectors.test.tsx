@@ -22,6 +22,7 @@ const db = create(ConnectorSchema, {
   session: { connected: true, version: "0.1.0", remoteAddr: "192.0.2.5:40000", lastSeenTime: timestampFromDate(new Date("2026-10-09T10:00:00Z")) },
 });
 const lab = create(ConnectorSchema, { id: "con_lab", name: "lab", labels: { site: "home" }, enabled: false, ephemeral: true, session: { connected: false } });
+const local = create(ConnectorSchema, { id: "con_local", name: "local", enabled: true, builtIn: true, etag: "2", session: { connected: true } });
 
 const routes: { id: string; name: string; targets: { connectorId: string; enabled?: boolean }[] }[] = [
   { id: "rte_pg", name: "postgres", targets: [{ connectorId: "con_db" }] },
@@ -45,10 +46,11 @@ function page(path: string, connectors = [lab, db], routeList = routes, routesSt
     });
     router.service(ConnectorService, {
       listConnectors: () => ({ connectors }),
-      getConnector: (req) => ({ connector: req.connectorId === "con_db" ? db : lab }),
-      getConnectorStatus: () => ({ status: {
+      getConnector: (req) => ({ connector: [db, lab, local].find((c) => c.id === req.connectorId) }),
+      getConnectorStatus: (req) => ({ status: {
         dataSessions: [{ gatewayId: "gtw_1", transport: DataTransport.QUIC, rtt: { seconds: 0n, nanos: 23_400_000 } }],
-        notReady: [{ resourceId: "rte_pg", reason: "BLOCKED_BY_LOCAL_POLICY", detail: "10.0.0.5:5432" }],
+        notReady: [{ resourceId: "rte_pg", reason: "BLOCKED_BY_LOCAL_POLICY",
+          detail: req.connectorId === "con_local" ? "127.0.0.1:7381 is one of rpmgr's own ports" : "10.0.0.5:5432" }],
       } }),
       updateConnector: (req) => {
         updates.push(req);
@@ -119,6 +121,26 @@ describe("Connectors", () => {
     expect(screen.queryByRole("link", { name: "web" })).toBeNull();
     expect(await screen.findByText("postgres: blocked by the connector's local policy")).toBeTruthy();
     expect(screen.getByText("sudo rpmgr policy allow-target 10.0.0.5:5432")).toBeTruthy();
+  });
+
+  it("marks the all-in-one's own connector, offers no decommission, and says why an own port stays blocked (ADR-0019)", async () => {
+    const { decommissions } = page("/connectors/con_local", [lab, db, local]);
+    expect(await screen.findByRole("heading", { name: "Connector local" })).toBeTruthy();
+    expect(screen.getByText("built in")).toBeTruthy();
+    expect(await screen.findByText(/127\.0\.0\.1:7381 is one of rpmgr's own ports, which the all-in-one's connector never dials/)).toBeTruthy();
+    expect(screen.queryByText(/sudo rpmgr policy/)).toBeNull();
+    expect(screen.getByText(/cannot be decommissioned/)).toBeTruthy();
+    expect(screen.queryByRole("region", { name: "Decommission" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Decommission…" })).toBeNull();
+    expect(screen.getByRole("switch", { name: "Enabled" })).toBeTruthy();
+    expect(decommissions).toHaveLength(0);
+  });
+
+  it("marks the built-in connector in the list", async () => {
+    page("/connectors", [lab, db, local]);
+    const row = within((await screen.findByRole("link", { name: "local" })).closest("tr")!);
+    expect(row.getByText("built in")).toBeTruthy();
+    expect(within((await screen.findByRole("link", { name: "db-host-1" })).closest("tr")!).queryByText("built in")).toBeNull();
   });
 
   it("saves the connector's settings as a whole", async () => {

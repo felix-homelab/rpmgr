@@ -150,6 +150,20 @@ func (_u *GatewayUpdate) ClearDesiredVersion() *GatewayUpdate {
 	return _u
 }
 
+// SetBuiltIn sets the "built_in" field.
+func (_u *GatewayUpdate) SetBuiltIn(v bool) *GatewayUpdate {
+	_u.mutation.SetBuiltIn(v)
+	return _u
+}
+
+// SetNillableBuiltIn sets the "built_in" field if the given value is not nil.
+func (_u *GatewayUpdate) SetNillableBuiltIn(v *bool) *GatewayUpdate {
+	if v != nil {
+		_u.SetBuiltIn(*v)
+	}
+	return _u
+}
+
 // SetDecommissionedAt sets the "decommissioned_at" field.
 func (_u *GatewayUpdate) SetDecommissionedAt(v time.Time) *GatewayUpdate {
 	_u.mutation.SetDecommissionedAt(v)
@@ -274,6 +288,9 @@ func (_u *GatewayUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if _u.mutation.DesiredVersionCleared() {
 		_spec.ClearField(gateway.FieldDesiredVersion, field.TypeString)
+	}
+	if value, ok := _u.mutation.BuiltIn(); ok {
+		_spec.SetField(gateway.FieldBuiltIn, field.TypeBool, value)
 	}
 	if value, ok := _u.mutation.DecommissionedAt(); ok {
 		_spec.SetField(gateway.FieldDecommissionedAt, field.TypeTime, value)
@@ -419,6 +436,20 @@ func (_u *GatewayUpdateOne) SetNillableDesiredVersion(v *string) *GatewayUpdateO
 // ClearDesiredVersion clears the value of the "desired_version" field.
 func (_u *GatewayUpdateOne) ClearDesiredVersion() *GatewayUpdateOne {
 	_u.mutation.ClearDesiredVersion()
+	return _u
+}
+
+// SetBuiltIn sets the "built_in" field.
+func (_u *GatewayUpdateOne) SetBuiltIn(v bool) *GatewayUpdateOne {
+	_u.mutation.SetBuiltIn(v)
+	return _u
+}
+
+// SetNillableBuiltIn sets the "built_in" field if the given value is not nil.
+func (_u *GatewayUpdateOne) SetNillableBuiltIn(v *bool) *GatewayUpdateOne {
+	if v != nil {
+		_u.SetBuiltIn(*v)
+	}
 	return _u
 }
 
@@ -576,6 +607,9 @@ func (_u *GatewayUpdateOne) sqlSave(ctx context.Context) (_node *Gateway, err er
 	}
 	if _u.mutation.DesiredVersionCleared() {
 		_spec.ClearField(gateway.FieldDesiredVersion, field.TypeString)
+	}
+	if value, ok := _u.mutation.BuiltIn(); ok {
+		_spec.SetField(gateway.FieldBuiltIn, field.TypeBool, value)
 	}
 	if value, ok := _u.mutation.DecommissionedAt(); ok {
 		_spec.SetField(gateway.FieldDecommissionedAt, field.TypeTime, value)

@@ -94,7 +94,7 @@ func (e *Enrollment) mint(ctx context.Context, m enroll.Mint) (string, *ent.Enro
 	case errors.Is(err, enroll.ErrTokenTTL), errors.Is(err, enroll.ErrMultiUse), errors.Is(err, enroll.ErrBound),
 		errors.Is(err, enroll.ErrDisposable):
 		return "", nil, connect.NewError(connect.CodeInvalidArgument, err)
-	case errors.Is(err, enroll.ErrRetired):
+	case errors.Is(err, enroll.ErrRetired), errors.Is(err, enroll.ErrBuiltIn):
 		return "", nil, connect.NewError(connect.CodeFailedPrecondition, err)
 	case err != nil:
 		return "", nil, storeError(err)
@@ -114,7 +114,8 @@ func (e *Enrollment) ListEnrollmentTokens(ctx context.Context, req *connect.Requ
 	if err != nil {
 		return nil, err
 	}
-	q := e.DB.ReadClient().EnrollmentToken.Query().Where(enrollmenttoken.OrgID(m.GetOrgId())).
+	// All-in-one's tokens for its own connector are its business alone (ADR-0019).
+	q := e.DB.ReadClient().EnrollmentToken.Query().Where(enrollmenttoken.OrgID(m.GetOrgId()), enrollmenttoken.BuiltIn(false)).
 		Order(ent.Asc(enrollmenttoken.FieldID)).Limit(size + 1)
 	if !m.GetShowInactive() {
 		// UTC, as the store keeps expires_at: SQLite compares the text.
@@ -146,6 +147,9 @@ func (e *Enrollment) RevokeEnrollmentToken(ctx context.Context, req *connect.Req
 		cur, err := tx.EnrollmentToken.Get(ctx, req.Msg.GetEnrollmentTokenId())
 		if err != nil {
 			return err
+		}
+		if cur.BuiltIn {
+			return connect.NewError(connect.CodeNotFound, errors.New("apisvc: not found"))
 		}
 		if cur.Role == enrollmenttoken.RoleGateway && !api.Permits(ctx, cur.OrgID, authz.PermInfrastructureWrite) {
 			return connect.NewError(connect.CodePermissionDenied, errors.New("apisvc: a gateway's token needs infrastructure.write"))
