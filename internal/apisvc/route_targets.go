@@ -166,8 +166,8 @@ func checkTarget(ctx context.Context, tx *ent.Tx, rt *ent.Route, t *rpmgrv1.Rout
 		return invalid("an http route's target speaks HTTP, HTTPS or H2C")
 	case rt.Type != route.TypeHTTP && up != routetarget.UpstreamProtocolTCP:
 		return invalid("only an http route's target speaks HTTP")
-	case storeProxies[t.GetProxyProtocol()] != "" && rt.Type != route.TypeTCP && rt.Type != route.TypeTLSPassthrough:
-		return invalid("a PROXY header goes only to the target of a tcp or tls_passthrough route")
+	case storeProxies[t.GetProxyProtocol()] != "" && rt.Type != route.TypeTCP && rt.Type != route.TypeTCPUDP && rt.Type != route.TypeTLSPassthrough:
+		return invalid("a PROXY header goes only to the target of a tcp, tcp_udp or tls_passthrough route")
 	case t.GetTls() != nil && up != routetarget.UpstreamProtocolHTTPS:
 		return invalid("TLS settings are for an HTTPS target")
 	case up == routetarget.UpstreamProtocolHTTPS && t.GetTls().GetServerName() == "" && t.GetUnixPath() != "":

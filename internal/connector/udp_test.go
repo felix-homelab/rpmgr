@@ -10,8 +10,10 @@ import (
 	"errors"
 	"io"
 	"net"
+	"net/netip"
 	"os"
 	"strconv"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -349,5 +351,73 @@ func TestTargets_TCPAndUDP(t *testing.T) {
 		if code, _ := e.handle(t, tc); code != tunnelv1.ResultCode_RESULT_CODE_PROTOCOL {
 			t.Errorf("%v on %s: %v", tc.GetKind(), tc.GetRouteId(), code)
 		}
+	}
+}
+
+// TestTargets_TCPAndUDP_ProxyHeader: a tcp_udp target's PROXY header goes on each TCP connection
+// and never on a UDP flow, whose first datagram is the client's payload alone (D86).
+func TestTargets_TCPAndUDP_ProxyHeader(t *testing.T) {
+	svc := startUDPService(t)
+	ln, err := net.Listen("tcp", net.JoinHostPort("127.0.0.1", strconv.Itoa(int(svc.port()))))
+	if err != nil {
+		t.Skipf("the UDP service's port is taken for TCP: %v", err)
+	}
+	t.Cleanup(func() { _ = ln.Close() })
+	firstBytes := make(chan []byte, 4)
+	go func() {
+		for {
+			c, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			go func() {
+				defer func() { _ = c.Close() }()
+				_ = c.SetReadDeadline(time.Now().Add(500 * time.Millisecond))
+				b, _ := io.ReadAll(c)
+				firstBytes <- b
+			}()
+		}
+	}()
+	e := newTargets(allowLoopback(t, svc.port()))
+	for _, tc := range []struct {
+		version string
+		header  string // the start of the TCP connection's bytes
+	}{
+		{"v1", "PROXY TCP4 203.0.113.7 198.51.100.1 51234 53\r\n"},
+		{"v2", "\r\n\r\n\x00\r\nQUIT\n\x21\x11"},
+	} {
+		tg := target("127.0.0.1", svc.port())
+		tg.ProxyProtocol = tc.version
+		e.Set([]connector.Route{{ID: "rt_both", Both: true, Targets: []connector.Target{tg}}})
+
+		open := tcpOpen("rt_both")
+		open.SrcIp, open.SrcPort = netip.MustParseAddr("203.0.113.7").AsSlice(), 51234
+		open.DstIp, open.DstPort = netip.MustParseAddr("198.51.100.1").AsSlice(), 53
+		code, gw := e.handle(t, open)
+		if code != tunnelv1.ResultCode_RESULT_CODE_NO_ERROR {
+			t.Fatalf("%s: a TCP stream: %v", tc.version, code)
+		}
+		_, _ = gw.Write([]byte("query"))
+		_ = gw.CloseWrite()
+		if got := string(<-firstBytes); !strings.HasPrefix(got, tc.header) || !strings.HasSuffix(got, "query") {
+			t.Errorf("%s: the TCP target read %q, want the PROXY header %q and then the client's bytes", tc.version, got, tc.header)
+		}
+
+		udp := udpOpen("rt_both")
+		udp.SrcIp, udp.SrcPort, udp.DstIp, udp.DstPort = open.SrcIp, open.SrcPort, open.DstIp, open.DstPort
+		code, gw = e.handle(t, udp)
+		if code != tunnelv1.ResultCode_RESULT_CODE_NO_ERROR {
+			t.Fatalf("%s: a UDP flow: %v", tc.version, code)
+		}
+		_ = gw.SetDeadline(time.Now().Add(10 * time.Second))
+		p := []byte("datagram")
+		if err := tunnel.WriteFrame(gw, p); err != nil {
+			t.Fatal(err)
+		}
+		// the service echoes each datagram it gets: a header would come back first
+		if got, err := tunnel.ReadFrame(gw); err != nil || !bytes.Equal(got, p) {
+			t.Errorf("%s: the UDP target's first datagram echoed %q (%v), want the payload alone", tc.version, got, err)
+		}
+		_ = gw.Close()
 	}
 }
