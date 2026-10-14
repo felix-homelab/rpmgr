@@ -52,7 +52,7 @@ type step struct {
 // Result is what setup did, and what the operator needs next.
 type Result struct {
 	// Controller and all-in-one: as `rpmgr <role> init` prints them.
-	TrustDomain, Pin, FirstUserLink, KEK, GatewayID string
+	TrustDomain, Pin, FirstUserLink, KEK, GatewayID, ConnectorID string
 	// Gateway and connector: the enrolled identity.
 	AgentID, AgentKind string
 	Unit               string // the unit setup installed and started; empty without one
@@ -187,10 +187,13 @@ func (p *Plan) bootFile() error {
 			if nonDefaultLib {
 				doc["state_dir"] = paths.Lib
 			}
+			if paths.Etc != defaults.Etc {
+				doc["policy_file"] = filepath.Join(paths.Etc, "policy.yaml")
+			}
 			parse = func(b []byte) (booted, error) {
 				var c config.AllInOne
 				err := config.Parse(b, &c)
-				return booted{admin: c.Listen.Admin, cred: credential(c.KEK.Source, c.KEK.Name)}, err
+				return booted{admin: c.Listen.Admin, policy: c.PolicyFile, cred: credential(c.KEK.Source, c.KEK.Name)}, err
 			}
 		} else {
 			parse = func(b []byte) (booted, error) {
@@ -359,7 +362,7 @@ func (p *Plan) initSteps() {
 	p.writeBoot()
 	what := "initialise the controller: KEK, database, trust domain and CA"
 	if v.Role == AllInOne {
-		what = "initialise the all-in-one: KEK, database, trust domain and CA, and enroll its gateway"
+		what = "initialise the all-in-one: KEK, database, trust domain and CA, and enroll its gateway and connector"
 	}
 	p.add(what, func(ctx context.Context, r *Result) error {
 		o := controller.InitOptions{ConfigPath: p.boot, CredentialsDir: filepath.Join(h.Paths.Etc, "credstore"), Getenv: h.Getenv,
@@ -370,7 +373,7 @@ func (p *Plan) initSteps() {
 			if err != nil {
 				return p.initFailed(r, err)
 			}
-			ir, r.GatewayID = a.InitResult, a.GatewayID
+			ir, r.GatewayID, r.ConnectorID = a.InitResult, a.GatewayID, a.ConnectorID
 		} else {
 			c, err := controller.Init(ctx, o)
 			if err != nil {
@@ -381,6 +384,9 @@ func (p *Plan) initSteps() {
 		r.TrustDomain, r.Pin, r.FirstUserLink, r.KEK = ir.TrustDomain, ir.RootPin, ir.FirstUserLink, ir.KEK
 		return nil
 	})
+	if v.Role == AllInOne {
+		p.policySteps()
+	}
 	// The instance's ACME CA certifies the routes too, whatever certifies the public URL.
 	dir, _ := Directory(v.ACMEDirectory)
 	if dir != "" || v.ACMEEmail != "" {
@@ -424,6 +430,24 @@ func (p *Plan) agentSteps() {
 	if v.Role != Connector {
 		return
 	}
+	p.policySteps()
+	if v.Proxy != "" {
+		dropIn := filepath.Join(h.Paths.Units, "rpmgr-connector.service.d", "proxy.conf")
+		p.add("set the connector's proxy in "+dropIn, func(_ context.Context, r *Result) error {
+			if err := mkdirMode(filepath.Dir(dropIn), 0o755); err != nil { // a unit directory
+				return err
+			}
+			r.created(dropIn)
+			unit := fmt.Sprintf("[Service]\nEnvironment=\"HTTPS_PROXY=%s\"\n", v.Proxy)
+			return writeMode(dropIn, []byte(unit), 0o644)
+		})
+	}
+}
+
+// policySteps write the allowed and denied targets into the connector-local policy of a connector
+// or all-in-one.
+func (p *Plan) policySteps() {
+	v := p.v
 	if len(v.AllowTargets) > 0 || len(v.DenyTargets) > 0 {
 		p.add(fmt.Sprintf("allow %d and deny %d target(s) in the connector-local policy %s", len(v.AllowTargets), len(v.DenyTargets),
 			p.policy), func(_ context.Context, r *Result) error {
@@ -441,17 +465,6 @@ func (p *Plan) agentSteps() {
 				}
 			}
 			return nil
-		})
-	}
-	if v.Proxy != "" {
-		dropIn := filepath.Join(h.Paths.Units, "rpmgr-connector.service.d", "proxy.conf")
-		p.add("set the connector's proxy in "+dropIn, func(_ context.Context, r *Result) error {
-			if err := mkdirMode(filepath.Dir(dropIn), 0o755); err != nil { // a unit directory
-				return err
-			}
-			r.created(dropIn)
-			unit := fmt.Sprintf("[Service]\nEnvironment=\"HTTPS_PROXY=%s\"\n", v.Proxy)
-			return writeMode(dropIn, []byte(unit), 0o644)
 		})
 	}
 }
@@ -564,7 +577,7 @@ func (p *Plan) Summary() [][2]string {
 	} else {
 		out = append(out, [2]string{"controller", v.ControllerURL}, [2]string{"CA pin", v.Pin}, [2]string{"token", "given (not shown)"})
 	}
-	if v.Role == Connector {
+	if v.Role == Connector || v.Role == AllInOne {
 		targets := "none yet (rpmgr policy allow-target adds them)"
 		if len(v.AllowTargets) > 0 {
 			targets = strings.Join(v.AllowTargets, ", ")

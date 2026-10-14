@@ -19,9 +19,21 @@ var (
 	geteuid = os.Geteuid
 	// reloadConnector asks the running connector to reload its policy (SIGHUP through systemd).
 	reloadConnector = func(ctx context.Context) error {
-		return exec.CommandContext(ctx, "systemctl", "reload", "rpmgr-connector.service").Run() //nolint:gosec // G204: fixed arguments
+		return exec.CommandContext(ctx, "systemctl", "reload", policyUnit(os.Stat)).Run() //nolint:gosec // G204: one of two fixed units
 	}
 )
+
+// policyUnit is the unit whose connector reads the policy: rpmgr-connector, or, on a host with an
+// all-in-one's boot file and no connector's, rpmgr-all-in-one, whose own connector reads it
+// (ADR-0019).
+func policyUnit(stat func(string) (os.FileInfo, error)) string {
+	if _, err := stat("/etc/rpmgr/connector.yaml"); err != nil {
+		if _, err := stat("/etc/rpmgr/all-in-one.yaml"); err == nil {
+			return "rpmgr-all-in-one.service"
+		}
+	}
+	return "rpmgr-connector.service"
+}
 
 // policyCommand is `rpmgr policy` (docs/16-cli.md): it shows or edits the connector-local policy.
 func policyCommand() *cli.Command {

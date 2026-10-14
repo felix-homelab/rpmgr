@@ -183,6 +183,12 @@ func TestNew_Refuses(t *testing.T) {
 		"controller tcp":    {setup.Values{Role: setup.Controller, PublicURL: "https://panel.example.com", TLS: setup.TLSACME, ListenTCP: ":443"}, nil, "listen.tcp"},
 		"controller pin":    {setup.Values{Role: setup.Controller, PublicURL: "https://panel.example.com", TLS: setup.TLSACME, Pin: pin(t)}, nil, "gateway's"},
 		"ACME e-mail":       {setup.Values{Role: setup.Controller, PublicURL: "https://panel.example.com", TLS: setup.TLSACME, ACMEEmail: "ops"}, nil, "e-mail"},
+		"controller targets": {setup.Values{Role: setup.Controller, PublicURL: "https://panel.example.com", TLS: setup.TLSACME,
+			AllowTargets: []string{"127.0.0.1:8080"}}, nil, "connector's or an all-in-one's"},
+		"all-in-one bad target": {setup.Values{Role: setup.AllInOne, PublicURL: "https://panel.example.com", TLS: setup.TLSACME,
+			DenyTargets: []string{"10.0.0.5:0"}}, nil, "denied target"},
+		"all-in-one proxy": {setup.Values{Role: setup.AllInOne, PublicURL: "https://panel.example.com", TLS: setup.TLSACME,
+			Proxy: "http://proxy.lan:3128"}, nil, "proxy"},
 		"old systemd": {setup.Values{Role: setup.AllInOne, PublicURL: "https://panel.example.com", KEKSource: config.KEKSystemdCredential, TLS: setup.TLSSelfSigned},
 			func(h *setup.Host) { h.SystemdVersion = func() int { return 249 } }, "systemd 250"},
 	}

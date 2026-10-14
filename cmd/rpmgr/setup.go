@@ -129,13 +129,19 @@ func printSetup(w io.Writer, v setup.Values, r setup.Result) error {
 		if r.GatewayID != "" {
 			fmt.Fprintf(&b, "  gateway:      %s\n", r.GatewayID)
 		}
+		if r.ConnectorID != "" {
+			fmt.Fprintf(&b, "  connector:    %s\n", r.ConnectorID)
+		}
 		fmt.Fprintf(&b, "  KEK:          %s\nBack up the KEK separately: without it the database cannot be read.\n\n"+firstUser, r.KEK, r.FirstUserLink)
 		agents, role := "gateway and connector with its token", "<gateway|connector>"
 		if v.Role == setup.AllInOne {
-			agents, role = "connector with its enrollment token", "connector"
+			agents, role = "connector on another network with its enrollment token", "connector"
 		}
 		fmt.Fprintf(&b, "\nNext: create the first user with the link, then set up each %s:\n"+
 			"  rpmgr setup --role %s --controller %s --ca-pin %s\n", agents, role, strings.TrimSuffix(v.PublicURL, "/"), r.Pin)
+		if v.Role == setup.AllInOne {
+			b.WriteString("Services on this host go through the all-in-one's own connector: allow them with rpmgr policy allow-target <target>.\n")
+		}
 	} else {
 		fmt.Fprintf(&b, "\nrpmgr %s %s: enrolled as %s %s.\nNext: check it with rpmgr status", v.Role, running, r.AgentKind, r.AgentID)
 		if v.Role == setup.Connector {
