@@ -1,6 +1,7 @@
 # ADR-0002: One binary with three roles
 
-Status: Accepted (decided by the product owner on 2026-10-06) · Date: 2026-10-06
+Status: Accepted (decided by the product owner on 2026-10-06) · Date: 2026-10-06 · All-in-one
+clause superseded in part by [ADR-0019](0019-all-in-one-runs-a-connector.md)
 
 ## Context
 

@@ -1,0 +1,44 @@
+{{/* SPDX-License-Identifier: Apache-2.0 */ -}}
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>{{.Title}}</title>
+<style>
+:root{color-scheme:light dark;--bg:#f1f5f9;--card:#fff;--text:#0f172a;--muted:#475569;--line:#e2e8f0;--accent:#4338ca;--tint:#eef2ff}
+@media (prefers-color-scheme:dark){:root{--bg:#020617;--card:#0f172a;--text:#e2e8f0;--muted:#94a3b8;--line:#1e293b;--accent:#a5b4fc;--tint:#1e1b4b}}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{display:flex;align-items:center;justify-content:center;padding:24px;background:var(--bg);color:var(--text);font:16px/1.6 system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif}
+main{width:100%;max-width:36rem;background:var(--card);border:1px solid var(--line);border-radius:16px;padding:40px 36px;box-shadow:0 1px 2px rgb(15 23 42/.06),0 16px 40px rgb(15 23 42/.08)}
+.status{display:inline-block;margin:0;padding:4px 12px;border-radius:999px;background:var(--tint);color:var(--accent);font:600 .8125rem/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;letter-spacing:.02em}
+h1{margin:20px 0 12px;font-size:1.75rem;line-height:1.25;letter-spacing:-.01em}
+p{margin:0 0 12px;color:var(--muted)}
+.host{color:var(--text);font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:.95em;overflow-wrap:anywhere}
+.note{margin:20px 0 0;padding:14px 16px;border-left:3px solid var(--accent);border-radius:4px;background:var(--tint);color:var(--text);white-space:pre-wrap;overflow-wrap:anywhere}
+@media (max-width:480px){main{padding:28px 22px}h1{font-size:1.5rem}}
+</style>
+</head>
+<body>
+<main>
+<p class="status">{{.Status}} · {{.StatusText}}</p>
+{{- if eq .Kind "maintenance"}}
+<h1>{{.Title}}</h1>
+<p>The service at <span class="host">{{.Host}}</span> is undergoing maintenance and will be back soon.</p>
+{{- if .Message}}
+<p class="note">{{.Message}}</p>
+{{- end}}
+{{- else if eq .Kind "unavailable"}}
+<h1>{{.Title}}</h1>
+<p>The service at <span class="host">{{.Host}}</span> cannot be reached right now.</p>
+<p>Please try again in a few minutes.</p>
+{{- else}}
+<h1>{{.Title}}</h1>
+<p>Nothing is published at <span class="host">{{.Host}}</span>.</p>
+<p>Check the address, or try again later if you expected a site here.</p>
+{{- end}}
+</main>
+</body>
+</html>

@@ -78,7 +78,8 @@ type RunOptions struct {
 	// controller in memory only.
 	NoACME bool
 	// Port80, if set, receives the controller's port-80 handler (ACME HTTP-01 for the public URL,
-	// then the redirect), which all-in-one's gateway serves for the names no route serves.
+	// then the redirect), which all-in-one's gateway serves for its own names when no route
+	// serves them.
 	Port80 func(http.Handler)
 	// ACMEAfter, if set, holds back obtaining the public URL's certificate until it is closed:
 	// all-in-one's gateway, through which the CA validates, must listen first.
@@ -302,7 +303,7 @@ func Run(ctx context.Context, o RunOptions) error {
 	}
 	if err := apiServer.Mount(mux, rpmgrv1.File_rpmgr_v1_route_proto.Services().ByName("RouteService"),
 		func(opts ...connect.HandlerOption) (string, http.Handler) {
-			return rpmgrv1connect.NewRouteServiceHandler(&apisvc.Routes{DB: db, API: apiServer, Sys: sys, Now: o.Now}, opts...)
+			return rpmgrv1connect.NewRouteServiceHandler(&apisvc.Routes{DB: db, API: apiServer, Sys: sys, Prober: sessions, Now: o.Now}, opts...)
 		}); err != nil {
 		return err
 	}
@@ -565,7 +566,7 @@ func nodeIdentity(path string) (string, error) {
 }
 
 // RedirectHandler sends every plain-HTTP request to the same path on the public URL; all-in-one's
-// gateway uses it for the names no route serves.
+// gateway uses it for the controller's own names when no route serves them.
 func RedirectHandler(public *url.URL) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		target := *public

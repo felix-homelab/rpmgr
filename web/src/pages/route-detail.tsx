@@ -4,42 +4,50 @@ import { Code, ConnectError } from "@connectrpc/connect";
 import { useMutation, useQuery } from "@connectrpc/connect-query";
 import { useQueryClient } from "@tanstack/react-query";
 import { getRouteApi, Link } from "@tanstack/react-router";
-import { ChevronLeft, Pencil, Plus } from "lucide-react";
+import { ChevronLeft, Pencil, Plus, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ApplyStatusView, useLiveApplyStatus } from "@/components/apply-status";
 import { ManifestButton } from "@/components/manifest";
 import { PageHeader } from "@/components/page-header";
+import { PolicyHint } from "@/components/policy-hint";
 import { Alert } from "@/components/public-page";
 import { RouteStateChip } from "@/components/route-state";
 import { Status } from "@/components/status";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import { Table, TD, TH, THead, TR } from "@/components/ui/table";
 import { ConnectorService, DataTransport } from "@/gen/rpmgr/v1/connector_pb";
 import type { Revision } from "@/gen/rpmgr/v1/common_pb";
-import { RouteService, RouteState, type Route, type RouteTarget } from "@/gen/rpmgr/v1/route_pb";
+import { RouteService, RouteState, UpstreamVerification, type Route, type RouteTarget } from "@/gen/rpmgr/v1/route_pb";
 import type { ApplyStatus } from "@/gen/rpmgr/v1/status_pb";
 import { RouteTraffic } from "@/pages/route-traffic";
 import { RoutePolicies } from "@/route-form/route-policies";
+import { Reason, reasonOf } from "@/lib/errors";
 import { TargetForm, type Written } from "@/route-form/target-form";
-import { allowCommand, routeAddress, routeType, useAgentNames, useGroupNames } from "@/routes-data";
+import { policyCommand, routeAddress, routeType, useAgentNames, useGroupHostnames, useGroupNames } from "@/routes-data";
 import { useOrg } from "@/session";
 
 const route = getRouteApi("/app/routes/$routeId");
 
 // RouteDetail shows a route's desired settings next to what its agents report (docs/09-web-ui.md,
 // "Route detail", U3): its targets with their readiness, and for a target that a connector's local
-// policy blocks the command that allows it (U4).
+// policy blocks the command that allows it (U4). A route is deleted after a confirmation that names
+// it (U7); the page then follows the deletion to the agents (U2).
 export function RouteDetail() {
   const { t } = useTranslation();
   const { routeId } = route.useParams();
   const org = useOrg();
-  const got = useQuery(RouteService.method.getRoute, { routeId });
+  const [deleted, setDeleted] = useState<string>(); // the deleted route's name
+  const got = useQuery(RouteService.method.getRoute, { routeId }, { enabled: !deleted });
   const groups = useGroupNames(org?.orgId);
+  const hosts = useGroupHostnames(org?.orgId);
   const names = useAgentNames(org?.orgId);
   const update = useMutation(RouteService.method.updateRoute);
+  const del = useMutation(RouteService.method.deleteRoute);
+  const [asking, setAsking] = useState(false);
   const queryClient = useQueryClient();
   const [write, setWrite] = useState<{ revision?: Revision; status?: ApplyStatus }>();
   const [editing, setEditing] = useState<string>(); // a target's ID, or "new"
@@ -55,12 +63,15 @@ export function RouteDetail() {
   const name = (id: string) => names.data?.get(id) || id;
   const connectors = [...(names.data ?? new Map<string, string>())].filter(([id]) => id.startsWith("con_"));
 
-  // toggle switches the route on or off, the only desired switch (U3), and follows the change to
-  // the agents (U2).
-  async function toggle(current: Route) {
+  // toggle switches the route on or off, its only on/off switch (U3), or switches an http route's
+  // maintenance, which changes what it answers (D88); it follows the change to the agents (U2).
+  async function toggle(current: Route, what: "enabled" | "maintenance" = "enabled") {
     setError("");
+    const next = what === "enabled" ? { ...current, enabled: !current.enabled }
+      : current.spec.case === "http" ? { ...current, spec: { case: "http" as const, value: { ...current.spec.value, maintenance: !current.spec.value.maintenance } } }
+      : current;
     try {
-      const res = await update.mutateAsync({ route: { ...current, enabled: !current.enabled }, updateMask: { paths: ["enabled"] }, etag: current.etag });
+      const res = await update.mutateAsync({ route: next, updateMask: { paths: [what === "enabled" ? "enabled" : "http.maintenance"] }, etag: current.etag });
       setWrite({ revision: res.revision, status: res.applyStatus });
       await queryClient.invalidateQueries();
     } catch (err) {
@@ -69,6 +80,38 @@ export function RouteDetail() {
     }
   }
 
+  // removeRoute deletes the route as read, under its etag (U6), with its hostnames, targets and
+  // port.
+  async function removeRoute(current: Route) {
+    setError("");
+    try {
+      const res = await del.mutateAsync({ routeId: current.id, etag: current.etag });
+      setDeleted(current.name);
+      setWrite({ revision: res.revision, status: res.applyStatus });
+      await queryClient.invalidateQueries();
+    } catch (err) {
+      setAsking(false);
+      const changed = reasonOf(err) === Reason.etagMismatch;
+      setError(changed ? t("route.changed") : t("link.failed", { message: ConnectError.from(err).rawMessage }));
+      if (changed) {
+        await queryClient.invalidateQueries();
+      }
+    }
+  }
+
+  if (deleted) {
+    return (
+      <div className="grid gap-6">
+        <div className="grid gap-2">
+          <Link to="/routes" search={{}} className="inline-flex w-fit items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
+            <ChevronLeft aria-hidden="true" className="size-4" />{t("route.back")}
+          </Link>
+          <PageHeader title={t("route.deletedTitle", { name: deleted })} description={t("route.deletedNote")} />
+        </div>
+        {live && <ApplyStatusView status={live} revision={write?.revision} name={name} />}
+      </div>
+    );
+  }
   if (!r) {
     return <p className="text-sm text-muted-foreground">{got.isError ? t("route.notFound") : t("stepUp.loading")}</p>;
   }
@@ -80,9 +123,17 @@ export function RouteDetail() {
         <Link to="/routes" search={{}} className="inline-flex w-fit items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
           <ChevronLeft aria-hidden="true" className="size-4" />{t("route.back")}
         </Link>
-        <PageHeader title={t("route.title", { name: r.name, type: t(`routeType.${routeType(r) || "unknown"}`) })} actions={<>
+        <PageHeader title={t("route.title", { name: r.name, type: t(`routeType.${routeType(r) || "unknown"}`) })} actions={asking ? <>
+          <span className="text-sm">{t("route.deleteAsk", { name: r.name })}</span>
+          <Button size="sm" variant="destructive" disabled={del.isPending} onClick={() => void removeRoute(r)}>{t("route.deleteConfirm")}</Button>
+          <Button size="sm" variant="outline" onClick={() => setAsking(false)}>{t("stepUp.cancel")}</Button>
+        </> : <>
           <Switch checked={r.enabled} disabled={update.isPending} onClick={() => void toggle(r)}>{t("route.enabledSwitch")}</Switch>
+          {r.spec.case === "http" && (
+            <Switch checked={r.spec.value.maintenance} disabled={update.isPending} onClick={() => void toggle(r, "maintenance")}>{t("route.maintenanceSwitch")}</Switch>
+          )}
           {org && <ManifestButton label={t("manifest.yaml")} title={t("manifest.of", { name: r.name })} orgId={org.orgId} ids={[r.id]} file={r.name} />}
+          <Button size="sm" variant="outline" onClick={() => { setError(""); setAsking(true); }}><Trash2 aria-hidden="true" />{t("route.delete")}</Button>
           <Button asChild size="sm">
             <Link to="/routes/$routeId/edit" params={{ routeId: r.id }}><Pencil aria-hidden="true" />{t("route.edit")}</Link>
           </Button>
@@ -94,8 +145,11 @@ export function RouteDetail() {
         <div className="grid gap-1.5">
           <dt className="text-muted-foreground">{t("route.desired")}</dt>
           <dd>
-            {[r.enabled ? t("route.enabled") : t("route.disabled"), t("route.group", { name: groups.data?.get(r.gatewayGroupId) ?? r.gatewayGroupId }),
-              ...routeAddress(r)].join(" · ")}
+            {[r.enabled ? t("route.enabled") : t("route.disabled"), ...(r.spec.case === "http" && r.spec.value.maintenance ? [t("route.inMaintenance")] : []),
+              t("route.group", { name: groups.data?.get(r.gatewayGroupId) ?? r.gatewayGroupId }), ...routeAddress(r, hosts.data?.get(r.gatewayGroupId))].join(" · ")}
+            {r.spec.case === "http" && r.spec.value.maintenance && r.spec.value.maintenanceMessage && (
+              <p className="mt-1.5 whitespace-pre-wrap text-muted-foreground">{t("route.maintenanceMessage", { message: r.spec.value.maintenanceMessage })}</p>
+            )}
           </dd>
         </div>
         <div className="grid gap-1.5">
@@ -108,7 +162,13 @@ export function RouteDetail() {
           </dd>
         </div>
       </dl>
-      {r.spec.case === "udp" && <p className="text-sm text-muted-foreground">{t("route.mtu")}</p>}
+      {(r.spec.case === "tcp" || r.spec.case === "udp" || r.spec.case === "tcpUdp") && r.spec.value.port > 0 && hosts.data?.get(r.gatewayGroupId)?.length === 0 && (
+        <p className="text-sm text-muted-foreground">
+          {t("route.noHostname")}{" "}
+          <Link to="/gateways/$groupId" params={{ groupId: r.gatewayGroupId }} className="underline">{t("route.setHostname")}</Link>
+        </p>
+      )}
+      {(r.spec.case === "udp" || r.spec.case === "tcpUdp") && <p className="text-sm text-muted-foreground">{t("route.mtu")}</p>}
 
       {gatewayProblems.length > 0 && (
         <Card title={t("route.gatewaysTitle")}>
@@ -179,7 +239,12 @@ function TargetRow({ route: r, target, connector, onEdit, onRemove }: {
   return (
     <TR>
       <TD className="font-medium">{connector}</TD>
-      <TD className="font-mono">{address}</TD>
+      <TD>
+        <span className="font-mono">{address}</span>
+        {target.tls?.verification === UpstreamVerification.UNVERIFIED && (
+          <Badge tone="warn" className="ml-2" title={t("route.unverifiedTitle")}>{t("route.unverified")}</Badge>
+        )}
+      </TD>
       <TD>{target.weight}</TD>
       <TD>
         {!target.enabled ? (
@@ -206,11 +271,8 @@ function TargetRow({ route: r, target, connector, onEdit, onRemove }: {
         </div>
         {problem?.reason === "BLOCKED_BY_LOCAL_POLICY" && problem.detail && (
           <div className="mt-2 grid gap-1.5">
-            <span>{t("route.runOn", { connector })}</span>
-            <span className="flex flex-wrap items-center gap-2">
-              <code className="rounded-md bg-muted px-2 py-1 font-mono">{allowCommand(problem.detail)}</code>
-              <Button size="sm" variant="outline" onClick={() => void navigator.clipboard?.writeText(allowCommand(problem.detail))}>{t("mfa.copy")}</Button>
-            </span>
+            {policyCommand(problem.detail) !== undefined && <span>{t("route.runOn", { connector })}</span>}
+            <PolicyHint detail={problem.detail} className="bg-muted" />
           </div>
         )}
       </TD>

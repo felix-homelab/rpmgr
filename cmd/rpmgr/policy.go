@@ -19,9 +19,21 @@ var (
 	geteuid = os.Geteuid
 	// reloadConnector asks the running connector to reload its policy (SIGHUP through systemd).
 	reloadConnector = func(ctx context.Context) error {
-		return exec.CommandContext(ctx, "systemctl", "reload", "rpmgr-connector.service").Run() //nolint:gosec // G204: fixed arguments
+		return exec.CommandContext(ctx, "systemctl", "reload", policyUnit(os.Stat)).Run() //nolint:gosec // G204: one of two fixed units
 	}
 )
+
+// policyUnit is the unit whose connector reads the policy: rpmgr-connector, or, on a host with an
+// all-in-one's boot file and no connector's, rpmgr-all-in-one, whose own connector reads it
+// (ADR-0019).
+func policyUnit(stat func(string) (os.FileInfo, error)) string {
+	if _, err := stat("/etc/rpmgr/connector.yaml"); err != nil {
+		if _, err := stat("/etc/rpmgr/all-in-one.yaml"); err == nil {
+			return "rpmgr-all-in-one.service"
+		}
+	}
+	return "rpmgr-connector.service"
+}
 
 // policyCommand is `rpmgr policy` (docs/16-cli.md): it shows or edits the connector-local policy.
 func policyCommand() *cli.Command {
@@ -29,7 +41,7 @@ func policyCommand() *cli.Command {
 	pathFlag := func(fs *flag.FlagSet) { fs.StringVar(&path, "file", policy.DefaultPath, "the policy file") }
 	edit := func(name, summary string, do func(path, target string) (bool, error)) *cli.Command {
 		var noReload bool
-		return &cli.Command{Name: name, Summary: summary, Args: "<ip>:<port> | <socket path>",
+		return &cli.Command{Name: name, Summary: summary, Args: "<ip or subnet>[:<port or range>] | [<ipv6 or subnet>][:<port or range>] | <socket path>",
 			Flags: func(fs *flag.FlagSet) {
 				pathFlag(fs)
 				fs.BoolVar(&noReload, "no-reload", false, "do not ask the running connector to reload the policy")
@@ -75,7 +87,9 @@ func policyCommand() *cli.Command {
 				_, _ = fmt.Fprint(env.Stdout, p.Describe())
 				return nil
 			}},
-		edit("allow-target", "allow the connector to dial a target", policy.AllowTarget),
+		edit("allow-target", "allow the connector to dial a target; without a port, all its ports", policy.AllowTarget),
 		edit("remove-target", "stop allowing a target", policy.RemoveTarget),
+		edit("deny-target", "deny a target, whatever allows it", policy.DenyTarget),
+		edit("remove-deny-target", "stop denying a target", policy.RemoveDenyTarget),
 	)
 }

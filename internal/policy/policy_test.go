@@ -5,6 +5,7 @@ package policy_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net"
 	"net/netip"
 	"os"
@@ -106,8 +107,19 @@ func TestParse_Refused(t *testing.T) {
 		"bad auto_update":   "version: 1\nauto_update: always\n",
 		"bad channel":       "version: 1\nupdate_channel: nightly\n",
 		"bad cidr":          "version: 1\nallow_targets: [{cidr: 10.0.0.0/33, ports: [80]}]\n",
-		"host bits":         "version: 1\nallow_targets: [{cidr: 10.0.0.1/24, ports: [80]}]\n",
-		"no ports":          "version: 1\nallow_targets: [{cidr: 10.0.0.0/24}]\n",
+		"a zone":            "version: 1\nallow_targets: [{cidr: \"fe80::1%eth0\", ports: [80]}]\n",
+		"unknown entry key": "version: 1\nallow_targets: [{cidr: 10.0.0.0/24, port: 80}]\n",
+		"a list entry":      "version: 1\nallow_targets: [[10.0.0.1]]\n",
+		"bad string":        "version: 1\nallow_targets: [\"10.0.0.1:80-\"]\n",
+		"IPv6 unbracketed":  "version: 1\nallow_targets: [\"fd00::1:80\"]\n",
+		"bad deny cidr":     "version: 1\ndeny_targets: [{cidr: 10.0.0.0/33}]\n",
+		"reversed deny":     "version: 1\ndeny_targets: [\"10.0.0.1:500-200\"]\n",
+		"relative deny":     "version: 1\ndeny_targets: [{unix: run/app.sock}]\n",
+		"deny not a list":   "version: 1\ndeny_targets: 10.0.0.1\n",
+		"empty ports":       "version: 1\nallow_targets: [{cidr: 10.0.0.0/8, ports: []}]\n",
+		"null ports":        "version: 1\nallow_targets: [{cidr: 10.0.0.0/8, ports: ~}]\n",
+		"duplicate cidr":    "version: 1\nallow_targets: [{cidr: 10.0.0.0/8, ports: [80], cidr: 192.168.0.0/16}]\n",
+		"duplicate ports":   "version: 1\ndeny_targets: [{cidr: 10.0.0.0/8, ports: [80], ports: [443]}]\n",
 		"port 0":            "version: 1\nallow_targets: [{cidr: 10.0.0.0/24, ports: [0]}]\n",
 		"port 65536":        "version: 1\nallow_targets: [{cidr: 10.0.0.0/24, ports: [65536]}]\n",
 		"reversed range":    "version: 1\nallow_targets: [{cidr: 10.0.0.0/24, ports: [\"90-80\"]}]\n",
@@ -225,6 +237,19 @@ func TestControl(t *testing.T) {
 	if _, err := d.DialContext(ctx, "unix", "/run/nothing.sock"); !errors.As(err, &blocked) {
 		t.Fatalf("a unix socket not in the policy: %v", err)
 	}
+	<-accepted // the allowed dial above
+	current = parse(t, fmt.Sprintf("version: 1\nallow_targets: [127.0.0.1]\ndeny_targets: [\"127.0.0.1:%d\", /run/app.sock]\n", port))
+	if _, err := d.DialContext(ctx, "tcp", ln.Addr().String()); !errors.As(err, &blocked) || blocked.Denied == "" {
+		t.Fatalf("a denied port: %v", err)
+	}
+	if _, err := d.DialContext(ctx, "unix", "/run/app.sock"); !errors.As(err, &blocked) || blocked.Denied != "/run/app.sock" {
+		t.Fatalf("a denied socket: %v", err)
+	}
+	select {
+	case <-accepted:
+		t.Fatal("a denied dial reached the target")
+	case <-time.After(100 * time.Millisecond):
+	}
 }
 
 // FuzzPolicy: no input makes Parse panic, and an accepted policy allows the metadata address only
@@ -232,6 +257,7 @@ func TestControl(t *testing.T) {
 func FuzzPolicy(f *testing.F) {
 	f.Add([]byte("version: 1\nallow_targets: [{cidr: 0.0.0.0/0, ports: [\"1-65535\"]}]\n"))
 	f.Add([]byte("version: 1\nallow_targets: [{unix: /run/a.sock}]\nauto_update: off\n"))
+	f.Add([]byte("version: 1\nallow_targets: [0.0.0.0/0, \"[::/0]:1-65535\"]\ndeny_targets: [10.0.0.1/8, /run/a.sock]\n"))
 	f.Fuzz(func(t *testing.T, in []byte) {
 		p, err := policy.Parse(in)
 		if err != nil {
@@ -242,4 +268,238 @@ func FuzzPolicy(f *testing.F) {
 			t.Fatalf("metadata allowed by %q", in)
 		}
 	})
+}
+
+// TestTargets_Syntax (D84): entries are target strings or mappings; a subnet's host bits are
+// cleared, an entry without ports allows all of them, and `rpmgr policy show` says so.
+func TestTargets_Syntax(t *testing.T) {
+	p := parse(t, `version: 1
+allow_targets:
+  - 127.0.0.1:200-500
+  - 10.0.0.1/16
+  - "[fd00::/64]:8000-8099"
+  - "[2001:db8::7]"
+  - {cidr: 192.168.1.9/24}
+  - {cidr: 172.16.0.5, ports: [22]}
+  - /run/app.sock
+`)
+	for target, want := range map[string]bool{
+		"127.0.0.1:200": true, "127.0.0.1:500": true, "127.0.0.1:199": false, "127.0.0.1:501": false,
+		"10.0.255.255:1": true, "10.0.0.0:65535": true, "10.1.0.0:80": false,
+		"[fd00::9]:8050": true, "[fd00::9]:8100": false, "[fd00:0:0:1::9]:8050": false,
+		"[2001:db8::7]:1": true, "[2001:db8::8]:1": false,
+		"192.168.1.200:9": true, "172.16.0.5:22": true, "172.16.0.5:23": false,
+	} {
+		if allows(p, target) != want {
+			t.Errorf("%s: allowed %v, want %v", target, !want, want)
+		}
+	}
+	if !p.AllowsUnix("/run/app.sock") {
+		t.Error("the socket string entry")
+	}
+	got := p.Describe()
+	for _, want := range []string{"127.0.0.1/32 ports 200-500", "10.0.0.0/16 all ports", "fd00::/64 ports 8000-8099",
+		"2001:db8::7/128 all ports", "192.168.1.0/24 all ports", "172.16.0.5/32 ports 22", "unix /run/app.sock",
+		"denied targets, which win over allowed ones: none"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("Describe lacks %q:\n%s", want, got)
+		}
+	}
+	// A broad subnet without ports still never lets the protected ranges through.
+	broad := parse(t, "version: 1\nallow_targets: [0.0.0.0/0, \"[::/0]\"]\n")
+	if allows(broad, "169.254.169.254:80") || allows(broad, "[fd00:ec2::254]:80") || !allows(broad, "203.0.113.9:1") {
+		t.Error("an all-ports /0 and the protected ranges")
+	}
+}
+
+// TestDeny (D84): an entry of deny_targets refuses what it matches, whatever allows it, the
+// protected ranges' explicit entries included; a deny without ports denies all of them; the refusal
+// names the deny entry; a bad deny entry makes the whole file deny everything.
+func TestDeny(t *testing.T) {
+	p := parse(t, `version: 1
+allow_targets:
+  - 127.0.0.1:200-500
+  - 10.0.0.0/8
+  - 169.254.169.254:80
+  - /run/app.sock
+  - /run/other.sock
+deny_targets:
+  - 127.0.0.1:345
+  - {cidr: 10.9.0.1/16}
+  - {cidr: 10.1.0.0/16, ports: ["8000-8999"]}
+  - 169.254.0.0/16
+  - {unix: /run/other.sock}
+`)
+	for target, want := range map[string]bool{
+		"127.0.0.1:344": true, "127.0.0.1:345": false, "127.0.0.1:346": true,
+		"10.8.0.1:22": true, "10.9.200.1:22": false, "10.9.200.1:65535": false,
+		"10.1.0.1:7999": true, "10.1.0.1:8000": false, "10.1.0.1:8999": false, "10.1.0.1:9000": true,
+		"169.254.169.254:80": false,
+	} {
+		if allows(p, target) != want {
+			t.Errorf("%s: allowed %v, want %v", target, !want, want)
+		}
+	}
+	if !p.AllowsUnix("/run/app.sock") || p.AllowsUnix("/run/other.sock") || p.DeniedByUnix("/run/other.sock") != "/run/other.sock" {
+		t.Error("a denied socket")
+	}
+	var blocked *policy.BlockedError
+	if err := p.Check("127.0.0.1:345"); !errors.As(err, &blocked) || blocked.Denied != "127.0.0.1:345" ||
+		blocked.Detail() != "127.0.0.1:345 denied by 127.0.0.1:345" || !strings.Contains(err.Error(), "denies 127.0.0.1:345") {
+		t.Fatalf("a denied target: %v", err)
+	}
+	if err := p.Check("10.9.0.7:22"); !errors.As(err, &blocked) || blocked.Denied != "10.9.0.0/16" {
+		t.Fatalf("a target a normalised deny subnet refuses: %v", err)
+	}
+	if err := p.Check("127.0.0.1:600"); !errors.As(err, &blocked) || blocked.Denied != "" || blocked.Detail() != "127.0.0.1:600" ||
+		!strings.Contains(err.Error(), "does not allow") {
+		t.Fatalf("a target nothing allows: %v", err)
+	}
+	if d := p.Describe(); !strings.Contains(d, "denied targets, which win over allowed ones:\n  127.0.0.1/32 ports 345\n  10.9.0.0/16 all ports") {
+		t.Errorf("Describe:\n%s", d)
+	}
+	path := filepath.Join(t.TempDir(), "policy.yaml")
+	if err := os.WriteFile(path, []byte("version: 1\nallow_targets: [10.0.0.0/8]\ndeny_targets: [\"10.0.0.1:0\"]\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if bad, err := policy.Load(path); err == nil || bad.Invalid == nil || bad.Allows(netip.MustParseAddr("10.0.0.2"), 80) {
+		t.Fatalf("a bad deny entry: %v", err)
+	}
+}
+
+// TestDeny_HintsRoundTrip: the deny entry a refusal names is a target string parseTarget reads
+// back, IPv6 in brackets and with only the port or range that matched, so that the UI's
+// `rpmgr policy remove-deny-target` command takes exactly that out.
+func TestDeny_HintsRoundTrip(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "policy.yaml")
+	if err := os.WriteFile(path, []byte(`version: 1
+allow_targets: ["0.0.0.0/0", "[::/0]"]
+deny_targets:
+  - "[fd00::/64]"
+  - {cidr: "2001:db8::1"}
+  - {cidr: 10.0.0.0/8, ports: [80, "400-500"]}
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	for target, want := range map[string]string{"[fd00::9]:22": "[fd00::/64]", "[2001:db8::1]:443": "[2001:db8::1]",
+		"10.1.2.3:80": "10.0.0.0/8:80", "10.1.2.3:450": "10.0.0.0/8:400-500"} {
+		var blocked *policy.BlockedError
+		if err := load(t, path).Check(target); !errors.As(err, &blocked) || blocked.Denied != want || policy.CheckTarget(blocked.Denied) != nil {
+			t.Errorf("%s: %v, want the entry %s", target, err, want)
+		}
+	}
+	changed, err := policy.RemoveDenyTarget(path, "10.0.0.0/8:400-500")
+	if err != nil || !changed {
+		t.Fatalf("removing the hinted range: %v %v", changed, err)
+	}
+	if p := load(t, path); p.Check("10.1.2.3:450") != nil || p.Check("10.1.2.3:80") == nil {
+		t.Fatalf("after removing the range:\n%s", p.Describe())
+	}
+	for _, target := range []string{"[fd00::/64]", "[2001:db8::1]"} {
+		if changed, err := policy.RemoveDenyTarget(path, target); err != nil || !changed {
+			t.Errorf("removing the hinted %s: %v %v", target, changed, err)
+		}
+	}
+	if _, err := policy.RemoveDenyTarget(path, "10.1.0.0/16:80"); !errors.Is(err, policy.ErrInRange) ||
+		!strings.Contains(err.Error(), "remove that deny entry") || strings.Contains(err.Error(), "deny-target") {
+		t.Errorf("a denial inside a broader deny entry: %v", err)
+	}
+}
+
+// TestParse_AliasesRefused: anchors, aliases and merge keys make the file invalid, naming the line,
+// and no edit command touches such a file: an edit would change every alias of a node with it.
+func TestParse_AliasesRefused(t *testing.T) {
+	for name, src := range map[string]string{
+		"an anchor":       "version: 1\nallow_targets:\n  - &web {cidr: 10.0.0.0/8, ports: [80]}\n",
+		"an alias":        "version: 1\nx: &v 1\nallow_targets: [{cidr: 10.0.0.0/8, ports: [*v]}]\n",
+		"ports anchor":    "version: 1\nallow_targets: [{cidr: 10.0.0.0/8, ports: &p [22]}]\ndeny_targets: [{cidr: 10.9.0.0/16, ports: *p}]\n",
+		"a merge key":     "version: 1\n<<: {deny_targets: [10.0.0.0/8]}\nallow_targets: [10.0.0.0/8]\n",
+		"a merged entry":  "version: 1\nallow_targets: [{<<: {ports: [80]}, cidr: 10.0.0.0/8}]\n",
+		"an anchored doc": "&d\nversion: 1\n",
+	} {
+		if _, err := policy.Parse([]byte(src)); err == nil || !strings.Contains(err.Error(), "anchors, aliases and merge keys are not allowed") ||
+			!strings.Contains(err.Error(), "line ") {
+			t.Errorf("%s: %v", name, err)
+		}
+		path := filepath.Join(t.TempDir(), "policy.yaml")
+		if err := os.WriteFile(path, []byte(src), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		for verb, edit := range map[string]func(string, string) (bool, error){"allow": policy.AllowTarget, "remove": policy.RemoveTarget,
+			"deny": policy.DenyTarget, "remove-deny": policy.RemoveDenyTarget} {
+			if _, err := edit(path, "10.0.0.1:22"); err == nil || !strings.Contains(err.Error(), "anchors, aliases and merge keys") {
+				t.Errorf("%s, %s: %v", name, verb, err)
+			}
+		}
+		if b, _ := os.ReadFile(path); string(b) != src {
+			t.Errorf("%s: the file changed:\n%s", name, b)
+		}
+	}
+}
+
+// TestGuarded (ADR-0019): a guarded policy refuses rpmgr's own ports whatever it allows, also to
+// a dial, with a detail that names them; other targets keep their verdict, an unguarded copy is
+// unchanged, and a nil guard guards nothing.
+func TestGuarded(t *testing.T) {
+	own := func(ap netip.AddrPort) bool {
+		return ap.Addr().IsLoopback() && (ap.Port() == 7381 || ap.Port() == 443) || ap == netip.MustParseAddrPort("192.0.2.10:8443")
+	}
+	open := parse(t, "version: 1\nallow_targets: [0.0.0.0/0, \"[::/0]\"]\ndeny_targets: [\"127.0.0.1:443\"]\n")
+	p := open.Guarded(own)
+	for target, want := range map[string]bool{
+		"127.0.0.1:7381": false, "[::1]:7381": false, "127.0.0.1:443": false, "192.0.2.10:8443": false,
+		"[::ffff:127.0.0.1]:7381": false, "127.0.0.1:8080": true, "192.0.2.10:443": true, "[2001:db8::1]:7381": true,
+	} {
+		if got := allows(p, target); got != want {
+			t.Errorf("%s: allowed %v, want %v", target, got, want)
+		}
+	}
+	if !allows(open, "127.0.0.1:7381") {
+		t.Error("Guarded changed the policy it copied")
+	}
+	var blocked *policy.BlockedError
+	if err := p.Check("127.0.0.1:7381"); !errors.As(err, &blocked) || !blocked.Own || blocked.Detail() != "127.0.0.1:7381"+policy.OwnPort ||
+		!strings.Contains(err.Error(), "never dials") {
+		t.Fatalf("an own port: %v", err)
+	}
+	// deny_targets matches too, but the own port is what the detail names: no entry to remove helps.
+	if err := p.Check("127.0.0.1:443"); !errors.As(err, &blocked) || blocked.Detail() != "127.0.0.1:443"+policy.OwnPort {
+		t.Fatalf("an own port that deny_targets names too: %v", err)
+	}
+	if !p.Own(netip.MustParseAddr("::ffff:127.0.0.1"), 7381) || p.Own(netip.MustParseAddr("127.0.0.1"), 8080) || open.Own(netip.MustParseAddr("127.0.0.1"), 7381) {
+		t.Error("Own")
+	}
+	if !allows(open.Guarded(nil), "127.0.0.1:7381") {
+		t.Error("a nil guard refused a target")
+	}
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = ln.Close() }()
+	listener := netip.MustParseAddrPort(ln.Addr().String())
+	d := net.Dialer{Timeout: time.Second, Control: policy.Control(func() *policy.Policy {
+		return open.Guarded(func(ap netip.AddrPort) bool { return ap == listener })
+	})}
+	if _, err := d.DialContext(context.Background(), "tcp", ln.Addr().String()); !errors.As(err, &blocked) || !blocked.Own {
+		t.Fatalf("a dial to an own port: %v", err)
+	}
+	// UDP too: a udp route's flow is dialled under the same check.
+	pc, err := net.ListenPacket("udp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = pc.Close() }()
+	udpPort := netip.MustParseAddrPort(pc.LocalAddr().String())
+	ud := net.Dialer{Control: policy.Control(func() *policy.Policy {
+		return open.Guarded(func(ap netip.AddrPort) bool { return ap == udpPort })
+	})}
+	if _, err := ud.DialContext(context.Background(), "udp", pc.LocalAddr().String()); !errors.As(err, &blocked) || !blocked.Own {
+		t.Fatalf("a UDP dial to an own port: %v", err)
+	}
+	if c, err := ud.DialContext(context.Background(), "udp", "127.0.0.1:9"); err != nil {
+		t.Fatalf("a UDP dial elsewhere: %v", err)
+	} else {
+		_ = c.Close()
+	}
 }

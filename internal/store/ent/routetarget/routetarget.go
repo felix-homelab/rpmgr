@@ -39,6 +39,8 @@ const (
 	FieldTLSCaBundleID = "tls_ca_bundle_id"
 	// FieldTLSSpkiSha256 holds the string denoting the tls_spki_sha256 field in the database.
 	FieldTLSSpkiSha256 = "tls_spki_sha256"
+	// FieldTLSVerification holds the string denoting the tls_verification field in the database.
+	FieldTLSVerification = "tls_verification"
 	// FieldProxyProtocol holds the string denoting the proxy_protocol field in the database.
 	FieldProxyProtocol = "proxy_protocol"
 	// FieldWeight holds the string denoting the weight field in the database.
@@ -93,6 +95,7 @@ var Columns = []string{
 	FieldTLSServerName,
 	FieldTLSCaBundleID,
 	FieldTLSSpkiSha256,
+	FieldTLSVerification,
 	FieldProxyProtocol,
 	FieldWeight,
 	FieldPriority,
@@ -207,6 +210,33 @@ func UpstreamProtocolValidator(up UpstreamProtocol) error {
 	}
 }
 
+// TLSVerification defines the type for the "tls_verification" enum field.
+type TLSVerification string
+
+// TLSVerificationVerified is the default value of the TLSVerification enum.
+const DefaultTLSVerification = TLSVerificationVerified
+
+// TLSVerification values.
+const (
+	TLSVerificationVerified   TLSVerification = "verified"
+	TLSVerificationUnverified TLSVerification = "unverified"
+	TLSVerificationPinnedKey  TLSVerification = "pinned_key"
+)
+
+func (tv TLSVerification) String() string {
+	return string(tv)
+}
+
+// TLSVerificationValidator is a validator for the "tls_verification" field enum values. It is called by the builders before save.
+func TLSVerificationValidator(tv TLSVerification) error {
+	switch tv {
+	case TLSVerificationVerified, TLSVerificationUnverified, TLSVerificationPinnedKey:
+		return nil
+	default:
+		return fmt.Errorf("routetarget: invalid enum value for tls_verification field: %q", tv)
+	}
+}
+
 // ProxyProtocol defines the type for the "proxy_protocol" enum field.
 type ProxyProtocol string
 
@@ -300,6 +330,11 @@ func ByTLSCaBundleID(opts ...sql.OrderTermOption) OrderOption {
 // ByTLSSpkiSha256 orders the results by the tls_spki_sha256 field.
 func ByTLSSpkiSha256(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldTLSSpkiSha256, opts...).ToFunc()
+}
+
+// ByTLSVerification orders the results by the tls_verification field.
+func ByTLSVerification(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldTLSVerification, opts...).ToFunc()
 }
 
 // ByProxyProtocol orders the results by the proxy_protocol field.

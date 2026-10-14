@@ -29,6 +29,10 @@ var (
 		rpmgrv1.UpstreamProtocol_UPSTREAM_PROTOCOL_HTTPS: routetarget.UpstreamProtocolHTTPS, rpmgrv1.UpstreamProtocol_UPSTREAM_PROTOCOL_H2C: routetarget.UpstreamProtocolH2c}
 	storeProxies = map[rpmgrv1.ProxyProtocol]routetarget.ProxyProtocol{rpmgrv1.ProxyProtocol_PROXY_PROTOCOL_V1: routetarget.ProxyProtocolV1,
 		rpmgrv1.ProxyProtocol_PROXY_PROTOCOL_V2: routetarget.ProxyProtocolV2}
+	storeVerifications = map[rpmgrv1.UpstreamVerification]routetarget.TLSVerification{
+		rpmgrv1.UpstreamVerification_UPSTREAM_VERIFICATION_VERIFIED:   routetarget.TLSVerificationVerified,
+		rpmgrv1.UpstreamVerification_UPSTREAM_VERIFICATION_UNVERIFIED: routetarget.TLSVerificationUnverified,
+		rpmgrv1.UpstreamVerification_UPSTREAM_VERIFICATION_PINNED_KEY: routetarget.TLSVerificationPinnedKey}
 )
 
 // CreateRouteTarget implements RouteService.
@@ -156,18 +160,24 @@ func checkTarget(ctx context.Context, tx *ent.Tx, rt *ent.Route, t *rpmgrv1.Rout
 		return invalid("a target needs a host_port or a unix_path")
 	case t.GetUnixPath() != "" && path.Clean(t.GetUnixPath()) != t.GetUnixPath():
 		return invalid("unix_path %q is not a clean absolute path", t.GetUnixPath())
-	case rt.Type == route.TypeUDP && t.GetUnixPath() != "":
-		return invalid("a udp route's target is a host and port")
+	case (rt.Type == route.TypeUDP || rt.Type == route.TypeTCPUDP) && t.GetUnixPath() != "":
+		return invalid("a %s route's target is a host and port", rt.Type)
 	case rt.Type == route.TypeHTTP && up == routetarget.UpstreamProtocolTCP:
 		return invalid("an http route's target speaks HTTP, HTTPS or H2C")
 	case rt.Type != route.TypeHTTP && up != routetarget.UpstreamProtocolTCP:
 		return invalid("only an http route's target speaks HTTP")
-	case storeProxies[t.GetProxyProtocol()] != "" && rt.Type != route.TypeTCP && rt.Type != route.TypeTLSPassthrough:
-		return invalid("a PROXY header goes only to the target of a tcp or tls_passthrough route")
+	case storeProxies[t.GetProxyProtocol()] != "" && rt.Type != route.TypeTCP && rt.Type != route.TypeTCPUDP && rt.Type != route.TypeTLSPassthrough:
+		return invalid("a PROXY header goes only to the target of a tcp, tcp_udp or tls_passthrough route")
 	case t.GetTls() != nil && up != routetarget.UpstreamProtocolHTTPS:
 		return invalid("TLS settings are for an HTTPS target")
 	case up == routetarget.UpstreamProtocolHTTPS && t.GetTls().GetServerName() == "" && t.GetUnixPath() != "":
 		return invalid("an HTTPS target on a Unix socket needs a server_name")
+	case verificationOf(t) != routetarget.TLSVerificationVerified && t.GetTls().GetCaBundleId() != "":
+		return invalid("a CA bundle goes only with a verified HTTPS target")
+	case verificationOf(t) == routetarget.TLSVerificationUnverified && t.GetTls().GetSpkiSha256() != "":
+		return invalid("an unverified HTTPS target has no key pin")
+	case verificationOf(t) == routetarget.TLSVerificationPinnedKey && t.GetTls().GetSpkiSha256() == "":
+		return invalid("a pinned-key HTTPS target needs its key pin")
 	}
 	if id := t.GetTls().GetCaBundleId(); id != "" {
 		if _, err := tx.CABundle.Get(ctx, id); err != nil {
@@ -198,6 +208,14 @@ func upstreamOf(rt *ent.Route, t *rpmgrv1.RouteTarget) routetarget.UpstreamProto
 	return routetarget.UpstreamProtocolTCP
 }
 
+// verificationOf is how a target's certificate is checked, verified by default.
+func verificationOf(t *rpmgrv1.RouteTarget) routetarget.TLSVerification {
+	if v, ok := storeVerifications[t.GetTls().GetVerification()]; ok {
+		return v
+	}
+	return routetarget.TLSVerificationVerified
+}
+
 // setTarget sets a target's fields on a create or an update.
 func setTarget(m *ent.RouteTargetMutation, rt *ent.Route, t *rpmgrv1.RouteTarget) {
 	if hp := t.GetHostPort(); hp != nil {
@@ -214,6 +232,7 @@ func setTarget(m *ent.RouteTargetMutation, rt *ent.Route, t *rpmgrv1.RouteTarget
 	m.SetUpstreamProtocol(upstreamOf(rt, t))
 	m.SetTLSServerName(t.GetTls().GetServerName())
 	m.SetTLSSpkiSha256(t.GetTls().GetSpkiSha256())
+	m.SetTLSVerification(verificationOf(t))
 	if id := t.GetTls().GetCaBundleId(); id != "" {
 		m.SetTLSCaBundleID(id)
 	}
@@ -248,6 +267,11 @@ func targetOf(r *ent.RouteTarget) *rpmgrv1.RouteTarget {
 		out.Tls = &rpmgrv1.UpstreamTLSSettings{ServerName: r.TLSServerName, SpkiSha256: r.TLSSpkiSha256}
 		if r.TLSCaBundleID != nil {
 			out.Tls.CaBundleId = *r.TLSCaBundleID
+		}
+		for api, st := range storeVerifications {
+			if st == r.TLSVerification {
+				out.Tls.Verification = api
+			}
 		}
 	}
 	return out

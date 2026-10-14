@@ -11,13 +11,14 @@ import { ConnectorService } from "@/gen/rpmgr/v1/connector_pb";
 import { ApplyState, StatusService } from "@/gen/rpmgr/v1/status_pb";
 import { Theme, UserService } from "@/gen/rpmgr/v1/user_pb";
 import { apiError, auth, show } from "@/testing/api";
+import { marked, unmatched } from "@/testing/required";
 
 afterEach(cleanup);
 
 const applied = { revision: { dbEpoch: "e", seq: 21n }, applyStatus: { state: ApplyState.APPLIED, agentsTotal: 1, agentsApplied: 1 } };
 const token = "rpmgr_enr_fakefakefake0123456789_9x8y7z"; // not token-shaped, so the secrets scan passes it
 
-function page(full = false) {
+function page(full = false, builtIn = false) {
   const creates: CreateGatewayRequest[] = [];
   const updates: UpdateGatewayRequest[] = [];
   const decommissions: DecommissionGatewayRequest[] = [];
@@ -36,6 +37,8 @@ function page(full = false) {
       listGateways: () => ({ gateways: [
         { id: "gtw_1", gatewayGroupId: "ggr_eu", name: "gw-eu-1", slot: 1, enabled: true, etag: "5", tunnelEndpoints: ["198.51.100.1:443"], status: { enrolled: true, connected: true } },
         { id: "gtw_2", gatewayGroupId: "ggr_eu", name: "gw-eu-2", slot: 2, enabled: false, etag: "6", status: { enrolled: false } },
+        ...(builtIn ? [{ id: "gtw_local", gatewayGroupId: "ggr_eu", name: "local", slot: 3, enabled: true, etag: "2", builtIn: true,
+          tunnelEndpoints: ["panel.example.com:443"], status: { enrolled: false } }] : []),
       ] }),
       createGateway: (req) => {
         creates.push(req);
@@ -55,7 +58,7 @@ function page(full = false) {
         }
         return { token };
       },
-      getInstallCommand: (req) => (commands.push(req), { command: "curl -fsSL https://panel.example.com/install.sh | sudo sh -s -- --role gateway --ca-pin sha256:x" }),
+      getInstallCommand: (req) => (commands.push(req), { command: "curl -fsSLO https://panel.example.com/install.sh && sudo sh install.sh --role gateway --ca-pin sha256:x" }),
     });
   });
   return { creates, updates, decommissions, tokens, commands };
@@ -72,6 +75,8 @@ describe("gateway actions", () => {
     const { creates } = page();
     fireEvent.click(await screen.findByRole("button", { name: "Add a gateway" }));
     const form = within(await screen.findByRole("form", { name: "New gateway" }));
+    const added = screen.getByRole("form", { name: "New gateway" });
+    expect([marked(added), unmatched(added)]).toEqual([["Name", "Tunnel endpoints"], []]);
     fireEvent.change(form.getByLabelText("Name"), { target: { value: "gw-eu-3" } });
     fireEvent.change(form.getByLabelText("Tunnel endpoints"), { target: { value: "198.51.100.3:443" } });
     fireEvent.click(form.getByRole("button", { name: "Add the gateway" }));
@@ -108,6 +113,17 @@ describe("gateway actions", () => {
     expect(r.getByRole("alert").textContent).toContain("Decommissioning gw-eu-1 revokes its identity");
     fireEvent.click(r.getByRole("button", { name: "Decommission gw-eu-1" }));
     await waitFor(() => expect(decommissions.map((d) => [d.gatewayId, d.etag])).toEqual([["gtw_1", "5"]]));
+  });
+
+  it("marks the all-in-one's own gateway and offers neither a decommission nor a token, but drains it (ADR-0019)", async () => {
+    const { updates } = page(false, true);
+    const r = await row("local");
+    expect(r.getByText("built in")).toBeTruthy();
+    expect(r.queryByRole("button", { name: "Decommission…" })).toBeNull();
+    expect(r.queryByRole("button", { name: /token/i })).toBeNull();
+    expect((await row("gw-eu-1")).getByRole("button", { name: "Decommission…" })).toBeTruthy();
+    fireEvent.click(r.getByRole("button", { name: "Drain" }));
+    await waitFor(() => expect(updates.map((u) => [u.gateway?.id, u.gateway?.enabled])).toEqual([["gtw_local", false]]));
   });
 
   it("mints a gateway's enrollment token after a step-up and keeps it out of the command", async () => {

@@ -7,9 +7,14 @@
 # manifest -> SHA-256 of the binary. The enrollment token never passes through this script:
 # rpmgr enroll reads it from --token-file, from RPMGR_ENROLL_TOKEN, or from the terminal.
 #
-#   curl -fsSL <controller>/install.sh | sudo sh -s -- --controller <url> --ca-pin <pin> \
-#     [--role gateway|connector] [--allow-target <target>]... [--token-file <file>] [--tcp-bbr]
+#   curl -fsSLO <controller>/install.sh && sudo sh install.sh --controller <url> --ca-pin <pin> \
+#     [--role gateway|connector] [--allow-target <target>]... [--deny-target <target>]...
+#     [--token-file <file>] [--tcp-bbr]
 #     [--verify-only]
+#
+# Run it from a file, not piped into sudo: sudo-rs, Ubuntu's sudo since 25.10, passes nothing typed
+# at the terminal on to a command whose standard input is a pipe, so the token prompt would wait
+# for good.
 set -eu
 
 VERSION='{{.Version}}'
@@ -18,7 +23,7 @@ BIN=/usr/local/bin/rpmgr
 die() { echo "rpmgr install: $*" >&2; exit 1; }
 say() { echo "rpmgr install: $*" >&2; }
 
-controller='' pin='' role=connector token_file='' bbr=0 verify_only=0 targets=''
+controller='' pin='' role=connector token_file='' bbr=0 verify_only=0 targets='' denied=''
 nl='
 '
 while [ $# -gt 0 ]; do
@@ -30,6 +35,10 @@ while [ $# -gt 0 ]; do
       case $2 in *"$nl"*) die "--allow-target with a newline" ;; esac
       targets="$targets$2
 "; shift 2 ;;
+    --deny-target) [ $# -ge 2 ] || die "--deny-target needs a target"
+      case $2 in *"$nl"*) die "--deny-target with a newline" ;; esac
+      denied="$denied$2
+"; shift 2 ;;
     --token-file) [ $# -ge 2 ] || die "--token-file needs a file"; token_file=$2; shift 2 ;;
     --tcp-bbr) bbr=1; shift ;;
     --verify-only) verify_only=1; shift ;;
@@ -40,7 +49,7 @@ case $controller in https://*) ;; *) die "--controller must be an https:// URL" 
 controller=${controller%/}
 [ -n "$pin" ] || [ "$verify_only" = 1 ] || die "--ca-pin is required (the controller's UI shows the command)"
 case $role in gateway | connector) ;; *) die "--role must be gateway or connector" ;; esac
-if [ "$role" = gateway ] && [ -n "$targets" ]; then die "a gateway has no local policy for --allow-target"; fi
+if [ "$role" = gateway ] && [ -n "$targets$denied" ]; then die "a gateway has no local policy for --allow-target or --deny-target"; fi
 if [ -n "$token_file" ] && [ ! -r "$token_file" ]; then die "cannot read --token-file $token_file"; fi
 
 for tool in curl openssl sed grep date dd od wc head cut tr; do
@@ -115,14 +124,19 @@ if [ "$role" = connector ]; then
   if [ ! -f "$policy" ]; then
     cat >"$policy" <<'EOF'
 # Connector-local policy (docs/04-security.md, "Connector-local policy"). Edit with
-# "rpmgr policy allow-target" and "rpmgr policy remove-target", or by hand as root.
+# "rpmgr policy allow-target", "deny-target" and their "remove-" forms, or by hand as root.
 version: 1
 allow_targets: []
+deny_targets: []
 auto_update: auto
 update_channel: stable
 EOF
     chmod 0644 "$policy"
   fi
+  # Denials first, so that an allow never stands without the denials that narrow it.
+  printf %s "$denied" | while IFS= read -r t; do
+    [ -n "$t" ] && "$BIN" policy deny-target --no-reload -- "$t"
+  done
   printf %s "$targets" | while IFS= read -r t; do
     [ -n "$t" ] && "$BIN" policy allow-target --no-reload -- "$t"
   done
@@ -154,6 +168,10 @@ else
   if [ -n "$token_file" ]; then
     "$BIN" enroll --controller "$controller" --ca-pin "$pin" --token-file "$token_file"
   else
+    if [ ! -t 0 ] && [ -z "${RPMGR_ENROLL_TOKEN:-}" ]; then
+      say "this script is piped into sh; if the token prompt takes nothing you type (as under sudo-rs),"
+      say "stop it with Ctrl-C and run it from a file: curl -fsSLO $controller/install.sh && sudo sh install.sh ..."
+    fi
     "$BIN" enroll --controller "$controller" --ca-pin "$pin"
   fi
   chown -R rpmgr:rpmgr /var/lib/rpmgr/identity

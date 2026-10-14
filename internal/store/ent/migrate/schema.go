@@ -415,6 +415,7 @@ var (
 		{Name: "enabled", Type: field.TypeBool, Default: true},
 		{Name: "transport", Type: field.TypeEnum, Nullable: true, Enums: []string{"auto", "quic", "h2"}},
 		{Name: "desired_version", Type: field.TypeString, Nullable: true},
+		{Name: "built_in", Type: field.TypeBool, Default: false},
 		{Name: "created_at", Type: field.TypeTime},
 		{Name: "decommissioned_at", Type: field.TypeTime, Nullable: true},
 	}
@@ -433,6 +434,9 @@ var (
 				Name:    "connector_org_id_name",
 				Unique:  true,
 				Columns: []*schema.Column{ConnectorsColumns[1], ConnectorsColumns[3]},
+				Annotation: &entsql.IndexAnnotation{
+					Where: "decommissioned_at IS NULL",
+				},
 			},
 		},
 	}
@@ -511,6 +515,7 @@ var (
 		{Name: "role", Type: field.TypeEnum, Enums: []string{"connector", "gateway"}},
 		{Name: "labels", Type: field.TypeJSON, Nullable: true},
 		{Name: "ephemeral", Type: field.TypeBool, Default: false},
+		{Name: "built_in", Type: field.TypeBool, Default: false},
 		{Name: "max_uses", Type: field.TypeInt, Nullable: true},
 		{Name: "use_count", Type: field.TypeInt, Default: 0},
 		{Name: "expires_at", Type: field.TypeTime},
@@ -531,19 +536,19 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "enrollment_tokens_gateway_groups_group",
-				Columns:    []*schema.Column{EnrollmentTokensColumns[14]},
+				Columns:    []*schema.Column{EnrollmentTokensColumns[15]},
 				RefColumns: []*schema.Column{GatewayGroupsColumns[0]},
 				OnDelete:   schema.SetNull,
 			},
 			{
 				Symbol:     "enrollment_tokens_gateways_gateway",
-				Columns:    []*schema.Column{EnrollmentTokensColumns[15]},
+				Columns:    []*schema.Column{EnrollmentTokensColumns[16]},
 				RefColumns: []*schema.Column{GatewaysColumns[0]},
 				OnDelete:   schema.SetNull,
 			},
 			{
 				Symbol:     "enrollment_tokens_connectors_connector",
-				Columns:    []*schema.Column{EnrollmentTokensColumns[16]},
+				Columns:    []*schema.Column{EnrollmentTokensColumns[17]},
 				RefColumns: []*schema.Column{ConnectorsColumns[0]},
 				OnDelete:   schema.SetNull,
 			},
@@ -568,6 +573,7 @@ var (
 		{Name: "pubkey_sha256", Type: field.TypeString, Nullable: true},
 		{Name: "enabled", Type: field.TypeBool, Default: true},
 		{Name: "desired_version", Type: field.TypeString, Nullable: true},
+		{Name: "built_in", Type: field.TypeBool, Default: false},
 		{Name: "created_at", Type: field.TypeTime},
 		{Name: "decommissioned_at", Type: field.TypeTime, Nullable: true},
 		{Name: "gateway_group_id", Type: field.TypeString},
@@ -580,7 +586,7 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "gateways_gateway_groups_group",
-				Columns:    []*schema.Column{GatewaysColumns[12]},
+				Columns:    []*schema.Column{GatewaysColumns[13]},
 				RefColumns: []*schema.Column{GatewayGroupsColumns[0]},
 				OnDelete:   schema.NoAction,
 			},
@@ -595,11 +601,14 @@ var (
 				Name:    "gateway_org_id_name",
 				Unique:  true,
 				Columns: []*schema.Column{GatewaysColumns[1], GatewaysColumns[3]},
+				Annotation: &entsql.IndexAnnotation{
+					Where: "decommissioned_at IS NULL",
+				},
 			},
 			{
 				Name:    "gateway_gateway_group_id_slot",
 				Unique:  true,
-				Columns: []*schema.Column{GatewaysColumns[12], GatewaysColumns[4]},
+				Columns: []*schema.Column{GatewaysColumns[13], GatewaysColumns[4]},
 				Annotation: &entsql.IndexAnnotation{
 					Where: "decommissioned_at IS NULL",
 				},
@@ -1101,7 +1110,7 @@ var (
 		{Name: "org_id", Type: field.TypeString},
 		{Name: "version", Type: field.TypeInt64, Default: 1},
 		{Name: "name", Type: field.TypeString},
-		{Name: "type", Type: field.TypeEnum, Enums: []string{"http", "tcp", "udp", "tls_passthrough"}},
+		{Name: "type", Type: field.TypeEnum, Enums: []string{"http", "tcp", "udp", "tcp_udp", "tls_passthrough"}},
 		{Name: "enabled", Type: field.TypeBool, Default: true},
 		{Name: "transport", Type: field.TypeEnum, Nullable: true, Enums: []string{"auto", "quic", "h2"}},
 		{Name: "description", Type: field.TypeString, Default: ""},
@@ -1152,6 +1161,8 @@ var (
 		{Name: "websocket", Type: field.TypeBool, Default: true},
 		{Name: "max_body_bytes", Type: field.TypeInt64, Default: 0},
 		{Name: "dns_proxied", Type: field.TypeBool, Default: false},
+		{Name: "maintenance", Type: field.TypeBool, Default: false},
+		{Name: "maintenance_message", Type: field.TypeString, Size: 2000, Default: ""},
 		{Name: "route_id", Type: field.TypeString},
 		{Name: "certificate_id", Type: field.TypeString, Nullable: true},
 	}
@@ -1163,13 +1174,13 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "route_http_routes_route",
-				Columns:    []*schema.Column{RouteHTTPColumns[13]},
+				Columns:    []*schema.Column{RouteHTTPColumns[15]},
 				RefColumns: []*schema.Column{RoutesColumns[0]},
 				OnDelete:   schema.NoAction,
 			},
 			{
 				Symbol:     "route_http_certificates_certificate",
-				Columns:    []*schema.Column{RouteHTTPColumns[14]},
+				Columns:    []*schema.Column{RouteHTTPColumns[16]},
 				RefColumns: []*schema.Column{CertificatesColumns[0]},
 				OnDelete:   schema.SetNull,
 			},
@@ -1183,12 +1194,12 @@ var (
 			{
 				Name:    "routehttp_route_id",
 				Unique:  true,
-				Columns: []*schema.Column{RouteHTTPColumns[13]},
+				Columns: []*schema.Column{RouteHTTPColumns[15]},
 			},
 			{
 				Name:    "routehttp_certificate_id",
 				Unique:  false,
-				Columns: []*schema.Column{RouteHTTPColumns[14]},
+				Columns: []*schema.Column{RouteHTTPColumns[16]},
 			},
 		},
 	}
@@ -1348,6 +1359,7 @@ var (
 		{Name: "upstream_protocol", Type: field.TypeEnum, Enums: []string{"tcp", "http", "https", "h2c"}, Default: "tcp"},
 		{Name: "tls_server_name", Type: field.TypeString, Default: ""},
 		{Name: "tls_spki_sha256", Type: field.TypeString, Default: ""},
+		{Name: "tls_verification", Type: field.TypeEnum, Enums: []string{"verified", "unverified", "pinned_key"}, Default: "verified"},
 		{Name: "proxy_protocol", Type: field.TypeEnum, Enums: []string{"none", "v1", "v2"}, Default: "none"},
 		{Name: "weight", Type: field.TypeInt, Default: 1},
 		{Name: "priority", Type: field.TypeInt, Default: 0},
@@ -1364,19 +1376,19 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "route_targets_routes_route",
-				Columns:    []*schema.Column{RouteTargetsColumns[14]},
+				Columns:    []*schema.Column{RouteTargetsColumns[15]},
 				RefColumns: []*schema.Column{RoutesColumns[0]},
 				OnDelete:   schema.NoAction,
 			},
 			{
 				Symbol:     "route_targets_connectors_connector",
-				Columns:    []*schema.Column{RouteTargetsColumns[15]},
+				Columns:    []*schema.Column{RouteTargetsColumns[16]},
 				RefColumns: []*schema.Column{ConnectorsColumns[0]},
 				OnDelete:   schema.NoAction,
 			},
 			{
 				Symbol:     "route_targets_ca_bundles_ca_bundle",
-				Columns:    []*schema.Column{RouteTargetsColumns[16]},
+				Columns:    []*schema.Column{RouteTargetsColumns[17]},
 				RefColumns: []*schema.Column{CaBundlesColumns[0]},
 				OnDelete:   schema.SetNull,
 			},
@@ -1390,17 +1402,17 @@ var (
 			{
 				Name:    "routetarget_route_id",
 				Unique:  false,
-				Columns: []*schema.Column{RouteTargetsColumns[14]},
+				Columns: []*schema.Column{RouteTargetsColumns[15]},
 			},
 			{
 				Name:    "routetarget_connector_id",
 				Unique:  false,
-				Columns: []*schema.Column{RouteTargetsColumns[15]},
+				Columns: []*schema.Column{RouteTargetsColumns[16]},
 			},
 			{
 				Name:    "routetarget_tls_ca_bundle_id",
 				Unique:  false,
-				Columns: []*schema.Column{RouteTargetsColumns[16]},
+				Columns: []*schema.Column{RouteTargetsColumns[17]},
 			},
 		},
 	}

@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
+	"net/netip"
 	"os"
 	"sync"
 	"time"
@@ -31,7 +32,7 @@ import (
 // Capabilities are what this connector version implements (docs/03-connections.md, "Versioning
 // and capabilities").
 var Capabilities = []string{agentproto.CapTunnelQUIC, agentproto.CapTunnelH2, agentproto.CapProxyProtoV1,
-	agentproto.CapProxyProtoV2}
+	agentproto.CapProxyProtoV2, agentproto.CapProbeTarget}
 
 // RunOptions configure Run.
 type RunOptions struct {
@@ -46,11 +47,21 @@ type RunOptions struct {
 	ControlDial func(ctx context.Context, addr string) (net.Conn, error)
 	// Registry, if set, receives the connector's metrics instead of a new registry.
 	Registry telemetry.Registry
+	// Readiness, if set, gets the connector's readiness check, and Run serves no admin listener:
+	// the caller's serves Registry. Unlike a gateway's, a Registry alone keeps the connector's own
+	// admin listener, which then serves it.
+	Readiness func(check func(context.Context) error)
+	// InProcess, if set, is a gateway in the same process, which the data sessions reach in memory;
+	// the connector then opens no UDP socket for QUIC, so it reaches other gateways over h2 only.
+	InProcess *InProcess
+	// Own, if set, reports the addresses and ports the connector never dials, whatever its local
+	// policy allows: all-in-one's own listeners (ADR-0019).
+	Own func(netip.AddrPort) bool
 }
 
 // Run runs a connector from its boot file until ctx ends (docs/02-architecture.md): its control
 // plane, its data sessions to the gateways of its routes, the targets those routes deliver to as
-// its local policy allows, the policy watcher, and the admin listener.
+// its local policy allows, the policy watcher, and the admin listener unless Readiness is set.
 func Run(ctx context.Context, o RunOptions) error {
 	if o.Getenv == nil {
 		o.Getenv = os.Getenv
@@ -71,7 +82,7 @@ func Run(ctx context.Context, o RunOptions) error {
 		targets  *Targets
 		ctl      *agent.Control
 	)
-	watcher := policy.NewWatcher(cfg.PolicyFile, func(p *policy.Policy, err error) {
+	watcher := policy.NewGuardedWatcher(cfg.PolicyFile, o.Own, func(p *policy.Policy, err error) {
 		if err != nil {
 			o.Logger.Error("the local policy does not load: every target is blocked", "file", cfg.PolicyFile, "error", err)
 		}
@@ -102,20 +113,25 @@ func Run(ctx context.Context, o RunOptions) error {
 					Readiness: []*agentv1.ResourceStatus{{ResourceId: h.GetRouteId(), Reason: h.GetReason(), Detail: h.GetDetail()}}}}})
 			}
 		}})
-	pc, err := net.ListenPacket("udp", ":0")
-	if err != nil {
-		return err
-	}
-	tr := &quic.Transport{Conn: pc}
-	defer func() { _ = tr.Close(); _ = pc.Close() }() // a Transport does not close a conn it was given
-	if err := tunnel.RegisterHostMetrics(reg, pc); err != nil {
-		return err
+	// The UDP socket of QUIC sessions; all-in-one's connector has none, so it opens no port
+	// (ADR-0019): it reaches its own gateway in memory and other gateways of its group over h2.
+	var tr *quic.Transport
+	if o.InProcess == nil {
+		pc, err := net.ListenPacket("udp", ":0")
+		if err != nil {
+			return err
+		}
+		tr = &quic.Transport{Conn: pc}
+		defer func() { _ = tr.Close(); _ = pc.Close() }() // a Transport does not close a conn it was given
+		if err := tunnel.RegisterHostMetrics(reg, pc); err != nil {
+			return err
+		}
 	}
 	boot := make([]byte, 16)
 	if _, err := rand.Read(boot); err != nil {
 		return err
 	}
-	sessions = New(Options{QUIC: tr, Dial: dial, Streams: targets.Handle, Now: o.Now, Logger: o.Logger, Metrics: metrics,
+	sessions = New(Options{QUIC: tr, Dial: dial, InProcess: o.InProcess, Streams: targets.Handle, Now: o.Now, Logger: o.Logger, Metrics: metrics,
 		Hello: func() *tunnelv1.SessionHello {
 			return &tunnelv1.SessionHello{AgentVersion: o.Version, Capabilities: Capabilities, BootId: hex.EncodeToString(boot)}
 		},
@@ -124,7 +140,7 @@ func Run(ctx context.Context, o RunOptions) error {
 	applier := NewApplier(targets, sessions)
 	ctl, err = agent.NewControl(agent.ControlOptions{IdentityDir: cfg.IdentityDir, StateDir: cfg.StateDir, Version: o.Version,
 		Capabilities: Capabilities, Applier: applier, Now: o.Now, Logger: o.Logger,
-		Dial: o.ControlDial, Fallback: sessions.ControlConn,
+		Dial: o.ControlDial, Fallback: sessions.ControlConn, OnProbeTarget: targets.Probe,
 		SessionStatus: func() *agentv1.Status {
 			return &agentv1.Status{Readiness: applier.Readiness(), ReadinessComplete: true}
 		}})
@@ -142,13 +158,17 @@ func Run(ctx context.Context, o RunOptions) error {
 	errs := make(chan error, 2)
 	go watcher.Run(run)
 	var admin sync.WaitGroup
-	admin.Go(func() {
-		if err := telemetry.ServeAdmin(run, cfg.Listen.Admin, reg, ctl.Ready); err != nil {
-			errs <- fmt.Errorf("connector: admin listener: %w", err)
-		}
-	})
-	// Run returns only once the admin listener is closed, so that its address is free again.
-	defer func() { stop(); admin.Wait() }()
+	if o.Readiness == nil {
+		admin.Go(func() {
+			if err := telemetry.ServeAdmin(run, cfg.Listen.Admin, reg, ctl.Ready); err != nil {
+				errs <- fmt.Errorf("connector: admin listener: %w", err)
+			}
+		})
+		// Run returns only once the admin listener is closed, so that its address is free again.
+		defer func() { stop(); admin.Wait() }()
+	} else {
+		o.Readiness(ctl.Ready)
+	}
 	done := make(chan error, 1)
 	go func() { done <- ctl.Run(run) }()
 	o.Logger.Info("connector running", "connector", ctl.Identity().AgentID, "policy", cfg.PolicyFile)

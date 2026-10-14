@@ -25,11 +25,12 @@ const (
 	CapProxyProtoV1       = "proxyproto.v1"       // PROXY protocol v1 towards targets
 	CapProxyProtoV2       = "proxyproto.v2"       // PROXY protocol v2 towards targets
 	CapControlPassthrough = "control-passthrough" // the control session inside a data session
+	CapProbeTarget        = "probe.target"        // reads the certificate a target presents (ProbeTarget)
 )
 
 // Phase1 lists every capability of Phase 1 agents.
 var Phase1 = []string{CapTunnelQUIC, CapTunnelH2, CapUDPDatagram, CapUDPOversizeStream,
-	CapProxyProtoV1, CapProxyProtoV2, CapControlPassthrough}
+	CapProxyProtoV1, CapProxyProtoV2, CapControlPassthrough, CapProbeTarget}
 
 // CheckSize returns an error if m is larger than MaxControlMessage, so the sender can refuse a
 // message that the other end would refuse anyway.

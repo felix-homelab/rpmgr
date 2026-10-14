@@ -13,6 +13,7 @@ const looks: Record<RouteState, { look: Look; key: string }> = {
   [RouteState.DEGRADED]: { look: "warn", key: "degraded" },
   [RouteState.UNAVAILABLE]: { look: "alert", key: "unavailable" },
   [RouteState.ERROR]: { look: "failed", key: "error" },
+  [RouteState.MAINTENANCE]: { look: "maintenance", key: "maintenance" },
 };
 
 export const routeStateKeys = Object.values(looks).map((l) => l.key);

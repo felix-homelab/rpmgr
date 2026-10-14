@@ -955,8 +955,12 @@ func init() {
 	connectorDescEnabled := connectorFields[6].Descriptor()
 	// connector.DefaultEnabled holds the default value on creation for the enabled field.
 	connector.DefaultEnabled = connectorDescEnabled.Default.(bool)
+	// connectorDescBuiltIn is the schema descriptor for built_in field.
+	connectorDescBuiltIn := connectorFields[9].Descriptor()
+	// connector.DefaultBuiltIn holds the default value on creation for the built_in field.
+	connector.DefaultBuiltIn = connectorDescBuiltIn.Default.(bool)
 	// connectorDescCreatedAt is the schema descriptor for created_at field.
-	connectorDescCreatedAt := connectorFields[9].Descriptor()
+	connectorDescCreatedAt := connectorFields[10].Descriptor()
 	// connector.DefaultCreatedAt holds the default value on creation for the created_at field.
 	connector.DefaultCreatedAt = connectorDescCreatedAt.Default.(func() time.Time)
 	// connectorDescID is the schema descriptor for id field.
@@ -1160,22 +1164,26 @@ func init() {
 	enrollmenttokenDescEphemeral := enrollmenttokenFields[7].Descriptor()
 	// enrollmenttoken.DefaultEphemeral holds the default value on creation for the ephemeral field.
 	enrollmenttoken.DefaultEphemeral = enrollmenttokenDescEphemeral.Default.(bool)
+	// enrollmenttokenDescBuiltIn is the schema descriptor for built_in field.
+	enrollmenttokenDescBuiltIn := enrollmenttokenFields[8].Descriptor()
+	// enrollmenttoken.DefaultBuiltIn holds the default value on creation for the built_in field.
+	enrollmenttoken.DefaultBuiltIn = enrollmenttokenDescBuiltIn.Default.(bool)
 	// enrollmenttokenDescMaxUses is the schema descriptor for max_uses field.
-	enrollmenttokenDescMaxUses := enrollmenttokenFields[8].Descriptor()
+	enrollmenttokenDescMaxUses := enrollmenttokenFields[9].Descriptor()
 	// enrollmenttoken.MaxUsesValidator is a validator for the "max_uses" field. It is called by the builders before save.
 	enrollmenttoken.MaxUsesValidator = enrollmenttokenDescMaxUses.Validators[0].(func(int) error)
 	// enrollmenttokenDescUseCount is the schema descriptor for use_count field.
-	enrollmenttokenDescUseCount := enrollmenttokenFields[9].Descriptor()
+	enrollmenttokenDescUseCount := enrollmenttokenFields[10].Descriptor()
 	// enrollmenttoken.DefaultUseCount holds the default value on creation for the use_count field.
 	enrollmenttoken.DefaultUseCount = enrollmenttokenDescUseCount.Default.(int)
 	// enrollmenttoken.UseCountValidator is a validator for the "use_count" field. It is called by the builders before save.
 	enrollmenttoken.UseCountValidator = enrollmenttokenDescUseCount.Validators[0].(func(int) error)
 	// enrollmenttokenDescCreatedBy is the schema descriptor for created_by field.
-	enrollmenttokenDescCreatedBy := enrollmenttokenFields[11].Descriptor()
+	enrollmenttokenDescCreatedBy := enrollmenttokenFields[12].Descriptor()
 	// enrollmenttoken.CreatedByValidator is a validator for the "created_by" field. It is called by the builders before save.
 	enrollmenttoken.CreatedByValidator = enrollmenttokenDescCreatedBy.Validators[0].(func(string) error)
 	// enrollmenttokenDescCreatedAt is the schema descriptor for created_at field.
-	enrollmenttokenDescCreatedAt := enrollmenttokenFields[12].Descriptor()
+	enrollmenttokenDescCreatedAt := enrollmenttokenFields[13].Descriptor()
 	// enrollmenttoken.DefaultCreatedAt holds the default value on creation for the created_at field.
 	enrollmenttoken.DefaultCreatedAt = enrollmenttokenDescCreatedAt.Default.(func() time.Time)
 	// enrollmenttokenDescID is the schema descriptor for id field.
@@ -1269,8 +1277,12 @@ func init() {
 	gatewayDescEnabled := gatewayFields[7].Descriptor()
 	// gateway.DefaultEnabled holds the default value on creation for the enabled field.
 	gateway.DefaultEnabled = gatewayDescEnabled.Default.(bool)
+	// gatewayDescBuiltIn is the schema descriptor for built_in field.
+	gatewayDescBuiltIn := gatewayFields[9].Descriptor()
+	// gateway.DefaultBuiltIn holds the default value on creation for the built_in field.
+	gateway.DefaultBuiltIn = gatewayDescBuiltIn.Default.(bool)
 	// gatewayDescCreatedAt is the schema descriptor for created_at field.
-	gatewayDescCreatedAt := gatewayFields[9].Descriptor()
+	gatewayDescCreatedAt := gatewayFields[10].Descriptor()
 	// gateway.DefaultCreatedAt holds the default value on creation for the created_at field.
 	gateway.DefaultCreatedAt = gatewayDescCreatedAt.Default.(func() time.Time)
 	// gatewayDescID is the schema descriptor for id field.
@@ -2338,6 +2350,16 @@ func init() {
 	routehttpDescDNSProxied := routehttpFields[12].Descriptor()
 	// routehttp.DefaultDNSProxied holds the default value on creation for the dns_proxied field.
 	routehttp.DefaultDNSProxied = routehttpDescDNSProxied.Default.(bool)
+	// routehttpDescMaintenance is the schema descriptor for maintenance field.
+	routehttpDescMaintenance := routehttpFields[13].Descriptor()
+	// routehttp.DefaultMaintenance holds the default value on creation for the maintenance field.
+	routehttp.DefaultMaintenance = routehttpDescMaintenance.Default.(bool)
+	// routehttpDescMaintenanceMessage is the schema descriptor for maintenance_message field.
+	routehttpDescMaintenanceMessage := routehttpFields[14].Descriptor()
+	// routehttp.DefaultMaintenanceMessage holds the default value on creation for the maintenance_message field.
+	routehttp.DefaultMaintenanceMessage = routehttpDescMaintenanceMessage.Default.(string)
+	// routehttp.MaintenanceMessageValidator is a validator for the "maintenance_message" field. It is called by the builders before save.
+	routehttp.MaintenanceMessageValidator = routehttpDescMaintenanceMessage.Validators[0].(func(string) error)
 	routehostnameMixin := schema.RouteHostname{}.Mixin()
 	routehostname.Policy = privacy.NewPolicies(routehostnameMixin[0], schema.RouteHostname{})
 	routehostname.Hooks[0] = func(next ent.Mutator) ent.Mutator {
@@ -2532,19 +2554,19 @@ func init() {
 	// routetarget.DefaultTLSSpkiSha256 holds the default value on creation for the tls_spki_sha256 field.
 	routetarget.DefaultTLSSpkiSha256 = routetargetDescTLSSpkiSha256.Default.(string)
 	// routetargetDescWeight is the schema descriptor for weight field.
-	routetargetDescWeight := routetargetFields[12].Descriptor()
+	routetargetDescWeight := routetargetFields[13].Descriptor()
 	// routetarget.DefaultWeight holds the default value on creation for the weight field.
 	routetarget.DefaultWeight = routetargetDescWeight.Default.(int)
 	// routetarget.WeightValidator is a validator for the "weight" field. It is called by the builders before save.
 	routetarget.WeightValidator = routetargetDescWeight.Validators[0].(func(int) error)
 	// routetargetDescPriority is the schema descriptor for priority field.
-	routetargetDescPriority := routetargetFields[13].Descriptor()
+	routetargetDescPriority := routetargetFields[14].Descriptor()
 	// routetarget.DefaultPriority holds the default value on creation for the priority field.
 	routetarget.DefaultPriority = routetargetDescPriority.Default.(int)
 	// routetarget.PriorityValidator is a validator for the "priority" field. It is called by the builders before save.
 	routetarget.PriorityValidator = routetargetDescPriority.Validators[0].(func(int) error)
 	// routetargetDescEnabled is the schema descriptor for enabled field.
-	routetargetDescEnabled := routetargetFields[14].Descriptor()
+	routetargetDescEnabled := routetargetFields[15].Descriptor()
 	// routetarget.DefaultEnabled holds the default value on creation for the enabled field.
 	routetarget.DefaultEnabled = routetargetDescEnabled.Default.(bool)
 	// routetargetDescID is the schema descriptor for id field.

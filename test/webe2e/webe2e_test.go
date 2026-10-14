@@ -114,7 +114,9 @@ database: {dsn: %s}
 kek: {source: file, path: %s}
 tls: {cert_file: %s, key_file: %s}
 state_dir: %s
-`, public, port, port, freePort(t), freePort(t), filepath.Join(state, "controller.db"), filepath.Join(dir, "kek"), certFile, keyFile, state), 0o600); err != nil {
+policy_file: %s
+`, public, port, port, freePort(t), freePort(t), filepath.Join(state, "controller.db"), filepath.Join(dir, "kek"), certFile, keyFile, state,
+		filepath.Join(dir, "policy.yaml")), 0o600); err != nil { // never the host's /etc/rpmgr/policy.yaml
 		t.Fatal(err)
 	}
 	none := func(string) string { return "" }

@@ -2,7 +2,7 @@
 
 > Status: the P1 rows are implemented ([13](13-roadmap.md#phase-1--mvp)); P2 and P3 rows are design.
 > Tags: [F] fact · [R] recommendation · [T] target · [V] verify at implementation
-> ([README](../README.md#how-to-read-these-documents)).
+> ([README](README.md#how-to-read-these-documents)).
 >
 > **Phases** (details and exit criteria in [13-roadmap.md](13-roadmap.md)): **P1** MVP · **P2**
 > production · **P3** advanced. "—" means not planned.
@@ -16,6 +16,7 @@
 | `http` routes: hostnames (incl. wildcards under a verified domain), longest path prefix, header matching | P1 (header matching: P2) |
 | `tcp` routes on an explicit or randomly allocated port from a port pool | P1 |
 | `udp` routes, carried as QUIC datagrams ([03](03-connections.md#udp-routes)) | P1 |
+| `tcp_udp` routes: one public port with TCP and UDP to the same targets ([03](03-connections.md#udp-routes)) | P1 |
 | `tls_passthrough` routes, routed by SNI without terminating TLS | P1 |
 | `tcp` routes in `http_connect` mode (HTTP CONNECT multiplexer on one port) | P2 |
 | Port pools per gateway group and port quotas per org and gateway group | P1 |
@@ -58,7 +59,7 @@
 
 | Feature | Phase |
 |---|---|
-| Reusable access policies attached to routes, evaluated in order | P1 |
+| Reusable access policies attached to routes; a deny rule wins over every allow rule | P1 |
 | IP allow/deny lists | P1 |
 | HTTP basic auth (credentials stored as argon2id hashes) | P1 |
 | OIDC single sign-on in front of a route (forward-auth style) | P2 |
@@ -74,6 +75,7 @@
 | `Forwarded` / `X-Forwarded-*`, with untrusted incoming values stripped | P1 |
 | WebSockets and gRPC pass-through | P1 |
 | Request body size limit; per-route timeouts | P1 |
+| Built-in pages for a name no route serves (404) and for the gateway's own errors (502/503/504), to browsers ([D87](14-open-decisions.md#engineering)) | P1 |
 | Custom error pages (502/503/504/404) per gateway group | P2 |
 
 ### Private services

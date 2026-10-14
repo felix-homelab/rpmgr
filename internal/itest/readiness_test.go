@@ -4,6 +4,7 @@ package itest_test
 
 import (
 	"fmt"
+	"net"
 	"os"
 	"testing"
 	"time"
@@ -21,29 +22,10 @@ func TestReadiness_ReportedToController(t *testing.T) {
 	p := newDataPlane(t)
 	c := p.dial(t)
 	_ = c.Close()
-	status := func() *ent.ResourceStatus {
-		r, err := p.c.DB.Client().ResourceStatus.Query().Where(resourcestatus.AgentID(p.connector), resourcestatus.ResourceID(p.routeID)).
-			Only(p.c.Sys)
-		if ent.IsNotFound(err) {
-			return nil
-		}
-		if err != nil {
-			t.Fatal(err)
-		}
-		return r
-	}
+	status := func() *ent.ResourceStatus { return p.status(t, p.connector) }
 	waitFor := func(what string, ok func(*ent.ResourceStatus) bool) *ent.ResourceStatus {
 		t.Helper()
-		deadline := time.Now().Add(15 * time.Second)
-		for {
-			if r := status(); ok(r) {
-				return r
-			}
-			if time.Now().After(deadline) {
-				t.Fatalf("%s: the route's status is %+v", what, status())
-			}
-			time.Sleep(50 * time.Millisecond)
-		}
+		return p.waitForStatus(t, p.connector, what, ok)
 	}
 	if r := status(); r != nil {
 		t.Fatalf("a ready route has a status row: %+v", r)
@@ -67,6 +49,61 @@ func TestReadiness_ReportedToController(t *testing.T) {
 	}
 	p.startConnector(t, nil)
 	waitFor("after a restart with the target allowed again", func(r *ent.ResourceStatus) bool { return r == nil })
+}
+
+// TestReadiness_GatewayPortBoundLater: a gateway that starts while its tcp route's port is taken
+// reports the route not ready with the first Status of its control session, as its unchanged
+// snapshot brings no new Applied; once the port is free and the gateway binds it, it reports the
+// route ready again, without a new revision.
+func TestReadiness_GatewayPortBoundLater(t *testing.T) {
+	p := newDataPlane(t)
+	c := p.dial(t)
+	_ = c.Close()
+	p.stopGateway()
+	taken, err := net.Listen("tcp", addr(p.publicPort))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = taken.Close() }()
+	p.startGateway(t)
+	r := p.waitForStatus(t, p.gatewayID, "while the port is taken", func(r *ent.ResourceStatus) bool { return r != nil })
+	if r.Reason != "NOT_READY_REASON_PORT_IN_USE" || r.OrgID != p.c.Org {
+		t.Fatalf("the route on a taken port: %+v", r)
+	}
+	_ = taken.Close()
+	p.waitForStatus(t, p.gatewayID, "once the port is free", func(r *ent.ResourceStatus) bool { return r == nil })
+	c = p.dial(t)
+	_ = c.Close()
+}
+
+// status returns what the controller records about the readiness of the route on agent, nil if it
+// is ready.
+func (p *dataPlane) status(t *testing.T, agent string) *ent.ResourceStatus {
+	t.Helper()
+	r, err := p.c.DB.Client().ResourceStatus.Query().Where(resourcestatus.AgentID(agent), resourcestatus.ResourceID(p.routeID)).
+		Only(p.c.Sys)
+	if ent.IsNotFound(err) {
+		return nil
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	return r
+}
+
+// waitForStatus waits up to 15 s until ok accepts the route's status on agent.
+func (p *dataPlane) waitForStatus(t *testing.T, agent, what string, ok func(*ent.ResourceStatus) bool) *ent.ResourceStatus {
+	t.Helper()
+	deadline := time.Now().Add(15 * time.Second)
+	for {
+		if r := p.status(t, agent); ok(r) {
+			return r
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("%s: the route's status is %+v", what, p.status(t, agent))
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
 }
 
 // TestDataSessions_ReportedToController: a gateway reports its connectors' data sessions to the

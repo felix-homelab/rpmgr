@@ -2,14 +2,15 @@
 
 import { create } from "@bufbuild/protobuf";
 import { Code, ConnectError } from "@connectrpc/connect";
-import { useMutation } from "@connectrpc/connect-query";
+import { useMutation, useQuery } from "@connectrpc/connect-query";
 import { useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { ChevronLeft } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useForm, type Resolver } from "react-hook-form";
 import { useTranslation } from "react-i18next";
 import { ApplyStatusView, useLiveApplyStatus } from "@/components/apply-status";
+import { labelClass } from "@/components/field";
 import { PageHeader } from "@/components/page-header";
 import { Alert } from "@/components/public-page";
 import { Button } from "@/components/ui/button";
@@ -19,10 +20,11 @@ import type { Revision } from "@/gen/rpmgr/v1/common_pb";
 import {
   CreateRouteRequestSchema, Port80Mode, RouteSchema, RouteService, TLSMode, type PreviewRouteResponse, type Route,
 } from "@/gen/rpmgr/v1/route_pb";
+import { SettingsService } from "@/gen/rpmgr/v1/settings_pb";
 import type { ApplyStatus } from "@/gen/rpmgr/v1/status_pb";
 import { protoResolver, serverFieldErrors, type FieldOf } from "@/lib/proto-form";
 import { numberProblems, routeFields, routeWith, valuesOf, type RouteValues } from "@/route-form/fields";
-import { FormField } from "@/route-form/form-field";
+import { FieldGrid, FormField } from "@/route-form/form-field";
 import { PreviewPanel } from "@/route-form/preview";
 import { routeTypes, useAgentNames, useGroupNames } from "@/routes-data";
 import { useOrg } from "@/session";
@@ -30,12 +32,13 @@ import { useOrg } from "@/session";
 type RouteType = (typeof routeTypes)[number];
 
 // template is a new route of a type, with the defaults the form starts from: ACME certificates and a
-// redirect on port 80 for HTTP; port 0, a free port of the pools, for TCP and UDP.
+// redirect on port 80 for HTTP; port 0, a free port of the pools, for routes on a port.
 function template(type: RouteType): Route {
   const specs = {
     http: { case: "http" as const, value: { tlsMode: TLSMode.TLS_MODE_ACME, port80: Port80Mode.REDIRECT } },
     tcp: { case: "tcp" as const, value: {} },
     udp: { case: "udp" as const, value: {} },
+    tcpUdp: { case: "tcpUdp" as const, value: {} },
     tlsPassthrough: { case: "tlsPassthrough" as const, value: {} },
   };
   return create(RouteSchema, { enabled: true, spec: specs[type] });
@@ -47,7 +50,7 @@ export function RouteNew() {
   const { t } = useTranslation();
   const [type, setType] = useState<RouteType>("http");
   return (
-    <div className="grid max-w-3xl gap-6">
+    <div className="grid gap-6">
       <div className="grid gap-2">
         <Link to="/routes" search={{}} className="inline-flex w-fit items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
           <ChevronLeft aria-hidden="true" className="size-4" />{t("route.back")}
@@ -57,7 +60,7 @@ export function RouteNew() {
       <Card>
         <fieldset className="grid gap-2">
           <legend className="mb-2 text-sm font-medium">{t("routes.type")}</legend>
-          <div className="grid gap-2 sm:grid-cols-4">
+          <div className="grid gap-2 sm:grid-cols-3 lg:grid-cols-5">
             {routeTypes.map((rt) => (
               <label key={rt} className="flex cursor-pointer items-center gap-2 rounded-lg border border-border px-3 py-2.5 text-sm font-medium transition-colors hover:bg-muted has-checked:border-ring has-checked:bg-accent has-checked:text-accent-foreground has-focus-visible:outline-2 has-focus-visible:outline-ring">
                 <input type="radio" name="type" className="accent-primary" checked={type === rt} onChange={() => setType(rt)} />
@@ -79,6 +82,7 @@ function NewRouteForm({ type }: { type: RouteType }) {
   const org = useOrg();
   const groups = useGroupNames(org?.orgId);
   const names = useAgentNames(org?.orgId);
+  const settings = useQuery(SettingsService.method.getOrgSettings, { orgId: org?.orgId ?? "" }, { enabled: !!org });
   const queryClient = useQueryClient();
   const createRoute = useMutation(RouteService.method.createRoute);
   const preview = useMutation(RouteService.method.previewRoute);
@@ -103,6 +107,16 @@ function NewRouteForm({ type }: { type: RouteType }) {
     return checks(values, ctx, opts);
   };
   const form = useForm<NewValues>({ defaultValues: { ...valuesOf(base), group: "" }, resolver });
+  // The org's default gateway group is preselected once it and the groups are read, unless a group
+  // was chosen first; a default that names no group of the org is ignored. It is preselected once,
+  // so the form never takes back a choice.
+  const preset = settings.data?.settings?.defaultGatewayGroupId ?? "";
+  const listed = !!preset && !!groups.data?.has(preset);
+  useEffect(() => {
+    if (listed && !form.getValues("group")) {
+      form.resetField("group", { defaultValue: preset });
+    }
+  }, [listed, preset, form]);
   const [created, setCreated] = useState<{ route?: Route; revision?: Revision; status?: ApplyStatus }>();
   const [previewed, setPreviewed] = useState<PreviewRouteResponse>();
   const [other, setOther] = useState<string[]>([]);
@@ -152,15 +166,17 @@ function NewRouteForm({ type }: { type: RouteType }) {
   const groupError = form.formState.errors.group?.message;
   return (
     <form onSubmit={form.handleSubmit(save)} className="grid gap-4" noValidate>
-      <div className="grid gap-1.5">
-        <label htmlFor="route-group" className="text-sm font-medium">{t("routes.group")}</label>
-        <Select id="route-group" aria-invalid={groupError ? true : undefined} {...form.register("group")}>
-          <option value="">{t("routeNew.chooseGroup")}</option>
-          {[...(groups.data ?? new Map<string, string>())].map(([id, n]) => <option key={id} value={id}>{n}</option>)}
-        </Select>
-        {groupError && <p role="alert" className="text-sm text-destructive">{groupError}</p>}
-      </div>
-      {fields.map((f) => <FormField key={f.key} field={f} form={form} />)}
+      <FieldGrid>
+        <div className="grid gap-1.5">
+          <label htmlFor="route-group" className={labelClass(true)}>{t("routes.group")}</label>
+          <Select id="route-group" required aria-invalid={groupError ? true : undefined} {...form.register("group")}>
+            <option value="">{t("routeNew.chooseGroup")}</option>
+            {[...(groups.data ?? new Map<string, string>())].map(([id, n]) => <option key={id} value={id}>{n}</option>)}
+          </Select>
+          {groupError && <p role="alert" className="text-sm text-destructive">{groupError}</p>}
+        </div>
+        {fields.map((f) => <FormField key={f.key} field={f} form={form} />)}
+      </FieldGrid>
       {other.map((m) => <Alert key={m}>{m}</Alert>)}
       {previewed && <PreviewPanel preview={previewed} name={name} />}
       <div className="flex flex-wrap gap-2 border-t border-border pt-4">

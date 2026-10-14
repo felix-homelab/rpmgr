@@ -180,12 +180,12 @@ func (s *Service) issue(csr *x509.CertificateRequest, req *agentv1.EnrollRequest
 			if err != nil {
 				return nil, err
 			}
-			labels, err := tokenLabels(ctx, tx, g.TokenID)
+			tok, err := tx.EnrollmentToken.Get(ctx, g.TokenID)
 			if err != nil {
 				return nil, err
 			}
-			if err := tx.Connector.Create().SetID(id.ID).SetOrgID(g.OrgID).SetName(name).SetLabels(labels).
-				SetSpiffeID(id.String()).SetPubkeySha256(key).SetEphemeral(g.Ephemeral).Exec(ctx); err != nil {
+			if err := tx.Connector.Create().SetID(id.ID).SetOrgID(g.OrgID).SetName(name).SetLabels(tok.Labels).
+				SetSpiffeID(id.String()).SetPubkeySha256(key).SetEphemeral(g.Ephemeral).SetBuiltIn(tok.BuiltIn).Exec(ctx); err != nil {
 				return nil, err
 			}
 		}
@@ -229,18 +229,10 @@ func (s *Service) issue(csr *x509.CertificateRequest, req *agentv1.EnrollRequest
 	}
 }
 
-func tokenLabels(ctx context.Context, tx *ent.Tx, tokenID string) (map[string]string, error) {
-	t, err := tx.EnrollmentToken.Get(ctx, tokenID)
-	if err != nil {
-		return nil, err
-	}
-	return t.Labels, nil
-}
-
 var notSlug = regexp.MustCompile(`[^a-z0-9-]+`)
 
-// freeName derives a connector name from the host name and makes it unique in the org: "nas",
-// then "nas-2", "nas-3" and so on.
+// freeName derives a connector name from the host name and makes it unique among the org's active
+// connectors: "nas", then "nas-2", "nas-3" and so on. A decommissioned connector's name is free.
 func freeName(ctx context.Context, tx *ent.Tx, org, hostname string) (string, error) {
 	base := strings.Trim(notSlug.ReplaceAllString(strings.ToLower(hostname), "-"), "-")
 	if len(base) > 50 {
@@ -254,7 +246,7 @@ func freeName(ctx context.Context, tx *ent.Tx, org, hostname string) (string, er
 		if n > 1 {
 			name = fmt.Sprintf("%s-%d", base, n)
 		}
-		taken, err := tx.Connector.Query().Where(connector.OrgID(org), connector.Name(name)).Exist(ctx)
+		taken, err := tx.Connector.Query().Where(connector.OrgID(org), connector.Name(name), connector.DecommissionedAtIsNil()).Exist(ctx)
 		if err != nil {
 			return "", err
 		}

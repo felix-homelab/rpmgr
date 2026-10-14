@@ -1,7 +1,7 @@
 # 04 — Security
 
 > Status: Phase 1, being implemented. Tags: [F] fact · [R] recommendation · [T] target · [V] verify
-> at implementation ([README](../README.md#how-to-read-these-documents)).
+> at implementation ([README](README.md#how-to-read-these-documents)).
 >
 > **This document is the single source of truth for identities, lifetimes, cryptographic parameters
 > and authorization rules.** Connection timeouts and sizes live in
@@ -30,10 +30,10 @@ design prevents and the control that prevents it.
 | Actor | Can | Cannot (control) |
 |---|---|---|
 | **Internet attacker** | Reach gateway listeners, the controller's login and enrollment endpoints; attempt denial of service | Call agent APIs (mutual TLS required everywhere except `Enroll`). Guess tokens (256-bit random, hashed lookup, per-IP and per-account rate limits, uniform errors). Reach metrics or pprof (the admin listener is never on a public address and listens on loopback by default, D67). Claim a hostname (domain verification). |
-| **Network attacker (MITM)** | See metadata: SNI, IPs, timing, volume | Impersonate the controller or a gateway (pinned root, no trust-on-first-use, `InsecureSkipVerify` banned in code). Replay anything (TLS 1.3, no 0-RTT, no timestamp tokens). Read tunnel contents. |
+| **Network attacker (MITM)** | See metadata: SNI, IPs, timing, volume | Impersonate the controller or a gateway (pinned root, no trust-on-first-use, `InsecureSkipVerify` banned in code; its one exception is an HTTPS upstream its user marks unverified, [ADR-0017](adr/0017-upstream-tls-verification-modes.md)). Replay anything (TLS 1.3, no 0-RTT, no timestamp tokens). Read tunnel contents. |
 | **Malicious user of another org** | Act within their own org and role | See or change another org's resources (one authorization interceptor, org-scoped store, composite foreign keys). Escalate (token scopes ⊆ creator's permissions; an Owner made only by an Owner, Admin and lower roles granted by Owners and Admins, Admin and Owner with a step-up, D66). Open a shell or log stream on someone else's connector (resource-bound authorization and single-use tickets). Take another org's domain (verified, globally unique claims). |
 | **Malicious user in the same org (low role)** | Read what Viewer/Operator may read | Mint enrollment tokens, change gateways, domains, members or settings beyond their role (permission matrix). |
-| **Compromised connector** | Serve, blackhole or tamper with **its own** routes' traffic; report false health or metrics; use its own visitor grants | Serve other routes (gateways serve a route only for connectors listed for it in the signed route table). Read other agents' configuration (snapshots are compiled per identity). Reach private services it has no grant for. Survive revocation (deny-list pushed to all relying parties, sessions killed, renewal refused). Exhaust a gateway (a stream limit per data session and a cap on the data sessions of one connector, [03](03-connections.md#establishment); per-route bandwidth limits come in Phase 2, [05](05-features.md#edge-access-control-and-limits)). |
+| **Compromised connector** | Serve, blackhole or tamper with **its own** routes' traffic; report false health or metrics; use its own visitor grants; leave with `rpmgr leave`, which deletes the routes only it serves, with their hostnames, ports and policy links ([D78](14-open-decisions.md#engineering)) | Serve other routes (gateways serve a route only for connectors listed for it in the signed route table). Read other agents' configuration (snapshots are compiled per identity). Reach private services it has no grant for. Survive revocation (deny-list pushed to all relying parties, sessions killed, renewal refused). Exhaust a gateway (a stream limit per data session and a cap on the data sessions of one connector, [03](03-connections.md#establishment); per-route bandwidth limits come in Phase 2, [05](05-features.md#edge-access-control-and-limits)). |
 | **Compromised gateway** | See plaintext of the HTTP routes it terminates; drop or delay traffic; use the TLS keys of hostnames it serves | Read private-service traffic (end-to-end TLS between connectors). Obtain routes or keys of other gateway groups (snapshots are per gateway). Make a connector dial an arbitrary address (`StreamOpen` names a route, the connector dials only its own snapshot's targets), or a target of a route of another gateway group (the connector serves a stream only for a route its snapshot lists for the opening gateway, [03](03-connections.md#one-stream-per-user-connection)). Impersonate a connector or another gateway (role and ID are part of the identity, and clients check the expected peer's DNS name and SPIFFE ID). Open shells (the shell path is controller → connector only). |
 | **Compromised controller (process, or database plus KEK)** | Everything in the control plane: re-route public hostnames, issue certificates (and so MITM traffic that is not end-to-end), deny service, push any configuration. With connected DNS providers (Phase 2): rewrite **any** record in the connected zones, including MX, SPF/DKIM and third-party verification records, and use the provider tokens from elsewhere unless they are IP-restricted | Make a connector exceed its **local policy** (dial outside `allow_targets`, enable shell, functions, virtual-network routes, P2P, listeners). Install an unsigned or older binary (OTA verified against keys compiled into the binary, with a persisted anti-rollback floor). Read agent or WireGuard private keys (never stored centrally). |
 | **Database dump without the KEK** | Read topology, configuration, emails, audit log | Use any credential: passwords are argon2id; session, API and enrollment tokens are SHA-256 hashes of 256-bit random values; CA, ACME, TOTP, OIDC and other secrets are AES-256-GCM-encrypted under a KEK held outside the database. |
@@ -86,7 +86,7 @@ What the design does **not** protect against, stated plainly:
   exactly one URI SAN, scheme `spiffe`, a host **equal** to `<td>` (the name constraint below also
   admits sub-domains of `<td>`), and the expected role and ID. A gateway of another group or org
   therefore cannot impersonate this connector's gateway, even with a valid certificate
-  ([S7](spikes/S7.md)). `InsecureSkipVerify` is never used.
+  ([S7](spikes/S7.md)). `InsecureSkipVerify` is never used for rpmgr's own sessions.
 - Every rpmgr check runs in `VerifyConnection`, which Go calls on full and resumed handshakes alike;
   never in `VerifyPeerCertificate`, which resumed connections skip
   ([03](03-connections.md#properties-common-to-all-rpmgr-internal-sessions)).
@@ -245,6 +245,25 @@ later.
   certificate with the error recorded. A wildcard hostname in `acme` mode is refused with that
   reason, as its certificate needs DNS-01 (Phase 2, R42). The ACME client honours `HTTPS_PROXY`,
   `ALL_PROXY` and `NO_PROXY` (R44).
+- **Failed ACME attempts** [R]: a hostname whose attempt failed, such as one whose DNS does not
+  point at its gateways yet, must not use up the account's limits at the CA. Let's Encrypt allows
+  5 failed authorizations per name and account an hour, and pauses a name after 1 152 failures in
+  a row [F le:docs/rate-limits]; a failed attempt of the job orders once per challenge type.
+  - **Waits.** The job tries such a hostname again only after a wait that doubles with each
+    failure in a row; the waits are in [03](03-connections.md#timeouts-keepalive-and-backoff).
+    "Renew now" tries at once. A success ends the waits.
+  - **Rehearsal.** Every retry rehearses at the CA's test directory first, and orders at the CA
+    only once the test directory validated the name: the job marks the attempt as a retry, and
+    certmagic then uses the test directory and orders at the CA after a success there
+    [F certmagic v0.25.6 `acmeissuer.go:380-399`, `acmeissuer.go:448`]. The test directory is
+    Let's Encrypt's staging one when the CA is Let's Encrypt's production one
+    [F certmagic v0.25.6 `acmeissuer.go:194-199`]; for another CA there is none, and a retry
+    orders at the CA [F certmagic v0.25.6 `acmeclient.go:178`].
+  - **Memory.** The job keeps the failures in memory. A hostname whose row is `failed`, without a
+    certificate, counts as failed already, so that a controller that starts or takes the job over
+    rehearses it as well.
+  - Many hostnames under one domain are best served by one uploaded wildcard certificate, which
+    asks the CA nothing ([10](10-operations.md#many-hostnames-under-one-domain)).
 - **Uploaded route certificates** [R]: the controller accepts a PEM chain, leaf first, of at most
   10 certificates, each signed by the next, and the leaf's PEM key. The leaf must be valid at the
   upload, must not be a CA, must allow TLS server use (no extended key usage, or `serverAuth`) and
@@ -255,13 +274,50 @@ later.
   AES-GCM or ChaCha20-Poly1305 only, and ALPN `h2` or `http/1.1`; rpmgr's own sessions stay
   TLS 1.3 only ([03](03-connections.md#properties-common-to-all-rpmgr-internal-sessions)). A name
   without a valid certificate gets the gateway's self-signed default certificate, so a browser
-  shows a certificate error rather than a reset.
+  shows a certificate error rather than a reset. A name no route serves gets, with the same TLS
+  versions and suites, a valid certificate the gateway holds whose own names cover it, such as a
+  route's wildcard certificate, or else the default certificate; the gateway's site-not-available
+  page follows, or the route, if one serves the name by the time of the request
+  ([03](03-connections.md#port-443-multiplexing), [D87](14-open-decisions.md#engineering)).
 - **HTTPS upstreams** [R]: the gateway connects with TLS 1.2 or 1.3 and verifies the upstream's
   chain against the target's CA bundle, or else the gateway host's trust store, and its name
   against the target's server name; a target may also pin the SHA-256 of its leaf's
   SubjectPublicKeyInfo, checked in addition. A CA bundle holds 1 to 100 PEM certificates, each of
   which counts as a trust anchor, so a self-signed upstream certificate can trust itself. A
-  connection whose verification settings change is not reused.
+  connection whose verification settings change is not reused. One still open, of any earlier
+  settings, ends at once with what it carries when the target's new settings would not accept it:
+  any change but to unverified settings of the same connector. A connection whose dial ends after
+  a change is checked against the settings then. When the target or the route's HTTPS goes, its
+  connections finish ([03](03-connections.md#timeouts-keepalive-and-backoff)).
+- **Unverified HTTPS upstreams** [R]: a target's user may mark it unverified
+  ([ADR-0017](adr/0017-upstream-tls-verification-modes.md),
+  [D82](14-open-decisions.md#engineering)). The gateway then speaks TLS to it and sends its
+  server name, but checks neither chain, nor name, nor pin, and a CA bundle or a pin cannot go
+  with it. The tunnel between gateway and connector stays mutually authenticated, and the gateway
+  applies a target's settings only to a stream that the target's own connector answered: the
+  snapshot names each target's connector, the gateway compares it with the identity of the data
+  session the stream came on, and closes a stream for which a connector names another connector's
+  target ([03](03-connections.md#http-routes)). So only the network between the connector and the
+  target can read and change the traffic, and a compromised connector cannot make the gateway skip
+  verification for a verified target's traffic. Nothing is unverified by default; the web UI warns
+  when the mode is chosen and marks such targets.
+- **Pinned-key HTTPS upstreams** [R]: a target's user may instead pin the key it presents
+  ([ADR-0018](adr/0018-pin-the-key-a-target-presents.md)). The gateway then accepts exactly that
+  SubjectPublicKeyInfo, by its SHA-256, and checks neither chain nor name; a CA bundle cannot go
+  with it, a new key fails until it is pinned, and the settings apply only to the target's own
+  connector's streams, as for an unverified target. "Trust the certificate it shows now" asks the
+  target's connector to read the certificate: the connector dials it under its local policy and
+  sends nothing but a TLS handshake ([03](03-connections.md#service-sketch)), and the user confirms
+  the names, issuer, expiry and key fingerprint before the key is pinned. Probing takes
+  `routes.write`.
+- **The exceptions to the ban** of `InsecureSkipVerify` serve these two modes alone:
+  `UpstreamTLS.config` of `internal/gateway/upstreamtls.go`
+  ([ADR-0017](adr/0017-upstream-tls-verification-modes.md)) and the connector's `readCertificate`
+  of `internal/connector/probe.go` ([ADR-0018](adr/0018-pin-the-key-a-target-presents.md)).
+  `tools/bannedapi` allows them in those functions of the rpmgr module and nowhere else, a module
+  nested in the repository included. golangci skips forbidigo's findings in `upstreamtls.go` and
+  gosec's G402 finding in `probe.go` (forbidigo does not see the field there); in both files
+  `tools/bannedapi` still reports any other use.
 - **Route certificates on gateways** [R]: a gateway keeps each fetched chain and key in its state
   directory, readable by the gateway's user only, as any TLS server keeps its keys, so that a
   gateway restarted while the controller is unreachable still terminates TLS. It checks a kept copy
@@ -325,12 +381,20 @@ same CSR public key within 10 minutes returns the same certificate.
 ### Join command
 
 ```sh
-curl -fsSL https://panel.example.com/install.sh | sudo sh -s -- \
+curl -fsSLO https://panel.example.com/install.sh && sudo sh install.sh \
   --controller https://panel.example.com --ca-pin sha256:3q2+7w...   # prompts for the token
 ```
 
-- **Token delivery.** With `curl … | sh`, the script's standard input *is* the script, and `sudo`
-  resets the environment. The install script therefore takes the token from, in order:
+- **Download, then run.** The command saves the script in the current directory and runs the file
+  with `sudo`; it does not pipe it into `sudo sh`. Piped, `sudo`'s standard input is the script,
+  and sudo-rs, Ubuntu's `sudo` since 25.10, then passes nothing typed at the terminal on to the
+  command: the token prompt would wait for good, while classic sudo passes the input on.
+  `TestInstall_TypedToken` types the token under both
+  ([12](12-testing-and-quality.md#continuous-integration)).
+  A script that is piped all the same says so before it prompts, and how to stop and run it from a
+  file.
+- **Token delivery.** `sudo` resets the environment, and a piped script's standard input is the
+  script itself. The install script therefore takes the token from, in order:
   1. `--token-file <path>` (unattended installs; the file should be 0600 and deleted afterwards);
   2. `RPMGR_ENROLL_TOKEN`, if explicitly passed through (`sudo --preserve-env=RPMGR_ENROLL_TOKEN …`);
   3. otherwise an interactive prompt on the terminal (`/dev/tty`) with echo off.
@@ -348,8 +412,9 @@ curl -fsSL https://panel.example.com/install.sh | sudo sh -s -- \
   ([Supply chain and updates](#supply-chain-and-updates)).
 - The command comes from `GetInstallCommand` ([07](07-api.md#services)): the controller's URL and
   the pin, `--role gateway` for a gateway, and for a connector one `--allow-target` per target it
-  may reach. A target is checked as the local policy reads it, and every value is quoted for the
-  shell, so a pasted command runs nothing but the installer.
+  may reach and one `--deny-target` per target it must not reach. A target is checked as the local
+  policy reads it, and every value is quoted for the shell, so a pasted command runs nothing but
+  the installer.
 
 ### Flow
 
@@ -393,10 +458,13 @@ Shown in [03-connections.md](03-connections.md#enrollment). Security-relevant ru
   their last disconnect by a leader-elected job, and their certificates added to the deny-list.
   The last disconnect is the session's recorded end, its last-seen time if no controller recorded
   one, or the enrollment if it never connected. [R] The purge deletes the connector's route
-  targets with it, and an ephemeral connector gets no re-enrollment token, which would hold it.
+  targets with it, and each route left with no target, as a decommission does
+  ([06](06-data-model.md#lifecycle-and-deletion)). An ephemeral connector gets no re-enrollment
+  token, which would hold it.
 - [R] **Tombstones** are deleted after 90 days by the same job, with the records of their
-  certificates, which have all expired by then. A tombstone stays while a route target still names
-  its connector or one of its certificates has not expired.
+  certificates, which have all expired by then. A tombstone stays while one of its certificates
+  has not expired. The job also deletes the route targets a decommissioned connector still has,
+  left by a controller from before D78, and each route left with no target.
 
 ## Human authentication and sessions
 
@@ -421,7 +489,7 @@ Shown in [03-connections.md](03-connections.md#enrollment). Security-relevant ru
 |---|:-:|:-:|:-:|:-:|
 | View resources, status, metrics (`org.read`) | ✓ | ✓ | ✓ | ✓ |
 | Routes, targets, health checks, access policies, private services and grants (`routes.write`) | ✓ | ✓ | ✓ | |
-| Enroll and revoke connectors (`connectors.write`) | ✓ | ✓ | org setting | |
+| Enroll, decommission and revoke connectors; a decommission deletes the routes only the connector serves (`connectors.write`) | ✓ | ✓ | org setting | |
 | Gateways, gateway groups, port pools and quotas, domains, certificates and CA bundles (`infrastructure.write`) | ✓ | ✓ | | |
 | DNS providers, managed zones and their gates, DNS names; adopt, release, approve plans; view foreign records (Phase 2) | ✓ | ✓ | | |
 | Members (Admins cannot change Owners) (`members.write`) | ✓ | ✓ | | |
@@ -429,6 +497,11 @@ Shown in [03-connections.md](03-connections.md#enrollment). Security-relevant ru
 | Audit log read and export (`audit.read`) | ✓ | ✓ | | |
 | SSO, MFA policy, org settings (`org.write`) | ✓ | | | |
 | `connector.shell` (Phase 3) | explicit per-user grant, plus host opt-in, plus step-up | | | |
+
+[R] `connectors.write` reaches routes: decommissioning a connector deletes each route left with no
+target, with its hostnames, ports and policy links, so a token with that scope and without
+`routes.write` can still delete those routes ([D78](14-open-decisions.md#engineering)). Each
+deletion is in the audit log as `route.delete`.
 
 [R] The API names the permission of each row as in brackets. Three more are granted by no org
 role: `public` (no sign-in), `authenticated` (any signed-in caller, on their own account) and
@@ -525,7 +598,8 @@ provider and never stored.
 
 The **local policy** is a file on each connector host that limits what the connector does,
 whatever any snapshot says ([ADR-0009](adr/0009-connector-local-policy.md)). It is the one control
-that survives a compromised controller.
+that survives a compromised controller, except on an all-in-one, where the controller and the
+connector share a process ([below](#connector-local-policy)).
 
 ```yaml
 # /etc/rpmgr/policy.yaml — owner root, mode 0644; read-only for the rpmgr service user
@@ -535,7 +609,12 @@ allow_targets:                  # what the connector may dial for routes and pri
     ports: [8080]
   - cidr: 192.168.10.0/24
     ports: [80, 443, 8000-8099]
+  - 127.0.0.1:200-500           # an entry may also be a target string
+  - 10.0.0.0/16                 # no port: all ports
   - unix: /run/app/app.sock
+deny_targets:                   # wins over allow_targets; the same forms
+  - 127.0.0.1:345
+  - 10.0.9.0/24
 allow_listen:                   # where visitor listeners for private services may bind
   - 127.0.0.1:20000-20999
 allow_remote_shell: false       # Phase 3; default false
@@ -557,13 +636,51 @@ Rules:
   or asks interactively, and always writes `auto_update` and `update_channel` explicitly.
 - Windows and macOS connectors (Phase 2) keep the same file in a platform-specific location with
   equivalent permissions ([10](10-operations.md#install)).
-- A file that does not parse, or that its group or other users may write, means **deny
-  everything**: every target becomes `not_ready(policy_invalid)`; the snapshot itself is still
-  applied. Unknown keys and values are parse errors.
+- **Targets** ([D84](14-open-decisions.md#engineering)) are written the same way in the file's
+  string entries, `rpmgr policy`, `rpmgr setup` and the install command: an address or a subnet,
+  optionally followed by a port or a port range, IPv6 always in brackets, or an absolute socket
+  path: `127.0.0.1`, `10.0.0.1/16`, `127.0.0.1:200-500`, `10.0.0.0/16:443`, `[fd00::/64]:8000-8099`,
+  `/run/app/app.sock`. A mapping entry gives `cidr` (an address or a subnet) and `ports` (numbers or
+  ranges), or `unix`. A subnet's host bits are cleared, so `10.0.0.1/16` means and is shown as
+  `10.0.0.0/16`. An entry **without ports allows all of them**; `rpmgr policy show` says "all
+  ports".
+- **`deny_targets` wins.** A target that any of its entries matches is refused, whatever
+  `allow_targets` says, so with `127.0.0.1:200-500` allowed and `127.0.0.1:345` denied, port 345 is
+  refused. A deny entry without ports denies all of them; a deny entry may name a socket. The
+  refusal names the deny entry: `not_ready(blocked_by_local_policy: 127.0.0.1:345 denied by
+  127.0.0.1:345)`, and the UI's command is then `sudo rpmgr policy remove-deny-target
+  127.0.0.1:345`.
+- A file that does not parse, or that its group or other users may write, means **deny everything**:
+  every target becomes `not_ready(policy_invalid)`; the snapshot itself is still applied. Unknown
+  keys and values, a key given twice in an entry, an empty `ports` list, a bad entry in either list,
+  and YAML anchors, aliases and merge keys (`<<`) anywhere in the file, are parse errors; the
+  editing commands refuse such a file too. An edit changes a node in place, so an alias of it would
+  change with it, such as a deny list's ports shared with an allow entry. A connector from before
+  D84 reads `deny_targets`, a target string, an entry without ports and a subnet with host bits set
+  as such errors, so it fails closed and dials nothing, also after an automatic update rolled it
+  back to `.prev` ([10](10-operations.md#install)).
 - Checks happen **at dial time on the resolved IP and port** (`net.Dialer.Control`), which defeats
   DNS rebinding. IPv4-mapped IPv6 addresses are unmapped before checking. Link-local and cloud
   metadata addresses (169.254.0.0/16, fe80::/10, `fd00:ec2::254/128`, `100.100.100.200/32`) are denied unless listed
-  explicitly.
+  explicitly, by an entry no broader than the protected range; `0.0.0.0/0` without ports does not
+  let them through.
+- **The all-in-one's own connector** ([ADR-0019](adr/0019-all-in-one-runs-a-connector.md)) reads
+  the policy at the all-in-one boot file's `policy_file`, `/etc/rpmgr/policy.yaml` by default, and
+  never dials one of rpmgr's own ports on an address of its host, whatever the policy allows. The
+  ports are those rpmgr listens on: the admin listener, 80, 443 (TCP and UDP), tunnel UDP, and
+  every route port the gateway has bound. The host's addresses are loopback, the unspecified
+  addresses, the addresses of its interfaces, and those the public URL's host and the gateway
+  group's public hostnames resolve to, for a host that reaches its public address through its
+  router (hairpin NAT); they are looked up again at most every 10 s, and after a failed lookup at
+  the next dial. Such a target is `not_ready(blocked_by_local_policy: 127.0.0.1:7381 is one of
+  rpmgr's own ports)`, and the UI offers no command for it. This keeps the metrics out of reach
+  and routes from looping through the gateway; the host's other loopback services are reachable as
+  far as the policy allows. Another path to these ports, such as a router or a container that
+  forwards an address of its own to them (DNAT), is not detected: never allow such a target for
+  rpmgr's ports.
+- On an all-in-one the policy does **not** survive a compromised controller: the controller runs
+  in the same process and could dial anything the `rpmgr` user can. There it limits the routes made
+  through the API and the configuration, not an attacker inside the process.
 - A target the policy forbids does **not** reject the snapshot. The snapshot is applied, and the
   affected target reports `not_ready(blocked_by_local_policy: 10.0.0.5:5432)`; the UI shows the
   reason and the exact command to allow it: `sudo rpmgr policy allow-target 10.0.0.5:5432`. One
@@ -572,12 +689,16 @@ Rules:
   allowed until a dial is refused on its resolved address; the route is then
   `not_ready(blocked_by_local_policy: <ip:port>)` until the policy is reloaded or a snapshot
   changes it.
-- `rpmgr policy …` edits the file as root, under a lock file, atomically and keeping its comments
-  and other keys, and triggers a reload (`systemctl reload`, i.e. SIGHUP); the connector also
-  watches the file. On reload it re-evaluates the current snapshot, reports the new readiness, and
-  resets the open connections to targets the policy no longer allows. A target taken out is then
-  not reachable through a connection opened before, such as an upstream's pooled HTTP/2
-  connection.
+- `rpmgr policy allow-target`, `remove-target`, `deny-target` and `remove-deny-target` edit the file
+  as root, under a lock file, atomically and keeping its comments and other keys. A target an entry
+  already covers is not added twice; a port goes into the entry of its subnet. A target that only a
+  broader entry or a port range covers cannot be removed by splitting the entry: the command says so
+  and suggests `deny-target`. Each edit triggers a reload (`systemctl reload`, i.e. SIGHUP); the
+  connector also watches the file. On reload it re-evaluates the current snapshot, reports the new
+  readiness, and resets the open connections to targets the policy no longer allows, a target a new
+  deny entry matches included. A target taken out is then not reachable through a connection opened
+  before, such as an upstream's pooled HTTP/2 connection, nor one being set up: a connection is
+  recorded before its stream is answered and checked against the policy in force then.
 - The policy only protects if the binary enforcing it is genuine: OTA installs only signed binaries
   at or above a locally persisted version floor, and `auto_update` lets the host refuse automatic
   updates entirely ([Supply chain and updates](#supply-chain-and-updates)).
@@ -799,7 +920,8 @@ Phase 3 item ([13](13-roadmap.md#phase-3--advanced)).
     order of the example above (`os`, `arch`, `variant`, `sha256`, `size`), as `json.Marshal`
     writes `release.Manifest`. Anything else it refuses.
   - **Options:** `--controller <url> --ca-pin <pin> [--role gateway|connector]
-    [--allow-target <target>]... [--token-file <file>] [--tcp-bbr] [--verify-only]`.
+    [--allow-target <target>]... [--deny-target <target>]... [--token-file <file>] [--tcp-bbr]
+    [--verify-only]`.
     `--verify-only` stops after the verification, and needs neither root nor a pin.
   - **What it installs:** the binary in `/usr/local/bin`, the boot file, the policy file, the
     updater's state and the host tuning ([10](10-operations.md#filesystem-layout)). It then enrolls

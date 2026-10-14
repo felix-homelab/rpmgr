@@ -92,3 +92,14 @@
     background: oklch(0.13 0.03 265 / 0.6);
   }
 }
+
+@layer components {
+  /* A required field's label ends in a red asterisk (docs/09-web-ui.md, "Layout and
+     navigation"). Its alternative text is empty, so screen readers leave it out of the field's
+     name; they say "required" from the control's own required attribute. */
+  .required-mark::after {
+    content: "*" / "";
+    margin-left: 0.125rem;
+    color: var(--color-destructive);
+  }
+}

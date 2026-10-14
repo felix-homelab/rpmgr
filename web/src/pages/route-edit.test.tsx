@@ -29,9 +29,10 @@ const routes: Record<string, Route> = {
   http: create(RouteSchema, { ...common, spec: { case: "http", value: {
     hostnames: ["wiki.example.com", "w.example.com"], pathPrefix: "/docs", tlsMode: TLSMode.TLS_MODE_CERTIFICATE, certificateId: "crt_1",
     port80: Port80Mode.SERVE, hstsMaxAgeSeconds: 3600, hostHeader: "internal", requestHeadersSet: { "X-A": "1" },
-    responseHeadersSet: { "X-B": "a: b" }, websocket: false, maxBodyBytes: 1024n } } }),
+    responseHeadersSet: { "X-B": "a: b" }, websocket: false, maxBodyBytes: 1024n, maintenance: true, maintenanceMessage: "Back at 18:00.\nSorry." } } }),
   tcp: create(RouteSchema, { ...common, spec: { case: "tcp", value: { port: 25432, idleTimeoutSeconds: 600 } } }),
   udp: create(RouteSchema, { ...common, spec: { case: "udp", value: { port: 53, flowIdleTimeoutSeconds: 30 } } }),
+  tcpUdp: create(RouteSchema, { ...common, spec: { case: "tcpUdp", value: { port: 5353, idleTimeoutSeconds: 600, flowIdleTimeoutSeconds: 30 } } }),
   tlsPassthrough: create(RouteSchema, { ...common, spec: { case: "tlsPassthrough", value: { hostnames: ["db.example.com"] } } }),
 };
 
@@ -81,6 +82,41 @@ describe("RouteEdit", () => {
     }
     expect(equals(RouteSchema, updates[0]!.route!, want)).toBe(true);
     expect(updates[0]!.updateMask?.paths).toContain("http.websocket");
+  });
+
+  it("takes an http route out of maintenance and changes the page's message (D88)", async () => {
+    const updates = edit(routes.http!);
+    const maintenance = await screen.findByLabelText("Maintenance");
+    expect((maintenance as HTMLSelectElement).value).toBe("true");
+    fireEvent.change(maintenance, { target: { value: "false" } });
+    fireEvent.change(screen.getByLabelText("Maintenance message (plain text, at most 500 characters)"), { target: { value: "Back\nsoon" } });
+    save();
+    await waitFor(() => expect(updates).toHaveLength(1));
+    const spec = updates[0]!.route?.spec;
+    expect(spec?.case === "http" && [spec.value.maintenance, spec.value.maintenanceMessage, spec.value.hostnames]).toEqual([false, "Back\nsoon", ["wiki.example.com", "w.example.com"]]);
+    expect(updates[0]!.updateMask?.paths).toEqual(expect.arrayContaining(["http.maintenance", "http.maintenance_message"]));
+  });
+
+  it.each([["above 500 characters", "x".repeat(501)], ["with a tab", "back\tsoon"], ["with a C1 control", "back \u009b31msoon"]])(
+    "refuses a maintenance message %s before sending", async (_, bad) => {
+      const updates = edit(routes.http!);
+      const message = await screen.findByLabelText("Maintenance message (plain text, at most 500 characters)");
+      fireEvent.change(message, { target: { value: bad } });
+      save();
+      await waitFor(() => expect(message.getAttribute("aria-invalid")).toBe("true"));
+      expect(updates).toEqual([]);
+    });
+
+  it("moves a TCP and UDP route to a new port and clears its UDP flow idle timeout", async () => {
+    const updates = edit(routes.tcpUdp!);
+    fireEvent.change(await screen.findByLabelText("Public port"), { target: { value: "5354" } });
+    expect((screen.getByLabelText("TCP idle timeout (seconds)") as HTMLInputElement).value).toBe("600");
+    fireEvent.change(screen.getByLabelText("UDP flow idle timeout (seconds)"), { target: { value: "" } });
+    save();
+    await waitFor(() => expect(updates).toHaveLength(1));
+    const spec = updates[0]!.route?.spec;
+    expect(spec?.case === "tcpUdp" && [spec.value.port, spec.value.idleTimeoutSeconds, spec.value.flowIdleTimeoutSeconds]).toEqual([5354, 600, undefined]);
+    expect(updates[0]!.updateMask?.paths).toEqual(expect.arrayContaining(["tcp_udp.port", "tcp_udp.flow_idle_timeout_seconds"]));
   });
 
   it("checks the API's rules before sending", async () => {

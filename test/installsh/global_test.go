@@ -113,14 +113,14 @@ func TestGlobalInstall(t *testing.T) {
 		refusals             bool   // also check what the script refuses
 		fail                 string // the whole run must fail with this
 	}{
-		{name: "debian-12", image: distros[0].image, prepare: apt + "curl openssl ca-certificates >/dev/null && " + trustDebian, refusals: true},
-		{name: "debian-12-wget", image: distros[0].image, prepare: apt + "wget openssl ca-certificates >/dev/null && " + trustDebian},
-		{name: "ubuntu-24.04", image: distros[3].image, prepare: apt + "curl openssl ca-certificates >/dev/null && " + trustDebian},
-		{name: "rocky-9", image: distros[4].image, prepare: trustRocky},
+		{name: "debian-12", image: image("debian-12"), prepare: apt + "curl openssl ca-certificates >/dev/null && " + trustDebian, refusals: true},
+		{name: "debian-12-wget", image: image("debian-12"), prepare: apt + "wget openssl ca-certificates >/dev/null && " + trustDebian},
+		{name: "ubuntu-24.04", image: image("ubuntu-24.04"), prepare: apt + "curl openssl ca-certificates >/dev/null && " + trustDebian},
+		{name: "rocky-9", image: image("rocky-9"), prepare: trustRocky},
 		// ca-certificates pulls in openssl, so the binary is moved out of the way afterwards.
-		{name: "debian-12-no-openssl", image: distros[0].image, prepare: apt + "curl ca-certificates >/dev/null && " + trustDebian +
+		{name: "debian-12-no-openssl", image: image("debian-12"), prepare: apt + "curl ca-certificates >/dev/null && " + trustDebian +
 			" && mv /usr/bin/openssl /usr/bin/openssl.gone", fail: "openssl is needed"},
-		{name: "ubuntu-20.04", image: distros[5].image, prepare: apt + "curl openssl ca-certificates >/dev/null && " + trustDebian, fail: "OpenSSL 3.0 or later is needed"},
+		{name: "ubuntu-20.04", image: image("ubuntu-20.04"), prepare: apt + "curl openssl ca-certificates >/dev/null && " + trustDebian, fail: "OpenSSL 3.0 or later is needed"},
 	} {
 		t.Run(d.name, func(t *testing.T) {
 			t.Parallel()

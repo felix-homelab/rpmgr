@@ -34,12 +34,7 @@ func (s *Sessions) disconnected(agentID string, epoch int64) {
 // "Timeouts, keepalive and backoff"): first it ends the sessions a stopped run of this node left
 // open, then it marks its live sessions seen every s.seen.
 func (s *Sessions) seenLoop(ctx context.Context) {
-	if err := store.WriteTx(s.sys, s.db, func(tx *ent.Tx) error {
-		return tx.AgentSession.Update().Where(agentsession.ControllerNode(s.node), agentsession.DisconnectedAtIsNil(),
-			agentsession.LastSeenAtLT(s.started)).SetDisconnectedAt(s.started).Exec(s.sys)
-	}); err != nil {
-		s.log.Error("cannot end the sessions a stopped controller left open", "error", err)
-	}
+	s.endLeftOpen()
 	t := time.NewTicker(s.seen)
 	defer t.Stop()
 	for {
@@ -49,6 +44,18 @@ func (s *Sessions) seenLoop(ctx context.Context) {
 		case <-t.C:
 			s.markSeen()
 		}
+	}
+}
+
+// endLeftOpen ends the sessions a stopped run of this node left open. A controller that stops
+// before it could leaves them to its next start, which is no error.
+func (s *Sessions) endLeftOpen() {
+	err := store.WriteTx(s.sys, s.db, func(tx *ent.Tx) error {
+		return tx.AgentSession.Update().Where(agentsession.ControllerNode(s.node), agentsession.DisconnectedAtIsNil(),
+			agentsession.LastSeenAtLT(s.started)).SetDisconnectedAt(s.started).Exec(s.sys)
+	})
+	if err != nil && s.sys.Err() == nil {
+		s.log.Error("cannot end the sessions a stopped controller left open", "error", err)
 	}
 }
 

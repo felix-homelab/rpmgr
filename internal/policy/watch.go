@@ -4,6 +4,7 @@ package policy
 
 import (
 	"context"
+	"net/netip"
 	"os"
 	"os/signal"
 	"sync"
@@ -23,6 +24,7 @@ type Watcher struct {
 	path     string
 	onChange func(*Policy, error)
 	every    time.Duration
+	own      func(netip.AddrPort) bool
 	cur      atomic.Pointer[Policy]
 
 	mu   sync.Mutex
@@ -47,13 +49,27 @@ func stat(path string) fileState {
 // NewWatcher loads the policy at path; onChange, which may be nil, gets every policy loaded after
 // a change, with the error of a file that does not load.
 func NewWatcher(path string, onChange func(*Policy, error)) *Watcher {
-	w := &Watcher{path: path, onChange: onChange, every: WatchEvery}
+	return NewGuardedWatcher(path, nil, onChange)
+}
+
+// NewGuardedWatcher is NewWatcher whose policies also refuse what own reports (Policy.Guarded);
+// nil guards nothing.
+func NewGuardedWatcher(path string, own func(netip.AddrPort) bool, onChange func(*Policy, error)) *Watcher {
+	w := &Watcher{path: path, onChange: onChange, every: WatchEvery, own: own}
 	w.mu.Lock()
 	w.last = stat(path)
 	w.mu.Unlock()
-	p, _ := Load(path)
+	p, _ := w.load()
 	w.cur.Store(p)
 	return w
+}
+
+func (w *Watcher) load() (*Policy, error) {
+	p, err := Load(w.path)
+	if w.own != nil {
+		p = p.Guarded(w.own)
+	}
+	return p, err
 }
 
 // Current returns the policy in force.
@@ -64,7 +80,7 @@ func (w *Watcher) Reload() {
 	w.mu.Lock()
 	w.last = stat(w.path)
 	w.mu.Unlock()
-	p, err := Load(w.path)
+	p, err := w.load()
 	w.cur.Store(p)
 	if w.onChange != nil {
 		w.onChange(p, err)

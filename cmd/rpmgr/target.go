@@ -24,11 +24,11 @@ import (
 
 // targetFlags are the flags of `create route-target` and `update route-target`.
 type targetFlags struct {
-	route, connector, address, unix, upstream, serverName, caBundle, spki, proxy string
-	weight, priority                                                             uint
-	disabled, force                                                              bool
-	wait                                                                         time.Duration
-	output                                                                       string
+	route, connector, address, unix, upstream, serverName, caBundle, spki, verification, proxy string
+	weight, priority                                                                           uint
+	disabled, force                                                                            bool
+	wait                                                                                       time.Duration
+	output                                                                                     string
 }
 
 func (f *targetFlags) flags(fs *flag.FlagSet, create bool) {
@@ -44,7 +44,10 @@ func (f *targetFlags) flags(fs *flag.FlagSet, create bool) {
 	fs.StringVar(&f.serverName, "server-name", "", "https: the name its certificate must carry")
 	fs.StringVar(&f.caBundle, "ca-bundle", "", "https: the CA bundle that verifies it, by name or ID; empty is the gateway's roots")
 	fs.StringVar(&f.spki, "spki", "", "https: the SHA-256 of its public key, 64 hex digits, checked as well")
-	fs.StringVar(&f.proxy, "proxy-protocol", "", "the PROXY header sent first: none, v1 or v2")
+	fs.StringVar(&f.verification, "verification", "",
+		"https: how its certificate is checked: verified; pinned-key, its --spki only; or unverified, which lets anyone between the connector and the target read and change the traffic")
+	fs.StringVar(&f.proxy, "proxy-protocol", "",
+		"tcp, tls_passthrough and tcp_udp: the PROXY header sent first: none, v1 or v2; on a tcp_udp route, on TCP connections only")
 	fs.UintVar(&f.weight, "weight", 0, "its share of the streams among targets of the same priority")
 	fs.UintVar(&f.priority, "priority", 0, "lower first; a higher one gets streams only when no lower one is ready")
 	fs.BoolVar(&f.disabled, "disabled", false, "the target gets no streams")
@@ -55,6 +58,7 @@ func (f *targetFlags) flags(fs *flag.FlagSet, create bool) {
 func init() {
 	enums["upstream"] = map[string]int32{"tcp": 1, "http": 2, "https": 3, "h2c": 4}
 	enums["proxy-protocol"] = map[string]int32{"none": 1, "v1": 2, "v2": 3}
+	enums["verification"] = map[string]int32{"verified": 1, "unverified": 2, "pinned-key": 3}
 }
 
 // targetOf applies the flags that set names to a copy of base and returns it with the update mask
@@ -63,8 +67,8 @@ func (f *targetFlags) targetOf(set map[string]bool, base *rpmgrv1.RouteTarget) (
 	if set["address"] && set["unix"] {
 		return nil, nil, cli.Usagef("give --address or --unix, not both")
 	}
-	for _, name := range []string{"upstream", "proxy-protocol"} {
-		if _, err := enumOf(name, map[string]string{"upstream": f.upstream, "proxy-protocol": f.proxy}[name]); set[name] && err != nil {
+	for _, name := range []string{"upstream", "proxy-protocol", "verification"} {
+		if _, err := enumOf(name, map[string]string{"upstream": f.upstream, "proxy-protocol": f.proxy, "verification": f.verification}[name]); set[name] && err != nil {
 			return nil, nil, err
 		}
 	}
@@ -96,6 +100,11 @@ func (f *targetFlags) targetOf(set map[string]bool, base *rpmgrv1.RouteTarget) (
 		do("server-name", "tls.server_name", func() error { tls(t).ServerName = f.serverName; return nil }),
 		do("ca-bundle", "tls.ca_bundle_id", func() error { tls(t).CaBundleId = f.caBundle; return nil }),
 		do("spki", "tls.spki_sha256", func() error { tls(t).SpkiSha256 = f.spki; return nil }),
+		do("verification", "tls.verification", func() error {
+			n, _ := enumOf("verification", f.verification)
+			tls(t).Verification = rpmgrv1.UpstreamVerification(n)
+			return nil
+		}),
 		do("proxy-protocol", "proxy_protocol", func() error {
 			n, _ := enumOf("proxy-protocol", f.proxy)
 			t.ProxyProtocol = rpmgrv1.ProxyProtocol(n)
@@ -143,7 +152,7 @@ func targetCommands() (create, update *cli.Command) {
 					return err
 				}
 			}
-			if t.GetTls().GetServerName() == "" && t.GetTls().GetCaBundleId() == "" && t.GetTls().GetSpkiSha256() == "" {
+			if t.GetTls().GetServerName() == "" && t.GetTls().GetCaBundleId() == "" && t.GetTls().GetSpkiSha256() == "" && t.GetTls().GetVerification() == 0 {
 				t.Tls = nil
 			}
 			if err := protovalidate.Validate(req); err != nil {

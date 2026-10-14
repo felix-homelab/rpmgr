@@ -31,9 +31,6 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routehostname"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routehttp"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routepolicy"
-	"github.com/felix-homelab/rpmgr/internal/store/ent/routetarget"
-	"github.com/felix-homelab/rpmgr/internal/store/ent/routetcp"
-	"github.com/felix-homelab/rpmgr/internal/store/ent/routeudp"
 )
 
 // The reasons of refused routes.
@@ -57,7 +54,9 @@ type Routes struct {
 	API *api.Server
 	// Sys is the controller's system scope, for the revisions a route status reads.
 	Sys context.Context
-	Now func() time.Time
+	// Prober reads target certificates through connectors; nil refuses every probe.
+	Prober Prober
+	Now    func() time.Time
 }
 
 // CreateRoute implements RouteService.
@@ -101,7 +100,8 @@ func createHTTP(ctx context.Context, tx *ent.Tx, row *ent.Route, h *rpmgrv1.HTTP
 	c := tx.RouteHTTP.Create().SetOrgID(row.OrgID).SetRouteID(row.ID).SetPathPrefix(h.GetPathPrefix()).SetPort80(port80).
 		SetHstsMaxAgeSeconds(int(h.GetHstsMaxAgeSeconds())).SetRequestHeadersSet(canonicalHeaders(h.GetRequestHeadersSet())).
 		SetResponseHeadersSet(canonicalHeaders(h.GetResponseHeadersSet())).SetWebsocket(h.Websocket == nil || *h.Websocket).
-		SetMaxBodyBytes(int64(min(h.GetMaxBodyBytes(), 1<<62))) //nolint:gosec // G115: bounded above
+		SetMaxBodyBytes(int64(min(h.GetMaxBodyBytes(), 1<<62))). //nolint:gosec // G115: bounded above
+		SetMaintenance(h.GetMaintenance()).SetMaintenanceMessage(h.GetMaintenanceMessage())
 	if hh := h.GetHostHeader(); hh != "" {
 		c.SetHostHeader(hh)
 	}
@@ -148,8 +148,8 @@ func checkSpec(in *rpmgrv1.Route) error {
 	hostnames := append(in.GetHttp().GetHostnames(), in.GetTlsPassthrough().GetHostnames()...)
 	switch {
 	case in.GetSpec() == nil:
-		return invalid("a route needs a spec: http, tcp, udp or tls_passthrough")
-	case in.GetTcp() != nil || in.GetUdp() != nil:
+		return invalid("a route needs a spec: http, tcp, udp, tcp_udp or tls_passthrough")
+	case in.GetTcp() != nil || in.GetUdp() != nil || in.GetTcpUdp() != nil:
 		return nil
 	case len(hostnames) == 0 || len(hostnames) > maxHostnames:
 		// The request's validation sees an update's hostnames only if it names them.
@@ -172,6 +172,12 @@ func checkSpec(in *rpmgrv1.Route) error {
 	}
 	if hh := h.GetHostHeader(); hh != "" && hh != "preserve" && !httpguts.ValidHostHeader(hh) {
 		return invalid("host header %q", hh)
+	}
+	// The pattern refuses control characters; these would turn the text around where it is shown.
+	if i := strings.IndexFunc(h.GetMaintenanceMessage(), func(r rune) bool {
+		return r >= 0x202A && r <= 0x202E || r >= 0x2066 && r <= 0x2069
+	}); i >= 0 {
+		return invalid("the maintenance message has a bidirectional formatting character at byte %d", i)
 	}
 	switch h.GetTlsMode() {
 	case rpmgrv1.TLSMode_TLS_MODE_CERTIFICATE:
@@ -226,7 +232,7 @@ func routeFields(t route.Type) []string {
 	switch t {
 	case route.TypeHTTP:
 		for _, f := range []string{"hostnames", "path_prefix", "tls_mode", "certificate_id", "port80", "hsts_max_age_seconds", "host_header",
-			"request_headers_set", "response_headers_set", "websocket", "max_body_bytes"} {
+			"request_headers_set", "response_headers_set", "websocket", "max_body_bytes", "maintenance", "maintenance_message"} {
 			fields = append(fields, "http."+f)
 		}
 	case route.TypeTLSPassthrough:
@@ -235,6 +241,8 @@ func routeFields(t route.Type) []string {
 		fields = append(fields, "tcp.port", "tcp.idle_timeout_seconds")
 	case route.TypeUDP:
 		fields = append(fields, "udp.port", "udp.flow_idle_timeout_seconds")
+	case route.TypeTCPUDP:
+		fields = append(fields, "tcp_udp.port", "tcp_udp.idle_timeout_seconds", "tcp_udp.flow_idle_timeout_seconds")
 	}
 	return fields
 }
@@ -283,6 +291,8 @@ func (r *Routes) createRouteTx(ctx context.Context, tx *ent.Tx, org string, in *
 		c.SetType(route.TypeTCP)
 	case *rpmgrv1.Route_Udp:
 		c.SetType(route.TypeUDP)
+	case *rpmgrv1.Route_TcpUdp:
+		c.SetType(route.TypeTCPUDP)
 	}
 	row, err := c.Save(ctx)
 	if err != nil {
@@ -367,8 +377,15 @@ func (r *Routes) updateRouteTx(ctx context.Context, tx *ent.Tx, m *rpmgrv1.Updat
 			return nil, err
 		}
 	}
-	if row.Type == route.TypeTCP || row.Type == route.TypeUDP {
+	if row.Type == route.TypeTCP || row.Type == route.TypeUDP || row.Type == route.TypeTCPUDP {
 		if err := updatePortRoute(ctx, tx, row, was, next); err != nil {
+			return nil, err
+		}
+	} else if maintenanceOnly(was, next) {
+		// Maintenance changes no hostname, so it is not checked against the org's domains again.
+		h := next.GetHttp()
+		if err := tx.RouteHTTP.Update().Where(routehttp.RouteID(row.ID)).SetMaintenance(h.GetMaintenance()).
+			SetMaintenanceMessage(h.GetMaintenanceMessage()).Exec(ctx); err != nil {
 			return nil, err
 		}
 	} else if !proto.Equal(specOf(was), specOf(next)) {
@@ -392,6 +409,17 @@ func (r *Routes) updateRouteTx(ctx context.Context, tx *ent.Tx, m *rpmgrv1.Updat
 		}
 	}
 	return row, nil
+}
+
+// maintenanceOnly reports whether an http route's spec changed in its maintenance fields alone.
+func maintenanceOnly(was, next *rpmgrv1.Route) bool {
+	a, b := was.GetHttp(), next.GetHttp()
+	if a == nil || b == nil || a.GetMaintenance() == b.GetMaintenance() && a.GetMaintenanceMessage() == b.GetMaintenanceMessage() {
+		return false
+	}
+	a, b = proto.CloneOf(a), proto.CloneOf(b)
+	a.Maintenance, a.MaintenanceMessage, b.Maintenance, b.MaintenanceMessage = false, "", false, ""
+	return proto.Equal(a, b)
 }
 
 // specOf is a route's spec as a message, for comparing two versions of it.
@@ -475,40 +503,7 @@ func (r *Routes) DeleteRoute(ctx context.Context, req *connect.Request[rpmgrv1.D
 		if err := api.CheckEtag(req.Msg.GetEtag(), cur.Version, &rpmgrv1.Route{Id: cur.ID, Etag: etagOf(cur.Version)}); err != nil {
 			return nil, err
 		}
-		var ports []string
-		if t, err := tx.RouteTCP.Query().Where(routetcp.RouteID(cur.ID)).Only(ctx); err == nil {
-			ports = append(ports, t.PortAllocationID)
-		}
-		if u, err := tx.RouteUDP.Query().Where(routeudp.RouteID(cur.ID)).Only(ctx); err == nil {
-			ports = append(ports, u.PortAllocationID)
-		}
-		for _, del := range []func() error{
-			func() error {
-				_, err := tx.RouteHostname.Delete().Where(routehostname.RouteID(cur.ID)).Exec(ctx)
-				return err
-			},
-			func() error { _, err := tx.RouteHTTP.Delete().Where(routehttp.RouteID(cur.ID)).Exec(ctx); return err },
-			func() error { _, err := tx.RouteTCP.Delete().Where(routetcp.RouteID(cur.ID)).Exec(ctx); return err },
-			func() error { _, err := tx.RouteUDP.Delete().Where(routeudp.RouteID(cur.ID)).Exec(ctx); return err },
-			func() error {
-				_, err := tx.RouteTarget.Delete().Where(routetarget.RouteID(cur.ID)).Exec(ctx)
-				return err
-			},
-			func() error {
-				_, err := tx.RoutePolicy.Delete().Where(routepolicy.RouteID(cur.ID)).Exec(ctx)
-				return err
-			},
-		} {
-			if err := del(); err != nil {
-				return nil, err
-			}
-		}
-		for _, p := range ports {
-			if err := routes.Release(ctx, tx, p); err != nil {
-				return nil, err
-			}
-		}
-		return []string{cur.ID}, tx.Route.DeleteOneID(cur.ID).Where(route.Version(cur.Version)).Exec(ctx)
+		return []string{cur.ID}, routes.Delete(ctx, tx, cur)
 	})
 	if err != nil {
 		return nil, storeError(err)
@@ -556,7 +551,7 @@ func routeOf(ctx context.Context, c *ent.Client, row *ent.Route) (*rpmgrv1.Route
 		names[i] = h.Hostname
 	}
 	switch row.Type {
-	case route.TypeTCP, route.TypeUDP:
+	case route.TypeTCP, route.TypeUDP, route.TypeTCPUDP:
 		if err := setPortSpec(ctx, c, row, out); err != nil {
 			return nil, err
 		}
@@ -571,7 +566,8 @@ func routeOf(ctx context.Context, c *ent.Client, row *ent.Route) (*rpmgrv1.Route
 			Port80: map[routehttp.Port80]rpmgrv1.Port80Mode{routehttp.Port80Redirect: rpmgrv1.Port80Mode_PORT80_MODE_REDIRECT,
 				routehttp.Port80Serve: rpmgrv1.Port80Mode_PORT80_MODE_SERVE, routehttp.Port80Off: rpmgrv1.Port80Mode_PORT80_MODE_OFF}[h.Port80],
 			HstsMaxAgeSeconds: uint32(h.HstsMaxAgeSeconds), HostHeader: h.HostHeader, RequestHeadersSet: h.RequestHeadersSet, //nolint:gosec // G115: bounded
-			ResponseHeadersSet: h.ResponseHeadersSet, Websocket: &h.Websocket, MaxBodyBytes: uint64(h.MaxBodyBytes)} //nolint:gosec // G115: non-negative
+			ResponseHeadersSet: h.ResponseHeadersSet, Websocket: &h.Websocket, MaxBodyBytes: uint64(h.MaxBodyBytes), //nolint:gosec // G115: non-negative
+			Maintenance: h.Maintenance, MaintenanceMessage: h.MaintenanceMessage}
 		if h.TLSMode == routehttp.TLSModeCertificate {
 			spec.TlsMode = rpmgrv1.TLSMode_TLS_MODE_CERTIFICATE
 			if h.CertificateID != nil {

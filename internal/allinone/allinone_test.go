@@ -14,6 +14,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"math/big"
 	"net"
 	"net/http"
@@ -104,13 +105,16 @@ func newHostAt(t *testing.T, name string) *host {
 	} else {
 		h.publicURL, files = "https://"+name+":"+strconv.Itoa(h.port), ""
 	}
+	// Never the host's /etc/rpmgr/policy.yaml: the connector's policy is the test's.
 	boot := fmt.Sprintf(`version: 1
 public_url: %s
 listen: {tcp: ":%d", udp: ":%d", http: "127.0.0.1:%d", admin: "127.0.0.1:%d"}
 database: {dsn: %s}
 kek: {source: file, path: %s}
 %sstate_dir: %s
-`, h.publicURL, h.port, h.port, h.port80, freePort(t), filepath.Join(state, "controller.db"), filepath.Join(h.dir, "kek"), files, state)
+policy_file: %s
+`, h.publicURL, h.port, h.port, h.port80, freePort(t), filepath.Join(state, "controller.db"), filepath.Join(h.dir, "kek"), files, state,
+		filepath.Join(h.dir, "aio-policy.yaml"))
 	if err := os.WriteFile(h.boot, []byte(boot), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -216,6 +220,40 @@ func ping(c net.Conn, msg string) error {
 	return nil
 }
 
+// TestInit_GroupHostnames (D79): init gives the gateway group "default" the public URL's host,
+// in lower case, as its public hostname, unless the group refuses it, as it does a single label.
+func TestInit_GroupHostnames(t *testing.T) {
+	for _, c := range []struct {
+		host string
+		want []string
+	}{
+		{"localhost", nil},
+		{"panel", nil},
+		{"Panel.Example.COM", []string{"panel.example.com"}},
+		{"panel.example.com.", []string{"panel.example.com"}},
+		{"localhost.", nil},
+		{"203.0.113.7", []string{"203.0.113.7"}},
+		{"[2001:db8::7]", []string{"2001:db8::7"}},
+	} {
+		t.Run(c.host, func(t *testing.T) {
+			h := newHostAt(t, c.host)
+			h.init(t)
+			db, err := store.OpenSQLite(context.Background(), h.cfg.Database.DSN, store.SQLiteOptions{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer func() { _ = db.Close() }()
+			g, err := db.Client().GatewayGroup.Query().Where(gatewaygroup.Name(allinone.GroupName)).Only(storetest.SystemCtx(t))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !slices.Equal(g.PublicHostnames, c.want) {
+				t.Errorf("public hostnames %q, want %q", g.PublicHostnames, c.want)
+			}
+		})
+	}
+}
+
 // TestInit_SystemdCredential (docs/16-cli.md, `all-in-one init`): with the KEK in a new systemd
 // credential, init enrolls its gateway through the in-memory controller with the KEK it has just
 // made: outside a service no credential is loaded (no CREDENTIALS_DIRECTORY), so the controller
@@ -300,40 +338,57 @@ func TestInit_GivesStateToOwner(t *testing.T) {
 	}
 }
 
-// TestInit_FailureIsUndone (docs/10-operations.md, "Install"): when the gateway's part of init
-// fails, the database and what init created beside it go again, while the boot file, the KEK and
-// what was there before stay; init then runs again.
+// TestInit_FailureIsUndone (docs/10-operations.md, "Install"): when the agents' part of init
+// fails, the gateway's or the connector's, the database and what init created beside it go again,
+// while the boot file, the KEK and what was there before stay; init then runs again.
 func TestInit_FailureIsUndone(t *testing.T) {
-	ctx := context.Background()
-	h := newHost(t)
-	state := filepath.Join(h.dir, "lib")
-	// A file where the gateway's state directory belongs makes the gateway's part fail.
-	blocker := filepath.Join(state, "gateway")
-	if err := os.WriteFile(blocker, []byte("in the way\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	o := controller.InitOptions{ConfigPath: h.boot, Getenv: func(string) string { return "" }}
-	if _, err := allinone.Init(ctx, o); err == nil {
-		t.Fatal("init with the gateway's state directory blocked succeeded")
-	}
-	left, err := os.ReadDir(state)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(left) != 1 || left[0].Name() != "gateway" || left[0].IsDir() {
-		t.Fatalf("after the failure, the state directory holds %v; want only the file that was there", left)
-	}
-	for _, f := range []string{h.boot, filepath.Join(h.dir, "kek")} {
-		if _, err := os.Stat(f); err != nil {
-			t.Errorf("the boot file or KEK after the failure: %v", err)
-		}
-	}
-	if err := os.Remove(blocker); err != nil {
-		t.Fatal(err)
-	}
-	r, err := allinone.Init(ctx, o)
-	if err != nil || r.GatewayID == "" {
-		t.Fatalf("init after the cause is gone: %+v, %v", r, err)
+	// A file where an agent's state directory belongs makes its part fail at once; one where the
+	// connector's identity belongs, its enrollment after the gateway's.
+	for _, part := range []string{"gateway", "connector", "connector/identity"} {
+		t.Run(part, func(t *testing.T) {
+			ctx := context.Background()
+			h := newHost(t)
+			state := filepath.Join(h.dir, "lib")
+			blocker := filepath.Join(state, part)
+			if err := os.MkdirAll(filepath.Dir(blocker), 0o750); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(blocker, []byte("in the way\n"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			o := controller.InitOptions{ConfigPath: h.boot, Getenv: func(string) string { return "" }}
+			if _, err := allinone.Init(ctx, o); err == nil {
+				t.Fatalf("init with %s blocked succeeded", part)
+			}
+			var left []string
+			if err := filepath.WalkDir(state, func(path string, d fs.DirEntry, err error) error {
+				if path != state {
+					left = append(left, strings.TrimPrefix(path, state+"/"))
+				}
+				return err
+			}); err != nil {
+				t.Fatal(err)
+			}
+			want := []string{part}
+			if part == "connector/identity" {
+				want = []string{"connector", part}
+			}
+			if !slices.Equal(left, want) {
+				t.Fatalf("after the failure, the state directory holds %v; want only %v, which was there", left, want)
+			}
+			for _, f := range []string{h.boot, filepath.Join(h.dir, "kek")} {
+				if _, err := os.Stat(f); err != nil {
+					t.Errorf("the boot file or KEK after the failure: %v", err)
+				}
+			}
+			if err := os.Remove(blocker); err != nil {
+				t.Fatal(err)
+			}
+			r, err := allinone.Init(ctx, o)
+			if err != nil || r.GatewayID == "" || r.ConnectorID == "" {
+				t.Fatalf("init after the cause is gone: %+v, %v", r, err)
+			}
+		})
 	}
 }
 
@@ -356,15 +411,28 @@ func TestAllInOne(t *testing.T) {
 	h.registry = nil // a restart registers anew
 	waitFor(t, "not ready", h.ready)
 
-	// Port 80 is the gateway's; a name no route serves gets the controller's redirect.
+	// Port 80 is the gateway's: the controller's own name, which no route serves, gets its
+	// redirect; any other name no route serves gets the gateway's page (D87).
 	noFollow := &http.Client{Timeout: 5 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
-	resp, err := noFollow.Get(fmt.Sprintf("http://127.0.0.1:%d/setup?step=1", h.port80))
-	if err != nil {
-		t.Fatal(err)
+	port80 := func(host string) (int, http.Header) {
+		t.Helper()
+		req, _ := http.NewRequest(http.MethodGet, fmt.Sprintf("http://127.0.0.1:%d/setup?step=1", h.port80), nil)
+		req.Host = host
+		req.Header.Set("Accept", "text/html")
+		resp, err := noFollow.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_ = resp.Body.Close()
+		return resp.StatusCode, resp.Header
 	}
-	_ = resp.Body.Close()
-	if resp.StatusCode != http.StatusMovedPermanently || resp.Header.Get("Location") != h.publicURL+"/setup?step=1" {
-		t.Fatalf("port 80: %d %q", resp.StatusCode, resp.Header.Get("Location"))
+	if code, header := port80(fmt.Sprintf("localhost:%d", h.port80)); code != http.StatusMovedPermanently ||
+		header.Get("Location") != h.publicURL+"/setup?step=1" {
+		t.Fatalf("port 80, the controller's name: %d %q", code, header.Get("Location"))
+	}
+	if code, header := port80("unrouted.example.net"); code != http.StatusNotFound || header.Get("Location") != "" ||
+		header.Get("Content-Type") != "text/html; charset=utf-8" {
+		t.Fatalf("port 80, another name: %d %v", code, header)
 	}
 
 	// Enroll a connector through the public URL, which the gateway hands to the controller.

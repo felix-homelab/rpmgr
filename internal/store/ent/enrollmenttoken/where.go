@@ -95,6 +95,11 @@ func Ephemeral(v bool) predicate.EnrollmentToken {
 	return predicate.EnrollmentToken(sql.FieldEQ(FieldEphemeral, v))
 }
 
+// BuiltIn applies equality check predicate on the "built_in" field. It's identical to BuiltInEQ.
+func BuiltIn(v bool) predicate.EnrollmentToken {
+	return predicate.EnrollmentToken(sql.FieldEQ(FieldBuiltIn, v))
+}
+
 // MaxUses applies equality check predicate on the "max_uses" field. It's identical to MaxUsesEQ.
 func MaxUses(v int) predicate.EnrollmentToken {
 	return predicate.EnrollmentToken(sql.FieldEQ(FieldMaxUses, v))
@@ -503,6 +508,16 @@ func EphemeralEQ(v bool) predicate.EnrollmentToken {
 // EphemeralNEQ applies the NEQ predicate on the "ephemeral" field.
 func EphemeralNEQ(v bool) predicate.EnrollmentToken {
 	return predicate.EnrollmentToken(sql.FieldNEQ(FieldEphemeral, v))
+}
+
+// BuiltInEQ applies the EQ predicate on the "built_in" field.
+func BuiltInEQ(v bool) predicate.EnrollmentToken {
+	return predicate.EnrollmentToken(sql.FieldEQ(FieldBuiltIn, v))
+}
+
+// BuiltInNEQ applies the NEQ predicate on the "built_in" field.
+func BuiltInNEQ(v bool) predicate.EnrollmentToken {
+	return predicate.EnrollmentToken(sql.FieldNEQ(FieldBuiltIn, v))
 }
 
 // MaxUsesEQ applies the EQ predicate on the "max_uses" field.

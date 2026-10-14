@@ -11,6 +11,7 @@ import {
 } from "@/gen/rpmgr/v1/settings_pb";
 import { Theme, UserService } from "@/gen/rpmgr/v1/user_pb";
 import { apiError, auth, show } from "@/testing/api";
+import { marked, unmatched } from "@/testing/required";
 
 afterEach(cleanup);
 
@@ -255,5 +256,17 @@ describe("Settings", () => {
     page({ revocationLog: { sink: false } });
     await screen.findByRole("form", { name: "Organisation settings" });
     expect(screen.queryByText(/revocation log/)).toBeNull(); // not the Instance Admin
+  });
+
+  it("marks the sender address as required only while a mail relay is set", async () => {
+    page({ admin: true });
+    const form = await instanceForm();
+    const relay = form.getByLabelText("Relay host:port");
+    fireEvent.change(relay, { target: { value: "mail.example.com:587" } });
+    await waitFor(() => expect(marked()).toEqual(["Sender address"]));
+    expect(unmatched()).toEqual([]);
+    fireEvent.change(relay, { target: { value: "  " } }); // blank is no relay
+    await waitFor(() => expect(marked()).toEqual([]));
+    expect(unmatched()).toEqual([]);
   });
 });

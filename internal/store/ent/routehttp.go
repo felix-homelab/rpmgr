@@ -47,6 +47,10 @@ type RouteHTTP struct {
 	MaxBodyBytes int64 `json:"max_body_bytes,omitempty"`
 	// DNSProxied holds the value of the "dns_proxied" field.
 	DNSProxied bool `json:"dns_proxied,omitempty"`
+	// Maintenance holds the value of the "maintenance" field.
+	Maintenance bool `json:"maintenance,omitempty"`
+	// MaintenanceMessage holds the value of the "maintenance_message" field.
+	MaintenanceMessage string `json:"maintenance_message,omitempty"`
 	// Edges holds the relations/edges for other nodes in the graph.
 	// The values are being populated by the RouteHTTPQuery when eager-loading is set.
 	Edges        RouteHTTPEdges `json:"edges"`
@@ -93,11 +97,11 @@ func (*RouteHTTP) scanValues(columns []string) ([]any, error) {
 		switch columns[i] {
 		case routehttp.FieldHeaderMatches, routehttp.FieldRequestHeadersSet, routehttp.FieldResponseHeadersSet:
 			values[i] = new([]byte)
-		case routehttp.FieldWebsocket, routehttp.FieldDNSProxied:
+		case routehttp.FieldWebsocket, routehttp.FieldDNSProxied, routehttp.FieldMaintenance:
 			values[i] = new(sql.NullBool)
 		case routehttp.FieldID, routehttp.FieldHstsMaxAgeSeconds, routehttp.FieldMaxBodyBytes:
 			values[i] = new(sql.NullInt64)
-		case routehttp.FieldOrgID, routehttp.FieldRouteID, routehttp.FieldPathPrefix, routehttp.FieldTLSMode, routehttp.FieldCertificateID, routehttp.FieldPort80, routehttp.FieldHostHeader:
+		case routehttp.FieldOrgID, routehttp.FieldRouteID, routehttp.FieldPathPrefix, routehttp.FieldTLSMode, routehttp.FieldCertificateID, routehttp.FieldPort80, routehttp.FieldHostHeader, routehttp.FieldMaintenanceMessage:
 			values[i] = new(sql.NullString)
 		default:
 			values[i] = new(sql.UnknownType)
@@ -211,6 +215,18 @@ func (_m *RouteHTTP) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.DNSProxied = value.Bool
 			}
+		case routehttp.FieldMaintenance:
+			if value, ok := values[i].(*sql.NullBool); !ok {
+				return fmt.Errorf("unexpected type %T for field maintenance", values[i])
+			} else if value.Valid {
+				_m.Maintenance = value.Bool
+			}
+		case routehttp.FieldMaintenanceMessage:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field maintenance_message", values[i])
+			} else if value.Valid {
+				_m.MaintenanceMessage = value.String
+			}
 		default:
 			_m.selectValues.Set(columns[i], values[i])
 		}
@@ -300,6 +316,12 @@ func (_m *RouteHTTP) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("dns_proxied=")
 	builder.WriteString(fmt.Sprintf("%v", _m.DNSProxied))
+	builder.WriteString(", ")
+	builder.WriteString("maintenance=")
+	builder.WriteString(fmt.Sprintf("%v", _m.Maintenance))
+	builder.WriteString(", ")
+	builder.WriteString("maintenance_message=")
+	builder.WriteString(_m.MaintenanceMessage)
 	builder.WriteByte(')')
 	return builder.String()
 }

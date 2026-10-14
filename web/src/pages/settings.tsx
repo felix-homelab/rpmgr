@@ -7,6 +7,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { useId, useState, type FormEvent, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
+import { labelClass } from "@/components/field";
 import { PageHeader } from "@/components/page-header";
 import { Alert } from "@/components/public-page";
 import { Button } from "@/components/ui/button";
@@ -46,7 +47,7 @@ export function Settings() {
   const session = useQuery(AuthService.method.getSession, {});
   const admin = session.data?.instanceAdmin ?? false;
   return (
-    <div className="grid max-w-3xl gap-6">
+    <div className="grid gap-6">
       <PageHeader title={t("settings.title")} description={t("settings.intro")} />
       {admin && <Tabs />}
       {admin && <RevocationLogNotice />}
@@ -110,7 +111,7 @@ export function InstanceAdminPage({ title, children }: { title: string; children
   const session = useQuery(AuthService.method.getSession, {});
   const admin = session.data?.instanceAdmin;
   return (
-    <div className="grid max-w-3xl gap-6">
+    <div className="grid gap-6">
       <PageHeader title={title} />
       {admin ? <Tabs /> : <Link to="/settings" className="justify-self-start text-sm underline">{t("settings.title")}</Link>}
       {session.data && (admin ? children : <p className="text-sm text-muted-foreground">{t("settings.adminOnly")}</p>)}
@@ -163,7 +164,7 @@ function OrgForm({ orgId, settings, etag, disabled, onDone }: {
   }
   return (
     <form onSubmit={save} aria-label={t("settings.org")} noValidate>
-      <fieldset disabled={disabled} className="grid gap-4">
+      <fieldset disabled={disabled} className="grid max-w-xl gap-4">
         <label className={check}>
           <input type="checkbox" className="size-4 accent-primary" checked={form.mfa} onChange={(e) => setForm({ ...form, mfa: e.target.checked })} />
           {t("settings.requireMfa")}
@@ -233,20 +234,23 @@ function InstanceForm({ title, sections, fields, settings, etag, onDone }: {
   }
   return (
     <form onSubmit={save} aria-label={title} className="grid gap-5" noValidate>
-      {sections.map((sec) => (
-        <fieldset key={sec} className="grid gap-4 border-border not-first:border-t not-first:pt-5">
-          {sections.length > 1 && <legend className="float-left w-full text-sm font-semibold">{t(`settings.sections.${sec}`)}</legend>}
-          {fields.filter((f) => f.section === sec).map((f) => (
-            <SettingInput key={f.key} field={f} value={values[f.key] ?? ""} onChange={(v) => setValues({ ...values, [f.key]: v })} />
-          ))}
-        </fieldset>
-      ))}
+      {/* Several sections stand in two columns on wide screens, so the first two have no rule above. */}
+      <div className={sections.length > 1 ? "grid gap-5 xl:grid-cols-2 xl:gap-x-10" : "grid max-w-xl"}>
+        {sections.map((sec) => (
+          <fieldset key={sec} className="grid content-start gap-4 border-border not-first:border-t not-first:pt-5 xl:nth-2:border-t-0 xl:nth-2:pt-0">
+            {sections.length > 1 && <legend className="float-left w-full text-sm font-semibold">{t(`settings.sections.${sec}`)}</legend>}
+            {fields.filter((f) => f.section === sec).map((f) => (
+              <SettingInput key={f.key} field={f} required={f.required?.(values) ?? false} value={values[f.key] ?? ""} onChange={(v) => setValues({ ...values, [f.key]: v })} />
+            ))}
+          </fieldset>
+        ))}
+      </div>
       <Button type="submit" className="justify-self-start" disabled={update.isPending}>{t("routeForm.save")}</Button>
     </form>
   );
 }
 
-function SettingInput({ field: f, value, onChange }: { field: SettingField; value: string; onChange: (v: string) => void }) {
+function SettingInput({ field: f, required, value, onChange }: { field: SettingField; required: boolean; value: string; onChange: (v: string) => void }) {
   const { t, i18n } = useTranslation();
   const id = useId();
   const label = t(`settings.fields.${f.key}`);
@@ -265,15 +269,15 @@ function SettingInput({ field: f, value, onChange }: { field: SettingField; valu
   const described = hint ? `${id}-hint` : undefined;
   return (
     <div className="grid gap-1.5">
-      <label htmlFor={id} className="text-sm font-medium">{label}</label>
+      <label htmlFor={id} className={labelClass(required)}>{label}</label>
       {f.kind === "select" ? (
         <Select id={id} aria-describedby={described} value={value} onChange={(e) => onChange(e.target.value)}>
           {f.options?.map(([v, k]) => <option key={v} value={String(v)}>{t(`settings.options.${f.key}.${k}`)}</option>)}
         </Select>
       ) : f.kind === "lines" ? (
-        <Textarea id={id} aria-describedby={described} rows={2} value={value} onChange={(e) => onChange(e.target.value)} />
+        <Textarea id={id} required={required} aria-describedby={described} rows={2} value={value} onChange={(e) => onChange(e.target.value)} />
       ) : (
-        <Input id={id} aria-describedby={described} inputMode={f.kind === "days" ? "numeric" : undefined} value={value} onChange={(e) => onChange(e.target.value)} />
+        <Input id={id} required={required} aria-describedby={described} inputMode={f.kind === "days" ? "numeric" : undefined} value={value} onChange={(e) => onChange(e.target.value)} />
       )}
       {hint && <p id={described} className="text-xs text-muted-foreground">{hint}</p>}
     </div>

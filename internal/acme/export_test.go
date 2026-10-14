@@ -7,6 +7,9 @@ import (
 	"time"
 )
 
+// RetryWait is retryWait, for a test of the waits after failures.
+var RetryWait = retryWait
+
 // SetLockPoll shortens how often Lock tries again, for one test that must not run in parallel
 // with others.
 func SetLockPoll(t testing.TB, d time.Duration) {

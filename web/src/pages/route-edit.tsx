@@ -20,7 +20,7 @@ import { reasonOf } from "@/lib/errors";
 import { protoResolver, serverFieldErrors, type FieldOf } from "@/lib/proto-form";
 import { Conflict, onTop } from "@/route-form/conflict";
 import { numberProblems, routeFields, routeWith, valuesOf, type RouteValues } from "@/route-form/fields";
-import { FormField } from "@/route-form/form-field";
+import { FieldGrid, FormField } from "@/route-form/form-field";
 import { PreviewPanel } from "@/route-form/preview";
 import { routeType, useAgentNames } from "@/routes-data";
 import { useOrg } from "@/session";
@@ -117,7 +117,7 @@ function RouteForm({ base, initial, onRestart }: { base: Route; initial?: RouteV
   }
 
   return (
-    <div className="grid max-w-3xl gap-6">
+    <div className="grid gap-6">
       <div className="grid gap-2">
         <Link to="/routes/$routeId" params={{ routeId: base.id }} className="inline-flex w-fit items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
           <ChevronLeft aria-hidden="true" className="size-4" />{base.name}
@@ -137,7 +137,7 @@ function RouteForm({ base, initial, onRestart }: { base: Route; initial?: RouteV
             <Conflict base={base} mine={conflict.mine} theirs={conflict.theirs}
               onTop={() => onRestart(conflict.theirs, onTop(base, conflict.mine, conflict.theirs))} onDiscard={() => onRestart(conflict.theirs)} />
           )}
-          {fields.map((f) => <FormField key={f.key} field={f} form={form} />)}
+          <FieldGrid>{fields.map((f) => <FormField key={f.key} field={f} form={form} />)}</FieldGrid>
           {other.map((m) => <Alert key={m}>{m}</Alert>)}
           {previewed && <PreviewPanel preview={previewed} name={(id) => names.data?.get(id) || id} />}
           <div className="flex flex-wrap gap-2 border-t border-border pt-4">

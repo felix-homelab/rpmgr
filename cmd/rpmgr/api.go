@@ -145,7 +145,7 @@ func (s *apiSession) get(ctx context.Context, k apicli.Kind, id string) (protore
 
 func getCommand() *cli.Command {
 	var output, role string
-	var allow listFlag
+	var allow, deny listFlag
 	var instance bool
 	return &cli.Command{
 		Name: "get", Summary: "show a resource of the public API, the settings, or the install command of an agent",
@@ -154,11 +154,13 @@ func getCommand() *cli.Command {
 			outputFlag(fs, &output)
 			fs.BoolVar(&instance, "instance", false, "settings: the instance's settings, for an Instance Admin, instead of the org's")
 			fs.StringVar(&role, "role", "connector", "install-command: the role to install, connector or gateway")
-			fs.Var(&allow, "allow-target", "install-command: a target the connector may reach, ip:port or a socket path; repeat for more")
+			fs.Var(&allow, "allow-target", "install-command: a target the connector may reach: an address or subnet, optionally :port or "+
+				":port-port, IPv6 in brackets, or a socket path; repeat for more")
+			fs.Var(&deny, "deny-target", "install-command: a target the connector must not reach, whatever allows it; the same form")
 		},
 		Run: func(ctx context.Context, env *cli.Env, args []string) error {
 			if len(args) == 1 && args[0] == "install-command" {
-				return installCommand(ctx, env, role, allow)
+				return installCommand(ctx, env, role, allow, deny)
 			}
 			if len(args) == 1 && args[0] == "settings" {
 				return getSettings(ctx, env, instance, output)

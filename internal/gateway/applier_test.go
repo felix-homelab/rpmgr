@@ -5,6 +5,8 @@ package gateway_test
 import (
 	"errors"
 	"net"
+	"net/http"
+	"net/http/httptest"
 	"strconv"
 	"strings"
 	"syscall"
@@ -120,6 +122,9 @@ func TestApplier_Apply(t *testing.T) {
 	if len(st) != 1 || st[0].GetResourceId() != "rt_3" || st[0].GetReason() != agentv1.NotReadyReason_NOT_READY_REASON_PORT_IN_USE {
 		t.Fatalf("an occupied udp port: %v", st)
 	}
+	if r := a.Readiness(); len(r) != 1 || r[0].GetResourceId() != "rt_3" {
+		t.Fatalf("readiness with an occupied udp port: %v", r)
+	}
 
 	c := start(t, m, connectorID("con_2"), hello("rt_2"))
 	a.Apply(t.Context(), gatewaySnapshot(8, tcpResource("rt_1", uint32(p1), cid("con_1"))), agent.Changes{})
@@ -163,7 +168,12 @@ func TestApplier_ValidateHTTP(t *testing.T) {
 	a, _ := gateway.NewApplier()
 	ok := gatewaySnapshot(1, httpResource("rt_1", "http", "app.example.com", "app.example.com|/api", "*.example.com"),
 		httpResource("rt_2", "h2c", "app.example.com|/grpc"), passResource("rt_3", "db.example.com"),
-		httpsResource("rt_4", &agentv1.UpstreamTLS{TargetId: "tg_1", ServerName: "a.internal", SpkiSha256: make([]byte, 32)}))
+		httpsResource("rt_4", &agentv1.UpstreamTLS{TargetId: "tg_1", ServerName: "a.internal", SpkiSha256: make([]byte, 32)},
+			&agentv1.UpstreamTLS{TargetId: "tg_2", ServerName: "b.internal", Verification: agentv1.UpstreamVerification_UPSTREAM_VERIFICATION_UNVERIFIED,
+				ConnectorId: "con_1"},
+			&agentv1.UpstreamTLS{TargetId: "tg_3", ServerName: "c.internal", Verification: agentv1.UpstreamVerification(99)},
+			&agentv1.UpstreamTLS{TargetId: "tg_4", ServerName: "d.internal", SpkiSha256: make([]byte, 32),
+				Verification: agentv1.UpstreamVerification_UPSTREAM_VERIFICATION_PINNED_KEY, ConnectorId: "con_1"}))
 	if errs := a.Validate(ok); len(errs) != 0 {
 		t.Fatal(errs)
 	}
@@ -207,6 +217,18 @@ func TestApplier_ValidateHTTP(t *testing.T) {
 		})), "not a CIDR"},
 		{"a short pin", gatewaySnapshot(1, httpsResource("rt_1", &agentv1.UpstreamTLS{TargetId: "tg_1", ServerName: "a",
 			SpkiSha256: make([]byte, 16)})), "not a SHA-256"},
+		{"an unverified target with a pin", gatewaySnapshot(1, httpsResource("rt_1", &agentv1.UpstreamTLS{TargetId: "tg_1", ServerName: "a",
+			SpkiSha256: make([]byte, 32), Verification: agentv1.UpstreamVerification_UPSTREAM_VERIFICATION_UNVERIFIED})), "has a CA bundle or a pin"},
+		{"an unverified target of no connector", gatewaySnapshot(1, httpsResource("rt_1", &agentv1.UpstreamTLS{TargetId: "tg_1", ServerName: "a",
+			Verification: agentv1.UpstreamVerification_UPSTREAM_VERIFICATION_UNVERIFIED})), "names no connector"},
+		{"an unverified target with a CA bundle", gatewaySnapshot(1, httpsResource("rt_1", &agentv1.UpstreamTLS{TargetId: "tg_1", ServerName: "a",
+			CaPem: []byte("x"), Verification: agentv1.UpstreamVerification_UPSTREAM_VERIFICATION_UNVERIFIED})), "has a CA bundle or a pin"},
+		{"a pinned-key target of no connector", gatewaySnapshot(1, httpsResource("rt_1", &agentv1.UpstreamTLS{TargetId: "tg_1", ServerName: "a",
+			SpkiSha256: make([]byte, 32), Verification: agentv1.UpstreamVerification_UPSTREAM_VERIFICATION_PINNED_KEY})), "names no connector"},
+		{"a pinned-key target without a pin", gatewaySnapshot(1, httpsResource("rt_1", &agentv1.UpstreamTLS{TargetId: "tg_1", ServerName: "a",
+			ConnectorId: "con_1", Verification: agentv1.UpstreamVerification_UPSTREAM_VERIFICATION_PINNED_KEY})), "no SHA-256 pin"},
+		{"a pinned-key target with a CA bundle", gatewaySnapshot(1, httpsResource("rt_1", &agentv1.UpstreamTLS{TargetId: "tg_1", ServerName: "a",
+			ConnectorId: "con_1", SpkiSha256: make([]byte, 32), CaPem: []byte("x"), Verification: agentv1.UpstreamVerification_UPSTREAM_VERIFICATION_PINNED_KEY})), "no SHA-256 pin"},
 		{"no upstream", gatewaySnapshot(1, httpResource("rt_1", "", "app.example.com")), "upstream protocol"},
 		{"upper case", gatewaySnapshot(1, httpResource("rt_1", "http", "App.example.com")), "not normalised"},
 		{"a relative prefix", gatewaySnapshot(1, httpResource("rt_1", "http", "app.example.com|api")), "start with /"},
@@ -274,5 +296,117 @@ func TestApplier_Disable(t *testing.T) {
 	}
 	if err := ping(dialPort(t, p1), "enabled again"); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func tcpUDPResource(id string, port uint32, connectors ...string) *agentv1.Resource {
+	return &agentv1.Resource{Id: id, Kind: &agentv1.Resource_GatewayTcpUdpRoute{GatewayTcpUdpRoute: &agentv1.GatewayTCPUDPRoute{
+		Port: port, IdleTimeoutSeconds: 3600, FlowIdleTimeoutSeconds: 60, Connectors: connectors}}}
+}
+
+// TestApplier_TCPUDP: a tcp_udp route's port counts as a TCP and as a UDP port, so another route
+// on it in either protocol is refused; applied, it listens on both, admits its connectors, and a
+// port taken in either protocol makes the route not ready, until it is bound.
+func TestApplier_TCPUDP(t *testing.T) {
+	a, assign := gateway.NewApplier()
+	for _, tc := range []struct {
+		name string
+		snap *agentv1.Snapshot
+		want string
+	}{
+		{"port 0", gatewaySnapshot(1, tcpUDPResource("rt_1", 0)), "not a TCP port"},
+		{"a tcp route on its port", gatewaySnapshot(1, tcpUDPResource("rt_1", 53), tcpResource("rt_2", 53)), "TCP port 53 is also the port of rt_1"},
+		{"a udp route on its port", gatewaySnapshot(1, udpResource("rt_2", 53), tcpUDPResource("rt_1", 53)), "UDP port 53 is also the port of rt_2"},
+		{"an empty connector", gatewaySnapshot(1, tcpUDPResource("rt_1", 53, "")), "empty connector"},
+	} {
+		errs := a.Validate(tc.snap)
+		if len(errs) == 0 || !strings.Contains(errs[0].GetMessage(), tc.want) {
+			t.Errorf("%s: %v, want an error about %q", tc.name, errs, tc.want)
+		}
+	}
+	gateway.SetRouteTimers(t, time.Second, 50*time.Millisecond)
+	m := gateway.NewSessions(gateway.SessionsOptions{TrustDomain: td, GatewayID: "gw_01", Assignment: assign})
+	t.Cleanup(m.Close)
+	routes := gateway.NewTCPRoutes(gateway.TCPOptions{Host: "127.0.0.1", Sessions: m, Revision: a.Revision})
+	t.Cleanup(routes.Close)
+	udp := gateway.NewUDPRoutes(gateway.UDPOptions{Host: "127.0.0.1", Sessions: m, Revision: a.Revision})
+	t.Cleanup(udp.Close)
+	a.Bind(gateway.Served{TCP: routes, UDP: udp, Sessions: m})
+
+	// A port free for TCP and UDP; held for UDP while the route is applied.
+	port := freeUDPPort(t)
+	if l, err := net.Listen("tcp", net.JoinHostPort("127.0.0.1", strconv.Itoa(int(port)))); err != nil {
+		t.Skipf("port %d is not free for TCP: %v", port, err)
+	} else {
+		_ = l.Close()
+	}
+	taken, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: int(port)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	st := a.Apply(t.Context(), gatewaySnapshot(1, tcpUDPResource("rt_1", uint32(port), cid("con_1"))), agent.Changes{})
+	if len(st) != 1 || st[0].GetResourceId() != "rt_1" || st[0].GetReason() != agentv1.NotReadyReason_NOT_READY_REASON_PORT_IN_USE ||
+		!strings.Contains(st[0].GetDetail(), "udp port") {
+		t.Fatalf("a taken udp port: %v", st)
+	}
+	if !assign.Known(cid("con_1")) || len(assign.Connectors("rt_1")) != 1 {
+		t.Fatal("the route's connector is not admitted")
+	}
+	if _, err := net.Listen("tcp", net.JoinHostPort("127.0.0.1", strconv.Itoa(int(port)))); !errors.Is(err, syscall.EADDRINUSE) {
+		t.Fatalf("the route's TCP port is not bound: %v", err)
+	}
+	_ = taken.Close()
+	eventually(t, "the freed udp port was not bound", func() bool { return len(a.Readiness()) == 0 })
+	if _, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: int(port)}); !errors.Is(err, syscall.EADDRINUSE) {
+		t.Fatalf("the route's UDP port is not bound: %v", err)
+	}
+	if st := a.Apply(t.Context(), gatewaySnapshot(2), agent.Changes{}); len(st) != 0 {
+		t.Fatal(st)
+	}
+	eventually(t, "a removed route keeps its ports", func() bool {
+		c, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: int(port)})
+		if err != nil {
+			return false
+		}
+		_ = c.Close()
+		l, err := net.Listen("tcp", net.JoinHostPort("127.0.0.1", strconv.Itoa(int(port))))
+		if err != nil {
+			return false
+		}
+		_ = l.Close()
+		return true
+	})
+}
+
+// TestApplier_Maintenance: an http route's maintenance and message in the snapshot reach its
+// requests, and leave them when a later snapshot clears them.
+func TestApplier_Maintenance(t *testing.T) {
+	a, assign := gateway.NewApplier()
+	m := gateway.NewSessions(gateway.SessionsOptions{TrustDomain: td, GatewayID: "gw_01", Assignment: assign})
+	t.Cleanup(m.Close)
+	h := gateway.NewHTTPRoutes(gateway.HTTPOptions{Sessions: m})
+	t.Cleanup(h.Close)
+	a.Bind(gateway.Served{HTTP: h, Sessions: m})
+	page := func() string {
+		r := httptest.NewRequest(http.MethodGet, "https://app.example.com/", nil)
+		r.Header.Set("Accept", "text/html")
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, r)
+		return w.Body.String()
+	}
+	web := withHTTP(httpResource("rt_web", "http", "app.example.com"), func(r *agentv1.GatewayHTTPRoute) {
+		r.Maintenance, r.MaintenanceMessage = true, "Back at 18:00."
+	})
+	if st := a.Apply(t.Context(), gatewaySnapshot(1, web), agent.Changes{}); len(st) != 0 {
+		t.Fatal(st)
+	}
+	if b := page(); !strings.Contains(b, "<h1>Down for maintenance</h1>") || !strings.Contains(b, "Back at 18:00.") {
+		t.Fatalf("in maintenance: %s", b)
+	}
+	if st := a.Apply(t.Context(), gatewaySnapshot(2, httpResource("rt_web", "http", "app.example.com")), agent.Changes{}); len(st) != 0 {
+		t.Fatal(st)
+	}
+	if b := page(); !strings.Contains(b, "<h1>Service unavailable</h1>") { // no connector
+		t.Fatalf("out of maintenance: %s", b)
 	}
 }

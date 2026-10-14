@@ -5,6 +5,7 @@ package controller_test
 import (
 	"context"
 	"log/slog"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -87,6 +88,39 @@ func TestSessionLiveness(t *testing.T) {
 			t.Fatalf("after a superseded session ended: %+v", r)
 		}
 	})
+}
+
+// TestSessionLiveness_StoppedAtStart (#514): a controller that stops before it ends the sessions
+// its last run left open logs nothing, as its next start ends them; a database that fails while it
+// runs is still an error.
+func TestSessionLiveness_StoppedAtStart(t *testing.T) {
+	db := storetest.Migrated(t, store.SQLite)
+	w := &warnings{}
+	sys, stop := context.WithCancel(storetest.SystemCtx(t))
+	defer stop()
+	e := startSessionsWith(t, db, func(o *controller.SessionsOptions) {
+		o.Sys = sys
+		o.Logger = slog.New(w)
+	})
+	stop()
+	e.sessions.EndLeftOpen()
+	if got := w.all(); len(got) != 0 {
+		t.Fatalf("a stop at the start logged:\n%s", strings.Join(got, "\n"))
+	}
+
+	db2 := storetest.Migrated(t, store.SQLite)
+	w2 := &warnings{}
+	e2 := startSessionsWith(t, db2, func(o *controller.SessionsOptions) { o.Logger = slog.New(w2) })
+	if err := db2.Close(); err != nil {
+		t.Fatal(err)
+	}
+	e2.sessions.EndLeftOpen() // Run's own first pass may fail on the closed database too
+	got := w2.all()
+	if len(got) == 0 || slices.ContainsFunc(got, func(l string) bool {
+		return !strings.Contains(l, "cannot end the sessions a stopped controller left open")
+	}) {
+		t.Fatalf("a failing database logged %q", got)
+	}
 }
 
 // TestSessionLiveness_StopDrain (docs/03-connections.md, "Service sketch"): a stop cancels the

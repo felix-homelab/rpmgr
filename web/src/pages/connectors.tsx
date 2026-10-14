@@ -20,9 +20,14 @@ import { useOrg } from "@/session";
 
 const route = getRouteApi("/app/connectors");
 
+// The states the connectors list shows and filters by: a disabled connector is disabled, whatever
+// its session (D81).
+const states = ["connected", "offline", "disabled"] as const;
+type ConnectorState = (typeof states)[number];
+
 export interface ConnectorsSearch {
   q?: string;
-  session?: "connected" | "offline";
+  session?: ConnectorState;
   // Whether the enroll dialog is open, so the command palette can open it.
   enroll?: true;
 }
@@ -30,16 +35,23 @@ export interface ConnectorsSearch {
 export function validateConnectorsSearch(s: Record<string, unknown>): ConnectorsSearch {
   return {
     q: typeof s.q === "string" && s.q !== "" ? s.q : undefined,
-    session: s.session === "connected" || s.session === "offline" ? s.session : undefined,
+    session: states.find((st) => st === s.session),
     enroll: s.enroll === true || s.enroll === "true" ? true : undefined,
   };
 }
 
-// SessionChip says whether a connector's control session is up, with an icon and text (U8).
+// connectorState is disabled for a connector that does not serve, else whether its control
+// session is up.
+export function connectorState(c: Connector): ConnectorState {
+  return !c.enabled ? "disabled" : c.session?.connected ? "connected" : "offline";
+}
+
+// SessionChip says whether a connector is disabled or its control session is up, with an icon and
+// text (U8).
 export function SessionChip({ connector }: { connector: Connector }) {
   const { t } = useTranslation();
-  const up = connector.session?.connected ?? false;
-  return <Status look={up ? "ok" : "off"}>{t(up ? "connectors.connected" : "connectors.offline")}</Status>;
+  const state = connectorState(connector);
+  return <Status look={state === "connected" ? "ok" : "off"}>{t(`connectors.${state}`)}</Status>;
 }
 
 // Connectors lists the org's connectors in service (docs/09-web-ui.md, "Information
@@ -55,7 +67,7 @@ export function Connectors() {
   const q = search.q?.toLowerCase() ?? "";
   const rows = (list.data ?? [])
     .filter((c) => !q || c.name.includes(q) || Object.entries(c.labels).some(([k, v]) => `${k}=${v}`.includes(q)))
-    .filter((c) => !search.session || (c.session?.connected ?? false) === (search.session === "connected"))
+    .filter((c) => !search.session || connectorState(c) === search.session)
     .sort((a, b) => a.name.localeCompare(b.name));
   return (
     <section aria-labelledby="connectors-title" className="grid gap-6">
@@ -78,8 +90,7 @@ export function Connectors() {
           <Select className="min-w-36 text-foreground" value={search.session ?? ""}
             onChange={(e) => set({ session: (e.target.value || undefined) as ConnectorsSearch["session"] })}>
             <option value="">{t("routes.all")}</option>
-            <option value="connected">{t("connectors.connected")}</option>
-            <option value="offline">{t("connectors.offline")}</option>
+            {states.map((st) => <option key={st} value={st}>{t(`connectors.${st}`)}</option>)}
           </Select>
         </label>
       </div>
@@ -102,8 +113,8 @@ export function Connectors() {
                 <TD>
                   <span className="flex flex-wrap items-center gap-2">
                     <Link to="/connectors/$connectorId" params={{ connectorId: c.id }} className="font-medium hover:underline">{c.name}</Link>
-                    {!c.enabled && <Badge>{t("route.disabled")}</Badge>}
                     {c.ephemeral && <Badge>{t("connectors.ephemeral")}</Badge>}
+                    {c.builtIn && <Badge title={t("connectors.builtInHint")}>{t("connectors.builtIn")}</Badge>}
                   </span>
                 </TD>
                 <TD><SessionChip connector={c} /></TD>

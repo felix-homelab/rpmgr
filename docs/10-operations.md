@@ -1,7 +1,7 @@
 # 10 — Operations
 
 > Status: Phase 1, being implemented. Tags: [F] fact · [R] recommendation · [T] target · [V] verify
-> at implementation ([README](../README.md#how-to-read-these-documents)). Timeouts, sizes and limits
+> at implementation ([README](README.md#how-to-read-these-documents)). Timeouts, sizes and limits
 > are defined in [03-connections.md](03-connections.md); identities, lifetimes and cryptographic
 > parameters in [04-security.md](04-security.md). This document links to them instead of restating
 > them.
@@ -35,7 +35,9 @@ A Helm chart is Phase 3 ([13](13-roadmap.md#phase-3--advanced)).
 Architectures per role are in [05](05-features.md#platform-support).
 
 **One instance per role per host.** Paths, unit names and the admin port are fixed per role, so a
-host runs at most one controller (or all-in-one), one gateway and one connector.
+host runs at most one controller (or all-in-one), one gateway and one connector. An all-in-one runs
+a connector of its own, so a separate connector on its host is rarely needed; both would read
+`/etc/rpmgr/policy.yaml` unless the all-in-one's `policy_file` names another file.
 
 A first installation sets the host up with `rpmgr setup` ([16](16-cli.md)), as root, once the
 global install script has installed the binary, the user and the directories:
@@ -82,16 +84,21 @@ install -d -m 0750 -o rpmgr -g rpmgr /var/lib/rpmgr
   all-in-one it reads the boot file, and loads the KEK credential when the KEK is one.
 - **State directory:** `init` runs as root. It gives what it creates in the state directory to the
   directory's owner, the user `rpmgr` the installer gave it to, also when it fails: the database
-  and the files beside it, and on an all-in-one the gateway's identity. So the service, which runs
-  as `rpmgr`, starts without a `chown`.
+  and the files beside it, and on an all-in-one the gateway's and the connector's identities. So
+  the service, which runs as `rpmgr`, starts without a `chown`.
 
 `init` writes the boot file if it does not exist (from `--public-url` and, for a KEK file,
 `--kek-source file --kek-path`), creates the KEK, the database and its migrations, and in one
 transaction the trust domain, the database epoch, the CA with its signing keys, and the audit
 entry. It never overwrites a boot file or a KEK: an existing one is read and used, so `init` can run
 again after a failure, and it refuses a database that is already initialised or in use by a running
-controller. When the gateway's part of `all-in-one init` fails, it removes the database and what it
-created beside it, so the same `init` can run again once the cause is fixed. A new systemd credential is encrypted with `systemd-creds encrypt` into
+controller. When the agents' part of `all-in-one init` fails, the gateway's or the connector's, it
+removes the database and what it created beside it, so the same `init` can run again once the
+cause is fixed. `rpmgr all-in-one` enrolls its connector at start when its identity is missing,
+as on an all-in-one initialised before
+[ADR-0019](adr/0019-all-in-one-runs-a-connector.md). So a connector identity that cannot be used
+any more, revoked or unreadable, is replaced by deleting `<state_dir>/connector/identity` and
+restarting the service; the connector keeps its ID and routes. A new systemd credential is encrypted with `systemd-creds encrypt` into
 `/etc/rpmgr/credstore/<name>`; an existing one is readable only where systemd loads it, so `init`
 then has to run under `systemd-run --pipe --wait --property=LoadCredentialEncrypted=…`.
 
@@ -164,6 +171,10 @@ RestartSec=2s
   on change ([04](04-security.md#connector-local-policy)). Phase 3 features that need privileges (virtual networks with a kernel TUN device,
   shell) are documented with the exact additional unit settings when they ship; the userspace
   netstack variant needs none.
+- **All-in-one**: the controller's settings with `CAP_NET_BIND_SERVICE`, and the connector's
+  `ExecReload`: its own connector reads `policy.yaml`, and `rpmgr policy …` reloads
+  `rpmgr-all-in-one.service` on a host with an all-in-one boot file and no connector's
+  ([ADR-0019](adr/0019-all-in-one-runs-a-connector.md)).
 - **Updater** (every role): a root-owned pair `rpmgr-update.path` (watches `/var/lib/rpmgr/update/`)
   and oneshot `rpmgr-update.service` ([04](04-security.md#over-the-air-updates)). It:
   1. reads `auto_update` from `/etc/rpmgr/policy.yaml` **itself** and stops if updates are not
@@ -189,7 +200,11 @@ RestartSec=2s
   7. polls the agent's admin `/readyz` (ready only with an established control session and an
      applied snapshot, see [Health](#health)) for up to 5 min, otherwise rolls back to `.prev`. The
      automatic rollback is exempt from the floor, because floor and `seq` are only raised after a
-     successful health check.
+     successful health check. A connector's local policy is not rolled back with the binary: a
+     `deny_targets` list, a target string, an entry without ports or a subnet with host bits set
+     ([D84](14-open-decisions.md#engineering)), written while the new binary ran, makes a binary
+     from before D84 read the file as invalid and dial nothing until the file is changed back or
+     the binary updated again ([04](04-security.md#connector-local-policy)).
 
   The role service's `NoNewPrivileges=yes` and `ProtectSystem=strict` stay intact; the service user
   can never write the binary or the updater state.
@@ -233,13 +248,13 @@ In Phase 1, CI only builds these targets; end-to-end tests on Windows and macOS 
 | Gateway | 443 | TCP | Public HTTPS (terminated), TLS-passthrough routes, data-session fallback (`rpmgr-tunnel-h2/1`, SNI `<gateway-id>.gateway.<td>`), WSS transport on the **gateway's own** WSS hostname at `/.rpmgr/tunnel` (Phase 2), controller passthrough ([03](03-connections.md#port-443-multiplexing)). Connectors dial each gateway at its own `tunnel_endpoints`; group-level DNS or anycast names are for public traffic only | Public |
 | Gateway | 443 | UDP | QUIC data sessions (`rpmgr-tunnel/1`); HTTP/3 in Phase 3. Optionally, tunnels move to a separate UDP port (`listen.tunnel_udp`) when their QUIC tuning must differ from public HTTP/3 ([03](03-connections.md#port-443-multiplexing)) | Public |
 | Gateway | 80 | TCP | ACME HTTP-01 challenges; per `http` route a redirect to HTTPS (default), plain HTTP, or nothing (`port80`, [06](06-data-model.md#routing)) | Public |
-| Gateway | port pools (e.g. 20000–20999) | TCP and/or UDP | `tcp`/`udp` routes; ranges are gateway-group settings, allocated per [04](04-security.md#route-and-hostname-ownership) | Public, only the configured ranges |
+| Gateway | port pools (e.g. 20000–20999) | TCP and/or UDP | `tcp`, `udp` and `tcp_udp` routes (a `tcp_udp` route holds its port number in both); ranges are gateway-group settings, allocated per [04](04-security.md#route-and-hostname-ownership) | Public, only the configured ranges |
 | Controller | 443 | TCP | UI, public API, enrollment, agent control sessions (SNI `controller.<td>`), `Reauth` for expired agent certificates (SNI `reauth.controller.<td>`), `/install.sh`, `/dl/` mirror | Reachable by browsers and agents (directly or through a gateway's controller passthrough, [03](03-connections.md#reaching-a-private-controller)) |
 | Controller | 80 | TCP | Optional: ACME HTTP-01 and redirect, if the controller obtains its own UI certificate | Public, optional |
 | Every role | 127.0.0.1:7381 (controller, all-in-one), 127.0.0.1:7382 (gateway), 127.0.0.1:7383 (connector) | TCP | Admin listener: `/metrics`, `/healthz`, `/readyz`, pprof (off unless enabled). One port per role, so roles on the same host never collide, and none is 9090, Prometheus's own port. If the default is taken, the installer picks the next free port and writes it to the boot file. The ports are registered in Prometheus's port registry once public code exists | Localhost by default; may be bound to a private interface for scrapers and load-balancer checks, **never** public: a boot file that binds it to all interfaces, a public address or a host name is refused |
 | Connector | — | — | No inbound ports. Outbound: 443/TCP+UDP to gateways, 443/TCP to the controller | — |
 | Connector | per `allow_listen` | TCP/UDP | Visitor listeners for private services | Local or LAN, as the policy allows |
-| All-in-one | 80, 443/TCP, 443/UDP, port pools, admin | | Gateway ports; the controller is reached through the gateway's SNI router in-process | Public (except admin) |
+| All-in-one | 80, 443/TCP, 443/UDP, port pools, admin | | Gateway ports; the controller is reached through the gateway's SNI router in-process; its connector opens no port and never dials the ports rpmgr listens on: admin, 80, 443, tunnel UDP and every route port the gateway has bound ([04](04-security.md#connector-local-policy)) | Public (except admin) |
 
 **Controller outbound connections.** The controller dials out only for these, all through
 `HTTPS_PROXY`/`ALL_PROXY` when set:
@@ -338,12 +353,14 @@ listen:
   tcp: ":443"                 # the gateway's; the controller is reached through it
   udp: ":443"
   tunnel_udp: ""
-  http: ":80"                 # the gateway's: http routes, and the controller's redirect for the rest
-  admin: "127.0.0.1:7381"     # reports the controller and the gateway
+  http: ":80"                 # the gateway's: http routes; the controller's redirect for its name
+  admin: "127.0.0.1:7381"     # reports the controller, the gateway and the connector
 database: { driver: sqlite, dsn: /var/lib/rpmgr/controller.db }
 kek: { source: systemd-credential, name: rpmgr-kek }
 tls: { cert_file: /etc/rpmgr/tls/panel.crt, key_file: /etc/rpmgr/tls/panel.key }   # optional
-state_dir: /var/lib/rpmgr     # the gateway's identity in gateway/identity, its state in gateway/
+state_dir: /var/lib/rpmgr     # the gateway's identity in gateway/identity, its state in gateway/;
+                              # the connector's in connector/identity and connector/
+policy_file: /etc/rpmgr/policy.yaml   # the connector's local policy (04)
 log: { level: info, format: json }
 ```
 
@@ -380,7 +397,7 @@ the boot file.
 | Org (Owner) | MFA requirement, OIDC providers and group→role mapping, default gateway group, Operator may enroll connectors, branding ([04](04-security.md#roles)) |
 | Gateway group (Admin) | Port pools, trusted-proxy CIDRs, DNS target for managed records, default TLS options, per-route limit defaults |
 | DNS (Owner/Admin; Instance Admin for the system org) | DNS providers and their tokens, managed zones and their gates. These are resources with their own pages, not settings ([15](15-dns.md)) |
-| Install command generator | Install prefix, gateway group, labels, ephemeral flag, `--allow-target` entries — the install location lives here, because it is a property of the install command, not of a running agent. There is no service-name suffix: one instance per role per host ([Supported platforms](#supported-platforms)) |
+| Install command generator | Install prefix, gateway group, labels, ephemeral flag, `--allow-target` and `--deny-target` entries — the install location lives here, because it is a property of the install command, not of a running agent. There is no service-name suffix: one instance per role per host ([Supported platforms](#supported-platforms)) |
 
 Secret fields are write-only ([04](04-security.md#secrets-at-rest-and-in-logs)). Settings that
 affect agents take effect through reconciliation and show apply status like any other change
@@ -400,6 +417,11 @@ affect agents take effect through reconciliation and show apply status like any 
   ([03](03-connections.md#versioning-and-capabilities)), so skew beyond N−1 is visible, not silent.
 - A protocol change that would break N−1 ships behind a capability flag first; the old behaviour is
   removed one minor release later.
+- Before the first release, one change of meaning shipped without a capability: access policies'
+  deny rules win ([D85](14-open-decisions.md#engineering)). A gateway of a release candidate
+  (v0.1.0-rc.1 to rc.6) applies the first matching rule to the same snapshot, so a deny placed
+  after an allow is ignored there until that gateway is upgraded; upgrade gateways with the
+  controller.
 
 **Upgrade order**: controller(s) → gateways → connectors.
 
@@ -576,7 +598,12 @@ affect agents take effect through reconciliation and show apply status like any 
 ### Metrics
 
 Prometheus exposition on the admin listener of every role. Labels use stable IDs (`route` = route
-ID); there are never per-connection or per-client-IP labels.
+ID); there are never per-connection or per-client-IP labels. An all-in-one serves the metrics of
+all three roles on its one listener, and adds a `role` label (`gateway` or `connector`) to every
+series its gateway and its connector register: every metric of the table whose role is gateway,
+connector or agent, the Go runtime and process collectors excepted, which it registers once. The
+controller's series have no `role` label. The connector's in-memory data session to its own
+gateway counts as `transport="h2"` ([03](03-connections.md#transport-selection)).
 
 | Metric | Type | Role | Phase | Meaning |
 |---|---|---|---|---|
@@ -668,8 +695,9 @@ followed gateway → connector → service. [R] Head sampling at 1 % by default,
 - [ ] External audit sink configured (Phase 2); revocation-log sink configured (required for more
       than one controller replica).
 - [ ] Every connector's `policy.yaml` reviewed: `allow_targets` as narrow as possible (the default
-      is `[]`, nothing; loopback is not allowed unless listed); shell, functions, egress proxy and
-      virtual-network routes off unless needed.
+      is `[]`, nothing; loopback is not allowed unless listed; a subnet without ports allows all of
+      them), `deny_targets` for what a broad entry must not reach; shell, functions, egress proxy
+      and virtual-network routes off unless needed.
 - [ ] `auto_update` chosen deliberately per host; staged rollout policy set.
 - [ ] Gateway groups expose only the port pools they need; trusted-proxy CIDRs set if gateways sit
       behind another proxy.
@@ -820,6 +848,40 @@ Each runbook: **symptoms → steps → done when**.
   certificate expired while offline, it re-authenticates within the grace period automatically;
   otherwise re-enroll.
 - **Done when**: clock offset < 30 s and the agent renews.
+
+### A route certificate is not obtained
+
+- **Symptoms**: under Security → Domains & certificates, the hostname's certificate is `failed`
+  with the CA's error; HTTPS to the hostname fails.
+- **Steps**: the name's A and AAAA records must point at the gateway group's public addresses, and
+  80/tcp or 443/tcp must be reachable from the internet. A name of a private address, such as a
+  `nip.io` name of `172.18.0.5`, can never be validated: give its route an uploaded certificate
+  instead. Meanwhile the job retries with growing waits and rehearses each retry at the CA's test
+  directory, so the failures cost the account nothing at the CA
+  ([04](04-security.md#controller-certificates)); the waits are in
+  [03](03-connections.md#timeouts-keepalive-and-backoff). Once DNS is fixed, "Renew now" tries at
+  once (`rpmgr renew certificate <id>`).
+- **Done when**: the certificate is `active`.
+
+### Many hostnames under one domain
+
+- **When**: many routes under one domain, or a CA limit on new certificates per domain is near
+  (Let's Encrypt: 50 in 7 days for a registered domain [F le:docs/rate-limits]). Every hostname
+  of a route in `acme` mode has a certificate of its own, so each new hostname orders one; ACME
+  wildcard certificates need DNS-01, which comes with DNS automation in Phase 2
+  ([15](15-dns.md#acme-dns-01)).
+- **Steps**:
+  1. Obtain one certificate for `example.com` and `*.example.com` outside rpmgr, for example with
+     certbot and the DNS plugin of the domain's DNS host.
+  2. Upload it: Security → Domains & certificates → "Upload a certificate", or
+     `rpmgr upload certificate --chain fullchain.pem --key privkey.pem`.
+  3. Give each route under the domain that certificate: in the route's form, "TLS certificate",
+     or `rpmgr update route --tls-mode certificate --certificate <id> <route>`. These routes ask
+     the CA nothing.
+  4. Before the certificate expires, upload the renewed one, move the routes to it as in step 3,
+     and delete the old one; rpmgr does not renew an uploaded certificate.
+- **Done when**: the routes serve the uploaded certificate, and new hostnames under the domain
+  order nothing.
 
 ### UDP blocked or degraded
 

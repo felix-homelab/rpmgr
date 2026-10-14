@@ -8,6 +8,7 @@ import {
 } from "@/gen/rpmgr/v1/domain_pb";
 import { Theme, UserService } from "@/gen/rpmgr/v1/user_pb";
 import { apiError, auth, show } from "@/testing/api";
+import { marked, unmatched } from "@/testing/required";
 
 afterEach(cleanup);
 
@@ -78,6 +79,7 @@ describe("Domains", () => {
     const calls = page();
     fireEvent.click(await screen.findByRole("button", { name: "Claim a domain" }));
     const form = within(await screen.findByRole("form", { name: "Claim a domain" }));
+    expect([marked(screen.getByRole("form", { name: "Claim a domain" })), unmatched(screen.getByRole("form", { name: "Claim a domain" }))]).toEqual([["Domain"], []]);
     fireEvent.change(form.getByLabelText("Domain"), { target: { value: " Example.NET. " } });
     fireEvent.click(form.getByLabelText("Also every name below it"));
     fireEvent.click(form.getByLabelText("An HTTP token, served by your gateways"));

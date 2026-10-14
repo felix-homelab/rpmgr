@@ -459,7 +459,8 @@ func TestCompile_GatewayHTTP(t *testing.T) {
 		c.GatewayGroup.UpdateOneID(f.groupA).SetTrustedProxyCidrs([]string{"10.0.0.0/8"}).ExecX(f.sys)
 		web := f.httpRoute(t, "web", true, true, func(h *ent.RouteHTTPCreate) {
 			h.SetWebsocket(false).SetHostHeader("internal.local").SetMaxBodyBytes(1 << 20).SetPort80(routehttp.Port80Off).SetHstsMaxAgeSeconds(600).
-				SetRequestHeadersSet(map[string]string{"x-env": "prod", "X-Debug": ""}).SetResponseHeadersSet(map[string]string{"server": ""})
+				SetRequestHeadersSet(map[string]string{"x-env": "prod", "X-Debug": ""}).SetResponseHeadersSet(map[string]string{"server": ""}).
+				SetMaintenance(true).SetMaintenanceMessage("Back at 18:00.")
 		}, "www.example.com/docs", "app.example.com", "www.example.com")
 		target(web, f.c1, routetarget.UpstreamProtocolH2c, 0)
 		target(web, f.c2, routetarget.UpstreamProtocolH2c, 1)
@@ -497,11 +498,13 @@ func TestCompile_GatewayHTTP(t *testing.T) {
 			res = append(res, h.GetName()+"="+h.GetValue())
 		}
 		if w.GetHostHeader() != "internal.local" || w.GetMaxBodyBytes() != 1<<20 || w.GetPort80() != "off" || w.GetHstsMaxAgeSeconds() != 600 || !slices.Equal(req, []string{"X-Debug=", "X-Env=prod"}) ||
-			!slices.Equal(res, []string{"Server="}) || !slices.Equal(w.GetTrustedProxies(), []string{"10.0.0.0/8"}) {
+			!slices.Equal(res, []string{"Server="}) || !slices.Equal(w.GetTrustedProxies(), []string{"10.0.0.0/8"}) ||
+			!w.GetMaintenance() || w.GetMaintenanceMessage() != "Back at 18:00." {
 			t.Fatalf("web's HTTP settings %v", w)
 		}
 		if p := got[plain]; p.GetUpstreamProtocol() != "http" || !p.GetWebsocket() || !slices.Equal(p.GetConnectors(), []string{f.c1}) ||
-			p.GetHostHeader() != "" || p.GetMaxBodyBytes() != 0 || p.GetPort80() != "redirect" || p.GetHstsMaxAgeSeconds() != 0 {
+			p.GetHostHeader() != "" || p.GetMaxBodyBytes() != 0 || p.GetPort80() != "redirect" || p.GetHstsMaxAgeSeconds() != 0 ||
+			p.GetMaintenance() || p.GetMaintenanceMessage() != "" {
 			t.Fatalf("plain %v", p)
 		}
 		var types []string
@@ -518,6 +521,9 @@ func TestCompile_GatewayHTTP(t *testing.T) {
 
 // TestCompile_HTTPSUpstream: an https route's gateway resource names each enabled target's server
 // name (its host by default), CA bundle and SPKI pin; a malformed pin becomes one no key matches.
+// An unverified target gets its server name and its mode, and neither a CA bundle nor a pin; a
+// pinned-key one its pin and no CA bundle, or without a pin one no key matches. Each names its
+// connector, whose streams alone its settings apply to.
 func TestCompile_HTTPSUpstream(t *testing.T) {
 	storetest.ForEachDialect(t, func(t *testing.T, db *store.DB) {
 		f := newFleet(t, db)
@@ -538,6 +544,15 @@ func TestCompile_HTTPSUpstream(t *testing.T) {
 		byHost := mk("app2.internal", "", "", true, false)
 		badPin := mk("10.0.0.3", "", "not hex", true, false)
 		mk("10.0.0.4", "", "", false, false)
+		unverified := c.RouteTarget.Create().SetOrgID(f.orgA).SetRouteID(id).SetConnectorID(f.c1).SetKind("address").SetHost("nas.local").
+			SetPort(443).SetUpstreamProtocol(routetarget.UpstreamProtocolHTTPS).SetTLSVerification(routetarget.TLSVerificationUnverified).
+			SetTLSSpkiSha256(pin).SetCaBundleID(bundle.ID).SaveX(f.sys).ID // a pin and a bundle the API refuses are left out
+		pinnedKey := c.RouteTarget.Create().SetOrgID(f.orgA).SetRouteID(id).SetConnectorID(f.c1).SetKind("address").SetHost("pve.local").
+			SetPort(8006).SetUpstreamProtocol(routetarget.UpstreamProtocolHTTPS).SetTLSVerification(routetarget.TLSVerificationPinnedKey).
+			SetTLSSpkiSha256(pin).SetCaBundleID(bundle.ID).SaveX(f.sys).ID
+		noPin := c.RouteTarget.Create().SetOrgID(f.orgA).SetRouteID(id).SetConnectorID(f.c1).SetKind("address").SetHost("nas2.local").
+			SetPort(443).SetUpstreamProtocol(routetarget.UpstreamProtocolHTTPS).SetTLSVerification(routetarget.TLSVerificationPinnedKey).
+			SaveX(f.sys).ID
 		var got *agentv1.GatewayHTTPRoute
 		for _, r := range f.compile(t, pki.KindGateway, f.gateway) {
 			if r.GetId() == id {
@@ -545,9 +560,16 @@ func TestCompile_HTTPSUpstream(t *testing.T) {
 			}
 		}
 		want := map[string]*agentv1.UpstreamTLS{
-			named:  {TargetId: named, ServerName: "app.internal", CaPem: []byte("PEM"), SpkiSha256: bytes.Repeat([]byte{0xab}, 32)},
-			byHost: {TargetId: byHost, ServerName: "app2.internal"},
-			badPin: {TargetId: badPin, ServerName: "10.0.0.3", SpkiSha256: make([]byte, 32)},
+			named: {TargetId: named, ServerName: "app.internal", CaPem: []byte("PEM"), SpkiSha256: bytes.Repeat([]byte{0xab}, 32),
+				ConnectorId: f.c1},
+			byHost: {TargetId: byHost, ServerName: "app2.internal", ConnectorId: f.c1},
+			badPin: {TargetId: badPin, ServerName: "10.0.0.3", SpkiSha256: make([]byte, 32), ConnectorId: f.c1},
+			unverified: {TargetId: unverified, ServerName: "nas.local", ConnectorId: f.c1,
+				Verification: agentv1.UpstreamVerification_UPSTREAM_VERIFICATION_UNVERIFIED},
+			pinnedKey: {TargetId: pinnedKey, ServerName: "pve.local", ConnectorId: f.c1, SpkiSha256: bytes.Repeat([]byte{0xab}, 32),
+				Verification: agentv1.UpstreamVerification_UPSTREAM_VERIFICATION_PINNED_KEY},
+			noPin: {TargetId: noPin, ServerName: "nas2.local", ConnectorId: f.c1, SpkiSha256: make([]byte, 32),
+				Verification: agentv1.UpstreamVerification_UPSTREAM_VERIFICATION_PINNED_KEY},
 		}
 		if got.GetUpstreamProtocol() != "https" || len(got.GetUpstreamTls()) != len(want) {
 			t.Fatalf("route %v", got)
@@ -687,6 +709,129 @@ func TestCompile_Passthrough(t *testing.T) {
 		for _, r := range f.compile(t, pki.KindConnector, f.c1) {
 			if r.GetId() == db1 && r.GetConnectorRoute().GetType() != "tls_passthrough" {
 				t.Fatalf("connector resource %v", r)
+			}
+		}
+	})
+}
+
+// TestCompile_UnservedPorts (D78): a gateway does not listen on the port of a tcp or udp route that
+// no connector serves: one whose only target is on a decommissioned or a disabled connector, or is
+// disabled; a target that serves it again brings the port back.
+func TestCompile_UnservedPorts(t *testing.T) {
+	storetest.ForEachDialect(t, func(t *testing.T, db *store.DB) {
+		f := newFleet(t, db)
+		c := db.Client()
+		if err := f.pool(t, f.orgA, f.groupA, routes.UDP, 30000, 30099); err != nil {
+			t.Fatal(err)
+		}
+		gone := c.Connector.Create().SetOrgID(f.orgA).SetName("gone").SetSpiffeID("spiffe://x/gone").SetPubkeySha256("gone").
+			SetEnabled(false).SetDecommissionedAt(time.Now()).SaveX(f.sys).ID
+		portRoute := func(name string, p routes.Protocol, port int, con string, enabled bool) string {
+			r := c.Route.Create().SetOrgID(f.orgA).SetName(name).SetType(route.Type(p)).SetGatewayGroupID(f.groupA).SaveX(f.sys)
+			if err := f.tx(t, func(tx *ent.Tx) error {
+				a, err := routes.Allocate(f.sys, tx, f.orgA, f.groupA, p, port)
+				if err != nil {
+					return err
+				}
+				if p == routes.TCP {
+					return tx.RouteTCP.Create().SetOrgID(f.orgA).SetRouteID(r.ID).SetPortAllocationID(a.ID).Exec(f.sys)
+				}
+				return tx.RouteUDP.Create().SetOrgID(f.orgA).SetRouteID(r.ID).SetPortAllocationID(a.ID).Exec(f.sys)
+			}); err != nil {
+				t.Fatal(err)
+			}
+			c.RouteTarget.Create().SetOrgID(f.orgA).SetRouteID(r.ID).SetConnectorID(con).SetKind("address").SetHost("10.0.0.5").
+				SetPort(5432).SetEnabled(enabled).ExecX(f.sys)
+			return r.ID
+		}
+		orphan := portRoute("orphan", routes.TCP, 20010, gone, true)
+		idle := portRoute("idle", routes.TCP, 20011, f.c1, false)
+		dns := portRoute("dns", routes.UDP, 30000, f.c2, true)
+		ntp := portRoute("ntp", routes.UDP, 30001, gone, true)
+		held := portRoute("held", routes.TCP, 20012, f.c3, true) // c3 is disabled, not decommissioned
+		listened := func() []string {
+			var ids []string
+			for _, r := range f.compile(t, pki.KindGateway, f.gateway) {
+				if r.GetGatewayTcpRoute() != nil || r.GetGatewayUdpRoute() != nil {
+					ids = append(ids, r.GetId())
+				}
+			}
+			slices.Sort(ids)
+			return ids
+		}
+		want := []string{f.r1, dns}
+		slices.Sort(want)
+		if got := listened(); !slices.Equal(got, want) {
+			t.Fatalf("listened on %v, want only the served %v; not %s, %s, %s, %s", got, want, orphan, idle, ntp, held)
+		}
+		c.RouteTarget.Update().Where(routetarget.RouteID(idle)).SetEnabled(true).ExecX(f.sys)
+		if got := listened(); !slices.Contains(got, idle) {
+			t.Fatalf("a route served again: %v", got)
+		}
+	})
+}
+
+// TestCompile_TCPUDP: a gateway gets an enabled tcp_udp route of its group as one resource, with
+// its one port, both timeouts and the connectors that serve it, and only while one does (D78); a
+// connector gets it as a route of type tcp_udp; a disabled one and one without its UDP part are
+// left out.
+func TestCompile_TCPUDP(t *testing.T) {
+	storetest.ForEachDialect(t, func(t *testing.T, db *store.DB) {
+		f := newFleet(t, db)
+		c := db.Client()
+		if err := f.pool(t, f.orgA, f.groupA, routes.UDP, 20000, 20099); err != nil {
+			t.Fatal(err)
+		}
+		bothRoute := func(name string, port int, enabled, withUDP bool) string {
+			r := c.Route.Create().SetOrgID(f.orgA).SetName(name).SetType(route.TypeTCPUDP).SetGatewayGroupID(f.groupA).SetEnabled(enabled).
+				SaveX(f.sys)
+			if err := f.tx(t, func(tx *ent.Tx) error {
+				tcp, udp, err := routes.AllocateBoth(f.sys, tx, f.orgA, f.groupA, port, "", "")
+				if err != nil {
+					return err
+				}
+				if err := tx.RouteTCP.Create().SetOrgID(f.orgA).SetRouteID(r.ID).SetPortAllocationID(tcp.ID).SetIdleTimeoutSeconds(600).
+					Exec(f.sys); err != nil || !withUDP {
+					return err
+				}
+				return tx.RouteUDP.Create().SetOrgID(f.orgA).SetRouteID(r.ID).SetPortAllocationID(udp.ID).SetFlowIdleTimeoutSeconds(30).
+					Exec(f.sys)
+			}); err != nil {
+				t.Fatal(err)
+			}
+			c.RouteTarget.Create().SetOrgID(f.orgA).SetRouteID(r.ID).SetConnectorID(f.c2).SetKind("address").SetHost("10.0.0.53").
+				SetPort(53).ExecX(f.sys)
+			return r.ID
+		}
+		dns := bothRoute("dns", 20053, true, true)
+		bothRoute("dns-off", 20054, false, true)
+		bothRoute("dns-half", 20055, true, false)
+		var got []*agentv1.GatewayTCPUDPRoute
+		for _, r := range f.compile(t, pki.KindGateway, f.gateway) {
+			if b := r.GetGatewayTcpUdpRoute(); b != nil {
+				if r.GetId() != dns {
+					t.Fatalf("a tcp_udp route that should be left out: %v", r)
+				}
+				got = append(got, b)
+			}
+		}
+		if len(got) != 1 || got[0].GetPort() != 20053 || got[0].GetIdleTimeoutSeconds() != 600 || got[0].GetFlowIdleTimeoutSeconds() != 30 ||
+			!slices.Equal(got[0].GetConnectors(), []string{f.c2}) {
+			t.Fatalf("the gateway's tcp_udp routes: %v", got)
+		}
+		var types []string
+		for _, r := range routesOf(f.compile(t, pki.KindConnector, f.c2)) {
+			if r.GetId() == dns {
+				types = append(types, r.GetConnectorRoute().GetType())
+			}
+		}
+		if !slices.Equal(types, []string{"tcp_udp"}) {
+			t.Fatalf("the connector's route types: %v", types)
+		}
+		c.RouteTarget.Update().Where(routetarget.RouteID(dns)).SetEnabled(false).ExecX(f.sys)
+		for _, r := range f.compile(t, pki.KindGateway, f.gateway) {
+			if r.GetGatewayTcpUdpRoute() != nil {
+				t.Fatalf("a tcp_udp route no connector serves: %v", r)
 			}
 		}
 	})

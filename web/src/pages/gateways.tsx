@@ -39,6 +39,7 @@ export function GatewayChip({ gateway: g }: { gateway: Gateway }) {
     <span className="flex flex-wrap gap-1.5">
       <Status look={look}>{t(`gateways.state.${key}`)}</Status>
       {!g.enabled && <Badge tone="warn">{t("gateways.drained")}</Badge>}
+      {g.builtIn && <Badge title={t("connectors.builtInHint")}>{t("connectors.builtIn")}</Badge>}
     </span>
   );
 }
@@ -121,7 +122,7 @@ export function GroupForm({ orgId, group, onCancel }: { orgId: string; group?: G
   }
   return (
     <form onSubmit={save} aria-label={t(group ? "gateways.settings" : "gateways.newGroup")} className="grid max-w-xl gap-4" noValidate>
-      <Field label={t("routeForm.fields.name")} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+      <Field label={t("routeForm.fields.name")} required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
       <Field label={t("gateways.columns.region")} value={form.region} onChange={(e) => setForm({ ...form, region: e.target.value })} />
       <LinesField label={t("gateways.columns.hostnames")} hint={t("gateways.hostnamesHint")} value={form.hostnames} onChange={(hostnames) => setForm({ ...form, hostnames })} />
       <LinesField label={t("gateways.cidrs")} hint={t("gateways.cidrsHint")} value={form.cidrs} onChange={(cidrs) => setForm({ ...form, cidrs })} />
@@ -159,7 +160,7 @@ export function GatewayGroupPage() {
   }
   const members = (gateways.data ?? []).filter((g) => g.gatewayGroupId === group.id).sort((a, b) => a.slot - b.slot);
   return (
-    <div className="grid max-w-5xl gap-6">
+    <div className="grid gap-6">
       <div className="grid gap-2">
         <Link to="/gateways" className="inline-flex w-fit items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
           <ChevronLeft aria-hidden="true" className="size-4" />{t("gateways.back")}

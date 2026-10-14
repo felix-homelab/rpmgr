@@ -117,7 +117,7 @@ func TestACME_Issuance(t *testing.T) {
 		c.Sessions, acme.GatewaysServing(c.DB, c.Sys))
 	t.Cleanup(storage.Close)
 	m := acme.NewManager(acme.ManagerOptions{DB: c.DB, Sys: c.Sys, Sealer: c.Sealer(), Storage: storage, TrustedRoots: pebble.ServerRoots,
-		DisableARI: true, RenewalWindowRatio: 0.9, Logger: c.Logs.Logger(),
+		DisableARI: true, RenewalWindowRatio: 0.9, Logger: c.Logs.Logger(), RetryFirst: time.Millisecond, // early attempts may fail
 		Proxy: func(*http.Request) (*url.URL, error) { proxied.Add(1); return nil, nil }})
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
@@ -260,7 +260,7 @@ func TestACME_RenewalAfterAccountChange(t *testing.T) {
 		c.Sessions, acme.GatewaysServing(c.DB, c.Sys))
 	t.Cleanup(storage.Close)
 	m := acme.NewManager(acme.ManagerOptions{DB: c.DB, Sys: c.Sys, Sealer: c.Sealer(), Storage: storage, TrustedRoots: pebble.ServerRoots,
-		Logger: c.Logs.Logger()}) // ARI on, as in production
+		Logger: c.Logs.Logger(), RetryFirst: time.Millisecond}) // ARI on, as in production; early attempts may fail
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 	waitFor(t, "the certificate of app.example.com was never obtained", func() bool {

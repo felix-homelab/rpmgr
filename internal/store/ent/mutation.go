@@ -11924,6 +11924,7 @@ type ConnectorMutation struct {
 	enabled           *bool
 	transport         *connector.Transport
 	desired_version   *string
+	built_in          *bool
 	created_at        *time.Time
 	decommissioned_at *time.Time
 	clearedFields     map[string]struct{}
@@ -12455,6 +12456,42 @@ func (m *ConnectorMutation) ResetDesiredVersion() {
 	delete(m.clearedFields, connector.FieldDesiredVersion)
 }
 
+// SetBuiltIn sets the "built_in" field.
+func (m *ConnectorMutation) SetBuiltIn(b bool) {
+	m.built_in = &b
+}
+
+// BuiltIn returns the value of the "built_in" field in the mutation.
+func (m *ConnectorMutation) BuiltIn() (r bool, exists bool) {
+	v := m.built_in
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldBuiltIn returns the old "built_in" field's value of the Connector entity.
+// If the Connector object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ConnectorMutation) OldBuiltIn(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldBuiltIn is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldBuiltIn requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldBuiltIn: %w", err)
+	}
+	return oldValue.BuiltIn, nil
+}
+
+// ResetBuiltIn resets all changes to the "built_in" field.
+func (m *ConnectorMutation) ResetBuiltIn() {
+	m.built_in = nil
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (m *ConnectorMutation) SetCreatedAt(t time.Time) {
 	m.created_at = &t
@@ -12574,7 +12611,7 @@ func (m *ConnectorMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *ConnectorMutation) Fields() []string {
-	fields := make([]string, 0, 12)
+	fields := make([]string, 0, 13)
 	if m.org_id != nil {
 		fields = append(fields, connector.FieldOrgID)
 	}
@@ -12604,6 +12641,9 @@ func (m *ConnectorMutation) Fields() []string {
 	}
 	if m.desired_version != nil {
 		fields = append(fields, connector.FieldDesiredVersion)
+	}
+	if m.built_in != nil {
+		fields = append(fields, connector.FieldBuiltIn)
 	}
 	if m.created_at != nil {
 		fields = append(fields, connector.FieldCreatedAt)
@@ -12639,6 +12679,8 @@ func (m *ConnectorMutation) Field(name string) (ent.Value, bool) {
 		return m.Transport()
 	case connector.FieldDesiredVersion:
 		return m.DesiredVersion()
+	case connector.FieldBuiltIn:
+		return m.BuiltIn()
 	case connector.FieldCreatedAt:
 		return m.CreatedAt()
 	case connector.FieldDecommissionedAt:
@@ -12672,6 +12714,8 @@ func (m *ConnectorMutation) OldField(ctx context.Context, name string) (ent.Valu
 		return m.OldTransport(ctx)
 	case connector.FieldDesiredVersion:
 		return m.OldDesiredVersion(ctx)
+	case connector.FieldBuiltIn:
+		return m.OldBuiltIn(ctx)
 	case connector.FieldCreatedAt:
 		return m.OldCreatedAt(ctx)
 	case connector.FieldDecommissionedAt:
@@ -12754,6 +12798,13 @@ func (m *ConnectorMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetDesiredVersion(v)
+		return nil
+	case connector.FieldBuiltIn:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetBuiltIn(v)
 		return nil
 	case connector.FieldCreatedAt:
 		v, ok := value.(time.Time)
@@ -12889,6 +12940,9 @@ func (m *ConnectorMutation) ResetField(name string) error {
 		return nil
 	case connector.FieldDesiredVersion:
 		m.ResetDesiredVersion()
+		return nil
+	case connector.FieldBuiltIn:
+		m.ResetBuiltIn()
 		return nil
 	case connector.FieldCreatedAt:
 		m.ResetCreatedAt()
@@ -14600,6 +14654,7 @@ type EnrollmentTokenMutation struct {
 	role             *enrollmenttoken.Role
 	labels           *map[string]string
 	ephemeral        *bool
+	built_in         *bool
 	max_uses         *int
 	addmax_uses      *int
 	use_count        *int
@@ -15064,6 +15119,42 @@ func (m *EnrollmentTokenMutation) OldEphemeral(ctx context.Context) (v bool, err
 // ResetEphemeral resets all changes to the "ephemeral" field.
 func (m *EnrollmentTokenMutation) ResetEphemeral() {
 	m.ephemeral = nil
+}
+
+// SetBuiltIn sets the "built_in" field.
+func (m *EnrollmentTokenMutation) SetBuiltIn(b bool) {
+	m.built_in = &b
+}
+
+// BuiltIn returns the value of the "built_in" field in the mutation.
+func (m *EnrollmentTokenMutation) BuiltIn() (r bool, exists bool) {
+	v := m.built_in
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldBuiltIn returns the old "built_in" field's value of the EnrollmentToken entity.
+// If the EnrollmentToken object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *EnrollmentTokenMutation) OldBuiltIn(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldBuiltIn is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldBuiltIn requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldBuiltIn: %w", err)
+	}
+	return oldValue.BuiltIn, nil
+}
+
+// ResetBuiltIn resets all changes to the "built_in" field.
+func (m *EnrollmentTokenMutation) ResetBuiltIn() {
+	m.built_in = nil
 }
 
 // SetMaxUses sets the "max_uses" field.
@@ -15575,7 +15666,7 @@ func (m *EnrollmentTokenMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *EnrollmentTokenMutation) Fields() []string {
-	fields := make([]string, 0, 16)
+	fields := make([]string, 0, 17)
 	if m.org_id != nil {
 		fields = append(fields, enrollmenttoken.FieldOrgID)
 	}
@@ -15599,6 +15690,9 @@ func (m *EnrollmentTokenMutation) Fields() []string {
 	}
 	if m.ephemeral != nil {
 		fields = append(fields, enrollmenttoken.FieldEphemeral)
+	}
+	if m.built_in != nil {
+		fields = append(fields, enrollmenttoken.FieldBuiltIn)
 	}
 	if m.max_uses != nil {
 		fields = append(fields, enrollmenttoken.FieldMaxUses)
@@ -15648,6 +15742,8 @@ func (m *EnrollmentTokenMutation) Field(name string) (ent.Value, bool) {
 		return m.Labels()
 	case enrollmenttoken.FieldEphemeral:
 		return m.Ephemeral()
+	case enrollmenttoken.FieldBuiltIn:
+		return m.BuiltIn()
 	case enrollmenttoken.FieldMaxUses:
 		return m.MaxUses()
 	case enrollmenttoken.FieldUseCount:
@@ -15689,6 +15785,8 @@ func (m *EnrollmentTokenMutation) OldField(ctx context.Context, name string) (en
 		return m.OldLabels(ctx)
 	case enrollmenttoken.FieldEphemeral:
 		return m.OldEphemeral(ctx)
+	case enrollmenttoken.FieldBuiltIn:
+		return m.OldBuiltIn(ctx)
 	case enrollmenttoken.FieldMaxUses:
 		return m.OldMaxUses(ctx)
 	case enrollmenttoken.FieldUseCount:
@@ -15769,6 +15867,13 @@ func (m *EnrollmentTokenMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetEphemeral(v)
+		return nil
+	case enrollmenttoken.FieldBuiltIn:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetBuiltIn(v)
 		return nil
 	case enrollmenttoken.FieldMaxUses:
 		v, ok := value.(int)
@@ -15977,6 +16082,9 @@ func (m *EnrollmentTokenMutation) ResetField(name string) error {
 	case enrollmenttoken.FieldEphemeral:
 		m.ResetEphemeral()
 		return nil
+	case enrollmenttoken.FieldBuiltIn:
+		m.ResetBuiltIn()
+		return nil
 	case enrollmenttoken.FieldMaxUses:
 		m.ResetMaxUses()
 		return nil
@@ -16133,6 +16241,7 @@ type GatewayMutation struct {
 	pubkey_sha256          *string
 	enabled                *bool
 	desired_version        *string
+	built_in               *bool
 	created_at             *time.Time
 	decommissioned_at      *time.Time
 	clearedFields          map[string]struct{}
@@ -16701,6 +16810,42 @@ func (m *GatewayMutation) ResetDesiredVersion() {
 	delete(m.clearedFields, gateway.FieldDesiredVersion)
 }
 
+// SetBuiltIn sets the "built_in" field.
+func (m *GatewayMutation) SetBuiltIn(b bool) {
+	m.built_in = &b
+}
+
+// BuiltIn returns the value of the "built_in" field in the mutation.
+func (m *GatewayMutation) BuiltIn() (r bool, exists bool) {
+	v := m.built_in
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldBuiltIn returns the old "built_in" field's value of the Gateway entity.
+// If the Gateway object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GatewayMutation) OldBuiltIn(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldBuiltIn is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldBuiltIn requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldBuiltIn: %w", err)
+	}
+	return oldValue.BuiltIn, nil
+}
+
+// ResetBuiltIn resets all changes to the "built_in" field.
+func (m *GatewayMutation) ResetBuiltIn() {
+	m.built_in = nil
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (m *GatewayMutation) SetCreatedAt(t time.Time) {
 	m.created_at = &t
@@ -16860,7 +17005,7 @@ func (m *GatewayMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *GatewayMutation) Fields() []string {
-	fields := make([]string, 0, 12)
+	fields := make([]string, 0, 13)
 	if m.org_id != nil {
 		fields = append(fields, gateway.FieldOrgID)
 	}
@@ -16890,6 +17035,9 @@ func (m *GatewayMutation) Fields() []string {
 	}
 	if m.desired_version != nil {
 		fields = append(fields, gateway.FieldDesiredVersion)
+	}
+	if m.built_in != nil {
+		fields = append(fields, gateway.FieldBuiltIn)
 	}
 	if m.created_at != nil {
 		fields = append(fields, gateway.FieldCreatedAt)
@@ -16925,6 +17073,8 @@ func (m *GatewayMutation) Field(name string) (ent.Value, bool) {
 		return m.Enabled()
 	case gateway.FieldDesiredVersion:
 		return m.DesiredVersion()
+	case gateway.FieldBuiltIn:
+		return m.BuiltIn()
 	case gateway.FieldCreatedAt:
 		return m.CreatedAt()
 	case gateway.FieldDecommissionedAt:
@@ -16958,6 +17108,8 @@ func (m *GatewayMutation) OldField(ctx context.Context, name string) (ent.Value,
 		return m.OldEnabled(ctx)
 	case gateway.FieldDesiredVersion:
 		return m.OldDesiredVersion(ctx)
+	case gateway.FieldBuiltIn:
+		return m.OldBuiltIn(ctx)
 	case gateway.FieldCreatedAt:
 		return m.OldCreatedAt(ctx)
 	case gateway.FieldDecommissionedAt:
@@ -17040,6 +17192,13 @@ func (m *GatewayMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetDesiredVersion(v)
+		return nil
+	case gateway.FieldBuiltIn:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetBuiltIn(v)
 		return nil
 	case gateway.FieldCreatedAt:
 		v, ok := value.(time.Time)
@@ -17187,6 +17346,9 @@ func (m *GatewayMutation) ResetField(name string) error {
 		return nil
 	case gateway.FieldDesiredVersion:
 		m.ResetDesiredVersion()
+		return nil
+	case gateway.FieldBuiltIn:
+		m.ResetBuiltIn()
 		return nil
 	case gateway.FieldCreatedAt:
 		m.ResetCreatedAt()
@@ -30381,6 +30543,8 @@ type RouteHTTPMutation struct {
 	max_body_bytes          *int64
 	addmax_body_bytes       *int64
 	dns_proxied             *bool
+	maintenance             *bool
+	maintenance_message     *string
 	clearedFields           map[string]struct{}
 	route                   *string
 	clearedroute            bool
@@ -31085,6 +31249,78 @@ func (m *RouteHTTPMutation) ResetDNSProxied() {
 	m.dns_proxied = nil
 }
 
+// SetMaintenance sets the "maintenance" field.
+func (m *RouteHTTPMutation) SetMaintenance(b bool) {
+	m.maintenance = &b
+}
+
+// Maintenance returns the value of the "maintenance" field in the mutation.
+func (m *RouteHTTPMutation) Maintenance() (r bool, exists bool) {
+	v := m.maintenance
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldMaintenance returns the old "maintenance" field's value of the RouteHTTP entity.
+// If the RouteHTTP object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RouteHTTPMutation) OldMaintenance(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldMaintenance is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldMaintenance requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldMaintenance: %w", err)
+	}
+	return oldValue.Maintenance, nil
+}
+
+// ResetMaintenance resets all changes to the "maintenance" field.
+func (m *RouteHTTPMutation) ResetMaintenance() {
+	m.maintenance = nil
+}
+
+// SetMaintenanceMessage sets the "maintenance_message" field.
+func (m *RouteHTTPMutation) SetMaintenanceMessage(s string) {
+	m.maintenance_message = &s
+}
+
+// MaintenanceMessage returns the value of the "maintenance_message" field in the mutation.
+func (m *RouteHTTPMutation) MaintenanceMessage() (r string, exists bool) {
+	v := m.maintenance_message
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldMaintenanceMessage returns the old "maintenance_message" field's value of the RouteHTTP entity.
+// If the RouteHTTP object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RouteHTTPMutation) OldMaintenanceMessage(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldMaintenanceMessage is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldMaintenanceMessage requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldMaintenanceMessage: %w", err)
+	}
+	return oldValue.MaintenanceMessage, nil
+}
+
+// ResetMaintenanceMessage resets all changes to the "maintenance_message" field.
+func (m *RouteHTTPMutation) ResetMaintenanceMessage() {
+	m.maintenance_message = nil
+}
+
 // ClearRoute clears the "route" edge to the Route entity.
 func (m *RouteHTTPMutation) ClearRoute() {
 	m.clearedroute = true
@@ -31173,7 +31409,7 @@ func (m *RouteHTTPMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *RouteHTTPMutation) Fields() []string {
-	fields := make([]string, 0, 14)
+	fields := make([]string, 0, 16)
 	if m.org_id != nil {
 		fields = append(fields, routehttp.FieldOrgID)
 	}
@@ -31216,6 +31452,12 @@ func (m *RouteHTTPMutation) Fields() []string {
 	if m.dns_proxied != nil {
 		fields = append(fields, routehttp.FieldDNSProxied)
 	}
+	if m.maintenance != nil {
+		fields = append(fields, routehttp.FieldMaintenance)
+	}
+	if m.maintenance_message != nil {
+		fields = append(fields, routehttp.FieldMaintenanceMessage)
+	}
 	return fields
 }
 
@@ -31252,6 +31494,10 @@ func (m *RouteHTTPMutation) Field(name string) (ent.Value, bool) {
 		return m.MaxBodyBytes()
 	case routehttp.FieldDNSProxied:
 		return m.DNSProxied()
+	case routehttp.FieldMaintenance:
+		return m.Maintenance()
+	case routehttp.FieldMaintenanceMessage:
+		return m.MaintenanceMessage()
 	}
 	return nil, false
 }
@@ -31289,6 +31535,10 @@ func (m *RouteHTTPMutation) OldField(ctx context.Context, name string) (ent.Valu
 		return m.OldMaxBodyBytes(ctx)
 	case routehttp.FieldDNSProxied:
 		return m.OldDNSProxied(ctx)
+	case routehttp.FieldMaintenance:
+		return m.OldMaintenance(ctx)
+	case routehttp.FieldMaintenanceMessage:
+		return m.OldMaintenanceMessage(ctx)
 	}
 	return nil, fmt.Errorf("unknown RouteHTTP field %s", name)
 }
@@ -31395,6 +31645,20 @@ func (m *RouteHTTPMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetDNSProxied(v)
+		return nil
+	case routehttp.FieldMaintenance:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetMaintenance(v)
+		return nil
+	case routehttp.FieldMaintenanceMessage:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetMaintenanceMessage(v)
 		return nil
 	}
 	return fmt.Errorf("unknown RouteHTTP field %s", name)
@@ -31540,6 +31804,12 @@ func (m *RouteHTTPMutation) ResetField(name string) error {
 		return nil
 	case routehttp.FieldDNSProxied:
 		m.ResetDNSProxied()
+		return nil
+	case routehttp.FieldMaintenance:
+		m.ResetMaintenance()
+		return nil
+	case routehttp.FieldMaintenanceMessage:
+		m.ResetMaintenanceMessage()
 		return nil
 	}
 	return fmt.Errorf("unknown RouteHTTP field %s", name)
@@ -33719,6 +33989,7 @@ type RouteTargetMutation struct {
 	upstream_protocol *routetarget.UpstreamProtocol
 	tls_server_name   *string
 	tls_spki_sha256   *string
+	tls_verification  *routetarget.TLSVerification
 	proxy_protocol    *routetarget.ProxyProtocol
 	weight            *int
 	addweight         *int
@@ -34326,6 +34597,42 @@ func (m *RouteTargetMutation) ResetTLSSpkiSha256() {
 	m.tls_spki_sha256 = nil
 }
 
+// SetTLSVerification sets the "tls_verification" field.
+func (m *RouteTargetMutation) SetTLSVerification(rv routetarget.TLSVerification) {
+	m.tls_verification = &rv
+}
+
+// TLSVerification returns the value of the "tls_verification" field in the mutation.
+func (m *RouteTargetMutation) TLSVerification() (r routetarget.TLSVerification, exists bool) {
+	v := m.tls_verification
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldTLSVerification returns the old "tls_verification" field's value of the RouteTarget entity.
+// If the RouteTarget object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RouteTargetMutation) OldTLSVerification(ctx context.Context) (v routetarget.TLSVerification, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldTLSVerification is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldTLSVerification requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldTLSVerification: %w", err)
+	}
+	return oldValue.TLSVerification, nil
+}
+
+// ResetTLSVerification resets all changes to the "tls_verification" field.
+func (m *RouteTargetMutation) ResetTLSVerification() {
+	m.tls_verification = nil
+}
+
 // SetProxyProtocol sets the "proxy_protocol" field.
 func (m *RouteTargetMutation) SetProxyProtocol(rp routetarget.ProxyProtocol) {
 	m.proxy_protocol = &rp
@@ -34638,7 +34945,7 @@ func (m *RouteTargetMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *RouteTargetMutation) Fields() []string {
-	fields := make([]string, 0, 16)
+	fields := make([]string, 0, 17)
 	if m.org_id != nil {
 		fields = append(fields, routetarget.FieldOrgID)
 	}
@@ -34674,6 +34981,9 @@ func (m *RouteTargetMutation) Fields() []string {
 	}
 	if m.tls_spki_sha256 != nil {
 		fields = append(fields, routetarget.FieldTLSSpkiSha256)
+	}
+	if m.tls_verification != nil {
+		fields = append(fields, routetarget.FieldTLSVerification)
 	}
 	if m.proxy_protocol != nil {
 		fields = append(fields, routetarget.FieldProxyProtocol)
@@ -34719,6 +35029,8 @@ func (m *RouteTargetMutation) Field(name string) (ent.Value, bool) {
 		return m.TLSCaBundleID()
 	case routetarget.FieldTLSSpkiSha256:
 		return m.TLSSpkiSha256()
+	case routetarget.FieldTLSVerification:
+		return m.TLSVerification()
 	case routetarget.FieldProxyProtocol:
 		return m.ProxyProtocol()
 	case routetarget.FieldWeight:
@@ -34760,6 +35072,8 @@ func (m *RouteTargetMutation) OldField(ctx context.Context, name string) (ent.Va
 		return m.OldTLSCaBundleID(ctx)
 	case routetarget.FieldTLSSpkiSha256:
 		return m.OldTLSSpkiSha256(ctx)
+	case routetarget.FieldTLSVerification:
+		return m.OldTLSVerification(ctx)
 	case routetarget.FieldProxyProtocol:
 		return m.OldProxyProtocol(ctx)
 	case routetarget.FieldWeight:
@@ -34860,6 +35174,13 @@ func (m *RouteTargetMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetTLSSpkiSha256(v)
+		return nil
+	case routetarget.FieldTLSVerification:
+		v, ok := value.(routetarget.TLSVerification)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetTLSVerification(v)
 		return nil
 	case routetarget.FieldProxyProtocol:
 		v, ok := value.(routetarget.ProxyProtocol)
@@ -35033,6 +35354,9 @@ func (m *RouteTargetMutation) ResetField(name string) error {
 		return nil
 	case routetarget.FieldTLSSpkiSha256:
 		m.ResetTLSSpkiSha256()
+		return nil
+	case routetarget.FieldTLSVerification:
+		m.ResetTLSVerification()
 		return nil
 	case routetarget.FieldProxyProtocol:
 		m.ResetProxyProtocol()

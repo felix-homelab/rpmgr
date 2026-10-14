@@ -162,7 +162,7 @@ message Gateway {
   string id = 1;
   // Its group; set at creation.
   string gateway_group_id = 2;
-  // Its name, unique in the org; required on create.
+  // Its name, unique among the org's gateways that are not decommissioned; required on create.
   string name = 3 [(buf.validate.field) = {
     ignore: IGNORE_IF_ZERO_VALUE
     string: {pattern: "^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$"}
@@ -187,6 +187,9 @@ message Gateway {
   google.protobuf.Timestamp create_time = 9;
   // The version to send back with an update; output only.
   string etag = 10;
+  // Whether it is all-in-one's own gateway, which runs in the controller's process and cannot be
+  // decommissioned; output only.
+  bool built_in = 11;
 }
 
 // GatewayStatus is what the controller last saw of a gateway.

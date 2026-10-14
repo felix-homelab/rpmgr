@@ -125,7 +125,7 @@ func (Route) Fields() []ent.Field {
 	return []ent.Field{
 		idField("rt"),
 		field.String("name").NotEmpty().Match(slugRe),
-		field.Enum("type").Values("http", "tcp", "udp", "tls_passthrough").Immutable(),
+		field.Enum("type").Values("http", "tcp", "udp", "tcp_udp", "tls_passthrough").Immutable(),
 		field.String("gateway_group_id").NotEmpty().Immutable(),
 		field.Bool("enabled").Default(true),
 		field.Enum("transport").Values("auto", "quic", "h2").Optional().Nillable(),
@@ -147,7 +147,7 @@ func (Route) Indexes() []ent.Index {
 	return []ent.Index{index.Fields("org_id", "name").Unique()}
 }
 
-// RouteTCP is the TCP part of a tcp route, one row per route.
+// RouteTCP is the TCP part of a tcp or tcp_udp route, one row per route.
 type RouteTCP struct{ ent.Schema }
 
 // Mixin makes it org-owned.
@@ -182,7 +182,7 @@ func (RouteTCP) Indexes() []ent.Index {
 	return []ent.Index{index.Fields("route_id").Unique(), index.Fields("port_allocation_id").Unique()}
 }
 
-// RouteUDP is the UDP part of a udp route, one row per route.
+// RouteUDP is the UDP part of a udp or tcp_udp route, one row per route.
 type RouteUDP struct{ ent.Schema }
 
 // Mixin makes it org-owned.
@@ -231,7 +231,8 @@ func (RouteHTTP) Annotations() []schema.Annotation {
 // Fields of an http route (docs/06-data-model.md, "Routes"). path_prefix applies to every hostname
 // of the route, whose route_hostnames rows copy it. tls_mode acme uses the certificate ACME obtains
 // for the hostnames, certificate the uploaded certificate_id. host_header is "preserve" or the
-// Host value sent upstream; max_body_bytes 0 sets no limit.
+// Host value sent upstream; max_body_bytes 0 sets no limit. maintenance answers every request with
+// the maintenance page and its plain-text maintenance_message (D88).
 func (RouteHTTP) Fields() []ent.Field {
 	return []ent.Field{
 		field.String("route_id").NotEmpty().Unique().Immutable(),
@@ -248,6 +249,8 @@ func (RouteHTTP) Fields() []ent.Field {
 		field.Bool("websocket").Default(true),
 		field.Int64("max_body_bytes").NonNegative().Default(0),
 		field.Bool("dns_proxied").Default(false),
+		field.Bool("maintenance").Default(false),
+		field.String("maintenance_message").MaxLen(2000).Default(""),
 	}
 }
 
@@ -290,6 +293,8 @@ func (RouteTarget) Fields() []ent.Field {
 		field.String("tls_server_name").Default(""),
 		field.String("tls_ca_bundle_id").Optional().Nillable(),
 		field.String("tls_spki_sha256").Default(""),
+		// How an https target's certificate is checked (ADR-0017).
+		field.Enum("tls_verification").Values("verified", "unverified", "pinned_key").Default("verified"),
 		field.Enum("proxy_protocol").Values("none", "v1", "v2").Default("none"),
 		field.Int("weight").Range(1, 1000).Default(1),
 		field.Int("priority").NonNegative().Default(0),

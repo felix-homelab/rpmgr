@@ -13,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"syscall"
@@ -540,5 +541,62 @@ func TestTargets_PolicyReloadResetsBlocked(t *testing.T) {
 	_ = a.SetDeadline(time.Now().Add(5 * time.Second))
 	if _, err := io.ReadAll(a); err == nil || errors.Is(err, os.ErrDeadlineExceeded) {
 		t.Errorf("a policy that does not load: %v, want a reset", err)
+	}
+}
+
+// TestTargets_Denied (D84): an entry of deny_targets wins over the allow that covers the target:
+// a reload that adds it resets the open connection, the route is not_ready(blocked_by_local_policy)
+// with the deny entry in its detail, and a name whose resolved address is denied says so too,
+// whichever loopback address the resolver gives first.
+func TestTargets_Denied(t *testing.T) {
+	svc := startService(t, echoService)
+	port := strconv.Itoa(int(svc.port()))
+	e := newTargets(policyOf(t, "allow_targets: [127.0.0.0/8, \"[::1]\"]\n"))
+	e.Set([]connector.Route{{ID: "rt_ip", Targets: []connector.Target{target("127.0.0.1", svc.port())}},
+		{ID: "rt_name", Targets: []connector.Target{target("localhost", svc.port())}}})
+	code, gw := e.handle(t, tcpOpen("rt_ip"))
+	if code != tunnelv1.ResultCode_RESULT_CODE_NO_ERROR {
+		t.Fatalf("before the deny: %v", code)
+	}
+	e.cur.Store(policyOf(t, "allow_targets: [127.0.0.0/8, \"[::1]\"]\ndeny_targets: [\"127.0.0.1/8:"+port+"\", \"[::1]:"+port+"\"]\n"))
+	e.Recheck()
+	_ = gw.SetDeadline(time.Now().Add(5 * time.Second))
+	if _, err := io.ReadAll(gw); err == nil || errors.Is(err, os.ErrDeadlineExceeded) {
+		t.Errorf("a connection to a denied target: %v, want a reset", err)
+	}
+	want := "127.0.0.1:" + port + " denied by 127.0.0.0/8:" + port
+	if st := e.Status(); len(st) != 1 || st[0].GetResourceId() != "rt_ip" ||
+		st[0].GetReason() != agentv1.NotReadyReason_NOT_READY_REASON_BLOCKED_BY_LOCAL_POLICY || st[0].GetDetail() != want {
+		t.Fatalf("status %v, want the detail %q", st, want)
+	}
+	if code, _ := e.handle(t, tcpOpen("rt_name")); code != tunnelv1.ResultCode_RESULT_CODE_UPSTREAM_REFUSED {
+		t.Fatalf("a name resolving to a denied address: %v", code)
+	}
+	if h := e.last(); h.GetRouteId() != "rt_name" || h.GetReady() || !strings.HasSuffix(h.GetDetail(), " denied by 127.0.0.0/8:"+port) &&
+		!strings.HasSuffix(h.GetDetail(), " denied by [::1]:"+port) {
+		t.Fatalf("after the denied dial: %v", h)
+	}
+}
+
+// TestTargets_ReloadAfterDial (#525): a connection is recorded before its stream is answered, and
+// checked against the policy in force then, so a reload that stops allowing its target after the
+// dial refuses it, rather than relaying a connection the reload's Recheck could not yet see. The
+// dial looks the policy up first; every later lookup sees the reload.
+func TestTargets_ReloadAfterDial(t *testing.T) {
+	svc := startService(t, echoService)
+	allow := policyOf(t, "allow_targets:\n  - cidr: 127.0.0.0/8\n    ports: ["+strconv.Itoa(int(svc.port()))+"]\n")
+	deny := policyOf(t, "allow_targets: []\n")
+	var lookups atomic.Int32
+	e := &targetsEnv{}
+	e.Targets = connector.NewTargets(connector.TargetsOptions{Policy: func() *policy.Policy {
+		if lookups.Add(1) == 1 {
+			return allow // the dial
+		}
+		return deny
+	}})
+	e.Set([]connector.Route{{ID: "rt_1", Targets: []connector.Target{target("127.0.0.1", svc.port())}}})
+	lookups.Store(0)
+	if code, _ := e.handle(t, tcpOpen("rt_1")); code != tunnelv1.ResultCode_RESULT_CODE_UPSTREAM_REFUSED {
+		t.Fatalf("a connection the reload after its dial no longer allows: %v, want refused", code)
 	}
 }

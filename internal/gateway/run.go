@@ -60,13 +60,21 @@ type RunOptions struct {
 	// the private controller of controller.passthrough, and the control sessions connectors carry
 	// through their data sessions; nil dials TCP.
 	ForwardDial func(ctx context.Context, addr string) (net.Conn, error)
-	// Port80Fallback takes port-80 requests for names no route serves: all-in-one's controller,
-	// which answers ACME HTTP-01 for its own name and redirects the rest; nil answers 404.
+	// Port80Fallback takes port-80 requests for ControllerNames when no route serves them:
+	// all-in-one's controller, which answers ACME HTTP-01 for its own name and redirects the rest.
+	// Other names no route serves get the 404 page.
 	Port80Fallback http.Handler
 	// Registry, if set, receives the gateway's metrics and Run serves no admin listener;
 	// Readiness then gets the gateway's readiness check.
 	Registry  telemetry.Registry
 	Readiness func(check func(context.Context) error)
+	// Tunnels, if set, accepts in-memory connections that can only be data sessions to this
+	// gateway: all-in-one's connector's (Router.HandleTunnel). Run closes it when it drains or
+	// fails, so that a dial to it does not wait for a gateway that is gone.
+	Tunnels net.Listener
+	// RoutePorts, if set, gets a function that reports whether a tcp or udp route of the gateway
+	// listens on a port, so that all-in-one's connector never dials one (ADR-0019).
+	RoutePorts func(bound func(port uint16) bool)
 }
 
 // Run runs a gateway from its boot file until ctx ends (docs/02-architecture.md): its control
@@ -82,6 +90,9 @@ func Run(ctx context.Context, o RunOptions) error {
 	}
 	if o.DrainPeriod == 0 {
 		o.DrainPeriod = DrainPeriod
+	}
+	if o.Tunnels != nil {
+		defer func() { _ = o.Tunnels.Close() }()
 	}
 	cfg := o.Config
 	if cfg.Controller.Passthrough.Address != "" && o.Controller != nil {
@@ -101,7 +112,8 @@ func Run(ctx context.Context, o RunOptions) error {
 			if sessions == nil {
 				return &agentv1.Status{}
 			}
-			return &agentv1.Status{DataSessions: sessions.Report(), Counters: sessions.metrics().Counters()}
+			return &agentv1.Status{DataSessions: sessions.Report(), Counters: sessions.metrics().Counters(),
+				Readiness: applier.Readiness(), ReadinessComplete: true}
 		}})
 	if err != nil {
 		return err
@@ -140,7 +152,7 @@ func Run(ctx context.Context, o RunOptions) error {
 	if err != nil {
 		return err
 	}
-	routes := NewTCPRoutes(TCPOptions{Host: host, Sessions: sessions, Revision: applier.Revision, Logger: o.Logger})
+	routes := NewTCPRoutes(TCPOptions{Host: host, Sessions: sessions, Revision: applier.Revision, OnChange: report.change, Logger: o.Logger})
 	defer routes.Close()
 	pass := NewPassthrough(sessions, applier.Revision, o.Logger)
 	defer pass.Close()
@@ -153,17 +165,21 @@ func Run(ctx context.Context, o RunOptions) error {
 		return err
 	}
 	udpRoutes := NewUDPRoutes(UDPOptions{Host: udpHost, Sessions: sessions, Revision: applier.Revision, Metrics: udpMetrics,
-		Logger: o.Logger})
+		OnChange: report.change, Logger: o.Logger})
 	defer udpRoutes.Close()
 	certificates := NewCertificates(CertificatesOptions{Dir: filepath.Join(cfg.StateDir, ResourcesDir), Fetch: ctl.Fetch,
-		Now: o.Now, Logger: o.Logger})
+		OnChange: report.change, Now: o.Now, Logger: o.Logger})
 	def, err := DefaultTLS()
 	if err != nil {
 		return err
 	}
 	httpRoutes := NewHTTPRoutes(HTTPOptions{Sessions: sessions, Certificates: certificates, Default: &def.Certificates[0],
-		Revision: applier.Revision, Fallback80: o.Port80Fallback, Challenges: challenges.HTTP01, Logger: o.Logger})
+		Revision: applier.Revision, Fallback80: o.Port80Fallback, FallbackNames: o.ControllerNames, Challenges: challenges.HTTP01,
+		Logger: o.Logger})
 	defer httpRoutes.Close()
+	if o.RoutePorts != nil {
+		o.RoutePorts(func(port uint16) bool { return routes.Bound(port) || udpRoutes.Bound(port) })
+	}
 	applier.Bind(Served{TCP: routes, UDP: udpRoutes, Passthrough: pass, HTTP: httpRoutes, Certificates: certificates, Sessions: sessions,
 		DrainPeriod: o.DrainPeriod})
 
@@ -180,9 +196,13 @@ func Run(ctx context.Context, o RunOptions) error {
 	defer stop()
 	router := &Router{ACME: challenges.ALPN, TrustDomain: id.TrustDomain, GatewayID: id.AgentID, TunnelTLS: h2TLS, DefaultTLS: def, Logger: o.Logger,
 		Controller: toController, ControllerNames: controllerNames, Routes: NewRouteTable(pass, httpRoutes),
-		HTTP: httpRoutes.Serve, HTTPTLS: httpRoutes.TLSConfig(),
+		HTTP: httpRoutes.Serve, HTTPTLS: httpRoutes.TLSConfig(), Unrouted: httpRoutes.ServeUnrouted, UnroutedTLS: httpRoutes.UnroutedTLSConfig(),
 		Tunnel: func(c *tls.Conn) {
 			defer func() { _ = c.Close() }()
+			over := "TCP" // or memory: all-in-one's connector (ServeTunnels)
+			if c.RemoteAddr().Network() == "memory" {
+				over = "memory"
+			}
 			hctx, cancel := context.WithTimeout(run, tunnelHandshake)
 			err := c.HandshakeContext(hctx)
 			cancel()
@@ -191,7 +211,7 @@ func Run(ctx context.Context, o RunOptions) error {
 			}
 			windows, release, err := budget.AdmitH2(tunnel.DefaultH2Windows())
 			if err != nil {
-				o.Logger.Warn("refusing a data session over TCP", "error", err)
+				o.Logger.Warn("refusing a data session over "+over, "error", err)
 				return
 			}
 			defer release()
@@ -200,7 +220,7 @@ func Run(ctx context.Context, o RunOptions) error {
 				return
 			}
 			if err := sessions.Serve(run, s, c.ConnectionState().PeerCertificates[0]); err != nil {
-				o.Logger.Debug("data session over TCP ended", "error", err)
+				o.Logger.Debug("data session over "+over+" ended", "error", err)
 			}
 		}}
 
@@ -264,6 +284,13 @@ func Run(ctx context.Context, o RunOptions) error {
 		o.Readiness(ctl.Ready)
 	}
 	go func() { _ = router.Serve(tcp) }()
+	if o.Tunnels != nil {
+		go func() {
+			if err := router.ServeTunnels(o.Tunnels); err != nil {
+				o.Logger.Warn("in-memory data sessions stopped", "error", err)
+			}
+		}()
+	}
 	if plain != nil {
 		go func() {
 			if err := httpRoutes.Serve80(plain); err != nil && !errors.Is(err, net.ErrClosed) {
@@ -274,7 +301,8 @@ func Run(ctx context.Context, o RunOptions) error {
 	background.Go(func() { certificates.Run(run) })
 	background.Go(func() {
 		report.run(run, ReportEvery, ctl.Send, func() *agentv1.Status {
-			return &agentv1.Status{DataSessions: sessions.Report(), Counters: metrics.Counters()}
+			return &agentv1.Status{DataSessions: sessions.Report(), Counters: metrics.Counters(), Readiness: applier.Readiness(),
+				ReadinessComplete: true}
 		})
 	})
 	go func() {
@@ -305,6 +333,9 @@ func Run(ctx context.Context, o RunOptions) error {
 	_ = tcp.Close()
 	if plain != nil {
 		_ = plain.Close()
+	}
+	if o.Tunnels != nil {
+		_ = o.Tunnels.Close() // no new data sessions in memory either; closing twice is harmless
 	}
 	_ = qln.Close()
 	routes.Drain()

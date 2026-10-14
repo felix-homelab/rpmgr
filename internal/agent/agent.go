@@ -40,6 +40,10 @@ type ControlOptions struct {
 	// OnAcmeChallenge, if set, applies the ACME challenges gateways answer; its error goes back
 	// in the OpResult. Without it every challenge is refused.
 	OnAcmeChallenge func(*agentv1.AcmeChallenge) error
+	// OnProbeTarget, if set, reads the certificate a target presents and returns it, DER; it
+	// runs apart from the control session, and its result or error goes back in the OpResult.
+	// Without it every probe is refused.
+	OnProbeTarget func(context.Context, *agentv1.ProbeTarget) ([]byte, error)
 	// SessionStatus, if set, returns the Status the agent sends at the start of each session, so
 	// that what changed while there was none is not lost: a connector's complete readiness, a
 	// gateway's data sessions.
@@ -88,6 +92,10 @@ func NewControl(o ControlOptions) (*Control, error) {
 			}
 		},
 		OnMessage: func(m *agentv1.ControllerMessage) {
+			if p := m.GetProbeTarget(); p != nil {
+				go c.probe(p) // a dial must not hold up the control session
+				return
+			}
 			if ch := m.GetAcmeChallenge(); ch != nil {
 				err := errors.New("this agent answers no ACME challenges")
 				if o.OnAcmeChallenge != nil {
@@ -122,6 +130,19 @@ func RunControl(ctx context.Context, o ControlOptions) error {
 		return err
 	}
 	return c.Run(ctx)
+}
+
+// probe answers a ProbeTarget with the certificate the role read, or why it could not.
+func (c *Control) probe(p *agentv1.ProbeTarget) {
+	r := &agentv1.OpResult{OpId: p.GetOpId()}
+	if c.o.OnProbeTarget == nil {
+		r.Error = "this agent reads no target certificates"
+	} else if der, err := c.o.OnProbeTarget(context.Background(), p); err != nil {
+		r.Error = err.Error()
+	} else {
+		r.Certificate = der
+	}
+	c.client.Send(&agentv1.AgentMessage{Msg: &agentv1.AgentMessage_OpResult{OpResult: r}})
 }
 
 // Run runs the control plane until ctx ends: it loads the stored deny-list and the last-known-good

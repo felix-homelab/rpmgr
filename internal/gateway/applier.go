@@ -85,6 +85,8 @@ func accessOf(res *agentv1.Resource) *agentv1.RouteAccess {
 		return res.GetGatewayTcpRoute().GetAccess()
 	case res.GetGatewayUdpRoute() != nil:
 		return res.GetGatewayUdpRoute().GetAccess()
+	case res.GetGatewayTcpUdpRoute() != nil:
+		return res.GetGatewayTcpUdpRoute().GetAccess()
 	case res.GetGatewayPassthroughRoute() != nil:
 		return res.GetGatewayPassthroughRoute().GetAccess()
 	case res.GetGatewayHttpRoute() != nil:
@@ -128,6 +130,23 @@ type Served struct {
 
 // Bind gives the applier what it updates.
 func (a *Applier) Bind(s Served) { a.served = s }
+
+// Readiness implements agent.Applier: the tcp and udp routes whose port is not bound, and the
+// certificates not loaded.
+func (a *Applier) Readiness() []*agentv1.ResourceStatus {
+	s := a.served
+	var status []*agentv1.ResourceStatus
+	if s.TCP != nil {
+		status = append(status, s.TCP.Status()...)
+	}
+	if s.UDP != nil {
+		status = append(status, s.UDP.Status()...)
+	}
+	if s.Certificates != nil {
+		status = append(status, s.Certificates.Status()...)
+	}
+	return status
+}
 
 // Revision returns the revision of the applied snapshot; it is TCPOptions.Revision.
 func (a *Applier) Revision() *agentv1.Revision { return a.revision.Load() }
@@ -180,6 +199,10 @@ func (a *Applier) Validate(snap *agentv1.Snapshot) []*agentv1.SnapshotError {
 		case res.GetGatewayUdpRoute() != nil:
 			port(id, "UDP", res.GetGatewayUdpRoute().GetPort())
 			connectors = res.GetGatewayUdpRoute().GetConnectors()
+		case res.GetGatewayTcpUdpRoute() != nil:
+			port(id, "TCP", res.GetGatewayTcpUdpRoute().GetPort())
+			port(id, "UDP", res.GetGatewayTcpUdpRoute().GetPort())
+			connectors = res.GetGatewayTcpUdpRoute().GetConnectors()
 		case res.GetGatewayCertificate() != nil:
 			c := res.GetGatewayCertificate()
 			if len(c.GetContentSha256()) != sha256.Size {
@@ -246,6 +269,13 @@ func (a *Applier) Validate(snap *agentv1.Snapshot) []*agentv1.SnapshotError {
 					bad(id, "upstream TLS for target %q twice or without a target", u.GetTargetId())
 				case u.GetServerName() == "":
 					bad(id, "upstream TLS for target %s without a server name", u.GetTargetId())
+				case u.GetVerification() == agentv1.UpstreamVerification_UPSTREAM_VERIFICATION_UNVERIFIED && (len(u.GetCaPem()) > 0 || len(u.GetSpkiSha256()) > 0):
+					bad(id, "the unverified target %s has a CA bundle or a pin", u.GetTargetId())
+				case (u.GetVerification() == agentv1.UpstreamVerification_UPSTREAM_VERIFICATION_UNVERIFIED ||
+					u.GetVerification() == agentv1.UpstreamVerification_UPSTREAM_VERIFICATION_PINNED_KEY) && u.GetConnectorId() == "":
+					bad(id, "the target %s, not verified by its chain, names no connector", u.GetTargetId())
+				case u.GetVerification() == agentv1.UpstreamVerification_UPSTREAM_VERIFICATION_PINNED_KEY && (len(u.GetCaPem()) > 0 || len(u.GetSpkiSha256()) != sha256.Size):
+					bad(id, "the pinned-key target %s has a CA bundle or no SHA-256 pin", u.GetTargetId())
 				case len(u.GetCaPem()) > 0 && !x509.NewCertPool().AppendCertsFromPEM(u.GetCaPem()):
 					bad(id, "the CA bundle of target %s holds no certificate", u.GetTargetId())
 				case len(u.GetSpkiSha256()) != 0 && len(u.GetSpkiSha256()) != sha256.Size:
@@ -315,12 +345,21 @@ func (a *Applier) Apply(ctx context.Context, snap *agentv1.Snapshot, _ agent.Cha
 			connectors = r.GetConnectors()
 			udp = append(udp, UDPRoute{ID: res.GetId(), Port: uint16(r.GetPort()), //nolint:gosec // G115: Validate bounds the port
 				FlowIdle: time.Duration(r.GetFlowIdleTimeoutSeconds()) * time.Second, Access: access})
+		case res.GetGatewayTcpUdpRoute() != nil:
+			// A tcp route and a udp route with the route's ID, on one port number.
+			r := res.GetGatewayTcpUdpRoute()
+			connectors = r.GetConnectors()
+			tcp = append(tcp, TCPRoute{ID: res.GetId(), Port: uint16(r.GetPort()), //nolint:gosec // G115: Validate bounds the port
+				IdleTimeout: time.Duration(r.GetIdleTimeoutSeconds()) * time.Second, Access: access})
+			udp = append(udp, UDPRoute{ID: res.GetId(), Port: uint16(r.GetPort()), //nolint:gosec // G115: Validate bounds the port
+				FlowIdle: time.Duration(r.GetFlowIdleTimeoutSeconds()) * time.Second, Access: access})
 		case res.GetGatewayHttpRoute() != nil:
 			r := res.GetGatewayHttpRoute()
 			connectors = r.GetConnectors()
 			hr := HTTPRoute{ID: res.GetId(), Upstream: r.GetUpstreamProtocol(), WebSocket: r.GetWebsocket(),
 				HostHeader: r.GetHostHeader(), MaxBody: int64(min(r.GetMaxBodyBytes(), math.MaxInt64)), //nolint:gosec // G115: bounded above
-				Port80: r.GetPort80(), HSTS: int(r.GetHstsMaxAgeSeconds()), Access: access}
+				Port80: r.GetPort80(), HSTS: int(r.GetHstsMaxAgeSeconds()), Access: access, Maintenance: r.GetMaintenance(),
+				MaintenanceMessage: r.GetMaintenanceMessage()}
 			hr.BasicAuth, _ = basicAuthOf(r.GetAccess().GetBasicAuth()) // Validate refused any that does not parse
 			for _, h := range r.GetRequestHeaders() {
 				hr.RequestHeaders = append(hr.RequestHeaders, HTTPHeader{Name: h.GetName(), Value: h.GetValue()})
@@ -336,7 +375,15 @@ func (a *Applier) Apply(ctx context.Context, snap *agentv1.Snapshot, _ agent.Cha
 			if len(r.GetUpstreamTls()) > 0 {
 				hr.TLS = map[string]UpstreamTLS{}
 				for _, u := range r.GetUpstreamTls() {
-					hr.TLS[u.GetTargetId()] = UpstreamTLS{ServerName: u.GetServerName(), CAPEM: u.GetCaPem(), SPKISHA256: u.GetSpkiSha256()}
+					v := VerifyChain // also for a way this gateway does not know: the target fails closed
+					switch u.GetVerification() {
+					case agentv1.UpstreamVerification_UPSTREAM_VERIFICATION_UNVERIFIED:
+						v = VerifyNothing
+					case agentv1.UpstreamVerification_UPSTREAM_VERIFICATION_PINNED_KEY:
+						v = VerifyPinnedKey
+					}
+					hr.TLS[u.GetTargetId()] = UpstreamTLS{ServerName: u.GetServerName(), CAPEM: u.GetCaPem(), SPKISHA256: u.GetSpkiSha256(), Verify: v,
+						Connector: u.GetConnectorId()}
 				}
 			}
 			for _, hp := range r.GetHosts() {

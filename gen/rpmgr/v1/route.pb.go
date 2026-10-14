@@ -45,6 +45,8 @@ const (
 	RouteState_ROUTE_STATE_UNAVAILABLE RouteState = 5
 	// An online agent of it rejected the snapshot with its latest change.
 	RouteState_ROUTE_STATE_ERROR RouteState = 6
+	// An http route in maintenance: its gateways answer every request with the maintenance page.
+	RouteState_ROUTE_STATE_MAINTENANCE RouteState = 7
 )
 
 // Enum value maps for RouteState.
@@ -57,6 +59,7 @@ var (
 		4: "ROUTE_STATE_DEGRADED",
 		5: "ROUTE_STATE_UNAVAILABLE",
 		6: "ROUTE_STATE_ERROR",
+		7: "ROUTE_STATE_MAINTENANCE",
 	}
 	RouteState_value = map[string]int32{
 		"ROUTE_STATE_UNSPECIFIED": 0,
@@ -66,6 +69,7 @@ var (
 		"ROUTE_STATE_DEGRADED":    4,
 		"ROUTE_STATE_UNAVAILABLE": 5,
 		"ROUTE_STATE_ERROR":       6,
+		"ROUTE_STATE_MAINTENANCE": 7,
 	}
 )
 
@@ -210,13 +214,14 @@ func (Port80Mode) EnumDescriptor() ([]byte, []int) {
 type UpstreamProtocol int32
 
 const (
-	// Not set: TCP for tcp, udp and tls_passthrough routes, HTTP for http routes.
+	// Not set: TCP for tcp, udp, tcp_udp and tls_passthrough routes, HTTP for http routes.
 	UpstreamProtocol_UPSTREAM_PROTOCOL_UNSPECIFIED UpstreamProtocol = 0
-	// The bytes as they come, for tcp and tls_passthrough routes; datagrams for udp routes.
+	// The bytes as they come, for tcp and tls_passthrough routes; datagrams for udp routes; both for
+	// tcp_udp routes.
 	UpstreamProtocol_UPSTREAM_PROTOCOL_TCP UpstreamProtocol = 1
 	// Plain HTTP, for http routes.
 	UpstreamProtocol_UPSTREAM_PROTOCOL_HTTP UpstreamProtocol = 2
-	// HTTPS, verified, for http routes.
+	// HTTPS, for http routes; its TLS settings say how the certificate is checked.
 	UpstreamProtocol_UPSTREAM_PROTOCOL_HTTPS UpstreamProtocol = 3
 	// HTTP/2 without TLS, for http routes.
 	UpstreamProtocol_UPSTREAM_PROTOCOL_H2C UpstreamProtocol = 4
@@ -324,6 +329,68 @@ func (ProxyProtocol) EnumDescriptor() ([]byte, []int) {
 	return file_rpmgr_v1_route_proto_rawDescGZIP(), []int{4}
 }
 
+// UpstreamVerification is how the gateway checks an HTTPS upstream's certificate
+// (docs/04-security.md, "HTTPS upstreams"; ADR-0017, ADR-0018).
+type UpstreamVerification int32
+
+const (
+	// Not set: VERIFIED.
+	UpstreamVerification_UPSTREAM_VERIFICATION_UNSPECIFIED UpstreamVerification = 0
+	// Its chain against the CA bundle or the gateway host's roots, its name against the server name,
+	// and its key against the pin if one is set.
+	UpstreamVerification_UPSTREAM_VERIFICATION_VERIFIED UpstreamVerification = 1
+	// Not at all: the traffic is encrypted, but anyone on the path from the connector to the target
+	// can read and change it. The target's user chose this, for a certificate nothing can verify.
+	UpstreamVerification_UPSTREAM_VERIFICATION_UNVERIFIED UpstreamVerification = 2
+	// Only its key, against the pin, which must be set: neither the chain nor the name. The pin is
+	// usually the key the target presents now (ProbeTargetCertificate); a new key fails until it is
+	// pinned.
+	UpstreamVerification_UPSTREAM_VERIFICATION_PINNED_KEY UpstreamVerification = 3
+)
+
+// Enum value maps for UpstreamVerification.
+var (
+	UpstreamVerification_name = map[int32]string{
+		0: "UPSTREAM_VERIFICATION_UNSPECIFIED",
+		1: "UPSTREAM_VERIFICATION_VERIFIED",
+		2: "UPSTREAM_VERIFICATION_UNVERIFIED",
+		3: "UPSTREAM_VERIFICATION_PINNED_KEY",
+	}
+	UpstreamVerification_value = map[string]int32{
+		"UPSTREAM_VERIFICATION_UNSPECIFIED": 0,
+		"UPSTREAM_VERIFICATION_VERIFIED":    1,
+		"UPSTREAM_VERIFICATION_UNVERIFIED":  2,
+		"UPSTREAM_VERIFICATION_PINNED_KEY":  3,
+	}
+)
+
+func (x UpstreamVerification) Enum() *UpstreamVerification {
+	p := new(UpstreamVerification)
+	*p = x
+	return p
+}
+
+func (x UpstreamVerification) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (UpstreamVerification) Descriptor() protoreflect.EnumDescriptor {
+	return file_rpmgr_v1_route_proto_enumTypes[5].Descriptor()
+}
+
+func (UpstreamVerification) Type() protoreflect.EnumType {
+	return &file_rpmgr_v1_route_proto_enumTypes[5]
+}
+
+func (x UpstreamVerification) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use UpstreamVerification.Descriptor instead.
+func (UpstreamVerification) EnumDescriptor() ([]byte, []int) {
+	return file_rpmgr_v1_route_proto_rawDescGZIP(), []int{5}
+}
+
 // Route is one route of an org.
 type Route struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
@@ -347,11 +414,13 @@ type Route struct {
 	//	*Route_Tcp
 	//	*Route_Udp
 	//	*Route_TlsPassthrough
+	//	*Route_TcpUdp
 	Spec isRoute_Spec `protobuf_oneof:"spec"`
 	// Its targets, by priority; output only: they change with the target methods.
 	Targets []*RouteTarget `protobuf:"bytes,20,rep,name=targets,proto3" json:"targets,omitempty"`
-	// The access policies it applies, in order, each once (docs/03-connections.md, "Access
-	// policies"); a policy with a basic_auth rule only on an http route.
+	// The access policies it applies, each once (docs/03-connections.md, "Access policies"), kept in
+	// the order given, which does not change who is admitted: a deny rule of any of them wins over
+	// every allow rule. A policy with a basic_auth rule only on an http route.
 	PolicyIds []string `protobuf:"bytes,21,rep,name=policy_ids,json=policyIds,proto3" json:"policy_ids,omitempty"`
 	// Its transport policy; the connector's if not set (docs/03-connections.md, "Transport
 	// selection").
@@ -486,6 +555,15 @@ func (x *Route) GetTlsPassthrough() *TLSPassthroughRouteSpec {
 	return nil
 }
 
+func (x *Route) GetTcpUdp() *TCPUDPRouteSpec {
+	if x != nil {
+		if x, ok := x.Spec.(*Route_TcpUdp); ok {
+			return x.TcpUdp
+		}
+	}
+	return nil
+}
+
 func (x *Route) GetTargets() []*RouteTarget {
 	if x != nil {
 		return x.Targets
@@ -566,6 +644,11 @@ type Route_TlsPassthrough struct {
 	TlsPassthrough *TLSPassthroughRouteSpec `protobuf:"bytes,13,opt,name=tls_passthrough,json=tlsPassthrough,proto3,oneof"`
 }
 
+type Route_TcpUdp struct {
+	// A route on one public port number of the group, with both TCP and UDP.
+	TcpUdp *TCPUDPRouteSpec `protobuf:"bytes,14,opt,name=tcp_udp,json=tcpUdp,proto3,oneof"`
+}
+
 func (*Route_Http) isRoute_Spec() {}
 
 func (*Route_Tcp) isRoute_Spec() {}
@@ -573,6 +656,8 @@ func (*Route_Tcp) isRoute_Spec() {}
 func (*Route_Udp) isRoute_Spec() {}
 
 func (*Route_TlsPassthrough) isRoute_Spec() {}
+
+func (*Route_TcpUdp) isRoute_Spec() {}
 
 // RouteStatus is what a route's agents report: the gateways of its group and the connectors of its
 // enabled targets.
@@ -765,9 +850,16 @@ type HTTPRouteSpec struct {
 	// Whether WebSocket upgrades pass; true if not set.
 	Websocket *bool `protobuf:"varint,10,opt,name=websocket,proto3,oneof" json:"websocket,omitempty"`
 	// The largest request body; 0 is no limit.
-	MaxBodyBytes  uint64 `protobuf:"varint,11,opt,name=max_body_bytes,json=maxBodyBytes,proto3" json:"max_body_bytes,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	MaxBodyBytes uint64 `protobuf:"varint,11,opt,name=max_body_bytes,json=maxBodyBytes,proto3" json:"max_body_bytes,omitempty"`
+	// Whether it is in maintenance: its gateways answer every request a client's access policies
+	// admit with the maintenance page, 503, and send nothing to its targets.
+	Maintenance bool `protobuf:"varint,12,opt,name=maintenance,proto3" json:"maintenance,omitempty"`
+	// Plain text the maintenance page shows, such as when the service is back: line feeds are its
+	// only control characters, and the bidirectional embeddings, overrides and isolates
+	// (U+202A-U+202E, U+2066-U+2069) are refused too.
+	MaintenanceMessage string `protobuf:"bytes,13,opt,name=maintenance_message,json=maintenanceMessage,proto3" json:"maintenance_message,omitempty"`
+	unknownFields      protoimpl.UnknownFields
+	sizeCache          protoimpl.SizeCache
 }
 
 func (x *HTTPRouteSpec) Reset() {
@@ -875,6 +967,20 @@ func (x *HTTPRouteSpec) GetMaxBodyBytes() uint64 {
 		return x.MaxBodyBytes
 	}
 	return 0
+}
+
+func (x *HTTPRouteSpec) GetMaintenance() bool {
+	if x != nil {
+		return x.Maintenance
+	}
+	return false
+}
+
+func (x *HTTPRouteSpec) GetMaintenanceMessage() string {
+	if x != nil {
+		return x.MaintenanceMessage
+	}
+	return ""
 }
 
 // TCPRouteSpec is a tcp route: a public port of the gateway group, from its TCP port pools.
@@ -987,6 +1093,72 @@ func (x *UDPRouteSpec) GetFlowIdleTimeoutSeconds() uint32 {
 	return 0
 }
 
+// TCPUDPRouteSpec is a tcp_udp route: one public port number of the gateway group, taken from both
+// its TCP and its UDP port pools; TCP connections and UDP flows on it go to the same targets.
+type TCPUDPRouteSpec struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The port, the same for TCP and UDP; 0 on create is a random port free in both. Within the
+	// org's TCP and UDP quotas.
+	Port uint32 `protobuf:"varint,1,opt,name=port,proto3" json:"port,omitempty"`
+	// A TCP connection without traffic for this long is closed; 0 never; 3600 if not set.
+	IdleTimeoutSeconds *uint32 `protobuf:"varint,2,opt,name=idle_timeout_seconds,json=idleTimeoutSeconds,proto3,oneof" json:"idle_timeout_seconds,omitempty"`
+	// A UDP flow without datagrams for this long is forgotten; 60 if not set.
+	FlowIdleTimeoutSeconds *uint32 `protobuf:"varint,3,opt,name=flow_idle_timeout_seconds,json=flowIdleTimeoutSeconds,proto3,oneof" json:"flow_idle_timeout_seconds,omitempty"`
+	unknownFields          protoimpl.UnknownFields
+	sizeCache              protoimpl.SizeCache
+}
+
+func (x *TCPUDPRouteSpec) Reset() {
+	*x = TCPUDPRouteSpec{}
+	mi := &file_rpmgr_v1_route_proto_msgTypes[6]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *TCPUDPRouteSpec) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*TCPUDPRouteSpec) ProtoMessage() {}
+
+func (x *TCPUDPRouteSpec) ProtoReflect() protoreflect.Message {
+	mi := &file_rpmgr_v1_route_proto_msgTypes[6]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use TCPUDPRouteSpec.ProtoReflect.Descriptor instead.
+func (*TCPUDPRouteSpec) Descriptor() ([]byte, []int) {
+	return file_rpmgr_v1_route_proto_rawDescGZIP(), []int{6}
+}
+
+func (x *TCPUDPRouteSpec) GetPort() uint32 {
+	if x != nil {
+		return x.Port
+	}
+	return 0
+}
+
+func (x *TCPUDPRouteSpec) GetIdleTimeoutSeconds() uint32 {
+	if x != nil && x.IdleTimeoutSeconds != nil {
+		return *x.IdleTimeoutSeconds
+	}
+	return 0
+}
+
+func (x *TCPUDPRouteSpec) GetFlowIdleTimeoutSeconds() uint32 {
+	if x != nil && x.FlowIdleTimeoutSeconds != nil {
+		return *x.FlowIdleTimeoutSeconds
+	}
+	return 0
+}
+
 // TLSPassthroughRouteSpec is a tls_passthrough route: the gateway reads the SNI and passes the
 // connection through.
 type TLSPassthroughRouteSpec struct {
@@ -999,7 +1171,7 @@ type TLSPassthroughRouteSpec struct {
 
 func (x *TLSPassthroughRouteSpec) Reset() {
 	*x = TLSPassthroughRouteSpec{}
-	mi := &file_rpmgr_v1_route_proto_msgTypes[6]
+	mi := &file_rpmgr_v1_route_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1011,7 +1183,7 @@ func (x *TLSPassthroughRouteSpec) String() string {
 func (*TLSPassthroughRouteSpec) ProtoMessage() {}
 
 func (x *TLSPassthroughRouteSpec) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_v1_route_proto_msgTypes[6]
+	mi := &file_rpmgr_v1_route_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1024,7 +1196,7 @@ func (x *TLSPassthroughRouteSpec) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TLSPassthroughRouteSpec.ProtoReflect.Descriptor instead.
 func (*TLSPassthroughRouteSpec) Descriptor() ([]byte, []int) {
-	return file_rpmgr_v1_route_proto_rawDescGZIP(), []int{6}
+	return file_rpmgr_v1_route_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *TLSPassthroughRouteSpec) GetHostnames() []string {
@@ -1052,7 +1224,8 @@ type RouteTarget struct {
 	UpstreamProtocol UpstreamProtocol `protobuf:"varint,5,opt,name=upstream_protocol,json=upstreamProtocol,proto3,enum=rpmgr.v1.UpstreamProtocol" json:"upstream_protocol,omitempty"`
 	// How an HTTPS upstream is verified.
 	Tls *UpstreamTLSSettings `protobuf:"bytes,6,opt,name=tls,proto3" json:"tls,omitempty"`
-	// The PROXY protocol header, for tcp and tls_passthrough routes.
+	// The PROXY protocol header, for tcp and tls_passthrough routes, and for the TCP connections of
+	// a tcp_udp route; never on UDP.
 	ProxyProtocol ProxyProtocol `protobuf:"varint,7,opt,name=proxy_protocol,json=proxyProtocol,proto3,enum=rpmgr.v1.ProxyProtocol" json:"proxy_protocol,omitempty"`
 	// Its share among the targets of its priority, 1 to 1000; 1 if not set.
 	Weight uint32 `protobuf:"varint,8,opt,name=weight,proto3" json:"weight,omitempty"`
@@ -1068,7 +1241,7 @@ type RouteTarget struct {
 
 func (x *RouteTarget) Reset() {
 	*x = RouteTarget{}
-	mi := &file_rpmgr_v1_route_proto_msgTypes[7]
+	mi := &file_rpmgr_v1_route_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1080,7 +1253,7 @@ func (x *RouteTarget) String() string {
 func (*RouteTarget) ProtoMessage() {}
 
 func (x *RouteTarget) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_v1_route_proto_msgTypes[7]
+	mi := &file_rpmgr_v1_route_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1093,7 +1266,7 @@ func (x *RouteTarget) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RouteTarget.ProtoReflect.Descriptor instead.
 func (*RouteTarget) Descriptor() ([]byte, []int) {
-	return file_rpmgr_v1_route_proto_rawDescGZIP(), []int{7}
+	return file_rpmgr_v1_route_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *RouteTarget) GetId() string {
@@ -1215,7 +1388,7 @@ type HostPort struct {
 
 func (x *HostPort) Reset() {
 	*x = HostPort{}
-	mi := &file_rpmgr_v1_route_proto_msgTypes[8]
+	mi := &file_rpmgr_v1_route_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1227,7 +1400,7 @@ func (x *HostPort) String() string {
 func (*HostPort) ProtoMessage() {}
 
 func (x *HostPort) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_v1_route_proto_msgTypes[8]
+	mi := &file_rpmgr_v1_route_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1240,7 +1413,7 @@ func (x *HostPort) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HostPort.ProtoReflect.Descriptor instead.
 func (*HostPort) Descriptor() ([]byte, []int) {
-	return file_rpmgr_v1_route_proto_rawDescGZIP(), []int{8}
+	return file_rpmgr_v1_route_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *HostPort) GetHost() string {
@@ -1260,19 +1433,24 @@ func (x *HostPort) GetPort() uint32 {
 // UpstreamTLSSettings verify an HTTPS upstream.
 type UpstreamTLSSettings struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// The name its certificate must hold; the target's host if not set.
+	// The name its certificate must hold, and the name sent to it (SNI); the target's host if not
+	// set.
 	ServerName string `protobuf:"bytes,1,opt,name=server_name,json=serverName,proto3" json:"server_name,omitempty"`
-	// The CA bundle its certificate must chain to; the gateway host's roots if not set.
+	// The CA bundle its certificate must chain to; the gateway host's roots if not set. Only with
+	// VERIFIED.
 	CaBundleId string `protobuf:"bytes,2,opt,name=ca_bundle_id,json=caBundleId,proto3" json:"ca_bundle_id,omitempty"`
-	// The SHA-256 of its public key, 64 hexadecimal digits, which it must match if set.
-	SpkiSha256    string `protobuf:"bytes,3,opt,name=spki_sha256,json=spkiSha256,proto3" json:"spki_sha256,omitempty"`
+	// The SHA-256 of its public key, 64 hexadecimal digits, which it must match if set. Not with
+	// UNVERIFIED; needed with PINNED_KEY.
+	SpkiSha256 string `protobuf:"bytes,3,opt,name=spki_sha256,json=spkiSha256,proto3" json:"spki_sha256,omitempty"`
+	// How its certificate is checked; VERIFIED if not set.
+	Verification  UpstreamVerification `protobuf:"varint,4,opt,name=verification,proto3,enum=rpmgr.v1.UpstreamVerification" json:"verification,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *UpstreamTLSSettings) Reset() {
 	*x = UpstreamTLSSettings{}
-	mi := &file_rpmgr_v1_route_proto_msgTypes[9]
+	mi := &file_rpmgr_v1_route_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1284,7 +1462,7 @@ func (x *UpstreamTLSSettings) String() string {
 func (*UpstreamTLSSettings) ProtoMessage() {}
 
 func (x *UpstreamTLSSettings) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_v1_route_proto_msgTypes[9]
+	mi := &file_rpmgr_v1_route_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1297,7 +1475,7 @@ func (x *UpstreamTLSSettings) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpstreamTLSSettings.ProtoReflect.Descriptor instead.
 func (*UpstreamTLSSettings) Descriptor() ([]byte, []int) {
-	return file_rpmgr_v1_route_proto_rawDescGZIP(), []int{9}
+	return file_rpmgr_v1_route_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *UpstreamTLSSettings) GetServerName() string {
@@ -1321,6 +1499,279 @@ func (x *UpstreamTLSSettings) GetSpkiSha256() string {
 	return ""
 }
 
+func (x *UpstreamTLSSettings) GetVerification() UpstreamVerification {
+	if x != nil {
+		return x.Verification
+	}
+	return UpstreamVerification_UPSTREAM_VERIFICATION_UNSPECIFIED
+}
+
+// ProbeTargetCertificateRequest names a target as a connector of the org reaches it.
+type ProbeTargetCertificateRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The connector that dials the target.
+	ConnectorId string `protobuf:"bytes,1,opt,name=connector_id,json=connectorId,proto3" json:"connector_id,omitempty"`
+	// The target.
+	//
+	// Types that are valid to be assigned to Address:
+	//
+	//	*ProbeTargetCertificateRequest_HostPort
+	//	*ProbeTargetCertificateRequest_UnixPath
+	Address isProbeTargetCertificateRequest_Address `protobuf_oneof:"address"`
+	// The name sent to it (SNI); the host if not set and the host is a name.
+	ServerName    string `protobuf:"bytes,4,opt,name=server_name,json=serverName,proto3" json:"server_name,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ProbeTargetCertificateRequest) Reset() {
+	*x = ProbeTargetCertificateRequest{}
+	mi := &file_rpmgr_v1_route_proto_msgTypes[11]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ProbeTargetCertificateRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ProbeTargetCertificateRequest) ProtoMessage() {}
+
+func (x *ProbeTargetCertificateRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_rpmgr_v1_route_proto_msgTypes[11]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ProbeTargetCertificateRequest.ProtoReflect.Descriptor instead.
+func (*ProbeTargetCertificateRequest) Descriptor() ([]byte, []int) {
+	return file_rpmgr_v1_route_proto_rawDescGZIP(), []int{11}
+}
+
+func (x *ProbeTargetCertificateRequest) GetConnectorId() string {
+	if x != nil {
+		return x.ConnectorId
+	}
+	return ""
+}
+
+func (x *ProbeTargetCertificateRequest) GetAddress() isProbeTargetCertificateRequest_Address {
+	if x != nil {
+		return x.Address
+	}
+	return nil
+}
+
+func (x *ProbeTargetCertificateRequest) GetHostPort() *HostPort {
+	if x != nil {
+		if x, ok := x.Address.(*ProbeTargetCertificateRequest_HostPort); ok {
+			return x.HostPort
+		}
+	}
+	return nil
+}
+
+func (x *ProbeTargetCertificateRequest) GetUnixPath() string {
+	if x != nil {
+		if x, ok := x.Address.(*ProbeTargetCertificateRequest_UnixPath); ok {
+			return x.UnixPath
+		}
+	}
+	return ""
+}
+
+func (x *ProbeTargetCertificateRequest) GetServerName() string {
+	if x != nil {
+		return x.ServerName
+	}
+	return ""
+}
+
+type isProbeTargetCertificateRequest_Address interface {
+	isProbeTargetCertificateRequest_Address()
+}
+
+type ProbeTargetCertificateRequest_HostPort struct {
+	// A host and port.
+	HostPort *HostPort `protobuf:"bytes,2,opt,name=host_port,json=hostPort,proto3,oneof"`
+}
+
+type ProbeTargetCertificateRequest_UnixPath struct {
+	// A Unix socket, an absolute path.
+	UnixPath string `protobuf:"bytes,3,opt,name=unix_path,json=unixPath,proto3,oneof"`
+}
+
+func (*ProbeTargetCertificateRequest_HostPort) isProbeTargetCertificateRequest_Address() {}
+
+func (*ProbeTargetCertificateRequest_UnixPath) isProbeTargetCertificateRequest_Address() {}
+
+// ProbeTargetCertificateResponse is the certificate the target presented.
+type ProbeTargetCertificateResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The certificate.
+	Certificate   *TargetCertificate `protobuf:"bytes,1,opt,name=certificate,proto3" json:"certificate,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ProbeTargetCertificateResponse) Reset() {
+	*x = ProbeTargetCertificateResponse{}
+	mi := &file_rpmgr_v1_route_proto_msgTypes[12]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ProbeTargetCertificateResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ProbeTargetCertificateResponse) ProtoMessage() {}
+
+func (x *ProbeTargetCertificateResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_rpmgr_v1_route_proto_msgTypes[12]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ProbeTargetCertificateResponse.ProtoReflect.Descriptor instead.
+func (*ProbeTargetCertificateResponse) Descriptor() ([]byte, []int) {
+	return file_rpmgr_v1_route_proto_rawDescGZIP(), []int{12}
+}
+
+func (x *ProbeTargetCertificateResponse) GetCertificate() *TargetCertificate {
+	if x != nil {
+		return x.Certificate
+	}
+	return nil
+}
+
+// TargetCertificate describes a certificate a target presented.
+type TargetCertificate struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The SHA-256 of its public key (SubjectPublicKeyInfo), 64 hexadecimal digits: the pin.
+	SpkiSha256 string `protobuf:"bytes,1,opt,name=spki_sha256,json=spkiSha256,proto3" json:"spki_sha256,omitempty"`
+	// The SHA-256 of the whole certificate, 64 hexadecimal digits.
+	Sha256 string `protobuf:"bytes,2,opt,name=sha256,proto3" json:"sha256,omitempty"`
+	// Its subject and issuer, as distinguished names.
+	Subject string `protobuf:"bytes,3,opt,name=subject,proto3" json:"subject,omitempty"`
+	Issuer  string `protobuf:"bytes,4,opt,name=issuer,proto3" json:"issuer,omitempty"`
+	// The DNS names and IP addresses it names.
+	DnsNames    []string `protobuf:"bytes,5,rep,name=dns_names,json=dnsNames,proto3" json:"dns_names,omitempty"`
+	IpAddresses []string `protobuf:"bytes,6,rep,name=ip_addresses,json=ipAddresses,proto3" json:"ip_addresses,omitempty"`
+	// When it is valid.
+	NotBefore *timestamppb.Timestamp `protobuf:"bytes,7,opt,name=not_before,json=notBefore,proto3" json:"not_before,omitempty"`
+	NotAfter  *timestamppb.Timestamp `protobuf:"bytes,8,opt,name=not_after,json=notAfter,proto3" json:"not_after,omitempty"`
+	// Whether it is signed by its own key.
+	SelfSigned    bool `protobuf:"varint,9,opt,name=self_signed,json=selfSigned,proto3" json:"self_signed,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *TargetCertificate) Reset() {
+	*x = TargetCertificate{}
+	mi := &file_rpmgr_v1_route_proto_msgTypes[13]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *TargetCertificate) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*TargetCertificate) ProtoMessage() {}
+
+func (x *TargetCertificate) ProtoReflect() protoreflect.Message {
+	mi := &file_rpmgr_v1_route_proto_msgTypes[13]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use TargetCertificate.ProtoReflect.Descriptor instead.
+func (*TargetCertificate) Descriptor() ([]byte, []int) {
+	return file_rpmgr_v1_route_proto_rawDescGZIP(), []int{13}
+}
+
+func (x *TargetCertificate) GetSpkiSha256() string {
+	if x != nil {
+		return x.SpkiSha256
+	}
+	return ""
+}
+
+func (x *TargetCertificate) GetSha256() string {
+	if x != nil {
+		return x.Sha256
+	}
+	return ""
+}
+
+func (x *TargetCertificate) GetSubject() string {
+	if x != nil {
+		return x.Subject
+	}
+	return ""
+}
+
+func (x *TargetCertificate) GetIssuer() string {
+	if x != nil {
+		return x.Issuer
+	}
+	return ""
+}
+
+func (x *TargetCertificate) GetDnsNames() []string {
+	if x != nil {
+		return x.DnsNames
+	}
+	return nil
+}
+
+func (x *TargetCertificate) GetIpAddresses() []string {
+	if x != nil {
+		return x.IpAddresses
+	}
+	return nil
+}
+
+func (x *TargetCertificate) GetNotBefore() *timestamppb.Timestamp {
+	if x != nil {
+		return x.NotBefore
+	}
+	return nil
+}
+
+func (x *TargetCertificate) GetNotAfter() *timestamppb.Timestamp {
+	if x != nil {
+		return x.NotAfter
+	}
+	return nil
+}
+
+func (x *TargetCertificate) GetSelfSigned() bool {
+	if x != nil {
+		return x.SelfSigned
+	}
+	return false
+}
+
 // CreateRouteRequest is a new route.
 type CreateRouteRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
@@ -1336,7 +1787,7 @@ type CreateRouteRequest struct {
 
 func (x *CreateRouteRequest) Reset() {
 	*x = CreateRouteRequest{}
-	mi := &file_rpmgr_v1_route_proto_msgTypes[10]
+	mi := &file_rpmgr_v1_route_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1348,7 +1799,7 @@ func (x *CreateRouteRequest) String() string {
 func (*CreateRouteRequest) ProtoMessage() {}
 
 func (x *CreateRouteRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_v1_route_proto_msgTypes[10]
+	mi := &file_rpmgr_v1_route_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1361,7 +1812,7 @@ func (x *CreateRouteRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateRouteRequest.ProtoReflect.Descriptor instead.
 func (*CreateRouteRequest) Descriptor() ([]byte, []int) {
-	return file_rpmgr_v1_route_proto_rawDescGZIP(), []int{10}
+	return file_rpmgr_v1_route_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *CreateRouteRequest) GetOrgId() string {
@@ -1401,7 +1852,7 @@ type CreateRouteResponse struct {
 
 func (x *CreateRouteResponse) Reset() {
 	*x = CreateRouteResponse{}
-	mi := &file_rpmgr_v1_route_proto_msgTypes[11]
+	mi := &file_rpmgr_v1_route_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1413,7 +1864,7 @@ func (x *CreateRouteResponse) String() string {
 func (*CreateRouteResponse) ProtoMessage() {}
 
 func (x *CreateRouteResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_v1_route_proto_msgTypes[11]
+	mi := &file_rpmgr_v1_route_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1426,7 +1877,7 @@ func (x *CreateRouteResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateRouteResponse.ProtoReflect.Descriptor instead.
 func (*CreateRouteResponse) Descriptor() ([]byte, []int) {
-	return file_rpmgr_v1_route_proto_rawDescGZIP(), []int{11}
+	return file_rpmgr_v1_route_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *CreateRouteResponse) GetRoute() *Route {
@@ -1461,7 +1912,7 @@ type GetRouteRequest struct {
 
 func (x *GetRouteRequest) Reset() {
 	*x = GetRouteRequest{}
-	mi := &file_rpmgr_v1_route_proto_msgTypes[12]
+	mi := &file_rpmgr_v1_route_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1473,7 +1924,7 @@ func (x *GetRouteRequest) String() string {
 func (*GetRouteRequest) ProtoMessage() {}
 
 func (x *GetRouteRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_v1_route_proto_msgTypes[12]
+	mi := &file_rpmgr_v1_route_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1486,7 +1937,7 @@ func (x *GetRouteRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetRouteRequest.ProtoReflect.Descriptor instead.
 func (*GetRouteRequest) Descriptor() ([]byte, []int) {
-	return file_rpmgr_v1_route_proto_rawDescGZIP(), []int{12}
+	return file_rpmgr_v1_route_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *GetRouteRequest) GetRouteId() string {
@@ -1507,7 +1958,7 @@ type GetRouteResponse struct {
 
 func (x *GetRouteResponse) Reset() {
 	*x = GetRouteResponse{}
-	mi := &file_rpmgr_v1_route_proto_msgTypes[13]
+	mi := &file_rpmgr_v1_route_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1519,7 +1970,7 @@ func (x *GetRouteResponse) String() string {
 func (*GetRouteResponse) ProtoMessage() {}
 
 func (x *GetRouteResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_v1_route_proto_msgTypes[13]
+	mi := &file_rpmgr_v1_route_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1532,7 +1983,7 @@ func (x *GetRouteResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetRouteResponse.ProtoReflect.Descriptor instead.
 func (*GetRouteResponse) Descriptor() ([]byte, []int) {
-	return file_rpmgr_v1_route_proto_rawDescGZIP(), []int{13}
+	return file_rpmgr_v1_route_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *GetRouteResponse) GetRoute() *Route {
@@ -1559,7 +2010,7 @@ type ListRoutesRequest struct {
 
 func (x *ListRoutesRequest) Reset() {
 	*x = ListRoutesRequest{}
-	mi := &file_rpmgr_v1_route_proto_msgTypes[14]
+	mi := &file_rpmgr_v1_route_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1571,7 +2022,7 @@ func (x *ListRoutesRequest) String() string {
 func (*ListRoutesRequest) ProtoMessage() {}
 
 func (x *ListRoutesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_v1_route_proto_msgTypes[14]
+	mi := &file_rpmgr_v1_route_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1584,7 +2035,7 @@ func (x *ListRoutesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListRoutesRequest.ProtoReflect.Descriptor instead.
 func (*ListRoutesRequest) Descriptor() ([]byte, []int) {
-	return file_rpmgr_v1_route_proto_rawDescGZIP(), []int{14}
+	return file_rpmgr_v1_route_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *ListRoutesRequest) GetOrgId() string {
@@ -1628,7 +2079,7 @@ type ListRoutesResponse struct {
 
 func (x *ListRoutesResponse) Reset() {
 	*x = ListRoutesResponse{}
-	mi := &file_rpmgr_v1_route_proto_msgTypes[15]
+	mi := &file_rpmgr_v1_route_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1640,7 +2091,7 @@ func (x *ListRoutesResponse) String() string {
 func (*ListRoutesResponse) ProtoMessage() {}
 
 func (x *ListRoutesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_v1_route_proto_msgTypes[15]
+	mi := &file_rpmgr_v1_route_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1653,7 +2104,7 @@ func (x *ListRoutesResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListRoutesResponse.ProtoReflect.Descriptor instead.
 func (*ListRoutesResponse) Descriptor() ([]byte, []int) {
-	return file_rpmgr_v1_route_proto_rawDescGZIP(), []int{15}
+	return file_rpmgr_v1_route_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *ListRoutesResponse) GetRoutes() []*Route {
@@ -1686,7 +2137,7 @@ type UpdateRouteRequest struct {
 
 func (x *UpdateRouteRequest) Reset() {
 	*x = UpdateRouteRequest{}
-	mi := &file_rpmgr_v1_route_proto_msgTypes[16]
+	mi := &file_rpmgr_v1_route_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1698,7 +2149,7 @@ func (x *UpdateRouteRequest) String() string {
 func (*UpdateRouteRequest) ProtoMessage() {}
 
 func (x *UpdateRouteRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_v1_route_proto_msgTypes[16]
+	mi := &file_rpmgr_v1_route_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1711,7 +2162,7 @@ func (x *UpdateRouteRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateRouteRequest.ProtoReflect.Descriptor instead.
 func (*UpdateRouteRequest) Descriptor() ([]byte, []int) {
-	return file_rpmgr_v1_route_proto_rawDescGZIP(), []int{16}
+	return file_rpmgr_v1_route_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *UpdateRouteRequest) GetRoute() *Route {
@@ -1751,7 +2202,7 @@ type UpdateRouteResponse struct {
 
 func (x *UpdateRouteResponse) Reset() {
 	*x = UpdateRouteResponse{}
-	mi := &file_rpmgr_v1_route_proto_msgTypes[17]
+	mi := &file_rpmgr_v1_route_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1763,7 +2214,7 @@ func (x *UpdateRouteResponse) String() string {
 func (*UpdateRouteResponse) ProtoMessage() {}
 
 func (x *UpdateRouteResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_v1_route_proto_msgTypes[17]
+	mi := &file_rpmgr_v1_route_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1776,7 +2227,7 @@ func (x *UpdateRouteResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateRouteResponse.ProtoReflect.Descriptor instead.
 func (*UpdateRouteResponse) Descriptor() ([]byte, []int) {
-	return file_rpmgr_v1_route_proto_rawDescGZIP(), []int{17}
+	return file_rpmgr_v1_route_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *UpdateRouteResponse) GetRoute() *Route {
@@ -1813,7 +2264,7 @@ type DeleteRouteRequest struct {
 
 func (x *DeleteRouteRequest) Reset() {
 	*x = DeleteRouteRequest{}
-	mi := &file_rpmgr_v1_route_proto_msgTypes[18]
+	mi := &file_rpmgr_v1_route_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1825,7 +2276,7 @@ func (x *DeleteRouteRequest) String() string {
 func (*DeleteRouteRequest) ProtoMessage() {}
 
 func (x *DeleteRouteRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_v1_route_proto_msgTypes[18]
+	mi := &file_rpmgr_v1_route_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1838,7 +2289,7 @@ func (x *DeleteRouteRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteRouteRequest.ProtoReflect.Descriptor instead.
 func (*DeleteRouteRequest) Descriptor() ([]byte, []int) {
-	return file_rpmgr_v1_route_proto_rawDescGZIP(), []int{18}
+	return file_rpmgr_v1_route_proto_rawDescGZIP(), []int{22}
 }
 
 func (x *DeleteRouteRequest) GetRouteId() string {
@@ -1869,7 +2320,7 @@ type DeleteRouteResponse struct {
 
 func (x *DeleteRouteResponse) Reset() {
 	*x = DeleteRouteResponse{}
-	mi := &file_rpmgr_v1_route_proto_msgTypes[19]
+	mi := &file_rpmgr_v1_route_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1881,7 +2332,7 @@ func (x *DeleteRouteResponse) String() string {
 func (*DeleteRouteResponse) ProtoMessage() {}
 
 func (x *DeleteRouteResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_v1_route_proto_msgTypes[19]
+	mi := &file_rpmgr_v1_route_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1894,7 +2345,7 @@ func (x *DeleteRouteResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteRouteResponse.ProtoReflect.Descriptor instead.
 func (*DeleteRouteResponse) Descriptor() ([]byte, []int) {
-	return file_rpmgr_v1_route_proto_rawDescGZIP(), []int{19}
+	return file_rpmgr_v1_route_proto_rawDescGZIP(), []int{23}
 }
 
 func (x *DeleteRouteResponse) GetRevision() *Revision {
@@ -1926,7 +2377,7 @@ type CreateRouteTargetRequest struct {
 
 func (x *CreateRouteTargetRequest) Reset() {
 	*x = CreateRouteTargetRequest{}
-	mi := &file_rpmgr_v1_route_proto_msgTypes[20]
+	mi := &file_rpmgr_v1_route_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1938,7 +2389,7 @@ func (x *CreateRouteTargetRequest) String() string {
 func (*CreateRouteTargetRequest) ProtoMessage() {}
 
 func (x *CreateRouteTargetRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_v1_route_proto_msgTypes[20]
+	mi := &file_rpmgr_v1_route_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1951,7 +2402,7 @@ func (x *CreateRouteTargetRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateRouteTargetRequest.ProtoReflect.Descriptor instead.
 func (*CreateRouteTargetRequest) Descriptor() ([]byte, []int) {
-	return file_rpmgr_v1_route_proto_rawDescGZIP(), []int{20}
+	return file_rpmgr_v1_route_proto_rawDescGZIP(), []int{24}
 }
 
 func (x *CreateRouteTargetRequest) GetRouteId() string {
@@ -1991,7 +2442,7 @@ type CreateRouteTargetResponse struct {
 
 func (x *CreateRouteTargetResponse) Reset() {
 	*x = CreateRouteTargetResponse{}
-	mi := &file_rpmgr_v1_route_proto_msgTypes[21]
+	mi := &file_rpmgr_v1_route_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2003,7 +2454,7 @@ func (x *CreateRouteTargetResponse) String() string {
 func (*CreateRouteTargetResponse) ProtoMessage() {}
 
 func (x *CreateRouteTargetResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_v1_route_proto_msgTypes[21]
+	mi := &file_rpmgr_v1_route_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2016,7 +2467,7 @@ func (x *CreateRouteTargetResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateRouteTargetResponse.ProtoReflect.Descriptor instead.
 func (*CreateRouteTargetResponse) Descriptor() ([]byte, []int) {
-	return file_rpmgr_v1_route_proto_rawDescGZIP(), []int{21}
+	return file_rpmgr_v1_route_proto_rawDescGZIP(), []int{25}
 }
 
 func (x *CreateRouteTargetResponse) GetTarget() *RouteTarget {
@@ -2056,7 +2507,7 @@ type UpdateRouteTargetRequest struct {
 
 func (x *UpdateRouteTargetRequest) Reset() {
 	*x = UpdateRouteTargetRequest{}
-	mi := &file_rpmgr_v1_route_proto_msgTypes[22]
+	mi := &file_rpmgr_v1_route_proto_msgTypes[26]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2068,7 +2519,7 @@ func (x *UpdateRouteTargetRequest) String() string {
 func (*UpdateRouteTargetRequest) ProtoMessage() {}
 
 func (x *UpdateRouteTargetRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_v1_route_proto_msgTypes[22]
+	mi := &file_rpmgr_v1_route_proto_msgTypes[26]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2081,7 +2532,7 @@ func (x *UpdateRouteTargetRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateRouteTargetRequest.ProtoReflect.Descriptor instead.
 func (*UpdateRouteTargetRequest) Descriptor() ([]byte, []int) {
-	return file_rpmgr_v1_route_proto_rawDescGZIP(), []int{22}
+	return file_rpmgr_v1_route_proto_rawDescGZIP(), []int{26}
 }
 
 func (x *UpdateRouteTargetRequest) GetTarget() *RouteTarget {
@@ -2121,7 +2572,7 @@ type UpdateRouteTargetResponse struct {
 
 func (x *UpdateRouteTargetResponse) Reset() {
 	*x = UpdateRouteTargetResponse{}
-	mi := &file_rpmgr_v1_route_proto_msgTypes[23]
+	mi := &file_rpmgr_v1_route_proto_msgTypes[27]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2133,7 +2584,7 @@ func (x *UpdateRouteTargetResponse) String() string {
 func (*UpdateRouteTargetResponse) ProtoMessage() {}
 
 func (x *UpdateRouteTargetResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_v1_route_proto_msgTypes[23]
+	mi := &file_rpmgr_v1_route_proto_msgTypes[27]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2146,7 +2597,7 @@ func (x *UpdateRouteTargetResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateRouteTargetResponse.ProtoReflect.Descriptor instead.
 func (*UpdateRouteTargetResponse) Descriptor() ([]byte, []int) {
-	return file_rpmgr_v1_route_proto_rawDescGZIP(), []int{23}
+	return file_rpmgr_v1_route_proto_rawDescGZIP(), []int{27}
 }
 
 func (x *UpdateRouteTargetResponse) GetTarget() *RouteTarget {
@@ -2181,7 +2632,7 @@ type GetRouteTargetRequest struct {
 
 func (x *GetRouteTargetRequest) Reset() {
 	*x = GetRouteTargetRequest{}
-	mi := &file_rpmgr_v1_route_proto_msgTypes[24]
+	mi := &file_rpmgr_v1_route_proto_msgTypes[28]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2193,7 +2644,7 @@ func (x *GetRouteTargetRequest) String() string {
 func (*GetRouteTargetRequest) ProtoMessage() {}
 
 func (x *GetRouteTargetRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_v1_route_proto_msgTypes[24]
+	mi := &file_rpmgr_v1_route_proto_msgTypes[28]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2206,7 +2657,7 @@ func (x *GetRouteTargetRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetRouteTargetRequest.ProtoReflect.Descriptor instead.
 func (*GetRouteTargetRequest) Descriptor() ([]byte, []int) {
-	return file_rpmgr_v1_route_proto_rawDescGZIP(), []int{24}
+	return file_rpmgr_v1_route_proto_rawDescGZIP(), []int{28}
 }
 
 func (x *GetRouteTargetRequest) GetRouteTargetId() string {
@@ -2229,7 +2680,7 @@ type GetRouteTargetResponse struct {
 
 func (x *GetRouteTargetResponse) Reset() {
 	*x = GetRouteTargetResponse{}
-	mi := &file_rpmgr_v1_route_proto_msgTypes[25]
+	mi := &file_rpmgr_v1_route_proto_msgTypes[29]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2241,7 +2692,7 @@ func (x *GetRouteTargetResponse) String() string {
 func (*GetRouteTargetResponse) ProtoMessage() {}
 
 func (x *GetRouteTargetResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_v1_route_proto_msgTypes[25]
+	mi := &file_rpmgr_v1_route_proto_msgTypes[29]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2254,7 +2705,7 @@ func (x *GetRouteTargetResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetRouteTargetResponse.ProtoReflect.Descriptor instead.
 func (*GetRouteTargetResponse) Descriptor() ([]byte, []int) {
-	return file_rpmgr_v1_route_proto_rawDescGZIP(), []int{25}
+	return file_rpmgr_v1_route_proto_rawDescGZIP(), []int{29}
 }
 
 func (x *GetRouteTargetResponse) GetTarget() *RouteTarget {
@@ -2284,7 +2735,7 @@ type DeleteRouteTargetRequest struct {
 
 func (x *DeleteRouteTargetRequest) Reset() {
 	*x = DeleteRouteTargetRequest{}
-	mi := &file_rpmgr_v1_route_proto_msgTypes[26]
+	mi := &file_rpmgr_v1_route_proto_msgTypes[30]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2296,7 +2747,7 @@ func (x *DeleteRouteTargetRequest) String() string {
 func (*DeleteRouteTargetRequest) ProtoMessage() {}
 
 func (x *DeleteRouteTargetRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_v1_route_proto_msgTypes[26]
+	mi := &file_rpmgr_v1_route_proto_msgTypes[30]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2309,7 +2760,7 @@ func (x *DeleteRouteTargetRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteRouteTargetRequest.ProtoReflect.Descriptor instead.
 func (*DeleteRouteTargetRequest) Descriptor() ([]byte, []int) {
-	return file_rpmgr_v1_route_proto_rawDescGZIP(), []int{26}
+	return file_rpmgr_v1_route_proto_rawDescGZIP(), []int{30}
 }
 
 func (x *DeleteRouteTargetRequest) GetRouteTargetId() string {
@@ -2340,7 +2791,7 @@ type DeleteRouteTargetResponse struct {
 
 func (x *DeleteRouteTargetResponse) Reset() {
 	*x = DeleteRouteTargetResponse{}
-	mi := &file_rpmgr_v1_route_proto_msgTypes[27]
+	mi := &file_rpmgr_v1_route_proto_msgTypes[31]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2352,7 +2803,7 @@ func (x *DeleteRouteTargetResponse) String() string {
 func (*DeleteRouteTargetResponse) ProtoMessage() {}
 
 func (x *DeleteRouteTargetResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_v1_route_proto_msgTypes[27]
+	mi := &file_rpmgr_v1_route_proto_msgTypes[31]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2365,7 +2816,7 @@ func (x *DeleteRouteTargetResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteRouteTargetResponse.ProtoReflect.Descriptor instead.
 func (*DeleteRouteTargetResponse) Descriptor() ([]byte, []int) {
-	return file_rpmgr_v1_route_proto_rawDescGZIP(), []int{27}
+	return file_rpmgr_v1_route_proto_rawDescGZIP(), []int{31}
 }
 
 func (x *DeleteRouteTargetResponse) GetRevision() *Revision {
@@ -2400,7 +2851,7 @@ type PreviewRouteRequest struct {
 
 func (x *PreviewRouteRequest) Reset() {
 	*x = PreviewRouteRequest{}
-	mi := &file_rpmgr_v1_route_proto_msgTypes[28]
+	mi := &file_rpmgr_v1_route_proto_msgTypes[32]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2412,7 +2863,7 @@ func (x *PreviewRouteRequest) String() string {
 func (*PreviewRouteRequest) ProtoMessage() {}
 
 func (x *PreviewRouteRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_v1_route_proto_msgTypes[28]
+	mi := &file_rpmgr_v1_route_proto_msgTypes[32]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2425,7 +2876,7 @@ func (x *PreviewRouteRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PreviewRouteRequest.ProtoReflect.Descriptor instead.
 func (*PreviewRouteRequest) Descriptor() ([]byte, []int) {
-	return file_rpmgr_v1_route_proto_rawDescGZIP(), []int{28}
+	return file_rpmgr_v1_route_proto_rawDescGZIP(), []int{32}
 }
 
 func (x *PreviewRouteRequest) GetOrgId() string {
@@ -2474,7 +2925,7 @@ type PreviewRouteResponse struct {
 
 func (x *PreviewRouteResponse) Reset() {
 	*x = PreviewRouteResponse{}
-	mi := &file_rpmgr_v1_route_proto_msgTypes[29]
+	mi := &file_rpmgr_v1_route_proto_msgTypes[33]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2486,7 +2937,7 @@ func (x *PreviewRouteResponse) String() string {
 func (*PreviewRouteResponse) ProtoMessage() {}
 
 func (x *PreviewRouteResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_v1_route_proto_msgTypes[29]
+	mi := &file_rpmgr_v1_route_proto_msgTypes[33]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2499,7 +2950,7 @@ func (x *PreviewRouteResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PreviewRouteResponse.ProtoReflect.Descriptor instead.
 func (*PreviewRouteResponse) Descriptor() ([]byte, []int) {
-	return file_rpmgr_v1_route_proto_rawDescGZIP(), []int{29}
+	return file_rpmgr_v1_route_proto_rawDescGZIP(), []int{33}
 }
 
 func (x *PreviewRouteResponse) GetRoute() *Route {
@@ -2534,7 +2985,7 @@ var File_rpmgr_v1_route_proto protoreflect.FileDescriptor
 
 const file_rpmgr_v1_route_proto_rawDesc = "" +
 	"\n" +
-	"\x14rpmgr/v1/route.proto\x12\brpmgr.v1\x1a\x1bbuf/validate/validate.proto\x1a google/protobuf/field_mask.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x15rpmgr/v1/common.proto\x1a\x18rpmgr/v1/connector.proto\x1a\x16rpmgr/v1/options.proto\x1a\x15rpmgr/v1/status.proto\"\xd5\a\n" +
+	"\x14rpmgr/v1/route.proto\x12\brpmgr.v1\x1a\x1bbuf/validate/validate.proto\x1a google/protobuf/field_mask.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x15rpmgr/v1/common.proto\x1a\x18rpmgr/v1/connector.proto\x1a\x16rpmgr/v1/options.proto\x1a\x15rpmgr/v1/status.proto\"\x8b\b\n" +
 	"\x05Route\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12B\n" +
 	"\x04name\x18\x02 \x01(\tB.\xbaH+\xd8\x01\x01r&2$^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$R\x04name\x12(\n" +
@@ -2546,7 +2997,8 @@ const file_rpmgr_v1_route_proto_rawDesc = "" +
 	" \x01(\v2\x17.rpmgr.v1.HTTPRouteSpecH\x00R\x04http\x12*\n" +
 	"\x03tcp\x18\v \x01(\v2\x16.rpmgr.v1.TCPRouteSpecH\x00R\x03tcp\x12*\n" +
 	"\x03udp\x18\f \x01(\v2\x16.rpmgr.v1.UDPRouteSpecH\x00R\x03udp\x12L\n" +
-	"\x0ftls_passthrough\x18\r \x01(\v2!.rpmgr.v1.TLSPassthroughRouteSpecH\x00R\x0etlsPassthrough\x12/\n" +
+	"\x0ftls_passthrough\x18\r \x01(\v2!.rpmgr.v1.TLSPassthroughRouteSpecH\x00R\x0etlsPassthrough\x124\n" +
+	"\atcp_udp\x18\x0e \x01(\v2\x19.rpmgr.v1.TCPUDPRouteSpecH\x00R\x06tcpUdp\x12/\n" +
 	"\atargets\x18\x14 \x03(\v2\x15.rpmgr.v1.RouteTargetR\atargets\x12)\n" +
 	"\n" +
 	"policy_ids\x18\x15 \x03(\tB\n" +
@@ -2577,7 +3029,7 @@ const file_rpmgr_v1_route_proto_rawDesc = "" +
 	"\x0fRouteNotServing\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x16\n" +
 	"\x06reason\x18\x02 \x01(\tR\x06reason\x12\x16\n" +
-	"\x06detail\x18\x03 \x01(\tR\x06detail\"\xb7\x06\n" +
+	"\x06detail\x18\x03 \x01(\tR\x06detail\"\xb7\a\n" +
 	"\rHTTPRouteSpec\x123\n" +
 	"\thostnames\x18\x01 \x03(\tB\x15\xbaH\x12\x92\x01\x0f\b\x01\x10d\x18\x01\"\ar\x05\x10\x01\x18\xff\x01R\thostnames\x127\n" +
 	"\vpath_prefix\x18\x02 \x01(\tB\x16\xbaH\x13r\x11\x18\x80\b2\f^(/[^\\s]*)?$R\n" +
@@ -2593,7 +3045,9 @@ const file_rpmgr_v1_route_proto_rawDesc = "" +
 	"\x14response_headers_set\x18\t \x03(\v2/.rpmgr.v1.HTTPRouteSpec.ResponseHeadersSetEntryB\b\xbaH\x05\x9a\x01\x02\x10 R\x12responseHeadersSet\x12!\n" +
 	"\twebsocket\x18\n" +
 	" \x01(\bH\x00R\twebsocket\x88\x01\x01\x12$\n" +
-	"\x0emax_body_bytes\x18\v \x01(\x04R\fmaxBodyBytes\x1aD\n" +
+	"\x0emax_body_bytes\x18\v \x01(\x04R\fmaxBodyBytes\x12 \n" +
+	"\vmaintenance\x18\f \x01(\bR\vmaintenance\x12\\\n" +
+	"\x13maintenance_message\x18\r \x01(\tB+\xbaH(r&\x18\xf4\x032!^[^\\x00-\\x09\\x0B-\\x1F\\x7F-\\x9F]*$R\x12maintenanceMessage\x1aD\n" +
 	"\x16RequestHeadersSetEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\x1aE\n" +
@@ -2609,6 +3063,12 @@ const file_rpmgr_v1_route_proto_rawDesc = "" +
 	"\fUDPRouteSpec\x12\x1d\n" +
 	"\x04port\x18\x01 \x01(\rB\t\xbaH\x06*\x04\x18\xff\xff\x03R\x04port\x12K\n" +
 	"\x19flow_idle_timeout_seconds\x18\x02 \x01(\rB\v\xbaH\b*\x06\x18\x80\xa3\x05(\x01H\x00R\x16flowIdleTimeoutSeconds\x88\x01\x01B\x1c\n" +
+	"\x1a_flow_idle_timeout_seconds\"\xf6\x01\n" +
+	"\x0fTCPUDPRouteSpec\x12\x1d\n" +
+	"\x04port\x18\x01 \x01(\rB\t\xbaH\x06*\x04\x18\xff\xff\x03R\x04port\x12@\n" +
+	"\x14idle_timeout_seconds\x18\x02 \x01(\rB\t\xbaH\x06*\x04\x18\x80\xf5$H\x00R\x12idleTimeoutSeconds\x88\x01\x01\x12K\n" +
+	"\x19flow_idle_timeout_seconds\x18\x03 \x01(\rB\v\xbaH\b*\x06\x18\x80\xa3\x05(\x01H\x01R\x16flowIdleTimeoutSeconds\x88\x01\x01B\x17\n" +
+	"\x15_idle_timeout_secondsB\x1c\n" +
 	"\x1a_flow_idle_timeout_seconds\"N\n" +
 	"\x17TLSPassthroughRouteSpec\x123\n" +
 	"\thostnames\x18\x01 \x03(\tB\x15\xbaH\x12\x92\x01\x0f\b\x01\x10d\x18\x01\"\ar\x05\x10\x01\x18\xff\x01R\thostnames\"\xef\x03\n" +
@@ -2629,14 +3089,37 @@ const file_rpmgr_v1_route_proto_rawDesc = "" +
 	"\bHostPort\x12\x1e\n" +
 	"\x04host\x18\x01 \x01(\tB\n" +
 	"\xbaH\ar\x05\x10\x01\x18\xfd\x01R\x04host\x12\x1f\n" +
-	"\x04port\x18\x02 \x01(\rB\v\xbaH\b*\x06\x18\xff\xff\x03(\x01R\x04port\"\x9d\x01\n" +
+	"\x04port\x18\x02 \x01(\rB\v\xbaH\b*\x06\x18\xff\xff\x03(\x01R\x04port\"\xeb\x01\n" +
 	"\x13UpstreamTLSSettings\x12)\n" +
 	"\vserver_name\x18\x01 \x01(\tB\b\xbaH\x05r\x03\x18\xfd\x01R\n" +
 	"serverName\x12 \n" +
 	"\fca_bundle_id\x18\x02 \x01(\tR\n" +
 	"caBundleId\x129\n" +
 	"\vspki_sha256\x18\x03 \x01(\tB\x18\xbaH\x15r\x132\x11^([0-9a-f]{64})?$R\n" +
-	"spkiSha256\"\x8c\x01\n" +
+	"spkiSha256\x12L\n" +
+	"\fverification\x18\x04 \x01(\x0e2\x1e.rpmgr.v1.UpstreamVerificationB\b\xbaH\x05\x82\x01\x02\x10\x01R\fverification\"\xe8\x01\n" +
+	"\x1dProbeTargetCertificateRequest\x12*\n" +
+	"\fconnector_id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\vconnectorId\x121\n" +
+	"\thost_port\x18\x02 \x01(\v2\x12.rpmgr.v1.HostPortH\x00R\bhostPort\x12+\n" +
+	"\tunix_path\x18\x03 \x01(\tB\f\xbaH\tr\a\x18\x80\b2\x02^/H\x00R\bunixPath\x12)\n" +
+	"\vserver_name\x18\x04 \x01(\tB\b\xbaH\x05r\x03\x18\xfd\x01R\n" +
+	"serverNameB\x10\n" +
+	"\aaddress\x12\x05\xbaH\x02\b\x01\"_\n" +
+	"\x1eProbeTargetCertificateResponse\x12=\n" +
+	"\vcertificate\x18\x01 \x01(\v2\x1b.rpmgr.v1.TargetCertificateR\vcertificate\"\xd3\x02\n" +
+	"\x11TargetCertificate\x12\x1f\n" +
+	"\vspki_sha256\x18\x01 \x01(\tR\n" +
+	"spkiSha256\x12\x16\n" +
+	"\x06sha256\x18\x02 \x01(\tR\x06sha256\x12\x18\n" +
+	"\asubject\x18\x03 \x01(\tR\asubject\x12\x16\n" +
+	"\x06issuer\x18\x04 \x01(\tR\x06issuer\x12\x1b\n" +
+	"\tdns_names\x18\x05 \x03(\tR\bdnsNames\x12!\n" +
+	"\fip_addresses\x18\x06 \x03(\tR\vipAddresses\x129\n" +
+	"\n" +
+	"not_before\x18\a \x01(\v2\x1a.google.protobuf.TimestampR\tnotBefore\x127\n" +
+	"\tnot_after\x18\b \x01(\v2\x1a.google.protobuf.TimestampR\bnotAfter\x12\x1f\n" +
+	"\vself_signed\x18\t \x01(\bR\n" +
+	"selfSigned\"\x8c\x01\n" +
 	"\x12CreateRouteRequest\x12\x1e\n" +
 	"\x06org_id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x05orgId\x12-\n" +
 	"\x05route\x18\x02 \x01(\v2\x0f.rpmgr.v1.RouteB\x06\xbaH\x03\xc8\x01\x01R\x05route\x12'\n" +
@@ -2714,7 +3197,7 @@ const file_rpmgr_v1_route_proto_rawDesc = "" +
 	"\vgateway_ids\x18\x02 \x03(\tR\n" +
 	"gatewayIds\x12#\n" +
 	"\rconnector_ids\x18\x03 \x03(\tR\fconnectorIds\x120\n" +
-	"\bproblems\x18\x04 \x03(\v2\x14.rpmgr.v1.ApplyErrorR\bproblems*\xc1\x01\n" +
+	"\bproblems\x18\x04 \x03(\v2\x14.rpmgr.v1.ApplyErrorR\bproblems*\xde\x01\n" +
 	"\n" +
 	"RouteState\x12\x1b\n" +
 	"\x17ROUTE_STATE_UNSPECIFIED\x10\x00\x12\x18\n" +
@@ -2723,7 +3206,8 @@ const file_rpmgr_v1_route_proto_rawDesc = "" +
 	"\x11ROUTE_STATE_READY\x10\x03\x12\x18\n" +
 	"\x14ROUTE_STATE_DEGRADED\x10\x04\x12\x1b\n" +
 	"\x17ROUTE_STATE_UNAVAILABLE\x10\x05\x12\x15\n" +
-	"\x11ROUTE_STATE_ERROR\x10\x06*P\n" +
+	"\x11ROUTE_STATE_ERROR\x10\x06\x12\x1b\n" +
+	"\x17ROUTE_STATE_MAINTENANCE\x10\a*P\n" +
 	"\aTLSMode\x12\x18\n" +
 	"\x14TLS_MODE_UNSPECIFIED\x10\x00\x12\x11\n" +
 	"\rTLS_MODE_ACME\x10\x01\x12\x18\n" +
@@ -2744,7 +3228,13 @@ const file_rpmgr_v1_route_proto_rawDesc = "" +
 	"\x1aPROXY_PROTOCOL_UNSPECIFIED\x10\x00\x12\x17\n" +
 	"\x13PROXY_PROTOCOL_NONE\x10\x01\x12\x15\n" +
 	"\x11PROXY_PROTOCOL_V1\x10\x02\x12\x15\n" +
-	"\x11PROXY_PROTOCOL_V2\x10\x032\xf2\b\n" +
+	"\x11PROXY_PROTOCOL_V2\x10\x03*\xad\x01\n" +
+	"\x14UpstreamVerification\x12%\n" +
+	"!UPSTREAM_VERIFICATION_UNSPECIFIED\x10\x00\x12\"\n" +
+	"\x1eUPSTREAM_VERIFICATION_VERIFIED\x10\x01\x12$\n" +
+	" UPSTREAM_VERIFICATION_UNVERIFIED\x10\x02\x12$\n" +
+	" UPSTREAM_VERIFICATION_PINNED_KEY\x10\x032\x82\n" +
+	"\n" +
 	"\fRouteService\x12f\n" +
 	"\vCreateRoute\x12\x1c.rpmgr.v1.CreateRouteRequest\x1a\x1d.rpmgr.v1.CreateRouteResponse\"\x1a\x8a\xb5\x18\x16\n" +
 	"\froutes.write\x12\x06org_id\x12^\n" +
@@ -2762,7 +3252,9 @@ const file_rpmgr_v1_route_proto_rawDesc = "" +
 	"\x0eGetRouteTarget\x12\x1f.rpmgr.v1.GetRouteTargetRequest\x1a .rpmgr.v1.GetRouteTargetResponse\"\"\x8a\xb5\x18\x1b\n" +
 	"\borg.read\x12\x0froute_target_id\x90\x02\x01\x12\x81\x01\n" +
 	"\x11DeleteRouteTarget\x12\".rpmgr.v1.DeleteRouteTargetRequest\x1a#.rpmgr.v1.DeleteRouteTargetResponse\"#\x8a\xb5\x18\x1f\n" +
-	"\froutes.write\x12\x0froute_target_id\x12l\n" +
+	"\froutes.write\x12\x0froute_target_id\x12\x8d\x01\n" +
+	"\x16ProbeTargetCertificate\x12'.rpmgr.v1.ProbeTargetCertificateRequest\x1a(.rpmgr.v1.ProbeTargetCertificateResponse\" \x8a\xb5\x18\x1c\n" +
+	"\froutes.write\x12\fconnector_id\x12l\n" +
 	"\fPreviewRoute\x12\x1d.rpmgr.v1.PreviewRouteRequest\x1a\x1e.rpmgr.v1.PreviewRouteResponse\"\x1d\x8a\xb5\x18\x16\n" +
 	"\froutes.write\x12\x06org_id\x90\x02\x01\x12h\n" +
 	"\vDeleteRoute\x12\x1c.rpmgr.v1.DeleteRouteRequest\x1a\x1d.rpmgr.v1.DeleteRouteResponse\"\x1c\x8a\xb5\x18\x18\n" +
@@ -2780,131 +3272,144 @@ func file_rpmgr_v1_route_proto_rawDescGZIP() []byte {
 	return file_rpmgr_v1_route_proto_rawDescData
 }
 
-var file_rpmgr_v1_route_proto_enumTypes = make([]protoimpl.EnumInfo, 5)
-var file_rpmgr_v1_route_proto_msgTypes = make([]protoimpl.MessageInfo, 33)
+var file_rpmgr_v1_route_proto_enumTypes = make([]protoimpl.EnumInfo, 6)
+var file_rpmgr_v1_route_proto_msgTypes = make([]protoimpl.MessageInfo, 37)
 var file_rpmgr_v1_route_proto_goTypes = []any{
-	(RouteState)(0),                   // 0: rpmgr.v1.RouteState
-	(TLSMode)(0),                      // 1: rpmgr.v1.TLSMode
-	(Port80Mode)(0),                   // 2: rpmgr.v1.Port80Mode
-	(UpstreamProtocol)(0),             // 3: rpmgr.v1.UpstreamProtocol
-	(ProxyProtocol)(0),                // 4: rpmgr.v1.ProxyProtocol
-	(*Route)(nil),                     // 5: rpmgr.v1.Route
-	(*RouteStatus)(nil),               // 6: rpmgr.v1.RouteStatus
-	(*RouteNotServing)(nil),           // 7: rpmgr.v1.RouteNotServing
-	(*HTTPRouteSpec)(nil),             // 8: rpmgr.v1.HTTPRouteSpec
-	(*TCPRouteSpec)(nil),              // 9: rpmgr.v1.TCPRouteSpec
-	(*UDPRouteSpec)(nil),              // 10: rpmgr.v1.UDPRouteSpec
-	(*TLSPassthroughRouteSpec)(nil),   // 11: rpmgr.v1.TLSPassthroughRouteSpec
-	(*RouteTarget)(nil),               // 12: rpmgr.v1.RouteTarget
-	(*HostPort)(nil),                  // 13: rpmgr.v1.HostPort
-	(*UpstreamTLSSettings)(nil),       // 14: rpmgr.v1.UpstreamTLSSettings
-	(*CreateRouteRequest)(nil),        // 15: rpmgr.v1.CreateRouteRequest
-	(*CreateRouteResponse)(nil),       // 16: rpmgr.v1.CreateRouteResponse
-	(*GetRouteRequest)(nil),           // 17: rpmgr.v1.GetRouteRequest
-	(*GetRouteResponse)(nil),          // 18: rpmgr.v1.GetRouteResponse
-	(*ListRoutesRequest)(nil),         // 19: rpmgr.v1.ListRoutesRequest
-	(*ListRoutesResponse)(nil),        // 20: rpmgr.v1.ListRoutesResponse
-	(*UpdateRouteRequest)(nil),        // 21: rpmgr.v1.UpdateRouteRequest
-	(*UpdateRouteResponse)(nil),       // 22: rpmgr.v1.UpdateRouteResponse
-	(*DeleteRouteRequest)(nil),        // 23: rpmgr.v1.DeleteRouteRequest
-	(*DeleteRouteResponse)(nil),       // 24: rpmgr.v1.DeleteRouteResponse
-	(*CreateRouteTargetRequest)(nil),  // 25: rpmgr.v1.CreateRouteTargetRequest
-	(*CreateRouteTargetResponse)(nil), // 26: rpmgr.v1.CreateRouteTargetResponse
-	(*UpdateRouteTargetRequest)(nil),  // 27: rpmgr.v1.UpdateRouteTargetRequest
-	(*UpdateRouteTargetResponse)(nil), // 28: rpmgr.v1.UpdateRouteTargetResponse
-	(*GetRouteTargetRequest)(nil),     // 29: rpmgr.v1.GetRouteTargetRequest
-	(*GetRouteTargetResponse)(nil),    // 30: rpmgr.v1.GetRouteTargetResponse
-	(*DeleteRouteTargetRequest)(nil),  // 31: rpmgr.v1.DeleteRouteTargetRequest
-	(*DeleteRouteTargetResponse)(nil), // 32: rpmgr.v1.DeleteRouteTargetResponse
-	(*PreviewRouteRequest)(nil),       // 33: rpmgr.v1.PreviewRouteRequest
-	(*PreviewRouteResponse)(nil),      // 34: rpmgr.v1.PreviewRouteResponse
-	nil,                               // 35: rpmgr.v1.Route.LabelsEntry
-	nil,                               // 36: rpmgr.v1.HTTPRouteSpec.RequestHeadersSetEntry
-	nil,                               // 37: rpmgr.v1.HTTPRouteSpec.ResponseHeadersSetEntry
-	(DataTransport)(0),                // 38: rpmgr.v1.DataTransport
-	(*timestamppb.Timestamp)(nil),     // 39: google.protobuf.Timestamp
-	(*AgentApplyStatus)(nil),          // 40: rpmgr.v1.AgentApplyStatus
-	(*Revision)(nil),                  // 41: rpmgr.v1.Revision
-	(*ApplyStatus)(nil),               // 42: rpmgr.v1.ApplyStatus
-	(*fieldmaskpb.FieldMask)(nil),     // 43: google.protobuf.FieldMask
-	(*ApplyError)(nil),                // 44: rpmgr.v1.ApplyError
+	(RouteState)(0),                        // 0: rpmgr.v1.RouteState
+	(TLSMode)(0),                           // 1: rpmgr.v1.TLSMode
+	(Port80Mode)(0),                        // 2: rpmgr.v1.Port80Mode
+	(UpstreamProtocol)(0),                  // 3: rpmgr.v1.UpstreamProtocol
+	(ProxyProtocol)(0),                     // 4: rpmgr.v1.ProxyProtocol
+	(UpstreamVerification)(0),              // 5: rpmgr.v1.UpstreamVerification
+	(*Route)(nil),                          // 6: rpmgr.v1.Route
+	(*RouteStatus)(nil),                    // 7: rpmgr.v1.RouteStatus
+	(*RouteNotServing)(nil),                // 8: rpmgr.v1.RouteNotServing
+	(*HTTPRouteSpec)(nil),                  // 9: rpmgr.v1.HTTPRouteSpec
+	(*TCPRouteSpec)(nil),                   // 10: rpmgr.v1.TCPRouteSpec
+	(*UDPRouteSpec)(nil),                   // 11: rpmgr.v1.UDPRouteSpec
+	(*TCPUDPRouteSpec)(nil),                // 12: rpmgr.v1.TCPUDPRouteSpec
+	(*TLSPassthroughRouteSpec)(nil),        // 13: rpmgr.v1.TLSPassthroughRouteSpec
+	(*RouteTarget)(nil),                    // 14: rpmgr.v1.RouteTarget
+	(*HostPort)(nil),                       // 15: rpmgr.v1.HostPort
+	(*UpstreamTLSSettings)(nil),            // 16: rpmgr.v1.UpstreamTLSSettings
+	(*ProbeTargetCertificateRequest)(nil),  // 17: rpmgr.v1.ProbeTargetCertificateRequest
+	(*ProbeTargetCertificateResponse)(nil), // 18: rpmgr.v1.ProbeTargetCertificateResponse
+	(*TargetCertificate)(nil),              // 19: rpmgr.v1.TargetCertificate
+	(*CreateRouteRequest)(nil),             // 20: rpmgr.v1.CreateRouteRequest
+	(*CreateRouteResponse)(nil),            // 21: rpmgr.v1.CreateRouteResponse
+	(*GetRouteRequest)(nil),                // 22: rpmgr.v1.GetRouteRequest
+	(*GetRouteResponse)(nil),               // 23: rpmgr.v1.GetRouteResponse
+	(*ListRoutesRequest)(nil),              // 24: rpmgr.v1.ListRoutesRequest
+	(*ListRoutesResponse)(nil),             // 25: rpmgr.v1.ListRoutesResponse
+	(*UpdateRouteRequest)(nil),             // 26: rpmgr.v1.UpdateRouteRequest
+	(*UpdateRouteResponse)(nil),            // 27: rpmgr.v1.UpdateRouteResponse
+	(*DeleteRouteRequest)(nil),             // 28: rpmgr.v1.DeleteRouteRequest
+	(*DeleteRouteResponse)(nil),            // 29: rpmgr.v1.DeleteRouteResponse
+	(*CreateRouteTargetRequest)(nil),       // 30: rpmgr.v1.CreateRouteTargetRequest
+	(*CreateRouteTargetResponse)(nil),      // 31: rpmgr.v1.CreateRouteTargetResponse
+	(*UpdateRouteTargetRequest)(nil),       // 32: rpmgr.v1.UpdateRouteTargetRequest
+	(*UpdateRouteTargetResponse)(nil),      // 33: rpmgr.v1.UpdateRouteTargetResponse
+	(*GetRouteTargetRequest)(nil),          // 34: rpmgr.v1.GetRouteTargetRequest
+	(*GetRouteTargetResponse)(nil),         // 35: rpmgr.v1.GetRouteTargetResponse
+	(*DeleteRouteTargetRequest)(nil),       // 36: rpmgr.v1.DeleteRouteTargetRequest
+	(*DeleteRouteTargetResponse)(nil),      // 37: rpmgr.v1.DeleteRouteTargetResponse
+	(*PreviewRouteRequest)(nil),            // 38: rpmgr.v1.PreviewRouteRequest
+	(*PreviewRouteResponse)(nil),           // 39: rpmgr.v1.PreviewRouteResponse
+	nil,                                    // 40: rpmgr.v1.Route.LabelsEntry
+	nil,                                    // 41: rpmgr.v1.HTTPRouteSpec.RequestHeadersSetEntry
+	nil,                                    // 42: rpmgr.v1.HTTPRouteSpec.ResponseHeadersSetEntry
+	(DataTransport)(0),                     // 43: rpmgr.v1.DataTransport
+	(*timestamppb.Timestamp)(nil),          // 44: google.protobuf.Timestamp
+	(*AgentApplyStatus)(nil),               // 45: rpmgr.v1.AgentApplyStatus
+	(*Revision)(nil),                       // 46: rpmgr.v1.Revision
+	(*ApplyStatus)(nil),                    // 47: rpmgr.v1.ApplyStatus
+	(*fieldmaskpb.FieldMask)(nil),          // 48: google.protobuf.FieldMask
+	(*ApplyError)(nil),                     // 49: rpmgr.v1.ApplyError
 }
 var file_rpmgr_v1_route_proto_depIdxs = []int32{
-	35, // 0: rpmgr.v1.Route.labels:type_name -> rpmgr.v1.Route.LabelsEntry
-	8,  // 1: rpmgr.v1.Route.http:type_name -> rpmgr.v1.HTTPRouteSpec
-	9,  // 2: rpmgr.v1.Route.tcp:type_name -> rpmgr.v1.TCPRouteSpec
-	10, // 3: rpmgr.v1.Route.udp:type_name -> rpmgr.v1.UDPRouteSpec
-	11, // 4: rpmgr.v1.Route.tls_passthrough:type_name -> rpmgr.v1.TLSPassthroughRouteSpec
-	12, // 5: rpmgr.v1.Route.targets:type_name -> rpmgr.v1.RouteTarget
-	38, // 6: rpmgr.v1.Route.transport:type_name -> rpmgr.v1.DataTransport
-	39, // 7: rpmgr.v1.Route.create_time:type_name -> google.protobuf.Timestamp
-	39, // 8: rpmgr.v1.Route.update_time:type_name -> google.protobuf.Timestamp
-	6,  // 9: rpmgr.v1.Route.status:type_name -> rpmgr.v1.RouteStatus
-	0,  // 10: rpmgr.v1.RouteStatus.state:type_name -> rpmgr.v1.RouteState
-	7,  // 11: rpmgr.v1.RouteStatus.not_serving:type_name -> rpmgr.v1.RouteNotServing
-	40, // 12: rpmgr.v1.RouteStatus.rejections:type_name -> rpmgr.v1.AgentApplyStatus
-	1,  // 13: rpmgr.v1.HTTPRouteSpec.tls_mode:type_name -> rpmgr.v1.TLSMode
-	2,  // 14: rpmgr.v1.HTTPRouteSpec.port80:type_name -> rpmgr.v1.Port80Mode
-	36, // 15: rpmgr.v1.HTTPRouteSpec.request_headers_set:type_name -> rpmgr.v1.HTTPRouteSpec.RequestHeadersSetEntry
-	37, // 16: rpmgr.v1.HTTPRouteSpec.response_headers_set:type_name -> rpmgr.v1.HTTPRouteSpec.ResponseHeadersSetEntry
-	13, // 17: rpmgr.v1.RouteTarget.host_port:type_name -> rpmgr.v1.HostPort
-	3,  // 18: rpmgr.v1.RouteTarget.upstream_protocol:type_name -> rpmgr.v1.UpstreamProtocol
-	14, // 19: rpmgr.v1.RouteTarget.tls:type_name -> rpmgr.v1.UpstreamTLSSettings
-	4,  // 20: rpmgr.v1.RouteTarget.proxy_protocol:type_name -> rpmgr.v1.ProxyProtocol
-	5,  // 21: rpmgr.v1.CreateRouteRequest.route:type_name -> rpmgr.v1.Route
-	5,  // 22: rpmgr.v1.CreateRouteResponse.route:type_name -> rpmgr.v1.Route
-	41, // 23: rpmgr.v1.CreateRouteResponse.revision:type_name -> rpmgr.v1.Revision
-	42, // 24: rpmgr.v1.CreateRouteResponse.apply_status:type_name -> rpmgr.v1.ApplyStatus
-	5,  // 25: rpmgr.v1.GetRouteResponse.route:type_name -> rpmgr.v1.Route
-	5,  // 26: rpmgr.v1.ListRoutesResponse.routes:type_name -> rpmgr.v1.Route
-	5,  // 27: rpmgr.v1.UpdateRouteRequest.route:type_name -> rpmgr.v1.Route
-	43, // 28: rpmgr.v1.UpdateRouteRequest.update_mask:type_name -> google.protobuf.FieldMask
-	5,  // 29: rpmgr.v1.UpdateRouteResponse.route:type_name -> rpmgr.v1.Route
-	41, // 30: rpmgr.v1.UpdateRouteResponse.revision:type_name -> rpmgr.v1.Revision
-	42, // 31: rpmgr.v1.UpdateRouteResponse.apply_status:type_name -> rpmgr.v1.ApplyStatus
-	41, // 32: rpmgr.v1.DeleteRouteResponse.revision:type_name -> rpmgr.v1.Revision
-	42, // 33: rpmgr.v1.DeleteRouteResponse.apply_status:type_name -> rpmgr.v1.ApplyStatus
-	12, // 34: rpmgr.v1.CreateRouteTargetRequest.target:type_name -> rpmgr.v1.RouteTarget
-	12, // 35: rpmgr.v1.CreateRouteTargetResponse.target:type_name -> rpmgr.v1.RouteTarget
-	41, // 36: rpmgr.v1.CreateRouteTargetResponse.revision:type_name -> rpmgr.v1.Revision
-	42, // 37: rpmgr.v1.CreateRouteTargetResponse.apply_status:type_name -> rpmgr.v1.ApplyStatus
-	12, // 38: rpmgr.v1.UpdateRouteTargetRequest.target:type_name -> rpmgr.v1.RouteTarget
-	43, // 39: rpmgr.v1.UpdateRouteTargetRequest.update_mask:type_name -> google.protobuf.FieldMask
-	12, // 40: rpmgr.v1.UpdateRouteTargetResponse.target:type_name -> rpmgr.v1.RouteTarget
-	41, // 41: rpmgr.v1.UpdateRouteTargetResponse.revision:type_name -> rpmgr.v1.Revision
-	42, // 42: rpmgr.v1.UpdateRouteTargetResponse.apply_status:type_name -> rpmgr.v1.ApplyStatus
-	12, // 43: rpmgr.v1.GetRouteTargetResponse.target:type_name -> rpmgr.v1.RouteTarget
-	41, // 44: rpmgr.v1.DeleteRouteTargetResponse.revision:type_name -> rpmgr.v1.Revision
-	42, // 45: rpmgr.v1.DeleteRouteTargetResponse.apply_status:type_name -> rpmgr.v1.ApplyStatus
-	5,  // 46: rpmgr.v1.PreviewRouteRequest.route:type_name -> rpmgr.v1.Route
-	43, // 47: rpmgr.v1.PreviewRouteRequest.update_mask:type_name -> google.protobuf.FieldMask
-	5,  // 48: rpmgr.v1.PreviewRouteResponse.route:type_name -> rpmgr.v1.Route
-	44, // 49: rpmgr.v1.PreviewRouteResponse.problems:type_name -> rpmgr.v1.ApplyError
-	15, // 50: rpmgr.v1.RouteService.CreateRoute:input_type -> rpmgr.v1.CreateRouteRequest
-	17, // 51: rpmgr.v1.RouteService.GetRoute:input_type -> rpmgr.v1.GetRouteRequest
-	19, // 52: rpmgr.v1.RouteService.ListRoutes:input_type -> rpmgr.v1.ListRoutesRequest
-	21, // 53: rpmgr.v1.RouteService.UpdateRoute:input_type -> rpmgr.v1.UpdateRouteRequest
-	25, // 54: rpmgr.v1.RouteService.CreateRouteTarget:input_type -> rpmgr.v1.CreateRouteTargetRequest
-	27, // 55: rpmgr.v1.RouteService.UpdateRouteTarget:input_type -> rpmgr.v1.UpdateRouteTargetRequest
-	29, // 56: rpmgr.v1.RouteService.GetRouteTarget:input_type -> rpmgr.v1.GetRouteTargetRequest
-	31, // 57: rpmgr.v1.RouteService.DeleteRouteTarget:input_type -> rpmgr.v1.DeleteRouteTargetRequest
-	33, // 58: rpmgr.v1.RouteService.PreviewRoute:input_type -> rpmgr.v1.PreviewRouteRequest
-	23, // 59: rpmgr.v1.RouteService.DeleteRoute:input_type -> rpmgr.v1.DeleteRouteRequest
-	16, // 60: rpmgr.v1.RouteService.CreateRoute:output_type -> rpmgr.v1.CreateRouteResponse
-	18, // 61: rpmgr.v1.RouteService.GetRoute:output_type -> rpmgr.v1.GetRouteResponse
-	20, // 62: rpmgr.v1.RouteService.ListRoutes:output_type -> rpmgr.v1.ListRoutesResponse
-	22, // 63: rpmgr.v1.RouteService.UpdateRoute:output_type -> rpmgr.v1.UpdateRouteResponse
-	26, // 64: rpmgr.v1.RouteService.CreateRouteTarget:output_type -> rpmgr.v1.CreateRouteTargetResponse
-	28, // 65: rpmgr.v1.RouteService.UpdateRouteTarget:output_type -> rpmgr.v1.UpdateRouteTargetResponse
-	30, // 66: rpmgr.v1.RouteService.GetRouteTarget:output_type -> rpmgr.v1.GetRouteTargetResponse
-	32, // 67: rpmgr.v1.RouteService.DeleteRouteTarget:output_type -> rpmgr.v1.DeleteRouteTargetResponse
-	34, // 68: rpmgr.v1.RouteService.PreviewRoute:output_type -> rpmgr.v1.PreviewRouteResponse
-	24, // 69: rpmgr.v1.RouteService.DeleteRoute:output_type -> rpmgr.v1.DeleteRouteResponse
-	60, // [60:70] is the sub-list for method output_type
-	50, // [50:60] is the sub-list for method input_type
-	50, // [50:50] is the sub-list for extension type_name
-	50, // [50:50] is the sub-list for extension extendee
-	0,  // [0:50] is the sub-list for field type_name
+	40, // 0: rpmgr.v1.Route.labels:type_name -> rpmgr.v1.Route.LabelsEntry
+	9,  // 1: rpmgr.v1.Route.http:type_name -> rpmgr.v1.HTTPRouteSpec
+	10, // 2: rpmgr.v1.Route.tcp:type_name -> rpmgr.v1.TCPRouteSpec
+	11, // 3: rpmgr.v1.Route.udp:type_name -> rpmgr.v1.UDPRouteSpec
+	13, // 4: rpmgr.v1.Route.tls_passthrough:type_name -> rpmgr.v1.TLSPassthroughRouteSpec
+	12, // 5: rpmgr.v1.Route.tcp_udp:type_name -> rpmgr.v1.TCPUDPRouteSpec
+	14, // 6: rpmgr.v1.Route.targets:type_name -> rpmgr.v1.RouteTarget
+	43, // 7: rpmgr.v1.Route.transport:type_name -> rpmgr.v1.DataTransport
+	44, // 8: rpmgr.v1.Route.create_time:type_name -> google.protobuf.Timestamp
+	44, // 9: rpmgr.v1.Route.update_time:type_name -> google.protobuf.Timestamp
+	7,  // 10: rpmgr.v1.Route.status:type_name -> rpmgr.v1.RouteStatus
+	0,  // 11: rpmgr.v1.RouteStatus.state:type_name -> rpmgr.v1.RouteState
+	8,  // 12: rpmgr.v1.RouteStatus.not_serving:type_name -> rpmgr.v1.RouteNotServing
+	45, // 13: rpmgr.v1.RouteStatus.rejections:type_name -> rpmgr.v1.AgentApplyStatus
+	1,  // 14: rpmgr.v1.HTTPRouteSpec.tls_mode:type_name -> rpmgr.v1.TLSMode
+	2,  // 15: rpmgr.v1.HTTPRouteSpec.port80:type_name -> rpmgr.v1.Port80Mode
+	41, // 16: rpmgr.v1.HTTPRouteSpec.request_headers_set:type_name -> rpmgr.v1.HTTPRouteSpec.RequestHeadersSetEntry
+	42, // 17: rpmgr.v1.HTTPRouteSpec.response_headers_set:type_name -> rpmgr.v1.HTTPRouteSpec.ResponseHeadersSetEntry
+	15, // 18: rpmgr.v1.RouteTarget.host_port:type_name -> rpmgr.v1.HostPort
+	3,  // 19: rpmgr.v1.RouteTarget.upstream_protocol:type_name -> rpmgr.v1.UpstreamProtocol
+	16, // 20: rpmgr.v1.RouteTarget.tls:type_name -> rpmgr.v1.UpstreamTLSSettings
+	4,  // 21: rpmgr.v1.RouteTarget.proxy_protocol:type_name -> rpmgr.v1.ProxyProtocol
+	5,  // 22: rpmgr.v1.UpstreamTLSSettings.verification:type_name -> rpmgr.v1.UpstreamVerification
+	15, // 23: rpmgr.v1.ProbeTargetCertificateRequest.host_port:type_name -> rpmgr.v1.HostPort
+	19, // 24: rpmgr.v1.ProbeTargetCertificateResponse.certificate:type_name -> rpmgr.v1.TargetCertificate
+	44, // 25: rpmgr.v1.TargetCertificate.not_before:type_name -> google.protobuf.Timestamp
+	44, // 26: rpmgr.v1.TargetCertificate.not_after:type_name -> google.protobuf.Timestamp
+	6,  // 27: rpmgr.v1.CreateRouteRequest.route:type_name -> rpmgr.v1.Route
+	6,  // 28: rpmgr.v1.CreateRouteResponse.route:type_name -> rpmgr.v1.Route
+	46, // 29: rpmgr.v1.CreateRouteResponse.revision:type_name -> rpmgr.v1.Revision
+	47, // 30: rpmgr.v1.CreateRouteResponse.apply_status:type_name -> rpmgr.v1.ApplyStatus
+	6,  // 31: rpmgr.v1.GetRouteResponse.route:type_name -> rpmgr.v1.Route
+	6,  // 32: rpmgr.v1.ListRoutesResponse.routes:type_name -> rpmgr.v1.Route
+	6,  // 33: rpmgr.v1.UpdateRouteRequest.route:type_name -> rpmgr.v1.Route
+	48, // 34: rpmgr.v1.UpdateRouteRequest.update_mask:type_name -> google.protobuf.FieldMask
+	6,  // 35: rpmgr.v1.UpdateRouteResponse.route:type_name -> rpmgr.v1.Route
+	46, // 36: rpmgr.v1.UpdateRouteResponse.revision:type_name -> rpmgr.v1.Revision
+	47, // 37: rpmgr.v1.UpdateRouteResponse.apply_status:type_name -> rpmgr.v1.ApplyStatus
+	46, // 38: rpmgr.v1.DeleteRouteResponse.revision:type_name -> rpmgr.v1.Revision
+	47, // 39: rpmgr.v1.DeleteRouteResponse.apply_status:type_name -> rpmgr.v1.ApplyStatus
+	14, // 40: rpmgr.v1.CreateRouteTargetRequest.target:type_name -> rpmgr.v1.RouteTarget
+	14, // 41: rpmgr.v1.CreateRouteTargetResponse.target:type_name -> rpmgr.v1.RouteTarget
+	46, // 42: rpmgr.v1.CreateRouteTargetResponse.revision:type_name -> rpmgr.v1.Revision
+	47, // 43: rpmgr.v1.CreateRouteTargetResponse.apply_status:type_name -> rpmgr.v1.ApplyStatus
+	14, // 44: rpmgr.v1.UpdateRouteTargetRequest.target:type_name -> rpmgr.v1.RouteTarget
+	48, // 45: rpmgr.v1.UpdateRouteTargetRequest.update_mask:type_name -> google.protobuf.FieldMask
+	14, // 46: rpmgr.v1.UpdateRouteTargetResponse.target:type_name -> rpmgr.v1.RouteTarget
+	46, // 47: rpmgr.v1.UpdateRouteTargetResponse.revision:type_name -> rpmgr.v1.Revision
+	47, // 48: rpmgr.v1.UpdateRouteTargetResponse.apply_status:type_name -> rpmgr.v1.ApplyStatus
+	14, // 49: rpmgr.v1.GetRouteTargetResponse.target:type_name -> rpmgr.v1.RouteTarget
+	46, // 50: rpmgr.v1.DeleteRouteTargetResponse.revision:type_name -> rpmgr.v1.Revision
+	47, // 51: rpmgr.v1.DeleteRouteTargetResponse.apply_status:type_name -> rpmgr.v1.ApplyStatus
+	6,  // 52: rpmgr.v1.PreviewRouteRequest.route:type_name -> rpmgr.v1.Route
+	48, // 53: rpmgr.v1.PreviewRouteRequest.update_mask:type_name -> google.protobuf.FieldMask
+	6,  // 54: rpmgr.v1.PreviewRouteResponse.route:type_name -> rpmgr.v1.Route
+	49, // 55: rpmgr.v1.PreviewRouteResponse.problems:type_name -> rpmgr.v1.ApplyError
+	20, // 56: rpmgr.v1.RouteService.CreateRoute:input_type -> rpmgr.v1.CreateRouteRequest
+	22, // 57: rpmgr.v1.RouteService.GetRoute:input_type -> rpmgr.v1.GetRouteRequest
+	24, // 58: rpmgr.v1.RouteService.ListRoutes:input_type -> rpmgr.v1.ListRoutesRequest
+	26, // 59: rpmgr.v1.RouteService.UpdateRoute:input_type -> rpmgr.v1.UpdateRouteRequest
+	30, // 60: rpmgr.v1.RouteService.CreateRouteTarget:input_type -> rpmgr.v1.CreateRouteTargetRequest
+	32, // 61: rpmgr.v1.RouteService.UpdateRouteTarget:input_type -> rpmgr.v1.UpdateRouteTargetRequest
+	34, // 62: rpmgr.v1.RouteService.GetRouteTarget:input_type -> rpmgr.v1.GetRouteTargetRequest
+	36, // 63: rpmgr.v1.RouteService.DeleteRouteTarget:input_type -> rpmgr.v1.DeleteRouteTargetRequest
+	17, // 64: rpmgr.v1.RouteService.ProbeTargetCertificate:input_type -> rpmgr.v1.ProbeTargetCertificateRequest
+	38, // 65: rpmgr.v1.RouteService.PreviewRoute:input_type -> rpmgr.v1.PreviewRouteRequest
+	28, // 66: rpmgr.v1.RouteService.DeleteRoute:input_type -> rpmgr.v1.DeleteRouteRequest
+	21, // 67: rpmgr.v1.RouteService.CreateRoute:output_type -> rpmgr.v1.CreateRouteResponse
+	23, // 68: rpmgr.v1.RouteService.GetRoute:output_type -> rpmgr.v1.GetRouteResponse
+	25, // 69: rpmgr.v1.RouteService.ListRoutes:output_type -> rpmgr.v1.ListRoutesResponse
+	27, // 70: rpmgr.v1.RouteService.UpdateRoute:output_type -> rpmgr.v1.UpdateRouteResponse
+	31, // 71: rpmgr.v1.RouteService.CreateRouteTarget:output_type -> rpmgr.v1.CreateRouteTargetResponse
+	33, // 72: rpmgr.v1.RouteService.UpdateRouteTarget:output_type -> rpmgr.v1.UpdateRouteTargetResponse
+	35, // 73: rpmgr.v1.RouteService.GetRouteTarget:output_type -> rpmgr.v1.GetRouteTargetResponse
+	37, // 74: rpmgr.v1.RouteService.DeleteRouteTarget:output_type -> rpmgr.v1.DeleteRouteTargetResponse
+	18, // 75: rpmgr.v1.RouteService.ProbeTargetCertificate:output_type -> rpmgr.v1.ProbeTargetCertificateResponse
+	39, // 76: rpmgr.v1.RouteService.PreviewRoute:output_type -> rpmgr.v1.PreviewRouteResponse
+	29, // 77: rpmgr.v1.RouteService.DeleteRoute:output_type -> rpmgr.v1.DeleteRouteResponse
+	67, // [67:78] is the sub-list for method output_type
+	56, // [56:67] is the sub-list for method input_type
+	56, // [56:56] is the sub-list for extension type_name
+	56, // [56:56] is the sub-list for extension extendee
+	0,  // [0:56] is the sub-list for field type_name
 }
 
 func init() { file_rpmgr_v1_route_proto_init() }
@@ -2921,21 +3426,27 @@ func file_rpmgr_v1_route_proto_init() {
 		(*Route_Tcp)(nil),
 		(*Route_Udp)(nil),
 		(*Route_TlsPassthrough)(nil),
+		(*Route_TcpUdp)(nil),
 	}
 	file_rpmgr_v1_route_proto_msgTypes[3].OneofWrappers = []any{}
 	file_rpmgr_v1_route_proto_msgTypes[4].OneofWrappers = []any{}
 	file_rpmgr_v1_route_proto_msgTypes[5].OneofWrappers = []any{}
-	file_rpmgr_v1_route_proto_msgTypes[7].OneofWrappers = []any{
+	file_rpmgr_v1_route_proto_msgTypes[6].OneofWrappers = []any{}
+	file_rpmgr_v1_route_proto_msgTypes[8].OneofWrappers = []any{
 		(*RouteTarget_HostPort)(nil),
 		(*RouteTarget_UnixPath)(nil),
+	}
+	file_rpmgr_v1_route_proto_msgTypes[11].OneofWrappers = []any{
+		(*ProbeTargetCertificateRequest_HostPort)(nil),
+		(*ProbeTargetCertificateRequest_UnixPath)(nil),
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_rpmgr_v1_route_proto_rawDesc), len(file_rpmgr_v1_route_proto_rawDesc)),
-			NumEnums:      5,
-			NumMessages:   33,
+			NumEnums:      6,
+			NumMessages:   37,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

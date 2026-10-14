@@ -25,7 +25,7 @@ export function RestoreReviewBanner() {
   }
   return (
     <section aria-label={t("review.title")} className="border-b border-warn/30 bg-warn/10">
-      <div className="mx-auto flex max-w-7xl gap-3 px-4 py-3 text-sm sm:px-6 lg:px-8">
+      <div className="flex gap-3 px-4 py-3 text-sm sm:px-6 lg:px-8">
         <TriangleAlert aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-warn" />
         <div className="grid gap-1">
           {since && (

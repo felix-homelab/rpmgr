@@ -60,7 +60,7 @@ const text: [string, string[]][] = [
   ["primary-foreground", ["primary"]],
   ["accent-foreground", ["accent"]],
   ["destructive-foreground", ["destructive"]],
-  ["destructive", ["background", "card"]],
+  ["destructive", ["background", "card", "muted"]], // muted: an asterisk on the target, gateway and rule forms
   ["ok", ["background", "card"]],
   ["warn", ["background", "card"]],
 ];

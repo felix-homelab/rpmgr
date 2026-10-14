@@ -1,7 +1,7 @@
 # 09 — Web UI
 
 > Status: Phase 1, being implemented. Tags: [F] fact · [R] recommendation · [T] target · [V] verify
-> at implementation ([README](../README.md#how-to-read-these-documents)).
+> at implementation ([README](README.md#how-to-read-these-documents)).
 
 The web UI is the main way most operators use rpmgr. It is a single-page application embedded in the
 `rpmgr` binary and served by the Controller on the same origin as the API. Everything the UI can do
@@ -14,7 +14,7 @@ endpoints.
 |---|---|---|
 | U1 | **Forms are the model** | Every form maps 1:1 to a protobuf message of the public API. A form submits the complete typed resource, with an etag. It never merges over a stored blob, because there is no blob. A field the form does not show cannot exist. |
 | U2 | **Saved ≠ applied, and the UI says which** | After every save, the UI shows the new revision and the per-agent apply status: `pending` → `applied` / `rejected` / `apply_timeout` ([07](07-api.md#writes-and-apply-status), [03](03-connections.md#configuration-reconciliation)). A rejection lists the agent and the structured reasons. |
-| U3 | **Desired and observed, side by side** | Each resource shows what was configured (desired) next to what the agents report (observed): enabled vs the route status `disabled` / `pending` / `ready` / `degraded` / `unavailable` / `error`, and per target the connector's readiness `ready` / `not_ready (reason)` ([06](06-data-model.md#desired-vs-observed-state)). There is never a second "enabled" switch. |
+| U3 | **Desired and observed, side by side** | Each resource shows what was configured (desired) next to what the agents report (observed): enabled vs the route status `disabled` / `pending` / `ready` / `degraded` / `unavailable` / `error` / `maintenance`, and per target the connector's readiness `ready` / `not_ready (reason)` ([06](06-data-model.md#desired-vs-observed-state)). There is never a second "enabled" switch; an HTTP route's maintenance changes what it answers, not whether it is served ([D88](14-open-decisions.md#engineering)). |
 | U4 | **Every error says what to do** | A route blocked by a connector's local policy shows the exact host command with a copy button, e.g. `sudo rpmgr policy allow-target 10.0.0.5:5432` ([04](04-security.md#connector-local-policy)). An unverified domain shows the TXT record to create. A DNS conflict names the foreign record that occupies the hostname and offers **Adopt** ([15](15-dns.md#conflicts)). |
 | U5 | **YAML instead of raw JSON editors** | Every resource has a *YAML* tab: view, copy and download (Phase 1); edit and import arrive with declarative manifests in Phase 2 ([D58](14-open-decisions.md#project-and-process)). The YAML is the same document `rpmgr apply -f` accepts. It is validated by the same server-side rules as the form, and the result is shown as a diff before saving. |
 | U6 | **No lost updates** | Every write carries the etag of the version the user started from. On a conflict, the UI shows "changed by *alice* 2 min ago" with a field-level diff and lets the user reapply their change on top or discard it. |
@@ -54,7 +54,7 @@ flowchart LR
 | Area | Contents | Minimum role to view / change ([04](04-security.md#roles)) |
 |---|---|---|
 | **Overview** | Health of agents, sessions and certificates; routes not `ready`; pending, rejected or timed-out applies; expiring certificates and tokens; unverified domains; DNS conflicts, held DNS zones and expiring DNS-provider tokens; agents below `min_agent_version`; a traffic summary | Viewer |
-| **Routes** | List; create wizard per type (`http`, `tls_passthrough`, `tcp`, `udp`); detail with targets, health checks, traffic, access policies, transport override (advanced), per-agent apply status, YAML, change history | Viewer / Operator |
+| **Routes** | List; create wizard per type (`http`, `tls_passthrough`, `tcp`, `udp`, `tcp_udp`); detail with targets, health checks, traffic, access policies, transport override (advanced), per-agent apply status, YAML, change history | Viewer / Operator |
 | **Private services** | Services, visitor grants, relay vs P2P state per grant | Viewer / Operator |
 | **Connectors** | List with status, version, transport, RTT, last seen; enroll dialog; detail with data and control sessions, served routes, local-policy status, transport override (`auto`, `quic`, `h2` or the instance default), live logs, version and staged upgrade | Viewer / Admin to enroll or revoke (Operator if the org allows it) |
 | **Gateways** | Gateway groups (region, public hostnames for route traffic, DNS target for managed DNS records, port pools), gateways (own tunnel endpoints — address/port and, for WSS, the gateway's own hostname — status, version, sessions, listeners), drain action. Connectors dial each gateway at its own tunnel endpoints; group-level DNS or anycast names are for public traffic only ([03](03-connections.md#establishment)) | Viewer / Admin |
@@ -92,6 +92,8 @@ flowchart LR
 │ ⚇ Organisation │                                                                       │
 │ ≡ Audit log    │                                                                       │
 │ ⚙ Settings     │                                                                       │
+│                │                                                                       │
+│ rpmgr 0.1.0    │                                                                       │
 └────────────────┴───────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -99,9 +101,16 @@ flowchart LR
   with Routes, Connectors and Gateways; *Security* with Domains & certificates and Access policies;
   *Administration* with Organisation, Audit log and Settings. The current page is marked, also for
   screen readers (`aria-current`).
+- **The version** the controller runs stands at the foot of the sidebar, as `rpmgr 0.1.0`, for
+  every signed-in user ([D80](14-open-decisions.md#engineering)). The sign-in,
+  setup and other public pages show none.
 - **On screens narrower than 1024 px** the sidebar is a menu behind a button in the top bar. It
   opens from the left as a modal dialog, and Escape, a click beside it, its close button and
   choosing a page close it.
+- **The page fills the window** beside the sidebar, however wide the screen is. From 1280 px, the
+  route form and the instance settings stand in two columns, and the account page sets its profile,
+  password and authenticator cards side by side. Short forms keep a readable width inside their
+  card.
 - **The top bar** holds "Go to…", which opens the [command palette](#command-palette), the theme
   switch and the user menu. It stays at the top while the page scrolls.
 - **The theme switch** chooses *like the system*, *light* or *dark* (U10). It is a group of radio
@@ -114,6 +123,17 @@ flowchart LR
   keeps a contrast of at least 4.5:1 on the surfaces it is drawn on, and control borders, the focus
   outline and chart lines at least 3:1, in both themes (U8). Pages are built from a header with the
   page's actions, cards, tables and status badges. A status badge always has an icon and text.
+- **Required fields:** a field the form or the server refuses to leave empty has a red asterisk
+  after its label ([D77](14-open-decisions.md#engineering)). The control is marked required, so
+  screen readers say so; the asterisk itself has an empty alternative text and is not read. A field
+  required only in some cases has the asterisk while the case holds: an uploaded certificate's ID,
+  a target's host and port or its socket path, an HTTPS target's server name on a socket, the mail
+  relay's sender address, and the password of a basic-auth user the policy does not have yet. A
+  number field that is filled in with its default, such as a port of 0 for any free port, is
+  required too, since an empty one is refused. A group of checkboxes of which one must be chosen,
+  such as an API token's scopes, has the asterisk after its legend, and the legend says "required"
+  to screen readers, since no checkbox can be marked required. Selects and radio buttons that
+  always hold a value, and search and filter fields, have none. Forms do not explain the asterisk.
 - **Icons** come from lucide-react and are bundled with the UI, so the CSP needs no other origin
   ([Frontend architecture](#frontend-architecture)). They are hidden from screen readers; their
   name is always in the text next to them or in the control's label.
@@ -130,8 +150,8 @@ flowchart LR
 ├──────────────────────┼────────┼───────────────┼────────────┼──────────────┼─────────────┤
 │ wiki                 │ http   │ eu            │ 2/2 ready  │ ● ready      │ ✓ rev 1042  │
 │  wiki.example.com    │        │               │            │              │             │
-│ postgres             │ tcp    │ eu  :25432    │ 0/1 ready  │ ▲ unavailable │ ✓ rev 1040 │
-│                      │        │               │ 1 blocked by local policy                 │
+│ postgres             │ tcp    │ eu            │ 0/1 ready  │ ▲ unavailable │ ✓ rev 1040 │
+│  eu.example.net:25432│        │               │ 1 blocked by local policy                 │
 │ grafana              │ http   │ eu            │ 1/1 ready  │ ○ disabled   │ ⧗ pending   │
 │  grafana.example.com │        │               │            │              │  2/3 agents │
 ├──────────────────────┴────────┴───────────────┴────────────┴──────────────┴─────────────┤
@@ -143,14 +163,22 @@ flowchart LR
 - It reads all of the org's routes and filters them in the browser by text (name or address),
   type, status and gateway group. It sorts them by name and shows 25 a page. The filters and the
   page stay in the URL (U9).
+- **The address** of an HTTP or TLS passthrough route is its hostnames. A TCP, UDP or "TCP and UDP"
+  route shows its public port at each public hostname of its gateway group, such as
+  `eu.example.net:25432`, an IPv6 address in brackets; while the group has none, only `:25432`
+  (D79).
 - **Without routes,** the list offers to create the first. When the filters match none, it says so
   and offers to clear them.
 - **Targets** shows how many are ready, and how many a connector's local policy blocks.
 - **Status** shows the observed state, with an icon and text, and how many agents rejected the
   route.
 - **"Create a route"** opens a form: the type, the gateway group, and the fields of that type.
-  - **Defaults:** HTTP routes start with ACME certificates and a redirect on port 80. TCP and UDP
-    routes start on port 0, a free port of the group's pools.
+  - **Types:** HTTP, TCP, UDP, "TCP and UDP" ([D83](14-open-decisions.md#engineering)) and TLS
+    passthrough. A "TCP and UDP" route has one public port and both idle timeouts, TCP and UDP.
+  - **Defaults:** HTTP routes start with ACME certificates and a redirect on port 80. Routes on a
+    port start on port 0, a free port of the group's pools, free in both for "TCP and UDP". The
+    org's default gateway group ([Settings](#settings)) is preselected unless a group was chosen
+    first.
   - **Retries:** the creation carries one request ID, however often it is retried.
   - **After creating,** the apply status follows live, and a link opens the new route to add its
     targets.
@@ -167,13 +195,16 @@ flowchart LR
   serve fully, the agents in service that are connected, the certificates that have not failed and
   do not expire within 21 days, and the verified domains, each of how many there are. A status
   badge under each figure says how many need attention, that all is well, or that the area has
-  nothing yet. Disabled routes and decommissioned agents are not counted.
+  nothing yet. Disabled routes, disabled connectors, drained gateways and decommissioned agents are
+  not counted ([D81](14-open-decisions.md#engineering)). Routes in maintenance are not counted
+  either; the routes' figure says how many there are ([D88](14-open-decisions.md#engineering)).
 - **Needs attention** is a card next to the traffic. Each area is marked as fine or as needing
   attention, and lists what needs it, each linked to its page, or says that nothing in it does:
   - agents without a control session: gateways, with when they were last seen or that they have
     not enrolled, and connectors, with when they were last seen, under the count of connected ones;
+    disabled connectors and drained gateways are left out, since none is expected to connect;
   - routes that do not serve fully (`pending`, `degraded`, `unavailable`, `error`) or that agents
-    rejected, with their state; disabled routes are left out;
+    rejected, with their state; disabled routes and routes in maintenance are left out;
   - certificates that failed, with the error, or that expire within 21 days, as on the certificates
     page;
   - domains not verified, with their status;
@@ -230,7 +261,7 @@ flowchart LR
 
 ```
 ┌ Route: postgres (tcp)                      [Enabled ●━]  [Edit]  [YAML]  [⋯ Delete]   ┐
-│ Desired: enabled · gateway group eu · port 25432          Observed: ▲ unavailable      │
+│ Desired: enabled · gateway group eu · eu.example.net:25432   Observed: ▲ unavailable   │
 ├ Targets & health ─────────────────────────────────────────────────────────────────────┤
 │ Connector   Address          Weight  Health       Status                                │
 │ db-host-1   10.0.0.5:5432    100     tcp / 10 s   ▲ not_ready: blocked by local policy  │
@@ -245,35 +276,51 @@ flowchart LR
 ```
 
 **How the detail works.**
-- **Layout:** a link back to all routes; the route's name and type with the "Enabled" switch,
-  "YAML" and "Edit"; the configured settings next to the observed state; then cards for the
-  gateways not serving it and the agents that rejected it, when there are any, and for its targets,
-  traffic and access policies.
+- **Layout:** a link back to all routes; the route's name and type with the "Enabled" switch, for an
+  HTTP route the "Maintenance" switch, "YAML", "Delete…" and "Edit"; the configured settings next to
+  the observed state; then cards for the gateways not serving it and the agents that rejected it,
+  when there are any, and for its targets, traffic and access policies.
 - It shows the configured settings next to the observed state (U3), and how many of the group's
   gateways serve the route.
+- **The address** is the list's. A route on a port whose gateway group has no public hostname
+  shows only its port, says so, and links to the group, where they are set.
 - **Each target** shows its connector by name, its address and weight, and whether it serves; if
   not, it says why.
 - **Targets are added, edited and removed** on the page, in the targets card, one form at a time.
   - **The form:** the connector (fixed once the target exists), a host and port or a socket path,
-    the protocol to the target (HTTP, verified HTTPS with its server name, CA bundle and key pin,
-    or h2c for HTTP routes; TCP otherwise), the PROXY protocol for TCP and TLS-passthrough routes,
+    for HTTP routes the protocol to the target (HTTP, verified HTTPS with its server name, CA
+    bundle and key pin, HTTPS by pinned key, unverified HTTPS with its server name, or h2c; other
+    routes pass the bytes, or for UDP the datagrams, as they come, and show no such field), the
+    PROXY protocol for TCP, TCP and UDP, and TLS-passthrough routes (on a TCP and UDP route with
+    the note that it goes on TCP connections only, [D86](14-open-decisions.md#engineering)),
     weight, priority and whether it is enabled.
+  - **Unverified HTTPS** ([ADR-0017](adr/0017-upstream-tls-verification-modes.md)): choosing it
+    shows a warning that anyone on the network between the connector and the target can read and
+    change the traffic, and the target shows an "unverified" badge next to its address.
+  - **HTTPS, pinned key:** the key pin is required, and "Trust the certificate it shows now" has
+    the connector read the certificate of the target in the form, saved or not. The form shows its
+    subject, names, issuer or "self-signed", expiry and key fingerprint; "Trust this key" fills in
+    the pin, which the save then stores.
   - **Edits** send the whole target as read, with the update mask of those fields and its etag
     (U1).
   - **Removal** first asks, naming the target's address.
   - **After each change,** the apply status follows live.
 - **A target that a connector's local policy blocks** shows the command for that connector's host,
-  with a copy button (U4). The target is shell-quoted, for example a socket path with a space.
+  with a copy button (U4): `rpmgr policy allow-target` for a target nothing allows, and
+  `rpmgr policy remove-deny-target` with the deny entry for one a `deny_targets` entry refuses
+  ([D84](14-open-decisions.md#engineering)). The value is shell-quoted, for example a socket path
+  with a space.
 - **A target whose connector reaches the gateways only over TLS and HTTP/2** is marked as served
   over the fallback for QUIC. A route pinned to HTTP/2 is not marked.
 - **Gateways that do not serve the route, and agents that rejected it,** are listed with their
   reasons.
-- UDP routes show the MTU hint of [03](03-connections.md#udp-routes).
+- UDP and "TCP and UDP" routes show the MTU hint of [03](03-connections.md#udp-routes).
 - **Traffic:** the bytes in and out of the last 24 hours per hour, or of the last 30 days per day,
   with their totals, connections and errors ([Charts](#charts)).
-- **Access policies:** the policies the route applies, in order. They are attached from the org's
-  policies, detached, and moved up or down. They are then saved as one change: the route as read,
-  with the mask `policy_ids` and its etag.
+- **Access policies:** the policies the route applies. They are attached from the org's policies
+  and detached, with no order to set: a deny rule of any of them wins
+  ([D85](14-open-decisions.md#engineering)), which the card says once two apply. They are then saved
+  as one change: the route as read, with the mask `policy_ids` and its etag.
 - **The "Enabled" switch** turns the route on or off; it is the only desired on/off switch (U3).
   - It sends the route as read, with the mask `enabled` and the route's etag.
   - The revision's apply status then follows live (U2): the state over the online agents, each
@@ -281,6 +328,10 @@ flowchart LR
     `WatchApplyStatus`, in a live region (U8).
   - If the route changed since the page read it, the switch says so, and the page shows the route as
     it is now.
+- **The "Maintenance" switch** of an HTTP route ([D88](14-open-decisions.md#engineering)) puts it in
+  maintenance and takes it out, as the "Enabled" switch does, with the mask `http.maintenance`. The
+  configured settings then say "in maintenance" and show the message the maintenance page shows. The
+  form has both, the setting and the message.
 - **"Edit"** opens the route's form, with the fields the API lets a route of its type change.
   - **Full resource (U1):** the form starts from the route as read and sends it whole, with its
     fields set from the form, the update mask of those fields and the etag. A field the form does
@@ -294,23 +345,39 @@ flowchart LR
     - "Put my changes on the new version" refills the form with the saved version and the user's
       changes on top, for a second save.
     - "Drop my changes" refills it with the saved version.
+- **"Delete…"** asks first, naming the route and saying that its hostnames, targets and port go
+  with it (U7). The question takes the place of the page's actions until it is answered or
+  cancelled.
+  - It sends the route's ID with the etag as read (U6). A route that changed since the page read it
+    is not deleted; the page says so and shows the route as it is now.
+  - **After the deletion,** the page says the route is deleted and follows the revision's apply
+    status live (U2), with the link back to all routes.
 
 ### Connectors
 
 - **The list** (`/connectors`) shows the org's connectors in service, sorted by name. Each row has
-  its control session (connected or offline, with an icon and text), version, last contact and
-  labels. A text filter (name or `key=value` label) and a session filter stay in the URL (U9).
+  its state (disabled, else whether its control session is connected or offline, with an icon and
+  text), version, last contact and labels. A text filter (name or `key=value` label) and a state
+  filter stay in the URL (U9).
   Without connectors, the list offers to enroll the first. When the filters match none, it says so
   and offers to clear them.
-- **The detail page** has a link back to the list above its title, and:
+- **The detail page** has a link back to the list above its title, an **Enabled** switch next to it,
+  as a route has (U3, [D81](14-open-decisions.md#engineering)), and:
   - **Sessions:** the control session (address, last contact), and the data sessions per gateway,
     with transport, round-trip time and start.
   - **Routes:** those with a target on the connector. Those it reports not ready show their reason,
-    and, for a target its local policy blocks, the command for its host with a copy button (U4).
-  - **Settings:** name, labels, transport policy and whether it serves. They are saved as the whole
-    connector as read, with their mask and the etag (U1).
+    and, for a target its local policy blocks, the command for its host with a copy button (U4); a
+    target that is one of rpmgr's own ports gets no command but says that the all-in-one's
+    connector never dials it ([04](04-security.md#connector-local-policy)).
+  - **Settings:** name, labels and transport policy. They are saved as the whole connector as
+    read, with their mask and the etag (U1).
   - **Decommission** comes after a confirmation that names the connector and says what it does
-    (U7). The page then returns to the list.
+    (U7), including the routes that are deleted with it because they have no other target
+    ([06](06-data-model.md#lifecycle-and-deletion)). It can be confirmed only once the routes are
+    read; if they cannot be, it says so. The page then returns to the list.
+  - **The all-in-one's own connector** is marked "built in", in the list too, and offers no
+    decommission, which the API refuses; its switch still turns it off
+    ([ADR-0019](adr/0019-all-in-one-runs-a-connector.md)).
 
 ### Gateways
 
@@ -327,7 +394,9 @@ flowchart LR
   - **Edit** its name and endpoints.
   - **Drain or resume** it (R22, [03](03-connections.md#multiple-gateways)). A drained gateway takes
     no new public connections, and it ends the open ones after the gateway drain period.
-  - **Decommission** it, after a confirmation that names it.
+  - **Decommission** it, after a confirmation that names it. The all-in-one's own gateway is marked
+    "built in" and offers neither a decommission nor an enrollment token; it can be drained
+    ([ADR-0019](adr/0019-all-in-one-runs-a-connector.md)).
   - **For a gateway that has not enrolled,** make its enrollment token after a step-up. The token is
     bound to that gateway and valid for 1 hour, and is shown once next to the install command,
     which does not hold it.
@@ -366,12 +435,13 @@ flowchart LR
 
 ### Access policies
 
-- **The list** (`/policies`): each policy with its description, its rules in the order they apply
-  (allow or deny addresses, basic auth with its users' names), and the routes that use it.
+- **The list** (`/policies`): each policy with its description, its rules (allow or deny
+  addresses, basic auth with its users' names), and the routes that use it.
   Without policies, the page offers to create the first.
 - **The form** creates a policy, or changes one as the whole policy as read with its name,
   description and rules, their mask and the etag (U1).
-  - **Rules** are added, removed and moved up or down.
+  - **Rules** are added and removed. They have no order to set: the form says that a deny rule
+    wins over every allow rule ([D85](14-open-decisions.md#engineering)).
   - **Basic auth:** each user has a name and a password. Passwords are write-only: an existing user
     whose password field stays empty keeps their password.
 - **Removal** comes after a confirmation. The server refuses a policy that routes use, and says
@@ -455,7 +525,7 @@ flowchart LR
 │ [ 10.0.0.5:5432 ] [+]                                                              │
 ├────────────────────────────────────────────────────────────────────────────────────┤
 │ 1. On the host, run:                                                       [Copy]  │
-│   curl -fsSL https://panel.example.com/install.sh | sudo sh -s -- \                │
+│   curl -fsSLO https://panel.example.com/install.sh && sudo sh install.sh \         │
 │     --controller https://panel.example.com --ca-pin sha256:3q2+7w… \               │
 │     --allow-target 10.0.0.5:5432                                                   │
 │ 2. When the installer asks for it, paste this token (shown once):          [Copy]  │
@@ -467,12 +537,19 @@ flowchart LR
 ```
 
 - The token is shown once, masked by default, and is never put into the command. This keeps it out
-  of argv, unit files and shell history ([04](04-security.md#join-command)). Because `curl … | sh`
-  occupies the script's standard input, the install script reads the token from the terminal
-  (`/dev/tty`) with echo off. Unattended installs use `--token-file`, or `RPMGR_ENROLL_TOKEN`
-  passed through explicitly (`sudo --preserve-env=RPMGR_ENROLL_TOKEN …`).
-- Targets entered in the dialog become `--allow-target` flags. Without any, the default local
-  policy is `allow_targets: []` ([04](04-security.md#connector-local-policy)).
+  of argv, unit files and shell history ([04](04-security.md#join-command)). The install script
+  reads the token from the terminal (`/dev/tty`) with echo off. The command downloads the script
+  and runs the file with `sudo` instead of piping it in, so that what is typed reaches the prompt
+  under sudo-rs too ([04](04-security.md#join-command)). Unattended installs use `--token-file`,
+  or `RPMGR_ENROLL_TOKEN` passed through explicitly (`sudo --preserve-env=RPMGR_ENROLL_TOKEN …`).
+- **The command and the token wrap,** so neither the dialog nor a part of it scrolls sideways, also
+  on a phone. The same holds for the gateway's token and every other command the UI shows.
+- **"Copy"** says "Copied" for a moment. Where the browser does not copy, because the page has no
+  clipboard or the browser refuses it, the dialog says to copy by hand and shows the token.
+- Targets entered in the dialog become `--allow-target` flags, and denied targets `--deny-target`
+  flags, in the target forms of the local policy, such as `10.0.0.0/16` or `127.0.0.1:200-500`.
+  Without any, the default local policy is `allow_targets: []`
+  ([04](04-security.md#connector-local-policy)).
 - The dialog waits on the enrollment event and switches to the new connector's detail page when it
   connects.
 - **Making the token:**
@@ -481,7 +558,8 @@ flowchart LR
   - it is valid for 15 minutes up to 30 days, 1 hour by default, and can be scoped to a gateway
     group;
   - an ephemeral token may enroll several connectors, 0 meaning any number;
-  - the dialog asks for the install command with the targets as `--allow-target`.
+  - the dialog asks for the install command with the targets as `--allow-target` and
+    `--deny-target`.
 - [R] The mock-up's "Name" field is left out. A token does not name the connector it enrolls: the
   connector takes its host's name, and it is renamed on its page.
 - **The connectors page lists the enrollment tokens** that can still enroll, with creation, expiry,
@@ -652,6 +730,11 @@ In Phase 1 the UI works in the user's first org. The org switcher comes with the
   step-up prompt, token creation and revocation.
 - Every page a Playwright flow visits is checked with axe for WCAG 2.2 A and AA. A flow also fails
   on any CSP violation, and on anything in `localStorage` or `sessionStorage`.
+- A flow checks, in a window 2560 px wide, that each page it visits fills the width beside the
+  sidebar, and that the route form stands in two columns there and in one on a phone.
+- Flows check that every required control has the red asterisk, drawn with an empty alternative
+  text, and that no other control has one; component tests check the same for each form, including
+  the fields required only in some cases.
 - A unit test computes the contrast of every text colour on its surfaces, 4.5:1, and of control
   borders, the focus outline and chart lines, 3:1, in both themes.
 - Accessibility checks (axe) in CI on every page, plus manual keyboard and screen-reader passes per

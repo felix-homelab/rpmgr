@@ -34,7 +34,7 @@ export function EnrollDialog({ orgId, known, onClose }: { orgId: string; known: 
   const create = useMutation(EnrollmentService.method.createEnrollmentToken);
   const command = useMutation(EnrollmentService.method.getInstallCommand);
   const queryClient = useQueryClient();
-  const [form, setForm] = useState({ labels: "", group: "", ephemeral: false, uses: "1", lifetime: "3600", targets: "" });
+  const [form, setForm] = useState({ labels: "", group: "", ephemeral: false, uses: "1", lifetime: "3600", targets: "", denied: "" });
   const [result, setResult] = useState<{ token: string; command: string; lifetime: number }>();
   const [error, setError] = useState("");
   const [requestId] = useState(() => crypto.randomUUID());
@@ -66,7 +66,7 @@ export function EnrollDialog({ orgId, known, onClose }: { orgId: string; known: 
       const tok = await stepUp(() => create.mutateAsync({
         orgId, labels, ephemeral: form.ephemeral, maxUses: uses, ttl: { seconds: BigInt(form.lifetime) }, gatewayGroupId: form.group, requestId,
       }));
-      const cmd = await command.mutateAsync({ orgId, role: AgentRole.CONNECTOR, allowTargets: lines(form.targets) });
+      const cmd = await command.mutateAsync({ orgId, role: AgentRole.CONNECTOR, allowTargets: lines(form.targets), denyTargets: lines(form.denied) });
       setResult({ token: tok.token, command: cmd.command, lifetime: Number(form.lifetime) });
     } catch (err) {
       const e = ConnectError.from(err);
@@ -78,7 +78,7 @@ export function EnrollDialog({ orgId, known, onClose }: { orgId: string; known: 
 
   return (
     <dialog ref={dialog} aria-labelledby="enroll-title" onCancel={onClose}
-      className="m-auto w-[calc(100%-2rem)] max-w-2xl rounded-xl border border-border bg-card p-6 shadow-2xl">
+      className="m-auto w-[calc(100%-2rem)] max-w-3xl rounded-xl border border-border bg-card p-6 shadow-2xl">
       <h2 id="enroll-title" className="text-lg font-semibold">{t("enroll.title")}</h2>
       {!result ? (
         <form onSubmit={submit} className="mt-5 grid gap-4" noValidate>
@@ -113,6 +113,11 @@ export function EnrollDialog({ orgId, known, onClose }: { orgId: string; known: 
             {t("enroll.targets")}
             <Textarea rows={2} className="font-normal" value={form.targets} onChange={(e) => setForm({ ...form, targets: e.target.value })} />
             <span className="text-xs font-normal text-muted-foreground">{t("enroll.targetsHint")}</span>
+          </label>
+          <label className="grid gap-1.5 text-sm font-medium">
+            {t("enroll.denied")}
+            <Textarea rows={1} className="font-normal" value={form.denied} onChange={(e) => setForm({ ...form, denied: e.target.value })} />
+            <span className="text-xs font-normal text-muted-foreground">{t("enroll.deniedHint")}</span>
           </label>
           {error && <Alert>{error}</Alert>}
           <div className="flex justify-end gap-2">

@@ -5,12 +5,10 @@ follows [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.1.0/), versions
 [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.html), and the rules for entries are in
 [RELEASING.md](RELEASING.md#changelog).
 
-Changes to the design documents are not recorded here: see the git history and the
-[ADRs](docs/adr/).
+Nothing has been released yet. Changes to the design documents are not recorded here: see the git
+history and the [ADRs](docs/adr/).
 
 ## [Unreleased]
-
-## [0.1.0] - 2026-10-12
 
 ### Added
 
@@ -18,7 +16,7 @@ Changes to the design documents are not recorded here: see the git history and t
   the controller's init or the agent's enrollment, a connector's local policy and proxy, and the
   systemd unit, started and checked for readiness. It asks in full-screen forms, or in plain
   prompts without a terminal, and shows the plan before it changes anything; with `--yes` it takes
-  every value from its flags. (#446, #448, #449)
+  every value from its flags. (#435)
 - All roles: one `rpmgr` binary for Linux on amd64, arm64, armv7 and riscv64 runs every role:
   `rpmgr controller`, `gateway`, `connector` and `all-in-one`, each from a strictly checked YAML
   boot file. `rpmgr version` names the build. (#174, #196, #260, #266, #267, #384)
@@ -26,16 +24,23 @@ Changes to the design documents are not recorded here: see the git history and t
   key-encryption key (KEK, from a systemd credential or a file) and the internal CA, and prints a
   one-time link that creates the first user. Secrets in the database are encrypted under the KEK,
   and logs redact them. (#183, #184, #186, #187, #189, #199, #313, #375)
-- Controller: all-in-one, the homelab default, runs a controller and a gateway in one process.
-  `rpmgr all-in-one init` also creates the gateway group `default` with the enrolled gateway
-  `local`. (#268, #269)
+- Controller: all-in-one, the homelab default, runs a controller, a gateway and a connector in one
+  process. `rpmgr all-in-one init` also creates the gateway group `default`, its public hostname
+  the public URL's host if that is a valid one, with the enrolled gateway `local`, and the
+  connector `local`, which publishes services on the same host as its local policy allows, never
+  rpmgr's own ports, over in-memory data sessions. An all-in-one initialised before gets its
+  connector at the next start. Its own gateway and connector cannot be decommissioned. `rpmgr
+  setup` asks for the connector's allowed and denied targets, and `rpmgr policy` reloads the
+  all-in-one on a host without a separate connector. (#268, #269, #484, #493, #535, #537, #538)
 - Controller: a controller without a public address can stay on a private network, published
   through a gateway that passes its hostnames through to it. (#285)
 - Controller: serves `/install.sh`. The script downloads the controller's own release from the
   controller, verifies its signatures with OpenSSL 3, installs the binary, the boot file, the
   connector-local policy and a hardened systemd unit, and enrolls the host. It reads the
-  enrollment token from a file, the environment or the terminal. It is tested on Debian 12 and 13,
-  Ubuntu 22.04 and 24.04, and Rocky Linux 9. (#328, #374, #376)
+  enrollment token from a file, the environment or the terminal. The command the web UI shows
+  downloads the script and runs it with `sudo`, so that a token typed at the prompt also arrives
+  under sudo-rs, Ubuntu's `sudo` since 25.10. It is tested on Debian 12 and 13, Ubuntu 22.04, 24.04
+  and 26.04, and Rocky Linux 9. (#328, #374, #376, #476)
 - All roles: `rpmgr systemd-unit <role>` prints a hardened systemd unit for each role. (#375)
 - All roles: an internal CA gives every controller, gateway and connector a short-lived certificate
   with a SPIFFE identity in the instance's trust domain. Agents renew it in time; an agent that
@@ -62,32 +67,63 @@ Changes to the design documents are not recorded here: see the git history and t
   `ALL_PROXY`) where only a proxy leads out, and carries its control session inside a data session
   when no controller endpoint is reachable. (#245, #267, #286)
 - Connector: the connector-local policy, `/etc/rpmgr/policy.yaml`, limits the targets a connector
-  dials, even for a compromised controller. `rpmgr policy show` and `rpmgr policy allow-target`
+  dials, even for a compromised controller. A target is an address or a subnet, such as
+  `10.0.0.1/16` (stored as `10.0.0.0/16`), with an optional port or port range such as
+  `127.0.0.1:200-500`; without a port it means all ports. `deny_targets` refuses what it matches,
+  whatever allows it. `rpmgr policy show`, `allow-target`, `deny-target` and their `remove-` forms
   edit it and reload the connector; a reload ends relayed connections the policy no longer allows.
-  (#247, #248, #249, #388)
+  `rpmgr setup` and the install command take `--allow-target` and `--deny-target`. YAML anchors,
+  aliases and merge keys make the file invalid. A connector of an earlier build reads a file that
+  uses `deny_targets`, a target string, an entry without ports or a subnet with host bits as invalid
+  and dials nothing, also after an automatic update rolls it back. (#247, #248, #249, #388, #519)
 - Gateway: `tcp` routes take a public port from their gateway group's port pools, within the org's
   port quota, and carry each connection as one stream to a connector. (#234, #235, #254, #326)
 - Gateway: `udp` routes carry each client flow as QUIC datagrams, or as frames on the `h2`
   transport. (#279, #281, #283, #284)
+- Gateway: `tcp_udp` routes publish one port number with TCP and UDP, for services such as DNS:
+  one route with one list of targets, its port taken from the gateway group's TCP and UDP pools
+  and counted against both quotas; a target's PROXY protocol header goes on its TCP connections
+  only. (#506, #534)
 - Gateway: `tls_passthrough` routes pass TLS connections by server name to a connector, still
   encrypted. (#276, #278, #332)
 - Gateway: `http` routes terminate TLS for their hostnames and proxy HTTP/1.1, HTTP/2, WebSocket
   and gRPC by hostname and path prefix, to HTTP, h2c or verified HTTPS upstreams (server name, CA
-  bundle, optional SPKI pin). (#292, #294, #296, #333)
+  bundle, optional SPKI pin). A target whose certificate nothing can verify, such as a
+  self-signed one, may be checked by its pinned key alone, which "Trust the certificate it shows
+  now" reads through the connector, or be marked unverified: the gateway then checks no
+  certificate, and the web UI warns about it and marks the target. Stricter TLS settings end the
+  target's open connections at once. (#292, #294, #296, #333, #504, #505, #517)
 - Gateway: `http` routes set `Forwarded` and `X-Forwarded-*` and keep a client's own only from the
   gateway group's trusted proxies. They can replace the `Host` header, set request and response
   headers, redirect or serve port 80, and send HSTS. (#297, #298)
+- Gateway: a browser gets a page instead of bare text or a closed connection. A name no route
+  serves shows "Site not available" (404) on port 80, and on port 443 with a certificate the
+  gateway holds that covers the name, such as a route's wildcard one, or else after the browser's
+  certificate warning. A route without a live target, or whose target refuses or does not answer,
+  shows "Service unavailable" (503, 502, 504). Other clients keep getting text, and an upstream's
+  own errors pass unchanged. On all-in-one, port 80 redirects only the controller's own name to
+  its public URL. (#531)
+- Gateway: an `http` route can be put in maintenance, with an optional plain-text message. Its
+  gateways then answer every request its access policies admit with a "Down for maintenance" page
+  (503) and send nothing to its targets; its certificate, HSTS and port 80 stay as they are. The
+  route's status says `maintenance`, and the web UI has a "Maintenance" switch on the route's page,
+  the CLI `--maintenance` and `--maintenance-message`. (#532)
 - Connector: a route target is a host and port or a Unix socket, with a weight, a priority and
   optionally the PROXY protocol. (#249, #262, #334)
 - Controller: route hostnames must lie under a domain the org has verified, by a DNS TXT record or
   by an HTTP token its gateways serve. An Instance Admin can mark a domain trusted without a proof.
   (#273, #276, #331, #332)
 - Gateway: access policies hold IP allow and deny rules for every route type, and basic auth with
-  argon2id-hashed passwords for `http` routes. A tightened policy also ends the open connections it
-  now denies. (#299, #300, #338)
+  argon2id-hashed passwords for `http` routes. A deny rule wins over every allow rule, whatever the
+  order of the rules and of a route's policies; a gateway of a release candidate still lets the
+  first matching rule decide until it is upgraded. A tightened policy also ends the open
+  connections it now denies. (#299, #300, #338, #520)
 - Controller: `http` routes get certificates through ACME, by HTTP-01 or TLS-ALPN-01 answered by
   every gateway that serves the name, from Let's Encrypt or another ACME directory. Renewal is
-  automatic and can also be started on demand. (#303, #304, #305, #339)
+  automatic and can also be started on demand. A name that fails is tried again after waits
+  growing from 1 min to 6 h, and each retry rehearses at Let's Encrypt's staging directory first,
+  so a name the CA cannot validate yet does not use up the account's limits. (#303, #304, #305,
+  #339, #478)
 - Controller: obtains its own certificate through ACME when its public URL has a public DNS name;
   otherwise it uses the configured certificate or a self-signed one. (#306)
 - Controller: `http` routes can use uploaded certificates instead, whose keys are encrypted under
@@ -107,6 +143,10 @@ Changes to the design documents are not recorded here: see the git history and t
   commands, connectors (status, data sessions, decommissioning, purging ephemeral ones), domains,
   routes and their targets, access policies, certificates, CA bundles, settings and the PKI status.
   (#322, #323, #326, #328, #329, #330, #331, #332, #333, #334, #338, #339, #340, #341)
+- Controller: decommissioning a connector, `rpmgr leave` and the purge delete its route targets
+  and each route left with no target, so its ports and hostnames are free again; the UI names
+  those routes before, the API and the CLI after. Gateways listen only on the ports of routes a
+  connector serves, and a refused port names the route that holds it. (#485)
 - API: every write returns its revision, and the apply status says how far the agents are with it.
   A route can be previewed before it is saved, routes report their observed status, and
   configuration and status changes stream to clients. (#335, #336, #337)
@@ -121,10 +161,13 @@ Changes to the design documents are not recorded here: see the git history and t
   page for profile, theme, password, authenticator, recovery codes, sessions and API tokens. (#356,
   #359, #360, #362, #363)
 - UI: routes can be listed, created with a preview, edited with conflict resolution, switched on
-  and off while the apply status follows live, and given targets. (#363, #364, #365, #366)
+  and off while the apply status follows live, given targets, and deleted after a confirmation.
+  TCP and UDP routes are shown at their gateway group's public hostnames, such as
+  `eu.example.net:25432`. (#363, #364, #365, #366, #471, #484, #493)
 - UI: pages for connectors with an enrollment dialog, gateway groups, gateways and port pools,
-  domains, certificates and CA bundles, access policies, and members and invitations. (#366, #367,
-  #368, #369)
+  domains, certificates and CA bundles, access policies, and members and invitations. A connector
+  is switched on and off on its page; the overview counts neither disabled connectors nor drained
+  gateways as offline. (#366, #367, #368, #369, #503)
 - UI: an overview with traffic and what needs attention, traffic per route, the audit log with
   chain verification, org and instance settings, the PKI page, read-only YAML views with export,
   and a command palette. (#370, #371, #372)
@@ -132,7 +175,12 @@ Changes to the design documents are not recorded here: see the git history and t
   switch for the light, dark or system theme, which saves it to the profile, and the user menu.
   Both themes keep text contrast at WCAG 2.2 AA. The overview leads with a figure per area, the
   traffic of the last 24 hours and what needs attention. Every page uses the same page header,
-  cards, tables, status badges and empty states. (#460, #461, #462, #463, #464, #465)
+  cards, tables, status badges and empty states, and fills the window's width, with long forms in
+  columns on wide screens. The foot of the sidebar names the version the controller runs.
+  (#459, #481, #502)
+- UI: a field a form needs has a red asterisk after its label, also while it is needed only
+  because of another field, such as the sender address once a mail relay is set. Screen readers
+  announce the field as required. (#483, #493)
 - Controller: every change, sign-in and token use is recorded once in a hash-chained audit log per
   org and one for the instance, with signed checkpoints and retention. The API and the UI list and
   verify the chains. (#194, #311, #350, #351, #352)
@@ -159,10 +207,9 @@ Changes to the design documents are not recorded here: see the git history and t
   #374)
 - Install: a global install script, attached to every release as `install.sh`, downloads the
   release from GitHub, verifies it with the release root keys it embeds, installs the binary, the
-  user `rpmgr` and its directories, and offers to run `rpmgr setup`. (#445)
+  user `rpmgr` and its directories, and offers to run `rpmgr setup`. (#436)
 - Releases: reproducible builds with an SPDX SBOM, SLSA provenance attestations and a signed
   release manifest; distroless, nonroot multi-arch images at `ghcr.io/felix-homelab/rpmgr`, signed
-  with cosign. (#384, #385, #434)
+  with cosign. (#384, #385)
 
-[Unreleased]: https://github.com/felix-homelab/rpmgr/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/felix-homelab/rpmgr/releases/tag/v0.1.0
+[Unreleased]: https://github.com/felix-homelab/rpmgr/commits/main

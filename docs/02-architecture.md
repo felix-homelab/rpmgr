@@ -1,13 +1,13 @@
 # 02 — Architecture
 
 > Status: Phase 1, being implemented. Tags: [F] fact · [R] recommendation · [T] target · [V] verify
-> at implementation ([README](../README.md#how-to-read-these-documents)).
+> at implementation ([README](README.md#how-to-read-these-documents)).
 
 ## Roles
 
 rpmgr is **one binary, `rpmgr`, with three roles** ([ADR-0002](adr/0002-one-binary-three-roles.md)).
-A process runs exactly one role, except `all-in-one`, which runs a Controller and a Gateway in one
-process.
+A process runs exactly one role, except `all-in-one`, which runs a Controller, a Gateway and a
+Connector in one process ([ADR-0019](adr/0019-all-in-one-runs-a-connector.md)).
 
 | Role | Runs where | Responsibilities |
 |---|---|---|
@@ -195,7 +195,10 @@ flowchart LR
 
 ```mermaid
 flowchart LR
-  I((Internet)) -->|80, 443 tcp+udp, port pool| AIO[rpmgr all-in-one<br/>Controller + Gateway<br/>SQLite]
+  I((Internet)) -->|80, 443 tcp+udp, port pool| AIO
+  subgraph VPS
+    AIO[rpmgr all-in-one<br/>Controller + Gateway<br/>+ Connector, SQLite] -->|local policy| S0[Container]
+  end
   subgraph Home network
     C1[Connector] --> S1[NAS]
     C1 --> S2[Home Assistant]
@@ -204,11 +207,18 @@ flowchart LR
 ```
 
 One VPS, one process, SQLite. The UI is published on the same 443 as the routes; the gateway's SNI
-router hands the controller's hostnames to the in-process controller. The in-process gateway is an
-ordinary enrolled agent: `rpmgr all-in-one init` creates it (gateway group `default`, gateway
-`local`, its tunnel endpoint the public URL's host on port 443) and enrolls it, and its control
-session reaches the controller over an in-memory mutual-TLS connection, so both topologies run the
-same code (R16).
+router hands the controller's hostnames to the in-process controller. The in-process gateway and
+connector are ordinary enrolled agents: `rpmgr all-in-one init` creates them (gateway group
+`default`, gateway `local`, its tunnel endpoint the public URL's host on port 443, and connector
+`local`) and enrolls them, and their control sessions reach the controller over in-memory
+mutual-TLS connections, so both topologies run the same code (R16). The connector's data sessions
+reach the gateway in memory as well ([03](03-connections.md#transport-selection)); it publishes
+services on the VPS itself as its local policy allows, and never rpmgr's own ports
+([04](04-security.md#connector-local-policy), [ADR-0019](adr/0019-all-in-one-runs-a-connector.md)).
+Both agents are built in: they cannot be decommissioned, and if one of the three roles ends, the
+process ends. The group's public hostname is the public URL's host without a final dot, unless the
+group refuses it, as it does a single label such as `localhost`; the UI shows TCP and UDP routes at
+it (D79).
 
 ### Split: private controller
 

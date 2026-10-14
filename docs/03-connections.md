@@ -1,7 +1,7 @@
 # 03 — Connections: fast and secure
 
 > Status: Phase 1, being implemented. Tags: [F] fact · [R] recommendation · [T] target · [V] verify
-> at implementation ([README](../README.md#how-to-read-these-documents)). Library facts were checked
+> at implementation ([README](README.md#how-to-read-these-documents)). Library facts were checked
 > against **quic-go v0.61.0**, **hashicorp/yamux v0.1.1**, **grpc-go v1.67.1**, **golang.org/x/net
 > v0.57.0**; the HTTP/2 facts of the TCP transport were re-checked at **Go 1.27.1** by spike S2 and
 > cite that version. Every **[V]** item is tracked in [13-roadmap.md](13-roadmap.md): load-bearing
@@ -27,7 +27,10 @@
 Design goals, in priority order:
 
 1. **Secure.** Every connection between rpmgr components is TLS 1.3 with mutual authentication and
-   per-component identities. No shared secrets, no timestamp tokens, no `InsecureSkipVerify`.
+   per-component identities. No shared secrets, no timestamp tokens, no `InsecureSkipVerify`
+   (its exceptions concern HTTPS upstreams a user marks unverified or pins by key, not rpmgr's own
+   sessions: [ADR-0017](adr/0017-upstream-tls-verification-modes.md),
+   [ADR-0018](adr/0018-pin-the-key-a-target-presents.md)).
 2. **Correct under change.** Configuration changes are validated, applied atomically, acknowledged,
    and never disturb unchanged tunnels.
 3. **Fast.** No extra round trip per user connection; no cross-stream head-of-line blocking on the
@@ -46,7 +49,8 @@ Design goals, in priority order:
   `ServerName` to the **expected peer's** DNS name — Go's TLS client refuses to handshake without
   one unless verification is disabled [F Go 1.27.1 `crypto/tls/handshake_client.go:47`] — and
   `tls.Config.VerifyConnection` additionally checks the SPIFFE ID against the deny-list and the
-  agent's snapshot ([04](04-security.md#pki-and-identity)). `InsecureSkipVerify` is never used.
+  agent's snapshot ([04](04-security.md#pki-and-identity)). `InsecureSkipVerify` is never used
+  for these sessions.
 - **0-RTT is disabled** (no `Allow0RTT`, no `ListenEarly`/`DialEarly`), because 0-RTT data can be
   replayed. TLS session resumption is allowed: Go runs `VerifyConnection` on resumed TLS 1.3
   connections on both sides [F Go 1.27.1 `crypto/tls/handshake_client_tls13.go:595-604`]
@@ -183,6 +187,7 @@ message ControllerMessage {
     Goodbye goodbye = 5;            // superseded, revoked, upgrade_required, shutdown, overloaded
     Signed deny_list = 6;           // a DenyList; applied unconditionally, never shrinks early
     AcmeChallenge acme_challenge = 7; // gateways: add | remove, acknowledged with OpResult
+    ProbeTarget probe_target = 8;   // connectors: read a target's certificate, OpResult has it
   }
 }
 
@@ -229,6 +234,17 @@ message Signed { bytes payload = 1; bytes signature = 2; string key_id = 3; }
   every name and TLS-ALPN-01 on port 443 for a ClientHello with ALPN `acme-tls/1`, before any
   route of the name; it keeps at most 1 000 challenges and refuses identifiers that are not DNS
   names. An agent that answers no challenges, such as a connector, refuses them in its `OpResult`.
+- **Target certificate probe** ([ADR-0018](adr/0018-pin-the-key-a-target-presents.md)): for a
+  user who pins an HTTPS target's key, the controller sends
+  `ProbeTarget{op_id, host_port | unix_path, server_name}` to a connector that announced
+  `probe.target`. The connector dials the target under its local policy, as a stream would,
+  completes a TLS handshake that checks nothing, sends nothing else and closes the connection.
+  It answers `OpResult{op_id, certificate}` with the leaf it was shown, or with why it could not:
+  the local policy, an unreachable target, or no TLS. The probe runs apart from the control
+  session, within the time and the number at once of the timeout table. A disabled or
+  decommissioned connector is not asked. Only the replica that holds the connector's control
+  session can send it; another one answers that the connector has no session there, and so does
+  the replica when the session ends before the connector answers.
 - **Revocations travel separately from snapshots.** `DenyListUpdate` carries the full current set
   (deltas above 1 MiB) and is applied unconditionally, merged by union; an entry is removed only
   after the covered certificate's `NotAfter`. An agent that rejects a snapshot still receives every
@@ -286,16 +302,21 @@ Rules:
    ([Multiple gateways](#multiple-gateways)). They drain in the background, so draining never
    delays the acknowledgement.
    A route whose **access policy was tightened**, or whose agent was revoked, closes affected
-   connections **immediately**.
+   connections **immediately**, also those being admitted while the rules change: a connection or
+   request is checked under the lock the change takes, and an http request again once its basic
+   auth has passed, so the change either finds it or refuses it. Requests still running on an http
+   transport that a change of upstream protocol or TLS settings replaced stay under the route's
+   rules of every later snapshot.
 5. **Two kinds of error, handled differently.**
    - *Invalid snapshots* (malformed, semantically invalid, bad signature, unparsable certificate)
      are rejected **whole**: `Rejected`, last-known-good stays. The controller must issue a new
      revision; an invalid snapshot is a controller bug or an incompatibility, never a host setting.
    - *Resource-level problems* are reported **per resource** in `Applied.resource_status`, and the
      rest of the snapshot is applied. This covers environmental errors (port in use, upstream
-     unreachable, DNS failure), which are retried with backoff, and targets **blocked by the
-     connector's local policy**, which are `not_ready(blocked_by_local_policy: <ip:port>)` until the
-     host's policy changes. One occupied port or one disallowed target must not block unrelated
+     unreachable, DNS failure), which are retried
+     ([Timeouts, keepalive and backoff](#timeouts-keepalive-and-backoff)), and targets **blocked by
+     the connector's local policy**, which are `not_ready(blocked_by_local_policy: <ip:port>)` until
+     the host's policy changes. One occupied port or one disallowed target must not block unrelated
      changes.
    - When the host's local policy file changes (`rpmgr policy …` triggers a reload; the connector
      also watches the file), the connector re-evaluates the current snapshot, reports the new
@@ -325,8 +346,11 @@ Rules:
    controller keeps at most 32 reasons of at most 512 bytes each. The last 5 snapshots sent to
    each agent are kept for support ([06](06-data-model.md#desired-vs-observed-state)).
 10. **What an agent gets.** A gateway gets every enabled `tcp` route of its gateway group that has
-    a port: the port, the idle timeout and the connectors that serve the route (enabled
-    connectors with an enabled target on it); the gateway opens streams only to those. A
+    a port and a connector that serves it: the port, the idle timeout and the connectors that
+    serve the route (enabled connectors with an enabled target on it); the gateway opens streams
+    only to those. A route no connector serves is left out, so no gateway holds its port
+    ([D78](14-open-decisions.md#engineering)); the same holds for `udp` and `tcp_udp` routes. A
+    `tcp_udp` route comes as one resource, with its port, both idle timeouts and its connectors. A
     connector gets every enabled route with an enabled target on it: its targets, by priority,
     and the effective transport policy, the route's, else the connector's, else the instance
     default ([Transport selection](#transport-selection)). A gateway also gets the HTTP tokens of
@@ -337,9 +361,12 @@ Rules:
     a detail. After that an agent sends a `Status` with each change, such as a connector whose
     local policy was reloaded, and at the start of every session a complete one, which names
     every resource that is not ready, so that a change made while there was no session is not
-    lost. The controller keeps, per agent, at most 1 024 resources that are not ready, each
-    resource ID and detail at most 512 bytes; a resource it does not keep is shown as ready. It
-    records an `Applied` only for a snapshot the same session was sent
+    lost. An agent that is sent the snapshot it already runs answers `Applied` again, with the
+    resources not ready now. A gateway's every `Status` is a complete one; it sends one a second
+    after a resource becomes ready without a new snapshot, as a route port bound after all or a
+    certificate a retry fetched. The controller keeps, per agent, at most 1 024 resources that are
+    not ready, each resource ID and detail at most 512 bytes; a resource it does not keep is shown
+    as ready. It records an `Applied` only for a snapshot the same session was sent
     ([06](06-data-model.md#desired-vs-observed-state)). A gateway's every `Status` lists its
     connectors' data sessions, one per connector and transport with the lowest round-trip time a
     session measures (QUIC does; h2 does not), at the report interval of the timeout table and at
@@ -623,6 +650,14 @@ sequenceDiagram
 - Over the TCP fallback (no datagrams), UDP payloads are always length-prefixed frames on the flow
   stream. This works, but loss on the TCP connection delays every UDP flow on it; the UI flags
   UDP routes served over the fallback.
+- A **`tcp_udp` route** is a tcp route and a udp route on one port number, with one list of
+  targets ([D83](14-open-decisions.md#engineering)). The gateway listens on the port with TCP and
+  with UDP: a connection becomes a TCP stream and a flow a `UDP_FLOW` stream, both with the route's
+  ID, and the connector takes both kinds for it, to the same target address. Its targets are
+  addresses, as a udp route's. A target's PROXY protocol header, if it sets one, goes on each TCP
+  connection only; a UDP flow never gets one, so on UDP the target sees the connector's address
+  ([D86](14-open-decisions.md#engineering)). A port that one protocol cannot bind makes the route
+  `not_ready(port_in_use)` while the other protocol serves.
 
 ### HTTP routes
 
@@ -665,21 +700,31 @@ sequenceDiagram
 - **Routing.** A request goes to the route of its `Host` and the longest path prefix that matches
   at a segment boundary (`/api` matches `/api` and `/api/x`, not `/apix`). A hostname a route names
   exactly comes before a wildcard hostname one label up, which serves a name only if no route
-  names it. No match is **404**. TLS is terminated with the route certificate for the server name
+  names it. No match is **404**, with the site-not-available page, unless the request names
+  another host than the connection's server name and no route serves that host: then it is
+  **421**, and an HTTP/1.1 connection closes, so that a client that reused the connection, such as
+  an HTTP/2 one under a wildcard certificate, asks again on a connection of its own. TLS is
+  terminated with the route certificate for the server name
   ([04](04-security.md#controller-certificates)).
 - **HTTPS upstreams.** For an `https` target the gateway speaks TLS over the stream, end to end
   with the upstream, verified with the settings of the target the connector reached, which
   `StreamResult` names: the target's server name (its host by default), its CA bundle or else the
-  gateway host's trust store, and an optional pin of the leaf's public key. A failed verification,
-  or a target the gateway has no settings for, is **502** ([04](04-security.md#controller-certificates)).
+  gateway host's trust store, and an optional pin of the leaf's public key; or no check at all for
+  a target its user marked unverified. A target's settings apply only to a stream its own
+  connector answered: the snapshot names each target's connector, and the gateway compares it with
+  the connector whose certificate the data session carries. A failed verification, a target the
+  gateway has no settings for, or one of another connector is **502**
+  ([04](04-security.md#controller-certificates)).
 - **Port 80** (`listen.http`): ACME HTTP-01 challenges under `/.well-known/acme-challenge/` are
   answered for every name, whatever the route says. Otherwise the route of the host and path
   decides: `redirect` sends the same path and query to HTTPS (**301** for GET and HEAD, **308**
   otherwise, which keeps the method and body), `serve` proxies the route as on 443 with
   `X-Forwarded-Proto: http`, and `off` closes the connection without an answer. A name no route
-  serves is **404**; on all-in-one it goes to the controller, as the gateway takes port 80 there
-  too: the controller answers the HTTP-01 challenges of its own name and redirects everything else
-  to its public URL.
+  serves is **404** with the site-not-available page. On all-in-one, where the gateway takes port
+  80 too, the controller's own name goes to the controller when no route serves it: it answers the
+  HTTP-01 challenges of that name and redirects everything else to its public URL. Any other name
+  gets the page, so that port 80 never sends a stranger's name to the control plane
+  ([D87](14-open-decisions.md#engineering)).
 - **HSTS**: a route with an HSTS max-age sends `Strict-Transport-Security: max-age=<n>` with every
   HTTPS response, its own and the gateway's errors alike, replacing the upstream's; never over plain
   HTTP.
@@ -687,7 +732,26 @@ sequenceDiagram
   through when the target speaks HTTP/2 (h2c, or TLS with ALPN `h2`); the gateway streams every
   response as it comes, so it sends a gRPC status that arrived without a body as trailers.
 - Error mapping: no ready session or connector → **503** with `Retry-After: 5`; upstream refused or
-  reset → **502**; upstream timeout → **504**.
+  reset → **502**; upstream timeout → **504**. Each comes with the service-unavailable page. A
+  response the upstream sent, its own 5xx included, passes unchanged.
+- **Pages** ([D87](14-open-decisions.md#engineering)): a browser gets a page from the gateway, not
+  bare text, for a name or path no route serves ("Site not available", 404) and for the errors
+  above ("Service unavailable"). A page is self-contained HTML in English: one inline style, which
+  the `Content-Security-Policy` allows by its SHA-256 (`default-src 'none'`, no script, nothing
+  loaded from elsewhere), light and dark themes, the hostname the client asked for as escaped
+  text, never one the route sends upstream, and `Cache-Control: no-store`. Only a client whose
+  own `Accept` names `text/html` gets it; any other, such as curl or an API client, gets the plain
+  text it got before. HEAD gets the headers alone.
+  The pages are built in; pages of one's own per gateway group come in Phase 2
+  ([05](05-features.md#http-features)).
+- **Maintenance** ([D88](14-open-decisions.md#engineering)): an http route in maintenance stays on
+  its gateways with its certificate, HSTS and port-80 mode. A request its access policies admit,
+  basic auth included, gets **503** with `Retry-After: 300` and the "Down for maintenance" page,
+  which shows the route's message as text; a client that does not ask for HTML gets the message as
+  text. No stream is opened to a connector. Requests already running, WebSockets included, finish as
+  they do when a route changes. A request with a body gets its answer without the body being read,
+  and an HTTP/1.1 connection closes. A gateway of a release candidate ignores maintenance and serves
+  the route until it is upgraded.
 
 ### TLS passthrough routes
 
@@ -709,14 +773,16 @@ on the inner name.
 
 ### Access policies
 
-A route applies its access policies in order, and each policy its rules in order
-([06](06-data-model.md#routing)). The gateway enforces IP rules on every route type and basic auth on
-http routes:
+A route applies the rules of all its access policies ([06](06-data-model.md#routing)). The gateway
+enforces IP rules on every route type and basic auth on http routes:
 
-- **IP rules.** The first `ip_allow` or `ip_deny` rule whose CIDRs contain the client's address
-  decides. If none does, the client is allowed only when no rule allows, so allow rules make an
-  allow list and deny rules alone a block list. An IPv4-mapped IPv6 address, of the client or in a
-  CIDR, counts as its IPv4 address.
+- **IP rules.** A deny wins ([D85](14-open-decisions.md#engineering)): an `ip_deny` rule whose
+  CIDRs contain the client's address refuses it, whatever `ip_allow` rule contains it and in
+  whatever order the rules and the route's policies come. Otherwise an `ip_allow` rule that
+  contains it admits it. If no rule contains it, the client is allowed only when no rule allows, so
+  allow rules make an allow list, deny rules alone a block list, and a deny inside an allowed range
+  takes that part out. An IPv4-mapped IPv6 address, of the client or in a CIDR, counts as its IPv4
+  address.
 - **The client's address** is the TCP peer's, or a UDP datagram's source. On an http route whose
   peer is a trusted proxy of the gateway group it is the last address in `X-Forwarded-For` that is
   not a trusted proxy; a chain that does not parse counts as the proxy's own address.
@@ -749,7 +815,7 @@ path with a 1500-byte MTU they arrive in two TCP segments ([S3](spikes/S3.md)).
 | SNI = this gateway's WSS tunnel hostname | HTTP engine; `/.rpmgr/tunnel` upgrades to the WSS transport (Phase 2) |
 | SNI matches a TLS-passthrough route | Splice raw bytes to a connector |
 | SNI matches an HTTP route hostname | Terminate TLS (ACME or uploaded certificate), hand to HTTP engine |
-| No SNI, unknown SNI | Complete the handshake with the default certificate (self-signed for `default.invalid`, generated at every start) and close; there is no configurable fallback route |
+| No SNI, unknown SNI | There is no configurable fallback route. Complete the handshake as for an http route, with a valid certificate the gateway holds whose own names cover the name, such as a route's wildcard certificate, or else with the default certificate (self-signed for `default.invalid`, generated at every start), which no client trusts. Then answer each request with the site-not-available page ([HTTP routes](#http-routes)). A request for the connection's own name that a route serves by now, which a snapshot added after the client connected, is served as on the route's own connection. A request for another name than the connection's, or on a connection without a name for a name a route serves, is **421**, and an HTTP/1.1 connection closes, so that the client asks again on a connection of its own. A request with a body gets its answer without the body being read, and an HTTP/1.1 connection closes |
 | Not TLS | Close |
 
 The ClientHello is parsed with `golang.org/x/crypto/cryptobyte` from the recorded records, which
@@ -830,6 +896,17 @@ Which transport a connector uses is a setting
   once; connections already open finish on their session; a session no route needs any more is
   closed after its last stream has ended. Unchanged routes are untouched.
 - Phase 2 adds `wss` as a fourth value and as the last step of `auto`.
+- **The all-in-one's own connector** ([ADR-0019](adr/0019-all-in-one-runs-a-connector.md),
+  [D89](14-open-decisions.md#engineering)) reaches the gateway of its own process in memory: a
+  pipe that buffers 1 MiB each way, with the same TLS handshake, gateway pin, ALPN
+  `rpmgr-tunnel-h2/1` and reverse HTTP/2 as over TCP, and never through the gateway's endpoints.
+  One such session carries every route to that gateway, whatever the route's transport; a failed
+  one is `not_ready(transport_unavailable: memory)`. Metrics, the data sessions and the UI report
+  it as h2, and its remote address, like that of the all-in-one's control sessions, as
+  `in-process`. The gateway accepts only data sessions to itself on these connections and closes
+  anything else. The connector opens no UDP socket for QUIC, so a gateway elsewhere in its group
+  is reached over TLS + reverse HTTP/2 only: `auto` falls back at once, and a route pinned to
+  `quic` is `not_ready(transport_unavailable: quic)` there.
 
 **Reverse HTTP/2** ([ADR-0005](adr/0005-reverse-http2-fallback.md)). The connector dials the
 gateway and then acts as the **HTTP/2 server** on that connection; the gateway acts as the client
@@ -1025,6 +1102,7 @@ sequenceDiagram
 | Idle UDP flow | 60 s (per route) | Typical UDP NAT behaviour |
 | Apply acknowledgement | 30 s → `apply_timeout` | Visible instead of silent |
 | Snapshot item fetch | 10 s per `FetchResource`; a failed fetch is retried after 1 s, doubling up to 1 min, and its resource is `not_ready(environment)` until then | A controller outage delays a new certificate without a retry storm |
+| Target certificate probe | the connector's dial and TLS handshake together 10 s; at most 4 at once per connector, another is refused at once; `ProbeTargetCertificate` waits at most 15 s for the connector's answer | [R] A silent target or connector answers within the time a user waits for a button; a user who may change routes cannot make a connector open many dials at once |
 | Certificate renewal | a failed attempt is retried with full jitter, base 1 s, cap 5 min; at most one renewal per 10 min | A controller outage delays renewal without a retry storm; a clock far ahead cannot make the agent renew in a loop ([04](04-security.md#leaf-certificates)) |
 | Controller node certificate renewal | at half its lifetime; a failed renewal is retried every 1 min | Weeks of margin before the certificate expires ([04](04-security.md#leaf-certificates)) |
 | CA rotation | the schedule checked every 1 h on one replica (singleton job); every replica reloads the keys every 1 min | A rotation takes effect on every replica within a minute ([04](04-security.md#ca-rotation)) |
@@ -1034,12 +1112,14 @@ sequenceDiagram
 | Connector-local policy file | checked every 2 s; `SIGHUP` (`systemctl reload`) reloads it at once | An edit takes effect without a new revision ([04](04-security.md#connector-local-policy)) |
 | Revision and deny-list check | every 1 s | A revision or a revocation written by another process reaches the agents without a notification channel |
 | Route drain | 30 s | Finish in-flight requests |
+| Route port in use | a `tcp` or `udp` route port the gateway cannot bind (`not_ready(port_in_use)`) is tried again every 5 s | [R] A port another process frees is taken within seconds, without a new revision |
 | Gateway drain | 60 s | Time for connectors to re-home |
 | Session liveness | each controller node marks its live sessions seen every 60 s; a session not seen for 3 min is not live | An agent shows as connected while its control session is live; a node that stops without recording its sessions' ends leaves them to age, and ends them when it starts again |
-| Data-session report | every 60 s, and 1 s after a change | A gateway's `Status` listing its connectors' data sessions, for their status in the API, and its route counters, for the traffic rollups |
-| Revocation, tightened access policy | immediate | Security beats continuity |
+| Data-session report | every 60 s, and 1 s after a change | A gateway's `Status` listing its connectors' data sessions, for their status in the API, its route counters, for the traffic rollups, and the resources that are not ready |
+| Revocation, tightened access policy, stricter TLS settings of an HTTPS target | immediate; a target's TLS settings that change, unless to unverified ones of the same connector, end the connections earlier ones checked | Security beats continuity |
 | Mail delivery | dial 10 s; the whole delivery 30 s | [R] A relay that hangs never holds a request or job for long |
 | ACME job | looks for certificates to obtain or renew every 1 min, on the replica that holds its lease | New routes get their certificates within a minute or so; renewals are never late by more |
+| ACME route certificate retry | a hostname whose attempt failed is tried again after 1 min, then after waits doubling to at most 6 h (1, 2, 4 … 256 min, then 6 h); every retry rehearses at the CA's test directory first ([04](04-security.md#controller-certificates)); "Renew now" does not wait | [R] A name the CA cannot validate yet costs the account no further failure at the CA, while a short hiccup still clears within a minute or so |
 | Controller's own certificate (ACME) | checked for renewal every 1 min; a failed order is retried after 1 min, then at intervals growing to 6 h, for up to 30 days [F certmagic v0.25.6 `async.go:260-290`] | [R] A CA that is down or a name that does not resolve yet is retried without hammering the CA; the certificate in use serves on meanwhile |
 | ACME challenge push | `OpResult` from every gateway of the name within 10 s | [R] A gateway that cannot answer fails the order before the CA validates, instead of a failed validation counted against the account |
 | Imperative operation | `Open` → `Attach` within 10 s; ticket single-use, valid 30 s; shell idle 30 min | No unbounded waits |
@@ -1065,6 +1145,7 @@ sequenceDiagram
 | `proxyproto.v1` | P1 | PROXY protocol v1 towards targets |
 | `proxyproto.v2` | P1 | PROXY protocol v2 towards targets |
 | `control-passthrough` | P1 | The control session inside a data session ([ADR-0006](adr/0006-separate-control-session.md)) |
+| `probe.target` | P1 | Reads the certificate a target presents (`ProbeTarget`, [Service sketch](#service-sketch)) |
 | `p2p.v1` | P3 | Direct connector-to-connector sessions ([Private services](#private-services)) |
 
 - Protobuf rules: fields are only added; unknown fields are ignored; an unknown `StreamOpen.kind`

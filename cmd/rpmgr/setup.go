@@ -24,7 +24,7 @@ var setupHost = setup.Host{}
 func setupCommand() *cli.Command {
 	var v setup.Values
 	var role, tokenFile string
-	var targets listFlag
+	var targets, denied listFlag
 	var yes bool
 	return &cli.Command{
 		Name:    "setup",
@@ -47,7 +47,9 @@ func setupCommand() *cli.Command {
 			fs.StringVar(&v.ControllerURL, "controller", "", "gateway, connector: the controller URL, https://<host>[:<port>]")
 			fs.StringVar(&v.Pin, "ca-pin", "", "gateway, connector: the controller's CA pin, sha256:<base64>")
 			fs.StringVar(&tokenFile, "token-file", "", "gateway, connector: file with the gateway or enrollment token (default $RPMGR_ENROLL_TOKEN, else a prompt)")
-			fs.Var(&targets, "allow-target", "connector: a target of the connector-local policy, ip:port or a socket path; repeat for more")
+			fs.Var(&targets, "allow-target", "connector: a target the connector-local policy allows: an address or subnet, optionally "+
+				":port or :port-port, IPv6 in brackets, or a socket path; repeat for more")
+			fs.Var(&denied, "deny-target", "connector: a target the connector-local policy denies, whatever allows it; the same form")
 			fs.StringVar(&v.Proxy, "proxy", "", "connector: HTTPS_PROXY of its service, http://, https:// or socks5://")
 			fs.BoolVar(&v.NoUnit, "no-unit", false, "install no systemd unit and start nothing")
 			fs.BoolVar(&v.Force, "force", false, "replace an existing boot file (kept beside it) or an agent's identity")
@@ -60,7 +62,7 @@ func setupCommand() *cli.Command {
 			if role == "" && yes {
 				return cli.Usagef("setup --yes needs --role: all-in-one, controller, gateway or connector")
 			}
-			v.Role, v.AllowTargets = setup.Role(role), targets
+			v.Role, v.AllowTargets, v.DenyTargets = setup.Role(role), targets, denied
 			var form *setupForm
 			if !yes {
 				facts, err := setup.Preflight(setupHost)
@@ -127,13 +129,19 @@ func printSetup(w io.Writer, v setup.Values, r setup.Result) error {
 		if r.GatewayID != "" {
 			fmt.Fprintf(&b, "  gateway:      %s\n", r.GatewayID)
 		}
+		if r.ConnectorID != "" {
+			fmt.Fprintf(&b, "  connector:    %s\n", r.ConnectorID)
+		}
 		fmt.Fprintf(&b, "  KEK:          %s\nBack up the KEK separately: without it the database cannot be read.\n\n"+firstUser, r.KEK, r.FirstUserLink)
 		agents, role := "gateway and connector with its token", "<gateway|connector>"
 		if v.Role == setup.AllInOne {
-			agents, role = "connector with its enrollment token", "connector"
+			agents, role = "connector on another network with its enrollment token", "connector"
 		}
 		fmt.Fprintf(&b, "\nNext: create the first user with the link, then set up each %s:\n"+
 			"  rpmgr setup --role %s --controller %s --ca-pin %s\n", agents, role, strings.TrimSuffix(v.PublicURL, "/"), r.Pin)
+		if v.Role == setup.AllInOne {
+			b.WriteString("Services on this host go through the all-in-one's own connector: allow them with rpmgr policy allow-target <target>.\n")
+		}
 	} else {
 		fmt.Fprintf(&b, "\nrpmgr %s %s: enrolled as %s %s.\nNext: check it with rpmgr status", v.Role, running, r.AgentKind, r.AgentID)
 		if v.Role == setup.Connector {

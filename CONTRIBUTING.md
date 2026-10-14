@@ -280,7 +280,8 @@ mechanism in [03](docs/03-connections.md#configuration-reconciliation), the tabl
 5. Every unverified assumption tagged `[V Sx]` or `[V VB-xx]` and added to
    [13](docs/13-roadmap.md#verification-backlog); every open question added to
    [14](docs/14-open-decisions.md) with a recommended default.
-6. New documents and new ID ranges reflected in the [README](README.md).
+6. New documents and new ID ranges reflected in the [documents index](docs/README.md); a feature
+   that users can reach, in the feature list of the [README](README.md#features).
 7. Link check and Mermaid parse pass ([12](docs/12-testing-and-quality.md#continuous-integration)).
 
 Once code exists, these also belong to a feature: comments on every public `.proto` message and
@@ -290,19 +291,19 @@ field (they are the API reference), CLI `--help` text, configuration reference i
 ### When to write a new numbered document
 
 When a feature's mechanism needs more than about 150 lines and fits none of the existing
-documents. It gets the next free number, the standard header blockquote, an entry in the README's
-document table, and, if it defines timers or limits, a "single source of truth" statement
-(see [README](README.md#how-to-read-these-documents)).
+documents. It gets the next free number, the standard header blockquote, an entry in the document
+table of the [documents index](docs/README.md#documents), and, if it defines timers or limits, a
+"single source of truth" statement (see [docs/README](docs/README.md#how-to-read-these-documents)).
 
 ### Writing rules
 
 - **Tags and citations.** Facts are `[F …]` with a citation: source at a version and line, or
-  vendor documentation with a retrieval date ([README](README.md#citations)). Design choices with
-  reasoning are `[R]`, targets `[T]`, assumptions to verify `[V Sx]` or `[V VB-xx]`. Untagged text
-  is the design itself.
+  vendor documentation with a retrieval date ([docs/README](docs/README.md#citations)). Design
+  choices with reasoning are `[R]`, targets `[T]`, assumptions to verify `[V Sx]` or `[V VB-xx]`.
+  Untagged text is the design itself.
 - **Single sources of truth.** Timers, sizes, limits, lifetimes and cryptographic parameters are
-  defined only in the document the README names as their source
-  ([README](README.md#how-to-read-these-documents)); every other document links to it.
+  defined only in the document the documents index names as their source
+  ([docs/README](docs/README.md#how-to-read-these-documents)); every other document links to it.
 - **Identifiers are never reused.** Use the next free number: `ADR-NNNN`, `Dnn` (open decisions),
   `Sn` (spikes), `VB-nn`, `Un` (UX principles), ID prefixes in
   [06](docs/06-data-model.md#identifiers). Resolved items are struck through, not deleted.
@@ -325,7 +326,7 @@ document table, and, if it defines timers or limits, a "single source of truth" 
   Label the issue `needs-adr`.
 - **How:** copy [docs/adr/0000-template.md](docs/adr/0000-template.md) to the next free number,
   `docs/adr/NNNN-<kebab-title>.md`, title stated as the decision. Update every document the
-  decision affects in the same PR, and the ADR range in the README.
+  decision affects in the same PR, and the ADR range in the [documents index](docs/README.md).
 - **Status lifecycle:** `Proposed (design phase)` → `Accepted` (after its spike passes, or decided
   by the product owner) → `Superseded by ADR-NNNN` or `Deprecated`.
 - An accepted ADR's decision is never edited. A changed decision gets a new ADR that supersedes the

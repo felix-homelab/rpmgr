@@ -39,13 +39,33 @@ const (
 // Policy is a parsed policy file. The zero value allows nothing.
 type Policy struct {
 	targets       []target
+	denied        []target // deny_targets, which refuse whatever targets allows (D84)
 	AutoUpdate    string
 	UpdateChannel string
 	// Invalid is set for the policy that stands in for a file that does not parse: it denies
 	// everything, and every target reports not_ready(policy_invalid).
 	Invalid error
+	// own, if set, reports rpmgr's own ports, which all-in-one's connector never dials whatever
+	// the file allows (ADR-0019).
+	own func(netip.AddrPort) bool
 }
 
+// Guarded returns a copy of p that also refuses every address and port own reports: all-in-one's
+// own listeners on this host's addresses.
+func (p *Policy) Guarded(own func(netip.AddrPort) bool) *Policy {
+	c := *p
+	c.own = own
+	return &c
+}
+
+// Own reports whether ip:port is one of rpmgr's own ports, which the policy refuses whatever it
+// allows.
+func (p *Policy) Own(ip netip.Addr, port uint16) bool {
+	return p != nil && p.own != nil && p.own(netip.AddrPortFrom(ip.Unmap(), port))
+}
+
+// target is an entry of allow_targets or deny_targets: a unix socket, or an address or subnet
+// with its ports, all of them unless the entry names some.
 type target struct {
 	prefix netip.Prefix // zero for a unix socket
 	ports  []portRange
@@ -53,6 +73,115 @@ type target struct {
 }
 
 type portRange struct{ lo, hi uint16 }
+
+// allPorts is the ports of an entry that names none.
+var allPorts = []portRange{{1, 65535}}
+
+// matches reports whether ip:port is inside t.
+func (t target) matches(ip netip.Addr, port uint16) bool {
+	return t.prefix.IsValid() && t.prefix.Contains(ip) && slices.ContainsFunc(t.ports, func(r portRange) bool {
+		return port >= r.lo && port <= r.hi
+	})
+}
+
+// text is t with only its port range r as a target string, which parseTarget reads back and the
+// editing commands take: its subnet normalised, an address alone, IPv6 in brackets, and no port
+// for all ports.
+func (t target) text(r portRange) string {
+	if t.unix != "" {
+		return t.unix
+	}
+	host := t.prefix.String()
+	if t.prefix.IsSingleIP() {
+		host = t.prefix.Addr().String()
+	}
+	if t.prefix.Addr().Is6() {
+		host = "[" + host + "]"
+	}
+	if r == allPorts[0] {
+		return host
+	}
+	return host + ":" + r.String()
+}
+
+func (r portRange) String() string {
+	if r.lo == r.hi {
+		return strconv.Itoa(int(r.lo))
+	}
+	return fmt.Sprintf("%d-%d", r.lo, r.hi)
+}
+
+// parseTarget reads a target in the syntax of the policy file's string entries, `rpmgr policy`,
+// `rpmgr setup` and the install command: an absolute socket path, or an address or subnet with an
+// optional port or port range, such as 127.0.0.1, 10.0.0.1/16 (stored as 10.0.0.0/16),
+// 127.0.0.1:200-500, 10.0.0.0/16:443 or [fd00::/64]:8000-8099, IPv6 always in brackets. Without a
+// port it means all ports.
+func parseTarget(s string) (target, error) {
+	bad := func(format string, args ...any) (target, error) {
+		return target{}, fmt.Errorf("policy: target %q: "+format, append([]any{s}, args...)...)
+	}
+	if strings.HasPrefix(s, "/") {
+		if filepath.Clean(s) != s {
+			return bad("not a clean absolute socket path")
+		}
+		return target{unix: s}, nil
+	}
+	host, ports := s, ""
+	switch {
+	case strings.HasPrefix(s, "["):
+		end := strings.Index(s, "]")
+		if end < 0 {
+			return bad("no closing bracket")
+		}
+		host, ports = s[1:end], s[end+1:]
+		if ports != "" && !strings.HasPrefix(ports, ":") {
+			return bad("want [<ipv6>]:<port> after the bracket")
+		}
+		ports = strings.TrimPrefix(ports, ":")
+		if ports == "" && s[end+1:] != "" {
+			return bad("no port after the colon")
+		}
+	case strings.Count(s, ":") > 1:
+		// fd00::1:80 could be an address or an address and a port: brackets say which.
+		return bad("write an IPv6 address or subnet in brackets, such as [fd00::1] or [fd00::/64]:443")
+	case strings.Contains(s, ":"):
+		host, ports, _ = strings.Cut(s, ":")
+		if ports == "" {
+			return bad("no port after the colon")
+		}
+	}
+	prefix, err := parseHost(host)
+	if err != nil {
+		return bad("%v", err)
+	}
+	t := target{prefix: prefix, ports: allPorts}
+	if ports != "" {
+		r, err := parsePorts(ports)
+		if err != nil {
+			return bad("%v", err)
+		}
+		t.ports = []portRange{r}
+	}
+	return t, nil
+}
+
+// parseHost reads an address or a subnet, without a zone; a subnet's host bits are cleared and an
+// IPv4-mapped IPv6 one becomes IPv4.
+func parseHost(s string) (netip.Prefix, error) {
+	if !strings.Contains(s, "/") {
+		ip, err := netip.ParseAddr(s)
+		if err != nil || ip.Zone() != "" {
+			return netip.Prefix{}, fmt.Errorf("%q is not an IP address or subnet", s)
+		}
+		ip = ip.Unmap()
+		return netip.PrefixFrom(ip, ip.BitLen()), nil
+	}
+	prefix, err := netip.ParsePrefix(s)
+	if err != nil {
+		return netip.Prefix{}, fmt.Errorf("%q is not an IP address or subnet", s)
+	}
+	return unmapPrefix(prefix.Masked()), nil
+}
 
 // Defaults is the policy without a file: no target allowed, auto_update auto, update_channel
 // stable (D5, D6).
@@ -62,25 +191,29 @@ func Defaults() *Policy {
 
 // file is the YAML form of version 1.
 type file struct {
-	Version      int `yaml:"version"`
-	AllowTargets []struct {
-		CIDR  string `yaml:"cidr"`
-		Ports []any  `yaml:"ports"`
-		Unix  string `yaml:"unix"`
-	} `yaml:"allow_targets"`
-	AllowListen      []string `yaml:"allow_listen"`
-	AllowRemoteShell bool     `yaml:"allow_remote_shell"`
-	AllowFunctions   bool     `yaml:"allow_functions"`
-	AllowVNetRoutes  []string `yaml:"allow_vnet_routes"`
-	AllowP2P         bool     `yaml:"allow_p2p"`
-	AllowEgressProxy bool     `yaml:"allow_egress_proxy"`
-	AutoUpdate       string   `yaml:"auto_update"`
-	UpdateChannel    string   `yaml:"update_channel"`
+	Version          int         `yaml:"version"`
+	AllowTargets     []yaml.Node `yaml:"allow_targets"`
+	DenyTargets      []yaml.Node `yaml:"deny_targets"`
+	AllowListen      []string    `yaml:"allow_listen"`
+	AllowRemoteShell bool        `yaml:"allow_remote_shell"`
+	AllowFunctions   bool        `yaml:"allow_functions"`
+	AllowVNetRoutes  []string    `yaml:"allow_vnet_routes"`
+	AllowP2P         bool        `yaml:"allow_p2p"`
+	AllowEgressProxy bool        `yaml:"allow_egress_proxy"`
+	AutoUpdate       string      `yaml:"auto_update"`
+	UpdateChannel    string      `yaml:"update_channel"`
 }
 
-// Parse reads a policy file. Unknown keys, a version other than 1, a bad CIDR, port or socket path
-// and an unknown auto_update or update_channel are errors.
+// Parse reads a policy file. Unknown keys, a version other than 1, a bad target, port or socket
+// path and an unknown auto_update or update_channel are errors.
 func Parse(data []byte) (*Policy, error) {
+	var doc yaml.Node
+	if err := yaml.Unmarshal(data, &doc); err != nil {
+		return nil, fmt.Errorf("policy: %w", err)
+	}
+	if err := noAliases(&doc); err != nil {
+		return nil, err
+	}
 	var f file
 	dec := yaml.NewDecoder(bytes.NewReader(data))
 	dec.KnownFields(true)
@@ -103,38 +236,99 @@ func Parse(data []byte) (*Policy, error) {
 	if !slices.Contains([]string{ChannelStable, ChannelPrerelease}, p.UpdateChannel) {
 		return nil, fmt.Errorf("policy: update_channel %q, want stable or prerelease", p.UpdateChannel)
 	}
-	for i, t := range f.AllowTargets {
-		switch {
-		case t.Unix != "" && (t.CIDR != "" || len(t.Ports) > 0):
-			return nil, fmt.Errorf("policy: allow_targets[%d]: a unix socket has no cidr or ports", i)
-		case t.Unix != "":
-			if !filepath.IsAbs(t.Unix) || filepath.Clean(t.Unix) != t.Unix {
-				return nil, fmt.Errorf("policy: allow_targets[%d]: unix %q is not a clean absolute path", i, t.Unix)
-			}
-			p.targets = append(p.targets, target{unix: t.Unix})
-		default:
-			prefix, err := netip.ParsePrefix(t.CIDR)
+	for _, list := range []struct {
+		key   string
+		nodes []yaml.Node
+		into  *[]target
+	}{{"allow_targets", f.AllowTargets, &p.targets}, {"deny_targets", f.DenyTargets, &p.denied}} {
+		for i := range list.nodes {
+			t, err := parseEntry(&list.nodes[i])
 			if err != nil {
-				return nil, fmt.Errorf("policy: allow_targets[%d]: cidr %q: %w", i, t.CIDR, err)
+				return nil, fmt.Errorf("policy: %s[%d]: %w", list.key, i, err)
 			}
-			if prefix != prefix.Masked() {
-				return nil, fmt.Errorf("policy: allow_targets[%d]: cidr %q has host bits set", i, t.CIDR)
-			}
-			if len(t.Ports) == 0 {
-				return nil, fmt.Errorf("policy: allow_targets[%d]: no ports", i)
-			}
-			tg := target{prefix: unmapPrefix(prefix)}
-			for _, raw := range t.Ports {
-				r, err := parsePorts(raw)
-				if err != nil {
-					return nil, fmt.Errorf("policy: allow_targets[%d]: %w", i, err)
-				}
-				tg.ports = append(tg.ports, r)
-			}
-			p.targets = append(p.targets, tg)
+			*list.into = append(*list.into, t)
 		}
 	}
 	return p, nil
+}
+
+// noAliases refuses anchors, aliases and merge keys anywhere in the file: an edit changes a node in
+// place, which would change every alias of it as well, and a merge key could hide a list an edit
+// replaces.
+func noAliases(n *yaml.Node) error {
+	if n.Anchor != "" || n.Kind == yaml.AliasNode || n.ShortTag() == "!!merge" {
+		return fmt.Errorf("policy: line %d: anchors, aliases and merge keys are not allowed in the policy file; edit it by hand "+
+			"without them", n.Line)
+	}
+	for _, c := range n.Content {
+		if err := noAliases(c); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// parseEntry reads an entry of allow_targets or deny_targets: a target as a string, or a mapping
+// of cidr, an address or subnet, and ports, all of them if none, or of unix, a socket path.
+func parseEntry(n *yaml.Node) (target, error) {
+	if n.Kind == yaml.ScalarNode {
+		return parseTarget(n.Value)
+	}
+	if n.Kind != yaml.MappingNode {
+		return target{}, errors.New("an entry is a target string or a mapping of cidr and ports, or unix")
+	}
+	var cidr, unix string
+	var ports []any
+	seen := map[string]bool{}
+	for i := 0; i+1 < len(n.Content); i += 2 {
+		k, v := n.Content[i].Value, n.Content[i+1]
+		if seen[k] {
+			return target{}, fmt.Errorf("key %q given twice", k)
+		}
+		seen[k] = true
+		var err error
+		switch k {
+		case "cidr":
+			err = v.Decode(&cidr)
+		case "unix":
+			err = v.Decode(&unix)
+		case "ports":
+			err = v.Decode(&ports)
+		default:
+			err = fmt.Errorf("unknown key %q", k)
+		}
+		if err != nil {
+			return target{}, err
+		}
+	}
+	switch {
+	case unix != "" && (cidr != "" || len(ports) > 0):
+		return target{}, errors.New("a unix socket has no cidr or ports")
+	case unix != "":
+		if !filepath.IsAbs(unix) {
+			return target{}, fmt.Errorf("unix %q is not a clean absolute path", unix)
+		}
+		return parseTarget(unix)
+	}
+	prefix, err := parseHost(cidr)
+	if err != nil {
+		return target{}, fmt.Errorf("cidr: %w", err)
+	}
+	t := target{prefix: prefix, ports: allPorts}
+	if seen["ports"] {
+		if len(ports) == 0 {
+			return target{}, errors.New("ports is empty; leave the key out for all ports")
+		}
+		t.ports = nil
+	}
+	for _, raw := range ports {
+		r, err := parsePorts(raw)
+		if err != nil {
+			return target{}, err
+		}
+		t.ports = append(t.ports, r)
+	}
+	return t, nil
 }
 
 // parsePorts reads a port, 8080, or a range, "8000-8099".
@@ -185,12 +379,16 @@ var protected = []netip.Prefix{
 	netip.MustParsePrefix("100.100.100.200/32"),
 }
 
-// Allows reports whether the connector may connect to ip:port.
+// Allows reports whether the connector may connect to ip:port: it is not one of rpmgr's own ports,
+// no entry of deny_targets matches it, and one of allow_targets does.
 func (p *Policy) Allows(ip netip.Addr, port uint16) bool {
 	if p == nil || p.Invalid != nil {
 		return false
 	}
 	ip = ip.Unmap()
+	if p.DeniedBy(ip, port) != "" || p.Own(ip, port) {
+		return false
+	}
 	var guard *netip.Prefix
 	for i, r := range protected {
 		if r.Contains(ip) {
@@ -204,29 +402,79 @@ func (p *Policy) Allows(ip netip.Addr, port uint16) bool {
 		if guard != nil && (t.prefix.Bits() < guard.Bits() || !guard.Contains(t.prefix.Addr())) {
 			continue // the target is broader than the protected range: not explicit
 		}
-		for _, r := range t.ports {
-			if port >= r.lo && port <= r.hi {
-				return true
-			}
+		if t.matches(ip, port) {
+			return true
 		}
 	}
 	return false
 }
 
-// AllowsUnix reports whether the connector may connect to the unix socket at path.
+// DeniedBy returns the entry of deny_targets that matches ip:port, with the port or range that
+// matched, as a target string `rpmgr policy remove-deny-target` takes, or "".
+func (p *Policy) DeniedBy(ip netip.Addr, port uint16) string {
+	if p == nil {
+		return ""
+	}
+	ip = ip.Unmap()
+	for _, t := range p.denied {
+		for _, r := range t.ports {
+			if t.prefix.IsValid() && t.prefix.Contains(ip) && port >= r.lo && port <= r.hi {
+				return t.text(r)
+			}
+		}
+	}
+	return ""
+}
+
+// AllowsUnix reports whether the connector may connect to the unix socket at path: deny_targets
+// does not name it, and allow_targets does.
 func (p *Policy) AllowsUnix(path string) bool {
-	if p == nil || p.Invalid != nil {
+	if p == nil || p.Invalid != nil || p.DeniedByUnix(path) != "" {
 		return false
 	}
 	return slices.ContainsFunc(p.targets, func(t target) bool { return t.unix != "" && t.unix == path })
 }
 
-// BlockedError is a dial the policy refuses; it names the target, so that the route reports
-// not_ready(blocked_by_local_policy: <target>) and the UI can show the command that allows it.
-type BlockedError struct{ Target string }
+// DeniedByUnix returns path if deny_targets names the socket, else "".
+func (p *Policy) DeniedByUnix(path string) string {
+	if p != nil && slices.ContainsFunc(p.denied, func(t target) bool { return t.unix != "" && t.unix == path }) {
+		return path
+	}
+	return ""
+}
+
+// BlockedError is a dial the policy refuses; it names the target, and the entry of deny_targets
+// that refused it if one did, so that the route reports not_ready(blocked_by_local_policy:
+// <Detail>) and the UI can show the command that would let it through.
+type BlockedError struct {
+	Target string
+	Denied string // the deny_targets entry, "" if no allow_targets entry allows the target
+	Own    bool   // the target is one of rpmgr's own ports
+}
+
+// OwnPort ends the readiness detail of a target that is one of rpmgr's own ports.
+const OwnPort = " is one of rpmgr's own ports"
 
 func (e *BlockedError) Error() string {
+	if e.Own {
+		return "policy: " + e.Target + OwnPort + ", which all-in-one's connector never dials"
+	}
+	if e.Denied != "" {
+		return "policy: the connector-local policy denies " + e.Target + " (deny_targets entry " + e.Denied + ")"
+	}
 	return "policy: the connector-local policy does not allow " + e.Target
+}
+
+// Detail is the readiness detail of the refused target: the target, followed by " denied by " and
+// the entry of deny_targets if one refused it, or by OwnPort.
+func (e *BlockedError) Detail() string {
+	if e.Own {
+		return e.Target + OwnPort
+	}
+	if e.Denied != "" {
+		return e.Target + " denied by " + e.Denied
+	}
+	return e.Target
 }
 
 // Control returns a net.Dialer.Control that checks every connection at dial time on the resolved
@@ -234,20 +482,18 @@ func (e *BlockedError) Error() string {
 // returns the policy in force.
 func Control(current func() *Policy) func(network, address string, _ syscall.RawConn) error {
 	return func(network, address string, _ syscall.RawConn) error {
+		p := current()
 		if network == "unix" {
-			if current().AllowsUnix(address) {
+			if p.AllowsUnix(address) {
 				return nil
 			}
-			return &BlockedError{Target: address}
+			return &BlockedError{Target: address, Denied: p.DeniedByUnix(address)}
 		}
 		ap, err := netip.ParseAddrPort(address)
 		if err != nil {
 			return &BlockedError{Target: address}
 		}
-		if !current().Allows(ap.Addr(), ap.Port()) {
-			return &BlockedError{Target: netip.AddrPortFrom(ap.Addr().Unmap(), ap.Port()).String()}
-		}
-		return nil
+		return p.blocked(ap)
 	}
 }
 
@@ -289,34 +535,45 @@ func (p *Policy) Check(hostport string) error {
 	if err != nil {
 		return ErrNotIP
 	}
-	if !p.Allows(ap.Addr(), ap.Port()) {
-		return &BlockedError{Target: netip.AddrPortFrom(ap.Addr().Unmap(), ap.Port()).String()}
-	}
-	return nil
+	return p.blocked(ap)
 }
 
-// Describe returns the policy in the form `rpmgr policy show` prints.
+// blocked returns the BlockedError for ap, or nil if the policy allows it.
+func (p *Policy) blocked(ap netip.AddrPort) error {
+	if p.Allows(ap.Addr(), ap.Port()) {
+		return nil
+	}
+	return &BlockedError{Target: netip.AddrPortFrom(ap.Addr().Unmap(), ap.Port()).String(), Denied: p.DeniedBy(ap.Addr(), ap.Port()),
+		Own: p.Own(ap.Addr(), ap.Port())}
+}
+
+// Describe returns the policy in the form `rpmgr policy show` prints: its subnets normalised, and
+// "all ports" for an entry that names none.
 func (p *Policy) Describe() string {
 	var b strings.Builder
-	if len(p.targets) == 0 {
-		b.WriteString("allowed targets: none\n")
-	} else {
-		b.WriteString("allowed targets:\n")
-	}
-	for _, t := range p.targets {
-		if t.unix != "" {
-			fmt.Fprintf(&b, "  unix %s\n", t.unix)
+	for _, list := range []struct {
+		name    string
+		targets []target
+	}{{"allowed targets", p.targets}, {"denied targets, which win over allowed ones", p.denied}} {
+		if len(list.targets) == 0 {
+			fmt.Fprintf(&b, "%s: none\n", list.name)
 			continue
 		}
-		ports := make([]string, 0, len(t.ports))
-		for _, r := range t.ports {
-			if r.lo == r.hi {
-				ports = append(ports, strconv.Itoa(int(r.lo)))
-			} else {
-				ports = append(ports, fmt.Sprintf("%d-%d", r.lo, r.hi))
+		fmt.Fprintf(&b, "%s:\n", list.name)
+		for _, t := range list.targets {
+			switch {
+			case t.unix != "":
+				fmt.Fprintf(&b, "  unix %s\n", t.unix)
+			case slices.Equal(t.ports, allPorts):
+				fmt.Fprintf(&b, "  %s all ports\n", t.prefix)
+			default:
+				ports := make([]string, 0, len(t.ports))
+				for _, r := range t.ports {
+					ports = append(ports, r.String())
+				}
+				fmt.Fprintf(&b, "  %s ports %s\n", t.prefix, strings.Join(ports, ", "))
 			}
 		}
-		fmt.Fprintf(&b, "  %s ports %s\n", t.prefix, strings.Join(ports, ", "))
 	}
 	fmt.Fprintf(&b, "auto_update: %s\nupdate_channel: %s\n", p.AutoUpdate, p.UpdateChannel)
 	return b.String()

@@ -189,6 +189,20 @@ func (_u *RouteTargetUpdate) SetNillableTLSSpkiSha256(v *string) *RouteTargetUpd
 	return _u
 }
 
+// SetTLSVerification sets the "tls_verification" field.
+func (_u *RouteTargetUpdate) SetTLSVerification(v routetarget.TLSVerification) *RouteTargetUpdate {
+	_u.mutation.SetTLSVerification(v)
+	return _u
+}
+
+// SetNillableTLSVerification sets the "tls_verification" field if the given value is not nil.
+func (_u *RouteTargetUpdate) SetNillableTLSVerification(v *routetarget.TLSVerification) *RouteTargetUpdate {
+	if v != nil {
+		_u.SetTLSVerification(*v)
+	}
+	return _u
+}
+
 // SetProxyProtocol sets the "proxy_protocol" field.
 func (_u *RouteTargetUpdate) SetProxyProtocol(v routetarget.ProxyProtocol) *RouteTargetUpdate {
 	_u.mutation.SetProxyProtocol(v)
@@ -354,6 +368,11 @@ func (_u *RouteTargetUpdate) check() error {
 			return &ValidationError{Name: "upstream_protocol", err: fmt.Errorf(`ent: validator failed for field "RouteTarget.upstream_protocol": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.TLSVerification(); ok {
+		if err := routetarget.TLSVerificationValidator(v); err != nil {
+			return &ValidationError{Name: "tls_verification", err: fmt.Errorf(`ent: validator failed for field "RouteTarget.tls_verification": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.ProxyProtocol(); ok {
 		if err := routetarget.ProxyProtocolValidator(v); err != nil {
 			return &ValidationError{Name: "proxy_protocol", err: fmt.Errorf(`ent: validator failed for field "RouteTarget.proxy_protocol": %w`, err)}
@@ -419,6 +438,9 @@ func (_u *RouteTargetUpdate) sqlSave(ctx context.Context) (_node int, err error)
 	}
 	if value, ok := _u.mutation.TLSSpkiSha256(); ok {
 		_spec.SetField(routetarget.FieldTLSSpkiSha256, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.TLSVerification(); ok {
+		_spec.SetField(routetarget.FieldTLSVerification, field.TypeEnum, value)
 	}
 	if value, ok := _u.mutation.ProxyProtocol(); ok {
 		_spec.SetField(routetarget.FieldProxyProtocol, field.TypeEnum, value)
@@ -676,6 +698,20 @@ func (_u *RouteTargetUpdateOne) SetNillableTLSSpkiSha256(v *string) *RouteTarget
 	return _u
 }
 
+// SetTLSVerification sets the "tls_verification" field.
+func (_u *RouteTargetUpdateOne) SetTLSVerification(v routetarget.TLSVerification) *RouteTargetUpdateOne {
+	_u.mutation.SetTLSVerification(v)
+	return _u
+}
+
+// SetNillableTLSVerification sets the "tls_verification" field if the given value is not nil.
+func (_u *RouteTargetUpdateOne) SetNillableTLSVerification(v *routetarget.TLSVerification) *RouteTargetUpdateOne {
+	if v != nil {
+		_u.SetTLSVerification(*v)
+	}
+	return _u
+}
+
 // SetProxyProtocol sets the "proxy_protocol" field.
 func (_u *RouteTargetUpdateOne) SetProxyProtocol(v routetarget.ProxyProtocol) *RouteTargetUpdateOne {
 	_u.mutation.SetProxyProtocol(v)
@@ -854,6 +890,11 @@ func (_u *RouteTargetUpdateOne) check() error {
 			return &ValidationError{Name: "upstream_protocol", err: fmt.Errorf(`ent: validator failed for field "RouteTarget.upstream_protocol": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.TLSVerification(); ok {
+		if err := routetarget.TLSVerificationValidator(v); err != nil {
+			return &ValidationError{Name: "tls_verification", err: fmt.Errorf(`ent: validator failed for field "RouteTarget.tls_verification": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.ProxyProtocol(); ok {
 		if err := routetarget.ProxyProtocolValidator(v); err != nil {
 			return &ValidationError{Name: "proxy_protocol", err: fmt.Errorf(`ent: validator failed for field "RouteTarget.proxy_protocol": %w`, err)}
@@ -936,6 +977,9 @@ func (_u *RouteTargetUpdateOne) sqlSave(ctx context.Context) (_node *RouteTarget
 	}
 	if value, ok := _u.mutation.TLSSpkiSha256(); ok {
 		_spec.SetField(routetarget.FieldTLSSpkiSha256, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.TLSVerification(); ok {
+		_spec.SetField(routetarget.FieldTLSVerification, field.TypeEnum, value)
 	}
 	if value, ok := _u.mutation.ProxyProtocol(); ok {
 		_spec.SetField(routetarget.FieldProxyProtocol, field.TypeEnum, value)

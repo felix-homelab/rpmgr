@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
-import { CircleCheck, CircleHelp, CircleOff, CircleX, Hourglass, TriangleAlert, type LucideIcon } from "lucide-react";
+import { CircleCheck, CircleHelp, CircleOff, CircleX, Hourglass, TriangleAlert, Wrench, type LucideIcon } from "lucide-react";
 import type { ReactNode } from "react";
 import { Badge, type Tone } from "@/components/ui/badge";
 
@@ -14,6 +14,7 @@ const looks = {
   alert: [TriangleAlert, "danger"],
   failed: [CircleX, "danger"],
   unknown: [CircleHelp, "neutral"],
+  maintenance: [Wrench, "warn"],
 } as const satisfies Record<string, readonly [LucideIcon, Tone]>;
 
 export type Look = keyof typeof looks;

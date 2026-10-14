@@ -8,7 +8,9 @@
     "closeMenu": "Close the menu",
     "userMenu": "User menu: {{name}}",
     "account": "Your account",
-    "signOut": "Sign out"
+    "signOut": "Sign out",
+    "required": "required",
+    "version": "rpmgr {{version}}"
   },
   "nav": {
     "overview": "Overview",
@@ -38,6 +40,8 @@
     "routesBad_other": "{{count}} need attention",
     "routesGood": "All enabled routes serve",
     "routesNone": "No routes yet",
+    "routesMaintenance_one": "{{count}} in maintenance",
+    "routesMaintenance_other": "{{count}} in maintenance",
     "agents": "Agents connected",
     "agentsBad_one": "{{count}} offline",
     "agentsBad_other": "{{count}} offline",
@@ -109,6 +113,10 @@
     "wrongCode": "The code is wrong or was used already. Try the next code.",
     "cancel": "Cancel",
     "submit": "Confirm"
+  },
+  "copy": {
+    "copied": "Copied",
+    "failed": "The browser did not copy it. Select the text and copy it by hand."
   },
   "account": {
     "title": "Account",
@@ -200,12 +208,14 @@
     "ready": "ready",
     "degraded": "degraded",
     "unavailable": "unavailable",
-    "error": "error"
+    "error": "error",
+    "maintenance": "maintenance"
   },
   "routeType": {
     "http": "HTTP",
     "tcp": "TCP",
     "udp": "UDP",
+    "tcpUdp": "TCP and UDP",
     "tlsPassthrough": "TLS passthrough",
     "unknown": "unknown"
   },
@@ -248,6 +258,8 @@
     "disabled": "disabled",
     "group": "gateway group {{name}}",
     "gateways": "served by {{serving}} of {{total}} gateways",
+    "noHostname": "The gateway group has no public hostname, so only the port is shown.",
+    "setHostname": "Set the names clients reach it by",
     "mtu": "UDP datagrams travel as QUIC datagrams up to about 1240 bytes, or 1412 bytes once path-MTU discovery has run. Larger ones go over the flow's stream: delivered reliably, but one late packet holds up those after it.",
     "targets": "Targets",
     "columns": {
@@ -259,16 +271,26 @@
     "noTargets": "The route has no targets.",
     "targetReady": "ready",
     "targetDisabled": "disabled",
+    "unverified": "unverified",
+    "unverifiedTitle": "HTTPS without checking the target's certificate",
     "fallback": "served over TLS and HTTP/2, the fallback for QUIC",
     "runOn": "Run on the host of {{connector}}:",
     "gatewaysTitle": "Gateways not serving",
     "rejections": "Rejected by",
     "noReason": "no reason given",
     "enabledSwitch": "Enabled",
+    "maintenanceSwitch": "Maintenance",
+    "inMaintenance": "in maintenance",
+    "maintenanceMessage": "The maintenance page says: {{message}}",
     "on": "on",
     "off": "off",
     "changed": "The route changed since this page loaded it. The page shows it as it is now; try again.",
-    "edit": "Edit"
+    "edit": "Edit",
+    "delete": "Delete…",
+    "deleteAsk": "Delete the route {{name}} with its hostnames, targets and port? This cannot be undone.",
+    "deleteConfirm": "Delete it",
+    "deletedTitle": "Route {{name}} deleted",
+    "deletedNote": "Its gateways stop serving it once they apply the change."
   },
   "notServing": {
     "BLOCKED_BY_LOCAL_POLICY": "blocked by the connector's local policy",
@@ -278,7 +300,8 @@
     "ENVIRONMENT": "the host cannot serve it",
     "OFFLINE": "offline",
     "DISABLED": "disabled",
-    "NO_DATA_SESSION": "no data session to the connector"
+    "NO_DATA_SESSION": "no data session to the connector",
+    "ownPort": "{{target}} is one of rpmgr's own ports, which the all-in-one's connector never dials, whatever its policy allows. Point the target at the service itself."
   },
   "apply": {
     "unknown": "Apply status unknown.",
@@ -314,9 +337,13 @@
       "responseHeaders": "Response headers to set",
       "websocket": "WebSocket",
       "maxBody": "Largest request body (bytes, 0 for no limit)",
+      "maintenance": "Maintenance",
+      "maintenanceMessage": "Maintenance message (plain text, at most 500 characters)",
       "port": "Public port",
       "idleTimeout": "Idle timeout (seconds)",
-      "flowIdleTimeout": "Flow idle timeout (seconds)"
+      "flowIdleTimeout": "Flow idle timeout (seconds)",
+      "tcpIdleTimeout": "TCP idle timeout (seconds)",
+      "udpFlowIdleTimeout": "UDP flow idle timeout (seconds)"
     },
     "hints": {
       "lines": "One per line.",
@@ -338,6 +365,10 @@
         "redirect": "Redirect to HTTPS",
         "serve": "Serve the route",
         "off": "Closed"
+      },
+      "maintenance": {
+        "off": "Off: serve the route",
+        "on": "On: show the maintenance page"
       }
     },
     "tristate": {
@@ -388,15 +419,32 @@
     "unixPathLabel": "Socket path",
     "upstream": "Protocol to the target",
     "upstreams": {
-      "TCP": "TCP",
       "HTTP": "HTTP",
       "HTTPS": "HTTPS, verified",
+      "UNVERIFIED": "HTTPS, unverified",
+      "PINNED": "HTTPS, pinned key",
       "H2C": "HTTP/2 without TLS (h2c)"
     },
-    "serverName": "TLS server name (empty: the host)",
+    "unverifiedWarning": "The gateway will not check the target's certificate. The traffic stays encrypted, but anyone on the network between the connector and the target can read and change it. Choose this only for a target whose certificate nothing can verify, such as a self-signed one.",
+    "serverName": "TLS server name",
+    "serverNameHint": "Empty: the host's name.",
+    "serverNameSentHint": "Sent to the target; empty: the host's name.",
+    "pinnedKey": "Pinned public key, SHA-256 in hex",
+    "trust": "Trust the certificate it shows now",
+    "trustNeeds": "Choose the connector and enter the target's address first.",
+    "trustFailed": "The connector could not read the target's certificate: {{message}}",
+    "trustTitle": "The certificate the target shows",
+    "trustIt": "Trust this key",
+    "certSubject": "Subject",
+    "certNames": "Names",
+    "certIssuer": "Issuer",
+    "certSelfSigned": "Self-signed",
+    "certValid": "Valid until",
+    "certKey": "Key fingerprint (SHA-256)",
     "caBundle": "CA bundle ID (empty: the system's roots)",
     "spki": "Public key pin, SHA-256 in hex (optional)",
     "proxy": "PROXY protocol",
+    "proxyTCPOnly": "TCP connections only; UDP datagrams get no header.",
     "proxies": {
       "NONE": "None",
       "V1": "Version 1",
@@ -416,7 +464,10 @@
     "session": "Session",
     "connected": "connected",
     "offline": "offline",
+    "disabled": "disabled",
     "ephemeral": "ephemeral",
+    "builtIn": "built in",
+    "builtInHint": "The all-in-one's own agent: it runs in the controller's process and cannot be decommissioned. Switch it off instead.",
     "none": "No connector matches.",
     "noneYet": "No connectors yet.",
     "notFound": "This connector does not exist, or you cannot see it.",
@@ -453,11 +504,14 @@
     "routes": "Routes",
     "noRoutes": "No route has a target on this connector.",
     "settings": "Settings",
-    "enabled": "Serves its routes",
+    "enabled": "Enabled",
     "changed": "The connector changed since this page loaded it. The page shows it as it is now; try again.",
     "decommissionTitle": "Decommission",
     "decommission": "Decommission…",
-    "decommissionWarning": "Decommissioning {{name}} revokes its identity and ends its sessions for good; it cannot enroll again with it. Its route targets stay, serving nothing, until they are removed.",
+    "decommissionWarning": "Decommissioning {{name}} revokes its identity and ends its sessions for good; it cannot enroll again with it. Its route targets are deleted.",
+    "decommissionRoutes_one": "This route has no other target and is deleted with it, which frees its port or hostnames: {{routes}}.",
+    "decommissionRoutes_other": "These {{count}} routes have no other target and are deleted with it, which frees their ports and hostnames: {{routes}}.",
+    "decommissionRoutesFailed": "The routes could not be read, so it is not known which of them would be deleted with it. Reload the page to try again.",
     "decommissionNamed": "Decommission {{name}}"
   },
   "enroll": {
@@ -479,7 +533,9 @@
     "usesHint": "0 for any number.",
     "uses": "Enter a whole number, 0 for any number.",
     "targets": "Targets the connector may reach",
-    "targetsHint": "One per line, as ip:port, [ipv6]:port or a socket path. The installer writes them into the host's local policy; without any, the connector reaches nothing until one is allowed.",
+    "targetsHint": "One per line: an address or subnet with an optional port or port range, such as 10.0.0.5:5432, 10.0.0.0/16 (all ports) or 127.0.0.1:200-500, IPv6 in brackets, or a socket path. The installer writes them into the host's local policy; without any, the connector reaches nothing until one is allowed.",
+    "denied": "Targets the connector must not reach",
+    "deniedHint": "Optional, one per line in the same form. They win over the allowed targets: with 127.0.0.1:200-500 allowed, 127.0.0.1:345 still refuses port 345.",
     "create": "Create the token",
     "step1": "1. On the host, run:",
     "command": "Install command",
@@ -665,7 +721,8 @@
     "usedBy": "used by {{routes}}",
     "unused": "used by no route",
     "ask": "Remove the access policy {{name}}?",
-    "rules": "Rules, in the order they apply",
+    "rules": "Rules",
+    "denyWins": "A deny rule wins: an address it matches is refused, whatever allows it.",
     "ruleN": "Rule {{n}}",
     "kind": "Kind",
     "kinds": {
@@ -673,8 +730,6 @@
       "ipDeny": "Deny addresses",
       "basicAuth": "Basic auth (HTTP routes)"
     },
-    "up": "Up",
-    "down": "Down",
     "removeRule": "Remove the rule",
     "addRule": "Add a rule",
     "cidrs": "Addresses (CIDRs, one per line)",
@@ -686,6 +741,7 @@
   "routePolicies": {
     "title": "Access policies",
     "none": "The route applies no access policy: every client reaches it.",
+    "denyWins": "A deny rule of any policy wins over every allow rule.",
     "detach": "Detach",
     "add": "Add a policy",
     "choose": "Choose a policy",

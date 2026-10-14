@@ -23,8 +23,9 @@ func lines(t *testing.T, role string, o units.Options) map[string]bool {
 }
 
 // TestRender: every role runs as rpmgr with the hardening of docs/10-operations.md; gateways,
-// controllers and all-in-one may bind ports below 1024, connectors get no capability and reload on
-// SIGHUP; only controller and all-in-one load the KEK credential, and only when named.
+// controllers and all-in-one may bind ports below 1024, connectors get no capability; connectors
+// and all-in-one, whose connector has a local policy, reload on SIGHUP; only controller and
+// all-in-one load the KEK credential, and only when named.
 func TestRender(t *testing.T) {
 	common := []string{"User=rpmgr", "Group=rpmgr", "NoNewPrivileges=yes", "ProtectSystem=strict", "ProtectHome=yes", "PrivateTmp=yes",
 		"PrivateDevices=yes", "RestrictNamespaces=yes", "MemoryDenyWriteExecute=yes", "SystemCallArchitectures=native",
@@ -38,9 +39,9 @@ func TestRender(t *testing.T) {
 		{"gateway", "rpmgr-kek", []string{"AmbientCapabilities=CAP_NET_BIND_SERVICE"}, []string{cred, "ExecReload=/bin/kill -HUP $MAINPID"}},
 		{"connector", "rpmgr-kek", []string{"CapabilityBoundingSet=", "ExecReload=/bin/kill -HUP $MAINPID"},
 			[]string{cred, "AmbientCapabilities=CAP_NET_BIND_SERVICE"}},
-		{"controller", "rpmgr-kek", []string{cred, "AmbientCapabilities=CAP_NET_BIND_SERVICE"}, nil},
+		{"controller", "rpmgr-kek", []string{cred, "AmbientCapabilities=CAP_NET_BIND_SERVICE"}, []string{"ExecReload=/bin/kill -HUP $MAINPID"}},
 		{"controller", "", []string{"AmbientCapabilities=CAP_NET_BIND_SERVICE"}, []string{cred}},
-		{"all-in-one", "rpmgr-kek", []string{cred}, nil},
+		{"all-in-one", "rpmgr-kek", []string{cred, "AmbientCapabilities=CAP_NET_BIND_SERVICE", "ExecReload=/bin/kill -HUP $MAINPID"}, nil},
 	} {
 		got := lines(t, tc.role, units.Options{Bin: "/usr/local/bin/rpmgr", Credential: tc.credential})
 		want := append(append([]string{"ExecStart=/usr/local/bin/rpmgr " + tc.role + " --config /etc/rpmgr/" + tc.role + ".yaml"}, common...), tc.want...)

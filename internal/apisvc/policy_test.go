@@ -52,7 +52,7 @@ func TestAccessPolicies(t *testing.T) {
 		return r.Msg, nil
 	}
 	created, err := create(ada, &rpmgrv1.AccessPolicy{Name: "office", Description: "the office only", Rules: []*rpmgrv1.AccessRule{
-		ipAllow("10.1.2.3/8", "2001:db8::1/32"),
+		ipAllow("10.1.2.3/8", "2001:db8::1/32", "172.16.0.1/16"),
 		{Rule: &rpmgrv1.AccessRule_IpDeny{IpDeny: &rpmgrv1.IPRuleParams{Cidrs: []string{"192.0.2.7/32"}}}},
 		basicAuth(user("alice", alicePW), user("bob", bobPW))}})
 	if err != nil {
@@ -60,7 +60,7 @@ func TestAccessPolicies(t *testing.T) {
 	}
 	ap := created.GetAccessPolicy()
 	want := &rpmgrv1.AccessPolicy{Id: ap.GetId(), Name: "office", Description: "the office only", Etag: "1", Rules: []*rpmgrv1.AccessRule{
-		ipAllow("10.0.0.0/8", "2001:db8::/32"),
+		ipAllow("10.0.0.0/8", "2001:db8::/32", "172.16.0.0/16"),
 		{Rule: &rpmgrv1.AccessRule_IpDeny{IpDeny: &rpmgrv1.IPRuleParams{Cidrs: []string{"192.0.2.7/32"}}}},
 		basicAuth(user("alice", ""), user("bob", ""))}}
 	if !strings.HasPrefix(ap.GetId(), "ap_") || !proto.Equal(ap, want) || created.GetRevision().GetSeq() == 0 {

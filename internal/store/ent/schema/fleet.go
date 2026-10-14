@@ -49,6 +49,9 @@ func (Gateway) Fields() []ent.Field {
 		field.String("pubkey_sha256").Optional(),
 		field.Bool("enabled").Default(true),
 		field.String("desired_version").Optional(),
+		// built_in marks all-in-one's own gateway, which runs in the controller's process and
+		// cannot be decommissioned (ADR-0019); only all-in-one sets it.
+		field.Bool("built_in").Default(false),
 		field.Time("created_at").Immutable().Default(time.Now),
 		field.Time("decommissioned_at").Optional().Nillable(),
 	}
@@ -61,10 +64,12 @@ func (Gateway) Edges() []ent.Edge {
 	}
 }
 
-// Indexes: names are unique per org, slots per group among active gateways.
+// Indexes: names are unique per org and slots per group, both among active gateways, so a
+// decommissioned gateway's name and slot are free again.
 func (Gateway) Indexes() []ent.Index {
 	return []ent.Index{
-		index.Fields("org_id", "name").Unique(),
+		index.Fields("org_id", "name").Unique().
+			Annotations(entsql.IndexWhere("decommissioned_at IS NULL")),
 		index.Fields("gateway_group_id", "slot").Unique().
 			Annotations(entsql.IndexWhere("decommissioned_at IS NULL")),
 	}
@@ -100,14 +105,19 @@ func (Connector) Fields() []ent.Field {
 		field.Bool("enabled").Default(true),
 		field.Enum("transport").Values("auto", "quic", "h2").Optional().Nillable(),
 		field.String("desired_version").Optional(),
+		// built_in marks all-in-one's own connector, as Gateway's built_in does; it comes from the
+		// enrollment token.
+		field.Bool("built_in").Default(false),
 		field.Time("created_at").Immutable().Default(time.Now),
 		field.Time("decommissioned_at").Optional().Nillable(),
 	}
 }
 
-// Indexes: names are unique per org.
+// Indexes: names are unique per org among active connectors, so a decommissioned connector's name
+// is free again.
 func (Connector) Indexes() []ent.Index {
-	return []ent.Index{index.Fields("org_id", "name").Unique()}
+	return []ent.Index{index.Fields("org_id", "name").Unique().
+		Annotations(entsql.IndexWhere("decommissioned_at IS NULL"))}
 }
 
 // EnrollmentToken is a token that enrolls one agent or, if multi-use, several
@@ -129,6 +139,9 @@ func (EnrollmentToken) Fields() []ent.Field {
 		field.String("connector_id").Optional().Nillable().Immutable(),
 		field.JSON("labels", map[string]string{}).Optional(),
 		field.Bool("ephemeral").Default(false).Immutable(),
+		// built_in makes the connector it enrolls all-in-one's own; only all-in-one creates such a
+		// token, never the API.
+		field.Bool("built_in").Default(false).Immutable(),
 		// max_uses is null for unlimited uses, which only ephemeral tokens may have; create a token
 		// with max_uses 0 to ask for that (docs/04-security.md, "Tokens"). Unset means 1.
 		field.Int("max_uses").Positive().Optional().Nillable().Immutable(),

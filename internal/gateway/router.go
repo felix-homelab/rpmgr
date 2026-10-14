@@ -77,25 +77,36 @@ type Router struct {
 	// ACME, if set, returns the acme-tls/1 certificate of a pending TLS-ALPN-01 challenge for a
 	// name, or nil.
 	ACME func(sni string) *tls.Certificate
-	// DefaultTLS completes the handshake for an unknown name before the connection is closed.
+	// Unrouted, if set, takes the connections of unknown names, or of none, over TLS with
+	// UnroutedTLS, and answers them with the gateway's page (D87).
+	Unrouted    func(*tls.Conn)
+	UnroutedTLS *tls.Config
+	// DefaultTLS completes the handshake for an unknown name before the connection is closed,
+	// when Unrouted is not set.
 	DefaultTLS *tls.Config
 	Logger     *slog.Logger
 
-	wg sync.WaitGroup
+	wg, tunnels sync.WaitGroup
 }
 
 // Serve accepts connections until l is closed.
-func (r *Router) Serve(l net.Listener) error {
+func (r *Router) Serve(l net.Listener) error { return serve(l, &r.wg, r.Handle) }
+
+// ServeTunnels accepts connections until l is closed and serves them as HandleTunnel does.
+func (r *Router) ServeTunnels(l net.Listener) error { return serve(l, &r.tunnels, r.HandleTunnel) }
+
+// serve hands every connection l accepts to handle and, once l is closed, waits for them.
+func serve(l net.Listener, wg *sync.WaitGroup, handle func(net.Conn)) error {
 	for {
 		c, err := l.Accept()
 		if err != nil {
-			r.wg.Wait()
+			wg.Wait()
 			if errors.Is(err, net.ErrClosed) {
 				return nil
 			}
 			return err
 		}
-		r.wg.Go(func() { r.Handle(c) })
+		wg.Go(func() { handle(c) })
 	}
 }
 
@@ -171,13 +182,35 @@ func (r *Router) Handle(c net.Conn) {
 		_ = tc.Handshake()
 		_ = tc.Close()
 	default:
-		// There is no fallback route: complete the handshake with the default certificate, so a
-		// browser shows a certificate error rather than a reset, and close.
+		// There is no fallback route: the page that says so, with a certificate that covers the
+		// name or else the default one, after which a browser shows its certificate error first.
+		if r.Unrouted != nil {
+			r.Unrouted(tls.Server(rc, r.UnroutedTLS))
+			return
+		}
 		tc := tls.Server(rc, r.DefaultTLS)
 		_ = tc.SetDeadline(time.Now().Add(defaultHandshake))
 		_ = tc.Handshake()
 		_ = tc.Close()
 	}
+}
+
+// HandleTunnel serves a connection that may only be a data session to this gateway: one that
+// all-in-one's connector makes in memory. It passes the same ClientHello checks as on port 443 and
+// the same mutual TLS handshake; anything else is closed.
+func (r *Router) HandleTunnel(c net.Conn) {
+	ch, err := tlspeek.Peek(c, tlspeek.MaxBytes, tlspeek.Timeout)
+	if err != nil {
+		r.log().Debug("closing an in-memory connection", "error", err)
+		_ = c.Close()
+		return
+	}
+	if d := r.Decide(ch); d != DecideTunnelH2 {
+		r.log().Warn("closing an in-memory connection that is not a data session to this gateway", "decision", d)
+		_ = c.Close()
+		return
+	}
+	r.Tunnel(tls.Server(tlspeek.NewReplayConn(c, ch.Raw), r.TunnelTLS))
 }
 
 func (r *Router) log() *slog.Logger {

@@ -145,6 +145,9 @@ message GetSessionResponse {
   repeated Membership memberships = 5;
   // The caller's session.
   Session session = 6;
+  // The version of rpmgr the controller runs, as `rpmgr version` names it: 0.1.0, or dev for a
+  // development build.
+  string controller_version = 7;
 }
 
 // Membership is a user's role in an org.

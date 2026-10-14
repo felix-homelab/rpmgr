@@ -16,7 +16,6 @@ import (
 
 	rpmgrv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/v1"
 	"github.com/felix-homelab/rpmgr/internal/api"
-	"github.com/felix-homelab/rpmgr/internal/apisvc"
 	"github.com/felix-homelab/rpmgr/internal/settings"
 )
 
@@ -236,7 +235,7 @@ func TestGetInstallCommand(t *testing.T) {
 		return r.Msg, nil
 	}
 	plain, err := get(ada, rpmgrv1.AgentRole_AGENT_ROLE_UNSPECIFIED)
-	want := "curl -fsSL 'https://panel.example.com/install.sh' | sudo sh -s -- \\\n" +
+	want := "curl -fsSLO 'https://panel.example.com/install.sh' && sudo sh install.sh \\\n" +
 		"  --controller 'https://panel.example.com' --ca-pin 'sha256:3q2+7w=='"
 	if err != nil || plain.GetCommand() != want || plain.GetControllerUrl() != "https://panel.example.com" || plain.GetCaPin() != "sha256:3q2+7w==" {
 		t.Fatalf("a connector's command:\n%s\n%v", plain.GetCommand(), err)
@@ -246,7 +245,8 @@ func TestGetInstallCommand(t *testing.T) {
 		t.Fatalf("a gateway's command:\n%s\n%v", gw.GetCommand(), err)
 	}
 
-	targets := []string{"10.0.0.5:5432", "[2001:db8::5]:443", "/run/postgresql/.s.PGSQL.5432", "/run/a b/$HOME*.sock"}
+	targets := []string{"10.0.0.5:5432", "[2001:db8::5]:443", "/run/postgresql/.s.PGSQL.5432", "/run/a b/$HOME*.sock", "10.0.0.1/16",
+		"127.0.0.1:200-500"}
 	withTargets, err := get(ada, rpmgrv1.AgentRole_AGENT_ROLE_CONNECTOR, targets...)
 	if err != nil {
 		t.Fatal(err)
@@ -254,8 +254,11 @@ func TestGetInstallCommand(t *testing.T) {
 	if strings.Contains(withTargets.GetCommand(), "rpmgr_enr_") {
 		t.Fatal("the command holds a token")
 	}
+	if strings.Contains(withTargets.GetCommand(), "|") {
+		t.Fatal("the command pipes the script into sudo, which leaves sudo-rs no terminal to read the token from")
+	}
 	// What the installer would get as its arguments, as a shell parses them.
-	_, args, _ := strings.Cut(withTargets.GetCommand(), "sudo sh -s --")
+	_, args, _ := strings.Cut(withTargets.GetCommand(), "sudo sh install.sh")
 	out, err := exec.Command("/bin/sh", "-c", `printf '%s\n'`+args).Output()
 	if err != nil {
 		t.Fatal(err)
@@ -268,8 +271,16 @@ func TestGetInstallCommand(t *testing.T) {
 		t.Fatalf("the shell parses %q, want %q", got, wantArgs)
 	}
 
+	denied, err := installDeny(ctx, ada, org, []string{"127.0.0.1:345", "[fd00::/64]"})
+	if err != nil || !strings.HasSuffix(denied, " \\\n  --deny-target '127.0.0.1:345' \\\n  --deny-target '[fd00::/64]'") {
+		t.Fatalf("denied targets:\n%s\n%v", denied, err)
+	}
+	if _, err := installDeny(ctx, ada, org, []string{"fd00::1:80"}); code(err) != connect.CodeInvalidArgument {
+		t.Fatalf("an unbracketed IPv6 denial: %v", err)
+	}
+
 	for name, tg := range map[string]string{
-		"no port": "10.0.0.5", "a name": "db.example.com:5432", "port 0": "10.0.0.5:0", "port 65536": "10.0.0.5:65536",
+		"IPv6 unbracketed": "fd00::1:80", "a reversed range": "10.0.0.5:500-200", "a name": "db.example.com:5432", "port 0": "10.0.0.5:0", "port 65536": "10.0.0.5:65536",
 		"a relative path": "run/x.sock", "an unclean path": "/run/../x.sock", "a quote": "/run/a'b.sock",
 		"a line break": "/run/a\nb.sock", "a zone": "[fe80::1%eth0]:22",
 	} {
@@ -280,6 +291,10 @@ func TestGetInstallCommand(t *testing.T) {
 	if _, err := get(ada, rpmgrv1.AgentRole_AGENT_ROLE_GATEWAY, "10.0.0.5:5432"); code(err) != connect.CodeInvalidArgument {
 		t.Fatalf("a gateway with targets: %v", err)
 	}
+	if _, err := ada.enr.GetInstallCommand(ctx, connect.NewRequest(&rpmgrv1.GetInstallCommandRequest{OrgId: org,
+		Role: rpmgrv1.AgentRole_AGENT_ROLE_GATEWAY, DenyTargets: []string{"10.0.0.5"}})); code(err) != connect.CodeInvalidArgument {
+		t.Fatalf("a gateway with denied targets: %v", err)
+	}
 	if _, err := get(ada, rpmgrv1.AgentRole(9)); code(err) != connect.CodeInvalidArgument {
 		t.Fatalf("an undefined role: %v", err)
 	}
@@ -289,13 +304,11 @@ func TestGetInstallCommand(t *testing.T) {
 	}
 }
 
-// TestShellQuote: a shell reads back exactly what was quoted, quotes, spaces, globs, variables and
-// command substitutions included.
-func TestShellQuote(t *testing.T) {
-	for _, s := range []string{"", "plain", "it's", "''", "a b", "$HOME", "`id`", "$(id)", "*", "back\\slash", "a'b'c", "\"double\""} {
-		out, err := exec.Command("/bin/sh", "-c", "printf '%s' "+apisvc.ShellQuote(s)).Output()
-		if err != nil || string(out) != s {
-			t.Errorf("%q came back as %q: %v", s, out, err)
-		}
+// installDeny asks b's install command for a connector with only the denied targets deny.
+func installDeny(ctx context.Context, b *browser, org string, deny []string) (string, error) {
+	r, err := b.enr.GetInstallCommand(ctx, connect.NewRequest(&rpmgrv1.GetInstallCommandRequest{OrgId: org, DenyTargets: deny}))
+	if err != nil {
+		return "", err
 	}
+	return r.Msg.GetCommand(), nil
 }

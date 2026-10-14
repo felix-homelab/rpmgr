@@ -43,6 +43,10 @@ const (
 	FieldMaxBodyBytes = "max_body_bytes"
 	// FieldDNSProxied holds the string denoting the dns_proxied field in the database.
 	FieldDNSProxied = "dns_proxied"
+	// FieldMaintenance holds the string denoting the maintenance field in the database.
+	FieldMaintenance = "maintenance"
+	// FieldMaintenanceMessage holds the string denoting the maintenance_message field in the database.
+	FieldMaintenanceMessage = "maintenance_message"
 	// EdgeRoute holds the string denoting the route edge name in mutations.
 	EdgeRoute = "route"
 	// EdgeCertificate holds the string denoting the certificate edge name in mutations.
@@ -82,6 +86,8 @@ var Columns = []string{
 	FieldWebsocket,
 	FieldMaxBodyBytes,
 	FieldDNSProxied,
+	FieldMaintenance,
+	FieldMaintenanceMessage,
 }
 
 // ValidColumn reports if the column name is valid (part of the table columns).
@@ -125,6 +131,12 @@ var (
 	MaxBodyBytesValidator func(int64) error
 	// DefaultDNSProxied holds the default value on creation for the "dns_proxied" field.
 	DefaultDNSProxied bool
+	// DefaultMaintenance holds the default value on creation for the "maintenance" field.
+	DefaultMaintenance bool
+	// DefaultMaintenanceMessage holds the default value on creation for the "maintenance_message" field.
+	DefaultMaintenanceMessage string
+	// MaintenanceMessageValidator is a validator for the "maintenance_message" field. It is called by the builders before save.
+	MaintenanceMessageValidator func(string) error
 )
 
 // TLSMode defines the type for the "tls_mode" enum field.
@@ -241,6 +253,16 @@ func ByMaxBodyBytes(opts ...sql.OrderTermOption) OrderOption {
 // ByDNSProxied orders the results by the dns_proxied field.
 func ByDNSProxied(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldDNSProxied, opts...).ToFunc()
+}
+
+// ByMaintenance orders the results by the maintenance field.
+func ByMaintenance(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldMaintenance, opts...).ToFunc()
+}
+
+// ByMaintenanceMessage orders the results by the maintenance_message field.
+func ByMaintenanceMessage(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldMaintenanceMessage, opts...).ToFunc()
 }
 
 // ByRouteField orders the results by route field.

@@ -12,6 +12,7 @@ import { RouteService } from "@/gen/rpmgr/v1/route_pb";
 import { ApplyState, StatusService } from "@/gen/rpmgr/v1/status_pb";
 import { Theme, UserService } from "@/gen/rpmgr/v1/user_pb";
 import { auth, show } from "@/testing/api";
+import { marked, unmatched } from "@/testing/required";
 
 afterEach(cleanup);
 
@@ -56,7 +57,7 @@ async function policy(name: string) {
 }
 
 describe("Policies", () => {
-  it("lists policies by name, with their rules in order and the routes that use them", async () => {
+  it("lists policies by name, with their rules and the routes that use them", async () => {
     page();
     const p = await policy("office");
     expect(p.getAllByRole("listitem").map((li) => li.textContent)).toEqual(["deny 10.9.0.0/16", "allow 10.0.0.0/8", "basic auth: ada, bob"]);
@@ -64,7 +65,7 @@ describe("Policies", () => {
     expect((await policy("admins")).getByText("used by no route")).toBeTruthy();
   });
 
-  it("creates a policy with rules in the order given", async () => {
+  it("creates a policy with its rules, says that a deny wins, and offers no order to set (D85)", async () => {
     const calls = page();
     fireEvent.click(await screen.findByRole("button", { name: "New access policy" }));
     const form = within(await screen.findByRole("form", { name: "New access policy" }));
@@ -77,13 +78,14 @@ describe("Policies", () => {
     fireEvent.click(second.getByRole("button", { name: "Add a user" }));
     fireEvent.change(second.getByLabelText("User"), { target: { value: "carol" } });
     fireEvent.change(second.getByLabelText("Password"), { target: { value: "a long password!" } });
-    fireEvent.click(second.getByRole("button", { name: "Up" }));
+    expect(form.getByText("A deny rule wins: an address it matches is refused, whatever allows it.")).toBeTruthy();
+    expect([form.queryByRole("button", { name: "Up" }), form.queryByRole("button", { name: "Down" })]).toEqual([null, null]);
     fireEvent.click(form.getByRole("button", { name: "Create the policy" }));
     expect(await screen.findByText("Revision 31: applied by all 1 agents.")).toBeTruthy();
     const c = calls.create[0]!;
     expect([c.orgId, c.accessPolicy?.name, c.accessPolicy?.rules.map((r) => r.rule)]).toEqual(["org_1", "lab", [
-      { case: "basicAuth", value: expect.objectContaining({ users: [expect.objectContaining({ name: "carol", password: "a long password!" })] }) },
       { case: "ipAllow", value: expect.objectContaining({ cidrs: ["10.1.0.0/16"] }) },
+      { case: "basicAuth", value: expect.objectContaining({ users: [expect.objectContaining({ name: "carol", password: "a long password!" })] }) },
     ]]);
   });
 
@@ -101,6 +103,31 @@ describe("Policies", () => {
     expect([u.accessPolicy?.id, u.accessPolicy?.routeIds, u.updateMask?.paths, u.etag]).toEqual(["pol_1", ["rte_1"], ["name", "description", "rules"], "3"]);
     const users = u.accessPolicy?.rules[2]?.rule.case === "basicAuth" ? u.accessPolicy.rules[2].rule.value.users : [];
     expect(users.map((x) => [x.name, x.password])).toEqual([["ada", ""], ["bob", "bob's new password"]]);
+  });
+
+  it("marks a new user's password as required, but not a password the policy keeps", async () => {
+    page();
+    fireEvent.click((await policy("office")).getByRole("button", { name: "Edit…" }));
+    const form = await screen.findByRole("form", { name: "Edit access policy" });
+    const rule = within(within(form).getByRole("group", { name: "Rule 3" }));
+    expect(marked(form)).toEqual(["Name", "Addresses (CIDRs, one per line)", "Addresses (CIDRs, one per line)", "User", "User"]);
+    expect(unmatched(form)).toEqual([]);
+    const placeholders = (r: typeof rule) => (r.getAllByLabelText("Password") as HTMLInputElement[]).map((p) => p.placeholder);
+    fireEvent.click(rule.getByRole("button", { name: "Add a user" }));
+    fireEvent.change(rule.getAllByLabelText("User")[2]!, { target: { value: "carol" } });
+    // A new user needs a password, so nothing is kept for them.
+    await waitFor(() => expect(marked(form).filter((m) => m === "Password")).toHaveLength(1));
+    expect(placeholders(rule)).toEqual(["unchanged", "unchanged", ""]);
+    expect(unmatched(form)).toEqual([]);
+    // The policy keeps a stored user's password by name, also in another rule.
+    fireEvent.click(within(form).getByRole("button", { name: "Add a rule" }));
+    const added = within(within(form).getByRole("group", { name: "Rule 4" }));
+    fireEvent.change(added.getByLabelText("Kind"), { target: { value: "basicAuth" } });
+    fireEvent.click(added.getByRole("button", { name: "Add a user" }));
+    fireEvent.change(added.getByLabelText("User"), { target: { value: "ada" } });
+    await waitFor(() => expect(placeholders(added)).toEqual(["unchanged"]));
+    expect(marked(form).filter((m) => m === "Password")).toHaveLength(1);
+    expect(unmatched(form)).toEqual([]);
   });
 
   it("shows why a policy in use is not removed", async () => {

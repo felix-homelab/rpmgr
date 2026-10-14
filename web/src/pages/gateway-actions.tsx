@@ -60,8 +60,8 @@ export function GatewayForm({ orgId, groupId, gateway, onDone, onCancel }: {
   }
   return (
     <form onSubmit={save} aria-label={t(gateway ? "gwActions.editTitle" : "gwActions.addTitle")} className="grid max-w-xl gap-4 rounded-lg border border-border bg-muted/40 p-4" noValidate>
-      <Field label={t("routeForm.fields.name")} value={name} onChange={(e) => setName(e.target.value)} />
-      <LinesField label={t("gateways.gw.endpoints")} hint={t("gwActions.endpointsHint")} value={endpoints} onChange={setEndpoints} />
+      <Field label={t("routeForm.fields.name")} required value={name} onChange={(e) => setName(e.target.value)} />
+      <LinesField label={t("gateways.gw.endpoints")} hint={t("gwActions.endpointsHint")} required value={endpoints} onChange={setEndpoints} />
       {error && <Alert>{error}</Alert>}
       <div className="flex gap-2">
         <Button type="submit" disabled={add.isPending || update.isPending}>{t(gateway ? "routeForm.save" : "gwActions.add")}</Button>
@@ -72,7 +72,8 @@ export function GatewayForm({ orgId, groupId, gateway, onDone, onCancel }: {
 }
 
 // GatewayActions are a gateway's actions: edit, drain or resume (R22), decommission after a
-// confirmation that names it (U7), and for one that has not enrolled its enrollment token.
+// confirmation that names it (U7), and for one that has not enrolled its enrollment token; the
+// all-in-one's built-in gateway is neither decommissioned nor enrolled anew (ADR-0019).
 export function GatewayActions({ orgId, gateway: g, onEdit, onDone }: { orgId: string; gateway: Gateway; onEdit: () => void; onDone: (w: Written) => void }) {
   const { t } = useTranslation();
   const update = useMutation(GatewayService.method.updateGateway);
@@ -115,8 +116,8 @@ export function GatewayActions({ orgId, gateway: g, onEdit, onDone }: { orgId: s
           {g.enabled
             ? <Button size="sm" variant="outline" onClick={() => void drain(false)} title={t("gwActions.drainHint")}>{t("gwActions.drain")}</Button>
             : <Button size="sm" variant="outline" onClick={() => void drain(true)}>{t("gwActions.resume")}</Button>}
-          {!g.status?.enrolled && <Button size="sm" variant="outline" onClick={() => setEnrolling(true)}>{t("gwActions.token")}</Button>}
-          <Button size="sm" variant="outline" onClick={() => setAsking(true)}>{t("connectors.decommission")}</Button>
+          {!g.status?.enrolled && !g.builtIn && <Button size="sm" variant="outline" onClick={() => setEnrolling(true)}>{t("gwActions.token")}</Button>}
+          {!g.builtIn && <Button size="sm" variant="outline" onClick={() => setAsking(true)}>{t("connectors.decommission")}</Button>}
         </div>
       )}
       {error && <Alert>{error}</Alert>}

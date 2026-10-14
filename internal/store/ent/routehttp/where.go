@@ -98,6 +98,16 @@ func DNSProxied(v bool) predicate.RouteHTTP {
 	return predicate.RouteHTTP(sql.FieldEQ(FieldDNSProxied, v))
 }
 
+// Maintenance applies equality check predicate on the "maintenance" field. It's identical to MaintenanceEQ.
+func Maintenance(v bool) predicate.RouteHTTP {
+	return predicate.RouteHTTP(sql.FieldEQ(FieldMaintenance, v))
+}
+
+// MaintenanceMessage applies equality check predicate on the "maintenance_message" field. It's identical to MaintenanceMessageEQ.
+func MaintenanceMessage(v string) predicate.RouteHTTP {
+	return predicate.RouteHTTP(sql.FieldEQ(FieldMaintenanceMessage, v))
+}
+
 // OrgIDEQ applies the EQ predicate on the "org_id" field.
 func OrgIDEQ(v string) predicate.RouteHTTP {
 	return predicate.RouteHTTP(sql.FieldEQ(FieldOrgID, v))
@@ -601,6 +611,81 @@ func DNSProxiedEQ(v bool) predicate.RouteHTTP {
 // DNSProxiedNEQ applies the NEQ predicate on the "dns_proxied" field.
 func DNSProxiedNEQ(v bool) predicate.RouteHTTP {
 	return predicate.RouteHTTP(sql.FieldNEQ(FieldDNSProxied, v))
+}
+
+// MaintenanceEQ applies the EQ predicate on the "maintenance" field.
+func MaintenanceEQ(v bool) predicate.RouteHTTP {
+	return predicate.RouteHTTP(sql.FieldEQ(FieldMaintenance, v))
+}
+
+// MaintenanceNEQ applies the NEQ predicate on the "maintenance" field.
+func MaintenanceNEQ(v bool) predicate.RouteHTTP {
+	return predicate.RouteHTTP(sql.FieldNEQ(FieldMaintenance, v))
+}
+
+// MaintenanceMessageEQ applies the EQ predicate on the "maintenance_message" field.
+func MaintenanceMessageEQ(v string) predicate.RouteHTTP {
+	return predicate.RouteHTTP(sql.FieldEQ(FieldMaintenanceMessage, v))
+}
+
+// MaintenanceMessageNEQ applies the NEQ predicate on the "maintenance_message" field.
+func MaintenanceMessageNEQ(v string) predicate.RouteHTTP {
+	return predicate.RouteHTTP(sql.FieldNEQ(FieldMaintenanceMessage, v))
+}
+
+// MaintenanceMessageIn applies the In predicate on the "maintenance_message" field.
+func MaintenanceMessageIn(vs ...string) predicate.RouteHTTP {
+	return predicate.RouteHTTP(sql.FieldIn(FieldMaintenanceMessage, vs...))
+}
+
+// MaintenanceMessageNotIn applies the NotIn predicate on the "maintenance_message" field.
+func MaintenanceMessageNotIn(vs ...string) predicate.RouteHTTP {
+	return predicate.RouteHTTP(sql.FieldNotIn(FieldMaintenanceMessage, vs...))
+}
+
+// MaintenanceMessageGT applies the GT predicate on the "maintenance_message" field.
+func MaintenanceMessageGT(v string) predicate.RouteHTTP {
+	return predicate.RouteHTTP(sql.FieldGT(FieldMaintenanceMessage, v))
+}
+
+// MaintenanceMessageGTE applies the GTE predicate on the "maintenance_message" field.
+func MaintenanceMessageGTE(v string) predicate.RouteHTTP {
+	return predicate.RouteHTTP(sql.FieldGTE(FieldMaintenanceMessage, v))
+}
+
+// MaintenanceMessageLT applies the LT predicate on the "maintenance_message" field.
+func MaintenanceMessageLT(v string) predicate.RouteHTTP {
+	return predicate.RouteHTTP(sql.FieldLT(FieldMaintenanceMessage, v))
+}
+
+// MaintenanceMessageLTE applies the LTE predicate on the "maintenance_message" field.
+func MaintenanceMessageLTE(v string) predicate.RouteHTTP {
+	return predicate.RouteHTTP(sql.FieldLTE(FieldMaintenanceMessage, v))
+}
+
+// MaintenanceMessageContains applies the Contains predicate on the "maintenance_message" field.
+func MaintenanceMessageContains(v string) predicate.RouteHTTP {
+	return predicate.RouteHTTP(sql.FieldContains(FieldMaintenanceMessage, v))
+}
+
+// MaintenanceMessageHasPrefix applies the HasPrefix predicate on the "maintenance_message" field.
+func MaintenanceMessageHasPrefix(v string) predicate.RouteHTTP {
+	return predicate.RouteHTTP(sql.FieldHasPrefix(FieldMaintenanceMessage, v))
+}
+
+// MaintenanceMessageHasSuffix applies the HasSuffix predicate on the "maintenance_message" field.
+func MaintenanceMessageHasSuffix(v string) predicate.RouteHTTP {
+	return predicate.RouteHTTP(sql.FieldHasSuffix(FieldMaintenanceMessage, v))
+}
+
+// MaintenanceMessageEqualFold applies the EqualFold predicate on the "maintenance_message" field.
+func MaintenanceMessageEqualFold(v string) predicate.RouteHTTP {
+	return predicate.RouteHTTP(sql.FieldEqualFold(FieldMaintenanceMessage, v))
+}
+
+// MaintenanceMessageContainsFold applies the ContainsFold predicate on the "maintenance_message" field.
+func MaintenanceMessageContainsFold(v string) predicate.RouteHTTP {
+	return predicate.RouteHTTP(sql.FieldContainsFold(FieldMaintenanceMessage, v))
 }
 
 // HasRoute applies the HasEdge predicate on the "route" edge.

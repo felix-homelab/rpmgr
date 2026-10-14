@@ -463,7 +463,8 @@ func udpRoute(name, group string, port uint32) *rpmgrv1.Route {
 
 // TestPortRoutes: tcp and udp routes take an explicit or a random port of the group's pools,
 // within the org's quota; a port changes by allocating the new one before freeing the old, so a
-// refused port leaves the route as it was; a deleted route frees its port.
+// refused port leaves the route as it was; an idle timeout an update clears is the default again;
+// a deleted route frees its port.
 func TestPortRoutes(t *testing.T) {
 	_, ada, org, group := gatewayEnv(t)
 	ctx := context.Background()
@@ -513,6 +514,10 @@ func TestPortRoutes(t *testing.T) {
 			t.Errorf("%s: %v, want %v %s", name, err, c.code, c.reason)
 		}
 	}
+	// A taken port names the route that holds it, so that its owner knows what to change (D78).
+	if _, err := createRoute(ada, org, tcpRoute("taken", group, 20005), ""); err == nil || !strings.Contains(err.Error(), `route "pg" holds it`) {
+		t.Fatalf("a taken port does not name its route: %v", err)
+	}
 	third, err := createRoute(ada, org, tcpRoute("third", group, 0), "")
 	if err != nil {
 		t.Fatalf("the third tcp port, within the quota: %v", err)
@@ -539,6 +544,26 @@ func TestPortRoutes(t *testing.T) {
 		Port: free, IdleTimeoutSeconds: &zero}}})
 	if err != nil || up.GetTcp().GetPort() != free || up.GetTcp().GetIdleTimeoutSeconds() != 0 {
 		t.Fatalf("a new port and no idle timeout: %v %v", up, err)
+	}
+	// A cleared timeout is the default again, as on create; a zero flow idle time stays refused.
+	if up, err := update(pg.GetId(), []string{"tcp.idle_timeout_seconds"}, tcpRoute("", "", 0)); err != nil ||
+		up.GetTcp().GetIdleTimeoutSeconds() != 3600 || up.GetTcp().GetPort() != free {
+		t.Fatalf("a cleared idle timeout: %v %v", up, err)
+	}
+	flowIdle := func(s uint32) *rpmgrv1.Route {
+		r := udpRoute("", "", 0)
+		r.GetUdp().FlowIdleTimeoutSeconds = &s
+		return r
+	}
+	if up, err := update(dns.GetId(), []string{"udp.flow_idle_timeout_seconds"}, flowIdle(30)); err != nil || up.GetUdp().GetFlowIdleTimeoutSeconds() != 30 {
+		t.Fatalf("a flow idle time of 30 s: %v %v", up, err)
+	}
+	if _, err := update(dns.GetId(), []string{"udp.flow_idle_timeout_seconds"}, flowIdle(0)); code(err) != connect.CodeInvalidArgument {
+		t.Fatalf("a zero flow idle time: %v", err)
+	}
+	if up, err := update(dns.GetId(), []string{"udp.flow_idle_timeout_seconds"}, udpRoute("", "", 0)); err != nil ||
+		up.GetUdp().GetFlowIdleTimeoutSeconds() != 60 || up.GetUdp().GetPort() != dns.GetUdp().GetPort() {
+		t.Fatalf("a cleared flow idle time: %v %v", up, err)
 	}
 	if _, err := update(pg.GetId(), []string{"tcp.port"}, tcpRoute("", "", random.GetTcp().GetPort())); code(err) != connect.CodeAlreadyExists {
 		t.Fatalf("a taken port: %v", err)
@@ -612,8 +637,17 @@ func TestRouteTargets(t *testing.T) {
 		return tg
 	}
 	if tg, err := add(ada, "secure", https("10.0.0.6", &rpmgrv1.UpstreamTLSSettings{ServerName: "app.internal", SpkiSha256: pin})); err != nil ||
-		tg.GetTls().GetSpkiSha256() != pin || tg.GetTls().GetServerName() != "app.internal" {
+		tg.GetTls().GetSpkiSha256() != pin || tg.GetTls().GetServerName() != "app.internal" || tg.GetTls().GetVerification() != rpmgrv1.UpstreamVerification_UPSTREAM_VERIFICATION_VERIFIED {
 		t.Fatalf("an https target: %v %v", tg, err)
+	}
+	// A target its user marks unverified keeps its server name, and reads back as unverified.
+	if tg, err := add(ada, "secure", https("10.0.0.10", &rpmgrv1.UpstreamTLSSettings{ServerName: "nas.local", Verification: rpmgrv1.UpstreamVerification_UPSTREAM_VERIFICATION_UNVERIFIED})); err != nil ||
+		tg.GetTls().GetVerification() != rpmgrv1.UpstreamVerification_UPSTREAM_VERIFICATION_UNVERIFIED || tg.GetTls().GetServerName() != "nas.local" {
+		t.Fatalf("an unverified https target: %v %v", tg, err)
+	}
+	if tg, err := add(ada, "secure", https("10.0.0.11", &rpmgrv1.UpstreamTLSSettings{SpkiSha256: pin, Verification: rpmgrv1.UpstreamVerification_UPSTREAM_VERIFICATION_PINNED_KEY})); err != nil ||
+		tg.GetTls().GetVerification() != rpmgrv1.UpstreamVerification_UPSTREAM_VERIFICATION_PINNED_KEY || tg.GetTls().GetSpkiSha256() != pin {
+		t.Fatalf("a pinned-key https target: %v %v", tg, err)
 	}
 	proxied := addressTarget(con, "10.0.0.7", 5432)
 	proxied.ProxyProtocol, proxied.Priority = rpmgrv1.ProxyProtocol_PROXY_PROTOCOL_V2, 1
@@ -648,14 +682,28 @@ func TestRouteTargets(t *testing.T) {
 		"HTTPS on a socket, no server name": {"secure", func() *rpmgrv1.RouteTarget { tg := unix("/run/app.sock"); tg.UpstreamProtocol = 3; return tg }(), connect.CodeInvalidArgument},
 		"a bad pin":                         {"secure", https("10.0.0.9", &rpmgrv1.UpstreamTLSSettings{SpkiSha256: "abc"}), connect.CodeInvalidArgument},
 		"a missing CA bundle":               {"secure", https("10.0.0.9", &rpmgrv1.UpstreamTLSSettings{CaBundleId: "cab_missing"}), connect.CodeNotFound},
-		"no address":                        {"pg", &rpmgrv1.RouteTarget{ConnectorId: con}, connect.CodeInvalidArgument},
-		"an unclean path":                   {"pg", unix("/run/../x.sock"), connect.CodeInvalidArgument},
-		"a relative path":                   {"pg", unix("run/x.sock"), connect.CodeInvalidArgument},
-		"port 0":                            {"pg", addressTarget(con, "10.0.0.7", 0), connect.CodeInvalidArgument},
-		"weight 1001":                       {"pg", func() *rpmgrv1.RouteTarget { tg := addressTarget(con, "h", 1); tg.Weight = 1001; return tg }(), connect.CodeInvalidArgument},
-		"a decommissioned connector":        {"pg", addressTarget(gone, "10.0.0.7", 5432), connect.CodeFailedPrecondition},
-		"another org's connector":           {"pg", addressTarget(theirs, "10.0.0.7", 5432), connect.CodeNotFound},
-		"a missing connector":               {"pg", addressTarget("con_missing", "10.0.0.7", 5432), connect.CodeNotFound},
+		"unverified with a pin": {"secure", https("10.0.0.9", &rpmgrv1.UpstreamTLSSettings{SpkiSha256: pin, Verification: rpmgrv1.UpstreamVerification_UPSTREAM_VERIFICATION_UNVERIFIED}),
+			connect.CodeInvalidArgument},
+		"unverified with a CA bundle": {"secure", https("10.0.0.9", &rpmgrv1.UpstreamTLSSettings{CaBundleId: "cab_missing", Verification: rpmgrv1.UpstreamVerification_UPSTREAM_VERIFICATION_UNVERIFIED}),
+			connect.CodeInvalidArgument},
+		"an unknown verification": {"secure", https("10.0.0.9", &rpmgrv1.UpstreamTLSSettings{Verification: 99}), connect.CodeInvalidArgument},
+		"a pinned key without a pin": {"secure", https("10.0.0.9", &rpmgrv1.UpstreamTLSSettings{Verification: rpmgrv1.UpstreamVerification_UPSTREAM_VERIFICATION_PINNED_KEY}),
+			connect.CodeInvalidArgument},
+		"a pinned key with a CA bundle": {"secure", https("10.0.0.9", &rpmgrv1.UpstreamTLSSettings{SpkiSha256: pin, CaBundleId: "cab_missing",
+			Verification: rpmgrv1.UpstreamVerification_UPSTREAM_VERIFICATION_PINNED_KEY}), connect.CodeInvalidArgument},
+		"a verification for HTTP": {"web", func() *rpmgrv1.RouteTarget {
+			tg := addressTarget(con, "h", 80)
+			tg.Tls = &rpmgrv1.UpstreamTLSSettings{Verification: rpmgrv1.UpstreamVerification_UPSTREAM_VERIFICATION_UNVERIFIED}
+			return tg
+		}(), connect.CodeInvalidArgument},
+		"no address":                 {"pg", &rpmgrv1.RouteTarget{ConnectorId: con}, connect.CodeInvalidArgument},
+		"an unclean path":            {"pg", unix("/run/../x.sock"), connect.CodeInvalidArgument},
+		"a relative path":            {"pg", unix("run/x.sock"), connect.CodeInvalidArgument},
+		"port 0":                     {"pg", addressTarget(con, "10.0.0.7", 0), connect.CodeInvalidArgument},
+		"weight 1001":                {"pg", func() *rpmgrv1.RouteTarget { tg := addressTarget(con, "h", 1); tg.Weight = 1001; return tg }(), connect.CodeInvalidArgument},
+		"a decommissioned connector": {"pg", addressTarget(gone, "10.0.0.7", 5432), connect.CodeFailedPrecondition},
+		"another org's connector":    {"pg", addressTarget(theirs, "10.0.0.7", 5432), connect.CodeNotFound},
+		"a missing connector":        {"pg", addressTarget("con_missing", "10.0.0.7", 5432), connect.CodeNotFound},
 	} {
 		if _, err := add(ada, c.route, c.tg); code(err) != c.code {
 			t.Errorf("%s: %v, want %v", name, err, c.code)
@@ -749,6 +797,12 @@ func TestPreviewRoute(t *testing.T) {
 		Target: addressTarget(con, "10.0.0.5", 8080)})); err != nil {
 		t.Fatal(err)
 	}
+	for _, pool := range []*rpmgrv1.PortPool{{GatewayGroupId: group, Protocol: tcp, PortFrom: 20000, PortTo: 20009},
+		{GatewayGroupId: group, Protocol: udp, PortFrom: 30000, PortTo: 30009}} {
+		if _, err := ada.gw.CreatePortPool(ctx, connect.NewRequest(&rpmgrv1.CreatePortPoolRequest{OrgId: org, PortPool: pool})); err != nil {
+			t.Fatal(err)
+		}
+	}
 	revision := func() store.Revision {
 		var rev store.Revision
 		if err := store.ReadTx(e.sys, e.db, func(_ *ent.Tx, r store.Revision) error { rev = r; return nil }); err != nil {
@@ -772,6 +826,12 @@ func TestPreviewRoute(t *testing.T) {
 	if err != nil || p.GetRoute().GetId() != "" || p.GetRoute().GetHttp().GetHostnames()[0] != "new.example.com" ||
 		!slices.Equal(p.GetGatewayIds(), []string{gw.GetId()}) || len(p.GetConnectorIds()) != 0 || len(p.GetProblems()) != 0 {
 		t.Fatalf("a new route: %v %v", p, err)
+	}
+	// A new tcp or udp route has no target yet, and its gateways still check its port (D78).
+	for _, rt := range []*rpmgrv1.Route{tcpRoute("pg", group, 20005), udpRoute("dns", group, 30005)} {
+		if p, err := preview(ada, rt, nil, ""); err != nil || !slices.Equal(p.GetGatewayIds(), []string{gw.GetId()}) || len(p.GetProblems()) != 0 {
+			t.Fatalf("a new %s route without targets: %v %v", rt.GetName(), p, err)
+		}
 	}
 	if _, err := preview(ada, httpRoute("bad", group, "nowhere.example"), nil, ""); reason(err) != apisvc.ReasonDomainNotVerified {
 		t.Fatalf("an unverified hostname: %v", err)

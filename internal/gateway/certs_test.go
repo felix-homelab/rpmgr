@@ -15,6 +15,8 @@ import (
 	"math/big"
 	"os"
 	"path/filepath"
+	"slices"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -124,6 +126,69 @@ func TestCertificates_ForName(t *testing.T) {
 	}
 }
 
+// TestCertificates_Covering: a name no route serves is covered by a certificate of the snapshot
+// whose own names cover it, a wildcard one label up included; among several, the valid one that
+// expires last; expired certificates, ones not valid yet, ones not loaded, deeper names and
+// certificates a later snapshot dropped cover nothing.
+func TestCertificates_Covering(t *testing.T) {
+	now := time.Now()
+	f := &fakeFetch{}
+	mk := func(cn string, nb, na time.Time) []byte {
+		item, hash := certItem(t, cn, nb, na, false)
+		f.add(item, hash)
+		return hash
+	}
+	wild := mk("*.example.com", now.Add(-time.Hour), now.Add(24*time.Hour))
+	wildLater := mk("*.example.com", now.Add(-time.Hour), now.Add(48*time.Hour))
+	expired := mk("*.old.example.com", now.Add(-48*time.Hour), now.Add(-time.Hour))
+	exact := mk("exact.example.org", now.Add(-time.Hour), now.Add(time.Hour))
+	notYet := mk("*.soon.example.com", now.Add(time.Hour), now.Add(48*time.Hour))
+	_, unloaded := certItem(t, "*.lost.example.com", now.Add(-time.Hour), now.Add(48*time.Hour), false) // the fetch does not know it
+	c := gateway.NewCertificates(gateway.CertificatesOptions{Fetch: f.fetch})
+	routes := []gateway.CertificateRoute{
+		{ID: "crt_wild", ContentSHA256: wild, Hostnames: []string{"app.example.com"}},
+		{ID: "crt_later", ContentSHA256: wildLater, Hostnames: []string{"www.example.com"}},
+		{ID: "crt_expired", ContentSHA256: expired, Hostnames: []string{"x.old.example.com"}},
+		{ID: "crt_exact", ContentSHA256: exact, Hostnames: []string{"exact.example.org"}},
+		{ID: "crt_soon", ContentSHA256: notYet, Hostnames: []string{"a.soon.example.com"}},
+		{ID: "crt_lost", ContentSHA256: unloaded, Hostnames: []string{"a.lost.example.com"}},
+	}
+	if st := c.Apply(t.Context(), routes); len(st) != 1 || st[0].GetResourceId() != "crt_lost" {
+		t.Fatal(st)
+	}
+	notAfter := func(name string) time.Time {
+		if crt := c.Covering(name); crt != nil {
+			return crt.Leaf.NotAfter
+		}
+		return time.Time{}
+	}
+	later := c.Covering("foo.example.com")
+	if later == nil || !later.Leaf.NotAfter.After(now.Add(47*time.Hour)) {
+		t.Fatalf("foo.example.com: %v, want the wildcard that expires last", later)
+	}
+	for _, name := range []string{"FOO.Example.com.", "app.example.com"} {
+		if c.Covering(name) != later {
+			t.Errorf("%q: not the wildcard that expires last", name)
+		}
+	}
+	if c.Covering("exact.example.org") == nil {
+		t.Error("exact.example.org: not covered by its own certificate")
+	}
+	for _, name := range []string{"a.b.example.com", "example.com", "y.old.example.com", "b.soon.example.com", "b.lost.example.com",
+		"www.example.org", "other.net", ""} {
+		if got := notAfter(name); !got.IsZero() {
+			t.Errorf("%q: covered by a certificate that expires at %v", name, got)
+		}
+	}
+	// A later snapshot without the certificate that expired last: the other wildcard covers.
+	if st := c.Apply(t.Context(), slices.Delete(slices.Clone(routes), 1, 2)); len(st) != 1 {
+		t.Fatal(st)
+	}
+	if got := c.Covering("foo.example.com"); got == nil || got == later {
+		t.Errorf("after the change: %v, want the other wildcard", got)
+	}
+}
+
 // TestCertificates_FetchAndKeep: a certificate is fetched once and kept in the directory, 0600;
 // after a restart while the controller is unreachable it serves from there; a tampered copy is
 // fetched again; an item that does not match its hash or its key is not loaded.
@@ -195,27 +260,37 @@ func TestCertificates_FetchAndKeep(t *testing.T) {
 	}
 }
 
-// TestCertificates_Retry: a certificate that cannot be fetched is reported not ready and loaded by
-// Run once the controller answers again.
+// TestCertificates_Retry: a certificate that cannot be fetched is reported not ready, also by
+// Status for each route that names it, and loaded by Run once the controller answers again, which
+// OnChange is told.
 func TestCertificates_Retry(t *testing.T) {
 	now := time.Now()
 	f := &fakeFetch{}
 	f.fail.Store(true)
 	item, hash := certItem(t, "app.example.com", now.Add(-time.Hour), now.Add(time.Hour), false)
 	f.add(item, hash)
-	c := gateway.NewCertificates(gateway.CertificatesOptions{Fetch: f.fetch})
+	var changes atomic.Int32
+	c := gateway.NewCertificates(gateway.CertificatesOptions{Fetch: f.fetch, OnChange: func() { changes.Add(1) }})
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 	go c.Run(ctx)
-	st := c.Apply(t.Context(), []gateway.CertificateRoute{{ID: "crt_app", ContentSHA256: hash, Hostnames: []string{"app.example.com"}}})
-	if len(st) != 1 || st[0].GetResourceId() != "crt_app" || c.Missing() != 1 || c.ForName("app.example.com") != nil {
+	st := c.Apply(t.Context(), []gateway.CertificateRoute{{ID: "crt_app", ContentSHA256: hash, Hostnames: []string{"app.example.com"}},
+		{ID: "crt_same", ContentSHA256: hash, Hostnames: []string{"app.example.com"}}})
+	if len(st) != 2 || st[0].GetResourceId() != "crt_app" || c.Missing() != 1 || c.ForName("app.example.com") != nil {
 		t.Fatalf("an unreachable controller: %v", st)
 	}
+	if st := c.Status(); len(st) != 2 || st[0].GetResourceId() != "crt_app" || st[1].GetResourceId() != "crt_same" ||
+		st[0].GetReason() != agentv1.NotReadyReason_NOT_READY_REASON_ENVIRONMENT || !strings.HasPrefix(st[0].GetDetail(), "certificate not loaded: ") {
+		t.Fatalf("status while missing: %v", st)
+	}
 	time.Sleep(1500 * time.Millisecond) // at least one failed retry
+	if changes.Load() != 0 || len(c.Status()) != 2 {
+		t.Fatalf("after a failed retry: %d changes, status %v", changes.Load(), c.Status())
+	}
 	f.fail.Store(false)
 	eventually(t, "the certificate was never loaded", func() bool { return c.ForName("app.example.com") != nil })
-	if c.Missing() != 0 {
-		t.Fatalf("%d still missing", c.Missing())
+	if c.Missing() != 0 || len(c.Status()) != 0 || changes.Load() != 1 {
+		t.Fatalf("%d still missing, status %v, %d changes", c.Missing(), c.Status(), changes.Load())
 	}
 }
 
@@ -254,5 +329,8 @@ func TestApplier_Certificates(t *testing.T) {
 	st := a.Apply(t.Context(), gatewaySnapshot(2, crt(good, "app.example.com")), agent.Changes{})
 	if len(st) != 1 || st[0].GetResourceId() != "crt_1" {
 		t.Fatalf("status %v", st)
+	}
+	if r := a.Readiness(); len(r) != 1 || r[0].GetResourceId() != "crt_1" {
+		t.Fatalf("readiness %v", r)
 	}
 }

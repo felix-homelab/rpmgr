@@ -40,8 +40,9 @@ var routeDrain = 30 * time.Second
 // Route is a route as the connector serves it, from its snapshot.
 type Route struct {
 	ID string
-	// UDP routes take UDP_FLOW streams, every other route TCP streams.
-	UDP bool
+	// UDP routes take UDP_FLOW streams, tcp_udp routes (Both) both kinds, every other route TCP
+	// streams.
+	UDP, Both bool
 	// Targets are tried by priority, lowest first, and by weight within a priority.
 	Targets []Target
 }
@@ -64,6 +65,19 @@ func (t Target) String() string {
 		return t.UnixPath
 	}
 	return net.JoinHostPort(t.Host, strconv.Itoa(int(t.Port)))
+}
+
+// blockDetail is the readiness detail of a target the policy does not allow: the target, and the
+// entry of deny_targets that refuses it if one does, or that it is one of rpmgr's own ports
+// (policy.BlockedError.Detail).
+func (t Target) blockDetail(p *policy.Policy) string {
+	e := &policy.BlockedError{Target: t.String()}
+	if t.UnixPath != "" {
+		e.Denied = p.DeniedByUnix(t.UnixPath)
+	} else if ip, err := netip.ParseAddr(t.Host); err == nil {
+		e.Denied, e.Own = p.DeniedBy(ip, t.Port), p.Own(ip, t.Port)
+	}
+	return e.Detail()
 }
 
 // allowed reports whether the policy allows the target as far as it is known before dialling: a
@@ -104,6 +118,7 @@ type Targets struct {
 	draining map[string]drainingRoute
 	health   map[string]*tunnelv1.RouteHealth
 	live     map[net.Conn]struct{} // the relayed target connections, which a stricter policy closes
+	probes   chan struct{}         // the certificate probes running, at most maxProbes
 }
 
 type drainingRoute struct {
@@ -120,7 +135,7 @@ func NewTargets(o TargetsOptions) *Targets {
 		o.UDPMetrics, _ = tunnel.NewUDPMetrics(nil)
 	}
 	return &Targets{o: o, routes: map[string]Route{}, draining: map[string]drainingRoute{}, health: map[string]*tunnelv1.RouteHealth{},
-		live: map[net.Conn]struct{}{}}
+		live: map[net.Conn]struct{}{}, probes: make(chan struct{}, maxProbes)}
 }
 
 // Set makes routes the snapshot's routes. A route no longer among them is reported not ready at
@@ -188,16 +203,19 @@ func (t *Targets) Recheck() {
 	}
 }
 
-// track records a relayed target connection until the returned function is called.
-func (t *Targets) track(c net.Conn) func() {
+// trackAllowed records a target connection until the returned function is called, and reports
+// whether the policy in force allows it. It checks under the lock Recheck takes after the policy
+// changed, so either Recheck finds the connection or this check sees the new policy.
+func (t *Targets) trackAllowed(c net.Conn) (func(), bool) {
 	t.mu.Lock()
 	t.live[c] = struct{}{}
+	allowed := connAllowed(c, t.o.Policy())
 	t.mu.Unlock()
 	return func() {
 		t.mu.Lock()
 		delete(t.live, c)
 		t.mu.Unlock()
-	}
+	}, allowed
 }
 
 // connAllowed reports whether the policy allows the address a target connection goes to.
@@ -231,7 +249,7 @@ func readiness(r Route, p *policy.Policy) *tunnelv1.RouteHealth {
 			return h
 		}
 		if h.Detail == "" {
-			h.Detail = tg.String()
+			h.Detail = tg.blockDetail(p)
 		}
 	}
 	h.Reason = agentv1.NotReadyReason_NOT_READY_REASON_BLOCKED_BY_LOCAL_POLICY
@@ -291,6 +309,18 @@ func (t *Targets) Handle(ctx context.Context, gatewayID string, st tunnel.Stream
 	_, span := otel.Tracer("github.com/felix-homelab/rpmgr/internal/connector").Start(tunnel.TraceContext(ctx, open), "rpmgr.connector.dial",
 		trace.WithSpanKind(trace.SpanKindServer), trace.WithAttributes(attribute.String("rpmgr.route", open.GetRouteId())))
 	code, conn, target := t.open(ctx, open)
+	// The connection is recorded before the answer and checked against the policy in force then,
+	// so a reload either finds it or refuses it here (#525).
+	untrack := func() {}
+	if conn != nil {
+		var allowed bool
+		if untrack, allowed = t.trackAllowed(conn); !allowed {
+			untrack()
+			_ = conn.Close()
+			conn, code, target = nil, tunnelv1.ResultCode_RESULT_CODE_UPSTREAM_REFUSED, ""
+		}
+	}
+	defer untrack()
 	if code != tunnelv1.ResultCode_RESULT_CODE_NO_ERROR {
 		span.SetStatus(codes.Error, code.String())
 	}
@@ -308,7 +338,6 @@ func (t *Targets) Handle(ctx context.Context, gatewayID string, st tunnel.Stream
 		return
 	}
 	st.SetReliableBoundary()
-	defer t.track(conn)()
 	if open.GetKind() == tunnelv1.StreamKind_STREAM_KIND_UDP_FLOW {
 		t.relayUDP(ctx, open.GetRouteId(), st, conn)
 		return
@@ -333,9 +362,9 @@ func (t *Targets) open(ctx context.Context, open *tunnelv1.StreamOpen) (tunnelv1
 		return tunnelv1.ResultCode_RESULT_CODE_PROTOCOL, nil, ""
 	case !ok:
 		return tunnelv1.ResultCode_RESULT_CODE_ROUTE_UNKNOWN, nil, ""
-	case r.UDP != (kind == tunnelv1.StreamKind_STREAM_KIND_UDP_FLOW):
+	case !r.Both && r.UDP != (kind == tunnelv1.StreamKind_STREAM_KIND_UDP_FLOW):
 		return tunnelv1.ResultCode_RESULT_CODE_PROTOCOL, nil, ""
-	case r.UDP:
+	case kind == tunnelv1.StreamKind_STREAM_KIND_UDP_FLOW:
 		return t.dialUDP(ctx, r, open)
 	}
 	timeout := dialUpstream
@@ -355,7 +384,7 @@ func (t *Targets) open(ctx context.Context, open *tunnelv1.StreamOpen) (tunnelv1
 		if err != nil {
 			var b *policy.BlockedError
 			if errors.As(err, &b) {
-				t.blocked(r.ID, b.Target)
+				t.blocked(r.ID, b.Detail())
 				continue
 			}
 			code = codeOf(err)

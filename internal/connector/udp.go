@@ -48,7 +48,7 @@ func (t *Targets) dialUDP(ctx context.Context, r Route, open *tunnelv1.StreamOpe
 		if err != nil {
 			var b *policy.BlockedError
 			if errors.As(err, &b) {
-				t.blocked(r.ID, b.Target)
+				t.blocked(r.ID, b.Detail())
 				continue
 			}
 			code = codeOf(err)

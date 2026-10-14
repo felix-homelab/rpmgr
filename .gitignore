@@ -7,6 +7,8 @@
 /dist/
 /build/
 /out/
+# `go build ./cmd/rpmgr` (or `./cmd/...`) at the repository root writes the binary there.
+/rpmgr
 *.exe
 *.dll
 *.so

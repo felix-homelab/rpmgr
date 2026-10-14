@@ -38,8 +38,10 @@ func Render(role string, o Options) ([]byte, error) {
 		BindLow, Reload       bool
 	}{Role: role, Bin: o.Bin, Credential: o.Credential}
 	switch role {
-	case "controller", "all-in-one", "gateway":
+	case "controller", "gateway":
 		data.BindLow = true // ports 443 and 80
+	case "all-in-one":
+		data.BindLow, data.Reload = true, true // and rpmgr policy reloads its connector
 	case "connector":
 		data.Reload, data.Credential = true, "" // rpmgr policy reloads it; it binds no low port
 	default:

@@ -44,6 +44,8 @@ type recorder struct {
 
 func (r *recorder) Validate(*agentv1.Snapshot) []*agentv1.SnapshotError { return nil }
 
+func (r *recorder) Readiness() []*agentv1.ResourceStatus { return nil }
+
 func (r *recorder) Apply(_ context.Context, snap *agentv1.Snapshot, c agent.Changes) []*agentv1.ResourceStatus {
 	r.mu.Lock()
 	defer r.mu.Unlock()

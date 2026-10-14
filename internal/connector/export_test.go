@@ -59,3 +59,11 @@ func SetPingInterval(t testing.TB, d time.Duration) {
 	old := pingEvery.Swap(int64(d))
 	t.Cleanup(func() { pingEvery.Store(old) })
 }
+
+// SetProbeTimeout shortens a certificate probe, for one test that must not run in parallel with
+// others.
+func SetProbeTimeout(t testing.TB, d time.Duration) {
+	old := probeTimeout
+	probeTimeout = d
+	t.Cleanup(func() { probeTimeout = old })
+}

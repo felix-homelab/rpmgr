@@ -135,6 +135,50 @@ func (s *Seeder) AddUDPRoute(r Route) error {
 	})
 }
 
+// AddTCPUDPRoute creates a tcp_udp route on its group's port, with a TCP and a UDP port pool of
+// that one port where none covers it; Idle is its TCP idle timeout, the flow idle timeout keeps
+// the default.
+func (s *Seeder) AddTCPUDPRoute(r Route) error {
+	to, err := parseTarget(r.Target)
+	if err != nil {
+		return err
+	}
+	return s.tx(func(tx *ent.Tx, org string) ([]string, error) {
+		g, err := s.group(tx, org, r.Group)
+		if err != nil {
+			return nil, err
+		}
+		for p, proto := range map[routes.Protocol]portpool.Protocol{routes.TCP: portpool.ProtocolTCP, routes.UDP: portpool.ProtocolUDP} {
+			covered, err := tx.PortPool.Query().Where(portpool.GatewayGroupID(g), portpool.ProtocolEQ(proto),
+				portpool.PortFromLTE(r.Port), portpool.PortToGTE(r.Port)).Exist(s.sys)
+			if err != nil {
+				return nil, err
+			}
+			if !covered {
+				if _, err := routes.AddPool(s.sys, tx, org, g, p, r.Port, r.Port); err != nil {
+					return nil, err
+				}
+			}
+		}
+		tcp, udp, err := routes.AllocateBoth(s.sys, tx, org, g, r.Port, "", "")
+		if err != nil {
+			return nil, err
+		}
+		rt, err := s.newRoute(tx, org, r.Name, r.Group, "tcp_udp", r.Transport, r.Connectors, to, nil)
+		if err != nil {
+			return nil, err
+		}
+		tc := tx.RouteTCP.Create().SetOrgID(org).SetRouteID(rt.ID).SetPortAllocationID(tcp.ID)
+		if r.Idle > 0 {
+			tc.SetIdleTimeoutSeconds(int(r.Idle / time.Second))
+		}
+		if err := tc.Exec(s.sys); err != nil {
+			return nil, err
+		}
+		return []string{rt.ID}, tx.RouteUDP.Create().SetOrgID(org).SetRouteID(rt.ID).SetPortAllocationID(udp.ID).Exec(s.sys)
+	})
+}
+
 // HTTPRoute is an http route to seed.
 type HTTPRoute struct {
 	Name, Group string

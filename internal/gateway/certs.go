@@ -47,9 +47,12 @@ type CertificatesOptions struct {
 	// "" keeps them in memory only.
 	Dir string
 	// Fetch fetches an item by ID and content hash, normally agent.Control.Fetch.
-	Fetch  func(ctx context.Context, id string, hash []byte) ([]byte, error)
-	Now    func() time.Time
-	Logger *slog.Logger
+	Fetch func(ctx context.Context, id string, hash []byte) ([]byte, error)
+	// OnChange is told that a certificate became ready without a new snapshot: a retry loaded it.
+	// It must not block; it may be nil.
+	OnChange func()
+	Now      func() time.Time
+	Logger   *slog.Logger
 }
 
 // Certificates holds the route certificates of the gateway's snapshot and chooses one for a TLS
@@ -63,7 +66,14 @@ type Certificates struct {
 	want    []CertificateRoute
 	loaded  map[string]*tls.Certificate // by hex content hash
 	byHost  map[string][]*tls.Certificate
-	missing map[string]CertificateRoute // by hex content hash
+	bySAN   map[string][]*tls.Certificate // by each DNS name the loaded certificates carry, lower case
+	missing map[string]missingCert        // by hex content hash
+}
+
+// missingCert is a certificate that could not be loaded yet, and why.
+type missingCert struct {
+	route CertificateRoute
+	err   string
 }
 
 // NewCertificates returns an empty set; Run retries what Apply could not load.
@@ -75,7 +85,7 @@ func NewCertificates(o CertificatesOptions) *Certificates {
 		o.Logger = slog.New(slog.DiscardHandler)
 	}
 	return &Certificates{o: o, retry: make(chan struct{}, 1), loaded: map[string]*tls.Certificate{},
-		byHost: map[string][]*tls.Certificate{}, missing: map[string]CertificateRoute{}}
+		byHost: map[string][]*tls.Certificate{}, bySAN: map[string][]*tls.Certificate{}, missing: map[string]missingCert{}}
 }
 
 // Apply makes routes the served certificates: each comes from memory, from Dir, or from Fetch, and
@@ -88,13 +98,17 @@ func (c *Certificates) Apply(ctx context.Context, routes []CertificateRoute) []*
 	var status []*agentv1.ResourceStatus
 	for _, r := range routes {
 		if err := c.load(ctx, r); err != nil {
-			status = append(status, &agentv1.ResourceStatus{ResourceId: r.ID, Reason: agentv1.NotReadyReason_NOT_READY_REASON_ENVIRONMENT,
-				Detail: "certificate not loaded: " + err.Error()})
+			status = append(status, notLoaded(r.ID, err.Error()))
 		}
 	}
 	c.rebuild()
 	c.prune()
 	return status
+}
+
+func notLoaded(id, err string) *agentv1.ResourceStatus {
+	return &agentv1.ResourceStatus{ResourceId: id, Reason: agentv1.NotReadyReason_NOT_READY_REASON_ENVIRONMENT,
+		Detail: "certificate not loaded: " + err}
 }
 
 // load makes one certificate available, or records it as missing.
@@ -120,17 +134,22 @@ func (c *Certificates) load(ctx context.Context, r CertificateRoute) error {
 		}
 	}
 	c.mu.Lock()
-	defer c.mu.Unlock()
 	if err != nil {
-		c.missing[key] = r
+		c.missing[key] = missingCert{route: r, err: err.Error()}
+		c.mu.Unlock()
 		select {
 		case c.retry <- struct{}{}:
 		default:
 		}
 		return err
 	}
+	_, was := c.missing[key]
 	delete(c.missing, key)
 	c.loaded[key] = cert
+	c.mu.Unlock()
+	if was && c.o.OnChange != nil {
+		c.o.OnChange()
+	}
 	return nil
 }
 
@@ -198,13 +217,21 @@ func (c *Certificates) prune() {
 }
 
 // rebuild maps every route hostname of the snapshot's certificates to those of them that are
-// loaded, possibly none.
+// loaded, possibly none, and every DNS name of a loaded one to it.
 func (c *Certificates) rebuild() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	byHost := map[string][]*tls.Certificate{}
+	byHost, bySAN := map[string][]*tls.Certificate{}, map[string][]*tls.Certificate{}
 	for _, r := range c.want {
 		cert := c.loaded[hex.EncodeToString(r.ContentSHA256)]
+		if cert != nil {
+			for _, n := range cert.Leaf.DNSNames {
+				n = strings.ToLower(n)
+				if !slices.Contains(bySAN[n], cert) {
+					bySAN[n] = append(bySAN[n], cert)
+				}
+			}
+		}
 		for _, h := range r.Hostnames {
 			if cert != nil {
 				byHost[h] = append(byHost[h], cert)
@@ -213,7 +240,7 @@ func (c *Certificates) rebuild() {
 			}
 		}
 	}
-	c.byHost = byHost
+	c.byHost, c.bySAN = byHost, bySAN
 }
 
 // Run retries the certificates Apply could not load, with backoff, until ctx ends.
@@ -228,8 +255,8 @@ func (c *Certificates) Run(ctx context.Context) {
 		for {
 			c.mu.Lock()
 			var missing []CertificateRoute
-			for _, r := range c.missing {
-				missing = append(missing, r)
+			for _, m := range c.missing {
+				missing = append(missing, m.route)
 			}
 			c.mu.Unlock()
 			if len(missing) == 0 {
@@ -257,6 +284,19 @@ func (c *Certificates) Run(ctx context.Context) {
 	}
 }
 
+// Status returns the certificates of the snapshot that are not loaded, as not ready.
+func (c *Certificates) Status() []*agentv1.ResourceStatus {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	var out []*agentv1.ResourceStatus
+	for _, r := range c.want {
+		if m, ok := c.missing[hex.EncodeToString(r.ContentSHA256)]; ok {
+			out = append(out, notLoaded(r.ID, m.err))
+		}
+	}
+	return out
+}
+
 // Missing returns how many certificates of the snapshot are not loaded.
 func (c *Certificates) Missing() int {
 	c.mu.Lock()
@@ -280,6 +320,35 @@ func (c *Certificates) ForName(serverName string) *tls.Certificate {
 	var best *tls.Certificate
 	for _, cert := range candidates {
 		if now.Before(cert.Leaf.NotBefore) || !now.Before(cert.Leaf.NotAfter) {
+			continue
+		}
+		if best == nil || cert.Leaf.NotAfter.After(best.Leaf.NotAfter) {
+			best = cert
+		}
+	}
+	return best
+}
+
+// Covering returns a certificate of the snapshot whose own names cover a server name no route
+// serves, such as a route's wildcard certificate for a name one label below it, so that the
+// gateway can answer that name with its page (D87); among several, the valid one that expires
+// last. It is nil when none covers the name. The name is the client's choice, so it is looked up
+// by the name and its wildcard one label up, not compared with every certificate.
+func (c *Certificates) Covering(serverName string) *tls.Certificate {
+	name := strings.ToLower(strings.TrimSuffix(serverName, "."))
+	if name == "" {
+		return nil
+	}
+	now := c.o.Now()
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	candidates := c.bySAN[name]
+	if _, parent, ok := strings.Cut(name, "."); ok {
+		candidates = append(slices.Clip(candidates), c.bySAN["*."+parent]...)
+	}
+	var best *tls.Certificate
+	for _, cert := range candidates {
+		if now.Before(cert.Leaf.NotBefore) || !now.Before(cert.Leaf.NotAfter) || cert.Leaf.VerifyHostname(name) != nil {
 			continue
 		}
 		if best == nil || cert.Leaf.NotAfter.After(best.Leaf.NotAfter) {

@@ -104,13 +104,15 @@ func (e *rtEnv) signed(t *testing.T, kp pki.KeyPair, ep string, seq uint64, rs .
 	return s
 }
 
-// fakeApplier records what it is asked to apply and refuses resources named "bad".
+// fakeApplier records what it is asked to apply and refuses resources named "bad"; rt_1 is not
+// ready when applied, and after that as notReady says.
 type fakeApplier struct {
-	mu      sync.Mutex
-	applied []agent.Changes
-	seqs    []uint64
-	block   chan struct{} // if set, Apply waits for it
-	started chan struct{}
+	mu       sync.Mutex
+	applied  []agent.Changes
+	seqs     []uint64
+	block    chan struct{} // if set, Apply waits for it
+	started  chan struct{}
+	notReady []*agentv1.ResourceStatus
 }
 
 func (f *fakeApplier) Validate(snap *agentv1.Snapshot) []*agentv1.SnapshotError {
@@ -135,6 +137,12 @@ func (f *fakeApplier) Apply(_ context.Context, snap *agentv1.Snapshot, c agent.C
 	f.applied = append(f.applied, c)
 	f.seqs = append(f.seqs, snap.GetRevision().GetSeq())
 	return []*agentv1.ResourceStatus{{ResourceId: "rt_1", Detail: "test"}}
+}
+
+func (f *fakeApplier) Readiness() []*agentv1.ResourceStatus {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.notReady
 }
 
 func (f *fakeApplier) appliedSeqs() []uint64 {
@@ -283,14 +291,17 @@ func TestRuntime_TamperedLastKnownGood(t *testing.T) {
 }
 
 // TestRuntime_Revisions: a snapshot that is not newer is ignored; a new database epoch is accepted
-// only once a Welcome announced it; the snapshot already running is acknowledged again.
+// only once a Welcome announced it; the snapshot already running is acknowledged again, with the
+// resources not ready now.
 func TestRuntime_Revisions(t *testing.T) {
 	e := newRTEnv(t)
 	f := &fakeApplier{}
 	rt, out := e.runtime(t, f)
 	s5 := e.signed(t, e.config, epoch1, 5)
 	offer(rt, s5)
-	answer(t, out)
+	if a := answer(t, out).GetApplied(); a.GetRevision().GetSeq() != 5 || len(a.GetNotReady()) != 1 {
+		t.Fatalf("acknowledgement: %v", a)
+	}
 
 	offer(rt, e.signed(t, e.config, epoch1, 4))
 	quiet(t, out)
@@ -299,8 +310,11 @@ func TestRuntime_Revisions(t *testing.T) {
 	offer(rt, e.signed(t, e.config, epoch2, 1)) // a new epoch, not announced
 	quiet(t, out)
 
+	f.mu.Lock()
+	f.notReady = []*agentv1.ResourceStatus{{ResourceId: "rt_2", Reason: agentv1.NotReadyReason_NOT_READY_REASON_PORT_IN_USE}}
+	f.mu.Unlock()
 	offer(rt, s5) // the controller missed the answer
-	if a := answer(t, out).GetApplied(); a.GetRevision().GetSeq() != 5 {
+	if a := answer(t, out).GetApplied(); a.GetRevision().GetSeq() != 5 || len(a.GetNotReady()) != 1 || a.GetNotReady()[0].GetResourceId() != "rt_2" {
 		t.Fatalf("re-acknowledgement: %v", a)
 	}
 

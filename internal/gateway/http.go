@@ -3,12 +3,9 @@
 package gateway
 
 import (
-	"bytes"
 	"cmp"
 	"context"
-	"crypto/sha256"
 	"crypto/tls"
-	"crypto/x509"
 	"errors"
 	"fmt"
 	"io"
@@ -40,8 +37,9 @@ import (
 // The HTTP server's timing (docs/03-connections.md, "Timeouts, keepalive and backoff"); the
 // variables change only in tests.
 const (
-	httpIdle       = 120 * time.Second // a keep-alive connection without a request
-	httpRetryAfter = 5                 // seconds, in a 503 without a ready connector
+	httpIdle              = 120 * time.Second // a keep-alive connection without a request
+	httpRetryAfter        = 5                 // seconds, in a 503 without a ready connector
+	maintenanceRetryAfter = 300               // seconds, in the 503 of a route in maintenance
 )
 
 var (
@@ -92,6 +90,10 @@ type HTTPRoute struct {
 	Access Access
 	// BasicAuth are the basic_auth rules a request the IP rules allow must pass, in order.
 	BasicAuth []BasicAuthRule
+	// Maintenance answers every request the access rules admit with the maintenance page, which
+	// shows MaintenanceMessage, and opens no stream.
+	Maintenance        bool
+	MaintenanceMessage string
 }
 
 // HTTPHeader is a header name, canonical, and its value; "" removes the header.
@@ -106,37 +108,6 @@ func apply(h http.Header, hs []HTTPHeader) {
 			h.Set(x.Name, x.Value)
 		}
 	}
-}
-
-// UpstreamTLS is how the gateway verifies the HTTPS upstream of one route target.
-type UpstreamTLS struct {
-	ServerName string
-	// CAPEM verifies the upstream's chain; empty is the host's trust store.
-	CAPEM []byte
-	// SPKISHA256, if set, must be the SHA-256 of the leaf's SubjectPublicKeyInfo.
-	SPKISHA256 []byte
-}
-
-// config returns the TLS configuration of a connection to the upstream: TLS 1.2 or later, the
-// server name, the CA bundle or the host's trust store, the pin, and ALPN for HTTP/2.
-func (u UpstreamTLS) config() (*tls.Config, error) {
-	cfg := &tls.Config{MinVersion: tls.VersionTLS12, ServerName: u.ServerName, NextProtos: []string{"h2", "http/1.1"}}
-	if len(u.CAPEM) > 0 {
-		cfg.RootCAs = x509.NewCertPool()
-		if !cfg.RootCAs.AppendCertsFromPEM(u.CAPEM) {
-			return nil, errors.New("the CA bundle holds no certificate")
-		}
-	}
-	if pin := u.SPKISHA256; len(pin) > 0 {
-		cfg.VerifyConnection = func(cs tls.ConnectionState) error {
-			sum := sha256.Sum256(cs.PeerCertificates[0].RawSubjectPublicKeyInfo)
-			if !bytes.Equal(sum[:], pin) {
-				return errors.New("the upstream's key does not match its pin")
-			}
-			return nil
-		}
-	}
-	return cfg, nil
 }
 
 // HTTPHost is a hostname, or "*.name" for every name one label below, with a path prefix; ""
@@ -154,10 +125,12 @@ type HTTPOptions struct {
 	// Challenges answers ACME HTTP-01 challenges on port 80 with the key authorization of a
 	// token for a host; nil answers none.
 	Challenges func(host, token string) (keyAuthorization string, ok bool)
-	// Fallback80 takes port-80 requests for names no route serves: all-in-one's controller, which
-	// answers ACME HTTP-01 for its own name and redirects the rest; nil answers 404.
-	Fallback80 http.Handler
-	Logger     *slog.Logger
+	// Fallback80 takes port-80 requests for FallbackNames when no route serves them: all-in-one's
+	// controller, which answers ACME HTTP-01 for its own name and redirects the rest. Other names
+	// no route serves get the gateway's 404 page.
+	Fallback80    http.Handler
+	FallbackNames []string
+	Logger        *slog.Logger
 }
 
 // HTTPRoutes serves the http routes (docs/03-connections.md, "HTTP routes"): it terminates TLS
@@ -168,13 +141,17 @@ type HTTPRoutes struct {
 	basic    *BasicAuth
 	server   *http.Server
 	server80 *http.Server
+	unrouted *http.Server // the connections of names no route serves
 	ln       *connListener
+	lnNone   *connListener
 	table    atomic.Pointer[httpTable]
 	tokens   atomic.Pointer[map[string]DomainToken] // by claim ID
 	active   atomic.Int64                           // requests being served
 
 	mu         sync.Mutex
-	transports map[string]*routeTransport // by route ID
+	transports map[string]*routeTransport   // by route ID
+	replaced   map[string][]*routeTransport // by route ID: transports a change replaced, while requests run on them
+	upstream   map[string]*upstreamConns    // by route ID, kept while their connections are open
 }
 
 type httpTable struct {
@@ -193,10 +170,78 @@ type routeTransport struct {
 	route atomic.Pointer[HTTPRoute]
 	tr    *http.Transport
 	proxy *httputil.ReverseProxy
-	tls   map[string]*tls.Config // by route target ID
+	tls   map[string]upstreamTLS // by route target ID
 
-	mu     sync.Mutex
-	active map[*activeRequest]struct{}
+	mu       sync.Mutex
+	access   Access // the route's access rules in force, which enforce sets
+	active   map[*activeRequest]struct{}
+	upstream *upstreamConns // the route's TLS connections to its targets, of every transport
+}
+
+// upstreamConns are the open TLS connections of an http route to its targets, from every
+// transport the route had, each with the settings it was checked with (#517). Every change of
+// the route's settings ends those the new settings would not accept, and a connection whose
+// dial ends after a change is checked against the settings then.
+type upstreamConns struct {
+	mu    sync.Mutex
+	now   map[string]UpstreamTLS // the route's settings, by route target ID
+	conns map[*upstreamConn]struct{}
+}
+
+// upstreamConn is the tunnel stream under a TLS connection to a target; closing it ends the TLS
+// connection and what runs on it, upgraded connections and HTTP/2 streams included.
+type upstreamConn struct {
+	net.Conn
+	target  string
+	checked UpstreamTLS
+	of      *upstreamConns
+	once    sync.Once
+}
+
+func (c *upstreamConn) Close() error {
+	c.once.Do(func() {
+		c.of.mu.Lock()
+		defer c.of.mu.Unlock()
+		delete(c.of.conns, c)
+	})
+	return c.Conn.Close()
+}
+
+// accepts reports whether the settings now still accept a connection to target that checked
+// settings: the same ones, or unverified ones of the same connector. A target the route no longer
+// has keeps its connections, which finish as a removed route's do.
+func accepts(now map[string]UpstreamTLS, target string, checked UpstreamTLS) bool {
+	n, ok := now[target]
+	return !ok || reflect.DeepEqual(n, checked) || n.Verify == VerifyNothing && n.Connector == checked.Connector
+}
+
+// set makes now the route's settings and ends at once the connections they do not accept.
+func (u *upstreamConns) set(now map[string]UpstreamTLS) {
+	var doomed []*upstreamConn
+	u.mu.Lock()
+	u.now = now
+	for c := range u.conns {
+		if !accepts(now, c.target, c.checked) {
+			doomed = append(doomed, c)
+		}
+	}
+	u.mu.Unlock()
+	for _, c := range doomed {
+		_ = c.Close()
+	}
+}
+
+// track records c, a stream to target that is to be checked with checked, until it closes; a
+// change of the settings since the dial began refuses it.
+func (u *upstreamConns) track(target string, checked UpstreamTLS, c net.Conn) (net.Conn, error) {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	if !accepts(u.now, target, checked) {
+		return nil, fmt.Errorf("the TLS settings of target %s changed during the dial", target)
+	}
+	uc := &upstreamConn{Conn: c, target: target, checked: checked, of: u}
+	u.conns[uc] = struct{}{}
+	return uc, nil
 }
 
 // activeRequest is a request being proxied, which a tightened access policy cancels.
@@ -210,6 +255,7 @@ type activeRequest struct {
 func (rt *routeTransport) enforce(a Access) {
 	rt.mu.Lock()
 	defer rt.mu.Unlock()
+	rt.access = a
 	for ar := range rt.active {
 		if !a.Allows(ar.client) {
 			ar.cancel()
@@ -217,12 +263,20 @@ func (rt *routeTransport) enforce(a Access) {
 	}
 }
 
+// idle reports whether no request runs on the transport.
+func (rt *routeTransport) idle() bool {
+	rt.mu.Lock()
+	defer rt.mu.Unlock()
+	return len(rt.active) == 0
+}
+
 // NewHTTPRoutes returns the http routes' server; Close stops it.
 func NewHTTPRoutes(o HTTPOptions) *HTTPRoutes {
 	if o.Logger == nil {
 		o.Logger = slog.New(slog.DiscardHandler)
 	}
-	h := &HTTPRoutes{o: o, ln: newConnListener(), transports: map[string]*routeTransport{}, basic: NewBasicAuth(nil)}
+	h := &HTTPRoutes{o: o, ln: newConnListener(), lnNone: newConnListener(), transports: map[string]*routeTransport{},
+		replaced: map[string][]*routeTransport{}, upstream: map[string]*upstreamConns{}, basic: NewBasicAuth(nil)}
 	h.table.Store(&httpTable{byHost: map[string][]httpEntry{}})
 	protocols := new(http.Protocols)
 	protocols.SetHTTP1(true)
@@ -232,6 +286,9 @@ func NewHTTPRoutes(o HTTPOptions) *HTTPRoutes {
 	go func() { _ = h.server.Serve(h.ln) }()
 	h.server80 = &http.Server{Handler: http.HandlerFunc(h.serve80), ReadHeaderTimeout: httpReadHeader, IdleTimeout: httpIdle,
 		ErrorLog: slog.NewLogLogger(o.Logger.Handler(), slog.LevelDebug)}
+	h.unrouted = &http.Server{Handler: http.HandlerFunc(h.serveUnrouted), ReadHeaderTimeout: httpReadHeader, IdleTimeout: httpIdle,
+		Protocols: protocols, ErrorLog: slog.NewLogLogger(o.Logger.Handler(), slog.LevelDebug)}
+	go func() { _ = h.unrouted.Serve(h.lnNone) }()
 	return h
 }
 
@@ -270,15 +327,13 @@ func (h *HTTPRoutes) domainToken(w http.ResponseWriter, r *http.Request, host, i
 }
 
 // serve80 answers plain HTTP (docs/03-connections.md, "HTTP routes"): the HTTP tokens of the org's
-// pending domain claims and ACME HTTP-01 challenges for any name, always; then, by the route of the host and path, a redirect to HTTPS that keeps the
-// path and query, the route itself, or a closed connection.
+// pending domain claims and ACME HTTP-01 challenges for any name, always; then, by the route of
+// the host and path, a redirect to HTTPS that keeps the path and query, the route itself, or a
+// closed connection; without a route, all-in-one's controller for its own names, or the 404 page.
 func (h *HTTPRoutes) serve80(w http.ResponseWriter, r *http.Request) {
 	h.active.Add(1)
 	defer h.active.Add(-1)
-	host := r.Host
-	if hp, _, err := net.SplitHostPort(host); err == nil {
-		host = hp
-	}
+	host := hostOnly(r.Host)
 	if id, ok := strings.CutPrefix(r.URL.Path, tokenPath); ok {
 		h.domainToken(w, r, host, id)
 		return
@@ -293,7 +348,7 @@ func (h *HTTPRoutes) serve80(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		// all-in-one's controller answers for its own name, which no route serves.
-		if rt == nil && h.o.Fallback80 != nil {
+		if rt == nil && h.fallback(host) {
 			h.o.Fallback80.ServeHTTP(w, r)
 			return
 		}
@@ -301,11 +356,11 @@ func (h *HTTPRoutes) serve80(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if rt == nil {
-		if h.o.Fallback80 != nil {
+		if h.fallback(host) {
 			h.o.Fallback80.ServeHTTP(w, r)
 			return
 		}
-		http.Error(w, "no route for this host and path", http.StatusNotFound)
+		writePage(w, r, http.StatusNotFound, pageNotFound, noRouteText)
 		return
 	}
 	switch rt.route.Load().Port80 {
@@ -323,6 +378,14 @@ func (h *HTTPRoutes) serve80(w http.ResponseWriter, r *http.Request) {
 		// The host is one a route of this gateway serves, so the redirect stays on the route.
 		http.Redirect(w, r, "https://"+host+r.URL.RequestURI(), code) //nolint:gosec // G710: see above
 	}
+}
+
+// fallback reports whether port 80 hands a host no route serves to Fallback80.
+func (h *HTTPRoutes) fallback(host string) bool {
+	host = strings.TrimSuffix(host, ".")
+	return h.o.Fallback80 != nil && slices.ContainsFunc(h.o.FallbackNames, func(n string) bool {
+		return strings.EqualFold(strings.TrimSuffix(n, "."), host)
+	})
 }
 
 // TLSConfig is the configuration the router terminates http routes' TLS with: TLS 1.3, or TLS
@@ -351,10 +414,84 @@ func (h *HTTPRoutes) TLSConfig() *tls.Config {
 	}
 }
 
+// UnroutedTLSConfig is the configuration of the connections of names no route serves, or of none:
+// that of the routes, with a certificate the gateway holds that covers the name, such as a route's
+// wildcard one, or else the default one, which no client trusts.
+func (h *HTTPRoutes) UnroutedTLSConfig() *tls.Config {
+	cfg := h.TLSConfig()
+	cfg.GetCertificate = func(hello *tls.ClientHelloInfo) (*tls.Certificate, error) {
+		if h.o.Certificates != nil {
+			if c := h.o.Certificates.Covering(hello.ServerName); c != nil {
+				return c, nil
+			}
+		}
+		if h.o.Default != nil {
+			return h.o.Default, nil
+		}
+		return nil, fmt.Errorf("no certificate for %q", hello.ServerName)
+	}
+	return cfg
+}
+
 // Serve takes one connection the router chose for an http route.
 func (h *HTTPRoutes) Serve(c *tls.Conn) {
 	if !h.ln.put(c) {
 		_ = c.Close()
+	}
+}
+
+// ServeUnrouted takes one connection of a name no route serves, or of none, which only ever gets
+// the 404 page.
+func (h *HTTPRoutes) ServeUnrouted(c *tls.Conn) {
+	if !h.lnNone.put(c) {
+		_ = c.Close()
+	}
+}
+
+// serveUnrouted answers the requests of such a connection with the 404 page for their name. A
+// route that serves the connection's own name by now, added by a snapshot after the client
+// connected, is served as on a connection of its own: the certificate the connection got is the
+// one the name gets. A request for another name than the connection's, or for a name a route
+// serves on a connection without a name, is misdirected (RFC 9110, section 15.5.20): a client that
+// reused the connection for a name its certificate covers asks again on a connection of its own.
+func (h *HTTPRoutes) serveUnrouted(w http.ResponseWriter, r *http.Request) {
+	host := strings.TrimSuffix(hostOnly(r.Host), ".")
+	sni := ""
+	if r.TLS != nil {
+		sni = strings.TrimSuffix(r.TLS.ServerName, ".")
+	}
+	own := sni != "" && strings.EqualFold(sni, host)
+	switch {
+	case own && h.Serves(host):
+		h.ServeHTTP(w, r)
+	case !own && (sni != "" || h.Serves(host)):
+		misdirected(w, r)
+	default:
+		h.active.Add(1)
+		defer h.active.Add(-1)
+		if r.ContentLength != 0 {
+			closeUnread(w, r)
+		}
+		writePage(w, r, http.StatusNotFound, pageNotFound, noRouteText)
+	}
+}
+
+// misdirected answers 421 and closes an HTTP/1.1 connection, on which a client would otherwise send
+// the name again rather than connect anew.
+func misdirected(w http.ResponseWriter, r *http.Request) {
+	closeUnread(w, r)
+	http.Error(w, http.StatusText(http.StatusMisdirectedRequest), http.StatusMisdirectedRequest)
+}
+
+// closeUnread closes an HTTP/1.1 connection after the answer, without reading the rest of a request
+// body that nothing reads: the server would wait for it, as long as a client cared to hold it.
+func closeUnread(w http.ResponseWriter, r *http.Request) {
+	if r.ProtoMajor != 1 {
+		return
+	}
+	w.Header().Set("Connection", "close")
+	if r.ContentLength != 0 {
+		_ = http.NewResponseController(w).SetReadDeadline(time.Now())
 	}
 }
 
@@ -375,13 +512,20 @@ func (h *HTTPRoutes) Apply(routes []HTTPRoute) {
 		rt := h.transports[r.ID]
 		if rt == nil || rt.route.Load().Upstream != r.Upstream || !reflect.DeepEqual(rt.route.Load().TLS, r.TLS) {
 			if rt != nil {
-				rt.enforce(r.Access) // its requests finish on the old transport
+				// Its requests finish on the old transport, unless h.upstream ends them, under the
+				// route's rules of this and every later snapshot (#523).
+				h.replaced[r.ID] = append(h.replaced[r.ID], rt)
 			}
 			rt = h.newTransport(r)
 		} else if old := rt.route.Swap(&r); !old.Access.Same(r.Access) {
 			rt.enforce(r.Access)
 		}
+		h.replaced[r.ID] = slices.DeleteFunc(h.replaced[r.ID], func(old *routeTransport) bool {
+			old.enforce(r.Access)
+			return old.idle()
+		})
 		next[r.ID] = rt
+		h.upstreamOf(r.ID).set(r.TLS)
 		for _, host := range r.Hosts {
 			t.byHost[host.Hostname] = append(t.byHost[host.Hostname], httpEntry{prefix: host.PathPrefix, route: rt})
 		}
@@ -401,11 +545,36 @@ func (h *HTTPRoutes) Apply(routes []HTTPRoute) {
 		}
 	}
 	h.transports = next
+	for id := range h.replaced {
+		if next[id] == nil {
+			delete(h.replaced, id) // a removed route's requests finish
+		}
+	}
+	for id, u := range h.upstream {
+		if next[id] == nil {
+			u.set(nil) // a removed route's connections finish
+			u.mu.Lock()
+			if len(u.conns) == 0 {
+				delete(h.upstream, id)
+			}
+			u.mu.Unlock()
+		}
+	}
+}
+
+// upstreamOf returns the record of a route's TLS connections. Under h.mu.
+func (h *HTTPRoutes) upstreamOf(route string) *upstreamConns {
+	u := h.upstream[route]
+	if u == nil {
+		u = &upstreamConns{conns: map[*upstreamConn]struct{}{}}
+		h.upstream[route] = u
+	}
+	return u
 }
 
 // newTransport returns the proxy of a route; its transport dials tunnel streams to the route.
 func (h *HTTPRoutes) newTransport(r HTTPRoute) *routeTransport {
-	rt := &routeTransport{active: map[*activeRequest]struct{}{}}
+	rt := &routeTransport{access: r.Access, active: map[*activeRequest]struct{}{}, upstream: h.upstreamOf(r.ID)}
 	rt.route.Store(&r)
 	rt.tr = &http.Transport{
 		DialContext:           func(ctx context.Context, _, _ string) (net.Conn, error) { return h.dial(ctx, r.ID) },
@@ -425,10 +594,10 @@ func (h *HTTPRoutes) newTransport(r HTTPRoute) *routeTransport {
 		p.SetHTTP1(true)
 		p.SetHTTP2(true)
 		rt.tr.Protocols = p
-		rt.tls = map[string]*tls.Config{}
+		rt.tls = map[string]upstreamTLS{}
 		for id, u := range r.TLS {
 			if cfg, err := u.config(); err == nil {
-				rt.tls[id] = cfg
+				rt.tls[id] = upstreamTLS{cfg: cfg, connector: u.Connector, verify: u.Verify}
 			}
 		}
 		rt.tr.DialTLSContext = func(ctx context.Context, _, _ string) (net.Conn, error) { return h.dialTLS(ctx, rt) }
@@ -562,40 +731,65 @@ func (e *openError) Error() string { return fmt.Sprintf("route %s: %s", e.route,
 
 // dial opens a tunnel stream for the route.
 func (h *HTTPRoutes) dial(ctx context.Context, route string) (net.Conn, error) {
-	c, _, err := h.open(ctx, route)
+	c, _, _, err := h.open(ctx, route)
 	return c, err
 }
 
-// open opens a tunnel stream for the route and returns it with the target the connector chose.
-func (h *HTTPRoutes) open(ctx context.Context, route string) (net.Conn, string, error) {
+// open opens a tunnel stream for the route and returns it with the target the connector chose
+// and that connector, as its certificate names it.
+func (h *HTTPRoutes) open(ctx context.Context, route string) (net.Conn, string, string, error) {
 	open := &tunnelv1.StreamOpen{Kind: tunnelv1.StreamKind_STREAM_KIND_TCP, RouteId: route}
 	if h.o.Revision != nil {
 		open.SnapshotRev = h.o.Revision()
 	}
 	st, res, err := h.o.Sessions.OpenStreamResult(ctx, open)
 	if err != nil {
-		return nil, "", err
+		return nil, "", "", err
 	}
 	if st == nil {
-		return nil, "", &openError{route: route, code: res.GetCode()}
+		return nil, "", "", &openError{route: route, code: res.GetCode()}
 	}
-	return &streamConn{Stream: st}, res.GetTargetId(), nil
+	return &streamConn{Stream: st}, res.GetTargetId(), StreamConnector(st), nil
+}
+
+// upstreamTLS is the TLS configuration of a route target, for the streams of its connector.
+type upstreamTLS struct {
+	cfg       *tls.Config
+	connector string // "" from a controller that names none
+	verify    UpstreamVerify
 }
 
 // dialTLS opens a tunnel stream for an https route and completes TLS over it, verified with the
-// settings of the target the connector chose; a target without them fails closed.
+// settings of the target the connector chose. A target without settings fails closed, and so does
+// one of another connector: a connector cannot have the gateway apply another target's settings,
+// such as an unverified one's, to its stream (ADR-0017). Settings that name no connector, from an
+// older controller, apply only when they verify the chain.
 func (h *HTTPRoutes) dialTLS(ctx context.Context, rt *routeTransport) (net.Conn, error) {
 	route := rt.route.Load().ID
-	c, target, err := h.open(ctx, route)
+	c, target, connector, err := h.open(ctx, route)
 	if err != nil {
 		return nil, err
 	}
-	cfg := rt.tls[target]
-	if cfg == nil {
+	u, ok := rt.tls[target]
+	switch {
+	case !ok:
 		_ = c.Close()
 		return nil, fmt.Errorf("route %s: no TLS settings for target %q", route, target)
+	case u.verify != VerifyChain && u.connector == "":
+		_ = c.Close()
+		return nil, fmt.Errorf("route %s: target %s is not verified and names no connector", route, target)
+	case u.connector != "" && u.connector != connector:
+		_ = c.Close()
+		return nil, fmt.Errorf("route %s: connector %s answered for target %s, which is not its own", route, connector, target)
 	}
-	tc := tls.Client(c, cfg)
+	// The stream is tracked under the TLS connection, which the transport needs as a *tls.Conn to
+	// learn the protocol ALPN chose.
+	tracked, err := rt.upstream.track(target, rt.route.Load().TLS[target], c)
+	if err != nil {
+		_ = c.Close()
+		return nil, fmt.Errorf("route %s: %w", route, err)
+	}
+	tc := tls.Client(tracked, u.cfg)
 	if err := tc.HandshakeContext(ctx); err != nil {
 		_ = tc.Close()
 		return nil, fmt.Errorf("route %s: TLS to target %s: %w", route, target, err)
@@ -604,7 +798,8 @@ func (h *HTTPRoutes) dialTLS(ctx context.Context, rt *routeTransport) (net.Conn,
 }
 
 // proxyError answers a request the proxy could not complete: 503 with Retry-After when no
-// connector is ready, 504 when the upstream does not answer in time, 502 otherwise.
+// connector is ready, 504 when the upstream does not answer in time, 502 otherwise, each with the
+// service-unavailable page; a body above the route's limit is 413.
 func (h *HTTPRoutes) proxyError(w http.ResponseWriter, r *http.Request, err error) {
 	var (
 		oe *openError
@@ -630,7 +825,11 @@ func (h *HTTPRoutes) proxyError(w http.ResponseWriter, r *http.Request, err erro
 		w.Header().Set("Retry-After", strconv.Itoa(httpRetryAfter))
 	}
 	h.o.Logger.Debug("proxy error", "host", r.Host, "status", status, "error", err)
-	http.Error(w, http.StatusText(status), status)
+	if status == http.StatusRequestEntityTooLarge {
+		http.Error(w, http.StatusText(status), status)
+		return
+	}
+	writePage(w, r, status, pageUnavailable, http.StatusText(status))
 }
 
 // ServeHTTP routes a request by its host and the longest matching path prefix.
@@ -639,7 +838,16 @@ func (h *HTTPRoutes) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	defer h.active.Add(-1)
 	rt := h.routeFor(r.Host, r.URL.Path)
 	if rt == nil {
-		http.Error(w, "no route for this host and path", http.StatusNotFound)
+		// A name this gateway does not route, on a connection of another name: a client that
+		// reused the connection, such as an HTTP/2 one under a wildcard certificate, asks again
+		// on a connection of its own, which reaches the name's own handler (RFC 9110, section
+		// 15.5.20).
+		if host := strings.TrimSuffix(hostOnly(r.Host), "."); r.TLS != nil && r.TLS.ServerName != "" &&
+			!strings.EqualFold(strings.TrimSuffix(r.TLS.ServerName, "."), host) && !h.Serves(host) {
+			misdirected(w, r)
+			return
+		}
+		writePage(w, r, http.StatusNotFound, pageNotFound, noRouteText)
 		return
 	}
 	if age := rt.route.Load().HSTS; age > 0 && r.TLS != nil {
@@ -690,18 +898,33 @@ func (h *HTTPRoutes) proxy(rw http.ResponseWriter, r *http.Request, rt *routeTra
 			return
 		}
 	}
-	ctx, cancel := context.WithCancel(r.Context())
+	ctx, cancel := context.WithCancel(withPageRequest(r.Context(), r))
 	defer cancel()
 	ar := &activeRequest{client: client, cancel: cancel}
 	rt.mu.Lock()
 	rt.active[ar] = struct{}{}
+	// The rules may have changed while the request was checked, basic auth taking a while; under
+	// rt.mu, either enforce sees the request, or this check sees the rules it set (#523).
+	allowed := rt.access.Allows(client)
 	rt.mu.Unlock()
 	defer func() {
 		rt.mu.Lock()
 		delete(rt.active, ar)
 		rt.mu.Unlock()
 	}()
+	if !allowed {
+		http.Error(w, http.StatusText(http.StatusForbidden), http.StatusForbidden)
+		return
+	}
 	r = r.WithContext(ctx)
+	if route.Maintenance {
+		if r.ContentLength != 0 {
+			closeUnread(w, r) // nothing reads the body
+		}
+		w.Header().Set("Retry-After", strconv.Itoa(maintenanceRetryAfter))
+		writeMaintenance(w, r, route.MaintenanceMessage)
+		return
+	}
 	if !route.WebSocket && r.Header.Get("Upgrade") != "" {
 		http.Error(w, "upgrades are off for this route", http.StatusForbidden)
 		return
@@ -718,10 +941,7 @@ func (h *HTTPRoutes) proxy(rw http.ResponseWriter, r *http.Request, rt *routeTra
 
 // routeFor returns the route for a request's host, with or without a port, and path, or nil.
 func (h *HTTPRoutes) routeFor(host, path string) *routeTransport {
-	if hp, _, err := net.SplitHostPort(host); err == nil {
-		host = hp
-	}
-	entries, _ := h.table.Load().lookup(host)
+	entries, _ := h.table.Load().lookup(hostOnly(host))
 	for _, e := range entries {
 		if matchPrefix(path, e.prefix) {
 			return e.route
@@ -763,14 +983,18 @@ func (h *HTTPRoutes) Active() int64 { return h.active.Load() }
 func (h *HTTPRoutes) Drain() {
 	h.server.SetKeepAlivesEnabled(false)
 	h.server80.SetKeepAlivesEnabled(false)
+	h.unrouted.SetKeepAlivesEnabled(false)
 	h.ln.close()
+	h.lnNone.close()
 }
 
 // Close stops the server and every connection.
 func (h *HTTPRoutes) Close() {
 	h.ln.close()
+	h.lnNone.close()
 	_ = h.server.Close()
 	_ = h.server80.Close()
+	_ = h.unrouted.Close()
 	h.mu.Lock()
 	for _, rt := range h.transports {
 		rt.tr.CloseIdleConnections()

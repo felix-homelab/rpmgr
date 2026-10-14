@@ -52,8 +52,9 @@ function Area({ id, title, summary, fine, children }: { id: string; title: strin
 
 function Agents({ orgId }: { orgId: string }) {
   const { t } = useTranslation();
-  const connectors = (useConnectors(orgId).data ?? []).filter((c) => !c.decommissionTime);
-  const gateways = (useGateways(orgId).data ?? []).filter((g) => !g.decommissionTime);
+  // A disabled connector or a drained gateway is not expected to be connected (D81).
+  const connectors = (useConnectors(orgId).data ?? []).filter((c) => !c.decommissionTime && c.enabled);
+  const gateways = (useGateways(orgId).data ?? []).filter((g) => !g.decommissionTime && g.enabled);
   const seen = (ts: Parameters<typeof when>[0]) => (ts ? t("health.lastSeen", { when: when(ts) }) : t("health.neverSeen"));
   const items = [
     ...gateways.filter((g) => !g.status?.connected).map((g) => (
@@ -81,7 +82,7 @@ function Routes({ orgId }: { orgId: string }) {
   const { t } = useTranslation();
   const routes = useRoutes(orgId).data ?? [];
   const items = routes
-    .filter((r) => r.status && (![RouteState.READY, RouteState.DISABLED].includes(r.status.state) || r.status.rejections.length > 0))
+    .filter((r) => r.status && (![RouteState.READY, RouteState.DISABLED, RouteState.MAINTENANCE].includes(r.status.state) || r.status.rejections.length > 0))
     .map((r) => (
       <li key={r.id} className="flex flex-wrap items-center gap-2">
         <Link to="/routes/$routeId" params={{ routeId: r.id }} className="font-medium hover:underline">{r.name}</Link>

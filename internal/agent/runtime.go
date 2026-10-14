@@ -40,6 +40,9 @@ type Applier interface {
 	// lets the removed ones drain; unchanged resources stay untouched. It returns the resources
 	// that are not ready.
 	Apply(ctx context.Context, snap *agentv1.Snapshot, c Changes) []*agentv1.ResourceStatus
+	// Readiness returns the resources that are not ready now; one that Apply returned may have
+	// become ready since, as a port bound after all.
+	Readiness() []*agentv1.ResourceStatus
 }
 
 // RuntimeOptions configure a Runtime.
@@ -229,7 +232,7 @@ func (r *Runtime) receive(ctx context.Context, signed *agentv1.Signed) {
 	cur, epoch := r.cur, r.epoch
 	r.mu.Unlock()
 	if cur != nil && bytes.Equal(cur.hash, hash) {
-		r.o.Send(applied(rev, hash, nil)) // the controller missed the answer
+		r.o.Send(applied(rev, hash, r.o.Applier.Readiness())) // the controller missed the answer
 		return
 	}
 	if cur != nil && !newer(rev, cur.rev, epoch) && !resigned(rev, cur, signed.GetKeyId()) {

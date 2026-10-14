@@ -347,3 +347,115 @@ func TestAllocateReplacing(t *testing.T) {
 		}
 	})
 }
+
+// TestAllocateBoth: a tcp_udp route's port lies in a TCP and a UDP pool and is free in both; an
+// explicit port taken in either protocol, or outside either protocol's pools, is refused, and a
+// random one is a port free in both; each protocol's quota counts, except for the allocations a
+// moving route replaces.
+func TestAllocateBoth(t *testing.T) {
+	storetest.ForEachDialect(t, func(t *testing.T, db *store.DB) {
+		e := newEnv(t, db)
+		both := func(port int, replaces ...string) (tcp, udp *ent.PortAllocation, err error) {
+			r := append(replaces, "", "")
+			err = e.tx(t, func(tx *ent.Tx) error {
+				var err error
+				tcp, udp, err = routes.AllocateBoth(e.sys, tx, e.orgA, e.groupA, port, r[0], r[1])
+				return err
+			})
+			return tcp, udp, err
+		}
+		if err := e.pool(t, e.orgA, e.groupA, routes.TCP, 20000, 20004); err != nil {
+			t.Fatal(err)
+		}
+		if _, _, err := both(20000); !errors.Is(err, routes.ErrNotInPool) {
+			t.Fatalf("no UDP pool: %v", err)
+		}
+		if _, _, err := both(0); !errors.Is(err, routes.ErrPoolExhausted) {
+			t.Fatalf("a random port without a UDP pool: %v", err)
+		}
+		if err := e.pool(t, e.orgA, e.groupA, routes.UDP, 20003, 20009); err != nil {
+			t.Fatal(err)
+		}
+		if _, _, err := both(20001); !errors.Is(err, routes.ErrNotInPool) {
+			t.Fatalf("a port of the TCP pool only: %v", err)
+		}
+		if _, _, err := both(20005); !errors.Is(err, routes.ErrNotInPool) {
+			t.Fatalf("a port of the UDP pool only: %v", err)
+		}
+		// 20003 and 20004 lie in both pools: take 20003 for UDP and 20004 for TCP alone.
+		if _, err := e.alloc(t, e.orgA, e.groupA, routes.UDP, 20003); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := e.alloc(t, e.orgA, e.groupA, routes.TCP, 20004); err != nil {
+			t.Fatal(err)
+		}
+		if _, _, err := both(20003); !errors.Is(err, routes.ErrPortTaken) {
+			t.Fatalf("a port taken for UDP: %v", err)
+		}
+		if _, _, err := both(20004); !errors.Is(err, routes.ErrPortTaken) {
+			t.Fatalf("a port taken for TCP: %v", err)
+		}
+		if _, _, err := both(0); !errors.Is(err, routes.ErrPoolExhausted) {
+			t.Fatalf("no port free in both: %v", err)
+		}
+		if n := e.db.Client().PortAllocation.Query().CountX(e.sys); n != 2 {
+			t.Fatalf("%d allocations after refusals, want 2", n)
+		}
+
+		for _, p := range []routes.Protocol{routes.TCP, routes.UDP} {
+			if err := e.pool(t, e.orgA, e.groupA, p, 20010, 20014); err != nil {
+				t.Fatal(err)
+			}
+		}
+		for range 5 { // random ports are free in both, whatever the order of the pools
+			tcp, udp, err := both(0)
+			if err != nil || tcp.Port != udp.Port || tcp.Port < 20010 || tcp.Port > 20014 || tcp.Protocol != "tcp" || udp.Protocol != "udp" {
+				t.Fatalf("a random port: %v %v %v", tcp, udp, err)
+			}
+		}
+		if _, _, err := both(0); !errors.Is(err, routes.ErrPoolExhausted) {
+			t.Fatalf("every port free in both taken: %v", err)
+		}
+		for _, p := range []routes.Protocol{routes.TCP, routes.UDP} {
+			if err := e.pool(t, e.orgA, e.groupA, p, 20020, 20029); err != nil {
+				t.Fatal(err)
+			}
+		}
+		// Six UDP ports are allocated: 20003 and the five random ones.
+		e.db.Client().PortQuota.Create().SetOrgID(e.orgA).SetGatewayGroupID(e.groupA).SetProtocol("udp").SetMaxPorts(7).ExecX(e.sys)
+		tcp, udp, err := both(20028)
+		if err != nil {
+			t.Fatalf("the seventh UDP port: %v", err)
+		}
+		if _, _, err := both(20029); !errors.Is(err, routes.ErrQuotaReached) {
+			t.Fatalf("over the UDP quota: %v", err)
+		}
+		if _, _, err := both(20029, tcp.ID); !errors.Is(err, routes.ErrQuotaReached) {
+			t.Fatalf("a move that replaces only the TCP port: %v", err)
+		}
+		err = e.tx(t, func(tx *ent.Tx) error {
+			nt, nu, err := routes.AllocateBoth(e.sys, tx, e.orgA, e.groupA, 20029, tcp.ID, udp.ID)
+			if err != nil || nt.Port != 20029 || nu.Port != 20029 {
+				return fmt.Errorf("a move at a full UDP quota: %v %v %w", nt, nu, err)
+			}
+			if err := routes.Release(e.sys, tx, tcp.ID); err != nil {
+				return err
+			}
+			return routes.Release(e.sys, tx, udp.ID)
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		e.db.Client().PortQuota.Create().SetOrgID(e.orgA).SetGatewayGroupID(e.groupA).SetProtocol("tcp").SetMaxPorts(1).ExecX(e.sys)
+		if _, _, err := both(0); !errors.Is(err, routes.ErrQuotaReached) {
+			t.Fatalf("over the TCP quota: %v", err)
+		}
+		err = e.tx(t, func(tx *ent.Tx) error {
+			_, _, err := routes.AllocateBoth(e.sys, tx, e.orgA, e.groupB, 0, "", "")
+			return err
+		})
+		if !errors.Is(err, routes.ErrNoGroup) {
+			t.Fatalf("another org's group: %v", err)
+		}
+	})
+}

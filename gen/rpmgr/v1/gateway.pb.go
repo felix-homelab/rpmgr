@@ -86,7 +86,7 @@ type Gateway struct {
 	Id string `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
 	// Its group; set at creation.
 	GatewayGroupId string `protobuf:"bytes,2,opt,name=gateway_group_id,json=gatewayGroupId,proto3" json:"gateway_group_id,omitempty"`
-	// Its name, unique in the org; required on create.
+	// Its name, unique among the org's gateways that are not decommissioned; required on create.
 	Name string `protobuf:"bytes,3,opt,name=name,proto3" json:"name,omitempty"`
 	// Its place in the group, 1 to 4; output only.
 	Slot int32 `protobuf:"varint,4,opt,name=slot,proto3" json:"slot,omitempty"`
@@ -101,7 +101,10 @@ type Gateway struct {
 	// When it was created; output only.
 	CreateTime *timestamppb.Timestamp `protobuf:"bytes,9,opt,name=create_time,json=createTime,proto3" json:"create_time,omitempty"`
 	// The version to send back with an update; output only.
-	Etag          string `protobuf:"bytes,10,opt,name=etag,proto3" json:"etag,omitempty"`
+	Etag string `protobuf:"bytes,10,opt,name=etag,proto3" json:"etag,omitempty"`
+	// Whether it is all-in-one's own gateway, which runs in the controller's process and cannot be
+	// decommissioned; output only.
+	BuiltIn       bool `protobuf:"varint,11,opt,name=built_in,json=builtIn,proto3" json:"built_in,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -204,6 +207,13 @@ func (x *Gateway) GetEtag() string {
 		return x.Etag
 	}
 	return ""
+}
+
+func (x *Gateway) GetBuiltIn() bool {
+	if x != nil {
+		return x.BuiltIn
+	}
+	return false
 }
 
 // GatewayStatus is what the controller last saw of a gateway.
@@ -2710,7 +2720,7 @@ var File_rpmgr_v1_gateway_proto protoreflect.FileDescriptor
 
 const file_rpmgr_v1_gateway_proto_rawDesc = "" +
 	"\n" +
-	"\x16rpmgr/v1/gateway.proto\x12\brpmgr.v1\x1a\x1bbuf/validate/validate.proto\x1a google/protobuf/field_mask.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x15rpmgr/v1/common.proto\x1a\x16rpmgr/v1/options.proto\x1a\x15rpmgr/v1/status.proto\"\xbe\x03\n" +
+	"\x16rpmgr/v1/gateway.proto\x12\brpmgr.v1\x1a\x1bbuf/validate/validate.proto\x1a google/protobuf/field_mask.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x15rpmgr/v1/common.proto\x1a\x16rpmgr/v1/options.proto\x1a\x15rpmgr/v1/status.proto\"\xd9\x03\n" +
 	"\aGateway\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12(\n" +
 	"\x10gateway_group_id\x18\x02 \x01(\tR\x0egatewayGroupId\x12B\n" +
@@ -2723,7 +2733,8 @@ const file_rpmgr_v1_gateway_proto_rawDesc = "" +
 	"\vcreate_time\x18\t \x01(\v2\x1a.google.protobuf.TimestampR\n" +
 	"createTime\x12\x12\n" +
 	"\x04etag\x18\n" +
-	" \x01(\tR\x04etag\"\xc6\x01\n" +
+	" \x01(\tR\x04etag\x12\x19\n" +
+	"\bbuilt_in\x18\v \x01(\bR\abuiltIn\"\xc6\x01\n" +
 	"\rGatewayStatus\x12\x1a\n" +
 	"\benrolled\x18\x01 \x01(\bR\benrolled\x12\x1c\n" +
 	"\tconnected\x18\x02 \x01(\bR\tconnected\x12\x18\n" +

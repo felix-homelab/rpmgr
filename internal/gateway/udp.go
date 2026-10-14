@@ -6,8 +6,10 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"maps"
 	"net"
 	"net/netip"
+	"slices"
 	"strconv"
 	"sync"
 	"sync/atomic"
@@ -41,6 +43,9 @@ type UDPOptions struct {
 	Sessions *Sessions
 	Revision func() *agentv1.Revision
 	Metrics  *tunnel.UDPMetrics
+	// OnChange is told that a route became ready without a new snapshot: its port was bound after
+	// all. It must not block; it may be nil.
+	OnChange func()
 	Logger   *slog.Logger
 }
 
@@ -55,10 +60,12 @@ type UDPRoutes struct {
 	cancel context.CancelFunc
 	wg     sync.WaitGroup
 
-	mu     sync.Mutex
-	ports  map[uint16]*udpPort
-	status map[string]*agentv1.ResourceStatus
-	closed bool
+	mu      sync.Mutex
+	ports   map[uint16]*udpPort
+	pending map[uint16]UDPRoute // ports that could not be bound yet
+	status  map[string]*agentv1.ResourceStatus
+	closed  bool
+	retry   *time.Timer
 }
 
 type udpPort struct {
@@ -90,10 +97,12 @@ func NewUDPRoutes(o UDPOptions) *UDPRoutes {
 		o.Metrics, _ = tunnel.NewUDPMetrics(nil)
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	return &UDPRoutes{o: o, ctx: ctx, cancel: cancel, ports: map[uint16]*udpPort{}, status: map[string]*agentv1.ResourceStatus{}}
+	return &UDPRoutes{o: o, ctx: ctx, cancel: cancel, ports: map[uint16]*udpPort{}, pending: map[uint16]UDPRoute{},
+		status: map[string]*agentv1.ResourceStatus{}}
 }
 
-// Apply makes routes the served ones and returns those whose port cannot be bound. A port no
+// Apply makes routes the served ones and returns those whose port cannot be bound: such a port is
+// not_ready(port_in_use) and is tried again every few seconds, as a tcp route's is. A port no
 // route uses any more closes with its flows.
 func (u *UDPRoutes) Apply(routes []UDPRoute) []*agentv1.ResourceStatus {
 	u.mu.Lock()
@@ -105,6 +114,7 @@ func (u *UDPRoutes) Apply(routes []UDPRoute) []*agentv1.ResourceStatus {
 	for _, r := range routes {
 		want[r.Port] = r
 	}
+	u.pending = map[uint16]UDPRoute{}
 	u.status = map[string]*agentv1.ResourceStatus{}
 	for port, p := range u.ports {
 		if r, ok := want[port]; ok {
@@ -120,37 +130,107 @@ func (u *UDPRoutes) Apply(routes []UDPRoute) []*agentv1.ResourceStatus {
 		if u.ports[port] != nil {
 			continue
 		}
-		addr, err := net.ResolveUDPAddr("udp", net.JoinHostPort(u.o.Host, strconv.Itoa(int(port))))
-		var conn *net.UDPConn
-		if err == nil {
-			conn, err = net.ListenUDP("udp", addr)
-		}
+		conn, err := u.listen(port)
 		if err != nil {
-			reason := agentv1.NotReadyReason_NOT_READY_REASON_ENVIRONMENT
-			if errors.Is(err, syscall.EADDRINUSE) {
-				reason = agentv1.NotReadyReason_NOT_READY_REASON_PORT_IN_USE
-			}
-			u.status[r.ID] = &agentv1.ResourceStatus{ResourceId: r.ID, Reason: reason, Detail: "udp port " + strconv.Itoa(int(port)) + ": " + err.Error()}
+			u.notBound(r, err)
 			continue
 		}
-		p := &udpPort{conn: conn, flows: map[netip.AddrPort]*flow{}}
-		p.route.Store(&r)
-		u.ports[port] = p
-		u.wg.Go(func() { u.read(p) })
-		u.wg.Go(func() { u.expire(p) })
+		u.serve(conn, r)
 	}
+	if len(u.pending) > 0 && u.retry == nil {
+		u.retry = time.AfterFunc(rebindEvery, u.rebind)
+	}
+	return u.statusLocked()
+}
+
+// Bound reports whether a route listens on the port.
+func (u *UDPRoutes) Bound(port uint16) bool {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	_, ok := u.ports[port]
+	return ok
+}
+
+func (u *UDPRoutes) listen(port uint16) (*net.UDPConn, error) {
+	addr, err := net.ResolveUDPAddr("udp", net.JoinHostPort(u.o.Host, strconv.Itoa(int(port))))
+	if err != nil {
+		return nil, err
+	}
+	return net.ListenUDP("udp", addr)
+}
+
+// notBound records a route whose port could not be bound. Under u.mu.
+func (u *UDPRoutes) notBound(r UDPRoute, err error) {
+	u.pending[r.Port] = r
+	reason := agentv1.NotReadyReason_NOT_READY_REASON_ENVIRONMENT
+	if errors.Is(err, syscall.EADDRINUSE) {
+		reason = agentv1.NotReadyReason_NOT_READY_REASON_PORT_IN_USE
+	}
+	u.status[r.ID] = &agentv1.ResourceStatus{ResourceId: r.ID, Reason: reason, Detail: "udp port " + strconv.Itoa(int(r.Port)) + ": " + err.Error()}
+	u.o.Logger.Warn("cannot listen on a route's udp port", "route", r.ID, "port", r.Port, "error", err)
+}
+
+// rebind tries the pending ports again.
+func (u *UDPRoutes) rebind() {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	u.retry = nil
+	if u.closed {
+		return
+	}
+	bound := false
+	for _, port := range slices.Sorted(maps.Keys(u.pending)) {
+		r := u.pending[port]
+		conn, err := u.listen(port)
+		if err != nil {
+			continue
+		}
+		delete(u.pending, port)
+		delete(u.status, r.ID)
+		u.serve(conn, r)
+		u.o.Logger.Info("listening on a route's udp port after all", "route", r.ID, "port", port)
+		bound = true
+	}
+	if bound && u.o.OnChange != nil {
+		u.o.OnChange()
+	}
+	if len(u.pending) > 0 {
+		u.retry = time.AfterFunc(rebindEvery, u.rebind)
+	}
+}
+
+// serve starts reading a new port. Under u.mu.
+func (u *UDPRoutes) serve(conn *net.UDPConn, r UDPRoute) {
+	p := &udpPort{conn: conn, flows: map[netip.AddrPort]*flow{}}
+	p.route.Store(&r)
+	u.ports[r.Port] = p
+	u.wg.Go(func() { u.read(p) })
+	u.wg.Go(func() { u.expire(p) })
+}
+
+// Status returns the routes that are not ready.
+func (u *UDPRoutes) Status() []*agentv1.ResourceStatus {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	return u.statusLocked()
+}
+
+func (u *UDPRoutes) statusLocked() []*agentv1.ResourceStatus {
 	var out []*agentv1.ResourceStatus
-	for _, st := range u.status {
-		out = append(out, st)
+	for _, id := range slices.Sorted(maps.Keys(u.status)) {
+		out = append(out, u.status[id])
 	}
 	return out
 }
 
-// Close stops every socket and flow.
+// Close stops every socket and flow, and the retries of pending ports.
 func (u *UDPRoutes) Close() {
 	u.cancel()
 	u.mu.Lock()
 	u.closed = true
+	if u.retry != nil {
+		u.retry.Stop()
+	}
 	for port, p := range u.ports {
 		_ = p.conn.Close()
 		delete(u.ports, port)

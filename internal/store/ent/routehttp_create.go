@@ -177,6 +177,34 @@ func (_c *RouteHTTPCreate) SetNillableDNSProxied(v *bool) *RouteHTTPCreate {
 	return _c
 }
 
+// SetMaintenance sets the "maintenance" field.
+func (_c *RouteHTTPCreate) SetMaintenance(v bool) *RouteHTTPCreate {
+	_c.mutation.SetMaintenance(v)
+	return _c
+}
+
+// SetNillableMaintenance sets the "maintenance" field if the given value is not nil.
+func (_c *RouteHTTPCreate) SetNillableMaintenance(v *bool) *RouteHTTPCreate {
+	if v != nil {
+		_c.SetMaintenance(*v)
+	}
+	return _c
+}
+
+// SetMaintenanceMessage sets the "maintenance_message" field.
+func (_c *RouteHTTPCreate) SetMaintenanceMessage(v string) *RouteHTTPCreate {
+	_c.mutation.SetMaintenanceMessage(v)
+	return _c
+}
+
+// SetNillableMaintenanceMessage sets the "maintenance_message" field if the given value is not nil.
+func (_c *RouteHTTPCreate) SetNillableMaintenanceMessage(v *string) *RouteHTTPCreate {
+	if v != nil {
+		_c.SetMaintenanceMessage(*v)
+	}
+	return _c
+}
+
 // SetRoute sets the "route" edge to the Route entity.
 func (_c *RouteHTTPCreate) SetRoute(v *Route) *RouteHTTPCreate {
 	return _c.SetRouteID(v.ID)
@@ -256,6 +284,14 @@ func (_c *RouteHTTPCreate) defaults() error {
 		v := routehttp.DefaultDNSProxied
 		_c.mutation.SetDNSProxied(v)
 	}
+	if _, ok := _c.mutation.Maintenance(); !ok {
+		v := routehttp.DefaultMaintenance
+		_c.mutation.SetMaintenance(v)
+	}
+	if _, ok := _c.mutation.MaintenanceMessage(); !ok {
+		v := routehttp.DefaultMaintenanceMessage
+		_c.mutation.SetMaintenanceMessage(v)
+	}
 	return nil
 }
 
@@ -325,6 +361,17 @@ func (_c *RouteHTTPCreate) check() error {
 	}
 	if _, ok := _c.mutation.DNSProxied(); !ok {
 		return &ValidationError{Name: "dns_proxied", err: errors.New(`ent: missing required field "RouteHTTP.dns_proxied"`)}
+	}
+	if _, ok := _c.mutation.Maintenance(); !ok {
+		return &ValidationError{Name: "maintenance", err: errors.New(`ent: missing required field "RouteHTTP.maintenance"`)}
+	}
+	if _, ok := _c.mutation.MaintenanceMessage(); !ok {
+		return &ValidationError{Name: "maintenance_message", err: errors.New(`ent: missing required field "RouteHTTP.maintenance_message"`)}
+	}
+	if v, ok := _c.mutation.MaintenanceMessage(); ok {
+		if err := routehttp.MaintenanceMessageValidator(v); err != nil {
+			return &ValidationError{Name: "maintenance_message", err: fmt.Errorf(`ent: validator failed for field "RouteHTTP.maintenance_message": %w`, err)}
+		}
 	}
 	if len(_c.mutation.RouteIDs()) == 0 {
 		return &ValidationError{Name: "route", err: errors.New(`ent: missing required edge "RouteHTTP.route"`)}
@@ -402,6 +449,14 @@ func (_c *RouteHTTPCreate) createSpec() (*RouteHTTP, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.DNSProxied(); ok {
 		_spec.SetField(routehttp.FieldDNSProxied, field.TypeBool, value)
 		_node.DNSProxied = value
+	}
+	if value, ok := _c.mutation.Maintenance(); ok {
+		_spec.SetField(routehttp.FieldMaintenance, field.TypeBool, value)
+		_node.Maintenance = value
+	}
+	if value, ok := _c.mutation.MaintenanceMessage(); ok {
+		_spec.SetField(routehttp.FieldMaintenanceMessage, field.TypeString, value)
+		_node.MaintenanceMessage = value
 	}
 	if nodes := _c.mutation.RouteIDs(); len(nodes) > 0 {
 		edge := &sqlgraph.EdgeSpec{

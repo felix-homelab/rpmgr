@@ -7,6 +7,8 @@ import (
 	"context"
 	"crypto/rand"
 	"net"
+	"strconv"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -114,13 +116,20 @@ func newUDPEcho(t *testing.T, m *gateway.Sessions, w *world, route string) *udpE
 // udpGateway serves route on a free port with metrics in reg.
 func udpGateway(t *testing.T, m *gateway.Sessions, route string, idle time.Duration) (*gateway.UDPRoutes, *net.UDPAddr, *prometheus.Registry) {
 	t.Helper()
+	return udpGatewayWith(t, m, route, idle, nil)
+}
+
+// udpGatewayWith is udpGateway whose routes tell onChange that one became ready.
+func udpGatewayWith(t *testing.T, m *gateway.Sessions, route string, idle time.Duration, onChange func()) (*gateway.UDPRoutes,
+	*net.UDPAddr, *prometheus.Registry) {
+	t.Helper()
 	reg := prometheus.NewRegistry()
 	metrics, err := tunnel.NewUDPMetrics(reg)
 	if err != nil {
 		t.Fatal(err)
 	}
 	u := gateway.NewUDPRoutes(gateway.UDPOptions{Host: "127.0.0.1", Sessions: m, Metrics: metrics,
-		Revision: func() *agentv1.Revision { return &agentv1.Revision{Seq: 9} }})
+		Revision: func() *agentv1.Revision { return &agentv1.Revision{Seq: 9} }, OnChange: onChange})
 	t.Cleanup(u.Close)
 	port := freeUDPPort(t)
 	if st := u.Apply([]gateway.UDPRoute{{ID: route, Port: port, FlowIdle: idle}}); len(st) != 0 {
@@ -387,4 +396,78 @@ func TestUDPRoutes_Apply(t *testing.T) {
 	if st := u.Apply([]gateway.UDPRoute{{ID: route, Port: port}}); st != nil {
 		t.Fatalf("apply after close: %v", st)
 	}
+}
+
+// takeUDPPort holds a UDP port of 127.0.0.1 until the returned function frees it.
+func takeUDPPort(t *testing.T) (uint16, func()) {
+	t.Helper()
+	c, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = c.Close() })
+	return c.LocalAddr().(*net.UDPAddr).AddrPort().Port(), func() { _ = c.Close() }
+}
+
+// stayFree fails unless port can still be bound after several rebind intervals.
+func stayFree(t *testing.T, port uint16, what string) {
+	t.Helper()
+	time.Sleep(300 * time.Millisecond)
+	c, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: int(port)})
+	if err != nil {
+		t.Fatalf("%s: %v", what, err)
+	}
+	_ = c.Close()
+}
+
+// TestUDPRoutes_PortInUse: a udp port that is taken makes its route not_ready(port_in_use) without
+// holding up the others, and is bound once it is free, which OnChange is told; a pending port
+// whose route went, or whose routes were closed, is not bound.
+func TestUDPRoutes_PortInUse(t *testing.T) {
+	gateway.SetRouteTimers(t, time.Second, 50*time.Millisecond)
+	route, busy := ids.New("rt"), ids.New("rt")
+	m := newSessions(&assignment{known: map[string]bool{cid("udp-busy"): true},
+		routes: map[string][]string{route: {cid("udp-busy")}, busy: {cid("udp-busy")}}}, nil)
+	t.Cleanup(m.Close)
+	start(t, m, connectorID("udp-busy"), hello(route, busy))
+	var changes atomic.Int32
+	u, addr, _ := udpGatewayWith(t, m, route, time.Minute, func() { changes.Add(1) })
+	free := uint16(addr.Port) //nolint:gosec // G115: a port
+	taken, release := takeUDPPort(t)
+	st := u.Apply([]gateway.UDPRoute{{ID: route, Port: free, FlowIdle: time.Minute}, {ID: busy, Port: taken, FlowIdle: time.Minute}})
+	if len(st) != 1 || st[0].GetResourceId() != busy || st[0].GetReason() != agentv1.NotReadyReason_NOT_READY_REASON_PORT_IN_USE ||
+		!strings.Contains(st[0].GetDetail(), strconv.Itoa(int(taken))) {
+		t.Fatalf("status %v", st)
+	}
+	exchange(t, client(t), addr, []byte("the other route"))
+	if st := u.Status(); len(st) != 1 || st[0].GetResourceId() != busy {
+		t.Fatalf("status while taken %v", st)
+	}
+	if changes.Load() != 0 {
+		t.Fatal("a change while the port is taken")
+	}
+	release()
+	eventually(t, "the freed port was not bound", func() bool { return len(u.Status()) == 0 })
+	exchange(t, client(t), &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: int(taken)}, []byte("once free"))
+	if n := changes.Load(); n != 1 {
+		t.Fatalf("%d changes, want 1", n)
+	}
+
+	taken, release = takeUDPPort(t)
+	if st := u.Apply([]gateway.UDPRoute{{ID: busy, Port: taken}}); len(st) != 1 {
+		t.Fatalf("a second taken port: %v", st)
+	}
+	if st := u.Apply(nil); len(st) != 0 || len(u.Status()) != 0 {
+		t.Fatalf("no routes: %v, %v", st, u.Status())
+	}
+	release()
+	stayFree(t, taken, "the port of a removed route was bound")
+
+	taken, release = takeUDPPort(t)
+	if st := u.Apply([]gateway.UDPRoute{{ID: busy, Port: taken}}); len(st) != 1 {
+		t.Fatalf("a third taken port: %v", st)
+	}
+	u.Close()
+	release()
+	stayFree(t, taken, "a port was bound after Close")
 }

@@ -127,9 +127,17 @@ func connectorCommands() (update, decommission, revoke *cli.Command) {
 			if err != nil {
 				return apiError(err)
 			}
-			_, err = fmt.Fprintf(env.Stdout, "Decommissioned connector %s%s; its identity is revoked and its sessions closed.\n", id,
-				applied(resp.Msg.ProtoReflect()))
-			return err
+			if _, err = fmt.Fprintf(env.Stdout, "Decommissioned connector %s%s; its identity is revoked and its sessions closed.\n", id,
+				applied(resp.Msg.ProtoReflect())); err != nil {
+				return err
+			}
+			// The routes it left with no target are gone, with their ports and hostnames (D78).
+			for _, r := range resp.Msg.GetDeletedRoutes() {
+				if _, err = fmt.Fprintf(env.Stdout, "Deleted route %s (%s): it had no other target.\n", r.GetName(), r.GetId()); err != nil {
+					return err
+				}
+			}
+			return nil
 		},
 	}
 	revoke = &cli.Command{
@@ -156,7 +164,7 @@ func connectorCommands() (update, decommission, revoke *cli.Command) {
 // installCommand prints the command that installs an agent of the org (docs/07-api.md,
 // EnrollmentService.GetInstallCommand); the token it needs is made separately and never shown in
 // it.
-func installCommand(ctx context.Context, env *cli.Env, role string, allow []string) error {
+func installCommand(ctx context.Context, env *cli.Env, role string, allow, deny []string) error {
 	roles := map[string]rpmgrv1.AgentRole{"connector": rpmgrv1.AgentRole_AGENT_ROLE_CONNECTOR, "gateway": rpmgrv1.AgentRole_AGENT_ROLE_GATEWAY}
 	r, ok := roles[role]
 	if !ok {
@@ -166,7 +174,7 @@ func installCommand(ctx context.Context, env *cli.Env, role string, allow []stri
 	if err != nil {
 		return err
 	}
-	req := &rpmgrv1.GetInstallCommandRequest{OrgId: s.creds.Org, Role: r, AllowTargets: allow}
+	req := &rpmgrv1.GetInstallCommandRequest{OrgId: s.creds.Org, Role: r, AllowTargets: allow, DenyTargets: deny}
 	if err := protovalidate.Validate(req); err != nil {
 		return cli.Usagef("%v", err)
 	}
