@@ -37,7 +37,7 @@ var Roles = []struct {
 	Role  Role
 	About string
 }{
-	{AllInOne, "controller and gateway in one process: the homelab default"},
+	{AllInOne, "controller, gateway and connector in one process: the homelab default"},
 	{Controller, "web UI, API, CA and configuration, with gateways on other hosts"},
 	{Gateway, "public listeners for routes, enrolled with a gateway token"},
 	{Connector, "reaches the services of its network, enrolled with an enrollment token"},
@@ -241,11 +241,22 @@ func (v *Values) check() error {
 	return errors.Join(errs...)
 }
 
-// checkController checks the values of a controller or all-in-one.
+// checkController checks the values of a controller or all-in-one; an all-in-one's connector takes
+// allowed and denied targets too.
 func (v *Values) checkController(add func(string, error)) {
 	add("public URL", CheckPublicURL(v.PublicURL))
-	if v.ControllerURL != "" || v.Pin != "" || v.Token != "" || len(v.AllowTargets) > 0 || len(v.DenyTargets) > 0 || v.Proxy != "" {
-		add("values", errors.New("a controller URL, CA pin, token, allowed and denied targets and a proxy are a gateway's or a connector's"))
+	if v.ControllerURL != "" || v.Pin != "" || v.Token != "" || v.Proxy != "" {
+		add("values", errors.New("a controller URL, CA pin, token and a proxy are a gateway's or a connector's"))
+	}
+	if v.Role == AllInOne {
+		for _, t := range v.AllowTargets {
+			add("allowed target", CheckTarget(t))
+		}
+		for _, t := range v.DenyTargets {
+			add("denied target", CheckTarget(t))
+		}
+	} else if len(v.AllowTargets) > 0 || len(v.DenyTargets) > 0 {
+		add("values", errors.New("allowed and denied targets are a connector's or an all-in-one's"))
 	}
 	if v.KEKSource != "" && v.KEKSource != config.KEKFile && v.KEKSource != config.KEKSystemdCredential {
 		add("KEK source", fmt.Errorf("%q: want systemd-credential or file", v.KEKSource))

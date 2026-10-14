@@ -7,6 +7,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -102,5 +103,29 @@ func TestPolicyCommands_NotRoot(t *testing.T) {
 	}
 	if code, _, _ := runRpmgr("policy", "show", "--file", path); code != 0 {
 		t.Fatalf("show as a user: %d", code)
+	}
+}
+
+// TestPolicyUnit (ADR-0019): `rpmgr policy` reloads the connector's unit, or an all-in-one's on a
+// host with an all-in-one and no connector.
+func TestPolicyUnit(t *testing.T) {
+	for _, tc := range []struct {
+		files []string
+		want  string
+	}{
+		{nil, "rpmgr-connector.service"},
+		{[]string{"/etc/rpmgr/connector.yaml"}, "rpmgr-connector.service"},
+		{[]string{"/etc/rpmgr/all-in-one.yaml"}, "rpmgr-all-in-one.service"},
+		{[]string{"/etc/rpmgr/all-in-one.yaml", "/etc/rpmgr/connector.yaml"}, "rpmgr-connector.service"},
+	} {
+		stat := func(name string) (os.FileInfo, error) {
+			if slices.Contains(tc.files, name) {
+				return nil, nil
+			}
+			return nil, os.ErrNotExist
+		}
+		if got := policyUnit(stat); got != tc.want {
+			t.Errorf("with %v: %s, want %s", tc.files, got, tc.want)
+		}
 	}
 }
