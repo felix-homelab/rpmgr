@@ -143,6 +143,14 @@ func (u *UDPRoutes) Apply(routes []UDPRoute) []*agentv1.ResourceStatus {
 	return u.statusLocked()
 }
 
+// Bound reports whether a route listens on the port.
+func (u *UDPRoutes) Bound(port uint16) bool {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	_, ok := u.ports[port]
+	return ok
+}
+
 func (u *UDPRoutes) listen(port uint16) (*net.UDPConn, error) {
 	addr, err := net.ResolveUDPAddr("udp", net.JoinHostPort(u.o.Host, strconv.Itoa(int(port))))
 	if err != nil {

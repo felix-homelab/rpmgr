@@ -233,8 +233,8 @@ func TestAdminPrivateAddress(t *testing.T) {
 }
 
 // TestAllInOne: an all-in-one file takes the controller's and the gateway's defaults, and splits
-// into a controller whose ports 443 and 80 are the gateway's and a gateway whose identity and
-// state live under state_dir.
+// into a controller whose ports 443 and 80 are the gateway's, and a gateway and a connector whose
+// identities and state live under state_dir (ADR-0019).
 func TestAllInOne(t *testing.T) {
 	var a config.AllInOne
 	if err := config.Parse([]byte("version: 1\npublic_url: https://panel.example.com\n"), &a); err != nil {
@@ -249,7 +249,21 @@ func TestAllInOne(t *testing.T) {
 		g.Listen.UDP != ":443" || *g.Listen.HTTP != ":80" || g.IdentityDir != "/var/lib/rpmgr/gateway/identity" || g.StateDir != "/var/lib/rpmgr/gateway" {
 		t.Errorf("gateway part: %+v", g)
 	}
+	n := a.Connector()
+	if len(n.Controller.Endpoints) != 1 || n.Controller.Endpoints[0] != "https://panel.example.com" || n.PolicyFile != "/etc/rpmgr/policy.yaml" ||
+		n.IdentityDir != "/var/lib/rpmgr/connector/identity" || n.StateDir != "/var/lib/rpmgr/connector" {
+		t.Errorf("connector part: %+v", n)
+	}
+	var own config.AllInOne
+	if err := config.Parse([]byte("version: 1\npublic_url: https://p.example\nstate_dir: /srv/rpmgr\npolicy_file: /srv/policy.yaml\n"), &own); err != nil {
+		t.Fatal(err)
+	}
+	if n := own.Connector(); n.PolicyFile != "/srv/policy.yaml" || n.StateDir != "/srv/rpmgr/connector" {
+		t.Errorf("connector part with its own paths: %+v", n)
+	}
 	for _, tc := range []struct{ yaml, want string }{
+		{"version: 1\npublic_url: https://p.example\npolicy_file: policy.yaml\n", "policy_file"},
+		{"version: 1\npublic_url: https://p.example\nallow_targets: []\n", "allow_targets"},
 		{"version: 1\n", "public_url"},
 		{"version: 1\npublic_url: https://p.example\nstate_dir: lib\n", "state_dir"},
 		{"version: 1\npublic_url: https://p.example\nlisten: {tcp: \"443\"}\n", "listen.tcp"},

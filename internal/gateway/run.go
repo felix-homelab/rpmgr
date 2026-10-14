@@ -72,6 +72,9 @@ type RunOptions struct {
 	// gateway: all-in-one's connector's (Router.HandleTunnel). Run closes it when it drains or
 	// fails, so that a dial to it does not wait for a gateway that is gone.
 	Tunnels net.Listener
+	// RoutePorts, if set, gets a function that reports whether a tcp or udp route of the gateway
+	// listens on a port, so that all-in-one's connector never dials one (ADR-0019).
+	RoutePorts func(bound func(port uint16) bool)
 }
 
 // Run runs a gateway from its boot file until ctx ends (docs/02-architecture.md): its control
@@ -174,6 +177,9 @@ func Run(ctx context.Context, o RunOptions) error {
 		Revision: applier.Revision, Fallback80: o.Port80Fallback, FallbackNames: o.ControllerNames, Challenges: challenges.HTTP01,
 		Logger: o.Logger})
 	defer httpRoutes.Close()
+	if o.RoutePorts != nil {
+		o.RoutePorts(func(port uint16) bool { return routes.Bound(port) || udpRoutes.Bound(port) })
+	}
 	applier.Bind(Served{TCP: routes, UDP: udpRoutes, Passthrough: pass, HTTP: httpRoutes, Certificates: certificates, Sessions: sessions,
 		DrainPeriod: o.DrainPeriod})
 

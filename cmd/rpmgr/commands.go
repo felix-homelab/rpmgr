@@ -33,7 +33,7 @@ func commands() *cli.Command {
 				controllerInit()),
 			role("gateway", "run a gateway: public listeners and data sessions from connectors", runGateway),
 			role("connector", "run a connector: data sessions to gateways and the local targets", runConnector),
-			role("all-in-one", "run a controller and a gateway in one process", runAllInOne, allInOneInit()),
+			role("all-in-one", "run a controller, a gateway and a connector in one process", runAllInOne, allInOneInit()),
 			setupCommand(),
 			enrollCommand(),
 			loginCommand(promptAPIToken),
@@ -176,7 +176,7 @@ func allInOneInit() *cli.Command {
 	var o controller.InitOptions
 	return &cli.Command{
 		Name:    "init",
-		Summary: "initialise an all-in-one installation: controller, CA and its enrolled gateway",
+		Summary: "initialise an all-in-one installation: controller, CA and its enrolled gateway and connector",
 		Flags: func(fs *flag.FlagSet) {
 			fs.StringVar(&o.ConfigPath, "config", "", "boot file, written if it does not exist (default $RPMGR_CONFIG, else /etc/rpmgr/all-in-one.yaml)")
 			fs.StringVar(&o.PublicURL, "public-url", "", "https URL of the web UI, the API and the agents; needed when the boot file does not exist")
@@ -191,8 +191,9 @@ func allInOneInit() *cli.Command {
 				return err
 			}
 			_, err = fmt.Fprintf(env.Stdout, "Initialised the all-in-one installation.\n  trust domain: %s\n  CA pin:       %s\n"+
-				"  gateway:      %s\n  KEK:          %s\nBack up the KEK separately: without it the database cannot be read.\n"+firstUser,
-				r.TrustDomain, r.RootPin, r.GatewayID, r.KEK, r.FirstUserLink)
+				"  gateway:      %s\n  connector:    %s\n  KEK:          %s\nBack up the KEK separately: without it the database cannot be read.\n"+
+				"The connector allows no target until its local policy does: rpmgr policy allow-target <host:port>.\n"+firstUser,
+				r.TrustDomain, r.RootPin, r.GatewayID, r.ConnectorID, r.KEK, r.FirstUserLink)
 			return err
 		},
 	}

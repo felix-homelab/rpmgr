@@ -14,6 +14,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"math/big"
 	"net"
 	"net/http"
@@ -104,13 +105,16 @@ func newHostAt(t *testing.T, name string) *host {
 	} else {
 		h.publicURL, files = "https://"+name+":"+strconv.Itoa(h.port), ""
 	}
+	// Never the host's /etc/rpmgr/policy.yaml: the connector's policy is the test's.
 	boot := fmt.Sprintf(`version: 1
 public_url: %s
 listen: {tcp: ":%d", udp: ":%d", http: "127.0.0.1:%d", admin: "127.0.0.1:%d"}
 database: {dsn: %s}
 kek: {source: file, path: %s}
 %sstate_dir: %s
-`, h.publicURL, h.port, h.port, h.port80, freePort(t), filepath.Join(state, "controller.db"), filepath.Join(h.dir, "kek"), files, state)
+policy_file: %s
+`, h.publicURL, h.port, h.port, h.port80, freePort(t), filepath.Join(state, "controller.db"), filepath.Join(h.dir, "kek"), files, state,
+		filepath.Join(h.dir, "aio-policy.yaml"))
 	if err := os.WriteFile(h.boot, []byte(boot), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -334,40 +338,57 @@ func TestInit_GivesStateToOwner(t *testing.T) {
 	}
 }
 
-// TestInit_FailureIsUndone (docs/10-operations.md, "Install"): when the gateway's part of init
-// fails, the database and what init created beside it go again, while the boot file, the KEK and
-// what was there before stay; init then runs again.
+// TestInit_FailureIsUndone (docs/10-operations.md, "Install"): when the agents' part of init
+// fails, the gateway's or the connector's, the database and what init created beside it go again,
+// while the boot file, the KEK and what was there before stay; init then runs again.
 func TestInit_FailureIsUndone(t *testing.T) {
-	ctx := context.Background()
-	h := newHost(t)
-	state := filepath.Join(h.dir, "lib")
-	// A file where the gateway's state directory belongs makes the gateway's part fail.
-	blocker := filepath.Join(state, "gateway")
-	if err := os.WriteFile(blocker, []byte("in the way\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	o := controller.InitOptions{ConfigPath: h.boot, Getenv: func(string) string { return "" }}
-	if _, err := allinone.Init(ctx, o); err == nil {
-		t.Fatal("init with the gateway's state directory blocked succeeded")
-	}
-	left, err := os.ReadDir(state)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(left) != 1 || left[0].Name() != "gateway" || left[0].IsDir() {
-		t.Fatalf("after the failure, the state directory holds %v; want only the file that was there", left)
-	}
-	for _, f := range []string{h.boot, filepath.Join(h.dir, "kek")} {
-		if _, err := os.Stat(f); err != nil {
-			t.Errorf("the boot file or KEK after the failure: %v", err)
-		}
-	}
-	if err := os.Remove(blocker); err != nil {
-		t.Fatal(err)
-	}
-	r, err := allinone.Init(ctx, o)
-	if err != nil || r.GatewayID == "" {
-		t.Fatalf("init after the cause is gone: %+v, %v", r, err)
+	// A file where an agent's state directory belongs makes its part fail at once; one where the
+	// connector's identity belongs, its enrollment after the gateway's.
+	for _, part := range []string{"gateway", "connector", "connector/identity"} {
+		t.Run(part, func(t *testing.T) {
+			ctx := context.Background()
+			h := newHost(t)
+			state := filepath.Join(h.dir, "lib")
+			blocker := filepath.Join(state, part)
+			if err := os.MkdirAll(filepath.Dir(blocker), 0o750); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(blocker, []byte("in the way\n"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			o := controller.InitOptions{ConfigPath: h.boot, Getenv: func(string) string { return "" }}
+			if _, err := allinone.Init(ctx, o); err == nil {
+				t.Fatalf("init with %s blocked succeeded", part)
+			}
+			var left []string
+			if err := filepath.WalkDir(state, func(path string, d fs.DirEntry, err error) error {
+				if path != state {
+					left = append(left, strings.TrimPrefix(path, state+"/"))
+				}
+				return err
+			}); err != nil {
+				t.Fatal(err)
+			}
+			want := []string{part}
+			if part == "connector/identity" {
+				want = []string{"connector", part}
+			}
+			if !slices.Equal(left, want) {
+				t.Fatalf("after the failure, the state directory holds %v; want only %v, which was there", left, want)
+			}
+			for _, f := range []string{h.boot, filepath.Join(h.dir, "kek")} {
+				if _, err := os.Stat(f); err != nil {
+					t.Errorf("the boot file or KEK after the failure: %v", err)
+				}
+			}
+			if err := os.Remove(blocker); err != nil {
+				t.Fatal(err)
+			}
+			r, err := allinone.Init(ctx, o)
+			if err != nil || r.GatewayID == "" || r.ConnectorID == "" {
+				t.Fatalf("init after the cause is gone: %+v, %v", r, err)
+			}
+		})
 	}
 }
 
