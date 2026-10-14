@@ -5,6 +5,8 @@ package gateway_test
 import (
 	"errors"
 	"net"
+	"net/http"
+	"net/http/httptest"
 	"strconv"
 	"strings"
 	"syscall"
@@ -374,4 +376,37 @@ func TestApplier_TCPUDP(t *testing.T) {
 		_ = l.Close()
 		return true
 	})
+}
+
+// TestApplier_Maintenance: an http route's maintenance and message in the snapshot reach its
+// requests, and leave them when a later snapshot clears them.
+func TestApplier_Maintenance(t *testing.T) {
+	a, assign := gateway.NewApplier()
+	m := gateway.NewSessions(gateway.SessionsOptions{TrustDomain: td, GatewayID: "gw_01", Assignment: assign})
+	t.Cleanup(m.Close)
+	h := gateway.NewHTTPRoutes(gateway.HTTPOptions{Sessions: m})
+	t.Cleanup(h.Close)
+	a.Bind(gateway.Served{HTTP: h, Sessions: m})
+	page := func() string {
+		r := httptest.NewRequest(http.MethodGet, "https://app.example.com/", nil)
+		r.Header.Set("Accept", "text/html")
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, r)
+		return w.Body.String()
+	}
+	web := withHTTP(httpResource("rt_web", "http", "app.example.com"), func(r *agentv1.GatewayHTTPRoute) {
+		r.Maintenance, r.MaintenanceMessage = true, "Back at 18:00."
+	})
+	if st := a.Apply(t.Context(), gatewaySnapshot(1, web), agent.Changes{}); len(st) != 0 {
+		t.Fatal(st)
+	}
+	if b := page(); !strings.Contains(b, "<h1>Down for maintenance</h1>") || !strings.Contains(b, "Back at 18:00.") {
+		t.Fatalf("in maintenance: %s", b)
+	}
+	if st := a.Apply(t.Context(), gatewaySnapshot(2, httpResource("rt_web", "http", "app.example.com")), agent.Changes{}); len(st) != 0 {
+		t.Fatal(st)
+	}
+	if b := page(); !strings.Contains(b, "<h1>Service unavailable</h1>") { // no connector
+		t.Fatalf("out of maintenance: %s", b)
+	}
 }

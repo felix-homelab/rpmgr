@@ -41,18 +41,20 @@ func styleHash(page string) string {
 const (
 	pageNotFound    = "not-found"   // a name, or a path of it, that no route serves
 	pageUnavailable = "unavailable" // the gateway's own 502, 503 or 504: no live target, refused, too slow
+	pageMaintenance = "maintenance" // the 503 of a route in maintenance (D88)
 )
 
 // pageTitles are the pages' headings, by kind.
-var pageTitles = map[string]string{pageNotFound: "Site not available", pageUnavailable: "Service unavailable"}
+var pageTitles = map[string]string{pageNotFound: "Site not available", pageUnavailable: "Service unavailable",
+	pageMaintenance: "Down for maintenance"}
 
 // The plain-text answer for a name without a route, kept for clients that do not ask for HTML.
 const noRouteText = "no route for this host and path"
 
 // page is what the template shows.
 type page struct {
-	Kind, Title, StatusText, Host string
-	Status                        int
+	Kind, Title, StatusText, Host, Message string
+	Status                                 int
 }
 
 // pageRequest is what a page answers to: the client's host and whether it asked for HTML. The
@@ -81,9 +83,24 @@ func pageRequestOf(r *http.Request) pageRequest {
 // maxShownHost bounds the hostname a page repeats: a DNS name is at most 253 characters.
 const maxShownHost = 253
 
+// writeMaintenance answers a request to a route in maintenance: 503 with the maintenance page and
+// the route's message, or the message as text.
+func writeMaintenance(w http.ResponseWriter, r *http.Request, message string) {
+	text := "Service Unavailable: down for maintenance"
+	if message != "" {
+		text += "\n\n" + message
+	}
+	writePageMessage(w, r, http.StatusServiceUnavailable, pageMaintenance, text, message)
+}
+
 // writePage answers a request with one of the gateway's pages if the client asks for HTML, and with
 // text, as before the pages existed, if it does not.
 func writePage(w http.ResponseWriter, r *http.Request, status int, kind, text string) {
+	writePageMessage(w, r, status, kind, text, "")
+}
+
+// writePageMessage is writePage with a message the page shows as text.
+func writePageMessage(w http.ResponseWriter, r *http.Request, status int, kind, text, message string) {
 	client := pageRequestOf(r)
 	if !client.html {
 		http.Error(w, text, status)
@@ -95,7 +112,7 @@ func writePage(w http.ResponseWriter, r *http.Request, status int, kind, text st
 	}
 	var b bytes.Buffer
 	err := pageTemplate.Execute(&b, page{Kind: kind, Title: pageTitles[kind], Status: status, StatusText: http.StatusText(status),
-		Host: strings.ToValidUTF8(host, "�")})
+		Host: strings.ToValidUTF8(host, "�"), Message: strings.ToValidUTF8(message, "�")})
 	if err != nil {
 		http.Error(w, text, status)
 		return

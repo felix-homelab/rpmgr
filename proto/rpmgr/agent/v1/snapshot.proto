@@ -199,6 +199,11 @@ message GatewayHTTPRoute {
   uint32 hsts_max_age_seconds = 12;
   // Who may send requests.
   RouteAccess access = 13;
+  // Whether the route is in maintenance: every request its access rules admit gets the
+  // maintenance page, 503, and no stream is opened (docs/03-connections.md, "HTTP routes").
+  bool maintenance = 14;
+  // Plain text the maintenance page shows.
+  string maintenance_message = 15;
 }
 
 // HTTPHeader is a header name with its value.

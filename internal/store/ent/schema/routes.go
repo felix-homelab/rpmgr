@@ -231,7 +231,8 @@ func (RouteHTTP) Annotations() []schema.Annotation {
 // Fields of an http route (docs/06-data-model.md, "Routes"). path_prefix applies to every hostname
 // of the route, whose route_hostnames rows copy it. tls_mode acme uses the certificate ACME obtains
 // for the hostnames, certificate the uploaded certificate_id. host_header is "preserve" or the
-// Host value sent upstream; max_body_bytes 0 sets no limit.
+// Host value sent upstream; max_body_bytes 0 sets no limit. maintenance answers every request with
+// the maintenance page and its plain-text maintenance_message (D88).
 func (RouteHTTP) Fields() []ent.Field {
 	return []ent.Field{
 		field.String("route_id").NotEmpty().Unique().Immutable(),
@@ -248,6 +249,8 @@ func (RouteHTTP) Fields() []ent.Field {
 		field.Bool("websocket").Default(true),
 		field.Int64("max_body_bytes").NonNegative().Default(0),
 		field.Bool("dns_proxied").Default(false),
+		field.Bool("maintenance").Default(false),
+		field.String("maintenance_message").MaxLen(2000).Default(""),
 	}
 }
 

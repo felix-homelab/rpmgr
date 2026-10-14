@@ -366,3 +366,103 @@ func TestPages_UnroutedSlowBody(t *testing.T) {
 		t.Fatalf("after %v: %v, want the gateway to close", time.Since(start), err)
 	}
 }
+
+// TestPages_Maintenance (D88): a route in maintenance answers every request its access rules admit
+// with 503, Retry-After and the maintenance page with its message as text, keeps HSTS and its port
+// 80 redirect, and sends nothing to the upstream; a denied client still gets 403 and one without
+// credentials 401. Leaving maintenance serves the route again.
+func TestPages_Maintenance(t *testing.T) {
+	var hits atomic.Int32
+	route := gateway.HTTPRoute{ID: "rt_web", Upstream: "http", HSTS: 600, Maintenance: true,
+		MaintenanceMessage: "Back at 18:00.\n<b>Thanks</b> for waiting & sorry", Hosts: []gateway.HTTPHost{{Hostname: "app.example.com"}}}
+	e := newHTTPEnv(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		hits.Add(1)
+		_, _ = io.WriteString(w, "up")
+	}), route)
+	for _, h2 := range []bool{false, true} {
+		r := get(t, e.client(h2), "https://app.example.com/any/path", browser)
+		if r.status != http.StatusServiceUnavailable || r.header.Get("Retry-After") != "300" || !isPage(r, "Down for maintenance") ||
+			r.header.Get("Strict-Transport-Security") != "max-age=600" ||
+			!strings.Contains(r.body, "<p class=\"note\">Back at 18:00.\n&lt;b&gt;Thanks&lt;/b&gt; for waiting &amp; sorry</p>") {
+			t.Errorf("h2 %v: %d %v %s", h2, r.status, r.header, r.body)
+		}
+	}
+	if r := get(t, e.client(false), "https://app.example.com/", nil); r.status != http.StatusServiceUnavailable ||
+		r.body != "Service Unavailable: down for maintenance\n\nBack at 18:00.\n<b>Thanks</b> for waiting & sorry\n" ||
+		!strings.HasPrefix(r.header.Get("Content-Type"), "text/plain") {
+		t.Errorf("not a browser: %d %q", r.status, r.body)
+	}
+	// An upgrade gets the page too, not the upstream.
+	if r := get(t, e.client(false), "https://app.example.com/", http.Header{"Connection": {"Upgrade"}, "Upgrade": {"websocket"}}); r.status != http.StatusServiceUnavailable {
+		t.Errorf("an upgrade: %d", r.status)
+	}
+	addr := e.serve80(t)
+	if r, err := plain(t, addr, http.MethodGet, "app.example.com", "/x"); err != nil || r.status != http.StatusMovedPermanently {
+		t.Errorf("port 80 redirect: %v %v", r, err)
+	}
+
+	// The access rules come first.
+	denied := route
+	denied.Access = access(t, deny("127.0.0.0/8"))
+	e.routes.Apply([]gateway.HTTPRoute{denied})
+	if r := get(t, e.client(false), "https://app.example.com/", browser); r.status != http.StatusForbidden {
+		t.Errorf("a denied client: %d", r.status)
+	}
+	locked := route
+	locked.BasicAuth = []gateway.BasicAuthRule{rule(t, "ap_1", "v1", "alice", "pw")}
+	e.routes.Apply([]gateway.HTTPRoute{locked})
+	if r := get(t, e.client(false), "https://app.example.com/", browser); r.status != http.StatusUnauthorized {
+		t.Errorf("no credentials: %d", r.status)
+	}
+	req, _ := http.NewRequest(http.MethodGet, "https://app.example.com/", nil)
+	req.SetBasicAuth("alice", "pw")
+	req.Header.Set("Accept", "text/html")
+	resp, err := e.client(false).Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusServiceUnavailable {
+		t.Errorf("with credentials: %d", resp.StatusCode)
+	}
+	if n := hits.Load(); n != 0 {
+		t.Fatalf("the upstream got %d requests in maintenance", n)
+	}
+
+	// Leaving maintenance.
+	route.Maintenance = false
+	e.routes.Apply([]gateway.HTTPRoute{route})
+	if r := get(t, e.client(false), "https://app.example.com/", browser); r.status != http.StatusOK || r.body != "up" || hits.Load() != 1 {
+		t.Errorf("after maintenance: %d %q", r.status, r.body)
+	}
+}
+
+// TestPages_MaintenanceWithheldBody: a request to a route in maintenance that announces a body it
+// does not send gets its 503 at once, and the connection closes rather than wait for the body.
+func TestPages_MaintenanceWithheldBody(t *testing.T) {
+	e := newHTTPEnv(t, http.NotFoundHandler(), gateway.HTTPRoute{ID: "rt_web", Upstream: "http", Maintenance: true,
+		Hosts: []gateway.HTTPHost{{Hostname: "app.example.com"}}})
+	c, err := tls.Dial("tcp", e.addr, &tls.Config{ServerName: "app.example.com", RootCAs: e.pool, MinVersion: tls.VersionTLS13,
+		NextProtos: []string{"http/1.1"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = c.Close() }()
+	if _, err := io.WriteString(c, "POST / HTTP/1.1\r\nHost: app.example.com\r\nContent-Length: 100\r\n\r\nabc"); err != nil {
+		t.Fatal(err)
+	}
+	_ = c.SetReadDeadline(time.Now().Add(5 * time.Second))
+	br := bufio.NewReader(c)
+	resp, err := http.ReadResponse(br, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _ = io.Copy(io.Discard, resp.Body)
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusServiceUnavailable || !resp.Close {
+		t.Errorf("%d, close %v; want 503 and a close", resp.StatusCode, resp.Close)
+	}
+	if _, err := br.ReadByte(); !errors.Is(err, io.EOF) {
+		t.Errorf("%v, want the gateway to close", err)
+	}
+}

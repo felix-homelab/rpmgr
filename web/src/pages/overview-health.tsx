@@ -82,7 +82,7 @@ function Routes({ orgId }: { orgId: string }) {
   const { t } = useTranslation();
   const routes = useRoutes(orgId).data ?? [];
   const items = routes
-    .filter((r) => r.status && (![RouteState.READY, RouteState.DISABLED].includes(r.status.state) || r.status.rejections.length > 0))
+    .filter((r) => r.status && (![RouteState.READY, RouteState.DISABLED, RouteState.MAINTENANCE].includes(r.status.state) || r.status.rejections.length > 0))
     .map((r) => (
       <li key={r.id} className="flex flex-wrap items-center gap-2">
         <Link to="/routes/$routeId" params={{ routeId: r.id }} className="font-medium hover:underline">{r.name}</Link>

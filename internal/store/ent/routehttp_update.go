@@ -210,6 +210,34 @@ func (_u *RouteHTTPUpdate) SetNillableDNSProxied(v *bool) *RouteHTTPUpdate {
 	return _u
 }
 
+// SetMaintenance sets the "maintenance" field.
+func (_u *RouteHTTPUpdate) SetMaintenance(v bool) *RouteHTTPUpdate {
+	_u.mutation.SetMaintenance(v)
+	return _u
+}
+
+// SetNillableMaintenance sets the "maintenance" field if the given value is not nil.
+func (_u *RouteHTTPUpdate) SetNillableMaintenance(v *bool) *RouteHTTPUpdate {
+	if v != nil {
+		_u.SetMaintenance(*v)
+	}
+	return _u
+}
+
+// SetMaintenanceMessage sets the "maintenance_message" field.
+func (_u *RouteHTTPUpdate) SetMaintenanceMessage(v string) *RouteHTTPUpdate {
+	_u.mutation.SetMaintenanceMessage(v)
+	return _u
+}
+
+// SetNillableMaintenanceMessage sets the "maintenance_message" field if the given value is not nil.
+func (_u *RouteHTTPUpdate) SetNillableMaintenanceMessage(v *string) *RouteHTTPUpdate {
+	if v != nil {
+		_u.SetMaintenanceMessage(*v)
+	}
+	return _u
+}
+
 // SetCertificate sets the "certificate" edge to the Certificate entity.
 func (_u *RouteHTTPUpdate) SetCertificate(v *Certificate) *RouteHTTPUpdate {
 	return _u.SetCertificateID(v.ID)
@@ -280,6 +308,11 @@ func (_u *RouteHTTPUpdate) check() error {
 			return &ValidationError{Name: "max_body_bytes", err: fmt.Errorf(`ent: validator failed for field "RouteHTTP.max_body_bytes": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.MaintenanceMessage(); ok {
+		if err := routehttp.MaintenanceMessageValidator(v); err != nil {
+			return &ValidationError{Name: "maintenance_message", err: fmt.Errorf(`ent: validator failed for field "RouteHTTP.maintenance_message": %w`, err)}
+		}
+	}
 	if _u.mutation.RouteCleared() && len(_u.mutation.RouteIDs()) > 0 {
 		return errors.New(`ent: clearing a required unique edge "RouteHTTP.route"`)
 	}
@@ -345,6 +378,12 @@ func (_u *RouteHTTPUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if value, ok := _u.mutation.DNSProxied(); ok {
 		_spec.SetField(routehttp.FieldDNSProxied, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.Maintenance(); ok {
+		_spec.SetField(routehttp.FieldMaintenance, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.MaintenanceMessage(); ok {
+		_spec.SetField(routehttp.FieldMaintenanceMessage, field.TypeString, value)
 	}
 	if _u.mutation.CertificateCleared() {
 		edge := &sqlgraph.EdgeSpec{
@@ -577,6 +616,34 @@ func (_u *RouteHTTPUpdateOne) SetNillableDNSProxied(v *bool) *RouteHTTPUpdateOne
 	return _u
 }
 
+// SetMaintenance sets the "maintenance" field.
+func (_u *RouteHTTPUpdateOne) SetMaintenance(v bool) *RouteHTTPUpdateOne {
+	_u.mutation.SetMaintenance(v)
+	return _u
+}
+
+// SetNillableMaintenance sets the "maintenance" field if the given value is not nil.
+func (_u *RouteHTTPUpdateOne) SetNillableMaintenance(v *bool) *RouteHTTPUpdateOne {
+	if v != nil {
+		_u.SetMaintenance(*v)
+	}
+	return _u
+}
+
+// SetMaintenanceMessage sets the "maintenance_message" field.
+func (_u *RouteHTTPUpdateOne) SetMaintenanceMessage(v string) *RouteHTTPUpdateOne {
+	_u.mutation.SetMaintenanceMessage(v)
+	return _u
+}
+
+// SetNillableMaintenanceMessage sets the "maintenance_message" field if the given value is not nil.
+func (_u *RouteHTTPUpdateOne) SetNillableMaintenanceMessage(v *string) *RouteHTTPUpdateOne {
+	if v != nil {
+		_u.SetMaintenanceMessage(*v)
+	}
+	return _u
+}
+
 // SetCertificate sets the "certificate" edge to the Certificate entity.
 func (_u *RouteHTTPUpdateOne) SetCertificate(v *Certificate) *RouteHTTPUpdateOne {
 	return _u.SetCertificateID(v.ID)
@@ -658,6 +725,11 @@ func (_u *RouteHTTPUpdateOne) check() error {
 	if v, ok := _u.mutation.MaxBodyBytes(); ok {
 		if err := routehttp.MaxBodyBytesValidator(v); err != nil {
 			return &ValidationError{Name: "max_body_bytes", err: fmt.Errorf(`ent: validator failed for field "RouteHTTP.max_body_bytes": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.MaintenanceMessage(); ok {
+		if err := routehttp.MaintenanceMessageValidator(v); err != nil {
+			return &ValidationError{Name: "maintenance_message", err: fmt.Errorf(`ent: validator failed for field "RouteHTTP.maintenance_message": %w`, err)}
 		}
 	}
 	if _u.mutation.RouteCleared() && len(_u.mutation.RouteIDs()) > 0 {
@@ -742,6 +814,12 @@ func (_u *RouteHTTPUpdateOne) sqlSave(ctx context.Context) (_node *RouteHTTP, er
 	}
 	if value, ok := _u.mutation.DNSProxied(); ok {
 		_spec.SetField(routehttp.FieldDNSProxied, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.Maintenance(); ok {
+		_spec.SetField(routehttp.FieldMaintenance, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.MaintenanceMessage(); ok {
+		_spec.SetField(routehttp.FieldMaintenanceMessage, field.TypeString, value)
 	}
 	if _u.mutation.CertificateCleared() {
 		edge := &sqlgraph.EdgeSpec{

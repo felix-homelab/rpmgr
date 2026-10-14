@@ -30543,6 +30543,8 @@ type RouteHTTPMutation struct {
 	max_body_bytes          *int64
 	addmax_body_bytes       *int64
 	dns_proxied             *bool
+	maintenance             *bool
+	maintenance_message     *string
 	clearedFields           map[string]struct{}
 	route                   *string
 	clearedroute            bool
@@ -31247,6 +31249,78 @@ func (m *RouteHTTPMutation) ResetDNSProxied() {
 	m.dns_proxied = nil
 }
 
+// SetMaintenance sets the "maintenance" field.
+func (m *RouteHTTPMutation) SetMaintenance(b bool) {
+	m.maintenance = &b
+}
+
+// Maintenance returns the value of the "maintenance" field in the mutation.
+func (m *RouteHTTPMutation) Maintenance() (r bool, exists bool) {
+	v := m.maintenance
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldMaintenance returns the old "maintenance" field's value of the RouteHTTP entity.
+// If the RouteHTTP object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RouteHTTPMutation) OldMaintenance(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldMaintenance is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldMaintenance requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldMaintenance: %w", err)
+	}
+	return oldValue.Maintenance, nil
+}
+
+// ResetMaintenance resets all changes to the "maintenance" field.
+func (m *RouteHTTPMutation) ResetMaintenance() {
+	m.maintenance = nil
+}
+
+// SetMaintenanceMessage sets the "maintenance_message" field.
+func (m *RouteHTTPMutation) SetMaintenanceMessage(s string) {
+	m.maintenance_message = &s
+}
+
+// MaintenanceMessage returns the value of the "maintenance_message" field in the mutation.
+func (m *RouteHTTPMutation) MaintenanceMessage() (r string, exists bool) {
+	v := m.maintenance_message
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldMaintenanceMessage returns the old "maintenance_message" field's value of the RouteHTTP entity.
+// If the RouteHTTP object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RouteHTTPMutation) OldMaintenanceMessage(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldMaintenanceMessage is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldMaintenanceMessage requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldMaintenanceMessage: %w", err)
+	}
+	return oldValue.MaintenanceMessage, nil
+}
+
+// ResetMaintenanceMessage resets all changes to the "maintenance_message" field.
+func (m *RouteHTTPMutation) ResetMaintenanceMessage() {
+	m.maintenance_message = nil
+}
+
 // ClearRoute clears the "route" edge to the Route entity.
 func (m *RouteHTTPMutation) ClearRoute() {
 	m.clearedroute = true
@@ -31335,7 +31409,7 @@ func (m *RouteHTTPMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *RouteHTTPMutation) Fields() []string {
-	fields := make([]string, 0, 14)
+	fields := make([]string, 0, 16)
 	if m.org_id != nil {
 		fields = append(fields, routehttp.FieldOrgID)
 	}
@@ -31378,6 +31452,12 @@ func (m *RouteHTTPMutation) Fields() []string {
 	if m.dns_proxied != nil {
 		fields = append(fields, routehttp.FieldDNSProxied)
 	}
+	if m.maintenance != nil {
+		fields = append(fields, routehttp.FieldMaintenance)
+	}
+	if m.maintenance_message != nil {
+		fields = append(fields, routehttp.FieldMaintenanceMessage)
+	}
 	return fields
 }
 
@@ -31414,6 +31494,10 @@ func (m *RouteHTTPMutation) Field(name string) (ent.Value, bool) {
 		return m.MaxBodyBytes()
 	case routehttp.FieldDNSProxied:
 		return m.DNSProxied()
+	case routehttp.FieldMaintenance:
+		return m.Maintenance()
+	case routehttp.FieldMaintenanceMessage:
+		return m.MaintenanceMessage()
 	}
 	return nil, false
 }
@@ -31451,6 +31535,10 @@ func (m *RouteHTTPMutation) OldField(ctx context.Context, name string) (ent.Valu
 		return m.OldMaxBodyBytes(ctx)
 	case routehttp.FieldDNSProxied:
 		return m.OldDNSProxied(ctx)
+	case routehttp.FieldMaintenance:
+		return m.OldMaintenance(ctx)
+	case routehttp.FieldMaintenanceMessage:
+		return m.OldMaintenanceMessage(ctx)
 	}
 	return nil, fmt.Errorf("unknown RouteHTTP field %s", name)
 }
@@ -31557,6 +31645,20 @@ func (m *RouteHTTPMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetDNSProxied(v)
+		return nil
+	case routehttp.FieldMaintenance:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetMaintenance(v)
+		return nil
+	case routehttp.FieldMaintenanceMessage:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetMaintenanceMessage(v)
 		return nil
 	}
 	return fmt.Errorf("unknown RouteHTTP field %s", name)
@@ -31702,6 +31804,12 @@ func (m *RouteHTTPMutation) ResetField(name string) error {
 		return nil
 	case routehttp.FieldDNSProxied:
 		m.ResetDNSProxied()
+		return nil
+	case routehttp.FieldMaintenance:
+		m.ResetMaintenance()
+		return nil
+	case routehttp.FieldMaintenanceMessage:
+		m.ResetMaintenanceMessage()
 		return nil
 	}
 	return fmt.Errorf("unknown RouteHTTP field %s", name)

@@ -100,7 +100,8 @@ func createHTTP(ctx context.Context, tx *ent.Tx, row *ent.Route, h *rpmgrv1.HTTP
 	c := tx.RouteHTTP.Create().SetOrgID(row.OrgID).SetRouteID(row.ID).SetPathPrefix(h.GetPathPrefix()).SetPort80(port80).
 		SetHstsMaxAgeSeconds(int(h.GetHstsMaxAgeSeconds())).SetRequestHeadersSet(canonicalHeaders(h.GetRequestHeadersSet())).
 		SetResponseHeadersSet(canonicalHeaders(h.GetResponseHeadersSet())).SetWebsocket(h.Websocket == nil || *h.Websocket).
-		SetMaxBodyBytes(int64(min(h.GetMaxBodyBytes(), 1<<62))) //nolint:gosec // G115: bounded above
+		SetMaxBodyBytes(int64(min(h.GetMaxBodyBytes(), 1<<62))). //nolint:gosec // G115: bounded above
+		SetMaintenance(h.GetMaintenance()).SetMaintenanceMessage(h.GetMaintenanceMessage())
 	if hh := h.GetHostHeader(); hh != "" {
 		c.SetHostHeader(hh)
 	}
@@ -172,6 +173,12 @@ func checkSpec(in *rpmgrv1.Route) error {
 	if hh := h.GetHostHeader(); hh != "" && hh != "preserve" && !httpguts.ValidHostHeader(hh) {
 		return invalid("host header %q", hh)
 	}
+	// The pattern refuses control characters; these would turn the text around where it is shown.
+	if i := strings.IndexFunc(h.GetMaintenanceMessage(), func(r rune) bool {
+		return r >= 0x202A && r <= 0x202E || r >= 0x2066 && r <= 0x2069
+	}); i >= 0 {
+		return invalid("the maintenance message has a bidirectional formatting character at byte %d", i)
+	}
 	switch h.GetTlsMode() {
 	case rpmgrv1.TLSMode_TLS_MODE_CERTIFICATE:
 		if h.GetCertificateId() == "" {
@@ -225,7 +232,7 @@ func routeFields(t route.Type) []string {
 	switch t {
 	case route.TypeHTTP:
 		for _, f := range []string{"hostnames", "path_prefix", "tls_mode", "certificate_id", "port80", "hsts_max_age_seconds", "host_header",
-			"request_headers_set", "response_headers_set", "websocket", "max_body_bytes"} {
+			"request_headers_set", "response_headers_set", "websocket", "max_body_bytes", "maintenance", "maintenance_message"} {
 			fields = append(fields, "http."+f)
 		}
 	case route.TypeTLSPassthrough:
@@ -374,6 +381,13 @@ func (r *Routes) updateRouteTx(ctx context.Context, tx *ent.Tx, m *rpmgrv1.Updat
 		if err := updatePortRoute(ctx, tx, row, was, next); err != nil {
 			return nil, err
 		}
+	} else if maintenanceOnly(was, next) {
+		// Maintenance changes no hostname, so it is not checked against the org's domains again.
+		h := next.GetHttp()
+		if err := tx.RouteHTTP.Update().Where(routehttp.RouteID(row.ID)).SetMaintenance(h.GetMaintenance()).
+			SetMaintenanceMessage(h.GetMaintenanceMessage()).Exec(ctx); err != nil {
+			return nil, err
+		}
 	} else if !proto.Equal(specOf(was), specOf(next)) {
 		if err := routes.RemoveHostnames(ctx, tx, row.ID); err != nil {
 			return nil, err
@@ -395,6 +409,17 @@ func (r *Routes) updateRouteTx(ctx context.Context, tx *ent.Tx, m *rpmgrv1.Updat
 		}
 	}
 	return row, nil
+}
+
+// maintenanceOnly reports whether an http route's spec changed in its maintenance fields alone.
+func maintenanceOnly(was, next *rpmgrv1.Route) bool {
+	a, b := was.GetHttp(), next.GetHttp()
+	if a == nil || b == nil || a.GetMaintenance() == b.GetMaintenance() && a.GetMaintenanceMessage() == b.GetMaintenanceMessage() {
+		return false
+	}
+	a, b = proto.CloneOf(a), proto.CloneOf(b)
+	a.Maintenance, a.MaintenanceMessage, b.Maintenance, b.MaintenanceMessage = false, "", false, ""
+	return proto.Equal(a, b)
 }
 
 // specOf is a route's spec as a message, for comparing two versions of it.
@@ -541,7 +566,8 @@ func routeOf(ctx context.Context, c *ent.Client, row *ent.Route) (*rpmgrv1.Route
 			Port80: map[routehttp.Port80]rpmgrv1.Port80Mode{routehttp.Port80Redirect: rpmgrv1.Port80Mode_PORT80_MODE_REDIRECT,
 				routehttp.Port80Serve: rpmgrv1.Port80Mode_PORT80_MODE_SERVE, routehttp.Port80Off: rpmgrv1.Port80Mode_PORT80_MODE_OFF}[h.Port80],
 			HstsMaxAgeSeconds: uint32(h.HstsMaxAgeSeconds), HostHeader: h.HostHeader, RequestHeadersSet: h.RequestHeadersSet, //nolint:gosec // G115: bounded
-			ResponseHeadersSet: h.ResponseHeadersSet, Websocket: &h.Websocket, MaxBodyBytes: uint64(h.MaxBodyBytes)} //nolint:gosec // G115: non-negative
+			ResponseHeadersSet: h.ResponseHeadersSet, Websocket: &h.Websocket, MaxBodyBytes: uint64(h.MaxBodyBytes), //nolint:gosec // G115: non-negative
+			Maintenance: h.Maintenance, MaintenanceMessage: h.MaintenanceMessage}
 		if h.TLSMode == routehttp.TLSModeCertificate {
 			spec.TlsMode = rpmgrv1.TLSMode_TLS_MODE_CERTIFICATE
 			if h.CertificateID != nil {

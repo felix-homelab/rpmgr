@@ -88,6 +88,14 @@ describe("Routes", () => {
     expect(new URLSearchParams(history.location.search).get("group")).toBe("ggr_eu");
   });
 
+  it("shows and filters routes in maintenance (D88)", async () => {
+    const docs = { ...wiki, id: "rte_4", name: "docs", spec: { case: "http" as const, value: { hostnames: ["docs.example.com"], maintenance: true } },
+      status: { state: RouteState.MAINTENANCE, targetsTotal: 1, targetsReady: 0 } };
+    routes("/routes?state=maintenance", [wiki, docs, postgres]);
+    await waitFor(async () => expect(await rows()).toEqual(["docsdocs.example.comHTTPeu0/1 readymaintenance"]));
+    expect(within(screen.getByLabelText("Status")).getByRole("option", { name: "maintenance" })).toBeTruthy();
+  });
+
   it("shows 25 routes a page", async () => {
     const many = Array.from({ length: 30 }, (_, i) => ({ ...wiki, id: `rte_${i}`, name: `r${String(i).padStart(2, "0")}` }));
     const { history } = routes("/routes", many);
