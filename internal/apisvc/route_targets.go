@@ -29,6 +29,9 @@ var (
 		rpmgrv1.UpstreamProtocol_UPSTREAM_PROTOCOL_HTTPS: routetarget.UpstreamProtocolHTTPS, rpmgrv1.UpstreamProtocol_UPSTREAM_PROTOCOL_H2C: routetarget.UpstreamProtocolH2c}
 	storeProxies = map[rpmgrv1.ProxyProtocol]routetarget.ProxyProtocol{rpmgrv1.ProxyProtocol_PROXY_PROTOCOL_V1: routetarget.ProxyProtocolV1,
 		rpmgrv1.ProxyProtocol_PROXY_PROTOCOL_V2: routetarget.ProxyProtocolV2}
+	storeVerifications = map[rpmgrv1.UpstreamVerification]routetarget.TLSVerification{
+		rpmgrv1.UpstreamVerification_UPSTREAM_VERIFICATION_VERIFIED:   routetarget.TLSVerificationVerified,
+		rpmgrv1.UpstreamVerification_UPSTREAM_VERIFICATION_UNVERIFIED: routetarget.TLSVerificationUnverified}
 )
 
 // CreateRouteTarget implements RouteService.
@@ -168,6 +171,8 @@ func checkTarget(ctx context.Context, tx *ent.Tx, rt *ent.Route, t *rpmgrv1.Rout
 		return invalid("TLS settings are for an HTTPS target")
 	case up == routetarget.UpstreamProtocolHTTPS && t.GetTls().GetServerName() == "" && t.GetUnixPath() != "":
 		return invalid("an HTTPS target on a Unix socket needs a server_name")
+	case verificationOf(t) != routetarget.TLSVerificationVerified && (t.GetTls().GetCaBundleId() != "" || t.GetTls().GetSpkiSha256() != ""):
+		return invalid("a CA bundle and a key pin go only with a verified HTTPS target")
 	}
 	if id := t.GetTls().GetCaBundleId(); id != "" {
 		if _, err := tx.CABundle.Get(ctx, id); err != nil {
@@ -198,6 +203,14 @@ func upstreamOf(rt *ent.Route, t *rpmgrv1.RouteTarget) routetarget.UpstreamProto
 	return routetarget.UpstreamProtocolTCP
 }
 
+// verificationOf is how a target's certificate is checked, verified by default.
+func verificationOf(t *rpmgrv1.RouteTarget) routetarget.TLSVerification {
+	if v, ok := storeVerifications[t.GetTls().GetVerification()]; ok {
+		return v
+	}
+	return routetarget.TLSVerificationVerified
+}
+
 // setTarget sets a target's fields on a create or an update.
 func setTarget(m *ent.RouteTargetMutation, rt *ent.Route, t *rpmgrv1.RouteTarget) {
 	if hp := t.GetHostPort(); hp != nil {
@@ -214,6 +227,7 @@ func setTarget(m *ent.RouteTargetMutation, rt *ent.Route, t *rpmgrv1.RouteTarget
 	m.SetUpstreamProtocol(upstreamOf(rt, t))
 	m.SetTLSServerName(t.GetTls().GetServerName())
 	m.SetTLSSpkiSha256(t.GetTls().GetSpkiSha256())
+	m.SetTLSVerification(verificationOf(t))
 	if id := t.GetTls().GetCaBundleId(); id != "" {
 		m.SetTLSCaBundleID(id)
 	}
@@ -248,6 +262,11 @@ func targetOf(r *ent.RouteTarget) *rpmgrv1.RouteTarget {
 		out.Tls = &rpmgrv1.UpstreamTLSSettings{ServerName: r.TLSServerName, SpkiSha256: r.TLSSpkiSha256}
 		if r.TLSCaBundleID != nil {
 			out.Tls.CaBundleId = *r.TLSCaBundleID
+		}
+		for api, st := range storeVerifications {
+			if st == r.TLSVerification {
+				out.Tls.Verification = api
+			}
 		}
 	}
 	return out

@@ -3,12 +3,9 @@
 package gateway
 
 import (
-	"bytes"
 	"cmp"
 	"context"
-	"crypto/sha256"
 	"crypto/tls"
-	"crypto/x509"
 	"errors"
 	"fmt"
 	"io"
@@ -106,37 +103,6 @@ func apply(h http.Header, hs []HTTPHeader) {
 			h.Set(x.Name, x.Value)
 		}
 	}
-}
-
-// UpstreamTLS is how the gateway verifies the HTTPS upstream of one route target.
-type UpstreamTLS struct {
-	ServerName string
-	// CAPEM verifies the upstream's chain; empty is the host's trust store.
-	CAPEM []byte
-	// SPKISHA256, if set, must be the SHA-256 of the leaf's SubjectPublicKeyInfo.
-	SPKISHA256 []byte
-}
-
-// config returns the TLS configuration of a connection to the upstream: TLS 1.2 or later, the
-// server name, the CA bundle or the host's trust store, the pin, and ALPN for HTTP/2.
-func (u UpstreamTLS) config() (*tls.Config, error) {
-	cfg := &tls.Config{MinVersion: tls.VersionTLS12, ServerName: u.ServerName, NextProtos: []string{"h2", "http/1.1"}}
-	if len(u.CAPEM) > 0 {
-		cfg.RootCAs = x509.NewCertPool()
-		if !cfg.RootCAs.AppendCertsFromPEM(u.CAPEM) {
-			return nil, errors.New("the CA bundle holds no certificate")
-		}
-	}
-	if pin := u.SPKISHA256; len(pin) > 0 {
-		cfg.VerifyConnection = func(cs tls.ConnectionState) error {
-			sum := sha256.Sum256(cs.PeerCertificates[0].RawSubjectPublicKeyInfo)
-			if !bytes.Equal(sum[:], pin) {
-				return errors.New("the upstream's key does not match its pin")
-			}
-			return nil
-		}
-	}
-	return cfg, nil
 }
 
 // HTTPHost is a hostname, or "*.name" for every name one label below, with a path prefix; ""

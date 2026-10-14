@@ -263,6 +263,8 @@ func (a *Applier) Validate(snap *agentv1.Snapshot) []*agentv1.SnapshotError {
 					bad(id, "upstream TLS for target %q twice or without a target", u.GetTargetId())
 				case u.GetServerName() == "":
 					bad(id, "upstream TLS for target %s without a server name", u.GetTargetId())
+				case u.GetVerification() == agentv1.UpstreamVerification_UPSTREAM_VERIFICATION_UNVERIFIED && (len(u.GetCaPem()) > 0 || len(u.GetSpkiSha256()) > 0):
+					bad(id, "the unverified target %s has a CA bundle or a pin", u.GetTargetId())
 				case len(u.GetCaPem()) > 0 && !x509.NewCertPool().AppendCertsFromPEM(u.GetCaPem()):
 					bad(id, "the CA bundle of target %s holds no certificate", u.GetTargetId())
 				case len(u.GetSpkiSha256()) != 0 && len(u.GetSpkiSha256()) != sha256.Size:
@@ -353,7 +355,11 @@ func (a *Applier) Apply(ctx context.Context, snap *agentv1.Snapshot, _ agent.Cha
 			if len(r.GetUpstreamTls()) > 0 {
 				hr.TLS = map[string]UpstreamTLS{}
 				for _, u := range r.GetUpstreamTls() {
-					hr.TLS[u.GetTargetId()] = UpstreamTLS{ServerName: u.GetServerName(), CAPEM: u.GetCaPem(), SPKISHA256: u.GetSpkiSha256()}
+					v := VerifyChain // also for a way this gateway does not know: the target fails closed
+					if u.GetVerification() == agentv1.UpstreamVerification_UPSTREAM_VERIFICATION_UNVERIFIED {
+						v = VerifyNothing
+					}
+					hr.TLS[u.GetTargetId()] = UpstreamTLS{ServerName: u.GetServerName(), CAPEM: u.GetCaPem(), SPKISHA256: u.GetSpkiSha256(), Verify: v}
 				}
 			}
 			for _, hp := range r.GetHosts() {

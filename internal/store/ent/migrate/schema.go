@@ -1354,6 +1354,7 @@ var (
 		{Name: "upstream_protocol", Type: field.TypeEnum, Enums: []string{"tcp", "http", "https", "h2c"}, Default: "tcp"},
 		{Name: "tls_server_name", Type: field.TypeString, Default: ""},
 		{Name: "tls_spki_sha256", Type: field.TypeString, Default: ""},
+		{Name: "tls_verification", Type: field.TypeEnum, Enums: []string{"verified", "unverified"}, Default: "verified"},
 		{Name: "proxy_protocol", Type: field.TypeEnum, Enums: []string{"none", "v1", "v2"}, Default: "none"},
 		{Name: "weight", Type: field.TypeInt, Default: 1},
 		{Name: "priority", Type: field.TypeInt, Default: 0},
@@ -1370,19 +1371,19 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "route_targets_routes_route",
-				Columns:    []*schema.Column{RouteTargetsColumns[14]},
+				Columns:    []*schema.Column{RouteTargetsColumns[15]},
 				RefColumns: []*schema.Column{RoutesColumns[0]},
 				OnDelete:   schema.NoAction,
 			},
 			{
 				Symbol:     "route_targets_connectors_connector",
-				Columns:    []*schema.Column{RouteTargetsColumns[15]},
+				Columns:    []*schema.Column{RouteTargetsColumns[16]},
 				RefColumns: []*schema.Column{ConnectorsColumns[0]},
 				OnDelete:   schema.NoAction,
 			},
 			{
 				Symbol:     "route_targets_ca_bundles_ca_bundle",
-				Columns:    []*schema.Column{RouteTargetsColumns[16]},
+				Columns:    []*schema.Column{RouteTargetsColumns[17]},
 				RefColumns: []*schema.Column{CaBundlesColumns[0]},
 				OnDelete:   schema.SetNull,
 			},
@@ -1396,17 +1397,17 @@ var (
 			{
 				Name:    "routetarget_route_id",
 				Unique:  false,
-				Columns: []*schema.Column{RouteTargetsColumns[14]},
+				Columns: []*schema.Column{RouteTargetsColumns[15]},
 			},
 			{
 				Name:    "routetarget_connector_id",
 				Unique:  false,
-				Columns: []*schema.Column{RouteTargetsColumns[15]},
+				Columns: []*schema.Column{RouteTargetsColumns[16]},
 			},
 			{
 				Name:    "routetarget_tls_ca_bundle_id",
 				Unique:  false,
-				Columns: []*schema.Column{RouteTargetsColumns[16]},
+				Columns: []*schema.Column{RouteTargetsColumns[17]},
 			},
 		},
 	}

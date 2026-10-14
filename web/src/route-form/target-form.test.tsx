@@ -1,17 +1,17 @@
 // SPDX-License-Identifier: Apache-2.0
 
-import { create, equals } from "@bufbuild/protobuf";
+import { clone, create, equals } from "@bufbuild/protobuf";
 import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { ConnectorService } from "@/gen/rpmgr/v1/connector_pb";
 import { GatewayService } from "@/gen/rpmgr/v1/gateway_pb";
 import {
-  ProxyProtocol, RouteService, RouteState, RouteTargetSchema, UpstreamProtocol,
+  ProxyProtocol, RouteService, RouteState, RouteTargetSchema, UpstreamProtocol, UpstreamTLSSettingsSchema, UpstreamVerification,
   type CreateRouteTargetRequest, type DeleteRouteTargetRequest, type UpdateRouteTargetRequest,
 } from "@/gen/rpmgr/v1/route_pb";
 import { ApplyState, StatusService } from "@/gen/rpmgr/v1/status_pb";
 import { Theme, UserService } from "@/gen/rpmgr/v1/user_pb";
-import { targetMask } from "@/route-form/target-form";
+import { targetMask, UNVERIFIED } from "@/route-form/target-form";
 import { auth, show } from "@/testing/api";
 import { marked, unmatched } from "@/testing/required";
 
@@ -23,12 +23,12 @@ const target = create(RouteTargetSchema, {
 });
 const applied = { revision: { dbEpoch: "e", seq: 11n }, applyStatus: { state: ApplyState.APPLIED, agentsTotal: 1, agentsApplied: 1 } };
 
-// detail renders the detail of a route of type case with the target above.
-function detail(spec: { case: "http" | "tcp"; value: object }) {
+// detail renders the detail of a route of type case with targets, by default the target above.
+function detail(spec: { case: "http" | "tcp"; value: object }, targets = [target]) {
   const creates: CreateRouteTargetRequest[] = [];
   const updates: UpdateRouteTargetRequest[] = [];
   const deletes: DeleteRouteTargetRequest[] = [];
-  const route = { id: "rte_1", name: "app", gatewayGroupId: "ggr_eu", enabled: true, etag: "7", spec, targets: [target],
+  const route = { id: "rte_1", name: "app", gatewayGroupId: "ggr_eu", enabled: true, etag: "7", spec, targets,
     status: { state: RouteState.READY, targetsTotal: 1, targetsReady: 1 } };
   show("/routes/rte_1", auth({ getSession: () => ({ userId: "usr_ada", memberships: [{ orgId: "org_1", role: "owner" }] }) }), (router) => {
     router.service(UserService, { getMe: () => ({ user: { id: "usr_ada", theme: Theme.SYSTEM } }) });
@@ -97,6 +97,45 @@ describe("targets", () => {
     await waitFor(() => expect(updates).toHaveLength(1));
     const t = updates[0]!.target!;
     expect([t.connectorId, t.upstreamProtocol, t.tls?.serverName, t.address]).toEqual(["con_db", UpstreamProtocol.HTTPS, "app.internal", { case: "unixPath", value: "/run/app.sock" }]);
+  });
+
+  it("warns before HTTPS, unverified, and sends it with a server name but no CA bundle or pin", async () => {
+    const { updates } = detail({ case: "http", value: { hostnames: ["app.example.com"] } });
+    fireEvent.click(await screen.findByRole("button", { name: "Edit…" }));
+    const f = await form("Edit target");
+    const protocol = f.getByLabelText("Protocol to the target");
+    expect(f.queryByText(/will not check the target's certificate/)).toBeNull();
+    fireEvent.change(protocol, { target: { value: String(UpstreamProtocol.HTTPS) } });
+    fireEvent.change(await f.findByLabelText(/CA bundle ID/), { target: { value: "cab_1" } });
+    fireEvent.change(f.getByLabelText(/Public key pin/), { target: { value: "ab".repeat(32) } });
+    fireEvent.change(protocol, { target: { value: UNVERIFIED } });
+    const warning = await f.findByText(/will not check the target's certificate/);
+    expect(protocol.getAttribute("aria-describedby")).toBe(warning.parentElement!.id);
+    expect([f.queryByLabelText(/CA bundle ID/), f.queryByLabelText(/Public key pin/)]).toEqual([null, null]);
+    const serverName = f.getByLabelText("TLS server name");
+    expect(document.getElementById(serverName.getAttribute("aria-describedby")!.split(" ")[0]!)?.textContent).toBe("Sent to the target; empty: the host's name.");
+    fireEvent.change(serverName, { target: { value: " nas.local " } });
+    fireEvent.click(f.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(updates).toHaveLength(1));
+    const t = updates[0]!.target!;
+    expect([t.upstreamProtocol, t.tls?.verification, t.tls?.serverName, t.tls?.caBundleId, t.tls?.spkiSha256])
+      .toEqual([UpstreamProtocol.HTTPS, UpstreamVerification.UNVERIFIED, "nas.local", "", ""]);
+  });
+
+  it("shows an unverified target as such, and keeps it so", async () => {
+    const unverified = clone(RouteTargetSchema, target);
+    unverified.upstreamProtocol = UpstreamProtocol.HTTPS;
+    unverified.tls = create(UpstreamTLSSettingsSchema, { serverName: "nas.local", verification: UpstreamVerification.UNVERIFIED });
+    const { updates } = detail({ case: "http", value: { hostnames: ["app.example.com"] } }, [unverified]);
+    const row = (await screen.findByText("10.0.0.5:8080")).closest("tr")!;
+    expect(within(row).getByText("unverified").getAttribute("title")).toBe("HTTPS without checking the target's certificate");
+    fireEvent.click(within(row).getByRole("button", { name: "Edit…" }));
+    const f = await form("Edit target");
+    expect((f.getByLabelText("Protocol to the target") as HTMLSelectElement).value).toBe(UNVERIFIED);
+    expect(f.getByText(/will not check the target's certificate/)).toBeTruthy();
+    fireEvent.click(f.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(updates).toHaveLength(1));
+    expect(equals(RouteTargetSchema, updates[0]!.target!, unverified)).toBe(true);
   });
 
   it("removes a target after a confirmation that names it", async () => {

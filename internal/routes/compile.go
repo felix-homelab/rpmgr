@@ -292,8 +292,8 @@ func headersOf(set map[string]string) []*agentv1.HTTPHeader {
 
 // upstreamTLS lists how the gateway verifies each enabled target of an https route: the target's
 // server name, or else its host; its CA bundle, or else the gateway host's trust store; and its
-// SPKI pin. A pin that is not 64 hexadecimal digits becomes one no key matches, so the target
-// fails closed.
+// SPKI pin, or that it is not verified. A pin that is not 64 hexadecimal digits becomes one no key
+// matches, so the target fails closed.
 func upstreamTLSOf(ctx context.Context, tx *ent.Tx, routeID string) ([]*agentv1.UpstreamTLS, error) {
 	targets, err := tx.RouteTarget.Query().Where(routetarget.RouteID(routeID), routetarget.Enabled(true)).
 		WithCaBundle().Order(ent.Asc(routetarget.FieldID)).All(ctx)
@@ -305,6 +305,12 @@ func upstreamTLSOf(ctx context.Context, tx *ent.Tx, routeID string) ([]*agentv1.
 		u := &agentv1.UpstreamTLS{TargetId: t.ID, ServerName: t.TLSServerName}
 		if u.ServerName == "" {
 			u.ServerName = t.Host
+		}
+		if t.TLSVerification == routetarget.TLSVerificationUnverified {
+			// Verified stays unset, the default, so the snapshots of verified targets keep their hash.
+			u.Verification = agentv1.UpstreamVerification_UPSTREAM_VERIFICATION_UNVERIFIED
+			out = append(out, u)
+			continue
 		}
 		if t.Edges.CaBundle != nil {
 			u.CaPem = t.Edges.CaBundle.Pem

@@ -107,7 +107,8 @@ func targetEnv(t *testing.T) (*targetAPI, map[string]string) {
 // TestRouteTargets (docs/16-cli.md): create route-target adds a target to a route, naming the
 // route, the connector and the CA bundle by name; update changes the fields its flags name under
 // the etag read; get and delete take a target's ID; an unknown connector, a bad address, both
-// address forms, an unknown upstream and a value the API's rules refuse are refused.
+// address forms, an unknown upstream or verification and a value the API's rules refuse are
+// refused. --verification unverified alone makes TLS settings.
 func TestRouteTargets(t *testing.T) {
 	a, env := targetEnv(t)
 	code, out, errOut := runWith(env, "", "create", "route-target", "--route", "web", "--connector", "nas", "--address", "10.0.0.5:8443",
@@ -123,6 +124,11 @@ func TestRouteTargets(t *testing.T) {
 		a.created.GetTarget().GetUnixPath() != "/run/app.sock" || a.created.GetTarget().GetTls() != nil {
 		t.Fatalf("a Unix socket: %d %v", code, a.created)
 	}
+	if code, _, errOut := runWith(env, "", "create", "route-target", "--route", "rt_1", "--connector", "con_1", "--address", "nas.local:443",
+		"--upstream", "https", "--verification", "unverified"); code != cli.ExitOK ||
+		a.created.GetTarget().GetTls().GetVerification() != rpmgrv1.UpstreamVerification_UPSTREAM_VERIFICATION_UNVERIFIED {
+		t.Fatalf("an unverified target: %d %q %v", code, errOut, a.created)
+	}
 	if code, _, errOut := runWith(env, "", "create", "route-target", "--route", "web", "--connector", "nope", "--address", "10.0.0.5:80"); code != cli.ExitError ||
 		!strings.Contains(errOut, `no connector named "nope"`) {
 		t.Errorf("an unknown connector: %d %q", code, errOut)
@@ -132,7 +138,9 @@ func TestRouteTargets(t *testing.T) {
 		"both forms":          {"--route", "web", "--connector", "nas", "--address", "a:1", "--unix", "/s"},
 		"no port":             {"--route", "web", "--connector", "nas", "--address", "10.0.0.5"},
 		"an unknown upstream": {"--route", "web", "--connector", "nas", "--address", "a:1", "--upstream", "ftp"},
-		"a weight too high":   {"--route", "rt_1", "--connector", "con_1", "--address", "a:1", "--weight", "5000"},
+		"an unknown verification": {"--route", "web", "--connector", "nas", "--address", "a:1", "--upstream", "https",
+			"--verification", "trusting"},
+		"a weight too high": {"--route", "rt_1", "--connector", "con_1", "--address", "a:1", "--weight", "5000"},
 	} {
 		if code, _, errOut := runWith(env, "", append([]string{"create", "route-target"}, args...)...); code != cli.ExitUsage {
 			t.Errorf("%s: exit %d %q", name, code, errOut)
@@ -145,6 +153,11 @@ func TestRouteTargets(t *testing.T) {
 		!slices.Equal(u.GetUpdateMask().GetPaths(), []string{"weight", "priority"}) || u.GetTarget().GetWeight() != 5 ||
 		u.GetTarget().GetHostPort().GetPort() != 8080 || u.GetTarget().GetConnectorId() != "con_1" {
 		t.Fatalf("an update: %d %q %q\n%v", code, out, errOut, u)
+	}
+	if code, _, errOut := runWith(env, "", "update", "route-target", "--verification", "verified", "tg_1"); code != cli.ExitOK ||
+		!slices.Equal(a.updated.GetUpdateMask().GetPaths(), []string{"tls.verification"}) ||
+		a.updated.GetTarget().GetTls().GetVerification() != rpmgrv1.UpstreamVerification_UPSTREAM_VERIFICATION_VERIFIED {
+		t.Fatalf("an update of the verification: %d %q %v", code, errOut, a.updated)
 	}
 	if code, _, errOut := runWith(env, "", "update", "route-target", "tg_1"); code != cli.ExitUsage {
 		t.Errorf("an update of nothing: %d %q", code, errOut)

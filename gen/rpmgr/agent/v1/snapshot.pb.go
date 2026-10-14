@@ -25,6 +25,59 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
+// UpstreamVerification is how the gateway checks an HTTPS upstream's certificate (ADR-0017).
+type UpstreamVerification int32
+
+const (
+	// Not set: VERIFIED.
+	UpstreamVerification_UPSTREAM_VERIFICATION_UNSPECIFIED UpstreamVerification = 0
+	// The chain against ca_pem or the host's trust store, the name, and the pin if set.
+	UpstreamVerification_UPSTREAM_VERIFICATION_VERIFIED UpstreamVerification = 1
+	// Not at all: neither ca_pem nor a pin goes with it.
+	UpstreamVerification_UPSTREAM_VERIFICATION_UNVERIFIED UpstreamVerification = 2
+)
+
+// Enum value maps for UpstreamVerification.
+var (
+	UpstreamVerification_name = map[int32]string{
+		0: "UPSTREAM_VERIFICATION_UNSPECIFIED",
+		1: "UPSTREAM_VERIFICATION_VERIFIED",
+		2: "UPSTREAM_VERIFICATION_UNVERIFIED",
+	}
+	UpstreamVerification_value = map[string]int32{
+		"UPSTREAM_VERIFICATION_UNSPECIFIED": 0,
+		"UPSTREAM_VERIFICATION_VERIFIED":    1,
+		"UPSTREAM_VERIFICATION_UNVERIFIED":  2,
+	}
+)
+
+func (x UpstreamVerification) Enum() *UpstreamVerification {
+	p := new(UpstreamVerification)
+	*p = x
+	return p
+}
+
+func (x UpstreamVerification) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (UpstreamVerification) Descriptor() protoreflect.EnumDescriptor {
+	return file_rpmgr_agent_v1_snapshot_proto_enumTypes[0].Descriptor()
+}
+
+func (UpstreamVerification) Type() protoreflect.EnumType {
+	return &file_rpmgr_agent_v1_snapshot_proto_enumTypes[0]
+}
+
+func (x UpstreamVerification) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use UpstreamVerification.Descriptor instead.
+func (UpstreamVerification) EnumDescriptor() ([]byte, []int) {
+	return file_rpmgr_agent_v1_snapshot_proto_rawDescGZIP(), []int{0}
+}
+
 // TransportPolicy is how a route chooses its data-session transport (docs/03-connections.md,
 // "Transport selection").
 type TransportPolicy int32
@@ -67,11 +120,11 @@ func (x TransportPolicy) String() string {
 }
 
 func (TransportPolicy) Descriptor() protoreflect.EnumDescriptor {
-	return file_rpmgr_agent_v1_snapshot_proto_enumTypes[0].Descriptor()
+	return file_rpmgr_agent_v1_snapshot_proto_enumTypes[1].Descriptor()
 }
 
 func (TransportPolicy) Type() protoreflect.EnumType {
-	return &file_rpmgr_agent_v1_snapshot_proto_enumTypes[0]
+	return &file_rpmgr_agent_v1_snapshot_proto_enumTypes[1]
 }
 
 func (x TransportPolicy) Number() protoreflect.EnumNumber {
@@ -80,7 +133,7 @@ func (x TransportPolicy) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use TransportPolicy.Descriptor instead.
 func (TransportPolicy) EnumDescriptor() ([]byte, []int) {
-	return file_rpmgr_agent_v1_snapshot_proto_rawDescGZIP(), []int{0}
+	return file_rpmgr_agent_v1_snapshot_proto_rawDescGZIP(), []int{1}
 }
 
 // Revision identifies a configuration state: seq orders revisions within one database epoch, and a
@@ -1169,12 +1222,14 @@ type UpstreamTLS struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// The route target.
 	TargetId string `protobuf:"bytes,1,opt,name=target_id,json=targetId,proto3" json:"target_id,omitempty"`
-	// The name the upstream's certificate must carry.
+	// The name the upstream's certificate must carry, and the name sent to it (SNI).
 	ServerName string `protobuf:"bytes,2,opt,name=server_name,json=serverName,proto3" json:"server_name,omitempty"`
 	// PEM CA certificates to verify it with; empty is the gateway host's trust store.
 	CaPem []byte `protobuf:"bytes,3,opt,name=ca_pem,json=caPem,proto3" json:"ca_pem,omitempty"`
 	// If set, the SHA-256 of the leaf's SubjectPublicKeyInfo must equal it.
-	SpkiSha256    []byte `protobuf:"bytes,4,opt,name=spki_sha256,json=spkiSha256,proto3" json:"spki_sha256,omitempty"`
+	SpkiSha256 []byte `protobuf:"bytes,4,opt,name=spki_sha256,json=spkiSha256,proto3" json:"spki_sha256,omitempty"`
+	// How the certificate is checked; a gateway that does not know the field verifies it.
+	Verification  UpstreamVerification `protobuf:"varint,5,opt,name=verification,proto3,enum=rpmgr.agent.v1.UpstreamVerification" json:"verification,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1235,6 +1290,13 @@ func (x *UpstreamTLS) GetSpkiSha256() []byte {
 		return x.SpkiSha256
 	}
 	return nil
+}
+
+func (x *UpstreamTLS) GetVerification() UpstreamVerification {
+	if x != nil {
+		return x.Verification
+	}
+	return UpstreamVerification_UPSTREAM_VERIFICATION_UNSPECIFIED
 }
 
 // HTTPHost is one hostname of an http route with its path prefix; "" is every path.
@@ -1998,14 +2060,15 @@ const file_rpmgr_agent_v1_snapshot_proto_rawDesc = "" +
 	"\n" +
 	"HTTPHeader\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value\"\x83\x01\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value\"\xcd\x01\n" +
 	"\vUpstreamTLS\x12\x1b\n" +
 	"\ttarget_id\x18\x01 \x01(\tR\btargetId\x12\x1f\n" +
 	"\vserver_name\x18\x02 \x01(\tR\n" +
 	"serverName\x12\x15\n" +
 	"\x06ca_pem\x18\x03 \x01(\fR\x05caPem\x12\x1f\n" +
 	"\vspki_sha256\x18\x04 \x01(\fR\n" +
-	"spkiSha256\"G\n" +
+	"spkiSha256\x12H\n" +
+	"\fverification\x18\x05 \x01(\x0e2$.rpmgr.agent.v1.UpstreamVerificationR\fverification\"G\n" +
 	"\bHTTPHost\x12\x1a\n" +
 	"\bhostname\x18\x01 \x01(\tR\bhostname\x12\x1f\n" +
 	"\vpath_prefix\x18\x02 \x01(\tR\n" +
@@ -2052,7 +2115,11 @@ const file_rpmgr_agent_v1_snapshot_proto_rawDesc = "" +
 	"\x06serial\x18\x01 \x01(\tH\x00R\x06serial\x12\x1c\n" +
 	"\bidentity\x18\x02 \x01(\tH\x00R\bidentity\x127\n" +
 	"\tnot_after\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\bnotAfterB\t\n" +
-	"\asubject*\x82\x01\n" +
+	"\asubject*\x87\x01\n" +
+	"\x14UpstreamVerification\x12%\n" +
+	"!UPSTREAM_VERIFICATION_UNSPECIFIED\x10\x00\x12\"\n" +
+	"\x1eUPSTREAM_VERIFICATION_VERIFIED\x10\x01\x12$\n" +
+	" UPSTREAM_VERIFICATION_UNVERIFIED\x10\x02*\x82\x01\n" +
 	"\x0fTransportPolicy\x12 \n" +
 	"\x1cTRANSPORT_POLICY_UNSPECIFIED\x10\x00\x12\x19\n" +
 	"\x15TRANSPORT_POLICY_AUTO\x10\x01\x12\x19\n" +
@@ -2071,73 +2138,75 @@ func file_rpmgr_agent_v1_snapshot_proto_rawDescGZIP() []byte {
 	return file_rpmgr_agent_v1_snapshot_proto_rawDescData
 }
 
-var file_rpmgr_agent_v1_snapshot_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
+var file_rpmgr_agent_v1_snapshot_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
 var file_rpmgr_agent_v1_snapshot_proto_msgTypes = make([]protoimpl.MessageInfo, 24)
 var file_rpmgr_agent_v1_snapshot_proto_goTypes = []any{
-	(TransportPolicy)(0),            // 0: rpmgr.agent.v1.TransportPolicy
-	(*Revision)(nil),                // 1: rpmgr.agent.v1.Revision
-	(*Signed)(nil),                  // 2: rpmgr.agent.v1.Signed
-	(*Snapshot)(nil),                // 3: rpmgr.agent.v1.Snapshot
-	(*Resource)(nil),                // 4: rpmgr.agent.v1.Resource
-	(*GatewayDomainChallenge)(nil),  // 5: rpmgr.agent.v1.GatewayDomainChallenge
-	(*GatewayDrain)(nil),            // 6: rpmgr.agent.v1.GatewayDrain
-	(*GatewayTCPRoute)(nil),         // 7: rpmgr.agent.v1.GatewayTCPRoute
-	(*RouteAccess)(nil),             // 8: rpmgr.agent.v1.RouteAccess
-	(*BasicAuthRule)(nil),           // 9: rpmgr.agent.v1.BasicAuthRule
-	(*IPRule)(nil),                  // 10: rpmgr.agent.v1.IPRule
-	(*GatewayUDPRoute)(nil),         // 11: rpmgr.agent.v1.GatewayUDPRoute
-	(*GatewayHTTPRoute)(nil),        // 12: rpmgr.agent.v1.GatewayHTTPRoute
-	(*HTTPHeader)(nil),              // 13: rpmgr.agent.v1.HTTPHeader
-	(*UpstreamTLS)(nil),             // 14: rpmgr.agent.v1.UpstreamTLS
-	(*HTTPHost)(nil),                // 15: rpmgr.agent.v1.HTTPHost
-	(*GatewayCertificate)(nil),      // 16: rpmgr.agent.v1.GatewayCertificate
-	(*CertificateItem)(nil),         // 17: rpmgr.agent.v1.CertificateItem
-	(*GatewayPassthroughRoute)(nil), // 18: rpmgr.agent.v1.GatewayPassthroughRoute
-	(*ConnectorRoute)(nil),          // 19: rpmgr.agent.v1.ConnectorRoute
-	(*ConnectorGateway)(nil),        // 20: rpmgr.agent.v1.ConnectorGateway
-	(*Target)(nil),                  // 21: rpmgr.agent.v1.Target
-	(*ResourceReference)(nil),       // 22: rpmgr.agent.v1.ResourceReference
-	(*DenyList)(nil),                // 23: rpmgr.agent.v1.DenyList
-	(*DenyEntry)(nil),               // 24: rpmgr.agent.v1.DenyEntry
-	(*v1.BasicAuthUser)(nil),        // 25: rpmgr.v1.BasicAuthUser
-	(*timestamppb.Timestamp)(nil),   // 26: google.protobuf.Timestamp
+	(UpstreamVerification)(0),       // 0: rpmgr.agent.v1.UpstreamVerification
+	(TransportPolicy)(0),            // 1: rpmgr.agent.v1.TransportPolicy
+	(*Revision)(nil),                // 2: rpmgr.agent.v1.Revision
+	(*Signed)(nil),                  // 3: rpmgr.agent.v1.Signed
+	(*Snapshot)(nil),                // 4: rpmgr.agent.v1.Snapshot
+	(*Resource)(nil),                // 5: rpmgr.agent.v1.Resource
+	(*GatewayDomainChallenge)(nil),  // 6: rpmgr.agent.v1.GatewayDomainChallenge
+	(*GatewayDrain)(nil),            // 7: rpmgr.agent.v1.GatewayDrain
+	(*GatewayTCPRoute)(nil),         // 8: rpmgr.agent.v1.GatewayTCPRoute
+	(*RouteAccess)(nil),             // 9: rpmgr.agent.v1.RouteAccess
+	(*BasicAuthRule)(nil),           // 10: rpmgr.agent.v1.BasicAuthRule
+	(*IPRule)(nil),                  // 11: rpmgr.agent.v1.IPRule
+	(*GatewayUDPRoute)(nil),         // 12: rpmgr.agent.v1.GatewayUDPRoute
+	(*GatewayHTTPRoute)(nil),        // 13: rpmgr.agent.v1.GatewayHTTPRoute
+	(*HTTPHeader)(nil),              // 14: rpmgr.agent.v1.HTTPHeader
+	(*UpstreamTLS)(nil),             // 15: rpmgr.agent.v1.UpstreamTLS
+	(*HTTPHost)(nil),                // 16: rpmgr.agent.v1.HTTPHost
+	(*GatewayCertificate)(nil),      // 17: rpmgr.agent.v1.GatewayCertificate
+	(*CertificateItem)(nil),         // 18: rpmgr.agent.v1.CertificateItem
+	(*GatewayPassthroughRoute)(nil), // 19: rpmgr.agent.v1.GatewayPassthroughRoute
+	(*ConnectorRoute)(nil),          // 20: rpmgr.agent.v1.ConnectorRoute
+	(*ConnectorGateway)(nil),        // 21: rpmgr.agent.v1.ConnectorGateway
+	(*Target)(nil),                  // 22: rpmgr.agent.v1.Target
+	(*ResourceReference)(nil),       // 23: rpmgr.agent.v1.ResourceReference
+	(*DenyList)(nil),                // 24: rpmgr.agent.v1.DenyList
+	(*DenyEntry)(nil),               // 25: rpmgr.agent.v1.DenyEntry
+	(*v1.BasicAuthUser)(nil),        // 26: rpmgr.v1.BasicAuthUser
+	(*timestamppb.Timestamp)(nil),   // 27: google.protobuf.Timestamp
 }
 var file_rpmgr_agent_v1_snapshot_proto_depIdxs = []int32{
-	1,  // 0: rpmgr.agent.v1.Snapshot.revision:type_name -> rpmgr.agent.v1.Revision
-	4,  // 1: rpmgr.agent.v1.Snapshot.resources:type_name -> rpmgr.agent.v1.Resource
-	7,  // 2: rpmgr.agent.v1.Resource.gateway_tcp_route:type_name -> rpmgr.agent.v1.GatewayTCPRoute
-	19, // 3: rpmgr.agent.v1.Resource.connector_route:type_name -> rpmgr.agent.v1.ConnectorRoute
-	20, // 4: rpmgr.agent.v1.Resource.connector_gateway:type_name -> rpmgr.agent.v1.ConnectorGateway
-	18, // 5: rpmgr.agent.v1.Resource.gateway_passthrough_route:type_name -> rpmgr.agent.v1.GatewayPassthroughRoute
-	11, // 6: rpmgr.agent.v1.Resource.gateway_udp_route:type_name -> rpmgr.agent.v1.GatewayUDPRoute
-	16, // 7: rpmgr.agent.v1.Resource.gateway_certificate:type_name -> rpmgr.agent.v1.GatewayCertificate
-	12, // 8: rpmgr.agent.v1.Resource.gateway_http_route:type_name -> rpmgr.agent.v1.GatewayHTTPRoute
-	5,  // 9: rpmgr.agent.v1.Resource.gateway_domain_challenge:type_name -> rpmgr.agent.v1.GatewayDomainChallenge
-	6,  // 10: rpmgr.agent.v1.Resource.gateway_drain:type_name -> rpmgr.agent.v1.GatewayDrain
-	22, // 11: rpmgr.agent.v1.Resource.reference:type_name -> rpmgr.agent.v1.ResourceReference
-	8,  // 12: rpmgr.agent.v1.GatewayTCPRoute.access:type_name -> rpmgr.agent.v1.RouteAccess
-	10, // 13: rpmgr.agent.v1.RouteAccess.ip_rules:type_name -> rpmgr.agent.v1.IPRule
-	9,  // 14: rpmgr.agent.v1.RouteAccess.basic_auth:type_name -> rpmgr.agent.v1.BasicAuthRule
-	25, // 15: rpmgr.agent.v1.BasicAuthRule.users:type_name -> rpmgr.v1.BasicAuthUser
-	8,  // 16: rpmgr.agent.v1.GatewayUDPRoute.access:type_name -> rpmgr.agent.v1.RouteAccess
-	15, // 17: rpmgr.agent.v1.GatewayHTTPRoute.hosts:type_name -> rpmgr.agent.v1.HTTPHost
-	14, // 18: rpmgr.agent.v1.GatewayHTTPRoute.upstream_tls:type_name -> rpmgr.agent.v1.UpstreamTLS
-	13, // 19: rpmgr.agent.v1.GatewayHTTPRoute.request_headers:type_name -> rpmgr.agent.v1.HTTPHeader
-	13, // 20: rpmgr.agent.v1.GatewayHTTPRoute.response_headers:type_name -> rpmgr.agent.v1.HTTPHeader
-	8,  // 21: rpmgr.agent.v1.GatewayHTTPRoute.access:type_name -> rpmgr.agent.v1.RouteAccess
-	26, // 22: rpmgr.agent.v1.GatewayCertificate.not_after:type_name -> google.protobuf.Timestamp
-	8,  // 23: rpmgr.agent.v1.GatewayPassthroughRoute.access:type_name -> rpmgr.agent.v1.RouteAccess
-	21, // 24: rpmgr.agent.v1.ConnectorRoute.targets:type_name -> rpmgr.agent.v1.Target
-	0,  // 25: rpmgr.agent.v1.ConnectorRoute.transport:type_name -> rpmgr.agent.v1.TransportPolicy
-	0,  // 26: rpmgr.agent.v1.ConnectorGateway.transports:type_name -> rpmgr.agent.v1.TransportPolicy
-	1,  // 27: rpmgr.agent.v1.DenyList.version:type_name -> rpmgr.agent.v1.Revision
-	24, // 28: rpmgr.agent.v1.DenyList.entries:type_name -> rpmgr.agent.v1.DenyEntry
-	26, // 29: rpmgr.agent.v1.DenyEntry.not_after:type_name -> google.protobuf.Timestamp
-	30, // [30:30] is the sub-list for method output_type
-	30, // [30:30] is the sub-list for method input_type
-	30, // [30:30] is the sub-list for extension type_name
-	30, // [30:30] is the sub-list for extension extendee
-	0,  // [0:30] is the sub-list for field type_name
+	2,  // 0: rpmgr.agent.v1.Snapshot.revision:type_name -> rpmgr.agent.v1.Revision
+	5,  // 1: rpmgr.agent.v1.Snapshot.resources:type_name -> rpmgr.agent.v1.Resource
+	8,  // 2: rpmgr.agent.v1.Resource.gateway_tcp_route:type_name -> rpmgr.agent.v1.GatewayTCPRoute
+	20, // 3: rpmgr.agent.v1.Resource.connector_route:type_name -> rpmgr.agent.v1.ConnectorRoute
+	21, // 4: rpmgr.agent.v1.Resource.connector_gateway:type_name -> rpmgr.agent.v1.ConnectorGateway
+	19, // 5: rpmgr.agent.v1.Resource.gateway_passthrough_route:type_name -> rpmgr.agent.v1.GatewayPassthroughRoute
+	12, // 6: rpmgr.agent.v1.Resource.gateway_udp_route:type_name -> rpmgr.agent.v1.GatewayUDPRoute
+	17, // 7: rpmgr.agent.v1.Resource.gateway_certificate:type_name -> rpmgr.agent.v1.GatewayCertificate
+	13, // 8: rpmgr.agent.v1.Resource.gateway_http_route:type_name -> rpmgr.agent.v1.GatewayHTTPRoute
+	6,  // 9: rpmgr.agent.v1.Resource.gateway_domain_challenge:type_name -> rpmgr.agent.v1.GatewayDomainChallenge
+	7,  // 10: rpmgr.agent.v1.Resource.gateway_drain:type_name -> rpmgr.agent.v1.GatewayDrain
+	23, // 11: rpmgr.agent.v1.Resource.reference:type_name -> rpmgr.agent.v1.ResourceReference
+	9,  // 12: rpmgr.agent.v1.GatewayTCPRoute.access:type_name -> rpmgr.agent.v1.RouteAccess
+	11, // 13: rpmgr.agent.v1.RouteAccess.ip_rules:type_name -> rpmgr.agent.v1.IPRule
+	10, // 14: rpmgr.agent.v1.RouteAccess.basic_auth:type_name -> rpmgr.agent.v1.BasicAuthRule
+	26, // 15: rpmgr.agent.v1.BasicAuthRule.users:type_name -> rpmgr.v1.BasicAuthUser
+	9,  // 16: rpmgr.agent.v1.GatewayUDPRoute.access:type_name -> rpmgr.agent.v1.RouteAccess
+	16, // 17: rpmgr.agent.v1.GatewayHTTPRoute.hosts:type_name -> rpmgr.agent.v1.HTTPHost
+	15, // 18: rpmgr.agent.v1.GatewayHTTPRoute.upstream_tls:type_name -> rpmgr.agent.v1.UpstreamTLS
+	14, // 19: rpmgr.agent.v1.GatewayHTTPRoute.request_headers:type_name -> rpmgr.agent.v1.HTTPHeader
+	14, // 20: rpmgr.agent.v1.GatewayHTTPRoute.response_headers:type_name -> rpmgr.agent.v1.HTTPHeader
+	9,  // 21: rpmgr.agent.v1.GatewayHTTPRoute.access:type_name -> rpmgr.agent.v1.RouteAccess
+	0,  // 22: rpmgr.agent.v1.UpstreamTLS.verification:type_name -> rpmgr.agent.v1.UpstreamVerification
+	27, // 23: rpmgr.agent.v1.GatewayCertificate.not_after:type_name -> google.protobuf.Timestamp
+	9,  // 24: rpmgr.agent.v1.GatewayPassthroughRoute.access:type_name -> rpmgr.agent.v1.RouteAccess
+	22, // 25: rpmgr.agent.v1.ConnectorRoute.targets:type_name -> rpmgr.agent.v1.Target
+	1,  // 26: rpmgr.agent.v1.ConnectorRoute.transport:type_name -> rpmgr.agent.v1.TransportPolicy
+	1,  // 27: rpmgr.agent.v1.ConnectorGateway.transports:type_name -> rpmgr.agent.v1.TransportPolicy
+	2,  // 28: rpmgr.agent.v1.DenyList.version:type_name -> rpmgr.agent.v1.Revision
+	25, // 29: rpmgr.agent.v1.DenyList.entries:type_name -> rpmgr.agent.v1.DenyEntry
+	27, // 30: rpmgr.agent.v1.DenyEntry.not_after:type_name -> google.protobuf.Timestamp
+	31, // [31:31] is the sub-list for method output_type
+	31, // [31:31] is the sub-list for method input_type
+	31, // [31:31] is the sub-list for extension type_name
+	31, // [31:31] is the sub-list for extension extendee
+	0,  // [0:31] is the sub-list for field type_name
 }
 
 func init() { file_rpmgr_agent_v1_snapshot_proto_init() }
@@ -2166,7 +2235,7 @@ func file_rpmgr_agent_v1_snapshot_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_rpmgr_agent_v1_snapshot_proto_rawDesc), len(file_rpmgr_agent_v1_snapshot_proto_rawDesc)),
-			NumEnums:      1,
+			NumEnums:      2,
 			NumMessages:   24,
 			NumExtensions: 0,
 			NumServices:   0,

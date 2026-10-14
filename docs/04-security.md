@@ -30,7 +30,7 @@ design prevents and the control that prevents it.
 | Actor | Can | Cannot (control) |
 |---|---|---|
 | **Internet attacker** | Reach gateway listeners, the controller's login and enrollment endpoints; attempt denial of service | Call agent APIs (mutual TLS required everywhere except `Enroll`). Guess tokens (256-bit random, hashed lookup, per-IP and per-account rate limits, uniform errors). Reach metrics or pprof (the admin listener is never on a public address and listens on loopback by default, D67). Claim a hostname (domain verification). |
-| **Network attacker (MITM)** | See metadata: SNI, IPs, timing, volume | Impersonate the controller or a gateway (pinned root, no trust-on-first-use, `InsecureSkipVerify` banned in code). Replay anything (TLS 1.3, no 0-RTT, no timestamp tokens). Read tunnel contents. |
+| **Network attacker (MITM)** | See metadata: SNI, IPs, timing, volume | Impersonate the controller or a gateway (pinned root, no trust-on-first-use, `InsecureSkipVerify` banned in code; its one exception is an HTTPS upstream its user marks unverified, [ADR-0017](adr/0017-upstream-tls-verification-modes.md)). Replay anything (TLS 1.3, no 0-RTT, no timestamp tokens). Read tunnel contents. |
 | **Malicious user of another org** | Act within their own org and role | See or change another org's resources (one authorization interceptor, org-scoped store, composite foreign keys). Escalate (token scopes ⊆ creator's permissions; an Owner made only by an Owner, Admin and lower roles granted by Owners and Admins, Admin and Owner with a step-up, D66). Open a shell or log stream on someone else's connector (resource-bound authorization and single-use tickets). Take another org's domain (verified, globally unique claims). |
 | **Malicious user in the same org (low role)** | Read what Viewer/Operator may read | Mint enrollment tokens, change gateways, domains, members or settings beyond their role (permission matrix). |
 | **Compromised connector** | Serve, blackhole or tamper with **its own** routes' traffic; report false health or metrics; use its own visitor grants; leave with `rpmgr leave`, which deletes the routes only it serves, with their hostnames, ports and policy links ([D78](14-open-decisions.md#engineering)) | Serve other routes (gateways serve a route only for connectors listed for it in the signed route table). Read other agents' configuration (snapshots are compiled per identity). Reach private services it has no grant for. Survive revocation (deny-list pushed to all relying parties, sessions killed, renewal refused). Exhaust a gateway (a stream limit per data session and a cap on the data sessions of one connector, [03](03-connections.md#establishment); per-route bandwidth limits come in Phase 2, [05](05-features.md#edge-access-control-and-limits)). |
@@ -86,7 +86,7 @@ What the design does **not** protect against, stated plainly:
   exactly one URI SAN, scheme `spiffe`, a host **equal** to `<td>` (the name constraint below also
   admits sub-domains of `<td>`), and the expected role and ID. A gateway of another group or org
   therefore cannot impersonate this connector's gateway, even with a valid certificate
-  ([S7](spikes/S7.md)). `InsecureSkipVerify` is never used.
+  ([S7](spikes/S7.md)). `InsecureSkipVerify` is never used for rpmgr's own sessions.
 - Every rpmgr check runs in `VerifyConnection`, which Go calls on full and resumed handshakes alike;
   never in `VerifyPeerCertificate`, which resumed connections skip
   ([03](03-connections.md#properties-common-to-all-rpmgr-internal-sessions)).
@@ -281,6 +281,15 @@ later.
   SubjectPublicKeyInfo, checked in addition. A CA bundle holds 1 to 100 PEM certificates, each of
   which counts as a trust anchor, so a self-signed upstream certificate can trust itself. A
   connection whose verification settings change is not reused.
+- **Unverified HTTPS upstreams** [R]: a target's user may mark it unverified
+  ([ADR-0017](adr/0017-upstream-tls-verification-modes.md),
+  [D82](14-open-decisions.md#engineering)). The gateway then speaks TLS to it and sends its
+  server name, but checks neither chain, nor name, nor pin, and a CA bundle or a pin cannot go
+  with it. The tunnel between gateway and connector stays mutually authenticated; anyone on the
+  network between the connector and the target can read and change the traffic. Nothing is
+  unverified by default; the web UI warns when the mode is chosen and marks such targets. The
+  only `InsecureSkipVerify` in rpmgr, allowed by `tools/bannedapi` and golangci in
+  `UpstreamTLS.config` alone, serves this mode.
 - **Route certificates on gateways** [R]: a gateway keeps each fetched chain and key in its state
   directory, readable by the gateway's user only, as any TLS server keeps its keys, so that a
   gateway restarted while the controller is unreachable still terminates TLS. It checks a kept copy

@@ -22,6 +22,7 @@ import (
 	"net/netip"
 	"slices"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -459,11 +460,16 @@ func newUpstreamCA(t *testing.T) upstreamCA {
 
 // TestHTTPRoutes_HTTPSUpstream: an https upstream is verified with the settings of the target the
 // connector chose: its CA bundle, server name and SPKI pin; any mismatch, a target without
-// settings, or the host's trust store for a private CA is 502. ALPN brings HTTP/2.
+// settings, or the host's trust store for a private CA is 502. A target marked unverified passes
+// whatever its certificate, and still gets its server name. ALPN brings HTTP/2.
 func TestHTTPRoutes_HTTPSUpstream(t *testing.T) {
 	ca := newUpstreamCA(t)
-	ln, err := tls.Listen("tcp", "127.0.0.1:0", &tls.Config{MinVersion: tls.VersionTLS13, Certificates: []tls.Certificate{ca.leaf},
-		NextProtos: []string{"h2", "http/1.1"}})
+	var sni atomic.Value
+	ln, err := tls.Listen("tcp", "127.0.0.1:0", &tls.Config{MinVersion: tls.VersionTLS13, NextProtos: []string{"h2", "http/1.1"},
+		GetCertificate: func(hello *tls.ClientHelloInfo) (*tls.Certificate, error) {
+			sni.Store(hello.ServerName)
+			return &ca.leaf, nil
+		}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -491,6 +497,9 @@ func TestHTTPRoutes_HTTPSUpstream(t *testing.T) {
 		{"the host's trust store", map[string]gateway.UpstreamTLS{"tg_rt_tls": {ServerName: "upstream.internal"}}, http.StatusBadGateway},
 		{"another target's settings only", map[string]gateway.UpstreamTLS{"tg_other": {ServerName: "upstream.internal", CAPEM: ca.pem}},
 			http.StatusBadGateway},
+		{"unverified", map[string]gateway.UpstreamTLS{"tg_rt_tls": {ServerName: "other.internal", Verify: gateway.VerifyNothing}}, http.StatusOK},
+		{"unverified on another target only", map[string]gateway.UpstreamTLS{"tg_other": {ServerName: "other.internal",
+			Verify: gateway.VerifyNothing}}, http.StatusBadGateway},
 	} {
 		route.TLS = tc.tls
 		e.routes.Apply([]gateway.HTTPRoute{route})
@@ -498,6 +507,9 @@ func TestHTTPRoutes_HTTPSUpstream(t *testing.T) {
 		if r.status != tc.want || tc.want == http.StatusOK && r.body != "HTTP/2.0" {
 			t.Errorf("%s: %d %q, want %d", tc.name, r.status, r.body, tc.want)
 		}
+	}
+	if got := sni.Load(); got != "other.internal" {
+		t.Errorf("the unverified target got the server name %v", got)
 	}
 }
 

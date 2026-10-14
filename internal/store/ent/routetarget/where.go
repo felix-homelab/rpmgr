@@ -778,6 +778,26 @@ func TLSSpkiSha256ContainsFold(v string) predicate.RouteTarget {
 	return predicate.RouteTarget(sql.FieldContainsFold(FieldTLSSpkiSha256, v))
 }
 
+// TLSVerificationEQ applies the EQ predicate on the "tls_verification" field.
+func TLSVerificationEQ(v TLSVerification) predicate.RouteTarget {
+	return predicate.RouteTarget(sql.FieldEQ(FieldTLSVerification, v))
+}
+
+// TLSVerificationNEQ applies the NEQ predicate on the "tls_verification" field.
+func TLSVerificationNEQ(v TLSVerification) predicate.RouteTarget {
+	return predicate.RouteTarget(sql.FieldNEQ(FieldTLSVerification, v))
+}
+
+// TLSVerificationIn applies the In predicate on the "tls_verification" field.
+func TLSVerificationIn(vs ...TLSVerification) predicate.RouteTarget {
+	return predicate.RouteTarget(sql.FieldIn(FieldTLSVerification, vs...))
+}
+
+// TLSVerificationNotIn applies the NotIn predicate on the "tls_verification" field.
+func TLSVerificationNotIn(vs ...TLSVerification) predicate.RouteTarget {
+	return predicate.RouteTarget(sql.FieldNotIn(FieldTLSVerification, vs...))
+}
+
 // ProxyProtocolEQ applies the EQ predicate on the "proxy_protocol" field.
 func ProxyProtocolEQ(v ProxyProtocol) predicate.RouteTarget {
 	return predicate.RouteTarget(sql.FieldEQ(FieldProxyProtocol, v))

@@ -216,7 +216,7 @@ const (
 	UpstreamProtocol_UPSTREAM_PROTOCOL_TCP UpstreamProtocol = 1
 	// Plain HTTP, for http routes.
 	UpstreamProtocol_UPSTREAM_PROTOCOL_HTTP UpstreamProtocol = 2
-	// HTTPS, verified, for http routes.
+	// HTTPS, for http routes; its TLS settings say how the certificate is checked.
 	UpstreamProtocol_UPSTREAM_PROTOCOL_HTTPS UpstreamProtocol = 3
 	// HTTP/2 without TLS, for http routes.
 	UpstreamProtocol_UPSTREAM_PROTOCOL_H2C UpstreamProtocol = 4
@@ -322,6 +322,62 @@ func (x ProxyProtocol) Number() protoreflect.EnumNumber {
 // Deprecated: Use ProxyProtocol.Descriptor instead.
 func (ProxyProtocol) EnumDescriptor() ([]byte, []int) {
 	return file_rpmgr_v1_route_proto_rawDescGZIP(), []int{4}
+}
+
+// UpstreamVerification is how the gateway checks an HTTPS upstream's certificate
+// (docs/04-security.md, "HTTPS upstreams"; ADR-0017).
+type UpstreamVerification int32
+
+const (
+	// Not set: VERIFIED.
+	UpstreamVerification_UPSTREAM_VERIFICATION_UNSPECIFIED UpstreamVerification = 0
+	// Its chain against the CA bundle or the gateway host's roots, its name against the server name,
+	// and its key against the pin if one is set.
+	UpstreamVerification_UPSTREAM_VERIFICATION_VERIFIED UpstreamVerification = 1
+	// Not at all: the traffic is encrypted, but anyone on the path from the connector to the target
+	// can read and change it. The target's user chose this, for a certificate nothing can verify.
+	UpstreamVerification_UPSTREAM_VERIFICATION_UNVERIFIED UpstreamVerification = 2
+)
+
+// Enum value maps for UpstreamVerification.
+var (
+	UpstreamVerification_name = map[int32]string{
+		0: "UPSTREAM_VERIFICATION_UNSPECIFIED",
+		1: "UPSTREAM_VERIFICATION_VERIFIED",
+		2: "UPSTREAM_VERIFICATION_UNVERIFIED",
+	}
+	UpstreamVerification_value = map[string]int32{
+		"UPSTREAM_VERIFICATION_UNSPECIFIED": 0,
+		"UPSTREAM_VERIFICATION_VERIFIED":    1,
+		"UPSTREAM_VERIFICATION_UNVERIFIED":  2,
+	}
+)
+
+func (x UpstreamVerification) Enum() *UpstreamVerification {
+	p := new(UpstreamVerification)
+	*p = x
+	return p
+}
+
+func (x UpstreamVerification) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (UpstreamVerification) Descriptor() protoreflect.EnumDescriptor {
+	return file_rpmgr_v1_route_proto_enumTypes[5].Descriptor()
+}
+
+func (UpstreamVerification) Type() protoreflect.EnumType {
+	return &file_rpmgr_v1_route_proto_enumTypes[5]
+}
+
+func (x UpstreamVerification) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use UpstreamVerification.Descriptor instead.
+func (UpstreamVerification) EnumDescriptor() ([]byte, []int) {
+	return file_rpmgr_v1_route_proto_rawDescGZIP(), []int{5}
 }
 
 // Route is one route of an org.
@@ -1260,12 +1316,17 @@ func (x *HostPort) GetPort() uint32 {
 // UpstreamTLSSettings verify an HTTPS upstream.
 type UpstreamTLSSettings struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// The name its certificate must hold; the target's host if not set.
+	// The name its certificate must hold, and the name sent to it (SNI); the target's host if not
+	// set.
 	ServerName string `protobuf:"bytes,1,opt,name=server_name,json=serverName,proto3" json:"server_name,omitempty"`
-	// The CA bundle its certificate must chain to; the gateway host's roots if not set.
+	// The CA bundle its certificate must chain to; the gateway host's roots if not set. Only with
+	// VERIFIED.
 	CaBundleId string `protobuf:"bytes,2,opt,name=ca_bundle_id,json=caBundleId,proto3" json:"ca_bundle_id,omitempty"`
-	// The SHA-256 of its public key, 64 hexadecimal digits, which it must match if set.
-	SpkiSha256    string `protobuf:"bytes,3,opt,name=spki_sha256,json=spkiSha256,proto3" json:"spki_sha256,omitempty"`
+	// The SHA-256 of its public key, 64 hexadecimal digits, which it must match if set. Only with
+	// VERIFIED.
+	SpkiSha256 string `protobuf:"bytes,3,opt,name=spki_sha256,json=spkiSha256,proto3" json:"spki_sha256,omitempty"`
+	// How its certificate is checked; VERIFIED if not set.
+	Verification  UpstreamVerification `protobuf:"varint,4,opt,name=verification,proto3,enum=rpmgr.v1.UpstreamVerification" json:"verification,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1319,6 +1380,13 @@ func (x *UpstreamTLSSettings) GetSpkiSha256() string {
 		return x.SpkiSha256
 	}
 	return ""
+}
+
+func (x *UpstreamTLSSettings) GetVerification() UpstreamVerification {
+	if x != nil {
+		return x.Verification
+	}
+	return UpstreamVerification_UPSTREAM_VERIFICATION_UNSPECIFIED
 }
 
 // CreateRouteRequest is a new route.
@@ -2629,14 +2697,15 @@ const file_rpmgr_v1_route_proto_rawDesc = "" +
 	"\bHostPort\x12\x1e\n" +
 	"\x04host\x18\x01 \x01(\tB\n" +
 	"\xbaH\ar\x05\x10\x01\x18\xfd\x01R\x04host\x12\x1f\n" +
-	"\x04port\x18\x02 \x01(\rB\v\xbaH\b*\x06\x18\xff\xff\x03(\x01R\x04port\"\x9d\x01\n" +
+	"\x04port\x18\x02 \x01(\rB\v\xbaH\b*\x06\x18\xff\xff\x03(\x01R\x04port\"\xeb\x01\n" +
 	"\x13UpstreamTLSSettings\x12)\n" +
 	"\vserver_name\x18\x01 \x01(\tB\b\xbaH\x05r\x03\x18\xfd\x01R\n" +
 	"serverName\x12 \n" +
 	"\fca_bundle_id\x18\x02 \x01(\tR\n" +
 	"caBundleId\x129\n" +
 	"\vspki_sha256\x18\x03 \x01(\tB\x18\xbaH\x15r\x132\x11^([0-9a-f]{64})?$R\n" +
-	"spkiSha256\"\x8c\x01\n" +
+	"spkiSha256\x12L\n" +
+	"\fverification\x18\x04 \x01(\x0e2\x1e.rpmgr.v1.UpstreamVerificationB\b\xbaH\x05\x82\x01\x02\x10\x01R\fverification\"\x8c\x01\n" +
 	"\x12CreateRouteRequest\x12\x1e\n" +
 	"\x06org_id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x05orgId\x12-\n" +
 	"\x05route\x18\x02 \x01(\v2\x0f.rpmgr.v1.RouteB\x06\xbaH\x03\xc8\x01\x01R\x05route\x12'\n" +
@@ -2744,7 +2813,11 @@ const file_rpmgr_v1_route_proto_rawDesc = "" +
 	"\x1aPROXY_PROTOCOL_UNSPECIFIED\x10\x00\x12\x17\n" +
 	"\x13PROXY_PROTOCOL_NONE\x10\x01\x12\x15\n" +
 	"\x11PROXY_PROTOCOL_V1\x10\x02\x12\x15\n" +
-	"\x11PROXY_PROTOCOL_V2\x10\x032\xf2\b\n" +
+	"\x11PROXY_PROTOCOL_V2\x10\x03*\x87\x01\n" +
+	"\x14UpstreamVerification\x12%\n" +
+	"!UPSTREAM_VERIFICATION_UNSPECIFIED\x10\x00\x12\"\n" +
+	"\x1eUPSTREAM_VERIFICATION_VERIFIED\x10\x01\x12$\n" +
+	" UPSTREAM_VERIFICATION_UNVERIFIED\x10\x022\xf2\b\n" +
 	"\fRouteService\x12f\n" +
 	"\vCreateRoute\x12\x1c.rpmgr.v1.CreateRouteRequest\x1a\x1d.rpmgr.v1.CreateRouteResponse\"\x1a\x8a\xb5\x18\x16\n" +
 	"\froutes.write\x12\x06org_id\x12^\n" +
@@ -2780,7 +2853,7 @@ func file_rpmgr_v1_route_proto_rawDescGZIP() []byte {
 	return file_rpmgr_v1_route_proto_rawDescData
 }
 
-var file_rpmgr_v1_route_proto_enumTypes = make([]protoimpl.EnumInfo, 5)
+var file_rpmgr_v1_route_proto_enumTypes = make([]protoimpl.EnumInfo, 6)
 var file_rpmgr_v1_route_proto_msgTypes = make([]protoimpl.MessageInfo, 33)
 var file_rpmgr_v1_route_proto_goTypes = []any{
 	(RouteState)(0),                   // 0: rpmgr.v1.RouteState
@@ -2788,123 +2861,125 @@ var file_rpmgr_v1_route_proto_goTypes = []any{
 	(Port80Mode)(0),                   // 2: rpmgr.v1.Port80Mode
 	(UpstreamProtocol)(0),             // 3: rpmgr.v1.UpstreamProtocol
 	(ProxyProtocol)(0),                // 4: rpmgr.v1.ProxyProtocol
-	(*Route)(nil),                     // 5: rpmgr.v1.Route
-	(*RouteStatus)(nil),               // 6: rpmgr.v1.RouteStatus
-	(*RouteNotServing)(nil),           // 7: rpmgr.v1.RouteNotServing
-	(*HTTPRouteSpec)(nil),             // 8: rpmgr.v1.HTTPRouteSpec
-	(*TCPRouteSpec)(nil),              // 9: rpmgr.v1.TCPRouteSpec
-	(*UDPRouteSpec)(nil),              // 10: rpmgr.v1.UDPRouteSpec
-	(*TLSPassthroughRouteSpec)(nil),   // 11: rpmgr.v1.TLSPassthroughRouteSpec
-	(*RouteTarget)(nil),               // 12: rpmgr.v1.RouteTarget
-	(*HostPort)(nil),                  // 13: rpmgr.v1.HostPort
-	(*UpstreamTLSSettings)(nil),       // 14: rpmgr.v1.UpstreamTLSSettings
-	(*CreateRouteRequest)(nil),        // 15: rpmgr.v1.CreateRouteRequest
-	(*CreateRouteResponse)(nil),       // 16: rpmgr.v1.CreateRouteResponse
-	(*GetRouteRequest)(nil),           // 17: rpmgr.v1.GetRouteRequest
-	(*GetRouteResponse)(nil),          // 18: rpmgr.v1.GetRouteResponse
-	(*ListRoutesRequest)(nil),         // 19: rpmgr.v1.ListRoutesRequest
-	(*ListRoutesResponse)(nil),        // 20: rpmgr.v1.ListRoutesResponse
-	(*UpdateRouteRequest)(nil),        // 21: rpmgr.v1.UpdateRouteRequest
-	(*UpdateRouteResponse)(nil),       // 22: rpmgr.v1.UpdateRouteResponse
-	(*DeleteRouteRequest)(nil),        // 23: rpmgr.v1.DeleteRouteRequest
-	(*DeleteRouteResponse)(nil),       // 24: rpmgr.v1.DeleteRouteResponse
-	(*CreateRouteTargetRequest)(nil),  // 25: rpmgr.v1.CreateRouteTargetRequest
-	(*CreateRouteTargetResponse)(nil), // 26: rpmgr.v1.CreateRouteTargetResponse
-	(*UpdateRouteTargetRequest)(nil),  // 27: rpmgr.v1.UpdateRouteTargetRequest
-	(*UpdateRouteTargetResponse)(nil), // 28: rpmgr.v1.UpdateRouteTargetResponse
-	(*GetRouteTargetRequest)(nil),     // 29: rpmgr.v1.GetRouteTargetRequest
-	(*GetRouteTargetResponse)(nil),    // 30: rpmgr.v1.GetRouteTargetResponse
-	(*DeleteRouteTargetRequest)(nil),  // 31: rpmgr.v1.DeleteRouteTargetRequest
-	(*DeleteRouteTargetResponse)(nil), // 32: rpmgr.v1.DeleteRouteTargetResponse
-	(*PreviewRouteRequest)(nil),       // 33: rpmgr.v1.PreviewRouteRequest
-	(*PreviewRouteResponse)(nil),      // 34: rpmgr.v1.PreviewRouteResponse
-	nil,                               // 35: rpmgr.v1.Route.LabelsEntry
-	nil,                               // 36: rpmgr.v1.HTTPRouteSpec.RequestHeadersSetEntry
-	nil,                               // 37: rpmgr.v1.HTTPRouteSpec.ResponseHeadersSetEntry
-	(DataTransport)(0),                // 38: rpmgr.v1.DataTransport
-	(*timestamppb.Timestamp)(nil),     // 39: google.protobuf.Timestamp
-	(*AgentApplyStatus)(nil),          // 40: rpmgr.v1.AgentApplyStatus
-	(*Revision)(nil),                  // 41: rpmgr.v1.Revision
-	(*ApplyStatus)(nil),               // 42: rpmgr.v1.ApplyStatus
-	(*fieldmaskpb.FieldMask)(nil),     // 43: google.protobuf.FieldMask
-	(*ApplyError)(nil),                // 44: rpmgr.v1.ApplyError
+	(UpstreamVerification)(0),         // 5: rpmgr.v1.UpstreamVerification
+	(*Route)(nil),                     // 6: rpmgr.v1.Route
+	(*RouteStatus)(nil),               // 7: rpmgr.v1.RouteStatus
+	(*RouteNotServing)(nil),           // 8: rpmgr.v1.RouteNotServing
+	(*HTTPRouteSpec)(nil),             // 9: rpmgr.v1.HTTPRouteSpec
+	(*TCPRouteSpec)(nil),              // 10: rpmgr.v1.TCPRouteSpec
+	(*UDPRouteSpec)(nil),              // 11: rpmgr.v1.UDPRouteSpec
+	(*TLSPassthroughRouteSpec)(nil),   // 12: rpmgr.v1.TLSPassthroughRouteSpec
+	(*RouteTarget)(nil),               // 13: rpmgr.v1.RouteTarget
+	(*HostPort)(nil),                  // 14: rpmgr.v1.HostPort
+	(*UpstreamTLSSettings)(nil),       // 15: rpmgr.v1.UpstreamTLSSettings
+	(*CreateRouteRequest)(nil),        // 16: rpmgr.v1.CreateRouteRequest
+	(*CreateRouteResponse)(nil),       // 17: rpmgr.v1.CreateRouteResponse
+	(*GetRouteRequest)(nil),           // 18: rpmgr.v1.GetRouteRequest
+	(*GetRouteResponse)(nil),          // 19: rpmgr.v1.GetRouteResponse
+	(*ListRoutesRequest)(nil),         // 20: rpmgr.v1.ListRoutesRequest
+	(*ListRoutesResponse)(nil),        // 21: rpmgr.v1.ListRoutesResponse
+	(*UpdateRouteRequest)(nil),        // 22: rpmgr.v1.UpdateRouteRequest
+	(*UpdateRouteResponse)(nil),       // 23: rpmgr.v1.UpdateRouteResponse
+	(*DeleteRouteRequest)(nil),        // 24: rpmgr.v1.DeleteRouteRequest
+	(*DeleteRouteResponse)(nil),       // 25: rpmgr.v1.DeleteRouteResponse
+	(*CreateRouteTargetRequest)(nil),  // 26: rpmgr.v1.CreateRouteTargetRequest
+	(*CreateRouteTargetResponse)(nil), // 27: rpmgr.v1.CreateRouteTargetResponse
+	(*UpdateRouteTargetRequest)(nil),  // 28: rpmgr.v1.UpdateRouteTargetRequest
+	(*UpdateRouteTargetResponse)(nil), // 29: rpmgr.v1.UpdateRouteTargetResponse
+	(*GetRouteTargetRequest)(nil),     // 30: rpmgr.v1.GetRouteTargetRequest
+	(*GetRouteTargetResponse)(nil),    // 31: rpmgr.v1.GetRouteTargetResponse
+	(*DeleteRouteTargetRequest)(nil),  // 32: rpmgr.v1.DeleteRouteTargetRequest
+	(*DeleteRouteTargetResponse)(nil), // 33: rpmgr.v1.DeleteRouteTargetResponse
+	(*PreviewRouteRequest)(nil),       // 34: rpmgr.v1.PreviewRouteRequest
+	(*PreviewRouteResponse)(nil),      // 35: rpmgr.v1.PreviewRouteResponse
+	nil,                               // 36: rpmgr.v1.Route.LabelsEntry
+	nil,                               // 37: rpmgr.v1.HTTPRouteSpec.RequestHeadersSetEntry
+	nil,                               // 38: rpmgr.v1.HTTPRouteSpec.ResponseHeadersSetEntry
+	(DataTransport)(0),                // 39: rpmgr.v1.DataTransport
+	(*timestamppb.Timestamp)(nil),     // 40: google.protobuf.Timestamp
+	(*AgentApplyStatus)(nil),          // 41: rpmgr.v1.AgentApplyStatus
+	(*Revision)(nil),                  // 42: rpmgr.v1.Revision
+	(*ApplyStatus)(nil),               // 43: rpmgr.v1.ApplyStatus
+	(*fieldmaskpb.FieldMask)(nil),     // 44: google.protobuf.FieldMask
+	(*ApplyError)(nil),                // 45: rpmgr.v1.ApplyError
 }
 var file_rpmgr_v1_route_proto_depIdxs = []int32{
-	35, // 0: rpmgr.v1.Route.labels:type_name -> rpmgr.v1.Route.LabelsEntry
-	8,  // 1: rpmgr.v1.Route.http:type_name -> rpmgr.v1.HTTPRouteSpec
-	9,  // 2: rpmgr.v1.Route.tcp:type_name -> rpmgr.v1.TCPRouteSpec
-	10, // 3: rpmgr.v1.Route.udp:type_name -> rpmgr.v1.UDPRouteSpec
-	11, // 4: rpmgr.v1.Route.tls_passthrough:type_name -> rpmgr.v1.TLSPassthroughRouteSpec
-	12, // 5: rpmgr.v1.Route.targets:type_name -> rpmgr.v1.RouteTarget
-	38, // 6: rpmgr.v1.Route.transport:type_name -> rpmgr.v1.DataTransport
-	39, // 7: rpmgr.v1.Route.create_time:type_name -> google.protobuf.Timestamp
-	39, // 8: rpmgr.v1.Route.update_time:type_name -> google.protobuf.Timestamp
-	6,  // 9: rpmgr.v1.Route.status:type_name -> rpmgr.v1.RouteStatus
+	36, // 0: rpmgr.v1.Route.labels:type_name -> rpmgr.v1.Route.LabelsEntry
+	9,  // 1: rpmgr.v1.Route.http:type_name -> rpmgr.v1.HTTPRouteSpec
+	10, // 2: rpmgr.v1.Route.tcp:type_name -> rpmgr.v1.TCPRouteSpec
+	11, // 3: rpmgr.v1.Route.udp:type_name -> rpmgr.v1.UDPRouteSpec
+	12, // 4: rpmgr.v1.Route.tls_passthrough:type_name -> rpmgr.v1.TLSPassthroughRouteSpec
+	13, // 5: rpmgr.v1.Route.targets:type_name -> rpmgr.v1.RouteTarget
+	39, // 6: rpmgr.v1.Route.transport:type_name -> rpmgr.v1.DataTransport
+	40, // 7: rpmgr.v1.Route.create_time:type_name -> google.protobuf.Timestamp
+	40, // 8: rpmgr.v1.Route.update_time:type_name -> google.protobuf.Timestamp
+	7,  // 9: rpmgr.v1.Route.status:type_name -> rpmgr.v1.RouteStatus
 	0,  // 10: rpmgr.v1.RouteStatus.state:type_name -> rpmgr.v1.RouteState
-	7,  // 11: rpmgr.v1.RouteStatus.not_serving:type_name -> rpmgr.v1.RouteNotServing
-	40, // 12: rpmgr.v1.RouteStatus.rejections:type_name -> rpmgr.v1.AgentApplyStatus
+	8,  // 11: rpmgr.v1.RouteStatus.not_serving:type_name -> rpmgr.v1.RouteNotServing
+	41, // 12: rpmgr.v1.RouteStatus.rejections:type_name -> rpmgr.v1.AgentApplyStatus
 	1,  // 13: rpmgr.v1.HTTPRouteSpec.tls_mode:type_name -> rpmgr.v1.TLSMode
 	2,  // 14: rpmgr.v1.HTTPRouteSpec.port80:type_name -> rpmgr.v1.Port80Mode
-	36, // 15: rpmgr.v1.HTTPRouteSpec.request_headers_set:type_name -> rpmgr.v1.HTTPRouteSpec.RequestHeadersSetEntry
-	37, // 16: rpmgr.v1.HTTPRouteSpec.response_headers_set:type_name -> rpmgr.v1.HTTPRouteSpec.ResponseHeadersSetEntry
-	13, // 17: rpmgr.v1.RouteTarget.host_port:type_name -> rpmgr.v1.HostPort
+	37, // 15: rpmgr.v1.HTTPRouteSpec.request_headers_set:type_name -> rpmgr.v1.HTTPRouteSpec.RequestHeadersSetEntry
+	38, // 16: rpmgr.v1.HTTPRouteSpec.response_headers_set:type_name -> rpmgr.v1.HTTPRouteSpec.ResponseHeadersSetEntry
+	14, // 17: rpmgr.v1.RouteTarget.host_port:type_name -> rpmgr.v1.HostPort
 	3,  // 18: rpmgr.v1.RouteTarget.upstream_protocol:type_name -> rpmgr.v1.UpstreamProtocol
-	14, // 19: rpmgr.v1.RouteTarget.tls:type_name -> rpmgr.v1.UpstreamTLSSettings
+	15, // 19: rpmgr.v1.RouteTarget.tls:type_name -> rpmgr.v1.UpstreamTLSSettings
 	4,  // 20: rpmgr.v1.RouteTarget.proxy_protocol:type_name -> rpmgr.v1.ProxyProtocol
-	5,  // 21: rpmgr.v1.CreateRouteRequest.route:type_name -> rpmgr.v1.Route
-	5,  // 22: rpmgr.v1.CreateRouteResponse.route:type_name -> rpmgr.v1.Route
-	41, // 23: rpmgr.v1.CreateRouteResponse.revision:type_name -> rpmgr.v1.Revision
-	42, // 24: rpmgr.v1.CreateRouteResponse.apply_status:type_name -> rpmgr.v1.ApplyStatus
-	5,  // 25: rpmgr.v1.GetRouteResponse.route:type_name -> rpmgr.v1.Route
-	5,  // 26: rpmgr.v1.ListRoutesResponse.routes:type_name -> rpmgr.v1.Route
-	5,  // 27: rpmgr.v1.UpdateRouteRequest.route:type_name -> rpmgr.v1.Route
-	43, // 28: rpmgr.v1.UpdateRouteRequest.update_mask:type_name -> google.protobuf.FieldMask
-	5,  // 29: rpmgr.v1.UpdateRouteResponse.route:type_name -> rpmgr.v1.Route
-	41, // 30: rpmgr.v1.UpdateRouteResponse.revision:type_name -> rpmgr.v1.Revision
-	42, // 31: rpmgr.v1.UpdateRouteResponse.apply_status:type_name -> rpmgr.v1.ApplyStatus
-	41, // 32: rpmgr.v1.DeleteRouteResponse.revision:type_name -> rpmgr.v1.Revision
-	42, // 33: rpmgr.v1.DeleteRouteResponse.apply_status:type_name -> rpmgr.v1.ApplyStatus
-	12, // 34: rpmgr.v1.CreateRouteTargetRequest.target:type_name -> rpmgr.v1.RouteTarget
-	12, // 35: rpmgr.v1.CreateRouteTargetResponse.target:type_name -> rpmgr.v1.RouteTarget
-	41, // 36: rpmgr.v1.CreateRouteTargetResponse.revision:type_name -> rpmgr.v1.Revision
-	42, // 37: rpmgr.v1.CreateRouteTargetResponse.apply_status:type_name -> rpmgr.v1.ApplyStatus
-	12, // 38: rpmgr.v1.UpdateRouteTargetRequest.target:type_name -> rpmgr.v1.RouteTarget
-	43, // 39: rpmgr.v1.UpdateRouteTargetRequest.update_mask:type_name -> google.protobuf.FieldMask
-	12, // 40: rpmgr.v1.UpdateRouteTargetResponse.target:type_name -> rpmgr.v1.RouteTarget
-	41, // 41: rpmgr.v1.UpdateRouteTargetResponse.revision:type_name -> rpmgr.v1.Revision
-	42, // 42: rpmgr.v1.UpdateRouteTargetResponse.apply_status:type_name -> rpmgr.v1.ApplyStatus
-	12, // 43: rpmgr.v1.GetRouteTargetResponse.target:type_name -> rpmgr.v1.RouteTarget
-	41, // 44: rpmgr.v1.DeleteRouteTargetResponse.revision:type_name -> rpmgr.v1.Revision
-	42, // 45: rpmgr.v1.DeleteRouteTargetResponse.apply_status:type_name -> rpmgr.v1.ApplyStatus
-	5,  // 46: rpmgr.v1.PreviewRouteRequest.route:type_name -> rpmgr.v1.Route
-	43, // 47: rpmgr.v1.PreviewRouteRequest.update_mask:type_name -> google.protobuf.FieldMask
-	5,  // 48: rpmgr.v1.PreviewRouteResponse.route:type_name -> rpmgr.v1.Route
-	44, // 49: rpmgr.v1.PreviewRouteResponse.problems:type_name -> rpmgr.v1.ApplyError
-	15, // 50: rpmgr.v1.RouteService.CreateRoute:input_type -> rpmgr.v1.CreateRouteRequest
-	17, // 51: rpmgr.v1.RouteService.GetRoute:input_type -> rpmgr.v1.GetRouteRequest
-	19, // 52: rpmgr.v1.RouteService.ListRoutes:input_type -> rpmgr.v1.ListRoutesRequest
-	21, // 53: rpmgr.v1.RouteService.UpdateRoute:input_type -> rpmgr.v1.UpdateRouteRequest
-	25, // 54: rpmgr.v1.RouteService.CreateRouteTarget:input_type -> rpmgr.v1.CreateRouteTargetRequest
-	27, // 55: rpmgr.v1.RouteService.UpdateRouteTarget:input_type -> rpmgr.v1.UpdateRouteTargetRequest
-	29, // 56: rpmgr.v1.RouteService.GetRouteTarget:input_type -> rpmgr.v1.GetRouteTargetRequest
-	31, // 57: rpmgr.v1.RouteService.DeleteRouteTarget:input_type -> rpmgr.v1.DeleteRouteTargetRequest
-	33, // 58: rpmgr.v1.RouteService.PreviewRoute:input_type -> rpmgr.v1.PreviewRouteRequest
-	23, // 59: rpmgr.v1.RouteService.DeleteRoute:input_type -> rpmgr.v1.DeleteRouteRequest
-	16, // 60: rpmgr.v1.RouteService.CreateRoute:output_type -> rpmgr.v1.CreateRouteResponse
-	18, // 61: rpmgr.v1.RouteService.GetRoute:output_type -> rpmgr.v1.GetRouteResponse
-	20, // 62: rpmgr.v1.RouteService.ListRoutes:output_type -> rpmgr.v1.ListRoutesResponse
-	22, // 63: rpmgr.v1.RouteService.UpdateRoute:output_type -> rpmgr.v1.UpdateRouteResponse
-	26, // 64: rpmgr.v1.RouteService.CreateRouteTarget:output_type -> rpmgr.v1.CreateRouteTargetResponse
-	28, // 65: rpmgr.v1.RouteService.UpdateRouteTarget:output_type -> rpmgr.v1.UpdateRouteTargetResponse
-	30, // 66: rpmgr.v1.RouteService.GetRouteTarget:output_type -> rpmgr.v1.GetRouteTargetResponse
-	32, // 67: rpmgr.v1.RouteService.DeleteRouteTarget:output_type -> rpmgr.v1.DeleteRouteTargetResponse
-	34, // 68: rpmgr.v1.RouteService.PreviewRoute:output_type -> rpmgr.v1.PreviewRouteResponse
-	24, // 69: rpmgr.v1.RouteService.DeleteRoute:output_type -> rpmgr.v1.DeleteRouteResponse
-	60, // [60:70] is the sub-list for method output_type
-	50, // [50:60] is the sub-list for method input_type
-	50, // [50:50] is the sub-list for extension type_name
-	50, // [50:50] is the sub-list for extension extendee
-	0,  // [0:50] is the sub-list for field type_name
+	5,  // 21: rpmgr.v1.UpstreamTLSSettings.verification:type_name -> rpmgr.v1.UpstreamVerification
+	6,  // 22: rpmgr.v1.CreateRouteRequest.route:type_name -> rpmgr.v1.Route
+	6,  // 23: rpmgr.v1.CreateRouteResponse.route:type_name -> rpmgr.v1.Route
+	42, // 24: rpmgr.v1.CreateRouteResponse.revision:type_name -> rpmgr.v1.Revision
+	43, // 25: rpmgr.v1.CreateRouteResponse.apply_status:type_name -> rpmgr.v1.ApplyStatus
+	6,  // 26: rpmgr.v1.GetRouteResponse.route:type_name -> rpmgr.v1.Route
+	6,  // 27: rpmgr.v1.ListRoutesResponse.routes:type_name -> rpmgr.v1.Route
+	6,  // 28: rpmgr.v1.UpdateRouteRequest.route:type_name -> rpmgr.v1.Route
+	44, // 29: rpmgr.v1.UpdateRouteRequest.update_mask:type_name -> google.protobuf.FieldMask
+	6,  // 30: rpmgr.v1.UpdateRouteResponse.route:type_name -> rpmgr.v1.Route
+	42, // 31: rpmgr.v1.UpdateRouteResponse.revision:type_name -> rpmgr.v1.Revision
+	43, // 32: rpmgr.v1.UpdateRouteResponse.apply_status:type_name -> rpmgr.v1.ApplyStatus
+	42, // 33: rpmgr.v1.DeleteRouteResponse.revision:type_name -> rpmgr.v1.Revision
+	43, // 34: rpmgr.v1.DeleteRouteResponse.apply_status:type_name -> rpmgr.v1.ApplyStatus
+	13, // 35: rpmgr.v1.CreateRouteTargetRequest.target:type_name -> rpmgr.v1.RouteTarget
+	13, // 36: rpmgr.v1.CreateRouteTargetResponse.target:type_name -> rpmgr.v1.RouteTarget
+	42, // 37: rpmgr.v1.CreateRouteTargetResponse.revision:type_name -> rpmgr.v1.Revision
+	43, // 38: rpmgr.v1.CreateRouteTargetResponse.apply_status:type_name -> rpmgr.v1.ApplyStatus
+	13, // 39: rpmgr.v1.UpdateRouteTargetRequest.target:type_name -> rpmgr.v1.RouteTarget
+	44, // 40: rpmgr.v1.UpdateRouteTargetRequest.update_mask:type_name -> google.protobuf.FieldMask
+	13, // 41: rpmgr.v1.UpdateRouteTargetResponse.target:type_name -> rpmgr.v1.RouteTarget
+	42, // 42: rpmgr.v1.UpdateRouteTargetResponse.revision:type_name -> rpmgr.v1.Revision
+	43, // 43: rpmgr.v1.UpdateRouteTargetResponse.apply_status:type_name -> rpmgr.v1.ApplyStatus
+	13, // 44: rpmgr.v1.GetRouteTargetResponse.target:type_name -> rpmgr.v1.RouteTarget
+	42, // 45: rpmgr.v1.DeleteRouteTargetResponse.revision:type_name -> rpmgr.v1.Revision
+	43, // 46: rpmgr.v1.DeleteRouteTargetResponse.apply_status:type_name -> rpmgr.v1.ApplyStatus
+	6,  // 47: rpmgr.v1.PreviewRouteRequest.route:type_name -> rpmgr.v1.Route
+	44, // 48: rpmgr.v1.PreviewRouteRequest.update_mask:type_name -> google.protobuf.FieldMask
+	6,  // 49: rpmgr.v1.PreviewRouteResponse.route:type_name -> rpmgr.v1.Route
+	45, // 50: rpmgr.v1.PreviewRouteResponse.problems:type_name -> rpmgr.v1.ApplyError
+	16, // 51: rpmgr.v1.RouteService.CreateRoute:input_type -> rpmgr.v1.CreateRouteRequest
+	18, // 52: rpmgr.v1.RouteService.GetRoute:input_type -> rpmgr.v1.GetRouteRequest
+	20, // 53: rpmgr.v1.RouteService.ListRoutes:input_type -> rpmgr.v1.ListRoutesRequest
+	22, // 54: rpmgr.v1.RouteService.UpdateRoute:input_type -> rpmgr.v1.UpdateRouteRequest
+	26, // 55: rpmgr.v1.RouteService.CreateRouteTarget:input_type -> rpmgr.v1.CreateRouteTargetRequest
+	28, // 56: rpmgr.v1.RouteService.UpdateRouteTarget:input_type -> rpmgr.v1.UpdateRouteTargetRequest
+	30, // 57: rpmgr.v1.RouteService.GetRouteTarget:input_type -> rpmgr.v1.GetRouteTargetRequest
+	32, // 58: rpmgr.v1.RouteService.DeleteRouteTarget:input_type -> rpmgr.v1.DeleteRouteTargetRequest
+	34, // 59: rpmgr.v1.RouteService.PreviewRoute:input_type -> rpmgr.v1.PreviewRouteRequest
+	24, // 60: rpmgr.v1.RouteService.DeleteRoute:input_type -> rpmgr.v1.DeleteRouteRequest
+	17, // 61: rpmgr.v1.RouteService.CreateRoute:output_type -> rpmgr.v1.CreateRouteResponse
+	19, // 62: rpmgr.v1.RouteService.GetRoute:output_type -> rpmgr.v1.GetRouteResponse
+	21, // 63: rpmgr.v1.RouteService.ListRoutes:output_type -> rpmgr.v1.ListRoutesResponse
+	23, // 64: rpmgr.v1.RouteService.UpdateRoute:output_type -> rpmgr.v1.UpdateRouteResponse
+	27, // 65: rpmgr.v1.RouteService.CreateRouteTarget:output_type -> rpmgr.v1.CreateRouteTargetResponse
+	29, // 66: rpmgr.v1.RouteService.UpdateRouteTarget:output_type -> rpmgr.v1.UpdateRouteTargetResponse
+	31, // 67: rpmgr.v1.RouteService.GetRouteTarget:output_type -> rpmgr.v1.GetRouteTargetResponse
+	33, // 68: rpmgr.v1.RouteService.DeleteRouteTarget:output_type -> rpmgr.v1.DeleteRouteTargetResponse
+	35, // 69: rpmgr.v1.RouteService.PreviewRoute:output_type -> rpmgr.v1.PreviewRouteResponse
+	25, // 70: rpmgr.v1.RouteService.DeleteRoute:output_type -> rpmgr.v1.DeleteRouteResponse
+	61, // [61:71] is the sub-list for method output_type
+	51, // [51:61] is the sub-list for method input_type
+	51, // [51:51] is the sub-list for extension type_name
+	51, // [51:51] is the sub-list for extension extendee
+	0,  // [0:51] is the sub-list for field type_name
 }
 
 func init() { file_rpmgr_v1_route_proto_init() }
@@ -2934,7 +3009,7 @@ func file_rpmgr_v1_route_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_rpmgr_v1_route_proto_rawDesc), len(file_rpmgr_v1_route_proto_rawDesc)),
-			NumEnums:      5,
+			NumEnums:      6,
 			NumMessages:   33,
 			NumExtensions: 0,
 			NumServices:   1,

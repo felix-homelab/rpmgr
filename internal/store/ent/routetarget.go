@@ -43,6 +43,8 @@ type RouteTarget struct {
 	TLSCaBundleID *string `json:"tls_ca_bundle_id,omitempty"`
 	// TLSSpkiSha256 holds the value of the "tls_spki_sha256" field.
 	TLSSpkiSha256 string `json:"tls_spki_sha256,omitempty"`
+	// TLSVerification holds the value of the "tls_verification" field.
+	TLSVerification routetarget.TLSVerification `json:"tls_verification,omitempty"`
 	// ProxyProtocol holds the value of the "proxy_protocol" field.
 	ProxyProtocol routetarget.ProxyProtocol `json:"proxy_protocol,omitempty"`
 	// Weight holds the value of the "weight" field.
@@ -112,7 +114,7 @@ func (*RouteTarget) scanValues(columns []string) ([]any, error) {
 			values[i] = new(sql.NullBool)
 		case routetarget.FieldVersion, routetarget.FieldPort, routetarget.FieldWeight, routetarget.FieldPriority:
 			values[i] = new(sql.NullInt64)
-		case routetarget.FieldID, routetarget.FieldOrgID, routetarget.FieldRouteID, routetarget.FieldConnectorID, routetarget.FieldKind, routetarget.FieldHost, routetarget.FieldUnixPath, routetarget.FieldUpstreamProtocol, routetarget.FieldTLSServerName, routetarget.FieldTLSCaBundleID, routetarget.FieldTLSSpkiSha256, routetarget.FieldProxyProtocol:
+		case routetarget.FieldID, routetarget.FieldOrgID, routetarget.FieldRouteID, routetarget.FieldConnectorID, routetarget.FieldKind, routetarget.FieldHost, routetarget.FieldUnixPath, routetarget.FieldUpstreamProtocol, routetarget.FieldTLSServerName, routetarget.FieldTLSCaBundleID, routetarget.FieldTLSSpkiSha256, routetarget.FieldTLSVerification, routetarget.FieldProxyProtocol:
 			values[i] = new(sql.NullString)
 		default:
 			values[i] = new(sql.UnknownType)
@@ -207,6 +209,12 @@ func (_m *RouteTarget) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field tls_spki_sha256", values[i])
 			} else if value.Valid {
 				_m.TLSSpkiSha256 = value.String
+			}
+		case routetarget.FieldTLSVerification:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field tls_verification", values[i])
+			} else if value.Valid {
+				_m.TLSVerification = routetarget.TLSVerification(value.String)
 			}
 		case routetarget.FieldProxyProtocol:
 			if value, ok := values[i].(*sql.NullString); !ok {
@@ -320,6 +328,9 @@ func (_m *RouteTarget) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("tls_spki_sha256=")
 	builder.WriteString(_m.TLSSpkiSha256)
+	builder.WriteString(", ")
+	builder.WriteString("tls_verification=")
+	builder.WriteString(fmt.Sprintf("%v", _m.TLSVerification))
 	builder.WriteString(", ")
 	builder.WriteString("proxy_protocol=")
 	builder.WriteString(fmt.Sprintf("%v", _m.ProxyProtocol))

@@ -7,6 +7,7 @@ import (
 	"go/token"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -65,6 +66,37 @@ func f() { InsecureSkipVerify := true; _ = InsecureSkipVerify }`, ""},
 				t.Errorf("banned names = %q, want %q", got, tt.want)
 			}
 		})
+	}
+}
+
+// TestCheckFile_Exception: the one allowed use passes only with its name, in its function, in
+// its file; anything else in that file, or that function anywhere else, is still reported.
+func TestCheckFile_Exception(t *testing.T) {
+	const src = `package gateway
+import "crypto/tls"
+type UpstreamTLS struct{}
+func (u UpstreamTLS) config() *tls.Config { c := &tls.Config{}; c.InsecureSkipVerify = true; return c }
+func (u *UpstreamTLS) pointer() { _ = tls.Config{InsecureSkipVerify: true} }
+func other(c *tls.Config) { c.InsecureSkipVerify = true }
+func (u UpstreamTLS) renegotiate(c *tls.Config) { c.Renegotiation = 0 }
+var v = tls.Config{InsecureSkipVerify: true}`
+	for _, tt := range []struct{ file, want string }{
+		{"internal/gateway/upstreamtls.go", "pointer:5,other:6,renegotiate:7,var:8"},
+		{"/src/rpmgr/internal/gateway/upstreamtls.go", "pointer:5,other:6,renegotiate:7,var:8"},
+		{"internal/gateway/http.go", "config:4,pointer:5,other:6,renegotiate:7,var:8"},
+		{"xinternal/gateway/upstreamtls.go", "config:4,pointer:5,other:6,renegotiate:7,var:8"},
+	} {
+		findings, err := CheckFile(token.NewFileSet(), tt.file, src)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var got []string
+		for _, f := range findings {
+			got = append(got, map[int]string{4: "config", 5: "pointer", 6: "other", 7: "renegotiate", 8: "var"}[f.Pos.Line]+":"+strconv.Itoa(f.Pos.Line))
+		}
+		if strings.Join(got, ",") != tt.want {
+			t.Errorf("%s: findings %v, want %s", tt.file, got, tt.want)
+		}
 	}
 }
 

@@ -6,7 +6,8 @@
 //
 // It complements golangci-lint's forbidigo, which does not see the keys of composite literals
 // such as tls.Config{InsecureSkipVerify: true}. Names are matched as composite-literal keys and as
-// selectors (x.Name), so comments and strings never match.
+// selectors (x.Name), so comments and strings never match. A reviewed decision may allow one name
+// in one function of one file (exceptions).
 //
 // Usage: go run ./tools/bannedapi [<dir> ...]   (default: the current directory)
 package main
@@ -36,6 +37,42 @@ var banned = map[string]string{
 	"DialAddrEarly":         "0-RTT data can be replayed",
 }
 
+// exception allows one banned name in one function of one file, given as a path from the
+// repository root and as Name or Type.Name.
+type exception struct{ File, Func, Name string }
+
+// exceptions are the allowed uses; every addition is a reviewed decision, named here.
+var exceptions = []exception{
+	// A route target whose user marked it unverified (D82, ADR-0017).
+	{File: "internal/gateway/upstreamtls.go", Func: "UpstreamTLS.config", Name: "InsecureSkipVerify"},
+}
+
+// allowed reports whether an exception allows name in function fn of the file at path.
+func allowed(path, fn, name string) bool {
+	path = filepath.ToSlash(path)
+	for _, e := range exceptions {
+		if e.Name == name && e.Func == fn && (path == e.File || strings.HasSuffix(path, "/"+e.File)) {
+			return true
+		}
+	}
+	return false
+}
+
+// funcName is a function's name, or Type.Name for a method.
+func funcName(fd *ast.FuncDecl) string {
+	if fd.Recv == nil || len(fd.Recv.List) == 0 {
+		return fd.Name.Name
+	}
+	t := fd.Recv.List[0].Type
+	if star, ok := t.(*ast.StarExpr); ok {
+		t = star.X
+	}
+	if id, ok := t.(*ast.Ident); ok {
+		return id.Name + "." + fd.Name.Name
+	}
+	return "?." + fd.Name.Name
+}
+
 // Finding is one use of a banned name.
 type Finding struct {
 	Pos  token.Position
@@ -53,22 +90,31 @@ func CheckFile(fset *token.FileSet, name string, src any) ([]Finding, error) {
 		return nil, err
 	}
 	var out []Finding
-	report := func(id *ast.Ident) {
-		if _, ok := banned[id.Name]; ok {
-			out = append(out, Finding{Pos: fset.Position(id.Pos()), Name: id.Name})
+	inspect := func(node ast.Node, fn string) {
+		report := func(id *ast.Ident) {
+			if _, ok := banned[id.Name]; ok && !allowed(name, fn, id.Name) {
+				out = append(out, Finding{Pos: fset.Position(id.Pos()), Name: id.Name})
+			}
+		}
+		ast.Inspect(node, func(n ast.Node) bool {
+			switch n := n.(type) {
+			case *ast.KeyValueExpr:
+				if id, ok := n.Key.(*ast.Ident); ok {
+					report(id)
+				}
+			case *ast.SelectorExpr:
+				report(n.Sel)
+			}
+			return true
+		})
+	}
+	for _, d := range file.Decls {
+		if fd, ok := d.(*ast.FuncDecl); ok {
+			inspect(fd, funcName(fd))
+		} else {
+			inspect(d, "")
 		}
 	}
-	ast.Inspect(file, func(n ast.Node) bool {
-		switch n := n.(type) {
-		case *ast.KeyValueExpr:
-			if id, ok := n.Key.(*ast.Ident); ok {
-				report(id)
-			}
-		case *ast.SelectorExpr:
-			report(n.Sel)
-		}
-		return true
-	})
 	return out, nil
 }
 

@@ -73,7 +73,9 @@ history and the [ADRs](docs/adr/).
   encrypted. (#276, #278, #332)
 - Gateway: `http` routes terminate TLS for their hostnames and proxy HTTP/1.1, HTTP/2, WebSocket
   and gRPC by hostname and path prefix, to HTTP, h2c or verified HTTPS upstreams (server name, CA
-  bundle, optional SPKI pin). (#292, #294, #296, #333)
+  bundle, optional SPKI pin). A target whose certificate nothing can verify, such as a
+  self-signed one, may be marked unverified: the gateway then checks no certificate, and the web
+  UI warns about it and marks the target. (#292, #294, #296, #333, #504)
 - Gateway: `http` routes set `Forwarded` and `X-Forwarded-*` and keep a client's own only from the
   gateway group's trusted proxies. They can replace the `Host` header, set request and response
   headers, redirect or serve port 80, and send HSTS. (#297, #298)

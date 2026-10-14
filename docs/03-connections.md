@@ -27,7 +27,9 @@
 Design goals, in priority order:
 
 1. **Secure.** Every connection between rpmgr components is TLS 1.3 with mutual authentication and
-   per-component identities. No shared secrets, no timestamp tokens, no `InsecureSkipVerify`.
+   per-component identities. No shared secrets, no timestamp tokens, no `InsecureSkipVerify`
+   (its one exception concerns HTTPS upstreams a user marks unverified, not rpmgr's own sessions:
+   [ADR-0017](adr/0017-upstream-tls-verification-modes.md)).
 2. **Correct under change.** Configuration changes are validated, applied atomically, acknowledged,
    and never disturb unchanged tunnels.
 3. **Fast.** No extra round trip per user connection; no cross-stream head-of-line blocking on the
@@ -46,7 +48,8 @@ Design goals, in priority order:
   `ServerName` to the **expected peer's** DNS name — Go's TLS client refuses to handshake without
   one unless verification is disabled [F Go 1.27.1 `crypto/tls/handshake_client.go:47`] — and
   `tls.Config.VerifyConnection` additionally checks the SPIFFE ID against the deny-list and the
-  agent's snapshot ([04](04-security.md#pki-and-identity)). `InsecureSkipVerify` is never used.
+  agent's snapshot ([04](04-security.md#pki-and-identity)). `InsecureSkipVerify` is never used
+  for these sessions.
 - **0-RTT is disabled** (no `Allow0RTT`, no `ListenEarly`/`DialEarly`), because 0-RTT data can be
   replayed. TLS session resumption is allowed: Go runs `VerifyConnection` on resumed TLS 1.3
   connections on both sides [F Go 1.27.1 `crypto/tls/handshake_client_tls13.go:595-604`]

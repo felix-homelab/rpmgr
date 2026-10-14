@@ -518,6 +518,7 @@ func TestCompile_GatewayHTTP(t *testing.T) {
 
 // TestCompile_HTTPSUpstream: an https route's gateway resource names each enabled target's server
 // name (its host by default), CA bundle and SPKI pin; a malformed pin becomes one no key matches.
+// An unverified target gets its server name and its mode, and neither a CA bundle nor a pin.
 func TestCompile_HTTPSUpstream(t *testing.T) {
 	storetest.ForEachDialect(t, func(t *testing.T, db *store.DB) {
 		f := newFleet(t, db)
@@ -538,6 +539,9 @@ func TestCompile_HTTPSUpstream(t *testing.T) {
 		byHost := mk("app2.internal", "", "", true, false)
 		badPin := mk("10.0.0.3", "", "not hex", true, false)
 		mk("10.0.0.4", "", "", false, false)
+		unverified := c.RouteTarget.Create().SetOrgID(f.orgA).SetRouteID(id).SetConnectorID(f.c1).SetKind("address").SetHost("nas.local").
+			SetPort(443).SetUpstreamProtocol(routetarget.UpstreamProtocolHTTPS).SetTLSVerification(routetarget.TLSVerificationUnverified).
+			SetTLSSpkiSha256(pin).SetCaBundleID(bundle.ID).SaveX(f.sys).ID // a pin and a bundle the API refuses are left out
 		var got *agentv1.GatewayHTTPRoute
 		for _, r := range f.compile(t, pki.KindGateway, f.gateway) {
 			if r.GetId() == id {
@@ -548,6 +552,8 @@ func TestCompile_HTTPSUpstream(t *testing.T) {
 			named:  {TargetId: named, ServerName: "app.internal", CaPem: []byte("PEM"), SpkiSha256: bytes.Repeat([]byte{0xab}, 32)},
 			byHost: {TargetId: byHost, ServerName: "app2.internal"},
 			badPin: {TargetId: badPin, ServerName: "10.0.0.3", SpkiSha256: make([]byte, 32)},
+			unverified: {TargetId: unverified, ServerName: "nas.local",
+				Verification: agentv1.UpstreamVerification_UPSTREAM_VERIFICATION_UNVERIFIED},
 		}
 		if got.GetUpstreamProtocol() != "https" || len(got.GetUpstreamTls()) != len(want) {
 			t.Fatalf("route %v", got)

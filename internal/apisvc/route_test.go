@@ -637,8 +637,13 @@ func TestRouteTargets(t *testing.T) {
 		return tg
 	}
 	if tg, err := add(ada, "secure", https("10.0.0.6", &rpmgrv1.UpstreamTLSSettings{ServerName: "app.internal", SpkiSha256: pin})); err != nil ||
-		tg.GetTls().GetSpkiSha256() != pin || tg.GetTls().GetServerName() != "app.internal" {
+		tg.GetTls().GetSpkiSha256() != pin || tg.GetTls().GetServerName() != "app.internal" || tg.GetTls().GetVerification() != rpmgrv1.UpstreamVerification_UPSTREAM_VERIFICATION_VERIFIED {
 		t.Fatalf("an https target: %v %v", tg, err)
+	}
+	// A target its user marks unverified keeps its server name, and reads back as unverified.
+	if tg, err := add(ada, "secure", https("10.0.0.10", &rpmgrv1.UpstreamTLSSettings{ServerName: "nas.local", Verification: rpmgrv1.UpstreamVerification_UPSTREAM_VERIFICATION_UNVERIFIED})); err != nil ||
+		tg.GetTls().GetVerification() != rpmgrv1.UpstreamVerification_UPSTREAM_VERIFICATION_UNVERIFIED || tg.GetTls().GetServerName() != "nas.local" {
+		t.Fatalf("an unverified https target: %v %v", tg, err)
 	}
 	proxied := addressTarget(con, "10.0.0.7", 5432)
 	proxied.ProxyProtocol, proxied.Priority = rpmgrv1.ProxyProtocol_PROXY_PROTOCOL_V2, 1
@@ -673,14 +678,24 @@ func TestRouteTargets(t *testing.T) {
 		"HTTPS on a socket, no server name": {"secure", func() *rpmgrv1.RouteTarget { tg := unix("/run/app.sock"); tg.UpstreamProtocol = 3; return tg }(), connect.CodeInvalidArgument},
 		"a bad pin":                         {"secure", https("10.0.0.9", &rpmgrv1.UpstreamTLSSettings{SpkiSha256: "abc"}), connect.CodeInvalidArgument},
 		"a missing CA bundle":               {"secure", https("10.0.0.9", &rpmgrv1.UpstreamTLSSettings{CaBundleId: "cab_missing"}), connect.CodeNotFound},
-		"no address":                        {"pg", &rpmgrv1.RouteTarget{ConnectorId: con}, connect.CodeInvalidArgument},
-		"an unclean path":                   {"pg", unix("/run/../x.sock"), connect.CodeInvalidArgument},
-		"a relative path":                   {"pg", unix("run/x.sock"), connect.CodeInvalidArgument},
-		"port 0":                            {"pg", addressTarget(con, "10.0.0.7", 0), connect.CodeInvalidArgument},
-		"weight 1001":                       {"pg", func() *rpmgrv1.RouteTarget { tg := addressTarget(con, "h", 1); tg.Weight = 1001; return tg }(), connect.CodeInvalidArgument},
-		"a decommissioned connector":        {"pg", addressTarget(gone, "10.0.0.7", 5432), connect.CodeFailedPrecondition},
-		"another org's connector":           {"pg", addressTarget(theirs, "10.0.0.7", 5432), connect.CodeNotFound},
-		"a missing connector":               {"pg", addressTarget("con_missing", "10.0.0.7", 5432), connect.CodeNotFound},
+		"unverified with a pin": {"secure", https("10.0.0.9", &rpmgrv1.UpstreamTLSSettings{SpkiSha256: pin, Verification: rpmgrv1.UpstreamVerification_UPSTREAM_VERIFICATION_UNVERIFIED}),
+			connect.CodeInvalidArgument},
+		"unverified with a CA bundle": {"secure", https("10.0.0.9", &rpmgrv1.UpstreamTLSSettings{CaBundleId: "cab_missing", Verification: rpmgrv1.UpstreamVerification_UPSTREAM_VERIFICATION_UNVERIFIED}),
+			connect.CodeInvalidArgument},
+		"an unknown verification": {"secure", https("10.0.0.9", &rpmgrv1.UpstreamTLSSettings{Verification: 99}), connect.CodeInvalidArgument},
+		"a verification for HTTP": {"web", func() *rpmgrv1.RouteTarget {
+			tg := addressTarget(con, "h", 80)
+			tg.Tls = &rpmgrv1.UpstreamTLSSettings{Verification: rpmgrv1.UpstreamVerification_UPSTREAM_VERIFICATION_UNVERIFIED}
+			return tg
+		}(), connect.CodeInvalidArgument},
+		"no address":                 {"pg", &rpmgrv1.RouteTarget{ConnectorId: con}, connect.CodeInvalidArgument},
+		"an unclean path":            {"pg", unix("/run/../x.sock"), connect.CodeInvalidArgument},
+		"a relative path":            {"pg", unix("run/x.sock"), connect.CodeInvalidArgument},
+		"port 0":                     {"pg", addressTarget(con, "10.0.0.7", 0), connect.CodeInvalidArgument},
+		"weight 1001":                {"pg", func() *rpmgrv1.RouteTarget { tg := addressTarget(con, "h", 1); tg.Weight = 1001; return tg }(), connect.CodeInvalidArgument},
+		"a decommissioned connector": {"pg", addressTarget(gone, "10.0.0.7", 5432), connect.CodeFailedPrecondition},
+		"another org's connector":    {"pg", addressTarget(theirs, "10.0.0.7", 5432), connect.CodeNotFound},
+		"a missing connector":        {"pg", addressTarget("con_missing", "10.0.0.7", 5432), connect.CodeNotFound},
 	} {
 		if _, err := add(ada, c.route, c.tg); code(err) != c.code {
 			t.Errorf("%s: %v, want %v", name, err, c.code)
