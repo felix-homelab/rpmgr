@@ -62,3 +62,6 @@ func SetBasicAuthTTL(t testing.TB, d time.Duration) {
 	basicAuthTTL = d
 	t.Cleanup(func() { basicAuthTTL = old })
 }
+
+// BasicAuthBusy returns how many basic-auth verifications run now.
+func (h *HTTPRoutes) BasicAuthBusy() int64 { return int64(h.basic.busy.Load()) }

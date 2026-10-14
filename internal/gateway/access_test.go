@@ -227,7 +227,7 @@ func TestHTTPRoutes_AccessOnReplacedTransport(t *testing.T) {
 // here during its slow basic-auth check, refuse it although its first check passed.
 func TestHTTPRoutes_AccessDuringAdmission(t *testing.T) {
 	slow := gateway.BasicAuthRule{PolicyID: "ap_1", CredentialVersion: "v1", Users: map[string]gateway.PHC{}}
-	h, err := gateway.ParsePHC(phc(t, "pw", 192*1024, 10)) // the most the gateway takes: a second or more to verify
+	h, err := gateway.ParsePHC(phc(t, "pw", 64*1024, 8)) // long enough to change the rules during it
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -241,14 +241,18 @@ func TestHTTPRoutes_AccessDuringAdmission(t *testing.T) {
 		req.SetBasicAuth("ada", "pw")
 		res, err := e.client(false).Do(req)
 		if err != nil {
-			done <- reply{}
+			done <- reply{body: err.Error()}
 			return
 		}
 		defer func() { _ = res.Body.Close() }()
 		b, _ := io.ReadAll(res.Body)
 		done <- reply{status: res.StatusCode, body: string(b)}
 	}()
-	time.Sleep(300 * time.Millisecond) // the request is past its first check, in the basic-auth check
+	for deadline := time.Now().Add(10 * time.Second); e.routes.BasicAuthBusy() == 0; time.Sleep(time.Millisecond) {
+		if time.Now().After(deadline) {
+			t.Fatal("the request never reached its basic-auth check")
+		}
+	} // the request passed its first check and is in the basic-auth check
 	route.Access = access(t, deny("127.0.0.0/8"))
 	e.routes.Apply([]gateway.HTTPRoute{route})
 	select {
