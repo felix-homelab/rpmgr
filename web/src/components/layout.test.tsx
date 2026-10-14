@@ -11,12 +11,13 @@ afterEach(() => {
   delete document.documentElement.dataset.theme;
 });
 
-// signedIn shows path to Ada, whose stored theme is theme; updateMe answers her theme changes, or
-// fails with failure.
-function signedIn(path: string, theme = Theme.SYSTEM, failure?: ConnectError) {
+// signedIn shows path to Ada, whose stored theme is theme, on a controller of version; updateMe
+// answers her theme changes, or fails with failure.
+function signedIn(path: string, theme = Theme.SYSTEM, failure?: ConnectError, version = "") {
   const updates: UpdateMeRequest[] = [];
   let user = { id: "usr_ada", email: "ada@example.com", displayName: "Ada", theme };
-  const shown = show(path, auth(), (router) =>
+  const session = { getSession: () => ({ userId: "usr_ada", email: "ada@example.com", displayName: "Ada", controllerVersion: version }) };
+  const shown = show(path, auth(session), (router) =>
     router.service(UserService, {
       getMe: () => ({ user }),
       updateMe: (req) => {
@@ -45,6 +46,24 @@ describe("Layout", () => {
     await waitFor(() => expect(nav.getByRole("link", { name: "Routes" }).getAttribute("aria-current")).toBe("page"));
     // The overview is current only on its own page, not on every page under /.
     expect(nav.getByRole("link", { name: "Overview" }).getAttribute("aria-current")).toBeNull();
+  });
+
+  it("shows the controller's version at the foot of the sidebar and of the menu (D80)", async () => {
+    signedIn("/", Theme.SYSTEM, undefined, "0.1.0");
+    const aside = await screen.findByRole("complementary");
+    await waitFor(() => expect(within(aside).getByText("rpmgr 0.1.0")).toBeTruthy());
+    fireEvent.click(screen.getByRole("button", { name: "Open the menu" }));
+    expect(within(screen.getByRole("dialog", { name: "Menu" })).getByText("rpmgr 0.1.0")).toBeTruthy();
+  });
+
+  it("shows no version before it knows one, nor on the sign-in page", async () => {
+    signedIn("/");
+    await screen.findByRole("navigation", { name: "Main navigation" });
+    expect(screen.queryByText(/^rpmgr /)).toBeNull();
+    cleanup();
+    show("/", auth({}, false));
+    await screen.findByRole("button", { name: "Sign in" });
+    expect(screen.queryByText(/^rpmgr /)).toBeNull();
   });
 
   it("opens the menu on small screens, and closes it when a page is chosen, by its button and by Escape", async () => {

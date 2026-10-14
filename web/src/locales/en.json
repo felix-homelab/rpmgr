@@ -9,7 +9,8 @@
     "userMenu": "User menu: {{name}}",
     "account": "Your account",
     "signOut": "Sign out",
-    "required": "required"
+    "required": "required",
+    "version": "rpmgr {{version}}"
   },
   "nav": {
     "overview": "Overview",

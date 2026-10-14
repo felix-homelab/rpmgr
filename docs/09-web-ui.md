@@ -92,6 +92,8 @@ flowchart LR
 │ ⚇ Organisation │                                                                       │
 │ ≡ Audit log    │                                                                       │
 │ ⚙ Settings     │                                                                       │
+│                │                                                                       │
+│ rpmgr 0.1.0    │                                                                       │
 └────────────────┴───────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -99,6 +101,9 @@ flowchart LR
   with Routes, Connectors and Gateways; *Security* with Domains & certificates and Access policies;
   *Administration* with Organisation, Audit log and Settings. The current page is marked, also for
   screen readers (`aria-current`).
+- **The version** the controller runs stands at the foot of the sidebar, as `rpmgr 0.1.0`, for
+  every signed-in user ([D80](14-open-decisions.md#engineering)). The sign-in,
+  setup and other public pages show none.
 - **On screens narrower than 1024 px** the sidebar is a menu behind a button in the top bar. It
   opens from the left as a modal dialog, and Escape, a click beside it, its close button and
   choosing a page close it.
