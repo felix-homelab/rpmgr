@@ -330,7 +330,8 @@ func GatewayHTTP(ctx context.Context, tx *ent.Tx, a snapshot.Agent) ([]*agentv1.
 			Hosts: hosts, UpstreamProtocol: upstream, Connectors: connectors, Websocket: h.Websocket, UpstreamTls: upstreamTLS,
 			HostHeader: hostHeader, RequestHeaders: headersOf(h.RequestHeadersSet), ResponseHeaders: headersOf(h.ResponseHeadersSet),
 			MaxBodyBytes: uint64(h.MaxBodyBytes), TrustedProxies: group.TrustedProxyCidrs, //nolint:gosec // G115: the schema keeps it non-negative
-			Port80: h.Port80.String(), HstsMaxAgeSeconds: uint32(h.HstsMaxAgeSeconds), Access: access}}}) //nolint:gosec // G115: the schema keeps it non-negative
+			Port80: h.Port80.String(), HstsMaxAgeSeconds: uint32(h.HstsMaxAgeSeconds), Access: access, //nolint:gosec // G115: the schema keeps it non-negative
+			Maintenance: h.Maintenance, MaintenanceMessage: h.MaintenanceMessage}}})
 	}
 	return out, nil
 }

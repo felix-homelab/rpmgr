@@ -45,6 +45,8 @@ const (
 	RouteState_ROUTE_STATE_UNAVAILABLE RouteState = 5
 	// An online agent of it rejected the snapshot with its latest change.
 	RouteState_ROUTE_STATE_ERROR RouteState = 6
+	// An http route in maintenance: its gateways answer every request with the maintenance page.
+	RouteState_ROUTE_STATE_MAINTENANCE RouteState = 7
 )
 
 // Enum value maps for RouteState.
@@ -57,6 +59,7 @@ var (
 		4: "ROUTE_STATE_DEGRADED",
 		5: "ROUTE_STATE_UNAVAILABLE",
 		6: "ROUTE_STATE_ERROR",
+		7: "ROUTE_STATE_MAINTENANCE",
 	}
 	RouteState_value = map[string]int32{
 		"ROUTE_STATE_UNSPECIFIED": 0,
@@ -66,6 +69,7 @@ var (
 		"ROUTE_STATE_DEGRADED":    4,
 		"ROUTE_STATE_UNAVAILABLE": 5,
 		"ROUTE_STATE_ERROR":       6,
+		"ROUTE_STATE_MAINTENANCE": 7,
 	}
 )
 
@@ -846,9 +850,15 @@ type HTTPRouteSpec struct {
 	// Whether WebSocket upgrades pass; true if not set.
 	Websocket *bool `protobuf:"varint,10,opt,name=websocket,proto3,oneof" json:"websocket,omitempty"`
 	// The largest request body; 0 is no limit.
-	MaxBodyBytes  uint64 `protobuf:"varint,11,opt,name=max_body_bytes,json=maxBodyBytes,proto3" json:"max_body_bytes,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	MaxBodyBytes uint64 `protobuf:"varint,11,opt,name=max_body_bytes,json=maxBodyBytes,proto3" json:"max_body_bytes,omitempty"`
+	// Whether it is in maintenance: its gateways answer every request a client's access policies
+	// admit with the maintenance page, 503, and send nothing to its targets.
+	Maintenance bool `protobuf:"varint,12,opt,name=maintenance,proto3" json:"maintenance,omitempty"`
+	// Plain text the maintenance page shows, such as when the service is back; line feeds are the
+	// only control characters.
+	MaintenanceMessage string `protobuf:"bytes,13,opt,name=maintenance_message,json=maintenanceMessage,proto3" json:"maintenance_message,omitempty"`
+	unknownFields      protoimpl.UnknownFields
+	sizeCache          protoimpl.SizeCache
 }
 
 func (x *HTTPRouteSpec) Reset() {
@@ -956,6 +966,20 @@ func (x *HTTPRouteSpec) GetMaxBodyBytes() uint64 {
 		return x.MaxBodyBytes
 	}
 	return 0
+}
+
+func (x *HTTPRouteSpec) GetMaintenance() bool {
+	if x != nil {
+		return x.Maintenance
+	}
+	return false
+}
+
+func (x *HTTPRouteSpec) GetMaintenanceMessage() string {
+	if x != nil {
+		return x.MaintenanceMessage
+	}
+	return ""
 }
 
 // TCPRouteSpec is a tcp route: a public port of the gateway group, from its TCP port pools.
@@ -3004,7 +3028,7 @@ const file_rpmgr_v1_route_proto_rawDesc = "" +
 	"\x0fRouteNotServing\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x16\n" +
 	"\x06reason\x18\x02 \x01(\tR\x06reason\x12\x16\n" +
-	"\x06detail\x18\x03 \x01(\tR\x06detail\"\xb7\x06\n" +
+	"\x06detail\x18\x03 \x01(\tR\x06detail\"\xb2\a\n" +
 	"\rHTTPRouteSpec\x123\n" +
 	"\thostnames\x18\x01 \x03(\tB\x15\xbaH\x12\x92\x01\x0f\b\x01\x10d\x18\x01\"\ar\x05\x10\x01\x18\xff\x01R\thostnames\x127\n" +
 	"\vpath_prefix\x18\x02 \x01(\tB\x16\xbaH\x13r\x11\x18\x80\b2\f^(/[^\\s]*)?$R\n" +
@@ -3020,7 +3044,9 @@ const file_rpmgr_v1_route_proto_rawDesc = "" +
 	"\x14response_headers_set\x18\t \x03(\v2/.rpmgr.v1.HTTPRouteSpec.ResponseHeadersSetEntryB\b\xbaH\x05\x9a\x01\x02\x10 R\x12responseHeadersSet\x12!\n" +
 	"\twebsocket\x18\n" +
 	" \x01(\bH\x00R\twebsocket\x88\x01\x01\x12$\n" +
-	"\x0emax_body_bytes\x18\v \x01(\x04R\fmaxBodyBytes\x1aD\n" +
+	"\x0emax_body_bytes\x18\v \x01(\x04R\fmaxBodyBytes\x12 \n" +
+	"\vmaintenance\x18\f \x01(\bR\vmaintenance\x12W\n" +
+	"\x13maintenance_message\x18\r \x01(\tB&\xbaH#r!\x18\xf4\x032\x1c^[^\\x00-\\x09\\x0B-\\x1F\\x7F]*$R\x12maintenanceMessage\x1aD\n" +
 	"\x16RequestHeadersSetEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\x1aE\n" +
@@ -3170,7 +3196,7 @@ const file_rpmgr_v1_route_proto_rawDesc = "" +
 	"\vgateway_ids\x18\x02 \x03(\tR\n" +
 	"gatewayIds\x12#\n" +
 	"\rconnector_ids\x18\x03 \x03(\tR\fconnectorIds\x120\n" +
-	"\bproblems\x18\x04 \x03(\v2\x14.rpmgr.v1.ApplyErrorR\bproblems*\xc1\x01\n" +
+	"\bproblems\x18\x04 \x03(\v2\x14.rpmgr.v1.ApplyErrorR\bproblems*\xde\x01\n" +
 	"\n" +
 	"RouteState\x12\x1b\n" +
 	"\x17ROUTE_STATE_UNSPECIFIED\x10\x00\x12\x18\n" +
@@ -3179,7 +3205,8 @@ const file_rpmgr_v1_route_proto_rawDesc = "" +
 	"\x11ROUTE_STATE_READY\x10\x03\x12\x18\n" +
 	"\x14ROUTE_STATE_DEGRADED\x10\x04\x12\x1b\n" +
 	"\x17ROUTE_STATE_UNAVAILABLE\x10\x05\x12\x15\n" +
-	"\x11ROUTE_STATE_ERROR\x10\x06*P\n" +
+	"\x11ROUTE_STATE_ERROR\x10\x06\x12\x1b\n" +
+	"\x17ROUTE_STATE_MAINTENANCE\x10\a*P\n" +
 	"\aTLSMode\x12\x18\n" +
 	"\x14TLS_MODE_UNSPECIFIED\x10\x00\x12\x11\n" +
 	"\rTLS_MODE_ACME\x10\x01\x12\x18\n" +

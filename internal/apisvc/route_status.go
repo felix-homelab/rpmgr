@@ -17,6 +17,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/datasession"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/gateway"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/resourcestatus"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/routehttp"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routetarget"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/schema"
 )
@@ -44,6 +45,8 @@ type routeStatuses struct {
 	notReady map[[2]string]*ent.ResourceStatus // by agent and resource
 	links    map[[2]string]bool                // gateway and connector with a data session
 	targets  map[string][]*ent.RouteTarget     // by route
+	// maintenance are the http routes in maintenance.
+	maintenance map[string]bool
 	// changed is the newest revision that changed each resource, among the revisions after the
 	// oldest one an online agent has applied. With more of them than statusWindow, cut is the
 	// oldest one read, and a change not read counts as that one.
@@ -56,7 +59,7 @@ type routeStatuses struct {
 func newRouteStatuses(ctx, sys context.Context, c *ent.Client, org string, routes []*ent.Route, now time.Time) (*routeStatuses, error) {
 	v := &routeStatuses{now: now, enabled: map[string]bool{}, online: map[string]bool{}, states: map[string]*ent.AgentState{},
 		notReady: map[[2]string]*ent.ResourceStatus{}, links: map[[2]string]bool{}, targets: map[string][]*ent.RouteTarget{},
-		changed: map[string]int64{}}
+		changed: map[string]int64{}, maintenance: map[string]bool{}}
 	inst, err := c.Instance.Get(sys, 1)
 	if err != nil {
 		return nil, err
@@ -127,6 +130,13 @@ func newRouteStatuses(ctx, sys context.Context, c *ent.Client, org string, route
 	}
 	for _, t := range ts {
 		v.targets[t.RouteID] = append(v.targets[t.RouteID], t)
+	}
+	inMaintenance, err := c.RouteHTTP.Query().Where(routehttp.RouteIDIn(routeIDs...), routehttp.Maintenance(true)).All(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for _, h := range inMaintenance {
+		v.maintenance[h.RouteID] = true
 	}
 	return v, v.readChanges(sys, c, org, max(floor, 0))
 }
@@ -236,6 +246,9 @@ func (v *routeStatuses) of(r *ent.Route) *rpmgrv1.RouteStatus {
 		out.State = rpmgrv1.RouteState_ROUTE_STATE_ERROR
 	case pending:
 		out.State = rpmgrv1.RouteState_ROUTE_STATE_PENDING
+	case v.maintenance[r.ID]:
+		// Its gateways answer for it whatever its targets are: the counts still tell.
+		out.State = rpmgrv1.RouteState_ROUTE_STATE_MAINTENANCE
 	case out.TargetsReady == 0 || out.GatewaysServing == 0:
 		out.State = rpmgrv1.RouteState_ROUTE_STATE_UNAVAILABLE
 	case out.TargetsReady < out.TargetsTotal || out.GatewaysServing < out.GatewaysTotal:

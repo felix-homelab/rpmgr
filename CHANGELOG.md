@@ -98,6 +98,11 @@ history and the [ADRs](docs/adr/).
   shows "Service unavailable" (503, 502, 504). Other clients keep getting text, and an upstream's
   own errors pass unchanged. On all-in-one, port 80 redirects only the controller's own name to
   its public URL. (#531)
+- Gateway: an `http` route can be put in maintenance, with an optional plain-text message. Its
+  gateways then answer every request its access policies admit with a "Down for maintenance" page
+  (503) and send nothing to its targets; its certificate, HSTS and port 80 stay as they are. The
+  route's status says `maintenance`, and the web UI has a "Maintenance" switch on the route's page,
+  the CLI `--maintenance` and `--maintenance-message`. (#532)
 - Connector: a route target is a host and port or a Unix socket, with a weight, a priority and
   optionally the PROXY protocol. (#249, #262, #334)
 - Controller: route hostnames must lie under a domain the org has verified, by a DNS TXT record or

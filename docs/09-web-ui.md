@@ -14,7 +14,7 @@ endpoints.
 |---|---|---|
 | U1 | **Forms are the model** | Every form maps 1:1 to a protobuf message of the public API. A form submits the complete typed resource, with an etag. It never merges over a stored blob, because there is no blob. A field the form does not show cannot exist. |
 | U2 | **Saved ≠ applied, and the UI says which** | After every save, the UI shows the new revision and the per-agent apply status: `pending` → `applied` / `rejected` / `apply_timeout` ([07](07-api.md#writes-and-apply-status), [03](03-connections.md#configuration-reconciliation)). A rejection lists the agent and the structured reasons. |
-| U3 | **Desired and observed, side by side** | Each resource shows what was configured (desired) next to what the agents report (observed): enabled vs the route status `disabled` / `pending` / `ready` / `degraded` / `unavailable` / `error`, and per target the connector's readiness `ready` / `not_ready (reason)` ([06](06-data-model.md#desired-vs-observed-state)). There is never a second "enabled" switch. |
+| U3 | **Desired and observed, side by side** | Each resource shows what was configured (desired) next to what the agents report (observed): enabled vs the route status `disabled` / `pending` / `ready` / `degraded` / `unavailable` / `error` / `maintenance`, and per target the connector's readiness `ready` / `not_ready (reason)` ([06](06-data-model.md#desired-vs-observed-state)). There is never a second "enabled" switch; an HTTP route's maintenance changes what it answers, not whether it is served ([D88](14-open-decisions.md#engineering)). |
 | U4 | **Every error says what to do** | A route blocked by a connector's local policy shows the exact host command with a copy button, e.g. `sudo rpmgr policy allow-target 10.0.0.5:5432` ([04](04-security.md#connector-local-policy)). An unverified domain shows the TXT record to create. A DNS conflict names the foreign record that occupies the hostname and offers **Adopt** ([15](15-dns.md#conflicts)). |
 | U5 | **YAML instead of raw JSON editors** | Every resource has a *YAML* tab: view, copy and download (Phase 1); edit and import arrive with declarative manifests in Phase 2 ([D58](14-open-decisions.md#project-and-process)). The YAML is the same document `rpmgr apply -f` accepts. It is validated by the same server-side rules as the form, and the result is shown as a diff before saving. |
 | U6 | **No lost updates** | Every write carries the etag of the version the user started from. On a conflict, the UI shows "changed by *alice* 2 min ago" with a field-level diff and lets the user reapply their change on top or discard it. |
@@ -196,14 +196,15 @@ flowchart LR
   do not expire within 21 days, and the verified domains, each of how many there are. A status
   badge under each figure says how many need attention, that all is well, or that the area has
   nothing yet. Disabled routes, disabled connectors, drained gateways and decommissioned agents are
-  not counted ([D81](14-open-decisions.md#engineering)).
+  not counted ([D81](14-open-decisions.md#engineering)). Routes in maintenance are not counted
+  either; the routes' figure says how many there are ([D88](14-open-decisions.md#engineering)).
 - **Needs attention** is a card next to the traffic. Each area is marked as fine or as needing
   attention, and lists what needs it, each linked to its page, or says that nothing in it does:
   - agents without a control session: gateways, with when they were last seen or that they have
     not enrolled, and connectors, with when they were last seen, under the count of connected ones;
     disabled connectors and drained gateways are left out, since none is expected to connect;
   - routes that do not serve fully (`pending`, `degraded`, `unavailable`, `error`) or that agents
-    rejected, with their state; disabled routes are left out;
+    rejected, with their state; disabled routes and routes in maintenance are left out;
   - certificates that failed, with the error, or that expire within 21 days, as on the certificates
     page;
   - domains not verified, with their status;
@@ -275,10 +276,10 @@ flowchart LR
 ```
 
 **How the detail works.**
-- **Layout:** a link back to all routes; the route's name and type with the "Enabled" switch,
-  "YAML", "Delete…" and "Edit"; the configured settings next to the observed state; then cards for
-  the gateways not serving it and the agents that rejected it, when there are any, and for its
-  targets, traffic and access policies.
+- **Layout:** a link back to all routes; the route's name and type with the "Enabled" switch, for an
+  HTTP route the "Maintenance" switch, "YAML", "Delete…" and "Edit"; the configured settings next to
+  the observed state; then cards for the gateways not serving it and the agents that rejected it,
+  when there are any, and for its targets, traffic and access policies.
 - It shows the configured settings next to the observed state (U3), and how many of the group's
   gateways serve the route.
 - **The address** is the list's. A route on a port whose gateway group has no public hostname
@@ -327,6 +328,10 @@ flowchart LR
     `WatchApplyStatus`, in a live region (U8).
   - If the route changed since the page read it, the switch says so, and the page shows the route as
     it is now.
+- **The "Maintenance" switch** of an HTTP route ([D88](14-open-decisions.md#engineering)) puts it in
+  maintenance and takes it out, as the "Enabled" switch does, with the mask `http.maintenance`. The
+  configured settings then say "in maintenance" and show the message the maintenance page shows. The
+  form has both, the setting and the message.
 - **"Edit"** opens the route's form, with the fields the API lets a route of its type change.
   - **Full resource (U1):** the form starts from the route as read and sends it whole, with its
     fields set from the form, the update mask of those fields and the etag. A field the form does

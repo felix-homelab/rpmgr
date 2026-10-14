@@ -903,6 +903,8 @@ var schemaGraph = func() *sqlgraph.Schema {
 			routehttp.FieldWebsocket:          {Type: field.TypeBool, Column: routehttp.FieldWebsocket},
 			routehttp.FieldMaxBodyBytes:       {Type: field.TypeInt64, Column: routehttp.FieldMaxBodyBytes},
 			routehttp.FieldDNSProxied:         {Type: field.TypeBool, Column: routehttp.FieldDNSProxied},
+			routehttp.FieldMaintenance:        {Type: field.TypeBool, Column: routehttp.FieldMaintenance},
+			routehttp.FieldMaintenanceMessage: {Type: field.TypeString, Column: routehttp.FieldMaintenanceMessage},
 		},
 	}
 	graph.Nodes[41] = &sqlgraph.Node{
@@ -4852,6 +4854,16 @@ func (f *RouteHTTPFilter) WhereMaxBodyBytes(p entql.Int64P) {
 // WhereDNSProxied applies the entql bool predicate on the dns_proxied field.
 func (f *RouteHTTPFilter) WhereDNSProxied(p entql.BoolP) {
 	f.Where(p.Field(routehttp.FieldDNSProxied))
+}
+
+// WhereMaintenance applies the entql bool predicate on the maintenance field.
+func (f *RouteHTTPFilter) WhereMaintenance(p entql.BoolP) {
+	f.Where(p.Field(routehttp.FieldMaintenance))
+}
+
+// WhereMaintenanceMessage applies the entql string predicate on the maintenance_message field.
+func (f *RouteHTTPFilter) WhereMaintenanceMessage(p entql.StringP) {
+	f.Where(p.Field(routehttp.FieldMaintenanceMessage))
 }
 
 // WhereHasRoute applies a predicate to check if query has an edge route.

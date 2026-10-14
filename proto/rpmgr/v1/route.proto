@@ -182,6 +182,8 @@ enum RouteState {
   ROUTE_STATE_UNAVAILABLE = 5;
   // An online agent of it rejected the snapshot with its latest change.
   ROUTE_STATE_ERROR = 6;
+  // An http route in maintenance: its gateways answer every request with the maintenance page.
+  ROUTE_STATE_MAINTENANCE = 7;
 }
 
 // RouteStatus is what a route's agents report: the gateways of its group and the connectors of its
@@ -274,6 +276,15 @@ message HTTPRouteSpec {
   optional bool websocket = 10;
   // The largest request body; 0 is no limit.
   uint64 max_body_bytes = 11;
+  // Whether it is in maintenance: its gateways answer every request a client's access policies
+  // admit with the maintenance page, 503, and send nothing to its targets.
+  bool maintenance = 12;
+  // Plain text the maintenance page shows, such as when the service is back; line feeds are the
+  // only control characters.
+  string maintenance_message = 13 [(buf.validate.field).string = {
+    max_len: 500
+    pattern: "^[^\\x00-\\x09\\x0B-\\x1F\\x7F]*$"
+  }];
 }
 
 // TCPRouteSpec is a tcp route: a public port of the gateway group, from its TCP port pools.

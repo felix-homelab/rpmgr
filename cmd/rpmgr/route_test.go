@@ -146,6 +146,8 @@ func TestCreateRoute(t *testing.T) {
 		"a zero flow idle":       {"--tcp-udp", "--name", "x", "--group", "eu", "--flow-idle-timeout", "0s"},
 		"two types":              {"--tcp", "--udp", "--name", "x", "--group", "eu"},
 		"a hostname on tcp":      {"--tcp", "--name", "x", "--group", "eu", "--hostname", "a.example.com"},
+		"maintenance on tcp":     {"--tcp", "--name", "x", "--group", "eu", "--maintenance"},
+		"a message on udp":       {"--udp", "--name", "x", "--group", "eu", "--maintenance-message", "back soon"},
 		"a port on http":         {"--http", "--name", "x", "--group", "eu", "--hostname", "a.example.com", "--port", "80"},
 		"a name the API refuses": {"--http", "--name", "Not_A_Name", "--group", "eu", "--hostname", "a.example.com"},
 		"a port above 65535":     {"--udp", "--name", "x", "--group", "eu", "--port", "70000"},
@@ -188,6 +190,16 @@ func TestUpdateRoute(t *testing.T) {
 	}
 	if code, _, _ := runWith(env, "", "enable", "route", "rt_1"); code != cli.ExitOK || !a.updated.GetRoute().GetEnabled() || a.updated.GetEtag() != "4" {
 		t.Fatalf("enable: %d %v", code, a.updated)
+	}
+	// Maintenance (D88): the switch and its message, each in the mask only when given.
+	if code, _, errOut := runWith(env, "", "update", "route", "--maintenance", "--maintenance-message", "Back at 18:00.", "rt_1"); code != cli.ExitOK ||
+		!slices.Equal(slices.Sorted(slices.Values(a.updated.GetUpdateMask().GetPaths())), []string{"http.maintenance", "http.maintenance_message"}) ||
+		!a.updated.GetRoute().GetHttp().GetMaintenance() || a.updated.GetRoute().GetHttp().GetMaintenanceMessage() != "Back at 18:00." {
+		t.Fatalf("into maintenance: %d %q %v", code, errOut, a.updated)
+	}
+	if code, _, errOut := runWith(env, "", "update", "route", "--maintenance=false", "rt_1"); code != cli.ExitOK ||
+		!slices.Equal(a.updated.GetUpdateMask().GetPaths(), []string{"http.maintenance"}) || a.updated.GetRoute().GetHttp().GetMaintenance() {
+		t.Fatalf("out of maintenance: %d %q %v", code, errOut, a.updated)
 	}
 	if code, _, errOut := runWith(env, "", "update", "route", "--policy", "office", "rt_1"); code != cli.ExitOK ||
 		!slices.Equal(a.updated.GetRoute().GetPolicyIds(), []string{"ap_1"}) {

@@ -2338,6 +2338,16 @@ func init() {
 	routehttpDescDNSProxied := routehttpFields[12].Descriptor()
 	// routehttp.DefaultDNSProxied holds the default value on creation for the dns_proxied field.
 	routehttp.DefaultDNSProxied = routehttpDescDNSProxied.Default.(bool)
+	// routehttpDescMaintenance is the schema descriptor for maintenance field.
+	routehttpDescMaintenance := routehttpFields[13].Descriptor()
+	// routehttp.DefaultMaintenance holds the default value on creation for the maintenance field.
+	routehttp.DefaultMaintenance = routehttpDescMaintenance.Default.(bool)
+	// routehttpDescMaintenanceMessage is the schema descriptor for maintenance_message field.
+	routehttpDescMaintenanceMessage := routehttpFields[14].Descriptor()
+	// routehttp.DefaultMaintenanceMessage holds the default value on creation for the maintenance_message field.
+	routehttp.DefaultMaintenanceMessage = routehttpDescMaintenanceMessage.Default.(string)
+	// routehttp.MaintenanceMessageValidator is a validator for the "maintenance_message" field. It is called by the builders before save.
+	routehttp.MaintenanceMessageValidator = routehttpDescMaintenanceMessage.Validators[0].(func(string) error)
 	routehostnameMixin := schema.RouteHostname{}.Mixin()
 	routehostname.Policy = privacy.NewPolicies(routehostnameMixin[0], schema.RouteHostname{})
 	routehostname.Hooks[0] = func(next ent.Mutator) ent.Mutator {

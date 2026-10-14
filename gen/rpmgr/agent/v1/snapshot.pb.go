@@ -1142,9 +1142,14 @@ type GatewayHTTPRoute struct {
 	// The max-age of Strict-Transport-Security sent over HTTPS; 0 sends none.
 	HstsMaxAgeSeconds uint32 `protobuf:"varint,12,opt,name=hsts_max_age_seconds,json=hstsMaxAgeSeconds,proto3" json:"hsts_max_age_seconds,omitempty"`
 	// Who may send requests.
-	Access        *RouteAccess `protobuf:"bytes,13,opt,name=access,proto3" json:"access,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	Access *RouteAccess `protobuf:"bytes,13,opt,name=access,proto3" json:"access,omitempty"`
+	// Whether the route is in maintenance: every request its access rules admit gets the
+	// maintenance page, 503, and no stream is opened (docs/03-connections.md, "HTTP routes").
+	Maintenance bool `protobuf:"varint,14,opt,name=maintenance,proto3" json:"maintenance,omitempty"`
+	// Plain text the maintenance page shows.
+	MaintenanceMessage string `protobuf:"bytes,15,opt,name=maintenance_message,json=maintenanceMessage,proto3" json:"maintenance_message,omitempty"`
+	unknownFields      protoimpl.UnknownFields
+	sizeCache          protoimpl.SizeCache
 }
 
 func (x *GatewayHTTPRoute) Reset() {
@@ -1266,6 +1271,20 @@ func (x *GatewayHTTPRoute) GetAccess() *RouteAccess {
 		return x.Access
 	}
 	return nil
+}
+
+func (x *GatewayHTTPRoute) GetMaintenance() bool {
+	if x != nil {
+		return x.Maintenance
+	}
+	return false
+}
+
+func (x *GatewayHTTPRoute) GetMaintenanceMessage() string {
+	if x != nil {
+		return x.MaintenanceMessage
+	}
+	return ""
 }
 
 // HTTPHeader is a header name with its value.
@@ -2164,7 +2183,7 @@ const file_rpmgr_agent_v1_snapshot_proto_rawDesc = "" +
 	"\n" +
 	"connectors\x18\x03 \x03(\tR\n" +
 	"connectors\x123\n" +
-	"\x06access\x18\x04 \x01(\v2\x1b.rpmgr.agent.v1.RouteAccessR\x06access\"\xe7\x04\n" +
+	"\x06access\x18\x04 \x01(\v2\x1b.rpmgr.agent.v1.RouteAccessR\x06access\"\xba\x05\n" +
 	"\x10GatewayHTTPRoute\x12.\n" +
 	"\x05hosts\x18\x01 \x03(\v2\x18.rpmgr.agent.v1.HTTPHostR\x05hosts\x12+\n" +
 	"\x11upstream_protocol\x18\x02 \x01(\tR\x10upstreamProtocol\x12\x1e\n" +
@@ -2182,7 +2201,9 @@ const file_rpmgr_agent_v1_snapshot_proto_rawDesc = "" +
 	" \x03(\tR\x0etrustedProxies\x12\x16\n" +
 	"\x06port80\x18\v \x01(\tR\x06port80\x12/\n" +
 	"\x14hsts_max_age_seconds\x18\f \x01(\rR\x11hstsMaxAgeSeconds\x123\n" +
-	"\x06access\x18\r \x01(\v2\x1b.rpmgr.agent.v1.RouteAccessR\x06access\"6\n" +
+	"\x06access\x18\r \x01(\v2\x1b.rpmgr.agent.v1.RouteAccessR\x06access\x12 \n" +
+	"\vmaintenance\x18\x0e \x01(\bR\vmaintenance\x12/\n" +
+	"\x13maintenance_message\x18\x0f \x01(\tR\x12maintenanceMessage\"6\n" +
 	"\n" +
 	"HTTPHeader\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x14\n" +

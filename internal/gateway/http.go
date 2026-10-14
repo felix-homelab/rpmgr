@@ -37,8 +37,9 @@ import (
 // The HTTP server's timing (docs/03-connections.md, "Timeouts, keepalive and backoff"); the
 // variables change only in tests.
 const (
-	httpIdle       = 120 * time.Second // a keep-alive connection without a request
-	httpRetryAfter = 5                 // seconds, in a 503 without a ready connector
+	httpIdle              = 120 * time.Second // a keep-alive connection without a request
+	httpRetryAfter        = 5                 // seconds, in a 503 without a ready connector
+	maintenanceRetryAfter = 300               // seconds, in the 503 of a route in maintenance
 )
 
 var (
@@ -89,6 +90,10 @@ type HTTPRoute struct {
 	Access Access
 	// BasicAuth are the basic_auth rules a request the IP rules allow must pass, in order.
 	BasicAuth []BasicAuthRule
+	// Maintenance answers every request the access rules admit with the maintenance page, which
+	// shows MaintenanceMessage, and opens no stream.
+	Maintenance        bool
+	MaintenanceMessage string
 }
 
 // HTTPHeader is a header name, canonical, and its value; "" removes the header.
@@ -885,6 +890,11 @@ func (h *HTTPRoutes) proxy(rw http.ResponseWriter, r *http.Request, rt *routeTra
 		return
 	}
 	r = r.WithContext(ctx)
+	if route.Maintenance {
+		w.Header().Set("Retry-After", strconv.Itoa(maintenanceRetryAfter))
+		writeMaintenance(w, r, route.MaintenanceMessage)
+		return
+	}
 	if !route.WebSocket && r.Header.Get("Upgrade") != "" {
 		http.Error(w, "upgrades are off for this route", http.StatusForbidden)
 		return

@@ -62,7 +62,8 @@ type routeFlags struct {
 	hsts                                           time.Duration
 	port                                           uint
 	idleTimeout, flowIdleTimeout                   time.Duration
-	websocket                                      bool
+	websocket, maintenance                         bool
+	maintenanceMessage                             string
 	maxBody                                        uint64
 	force                                          bool
 	wait                                           time.Duration
@@ -99,6 +100,8 @@ func (f *routeFlags) flags(fs *flag.FlagSet, create bool) {
 	fs.Var(f.responseHeaders, "set-response-header", "http: a header Name=value set towards the client; repeat for more")
 	fs.BoolVar(&f.websocket, "websocket", true, "http: whether WebSocket upgrades pass")
 	fs.Uint64Var(&f.maxBody, "max-body", 0, "http: the largest request body in bytes; 0 is no limit")
+	fs.BoolVar(&f.maintenance, "maintenance", false, "http: answer every request with the maintenance page, 503")
+	fs.StringVar(&f.maintenanceMessage, "maintenance-message", "", "http: plain text the maintenance page shows, at most 500 characters")
 	fs.UintVar(&f.port, "port", 0, "tcp, udp, tcp-udp: the public port; 0 on create picks a free one")
 	fs.DurationVar(&f.idleTimeout, "idle-timeout", 0, "tcp, tcp-udp: close a connection idle this long; udp: forget a flow idle this long")
 	fs.DurationVar(&f.flowIdleTimeout, "flow-idle-timeout", 0, "tcp-udp: forget a UDP flow idle this long")
@@ -136,8 +139,8 @@ func enumOf(flagName, v string) (int32, error) {
 func (f *routeFlags) routeOf(set map[string]bool, typ string, base *rpmgrv1.Route) (*rpmgrv1.Route, []string, error) {
 	for flagName, types := range map[string]string{"hostname": "http tls_passthrough", "path-prefix": "http", "tls-mode": "http",
 		"certificate": "http", "port80": "http", "hsts": "http", "host-header": "http", "set-request-header": "http",
-		"set-response-header": "http", "websocket": "http", "max-body": "http", "port": "tcp udp tcp_udp", "idle-timeout": "tcp udp tcp_udp",
-		"flow-idle-timeout": "tcp_udp"} {
+		"set-response-header": "http", "websocket": "http", "max-body": "http", "maintenance": "http", "maintenance-message": "http",
+		"port": "tcp udp tcp_udp", "idle-timeout": "tcp udp tcp_udp", "flow-idle-timeout": "tcp_udp"} {
 		if set[flagName] && !slices.Contains(strings.Fields(types), typ) {
 			return nil, nil, cli.Usagef("--%s is not for a %s route", flagName, typ)
 		}
@@ -182,6 +185,8 @@ func (f *routeFlags) routeOf(set map[string]bool, typ string, base *rpmgrv1.Rout
 		do("set-response-header", "http.response_headers_set", func() { h.ResponseHeadersSet = f.responseHeaders })
 		do("websocket", "http.websocket", func() { h.Websocket = proto.Bool(f.websocket) })
 		do("max-body", "http.max_body_bytes", func() { h.MaxBodyBytes = f.maxBody })
+		do("maintenance", "http.maintenance", func() { h.Maintenance = f.maintenance })
+		do("maintenance-message", "http.maintenance_message", func() { h.MaintenanceMessage = f.maintenanceMessage })
 	case "tls_passthrough":
 		t := r.GetTlsPassthrough()
 		if t == nil {

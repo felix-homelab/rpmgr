@@ -743,6 +743,12 @@ sequenceDiagram
   text it got before. HEAD gets the headers alone.
   The pages are built in; pages of one's own per gateway group come in Phase 2
   ([05](05-features.md#http-features)).
+- **Maintenance** ([D88](14-open-decisions.md#engineering)): an http route in maintenance stays on
+  its gateways with its certificate, HSTS and port-80 mode. A request its access policies admit,
+  basic auth included, gets **503** with `Retry-After: 300` and the "Down for maintenance" page,
+  which shows the route's message as text; a client that does not ask for HTML gets the message as
+  text. No stream is opened to a connector. Requests already running, WebSockets included, finish as
+  they do when a route changes.
 
 ### TLS passthrough routes
 

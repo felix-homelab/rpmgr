@@ -358,7 +358,8 @@ func (a *Applier) Apply(ctx context.Context, snap *agentv1.Snapshot, _ agent.Cha
 			connectors = r.GetConnectors()
 			hr := HTTPRoute{ID: res.GetId(), Upstream: r.GetUpstreamProtocol(), WebSocket: r.GetWebsocket(),
 				HostHeader: r.GetHostHeader(), MaxBody: int64(min(r.GetMaxBodyBytes(), math.MaxInt64)), //nolint:gosec // G115: bounded above
-				Port80: r.GetPort80(), HSTS: int(r.GetHstsMaxAgeSeconds()), Access: access}
+				Port80: r.GetPort80(), HSTS: int(r.GetHstsMaxAgeSeconds()), Access: access, Maintenance: r.GetMaintenance(),
+				MaintenanceMessage: r.GetMaintenanceMessage()}
 			hr.BasicAuth, _ = basicAuthOf(r.GetAccess().GetBasicAuth()) // Validate refused any that does not parse
 			for _, h := range r.GetRequestHeaders() {
 				hr.RequestHeaders = append(hr.RequestHeaders, HTTPHeader{Name: h.GetName(), Value: h.GetValue()})
