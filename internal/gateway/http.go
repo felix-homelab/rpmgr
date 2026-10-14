@@ -141,6 +141,7 @@ type HTTPRoutes struct {
 
 	mu         sync.Mutex
 	transports map[string]*routeTransport // by route ID
+	upstream   map[string]*upstreamConns  // by route ID, kept while their connections are open
 }
 
 type httpTable struct {
@@ -161,8 +162,75 @@ type routeTransport struct {
 	proxy *httputil.ReverseProxy
 	tls   map[string]upstreamTLS // by route target ID
 
-	mu     sync.Mutex
-	active map[*activeRequest]struct{}
+	mu       sync.Mutex
+	active   map[*activeRequest]struct{}
+	upstream *upstreamConns // the route's TLS connections to its targets, of every transport
+}
+
+// upstreamConns are the open TLS connections of an http route to its targets, from every
+// transport the route had, each with the settings it was checked with (#517). Every change of
+// the route's settings ends those the new settings would not accept, and a connection whose
+// dial ends after a change is checked against the settings then.
+type upstreamConns struct {
+	mu    sync.Mutex
+	now   map[string]UpstreamTLS // the route's settings, by route target ID
+	conns map[*upstreamConn]struct{}
+}
+
+// upstreamConn is the tunnel stream under a TLS connection to a target; closing it ends the TLS
+// connection and what runs on it, upgraded connections and HTTP/2 streams included.
+type upstreamConn struct {
+	net.Conn
+	target  string
+	checked UpstreamTLS
+	of      *upstreamConns
+	once    sync.Once
+}
+
+func (c *upstreamConn) Close() error {
+	c.once.Do(func() {
+		c.of.mu.Lock()
+		defer c.of.mu.Unlock()
+		delete(c.of.conns, c)
+	})
+	return c.Conn.Close()
+}
+
+// accepts reports whether the settings now still accept a connection to target that checked
+// settings: the same ones, or unverified ones of the same connector. A target the route no longer
+// has keeps its connections, which finish as a removed route's do.
+func accepts(now map[string]UpstreamTLS, target string, checked UpstreamTLS) bool {
+	n, ok := now[target]
+	return !ok || reflect.DeepEqual(n, checked) || n.Verify == VerifyNothing && n.Connector == checked.Connector
+}
+
+// set makes now the route's settings and ends at once the connections they do not accept.
+func (u *upstreamConns) set(now map[string]UpstreamTLS) {
+	var doomed []*upstreamConn
+	u.mu.Lock()
+	u.now = now
+	for c := range u.conns {
+		if !accepts(now, c.target, c.checked) {
+			doomed = append(doomed, c)
+		}
+	}
+	u.mu.Unlock()
+	for _, c := range doomed {
+		_ = c.Close()
+	}
+}
+
+// track records c, a stream to target that is to be checked with checked, until it closes; a
+// change of the settings since the dial began refuses it.
+func (u *upstreamConns) track(target string, checked UpstreamTLS, c net.Conn) (net.Conn, error) {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	if !accepts(u.now, target, checked) {
+		return nil, fmt.Errorf("the TLS settings of target %s changed during the dial", target)
+	}
+	uc := &upstreamConn{Conn: c, target: target, checked: checked, of: u}
+	u.conns[uc] = struct{}{}
+	return uc, nil
 }
 
 // activeRequest is a request being proxied, which a tightened access policy cancels.
@@ -188,7 +256,8 @@ func NewHTTPRoutes(o HTTPOptions) *HTTPRoutes {
 	if o.Logger == nil {
 		o.Logger = slog.New(slog.DiscardHandler)
 	}
-	h := &HTTPRoutes{o: o, ln: newConnListener(), transports: map[string]*routeTransport{}, basic: NewBasicAuth(nil)}
+	h := &HTTPRoutes{o: o, ln: newConnListener(), transports: map[string]*routeTransport{},
+		upstream: map[string]*upstreamConns{}, basic: NewBasicAuth(nil)}
 	h.table.Store(&httpTable{byHost: map[string][]httpEntry{}})
 	protocols := new(http.Protocols)
 	protocols.SetHTTP1(true)
@@ -341,13 +410,14 @@ func (h *HTTPRoutes) Apply(routes []HTTPRoute) {
 		rt := h.transports[r.ID]
 		if rt == nil || rt.route.Load().Upstream != r.Upstream || !reflect.DeepEqual(rt.route.Load().TLS, r.TLS) {
 			if rt != nil {
-				rt.enforce(r.Access) // its requests finish on the old transport
+				rt.enforce(r.Access) // its requests finish on the old transport, unless h.upstream ends them
 			}
 			rt = h.newTransport(r)
 		} else if old := rt.route.Swap(&r); !old.Access.Same(r.Access) {
 			rt.enforce(r.Access)
 		}
 		next[r.ID] = rt
+		h.upstreamOf(r.ID).set(r.TLS)
 		for _, host := range r.Hosts {
 			t.byHost[host.Hostname] = append(t.byHost[host.Hostname], httpEntry{prefix: host.PathPrefix, route: rt})
 		}
@@ -367,11 +437,31 @@ func (h *HTTPRoutes) Apply(routes []HTTPRoute) {
 		}
 	}
 	h.transports = next
+	for id, u := range h.upstream {
+		if next[id] == nil {
+			u.set(nil) // a removed route's connections finish
+			u.mu.Lock()
+			if len(u.conns) == 0 {
+				delete(h.upstream, id)
+			}
+			u.mu.Unlock()
+		}
+	}
+}
+
+// upstreamOf returns the record of a route's TLS connections. Under h.mu.
+func (h *HTTPRoutes) upstreamOf(route string) *upstreamConns {
+	u := h.upstream[route]
+	if u == nil {
+		u = &upstreamConns{conns: map[*upstreamConn]struct{}{}}
+		h.upstream[route] = u
+	}
+	return u
 }
 
 // newTransport returns the proxy of a route; its transport dials tunnel streams to the route.
 func (h *HTTPRoutes) newTransport(r HTTPRoute) *routeTransport {
-	rt := &routeTransport{active: map[*activeRequest]struct{}{}}
+	rt := &routeTransport{active: map[*activeRequest]struct{}{}, upstream: h.upstreamOf(r.ID)}
 	rt.route.Store(&r)
 	rt.tr = &http.Transport{
 		DialContext:           func(ctx context.Context, _, _ string) (net.Conn, error) { return h.dial(ctx, r.ID) },
@@ -579,7 +669,14 @@ func (h *HTTPRoutes) dialTLS(ctx context.Context, rt *routeTransport) (net.Conn,
 		_ = c.Close()
 		return nil, fmt.Errorf("route %s: connector %s answered for target %s, which is not its own", route, connector, target)
 	}
-	tc := tls.Client(c, u.cfg)
+	// The stream is tracked under the TLS connection, which the transport needs as a *tls.Conn to
+	// learn the protocol ALPN chose.
+	tracked, err := rt.upstream.track(target, rt.route.Load().TLS[target], c)
+	if err != nil {
+		_ = c.Close()
+		return nil, fmt.Errorf("route %s: %w", route, err)
+	}
+	tc := tls.Client(tracked, u.cfg)
 	if err := tc.HandshakeContext(ctx); err != nil {
 		_ = tc.Close()
 		return nil, fmt.Errorf("route %s: TLS to target %s: %w", route, target, err)
