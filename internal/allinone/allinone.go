@@ -29,6 +29,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/config"
 	"github.com/felix-homelab/rpmgr/internal/controller"
 	"github.com/felix-homelab/rpmgr/internal/gateway"
+	"github.com/felix-homelab/rpmgr/internal/memnet"
 	"github.com/felix-homelab/rpmgr/internal/routes"
 	"github.com/felix-homelab/rpmgr/internal/store"
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
@@ -42,63 +43,6 @@ const (
 	GroupName   = "default"
 	GatewayName = "local"
 )
-
-// memListener is the controller's port 443 in all-in-one: it accepts the connections the gateway
-// hands over for the controller's names, and those Dial makes for the gateway's control plane.
-type memListener struct {
-	conns chan net.Conn
-	done  chan struct{}
-	once  sync.Once
-}
-
-func newMemListener() *memListener {
-	return &memListener{conns: make(chan net.Conn), done: make(chan struct{})}
-}
-
-func (l *memListener) Accept() (net.Conn, error) {
-	select {
-	case c := <-l.conns:
-		return c, nil
-	case <-l.done:
-		return nil, net.ErrClosed
-	}
-}
-
-func (l *memListener) Close() error {
-	l.once.Do(func() { close(l.done) })
-	return nil
-}
-
-func (l *memListener) Addr() net.Addr { return memAddr{} }
-
-// Deliver hands a connection to the controller; it is gateway.RunOptions.Controller.
-func (l *memListener) Deliver(c net.Conn) {
-	select {
-	case l.conns <- c:
-	case <-l.done:
-		_ = c.Close()
-	}
-}
-
-// Dial connects to the in-process controller over an in-memory pipe.
-func (l *memListener) Dial(ctx context.Context, _ string) (net.Conn, error) {
-	client, server := net.Pipe()
-	select {
-	case l.conns <- server:
-		return client, nil
-	case <-l.done:
-		_, _ = client.Close(), server.Close()
-		return nil, net.ErrClosed
-	case <-ctx.Done():
-		_, _ = client.Close(), server.Close()
-		return nil, ctx.Err()
-	}
-}
-
-type memAddr struct{}
-
-func (memAddr) Network() string { return "memory" }
-func (memAddr) String() string  { return "in-process" }
 
 // InitResult is what init reports to the operator.
 type InitResult struct {
@@ -163,7 +107,7 @@ func Init(ctx context.Context, o controller.InitOptions) (res InitResult, err er
 		return InitResult{}, err
 	}
 	// Enroll through the controller itself, running only in memory for the moment.
-	mem := newMemListener()
+	mem := memnet.NewListener()
 	rctx, stop := context.WithCancel(ctx)
 	defer stop()
 	listening, done := make(chan struct{}), make(chan error, 1)
@@ -298,7 +242,7 @@ func Run(ctx context.Context, o RunOptions) error {
 	if err != nil {
 		return err
 	}
-	mem := newMemListener()
+	mem := memnet.NewListener()
 	reg := o.Registry
 	if reg == nil {
 		reg = telemetry.NewRegistry()

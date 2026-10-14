@@ -18,6 +18,7 @@ import (
 
 	"github.com/felix-homelab/rpmgr/internal/gateway"
 	"github.com/felix-homelab/rpmgr/internal/ids"
+	"github.com/felix-homelab/rpmgr/internal/memnet"
 	"github.com/felix-homelab/rpmgr/internal/pki"
 	"github.com/felix-homelab/rpmgr/internal/tlspeek"
 	"github.com/felix-homelab/rpmgr/internal/tunnel"
@@ -178,6 +179,86 @@ func TestRouter(t *testing.T) {
 		t.Fatalf("plain HTTP: %d bytes, %v; want a close", n, err)
 	}
 	_ = raw.Close()
+}
+
+// TestRouter_Tunnels: an in-memory connection reaches the tunnel handler only as a data session to
+// this gateway, with its name, the tunnel ALPN and the mutual TLS handshake; a controller name, an
+// http route's name, another gateway's name, no SNI or plain bytes are closed without reaching any
+// handler, and closing the listener ends ServeTunnels.
+func TestRouter_Tunnels(t *testing.T) {
+	w := newWorld(t)
+	def, err := gateway.DefaultTLS()
+	if err != nil {
+		t.Fatal(err)
+	}
+	reached := make(chan string, 8)
+	tunnels := make(chan error, 1)
+	r := &gateway.Router{TrustDomain: td, GatewayID: w.gw.ID, TunnelTLS: w.tunnelTLS, DefaultTLS: def,
+		ControllerNames: []string{"panel.example.com"}, Routes: fakeRoutes{http: map[string]bool{"app.example.com": true}},
+		Controller: func(c net.Conn) { reached <- "controller"; _ = c.Close() },
+		HTTP:       func(c *tls.Conn) { reached <- "http"; _ = c.Close() },
+		Tunnel: func(c *tls.Conn) {
+			tunnels <- c.Handshake()
+			_ = c.Close()
+		}}
+	l := memnet.NewListener()
+	served := make(chan error, 1)
+	go func() { served <- r.ServeTunnels(l) }()
+
+	c, err := l.Dial(context.Background(), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	tc := tls.Client(c, w.conTLS(w.gw.DNSName(), tunnel.ALPNH2))
+	if err := tc.Handshake(); err != nil {
+		t.Fatalf("the in-memory tunnel handshake: %v", err)
+	}
+	_ = tc.Close()
+	if err := <-tunnels; err != nil {
+		t.Fatalf("the gateway's side: %v", err)
+	}
+
+	for _, tc := range []struct {
+		name  string
+		hello func(net.Conn)
+	}{
+		{"controller", func(c net.Conn) { _ = tls.Client(c, w.conTLS("controller."+td, tunnel.ALPNH2)).Handshake() }},
+		{"UI name", func(c net.Conn) { _ = tls.Client(c, w.conTLS("panel.example.com")).Handshake() }},
+		{"http route", func(c net.Conn) { _ = tls.Client(c, w.conTLS("app.example.com", "h2")).Handshake() }},
+		{"other gateway", func(c net.Conn) { _ = tls.Client(c, w.conTLS("gw_other.gateway."+td, tunnel.ALPNH2)).Handshake() }},
+		{"no tunnel ALPN", func(c net.Conn) { _ = tls.Client(c, w.conTLS(w.gw.DNSName(), "h2")).Handshake() }},
+		{"plain bytes", func(c net.Conn) { _, _ = c.Write([]byte("GET / HTTP/1.1\r\nHost: x\r\n\r\n")) }},
+	} {
+		c, err := l.Dial(context.Background(), "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		_ = c.SetDeadline(time.Now().Add(10 * time.Second))
+		done := make(chan struct{})
+		go func() { tc.hello(c); close(done) }()
+		// The router closes the connection: the client's handshake or write ends, and a read sees EOF.
+		<-done
+		if _, err := c.Read(make([]byte, 1)); err == nil {
+			t.Errorf("%s: the connection is still open", tc.name)
+		}
+		_ = c.Close()
+	}
+	select {
+	case got := <-reached:
+		t.Fatalf("an in-memory connection reached the %s handler", got)
+	case err := <-tunnels:
+		t.Fatalf("a refused connection reached the tunnel handler: %v", err)
+	default:
+	}
+	_ = l.Close()
+	select {
+	case err := <-served:
+		if err != nil {
+			t.Fatalf("ServeTunnels: %v", err)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("ServeTunnels did not end with its listener")
+	}
 }
 
 // TestQUICTLS: the UDP listener completes a handshake only for this gateway's tunnel name with the

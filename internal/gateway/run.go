@@ -67,6 +67,9 @@ type RunOptions struct {
 	// Readiness then gets the gateway's readiness check.
 	Registry  telemetry.Registry
 	Readiness func(check func(context.Context) error)
+	// Tunnels, if set, accepts in-memory connections that can only be data sessions to this
+	// gateway: all-in-one's connector's (Router.HandleTunnel). Run closes it when it drains.
+	Tunnels net.Listener
 }
 
 // Run runs a gateway from its boot file until ctx ends (docs/02-architecture.md): its control
@@ -265,6 +268,13 @@ func Run(ctx context.Context, o RunOptions) error {
 		o.Readiness(ctl.Ready)
 	}
 	go func() { _ = router.Serve(tcp) }()
+	if o.Tunnels != nil {
+		go func() {
+			if err := router.ServeTunnels(o.Tunnels); err != nil {
+				o.Logger.Warn("in-memory data sessions stopped", "error", err)
+			}
+		}()
+	}
 	if plain != nil {
 		go func() {
 			if err := httpRoutes.Serve80(plain); err != nil && !errors.Is(err, net.ErrClosed) {
@@ -307,6 +317,9 @@ func Run(ctx context.Context, o RunOptions) error {
 	_ = tcp.Close()
 	if plain != nil {
 		_ = plain.Close()
+	}
+	if o.Tunnels != nil {
+		_ = o.Tunnels.Close()
 	}
 	_ = qln.Close()
 	routes.Drain()

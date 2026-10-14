@@ -35,6 +35,10 @@ const (
 	TransportH2   = "h2"
 )
 
+// transportMemory is the one link to an in-process gateway: h2 over in-memory connections, which
+// carries every route to that gateway whatever its transport policy.
+const transportMemory = "memory"
+
 // h2Sessions is how many TCP connections the connector keeps per gateway on the h2 transport, so
 // that packet loss blocks at most half the streams (docs/03-connections.md, "Transports and
 // fallback").
@@ -79,16 +83,27 @@ type Options struct {
 	LocalAddr func(ctx context.Context, endpoint string) (netip.Addr, error)
 	// Metrics, if set, report the sessions' round-trip times.
 	Metrics *Metrics
-	Now     func() time.Time
-	Logger  *slog.Logger
+	// InProcess, if set, is a gateway in the same process.
+	InProcess *InProcess
+	Now       func() time.Time
+	Logger    *slog.Logger
+}
+
+// InProcess is a gateway that runs in the connector's process, all-in-one's
+// (docs/02-architecture.md, "All-in-one"). The connector keeps one data session to it over
+// connections that Dial makes in memory, with TLS and reverse HTTP/2 as over TCP, for every route
+// whatever its transport policy, and never dials its endpoints.
+type InProcess struct {
+	GatewayID string
+	Dial      func(ctx context.Context) (net.Conn, error)
 }
 
 // Sessions keeps the connector's data sessions (docs/03-connections.md, "Data session",
 // "Transport selection"). Per gateway it runs a link for each transport policy its routes need:
 // a pinned link holds one QUIC session or two TCP connections and never falls back; the auto link
-// races QUIC against TCP and keeps the winner's sessions. Each session announces exactly the ready
-// routes of its link's policy, so the gateway opens a route's streams only on sessions of the
-// route's transport.
+// races QUIC against TCP and keeps the winner's sessions; an in-process gateway gets one link in
+// memory for all its routes. Each session announces exactly the ready routes of its link's policy,
+// so the gateway opens a route's streams only on sessions of the route's transport.
 type Sessions struct {
 	o      Options
 	ctx    context.Context
@@ -179,6 +194,13 @@ func (m *Sessions) Set(gws []Gateway) {
 	var out []outgoing
 	want := map[string]Gateway{}
 	for _, g := range gws {
+		if m.o.InProcess != nil && g.ID == m.o.InProcess.GatewayID {
+			routes := make(map[string]string, len(g.Routes))
+			for r := range g.Routes {
+				routes[r] = transportMemory
+			}
+			g.Routes = routes
+		}
 		want[g.ID] = g
 	}
 	for id, gs := range m.gateways {
@@ -238,7 +260,7 @@ func (m *Sessions) startLink(gs *gatewayState, policy string) {
 	gs.links[policy] = l
 	m.wg.Go(func() {
 		switch policy {
-		case TransportQUIC, TransportH2:
+		case TransportQUIC, TransportH2, transportMemory:
 			m.runMode(ctx, l, policy, nil, nil)
 		default:
 			m.runAuto(ctx, l)
@@ -436,9 +458,10 @@ func (m *Sessions) Count() map[string]int {
 	return out
 }
 
-// Status returns the routes whose pinned transport cannot be established:
-// not_ready(transport_unavailable) with the transport as detail, when no gateway of the route has
-// a session of that transport and a dial of it failed. A pin never falls back.
+// Status returns the routes whose pinned transport, or whose in-memory link to an in-process
+// gateway, cannot be established: not_ready(transport_unavailable) with the transport (quic, h2 or
+// memory) as detail, when no gateway of the route has a session of that transport and a dial of it
+// failed. A pin never falls back.
 func (m *Sessions) Status() []*agentv1.ResourceStatus {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -488,9 +511,9 @@ type modeHooks struct {
 	moved func() bool
 }
 
-// runMode keeps the sessions of transport tr on link l until ctx ends: one for QUIC, two for h2,
-// each redialled with a backoff of up to 15 s; first, if set, is the first session of the first
-// slot.
+// runMode keeps the sessions of transport tr on link l until ctx ends: one for QUIC and in memory,
+// two for h2, each redialled with a backoff of up to 15 s; first, if set, is the first session of
+// the first slot.
 func (m *Sessions) runMode(ctx context.Context, l *link, tr string, first tunnel.Session, hooks *modeHooks) {
 	n := 1
 	if tr == TransportH2 {
@@ -524,7 +547,7 @@ func (m *Sessions) slot(ctx context.Context, l *link, tr string, first tunnel.Se
 				return
 			}
 		} else {
-			err = m.run(ctx, l, ts, tr)
+			err = m.run(ctx, l, ts, ts.Transport())
 			b.Healthy(time.Since(start))
 			if ctx.Err() != nil || (hooks != nil && hooks.ended(err, false)) {
 				return
@@ -737,6 +760,13 @@ func (m *Sessions) dialTransport(ctx context.Context, gs *gatewayState, tr strin
 	cfg, err := m.o.TLS(g.ID)
 	if err != nil {
 		return nil, err
+	}
+	if tr == transportMemory {
+		s, err := m.dialMemory(ctx, cfg)
+		if err != nil {
+			return nil, fmt.Errorf("in process: %w", err)
+		}
+		return s, nil
 	}
 	var errs []error
 	for _, ep := range g.Endpoints {

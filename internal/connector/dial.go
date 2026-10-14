@@ -51,8 +51,8 @@ func (m *Sessions) dialQUIC(ctx context.Context, ep string, cfg *tls.Config) (tu
 	return nil, errors.Join(errs...)
 }
 
-// dialH2 opens a TLS connection to the endpoint ep, directly or through Options.Dial, and serves
-// reverse HTTP/2 on it with windows admitted against the budget.
+// dialH2 opens a TCP connection to the endpoint ep, directly or through Options.Dial, and serves
+// reverse HTTP/2 on it.
 func (m *Sessions) dialH2(ctx context.Context, ep string, cfg *tls.Config) (tunnel.Session, error) {
 	ctx, cancel := context.WithTimeout(ctx, dialTimeout)
 	defer cancel()
@@ -65,6 +65,24 @@ func (m *Sessions) dialH2(ctx context.Context, ep string, cfg *tls.Config) (tunn
 	if err != nil {
 		return nil, err
 	}
+	return m.serveH2(ctx, raw, cfg)
+}
+
+// dialMemory opens a connection to the in-process gateway and serves reverse HTTP/2 on it, after
+// the same TLS handshake as over TCP.
+func (m *Sessions) dialMemory(ctx context.Context, cfg *tls.Config) (tunnel.Session, error) {
+	ctx, cancel := context.WithTimeout(ctx, dialTimeout)
+	defer cancel()
+	raw, err := m.o.InProcess.Dial(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return m.serveH2(ctx, raw, cfg)
+}
+
+// serveH2 completes the TLS handshake on raw with ALPN rpmgr-tunnel-h2/1 and serves reverse
+// HTTP/2 on it with windows admitted against the budget; it closes raw if it fails.
+func (m *Sessions) serveH2(ctx context.Context, raw net.Conn, cfg *tls.Config) (tunnel.Session, error) {
 	cfg = cfg.Clone()
 	cfg.NextProtos = []string{tunnel.ALPNH2}
 	tc := tls.Client(raw, cfg)
