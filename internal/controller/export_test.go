@@ -15,6 +15,9 @@ func SetRunTimers(t testing.TB, drain, reload time.Duration) {
 	t.Cleanup(func() { drainWait, webCertReload = oldDrain, oldReload })
 }
 
+// EndLeftOpen runs what seenLoop does first: it ends the sessions a stopped run left open.
+func (s *Sessions) EndLeftOpen() { s.endLeftOpen() }
+
 // SealedColumns lists the sealed columns `rpmgr kek rotate` re-wraps, as "table.column".
 func SealedColumns() []string {
 	out := make([]string, len(sealedColumns))
