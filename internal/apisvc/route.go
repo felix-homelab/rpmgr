@@ -145,8 +145,8 @@ func checkSpec(in *rpmgrv1.Route) error {
 	hostnames := append(in.GetHttp().GetHostnames(), in.GetTlsPassthrough().GetHostnames()...)
 	switch {
 	case in.GetSpec() == nil:
-		return invalid("a route needs a spec: http, tcp, udp or tls_passthrough")
-	case in.GetTcp() != nil || in.GetUdp() != nil:
+		return invalid("a route needs a spec: http, tcp, udp, tcp_udp or tls_passthrough")
+	case in.GetTcp() != nil || in.GetUdp() != nil || in.GetTcpUdp() != nil:
 		return nil
 	case len(hostnames) == 0 || len(hostnames) > maxHostnames:
 		// The request's validation sees an update's hostnames only if it names them.
@@ -232,6 +232,8 @@ func routeFields(t route.Type) []string {
 		fields = append(fields, "tcp.port", "tcp.idle_timeout_seconds")
 	case route.TypeUDP:
 		fields = append(fields, "udp.port", "udp.flow_idle_timeout_seconds")
+	case route.TypeTCPUDP:
+		fields = append(fields, "tcp_udp.port", "tcp_udp.idle_timeout_seconds", "tcp_udp.flow_idle_timeout_seconds")
 	}
 	return fields
 }
@@ -280,6 +282,8 @@ func (r *Routes) createRouteTx(ctx context.Context, tx *ent.Tx, org string, in *
 		c.SetType(route.TypeTCP)
 	case *rpmgrv1.Route_Udp:
 		c.SetType(route.TypeUDP)
+	case *rpmgrv1.Route_TcpUdp:
+		c.SetType(route.TypeTCPUDP)
 	}
 	row, err := c.Save(ctx)
 	if err != nil {
@@ -364,7 +368,7 @@ func (r *Routes) updateRouteTx(ctx context.Context, tx *ent.Tx, m *rpmgrv1.Updat
 			return nil, err
 		}
 	}
-	if row.Type == route.TypeTCP || row.Type == route.TypeUDP {
+	if row.Type == route.TypeTCP || row.Type == route.TypeUDP || row.Type == route.TypeTCPUDP {
 		if err := updatePortRoute(ctx, tx, row, was, next); err != nil {
 			return nil, err
 		}
@@ -520,7 +524,7 @@ func routeOf(ctx context.Context, c *ent.Client, row *ent.Route) (*rpmgrv1.Route
 		names[i] = h.Hostname
 	}
 	switch row.Type {
-	case route.TypeTCP, route.TypeUDP:
+	case route.TypeTCP, route.TypeUDP, route.TypeTCPUDP:
 		if err := setPortSpec(ctx, c, row, out); err != nil {
 			return nil, err
 		}

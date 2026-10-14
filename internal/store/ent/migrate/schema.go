@@ -1107,7 +1107,7 @@ var (
 		{Name: "org_id", Type: field.TypeString},
 		{Name: "version", Type: field.TypeInt64, Default: 1},
 		{Name: "name", Type: field.TypeString},
-		{Name: "type", Type: field.TypeEnum, Enums: []string{"http", "tcp", "udp", "tls_passthrough"}},
+		{Name: "type", Type: field.TypeEnum, Enums: []string{"http", "tcp", "udp", "tcp_udp", "tls_passthrough"}},
 		{Name: "enabled", Type: field.TypeBool, Default: true},
 		{Name: "transport", Type: field.TypeEnum, Nullable: true, Enums: []string{"auto", "quic", "h2"}},
 		{Name: "description", Type: field.TypeString, Default: ""},

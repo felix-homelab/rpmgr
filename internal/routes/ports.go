@@ -117,10 +117,72 @@ func Allocate(ctx context.Context, tx *ent.Tx, org, group string, p Protocol, po
 // port: replaces does not count towards the quota, as the caller frees it in the same
 // transaction.
 func AllocateReplacing(ctx context.Context, tx *ent.Tx, org, group string, p Protocol, port int, replaces string) (*ent.PortAllocation, error) {
+	f, err := freePorts(ctx, tx, org, group, p, replaces)
+	if err != nil {
+		return nil, err
+	}
+	if port != 0 {
+		if err := f.check(ctx, tx, port); err != nil {
+			return nil, err
+		}
+	} else if port, err = randomFree(f.pools, func(port int) bool { return !f.taken[port] }); err != nil {
+		return nil, err
+	}
+	return f.allocate(ctx, tx, port)
+}
+
+// AllocateBoth allocates one port number for TCP and for UDP in the org's gateway group, in tx, as
+// a tcp_udp route needs: port, which must lie in a TCP pool and in a UDP pool of the group and be
+// free in both, or with port 0 a random port free in both. Each protocol's quota caps its
+// allocations; replacesTCP and replacesUDP are the allocations of a route that moves, which do not
+// count, as AllocateReplacing's.
+func AllocateBoth(ctx context.Context, tx *ent.Tx, org, group string, port int, replacesTCP, replacesUDP string) (tcp,
+	udp *ent.PortAllocation, err error) {
+	t, err := freePorts(ctx, tx, org, group, TCP, replacesTCP)
+	if err != nil {
+		return nil, nil, err
+	}
+	u, err := freePorts(ctx, tx, org, group, UDP, replacesUDP)
+	if err != nil {
+		return nil, nil, err
+	}
+	if port != 0 {
+		if err := t.check(ctx, tx, port); err != nil {
+			return nil, nil, err
+		}
+		if err := u.check(ctx, tx, port); err != nil {
+			return nil, nil, err
+		}
+	} else if port, err = randomFree(t.pools, func(port int) bool {
+		return !t.taken[port] && inPools(u.pools, port) && !u.taken[port]
+	}); err != nil {
+		return nil, nil, err
+	}
+	if tcp, err = t.allocate(ctx, tx, port); err != nil {
+		return nil, nil, err
+	}
+	if udp, err = u.allocate(ctx, tx, port); err != nil {
+		return nil, nil, err
+	}
+	return tcp, udp, nil
+}
+
+// free are the org's pools of a gateway group and protocol, and the ports of that protocol taken
+// in the group.
+type free struct {
+	org, group string
+	proto      portallocation.Protocol
+	pools      []*ent.PortPool
+	taken      map[int]bool
+}
+
+// freePorts reads the pools and the taken ports of protocol p in the org's gateway group, refusing
+// another org's group and a quota that is reached without the allocation replaces.
+func freePorts(ctx context.Context, tx *ent.Tx, org, group string, p Protocol, replaces string) (*free, error) {
 	if err := ownGroup(ctx, tx, org, group); err != nil {
 		return nil, err
 	}
-	proto := portallocation.Protocol(p)
+	f := &free{org: org, group: group, proto: portallocation.Protocol(p), taken: map[int]bool{}}
 	quota, err := tx.PortQuota.Query().Where(portquota.OrgID(org), portquota.GatewayGroupID(group),
 		portquota.ProtocolEQ(portquota.Protocol(p))).Only(ctx)
 	switch {
@@ -129,7 +191,7 @@ func AllocateReplacing(ctx context.Context, tx *ent.Tx, org, group string, p Pro
 		return nil, err
 	default:
 		n, err := tx.PortAllocation.Query().Where(portallocation.OrgID(org), portallocation.GatewayGroupID(group),
-			portallocation.ProtocolEQ(proto), portallocation.IDNEQ(replaces)).Count(ctx)
+			portallocation.ProtocolEQ(f.proto), portallocation.IDNEQ(replaces)).Count(ctx)
 		if err != nil {
 			return nil, err
 		}
@@ -137,31 +199,34 @@ func AllocateReplacing(ctx context.Context, tx *ent.Tx, org, group string, p Pro
 			return nil, ErrQuotaReached
 		}
 	}
-	pools, err := tx.PortPool.Query().Where(portpool.OrgID(org), portpool.GatewayGroupID(group),
-		portpool.ProtocolEQ(portpool.Protocol(p))).Order(ent.Asc(portpool.FieldPortFrom)).All(ctx)
-	if err != nil {
+	if f.pools, err = tx.PortPool.Query().Where(portpool.OrgID(org), portpool.GatewayGroupID(group),
+		portpool.ProtocolEQ(portpool.Protocol(p))).Order(ent.Asc(portpool.FieldPortFrom)).All(ctx); err != nil {
 		return nil, err
 	}
-	taken := map[int]bool{}
-	allocated, err := tx.PortAllocation.Query().Where(portallocation.GatewayGroupID(group), portallocation.ProtocolEQ(proto)).
+	allocated, err := tx.PortAllocation.Query().Where(portallocation.GatewayGroupID(group), portallocation.ProtocolEQ(f.proto)).
 		Select(portallocation.FieldPort).Ints(ctx)
 	if err != nil {
 		return nil, err
 	}
 	for _, a := range allocated {
-		taken[a] = true
+		f.taken[a] = true
 	}
-	if port != 0 {
-		if !inPools(pools, port) {
-			return nil, ErrNotInPool
-		}
-		if taken[port] {
-			return nil, holder(ctx, tx, group, proto, port)
-		}
-	} else if port, err = randomFree(pools, taken); err != nil {
-		return nil, err
+	return f, nil
+}
+
+// check refuses an explicit port outside the pools or taken.
+func (f *free) check(ctx context.Context, tx *ent.Tx, port int) error {
+	if !inPools(f.pools, port) {
+		return ErrNotInPool
 	}
-	a, err := tx.PortAllocation.Create().SetOrgID(org).SetGatewayGroupID(group).SetProtocol(proto).SetPort(port).Save(ctx)
+	if f.taken[port] {
+		return holder(ctx, tx, f.group, f.proto, port)
+	}
+	return nil
+}
+
+func (f *free) allocate(ctx context.Context, tx *ent.Tx, port int) (*ent.PortAllocation, error) {
+	a, err := tx.PortAllocation.Create().SetOrgID(f.org).SetGatewayGroupID(f.group).SetProtocol(f.proto).SetPort(port).Save(ctx)
 	if ent.IsConstraintError(err) {
 		return nil, ErrPortTaken // allocated concurrently
 	}
@@ -196,9 +261,9 @@ func inPools(pools []*ent.PortPool, port int) bool {
 	return false
 }
 
-// randomFree picks a free port of the pools: from a random place in their combined range, the
-// next free one, so that allocations are not predictable.
-func randomFree(pools []*ent.PortPool, taken map[int]bool) (int, error) {
+// randomFree picks a usable port of the pools: from a random place in their combined range, the
+// next usable one, so that allocations are not predictable.
+func randomFree(pools []*ent.PortPool, usable func(port int) bool) (int, error) {
 	total := 0
 	for _, p := range pools {
 		total += p.PortTo - p.PortFrom + 1
@@ -216,7 +281,7 @@ func randomFree(pools []*ent.PortPool, taken map[int]bool) (int, error) {
 		for _, p := range pools {
 			size := p.PortTo - p.PortFrom + 1
 			if k < size {
-				if port := p.PortFrom + k; !taken[port] {
+				if port := p.PortFrom + k; usable(port) {
 					return port, nil
 				}
 				break

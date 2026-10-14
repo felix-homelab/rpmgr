@@ -156,8 +156,8 @@ func checkTarget(ctx context.Context, tx *ent.Tx, rt *ent.Route, t *rpmgrv1.Rout
 		return invalid("a target needs a host_port or a unix_path")
 	case t.GetUnixPath() != "" && path.Clean(t.GetUnixPath()) != t.GetUnixPath():
 		return invalid("unix_path %q is not a clean absolute path", t.GetUnixPath())
-	case rt.Type == route.TypeUDP && t.GetUnixPath() != "":
-		return invalid("a udp route's target is a host and port")
+	case (rt.Type == route.TypeUDP || rt.Type == route.TypeTCPUDP) && t.GetUnixPath() != "":
+		return invalid("a %s route's target is a host and port", rt.Type)
 	case rt.Type == route.TypeHTTP && up == routetarget.UpstreamProtocolTCP:
 		return invalid("an http route's target speaks HTTP, HTTPS or H2C")
 	case rt.Type != route.TypeHTTP && up != routetarget.UpstreamProtocolTCP:

@@ -279,3 +279,82 @@ func TestApplier_Disable(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func tcpUDPResource(id string, port uint32, connectors ...string) *agentv1.Resource {
+	return &agentv1.Resource{Id: id, Kind: &agentv1.Resource_GatewayTcpUdpRoute{GatewayTcpUdpRoute: &agentv1.GatewayTCPUDPRoute{
+		Port: port, IdleTimeoutSeconds: 3600, FlowIdleTimeoutSeconds: 60, Connectors: connectors}}}
+}
+
+// TestApplier_TCPUDP: a tcp_udp route's port counts as a TCP and as a UDP port, so another route
+// on it in either protocol is refused; applied, it listens on both, admits its connectors, and a
+// port taken in either protocol makes the route not ready, until it is bound.
+func TestApplier_TCPUDP(t *testing.T) {
+	a, assign := gateway.NewApplier()
+	for _, tc := range []struct {
+		name string
+		snap *agentv1.Snapshot
+		want string
+	}{
+		{"port 0", gatewaySnapshot(1, tcpUDPResource("rt_1", 0)), "not a TCP port"},
+		{"a tcp route on its port", gatewaySnapshot(1, tcpUDPResource("rt_1", 53), tcpResource("rt_2", 53)), "TCP port 53 is also the port of rt_1"},
+		{"a udp route on its port", gatewaySnapshot(1, udpResource("rt_2", 53), tcpUDPResource("rt_1", 53)), "UDP port 53 is also the port of rt_2"},
+		{"an empty connector", gatewaySnapshot(1, tcpUDPResource("rt_1", 53, "")), "empty connector"},
+	} {
+		errs := a.Validate(tc.snap)
+		if len(errs) == 0 || !strings.Contains(errs[0].GetMessage(), tc.want) {
+			t.Errorf("%s: %v, want an error about %q", tc.name, errs, tc.want)
+		}
+	}
+	gateway.SetRouteTimers(t, time.Second, 50*time.Millisecond)
+	m := gateway.NewSessions(gateway.SessionsOptions{TrustDomain: td, GatewayID: "gw_01", Assignment: assign})
+	t.Cleanup(m.Close)
+	routes := gateway.NewTCPRoutes(gateway.TCPOptions{Host: "127.0.0.1", Sessions: m, Revision: a.Revision})
+	t.Cleanup(routes.Close)
+	udp := gateway.NewUDPRoutes(gateway.UDPOptions{Host: "127.0.0.1", Sessions: m, Revision: a.Revision})
+	t.Cleanup(udp.Close)
+	a.Bind(gateway.Served{TCP: routes, UDP: udp, Sessions: m})
+
+	// A port free for TCP and UDP; held for UDP while the route is applied.
+	port := freeUDPPort(t)
+	if l, err := net.Listen("tcp", net.JoinHostPort("127.0.0.1", strconv.Itoa(int(port)))); err != nil {
+		t.Skipf("port %d is not free for TCP: %v", port, err)
+	} else {
+		_ = l.Close()
+	}
+	taken, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: int(port)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	st := a.Apply(t.Context(), gatewaySnapshot(1, tcpUDPResource("rt_1", uint32(port), cid("con_1"))), agent.Changes{})
+	if len(st) != 1 || st[0].GetResourceId() != "rt_1" || st[0].GetReason() != agentv1.NotReadyReason_NOT_READY_REASON_PORT_IN_USE ||
+		!strings.Contains(st[0].GetDetail(), "udp port") {
+		t.Fatalf("a taken udp port: %v", st)
+	}
+	if !assign.Known(cid("con_1")) || len(assign.Connectors("rt_1")) != 1 {
+		t.Fatal("the route's connector is not admitted")
+	}
+	if _, err := net.Listen("tcp", net.JoinHostPort("127.0.0.1", strconv.Itoa(int(port)))); !errors.Is(err, syscall.EADDRINUSE) {
+		t.Fatalf("the route's TCP port is not bound: %v", err)
+	}
+	_ = taken.Close()
+	eventually(t, "the freed udp port was not bound", func() bool { return len(a.Readiness()) == 0 })
+	if _, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: int(port)}); !errors.Is(err, syscall.EADDRINUSE) {
+		t.Fatalf("the route's UDP port is not bound: %v", err)
+	}
+	if st := a.Apply(t.Context(), gatewaySnapshot(2), agent.Changes{}); len(st) != 0 {
+		t.Fatal(st)
+	}
+	eventually(t, "a removed route keeps its ports", func() bool {
+		c, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: int(port)})
+		if err != nil {
+			return false
+		}
+		_ = c.Close()
+		l, err := net.Listen("tcp", net.JoinHostPort("127.0.0.1", strconv.Itoa(int(port))))
+		if err != nil {
+			return false
+		}
+		_ = l.Close()
+		return true
+	})
+}

@@ -43,7 +43,10 @@ func PreviewSources(previewed string) []snapshot.Source {
 	udp := func(ctx context.Context, tx *ent.Tx, a snapshot.Agent) ([]*agentv1.Resource, error) {
 		return gatewayUDP(ctx, tx, a, previewed)
 	}
-	return []snapshot.Source{tcp, udp, GatewayPassthrough, GatewayHTTP, certs.Gateway, domains.GatewayChallenges,
+	both := func(ctx context.Context, tx *ent.Tx, a snapshot.Agent) ([]*agentv1.Resource, error) {
+		return gatewayTCPUDP(ctx, tx, a, previewed)
+	}
+	return []snapshot.Source{tcp, udp, both, GatewayPassthrough, GatewayHTTP, certs.Gateway, domains.GatewayChallenges,
 		GatewayDrain, ConnectorRoutes, ConnectorGateways}
 }
 
@@ -151,6 +154,59 @@ func gatewayUDP(ctx context.Context, tx *ent.Tx, a snapshot.Agent, previewed str
 		out = append(out, &agentv1.Resource{Id: r.ID, Kind: &agentv1.Resource_GatewayUdpRoute{GatewayUdpRoute: &agentv1.GatewayUDPRoute{
 			Port: uint32(udp.Edges.Port.Port), FlowIdleTimeoutSeconds: uint32(udp.FlowIdleTimeoutSeconds), //nolint:gosec // G115: a port and a small positive number
 			Connectors: connectors, Access: access}}})
+	}
+	return out, nil
+}
+
+// gatewayTCPUDP compiles a gateway's tcp_udp routes as gatewayTCP and gatewayUDP do theirs: every
+// enabled one of its gateway group with both ports and a connector that serves it, and those
+// connectors; the route previewed also without one.
+func gatewayTCPUDP(ctx context.Context, tx *ent.Tx, a snapshot.Agent, previewed string) ([]*agentv1.Resource, error) {
+	if a.Identity.Kind != pki.KindGateway {
+		return nil, nil
+	}
+	gw, err := tx.Gateway.Get(ctx, a.Identity.ID)
+	if ent.IsNotFound(err) {
+		return nil, nil
+	}
+	if err != nil || !gw.Enabled || gw.DecommissionedAt != nil {
+		return nil, err
+	}
+	routes, err := tx.Route.Query().Where(route.GatewayGroupID(gw.GatewayGroupID), route.TypeEQ(route.TypeTCPUDP),
+		route.Enabled(true)).Order(ent.Asc(route.FieldID)).All(ctx)
+	if err != nil {
+		return nil, err
+	}
+	var out []*agentv1.Resource
+	for _, r := range routes {
+		tcp, err := tx.RouteTCP.Query().Where(routetcp.RouteID(r.ID)).WithPort().Only(ctx)
+		if ent.IsNotFound(err) {
+			continue
+		}
+		if err != nil {
+			return nil, err
+		}
+		udp, err := tx.RouteUDP.Query().Where(routeudp.RouteID(r.ID)).Only(ctx)
+		if ent.IsNotFound(err) {
+			continue
+		}
+		if err != nil {
+			return nil, err
+		}
+		connectors, err := serving(ctx, tx, r.ID)
+		if err != nil {
+			return nil, err
+		}
+		if len(connectors) == 0 && r.ID != previewed { // no gateway holds a port that no one serves (D78)
+			continue
+		}
+		access, err := accessOf(ctx, tx, r.ID, false)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, &agentv1.Resource{Id: r.ID, Kind: &agentv1.Resource_GatewayTcpUdpRoute{GatewayTcpUdpRoute: &agentv1.GatewayTCPUDPRoute{
+			Port: uint32(tcp.Edges.Port.Port), IdleTimeoutSeconds: uint32(tcp.IdleTimeoutSeconds), //nolint:gosec // G115: ports and timeouts are small and positive
+			FlowIdleTimeoutSeconds: uint32(udp.FlowIdleTimeoutSeconds), Connectors: connectors, Access: access}}}) //nolint:gosec // G115: small and positive
 	}
 	return out, nil
 }
@@ -335,8 +391,8 @@ func serving(ctx context.Context, tx *ent.Tx, routeID string) ([]string, error) 
 }
 
 // connectorTargets loads the connector a for ConnectorRoutes and ConnectorGateways, its enabled
-// targets on enabled tcp, udp, http and tls_passthrough routes, with the routes, and the instance settings. con is nil for any
-// other agent and for a disabled or decommissioned connector, which serve nothing.
+// targets on enabled routes, with the routes, and the instance settings. con is nil for any other
+// agent and for a disabled or decommissioned connector, which serve nothing.
 func connectorTargets(ctx context.Context, tx *ent.Tx, a snapshot.Agent) (con *ent.Connector, targets []*ent.RouteTarget,
 	inst *rpmgrv1.InstanceSettings, err error) {
 	if a.Identity.Kind != pki.KindConnector {
@@ -350,7 +406,7 @@ func connectorTargets(ctx context.Context, tx *ent.Tx, a snapshot.Agent) (con *e
 		return nil, nil, nil, err
 	}
 	targets, err = tx.RouteTarget.Query().Where(routetarget.ConnectorID(con.ID), routetarget.Enabled(true),
-		routetarget.HasRouteWith(route.Enabled(true), route.TypeIn(route.TypeTCP, route.TypeUDP, route.TypeHTTP, route.TypeTLSPassthrough))).WithRoute().All(ctx)
+		routetarget.HasRouteWith(route.Enabled(true), route.TypeIn(route.TypeTCP, route.TypeUDP, route.TypeTCPUDP, route.TypeHTTP, route.TypeTLSPassthrough))).WithRoute().All(ctx)
 	if err != nil {
 		return nil, nil, nil, err
 	}
@@ -361,8 +417,8 @@ func connectorTargets(ctx context.Context, tx *ent.Tx, a snapshot.Agent) (con *e
 	return con, targets, inst, nil
 }
 
-// ConnectorRoutes compiles a connector's routes: for every enabled tcp, udp, http or tls_passthrough route
-// with an enabled target on it, its type, its targets and the effective transport. A disabled or decommissioned connector
+// ConnectorRoutes compiles a connector's routes: for every enabled route with an enabled target on
+// it, its type, its targets and the effective transport. A disabled or decommissioned connector
 // gets none.
 func ConnectorRoutes(ctx context.Context, tx *ent.Tx, a snapshot.Agent) ([]*agentv1.Resource, error) {
 	con, targets, inst, err := connectorTargets(ctx, tx, a)

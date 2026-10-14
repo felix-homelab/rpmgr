@@ -16,6 +16,7 @@
 | `http` routes: hostnames (incl. wildcards under a verified domain), longest path prefix, header matching | P1 (header matching: P2) |
 | `tcp` routes on an explicit or randomly allocated port from a port pool | P1 |
 | `udp` routes, carried as QUIC datagrams ([03](03-connections.md#udp-routes)) | P1 |
+| `tcp_udp` routes: one public port with TCP and UDP to the same targets ([03](03-connections.md#udp-routes)) | P1 |
 | `tls_passthrough` routes, routed by SNI without terminating TLS | P1 |
 | `tcp` routes in `http_connect` mode (HTTP CONNECT multiplexer on one port) | P2 |
 | Port pools per gateway group and port quotas per org and gateway group | P1 |

@@ -123,6 +123,7 @@ const (
 	TypeHTTP           Type = "http"
 	TypeTCP            Type = "tcp"
 	TypeUDP            Type = "udp"
+	TypeTCPUDP         Type = "tcp_udp"
 	TypeTLSPassthrough Type = "tls_passthrough"
 )
 
@@ -133,7 +134,7 @@ func (_type Type) String() string {
 // TypeValidator is a validator for the "type" field enum values. It is called by the builders before save.
 func TypeValidator(_type Type) error {
 	switch _type {
-	case TypeHTTP, TypeTCP, TypeUDP, TypeTLSPassthrough:
+	case TypeHTTP, TypeTCP, TypeUDP, TypeTCPUDP, TypeTLSPassthrough:
 		return nil
 	default:
 		return fmt.Errorf("route: invalid enum value for type field: %q", _type)
