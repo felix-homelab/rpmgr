@@ -775,12 +775,14 @@ func (x *GatewayTCPRoute) GetAccess() *RouteAccess {
 	return nil
 }
 
-// RouteAccess is who may use a route: the IP rules of its access policies, in order. The first
-// rule that matches the client's address decides; if none does, the client is allowed only when
-// no rule allows. No rules allow everyone.
+// RouteAccess is who may use a route: the IP rules of its access policies. A deny rule that matches
+// the client's address refuses it, whatever allows it and in whatever order; otherwise an allow
+// rule that matches admits it; if none matches, the client is allowed only when no rule allows. No
+// rules allow everyone.
 type RouteAccess struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// The rules, in the order of the route's policies and of each policy's rules.
+	// The rules, in the order of the route's policies and of each policy's rules, which does not
+	// matter.
 	IpRules []*IPRule `protobuf:"bytes,1,rep,name=ip_rules,json=ipRules,proto3" json:"ip_rules,omitempty"`
 	// http routes: a client the IP rules allow must also pass each of these, in order.
 	BasicAuth     []*BasicAuthRule `protobuf:"bytes,2,rep,name=basic_auth,json=basicAuth,proto3" json:"basic_auth,omitempty"`

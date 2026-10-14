@@ -59,7 +59,7 @@
 
 | Feature | Phase |
 |---|---|
-| Reusable access policies attached to routes, evaluated in order | P1 |
+| Reusable access policies attached to routes; a deny rule wins over every allow rule | P1 |
 | IP allow/deny lists | P1 |
 | HTTP basic auth (credentials stored as argon2id hashes) | P1 |
 | OIDC single sign-on in front of a route (forward-auth style) | P2 |
