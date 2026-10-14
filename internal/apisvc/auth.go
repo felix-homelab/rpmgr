@@ -27,6 +27,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/password"
 	"github.com/felix-homelab/rpmgr/internal/ratelimit"
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
+	"github.com/felix-homelab/rpmgr/internal/version"
 	"github.com/felix-homelab/rpmgr/internal/websession"
 )
 
@@ -215,7 +216,8 @@ func (a *Auth) GetSession(ctx context.Context, _ *connect.Request[rpmgrv1.GetSes
 	if err != nil {
 		return nil, err
 	}
-	out := &rpmgrv1.GetSessionResponse{UserId: u.ID, Email: u.Email, DisplayName: u.DisplayName, InstanceAdmin: u.InstanceAdmin}
+	out := &rpmgrv1.GetSessionResponse{UserId: u.ID, Email: u.Email, DisplayName: u.DisplayName, InstanceAdmin: u.InstanceAdmin,
+		ControllerVersion: version.Version}
 	for _, m := range ms {
 		out.Memberships = append(out.Memberships, &rpmgrv1.Membership{OrgId: m.OrgID, Role: string(m.Role)})
 	}

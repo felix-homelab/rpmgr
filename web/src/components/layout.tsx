@@ -6,7 +6,7 @@ import { Menu, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { CommandPalette } from "@/components/command-palette";
-import { Brand, Nav } from "@/components/nav";
+import { Brand, Nav, Version } from "@/components/nav";
 import { RestoreReviewBanner } from "@/components/restore-review";
 import { ThemeSwitch } from "@/components/theme-switch";
 import { Button } from "@/components/ui/button";
@@ -35,6 +35,7 @@ export function Layout() {
       <aside className="fixed inset-y-0 left-0 z-30 hidden w-64 flex-col border-r border-border bg-sidebar lg:flex">
         <Brand />
         <Nav className="flex-1 overflow-y-auto px-3 pt-2 pb-6" />
+        <Version />
       </aside>
       {menu && <MenuDrawer onClose={() => setMenu(false)} />}
       <div className="lg:pl-64">
@@ -65,14 +66,15 @@ function MenuDrawer({ onClose }: { onClose: () => void }) {
   useEffect(() => dialog.current?.showModal(), []);
   return (
     <dialog ref={dialog} aria-label={t("app.menu")} onCancel={onClose} onClick={(e) => e.target === e.currentTarget && onClose()}
-      className="m-0 h-dvh max-h-dvh w-72 max-w-[85vw] border-r border-border bg-sidebar p-0 shadow-xl">
+      className="m-0 h-dvh max-h-dvh w-72 max-w-[85vw] border-r border-border bg-sidebar p-0 shadow-xl open:flex open:flex-col">
       <div className="flex items-center justify-between pr-3">
         <Brand />
         <Button variant="ghost" size="icon" aria-label={t("app.closeMenu")} onClick={onClose}>
           <X aria-hidden="true" />
         </Button>
       </div>
-      <Nav className="px-3 pt-2 pb-6" onNavigate={onClose} />
+      <Nav className="flex-1 overflow-y-auto px-3 pt-2 pb-6" onNavigate={onClose} />
+      <Version />
     </dialog>
   );
 }

@@ -398,9 +398,12 @@ type GetSessionResponse struct {
 	// The user's memberships.
 	Memberships []*Membership `protobuf:"bytes,5,rep,name=memberships,proto3" json:"memberships,omitempty"`
 	// The caller's session.
-	Session       *Session `protobuf:"bytes,6,opt,name=session,proto3" json:"session,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	Session *Session `protobuf:"bytes,6,opt,name=session,proto3" json:"session,omitempty"`
+	// The version of rpmgr the controller runs, as `rpmgr version` names it: 0.1.0, or dev for a
+	// development build.
+	ControllerVersion string `protobuf:"bytes,7,opt,name=controller_version,json=controllerVersion,proto3" json:"controller_version,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
 }
 
 func (x *GetSessionResponse) Reset() {
@@ -473,6 +476,13 @@ func (x *GetSessionResponse) GetSession() *Session {
 		return x.Session
 	}
 	return nil
+}
+
+func (x *GetSessionResponse) GetControllerVersion() string {
+	if x != nil {
+		return x.ControllerVersion
+	}
+	return ""
 }
 
 // Membership is a user's role in an org.
@@ -1012,14 +1022,15 @@ const file_rpmgr_v1_auth_proto_rawDesc = "" +
 	"\asession\x18\x02 \x01(\v2\x11.rpmgr.v1.SessionR\asession\"\x0f\n" +
 	"\rLogoutRequest\"\x10\n" +
 	"\x0eLogoutResponse\"\x13\n" +
-	"\x11GetSessionRequest\"\xf2\x01\n" +
+	"\x11GetSessionRequest\"\xa1\x02\n" +
 	"\x12GetSessionResponse\x12\x17\n" +
 	"\auser_id\x18\x01 \x01(\tR\x06userId\x12\x14\n" +
 	"\x05email\x18\x02 \x01(\tR\x05email\x12!\n" +
 	"\fdisplay_name\x18\x03 \x01(\tR\vdisplayName\x12%\n" +
 	"\x0einstance_admin\x18\x04 \x01(\bR\rinstanceAdmin\x126\n" +
 	"\vmemberships\x18\x05 \x03(\v2\x14.rpmgr.v1.MembershipR\vmemberships\x12+\n" +
-	"\asession\x18\x06 \x01(\v2\x11.rpmgr.v1.SessionR\asession\"7\n" +
+	"\asession\x18\x06 \x01(\v2\x11.rpmgr.v1.SessionR\asession\x12-\n" +
+	"\x12controller_version\x18\a \x01(\tR\x11controllerVersion\"7\n" +
 	"\n" +
 	"Membership\x12\x15\n" +
 	"\x06org_id\x18\x01 \x01(\tR\x05orgId\x12\x12\n" +

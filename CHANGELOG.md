@@ -142,7 +142,8 @@ history and the [ADRs](docs/adr/).
   Both themes keep text contrast at WCAG 2.2 AA. The overview leads with a figure per area, the
   traffic of the last 24 hours and what needs attention. Every page uses the same page header,
   cards, tables, status badges and empty states, and fills the window's width, with long forms in
-  columns on wide screens. (#459, #481)
+  columns on wide screens. The foot of the sidebar names the version the controller runs.
+  (#459, #481, #502)
 - UI: a field a form needs has a red asterisk after its label, also while it is needed only
   because of another field, such as the sender address once a mail relay is set. Screen readers
   announce the field as required. (#483, #493)
