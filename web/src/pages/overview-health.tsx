@@ -52,8 +52,9 @@ function Area({ id, title, summary, fine, children }: { id: string; title: strin
 
 function Agents({ orgId }: { orgId: string }) {
   const { t } = useTranslation();
-  const connectors = (useConnectors(orgId).data ?? []).filter((c) => !c.decommissionTime);
-  const gateways = (useGateways(orgId).data ?? []).filter((g) => !g.decommissionTime);
+  // A disabled connector or a drained gateway is not expected to be connected (D81).
+  const connectors = (useConnectors(orgId).data ?? []).filter((c) => !c.decommissionTime && c.enabled);
+  const gateways = (useGateways(orgId).data ?? []).filter((g) => !g.decommissionTime && g.enabled);
   const seen = (ts: Parameters<typeof when>[0]) => (ts ? t("health.lastSeen", { when: when(ts) }) : t("health.neverSeen"));
   const items = [
     ...gateways.filter((g) => !g.status?.connected).map((g) => (

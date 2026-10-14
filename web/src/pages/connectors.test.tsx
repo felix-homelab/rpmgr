@@ -28,7 +28,7 @@ const routes: { id: string; name: string; targets: { connectorId: string; enable
   { id: "rte_web", name: "web", targets: [{ connectorId: "con_lab" }] },
 ];
 
-function page(path: string, connectors = [lab, db], routeList = routes, routesState: "ok" | "loading" | "failed" = "ok") {
+function page(path: string, connectors = [lab, db], routeList = routes, routesState: "ok" | "loading" | "failed" = "ok", updateFails?: Code) {
   const updates: UpdateConnectorRequest[] = [];
   const decommissions: DecommissionConnectorRequest[] = [];
   const view = show(path, auth({ getSession: () => ({ userId: "usr_ada", memberships: [{ orgId: "org_1", role: "owner" }] }) }), (router) => {
@@ -50,7 +50,13 @@ function page(path: string, connectors = [lab, db], routeList = routes, routesSt
         dataSessions: [{ gatewayId: "gtw_1", transport: DataTransport.QUIC, rtt: { seconds: 0n, nanos: 23_400_000 } }],
         notReady: [{ resourceId: "rte_pg", reason: "BLOCKED_BY_LOCAL_POLICY", detail: "10.0.0.5:5432" }],
       } }),
-      updateConnector: (req) => (updates.push(req), { connector: req.connector, revision: { dbEpoch: "e", seq: 3n }, applyStatus: { state: ApplyState.APPLIED, agentsTotal: 1, agentsApplied: 1 } }),
+      updateConnector: (req) => {
+        updates.push(req);
+        if (updateFails) {
+          throw new ConnectError("refused", updateFails);
+        }
+        return { connector: req.connector, revision: { dbEpoch: "e", seq: 3n }, applyStatus: { state: ApplyState.APPLIED, agentsTotal: 1, agentsApplied: 1 } };
+      },
       decommissionConnector: (req) => (decommissions.push(req), { connector: db }),
     });
   });
@@ -58,13 +64,13 @@ function page(path: string, connectors = [lab, db], routeList = routes, routesSt
 }
 
 describe("Connectors", () => {
-  it("lists the connectors by name, filtered by text and session", async () => {
+  it("lists the connectors by name, filtered by text and by state, a disabled one as disabled (D81)", async () => {
     const { history } = page("/connectors");
     const table = await screen.findByRole("table");
     await waitFor(() => expect(within(table).getAllByRole("row")).toHaveLength(3));
     expect(within(table).getAllByRole("row").slice(1).map((r) => r.textContent)).toEqual([
       expect.stringMatching(/^db-host-1connected0\.1\.0.*site=office$/), // the badges' icons are drawings, hidden from screen readers
-      "labdisabledephemeralofflinesite=home",
+      "labephemeraldisabledsite=home",
     ]);
     fireEvent.change(screen.getByLabelText("Search"), { target: { value: "site=home" } });
     await waitFor(() => expect(within(table).getAllByRole("row")).toHaveLength(2));
@@ -72,6 +78,10 @@ describe("Connectors", () => {
     fireEvent.change(screen.getByLabelText("Session"), { target: { value: "connected" } });
     await waitFor(() => expect(within(table).getAllByRole("row").slice(1).map((r) => r.textContent?.slice(0, 9))).toEqual(["db-host-1"]));
     expect(new URLSearchParams(history.location.search).get("session")).toBe("connected");
+    fireEvent.change(screen.getByLabelText("Session"), { target: { value: "disabled" } });
+    await waitFor(() => expect(within(table).getAllByRole("row").slice(1).map((r) => r.textContent?.slice(0, 3))).toEqual(["lab"]));
+    fireEvent.change(screen.getByLabelText("Session"), { target: { value: "offline" } }); // lab is disabled, not offline
+    expect(await screen.findByText("No connector matches.")).toBeTruthy();
   });
 
   it("offers to enroll the first connector when there is none", async () => {
@@ -123,7 +133,26 @@ describe("Connectors", () => {
     want.name = "db-host-2";
     want.transport = DataTransport.H2;
     expect(equals(ConnectorSchema, updates[0]!.connector!, want)).toBe(true);
-    expect([updates[0]!.updateMask?.paths, updates[0]!.etag]).toEqual([["name", "labels", "enabled", "transport"], "4"]);
+    expect([updates[0]!.updateMask?.paths, updates[0]!.etag]).toEqual([["name", "labels", "transport"], "4"]);
+    expect(settings.queryByRole("checkbox")).toBeNull(); // whether it serves has its own switch (U3)
+  });
+
+  it("switches a connector off with its switch alone, and follows the change (D81)", async () => {
+    const { updates } = page("/connectors/con_db");
+    const toggle = await screen.findByRole("switch", { name: "Enabled" });
+    expect(toggle.getAttribute("aria-checked")).toBe("true");
+    fireEvent.click(toggle);
+    expect(await screen.findByText("Revision 3: applied by all 1 agents.")).toBeTruthy();
+    expect([updates[0]!.connector?.enabled, updates[0]!.connector?.name, updates[0]!.updateMask?.paths, updates[0]!.etag])
+      .toEqual([false, "db-host-1", ["enabled"], "4"]);
+  });
+
+  it("says so when the connector changed before the switch was used", async () => {
+    page("/connectors/con_lab", [lab, db], routes, "ok", Code.FailedPrecondition);
+    const toggle = await screen.findByRole("switch", { name: "Enabled" });
+    expect(toggle.getAttribute("aria-checked")).toBe("false");
+    fireEvent.click(toggle);
+    expect((await screen.findByRole("alert")).textContent).toBe("The connector changed since this page loaded it. The page shows it as it is now; try again.");
   });
 
   it("decommissions after a confirmation that names the connector", async () => {

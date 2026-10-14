@@ -55,16 +55,18 @@ async function tiles() {
 }
 
 describe("Summary", () => {
-  it("counts what is well of each area, and says what needs attention", async () => {
+  it("counts what is well of each area, and says what needs attention, without disabled agents", async () => {
     page({
       gateways: [
-        { id: "gtw_1", gatewayGroupId: "ggr_eu", name: "gw-eu-1", status: { enrolled: true, connected: true } },
-        { id: "gtw_2", gatewayGroupId: "ggr_eu", name: "gw-eu-2", status: { enrolled: true, connected: false } },
+        { enabled: true, id: "gtw_1", gatewayGroupId: "ggr_eu", name: "gw-eu-1", status: { enrolled: true, connected: true } },
+        { enabled: true, id: "gtw_2", gatewayGroupId: "ggr_eu", name: "gw-eu-2", status: { enrolled: true, connected: false } },
+        { id: "gtw_3", gatewayGroupId: "ggr_eu", name: "gw-eu-3", status: { enrolled: true, connected: false } }, // drained: not counted
       ],
       connectors: [
-        { id: "con_1", name: "db-host", session: { connected: true } },
-        { id: "con_2", name: "laptop" },
-        { id: "con_3", name: "old", decommissionTime: inDays(-1) }, // not counted
+        { enabled: true, id: "con_1", name: "db-host", session: { connected: true } },
+        { enabled: true, id: "con_2", name: "laptop" },
+        { enabled: true, id: "con_3", name: "old", decommissionTime: inDays(-1) }, // not counted
+        { id: "con_4", name: "spare" }, // disabled: not counted
       ],
       routes: [
         { id: "rte_1", name: "web", status: { state: RouteState.READY } },
@@ -90,7 +92,7 @@ describe("Summary", () => {
   it("says when an area has nothing yet, and when everything is well", async () => {
     page({
       routes: [{ id: "rte_1", name: "web", status: { state: RouteState.READY } }],
-      gateways: [{ id: "gtw_1", gatewayGroupId: "ggr_eu", name: "gw-eu-1", status: { enrolled: true, connected: true } }],
+      gateways: [{ enabled: true, id: "gtw_1", gatewayGroupId: "ggr_eu", name: "gw-eu-1", status: { enrolled: true, connected: true } }],
     });
     await waitFor(async () => expect((await tiles()).map(([text]) => text)).toEqual([
       "Routes serving1of 1All enabled routes serve",
@@ -102,17 +104,20 @@ describe("Summary", () => {
 });
 
 describe("Health", () => {
-  it("lists the agents without a control session, with when they were last seen", async () => {
+  it("lists the agents without a control session, with when they were last seen, but no disabled ones", async () => {
     page({
       gateways: [
-        { id: "gtw_1", gatewayGroupId: "ggr_eu", name: "gw-eu-1", status: { enrolled: true, connected: true } },
-        { id: "gtw_2", gatewayGroupId: "ggr_eu", name: "gw-eu-2", status: { enrolled: true, connected: false, lastSeenTime: timestampFromMs(Date.UTC(2026, 9, 8, 12)) } },
-        { id: "gtw_3", gatewayGroupId: "ggr_us", name: "gw-us-1", status: { enrolled: false } },
+        { enabled: true, id: "gtw_1", gatewayGroupId: "ggr_eu", name: "gw-eu-1", status: { enrolled: true, connected: true } },
+        { enabled: true, id: "gtw_2", gatewayGroupId: "ggr_eu", name: "gw-eu-2", status: { enrolled: true, connected: false, lastSeenTime: timestampFromMs(Date.UTC(2026, 9, 8, 12)) } },
+        { enabled: true, id: "gtw_3", gatewayGroupId: "ggr_us", name: "gw-us-1", status: { enrolled: false } },
+        { id: "gtw_4", gatewayGroupId: "ggr_us", name: "gw-us-2", status: { enrolled: true, connected: false } }, // drained
       ],
       connectors: [
-        { id: "con_1", name: "db-host", session: { connected: true } },
-        { id: "con_2", name: "laptop" },
-        { id: "con_3", name: "old", decommissionTime: inDays(-1) },
+        { enabled: true, id: "con_1", name: "db-host", session: { connected: true } },
+        { enabled: true, id: "con_2", name: "laptop" },
+        { enabled: true, id: "con_3", name: "old", decommissionTime: inDays(-1) },
+        { id: "con_4", name: "spare", session: { connected: true } }, // disabled: not counted, even connected
+        { id: "con_5", name: "unplugged" }, // disabled: not listed
       ],
     });
     const agents = await card("Agents");
@@ -174,7 +179,7 @@ describe("Health", () => {
 
   it("says when nothing needs attention", async () => {
     page({
-      gateways: [{ id: "gtw_1", gatewayGroupId: "ggr_eu", name: "gw-eu-1", status: { enrolled: true, connected: true } }],
+      gateways: [{ enabled: true, id: "gtw_1", gatewayGroupId: "ggr_eu", name: "gw-eu-1", status: { enrolled: true, connected: true } }],
       routes: [{ id: "rte_1", name: "web", status: { state: RouteState.READY } }, { id: "rte_2", name: "old", status: { state: RouteState.DISABLED } }],
     });
     expect(await (await card("Agents")).findByText("Every agent holds a control session.")).toBeTruthy();
