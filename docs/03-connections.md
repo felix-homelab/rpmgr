@@ -879,7 +879,9 @@ Which transport a connector uses is a setting
   one is `not_ready(transport_unavailable: memory)`. Metrics, the data sessions and the UI report
   it as h2, and its remote address, like that of the all-in-one's control sessions, as
   `in-process`. The gateway accepts only data sessions to itself on these connections and closes
-  anything else. A gateway elsewhere in its group gets the normal transports.
+  anything else. The connector opens no UDP socket for QUIC, so a gateway elsewhere in its group
+  is reached over TLS + reverse HTTP/2 only: `auto` falls back at once, and a route pinned to
+  `quic` is `not_ready(transport_unavailable: quic)` there.
 
 **Reverse HTTP/2** ([ADR-0005](adr/0005-reverse-http2-fallback.md)). The connector dials the
 gateway and then acts as the **HTTP/2 server** on that connection; the gateway acts as the client

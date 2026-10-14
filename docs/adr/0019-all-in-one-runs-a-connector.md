@@ -34,9 +34,9 @@ the all-in-one clause of [ADR-0002](0002-one-binary-three-roles.md) in part
 **Data sessions in memory**
 - The connector reaches the in-process gateway over in-memory connections, with the same TLS
   handshake, gateway pin and reverse HTTP/2 as over TCP, and never through the gateway's endpoints.
-  One such session carries every route to that gateway, whatever the route's transport policy. A
-  gateway in another place keeps the normal transports
-  ([03](../03-connections.md#transports-and-fallback)).
+  One such session carries every route to that gateway, whatever the route's transport policy. The
+  connector opens no port, not even a UDP socket for QUIC, so it reaches a gateway in another place
+  over TLS + reverse HTTP/2 only ([03](../03-connections.md#transport-selection)).
 
 **Its local policy, and rpmgr's own ports**
 - The connector reads the boot file's `policy_file`, `/etc/rpmgr/policy.yaml` by default, which
