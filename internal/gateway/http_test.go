@@ -749,8 +749,8 @@ func plain(t *testing.T, addr, method, host, target string) (reply, error) {
 
 // TestHTTPRoutes_Port80: plain HTTP redirects to HTTPS keeping path and query (301 for GET, 308
 // otherwise), serves the route, or closes, as the route says; ACME challenges are answered for any
-// name, even with port 80 off; a name without a route goes to the fallback, unknown ACME tokens
-// included.
+// name, even with port 80 off; a fallback name without a route goes to the fallback, unknown ACME
+// tokens included, and any other name without a route gets the 404 page.
 func TestHTTPRoutes_Port80(t *testing.T) {
 	route := gateway.HTTPRoute{ID: "rt_web", Upstream: "http", Hosts: []gateway.HTTPHost{{Hostname: "app.example.com"}}}
 	p := newPlaneWith(t, service(t, func(c net.Conn, br *bufio.Reader, line string) {
@@ -770,7 +770,8 @@ func TestHTTPRoutes_Port80(t *testing.T) {
 	certs, pool := routeCert(t, "app.example.com")
 	h := gateway.NewHTTPRoutes(gateway.HTTPOptions{Sessions: p.sessions, Certificates: certs,
 		Challenges: func(host, token string) (string, bool) { return token + ".thumbprint", token == "tok" && host != "" },
-		Fallback80: http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { http.Error(w, "fallback", http.StatusTeapot) })})
+		Fallback80:    http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { http.Error(w, "fallback", http.StatusTeapot) }),
+		FallbackNames: []string{"Panel.example.com."}})
 	t.Cleanup(h.Close)
 	e := &httpEnv{routes: h, addr: httpFront(t, h), pool: pool}
 	addr := e.serve80(t)
@@ -784,8 +785,18 @@ func TestHTTPRoutes_Port80(t *testing.T) {
 		r.header.Get("Location") != "https://app.example.com/form" {
 		t.Errorf("redirect of a POST: %v %v", r, err)
 	}
-	if r, err := plain(t, addr, http.MethodGet, "other.example.com", "/"); err != nil || r.status != http.StatusTeapot {
-		t.Errorf("a name without a route: %v %v", r, err)
+	for _, host := range []string{"panel.example.com", "PANEL.example.com:80", "panel.example.com."} {
+		if r, err := plain(t, addr, http.MethodGet, host, "/"); err != nil || r.status != http.StatusTeapot {
+			t.Errorf("the fallback's name %s without a route: %v %v", host, r, err)
+		}
+	}
+	if r, err := plain(t, addr, http.MethodGet, "other.example.com", "/"); err != nil || r.status != http.StatusNotFound ||
+		r.body != "no route for this host and path\n" {
+		t.Errorf("another name without a route: %v %v", r, err)
+	}
+	if r, err := plainAccept(t, addr, "other.example.com", "text/html"); err != nil || r.status != http.StatusNotFound ||
+		!isPage(r, "Site not available") || !strings.Contains(r.body, ">other.example.com</span>") {
+		t.Errorf("another name without a route, from a browser: %v %v", r, err)
 	}
 
 	route.Port80 = "serve"
@@ -807,11 +818,41 @@ func TestHTTPRoutes_Port80(t *testing.T) {
 		r.status != http.StatusNotFound {
 		t.Errorf("an unknown ACME token: %v %v", r, err)
 	}
-	// all-in-one's controller answers the challenges of its own name, which no route serves.
+	// all-in-one's controller answers the challenges of its own name, which no route serves; a
+	// known token is answered for any name, an unknown one for another name is 404.
 	if r, err := plain(t, addr, http.MethodGet, "panel.example.com", "/.well-known/acme-challenge/unknown"); err != nil ||
 		r.status != http.StatusTeapot {
-		t.Errorf("an unknown ACME token for a name without a route: %v %v", r, err)
+		t.Errorf("an unknown ACME token for the fallback's name: %v %v", r, err)
 	}
+	if r, err := plain(t, addr, http.MethodGet, "other.example.com", "/.well-known/acme-challenge/tok"); err != nil ||
+		r.status != http.StatusOK || r.body != "tok.thumbprint" {
+		t.Errorf("an ACME challenge for a name without a route: %v %v", r, err)
+	}
+	if r, err := plain(t, addr, http.MethodGet, "other.example.com", "/.well-known/acme-challenge/unknown"); err != nil ||
+		r.status != http.StatusNotFound {
+		t.Errorf("an unknown ACME token for another name without a route: %v %v", r, err)
+	}
+}
+
+// plainAccept sends a GET to port 80 at addr for host with an Accept header.
+func plainAccept(t *testing.T, addr, host, accept string) (reply, error) {
+	t.Helper()
+	c, err := net.Dial("tcp", addr)
+	if err != nil {
+		return reply{}, err
+	}
+	defer func() { _ = c.Close() }()
+	_ = c.SetDeadline(time.Now().Add(5 * time.Second))
+	if _, err := fmt.Fprintf(c, "GET / HTTP/1.1\r\nHost: %s\r\nAccept: %s\r\n\r\n", host, accept); err != nil {
+		return reply{}, err
+	}
+	resp, err := http.ReadResponse(bufio.NewReader(c), nil)
+	if err != nil {
+		return reply{}, err
+	}
+	defer func() { _ = resp.Body.Close() }()
+	b, _ := io.ReadAll(resp.Body)
+	return reply{status: resp.StatusCode, header: resp.Header, body: string(b)}, nil
 }
 
 // TestHTTPRoutes_HSTS: Strict-Transport-Security goes out over HTTPS only, the route's value

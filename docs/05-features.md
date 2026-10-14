@@ -75,6 +75,7 @@
 | `Forwarded` / `X-Forwarded-*`, with untrusted incoming values stripped | P1 |
 | WebSockets and gRPC pass-through | P1 |
 | Request body size limit; per-route timeouts | P1 |
+| Built-in pages for a name no route serves (404) and for the gateway's own errors (502/503/504), to browsers ([D87](14-open-decisions.md#engineering)) | P1 |
 | Custom error pages (502/503/504/404) per gateway group | P2 |
 
 ### Private services

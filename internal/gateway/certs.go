@@ -320,6 +320,31 @@ func (c *Certificates) ForName(serverName string) *tls.Certificate {
 	return best
 }
 
+// Covering returns a certificate of the snapshot whose own names cover a server name no route
+// serves, such as a route's wildcard certificate for a name one label below it, so that the
+// gateway can answer that name with its page (D87); among several, the valid one that expires
+// last. It is nil when none covers the name.
+func (c *Certificates) Covering(serverName string) *tls.Certificate {
+	name := strings.ToLower(strings.TrimSuffix(serverName, "."))
+	if name == "" {
+		return nil
+	}
+	now := c.o.Now()
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	var best *tls.Certificate
+	for _, r := range c.want {
+		cert := c.loaded[hex.EncodeToString(r.ContentSHA256)]
+		if cert == nil || now.Before(cert.Leaf.NotBefore) || !now.Before(cert.Leaf.NotAfter) || cert.Leaf.VerifyHostname(name) != nil {
+			continue
+		}
+		if best == nil || cert.Leaf.NotAfter.After(best.Leaf.NotAfter) {
+			best = cert
+		}
+	}
+	return best
+}
+
 // parseItem checks an item against its hash and returns the certificate it carries, whose key
 // must match its leaf.
 func parseItem(item, hash []byte) (*tls.Certificate, error) {

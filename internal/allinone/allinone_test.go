@@ -390,15 +390,28 @@ func TestAllInOne(t *testing.T) {
 	h.registry = nil // a restart registers anew
 	waitFor(t, "not ready", h.ready)
 
-	// Port 80 is the gateway's; a name no route serves gets the controller's redirect.
+	// Port 80 is the gateway's: the controller's own name, which no route serves, gets its
+	// redirect; any other name no route serves gets the gateway's page (D87).
 	noFollow := &http.Client{Timeout: 5 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
-	resp, err := noFollow.Get(fmt.Sprintf("http://127.0.0.1:%d/setup?step=1", h.port80))
-	if err != nil {
-		t.Fatal(err)
+	port80 := func(host string) (int, http.Header) {
+		t.Helper()
+		req, _ := http.NewRequest(http.MethodGet, fmt.Sprintf("http://127.0.0.1:%d/setup?step=1", h.port80), nil)
+		req.Host = host
+		req.Header.Set("Accept", "text/html")
+		resp, err := noFollow.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_ = resp.Body.Close()
+		return resp.StatusCode, resp.Header
 	}
-	_ = resp.Body.Close()
-	if resp.StatusCode != http.StatusMovedPermanently || resp.Header.Get("Location") != h.publicURL+"/setup?step=1" {
-		t.Fatalf("port 80: %d %q", resp.StatusCode, resp.Header.Get("Location"))
+	if code, header := port80(fmt.Sprintf("localhost:%d", h.port80)); code != http.StatusMovedPermanently ||
+		header.Get("Location") != h.publicURL+"/setup?step=1" {
+		t.Fatalf("port 80, the controller's name: %d %q", code, header.Get("Location"))
+	}
+	if code, header := port80("unrouted.example.net"); code != http.StatusNotFound || header.Get("Location") != "" ||
+		header.Get("Content-Type") != "text/html; charset=utf-8" {
+		t.Fatalf("port 80, another name: %d %v", code, header)
 	}
 
 	// Enroll a connector through the public URL, which the gateway hands to the controller.

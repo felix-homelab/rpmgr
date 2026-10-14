@@ -77,7 +77,12 @@ type Router struct {
 	// ACME, if set, returns the acme-tls/1 certificate of a pending TLS-ALPN-01 challenge for a
 	// name, or nil.
 	ACME func(sni string) *tls.Certificate
-	// DefaultTLS completes the handshake for an unknown name before the connection is closed.
+	// Unrouted, if set, takes the connections of unknown names, or of none, over TLS with
+	// UnroutedTLS, and answers them with the gateway's page (D87).
+	Unrouted    func(*tls.Conn)
+	UnroutedTLS *tls.Config
+	// DefaultTLS completes the handshake for an unknown name before the connection is closed,
+	// when Unrouted is not set.
 	DefaultTLS *tls.Config
 	Logger     *slog.Logger
 
@@ -171,8 +176,12 @@ func (r *Router) Handle(c net.Conn) {
 		_ = tc.Handshake()
 		_ = tc.Close()
 	default:
-		// There is no fallback route: complete the handshake with the default certificate, so a
-		// browser shows a certificate error rather than a reset, and close.
+		// There is no fallback route: the page that says so, with a certificate that covers the
+		// name or else the default one, after which a browser shows its certificate error first.
+		if r.Unrouted != nil {
+			r.Unrouted(tls.Server(rc, r.UnroutedTLS))
+			return
+		}
 		tc := tls.Server(rc, r.DefaultTLS)
 		_ = tc.SetDeadline(time.Now().Add(defaultHandshake))
 		_ = tc.Handshake()

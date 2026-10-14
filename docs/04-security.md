@@ -274,7 +274,11 @@ later.
   AES-GCM or ChaCha20-Poly1305 only, and ALPN `h2` or `http/1.1`; rpmgr's own sessions stay
   TLS 1.3 only ([03](03-connections.md#properties-common-to-all-rpmgr-internal-sessions)). A name
   without a valid certificate gets the gateway's self-signed default certificate, so a browser
-  shows a certificate error rather than a reset.
+  shows a certificate error rather than a reset. A name no route serves gets, with the same TLS
+  versions and suites, a valid certificate the gateway holds whose own names cover it, such as a
+  route's wildcard certificate, or else the default certificate; either way only the gateway's
+  site-not-available page follows ([03](03-connections.md#port-443-multiplexing),
+  [D87](14-open-decisions.md#engineering)).
 - **HTTPS upstreams** [R]: the gateway connects with TLS 1.2 or 1.3 and verifies the upstream's
   chain against the target's CA bundle, or else the gateway host's trust store, and its name
   against the target's server name; a target may also pin the SHA-256 of its leaf's
