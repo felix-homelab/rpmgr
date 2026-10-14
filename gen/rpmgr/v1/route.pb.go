@@ -414,8 +414,9 @@ type Route struct {
 	Spec isRoute_Spec `protobuf_oneof:"spec"`
 	// Its targets, by priority; output only: they change with the target methods.
 	Targets []*RouteTarget `protobuf:"bytes,20,rep,name=targets,proto3" json:"targets,omitempty"`
-	// The access policies it applies, in order, each once (docs/03-connections.md, "Access
-	// policies"); a policy with a basic_auth rule only on an http route.
+	// The access policies it applies, each once (docs/03-connections.md, "Access policies"): a deny
+	// rule of any of them wins over every allow rule; a policy with a basic_auth rule only on an
+	// http route.
 	PolicyIds []string `protobuf:"bytes,21,rep,name=policy_ids,json=policyIds,proto3" json:"policy_ids,omitempty"`
 	// Its transport policy; the connector's if not set (docs/03-connections.md, "Transport
 	// selection").

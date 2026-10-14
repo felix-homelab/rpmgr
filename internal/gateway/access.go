@@ -11,9 +11,10 @@ import (
 	agentv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/agent/v1"
 )
 
-// Access is who may use a route (docs/03-connections.md, "Access policies"): its IP rules in
-// order. The first rule that matches a client's address decides; if none does, the client is
-// allowed only when no rule allows. The zero Access allows everyone.
+// Access is who may use a route (docs/03-connections.md, "Access policies"): its IP rules, whose
+// order does not matter. A deny rule that matches a client's address refuses it, whatever allows it
+// (D85); otherwise an allow rule that matches admits it; if none matches, the client is allowed
+// only when no rule allows. The zero Access allows everyone.
 type Access struct {
 	rules []ipRule
 	key   string // the rules as text, to tell a change
@@ -53,19 +54,23 @@ func AccessOf(a *agentv1.RouteAccess) (Access, error) {
 	return out, nil
 }
 
-// Allows reports whether a client address may use the route.
+// Allows reports whether a client address may use the route: no deny rule matches it, and an
+// allow rule does, or no rule allows.
 func (a Access) Allows(ip netip.Addr) bool {
 	ip = ip.Unmap()
-	anyAllow := false
+	anyAllow, allowed := false, false
 	for _, r := range a.rules {
 		anyAllow = anyAllow || r.allow
 		for _, p := range r.prefixes {
 			if p.Contains(ip) {
-				return r.allow
+				if !r.allow {
+					return false
+				}
+				allowed = true
 			}
 		}
 	}
-	return !anyAllow
+	return allowed || !anyAllow
 }
 
 // AllowsAddr is Allows for a connection's remote address; an address that is not IP is denied

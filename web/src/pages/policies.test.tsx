@@ -57,7 +57,7 @@ async function policy(name: string) {
 }
 
 describe("Policies", () => {
-  it("lists policies by name, with their rules in order and the routes that use them", async () => {
+  it("lists policies by name, with their rules and the routes that use them", async () => {
     page();
     const p = await policy("office");
     expect(p.getAllByRole("listitem").map((li) => li.textContent)).toEqual(["deny 10.9.0.0/16", "allow 10.0.0.0/8", "basic auth: ada, bob"]);
@@ -65,7 +65,7 @@ describe("Policies", () => {
     expect((await policy("admins")).getByText("used by no route")).toBeTruthy();
   });
 
-  it("creates a policy with rules in the order given", async () => {
+  it("creates a policy with its rules, says that a deny wins, and offers no order to set (D85)", async () => {
     const calls = page();
     fireEvent.click(await screen.findByRole("button", { name: "New access policy" }));
     const form = within(await screen.findByRole("form", { name: "New access policy" }));
@@ -78,13 +78,14 @@ describe("Policies", () => {
     fireEvent.click(second.getByRole("button", { name: "Add a user" }));
     fireEvent.change(second.getByLabelText("User"), { target: { value: "carol" } });
     fireEvent.change(second.getByLabelText("Password"), { target: { value: "a long password!" } });
-    fireEvent.click(second.getByRole("button", { name: "Up" }));
+    expect(form.getByText("A deny rule wins: an address it matches is refused, whatever allows it.")).toBeTruthy();
+    expect([form.queryByRole("button", { name: "Up" }), form.queryByRole("button", { name: "Down" })]).toEqual([null, null]);
     fireEvent.click(form.getByRole("button", { name: "Create the policy" }));
     expect(await screen.findByText("Revision 31: applied by all 1 agents.")).toBeTruthy();
     const c = calls.create[0]!;
     expect([c.orgId, c.accessPolicy?.name, c.accessPolicy?.rules.map((r) => r.rule)]).toEqual(["org_1", "lab", [
-      { case: "basicAuth", value: expect.objectContaining({ users: [expect.objectContaining({ name: "carol", password: "a long password!" })] }) },
       { case: "ipAllow", value: expect.objectContaining({ cidrs: ["10.1.0.0/16"] }) },
+      { case: "basicAuth", value: expect.objectContaining({ users: [expect.objectContaining({ name: "carol", password: "a long password!" })] }) },
     ]]);
   });
 

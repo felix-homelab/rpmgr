@@ -134,6 +134,12 @@ func TestAccessPolicies(t *testing.T) {
 	if strings.Contains(out, "alice-password-1") {
 		t.Fatalf("a password printed: %q", out)
 	}
+	// A CIDR with host bits set goes to the API as given, which keeps it masked (D85).
+	if code, _, errOut := run("create", "access-policy", "--name", "hosts", "--rule", "allow:10.0.0.1/16", "--rule", "deny:10.0.5.7/24"); code != cli.ExitOK ||
+		!slices.Equal(a.created.GetAccessPolicy().GetRules()[0].GetIpAllow().GetCidrs(), []string{"10.0.0.1/16"}) ||
+		!slices.Equal(a.created.GetAccessPolicy().GetRules()[1].GetIpDeny().GetCidrs(), []string{"10.0.5.7/24"}) {
+		t.Fatalf("CIDRs with host bits: %d %q %v", code, errOut, a.created)
+	}
 
 	answers["carol"] = "carol-password-1"
 	if code, _, errOut := run("create", "access-policy", "--name", "lab", "--rule", "basic-auth:alice,carol",

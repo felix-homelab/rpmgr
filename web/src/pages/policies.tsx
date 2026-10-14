@@ -67,7 +67,7 @@ export function usePolicies(orgId: string | undefined) {
 
 // Policies lists the org's access policies with their rules and the routes that use them, and
 // creates, changes and deletes them (docs/09-web-ui.md, "Information architecture"; docs/03, "Access
-// policies"). Rules apply in order.
+// policies"). A deny rule wins over every allow rule, so the rules have no order to set (D85).
 export function Policies() {
   const { t } = useTranslation();
   const org = useOrg();
@@ -165,11 +165,6 @@ function PolicyForm({ orgId, policy, onDone }: { orgId: string; policy?: AccessP
   // needs one.
   const stored = new Set(policy?.rules.flatMap((r) => (r.rule.case === "basicAuth" ? r.rule.value.users.map((u) => u.name) : [])));
   const setRule = (i: number, r: Partial<RuleDraft>) => setRules(rules.map((x, j) => (j === i ? { ...x, ...r } : x)));
-  const move = (i: number, by: number) => {
-    const next = [...rules];
-    [next[i], next[i + by]] = [next[i + by]!, next[i]!];
-    setRules(next);
-  };
   async function save(e: FormEvent) {
     e.preventDefault();
     setError("");
@@ -195,6 +190,7 @@ function PolicyForm({ orgId, policy, onDone }: { orgId: string; policy?: AccessP
       </div>
       <fieldset className="grid gap-3">
         <legend className="mb-1 text-sm font-medium">{t("policies.rules")}</legend>
+        <p className="text-xs text-muted-foreground">{t("policies.denyWins")}</p>
         {rules.map((r, i) => (
           <div key={i} role="group" aria-label={t("policies.ruleN", { n: i + 1 })} className="grid gap-3 rounded-lg border border-border bg-muted/40 p-3">
             <div className="flex flex-wrap items-center gap-2">
@@ -203,8 +199,6 @@ function PolicyForm({ orgId, policy, onDone }: { orgId: string; policy?: AccessP
                 {(["ipAllow", "ipDeny", "basicAuth"] as Kind[]).map((k) => <option key={k} value={k}>{t(`policies.kinds.${k}`)}</option>)}
               </Select>
               <span className="ml-auto flex flex-wrap gap-1">
-                <Button size="sm" variant="ghost" disabled={i === 0} onClick={() => move(i, -1)}>{t("policies.up")}</Button>
-                <Button size="sm" variant="ghost" disabled={i === rules.length - 1} onClick={() => move(i, 1)}>{t("policies.down")}</Button>
                 <Button size="sm" variant="ghost" onClick={() => setRules(rules.filter((_, j) => j !== i))}>{t("policies.removeRule")}</Button>
               </span>
             </div>

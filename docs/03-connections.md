@@ -741,14 +741,16 @@ on the inner name.
 
 ### Access policies
 
-A route applies its access policies in order, and each policy its rules in order
-([06](06-data-model.md#routing)). The gateway enforces IP rules on every route type and basic auth on
-http routes:
+A route applies the rules of all its access policies ([06](06-data-model.md#routing)). The gateway
+enforces IP rules on every route type and basic auth on http routes:
 
-- **IP rules.** The first `ip_allow` or `ip_deny` rule whose CIDRs contain the client's address
-  decides. If none does, the client is allowed only when no rule allows, so allow rules make an
-  allow list and deny rules alone a block list. An IPv4-mapped IPv6 address, of the client or in a
-  CIDR, counts as its IPv4 address.
+- **IP rules.** A deny wins ([D85](14-open-decisions.md#engineering)): an `ip_deny` rule whose
+  CIDRs contain the client's address refuses it, whatever `ip_allow` rule contains it and in
+  whatever order the rules and the route's policies come. Otherwise an `ip_allow` rule that
+  contains it admits it. If no rule contains it, the client is allowed only when no rule allows, so
+  allow rules make an allow list, deny rules alone a block list, and a deny inside an allowed range
+  takes that part out. An IPv4-mapped IPv6 address, of the client or in a CIDR, counts as its IPv4
+  address.
 - **The client's address** is the TCP peer's, or a UDP datagram's source. On an http route whose
   peer is a trusted proxy of the gateway group it is the last address in `X-Forwarded-For` that is
   not a trusted proxy; a chain that does not parse counts as the proxy's own address.
