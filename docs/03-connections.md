@@ -27,7 +27,9 @@
 Design goals, in priority order:
 
 1. **Secure.** Every connection between rpmgr components is TLS 1.3 with mutual authentication and
-   per-component identities. No shared secrets, no timestamp tokens, no `InsecureSkipVerify`.
+   per-component identities. No shared secrets, no timestamp tokens, no `InsecureSkipVerify`
+   (its one exception concerns HTTPS upstreams a user marks unverified, not rpmgr's own sessions:
+   [ADR-0017](adr/0017-upstream-tls-verification-modes.md)).
 2. **Correct under change.** Configuration changes are validated, applied atomically, acknowledged,
    and never disturb unchanged tunnels.
 3. **Fast.** No extra round trip per user connection; no cross-stream head-of-line blocking on the
@@ -46,7 +48,8 @@ Design goals, in priority order:
   `ServerName` to the **expected peer's** DNS name — Go's TLS client refuses to handshake without
   one unless verification is disabled [F Go 1.27.1 `crypto/tls/handshake_client.go:47`] — and
   `tls.Config.VerifyConnection` additionally checks the SPIFFE ID against the deny-list and the
-  agent's snapshot ([04](04-security.md#pki-and-identity)). `InsecureSkipVerify` is never used.
+  agent's snapshot ([04](04-security.md#pki-and-identity)). `InsecureSkipVerify` is never used
+  for these sessions.
 - **0-RTT is disabled** (no `Allow0RTT`, no `ListenEarly`/`DialEarly`), because 0-RTT data can be
   replayed. TLS session resumption is allowed: Go runs `VerifyConnection` on resumed TLS 1.3
   connections on both sides [F Go 1.27.1 `crypto/tls/handshake_client_tls13.go:595-604`]
@@ -683,8 +686,12 @@ sequenceDiagram
 - **HTTPS upstreams.** For an `https` target the gateway speaks TLS over the stream, end to end
   with the upstream, verified with the settings of the target the connector reached, which
   `StreamResult` names: the target's server name (its host by default), its CA bundle or else the
-  gateway host's trust store, and an optional pin of the leaf's public key. A failed verification,
-  or a target the gateway has no settings for, is **502** ([04](04-security.md#controller-certificates)).
+  gateway host's trust store, and an optional pin of the leaf's public key; or no check at all for
+  a target its user marked unverified. A target's settings apply only to a stream its own
+  connector answered: the snapshot names each target's connector, and the gateway compares it with
+  the connector whose certificate the data session carries. A failed verification, a target the
+  gateway has no settings for, or one of another connector is **502**
+  ([04](04-security.md#controller-certificates)).
 - **Port 80** (`listen.http`): ACME HTTP-01 challenges under `/.well-known/acme-challenge/` are
   answered for every name, whatever the route says. Otherwise the route of the host and path
   decides: `redirect` sends the same path and query to HTTPS (**301** for GET and HEAD, **308**

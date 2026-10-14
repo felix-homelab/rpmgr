@@ -13,13 +13,14 @@ import { PageHeader } from "@/components/page-header";
 import { Alert } from "@/components/public-page";
 import { RouteStateChip } from "@/components/route-state";
 import { Status } from "@/components/status";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import { Table, TD, TH, THead, TR } from "@/components/ui/table";
 import { ConnectorService, DataTransport } from "@/gen/rpmgr/v1/connector_pb";
 import type { Revision } from "@/gen/rpmgr/v1/common_pb";
-import { RouteService, RouteState, type Route, type RouteTarget } from "@/gen/rpmgr/v1/route_pb";
+import { RouteService, RouteState, UpstreamVerification, type Route, type RouteTarget } from "@/gen/rpmgr/v1/route_pb";
 import type { ApplyStatus } from "@/gen/rpmgr/v1/status_pb";
 import { RouteTraffic } from "@/pages/route-traffic";
 import { RoutePolicies } from "@/route-form/route-policies";
@@ -228,7 +229,12 @@ function TargetRow({ route: r, target, connector, onEdit, onRemove }: {
   return (
     <TR>
       <TD className="font-medium">{connector}</TD>
-      <TD className="font-mono">{address}</TD>
+      <TD>
+        <span className="font-mono">{address}</span>
+        {target.tls?.verification === UpstreamVerification.UNVERIFIED && (
+          <Badge tone="warn" className="ml-2" title={t("route.unverifiedTitle")}>{t("route.unverified")}</Badge>
+        )}
+      </TD>
       <TD>{target.weight}</TD>
       <TD>
         {!target.enabled ? (

@@ -2532,19 +2532,19 @@ func init() {
 	// routetarget.DefaultTLSSpkiSha256 holds the default value on creation for the tls_spki_sha256 field.
 	routetarget.DefaultTLSSpkiSha256 = routetargetDescTLSSpkiSha256.Default.(string)
 	// routetargetDescWeight is the schema descriptor for weight field.
-	routetargetDescWeight := routetargetFields[12].Descriptor()
+	routetargetDescWeight := routetargetFields[13].Descriptor()
 	// routetarget.DefaultWeight holds the default value on creation for the weight field.
 	routetarget.DefaultWeight = routetargetDescWeight.Default.(int)
 	// routetarget.WeightValidator is a validator for the "weight" field. It is called by the builders before save.
 	routetarget.WeightValidator = routetargetDescWeight.Validators[0].(func(int) error)
 	// routetargetDescPriority is the schema descriptor for priority field.
-	routetargetDescPriority := routetargetFields[13].Descriptor()
+	routetargetDescPriority := routetargetFields[14].Descriptor()
 	// routetarget.DefaultPriority holds the default value on creation for the priority field.
 	routetarget.DefaultPriority = routetargetDescPriority.Default.(int)
 	// routetarget.PriorityValidator is a validator for the "priority" field. It is called by the builders before save.
 	routetarget.PriorityValidator = routetargetDescPriority.Validators[0].(func(int) error)
 	// routetargetDescEnabled is the schema descriptor for enabled field.
-	routetargetDescEnabled := routetargetFields[14].Descriptor()
+	routetargetDescEnabled := routetargetFields[15].Descriptor()
 	// routetarget.DefaultEnabled holds the default value on creation for the enabled field.
 	routetarget.DefaultEnabled = routetargetDescEnabled.Default.(bool)
 	// routetargetDescID is the schema descriptor for id field.

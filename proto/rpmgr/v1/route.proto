@@ -326,7 +326,7 @@ enum UpstreamProtocol {
   UPSTREAM_PROTOCOL_TCP = 1;
   // Plain HTTP, for http routes.
   UPSTREAM_PROTOCOL_HTTP = 2;
-  // HTTPS, verified, for http routes.
+  // HTTPS, for http routes; its TLS settings say how the certificate is checked.
   UPSTREAM_PROTOCOL_HTTPS = 3;
   // HTTP/2 without TLS, for http routes.
   UPSTREAM_PROTOCOL_H2C = 4;
@@ -392,12 +392,30 @@ message HostPort {
 
 // UpstreamTLSSettings verify an HTTPS upstream.
 message UpstreamTLSSettings {
-  // The name its certificate must hold; the target's host if not set.
+  // The name its certificate must hold, and the name sent to it (SNI); the target's host if not
+  // set.
   string server_name = 1 [(buf.validate.field).string.max_len = 253];
-  // The CA bundle its certificate must chain to; the gateway host's roots if not set.
+  // The CA bundle its certificate must chain to; the gateway host's roots if not set. Only with
+  // VERIFIED.
   string ca_bundle_id = 2;
-  // The SHA-256 of its public key, 64 hexadecimal digits, which it must match if set.
+  // The SHA-256 of its public key, 64 hexadecimal digits, which it must match if set. Only with
+  // VERIFIED.
   string spki_sha256 = 3 [(buf.validate.field).string.pattern = "^([0-9a-f]{64})?$"];
+  // How its certificate is checked; VERIFIED if not set.
+  UpstreamVerification verification = 4 [(buf.validate.field).enum.defined_only = true];
+}
+
+// UpstreamVerification is how the gateway checks an HTTPS upstream's certificate
+// (docs/04-security.md, "HTTPS upstreams"; ADR-0017).
+enum UpstreamVerification {
+  // Not set: VERIFIED.
+  UPSTREAM_VERIFICATION_UNSPECIFIED = 0;
+  // Its chain against the CA bundle or the gateway host's roots, its name against the server name,
+  // and its key against the pin if one is set.
+  UPSTREAM_VERIFICATION_VERIFIED = 1;
+  // Not at all: the traffic is encrypted, but anyone on the path from the connector to the target
+  // can read and change it. The target's user chose this, for a certificate nothing can verify.
+  UPSTREAM_VERIFICATION_UNVERIFIED = 2;
 }
 
 // CreateRouteRequest is a new route.

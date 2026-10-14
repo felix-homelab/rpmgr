@@ -3,6 +3,7 @@
 import { clone, create, type DescMessage } from "@bufbuild/protobuf";
 import { Code, ConnectError } from "@connectrpc/connect";
 import { useMutation } from "@connectrpc/connect-query";
+import { TriangleAlert } from "lucide-react";
 import { useId, useState } from "react";
 import { useForm, useWatch, type Path, type Resolver, type UseFormReturn } from "react-hook-form";
 import { useTranslation } from "react-i18next";
@@ -13,7 +14,7 @@ import { Input, Select as SelectBox } from "@/components/ui/input";
 import type { Revision } from "@/gen/rpmgr/v1/common_pb";
 import {
   CreateRouteTargetRequestSchema, ProxyProtocol, RouteService, RouteTargetSchema, UpdateRouteTargetRequestSchema, UpstreamProtocol,
-  type Route, type RouteTarget,
+  UpstreamVerification, type Route, type RouteTarget,
 } from "@/gen/rpmgr/v1/route_pb";
 import type { ApplyStatus } from "@/gen/rpmgr/v1/status_pb";
 import { protoResolver, serverFieldErrors, type FieldOf } from "@/lib/proto-form";
@@ -47,6 +48,15 @@ export const targetFieldOf: FieldOf<TargetValues> = (path) => {
   return paths[p] ?? (p.startsWith("host_port") ? "host" : undefined);
 };
 
+// UNVERIFIED is the choice "HTTPS, unverified" of "Protocol to the target": HTTPS whose certificate
+// the gateway does not check (D82).
+export const UNVERIFIED = "https-unverified";
+
+// upstreamChoice is a target's choice of "Protocol to the target".
+export function upstreamChoice(t: RouteTarget): string {
+  return t.upstreamProtocol === UpstreamProtocol.HTTPS && t.tls?.verification === UpstreamVerification.UNVERIFIED ? UNVERIFIED : String(t.upstreamProtocol);
+}
+
 export function targetValues(t: RouteTarget): TargetValues {
   return {
     connector: t.connectorId,
@@ -54,7 +64,7 @@ export function targetValues(t: RouteTarget): TargetValues {
     host: t.address.case === "hostPort" ? t.address.value.host : "",
     port: t.address.case === "hostPort" ? String(t.address.value.port) : "",
     unixPath: t.address.case === "unixPath" ? t.address.value : "",
-    upstream: String(t.upstreamProtocol),
+    upstream: upstreamChoice(t),
     serverName: t.tls?.serverName ?? "",
     caBundle: t.tls?.caBundleId ?? "",
     spki: t.tls?.spkiSha256 ?? "",
@@ -72,8 +82,13 @@ export function targetWith(base: RouteTarget, v: TargetValues): RouteTarget {
   const t = clone(RouteTargetSchema, base);
   t.connectorId = base.connectorId || v.connector; // a target keeps its connector
   t.address = v.address === "unixPath" ? { case: "unixPath", value: v.unixPath.trim() } : { case: "hostPort", value: { $typeName: "rpmgr.v1.HostPort", host: v.host.trim(), port: whole(v.port) } };
-  t.upstreamProtocol = Number(v.upstream);
-  t.tls = Number(v.upstream) === UpstreamProtocol.HTTPS ? { $typeName: "rpmgr.v1.UpstreamTLSSettings", serverName: v.serverName.trim(), caBundleId: v.caBundle.trim(), spkiSha256: v.spki.trim().toLowerCase() } : undefined;
+  const unverified = v.upstream === UNVERIFIED;
+  t.upstreamProtocol = unverified ? UpstreamProtocol.HTTPS : Number(v.upstream);
+  t.tls = unverified
+    ? { $typeName: "rpmgr.v1.UpstreamTLSSettings", serverName: v.serverName.trim(), caBundleId: "", spkiSha256: "", verification: UpstreamVerification.UNVERIFIED }
+    : t.upstreamProtocol === UpstreamProtocol.HTTPS
+      ? { $typeName: "rpmgr.v1.UpstreamTLSSettings", serverName: v.serverName.trim(), caBundleId: v.caBundle.trim(), spkiSha256: v.spki.trim().toLowerCase(), verification: UpstreamVerification.VERIFIED }
+      : undefined;
   t.proxyProtocol = Number(v.proxy);
   t.weight = whole(v.weight);
   t.priority = whole(v.priority);
@@ -81,13 +96,13 @@ export function targetWith(base: RouteTarget, v: TargetValues): RouteTarget {
   return t;
 }
 
-// The upstream protocols and PROXY versions a route's type allows. Only http routes choose a
-// protocol; the others have one, the bytes as they come (datagrams for udp routes), which the form
-// sends without showing it.
+// The upstream protocols, as choices of "Protocol to the target", and PROXY versions a route's type
+// allows. Only http routes choose a protocol; the others have one, the bytes as they come
+// (datagrams for udp routes), which the form sends without showing it.
 function choices(r: Route) {
   const http = r.spec.case === "http";
   return {
-    upstreams: http ? [UpstreamProtocol.HTTP, UpstreamProtocol.HTTPS, UpstreamProtocol.H2C] : [UpstreamProtocol.TCP],
+    upstreams: http ? [String(UpstreamProtocol.HTTP), String(UpstreamProtocol.HTTPS), UNVERIFIED, String(UpstreamProtocol.H2C)] : [String(UpstreamProtocol.TCP)],
     proxies: r.spec.case === "tcp" || r.spec.case === "tlsPassthrough" ? [ProxyProtocol.NONE, ProxyProtocol.V1, ProxyProtocol.V2] : [],
   };
 }
@@ -101,7 +116,7 @@ export function TargetForm({ route, target, connectors, onDone, onCancel }: {
 }) {
   const { t } = useTranslation();
   const { upstreams, proxies } = choices(route);
-  const base = target ?? create(RouteTargetSchema, { enabled: true, weight: 100, upstreamProtocol: upstreams[0], proxyProtocol: proxies[0] ?? ProxyProtocol.UNSPECIFIED });
+  const base = target ?? create(RouteTargetSchema, { enabled: true, weight: 100, upstreamProtocol: Number(upstreams[0]), proxyProtocol: proxies[0] ?? ProxyProtocol.UNSPECIFIED });
   const [requestId] = useState(() => crypto.randomUUID());
   const add = useMutation(RouteService.method.createRouteTarget);
   const update = useMutation(RouteService.method.updateRouteTarget);
@@ -123,7 +138,10 @@ export function TargetForm({ route, target, connectors, onDone, onCancel }: {
   const form = useForm<TargetValues>({ defaultValues: targetValues(base), resolver });
   const [other, setOther] = useState<string[]>([]);
   const address = useWatch({ control: form.control, name: "address" });
-  const https = Number(useWatch({ control: form.control, name: "upstream" })) === UpstreamProtocol.HTTPS;
+  const upstream = useWatch({ control: form.control, name: "upstream" });
+  const unverified = upstream === UNVERIFIED;
+  const https = unverified || Number(upstream) === UpstreamProtocol.HTTPS;
+  const warning = useId();
 
   async function save(v: TargetValues) {
     setOther([]);
@@ -158,15 +176,26 @@ export function TargetForm({ route, target, connectors, onDone, onCancel }: {
         <Text form={form} name="unixPath" label={t("targetForm.unixPathLabel")} required />
       )}
       {upstreams.length > 1 && (
-        <Select form={form} name="upstream" label={t("targetForm.upstream")} options={upstreams.map((u) => [String(u), t(`targetForm.upstreams.${UpstreamProtocol[u]}`)])} />
+        <Select form={form} name="upstream" label={t("targetForm.upstream")} describedBy={unverified ? warning : undefined}
+          options={upstreams.map((u) => [u, t(u === UNVERIFIED ? "targetForm.upstreams.UNVERIFIED" : `targetForm.upstreams.${UpstreamProtocol[Number(u)]}`)])} />
+      )}
+      {unverified && (
+        <p id={warning} className="flex items-start gap-2 rounded-lg border border-warn/30 bg-warn/10 px-3 py-2 text-sm">
+          <TriangleAlert aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-warn" />
+          <span>{t("targetForm.unverifiedWarning")}</span>
+        </p>
       )}
       {https && (
         <>
           {/* A socket has no host to name, so an HTTPS target on one needs a server name. */}
           <Text form={form} name="serverName" label={t("targetForm.serverName")} required={address === "unixPath"}
-            hint={address === "hostPort" ? t("targetForm.serverNameHint") : undefined} />
-          <Text form={form} name="caBundle" label={t("targetForm.caBundle")} />
-          <Text form={form} name="spki" label={t("targetForm.spki")} />
+            hint={address === "hostPort" ? t(unverified ? "targetForm.serverNameSentHint" : "targetForm.serverNameHint") : undefined} />
+          {!unverified && (
+            <>
+              <Text form={form} name="caBundle" label={t("targetForm.caBundle")} />
+              <Text form={form} name="spki" label={t("targetForm.spki")} />
+            </>
+          )}
         </>
       )}
       {proxies.length > 0 && (
@@ -202,15 +231,16 @@ function Text({ form, name, label, hint, required }: {
   );
 }
 
-function Select({ form, name, label, options, disabled, required }: {
+function Select({ form, name, label, options, disabled, required, describedBy }: {
   form: UseFormReturn<TargetValues>; name: Path<TargetValues>; label: string; options: [string, string][]; disabled?: boolean; required?: boolean;
+  describedBy?: string;
 }) {
   const id = useId();
   const error = form.formState.errors[name as keyof TargetValues]?.message;
   return (
     <div className="grid gap-1.5">
       <label htmlFor={id} className={labelClass(required)}>{label}</label>
-      <SelectBox id={id} disabled={disabled} required={required} aria-invalid={error ? true : undefined} {...form.register(name)}>
+      <SelectBox id={id} disabled={disabled} required={required} aria-invalid={error ? true : undefined} aria-describedby={describedBy} {...form.register(name)}>
         {options.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
       </SelectBox>
       {error && <p role="alert" className="text-sm text-destructive">{error}</p>}

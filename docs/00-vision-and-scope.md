@@ -28,9 +28,10 @@ The default installation is **single-organisation, self-hosted**. Every record c
 ## Goals
 
 1. **Secure by default.** Every connection is mutually authenticated with per-agent identities.
-   Nothing ships with a shared secret, a default password, or `InsecureSkipVerify`. If the
-   control plane is compromised, the damage is bounded by what each host allows locally
-   ([04-security.md](04-security.md)).
+   Nothing ships with a shared secret, a default password, or `InsecureSkipVerify`; only a user
+   can mark an HTTPS upstream unverified
+   ([ADR-0017](adr/0017-upstream-tls-verification-modes.md)). If the control plane is compromised,
+   the damage is bounded by what each host allows locally ([04-security.md](04-security.md)).
 2. **Fast by design.** A new user connection through a tunnel costs **no extra round trip**
    on an established session. Throughput is measured against a direct connection, not assumed
    ([03-connections.md](03-connections.md#performance-budget)).

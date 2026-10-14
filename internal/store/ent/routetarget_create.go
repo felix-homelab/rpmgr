@@ -158,6 +158,20 @@ func (_c *RouteTargetCreate) SetNillableTLSSpkiSha256(v *string) *RouteTargetCre
 	return _c
 }
 
+// SetTLSVerification sets the "tls_verification" field.
+func (_c *RouteTargetCreate) SetTLSVerification(v routetarget.TLSVerification) *RouteTargetCreate {
+	_c.mutation.SetTLSVerification(v)
+	return _c
+}
+
+// SetNillableTLSVerification sets the "tls_verification" field if the given value is not nil.
+func (_c *RouteTargetCreate) SetNillableTLSVerification(v *routetarget.TLSVerification) *RouteTargetCreate {
+	if v != nil {
+		_c.SetTLSVerification(*v)
+	}
+	return _c
+}
+
 // SetProxyProtocol sets the "proxy_protocol" field.
 func (_c *RouteTargetCreate) SetProxyProtocol(v routetarget.ProxyProtocol) *RouteTargetCreate {
 	_c.mutation.SetProxyProtocol(v)
@@ -322,6 +336,10 @@ func (_c *RouteTargetCreate) defaults() error {
 		v := routetarget.DefaultTLSSpkiSha256
 		_c.mutation.SetTLSSpkiSha256(v)
 	}
+	if _, ok := _c.mutation.TLSVerification(); !ok {
+		v := routetarget.DefaultTLSVerification
+		_c.mutation.SetTLSVerification(v)
+	}
 	if _, ok := _c.mutation.ProxyProtocol(); !ok {
 		v := routetarget.DefaultProxyProtocol
 		_c.mutation.SetProxyProtocol(v)
@@ -417,6 +435,14 @@ func (_c *RouteTargetCreate) check() error {
 	}
 	if _, ok := _c.mutation.TLSSpkiSha256(); !ok {
 		return &ValidationError{Name: "tls_spki_sha256", err: errors.New(`ent: missing required field "RouteTarget.tls_spki_sha256"`)}
+	}
+	if _, ok := _c.mutation.TLSVerification(); !ok {
+		return &ValidationError{Name: "tls_verification", err: errors.New(`ent: missing required field "RouteTarget.tls_verification"`)}
+	}
+	if v, ok := _c.mutation.TLSVerification(); ok {
+		if err := routetarget.TLSVerificationValidator(v); err != nil {
+			return &ValidationError{Name: "tls_verification", err: fmt.Errorf(`ent: validator failed for field "RouteTarget.tls_verification": %w`, err)}
+		}
 	}
 	if _, ok := _c.mutation.ProxyProtocol(); !ok {
 		return &ValidationError{Name: "proxy_protocol", err: errors.New(`ent: missing required field "RouteTarget.proxy_protocol"`)}
@@ -526,6 +552,10 @@ func (_c *RouteTargetCreate) createSpec() (*RouteTarget, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.TLSSpkiSha256(); ok {
 		_spec.SetField(routetarget.FieldTLSSpkiSha256, field.TypeString, value)
 		_node.TLSSpkiSha256 = value
+	}
+	if value, ok := _c.mutation.TLSVerification(); ok {
+		_spec.SetField(routetarget.FieldTLSVerification, field.TypeEnum, value)
+		_node.TLSVerification = value
 	}
 	if value, ok := _c.mutation.ProxyProtocol(); ok {
 		_spec.SetField(routetarget.FieldProxyProtocol, field.TypeEnum, value)

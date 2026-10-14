@@ -3,12 +3,9 @@
 package gateway
 
 import (
-	"bytes"
 	"cmp"
 	"context"
-	"crypto/sha256"
 	"crypto/tls"
-	"crypto/x509"
 	"errors"
 	"fmt"
 	"io"
@@ -108,37 +105,6 @@ func apply(h http.Header, hs []HTTPHeader) {
 	}
 }
 
-// UpstreamTLS is how the gateway verifies the HTTPS upstream of one route target.
-type UpstreamTLS struct {
-	ServerName string
-	// CAPEM verifies the upstream's chain; empty is the host's trust store.
-	CAPEM []byte
-	// SPKISHA256, if set, must be the SHA-256 of the leaf's SubjectPublicKeyInfo.
-	SPKISHA256 []byte
-}
-
-// config returns the TLS configuration of a connection to the upstream: TLS 1.2 or later, the
-// server name, the CA bundle or the host's trust store, the pin, and ALPN for HTTP/2.
-func (u UpstreamTLS) config() (*tls.Config, error) {
-	cfg := &tls.Config{MinVersion: tls.VersionTLS12, ServerName: u.ServerName, NextProtos: []string{"h2", "http/1.1"}}
-	if len(u.CAPEM) > 0 {
-		cfg.RootCAs = x509.NewCertPool()
-		if !cfg.RootCAs.AppendCertsFromPEM(u.CAPEM) {
-			return nil, errors.New("the CA bundle holds no certificate")
-		}
-	}
-	if pin := u.SPKISHA256; len(pin) > 0 {
-		cfg.VerifyConnection = func(cs tls.ConnectionState) error {
-			sum := sha256.Sum256(cs.PeerCertificates[0].RawSubjectPublicKeyInfo)
-			if !bytes.Equal(sum[:], pin) {
-				return errors.New("the upstream's key does not match its pin")
-			}
-			return nil
-		}
-	}
-	return cfg, nil
-}
-
 // HTTPHost is a hostname, or "*.name" for every name one label below, with a path prefix; ""
 // is every path.
 type HTTPHost struct{ Hostname, PathPrefix string }
@@ -193,7 +159,7 @@ type routeTransport struct {
 	route atomic.Pointer[HTTPRoute]
 	tr    *http.Transport
 	proxy *httputil.ReverseProxy
-	tls   map[string]*tls.Config // by route target ID
+	tls   map[string]upstreamTLS // by route target ID
 
 	mu     sync.Mutex
 	active map[*activeRequest]struct{}
@@ -425,10 +391,10 @@ func (h *HTTPRoutes) newTransport(r HTTPRoute) *routeTransport {
 		p.SetHTTP1(true)
 		p.SetHTTP2(true)
 		rt.tr.Protocols = p
-		rt.tls = map[string]*tls.Config{}
+		rt.tls = map[string]upstreamTLS{}
 		for id, u := range r.TLS {
 			if cfg, err := u.config(); err == nil {
-				rt.tls[id] = cfg
+				rt.tls[id] = upstreamTLS{cfg: cfg, connector: u.Connector, verify: u.Verify}
 			}
 		}
 		rt.tr.DialTLSContext = func(ctx context.Context, _, _ string) (net.Conn, error) { return h.dialTLS(ctx, rt) }
@@ -562,40 +528,58 @@ func (e *openError) Error() string { return fmt.Sprintf("route %s: %s", e.route,
 
 // dial opens a tunnel stream for the route.
 func (h *HTTPRoutes) dial(ctx context.Context, route string) (net.Conn, error) {
-	c, _, err := h.open(ctx, route)
+	c, _, _, err := h.open(ctx, route)
 	return c, err
 }
 
-// open opens a tunnel stream for the route and returns it with the target the connector chose.
-func (h *HTTPRoutes) open(ctx context.Context, route string) (net.Conn, string, error) {
+// open opens a tunnel stream for the route and returns it with the target the connector chose
+// and that connector, as its certificate names it.
+func (h *HTTPRoutes) open(ctx context.Context, route string) (net.Conn, string, string, error) {
 	open := &tunnelv1.StreamOpen{Kind: tunnelv1.StreamKind_STREAM_KIND_TCP, RouteId: route}
 	if h.o.Revision != nil {
 		open.SnapshotRev = h.o.Revision()
 	}
 	st, res, err := h.o.Sessions.OpenStreamResult(ctx, open)
 	if err != nil {
-		return nil, "", err
+		return nil, "", "", err
 	}
 	if st == nil {
-		return nil, "", &openError{route: route, code: res.GetCode()}
+		return nil, "", "", &openError{route: route, code: res.GetCode()}
 	}
-	return &streamConn{Stream: st}, res.GetTargetId(), nil
+	return &streamConn{Stream: st}, res.GetTargetId(), StreamConnector(st), nil
+}
+
+// upstreamTLS is the TLS configuration of a route target, for the streams of its connector.
+type upstreamTLS struct {
+	cfg       *tls.Config
+	connector string // "" from a controller that names none
+	verify    UpstreamVerify
 }
 
 // dialTLS opens a tunnel stream for an https route and completes TLS over it, verified with the
-// settings of the target the connector chose; a target without them fails closed.
+// settings of the target the connector chose. A target without settings fails closed, and so does
+// one of another connector: a connector cannot have the gateway apply another target's settings,
+// such as an unverified one's, to its stream (ADR-0017). Settings that name no connector, from an
+// older controller, apply only when they verify the chain.
 func (h *HTTPRoutes) dialTLS(ctx context.Context, rt *routeTransport) (net.Conn, error) {
 	route := rt.route.Load().ID
-	c, target, err := h.open(ctx, route)
+	c, target, connector, err := h.open(ctx, route)
 	if err != nil {
 		return nil, err
 	}
-	cfg := rt.tls[target]
-	if cfg == nil {
+	u, ok := rt.tls[target]
+	switch {
+	case !ok:
 		_ = c.Close()
 		return nil, fmt.Errorf("route %s: no TLS settings for target %q", route, target)
+	case u.verify != VerifyChain && u.connector == "":
+		_ = c.Close()
+		return nil, fmt.Errorf("route %s: target %s is not verified and names no connector", route, target)
+	case u.connector != "" && u.connector != connector:
+		_ = c.Close()
+		return nil, fmt.Errorf("route %s: connector %s answered for target %s, which is not its own", route, connector, target)
 	}
-	tc := tls.Client(c, cfg)
+	tc := tls.Client(c, u.cfg)
 	if err := tc.HandshakeContext(ctx); err != nil {
 		_ = tc.Close()
 		return nil, fmt.Errorf("route %s: TLS to target %s: %w", route, target, err)
