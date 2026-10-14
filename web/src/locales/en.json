@@ -401,7 +401,6 @@
     "unixPathLabel": "Socket path",
     "upstream": "Protocol to the target",
     "upstreams": {
-      "TCP": "TCP",
       "HTTP": "HTTP",
       "HTTPS": "HTTPS, verified",
       "H2C": "HTTP/2 without TLS (h2c)"
