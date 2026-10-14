@@ -645,13 +645,15 @@ Rules:
   refusal names the deny entry: `not_ready(blocked_by_local_policy: 127.0.0.1:345 denied by
   127.0.0.1:345)`, and the UI's command is then `sudo rpmgr policy remove-deny-target
   127.0.0.1:345`.
-- A file that does not parse, or that its group or other users may write, means **deny
-  everything**: every target becomes `not_ready(policy_invalid)`; the snapshot itself is still
-  applied. Unknown keys and values, a key given twice in an entry, an empty `ports` list, and a bad
-  entry in either list, are parse errors. A connector from before D84 reads `deny_targets`, a
-  target string, an entry without ports and a subnet with host bits set as such errors, so it
-  fails closed and dials nothing, also after an automatic update rolled it back to `.prev`
-  ([10](10-operations.md#install)).
+- A file that does not parse, or that its group or other users may write, means **deny everything**:
+  every target becomes `not_ready(policy_invalid)`; the snapshot itself is still applied. Unknown
+  keys and values, a key given twice in an entry, an empty `ports` list, a bad entry in either list,
+  and YAML anchors, aliases and merge keys (`<<`) anywhere in the file, are parse errors; the
+  editing commands refuse such a file too. An edit changes a node in place, so an alias of it would
+  change with it, such as a deny list's ports shared with an allow entry. A connector from before
+  D84 reads `deny_targets`, a target string, an entry without ports and a subnet with host bits set
+  as such errors, so it fails closed and dials nothing, also after an automatic update rolled it
+  back to `.prev` ([10](10-operations.md#install)).
 - Checks happen **at dial time on the resolved IP and port** (`net.Dialer.Control`), which defeats
   DNS rebinding. IPv4-mapped IPv6 addresses are unmapped before checking. Link-local and cloud
   metadata addresses (169.254.0.0/16, fe80::/10, `fd00:ec2::254/128`, `100.100.100.200/32`) are denied unless listed

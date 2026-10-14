@@ -99,9 +99,10 @@ export function useAgentNames(orgId: string | undefined) {
   });
 }
 
-// shellArg quotes a value for a POSIX shell, unless it needs no quotes.
+// shellArg quotes a value for a POSIX shell, unless it needs no quotes; brackets are quoted, as
+// zsh and bash would take [fd00::1]:443 as a pattern.
 export function shellArg(s: string): string {
-  return /^[A-Za-z0-9_.:/@%+=,[\]-]+$/.test(s) ? s : `'${s.replace(/'/g, `'\\''`)}'`;
+  return /^[A-Za-z0-9_.:/@%+=,-]+$/.test(s) ? s : `'${s.replace(/'/g, `'\\''`)}'`;
 }
 
 // policyCommand is the command that lets a connector's local policy reach a target it blocks

@@ -226,7 +226,8 @@ describe("policyCommand", () => {
     ["10.9.0.7:22 denied by 10.9.0.0/16", "sudo rpmgr policy remove-deny-target 10.9.0.0/16"],
     ["/run/app.sock denied by /run/app.sock", "sudo rpmgr policy remove-deny-target /run/app.sock"],
     ["/run/a b.sock denied by /run/a b.sock", "sudo rpmgr policy remove-deny-target '/run/a b.sock'"],
-    ["[2001:db8::5]:5432", "sudo rpmgr policy allow-target [2001:db8::5]:5432"],
+    ["[2001:db8::5]:5432", "sudo rpmgr policy allow-target '[2001:db8::5]:5432'"],
+    ["[fd00::9]:443 denied by [fd00::/64]:443", "sudo rpmgr policy remove-deny-target '[fd00::/64]:443'"],
     ["/run/pg sock", "sudo rpmgr policy allow-target '/run/pg sock'"],
     ["/tmp/x';rm -rf /;'", "sudo rpmgr policy allow-target '/tmp/x'\\'';rm -rf /;'\\'''"],
   ])("%s", (target, want) => {

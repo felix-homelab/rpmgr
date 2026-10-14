@@ -406,16 +406,33 @@ deny_targets:
 	}
 }
 
-// TestParse_Aliases: YAML anchors and aliases name entries, and ports, as they did before D84.
-func TestParse_Aliases(t *testing.T) {
-	p := parse(t, `version: 1
-allow_targets:
-  - &web {cidr: 10.0.0.0/8, ports: &ports [80, 443]}
-  - *web
-  - {cidr: 192.168.0.0/16, ports: *ports}
-deny_targets: [*web]
-`)
-	if allows(p, "10.1.1.1:80") || !allows(p, "192.168.1.1:443") || allows(p, "192.168.1.1:22") {
-		t.Fatalf("aliases:\n%s", p.Describe())
+// TestParse_AliasesRefused: anchors, aliases and merge keys make the file invalid, naming the line,
+// and no edit command touches such a file: an edit would change every alias of a node with it.
+func TestParse_AliasesRefused(t *testing.T) {
+	for name, src := range map[string]string{
+		"an anchor":       "version: 1\nallow_targets:\n  - &web {cidr: 10.0.0.0/8, ports: [80]}\n",
+		"an alias":        "version: 1\nx: &v 1\nallow_targets: [{cidr: 10.0.0.0/8, ports: [*v]}]\n",
+		"ports anchor":    "version: 1\nallow_targets: [{cidr: 10.0.0.0/8, ports: &p [22]}]\ndeny_targets: [{cidr: 10.9.0.0/16, ports: *p}]\n",
+		"a merge key":     "version: 1\n<<: {deny_targets: [10.0.0.0/8]}\nallow_targets: [10.0.0.0/8]\n",
+		"a merged entry":  "version: 1\nallow_targets: [{<<: {ports: [80]}, cidr: 10.0.0.0/8}]\n",
+		"an anchored doc": "&d\nversion: 1\n",
+	} {
+		if _, err := policy.Parse([]byte(src)); err == nil || !strings.Contains(err.Error(), "anchors, aliases and merge keys are not allowed") ||
+			!strings.Contains(err.Error(), "line ") {
+			t.Errorf("%s: %v", name, err)
+		}
+		path := filepath.Join(t.TempDir(), "policy.yaml")
+		if err := os.WriteFile(path, []byte(src), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		for verb, edit := range map[string]func(string, string) (bool, error){"allow": policy.AllowTarget, "remove": policy.RemoveTarget,
+			"deny": policy.DenyTarget, "remove-deny": policy.RemoveDenyTarget} {
+			if _, err := edit(path, "10.0.0.1:22"); err == nil || !strings.Contains(err.Error(), "anchors, aliases and merge keys") {
+				t.Errorf("%s, %s: %v", name, verb, err)
+			}
+		}
+		if b, _ := os.ReadFile(path); string(b) != src {
+			t.Errorf("%s: the file changed:\n%s", name, b)
+		}
 	}
 }

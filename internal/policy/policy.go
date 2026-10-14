@@ -190,6 +190,13 @@ type file struct {
 // Parse reads a policy file. Unknown keys, a version other than 1, a bad target, port or socket
 // path and an unknown auto_update or update_channel are errors.
 func Parse(data []byte) (*Policy, error) {
+	var doc yaml.Node
+	if err := yaml.Unmarshal(data, &doc); err != nil {
+		return nil, fmt.Errorf("policy: %w", err)
+	}
+	if err := noAliases(&doc); err != nil {
+		return nil, err
+	}
 	var f file
 	dec := yaml.NewDecoder(bytes.NewReader(data))
 	dec.KnownFields(true)
@@ -228,12 +235,25 @@ func Parse(data []byte) (*Policy, error) {
 	return p, nil
 }
 
+// noAliases refuses anchors, aliases and merge keys anywhere in the file: an edit changes a node in
+// place, which would change every alias of it as well, and a merge key could hide a list an edit
+// replaces.
+func noAliases(n *yaml.Node) error {
+	if n.Anchor != "" || n.Kind == yaml.AliasNode || n.ShortTag() == "!!merge" {
+		return fmt.Errorf("policy: line %d: anchors, aliases and merge keys are not allowed in the policy file; edit it by hand "+
+			"without them", n.Line)
+	}
+	for _, c := range n.Content {
+		if err := noAliases(c); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // parseEntry reads an entry of allow_targets or deny_targets: a target as a string, or a mapping
 // of cidr, an address or subnet, and ports, all of them if none, or of unix, a socket path.
 func parseEntry(n *yaml.Node) (target, error) {
-	for n.Kind == yaml.AliasNode && n.Alias != nil {
-		n = n.Alias
-	}
 	if n.Kind == yaml.ScalarNode {
 		return parseTarget(n.Value)
 	}
