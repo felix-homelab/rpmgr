@@ -73,6 +73,14 @@ type TCPRoutes struct {
 	removal removalDrain
 }
 
+// Bound reports whether a route listens on the port.
+func (r *TCPRoutes) Bound(port uint16) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	_, ok := r.ports[port]
+	return ok
+}
+
 // portListener is one public port and its connections.
 type portListener struct {
 	ln    net.Listener

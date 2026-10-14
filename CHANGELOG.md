@@ -24,9 +24,13 @@ history and the [ADRs](docs/adr/).
   key-encryption key (KEK, from a systemd credential or a file) and the internal CA, and prints a
   one-time link that creates the first user. Secrets in the database are encrypted under the KEK,
   and logs redact them. (#183, #184, #186, #187, #189, #199, #313, #375)
-- Controller: all-in-one, the homelab default, runs a controller and a gateway in one process.
-  `rpmgr all-in-one init` also creates the gateway group `default`, its public hostname the public
-  URL's host if that is a valid one, with the enrolled gateway `local`. (#268, #269, #484, #493)
+- Controller: all-in-one, the homelab default, runs a controller, a gateway and a connector in one
+  process. `rpmgr all-in-one init` also creates the gateway group `default`, its public hostname
+  the public URL's host if that is a valid one, with the enrolled gateway `local`, and the
+  connector `local`, which publishes services on the same host as its local policy allows, never
+  rpmgr's own ports, over in-memory data sessions. An all-in-one initialised before gets its
+  connector at the next start. Its own gateway and connector cannot be decommissioned. (#268,
+  #269, #484, #493, #535)
 - Controller: a controller without a public address can stay on a private network, published
   through a gateway that passes its hostnames through to it. (#285)
 - Controller: serves `/install.sh`. The script downloads the controller's own release from the

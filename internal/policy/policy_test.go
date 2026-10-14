@@ -436,3 +436,70 @@ func TestParse_AliasesRefused(t *testing.T) {
 		}
 	}
 }
+
+// TestGuarded (ADR-0019): a guarded policy refuses rpmgr's own ports whatever it allows, also to
+// a dial, with a detail that names them; other targets keep their verdict, an unguarded copy is
+// unchanged, and a nil guard guards nothing.
+func TestGuarded(t *testing.T) {
+	own := func(ap netip.AddrPort) bool {
+		return ap.Addr().IsLoopback() && (ap.Port() == 7381 || ap.Port() == 443) || ap == netip.MustParseAddrPort("192.0.2.10:8443")
+	}
+	open := parse(t, "version: 1\nallow_targets: [0.0.0.0/0, \"[::/0]\"]\ndeny_targets: [\"127.0.0.1:443\"]\n")
+	p := open.Guarded(own)
+	for target, want := range map[string]bool{
+		"127.0.0.1:7381": false, "[::1]:7381": false, "127.0.0.1:443": false, "192.0.2.10:8443": false,
+		"[::ffff:127.0.0.1]:7381": false, "127.0.0.1:8080": true, "192.0.2.10:443": true, "[2001:db8::1]:7381": true,
+	} {
+		if got := allows(p, target); got != want {
+			t.Errorf("%s: allowed %v, want %v", target, got, want)
+		}
+	}
+	if !allows(open, "127.0.0.1:7381") {
+		t.Error("Guarded changed the policy it copied")
+	}
+	var blocked *policy.BlockedError
+	if err := p.Check("127.0.0.1:7381"); !errors.As(err, &blocked) || !blocked.Own || blocked.Detail() != "127.0.0.1:7381"+policy.OwnPort ||
+		!strings.Contains(err.Error(), "never dials") {
+		t.Fatalf("an own port: %v", err)
+	}
+	// deny_targets matches too, but the own port is what the detail names: no entry to remove helps.
+	if err := p.Check("127.0.0.1:443"); !errors.As(err, &blocked) || blocked.Detail() != "127.0.0.1:443"+policy.OwnPort {
+		t.Fatalf("an own port that deny_targets names too: %v", err)
+	}
+	if !p.Own(netip.MustParseAddr("::ffff:127.0.0.1"), 7381) || p.Own(netip.MustParseAddr("127.0.0.1"), 8080) || open.Own(netip.MustParseAddr("127.0.0.1"), 7381) {
+		t.Error("Own")
+	}
+	if !allows(open.Guarded(nil), "127.0.0.1:7381") {
+		t.Error("a nil guard refused a target")
+	}
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = ln.Close() }()
+	listener := netip.MustParseAddrPort(ln.Addr().String())
+	d := net.Dialer{Timeout: time.Second, Control: policy.Control(func() *policy.Policy {
+		return open.Guarded(func(ap netip.AddrPort) bool { return ap == listener })
+	})}
+	if _, err := d.DialContext(context.Background(), "tcp", ln.Addr().String()); !errors.As(err, &blocked) || !blocked.Own {
+		t.Fatalf("a dial to an own port: %v", err)
+	}
+	// UDP too: a udp route's flow is dialled under the same check.
+	pc, err := net.ListenPacket("udp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = pc.Close() }()
+	udpPort := netip.MustParseAddrPort(pc.LocalAddr().String())
+	ud := net.Dialer{Control: policy.Control(func() *policy.Policy {
+		return open.Guarded(func(ap netip.AddrPort) bool { return ap == udpPort })
+	})}
+	if _, err := ud.DialContext(context.Background(), "udp", pc.LocalAddr().String()); !errors.As(err, &blocked) || !blocked.Own {
+		t.Fatalf("a UDP dial to an own port: %v", err)
+	}
+	if c, err := ud.DialContext(context.Background(), "udp", "127.0.0.1:9"); err != nil {
+		t.Fatalf("a UDP dial elsewhere: %v", err)
+	} else {
+		_ = c.Close()
+	}
+}

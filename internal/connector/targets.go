@@ -68,15 +68,16 @@ func (t Target) String() string {
 }
 
 // blockDetail is the readiness detail of a target the policy does not allow: the target, and the
-// entry of deny_targets that refuses it if one does (policy.BlockedError.Detail).
+// entry of deny_targets that refuses it if one does, or that it is one of rpmgr's own ports
+// (policy.BlockedError.Detail).
 func (t Target) blockDetail(p *policy.Policy) string {
-	denied := ""
+	e := &policy.BlockedError{Target: t.String()}
 	if t.UnixPath != "" {
-		denied = p.DeniedByUnix(t.UnixPath)
+		e.Denied = p.DeniedByUnix(t.UnixPath)
 	} else if ip, err := netip.ParseAddr(t.Host); err == nil {
-		denied = p.DeniedBy(ip, t.Port)
+		e.Denied, e.Own = p.DeniedBy(ip, t.Port), p.Own(ip, t.Port)
 	}
-	return (&policy.BlockedError{Target: t.String(), Denied: denied}).Detail()
+	return e.Detail()
 }
 
 // allowed reports whether the policy allows the target as far as it is known before dialling: a
