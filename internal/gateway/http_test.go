@@ -769,7 +769,7 @@ func TestHTTPRoutes_Port80(t *testing.T) {
 	}), "none", "rt_web")
 	certs, pool := routeCert(t, "app.example.com")
 	h := gateway.NewHTTPRoutes(gateway.HTTPOptions{Sessions: p.sessions, Certificates: certs,
-		Challenges: func(host, token string) (string, bool) { return token + ".thumbprint", token == "tok" && host != "" },
+		Challenges:    func(host, token string) (string, bool) { return token + ".thumbprint", token == "tok" && host != "" },
 		Fallback80:    http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { http.Error(w, "fallback", http.StatusTeapot) }),
 		FallbackNames: []string{"Panel.example.com."}})
 	t.Cleanup(h.Close)
