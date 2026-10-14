@@ -41,8 +41,9 @@ func transportOf(p agentv1.TransportPolicy) (string, bool) {
 
 // Validate implements agent.Applier: every resource must be a route or a gateway; a route needs a
 // known transport and targets that are an address and port or an absolute socket path with a
-// known PROXY protocol version, and a udp or tcp_udp route's targets are addresses without one; a
-// gateway needs host:port endpoints and names only routes of the snapshot.
+// known PROXY protocol version; a udp or tcp_udp route's targets are addresses, a udp route's
+// without a PROXY header (a tcp_udp route's header goes on its TCP connections only); a gateway
+// needs host:port endpoints and names only routes of the snapshot.
 func (a *Applier) Validate(snap *agentv1.Snapshot) []*agentv1.SnapshotError {
 	var errs []*agentv1.SnapshotError
 	bad := func(id, format string, args ...any) {
@@ -81,7 +82,7 @@ func (a *Applier) Validate(snap *agentv1.Snapshot) []*agentv1.SnapshotError {
 				switch t.GetProxyProtocol() {
 				case "", "none":
 				case "v1", "v2":
-					if udp {
+					if r.GetType() == "udp" {
 						bad(id, "target %s: a udp target has no PROXY protocol header", t.GetId())
 					}
 				default:

@@ -4,6 +4,7 @@ package apisvc_test
 
 import (
 	"context"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -14,6 +15,7 @@ import (
 	rpmgrv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/v1"
 	"github.com/felix-homelab/rpmgr/internal/apisvc"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/portallocation"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/routetarget"
 )
 
 func errText(err error) string {
@@ -31,7 +33,7 @@ func tcpUDPRoute(name, group string, port uint32) *rpmgrv1.Route {
 // both, with both timeouts, their defaults when not set; a port outside either protocol's pools or
 // taken in either is refused, the taken one naming its route; each protocol's quota counts; a port
 // change moves both, and a timeout an update clears is the default again; its targets are
-// addresses without a PROXY header; deleting it, or decommissioning its only connector (D78),
+// addresses, with a PROXY header for their TCP connections or none (D86); deleting it, or decommissioning its only connector (D78),
 // frees both ports.
 func TestTCPUDPRoutes(t *testing.T) {
 	e, ada, org, group := gatewayEnv(t)
@@ -131,13 +133,23 @@ func TestTCPUDPRoutes(t *testing.T) {
 	if err := add(socket); code(err) != connect.CodeInvalidArgument {
 		t.Fatalf("a socket target: %v", err)
 	}
-	proxied := addressTarget(nas, "10.0.0.53", 53)
-	proxied.ProxyProtocol = rpmgrv1.ProxyProtocol_PROXY_PROTOCOL_V1
-	if err := add(proxied); code(err) != connect.CodeInvalidArgument {
-		t.Fatalf("a PROXY header: %v", err)
+	for _, v := range []rpmgrv1.ProxyProtocol{rpmgrv1.ProxyProtocol_PROXY_PROTOCOL_V1, rpmgrv1.ProxyProtocol_PROXY_PROTOCOL_V2} {
+		proxied := addressTarget(nas, "10.0.0.53", 53)
+		proxied.ProxyProtocol = v
+		if err := add(proxied); err != nil {
+			t.Fatalf("a PROXY %v header, for the TCP connections (D86): %v", v, err)
+		}
 	}
 	if err := add(addressTarget(nas, "10.0.0.53", 53)); err != nil {
 		t.Fatalf("an address target: %v", err)
+	}
+	var proxies []string
+	for _, tg := range e.db.Client().RouteTarget.Query().Where(routetarget.RouteID(dns.GetId())).AllX(e.sys) {
+		proxies = append(proxies, string(tg.ProxyProtocol))
+	}
+	slices.Sort(proxies)
+	if got := strings.Join(proxies, " "); got != "none v1 v2" {
+		t.Fatalf("the targets' PROXY headers stored: %s", got)
 	}
 
 	// The UDP quota counts the UDP ports of dns, game and ntp.

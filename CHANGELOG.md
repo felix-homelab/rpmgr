@@ -77,7 +77,8 @@ history and the [ADRs](docs/adr/).
   transport. (#279, #281, #283, #284)
 - Gateway: `tcp_udp` routes publish one port number with TCP and UDP, for services such as DNS:
   one route with one list of targets, its port taken from the gateway group's TCP and UDP pools
-  and counted against both quotas. (#506)
+  and counted against both quotas; a target's PROXY protocol header goes on its TCP connections
+  only. (#506, #534)
 - Gateway: `tls_passthrough` routes pass TLS connections by server name to a connector, still
   encrypted. (#276, #278, #332)
 - Gateway: `http` routes terminate TLS for their hostnames and proxy HTTP/1.1, HTTP/2, WebSocket

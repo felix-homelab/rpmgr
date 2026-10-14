@@ -654,8 +654,10 @@ sequenceDiagram
   targets ([D83](14-open-decisions.md#engineering)). The gateway listens on the port with TCP and
   with UDP: a connection becomes a TCP stream and a flow a `UDP_FLOW` stream, both with the route's
   ID, and the connector takes both kinds for it, to the same target address. Its targets are
-  addresses and get no PROXY protocol header, as a udp route's. A port that one protocol cannot
-  bind makes the route `not_ready(port_in_use)` while the other protocol serves.
+  addresses, as a udp route's. A target's PROXY protocol header, if it sets one, goes on each TCP
+  connection only; a UDP flow never gets one, so on UDP the target sees the connector's address
+  ([D86](14-open-decisions.md#engineering)). A port that one protocol cannot bind makes the route
+  `not_ready(port_in_use)` while the other protocol serves.
 
 ### HTTP routes
 
