@@ -188,7 +188,7 @@ func TestInstall_TypedToken(t *testing.T) {
 		t.Fatal("docker is needed")
 	}
 	srv, dir, _ := testRelease(t)
-	command, err := installsh.Command(srv.URL, "sha256:pin", false, []string{"10.0.0.5:5432"})
+	command, err := installsh.Command(srv.URL, "sha256:pin", false, []string{"10.0.0.5:5432"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
