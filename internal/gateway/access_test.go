@@ -208,6 +208,95 @@ func TestUDPRoutes_Access(t *testing.T) {
 	}
 }
 
+// TestHTTPRoutes_AccessOnReplacedTransport (#523): a WebSocket that still runs on a transport a
+// change of the upstream protocol replaced stays under the route's rules: a later snapshot that
+// denies its client ends it.
+func TestHTTPRoutes_AccessOnReplacedTransport(t *testing.T) {
+	route := gateway.HTTPRoute{ID: "rt_web", Upstream: "http", WebSocket: true, Hosts: []gateway.HTTPHost{{Hostname: "app.example.com"}}}
+	e := newHTTPEnv(t, websocketEcho, route)
+	c, err := tls.Dial("tcp", e.addr, &tls.Config{ServerName: "app.example.com", RootCAs: e.pool, MinVersion: tls.VersionTLS13,
+		NextProtos: []string{"http/1.1"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = c.Close() }()
+	_ = c.SetDeadline(time.Now().Add(10 * time.Second))
+	_, _ = c.Write([]byte("GET /ws HTTP/1.1\r\nHost: app.example.com\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n\r\n"))
+	br := bufio.NewReader(c)
+	resp, err := http.ReadResponse(br, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusSwitchingProtocols {
+		t.Fatalf("upgrade: %v", resp.Status)
+	}
+	route.Upstream = "h2c" // a new transport; the WebSocket stays on the old one
+	e.routes.Apply([]gateway.HTTPRoute{route})
+	echo := func() error {
+		if _, err := c.Write([]byte("ping")); err != nil {
+			return err
+		}
+		b := make([]byte, 4)
+		_, err := io.ReadFull(br, b)
+		return err
+	}
+	if err := echo(); err != nil {
+		t.Fatalf("the WebSocket after the upstream changed: %v", err)
+	}
+	route.Access = access(t, deny("127.0.0.0/8"))
+	e.routes.Apply([]gateway.HTTPRoute{route})
+	_ = c.SetReadDeadline(time.Now().Add(5 * time.Second))
+	_, _ = c.Write([]byte("x"))
+	_, err = io.Copy(io.Discard, br)
+	var ne net.Error
+	if errors.As(err, &ne) && ne.Timeout() {
+		t.Fatal("a WebSocket on a replaced transport went on after the rules denied its client")
+	}
+}
+
+// TestHTTPRoutes_AccessDuringAdmission (#523): rules tightened while a request is being admitted,
+// here during its slow basic-auth check, refuse it although its first check passed.
+func TestHTTPRoutes_AccessDuringAdmission(t *testing.T) {
+	slow := gateway.BasicAuthRule{PolicyID: "ap_1", CredentialVersion: "v1", Users: map[string]gateway.PHC{}}
+	h, err := gateway.ParsePHC(phc(t, "pw", 64*1024, 8)) // long enough to change the rules during it
+	if err != nil {
+		t.Fatal(err)
+	}
+	slow.Users["ada"] = h
+	route := gateway.HTTPRoute{ID: "rt_web", Upstream: "http", Hosts: []gateway.HTTPHost{{Hostname: "app.example.com"}},
+		Access: access(t, allow("127.0.0.0/8")), BasicAuth: []gateway.BasicAuthRule{slow}}
+	e := newHTTPEnv(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { _, _ = io.WriteString(w, "served") }), route)
+	done := make(chan reply, 1)
+	go func() {
+		req, _ := http.NewRequest(http.MethodGet, "https://app.example.com/", nil)
+		req.SetBasicAuth("ada", "pw")
+		res, err := e.client(false).Do(req)
+		if err != nil {
+			done <- reply{body: err.Error()}
+			return
+		}
+		defer func() { _ = res.Body.Close() }()
+		b, _ := io.ReadAll(res.Body)
+		done <- reply{status: res.StatusCode, body: string(b)}
+	}()
+	for deadline := time.Now().Add(10 * time.Second); e.routes.BasicAuthBusy() == 0; time.Sleep(time.Millisecond) {
+		if time.Now().After(deadline) {
+			t.Fatal("the request never reached its basic-auth check")
+		}
+	} // the request passed its first check and is in the basic-auth check
+	route.Access = access(t, deny("127.0.0.0/8"))
+	e.routes.Apply([]gateway.HTTPRoute{route})
+	select {
+	case r := <-done:
+		if r.status != http.StatusForbidden {
+			t.Fatalf("a request the tightened rules deny: %d %q", r.status, r.body)
+		}
+	case <-time.After(30 * time.Second):
+		t.Fatal("no answer")
+	}
+}
+
 // TestHTTPRoutes_Access: a client the rules deny, also by a deny behind an allow that admits it,
 // gets 403; behind a trusted proxy the client is the last untrusted address of X-Forwarded-For,
 // a zoned one included;
