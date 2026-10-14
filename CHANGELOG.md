@@ -5,10 +5,12 @@ follows [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.1.0/), versions
 [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.html), and the rules for entries are in
 [RELEASING.md](RELEASING.md#changelog).
 
-Nothing has been released yet. Changes to the design documents are not recorded here: see the git
-history and the [ADRs](docs/adr/).
+Changes to the design documents are not recorded here: see the git history and the
+[ADRs](docs/adr/).
 
 ## [Unreleased]
+
+## [0.1.0] - 2026-10-14
 
 ### Added
 
@@ -16,7 +18,7 @@ history and the [ADRs](docs/adr/).
   the controller's init or the agent's enrollment, a connector's local policy and proxy, and the
   systemd unit, started and checked for readiness. It asks in full-screen forms, or in plain
   prompts without a terminal, and shows the plan before it changes anything; with `--yes` it takes
-  every value from its flags. (#435)
+  every value from its flags. (#446, #448, #449)
 - All roles: one `rpmgr` binary for Linux on amd64, arm64, armv7 and riscv64 runs every role:
   `rpmgr controller`, `gateway`, `connector` and `all-in-one`, each from a strictly checked YAML
   boot file. `rpmgr version` names the build. (#174, #196, #260, #266, #267, #384)
@@ -31,7 +33,8 @@ history and the [ADRs](docs/adr/).
   rpmgr's own ports, over in-memory data sessions. An all-in-one initialised before gets its
   connector at the next start. Its own gateway and connector cannot be decommissioned. `rpmgr
   setup` asks for the connector's allowed and denied targets, and `rpmgr policy` reloads the
-  all-in-one on a host without a separate connector. (#268, #269, #484, #493, #535, #537, #538)
+  all-in-one on a host without a separate connector. (#268, #269, #490, #494, #535, #537, #538,
+  #540)
 - Controller: a controller without a public address can stay on a private network, published
   through a gateway that passes its hostnames through to it. (#285)
 - Controller: serves `/install.sh`. The script downloads the controller's own release from the
@@ -40,7 +43,7 @@ history and the [ADRs](docs/adr/).
   enrollment token from a file, the environment or the terminal. The command the web UI shows
   downloads the script and runs it with `sudo`, so that a token typed at the prompt also arrives
   under sudo-rs, Ubuntu's `sudo` since 25.10. It is tested on Debian 12 and 13, Ubuntu 22.04, 24.04
-  and 26.04, and Rocky Linux 9. (#328, #374, #376, #476)
+  and 26.04, and Rocky Linux 9. (#328, #374, #376, #477)
 - All roles: `rpmgr systemd-unit <role>` prints a hardened systemd unit for each role. (#375)
 - All roles: an internal CA gives every controller, gateway and connector a short-lived certificate
   with a SPIFFE identity in the instance's trust domain. Agents renew it in time; an agent that
@@ -75,7 +78,7 @@ history and the [ADRs](docs/adr/).
   `rpmgr setup` and the install command take `--allow-target` and `--deny-target`. YAML anchors,
   aliases and merge keys make the file invalid. A connector of an earlier build reads a file that
   uses `deny_targets`, a target string, an entry without ports or a subnet with host bits as invalid
-  and dials nothing, also after an automatic update rolls it back. (#247, #248, #249, #388, #519)
+  and dials nothing, also after an automatic update rolls it back. (#247, #248, #249, #388, #524)
 - Gateway: `tcp` routes take a public port from their gateway group's port pools, within the org's
   port quota, and carry each connection as one stream to a connector. (#234, #235, #254, #326)
 - Gateway: `udp` routes carry each client flow as QUIC datagrams, or as frames on the `h2`
@@ -83,7 +86,7 @@ history and the [ADRs](docs/adr/).
 - Gateway: `tcp_udp` routes publish one port number with TCP and UDP, for services such as DNS:
   one route with one list of targets, its port taken from the gateway group's TCP and UDP pools
   and counted against both quotas; a target's PROXY protocol header goes on its TCP connections
-  only. (#506, #534)
+  only. (#513, #534)
 - Gateway: `tls_passthrough` routes pass TLS connections by server name to a connector, still
   encrypted. (#276, #278, #332)
 - Gateway: `http` routes terminate TLS for their hostnames and proxy HTTP/1.1, HTTP/2, WebSocket
@@ -92,7 +95,7 @@ history and the [ADRs](docs/adr/).
   self-signed one, may be checked by its pinned key alone, which "Trust the certificate it shows
   now" reads through the connector, or be marked unverified: the gateway then checks no
   certificate, and the web UI warns about it and marks the target. Stricter TLS settings end the
-  target's open connections at once. (#292, #294, #296, #333, #504, #505, #517)
+  target's open connections at once. (#292, #294, #296, #333, #516, #518, #521)
 - Gateway: `http` routes set `Forwarded` and `X-Forwarded-*` and keep a client's own only from the
   gateway group's trusted proxies. They can replace the `Host` header, set request and response
   headers, redirect or serve port 80, and send HSTS. (#297, #298)
@@ -102,12 +105,12 @@ history and the [ADRs](docs/adr/).
   certificate warning. A route without a live target, or whose target refuses or does not answer,
   shows "Service unavailable" (503, 502, 504). Other clients keep getting text, and an upstream's
   own errors pass unchanged. On all-in-one, port 80 redirects only the controller's own name to
-  its public URL. (#531)
+  its public URL. (#536)
 - Gateway: an `http` route can be put in maintenance, with an optional plain-text message. Its
   gateways then answer every request its access policies admit with a "Down for maintenance" page
   (503) and send nothing to its targets; its certificate, HSTS and port 80 stay as they are. The
   route's status says `maintenance`, and the web UI has a "Maintenance" switch on the route's page,
-  the CLI `--maintenance` and `--maintenance-message`. (#532)
+  the CLI `--maintenance` and `--maintenance-message`. (#539)
 - Connector: a route target is a host and port or a Unix socket, with a weight, a priority and
   optionally the PROXY protocol. (#249, #262, #334)
 - Controller: route hostnames must lie under a domain the org has verified, by a DNS TXT record or
@@ -117,13 +120,13 @@ history and the [ADRs](docs/adr/).
   argon2id-hashed passwords for `http` routes. A deny rule wins over every allow rule, whatever the
   order of the rules and of a route's policies; a gateway of a release candidate still lets the
   first matching rule decide until it is upgraded. A tightened policy also ends the open
-  connections it now denies. (#299, #300, #338, #520)
+  connections it now denies. (#299, #300, #338, #522)
 - Controller: `http` routes get certificates through ACME, by HTTP-01 or TLS-ALPN-01 answered by
   every gateway that serves the name, from Let's Encrypt or another ACME directory. Renewal is
   automatic and can also be started on demand. A name that fails is tried again after waits
   growing from 1 min to 6 h, and each retry rehearses at Let's Encrypt's staging directory first,
   so a name the CA cannot validate yet does not use up the account's limits. (#303, #304, #305,
-  #339, #478)
+  #339, #479)
 - Controller: obtains its own certificate through ACME when its public URL has a public DNS name;
   otherwise it uses the configured certificate or a self-signed one. (#306)
 - Controller: `http` routes can use uploaded certificates instead, whose keys are encrypted under
@@ -146,7 +149,7 @@ history and the [ADRs](docs/adr/).
 - Controller: decommissioning a connector, `rpmgr leave` and the purge delete its route targets
   and each route left with no target, so its ports and hostnames are free again; the UI names
   those routes before, the API and the CLI after. Gateways listen only on the ports of routes a
-  connector serves, and a refused port names the route that holds it. (#485)
+  connector serves, and a refused port names the route that holds it. (#492)
 - API: every write returns its revision, and the apply status says how far the agents are with it.
   A route can be previewed before it is saved, routes report their observed status, and
   configuration and status changes stream to clients. (#335, #336, #337)
@@ -163,11 +166,11 @@ history and the [ADRs](docs/adr/).
 - UI: routes can be listed, created with a preview, edited with conflict resolution, switched on
   and off while the apply status follows live, given targets, and deleted after a confirmation.
   TCP and UDP routes are shown at their gateway group's public hostnames, such as
-  `eu.example.net:25432`. (#363, #364, #365, #366, #471, #484, #493)
+  `eu.example.net:25432`. (#363, #364, #365, #366, #472, #490, #494)
 - UI: pages for connectors with an enrollment dialog, gateway groups, gateways and port pools,
   domains, certificates and CA bundles, access policies, and members and invitations. A connector
   is switched on and off on its page; the overview counts neither disabled connectors nor drained
-  gateways as offline. (#366, #367, #368, #369, #503)
+  gateways as offline. (#366, #367, #368, #369, #508)
 - UI: an overview with traffic and what needs attention, traffic per route, the audit log with
   chain verification, org and instance settings, the PKI page, read-only YAML views with export,
   and a command palette. (#370, #371, #372)
@@ -177,10 +180,10 @@ history and the [ADRs](docs/adr/).
   traffic of the last 24 hours and what needs attention. Every page uses the same page header,
   cards, tables, status badges and empty states, and fills the window's width, with long forms in
   columns on wide screens. The foot of the sidebar names the version the controller runs.
-  (#459, #481, #502)
+  (#460, #461, #462, #463, #464, #465, #482, #507)
 - UI: a field a form needs has a red asterisk after its label, also while it is needed only
   because of another field, such as the sender address once a mail relay is set. Screen readers
-  announce the field as required. (#483, #493)
+  announce the field as required. (#491, #494)
 - Controller: every change, sign-in and token use is recorded once in a hash-chained audit log per
   org and one for the instance, with signed checkpoints and retention. The API and the UI list and
   verify the chains. (#194, #311, #350, #351, #352)
@@ -207,9 +210,10 @@ history and the [ADRs](docs/adr/).
   #374)
 - Install: a global install script, attached to every release as `install.sh`, downloads the
   release from GitHub, verifies it with the release root keys it embeds, installs the binary, the
-  user `rpmgr` and its directories, and offers to run `rpmgr setup`. (#436)
+  user `rpmgr` and its directories, and offers to run `rpmgr setup`. (#445)
 - Releases: reproducible builds with an SPDX SBOM, SLSA provenance attestations and a signed
   release manifest; distroless, nonroot multi-arch images at `ghcr.io/felix-homelab/rpmgr`, signed
-  with cosign. (#384, #385)
+  with cosign. (#384, #385, #434)
 
-[Unreleased]: https://github.com/felix-homelab/rpmgr/commits/main
+[Unreleased]: https://github.com/felix-homelab/rpmgr/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/felix-homelab/rpmgr/releases/tag/v0.1.0

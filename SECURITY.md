@@ -35,8 +35,8 @@ prefer not to be.
 
 ## Supported versions
 
-Nothing has been released yet; the first release will be v0.1.0. Before 1.0.0, only the latest `0.y` release receives
-fixes. From 1.0.0 on, the latest minor release receives all fixes, and the previous minor receives
+The first release is v0.1.0. Before 1.0.0, only the latest `0.y` release receives fixes. From
+1.0.0 on, the latest minor release receives all fixes, and the previous minor receives
 security fixes and fixes for critical defects (data loss, outages)
 ([RELEASING.md](RELEASING.md#supported-versions)).
 
