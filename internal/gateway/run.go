@@ -60,8 +60,9 @@ type RunOptions struct {
 	// the private controller of controller.passthrough, and the control sessions connectors carry
 	// through their data sessions; nil dials TCP.
 	ForwardDial func(ctx context.Context, addr string) (net.Conn, error)
-	// Port80Fallback takes port-80 requests for names no route serves: all-in-one's controller,
-	// which answers ACME HTTP-01 for its own name and redirects the rest; nil answers 404.
+	// Port80Fallback takes port-80 requests for ControllerNames when no route serves them:
+	// all-in-one's controller, which answers ACME HTTP-01 for its own name and redirects the rest.
+	// Other names no route serves get the 404 page.
 	Port80Fallback http.Handler
 	// Registry, if set, receives the gateway's metrics and Run serves no admin listener;
 	// Readiness then gets the gateway's readiness check.
@@ -170,7 +171,8 @@ func Run(ctx context.Context, o RunOptions) error {
 		return err
 	}
 	httpRoutes := NewHTTPRoutes(HTTPOptions{Sessions: sessions, Certificates: certificates, Default: &def.Certificates[0],
-		Revision: applier.Revision, Fallback80: o.Port80Fallback, Challenges: challenges.HTTP01, Logger: o.Logger})
+		Revision: applier.Revision, Fallback80: o.Port80Fallback, FallbackNames: o.ControllerNames, Challenges: challenges.HTTP01,
+		Logger: o.Logger})
 	defer httpRoutes.Close()
 	applier.Bind(Served{TCP: routes, UDP: udpRoutes, Passthrough: pass, HTTP: httpRoutes, Certificates: certificates, Sessions: sessions,
 		DrainPeriod: o.DrainPeriod})
@@ -188,7 +190,7 @@ func Run(ctx context.Context, o RunOptions) error {
 	defer stop()
 	router := &Router{ACME: challenges.ALPN, TrustDomain: id.TrustDomain, GatewayID: id.AgentID, TunnelTLS: h2TLS, DefaultTLS: def, Logger: o.Logger,
 		Controller: toController, ControllerNames: controllerNames, Routes: NewRouteTable(pass, httpRoutes),
-		HTTP: httpRoutes.Serve, HTTPTLS: httpRoutes.TLSConfig(),
+		HTTP: httpRoutes.Serve, HTTPTLS: httpRoutes.TLSConfig(), Unrouted: httpRoutes.ServeUnrouted, UnroutedTLS: httpRoutes.UnroutedTLSConfig(),
 		Tunnel: func(c *tls.Conn) {
 			defer func() { _ = c.Close() }()
 			over := "TCP" // or memory: all-in-one's connector (ServeTunnels)
