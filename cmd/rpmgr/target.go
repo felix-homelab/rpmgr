@@ -46,7 +46,8 @@ func (f *targetFlags) flags(fs *flag.FlagSet, create bool) {
 	fs.StringVar(&f.spki, "spki", "", "https: the SHA-256 of its public key, 64 hex digits, checked as well")
 	fs.StringVar(&f.verification, "verification", "",
 		"https: how its certificate is checked: verified; pinned-key, its --spki only; or unverified, which lets anyone between the connector and the target read and change the traffic")
-	fs.StringVar(&f.proxy, "proxy-protocol", "", "the PROXY header sent first: none, v1 or v2")
+	fs.StringVar(&f.proxy, "proxy-protocol", "",
+		"tcp, tls_passthrough and tcp_udp: the PROXY header sent first: none, v1 or v2; on a tcp_udp route, on TCP connections only")
 	fs.UintVar(&f.weight, "weight", 0, "its share of the streams among targets of the same priority")
 	fs.UintVar(&f.priority, "priority", 0, "lower first; a higher one gets streams only when no lower one is ready")
 	fs.BoolVar(&f.disabled, "disabled", false, "the target gets no streams")

@@ -105,12 +105,14 @@ export function targetWith(base: RouteTarget, v: TargetValues): RouteTarget {
 
 // The upstream protocols, as choices of "Protocol to the target", and PROXY versions a route's type
 // allows. Only http routes choose a protocol; the others have one, the bytes as they come
-// (datagrams for udp routes), which the form sends without showing it.
+// (datagrams for udp routes), which the form sends without showing it. A tcp_udp route's PROXY
+// header goes on its TCP connections only (D86).
 function choices(r: Route) {
   const http = r.spec.case === "http";
+  const proxied = r.spec.case === "tcp" || r.spec.case === "tcpUdp" || r.spec.case === "tlsPassthrough";
   return {
     upstreams: http ? [String(UpstreamProtocol.HTTP), String(UpstreamProtocol.HTTPS), PINNED, UNVERIFIED, String(UpstreamProtocol.H2C)] : [String(UpstreamProtocol.TCP)],
-    proxies: r.spec.case === "tcp" || r.spec.case === "tlsPassthrough" ? [ProxyProtocol.NONE, ProxyProtocol.V1, ProxyProtocol.V2] : [],
+    proxies: proxied ? [ProxyProtocol.NONE, ProxyProtocol.V1, ProxyProtocol.V2] : [],
   };
 }
 
@@ -212,7 +214,8 @@ export function TargetForm({ route, target, connectors, onDone, onCancel }: {
         </>
       )}
       {proxies.length > 0 && (
-        <Select form={form} name="proxy" label={t("targetForm.proxy")} options={proxies.map((p) => [String(p), t(`targetForm.proxies.${ProxyProtocol[p]}`)])} />
+        <Select form={form} name="proxy" label={t("targetForm.proxy")} options={proxies.map((p) => [String(p), t(`targetForm.proxies.${ProxyProtocol[p]}`)])}
+          hint={route.spec.case === "tcpUdp" ? t("targetForm.proxyTCPOnly") : undefined} />
       )}
       <div className="grid grid-cols-2 gap-2">
         <Text form={form} name="weight" label={t("route.columns.weight")} required />
@@ -302,18 +305,20 @@ function Text({ form, name, label, hint, required }: {
   );
 }
 
-function Select({ form, name, label, options, disabled, required, describedBy }: {
+function Select({ form, name, label, options, disabled, required, describedBy, hint }: {
   form: UseFormReturn<TargetValues>; name: Path<TargetValues>; label: string; options: [string, string][]; disabled?: boolean; required?: boolean;
-  describedBy?: string;
+  describedBy?: string; hint?: string;
 }) {
   const id = useId();
   const error = form.formState.errors[name as keyof TargetValues]?.message;
+  const described = [describedBy, hint && `${id}-hint`].filter(Boolean).join(" ") || undefined;
   return (
     <div className="grid gap-1.5">
       <label htmlFor={id} className={labelClass(required)}>{label}</label>
-      <SelectBox id={id} disabled={disabled} required={required} aria-invalid={error ? true : undefined} aria-describedby={describedBy} {...form.register(name)}>
+      <SelectBox id={id} disabled={disabled} required={required} aria-invalid={error ? true : undefined} aria-describedby={described} {...form.register(name)}>
         {options.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
       </SelectBox>
+      {hint && <p id={`${id}-hint`} className="text-xs text-muted-foreground">{hint}</p>}
       {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
     </div>
   );

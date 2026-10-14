@@ -431,6 +431,7 @@
     "caBundle": "CA bundle ID (empty: the system's roots)",
     "spki": "Public key pin, SHA-256 in hex (optional)",
     "proxy": "PROXY protocol",
+    "proxyTCPOnly": "TCP connections only; UDP datagrams get no header.",
     "proxies": {
       "NONE": "None",
       "V1": "Version 1",
