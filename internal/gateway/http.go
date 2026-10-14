@@ -140,8 +140,9 @@ type HTTPRoutes struct {
 	active   atomic.Int64                           // requests being served
 
 	mu         sync.Mutex
-	transports map[string]*routeTransport // by route ID
-	upstream   map[string]*upstreamConns  // by route ID, kept while their connections are open
+	transports map[string]*routeTransport   // by route ID
+	replaced   map[string][]*routeTransport // by route ID: transports a change replaced, while requests run on them
+	upstream   map[string]*upstreamConns    // by route ID, kept while their connections are open
 }
 
 type httpTable struct {
@@ -253,13 +254,20 @@ func (rt *routeTransport) enforce(a Access) {
 	}
 }
 
+// idle reports whether no request runs on the transport.
+func (rt *routeTransport) idle() bool {
+	rt.mu.Lock()
+	defer rt.mu.Unlock()
+	return len(rt.active) == 0
+}
+
 // NewHTTPRoutes returns the http routes' server; Close stops it.
 func NewHTTPRoutes(o HTTPOptions) *HTTPRoutes {
 	if o.Logger == nil {
 		o.Logger = slog.New(slog.DiscardHandler)
 	}
 	h := &HTTPRoutes{o: o, ln: newConnListener(), transports: map[string]*routeTransport{},
-		upstream: map[string]*upstreamConns{}, basic: NewBasicAuth(nil)}
+		replaced: map[string][]*routeTransport{}, upstream: map[string]*upstreamConns{}, basic: NewBasicAuth(nil)}
 	h.table.Store(&httpTable{byHost: map[string][]httpEntry{}})
 	protocols := new(http.Protocols)
 	protocols.SetHTTP1(true)
@@ -412,12 +420,18 @@ func (h *HTTPRoutes) Apply(routes []HTTPRoute) {
 		rt := h.transports[r.ID]
 		if rt == nil || rt.route.Load().Upstream != r.Upstream || !reflect.DeepEqual(rt.route.Load().TLS, r.TLS) {
 			if rt != nil {
-				rt.enforce(r.Access) // its requests finish on the old transport, unless h.upstream ends them
+				// Its requests finish on the old transport, unless h.upstream ends them, under the
+				// route's rules of this and every later snapshot (#523).
+				h.replaced[r.ID] = append(h.replaced[r.ID], rt)
 			}
 			rt = h.newTransport(r)
 		} else if old := rt.route.Swap(&r); !old.Access.Same(r.Access) {
 			rt.enforce(r.Access)
 		}
+		h.replaced[r.ID] = slices.DeleteFunc(h.replaced[r.ID], func(old *routeTransport) bool {
+			old.enforce(r.Access)
+			return old.idle()
+		})
 		next[r.ID] = rt
 		h.upstreamOf(r.ID).set(r.TLS)
 		for _, host := range r.Hosts {
@@ -439,6 +453,11 @@ func (h *HTTPRoutes) Apply(routes []HTTPRoute) {
 		}
 	}
 	h.transports = next
+	for id := range h.replaced {
+		if next[id] == nil {
+			delete(h.replaced, id) // a removed route's requests finish
+		}
+	}
 	for id, u := range h.upstream {
 		if next[id] == nil {
 			u.set(nil) // a removed route's connections finish

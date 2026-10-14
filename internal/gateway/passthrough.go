@@ -152,7 +152,7 @@ func (p *Passthrough) handle(c net.Conn, id, sni string) {
 	// Checked and recorded under p.mu, which enforce takes after Apply swapped the rules in:
 	// either enforce sees the connection, or the check sees the new rules (#523).
 	p.mu.Lock()
-	if !(*p.access.Load())[id].AllowsAddr(c.RemoteAddr()) {
+	if a, ok := (*p.access.Load())[id]; !ok || !a.AllowsAddr(c.RemoteAddr()) { // a route removed meanwhile admits no one
 		p.mu.Unlock()
 		abort(c)
 		return
