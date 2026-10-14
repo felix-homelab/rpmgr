@@ -95,6 +95,13 @@ history and the [ADRs](docs/adr/).
 - Gateway: `http` routes set `Forwarded` and `X-Forwarded-*` and keep a client's own only from the
   gateway group's trusted proxies. They can replace the `Host` header, set request and response
   headers, redirect or serve port 80, and send HSTS. (#297, #298)
+- Gateway: a browser gets a page instead of bare text or a closed connection. A name no route
+  serves shows "Site not available" (404) on port 80, and on port 443 with a certificate the
+  gateway holds that covers the name, such as a route's wildcard one, or else after the browser's
+  certificate warning. A route without a live target, or whose target refuses or does not answer,
+  shows "Service unavailable" (503, 502, 504). Other clients keep getting text, and an upstream's
+  own errors pass unchanged. On all-in-one, port 80 redirects only the controller's own name to
+  its public URL. (#531)
 - Connector: a route target is a host and port or a Unix socket, with a weight, a priority and
   optionally the PROXY protocol. (#249, #262, #334)
 - Controller: route hostnames must lie under a domain the org has verified, by a DNS TXT record or

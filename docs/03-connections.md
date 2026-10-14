@@ -700,7 +700,11 @@ sequenceDiagram
 - **Routing.** A request goes to the route of its `Host` and the longest path prefix that matches
   at a segment boundary (`/api` matches `/api` and `/api/x`, not `/apix`). A hostname a route names
   exactly comes before a wildcard hostname one label up, which serves a name only if no route
-  names it. No match is **404**. TLS is terminated with the route certificate for the server name
+  names it. No match is **404**, with the site-not-available page, unless the request names
+  another host than the connection's server name and no route serves that host: then it is
+  **421**, and an HTTP/1.1 connection closes, so that a client that reused the connection, such as
+  an HTTP/2 one under a wildcard certificate, asks again on a connection of its own. TLS is
+  terminated with the route certificate for the server name
   ([04](04-security.md#controller-certificates)).
 - **HTTPS upstreams.** For an `https` target the gateway speaks TLS over the stream, end to end
   with the upstream, verified with the settings of the target the connector reached, which
@@ -716,9 +720,11 @@ sequenceDiagram
   decides: `redirect` sends the same path and query to HTTPS (**301** for GET and HEAD, **308**
   otherwise, which keeps the method and body), `serve` proxies the route as on 443 with
   `X-Forwarded-Proto: http`, and `off` closes the connection without an answer. A name no route
-  serves is **404**; on all-in-one it goes to the controller, as the gateway takes port 80 there
-  too: the controller answers the HTTP-01 challenges of its own name and redirects everything else
-  to its public URL.
+  serves is **404** with the site-not-available page. On all-in-one, where the gateway takes port
+  80 too, the controller's own name goes to the controller when no route serves it: it answers the
+  HTTP-01 challenges of that name and redirects everything else to its public URL. Any other name
+  gets the page, so that port 80 never sends a stranger's name to the control plane
+  ([D87](14-open-decisions.md#engineering)).
 - **HSTS**: a route with an HSTS max-age sends `Strict-Transport-Security: max-age=<n>` with every
   HTTPS response, its own and the gateway's errors alike, replacing the upstream's; never over plain
   HTTP.
@@ -726,7 +732,18 @@ sequenceDiagram
   through when the target speaks HTTP/2 (h2c, or TLS with ALPN `h2`); the gateway streams every
   response as it comes, so it sends a gRPC status that arrived without a body as trailers.
 - Error mapping: no ready session or connector → **503** with `Retry-After: 5`; upstream refused or
-  reset → **502**; upstream timeout → **504**.
+  reset → **502**; upstream timeout → **504**. Each comes with the service-unavailable page. A
+  response the upstream sent, its own 5xx included, passes unchanged.
+- **Pages** ([D87](14-open-decisions.md#engineering)): a browser gets a page from the gateway, not
+  bare text, for a name or path no route serves ("Site not available", 404) and for the errors
+  above ("Service unavailable"). A page is self-contained HTML in English: one inline style, which
+  the `Content-Security-Policy` allows by its SHA-256 (`default-src 'none'`, no script, nothing
+  loaded from elsewhere), light and dark themes, the hostname the client asked for as escaped
+  text, never one the route sends upstream, and `Cache-Control: no-store`. Only a client whose
+  own `Accept` names `text/html` gets it; any other, such as curl or an API client, gets the plain
+  text it got before. HEAD gets the headers alone.
+  The pages are built in; pages of one's own per gateway group come in Phase 2
+  ([05](05-features.md#http-features)).
 
 ### TLS passthrough routes
 
@@ -790,7 +807,7 @@ path with a 1500-byte MTU they arrive in two TCP segments ([S3](spikes/S3.md)).
 | SNI = this gateway's WSS tunnel hostname | HTTP engine; `/.rpmgr/tunnel` upgrades to the WSS transport (Phase 2) |
 | SNI matches a TLS-passthrough route | Splice raw bytes to a connector |
 | SNI matches an HTTP route hostname | Terminate TLS (ACME or uploaded certificate), hand to HTTP engine |
-| No SNI, unknown SNI | Complete the handshake with the default certificate (self-signed for `default.invalid`, generated at every start) and close; there is no configurable fallback route |
+| No SNI, unknown SNI | There is no configurable fallback route. Complete the handshake as for an http route, with a valid certificate the gateway holds whose own names cover the name, such as a route's wildcard certificate, or else with the default certificate (self-signed for `default.invalid`, generated at every start), which no client trusts. Then answer each request with the site-not-available page ([HTTP routes](#http-routes)). A request for the connection's own name that a route serves by now, which a snapshot added after the client connected, is served as on the route's own connection. A request for another name than the connection's, or on a connection without a name for a name a route serves, is **421**, and an HTTP/1.1 connection closes, so that the client asks again on a connection of its own. A request with a body gets its answer without the body being read, and an HTTP/1.1 connection closes |
 | Not TLS | Close |
 
 The ClientHello is parsed with `golang.org/x/crypto/cryptobyte` from the recorded records, which

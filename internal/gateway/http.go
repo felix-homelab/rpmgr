@@ -120,10 +120,12 @@ type HTTPOptions struct {
 	// Challenges answers ACME HTTP-01 challenges on port 80 with the key authorization of a
 	// token for a host; nil answers none.
 	Challenges func(host, token string) (keyAuthorization string, ok bool)
-	// Fallback80 takes port-80 requests for names no route serves: all-in-one's controller, which
-	// answers ACME HTTP-01 for its own name and redirects the rest; nil answers 404.
-	Fallback80 http.Handler
-	Logger     *slog.Logger
+	// Fallback80 takes port-80 requests for FallbackNames when no route serves them: all-in-one's
+	// controller, which answers ACME HTTP-01 for its own name and redirects the rest. Other names
+	// no route serves get the gateway's 404 page.
+	Fallback80    http.Handler
+	FallbackNames []string
+	Logger        *slog.Logger
 }
 
 // HTTPRoutes serves the http routes (docs/03-connections.md, "HTTP routes"): it terminates TLS
@@ -134,7 +136,9 @@ type HTTPRoutes struct {
 	basic    *BasicAuth
 	server   *http.Server
 	server80 *http.Server
+	unrouted *http.Server // the connections of names no route serves
 	ln       *connListener
+	lnNone   *connListener
 	table    atomic.Pointer[httpTable]
 	tokens   atomic.Pointer[map[string]DomainToken] // by claim ID
 	active   atomic.Int64                           // requests being served
@@ -266,7 +270,7 @@ func NewHTTPRoutes(o HTTPOptions) *HTTPRoutes {
 	if o.Logger == nil {
 		o.Logger = slog.New(slog.DiscardHandler)
 	}
-	h := &HTTPRoutes{o: o, ln: newConnListener(), transports: map[string]*routeTransport{},
+	h := &HTTPRoutes{o: o, ln: newConnListener(), lnNone: newConnListener(), transports: map[string]*routeTransport{},
 		replaced: map[string][]*routeTransport{}, upstream: map[string]*upstreamConns{}, basic: NewBasicAuth(nil)}
 	h.table.Store(&httpTable{byHost: map[string][]httpEntry{}})
 	protocols := new(http.Protocols)
@@ -277,6 +281,9 @@ func NewHTTPRoutes(o HTTPOptions) *HTTPRoutes {
 	go func() { _ = h.server.Serve(h.ln) }()
 	h.server80 = &http.Server{Handler: http.HandlerFunc(h.serve80), ReadHeaderTimeout: httpReadHeader, IdleTimeout: httpIdle,
 		ErrorLog: slog.NewLogLogger(o.Logger.Handler(), slog.LevelDebug)}
+	h.unrouted = &http.Server{Handler: http.HandlerFunc(h.serveUnrouted), ReadHeaderTimeout: httpReadHeader, IdleTimeout: httpIdle,
+		Protocols: protocols, ErrorLog: slog.NewLogLogger(o.Logger.Handler(), slog.LevelDebug)}
+	go func() { _ = h.unrouted.Serve(h.lnNone) }()
 	return h
 }
 
@@ -315,15 +322,13 @@ func (h *HTTPRoutes) domainToken(w http.ResponseWriter, r *http.Request, host, i
 }
 
 // serve80 answers plain HTTP (docs/03-connections.md, "HTTP routes"): the HTTP tokens of the org's
-// pending domain claims and ACME HTTP-01 challenges for any name, always; then, by the route of the host and path, a redirect to HTTPS that keeps the
-// path and query, the route itself, or a closed connection.
+// pending domain claims and ACME HTTP-01 challenges for any name, always; then, by the route of
+// the host and path, a redirect to HTTPS that keeps the path and query, the route itself, or a
+// closed connection; without a route, all-in-one's controller for its own names, or the 404 page.
 func (h *HTTPRoutes) serve80(w http.ResponseWriter, r *http.Request) {
 	h.active.Add(1)
 	defer h.active.Add(-1)
-	host := r.Host
-	if hp, _, err := net.SplitHostPort(host); err == nil {
-		host = hp
-	}
+	host := hostOnly(r.Host)
 	if id, ok := strings.CutPrefix(r.URL.Path, tokenPath); ok {
 		h.domainToken(w, r, host, id)
 		return
@@ -338,7 +343,7 @@ func (h *HTTPRoutes) serve80(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		// all-in-one's controller answers for its own name, which no route serves.
-		if rt == nil && h.o.Fallback80 != nil {
+		if rt == nil && h.fallback(host) {
 			h.o.Fallback80.ServeHTTP(w, r)
 			return
 		}
@@ -346,11 +351,11 @@ func (h *HTTPRoutes) serve80(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if rt == nil {
-		if h.o.Fallback80 != nil {
+		if h.fallback(host) {
 			h.o.Fallback80.ServeHTTP(w, r)
 			return
 		}
-		http.Error(w, "no route for this host and path", http.StatusNotFound)
+		writePage(w, r, http.StatusNotFound, pageNotFound, noRouteText)
 		return
 	}
 	switch rt.route.Load().Port80 {
@@ -368,6 +373,14 @@ func (h *HTTPRoutes) serve80(w http.ResponseWriter, r *http.Request) {
 		// The host is one a route of this gateway serves, so the redirect stays on the route.
 		http.Redirect(w, r, "https://"+host+r.URL.RequestURI(), code) //nolint:gosec // G710: see above
 	}
+}
+
+// fallback reports whether port 80 hands a host no route serves to Fallback80.
+func (h *HTTPRoutes) fallback(host string) bool {
+	host = strings.TrimSuffix(host, ".")
+	return h.o.Fallback80 != nil && slices.ContainsFunc(h.o.FallbackNames, func(n string) bool {
+		return strings.EqualFold(strings.TrimSuffix(n, "."), host)
+	})
 }
 
 // TLSConfig is the configuration the router terminates http routes' TLS with: TLS 1.3, or TLS
@@ -396,10 +409,84 @@ func (h *HTTPRoutes) TLSConfig() *tls.Config {
 	}
 }
 
+// UnroutedTLSConfig is the configuration of the connections of names no route serves, or of none:
+// that of the routes, with a certificate the gateway holds that covers the name, such as a route's
+// wildcard one, or else the default one, which no client trusts.
+func (h *HTTPRoutes) UnroutedTLSConfig() *tls.Config {
+	cfg := h.TLSConfig()
+	cfg.GetCertificate = func(hello *tls.ClientHelloInfo) (*tls.Certificate, error) {
+		if h.o.Certificates != nil {
+			if c := h.o.Certificates.Covering(hello.ServerName); c != nil {
+				return c, nil
+			}
+		}
+		if h.o.Default != nil {
+			return h.o.Default, nil
+		}
+		return nil, fmt.Errorf("no certificate for %q", hello.ServerName)
+	}
+	return cfg
+}
+
 // Serve takes one connection the router chose for an http route.
 func (h *HTTPRoutes) Serve(c *tls.Conn) {
 	if !h.ln.put(c) {
 		_ = c.Close()
+	}
+}
+
+// ServeUnrouted takes one connection of a name no route serves, or of none, which only ever gets
+// the 404 page.
+func (h *HTTPRoutes) ServeUnrouted(c *tls.Conn) {
+	if !h.lnNone.put(c) {
+		_ = c.Close()
+	}
+}
+
+// serveUnrouted answers the requests of such a connection with the 404 page for their name. A
+// route that serves the connection's own name by now, added by a snapshot after the client
+// connected, is served as on a connection of its own: the certificate the connection got is the
+// one the name gets. A request for another name than the connection's, or for a name a route
+// serves on a connection without a name, is misdirected (RFC 9110, section 15.5.20): a client that
+// reused the connection for a name its certificate covers asks again on a connection of its own.
+func (h *HTTPRoutes) serveUnrouted(w http.ResponseWriter, r *http.Request) {
+	host := strings.TrimSuffix(hostOnly(r.Host), ".")
+	sni := ""
+	if r.TLS != nil {
+		sni = strings.TrimSuffix(r.TLS.ServerName, ".")
+	}
+	own := sni != "" && strings.EqualFold(sni, host)
+	switch {
+	case own && h.Serves(host):
+		h.ServeHTTP(w, r)
+	case !own && (sni != "" || h.Serves(host)):
+		misdirected(w, r)
+	default:
+		h.active.Add(1)
+		defer h.active.Add(-1)
+		if r.ContentLength != 0 {
+			closeUnread(w, r)
+		}
+		writePage(w, r, http.StatusNotFound, pageNotFound, noRouteText)
+	}
+}
+
+// misdirected answers 421 and closes an HTTP/1.1 connection, on which a client would otherwise send
+// the name again rather than connect anew.
+func misdirected(w http.ResponseWriter, r *http.Request) {
+	closeUnread(w, r)
+	http.Error(w, http.StatusText(http.StatusMisdirectedRequest), http.StatusMisdirectedRequest)
+}
+
+// closeUnread closes an HTTP/1.1 connection after the answer, without reading the rest of a request
+// body that nothing reads: the server would wait for it, as long as a client cared to hold it.
+func closeUnread(w http.ResponseWriter, r *http.Request) {
+	if r.ProtoMajor != 1 {
+		return
+	}
+	w.Header().Set("Connection", "close")
+	if r.ContentLength != 0 {
+		_ = http.NewResponseController(w).SetReadDeadline(time.Now())
 	}
 }
 
@@ -706,7 +793,8 @@ func (h *HTTPRoutes) dialTLS(ctx context.Context, rt *routeTransport) (net.Conn,
 }
 
 // proxyError answers a request the proxy could not complete: 503 with Retry-After when no
-// connector is ready, 504 when the upstream does not answer in time, 502 otherwise.
+// connector is ready, 504 when the upstream does not answer in time, 502 otherwise, each with the
+// service-unavailable page; a body above the route's limit is 413.
 func (h *HTTPRoutes) proxyError(w http.ResponseWriter, r *http.Request, err error) {
 	var (
 		oe *openError
@@ -732,7 +820,11 @@ func (h *HTTPRoutes) proxyError(w http.ResponseWriter, r *http.Request, err erro
 		w.Header().Set("Retry-After", strconv.Itoa(httpRetryAfter))
 	}
 	h.o.Logger.Debug("proxy error", "host", r.Host, "status", status, "error", err)
-	http.Error(w, http.StatusText(status), status)
+	if status == http.StatusRequestEntityTooLarge {
+		http.Error(w, http.StatusText(status), status)
+		return
+	}
+	writePage(w, r, status, pageUnavailable, http.StatusText(status))
 }
 
 // ServeHTTP routes a request by its host and the longest matching path prefix.
@@ -741,7 +833,16 @@ func (h *HTTPRoutes) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	defer h.active.Add(-1)
 	rt := h.routeFor(r.Host, r.URL.Path)
 	if rt == nil {
-		http.Error(w, "no route for this host and path", http.StatusNotFound)
+		// A name this gateway does not route, on a connection of another name: a client that
+		// reused the connection, such as an HTTP/2 one under a wildcard certificate, asks again
+		// on a connection of its own, which reaches the name's own handler (RFC 9110, section
+		// 15.5.20).
+		if host := strings.TrimSuffix(hostOnly(r.Host), "."); r.TLS != nil && r.TLS.ServerName != "" &&
+			!strings.EqualFold(strings.TrimSuffix(r.TLS.ServerName, "."), host) && !h.Serves(host) {
+			misdirected(w, r)
+			return
+		}
+		writePage(w, r, http.StatusNotFound, pageNotFound, noRouteText)
 		return
 	}
 	if age := rt.route.Load().HSTS; age > 0 && r.TLS != nil {
@@ -792,7 +893,7 @@ func (h *HTTPRoutes) proxy(rw http.ResponseWriter, r *http.Request, rt *routeTra
 			return
 		}
 	}
-	ctx, cancel := context.WithCancel(r.Context())
+	ctx, cancel := context.WithCancel(withPageRequest(r.Context(), r))
 	defer cancel()
 	ar := &activeRequest{client: client, cancel: cancel}
 	rt.mu.Lock()
@@ -827,10 +928,7 @@ func (h *HTTPRoutes) proxy(rw http.ResponseWriter, r *http.Request, rt *routeTra
 
 // routeFor returns the route for a request's host, with or without a port, and path, or nil.
 func (h *HTTPRoutes) routeFor(host, path string) *routeTransport {
-	if hp, _, err := net.SplitHostPort(host); err == nil {
-		host = hp
-	}
-	entries, _ := h.table.Load().lookup(host)
+	entries, _ := h.table.Load().lookup(hostOnly(host))
 	for _, e := range entries {
 		if matchPrefix(path, e.prefix) {
 			return e.route
@@ -872,14 +970,18 @@ func (h *HTTPRoutes) Active() int64 { return h.active.Load() }
 func (h *HTTPRoutes) Drain() {
 	h.server.SetKeepAlivesEnabled(false)
 	h.server80.SetKeepAlivesEnabled(false)
+	h.unrouted.SetKeepAlivesEnabled(false)
 	h.ln.close()
+	h.lnNone.close()
 }
 
 // Close stops the server and every connection.
 func (h *HTTPRoutes) Close() {
 	h.ln.close()
+	h.lnNone.close()
 	_ = h.server.Close()
 	_ = h.server80.Close()
+	_ = h.unrouted.Close()
 	h.mu.Lock()
 	for _, rt := range h.transports {
 		rt.tr.CloseIdleConnections()

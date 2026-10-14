@@ -66,7 +66,8 @@ type Certificates struct {
 	want    []CertificateRoute
 	loaded  map[string]*tls.Certificate // by hex content hash
 	byHost  map[string][]*tls.Certificate
-	missing map[string]missingCert // by hex content hash
+	bySAN   map[string][]*tls.Certificate // by each DNS name the loaded certificates carry, lower case
+	missing map[string]missingCert        // by hex content hash
 }
 
 // missingCert is a certificate that could not be loaded yet, and why.
@@ -84,7 +85,7 @@ func NewCertificates(o CertificatesOptions) *Certificates {
 		o.Logger = slog.New(slog.DiscardHandler)
 	}
 	return &Certificates{o: o, retry: make(chan struct{}, 1), loaded: map[string]*tls.Certificate{},
-		byHost: map[string][]*tls.Certificate{}, missing: map[string]missingCert{}}
+		byHost: map[string][]*tls.Certificate{}, bySAN: map[string][]*tls.Certificate{}, missing: map[string]missingCert{}}
 }
 
 // Apply makes routes the served certificates: each comes from memory, from Dir, or from Fetch, and
@@ -216,13 +217,21 @@ func (c *Certificates) prune() {
 }
 
 // rebuild maps every route hostname of the snapshot's certificates to those of them that are
-// loaded, possibly none.
+// loaded, possibly none, and every DNS name of a loaded one to it.
 func (c *Certificates) rebuild() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	byHost := map[string][]*tls.Certificate{}
+	byHost, bySAN := map[string][]*tls.Certificate{}, map[string][]*tls.Certificate{}
 	for _, r := range c.want {
 		cert := c.loaded[hex.EncodeToString(r.ContentSHA256)]
+		if cert != nil {
+			for _, n := range cert.Leaf.DNSNames {
+				n = strings.ToLower(n)
+				if !slices.Contains(bySAN[n], cert) {
+					bySAN[n] = append(bySAN[n], cert)
+				}
+			}
+		}
 		for _, h := range r.Hostnames {
 			if cert != nil {
 				byHost[h] = append(byHost[h], cert)
@@ -231,7 +240,7 @@ func (c *Certificates) rebuild() {
 			}
 		}
 	}
-	c.byHost = byHost
+	c.byHost, c.bySAN = byHost, bySAN
 }
 
 // Run retries the certificates Apply could not load, with backoff, until ctx ends.
@@ -311,6 +320,35 @@ func (c *Certificates) ForName(serverName string) *tls.Certificate {
 	var best *tls.Certificate
 	for _, cert := range candidates {
 		if now.Before(cert.Leaf.NotBefore) || !now.Before(cert.Leaf.NotAfter) {
+			continue
+		}
+		if best == nil || cert.Leaf.NotAfter.After(best.Leaf.NotAfter) {
+			best = cert
+		}
+	}
+	return best
+}
+
+// Covering returns a certificate of the snapshot whose own names cover a server name no route
+// serves, such as a route's wildcard certificate for a name one label below it, so that the
+// gateway can answer that name with its page (D87); among several, the valid one that expires
+// last. It is nil when none covers the name. The name is the client's choice, so it is looked up
+// by the name and its wildcard one label up, not compared with every certificate.
+func (c *Certificates) Covering(serverName string) *tls.Certificate {
+	name := strings.ToLower(strings.TrimSuffix(serverName, "."))
+	if name == "" {
+		return nil
+	}
+	now := c.o.Now()
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	candidates := c.bySAN[name]
+	if _, parent, ok := strings.Cut(name, "."); ok {
+		candidates = append(slices.Clip(candidates), c.bySAN["*."+parent]...)
+	}
+	var best *tls.Certificate
+	for _, cert := range candidates {
+		if now.Before(cert.Leaf.NotBefore) || !now.Before(cert.Leaf.NotAfter) || cert.Leaf.VerifyHostname(name) != nil {
 			continue
 		}
 		if best == nil || cert.Leaf.NotAfter.After(best.Leaf.NotAfter) {
