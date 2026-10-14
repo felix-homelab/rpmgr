@@ -47,7 +47,8 @@ type RunOptions struct {
 	// Registry, if set, receives the connector's metrics instead of a new registry.
 	Registry telemetry.Registry
 	// Readiness, if set, gets the connector's readiness check, and Run serves no admin listener:
-	// the caller's serves Registry.
+	// the caller's serves Registry. Unlike a gateway's, a Registry alone keeps the connector's own
+	// admin listener, which then serves it.
 	Readiness func(check func(context.Context) error)
 	// InProcess, if set, is a gateway in the same process, which the data sessions reach in memory.
 	InProcess *InProcess

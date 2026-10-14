@@ -468,11 +468,13 @@ func (m *Sessions) Status() []*agentv1.ResourceStatus {
 	served, failed := map[string]bool{}, map[string]string{}
 	for _, gs := range m.gateways {
 		for r, p := range gs.g.Routes {
+			// Any link with a session serves the route, an auto link too: a route the in-process
+			// gateway carries in memory may be on auto towards another gateway.
 			l := gs.links[p]
 			switch {
-			case p == TransportAuto || l == nil:
-			case len(l.sessions) > 0:
+			case l != nil && len(l.sessions) > 0:
 				served[r] = true
+			case p == TransportAuto || l == nil:
 			case l.failed != nil:
 				failed[r] = p
 			}

@@ -238,8 +238,8 @@ func TestRouter_Tunnels(t *testing.T) {
 		go func() { tc.hello(c); close(done) }()
 		// The router closes the connection: the client's handshake or write ends, and a read sees EOF.
 		<-done
-		if _, err := c.Read(make([]byte, 1)); err == nil {
-			t.Errorf("%s: the connection is still open", tc.name)
+		if _, err := c.Read(make([]byte, 1)); !errors.Is(err, io.EOF) {
+			t.Errorf("%s: %v, want the router to have closed it (EOF)", tc.name, err)
 		}
 		_ = c.Close()
 	}

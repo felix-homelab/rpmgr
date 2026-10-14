@@ -4,6 +4,7 @@ package itest_test
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -15,11 +16,15 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 
+	"github.com/felix-homelab/rpmgr/internal/agent"
+	"github.com/felix-homelab/rpmgr/internal/audit"
 	"github.com/felix-homelab/rpmgr/internal/config"
 	"github.com/felix-homelab/rpmgr/internal/connector"
+	"github.com/felix-homelab/rpmgr/internal/controller"
 	"github.com/felix-homelab/rpmgr/internal/gateway"
 	"github.com/felix-homelab/rpmgr/internal/itest"
 	"github.com/felix-homelab/rpmgr/internal/memnet"
+	"github.com/felix-homelab/rpmgr/internal/pki"
 	"github.com/felix-homelab/rpmgr/internal/routes"
 	"github.com/felix-homelab/rpmgr/internal/store"
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
@@ -29,7 +34,8 @@ import (
 // TestDataSession_InMemory: a gateway and a connector in one process, as all-in-one runs them,
 // serve a tcp route pinned to QUIC over one in-memory data session, although the gateway's tunnel
 // endpoint answers nothing; both register their metrics on one registry, apart by a role label,
-// and neither serves an admin listener of its own.
+// and neither serves an admin listener of its own. Revoking the connector's certificate ends the
+// in-memory session and its open connections, as it ends one over TCP.
 func TestDataSession_InMemory(t *testing.T) {
 	c := itest.StartController(t, itest.Options{Sources: routes.Sources()})
 	dir := t.TempDir()
@@ -87,9 +93,13 @@ func TestDataSession_InMemory(t *testing.T) {
 		t.Fatal(err)
 	}
 	runRole(t, func(ctx context.Context, listening func()) error {
-		return connector.Run(ctx, connector.RunOptions{Config: cc, Version: "0.1.0", Getenv: func(string) string { return "" }, Logger: c.Logs.Logger(),
+		err := connector.Run(ctx, connector.RunOptions{Config: cc, Version: "0.1.0", Getenv: func(string) string { return "" }, Logger: c.Logs.Logger(),
 			Listening: listening, Registry: telemetry.WithLabels(reg, prometheus.Labels{"role": "connector"}), Readiness: readiness,
 			InProcess: &connector.InProcess{GatewayID: gw.AgentID, Dial: func(ctx context.Context) (net.Conn, error) { return tunnels.Dial(ctx, "") }}})
+		if errors.Is(err, agent.ErrRevoked) {
+			return nil // the end of the test revokes it
+		}
+		return err
 	})
 
 	waitFor(t, "the route does not answer through the in-memory session", func() bool {
@@ -136,4 +146,29 @@ func TestDataSession_InMemory(t *testing.T) {
 			t.Fatalf("an admin listener of its own on %s", admin)
 		}
 	}
+
+	held, err := net.Dial("tcp", addr(publicPort))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = held.Close() }()
+	if err := ping(held, "before the revocation"); err != nil {
+		t.Fatal(err)
+	}
+	serial := pki.SerialHex(con.Certificate.Leaf.SerialNumber)
+	if err := c.Revoker().RevokeCertificate(c.Sys, serial, "test", controller.Actor{Type: audit.ActorUser, ID: "usr_t"}); err != nil {
+		t.Fatal(err)
+	}
+	_ = held.SetReadDeadline(time.Now().Add(15 * time.Second))
+	if _, err := held.Read(make([]byte, 1)); err == nil || errors.Is(err, os.ErrDeadlineExceeded) {
+		t.Fatalf("a connection through the revoked connector's in-memory session: %v, want it closed", err)
+	}
+	waitFor(t, "the route still answers through the revoked connector", func() bool {
+		conn, err := net.Dial("tcp", addr(publicPort))
+		if err != nil {
+			return true
+		}
+		defer func() { _ = conn.Close() }()
+		return ping(conn, "after") != nil
+	})
 }

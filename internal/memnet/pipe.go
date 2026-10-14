@@ -41,8 +41,11 @@ func (h *half) notify() {
 type conn struct {
 	in, out *half
 	rd, wd  deadline
-	once    sync.Once
-	closed  chan struct{}
+	// wmu makes each Write atomic, as on net.Pipe: one that waits for room in the buffer keeps
+	// the others out until it has written everything or failed.
+	wmu    sync.Mutex
+	once   sync.Once
+	closed chan struct{}
 }
 
 func newConn(in, out *half) *conn {
@@ -81,6 +84,8 @@ func (c *conn) Read(b []byte) (int, error) {
 }
 
 func (c *conn) Write(b []byte) (int, error) {
+	c.wmu.Lock()
+	defer c.wmu.Unlock()
 	n := 0
 	for {
 		if err := c.check(&c.wd); err != nil {

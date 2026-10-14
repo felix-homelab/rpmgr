@@ -58,8 +58,13 @@ func TestInProcess_OneSessionForEveryRoute(t *testing.T) {
 	if err := echo(t, other.sessions.Load(), "rt_q"); err != nil {
 		t.Fatalf("the other gateway: %v", err)
 	}
-	if sni := <-local.serverName; sni != id.DNSName() {
-		t.Fatalf("ServerName %q, want %q", sni, id.DNSName())
+	select {
+	case sni := <-local.serverName:
+		if sni != id.DNSName() {
+			t.Fatalf("ServerName %q, want %q", sni, id.DNSName())
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("no handshake reached the in-process gateway")
 	}
 	time.Sleep(200 * time.Millisecond)
 	if local.quicConns.Load() != 0 || dials.Load() != 1 || len(m.Status()) != 0 {
@@ -115,5 +120,32 @@ func TestInProcess_Retries(t *testing.T) {
 	}
 	if st := m.Status(); len(st) != 0 {
 		t.Fatalf("status %v once the session is up", st)
+	}
+}
+
+// TestInProcess_ServedElsewhere: a route on auto that another gateway serves is not reported
+// transport_unavailable while the in-memory link to the in-process gateway fails.
+func TestInProcess_ServedElsewhere(t *testing.T) {
+	w := newWorld(t)
+	id := w.gatewayID()
+	local := startGateway(t, w, id, w.leaf(t, w.is, w.inter, id))
+	otherID := w.gatewayID()
+	other := startGateway(t, w, otherID, w.leaf(t, w.is, w.inter, otherID))
+	var fail, dials atomic.Int64
+	fail.Store(1 << 30) // the in-process gateway never accepts
+	m := newConnectorOptions(t, w, func(o *connector.Options) { o.InProcess = inProcess(local, &fail, &dials) })
+	readyAll(m, "rt_a")
+	m.Set([]connector.Gateway{
+		{ID: id.ID, Endpoints: []string{local.addr}, Routes: map[string]string{"rt_a": connector.TransportAuto}},
+		{ID: otherID.ID, Endpoints: []string{other.addr}, Routes: map[string]string{"rt_a": connector.TransportAuto}},
+	})
+	eventually(t, "the other gateway does not serve the route", func() bool { return echo(t, other.sessions.Load(), "rt_a") == nil })
+	eventually(t, "the in-memory link was not tried", func() bool { return dials.Load() > 0 })
+	time.Sleep(200 * time.Millisecond)
+	if st := m.Status(); len(st) != 0 {
+		t.Fatalf("status %v for a route another gateway serves", st)
+	}
+	if len(local.sessions.Load().Count()) != 0 {
+		t.Fatal("a session to the in-process gateway")
 	}
 }

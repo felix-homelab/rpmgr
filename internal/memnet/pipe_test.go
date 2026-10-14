@@ -76,3 +76,39 @@ func TestPipe_FullBufferWaits(t *testing.T) {
 		t.Fatalf("with a reader: %d, %v", n, err)
 	}
 }
+
+// TestPipe_WritesAreAtomic: writes larger than the buffer from two goroutines arrive one after
+// the other, never interleaved.
+func TestPipe_WritesAreAtomic(t *testing.T) {
+	a, b := memnet.Pipe()
+	defer func() { _, _ = a.Close(), b.Close() }()
+	const size = 3 << 20
+	errs := make(chan error, 2)
+	for _, c := range []byte{'a', 'b'} {
+		go func() {
+			_, err := a.Write(bytes.Repeat([]byte{c}, size))
+			errs <- err
+		}()
+	}
+	// Both writers wait for room once the buffer is full; small reads then wake them many times.
+	time.Sleep(100 * time.Millisecond)
+	got := make([]byte, 0, 2*size)
+	chunk := make([]byte, 16<<10)
+	for len(got) < 2*size {
+		n, err := b.Read(chunk)
+		if err != nil {
+			t.Fatal(err)
+		}
+		got = append(got, chunk[:n]...)
+	}
+	for range 2 {
+		if err := <-errs; err != nil {
+			t.Fatal(err)
+		}
+	}
+	first, second := got[:size], got[size:]
+	if bytes.Count(first, first[:1]) != size || bytes.Count(second, second[:1]) != size || first[0] == second[0] {
+		t.Fatalf("the writes interleaved: %d of %q first, %d of %q second", bytes.Count(first, first[:1]), first[0],
+			bytes.Count(second, second[:1]), second[0])
+	}
+}
