@@ -51,7 +51,8 @@ type RunOptions struct {
 	// the caller's serves Registry. Unlike a gateway's, a Registry alone keeps the connector's own
 	// admin listener, which then serves it.
 	Readiness func(check func(context.Context) error)
-	// InProcess, if set, is a gateway in the same process, which the data sessions reach in memory.
+	// InProcess, if set, is a gateway in the same process, which the data sessions reach in memory;
+	// the connector then opens no UDP socket for QUIC, so it reaches other gateways over h2 only.
 	InProcess *InProcess
 	// Own, if set, reports the addresses and ports the connector never dials, whatever its local
 	// policy allows: all-in-one's own listeners (ADR-0019).
@@ -112,14 +113,19 @@ func Run(ctx context.Context, o RunOptions) error {
 					Readiness: []*agentv1.ResourceStatus{{ResourceId: h.GetRouteId(), Reason: h.GetReason(), Detail: h.GetDetail()}}}}})
 			}
 		}})
-	pc, err := net.ListenPacket("udp", ":0")
-	if err != nil {
-		return err
-	}
-	tr := &quic.Transport{Conn: pc}
-	defer func() { _ = tr.Close(); _ = pc.Close() }() // a Transport does not close a conn it was given
-	if err := tunnel.RegisterHostMetrics(reg, pc); err != nil {
-		return err
+	// The UDP socket of QUIC sessions; all-in-one's connector has none, so it opens no port
+	// (ADR-0019): it reaches its own gateway in memory and other gateways of its group over h2.
+	var tr *quic.Transport
+	if o.InProcess == nil {
+		pc, err := net.ListenPacket("udp", ":0")
+		if err != nil {
+			return err
+		}
+		tr = &quic.Transport{Conn: pc}
+		defer func() { _ = tr.Close(); _ = pc.Close() }() // a Transport does not close a conn it was given
+		if err := tunnel.RegisterHostMetrics(reg, pc); err != nil {
+			return err
+		}
 	}
 	boot := make([]byte, 16)
 	if _, err := rand.Read(boot); err != nil {

@@ -11,6 +11,8 @@ import (
 	"io/fs"
 	"net"
 	"net/netip"
+	"net/url"
+	"slices"
 	"strconv"
 	"sync"
 	"sync/atomic"
@@ -37,19 +39,17 @@ const ConnectorName = "local"
 const tokenTTL = 10 * time.Minute
 
 // connectorToken adds to tx a single-use token for all-in-one's own connector in org: bound to
-// the built-in connector id for a new identity, or, without one, a built-in token that enrolls a
-// new built-in connector (ADR-0019).
+// the built-in connector id for a new identity, or, without one, a token that enrolls a new
+// built-in connector. Both are built in, so the API neither lists nor revokes them (ADR-0019).
 func connectorToken(ctx context.Context, tx *ent.Tx, org, id, actor string) (string, error) {
 	tok, err := token.New(token.Enrollment)
 	if err != nil {
 		return "", err
 	}
 	c := tx.EnrollmentToken.Create().SetOrgID(org).SetTokenHash(token.Hash(tok)).SetRole(enrollmenttoken.RoleConnector).
-		SetMaxUses(1).SetExpiresAt(time.Now().Add(tokenTTL)).SetCreatedBy(actor)
+		SetMaxUses(1).SetExpiresAt(time.Now().Add(tokenTTL)).SetCreatedBy(actor).SetBuiltIn(true)
 	if id != "" {
 		c.SetConnectorID(id)
-	} else {
-		c.SetBuiltIn(true)
 	}
 	row, err := c.Save(ctx)
 	if err != nil {
@@ -60,52 +60,60 @@ func connectorToken(ctx context.Context, tx *ent.Tx, org, id, actor string) (str
 	return tok, err
 }
 
-// local is what Run needs to know of its own agents before it starts them.
+// local is what Run needs to know of its own agents.
 type local struct {
 	gatewayID string
-	// token, if set, enrolls the connector, which has no identity yet; it trusts root.
+	missing   bool // the connector has no identity
+	// token, if set, enrolls the connector; it trusts root.
 	token string
 	root  *x509.Certificate
+	// names are the gateway group's public hostnames.
+	names []string
+}
+
+// readLocal reads the agents' identities.
+func readLocal(cfg config.AllInOne) (local, error) {
+	gw, err := agent.ReadIdentity(cfg.Gateway().IdentityDir)
+	if err != nil {
+		return local{}, fmt.Errorf("allinone: the gateway's identity; run rpmgr all-in-one init first: %w", err)
+	}
+	_, err = agent.ReadIdentity(cfg.Connector().IdentityDir)
+	l := local{gatewayID: gw.AgentID, missing: errors.Is(err, fs.ErrNotExist)}
+	if err != nil && !l.missing {
+		return local{}, fmt.Errorf("allinone: the connector's identity; delete %s to enroll it again: %w", cfg.Connector().IdentityDir, err)
+	}
+	return l, nil
 }
 
 // enroll enrolls the connector with l.token through dial, the in-process controller.
-func (l local) enroll(ctx context.Context, cfg config.AllInOne, dial func(context.Context, string) (net.Conn, error)) error {
+func (l *local) enroll(ctx context.Context, cfg config.AllInOne, dial func(context.Context, string) (net.Conn, error), now func() time.Time) error {
 	_, err := agent.Enroll(ctx, agent.EnrollOptions{Controller: cfg.PublicURL, Pin: pki.RootPin(l.root), Token: l.token,
 		IdentityDir: cfg.Connector().IdentityDir, Bundle: pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: l.root.Raw}),
-		Dial: dial, Host: &agentv1.HostFacts{Hostname: ConnectorName}})
+		Dial: dial, Host: &agentv1.HostFacts{Hostname: ConnectorName}, Now: now})
 	if err != nil {
 		return fmt.Errorf("allinone: enroll the connector: %w", err)
 	}
 	return nil
 }
 
-// prepare runs before the controller starts, while nothing else holds the database. It marks the
-// gateway built in, for installations initialised before ADR-0019, and, when the connector has no
-// identity, makes the token it enrolls with: bound to the built-in connector if there is one, so
-// that it keeps its ID, routes and name, or else one that creates it.
-func prepare(ctx context.Context, cfg config.AllInOne) (local, error) {
-	gw, err := agent.ReadIdentity(cfg.Gateway().IdentityDir)
-	if err != nil {
-		return local{}, fmt.Errorf("allinone: the gateway's identity; run rpmgr all-in-one init first: %w", err)
-	}
-	l := local{gatewayID: gw.AgentID}
-	_, err = agent.ReadIdentity(cfg.Connector().IdentityDir)
-	missing := errors.Is(err, fs.ErrNotExist)
-	if err != nil && !missing {
-		return local{}, fmt.Errorf("allinone: the connector's identity: %w", err)
-	}
+// prepare runs once the controller has migrated the database, which it may write beside the
+// controller. It marks the gateway built in, for installations initialised before ADR-0019, reads
+// the group's public hostnames, and, when the connector has no identity, makes the token it
+// enrolls with: bound to the built-in connector if there is one, so that it keeps its ID, routes
+// and name, or else one that creates it.
+func (l *local) prepare(ctx context.Context, cfg config.AllInOne) error {
 	db, err := store.OpenSQLite(ctx, cfg.Database.DSN, store.SQLiteOptions{})
 	if err != nil {
-		return local{}, err
+		return err
 	}
 	defer func() { _ = db.Close() }()
 	const actor = "all-in-one"
 	sys, err := authz.System(ctx, actor, "rpmgr all-in-one: its own agents", audit.SystemScopes(db))
 	if err != nil {
-		return local{}, err
+		return err
 	}
 	// Neither the built-in flag nor a token is configuration that agents get: no revision.
-	err = store.WriteTx(sys, db, func(tx *ent.Tx) error {
+	return store.WriteTx(sys, db, func(tx *ent.Tx) error {
 		row, err := tx.Gateway.Get(sys, l.gatewayID)
 		if err != nil {
 			return err
@@ -115,7 +123,12 @@ func prepare(ctx context.Context, cfg config.AllInOne) (local, error) {
 				return err
 			}
 		}
-		if !missing {
+		group, err := tx.GatewayGroup.Get(sys, row.GatewayGroupID)
+		if err != nil {
+			return err
+		}
+		l.names = group.PublicHostnames
+		if !l.missing {
 			return nil
 		}
 		ca, err := tx.CAKey.Query().Where(cakey.KindEQ(cakey.KindRoot), cakey.StatusEQ(cakey.StatusActive)).Only(sys)
@@ -135,30 +148,40 @@ func prepare(ctx context.Context, cfg config.AllInOne) (local, error) {
 		l.token, err = connectorToken(sys, tx, row.OrgID, id, actor)
 		return err
 	})
-	return l, err
 }
 
 // ownPorts reports the addresses and ports all-in-one's connector never dials, whatever its local
-// policy allows (ADR-0019): the ports of the process's own listeners, which are the admin listener,
-// the gateway's ports 443, 80 and tunnel UDP and the ports of its tcp and udp routes, on any
-// address of this host. Those are loopback, the unspecified addresses, and the addresses of its
-// interfaces, which it looks up again at most every interfacesTTL.
+// policy allows (ADR-0019): the ports the process listens on, which are the admin listener, 80,
+// 443, tunnel UDP and every route port its gateway has bound, on any address of this host. Those
+// are loopback, the unspecified addresses, the addresses of its interfaces, and those its public
+// names resolve to, for a host that reaches its public address through its router (hairpin NAT).
+// It looks the addresses up again at most every addrsTTL; after a failed interface lookup at the
+// next dial, after a failed name lookup a second later, keeping the addresses it had.
 type ownPorts struct {
 	fixed      map[uint16]bool
 	routes     atomic.Pointer[func(uint16) bool]
+	names      atomic.Pointer[[]string]
 	interfaces func() ([]net.Addr, error)
+	lookup     func(ctx context.Context, host string) ([]netip.Addr, error)
 	now        func() time.Time
 
 	mu    sync.Mutex
 	addrs map[netip.Addr]bool
-	at    time.Time
+	next  time.Time // when to look the addresses up again
 }
 
-// interfacesTTL is how long ownPorts keeps the host's addresses.
-const interfacesTTL = 10 * time.Second
+// The lookups of ownPorts.
+const (
+	addrsTTL      = 10 * time.Second
+	nameRetry     = time.Second
+	lookupTimeout = 2 * time.Second
+)
 
 func newOwnPorts(cfg config.AllInOne) (*ownPorts, error) {
-	o := &ownPorts{fixed: map[uint16]bool{}, interfaces: net.InterfaceAddrs, now: time.Now}
+	o := &ownPorts{fixed: map[uint16]bool{}, interfaces: net.InterfaceAddrs, now: time.Now,
+		lookup: func(ctx context.Context, host string) ([]netip.Addr, error) {
+			return net.DefaultResolver.LookupNetIP(ctx, "ip", host)
+		}}
 	addrs := []string{cfg.Listen.TCP, cfg.Listen.UDP, cfg.Listen.TunnelUDP, cfg.Listen.Admin}
 	if cfg.Listen.HTTP != nil {
 		addrs = append(addrs, *cfg.Listen.HTTP)
@@ -177,7 +200,19 @@ func newOwnPorts(cfg config.AllInOne) (*ownPorts, error) {
 		}
 		o.fixed[uint16(n)] = true
 	}
+	if u, err := url.Parse(cfg.PublicURL); err == nil && u.Hostname() != "" {
+		o.setNames([]string{u.Hostname()})
+	}
 	return o, nil
+}
+
+// setNames sets the public names whose addresses are the host's too; the next check looks them up.
+func (o *ownPorts) setNames(names []string) {
+	names = slices.Compact(slices.Sorted(slices.Values(names)))
+	o.names.Store(&names)
+	o.mu.Lock()
+	o.next = time.Time{}
+	o.mu.Unlock()
 }
 
 // own reports whether ap is one of the process's own listeners on this host.
@@ -193,18 +228,52 @@ func (o *ownPorts) own(ap netip.AddrPort) bool {
 	}
 	o.mu.Lock()
 	defer o.mu.Unlock()
-	if now := o.now(); o.addrs == nil || now.Sub(o.at) >= interfacesTTL {
-		addrs, err := o.interfaces()
-		if err == nil || o.addrs == nil {
-			o.addrs, o.at = map[netip.Addr]bool{}, now
-		}
-		for _, n := range addrs {
+	if now := o.now(); o.addrs == nil || !now.Before(o.next) {
+		o.refresh(now)
+	}
+	return o.addrs[a]
+}
+
+// refresh looks the host's addresses up again. Under o.mu.
+func (o *ownPorts) refresh(now time.Time) {
+	found, next := map[netip.Addr]bool{}, now.Add(addrsTTL)
+	failed := false
+	if ifaces, err := o.interfaces(); err != nil {
+		failed, next = true, now // again at the next dial
+	} else {
+		for _, n := range ifaces {
 			if p, ok := n.(*net.IPNet); ok {
 				if ip, ok := netip.AddrFromSlice(p.IP); ok {
-					o.addrs[ip.Unmap()] = true
+					found[ip.Unmap()] = true
 				}
 			}
 		}
 	}
-	return o.addrs[a]
+	if names := o.names.Load(); names != nil {
+		for _, name := range *names {
+			if ip, err := netip.ParseAddr(name); err == nil {
+				found[ip.Unmap()] = true
+				continue
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), lookupTimeout)
+			ips, err := o.lookup(ctx, name)
+			cancel()
+			if err != nil {
+				failed = true
+				if next.After(now.Add(nameRetry)) {
+					next = now.Add(nameRetry)
+				}
+				continue
+			}
+			for _, ip := range ips {
+				found[ip.Unmap()] = true
+			}
+		}
+	}
+	if failed {
+		for a := range o.addrs { // keep what an earlier lookup found
+			found[a] = true
+		}
+	}
+	o.addrs, o.next = found, next
 }

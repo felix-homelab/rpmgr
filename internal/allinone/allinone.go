@@ -18,9 +18,11 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -136,7 +138,8 @@ func Init(ctx context.Context, o controller.InitOptions) (res InitResult, err er
 	if err != nil {
 		err = fmt.Errorf("allinone: enroll the gateway: %w", err)
 	} else {
-		err = local{token: conTok, root: r.Root}.enroll(ctx, cfg, mem.Dial)
+		l := local{token: conTok, root: r.Root}
+		err = l.enroll(ctx, cfg, mem.Dial, o.Now)
 	}
 	stop()
 	if rerr := <-done; err == nil {
@@ -247,7 +250,12 @@ type RunOptions struct {
 	ACMERoots *x509.CertPool
 	// Registry, if set, receives the metrics of all three roles instead of a new registry.
 	Registry telemetry.Registry
+	// Now is the clock of the connector's enrollment; nil is time.Now.
+	Now func() time.Time
 }
+
+// started, if set, is called once Run has taken SIGHUP over and before it starts anything (tests).
+var started func()
 
 // part is one role that Run runs.
 type part struct {
@@ -274,11 +282,23 @@ func (p *part) end() error {
 }
 
 // Run runs the controller, the gateway and the connector until ctx ends or one of them ends, which
-// ends the others; the admin listener reports all three. Before the controller starts, it marks
-// the gateway built in and, when the connector has no identity, prepares its enrollment, which it
-// completes through the in-process controller (ADR-0019). On the way out the gateway drains first,
-// while the connector serves its streams and the controller answers.
+// ends the others; the admin listener reports all three. Once the controller has migrated the
+// database, it marks the gateway built in and, when the connector has no identity, enrolls it
+// through the in-process controller (ADR-0019). On the way out the gateway drains first, while the
+// connector serves its streams and the controller answers. SIGHUP, which reloads the connector's
+// local policy, never ends the process, also while it starts or stops.
 func Run(ctx context.Context, o RunOptions) error {
+	hup := make(chan os.Signal, 1)
+	signal.Notify(hup, syscall.SIGHUP)
+	go func() {
+		for range hup { // the connector's policy watcher takes its own
+		}
+	}()
+	defer close(hup)       // second: no signal reaches it once Stop has returned
+	defer signal.Stop(hup) // first
+	if started != nil {
+		started()
+	}
 	if o.Logger == nil {
 		o.Logger = slog.New(slog.DiscardHandler)
 	}
@@ -291,7 +311,7 @@ func Run(ctx context.Context, o RunOptions) error {
 	if err != nil {
 		return err
 	}
-	l, err := prepare(ctx, cfg)
+	l, err := readLocal(cfg)
 	if err != nil {
 		return err
 	}
@@ -323,8 +343,12 @@ func Run(ctx context.Context, o RunOptions) error {
 	if err := wait(ctlListening, ctl); err != nil {
 		return err
 	}
+	if err := l.prepare(ctx, cfg); err != nil {
+		return errors.Join(err, ctl.end())
+	}
+	own.setNames(append(l.names, public.Hostname()))
 	if l.token != "" {
-		if err := l.enroll(ctx, cfg, mem.Dial); err != nil {
+		if err := l.enroll(ctx, cfg, mem.Dial, o.Now); err != nil {
 			return errors.Join(err, ctl.end())
 		}
 		o.Logger.Info("enrolled all-in-one's own connector", "identity", cfg.Connector().IdentityDir)
@@ -332,7 +356,7 @@ func Run(ctx context.Context, o RunOptions) error {
 	gw := start(func(ctx context.Context) error {
 		return gateway.Run(ctx, gateway.RunOptions{Config: cfg.Gateway(), Version: o.Version, Logger: o.Logger.With("role", "gateway"),
 			DrainPeriod: o.DrainPeriod, Controller: mem.Deliver, ControllerNames: []string{public.Hostname()}, Dial: mem.Dial,
-			Port80Fallback: port80, Tunnels: tunnels, RoutePorts: func(wants func(uint16) bool) { own.routes.Store(&wants) },
+			Port80Fallback: port80, Tunnels: tunnels, RoutePorts: func(bound func(uint16) bool) { own.routes.Store(&bound) },
 			Registry: telemetry.WithLabels(reg, prometheus.Labels{"role": "gateway"}), Readiness: readiness,
 			Listening: func() { close(gwListening) }})
 	})
@@ -343,7 +367,7 @@ func Run(ctx context.Context, o RunOptions) error {
 		return connector.Run(ctx, connector.RunOptions{Config: cfg.Connector(), Version: o.Version, Getenv: o.Getenv,
 			Logger: o.Logger.With("role", "connector"), ControlDial: mem.Dial, Own: own.own,
 			InProcess: &connector.InProcess{GatewayID: l.gatewayID, Dial: func(ctx context.Context) (net.Conn, error) { return tunnels.Dial(ctx, "") }},
-			Registry: telemetry.WithLabels(reg, prometheus.Labels{"role": "connector"}), Readiness: readiness,
+			Registry:  telemetry.WithLabels(reg, prometheus.Labels{"role": "connector"}), Readiness: readiness,
 			Listening: func() { close(conListening) }})
 	})
 	if err := wait(conListening, con); err != nil {

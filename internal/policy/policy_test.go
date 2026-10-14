@@ -484,4 +484,22 @@ func TestGuarded(t *testing.T) {
 	if _, err := d.DialContext(context.Background(), "tcp", ln.Addr().String()); !errors.As(err, &blocked) || !blocked.Own {
 		t.Fatalf("a dial to an own port: %v", err)
 	}
+	// UDP too: a udp route's flow is dialled under the same check.
+	pc, err := net.ListenPacket("udp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = pc.Close() }()
+	udpPort := netip.MustParseAddrPort(pc.LocalAddr().String())
+	ud := net.Dialer{Control: policy.Control(func() *policy.Policy {
+		return open.Guarded(func(ap netip.AddrPort) bool { return ap == udpPort })
+	})}
+	if _, err := ud.DialContext(context.Background(), "udp", pc.LocalAddr().String()); !errors.As(err, &blocked) || !blocked.Own {
+		t.Fatalf("a UDP dial to an own port: %v", err)
+	}
+	if c, err := ud.DialContext(context.Background(), "udp", "127.0.0.1:9"); err != nil {
+		t.Fatalf("a UDP dial elsewhere: %v", err)
+	} else {
+		_ = c.Close()
+	}
 }

@@ -72,8 +72,8 @@ type RunOptions struct {
 	// fails, so that a dial to it does not wait for a gateway that is gone.
 	Tunnels net.Listener
 	// RoutePorts, if set, gets a function that reports whether a tcp or udp route of the gateway
-	// has a port, so that all-in-one's connector never dials one (ADR-0019).
-	RoutePorts func(wants func(port uint16) bool)
+	// listens on a port, so that all-in-one's connector never dials one (ADR-0019).
+	RoutePorts func(bound func(port uint16) bool)
 }
 
 // Run runs a gateway from its boot file until ctx ends (docs/02-architecture.md): its control
@@ -176,7 +176,7 @@ func Run(ctx context.Context, o RunOptions) error {
 		Revision: applier.Revision, Fallback80: o.Port80Fallback, Challenges: challenges.HTTP01, Logger: o.Logger})
 	defer httpRoutes.Close()
 	if o.RoutePorts != nil {
-		o.RoutePorts(func(port uint16) bool { return routes.Wants(port) || udpRoutes.Wants(port) })
+		o.RoutePorts(func(port uint16) bool { return routes.Bound(port) || udpRoutes.Bound(port) })
 	}
 	applier.Bind(Served{TCP: routes, UDP: udpRoutes, Passthrough: pass, HTTP: httpRoutes, Certificates: certificates, Sessions: sessions,
 		DrainPeriod: o.DrainPeriod})

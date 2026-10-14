@@ -5,13 +5,18 @@ package allinone_test
 import (
 	"context"
 	"fmt"
+	"maps"
 	"net"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
+
+	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/felix-homelab/rpmgr/internal/agent"
 	"github.com/felix-homelab/rpmgr/internal/allinone"
@@ -23,6 +28,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/gatewaygroup"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/resourcestatus"
 	"github.com/felix-homelab/rpmgr/internal/store/storetest"
+	"github.com/felix-homelab/rpmgr/internal/telemetry"
 )
 
 // db opens the host's database next to its Run.
@@ -107,8 +113,11 @@ func TestAllInOne_OwnConnector(t *testing.T) {
 	}
 	svc, public := echoService(t), freePort(t)
 	route := tcpRoute(t, db, sys, group, "echo", public, r.ConnectorID, "127.0.0.1:"+strconv.Itoa(svc))
+	reg := telemetry.NewRegistry()
+	h.registry = reg
 	h.run(t)
 	waitFor(t, "not ready", h.ready)
+	checkRoles(t, reg)
 	waitFor(t, "the route is not blocked without a policy file", func() bool {
 		return blocked(db, sys, r.ConnectorID, route) == "127.0.0.1:"+strconv.Itoa(svc)
 	})
@@ -190,5 +199,115 @@ func TestAllInOne_NeedsItsGateway(t *testing.T) {
 	err := allinone.Run(context.Background(), allinone.RunOptions{Config: h.cfg, Getenv: func(string) string { return "" }})
 	if err == nil || !strings.Contains(err.Error(), "rpmgr all-in-one init") {
 		t.Fatalf("Run without the gateway's identity: %v", err)
+	}
+}
+
+// TestAllInOne_StartsFromAnOlderSchema: an all-in-one whose database lacks the built-in columns,
+// as one initialised before ADR-0019, starts: the controller migrates first, then Run marks the
+// gateway built in and enrolls the missing connector, once.
+func TestAllInOne_StartsFromAnOlderSchema(t *testing.T) {
+	h := newHost(t)
+	r := h.init(t)
+	db, _, _ := h.db(t)
+	ctx := context.Background()
+	var last string
+	if err := db.Writer.QueryRowContext(ctx, "SELECT max(version) FROM "+store.RevisionTable).Scan(&last); err != nil {
+		t.Fatal(err)
+	}
+	// The connector, its token and certificate go too: an all-in-one from before had none.
+	conn, err := db.Writer.Conn(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, q := range []string{
+		"PRAGMA foreign_keys = OFF",
+		"DELETE FROM issued_certificates WHERE enrollment_token_id IN (SELECT id FROM enrollment_tokens WHERE built_in)",
+		"DELETE FROM enrollment_tokens WHERE built_in", "DELETE FROM connectors",
+		"ALTER TABLE gateways DROP COLUMN built_in", "ALTER TABLE connectors DROP COLUMN built_in",
+		"ALTER TABLE enrollment_tokens DROP COLUMN built_in", "DELETE FROM " + store.RevisionTable + " WHERE version = '" + last + "'",
+		"PRAGMA foreign_keys = ON",
+	} {
+		if _, err := conn.ExecContext(ctx, q); err != nil {
+			t.Fatalf("%s: %v", q, err)
+		}
+	}
+	_ = conn.Close()
+	if err := os.RemoveAll(filepath.Join(h.cfg.StateDir, "connector")); err != nil {
+		t.Fatal(err)
+	}
+	_ = db.Close()
+	stop := h.run(t)
+	waitFor(t, "not ready", h.ready)
+	stop()
+	db, sys, _ := h.db(t)
+	id, err := agent.ReadIdentity(h.cfg.Connector().IdentityDir)
+	if err != nil || id.AgentID == r.ConnectorID {
+		t.Fatalf("the connector: %+v, %v", id, err)
+	}
+	if c := db.Client().Connector.GetX(sys, id.AgentID); !c.BuiltIn || !db.Client().Gateway.GetX(sys, r.GatewayID).BuiltIn {
+		t.Fatal("not built in")
+	}
+	if n := db.Client().Connector.Query().CountX(sys); n != 1 {
+		t.Fatalf("%d connectors, want the one enrolled", n)
+	}
+	h.run(t)() // and a second start enrolls nothing
+	if n := db.Client().Connector.Query().CountX(sys); n != 1 {
+		t.Fatalf("%d connectors after a restart", n)
+	}
+}
+
+// TestAllInOne_SIGHUP: SIGHUP, which reloads the connector's local policy, does not end the
+// process, neither before its roles run nor while they do.
+func TestAllInOne_SIGHUP(t *testing.T) {
+	h := newHost(t)
+	h.init(t)
+	hup := func() {
+		if err := syscall.Kill(os.Getpid(), syscall.SIGHUP); err != nil {
+			t.Fatal(err)
+		}
+		time.Sleep(100 * time.Millisecond) // a signal nobody took would have ended the test binary by now
+	}
+	allinone.SetStarted(t, hup)
+	h.run(t)
+	waitFor(t, "not ready", h.ready)
+	hup()
+	if !h.ready() {
+		t.Fatal("not ready after SIGHUP")
+	}
+}
+
+// checkRoles: on the all-in-one's registry, the series its gateway and its connector register
+// carry their role, the controller's carry none, and the connector has no QUIC socket whose
+// metrics it would report (docs/10-operations.md, "Metrics").
+func checkRoles(t *testing.T, reg prometheus.Gatherer) {
+	t.Helper()
+	mfs, err := reg.Gather()
+	if err != nil {
+		t.Fatal(err)
+	}
+	roles := map[string]map[string]bool{}
+	for _, mf := range mfs {
+		roles[mf.GetName()] = map[string]bool{}
+		for _, m := range mf.GetMetric() {
+			role := ""
+			for _, l := range m.GetLabel() {
+				if l.GetName() == "role" {
+					role = l.GetValue()
+				}
+			}
+			roles[mf.GetName()][role] = true
+		}
+	}
+	for name, want := range map[string][]string{
+		"rpmgr_agent_applied_revision":      {"connector", "gateway"},
+		"rpmgr_gateway_sessions":            {"gateway"},
+		"rpmgr_quic_gso_enabled":            {"gateway"},
+		"rpmgr_controller_control_sessions": {""},
+		"go_goroutines":                     {""},
+	} {
+		got := slices.Sorted(maps.Keys(roles[name]))
+		if !slices.Equal(got, want) {
+			t.Errorf("%s: role labels %q, want %q", name, got, want)
+		}
 	}
 }
