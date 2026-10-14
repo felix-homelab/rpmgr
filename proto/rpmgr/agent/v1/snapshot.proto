@@ -232,6 +232,8 @@ enum UpstreamVerification {
   UPSTREAM_VERIFICATION_VERIFIED = 1;
   // Not at all: neither ca_pem nor a pin goes with it.
   UPSTREAM_VERIFICATION_UNVERIFIED = 2;
+  // Only the key, against spki_sha256, which is set: neither the chain nor the name.
+  UPSTREAM_VERIFICATION_PINNED_KEY = 3;
 }
 
 // HTTPHost is one hostname of an http route with its path prefix; "" is every path.

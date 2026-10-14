@@ -54,7 +54,9 @@ type Routes struct {
 	API *api.Server
 	// Sys is the controller's system scope, for the revisions a route status reads.
 	Sys context.Context
-	Now func() time.Time
+	// Prober reads target certificates through connectors; nil refuses every probe.
+	Prober Prober
+	Now    func() time.Time
 }
 
 // CreateRoute implements RouteService.

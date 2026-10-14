@@ -31,7 +31,7 @@ import (
 // Capabilities are what this connector version implements (docs/03-connections.md, "Versioning
 // and capabilities").
 var Capabilities = []string{agentproto.CapTunnelQUIC, agentproto.CapTunnelH2, agentproto.CapProxyProtoV1,
-	agentproto.CapProxyProtoV2}
+	agentproto.CapProxyProtoV2, agentproto.CapProbeTarget}
 
 // RunOptions configure Run.
 type RunOptions struct {
@@ -124,7 +124,7 @@ func Run(ctx context.Context, o RunOptions) error {
 	applier := NewApplier(targets, sessions)
 	ctl, err = agent.NewControl(agent.ControlOptions{IdentityDir: cfg.IdentityDir, StateDir: cfg.StateDir, Version: o.Version,
 		Capabilities: Capabilities, Applier: applier, Now: o.Now, Logger: o.Logger,
-		Dial: o.ControlDial, Fallback: sessions.ControlConn,
+		Dial: o.ControlDial, Fallback: sessions.ControlConn, OnProbeTarget: targets.Probe,
 		SessionStatus: func() *agentv1.Status {
 			return &agentv1.Status{Readiness: applier.Readiness(), ReadinessComplete: true}
 		}})

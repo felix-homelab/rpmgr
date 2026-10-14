@@ -1,7 +1,8 @@
 # ADR-0017: A route target's user may mark its HTTPS upstream unverified
 
 Status: Accepted (decided by the product owner, D82, 2026-10-14) · Date: 2026-10-14 · Supersedes
-the lint rule of [ADR-0008](0008-internal-ca-mtls-spiffe.md) in part
+the lint rule of [ADR-0008](0008-internal-ca-mtls-spiffe.md) in part · Exceptions extended by
+[ADR-0018](0018-pin-the-key-a-target-presents.md)
 
 ## Context
 

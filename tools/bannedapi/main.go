@@ -48,8 +48,10 @@ type exception struct{ Source, Func, Name string }
 
 // exceptions are the allowed uses; every addition is a reviewed decision, named here.
 var exceptions = []exception{
-	// A route target whose user marked it unverified (D82, ADR-0017).
+	// A route target whose user marked it unverified (ADR-0017) or pinned its key only (ADR-0018).
 	{Source: rpmgr + "/internal/gateway/upstreamtls.go", Func: "UpstreamTLS.config", Name: "InsecureSkipVerify"},
+	// The connector reads the certificate a target presents, for its key pin (ADR-0018).
+	{Source: rpmgr + "/internal/connector/probe.go", Func: "readCertificate", Name: "InsecureSkipVerify"},
 }
 
 // allowed reports whether an exception allows name in function fn of source: a file's module path

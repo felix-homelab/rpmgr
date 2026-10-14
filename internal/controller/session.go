@@ -146,6 +146,7 @@ func (s *Sessions) Run(ctx context.Context) {
 // session is one agent's control session.
 type session struct {
 	agent  Agent
+	caps   []string // the capabilities of its Hello
 	epoch  int64
 	out    chan *agentv1.ControllerMessage
 	cancel context.CancelFunc
@@ -178,7 +179,7 @@ func (s *Sessions) Session(st grpc.BidiStreamingServer[agentv1.AgentMessage, age
 	defer s.disconnected(agent.Identity.ID, epoch)
 	ctx, cancel := context.WithCancel(st.Context())
 	defer cancel()
-	sess := &session{agent: agent, epoch: epoch, out: make(chan *agentv1.ControllerMessage, sendQueue), cancel: cancel}
+	sess := &session{agent: agent, caps: hello.GetCapabilities(), epoch: epoch, out: make(chan *agentv1.ControllerMessage, sendQueue), cancel: cancel}
 	s.add(sess)
 	defer s.remove(sess)
 	welcome := &agentv1.ControllerMessage{Msg: &agentv1.ControllerMessage_Welcome{Welcome: &agentv1.Welcome{

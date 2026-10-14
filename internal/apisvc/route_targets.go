@@ -31,7 +31,8 @@ var (
 		rpmgrv1.ProxyProtocol_PROXY_PROTOCOL_V2: routetarget.ProxyProtocolV2}
 	storeVerifications = map[rpmgrv1.UpstreamVerification]routetarget.TLSVerification{
 		rpmgrv1.UpstreamVerification_UPSTREAM_VERIFICATION_VERIFIED:   routetarget.TLSVerificationVerified,
-		rpmgrv1.UpstreamVerification_UPSTREAM_VERIFICATION_UNVERIFIED: routetarget.TLSVerificationUnverified}
+		rpmgrv1.UpstreamVerification_UPSTREAM_VERIFICATION_UNVERIFIED: routetarget.TLSVerificationUnverified,
+		rpmgrv1.UpstreamVerification_UPSTREAM_VERIFICATION_PINNED_KEY: routetarget.TLSVerificationPinnedKey}
 )
 
 // CreateRouteTarget implements RouteService.
@@ -171,8 +172,12 @@ func checkTarget(ctx context.Context, tx *ent.Tx, rt *ent.Route, t *rpmgrv1.Rout
 		return invalid("TLS settings are for an HTTPS target")
 	case up == routetarget.UpstreamProtocolHTTPS && t.GetTls().GetServerName() == "" && t.GetUnixPath() != "":
 		return invalid("an HTTPS target on a Unix socket needs a server_name")
-	case verificationOf(t) != routetarget.TLSVerificationVerified && (t.GetTls().GetCaBundleId() != "" || t.GetTls().GetSpkiSha256() != ""):
-		return invalid("a CA bundle and a key pin go only with a verified HTTPS target")
+	case verificationOf(t) != routetarget.TLSVerificationVerified && t.GetTls().GetCaBundleId() != "":
+		return invalid("a CA bundle goes only with a verified HTTPS target")
+	case verificationOf(t) == routetarget.TLSVerificationUnverified && t.GetTls().GetSpkiSha256() != "":
+		return invalid("an unverified HTTPS target has no key pin")
+	case verificationOf(t) == routetarget.TLSVerificationPinnedKey && t.GetTls().GetSpkiSha256() == "":
+		return invalid("a pinned-key HTTPS target needs its key pin")
 	}
 	if id := t.GetTls().GetCaBundleId(); id != "" {
 		if _, err := tx.CABundle.Get(ctx, id); err != nil {

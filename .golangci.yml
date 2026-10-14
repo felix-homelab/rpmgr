@@ -44,11 +44,17 @@ linters:
           msg: banned TLS setting (docs/03); see tools/bannedapi
   exclusions:
     rules:
-      # The one allowed InsecureSkipVerify: a route target whose user marked it unverified (D82,
-      # ADR-0017). tools/bannedapi narrows it to UpstreamTLS.config.
+      # The allowed InsecureSkipVerify (D82). The first (ADR-0017, ADR-0018): a route target whose
+      # user marked it unverified or pinned its key only. tools/bannedapi narrows it to
+      # UpstreamTLS.config.
       - path: ^internal/gateway/upstreamtls\.go$
         text: "`cfg\\.InsecureSkipVerify` forbidden"
         linters: [forbidigo]
+      # The second (ADR-0018): the connector reads the certificate a target presents, for its key
+      # pin. tools/bannedapi narrows it to readCertificate.
+      - path: ^internal/connector/probe\.go$
+        text: "G402: TLS InsecureSkipVerify set to true"
+        linters: [gosec]
       # The allow-list for secret.Value.Reveal; every addition is reviewed in this file.
       - path: internal/secret/
         text: Reveal

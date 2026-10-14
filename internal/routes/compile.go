@@ -348,8 +348,9 @@ func headersOf(set map[string]string) []*agentv1.HTTPHeader {
 
 // upstreamTLS lists how the gateway verifies each enabled target of an https route: the target's
 // server name, or else its host; its CA bundle, or else the gateway host's trust store; and its
-// SPKI pin, or that it is not verified. A pin that is not 64 hexadecimal digits becomes one no key
-// matches, so the target fails closed.
+// SPKI pin; or that it is not verified, or by its pinned key only. A pin that is not 64
+// hexadecimal digits, or a pinned-key target without one, gets a pin no key matches, so the target
+// fails closed.
 func upstreamTLSOf(ctx context.Context, tx *ent.Tx, routeID string) ([]*agentv1.UpstreamTLS, error) {
 	targets, err := tx.RouteTarget.Query().Where(routetarget.RouteID(routeID), routetarget.Enabled(true)).
 		WithCaBundle().Order(ent.Asc(routetarget.FieldID)).All(ctx)
@@ -362,16 +363,20 @@ func upstreamTLSOf(ctx context.Context, tx *ent.Tx, routeID string) ([]*agentv1.
 		if u.ServerName == "" {
 			u.ServerName = t.Host
 		}
-		if t.TLSVerification == routetarget.TLSVerificationUnverified {
+		switch t.TLSVerification {
+		case routetarget.TLSVerificationUnverified:
 			// Verified stays unset, the default, which a gateway that knows no modes applies too.
 			u.Verification = agentv1.UpstreamVerification_UPSTREAM_VERIFICATION_UNVERIFIED
 			out = append(out, u)
 			continue
+		case routetarget.TLSVerificationPinnedKey:
+			u.Verification = agentv1.UpstreamVerification_UPSTREAM_VERIFICATION_PINNED_KEY
+		default:
+			if t.Edges.CaBundle != nil {
+				u.CaPem = t.Edges.CaBundle.Pem
+			}
 		}
-		if t.Edges.CaBundle != nil {
-			u.CaPem = t.Edges.CaBundle.Pem
-		}
-		if t.TLSSpkiSha256 != "" {
+		if t.TLSSpkiSha256 != "" || t.TLSVerification == routetarget.TLSVerificationPinnedKey {
 			pin, err := hex.DecodeString(t.TLSSpkiSha256)
 			if err != nil || len(pin) != sha256.Size {
 				pin = make([]byte, sha256.Size)

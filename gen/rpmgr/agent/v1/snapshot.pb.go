@@ -35,6 +35,8 @@ const (
 	UpstreamVerification_UPSTREAM_VERIFICATION_VERIFIED UpstreamVerification = 1
 	// Not at all: neither ca_pem nor a pin goes with it.
 	UpstreamVerification_UPSTREAM_VERIFICATION_UNVERIFIED UpstreamVerification = 2
+	// Only the key, against spki_sha256, which is set: neither the chain nor the name.
+	UpstreamVerification_UPSTREAM_VERIFICATION_PINNED_KEY UpstreamVerification = 3
 )
 
 // Enum value maps for UpstreamVerification.
@@ -43,11 +45,13 @@ var (
 		0: "UPSTREAM_VERIFICATION_UNSPECIFIED",
 		1: "UPSTREAM_VERIFICATION_VERIFIED",
 		2: "UPSTREAM_VERIFICATION_UNVERIFIED",
+		3: "UPSTREAM_VERIFICATION_PINNED_KEY",
 	}
 	UpstreamVerification_value = map[string]int32{
 		"UPSTREAM_VERIFICATION_UNSPECIFIED": 0,
 		"UPSTREAM_VERIFICATION_VERIFIED":    1,
 		"UPSTREAM_VERIFICATION_UNVERIFIED":  2,
+		"UPSTREAM_VERIFICATION_PINNED_KEY":  3,
 	}
 )
 
@@ -2236,11 +2240,12 @@ const file_rpmgr_agent_v1_snapshot_proto_rawDesc = "" +
 	"\x06serial\x18\x01 \x01(\tH\x00R\x06serial\x12\x1c\n" +
 	"\bidentity\x18\x02 \x01(\tH\x00R\bidentity\x127\n" +
 	"\tnot_after\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\bnotAfterB\t\n" +
-	"\asubject*\x87\x01\n" +
+	"\asubject*\xad\x01\n" +
 	"\x14UpstreamVerification\x12%\n" +
 	"!UPSTREAM_VERIFICATION_UNSPECIFIED\x10\x00\x12\"\n" +
 	"\x1eUPSTREAM_VERIFICATION_VERIFIED\x10\x01\x12$\n" +
-	" UPSTREAM_VERIFICATION_UNVERIFIED\x10\x02*\x82\x01\n" +
+	" UPSTREAM_VERIFICATION_UNVERIFIED\x10\x02\x12$\n" +
+	" UPSTREAM_VERIFICATION_PINNED_KEY\x10\x03*\x82\x01\n" +
 	"\x0fTransportPolicy\x12 \n" +
 	"\x1cTRANSPORT_POLICY_UNSPECIFIED\x10\x00\x12\x19\n" +
 	"\x15TRANSPORT_POLICY_AUTO\x10\x01\x12\x19\n" +

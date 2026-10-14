@@ -169,7 +169,9 @@ func TestApplier_ValidateHTTP(t *testing.T) {
 		httpsResource("rt_4", &agentv1.UpstreamTLS{TargetId: "tg_1", ServerName: "a.internal", SpkiSha256: make([]byte, 32)},
 			&agentv1.UpstreamTLS{TargetId: "tg_2", ServerName: "b.internal", Verification: agentv1.UpstreamVerification_UPSTREAM_VERIFICATION_UNVERIFIED,
 				ConnectorId: "con_1"},
-			&agentv1.UpstreamTLS{TargetId: "tg_3", ServerName: "c.internal", Verification: agentv1.UpstreamVerification(99)}))
+			&agentv1.UpstreamTLS{TargetId: "tg_3", ServerName: "c.internal", Verification: agentv1.UpstreamVerification(99)},
+			&agentv1.UpstreamTLS{TargetId: "tg_4", ServerName: "d.internal", SpkiSha256: make([]byte, 32),
+				Verification: agentv1.UpstreamVerification_UPSTREAM_VERIFICATION_PINNED_KEY, ConnectorId: "con_1"}))
 	if errs := a.Validate(ok); len(errs) != 0 {
 		t.Fatal(errs)
 	}
@@ -219,6 +221,12 @@ func TestApplier_ValidateHTTP(t *testing.T) {
 			Verification: agentv1.UpstreamVerification_UPSTREAM_VERIFICATION_UNVERIFIED})), "names no connector"},
 		{"an unverified target with a CA bundle", gatewaySnapshot(1, httpsResource("rt_1", &agentv1.UpstreamTLS{TargetId: "tg_1", ServerName: "a",
 			CaPem: []byte("x"), Verification: agentv1.UpstreamVerification_UPSTREAM_VERIFICATION_UNVERIFIED})), "has a CA bundle or a pin"},
+		{"a pinned-key target of no connector", gatewaySnapshot(1, httpsResource("rt_1", &agentv1.UpstreamTLS{TargetId: "tg_1", ServerName: "a",
+			SpkiSha256: make([]byte, 32), Verification: agentv1.UpstreamVerification_UPSTREAM_VERIFICATION_PINNED_KEY})), "names no connector"},
+		{"a pinned-key target without a pin", gatewaySnapshot(1, httpsResource("rt_1", &agentv1.UpstreamTLS{TargetId: "tg_1", ServerName: "a",
+			ConnectorId: "con_1", Verification: agentv1.UpstreamVerification_UPSTREAM_VERIFICATION_PINNED_KEY})), "no SHA-256 pin"},
+		{"a pinned-key target with a CA bundle", gatewaySnapshot(1, httpsResource("rt_1", &agentv1.UpstreamTLS{TargetId: "tg_1", ServerName: "a",
+			ConnectorId: "con_1", SpkiSha256: make([]byte, 32), CaPem: []byte("x"), Verification: agentv1.UpstreamVerification_UPSTREAM_VERIFICATION_PINNED_KEY})), "no SHA-256 pin"},
 		{"no upstream", gatewaySnapshot(1, httpResource("rt_1", "", "app.example.com")), "upstream protocol"},
 		{"upper case", gatewaySnapshot(1, httpResource("rt_1", "http", "App.example.com")), "not normalised"},
 		{"a relative prefix", gatewaySnapshot(1, httpResource("rt_1", "http", "app.example.com|api")), "start with /"},

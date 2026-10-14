@@ -518,8 +518,9 @@ func TestCompile_GatewayHTTP(t *testing.T) {
 
 // TestCompile_HTTPSUpstream: an https route's gateway resource names each enabled target's server
 // name (its host by default), CA bundle and SPKI pin; a malformed pin becomes one no key matches.
-// An unverified target gets its server name and its mode, and neither a CA bundle nor a pin. Each
-// names its connector, whose streams alone its settings apply to.
+// An unverified target gets its server name and its mode, and neither a CA bundle nor a pin; a
+// pinned-key one its pin and no CA bundle, or without a pin one no key matches. Each names its
+// connector, whose streams alone its settings apply to.
 func TestCompile_HTTPSUpstream(t *testing.T) {
 	storetest.ForEachDialect(t, func(t *testing.T, db *store.DB) {
 		f := newFleet(t, db)
@@ -543,6 +544,12 @@ func TestCompile_HTTPSUpstream(t *testing.T) {
 		unverified := c.RouteTarget.Create().SetOrgID(f.orgA).SetRouteID(id).SetConnectorID(f.c1).SetKind("address").SetHost("nas.local").
 			SetPort(443).SetUpstreamProtocol(routetarget.UpstreamProtocolHTTPS).SetTLSVerification(routetarget.TLSVerificationUnverified).
 			SetTLSSpkiSha256(pin).SetCaBundleID(bundle.ID).SaveX(f.sys).ID // a pin and a bundle the API refuses are left out
+		pinnedKey := c.RouteTarget.Create().SetOrgID(f.orgA).SetRouteID(id).SetConnectorID(f.c1).SetKind("address").SetHost("pve.local").
+			SetPort(8006).SetUpstreamProtocol(routetarget.UpstreamProtocolHTTPS).SetTLSVerification(routetarget.TLSVerificationPinnedKey).
+			SetTLSSpkiSha256(pin).SetCaBundleID(bundle.ID).SaveX(f.sys).ID
+		noPin := c.RouteTarget.Create().SetOrgID(f.orgA).SetRouteID(id).SetConnectorID(f.c1).SetKind("address").SetHost("nas2.local").
+			SetPort(443).SetUpstreamProtocol(routetarget.UpstreamProtocolHTTPS).SetTLSVerification(routetarget.TLSVerificationPinnedKey).
+			SaveX(f.sys).ID
 		var got *agentv1.GatewayHTTPRoute
 		for _, r := range f.compile(t, pki.KindGateway, f.gateway) {
 			if r.GetId() == id {
@@ -556,6 +563,10 @@ func TestCompile_HTTPSUpstream(t *testing.T) {
 			badPin: {TargetId: badPin, ServerName: "10.0.0.3", SpkiSha256: make([]byte, 32), ConnectorId: f.c1},
 			unverified: {TargetId: unverified, ServerName: "nas.local", ConnectorId: f.c1,
 				Verification: agentv1.UpstreamVerification_UPSTREAM_VERIFICATION_UNVERIFIED},
+			pinnedKey: {TargetId: pinnedKey, ServerName: "pve.local", ConnectorId: f.c1, SpkiSha256: bytes.Repeat([]byte{0xab}, 32),
+				Verification: agentv1.UpstreamVerification_UPSTREAM_VERIFICATION_PINNED_KEY},
+			noPin: {TargetId: noPin, ServerName: "nas2.local", ConnectorId: f.c1, SpkiSha256: make([]byte, 32),
+				Verification: agentv1.UpstreamVerification_UPSTREAM_VERIFICATION_PINNED_KEY},
 		}
 		if got.GetUpstreamProtocol() != "https" || len(got.GetUpstreamTls()) != len(want) {
 			t.Fatalf("route %v", got)

@@ -71,10 +71,12 @@ func f() { InsecureSkipVerify := true; _ = InsecureSkipVerify }`, ""},
 	}
 }
 
-// TestExceptions: exactly one use is allowed, InsecureSkipVerify in UpstreamTLS.config of the
-// rpmgr module's internal/gateway/upstreamtls.go (ADR-0017).
+// TestExceptions: exactly two uses are allowed, InsecureSkipVerify in UpstreamTLS.config of the
+// rpmgr module's internal/gateway/upstreamtls.go (ADR-0017) and in readCertificate of its
+// internal/connector/probe.go (ADR-0018).
 func TestExceptions(t *testing.T) {
 	want := []exception{{Source: "github.com/felix-homelab/rpmgr/internal/gateway/upstreamtls.go", Func: "UpstreamTLS.config",
+		Name: "InsecureSkipVerify"}, {Source: "github.com/felix-homelab/rpmgr/internal/connector/probe.go", Func: "readCertificate",
 		Name: "InsecureSkipVerify"}}
 	if !slices.Equal(exceptions, want) {
 		t.Fatalf("exceptions %v, want %v", exceptions, want)
@@ -132,6 +134,31 @@ func TestCheckTree_Exception(t *testing.T) {
 	}
 	if got := strings.Join(names(t, exceptionSrc), ","); got != strings.Repeat("InsecureSkipVerify,", 2)+"InsecureSkipVerify,Renegotiation,InsecureSkipVerify" {
 		t.Errorf("a file in no module: %s", got)
+	}
+}
+
+// TestCheckTree_ProbeException: the connector's probe may skip verification in readCertificate of
+// the rpmgr module's internal/connector/probe.go, and nowhere else in that file or package.
+func TestCheckTree_ProbeException(t *testing.T) {
+	const src = `package connector
+import "crypto/tls"
+func readCertificate() *tls.Config { return &tls.Config{InsecureSkipVerify: true} }
+func Probe() *tls.Config { return &tls.Config{InsecureSkipVerify: true} }
+`
+	root := t.TempDir()
+	write(t, filepath.Join(root, "go.mod"), "module github.com/felix-homelab/rpmgr\n")
+	write(t, filepath.Join(root, "internal", "connector", "probe.go"), src)
+	write(t, filepath.Join(root, "internal", "connector", "targets.go"), src)
+	findings, err := CheckTree(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	for _, f := range findings {
+		got = append(got, filepath.Base(f.Pos.Filename)+":"+strconv.Itoa(f.Pos.Line))
+	}
+	if want := []string{"probe.go:4", "targets.go:3", "targets.go:4"}; !slices.Equal(got, want) {
+		t.Errorf("findings %v, want %v", got, want)
 	}
 }
 

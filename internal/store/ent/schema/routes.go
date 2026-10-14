@@ -291,7 +291,7 @@ func (RouteTarget) Fields() []ent.Field {
 		field.String("tls_ca_bundle_id").Optional().Nillable(),
 		field.String("tls_spki_sha256").Default(""),
 		// How an https target's certificate is checked (ADR-0017).
-		field.Enum("tls_verification").Values("verified", "unverified").Default("verified"),
+		field.Enum("tls_verification").Values("verified", "unverified", "pinned_key").Default("verified"),
 		field.Enum("proxy_protocol").Values("none", "v1", "v2").Default("none"),
 		field.Int("weight").Range(1, 1000).Default(1),
 		field.Int("priority").NonNegative().Default(0),

@@ -9,6 +9,8 @@ import (
 	"time"
 
 	agentv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/agent/v1"
+	"github.com/felix-homelab/rpmgr/internal/agentproto"
+	"github.com/felix-homelab/rpmgr/internal/apisvc"
 	"github.com/felix-homelab/rpmgr/internal/controller"
 	"github.com/felix-homelab/rpmgr/internal/store"
 	"github.com/felix-homelab/rpmgr/internal/store/storetest"
@@ -70,6 +72,59 @@ func TestOp(t *testing.T) {
 		go func() { _, _ = stA.Recv() }() // the operation arrives and is never answered
 		if err := e.sessions.Op(ctx, a.ID, challenge); !errors.Is(err, context.DeadlineExceeded) {
 			t.Fatalf("an unanswered operation: %v", err)
+		}
+	})
+}
+
+// TestProbeTarget: a probe reaches a connector that announced "probe.target" with its target and
+// server name, and returns the certificate of its OpResult, or the connector's error as a
+// ProbeFailed; an agent without the capability, or without a session, is refused before anything
+// is sent.
+func TestProbeTarget(t *testing.T) {
+	storetest.ForEachDialect(t, func(t *testing.T, db *store.DB) {
+		e := startSessions(t, db, "0.1.0", 0)
+		certA, a := e.agentCert(t)
+		certB, b := e.agentCert(t)
+		withProbe := hello("0.1.0")
+		withProbe.Capabilities = append(withProbe.Capabilities, agentproto.CapProbeTarget)
+		stA, stB := e.open(t, testCtx(t), certA, withProbe), e.open(t, testCtx(t), certB, hello("0.1.0"))
+		recv(t, stA)
+		recv(t, stB)
+		target := &agentv1.ProbeTarget{Address: &agentv1.ProbeTarget_HostPort{HostPort: "10.0.0.5:8006"}, ServerName: "pve.local"}
+		ask := func(answer func(op *agentv1.ProbeTarget) *agentv1.OpResult) ([]byte, error) {
+			type result struct {
+				der []byte
+				err error
+			}
+			done := make(chan result, 1)
+			go func() {
+				der, err := e.sessions.ProbeTarget(testCtx(t), a.ID, target)
+				done <- result{der, err}
+			}()
+			m := recv(t, stA).GetProbeTarget()
+			if m.GetOpId() == "" || m.GetHostPort() != "10.0.0.5:8006" || m.GetServerName() != "pve.local" {
+				t.Fatalf("the probe arrived as %v", m)
+			}
+			send(t, stA, &agentv1.AgentMessage{Msg: &agentv1.AgentMessage_OpResult{OpResult: answer(m)}})
+			r := <-done
+			return r.der, r.err
+		}
+		if der, err := ask(func(op *agentv1.ProbeTarget) *agentv1.OpResult {
+			return &agentv1.OpResult{OpId: op.GetOpId(), Certificate: []byte("DER")}
+		}); err != nil || string(der) != "DER" {
+			t.Fatalf("a certificate: %q %v", der, err)
+		}
+		var failed *apisvc.ProbeFailed
+		if _, err := ask(func(op *agentv1.ProbeTarget) *agentv1.OpResult {
+			return &agentv1.OpResult{OpId: op.GetOpId(), Error: "cannot reach 10.0.0.5:8006"}
+		}); !errors.As(err, &failed) || failed.Message != "cannot reach 10.0.0.5:8006" {
+			t.Fatalf("a failed probe: %v", err)
+		}
+		if _, err := e.sessions.ProbeTarget(testCtx(t), b.ID, target); !errors.Is(err, apisvc.ErrProbeUnsupported) {
+			t.Fatalf("an agent without the capability: %v", err)
+		}
+		if _, err := e.sessions.ProbeTarget(testCtx(t), "con_unknown", target); !errors.Is(err, apisvc.ErrProbeNotConnected) {
+			t.Fatalf("an agent without a session: %v", err)
 		}
 	})
 }

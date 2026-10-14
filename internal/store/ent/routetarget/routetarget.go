@@ -220,6 +220,7 @@ const DefaultTLSVerification = TLSVerificationVerified
 const (
 	TLSVerificationVerified   TLSVerification = "verified"
 	TLSVerificationUnverified TLSVerification = "unverified"
+	TLSVerificationPinnedKey  TLSVerification = "pinned_key"
 )
 
 func (tv TLSVerification) String() string {
@@ -229,7 +230,7 @@ func (tv TLSVerification) String() string {
 // TLSVerificationValidator is a validator for the "tls_verification" field enum values. It is called by the builders before save.
 func TLSVerificationValidator(tv TLSVerification) error {
 	switch tv {
-	case TLSVerificationVerified, TLSVerificationUnverified:
+	case TLSVerificationVerified, TLSVerificationUnverified, TLSVerificationPinnedKey:
 		return nil
 	default:
 		return fmt.Errorf("routetarget: invalid enum value for tls_verification field: %q", tv)

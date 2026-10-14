@@ -129,6 +129,12 @@ func TestRouteTargets(t *testing.T) {
 		a.created.GetTarget().GetTls().GetVerification() != rpmgrv1.UpstreamVerification_UPSTREAM_VERIFICATION_UNVERIFIED {
 		t.Fatalf("an unverified target: %d %q %v", code, errOut, a.created)
 	}
+	if code, _, errOut := runWith(env, "", "create", "route-target", "--route", "rt_1", "--connector", "con_1", "--address", "pve.local:8006",
+		"--upstream", "https", "--verification", "pinned-key", "--spki", strings.Repeat("ab", 32)); code != cli.ExitOK ||
+		a.created.GetTarget().GetTls().GetVerification() != rpmgrv1.UpstreamVerification_UPSTREAM_VERIFICATION_PINNED_KEY ||
+		a.created.GetTarget().GetTls().GetSpkiSha256() != strings.Repeat("ab", 32) {
+		t.Fatalf("a pinned-key target: %d %q %v", code, errOut, a.created)
+	}
 	if code, _, errOut := runWith(env, "", "create", "route-target", "--route", "web", "--connector", "nope", "--address", "10.0.0.5:80"); code != cli.ExitError ||
 		!strings.Contains(errOut, `no connector named "nope"`) {
 		t.Errorf("an unknown connector: %d %q", code, errOut)

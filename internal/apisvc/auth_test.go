@@ -54,6 +54,7 @@ type env struct {
 	denied   atomic.Int32 // how often a service applied a changed deny-list
 	txt      fakeVerifier // the TXT proofs DomainService finds
 	renew    renewals     // the renewals CertificateService starts
+	probe    fakeProber   // what RouteService's probes find
 	sealer   *secret.Sealer
 	pki      *apisvc.Pki
 	logs     *telemetrytest.Sink // where every service logs; a secret in a line fails the test
@@ -147,7 +148,7 @@ func newEnv(t *testing.T) *env {
 	}
 	if err := srv.Mount(mux, rpmgrv1.File_rpmgr_v1_route_proto.Services().ByName("RouteService"),
 		func(o ...connect.HandlerOption) (string, http.Handler) {
-			return rpmgrv1connect.NewRouteServiceHandler(&apisvc.Routes{DB: db, API: srv, Sys: sys, Now: now}, o...)
+			return rpmgrv1connect.NewRouteServiceHandler(&apisvc.Routes{DB: db, API: srv, Sys: sys, Prober: &e.probe, Now: now}, o...)
 		}); err != nil {
 		t.Fatal(err)
 	}

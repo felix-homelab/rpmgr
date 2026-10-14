@@ -1,17 +1,18 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { clone, create, equals } from "@bufbuild/protobuf";
+import { Code, ConnectError } from "@connectrpc/connect";
 import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { ConnectorService } from "@/gen/rpmgr/v1/connector_pb";
 import { GatewayService } from "@/gen/rpmgr/v1/gateway_pb";
 import {
   ProxyProtocol, RouteService, RouteState, RouteTargetSchema, UpstreamProtocol, UpstreamTLSSettingsSchema, UpstreamVerification,
-  type CreateRouteTargetRequest, type DeleteRouteTargetRequest, type UpdateRouteTargetRequest,
+  type CreateRouteTargetRequest, type DeleteRouteTargetRequest, type ProbeTargetCertificateRequest, type UpdateRouteTargetRequest,
 } from "@/gen/rpmgr/v1/route_pb";
 import { ApplyState, StatusService } from "@/gen/rpmgr/v1/status_pb";
 import { Theme, UserService } from "@/gen/rpmgr/v1/user_pb";
-import { targetMask, UNVERIFIED } from "@/route-form/target-form";
+import { PINNED, targetMask, UNVERIFIED } from "@/route-form/target-form";
 import { auth, show } from "@/testing/api";
 import { marked, unmatched } from "@/testing/required";
 
@@ -23,8 +24,10 @@ const target = create(RouteTargetSchema, {
 });
 const applied = { revision: { dbEpoch: "e", seq: 11n }, applyStatus: { state: ApplyState.APPLIED, agentsTotal: 1, agentsApplied: 1 } };
 
-// detail renders the detail of a route of type case with targets, by default the target above.
-function detail(spec: { case: "http" | "tcp" | "udp" | "tlsPassthrough"; value: object }, targets = [target]) {
+// detail renders the detail of a route of type case with targets, by default the target above;
+// ProbeTargetCertificate answers with probe, if given.
+function detail(spec: { case: "http" | "tcp" | "udp" | "tlsPassthrough"; value: object }, targets = [target], probe?: () => object) {
+  const probes: ProbeTargetCertificateRequest[] = [];
   const creates: CreateRouteTargetRequest[] = [];
   const updates: UpdateRouteTargetRequest[] = [];
   const deletes: DeleteRouteTargetRequest[] = [];
@@ -43,9 +46,10 @@ function detail(spec: { case: "http" | "tcp" | "udp" | "tlsPassthrough"; value: 
       createRouteTarget: (req) => (creates.push(req), { target: req.target, ...applied }),
       updateRouteTarget: (req) => (updates.push(req), { target: req.target, ...applied }),
       deleteRouteTarget: (req) => (deletes.push(req), applied),
+      probeTargetCertificate: (req) => (probes.push(req), probe ? probe() : {}),
     });
   });
-  return { creates, updates, deletes };
+  return { creates, updates, deletes, probes };
 }
 
 async function form(name: string) {
@@ -77,7 +81,7 @@ describe("targets", () => {
     detail({ case: "http", value: { hostnames: ["app.example.com"] } });
     fireEvent.click(await screen.findByRole("button", { name: "Add a target" }));
     const options = within((await form("New target")).getByLabelText("Protocol to the target")).getAllByRole("option");
-    expect(options.map((o) => o.textContent)).toEqual(["HTTP", "HTTPS, verified", "HTTPS, unverified", "HTTP/2 without TLS (h2c)"]);
+    expect(options.map((o) => o.textContent)).toEqual(["HTTP", "HTTPS, verified", "HTTPS, pinned key", "HTTPS, unverified", "HTTP/2 without TLS (h2c)"]);
     for (const spec of [{ case: "tcp", value: { port: 25432 } }, { case: "tlsPassthrough", value: { hostnames: ["db.example.com"] } }] as const) {
       cleanup();
       detail(spec);
@@ -165,6 +169,56 @@ describe("targets", () => {
     fireEvent.click(f.getByRole("button", { name: "Save" }));
     await waitFor(() => expect(updates).toHaveLength(1));
     expect(equals(RouteTargetSchema, updates[0]!.target!, unverified)).toBe(true);
+  });
+
+  it("pins the key of the certificate the target shows, once the user trusts it", async () => {
+    const pin = "ab".repeat(32);
+    const { updates, probes } = detail({ case: "http", value: { hostnames: ["app.example.com"] } }, [target], () => ({
+      certificate: { spkiSha256: pin, subject: "CN=pve.local", issuer: "CN=pve.local", dnsNames: ["pve.local"], ipAddresses: ["10.0.0.5"],
+        selfSigned: true, notAfter: { seconds: 1893456000n } },
+    }));
+    fireEvent.click(await screen.findByRole("button", { name: "Edit…" }));
+    const f = await form("Edit target");
+    fireEvent.change(f.getByLabelText("Protocol to the target"), { target: { value: PINNED } });
+    const key = await f.findByLabelText("Pinned public key, SHA-256 in hex");
+    expect(key.hasAttribute("required")).toBe(true);
+    expect([f.queryByLabelText(/CA bundle ID/), f.queryByText(/will not check the target's certificate/)]).toEqual([null, null]);
+    fireEvent.change(f.getByLabelText("TLS server name"), { target: { value: "pve.local" } });
+    fireEvent.click(f.getByRole("button", { name: "Trust the certificate it shows now" }));
+    const shown = within(await f.findByRole("region", { name: "The certificate the target shows" }));
+    expect(shown.getByText("pve.local, 10.0.0.5")).toBeTruthy();
+    expect(shown.getByText("Self-signed")).toBeTruthy();
+    expect(shown.getByText(pin)).toBeTruthy();
+    expect(probes.map((p) => [p.connectorId, p.address, p.serverName]))
+      .toEqual([["con_db", { case: "hostPort", value: expect.objectContaining({ host: "10.0.0.5", port: 8080 }) }, "pve.local"]]);
+    fireEvent.click(shown.getByRole("button", { name: "Trust this key" }));
+    await waitFor(() => expect((key as HTMLInputElement).value).toBe(pin));
+    expect(f.queryByRole("region", { name: "The certificate the target shows" })).toBeNull();
+    fireEvent.click(f.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(updates).toHaveLength(1));
+    const t = updates[0]!.target!;
+    expect([t.upstreamProtocol, t.tls?.verification, t.tls?.spkiSha256, t.tls?.caBundleId, t.tls?.serverName])
+      .toEqual([UpstreamProtocol.HTTPS, UpstreamVerification.PINNED_KEY, pin, "", "pve.local"]);
+  });
+
+  it("says why no certificate was read, and asks for a connector and an address first", async () => {
+    const { probes } = detail({ case: "http", value: { hostnames: ["app.example.com"] } }, [target], () => {
+      throw new ConnectError("apisvc: the connector read no certificate: the connector's local policy does not allow 10.0.0.5:8080", Code.FailedPrecondition);
+    });
+    fireEvent.click(await screen.findByRole("button", { name: "Add a target" }));
+    const f = await form("New target");
+    fireEvent.change(f.getByLabelText("Protocol to the target"), { target: { value: PINNED } });
+    fireEvent.click(await f.findByRole("button", { name: "Trust the certificate it shows now" }));
+    expect((await f.findByRole("alert")).textContent).toBe("Choose the connector and enter the target's address first.");
+    expect(probes).toEqual([]);
+    await f.findByRole("option", { name: "app-host" });
+    fireEvent.change(f.getByLabelText("Connector"), { target: { value: "con_app" } });
+    fireEvent.change(f.getByLabelText("Host"), { target: { value: "10.0.0.5" } });
+    fireEvent.change(f.getByLabelText("Port"), { target: { value: "8080" } });
+    fireEvent.click(f.getByRole("button", { name: "Trust the certificate it shows now" }));
+    await waitFor(() => expect(f.getByRole("alert").textContent).toBe(
+      "The connector could not read the target's certificate: apisvc: the connector read no certificate: the connector's local policy does not allow 10.0.0.5:8080"));
+    expect(probes.map((p) => p.connectorId)).toEqual(["con_app"]);
   });
 
   it("removes a target after a confirmation that names it", async () => {
