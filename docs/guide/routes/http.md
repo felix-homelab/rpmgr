@@ -105,8 +105,8 @@ rpmgr update route --port80 off --hsts 0 shop-api
 ## Settings
 
 Every setting can be changed later: in the web UI with **Edit** on the route's page, on the
-command line with `rpmgr update route <flags> <name>`, the flags before the name. A route's type
-and its gateway group never change.
+command line with `rpmgr update route <name>` and the flags of the settings to change. A route's
+type and its gateway group never change.
 
 | Setting | Web UI | Command line | Default |
 |---|---|---|---|
