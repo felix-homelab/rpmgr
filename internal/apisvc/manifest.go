@@ -36,8 +36,8 @@ type Manifests struct {
 var manifestKinds = []string{"GatewayGroup", "Gateway", "PortPool", "Domain", "CABundle", "AccessPolicy", "Connector", "Route"}
 
 // ExportManifests implements ManifestService. Decommissioned gateways and connectors are not
-// configuration and are left out. A resource the request names that is not the org's, or not of
-// a kind it names, is NOT_FOUND.
+// configuration and are left out. A request that names resources gets exactly those; one it names
+// that is not the org's, not of a kind it names, or decommissioned is NOT_FOUND.
 func (m *Manifests) ExportManifests(ctx context.Context, req *connect.Request[rpmgrv1.ExportManifestsRequest]) (
 	*connect.Response[rpmgrv1.ExportManifestsResponse], error) {
 	org, c := req.Msg.GetOrgId(), m.DB.ReadClient()
@@ -45,13 +45,16 @@ func (m *Manifests) ExportManifests(ctx context.Context, req *connect.Request[rp
 	if len(kinds) == 0 {
 		kinds = manifestKinds
 	}
+	// want holds the named resources not found yet; byID stays set once they all are, so that the
+	// resources after the last of them are not exported too.
 	want := map[string]bool{}
 	for _, id := range req.Msg.GetResourceIds() {
 		want[id] = true
 	}
+	byID := len(want) > 0
 	var docs []*manifest.Doc
 	add := func(id string, msg proto.Message) error {
-		if len(want) > 0 && !want[id] {
+		if byID && !want[id] {
 			return nil
 		}
 		delete(want, id)

@@ -52,7 +52,8 @@ func stored() *rpmgrv1.Route {
 			Address:          &rpmgrv1.RouteTarget_HostPort{HostPort: &rpmgrv1.HostPort{Host: "192.168.10.20", Port: 5000}},
 			UpstreamProtocol: rpmgrv1.UpstreamProtocol_UPSTREAM_PROTOCOL_HTTPS,
 			Tls:              &rpmgrv1.UpstreamTLSSettings{ServerName: "nas.internal", CaBundleId: "cab_1"}}},
-		Etag: "7", Status: &rpmgrv1.RouteStatus{State: rpmgrv1.RouteState_ROUTE_STATE_READY}, CreateTime: timestamppb.Now(), UpdateTime: timestamppb.Now()}
+		Etag: "7", Status: &rpmgrv1.RouteStatus{State: rpmgrv1.RouteState_ROUTE_STATE_READY}, CreateTime: timestamppb.Now(), UpdateTime: timestamppb.Now(),
+		UpdateUserId: "usr_1"}
 }
 
 // roundTrip writes a resource's manifest as YAML, reads it back and parses it.
@@ -89,13 +90,13 @@ func TestRoute(t *testing.T) {
 			t.Errorf("the manifest lacks %q:\n%s", want, text)
 		}
 	}
-	for _, server := range []string{" rt_1", "rtt_1", "etag", "status", "createTime", "updateTime", "gwg_1", "con_1", "cab_1", "ap_1"} {
+	for _, server := range []string{" rt_1", "rtt_1", "etag", "status", "createTime", "updateTime", "updateUserId", "usr_1", "gwg_1", "con_1", "cab_1", "ap_1"} {
 		if strings.Contains(text, server) {
 			t.Errorf("the manifest holds %q:\n%s", server, text)
 		}
 	}
 	want := stored()
-	want.Id, want.Etag, want.Status, want.CreateTime, want.UpdateTime = "", "", nil, nil, nil
+	want.Id, want.Etag, want.Status, want.CreateTime, want.UpdateTime, want.UpdateUserId = "", "", nil, nil, nil, ""
 	want.Targets[0].Id, want.Targets[0].Etag = "", ""
 	if !proto.Equal(back, want) {
 		t.Fatalf("read back:\n%v\nwant\n%v", back, want)
@@ -117,14 +118,14 @@ func TestKinds(t *testing.T) {
 		{&rpmgrv1.GatewayGroup{Id: "gwg_1", Name: "eu", Region: "fra", PublicHostnames: []string{"eu.example.com"}, Etag: "1"},
 			&rpmgrv1.GatewayGroup{Name: "eu", Region: "fra", PublicHostnames: []string{"eu.example.com"}}},
 		{&rpmgrv1.Gateway{Id: "gw_1", GatewayGroupId: "gwg_1", Name: "gw1", Slot: 2, TunnelEndpoints: []string{"gw1.example.com:443"}, Enabled: true,
-			CreateTime: now, Status: &rpmgrv1.GatewayStatus{}, Etag: "4"},
+			CreateTime: now, Status: &rpmgrv1.GatewayStatus{}, Etag: "4", BuiltIn: true},
 			&rpmgrv1.Gateway{GatewayGroupId: "gwg_1", Name: "gw1", TunnelEndpoints: []string{"gw1.example.com:443"}, Enabled: true}},
 		{&rpmgrv1.PortPool{Id: "pp_1", GatewayGroupId: "gwg_1", Protocol: rpmgrv1.PortProtocol_PORT_PROTOCOL_TCP, PortFrom: 20000, PortTo: 20099, AllocatedPorts: 3, Etag: "1"},
 			&rpmgrv1.PortPool{GatewayGroupId: "gwg_1", Protocol: rpmgrv1.PortProtocol_PORT_PROTOCOL_TCP, PortFrom: 20000, PortTo: 20099}},
 		{&rpmgrv1.Domain{Id: "dom_1", Fqdn: "example.com", Wildcard: true, Method: rpmgrv1.DomainMethod_DOMAIN_METHOD_HTTP,
 			Status: rpmgrv1.DomainStatus_DOMAIN_STATUS_VERIFIED, LastError: "x", VerifyTime: now, Etag: "3"},
 			&rpmgrv1.Domain{Fqdn: "example.com", Wildcard: true, Method: rpmgrv1.DomainMethod_DOMAIN_METHOD_HTTP}},
-		{&rpmgrv1.Connector{Id: "con_1", Name: "nas", Labels: map[string]string{"site": "home"}, Ephemeral: true, Enabled: true, CreateTime: now, Etag: "2"},
+		{&rpmgrv1.Connector{Id: "con_1", Name: "nas", Labels: map[string]string{"site": "home"}, Ephemeral: true, Enabled: true, CreateTime: now, Etag: "2", BuiltIn: true},
 			&rpmgrv1.Connector{Name: "nas", Labels: map[string]string{"site": "home"}, Enabled: true}},
 		{&rpmgrv1.CABundle{Id: "cab_1", Name: "internal", Pem: "-----BEGIN CERTIFICATE-----\n", TargetIds: []string{"rtt_1"},
 			Certificates: []*rpmgrv1.CACertificate{{Subject: "CN=x"}}, Etag: "1"},
