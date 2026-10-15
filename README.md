@@ -320,13 +320,14 @@ controllers. Virtual networks, HTTP/3, a Helm chart and a Terraform provider fol
 
 | Document | Read it to |
 |---|---|
-| [10 — Operations](docs/10-operations.md) | Install, configure, upgrade, back up, monitor and troubleshoot rpmgr |
-| [16 — Command line](docs/16-cli.md) | Look up a command, its flags and its exit codes |
+| [User guide](docs/guide/README.md) | Install, set up, use, upgrade and troubleshoot rpmgr: every task in the web UI and on the command line |
+| [Quick start](docs/guide/quick-start.md) | Go from a fresh server to a first published service, step by step |
+| [Command-line reference](docs/guide/reference/cli.md) | Look up every command and its flags |
+| [Web UI](docs/guide/web-ui/README.md) | Find your way through every page of the web UI |
 | [05 — Features](docs/05-features.md) | See every feature, the release phase it comes in, and the supported platforms |
 | [04 — Security](docs/04-security.md) | Understand the threat model, identities, roles and what protects you |
-| [02 — Architecture](docs/02-architecture.md) | Understand the roles and the ways to deploy them |
 | [CHANGELOG](CHANGELOG.md) | See what changed in each release |
-| [All documents](docs/README.md) | Read the whole design: connections, data model, API, web UI, testing and decisions |
+| [All documents](docs/README.md) | Read the whole design: architecture, connections, data model, API, operations, testing and decisions |
 
 ## Building from source
 

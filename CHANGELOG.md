@@ -217,5 +217,9 @@ history and the [ADRs](docs/adr/).
 - Releases: reproducible builds with an SPDX SBOM, SLSA provenance attestations and a signed
   release manifest; distroless, nonroot multi-arch images at `ghcr.io/felix-homelab/rpmgr`, signed
   with cosign. (#384, #385)
+- Docs: a user guide in `docs/guide/` covers concepts, a quick start, every task in the web UI
+  and on the command line, a page per web UI screen with its screenshot, and references for the
+  command line (generated from the binary), the boot files, the local policy file, the environment
+  and the API. (#555)
 
 [Unreleased]: https://github.com/felix-homelab/rpmgr/commits/main

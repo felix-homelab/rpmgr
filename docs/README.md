@@ -1,11 +1,18 @@
 # rpmgr documents
 
-These are rpmgr's design and reference documents. They describe behaviour before it is built and
-change in the same pull request as the code
-([CONTRIBUTING](../CONTRIBUTING.md#documenting-features)). To install and use rpmgr, start with
-the [README](../README.md).
+The documentation has two parts:
 
-## Documents
+- **The [user guide](guide/README.md)** is for the people who install, run and use rpmgr: concepts,
+  a quick start, how-to pages for every task in the web UI and on the command line, a page per
+  screen of the web UI, and references for the command line, the configuration files and the API.
+  Start there to use rpmgr.
+- **The design documents** below are the specification: how rpmgr works and why. They describe
+  behaviour before it is built and change in the same pull request as the code
+  ([CONTRIBUTING](../CONTRIBUTING.md#documenting-features)). The user guide links to them for
+  exact timeouts, sizes and limits, which live only here
+  ([D91](14-open-decisions.md#project-and-process)).
+
+## Design documents
 
 | Document | What it answers |
 |---|---|
