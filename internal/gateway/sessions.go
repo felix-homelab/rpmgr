@@ -54,6 +54,9 @@ var (
 	// unassignedDrain is how long the sessions of a connector the snapshot dropped keep their
 	// streams: the route drain period (docs/03-connections.md, "Timeouts, keepalive and backoff").
 	unassignedDrain = 30 * time.Second
+	// activeWindow is how recently a stream must have been opened or have carried a byte to count
+	// in its session's load: an idle pooled HTTP stream or a quiet UDP flow does not (D90).
+	activeWindow = 5 * time.Second
 )
 
 // Errors of Open and OpenStream.
@@ -69,8 +72,19 @@ var (
 type Assignment interface {
 	// Known reports whether the connector serves any route of this gateway.
 	Known(connectorID string) bool
-	// Connectors returns the connectors that serve the route.
-	Connectors(routeID string) []string
+	// Connectors returns the connectors that serve the route, with their rank for it.
+	Connectors(routeID string) []RouteConnector
+}
+
+// RouteConnector is a connector that serves a route at one priority of its targets of the route: a
+// stream goes to an entry of the lowest priority whose connector has a ready session, chosen by
+// weight (D90).
+type RouteConnector struct {
+	ID       string
+	Priority uint32
+	Weight   uint32 // 0 counts as 1
+	// Ranked: the controller ranked it, so a stream names the priority to the connector.
+	Ranked bool
 }
 
 // SessionsOptions configure Sessions.
@@ -136,8 +150,10 @@ type dataSession struct {
 	send      func(*tunnelv1.SessionMessage) error
 	now       func() time.Time
 	inflight  atomic.Int64
-	retiring  atomic.Bool // the snapshot dropped the connector; retire runs
-	drained   atomic.Bool // told to move; it opens no new stream and closes at its deadline
+	streamsMu sync.Mutex
+	streams   map[*trackedStream]struct{} // open, for the load
+	retiring  atomic.Bool                 // the snapshot dropped the connector; retire runs
+	drained   atomic.Bool                 // told to move; it opens no new stream and closes at its deadline
 	// writing is the start, in Unix nanoseconds, of a stream write still in progress, or 0. With
 	// concurrent writers it tracks one of them, which is enough to notice a session whose writes
 	// all block.
@@ -160,8 +176,40 @@ func (d *dataSession) rtt() time.Duration {
 	return time.Millisecond
 }
 
-// score is the smoothed RTT times the streams in flight, plus one; lower is better.
-func (d *dataSession) score() int64 { return int64(d.rtt()) * (d.inflight.Load() + 1) }
+// score is the smoothed RTT times the active streams, plus one; lower is better.
+func (d *dataSession) score(now time.Time) int64 { return int64(d.rtt()) * (d.active(now) + 1) }
+
+// active counts the session's streams opened or used within activeWindow.
+func (d *dataSession) active(now time.Time) int64 {
+	cut := now.Add(-activeWindow).UnixNano()
+	d.streamsMu.Lock()
+	defer d.streamsMu.Unlock()
+	var n int64
+	for t := range d.streams {
+		if t.last.Load() >= cut {
+			n++
+		}
+	}
+	return n
+}
+
+// track adds a stream to the session's load, until untrack.
+func (d *dataSession) track(t *trackedStream) {
+	d.inflight.Add(1)
+	d.streamsMu.Lock()
+	defer d.streamsMu.Unlock()
+	if d.streams == nil {
+		d.streams = map[*trackedStream]struct{}{}
+	}
+	d.streams[t] = struct{}{}
+}
+
+func (d *dataSession) untrack(t *trackedStream) {
+	d.inflight.Add(-1)
+	d.streamsMu.Lock()
+	defer d.streamsMu.Unlock()
+	delete(d.streams, t)
+}
 
 // blocked reports whether a stream write has taken longer than blockedAfter.
 func (d *dataSession) blocked(now time.Time) bool {
@@ -469,19 +517,105 @@ func (m *Sessions) Report() []*agentv1.DataSession {
 	return out
 }
 
-// candidates are the ready sessions of the route's connectors.
-func (m *Sessions) candidates(route string) []*dataSession {
+// rankedSessions is an entry of a route, a connector at one priority of its targets, with the
+// connector's ready sessions.
+type rankedSessions struct {
+	RouteConnector
+	sessions []*dataSession
+}
+
+// tier is a connector at one priority of its targets of a route.
+type tier struct {
+	connector string
+	priority  uint32
+}
+
+// passedOver are the entries and sessions an open does not try again.
+type passedOver struct {
+	tiers    map[tier]bool
+	sessions map[*dataSession]bool
+}
+
+// candidates are the route's entries whose connector has a ready session, each with those
+// sessions, less the ones skip names.
+func (m *Sessions) candidates(route string, skip passedOver) []rankedSessions {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	var out []*dataSession
+	var out []rankedSessions
 	for _, c := range m.o.Assignment.Connectors(route) {
-		for _, d := range m.byConnector[c] {
-			if d.isReady(route) && !d.drained.Load() {
-				out = append(out, d)
+		if skip.tiers[tier{c.ID, c.Priority}] {
+			continue
+		}
+		r := rankedSessions{RouteConnector: c}
+		for _, d := range m.byConnector[c.ID] {
+			if d.isReady(route) && !d.drained.Load() && !skip.sessions[d] {
+				r.sessions = append(r.sessions, d)
 			}
+		}
+		if len(r.sessions) > 0 {
+			out = append(out, r)
 		}
 	}
 	return out
+}
+
+// BestPriority returns the lowest priority of the route's entries whose connector has a ready
+// session, and false when there is none.
+func (m *Sessions) BestPriority(route string) (uint32, bool) {
+	if m == nil {
+		return 0, false
+	}
+	cands := m.candidates(route, passedOver{})
+	if len(cands) == 0 {
+		return 0, false
+	}
+	return lowest(cands), true
+}
+
+// HasEntry reports whether the connector at the priority is an entry of the route.
+func (m *Sessions) HasEntry(route, connector string, priority uint32) bool {
+	return m != nil && slices.ContainsFunc(m.o.Assignment.Connectors(route), func(c RouteConnector) bool {
+		return c.ID == connector && c.Priority == priority
+	})
+}
+
+func lowest(cands []rankedSessions) uint32 {
+	best := cands[0].Priority
+	for _, c := range cands[1:] {
+		best = min(best, c.Priority)
+	}
+	return best
+}
+
+// choose picks a session among cands, which must not be empty: an entry of the lowest priority at
+// random by weight, then one of its connector's sessions by pick. While another entry of the
+// priority has a session whose writes are not blocked, an entry whose sessions all are is passed
+// over. It returns the entry's index too.
+func choose(cands []rankedSessions, now time.Time) (int, *dataSession) {
+	best := lowest(cands)
+	flowing := func(c rankedSessions) bool {
+		return slices.ContainsFunc(c.sessions, func(d *dataSession) bool { return !d.blocked(now) })
+	}
+	anyFlowing := slices.ContainsFunc(cands, func(c rankedSessions) bool { return c.Priority == best && flowing(c) })
+	eligible := func(c rankedSessions) bool { return c.Priority == best && (!anyFlowing || flowing(c)) }
+	var total int64
+	for _, c := range cands {
+		if eligible(c) {
+			total += int64(max(c.Weight, 1))
+		}
+	}
+	n := randN(total)
+	for i, c := range cands {
+		if !eligible(c) {
+			continue
+		}
+		if w := int64(max(c.Weight, 1)); n >= w {
+			n -= w
+			continue
+		}
+		return i, pick(c.sessions, now)
+	}
+	return 0, pick(cands[0].sessions, now) // not reached: n < total
 }
 
 // pick chooses among sessions by power of two choices: two at random, the one with the lower
@@ -490,7 +624,7 @@ func pick(sessions []*dataSession, now time.Time) *dataSession {
 	if len(sessions) == 1 {
 		return sessions[0]
 	}
-	i, j := randN(len(sessions)), randN(len(sessions)-1)
+	i, j := int(randN(int64(len(sessions)))), int(randN(int64(len(sessions)-1)))
 	if j >= i {
 		j++
 	}
@@ -501,45 +635,55 @@ func pick(sessions []*dataSession, now time.Time) *dataSession {
 	case bb && !ab:
 		return a
 	}
-	if b.score() < a.score() {
+	if b.score(now) < a.score(now) {
 		return b
 	}
 	return a
 }
 
-func randN(n int) int {
-	v, err := rand.Int(rand.Reader, big.NewInt(int64(n)))
+func randN(n int64) int64 {
+	v, err := rand.Int(rand.Reader, big.NewInt(n))
 	if err != nil {
 		return 0
 	}
-	return int(v.Int64())
+	return v.Int64()
 }
 
 // Open opens a stream for open's route on one of its ready sessions and writes open; a session at
 // its stream limit is passed over. The caller reads the StreamResult (OpenStream) and must Close
 // or Abort the stream, which ends its count in the session's load.
 func (m *Sessions) Open(ctx context.Context, open *tunnelv1.StreamOpen) (tunnel.Stream, error) {
-	return m.open(ctx, open, nil)
+	return m.open(ctx, open, passedOver{})
 }
 
-// open is Open without the session skip.
-func (m *Sessions) open(ctx context.Context, open *tunnelv1.StreamOpen, skip *dataSession) (*trackedStream, error) {
+// open is Open passing over the entries and sessions skip names. A ranked entry's priority goes
+// into open, so that its connector dials only its targets of that priority (D90).
+func (m *Sessions) open(ctx context.Context, open *tunnelv1.StreamOpen, skip passedOver) (*trackedStream, error) {
 	m.mu.Lock()
 	draining := m.draining || m.disabled
 	m.mu.Unlock()
 	if draining {
 		return nil, ErrDraining
 	}
-	cands := slices.DeleteFunc(m.candidates(open.GetRouteId()), func(x *dataSession) bool { return x == skip })
+	cands := m.candidates(open.GetRouteId(), skip)
 	for len(cands) > 0 {
-		d := pick(cands, m.o.Now())
+		i, d := choose(cands, m.o.Now())
 		st, err := d.s.OpenStream(ctx)
 		if err != nil {
-			cands = slices.DeleteFunc(cands, func(x *dataSession) bool { return x == d })
+			if cands[i].sessions = slices.DeleteFunc(cands[i].sessions, func(x *dataSession) bool { return x == d }); len(cands[i].sessions) == 0 {
+				cands = slices.Delete(cands, i, i+1)
+			}
 			continue
 		}
-		ts := &trackedStream{Stream: st, d: d}
-		d.inflight.Add(1)
+		// A UDP flow names none: it sends before the answer, so it is not retried on another entry,
+		// and the connector's own fall-through is its failover.
+		open.TargetPriority = nil
+		if c := cands[i]; c.Ranked && open.GetKind() != tunnelv1.StreamKind_STREAM_KIND_UDP_FLOW {
+			open.TargetPriority = &c.Priority
+		}
+		ts := &trackedStream{Stream: st, d: d, tier: cands[i].RouteConnector}
+		ts.last.Store(m.o.Now().UnixNano())
+		d.track(ts)
 		if err := tunnel.WriteMessage(ts, open); err != nil {
 			ts.Abort()
 			return nil, err
@@ -550,8 +694,10 @@ func (m *Sessions) open(ctx context.Context, open *tunnelv1.StreamOpen, skip *da
 	return nil, ErrNoSession
 }
 
-// OpenStream opens a stream for open's route and reads its StreamResult within 10 s; on DRAINING
-// or OVERLOADED it tries once more on another session (docs/03-connections.md, "Framing"). It
+// OpenStream opens a stream for open's route and reads its StreamResult within 10 s. On DRAINING
+// or OVERLOADED it tries another session; on UPSTREAM_REFUSED or UPSTREAM_TIMEOUT another entry,
+// of the same priority first, then of the next, which may be the same connector at a worse
+// priority; at most openAttempts streams in all (docs/03-connections.md, "Framing", D90). It
 // returns the stream only with NO_ERROR, otherwise the last result code.
 func (m *Sessions) OpenStream(ctx context.Context, open *tunnelv1.StreamOpen) (tunnel.Stream, tunnelv1.ResultCode, error) {
 	st, res, err := m.OpenStreamResult(ctx, open)
@@ -577,14 +723,16 @@ func (m *Sessions) OpenStreamResult(ctx context.Context, open *tunnelv1.StreamOp
 // tracerName names the gateway's spans (docs/10-operations.md, "Traces").
 const tracerName = "github.com/felix-homelab/rpmgr/internal/gateway"
 
+// openAttempts bounds the streams one OpenStream opens, and so its time: each waits at most for
+// its StreamResult.
+const openAttempts = 4
+
 func (m *Sessions) openStreamResult(ctx context.Context, open *tunnelv1.StreamOpen) (tunnel.Stream, *tunnelv1.StreamResult, error) {
-	var (
-		last  *tunnelv1.StreamResult
-		tried *dataSession
-	)
-	for attempt := range 2 {
-		st, err := m.open(ctx, open, tried)
-		if attempt == 1 && errors.Is(err, ErrNoSession) {
+	var last *tunnelv1.StreamResult
+	skip := passedOver{tiers: map[tier]bool{}, sessions: map[*dataSession]bool{}}
+	for attempt := range openAttempts {
+		st, err := m.open(ctx, open, skip)
+		if attempt > 0 && errors.Is(err, ErrNoSession) {
 			return nil, last, nil // no other session to try
 		}
 		if err != nil {
@@ -596,15 +744,22 @@ func (m *Sessions) openStreamResult(ctx context.Context, open *tunnelv1.StreamOp
 			return nil, nil, err
 		}
 		last = res
-		code := res.GetCode()
-		if code == tunnelv1.ResultCode_RESULT_CODE_NO_ERROR {
+		switch res.GetCode() {
+		case tunnelv1.ResultCode_RESULT_CODE_NO_ERROR:
 			return st, res, nil
+		case tunnelv1.ResultCode_RESULT_CODE_DRAINING, tunnelv1.ResultCode_RESULT_CODE_OVERLOADED:
+			skip.sessions[st.d] = true
+		case tunnelv1.ResultCode_RESULT_CODE_UPSTREAM_REFUSED, tunnelv1.ResultCode_RESULT_CODE_UPSTREAM_TIMEOUT:
+			// Another entry may reach its target; the client has sent nothing over the stream yet,
+			// as every caller relays only after NO_ERROR.
+			skip.tiers[tier{st.d.connector, st.tier.Priority}] = true
+			m.o.Logger.Debug("trying another target of the route", "route", open.GetRouteId(), "connector", st.d.connector,
+				"priority", st.tier.Priority, "code", res.GetCode())
+		default:
+			_ = st.Close()
+			return nil, res, nil
 		}
 		_ = st.Close()
-		if code != tunnelv1.ResultCode_RESULT_CODE_DRAINING && code != tunnelv1.ResultCode_RESULT_CODE_OVERLOADED {
-			break
-		}
-		tried = st.d
 	}
 	return nil, last, nil
 }
@@ -740,6 +895,8 @@ func StreamConnector(st tunnel.Stream) string {
 type trackedStream struct {
 	tunnel.Stream
 	d       *dataSession
+	tier    RouteConnector // the entry it was opened for
+	last    atomic.Int64   // Unix nanoseconds of the open or the latest byte, for the load
 	once    sync.Once
 	open    prometheus.Gauge   // nil without metrics
 	in, out prometheus.Counter // bytes towards the service and back
@@ -750,6 +907,9 @@ func (t *trackedStream) Write(p []byte) (int, error) {
 	t.d.writing.CompareAndSwap(0, start)
 	n, err := t.Stream.Write(p)
 	t.d.writing.CompareAndSwap(start, 0)
+	if n > 0 {
+		t.last.Store(start)
+	}
 	if t.in != nil {
 		t.in.Add(float64(n))
 	}
@@ -758,6 +918,9 @@ func (t *trackedStream) Write(p []byte) (int, error) {
 
 func (t *trackedStream) Read(p []byte) (int, error) {
 	n, err := t.Stream.Read(p)
+	if n > 0 {
+		t.last.Store(t.d.now().UnixNano())
+	}
 	if t.out != nil {
 		t.out.Add(float64(n))
 	}
@@ -766,11 +929,28 @@ func (t *trackedStream) Read(p []byte) (int, error) {
 
 func (t *trackedStream) done() {
 	t.once.Do(func() {
-		t.d.inflight.Add(-1)
+		t.d.untrack(t)
 		if t.open != nil {
 			t.open.Dec()
 		}
 	})
+}
+
+// markActive counts a stream of Open as active now, for a byte that does not pass through it,
+// such as a UDP flow's datagram.
+func markActive(st tunnel.Stream) {
+	if ts, ok := st.(*trackedStream); ok {
+		ts.last.Store(ts.d.now().UnixNano())
+	}
+}
+
+// streamPriority returns the priority a stream of OpenStreamResult was opened at, and whether the
+// controller ranked it.
+func streamPriority(st tunnel.Stream) (uint32, bool) {
+	if ts, ok := st.(*trackedStream); ok {
+		return ts.tier.Priority, ts.tier.Ranked
+	}
+	return 0, false
 }
 
 // Unwrap returns the transport's stream, for its QUIC stream ID.

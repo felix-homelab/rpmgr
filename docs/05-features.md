@@ -50,10 +50,10 @@
 | Target kinds: `host:port`, unix socket | P1 |
 | Upstream protocols: TCP, HTTP, HTTPS **with certificate verification** (custom CA, server name), h2c | P1 |
 | PROXY protocol v1/v2 to the target | P1 |
-| Several targets per route: weights, priorities (failover) | P2 |
+| Several targets per route: weights, priorities (failover), also across connectors | P1 |
 | Active health checks (TCP, HTTP) run by the connector next to the target | P2 |
 | Passive health: gateway marks a target unhealthy after consecutive upstream failures | P2 |
-| Targets on different connectors (multi-site redundancy) | P2 |
+| Targets on different connectors (multi-site redundancy), with fallback to another connector when a target refuses | P1 |
 
 ### Edge access control and limits
 
