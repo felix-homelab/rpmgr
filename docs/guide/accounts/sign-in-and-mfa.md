@@ -63,8 +63,10 @@ you to sign in again and back to where you were.
 - **See and end your sessions:** **Your account**, card **Sessions**. Each session shows its
   browser, address and last activity; **End…** and **End it** sign another browser out
   ([Account](../web-ui/account.md#sessions)).
-- **Changing your password, or your authenticator, ends all your other sessions.** So does a
-  password reset.
+- **Changing your password or your authenticator, or making new recovery codes, ends all your
+  other sessions.** The browser that made the change stays signed in. A password reset ends every
+  session. None of these ends your API tokens; revoke a token yourself if it may have leaked
+  ([API tokens](api-tokens-and-cli.md#list-and-revoke-tokens)).
 
 ## Set up an authenticator
 
@@ -95,8 +97,10 @@ Each recovery code works once in place of a code from the app, at sign-in and at
 you type one, upper or lower case and dashes do not matter.
 
 - **New codes:** **Your account**, **New recovery codes**, after a step-up. The old codes stop
-  working, and the new ones are shown once. Do this when you have used most of them, or think
-  someone has seen them.
+  working, the new ones are shown once, and your other sessions end; this browser stays signed
+  in. Do this when you have used most of them, or think someone has seen them. In that case, also
+  check your API tokens and revoke any you did not make: new codes do not end them
+  ([API tokens](api-tokens-and-cli.md#list-and-revoke-tokens)).
 - **Lost phone:** sign in with a recovery code, remove the authenticator and set up a new one.
 - **Lost phone and codes:** this version has no way for an administrator to remove another user's
   authenticator, so the account cannot sign in again. Keep the codes safe.

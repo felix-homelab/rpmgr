@@ -8,6 +8,7 @@ import (
 	"crypto/sha256"
 	"encoding/base32"
 	"errors"
+	"fmt"
 	"log/slog"
 	"strings"
 
@@ -141,7 +142,10 @@ func (m *MFA) RemoveTOTP(userID, actor string) error {
 }
 
 // RegenerateRecoveryCodes replaces a user's recovery codes and returns the new ones, shown once.
-func (m *MFA) RegenerateRecoveryCodes(userID string) ([]string, error) {
+// endSessions ends the user's other sessions in the same transaction (docs/04-security.md:
+// replacing the codes ends them) and returns how many it ended, which the audit entry names; an
+// error rolls the change back. nil ends none.
+func (m *MFA) RegenerateRecoveryCodes(userID string, endSessions func(tx *ent.Tx) (int, error)) ([]string, error) {
 	if ok, err := m.HasMFA(userID); err != nil || !ok {
 		return nil, errors.Join(err, errIf(!ok, ErrNoMFA))
 	}
@@ -151,9 +155,19 @@ func (m *MFA) RegenerateRecoveryCodes(userID string) ([]string, error) {
 		if codes, err = m.newRecoveryCodes(tx, userID); err != nil {
 			return err
 		}
-		return m.superseded(tx, userID, "user.recovery_codes", revlog.RecoveryCodes, "recovery codes replaced")
+		ended := 0
+		if endSessions != nil {
+			if ended, err = endSessions(tx); err != nil {
+				return err
+			}
+		}
+		return m.superseded(tx, userID, "user.recovery_codes", revlog.RecoveryCodes,
+			fmt.Sprintf("recovery codes replaced; %d other sessions ended", ended))
 	})
-	return codes, err
+	if err != nil {
+		return nil, err
+	}
+	return codes, nil
 }
 
 // VerifySecondFactor checks a code of the user's authenticator, or one of their recovery codes,
