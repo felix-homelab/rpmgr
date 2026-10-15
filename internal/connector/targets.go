@@ -167,6 +167,9 @@ func (t *Targets) Set(routes []Route) {
 		}
 	}
 	t.routes = next
+	// A target may keep its ID with a new address: a dial of the old route refused now is not its.
+	clear(t.refused)
+	t.gen++
 	t.mu.Unlock()
 	for _, id := range gone {
 		t.report(&tunnelv1.RouteHealth{RouteId: id})
@@ -199,7 +202,7 @@ func (t *Targets) Recheck() {
 	}
 	t.mu.Unlock()
 	for _, h := range changed {
-		t.report(h)
+		t.reportRoute(h)
 	}
 	for _, c := range blocked {
 		t.o.Logger.Info("the local policy no longer allows a target: its connection is reset", "target", c.RemoteAddr().String())
@@ -255,8 +258,7 @@ func readiness(r Route, p *policy.Policy, refused map[string]string) *tunnelv1.R
 	for _, tg := range r.Targets {
 		detail, wasRefused := refused[tg.ID]
 		if tg.allowed(p) && !wasRefused {
-			h.Ready = true
-			return h
+			return &tunnelv1.RouteHealth{RouteId: r.ID, Ready: true} // no detail of the others: one state, one report
 		}
 		if h.Detail != "" {
 			continue
@@ -277,18 +279,38 @@ func (t *Targets) report(h *tunnelv1.RouteHealth) {
 	}
 }
 
+// reportRoute reports a change of a route's readiness, then again for as long as the route's
+// readiness changed meanwhile: reports of several goroutines may arrive out of order, and the last
+// one must carry the route's state, as Sessions keep the last. No lock is held while reporting,
+// which sends to gateways.
+func (t *Targets) reportRoute(h *tunnelv1.RouteHealth) {
+	for h != nil {
+		t.report(h)
+		t.mu.Lock()
+		cur := t.health[h.GetRouteId()]
+		t.mu.Unlock()
+		if cur == nil || sameHealth(cur, h) {
+			return
+		}
+		h = cur
+	}
+}
+
+func sameHealth(a, b *tunnelv1.RouteHealth) bool {
+	return a.GetReady() == b.GetReady() && a.GetReason() == b.GetReason() && a.GetDetail() == b.GetDetail()
+}
+
 // updateHealthLocked records the route's readiness and returns it if it changed, to be reported
 // once t.mu is released; nil if it did not. Under t.mu.
 func (t *Targets) updateHealthLocked(route string, h *tunnelv1.RouteHealth) *tunnelv1.RouteHealth {
-	if old := t.health[route]; old != nil && old.GetReady() == h.GetReady() && old.GetReason() == h.GetReason() &&
-		old.GetDetail() == h.GetDetail() {
+	if old := t.health[route]; old != nil && sameHealth(old, h) {
 		return nil
 	}
 	t.health[route] = h
 	return h
 }
 
-// generation returns the count of Rechecks, which a dial takes before it starts.
+// generation returns the count of snapshots and Rechecks, which a dial takes with its route.
 func (t *Targets) generation() uint64 {
 	t.mu.Lock()
 	defer t.mu.Unlock()
@@ -296,7 +318,7 @@ func (t *Targets) generation() uint64 {
 }
 
 // blocked records a dial of the route's target that the policy refused on the resolved address,
-// unless a Recheck came after the dial began (gen): its policy or snapshot judges the target anew.
+// unless a snapshot or Recheck came after the dial took its route (gen): it judges the target anew.
 // Only that target counts as blocked: the route is not ready once none of its targets is allowed
 // (#551), and stays ready while another one is.
 func (t *Targets) blocked(route, target, detail string, gen uint64) {
@@ -313,26 +335,23 @@ func (t *Targets) blocked(route, target, detail string, gen uint64) {
 		h = t.updateHealthLocked(route, readiness(r, p, t.refused[route]))
 	}
 	t.mu.Unlock()
-	if h != nil {
-		t.report(h)
-	}
+	t.reportRoute(h)
 }
 
 // dialled records a dial of the route's target that the policy allowed: a name refused before
-// resolves to an allowed address now, and counts as allowed again.
-func (t *Targets) dialled(route, target string) {
+// resolves to an allowed address now, and counts as allowed again, unless a snapshot or Recheck
+// came after the dial took its route (gen).
+func (t *Targets) dialled(route, target string, gen uint64) {
 	t.mu.Lock()
 	var h *tunnelv1.RouteHealth
-	if _, was := t.refused[route][target]; was {
+	if _, was := t.refused[route][target]; was && gen == t.gen {
 		delete(t.refused[route], target)
 		if r, active := t.routes[route]; active {
 			h = t.updateHealthLocked(route, readiness(r, t.o.Policy(), t.refused[route]))
 		}
 	}
 	t.mu.Unlock()
-	if h != nil {
-		t.report(h)
-	}
+	t.reportRoute(h)
 }
 
 // Status returns the routes that are not ready, for the resource status of Applied.
@@ -348,16 +367,17 @@ func (t *Targets) Status() []*agentv1.ResourceStatus {
 	return out
 }
 
-func (t *Targets) route(id string) (Route, bool) {
+// route returns a route of the snapshot, or one draining, with the generation it is of.
+func (t *Targets) route(id string) (Route, uint64, bool) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	if r, ok := t.routes[id]; ok {
-		return r, true
+		return r, t.gen, true
 	}
 	if d, ok := t.draining[id]; ok && time.Now().Before(d.until) {
-		return d.r, true
+		return d.r, t.gen, true
 	}
-	return Route{}, false
+	return Route{}, t.gen, false
 }
 
 // Handle serves one stream the gateway opened; it is Options.Streams. A UDP_FLOW stream is one
@@ -413,7 +433,7 @@ func (t *Targets) open(ctx context.Context, open *tunnelv1.StreamOpen) (tunnelv1
 	if c := tunnel.CheckStreamOpen(open); c != tunnelv1.ResultCode_RESULT_CODE_NO_ERROR {
 		return c, nil, ""
 	}
-	r, ok := t.route(open.GetRouteId())
+	r, gen, ok := t.route(open.GetRouteId())
 	switch kind := open.GetKind(); {
 	case kind != tunnelv1.StreamKind_STREAM_KIND_TCP && kind != tunnelv1.StreamKind_STREAM_KIND_UDP_FLOW:
 		return tunnelv1.ResultCode_RESULT_CODE_PROTOCOL, nil, ""
@@ -422,7 +442,7 @@ func (t *Targets) open(ctx context.Context, open *tunnelv1.StreamOpen) (tunnelv1
 	case !r.Both && r.UDP != (kind == tunnelv1.StreamKind_STREAM_KIND_UDP_FLOW):
 		return tunnelv1.ResultCode_RESULT_CODE_PROTOCOL, nil, ""
 	case kind == tunnelv1.StreamKind_STREAM_KIND_UDP_FLOW:
-		return t.dialUDP(ctx, r, open)
+		return t.dialUDP(ctx, r, open, gen)
 	}
 	timeout := dialUpstream
 	if ms := open.GetOpenTimeoutMs(); ms > 0 && time.Duration(ms)*time.Millisecond < timeout {
@@ -430,7 +450,6 @@ func (t *Targets) open(ctx context.Context, open *tunnelv1.StreamOpen) (tunnelv1
 	}
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	gen := t.generation()
 	d := &net.Dialer{KeepAlive: tcpKeepAlive, Control: policy.Control(t.o.Policy)}
 	code := tunnelv1.ResultCode_RESULT_CODE_UPSTREAM_REFUSED
 	for _, tg := range order(targetsFor(r, open)) {
@@ -451,7 +470,7 @@ func (t *Targets) open(ctx context.Context, open *tunnelv1.StreamOpen) (tunnelv1
 			}
 			continue
 		}
-		t.dialled(r.ID, tg.ID)
+		t.dialled(r.ID, tg.ID, gen)
 		if h := proxyHeader(tg, open); h != nil {
 			if _, err := h.WriteTo(conn); err != nil {
 				_ = conn.Close()

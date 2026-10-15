@@ -5,10 +5,12 @@ package connector_test
 import (
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 
 	tunnelv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/tunnel/v1"
 	"github.com/felix-homelab/rpmgr/internal/connector"
+	"github.com/felix-homelab/rpmgr/internal/policy"
 )
 
 // notReady returns the routes Status reports not ready, by ID, with their detail.
@@ -97,5 +99,84 @@ func TestTargets_RefusalBeforeRecheck(t *testing.T) {
 	e.Blocked("rt_name", target("localhost", svc.port()).ID, "localhost:1 refused", e.Generation())
 	if nr := notReady(e); nr["rt_name"] != "localhost:1 refused" {
 		t.Fatalf("a current refusal: %v", nr)
+	}
+}
+
+// TestTargets_RefusalsOfAReadyRoute: refusals of a target beside an allowed one report nothing:
+// the route was ready and stays so, whatever the refusals' details (#552 review).
+func TestTargets_RefusalsOfAReadyRoute(t *testing.T) {
+	svc, blk := startService(t, echoService), startService(t, echoService)
+	e := newTargets(allowLoopback(t, svc.port()))
+	refused := target("localhost", blk.port())
+	e.Set([]connector.Route{{ID: "rt_mix", Targets: []connector.Target{refused, target("127.0.0.1", svc.port())}}})
+	reports := func() (n int) {
+		e.mu.Lock()
+		defer e.mu.Unlock()
+		for _, h := range e.health {
+			if h.GetRouteId() == "rt_mix" {
+				n++
+			}
+		}
+		return n
+	}
+	before := reports()
+	for i := range 6 {
+		e.Blocked("rt_mix", refused.ID, "localhost:"+strconv.Itoa(i)+" refused", e.Generation())
+	}
+	if got := reports(); got != before || len(notReady(e)) != 0 {
+		t.Fatalf("refusals of a ready route made %d reports, not ready: %v", got-before, notReady(e))
+	}
+}
+
+// TestTargets_DialledBeforeRecheck: an allowed dial that began before a Recheck does not clear a
+// refusal recorded after it; a current one does.
+func TestTargets_DialledBeforeRecheck(t *testing.T) {
+	svc := startService(t, echoService)
+	e := newTargets(allowLoopback(t, svc.port()))
+	name := target("localhost", svc.port())
+	e.Set([]connector.Route{{ID: "rt_name", Targets: []connector.Target{name}}})
+	old := e.Generation()
+	e.Recheck()
+	e.Blocked("rt_name", name.ID, "localhost refused", e.Generation())
+	e.Dialled("rt_name", name.ID, old)
+	if nr := notReady(e); nr["rt_name"] != "localhost refused" {
+		t.Fatalf("a dial from before the Recheck cleared a later refusal: %v", nr)
+	}
+	e.Dialled("rt_name", name.ID, e.Generation())
+	if nr := notReady(e); len(nr) != 0 {
+		t.Fatalf("a current allowed dial: %v", nr)
+	}
+}
+
+// TestTargets_ReportsEndWithTheState: when another change lands while a report is under way, as
+// with reports of two streams, the last report carries the route's state, as Sessions keep the
+// last one (#552 review).
+func TestTargets_ReportsEndWithTheState(t *testing.T) {
+	svc := startService(t, echoService)
+	p := allowLoopback(t, svc.port())
+	name := target("localhost", svc.port())
+	var (
+		targets *connector.Targets
+		mu      sync.Mutex
+		last    *tunnelv1.RouteHealth
+		calls   int
+	)
+	targets = connector.NewTargets(connector.TargetsOptions{Policy: func() *policy.Policy { return p }, OnHealth: func(h *tunnelv1.RouteHealth) {
+		mu.Lock()
+		calls++
+		first := calls == 1
+		mu.Unlock()
+		if first { // a refusal lands while the first report is still on its way
+			targets.Blocked("rt_name", name.ID, "localhost refused", targets.Generation())
+		}
+		mu.Lock()
+		last = h // a report arrives when its call ends
+		mu.Unlock()
+	}})
+	targets.Set([]connector.Route{{ID: "rt_name", Targets: []connector.Target{name}}})
+	mu.Lock()
+	defer mu.Unlock()
+	if last.GetReady() || last.GetDetail() != "localhost refused" {
+		t.Fatalf("the last report is %v, but the route is not ready", last)
 	}
 }

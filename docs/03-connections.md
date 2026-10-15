@@ -315,9 +315,9 @@ Rules:
      rest of the snapshot is applied. This covers environmental errors (port in use, upstream
      unreachable, DNS failure), which are retried
      ([Timeouts, keepalive and backoff](#timeouts-keepalive-and-backoff)), and targets **blocked by
-     the connector's local policy**, which are `not_ready(blocked_by_local_policy: <ip:port>)` until
-     the host's policy changes. One occupied port or one disallowed target must not block unrelated
-     changes.
+     the connector's local policy**: a route none of whose targets the policy allows is
+     `not_ready(blocked_by_local_policy: <ip:port>)` until the host's policy changes. One occupied
+     port or one disallowed target must not block unrelated changes.
    - When the host's local policy file changes (`rpmgr policy …` triggers a reload; the connector
      also watches the file), the connector re-evaluates the current snapshot, reports the new
      readiness and resets the open connections to targets the policy no longer allows. No new

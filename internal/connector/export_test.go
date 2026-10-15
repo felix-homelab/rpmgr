@@ -75,3 +75,6 @@ func (t *Targets) Generation() uint64 { return t.generation() }
 func (t *Targets) Blocked(route, target, detail string, gen uint64) {
 	t.blocked(route, target, detail, gen)
 }
+
+// Dialled records an allowed dial of the route's target as a dial at generation gen would.
+func (t *Targets) Dialled(route, target string, gen uint64) { t.dialled(route, target, gen) }
