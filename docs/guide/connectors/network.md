@@ -122,8 +122,9 @@ environment. The variables, and which connection reads which, are in
 - A proxy URL the connector cannot use stops it at start, with a message that names the variable,
   not its value.
 
-`rpmgr setup --role connector --proxy http://proxy.lan:3128` writes the proxy into a systemd
-drop-in for the service. To set it by hand:
+`rpmgr setup --role connector --proxy http://proxy.lan:3128` enrolls through the proxy and gives
+it to the service from `/etc/rpmgr/connector-proxy.env`, a file only root reads, named by a systemd
+drop-in. To set a proxy without a password by hand:
 
 ```sh
 sudo systemctl edit rpmgr-connector.service

@@ -138,28 +138,26 @@ A connector reaches the services of its network ([Concepts](../concepts.md#conne
 | **CA pin, as the controller's init printed it** | `--ca-pin` | none, required | `sha256:<base64>` |
 | **Allowed targets, separated by spaces (optional)** | `--allow-target`, repeated | none | Targets the connector may reach, written to `/etc/rpmgr/policy.yaml` |
 | **Denied targets, which win over allowed ones (optional)** | `--deny-target`, repeated | none | Targets it must not reach |
-| **Proxy for the connection to the controller (optional)** | `--proxy` | none | A proxy for the connector's service, such as `http://proxy.lan:3128` |
+| **Proxy for the connection to the controller (optional)** | `--proxy` | none | A proxy for the enrollment and the connector's service: `http://`, `socks5://` or `socks5h://`, such as `http://proxy.lan:3128` |
 | **Token: the gateway or enrollment token** | `--token-file`, or `RPMGR_ENROLL_TOKEN` | asked | The enrollment token, in a hidden field |
 
 A target is an address or a subnet with an optional port or port range, an IPv6 address in
 brackets, or a socket path: `10.0.0.5:5432`, `10.0.0.0/16` (all ports), `127.0.0.1:200-500`,
 `[fd00::1]:443` or `/run/app.sock`.
 
-**The proxy.** Setup writes it into the drop-in
-`/etc/systemd/system/rpmgr-connector.service.d/proxy.conf` as `HTTPS_PROXY`. The connector sends
-its TLS data sessions through it, and through an `http://` proxy its control session too; QUIC goes
+**The proxy.** Give an `http://`, `socks5://` or `socks5h://` URL, the kinds the connector reads;
+setup refuses any other. Setup enrolls through the proxy, so a host whose only way out is the proxy
+can be set up with it. The connector's service then reads it as `HTTPS_PROXY` from
+`/etc/rpmgr/connector-proxy.env`, a file only root reads, which the drop-in
+`/etc/systemd/system/rpmgr-connector.service.d/proxy.conf` names: a proxy password never shows in
+the unit or in `systemctl show`, and the plan shows the URL without it. The connector sends its TLS
+data sessions through the proxy, and through an `http://` proxy its control session too; QUIC goes
 direct, or the connector falls back to TLS ([Connector networking](../connectors/network.md)).
 
-- **Give an `http://` or `socks5://` URL.** Setup also accepts `https://`, but the connector
-  refuses such a proxy when it starts.
-- **The enrollment** that setup runs goes through the proxy of setup's own environment, so where
-  only the proxy leads out, run setup with it:
-
-  ```sh
-  sudo env HTTPS_PROXY=http://proxy.lan:3128 rpmgr setup --role connector \
-    --controller https://panel.example.com --ca-pin 'sha256:…' \
-    --allow-target 192.168.1.20:8080 --proxy http://proxy.lan:3128
-  ```
+```sh
+sudo rpmgr setup --role connector --controller https://panel.example.com --ca-pin 'sha256:…' \
+  --allow-target 192.168.1.20:8080 --proxy http://proxy.lan:3128
+```
 
 ## What setup does
 
@@ -177,7 +175,8 @@ The plan's steps, in order; setup leaves out those it does not need:
    the user `rpmgr`, then writes the boot file as above.
 4. **Writes the local policy** of a connector or all-in-one: the denied targets, then the allowed
    ones.
-5. **Writes the proxy drop-in** of a connector with `--proxy`.
+5. **Writes the proxy** of a connector with `--proxy`: `/etc/rpmgr/connector-proxy.env` (root, 0600)
+   and the drop-in that names it.
 6. **Sets the instance's ACME directory and e-mail address,** if you gave either, before the first
    start, so that the first certificate comes from that CA.
 7. **Installs the unit** `/etc/systemd/system/rpmgr-<role>.service` and runs

@@ -142,14 +142,20 @@ func CheckAddr(s string, off bool) error {
 	return nil
 }
 
-// CheckProxy checks a proxy URL: http, https or socks5.
+// CheckProxy checks a proxy URL as the connector reads it (connector.ProxyDialer): an http:// URL
+// (HTTP CONNECT) or a socks5:// or socks5h:// URL with a host, with optional credentials. It also
+// refuses what the systemd environment file it goes into would read differently. Its errors never
+// repeat the URL, which may hold a password.
 func CheckProxy(s string) error {
 	if s == "" {
 		return nil
 	}
 	u, err := url.Parse(s)
-	if err != nil || u.Host == "" || (u.Scheme != "http" && u.Scheme != "https" && u.Scheme != "socks5") {
-		return fmt.Errorf("%q: want http://, https:// or socks5://<host>:<port>", s)
+	if err != nil || u.Host == "" || (u.Scheme != "http" && u.Scheme != "socks5" && u.Scheme != "socks5h") {
+		return errors.New("the proxy is not an http://, socks5:// or socks5h:// URL with a host")
+	}
+	if strings.ContainsAny(s, "\"'\\ \t\r\n") {
+		return errors.New("the proxy URL holds a quote, a backslash or white space: percent-encode them")
 	}
 	return nil
 }

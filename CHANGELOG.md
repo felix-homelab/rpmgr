@@ -16,7 +16,8 @@ history and the [ADRs](docs/adr/).
   the controller's init or the agent's enrollment, a connector's local policy and proxy, and the
   systemd unit, started and checked for readiness. It asks in full-screen forms, or in plain
   prompts without a terminal, and shows the plan before it changes anything; with `--yes` it takes
-  every value from its flags. (#435)
+  every value from its flags. A connector's proxy is an `http://`, `socks5://` or `socks5h://` URL
+  that the enrollment takes too, kept in a file only root reads. (#435, #557)
 - All roles: one `rpmgr` binary for Linux on amd64, arm64, armv7 and riscv64 runs every role:
   `rpmgr controller`, `gateway`, `connector` and `all-in-one`, each from a strictly checked YAML
   boot file. `rpmgr version` names the build. (#174, #196, #260, #266, #267, #384)

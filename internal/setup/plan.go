@@ -7,6 +7,9 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
+	"net"
+	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -18,6 +21,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/agent"
 	"github.com/felix-homelab/rpmgr/internal/allinone"
 	"github.com/felix-homelab/rpmgr/internal/config"
+	"github.com/felix-homelab/rpmgr/internal/connector"
 	"github.com/felix-homelab/rpmgr/internal/controller"
 	"github.com/felix-homelab/rpmgr/internal/policy"
 	"github.com/felix-homelab/rpmgr/internal/settings"
@@ -414,9 +418,15 @@ func (p *Plan) agentSteps() {
 	p.add("enroll with "+v.ControllerURL, func(ctx context.Context, r *Result) error {
 		fresh := !exists(identity)
 		host, _ := os.Hostname()
-		id, err := h.Enroll(ctx, agent.EnrollOptions{Controller: v.ControllerURL, Pin: v.Pin, Token: strings.TrimSpace(v.Token),
+		o := agent.EnrollOptions{Controller: v.ControllerURL, Pin: v.Pin, Token: strings.TrimSpace(v.Token),
 			IdentityDir: identity, Replace: v.Force, Version: version.Version,
-			Host: &agentv1.HostFacts{Hostname: host, Os: runtime.GOOS, Arch: runtime.GOARCH}})
+			Host: &agentv1.HostFacts{Hostname: host, Os: runtime.GOOS, Arch: runtime.GOARCH}}
+		if v.Proxy != "" {
+			if err := throughProxy(&o, v.Proxy); err != nil {
+				return err
+			}
+		}
+		id, err := h.Enroll(ctx, o)
 		if err != nil {
 			return err
 		}
@@ -432,16 +442,49 @@ func (p *Plan) agentSteps() {
 	}
 	p.policySteps()
 	if v.Proxy != "" {
+		// The URL may hold a password: it goes into a file only root reads, which the drop-in
+		// names, never into the drop-in itself, which anyone reads, as `systemctl show` does.
+		envFile := filepath.Join(h.Paths.Etc, "connector-proxy.env")
 		dropIn := filepath.Join(h.Paths.Units, "rpmgr-connector.service.d", "proxy.conf")
-		p.add("set the connector's proxy in "+dropIn, func(_ context.Context, r *Result) error {
+		p.add("set the connector's proxy in "+envFile+", named by "+dropIn, func(_ context.Context, r *Result) error {
+			r.created(envFile)
+			if err := writeMode(envFile, []byte("HTTPS_PROXY="+v.Proxy+"\n"), 0o600); err != nil {
+				return err
+			}
 			if err := mkdirMode(filepath.Dir(dropIn), 0o755); err != nil { // a unit directory
 				return err
 			}
 			r.created(dropIn)
-			unit := fmt.Sprintf("[Service]\nEnvironment=\"HTTPS_PROXY=%s\"\n", v.Proxy)
-			return writeMode(dropIn, []byte(unit), 0o644)
+			return writeMode(dropIn, []byte("[Service]\nEnvironmentFile="+envFile+"\n"), 0o644)
 		})
 	}
+}
+
+// throughProxy makes the enrollment take the proxy the connector's service will take: the
+// connector's own dialer (HTTP CONNECT or SOCKS5) for both the trust bundle and the controller.
+func throughProxy(o *agent.EnrollOptions, proxyURL string) error {
+	dial, err := connector.ProxyDialer(func(name string) string {
+		if name == "HTTPS_PROXY" {
+			return proxyURL
+		}
+		return "" // the service gets no NO_PROXY either
+	})
+	if err != nil {
+		return err
+	}
+	t := http.DefaultTransport.(*http.Transport).Clone() //nolint:forcetypeassert // the standard library's
+	t.Proxy = nil
+	t.DialContext = func(ctx context.Context, _, addr string) (net.Conn, error) { return dial(ctx, addr) }
+	o.HTTPClient, o.Dial = &http.Client{Transport: t}, dial
+	return nil
+}
+
+// redactedProxy is the proxy URL with its password, if any, left out.
+func redactedProxy(s string) string {
+	if u, err := url.Parse(s); err == nil {
+		return u.Redacted()
+	}
+	return "(not shown)"
 }
 
 // policySteps write the allowed and denied targets into the connector-local policy of a connector
@@ -587,7 +630,7 @@ func (p *Plan) Summary() [][2]string {
 			out = append(out, [2]string{"denied targets", strings.Join(v.DenyTargets, ", ")})
 		}
 		if v.Proxy != "" {
-			out = append(out, [2]string{"proxy", v.Proxy})
+			out = append(out, [2]string{"proxy", redactedProxy(v.Proxy)})
 		}
 	}
 	out = append(out, [2]string{"admin listener", p.admin})
