@@ -585,7 +585,7 @@ rpmgr systemd-unit [flags] controller | gateway | connector | all-in-one
 | Flag | Default | Description |
 |---|---|---|
 | `--bin string` | `/usr/local/bin/rpmgr` | the installed binary |
-| `--config string` |  | the controller's or all-in-one's boot file, for its KEK credential (default $RPMGR_CONFIG, else /etc/rpmgr/\<role>.yaml) |
+| `--config string` |  | the controller's or all-in-one's boot file, for its KEK credential and revocation-log sink (default $RPMGR_CONFIG, else /etc/rpmgr/\<role>.yaml) |
 
 ## rpmgr version
 
