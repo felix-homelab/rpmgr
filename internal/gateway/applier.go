@@ -32,7 +32,7 @@ type assignment struct {
 
 type assigned struct {
 	known  map[string]bool
-	routes map[string][]string
+	routes map[string][]RouteConnector
 }
 
 // Known implements Assignment.
@@ -42,7 +42,7 @@ func (a *assignment) Known(connectorID string) bool {
 }
 
 // Connectors implements Assignment.
-func (a *assignment) Connectors(routeID string) []string {
+func (a *assignment) Connectors(routeID string) []RouteConnector {
 	s := a.cur.Load()
 	if s == nil {
 		return nil
@@ -76,6 +76,40 @@ func basicAuthOf(rules []*agentv1.BasicAuthRule) ([]BasicAuthRule, error) {
 		out = append(out, rule)
 	}
 	return out, nil
+}
+
+// connectorsOf returns the connectors of a gateway route resource and the same connectors ranked,
+// nil for another kind.
+func connectorsOf(res *agentv1.Resource) ([]string, []*agentv1.RouteConnector) {
+	switch {
+	case res.GetGatewayTcpRoute() != nil:
+		return res.GetGatewayTcpRoute().GetConnectors(), res.GetGatewayTcpRoute().GetRankedConnectors()
+	case res.GetGatewayUdpRoute() != nil:
+		return res.GetGatewayUdpRoute().GetConnectors(), res.GetGatewayUdpRoute().GetRankedConnectors()
+	case res.GetGatewayTcpUdpRoute() != nil:
+		return res.GetGatewayTcpUdpRoute().GetConnectors(), res.GetGatewayTcpUdpRoute().GetRankedConnectors()
+	case res.GetGatewayPassthroughRoute() != nil:
+		return res.GetGatewayPassthroughRoute().GetConnectors(), res.GetGatewayPassthroughRoute().GetRankedConnectors()
+	case res.GetGatewayHttpRoute() != nil:
+		return res.GetGatewayHttpRoute().GetConnectors(), res.GetGatewayHttpRoute().GetRankedConnectors()
+	}
+	return nil, nil
+}
+
+// rankOf returns a route's connectors with their ranks: the ranked ones where the controller sent
+// them, else each at priority 0 and weight 1, as a controller before D90 meant them.
+func rankOf(connectors []string, ranked []*agentv1.RouteConnector) []RouteConnector {
+	out := make([]RouteConnector, 0, len(connectors))
+	if len(ranked) > 0 {
+		for _, r := range ranked {
+			out = append(out, RouteConnector{ID: r.GetConnectorId(), Priority: r.GetPriority(), Weight: r.GetWeight()})
+		}
+		return out
+	}
+	for _, c := range connectors {
+		out = append(out, RouteConnector{ID: c, Weight: 1})
+	}
+	return out
 }
 
 // accessOf returns the access rules of a gateway route resource, nil for another kind.
@@ -191,18 +225,14 @@ func (a *Applier) Validate(snap *agentv1.Snapshot) []*agentv1.SnapshotError {
 				bad(id, "basic auth: %v", err)
 			}
 		}
-		var connectors []string
 		switch {
 		case res.GetGatewayTcpRoute() != nil:
 			port(id, "TCP", res.GetGatewayTcpRoute().GetPort())
-			connectors = res.GetGatewayTcpRoute().GetConnectors()
 		case res.GetGatewayUdpRoute() != nil:
 			port(id, "UDP", res.GetGatewayUdpRoute().GetPort())
-			connectors = res.GetGatewayUdpRoute().GetConnectors()
 		case res.GetGatewayTcpUdpRoute() != nil:
 			port(id, "TCP", res.GetGatewayTcpUdpRoute().GetPort())
 			port(id, "UDP", res.GetGatewayTcpUdpRoute().GetPort())
-			connectors = res.GetGatewayTcpUdpRoute().GetConnectors()
 		case res.GetGatewayCertificate() != nil:
 			c := res.GetGatewayCertificate()
 			if len(c.GetContentSha256()) != sha256.Size {
@@ -230,7 +260,6 @@ func (a *Applier) Validate(snap *agentv1.Snapshot) []*agentv1.SnapshotError {
 					hostnames[h] = id
 				}
 			}
-			connectors = p.GetConnectors()
 		case res.GetGatewayHttpRoute() != nil:
 			r := res.GetGatewayHttpRoute()
 			if len(r.GetHosts()) == 0 {
@@ -298,7 +327,6 @@ func (a *Applier) Validate(snap *agentv1.Snapshot) []*agentv1.SnapshotError {
 					hostnames["http "+h] = id
 				}
 			}
-			connectors = r.GetConnectors()
 		case res.GetGatewayDomainChallenge() != nil:
 			c := res.GetGatewayDomainChallenge()
 			if n, err := domains.Normalize(c.GetFqdn(), false); err != nil || n != c.GetFqdn() {
@@ -311,8 +339,20 @@ func (a *Applier) Validate(snap *agentv1.Snapshot) []*agentv1.SnapshotError {
 		default:
 			bad(id, "a gateway does not run %T resources", res.GetKind())
 		}
+		connectors, ranked := connectorsOf(res)
 		if slices.Contains(connectors, "") {
 			bad(id, "an empty connector ID")
+		}
+		if len(ranked) > 0 {
+			ids := make([]string, 0, len(ranked))
+			for _, r := range ranked {
+				ids = append(ids, r.GetConnectorId())
+			}
+			slices.Sort(ids)
+			uniq := slices.Compact(slices.Clone(ids))
+			if len(uniq) != len(ids) || !slices.Equal(uniq, slices.Compact(slices.Sorted(slices.Values(connectors)))) {
+				bad(id, "the ranked connectors are not the route's connectors, each once")
+			}
 		}
 	}
 	return errs
@@ -321,7 +361,7 @@ func (a *Applier) Validate(snap *agentv1.Snapshot) []*agentv1.SnapshotError {
 // Apply implements agent.Applier: the new assignment takes effect first, then the routes, then
 // the data sessions of connectors no longer assigned are closed.
 func (a *Applier) Apply(ctx context.Context, snap *agentv1.Snapshot, _ agent.Changes) []*agentv1.ResourceStatus {
-	next := &assigned{known: map[string]bool{}, routes: map[string][]string{}}
+	next := &assigned{known: map[string]bool{}, routes: map[string][]RouteConnector{}}
 	var (
 		tcp         []TCPRoute
 		udp         []UDPRoute
@@ -332,30 +372,25 @@ func (a *Applier) Apply(ctx context.Context, snap *agentv1.Snapshot, _ agent.Cha
 		disabled    bool
 	)
 	for _, res := range snap.GetResources() {
-		var connectors []string
 		access, _ := AccessOf(accessOf(res)) // Validate refused any that does not parse
 		switch {
 		case res.GetGatewayTcpRoute() != nil:
 			r := res.GetGatewayTcpRoute()
-			connectors = r.GetConnectors()
 			tcp = append(tcp, TCPRoute{ID: res.GetId(), Port: uint16(r.GetPort()), //nolint:gosec // G115: Validate bounds the port
 				IdleTimeout: time.Duration(r.GetIdleTimeoutSeconds()) * time.Second, Access: access})
 		case res.GetGatewayUdpRoute() != nil:
 			r := res.GetGatewayUdpRoute()
-			connectors = r.GetConnectors()
 			udp = append(udp, UDPRoute{ID: res.GetId(), Port: uint16(r.GetPort()), //nolint:gosec // G115: Validate bounds the port
 				FlowIdle: time.Duration(r.GetFlowIdleTimeoutSeconds()) * time.Second, Access: access})
 		case res.GetGatewayTcpUdpRoute() != nil:
 			// A tcp route and a udp route with the route's ID, on one port number.
 			r := res.GetGatewayTcpUdpRoute()
-			connectors = r.GetConnectors()
 			tcp = append(tcp, TCPRoute{ID: res.GetId(), Port: uint16(r.GetPort()), //nolint:gosec // G115: Validate bounds the port
 				IdleTimeout: time.Duration(r.GetIdleTimeoutSeconds()) * time.Second, Access: access})
 			udp = append(udp, UDPRoute{ID: res.GetId(), Port: uint16(r.GetPort()), //nolint:gosec // G115: Validate bounds the port
 				FlowIdle: time.Duration(r.GetFlowIdleTimeoutSeconds()) * time.Second, Access: access})
 		case res.GetGatewayHttpRoute() != nil:
 			r := res.GetGatewayHttpRoute()
-			connectors = r.GetConnectors()
 			hr := HTTPRoute{ID: res.GetId(), Upstream: r.GetUpstreamProtocol(), WebSocket: r.GetWebsocket(),
 				HostHeader: r.GetHostHeader(), MaxBody: int64(min(r.GetMaxBodyBytes(), math.MaxInt64)), //nolint:gosec // G115: bounded above
 				Port80: r.GetPort80(), HSTS: int(r.GetHstsMaxAgeSeconds()), Access: access, Maintenance: r.GetMaintenance(),
@@ -403,10 +438,10 @@ func (a *Applier) Apply(ctx context.Context, snap *agentv1.Snapshot, _ agent.Cha
 			continue
 		case res.GetGatewayPassthroughRoute() != nil:
 			p := res.GetGatewayPassthroughRoute()
-			connectors = p.GetConnectors()
 			passthrough = append(passthrough, PassthroughRoute{ID: res.GetId(), Hostnames: p.GetHostnames(), Access: access})
 		}
-		next.routes[res.GetId()] = slices.Clone(connectors)
+		connectors, ranked := connectorsOf(res)
+		next.routes[res.GetId()] = rankOf(connectors, ranked)
 		for _, c := range connectors {
 			next.known[c] = true
 		}

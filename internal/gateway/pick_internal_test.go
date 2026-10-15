@@ -14,7 +14,11 @@ import (
 func TestPick(t *testing.T) {
 	now := time.Now()
 	idle, busy := &dataSession{}, &dataSession{}
-	busy.inflight.Store(10)
+	for range 10 {
+		ts := &trackedStream{d: busy}
+		ts.last.Store(now.UnixNano())
+		busy.track(ts)
+	}
 	for range 50 {
 		if got := pick([]*dataSession{idle, busy}, now); got != idle {
 			t.Fatal("the busier session was picked")
@@ -43,6 +47,41 @@ func TestPick(t *testing.T) {
 	}
 	if len(seen) != 4 {
 		t.Fatalf("%d of 4 sessions picked", len(seen))
+	}
+}
+
+// TestScore_ActiveStreams: only streams opened or used within activeWindow count in a session's
+// load, so idle pooled HTTP streams and quiet UDP flows do not push streams elsewhere (D90); a
+// stream's count ends with it.
+func TestScore_ActiveStreams(t *testing.T) {
+	now := time.Unix(1_000_000, 0)
+	d := &dataSession{now: func() time.Time { return now }}
+	var streams []*trackedStream
+	for _, age := range []time.Duration{0, activeWindow / 2, activeWindow, activeWindow + time.Nanosecond, time.Hour} {
+		ts := &trackedStream{Stream: &blockingStream{release: make(chan struct{})}, d: d}
+		ts.last.Store(now.Add(-age).UnixNano())
+		d.track(ts)
+		streams = append(streams, ts)
+	}
+	if n := d.active(now); n != 3 {
+		t.Fatalf("%d active streams, want 3: those used within %v", n, activeWindow)
+	}
+	if got, want := d.score(now), int64(time.Millisecond)*4; got != want {
+		t.Fatalf("score %d, want %d", got, want)
+	}
+	// A byte read or written makes an idle stream active again.
+	close(streams[4].Stream.(*blockingStream).release)
+	if _, err := streams[4].Write([]byte("x")); err != nil {
+		t.Fatal(err)
+	}
+	if n := d.active(now); n != 4 {
+		t.Fatalf("%d active streams after a write on an idle one, want 4", n)
+	}
+	for _, ts := range streams {
+		_ = ts.Close()
+	}
+	if n, in := d.active(now), d.inflight.Load(); n != 0 || in != 0 {
+		t.Fatalf("%d active and %d in flight after Close, want 0", n, in)
 	}
 }
 

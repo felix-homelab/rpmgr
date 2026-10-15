@@ -94,7 +94,7 @@ func gatewayTCP(ctx context.Context, tx *ent.Tx, a snapshot.Agent, previewed str
 		if err != nil {
 			return nil, err
 		}
-		connectors, err := serving(ctx, tx, r.ID)
+		connectors, ranked, err := serving(ctx, tx, r.ID)
 		if err != nil {
 			return nil, err
 		}
@@ -107,7 +107,7 @@ func gatewayTCP(ctx context.Context, tx *ent.Tx, a snapshot.Agent, previewed str
 		}
 		out = append(out, &agentv1.Resource{Id: r.ID, Kind: &agentv1.Resource_GatewayTcpRoute{GatewayTcpRoute: &agentv1.GatewayTCPRoute{
 			Port: uint32(tcp.Edges.Port.Port), IdleTimeoutSeconds: uint32(tcp.IdleTimeoutSeconds), //nolint:gosec // G115: ports and timeouts are small and positive
-			Connectors: connectors, Access: access}}})
+			Connectors: connectors, RankedConnectors: ranked, Access: access}}})
 	}
 	return out, nil
 }
@@ -140,7 +140,7 @@ func gatewayUDP(ctx context.Context, tx *ent.Tx, a snapshot.Agent, previewed str
 		if err != nil {
 			return nil, err
 		}
-		connectors, err := serving(ctx, tx, r.ID)
+		connectors, ranked, err := serving(ctx, tx, r.ID)
 		if err != nil {
 			return nil, err
 		}
@@ -153,7 +153,7 @@ func gatewayUDP(ctx context.Context, tx *ent.Tx, a snapshot.Agent, previewed str
 		}
 		out = append(out, &agentv1.Resource{Id: r.ID, Kind: &agentv1.Resource_GatewayUdpRoute{GatewayUdpRoute: &agentv1.GatewayUDPRoute{
 			Port: uint32(udp.Edges.Port.Port), FlowIdleTimeoutSeconds: uint32(udp.FlowIdleTimeoutSeconds), //nolint:gosec // G115: a port and a small positive number
-			Connectors: connectors, Access: access}}})
+			Connectors: connectors, RankedConnectors: ranked, Access: access}}})
 	}
 	return out, nil
 }
@@ -193,7 +193,7 @@ func gatewayTCPUDP(ctx context.Context, tx *ent.Tx, a snapshot.Agent, previewed 
 		if err != nil {
 			return nil, err
 		}
-		connectors, err := serving(ctx, tx, r.ID)
+		connectors, ranked, err := serving(ctx, tx, r.ID)
 		if err != nil {
 			return nil, err
 		}
@@ -206,7 +206,7 @@ func gatewayTCPUDP(ctx context.Context, tx *ent.Tx, a snapshot.Agent, previewed 
 		}
 		out = append(out, &agentv1.Resource{Id: r.ID, Kind: &agentv1.Resource_GatewayTcpUdpRoute{GatewayTcpUdpRoute: &agentv1.GatewayTCPUDPRoute{
 			Port: uint32(tcp.Edges.Port.Port), IdleTimeoutSeconds: uint32(tcp.IdleTimeoutSeconds), //nolint:gosec // G115: ports and timeouts are small and positive
-			FlowIdleTimeoutSeconds: uint32(udp.FlowIdleTimeoutSeconds), Connectors: connectors, Access: access}}}) //nolint:gosec // G115: small and positive
+			FlowIdleTimeoutSeconds: uint32(udp.FlowIdleTimeoutSeconds), Connectors: connectors, RankedConnectors: ranked, Access: access}}}) //nolint:gosec // G115: small and positive
 	}
 	return out, nil
 }
@@ -240,7 +240,7 @@ func GatewayPassthrough(ctx context.Context, tx *ent.Tx, a snapshot.Agent) ([]*a
 			continue
 		}
 		slices.Sort(hostnames)
-		connectors, err := serving(ctx, tx, r.ID)
+		connectors, ranked, err := serving(ctx, tx, r.ID)
 		if err != nil {
 			return nil, err
 		}
@@ -249,7 +249,8 @@ func GatewayPassthrough(ctx context.Context, tx *ent.Tx, a snapshot.Agent) ([]*a
 			return nil, err
 		}
 		out = append(out, &agentv1.Resource{Id: r.ID, Kind: &agentv1.Resource_GatewayPassthroughRoute{
-			GatewayPassthroughRoute: &agentv1.GatewayPassthroughRoute{Hostnames: hostnames, Connectors: connectors, Access: access}}})
+			GatewayPassthroughRoute: &agentv1.GatewayPassthroughRoute{Hostnames: hostnames, Connectors: connectors, RankedConnectors: ranked,
+				Access: access}}})
 	}
 	return out, nil
 }
@@ -299,7 +300,7 @@ func GatewayHTTP(ctx context.Context, tx *ent.Tx, a snapshot.Agent) ([]*agentv1.
 		for _, n := range names {
 			hosts = append(hosts, &agentv1.HTTPHost{Hostname: n.Hostname, PathPrefix: n.PathPrefix})
 		}
-		connectors, err := serving(ctx, tx, r.ID)
+		connectors, ranked, err := serving(ctx, tx, r.ID)
 		if err != nil {
 			return nil, err
 		}
@@ -331,7 +332,7 @@ func GatewayHTTP(ctx context.Context, tx *ent.Tx, a snapshot.Agent) ([]*agentv1.
 			HostHeader: hostHeader, RequestHeaders: headersOf(h.RequestHeadersSet), ResponseHeaders: headersOf(h.ResponseHeadersSet),
 			MaxBodyBytes: uint64(h.MaxBodyBytes), TrustedProxies: group.TrustedProxyCidrs, //nolint:gosec // G115: the schema keeps it non-negative
 			Port80: h.Port80.String(), HstsMaxAgeSeconds: uint32(h.HstsMaxAgeSeconds), Access: access, //nolint:gosec // G115: the schema keeps it non-negative
-			Maintenance: h.Maintenance, MaintenanceMessage: h.MaintenanceMessage}}})
+			Maintenance: h.Maintenance, MaintenanceMessage: h.MaintenanceMessage, RankedConnectors: ranked}}})
 	}
 	return out, nil
 }
@@ -390,16 +391,33 @@ func upstreamTLSOf(ctx context.Context, tx *ent.Tx, routeID string) ([]*agentv1.
 }
 
 // serving lists the connectors, sorted, with an enabled target of the route that are themselves
-// enabled and not decommissioned.
-func serving(ctx context.Context, tx *ent.Tx, routeID string) ([]string, error) {
+// enabled and not decommissioned, and the same connectors ranked: each with the lowest priority of
+// those targets and the summed weight of its targets at that priority, a weight below 1 counted
+// as 1, as the connector orders its own targets (D90).
+func serving(ctx context.Context, tx *ent.Tx, routeID string) ([]string, []*agentv1.RouteConnector, error) {
 	targets, err := tx.RouteTarget.Query().Where(routetarget.RouteID(routeID), routetarget.Enabled(true),
-		routetarget.HasConnectorWith(connector.Enabled(true), connector.DecommissionedAtIsNil())).
-		Select(routetarget.FieldConnectorID).Strings(ctx)
+		routetarget.HasConnectorWith(connector.Enabled(true), connector.DecommissionedAtIsNil())).All(ctx)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	slices.Sort(targets)
-	return slices.Compact(targets), nil
+	rank := map[string]*agentv1.RouteConnector{}
+	for _, t := range targets {
+		p, w := uint32(t.Priority), uint32(max(t.Weight, 1)) //nolint:gosec // G115: the schema keeps both small and non-negative
+		switch rc := rank[t.ConnectorID]; {
+		case rc == nil:
+			rank[t.ConnectorID] = &agentv1.RouteConnector{ConnectorId: t.ConnectorID, Priority: p, Weight: w}
+		case p < rc.Priority:
+			rc.Priority, rc.Weight = p, w
+		case p == rc.Priority:
+			rc.Weight += w
+		}
+	}
+	ids := slices.Sorted(maps.Keys(rank))
+	ranked := make([]*agentv1.RouteConnector, len(ids))
+	for i, id := range ids {
+		ranked[i] = rank[id]
+	}
+	return ids, ranked, nil
 }
 
 // connectorTargets loads the connector a for ConnectorRoutes and ConnectorGateways, its enabled

@@ -347,7 +347,8 @@ Rules:
    each agent are kept for support ([06](06-data-model.md#desired-vs-observed-state)).
 10. **What an agent gets.** A gateway gets every enabled `tcp` route of its gateway group that has
     a port and a connector that serves it: the port, the idle timeout and the connectors that
-    serve the route (enabled connectors with an enabled target on it); the gateway opens streams
+    serve the route (enabled connectors with an enabled target on it), each also ranked by its
+    best priority and weight ([Multiple gateways](#multiple-gateways)); the gateway opens streams
     only to those. A route no connector serves is left out, so no gateway holds its port
     ([D78](14-open-decisions.md#engineering)); the same holds for `udp` and `tcp_udp` routes. A
     `tcp_udp` route comes as one resource, with its port, both idle timeouts and its connectors. A
@@ -583,14 +584,20 @@ sequenceDiagram
 | 0 | `NO_ERROR` | Relay bytes |
 | 1 | `ROUTE_UNKNOWN` | Close client; log; refresh status |
 | 2 | `UNAUTHORIZED` | Close client; security event |
-| 3 | `UPSTREAM_REFUSED` | TCP: reset client. HTTP: 502 |
-| 4 | `UPSTREAM_TIMEOUT` | TCP: reset client. HTTP: 504 |
+| 3 | `UPSTREAM_REFUSED` | Retry on a session of another connector of the route; then TCP: reset client, HTTP: 502 |
+| 4 | `UPSTREAM_TIMEOUT` | Retry on a session of another connector of the route; then TCP: reset client, HTTP: 504 |
 | 5 | `UPSTREAM_RESET` | Reset client |
-| 6 | `DRAINING` | Retry once on another session |
-| 7 | `OVERLOADED` | Retry once on another session; then 503 |
+| 6 | `DRAINING` | Retry on another session |
+| 7 | `OVERLOADED` | Retry on another session; then 503 |
 | 8 | `PROTOCOL` | Close; log |
 | 9 | `INTERNAL` | Close; log |
 
+- A stream is tried at most 3 times: on another session after `DRAINING` or `OVERLOADED`, and on
+  another connector after `UPSTREAM_REFUSED` or `UPSTREAM_TIMEOUT`, each connector once, the
+  connectors of the best remaining priority first ([D90](14-open-decisions.md#engineering)). The
+  client has sent nothing over the stream before its `NO_ERROR`, so a retry repeats nothing: TCP,
+  `tls_passthrough` and HTTP relay only after it. A UDP flow sends its first datagrams before the
+  answer and is not retried.
 - [R] Enable `EnableStreamResetPartialDelivery` on both ends [F quic-go:interface.go:183] and call
   `SetReliableBoundary()` right after writing `StreamResult` [F quic-go:stream.go:151], so a
   `StreamResult` written just before a reset is still delivered.
@@ -998,7 +1005,8 @@ limits head-of-line blocking from packet loss to half the streams.
 | UDP socket buffers | requests 7 MiB [F quic-go:internal/protocol/params.go:6,9] | installer sets `net.core.rmem_max`/`wmem_max` ≥ 7 MiB | Otherwise quic-go logs a warning and throughput suffers |
 
 The gateway opens streams with the non-blocking `OpenStream`. When a session hits its stream limit,
-the gateway tries another session for the route, then returns 503 (HTTP) or resets (TCP). A stream
+the gateway tries another session of the route's chosen connectors, then returns 503 (HTTP) or
+resets (TCP). A stream
 that rpmgr resets carries the application error code 1 when it was aborted (a client's RST) and 2
 when it was closed before both directions ended. Phase 1 gives the whole window budget to
 `rpmgr-tunnel/1`; the `h3` share comes with HTTP/3 (Phase 3).
@@ -1008,11 +1016,23 @@ when it was closed before both directions ended. Phase 1 gives the whole window 
 - A route is published on a **gateway group**. A group has **at most 4 gateways** (enforced by the
   store), and every connector serving the route keeps a data session to **every gateway in the
   group**. Larger deployments use several groups.
-- For each new user connection, the gateway picks among the ready sessions for the route with
-  **power of two choices**: sample two, take the one with the lower (smoothed RTT × in-flight
-  streams). Neither library exposes the connection-level send window (quic-go's connection state
-  and net/http's `ClientConn` only report stream counts), so a session whose stream writers have
-  been blocked for more than 200 ms is deprioritised for new streams [V VB-18].
+- **Choosing a connector.** A route's targets may be on several connectors. The gateway learns
+  each connector's rank for the route: the lowest priority among its enabled targets, and the
+  summed weight of its targets at that priority, a weight of 0 counted as 1. For each new user
+  connection it takes the connectors of the lowest priority that have a ready session for the
+  route, chooses one of them at random by weight, and the connector then orders its own targets
+  as [Targets](#data-session) says. A connector of a worse priority, a failover, takes
+  connections only while no better one has a ready session. A target that refuses or does not
+  answer passes the connection to another connector ([Framing](#framing)). A gateway of a release
+  candidate (v0.1.0-rc.1 to rc.6) ignores the ranks and chooses among all connectors by load
+  ([D90](14-open-decisions.md#engineering)).
+- Among the chosen connector's ready sessions, the gateway picks with **power of two choices**:
+  sample two, take the one with the lower (smoothed RTT × active streams), where a stream is
+  active if it was opened or carried a byte within the last 5 s, so idle pooled HTTP streams and
+  quiet UDP flows do not count. Neither library exposes the connection-level send window
+  (quic-go's connection state and net/http's `ClientConn` only report stream counts), so a session
+  whose stream writers have been blocked for more than 200 ms is deprioritised for new streams
+  [V VB-18].
 - **Planned gateway restart**: the gateway sends `Drain{deadline}` on the session control stream, stops accepting new
   public connections (or lets the load balancer/DNS move them), and keeps existing streams until the
   gateway drain deadline. Connectors reconnect to the restarted gateway when it is back.

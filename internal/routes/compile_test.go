@@ -141,6 +141,51 @@ func TestCompile_GatewayTCP(t *testing.T) {
 	})
 }
 
+// rankedIDs are the IDs of ranked connectors.
+func rankedIDs(rs []*agentv1.RouteConnector) []string {
+	out := make([]string, 0, len(rs))
+	for _, r := range rs {
+		out = append(out, r.GetConnectorId())
+	}
+	return out
+}
+
+// TestCompile_RankedConnectors: each connector of a gateway route comes with the lowest priority
+// of its enabled targets and the summed weight of its targets at that priority; disabled targets,
+// disabled and decommissioned connectors do not count (D90).
+func TestCompile_RankedConnectors(t *testing.T) {
+	storetest.ForEachDialect(t, func(t *testing.T, db *store.DB) {
+		f := newFleet(t, db)
+		c := db.Client()
+		target := func(con string, priority, weight int, enabled bool) {
+			c.RouteTarget.Create().SetOrgID(f.orgA).SetRouteID(f.r1).SetConnectorID(con).SetKind("address").SetHost("10.0.0.6").
+				SetPort(5432).SetPriority(priority).SetWeight(weight).SetEnabled(enabled).ExecX(f.sys)
+		}
+		// newFleet gave r1 c1 at priority 1, c2 at 0 and the disabled connector c3 at 0, weights 1.
+		target(f.c1, 1, 5, true)    // c1: priority 1, weight 1 + 5
+		target(f.c2, 3, 9, true)    // c2: a worse priority does not count
+		target(f.c2, 0, 50, false)  // nor a disabled target
+		target(f.c2, 0, 1000, true) // c2: priority 0, weight 1 + 1000
+		gone := c.Connector.Create().SetOrgID(f.orgA).SetName("gone").SetSpiffeID("spiffe://x/gone").SetPubkeySha256("gone").
+			SetDecommissionedAt(time.Now()).SaveX(f.sys).ID
+		target(gone, 0, 7, true)
+		rs := f.compile(t, pki.KindGateway, f.gateway)
+		if len(rs) != 1 || rs[0].GetGatewayTcpRoute() == nil {
+			t.Fatalf("resources %v", rs)
+		}
+		want := map[string][2]uint32{f.c1: {1, 6}, f.c2: {0, 1001}}
+		ranked := rs[0].GetGatewayTcpRoute().GetRankedConnectors()
+		if !slices.Equal(rankedIDs(ranked), rs[0].GetGatewayTcpRoute().GetConnectors()) || len(ranked) != len(want) {
+			t.Fatalf("ranked %v, want the route's connectors %v", ranked, rs[0].GetGatewayTcpRoute().GetConnectors())
+		}
+		for _, r := range ranked {
+			if w := want[r.GetConnectorId()]; r.GetPriority() != w[0] || r.GetWeight() != w[1] {
+				t.Errorf("connector %s: priority %d weight %d, want %d and %d", r.GetConnectorId(), r.GetPriority(), r.GetWeight(), w[0], w[1])
+			}
+		}
+	})
+}
+
 // TestCompile_GatewayUDP: a gateway gets the enabled udp routes of its group that have a port,
 // with their flow idle timeout and serving connectors; a connector gets the enabled ones it serves.
 func TestCompile_GatewayUDP(t *testing.T) {
@@ -181,7 +226,8 @@ func TestCompile_GatewayUDP(t *testing.T) {
 			}
 		}
 		if len(got) != 2 || got[dns].GetPort() != 20001 || got[dns].GetFlowIdleTimeoutSeconds() != 60 ||
-			got[game].GetPort() != 20002 || got[game].GetFlowIdleTimeoutSeconds() != 300 || !slices.Equal(got[dns].GetConnectors(), []string{f.c2}) {
+			got[game].GetPort() != 20002 || got[game].GetFlowIdleTimeoutSeconds() != 300 || !slices.Equal(got[dns].GetConnectors(), []string{f.c2}) ||
+			!slices.Equal(rankedIDs(got[dns].GetRankedConnectors()), []string{f.c2}) {
 			t.Fatalf("udp routes %v", got)
 		}
 		var udp []string
@@ -487,7 +533,7 @@ func TestCompile_GatewayHTTP(t *testing.T) {
 		cons := []string{f.c1, f.c2}
 		slices.Sort(cons)
 		if !slices.Equal(hosts, []string{"app.example.com", "www.example.com", "www.example.com/docs"}) || w.GetUpstreamProtocol() != "h2c" ||
-			w.GetWebsocket() || !slices.Equal(w.GetConnectors(), cons) {
+			w.GetWebsocket() || !slices.Equal(w.GetConnectors(), cons) || !slices.Equal(rankedIDs(w.GetRankedConnectors()), cons) {
 			t.Fatalf("web %v", w)
 		}
 		var req, res []string
@@ -703,7 +749,7 @@ func TestCompile_Passthrough(t *testing.T) {
 		want := []string{f.c1, f.c2}
 		slices.Sort(want)
 		if len(got) != 1 || !slices.Equal(got[0].GetHostnames(), []string{"*.pg.example.com", "admin.example.com", "db.example.com"}) ||
-			!slices.Equal(got[0].GetConnectors(), want) {
+			!slices.Equal(got[0].GetConnectors(), want) || !slices.Equal(rankedIDs(got[0].GetRankedConnectors()), want) {
 			t.Fatalf("passthrough resources %v", got)
 		}
 		for _, r := range f.compile(t, pki.KindConnector, f.c1) {
@@ -816,7 +862,7 @@ func TestCompile_TCPUDP(t *testing.T) {
 			}
 		}
 		if len(got) != 1 || got[0].GetPort() != 20053 || got[0].GetIdleTimeoutSeconds() != 600 || got[0].GetFlowIdleTimeoutSeconds() != 30 ||
-			!slices.Equal(got[0].GetConnectors(), []string{f.c2}) {
+			!slices.Equal(got[0].GetConnectors(), []string{f.c2}) || !slices.Equal(rankedIDs(got[0].GetRankedConnectors()), []string{f.c2}) {
 			t.Fatalf("the gateway's tcp_udp routes: %v", got)
 		}
 		var types []string
