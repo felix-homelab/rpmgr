@@ -306,6 +306,26 @@ func TestPlan_ControllerACME(t *testing.T) {
 	}
 }
 
+// TestPlan_ControllerUnit: setup renders the unit from the boot file it writes, as `rpmgr
+// systemd-unit` does: it loads a KEK in a systemd credential, and since setup's boot file names no
+// revocation-log sink, it makes nothing outside the state directory writable.
+func TestPlan_ControllerUnit(t *testing.T) {
+	h := newHost(t, &fakeHost{})
+	p, err := setup.New(setup.Values{Role: setup.Controller, PublicURL: "https://panel.example.com", TLS: setup.TLSACME,
+		KEKSource: config.KEKSystemdCredential}, h)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r, err := p.Run(context.Background(), nil); err != nil || r.Unit != "rpmgr-controller" {
+		t.Fatalf("run: %+v %v", r, err)
+	}
+	unit, err := os.ReadFile(filepath.Join(h.Paths.Units, "rpmgr-controller.service"))
+	if err != nil || !strings.Contains(string(unit), "\nLoadCredentialEncrypted=rpmgr-kek:/etc/rpmgr/credstore/rpmgr-kek\n") ||
+		strings.Contains(string(unit), "ReadWritePaths=") {
+		t.Errorf("unit %q %v", unit, err)
+	}
+}
+
 // TestPlan_PrivateName: a controller whose name no public CA certifies makes its own self-signed
 // certificate, so setup writes no certificate files for it.
 func TestPlan_PrivateName(t *testing.T) {

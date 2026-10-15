@@ -1279,9 +1279,16 @@ benchmark result and the decision taken are recorded in the relevant ADR.
 ### Host tuning applied by the installer
 
 - `net.core.rmem_max` and `net.core.wmem_max` ≥ 7 MiB (quic-go's requested UDP buffer size).
+  - `/etc/sysctl.d/60-rpmgr.conf` holds both at 7 MiB, written on every run whatever the host has
+    now, so that they hold after a re-run and the next boot.
+  - Applied at once, they only rise: a larger value stays until the next boot. [R] A host that
+    needs larger buffers sets them in a file that sorts after `60-rpmgr.conf`, such as
+    `/etc/sysctl.d/99-local.conf`, whose values take precedence at boot
+    [F systemd v257 `man/standard-conf.xml:27-29`, included by `man/sysctl.d.xml:105`].
 - Gateway: `CAP_NET_BIND_SERVICE` instead of root; `LimitNOFILE` ≥ 1 048 576.
 - [R] `net.ipv4.tcp_congestion_control=bbr` offered on gateways for the TCP transport and public
-  TCP through the installer flag `--tcp-bbr`, never set silently.
+  TCP through the installer flag `--tcp-bbr`, never set silently. A re-run keeps it while
+  `60-rpmgr.conf` has its line; to stop setting it, the operator removes the line.
 - The metrics `rpmgr_quic_gso_enabled` and `rpmgr_quic_udp_buffer_warning` show whether quic-go
   sends with GSO and whether a UDP buffer of the QUIC socket stays below the 7 MiB quic-go asks
   for, which makes it warn ([10](10-operations.md#metrics)).

@@ -171,12 +171,12 @@ revocations that a restore needs ([Backup and restore](backup-and-restore.md)):
 
 - **The revocation log has no copy off this host. …**: the controller keeps the log on its own host
   only, and every backup includes it. A sink on a share, `revocation_log.sink` in the controller's
-  boot file, keeps a copy should the host be lost. The sink also needs a systemd drop-in that makes
-  it writable for the service
+  boot file, keeps a copy should the host be lost. After setting it, write the unit again with
+  `rpmgr systemd-unit`, which makes the sink writable for the service
   ([Backup and restore](backup-and-restore.md#the-revocation-log-sink)).
 - **The revocation log is not yet off-host: … entries have waited since … to reach the sink.
   Revocations are still enforced.**: a sink is set, but an entry has waited too long to reach it
   ([10](../../10-operations.md#suggested-alerts)). Check that the directory exists, that the share
-  is mounted, that the user `rpmgr` may write to it and that the drop-in names it
-  ([Backup and restore](backup-and-restore.md#the-revocation-log-sink)). The controller's log says
-  why it failed, and the controller keeps trying.
+  is mounted, that the user `rpmgr` may write to it and that the unit names it in
+  `ReadWritePaths=` ([Backup and restore](backup-and-restore.md#the-revocation-log-sink)). The
+  controller's log says why it failed, and the controller keeps trying.

@@ -95,9 +95,9 @@ which is lost with the host.
 
 The boot setting `revocation_log.sink` keeps a copy off the host: a directory, usually on a share
 mounted on the controller's host ([Boot files](../reference/boot-files.md#controller)). The
-systemd unit lets the controller write only to `/var/lib/rpmgr`, so the sink needs a drop-in that
-makes it writable as well. To set one up on a controller (on an all-in-one, use
-`rpmgr-all-in-one` and `/etc/rpmgr/all-in-one.yaml`):
+systemd unit lets the controller write only to `/var/lib/rpmgr`, unless it names the sink as well:
+`rpmgr systemd-unit` reads the boot file and adds the sink, so write the unit again after setting
+it. To set one up on a controller (on an all-in-one, use `all-in-one` in place of `controller`):
 
 1. **Create the directory** and give it to the user `rpmgr`. On a share, the share's own
    permissions must let `rpmgr` write as well.
@@ -113,24 +113,29 @@ makes it writable as well. To set one up on a controller (on an all-in-one, use
      sink: /mnt/rpmgr-revocations
    ```
 
-3. **Make it writable for the service** with a drop-in. `sudo systemctl edit rpmgr-controller`
-   opens an editor; add:
-
-   ```ini
-   [Service]
-   ReadWritePaths=/mnt/rpmgr-revocations
-   ```
-
-   The directory must exist when the service starts, or systemd does not start it. The drop-in
-   stays when an upgrade writes the unit again.
-
-4. **Restart** the controller:
+3. **Write the unit again,** which now makes the sink writable for the service, and restart the
+   controller:
 
    ```sh
+   rpmgr systemd-unit controller | sudo tee /etc/systemd/system/rpmgr-controller.service >/dev/null
+   grep ReadWritePaths /etc/systemd/system/rpmgr-controller.service
+   sudo systemctl daemon-reload
    sudo systemctl restart rpmgr-controller
    ```
 
-Without the drop-in, the controller cannot write to the sink and logs
+   `grep` shows the line the unit gained:
+
+   ```text
+   ReadWritePaths=-/mnt/rpmgr-revocations
+   ```
+
+   With `-`, the controller starts even when the directory is missing, such as a share that is not
+   mounted yet; a share mounted later is writable at once. If you create a plain directory after
+   the start, restart the controller. If you keep a unit of your own instead, add the same line to
+   it with a drop-in: `sudo systemctl edit rpmgr-controller` opens an editor for it, under
+   `[Service]`.
+
+When the controller cannot write to the sink, it logs
 `revocation log: the sink takes no entries; revocations are still enforced`.
 
 Without a sink, **Settings** shows the warning that the revocation log has no copy off this host.
@@ -211,8 +216,7 @@ When the old host is lost, or to move the controller:
    restore fails closed.
 5. **Install the unit and start it,** here for a controller; for an all-in-one, first put back its
    gateway's identity ([below](#restore-an-all-in-one)) and use `all-in-one` in place of
-   `controller`. If the boot file names a revocation-log sink, create the sink's drop-in with
-   `sudo systemctl edit rpmgr-controller` after `daemon-reload` and before you start the unit
+   `controller`. The unit makes the revocation-log sink of the boot file writable
    ([above](#the-revocation-log-sink)).
 
    ```sh

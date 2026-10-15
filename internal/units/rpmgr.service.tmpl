@@ -39,6 +39,12 @@ SystemCallArchitectures=native
 StateDirectory=rpmgr
 StateDirectoryMode=0750
 ReadOnlyPaths=/etc/rpmgr
+{{- if .Writable}}
+# Directories the boot file names outside the state directory; "-" starts without a missing one.
+{{- range .Writable}}
+ReadWritePaths=-{{.}}
+{{- end}}
+{{- end}}
 LimitNOFILE=1048576
 Restart=on-failure
 RestartSec=2s
