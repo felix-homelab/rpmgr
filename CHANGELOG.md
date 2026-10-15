@@ -17,7 +17,10 @@ history and the [ADRs](docs/adr/).
   systemd unit, started and checked for readiness. It asks in full-screen forms, or in plain
   prompts without a terminal, and shows the plan before it changes anything; with `--yes` it takes
   every value from its flags. A connector's proxy is an `http://`, `socks5://` or `socks5h://` URL
-  that the enrollment takes too, kept in a file only root reads. (#435, #557)
+  that the enrollment takes too, kept in a file only root reads; one with credentials comes from
+  `--proxy-file` or the form, never the command line. Release candidates up to rc.8 wrote the
+  proxy into a drop-in every user reads: run setup again and change the proxy's password. (#435,
+  #557)
 - All roles: one `rpmgr` binary for Linux on amd64, arm64, armv7 and riscv64 runs every role:
   `rpmgr controller`, `gateway`, `connector` and `all-in-one`, each from a strictly checked YAML
   boot file. `rpmgr version` names the build. (#174, #196, #260, #266, #267, #384)

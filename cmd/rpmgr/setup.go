@@ -20,10 +20,11 @@ var setupHost = setup.Host{}
 // setupCommand is `rpmgr setup` (docs/16-cli.md): it asks for the values in forms pre-filled with
 // its flags, shows the plan, and on confirmation runs it; with --yes it asks nothing and takes every
 // value from the flags. The token never comes from the command line: it comes from --token-file,
-// $RPMGR_ENROLL_TOKEN or the terminal, as for `rpmgr enroll`.
+// $RPMGR_ENROLL_TOKEN or the terminal, as for `rpmgr enroll`; nor does a proxy URL with
+// credentials, which comes from --proxy-file or the form.
 func setupCommand() *cli.Command {
 	var v setup.Values
-	var role, tokenFile string
+	var role, tokenFile, proxyFile string
 	var targets, denied listFlag
 	var yes bool
 	return &cli.Command{
@@ -50,7 +51,8 @@ func setupCommand() *cli.Command {
 			fs.Var(&targets, "allow-target", "connector: a target the connector-local policy allows: an address or subnet, optionally "+
 				":port or :port-port, IPv6 in brackets, or a socket path; repeat for more")
 			fs.Var(&denied, "deny-target", "connector: a target the connector-local policy denies, whatever allows it; the same form")
-			fs.StringVar(&v.Proxy, "proxy", "", "connector: the proxy of its enrollment and its service, http://, socks5:// or socks5h://")
+			fs.StringVar(&v.Proxy, "proxy", "", "connector: the proxy of its enrollment and its service, http://, socks5:// or socks5h://, without credentials")
+			fs.StringVar(&proxyFile, "proxy-file", "", "connector: file with the proxy URL instead of --proxy, for one with a user name or password")
 			fs.BoolVar(&v.NoUnit, "no-unit", false, "install no systemd unit and start nothing")
 			fs.BoolVar(&v.Force, "force", false, "replace an existing boot file (kept beside it) or an agent's identity")
 			fs.BoolVar(&yes, "yes", false, "ask nothing: take every value from the flags and run the plan")
@@ -63,6 +65,18 @@ func setupCommand() *cli.Command {
 				return cli.Usagef("setup --yes needs --role: all-in-one, controller, gateway or connector")
 			}
 			v.Role, v.AllowTargets, v.DenyTargets = setup.Role(role), targets, denied
+			switch {
+			case proxyFile != "" && v.Proxy != "":
+				return cli.Usagef("--proxy and --proxy-file exclude each other")
+			case proxyFile != "":
+				p, err := setup.ReadProxyFile(proxyFile, func(w string) { _, _ = fmt.Fprintln(env.Stderr, "warning:", w) })
+				if err != nil {
+					return fmt.Errorf("--proxy-file: %w", err)
+				}
+				v.Proxy = p
+			case setup.ProxyHasCredentials(v.Proxy):
+				return cli.Usagef("--proxy holds credentials, which a command line shows to every user of the host: put the URL in a file for --proxy-file")
+			}
 			var form *setupForm
 			if !yes {
 				facts, err := setup.Preflight(setupHost)

@@ -138,7 +138,7 @@ A connector reaches the services of its network ([Concepts](../concepts.md#conne
 | **CA pin, as the controller's init printed it** | `--ca-pin` | none, required | `sha256:<base64>` |
 | **Allowed targets, separated by spaces (optional)** | `--allow-target`, repeated | none | Targets the connector may reach, written to `/etc/rpmgr/policy.yaml` |
 | **Denied targets, which win over allowed ones (optional)** | `--deny-target`, repeated | none | Targets it must not reach |
-| **Proxy for the connection to the controller (optional)** | `--proxy` | none | A proxy for the enrollment and the connector's service: `http://`, `socks5://` or `socks5h://`, such as `http://proxy.lan:3128` |
+| **Proxy for the connection to the controller (optional)** | `--proxy`, or `--proxy-file` for one with credentials | none | A proxy for the enrollment and the connector's service: `http://`, `socks5://` or `socks5h://`, such as `http://proxy.lan:3128` |
 | **Token: the gateway or enrollment token** | `--token-file`, or `RPMGR_ENROLL_TOKEN` | asked | The enrollment token, in a hidden field |
 
 A target is an address or a subnet with an optional port or port range, an IPv6 address in
@@ -150,14 +150,32 @@ setup refuses any other. Setup enrolls through the proxy, so a host whose only w
 can be set up with it. The connector's service then reads it as `HTTPS_PROXY` from
 `/etc/rpmgr/connector-proxy.env`, a file only root reads, which the drop-in
 `/etc/systemd/system/rpmgr-connector.service.d/proxy.conf` names: a proxy password never shows in
-the unit or in `systemctl show`, and the plan shows the URL without it. The connector sends its TLS
-data sessions through the proxy, and through an `http://` proxy its control session too; QUIC goes
-direct, or the connector falls back to TLS ([Connector networking](../connectors/network.md)).
+the unit or in `systemctl show`, and the plan shows the URL without its user name and password. The
+connector sends its TLS data sessions through the proxy, and through an `http://` proxy its control
+session too; QUIC goes direct, or the connector falls back to TLS
+([Connector networking](../connectors/network.md)).
 
 ```sh
 sudo rpmgr setup --role connector --controller https://panel.example.com --ca-pin 'sha256:…' \
   --allow-target 192.168.1.20:8080 --proxy http://proxy.lan:3128
 ```
+
+A proxy URL with a user name or password is a secret, which a command line shows to every user of
+the host. `--proxy` refuses it: type it in the form, or put it in a file only you read and give
+`--proxy-file`, which warns of a file other users may read:
+
+```sh
+sudo install -m 0600 /dev/null /root/proxy-url
+sudoedit /root/proxy-url      # one line: http://user:password@proxy.lan:3128
+sudo rpmgr setup --role connector --controller https://panel.example.com --ca-pin 'sha256:…' \
+  --proxy-file /root/proxy-url --yes
+```
+
+Characters the environment file would read differently, such as a space, a quote, a backslash or
+a letter outside ASCII, must be percent-encoded (`%20`, `%22`, `%5C`); setup refuses them as they
+are. Without a proxy, setup enrolls through the `HTTPS_PROXY` of its own environment, as
+`rpmgr enroll` does, and gives the service no proxy; a proxy an earlier run gave stays until you
+remove `/etc/rpmgr/connector-proxy.env` and its drop-in.
 
 ## What setup does
 
@@ -175,8 +193,9 @@ The plan's steps, in order; setup leaves out those it does not need:
    the user `rpmgr`, then writes the boot file as above.
 4. **Writes the local policy** of a connector or all-in-one: the denied targets, then the allowed
    ones.
-5. **Writes the proxy** of a connector with `--proxy`: `/etc/rpmgr/connector-proxy.env` (root, 0600)
-   and the drop-in that names it.
+5. **Writes the proxy** of a connector with `--proxy` or `--proxy-file`:
+   `/etc/rpmgr/connector-proxy.env` (root, 0600), replacing an earlier one, and the drop-in that
+   names it.
 6. **Sets the instance's ACME directory and e-mail address,** if you gave either, before the first
    start, so that the first certificate comes from that CA.
 7. **Installs the unit** `/etc/systemd/system/rpmgr-<role>.service` and runs

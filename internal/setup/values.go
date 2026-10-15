@@ -11,6 +11,7 @@ import (
 	"net"
 	"net/mail"
 	"net/url"
+	"os"
 	"strings"
 
 	"github.com/felix-homelab/rpmgr/internal/acme"
@@ -144,20 +145,44 @@ func CheckAddr(s string, off bool) error {
 
 // CheckProxy checks a proxy URL as the connector reads it (connector.ProxyDialer): an http:// URL
 // (HTTP CONNECT) or a socks5:// or socks5h:// URL with a host, with optional credentials. It also
-// refuses what the systemd environment file it goes into would read differently. Its errors never
-// repeat the URL, which may hold a password.
+// refuses what the systemd environment file it goes into would read differently, or not at all: a
+// quote, a backslash, white space and anything outside printable ASCII. Its errors never repeat the
+// URL, which may hold a password.
 func CheckProxy(s string) error {
 	if s == "" {
 		return nil
+	}
+	for _, c := range s {
+		if c <= ' ' || c > '~' || c == '"' || c == '\'' || c == '\\' {
+			return errors.New("the proxy URL holds a quote, a backslash, white space or a character outside printable ASCII: percent-encode them")
+		}
 	}
 	u, err := url.Parse(s)
 	if err != nil || u.Host == "" || (u.Scheme != "http" && u.Scheme != "socks5" && u.Scheme != "socks5h") {
 		return errors.New("the proxy is not an http://, socks5:// or socks5h:// URL with a host")
 	}
-	if strings.ContainsAny(s, "\"'\\ \t\r\n") {
-		return errors.New("the proxy URL holds a quote, a backslash or white space: percent-encode them")
-	}
 	return nil
+}
+
+// ProxyHasCredentials reports whether a proxy URL carries a user name or a password, which a
+// command line would show to every user of the host.
+func ProxyHasCredentials(s string) bool { return strings.Contains(s, "@") }
+
+// ReadProxyFile reads the proxy URL from a file, for one with credentials; warn hears of a file
+// that other users may read. Its errors never repeat the file's content.
+func ReadProxyFile(path string, warn func(string)) (string, error) {
+	st, err := os.Stat(path)
+	if err != nil {
+		return "", err
+	}
+	if st.Mode().Perm()&0o077 != 0 && warn != nil {
+		warn(fmt.Sprintf("the proxy file %s is open to other users (mode %04o); use 0600", path, st.Mode().Perm()))
+	}
+	b, err := os.ReadFile(path) //nolint:gosec // G304: the operator's --proxy-file
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(string(b)), nil
 }
 
 // CheckEmail checks the ACME account's address; empty is allowed.

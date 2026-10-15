@@ -422,9 +422,11 @@ func (p *Plan) agentSteps() {
 			IdentityDir: identity, Replace: v.Force, Version: version.Version,
 			Host: &agentv1.HostFacts{Hostname: host, Os: runtime.GOOS, Arch: runtime.GOARCH}}
 		if v.Proxy != "" {
-			if err := throughProxy(&o, v.Proxy); err != nil {
+			done, err := throughProxy(&o, v.Proxy)
+			if err != nil {
 				return err
 			}
+			defer done()
 		}
 		id, err := h.Enroll(ctx, o)
 		if err != nil {
@@ -461,8 +463,9 @@ func (p *Plan) agentSteps() {
 }
 
 // throughProxy makes the enrollment take the proxy the connector's service will take: the
-// connector's own dialer (HTTP CONNECT or SOCKS5) for both the trust bundle and the controller.
-func throughProxy(o *agent.EnrollOptions, proxyURL string) error {
+// connector's own dialer (HTTP CONNECT or SOCKS5) for both the trust bundle and the controller. The
+// bundle's download keeps the default client's time limit; done closes its idle tunnel.
+func throughProxy(o *agent.EnrollOptions, proxyURL string) (done func(), err error) {
 	dial, err := connector.ProxyDialer(func(name string) string {
 		if name == "HTTPS_PROXY" {
 			return proxyURL
@@ -470,21 +473,25 @@ func throughProxy(o *agent.EnrollOptions, proxyURL string) error {
 		return "" // the service gets no NO_PROXY either
 	})
 	if err != nil {
-		return err
+		return nil, err
 	}
 	t := http.DefaultTransport.(*http.Transport).Clone() //nolint:forcetypeassert // the standard library's
 	t.Proxy = nil
 	t.DialContext = func(ctx context.Context, _, addr string) (net.Conn, error) { return dial(ctx, addr) }
-	o.HTTPClient, o.Dial = &http.Client{Transport: t}, dial
-	return nil
+	o.HTTPClient, o.Dial = &http.Client{Transport: t, Timeout: agent.DownloadTimeout}, dial
+	return t.CloseIdleConnections, nil
 }
 
-// redactedProxy is the proxy URL with its password, if any, left out.
+// redactedProxy is the proxy URL with its user name and password, if any, left out.
 func redactedProxy(s string) string {
-	if u, err := url.Parse(s); err == nil {
-		return u.Redacted()
+	u, err := url.Parse(s)
+	if err != nil {
+		return "(not shown)"
 	}
-	return "(not shown)"
+	if u.User != nil {
+		u.User = url.User("xxxxx")
+	}
+	return u.String()
 }
 
 // policySteps write the allowed and denied targets into the connector-local policy of a connector
@@ -581,12 +588,32 @@ func writeNew(path string, data []byte, perm os.FileMode) error {
 	return f.Close()
 }
 
-// writeMode writes a file, new or not, with mode perm whatever the umask.
+// writeMode writes a file, new or not, with mode perm whatever the umask: into a new file in its
+// directory, renamed over it, so that the data never sits in a file with an older, wider mode or
+// another owner, and a symbolic link in its place is replaced rather than followed.
 func writeMode(path string, data []byte, perm os.FileMode) error {
-	if err := os.WriteFile(path, data, perm); err != nil { //nolint:gosec // G306: callers pass the mode a unit needs
+	f, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+".*")
+	if err != nil {
 		return err
 	}
-	return os.Chmod(path, perm)
+	tmp := f.Name()
+	defer func() { _ = os.Remove(tmp) }() // a no-op after the rename
+	if err := f.Chmod(perm); err != nil {
+		_ = f.Close()
+		return err
+	}
+	if _, err := f.Write(data); err != nil {
+		_ = f.Close()
+		return err
+	}
+	if err := f.Sync(); err != nil {
+		_ = f.Close()
+		return err
+	}
+	if err := f.Close(); err != nil {
+		return err
+	}
+	return os.Rename(tmp, path)
 }
 
 // mkdirMode creates dir and its missing parents with mode perm whatever the umask (#458): a umask

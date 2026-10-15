@@ -349,7 +349,8 @@ log: { level: info, format: json }
 the schemes the connector reads, enrolls through it, and gives it to the service as `HTTPS_PROXY`
 in `/etc/rpmgr/connector-proxy.env` (mode 0600, root's), which the drop-in
 `rpmgr-connector.service.d/proxy.conf` names: a proxy password never shows in the unit or in
-`systemctl show`.
+`systemctl show`. A URL with credentials comes from `--proxy-file <file>` or the form; `--proxy`
+refuses it, as a command line shows it to every user of the host.
 
 ```yaml
 # /etc/rpmgr/all-in-one.yaml
