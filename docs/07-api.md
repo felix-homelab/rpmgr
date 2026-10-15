@@ -177,7 +177,8 @@ API reports both ([03](03-connections.md#configuration-reconciliation)).
 - A caller may set `wait = APPLIED` with a timeout (max 30 s) on any mutation, as the request
   header `Rpmgr-Wait-Applied: <duration>` (for example `30s`); the response then returns once the
   revision is applied, rejected or timed out, or the wait passes, with the state then. A duration
-  that does not parse is no wait. The CLI does this by default.
+  that does not parse is no wait. The CLI does this with `--wait <duration>`; without it, it does
+  not wait.
 - `StatusService.WatchApplyStatus(revision)` streams progress; the UI uses it to show
   "pending → applied" live after every save. `GetApplyStatus(revision)` returns it once.
 - The status is derived over the org's agents with a live control session: an agent applied the

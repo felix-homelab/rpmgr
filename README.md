@@ -338,9 +338,10 @@ npm --prefix web ci && npm --prefix web run build   # the web UI, embedded from 
 CGO_ENABLED=0 go build -trimpath -o rpmgr ./cmd/rpmgr
 ```
 
-A binary built without the web UI serves a placeholder page instead. A build from source carries
-no release root keys, so it verifies no release: the controller's install script and release check
-need a signed release ([04](docs/04-security.md#release-signing)).
+A binary built without the web UI serves a placeholder page instead. A build from source has the
+release root keys compiled in, but reports the version `dev`: a controller serves its agents only
+the signed release of its own version, so the controller's install script and `/dl/` mirror need
+a released binary ([04](docs/04-security.md#release-signing)).
 
 ## Contributing and support
 
