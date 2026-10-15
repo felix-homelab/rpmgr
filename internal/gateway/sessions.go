@@ -559,23 +559,24 @@ func (m *Sessions) candidates(route string, skip passedOver) []rankedSessions {
 	return out
 }
 
-// BestTier returns the lowest priority of the route's entries whose connector has a ready
-// session, with those entries' connectors, and false when there is none.
-func (m *Sessions) BestTier(route string) (uint32, map[string]bool, bool) {
+// BestPriority returns the lowest priority of the route's entries whose connector has a ready
+// session, and false when there is none.
+func (m *Sessions) BestPriority(route string) (uint32, bool) {
 	if m == nil {
-		return 0, nil, false
+		return 0, false
 	}
 	cands := m.candidates(route, passedOver{})
 	if len(cands) == 0 {
-		return 0, nil, false
+		return 0, false
 	}
-	best, cons := lowest(cands), map[string]bool{}
-	for _, c := range cands {
-		if c.Priority == best {
-			cons[c.ID] = true
-		}
-	}
-	return best, cons, true
+	return lowest(cands), true
+}
+
+// HasEntry reports whether the connector at the priority is an entry of the route.
+func (m *Sessions) HasEntry(route, connector string, priority uint32) bool {
+	return m != nil && slices.ContainsFunc(m.o.Assignment.Connectors(route), func(c RouteConnector) bool {
+		return c.ID == connector && c.Priority == priority
+	})
 }
 
 func lowest(cands []rankedSessions) uint32 {
@@ -674,8 +675,10 @@ func (m *Sessions) open(ctx context.Context, open *tunnelv1.StreamOpen, skip pas
 			}
 			continue
 		}
+		// A UDP flow names none: it sends before the answer, so it is not retried on another entry,
+		// and the connector's own fall-through is its failover.
 		open.TargetPriority = nil
-		if c := cands[i]; c.Ranked {
+		if c := cands[i]; c.Ranked && open.GetKind() != tunnelv1.StreamKind_STREAM_KIND_UDP_FLOW {
 			open.TargetPriority = &c.Priority
 		}
 		ts := &trackedStream{Stream: st, d: d, tier: cands[i].RouteConnector}

@@ -178,23 +178,29 @@ type routeTransport struct {
 	active   map[*activeRequest]struct{}
 	upstream *upstreamConns // the route's TLS connections to its targets, of every transport
 
-	best   func() (uint32, map[string]bool, bool) // the route's best ready tier (Sessions.BestTier)
-	poolMu sync.Mutex
-	pooled map[net.Conn]*pooledConn // the upstream connections open now that a priority was chosen for
+	best      func() (uint32, bool)     // the route's best priority with a ready session (Sessions.BestPriority)
+	entry     func(string, uint32) bool // whether a connector at a priority is still an entry of the route
+	closeIdle func()                    // the transport's CloseIdleConnections
+	poolMu    sync.Mutex
+	pooled    map[net.Conn]*pooledConn // the upstream connections open now that a priority was chosen for
 }
 
-// pooledConn is an upstream connection's connector and priority, and its requests in progress.
+// pooledConn is an upstream connection's entry, the route's best ready priority when it was
+// dialled, and its requests in progress.
 type pooledConn struct {
-	connector string
-	priority  uint32
-	active    int
+	connector  string
+	priority   uint32
+	bestAtDial uint32
+	active     int
 }
 
 // RoundTrip implements http.RoundTripper: the route's transport, failing back to a better priority
-// (D90). An upstream connection that is not of the best tier with a ready session now, a connector
-// at the lowest priority, is closed as soon as it has no request in progress, before a request and
-// when a request ends, so that a new connection goes to that tier. An HTTP/2 upstream connection
-// with requests always in progress therefore stays.
+// (D90). An upstream connection is closed as soon as it has no request in progress, checked before
+// a request and when one ends, once the route has a ready session at a better priority than when
+// it was dialled, or once its entry left the route; a new connection then goes to the better
+// priority. While the best priority's target merely fails, its connector still ready, the
+// connections of the fallback stay. An HTTP/2 upstream connection with requests always in progress
+// stays too.
 func (rt *routeTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	rt.failBack()
 	var got net.Conn
@@ -267,21 +273,37 @@ func (rt *routeTransport) use(c net.Conn, delta int) {
 	}
 }
 
-// failBack closes the idle upstream connections if one without a request in progress is not of the
-// best tier with a ready session now.
+// failBack closes the idle upstream connections if one without a request in progress lost its
+// entry, or was dialled while the route's best ready priority was worse than it is now.
 func (rt *routeTransport) failBack() {
-	best, cons, ok := rt.best()
-	if !ok {
-		return
-	}
 	rt.poolMu.Lock()
-	worse := false
+	var idle []pooledConn
 	for _, pc := range rt.pooled {
-		worse = worse || pc.active == 0 && (pc.priority != best || !cons[pc.connector])
+		if pc.active == 0 {
+			idle = append(idle, *pc)
+		}
 	}
 	rt.poolMu.Unlock()
-	if worse {
-		rt.tr.CloseIdleConnections()
+	best, known := uint32(0), false
+	for _, pc := range idle {
+		if !rt.entry(pc.connector, pc.priority) {
+			rt.closeIdle()
+			return
+		}
+		if pc.bestAtDial == 0 {
+			continue // no priority is better
+		}
+		if !known {
+			b, ok := rt.best()
+			if !ok {
+				return
+			}
+			best, known = b, true
+		}
+		if best < pc.bestAtDial {
+			rt.closeIdle()
+			return
+		}
 	}
 }
 
@@ -292,8 +314,12 @@ func (rt *routeTransport) pool(c net.Conn, sc *streamConn, err error) (net.Conn,
 		return nil, err
 	}
 	if p, ranked := streamPriority(sc.Stream); ranked {
+		best, ok := rt.best()
+		if !ok {
+			best = p
+		}
 		rt.poolMu.Lock()
-		rt.pooled[c] = &pooledConn{connector: StreamConnector(sc.Stream), priority: p}
+		rt.pooled[c] = &pooledConn{connector: StreamConnector(sc.Stream), priority: p, bestAtDial: best}
 		rt.poolMu.Unlock()
 		sc.onClose = func() {
 			rt.poolMu.Lock()
@@ -701,7 +727,8 @@ func (h *HTTPRoutes) upstreamOf(route string) *upstreamConns {
 // newTransport returns the proxy of a route; its transport dials tunnel streams to the route.
 func (h *HTTPRoutes) newTransport(r HTTPRoute) *routeTransport {
 	rt := &routeTransport{access: r.Access, active: map[*activeRequest]struct{}{}, upstream: h.upstreamOf(r.ID),
-		pooled: map[net.Conn]*pooledConn{}, best: func() (uint32, map[string]bool, bool) { return h.o.Sessions.BestTier(r.ID) }}
+		pooled: map[net.Conn]*pooledConn{}, best: func() (uint32, bool) { return h.o.Sessions.BestPriority(r.ID) },
+		entry: func(con string, p uint32) bool { return h.o.Sessions.HasEntry(r.ID, con, p) }}
 	rt.route.Store(&r)
 	rt.tr = &http.Transport{
 		DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
@@ -732,6 +759,7 @@ func (h *HTTPRoutes) newTransport(r HTTPRoute) *routeTransport {
 		}
 		rt.tr.DialTLSContext = func(ctx context.Context, _, _ string) (net.Conn, error) { return rt.pool(h.dialTLS(ctx, rt)) }
 	}
+	rt.closeIdle = rt.tr.CloseIdleConnections
 	rt.proxy = &httputil.ReverseProxy{
 		Rewrite: func(pr *httputil.ProxyRequest) {
 			route := rt.route.Load()

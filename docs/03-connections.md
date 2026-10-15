@@ -534,11 +534,14 @@ sequenceDiagram
   dialled, so a gateway of one gateway group never reaches the targets of another group's routes.
   A route that a newer snapshot takes from a gateway, as when the gateway moves to another group,
   is accepted from it for the route drain period, like a removed route.
-- **Targets.** The connector tries a route's targets by priority, lowest first, and within a
-  priority in a random order weighted by `weight`; a refused target passes the stream on to the
-  next one, all within the upstream dial timeout. A target the local policy blocks is never
-  dialled, and a stream with no target left gets `UPSTREAM_REFUSED`. A route removed from the
-  snapshot still takes streams for the route drain period.
+- **Targets.** A stream that names a priority (`target_priority`) the connector has targets at
+  dials only those; any other stream, from a gateway before D90, a UDP flow, or one naming a
+  priority the connector has no target at, as when its snapshot is behind the gateway's, tries the
+  route's targets by priority, lowest first. Within a priority the order is random, weighted by
+  `weight`; a refused target passes the stream on to the next one, all within the upstream dial
+  timeout. A target the local policy blocks is never dialled, and a stream with no target left
+  gets `UPSTREAM_REFUSED`, which the gateway may retry on another entry ([Framing](#framing)). A
+  route removed from the snapshot still takes streams for the route drain period.
 - **Half-close works.** QUIC `Stream.Close()` closes only the send direction
   [F quic-go:stream.go:183-185]. A client FIN becomes a stream FIN, and the connector calls
   `CloseWrite` on the upstream TCP connection, and vice versa; neither direction is closed just
@@ -574,6 +577,7 @@ sequenceDiagram
 | `peer_identity` | string | Relay: the visitor's SPIFFE ID. HTTP: the authenticated principal, if any |
 | `open_id` | uint64 | TCP transport only: answers a connector's `OpenRequest` |
 | `result` | `StreamResult` | Set only on `open_id` streams on the TCP transport: the outcome of the requested open |
+| `target_priority` | optional uint32 | The priority of the route's entry the gateway chose ([Multiple gateways](#multiple-gateways)); unset on UDP flows and from a gateway before D90 |
 
 - `StreamResult` (first message in the return direction, written by the side that received
   `StreamOpen`, with the code and, on success, the ID of the route target the connector reached),
@@ -1040,15 +1044,18 @@ and 2 when it was closed before both directions ended. Phase 1 gives the whole w
   priority, a failover, takes connections only while no better one has a ready session
   ([D90](14-open-decisions.md#engineering)).
 - **HTTP failback.** Weights and priorities choose the tunnel stream of each new upstream
-  connection; the gateway keeps such connections alive for later requests. One that is not of the
-  best entries with a ready session now, because a better priority is ready again or its connector
-  left the route, closes as soon as it has no request in progress: an HTTP/1.1 upstream moves on
-  the next request, an HTTP/2 upstream, which carries every request on one connection, once it has
-  none in progress.
+  connection; the gateway keeps such connections alive for later requests, and notes for each the
+  route's best priority with a ready session when it was dialled. Once a better priority than that
+  has a ready session, or once the connection's entry left the route, the connection closes as soon
+  as it has no request in progress: an HTTP/1.1 upstream moves on the next request, an HTTP/2
+  upstream, which carries every request on one connection, once it has none in progress. While the
+  best priority's target merely fails and its connector stays ready, the fallback's connections
+  stay alive; they move only when idle for the idle timeout or when a better priority returns.
 - **Version skew.** A gateway of a release candidate (v0.1.0-rc.1 to rc.7) ignores the entries and
   chooses among all connectors by load; a connector of one ignores the priority a stream names and
   tries all its targets by priority, so its worse targets answer before another connector's
-  better ones.
+  better ones, and a connector with entries at two priorities may dial all its targets twice for
+  one connection, up to two upstream dial timeouts.
 - Among the chosen connector's ready sessions, the gateway picks with **power of two choices**:
   sample two, take the one with the lower (smoothed RTT × active streams), where a stream is
   active if it was opened or carried a byte within the last 5 s, so idle pooled HTTP streams and

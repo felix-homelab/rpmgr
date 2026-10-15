@@ -908,3 +908,28 @@ func TestSessions_Fallback(t *testing.T) {
 		t.Fatalf("streams %v on the only entry, want one that names no priority", opens)
 	}
 }
+
+// TestSessions_UDPFlowNamesNoPriority: a UDP flow sends before its answer and is not retried on
+// another entry, so it names no priority and the connector falls through its own targets (D90).
+func TestSessions_UDPFlowNamesNoPriority(t *testing.T) {
+	con := cid("udp_1")
+	a := &assignment{known: map[string]bool{con: true}, ranked: map[string][]gateway.RouteConnector{
+		"r1": {{ID: con, Weight: 1, Ranked: true}, {ID: con, Priority: 5, Weight: 1, Ranked: true}}}}
+	m := newSessions(a, nil)
+	c := start(t, m, connectorID("udp_1"), hello("r1"))
+	for _, kind := range []tunnelv1.StreamKind{tunnelv1.StreamKind_STREAM_KIND_UDP_FLOW, tunnelv1.StreamKind_STREAM_KIND_TCP} {
+		st, err := m.Open(context.Background(), &tunnelv1.StreamOpen{Kind: kind, RouteId: "r1"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		select {
+		case o := <-c.opens:
+			if named := o.TargetPriority != nil; named != (kind == tunnelv1.StreamKind_STREAM_KIND_TCP) {
+				t.Fatalf("%s: a priority named %v (%v)", kind, named, o.TargetPriority)
+			}
+		case <-time.After(5 * time.Second):
+			t.Fatal("no stream reached the connector")
+		}
+		_ = st.Close()
+	}
+}

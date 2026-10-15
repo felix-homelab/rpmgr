@@ -98,7 +98,7 @@ history and the [ADRs](docs/adr/).
   no connector has a ready target of a lower one, another connector's better target comes before a
   connector's own worse one, and one priority is shared by weight. A target that refuses or does
   not answer passes the connection to the next one, so the route still works, and HTTP connections
-  the gateway keeps alive move back once a better target is ready again. (#547)
+  the gateway keeps alive move back once a better target's connector is ready again. (#547)
 - Gateway: `http` routes set `Forwarded` and `X-Forwarded-*` and keep a client's own only from the
   gateway group's trusted proxies. They can replace the `Host` header, set request and response
   headers, redirect or serve port 80, and send HSTS. (#297, #298)

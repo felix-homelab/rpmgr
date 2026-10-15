@@ -418,12 +418,18 @@ func codeOf(err error) tunnelv1.ResultCode {
 }
 
 // targetsFor returns the targets of a route that a stream may use: those of the priority it names,
-// which the gateway chose among the route's connectors (D90), else all of them.
+// which the gateway chose among the route's connectors (D90), else all of them. A priority this
+// connector has no target at, as when the gateway runs a newer snapshot than the connector, names
+// none.
 func targetsFor(r Route, open *tunnelv1.StreamOpen) []Target {
 	if open.TargetPriority == nil {
 		return r.Targets
 	}
-	return slices.DeleteFunc(slices.Clone(r.Targets), func(t Target) bool { return t.Priority != open.GetTargetPriority() })
+	named := slices.DeleteFunc(slices.Clone(r.Targets), func(t Target) bool { return t.Priority != open.GetTargetPriority() })
+	if len(named) == 0 {
+		return r.Targets
+	}
+	return named
 }
 
 // order returns the targets by priority, lowest first, each priority in a random order weighted by

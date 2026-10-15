@@ -413,7 +413,7 @@ func serving(ctx context.Context, tx *ent.Tx, routeID string) ([]string, []*agen
 			rank[k] = &agentv1.RouteConnector{ConnectorId: k.con, Priority: k.priority}
 			ids = append(ids, k.con)
 		}
-		rank[k].Weight += uint32(max(t.Weight, 1)) //nolint:gosec // G115: the schema keeps it at most 1000
+		rank[k].Weight = addWeight(rank[k].Weight, t.Weight)
 	}
 	tiers := slices.SortedFunc(maps.Keys(rank), func(a, b tier) int {
 		return cmp.Or(strings.Compare(a.con, b.con), cmp.Compare(a.priority, b.priority))
@@ -424,6 +424,14 @@ func serving(ctx context.Context, tx *ent.Tx, routeID string) ([]string, []*agen
 	}
 	slices.Sort(ids)
 	return slices.Compact(ids), ranked, nil
+}
+
+// maxRankWeight is the largest weight an entry carries: the gateway refuses a larger one.
+const maxRankWeight = 1_000_000
+
+// addWeight adds a target's weight, below 1 counted as 1, to an entry's, at most maxRankWeight.
+func addWeight(sum uint32, weight int) uint32 {
+	return min(sum+uint32(min(max(weight, 1), maxRankWeight)), maxRankWeight) //nolint:gosec // G115: bounded above
 }
 
 // connectorTargets loads the connector a for ConnectorRoutes and ConnectorGateways, its enabled

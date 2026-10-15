@@ -323,8 +323,8 @@ func TestTargets_Failover(t *testing.T) {
 
 // TestTargets_NamedPriority: a stream that names a priority, which the gateway chose among the
 // route's connectors, dials only the targets of that priority: a refused one is not passed over
-// for another priority, and a priority without a target is refused at once (D90). A stream that
-// names none falls through the priorities as before.
+// for another priority (D90). A stream that names none, or a priority the connector has no target
+// at, as with a gateway a snapshot ahead, falls through the priorities as before.
 func TestTargets_NamedPriority(t *testing.T) {
 	svc := startService(t, echoService)
 	closed, _ := net.Listen("tcp", "127.0.0.1:0")
@@ -345,8 +345,8 @@ func TestTargets_NamedPriority(t *testing.T) {
 	if res, _ := e.handleResult(t, named(5)); res.GetCode() != tunnelv1.ResultCode_RESULT_CODE_NO_ERROR || res.GetTargetId() != backup.ID {
 		t.Fatalf("priority 5: %v, want NO_ERROR from %s", res, backup.ID)
 	}
-	if res, _ := e.handleResult(t, named(9)); res.GetCode() != tunnelv1.ResultCode_RESULT_CODE_UPSTREAM_REFUSED {
-		t.Fatalf("a priority without targets: %v, want UPSTREAM_REFUSED", res)
+	if res, _ := e.handleResult(t, named(9)); res.GetCode() != tunnelv1.ResultCode_RESULT_CODE_NO_ERROR || res.GetTargetId() != backup.ID {
+		t.Fatalf("a priority without targets here: %v, want the fall-through to %s", res, backup.ID)
 	}
 	if res, _ := e.handleResult(t, tcpOpen("rt_1")); res.GetCode() != tunnelv1.ResultCode_RESULT_CODE_NO_ERROR || res.GetTargetId() != backup.ID {
 		t.Fatalf("no priority named: %v, want the fall-through to %s", res, backup.ID)
