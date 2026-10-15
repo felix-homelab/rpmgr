@@ -125,3 +125,6 @@ connectors, as the run takes them; input for a global install script and an inte
 | 2026-10-12 | `v0.1.0-rc.1` | `aio` fails: with the default KEK, init fails (#432, fixed by #433); with `--kek-source file`, the service cannot open its root-owned database (#437) |
 | 2026-10-12 | `v0.1.0-rc.1`, `--kek-source file`, the state directory given to `rpmgr` by hand | Every route serves through both gateways; then #438 to #444 |
 | 2026-10-12 | `origin/main` with the fixes of #437 to #444 merged, version 0.1.0-rc.1 | Every flow passes, in 250 s |
+| 2026-10-14 | `origin/main` (7c361c8), version 0.1.0-rc.1; agents `v0.1.0-rc.1` | `connectors` fails: `rpmgr policy allow-target` of rc.1 cannot read the local policy that `main`'s `/install.sh` wrote (`deny_targets`, D84). A mismatch of the run, not of a release: it led to `--version` (#550) |
+| 2026-10-15 | `v0.1.0-rc.7` | Every flow passes; the journal check fails on one `ERROR cannot record a snapshot before sending it`, logged as the all-in-one stopped for the restore (#548, fixed by #549) |
+| 2026-10-15 | `v0.1.0-rc.7`, twice more | Every flow passes, in 261 s and 257 s |
