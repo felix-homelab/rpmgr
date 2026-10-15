@@ -315,7 +315,7 @@ revocation_log:
 # /etc/rpmgr/gateway.yaml
 version: 1
 controller:
-  endpoints: [https://panel.example.com]   # replaced by the list from snapshots after first connect
+  endpoints: [https://panel.example.com]   # only checked: agents dial the endpoints of enrollment
   passthrough:                              # optional: publish a private controller (03, R23)
     address: ""                             # its host:port for 443, reached from here; "" = none
     hostnames: []                           # its UI hostnames; the agent names always go there
@@ -757,8 +757,10 @@ Each runbook: **symptoms → steps → done when**.
 
 ### Revoke a compromised connector
 
-- **Steps**: UI → Connectors → Revoke (step-up required). The deny-list is pushed to all relying
-  parties and live sessions close immediately ([04](04-security.md#revocation)). Review the audit
+- **Steps**: UI → Connectors → the connector → **Decommission…**, or
+  `rpmgr decommission connector <name>`. The deny-list is pushed to all relying parties and live
+  sessions close immediately ([04](04-security.md#revocation)); its route targets are deleted
+  ([D78](14-open-decisions.md#engineering)). Review the audit
   log and route metrics for the connector; rotate any credentials the host's services held; rebuild
   the host before re-enrolling.
 - **Done when**: no session from the identity anywhere; routes served by other connectors healthy.
@@ -862,7 +864,9 @@ Each runbook: **symptoms → steps → done when**.
 - **Symptoms**: under Security → Domains & certificates, the hostname's certificate is `failed`
   with the CA's error; HTTPS to the hostname fails.
 - **Steps**: the name's A and AAAA records must point at the gateway group's public addresses, and
-  80/tcp or 443/tcp must be reachable from the internet. A name of a private address, such as a
+  80/tcp or 443/tcp must be reachable from the internet. Every enabled gateway of the route's group
+  must be online and answer the challenge: one that is offline or not yet enrolled blocks the
+  certificate, so drain or disable it. A name of a private address, such as a
   `nip.io` name of `172.18.0.5`, can never be validated: give its route an uploaded certificate
   instead. Meanwhile the job retries with growing waits and rehearses each retry at the CA's test
   directory, so the failures cost the account nothing at the CA

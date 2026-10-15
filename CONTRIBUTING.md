@@ -240,8 +240,10 @@ PRs.
 ## Documenting features
 
 **Design first.** A feature is described in the design documents before it is implemented, and
-the documents change in the same PR as any behaviour change. A feature without documentation is
-not done.
+the documents change in the same PR as any behaviour change. A feature that users can reach is
+also described in the [user guide](docs/guide/README.md), in the same PR
+([D91](docs/14-open-decisions.md#project-and-process)). A feature without documentation is not
+done.
 
 ### Where each fact goes
 
@@ -268,6 +270,7 @@ mechanism in [03](docs/03-connections.md#configuration-reconciliation), the tabl
 | Phase scope, spikes, verification backlog, risks | [13](docs/13-roadmap.md) |
 | Open questions, each with a recommended default | [14](docs/14-open-decisions.md) |
 | New terms | [00](docs/00-vision-and-scope.md#glossary) glossary |
+| How a user installs, sets up, uses or troubleshoots it, in the web UI and on the command line | The [user guide](docs/guide/README.md): its how-to page, its web UI page and screenshot, its reference page; exact timeouts, sizes and limits only by link to 03, 04 or 15 |
 
 ### Feature documentation checklist
 
@@ -282,7 +285,11 @@ mechanism in [03](docs/03-connections.md#configuration-reconciliation), the tabl
    [14](docs/14-open-decisions.md) with a recommended default.
 6. New documents and new ID ranges reflected in the [documents index](docs/README.md); a feature
    that users can reach, in the feature list of the [README](README.md#features).
-7. Link check and Mermaid parse pass ([12](docs/12-testing-and-quality.md#continuous-integration)).
+7. A feature that users can reach, in the [user guide](docs/guide/README.md): the how-to page of its
+   topic, the web UI page (with its screenshot regenerated, see
+   [docs/guide/images](docs/guide/images/README.md)), and the reference pages it changes. The
+   command-line reference is generated: `go test ./cmd/rpmgr -run TestCLIReference -update`.
+8. Link check and Mermaid parse pass ([12](docs/12-testing-and-quality.md#continuous-integration)).
 
 Once code exists, these also belong to a feature: comments on every public `.proto` message and
 field (they are the API reference), CLI `--help` text, configuration reference in
@@ -292,8 +299,9 @@ field (they are the API reference), CLI `--help` text, configuration reference i
 
 When a feature's mechanism needs more than about 150 lines and fits none of the existing
 documents. It gets the next free number, the standard header blockquote, an entry in the document
-table of the [documents index](docs/README.md#documents), and, if it defines timers or limits, a
-"single source of truth" statement (see [docs/README](docs/README.md#how-to-read-these-documents)).
+table of the [documents index](docs/README.md#design-documents), and, if it defines timers or
+limits, a "single source of truth" statement (see
+[docs/README](docs/README.md#how-to-read-these-documents)).
 
 ### Writing rules
 
