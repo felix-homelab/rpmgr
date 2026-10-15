@@ -207,7 +207,9 @@ history and the [ADRs](docs/adr/).
   #374)
 - Install: a global install script, attached to every release as `install.sh`, downloads the
   release from GitHub, verifies it with the release root keys it embeds, installs the binary, the
-  user `rpmgr` and its directories, and offers to run `rpmgr setup`. (#436)
+  user `rpmgr` and its directories, and offers to run `rpmgr setup`. On a host that has rpmgr,
+  `--upgrade` replaces only the binary and then names what is left to do, and `--restart`
+  restarts the rpmgr services that run and checks that they stay up. (#436, #553)
 - Releases: reproducible builds with an SPDX SBOM, SLSA provenance attestations and a signed
   release manifest; distroless, nonroot multi-arch images at `ghcr.io/felix-homelab/rpmgr`, signed
   with cosign. (#384, #385)

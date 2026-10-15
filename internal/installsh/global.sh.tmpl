@@ -6,7 +6,8 @@
 # host, verifies it with OpenSSL >= 3 as the controller's /install.sh does: root key (below) ->
 # signing-key statement -> release manifest -> SHA-256 and size of the binary, then installs the
 # binary, the user rpmgr and its directories, and offers to run `rpmgr setup`. Running it again
-# upgrades the binary and leaves the user, the directories and the configuration as they are.
+# upgrades the binary and leaves the user, the directories and the configuration as they are;
+# --upgrade does only that, and --restart restarts the rpmgr services that run.
 {{- if .Version}}
 # This copy is pinned to rpmgr {{.Version}}.
 {{- else}}
@@ -14,8 +15,8 @@
 {{- end}}
 #
 #   curl -fsSLO https://github.com/felix-homelab/rpmgr/releases/latest/download/install.sh
-#   sudo sh install.sh [--version <version>] [--prerelease] [--no-setup] [--dir <directory>]
-#     [--verify-only]
+#   sudo sh install.sh [--version <version>] [--prerelease] [--no-setup] [--upgrade] [--restart]
+#     [--dir <directory>] [--verify-only]
 set -eu
 
 PINNED='{{.Version}}'
@@ -30,8 +31,8 @@ say() { echo "rpmgr install: $*" >&2; }
 
 usage() {
   cat <<'EOF'
-Usage: sh install.sh [--version <version>] [--prerelease] [--no-setup] [--dir <directory>]
-         [--verify-only]
+Usage: sh install.sh [--version <version>] [--prerelease] [--no-setup] [--upgrade] [--restart]
+         [--dir <directory>] [--verify-only]
 
 Installs rpmgr from its GitHub release, verified with the release root keys in this script, to
 /usr/local/bin/rpmgr, with the user rpmgr, /etc/rpmgr and /var/lib/rpmgr; then offers to run
@@ -40,17 +41,22 @@ Installs rpmgr from its GitHub release, verified with the release root keys in t
   --version <version>  install this version, e.g. 0.1.0 (default: this script's, else the latest)
   --prerelease         without --version, take the latest release including pre-releases
   --no-setup           do not offer to run "rpmgr setup"
+  --upgrade            upgrade the rpmgr of this host, which must be installed: no setup, and after
+                       the version only what is left to do
+  --restart            restart the rpmgr services that run, and check that they stay up
   --dir <directory>    download into this directory and keep the files (default: a temporary one)
   --verify-only        download and verify the release, install nothing; needs no root
 EOF
 }
 
-version=$PINNED prerelease=0 setup=1 dir='' verify_only=0
+version=$PINNED prerelease=0 setup=1 upgrade=0 restart=0 dir='' verify_only=0
 while [ $# -gt 0 ]; do
   case $1 in
     --version) [ $# -ge 2 ] || die "--version needs a version"; version=${2#v}; shift 2 ;;
     --prerelease) prerelease=1; shift ;;
     --no-setup) setup=0; shift ;;
+    --upgrade) upgrade=1 setup=0; shift ;;
+    --restart) restart=1; shift ;;
     --dir) [ $# -ge 2 ] || die "--dir needs a directory"; dir=$2; shift 2 ;;
     --verify-only) verify_only=1; shift ;;
     -h | --help) usage; exit 0 ;;
@@ -61,6 +67,9 @@ case $GITHUB in https://*) ;; *) die "RPMGR_INSTALL_GITHUB must be an https:// U
 case $API in https://*) ;; *) die "RPMGR_INSTALL_API must be an https:// URL" ;; esac
 case $version in '' | [0-9]*.[0-9]*.[0-9]*) ;; *) die "--version $version is not a release version such as 0.1.0" ;; esac
 case $version in *[!0-9A-Za-z.-]*) die "--version $version is not a release version such as 0.1.0" ;; esac
+if [ "$upgrade" = 1 ] && [ "$verify_only" = 0 ] && [ ! -x "$BIN" ]; then
+  die "nothing to upgrade: $BIN is not installed; install it without --upgrade"
+fi
 
 case $(uname -s) in
   Linux) ;;
@@ -130,12 +139,38 @@ install -d -m 0755 "$(dirname "$BIN")"
 install -m 0755 "$tmp/$artifact" "$BIN.new"
 mv -f "$BIN.new" "$BIN"
 "$BIN" version --verbose || die "the installed $BIN does not run"
-say "installed rpmgr $VERSION to $BIN"
-for unit in rpmgr-controller rpmgr-all-in-one rpmgr-gateway rpmgr-connector; do
-  if command -v systemctl >/dev/null 2>&1 && systemctl is-active --quiet "$unit" 2>/dev/null; then
-    say "$unit runs the previous binary until: systemctl restart $unit"
-  fi
-done
+[ "$upgrade" = 1 ] || say "installed rpmgr $VERSION to $BIN"
+
+# The services that run the previous binary, in the upgrade order of docs/10-operations.md.
+running=''
+if command -v systemctl >/dev/null 2>&1; then
+  for unit in rpmgr-controller rpmgr-all-in-one rpmgr-gateway rpmgr-connector; do
+    if systemctl is-active --quiet "$unit" 2>/dev/null; then running="$running $unit"; fi
+  done
+fi
+# stays_up <unit>: the unit is active for 5 s on end and systemd did not restart it meanwhile, as it
+# would a binary that fails at start (Restart=on-failure).
+stays_up() {
+  restarts=$(systemctl show -p NRestarts --value "$1" 2>/dev/null) || restarts=''
+  for _ in 1 2 3 4 5; do
+    sleep 1
+    systemctl is-active --quiet "$1" 2>/dev/null || return 1
+  done
+  [ "$(systemctl show -p NRestarts --value "$1" 2>/dev/null)" = "$restarts" ]
+}
+if [ "$restart" = 1 ]; then
+  [ -n "$running" ] || say "no rpmgr service runs; nothing to restart"
+  for unit in $running; do
+    systemctl restart "$unit" || die "cannot restart $unit; see: journalctl -u $unit -n 50"
+    stays_up "$unit" || die "$unit does not stay up with rpmgr $VERSION; see: journalctl -u $unit -n 50"
+    say "restarted $unit with rpmgr $VERSION"
+  done
+else
+  for unit in $running; do
+    say "$unit runs the previous binary until you restart it: sudo systemctl restart $unit"
+  done
+fi
+[ "$upgrade" = 0 ] || exit 0
 
 next() {
   say "next: set up this host's role with: sudo rpmgr setup"

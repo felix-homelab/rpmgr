@@ -438,6 +438,14 @@ affect agents take effect through reconciliation and show apply status like any 
    macOS connectors (Phase 2) are updated through winget or Homebrew; they get no OTA before
    Phase 3.
 
+Until OTA (Phase 2), every host is upgraded by hand in this order, with the new release's global
+install script: `sudo sh install.sh --upgrade --restart`. `--upgrade` refuses a host without an
+installed `rpmgr`, replaces the binary in one rename, changes nothing else and offers no setup;
+after the version and the release root keys it prints only what is left to do. `--restart`
+restarts every rpmgr service that runs and fails, naming `journalctl -u <unit>`, if one does not
+stay active for 5 s without systemd restarting it. Without `--restart`, the script names each
+service that still runs the previous binary, with the command that restarts it.
+
 ## Backup and restore
 
 - `rpmgr backup --out <file>` writes a **consistent** copy of the controller database: `VACUUM INTO`
