@@ -99,7 +99,7 @@ func testMultiConnector(t *testing.T, transport string) {
 
 	k, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	tmpl := &x509.Certificate{SerialNumber: big.NewInt(9), Subject: pkix.Name{CommonName: "a.example.com"},
-		DNSNames: []string{"a.example.com", "f.example.com", "s.example.com", "d.example.com"},
+		DNSNames:  []string{"a.example.com", "f.example.com", "s.example.com", "d.example.com"},
 		NotBefore: time.Now().Add(-time.Hour), NotAfter: time.Now().Add(24 * time.Hour)}
 	der, err := x509.CreateCertificate(rand.Reader, tmpl, tmpl, &k.PublicKey, k)
 	if err != nil {
