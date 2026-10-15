@@ -102,8 +102,10 @@ sudo rpmgr policy allow-target 10.0.0.5:5432
 /etc/rpmgr/policy.yaml: updated
 ```
 
-A target that an entry covers already is not added twice (`nothing to change`), and a port is added
-to the entry of its subnet. Without a file, the command creates one.
+A target that an entry covers already is not added twice (`nothing to change`). A port is added to
+the `ports` of its subnet's entry when that entry is written as a mapping (`cidr:` and `ports:`);
+beside an entry written as a target string, the command appends a new entry. Without a file, the
+command creates one.
 
 **Deny a target,** so that no allow entry can let it through, for example the SSH port in an
 allowed subnet:
@@ -120,8 +122,9 @@ sudo rpmgr policy remove-deny-target 10.0.0.0/16:22
 ```
 
 A target without a port removes every entry of its address or subnet. A command cannot split an
-entry: removing one port that only a broader entry or a port range covers is refused, with the
-advice to deny it with `rpmgr policy deny-target` instead, or to edit the file.
+entry: removing one port that only a broader entry or a port range covers is refused. For an allow
+entry, the advice is to deny the target with `rpmgr policy deny-target` instead, or to edit the
+file; for a deny entry, to remove that deny entry, or to edit the file to split it.
 
 | Flag | Meaning |
 |---|---|
@@ -159,23 +162,25 @@ sudo systemctl reload rpmgr-connector.service
 - **A file with an error allows nothing.** If the file does not parse, or its group or other users
   may write it, every target is refused, and the routes show "the connector's local policy does not
   load". The connector still applies its configuration from the controller. The editing commands
-  refuse to change such a file: fix it first, by hand.
+  refuse a file that does not parse: fix it first, by hand. A file with a bad mode they rewrite
+  with mode 0644 when they change it.
 
 ## In the web UI
 
-A target that the policy refuses shows on its route's page as **blocked by the connector's local
-policy**, and the routes list counts such targets ("1 blocked by local policy"). The route's page
-then shows, under "Run on the host of *connector*:", the command that lets the target through, with
-a **Copy** button:
+A connector reports one readiness per route, not per target. When none of a route's targets on a
+connector is allowed, the route's page shows each of them as **blocked by the connector's local
+policy**, and the routes list counts them ("1 blocked by local policy"). The route's page then
+shows, under "Run on the host of *connector*:", the command that lets the first blocked target
+through, with a **Copy** button; each of that connector's targets shows the same command:
 
 - `sudo rpmgr policy allow-target 10.0.0.5:5432` for a target that no entry allows;
 - `sudo rpmgr policy remove-deny-target 10.0.0.0/16:22` for a target that a deny entry refuses; the
   readiness detail names the entry, as in `10.0.0.5:22 denied by 10.0.0.0/16:22`.
 
 A blocked target blocks only itself. While another target of the route on the same connector is
-allowed, the route stays ready and its connections go there. Only when none of a route's targets on
-a connector is allowed does that connector report the route not ready
-([Targets](../routes/targets.md#the-local-policy-and-targets)).
+allowed, the connector reports the route ready and its connections go there. The route's page then
+shows the blocked target as **ready** too, with no command: check that connector's policy with
+`rpmgr policy show` on its host ([Targets](../routes/targets.md#the-local-policy-and-targets)).
 
 ## On an all-in-one
 
@@ -205,7 +210,7 @@ on such a host.
 | Message | Cause and fix |
 |---|---|
 | `the local policy is root's; run this as root (sudo)` | The editing commands need root |
-| `… has mode 0666; only its owner may write it` | Run `sudo chmod 644 /etc/rpmgr/policy.yaml`; the file is invalid until then |
+| `… has mode 0666; only its owner may write it` | Run `sudo chmod 644 /etc/rpmgr/policy.yaml`, or change the file with an editing command, which writes it with mode 0644; the file is invalid until then |
 | `anchors, aliases and merge keys are not allowed in the policy file` | Write the entries out in full |
 | `… (fix the file first)` | The file has an error; `rpmgr policy show` prints it |
 | `the target is part of a broader entry or port range` | Deny the target instead, or edit the file to split the entry |

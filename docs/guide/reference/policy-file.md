@@ -41,6 +41,7 @@ update_channel: stable
 `rpmgr policy show` prints this file as:
 
 ```text
+/etc/rpmgr/policy.yaml:
 allowed targets:
   127.0.0.1/32 ports 8080
   127.0.0.1/32 ports 200-500
@@ -145,8 +146,9 @@ These make the whole file invalid:
 An invalid file allows **nothing**: every target of the connector is refused and its routes show
 "the connector's local policy does not load". The connector still applies its configuration from
 the controller, and reports the routes again once the file is fixed. `rpmgr policy show` prints the
-error, such as `policy: allow_targets[0]: ports is empty; leave the key out for all ports`, and the
-editing commands refuse to change the file until it is fixed by hand.
+error, such as `policy: allow_targets[0]: ports is empty; leave the key out for all ports`. The
+editing commands refuse a file that does not parse until it is fixed by hand; a file with a bad
+mode they rewrite with mode `0644` when they change it.
 
 A connector from before `deny_targets` and the target strings existed
 ([D84](../../14-open-decisions.md#engineering)) reads `deny_targets`, a target string, an entry

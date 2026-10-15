@@ -88,7 +88,7 @@ rpmgr create route --http --name shop-api --group default \
 To change a route later, name only the flags you change; the others keep their values:
 
 ```sh
-rpmgr update route shop-api --port80 off --hsts 0
+rpmgr update route --port80 off --hsts 0 shop-api
 ```
 
 ### What happens next
@@ -105,8 +105,8 @@ rpmgr update route shop-api --port80 off --hsts 0
 ## Settings
 
 Every setting can be changed later: in the web UI with **Edit** on the route's page, on the
-command line with `rpmgr update route <name> <flags>`. A route's type and its gateway group never
-change.
+command line with `rpmgr update route <flags> <name>`, the flags before the name. A route's type
+and its gateway group never change.
 
 | Setting | Web UI | Command line | Default |
 |---|---|---|---|
@@ -141,8 +141,10 @@ The transport decides how the route's streams travel between gateways and connec
 
 ### Hostnames and path prefixes
 
-- Every hostname must lie under a verified domain of your organisation. Otherwise the save is
-  refused with the reason `DOMAIN_NOT_VERIFIED`.
+- Every hostname must be covered by a verified domain claim of your organisation. An exact claim
+  covers its own name only; a claim with every name below it covers those names too
+  ([Domains and certificates](../domains-and-certificates.md#what-a-claim-covers)). Otherwise the
+  save is refused with the reason `DOMAIN_NOT_VERIFIED`.
 - A hostname is a DNS name of at least two labels; an IP address is not one. Upper-case letters
   and internationalised names are stored in their lower-case ASCII form.
 - A hostname `*.example.com` serves every name one label below `example.com` that no route names

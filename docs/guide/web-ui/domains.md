@@ -14,18 +14,19 @@ marking a domain as trusted the Instance Admin. The how-to page is
 The **Domains** card lists the organisation's claims by name. A claim that covers every name below
 it shows as `*.example.com`.
 
-- **Status:** `pending` while it waits for its proof, `verified`, `failed`, or `waiting for
-  approval`.
-- **Method:** `TXT record`, `HTTP token`, `trusted by the Instance Admin`, or `delegated zone`,
-  and when it was last checked.
-- **The proof a claim waits for:** a pending or failed claim shows what to publish, each value with
+- **Status:** `pending` while it waits for its proof, `verified` or `failed`.
+- **Method:** `TXT record`, `HTTP token` or `trusted by the Instance Admin`, and when it was last
+  checked.
+- **The proof a claim waits for:** a pending claim shows what to publish, each value with
   **Copy**:
   - for a TXT record: `Create this TXT record at your DNS provider, then check now:` with the
     record's name, such as `_rpmgr-challenge.example.net`, and its value;
   - for an HTTP token: the URL at which the organisation's gateways serve the token, and the
     token. Point the name at one of the organisation's gateways first.
 - **Check now** checks a pending or failed claim at once; the controller also checks pending
-  claims by itself ([15](../../15-dns.md)).
+  claims by itself ([15](../../15-dns.md)). A failed claim no longer shows its proof. A failed TXT
+  claim can still pass with the record you published. The gateways serve an HTTP token only while
+  its claim is pending, so remove a failed HTTP claim and claim the domain again.
 - **Mark as trusted**, shown only to the Instance Admin, marks a claim verified without a proof,
   after a [step-up](README.md#the-step-up-dialog).
 - **Remove…** asks `Remove the claim for …?`; **Remove it** removes the claim.
@@ -48,12 +49,15 @@ The **Certificates** card lists the organisation's certificates: HTTP routes get
 by themselves, or use one you upload.
 
 - **Each certificate** shows its names, its status (`being obtained`, `active`, `failed`), its
-  source (`from ACME` or `uploaded`), its expiry and issuer, and the routes that use it. An expiry
-  within 21 days shows as `expires soon: …`. A certificate's last error, if any, is shown under it.
+  source (`from ACME` or `uploaded`), its expiry and issuer, and, for an uploaded one, the routes
+  that use it. An expiry within 21 days shows as `expires soon: …`. A certificate's last error, if
+  any, is shown under it.
 - **Renew now**, on an ACME certificate, starts a renewal: `Renewal started.`, or `A renewal is
   under way already.`
-- **Remove…** asks `Remove the certificate for …?`; **Remove it** removes it. The controller
-  refuses to remove a certificate that routes use, and names them.
+- **Remove…** asks `Remove the certificate for …?`; **Remove it** removes an uploaded certificate.
+  The controller refuses to remove an uploaded certificate that routes use, and says how many
+  routes use it. It always refuses to remove a certificate from ACME, though the page offers
+  **Remove…** for it too: the controller's ACME job manages those certificates.
 
 **Upload a certificate** opens a form:
 
@@ -63,8 +67,9 @@ by themselves, or use one you upload.
   in the page until you send it.
 - **Upload** sends both; the page then forgets the key. **Cancel** closes the form.
 
-An uploaded certificate's ID, such as `crt_01…`, is what an HTTP route's **Uploaded certificate
-ID** takes ([Routes](routes.md#the-fields)).
+An HTTP route's **Uploaded certificate ID** takes an uploaded certificate's ID, such as `crt_01…`
+([Routes](routes.md#the-fields)). This page does not show certificate IDs;
+`rpmgr list certificate` lists them.
 
 ## CA bundles
 
@@ -75,11 +80,13 @@ bundle, HTTPS targets are verified with the system's roots.
 - **Add a CA bundle** opens a form with **Name** and **CA certificates (PEM)**, pasted or read from
   a file. **Add the bundle** adds it.
 - **Edit…** changes a bundle's name and certificates; **Save** saves them.
-- **Remove…** asks `Remove the CA bundle …?`; **Remove it** removes it.
+- **Remove…** asks `Remove the CA bundle …?`; **Remove it** removes it. The controller refuses to
+  remove a bundle that targets use, and says how many.
 - **Export YAML** shows every bundle as YAML.
 
-A bundle's ID is what a target's **CA bundle ID** takes ([Routes](routes.md#targets);
-[Targets](../routes/targets.md)).
+A target's **CA bundle ID** takes a bundle's ID ([Routes](routes.md#targets);
+[Targets](../routes/targets.md)). This page does not show it; `rpmgr list ca-bundle` lists the
+bundles with their IDs.
 
 ## On the command line
 

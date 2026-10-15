@@ -165,7 +165,7 @@ policy, with `gateway` in place of `connector` and the admin port 7382.
    rpmgr systemd-unit connector | sudo tee /etc/systemd/system/rpmgr-connector.service >/dev/null
    sudo systemctl daemon-reload
    sudo systemctl enable --now rpmgr-connector
-   sudo rpmgr status        # ends with "Service: running and ready"
+   sudo rpmgr status        # the last line, Service:, says "running and ready"
    ```
 
 `rpmgr enroll` flags:

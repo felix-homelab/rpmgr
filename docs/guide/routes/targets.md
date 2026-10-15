@@ -25,8 +25,9 @@ or several connectors, with failover and failback.
   [TLS passthrough](tls-passthrough.md)).
 - The connector is enrolled in your organisation and not decommissioned
   ([Enrolling connectors](../connectors/enroll.md)).
-- The connector's local policy allows the target's address and port, or its socket. If it does not,
-  the target shows as blocked, with the command that allows it.
+- The connector's local policy allows the target's address and port, or its socket. If it allows
+  none of the route's targets on that connector, they show as blocked, with the command that allows
+  the first one ([The local policy and targets](#the-local-policy-and-targets)).
 
 ## Add a target
 
@@ -41,8 +42,8 @@ or several connectors, with failover and failback.
 5. For a TCP, "TCP and UDP" or TLS passthrough route, choose the **PROXY protocol**
    ([PROXY protocol](#proxy-protocol)).
 6. Enter the **Weight** and the **Priority**, or keep the suggested values.
-7. Keep **Enabled** checked, and choose **Add the target**. The page follows the change to the
-   agents.
+7. Choose **Add the target**. A new target is always enabled: the form's **Enabled** box takes
+   effect only in **Edit…**. The page follows the change to the agents.
 
 In the targets table, **Edit…** changes a target and **Remove…** removes it after a question that
 names its address.
@@ -63,15 +64,15 @@ rpmgr create route-target --route wiki --connector home \
 | `--server-name`, `--ca-bundle`, `--spki`, `--verification` | How an HTTPS target's certificate is checked ([HTTPS targets](#https-targets)) |
 | `--proxy-protocol none\|v1\|v2` | The PROXY protocol header ([PROXY protocol](#proxy-protocol)) |
 | `--weight`, `--priority` | Its share and its rank ([Weight, priority and failover](#weight-priority-and-failover)) |
-| `--disabled` | The target gets no connections |
+| `--disabled` | With `rpmgr update route-target` only: the target gets no connections; `--disabled=false` enables it again. A new target is always enabled |
 | `--wait <duration>`, `-o table\|yaml\|json` | Wait for the agents, at most 30 s; the output format |
 
 To change a target, give its ID and only the flags you change. The IDs are in the route's JSON:
 
 ```sh
-rpmgr get route wiki -o json
-rpmgr update route-target tg_01JA3B5C7D9E1F2G3H4J5K6M7N --weight 3 --wait 30s
-rpmgr delete route-target tg_01JA3B5C7D9E1F2G3H4J5K6M7N --wait 30s
+rpmgr get -o json route wiki
+rpmgr update route-target --weight 3 --wait 30s tg_01JA3B5C7D9E1F2G3H4J5K6M7N
+rpmgr delete --wait 30s route-target tg_01JA3B5C7D9E1F2G3H4J5K6M7N
 ```
 
 ## Addresses and Unix sockets
@@ -184,15 +185,16 @@ rpmgr create route-target --route router-ui --connector home \
 ### Changing how a target is checked
 
 The gateway applies a target's TLS settings only to the streams of that target's own connector. When
-you change them, an open connection that the new settings would not accept ends at once; only a
-change to unverified settings of the same connector leaves open connections alone
-([04](../../04-security.md#controller-certificates)).
+you change them, the target's open connections end at once. Only a change to **HTTPS, unverified**,
+on the same connector, leaves them open ([04](../../04-security.md#controller-certificates)).
 
 ## PROXY protocol
 
 A target may get a PROXY protocol header before the client's bytes, so that it learns the client's
-address and the gateway's public address and port the client connected to. Choose **Version 1**
-(text, `v1`) or **Version 2** (binary, `v2`), whichever the service reads; **None** is the default.
+address and the address and port of the gateway's listener that the client connected to. That is
+the address the gateway's host has: behind NAT, the private one, not the public one. Choose
+**Version 1** (text, `v1`) or **Version 2** (binary, `v2`), whichever the service reads; **None**
+is the default.
 
 | Route type | PROXY protocol |
 |---|---|
@@ -288,13 +290,17 @@ target ([Connector lifecycle](../connectors/lifecycle.md)).
 The connector's local policy decides which targets it may dial
 ([The local policy](../connectors/local-policy.md)):
 
-- A target the policy does not allow is never dialled. The route's page shows it as **blocked by
-  the connector's local policy**, with the command to run on that connector's host and a **Copy**
-  button: `sudo rpmgr policy allow-target <target>` for a target nothing allows, or
-  `sudo rpmgr policy remove-deny-target <entry>` for one a deny entry refuses.
+- A target the policy does not allow is never dialled. A connector reports one readiness per
+  route, not per target.
+- When none of a route's targets on a connector is allowed, the route's page shows each of them as
+  **blocked by the connector's local policy**. Each shows the command for the first blocked target,
+  to run on that connector's host, with a **Copy** button: `sudo rpmgr policy allow-target
+  <target>` for a target nothing allows, or `sudo rpmgr policy remove-deny-target <entry>` for one
+  a deny entry refuses.
 - A blocked target blocks only itself. While another target of the route on the same connector is
-  allowed, the route stays ready there and its connections go to the allowed target. Only when none
-  of its targets on a connector is allowed does that connector report the route not ready.
+  allowed, the route stays ready there and its connections go to the allowed target. The route's
+  page then shows the blocked target as **ready** too, with no command; `rpmgr policy show` on the
+  connector's host shows what its policy allows.
 - A target given as a name counts as allowed until a dial of its resolved address is refused. It
   then counts as blocked until a dial of it is allowed, the policy is reloaded, or the connector
   gets a new configuration snapshot.

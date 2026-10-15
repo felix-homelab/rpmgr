@@ -94,16 +94,49 @@ certificate or token does not come back. It reads them from the local log of the
 which is lost with the host.
 
 The boot setting `revocation_log.sink` keeps a copy off the host: a directory, usually on a share
-mounted on the controller's host ([Boot files](../reference/boot-files.md#controller)):
+mounted on the controller's host ([Boot files](../reference/boot-files.md#controller)). The
+systemd unit lets the controller write only to `/var/lib/rpmgr`, so the sink needs a drop-in that
+makes it writable as well. To set one up on a controller (on an all-in-one, use
+`rpmgr-all-in-one` and `/etc/rpmgr/all-in-one.yaml`):
 
-```yaml
-revocation_log:
-  sink: /mnt/rpmgr-revocations
-```
+1. **Create the directory** and give it to the user `rpmgr`. On a share, the share's own
+   permissions must let `rpmgr` write as well.
+
+   ```sh
+   sudo install -d -m 0750 -o rpmgr -g rpmgr /mnt/rpmgr-revocations
+   ```
+
+2. **Name it in the boot file,** `/etc/rpmgr/controller.yaml`:
+
+   ```yaml
+   revocation_log:
+     sink: /mnt/rpmgr-revocations
+   ```
+
+3. **Make it writable for the service** with a drop-in. `sudo systemctl edit rpmgr-controller`
+   opens an editor; add:
+
+   ```ini
+   [Service]
+   ReadWritePaths=/mnt/rpmgr-revocations
+   ```
+
+   The directory must exist when the service starts, or systemd does not start it. The drop-in
+   stays when an upgrade writes the unit again.
+
+4. **Restart** the controller:
+
+   ```sh
+   sudo systemctl restart rpmgr-controller
+   ```
+
+Without the drop-in, the controller cannot write to the sink and logs
+`revocation log: the sink takes no entries; revocations are still enforced`.
 
 Without a sink, **Settings** shows the warning that the revocation log has no copy off this host.
-With one, it warns while entries wait to reach the sink. Revocations are enforced at once either
-way ([10](../../10-operations.md#backup-and-restore)).
+With one, it warns when an entry has waited too long to reach the sink
+([10](../../10-operations.md#suggested-alerts)). Revocations are enforced at once either way
+([10](../../10-operations.md#backup-and-restore)).
 
 ## Restore
 
@@ -164,6 +197,8 @@ When the old host is lost, or to move the controller:
    # kek.source: systemd-credential
    sudo install -d -m 0700 /etc/rpmgr/credstore
    sudo systemd-creds encrypt --name=rpmgr-kek rpmgr-kek /etc/rpmgr/credstore/rpmgr-kek
+   # either way, then delete the decrypted copy:
+   sudo rm rpmgr-kek
    ```
 
 4. **Restore,** with the revocations since the backup:
@@ -176,7 +211,9 @@ When the old host is lost, or to move the controller:
    restore fails closed.
 5. **Install the unit and start it,** here for a controller; for an all-in-one, first put back its
    gateway's identity ([below](#restore-an-all-in-one)) and use `all-in-one` in place of
-   `controller`:
+   `controller`. If the boot file names a revocation-log sink, create the sink's drop-in with
+   `sudo systemctl edit rpmgr-controller` after `daemon-reload` and before you start the unit
+   ([above](#the-revocation-log-sink)).
 
    ```sh
    rpmgr systemd-unit controller | sudo tee /etc/systemd/system/rpmgr-controller.service >/dev/null

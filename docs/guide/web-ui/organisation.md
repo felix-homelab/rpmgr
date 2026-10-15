@@ -59,10 +59,10 @@ organisation is read-only until its members and roles are confirmed
 
 - **An Owner** sees the card **Review this organisation after the restore** above the members.
   Check the members and roles below it, and remove or downgrade anyone who should not have access.
-  **Suspended API tokens** lists the tokens the restore suspended: **Token**, **Owner**,
-  **Permissions**, **Suspended** and **Resume**, which resumes one token after a step-up. Resume
-  only the tokens you trust. **Confirm members and roles**, after a step-up, ends the
-  organisation's review.
+  **Suspended API tokens** lists the tokens the restore suspended, in the columns **Token**,
+  **Owner**, **Permissions**, **Suspended** and **Actions**. **Resume**, in **Actions**, resumes
+  one token after a step-up. Resume only the tokens you trust. **Confirm members and roles**,
+  after a step-up, ends the organisation's review.
 - **Other members** see a note that the organisation is read-only until its Owner confirms it, or
   until the Instance Admin runs `rpmgr restore confirm --org <org>` on the controller host.
 

@@ -214,7 +214,8 @@ new routes are refused once it is reached (`QUOTA_REACHED`), and a TCP-and-UDP r
 both quotas.
 
 - **Web UI**: on the group's page, under **Port quotas**, fill in **TCP ports at most** or **UDP
-  ports at most** and select **Save**; empty means no quota. Each shows how many ports are in use.
+  ports at most** and select **Save**; empty means no quota. A quota that is set shows how many
+  ports are in use.
 - **Command line**:
 
   ```sh

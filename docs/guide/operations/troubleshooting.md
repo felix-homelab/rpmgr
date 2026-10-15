@@ -36,14 +36,18 @@ of these reasons:
 | Reason in the web UI | Cause | Fix |
 |---|---|---|
 | **offline** | The target's connector, or the gateway, has no control session | See [An agent is offline](#an-agent-is-offline) |
-| **disabled** | The target, or its connector, is switched off, or the gateway is drained | Switch it on, or **Resume** the gateway ([Connector lifecycle](../connectors/lifecycle.md), [Gateways](../gateways.md#drain-and-resume-a-gateway)) |
+| **disabled** | The target's connector is switched off or decommissioned | Switch the connector on, or add the target on another connector ([Connector lifecycle](../connectors/lifecycle.md)) |
 | **no data session to the connector** | The gateway has no data session to the connector of a ready target | The connector cannot reach that gateway's tunnel endpoints: run `sudo rpmgr diag transport` on its host, and check firewalls and proxies ([Connector networking](../connectors/network.md)) |
 | **blocked by the connector's local policy** | The connector's local policy does not allow the target's address, or a deny entry refuses it | Run the command the page shows on the connector's host, such as `sudo rpmgr policy allow-target 192.168.1.20:8080`, or `remove-deny-target` for a deny entry ([The local policy](../connectors/local-policy.md)) |
-| **… is one of rpmgr's own ports** | On an all-in-one, the target is the host's own port 443, 80, admin port or a route's port, which the built-in connector never dials | Point the target at the service itself, such as its own port |
+| **… is one of rpmgr's own ports** | On an all-in-one, the target is the host's own port 443, 80, admin port, tunnel UDP port or a route's port, which the built-in connector never dials | Point the target at the service itself, such as its own port |
 | **the connector's local policy does not load** | `/etc/rpmgr/policy.yaml` is invalid, so the connector allows nothing | `sudo rpmgr policy show` names the error; fix the file ([Local policy file](../reference/policy-file.md)) |
 | **the port is in use on the gateway** | Another process on the gateway host holds the route's port | Find it with `sudo ss -ltnup 'sport = :<port>'` and stop it, or give the route another port. The gateway tries the port again on its own ([03](../../03-connections.md#timeouts-keepalive-and-backoff)) |
 | **no data session over the route's transport** | The route, or its connector, is pinned to a transport that cannot be established, such as `quic` where UDP is blocked | Set the transport to `auto`, or to the one that works ([Connector networking](../connectors/network.md#choose-a-transport)) |
 | **the host cannot serve it** | Something on the host failed, such as fetching a certificate; the detail says what | The agent retries on its own; read the detail and the agent's log |
+
+A target that is switched off and a drained gateway are left out: they are not counted and have no
+reason. A route whose group has every gateway drained is therefore **unavailable** with no gateway
+listed; **Resume** a gateway ([Gateways](../gateways.md#drain-and-resume-a-gateway)).
 
 A target that is ready but refuses connections, because its service is down, does not make the
 route unready: the gateway tries the route's other targets, and visitors of an HTTP route get the
@@ -87,13 +91,15 @@ reconnect when it is back ([03](../../03-connections.md#failure-modes)).
 
 | Message or symptom | Cause | Fix |
 |---|---|---|
-| `invalid token` | The token is mistyped, used up, expired or revoked | Make a new token |
+| `the enrollment token is malformed or mistyped (rpmgr_enr_…)` | The token was not copied whole; it is checked on the host before the controller is contacted | Copy the token again |
+| `invalid token` | The token is used up, expired or revoked | Make a new token |
 | `pki: no root in the bundle matches the pin` | The `--ca-pin` belongs to another installation | Copy the pin again ([PKI](pki.md#the-ca-pin)) |
 | `download the trust bundle: … certificate signed by unknown authority` | The host does not trust the controller's web certificate, such as a self-signed one | Give the controller a trusted certificate ([Domains and certificates](../domains-and-certificates.md)), or pass `--trust-bundle` to `rpmgr enroll` |
-| `this host is enrolled already; use --replace to enroll it again` | The host has an identity | Re-enroll it, or `sudo rpmgr leave` first |
+| `this host is already enrolled; use --replace to enroll it again` | The host has an identity | Re-enroll it, or `sudo rpmgr leave` first |
 | `too many enrollments from this address` | The controller limits enrollments per address ([04](../../04-security.md#human-authentication-and-sessions)) | Wait, then try again |
-| `the gateway or connector is decommissioned` | A re-enrollment token for a decommissioned agent | Enroll the host as a new agent |
-| `only an ephemeral connector token with a set lifetime may enroll more than one connector` | A token with several uses that is not ephemeral | Use `--ephemeral`, or one-time tokens |
+| `the gateway or connector is decommissioned`, when you make the token | A re-enrollment token for a decommissioned agent | Enroll the host as a new agent |
+| `the token's connector is decommissioned or gone` or `the token's gateway is decommissioned or gone`, when the host enrolls | The agent was decommissioned after its token was made | Enroll the host as a new agent |
+| `only an ephemeral connector token with a set lifetime may enroll more than one connector`, when you make the token | A token with several uses that is not ephemeral | Use `--ephemeral`, or one-time tokens |
 | The install script waits at the token prompt and takes nothing you type | The script was piped into `sudo sh`, and this `sudo` passes no terminal input to it | Stop it with Ctrl-C, and run the install command as the web UI shows it: download, then `sudo sh install.sh …` ([Install script](../install/install-script.md)) |
 | `no enrollment token: use --token-file or RPMGR_ENROLL_TOKEN, or run on a terminal` | No terminal and no token given | Pass `--token-file`, or `sudo --preserve-env=RPMGR_ENROLL_TOKEN` |
 
@@ -131,7 +137,7 @@ Instance Admin ([Audit log](audit-log.md)). More on tokens is in
 | `not found` for something you can see in the web UI | The command is logged in to another organisation, or the ID is wrong | `rpmgr login` again with the right `--org` ([API tokens and the command line](../accounts/api-tokens-and-cli.md)) |
 | `the resource changed since it was read` (`ETAG_MISMATCH`) | Someone changed it between your read and your write | Run the command again; `--force` overwrites without the check |
 | `read-only until the restore review is confirmed` (`RESTORE_REVIEW`) | The controller was restored and could not prove every revocation since the backup | The organisation's Owner confirms its members and roles ([Backup and restore](backup-and-restore.md)) |
-| `expected 1 arguments, got 2`, with the usage | A flag came after a positional argument | Put flags first: `rpmgr list --all connector` ([Command-line reference](../reference/cli.md)) |
+| `expected 1 arguments, got 2` or `expected the route's ID or name`, with the usage | A flag came after a positional argument; a command stops reading flags at the first one | Put the flags before the name, the ID or the kind: `rpmgr list --all connector` ([Command-line reference](../reference/cli.md)) |
 | HTTP 415 `api: unsupported content type`, or 403 for a cross-origin request | A script sent a form content type, or a foreign `Origin` | Send `Content-Type: application/json` and no `Origin` ([API](../reference/api.md#browser-sessions)) |
 
 Every error code and reason of the API is listed in [API](../reference/api.md#errors).

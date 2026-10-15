@@ -43,11 +43,14 @@ cannot claim it ([04](../04-security.md#route-and-hostname-ownership)).
 - **HTTP token.** Every enabled gateway of your organisation answers
   `http://<domain>/.well-known/rpmgr-challenge/<claim ID>` on port 80 with the value. The
   controller fetches that URL; pointing the name at your gateways is the proof. Port 80 of the
-  gateways must be reachable from the controller.
+  gateways must be reachable from the controller, directly or through the proxy that `HTTP_PROXY`
+  names ([Environment variables](reference/environment.md)).
 
 The controller checks pending claims on its own, often at first and then less often, and marks a
 claim **failed** that it could not prove for a while ([15](../15-dns.md#timers-and-limits)).
-**Check now** checks at once, also for a failed claim.
+**Check now** checks at once. For a TXT claim, **Check now** still checks a failed claim. The
+gateways serve an HTTP token only while its claim is pending, so remove a failed HTTP claim and
+claim the name again ([15](../15-dns.md#domain-verification)).
 
 ### Claim a domain with the web UI
 
@@ -92,7 +95,7 @@ wrong value. The domain commands take the claim's ID, which `rpmgr list domain` 
 |---|---|
 | **pending** | Waiting for its proof; checked on a schedule and with **Check now** |
 | **verified** | Proved, or trusted by the Instance Admin; routes may use names under it |
-| **failed** | Not proved in time; **Check now** may still verify it |
+| **failed** | Not proved in time; **Check now** may still verify a TXT claim; claim an HTTP one again |
 | **waiting for approval** | A claim that needs the Instance Admin's approval; such claims come with Phase 2 ([05](../05-features.md#tls-and-domains)) |
 
 ### Trusted domains
@@ -133,8 +136,9 @@ gateways.
 A new certificate shows **being obtained**, then **active**. One that could not be obtained shows
 **failed** with the CA's error; one whose renewal failed stays **active**, keeps serving, and shows
 the error. **Renew now** on an ACME certificate, or `rpmgr renew certificate <id>`, renews it at
-once or obtains it after a failure; it answers "Renewal started." or "A renewal is under way
-already.", and the certificate shows the outcome once it is known.
+once or obtains it after a failure. **Renew now** answers "Renewal started." or "A renewal is under
+way already.", and the command says the same in its own words. The certificate shows the outcome
+once it is known; `rpmgr get certificate <id>` shows it on the command line.
 
 #### The ACME CA and account
 
@@ -175,12 +179,13 @@ for its public URL comes from the same CA and account, and takes a change at its
   in Phase 2; until then such a route needs an uploaded certificate, and is refused with **From
   ACME** ([05](../05-features.md#tls-and-domains)).
 - **The controller cannot reach the CA.** The controller dials the CA directly, or through the proxy
-  that `HTTPS_PROXY` or `ALL_PROXY` names ([Environment variables](reference/environment.md)).
+  that `HTTPS_PROXY` names, unless `NO_PROXY` exempts the CA
+  ([Environment variables](reference/environment.md)).
 - **The CA's limits.** After a failure, the controller tries a hostname again only after waits
-  that double with each failure, and first rehearses each retry at the CA's test directory, so that
-  failed attempts do not use up the account's limits at the CA
-  ([03](../03-connections.md#timeouts-keepalive-and-backoff)). Once you fixed the cause, **Renew
-  now** tries at once.
+  that double with each failure ([03](../03-connections.md#timeouts-keepalive-and-backoff)). When
+  the CA is Let's Encrypt's production directory, it first rehearses each retry at Let's Encrypt's
+  staging directory, so that failed attempts do not use up the account's limits there. Another CA
+  gets no rehearsal. Once you fixed the cause, **Renew now** tries at once.
 
 A runbook walks through these steps
 ([10](../10-operations.md#a-route-certificate-is-not-obtained)).
@@ -221,7 +226,7 @@ The command warns when other users may read the key file.
 enter the certificate's ID in **Uploaded certificate ID**; or:
 
 ```sh
-rpmgr update route wiki --tls-mode certificate --certificate crt_01JB4C7D2E9F3G5H6J8K1M2N3P
+rpmgr update route --tls-mode certificate --certificate crt_01JB4C7D2E9F3G5H6J8K1M2N3P wiki
 ```
 
 The certificate must cover every hostname of the route. The web UI's certificates list does not
@@ -254,7 +259,7 @@ target uses it.
 
 ```sh
 rpmgr create ca-bundle --name home-ca --pem-file home-ca.pem
-rpmgr update ca-bundle home-ca --pem-file home-ca-2027.pem
+rpmgr update ca-bundle --pem-file home-ca-2027.pem home-ca
 rpmgr delete ca-bundle home-ca
 ```
 

@@ -50,7 +50,7 @@ prompt.
 | **Role of this host** | `--role` | `all-in-one` in the form | `all-in-one`, `controller`, `gateway` or `connector`. Required with `--yes` |
 | **listen.admin** | `--listen-admin` | the role's port on 127.0.0.1 | The admin listener: 127.0.0.1:7381 for an all-in-one or controller, 7382 for a gateway, 7383 for a connector |
 | **Install the unit rpmgr-&lt;role&gt;, start it and wait until it is ready?** | `--no-unit` | install it | Without the unit, setup writes the files, initialises or enrolls, and starts nothing |
-| (none) | `--force` | off | Replace an existing boot file, keeping the old one as `<file>.before-setup`, or enroll an agent again with a new identity |
+| (none) | `--force` | off | Replace an existing boot file, keeping the old one as `<file>.before-setup`; on a gateway or connector, also enroll again with a new token. A host with a controller database is refused all the same |
 | (none) | `--yes` | off | Ask nothing |
 
 The listen addresses are asked in a form of their own, **Listen addresses**; an empty field keeps
@@ -169,20 +169,21 @@ The plan's steps, in order; setup leaves out those it does not need:
    0750), if they are missing, whatever the umask.
 2. **Makes a self-signed certificate** in `/etc/rpmgr/tls/<host>.crt` and `<host>.key`, for
    `--tls self-signed` on a public name, unless an earlier run made one.
-3. **Writes the boot file** `/etc/rpmgr/<role>.yaml`, or with `--force` replaces it and keeps the
-   old one as `<file>.before-setup`.
-4. **Initialises** an all-in-one or controller: the KEK, the database, the trust domain and the CA,
-   and for an all-in-one its built-in gateway and connector. **Or enrolls** a gateway or connector
-   and gives its identity to the user `rpmgr`.
-5. **Writes the local policy** of a connector or all-in-one: the denied targets, then the allowed
+3. **Writes the boot file and initialises,** on an all-in-one or controller. The boot file is
+   `/etc/rpmgr/<role>.yaml`; with `--force`, setup replaces it and keeps the old one as
+   `<file>.before-setup`. Initialising makes the KEK, the database, the trust domain and the CA,
+   and for an all-in-one its built-in gateway and connector.
+   **Or enrolls, then writes the boot file,** on a gateway or connector. Setup gives the identity to
+   the user `rpmgr`, then writes the boot file as above.
+4. **Writes the local policy** of a connector or all-in-one: the denied targets, then the allowed
    ones.
-6. **Writes the proxy drop-in** of a connector with `--proxy`.
-7. **Sets the instance's ACME directory and e-mail address,** if you gave either, before the first
+5. **Writes the proxy drop-in** of a connector with `--proxy`.
+6. **Sets the instance's ACME directory and e-mail address,** if you gave either, before the first
    start, so that the first certificate comes from that CA.
-8. **Installs the unit** `/etc/systemd/system/rpmgr-<role>.service` and runs
+7. **Installs the unit** `/etc/systemd/system/rpmgr-<role>.service` and runs
    `systemctl daemon-reload` and `systemctl enable --now rpmgr-<role>`; on a second run with
    `--force` also `systemctl restart`, so the role reads its new boot file.
-9. **Waits until** the admin listener's `/readyz` reports ready. If it does not, setup names
+8. **Waits until** the admin listener's `/readyz` reports ready. If it does not, setup names
    `journalctl -u rpmgr-<role>`, which says why.
 
 ## What setup prints
@@ -224,20 +225,20 @@ Next: check it with rpmgr status; allow more targets with rpmgr policy allow-tar
 
 ## Run setup again
 
-- **To change a value,** run setup again with `--force`. It replaces the boot file, keeps the old
-  one beside it and restarts the role.
-- **An agent** is enrolled again only with `--force`, which needs a new token
-  ([Enrolling connectors](../connectors/enroll.md)).
-- **A controller or all-in-one** is never initialised twice: setup refuses a host whose
-  `/var/lib/rpmgr/controller.db` exists. Change its boot file by hand instead
+- **To change a value,** edit the boot file and restart the role
   ([Boot files](../reference/boot-files.md)).
+- **On a gateway or connector,** `--force` enrolls the host again with a new token. It replaces the
+  boot file, keeps the old one as `<file>.before-setup` and restarts the role
+  ([Enrolling connectors](../connectors/enroll.md)).
+- **On a controller or all-in-one,** setup refuses, with `--force` or without: it never initialises
+  a host whose `/var/lib/rpmgr/controller.db` exists.
 
 ## If setup fails
 
 Setup stops at the first step that fails, names it, and lists what it had created:
 
 ```text
-setup stopped. It had created: /etc/rpmgr/connector.yaml, /var/lib/rpmgr/identity
+setup stopped. It had created: /var/lib/rpmgr/identity, /etc/rpmgr/connector.yaml
 Remove them, or fix the cause and run setup again with --force where it applies.
 ```
 

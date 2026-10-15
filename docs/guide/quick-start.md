@@ -202,7 +202,8 @@ name.
 sudo rpmgr status
 ```
 
-ends with `Service: running and ready`, and the connector shows as connected in the web UI.
+ends with a `Service:` line that says `running and ready`, and the connector shows as connected
+in the web UI.
 
 The connector reaches only the targets in its local policy. To allow another one later, run
 `sudo rpmgr policy allow-target <target>` on that machine
@@ -218,9 +219,9 @@ The connector reaches only the targets in its local policy. To allow another one
 5. Choose your connector, enter the **Host** `192.168.1.20` and the **Port** `8080`, keep the
    **Protocol to the target** at **HTTP**, and choose **Add the target**.
 
-The gateway now asks Let's Encrypt for a certificate for `app.example.com`. Under
-**Security → Domains & certificates**, its certificate shows **being obtained**, then **active**
-([HTTP routes](routes/http.md)).
+The controller now orders a certificate for `app.example.com` from Let's Encrypt; the gateways
+answer its challenge. Under **Security → Domains & certificates**, its certificate shows **being
+obtained**, then **active** ([HTTP routes](routes/http.md)).
 
 **Check:** the route shows `1/1 ready`, and from your workstation:
 

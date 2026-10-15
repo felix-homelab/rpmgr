@@ -130,8 +130,9 @@ controller's mirror, `https://<public URL>/dl/<version>/`, so a gateway or conne
 reach only the controller, not GitHub.
 
 The mirror holds the release files of the controller's own version. The controller fetches them
-from GitHub at start and then daily while its release check is on, or you import them with
-`rpmgr release import` ([Air-gapped installations](air-gapped.md)). A controller that cannot serve
+from GitHub regularly while its release check is on
+([04](../../04-security.md#over-the-air-updates)), or you import them with `rpmgr release import`
+([Air-gapped installations](air-gapped.md)). A controller that cannot serve
 installs, such as a build from source, serves a script that prints why and fails.
 
 ### The install command
@@ -144,8 +145,10 @@ filled in:
   ([Enrolling connectors](../connectors/enroll.md)).
 - **For a gateway:** under **Network → Gateways**, open the gateway group, then
   **Enrollment token…** on the gateway ([Gateways](../gateways.md)).
-- **On the command line:** `rpmgr get install-command`, with `--role gateway` for a gateway and
-  `--allow-target` and `--deny-target` for a connector's targets.
+- **On the command line:** `rpmgr get install-command` for a connector, with its targets as in
+  `rpmgr get --allow-target 192.168.1.20:8080 install-command`, and
+  `rpmgr get --role gateway install-command` for a gateway. The flags come before
+  `install-command`.
 
 A connector's command looks like this:
 
@@ -214,13 +217,15 @@ It ends with a line such as:
 rpmgr install: rpmgr 0.1.0 runs as rpmgr-connector; admin listener 127.0.0.1:7383
 ```
 
-Check the agent with `sudo rpmgr status`, which ends with `Service: running and ready` once it
-holds a session to the controller and has applied its configuration
+Check the agent with `sudo rpmgr status`. Its last line, `Service:`, says `running and ready` once
+the agent holds a session to the controller and has applied its configuration
 ([Status and diagnostics](../connectors/status-and-diagnostics.md)).
 
 Run again on an enrolled host, the script replaces the binary and keeps the boot file, the policy
-file and the identity. `systemctl enable --now` does not restart a service that runs, so restart it
-yourself to run the new binary: `sudo systemctl restart rpmgr-<role>`.
+file and the identity. It adds to the policy file the command's targets that it does not cover
+yet. It writes the systemd unit and `/etc/sysctl.d/60-rpmgr.conf` again, so give `--tcp-bbr` again
+to keep BBR. `systemctl enable --now` does not restart a service that runs, so restart it yourself
+to run the new binary: `sudo systemctl restart rpmgr-<role>`.
 
 ### The enrollment token
 
@@ -272,9 +277,10 @@ statement look expired, so check the host's time if the statement is refused.
 |---|---|
 | `OpenSSL 3.0 or later is needed to verify the release; found: …` | Install OpenSSL 3, or a distribution that has it ([10](../../10-operations.md#supported-platforms)) |
 | `curl or wget is needed`, `… is needed` | Install the named tool |
-| `run as root: sudo sh install.sh` | Run the script with `sudo`, or use `--verify-only` |
+| `run as root: sudo sh install.sh`, `run as root (sudo sh -s -- ...)` | Run the script with `sudo`, or use `--verify-only`. The second message is the controller's script's; run it from a file all the same, as the web UI's command does |
 | `nothing to upgrade: /usr/local/bin/rpmgr is not installed; install it without --upgrade` | `--upgrade` on a host without rpmgr: leave the option out |
-| `no release found at https://api.github.com/repos/felix-homelab/rpmgr` | No stable release yet: use a pre-release's `install.sh`, `--version` or `--prerelease` |
+| `cannot find the latest release at https://api.github.com` | No stable release yet, or the GitHub API cannot be reached: use a pre-release's `install.sh`, `--version` or `--prerelease` |
+| `no release found at https://api.github.com/repos/felix-homelab/rpmgr` | With `--prerelease`: GitHub lists no release. Name one with `--version` |
 | `cannot download … from https://…/dl/<version>/` | The controller's mirror is empty: its release check cannot reach GitHub. Import the release ([Air-gapped installations](air-gapped.md)) |
 | `the signature of … does not verify`, `the binary's SHA-256 does not match the manifest` | The download is corrupt or not genuine. Do not install; download again, from another network if it repeats |
 | `the signing-key statement is not valid now` | Check the host's clock; then the release |

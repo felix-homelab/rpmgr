@@ -18,8 +18,10 @@ host never collide ([10](../../10-operations.md#ports)):
 | Gateway | `127.0.0.1:7382` |
 | Connector | `127.0.0.1:7383` |
 
-If the default port is taken, the installer takes the next free one and writes it into the boot
-file, so look there for the one in use. The admin listener is never public: a boot file that
+If the default port is taken, an agent's install command takes the next free one and writes it into
+the boot file, so look there for the one in use. `rpmgr setup` refuses a port that is taken; choose
+another with `--listen-admin` ([rpmgr setup](../install/setup.md)). The admin listener is never
+public: a boot file that
 binds it to all interfaces, a public address or a host name other than `localhost` is refused at
 start. To let a scraper on another host read it, bind it to a private address, such as
 `10.0.0.5:7383`, and allow only the scraper in the host's firewall.
@@ -94,8 +96,8 @@ Alerts that pay off, with their conditions, are in
   ([Preview and apply](../routes/preview-and-apply.md#route-states)).
 - A connector's page shows its sessions and the routes it reports not ready
   ([Status and diagnostics](../connectors/status-and-diagnostics.md#in-the-web-ui)).
-- **Settings** warns when the revocation log has no copy off the controller's host, or when entries
-  wait to reach it ([Settings](settings.md#warnings-on-the-settings-page)).
+- **Settings** warns when the revocation log has no copy off the controller's host, or when an
+  entry has waited too long to reach it ([Settings](settings.md#warnings-on-the-settings-page)).
 
 ## Traces
 
@@ -127,11 +129,12 @@ journal under the role's unit:
 ```sh
 sudo journalctl -u rpmgr-connector.service -f              # follow a connector
 sudo journalctl -u rpmgr-controller.service --since -1h    # the last hour of a controller
-sudo journalctl -u rpmgr-gateway.service -p warning        # a gateway's warnings and errors
 ```
 
 The units are `rpmgr-controller`, `rpmgr-gateway`, `rpmgr-connector` and `rpmgr-all-in-one`.
-`systemctl status rpmgr-<role>.service` shows whether the unit runs and its last lines.
+`systemctl status rpmgr-<role>.service` shows whether the unit runs and its last lines. The journal
+stores every line of rpmgr at the same priority, so `journalctl -p warning` shows nothing; filter
+on each line's own `level` instead, as below.
 
 The `log` section of the boot file sets the level and the format:
 
@@ -145,18 +148,21 @@ Restart the role after a change: the boot file is read at start. In JSON, each l
 `level`, `msg` and the event's fields, so a tool such as `jq` can filter them:
 
 ```sh
+# a controller's errors
 sudo journalctl -u rpmgr-controller.service -o cat | jq -c 'select(.level == "ERROR")'
+# a gateway's warnings and errors
+sudo journalctl -u rpmgr-gateway.service -o cat | jq -c 'select(.level == "WARN" or .level == "ERROR")'
 ```
 
 Logs never hold secrets: tokens, passwords, keys and fields named like them are replaced by a
 placeholder before they are written ([04](../../04-security.md#secrets-at-rest-and-in-logs)).
-Useful lines to know:
+Useful lines to know, by their `msg`:
 
 | Message | Meaning |
 |---|---|
 | `controller running`, `gateway running`, `connector running` | The role started |
-| `controller said goodbye` with `reason=GOODBYE_REASON_REVOKED` | The agent's identity was revoked; it stops ([Connector lifecycle](../connectors/lifecycle.md)) |
-| `controller said goodbye` with `reason=GOODBYE_REASON_SUPERSEDED` | Another session of the same agent took over, for example during `rpmgr diag clock` |
+| `controller said goodbye` with `reason` `GOODBYE_REASON_REVOKED` | The agent's identity was revoked; it stops ([Connector lifecycle](../connectors/lifecycle.md)) |
+| `controller said goodbye` with `reason` `GOODBYE_REASON_SUPERSEDED` | Another session of the same agent took over, for example during `rpmgr diag clock` |
 | `control session ended` | The agent lost its control session and reconnects |
 | `clock skew to the controller; TLS and certificate checks may fail` | The host's clock is off ([Troubleshooting](troubleshooting.md#clocks-and-certificates)) |
 | `the local policy does not load: every target is blocked` | The connector's policy file is invalid ([The local policy](../connectors/local-policy.md)) |

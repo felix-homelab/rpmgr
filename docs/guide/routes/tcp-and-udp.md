@@ -108,13 +108,14 @@ rpmgr create route-target --route dns --connector home \
 route got is in its manifest:
 
 ```sh
-rpmgr get route postgres -o yaml
+rpmgr get -o yaml route postgres
 ```
 
 ### What happens next
 
-- The gateways start to listen on the port once the route has a target on an enabled connector;
-  a TCP or UDP route without one holds its port but no gateway listens on it.
+- The gateways start to listen on the port once the route has an enabled target on an enabled
+  connector that is not decommissioned; a TCP or UDP route without one holds its port but no
+  gateway listens on it.
 - The route's state shows whether its targets are ready and its gateways serve it
   ([Preview and apply](preview-and-apply.md)).
 
@@ -177,7 +178,7 @@ with a basic-auth rule cannot be attached, as a TCP or UDP client cannot answer 
 
 | Situation | TCP | UDP |
 |---|---|---|
-| The route is disabled, deleted, or has no target on an enabled connector | Nothing listens: the connection is refused | Nothing listens on the port |
+| The route is disabled, deleted, or has no enabled target on an enabled, not decommissioned connector | Nothing listens: the connection is refused | Nothing listens on the port |
 | An access policy refuses the client | Reset at once | Datagrams dropped |
 | No target can be reached | Reset, after the gateway tried the route's other connectors | Datagrams go nowhere; a flow is never retried elsewhere |
 | A target is reached | The bytes in both directions | The datagrams in both directions |

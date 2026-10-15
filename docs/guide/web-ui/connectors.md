@@ -98,8 +98,9 @@ A connector's name opens its page:
 state, its version, and `built in` for the all-in-one's own connector. Beside the title:
 
 - **Enabled** switches the connector on or off. A switched-off connector keeps its identity and
-  its targets, but serves nothing; the list and the overview show it as `disabled`, not offline
-  ([D81](../../14-open-decisions.md#engineering)). The page then follows the change to the agents
+  its targets, but serves nothing; the list shows it as `disabled`, not offline, and the overview
+  leaves it out ([D81](../../14-open-decisions.md#engineering)). The page then follows the change
+  to the agents
   ([apply status](README.md#after-a-change-the-apply-status)).
 - **YAML** shows the connector as YAML.
 

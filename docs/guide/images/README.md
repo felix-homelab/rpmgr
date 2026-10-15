@@ -8,8 +8,10 @@ UI changed.
 ## What the screenshots show
 
 The screenshots are generated, never edited by hand. They show a made-up organisation, "Example
-Lab", in the light theme, in a window of 1440 × 900 pixels; pages longer than that are shown
-whole. `mobile-menu.png` alone shows a phone's screen, 390 × 844 pixels, as the menu exists only on
+Lab", in the light theme, in a window of 1440 × 900 pixels. Most pages are shown whole. The
+public pages, the dialogs and a few pages, such as `audit.png`, `gateways.png` and
+`settings-updates.png`, show only the window, so a page longer than the window is cut off at its
+foot. `mobile-menu.png` alone shows a phone's screen, 390 × 844 pixels, as the menu exists only on
 small screens.
 
 The data is fake: names under `example.com` and `example.net`, addresses from the
@@ -58,7 +60,7 @@ browser tests are:
 ```sh
 source .github/scripts/lib.sh
 npm --prefix web ci && npm --prefix web run build
-SCREENS=all go test -tags webe2e -count=1 -run '^TestScreens$' ./test/webe2e/
+SCREENS=all go test -tags webe2e -count=1 -timeout 15m -run '^TestScreens$' ./test/webe2e/
 ```
 
 ## Add a screenshot

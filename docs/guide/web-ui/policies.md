@@ -18,7 +18,7 @@ with its users' names.
 - **New access policy** opens the [form](#the-form) above the list.
 - **Edit…** opens the form for that policy.
 - **Remove…** asks `Remove the access policy …?`; **Remove it** removes it. The controller refuses
-  to remove a policy that routes use, and names them.
+  to remove a policy that routes use, and says how many.
 
 After a change, the page follows it to the gateways
 ([apply status](README.md#after-a-change-the-apply-status)).
@@ -28,11 +28,12 @@ After a change, the page follows it to the gateways
 **New access policy** or **Edit access policy** has:
 
 - **Name**, required, and **Description**.
-- **Rules**, each numbered, with its **Kind**:
+- **Rules**, each numbered, with a list that chooses its kind. A new policy starts with one
+  **Allow addresses** rule.
   - **Allow addresses** and **Deny addresses** take **Addresses (CIDRs, one per line)**, IPv4 or
     IPv6, such as `198.51.100.0/24`.
-  - **Basic auth (HTTP routes)** takes users: each a **User** and a **Password**. **Add a user**
-    adds one, **Remove the user** removes one.
+  - **Basic auth (HTTP routes)** takes users: each a **User** and a **Password**. The rule starts
+    with no user: **Add a user** adds each one, the first too, and **Remove the user** removes one.
 - **Remove the rule** removes a rule; **Add a rule** adds one, an **Allow addresses** rule to start
   with.
 - **Create the policy** or **Save** saves the policy; **Cancel** closes the form.
@@ -43,8 +44,9 @@ whatever allows it.` The same holds across all the policies a route applies
 
 Passwords are write-only: the page never shows them. When you edit a policy, a user it already has
 shows `unchanged` in the password field and keeps the password unless you type a new one; a new
-user needs a password. The gateway asks for these users' names and passwords on HTTP routes only;
-on other route types a basic-auth rule refuses every client
+user needs a password. The gateway asks for these users' names and passwords on HTTP routes only, so
+the controller refuses a basic-auth rule wherever a route of another type would apply it: in a
+policy such a route uses, and when you attach a policy with one to such a route
 ([03](../../03-connections.md#access-policies)).
 
 ## Attach a policy to a route

@@ -21,12 +21,13 @@ every upgrade. Signed automatic updates of the agents are planned for Phase 2
 
 Upgrade the **controller first, then the gateways, then the connectors**. A controller works with
 agents of its own minor version and of the one before, so agents may lag behind the controller by
-one minor version. Agents newer than the controller are not supported: they connect, the web UI
-warns, and the controller does not use what it does not know
+one minor version. Agents newer than the controller are not supported: they connect, and the
+controller does not use what it does not know
 ([10](../../10-operations.md#upgrades-and-version-skew)).
 
-An agent too old for the controller is refused with the reason `upgrade_required`, which the web UI
-shows, so a skew of more than one minor version is visible, not silent
+The controller refuses an agent too old for it before the agent's session starts, so the web UI
+shows that agent offline. The agent's log says why: `controller said goodbye` with
+`reason=GOODBYE_REASON_UPGRADE_REQUIRED`
 ([03](../../03-connections.md#versioning-and-capabilities)).
 
 While the controller restarts, every gateway and connector keeps running its last configuration,
@@ -64,8 +65,10 @@ rpmgr install: restarted rpmgr-connector with rpmgr 0.1.1
    web UI; the foot of the sidebar shows the new version.
 
 The controller applies the database migrations of the new version when it starts, under a lock.
-To apply them yourself first, stop the controller and run `sudo rpmgr migrate`, which keeps a copy
-of the database beside it, `<database>.before-migrate-<time>`, before it migrates.
+To apply them yourself first, run the install script with `--upgrade` but without `--restart`, so
+that the controller keeps running the old binary. Then stop the controller, run
+`sudo rpmgr migrate`, which keeps a copy of the database beside it,
+`<database>.before-migrate-<time>`, before it migrates, and start the controller again.
 
 If the controller has no access to GitHub, import the new release into its mirror after the
 upgrade, so that new agents install the new version ([Air-gapped installations](air-gapped.md)).
@@ -79,7 +82,7 @@ its visitors move to the others:
    **Drain** on the gateway, or run `rpmgr drain gateway <gateway>`. It takes no new connections
    and ends the open ones after its drain period ([Gateways](../gateways.md)).
 2. Run the install script with `--upgrade --restart` on the gateway's host.
-3. Check it: `sudo rpmgr status` ends with `Service: running and ready`.
+3. Check it: the last line of `sudo rpmgr status`, `Service:`, says `running and ready`.
 4. **Resume** it in the web UI, or run `rpmgr enable gateway <gateway>`.
 
 A gateway alone in its group drains by itself when it stops, but its routes cannot be reached
@@ -137,14 +140,29 @@ sudo systemctl restart rpmgr-all-in-one   # or rpmgr-controller, rpmgr-gateway, 
 
 A gateway or connector host that reaches only the controller can take the new version from the
 controller, once the controller runs it and its mirror holds it. Run the controller's install
-command again, from the web UI or `rpmgr get install-command`, then restart the service: the script
-replaces the binary and keeps the boot file, the policy and the identity
+command again, then restart the service: the script replaces the binary and keeps the boot file,
+the policy and the identity
 ([The install scripts](install-script.md#the-controllers-install-script)).
 
+- **Get the command** with `rpmgr get install-command` for a connector, or
+  `rpmgr get --role gateway install-command` for a gateway; neither makes a token. The web UI shows
+  a gateway's command only before the gateway enrolls, and a connector's only with a new
+  enrollment token. Revoke a token you made only to see the command
+  ([Enrolling connectors](../connectors/enroll.md)).
+- **On a gateway,** the command must carry `--role gateway`. Without it, the script installs and
+  starts a connector's unit beside the gateway, which fails on the gateway's identity.
+
 ```sh
+# a connector
 curl -fsSLO 'https://panel.example.com/install.sh' && sudo sh install.sh \
   --controller 'https://panel.example.com' --ca-pin 'sha256:…'
 sudo systemctl restart rpmgr-connector
+
+# a gateway
+curl -fsSLO 'https://panel.example.com/install.sh' && sudo sh install.sh \
+  --controller 'https://panel.example.com' --ca-pin 'sha256:…' \
+  --role gateway
+sudo systemctl restart rpmgr-gateway
 ```
 
 ## Release candidates

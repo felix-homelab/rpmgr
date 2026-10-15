@@ -97,7 +97,7 @@ Rotate it by hand only when you have a reason, such as a suspicion that its key 
 
   ```text
   The new issuing intermediate CN=rpmgr issuing CA rpmgr-ewl35s75 is active, valid until YYYY-MM-DDTHH:MM:SSZ; the old one is retired and keeps
-  verifying the certificates it issued. Running controllers load it within a minute; agents
+  verifying the certificates it issued. Running controllers load it …; agents
   receive the new chain at their next renewal.
   ```
 
@@ -107,7 +107,9 @@ Rotate it by hand only when you have a reason, such as a suspicion that its key 
   [Rotate the KEK](../../10-operations.md#rotate-the-kek)). The command is recorded in the
   instance's audit log as `local-cli`.
 
-When every agent's certificate is issued by the new intermediate, the rotation is complete.
+Running controllers load the new intermediate on their own, shortly after
+([04](../../04-security.md#ca-rotation)). When every agent's certificate is issued by the new
+intermediate, the rotation is complete.
 
 ## Agent certificates and passwords
 

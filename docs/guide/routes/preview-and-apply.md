@@ -67,7 +67,7 @@ the other resources take `--wait <duration>`, at most 30 s. Such a command then 
 change is applied, rejected or timed out, or once the time is up, and says how far the agents got:
 
 ```sh
-rpmgr update route wiki --hsts 24h --wait 30s
+rpmgr update route --hsts 24h --wait 30s wiki
 ```
 
 ```text
@@ -116,9 +116,9 @@ route in the card **Gateways not serving**, with the reason:
 | Reason | Meaning and what to do |
 |---|---|
 | offline | The agent has no control session. Check it on its host ([Status and diagnostics](../connectors/status-and-diagnostics.md)) |
-| disabled | The connector or gateway is switched off ([Connector lifecycle](../connectors/lifecycle.md), [Gateways](../gateways.md)) |
+| disabled | The target's connector is switched off or gone ([Connector lifecycle](../connectors/lifecycle.md)). A drained gateway is not listed: the route's state leaves it out ([Gateways](../gateways.md)) |
 | no data session to the connector | The gateway and the connector of a ready target have no tunnel between them ([Connector networking](../connectors/network.md)) |
-| blocked by the connector's local policy | The target is not allowed on the connector's host; the page shows the command that allows it ([The local policy](../connectors/local-policy.md)) |
+| blocked by the connector's local policy | None of the route's targets on that connector is allowed on its host; the page shows the command that allows the first one ([The local policy](../connectors/local-policy.md#in-the-web-ui)) |
 | the connector's local policy does not load | The policy file has an error, so nothing is allowed ([The local policy](../connectors/local-policy.md)) |
 | the port is in use on the gateway | Another program holds the route's port ([TCP and UDP routes](tcp-and-udp.md#troubleshooting)) |
 | no data session over the route's transport | The route pins a transport the connector cannot use ([Connector networking](../connectors/network.md)) |
@@ -127,7 +127,7 @@ route in the card **Gateways not serving**, with the reason:
 A card **Rejected by** lists the agents that refused the route's latest change, with their reasons.
 The routes list sums it up: "2/3 ready", "1 blocked by local policy", "rejected by 1 agent".
 
-On the command line, `rpmgr get route wiki` shows the state, and `rpmgr get route wiki -o json`
+On the command line, `rpmgr get route wiki` shows the state, and `rpmgr get -o json route wiki`
 the whole status, with the targets and gateways that do not serve and why.
 
 ## When a save is refused
@@ -145,8 +145,9 @@ the whole status, with the targets and gateways that do not serve and why.
 ## Export routes as YAML
 
 Routes, and the other resources they name, can be exported as YAML manifests: one document per
-resource, with other resources named by their names, and nothing the server sets, such as IDs,
-etags, status or times ([07](../../07-api.md#declarative-manifests)).
+resource, with other resources named by their names, and without the IDs, etags, status and times
+that the server sets ([07](../../07-api.md#declarative-manifests)). A route's manifest still
+carries `updateUserId`, the ID of the user who last changed the route.
 
 - **Web UI:** **YAML** on a route's page shows its manifest; **Export YAML** on the routes list
   shows every route. The dialog has **Copy** and **Download**. Access policies, domains, CA bundles,
@@ -154,8 +155,8 @@ etags, status or times ([07](../../07-api.md#declarative-manifests)).
 - **Command line:**
 
   ```sh
-  rpmgr get route wiki -o yaml
-  rpmgr list route -o yaml > routes.yaml
+  rpmgr get -o yaml route wiki
+  rpmgr list -o yaml route > routes.yaml
   ```
 
 A route's manifest looks like this:

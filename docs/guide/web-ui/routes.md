@@ -69,10 +69,10 @@ An **HTTP** route adds ([HTTP routes](../routes/http.md)):
 
 | Field | Takes |
 |---|---|
-| **Hostnames** | One per line. Each must be a verified domain of the organisation, or a name below one claimed with **Also every name below it**, which also allows a `*.` name ([Domains & certificates](domains.md)) |
+| **Hostnames** | One per line. Each must be a verified domain of the organisation, or a name below one claimed with **Also every name below it**, which also allows a `*.` name ([Domains & certificates](domains.md)). A `*.` name needs **Uploaded**: ACME issues no certificate for it |
 | **Path prefix** | Serve only paths below it; empty for all |
 | **TLS certificate** | **From ACME**, the default, or **Uploaded** |
-| **Uploaded certificate ID** | Required with **Uploaded**: the ID of a certificate on the [Domains & certificates](domains.md#certificates) page |
+| **Uploaded certificate ID** | Required with **Uploaded**: the ID of an uploaded certificate ([Domains & certificates](domains.md#certificates)). The web UI does not show certificate IDs; `rpmgr list certificate` lists them |
 | **Port 80** | **Redirect to HTTPS**, the default, **Serve the route**, or **Closed** |
 | **HSTS max-age (seconds)** | The `Strict-Transport-Security` lifetime the route sends; 0 sends none |
 | **Host header to the target** | The `Host` header the target gets; empty or `preserve` passes the client's on |
@@ -116,8 +116,8 @@ it:
 - **Enabled** switches the route on or off. It is the route's only on/off switch: a disabled route
   keeps its configuration, and its gateways stop serving it.
 - **Maintenance**, on HTTP routes only, puts the route in maintenance or takes it out: its
-  gateways then answer every request with the maintenance page and its message
-  ([Maintenance and error pages](../routes/maintenance-and-pages.md)).
+  gateways then answer every request that the route's access policies admit with the maintenance
+  page and its message ([Maintenance and error pages](../routes/maintenance-and-pages.md)).
 - **YAML** shows the route as YAML ([The YAML view](README.md#the-yaml-view)).
 - **Delete…** asks `Delete the route … with its hostnames, targets and port? This cannot be
   undone.` **Delete it** deletes it; **Cancel** keeps it.
@@ -176,13 +176,13 @@ it** removes it. **Add a target** opens the target form in the card, one form at
 | **Address** | **Host and port**, then **Host** and **Port**; or **Unix socket**, then **Socket path** |
 | **Protocol to the target** | HTTP routes only: **HTTP**, **HTTPS, verified**, **HTTPS, pinned key**, **HTTPS, unverified** or **HTTP/2 without TLS (h2c)**. Other route types pass the bytes, or the datagrams, as they come |
 | **TLS server name** | HTTPS: the name the target's certificate is checked against and sent to it; empty for the host's name. Required on a Unix socket |
-| **CA bundle ID (empty: the system's roots)** | HTTPS, verified: the CA bundle the certificate is verified with ([CA bundles](domains.md#ca-bundles)) |
+| **CA bundle ID (empty: the system's roots)** | HTTPS, verified: the CA bundle the certificate is verified with ([CA bundles](domains.md#ca-bundles)). The web UI does not show CA bundle IDs; `rpmgr list ca-bundle` lists them |
 | **Public key pin, SHA-256 in hex (optional)** | HTTPS, verified: also require this key |
 | **Pinned public key, SHA-256 in hex** | HTTPS, pinned key: the one key the target may present |
 | **PROXY protocol** | TCP, TCP and UDP, and TLS passthrough routes: **None**, **Version 1** or **Version 2**. On a TCP and UDP route it goes on the TCP connections only, which the form notes ([D86](../../14-open-decisions.md#engineering)) |
 | **Weight** | Its share among the targets of the same priority |
 | **Priority** | Lower is preferred; a higher priority, on any connector, is a failover ([D90](../../14-open-decisions.md#engineering)) |
-| **Enabled** | Whether the target serves |
+| **Enabled** | Whether the target serves. Only **Edit…** can switch it off: a new target always serves, even with the box cleared |
 
 - **HTTPS, unverified** shows a warning: the gateway does not check the target's certificate, so
   anyone on the network between the connector and the target can read and change the traffic.

@@ -72,7 +72,7 @@ restart ([10](../../10-operations.md#boot-files)).
 | `tracing.otlp_endpoint` | URL | `""` | The OTLP/HTTP traces URL of a collector, `http://` or `https://`, such as `https://collector:4318/v1/traces`. Empty turns tracing off |
 | `tracing.sample_ratio` | number | `0.01` | The share of new traces that are sampled, from 0 to 1. A span that fails is exported whatever the sampling |
 
-Logs go to standard output, which the systemd journal keeps: `journalctl -u rpmgr-<role>`. The
+Logs go to standard error, which the systemd journal keeps: `journalctl -u rpmgr-<role>`. The
 tracing section is described in [Monitoring](../operations/monitoring.md).
 
 ## Controller
@@ -94,7 +94,7 @@ tracing section is described in [Monitoring](../operations/monitoring.md).
 | `kek.path` | path | none | The KEK file. Only with `file`, and then required. The file must be a regular file that neither its group nor other users can read or write |
 | `tls.cert_file` | path | none | The certificate chain of the public URL's host, PEM, the certificate first. Goes with `tls.key_file` |
 | `tls.key_file` | path | none | Its private key, PEM |
-| `revocation_log.sink` | path | `""` | A directory, usually on a share, that keeps a copy of the revocation log off the host. Empty keeps only the local log ([Backup and restore](../operations/backup-and-restore.md#the-revocation-log-sink)) |
+| `revocation_log.sink` | path | `""` | A directory, usually on a share, that keeps a copy of the revocation log off the host. It must exist, and the unit needs a drop-in that makes it writable ([below](#directories-outside-varlibrpmgr)). Empty keeps only the local log ([Backup and restore](../operations/backup-and-restore.md#the-revocation-log-sink)) |
 | `log`, `tracing` | | | As above |
 
 **The KEK.** With `systemd-credential`, systemd decrypts the credential
@@ -257,12 +257,31 @@ state_dir: /var/lib/rpmgr
 policy_file: /etc/rpmgr/policy.yaml
 ```
 
-## A state directory elsewhere
+## Directories outside /var/lib/rpmgr
 
 The systemd units that `rpmgr systemd-unit` prints let the service write only to
-`/var/lib/rpmgr` (`ProtectSystem=strict` with `StateDirectory=rpmgr`). If you move `state_dir`,
-`identity_dir` or `database.dsn` elsewhere, add a drop-in that makes the new directory writable,
-such as `ReadWritePaths=/srv/rpmgr`, and give the directory to the user `rpmgr`.
+`/var/lib/rpmgr` (`ProtectSystem=strict` with `StateDirectory=rpmgr`); the rest of the file system
+is read-only for it. Two keys can name a directory elsewhere:
+
+- `state_dir`, `identity_dir` or `database.dsn`, when you move the state elsewhere;
+- `revocation_log.sink` of a controller or an all-in-one.
+
+For such a directory, create it, give it to the user `rpmgr`, and add a drop-in that makes it
+writable, here for `/srv/rpmgr` on a gateway:
+
+```sh
+sudo install -d -m 0750 -o rpmgr -g rpmgr /srv/rpmgr
+sudo systemctl edit rpmgr-gateway        # opens an editor for the drop-in below
+```
+
+```ini
+[Service]
+ReadWritePaths=/srv/rpmgr
+```
+
+Then restart the service. The directory must exist when the service starts, or systemd does not
+start it. The drop-in stays when an upgrade writes the unit again. The steps for a sink are in
+[Backup and restore](../operations/backup-and-restore.md#the-revocation-log-sink).
 
 ## When a boot file is refused
 

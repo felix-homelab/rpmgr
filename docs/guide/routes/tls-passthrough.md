@@ -81,8 +81,10 @@ Quote a wildcard hostname, as above, so that the shell does not expand it.
 
 - Within a gateway group, a hostname belongs to one TLS passthrough route and to no HTTP route; a
   hostname another route of the group uses is refused, naming that route.
-- Every hostname must lie under a verified domain of your organisation (`DOMAIN_NOT_VERIFIED`
-  otherwise).
+- Every hostname must be covered by a verified domain claim of your organisation
+  (`DOMAIN_NOT_VERIFIED` otherwise). An exact claim covers its own name only; a claim with every
+  name below it covers those names too
+  ([Domains and certificates](../domains-and-certificates.md#what-a-claim-covers)).
 - The targets speak the bytes as they come; there is no protocol to choose. A target may be a host
   and port or a Unix socket on the connector's host, and may get a PROXY protocol header
   ([Targets](targets.md)).

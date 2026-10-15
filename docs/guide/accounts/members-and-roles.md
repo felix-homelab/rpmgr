@@ -75,8 +75,9 @@ An invitation is a one-time link for one e-mail address and one role.
 rpmgr create invitation --email grace@example.com --role admin
 ```
 
-It prints the one-time link; as Admin or Owner it asks for a step-up first. The token you logged
-in with needs the `members.write` scope ([API tokens and the command line](api-tokens-and-cli.md)).
+It prints the one-time link; when the invited role is Admin or Owner, it asks for a step-up first.
+The token you logged in with needs the `members.write` scope
+([API tokens and the command line](api-tokens-and-cli.md)).
 
 ### What happens next
 

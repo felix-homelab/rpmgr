@@ -11,7 +11,7 @@ controller cannot reach GitHub, or must not.
 | What | Who fetches it | Without internet |
 |---|---|---|
 | The release, for the first installation | The global install script, from GitHub | Carry the files in; install by hand or from your own mirror ([below](#install-the-controller)) |
-| The release files of the controller's version, for its `/dl/` mirror | The controller's release check, at start and daily, from GitHub | `rpmgr release import` ([below](#import-the-release)) |
+| The release files of the controller's version, for its `/dl/` mirror | The controller's release check, regularly, from GitHub ([04](../../04-security.md#over-the-air-updates)) | `rpmgr release import` ([below](#import-the-release)) |
 | Certificates for the web UI and the `http` routes | The controller, from the ACME CA (Let's Encrypt by default) | Your own ACME CA, or uploaded certificates ([below](#certificates)) |
 | A domain's TXT record or HTTP token | The controller, from the domain's name servers or through its gateways | Mark the domain as trusted ([below](#domains)) |
 
@@ -105,7 +105,7 @@ A build from source has the version `dev`, which no release matches, so it impor
 
 ## Turn the release check off
 
-Without internet access, the daily release check fails and logs a warning each time. Turn it off:
+Without internet access, every run of the release check fails and logs a warning. Turn it off:
 
 - **With the web UI:** as the Instance Admin, under **Settings**, in the **Updates** section, clear
   **Check for releases once a day** ([Settings](../operations/settings.md)).
@@ -123,6 +123,13 @@ Install gateways and connectors as usual, with the install command from the web 
 ([The install scripts](install-script.md#the-controllers-install-script)). The agent hosts need
 `https://<public URL>` only: the script downloads from `/dl/<version>/` and the agent enrolls with
 the controller.
+
+Both check the controller's web certificate against the host's trust store: the script's `curl`
+and the enrollment's download of the trust bundle. With `--tls self-signed`, `--tls files` from a
+private CA, or your own ACME CA, the install command fails on a host that does not trust that
+certificate. Either add the CA, or the self-signed certificate itself, to the agent host's trust
+store first, or install the agent by hand and enroll it with `--trust-bundle`
+([Manual installation and containers](manual.md#a-gateway-or-connector-by-hand)).
 
 ## Upgrade
 

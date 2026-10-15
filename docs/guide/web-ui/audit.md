@@ -38,10 +38,13 @@ Each entry is one line, 100 at a time; **Older entries** at the end loads the ne
 
 ## Verify the chain
 
-**Verify the chain** checks the log's hash chain from its last signed checkpoint, and says either
-`The chain is intact up to entry …`, with the last checkpoint and when it was made, or `The chain
-is broken at entry …` with the problem. A broken chain is a sign that entries were changed or
-removed outside rpmgr ([Audit log](../operations/audit-log.md)).
+**Verify the chain** checks the log's whole hash chain: from its first entry, or, once old entries
+were removed, from the signed checkpoint just before the oldest entry left, to the newest entry.
+It also checks every signed checkpoint's signature, and that each checkpoint matches its entry
+while that entry is kept. It says either `The chain is intact up to entry …`, with the last
+checkpoint and when it was made, or `The chain is broken at entry …` with the problem. A broken
+chain is a sign that entries were changed or removed outside rpmgr
+([Audit log](../operations/audit-log.md)).
 
 ## On the command line
 

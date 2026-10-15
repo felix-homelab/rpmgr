@@ -102,7 +102,7 @@ organisation with a role ([Members and roles](accounts/members-and-roles.md)):
 | Owner | Everything in the organisation, including its settings and its Owners |
 | Admin | Everything but the organisation's settings and its Owners: members, gateways, domains, certificates, routes, connectors, the audit log |
 | Operator | Routes, targets and access policies; connectors if the organisation allows it |
-| Viewer | Read everything |
+| Viewer | Read everything but the audit log |
 
 The **Instance Admin** is a role of its own for the whole installation: the CA, the instance
 settings, and trusting a domain without a proof. The first account, made with the one-time link
@@ -193,8 +193,9 @@ rpmgr has no default password and no shared secret. Each part proves who it is
 ([04](../04-security.md#security-goals)):
 
 - **An own CA.** Each installation has its own certificate authority and a **trust domain**, a name
-  such as `rpmgr-7f3k2q9m`. The fingerprint of the CA's root is the **CA pin**, `sha256:…`. Setup
-  prints it, the web UI shows it under **Settings → PKI**, and every install command carries it.
+  such as `rpmgr-7f3k2q9m`. The **CA pin**, `sha256:…`, is the SHA-256 hash of the root's public
+  key; it is not the certificate fingerprint that `openssl x509 -fingerprint` prints. Setup prints
+  it, the web UI shows it under **Settings → PKI**, and every install command carries it.
 - **Enrollment with a pin and a token.** To join, an agent needs the controller's URL, the CA pin
   and an **enrollment token**. The agent makes its private key itself, and the key never leaves
   the host. It trusts the controller only if the controller's CA matches the pin, so a machine in
@@ -210,8 +211,9 @@ rpmgr has no default password and no shared secret. Each part proves who it is
   ([04](../04-security.md#revocation)).
 - **Mutual TLS everywhere.** Controller, gateways and connectors check each other against the
   installation's root, never against the CAs a system trusts.
-- **Secrets at rest.** Keys and passwords in the database are encrypted with the **key-encryption
-  key (KEK)**, which is kept outside the database: in a systemd credential or a file
+- **Secrets at rest.** Private keys and other secrets in the database, such as TOTP seeds and the
+  mail relay's password, are encrypted with the **key-encryption key (KEK)**. The KEK is kept
+  outside the database: in a systemd credential or a file. Passwords are stored only as hashes
   ([04](../04-security.md#secrets-at-rest-and-in-logs)).
 - **Accounts.** The first account is made with a one-time link. Accounts can add an authenticator
   app, and sensitive changes ask you to confirm it is you

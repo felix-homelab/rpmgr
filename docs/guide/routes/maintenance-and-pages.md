@@ -99,9 +99,9 @@ The **Edit** form has the setting as well: **Maintenance**, **On: show the maint
 **With the command line:**
 
 ```sh
-rpmgr update route wiki --maintenance \
-  --maintenance-message "Back at 18:00 UTC. Sorry for the interruption." --wait 30s
-rpmgr update route wiki --maintenance=false --wait 30s
+rpmgr update route --maintenance \
+  --maintenance-message "Back at 18:00 UTC. Sorry for the interruption." --wait 30s wiki
+rpmgr update route --maintenance=false --wait 30s wiki
 ```
 
 `--maintenance-message ""` removes the message. `rpmgr create route --http --maintenance …` creates
@@ -129,5 +129,5 @@ gateway of its group serves it. Until then it is **pending**, and if an agent re
 **error** ([Preview and apply](preview-and-apply.md)). The overview counts routes in maintenance
 apart and leaves them out of "Needs attention".
 
-A gateway of a release candidate ignores maintenance and serves the route until it is upgraded
+A gateway of v0.1.0-rc.6 or earlier ignores maintenance and serves the route until it is upgraded
 ([Upgrades](../install/upgrades.md)).

@@ -61,7 +61,8 @@ proxy's own address. Without that setting, every request seems to come from the 
 
 ### Basic auth
 
-A basic-auth rule holds up to 100 users, each with a name and a password of 12 to 256 characters.
+A basic-auth rule holds up to 100 users, each with a name and a password. A password follows the
+length rule of account passwords ([04](../04-security.md#human-authentication-and-sessions)).
 
 - The controller stores only an argon2id hash of each password, and the gateways get only the
   hashes. A password is never shown again; when you edit a policy, a user whose password you leave
@@ -75,9 +76,9 @@ A basic-auth rule holds up to 100 users, each with a name and a password of 12 t
   again ([04](../04-security.md#secrets-at-rest-and-in-logs)).
 - The gateway removes the `Authorization` header before the request goes upstream, so the service
   never sees the passwords.
-- A policy with a basic-auth rule cannot be attached to a TCP, UDP or TLS passthrough route, whose
-  clients could never answer it, and a policy that such a route applies cannot get a basic-auth
-  rule.
+- A policy with a basic-auth rule cannot be attached to a TCP, UDP, "TCP and UDP" or TLS
+  passthrough route, whose clients could never answer it, and a policy that such a route applies
+  cannot get a basic-auth rule.
 
 ## Create a policy
 
@@ -85,10 +86,13 @@ A basic-auth rule holds up to 100 users, each with a name and a password of 12 t
 
 1. Open **Access policies** and choose **New access policy**.
 2. Enter a **Name**, lower-case letters, digits and hyphens, and optionally a **Description**.
-3. Under **Rules**, choose **Add a rule** for each rule, and choose its **Kind**:
+3. Under **Rules**, the form starts with one **Allow addresses** rule; choose **Add a rule** for
+   each further one. Each rule starts with a list that chooses its kind:
    - for **Allow addresses** or **Deny addresses**, enter the **Addresses (CIDRs, one per line)**;
-   - for **Basic auth (HTTP routes)**, enter a **User** and a **Password**, and **Add a user** for
-     each further one.
+   - for **Basic auth (HTTP routes)**, choose **Add a user** for each user, the first one too, and
+     enter a **User** and a **Password**.
+
+   **Remove the rule** takes a rule out.
 4. Choose **Create the policy**.
 
 The list shows each policy's rules in short, such as "allow 192.0.2.0/24", "basic auth: alice,
@@ -127,8 +131,8 @@ To change a policy, give the flags you change. The rules given replace all of th
 when asked for a password of a user who has one, an empty answer keeps it:
 
 ```sh
-rpmgr update access-policy office-only \
-  --rule allow:192.0.2.0/24,198.51.100.0/24 --rule deny:192.0.2.99/32
+rpmgr update access-policy \
+  --rule allow:192.0.2.0/24,198.51.100.0/24 --rule deny:192.0.2.99/32 office-only
 rpmgr delete access-policy office-only
 ```
 
@@ -144,8 +148,8 @@ rpmgr delete access-policy office-only
 ### With the command line
 
 ```sh
-rpmgr update route wiki --policy office-only --policy staff-login --wait 30s
-rpmgr update route wiki --policy "" --wait 30s
+rpmgr update route --policy office-only --policy staff-login --wait 30s wiki
+rpmgr update route --policy "" --wait 30s wiki
 ```
 
 `--policy` takes a name or an ID and replaces the route's list; given once empty, it detaches every
@@ -173,7 +177,7 @@ rule of any policy wins over every allow rule, and the web UI offers no order to
 - A changed basic-auth user list applies to the next request; the gateways forget what they had
   verified for the policy before.
 
-A gateway of a release candidate decides by the first matching rule until it is upgraded
+A gateway of v0.1.0-rc.6 or earlier decides by the first matching rule until it is upgraded
 ([Upgrades](install/upgrades.md)). Single sign-on with OIDC in front of a route, rate and
 connection limits and a required header are planned for Phase 2
 ([05](../05-features.md#edge-access-control-and-limits)).

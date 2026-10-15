@@ -206,8 +206,8 @@ certificates it had before are revoked as soon as the new one is issued
    Or run `rpmgr setup --role connector --force`, which does all three
    ([rpmgr setup](../install/setup.md)).
 
-Without `--replace`, `rpmgr enroll` refuses a host that has an identity: `this host is enrolled
-already; use --replace to enroll it again`. The install script skips the enrollment on such a host
+Without `--replace`, `rpmgr enroll` refuses a host that has an identity: `this host is already
+enrolled; use --replace to enroll it again`. The install script skips the enrollment on such a host
 and says so.
 
 There is no re-enrollment for:
@@ -222,12 +222,14 @@ There is no re-enrollment for:
 
 | Message | Cause | Fix |
 |---|---|---|
-| `rpc error: code = Unauthenticated desc = invalid token` | The token is mistyped, used up, expired or revoked | Make a new token |
+| `the enrollment token is malformed or mistyped (rpmgr_enr_…)` | The token was not copied whole; `rpmgr enroll` checks it before it contacts the controller | Copy the token again |
+| `rpc error: code = Unauthenticated desc = invalid token` | The token is used up, expired or revoked | Make a new token |
 | `pki: no root in the bundle matches the pin` | The `--ca-pin` is not this controller's | Copy the pin from the install command or Settings → PKI |
 | `download the trust bundle: … certificate signed by unknown authority` | The host does not trust the controller's web certificate | Give the controller a trusted certificate, or pass `--trust-bundle` |
-| `this host is enrolled already; use --replace to enroll it again` | The host has an identity | Re-enroll with a re-enrollment token, or `rpmgr leave` first |
+| `this host is already enrolled; use --replace to enroll it again` | The host has an identity | Re-enroll with a re-enrollment token, or `rpmgr leave` first |
 | `identity directory … has mode 0755; it must be closed to the group and other users (0700)` | The identity directory is open to others | `sudo chmod 700 <dir>` |
 | `too many enrollments from this address` | The controller limits enrollments per address ([04](../../04-security.md#human-authentication-and-sessions)) | Wait, then try again |
-| `the gateway or connector is decommissioned` | A re-enrollment token for a decommissioned connector | Enroll it as a new connector |
+| `the gateway or connector is decommissioned`, when you make the token | A re-enrollment token for a decommissioned connector | Enroll it as a new connector |
+| `the token's connector is decommissioned or gone`, when the host enrolls | The connector was decommissioned after its re-enrollment token was made | Enroll it as a new connector |
 
 More symptoms are in [Troubleshooting](../operations/troubleshooting.md#enrollment-fails).

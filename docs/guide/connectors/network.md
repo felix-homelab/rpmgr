@@ -180,7 +180,8 @@ An all-in-one runs a built-in connector, `local`, next to its gateway
   its control session as coming from `in-process`.
 - It opens no UDP socket, so it reaches any other gateway of its group over TLS and HTTP/2 only: a
   route pinned to `quic` is not ready on it there.
-- It never dials rpmgr's own ports on the host: the admin port, 80, 443 and the ports of routes.
+- It never dials rpmgr's own ports on the host: the admin port, 80, 443 (TCP and UDP), the tunnel
+  UDP port and the ports of routes.
 
 ## Check the network
 

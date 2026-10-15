@@ -86,10 +86,11 @@ Phase 2 ([05](../../05-features.md#observability)).
 
 ## Verify a chain
 
-Verification walks a chain from its start and checks every entry against its own hash and its
-predecessor's, then compares the last entry with the chain's recorded head, so a missing entry, a
-changed one, one out of order or a cut-off end is found. It also checks the chain's signed
-checkpoints.
+Verification walks a whole chain from its start, or, once retention removed its first entries, from
+the signed checkpoint just before the first entry left. It checks every entry against its own hash
+and its predecessor's, then compares the last entry with the chain's recorded head, so a missing
+entry, a changed one, one out of order or a cut-off end is found. It also checks every signed
+checkpoint of the chain: its signature, and that it matches the entry it covers.
 
 - **Web UI**: on **Audit log**, select **Verify the chain**. It answers
   **The chain is intact up to entry 31.** and

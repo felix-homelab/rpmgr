@@ -22,15 +22,18 @@ organisation, "Example Lab"; they are taken with the tool that
 | [Gateways](gateways.md) | Manage gateway groups, gateways, port pools and quotas | Owner, Admin |
 | [Domains & certificates](domains.md) | Prove domains, upload certificates, keep CA bundles | Owner, Admin |
 | [Access policies](policies.md) | Allow or deny clients by address, require basic auth | Owner, Admin, Operator |
-| [Organisation](organisation.md) | Rename the organisation, manage members and invitations | Owner, Admin |
+| [Organisation](organisation.md) | Rename the organisation, manage members and invitations | Owner, Admin; renaming: Owner |
 | [Audit log](audit.md) | Read and verify who changed what | Owner, Admin can read it |
 | [Settings](settings.md) | The organisation's settings, and the instance's settings, PKI and updates | Owner; Instance Admin |
 | [Account](account.md) | Your profile, password, authenticator, sessions and API tokens | Every user, for themselves |
 
-Every member of an organisation sees every page of it. The pages show the same buttons to every
+Every member of an organisation sees every page of it. Most pages show the same buttons to every
 role; a change your role does not allow fails with an error that names the missing permission,
-such as `the permission routes.write is missing`. The roles and what each may do are in
-[Members and roles](../accounts/members-and-roles.md).
+such as `the permission routes.write is missing`. A few parts depend on the role: the
+organisation's settings can be changed only by its Owner, and only the Owner sees the restore
+review ([Organisation](organisation.md)); the Instance Admin also sees the instance's settings,
+PKI and updates, the instance's audit log and **Mark as trusted** on domain claims. The roles and
+what each may do are in [Members and roles](../accounts/members-and-roles.md).
 
 ## Layout and navigation
 

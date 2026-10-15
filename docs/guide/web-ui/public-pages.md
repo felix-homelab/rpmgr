@@ -87,8 +87,9 @@ An invitation link opens **Join an organisation**, at `<public URL>/invite#…`.
   **Your name**, a **New password** and **Repeat the new password**, then press **Join**. The page
   then says `Your account is ready.`; sign in with the address you were invited at.
 - **Signed in already**, the page says `You join as …`; **Join** adds your account to the
-  organisation and opens the overview. Sign in first if the invitation is for an address that
-  already has an account.
+  organisation and opens the overview. It works only when you are signed in with the address the
+  invitation is for; with another account, the controller refuses it. Sign in first if the
+  invitation is for an address that already has an account.
 
 ## Page not found
 

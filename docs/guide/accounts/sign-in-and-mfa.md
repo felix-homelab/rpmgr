@@ -125,9 +125,10 @@ Turning it on needs a step-up.
 
 Some actions need a fresh confirmation of your identity, even within a session: making an
 enrollment or gateway token, making an API token, changing your authenticator or recovery codes,
-granting the Admin or Owner role, changing the organisation's second-factor requirement, marking
-a domain as trusted, rotating the CA's intermediate, and resuming tokens or confirming members
-after a restore ([04](../../04-security.md#human-authentication-and-sessions)).
+granting the Admin or Owner role or inviting someone with it, changing the organisation's
+second-factor requirement, making a password reset link for someone, marking a domain as trusted,
+rotating the CA's intermediate, and resuming tokens or confirming members after a restore
+([04](../../04-security.md#human-authentication-and-sessions)).
 
 - **In the web UI** the **Confirm it is you** dialog opens when such an action needs it. Enter your
   password, or, if you have an authenticator, a code from it or a recovery code, and press
@@ -162,8 +163,8 @@ an authenticator stays, and signing in still asks for its code.
 
 ### Without a mail relay
 
-The **Forgot your password?** page says that the controller cannot send e-mail. Ask for a reset
-link instead:
+On **Reset your password**, the page that **Forgot your password?** opens, **Send a reset link**
+answers that the controller cannot send e-mail. Ask for a reset link instead:
 
 - **On the controller host**, whoever administers it runs, as root or the rpmgr service user:
 
@@ -175,8 +176,9 @@ link instead:
   ([04](../../04-security.md#roles)).
 - **Through the API**, an Owner or Admin can make a link for a member of their organisation (an
   Admin not for an Owner), and the Instance Admin for any user, with
-  `UserService.CreatePasswordResetLink` after a step-up ([API](../reference/api.md)). The web UI and
-  the command line have no button or command for it in this version.
+  `UserService.CreatePasswordResetLink` ([API](../reference/api.md)). It needs a signed-in browser
+  session and a step-up; it refuses an API token. The web UI and the command line have no button
+  or command for it in this version.
 
 The person then opens the link and sets a password as in step 3 above.
 

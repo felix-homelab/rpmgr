@@ -68,7 +68,7 @@ GATEWAY                        ENDPOINT             TRANSPORT  RESULT  HANDSHAKE
 gw_01M4ZEJPH7EHCT1XTFPV3MFHPH  gw1.example.com:443  quic       ok      41ms       18ms
 gw_01M4ZEJPH7EHCT1XTFPV3MFHPH  gw1.example.com:443  h2         ok      58ms       -
 
-UDP socket: receive buffer 7340032 bytes, send buffer 7340032 bytes, GSO on.
+UDP socket: receive buffer … bytes, send buffer … bytes, GSO on.
 MTU towards the gateway: 1500 on eth0.
 ```
 

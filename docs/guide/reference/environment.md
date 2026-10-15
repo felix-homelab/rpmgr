@@ -22,7 +22,7 @@ as an enrollment token, are never written to a log.
 | [`HTTPS_PROXY`, `HTTP_PROXY`, `ALL_PROXY`, `NO_PROXY`](#proxies) | Connector, gateway, controller, `rpmgr enroll`, `rpmgr setup`, the command line | Outbound connections through a proxy |
 | [`CREDENTIALS_DIRECTORY`](#credentials_directory) | Controller, all-in-one | Where systemd put the KEK credential |
 | [`RPMGR_INSTALL_GITHUB`, `RPMGR_INSTALL_API`](#rpmgr_install_github-and-rpmgr_install_api) | The global install script | Where the script downloads releases from |
-| [`QUIC_GO_DISABLE_GSO`, `QUIC_GO_DISABLE_ECN`, `QUIC_GO_DISABLE_RECEIVE_BUFFER_WARNING`](#quic-library-variables) | Gateway, connector | Switches of the QUIC library, for diagnosis |
+| [`QUIC_GO_DISABLE_GSO`, `QUIC_GO_DISABLE_ECN`, `QUIC_GO_DISABLE_RECEIVE_BUFFER_WARNING`, `QUIC_GO_DISABLE_CLIENTHELLO_SCRAMBLING`, `QUIC_GO_LOG_LEVEL`](#quic-library-variables) | Gateway, connector | Switches and the log of the QUIC library, for diagnosis |
 | [`XDG_CONFIG_HOME`, `HOME`, `SSL_CERT_FILE`, `SSL_CERT_DIR`](#variables-of-the-go-standard-library) | The command line, `rpmgr enroll`, the controller | Standard paths and trusted CAs |
 
 **Under sudo.** `sudo` resets the environment by default, so a variable you set in your shell does
@@ -39,7 +39,17 @@ Environment="HTTPS_PROXY=http://proxy.lan:3128"
 ```
 
 Then `sudo systemctl restart rpmgr-connector`. Never put a secret in `Environment=`: the units take
-none.
+none, and every user of the host can read a drop-in and `systemctl show`.
+
+**A proxy with a password.** A proxy URL with `user:password@` is a secret. `rpmgr setup --proxy`
+writes its URL into a drop-in that every user can read, so give setup no such URL. Put the variable
+into a file that only root can read, such as `/etc/rpmgr/proxy.env` with mode 0600, holding the
+line `HTTPS_PROXY=http://user:password@proxy.lan:3128`, and name it in the drop-in instead:
+
+```ini
+[Service]
+EnvironmentFile=/etc/rpmgr/proxy.env
+```
 
 ## RPMGR_CONFIG
 
@@ -185,6 +195,8 @@ none of them. They help to rule out a problem of the host's network stack.
 | `QUIC_GO_DISABLE_GSO=true` | Sends without UDP generic segmentation offload (GSO). rpmgr reads it too, so the metric `rpmgr_quic_gso_enabled` and `rpmgr diag transport` report GSO as off |
 | `QUIC_GO_DISABLE_ECN=true` | Turns off explicit congestion notification (ECN) on the QUIC sockets |
 | `QUIC_GO_DISABLE_RECEIVE_BUFFER_WARNING=true` | Silences the library's warning about a UDP buffer below what it asks for. The metric `rpmgr_quic_udp_buffer_warning` still reports it |
+| `QUIC_GO_DISABLE_CLIENTHELLO_SCRAMBLING=true` | Sends the TLS ClientHello of a QUIC handshake that the host starts, such as a connector's to a gateway, in order instead of scrambled across the first packets |
+| `QUIC_GO_LOG_LEVEL` | `error`, `info` or `debug`: the library logs at that level to standard error, in its own plain-text format, beside rpmgr's log. `debug` logs packet contents; use it only briefly |
 
 Set them for a service with a drop-in, as above. A UDP buffer that is too small is fixed with the
 host tuning, not by silencing the warning

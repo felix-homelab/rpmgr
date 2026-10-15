@@ -105,8 +105,10 @@ curl https://panel.example.com/rpmgr.v1.AuthService/StepUp \
 ```
 
 The step-up covers that token only, until `expireTime`; your sessions and other tokens keep their
-own. `StepUp` is the one method of your own account that a token may call. A stolen token alone
-therefore still cannot make such a change. The command line asks for the factor on the terminal
+own. Of the methods of your own account, a token may call only `StepUp`, and with the scope
+`org.read` also `TokenService.ListAPITokens` and `RevokeAPIToken` for your tokens. It cannot change
+your password, second factor or sessions. A stolen token alone therefore still cannot make such a
+change. The command line asks for the factor on the terminal
 when it meets `STEP_UP_REQUIRED`, and repeats the change.
 
 ## Organisations
@@ -153,10 +155,10 @@ explains.
 
 ### Page through a list
 
-Every `List…` method returns at most `pageSize` items, 50 if you send none and never more than
-500 ([07](../../07-api.md#resource-design)), ordered by ID, which is the order of creation. If
-there are more, the answer has a `nextPageToken`; send it back as `pageToken` with the same
-request for the next page:
+A `List…` method returns at most `pageSize` items, 50 if you send none; a larger `pageSize` than
+500 is cut to 500 ([07](../../07-api.md#resource-design)). The items are ordered by ID, which is
+the order of creation. If there are more, the answer has a `nextPageToken`; send it back as
+`pageToken` with the same request for the next page:
 
 ```sh
 rpc GatewayService/ListGatewayGroups "{\"orgId\":\"$ORG\",\"pageSize\":1}"
@@ -169,6 +171,16 @@ rpc GatewayService/ListGatewayGroups "{\"orgId\":\"$ORG\",\"pageSize\":1}"
 A page token is opaque and bound to its query: a token sent with other filters, or altered, is
 `INVALID_ARGUMENT` (`api: the page_token is not valid for this request`). The last page has no
 `nextPageToken`.
+
+Some lists differ:
+
+- **The audit log.** `AuditService.ListAuditEntries` and `ListInstanceAuditEntries` return the
+  newest entries first, and refuse a `pageSize` above 500 with `INVALID_ARGUMENT` instead of
+  cutting it.
+- **Short lists.** `AuthService.ListSessions`, `OrgService.ListMembers` and
+  `ListSuspendedAPITokens`, and `TokenService.ListAPITokens` take no `pageSize` and no
+  `pageToken`: they return everything in one answer. Sessions and tokens come newest first,
+  members with the Owners first.
 
 ### Create a route and a target
 
@@ -395,7 +407,9 @@ Messages never hold secrets or other orgs' data. An error that the method did no
 | Code | When | Reason |
 |---|---|---|
 | `invalid_argument` | A field breaks its rules (with `buf.validate.Violations`), a bad mask, a bad page token, a reused request ID | — |
-| `unauthenticated` | No credentials, or credentials that are not valid | — |
+| `invalid_argument` | `StepUp` without a second factor, for a user who has one | `MFA_REQUIRED` |
+| `already_exists` | A name, hostname, public port or domain claim that is taken already | — |
+| `unauthenticated` | No credentials, or credentials that are not valid, or any API token from an address that sent too many failed ones ([Rate limits](#rate-limits)) | — |
 | `unauthenticated` | The method needs a recent step-up | `STEP_UP_REQUIRED` |
 | `unauthenticated` | `Login` without the second factor of a user who has one | `MFA_REQUIRED` |
 | `permission_denied` | Your role or the token's scopes lack the permission; the metadata names it | `PERMISSION_MISSING` |
@@ -423,16 +437,22 @@ Messages never hold secrets or other orgs' data. An error that the method did no
 The controller limits only what an attacker could guess at
 ([04](../../04-security.md#human-authentication-and-sessions)):
 
-- sign-ins and password resets per client address, and failed sign-ins per account, which wait
-  longer after each failure in a row;
-- failed step-ups per user;
-- enrollments per client address;
-- API tokens that fail, per client address: after several failed tokens, every further token from
-  that address waits, and is refused like any token that is not valid.
+- sign-ins and completed password resets per client address, and failed sign-ins per account,
+  which wait longer after each failure in a row;
+- requested password resets per client address and per e-mail address;
+- failed step-ups and wrong current passwords per user, counted together;
+- API tokens that fail, per client address.
 
 A limited call is `RESOURCE_EXHAUSTED` with `google.rpc.RetryInfo`, whose `retryDelay` says how
-long to wait. Calls with a valid token are not limited otherwise; still, keep scripts from
-polling. Watch for changes with a stream instead.
+long to wait. Failed API tokens are the exception. After several from one address, every token
+from that address, valid ones too, is refused with `UNAUTHENTICATED`
+(`api: the credentials are not valid`) and no `RetryInfo` until the wait is over. So a script
+that keeps sending a wrong token also locks out the right one from its host: fix the token, wait,
+and try again. Enrollments are limited per client address as well, but in the agents' own
+protocol, not in this API ([Enrolling connectors](../connectors/enroll.md)).
+
+Calls with a valid token are not limited otherwise; still, keep scripts from polling. Watch for
+changes with a stream instead.
 
 ## Compatibility
 
@@ -446,8 +466,11 @@ enum value you do not know as unspecified.
 The files in [proto/rpmgr/v1](../../../proto/rpmgr/v1/) are the reference: every method, every
 field, its rules and a comment on what it does. Each method also states the permission it needs,
 in its `(rpmgr.v1.authz)` option, whether it needs a step-up, and whether it changes nothing
-(`idempotency_level = NO_SIDE_EFFECTS`); secret fields carry `(rpmgr.v1.sensitive)` and are never
-returned ([options.proto](../../../proto/rpmgr/v1/options.proto)).
+(`idempotency_level = NO_SIDE_EFFECTS`). Secret fields carry `(rpmgr.v1.sensitive)` and are
+redacted in logs and the audit log ([options.proto](../../../proto/rpmgr/v1/options.proto)). A
+secret you send, such as a password, is never returned. A secret the controller makes, such as a
+new API token, an enrollment token, recovery codes or a reset or invitation link, is returned
+once, in the answer that makes it.
 
 | Service | File | What it covers |
 |---|---|---|

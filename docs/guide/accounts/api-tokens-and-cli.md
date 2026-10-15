@@ -18,7 +18,8 @@ Calling the API directly is described in [API](../reference/api.md).
   ([04](../../04-security.md#human-authentication-and-sessions)). The overview lists your tokens
   that expire soon ([Overview](../web-ui/overview.md#needs-attention)).
 - **Shown once:** the controller keeps only a hash of the token. It starts with `rpmgr_pat_`; the
-  web UI shows the first characters after that, the prefix, so that you can tell tokens apart.
+  web UI shows its start, the prefix, which is `rpmgr_pat_` and the next four characters, so that
+  you can tell tokens apart.
 - **Made in the web UI only**, from a signed-in session after a step-up, so that a token never
   makes another token.
 
@@ -31,12 +32,12 @@ Service accounts, whose tokens belong to no person, come with Phase 2
 |---|---|
 | `org.read` | Viewing resources, status and metrics; every command needs it |
 | `routes.write` | Routes, their targets and access policies |
-| `connectors.write` | Enrolling and revoking connectors |
-| `infrastructure.write` | Gateways, gateway groups, port pools, domains and certificates |
-| `members.write` | Members and invitations |
+| `connectors.write` | Enrolling connectors, changing, switching off and decommissioning them, and revoking enrollment tokens |
+| `infrastructure.write` | Gateways and their enrollment tokens, gateway groups, port pools and quotas, domains, certificates and CA bundles |
+| `members.write` | Members and invitations, and the restore review, which only an Owner confirms |
 | `audit.read` | Reading the audit log |
-| `org.write` | The organisation's settings and its second-factor requirement |
-| `instance.admin` | The instance: CA, KEK, system gateways and instance settings; offered to the Instance Admin only |
+| `org.write` | Renaming the organisation, its settings and its second-factor requirement |
+| `instance.admin` | The instance: the CA's intermediate, the instance's settings and the mail relay's password, the instance's audit log, trusted domains and the list of users; offered to the Instance Admin only |
 
 A scope your role does not have is refused when you make the token. Give a token only the scopes
 its job needs: a backup script that reads, `org.read` alone; a deployment that changes routes,
@@ -70,7 +71,9 @@ The token is now listed with its name, prefix, expiry and scopes
 ## Log in on the command line
 
 `rpmgr login` checks the token against the controller and stores it for every command of the
-public API, such as `rpmgr list route` or `rpmgr create route`.
+public API, such as `rpmgr list route` or `rpmgr create route`. Flags come before the name, the ID
+or the kind, as in `rpmgr get -o yaml route web`: a command reads no flag after its first argument
+that is not a flag.
 
 ```sh
 rpmgr login --controller https://panel.example.com --org org_01M4ZEXGQAF0P9DZXJYKCMBTGG
@@ -102,7 +105,7 @@ What `rpmgr login` says when it refuses:
 |---|---|
 | `that is not a personal API token; create one in the web UI under Account` | The text does not start with `rpmgr_pat_` |
 | `the controller does not accept the token: it is unknown, expired or revoked` | Make a new token |
-| `the token lacks the org.read scope, which every command needs` | Make a token with `org.read` |
+| `the token lacks the org.read scope, which every command needs` | Make a token with `org.read`. The same message comes when the organisation requires a second factor and the token was made from a session without one: sign in with your authenticator and make a new token |
 | `the token does not belong to the org …` | `--org` names another organisation than the token's |
 
 Any later command that the controller refuses for an invalid token says to log in again with a
@@ -163,7 +166,7 @@ resumes those they trust, one by one, on the **Organisation** page
 ## Troubleshooting
 
 - **`the permission … is missing`:** the token lacks that scope, or your role lacks that
-  permission. Make a token with the scope, or ask an Owner for the role.
+  permission. Make a token with the scope, or ask an Owner or an Admin for the role.
 - **`not found` for something that exists:** the token belongs to another organisation; log in with
   a token of the right one.
 - **More:** [Troubleshooting](../operations/troubleshooting.md).
