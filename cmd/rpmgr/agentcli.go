@@ -113,7 +113,7 @@ func statusCommand() *cli.Command {
 			}
 			row("Certificate", fmt.Sprintf("expires %s, %s", leaf.NotAfter.UTC().Format(time.RFC3339), state))
 		}
-		row("Controller", strings.Join(l.Endpoints, ", "))
+		row("Controller", strings.Join(l.ControllerEndpoints(), ", "))
 		switch {
 		case l.SnapshotErr != nil:
 			row("Configuration", "the stored copy does not verify: "+l.SnapshotErr.Error())
@@ -185,7 +185,7 @@ func diagCommand() *cli.Command {
 				return writeDiagnosis(env, d)
 			}),
 		agentCommand("clock", "compare this host's clock with the controller's", "", nil, func(ctx context.Context, env *cli.Env, b agentBoot, _ []string) error {
-			c, err := agent.MeasureClock(ctx, b.IdentityDir, version.Get().Version, time.Now, nil)
+			c, err := agent.MeasureClock(ctx, b.IdentityDir, b.StateDir, version.Get().Version, time.Now, nil)
 			if err != nil {
 				return fmt.Errorf("no controller answered; a TLS error about an expired or not yet valid certificate means this host's clock is far off: %w", err)
 			}
