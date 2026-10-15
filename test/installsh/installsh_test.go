@@ -128,6 +128,7 @@ func TestInstall(t *testing.T) {
 			}
 			for _, want := range []string{
 				"verified rpmgr 1.4.2 (manifest 87)",
+				"== /etc/sysctl.d/60-rpmgr.conf\n# rpmgr: ", "\nnet.core.rmem_max = 7340032\nnet.core.wmem_max = 7340032\n== ", // whatever the host has
 				"endpoints: ['" + srv.URL + "']", "admin: '127.0.0.1:7384'", // the next free port
 				"auto_update: auto", "update_channel: stable", // the update keys, always explicit
 				`{"method":"script","path":"/usr/local/bin/rpmgr","variant":"full","role":"connector"}`,
@@ -148,6 +149,93 @@ func TestInstall(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// sysctl plays the kernel's settings for TestInstall_Again: a value is the one last written, else
+// 212992, a kernel default; with /tmp/sysctl-fails, writing fails, as in a container.
+const sysctl = `#!/bin/sh
+echo "sysctl $*" >>/tmp/sysctl-calls
+case $1 in
+  -n) cat "/tmp/sysctl/$2" 2>/dev/null || echo 212992 ;;
+  -q) [ "$2" = -w ] && [ ! -e /tmp/sysctl-fails ] && mkdir -p /tmp/sysctl && echo "${3#*=}" >"/tmp/sysctl/${3%%=*}" ;;
+  *) exit 1 ;;
+esac
+`
+
+// TestInstall_Again (#567): the host tuning when the script runs again. The file holds the 7 MiB
+// UDP buffers on every run, although the first run raised them already, so they hold after the
+// next boot; BBR, once asked for, stays until the operator removes or comments out its line, also
+// when written by hand. Applied at once, the buffers only rise, never lowering larger ones; where
+// sysctl fails, the file is written all the same and applies at the next boot.
+func TestInstall_Again(t *testing.T) {
+	if _, err := exec.LookPath("docker"); err != nil {
+		t.Fatal("docker is needed")
+	}
+	srv, dir, _ := testRelease(t)
+	if err := os.WriteFile(filepath.Join(dir, "sysctl"), []byte(sysctl), 0o755); err != nil { //nolint:gosec // G306: run in the container
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Minute)
+	defer cancel()
+	conf := "/etc/sysctl.d/60-rpmgr.conf"
+	out, err := exec.CommandContext(ctx, "docker", "run", "--rm", "--network", "host", "-v", dir+":/t:ro",
+		"-e", "CURL_CA_BUNDLE=/t/ca.pem", image("debian-13"), "sh", "-c", apt+` &&
+		cp /t/systemctl /t/sysctl /usr/local/sbin/ && cp /t/token /root/token && chmod 0600 /root/token &&
+		step() {
+		  echo "== step $1"; shift
+		  sh /t/install.sh --controller `+srv.URL+` --ca-pin sha256:pin --token-file /root/token "$@" 2>&1; echo "exit: $?"
+		  echo "-- file"; cat `+conf+`; echo "-- calls"; cat /tmp/sysctl-calls; rm -f /tmp/sysctl-calls
+		}
+		step first --tcp-bbr
+		step again
+		sed -i 's/^net.ipv4.tcp_congestion_control/# &/' `+conf+` && step commented
+		echo '  net/ipv4/tcp_congestion_control=bbr ' >>`+conf+` && step by-hand
+		echo 16777216 >/tmp/sysctl/net.core.rmem_max && echo 16777216 >/tmp/sysctl/net.core.wmem_max && step larger
+		rm -f /tmp/sysctl/* && touch /tmp/sysctl-fails && step fails`).CombinedOutput()
+	if err != nil {
+		t.Fatalf("docker: %v\n%s", err, out)
+	}
+	steps := map[string]string{}
+	for _, s := range strings.Split(string(out), "== step ")[1:] {
+		name, body, _ := strings.Cut(s, "\n")
+		steps[name] = body
+	}
+	const (
+		buffers = "\nnet.core.rmem_max = 7340032\nnet.core.wmem_max = 7340032\n"
+		bbr     = "\nnet.ipv4.tcp_congestion_control = bbr\n"
+		kept    = "keeping BBR from /etc/sysctl.d/60-rpmgr.conf; remove its line there to stop it"
+		rmem    = "sysctl -q -w net.core.rmem_max=7340032\n"
+		wmem    = "sysctl -q -w net.core.wmem_max=7340032\n"
+		setBBR  = "sysctl -q -w net.ipv4.tcp_congestion_control=bbr\n"
+		later   = "could not apply /etc/sysctl.d/60-rpmgr.conf now; it applies at the next boot"
+	)
+	for _, tc := range []struct {
+		step      string
+		want, not []string
+	}{
+		{"first", []string{buffers + "net.ipv4.tcp_congestion_control = bbr\n-- calls", rmem, wmem, setBBR}, []string{kept, later}},
+		{"again", []string{buffers + "net.ipv4.tcp_congestion_control = bbr\n-- calls", kept, setBBR}, []string{"-w net.core", later}},
+		{"commented", []string{buffers + "-- calls"}, []string{kept, "tcp_congestion_control", later}},
+		{"by-hand", []string{buffers + "net.ipv4.tcp_congestion_control = bbr\n-- calls", kept, setBBR}, []string{"-w net.core", "net/ipv4", later}},
+		{"larger", []string{buffers, bbr, setBBR}, []string{"-w net.core", later}},
+		{"fails", []string{buffers, bbr, rmem, wmem, setBBR, later}, nil},
+	} {
+		body, ok := steps[tc.step]
+		if !ok || !strings.Contains(body, "exit: 0\n") {
+			t.Errorf("%s: did not end well:\n%s", tc.step, out)
+			continue
+		}
+		for _, w := range tc.want {
+			if !strings.Contains(body, w) {
+				t.Errorf("%s: no %q in:\n%s", tc.step, w, body)
+			}
+		}
+		for _, n := range tc.not {
+			if strings.Contains(body, n) {
+				t.Errorf("%s: %q in:\n%s", tc.step, n, body)
+			}
+		}
 	}
 }
 
