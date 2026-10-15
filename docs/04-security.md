@@ -944,8 +944,10 @@ Phase 3 item ([13](13-roadmap.md#phase-3--advanced)).
     only, over HTTPS with curl or wget.
   - **Which release:** the pinned version, or `--version`; the repository's copy asks the GitHub
     API for the latest release, and with `--prerelease` for the latest including pre-releases.
-  - **Options:** `[--version <version>] [--prerelease] [--no-setup] [--dir <directory>]
-    [--verify-only]`.
+  - **Options:** `[--version <version>] [--prerelease] [--no-setup] [--upgrade] [--restart]
+    [--dir <directory>] [--verify-only]`. `--upgrade` replaces the binary of a host that has one
+    and nothing else; `--restart` restarts the rpmgr services that run
+    ([10](10-operations.md#upgrades-and-version-skew)).
   - **What it installs,** only after the verification: the binary in `/usr/local/bin` (replaced in
     one rename), the system user `rpmgr`, `/etc/rpmgr` and `/var/lib/rpmgr`. It writes no
     configuration, and running it again leaves the user, the directories and the configuration as

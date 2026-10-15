@@ -35,11 +35,26 @@ case "$1 ${2-}" in
 esac
 `
 
+// globalSystemctl is a systemctl that records its calls: the units listed in /tmp/running run, and
+// with /tmp/crashloop systemd restarts a unit at every look at it, as it does a failing one.
+const globalSystemctl = `#!/bin/sh
+echo "systemctl $*" >>/tmp/systemctl-calls
+case $1 in
+  is-active) grep -qx "$3" /tmp/running 2>/dev/null ;;
+  restart) exit 0 ;;
+  show)
+    n=$(cat /tmp/nrestarts 2>/dev/null || echo 0)
+    if [ -f /tmp/crashloop ]; then n=$((n + 1)); echo "$n" >/tmp/nrestarts; fi
+    echo "$n" ;;
+esac
+`
+
 // TestGlobalInstall runs the global install script, deploy/install.sh as go generate writes it but
 // with test root keys, in containers of the supported distributions against a fake of GitHub
 // (docs/10-operations.md, "Install paths"): it installs the binary, the user and the directories,
 // does so again without touching the configuration, and refuses a changed binary or manifest, a
-// host it has no build for, and a host without OpenSSL 3.
+// host it has no build for, and a host without OpenSSL 3. On Debian 12 it also upgrades with
+// --upgrade and --restart (#553), and refuses --upgrade on a host without rpmgr.
 func TestGlobalInstall(t *testing.T) {
 	if _, err := exec.LookPath("docker"); err != nil {
 		t.Fatal("docker is needed")
@@ -101,6 +116,7 @@ func TestGlobalInstall(t *testing.T) {
 	write("install.sh", string(script), 0o644)
 	write("ca.pem", string(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: srv.Certificate().Raw})), 0o644)
 	write("s390x/uname", "#!/bin/sh\n[ \"$1\" = -s ] && echo Linux || echo s390x\n", 0o755)
+	write("systemd/systemctl", globalSystemctl, 0o755)
 	sum := sha256.Sum256([]byte(globalStub))
 
 	// The test CA joins the system's trust store, which curl and wget both read.
@@ -132,7 +148,21 @@ func TestGlobalInstall(t *testing.T) {
 				sh /t/install.sh --version 1.4.3 --no-setup; echo "exit changed binary: $?"
 				sh /t/install.sh --version 1.4.4 --no-setup; echo "exit changed manifest: $?"
 				PATH=/t/s390x:$PATH sh /t/install.sh --no-setup; echo "exit s390x: $?"
+				sh /t/install.sh --upgrade; echo "exit upgrade first: $?"
 				[ -e /usr/local/bin/rpmgr ] && echo "INSTALLED AFTER A REFUSAL"`
+			}
+			upgrade := ""
+			if d.refusals {
+				// --upgrade with a service that runs prints nothing after the keys but how to restart it;
+				// --restart restarts it, and refuses one that does not stay up.
+				upgrade = `
+				echo rpmgr-all-in-one >/tmp/running
+				PATH=/t/systemd:$PATH sh /t/install.sh --upgrade >/tmp/upgrade.out 2>&1; echo "exit upgrade: $?"
+				echo "== after the keys"; sed -n '/^release root keys:/,$p' /tmp/upgrade.out | tail -n +2; echo "== end"
+				PATH=/t/systemd:$PATH sh /t/install.sh --upgrade --restart; echo "exit restart: $?"
+				touch /tmp/crashloop
+				PATH=/t/systemd:$PATH sh /t/install.sh --upgrade --restart; echo "exit crashloop: $?"
+				echo "== systemctl"; cat /tmp/systemctl-calls`
 			}
 			out, err := exec.CommandContext(ctx, "docker", "run", "--rm", "--network", "host", "-v", dir+":/t:ro", d.image, "sh", "-c",
 				d.prepare+" && "+env+refusals+`
@@ -145,7 +175,7 @@ func TestGlobalInstall(t *testing.T) {
 				echo "== owner"; stat -c '%n %U %a' /etc/rpmgr /var/lib/rpmgr /usr/local/bin/rpmgr
 				echo "== config"; cat /etc/rpmgr/all-in-one.yaml
 				echo "== calls"; cat /tmp/rpmgr-calls
-				echo "== binary"; sha256sum /usr/local/bin/rpmgr | cut -d' ' -f1`).CombinedOutput()
+				echo "== binary"; sha256sum /usr/local/bin/rpmgr | cut -d' ' -f1`+upgrade).CombinedOutput()
 			text := string(out)
 			if d.fail != "" {
 				if !strings.Contains(text, d.fail) || !strings.Contains(text, "exit first: 1") {
@@ -167,7 +197,13 @@ func TestGlobalInstall(t *testing.T) {
 			}
 			if d.refusals {
 				want = append(want, "SHA-256 does not match", "exit changed binary: 1", "does not verify", "exit changed manifest: 1",
-					"no rpmgr build for linux/s390x", "exit s390x: 1")
+					"no rpmgr build for linux/s390x", "exit s390x: 1",
+					"nothing to upgrade: /usr/local/bin/rpmgr is not installed; install it without --upgrade", "exit upgrade first: 1",
+					"exit upgrade: 0",
+					"== after the keys\nrpmgr install: rpmgr-all-in-one runs the previous binary until you restart it: "+
+						"sudo systemctl restart rpmgr-all-in-one\n== end\n",
+					"restarted rpmgr-all-in-one with rpmgr 1.4.2", "exit restart: 0", "systemctl restart rpmgr-all-in-one",
+					"rpmgr-all-in-one does not stay up with rpmgr 1.4.2; see: journalctl -u rpmgr-all-in-one -n 50", "exit crashloop: 1")
 			}
 			for _, w := range want {
 				if !strings.Contains(text, w) {
