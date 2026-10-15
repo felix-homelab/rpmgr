@@ -473,8 +473,10 @@ flowchart LR
   agent, request ID, reason, and the redacted request, as text.
 - **Filters:** action (exact) and actor ID, kept in the URL (U9). When no entry matches, the page
   says so instead of showing an empty list.
-- **"Verify the chain"** checks the hash chain from its last signed checkpoint. It says whether the
-  chain is intact up to which entry, with the checkpoint, or where it broke and why
+- **"Verify the chain"** checks the whole hash chain from its anchor: the first entry, or, once
+  retention removed entries, the signed checkpoint just before the oldest entry left. It checks
+  every checkpoint's signature and, while its entry is kept, that entry's hash. It says whether the
+  chain is intact up to which entry, with the last checkpoint, or where it broke and why
   ([04](04-security.md#audit-log)).
 - [R] The export of the information architecture is left out in Phase 1: the API has no export
   method, and the log is read in pages.

@@ -26,6 +26,11 @@ authority and win on any conflict. Personal settings belong in the ignored `CLAU
 - **Design first.** Behaviour is described in the documents before it is implemented, and docs
   change in the same PR as the behaviour. Where each fact goes: CONTRIBUTING, "Where each fact
   goes"; checklist: "Feature documentation checklist".
+- **User guide** ([docs/guide](docs/guide/README.md), D91). Everything users reach is also
+  documented for users there, in the same PR: the how-to page of its topic, its web UI page and
+  screenshot, its reference page. The CLI reference is generated
+  (`go test ./cmd/rpmgr -run TestCLIReference -update`). The guide states no exact timeout, size
+  or limit; it links to 03, 04 or 15.
 - **Single sources of truth.** Connection timeouts, sizes and limits live only in
   [03](docs/03-connections.md); identities, lifetimes and cryptographic parameters only in
   [04](docs/04-security.md); DNS timers and limits only in [15](docs/15-dns.md). Link to them;
