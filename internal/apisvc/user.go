@@ -87,14 +87,18 @@ func (u *User) RemoveTOTP(ctx context.Context, _ *connect.Request[rpmgrv1.Remove
 	return connect.NewResponse(&rpmgrv1.RemoveTOTPResponse{}), nil
 }
 
-// RegenerateRecoveryCodes implements UserService.
+// RegenerateRecoveryCodes implements UserService. The user's other sessions end with the old codes,
+// in the same transaction; the session that asked stays, and so do the user's API tokens, as after
+// a password change (D96).
 func (u *User) RegenerateRecoveryCodes(ctx context.Context, _ *connect.Request[rpmgrv1.RegenerateRecoveryCodesRequest]) (
 	*connect.Response[rpmgrv1.RegenerateRecoveryCodesResponse], error) {
 	c, err := sessionCaller(ctx)
 	if err != nil {
 		return nil, err
 	}
-	codes, err := u.MFA.For(ctx).RegenerateRecoveryCodes(c.UserID)
+	codes, err := u.MFA.For(ctx).RegenerateRecoveryCodes(c.UserID, func(tx *ent.Tx) (int, error) {
+		return u.Sessions.RevokeAllIn(tx, c.UserID, c.CredentialID, c.UserID, "recovery codes replaced")
+	})
 	if errors.Is(err, accounts.ErrNoMFA) {
 		return nil, connect.NewError(connect.CodeFailedPrecondition, err)
 	}
