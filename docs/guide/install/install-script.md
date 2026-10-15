@@ -173,7 +173,7 @@ as the local policy reads it, so a pasted command runs nothing but the installer
 | `--allow-target <target>` | A target the connector's local policy allows. Repeat it for more. A connector only |
 | `--deny-target <target>` | A target the connector's local policy denies, whatever allows it. Repeat it for more. A connector only |
 | `--token-file <file>` | Read the enrollment or gateway token from this file instead of asking |
-| `--tcp-bbr` | Also set the TCP congestion control to BBR in the host tuning |
+| `--tcp-bbr` | Also set the TCP congestion control to BBR in the host tuning. A later run keeps it ([below](#run-again)) |
 | `--verify-only` | Download and verify the release, install nothing. Needs neither root nor a pin |
 
 A target is an address or a subnet with an optional port or port range, an IPv6 address in
@@ -201,9 +201,10 @@ the global script needs, and `systemctl`, `useradd` and `install`.
    never stands without the denials that narrow it.
 7. **Records** how rpmgr was installed and the release it came from in `/var/lib/rpmgr-update/`,
    for the automatic updates that come later.
-8. **Host tuning:** writes `/etc/sysctl.d/60-rpmgr.conf`, which raises the UDP buffers to what QUIC
-   needs where they are lower, and with `--tcp-bbr` sets BBR. It applies the file at once, or says
-   that it applies at the next boot
+8. **Host tuning:** writes `/etc/sysctl.d/60-rpmgr.conf` with the UDP buffers QUIC needs, and with
+   `--tcp-bbr` BBR. It applies them at once, raising a buffer only where it is lower, or says that
+   the file applies at the next boot. To keep larger buffers after a boot, set them in a file that
+   sorts after it, such as `/etc/sysctl.d/99-local.conf`
    ([03](../../03-connections.md#host-tuning-applied-by-the-installer)).
 9. **Enrolls** with `rpmgr enroll`, unless the host has an identity already: then it says
    `this host is enrolled already; to enroll it again, run rpmgr enroll --replace`.
@@ -221,11 +222,23 @@ Check the agent with `sudo rpmgr status`. Its last line, `Service:`, says `runni
 the agent holds a session to the controller and has applied its configuration
 ([Status and diagnostics](../connectors/status-and-diagnostics.md)).
 
+### Run again
+
 Run again on an enrolled host, the script replaces the binary and keeps the boot file, the policy
 file and the identity. It adds to the policy file the command's targets that it does not cover
-yet. It writes the systemd unit and `/etc/sysctl.d/60-rpmgr.conf` again, so give `--tcp-bbr` again
-to keep BBR. `systemctl enable --now` does not restart a service that runs, so restart it yourself
-to run the new binary: `sudo systemctl restart rpmgr-<role>`.
+yet. It writes the systemd unit and `/etc/sysctl.d/60-rpmgr.conf` again, with the UDP buffers, and
+with BBR when you give `--tcp-bbr` or the file sets it already. Then it says:
+
+```text
+rpmgr install: keeping BBR from /etc/sysctl.d/60-rpmgr.conf; remove its line there to stop it
+```
+
+To stop setting BBR, remove the line `net.ipv4.tcp_congestion_control = bbr` from the file, or
+comment it out; the host keeps BBR until the next boot. The script writes the whole file on every
+run, so put settings of your own in a file of your own.
+
+`systemctl enable --now` does not restart a service that runs, so restart it yourself to run the
+new binary: `sudo systemctl restart rpmgr-<role>`.
 
 ### The enrollment token
 

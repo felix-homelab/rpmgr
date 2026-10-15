@@ -69,8 +69,8 @@ func TestEveryCommandIsAvailable(t *testing.T) {
 	})
 }
 
-// TestSystemdUnit: the unit of an agent role needs no boot file; a controller's takes the KEK
-// credential from its boot file, and needs one.
+// TestSystemdUnit: the unit of an agent role needs no boot file; a controller's or all-in-one's
+// takes the KEK credential and the revocation-log sink from its boot file, and needs one.
 func TestSystemdUnit(t *testing.T) {
 	code, stdout, stderr := runRpmgr("systemd-unit", "--bin", "/usr/bin/rpmgr", "connector")
 	if code != cli.ExitOK || !strings.Contains(stdout, "ExecStart=/usr/bin/rpmgr connector --config /etc/rpmgr/connector.yaml\n") {
@@ -81,12 +81,33 @@ func TestSystemdUnit(t *testing.T) {
 		t.Fatal(err)
 	}
 	code, stdout, _ = runRpmgr("systemd-unit", "--config", boot, "controller")
-	if code != cli.ExitOK || !strings.Contains(stdout, "LoadCredentialEncrypted=rpmgr-kek:/etc/rpmgr/credstore/rpmgr-kek\n") {
-		t.Errorf("controller with a credential KEK: exit %d, %q", code, stdout)
+	if code != cli.ExitOK || !strings.Contains(stdout, "LoadCredentialEncrypted=rpmgr-kek:/etc/rpmgr/credstore/rpmgr-kek\n") ||
+		strings.Contains(stdout, "ReadWritePaths=") {
+		t.Errorf("controller with a credential KEK and no sink: exit %d, %q", code, stdout)
 	}
 	code, _, stderr = runRpmgr("systemd-unit", "--config", filepath.Join(t.TempDir(), "none.yaml"), "controller")
 	if code != cli.ExitError || !strings.Contains(stderr, "init") {
 		t.Errorf("controller without a boot file: exit %d, %q", code, stderr)
+	}
+	// The revocation-log sink of the boot file is writable for the controller and the all-in-one.
+	for _, role := range []string{"controller", "all-in-one"} {
+		boot := filepath.Join(t.TempDir(), role+".yaml")
+		if err := os.WriteFile(boot, []byte("version: 1\npublic_url: https://panel.example.com\nkek: {source: file, path: /etc/rpmgr/kek}\n"+
+			"revocation_log: {sink: /mnt/rpmgr-revocations/}\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		code, stdout, stderr = runRpmgr("systemd-unit", "--config", boot, role)
+		if code != cli.ExitOK || !strings.Contains(stdout, "\nReadWritePaths=-/mnt/rpmgr-revocations\n") || strings.Contains(stdout, "LoadCredential") {
+			t.Errorf("%s with a sink and a KEK file: exit %d, %q, %q", role, code, stdout, stderr)
+		}
+	}
+	// A sink systemd would read differently gives no unit at all, rather than one that cannot write it.
+	if err := os.WriteFile(boot, []byte("version: 1\npublic_url: https://panel.example.com\nrevocation_log: {sink: /mnt/my share}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	code, stdout, stderr = runRpmgr("systemd-unit", "--config", boot, "controller")
+	if code != cli.ExitError || stdout != "" || !strings.Contains(stderr, `"/mnt/my share"`) {
+		t.Errorf("controller with a sink holding a space: exit %d, %q, %q", code, stdout, stderr)
 	}
 }
 

@@ -39,9 +39,9 @@ type Plan struct {
 
 // booted is what setup reads back from a parsed boot file.
 type booted struct {
-	admin  string // the admin listener
-	policy string // the connector-local policy file
-	cred   string // the KEK's systemd credential, for the unit; empty for a KEK file
+	admin  string        // the admin listener
+	policy string        // the connector-local policy file
+	unit   units.Options // what the boot file decides of the unit: KEK credential, sink
 }
 
 type step struct {
@@ -193,13 +193,13 @@ func (p *Plan) bootFile() error {
 			parse = func(b []byte) (booted, error) {
 				var c config.AllInOne
 				err := config.Parse(b, &c)
-				return booted{admin: c.Listen.Admin, policy: c.PolicyFile, cred: credential(c.KEK.Source, c.KEK.Name)}, err
+				return booted{admin: c.Listen.Admin, policy: c.PolicyFile, unit: units.ForController(c.Controller())}, err
 			}
 		} else {
 			parse = func(b []byte) (booted, error) {
 				var c config.Controller
 				err := config.Parse(b, &c)
-				return booted{admin: c.Listen.Admin, cred: credential(c.KEK.Source, c.KEK.Name)}, err
+				return booted{admin: c.Listen.Admin, unit: units.ForController(c)}, err
 			}
 		}
 	case Gateway, Connector:
@@ -239,13 +239,6 @@ func (p *Plan) bootFile() error {
 		}
 	}
 	return nil
-}
-
-func credential(source, name string) string {
-	if source == config.KEKSystemdCredential {
-		return name
-	}
-	return ""
 }
 
 // tlsFiles returns the certificate and key files of the boot file: the operator's, or for a
@@ -479,7 +472,9 @@ func (p *Plan) unitSteps() {
 		title += ", restart " + name
 	}
 	p.add(title, func(ctx context.Context, r *Result) error {
-		unit, err := units.Render(role, units.Options{Bin: h.Paths.Bin, Credential: p.cred})
+		o := p.unit // as `rpmgr systemd-unit` renders it from the boot file
+		o.Bin = h.Paths.Bin
+		unit, err := units.Render(role, o)
 		if err != nil {
 			return err
 		}
