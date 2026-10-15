@@ -1,0 +1,181 @@
+# Upgrades
+
+rpmgr does not update itself yet: you upgrade each host by hand, with the new release's install
+script. This page gives the order of the hosts, the steps for each, what the install script's
+`--upgrade` and `--restart` do, which versions work together, and how to go back. Read it before
+every upgrade. Signed automatic updates of the agents are planned for Phase 2
+([13](../../13-roadmap.md#phase-2--production)).
+
+## Before you start
+
+- **Read the release notes** of every version between yours and the new one, in the
+  [CHANGELOG](../../../CHANGELOG.md) and on the
+  [Releases page](https://github.com/felix-homelab/rpmgr/releases).
+- **Back up the controller** and check that you have its KEK
+  ([Backup and restore](../operations/backup-and-restore.md)). The new controller migrates the
+  database when it starts, and the way back is a restore of that backup.
+- **Know your hosts:** `rpmgr version` on each, or the **Version** column of the gateways and the
+  connectors in the web UI.
+
+## The order
+
+Upgrade the **controller first, then the gateways, then the connectors**. A controller works with
+agents of its own minor version and of the one before, so agents may lag behind the controller by
+one minor version. Agents newer than the controller are not supported: they connect, the web UI
+warns, and the controller does not use what it does not know
+([10](../../10-operations.md#upgrades-and-version-skew)).
+
+An agent too old for the controller is refused with the reason `upgrade_required`, which the web UI
+shows, so a skew of more than one minor version is visible, not silent
+([03](../../03-connections.md#versioning-and-capabilities)).
+
+While the controller restarts, every gateway and connector keeps running its last configuration,
+and visitor traffic flows on ([03](../../03-connections.md#failure-modes)).
+
+## Upgrade a host
+
+On each host, download the new release's global install script and run it with `--upgrade` and
+`--restart`:
+
+```sh
+curl -fsSLO https://github.com/felix-homelab/rpmgr/releases/latest/download/install.sh
+sudo sh install.sh --upgrade --restart
+```
+
+For a pre-release, take `install.sh` from that release instead:
+`https://github.com/felix-homelab/rpmgr/releases/download/v<version>/install.sh`.
+
+What you see (abbreviated):
+
+```text
+rpmgr install: downloading rpmgr 0.1.1 for linux/amd64 from https://github.com/felix-homelab/rpmgr
+rpmgr install: verified rpmgr 0.1.1 (manifest …)
+rpmgr 0.1.1 (commit …, go…, linux/amd64)
+release root keys:
+  …
+rpmgr install: restarted rpmgr-connector with rpmgr 0.1.1
+```
+
+### 1. The controller
+
+1. Back up: `sudo rpmgr backup --out /root/rpmgr-before-0.1.1.tar`.
+2. Run the install script with `--upgrade --restart` on the controller's or all-in-one's host.
+3. Check that it is ready: `curl -fsS http://127.0.0.1:7381/readyz` prints `ok`. Sign in to the
+   web UI; the foot of the sidebar shows the new version.
+
+The controller applies the database migrations of the new version when it starts, under a lock.
+To apply them yourself first, stop the controller and run `sudo rpmgr migrate`, which keeps a copy
+of the database beside it, `<database>.before-migrate-<time>`, before it migrates.
+
+If the controller has no access to GitHub, import the new release into its mirror after the
+upgrade, so that new agents install the new version ([Air-gapped installations](air-gapped.md)).
+
+### 2. The gateways
+
+Upgrade the gateways one at a time. With several gateways in a group, drain each first, so that
+its visitors move to the others:
+
+1. **Drain** the gateway: in the web UI under **Network → Gateways**, open its group and choose
+   **Drain** on the gateway, or run `rpmgr drain gateway <gateway>`. It takes no new connections
+   and ends the open ones after its drain period ([Gateways](../gateways.md)).
+2. Run the install script with `--upgrade --restart` on the gateway's host.
+3. Check it: `sudo rpmgr status` ends with `Service: running and ready`.
+4. **Resume** it in the web UI, or run `rpmgr enable gateway <gateway>`.
+
+A gateway alone in its group drains by itself when it stops, but its routes cannot be reached
+until it is back.
+
+### 3. The connectors
+
+Run the install script with `--upgrade --restart` on each connector's host, and check it with
+`sudo rpmgr status`. A route whose targets are on several connectors keeps serving through the
+others while one restarts.
+
+## What --upgrade and --restart do
+
+**`--upgrade`** upgrades a host that has rpmgr:
+
+- It refuses a host without `/usr/local/bin/rpmgr` before it downloads anything:
+  `nothing to upgrade: /usr/local/bin/rpmgr is not installed; install it without --upgrade`.
+- It verifies the release as every install does, replaces the binary in one rename, and changes
+  nothing else: not the boot files, the policy, the identity, the units or the database.
+- It offers no setup. After the version and the release root keys, it prints only what is left to
+  do.
+
+**`--restart`** restarts every rpmgr service that runs, in the upgrade order: `rpmgr-controller`,
+`rpmgr-all-in-one`, `rpmgr-gateway`, `rpmgr-connector`.
+
+- After each restart it checks that the service stays active for 5 s without systemd restarting
+  it, and reports `restarted <unit> with rpmgr <version>`.
+- A service that does not stay up stops the script with exit code 1:
+  `<unit> does not stay up with rpmgr <version>; see: journalctl -u <unit> -n 50`.
+- With no service running, it says `no rpmgr service runs; nothing to restart`.
+- It also works without `--upgrade`, for example after a first installation.
+
+Without `--restart`, the script names each service that still runs the previous binary:
+
+```text
+rpmgr install: rpmgr-gateway runs the previous binary until you restart it: sudo systemctl restart rpmgr-gateway
+```
+
+The install script does not rewrite the systemd unit. To take the unit of a newer release, print
+it again with `rpmgr systemd-unit <role>`, as in
+[Manual installation and containers](manual.md#3-the-unit), then `sudo systemctl daemon-reload`
+and restart the service.
+
+### With an older install script
+
+The install script of v0.1.0-rc.7 and earlier has neither `--upgrade` nor `--restart`. With it,
+replace the binary with `--no-setup` and restart the service yourself:
+
+```sh
+sudo sh install.sh --no-setup
+sudo systemctl restart rpmgr-all-in-one   # or rpmgr-controller, rpmgr-gateway, rpmgr-connector
+```
+
+### Agent hosts without access to GitHub
+
+A gateway or connector host that reaches only the controller can take the new version from the
+controller, once the controller runs it and its mirror holds it. Run the controller's install
+command again, from the web UI or `rpmgr get install-command`, then restart the service: the script
+replaces the binary and keeps the boot file, the policy and the identity
+([The install scripts](install-script.md#the-controllers-install-script)).
+
+```sh
+curl -fsSLO 'https://panel.example.com/install.sh' && sudo sh install.sh \
+  --controller 'https://panel.example.com' --ca-pin 'sha256:…'
+sudo systemctl restart rpmgr-connector
+```
+
+## Release candidates
+
+Release candidates are pre-releases, such as `0.1.0-rc.7`. Install one with the `install.sh`
+attached to it, or with `--version 0.1.0-rc.7`; the container image has the tag of the version.
+
+Before v0.1.0, two changes of behaviour shipped without a way for old agents to take part, so
+upgrade the agents soon after the controller:
+
+- **Access policies:** a gateway of v0.1.0-rc.1 to rc.6 applies the first matching rule, so a deny
+  rule after an allow rule is ignored there until that gateway is upgraded; current versions let a
+  deny rule win ([D85](../../14-open-decisions.md#engineering)).
+- **Target priority and weight across connectors:** a gateway or connector of v0.1.0-rc.1 to rc.7
+  does not follow the priorities across connectors that current versions use
+  ([D90](../../14-open-decisions.md#engineering), [03](../../03-connections.md#multiple-gateways)).
+
+## Going back
+
+An agent can go back to the version before with the same script and `--version`:
+
+```sh
+sudo sh install.sh --upgrade --restart --version 0.1.0
+```
+
+A connector's local policy does not go back with the binary. An older binary may read a policy file
+that uses newer forms, such as `deny_targets`, as invalid, and then reaches no target until the file
+is changed back ([10](../../10-operations.md#hardened-systemd-units)).
+
+A controller cannot simply go back once it has migrated the database to the new version. Go back
+with the backup you made before the upgrade: install the old version with `--upgrade --version`,
+stop the controller, restore the backup and start it again
+([Backup and restore](../operations/backup-and-restore.md#restore)). The restore takes the
+instance back to the time of the backup, with the effects that page describes.

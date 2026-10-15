@@ -1,0 +1,59 @@
+# Access policies
+
+An access policy says who may reach a route: by client address, or with a password on HTTP
+routes. This page describes the web UI's **Access policies** page, where the organisation's
+policies are made and changed; they are attached to routes on each route's page. Every member sees
+the page; creating, changing and removing policies needs the Owner, Admin or Operator role
+(`routes.write`). The how-to page is [Access policies](../access-policies.md).
+
+![The access policies of "Example Lab"](../images/web/policies.png)
+
+## The list
+
+Each policy shows its name, its description, its rules, numbered, and the routes that use it, or
+`used by no route`. A rule reads as `allow …` or `deny …` with its addresses, or `basic auth: …`
+with its users' names.
+
+- **Export YAML** shows every policy as YAML ([The YAML view](README.md#the-yaml-view)).
+- **New access policy** opens the [form](#the-form) above the list.
+- **Edit…** opens the form for that policy.
+- **Remove…** asks `Remove the access policy …?`; **Remove it** removes it. The controller refuses
+  to remove a policy that routes use, and names them.
+
+After a change, the page follows it to the gateways
+([apply status](README.md#after-a-change-the-apply-status)).
+
+## The form
+
+**New access policy** or **Edit access policy** has:
+
+- **Name**, required, and **Description**.
+- **Rules**, each numbered, with its **Kind**:
+  - **Allow addresses** and **Deny addresses** take **Addresses (CIDRs, one per line)**, IPv4 or
+    IPv6, such as `198.51.100.0/24`.
+  - **Basic auth (HTTP routes)** takes users: each a **User** and a **Password**. **Add a user**
+    adds one, **Remove the user** removes one.
+- **Remove the rule** removes a rule; **Add a rule** adds one, an **Allow addresses** rule to start
+  with.
+- **Create the policy** or **Save** saves the policy; **Cancel** closes the form.
+
+The rules have no order. The form says it: `A deny rule wins: an address it matches is refused,
+whatever allows it.` The same holds across all the policies a route applies
+([D85](../../14-open-decisions.md#engineering)).
+
+Passwords are write-only: the page never shows them. When you edit a policy, a user it already has
+shows `unchanged` in the password field and keeps the password unless you type a new one; a new
+user needs a password. The gateway asks for these users' names and passwords on HTTP routes only;
+on other route types a basic-auth rule refuses every client
+([03](../../03-connections.md#access-policies)).
+
+## Attach a policy to a route
+
+Open the route's page, then use its **Access policies** card: choose the policy, **Attach**, and
+**Save** ([Routes](routes.md#access-policies)).
+
+## On the command line
+
+`rpmgr list access-policy`, `rpmgr get access-policy`, `rpmgr create access-policy`,
+`rpmgr update access-policy` and `rpmgr delete access-policy` do the same; `rpmgr create route`
+and `rpmgr update route` attach policies with `--policy` ([Command line](../reference/cli.md)).
