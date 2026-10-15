@@ -117,8 +117,13 @@ type Targets struct {
 	routes   map[string]Route
 	draining map[string]drainingRoute
 	health   map[string]*tunnelv1.RouteHealth
-	live     map[net.Conn]struct{} // the relayed target connections, which a stricter policy closes
-	probes   chan struct{}         // the certificate probes running, at most maxProbes
+	// refused holds, per route, the targets whose dial the policy refused on the resolved address,
+	// with the refusal's detail: a name, which the policy judges only once it resolves. A dial of
+	// the target that succeeds, a snapshot and a policy change clear them (#551).
+	refused map[string]map[string]string
+	gen     uint64                // counts Rechecks, so that a dial begun before one records no refusal after it
+	live    map[net.Conn]struct{} // the relayed target connections, which a stricter policy closes
+	probes  chan struct{}         // the certificate probes running, at most maxProbes
 }
 
 type drainingRoute struct {
@@ -135,7 +140,7 @@ func NewTargets(o TargetsOptions) *Targets {
 		o.UDPMetrics, _ = tunnel.NewUDPMetrics(nil)
 	}
 	return &Targets{o: o, routes: map[string]Route{}, draining: map[string]drainingRoute{}, health: map[string]*tunnelv1.RouteHealth{},
-		live: map[net.Conn]struct{}{}, probes: make(chan struct{}, maxProbes)}
+		refused: map[string]map[string]string{}, live: map[net.Conn]struct{}{}, probes: make(chan struct{}, maxProbes)}
 }
 
 // Set makes routes the snapshot's routes. A route no longer among them is reported not ready at
@@ -170,17 +175,19 @@ func (t *Targets) Set(routes []Route) {
 }
 
 // Recheck evaluates every route's readiness against the policy in force and reports the changes;
-// the connector calls it when the policy file changed. It also resets every relayed connection to
-// a target the policy no longer allows, so that a target taken out of the policy is not reachable
-// through a connection opened before, such as an upstream's pooled HTTP/2 connection.
+// the connector calls it when the policy file changed, and Set after each snapshot. It forgets the
+// names whose dial the policy refused, which the next dial judges again. It also resets every
+// relayed connection to a target the policy no longer allows, so that a target taken out of the
+// policy is not reachable through a connection opened before, such as an upstream's pooled HTTP/2
+// connection.
 func (t *Targets) Recheck() {
 	p := t.o.Policy()
 	t.mu.Lock()
+	clear(t.refused)
+	t.gen++
 	var changed []*tunnelv1.RouteHealth
 	for _, id := range slices.Sorted(maps.Keys(t.routes)) {
-		h := readiness(t.routes[id], p)
-		if old := t.health[id]; old == nil || old.GetReady() != h.GetReady() || old.GetReason() != h.GetReason() || old.GetDetail() != h.GetDetail() {
-			t.health[id] = h
+		if h := t.updateHealthLocked(id, readiness(t.routes[id], p, nil)); h != nil {
 			changed = append(changed, h)
 		}
 	}
@@ -237,18 +244,26 @@ func connAllowed(c net.Conn, p *policy.Policy) bool {
 	return p.Allows(ap.Addr().Unmap(), ap.Port())
 }
 
-func readiness(r Route, p *policy.Policy) *tunnelv1.RouteHealth {
+// readiness is the route's readiness under the policy: ready while one of its targets is allowed
+// and not among refused, the targets whose dial the policy refused on the resolved address.
+func readiness(r Route, p *policy.Policy, refused map[string]string) *tunnelv1.RouteHealth {
 	h := &tunnelv1.RouteHealth{RouteId: r.ID}
 	if p == nil || p.Invalid != nil {
 		h.Reason = agentv1.NotReadyReason_NOT_READY_REASON_POLICY_INVALID
 		return h
 	}
 	for _, tg := range r.Targets {
-		if tg.allowed(p) {
+		detail, wasRefused := refused[tg.ID]
+		if tg.allowed(p) && !wasRefused {
 			h.Ready = true
 			return h
 		}
-		if h.Detail == "" {
+		if h.Detail != "" {
+			continue
+		}
+		if wasRefused {
+			h.Detail = detail
+		} else {
 			h.Detail = tg.blockDetail(p)
 		}
 	}
@@ -262,18 +277,60 @@ func (t *Targets) report(h *tunnelv1.RouteHealth) {
 	}
 }
 
-// blocked marks a route not ready after a dial the policy refused on a resolved address.
-func (t *Targets) blocked(route, target string) {
-	t.o.Metrics.refused(route)
-	h := &tunnelv1.RouteHealth{RouteId: route, Reason: agentv1.NotReadyReason_NOT_READY_REASON_BLOCKED_BY_LOCAL_POLICY, Detail: target}
+// updateHealthLocked records the route's readiness and returns it if it changed, to be reported
+// once t.mu is released; nil if it did not. Under t.mu.
+func (t *Targets) updateHealthLocked(route string, h *tunnelv1.RouteHealth) *tunnelv1.RouteHealth {
+	if old := t.health[route]; old != nil && old.GetReady() == h.GetReady() && old.GetReason() == h.GetReason() &&
+		old.GetDetail() == h.GetDetail() {
+		return nil
+	}
+	t.health[route] = h
+	return h
+}
+
+// generation returns the count of Rechecks, which a dial takes before it starts.
+func (t *Targets) generation() uint64 {
 	t.mu.Lock()
-	old := t.health[route]
-	_, active := t.routes[route]
-	if active {
-		t.health[route] = h
+	defer t.mu.Unlock()
+	return t.gen
+}
+
+// blocked records a dial of the route's target that the policy refused on the resolved address,
+// unless a Recheck came after the dial began (gen): its policy or snapshot judges the target anew.
+// Only that target counts as blocked: the route is not ready once none of its targets is allowed
+// (#551), and stays ready while another one is.
+func (t *Targets) blocked(route, target, detail string, gen uint64) {
+	t.o.Metrics.refused(route)
+	p := t.o.Policy()
+	t.mu.Lock()
+	r, active := t.routes[route]
+	var h *tunnelv1.RouteHealth
+	if active && gen == t.gen {
+		if t.refused[route] == nil {
+			t.refused[route] = map[string]string{}
+		}
+		t.refused[route][target] = detail
+		h = t.updateHealthLocked(route, readiness(r, p, t.refused[route]))
 	}
 	t.mu.Unlock()
-	if active && (old == nil || old.GetReady() || old.GetDetail() != target) {
+	if h != nil {
+		t.report(h)
+	}
+}
+
+// dialled records a dial of the route's target that the policy allowed: a name refused before
+// resolves to an allowed address now, and counts as allowed again.
+func (t *Targets) dialled(route, target string) {
+	t.mu.Lock()
+	var h *tunnelv1.RouteHealth
+	if _, was := t.refused[route][target]; was {
+		delete(t.refused[route], target)
+		if r, active := t.routes[route]; active {
+			h = t.updateHealthLocked(route, readiness(r, t.o.Policy(), t.refused[route]))
+		}
+	}
+	t.mu.Unlock()
+	if h != nil {
 		t.report(h)
 	}
 }
@@ -373,6 +430,7 @@ func (t *Targets) open(ctx context.Context, open *tunnelv1.StreamOpen) (tunnelv1
 	}
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
+	gen := t.generation()
 	d := &net.Dialer{KeepAlive: tcpKeepAlive, Control: policy.Control(t.o.Policy)}
 	code := tunnelv1.ResultCode_RESULT_CODE_UPSTREAM_REFUSED
 	for _, tg := range order(r.Targets) {
@@ -384,7 +442,7 @@ func (t *Targets) open(ctx context.Context, open *tunnelv1.StreamOpen) (tunnelv1
 		if err != nil {
 			var b *policy.BlockedError
 			if errors.As(err, &b) {
-				t.blocked(r.ID, b.Detail())
+				t.blocked(r.ID, tg.ID, b.Detail(), gen)
 				continue
 			}
 			code = codeOf(err)
@@ -393,6 +451,7 @@ func (t *Targets) open(ctx context.Context, open *tunnelv1.StreamOpen) (tunnelv1
 			}
 			continue
 		}
+		t.dialled(r.ID, tg.ID)
 		if h := proxyHeader(tg, open); h != nil {
 			if _, err := h.WriteTo(conn); err != nil {
 				_ = conn.Close()

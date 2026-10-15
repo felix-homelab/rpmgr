@@ -686,9 +686,11 @@ Rules:
   reason and the exact command to allow it: `sudo rpmgr policy allow-target 10.0.0.5:5432`. One
   disallowed target therefore never blocks unrelated changes
   ([03](03-connections.md#configuration-reconciliation)). A target given as a name counts as
-  allowed until a dial is refused on its resolved address; the route is then
-  `not_ready(blocked_by_local_policy: <ip:port>)` until the policy is reloaded or a snapshot
-  changes it.
+  allowed until a dial is refused on its resolved address; that target then counts as blocked
+  until a dial of it is allowed, the policy is reloaded or a snapshot arrives. A route is
+  `not_ready(blocked_by_local_policy: <ip:port>)` only while none of its targets on the connector
+  is allowed; a blocked target beside an allowed one leaves the route ready, and its streams go to
+  the allowed target.
 - `rpmgr policy allow-target`, `remove-target`, `deny-target` and `remove-deny-target` edit the file
   as root, under a lock file, atomically and keeping its comments and other keys. A target an entry
   already covers is not added twice; a port goes into the entry of its subnet. A target that only a

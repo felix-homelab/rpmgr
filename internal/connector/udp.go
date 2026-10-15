@@ -38,6 +38,7 @@ func (t *Targets) dialUDP(ctx context.Context, r Route, open *tunnelv1.StreamOpe
 	}
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
+	gen := t.generation()
 	d := &net.Dialer{Control: policy.Control(t.o.Policy)}
 	code := tunnelv1.ResultCode_RESULT_CODE_UPSTREAM_REFUSED
 	for _, tg := range order(r.Targets) {
@@ -48,7 +49,7 @@ func (t *Targets) dialUDP(ctx context.Context, r Route, open *tunnelv1.StreamOpe
 		if err != nil {
 			var b *policy.BlockedError
 			if errors.As(err, &b) {
-				t.blocked(r.ID, b.Detail())
+				t.blocked(r.ID, tg.ID, b.Detail(), gen)
 				continue
 			}
 			code = codeOf(err)
@@ -57,6 +58,7 @@ func (t *Targets) dialUDP(ctx context.Context, r Route, open *tunnelv1.StreamOpe
 			}
 			continue
 		}
+		t.dialled(r.ID, tg.ID)
 		return tunnelv1.ResultCode_RESULT_CODE_NO_ERROR, conn, tg.ID
 	}
 	return code, nil, ""
