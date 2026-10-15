@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   GatewayGroupSchema, GatewayService, type CreateGatewayGroupRequest, type UpdateGatewayGroupRequest,
 } from "@/gen/rpmgr/v1/gateway_pb";
+import { ManifestService, type ExportManifestsRequest } from "@/gen/rpmgr/v1/manifest_pb";
 import { Theme, UserService } from "@/gen/rpmgr/v1/user_pb";
 import { auth, show } from "@/testing/api";
 import { marked, unmatched } from "@/testing/required";
@@ -18,6 +19,7 @@ const us = create(GatewayGroupSchema, { id: "ggr_us", name: "us", region: "Virgi
 function page(path: string, groups = [us, eu]) {
   const creates: CreateGatewayGroupRequest[] = [];
   const updates: UpdateGatewayGroupRequest[] = [];
+  const exports: ExportManifestsRequest[] = [];
   const view = show(path, auth({ getSession: () => ({ userId: "usr_ada", memberships: [{ orgId: "org_1", role: "owner" }] }) }), (router) => {
     router.service(UserService, { getMe: () => ({ user: { id: "usr_ada", theme: Theme.SYSTEM } }) });
     router.service(GatewayService, {
@@ -30,8 +32,9 @@ function page(path: string, groups = [us, eu]) {
       createGatewayGroup: (req) => (creates.push(req), { gatewayGroup: { id: "ggr_new", name: req.gatewayGroup?.name } }),
       updateGatewayGroup: (req) => (updates.push(req), { gatewayGroup: req.gatewayGroup }),
     });
+    router.service(ManifestService, { exportManifests: (req) => (exports.push(req), { yaml: "kind: GatewayGroup\n", count: 1 }) });
   });
-  return { ...view, creates, updates };
+  return { ...view, creates, updates, exports };
 }
 
 describe("Gateways", () => {
@@ -93,5 +96,16 @@ describe("Gateways", () => {
     want.trustedProxyCidrs = ["10.0.0.0/8", "192.168.0.0/16"];
     expect(equals(GatewayGroupSchema, updates[0]!.gatewayGroup!, want)).toBe(true);
     expect([updates[0]!.updateMask?.paths, updates[0]!.etag]).toEqual([["name", "region", "public_hostnames", "trusted_proxy_cidrs"], "2"]);
+  });
+
+  it.each([
+    ["ggr_eu", "eu", "gw-eu-3", ["ggr_eu", "gtw_1", "gtw_2", "gtw_3"]],
+    ["ggr_us", "us", "The group has no gateway yet.", ["ggr_us"]],
+  ])("asks for the YAML of group %s and its own gateways, by ID", async (id, name, shown, ids) => {
+    const { exports } = page(`/gateways/${id}`);
+    await screen.findByText(shown);
+    fireEvent.click(screen.getByRole("button", { name: "YAML" }));
+    await screen.findByRole("dialog", { name: `${name} as YAML` });
+    await waitFor(() => expect(exports.map((r) => [r.orgId, r.kinds, r.resourceIds])).toEqual([["org_1", [], ids]]));
   });
 });
