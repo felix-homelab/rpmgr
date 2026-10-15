@@ -155,7 +155,8 @@ func currentRevision(s *Sessions) (store.Revision, error) {
 }
 
 // push compiles the agent's snapshot and sends it if it is new to the agent. A failure leaves the
-// agent marked, so the next check tries again.
+// agent marked, so the next check tries again. A controller that stops, which cancels s.sys, pushes
+// nothing more and logs no error for it: the agent asks its next session for its snapshot (#548).
 func (p *pusher) push(id string) {
 	p.mu.Lock()
 	st := p.agents[id]
@@ -178,6 +179,10 @@ func (p *pusher) push(id string) {
 	if st == nil || st.epoch != epoch {
 		p.mu.Unlock()
 		return // the session ended; a newer one asks for its own snapshot
+	}
+	if p.s.sys.Err() != nil {
+		p.mu.Unlock()
+		return // the controller stops, which also fails a compile under way
 	}
 	if err != nil {
 		p.dirty[id] = true
@@ -233,6 +238,10 @@ func (p *pusher) push(id string) {
 		})
 	})
 	if err != nil {
+		if p.s.sys.Err() != nil { // it stopped since the check above: an unrecorded push stays unsent
+			p.log.Debug("the controller stops; the snapshot is not sent", "agent", id)
+			return
+		}
 		p.log.Error("cannot record a snapshot before sending it", "agent", id, "error", err)
 	}
 	// If the session ended or its queue was full, the agent reconnects and asks again.
@@ -316,7 +325,7 @@ func (p *pusher) record(id pki.Identity, set func(*ent.AgentStateUpdateOne)) {
 	err := store.WriteTx(p.s.sys, p.s.db, func(tx *ent.Tx) error {
 		return updateState(p.s.sys, tx, id.Org, id.ID, set)
 	})
-	if err != nil {
+	if err != nil && p.s.sys.Err() == nil { // a stopping controller's record is redone by the next session
 		p.log.Error("cannot record an agent's state", "agent", id.ID, "error", err)
 	}
 }
