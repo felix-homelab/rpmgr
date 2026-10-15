@@ -58,27 +58,27 @@ type kindOf struct {
 	name      string
 	new       func() proto.Message
 	nameField string     // the field that names it; empty: its ID does
-	output    [][]string // the fields the server sets, as JSON paths
+	output    [][]string // the fields the protos mark output only, as JSON paths; a route keeps its targets
 	refs      []ref
 }
 
 var kinds = []kindOf{
 	{name: "Route", new: func() proto.Message { return &rpmgrv1.Route{} }, nameField: "name",
-		output: [][]string{{"etag"}, {"status"}, {"createTime"}, {"updateTime"}, {"targets", "*", "id"}, {"targets", "*", "etag"}},
+		output: [][]string{{"etag"}, {"status"}, {"createTime"}, {"updateTime"}, {"updateUserId"}, {"targets", "*", "id"}, {"targets", "*", "etag"}},
 		refs: []ref{{[]string{"gatewayGroupId"}, "gatewayGroup", "GatewayGroup"}, {[]string{"policyIds"}, "policies", "AccessPolicy"},
 			{[]string{"targets", "*", "connectorId"}, "connector", "Connector"}, {[]string{"targets", "*", "tls", "caBundleId"}, "caBundle", "CABundle"}}},
 	{name: "AccessPolicy", new: func() proto.Message { return &rpmgrv1.AccessPolicy{} }, nameField: "name",
 		output: [][]string{{"etag"}, {"routeIds"}}},
 	{name: "GatewayGroup", new: func() proto.Message { return &rpmgrv1.GatewayGroup{} }, nameField: "name", output: [][]string{{"etag"}}},
 	{name: "Gateway", new: func() proto.Message { return &rpmgrv1.Gateway{} }, nameField: "name",
-		output: [][]string{{"etag"}, {"slot"}, {"status"}, {"decommissionTime"}, {"createTime"}},
+		output: [][]string{{"etag"}, {"slot"}, {"status"}, {"decommissionTime"}, {"createTime"}, {"builtIn"}},
 		refs:   []ref{{[]string{"gatewayGroupId"}, "gatewayGroup", "GatewayGroup"}}},
 	{name: "PortPool", new: func() proto.Message { return &rpmgrv1.PortPool{} }, output: [][]string{{"etag"}, {"allocatedPorts"}},
 		refs: []ref{{[]string{"gatewayGroupId"}, "gatewayGroup", "GatewayGroup"}}},
 	{name: "Domain", new: func() proto.Message { return &rpmgrv1.Domain{} }, nameField: "fqdn",
 		output: [][]string{{"etag"}, {"status"}, {"challenge"}, {"verifyTime"}, {"lastCheckTime"}, {"createTime"}, {"lastError"}}},
 	{name: "Connector", new: func() proto.Message { return &rpmgrv1.Connector{} }, nameField: "name",
-		output: [][]string{{"etag"}, {"ephemeral"}, {"session"}, {"createTime"}, {"decommissionTime"}}},
+		output: [][]string{{"etag"}, {"ephemeral"}, {"session"}, {"createTime"}, {"decommissionTime"}, {"builtIn"}}},
 	{name: "CABundle", new: func() proto.Message { return &rpmgrv1.CABundle{} }, nameField: "name",
 		output: [][]string{{"etag"}, {"certificates"}, {"targetIds"}, {"createTime"}}},
 }

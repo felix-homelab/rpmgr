@@ -145,12 +145,11 @@ the whole status, with the targets and gateways that do not serve and why.
 ## Export routes as YAML
 
 Routes, and the other resources they name, can be exported as YAML manifests: one document per
-resource, with other resources named by their names, and without the IDs, etags, status and times
-that the server sets ([07](../../07-api.md#declarative-manifests)). A route's manifest still
-carries `updateUserId`, the ID of the user who last changed the route.
+resource, with other resources named by their names, and without anything the server sets: IDs,
+etags, status, times or who changed it last ([07](../../07-api.md#declarative-manifests)).
 
-- **Web UI:** **YAML** on a route's page shows its manifest; **Export YAML** on the routes list
-  shows every route. The dialog has **Copy** and **Download**. Access policies, domains, CA bundles,
+- **Web UI:** **YAML** on a route's page shows that route's manifest only; **Export YAML** on the
+  routes list shows every route. The dialog has **Copy** and **Download**. Access policies, domains, CA bundles,
   connectors and gateway groups have the same buttons.
 - **Command line:**
 

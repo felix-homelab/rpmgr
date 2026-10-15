@@ -280,14 +280,18 @@ spec:
   `PortPool`, `Domain`, `Connector` and `CABundle`.
   - `metadata.name` is the resource's name, a domain's FQDN, or the ID of a resource without a
     name (a port pool).
-  - The spec has no field the server sets: no ID, etag, status, times or lists of dependants.
+  - The spec has no field the server sets, which the protos mark output only: no ID, etag,
+    status, times, lists of dependants, `updateUserId` or `builtIn`. A route's targets are the
+    exception: its manifest carries them, without their IDs and etags.
   - It names gateway groups, access policies, connectors and CA bundles by their names
     (`gatewayGroup`, `policies`, `connector`, `caBundle`). A certificate, which has no name, keeps
     its ID.
   - Fields marked `sensitive` are never written, so a basic-auth user appears without a
     password. Certificates and their keys are not a kind.
   - `ManifestService.ExportManifests` writes them for the CLI and the UI's YAML tab: every kind,
-    the kinds named, or the resources named. Decommissioned gateways and connectors are left out.
+    the kinds named, or exactly the resources named by ID. Decommissioned gateways and connectors
+    are left out. A resource named that is not the org's, not of a kind named, or decommissioned
+    is `NOT_FOUND`.
 
 - `ManifestService.Plan` returns the diff against the current state; `Apply` performs it in **one
   transaction** (one revision). Manifests reference other resources by name; the server resolves
