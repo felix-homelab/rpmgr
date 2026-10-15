@@ -133,6 +133,14 @@ describe("targets", () => {
     expect(f.queryByText("TCP connections only; UDP datagrams get no header.")).toBeNull();
   });
 
+  it("explains that priority ranks targets across connectors (D90)", async () => {
+    detail({ case: "tcp", value: { port: 25432 } });
+    fireEvent.click(await screen.findByRole("button", { name: "Add a target" }));
+    const f = await form("New target");
+    const hint = f.getByText("Lower is preferred. A higher priority, on any connector, is a failover; one priority is shared by weight.");
+    expect(f.getByLabelText(/^Priority/).getAttribute("aria-describedby")).toContain(hint.id);
+  });
+
   it("sends a target back unchanged when nothing was edited", async () => {
     const { updates } = detail({ case: "http", value: { hostnames: ["app.example.com"] } });
     fireEvent.click(await screen.findByRole("button", { name: "Edit…" }));

@@ -219,7 +219,7 @@ export function TargetForm({ route, target, connectors, onDone, onCancel }: {
       )}
       <div className="grid grid-cols-2 gap-2">
         <Text form={form} name="weight" label={t("route.columns.weight")} required />
-        <Text form={form} name="priority" label={t("targetForm.priority")} required />
+        <Text form={form} name="priority" label={t("targetForm.priority")} hint={t("targetForm.priorityHint")} required />
       </div>
       <label className="flex items-center gap-2 text-sm"><input type="checkbox" className="size-4 accent-primary" {...form.register("enabled")} />{t("targetForm.enabled")}</label>
       {other.map((m) => <Alert key={m}>{m}</Alert>)}

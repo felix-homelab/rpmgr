@@ -293,7 +293,8 @@ flowchart LR
     routes pass the bytes, or for UDP the datagrams, as they come, and show no such field), the
     PROXY protocol for TCP, TCP and UDP, and TLS-passthrough routes (on a TCP and UDP route with
     the note that it goes on TCP connections only, [D86](14-open-decisions.md#engineering)),
-    weight, priority and whether it is enabled.
+    weight, priority, with the note that a higher priority on any connector is a failover
+    ([D90](14-open-decisions.md#engineering)), and whether it is enabled.
   - **Unverified HTTPS** ([ADR-0017](adr/0017-upstream-tls-verification-modes.md)): choosing it
     shows a warning that anyone on the network between the connector and the target can read and
     change the traffic, and the target shows an "unverified" badge next to its address.

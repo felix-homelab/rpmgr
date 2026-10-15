@@ -41,7 +41,7 @@ func (t *Targets) dialUDP(ctx context.Context, r Route, open *tunnelv1.StreamOpe
 	gen := t.generation()
 	d := &net.Dialer{Control: policy.Control(t.o.Policy)}
 	code := tunnelv1.ResultCode_RESULT_CODE_UPSTREAM_REFUSED
-	for _, tg := range order(r.Targets) {
+	for _, tg := range order(targetsFor(r, open)) {
 		if tg.UnixPath != "" {
 			continue
 		}

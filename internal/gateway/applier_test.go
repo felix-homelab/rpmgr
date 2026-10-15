@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strconv"
 	"strings"
 	"syscall"
@@ -70,6 +71,75 @@ func TestApplier_Validate(t *testing.T) {
 		errs := a.Validate(tc.snap)
 		if len(errs) == 0 || !strings.Contains(errs[0].GetMessage(), tc.want) {
 			t.Errorf("%s: %v, want an error about %q", tc.name, errs, tc.want)
+		}
+	}
+}
+
+// rankedTCP is a tcp route whose connectors come ranked: one entry per connector and priority.
+func rankedTCP(id string, port uint32, ranked ...*agentv1.RouteConnector) *agentv1.Resource {
+	res := tcpResource(id, port)
+	r := res.GetGatewayTcpRoute()
+	for _, rc := range ranked {
+		if !slices.Contains(r.Connectors, rc.GetConnectorId()) {
+			r.Connectors = append(r.Connectors, rc.GetConnectorId())
+		}
+	}
+	r.RankedConnectors = ranked
+	return res
+}
+
+func rank(id string, priority, weight uint32) *agentv1.RouteConnector {
+	return &agentv1.RouteConnector{ConnectorId: id, Priority: priority, Weight: weight}
+}
+
+// TestApplier_Ranks: a route's ranked entries are one per connector and priority, of exactly the
+// route's connectors, with a bounded weight; the assignment carries them for every route kind, and
+// a route without them ranks every connector alike, at priority 0 and weight 1, unranked (D90).
+func TestApplier_Ranks(t *testing.T) {
+	a, assign := gateway.NewApplier()
+	ranks := []*agentv1.RouteConnector{rank("con_1", 0, 3), rank("con_1", 5, 2), rank("con_2", 10, 1)}
+	udp := udpResource("rt_3", 53, "con_1")
+	udp.GetGatewayUdpRoute().RankedConnectors = []*agentv1.RouteConnector{rank("con_1", 4, 7)}
+	both := &agentv1.Resource{Id: "rt_4", Kind: &agentv1.Resource_GatewayTcpUdpRoute{GatewayTcpUdpRoute: &agentv1.GatewayTCPUDPRoute{
+		Port: 5353, FlowIdleTimeoutSeconds: 60, Connectors: []string{"con_2"}, RankedConnectors: []*agentv1.RouteConnector{rank("con_2", 6, 8)}}}}
+	pass := &agentv1.Resource{Id: "rt_5", Kind: &agentv1.Resource_GatewayPassthroughRoute{GatewayPassthroughRoute: &agentv1.GatewayPassthroughRoute{
+		Hostnames: []string{"db.example.com"}, Connectors: []string{"con_1"}, RankedConnectors: []*agentv1.RouteConnector{rank("con_1", 2, 9)}}}}
+	web := &agentv1.Resource{Id: "rt_6", Kind: &agentv1.Resource_GatewayHttpRoute{GatewayHttpRoute: &agentv1.GatewayHTTPRoute{
+		Hosts: []*agentv1.HTTPHost{{Hostname: "app.example.com"}}, UpstreamProtocol: "http", Connectors: []string{"con_2"},
+		RankedConnectors: []*agentv1.RouteConnector{rank("con_2", 3, 4)}}}}
+	valid := gatewaySnapshot(1, rankedTCP("rt_1", 5432, ranks...), tcpResource("rt_2", 6379, "con_1", "con_2"), udp, both, pass, web)
+	if errs := a.Validate(valid); len(errs) != 0 {
+		t.Fatalf("a valid snapshot: %v", errs)
+	}
+	other := rankedTCP("rt_1", 5432, rank("con_1", 0, 1))
+	other.GetGatewayTcpRoute().RankedConnectors = []*agentv1.RouteConnector{rank("con_9", 0, 1)}
+	short := rankedTCP("rt_1", 5432, rank("con_1", 0, 1), rank("con_2", 0, 1))
+	short.GetGatewayTcpRoute().RankedConnectors = short.GetGatewayTcpRoute().RankedConnectors[:1]
+	for _, tc := range []struct {
+		name string
+		res  *agentv1.Resource
+		want string
+	}{
+		{"another connector", other, "not the route's connectors"},
+		{"one missing", short, "not the route's connectors"},
+		{"a connector twice at one priority", rankedTCP("rt_1", 5432, rank("con_1", 5, 1), rank("con_1", 5, 2)), "ranked twice at priority 5"},
+		{"a weight above the bound", rankedTCP("rt_1", 5432, rank("con_1", 0, 1_000_001)), "above 1000000"},
+	} {
+		if errs := a.Validate(gatewaySnapshot(1, tc.res)); len(errs) == 0 || !strings.Contains(errs[0].GetMessage(), tc.want) {
+			t.Errorf("%s: %v, want an error about %q", tc.name, errs, tc.want)
+		}
+	}
+	a.Apply(t.Context(), valid, agent.Changes{})
+	for route, want := range map[string][]gateway.RouteConnector{
+		"rt_1": {{ID: "con_1", Weight: 3, Ranked: true}, {ID: "con_1", Priority: 5, Weight: 2, Ranked: true}, {ID: "con_2", Priority: 10, Weight: 1, Ranked: true}},
+		"rt_2": {{ID: "con_1", Weight: 1}, {ID: "con_2", Weight: 1}},
+		"rt_3": {{ID: "con_1", Priority: 4, Weight: 7, Ranked: true}},
+		"rt_4": {{ID: "con_2", Priority: 6, Weight: 8, Ranked: true}},
+		"rt_5": {{ID: "con_1", Priority: 2, Weight: 9, Ranked: true}},
+		"rt_6": {{ID: "con_2", Priority: 3, Weight: 4, Ranked: true}},
+	} {
+		if got := assign.Connectors(route); !slices.Equal(got, want) {
+			t.Errorf("%s: %v, want %v", route, got, want)
 		}
 	}
 }
