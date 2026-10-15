@@ -88,8 +88,10 @@ func (w *world) clientTLS(gatewayID string) (*tls.Config, error) {
 // assignment assigns every route to the world's connector.
 type assignment struct{ con string }
 
-func (a assignment) Known(id string) bool       { return id == a.con }
-func (a assignment) Connectors(string) []string { return []string{a.con} }
+func (a assignment) Known(id string) bool { return id == a.con }
+func (a assignment) Connectors(string) []gateway.RouteConnector {
+	return []gateway.RouteConnector{{ID: a.con, Weight: 1}}
+}
 func (w *world) assignment() gateway.Assignment { return assignment{w.con.ID} }
 func (w *world) sessions(id pki.Identity) *gateway.Sessions {
 	return gateway.NewSessions(gateway.SessionsOptions{TrustDomain: td, GatewayID: id.ID, Assignment: w.assignment()})

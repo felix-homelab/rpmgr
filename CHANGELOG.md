@@ -96,6 +96,12 @@ Changes to the design documents are not recorded here: see the git history and t
   now" reads through the connector, or be marked unverified: the gateway then checks no
   certificate, and the web UI warns about it and marks the target. Stricter TLS settings end the
   target's open connections at once. (#292, #294, #296, #333, #516, #518, #521)
+- Gateway: a route's targets may be on several connectors, and their priority and weight hold
+  across connectors: a target of a higher priority is a failover that takes connections only while
+  no connector has a ready target of a lower one, another connector's better target comes before a
+  connector's own worse one, and one priority is shared by weight. A target that refuses or does
+  not answer passes the connection to the next one, so the route still works, and HTTP connections
+  the gateway keeps alive move back once a better target's connector is ready again. (#547)
 - Gateway: `http` routes set `Forwarded` and `X-Forwarded-*` and keep a client's own only from the
   gateway group's trusted proxies. They can replace the `Host` header, set request and response
   headers, redirect or serve port 80, and send HSTS. (#297, #298)
@@ -210,7 +216,9 @@ Changes to the design documents are not recorded here: see the git history and t
   #374)
 - Install: a global install script, attached to every release as `install.sh`, downloads the
   release from GitHub, verifies it with the release root keys it embeds, installs the binary, the
-  user `rpmgr` and its directories, and offers to run `rpmgr setup`. (#445)
+  user `rpmgr` and its directories, and offers to run `rpmgr setup`. On a host that has rpmgr,
+  `--upgrade` replaces only the binary and then names what is left to do, and `--restart`
+  restarts the rpmgr services that run and checks that they stay up. (#445, #554)
 - Releases: reproducible builds with an SPDX SBOM, SLSA provenance attestations and a signed
   release manifest; distroless, nonroot multi-arch images at `ghcr.io/felix-homelab/rpmgr`, signed
   with cosign. (#384, #385, #434)

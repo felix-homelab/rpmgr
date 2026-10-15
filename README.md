@@ -297,12 +297,16 @@ up separately and keep it apart. `rpmgr restore` brings a backup back
 
 **Upgrades.** rpmgr does not update itself yet; signed automatic updates are planned. Back up
 first, then upgrade the controller, then the gateways, then the connectors: on each host, run the
-new release's `install.sh` with `--no-setup`, which replaces the binary, and restart the service:
+new release's `install.sh` with `--upgrade`, which replaces the binary and changes nothing else,
+and `--restart`, which restarts the rpmgr services that run and checks that they stay up:
 
 ```sh
-sudo sh install.sh --no-setup
-sudo systemctl restart rpmgr-all-in-one   # or rpmgr-controller, rpmgr-gateway, rpmgr-connector
+curl -fsSLO https://github.com/felix-homelab/rpmgr/releases/latest/download/install.sh
+sudo sh install.sh --upgrade --restart
 ```
+
+Without `--restart`, the script names each service that still runs the previous binary and the
+command that restarts it.
 
 A controller works with agents of its own minor version and of the one before
 ([10](docs/10-operations.md#upgrades-and-version-skew)).
@@ -311,7 +315,7 @@ A controller works with agents of its own minor version and of the one before
 
 v0.1.0 completes the first phase. The next one brings DNS records managed in Cloudflare, wildcard
 certificates through DNS-01, single sign-on and passkeys, private services between connectors,
-health checks and failover between targets, rate and bandwidth limits, Windows and macOS
+health checks and passive health for targets, rate and bandwidth limits, Windows and macOS
 connectors, `.deb` and `.rpm` packages, signed automatic updates, and PostgreSQL with several
 controllers. Virtual networks, HTTP/3, a Helm chart and a Terraform provider follow after that
 ([13](docs/13-roadmap.md)).

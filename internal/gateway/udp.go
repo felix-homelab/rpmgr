@@ -397,6 +397,7 @@ func (u *UDPRoutes) run(p *udpPort, f *flow, r *UDPRoute) {
 	}
 	reply := func(b []byte) {
 		f.touch()
+		markActive(st) // a reply datagram passes the stream by
 		_, _ = p.conn.WriteToUDPAddrPort(b, f.client)
 	}
 	if dg != nil {
@@ -426,6 +427,7 @@ func (u *UDPRoutes) run(p *udpPort, f *flow, r *UDPRoute) {
 			return
 		case b := <-f.queue:
 			if dg != nil && dg.Fits(id, len(b)) {
+				markActive(st) // a datagram passes the stream by
 				if !dg.Send(id, b) {
 					u.o.Metrics.Dropped.WithLabelValues(r.ID, "queue_full").Inc()
 				}

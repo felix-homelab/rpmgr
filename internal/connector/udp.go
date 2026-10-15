@@ -31,7 +31,7 @@ func datagramsOf(st tunnel.Stream) *tunnel.Datagrams {
 
 // dialUDP connects a UDP socket of its own to a target of a udp route that the local policy
 // allows; the socket is the flow's, so the target's replies reach the right client.
-func (t *Targets) dialUDP(ctx context.Context, r Route, open *tunnelv1.StreamOpen) (tunnelv1.ResultCode, net.Conn, string) {
+func (t *Targets) dialUDP(ctx context.Context, r Route, open *tunnelv1.StreamOpen, gen uint64) (tunnelv1.ResultCode, net.Conn, string) {
 	timeout := dialUpstream
 	if ms := open.GetOpenTimeoutMs(); ms > 0 && time.Duration(ms)*time.Millisecond < timeout {
 		timeout = time.Duration(ms) * time.Millisecond
@@ -40,7 +40,7 @@ func (t *Targets) dialUDP(ctx context.Context, r Route, open *tunnelv1.StreamOpe
 	defer cancel()
 	d := &net.Dialer{Control: policy.Control(t.o.Policy)}
 	code := tunnelv1.ResultCode_RESULT_CODE_UPSTREAM_REFUSED
-	for _, tg := range order(r.Targets) {
+	for _, tg := range order(targetsFor(r, open)) {
 		if tg.UnixPath != "" {
 			continue
 		}
@@ -48,7 +48,7 @@ func (t *Targets) dialUDP(ctx context.Context, r Route, open *tunnelv1.StreamOpe
 		if err != nil {
 			var b *policy.BlockedError
 			if errors.As(err, &b) {
-				t.blocked(r.ID, b.Detail())
+				t.blocked(r.ID, tg.ID, b.Detail(), gen)
 				continue
 			}
 			code = codeOf(err)
@@ -57,6 +57,7 @@ func (t *Targets) dialUDP(ctx context.Context, r Route, open *tunnelv1.StreamOpe
 			}
 			continue
 		}
+		t.dialled(r.ID, tg.ID, gen)
 		return tunnelv1.ResultCode_RESULT_CODE_NO_ERROR, conn, tg.ID
 	}
 	return code, nil, ""

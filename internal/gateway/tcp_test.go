@@ -32,8 +32,10 @@ import (
 // routeAssignment assigns every route to the world's connector.
 type routeAssignment struct{ con string }
 
-func (a routeAssignment) Known(id string) bool       { return id == a.con }
-func (a routeAssignment) Connectors(string) []string { return []string{a.con} }
+func (a routeAssignment) Known(id string) bool { return id == a.con }
+func (a routeAssignment) Connectors(string) []gateway.RouteConnector {
+	return []gateway.RouteConnector{{ID: a.con, Weight: 1}}
+}
 
 // plane is a gateway with its data-session listener and tcp routes, and a connector with a data
 // session to it that delivers every route to target.

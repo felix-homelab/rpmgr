@@ -10,7 +10,8 @@ steps. It found the faults #437 to #444 in `v0.1.0-rc.1`.
 ## Running it
 
 ```sh
-test/realworld/run.sh                       # v0.1.0-rc.1, downloaded with gh, on every host
+test/realworld/run.sh                       # the newest release, downloaded with gh, on every host
+test/realworld/run.sh --version 0.1.0-rc.7  # that release
 test/realworld/run.sh --binary <rpmgr>      # that binary on the all-in-one, the release elsewhere
 test/realworld/run.sh --keep                # leave the containers running afterwards
 test/realworld/run.sh --from policies       # with the containers kept, from that flow on
@@ -18,9 +19,15 @@ test/realworld/run.sh --from policies       # with the containers kept, from tha
 
 - **Needs:** Docker with cgroup v2, Go (for Pebble and the test service) and `gh` for the download.
   With the host images built, a run took 250 to 390 s on a WSL2 host.
+- **The release under test** is `--version`, else the version in the manifest of `--release <dir>`,
+  else that of the kept run for `--from` (saved in `$RW_RUN/version`), else the newest published
+  release, pre-releases included.
 - **The binary under test** with `--binary` must name the release's version, so that `rpmgr
-  release import` takes the release: build it as the release does, with
-  `CGO_ENABLED=0 go build -trimpath -ldflags "-X github.com/felix-homelab/rpmgr/internal/version.Version=0.1.0-rc.1" ./cmd/rpmgr`.
+  release import` takes the release; the run checks it first. Build it as the release does, with
+  `CGO_ENABLED=0 go build -trimpath -ldflags "-X github.com/felix-homelab/rpmgr/internal/version.Version=<version>" ./cmd/rpmgr`.
+  A build of a later state than the release can still disagree with the release's agents: its
+  controller's `/install.sh` may write a local policy that the release's connectors cannot read.
+  To test `main` as a whole, publish a release candidate of it and run that.
   The agents always get the release's binary, through the controller's `/install.sh` and `/dl/`
   mirror; where a check needs the binary under test on an agent host, it runs `/rw/bin/rpmgr`.
 - **Output:** each step with its time; on a failure, the last lines of each host's journal. The
@@ -118,3 +125,6 @@ connectors, as the run takes them; input for a global install script and an inte
 | 2026-10-12 | `v0.1.0-rc.1` | `aio` fails: with the default KEK, init fails (#432, fixed by #433); with `--kek-source file`, the service cannot open its root-owned database (#437) |
 | 2026-10-12 | `v0.1.0-rc.1`, `--kek-source file`, the state directory given to `rpmgr` by hand | Every route serves through both gateways; then #438 to #444 |
 | 2026-10-12 | `origin/main` with the fixes of #437 to #444 merged, version 0.1.0-rc.1 | Every flow passes, in 250 s |
+| 2026-10-14 | `origin/main` (7c361c8), version 0.1.0-rc.1; agents `v0.1.0-rc.1` | `connectors` fails: `rpmgr policy allow-target` of rc.1 cannot read the local policy that `main`'s `/install.sh` wrote (`deny_targets`, D84). A mismatch of the run, not of a release: it led to `--version` (#550) |
+| 2026-10-15 | `v0.1.0-rc.7` | Every flow passes; the journal check fails on one `ERROR cannot record a snapshot before sending it`, logged as the all-in-one stopped for the restore (#548, fixed by #549) |
+| 2026-10-15 | `v0.1.0-rc.7`, twice more | Every flow passes, in 261 s and 257 s |

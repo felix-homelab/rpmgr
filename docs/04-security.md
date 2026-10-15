@@ -681,14 +681,16 @@ Rules:
 - On an all-in-one the policy does **not** survive a compromised controller: the controller runs
   in the same process and could dial anything the `rpmgr` user can. There it limits the routes made
   through the API and the configuration, not an attacker inside the process.
-- A target the policy forbids does **not** reject the snapshot. The snapshot is applied, and the
-  affected target reports `not_ready(blocked_by_local_policy: 10.0.0.5:5432)`; the UI shows the
-  reason and the exact command to allow it: `sudo rpmgr policy allow-target 10.0.0.5:5432`. One
-  disallowed target therefore never blocks unrelated changes
-  ([03](03-connections.md#configuration-reconciliation)). A target given as a name counts as
-  allowed until a dial is refused on its resolved address; the route is then
-  `not_ready(blocked_by_local_policy: <ip:port>)` until the policy is reloaded or a snapshot
-  changes it.
+- A target the policy forbids does **not** reject the snapshot. The snapshot is applied, and a
+  route none of whose targets is allowed reports `not_ready(blocked_by_local_policy:
+  10.0.0.5:5432)`; the UI shows the reason and the exact command to allow it:
+  `sudo rpmgr policy allow-target 10.0.0.5:5432`. One disallowed target therefore never blocks
+  unrelated changes ([03](03-connections.md#configuration-reconciliation)). A target given as a
+  name counts as allowed until a dial is refused on its resolved address; that target then counts
+  as blocked until a dial of it is allowed, the policy is reloaded or a snapshot arrives. A route is
+  `not_ready(blocked_by_local_policy: <ip:port>)` only while none of its targets on the connector
+  is allowed; a blocked target beside an allowed one leaves the route ready, and its streams go to
+  the allowed target.
 - `rpmgr policy allow-target`, `remove-target`, `deny-target` and `remove-deny-target` edit the file
   as root, under a lock file, atomically and keeping its comments and other keys. A target an entry
   already covers is not added twice; a port goes into the entry of its subnet. A target that only a
@@ -942,8 +944,10 @@ Phase 3 item ([13](13-roadmap.md#phase-3--advanced)).
     only, over HTTPS with curl or wget.
   - **Which release:** the pinned version, or `--version`; the repository's copy asks the GitHub
     API for the latest release, and with `--prerelease` for the latest including pre-releases.
-  - **Options:** `[--version <version>] [--prerelease] [--no-setup] [--dir <directory>]
-    [--verify-only]`.
+  - **Options:** `[--version <version>] [--prerelease] [--no-setup] [--upgrade] [--restart]
+    [--dir <directory>] [--verify-only]`. `--upgrade` replaces the binary of a host that has one
+    and nothing else; `--restart` restarts the rpmgr services that run
+    ([10](10-operations.md#upgrades-and-version-skew)).
   - **What it installs,** only after the verification: the binary in `/usr/local/bin` (replaced in
     one rename), the system user `rpmgr`, `/etc/rpmgr` and `/var/lib/rpmgr`. It writes no
     configuration, and running it again leaves the user, the directories and the configuration as

@@ -209,8 +209,8 @@ Points to watch:
   Stop the frpc visitors on that host when enabling the corresponding visitor grants.
 - **TCP/UDP route ports** that move to a new IP need client-side changes, or DNS names that clients
   already use.
-- **Local policy.** Until each host allows its targets, the snapshot is still applied, but the
-  affected targets report `not_ready(blocked_by_local_policy: <ip:port>)` and their routes show as
+- **Local policy.** Until each host allows its targets, the snapshot is still applied, but routes
+  without an allowed target report `not_ready(blocked_by_local_policy: <ip:port>)` and show as
   `unavailable`. The importer's per-host `--allow-target` list and the UI's copyable commands cover
   this; `rpmgr policy allow-target` reloads the policy without a new revision
   ([09](09-web-ui.md#ux-principles)).
