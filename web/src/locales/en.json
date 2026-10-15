@@ -451,6 +451,7 @@
       "V2": "Version 2"
     },
     "priority": "Priority",
+    "priorityHint": "Lower is preferred. A higher priority, on any connector, is a failover; one priority is shared by weight.",
     "enabled": "Enabled",
     "edit": "Edit…",
     "removeAsk": "Remove…",

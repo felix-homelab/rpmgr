@@ -12,6 +12,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"net/http/httptrace"
 	"net/http/httputil"
 	"net/netip"
 	"net/url"
@@ -176,6 +177,157 @@ type routeTransport struct {
 	access   Access // the route's access rules in force, which enforce sets
 	active   map[*activeRequest]struct{}
 	upstream *upstreamConns // the route's TLS connections to its targets, of every transport
+
+	best      func() (uint32, bool)     // the route's best priority with a ready session (Sessions.BestPriority)
+	entry     func(string, uint32) bool // whether a connector at a priority is still an entry of the route
+	closeIdle func()                    // the transport's CloseIdleConnections
+	poolMu    sync.Mutex
+	pooled    map[net.Conn]*pooledConn // the upstream connections open now that a priority was chosen for
+}
+
+// pooledConn is an upstream connection's entry, the route's best ready priority when it was
+// dialled, and its requests in progress.
+type pooledConn struct {
+	connector  string
+	priority   uint32
+	bestAtDial uint32
+	active     int
+}
+
+// RoundTrip implements http.RoundTripper: the route's transport, failing back to a better priority
+// (D90). An upstream connection is closed as soon as it has no request in progress, checked before
+// a request and when one ends, once the route has a ready session at a better priority than when
+// it was dialled, or once its entry left the route; a new connection then goes to the better
+// priority. While the best priority's target merely fails, its connector still ready, the
+// connections of the fallback stay. An HTTP/2 upstream connection with requests always in progress
+// stays too.
+func (rt *routeTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	rt.failBack()
+	var got net.Conn
+	trace := &httptrace.ClientTrace{
+		GotConn: func(i httptrace.GotConnInfo) {
+			if got != nil {
+				rt.use(got, -1) // the transport retries on another connection
+			}
+			got = i.Conn
+			rt.use(got, 1)
+		},
+		PutIdleConn: func(err error) {
+			if err == nil {
+				rt.failBack()
+			}
+		},
+	}
+	resp, err := rt.tr.RoundTrip(req.WithContext(httptrace.WithClientTrace(req.Context(), trace)))
+	if got == nil {
+		return resp, err
+	}
+	var once sync.Once
+	done := func() {
+		once.Do(func() {
+			rt.use(got, -1)
+			rt.failBack()
+		})
+	}
+	switch {
+	case err != nil:
+		done()
+	case resp.StatusCode == http.StatusSwitchingProtocols:
+		if rwc, ok := resp.Body.(io.ReadWriteCloser); ok {
+			resp.Body = &doneRWC{ReadWriteCloser: rwc, done: done}
+		}
+	default:
+		resp.Body = &doneBody{ReadCloser: resp.Body, done: done}
+	}
+	return resp, err
+}
+
+// doneBody calls done when the response body is closed.
+type doneBody struct {
+	io.ReadCloser
+	done func()
+}
+
+func (b *doneBody) Close() error {
+	defer b.done()
+	return b.ReadCloser.Close()
+}
+
+// doneRWC is doneBody for the body of an upgraded connection, which the proxy also writes to.
+type doneRWC struct {
+	io.ReadWriteCloser
+	done func()
+}
+
+func (b *doneRWC) Close() error {
+	defer b.done()
+	return b.ReadWriteCloser.Close()
+}
+
+// use counts a request in progress on upstream connection c, or its end.
+func (rt *routeTransport) use(c net.Conn, delta int) {
+	rt.poolMu.Lock()
+	defer rt.poolMu.Unlock()
+	if pc := rt.pooled[c]; pc != nil {
+		pc.active += delta
+	}
+}
+
+// failBack closes the idle upstream connections if one without a request in progress lost its
+// entry, or was dialled while the route's best ready priority was worse than it is now.
+func (rt *routeTransport) failBack() {
+	rt.poolMu.Lock()
+	var idle []pooledConn
+	for _, pc := range rt.pooled {
+		if pc.active == 0 {
+			idle = append(idle, *pc)
+		}
+	}
+	rt.poolMu.Unlock()
+	best, known := uint32(0), false
+	for _, pc := range idle {
+		if !rt.entry(pc.connector, pc.priority) {
+			rt.closeIdle()
+			return
+		}
+		if pc.bestAtDial == 0 {
+			continue // no priority is better
+		}
+		if !known {
+			b, ok := rt.best()
+			if !ok {
+				return
+			}
+			best, known = b, true
+		}
+		if best < pc.bestAtDial {
+			rt.closeIdle()
+			return
+		}
+	}
+}
+
+// pool records the priority an upstream connection c, over the stream of sc, was opened at, until
+// the stream closes.
+func (rt *routeTransport) pool(c net.Conn, sc *streamConn, err error) (net.Conn, error) {
+	if err != nil {
+		return nil, err
+	}
+	if p, ranked := streamPriority(sc.Stream); ranked {
+		best, ok := rt.best()
+		if !ok {
+			best = p
+		}
+		rt.poolMu.Lock()
+		rt.pooled[c] = &pooledConn{connector: StreamConnector(sc.Stream), priority: p, bestAtDial: best}
+		rt.poolMu.Unlock()
+		sc.onClose = func() {
+			rt.poolMu.Lock()
+			defer rt.poolMu.Unlock()
+			delete(rt.pooled, c)
+		}
+	}
+	return c, nil
 }
 
 // upstreamConns are the open TLS connections of an http route to its targets, from every
@@ -574,10 +726,15 @@ func (h *HTTPRoutes) upstreamOf(route string) *upstreamConns {
 
 // newTransport returns the proxy of a route; its transport dials tunnel streams to the route.
 func (h *HTTPRoutes) newTransport(r HTTPRoute) *routeTransport {
-	rt := &routeTransport{access: r.Access, active: map[*activeRequest]struct{}{}, upstream: h.upstreamOf(r.ID)}
+	rt := &routeTransport{access: r.Access, active: map[*activeRequest]struct{}{}, upstream: h.upstreamOf(r.ID),
+		pooled: map[net.Conn]*pooledConn{}, best: func() (uint32, bool) { return h.o.Sessions.BestPriority(r.ID) },
+		entry: func(con string, p uint32) bool { return h.o.Sessions.HasEntry(r.ID, con, p) }}
 	rt.route.Store(&r)
 	rt.tr = &http.Transport{
-		DialContext:           func(ctx context.Context, _, _ string) (net.Conn, error) { return h.dial(ctx, r.ID) },
+		DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
+			c, err := h.dial(ctx, r.ID)
+			return rt.pool(c, c, err)
+		},
 		ResponseHeaderTimeout: httpUpstreamHeader,
 		MaxIdleConnsPerHost:   64,
 		IdleConnTimeout:       httpIdle,
@@ -600,8 +757,9 @@ func (h *HTTPRoutes) newTransport(r HTTPRoute) *routeTransport {
 				rt.tls[id] = upstreamTLS{cfg: cfg, connector: u.Connector, verify: u.Verify}
 			}
 		}
-		rt.tr.DialTLSContext = func(ctx context.Context, _, _ string) (net.Conn, error) { return h.dialTLS(ctx, rt) }
+		rt.tr.DialTLSContext = func(ctx context.Context, _, _ string) (net.Conn, error) { return rt.pool(h.dialTLS(ctx, rt)) }
 	}
+	rt.closeIdle = rt.tr.CloseIdleConnections
 	rt.proxy = &httputil.ReverseProxy{
 		Rewrite: func(pr *httputil.ProxyRequest) {
 			route := rt.route.Load()
@@ -618,7 +776,7 @@ func (h *HTTPRoutes) newTransport(r HTTPRoute) *routeTransport {
 			}
 			apply(pr.Out.Header, route.RequestHeaders)
 		},
-		Transport:     rt.tr,
+		Transport:     rt,
 		FlushInterval: -1, // stream responses as they come, for server-sent events and gRPC
 		ModifyResponse: func(res *http.Response) error {
 			route := rt.route.Load()
@@ -730,14 +888,14 @@ type openError struct {
 func (e *openError) Error() string { return fmt.Sprintf("route %s: %s", e.route, e.code) }
 
 // dial opens a tunnel stream for the route.
-func (h *HTTPRoutes) dial(ctx context.Context, route string) (net.Conn, error) {
+func (h *HTTPRoutes) dial(ctx context.Context, route string) (*streamConn, error) {
 	c, _, _, err := h.open(ctx, route)
 	return c, err
 }
 
 // open opens a tunnel stream for the route and returns it with the target the connector chose
 // and that connector, as its certificate names it.
-func (h *HTTPRoutes) open(ctx context.Context, route string) (net.Conn, string, string, error) {
+func (h *HTTPRoutes) open(ctx context.Context, route string) (*streamConn, string, string, error) {
 	open := &tunnelv1.StreamOpen{Kind: tunnelv1.StreamKind_STREAM_KIND_TCP, RouteId: route}
 	if h.o.Revision != nil {
 		open.SnapshotRev = h.o.Revision()
@@ -764,37 +922,37 @@ type upstreamTLS struct {
 // one of another connector: a connector cannot have the gateway apply another target's settings,
 // such as an unverified one's, to its stream (ADR-0017). Settings that name no connector, from an
 // older controller, apply only when they verify the chain.
-func (h *HTTPRoutes) dialTLS(ctx context.Context, rt *routeTransport) (net.Conn, error) {
+func (h *HTTPRoutes) dialTLS(ctx context.Context, rt *routeTransport) (net.Conn, *streamConn, error) {
 	route := rt.route.Load().ID
 	c, target, connector, err := h.open(ctx, route)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	u, ok := rt.tls[target]
 	switch {
 	case !ok:
 		_ = c.Close()
-		return nil, fmt.Errorf("route %s: no TLS settings for target %q", route, target)
+		return nil, nil, fmt.Errorf("route %s: no TLS settings for target %q", route, target)
 	case u.verify != VerifyChain && u.connector == "":
 		_ = c.Close()
-		return nil, fmt.Errorf("route %s: target %s is not verified and names no connector", route, target)
+		return nil, nil, fmt.Errorf("route %s: target %s is not verified and names no connector", route, target)
 	case u.connector != "" && u.connector != connector:
 		_ = c.Close()
-		return nil, fmt.Errorf("route %s: connector %s answered for target %s, which is not its own", route, connector, target)
+		return nil, nil, fmt.Errorf("route %s: connector %s answered for target %s, which is not its own", route, connector, target)
 	}
 	// The stream is tracked under the TLS connection, which the transport needs as a *tls.Conn to
 	// learn the protocol ALPN chose.
 	tracked, err := rt.upstream.track(target, rt.route.Load().TLS[target], c)
 	if err != nil {
 		_ = c.Close()
-		return nil, fmt.Errorf("route %s: %w", route, err)
+		return nil, nil, fmt.Errorf("route %s: %w", route, err)
 	}
 	tc := tls.Client(tracked, u.cfg)
 	if err := tc.HandshakeContext(ctx); err != nil {
 		_ = tc.Close()
-		return nil, fmt.Errorf("route %s: TLS to target %s: %w", route, target, err)
+		return nil, nil, fmt.Errorf("route %s: TLS to target %s: %w", route, target, err)
 	}
-	return tc, nil
+	return tc, c, nil
 }
 
 // proxyError answers a request the proxy could not complete: 503 with Retry-After when no
@@ -1040,7 +1198,17 @@ func (l *connListener) Addr() net.Addr { return &net.TCPAddr{} }
 
 // streamConn is a tunnel stream as the net.Conn the HTTP transport dials. The transport sets no
 // deadlines on it (no WriteByteTimeout), so they are not supported.
-type streamConn struct{ tunnel.Stream }
+type streamConn struct {
+	tunnel.Stream
+	onClose func() // set before the transport has the connection
+}
+
+func (c *streamConn) Close() error {
+	if c.onClose != nil {
+		c.onClose()
+	}
+	return c.Stream.Close()
+}
 
 func (c *streamConn) LocalAddr() net.Addr              { return &net.TCPAddr{} }
 func (c *streamConn) RemoteAddr() net.Addr             { return &net.TCPAddr{} }
