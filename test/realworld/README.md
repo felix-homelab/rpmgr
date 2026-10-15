@@ -10,7 +10,8 @@ steps. It found the faults #437 to #444 in `v0.1.0-rc.1`.
 ## Running it
 
 ```sh
-test/realworld/run.sh                       # v0.1.0-rc.1, downloaded with gh, on every host
+test/realworld/run.sh                       # the newest release, downloaded with gh, on every host
+test/realworld/run.sh --version 0.1.0-rc.7  # that release
 test/realworld/run.sh --binary <rpmgr>      # that binary on the all-in-one, the release elsewhere
 test/realworld/run.sh --keep                # leave the containers running afterwards
 test/realworld/run.sh --from policies       # with the containers kept, from that flow on
@@ -18,9 +19,15 @@ test/realworld/run.sh --from policies       # with the containers kept, from tha
 
 - **Needs:** Docker with cgroup v2, Go (for Pebble and the test service) and `gh` for the download.
   With the host images built, a run took 250 to 390 s on a WSL2 host.
+- **The release under test** is `--version`, else the version in the manifest of `--release <dir>`,
+  else that of the kept run for `--from` (saved in `$RW_RUN/version`), else the newest published
+  release, pre-releases included.
 - **The binary under test** with `--binary` must name the release's version, so that `rpmgr
-  release import` takes the release: build it as the release does, with
-  `CGO_ENABLED=0 go build -trimpath -ldflags "-X github.com/felix-homelab/rpmgr/internal/version.Version=0.1.0-rc.1" ./cmd/rpmgr`.
+  release import` takes the release; the run checks it first. Build it as the release does, with
+  `CGO_ENABLED=0 go build -trimpath -ldflags "-X github.com/felix-homelab/rpmgr/internal/version.Version=<version>" ./cmd/rpmgr`.
+  A build of a later state than the release can still disagree with the release's agents: its
+  controller's `/install.sh` may write a local policy that the release's connectors cannot read.
+  To test `main` as a whole, publish a release candidate of it and run that.
   The agents always get the release's binary, through the controller's `/install.sh` and `/dl/`
   mirror; where a check needs the binary under test on an agent host, it runs `/rw/bin/rpmgr`.
 - **Output:** each step with its time; on a failure, the last lines of each host's journal. The
