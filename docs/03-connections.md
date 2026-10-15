@@ -112,8 +112,9 @@ single-use token. Token format, lifetimes and re-enrollment rules are in
 - The controller's TCP/443 listener reads the ClientHello like a gateway
   ([Port 443 multiplexing](#port-443-multiplexing)) and hands the agent names `controller.<td>` and
   `reauth.controller.<td>` to the grpc-go server; every other name, and a ClientHello without a
-  name, goes to its `net/http` server, where browsers and the CLI use ConnectRPC. A connection that
-  does not start with a ClientHello within the peek limits is closed without an answer.
+  name, goes to its `net/http` server, where browsers, the CLI and scripts use ConnectRPC over
+  HTTP/2 or HTTP/1.1 ([07](07-api.md#overview)). A connection that does not start with a
+  ClientHello within the peek limits is closed without an answer.
 - **Endpoints and failover.** An agent knows its controller endpoints in order: from enrollment,
   then from every snapshot; a connector adds its data sessions as the last one ([Control sessions
   through a data session](#control-sessions-through-a-data-session)). It tries them in that order; a

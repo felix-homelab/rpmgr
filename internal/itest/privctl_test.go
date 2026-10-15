@@ -70,9 +70,10 @@ func (c *relayedConn) Write(p []byte) (int, error) {
 }
 
 // TestPrivateController: a gateway forwards the controller's names to a controller that only it
-// reaches (R23): the UI answers on its hostname, an agent enrolls and keeps its control session
-// through the gateway, and the gateway relays only ciphertext, so the enrollment token never
-// crosses it in clear. A controller that stops answering resets new connections at once.
+// reaches (R23): the UI answers on its hostname over HTTP/1.1 and HTTP/2, an agent enrolls and
+// keeps its control session through the gateway, and the gateway relays only ciphertext, so the
+// enrollment token never crosses it in clear. A controller that stops answering resets new
+// connections at once.
 func TestPrivateController(t *testing.T) {
 	c := itest.StartController(t, itest.Options{})
 	dir := t.TempDir()
@@ -105,8 +106,20 @@ func TestPrivateController(t *testing.T) {
 	}
 	_, _ = io.Copy(io.Discard, resp.Body)
 	_ = resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("the UI through the gateway: %s", resp.Status)
+	if resp.StatusCode != http.StatusOK || resp.ProtoMajor != 1 {
+		t.Fatalf("the UI through the gateway: %s %s", resp.Proto, resp.Status)
+	}
+	// The gateway forwards the handshake untouched, so the controller's ALPN holds: HTTP/2 (D92).
+	h2 := web.Transport.(*http.Transport).Clone()
+	h2.Protocols = new(http.Protocols)
+	h2.Protocols.SetHTTP2(true)
+	resp, err = (&http.Client{Timeout: 10 * time.Second, Transport: h2}).Get("https://" + itest.UIHostname + "/.well-known/rpmgr/trust-bundle")
+	if err != nil {
+		t.Fatalf("HTTP/2 through the gateway: %v", err)
+	}
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusOK || resp.ProtoMajor != 2 {
+		t.Fatalf("HTTP/2 through the gateway: %s %s", resp.Proto, resp.Status)
 	}
 
 	tok := c.EnrollmentToken(t, func(tc *ent.EnrollmentTokenCreate) { tc.SetRole("connector") })

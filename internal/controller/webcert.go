@@ -125,6 +125,29 @@ func (w *webCert) HSTS(next http.Handler) http.Handler {
 	})
 }
 
+// WebTLS is the TLS configuration of the web server, which serves the UI and the public API
+// (docs/07-api.md, "Overview", D92): TLS 1.3, the certificate getCertificate returns, and ALPN h2
+// before http/1.1, so browsers and gRPC clients use HTTP/2 and HTTP/1.1 clients still connect.
+// With acmeTLS it offers acme-tls/1 as well, for the controller's own TLS-ALPN-01 challenge, whose
+// ClientHello offers nothing else. The configuration is the same wherever TLS ends at the
+// controller: on its own port 443, behind all-in-one's gateway and behind a gateway's
+// controller.passthrough.
+func WebTLS(getCertificate func(*tls.ClientHelloInfo) (*tls.Certificate, error), acmeTLS bool) *tls.Config {
+	cfg := &tls.Config{MinVersion: tls.VersionTLS13, GetCertificate: getCertificate, NextProtos: []string{"h2", "http/1.1"}}
+	if acmeTLS {
+		cfg.NextProtos = append(cfg.NextProtos, acmez.ACMETLS1Protocol)
+	}
+	return cfg
+}
+
+// webProtocols are the HTTP versions of the web server: HTTP/1.1 and HTTP/2 over TLS.
+func webProtocols() *http.Protocols {
+	p := new(http.Protocols)
+	p.SetHTTP1(true)
+	p.SetHTTP2(true)
+	return p
+}
+
 // SelfSignedPEM makes a self-signed certificate for host as selfSigned does, PEM-encoded, for
 // `rpmgr setup` to write as the boot file's certificate files.
 func SelfSignedPEM(host string) (cert, key []byte, err error) {
