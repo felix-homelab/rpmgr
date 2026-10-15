@@ -48,6 +48,12 @@ func (r *reporter) run(ctx context.Context, every time.Duration, send func(*agen
 			case <-time.After(reportAfter):
 			}
 		}
+		// The report is made now, so it covers a change signalled since the wait began: drop that
+		// signal, or a second report would follow with nothing new in it.
+		select {
+		case <-r.changed:
+		default:
+		}
 		send(&agentv1.AgentMessage{Msg: &agentv1.AgentMessage_Status{Status: report()}})
 	}
 }
