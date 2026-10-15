@@ -9,12 +9,16 @@
 # services and hosts, and backs the controller up and restores it. Pebble stands in for the ACME
 # CA; the networks are internal, so nothing reaches the internet. Needs Docker, Go and minisign.
 #
-# Usage: run.sh [--release <dir>] [--binary <rpmgr>] [--kek file|systemd-credential] [--keep]
-#               [--from <flow>]
-#   --release  the release files (manifest, signatures, binaries), default: v0.1.0-rc.1 downloaded
-#              with gh into the run directory
-#   --binary   the rpmgr installed on the all-in-one, default the release's linux-amd64; the agents
-#              always get the release's binary through /install.sh
+# Usage: run.sh [--version <version>] [--release <dir>] [--binary <rpmgr>]
+#               [--kek file|systemd-credential] [--keep] [--from <flow>]
+#   --version  the release under test, such as 0.1.0-rc.7; default: the version in --release's
+#              manifest, else the version of the kept run (--from), else the newest published
+#              release, pre-releases included
+#   --release  the release files (manifest, signatures, binaries), default: the version's release
+#              downloaded with gh into the run directory
+#   --binary   the rpmgr installed on the all-in-one, default the release's linux-amd64; it must
+#              report the release's version. The agents always get the release's binary through
+#              /install.sh
 #   --kek      the all-in-one's KEK source; default: what init chooses (systemd-credential)
 #   --keep     leave the containers running afterwards
 #   --from     with the containers of a run kept with --keep, run the flows from this one on:
@@ -23,10 +27,10 @@ set -euo pipefail
 
 here=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 root=$(git -C "$here" rev-parse --show-toplevel)
-version=0.1.0-rc.1
-release='' binary='' kek='' keep=0 from=''
+version='' release='' binary='' kek='' keep=0 from=''
 while (($#)); do
   case $1 in
+    --version) version=${2#v}; shift 2 ;;
     --release) release=$2; shift 2 ;;
     --binary) binary=$2; shift 2 ;;
     --kek) kek=$2; shift 2 ;;
@@ -38,6 +42,20 @@ done
 
 export RW_RUN=${RW_RUN:-$(mktemp -d)}
 mkdir -p "$RW_RUN"/{bin,release,pebble,svc,out}
+# The release under test: the flag, the given release's manifest, the kept run's, or the newest.
+if [[ -z $version && -n $release && -f $release/manifest.json ]]; then
+  version=$(grep -o '"version":"[^"]*"' "$release/manifest.json" | head -n 1 | cut -d'"' -f4)
+elif [[ -z $version && -n $from && -f $RW_RUN/version ]]; then
+  version=$(cat "$RW_RUN/version")
+elif [[ -z $version ]]; then
+  version=$(gh release list --repo felix-homelab/rpmgr --exclude-drafts --limit 1 --json tagName --jq '.[0].tagName')
+  version=${version#v}
+fi
+if [[ ! $version =~ ^[0-9]+\.[0-9]+\.[0-9]+(-rc\.[0-9]+)?$ ]]; then
+  echo "not a release version: '$version'" >&2
+  exit 2
+fi
+echo "$version" >"$RW_RUN/version"
 dc() { docker compose -f "$here/compose.yaml" "$@"; }
 step() { printf '\n== %s (%s)\n' "$*" "$(date -u +%H:%M:%S)"; }
 fail() {
@@ -80,7 +98,7 @@ finish() {
 trap finish EXIT
 
 prepare() {
-step "prepare: release, binaries, images"
+step "prepare: release $version, binaries, images"
 if [[ -z $release ]]; then
   release=$RW_RUN/download
   mkdir -p "$release"
@@ -94,6 +112,10 @@ for f in "$release"/rpmgr-"$version"-linux-*; do
   install -m 0644 "$f" "$RW_RUN/release/"
 done
 install -m 0755 "${binary:-$release/rpmgr-$version-linux-amd64}" "$RW_RUN/bin/rpmgr"
+# rpmgr release import takes only the release of the controller's own version.
+got=$("$RW_RUN/bin/rpmgr" version | awk '{print $2}')
+[[ $got == "$version" ]] || fail "the binary reports version $got, not the release's $version: build it with
+  -ldflags \"-X github.com/felix-homelab/rpmgr/internal/version.Version=$version\""
 export PATH=$HOME/.local/go1.27.1/bin:$PATH
 CGO_ENABLED=0 go -C "$root" build -o "$RW_RUN/bin/e2eclient" ./test/e2e/e2eclient
 pv=$(go -C "$root" list -m -f '{{.Version}}' github.com/letsencrypt/pebble/v2)
