@@ -375,7 +375,7 @@ func (t *Targets) open(ctx context.Context, open *tunnelv1.StreamOpen) (tunnelv1
 	defer cancel()
 	d := &net.Dialer{KeepAlive: tcpKeepAlive, Control: policy.Control(t.o.Policy)}
 	code := tunnelv1.ResultCode_RESULT_CODE_UPSTREAM_REFUSED
-	for _, tg := range order(r.Targets) {
+	for _, tg := range order(targetsFor(r, open)) {
 		network := "tcp"
 		if tg.UnixPath != "" {
 			network = "unix"
@@ -415,6 +415,15 @@ func codeOf(err error) tunnelv1.ResultCode {
 		return tunnelv1.ResultCode_RESULT_CODE_UPSTREAM_RESET
 	}
 	return tunnelv1.ResultCode_RESULT_CODE_UPSTREAM_REFUSED // refused, unreachable, or a name that does not resolve
+}
+
+// targetsFor returns the targets of a route that a stream may use: those of the priority it names,
+// which the gateway chose among the route's connectors (D90), else all of them.
+func targetsFor(r Route, open *tunnelv1.StreamOpen) []Target {
+	if open.TargetPriority == nil {
+		return r.Targets
+	}
+	return slices.DeleteFunc(slices.Clone(r.Targets), func(t Target) bool { return t.Priority != open.GetTargetPriority() })
 }
 
 // order returns the targets by priority, lowest first, each priority in a random order weighted by

@@ -107,21 +107,21 @@ message GatewayTCPRoute {
   repeated string connectors = 3;
   // Who may connect.
   RouteAccess access = 4;
-  // The same connectors with their rank for the route: the gateway opens a stream on a connector
-  // of the lowest priority that has a ready session, chosen by weight (D90). A gateway that does
-  // not know the field treats every connector alike.
+  // The same connectors ranked, one entry per connector and priority of its targets: the gateway
+  // opens a stream at the lowest priority that has a ready session, on an entry chosen by weight
+  // (D90). A gateway that does not know the field treats every connector alike.
   repeated RouteConnector ranked_connectors = 5;
 }
 
-// RouteConnector is a connector that serves a route, ranked by its enabled targets of the route
-// (docs/03-connections.md, "Choosing a connector").
+// RouteConnector is a connector that serves a route at one priority of its enabled targets of the
+// route (docs/03-connections.md, "Choosing a connector").
 message RouteConnector {
   // The connector's ID.
   string connector_id = 1;
-  // The lowest priority among its enabled targets of the route; lower is preferred.
+  // A priority of its enabled targets of the route; lower is preferred.
   uint32 priority = 2;
   // The weights of its enabled targets at that priority, each 0 counted as 1, summed: its share
-  // among the connectors of the priority.
+  // among the entries of the priority.
   uint32 weight = 3;
 }
 
@@ -168,9 +168,9 @@ message GatewayTCPUDPRoute {
   repeated string connectors = 4;
   // Who may connect and send.
   RouteAccess access = 5;
-  // The same connectors with their rank for the route: the gateway opens a stream on a connector
-  // of the lowest priority that has a ready session, chosen by weight (D90). A gateway that does
-  // not know the field treats every connector alike.
+  // The same connectors ranked, one entry per connector and priority of its targets: the gateway
+  // opens a stream at the lowest priority that has a ready session, on an entry chosen by weight
+  // (D90). A gateway that does not know the field treats every connector alike.
   repeated RouteConnector ranked_connectors = 6;
 }
 
@@ -184,9 +184,9 @@ message GatewayUDPRoute {
   repeated string connectors = 3;
   // Who may send.
   RouteAccess access = 4;
-  // The same connectors with their rank for the route: the gateway opens a stream on a connector
-  // of the lowest priority that has a ready session, chosen by weight (D90). A gateway that does
-  // not know the field treats every connector alike.
+  // The same connectors ranked, one entry per connector and priority of its targets: the gateway
+  // opens a stream at the lowest priority that has a ready session, on an entry chosen by weight
+  // (D90). A gateway that does not know the field treats every connector alike.
   repeated RouteConnector ranked_connectors = 5;
 }
 
@@ -228,9 +228,9 @@ message GatewayHTTPRoute {
   bool maintenance = 14;
   // Plain text the maintenance page shows.
   string maintenance_message = 15;
-  // The same connectors with their rank for the route: the gateway opens a stream on a connector
-  // of the lowest priority that has a ready session, chosen by weight (D90). A gateway that does
-  // not know the field treats every connector alike.
+  // The same connectors ranked, one entry per connector and priority of its targets: the gateway
+  // opens a stream at the lowest priority that has a ready session, on an entry chosen by weight
+  // (D90). A gateway that does not know the field treats every connector alike.
   repeated RouteConnector ranked_connectors = 16;
 }
 
@@ -308,9 +308,9 @@ message GatewayPassthroughRoute {
   repeated string connectors = 2;
   // Who may connect.
   RouteAccess access = 3;
-  // The same connectors with their rank for the route: the gateway opens a stream on a connector
-  // of the lowest priority that has a ready session, chosen by weight (D90). A gateway that does
-  // not know the field treats every connector alike.
+  // The same connectors ranked, one entry per connector and priority of its targets: the gateway
+  // opens a stream at the lowest priority that has a ready session, on an entry chosen by weight
+  // (D90). A gateway that does not know the field treats every connector alike.
   repeated RouteConnector ranked_connectors = 4;
 }
 

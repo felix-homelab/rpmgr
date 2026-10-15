@@ -8,6 +8,7 @@ import (
 	"crypto/sha256"
 	"crypto/x509"
 	"fmt"
+	"maps"
 	"math"
 	"net/netip"
 	"net/textproto"
@@ -96,13 +97,16 @@ func connectorsOf(res *agentv1.Resource) ([]string, []*agentv1.RouteConnector) {
 	return nil, nil
 }
 
-// rankOf returns a route's connectors with their ranks: the ranked ones where the controller sent
-// them, else each at priority 0 and weight 1, as a controller before D90 meant them.
+// maxRankWeight bounds a ranked entry's weight: 1000 targets of the largest weight.
+const maxRankWeight = 1_000_000
+
+// rankOf returns a route's entries: the ranked ones where the controller sent them, else each
+// connector at priority 0 and weight 1, as a controller before D90 meant them.
 func rankOf(connectors []string, ranked []*agentv1.RouteConnector) []RouteConnector {
-	out := make([]RouteConnector, 0, len(connectors))
+	out := make([]RouteConnector, 0, max(len(connectors), len(ranked)))
 	if len(ranked) > 0 {
 		for _, r := range ranked {
-			out = append(out, RouteConnector{ID: r.GetConnectorId(), Priority: r.GetPriority(), Weight: r.GetWeight()})
+			out = append(out, RouteConnector{ID: r.GetConnectorId(), Priority: r.GetPriority(), Weight: r.GetWeight(), Ranked: true})
 		}
 		return out
 	}
@@ -344,14 +348,23 @@ func (a *Applier) Validate(snap *agentv1.Snapshot) []*agentv1.SnapshotError {
 			bad(id, "an empty connector ID")
 		}
 		if len(ranked) > 0 {
-			ids := make([]string, 0, len(ranked))
+			seen, ids := map[tier]bool{}, map[string]bool{}
 			for _, r := range ranked {
-				ids = append(ids, r.GetConnectorId())
+				k := tier{r.GetConnectorId(), r.GetPriority()}
+				switch {
+				case seen[k]:
+					bad(id, "connector %s ranked twice at priority %d", k.connector, k.priority)
+				case r.GetWeight() > maxRankWeight:
+					bad(id, "connector %s at priority %d has weight %d, above %d", k.connector, k.priority, r.GetWeight(), maxRankWeight)
+				}
+				seen[k], ids[k.connector] = true, true
 			}
-			slices.Sort(ids)
-			uniq := slices.Compact(slices.Clone(ids))
-			if len(uniq) != len(ids) || !slices.Equal(uniq, slices.Compact(slices.Sorted(slices.Values(connectors)))) {
-				bad(id, "the ranked connectors are not the route's connectors, each once")
+			want := map[string]bool{}
+			for _, c := range connectors {
+				want[c] = true
+			}
+			if !maps.Equal(ids, want) {
+				bad(id, "the ranked connectors are not the route's connectors")
 			}
 		}
 	}

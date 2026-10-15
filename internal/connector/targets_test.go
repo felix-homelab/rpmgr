@@ -321,6 +321,38 @@ func TestTargets_Failover(t *testing.T) {
 	eventually(t, "the backup was not used", func() bool { return svc.conns.Load() >= 1 })
 }
 
+// TestTargets_NamedPriority: a stream that names a priority, which the gateway chose among the
+// route's connectors, dials only the targets of that priority: a refused one is not passed over
+// for another priority, and a priority without a target is refused at once (D90). A stream that
+// names none falls through the priorities as before.
+func TestTargets_NamedPriority(t *testing.T) {
+	svc := startService(t, echoService)
+	closed, _ := net.Listen("tcp", "127.0.0.1:0")
+	closedPort := uint16(closed.Addr().(*net.TCPAddr).Port) //nolint:gosec // G115: a port
+	_ = closed.Close()
+	e := newTargets(allowLoopback(t, svc.port(), closedPort))
+	primary, backup := target("127.0.0.1", closedPort), target("127.0.0.1", svc.port())
+	backup.Priority = 5
+	e.Set([]connector.Route{{ID: "rt_1", Targets: []connector.Target{backup, primary}}})
+	named := func(p uint32) *tunnelv1.StreamOpen {
+		open := tcpOpen("rt_1")
+		open.TargetPriority = &p
+		return open
+	}
+	if res, _ := e.handleResult(t, named(0)); res.GetCode() != tunnelv1.ResultCode_RESULT_CODE_UPSTREAM_REFUSED {
+		t.Fatalf("priority 0, whose target refuses: %v, want UPSTREAM_REFUSED and no fall-through", res)
+	}
+	if res, _ := e.handleResult(t, named(5)); res.GetCode() != tunnelv1.ResultCode_RESULT_CODE_NO_ERROR || res.GetTargetId() != backup.ID {
+		t.Fatalf("priority 5: %v, want NO_ERROR from %s", res, backup.ID)
+	}
+	if res, _ := e.handleResult(t, named(9)); res.GetCode() != tunnelv1.ResultCode_RESULT_CODE_UPSTREAM_REFUSED {
+		t.Fatalf("a priority without targets: %v, want UPSTREAM_REFUSED", res)
+	}
+	if res, _ := e.handleResult(t, tcpOpen("rt_1")); res.GetCode() != tunnelv1.ResultCode_RESULT_CODE_NO_ERROR || res.GetTargetId() != backup.ID {
+		t.Fatalf("no priority named: %v, want the fall-through to %s", res, backup.ID)
+	}
+}
+
 // TestOrder: priorities in order; within one, weights decide how often a target comes first.
 func TestOrder(t *testing.T) {
 	ts := []connector.Target{{ID: "c", Priority: 2}, {ID: "a", Weight: 3}, {ID: "b", Weight: 1}, {ID: "z", Priority: 1}}

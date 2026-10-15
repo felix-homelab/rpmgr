@@ -273,9 +273,13 @@ type StreamOpen struct {
 	// StreamResult.
 	Result *StreamResult `protobuf:"bytes,15,opt,name=result,proto3" json:"result,omitempty"`
 	// W3C trace context: the trace flags, of which bit 0 is "sampled".
-	TraceFlags    uint32 `protobuf:"varint,16,opt,name=trace_flags,json=traceFlags,proto3" json:"trace_flags,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	TraceFlags uint32 `protobuf:"varint,16,opt,name=trace_flags,json=traceFlags,proto3" json:"trace_flags,omitempty"`
+	// If set, the connector dials only the route's targets of this priority, which the gateway
+	// chose among the route's connectors, and answers UPSTREAM_REFUSED when none is reached (D90).
+	// Unset, it tries all of them, by priority.
+	TargetPriority *uint32 `protobuf:"varint,17,opt,name=target_priority,json=targetPriority,proto3,oneof" json:"target_priority,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *StreamOpen) Reset() {
@@ -416,6 +420,13 @@ func (x *StreamOpen) GetResult() *StreamResult {
 func (x *StreamOpen) GetTraceFlags() uint32 {
 	if x != nil {
 		return x.TraceFlags
+	}
+	return 0
+}
+
+func (x *StreamOpen) GetTargetPriority() uint32 {
+	if x != nil && x.TargetPriority != nil {
+		return *x.TargetPriority
 	}
 	return 0
 }
@@ -1249,7 +1260,7 @@ var File_rpmgr_tunnel_v1_tunnel_proto protoreflect.FileDescriptor
 
 const file_rpmgr_tunnel_v1_tunnel_proto_rawDesc = "" +
 	"\n" +
-	"\x1crpmgr/tunnel/v1/tunnel.proto\x12\x0frpmgr.tunnel.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1crpmgr/agent/v1/control.proto\x1a\x1drpmgr/agent/v1/snapshot.proto\"\x91\x04\n" +
+	"\x1crpmgr/tunnel/v1/tunnel.proto\x12\x0frpmgr.tunnel.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1crpmgr/agent/v1/control.proto\x1a\x1drpmgr/agent/v1/snapshot.proto\"\xd3\x04\n" +
 	"\n" +
 	"StreamOpen\x12/\n" +
 	"\x04kind\x18\x01 \x01(\x0e2\x1b.rpmgr.tunnel.v1.StreamKindR\x04kind\x12\x19\n" +
@@ -1269,7 +1280,9 @@ const file_rpmgr_tunnel_v1_tunnel_proto_rawDesc = "" +
 	"\aopen_id\x18\x0e \x01(\x04R\x06openId\x125\n" +
 	"\x06result\x18\x0f \x01(\v2\x1d.rpmgr.tunnel.v1.StreamResultR\x06result\x12\x1f\n" +
 	"\vtrace_flags\x18\x10 \x01(\rR\n" +
-	"traceFlags\"\\\n" +
+	"traceFlags\x12,\n" +
+	"\x0ftarget_priority\x18\x11 \x01(\rH\x00R\x0etargetPriority\x88\x01\x01B\x12\n" +
+	"\x10_target_priority\"\\\n" +
 	"\fStreamResult\x12/\n" +
 	"\x04code\x18\x01 \x01(\x0e2\x1b.rpmgr.tunnel.v1.ResultCodeR\x04code\x12\x1b\n" +
 	"\ttarget_id\x18\x02 \x01(\tR\btargetId\"\x9d\x04\n" +
@@ -1415,6 +1428,7 @@ func file_rpmgr_tunnel_v1_tunnel_proto_init() {
 	if File_rpmgr_tunnel_v1_tunnel_proto != nil {
 		return
 	}
+	file_rpmgr_tunnel_v1_tunnel_proto_msgTypes[0].OneofWrappers = []any{}
 	file_rpmgr_tunnel_v1_tunnel_proto_msgTypes[2].OneofWrappers = []any{
 		(*SessionMessage_Hello)(nil),
 		(*SessionMessage_Welcome)(nil),

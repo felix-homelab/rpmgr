@@ -10,6 +10,7 @@ import (
 	"io"
 	"net"
 	"net/url"
+	"slices"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -771,10 +772,11 @@ func TestSessions_Ranks(t *testing.T) {
 }
 
 // TestSessions_Fallback: a target that refuses or does not answer passes the stream to another
-// connector, of the same priority first, then of the next; a connector is tried once whatever its
-// sessions, an open tries at most three, and a route's only connector is not tried again (D90).
+// entry, of the same priority first, then of the next, which may be the same connector at a worse
+// priority; an entry is tried once whatever its connector's sessions, an open tries at most four,
+// and a route's only entry is not tried again (D90).
 func TestSessions_Fallback(t *testing.T) {
-	names := []string{"fb_1", "fb_2", "fb_3", "fb_4"}
+	names := []string{"fb_1", "fb_2", "fb_3", "fb_4", "fb_5"}
 	a := &assignment{known: map[string]bool{}, ranked: map[string][]gateway.RouteConnector{}}
 	for _, n := range names {
 		a.known[cid(n)] = true
@@ -784,6 +786,7 @@ func TestSessions_Fallback(t *testing.T) {
 	c1a, c1b := start(t, m, connectorID("fb_1"), hello("r1")), start(t, m, connectorID("fb_1"), hello("r1"))
 	c2 := start(t, m, connectorID("fb_2"), hello("r1"))
 	c3, c4 := start(t, m, connectorID("fb_3"), hello("r1")), start(t, m, connectorID("fb_4"), hello("r1"))
+	c5 := start(t, m, connectorID("fb_5"), hello("r1"))
 	drain := func(cs ...*connector) int {
 		n := 0
 		for _, c := range cs {
@@ -823,28 +826,85 @@ func TestSessions_Fallback(t *testing.T) {
 		}
 	}
 
-	// Four connectors of one priority that all refuse: three attempts, then the code.
+	// Five connectors of one priority that all refuse: four attempts, then the code.
 	a.mu.Lock()
-	a.ranked["r1"] = []gateway.RouteConnector{{ID: cid("fb_1")}, {ID: cid("fb_2")}, {ID: cid("fb_3")}, {ID: cid("fb_4")}}
+	a.ranked["r1"] = []gateway.RouteConnector{{ID: cid("fb_1")}, {ID: cid("fb_2")}, {ID: cid("fb_3")}, {ID: cid("fb_4")}, {ID: cid("fb_5")}}
 	a.mu.Unlock()
-	for _, c := range []*connector{c1a, c1b, c2, c3, c4} {
+	for _, c := range []*connector{c1a, c1b, c2, c3, c4, c5} {
 		c.answer.Store(int32(tunnelv1.ResultCode_RESULT_CODE_UPSTREAM_REFUSED))
 	}
 	if st, got := open(); st != nil || got != tunnelv1.ResultCode_RESULT_CODE_UPSTREAM_REFUSED {
 		t.Fatalf("%v %s, want UPSTREAM_REFUSED", st, got)
 	}
-	if n := drain(c1a, c1b, c2, c3, c4); n != 3 {
-		t.Fatalf("%d attempts, want 3", n)
+	if n := drain(c1a, c1b, c2, c3, c4, c5); n != 4 {
+		t.Fatalf("%d attempts, want 4", n)
 	}
 
-	// The route's only connector refuses: no other attempt, not even on its other session.
+	// One connector at priorities 0 and 5, another at 0: a refusal at fb_1's priority 0 goes to
+	// fb_2's priority 0 before fb_1's priority 5, and each stream names its entry's priority.
+	a.mu.Lock()
+	a.ranked["r1"] = []gateway.RouteConnector{{ID: cid("fb_1"), Weight: 1, Ranked: true}, {ID: cid("fb_1"), Priority: 5, Weight: 1, Ranked: true},
+		{ID: cid("fb_2"), Weight: 1, Ranked: true}}
+	a.mu.Unlock()
+	c2.answer.Store(int32(tunnelv1.ResultCode_RESULT_CODE_NO_ERROR))
+	priorities := func(cs ...*connector) []uint32 {
+		var out []uint32
+		for _, c := range cs {
+			for done := false; !done; {
+				select {
+				case o := <-c.opens:
+					if o.TargetPriority == nil {
+						t.Fatal("a ranked entry's stream names no priority")
+					}
+					out = append(out, o.GetTargetPriority())
+				case <-time.After(100 * time.Millisecond):
+					done = true
+				}
+			}
+		}
+		return out
+	}
+	for range 10 {
+		st, got := open()
+		if got != tunnelv1.ResultCode_RESULT_CODE_NO_ERROR {
+			t.Fatalf("%s, want the stream on fb_2", got)
+		}
+		_ = st.Close()
+	}
+	if p1, p2 := priorities(c1a, c1b), priorities(c2); slices.Contains(p1, 5) || len(p2) != 10 || slices.ContainsFunc(p2, func(p uint32) bool { return p != 0 }) {
+		t.Fatalf("priorities named to fb_1 %v and fb_2 %v, want fb_1 at 0 only and fb_2 at 0 ten times", p1, p2)
+	}
+	// Without fb_2, fb_1's priority 5 is the next entry.
+	a.mu.Lock()
+	a.ranked["r1"] = a.ranked["r1"][:2]
+	a.mu.Unlock()
+	if st, got := open(); st != nil || got != tunnelv1.ResultCode_RESULT_CODE_UPSTREAM_REFUSED {
+		t.Fatalf("%v %s, want UPSTREAM_REFUSED", st, got)
+	}
+	if got := priorities(c1a, c1b); !slices.Equal(got, []uint32{0, 5}) && !slices.Equal(got, []uint32{5, 0}) {
+		t.Fatalf("priorities named to fb_1 %v, want 0 then 5", got)
+	}
+
+	// The route's only entry refuses: no other attempt, not even on its connector's other session;
+	// an unranked entry names no priority.
 	a.mu.Lock()
 	a.ranked["r1"] = []gateway.RouteConnector{{ID: cid("fb_1"), Weight: 1}}
 	a.mu.Unlock()
 	if st, got := open(); st != nil || got != tunnelv1.ResultCode_RESULT_CODE_UPSTREAM_REFUSED {
 		t.Fatalf("%v %s, want UPSTREAM_REFUSED", st, got)
 	}
-	if n := drain(c1a, c1b); n != 1 {
-		t.Fatalf("%d attempts on the only connector, want 1", n)
+	var opens []*tunnelv1.StreamOpen
+	for _, c := range []*connector{c1a, c1b} {
+		for done := false; !done; {
+			select {
+			case o := <-c.opens:
+				opens = append(opens, o)
+			case <-time.After(100 * time.Millisecond):
+				done = true
+			}
+		}
+	}
+	if len(opens) != 1 || opens[0].TargetPriority != nil {
+		t.Fatalf("streams %v on the only entry, want one that names no priority", opens)
 	}
 }

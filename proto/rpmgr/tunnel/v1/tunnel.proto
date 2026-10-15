@@ -92,6 +92,10 @@ message StreamOpen {
   StreamResult result = 15;
   // W3C trace context: the trace flags, of which bit 0 is "sampled".
   uint32 trace_flags = 16;
+  // If set, the connector dials only the route's targets of this priority, which the gateway
+  // chose among the route's connectors, and answers UPSTREAM_REFUSED when none is reached (D90).
+  // Unset, it tries all of them, by priority.
+  optional uint32 target_priority = 17;
 }
 
 // StreamResult is the first message in the return direction, written by the side that received

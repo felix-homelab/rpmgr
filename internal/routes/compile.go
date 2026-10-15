@@ -3,6 +3,7 @@
 package routes
 
 import (
+	"cmp"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -391,33 +392,38 @@ func upstreamTLSOf(ctx context.Context, tx *ent.Tx, routeID string) ([]*agentv1.
 }
 
 // serving lists the connectors, sorted, with an enabled target of the route that are themselves
-// enabled and not decommissioned, and the same connectors ranked: each with the lowest priority of
-// those targets and the summed weight of its targets at that priority, a weight below 1 counted
-// as 1, as the connector orders its own targets (D90).
+// enabled and not decommissioned, and the same connectors ranked: one entry per connector and
+// priority of those targets, with the summed weight of its targets at that priority, a weight
+// below 1 counted as 1, sorted by connector and priority (D90).
 func serving(ctx context.Context, tx *ent.Tx, routeID string) ([]string, []*agentv1.RouteConnector, error) {
 	targets, err := tx.RouteTarget.Query().Where(routetarget.RouteID(routeID), routetarget.Enabled(true),
 		routetarget.HasConnectorWith(connector.Enabled(true), connector.DecommissionedAtIsNil())).All(ctx)
 	if err != nil {
 		return nil, nil, err
 	}
-	rank := map[string]*agentv1.RouteConnector{}
+	type tier struct {
+		con      string
+		priority uint32
+	}
+	rank := map[tier]*agentv1.RouteConnector{}
+	var ids []string
 	for _, t := range targets {
-		p, w := uint32(t.Priority), uint32(max(t.Weight, 1)) //nolint:gosec // G115: the schema keeps both small and non-negative
-		switch rc := rank[t.ConnectorID]; {
-		case rc == nil:
-			rank[t.ConnectorID] = &agentv1.RouteConnector{ConnectorId: t.ConnectorID, Priority: p, Weight: w}
-		case p < rc.Priority:
-			rc.Priority, rc.Weight = p, w
-		case p == rc.Priority:
-			rc.Weight += w
+		k := tier{t.ConnectorID, uint32(t.Priority)} //nolint:gosec // G115: the schema keeps it small and non-negative
+		if rank[k] == nil {
+			rank[k] = &agentv1.RouteConnector{ConnectorId: k.con, Priority: k.priority}
+			ids = append(ids, k.con)
 		}
+		rank[k].Weight += uint32(max(t.Weight, 1)) //nolint:gosec // G115: the schema keeps it at most 1000
 	}
-	ids := slices.Sorted(maps.Keys(rank))
-	ranked := make([]*agentv1.RouteConnector, len(ids))
-	for i, id := range ids {
-		ranked[i] = rank[id]
+	tiers := slices.SortedFunc(maps.Keys(rank), func(a, b tier) int {
+		return cmp.Or(strings.Compare(a.con, b.con), cmp.Compare(a.priority, b.priority))
+	})
+	ranked := make([]*agentv1.RouteConnector, len(tiers))
+	for i, k := range tiers {
+		ranked[i] = rank[k]
 	}
-	return ids, ranked, nil
+	slices.Sort(ids)
+	return slices.Compact(ids), ranked, nil
 }
 
 // connectorTargets loads the connector a for ConnectorRoutes and ConnectorGateways, its enabled

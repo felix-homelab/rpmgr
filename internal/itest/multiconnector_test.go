@@ -42,16 +42,18 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routetarget"
 )
 
-// nameApp is a web app that answers its name and closes each connection, so that every request
-// takes a new tunnel stream.
-func nameApp(t *testing.T, name string) int {
+// nameApp is a web app that answers its name; with closing, it closes each connection, so that
+// every request takes a new tunnel stream, else it keeps them alive for the gateway's pool.
+func nameApp(t *testing.T, name string, closing bool) int {
 	t.Helper()
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
 	}
 	srv := &http.Server{ReadHeaderTimeout: 5 * time.Second, Handler: http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Connection", "close")
+		if closing {
+			w.Header().Set("Connection", "close")
+		}
 		_, _ = io.WriteString(w, name)
 	})}
 	go func() { _ = srv.Serve(ln) }()
@@ -77,9 +79,11 @@ func tcpPing(c net.Conn, msg []byte) error {
 }
 
 // TestMultiConnector: a route's targets on two connectors are ranked across them (D90). A failover
-// target gets no stream while the preferred connector is ready and every stream once it is not; one
-// priority is shared by weight; a target that refuses passes the stream to the other connector; and
-// switching one connector off and on leaves the routes the other serves alone undisturbed.
+// target gets no stream while the preferred connector is ready and every stream once it is not, and
+// gives them back, also over kept-alive upstream connections; one priority is shared by weight; a
+// target that refuses passes the stream to the other connector; another connector's priority 0
+// wins over a connector's own priority 5; and switching one connector off and on leaves the routes
+// the other serves alone undisturbed.
 func TestMultiConnector(t *testing.T) {
 	for _, transport := range []string{"h2", "auto"} {
 		t.Run(transport, func(t *testing.T) { testMultiConnector(t, transport) })
@@ -93,13 +97,14 @@ func testMultiConnector(t *testing.T, transport string) {
 	group := c.GatewayGroup(t, "eu")
 	gw := c.EnrollGateway(t, filepath.Join(dir, "gw-id"), group, []string{gwAddr})
 	a, b := c.EnrollConnector(t, filepath.Join(dir, "a-id")), c.EnrollConnector(t, filepath.Join(dir, "b-id"))
-	appA, appB, echoA := nameApp(t, "A"), nameApp(t, "B"), echoServer(t)
-	refused := freeTCPUDPPort(t) // nothing listens there
+	appA, appB, echoA := nameApp(t, "A", true), nameApp(t, "B", true), echoServer(t)
+	poolA, poolB := nameApp(t, "A", false), nameApp(t, "B", false) // kept alive
+	refused := freeTCPUDPPort(t)                                   // nothing listens there
 	tcpA, tcpD := freeTCPUDPPort(t), freeTCPUDPPort(t)
 
 	k, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	tmpl := &x509.Certificate{SerialNumber: big.NewInt(9), Subject: pkix.Name{CommonName: "a.example.com"},
-		DNSNames:  []string{"a.example.com", "f.example.com", "s.example.com", "d.example.com"},
+		DNSNames:  []string{"a.example.com", "f.example.com", "s.example.com", "d.example.com", "m.example.com"},
 		NotBefore: time.Now().Add(-time.Hour), NotAfter: time.Now().Add(24 * time.Hour)}
 	der, err := x509.CreateCertificate(rand.Reader, tmpl, tmpl, &k.PublicKey, k)
 	if err != nil {
@@ -186,9 +191,12 @@ func testMultiConnector(t *testing.T, transport string) {
 			tcpRoute("tcp-a", tcpA, target{a.AgentID, echoA, 0, 1}),
 			tcpRoute("tcp-d", tcpD, target{a.AgentID, echoA, 0, 1}, target{b.AgentID, refused, 0, 1}),
 			httpRoute("web-a", "a.example.com", target{a.AgentID, appA, 0, 1}),
-			httpRoute("web-f", "f.example.com", target{a.AgentID, appA, 0, 1}, target{b.AgentID, appB, 10, 1}),
+			httpRoute("web-f", "f.example.com", target{a.AgentID, poolA, 0, 1}, target{b.AgentID, poolB, 10, 1}),
 			httpRoute("web-s", "s.example.com", target{a.AgentID, appA, 0, 1}, target{b.AgentID, appB, 0, 3}),
 			httpRoute("web-d", "d.example.com", target{a.AgentID, appA, 0, 1}, target{b.AgentID, refused, 0, 1}),
+			// A's priority 0 refuses, its priority 5 answers; B's priority 0 must win over A's 5.
+			httpRoute("web-m", "m.example.com", target{a.AgentID, refused, 0, 1}, target{a.AgentID, appA, 5, 1},
+				target{b.AgentID, appB, 0, 1}),
 		} {
 			if err != nil {
 				return nil, err
@@ -213,7 +221,7 @@ func testMultiConnector(t *testing.T, transport string) {
 	for _, con := range []struct {
 		dir, name string
 		ports     []int
-	}{{a.Dir, "a", []int{appA, echoA}}, {b.Dir, "b", []int{appB, refused}}} {
+	}{{a.Dir, "a", []int{appA, echoA, poolA, refused}}, {b.Dir, "b", []int{appB, poolB, refused}}} {
 		var cc config.Connector
 		cc.Version = 1
 		cc.Controller.Endpoints = []string{c.URL}
@@ -237,7 +245,7 @@ func testMultiConnector(t *testing.T, transport string) {
 		})
 	}
 
-	client := &http.Client{Timeout: 10 * time.Second, Transport: &http.Transport{DisableKeepAlives: true,
+	client := &http.Client{Timeout: 10 * time.Second, Transport: &http.Transport{ // keep-alive, as browsers
 		TLSClientConfig: &tls.Config{RootCAs: pool, MinVersion: tls.VersionTLS13},
 		DialContext: func(ctx context.Context, network, _ string) (net.Conn, error) {
 			var d net.Dialer
@@ -327,15 +335,36 @@ func testMultiConnector(t *testing.T, transport string) {
 		}
 		_ = c.Close()
 	}
+	// A's priority 0 refuses and its priority 5 answers: B's priority 0 takes every request, and
+	// A's priority 5 only once B is off.
+	if got := answers("m.example.com", 40); got["B"] != 40 {
+		t.Fatalf("web-m answers %v, want only B", got)
+	}
+	setEnabled(b.AgentID, false)
+	if got := answers("m.example.com", 20); got["A"] != 20 {
+		t.Fatalf("web-m answers %v with B off, want only A, from its priority 5", got)
+	}
+	setEnabled(b.AgentID, true)
+	waitFor("web-m on B again", func() bool { body, err := get("m.example.com"); return err == nil && body == "B" })
 
-	// A switched off: the failover takes every stream; A on again: it takes them back.
+	// A switched off: the failover takes every stream; A on again: it takes them back, also over
+	// the upstream connections the gateway keeps alive for web-f.
 	setEnabled(a.AgentID, false)
 	waitFor("web-f on B", func() bool { body, err := get("f.example.com"); return err == nil && body == "B" })
 	if got := answers("f.example.com", 20); got["B"] != 20 {
 		t.Fatalf("web-f answers %v with A off, want only B", got)
 	}
 	setEnabled(a.AgentID, true)
-	waitFor("web-f on A again", func() bool { body, err := get("f.example.com"); return err == nil && body == "A" })
+	back := time.Now().Add(10 * time.Second) // the pool's idle timeout is far longer
+	for body, err := get("f.example.com"); err != nil || body != "A"; body, err = get("f.example.com") {
+		if time.Now().After(back) {
+			t.Fatalf("web-f still answers %q %v 10 s after A is on again", body, err)
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	if got := answers("f.example.com", 20); got["A"] != 20 {
+		t.Fatalf("web-f answers %v after the failback, want only A", got)
+	}
 
 	// B switched off and on twice under traffic on A's own routes: none of it fails.
 	long, err := net.DialTimeout("tcp", addr(tcpA), 5*time.Second)

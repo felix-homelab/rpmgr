@@ -347,9 +347,10 @@ Rules:
    each agent are kept for support ([06](06-data-model.md#desired-vs-observed-state)).
 10. **What an agent gets.** A gateway gets every enabled `tcp` route of its gateway group that has
     a port and a connector that serves it: the port, the idle timeout and the connectors that
-    serve the route (enabled connectors with an enabled target on it), each also ranked by its
-    best priority and weight ([Multiple gateways](#multiple-gateways)); the gateway opens streams
-    only to those. A route no connector serves is left out, so no gateway holds its port
+    serve the route (enabled connectors with an enabled target on it), and the same connectors as
+    entries, one per connector and priority of its targets, with their weight
+    ([Multiple gateways](#multiple-gateways)); the gateway opens streams only to those. A route no
+    connector serves is left out, so no gateway holds its port
     ([D78](14-open-decisions.md#engineering)); the same holds for `udp` and `tcp_udp` routes. A
     `tcp_udp` route comes as one resource, with its port, both idle timeouts and its connectors. A
     connector gets every enabled route with an enabled target on it: its targets, by priority,
@@ -510,18 +511,22 @@ sequenceDiagram
   participant A as Connector
   participant S as Local service
   U->>G: TCP connect to :5432 (route r7)
-  G->>A: open stream · StreamOpen{TCP, r7, rev, src, dst, trace} · client bytes follow immediately
+  G->>A: open stream · StreamOpen{TCP, r7, rev, src, dst, trace, priority}
   A->>A: r7 in active or draining snapshot? target allowed by local policy?
   A->>S: dial configured target (5 s timeout) [+ PROXY v2 header]
   A-->>G: StreamResult{OK} · then service bytes
+  G->>A: the client's bytes, relayed only after OK
   U->>G: FIN
   G->>A: stream FIN
   A->>S: CloseWrite (half-close preserved)
 ```
 
-- **Zero extra round trips.** Opening a QUIC stream needs no handshake, and the gateway writes the
-  preamble and the client's first bytes without waiting for a reply. There is no pool of
-  pre-opened connections that could run empty.
+- **One round trip, no pool.** Opening a QUIC stream needs no handshake, and the gateway writes
+  `StreamOpen` at once. It relays the client's bytes only after the connector's `StreamResult`, so
+  that a target that refuses or does not answer can be tried on another connector without
+  repeating anything ([Framing](#framing)): a new connection waits one round trip to the
+  connector and the connector's dial. There is no pool of pre-opened connections that could run
+  empty.
 - **The connector dials only what its own snapshot says.** `StreamOpen` names a `route_id`, never an
   address. A compromised gateway cannot turn a connector into an open proxy.
 - **Only for a route of the opening gateway.** The connector's snapshot lists, per gateway, the
@@ -592,12 +597,19 @@ sequenceDiagram
 | 8 | `PROTOCOL` | Close; log |
 | 9 | `INTERNAL` | Close; log |
 
-- A stream is tried at most 3 times: on another session after `DRAINING` or `OVERLOADED`, and on
-  another connector after `UPSTREAM_REFUSED` or `UPSTREAM_TIMEOUT`, each connector once, the
-  connectors of the best remaining priority first ([D90](14-open-decisions.md#engineering)). The
-  client has sent nothing over the stream before its `NO_ERROR`, so a retry repeats nothing: TCP,
+- A stream is tried at most 4 times: on another session after `DRAINING` or `OVERLOADED`, and
+  after `UPSTREAM_REFUSED` or `UPSTREAM_TIMEOUT` on another entry of the route, a connector at one
+  priority, each entry once: another of the same priority first, then one of the next, which may
+  be the same connector at a worse priority ([D90](14-open-decisions.md#engineering)). The retry
+  is safe only because the client has sent nothing over the stream before its `NO_ERROR`: TCP,
   `tls_passthrough` and HTTP relay only after it. A UDP flow sends its first datagrams before the
   answer and is not retried.
+- Each attempt waits for its `StreamResult`. A target that does not answer gets
+  `UPSTREAM_TIMEOUT` after the upstream dial timeout, so with several connectors of unreachable
+  targets a new connection waits that long per attempt before its 504 or reset; the bound is the
+  attempts times the `StreamOpen` → `StreamResult` timeout (see the timeout table). Every new
+  connection pays it while a target of the best priority stays unreachable: no passive health
+  marks it before Phase 2.
 - [R] Enable `EnableStreamResetPartialDelivery` on both ends [F quic-go:interface.go:183] and call
   `SetReliableBoundary()` right after writing `StreamResult` [F quic-go:stream.go:151], so a
   `StreamResult` written just before a reset is still delivered.
@@ -1005,10 +1017,10 @@ limits head-of-line blocking from packet loss to half the streams.
 | UDP socket buffers | requests 7 MiB [F quic-go:internal/protocol/params.go:6,9] | installer sets `net.core.rmem_max`/`wmem_max` ≥ 7 MiB | Otherwise quic-go logs a warning and throughput suffers |
 
 The gateway opens streams with the non-blocking `OpenStream`. When a session hits its stream limit,
-the gateway tries another session of the route's chosen connectors, then returns 503 (HTTP) or
-resets (TCP). A stream
-that rpmgr resets carries the application error code 1 when it was aborted (a client's RST) and 2
-when it was closed before both directions ended. Phase 1 gives the whole window budget to
+the gateway tries another ready session: of the same connector, else of another entry of the best
+remaining priority, a failover included; with none left it returns 503 (HTTP) or resets (TCP). A
+stream that rpmgr resets carries the application error code 1 when it was aborted (a client's RST)
+and 2 when it was closed before both directions ended. Phase 1 gives the whole window budget to
 `rpmgr-tunnel/1`; the `h3` share comes with HTTP/3 (Phase 3).
 
 ### Multiple gateways
@@ -1017,15 +1029,26 @@ when it was closed before both directions ended. Phase 1 gives the whole window 
   store), and every connector serving the route keeps a data session to **every gateway in the
   group**. Larger deployments use several groups.
 - **Choosing a connector.** A route's targets may be on several connectors. The gateway learns
-  each connector's rank for the route: the lowest priority among its enabled targets, and the
-  summed weight of its targets at that priority, a weight of 0 counted as 1. For each new user
-  connection it takes the connectors of the lowest priority that have a ready session for the
-  route, chooses one of them at random by weight, and the connector then orders its own targets
-  as [Targets](#data-session) says. A connector of a worse priority, a failover, takes
-  connections only while no better one has a ready session. A target that refuses or does not
-  answer passes the connection to another connector ([Framing](#framing)). A gateway of a release
-  candidate (v0.1.0-rc.1 to rc.6) ignores the ranks and chooses among all connectors by load
+  the route's entries: one per connector and priority of its enabled targets, with the summed
+  weight of its targets at that priority, a weight of 0 counted as 1. For each new user connection
+  it takes the entries of the lowest priority whose connector has a ready session, passes over one
+  whose sessions all have blocked writes while another of the priority has not, and chooses one at
+  random by weight. `StreamOpen` names the entry's priority, and the connector dials only its
+  targets of that priority, in a random order weighted by `weight`, answering `UPSTREAM_REFUSED`
+  when none is reached; the gateway then tries the next entry ([Framing](#framing)). So another
+  connector's priority 0 comes before a connector's own priority 5, and an entry of a worse
+  priority, a failover, takes connections only while no better one has a ready session
   ([D90](14-open-decisions.md#engineering)).
+- **HTTP failback.** Weights and priorities choose the tunnel stream of each new upstream
+  connection; the gateway keeps such connections alive for later requests. One that is not of the
+  best entries with a ready session now, because a better priority is ready again or its connector
+  left the route, closes as soon as it has no request in progress: an HTTP/1.1 upstream moves on
+  the next request, an HTTP/2 upstream, which carries every request on one connection, once it has
+  none in progress.
+- **Version skew.** A gateway of a release candidate (v0.1.0-rc.1 to rc.7) ignores the entries and
+  chooses among all connectors by load; a connector of one ignores the priority a stream names and
+  tries all its targets by priority, so its worse targets answer before another connector's
+  better ones.
 - Among the chosen connector's ready sessions, the gateway picks with **power of two choices**:
   sample two, take the one with the lower (smoothed RTT × active streams), where a stream is
   active if it was opened or carried a byte within the last 5 s, so idle pooled HTTP streams and
@@ -1196,7 +1219,7 @@ sequenceDiagram
 
 | Step | rpmgr |
 |---|---|
-| New public TCP connection, warm session | Open a stream locally and send immediately: **0 extra RTT**, no pool to exhaust |
+| New public TCP connection, warm session | Open a stream locally, with no handshake; the client's bytes follow the `StreamResult`: **1 RTT** to the connector plus its dial, no pool to exhaust |
 | Agent session setup | QUIC: 1 RTT handshake, `SessionHello` pipelined. TCP fallback: TCP + TLS 1.3 = 2 RTT, plus ½–1 RTT for the gateway-opened session control stream |
 | UDP packet | QUIC datagram (no retransmission, no head-of-line blocking) |
 | Copy path | Pooled 32 KiB buffers; ≤ 2 user-space copies per hop; no per-packet allocations in steady state (verified with pprof in benchmarks) |

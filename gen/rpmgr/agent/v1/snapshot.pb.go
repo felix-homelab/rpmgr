@@ -713,9 +713,9 @@ type GatewayTCPRoute struct {
 	Connectors []string `protobuf:"bytes,3,rep,name=connectors,proto3" json:"connectors,omitempty"`
 	// Who may connect.
 	Access *RouteAccess `protobuf:"bytes,4,opt,name=access,proto3" json:"access,omitempty"`
-	// The same connectors with their rank for the route: the gateway opens a stream on a connector
-	// of the lowest priority that has a ready session, chosen by weight (D90). A gateway that does
-	// not know the field treats every connector alike.
+	// The same connectors ranked, one entry per connector and priority of its targets: the gateway
+	// opens a stream at the lowest priority that has a ready session, on an entry chosen by weight
+	// (D90). A gateway that does not know the field treats every connector alike.
 	RankedConnectors []*RouteConnector `protobuf:"bytes,5,rep,name=ranked_connectors,json=rankedConnectors,proto3" json:"ranked_connectors,omitempty"`
 	unknownFields    protoimpl.UnknownFields
 	sizeCache        protoimpl.SizeCache
@@ -786,16 +786,16 @@ func (x *GatewayTCPRoute) GetRankedConnectors() []*RouteConnector {
 	return nil
 }
 
-// RouteConnector is a connector that serves a route, ranked by its enabled targets of the route
-// (docs/03-connections.md, "Choosing a connector").
+// RouteConnector is a connector that serves a route at one priority of its enabled targets of the
+// route (docs/03-connections.md, "Choosing a connector").
 type RouteConnector struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// The connector's ID.
 	ConnectorId string `protobuf:"bytes,1,opt,name=connector_id,json=connectorId,proto3" json:"connector_id,omitempty"`
-	// The lowest priority among its enabled targets of the route; lower is preferred.
+	// A priority of its enabled targets of the route; lower is preferred.
 	Priority uint32 `protobuf:"varint,2,opt,name=priority,proto3" json:"priority,omitempty"`
 	// The weights of its enabled targets at that priority, each 0 counted as 1, summed: its share
-	// among the connectors of the priority.
+	// among the entries of the priority.
 	Weight        uint32 `protobuf:"varint,3,opt,name=weight,proto3" json:"weight,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -1044,9 +1044,9 @@ type GatewayTCPUDPRoute struct {
 	Connectors []string `protobuf:"bytes,4,rep,name=connectors,proto3" json:"connectors,omitempty"`
 	// Who may connect and send.
 	Access *RouteAccess `protobuf:"bytes,5,opt,name=access,proto3" json:"access,omitempty"`
-	// The same connectors with their rank for the route: the gateway opens a stream on a connector
-	// of the lowest priority that has a ready session, chosen by weight (D90). A gateway that does
-	// not know the field treats every connector alike.
+	// The same connectors ranked, one entry per connector and priority of its targets: the gateway
+	// opens a stream at the lowest priority that has a ready session, on an entry chosen by weight
+	// (D90). A gateway that does not know the field treats every connector alike.
 	RankedConnectors []*RouteConnector `protobuf:"bytes,6,rep,name=ranked_connectors,json=rankedConnectors,proto3" json:"ranked_connectors,omitempty"`
 	unknownFields    protoimpl.UnknownFields
 	sizeCache        protoimpl.SizeCache
@@ -1135,9 +1135,9 @@ type GatewayUDPRoute struct {
 	Connectors []string `protobuf:"bytes,3,rep,name=connectors,proto3" json:"connectors,omitempty"`
 	// Who may send.
 	Access *RouteAccess `protobuf:"bytes,4,opt,name=access,proto3" json:"access,omitempty"`
-	// The same connectors with their rank for the route: the gateway opens a stream on a connector
-	// of the lowest priority that has a ready session, chosen by weight (D90). A gateway that does
-	// not know the field treats every connector alike.
+	// The same connectors ranked, one entry per connector and priority of its targets: the gateway
+	// opens a stream at the lowest priority that has a ready session, on an entry chosen by weight
+	// (D90). A gateway that does not know the field treats every connector alike.
 	RankedConnectors []*RouteConnector `protobuf:"bytes,5,rep,name=ranked_connectors,json=rankedConnectors,proto3" json:"ranked_connectors,omitempty"`
 	unknownFields    protoimpl.UnknownFields
 	sizeCache        protoimpl.SizeCache
@@ -1247,9 +1247,9 @@ type GatewayHTTPRoute struct {
 	Maintenance bool `protobuf:"varint,14,opt,name=maintenance,proto3" json:"maintenance,omitempty"`
 	// Plain text the maintenance page shows.
 	MaintenanceMessage string `protobuf:"bytes,15,opt,name=maintenance_message,json=maintenanceMessage,proto3" json:"maintenance_message,omitempty"`
-	// The same connectors with their rank for the route: the gateway opens a stream on a connector
-	// of the lowest priority that has a ready session, chosen by weight (D90). A gateway that does
-	// not know the field treats every connector alike.
+	// The same connectors ranked, one entry per connector and priority of its targets: the gateway
+	// opens a stream at the lowest priority that has a ready session, on an entry chosen by weight
+	// (D90). A gateway that does not know the field treats every connector alike.
 	RankedConnectors []*RouteConnector `protobuf:"bytes,16,rep,name=ranked_connectors,json=rankedConnectors,proto3" json:"ranked_connectors,omitempty"`
 	unknownFields    protoimpl.UnknownFields
 	sizeCache        protoimpl.SizeCache
@@ -1730,9 +1730,9 @@ type GatewayPassthroughRoute struct {
 	Connectors []string `protobuf:"bytes,2,rep,name=connectors,proto3" json:"connectors,omitempty"`
 	// Who may connect.
 	Access *RouteAccess `protobuf:"bytes,3,opt,name=access,proto3" json:"access,omitempty"`
-	// The same connectors with their rank for the route: the gateway opens a stream on a connector
-	// of the lowest priority that has a ready session, chosen by weight (D90). A gateway that does
-	// not know the field treats every connector alike.
+	// The same connectors ranked, one entry per connector and priority of its targets: the gateway
+	// opens a stream at the lowest priority that has a ready session, on an entry chosen by weight
+	// (D90). A gateway that does not know the field treats every connector alike.
 	RankedConnectors []*RouteConnector `protobuf:"bytes,4,rep,name=ranked_connectors,json=rankedConnectors,proto3" json:"ranked_connectors,omitempty"`
 	unknownFields    protoimpl.UnknownFields
 	sizeCache        protoimpl.SizeCache

@@ -153,7 +153,8 @@ Everything a team needs to run rpmgr in production.
 
 **Scope** (P2 in [05](05-features.md#feature-catalogue)):
 
-- Several targets per route, health checks, passive health.
+- Health checks and passive health for a route's targets, which Phase 1 already ranks by priority
+  and weight across connectors ([D90](14-open-decisions.md#engineering)).
 - OIDC forward-auth on routes; bandwidth, connection and rate limits; require-header rule.
 - Private services (TCP, UDP) with visitor grants and end-to-end TLS.
 - `tcp` routes in `http_connect` mode; header-based HTTP matching; ACME DNS-01; custom error pages.

@@ -150,8 +150,8 @@ func rankedIDs(rs []*agentv1.RouteConnector) []string {
 	return out
 }
 
-// TestCompile_RankedConnectors: each connector of a gateway route comes with the lowest priority
-// of its enabled targets and the summed weight of its targets at that priority; disabled targets,
+// TestCompile_RankedConnectors: a gateway route ranks one entry per connector and priority of its
+// enabled targets, with the summed weight of its targets at that priority; disabled targets,
 // disabled and decommissioned connectors do not count (D90).
 func TestCompile_RankedConnectors(t *testing.T) {
 	storetest.ForEachDialect(t, func(t *testing.T, db *store.DB) {
@@ -163,7 +163,7 @@ func TestCompile_RankedConnectors(t *testing.T) {
 		}
 		// newFleet gave r1 c1 at priority 1, c2 at 0 and the disabled connector c3 at 0, weights 1.
 		target(f.c1, 1, 5, true)    // c1: priority 1, weight 1 + 5
-		target(f.c2, 3, 9, true)    // c2: a worse priority does not count
+		target(f.c2, 3, 9, true)    // c2: an entry of its own at priority 3
 		target(f.c2, 0, 50, false)  // nor a disabled target
 		target(f.c2, 0, 1000, true) // c2: priority 0, weight 1 + 1000
 		gone := c.Connector.Create().SetOrgID(f.orgA).SetName("gone").SetSpiffeID("spiffe://x/gone").SetPubkeySha256("gone").
@@ -173,15 +173,19 @@ func TestCompile_RankedConnectors(t *testing.T) {
 		if len(rs) != 1 || rs[0].GetGatewayTcpRoute() == nil {
 			t.Fatalf("resources %v", rs)
 		}
-		want := map[string][2]uint32{f.c1: {1, 6}, f.c2: {0, 1001}}
-		ranked := rs[0].GetGatewayTcpRoute().GetRankedConnectors()
-		if !slices.Equal(rankedIDs(ranked), rs[0].GetGatewayTcpRoute().GetConnectors()) || len(ranked) != len(want) {
-			t.Fatalf("ranked %v, want the route's connectors %v", ranked, rs[0].GetGatewayTcpRoute().GetConnectors())
+		type entry struct {
+			con              string
+			priority, weight uint32
 		}
-		for _, r := range ranked {
-			if w := want[r.GetConnectorId()]; r.GetPriority() != w[0] || r.GetWeight() != w[1] {
-				t.Errorf("connector %s: priority %d weight %d, want %d and %d", r.GetConnectorId(), r.GetPriority(), r.GetWeight(), w[0], w[1])
-			}
+		want := []entry{{f.c1, 1, 6}, {f.c2, 0, 1001}, {f.c2, 3, 9}}
+		slices.SortStableFunc(want, func(a, b entry) int { return strings.Compare(a.con, b.con) })
+		var got []entry
+		for _, r := range rs[0].GetGatewayTcpRoute().GetRankedConnectors() {
+			got = append(got, entry{r.GetConnectorId(), r.GetPriority(), r.GetWeight()})
+		}
+		if !slices.Equal(got, want) || !slices.Equal(slices.Compact(rankedIDs(rs[0].GetGatewayTcpRoute().GetRankedConnectors())),
+			rs[0].GetGatewayTcpRoute().GetConnectors()) {
+			t.Fatalf("ranked %v, want %v", got, want)
 		}
 	})
 }

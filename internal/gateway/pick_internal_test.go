@@ -124,3 +124,49 @@ func TestTrackedStream(t *testing.T) {
 		t.Fatalf("%d streams in flight after Close and Abort, want 0", n)
 	}
 }
+
+// TestChoose: an entry of the lowest priority is chosen; one whose sessions all have blocked writes
+// is passed over while another of its priority has one that flows, whatever the weights, and the
+// priority is kept when none flows (D90).
+func TestChoose(t *testing.T) {
+	now := time.Now()
+	stuck := func() *dataSession {
+		d := &dataSession{}
+		d.writing.Store(now.Add(-time.Second).UnixNano())
+		return d
+	}
+	flowing := &dataSession{}
+	cands := []rankedSessions{
+		{RouteConnector{ID: "failover", Priority: 5, Weight: 1}, []*dataSession{{}}},
+		{RouteConnector{ID: "blocked", Weight: 1000}, []*dataSession{stuck(), stuck()}},
+		{RouteConnector{ID: "flowing", Weight: 1}, []*dataSession{flowing}},
+	}
+	for range 50 {
+		if _, d := choose(cands, now); d != flowing {
+			t.Fatal("not the entry of priority 0 whose session flows")
+		}
+	}
+	cands[2].sessions = []*dataSession{stuck()}
+	for range 50 {
+		if i, _ := choose(cands, now); cands[i].Priority != 0 {
+			t.Fatal("the failover took a stream while priority 0 had sessions")
+		}
+	}
+}
+
+// TestMarkActive: a datagram that passes a UDP flow's stream by keeps the stream active.
+func TestMarkActive(t *testing.T) {
+	now := time.Unix(1_000_000, 0)
+	d := &dataSession{now: func() time.Time { return now }}
+	ts := &trackedStream{Stream: &blockingStream{release: make(chan struct{})}, d: d}
+	ts.last.Store(now.Add(-time.Hour).UnixNano())
+	d.track(ts)
+	if n := d.active(now); n != 0 {
+		t.Fatalf("%d active before the datagram", n)
+	}
+	markActive(ts)
+	if n := d.active(now); n != 1 {
+		t.Fatalf("%d active after the datagram, want 1", n)
+	}
+	markActive(&blockingStream{}) // not a stream of Open: nothing to mark
+}
