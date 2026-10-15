@@ -315,9 +315,9 @@ Rules:
      rest of the snapshot is applied. This covers environmental errors (port in use, upstream
      unreachable, DNS failure), which are retried
      ([Timeouts, keepalive and backoff](#timeouts-keepalive-and-backoff)), and targets **blocked by
-     the connector's local policy**, which are `not_ready(blocked_by_local_policy: <ip:port>)` until
-     the host's policy changes. One occupied port or one disallowed target must not block unrelated
-     changes.
+     the connector's local policy**: a route none of whose targets the policy allows is
+     `not_ready(blocked_by_local_policy: <ip:port>)` until the host's policy changes. One occupied
+     port or one disallowed target must not block unrelated changes.
    - When the host's local policy file changes (`rpmgr policy …` triggers a reload; the connector
      also watches the file), the connector re-evaluates the current snapshot, reports the new
      readiness and resets the open connections to targets the policy no longer allows. No new
@@ -1218,7 +1218,7 @@ sequenceDiagram
 | **Clock skew** | Certificates are backdated 5 min; `Welcome` carries the controller's time; the agent warns above 30 s skew and reports TLS time errors as "clock skew". No protocol message depends on timestamps. |
 | **UDP blocked** | With `auto`, happy eyeballs selects TCP within 300 ms plus the TCP and TLS handshake. If UDP is blackholed mid-session, the QUIC idle timeout fires, the connector moves to TCP, and QUIC is not retried for 1 h. With `quic` pinned, the routes that need QUIC are `not_ready(transport_unavailable: quic)` instead ([Transport selection](#transport-selection)). |
 | **Two controller replicas** | Revisions come from the database; one session per agent via `session_epoch` ([Revisions and ordering](#revisions-and-ordering)). |
-| **Connector local policy blocks a target** | The route is `not_ready(blocked_by_local_policy: 10.0.0.5:5432)`; the UI shows the exact command to allow it on the host. |
+| **Connector local policy blocks a target** | Streams go to the route's other targets that the policy allows; with none, the route is `not_ready(blocked_by_local_policy: 10.0.0.5:5432)` on that connector. The UI shows the exact command to allow it on the host. |
 
 ## Performance budget
 

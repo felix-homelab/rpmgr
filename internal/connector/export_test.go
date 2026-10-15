@@ -67,3 +67,14 @@ func SetProbeTimeout(t testing.TB, d time.Duration) {
 	probeTimeout = d
 	t.Cleanup(func() { probeTimeout = old })
 }
+
+// Generation is the count of Rechecks, which a dial takes before it starts.
+func (t *Targets) Generation() uint64 { return t.generation() }
+
+// Blocked records a refused dial of the route's target as a dial begun at generation gen would.
+func (t *Targets) Blocked(route, target, detail string, gen uint64) {
+	t.blocked(route, target, detail, gen)
+}
+
+// Dialled records an allowed dial of the route's target as a dial at generation gen would.
+func (t *Targets) Dialled(route, target string, gen uint64) { t.dialled(route, target, gen) }
