@@ -97,7 +97,7 @@ history and the [ADRs](docs/adr/).
   across connectors: a target of a higher priority is a failover that takes connections only while
   no connector of a lower one is ready, and one priority is shared by weight. A target that refuses
   or does not answer passes the connection to another connector, so the route still works.
-  (#546)
+  (#547)
 - Gateway: `http` routes set `Forwarded` and `X-Forwarded-*` and keep a client's own only from the
   gateway group's trusted proxies. They can replace the `Host` header, set request and response
   headers, redirect or serve port 80, and send HSTS. (#297, #298)
