@@ -172,6 +172,8 @@ history and the [ADRs](docs/adr/).
   A route can be previewed before it is saved, routes report their observed status, and
   configuration and status changes stream to clients. (#335, #336, #337)
 - API: an org's resources export as YAML manifests. (#341, #342)
+- API: a request message holds at most 4 MiB, also once decompressed; a larger one is refused
+  before it is handled. (#582)
 - CLI: `rpmgr login` signs in with a personal API token. Verb-first commands (`get`, `list`,
   `create`, `update`, `delete`, `enable`, `disable`, `preview` and more) cover every resource of the
   API, with table, YAML or JSON output. Flags may stand before or after a command's arguments, as
