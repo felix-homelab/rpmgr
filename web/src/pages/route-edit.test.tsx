@@ -7,6 +7,7 @@ import { FieldDescriptorProto_Type } from "@bufbuild/protobuf/wkt";
 import { cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { ViolationsSchema } from "@/gen/buf/validate/validate_pb";
+import { CertificateService, CertificateSource } from "@/gen/rpmgr/v1/certificate_pb";
 import { ConnectorService, DataTransport } from "@/gen/rpmgr/v1/connector_pb";
 import { GatewayService } from "@/gen/rpmgr/v1/gateway_pb";
 import { Port80Mode, RouteSchema, RouteService, RouteState, TLSMode, type Route, type UpdateRouteRequest } from "@/gen/rpmgr/v1/route_pb";
@@ -36,14 +37,19 @@ const routes: Record<string, Route> = {
   tlsPassthrough: create(RouteSchema, { ...common, spec: { case: "tlsPassthrough", value: { hostnames: ["db.example.com"] } } }),
 };
 
-// edit renders the edit page of route; UpdateRoute answers with answer.
-function edit(route: Route, answer: (req: UpdateRouteRequest) => object = (req) => ({ route: req.route, revision: { dbEpoch: "e", seq: 9n }, applyStatus: { state: ApplyState.APPLIED, agentsTotal: 1, agentsApplied: 1 } })) {
+// edit renders the edit page of route; UpdateRoute answers with answer, and ListCertificates with
+// certs, if given: without, the certificates cannot be read.
+function edit(route: Route, answer: (req: UpdateRouteRequest) => object = (req) => ({ route: req.route, revision: { dbEpoch: "e", seq: 9n }, applyStatus: { state: ApplyState.APPLIED, agentsTotal: 1, agentsApplied: 1 } }),
+  certs?: object[]) {
   const updates: UpdateRouteRequest[] = [];
   show("/routes/rte_1/edit", auth({ getSession: () => ({ userId: "usr_ada", memberships: [{ orgId: "org_1", role: "owner" }] }) }), (router) => {
     router.service(UserService, { getMe: () => ({ user: { id: "usr_ada", theme: Theme.SYSTEM } }) });
     router.service(GatewayService, { listGateways: () => ({}) });
     router.service(ConnectorService, { listConnectors: () => ({}) });
     router.service(StatusService, { async *watchApplyStatus() {} });
+    if (certs) {
+      router.service(CertificateService, { listCertificates: () => ({ certificates: certs }) });
+    }
     router.service(RouteService, { getRoute: () => ({ route }), updateRoute: (req) => (updates.push(req), answer(req)) });
   });
   return updates;
@@ -146,5 +152,24 @@ describe("RouteEdit", () => {
     const hostnames = screen.getByLabelText("Hostnames");
     await waitFor(() => expect(hostnames.getAttribute("aria-invalid")).toBe("true"));
     expect(screen.getByText("the domain is not verified")).toBeTruthy();
+  });
+
+  it("keeps a route's certificate chosen, also when it no longer covers the hostnames or is not listed", async () => {
+    const ok = { id: "crt_1", source: CertificateSource.UPLOADED, sans: ["*.example.com"], notAfter: timestampFromDate(new Date("2027-03-01T12:00:00Z")) };
+    const updates = edit(routes.http!, undefined, [ok, { id: "crt_2", source: CertificateSource.UPLOADED, sans: ["example.org"] }]);
+    const picker = await screen.findByLabelText<HTMLSelectElement>("Uploaded certificate");
+    await waitFor(() => expect([...picker.options].map((o) => o.value)).toEqual(["", "crt_1"]));
+    expect([picker.value, picker.selectedOptions[0]!.textContent]).toEqual(["crt_1", expect.stringMatching(/^\*\.example\.com · crt_1 · expires /)]);
+    fireEvent.change(screen.getByLabelText("Hostnames"), { target: { value: "example.org" } });
+    await waitFor(() => expect([...picker.options].map((o) => o.value)).toEqual(["", "crt_2", "crt_1"]));
+    expect([picker.value, picker.selectedOptions[0]!.textContent]).toEqual(["crt_1", expect.stringMatching(/^\*\.example\.com · crt_1 · expires .* \(does not cover every hostname\)$/)]);
+    save();
+    await waitFor(() => expect(updates).toHaveLength(1));
+    expect(updates[0]!.route?.spec).toMatchObject({ case: "http", value: { certificateId: "crt_1", hostnames: ["example.org"] } });
+    // A certificate the list lacks, or while it cannot be read, shows by its ID.
+    cleanup();
+    edit(routes.http!);
+    const unread = await screen.findByLabelText<HTMLSelectElement>("Uploaded certificate");
+    expect([unread.value, unread.selectedOptions[0]!.textContent]).toEqual(["crt_1", "crt_1"]);
   });
 });

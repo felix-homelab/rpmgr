@@ -188,8 +188,8 @@ test("screenshots of the user guide", async ({ page, browser }) => {
   await open(page, "Organisation", "Example Lab");
   await shot(page, "organisation", true);
   await open(page, "Audit log", "Audit log");
-  // An entry opened; one whose request is short, as a long one widens the page.
-  await page.locator("details summary").filter({ hasText: "member.invite" }).first().click();
+  // An entry opened, whose long request wraps within the page.
+  await page.locator("details summary").filter({ hasText: "RouteService.UpdateRoute" }).first().click();
   await shot(page, "audit");
   await open(page, "Settings", "Settings");
   await shot(page, "settings", true);

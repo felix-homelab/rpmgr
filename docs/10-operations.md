@@ -81,7 +81,9 @@ install -d -m 0750 -o rpmgr -g rpmgr /var/lib/rpmgr
   the file `/etc/rpmgr/kek`, which it gives to the user `rpmgr` when that user exists, because
   the service reads it.
 - **Unit:** `rpmgr systemd-unit <role>` prints the role's hardened unit. For a controller or
-  all-in-one it reads the boot file, and loads the KEK credential when the KEK is one.
+  all-in-one it reads the boot file: it loads the KEK credential when the KEK is one, and makes
+  the revocation-log sink writable when the file names one
+  ([Hardened systemd units](#hardened-systemd-units)).
 - **State directory:** `init` runs as root. It gives what it creates in the state directory to the
   directory's owner, the user `rpmgr` the installer gave it to, also when it fails: the database
   and the files beside it, and on an all-in-one the gateway's and the connector's identities. So
@@ -120,7 +122,7 @@ with `rpmgr user reset-password` while no user exists. There is no default passw
 | `/var/lib/rpmgr/identity/` | rpmgr, 0700 | Agent identity, written by `rpmgr enroll`: `key.pem` (private key, 0600) and `chain.pem` (certificate and intermediates), both replaced at every renewal (`*.new` files are a renewal in progress, finished at the next start), `roots.pem` (the pinned root and roots it cross-signed), `signing.pem` (the config-signing certificates, replaced by those of every `Welcome`), `agent.json` (agent ID, trust domain, controller endpoints). Enrollment refuses a directory open to the group or other users, and an existing identity without `--replace` |
 | `/var/lib/rpmgr/` | rpmgr, 0750 | Last-known-good snapshot (`snapshot.signed`, 0600) and **deny-list** (`denylist.signed`, 0600) (both signed; the deny-list is loaded before any session is accepted), stateless reset key (gateways: `quic-reset.key`, 0600, created at the first start), route certificates with their keys that the gateway fetched (gateways: `resources/`, 0700, one 0600 file per item, named by its SHA-256, removed when no route needs it), SQLite database and its lock file `controller.db.lock`, held by the running controller (controller) |
 | `/var/lib/rpmgr/update/` | rpmgr, 0750 | OTA download area: artifact and signed manifest written by the agent. **Untrusted input** to the updater, which never verifies or installs files in place here |
-| `/etc/sysctl.d/60-rpmgr.conf` | root, 0644 | Host tuning written by `/install.sh`: the UDP buffers raised to 7 MiB where lower, and BBR with `--tcp-bbr` ([03](03-connections.md#host-tuning-applied-by-the-installer)) |
+| `/etc/sysctl.d/60-rpmgr.conf` | root, 0644 | Host tuning, written by `/install.sh` on every run: the UDP buffers, whatever the host has now, and BBR with `--tcp-bbr` or while the file sets it ([03](03-connections.md#host-tuning-applied-by-the-installer)) |
 | `/var/lib/rpmgr-update/` | root, 0700 | Updater state, out of the service user's reach: version floor and highest manifest `seq` in `state.json` (`{"seq": 87, "floor": "1.4.2"}`, initialised at install time from the running version and its release `seq`), `install.json` (`{"method": "script", "path": "/usr/local/bin/rpmgr", "variant": "full", "role": "connector"}`, written by `/install.sh`), and `staging/`, where the updater copies and verifies the files |
 | `/var/lib/rpmgr/dl/<version>/` (controller) | rpmgr, 0750; files 0640 | The release mirror of the controller's own version, served under `/dl/`: verified release files only ([04](04-security.md#over-the-air-updates)) |
 | `/var/lib/rpmgr/audit-checkpoints.log` (controller) | rpmgr, 0640 | Signed audit checkpoints, appended locally and included in every backup; the external sink (Phase 2) is what makes tampering evident ([04](04-security.md#audit-log)) |
@@ -164,6 +166,18 @@ RestartSec=2s
 - **Controller**: the same, without `CAP_NET_BIND_SERVICE` if it listens on high ports behind a
   gateway, plus `LoadCredentialEncrypted=rpmgr-kek:/etc/rpmgr/credstore/rpmgr-kek` for the KEK
   ([04](04-security.md#secrets-at-rest-and-in-logs)) [V VB-03].
+  - **Revocation-log sink:** when the boot file sets `revocation_log.sink`, the unit adds
+    `ReadWritePaths=-<sink>`, which keeps the sink writable under `ProtectSystem=strict`
+    [F systemd v257 `man/systemd.exec.xml:1691-1693`] ([Backup and restore](#backup-and-restore)).
+    With `-`, a missing directory is ignored [F systemd v257 `man/systemd.exec.xml:1715-1718`], so
+    a sink outage, such as a share not mounted yet, never keeps the controller from starting; the
+    backlog alert covers the entries that wait. A share mounted after the start is writable as on
+    the host [F systemd v257 `man/systemd.exec.xml:1726-1731`]; [R] after creating a plain
+    directory, restart the controller. `rpmgr systemd-unit` refuses a sink with whitespace, a
+    control character, `%`, `\`, a quote, or a `.` or `..` part, which systemd would split,
+    expand or read differently, and the root, which would leave nothing read-only.
+  - [R] A boot file that gains or changes its sink needs its unit written again with
+    `rpmgr systemd-unit`, then `systemctl daemon-reload` and a restart.
 - **Connector**: no capabilities at all (`CapabilityBoundingSet=` is empty);
   `ReadOnlyPaths=/etc/rpmgr` keeps `policy.yaml` out of the service's reach. `ExecReload=/bin/kill -HUP $MAINPID`, with `kill`
   from procps, which standard installations have: `rpmgr policy …` edits the policy file and runs
@@ -171,9 +185,9 @@ RestartSec=2s
   on change ([04](04-security.md#connector-local-policy)). Phase 3 features that need privileges (virtual networks with a kernel TUN device,
   shell) are documented with the exact additional unit settings when they ship; the userspace
   netstack variant needs none.
-- **All-in-one**: the controller's settings with `CAP_NET_BIND_SERVICE`, and the connector's
-  `ExecReload`: its own connector reads `policy.yaml`, and `rpmgr policy …` reloads
-  `rpmgr-all-in-one.service` on a host with an all-in-one boot file and no connector's
+- **All-in-one**: the controller's settings, its sink included, with `CAP_NET_BIND_SERVICE`, and
+  the connector's `ExecReload`: its own connector reads `policy.yaml`, and `rpmgr policy …`
+  reloads `rpmgr-all-in-one.service` on a host with an all-in-one boot file and no connector's
   ([ADR-0019](adr/0019-all-in-one-runs-a-connector.md)).
 - **Updater** (every role): a root-owned pair `rpmgr-update.path` (watches `/var/lib/rpmgr/update/`)
   and oneshot `rpmgr-update.service` ([04](04-security.md#over-the-air-updates)). It:
@@ -491,7 +505,8 @@ service that still runs the previous binary, with the command that restarts it.
     way the allocation is the write, so the sink has no gaps. Entries form a **hash chain**. Phase 1
     offers the filesystem sink; the S3-compatible sink comes with HA in Phase 2
     ([D58](14-open-decisions.md#project-and-process)).
-  - **The filesystem sink** is the boot setting `revocation_log.sink`, a directory.
+  - **The filesystem sink** is the boot setting `revocation_log.sink`, a directory, which the unit
+    of `rpmgr systemd-unit` makes writable ([Hardened systemd units](#hardened-systemd-units)).
     - **Publishing:** each entry is written to a temporary file, synced, then hard-linked to its
       number; the link fails when the number exists, so a crash leaves no empty number.
     - **Contents:** an entry holds the replica, its local entry and the sink's own hash chain.

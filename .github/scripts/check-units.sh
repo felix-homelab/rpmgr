@@ -4,8 +4,9 @@
 # Verifies the role units of `rpmgr systemd-unit` with `systemd-analyze verify`
 # (docs/10-operations.md, "Hardened systemd units"): on Debian 13 (systemd 257), with the KEK as an
 # encrypted credential, and on Ubuntu 22.04 (systemd 249), whose controller takes the KEK from a
-# file. Needs Docker and the go command; the containers install systemd and procps (for kill), as
-# standard installations have them. The work directory is removed file by file, never as a tree.
+# file; both controllers have a revocation-log sink, which their units make writable. Needs Docker
+# and the go command; the containers install systemd and procps (for kill), as standard
+# installations have them. The work directory is removed file by file, never as a tree.
 #
 # Usage: check-units.sh [<repository root>] [<directory of units to verify on both>]
 set -euo pipefail
@@ -31,8 +32,9 @@ if [[ -n $given ]]; then
   cp "$given"/*.service "$work/file/"
 else
   (cd "$root" && CGO_ENABLED=0 go build -o "$work/rpmgr-host" ./cmd/rpmgr)
-  printf 'version: 1\npublic_url: https://panel.example.com\n' >"$work/credential.yaml"
-  printf 'version: 1\npublic_url: https://panel.example.com\nkek: {source: file, path: /etc/rpmgr/kek}\n' >"$work/file.yaml"
+  sink='revocation_log: {sink: /srv/rpmgr-revocations/}'
+  printf 'version: 1\npublic_url: https://panel.example.com\n%s\n' "$sink" >"$work/credential.yaml"
+  printf 'version: 1\npublic_url: https://panel.example.com\nkek: {source: file, path: /etc/rpmgr/kek}\n%s\n' "$sink" >"$work/file.yaml"
   for role in gateway connector; do
     "$work/rpmgr-host" systemd-unit "$role" >"$work/credential/rpmgr-$role.service"
     cp "$work/credential/rpmgr-$role.service" "$work/file/"
@@ -43,6 +45,10 @@ else
     fail "the controller's unit for a credential KEK loads no credential"
   ! grep -q '^LoadCredential' "$work/file/rpmgr-controller.service" ||
     fail "the controller's unit for a KEK file loads a credential"
+  for kind in credential file; do
+    grep -qx 'ReadWritePaths=-/srv/rpmgr-revocations' "$work/$kind/rpmgr-controller.service" ||
+      fail "the controller's unit ($kind) does not make the revocation-log sink writable"
+  done
 fi
 
 verify() {

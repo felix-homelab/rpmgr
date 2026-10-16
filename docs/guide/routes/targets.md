@@ -116,12 +116,12 @@ The certificate must chain to a CA you trust and name the server name.
 - **TLS server name** (`--server-name`): the name the certificate must carry, which is also sent to
   the target as SNI. Empty means the target's host. A target on a Unix socket has no host, so it
   needs one.
-- **CA bundle ID (empty: the system's roots)** (`--ca-bundle`, by name or ID): the CAs its
-  certificate must chain to; without one, the trust store of the gateway's host. Each certificate of
-  a bundle counts as a trust anchor, so a bundle may also hold a self-signed certificate. You manage
-  bundles under **Domains & certificates**
-  ([Domains and certificates](../domains-and-certificates.md#ca-bundles)). The web UI's list of
-  bundles does not show their IDs; `rpmgr list ca-bundle` does.
+- **CA bundle** (`--ca-bundle`, by name or ID): the CAs its certificate must chain to, chosen
+  among the organisation's bundles by name; with **None: the system's roots**, the trust store of
+  the gateway's host. Each certificate of a bundle counts as a trust anchor, so a bundle may also
+  hold a self-signed certificate. You manage bundles under **Domains & certificates**
+  ([Domains and certificates](../domains-and-certificates.md#ca-bundles)), which shows each
+  bundle's ID.
 - **Public key pin, SHA-256 in hex (optional)** (`--spki`): a pin of the certificate's public key,
   checked in addition.
 

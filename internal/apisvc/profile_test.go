@@ -34,7 +34,8 @@ func (e *env) join(t *testing.T, b *browser, org, email, role string) (*browser,
 }
 
 // TestUser_Profile: a user reads their account and renames themselves; a password change needs
-// the current password, ends the user's other sessions and replaces the password.
+// the current password, ends the user's other sessions but not their API tokens (D96) and replaces
+// the password.
 func TestUser_Profile(t *testing.T) {
 	e := newEnv(t)
 	ctx := context.Background()
@@ -80,6 +81,17 @@ func TestUser_Profile(t *testing.T) {
 		return err
 	}
 	const next = "an entirely new passphrase"
+	if err := ada.stepUp(pw, ""); err != nil {
+		t.Fatal(err)
+	}
+	org := me.Msg.GetMemberships()[0].GetOrgId()
+	tok, err := ada.token.CreateAPIToken(ctx, connect.NewRequest(&rpmgrv1.CreateAPITokenRequest{OrgId: org, Name: "cli",
+		Scopes: []string{"org.read"}}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	cli := e.browser()
+	cli.bearer = tok.Msg.GetToken()
 	if err := change("wrong password", next); code(err) != connect.CodeInvalidArgument || !strings.Contains(err.Error(), "current password") {
 		t.Fatalf("a wrong current password: %v", err)
 	}
@@ -94,6 +106,9 @@ func TestUser_Profile(t *testing.T) {
 	}
 	if _, err := ada.session(); err != nil {
 		t.Fatalf("the session that changed it: %v", err)
+	}
+	if _, err := cli.org.GetOrg(ctx, connect.NewRequest(&rpmgrv1.GetOrgRequest{OrgId: org})); err != nil {
+		t.Fatalf("the API token after a password change: %v", err)
 	}
 	if err := e.browser().login("ada@example.com", pw); code(err) != connect.CodeUnauthenticated {
 		t.Fatalf("the old password: %v", err)

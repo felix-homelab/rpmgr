@@ -157,7 +157,8 @@ Everything a team needs to run rpmgr in production.
   and weight across connectors ([D90](14-open-decisions.md#engineering)).
 - OIDC forward-auth on routes; bandwidth, connection and rate limits; require-header rule.
 - Private services (TCP, UDP) with visitor grants and end-to-end TLS.
-- `tcp` routes in `http_connect` mode; header-based HTTP matching; ACME DNS-01; custom error pages.
+- `tcp` routes in `http_connect` mode; header-based HTTP matching; ACME DNS-01; custom error pages;
+  per-route HTTP timeouts ([D94](14-open-decisions.md#engineering)).
 - Live logs; webhooks; audit export and external audit sinks.
 - Staged, signed over-the-air updates with rollback, for Linux script installs; update channels
   (`stable`, `prerelease`).

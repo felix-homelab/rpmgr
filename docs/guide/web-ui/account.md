@@ -36,8 +36,9 @@ After **Turn on** and after **New recovery codes**, the card shows your **Recove
 Keep them somewhere safe; each works once in place of a code from the app. **Copy** copies them,
 and **I have saved them** closes the list.
 
-Every change here needs a [step-up](README.md#the-step-up-dialog). Turning an authenticator on and
-removing it end your other sessions; new recovery codes do not.
+Every change here needs a [step-up](README.md#the-step-up-dialog). Turning an authenticator on,
+new recovery codes and removing it each end your other sessions; this browser stays signed in.
+Your [API tokens](#api-tokens) keep working.
 [Sign-in and two-factor authentication](../accounts/sign-in-and-mfa.md) explains it step by step.
 
 ![Setting up an authenticator](../images/web/account-authenticator.png)

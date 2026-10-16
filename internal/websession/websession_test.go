@@ -15,6 +15,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/authz"
 	"github.com/felix-homelab/rpmgr/internal/revlog"
 	"github.com/felix-homelab/rpmgr/internal/store"
+	"github.com/felix-homelab/rpmgr/internal/store/ent"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/user"
 	"github.com/felix-homelab/rpmgr/internal/store/storetest"
 	"github.com/felix-homelab/rpmgr/internal/token"
@@ -144,6 +145,60 @@ func TestSessions_Revoke(t *testing.T) {
 	if len(got) != 2 || got[0].Kind != revlog.SessionRevoked || got[0].Subject != s1.ID || got[1].Subject != s2.ID ||
 		got[1].Detail != "password changed" || got[1].Actor != e.ada {
 		t.Fatalf("the revocation log: %+v", got)
+	}
+}
+
+// TestSessions_RevokeAllIn: RevokeAllIn ends a user's live sessions but the kept one in the
+// caller's transaction, so a transaction that rolls back ends none; it counts no expired or
+// revoked session and leaves other users' sessions.
+func TestSessions_RevokeAllIn(t *testing.T) {
+	e := newEnv(t)
+	keep, kept, _ := e.s.Create(e.ada, []string{"pwd"}, "", "")
+	old, _, _ := e.s.Create(e.ada, []string{"pwd"}, "", "")
+	e.clock = e.clock.Add(7 * time.Hour)
+	if _, err := e.s.Lookup(keep); err != nil {
+		t.Fatal(err)
+	}
+	other, _, _ := e.s.Create(e.ada, []string{"pwd"}, "", "")
+	revoked, s4, _ := e.s.Create(e.ada, []string{"pwd"}, "", "")
+	if err := e.s.Revoke(e.ada, s4.ID, e.ada); err != nil {
+		t.Fatal(err)
+	}
+	bobs, _, _ := e.s.Create(e.bob, []string{"pwd"}, "", "")
+	e.clock = e.clock.Add(2 * time.Hour) // old has been idle for 9 hours
+
+	rollback := errors.New("the change fails")
+	n := 0
+	err := store.WriteTx(e.sys, e.db, func(tx *ent.Tx) error {
+		var err error
+		if n, err = e.s.RevokeAllIn(tx, e.ada, kept.ID, e.ada, "recovery codes replaced"); err != nil {
+			return err
+		}
+		return rollback
+	})
+	if !errors.Is(err, rollback) || n != 1 {
+		t.Fatalf("a transaction that rolls back: %d %v", n, err)
+	}
+	if _, err := e.s.Lookup(other); err != nil {
+		t.Fatalf("a session after the rollback: %v", err)
+	}
+
+	if err := store.WriteTx(e.sys, e.db, func(tx *ent.Tx) error {
+		var err error
+		n, err = e.s.RevokeAllIn(tx, e.ada, kept.ID, e.ada, "recovery codes replaced")
+		return err
+	}); err != nil || n != 1 {
+		t.Fatalf("RevokeAllIn: %d %v", n, err)
+	}
+	for _, gone := range []string{other, old, revoked} {
+		if _, err := e.s.Lookup(gone); !errors.Is(err, websession.ErrNoSession) {
+			t.Errorf("a session after RevokeAllIn: %v", err)
+		}
+	}
+	for _, live := range []string{keep, bobs} {
+		if _, err := e.s.Lookup(live); err != nil {
+			t.Errorf("RevokeAllIn ended the kept or another user's session: %v", err)
+		}
 	}
 }
 

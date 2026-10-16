@@ -17,6 +17,9 @@ import (
 
 	rpmgrv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/v1"
 	"github.com/felix-homelab/rpmgr/internal/api"
+	"github.com/felix-homelab/rpmgr/internal/revlog"
+	"github.com/felix-homelab/rpmgr/internal/store/ent"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/auditentry"
 	"github.com/felix-homelab/rpmgr/internal/totp"
 )
 
@@ -131,6 +134,153 @@ func TestAuth_MFA(t *testing.T) {
 	e.clock = e.clock.Add(time.Second)
 	if err := regenerate(); reason(err) != api.ReasonStepUpRequired {
 		t.Fatalf("a second after the step-up: %v", err)
+	}
+}
+
+// TestUser_RecoveryCodesEndSessions (D96): new recovery codes end the user's other sessions, each
+// in the revocation log before the superseded codes, and the audit entry, the service's own, says
+// how many; the session that made them stays signed in, and so do the user's personal API token
+// and another user's sessions. A request that fails ends no session; with no other session the
+// entry says none ended.
+func TestUser_RecoveryCodesEndSessions(t *testing.T) {
+	e := newEnv(t)
+	ctx := context.Background()
+	ada := e.browser()
+	if err := ada.login("ada@example.com", pw); err != nil {
+		t.Fatal(err)
+	}
+	s, err := ada.session()
+	if err != nil {
+		t.Fatal(err)
+	}
+	org, current := s.GetMemberships()[0].GetOrgId(), s.GetSession().GetId()
+	bob, bobID := e.join(t, ada, org, "bob@example.com", "viewer")
+	bobOther := e.browser()
+	if err := bobOther.login("bob@example.com", pw); err != nil {
+		t.Fatal(err)
+	}
+	regenerate := func(b *browser) ([]string, error) {
+		r, err := b.user.RegenerateRecoveryCodes(ctx, connect.NewRequest(&rpmgrv1.RegenerateRecoveryCodesRequest{}))
+		if err != nil {
+			return nil, err
+		}
+		return r.Msg.GetRecoveryCodes(), nil
+	}
+
+	// Without an authenticator the request fails, and the user's other session stays.
+	if err := bob.stepUp(pw, ""); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := regenerate(bob); code(err) != connect.CodeFailedPrecondition {
+		t.Fatalf("new recovery codes without an authenticator: %v", err)
+	}
+	if _, err := bobOther.session(); err != nil {
+		t.Fatalf("a failed request ended a session: %v", err)
+	}
+
+	// Ada sets up an authenticator, signs in twice more with recovery codes and makes a token.
+	if err := ada.stepUp(pw, ""); err != nil {
+		t.Fatal(err)
+	}
+	enrolled, err := ada.user.EnrollTOTP(ctx, connect.NewRequest(&rpmgrv1.EnrollTOTPRequest{}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	seed, err := base32.StdEncoding.WithPadding(base32.NoPadding).DecodeString(enrolled.Msg.GetSecret())
+	if err != nil {
+		t.Fatal(err)
+	}
+	confirmed, err := ada.user.ConfirmTOTP(ctx, connect.NewRequest(&rpmgrv1.ConfirmTOTPRequest{Code: totp.Code(seed, totp.StepOf(e.clock))}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	old := confirmed.Msg.GetRecoveryCodes()
+	e.clock = e.clock.Add(totp.Step)
+	if err := ada.stepUp("", totp.Code(seed, totp.StepOf(e.clock))); err != nil {
+		t.Fatal(err)
+	}
+	others := []*browser{e.browser(), e.browser()}
+	for i, b := range others {
+		if err := b.loginWith("ada@example.com", pw, old[i]); err != nil {
+			t.Fatal(err)
+		}
+	}
+	tok, err := ada.token.CreateAPIToken(ctx, connect.NewRequest(&rpmgrv1.CreateAPITokenRequest{OrgId: org, Name: "cli",
+		Scopes: []string{"org.read"}}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	cli := e.browser()
+	cli.bearer = tok.Msg.GetToken()
+	before, err := revlog.Read(e.log)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	fresh, err := regenerate(ada)
+	if err != nil || len(fresh) != 10 {
+		t.Fatalf("new recovery codes: %v %v", fresh, err)
+	}
+	if _, err := ada.session(); err != nil {
+		t.Fatalf("the session that made the codes: %v", err)
+	}
+	for i, b := range others {
+		if _, err := b.session(); code(err) != connect.CodeUnauthenticated {
+			t.Errorf("Ada's other session %d after new recovery codes: %v", i, err)
+		}
+	}
+	for _, b := range []*browser{bob, bobOther} {
+		if _, err := b.session(); err != nil {
+			t.Errorf("Bob's session after Ada's new recovery codes: %v", err)
+		}
+	}
+	if _, err := cli.org.GetOrg(ctx, connect.NewRequest(&rpmgrv1.GetOrgRequest{OrgId: org})); err != nil {
+		t.Errorf("Ada's API token after new recovery codes: %v", err)
+	}
+	if err := e.browser().loginWith("ada@example.com", pw, old[2]); code(err) != connect.CodeUnauthenticated {
+		t.Errorf("an old recovery code: %v", err)
+	}
+
+	after, err := revlog.Read(e.log)
+	if err != nil {
+		t.Fatal(err)
+	}
+	added := after[len(before):]
+	if len(added) != 3 {
+		t.Fatalf("revocation log entries: %+v", added)
+	}
+	for _, en := range added[:2] {
+		if en.Kind != revlog.SessionRevoked || en.Subject == current || en.Detail != "recovery codes replaced" || en.Actor != e.ada {
+			t.Errorf("a session's entry: %+v", en)
+		}
+	}
+	if en := added[2]; en.Kind != revlog.CredentialSuperseded || en.Subject != e.ada || en.Detail != revlog.RecoveryCodes {
+		t.Errorf("the codes' entry: %+v", en)
+	}
+
+	audited := func() []*ent.AuditEntry {
+		return e.db.Client().AuditEntry.Query().Where(auditentry.Action("user.recovery_codes")).Order(ent.Asc(auditentry.FieldSeq)).
+			AllX(e.sys)
+	}
+	if got := audited(); len(got) != 1 || got[0].Reason != "recovery codes replaced; 2 other sessions ended" ||
+		got[0].ActorID != e.ada || got[0].CredentialID != current || got[0].Result != auditentry.ResultSuccess {
+		t.Fatalf("the audit entry: %+v", got)
+	}
+	// The request's own entry is only Bob's refusal: the service recorded Ada's change.
+	own := e.db.Client().AuditEntry.Query().Where(auditentry.Action("rpmgr.v1.UserService.RegenerateRecoveryCodes")).AllX(e.sys)
+	if len(own) != 1 || own[0].ActorID != bobID || own[0].Result == auditentry.ResultSuccess {
+		t.Fatalf("the requests' own entries: %+v", own)
+	}
+
+	// Again, with no other session left.
+	if _, err := regenerate(ada); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ada.session(); err != nil {
+		t.Fatalf("the session after new codes again: %v", err)
+	}
+	if got := audited(); len(got) != 2 || got[1].Reason != "recovery codes replaced; 0 other sessions ended" {
+		t.Fatalf("the second audit entry: %+v", got)
 	}
 }
 

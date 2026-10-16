@@ -141,7 +141,9 @@ terminal, such a command fails with `the change needs a step-up, which needs a t
   ```
 
 Revoke a token you no longer need, and at once a token that may have leaked. You can revoke only
-your own tokens.
+your own tokens. A new password, authenticator or set of recovery codes ends your other sessions
+but no token: if someone else may have used your account, check this list as well
+([Sign-in](sign-in-and-mfa.md#sessions)).
 
 ## Log out
 

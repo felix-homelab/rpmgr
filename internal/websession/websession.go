@@ -157,28 +157,40 @@ func (s *Sessions) RevokeAll(userID, keep, actor, reason string) (int, error) {
 	return s.revoke(actor, reason, session.UserID(userID), session.IDNEQ(keep))
 }
 
-// revoke ends the live sessions that match, appending each to the revocation log in the revoking
-// transaction; an append that fails is reported and does not stop the revocation
-// (docs/04-security.md, "Revocation log").
+// RevokeAllIn is RevokeAll in tx, the transaction of the change that ends the sessions, so that
+// they end only if it commits.
+func (s *Sessions) RevokeAllIn(tx *ent.Tx, userID, keep, actor, reason string) (int, error) {
+	return s.revokeIn(tx, actor, reason, session.UserID(userID), session.IDNEQ(keep))
+}
+
+// revoke ends the live sessions that match in a transaction of its own.
 func (s *Sessions) revoke(actor, reason string, where ...predicate.Session) (int, error) {
-	now := s.o.Now()
 	n := 0
 	err := store.WriteTx(s.o.Sys, s.o.DB, func(tx *ent.Tx) error {
-		ids, err := tx.Session.Query().Where(append(where, session.RevokedAtIsNil(), session.IdleExpiresAtGT(now),
-			session.AbsoluteExpiresAtGT(now))...).IDs(s.o.Sys)
-		if err != nil || len(ids) == 0 {
-			return err
-		}
-		for _, id := range ids {
-			if _, err := s.o.RevLog.Append(revlog.Entry{Kind: revlog.SessionRevoked, Subject: id, Detail: reason, Actor: actor}); err != nil {
-				s.o.Logger.Error("cannot append a session revocation to the revocation log; the session is revoked anyway",
-					"session", id, "error", err)
-			}
-		}
-		n, err = tx.Session.Update().Where(session.IDIn(ids...)).SetRevokedAt(now).Save(s.o.Sys)
+		var err error
+		n, err = s.revokeIn(tx, actor, reason, where...)
 		return err
 	})
 	return n, err
+}
+
+// revokeIn ends the live sessions that match in tx, appending each to the revocation log before tx
+// commits; an append that fails is reported and does not stop the revocation
+// (docs/04-security.md, "Revocation log").
+func (s *Sessions) revokeIn(tx *ent.Tx, actor, reason string, where ...predicate.Session) (int, error) {
+	now := s.o.Now()
+	ids, err := tx.Session.Query().Where(append(where, session.RevokedAtIsNil(), session.IdleExpiresAtGT(now),
+		session.AbsoluteExpiresAtGT(now))...).IDs(s.o.Sys)
+	if err != nil || len(ids) == 0 {
+		return 0, err
+	}
+	for _, id := range ids {
+		if _, err := s.o.RevLog.Append(revlog.Entry{Kind: revlog.SessionRevoked, Subject: id, Detail: reason, Actor: actor}); err != nil {
+			s.o.Logger.Error("cannot append a session revocation to the revocation log; the session is revoked anyway",
+				"session", id, "error", err)
+		}
+	}
+	return tx.Session.Update().Where(session.IDIn(ids...)).SetRevokedAt(now).Save(s.o.Sys)
 }
 
 // live reports whether a session can still be used at now.

@@ -11,6 +11,7 @@ import { useTranslation } from "react-i18next";
 import { EmptyState } from "@/components/empty-state";
 import { Field } from "@/components/field";
 import { ManifestButton } from "@/components/manifest";
+import { ResourceID } from "@/components/one-time-token";
 import { PemField } from "@/components/pem-field";
 import { Alert } from "@/components/public-page";
 import { panel, Row, RowList } from "@/components/row-list";
@@ -45,6 +46,15 @@ export function useCertificates(orgId: string | undefined) {
   return useList("certificates", orgId, async (pageToken) => {
     const r = await createClient(CertificateService, transport).listCertificates({ orgId, pageSize: largestPage, pageToken });
     return { items: r.certificates, next: r.nextPageToken };
+  });
+}
+
+// useCABundles reads all of the org's CA bundles.
+export function useCABundles(orgId: string | undefined) {
+  const transport = useTransport();
+  return useList("ca-bundles", orgId, async (pageToken) => {
+    const r = await createClient(CertificateService, transport).listCABundles({ orgId, pageSize: largestPage, pageToken });
+    return { items: r.caBundles, next: r.nextPageToken };
   });
 }
 
@@ -117,6 +127,7 @@ function CertificateRow({ cert: c, routeName }: { cert: Certificate; routeName: 
   const [now] = useState(() => Date.now()); // when the page showed the row
   const ending = expires !== undefined && expires.getTime() - now < soon;
   const name = c.sans[0] ?? c.id;
+  const acme = c.source === CertificateSource.ACME;
   async function act(run: () => Promise<{ text: string } | void>) {
     setMessage(undefined);
     try {
@@ -138,19 +149,21 @@ function CertificateRow({ cert: c, routeName }: { cert: Certificate; routeName: 
             <Status look={looks[c.status]}>{t(`certs.status.${CertificateStatus[c.status]}`)}</Status>
           </div>
           <div className="flex flex-wrap gap-x-3 text-muted-foreground">
-            <span>{t(c.source === CertificateSource.ACME ? "certs.acme" : "certs.uploaded")}</span>
+            <span>{t(acme ? "certs.acme" : "certs.uploaded")}</span>
             {expires && <span className={ending ? "font-medium text-warn" : undefined}>{t(ending ? "certs.endingSoon" : "certs.expires", { when: when(c.notAfter) })} · {c.issuer}</span>}
             {c.routeIds.length > 0 && <span>{t("certs.usedBy", { routes: c.routeIds.map(routeName).join(", ") })}</span>}
           </div>
+          <ResourceID id={c.id} />
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          {c.source === CertificateSource.ACME && (
+          {acme && (
             <Button size="sm" variant="outline" disabled={renew.isPending}
               onClick={() => void act(async () => ({ text: t((await renew.mutateAsync({ certificateId: c.id })).started ? "certs.renewing" : "certs.renewQueued") }))}>
               {t("certs.renew")}
             </Button>
           )}
-          {asking ? (
+          {/* The server never removes an ACME certificate; the ACME job keeps it while a route needs it. */}
+          {acme ? <span className="text-muted-foreground">{t("certs.acmeKept")}</span> : asking ? (
             <>
               <span>{t("certs.ask", { name })}</span>
               <Button size="sm" variant="destructive" onClick={() => void act(async () => void (await remove.mutateAsync({ certificateId: c.id, etag: c.etag })))}>{t("targetForm.remove")}</Button>
@@ -172,12 +185,7 @@ function CertificateRow({ cert: c, routeName }: { cert: Certificate; routeName: 
 export function CABundles() {
   const { t } = useTranslation();
   const org = useOrg();
-  const transport = useTransport();
-  const api = createClient(CertificateService, transport);
-  const list = useList("ca-bundles", org?.orgId, async (pageToken) => {
-    const r = await api.listCABundles({ orgId: org?.orgId, pageSize: largestPage, pageToken });
-    return { items: r.caBundles, next: r.nextPageToken };
-  });
+  const list = useCABundles(org?.orgId);
   const [editing, setEditing] = useState<string>(); // a bundle's ID, or "new"
   return (
     <Card title={t("bundles.title")} description={t("bundles.intro")} actions={<>
@@ -250,6 +258,7 @@ function BundleRow({ bundle: b, onEdit }: { bundle: CABundle; onEdit: () => void
             {b.certificates.map((c, i) => <li key={i}>{t("bundles.cert", { subject: c.subject, when: when(c.notAfter) })}</li>)}
           </ul>
           <div className="text-muted-foreground">{t("bundles.targets", { count: b.targetIds.length })}</div>
+          <ResourceID id={b.id} />
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <Button size="sm" variant="outline" onClick={onEdit}>{t("targetForm.edit")}</Button>
