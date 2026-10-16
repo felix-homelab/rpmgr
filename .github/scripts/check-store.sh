@@ -2,10 +2,11 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 # The store checks of docs/12-testing-and-quality.md ("Database tests"):
-#   - the database tests on SQLite and on every PostgreSQL given in RPMGR_TEST_PG_URLS (admin DSNs,
-#     space-separated): the store's own tests, among them that the embedded migrations apply, that
-#     regenerating them from the Ent schema yields nothing new and that the live schema equals the
-#     Ent schema, and the tests of every package that uses the store through storetest;
+#   - the database tests on SQLite, unless STORE_SKIP_SQLITE=1, and on every PostgreSQL given in
+#     RPMGR_TEST_PG_URLS (admin DSNs, space-separated): the store's own tests, among them that the
+#     embedded migrations apply, that regenerating them from the Ent schema yields nothing new and
+#     that the live schema equals the Ent schema, and the tests of every package that uses the
+#     store through storetest;
 #   - Atlas community lint of both migration directories (check-atlas-lint.sh). PostgreSQL lint
 #     needs an empty development database in RPMGR_LINT_PG_DEV.
 # With REQUIRE_PG=1 (CI) a missing PostgreSQL is an error, not a skip. Needs Docker for the lint.
@@ -26,9 +27,15 @@ mapfile -t pkgs < <(go list -f '{{.ImportPath}} {{join .TestImports " "}} {{join
   awk '$1 ~ /\/internal\/store(\/|$)/ { print $1; next }
     { for (i = 2; i <= NF; i++) if ($i ~ /\/internal\/store\/storetest$/) { print $1; next } }')
 echo "== database test packages: ${pkgs[*]}"
-echo "== store tests, SQLite"
-if ! go test -race -count=1 "${pkgs[@]}"; then
-  fail "store tests failed on SQLite"
+# CI's go job runs these packages on SQLite already, with the same flags (check-go.sh), so the store
+# job sets STORE_SKIP_SQLITE and runs them on PostgreSQL only.
+if [[ ${STORE_SKIP_SQLITE-} == 1 ]]; then
+  echo "skipped: store tests on SQLite (STORE_SKIP_SQLITE=1, the go job runs them)"
+else
+  echo "== store tests, SQLite"
+  if ! go test -race -count=1 "${pkgs[@]}"; then
+    fail "store tests failed on SQLite"
+  fi
 fi
 read -r -a pgs <<<"${RPMGR_TEST_PG_URLS-}"
 if ((${#pgs[@]} == 0)) && [[ ${REQUIRE_PG-} == 1 ]]; then
