@@ -75,15 +75,16 @@ func New(db *store.DB, sys context.Context, now func() time.Time) *Accounts {
 // and Instance Admin, and returns its token; ErrHasUsers once any user exists. by is who asked:
 // a user ID, or a local job such as "local-cli".
 func (a *Accounts) FirstUserLink(by string) (string, error) {
-	return a.link(by, "", FirstUserLinkTTL)
+	return a.link(by, "", FirstUserLinkTTL, nil)
 }
 
-// ResetLink creates a one-time link that sets the password of a user and returns its token.
-func (a *Accounts) ResetLink(userID, by string) (string, error) {
-	return a.link(by, userID, ResetLinkTTL)
+// ResetLink creates a one-time link that sets the password of a user and returns its token; orgs,
+// the user's, also get an entry in their audit logs, for a link an administrator made.
+func (a *Accounts) ResetLink(userID, by string, orgs ...string) (string, error) {
+	return a.link(by, userID, ResetLinkTTL, orgs)
 }
 
-func (a *Accounts) link(by, userID string, ttl time.Duration) (string, error) {
+func (a *Accounts) link(by, userID string, ttl time.Duration, orgs []string) (string, error) {
 	tok, err := token.New(token.PasswordReset)
 	if err != nil {
 		return "", err
@@ -107,9 +108,11 @@ func (a *Accounts) link(by, userID string, ttl time.Duration) (string, error) {
 		if err != nil {
 			return err
 		}
-		_, err = audit.Append(a.sys, tx, audit.Entry{ActorType: actorType(by), ActorID: by, Action: action,
-			TargetType: "user", TargetID: userID, Result: audit.Success, Reason: "link " + r.ID})
-		return err
+		if _, err = audit.Append(a.sys, tx, audit.Entry{ActorType: actorType(by), ActorID: by, Action: action,
+			TargetType: "user", TargetID: userID, Result: audit.Success, Reason: "link " + r.ID}); err != nil {
+			return err
+		}
+		return recoveryAudit(a.sys, tx, orgs, by, "member.reset_link", userID, "link "+r.ID)
 	})
 	if err != nil {
 		return "", err
@@ -119,7 +122,8 @@ func (a *Accounts) link(by, userID string, ttl time.Duration) (string, error) {
 
 // CompleteReset uses a link: it sets the password of the link's user or, for a first-user link,
 // creates the first user with email and displayName, who becomes Owner of the first org (created
-// if there is none) and Instance Admin. A link works once, until it expires.
+// if there is none) and Instance Admin. A link works once, until it expires, and a link an
+// administrator made only while they may still recover the user (stillRecoverable).
 func (a *Accounts) CompleteReset(ctx context.Context, tok, newPassword, email, displayName string) (*ent.User, error) {
 	if k, err := token.Parse(tok); err != nil || k != token.PasswordReset {
 		return nil, ErrLink
@@ -151,6 +155,11 @@ func (a *Accounts) CompleteReset(ctx context.Context, tok, newPassword, email, d
 	var u *ent.User
 	err = store.WriteTx(a.sys, a.db, func(tx *ent.Tx) error {
 		now := a.now()
+		if !first {
+			if ok, err := stillRecoverable(a.sys, tx, link.CreatedBy, *link.UserID); err != nil || !ok {
+				return errors.Join(err, errIf(!ok, ErrLink))
+			}
+		}
 		n, err := tx.PasswordReset.Update().Where(passwordreset.ID(link.ID), passwordreset.UsedAtIsNil(),
 			passwordreset.ExpiresAtGT(now)).SetUsedAt(now).Save(a.sys)
 		if err != nil || n != 1 {

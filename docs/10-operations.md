@@ -570,6 +570,10 @@ service that still runs the previous binary, with the command that restarts it.
     ([07](07-api.md#errors)) while its org, or for an instance setting the instance, is in review.
     Revocations stay available (revoking API and enrollment tokens, member changes and removals),
     and so do the review itself and each user's own account: password, second factor, sessions.
+    Another user's account is not recovered through the API
+    ([04](04-security.md#account-recovery)). A revocation of the Instance Admin role that would
+    leave the restored instance without an active Instance Admin is not applied again; the restore
+    names it, and the audit entry of the restore too.
   - **Passwords:** a user resets theirs with a link from `rpmgr user reset-password --email
     <address>` on the controller host, or with the self-service reset when SMTP is set up.
   - each org's **Owner** re-confirms only their own org's memberships and roles, and resumes its

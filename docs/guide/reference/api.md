@@ -475,7 +475,7 @@ once, in the answer that makes it.
 | Service | File | What it covers |
 |---|---|---|
 | `AuthService` | [auth.proto](../../../proto/rpmgr/v1/auth.proto) | Sign-in, step-up, sessions, password reset |
-| `UserService` | [user.proto](../../../proto/rpmgr/v1/user.proto) | Your account, its authenticator and recovery codes; users for the Instance Admin |
+| `UserService` | [user.proto](../../../proto/rpmgr/v1/user.proto) | Your account, its authenticator and recovery codes; users and the Instance Admin role for the Instance Admin; recovering another user's account ([Members and roles](../accounts/members-and-roles.md#recover-a-members-account)) |
 | `OrgService` | [org.proto](../../../proto/rpmgr/v1/org.proto) | The organisation, its members and invitations; the restore review |
 | `TokenService` | [token.proto](../../../proto/rpmgr/v1/token.proto) | Your personal API tokens |
 | `EnrollmentService` | [enrollment.proto](../../../proto/rpmgr/v1/enrollment.proto) | Enrollment tokens for connectors and gateways, the install command |

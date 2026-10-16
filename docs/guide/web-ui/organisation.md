@@ -25,7 +25,7 @@ The **Members** table lists every member:
 | **E-mail address** | The address they sign in with |
 | **Role** | A list to change their role: **Owner**, **Admin**, **Operator** or **Viewer** |
 | **Member since** | When they joined |
-| **Actions** | **Remove…** |
+| **Actions** | **Remove…**; for another member, **Reset link** and **Remove second factor…** where your role allows them |
 
 - **Changing a role** takes effect as soon as you choose it in the list. Granting **Admin** or
   **Owner** needs a [step-up](README.md#the-step-up-dialog). Only an Owner makes, changes or
@@ -34,6 +34,14 @@ The **Members** table lists every member:
 - **Remove…** asks `Remove … from the organisation?`; **Remove it** ends the membership. The
   person's API tokens lose their access to the organisation.
 - A lower role or a removal applies from the member's next request.
+- **Reset link**, for an Owner, or an Admin where the member is no Owner, shows after a step-up a
+  one-time link that sets the member's password, with its expiry and **Copy**: pass it on yourself.
+- **Remove second factor…**, for an Owner, asks `Remove the authenticator and recovery codes of …?`;
+  **Remove it**, after a step-up, removes them and ends the member's sessions. They sign in with
+  their password and set up a new authenticator.
+- A member who is also in another organisation, or is the Instance Admin, cannot be recovered here:
+  the row says `You cannot recover this account…`, and the Instance Admin does it
+  ([Members and roles](../accounts/members-and-roles.md#recover-a-members-account)).
 
 ## Invite someone
 
@@ -70,4 +78,5 @@ organisation is read-only until its members and roles are confirmed
 
 `rpmgr list member`, `rpmgr update member --role <role> <user>`, `rpmgr remove member <user>` and
 `rpmgr create invitation --email <address> --role <role>` do the same; renaming the organisation
-has no command ([Members and roles](../accounts/members-and-roles.md)).
+and recovering a member's account have no command yet
+([Members and roles](../accounts/members-and-roles.md)).

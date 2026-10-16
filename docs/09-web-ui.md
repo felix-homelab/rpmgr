@@ -468,6 +468,11 @@ flowchart LR
 - **Members:** each with name, e-mail address, role and since when. A member's role is changed with
   a step-up where [04](04-security.md#roles) requires one (granting Admin or Owner). A member is
   removed after a confirmation that names them.
+- **Account recovery** ([04](04-security.md#account-recovery)): on another member's row, "Reset
+  link" for an Owner, and for an Admin where the member is no Owner, shows a one-time link to pass
+  on, with its expiry and a copy button. "Remove second factor…", for an Owner, asks for a
+  confirmation that names the member and says that their sessions end. Both take a step-up; a
+  member the server will not let the caller recover gets a message that says why.
 - **Invitations:** an address and a role. The step-up rule is the same.
   - The answer is a one-time link with its expiry. It is shown with a copy button.
   - The page says whether the controller e-mailed the link, or whether it must be sent by hand.
@@ -506,8 +511,8 @@ flowchart LR
   - Emptying the relay's address removes the mail relay.
   - The relay's password is write-only. The page says whether one is set, and replaces or removes
     it.
-- **The Instance Admin** moves between `/settings`, `/settings/pki` and `/settings/updates` by tabs
-  under the page header, which mark the current page. Others see no tabs.
+- **The Instance Admin** moves between `/settings`, `/settings/pki`, `/settings/updates` and
+  `/settings/users` by tabs under the page header, which mark the current page. Others see no tabs.
 - **`/settings/pki`** shows the trust domain and the root's pin, as `rpmgr enroll --ca-pin` takes
   it. It lists each key whose certificate has not expired, with its kind, state, subject, validity,
   and when the schedule replaces it ([04](04-security.md#pki-and-identity)).
@@ -515,6 +520,11 @@ flowchart LR
     keeps verifying the certificates it issued until they expire.
   - The page also holds the leaf-certificate lifetime, the grace period and the password-hash
     profile.
+- **`/settings/users`** lists every user of the instance: name, e-mail address, Instance Admin,
+  second factor, status and last sign-in. Each other user's row has "Reset link" and, where they
+  have one, "Remove second factor…"; every row grants or revokes the Instance Admin role after a
+  confirmation. All take a step-up; the last active Instance Admin keeps the role, and the page
+  says so ([04](04-security.md#account-recovery)).
 - **`/settings/updates`** holds the release check and the update channel. Uploading a manifest for
   an air-gapped installation is Phase 2; until then `rpmgr release import` does it on the controller
   host ([D59](14-open-decisions.md#security-defaults)).
