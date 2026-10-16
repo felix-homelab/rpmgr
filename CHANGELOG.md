@@ -141,8 +141,7 @@ history and the [ADRs](docs/adr/).
   upstreams. (#287, #288, #289, #339, #340)
 - API: the controller serves a public ConnectRPC API. Each method checks a named permission of the
   org roles Owner, Admin, Operator and Viewer, or of the Instance Admin. Lists are paged, updates
-  take field masks and etags, and creates are idempotent by `request_id`. A request message holds
-  at most 4 MiB, also once decompressed. (#310, #311, #322, #333)
+  take field masks and etags, and creates are idempotent by `request_id`. (#310, #311, #322, #333)
 - API: local accounts with argon2id passwords, cookie sessions, TOTP and recovery codes, and step-up
   for sensitive actions. Users change their own password, and one-time links reset it. (#312,
   #313, #314, #316, #321)
@@ -162,6 +161,8 @@ history and the [ADRs](docs/adr/).
   A route can be previewed before it is saved, routes report their observed status, and
   configuration and status changes stream to clients. (#335, #336, #337)
 - API: an org's resources export as YAML manifests. (#341, #342)
+- API: a request message holds at most 4 MiB, also once decompressed; a larger one is refused
+  before it is handled. (#582)
 - CLI: `rpmgr login` signs in with a personal API token. Verb-first commands (`get`, `list`,
   `create`, `update`, `delete`, `enable`, `disable`, `preview` and more) cover every resource of the
   API, with table, YAML or JSON output. Flags may stand before or after a command's arguments, as
