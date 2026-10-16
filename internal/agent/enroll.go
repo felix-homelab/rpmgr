@@ -227,10 +227,13 @@ func parseDER(ders [][]byte) ([]*x509.Certificate, error) {
 	return out, nil
 }
 
+// DownloadTimeout bounds the trust bundle's download, through a proxy or not.
+const DownloadTimeout = 30 * time.Second
+
 // download fetches the unauthenticated trust bundle; the pin, not the channel, authenticates it.
 func download(ctx context.Context, client *http.Client, u string) ([]byte, error) {
 	if client == nil {
-		client = &http.Client{Timeout: 30 * time.Second, Transport: &http.Transport{Proxy: http.ProxyFromEnvironment}}
+		client = &http.Client{Timeout: DownloadTimeout, Transport: &http.Transport{Proxy: http.ProxyFromEnvironment}}
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
 	if err != nil {
