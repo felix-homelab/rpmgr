@@ -96,11 +96,20 @@ entry. It never overwrites a boot file or a KEK: an existing one is read and use
 again after a failure, and it refuses a database that is already initialised or in use by a running
 controller. When the agents' part of `all-in-one init` fails, the gateway's or the connector's, it
 removes the database and what it created beside it, so the same `init` can run again once the
-cause is fixed. `rpmgr all-in-one` enrolls its connector at start when its identity is missing,
-as on an all-in-one initialised before
-[ADR-0019](adr/0019-all-in-one-runs-a-connector.md). So a connector identity that cannot be used
-any more, revoked or unreadable, is replaced by deleting `<state_dir>/connector/identity` and
-restarting the service; the connector keeps its ID and routes. A new systemd credential is encrypted with `systemd-creds encrypt` into
+cause is fixed. `rpmgr all-in-one` enrolls its built-in gateway and connector again at start,
+through the in-process controller and before the gateway runs, when an identity is missing, as on
+a new host after a restore, or for the connector on an all-in-one initialised before
+[ADR-0019](adr/0019-all-in-one-runs-a-connector.md); when its certificate names another agent
+than the database's built-in one; and when the controller cannot renew its certificate: one the
+database does not know, as after the restore of a backup older than the certificate, a revoked or
+superseded one, or one expired longer than the grace period
+([D97](14-open-decisions.md#engineering)). Each keeps its ID and routes; the enrollment revokes
+the certificates the database records for the identity it replaces, and the audit log has each
+token with its reason. A certificate the database does not record stays valid until it expires.
+An identity whose agent is revoked as a whole stops the start, as does one that cannot be read,
+which is replaced by deleting `<state_dir>/gateway/identity` or `<state_dir>/connector/identity`
+and restarting the service. Without a database, `rpmgr all-in-one` refuses to start, as on a host
+never initialised. A new systemd credential is encrypted with `systemd-creds encrypt` into
 `/etc/rpmgr/credstore/<name>`; an existing one is readable only where systemd loads it, so `init`
 then has to run under `systemd-run --pipe --wait --property=LoadCredentialEncrypted=…`.
 
