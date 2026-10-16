@@ -32,12 +32,34 @@ service UserService {
     option idempotency_level = NO_SIDE_EFFECTS;
     option (rpmgr.v1.authz) = {permission: "instance.admin"};
   }
-  // CreatePasswordResetLink returns a one-time link that sets a user's password: the Instance
-  // Admin's for any user, an Owner's or Admin's for a member of their org (an Admin's not for an
-  // Owner). A user the caller may not reset is not found.
+  // CreatePasswordResetLink returns a one-time link that sets another user's password: the
+  // Instance Admin's for any user; an Owner's or Admin's for a user who is no Instance Admin and
+  // all of whose orgs are the caller's, as Owner, or as Admin where the user is no Owner. A user the
+  // caller may not reset is not found. A personal API token needs the scope members.write, or
+  // instance.admin, and a step-up of its own (docs/04-security.md, "Account recovery").
   rpc CreatePasswordResetLink(CreatePasswordResetLinkRequest) returns (CreatePasswordResetLinkResponse) {
     option (rpmgr.v1.authz) = {
       permission: "authenticated"
+      step_up: true
+      allow_token: true
+    };
+  }
+  // RemoveUserTOTP removes another user's authenticator and recovery codes and ends their
+  // sessions, for a user who lost both: the Instance Admin's for any user; an Owner's for a user
+  // who is no Instance Admin and all of whose orgs the caller owns. A user the caller may not
+  // recover is not found; tokens as for CreatePasswordResetLink.
+  rpc RemoveUserTOTP(RemoveUserTOTPRequest) returns (RemoveUserTOTPResponse) {
+    option (rpmgr.v1.authz) = {
+      permission: "authenticated"
+      step_up: true
+      allow_token: true
+    };
+  }
+  // SetInstanceAdmin grants or revokes the Instance Admin role; the instance keeps at least one
+  // Instance Admin.
+  rpc SetInstanceAdmin(SetInstanceAdminRequest) returns (SetInstanceAdminResponse) {
+    option (rpmgr.v1.authz) = {
+      permission: "instance.admin"
       step_up: true
     };
   }
@@ -232,4 +254,27 @@ message CreatePasswordResetLinkResponse {
   string url = 1 [(rpmgr.v1.sensitive) = true];
   // When it stops working.
   google.protobuf.Timestamp expire_time = 2;
+}
+
+// RemoveUserTOTPRequest names a user.
+message RemoveUserTOTPRequest {
+  // The user's ID.
+  string user_id = 1 [(buf.validate.field).string.min_len = 1];
+}
+
+// RemoveUserTOTPResponse is empty.
+message RemoveUserTOTPResponse {}
+
+// SetInstanceAdminRequest names a user and whether they hold the Instance Admin role.
+message SetInstanceAdminRequest {
+  // The user's ID.
+  string user_id = 1 [(buf.validate.field).string.min_len = 1];
+  // Whether they hold it from now on.
+  bool instance_admin = 2;
+}
+
+// SetInstanceAdminResponse is the user as they are now.
+message SetInstanceAdminResponse {
+  // The user.
+  User user = 1;
 }

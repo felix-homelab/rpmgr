@@ -57,7 +57,8 @@ export function Settings() {
   );
 }
 
-// Tabs lead the Instance Admin between the settings and the instance's PKI and Updates pages.
+// Tabs lead the Instance Admin between the settings and the instance's PKI, Updates and Users
+// pages.
 function Tabs() {
   const { t } = useTranslation();
   const tab = "-mb-px border-b-2 border-transparent px-1 pb-2.5 font-medium text-muted-foreground transition-colors hover:text-foreground [&.active]:border-primary [&.active]:text-foreground";
@@ -66,6 +67,7 @@ function Tabs() {
       <Link to="/settings" activeOptions={{ exact: true }} className={tab}>{t("settings.title")}</Link>
       <Link to="/settings/pki" className={tab}>{t("settings.pki")}</Link>
       <Link to="/settings/updates" className={tab}>{t("settings.updates")}</Link>
+      <Link to="/settings/users" className={tab}>{t("users.title")}</Link>
     </nav>
   );
 }
