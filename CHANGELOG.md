@@ -70,6 +70,9 @@ history and the [ADRs](docs/adr/).
 - Connector: reaches its gateways through an HTTP CONNECT or SOCKS5 proxy (`HTTPS_PROXY`,
   `ALL_PROXY`) where only a proxy leads out, and carries its control session inside a data session
   when no controller endpoint is reachable. (#245, #267, #286)
+- Controller: its requests to the ACME CA, to GitHub and to a domain's HTTP token follow the proxy
+  variables as the connector reads them, `ALL_PROXY` included; a proxy variable that is no proxy
+  URL stops the start with a message that names the variable without its value. (#560)
 - Connector: the connector-local policy, `/etc/rpmgr/policy.yaml`, limits the targets a connector
   dials, even for a compromised controller. A target is an address or a subnet, such as
   `10.0.0.1/16` (stored as `10.0.0.0/16`), with an optional port or port range such as
