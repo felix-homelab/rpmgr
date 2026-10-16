@@ -29,9 +29,11 @@ history and the [ADRs](docs/adr/).
   the public URL's host if that is a valid one, with the enrolled gateway `local`, and the
   connector `local`, which publishes services on the same host as its local policy allows, never
   rpmgr's own ports, over in-memory data sessions. An all-in-one initialised before gets its
-  connector at the next start. Its own gateway and connector cannot be decommissioned. `rpmgr
-  setup` asks for the connector's allowed and denied targets, and `rpmgr policy` reloads the
-  all-in-one on a host without a separate connector. (#268, #269, #484, #493, #535, #537, #538)
+  connector at the next start. Its own gateway and connector cannot be decommissioned; after a
+  restore on a new host, or from a backup older than their certificates, it enrolls them again at
+  start. `rpmgr setup` asks for the connector's allowed and denied targets, and `rpmgr policy`
+  reloads the all-in-one on a host without a separate connector. (#268, #269, #484, #493, #535,
+  #537, #538, #555)
 - Controller: a controller without a public address can stay on a private network, published
   through a gateway that passes its hostnames through to it. (#285)
 - Controller: serves `/install.sh`. The script downloads the controller's own release from the

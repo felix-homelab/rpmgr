@@ -10,9 +10,9 @@ package allinone
 import (
 	"context"
 	"crypto/x509"
-	"encoding/pem"
 	"errors"
 	"fmt"
+	"io/fs"
 	"log/slog"
 	"net"
 	"net/http"
@@ -27,7 +27,6 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 
-	agentv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/agent/v1"
 	"github.com/felix-homelab/rpmgr/internal/agent"
 	"github.com/felix-homelab/rpmgr/internal/audit"
 	"github.com/felix-homelab/rpmgr/internal/authz"
@@ -132,14 +131,10 @@ func Init(ctx context.Context, o controller.InitOptions) (res InitResult, err er
 	case err := <-done:
 		return InitResult{}, err
 	}
-	_, err = agent.Enroll(ctx, agent.EnrollOptions{Controller: cfg.PublicURL, Pin: r.RootPin, Token: tok, IdentityDir: gw.IdentityDir,
-		Bundle: pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: r.Root.Raw}), Dial: mem.Dial,
-		Host: &agentv1.HostFacts{Hostname: "all-in-one"}, Now: o.Now})
-	if err != nil {
-		err = fmt.Errorf("allinone: enroll the gateway: %w", err)
-	} else {
-		l := local{token: conTok, root: r.Root}
-		err = l.enroll(ctx, cfg, mem.Dial, o.Now)
+	l := newLocal(cfg)
+	l.gateway.token, l.connector.token = tok, conTok
+	if err = l.gateway.enroll(ctx, cfg.PublicURL, r.Root, mem.Dial, o.Now, false); err == nil {
+		err = l.connector.enroll(ctx, cfg.PublicURL, r.Root, mem.Dial, o.Now, false)
 	}
 	stop()
 	if rerr := <-done; err == nil {
@@ -230,7 +225,7 @@ func createGateway(ctx context.Context, cfg config.AllInOne, endpoint string, ho
 			TargetType: "gateway", TargetID: gw.ID, Result: audit.Success, Reason: "rpmgr all-in-one init"}); err != nil {
 			return nil, err
 		}
-		conTok, err = connectorToken(sys, tx, org.ID, "", "local-cli")
+		conTok, err = connectorToken(sys, tx, org.ID, "", "local-cli", "")
 		return []string{org.ID, group.ID, gw.ID}, err
 	})
 	return gatewayID, tok, conTok, err
@@ -250,7 +245,8 @@ type RunOptions struct {
 	ACMERoots *x509.CertPool
 	// Registry, if set, receives the metrics of all three roles instead of a new registry.
 	Registry telemetry.Registry
-	// Now is the clock of the connector's enrollment; nil is time.Now.
+	// Now is the clock of the built-in agents' enrollment and of the check whether their
+	// certificates expired; nil is time.Now.
 	Now func() time.Time
 }
 
@@ -283,8 +279,10 @@ func (p *part) end() error {
 
 // Run runs the controller, the gateway and the connector until ctx ends or one of them ends, which
 // ends the others; the admin listener reports all three. Once the controller has migrated the
-// database, it marks the gateway built in and, when the connector has no identity, enrolls it
-// through the in-process controller (ADR-0019). On the way out the gateway drains first, while the
+// database, and before the gateway runs, it marks the gateway built in and enrolls again, through
+// the in-process controller, each of its own agents that has no identity or a certificate the
+// controller cannot renew, as after a restore on a new host or of an older backup (ADR-0019,
+// docs/10-operations.md, "Backup and restore"). On the way out the gateway drains first, while the
 // connector serves its streams and the controller answers. SIGHUP, which reloads the connector's
 // local policy, never ends the process, also while it starts or stops.
 func Run(ctx context.Context, o RunOptions) error {
@@ -302,6 +300,9 @@ func Run(ctx context.Context, o RunOptions) error {
 	if o.Logger == nil {
 		o.Logger = slog.New(slog.DiscardHandler)
 	}
+	if o.Now == nil {
+		o.Now = time.Now
+	}
 	cfg := o.Config
 	public, err := url.Parse(cfg.PublicURL)
 	if err != nil {
@@ -310,6 +311,10 @@ func Run(ctx context.Context, o RunOptions) error {
 	own, err := newOwnPorts(cfg)
 	if err != nil {
 		return err
+	}
+	// The controller would create an empty database.
+	if _, err := os.Stat(cfg.Database.DSN); errors.Is(err, fs.ErrNotExist) {
+		return fmt.Errorf("allinone: no database at %s; run rpmgr all-in-one init, or rpmgr restore, first", cfg.Database.DSN)
 	}
 	l, err := readLocal(cfg)
 	if err != nil {
@@ -343,15 +348,18 @@ func Run(ctx context.Context, o RunOptions) error {
 	if err := wait(ctlListening, ctl); err != nil {
 		return err
 	}
-	if err := l.prepare(ctx, cfg); err != nil {
+	if err := l.prepare(ctx, cfg, o.Now()); err != nil {
 		return errors.Join(err, ctl.end())
 	}
 	own.setNames(append(l.names, public.Hostname()))
-	if l.token != "" {
-		if err := l.enroll(ctx, cfg, mem.Dial, o.Now); err != nil {
+	for _, a := range []*builtIn{&l.gateway, &l.connector} {
+		if a.token == "" {
+			continue
+		}
+		if err := a.enroll(ctx, cfg.PublicURL, l.root, mem.Dial, o.Now, true); err != nil {
 			return errors.Join(err, ctl.end())
 		}
-		o.Logger.Info("enrolled all-in-one's own connector", "identity", cfg.Connector().IdentityDir)
+		o.Logger.Info("enrolled all-in-one's own "+a.role, "identity", a.dir, "reason", a.why)
 	}
 	gw := start(func(ctx context.Context) error {
 		return gateway.Run(ctx, gateway.RunOptions{Config: cfg.Gateway(), Version: o.Version, Logger: o.Logger.With("role", "gateway"),

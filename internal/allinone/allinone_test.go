@@ -82,6 +82,7 @@ type host struct {
 	web                  *http.Client
 	acmeRoots            *x509.CertPool     // RunOptions.ACMERoots
 	registry             telemetry.Registry // RunOptions.Registry
+	now                  func() time.Time   // RunOptions.Now
 }
 
 func newHost(t *testing.T) *host { return newHostAt(t, "") }
@@ -140,7 +141,7 @@ func (h *host) run(t *testing.T) func() {
 	listening, done := make(chan struct{}), make(chan error, 1)
 	go func() {
 		done <- allinone.Run(ctx, allinone.RunOptions{Config: h.cfg, Version: "0.1.0", Getenv: func(string) string { return "" },
-			DrainPeriod: 200 * time.Millisecond, ACMERoots: h.acmeRoots, Registry: h.registry, Listening: func() { close(listening) }})
+			DrainPeriod: 200 * time.Millisecond, ACMERoots: h.acmeRoots, Registry: h.registry, Now: h.now, Listening: func() { close(listening) }})
 	}()
 	select {
 	case <-listening:

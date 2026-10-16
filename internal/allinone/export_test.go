@@ -2,11 +2,27 @@
 
 package allinone
 
-import "testing"
+import (
+	"context"
+	"testing"
+	"time"
+
+	"github.com/felix-homelab/rpmgr/internal/agent"
+	"github.com/felix-homelab/rpmgr/internal/store/ent"
+)
 
 // SetStarted makes Run call f once it has taken SIGHUP over, until the test ends.
 func SetStarted(t testing.TB, f func()) {
 	old := started
 	started = f
 	t.Cleanup(func() { started = old })
+}
+
+// Unusable is why the built-in agent whose identity is in dir enrolls again at now, or "".
+func Unusable(ctx context.Context, c *ent.Client, dir string, now time.Time, grace time.Duration) (string, error) {
+	a := builtIn{dir: dir}
+	if id, err := agent.Load(dir); err == nil {
+		a.leaf = id.Certificate.Leaf
+	}
+	return a.unusable(ctx, c, now, grace)
 }
