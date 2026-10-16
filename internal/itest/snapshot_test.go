@@ -35,11 +35,13 @@ func orgResources(ctx context.Context, tx *ent.Tx, _ snapshot.Agent) ([]*agentv1
 	return rs, nil
 }
 
-// recorder is an Applier that records the revisions it applied and what changed.
+// recorder is an Applier that records the revisions it applied, what changed, and the controller
+// endpoints of the last snapshot.
 type recorder struct {
-	mu      sync.Mutex
-	seqs    []uint64
-	changes []agent.Changes
+	mu        sync.Mutex
+	seqs      []uint64
+	changes   []agent.Changes
+	endpoints []string
 }
 
 func (r *recorder) Validate(*agentv1.Snapshot) []*agentv1.SnapshotError { return nil }
@@ -51,7 +53,15 @@ func (r *recorder) Apply(_ context.Context, snap *agentv1.Snapshot, c agent.Chan
 	defer r.mu.Unlock()
 	r.seqs = append(r.seqs, snap.GetRevision().GetSeq())
 	r.changes = append(r.changes, c)
+	r.endpoints = slices.Clone(snap.GetControllerEndpoints())
 	return nil
+}
+
+// lastEndpoints returns the controller endpoints of the last snapshot applied.
+func (r *recorder) lastEndpoints() []string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return slices.Clone(r.endpoints)
 }
 
 func (r *recorder) applied() []uint64 {

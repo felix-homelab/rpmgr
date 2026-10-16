@@ -115,10 +115,15 @@ single-use token. Token format, lifetimes and re-enrollment rules are in
   name, goes to its `net/http` server, where browsers and the CLI use ConnectRPC. A connection that
   does not start with a ClientHello within the peek limits is closed without an answer.
 - **Endpoints and failover.** An agent knows its controller endpoints in order: from enrollment,
-  then from every snapshot; a connector adds its data sessions as the last one ([Control sessions
-  through a data session](#control-sessions-through-a-data-session)). It tries them in that order; a
-  failed connection, a `Drain` or `Goodbye{shutdown}` moves it to the next endpoint, and after a
-  whole round failed, or after a session ended, it waits the reconnect backoff, at least a Goodbye's
+  then from every snapshot, and after a restart from its stored snapshot, which `rpmgr status`,
+  `rpmgr leave` and `rpmgr diag clock` use as well ([16](16-cli.md)). Enrollment and snapshots name
+  the controller endpoints of the instance settings, or the public URL alone while they list none
+  ([10](10-operations.md#runtime-settings-ui--settings)); a change is a new revision, so it reaches
+  a connected agent with its next snapshot, and its next connection attempt uses it. A connector
+  adds its data sessions as the last one ([Control sessions through a data
+  session](#control-sessions-through-a-data-session)). It tries them in that order; a failed
+  connection, a `Drain` or `Goodbye{shutdown}` moves it to the next endpoint, and after a whole
+  round failed, or after a session ended, it waits the reconnect backoff, at least a Goodbye's
   `retry_after`. `Goodbye{revoked}` stops the agent, which must be enrolled again. The agent
   compares `Welcome.server_time` with its own clock and warns above 30 s ([Failure
   modes](#failure-modes)).
@@ -421,9 +426,13 @@ against the pinned root. The end of one direction is passed on as a half-close; 
 does not answer within the dial timeout resets the connection, so the agent tries its next endpoint
 at once; a stopping gateway closes the forwarded connections at the end of its drain period.
 Enrollment and the UI work through the same forwarding. Agents get the list of controller endpoints
-(direct and via gateways) in every snapshot and try them in order; the operator lists the gateway's
-address there (instance setting, [10](10-operations.md#runtime-settings-ui--settings)). A gateway
-with an in-process controller (all-in-one) has no `controller.passthrough`.
+(direct and via gateways) at enrollment and in every snapshot and try them in order
+([Endpoints and failover](#transport)); the operator lists the gateway's address there (instance
+setting, [10](10-operations.md#runtime-settings-ui--settings)). Without a list, agents get the
+public URL alone. [R] Add a new endpoint before removing the one agents use: an agent that reaches
+none of its endpoints receives no new list, and only a connector has a last resort ([Control
+sessions through a data session](#control-sessions-through-a-data-session)). A gateway with an
+in-process controller (all-in-one) has no `controller.passthrough`.
 
 [R] Control traffic deliberately does **not** ride inside the data session to a gateway: gateways
 are edge components and must not be able to forge or withhold configuration, and gateway restarts

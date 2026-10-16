@@ -151,9 +151,10 @@ interception. A transport through such proxies is planned for Phase 2
 
 A connector tries its controller endpoints in order: those the Instance Admin lists under
 **Controller endpoints for agents**, or the public URL if the list is empty
-([Settings](../operations/settings.md#web-ui-and-controller-endpoints)). When none of them answers,
-for example on a network that lets it reach its gateways only over UDP, the connector **carries its
-control session through a data session**
+([Settings](../operations/settings.md#web-ui-and-controller-endpoints)). It gets the list when it
+enrolls and with every configuration, and keeps the last one across restarts. When none of them
+answers, for example on a network that lets it reach its gateways only over UDP, the connector
+**carries its control session through a data session**
 ([03](../../03-connections.md#control-sessions-through-a-data-session)):
 
 - It is the last resort of every round: the connector tries it only after every endpoint failed,

@@ -103,8 +103,7 @@ You need `rpmgr` logged in to the controller
    Other flags: `--ttl 24h`, `--gateway-group <group>`, and for an ephemeral token `--ephemeral`
    with `--max-uses <n>` (`0` for any number). More than one use without `--ephemeral` is refused.
 
-2. Print the install command, with the targets the connector may reach. Flags come before the
-   argument:
+2. Print the install command, with the targets the connector may reach:
 
    ```sh
    rpmgr get --allow-target 192.168.1.20:8080 --deny-target 192.168.1.1 install-command

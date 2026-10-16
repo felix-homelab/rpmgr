@@ -154,6 +154,11 @@ func TestGetAndList(t *testing.T) {
 		f.exportReq.GetOrgId() != "org_1" || len(f.exportReq.GetResourceIds()) != 1 || f.exportReq.GetResourceIds()[0] != "rt_1" {
 		t.Fatalf("get as YAML: %d %q %v", code, out, f.exportReq)
 	}
+	f.exportReq = nil
+	if code, out, errOut := runWith(env, "", "get", "route", "rt_1", "-o", "yaml"); code != cli.ExitOK || !strings.HasPrefix(out, "kind: Route") ||
+		len(f.exportReq.GetResourceIds()) != 1 {
+		t.Fatalf("get with -o after the ID: %d %q %q", code, out, errOut)
+	}
 	code, out, _ = runWith(env, "", "list", "route")
 	if lines := strings.Split(strings.TrimSpace(out), "\n"); code != cli.ExitOK || len(lines) != 3 || !strings.Contains(lines[2], "rt_2") {
 		t.Fatalf("list across two pages: %d %q", code, out)
@@ -174,6 +179,7 @@ func TestGetAndList(t *testing.T) {
 		"no ID":             {"get", "route"},
 		"an extra ID":       {"list", "route", "rt_1"},
 		"an unknown output": {"get", "-o", "xml", "route", "rt_1"},
+		"-o after --":       {"get", "route", "rt_1", "--", "-o", "yaml"},
 	} {
 		if code, _, errOut := runWith(env, "", args...); code != cli.ExitUsage {
 			t.Errorf("%s: exit %d %q", name, code, errOut)

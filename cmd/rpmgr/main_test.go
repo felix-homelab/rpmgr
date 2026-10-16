@@ -16,6 +16,8 @@ import (
 	"testing"
 
 	"github.com/felix-homelab/rpmgr/internal/cli"
+	"github.com/felix-homelab/rpmgr/internal/config"
+	"github.com/felix-homelab/rpmgr/internal/controller"
 	"github.com/felix-homelab/rpmgr/internal/itest"
 	"github.com/felix-homelab/rpmgr/internal/release"
 )
@@ -112,12 +114,60 @@ func TestSystemdUnit(t *testing.T) {
 }
 
 // TestReleaseImport: `rpmgr release import` reads the controller's boot file; a development
-// build imports nothing; the import itself is tested in internal/controller.
+// build imports nothing; the import itself is tested in internal/controller. --config may follow
+// the directory, and after "--" a directory may begin with "-".
 func TestReleaseImport(t *testing.T) {
 	missing := filepath.Join(t.TempDir(), "none.yaml")
-	code, _, stderr := runRpmgr("release", "import", "--config", missing, t.TempDir())
-	if code != cli.ExitError || !strings.Contains(stderr, "none.yaml") {
-		t.Errorf("a missing boot file: exit %d, %q", code, stderr)
+	for name, args := range map[string][]string{
+		"flags first":                {"--config", missing, t.TempDir()},
+		"flags last":                 {t.TempDir(), "--config", missing},
+		"a directory that is a flag": {"--config", missing, "--", "-release"},
+	} {
+		code, _, stderr := runRpmgr(append([]string{"release", "import"}, args...)...)
+		if code != cli.ExitError || !strings.Contains(stderr, "none.yaml") {
+			t.Errorf("%s, a missing boot file: exit %d, %q", name, code, stderr)
+		}
+	}
+	code, _, stderr := runRpmgr("release", "import", "--config", missing, "-release")
+	if code != cli.ExitUsage || !strings.Contains(stderr, "flag provided but not defined: -release") {
+		t.Errorf("a directory that is a flag, without --: exit %d, %q", code, stderr)
+	}
+}
+
+// TestFlagsAfterArguments (docs/16-cli.md): flags may follow the positional arguments, so --help
+// after a kind or a name prints the command's help.
+func TestFlagsAfterArguments(t *testing.T) {
+	for _, args := range [][]string{
+		{"get", "install-command", "--help"},
+		{"get", "route", "web", "-h"},
+		{"update", "route", "wiki", "--policy", "office", "--help"},
+		{"delete", "route", "--help"},
+		{"systemd-unit", "connector", "--help"},
+	} {
+		code, stdout, stderr := runRpmgr(args...)
+		if want := "Usage: rpmgr " + args[0] + " "; code != cli.ExitOK || !strings.HasPrefix(stdout, want) || stderr != "" {
+			t.Errorf("rpmgr %q: exit %d, stdout %q, stderr %q; want the help", args, code, stdout, stderr)
+		}
+	}
+	code, stdout, stderr := runRpmgr("systemd-unit", "connector", "--bin", "/usr/bin/rpmgr")
+	if code != cli.ExitOK || !strings.Contains(stdout, "ExecStart=/usr/bin/rpmgr connector ") {
+		t.Errorf("a flag after the role: exit %d, %q, %q", code, stdout, stderr)
+	}
+}
+
+// TestInitHelp: the help of both init commands gives the default KEK source as init chooses it:
+// the systemd credential from the first systemd version with encrypted credentials, else a file.
+func TestInitHelp(t *testing.T) {
+	first := 0
+	for controller.KEKSourceFor(first) != config.KEKSystemdCredential {
+		first++
+	}
+	want := fmt.Sprintf("(default systemd-credential from systemd %d, else file)", first)
+	for _, role := range []string{"controller", "all-in-one"} {
+		code, stdout, _ := runRpmgr(role, "init", "--help")
+		if code != cli.ExitOK || !strings.Contains(stdout, want) || strings.Contains(stdout, "systemd-credential (default)") {
+			t.Errorf("rpmgr %s init --help: exit %d, %q; want %q", role, code, stdout, want)
+		}
 	}
 }
 

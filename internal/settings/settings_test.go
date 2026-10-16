@@ -5,6 +5,8 @@ package settings_test
 import (
 	"context"
 	"errors"
+	"fmt"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -84,6 +86,13 @@ func TestUpdateInstanceValidation(t *testing.T) {
 		grace := func(d time.Duration) *rpmgrv1.InstanceSettings {
 			return &rpmgrv1.InstanceSettings{ExpiredCertificateGrace: durationpb.New(d)}
 		}
+		endpoints := func(eps ...string) *rpmgrv1.InstanceSettings {
+			return &rpmgrv1.InstanceSettings{ControllerEndpoints: eps}
+		}
+		var eight []string
+		for i := range 8 {
+			eight = append(eight, fmt.Sprintf("https://ctl%d.example:%d", i, 8440+i))
+		}
 		for _, tt := range []struct {
 			name string
 			upd  *rpmgrv1.InstanceSettings
@@ -104,6 +113,23 @@ func TestUpdateInstanceValidation(t *testing.T) {
 			{"alias twice", &rpmgrv1.InstanceSettings{PublicUrlAliases: []string{"https://a.example", "https://a.example"}}, "public_url_aliases", false},
 			{"alias ok", &rpmgrv1.InstanceSettings{PublicUrlAliases: []string{"https://a.example"}}, "public_url_aliases", true},
 			{"too many endpoints", &rpmgrv1.InstanceSettings{ControllerEndpoints: strings.Split(strings.Repeat("https://x.example ", 9)+"https://y.example", " ")[:9]}, "controller_endpoints", false},
+			{"8 endpoints", endpoints(eight...), "controller_endpoints", true},
+			{"endpoints ok", endpoints("https://gw.example.net:8443", "https://ctl.example/", "https://[2001:db8::1]:443", "https://192.0.2.1"), "controller_endpoints", true},
+			{"endpoint twice", endpoints("https://gw.example.net", "https://gw.example.net"), "controller_endpoints", false},
+			{"endpoint plain HTTP", endpoints("http://gw.example.net"), "controller_endpoints", false},
+			{"endpoint other scheme", endpoints("wss://gw.example.net"), "controller_endpoints", false},
+			{"endpoint without scheme", endpoints("gw.example.net:443"), "controller_endpoints", false},
+			{"endpoint with a path", endpoints("https://gw.example.net/rpmgr"), "controller_endpoints", false},
+			{"endpoint with a query", endpoints("https://gw.example.net/?a=1"), "controller_endpoints", false},
+			{"endpoint with a fragment", endpoints("https://gw.example.net#a"), "controller_endpoints", false},
+			{"endpoint with user info", endpoints("https://user@gw.example.net"), "controller_endpoints", false},
+			{"endpoint without host", endpoints("https://:443"), "controller_endpoints", false},
+			{"endpoint only the scheme", endpoints("https://"), "controller_endpoints", false},
+			{"endpoint with an empty port", endpoints("https://gw.example.net:"), "controller_endpoints", false},
+			{"endpoint with a 6-digit port", endpoints("https://gw.example.net:123456"), "controller_endpoints", false},
+			{"endpoint with a space", endpoints("https://gw example.net"), "controller_endpoints", false},
+			{"endpoint empty", endpoints(""), "controller_endpoints", false},
+			{"one bad endpoint among good ones", endpoints("https://gw.example.net", "http://ctl.example"), "controller_endpoints", false},
 		} {
 			_, err := settings.UpdateInstance(ctx, db, tt.upd, mask(tt.path), 0)
 			if (err == nil) != tt.ok {
@@ -119,6 +145,27 @@ func TestUpdateInstanceValidation(t *testing.T) {
 			t.Error("update without a scope accepted")
 		}
 	})
+}
+
+// TestControllerEndpoints: agents get the listed controller endpoints, in order, or the public URL
+// alone while none are listed.
+func TestControllerEndpoints(t *testing.T) {
+	const public = "https://panel.example.com"
+	for _, inst := range []*rpmgrv1.InstanceSettings{nil, {}, {ControllerEndpoints: []string{}}} {
+		if got := settings.ControllerEndpoints(inst, public); !slices.Equal(got, []string{public}) {
+			t.Errorf("%v: %v, want the public URL", inst, got)
+		}
+	}
+	listed := []string{"https://gw.example.net:8443", public}
+	inst := &rpmgrv1.InstanceSettings{ControllerEndpoints: slices.Clone(listed)}
+	got := settings.ControllerEndpoints(inst, "https://other.example")
+	if !slices.Equal(got, listed) {
+		t.Fatalf("%v, want %v", got, listed)
+	}
+	got[0] = "https://changed.example"
+	if !slices.Equal(inst.GetControllerEndpoints(), listed) {
+		t.Error("the result shares its array with the settings")
+	}
 }
 
 func TestOrgSettingsAreScoped(t *testing.T) {

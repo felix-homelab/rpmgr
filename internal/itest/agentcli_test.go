@@ -123,7 +123,7 @@ func TestLeave(t *testing.T) {
 func TestDiagClock(t *testing.T) {
 	c := itest.StartController(t, itest.Options{Now: func() time.Time { return time.Now().Add(45 * time.Second) }})
 	l := c.EnrollConnector(t, filepath.Join(t.TempDir(), "identity"))
-	clk, err := agent.MeasureClock(context.Background(), l.Dir, "0.1.0", time.Now, nil)
+	clk, err := agent.MeasureClock(context.Background(), l.Dir, t.TempDir(), "0.1.0", time.Now, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -131,7 +131,7 @@ func TestDiagClock(t *testing.T) {
 		t.Errorf("clock %+v, want an offset of about 45 s", clk)
 	}
 	c.Stop()
-	if _, err := agent.MeasureClock(context.Background(), l.Dir, "0.1.0", time.Now, nil); err == nil {
+	if _, err := agent.MeasureClock(context.Background(), l.Dir, t.TempDir(), "0.1.0", time.Now, nil); err == nil {
 		t.Error("no controller, and still a measurement")
 	}
 }

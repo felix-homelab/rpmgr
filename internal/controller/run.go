@@ -45,6 +45,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/settings"
 	"github.com/felix-homelab/rpmgr/internal/snapshot"
 	"github.com/felix-homelab/rpmgr/internal/store"
+	"github.com/felix-homelab/rpmgr/internal/store/ent"
 	"github.com/felix-homelab/rpmgr/internal/store/migrations"
 	"github.com/felix-homelab/rpmgr/internal/telemetry"
 	"github.com/felix-homelab/rpmgr/internal/websession"
@@ -175,12 +176,11 @@ func Run(ctx context.Context, o RunOptions) error {
 		return err
 	}
 	holder := pki.NewHolder(node)
-	endpoints := []string{cfg.PublicURL}
 	shipper := &RevocationShipper{Path: filepath.Join(stateDir, "revocations.log"), Sink: cfg.RevocationLog.Sink, Replica: nodeID, Logger: o.Logger}
 
 	sessions := NewSessions(SessionsOptions{DB: db, CA: ca, Node: nodeID, Version: o.Version, Sys: sys, Now: o.Now, RevLog: rl, Sealer: sealer,
 		Logger:   o.Logger,
-		Compiler: &snapshot.Compiler{Sources: o.Sources, Endpoints: func() []string { return endpoints }}})
+		Compiler: &snapshot.Compiler{Sources: o.Sources, Endpoints: AgentEndpoints(cfg.PublicURL)}})
 	reg := o.Registry
 	if reg == nil {
 		reg = telemetry.NewRegistry()
@@ -206,7 +206,7 @@ func Run(ctx context.Context, o RunOptions) error {
 	agents := NewAgentServer(agentTLS, td)
 	agentv1.RegisterControlServer(agents, sessions)
 	agentv1.RegisterReauthServer(agents, NewReauthService(sessions))
-	enrollment := enroll.NewService(db, ca, endpoints, o.Now)
+	enrollment := enroll.NewService(db, ca, cfg.PublicURL, o.Now)
 	enrollment.RevLog, enrollment.Logger, enrollment.Denied = rl, o.Logger, sessions.ApplyDenyList
 	enrollment.Refused = metrics.Refused(LimitEnrollment)
 	agentv1.RegisterEnrollmentServer(agents, enrollment)
@@ -519,6 +519,19 @@ func Run(ctx context.Context, o RunOptions) error {
 	bg.Wait()
 	admin.Wait() // the admin listener is closed: its address is free again once Run returns
 	return result
+}
+
+// AgentEndpoints returns the snapshots' controller endpoints (snapshot.Compiler.Endpoints): those
+// of the instance settings, or publicURL alone while they list none, as enrollment gives them
+// (docs/03-connections.md, "Reaching a private controller").
+func AgentEndpoints(publicURL string) func(ctx context.Context, tx *ent.Tx) ([]string, error) {
+	return func(ctx context.Context, tx *ent.Tx) ([]string, error) {
+		inst, _, err := settings.Instance(ctx, tx.Client())
+		if err != nil {
+			return nil, err
+		}
+		return settings.ControllerEndpoints(inst, publicURL), nil
+	}
 }
 
 // origins returns the origins a browser may call the API from: the public URL's and those of its
