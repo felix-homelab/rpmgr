@@ -146,13 +146,14 @@ func (m *MFA) RemoveTOTP(userID, actor string, endSessions func(tx *ent.Tx) (int
 			}
 		}
 		reason := fmt.Sprintf("authenticator removed; %d sessions ended", ended)
-		if actor != userID {
-			reason = fmt.Sprintf("authenticator removed by an admin; %d sessions ended", ended)
-			if err := recoveryAudit(m.sys, tx, orgs, actor, "member.mfa_remove", userID, reason); err != nil {
-				return err
-			}
+		if actor == userID {
+			return m.superseded(tx, userID, actor, "user.mfa_remove", revlog.MFA, reason)
 		}
-		return m.superseded(tx, userID, actor, "user.mfa_remove", revlog.MFA, reason)
+		reason = fmt.Sprintf("authenticator removed by an admin; %d sessions ended", ended)
+		if err := m.superseded(tx, userID, actor, "user.mfa_remove", revlog.MFA, reason); err != nil {
+			return err
+		}
+		return recoveryAudit(m.sys, tx, orgs, actor, "member.mfa_remove", userID, reason)
 	})
 }
 

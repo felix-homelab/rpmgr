@@ -183,12 +183,21 @@ func TestRecovery_ResetLinks(t *testing.T) {
 	}
 }
 
-// TestRecovery_LinksCheckedAgain (D95): a link an Owner or Admin made works only while they may
-// still recover the user: not once the user became Instance Admin or the maker lost the role. A
-// link the Instance Admin made needs no such check.
+// TestRecovery_LinksCheckedAgain (D95): a link an Owner or Admin made works while they may still
+// recover the user, but not once the user became Instance Admin or the maker lost the role. A link
+// the Instance Admin made needs no such check.
 func TestRecovery_LinksCheckedAgain(t *testing.T) {
 	r := newRecoveryEnv(t)
 	ctx := context.Background()
+	for name, b := range map[string]*browser{"an Owner's": r.own, "an Admin's": r.adm} {
+		tok, err := resetLink(b, r.vwrID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := r.complete(tok); err != nil {
+			t.Errorf("%s link, nothing changed: %v", name, err)
+		}
+	}
 	byAdmin, err := resetLink(r.adm, r.vwrID)
 	if err != nil {
 		t.Fatal(err)
@@ -450,5 +459,31 @@ func TestRecovery_InstanceAdmin(t *testing.T) {
 	log, err := os.ReadFile(r.log)
 	if err != nil || !strings.Contains(string(log), `"kind":"instance_admin_revoked","subject":"`+r.ownID+`"`) {
 		t.Errorf("the revocation log %q: %v", log, err)
+	}
+}
+
+// TestRecovery_OwnRemovalEndsSessions: a user's own removal of their authenticator ends their other
+// sessions in the same change, as an administrator's ends all of them, and keeps the current one.
+func TestRecovery_OwnRemovalEndsSessions(t *testing.T) {
+	r := newRecoveryEnv(t)
+	seed := r.setUpTOTP(t, r.vwr)
+	other := r.browser()
+	if err := other.loginWith("vwr@example.com", pw, r.code(seed)); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.vwr.loginWith("vwr@example.com", pw, r.code(seed)); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.vwr.stepUp("", r.code(seed)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.vwr.user.RemoveTOTP(context.Background(), connect.NewRequest(&rpmgrv1.RemoveTOTPRequest{})); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := other.session(); code(err) != connect.CodeUnauthenticated {
+		t.Errorf("the other session after the removal: %v", err)
+	}
+	if _, err := r.vwr.session(); err != nil {
+		t.Errorf("the current session after the removal: %v", err)
 	}
 }

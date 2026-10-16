@@ -5,6 +5,7 @@ package accounts
 import (
 	"context"
 	"errors"
+	"slices"
 	"strings"
 
 	"github.com/felix-homelab/rpmgr/internal/authz"
@@ -94,8 +95,10 @@ func Recoverable(roles map[string]string, target *ent.User, theirs []*ent.Member
 
 // recoveryAudit adds to tx an entry in the audit log of each of orgs, the target's, so that their
 // Owners and Admins see a recovery of their member's account, which the instance's log holds too.
+// Callers write the instance's entry first and the orgs' in the order of their IDs, as each append
+// locks its log's head: transactions that lock the same logs in another order could deadlock.
 func recoveryAudit(ctx context.Context, tx *ent.Tx, orgs []string, actor, action, target, reason string) error {
-	for _, org := range orgs {
+	for _, org := range slices.Sorted(slices.Values(orgs)) {
 		if _, err := audit.Append(ctx, tx, audit.Entry{OrgID: org, ActorType: actorType(actor), ActorID: actor, Action: action,
 			TargetType: "user", TargetID: target, Result: audit.Success, Reason: reason}); err != nil {
 			return err
