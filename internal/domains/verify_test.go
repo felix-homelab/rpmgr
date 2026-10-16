@@ -5,7 +5,9 @@ package domains_test
 import (
 	"context"
 	"errors"
+	"maps"
 	"net"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -26,18 +28,49 @@ type nameserver struct {
 	tcpQueries    atomic.Int32
 }
 
-// serve starts ns on ip:port (port "0" picks one) and returns the port.
-func (ns *nameserver) serve(t *testing.T, ip, port string) string {
+// serveAll starts each nameserver of servers on its address and one port they all share, which the
+// verifier dials, and returns the port. The port the first address gets may be taken on another
+// address or for TCP, as by a connection of another test, so it tries again with another one.
+func serveAll(t *testing.T, servers map[string]*nameserver) string {
 	t.Helper()
-	pc, err := net.ListenPacket("udp", net.JoinHostPort(ip, port))
-	if err != nil {
-		t.Fatal(err)
+	ips := slices.Sorted(maps.Keys(servers))
+	var err error
+	for range 20 {
+		var pcs []net.PacketConn
+		var lns []net.Listener
+		port := "0"
+		for _, ip := range ips {
+			var pc net.PacketConn
+			if pc, err = net.ListenPacket("udp", net.JoinHostPort(ip, port)); err != nil {
+				break
+			}
+			pcs = append(pcs, pc)
+			_, port, _ = net.SplitHostPort(pc.LocalAddr().String())
+			var ln net.Listener
+			if ln, err = net.Listen("tcp", net.JoinHostPort(ip, port)); err != nil {
+				break
+			}
+			lns = append(lns, ln)
+		}
+		if err == nil {
+			for i, ip := range ips {
+				servers[ip].start(t, pcs[i], lns[i])
+			}
+			return port
+		}
+		for _, c := range pcs {
+			_ = c.Close()
+		}
+		for _, c := range lns {
+			_ = c.Close()
+		}
 	}
-	_, port, _ = net.SplitHostPort(pc.LocalAddr().String())
-	ln, err := net.Listen("tcp", net.JoinHostPort(ip, port))
-	if err != nil {
-		t.Fatal(err)
-	}
+	t.Fatal(err)
+	return ""
+}
+
+// start serves ns on pc and ln until the test ends.
+func (ns *nameserver) start(t *testing.T, pc net.PacketConn, ln net.Listener) {
 	handler := func(tcp bool) dns.HandlerFunc {
 		return func(w dns.ResponseWriter, q *dns.Msg) {
 			ns.queries.Add(1)
@@ -61,7 +94,6 @@ func (ns *nameserver) serve(t *testing.T, ip, port string) string {
 	go func() { _ = udp.ActivateAndServe() }()
 	go func() { _ = tcpSrv.ActivateAndServe() }()
 	t.Cleanup(func() { _ = udp.Shutdown(); _ = tcpSrv.Shutdown() })
-	return port
 }
 
 const value = "c2wkd5yxvcnk3sy7vqkzflqjk5lg6c4v"
@@ -102,17 +134,14 @@ func verifier(port string, zone map[string][]string, addrs map[string]string) (*
 func TestTXTVerifier(t *testing.T) {
 	ctx := context.Background()
 	good := &nameserver{txt: []string{value}, authoritative: true}
-	port := good.serve(t, "127.0.0.1", "0")
 	split := &nameserver{txt: []string{value[:10], value[10:]}, authoritative: true}
-	split.serve(t, "127.0.0.2", port)
 	wrong := &nameserver{txt: []string{"something else"}, authoritative: true}
-	wrong.serve(t, "127.0.0.3", port)
 	cache := &nameserver{txt: []string{value}} // answers, but without authority, as a resolver does
-	cache.serve(t, "127.0.0.4", port)
 	big := &nameserver{txt: []string{value}, authoritative: true, truncate: true}
-	big.serve(t, "127.0.0.5", port)
 	gone := &nameserver{authoritative: true, nxdomain: true}
-	gone.serve(t, "127.0.0.6", port)
+	resolver := &nameserver{txt: []string{value}, authoritative: true} // the resolver of the host
+	port := serveAll(t, map[string]*nameserver{"127.0.0.1": good, "127.0.0.2": split, "127.0.0.3": wrong, "127.0.0.4": cache,
+		"127.0.0.5": big, "127.0.0.6": gone, "127.0.0.8": resolver})
 	addrs := map[string]string{"ns-good.example.net": "127.0.0.1", "ns-split.example.net": "127.0.0.2", "ns-wrong.example.net": "127.0.0.3",
 		"ns-cache.example.net": "127.0.0.4", "ns-big.example.net": "127.0.0.5", "ns-gone.example.net": "127.0.0.6",
 		"ns-dead.example.net": "127.0.0.7"}
@@ -152,8 +181,6 @@ func TestTXTVerifier(t *testing.T) {
 
 	// The resolver has the record, the zone's authority does not: no proof, and the resolver is
 	// never asked.
-	resolver := &nameserver{txt: []string{value}, authoritative: true}
-	resolver.serve(t, "127.0.0.8", port)
 	v, _ = verifier(port, map[string][]string{"example.com": {"ns-gone.example.net"}}, addrs)
 	if err := v.Verify(ctx, domains.Challenge{FQDN: "example.com", Value: value}); !errors.Is(err, domains.ErrNoProof) || resolver.queries.Load() != 0 {
 		t.Fatalf("a record only the resolver has: %v, resolver asked %d times", err, resolver.queries.Load())

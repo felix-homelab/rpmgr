@@ -27,10 +27,18 @@ func TestStartDNS_TakenTCPPort(t *testing.T) {
 		return &calls
 	}
 
-	calls := taken(dnsPortAttempts - 1)
-	s, err := StartDNS([]string{"example.com"}, nil)
-	if err != nil || *calls != dnsPortAttempts {
-		t.Fatalf("the last attempt: %v after %d", err, *calls)
+	var s *DNSServer
+	for try := 1; ; try++ {
+		calls := taken(dnsPortAttempts - 1)
+		var err error
+		s, err = StartDNS([]string{"example.com"}, nil)
+		if err == nil && *calls == dnsPortAttempts {
+			break
+		}
+		// The last attempt binds a real port, which another process may hold too: once more.
+		if try == 3 || !errors.Is(err, syscall.EADDRINUSE) {
+			t.Fatalf("the last attempt: %v after %d", err, *calls)
+		}
 	}
 	defer s.Close()
 	for _, network := range []string{"udp", "tcp"} {
@@ -42,7 +50,7 @@ func TestStartDNS_TakenTCPPort(t *testing.T) {
 		}
 	}
 
-	calls = taken(dnsPortAttempts)
+	calls := taken(dnsPortAttempts)
 	if _, err := StartDNS(nil, nil); !errors.Is(err, syscall.EADDRINUSE) || *calls != dnsPortAttempts {
 		t.Fatalf("every attempt taken: %v after %d", err, *calls)
 	}
