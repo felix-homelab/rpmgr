@@ -81,7 +81,9 @@ install -d -m 0750 -o rpmgr -g rpmgr /var/lib/rpmgr
   the file `/etc/rpmgr/kek`, which it gives to the user `rpmgr` when that user exists, because
   the service reads it.
 - **Unit:** `rpmgr systemd-unit <role>` prints the role's hardened unit. For a controller or
-  all-in-one it reads the boot file, and loads the KEK credential when the KEK is one.
+  all-in-one it reads the boot file: it loads the KEK credential when the KEK is one, and makes
+  the revocation-log sink writable when the file names one
+  ([Hardened systemd units](#hardened-systemd-units)).
 - **State directory:** `init` runs as root. It gives what it creates in the state directory to the
   directory's owner, the user `rpmgr` the installer gave it to, also when it fails: the database
   and the files beside it, and on an all-in-one the gateway's and the connector's identities. So
@@ -94,11 +96,20 @@ entry. It never overwrites a boot file or a KEK: an existing one is read and use
 again after a failure, and it refuses a database that is already initialised or in use by a running
 controller. When the agents' part of `all-in-one init` fails, the gateway's or the connector's, it
 removes the database and what it created beside it, so the same `init` can run again once the
-cause is fixed. `rpmgr all-in-one` enrolls its connector at start when its identity is missing,
-as on an all-in-one initialised before
-[ADR-0019](adr/0019-all-in-one-runs-a-connector.md). So a connector identity that cannot be used
-any more, revoked or unreadable, is replaced by deleting `<state_dir>/connector/identity` and
-restarting the service; the connector keeps its ID and routes. A new systemd credential is encrypted with `systemd-creds encrypt` into
+cause is fixed. `rpmgr all-in-one` enrolls its built-in gateway and connector again at start,
+through the in-process controller and before the gateway runs, when an identity is missing, as on
+a new host after a restore, or for the connector on an all-in-one initialised before
+[ADR-0019](adr/0019-all-in-one-runs-a-connector.md); when its certificate names another agent
+than the database's built-in one; and when the controller cannot renew its certificate: one the
+database does not know, as after the restore of a backup older than the certificate, a revoked or
+superseded one, or one expired longer than the grace period
+([D97](14-open-decisions.md#engineering)). Each keeps its ID and routes; the enrollment revokes
+the certificates the database records for the identity it replaces, and the audit log has each
+token with its reason. A certificate the database does not record stays valid until it expires.
+An identity whose agent is revoked as a whole stops the start, as does one that cannot be read,
+which is replaced by deleting `<state_dir>/gateway/identity` or `<state_dir>/connector/identity`
+and restarting the service. Without a database, `rpmgr all-in-one` refuses to start, as on a host
+never initialised. A new systemd credential is encrypted with `systemd-creds encrypt` into
 `/etc/rpmgr/credstore/<name>`; an existing one is readable only where systemd loads it, so `init`
 then has to run under `systemd-run --pipe --wait --property=LoadCredentialEncrypted=…`.
 
@@ -117,10 +128,10 @@ with `rpmgr user reset-password` while no user exists. There is no default passw
 | `/etc/rpmgr/<role>.yaml` | root, 0644 | Boot configuration ([Configuration](#configuration)) |
 | `/etc/rpmgr/tls/` | root, 0755 | The certificate `rpmgr setup --tls self-signed` makes for the UI: `<host>.crt` (root, 0644) and `<host>.key` (rpmgr, 0600) |
 | `/etc/rpmgr/policy.yaml` | root, 0644 | Connector-local policy, read-only for the service user; the root updater also reads `auto_update` from it ([04](04-security.md#connector-local-policy)) |
-| `/var/lib/rpmgr/identity/` | rpmgr, 0700 | Agent identity, written by `rpmgr enroll`: `key.pem` (private key, 0600) and `chain.pem` (certificate and intermediates), both replaced at every renewal (`*.new` files are a renewal in progress, finished at the next start), `roots.pem` (the pinned root and roots it cross-signed), `signing.pem` (the config-signing certificates, replaced by those of every `Welcome`), `agent.json` (agent ID, trust domain, controller endpoints). Enrollment refuses a directory open to the group or other users, and an existing identity without `--replace` |
+| `/var/lib/rpmgr/identity/` | rpmgr, 0700 | Agent identity, written by `rpmgr enroll`: `key.pem` (private key, 0600) and `chain.pem` (certificate and intermediates), both replaced at every renewal (`*.new` files are a renewal in progress, finished at the next start), `roots.pem` (the pinned root and roots it cross-signed), `signing.pem` (the config-signing certificates, replaced by those of every `Welcome`), `agent.json` (agent ID, trust domain, the controller endpoints of the enrollment; those of the stored snapshot take their place, [03](03-connections.md#transport)). Enrollment refuses a directory open to the group or other users, and an existing identity without `--replace` |
 | `/var/lib/rpmgr/` | rpmgr, 0750 | Last-known-good snapshot (`snapshot.signed`, 0600) and **deny-list** (`denylist.signed`, 0600) (both signed; the deny-list is loaded before any session is accepted), stateless reset key (gateways: `quic-reset.key`, 0600, created at the first start), route certificates with their keys that the gateway fetched (gateways: `resources/`, 0700, one 0600 file per item, named by its SHA-256, removed when no route needs it), SQLite database and its lock file `controller.db.lock`, held by the running controller (controller) |
 | `/var/lib/rpmgr/update/` | rpmgr, 0750 | OTA download area: artifact and signed manifest written by the agent. **Untrusted input** to the updater, which never verifies or installs files in place here |
-| `/etc/sysctl.d/60-rpmgr.conf` | root, 0644 | Host tuning written by `/install.sh`: the UDP buffers raised to 7 MiB where lower, and BBR with `--tcp-bbr` ([03](03-connections.md#host-tuning-applied-by-the-installer)) |
+| `/etc/sysctl.d/60-rpmgr.conf` | root, 0644 | Host tuning, written by `/install.sh` on every run: the UDP buffers, whatever the host has now, and BBR with `--tcp-bbr` or while the file sets it ([03](03-connections.md#host-tuning-applied-by-the-installer)) |
 | `/var/lib/rpmgr-update/` | root, 0700 | Updater state, out of the service user's reach: version floor and highest manifest `seq` in `state.json` (`{"seq": 87, "floor": "1.4.2"}`, initialised at install time from the running version and its release `seq`), `install.json` (`{"method": "script", "path": "/usr/local/bin/rpmgr", "variant": "full", "role": "connector"}`, written by `/install.sh`), and `staging/`, where the updater copies and verifies the files |
 | `/var/lib/rpmgr/dl/<version>/` (controller) | rpmgr, 0750; files 0640 | The release mirror of the controller's own version, served under `/dl/`: verified release files only ([04](04-security.md#over-the-air-updates)) |
 | `/var/lib/rpmgr/audit-checkpoints.log` (controller) | rpmgr, 0640 | Signed audit checkpoints, appended locally and included in every backup; the external sink (Phase 2) is what makes tampering evident ([04](04-security.md#audit-log)) |
@@ -164,6 +175,18 @@ RestartSec=2s
 - **Controller**: the same, without `CAP_NET_BIND_SERVICE` if it listens on high ports behind a
   gateway, plus `LoadCredentialEncrypted=rpmgr-kek:/etc/rpmgr/credstore/rpmgr-kek` for the KEK
   ([04](04-security.md#secrets-at-rest-and-in-logs)) [V VB-03].
+  - **Revocation-log sink:** when the boot file sets `revocation_log.sink`, the unit adds
+    `ReadWritePaths=-<sink>`, which keeps the sink writable under `ProtectSystem=strict`
+    [F systemd v257 `man/systemd.exec.xml:1691-1693`] ([Backup and restore](#backup-and-restore)).
+    With `-`, a missing directory is ignored [F systemd v257 `man/systemd.exec.xml:1715-1718`], so
+    a sink outage, such as a share not mounted yet, never keeps the controller from starting; the
+    backlog alert covers the entries that wait. A share mounted after the start is writable as on
+    the host [F systemd v257 `man/systemd.exec.xml:1726-1731`]; [R] after creating a plain
+    directory, restart the controller. `rpmgr systemd-unit` refuses a sink with whitespace, a
+    control character, `%`, `\`, a quote, or a `.` or `..` part, which systemd would split,
+    expand or read differently, and the root, which would leave nothing read-only.
+  - [R] A boot file that gains or changes its sink needs its unit written again with
+    `rpmgr systemd-unit`, then `systemctl daemon-reload` and a restart.
 - **Connector**: no capabilities at all (`CapabilityBoundingSet=` is empty);
   `ReadOnlyPaths=/etc/rpmgr` keeps `policy.yaml` out of the service's reach. `ExecReload=/bin/kill -HUP $MAINPID`, with `kill`
   from procps, which standard installations have: `rpmgr policy …` edits the policy file and runs
@@ -171,9 +194,9 @@ RestartSec=2s
   on change ([04](04-security.md#connector-local-policy)). Phase 3 features that need privileges (virtual networks with a kernel TUN device,
   shell) are documented with the exact additional unit settings when they ship; the userspace
   netstack variant needs none.
-- **All-in-one**: the controller's settings with `CAP_NET_BIND_SERVICE`, and the connector's
-  `ExecReload`: its own connector reads `policy.yaml`, and `rpmgr policy …` reloads
-  `rpmgr-all-in-one.service` on a host with an all-in-one boot file and no connector's
+- **All-in-one**: the controller's settings, its sink included, with `CAP_NET_BIND_SERVICE`, and
+  the connector's `ExecReload`: its own connector reads `policy.yaml`, and `rpmgr policy …`
+  reloads `rpmgr-all-in-one.service` on a host with an all-in-one boot file and no connector's
   ([ADR-0019](adr/0019-all-in-one-runs-a-connector.md)).
 - **Updater** (every role): a root-owned pair `rpmgr-update.path` (watches `/var/lib/rpmgr/update/`)
   and oneshot `rpmgr-update.service` ([04](04-security.md#over-the-air-updates)). It:
@@ -256,8 +279,11 @@ In Phase 1, CI only builds these targets; end-to-end tests on Windows and macOS 
 | Connector | per `allow_listen` | TCP/UDP | Visitor listeners for private services | Local or LAN, as the policy allows |
 | All-in-one | 80, 443/TCP, 443/UDP, port pools, admin | | Gateway ports; the controller is reached through the gateway's SNI router in-process; its connector opens no port and never dials the ports rpmgr listens on: admin, 80, 443, tunnel UDP and every route port the gateway has bound ([04](04-security.md#connector-local-policy)) | Public (except admin) |
 
-**Controller outbound connections.** The controller dials out only for these, all through
-`HTTPS_PROXY`/`ALL_PROXY` when set:
+**Controller outbound connections.** The controller dials out only for these. Its HTTPS requests
+go through `HTTPS_PROXY`, else `ALL_PROXY`, its plain HTTP requests through `HTTP_PROXY`, else
+`ALL_PROXY`, and SMTP through a SOCKS5 `ALL_PROXY`, unless `NO_PROXY` exempts the host; DNS
+queries go direct. A proxy variable that is no proxy URL stops the controller at start, with a
+message that names the variable, not its value ([D93](14-open-decisions.md#engineering)):
 
 | Destination | Port | Purpose | When |
 |---|---|---|---|
@@ -275,8 +301,8 @@ Configuration has two layers (the commands and their flags are listed in
 1. A **small boot file** per role, read at start: only what is needed before the database or the
    control session is available. Strict YAML: unknown keys are rejected and the process refuses to
    start. Containers mount the boot file (and secrets as files). The only environment variables
-   read are `RPMGR_CONFIG` (config path), the proxy variables (`HTTPS_PROXY`, `ALL_PROXY`,
-   `NO_PROXY`) and, by the install script and `rpmgr enroll` only, `RPMGR_ENROLL_TOKEN`. There is no
+   read are `RPMGR_CONFIG` (config path), the proxy variables (`HTTPS_PROXY`, `HTTP_PROXY`,
+   `ALL_PROXY`, `NO_PROXY`) and, by the install script and `rpmgr enroll` only, `RPMGR_ENROLL_TOKEN`. There is no
    KEK from an environment variable ([04](04-security.md#secrets-at-rest-and-in-logs)).
 2. **Runtime settings in the database**, typed and validated, edited in the UI or API, audited, and
    distributed to agents through snapshots. No restart needed.
@@ -315,7 +341,7 @@ revocation_log:
 # /etc/rpmgr/gateway.yaml
 version: 1
 controller:
-  endpoints: [https://panel.example.com]   # replaced by the list from snapshots after first connect
+  endpoints: [https://panel.example.com]   # only checked: agents dial the endpoints of enrollment
   passthrough:                              # optional: publish a private controller (03, R23)
     address: ""                             # its host:port for 443, reached from here; "" = none
     hostnames: []                           # its UI hostnames; the agent names always go there
@@ -344,6 +370,13 @@ listen:
 log: { level: info, format: json }
 # HTTPS_PROXY / ALL_PROXY / NO_PROXY are honoured for the TCP transports (03-connections.md#transports-and-fallback)
 ```
+
+`rpmgr setup --role connector --proxy <url>` takes an `http://`, `socks5://` or `socks5h://` URL,
+the schemes the connector reads, enrolls through it, and gives it to the service as `HTTPS_PROXY`
+in `/etc/rpmgr/connector-proxy.env` (mode 0600, root's), which the drop-in
+`rpmgr-connector.service.d/proxy.conf` names: a proxy password never shows in the unit or in
+`systemctl show`. A URL with credentials comes from `--proxy-file <file>` or the form; `--proxy`
+refuses it, as a command line shows it to every user of the host.
 
 ```yaml
 # /etc/rpmgr/all-in-one.yaml
@@ -393,7 +426,7 @@ the boot file.
 
 | Scope | Examples |
 |---|---|
-| Instance (Instance Admin) | Default data-session transport (`auto`, `quic`, `h2`; shipped `auto`, [03](03-connections.md#transport-selection); [R] pin `h2` on routes or connectors that carry bulk transfers over high-delay paths, where it carried single streams faster in the Phase 1 measurements, [ADR-0004](adr/0004-quic-default-transport-policy.md#phase-1-measurements)), public URL aliases (each alias is also accepted as `Origin` by the CSRF check, [04](04-security.md#human-authentication-and-sessions)), ACME account, Cloudflare IP ranges (refreshed automatically), SMTP (optional: the relay's `host:port`, sender address, user name, and STARTTLS or TLS from the start, as the controller sends no mail in plain text; the password is write-only and kept under the KEK), retention (audit entries: 365 days by default, 30 to 3650 days; metric rollups), external audit sink (Phase 2), revocation-log sink ([Backup and restore](#backup-and-restore)), controller endpoints advertised to agents. **PKI** page: leaf-certificate lifetime and grace period ([D8](14-open-decisions.md#security-defaults), values and ranges in [04](04-security.md#leaf-certificates)), password-hash profile. **Updates** page: release check (on by default, [D4](14-open-decisions.md#product-and-project)), update channel (`stable` or `prerelease`), manifest upload for air-gapped installs, rollout policy (Phase 2) |
+| Instance (Instance Admin) | Default data-session transport (`auto`, `quic`, `h2`; shipped `auto`, [03](03-connections.md#transport-selection); [R] pin `h2` on routes or connectors that carry bulk transfers over high-delay paths, where it carried single streams faster in the Phase 1 measurements, [ADR-0004](adr/0004-quic-default-transport-policy.md#phase-1-measurements)), public URL aliases (each alias is also accepted as `Origin` by the CSRF check, [04](04-security.md#human-authentication-and-sessions)), ACME account, Cloudflare IP ranges (refreshed automatically), SMTP (optional: the relay's `host:port`, sender address, user name, and STARTTLS or TLS from the start, as the controller sends no mail in plain text; the password is write-only and kept under the KEK), retention (audit entries: 365 days by default, 30 to 3650 days; metric rollups), external audit sink (Phase 2), revocation-log sink ([Backup and restore](#backup-and-restore)), controller endpoints advertised to agents (each `https://<host>[:<port>]`, tried in order; agents get them at enrollment and in every snapshot, and the public URL alone while none are listed, [03](03-connections.md#reaching-a-private-controller)). **PKI** page: leaf-certificate lifetime and grace period ([D8](14-open-decisions.md#security-defaults), values and ranges in [04](04-security.md#leaf-certificates)), password-hash profile. **Updates** page: release check (on by default, [D4](14-open-decisions.md#product-and-project)), update channel (`stable` or `prerelease`), manifest upload for air-gapped installs, rollout policy (Phase 2) |
 | Org (Owner) | MFA requirement, OIDC providers and group→role mapping, default gateway group, Operator may enroll connectors, branding ([04](04-security.md#roles)) |
 | Gateway group (Admin) | Port pools, trusted-proxy CIDRs, DNS target for managed records, default TLS options, per-route limit defaults |
 | DNS (Owner/Admin; Instance Admin for the system org) | DNS providers and their tokens, managed zones and their gates. These are resources with their own pages, not settings ([15](15-dns.md)) |
@@ -484,7 +517,8 @@ service that still runs the previous binary, with the command that restarts it.
     way the allocation is the write, so the sink has no gaps. Entries form a **hash chain**. Phase 1
     offers the filesystem sink; the S3-compatible sink comes with HA in Phase 2
     ([D58](14-open-decisions.md#project-and-process)).
-  - **The filesystem sink** is the boot setting `revocation_log.sink`, a directory.
+  - **The filesystem sink** is the boot setting `revocation_log.sink`, a directory, which the unit
+    of `rpmgr systemd-unit` makes writable ([Hardened systemd units](#hardened-systemd-units)).
     - **Publishing:** each entry is written to a temporary file, synced, then hard-linked to its
       number; the link fails when the number exists, so a crash leaves no empty number.
     - **Contents:** an entry holds the replica, its local entry and the sink's own hash chain.
@@ -536,6 +570,10 @@ service that still runs the previous binary, with the command that restarts it.
     ([07](07-api.md#errors)) while its org, or for an instance setting the instance, is in review.
     Revocations stay available (revoking API and enrollment tokens, member changes and removals),
     and so do the review itself and each user's own account: password, second factor, sessions.
+    Another user's account is not recovered through the API
+    ([04](04-security.md#account-recovery)). A revocation of the Instance Admin role that would
+    leave the restored instance without an active Instance Admin is not applied again; the restore
+    names it, and the audit entry of the restore too.
   - **Passwords:** a user resets theirs with a link from `rpmgr user reset-password --email
     <address>` on the controller host, or with the self-service reset when SMTP is set up.
   - each org's **Owner** re-confirms only their own org's memberships and roles, and resumes its
@@ -757,8 +795,10 @@ Each runbook: **symptoms → steps → done when**.
 
 ### Revoke a compromised connector
 
-- **Steps**: UI → Connectors → Revoke (step-up required). The deny-list is pushed to all relying
-  parties and live sessions close immediately ([04](04-security.md#revocation)). Review the audit
+- **Steps**: UI → Connectors → the connector → **Decommission…**, or
+  `rpmgr decommission connector <name>`. The deny-list is pushed to all relying parties and live
+  sessions close immediately ([04](04-security.md#revocation)); its route targets are deleted
+  ([D78](14-open-decisions.md#engineering)). Review the audit
   log and route metrics for the connector; rotate any credentials the host's services held; rebuild
   the host before re-enrolling.
 - **Done when**: no session from the identity anywhere; routes served by other connectors healthy.
@@ -862,7 +902,9 @@ Each runbook: **symptoms → steps → done when**.
 - **Symptoms**: under Security → Domains & certificates, the hostname's certificate is `failed`
   with the CA's error; HTTPS to the hostname fails.
 - **Steps**: the name's A and AAAA records must point at the gateway group's public addresses, and
-  80/tcp or 443/tcp must be reachable from the internet. A name of a private address, such as a
+  80/tcp or 443/tcp must be reachable from the internet. Every enabled gateway of the route's group
+  must be online and answer the challenge: one that is offline or not yet enrolled blocks the
+  certificate, so drain or disable it. A name of a private address, such as a
   `nip.io` name of `172.18.0.5`, can never be validated: give its route an uploaded certificate
   instead. Meanwhile the job retries with growing waits and rehearses each retry at the CA's test
   directory, so the failures cost the account nothing at the CA

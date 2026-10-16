@@ -64,7 +64,7 @@ names.
 | Service | Main methods | Phase |
 |---|---|---|
 | `AuthService` | `Login`, `Logout`, `GetSession` (also the version the controller runs, D80), `StepUp` (a session, or a personal API token for itself, D63), `BeginWebAuthn`/`FinishWebAuthn`, `StartOIDC`/`FinishOIDC`, `ListSessions`, `RevokeSession`, `RequestPasswordReset` (only with SMTP configured; `UNAVAILABLE` without), `CompletePasswordReset` | 1 (WebAuthn, OIDC: 2) |
-| `UserService` | `GetMe` (with the instance's restore review), `UpdateMe` (display name and web UI theme), `ChangePassword`, `EnrollTOTP`, `ConfirmTOTP`, `RemoveTOTP`, `RegenerateRecoveryCodes`, `ListUsers` (instance admin), `CreatePasswordResetLink` (one-time link; Owner/Admin for members, Instance Admin for any user) | 1 |
+| `UserService` | `GetMe` (with the instance's restore review), `UpdateMe` (display name and web UI theme), `ChangePassword`, `EnrollTOTP`, `ConfirmTOTP`, `RemoveTOTP`, `RegenerateRecoveryCodes`, `ListUsers` (instance admin), `CreatePasswordResetLink` (one-time link), `RemoveUserTOTP` (another user's lost second factor), `SetInstanceAdmin` (instance admin; account recovery as in [04](04-security.md#account-recovery)) | 1 |
 | `OrgService` | `GetOrg`, `UpdateOrg`, `ListMembers`, `UpdateMember`, `RemoveMember`, `CreateInvitation` (returns a one-time link; also e-mailed if SMTP is configured), `AcceptInvitation`; in restore review ([10](10-operations.md#backup-and-restore)), for an Owner with step-up: `ListSuspendedAPITokens`, `ResumeAPIToken`, `ConfirmRestoreReview` (the org's review only) | 1 (multi-org UI: 2) |
 | `TokenService` | `CreateAPIToken`, `ListAPITokens`, `RevokeAPIToken`, `CreateServiceAccount`, … | Personal API tokens: 1; service accounts: 2 |
 | `EnrollmentService` | `CreateEnrollmentToken` (connectors, also re-enrollment; `connectors.write`), `CreateGatewayEnrollmentToken` (a gateway an Admin created, R15; `infrastructure.write`), both with step-up and shown once; `ListEnrollmentTokens`, `RevokeEnrollmentToken`, `GetInstallCommand` | 1 |
@@ -177,7 +177,8 @@ API reports both ([03](03-connections.md#configuration-reconciliation)).
 - A caller may set `wait = APPLIED` with a timeout (max 30 s) on any mutation, as the request
   header `Rpmgr-Wait-Applied: <duration>` (for example `30s`); the response then returns once the
   revision is applied, rejected or timed out, or the wait passes, with the state then. A duration
-  that does not parse is no wait. The CLI does this by default.
+  that does not parse is no wait. The CLI does this with `--wait <duration>`; without it, it does
+  not wait.
 - `StatusService.WatchApplyStatus(revision)` streams progress; the UI uses it to show
   "pending → applied" live after every save. `GetApplyStatus(revision)` returns it once.
 - The status is derived over the org's agents with a live control session: an agent applied the
@@ -279,14 +280,18 @@ spec:
   `PortPool`, `Domain`, `Connector` and `CABundle`.
   - `metadata.name` is the resource's name, a domain's FQDN, or the ID of a resource without a
     name (a port pool).
-  - The spec has no field the server sets: no ID, etag, status, times or lists of dependants.
+  - The spec has no field the server sets, which the protos mark output only: no ID, etag,
+    status, times, lists of dependants, `updateUserId` or `builtIn`. A route's targets are the
+    exception: its manifest carries them, without their IDs and etags.
   - It names gateway groups, access policies, connectors and CA bundles by their names
     (`gatewayGroup`, `policies`, `connector`, `caBundle`). A certificate, which has no name, keeps
     its ID.
   - Fields marked `sensitive` are never written, so a basic-auth user appears without a
     password. Certificates and their keys are not a kind.
   - `ManifestService.ExportManifests` writes them for the CLI and the UI's YAML tab: every kind,
-    the kinds named, or the resources named. Decommissioned gateways and connectors are left out.
+    the kinds named, or exactly the resources named by ID. Decommissioned gateways and connectors
+    are left out. A resource named that is not the org's, not of a kind named, or decommissioned
+    is `NOT_FOUND`.
 
 - `ManifestService.Plan` returns the diff against the current state; `Apply` performs it in **one
   transaction** (one revision). Manifests reference other resources by name; the server resolves

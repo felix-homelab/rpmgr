@@ -8,12 +8,14 @@ import { useState, type FormEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { Field } from "@/components/field";
 import { Command } from "@/components/one-time-token";
+import { RecoveryActions } from "@/components/recovery";
 import { PageHeader } from "@/components/page-header";
 import { Alert } from "@/components/public-page";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Select } from "@/components/ui/input";
 import { Table, TD, TH, THead, TR } from "@/components/ui/table";
+import { AuthService } from "@/gen/rpmgr/v1/auth_pb";
 import { OrgService, type Member, type SuspendedAPIToken } from "@/gen/rpmgr/v1/org_pb";
 import { Reason, reasonOf } from "@/lib/errors";
 import { when } from "@/lib/format";
@@ -58,7 +60,7 @@ export function OrgPage() {
           <THead>
             <tr>{["name", "email", "role", "since", "actions"].map((c) => <TH key={c}>{t(`org.columns.${c}`)}</TH>)}</tr>
           </THead>
-          <tbody>{(members.data?.members ?? []).map((m) => <MemberRow key={m.userId} orgId={org.orgId} member={m} />)}</tbody>
+          <tbody>{(members.data?.members ?? []).map((m) => <MemberRow key={m.userId} orgId={org.orgId} role={org.role} member={m} />)}</tbody>
         </Table>
       </Card>
       <Invite orgId={org.orgId} />
@@ -168,9 +170,13 @@ function OrgName({ orgId, name: was }: { orgId: string; name: string }) {
 }
 
 // MemberRow shows a member and changes their role or removes them, with a step-up where the server
-// asks for one (granting Admin or Owner).
-function MemberRow({ orgId, member: m }: { orgId: string; member: Member }) {
+// asks for one (granting Admin or Owner). For the caller's role, it recovers another member's
+// access: an Owner's or Admin's reset link, an Admin's not for an Owner, and an Owner's removal of
+// the second factor (docs/04-security.md, "Account recovery").
+function MemberRow({ orgId, role, member: m }: { orgId: string; role: string; member: Member }) {
   const { t } = useTranslation();
+  const me = useQuery(AuthService.method.getSession, {}).data?.userId;
+  const recover = m.userId !== me && (role === "owner" || (role === "admin" && m.role !== "owner"));
   const stepUp = useStepUp();
   const update = useMutation(OrgService.method.updateMember);
   const remove = useMutation(OrgService.method.removeMember);
@@ -212,6 +218,7 @@ function MemberRow({ orgId, member: m }: { orgId: string; member: Member }) {
           <Button size="sm" variant="outline" onClick={() => setAsking(true)}>{t("targetForm.removeAsk")}</Button>
         )}
         {error && <div className="mt-2"><Alert>{error}</Alert></div>}
+        {recover && <div className="mt-2"><RecoveryActions userId={m.userId} name={who} secondFactor={role === "owner"} /></div>}
       </TD>
     </TR>
   );

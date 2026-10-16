@@ -16,6 +16,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/accounts"
 	"github.com/felix-homelab/rpmgr/internal/revlog"
 	"github.com/felix-homelab/rpmgr/internal/secret"
+	"github.com/felix-homelab/rpmgr/internal/store/ent"
 	"github.com/felix-homelab/rpmgr/internal/totp"
 )
 
@@ -136,7 +137,7 @@ func TestMFA_ChangeAndRemove(t *testing.T) {
 	e, m, ada, log := newMFA(t)
 	seed, _, _ := m.EnrollTOTP(ada, "x")
 	old, _ := m.ConfirmTOTP(ada, totp.Code(seed, totp.StepOf(e.clock)))
-	fresh, err := m.RegenerateRecoveryCodes(ada)
+	fresh, err := m.RegenerateRecoveryCodes(ada, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -146,7 +147,7 @@ func TestMFA_ChangeAndRemove(t *testing.T) {
 	if _, err := m.VerifySecondFactor(ada, fresh[0]); err != nil {
 		t.Fatalf("a new recovery code: %v", err)
 	}
-	if err := m.RemoveTOTP(ada, ada); err != nil {
+	if err := m.RemoveTOTP(ada, ada, nil); err != nil {
 		t.Fatal(err)
 	}
 	if ok, _ := m.HasMFA(ada); ok {
@@ -155,11 +156,13 @@ func TestMFA_ChangeAndRemove(t *testing.T) {
 	if _, err := m.VerifySecondFactor(ada, fresh[1]); !errors.Is(err, accounts.ErrSecondFactor) {
 		t.Fatal("a recovery code after removal")
 	}
-	if err := m.RemoveTOTP(ada, ada); !errors.Is(err, accounts.ErrNoMFA) {
+	if err := m.RemoveTOTP(ada, ada, nil); !errors.Is(err, accounts.ErrNoMFA) {
 		t.Fatalf("removed twice: %v", err)
 	}
-	if _, err := m.RegenerateRecoveryCodes(ada); !errors.Is(err, accounts.ErrNoMFA) {
-		t.Fatalf("codes without MFA: %v", err)
+	ended := false
+	_, err = m.RegenerateRecoveryCodes(ada, func(*ent.Tx) (int, error) { ended = true; return 0, nil })
+	if !errors.Is(err, accounts.ErrNoMFA) || ended {
+		t.Fatalf("codes without MFA: %v (sessions ended: %v)", err, ended)
 	}
 	entries, err := revlog.Read(log)
 	if err != nil || len(entries) != 3 {
@@ -173,5 +176,47 @@ func TestMFA_ChangeAndRemove(t *testing.T) {
 	}
 	if n := len(e.actions(t, "user.mfa_enroll")) + len(e.actions(t, "user.recovery_codes")) + len(e.actions(t, "user.mfa_remove")); n != 3 {
 		t.Fatalf("%d audit entries", n)
+	}
+	if got := e.actions(t, "user.recovery_codes"); got[0].Reason != "recovery codes replaced; 0 other sessions ended" {
+		t.Fatalf("new codes that end no session: %q", got[0].Reason)
+	}
+}
+
+// TestMFA_RegenerateEndsSessions (D96): new recovery codes end the user's other sessions in their
+// transaction, and the audit entry says how many; if ending them fails, the codes and the logs stay
+// as they were.
+func TestMFA_RegenerateEndsSessions(t *testing.T) {
+	e, m, ada, log := newMFA(t)
+	seed, _, _ := m.EnrollTOTP(ada, "x")
+	old, err := m.ConfirmTOTP(ada, totp.Code(seed, totp.StepOf(e.clock)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	broken := errors.New("the sessions cannot end")
+	var inTx *ent.Tx
+	codes, err := m.RegenerateRecoveryCodes(ada, func(tx *ent.Tx) (int, error) { inTx = tx; return 0, broken })
+	if !errors.Is(err, broken) || codes != nil || inTx == nil {
+		t.Fatalf("a failure to end the sessions: %v %v (ran: %v)", codes, err, inTx != nil)
+	}
+	if _, err := m.VerifySecondFactor(ada, old[0]); err != nil {
+		t.Fatalf("an old recovery code after the failed change: %v", err)
+	}
+	if entries, _ := revlog.Read(log); len(entries) != 1 {
+		t.Fatalf("revocation log after the failed change: %+v", entries)
+	}
+	if got := e.actions(t, "user.recovery_codes"); len(got) != 0 {
+		t.Fatalf("audit entries of the failed change: %+v", got)
+	}
+
+	fresh, err := m.RegenerateRecoveryCodes(ada, func(*ent.Tx) (int, error) { return 3, nil })
+	if err != nil || len(fresh) != accounts.RecoveryCodes {
+		t.Fatalf("new codes: %v %v", fresh, err)
+	}
+	if _, err := m.VerifySecondFactor(ada, old[1]); !errors.Is(err, accounts.ErrSecondFactor) {
+		t.Fatal("an old recovery code works")
+	}
+	if got := e.actions(t, "user.recovery_codes"); len(got) != 1 || got[0].Reason != "recovery codes replaced; 3 other sessions ended" ||
+		got[0].ActorID != ada || got[0].TargetID != ada {
+		t.Fatalf("the audit entry: %+v", got)
 	}
 }

@@ -56,6 +56,7 @@ function page() {
       getInstallCommand: (req) => (commands.push(req), { command }),
       listEnrollmentTokens: () => ({ enrollmentTokens: [
         { id: "enr_old", maxUses: 1, useCount: 0, labels: { site: "office" } },
+        { id: "enr_pool", ephemeral: true, maxUses: 0, useCount: 2 },
         { id: "enr_replace", connectorId: "con_old", maxUses: 1 }, // a re-enrollment token is not listed
       ] }),
       revokeEnrollmentToken: (req) => (revoked.push(req.enrollmentTokenId), {}),
@@ -121,11 +122,21 @@ describe("EnrollmentTokens", () => {
   it("lists the tokens that can enroll and revokes one after a confirmation", async () => {
     const { revoked } = page();
     const section = within(await screen.findByRole("region", { name: "Enrollment tokens" }));
-    expect(await section.findByText("used 0 of 1")).toBeTruthy();
-    expect(section.getAllByRole("listitem")).toHaveLength(1);
-    fireEvent.click(section.getByRole("button", { name: "Revoke…" }));
-    fireEvent.click(section.getByRole("button", { name: "Revoke it" }));
+    const old = within((await section.findByText("used 0 of 1")).closest("li")!);
+    expect(section.getAllByRole("listitem")).toHaveLength(2);
+    expect(old.queryByText("ephemeral")).toBeNull();
+    fireEvent.click(old.getByRole("button", { name: "Revoke…" }));
+    fireEvent.click(old.getByRole("button", { name: "Revoke it" }));
     await waitFor(() => expect(revoked).toEqual(["enr_old"]));
+  });
+
+  it("marks an ephemeral token with a short badge, which explains the kind as its description", async () => {
+    page();
+    const section = within(await screen.findByRole("region", { name: "Enrollment tokens" }));
+    const pool = within((await section.findByText("used 2 times")).closest("li")!);
+    const badge = pool.getByText("ephemeral");
+    expect(badge.getAttribute("title")).toBe("Ephemeral: removed 30 minutes after it last disconnects");
+    expect(pool.queryByText(/^Ephemeral: removed/)).toBeNull(); // not as the badge's text
   });
 });
 

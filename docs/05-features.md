@@ -74,7 +74,8 @@
 | Set/remove request and response headers; host header preserve or rewrite | P1 |
 | `Forwarded` / `X-Forwarded-*`, with untrusted incoming values stripped | P1 |
 | WebSockets and gRPC pass-through | P1 |
-| Request body size limit; per-route timeouts | P1 |
+| Request body size limit | P1 |
+| Per-route HTTP timeouts, where Phase 1 has the fixed ones of [03](03-connections.md#timeouts-keepalive-and-backoff) ([D94](14-open-decisions.md#engineering)) | P2 |
 | Built-in pages for a name no route serves (404) and for the gateway's own errors (502/503/504), to browsers ([D87](14-open-decisions.md#engineering)) | P1 |
 | Custom error pages (502/503/504/404) per gateway group | P2 |
 

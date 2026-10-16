@@ -9,11 +9,13 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
 	agentv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/agent/v1"
 	"github.com/felix-homelab/rpmgr/internal/pki"
+	"github.com/felix-homelab/rpmgr/internal/proxyenv"
 	"github.com/felix-homelab/rpmgr/internal/snapshot"
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/domain"
@@ -37,8 +39,11 @@ func ChallengeURL(fqdn, id string) string { return "http://" + fqdn + ChallengeP
 // HTTPVerifier fetches a claim's HTTP token, which the org's own gateways serve for its pending
 // claims, so pointing the name at them is the proof (R17). It follows no redirect, reads at most
 // 256 bytes, and goes through the proxy the environment names, as all controller egress does
-// (R44).
+// (R44, D93).
 type HTTPVerifier struct {
+	// Proxy chooses the proxy of the request; nil is proxyenv.FromEnvironment (HTTP_PROXY, else
+	// ALL_PROXY; NO_PROXY).
+	Proxy func(*http.Request) (*url.URL, error)
 	// Transport, if set, replaces the proxy-aware default (tests).
 	Transport http.RoundTripper
 }
@@ -54,7 +59,11 @@ func (v *HTTPVerifier) Verify(ctx context.Context, c Challenge) error {
 	}
 	tr := v.Transport
 	if tr == nil {
-		tr = &http.Transport{Proxy: http.ProxyFromEnvironment, DialContext: (&net.Dialer{Timeout: HTTPTimeout}).DialContext}
+		proxy := v.Proxy
+		if proxy == nil {
+			proxy = proxyenv.FromEnvironment
+		}
+		tr = &http.Transport{Proxy: proxy, DialContext: (&net.Dialer{Timeout: HTTPTimeout}).DialContext}
 	}
 	client := &http.Client{Transport: tr, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 	resp, err := client.Do(req)

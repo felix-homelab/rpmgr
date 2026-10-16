@@ -70,6 +70,6 @@ func (m *MFA) ChangePassword(ctx context.Context, userID, current, next string) 
 		if err := tx.User.UpdateOneID(userID).SetPasswordHash(hash).Exec(m.sys); err != nil {
 			return err
 		}
-		return m.superseded(tx, userID, "user.password_change", revlog.Password, "password changed")
+		return m.superseded(tx, userID, userID, "user.password_change", revlog.Password, "password changed")
 	})
 }

@@ -25,7 +25,7 @@ an opaque blob: no foreign system's configuration is embedded, and every field i
 ## Identifiers
 
 - [R] IDs are text: `<prefix>_<26-character Crockford base32 encoding of a UUIDv7>`, e.g.
-  `rte_01JA2Z8Q6W7Y3V9K4M5N6P7Q8R`. They sort by creation time, are globally unique, show their type
+  `rt_01JA2Z8Q6W7Y3V9K4M5N6P7Q8R`. They sort by creation time, are globally unique, show their type
   in logs and URLs, and behave the same on SQLite and PostgreSQL. `uuid.NewV7` is available in
   `google/uuid` [F google/uuid v1.6.0 `version7.go:23`].
 - Names (`routes.name`, `connectors.name`, `gateways.name`) are unique per org and may be changed;
@@ -34,18 +34,23 @@ an opaque blob: no foreign system's configuration is embedded, and every field i
 
 | Prefix | Entity | Prefix | Entity |
 |---|---|---|---|
-| `org_` | org | `rte_` | route |
-| `usr_` | user | `tgt_` | route target |
+| `org_` | org | `rt_` | route |
+| `usr_` | user | `tg_` | route target |
 | `mem_` | membership | `dom_` | domain |
 | `ses_` | session | `crt_` | certificate |
-| `tok_` | API token | `pol_` | access policy |
-| `sva_` | service account | `hck_` | health check |
-| `enr_` | enrollment token | `psv_` | private service |
-| `con_` | connector | `vgr_` | visitor grant |
-| `gw_` | gateway | `prt_` | port allocation |
-| `gwg_` | gateway group | `aud_` | audit entry |
-| `dnp_` | DNS provider | `dnz_` | managed DNS zone |
-| `dnn_` | DNS name | `dnr_` | owned DNS record |
+| `atk_` | API token | `ap_` | access policy |
+| `inv_` | invitation | `pr_` | access policy rule |
+| `prs_` | password reset | `cab_` | CA bundle |
+| `tot_` | TOTP credential | `rcv_` | recovery code |
+| `enr_` | enrollment token | `pp_` | port pool |
+| `con_` | connector | `pq_` | port quota |
+| `gw_` | gateway | `pa_` | port allocation |
+| `gwg_` | gateway group | `dss_` | data session |
+| `aud_` | audit entry | `acp_` | audit checkpoint |
+| `sva_` | service account (Phase 2) | `hck_` | health check (Phase 2) |
+| `psv_` | private service (Phase 2) | `vgr_` | visitor grant (Phase 2) |
+| `dnp_` | DNS provider (Phase 2) | `dnz_` | managed DNS zone (Phase 2) |
+| `dnn_` | DNS name (Phase 2) | `dnr_` | owned DNS record (Phase 2) |
 | `cak_` | CA key | `cab_` | CA bundle |
 | `pwr_` | password reset | `whk_` | webhook |
 | `rel_` | release | `rol_` | rollout |

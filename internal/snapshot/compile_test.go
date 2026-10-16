@@ -61,7 +61,9 @@ func TestCompile(t *testing.T) {
 		sys := storetest.SystemCtx(t)
 		a, b := storetest.Org(t, db, "alpha"), storetest.Org(t, db, "beta")
 		c := &snapshot.Compiler{Sources: []snapshot.Source{orgSource},
-			Endpoints: func() []string { return []string{"https://ctl.example", "https://ctl2.example:8443"} }}
+			Endpoints: func(context.Context, *ent.Tx) ([]string, error) {
+				return []string{"https://ctl.example", "https://ctl2.example:8443"}, nil
+			}}
 
 		first, err := c.Compile(sys, db, testAgent)
 		if err != nil {
@@ -197,6 +199,11 @@ func TestCompile_Errors(t *testing.T) {
 		func(context.Context, *ent.Tx, snapshot.Agent) ([]*agentv1.Resource, error) { return nil, boom }}}
 	if _, err := c.Compile(sys, db, testAgent); !errors.Is(err, boom) {
 		t.Fatalf("a source error was not returned: %v", err)
+	}
+	c = &snapshot.Compiler{Sources: []snapshot.Source{orgSource},
+		Endpoints: func(context.Context, *ent.Tx) ([]string, error) { return nil, boom }}
+	if _, err := c.Compile(sys, db, testAgent); !errors.Is(err, boom) {
+		t.Fatalf("an endpoints error was not returned: %v", err)
 	}
 
 	twice := func(context.Context, *ent.Tx, snapshot.Agent) ([]*agentv1.Resource, error) {

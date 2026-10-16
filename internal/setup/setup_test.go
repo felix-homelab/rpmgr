@@ -99,7 +99,10 @@ func TestChecks(t *testing.T) {
 		"address":                 setup.CheckAddr("443", false),
 		"off where it is not":     setup.CheckAddr("off", false),
 		"ftp proxy":               setup.CheckProxy("ftp://proxy:21"),
+		"https proxy":             setup.CheckProxy("https://proxy:3128"), // the connector refuses it (#557)
 		"proxy without host":      setup.CheckProxy("http://"),
+		"proxy with a quote":      setup.CheckProxy(`http://u:p"w@proxy:3128`),
+		"proxy with a backslash":  setup.CheckProxy(`http://u:p\w@proxy:3128`),
 		"public URL":              setup.CheckPublicURL("https://panel.example.com/ui"),
 		"e-mail":                  setup.CheckEmail("not an address"),
 		"named e-mail":            setup.CheckEmail("Ops <ops@example.com>"),
@@ -122,6 +125,8 @@ func TestChecks(t *testing.T) {
 		"IPv6 subnet": setup.CheckTarget("[fd00::/64]:8000-8099"),
 		"http off":    setup.CheckAddr("off", true),
 		"socks proxy": setup.CheckProxy("socks5://proxy:1080"),
+		"socks5h":     setup.CheckProxy("socks5h://proxy:1080"),
+		"http proxy":  setup.CheckProxy("http://user:secret@proxy:3128"),
 		"no proxy":    setup.CheckProxy(""),
 		"e-mail":      setup.CheckEmail("ops@example.com"),
 		"no e-mail":   setup.CheckEmail(""),
@@ -306,6 +311,26 @@ func TestPlan_ControllerACME(t *testing.T) {
 	}
 }
 
+// TestPlan_ControllerUnit: setup renders the unit from the boot file it writes, as `rpmgr
+// systemd-unit` does: it loads a KEK in a systemd credential, and since setup's boot file names no
+// revocation-log sink, it makes nothing outside the state directory writable.
+func TestPlan_ControllerUnit(t *testing.T) {
+	h := newHost(t, &fakeHost{})
+	p, err := setup.New(setup.Values{Role: setup.Controller, PublicURL: "https://panel.example.com", TLS: setup.TLSACME,
+		KEKSource: config.KEKSystemdCredential}, h)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r, err := p.Run(context.Background(), nil); err != nil || r.Unit != "rpmgr-controller" {
+		t.Fatalf("run: %+v %v", r, err)
+	}
+	unit, err := os.ReadFile(filepath.Join(h.Paths.Units, "rpmgr-controller.service"))
+	if err != nil || !strings.Contains(string(unit), "\nLoadCredentialEncrypted=rpmgr-kek:/etc/rpmgr/credstore/rpmgr-kek\n") ||
+		strings.Contains(string(unit), "ReadWritePaths=") {
+		t.Errorf("unit %q %v", unit, err)
+	}
+}
+
 // TestPlan_PrivateName: a controller whose name no public CA certifies makes its own self-signed
 // certificate, so setup writes no certificate files for it.
 func TestPlan_PrivateName(t *testing.T) {
@@ -387,9 +412,17 @@ func TestPlan_Connector(t *testing.T) {
 	if lp, err := policy.Load(cfg.PolicyFile); err != nil || lp.Check("10.1.2.3:22") == nil || lp.Check("10.1.2.3:23") != nil {
 		t.Errorf("the policy's deny over its subnet: %v\n%s", err, pol)
 	}
+	envFile := filepath.Join(h.Paths.Etc, "connector-proxy.env")
 	proxy, err := os.ReadFile(filepath.Join(h.Paths.Units, "rpmgr-connector.service.d", "proxy.conf"))
-	if err != nil || !strings.Contains(string(proxy), `Environment="HTTPS_PROXY=http://proxy.lan:3128"`) {
+	if err != nil || string(proxy) != "[Service]\nEnvironmentFile="+envFile+"\n" {
 		t.Errorf("proxy drop-in %q %v", proxy, err)
+	}
+	// The URL, which may hold a password, is only in the file root alone reads (#557).
+	if env, err := os.ReadFile(envFile); err != nil || string(env) != "HTTPS_PROXY=http://proxy.lan:3128\n" {
+		t.Errorf("proxy environment file %q %v", env, err)
+	}
+	if fi, err := os.Stat(envFile); err != nil || fi.Mode().Perm() != 0o600 {
+		t.Errorf("proxy environment file mode %v %v", fi, err)
 	}
 	unit, err := os.ReadFile(filepath.Join(h.Paths.Units, "rpmgr-connector.service"))
 	if err != nil || !strings.Contains(string(unit), "ExecStart="+h.Paths.Bin+" connector") {
@@ -452,9 +485,9 @@ func TestPlan_Again(t *testing.T) {
 		!strings.Contains(string(pol), "/run/app.sock") {
 		t.Errorf("policy %q %v", pol, err)
 	}
-	if proxy, err := os.ReadFile(filepath.Join(h.Paths.Units, "rpmgr-connector.service.d", "proxy.conf")); err != nil ||
-		!strings.Contains(string(proxy), "socks5://proxy.lan:1080") {
-		t.Errorf("proxy drop-in %q %v", proxy, err)
+	if proxy, err := os.ReadFile(filepath.Join(h.Paths.Etc, "connector-proxy.env")); err != nil ||
+		string(proxy) != "HTTPS_PROXY=socks5://proxy.lan:1080\n" {
+		t.Errorf("proxy environment file %q %v", proxy, err)
 	}
 	if !slices.ContainsFunc(f.commands, func(c []string) bool { return slices.Equal(c, []string{"systemctl", "restart", "rpmgr-connector"}) }) {
 		t.Errorf("commands %q", f.commands)

@@ -37,6 +37,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/installsh"
 	"github.com/felix-homelab/rpmgr/internal/lease"
 	"github.com/felix-homelab/rpmgr/internal/pki"
+	"github.com/felix-homelab/rpmgr/internal/proxyenv"
 	"github.com/felix-homelab/rpmgr/internal/ratelimit"
 	"github.com/felix-homelab/rpmgr/internal/release"
 	"github.com/felix-homelab/rpmgr/internal/revlog"
@@ -44,6 +45,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/settings"
 	"github.com/felix-homelab/rpmgr/internal/snapshot"
 	"github.com/felix-homelab/rpmgr/internal/store"
+	"github.com/felix-homelab/rpmgr/internal/store/ent"
 	"github.com/felix-homelab/rpmgr/internal/store/migrations"
 	"github.com/felix-homelab/rpmgr/internal/telemetry"
 	"github.com/felix-homelab/rpmgr/internal/websession"
@@ -116,6 +118,12 @@ func Run(ctx context.Context, o RunOptions) error {
 	if err != nil {
 		return err
 	}
+	// The ACME CA, GitHub and a domain's HTTP token are reached through the proxy variables, as
+	// the connector reads them (D93); a value that is no proxy URL stops the start.
+	proxy, err := proxyenv.Requests(o.Getenv)
+	if err != nil {
+		return fmt.Errorf("controller: %w", err)
+	}
 	var kek secret.KEK
 	if o.KEK != nil {
 		kek = *o.KEK
@@ -168,12 +176,11 @@ func Run(ctx context.Context, o RunOptions) error {
 		return err
 	}
 	holder := pki.NewHolder(node)
-	endpoints := []string{cfg.PublicURL}
 	shipper := &RevocationShipper{Path: filepath.Join(stateDir, "revocations.log"), Sink: cfg.RevocationLog.Sink, Replica: nodeID, Logger: o.Logger}
 
 	sessions := NewSessions(SessionsOptions{DB: db, CA: ca, Node: nodeID, Version: o.Version, Sys: sys, Now: o.Now, RevLog: rl, Sealer: sealer,
 		Logger:   o.Logger,
-		Compiler: &snapshot.Compiler{Sources: o.Sources, Endpoints: func() []string { return endpoints }}})
+		Compiler: &snapshot.Compiler{Sources: o.Sources, Endpoints: AgentEndpoints(cfg.PublicURL)}})
 	reg := o.Registry
 	if reg == nil {
 		reg = telemetry.NewRegistry()
@@ -199,7 +206,7 @@ func Run(ctx context.Context, o RunOptions) error {
 	agents := NewAgentServer(agentTLS, td)
 	agentv1.RegisterControlServer(agents, sessions)
 	agentv1.RegisterReauthServer(agents, NewReauthService(sessions))
-	enrollment := enroll.NewService(db, ca, endpoints, o.Now)
+	enrollment := enroll.NewService(db, ca, cfg.PublicURL, o.Now)
 	enrollment.RevLog, enrollment.Logger, enrollment.Denied = rl, o.Logger, sessions.ApplyDenyList
 	enrollment.Refused = metrics.Refused(LimitEnrollment)
 	agentv1.RegisterEnrollmentServer(agents, enrollment)
@@ -207,12 +214,12 @@ func Run(ctx context.Context, o RunOptions) error {
 	leases := lease.New(db, nodeID, o.Now)
 	acmeStore := acme.NewStorage(db, sys, sealer, leases, o.Now)
 	defer acmeStore.Close()
-	certManager := acme.NewManager(acme.ManagerOptions{DB: db, Sys: sys, Sealer: sealer, TrustedRoots: o.ACMERoots, Logger: o.Logger,
+	certManager := acme.NewManager(acme.ManagerOptions{DB: db, Sys: sys, Sealer: sealer, Proxy: proxy, TrustedRoots: o.ACMERoots, Logger: o.Logger,
 		Storage: acme.NewChallengeStorage(acmeStore, sessions, acme.GatewaysServing(db, sys))})
 	var own *acme.Own
 	if cfg.TLS.CertFile == "" && !o.NoACME && acme.Eligible(public.Hostname()) {
 		if own, err = acme.NewOwn(acme.OwnOptions{DB: db, Sys: sys, Storage: acmeStore, Host: public.Hostname(),
-			NoHTTP01: *cfg.Listen.HTTP == "" && o.Port80 == nil, TrustedRoots: o.ACMERoots, Logger: o.Logger}); err != nil {
+			NoHTTP01: *cfg.Listen.HTTP == "" && o.Port80 == nil, Proxy: proxy, TrustedRoots: o.ACMERoots, Logger: o.Logger}); err != nil {
 			return err
 		}
 		defer own.Stop()
@@ -272,7 +279,8 @@ func Run(ctx context.Context, o RunOptions) error {
 	if err := apiServer.Mount(mux, rpmgrv1.File_rpmgr_v1_user_proto.Services().ByName("UserService"),
 		func(opts ...connect.HandlerOption) (string, http.Handler) {
 			return rpmgrv1connect.NewUserServiceHandler(&apisvc.User{MFA: mfa, Sessions: webSessions,
-				Issuer: "rpmgr " + public.Hostname(), API: apiServer, PublicURL: cfg.PublicURL, Backoff: auth.Backoff}, opts...)
+				Issuer: "rpmgr " + public.Hostname(), API: apiServer, PublicURL: cfg.PublicURL, Backoff: auth.Backoff,
+				RequireMFA: api.StoreRequireMFA(db, sys), RestoreReview: api.StoreRestoreReview(db, sys)}, opts...)
 		}); err != nil {
 		return err
 	}
@@ -291,7 +299,7 @@ func Run(ctx context.Context, o RunOptions) error {
 	if err := apiServer.Mount(mux, rpmgrv1.File_rpmgr_v1_domain_proto.Services().ByName("DomainService"),
 		func(opts ...connect.HandlerOption) (string, http.Handler) {
 			return rpmgrv1connect.NewDomainServiceHandler(&apisvc.Domains{DB: db, API: apiServer, Sys: sys, Now: o.Now,
-				TXT: &domains.TXTVerifier{}, HTTP: &domains.HTTPVerifier{}}, opts...)
+				TXT: &domains.TXTVerifier{}, HTTP: &domains.HTTPVerifier{Proxy: proxy}}, opts...)
 		}); err != nil {
 		return err
 	}
@@ -424,7 +432,7 @@ func Run(ctx context.Context, o RunOptions) error {
 	job(CARotation(caOpts), "CA rotation job")
 	job(certManager.Job(acme.JobEvery), "ACME job")
 	job(apiServer.PruneJob(api.PruneEvery), "request_id pruning job")
-	job(DomainCheckJob(DomainCheckOptions{DB: db, TXT: &domains.TXTVerifier{}, HTTP: &domains.HTTPVerifier{}, Now: o.Now,
+	job(DomainCheckJob(DomainCheckOptions{DB: db, TXT: &domains.TXTVerifier{}, HTTP: &domains.HTTPVerifier{Proxy: proxy}, Now: o.Now,
 		Logger: o.Logger}), "domain check job")
 	job(PurgeJob(PurgeOptions{DB: db, RevLog: rl, Logger: o.Logger, Denied: sessions.ApplyDenyList, Now: o.Now}), "agent purge job")
 	cpOpts := CheckpointOptions{DB: db, CA: ca, Log: &audit.CheckpointLog{Path: filepath.Join(stateDir, "audit-checkpoints.log")},
@@ -435,7 +443,7 @@ func Run(ctx context.Context, o RunOptions) error {
 	bg.Go(func() { ReloadCA(jobs, caOpts) })
 	bg.Go(func() { shipper.Run(jobs) })
 	bg.Go(func() {
-		ReleaseCheck(jobs, ReleaseCheckOptions{DB: db, Mirror: mirror, Source: o.ReleaseSource, Logger: o.Logger})
+		ReleaseCheck(jobs, ReleaseCheckOptions{DB: db, Mirror: mirror, Source: o.ReleaseSource, Proxy: proxy, Logger: o.Logger})
 	})
 	bg.Go(func() {
 		RenewNodeCertificate(jobs, NodeCertOptions{CA: ca, DB: db, Sys: sys, NodeID: nodeID, Holder: holder, Now: o.Now, Logger: o.Logger})
@@ -512,6 +520,19 @@ func Run(ctx context.Context, o RunOptions) error {
 	bg.Wait()
 	admin.Wait() // the admin listener is closed: its address is free again once Run returns
 	return result
+}
+
+// AgentEndpoints returns the snapshots' controller endpoints (snapshot.Compiler.Endpoints): those
+// of the instance settings, or publicURL alone while they list none, as enrollment gives them
+// (docs/03-connections.md, "Reaching a private controller").
+func AgentEndpoints(publicURL string) func(ctx context.Context, tx *ent.Tx) ([]string, error) {
+	return func(ctx context.Context, tx *ent.Tx) ([]string, error) {
+		inst, _, err := settings.Instance(ctx, tx.Client())
+		if err != nil {
+			return nil, err
+		}
+		return settings.ControllerEndpoints(inst, publicURL), nil
+	}
 }
 
 // origins returns the origins a browser may call the API from: the public URL's and those of its

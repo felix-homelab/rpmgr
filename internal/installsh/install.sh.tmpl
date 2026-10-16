@@ -88,7 +88,7 @@ for f in signing-key.json signing-key.json.minisig manifest.json manifest.json.m
 verify_release
 [ "$verify_only" = 0 ] || exit 0
 
-[ "$(id -u)" = 0 ] || die "run as root (sudo sh -s -- ...)"
+[ "$(id -u)" = 0 ] || die "run as root: sudo sh install.sh ..."
 for tool in systemctl useradd install; do command -v "$tool" >/dev/null 2>&1 || die "$tool is needed"; done
 
 id rpmgr >/dev/null 2>&1 || useradd --system --user-group --home-dir /var/lib/rpmgr --shell /usr/sbin/nologin rpmgr
@@ -147,20 +147,32 @@ fi
 printf '{"method":"script","path":"%s","variant":"full","role":"%s"}\n' "$BIN" "$role" >/var/lib/rpmgr-update/install.json
 printf '{"seq":%s,"floor":"%s"}\n' "$seq" "$VERSION" >/var/lib/rpmgr-update/state.json
 
-# Host tuning (docs/03-connections.md, "Host tuning applied by the installer").
-# The UDP buffers only rise, to the 7 MiB quic-go asks for; BBR only when asked. Minimal systems
-# may not have /etc/sysctl.d yet.
+# Host tuning (docs/03-connections.md, "Host tuning applied by the installer"). The file always
+# holds the 7 MiB UDP buffers quic-go asks for, whatever the host has now, so that a re-run keeps
+# them for the next boot; BBR only when asked, and kept when the file sets it already. Applied now,
+# the buffers only rise. Minimal systems may not have /etc/sysctl.d yet.
+conf=/etc/sysctl.d/60-rpmgr.conf
 install -d -m 0755 /etc/sysctl.d
+if [ "$bbr" = 0 ] && [ -f "$conf" ] &&
+  grep -Eq '^[[:space:]]*net[./]ipv4[./]tcp_congestion_control[[:space:]]*=[[:space:]]*bbr[[:space:]]*$' "$conf"; then
+  bbr=1
+  say "keeping BBR from $conf; remove its line there to stop it"
+fi
 {
-  echo "# rpmgr: UDP buffers for QUIC"
-  for k in net.core.rmem_max net.core.wmem_max; do
-    cur=$(sysctl -n "$k" 2>/dev/null || echo 0)
-    [ "$cur" -ge 7340032 ] 2>/dev/null || echo "$k = 7340032"
-  done
+  echo "# rpmgr: UDP buffers for QUIC, and BBR with --tcp-bbr. The install script writes this file"
+  echo "# on every run; it keeps the BBR line, and leaves BBR out once you remove that line."
+  echo "net.core.rmem_max = 7340032"
+  echo "net.core.wmem_max = 7340032"
   if [ "$bbr" = 1 ]; then echo "net.ipv4.tcp_congestion_control = bbr"; fi
-} >/etc/sysctl.d/60-rpmgr.conf
-chmod 0644 /etc/sysctl.d/60-rpmgr.conf # written under umask 077; readable as the other sysctl files
-sysctl -q -p /etc/sysctl.d/60-rpmgr.conf >/dev/null 2>&1 || say "could not apply /etc/sysctl.d/60-rpmgr.conf now; it applies at the next boot"
+} >"$conf"
+chmod 0644 "$conf" # written under umask 077; readable as the other sysctl files
+applied=1
+for k in net.core.rmem_max net.core.wmem_max; do
+  cur=$(sysctl -n "$k" 2>/dev/null || echo 0)
+  [ "$cur" -ge 7340032 ] 2>/dev/null || sysctl -q -w "$k=7340032" >/dev/null 2>&1 || applied=0
+done
+if [ "$bbr" = 1 ]; then sysctl -q -w net.ipv4.tcp_congestion_control=bbr >/dev/null 2>&1 || applied=0; fi
+[ "$applied" = 1 ] || say "could not apply $conf now; it applies at the next boot"
 
 if [ -f /var/lib/rpmgr/identity/chain.pem ]; then
   say "this host is enrolled already; to enroll it again, run rpmgr enroll --replace"

@@ -43,9 +43,11 @@ const (
 type Service struct {
 	agentv1.UnimplementedEnrollmentServer
 
-	DB        *store.DB
-	CA        *pki.CA
-	Endpoints []string // the controller endpoints agents try, in order
+	DB *store.DB
+	CA *pki.CA
+	// PublicURL is the controller's public URL: the endpoint agents get while the instance settings
+	// list no controller endpoints.
+	PublicURL string
 	Now       func() time.Time
 	// RevLog records the certificates a re-enrollment replaces; Logger reports a failed append.
 	RevLog *revlog.Log
@@ -57,12 +59,12 @@ type Service struct {
 	limit   *ratelimit.Limiter
 }
 
-// NewService returns the Enrollment service.
-func NewService(db *store.DB, ca *pki.CA, endpoints []string, now func() time.Time) *Service {
+// NewService returns the Enrollment service of the controller at publicURL.
+func NewService(db *store.DB, ca *pki.CA, publicURL string, now func() time.Time) *Service {
 	if now == nil {
 		now = time.Now
 	}
-	return &Service{DB: db, CA: ca, Endpoints: endpoints, Now: now, limit: ratelimit.New(RateEvery, RateBurst, now)}
+	return &Service{DB: db, CA: ca, PublicURL: publicURL, Now: now, limit: ratelimit.New(RateEvery, RateBurst, now)}
 }
 
 // failed records a refused or failed enrollment: anonymous, with the address and the error's
@@ -80,8 +82,9 @@ func (s *Service) failed(ctx context.Context, ip string, err error) {
 }
 
 // Enroll checks the rate limit and the CSR's binding to this connection, then redeems the token,
-// assigns the identity the token grants and issues the agent's first certificate. A refused or
-// failed enrollment is recorded in the instance chain, unless the rate limit refused it.
+// assigns the identity the token grants and issues the agent's first certificate. The agent gets
+// the controller endpoints of the instance settings at that revision. A refused or failed
+// enrollment is recorded in the instance chain, unless the rate limit refused it.
 func (s *Service) Enroll(ctx context.Context, req *agentv1.EnrollRequest) (_ *agentv1.EnrollResponse, err error) {
 	p, ok := peer.FromContext(ctx)
 	info, tlsOK := p.AuthInfo.(credentials.TLSInfo)
@@ -114,8 +117,8 @@ func (s *Service) Enroll(ctx context.Context, req *agentv1.EnrollRequest) (_ *ag
 	if err != nil {
 		return nil, status.Error(codes.Internal, "audit")
 	}
-	var replaced []*ent.IssuedCertificate
-	cert, g, _, err := Redeem(sys, s.DB, req.GetToken(), csr, ip, s.Now(), s.issue(csr, req, ip, &replaced))
+	var out issued
+	cert, g, _, err := Redeem(sys, s.DB, req.GetToken(), csr, ip, s.Now(), s.issue(csr, req, ip, &out))
 	switch {
 	case errors.Is(err, ErrInvalidToken):
 		return nil, status.Error(codes.Unauthenticated, "invalid token")
@@ -126,7 +129,7 @@ func (s *Service) Enroll(ctx context.Context, req *agentv1.EnrollRequest) (_ *ag
 	case err != nil:
 		return nil, status.Error(codes.Internal, "enrollment failed")
 	}
-	if len(replaced) > 0 && s.Denied != nil {
+	if len(out.replaced) > 0 && s.Denied != nil {
 		s.Denied()
 	}
 	id, err := pki.ParseSPIFFE(cert.URIs[0], s.CA.TrustDomain())
@@ -138,7 +141,7 @@ func (s *Service) Enroll(ctx context.Context, req *agentv1.EnrollRequest) (_ *ag
 		Chain:               s.CA.Chain(cert),
 		TrustBundle:         [][]byte{s.CA.Root().Raw},
 		SigningCertificates: s.CA.SigningChain(),
-		ControllerEndpoints: s.Endpoints,
+		ControllerEndpoints: out.endpoints,
 		Ephemeral:           g.Ephemeral,
 	}, nil
 }
@@ -146,11 +149,17 @@ func (s *Service) Enroll(ctx context.Context, req *agentv1.EnrollRequest) (_ *ag
 // errIdentity is returned when the identity a token grants cannot be assigned.
 var errIdentity = errors.New("enroll")
 
+// issued is what issue reports besides the certificate.
+type issued struct {
+	replaced  []*ent.IssuedCertificate // the certificates a re-enrollment revoked
+	endpoints []string                 // the controller endpoints the agent gets
+}
+
 // issue assigns the identity of a grant in the transaction that consumed the token, issues the
 // certificate and appends the audit entry. A token bound to an identity that already holds
-// certificates, a re-enrollment or a gateway enrolling again, revokes them by serial; replaced
-// receives them.
-func (s *Service) issue(csr *x509.CertificateRequest, req *agentv1.EnrollRequest, ip string, replaced *[]*ent.IssuedCertificate) Issue {
+// certificates, a re-enrollment or a gateway enrolling again, revokes them by serial; out receives
+// them and the controller endpoints of the instance settings.
+func (s *Service) issue(csr *x509.CertificateRequest, req *agentv1.EnrollRequest, ip string, out *issued) Issue {
 	return func(ctx context.Context, tx *ent.Tx, g Grant) (*x509.Certificate, error) {
 		key := pki.PublicKeyHash(csr.RawSubjectPublicKeyInfo)
 		id := pki.Identity{TrustDomain: s.CA.TrustDomain(), Org: g.OrgID}
@@ -193,6 +202,7 @@ func (s *Service) issue(csr *x509.CertificateRequest, req *agentv1.EnrollRequest
 		if err != nil {
 			return nil, err
 		}
+		out.endpoints = settings.ControllerEndpoints(inst, s.PublicURL)
 		cert, err := s.CA.IssueEnrolled(ctx, tx, csr, id, inst.GetLeafCertificateLifetime().AsDuration(), g.TokenID)
 		if err != nil {
 			return nil, err
@@ -224,7 +234,7 @@ func (s *Service) issue(csr *x509.CertificateRequest, req *agentv1.EnrollRequest
 				return nil, err
 			}
 		}
-		*replaced = old
+		out.replaced = old
 		return cert, nil
 	}
 }

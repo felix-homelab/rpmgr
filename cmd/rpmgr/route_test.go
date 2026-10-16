@@ -215,6 +215,11 @@ func TestUpdateRoute(t *testing.T) {
 		!slices.Equal(a.updated.GetRoute().GetPolicyIds(), []string{"ap_1"}) {
 		t.Fatalf("a policy: %d %q", code, errOut)
 	}
+	a.updated = nil
+	if code, _, errOut := runWith(env, "", "update", "route", "rt_1", "--policy", "office"); code != cli.ExitOK ||
+		!slices.Equal(a.updated.GetRoute().GetPolicyIds(), []string{"ap_1"}) || !slices.Equal(a.updated.GetUpdateMask().GetPaths(), []string{"policy_ids"}) {
+		t.Fatalf("a policy after the ID: %d %q", code, errOut)
+	}
 	// An empty value of a repeatable flag sets an empty list or map: the policies come off.
 	a.route.PolicyIds, a.route.Labels = []string{"ap_1"}, map[string]string{"site": "home"}
 	a.route.GetHttp().RequestHeadersSet = map[string]string{"X-Env": "prod"}
@@ -250,6 +255,7 @@ func TestUpdateRoute(t *testing.T) {
 		"a label not k=v":   {"--label", "site", "rt_1"},
 		"no ID":             {"--name", "x"},
 		"an unknown policy": {"--policy", "nope", "rt_1"},
+		"a flag after --":   {"rt_1", "--", "--policy", "office"},
 	} {
 		want := cli.ExitUsage
 		if name == "an unknown policy" {

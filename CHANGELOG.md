@@ -18,7 +18,11 @@ Changes to the design documents are not recorded here: see the git history and t
   the controller's init or the agent's enrollment, a connector's local policy and proxy, and the
   systemd unit, started and checked for readiness. It asks in full-screen forms, or in plain
   prompts without a terminal, and shows the plan before it changes anything; with `--yes` it takes
-  every value from its flags. (#446, #448, #449)
+  every value from its flags. A connector's proxy is an `http://`, `socks5://` or `socks5h://` URL
+  that the enrollment takes too, kept in a file only root reads; one with credentials comes from
+  `--proxy-file` or the form, never the command line. Release candidates up to rc.7 wrote the
+  proxy into a drop-in every user reads: run setup again and change the proxy's password. (#446,
+  #448, #449, #569)
 - All roles: one `rpmgr` binary for Linux on amd64, arm64, armv7 and riscv64 runs every role:
   `rpmgr controller`, `gateway`, `connector` and `all-in-one`, each from a strictly checked YAML
   boot file. `rpmgr version` names the build. (#174, #196, #260, #266, #267, #384)
@@ -31,10 +35,11 @@ Changes to the design documents are not recorded here: see the git history and t
   the public URL's host if that is a valid one, with the enrolled gateway `local`, and the
   connector `local`, which publishes services on the same host as its local policy allows, never
   rpmgr's own ports, over in-memory data sessions. An all-in-one initialised before gets its
-  connector at the next start. Its own gateway and connector cannot be decommissioned. `rpmgr
-  setup` asks for the connector's allowed and denied targets, and `rpmgr policy` reloads the
-  all-in-one on a host without a separate connector. (#268, #269, #490, #494, #535, #537, #538,
-  #540)
+  connector at the next start. Its own gateway and connector cannot be decommissioned; after a
+  restore on a new host, or from a backup older than their certificates, it enrolls them again at
+  start. `rpmgr setup` asks for the connector's allowed and denied targets, and `rpmgr policy`
+  reloads the all-in-one on a host without a separate connector. (#268, #269, #490, #494, #535,
+  #537, #538, #540, #579)
 - Controller: a controller without a public address can stay on a private network, published
   through a gateway that passes its hostnames through to it. (#285)
 - Controller: serves `/install.sh`. The script downloads the controller's own release from the
@@ -69,6 +74,9 @@ Changes to the design documents are not recorded here: see the git history and t
 - Connector: reaches its gateways through an HTTP CONNECT or SOCKS5 proxy (`HTTPS_PROXY`,
   `ALL_PROXY`) where only a proxy leads out, and carries its control session inside a data session
   when no controller endpoint is reachable. (#245, #267, #286)
+- Controller: its requests to the ACME CA, to GitHub and to a domain's HTTP token follow the proxy
+  variables as the connector reads them, `ALL_PROXY` included; a proxy variable that is no proxy
+  URL stops the start with a message that names the variable without its value. (#578)
 - Connector: the connector-local policy, `/etc/rpmgr/policy.yaml`, limits the targets a connector
   dials, even for a compromised controller. A target is an address or a subnet, such as
   `10.0.0.1/16` (stored as `10.0.0.0/16`), with an optional port or port range such as
@@ -146,6 +154,12 @@ Changes to the design documents are not recorded here: see the git history and t
   #313, #314, #316, #321)
 - API: orgs with members and roles. Invitations and password resets are one-time links, also sent
   by e-mail when an SMTP relay is configured. (#318, #319, #349)
+- All roles: administrators recover other users' accounts after a step-up, in the web UI and
+  through the API: a password-reset link, by an Owner or Admin for their members and by the
+  Instance Admin for anyone, and the removal of a lost second factor, by an Owner or the Instance
+  Admin, which ends the user's sessions. An Owner or Admin recovers only users all of whose
+  organisations they hold, and no Instance Admin. The Instance Admin grants and revokes the Instance
+  Admin role on the new Users page; the last one keeps it. (#583)
 - API: personal API tokens for the CLI and scripts, each bound to one org and limited to
   permissions its owner holds; a token can step up. (#320, #346)
 - API: services for gateway groups, gateways, port pools and quotas, enrollment tokens and install
@@ -162,7 +176,9 @@ Changes to the design documents are not recorded here: see the git history and t
 - API: an org's resources export as YAML manifests. (#341, #342)
 - CLI: `rpmgr login` signs in with a personal API token. Verb-first commands (`get`, `list`,
   `create`, `update`, `delete`, `enable`, `disable`, `preview` and more) cover every resource of the
-  API, with table, YAML or JSON output. (#342, #344, #345, #346, #347, #348, #349)
+  API, with table, YAML or JSON output. Flags may stand before or after a command's arguments, as
+  in `rpmgr get route web -o yaml`; `--` ends them. (#342, #344, #345, #346, #347, #348, #349,
+  #574)
 - Gateway: a drained or disabled gateway lets its open connections finish within the drain period;
   `rpmgr drain gateway` starts a drain. (#347, #349)
 - UI: the controller serves an embedded web UI under a strict Content Security Policy, with
@@ -222,6 +238,10 @@ Changes to the design documents are not recorded here: see the git history and t
 - Releases: reproducible builds with an SPDX SBOM, SLSA provenance attestations and a signed
   release manifest; distroless, nonroot multi-arch images at `ghcr.io/felix-homelab/rpmgr`, signed
   with cosign. (#384, #385, #434)
+- Docs: a user guide in `docs/guide/` covers concepts, a quick start, every task in the web UI
+  and on the command line, a page per web UI screen with its screenshot, and references for the
+  command line (generated from the binary), the boot files, the local policy file, the environment
+  and the API. (#565)
 
 [Unreleased]: https://github.com/felix-homelab/rpmgr/compare/v0.1.0...HEAD
 [0.1.0]: https://github.com/felix-homelab/rpmgr/releases/tag/v0.1.0

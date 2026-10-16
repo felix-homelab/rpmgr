@@ -7,6 +7,7 @@ import (
 	"context"
 	"crypto/x509"
 	"errors"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -14,10 +15,13 @@ import (
 	"unicode/utf8"
 
 	"google.golang.org/grpc"
+	"google.golang.org/protobuf/types/known/fieldmaskpb"
 
 	agentv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/agent/v1"
+	rpmgrv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/v1"
 	"github.com/felix-homelab/rpmgr/internal/controller"
 	"github.com/felix-homelab/rpmgr/internal/pki"
+	"github.com/felix-homelab/rpmgr/internal/settings"
 	"github.com/felix-homelab/rpmgr/internal/snapshot"
 	"github.com/felix-homelab/rpmgr/internal/store"
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
@@ -48,7 +52,7 @@ func pushEnv(t *testing.T, db *store.DB, sources ...snapshot.Source) *sessionEnv
 		sources = []snapshot.Source{orgResources}
 	}
 	return startSessionsWith(t, db, func(o *controller.SessionsOptions) {
-		o.Compiler = &snapshot.Compiler{Sources: sources, Endpoints: func() []string { return []string{"https://ctl.example"} }}
+		o.Compiler = &snapshot.Compiler{Sources: sources, Endpoints: controller.AgentEndpoints("https://ctl.example")}
 		o.RevisionCheck = 20 * time.Millisecond
 	})
 }
@@ -178,6 +182,52 @@ func TestPush_SessionRevisionAndAck(t *testing.T) {
 		state = e.db.Client().AgentState.GetX(sys, id.ID)
 		if controller.ApplyStatus(state, time.Now()) != controller.ApplyApplied {
 			t.Fatalf("state after a reconnect in sync: %+v", state)
+		}
+	})
+}
+
+// TestPush_ControllerEndpoints: a snapshot names the public URL while the instance settings list no
+// controller endpoints; a change of the list reaches a connected agent with its next snapshot, in
+// the listed order and with its resources unchanged, and an emptied list returns to the public URL.
+func TestPush_ControllerEndpoints(t *testing.T) {
+	storetest.ForEachDialect(t, func(t *testing.T, db *store.DB) {
+		e := pushEnv(t, db)
+		sys := storetest.SystemCtx(t)
+		cert, id := e.agentCert(t)
+		st := e.open(t, testCtx(t), cert, hello("0.1.0"))
+		if recv(t, st).GetWelcome() == nil {
+			t.Fatal("no Welcome")
+		}
+		_, snap1 := e.recvSnapshot(t, st, id)
+		if got := snap1.GetControllerEndpoints(); !slices.Equal(got, []string{"https://ctl.example"}) {
+			t.Fatalf("endpoints without the setting: %v, want the public URL", got)
+		}
+
+		mask := &fieldmaskpb.FieldMask{Paths: []string{"controller_endpoints"}}
+		listed := []string{"https://gw.example.net:8443", "https://ctl.example"}
+		if _, err := settings.UpdateInstance(sys, db, &rpmgrv1.InstanceSettings{ControllerEndpoints: listed}, mask, 0); err != nil {
+			t.Fatal(err)
+		}
+		_, snap2 := e.recvSnapshot(t, st, id)
+		if got := snap2.GetControllerEndpoints(); !slices.Equal(got, listed) {
+			t.Fatalf("endpoints after the change: %v, want %v", got, listed)
+		}
+		if snap2.GetRevision().GetSeq() <= snap1.GetRevision().GetSeq() ||
+			!bytes.Equal(snap2.GetResources()[0].GetHash(), snap1.GetResources()[0].GetHash()) {
+			t.Fatalf("snapshot after the change: %v", snap2)
+		}
+
+		// A refused list is no new revision, so the next snapshot is that of the emptied list.
+		if _, err := settings.UpdateInstance(sys, db, &rpmgrv1.InstanceSettings{ControllerEndpoints: []string{"http://gw.example.net"}},
+			mask, 0); !errors.Is(err, settings.ErrInvalid) {
+			t.Fatalf("a plain-HTTP endpoint: %v, want ErrInvalid", err)
+		}
+		if _, err := settings.UpdateInstance(sys, db, &rpmgrv1.InstanceSettings{}, mask, 0); err != nil {
+			t.Fatal(err)
+		}
+		_, snap3 := e.recvSnapshot(t, st, id)
+		if got := snap3.GetControllerEndpoints(); !slices.Equal(got, []string{"https://ctl.example"}) {
+			t.Fatalf("endpoints after emptying the list: %v, want the public URL", got)
 		}
 	})
 }

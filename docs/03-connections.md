@@ -115,10 +115,15 @@ single-use token. Token format, lifetimes and re-enrollment rules are in
   name, goes to its `net/http` server, where browsers and the CLI use ConnectRPC. A connection that
   does not start with a ClientHello within the peek limits is closed without an answer.
 - **Endpoints and failover.** An agent knows its controller endpoints in order: from enrollment,
-  then from every snapshot; a connector adds its data sessions as the last one ([Control sessions
-  through a data session](#control-sessions-through-a-data-session)). It tries them in that order; a
-  failed connection, a `Drain` or `Goodbye{shutdown}` moves it to the next endpoint, and after a
-  whole round failed, or after a session ended, it waits the reconnect backoff, at least a Goodbye's
+  then from every snapshot, and after a restart from its stored snapshot, which `rpmgr status`,
+  `rpmgr leave` and `rpmgr diag clock` use as well ([16](16-cli.md)). Enrollment and snapshots name
+  the controller endpoints of the instance settings, or the public URL alone while they list none
+  ([10](10-operations.md#runtime-settings-ui--settings)); a change is a new revision, so it reaches
+  a connected agent with its next snapshot, and its next connection attempt uses it. A connector
+  adds its data sessions as the last one ([Control sessions through a data
+  session](#control-sessions-through-a-data-session)). It tries them in that order; a failed
+  connection, a `Drain` or `Goodbye{shutdown}` moves it to the next endpoint, and after a whole
+  round failed, or after a session ended, it waits the reconnect backoff, at least a Goodbye's
   `retry_after`. `Goodbye{revoked}` stops the agent, which must be enrolled again. The agent
   compares `Welcome.server_time` with its own clock and warns above 30 s ([Failure
   modes](#failure-modes)).
@@ -421,9 +426,13 @@ against the pinned root. The end of one direction is passed on as a half-close; 
 does not answer within the dial timeout resets the connection, so the agent tries its next endpoint
 at once; a stopping gateway closes the forwarded connections at the end of its drain period.
 Enrollment and the UI work through the same forwarding. Agents get the list of controller endpoints
-(direct and via gateways) in every snapshot and try them in order; the operator lists the gateway's
-address there (instance setting, [10](10-operations.md#runtime-settings-ui--settings)). A gateway
-with an in-process controller (all-in-one) has no `controller.passthrough`.
+(direct and via gateways) at enrollment and in every snapshot and try them in order
+([Endpoints and failover](#transport)); the operator lists the gateway's address there (instance
+setting, [10](10-operations.md#runtime-settings-ui--settings)). Without a list, agents get the
+public URL alone. [R] Add a new endpoint before removing the one agents use: an agent that reaches
+none of its endpoints receives no new list, and only a connector has a last resort ([Control
+sessions through a data session](#control-sessions-through-a-data-session)). A gateway with an
+in-process controller (all-in-one) has no `controller.passthrough`.
 
 [R] Control traffic deliberately does **not** ride inside the data session to a gateway: gateways
 are edge components and must not be able to forge or withhold configuration, and gateway restarts
@@ -996,7 +1005,7 @@ there is no usable half-close.
 **Proxies.** The TCP transports honour `HTTPS_PROXY`/`ALL_PROXY` (HTTP CONNECT and SOCKS5). QUIC
 does not traverse HTTP proxies (MASQUE is out of scope); behind a proxy, the TCP transport is used.
 The proxy is an `http://` URL (CONNECT) or a `socks5://` or `socks5h://` URL, with optional
-credentials; `HTTPS_PROXY` wins over `ALL_PROXY`, `NO_PROXY` exempts gateways as it does for
+credentials, and a value without a scheme is an `http://` one; `HTTPS_PROXY` wins over `ALL_PROXY`, `NO_PROXY` exempts gateways as it does for
 net/http, and loopback addresses are always dialled directly. The proxy resolves the gateway's
 name.
 
@@ -1279,9 +1288,16 @@ benchmark result and the decision taken are recorded in the relevant ADR.
 ### Host tuning applied by the installer
 
 - `net.core.rmem_max` and `net.core.wmem_max` ≥ 7 MiB (quic-go's requested UDP buffer size).
+  - `/etc/sysctl.d/60-rpmgr.conf` holds both at 7 MiB, written on every run whatever the host has
+    now, so that they hold after a re-run and the next boot.
+  - Applied at once, they only rise: a larger value stays until the next boot. [R] A host that
+    needs larger buffers sets them in a file that sorts after `60-rpmgr.conf`, such as
+    `/etc/sysctl.d/99-local.conf`, whose values take precedence at boot
+    [F systemd v257 `man/standard-conf.xml:27-29`, included by `man/sysctl.d.xml:105`].
 - Gateway: `CAP_NET_BIND_SERVICE` instead of root; `LimitNOFILE` ≥ 1 048 576.
 - [R] `net.ipv4.tcp_congestion_control=bbr` offered on gateways for the TCP transport and public
-  TCP through the installer flag `--tcp-bbr`, never set silently.
+  TCP through the installer flag `--tcp-bbr`, never set silently. A re-run keeps it while
+  `60-rpmgr.conf` has its line; to stop setting it, the operator removes the line.
 - The metrics `rpmgr_quic_gso_enabled` and `rpmgr_quic_udp_buffer_warning` show whether quic-go
   sends with GSO and whether a UDP buffer of the QUIC socket stays below the 7 MiB quic-go asks
   for, which makes it warn ([10](10-operations.md#metrics)).

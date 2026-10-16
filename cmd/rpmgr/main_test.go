@@ -16,6 +16,8 @@ import (
 	"testing"
 
 	"github.com/felix-homelab/rpmgr/internal/cli"
+	"github.com/felix-homelab/rpmgr/internal/config"
+	"github.com/felix-homelab/rpmgr/internal/controller"
 	"github.com/felix-homelab/rpmgr/internal/itest"
 	"github.com/felix-homelab/rpmgr/internal/release"
 )
@@ -69,8 +71,8 @@ func TestEveryCommandIsAvailable(t *testing.T) {
 	})
 }
 
-// TestSystemdUnit: the unit of an agent role needs no boot file; a controller's takes the KEK
-// credential from its boot file, and needs one.
+// TestSystemdUnit: the unit of an agent role needs no boot file; a controller's or all-in-one's
+// takes the KEK credential and the revocation-log sink from its boot file, and needs one.
 func TestSystemdUnit(t *testing.T) {
 	code, stdout, stderr := runRpmgr("systemd-unit", "--bin", "/usr/bin/rpmgr", "connector")
 	if code != cli.ExitOK || !strings.Contains(stdout, "ExecStart=/usr/bin/rpmgr connector --config /etc/rpmgr/connector.yaml\n") {
@@ -81,22 +83,91 @@ func TestSystemdUnit(t *testing.T) {
 		t.Fatal(err)
 	}
 	code, stdout, _ = runRpmgr("systemd-unit", "--config", boot, "controller")
-	if code != cli.ExitOK || !strings.Contains(stdout, "LoadCredentialEncrypted=rpmgr-kek:/etc/rpmgr/credstore/rpmgr-kek\n") {
-		t.Errorf("controller with a credential KEK: exit %d, %q", code, stdout)
+	if code != cli.ExitOK || !strings.Contains(stdout, "LoadCredentialEncrypted=rpmgr-kek:/etc/rpmgr/credstore/rpmgr-kek\n") ||
+		strings.Contains(stdout, "ReadWritePaths=") {
+		t.Errorf("controller with a credential KEK and no sink: exit %d, %q", code, stdout)
 	}
 	code, _, stderr = runRpmgr("systemd-unit", "--config", filepath.Join(t.TempDir(), "none.yaml"), "controller")
 	if code != cli.ExitError || !strings.Contains(stderr, "init") {
 		t.Errorf("controller without a boot file: exit %d, %q", code, stderr)
 	}
+	// The revocation-log sink of the boot file is writable for the controller and the all-in-one.
+	for _, role := range []string{"controller", "all-in-one"} {
+		boot := filepath.Join(t.TempDir(), role+".yaml")
+		if err := os.WriteFile(boot, []byte("version: 1\npublic_url: https://panel.example.com\nkek: {source: file, path: /etc/rpmgr/kek}\n"+
+			"revocation_log: {sink: /mnt/rpmgr-revocations/}\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		code, stdout, stderr = runRpmgr("systemd-unit", "--config", boot, role)
+		if code != cli.ExitOK || !strings.Contains(stdout, "\nReadWritePaths=-/mnt/rpmgr-revocations\n") || strings.Contains(stdout, "LoadCredential") {
+			t.Errorf("%s with a sink and a KEK file: exit %d, %q, %q", role, code, stdout, stderr)
+		}
+	}
+	// A sink systemd would read differently gives no unit at all, rather than one that cannot write it.
+	if err := os.WriteFile(boot, []byte("version: 1\npublic_url: https://panel.example.com\nrevocation_log: {sink: /mnt/my share}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	code, stdout, stderr = runRpmgr("systemd-unit", "--config", boot, "controller")
+	if code != cli.ExitError || stdout != "" || !strings.Contains(stderr, `"/mnt/my share"`) {
+		t.Errorf("controller with a sink holding a space: exit %d, %q, %q", code, stdout, stderr)
+	}
 }
 
 // TestReleaseImport: `rpmgr release import` reads the controller's boot file; a development
-// build imports nothing; the import itself is tested in internal/controller.
+// build imports nothing; the import itself is tested in internal/controller. --config may follow
+// the directory, and after "--" a directory may begin with "-".
 func TestReleaseImport(t *testing.T) {
 	missing := filepath.Join(t.TempDir(), "none.yaml")
-	code, _, stderr := runRpmgr("release", "import", "--config", missing, t.TempDir())
-	if code != cli.ExitError || !strings.Contains(stderr, "none.yaml") {
-		t.Errorf("a missing boot file: exit %d, %q", code, stderr)
+	for name, args := range map[string][]string{
+		"flags first":                {"--config", missing, t.TempDir()},
+		"flags last":                 {t.TempDir(), "--config", missing},
+		"a directory that is a flag": {"--config", missing, "--", "-release"},
+	} {
+		code, _, stderr := runRpmgr(append([]string{"release", "import"}, args...)...)
+		if code != cli.ExitError || !strings.Contains(stderr, "none.yaml") {
+			t.Errorf("%s, a missing boot file: exit %d, %q", name, code, stderr)
+		}
+	}
+	code, _, stderr := runRpmgr("release", "import", "--config", missing, "-release")
+	if code != cli.ExitUsage || !strings.Contains(stderr, "flag provided but not defined: -release") {
+		t.Errorf("a directory that is a flag, without --: exit %d, %q", code, stderr)
+	}
+}
+
+// TestFlagsAfterArguments (docs/16-cli.md): flags may follow the positional arguments, so --help
+// after a kind or a name prints the command's help.
+func TestFlagsAfterArguments(t *testing.T) {
+	for _, args := range [][]string{
+		{"get", "install-command", "--help"},
+		{"get", "route", "web", "-h"},
+		{"update", "route", "wiki", "--policy", "office", "--help"},
+		{"delete", "route", "--help"},
+		{"systemd-unit", "connector", "--help"},
+	} {
+		code, stdout, stderr := runRpmgr(args...)
+		if want := "Usage: rpmgr " + args[0] + " "; code != cli.ExitOK || !strings.HasPrefix(stdout, want) || stderr != "" {
+			t.Errorf("rpmgr %q: exit %d, stdout %q, stderr %q; want the help", args, code, stdout, stderr)
+		}
+	}
+	code, stdout, stderr := runRpmgr("systemd-unit", "connector", "--bin", "/usr/bin/rpmgr")
+	if code != cli.ExitOK || !strings.Contains(stdout, "ExecStart=/usr/bin/rpmgr connector ") {
+		t.Errorf("a flag after the role: exit %d, %q, %q", code, stdout, stderr)
+	}
+}
+
+// TestInitHelp: the help of both init commands gives the default KEK source as init chooses it:
+// the systemd credential from the first systemd version with encrypted credentials, else a file.
+func TestInitHelp(t *testing.T) {
+	first := 0
+	for controller.KEKSourceFor(first) != config.KEKSystemdCredential {
+		first++
+	}
+	want := fmt.Sprintf("(default systemd-credential from systemd %d, else file)", first)
+	for _, role := range []string{"controller", "all-in-one"} {
+		code, stdout, _ := runRpmgr(role, "init", "--help")
+		if code != cli.ExitOK || !strings.Contains(stdout, want) || strings.Contains(stdout, "systemd-credential (default)") {
+			t.Errorf("rpmgr %s init --help: exit %d, %q; want %q", role, code, stdout, want)
+		}
 	}
 }
 

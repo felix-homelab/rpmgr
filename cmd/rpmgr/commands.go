@@ -171,6 +171,9 @@ func startTracing(ctx context.Context, cfg config.Tracing, role string) (stop fu
 	}, nil
 }
 
+// kekSourceHelp describes --kek-source of init; the default is controller.KEKSourceFor's.
+const kekSourceHelp = "KEK source of a new boot file: systemd-credential or file (default systemd-credential from systemd 250, else file)"
+
 // allInOneInit is `rpmgr all-in-one init`.
 func allInOneInit() *cli.Command {
 	var o controller.InitOptions
@@ -180,7 +183,7 @@ func allInOneInit() *cli.Command {
 		Flags: func(fs *flag.FlagSet) {
 			fs.StringVar(&o.ConfigPath, "config", "", "boot file, written if it does not exist (default $RPMGR_CONFIG, else /etc/rpmgr/all-in-one.yaml)")
 			fs.StringVar(&o.PublicURL, "public-url", "", "https URL of the web UI, the API and the agents; needed when the boot file does not exist")
-			fs.StringVar(&o.KEKSource, "kek-source", "", "KEK source of a new boot file: systemd-credential (default) or file")
+			fs.StringVar(&o.KEKSource, "kek-source", "", kekSourceHelp)
 			fs.StringVar(&o.KEKPath, "kek-path", "", "KEK file of a new boot file with --kek-source file (default /etc/rpmgr/kek)")
 		},
 		Run: func(ctx context.Context, env *cli.Env, _ []string) error {
@@ -208,7 +211,7 @@ func controllerInit() *cli.Command {
 		Flags: func(fs *flag.FlagSet) {
 			fs.StringVar(&o.ConfigPath, "config", "", "boot file, written if it does not exist (default $RPMGR_CONFIG, else /etc/rpmgr/controller.yaml)")
 			fs.StringVar(&o.PublicURL, "public-url", "", "https URL of the web UI and API; needed when the boot file does not exist")
-			fs.StringVar(&o.KEKSource, "kek-source", "", "KEK source of a new boot file: systemd-credential (default) or file")
+			fs.StringVar(&o.KEKSource, "kek-source", "", kekSourceHelp)
 			fs.StringVar(&o.KEKPath, "kek-path", "", "KEK file of a new boot file with --kek-source file (default /etc/rpmgr/kek)")
 		},
 		Run: func(ctx context.Context, env *cli.Env, _ []string) error {
@@ -236,37 +239,34 @@ func systemdUnit() *cli.Command {
 		Args:    "controller | gateway | connector | all-in-one",
 		Flags: func(fs *flag.FlagSet) {
 			fs.StringVar(&bin, "bin", "/usr/local/bin/rpmgr", "the installed binary")
-			fs.StringVar(&configPath, "config", "", "the controller's or all-in-one's boot file, for its KEK credential (default $RPMGR_CONFIG, else /etc/rpmgr/<role>.yaml)")
+			fs.StringVar(&configPath, "config", "", "the controller's or all-in-one's boot file, for its KEK credential and revocation-log sink (default $RPMGR_CONFIG, else /etc/rpmgr/<role>.yaml)")
 		},
 		Run: func(_ context.Context, env *cli.Env, args []string) error {
 			if len(args) != 1 {
 				return cli.Usagef("systemd-unit needs a role")
 			}
-			o := units.Options{Bin: bin}
+			var o units.Options
 			switch role := args[0]; role {
 			case "controller", "all-in-one":
-				var kek struct{ Source, Name string }
+				var c config.Controller
 				path := config.Path(configPath, role, env.Getenv)
 				if role == "controller" {
-					var c config.Controller
 					if err := config.Load(path, &c); err != nil {
 						return fmt.Errorf("%w; run `rpmgr %s init` first", err, role)
 					}
-					kek.Source, kek.Name = c.KEK.Source, c.KEK.Name
 				} else {
 					var a config.AllInOne
 					if err := config.Load(path, &a); err != nil {
 						return fmt.Errorf("%w; run `rpmgr %s init` first", err, role)
 					}
-					kek.Source, kek.Name = a.Controller().KEK.Source, a.Controller().KEK.Name
+					c = a.Controller()
 				}
-				if kek.Source == config.KEKSystemdCredential {
-					o.Credential = kek.Name
-				}
+				o = units.ForController(c) // the KEK credential and the revocation-log sink
 			case "gateway", "connector":
 			default:
 				return cli.Usagef("no role %q: controller, gateway, connector or all-in-one", role)
 			}
+			o.Bin = bin
 			b, err := units.Render(args[0], o)
 			if err != nil {
 				return err
@@ -333,6 +333,9 @@ func restoreCommand() *cli.Command {
 				"The replaced files are kept with the suffix %s. Start one controller, check /readyz, then the others;\n"+
 				"re-enroll agents enrolled after the backup.\n",
 				r.TrustDomain, r.Backup.UTC().Format(time.RFC3339), r.NewEpoch, r.OldEpoch, r.Reapplied, r.Unknown, r.Previous)
+			if err == nil && len(r.Kept) > 0 {
+				_, err = fmt.Fprintf(env.Stdout, "\nNot applied again, check these on the Users page:\n  - %s\n", strings.Join(r.Kept, "\n  - "))
+			}
 			if err != nil || len(r.Review) == 0 {
 				return err
 			}

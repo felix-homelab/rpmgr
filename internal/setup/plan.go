@@ -7,6 +7,9 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
+	"net"
+	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -18,6 +21,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/agent"
 	"github.com/felix-homelab/rpmgr/internal/allinone"
 	"github.com/felix-homelab/rpmgr/internal/config"
+	"github.com/felix-homelab/rpmgr/internal/connector"
 	"github.com/felix-homelab/rpmgr/internal/controller"
 	"github.com/felix-homelab/rpmgr/internal/policy"
 	"github.com/felix-homelab/rpmgr/internal/settings"
@@ -39,9 +43,9 @@ type Plan struct {
 
 // booted is what setup reads back from a parsed boot file.
 type booted struct {
-	admin  string // the admin listener
-	policy string // the connector-local policy file
-	cred   string // the KEK's systemd credential, for the unit; empty for a KEK file
+	admin  string        // the admin listener
+	policy string        // the connector-local policy file
+	unit   units.Options // what the boot file decides of the unit: KEK credential, sink
 }
 
 type step struct {
@@ -193,13 +197,13 @@ func (p *Plan) bootFile() error {
 			parse = func(b []byte) (booted, error) {
 				var c config.AllInOne
 				err := config.Parse(b, &c)
-				return booted{admin: c.Listen.Admin, policy: c.PolicyFile, cred: credential(c.KEK.Source, c.KEK.Name)}, err
+				return booted{admin: c.Listen.Admin, policy: c.PolicyFile, unit: units.ForController(c.Controller())}, err
 			}
 		} else {
 			parse = func(b []byte) (booted, error) {
 				var c config.Controller
 				err := config.Parse(b, &c)
-				return booted{admin: c.Listen.Admin, cred: credential(c.KEK.Source, c.KEK.Name)}, err
+				return booted{admin: c.Listen.Admin, unit: units.ForController(c)}, err
 			}
 		}
 	case Gateway, Connector:
@@ -239,13 +243,6 @@ func (p *Plan) bootFile() error {
 		}
 	}
 	return nil
-}
-
-func credential(source, name string) string {
-	if source == config.KEKSystemdCredential {
-		return name
-	}
-	return ""
 }
 
 // tlsFiles returns the certificate and key files of the boot file: the operator's, or for a
@@ -414,9 +411,17 @@ func (p *Plan) agentSteps() {
 	p.add("enroll with "+v.ControllerURL, func(ctx context.Context, r *Result) error {
 		fresh := !exists(identity)
 		host, _ := os.Hostname()
-		id, err := h.Enroll(ctx, agent.EnrollOptions{Controller: v.ControllerURL, Pin: v.Pin, Token: strings.TrimSpace(v.Token),
+		o := agent.EnrollOptions{Controller: v.ControllerURL, Pin: v.Pin, Token: strings.TrimSpace(v.Token),
 			IdentityDir: identity, Replace: v.Force, Version: version.Version,
-			Host: &agentv1.HostFacts{Hostname: host, Os: runtime.GOOS, Arch: runtime.GOARCH}})
+			Host: &agentv1.HostFacts{Hostname: host, Os: runtime.GOOS, Arch: runtime.GOARCH}}
+		if v.Proxy != "" {
+			done, err := throughProxy(&o, v.Proxy)
+			if err != nil {
+				return err
+			}
+			defer done()
+		}
+		id, err := h.Enroll(ctx, o)
 		if err != nil {
 			return err
 		}
@@ -432,16 +437,54 @@ func (p *Plan) agentSteps() {
 	}
 	p.policySteps()
 	if v.Proxy != "" {
+		// The URL may hold a password: it goes into a file only root reads, which the drop-in
+		// names, never into the drop-in itself, which anyone reads, as `systemctl show` does.
+		envFile := filepath.Join(h.Paths.Etc, "connector-proxy.env")
 		dropIn := filepath.Join(h.Paths.Units, "rpmgr-connector.service.d", "proxy.conf")
-		p.add("set the connector's proxy in "+dropIn, func(_ context.Context, r *Result) error {
+		p.add("set the connector's proxy in "+envFile+", named by "+dropIn, func(_ context.Context, r *Result) error {
+			r.created(envFile)
+			if err := writeMode(envFile, []byte("HTTPS_PROXY="+v.Proxy+"\n"), 0o600); err != nil {
+				return err
+			}
 			if err := mkdirMode(filepath.Dir(dropIn), 0o755); err != nil { // a unit directory
 				return err
 			}
 			r.created(dropIn)
-			unit := fmt.Sprintf("[Service]\nEnvironment=\"HTTPS_PROXY=%s\"\n", v.Proxy)
-			return writeMode(dropIn, []byte(unit), 0o644)
+			return writeMode(dropIn, []byte("[Service]\nEnvironmentFile="+envFile+"\n"), 0o644)
 		})
 	}
+}
+
+// throughProxy makes the enrollment take the proxy the connector's service will take: the
+// connector's own dialer (HTTP CONNECT or SOCKS5) for both the trust bundle and the controller. The
+// bundle's download keeps the default client's time limit; done closes its idle tunnel.
+func throughProxy(o *agent.EnrollOptions, proxyURL string) (done func(), err error) {
+	dial, err := connector.ProxyDialer(func(name string) string {
+		if name == "HTTPS_PROXY" {
+			return proxyURL
+		}
+		return "" // the service gets no NO_PROXY either
+	})
+	if err != nil {
+		return nil, err
+	}
+	t := http.DefaultTransport.(*http.Transport).Clone() //nolint:forcetypeassert // the standard library's
+	t.Proxy = nil
+	t.DialContext = func(ctx context.Context, _, addr string) (net.Conn, error) { return dial(ctx, addr) }
+	o.HTTPClient, o.Dial = &http.Client{Transport: t, Timeout: agent.DownloadTimeout}, dial
+	return t.CloseIdleConnections, nil
+}
+
+// redactedProxy is the proxy URL with its user name and password, if any, left out.
+func redactedProxy(s string) string {
+	u, err := url.Parse(s)
+	if err != nil {
+		return "(not shown)"
+	}
+	if u.User != nil {
+		u.User = url.User("xxxxx")
+	}
+	return u.String()
 }
 
 // policySteps write the allowed and denied targets into the connector-local policy of a connector
@@ -479,7 +522,9 @@ func (p *Plan) unitSteps() {
 		title += ", restart " + name
 	}
 	p.add(title, func(ctx context.Context, r *Result) error {
-		unit, err := units.Render(role, units.Options{Bin: h.Paths.Bin, Credential: p.cred})
+		o := p.unit // as `rpmgr systemd-unit` renders it from the boot file
+		o.Bin = h.Paths.Bin
+		unit, err := units.Render(role, o)
 		if err != nil {
 			return err
 		}
@@ -538,12 +583,32 @@ func writeNew(path string, data []byte, perm os.FileMode) error {
 	return f.Close()
 }
 
-// writeMode writes a file, new or not, with mode perm whatever the umask.
+// writeMode writes a file, new or not, with mode perm whatever the umask: into a new file in its
+// directory, renamed over it, so that the data never sits in a file with an older, wider mode or
+// another owner, and a symbolic link in its place is replaced rather than followed.
 func writeMode(path string, data []byte, perm os.FileMode) error {
-	if err := os.WriteFile(path, data, perm); err != nil { //nolint:gosec // G306: callers pass the mode a unit needs
+	f, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+".*")
+	if err != nil {
 		return err
 	}
-	return os.Chmod(path, perm)
+	tmp := f.Name()
+	defer func() { _ = os.Remove(tmp) }() // a no-op after the rename
+	if err := f.Chmod(perm); err != nil {
+		_ = f.Close()
+		return err
+	}
+	if _, err := f.Write(data); err != nil {
+		_ = f.Close()
+		return err
+	}
+	if err := f.Sync(); err != nil {
+		_ = f.Close()
+		return err
+	}
+	if err := f.Close(); err != nil {
+		return err
+	}
+	return os.Rename(tmp, path)
 }
 
 // mkdirMode creates dir and its missing parents with mode perm whatever the umask (#458): a umask
@@ -587,7 +652,7 @@ func (p *Plan) Summary() [][2]string {
 			out = append(out, [2]string{"denied targets", strings.Join(v.DenyTargets, ", ")})
 		}
 		if v.Proxy != "" {
-			out = append(out, [2]string{"proxy", v.Proxy})
+			out = append(out, [2]string{"proxy", redactedProxy(v.Proxy)})
 		}
 	}
 	out = append(out, [2]string{"admin listener", p.admin})
