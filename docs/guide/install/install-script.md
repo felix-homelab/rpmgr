@@ -147,8 +147,7 @@ filled in:
   **Enrollment token…** on the gateway ([Gateways](../gateways.md)).
 - **On the command line:** `rpmgr get install-command` for a connector, with its targets as in
   `rpmgr get --allow-target 192.168.1.20:8080 install-command`, and
-  `rpmgr get --role gateway install-command` for a gateway. The flags come before
-  `install-command`.
+  `rpmgr get --role gateway install-command` for a gateway.
 
 A connector's command looks like this:
 
@@ -290,7 +289,7 @@ statement look expired, so check the host's time if the statement is refused.
 |---|---|
 | `OpenSSL 3.0 or later is needed to verify the release; found: …` | Install OpenSSL 3, or a distribution that has it ([10](../../10-operations.md#supported-platforms)) |
 | `curl or wget is needed`, `… is needed` | Install the named tool |
-| `run as root: sudo sh install.sh`, `run as root (sudo sh -s -- ...)` | Run the script with `sudo`, or use `--verify-only`. The second message is the controller's script's; run it from a file all the same, as the web UI's command does |
+| `run as root: sudo sh install.sh …` | Run the script file with `sudo`, as the web UI's command does, or use `--verify-only` |
 | `nothing to upgrade: /usr/local/bin/rpmgr is not installed; install it without --upgrade` | `--upgrade` on a host without rpmgr: leave the option out |
 | `cannot find the latest release at https://api.github.com` | No stable release yet, or the GitHub API cannot be reached: use a pre-release's `install.sh`, `--version` or `--prerelease` |
 | `no release found at https://api.github.com/repos/felix-homelab/rpmgr` | With `--prerelease`: GitHub lists no release. Name one with `--version` |

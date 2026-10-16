@@ -17,12 +17,17 @@ import (
 	"testing"
 	"time"
 
+	"google.golang.org/protobuf/types/known/fieldmaskpb"
+
 	agentv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/agent/v1"
+	rpmgrv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/v1"
 	"github.com/felix-homelab/rpmgr/internal/agent"
 	"github.com/felix-homelab/rpmgr/internal/config"
 	"github.com/felix-homelab/rpmgr/internal/gateway"
 	"github.com/felix-homelab/rpmgr/internal/itest"
 	"github.com/felix-homelab/rpmgr/internal/pki"
+	"github.com/felix-homelab/rpmgr/internal/routes"
+	"github.com/felix-homelab/rpmgr/internal/settings"
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
 )
 
@@ -70,12 +75,15 @@ func (c *relayedConn) Write(p []byte) (int, error) {
 }
 
 // TestPrivateController: a gateway forwards the controller's names to a controller that only it
-// reaches (R23): the UI answers on its hostname over HTTP/1.1 and HTTP/2, an agent enrolls and
-// keeps its control session through the gateway, and the gateway relays only ciphertext, so the
-// enrollment token never crosses it in clear. A controller that stops answering resets new
+// reaches (R23), and the instance settings list the gateway's address among the controller
+// endpoints: the UI answers on its hostname over HTTP/1.1 and HTTP/2, an agent enrolls, gets that
+// endpoint and keeps its control session through the gateway, and the gateway relays only
+// ciphertext, so the enrollment token never crosses it in clear. A changed list reaches the agent
+// with its next snapshot, and its next session and the host's commands use it. A controller that
+// stops answering resets new
 // connections at once.
 func TestPrivateController(t *testing.T) {
-	c := itest.StartController(t, itest.Options{})
+	c := itest.StartController(t, itest.Options{Sources: routes.Sources()})
 	dir := t.TempDir()
 	gwPort := freeTCPUDPPort(t)
 	gw := c.EnrollGateway(t, filepath.Join(dir, "gw-id"), c.GatewayGroup(t, "edge"), []string{addr(gwPort)})
@@ -100,6 +108,15 @@ func TestPrivateController(t *testing.T) {
 	web := &http.Client{Timeout: 10 * time.Second, Transport: &http.Transport{
 		DialContext:     func(ctx context.Context, _, a string) (net.Conn, error) { return toGateway(ctx, a) },
 		TLSClientConfig: &tls.Config{RootCAs: c.UIRoots, MinVersion: tls.VersionTLS13}}}
+	viaGateway := "https://" + addr(gwPort)
+	setEndpoints := func(eps ...string) {
+		t.Helper()
+		if _, err := settings.UpdateInstance(c.Sys, c.DB, &rpmgrv1.InstanceSettings{ControllerEndpoints: eps},
+			&fieldmaskpb.FieldMask{Paths: []string{"controller_endpoints"}}, 0); err != nil {
+			t.Fatal(err)
+		}
+	}
+	setEndpoints(viaGateway)
 	resp, err := web.Get("https://" + itest.UIHostname + "/.well-known/rpmgr/trust-bundle")
 	if err != nil {
 		t.Fatalf("the UI through the gateway: %v", err)
@@ -135,8 +152,28 @@ func TestPrivateController(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	run(t, agent.ClientOptions{Identity: id, Endpoints: []string{"https://" + addr(gwPort)}, Version: "0.1.0", BootID: "b1"})
-	waitFor(t, "a control session through the gateway", func() bool { return slices.Contains(c.Sessions.Connected(), id.AgentID) })
+	if !slices.Equal(id.Endpoints, []string{viaGateway}) {
+		t.Fatalf("enrolled with the controller endpoints %v, want the gateway's %s", id.Endpoints, viaGateway)
+	}
+	conState := filepath.Join(dir, "con-state")
+	if err := os.MkdirAll(conState, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	applied := &recorder{}
+	ctl, err := agent.NewControl(agent.ControlOptions{IdentityDir: conDir, StateDir: conState, Version: "0.1.0", Applier: applied,
+		Backoff: fast(), Logger: c.Logs.Logger()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	runCtx, stopRun := context.WithCancel(context.Background())
+	running := make(chan struct{})
+	go func() { _ = ctl.Run(runCtx); close(running) }()
+	t.Cleanup(func() { stopRun(); <-running })
+	controllerAddr := func() string { a, _ := ctl.ControllerAddr(); return a }
+	waitFor(t, "a control session through the gateway", func() bool {
+		return slices.Contains(c.Sessions.Connected(), id.AgentID) && controllerAddr() == addr(gwPort)
+	})
+	waitFor(t, "a snapshot naming the gateway", func() bool { return slices.Equal(applied.lastEndpoints(), []string{viaGateway}) })
 
 	seen := rec.bytes()
 	if !bytes.Contains(seen, []byte("controller."+c.CA.TrustDomain())) || !bytes.Contains(seen, []byte(itest.UIHostname)) {
@@ -145,6 +182,44 @@ func TestPrivateController(t *testing.T) {
 	if bytes.Contains(seen, []byte(tok)) {
 		t.Fatal("the enrollment token crossed the gateway in clear")
 	}
+
+	// The operator lists the controller's direct address instead: the connected agent learns it
+	// with its next snapshot and dials it once its session ends.
+	setEndpoints(c.URL)
+	waitFor(t, "a snapshot naming the controller", func() bool { return slices.Equal(applied.lastEndpoints(), []string{c.URL}) })
+	c.Sessions.Send(id.AgentID, &agentv1.ControllerMessage{Msg: &agentv1.ControllerMessage_Goodbye{
+		Goodbye: &agentv1.Goodbye{Reason: agentv1.GoodbyeReason_GOODBYE_REASON_SHUTDOWN}}})
+	waitFor(t, "a direct control session", func() bool {
+		return slices.Contains(c.Sessions.Connected(), id.AgentID) && controllerAddr() == strings.TrimPrefix(c.URL, "https://")
+	})
+
+	// The host's commands follow the stored snapshot, not the enrollment: `rpmgr status` shows the
+	// controller's address, and `rpmgr diag clock` and `rpmgr leave` dial it, never the gateway.
+	waitFor(t, "a stored snapshot naming the controller", func() bool {
+		l, err := agent.ReadLocal(conDir, conState, time.Now())
+		return err == nil && slices.Equal(l.ControllerEndpoints(), []string{c.URL}) && slices.Equal(l.Endpoints, []string{viaGateway})
+	})
+	var dialMu sync.Mutex
+	var dialled []string
+	dial := func(ctx context.Context, a string) (net.Conn, error) {
+		dialMu.Lock()
+		dialled = append(dialled, a)
+		dialMu.Unlock()
+		return (&net.Dialer{}).DialContext(ctx, "tcp", a)
+	}
+	if clk, err := agent.MeasureClock(ctx, conDir, conState, "0.1.0", time.Now, dial); err != nil || clk.Endpoint != c.URL {
+		t.Fatalf("the clock measured at %q: %v, want %s", clk.Endpoint, err, c.URL)
+	}
+	stopRun()
+	<-running
+	if _, err := agent.Leave(ctx, conDir, conState, dial); err != nil {
+		t.Fatalf("leave: %v", err)
+	}
+	dialMu.Lock()
+	if len(dialled) == 0 || slices.ContainsFunc(dialled, func(a string) bool { return a != strings.TrimPrefix(c.URL, "https://") }) {
+		t.Errorf("the host's commands dialled %v, want only the controller", dialled)
+	}
+	dialMu.Unlock()
 
 	c.Stop()
 	start := time.Now()

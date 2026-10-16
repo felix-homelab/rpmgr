@@ -210,8 +210,13 @@ func TestSettings(t *testing.T) {
 		"an argument":         {"--set", "require_mfa=true", "extra"},
 	} {
 		a.org, a.instance = nil, nil
-		if code, _, _ := run(append([]string{"update", "settings"}, args...)...); code != cli.ExitUsage || a.org != nil || a.instance != nil {
+		code, _, errOut := run(append([]string{"update", "settings"}, args...)...)
+		if code != cli.ExitUsage || a.org != nil || a.instance != nil {
 			t.Errorf("%s: %d", name, code)
+		}
+		// The usage shows --set without a default, not with the values given.
+		if !strings.Contains(errOut, "repeat for more\n") || strings.Contains(errOut, "repeat for more (default") {
+			t.Errorf("%s, the usage of --set: %q", name, errOut)
 		}
 	}
 

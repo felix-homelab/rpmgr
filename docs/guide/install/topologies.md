@@ -123,8 +123,9 @@ against the pinned root ([03](../../03-connections.md#reaching-a-private-control
    the gateway, such as `https://panel.example.com`.
 2. **The gateway** is created and enrolled as above. It needs a direct path to the controller:
    on the gateway host, the public URL's name must lead to the controller's private address, for
-   example through an entry in `/etc/hosts` or a private DNS zone, because every agent reaches the
-   controller at the public URL.
+   example through an entry in `/etc/hosts` or a private DNS zone, because the gateway, like every
+   agent, reaches the controller at the public URL while the instance settings list no other
+   controller endpoints (below).
 3. **Enrollment.** `rpmgr enroll` downloads the trust bundle over HTTPS and needs a controller
    certificate the gateway host trusts. Until the controller has one, enroll the gateway by hand
    with `--trust-bundle`
@@ -147,6 +148,13 @@ against the pinned root ([03](../../03-connections.md#reaching-a-private-control
 
 5. **DNS.** Point the public URL's name at the gateway's public address. Browsers, connectors and
    their enrollment then reach the controller through the gateway.
+
+To give agents a second way in, publish the controller through a second gateway in the same way,
+and list the addresses agents should try, in order, under **Controller endpoints for agents** in
+the instance settings, such as `https://panel.example.com` and `https://gw2.example.net`. Agents
+get the list when they enroll and with every configuration, and it replaces the public URL for
+them ([Settings](../operations/settings.md#web-ui-and-controller-endpoints)). Each address must
+lead to the controller, directly or through a gateway that forwards to it.
 
 A connector that reaches no controller endpoint at all, for example on a network that lets only UDP
 out, carries its control session through one of its data sessions as a last resort

@@ -83,7 +83,7 @@ tracing section is described in [Monitoring](../operations/monitoring.md).
 | Key | Type | Default | Meaning |
 |---|---|---|---|
 | `version` | integer | required | The format version: `1` |
-| `public_url` | URL | required | The URL of the web UI, the API and the agents. Agents get it as their controller endpoint when they enroll and with every configuration. Its host decides the controller's own certificate (`tls` below) |
+| `public_url` | URL | required | The URL of the web UI, the API and the agents. Agents get it as their controller endpoint when they enroll and with every configuration, unless the instance settings list other **Controller endpoints for agents** ([Settings](../operations/settings.md#web-ui-and-controller-endpoints)). Its host decides the controller's own certificate (`tls` below) |
 | `listen.https` | address | `:443` | The listener for the web UI, the API, enrollment, the agents' control sessions, `/install.sh` and the `/dl/` mirror |
 | `listen.http` | address or `""` | `:80` | ACME HTTP-01 challenges and the redirect to HTTPS. `""` turns port 80 off |
 | `listen.admin` | address | `127.0.0.1:7381` | The admin listener (rules above) |
@@ -141,7 +141,7 @@ the controller, not from this file.
 | Key | Type | Default | Meaning |
 |---|---|---|---|
 | `version` | integer | required | The format version: `1` |
-| `controller.endpoints` | list of URLs | required | At least one controller URL. The installers write the URL the gateway enrolled with. The running gateway does not read this list: it dials the controller endpoints it received when it enrolled, which it keeps with its identity, and those of each configuration it receives, which are the controller's public URL |
+| `controller.endpoints` | list of URLs | required | At least one controller URL. The installers write the URL the gateway enrolled with. The running gateway does not read this list: it dials the controller endpoints it received when it enrolled, which it keeps with its identity, and then those of each configuration it receives. Both are the **Controller endpoints for agents** of the instance settings, or the controller's public URL while that list is empty ([Settings](../operations/settings.md#web-ui-and-controller-endpoints)) |
 | `controller.passthrough.address` | `host:port` | `""` | A private controller's port 443, as this gateway reaches it directly. The gateway then forwards the controller's names to it, still encrypted ([Topologies](../install/topologies.md#a-private-controller-behind-a-gateway)). Empty forwards nothing |
 | `controller.passthrough.hostnames` | list of names | `[]` | The controller's web UI hostnames to forward as well, in lower case, at least two labels, an internationalised name in its `xn--` form. Needs `address`. The agents' own controller names are always forwarded |
 | `identity_dir` | path | `/var/lib/rpmgr/identity` | The gateway's key, certificate chain and pinned root, which `rpmgr enroll` writes |

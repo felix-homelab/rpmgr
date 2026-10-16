@@ -93,9 +93,10 @@ func TestPlan_StrictUmask_Connector(t *testing.T) {
 	dropIn := filepath.Join(h.Paths.Units, "rpmgr-connector.service.d")
 	modes(t, map[string]os.FileMode{
 		h.Paths.Etc: 0o755, h.Paths.Lib: 0o750, dropIn: 0o755,
-		filepath.Join(dropIn, "proxy.conf"):          0o644,
-		filepath.Join(h.Paths.Etc, "connector.yaml"): 0o644,
-		filepath.Join(h.Paths.Etc, "policy.yaml"):    0o644,
+		filepath.Join(dropIn, "proxy.conf"):               0o644,
+		filepath.Join(h.Paths.Etc, "connector-proxy.env"): 0o600,
+		filepath.Join(h.Paths.Etc, "connector.yaml"):      0o644,
+		filepath.Join(h.Paths.Etc, "policy.yaml"):         0o644,
 	})
 }
 

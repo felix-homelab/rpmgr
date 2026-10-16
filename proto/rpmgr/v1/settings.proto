@@ -128,8 +128,9 @@ message InstanceSettings {
       }
     }
   }];
-  // Controller endpoints advertised to agents in every snapshot, tried in order, e.g.
-  // "https://controller.example.net:443"; empty means the public URL only.
+  // Controller endpoints advertised to agents at enrollment and in every snapshot, tried in order,
+  // each https://<host>[:<port>], e.g. "https://controller.example.net:443"; empty means the public
+  // URL only.
   repeated string controller_endpoints = 8 [(buf.validate.field).repeated = {
     max_items: 8
     unique: true
@@ -137,6 +138,11 @@ message InstanceSettings {
       string: {
         uri: true
         max_len: 253
+      }
+      cel: {
+        id: "controller_endpoint"
+        message: "must be https://<host>[:<port>]"
+        expression: "this.matches(r'^https://([^/?#@:\\[\\]]+|\\[[0-9A-Fa-f:.]+\\])(:[0-9]{1,5})?/?$')"
       }
     }
   }];

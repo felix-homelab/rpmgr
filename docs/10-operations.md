@@ -119,7 +119,7 @@ with `rpmgr user reset-password` while no user exists. There is no default passw
 | `/etc/rpmgr/<role>.yaml` | root, 0644 | Boot configuration ([Configuration](#configuration)) |
 | `/etc/rpmgr/tls/` | root, 0755 | The certificate `rpmgr setup --tls self-signed` makes for the UI: `<host>.crt` (root, 0644) and `<host>.key` (rpmgr, 0600) |
 | `/etc/rpmgr/policy.yaml` | root, 0644 | Connector-local policy, read-only for the service user; the root updater also reads `auto_update` from it ([04](04-security.md#connector-local-policy)) |
-| `/var/lib/rpmgr/identity/` | rpmgr, 0700 | Agent identity, written by `rpmgr enroll`: `key.pem` (private key, 0600) and `chain.pem` (certificate and intermediates), both replaced at every renewal (`*.new` files are a renewal in progress, finished at the next start), `roots.pem` (the pinned root and roots it cross-signed), `signing.pem` (the config-signing certificates, replaced by those of every `Welcome`), `agent.json` (agent ID, trust domain, controller endpoints). Enrollment refuses a directory open to the group or other users, and an existing identity without `--replace` |
+| `/var/lib/rpmgr/identity/` | rpmgr, 0700 | Agent identity, written by `rpmgr enroll`: `key.pem` (private key, 0600) and `chain.pem` (certificate and intermediates), both replaced at every renewal (`*.new` files are a renewal in progress, finished at the next start), `roots.pem` (the pinned root and roots it cross-signed), `signing.pem` (the config-signing certificates, replaced by those of every `Welcome`), `agent.json` (agent ID, trust domain, the controller endpoints of the enrollment; those of the stored snapshot take their place, [03](03-connections.md#transport)). Enrollment refuses a directory open to the group or other users, and an existing identity without `--replace` |
 | `/var/lib/rpmgr/` | rpmgr, 0750 | Last-known-good snapshot (`snapshot.signed`, 0600) and **deny-list** (`denylist.signed`, 0600) (both signed; the deny-list is loaded before any session is accepted), stateless reset key (gateways: `quic-reset.key`, 0600, created at the first start), route certificates with their keys that the gateway fetched (gateways: `resources/`, 0700, one 0600 file per item, named by its SHA-256, removed when no route needs it), SQLite database and its lock file `controller.db.lock`, held by the running controller (controller) |
 | `/var/lib/rpmgr/update/` | rpmgr, 0750 | OTA download area: artifact and signed manifest written by the agent. **Untrusted input** to the updater, which never verifies or installs files in place here |
 | `/etc/sysctl.d/60-rpmgr.conf` | root, 0644 | Host tuning, written by `/install.sh` on every run: the UDP buffers, whatever the host has now, and BBR with `--tcp-bbr` or while the file sets it ([03](03-connections.md#host-tuning-applied-by-the-installer)) |
@@ -270,8 +270,11 @@ In Phase 1, CI only builds these targets; end-to-end tests on Windows and macOS 
 | Connector | per `allow_listen` | TCP/UDP | Visitor listeners for private services | Local or LAN, as the policy allows |
 | All-in-one | 80, 443/TCP, 443/UDP, port pools, admin | | Gateway ports; the controller is reached through the gateway's SNI router in-process; its connector opens no port and never dials the ports rpmgr listens on: admin, 80, 443, tunnel UDP and every route port the gateway has bound ([04](04-security.md#connector-local-policy)) | Public (except admin) |
 
-**Controller outbound connections.** The controller dials out only for these, all through
-`HTTPS_PROXY`/`ALL_PROXY` when set:
+**Controller outbound connections.** The controller dials out only for these. Its HTTPS requests
+go through `HTTPS_PROXY`, else `ALL_PROXY`, its plain HTTP requests through `HTTP_PROXY`, else
+`ALL_PROXY`, and SMTP through a SOCKS5 `ALL_PROXY`, unless `NO_PROXY` exempts the host; DNS
+queries go direct. A proxy variable that is no proxy URL stops the controller at start, with a
+message that names the variable, not its value ([D93](14-open-decisions.md#engineering)):
 
 | Destination | Port | Purpose | When |
 |---|---|---|---|
@@ -289,8 +292,8 @@ Configuration has two layers (the commands and their flags are listed in
 1. A **small boot file** per role, read at start: only what is needed before the database or the
    control session is available. Strict YAML: unknown keys are rejected and the process refuses to
    start. Containers mount the boot file (and secrets as files). The only environment variables
-   read are `RPMGR_CONFIG` (config path), the proxy variables (`HTTPS_PROXY`, `ALL_PROXY`,
-   `NO_PROXY`) and, by the install script and `rpmgr enroll` only, `RPMGR_ENROLL_TOKEN`. There is no
+   read are `RPMGR_CONFIG` (config path), the proxy variables (`HTTPS_PROXY`, `HTTP_PROXY`,
+   `ALL_PROXY`, `NO_PROXY`) and, by the install script and `rpmgr enroll` only, `RPMGR_ENROLL_TOKEN`. There is no
    KEK from an environment variable ([04](04-security.md#secrets-at-rest-and-in-logs)).
 2. **Runtime settings in the database**, typed and validated, edited in the UI or API, audited, and
    distributed to agents through snapshots. No restart needed.
@@ -359,6 +362,13 @@ log: { level: info, format: json }
 # HTTPS_PROXY / ALL_PROXY / NO_PROXY are honoured for the TCP transports (03-connections.md#transports-and-fallback)
 ```
 
+`rpmgr setup --role connector --proxy <url>` takes an `http://`, `socks5://` or `socks5h://` URL,
+the schemes the connector reads, enrolls through it, and gives it to the service as `HTTPS_PROXY`
+in `/etc/rpmgr/connector-proxy.env` (mode 0600, root's), which the drop-in
+`rpmgr-connector.service.d/proxy.conf` names: a proxy password never shows in the unit or in
+`systemctl show`. A URL with credentials comes from `--proxy-file <file>` or the form; `--proxy`
+refuses it, as a command line shows it to every user of the host.
+
 ```yaml
 # /etc/rpmgr/all-in-one.yaml
 version: 1
@@ -407,7 +417,7 @@ the boot file.
 
 | Scope | Examples |
 |---|---|
-| Instance (Instance Admin) | Default data-session transport (`auto`, `quic`, `h2`; shipped `auto`, [03](03-connections.md#transport-selection); [R] pin `h2` on routes or connectors that carry bulk transfers over high-delay paths, where it carried single streams faster in the Phase 1 measurements, [ADR-0004](adr/0004-quic-default-transport-policy.md#phase-1-measurements)), public URL aliases (each alias is also accepted as `Origin` by the CSRF check, [04](04-security.md#human-authentication-and-sessions)), ACME account, Cloudflare IP ranges (refreshed automatically), SMTP (optional: the relay's `host:port`, sender address, user name, and STARTTLS or TLS from the start, as the controller sends no mail in plain text; the password is write-only and kept under the KEK), retention (audit entries: 365 days by default, 30 to 3650 days; metric rollups), external audit sink (Phase 2), revocation-log sink ([Backup and restore](#backup-and-restore)), controller endpoints advertised to agents. **PKI** page: leaf-certificate lifetime and grace period ([D8](14-open-decisions.md#security-defaults), values and ranges in [04](04-security.md#leaf-certificates)), password-hash profile. **Updates** page: release check (on by default, [D4](14-open-decisions.md#product-and-project)), update channel (`stable` or `prerelease`), manifest upload for air-gapped installs, rollout policy (Phase 2) |
+| Instance (Instance Admin) | Default data-session transport (`auto`, `quic`, `h2`; shipped `auto`, [03](03-connections.md#transport-selection); [R] pin `h2` on routes or connectors that carry bulk transfers over high-delay paths, where it carried single streams faster in the Phase 1 measurements, [ADR-0004](adr/0004-quic-default-transport-policy.md#phase-1-measurements)), public URL aliases (each alias is also accepted as `Origin` by the CSRF check, [04](04-security.md#human-authentication-and-sessions)), ACME account, Cloudflare IP ranges (refreshed automatically), SMTP (optional: the relay's `host:port`, sender address, user name, and STARTTLS or TLS from the start, as the controller sends no mail in plain text; the password is write-only and kept under the KEK), retention (audit entries: 365 days by default, 30 to 3650 days; metric rollups), external audit sink (Phase 2), revocation-log sink ([Backup and restore](#backup-and-restore)), controller endpoints advertised to agents (each `https://<host>[:<port>]`, tried in order; agents get them at enrollment and in every snapshot, and the public URL alone while none are listed, [03](03-connections.md#reaching-a-private-controller)). **PKI** page: leaf-certificate lifetime and grace period ([D8](14-open-decisions.md#security-defaults), values and ranges in [04](04-security.md#leaf-certificates)), password-hash profile. **Updates** page: release check (on by default, [D4](14-open-decisions.md#product-and-project)), update channel (`stable` or `prerelease`), manifest upload for air-gapped installs, rollout policy (Phase 2) |
 | Org (Owner) | MFA requirement, OIDC providers and group→role mapping, default gateway group, Operator may enroll connectors, branding ([04](04-security.md#roles)) |
 | Gateway group (Admin) | Port pools, trusted-proxy CIDRs, DNS target for managed records, default TLS options, per-route limit defaults |
 | DNS (Owner/Admin; Instance Admin for the system org) | DNS providers and their tokens, managed zones and their gates. These are resources with their own pages, not settings ([15](15-dns.md)) |

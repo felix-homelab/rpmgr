@@ -26,7 +26,7 @@ func pushStopEnv(t *testing.T, sys context.Context, w *warnings, sources ...snap
 	return startSessionsWith(t, storetest.Migrated(t, store.SQLite), func(o *controller.SessionsOptions) {
 		o.Sys = sys
 		o.Logger = slog.New(w)
-		o.Compiler = &snapshot.Compiler{Sources: sources, Endpoints: func() []string { return []string{"https://ctl.example"} }}
+		o.Compiler = &snapshot.Compiler{Sources: sources, Endpoints: controller.AgentEndpoints("https://ctl.example")}
 		o.RevisionCheck = 20 * time.Millisecond
 	})
 }

@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -21,14 +22,17 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/fieldmaskpb"
 
 	agentv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/agent/v1"
+	rpmgrv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/v1"
 	"github.com/felix-homelab/rpmgr/internal/audit"
 	"github.com/felix-homelab/rpmgr/internal/controller"
 	"github.com/felix-homelab/rpmgr/internal/enroll"
 	"github.com/felix-homelab/rpmgr/internal/ids"
 	"github.com/felix-homelab/rpmgr/internal/pki"
 	"github.com/felix-homelab/rpmgr/internal/revlog"
+	"github.com/felix-homelab/rpmgr/internal/settings"
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/auditentry"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/connector"
@@ -64,7 +68,7 @@ func (e *env) server(t *testing.T) (string, *enroll.Service) {
 	cfg := pki.AgentEndpointConfig(pki.NewHolder(node), roots, pki.Expect{TrustDomain: td, Kinds: []pki.Kind{pki.KindConnector, pki.KindGateway}},
 		nil, pki.Reauth{})
 	srv := controller.NewAgentServer(cfg, td)
-	svc := enroll.NewService(e.db, e.ca, []string{"https://panel.example.com"}, func() time.Time { return e.clock })
+	svc := enroll.NewService(e.db, e.ca, "https://panel.example.com", func() time.Time { return e.clock })
 	agentv1.RegisterEnrollmentServer(srv, svc)
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -140,7 +144,7 @@ func TestEnroll_Connector(t *testing.T) {
 			t.Fatalf("identity %+v, %v", id, err)
 		}
 		if !resp.Ephemeral || len(resp.TrustBundle) != 1 || len(resp.SigningCertificates) != 2 ||
-			resp.ControllerEndpoints[0] != "https://panel.example.com" {
+			!slices.Equal(resp.ControllerEndpoints, []string{"https://panel.example.com"}) {
 			t.Errorf("response: %+v", resp)
 		}
 		root, err := x509.ParseCertificate(resp.TrustBundle[0])
@@ -261,6 +265,40 @@ func TestEnroll_GatewayToken(t *testing.T) {
 		}
 		if n := e.uses(t, tok2); n != 0 {
 			t.Errorf("the refused enrollment consumed the token")
+		}
+	})
+}
+
+// TestEnroll_ControllerEndpoints: with controller endpoints in the instance settings, a connector
+// and a gateway get those, in order, instead of the public URL.
+func TestEnroll_ControllerEndpoints(t *testing.T) {
+	setup(t, func(t *testing.T, e *env) {
+		listed := []string{"https://gw.example.net:8443", "https://[2001:db8::1]", "https://panel.example.com/"}
+		if _, err := settings.UpdateInstance(e.sys, e.db, &rpmgrv1.InstanceSettings{ControllerEndpoints: listed},
+			&fieldmaskpb.FieldMask{Paths: []string{"controller_endpoints"}}, 0); err != nil {
+			t.Fatal(err)
+		}
+		addr, _ := e.server(t)
+		c, creds := e.client(t, addr)
+		tok := e.mint(t, nil)
+		resp, err := c.Enroll(callCtx(t), &agentv1.EnrollRequest{Token: tok, Csr: boundCSR(t, creds),
+			Host: &agentv1.HostFacts{Hostname: "nas"}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !slices.Equal(resp.ControllerEndpoints, listed) {
+			t.Errorf("a connector got the endpoints %v, want %v", resp.ControllerEndpoints, listed)
+		}
+		group := e.db.Client().GatewayGroup.Create().SetOrgID(e.org).SetName("eu").SaveX(e.sys)
+		gw := e.db.Client().Gateway.Create().SetOrgID(e.org).SetGatewayGroupID(group.ID).SetName("edge").
+			SetTunnelEndpoints([]string{"edge.example.com:443"}).SaveX(e.sys)
+		tok = e.mint(t, func(c *ent.EnrollmentTokenCreate) { c.SetRole("gateway").SetGatewayID(gw.ID) })
+		resp, err = c.Enroll(callCtx(t), &agentv1.EnrollRequest{Token: tok, Csr: boundCSR(t, creds)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !slices.Equal(resp.ControllerEndpoints, listed) {
+			t.Errorf("a gateway got the endpoints %v, want %v", resp.ControllerEndpoints, listed)
 		}
 	})
 }

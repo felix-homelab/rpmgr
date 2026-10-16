@@ -366,6 +366,90 @@ func TestRun(t *testing.T) {
 	}
 }
 
+// TestRun_ControllerEndpoints: an agent gets the public URL at enrollment while the instance
+// settings list no controller endpoints, and the listed ones, in order, once they do; its snapshots
+// name them too, and a change of the list reaches it with its next snapshot, an emptied list the
+// public URL again.
+func TestRun_ControllerEndpoints(t *testing.T) {
+	r := startRun(t)
+	sys := storetest.SystemCtx(t)
+	db, err := store.OpenSQLite(context.Background(), r.h.db, store.SQLiteOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	org := storetest.Org(t, db, "org-a")
+	enroll := func() agent.Loaded {
+		t.Helper()
+		tok, _ := token.New(token.Enrollment)
+		db.Client().EnrollmentToken.Create().SetOrgID(org).SetTokenHash(token.Hash(tok)).SetRole("connector").
+			SetExpiresAt(time.Now().Add(time.Hour)).SetCreatedBy("usr_test").ExecX(sys)
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		dir := filepath.Join(t.TempDir(), "id")
+		if _, err := agent.Enroll(ctx, agent.EnrollOptions{Controller: r.url, Pin: r.pin, Token: tok, IdentityDir: dir,
+			HTTPClient: r.client, Host: &agentv1.HostFacts{Hostname: "test"}, Version: "0.1.0"}); err != nil {
+			t.Fatalf("enrollment: %v", err)
+		}
+		id, err := agent.Load(dir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return id
+	}
+	setEndpoints := func(eps ...string) {
+		t.Helper()
+		if _, err := settings.UpdateInstance(sys, db, &rpmgrv1.InstanceSettings{ControllerEndpoints: eps},
+			&fieldmaskpb.FieldMask{Paths: []string{"controller_endpoints"}}, 0); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	if id := enroll(); !slices.Equal(id.Endpoints, []string{r.url}) {
+		t.Fatalf("enrolled without the setting with the endpoints %v, want the public URL", id.Endpoints)
+	}
+	listed := []string{r.url, "https://gw.example.net:8443"}
+	setEndpoints(listed...)
+	id := enroll()
+	if !slices.Equal(id.Endpoints, listed) {
+		t.Fatalf("enrolled with the endpoints %v, want %v", id.Endpoints, listed)
+	}
+
+	// The agent's control session: every snapshot's endpoints, without applying it.
+	got := make(chan []string, 8)
+	c := agent.NewClient(agent.ClientOptions{Identity: id, Endpoints: id.Endpoints, Version: "0.1.0", BootID: "boot-1",
+		OnMessage: func(m *agentv1.ControllerMessage) {
+			if s := m.GetSnapshot(); s != nil {
+				snap := &agentv1.Snapshot{}
+				if err := proto.Unmarshal(s.GetPayload(), snap); err != nil {
+					snap.ControllerEndpoints = []string{"undecodable: " + err.Error()}
+				}
+				got <- snap.GetControllerEndpoints()
+			}
+		}})
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() { _ = c.Run(ctx); close(done) }()
+	t.Cleanup(func() { cancel(); <-done })
+	expect := func(what string, want []string) {
+		t.Helper()
+		select {
+		case eps := <-got:
+			if !slices.Equal(eps, want) {
+				t.Fatalf("snapshot %s: endpoints %v, want %v", what, eps, want)
+			}
+		case <-time.After(15 * time.Second):
+			t.Fatalf("no snapshot %s", what)
+		}
+	}
+	expect("at the session's start", listed)
+	changed := []string{"https://gw.example.net:8443", r.url}
+	setEndpoints(changed...)
+	expect("after the change", changed)
+	setEndpoints()
+	expect("after emptying the list", []string{r.url})
+}
+
 // TestRun_CertificateReload: new certificate files are served without a restart; a pair that does
 // not load keeps the previous certificate.
 func TestRun_CertificateReload(t *testing.T) {
@@ -516,19 +600,25 @@ func setACMEDirectory(t *testing.T, r *running, dir string) {
 	}
 }
 
-// TestRun_Refusals: a second controller on the same database, a missing KEK and a database without
-// an installation stop Run before it listens.
+// TestRun_Refusals: a second controller on the same database, a missing KEK, a database without
+// an installation and a proxy variable that is no proxy URL (D93) stop Run before it listens.
 func TestRun_Refusals(t *testing.T) {
 	r := startRun(t)
+	var env map[string]string
 	run := func(cfg config.Controller) error {
 		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 		defer cancel()
 		cfg.Listen.HTTPS, cfg.Listen.Admin = freeAddr(t), freeAddr(t)
 		none := ""
 		cfg.Listen.HTTP = &none
-		return controller.Run(ctx, controller.RunOptions{Config: cfg, Getenv: func(string) string { return "" },
+		return controller.Run(ctx, controller.RunOptions{Config: cfg, Getenv: func(k string) string { return env[k] },
 			Listening: func() { t.Error("Run started") }})
 	}
+	env = map[string]string{"ALL_PROXY": "ftp://ops:s3cret@proxy.lan"} //nolint:gosec // G101: a made-up test password
+	if err := run(r.cfg); err == nil || !strings.Contains(err.Error(), "ALL_PROXY is not") || strings.Contains(err.Error(), "s3cret") {
+		t.Fatalf("a bad ALL_PROXY: %v", err)
+	}
+	env = nil
 	if err := run(r.cfg); err == nil || !strings.Contains(err.Error(), "another controller") {
 		t.Fatalf("a second controller on the database: %v", err)
 	}
