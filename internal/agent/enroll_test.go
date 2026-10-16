@@ -104,7 +104,7 @@ func serve(t *testing.T, in *installation, agentCA *installation) (string, *http
 	}
 	split := controller.NewSplitter(in.td, ln.Addr())
 	grpcSrv := controller.NewAgentServer(cfg, in.td)
-	agentv1.RegisterEnrollmentServer(grpcSrv, enroll.NewService(in.db, in.ca, []string{"https://" + ln.Addr().String()}, nil))
+	agentv1.RegisterEnrollmentServer(grpcSrv, enroll.NewService(in.db, in.ca, "https://"+ln.Addr().String(), nil))
 	mux := http.NewServeMux()
 	mux.Handle("/.well-known/rpmgr/trust-bundle", enroll.TrustBundleHandler(in.ca.Root()))
 	uiCert, uiRoots := selfSigned(t)

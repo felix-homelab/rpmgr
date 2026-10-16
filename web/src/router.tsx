@@ -11,6 +11,7 @@ import { DomainsPage } from "@/pages/domains-page";
 import { Audit, validateAuditSearch } from "@/pages/audit";
 import { Forgot } from "@/pages/forgot";
 import { Pki } from "@/pages/pki";
+import { Users } from "@/pages/users";
 import { Settings, Updates } from "@/pages/settings";
 import { Invite } from "@/pages/invite";
 import { OrgPage } from "@/pages/org";
@@ -66,6 +67,7 @@ const audit = createRoute({ getParentRoute: () => app, path: "/audit", component
 const settings = createRoute({ getParentRoute: () => app, path: "/settings", component: Settings });
 const updates = createRoute({ getParentRoute: () => app, path: "/settings/updates", component: Updates });
 const pki = createRoute({ getParentRoute: () => app, path: "/settings/pki", component: Pki });
+const users = createRoute({ getParentRoute: () => app, path: "/settings/users", component: Users });
 const account = createRoute({
   getParentRoute: () => app,
   path: "/account",
@@ -86,7 +88,7 @@ const reset = createRoute({ getParentRoute: () => root, path: "/reset", componen
 const forgot = createRoute({ getParentRoute: () => root, path: "/forgot", component: Forgot });
 const invite = createRoute({ getParentRoute: () => root, path: "/invite", component: Invite });
 
-const routeTree = root.addChildren([app.addChildren([overview, routes, routeNew, routeDetail, routeEdit, connectors, connectorDetail, gateways, gatewayGroup, domains, policies, orgPage, audit, settings, updates, pki, account]), login, setup, reset, forgot, invite]);
+const routeTree = root.addChildren([app.addChildren([overview, routes, routeNew, routeDetail, routeEdit, connectors, connectorDetail, gateways, gatewayGroup, domains, policies, orgPage, audit, settings, updates, pki, users, account]), login, setup, reset, forgot, invite]);
 
 export function createAppRouter(context: RouterContext, history?: RouterHistory) {
   return createRouter({ routeTree, history, context, defaultPreload: "intent" });

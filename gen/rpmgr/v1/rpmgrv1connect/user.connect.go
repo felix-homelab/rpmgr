@@ -47,6 +47,12 @@ const (
 	// UserServiceCreatePasswordResetLinkProcedure is the fully-qualified name of the UserService's
 	// CreatePasswordResetLink RPC.
 	UserServiceCreatePasswordResetLinkProcedure = "/rpmgr.v1.UserService/CreatePasswordResetLink"
+	// UserServiceRemoveUserTOTPProcedure is the fully-qualified name of the UserService's
+	// RemoveUserTOTP RPC.
+	UserServiceRemoveUserTOTPProcedure = "/rpmgr.v1.UserService/RemoveUserTOTP"
+	// UserServiceSetInstanceAdminProcedure is the fully-qualified name of the UserService's
+	// SetInstanceAdmin RPC.
+	UserServiceSetInstanceAdminProcedure = "/rpmgr.v1.UserService/SetInstanceAdmin"
 	// UserServiceEnrollTOTPProcedure is the fully-qualified name of the UserService's EnrollTOTP RPC.
 	UserServiceEnrollTOTPProcedure = "/rpmgr.v1.UserService/EnrollTOTP"
 	// UserServiceConfirmTOTPProcedure is the fully-qualified name of the UserService's ConfirmTOTP RPC.
@@ -69,10 +75,20 @@ type UserServiceClient interface {
 	ChangePassword(context.Context, *connect.Request[v1.ChangePasswordRequest]) (*connect.Response[v1.ChangePasswordResponse], error)
 	// ListUsers lists every user of the instance, for the Instance Admin.
 	ListUsers(context.Context, *connect.Request[v1.ListUsersRequest]) (*connect.Response[v1.ListUsersResponse], error)
-	// CreatePasswordResetLink returns a one-time link that sets a user's password: the Instance
-	// Admin's for any user, an Owner's or Admin's for a member of their org (an Admin's not for an
-	// Owner). A user the caller may not reset is not found.
+	// CreatePasswordResetLink returns a one-time link that sets another user's password: the
+	// Instance Admin's for any user; an Owner's or Admin's for a user who is no Instance Admin and
+	// all of whose orgs are the caller's, as Owner, or as Admin where the user is no Owner. A user the
+	// caller may not reset is not found. A personal API token needs the scope members.write, or
+	// instance.admin, and a step-up of its own (docs/04-security.md, "Account recovery").
 	CreatePasswordResetLink(context.Context, *connect.Request[v1.CreatePasswordResetLinkRequest]) (*connect.Response[v1.CreatePasswordResetLinkResponse], error)
+	// RemoveUserTOTP removes another user's authenticator and recovery codes and ends their
+	// sessions, for a user who lost both: the Instance Admin's for any user; an Owner's for a user
+	// who is no Instance Admin and all of whose orgs the caller owns. A user the caller may not
+	// recover is not found; tokens as for CreatePasswordResetLink.
+	RemoveUserTOTP(context.Context, *connect.Request[v1.RemoveUserTOTPRequest]) (*connect.Response[v1.RemoveUserTOTPResponse], error)
+	// SetInstanceAdmin grants or revokes the Instance Admin role; the instance keeps at least one
+	// Instance Admin.
+	SetInstanceAdmin(context.Context, *connect.Request[v1.SetInstanceAdminRequest]) (*connect.Response[v1.SetInstanceAdminResponse], error)
 	// EnrollTOTP creates an authenticator secret for the caller, replacing one not confirmed yet;
 	// it counts once ConfirmTOTP accepted a code of it.
 	EnrollTOTP(context.Context, *connect.Request[v1.EnrollTOTPRequest]) (*connect.Response[v1.EnrollTOTPResponse], error)
@@ -130,6 +146,18 @@ func NewUserServiceClient(httpClient connect.HTTPClient, baseURL string, opts ..
 			connect.WithSchema(userServiceMethods.ByName("CreatePasswordResetLink")),
 			connect.WithClientOptions(opts...),
 		),
+		removeUserTOTP: connect.NewClient[v1.RemoveUserTOTPRequest, v1.RemoveUserTOTPResponse](
+			httpClient,
+			baseURL+UserServiceRemoveUserTOTPProcedure,
+			connect.WithSchema(userServiceMethods.ByName("RemoveUserTOTP")),
+			connect.WithClientOptions(opts...),
+		),
+		setInstanceAdmin: connect.NewClient[v1.SetInstanceAdminRequest, v1.SetInstanceAdminResponse](
+			httpClient,
+			baseURL+UserServiceSetInstanceAdminProcedure,
+			connect.WithSchema(userServiceMethods.ByName("SetInstanceAdmin")),
+			connect.WithClientOptions(opts...),
+		),
 		enrollTOTP: connect.NewClient[v1.EnrollTOTPRequest, v1.EnrollTOTPResponse](
 			httpClient,
 			baseURL+UserServiceEnrollTOTPProcedure,
@@ -164,6 +192,8 @@ type userServiceClient struct {
 	changePassword          *connect.Client[v1.ChangePasswordRequest, v1.ChangePasswordResponse]
 	listUsers               *connect.Client[v1.ListUsersRequest, v1.ListUsersResponse]
 	createPasswordResetLink *connect.Client[v1.CreatePasswordResetLinkRequest, v1.CreatePasswordResetLinkResponse]
+	removeUserTOTP          *connect.Client[v1.RemoveUserTOTPRequest, v1.RemoveUserTOTPResponse]
+	setInstanceAdmin        *connect.Client[v1.SetInstanceAdminRequest, v1.SetInstanceAdminResponse]
 	enrollTOTP              *connect.Client[v1.EnrollTOTPRequest, v1.EnrollTOTPResponse]
 	confirmTOTP             *connect.Client[v1.ConfirmTOTPRequest, v1.ConfirmTOTPResponse]
 	removeTOTP              *connect.Client[v1.RemoveTOTPRequest, v1.RemoveTOTPResponse]
@@ -193,6 +223,16 @@ func (c *userServiceClient) ListUsers(ctx context.Context, req *connect.Request[
 // CreatePasswordResetLink calls rpmgr.v1.UserService.CreatePasswordResetLink.
 func (c *userServiceClient) CreatePasswordResetLink(ctx context.Context, req *connect.Request[v1.CreatePasswordResetLinkRequest]) (*connect.Response[v1.CreatePasswordResetLinkResponse], error) {
 	return c.createPasswordResetLink.CallUnary(ctx, req)
+}
+
+// RemoveUserTOTP calls rpmgr.v1.UserService.RemoveUserTOTP.
+func (c *userServiceClient) RemoveUserTOTP(ctx context.Context, req *connect.Request[v1.RemoveUserTOTPRequest]) (*connect.Response[v1.RemoveUserTOTPResponse], error) {
+	return c.removeUserTOTP.CallUnary(ctx, req)
+}
+
+// SetInstanceAdmin calls rpmgr.v1.UserService.SetInstanceAdmin.
+func (c *userServiceClient) SetInstanceAdmin(ctx context.Context, req *connect.Request[v1.SetInstanceAdminRequest]) (*connect.Response[v1.SetInstanceAdminResponse], error) {
+	return c.setInstanceAdmin.CallUnary(ctx, req)
 }
 
 // EnrollTOTP calls rpmgr.v1.UserService.EnrollTOTP.
@@ -226,10 +266,20 @@ type UserServiceHandler interface {
 	ChangePassword(context.Context, *connect.Request[v1.ChangePasswordRequest]) (*connect.Response[v1.ChangePasswordResponse], error)
 	// ListUsers lists every user of the instance, for the Instance Admin.
 	ListUsers(context.Context, *connect.Request[v1.ListUsersRequest]) (*connect.Response[v1.ListUsersResponse], error)
-	// CreatePasswordResetLink returns a one-time link that sets a user's password: the Instance
-	// Admin's for any user, an Owner's or Admin's for a member of their org (an Admin's not for an
-	// Owner). A user the caller may not reset is not found.
+	// CreatePasswordResetLink returns a one-time link that sets another user's password: the
+	// Instance Admin's for any user; an Owner's or Admin's for a user who is no Instance Admin and
+	// all of whose orgs are the caller's, as Owner, or as Admin where the user is no Owner. A user the
+	// caller may not reset is not found. A personal API token needs the scope members.write, or
+	// instance.admin, and a step-up of its own (docs/04-security.md, "Account recovery").
 	CreatePasswordResetLink(context.Context, *connect.Request[v1.CreatePasswordResetLinkRequest]) (*connect.Response[v1.CreatePasswordResetLinkResponse], error)
+	// RemoveUserTOTP removes another user's authenticator and recovery codes and ends their
+	// sessions, for a user who lost both: the Instance Admin's for any user; an Owner's for a user
+	// who is no Instance Admin and all of whose orgs the caller owns. A user the caller may not
+	// recover is not found; tokens as for CreatePasswordResetLink.
+	RemoveUserTOTP(context.Context, *connect.Request[v1.RemoveUserTOTPRequest]) (*connect.Response[v1.RemoveUserTOTPResponse], error)
+	// SetInstanceAdmin grants or revokes the Instance Admin role; the instance keeps at least one
+	// Instance Admin.
+	SetInstanceAdmin(context.Context, *connect.Request[v1.SetInstanceAdminRequest]) (*connect.Response[v1.SetInstanceAdminResponse], error)
 	// EnrollTOTP creates an authenticator secret for the caller, replacing one not confirmed yet;
 	// it counts once ConfirmTOTP accepted a code of it.
 	EnrollTOTP(context.Context, *connect.Request[v1.EnrollTOTPRequest]) (*connect.Response[v1.EnrollTOTPResponse], error)
@@ -283,6 +333,18 @@ func NewUserServiceHandler(svc UserServiceHandler, opts ...connect.HandlerOption
 		connect.WithSchema(userServiceMethods.ByName("CreatePasswordResetLink")),
 		connect.WithHandlerOptions(opts...),
 	)
+	userServiceRemoveUserTOTPHandler := connect.NewUnaryHandler(
+		UserServiceRemoveUserTOTPProcedure,
+		svc.RemoveUserTOTP,
+		connect.WithSchema(userServiceMethods.ByName("RemoveUserTOTP")),
+		connect.WithHandlerOptions(opts...),
+	)
+	userServiceSetInstanceAdminHandler := connect.NewUnaryHandler(
+		UserServiceSetInstanceAdminProcedure,
+		svc.SetInstanceAdmin,
+		connect.WithSchema(userServiceMethods.ByName("SetInstanceAdmin")),
+		connect.WithHandlerOptions(opts...),
+	)
 	userServiceEnrollTOTPHandler := connect.NewUnaryHandler(
 		UserServiceEnrollTOTPProcedure,
 		svc.EnrollTOTP,
@@ -319,6 +381,10 @@ func NewUserServiceHandler(svc UserServiceHandler, opts ...connect.HandlerOption
 			userServiceListUsersHandler.ServeHTTP(w, r)
 		case UserServiceCreatePasswordResetLinkProcedure:
 			userServiceCreatePasswordResetLinkHandler.ServeHTTP(w, r)
+		case UserServiceRemoveUserTOTPProcedure:
+			userServiceRemoveUserTOTPHandler.ServeHTTP(w, r)
+		case UserServiceSetInstanceAdminProcedure:
+			userServiceSetInstanceAdminHandler.ServeHTTP(w, r)
 		case UserServiceEnrollTOTPProcedure:
 			userServiceEnrollTOTPHandler.ServeHTTP(w, r)
 		case UserServiceConfirmTOTPProcedure:
@@ -354,6 +420,14 @@ func (UnimplementedUserServiceHandler) ListUsers(context.Context, *connect.Reque
 
 func (UnimplementedUserServiceHandler) CreatePasswordResetLink(context.Context, *connect.Request[v1.CreatePasswordResetLinkRequest]) (*connect.Response[v1.CreatePasswordResetLinkResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("rpmgr.v1.UserService.CreatePasswordResetLink is not implemented"))
+}
+
+func (UnimplementedUserServiceHandler) RemoveUserTOTP(context.Context, *connect.Request[v1.RemoveUserTOTPRequest]) (*connect.Response[v1.RemoveUserTOTPResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("rpmgr.v1.UserService.RemoveUserTOTP is not implemented"))
+}
+
+func (UnimplementedUserServiceHandler) SetInstanceAdmin(context.Context, *connect.Request[v1.SetInstanceAdminRequest]) (*connect.Response[v1.SetInstanceAdminResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("rpmgr.v1.UserService.SetInstanceAdmin is not implemented"))
 }
 
 func (UnimplementedUserServiceHandler) EnrollTOTP(context.Context, *connect.Request[v1.EnrollTOTPRequest]) (*connect.Response[v1.EnrollTOTPResponse], error) {

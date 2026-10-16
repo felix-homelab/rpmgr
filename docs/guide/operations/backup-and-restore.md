@@ -25,7 +25,7 @@ What a backup does **not** hold, and how to keep it:
 |---|---|---|
 | The KEK | `/etc/rpmgr/credstore/rpmgr-kek` (systemd credential) or `/etc/rpmgr/kek` (file) | Separately, apart from the backups ([below](#back-up-the-kek)) |
 | The boot file, the local policy, the web UI's certificate files | `/etc/rpmgr/` | A copy of the directory; the certificate's key is secret |
-| On an all-in-one, the identities of its built-in gateway and connector | `/var/lib/rpmgr/gateway/identity`, `/var/lib/rpmgr/connector/identity` | A copy, kept as safe as the KEK: it holds the gateway's private key ([below](#restore-an-all-in-one)) |
+| On an all-in-one, the identities of its built-in gateway and connector | `/var/lib/rpmgr/gateway/identity`, `/var/lib/rpmgr/connector/identity` | Not needed: the all-in-one enrolls them again when they are missing or out of date ([below](#restore-an-all-in-one)) |
 | The release mirror | `/var/lib/rpmgr/dl/` | Not needed: the controller fetches it again, or you import it ([Air-gapped installations](../install/air-gapped.md)) |
 
 The KEK and the database belong apart: a backup without its KEK cannot reveal the secrets in it, and
@@ -214,10 +214,9 @@ When the old host is lost, or to move the controller:
 
    Without a sink, pass the old host's `revocations.log` if you still have it. Without either, the
    restore fails closed.
-5. **Install the unit and start it,** here for a controller; for an all-in-one, first put back its
-   gateway's identity ([below](#restore-an-all-in-one)) and use `all-in-one` in place of
-   `controller`. The unit makes the revocation-log sink of the boot file writable
-   ([above](#the-revocation-log-sink)).
+5. **Install the unit and start it,** here for a controller; for an all-in-one, use `all-in-one` in
+   place of `controller` ([below](#restore-an-all-in-one)). The unit makes the revocation-log sink
+   of the boot file writable ([above](#the-revocation-log-sink)).
 
    ```sh
    rpmgr systemd-unit controller | sudo tee /etc/systemd/system/rpmgr-controller.service >/dev/null
@@ -225,22 +224,34 @@ When the old host is lost, or to move the controller:
    sudo systemctl enable --now rpmgr-controller
    ```
 
-Agents find the new host by the public URL, as before.
+Agents find the new host as before: by the public URL, or by the **Controller endpoints for
+agents** the restored instance settings list, which must then lead to the new host too
+([Settings](settings.md#web-ui-and-controller-endpoints)).
 
 ### Restore an all-in-one
 
 An all-in-one's built-in gateway and connector keep their identities in the state directory, which
-the backup does not hold:
+the backup does not hold. The all-in-one recovers them by itself at start, before its gateway runs
+([10](../../10-operations.md#install)):
 
 - **On the same host,** they stay in place.
-- **On a new host,** put the old host's `/var/lib/rpmgr/gateway/identity` back before you start the
-  service, owned by the user `rpmgr`: without the gateway's identity, the all-in-one does not start.
-  The built-in connector enrolls again by itself when its identity is missing.
+- **On a new host,** their identities are missing: the all-in-one enrolls each again through its
+  own controller, as the same gateway and connector, with their IDs and routes.
 - **Renewed after the backup:** the built-in gateway and connector renew their certificates like
-  any agent, and the restored database does not know a certificate issued after the backup. The
-  built-in connector gets a new identity when you delete `/var/lib/rpmgr/connector/identity` and
-  restart the service ([10](../../10-operations.md#install)). The built-in gateway takes no
-  enrollment token, so restore an all-in-one from the newest backup you have.
+  any agent, so the restored database may not know the certificate an identity holds. The
+  all-in-one then enrolls that agent again too, as it does one whose certificate is revoked or
+  expired longer than the grace period.
+
+Each enrollment revokes the certificates the restored database records for the agent, and the audit
+log shows the token it used with the reason, such as "all-in-one's own gateway: its identity is
+missing". A certificate issued after the backup, which the restored database does not record, stays
+valid until it expires, as any agent's does ([What the restore changes](#what-the-restore-changes)):
+on a move, stop the old host for good.
+
+An identity that names another agent, such as a copy from another installation, is replaced in the
+same way. An identity that cannot be read at all stops the start with its path: delete that
+directory and start the service again. So does one that is revoked as a whole, which enrolling again
+as the same agent cannot lift.
 
 ### What the restore changes
 

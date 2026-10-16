@@ -2,16 +2,16 @@
 
 The **Settings** pages hold the runtime settings, which the controller keeps in its database: the
 organisation's settings, which every member sees and its Owner changes, and the instance's
-settings, PKI and updates, which only the Instance Admin sees and changes. Settings a host reads at
-start, such as listen addresses, are in its boot file instead
+settings, PKI, updates and users, which only the Instance Admin sees and changes. Settings a host
+reads at start, such as listen addresses, are in its boot file instead
 ([Boot files](../reference/boot-files.md)). The how-to page, with what each setting does and its
 default, is [Settings](../operations/settings.md).
 
 ![The settings page as the Instance Admin sees it](../images/web/settings.png)
 
-The Instance Admin moves between three pages with the tabs under the title: **Settings**, **PKI**
-and **Updates**. Other members see no tabs; **PKI** and **Updates** tell them that only the
-Instance Admin sees and changes these.
+The Instance Admin moves between four pages with the tabs under the title: **Settings**, **PKI**,
+**Updates** and **Users**. Other members see no tabs; **PKI**, **Updates** and **Users** tell them
+that only the Instance Admin sees and changes these.
 
 Each page saves only its own fields, with **Save**, and says `Saved.` If the settings changed since
 the page loaded them, it says so, shows them as they are now and asks you to try again.
@@ -91,6 +91,20 @@ GiB)**). Their ranges and defaults are in the design documents
 
 Uploading a release for an air-gapped installation is not on this page yet; `rpmgr release import`
 does it on the controller host ([Air-gapped installations](../install/air-gapped.md)).
+
+## Users
+
+![The users page](../images/web/settings-users.png)
+
+**Users** lists every account of the installation: **Name**, **E-mail address**, **Instance
+Admin**, **Second factor**, **Status** and **Last sign-in**. Each row's **Actions**, after a
+[step-up](README.md#the-step-up-dialog):
+
+- **Make Instance Admin…** or **Revoke Instance Admin…**, after a confirmation. The installation
+  keeps at least one active Instance Admin: revoking the last one is refused, and the row says so.
+- **Reset link** and, for a user with an authenticator, **Remove second factor…**, as on the
+  **Organisation** page, but for any user except yourself
+  ([Members and roles](../accounts/members-and-roles.md#recover-a-members-account)).
 
 ## On the command line
 

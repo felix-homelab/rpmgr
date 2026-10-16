@@ -33,9 +33,11 @@ history and the [ADRs](docs/adr/).
   the public URL's host if that is a valid one, with the enrolled gateway `local`, and the
   connector `local`, which publishes services on the same host as its local policy allows, never
   rpmgr's own ports, over in-memory data sessions. An all-in-one initialised before gets its
-  connector at the next start. Its own gateway and connector cannot be decommissioned. `rpmgr
-  setup` asks for the connector's allowed and denied targets, and `rpmgr policy` reloads the
-  all-in-one on a host without a separate connector. (#268, #269, #484, #493, #535, #537, #538)
+  connector at the next start. Its own gateway and connector cannot be decommissioned; after a
+  restore on a new host, or from a backup older than their certificates, it enrolls them again at
+  start. `rpmgr setup` asks for the connector's allowed and denied targets, and `rpmgr policy`
+  reloads the all-in-one on a host without a separate connector. (#268, #269, #484, #493, #535,
+  #537, #538, #555)
 - Controller: a controller without a public address can stay on a private network, published
   through a gateway that passes its hostnames through to it. (#285)
 - Controller: serves `/install.sh`. The script downloads the controller's own release from the
@@ -70,6 +72,9 @@ history and the [ADRs](docs/adr/).
 - Connector: reaches its gateways through an HTTP CONNECT or SOCKS5 proxy (`HTTPS_PROXY`,
   `ALL_PROXY`) where only a proxy leads out, and carries its control session inside a data session
   when no controller endpoint is reachable. (#245, #267, #286)
+- Controller: its requests to the ACME CA, to GitHub and to a domain's HTTP token follow the proxy
+  variables as the connector reads them, `ALL_PROXY` included; a proxy variable that is no proxy
+  URL stops the start with a message that names the variable without its value. (#560)
 - Connector: the connector-local policy, `/etc/rpmgr/policy.yaml`, limits the targets a connector
   dials, even for a compromised controller. A target is an address or a subnet, such as
   `10.0.0.1/16` (stored as `10.0.0.0/16`), with an optional port or port range such as
@@ -147,6 +152,12 @@ history and the [ADRs](docs/adr/).
   #313, #314, #316, #321)
 - API: orgs with members and roles. Invitations and password resets are one-time links, also sent
   by e-mail when an SMTP relay is configured. (#318, #319, #349)
+- All roles: administrators recover other users' accounts after a step-up, in the web UI and
+  through the API: a password-reset link, by an Owner or Admin for their members and by the
+  Instance Admin for anyone, and the removal of a lost second factor, by an Owner or the Instance
+  Admin, which ends the user's sessions. An Owner or Admin recovers only users all of whose
+  organisations they hold, and no Instance Admin. The Instance Admin grants and revokes the Instance
+  Admin role on the new Users page; the last one keeps it. (#562)
 - API: personal API tokens for the CLI and scripts, each bound to one org and limited to
   permissions its owner holds; a token can step up. (#320, #346)
 - API: services for gateway groups, gateways, port pools and quotas, enrollment tokens and install

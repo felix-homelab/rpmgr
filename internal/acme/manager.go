@@ -24,6 +24,7 @@ import (
 	rpmgrv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/v1"
 	"github.com/felix-homelab/rpmgr/internal/certs"
 	"github.com/felix-homelab/rpmgr/internal/lease"
+	"github.com/felix-homelab/rpmgr/internal/proxyenv"
 	"github.com/felix-homelab/rpmgr/internal/secret"
 	"github.com/felix-homelab/rpmgr/internal/settings"
 	"github.com/felix-homelab/rpmgr/internal/store"
@@ -74,8 +75,8 @@ type ManagerOptions struct {
 	Sys     context.Context // the system scope
 	Sealer  *secret.Sealer
 	Storage certmagic.Storage // normally a ChallengeStorage
-	// Proxy chooses the proxy of the ACME client's requests; nil is http.ProxyFromEnvironment
-	// (HTTPS_PROXY, ALL_PROXY, NO_PROXY; R44).
+	// Proxy chooses the proxy of the ACME client's requests; nil is proxyenv.FromEnvironment
+	// (HTTPS_PROXY, else ALL_PROXY; NO_PROXY; R44, D93).
 	Proxy func(*http.Request) (*url.URL, error)
 	// TrustedRoots, if set, replaces the system roots for the CA's own TLS certificate (tests).
 	TrustedRoots *x509.CertPool
@@ -120,7 +121,7 @@ func NewManager(o ManagerOptions) *Manager {
 		o.Logger = slog.New(slog.DiscardHandler)
 	}
 	if o.Proxy == nil {
-		o.Proxy = http.ProxyFromEnvironment
+		o.Proxy = proxyenv.FromEnvironment
 	}
 	if o.RetryFirst == 0 {
 		o.RetryFirst = RetryFirst

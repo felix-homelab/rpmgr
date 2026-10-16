@@ -63,6 +63,9 @@ type RestoreResult struct {
 	// Review lists why the revocations since the backup may be incomplete. Then the restore failed
 	// closed and the instance is in restore review.
 	Review []string
+	// Kept lists the revocations since the backup not applied again, because the restored instance
+	// would have no active Instance Admin without them; the Instance Admin checks them.
+	Kept []string
 }
 
 // ErrControllerRunning is returned by Restore while a controller holds the database.
@@ -295,6 +298,11 @@ func prepare(ctx context.Context, dbPath, logPath string, info BackupInfo, newer
 		}
 		for _, e := range newer {
 			known, err := reapply(sys, tx, info.TrustDomain, e)
+			if errors.Is(err, errKeptInstanceAdmin) {
+				res.Kept = append(res.Kept, fmt.Sprintf("the Instance Admin role of %s, revoked %s, stays: the backup has no other active Instance Admin",
+					e.Subject, e.Time.UTC().Format(time.RFC3339)))
+				err = nil
+			}
 			if err != nil {
 				return fmt.Errorf("controller: applying %s %s again: %w", e.Kind, e.Subject, err)
 			}
@@ -314,8 +322,8 @@ func prepare(ctx context.Context, dbPath, logPath string, info BackupInfo, newer
 		}
 		_, err := audit.Append(sys, tx, audit.Entry{ActorType: audit.ActorSystem, ActorID: "local-cli", Action: "instance.restore",
 			TargetType: "instance", TargetID: res.NewEpoch, Result: audit.Success,
-			Reason: fmt.Sprintf("backup of %s, epoch %s; %d revocations since applied again, %d of them to subjects the backup does not hold",
-				info.Created.UTC().Format(time.RFC3339), info.DBEpoch, res.Reapplied, res.Unknown)})
+			Reason: fmt.Sprintf("backup of %s, epoch %s; %d revocations since applied again, %d of them to subjects the backup does not hold%s",
+				info.Created.UTC().Format(time.RFC3339), info.DBEpoch, res.Reapplied, res.Unknown, keptReason(res.Kept))})
 		return err
 	})
 	if err != nil {
@@ -397,6 +405,8 @@ func reapply(ctx context.Context, tx *ent.Tx, td string, e revlog.Entry) (bool, 
 		return n > 0, err
 	case revlog.RoleDowngraded:
 		return downgrade(ctx, tx, e.Org, e.Subject, membership.Role(e.Detail))
+	case revlog.InstanceAdminRevoked:
+		return revokeInstanceAdmin(ctx, tx, e.Subject)
 	case revlog.CredentialSuperseded:
 		return supersede(ctx, tx, e.Subject, e.Detail)
 	case revlog.SessionRevoked, revlog.GrantRemoved:
@@ -483,6 +493,38 @@ func downgrade(ctx context.Context, tx *ent.Tx, org, userID string, role members
 		err = tx.Membership.UpdateOne(m).SetRole(role).Exec(ctx)
 	}
 	return true, err
+}
+
+// errKeptInstanceAdmin reports an Instance Admin revocation that a restore does not apply again.
+var errKeptInstanceAdmin = errors.New("controller: the restored instance keeps its last active Instance Admin")
+
+// revokeInstanceAdmin revokes a user's Instance Admin role again, unless that would leave the
+// restored instance without an active Instance Admin to review it, as when every other one was
+// made after the backup: then it keeps the role and returns errKeptInstanceAdmin.
+func revokeInstanceAdmin(ctx context.Context, tx *ent.Tx, userID string) (bool, error) {
+	u, err := tx.User.Get(ctx, userID)
+	if ent.IsNotFound(err) {
+		return false, nil
+	}
+	if err != nil || !u.InstanceAdmin {
+		return err == nil, err
+	}
+	n, err := tx.User.Query().Where(user.InstanceAdmin(true), user.StatusEQ(user.StatusActive), user.IDNEQ(userID)).Count(ctx)
+	if err != nil {
+		return true, err
+	}
+	if n == 0 {
+		return true, errKeptInstanceAdmin
+	}
+	return true, tx.User.UpdateOne(u).SetInstanceAdmin(false).Exec(ctx)
+}
+
+// keptReason is the part of the restore's audit reason that names the revocations it kept.
+func keptReason(kept []string) string {
+	if len(kept) == 0 {
+		return ""
+	}
+	return "; kept: " + strings.Join(kept, "; ")
 }
 
 // supersede undoes a credential that the backup holds but that was replaced after it, because the

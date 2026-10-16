@@ -102,8 +102,10 @@ you type one, upper or lower case and dashes do not matter.
   check your API tokens and revoke any you did not make: new codes do not end them
   ([API tokens](api-tokens-and-cli.md#list-and-revoke-tokens)).
 - **Lost phone:** sign in with a recovery code, remove the authenticator and set up a new one.
-- **Lost phone and codes:** this version has no way for an administrator to remove another user's
-  authenticator, so the account cannot sign in again. Keep the codes safe.
+- **Lost phone and codes:** ask an Owner of your organisation, or the Instance Admin, to remove
+  your second factor ([Members and roles](members-and-roles.md#recover-a-members-account)). Your
+  sessions end; sign in with your password and set up a new authenticator. Keep the codes safe:
+  until then, you cannot sign in.
 
 ## Remove the authenticator
 
@@ -178,11 +180,9 @@ answers that the controller cannot send e-mail. Ask for a reset link instead:
 
   It prints a one-time link to pass on. Such local administration needs no account and is audited
   ([04](../../04-security.md#roles)).
-- **Through the API**, an Owner or Admin can make a link for a member of their organisation (an
-  Admin not for an Owner), and the Instance Admin for any user, with
-  `UserService.CreatePasswordResetLink` ([API](../reference/api.md)). It needs a signed-in browser
-  session and a step-up; it refuses an API token. The web UI and the command line have no button
-  or command for it in this version.
+- **An Owner or Admin** of your organisation, or the Instance Admin, makes one with **Reset link**
+  on the **Organisation** page
+  ([Members and roles](members-and-roles.md#recover-a-members-account)).
 
 The person then opens the link and sets a password as in step 3 above.
 

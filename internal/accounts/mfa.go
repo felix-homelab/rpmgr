@@ -122,13 +122,15 @@ func (m *MFA) ConfirmTOTP(userID, code string) ([]string, error) {
 		if codes, err = m.newRecoveryCodes(tx, userID); err != nil {
 			return err
 		}
-		return m.superseded(tx, userID, "user.mfa_enroll", revlog.MFA, "authenticator set up")
+		return m.superseded(tx, userID, userID, "user.mfa_enroll", revlog.MFA, "authenticator set up")
 	})
 	return codes, err
 }
 
-// RemoveTOTP removes a user's authenticator and recovery codes.
-func (m *MFA) RemoveTOTP(userID, actor string) error {
+// RemoveTOTP removes a user's authenticator and recovery codes and, in the same transaction, ends
+// the sessions endSessions ends; actor is the user, or the admin who recovers their account, for
+// whom orgs, the user's, get an entry in their audit logs too.
+func (m *MFA) RemoveTOTP(userID, actor string, endSessions func(tx *ent.Tx) (int, error), orgs ...string) error {
 	return store.WriteTx(m.sys, m.db, func(tx *ent.Tx) error {
 		n, err := tx.TOTPCredential.Delete().Where(totpcredential.UserID(userID)).Exec(m.sys)
 		if err != nil || n == 0 {
@@ -137,7 +139,21 @@ func (m *MFA) RemoveTOTP(userID, actor string) error {
 		if _, err := tx.RecoveryCode.Delete().Where(recoverycode.UserID(userID)).Exec(m.sys); err != nil {
 			return err
 		}
-		return m.superseded(tx, userID, "user.mfa_remove", revlog.MFA, "authenticator removed by "+actor)
+		ended := 0
+		if endSessions != nil {
+			if ended, err = endSessions(tx); err != nil {
+				return err
+			}
+		}
+		reason := fmt.Sprintf("authenticator removed; %d sessions ended", ended)
+		if actor == userID {
+			return m.superseded(tx, userID, actor, "user.mfa_remove", revlog.MFA, reason)
+		}
+		reason = fmt.Sprintf("authenticator removed by an admin; %d sessions ended", ended)
+		if err := m.superseded(tx, userID, actor, "user.mfa_remove", revlog.MFA, reason); err != nil {
+			return err
+		}
+		return recoveryAudit(m.sys, tx, orgs, actor, "member.mfa_remove", userID, reason)
 	})
 }
 
@@ -161,7 +177,7 @@ func (m *MFA) RegenerateRecoveryCodes(userID string, endSessions func(tx *ent.Tx
 				return err
 			}
 		}
-		return m.superseded(tx, userID, "user.recovery_codes", revlog.RecoveryCodes,
+		return m.superseded(tx, userID, userID, "user.recovery_codes", revlog.RecoveryCodes,
 			fmt.Sprintf("recovery codes replaced; %d other sessions ended", ended))
 	})
 	if err != nil {
@@ -238,11 +254,11 @@ func (m *MFA) newRecoveryCodes(tx *ent.Tx, userID string) ([]string, error) {
 	return codes, nil
 }
 
-// superseded records a change of a user's credentials in the audit log and, as what, in the
-// revocation log.
-func (m *MFA) superseded(tx *ent.Tx, userID, action, what, reason string) error {
-	logSuperseded(m.RevLog, m.Logger, userID, what, userID)
-	_, err := audit.Append(m.sys, tx, audit.Entry{ActorType: audit.ActorUser, ActorID: userID, Action: action,
+// superseded records a change of a user's credentials by actor in the audit log and, as what, in
+// the revocation log.
+func (m *MFA) superseded(tx *ent.Tx, userID, actor, action, what, reason string) error {
+	logSuperseded(m.RevLog, m.Logger, userID, what, actor)
+	_, err := audit.Append(m.sys, tx, audit.Entry{ActorType: audit.ActorUser, ActorID: actor, Action: action,
 		TargetType: "user", TargetID: userID, Result: audit.Success, Reason: reason})
 	return err
 }
