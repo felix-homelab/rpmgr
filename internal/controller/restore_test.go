@@ -250,6 +250,43 @@ func TestRestore_RevocationsReapplied(t *testing.T) {
 	}
 }
 
+// TestRestore_InstanceAdminRevoked (D95): an Instance Admin role revoked after the backup stays
+// revoked, unless that would leave the restored instance without an active Instance Admin, as when
+// the only other one was made after the backup.
+func TestRestore_InstanceAdminRevoked(t *testing.T) {
+	ctx := context.Background()
+	x := startRestoreEnv(t, storetest.Migrated(t, store.SQLite))
+	ps := newPeople(t, x)
+	if _, err := ps.mfa.SetInstanceAdmin(ctx, ps.bob, true, ps.owner); err != nil {
+		t.Fatal(err)
+	}
+	archive := x.backup(t)
+
+	// After the backup: Ada revokes Bob; Carol becomes Instance Admin and revokes Ada.
+	for _, step := range []struct {
+		user, by string
+		on       bool
+	}{{ps.bob, ps.owner, false}, {ps.carol, ps.owner, true}, {ps.owner, ps.carol, false}} {
+		if _, err := ps.mfa.SetInstanceAdmin(ctx, step.user, step.on, step.by); err != nil {
+			t.Fatal(err)
+		}
+	}
+	r, res := x.restore(t, archive)
+	if len(res.Review) > 0 {
+		t.Errorf("a complete log failed closed: %v", res.Review)
+	}
+	c := r.db.Client()
+	if c.User.GetX(r.sys, ps.bob).InstanceAdmin {
+		t.Error("Bob is Instance Admin again")
+	}
+	if !c.User.GetX(r.sys, ps.owner).InstanceAdmin {
+		t.Error("the restored instance has no Instance Admin: Ada's revocation was applied")
+	}
+	if c.User.GetX(r.sys, ps.carol).InstanceAdmin {
+		t.Error("Carol, made Instance Admin after the backup, is one")
+	}
+}
+
 // checkRestored checks that every revocation of TestRestore_RevocationsReapplied is in effect on r.
 func checkRestored(t *testing.T, r *restoreEnv, ps *people, leaked, late tls.Certificate, apiTok string) {
 	t.Helper()

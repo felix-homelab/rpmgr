@@ -87,7 +87,7 @@ rpmgr <command>
 | [`rpmgr trust`](#rpmgr-trust) | Trust something without a proof |
 | [`rpmgr upload`](#rpmgr-upload) | Upload a file to the controller |
 | [`rpmgr renew`](#rpmgr-renew) | Renew a certificate now |
-| [`rpmgr remove`](#rpmgr-remove) | Remove a member from the org |
+| [`rpmgr remove`](#rpmgr-remove) | Remove a member from the org, or a user's second factor |
 
 ## rpmgr controller
 
@@ -664,6 +664,7 @@ rpmgr create <command>
 | [`rpmgr create access-policy`](#rpmgr-create-access-policy) | Create an access policy of IP rules, where a deny wins, and basic auth |
 | [`rpmgr create invitation`](#rpmgr-create-invitation) | Invite someone to the org and print the one-time link; as Admin or Owner it takes a step-up |
 | [`rpmgr create token`](#rpmgr-create-token) | Personal API tokens are made in the web UI |
+| [`rpmgr create reset-link`](#rpmgr-create-reset-link) | Print a one-time link that sets a member's password, for one who forgot it; takes a step-up |
 
 ## rpmgr create route
 
@@ -881,6 +882,14 @@ Personal API tokens are made in the web UI.
 rpmgr create token
 ```
 
+## rpmgr create reset-link
+
+Print a one-time link that sets a member's password, for one who forgot it; takes a step-up.
+
+```text
+rpmgr create reset-link <user ID or e-mail address>
+```
+
 ## rpmgr update
 
 Change a resource of the public API.
@@ -900,6 +909,7 @@ rpmgr update <command>
 | [`rpmgr update ca-bundle`](#rpmgr-update-ca-bundle) | Change the fields of a ca bundle that the flags name |
 | [`rpmgr update access-policy`](#rpmgr-update-access-policy) | Change an access policy's name, description or rules |
 | [`rpmgr update member`](#rpmgr-update-member) | Change a member's role; granting Admin or Owner takes a step-up |
+| [`rpmgr update user`](#rpmgr-update-user) | Grant or revoke the Instance Admin role; as Instance Admin, with a step-up |
 | [`rpmgr update settings`](#rpmgr-update-settings) | Change the org's settings, or with --instance the instance's |
 
 ## rpmgr update route
@@ -1075,6 +1085,18 @@ rpmgr update member [flags] <user ID or e-mail address>
 | Flag | Default | Description |
 |---|---|---|
 | `--role string` |  | the new role: owner, admin, operator or viewer |
+
+## rpmgr update user
+
+Grant or revoke the Instance Admin role; as Instance Admin, with a step-up.
+
+```text
+rpmgr update user [flags] <user ID or e-mail address>
+```
+
+| Flag | Default | Description |
+|---|---|---|
+| `--instance-admin` |  | grant the Instance Admin role, or revoke it with --instance-admin=false |
 
 ## rpmgr update settings
 
@@ -1431,7 +1453,7 @@ rpmgr renew certificate <id>
 
 ## rpmgr remove
 
-Remove a member from the org.
+Remove a member from the org, or a user's second factor.
 
 ```text
 rpmgr remove <command>
@@ -1440,6 +1462,7 @@ rpmgr remove <command>
 | Command | What it does |
 |---|---|
 | [`rpmgr remove member`](#rpmgr-remove-member) | End a membership; the user's tokens lose their access to the org |
+| [`rpmgr remove second-factor`](#rpmgr-remove-second-factor) | Remove a user's authenticator and recovery codes, for one who lost both, and end their sessions; takes a step-up |
 
 ## rpmgr remove member
 
@@ -1447,4 +1470,12 @@ End a membership; the user's tokens lose their access to the org.
 
 ```text
 rpmgr remove member <user ID or e-mail address>
+```
+
+## rpmgr remove second-factor
+
+Remove a user's authenticator and recovery codes, for one who lost both, and end their sessions; takes a step-up.
+
+```text
+rpmgr remove second-factor <user ID or e-mail address>
 ```

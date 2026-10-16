@@ -34,8 +34,11 @@ The full table, with the permissions of later phases, is in the design documents
 The Instance Admin is a role of the whole installation, beside the organisation's roles: it
 manages the CA, the instance's settings, the PKI and updates pages, the instance's audit log, and
 trusted domains. The first user of an installation is the Owner of the first organisation and the
-Instance Admin ([The first user](sign-in-and-mfa.md#the-first-user)). In this version the API has
-no call that makes another user Instance Admin.
+Instance Admin ([The first user](sign-in-and-mfa.md#the-first-user)). An Instance Admin makes
+another user Instance Admin, or revokes the role, on **Settings**, tab **Users**
+([Settings](../web-ui/settings.md#users)), or with
+`rpmgr update user --instance-admin <user>` and `--instance-admin=false`, each after a step-up. The
+installation keeps at least one active Instance Admin: the last one cannot give the role up.
 
 Administrative commands on the controller host, such as `rpmgr backup`, `rpmgr ca` and
 `rpmgr user reset-password`, need no role at all: they are allowed to whoever may run them as root
@@ -118,6 +121,32 @@ A lower role applies from the member's next request, to their sessions and their
 The membership ends at once; the user's API tokens lose their access to the organisation. The
 account itself stays, with its other memberships. `rpmgr list member` lists the members with their
 roles.
+
+## Recover a member's account
+
+When a member forgot the password, or lost both the authenticator and its recovery codes, an
+administrator recovers the account. Each recovery takes a
+[step-up](../web-ui/README.md#the-step-up-dialog) and goes to the audit log
+([04](../../04-security.md#account-recovery)):
+
+| Recovery | What it does | Who may |
+|---|---|---|
+| **Reset link** | A one-time link that sets a new password, to pass on yourself; the authenticator stays | An Owner, an Admin for a member who is no Owner, the Instance Admin for anyone |
+| **Remove second factor…** | Removes the authenticator and recovery codes and ends the member's sessions; their API tokens stay. They sign in with the password and set up a new authenticator | An Owner, the Instance Admin for anyone |
+
+- **In the web UI:** on the **Organisation** page, the buttons on the member's row
+  ([Organisation](../web-ui/organisation.md#members)). The Instance Admin has them for every user on
+  **Settings**, tab **Users** ([Settings](../web-ui/settings.md#users)).
+- **On the command line:** `rpmgr create reset-link <user>` prints the link;
+  `rpmgr remove second-factor <user>` removes the second factor. The user is a user ID, or the
+  e-mail address of a member, or, for the Instance Admin, of any user. The API token needs the scope
+  `members.write`, or `instance.admin`, and steps up on its own.
+- **Not your member alone:** an Owner or Admin cannot recover an Instance Admin, nor a user who is
+  also a member of another organisation; the page then says so, and the Instance Admin does it. An
+  organisation that requires a second factor lets only administrators signed in with one recover
+  its members.
+- **Your own account:** you remove your own authenticator under **Your account**, and reset your
+  own password with **Forgot your password?** ([Sign-in and MFA](sign-in-and-mfa.md)).
 
 ## Roles and API tokens
 

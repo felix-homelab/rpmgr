@@ -10,25 +10,45 @@ import { marked, unmatched } from "@/testing/required";
 
 afterEach(cleanup);
 
-function page(path: string, signedIn = true) {
-  const calls = { update: [] as UpdateMemberRequest[], remove: [] as string[], invite: [] as CreateInvitationRequest[], accept: [] as AcceptInvitationRequest[], rename: [] as string[] };
+function page(path: string, signedIn = true, role = "owner") {
+  const calls = { update: [] as UpdateMemberRequest[], remove: [] as string[], invite: [] as CreateInvitationRequest[], accept: [] as AcceptInvitationRequest[], rename: [] as string[], link: [] as string[], removeTotp: [] as string[] };
   let steppedUp = false;
   const view = show(path, auth({
     getSession: () => {
       if (!signedIn) {
         throw apiError(Code.Unauthenticated);
       }
-      return { userId: "usr_ada", displayName: "Ada", memberships: [{ orgId: "org_1", role: "owner" }] };
+      return { userId: "usr_ada", displayName: "Ada", memberships: [{ orgId: "org_1", role }] };
     },
     stepUp: () => ((steppedUp = true), {}),
   }), (router) => {
-    router.service(UserService, { getMe: () => ({ user: { id: "usr_ada", theme: Theme.SYSTEM } }) });
+    router.service(UserService, {
+      getMe: () => ({ user: { id: "usr_ada", theme: Theme.SYSTEM } }),
+      createPasswordResetLink: (req) => {
+        if (!steppedUp) {
+          throw apiError(Code.Unauthenticated, "STEP_UP_REQUIRED");
+        }
+        if (req.userId === "usr_cy") {
+          throw apiError(Code.NotFound);
+        }
+        calls.link.push(req.userId);
+        return { url: "https://panel.example.com/reset#rpmgr_prs_fake", expireTime: { seconds: 1792224000n, nanos: 0 } };
+      },
+      removeUserTOTP: (req) => {
+        if (!steppedUp) {
+          throw apiError(Code.Unauthenticated, "STEP_UP_REQUIRED");
+        }
+        calls.removeTotp.push(req.userId);
+        return {};
+      },
+    });
     router.service(OrgService, {
       getOrg: () => ({ org: { id: "org_1", name: "Acme" } }),
       updateOrg: (req) => (calls.rename.push(req.name), { org: { id: "org_1", name: req.name } }),
       listMembers: () => ({ members: [
         { userId: "usr_ada", displayName: "Ada", email: "ada@example.com", role: "owner" },
         { userId: "usr_bob", displayName: "Bob", email: "bob@example.com", role: "viewer" },
+        { userId: "usr_cy", displayName: "Cy", email: "cy@example.com", role: "owner" },
       ] }),
       updateMember: (req) => {
         if (req.role === "admin" && !steppedUp) {
@@ -66,6 +86,41 @@ describe("OrgPage", () => {
     expect(row.getByText("Remove Bob from the organisation?")).toBeTruthy();
     fireEvent.click(row.getByRole("button", { name: "Remove it" }));
     await waitFor(() => expect(calls.remove).toEqual(["usr_bob"]));
+  });
+
+  it("lets an Owner make a reset link and remove a second factor after a step-up, for others only", async () => {
+    const { calls } = page("/org");
+    const bob = within((await screen.findByText("bob@example.com")).closest("tr")!);
+    fireEvent.click(bob.getByRole("button", { name: "Reset link" }));
+    const stepUp = within(await screen.findByRole("dialog", { name: "Confirm it is you" }));
+    fireEvent.change(stepUp.getByLabelText("Password"), { target: { value: "pw" } });
+    fireEvent.click(stepUp.getByRole("button", { name: "Confirm" }));
+    expect((await bob.findByLabelText("Password reset link for Bob")).textContent).toBe("https://panel.example.com/reset#rpmgr_prs_fake");
+    expect(bob.getByRole("status").textContent).toMatch(/^A one-time link that sets a new password for Bob/);
+    expect(calls.link).toEqual(["usr_bob"]);
+
+    fireEvent.click(bob.getByRole("button", { name: "Remove second factor…" }));
+    expect(bob.getByText(/^Remove the authenticator and recovery codes of Bob\?/)).toBeTruthy();
+    fireEvent.click(bob.getByRole("button", { name: "Remove it" }));
+    expect((await bob.findByText("The second factor of Bob is removed, and their sessions have ended.")).getAttribute("role")).toBe("status");
+    expect(calls.removeTotp).toEqual(["usr_bob"]);
+
+    // The server refuses a user who is also another org's: the page says why.
+    const cy = within(screen.getByText("cy@example.com").closest("tr")!);
+    fireEvent.click(cy.getByRole("button", { name: "Reset link" }));
+    expect((await cy.findByRole("alert")).textContent).toMatch(/^You cannot recover this account/);
+    // No recovery of one's own account here.
+    const ada = within(screen.getByText("ada@example.com").closest("tr")!);
+    expect(ada.queryByRole("button", { name: "Reset link" })).toBeNull();
+  });
+
+  it("lets an Admin make reset links for members who are no Owners, and remove no second factor", async () => {
+    page("/org", true, "admin");
+    const bob = within((await screen.findByText("bob@example.com")).closest("tr")!);
+    expect(bob.getByRole("button", { name: "Reset link" })).toBeTruthy();
+    expect(bob.queryByRole("button", { name: "Remove second factor…" })).toBeNull();
+    const cy = within(screen.getByText("cy@example.com").closest("tr")!);
+    expect(cy.queryByRole("button", { name: "Reset link" })).toBeNull();
   });
 
   it("makes an invitation link to send by hand when no mail can go out", async () => {

@@ -32,6 +32,7 @@ const (
 	SessionRevoked        Kind = "session_revoked"        // Subject: the session ID
 	MemberRemoved         Kind = "member_removed"         // Subject: the user ID; Org
 	RoleDowngraded        Kind = "role_downgraded"        // Subject: the user ID; Org; Detail: the new role
+	InstanceAdminRevoked  Kind = "instance_admin_revoked" // Subject: the user ID
 	// CredentialSuperseded: Subject is the user ID; Detail is password, mfa or recovery_codes.
 	CredentialSuperseded Kind = "credential_superseded" //nolint:gosec // G101: an entry kind, not a credential
 	GrantRemoved         Kind = "grant_removed"         // Subject: the grant ID; Detail: shell or visitor
@@ -46,7 +47,7 @@ const (
 
 var kinds = map[Kind]bool{CertificateRevoked: true, IdentityRevoked: true, CertificateSuperseded: true,
 	APITokenRevoked: true, SessionRevoked: true, MemberRemoved: true, RoleDowngraded: true,
-	CredentialSuperseded: true, GrantRemoved: true}
+	InstanceAdminRevoked: true, CredentialSuperseded: true, GrantRemoved: true}
 
 // Valid reports whether k is one of the kinds above.
 func (k Kind) Valid() bool { return kinds[k] }

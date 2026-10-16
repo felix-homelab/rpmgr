@@ -397,6 +397,8 @@ func reapply(ctx context.Context, tx *ent.Tx, td string, e revlog.Entry) (bool, 
 		return n > 0, err
 	case revlog.RoleDowngraded:
 		return downgrade(ctx, tx, e.Org, e.Subject, membership.Role(e.Detail))
+	case revlog.InstanceAdminRevoked:
+		return revokeInstanceAdmin(ctx, tx, e.Subject)
 	case revlog.CredentialSuperseded:
 		return supersede(ctx, tx, e.Subject, e.Detail)
 	case revlog.SessionRevoked, revlog.GrantRemoved:
@@ -483,6 +485,24 @@ func downgrade(ctx context.Context, tx *ent.Tx, org, userID string, role members
 		err = tx.Membership.UpdateOne(m).SetRole(role).Exec(ctx)
 	}
 	return true, err
+}
+
+// revokeInstanceAdmin revokes a user's Instance Admin role again, unless that would leave the
+// restored instance without an active Instance Admin to review it, as when every other one was
+// made after the backup.
+func revokeInstanceAdmin(ctx context.Context, tx *ent.Tx, userID string) (bool, error) {
+	u, err := tx.User.Get(ctx, userID)
+	if ent.IsNotFound(err) {
+		return false, nil
+	}
+	if err != nil || !u.InstanceAdmin {
+		return err == nil, err
+	}
+	n, err := tx.User.Query().Where(user.InstanceAdmin(true), user.StatusEQ(user.StatusActive), user.IDNEQ(userID)).Count(ctx)
+	if err != nil || n == 0 {
+		return true, err
+	}
+	return true, tx.User.UpdateOne(u).SetInstanceAdmin(false).Exec(ctx)
 }
 
 // supersede undoes a credential that the backup holds but that was replaced after it, because the

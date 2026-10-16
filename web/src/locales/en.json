@@ -1064,5 +1064,41 @@
     "createRoute": "Create a route",
     "enroll": "Enroll a connector",
     "account": "Your account"
+  },
+  "recovery": {
+    "link": "Reset link",
+    "linkMade": "A one-time link that sets a new password for {{name}}. Pass it on yourself; it works until {{until}}:",
+    "linkLabel": "Password reset link for {{name}}",
+    "removeOpen": "Remove second factor…",
+    "removeAsk": "Remove the authenticator and recovery codes of {{name}}? Their sessions end; they sign in with their password and set up a new authenticator.",
+    "remove": "Remove it",
+    "removed": "The second factor of {{name}} is removed, and their sessions have ended.",
+    "notYours": "You cannot recover this account: the user is also a member of another organisation, or an Instance Admin. Ask the Instance Admin."
+  },
+  "users": {
+    "title": "Users",
+    "intro": "Every account of the instance. Make a password reset link, remove a lost second factor, and grant or revoke the Instance Admin role.",
+    "columns": {
+      "name": "Name",
+      "email": "E-mail address",
+      "roles": "Instance Admin",
+      "mfa": "Second factor",
+      "status": "Status",
+      "lastLogin": "Last sign-in",
+      "actions": "Actions"
+    },
+    "yes": "yes",
+    "no": "no",
+    "never": "never",
+    "statuses": {
+      "active": "active",
+      "disabled": "disabled"
+    },
+    "grant": "Make Instance Admin…",
+    "grantAsk": "Make {{name}} Instance Admin? They then manage the CA, the KEK, system gateways and the instance's settings.",
+    "revoke": "Revoke Instance Admin…",
+    "revokeAsk": "Revoke the Instance Admin role of {{name}}?",
+    "confirm": "Confirm",
+    "you": "you"
   }
 }

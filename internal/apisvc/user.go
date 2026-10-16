@@ -5,6 +5,7 @@ package apisvc
 import (
 	"context"
 	"errors"
+	"slices"
 	"time"
 
 	"connectrpc.com/connect"
@@ -31,6 +32,9 @@ type User struct {
 	API       *api.Server
 	PublicURL string
 	Backoff   *ratelimit.Backoff // failed current passwords per user, shared with step-up
+	// RequireMFA returns an org's policy that its members act in it only after signing in with a
+	// second factor; nil requires it nowhere.
+	RequireMFA func(ctx context.Context, orgID string) (bool, error)
 }
 
 // EnrollTOTP implements UserService.
@@ -204,28 +208,14 @@ func (u *User) ListUsers(_ context.Context, req *connect.Request[rpmgrv1.ListUse
 	return connect.NewResponse(out), nil
 }
 
-// CreatePasswordResetLink implements UserService: the Instance Admin may reset anyone; an Owner or
-// Admin a member of their org, an Admin not an Owner. Anyone else finds no such user.
+// CreatePasswordResetLink implements UserService, for a user the caller may recover (recoverable)
+// as Owner or Admin.
 func (u *User) CreatePasswordResetLink(ctx context.Context, req *connect.Request[rpmgrv1.CreatePasswordResetLinkRequest]) (
 	*connect.Response[rpmgrv1.CreatePasswordResetLinkResponse], error) {
 	c := api.CallerFrom(ctx)
 	target := req.Msg.GetUserId()
-	_, theirs, err := u.MFA.User(target)
-	if ent.IsNotFound(err) {
-		return nil, connect.NewError(connect.CodeNotFound, accounts.ErrNoUser)
-	}
-	if err != nil {
+	if err := u.mayRecover(ctx, c, target, false); err != nil {
 		return nil, err
-	}
-	allowed := c.InstanceAdmin
-	for _, m := range theirs {
-		mine := c.Memberships[m.OrgID]
-		if authz.Grants(mine, authz.PermMembersWrite, false) && (mine == authz.RoleOwner || string(m.Role) != authz.RoleOwner) {
-			allowed = true
-		}
-	}
-	if !allowed {
-		return nil, connect.NewError(connect.CodeNotFound, accounts.ErrNoUser)
 	}
 	tok, err := u.MFA.For(ctx).ResetLink(target, c.UserID)
 	if err != nil {
@@ -234,6 +224,100 @@ func (u *User) CreatePasswordResetLink(ctx context.Context, req *connect.Request
 	return connect.NewResponse(&rpmgrv1.CreatePasswordResetLinkResponse{Url: accounts.LinkURL(u.PublicURL, tok),
 		ExpireTime: timestamppb.New(time.Now().Add(accounts.ResetLinkTTL))}), nil
 }
+
+// RemoveUserTOTP implements UserService, for a user the caller may recover (recoverable) as Owner:
+// it removes their authenticator and recovery codes and ends their sessions, as their own removal
+// would; their API tokens stay.
+func (u *User) RemoveUserTOTP(ctx context.Context, req *connect.Request[rpmgrv1.RemoveUserTOTPRequest]) (
+	*connect.Response[rpmgrv1.RemoveUserTOTPResponse], error) {
+	c := api.CallerFrom(ctx)
+	target := req.Msg.GetUserId()
+	if target == c.UserID {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("apisvc: remove your own authenticator under Account"))
+	}
+	if err := u.mayRecover(ctx, c, target, true); err != nil {
+		return nil, err
+	}
+	if err := u.MFA.For(ctx).RemoveTOTP(target, c.UserID); errors.Is(err, accounts.ErrNoMFA) {
+		return nil, connect.NewError(connect.CodeFailedPrecondition, err)
+	} else if err != nil {
+		return nil, err
+	}
+	if _, err := u.Sessions.RevokeAll(target, "", c.UserID, "authenticator removed by an admin"); err != nil {
+		return nil, err
+	}
+	return connect.NewResponse(&rpmgrv1.RemoveUserTOTPResponse{}), nil
+}
+
+// SetInstanceAdmin implements UserService.
+func (u *User) SetInstanceAdmin(ctx context.Context, req *connect.Request[rpmgrv1.SetInstanceAdminRequest]) (
+	*connect.Response[rpmgrv1.SetInstanceAdminResponse], error) {
+	usr, err := u.MFA.SetInstanceAdmin(ctx, req.Msg.GetUserId(), req.Msg.GetInstanceAdmin(), api.CallerFrom(ctx).UserID)
+	switch {
+	case errors.Is(err, accounts.ErrNoUser):
+		return nil, connect.NewError(connect.CodeNotFound, err)
+	case errors.Is(err, accounts.ErrLastInstanceAdmin):
+		return nil, connect.NewError(connect.CodeFailedPrecondition, err)
+	case err != nil:
+		return nil, err
+	}
+	return connect.NewResponse(&rpmgrv1.SetInstanceAdminResponse{User: u.userOf(usr)}), nil
+}
+
+// mayRecover checks that the caller may recover the account of the user target (recoverable), as
+// Owner only if ownerOnly, and keeps the MFA policies of the orgs they act through: a user they
+// may not recover is not found.
+func (u *User) mayRecover(ctx context.Context, c *api.Caller, target string, ownerOnly bool) error {
+	usr, theirs, err := u.MFA.User(target)
+	if ent.IsNotFound(err) || err == nil && !recoverable(c, usr, theirs, ownerOnly) {
+		return connect.NewError(connect.CodeNotFound, accounts.ErrNoUser)
+	}
+	if err != nil || instanceAdmin(c) || c.MFA || u.RequireMFA == nil {
+		return err
+	}
+	for _, m := range theirs {
+		need, err := u.RequireMFA(ctx, m.OrgID)
+		if err != nil {
+			return err
+		}
+		if need {
+			return withReason(connect.NewError(connect.CodePermissionDenied, errors.New("apisvc: the org requires signing in with a second factor")),
+				api.ReasonMFARequired)
+		}
+	}
+	return nil
+}
+
+// recoverable reports whether the caller may recover the account of target, whose memberships are
+// theirs (docs/04-security.md, "Account recovery"): the Instance Admin, anyone's; another caller
+// only that of a user who is no Instance Admin and all of whose orgs are the caller's, as Owner,
+// or, unless ownerOnly, as Admin where the user is no Owner. So an org's Owner or Admin never
+// reaches another org, or the instance, through an account they share. A token needs the scope
+// members.write, or instance.admin, and holds only its own org.
+func recoverable(c *api.Caller, target *ent.User, theirs []*ent.Membership, ownerOnly bool) bool {
+	if instanceAdmin(c) {
+		return true
+	}
+	if target.InstanceAdmin || len(theirs) == 0 || !scoped(c, authz.PermMembersWrite) {
+		return false
+	}
+	for _, m := range theirs {
+		switch mine := c.Memberships[m.OrgID]; {
+		case mine == authz.RoleOwner:
+		case !ownerOnly && mine == authz.RoleAdmin && string(m.Role) != authz.RoleOwner:
+		default:
+			return false
+		}
+	}
+	return true
+}
+
+// instanceAdmin reports whether the caller acts as the Instance Admin: a session of one, or a token
+// of one with that scope.
+func instanceAdmin(c *api.Caller) bool { return c.InstanceAdmin && scoped(c, authz.PermInstanceAdmin) }
+
+// scoped reports whether a token's scopes hold p; a session holds every permission of its roles.
+func scoped(c *api.Caller, p string) bool { return c.Scopes == nil || slices.Contains(c.Scopes, p) }
 
 func (u *User) userOf(usr *ent.User) *rpmgrv1.User {
 	has, _ := u.MFA.HasMFA(usr.ID)
