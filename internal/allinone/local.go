@@ -83,7 +83,7 @@ func gatewayToken(ctx context.Context, tx *ent.Tx, gw *ent.Gateway, actor, why s
 // builtIn is one of all-in-one's own agents.
 type builtIn struct {
 	role, dir, host string // host is the host name it enrolls with
-	id              string // the agent ID its identity names; "" without an identity
+	id              string // the agent ID its certificate names; "" without an identity
 	leaf            *x509.Certificate
 	// why, once prepare has run, says why it enrolls again, and token enrolls it; both are "" when
 	// it runs with the identity it has.
@@ -116,22 +116,38 @@ func readLocal(cfg config.AllInOne) (local, error) {
 		if err != nil {
 			return local{}, fmt.Errorf("allinone: the %s's identity; delete %s to enroll it again: %w", a.role, a.dir, err)
 		}
-		a.id, a.leaf = id.AgentID, id.Certificate.Leaf
+		a.leaf = id.Certificate.Leaf
+		// The ID is the certificate's, which the CA signed, not agent.json's.
+		if len(a.leaf.URIs) == 1 {
+			if named, err := pki.ParseSPIFFE(a.leaf.URIs[0], a.leaf.URIs[0].Host); err == nil && string(named.Kind) == a.role {
+				a.id = named.ID
+			}
+		}
 	}
 	return l, nil
 }
 
-// unusable says why the agent must enroll again, or "" if it runs with the identity it has: it has
-// none, or the controller cannot renew its certificate, as after a restore of a backup older than
-// the certificate, or the certificate expired longer ago than Reauth's grace period.
-func (a *builtIn) unusable(ctx context.Context, c *ent.Client, now time.Time, grace time.Duration) (string, error) {
+// unusable says why the agent must enroll again, or "" if it runs with the identity it has, which
+// must name want, the built-in gateway or connector this database holds (an ID of "" names none):
+// it has no identity, or one that names another agent, as a copy from another installation, or the
+// controller cannot renew its certificate, as after a restore of a backup older than the
+// certificate, or the certificate expired longer ago than Reauth's grace period. An identity that
+// names want but is revoked stops the start: enrolling again as the same agent cannot lift that.
+func (a *builtIn) unusable(ctx context.Context, c *ent.Client, td string, want pki.Identity, now time.Time, grace time.Duration) (string, error) {
 	if a.leaf == nil {
 		return "its identity is missing", nil
 	}
+	if len(a.leaf.URIs) != 1 {
+		return "its identity names another agent", nil
+	}
+	if id, err := pki.ParseSPIFFE(a.leaf.URIs[0], td); err != nil || id.Kind != want.Kind || id.Org != want.Org || id.ID != want.ID {
+		return "its identity names another agent", nil
+	}
 	switch err := pki.CheckRenewable(ctx, c, a.leaf); {
-	case errors.Is(err, pki.ErrNotIssued), errors.Is(err, pki.ErrCertRevoked), errors.Is(err, pki.ErrSuperseded),
-		errors.Is(err, pki.ErrIdentityRevoked):
+	case errors.Is(err, pki.ErrNotIssued), errors.Is(err, pki.ErrCertRevoked), errors.Is(err, pki.ErrSuperseded):
 		return "its certificate cannot be renewed: " + err.Error(), nil
+	case errors.Is(err, pki.ErrIdentityRevoked):
+		return "", fmt.Errorf("allinone: the %s's identity %s is revoked, and enrolling again as the same %s cannot lift that", a.role, want.ID, a.role)
 	case err != nil:
 		return "", err
 	}
@@ -155,13 +171,14 @@ func (a *builtIn) enroll(ctx context.Context, publicURL string, root *x509.Certi
 }
 
 // prepare runs once the controller has migrated the database, which it may write beside the
-// controller. It finds the built-in gateway: the one the gateway's identity names, marked built in
-// for installations initialised before ADR-0019, or else the one marked built in. It reads the
-// group's public hostnames and makes the token of each agent that must enroll again (unusable, at
-// now): the gateway's bound to it, and the connector's bound to the built-in connector if there is
-// one, so that each keeps its ID, routes and name, or else one that creates the connector. The
-// enrollment revokes, by serial, the certificates the database records for the identity it
-// replaces.
+// controller. It finds the built-in gateway: the one marked built in, or, on an installation
+// initialised before ADR-0019, which marks none, the one the gateway's identity names, which it
+// marks built in. It reads the group's public hostnames and makes the token of each agent that
+// must enroll again (unusable, at now): the gateway's bound to it, and the connector's bound to the
+// org's built-in connector if there is one, so that each keeps its ID, routes and name, or else one
+// that creates the connector. The enrollment revokes, by serial, the certificates the database
+// records for the identity it replaces; one it does not record, as one issued after a restored
+// backup, stays valid until it expires, as any agent's does.
 func (l *local) prepare(ctx context.Context, cfg config.AllInOne, now time.Time) error {
 	db, err := store.OpenSQLite(ctx, cfg.Database.DSN, store.SQLiteOptions{})
 	if err != nil {
@@ -190,18 +207,6 @@ func (l *local) prepare(ctx context.Context, cfg config.AllInOne, now time.Time)
 			return err
 		}
 		l.names = group.PublicHostnames
-		inst, _, err := settings.Instance(sys, tx.Client())
-		if err != nil {
-			return err
-		}
-		for _, a := range []*builtIn{&l.gateway, &l.connector} {
-			if a.why, err = a.unusable(sys, tx.Client(), now, inst.GetExpiredCertificateGrace().AsDuration()); err != nil {
-				return fmt.Errorf("allinone: the %s's certificate: %w", a.role, err)
-			}
-		}
-		if l.gateway.why == "" && l.connector.why == "" {
-			return nil
-		}
 		ca, err := tx.CAKey.Query().Where(cakey.KindEQ(cakey.KindRoot), cakey.StatusEQ(cakey.StatusActive)).Only(sys)
 		if err != nil {
 			return err
@@ -209,29 +214,56 @@ func (l *local) prepare(ctx context.Context, cfg config.AllInOne, now time.Time)
 		if l.root, err = x509.ParseCertificate(ca.Certificate); err != nil {
 			return err
 		}
+		td, err := pki.TrustDomainOf(l.root)
+		if err != nil {
+			return err
+		}
+		conID := ""
+		if con, err := tx.Connector.Query().Where(connector.OrgID(row.OrgID), connector.BuiltIn(true), connector.DecommissionedAtIsNil()).
+			First(sys); err == nil {
+			conID = con.ID
+		} else if !ent.IsNotFound(err) {
+			return err
+		}
+		inst, _, err := settings.Instance(sys, tx.Client())
+		if err != nil {
+			return err
+		}
+		grace := inst.GetExpiredCertificateGrace().AsDuration()
+		for _, c := range []struct {
+			a    *builtIn
+			want pki.Identity
+		}{
+			{&l.gateway, pki.Identity{TrustDomain: td, Org: row.OrgID, Kind: pki.KindGateway, ID: row.ID}},
+			{&l.connector, pki.Identity{TrustDomain: td, Org: row.OrgID, Kind: pki.KindConnector, ID: conID}},
+		} {
+			if c.a.why, err = c.a.unusable(sys, tx.Client(), td, c.want, now, grace); err != nil {
+				return err
+			}
+		}
 		if l.gateway.why != "" {
 			if l.gateway.token, err = gatewayToken(sys, tx, row, actor, l.gateway.why); err != nil {
 				return err
 			}
 		}
-		if l.connector.why == "" {
-			return nil
+		if l.connector.why != "" {
+			l.connector.token, err = connectorToken(sys, tx, row.OrgID, conID, actor, l.connector.why)
 		}
-		id := ""
-		if con, err := tx.Connector.Query().Where(connector.OrgID(row.OrgID), connector.BuiltIn(true), connector.DecommissionedAtIsNil()).
-			First(sys); err == nil {
-			id = con.ID
-		} else if !ent.IsNotFound(err) {
-			return err
-		}
-		l.connector.token, err = connectorToken(sys, tx, row.OrgID, id, actor, l.connector.why)
 		return err
 	})
 }
 
-// builtInGateway returns the gateway with ID id, the one the gateway's identity names, while it is
-// in service, or else the gateway marked built in.
+// builtInGateway returns the gateway marked built in while it is in service, or, where none is
+// marked, as on an installation initialised before ADR-0019, the gateway with ID id, the one the
+// gateway's identity names, while it is in service.
 func builtInGateway(ctx context.Context, tx *ent.Tx, id string) (*ent.Gateway, error) {
+	row, err := tx.Gateway.Query().Where(gateway.BuiltIn(true), gateway.DecommissionedAtIsNil()).Only(ctx)
+	if err == nil || !ent.IsNotFound(err) {
+		return row, err
+	}
+	if marked, err := tx.Gateway.Query().Where(gateway.BuiltIn(true)).Exist(ctx); err != nil || marked {
+		return nil, errors.Join(err, errIf(marked, errNoGateway))
+	}
 	if id != "" {
 		row, err := tx.Gateway.Get(ctx, id)
 		switch {
@@ -241,11 +273,17 @@ func builtInGateway(ctx context.Context, tx *ent.Tx, id string) (*ent.Gateway, e
 			return nil, err
 		}
 	}
-	row, err := tx.Gateway.Query().Where(gateway.BuiltIn(true), gateway.DecommissionedAtIsNil()).Only(ctx)
-	if ent.IsNotFound(err) {
-		return nil, errors.New("allinone: the database has no built-in gateway; run rpmgr all-in-one init first")
+	return nil, errNoGateway
+}
+
+// errNoGateway stops the start of a database without a built-in gateway in service.
+var errNoGateway = errors.New("allinone: the database has no built-in gateway in service; restore a backup that has one")
+
+func errIf(cond bool, err error) error {
+	if cond {
+		return err
 	}
-	return row, err
+	return nil
 }
 
 // ownPorts reports the addresses and ports all-in-one's connector never dials, whatever its local

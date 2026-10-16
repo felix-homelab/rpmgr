@@ -215,8 +215,8 @@ When the old host is lost, or to move the controller:
    Without a sink, pass the old host's `revocations.log` if you still have it. Without either, the
    restore fails closed.
 5. **Install the unit and start it,** here for a controller; for an all-in-one, use `all-in-one` in
-   place of `controller` ([below](#restore-an-all-in-one)). The unit makes the revocation-log sink of the boot file writable
-   ([above](#the-revocation-log-sink)).
+   place of `controller` ([below](#restore-an-all-in-one)). The unit makes the revocation-log sink
+   of the boot file writable ([above](#the-revocation-log-sink)).
 
    ```sh
    rpmgr systemd-unit controller | sudo tee /etc/systemd/system/rpmgr-controller.service >/dev/null
@@ -240,9 +240,16 @@ the backup does not hold. The all-in-one recovers them by itself at start, befor
   all-in-one then enrolls that agent again too, as it does one whose certificate is revoked or
   expired longer than the grace period.
 
-Each enrollment revokes the certificate it replaces, and the audit log shows the token it used with
-the reason, such as "all-in-one's own gateway: its identity is missing". An identity that cannot be
-read at all stops the start with its path: delete that directory and start the service again.
+Each enrollment revokes the certificates the restored database records for the agent, and the audit
+log shows the token it used with the reason, such as "all-in-one's own gateway: its identity is
+missing". A certificate issued after the backup, which the restored database does not record, stays
+valid until it expires, as any agent's does ([What the restore changes](#what-the-restore-changes)):
+on a move, stop the old host for good.
+
+An identity that names another agent, such as a copy from another installation, is replaced in the
+same way. An identity that cannot be read at all stops the start with its path: delete that
+directory and start the service again. So does one that is revoked as a whole, which enrolling again
+as the same agent cannot lift.
 
 ### What the restore changes
 

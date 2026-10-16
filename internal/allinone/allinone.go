@@ -356,10 +356,11 @@ func Run(ctx context.Context, o RunOptions) error {
 		if a.token == "" {
 			continue
 		}
+		o.Logger.Info("enrolling all-in-one's own "+a.role+" again", "identity", a.dir, "reason", a.why)
 		if err := a.enroll(ctx, cfg.PublicURL, l.root, mem.Dial, o.Now, true); err != nil {
-			return errors.Join(err, ctl.end())
+			return errors.Join(fmt.Errorf("%w (%s)", err, a.why), ctl.end())
 		}
-		o.Logger.Info("enrolled all-in-one's own "+a.role, "identity", a.dir, "reason", a.why)
+		o.Logger.Info("enrolled all-in-one's own "+a.role, "identity", a.dir)
 	}
 	gw := start(func(ctx context.Context) error {
 		return gateway.Run(ctx, gateway.RunOptions{Config: cfg.Gateway(), Version: o.Version, Logger: o.Logger.With("role", "gateway"),
