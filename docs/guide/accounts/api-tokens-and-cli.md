@@ -71,9 +71,9 @@ The token is now listed with its name, prefix, expiry and scopes
 ## Log in on the command line
 
 `rpmgr login` checks the token against the controller and stores it for every command of the
-public API, such as `rpmgr list route` or `rpmgr create route`. Flags come before the name, the ID
-or the kind, as in `rpmgr get -o yaml route web`: a command reads no flag after its first argument
-that is not a flag.
+public API, such as `rpmgr list route` or `rpmgr create route`. Flags may come before or after the
+name, the ID or the kind: `rpmgr get -o yaml route web` and `rpmgr get route web -o yaml` do the
+same.
 
 ```sh
 rpmgr login --controller https://panel.example.com --org org_01M4ZEXGQAF0P9DZXJYKCMBTGG

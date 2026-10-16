@@ -7,9 +7,18 @@ import (
 	"context"
 	"errors"
 	"flag"
+	"io"
+	"reflect"
 	"strings"
 	"testing"
 )
+
+// listValue is a flag that may be repeated, as the commands' list flags are; its String is the
+// values given so far.
+type listValue []string
+
+func (l *listValue) String() string     { return strings.Join(*l, ",") }
+func (l *listValue) Set(v string) error { *l = append(*l, v); return nil }
 
 // testTree is a small tree with every kind of node: a group, a leaf with flags and arguments,
 // a command with both a Run and sub-commands, and commands that fail in each way.
@@ -18,6 +27,7 @@ func testTree(got *[]string) *Command {
 		*got = append([]string(nil), args...)
 		return nil
 	}
+	var tags listValue
 	return &Command{
 		Name:    "rpmgr",
 		Summary: "test tree",
@@ -39,6 +49,14 @@ func testTree(got *[]string) *Command {
 				{Name: "sub", Summary: "the sub-command", Run: record},
 			}},
 			{Name: "later", Summary: "not implemented", Run: NotAvailable},
+			{
+				Name: "tag", Summary: "refuse the tags given",
+				Flags: func(fs *flag.FlagSet) {
+					fs.Var(&tags, "tag", "a tag; repeat for more")
+					fs.String("mode", "fast", "the mode")
+				},
+				Run: func(context.Context, *Env, []string) error { return Usagef("the tags %s are refused", tags.String()) },
+			},
 			{Name: "fail", Summary: "always fails", Run: func(context.Context, *Env, []string) error {
 				return errors.New("boom")
 			}},
@@ -84,6 +102,17 @@ func TestMainDispatch(t *testing.T) {
 		{name: "command with sub runs sub", args: []string{"both", "sub"}, code: ExitOK, gotArgs: []string{}, wantRun: true},
 		{name: "not available", args: []string{"later"}, code: ExitUsage, stderr: "rpmgr later: not available in this build"},
 		{name: "runtime error", args: []string{"fail"}, code: ExitError, stderr: "rpmgr fail: boom"},
+		{name: "flag after the arguments", args: []string{"copy", "a", "b", "--force"}, code: ExitOK, gotArgs: []string{"a", "b"}, wantRun: true},
+		{name: "flag between the arguments", args: []string{"copy", "a", "-force", "b"}, code: ExitOK, gotArgs: []string{"a", "b"}, wantRun: true},
+		{name: "help after an argument", args: []string{"copy", "a", "--help"}, code: ExitOK, stdout: "Usage: rpmgr copy [flags] <src> <dst>"},
+		{name: "help after a sub-command", args: []string{"group", "leaf", "-h"}, code: ExitOK, stdout: "Usage: rpmgr group leaf"},
+		{name: "unknown flag after the arguments", args: []string{"copy", "a", "b", "--nope"}, code: ExitUsage, stderr: "flag provided but not defined: -nope"},
+		{name: "after -- a flag is an argument", args: []string{"copy", "a", "--", "--help"}, code: ExitOK, gotArgs: []string{"a", "--help"}, wantRun: true},
+		{name: "after -- an argument may begin with -", args: []string{"copy", "--force", "--", "-a", "-b"}, code: ExitOK, gotArgs: []string{"-a", "-b"}, wantRun: true},
+		{name: "a lone dash is an argument", args: []string{"copy", "-", "b"}, code: ExitOK, gotArgs: []string{"-", "b"}, wantRun: true},
+		{name: "a switch takes no value after it", args: []string{"copy", "--force", "false", "a", "b"}, code: ExitUsage, stderr: "copy needs <src> and <dst>"},
+		{name: "unexpected argument after --", args: []string{"group", "leaf", "--", "x"}, code: ExitUsage, stderr: `unexpected argument "x"`},
+		{name: "unknown command after --", args: []string{"group", "--", "leaf"}, code: ExitUsage, stderr: `unknown command "leaf"`},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -107,6 +136,82 @@ func TestMainDispatch(t *testing.T) {
 				t.Errorf("usage error without usage text: %q", stderr)
 			}
 		})
+	}
+}
+
+// TestParse: flags stand anywhere among the positional arguments, which keep their order; "--"
+// ends the flags; a flag that takes a value takes the next argument, also one that begins with
+// "-" or is "--".
+func TestParse(t *testing.T) {
+	type result struct {
+		Pos   []string
+		Force bool
+		Mode  string
+		Tags  listValue
+	}
+	for _, tc := range []struct {
+		name string
+		args []string
+		want result
+		err  string
+	}{
+		{name: "nothing", args: nil, want: result{Mode: "slow"}},
+		{name: "flags before", args: []string{"--force", "--mode", "x", "a", "b"}, want: result{Pos: []string{"a", "b"}, Force: true, Mode: "x"}},
+		{name: "flags after", args: []string{"a", "b", "--force", "-mode", "x"}, want: result{Pos: []string{"a", "b"}, Force: true, Mode: "x"}},
+		{name: "flags between", args: []string{"a", "--mode=x", "b", "-force"}, want: result{Pos: []string{"a", "b"}, Force: true, Mode: "x"}},
+		{name: "a repeated flag", args: []string{"--tag", "x", "a", "--tag=y", "b", "--tag", "z"}, want: result{Pos: []string{"a", "b"}, Mode: "slow", Tags: listValue{"x", "y", "z"}}},
+		{name: "a switch set false", args: []string{"a", "--force=false"}, want: result{Pos: []string{"a"}, Mode: "slow"}},
+		{name: "a switch takes no next argument", args: []string{"--force", "false"}, want: result{Pos: []string{"false"}, Force: true, Mode: "slow"}},
+		{name: "a value that begins with -", args: []string{"a", "--mode", "-x"}, want: result{Pos: []string{"a"}, Mode: "-x"}},
+		{name: "-- ends the flags", args: []string{"a", "--", "--force", "-b", "--"}, want: result{Pos: []string{"a", "--force", "-b", "--"}, Mode: "slow"}},
+		{name: "-- as a value", args: []string{"--mode", "--", "a", "--force"}, want: result{Pos: []string{"a"}, Force: true, Mode: "--"}},
+		{name: "-- alone", args: []string{"--"}, want: result{Mode: "slow"}},
+		{name: "a lone dash", args: []string{"-", "--force"}, want: result{Pos: []string{"-"}, Force: true, Mode: "slow"}},
+		{name: "an unknown flag after the arguments", args: []string{"a", "--nope"}, err: "flag provided but not defined: -nope"},
+		{name: "a value missing at the end", args: []string{"a", "--mode"}, err: "flag needs an argument: -mode"},
+		{name: "three dashes", args: []string{"a", "---mode", "x"}, err: "bad flag syntax: ---mode"},
+		{name: "an empty name", args: []string{"a", "-=x"}, err: "bad flag syntax: -=x"},
+		{name: "a bad switch value", args: []string{"a", "--force=maybe"}, err: "invalid boolean value"},
+		{name: "help after the arguments", args: []string{"a", "--help"}, err: flag.ErrHelp.Error()},
+		{name: "short help after the arguments", args: []string{"a", "b", "-h"}, err: flag.ErrHelp.Error()},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var got result
+			fs := flag.NewFlagSet("test", flag.ContinueOnError)
+			fs.SetOutput(io.Discard)
+			fs.BoolVar(&got.Force, "force", false, "")
+			fs.StringVar(&got.Mode, "mode", "slow", "")
+			fs.Var(&got.Tags, "tag", "")
+			pos, err := parse(fs, tc.args)
+			if tc.err != "" {
+				if err == nil || !strings.Contains(err.Error(), tc.err) {
+					t.Fatalf("parse(%q) = %q, %v; want the error %q", tc.args, pos, err, tc.err)
+				}
+				return
+			}
+			got.Pos = pos
+			if err != nil || !reflect.DeepEqual(got, tc.want) {
+				t.Errorf("parse(%q) = %+v, %v; want %+v", tc.args, got, err, tc.want)
+			}
+		})
+	}
+}
+
+// TestUsageShowsDefaults: after a usage error, and with --help after flags, the usage text shows
+// each flag's default, not what the command line gave a repeated flag.
+func TestUsageShowsDefaults(t *testing.T) {
+	code, _, stderr, _ := run(t, "tag", "--tag", "smtp.server=mail.example.com", "--mode", "slow", "--tag", "other")
+	if code != ExitUsage || !strings.Contains(stderr, "the tags smtp.server=mail.example.com,other are refused") {
+		t.Fatalf("exit %d, stderr %q", code, stderr)
+	}
+	_, stdout, _, _ := run(t, "tag", "--tag", "smtp.server=mail.example.com", "--mode", "slow", "--help")
+	for name, usage := range map[string]string{"after a usage error": stderr[strings.Index(stderr, "Usage:"):], "with --help": stdout} {
+		if strings.Contains(usage, "smtp.server") || strings.Contains(usage, "default \"slow\"") {
+			t.Errorf("%s, the usage shows the values given:\n%s", name, usage)
+		}
+		if !strings.Contains(usage, "a tag; repeat for more\n") || !strings.Contains(usage, `the mode (default "fast")`) {
+			t.Errorf("%s, the usage lacks the defaults:\n%s", name, usage)
+		}
 	}
 }
 

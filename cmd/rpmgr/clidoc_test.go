@@ -176,9 +176,10 @@ when and why to use them.
   groups others lists them and has no flags of its own.
 - The synopsis shows the command path, ` + "`<command>`" + ` where a sub-command follows,
   ` + "`[flags]`" + ` when the command has flags, and the positional arguments.
-- Flags come before the name, the ID or the kind. A command stops reading flags at its first
-  positional argument: write ` + "`rpmgr get -o yaml route web`" + `, not
-  ` + "`rpmgr get route web -o yaml`" + `.
+- Flags may stand before or after the name, the ID or the kind:
+  ` + "`rpmgr get -o yaml route web`" + ` and ` + "`rpmgr get route web -o yaml`" + ` do the same.
+  After ` + "`--`" + ` every argument is positional, also one that begins with ` + "`-`" + `, such
+  as a directory named ` + "`-new`" + `: ` + "`rpmgr release import -- -new`" + `.
 - A flag is written ` + "`--name`" + `, or ` + "`-o`" + ` for a one-letter flag, followed by the kind
   of value it takes. A flag without a kind is a switch: ` + "`--all`" + ` turns it on. A flag that
   may be repeated says so in its description.

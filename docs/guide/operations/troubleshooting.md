@@ -137,7 +137,7 @@ Instance Admin ([Audit log](audit-log.md)). More on tokens is in
 | `not found` for something you can see in the web UI | The command is logged in to another organisation, or the ID is wrong | `rpmgr login` again with the right `--org` ([API tokens and the command line](../accounts/api-tokens-and-cli.md)) |
 | `the resource changed since it was read` (`ETAG_MISMATCH`) | Someone changed it between your read and your write | Run the command again; `--force` overwrites without the check |
 | `read-only until the restore review is confirmed` (`RESTORE_REVIEW`) | The controller was restored and could not prove every revocation since the backup | The organisation's Owner confirms its members and roles ([Backup and restore](backup-and-restore.md)) |
-| `expected 1 arguments, got 2` or `expected the route's ID or name`, with the usage | A flag came after a positional argument; a command stops reading flags at the first one | Put the flags before the name, the ID or the kind: `rpmgr list --all connector` ([Command-line reference](../reference/cli.md)) |
+| `expected 1 arguments, got 2` or `expected the route's ID or name`, with the usage | An argument too many: a value with spaces and no quotes, a value after a switch, as in `--all false`, or a flag after `--` | Quote a value with spaces, give a switch's value with `=`, as in `--all=false`, and put flags before `--` ([Command-line reference](../reference/cli.md)) |
 | HTTP 415 `api: unsupported content type`, or 403 for a cross-origin request | A script sent a form content type, or a foreign `Origin` | Send `Content-Type: application/json` and no `Origin` ([API](../reference/api.md#browser-sessions)) |
 
 Every error code and reason of the API is listed in [API](../reference/api.md#errors).

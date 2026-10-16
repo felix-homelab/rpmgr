@@ -88,7 +88,7 @@ for f in signing-key.json signing-key.json.minisig manifest.json manifest.json.m
 verify_release
 [ "$verify_only" = 0 ] || exit 0
 
-[ "$(id -u)" = 0 ] || die "run as root (sudo sh -s -- ...)"
+[ "$(id -u)" = 0 ] || die "run as root: sudo sh install.sh ..."
 for tool in systemctl useradd install; do command -v "$tool" >/dev/null 2>&1 || die "$tool is needed"; done
 
 id rpmgr >/dev/null 2>&1 || useradd --system --user-group --home-dir /var/lib/rpmgr --shell /usr/sbin/nologin rpmgr

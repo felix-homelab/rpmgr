@@ -153,7 +153,12 @@ func serviceState(ctx context.Context, admin string) string {
 	if resp.StatusCode == http.StatusOK {
 		return "running and ready"
 	}
-	return "running, not ready: " + strings.TrimSpace(string(body))
+	// The admin listener answers "not ready: <reason>"; the reason is said once.
+	reason := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(string(body)), "not ready:"))
+	if reason == "" {
+		return "running, not ready"
+	}
+	return "running, not ready: " + reason
 }
 
 // leaveCommand is `rpmgr leave`.

@@ -171,6 +171,9 @@ func startTracing(ctx context.Context, cfg config.Tracing, role string) (stop fu
 	}, nil
 }
 
+// kekSourceHelp describes --kek-source of init; the default is controller.KEKSourceFor's.
+const kekSourceHelp = "KEK source of a new boot file: systemd-credential or file (default systemd-credential from systemd 250, else file)"
+
 // allInOneInit is `rpmgr all-in-one init`.
 func allInOneInit() *cli.Command {
 	var o controller.InitOptions
@@ -180,7 +183,7 @@ func allInOneInit() *cli.Command {
 		Flags: func(fs *flag.FlagSet) {
 			fs.StringVar(&o.ConfigPath, "config", "", "boot file, written if it does not exist (default $RPMGR_CONFIG, else /etc/rpmgr/all-in-one.yaml)")
 			fs.StringVar(&o.PublicURL, "public-url", "", "https URL of the web UI, the API and the agents; needed when the boot file does not exist")
-			fs.StringVar(&o.KEKSource, "kek-source", "", "KEK source of a new boot file: systemd-credential (default) or file")
+			fs.StringVar(&o.KEKSource, "kek-source", "", kekSourceHelp)
 			fs.StringVar(&o.KEKPath, "kek-path", "", "KEK file of a new boot file with --kek-source file (default /etc/rpmgr/kek)")
 		},
 		Run: func(ctx context.Context, env *cli.Env, _ []string) error {
@@ -208,7 +211,7 @@ func controllerInit() *cli.Command {
 		Flags: func(fs *flag.FlagSet) {
 			fs.StringVar(&o.ConfigPath, "config", "", "boot file, written if it does not exist (default $RPMGR_CONFIG, else /etc/rpmgr/controller.yaml)")
 			fs.StringVar(&o.PublicURL, "public-url", "", "https URL of the web UI and API; needed when the boot file does not exist")
-			fs.StringVar(&o.KEKSource, "kek-source", "", "KEK source of a new boot file: systemd-credential (default) or file")
+			fs.StringVar(&o.KEKSource, "kek-source", "", kekSourceHelp)
 			fs.StringVar(&o.KEKPath, "kek-path", "", "KEK file of a new boot file with --kek-source file (default /etc/rpmgr/kek)")
 		},
 		Run: func(ctx context.Context, env *cli.Env, _ []string) error {
