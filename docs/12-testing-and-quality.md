@@ -177,6 +177,11 @@ are recorded as runner measurements, each missed target gets a recorded decision
 regression check compares runner baselines and is reported, not blocking, for v0.x releases
 ([D49](14-open-decisions.md#project-and-process)).
 
+**Over the internet:** the [internet run](../test/internet/README.md) measures the throughput,
+setup, HTTP and UDP workloads between two cloud VMs, direct and through each transport, and soaks a
+release candidate for three hours with disturbances. Two VMs and one path are not the reference
+testbed: its numbers are indications, recorded with the place and time they were measured.
+
 **As built** ([bench/README.md](../bench/README.md)):
 - **Topology:** `bench run` starts a controller, a gateway and two connectors of the `rpmgrtest`
   build in Docker containers on one host, seeds their routes with `rpmgr testseed` and shapes the

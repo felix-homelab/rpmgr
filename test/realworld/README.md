@@ -5,7 +5,9 @@
 verification of a release to a backup and its restore. Unit, integration and end-to-end tests run
 the roles in one process or as plain processes; this run is the one that meets systemd, its
 credentials and units, the installer on several distributions, and the order of an operator's
-steps. It found the faults #437 to #444 in `v0.1.0-rc.1`.
+steps. It found the faults #437 to #444 in `v0.1.0-rc.1`. Its hosts share one machine and have no
+internet access; the [internet run](../internet/README.md) installs a release on two cloud VMs,
+measures its performance over the internet and runs a soak test with disturbances.
 
 ## Running it
 
