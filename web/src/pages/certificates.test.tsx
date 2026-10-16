@@ -2,8 +2,8 @@
 
 import { timestampFromDate } from "@bufbuild/protobuf/wkt";
 import { Code, ConnectError } from "@connectrpc/connect";
-import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { act, cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   CertificateService, CertificateSource, CertificateStatus,
   type CreateCABundleRequest, type DeleteCertificateRequest, type UpdateCABundleRequest, type UploadCertificateRequest,
@@ -90,17 +90,53 @@ describe("Certificates", () => {
     expect(document.body.textContent).not.toContain("MHcC");
   });
 
-  it("renews an ACME certificate and says why one in use is not removed", async () => {
+  it("renews an ACME certificate, and offers no removal, which the server always refuses", async () => {
     const calls = page();
     const acme = await cert("wiki.example.com");
     fireEvent.click(acme.getByRole("button", { name: "Renew now" }));
     expect((await acme.findByRole("status")).textContent).toBe("Renewal started.");
     expect(calls.renew).toEqual(["crt_1"]);
-    fireEvent.click(acme.getByRole("button", { name: "Remove…" }));
-    expect(acme.getByText("Remove the certificate for wiki.example.com?")).toBeTruthy();
-    fireEvent.click(acme.getByRole("button", { name: "Remove it" }));
-    expect((await acme.findByRole("alert")).textContent).toBe("apisvc: routes use the certificate: wiki");
-    expect(calls.remove.map((r) => [r.certificateId, r.etag])).toEqual([["crt_1", "2"]]);
+    expect(acme.queryByRole("button", { name: "Remove…" })).toBeNull();
+    expect(acme.getByText("ACME manages it; it cannot be removed.")).toBeTruthy();
+  });
+
+  it("removes an uploaded certificate after a confirmation, and says why one in use is not", async () => {
+    const calls = page();
+    const uploaded = await cert("*.example.org, example.org");
+    expect(uploaded.queryByText("ACME manages it; it cannot be removed.")).toBeNull();
+    fireEvent.click(uploaded.getByRole("button", { name: "Remove…" }));
+    expect(uploaded.getByText("Remove the certificate for *.example.org?")).toBeTruthy();
+    fireEvent.click(uploaded.getByRole("button", { name: "Remove it" }));
+    expect((await uploaded.findByRole("alert")).textContent).toBe("apisvc: routes use the certificate: wiki");
+    expect(calls.remove.map((r) => [r.certificateId, r.etag])).toEqual([["crt_2", "1"]]);
+  });
+
+  it.each([
+    ["Certificates", "*.example.org, example.org", "crt_2"],
+    ["Certificates", "wiki.example.com", "crt_1"],
+    ["CA bundles", "office", "cab_1"],
+  ])("shows the ID of each item of %s, %s, which other forms and the command line take, and copies it", async (region, name, id) => {
+    const write = vi.fn(() => Promise.resolve());
+    Object.assign(navigator, { clipboard: { writeText: write } });
+    page();
+    const s = within(await screen.findByRole("region", { name: region }));
+    const row = within((await s.findByText(name)).closest("li")!);
+    const copy = row.getByRole("button", { name: "Copy" });
+    expect(document.getElementById(copy.getAttribute("aria-describedby")!)?.textContent).toBe(id);
+    expect(row.getByText(id).tagName).toBe("CODE");
+    fireEvent.click(copy);
+    await act(async () => {});
+    expect(write).toHaveBeenCalledWith(id);
+    expect(row.getByRole("button", { name: "Copied" })).toBeTruthy();
+  });
+
+  it("says to copy an ID by hand when the browser does not copy it", async () => {
+    Object.assign(navigator, { clipboard: undefined });
+    page();
+    const row = await cert("wiki.example.com");
+    fireEvent.click(row.getByRole("button", { name: "Copy" }));
+    expect((await row.findByRole("status")).textContent).toBe("The browser did not copy it. Select the text and copy it by hand.");
+    expect(row.getByText("crt_1")).toBeTruthy();
   });
 });
 

@@ -4,6 +4,7 @@ import { clone, create, equals } from "@bufbuild/protobuf";
 import { Code, ConnectError } from "@connectrpc/connect";
 import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
+import { CertificateService } from "@/gen/rpmgr/v1/certificate_pb";
 import { ConnectorService } from "@/gen/rpmgr/v1/connector_pb";
 import { GatewayService } from "@/gen/rpmgr/v1/gateway_pb";
 import {
@@ -24,9 +25,12 @@ const target = create(RouteTargetSchema, {
 });
 const applied = { revision: { dbEpoch: "e", seq: 11n }, applyStatus: { state: ApplyState.APPLIED, agentsTotal: 1, agentsApplied: 1 } };
 
-// detail renders the detail of a route of type case with targets, by default the target above;
-// ProbeTargetCertificate answers with probe, if given.
-function detail(spec: { case: "http" | "tcp" | "udp" | "tcpUdp" | "tlsPassthrough"; value: object }, targets = [target], probe?: () => object) {
+// The org's CA bundles.
+const bundles = [{ id: "cab_1", name: "office" }, { id: "cab_2", name: "lab" }];
+
+// detail renders the detail of a route of type case with targets, by default the target above, in
+// an org with the CA bundles caBundles; ProbeTargetCertificate answers with probe, if given.
+function detail(spec: { case: "http" | "tcp" | "udp" | "tcpUdp" | "tlsPassthrough"; value: object }, targets = [target], probe?: () => object, caBundles = bundles) {
   const probes: ProbeTargetCertificateRequest[] = [];
   const creates: CreateRouteTargetRequest[] = [];
   const updates: UpdateRouteTargetRequest[] = [];
@@ -41,6 +45,7 @@ function detail(spec: { case: "http" | "tcp" | "udp" | "tcpUdp" | "tlsPassthroug
       getConnectorStatus: () => ({}),
     });
     router.service(StatusService, { async *watchApplyStatus() {} });
+    router.service(CertificateService, { listCABundles: () => ({ caBundles }) });
     router.service(RouteService, {
       getRoute: () => ({ route }),
       createRouteTarget: (req) => (creates.push(req), { target: req.target, ...applied }),
@@ -174,12 +179,13 @@ describe("targets", () => {
     const protocol = f.getByLabelText("Protocol to the target");
     expect(f.queryByText(/will not check the target's certificate/)).toBeNull();
     fireEvent.change(protocol, { target: { value: String(UpstreamProtocol.HTTPS) } });
-    fireEvent.change(await f.findByLabelText(/CA bundle ID/), { target: { value: "cab_1" } });
+    await f.findByRole("option", { name: "office · cab_1" });
+    fireEvent.change(f.getByLabelText("CA bundle"), { target: { value: "cab_1" } });
     fireEvent.change(f.getByLabelText(/Public key pin/), { target: { value: "ab".repeat(32) } });
     fireEvent.change(protocol, { target: { value: UNVERIFIED } });
     const warning = await f.findByText(/will not check the target's certificate/);
     expect(protocol.getAttribute("aria-describedby")).toBe(warning.parentElement!.id);
-    expect([f.queryByLabelText(/CA bundle ID/), f.queryByLabelText(/Public key pin/)]).toEqual([null, null]);
+    expect([f.queryByLabelText("CA bundle"), f.queryByLabelText(/Public key pin/)]).toEqual([null, null]);
     const serverName = f.getByLabelText("TLS server name");
     expect(document.getElementById(serverName.getAttribute("aria-describedby")!.split(" ")[0]!)?.textContent).toBe("Sent to the target; empty: the host's name.");
     fireEvent.change(serverName, { target: { value: " nas.local " } });
@@ -217,7 +223,7 @@ describe("targets", () => {
     fireEvent.change(f.getByLabelText("Protocol to the target"), { target: { value: PINNED } });
     const key = await f.findByLabelText("Pinned public key, SHA-256 in hex");
     expect(key.hasAttribute("required")).toBe(true);
-    expect([f.queryByLabelText(/CA bundle ID/), f.queryByText(/will not check the target's certificate/)]).toEqual([null, null]);
+    expect([f.queryByLabelText("CA bundle"), f.queryByText(/will not check the target's certificate/)]).toEqual([null, null]);
     fireEvent.change(f.getByLabelText("TLS server name"), { target: { value: "pve.local" } });
     fireEvent.click(f.getByRole("button", { name: "Trust the certificate it shows now" }));
     const shown = within(await f.findByRole("region", { name: "The certificate the target shows" }));
@@ -310,5 +316,44 @@ describe("targets", () => {
     const edited = await screen.findByRole("form", { name: "Edit target" });
     expect(marked(edited)).toEqual(["Host", "Port", "Weight", "Priority"]);
     expect(unmatched(edited)).toEqual([]);
+  });
+
+  it("chooses a verified HTTPS target's CA bundle among the org's, or none for the system's roots", async () => {
+    const { updates } = detail({ case: "http", value: { hostnames: ["app.example.com"] } });
+    fireEvent.click(await screen.findByRole("button", { name: "Edit…" }));
+    const f = await form("Edit target");
+    fireEvent.change(f.getByLabelText("Protocol to the target"), { target: { value: String(UpstreamProtocol.HTTPS) } });
+    const picker = await f.findByLabelText<HTMLSelectElement>("CA bundle");
+    await waitFor(() => expect([...picker.options].map((o) => [o.value, o.textContent])).toEqual([
+      ["", "None: the system's roots"], ["cab_1", "office · cab_1"], ["cab_2", "lab · cab_2"],
+    ]));
+    expect([picker.value, picker.getAttribute("aria-describedby")]).toEqual(["", null]); // no hint while the org has bundles
+    fireEvent.change(picker, { target: { value: "cab_2" } });
+    fireEvent.click(f.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(updates).toHaveLength(1));
+    expect([updates[0]!.target!.tls?.verification, updates[0]!.target!.tls?.caBundleId]).toEqual([UpstreamVerification.VERIFIED, "cab_2"]);
+  });
+
+  it("keeps a target's CA bundle that the org does not list, says when it has none, and can drop the bundle", async () => {
+    const verified = clone(RouteTargetSchema, target);
+    verified.upstreamProtocol = UpstreamProtocol.HTTPS;
+    verified.tls = create(UpstreamTLSSettingsSchema, { caBundleId: "cab_gone", verification: UpstreamVerification.VERIFIED });
+    const { updates } = detail({ case: "http", value: { hostnames: ["app.example.com"] } }, [verified], undefined, []);
+    fireEvent.click(await screen.findByRole("button", { name: "Edit…" }));
+    const f = await form("Edit target");
+    const picker = await f.findByLabelText<HTMLSelectElement>("CA bundle");
+    await waitFor(() => expect(document.getElementById(picker.getAttribute("aria-describedby") ?? "")?.textContent)
+      .toBe("The org has no CA bundle, so the system's roots verify the target. Add one under Domains & certificates."));
+    expect([...picker.options].map((o) => [o.value, o.textContent])).toEqual([["", "None: the system's roots"], ["cab_gone", "cab_gone"]]);
+    expect(picker.value).toBe("cab_gone");
+    fireEvent.click(f.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(updates).toHaveLength(1));
+    expect(equals(RouteTargetSchema, updates[0]!.target!, verified)).toBe(true);
+    fireEvent.click(await screen.findByRole("button", { name: "Edit…" }));
+    const again = await form("Edit target");
+    fireEvent.change(await again.findByLabelText("CA bundle"), { target: { value: "" } });
+    fireEvent.click(again.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(updates).toHaveLength(2));
+    expect(updates[1]!.target!.tls?.caBundleId).toBe("");
   });
 });

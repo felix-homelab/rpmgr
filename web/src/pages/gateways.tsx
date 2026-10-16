@@ -21,6 +21,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Table, TD, TH, THead, TR } from "@/components/ui/table";
 import { GatewayGroupSchema, GatewayService, type Gateway, type GatewayGroup } from "@/gen/rpmgr/v1/gateway_pb";
+import { Reason, reasonOf } from "@/lib/errors";
 import { when } from "@/lib/format";
 import { GatewayActions, GatewayForm, type Written } from "@/pages/gateway-actions";
 import { PortPools } from "@/pages/port-pools";
@@ -117,7 +118,8 @@ export function GroupForm({ orgId, group, onCancel }: { orgId: string; group?: G
       await queryClient.invalidateQueries();
     } catch (err) {
       const e = ConnectError.from(err);
-      setMessage({ tone: "error", text: e.code === Code.FailedPrecondition && group ? t("connectors.changed") : e.code === Code.InvalidArgument || e.code === Code.AlreadyExists ? e.rawMessage : t("link.failed", { message: e.rawMessage }) });
+      setMessage({ tone: "error", text: reasonOf(err) === Reason.etagMismatch ? t("gateways.changed")
+        : e.code === Code.InvalidArgument || e.code === Code.AlreadyExists ? e.rawMessage : t("link.failed", { message: e.rawMessage }) });
     }
   }
   return (

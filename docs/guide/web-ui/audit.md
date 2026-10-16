@@ -25,7 +25,7 @@ Each entry is one line, 100 at a time; **Older entries** at the end loads the ne
 - **Opened**, by a click on the line, an entry shows its details: **Entry** (its number in the
   chain), **Actor type**, **Credential** (the session or token used), **Authentication**,
   **Address**, **User agent**, **Request ID** and **Reason**, as far as the entry has them, and the
-  request it recorded, with secrets removed.
+  request it recorded, with secrets removed. A long request wraps within the page.
 
 `No entry matches.` says that the filters found nothing.
 

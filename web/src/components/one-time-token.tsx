@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
-import { useEffect, useState } from "react";
+import { Check, Copy } from "lucide-react";
+import { useEffect, useId, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 
@@ -72,6 +73,27 @@ export function Command({ command, label }: { command: string; label: string }) 
       <div className="flex min-w-0 items-start gap-2">
         <pre aria-label={label} className="min-w-0 grow rounded bg-muted p-2 font-mono text-xs whitespace-pre-wrap wrap-anywhere">{command}</pre>
         <Button size="sm" variant="outline" onClick={() => void copy()}>{t(state === "copied" ? "copy.copied" : "mfa.copy")}</Button>
+      </div>
+      <CopyNote failed={state === "failed"} />
+    </div>
+  );
+}
+
+// ResourceID shows a resource's ID, by which the command line and the API name it, with a button
+// that copies it; screen readers hear the ID with the button. The ID wraps rather than widen its
+// row.
+export function ResourceID({ id }: { id: string }) {
+  const { t } = useTranslation();
+  const { state, copy } = useCopy(id);
+  const code = useId();
+  return (
+    <div className="grid min-w-0 gap-1">
+      <div className="flex min-w-0 flex-wrap items-center gap-x-2 text-muted-foreground">
+        <span>{t("copy.idLabel")}</span>
+        <code id={code} className="min-w-0 font-mono text-xs break-all text-foreground">{id}</code>
+        <Button size="sm" variant="ghost" className="h-7 px-2" aria-describedby={code} onClick={() => void copy()}>
+          {state === "copied" ? <Check aria-hidden="true" /> : <Copy aria-hidden="true" />}{t(state === "copied" ? "copy.copied" : "mfa.copy")}
+        </Button>
       </div>
       <CopyNote failed={state === "failed"} />
     </div>
