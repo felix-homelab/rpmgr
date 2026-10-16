@@ -141,7 +141,8 @@ history and the [ADRs](docs/adr/).
   upstreams. (#287, #288, #289, #339, #340)
 - API: the controller serves a public ConnectRPC API. Each method checks a named permission of the
   org roles Owner, Admin, Operator and Viewer, or of the Instance Admin. Lists are paged, updates
-  take field masks and etags, and creates are idempotent by `request_id`. (#310, #311, #322, #333)
+  take field masks and etags, and creates are idempotent by `request_id`. A request message holds
+  at most 4 MiB, also once decompressed. (#310, #311, #322, #333)
 - API: local accounts with argon2id passwords, cookie sessions, TOTP and recovery codes, and step-up
   for sensitive actions. Users change their own password, and one-time links reset it. (#312,
   #313, #314, #316, #321)

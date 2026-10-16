@@ -123,13 +123,18 @@ func (s *Server) Mount(mux *http.ServeMux, sd protoreflect.ServiceDescriptor,
 	if err := Check(sd); err != nil {
 		return err
 	}
-	path, h := handler(connect.WithInterceptors(s.interceptor()))
+	path, h := handler(connect.WithInterceptors(s.interceptor()), connect.WithReadMaxBytes(MaxRequestBytes))
 	if path != "/"+string(sd.FullName())+"/" {
 		return fmt.Errorf("api: the handler of %s serves %s", sd.FullName(), path)
 	}
 	mux.Handle(path, s.csrf(h))
 	return nil
 }
+
+// MaxRequestBytes bounds a request message, also once decompressed (docs/03-connections.md,
+// "Timeouts, keepalive and backoff"); a larger one is refused with RESOURCE_EXHAUSTED before any
+// handler or interceptor sees it.
+const MaxRequestBytes = 4 << 20
 
 // Check reports the first method of a service whose authorization cannot be enforced: no
 // (rpmgr.v1.authz) option, an unknown permission, an org permission without a resource field, a
