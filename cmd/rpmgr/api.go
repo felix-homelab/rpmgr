@@ -51,6 +51,7 @@ func apiCommands() []*cli.Command {
 	createPolicy, updatePolicy := accessPolicyCommands()
 	add(map[string][]*cli.Command{"create": {createPolicy}, "update": {updatePolicy}})
 	add(memberCommands())
+	add(recoveryCommands())
 	add(settingsCommands())
 	out := []*cli.Command{getCommand(), listCommand(), deleteCommand()}
 	for _, v := range []struct{ verb, summary string }{
@@ -59,7 +60,7 @@ func apiCommands() []*cli.Command {
 		{"drain", "stop a gateway taking new connections"}, {"decommission", "take an agent out of service for good"},
 		{"revoke", "revoke a credential"}, {"set", "set an org's limit"}, {"preview", "show what a change would do, saving nothing"},
 		{"verify", "check a proof now"}, {"trust", "trust something without a proof"}, {"upload", "upload a file to the controller"},
-		{"renew", "renew a certificate now"}, {"remove", "remove a member from the org"},
+		{"renew", "renew a certificate now"}, {"remove", "remove a member from the org, or a user's second factor"},
 	} {
 		out = append(out, group(v.verb, v.summary, verbs[v.verb]...))
 	}

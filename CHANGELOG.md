@@ -147,12 +147,12 @@ history and the [ADRs](docs/adr/).
   #313, #314, #316, #321)
 - API: orgs with members and roles. Invitations and password resets are one-time links, also sent
   by e-mail when an SMTP relay is configured. (#318, #319, #349)
-- All roles: administrators recover other users' accounts after a step-up, in the web UI and
-  through the API: a password-reset link, by an Owner or Admin for their members and by the
-  Instance Admin for anyone, and the removal of a lost second factor, by an Owner or the Instance
-  Admin, which ends the user's sessions. An Owner or Admin recovers only users all of whose
+- All roles: administrators recover other users' accounts after a step-up, in the web UI, with
+  `rpmgr` and through the API: a password-reset link, by an Owner or Admin for their members and by
+  the Instance Admin for anyone, and the removal of a lost second factor, by an Owner or the
+  Instance Admin, which ends the user's sessions. An Owner or Admin recovers only users all of whose
   organisations they hold, and no Instance Admin. The Instance Admin grants and revokes the Instance
-  Admin role on the new Users page; the last one keeps it. (#562)
+  Admin role on the new Users page or with `rpmgr update user`; the last one keeps it. (#562)
 - API: personal API tokens for the CLI and scripts, each bound to one org and limited to
   permissions its owner holds; a token can step up. (#320, #346)
 - API: services for gateway groups, gateways, port pools and quotas, enrollment tokens and install
