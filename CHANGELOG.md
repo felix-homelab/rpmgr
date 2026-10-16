@@ -144,20 +144,21 @@ history and the [ADRs](docs/adr/).
 - Controller: `http` routes can use uploaded certificates instead, whose keys are encrypted under
   the KEK; gateways fetch them by hash and choose one by server name. CA bundles verify HTTPS
   upstreams. (#287, #288, #289, #339, #340)
-- API: the controller serves a public ConnectRPC API. Each method checks a named permission of the
-  org roles Owner, Admin, Operator and Viewer, or of the Instance Admin. Lists are paged, updates
-  take field masks and etags, and creates are idempotent by `request_id`. (#310, #311, #322, #333)
+- API: the controller serves a public ConnectRPC API over HTTP/2 and HTTP/1.1, to Connect, gRPC
+  and gRPC-Web clients. Each method checks a named permission of the org roles Owner, Admin,
+  Operator and Viewer, or of the Instance Admin. Lists are paged, updates take field masks and
+  etags, and creates are idempotent by `request_id`. (#310, #311, #322, #333, #559)
 - API: local accounts with argon2id passwords, cookie sessions, TOTP and recovery codes, and step-up
   for sensitive actions. Users change their own password, and one-time links reset it. (#312,
   #313, #314, #316, #321)
 - API: orgs with members and roles. Invitations and password resets are one-time links, also sent
   by e-mail when an SMTP relay is configured. (#318, #319, #349)
-- All roles: administrators recover other users' accounts after a step-up, in the web UI and
-  through the API: a password-reset link, by an Owner or Admin for their members and by the
-  Instance Admin for anyone, and the removal of a lost second factor, by an Owner or the Instance
-  Admin, which ends the user's sessions. An Owner or Admin recovers only users all of whose
+- All roles: administrators recover other users' accounts after a step-up, in the web UI, with
+  `rpmgr` and through the API: a password-reset link, by an Owner or Admin for their members and by
+  the Instance Admin for anyone, and the removal of a lost second factor, by an Owner or the
+  Instance Admin, which ends the user's sessions. An Owner or Admin recovers only users all of whose
   organisations they hold, and no Instance Admin. The Instance Admin grants and revokes the Instance
-  Admin role on the new Users page; the last one keeps it. (#562)
+  Admin role on the new Users page or with `rpmgr update user`; the last one keeps it. (#562)
 - API: personal API tokens for the CLI and scripts, each bound to one org and limited to
   permissions its owner holds; a token can step up. (#320, #346)
 - API: services for gateway groups, gateways, port pools and quotas, enrollment tokens and install
@@ -172,6 +173,8 @@ history and the [ADRs](docs/adr/).
   A route can be previewed before it is saved, routes report their observed status, and
   configuration and status changes stream to clients. (#335, #336, #337)
 - API: an org's resources export as YAML manifests. (#341, #342)
+- API: a request message holds at most 4 MiB, also once decompressed; a larger one is refused
+  before it is handled. (#582)
 - CLI: `rpmgr login` signs in with a personal API token. Verb-first commands (`get`, `list`,
   `create`, `update`, `delete`, `enable`, `disable`, `preview` and more) cover every resource of the
   API, with table, YAML or JSON output. Flags may stand before or after a command's arguments, as

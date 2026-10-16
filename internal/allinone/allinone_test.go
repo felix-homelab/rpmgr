@@ -393,7 +393,8 @@ func TestInit_FailureIsUndone(t *testing.T) {
 }
 
 // TestAllInOne: `init` sets up the controller and enrolls its gateway through it; `Run` serves the
-// controller through the gateway's port 443, so a connector enrolls and runs against the public URL;
+// controller through the gateway's port 443, over HTTP/2 and HTTP/1.1, so a connector enrolls and
+// runs against the public URL;
 // a tcp route on the default group then reaches a service behind the connector, also after a
 // restart, which finds the admin address free once Run has returned.
 func TestAllInOne(t *testing.T) {
@@ -410,6 +411,23 @@ func TestAllInOne(t *testing.T) {
 	stop := h.run(t)
 	h.registry = nil // a restart registers anew
 	waitFor(t, "not ready", h.ready)
+
+	// The gateway hands the public URL's connections to the controller still encrypted, so the
+	// controller's web server answers them over HTTP/2 as well as HTTP/1.1 (D92).
+	for _, major := range []int{2, 1} {
+		tr := h.web.Transport.(*http.Transport).Clone()
+		tr.Protocols = new(http.Protocols)
+		tr.Protocols.SetHTTP1(major == 1)
+		tr.Protocols.SetHTTP2(major == 2)
+		resp, err := (&http.Client{Timeout: 10 * time.Second, Transport: tr}).Get(h.publicURL + "/.well-known/rpmgr/trust-bundle")
+		if err != nil {
+			t.Fatalf("HTTP/%d through the gateway: %v", major, err)
+		}
+		_ = resp.Body.Close()
+		if resp.ProtoMajor != major || resp.StatusCode != http.StatusOK {
+			t.Fatalf("HTTP/%d through the gateway: %s %s", major, resp.Proto, resp.Status)
+		}
+	}
 
 	// Port 80 is the gateway's: the controller's own name, which no route serves, gets its
 	// redirect; any other name no route serves gets the gateway's page (D87).

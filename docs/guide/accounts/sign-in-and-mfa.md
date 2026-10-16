@@ -181,7 +181,7 @@ answers that the controller cannot send e-mail. Ask for a reset link instead:
   It prints a one-time link to pass on. Such local administration needs no account and is audited
   ([04](../../04-security.md#roles)).
 - **An Owner or Admin** of your organisation, or the Instance Admin, makes one with **Reset link**
-  on the **Organisation** page
+  on the **Organisation** page or with `rpmgr create reset-link`
   ([Members and roles](members-and-roles.md#recover-a-members-account)).
 
 The person then opens the link and sets a password as in step 3 above.

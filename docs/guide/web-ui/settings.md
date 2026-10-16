@@ -110,4 +110,6 @@ Admin**, **Second factor**, **Status** and **Last sign-in**. Each row's **Action
 
 `rpmgr get settings` and `rpmgr update settings --set <setting>=<value>` show and change the
 organisation's settings, with `--instance` the instance's; `rpmgr set smtp-password` sets the relay
-password ([Settings](../operations/settings.md)).
+password ([Settings](../operations/settings.md)). `rpmgr update user --instance-admin <user>`, with
+`=false` to revoke, `rpmgr create reset-link <user>` and `rpmgr remove second-factor <user>` act on
+users.

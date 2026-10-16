@@ -169,9 +169,8 @@ func (c *Controller) StartReplica(t testing.TB) (string, *controller.Sessions) {
 	uiCert, uiRoots := webCertificate(t)
 	web := &http.Server{Handler: mux, ReadHeaderTimeout: 5 * time.Second}
 	go func() { _ = agents.Serve(split.Agents()) }()
-	go func() {
-		_ = web.Serve(tls.NewListener(split.Web(), &tls.Config{MinVersion: tls.VersionTLS13, Certificates: []tls.Certificate{uiCert}}))
-	}()
+	webTLS := controller.WebTLS(func(*tls.ClientHelloInfo) (*tls.Certificate, error) { return &uiCert, nil }, false)
+	go func() { _ = web.Serve(tls.NewListener(split.Web(), webTLS)) }()
 	go func() { _ = split.Serve(ln) }()
 	stop := sync.OnceFunc(func() { agents.Stop(); _ = web.Close(); _ = ln.Close(); stopRun(); <-running })
 	c.stops = append(c.stops, stop)
