@@ -5,7 +5,7 @@ import { Code, ConnectError } from "@connectrpc/connect";
 import { useMutation } from "@connectrpc/connect-query";
 import { TriangleAlert } from "lucide-react";
 import { useId, useState } from "react";
-import { useForm, useWatch, type Path, type Resolver, type UseFormReturn } from "react-hook-form";
+import { useController, useForm, useWatch, type Path, type Resolver, type UseFormReturn } from "react-hook-form";
 import { useTranslation } from "react-i18next";
 import { labelClass } from "@/components/field";
 import { Alert } from "@/components/public-page";
@@ -19,6 +19,8 @@ import {
 import type { ApplyStatus } from "@/gen/rpmgr/v1/status_pb";
 import { when } from "@/lib/format";
 import { protoResolver, serverFieldErrors, type FieldOf } from "@/lib/proto-form";
+import { useCABundles } from "@/pages/certificates";
+import { useOrg } from "@/session";
 
 export interface TargetValues {
   connector: string;
@@ -207,7 +209,7 @@ export function TargetForm({ route, target, connectors, onDone, onCancel }: {
             </>
           ) : !unverified && (
             <>
-              <Text form={form} name="caBundle" label={t("targetForm.caBundle")} />
+              <BundleSelect form={form} />
               <Text form={form} name="spki" label={t("targetForm.spki")} />
             </>
           )}
@@ -285,6 +287,34 @@ function TrustCertificate({ form, connector }: { form: UseFormReturn<TargetValue
           </div>
         </section>
       )}
+    </div>
+  );
+}
+
+// BundleSelect chooses the CA bundle that a verified HTTPS target's certificate is checked with,
+// among the org's, or none for the system's roots, and keeps the bundle's ID as the form's value. It
+// is controlled, so that it shows the form's value while the bundles are read; a bundle the org does
+// not list stays offered by its ID, so that the select never changes it unasked.
+function BundleSelect({ form }: { form: UseFormReturn<TargetValues> }) {
+  const { t } = useTranslation();
+  const id = useId();
+  const org = useOrg();
+  const bundles = useCABundles(org?.orgId);
+  const { field: { ref, ...field }, fieldState } = useController({ control: form.control, name: "caBundle" });
+  const listed = bundles.data ?? [];
+  const chosen = field.value.trim();
+  const none = bundles.isSuccess && listed.length === 0;
+  return (
+    <div className="grid gap-1.5">
+      <label htmlFor={id} className={labelClass(false)}>{t("targetForm.caBundle")}</label>
+      <SelectBox id={id} ref={ref} name={field.name} value={chosen} onChange={field.onChange} onBlur={field.onBlur}
+        aria-invalid={fieldState.error ? true : undefined} aria-describedby={none ? `${id}-hint` : undefined}>
+        <option value="">{t("targetForm.systemRoots")}</option>
+        {listed.map((b) => <option key={b.id} value={b.id}>{t("targetForm.bundleOption", { name: b.name, id: b.id })}</option>)}
+        {chosen !== "" && !listed.some((b) => b.id === chosen) && <option value={chosen}>{chosen}</option>}
+      </SelectBox>
+      {none && <p id={`${id}-hint`} className="text-xs text-muted-foreground">{t("targetForm.noBundles")}</p>}
+      {fieldState.error && <p role="alert" className="text-sm text-destructive">{fieldState.error.message}</p>}
     </div>
   );
 }

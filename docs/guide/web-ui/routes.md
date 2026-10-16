@@ -72,7 +72,7 @@ An **HTTP** route adds ([HTTP routes](../routes/http.md)):
 | **Hostnames** | One per line. Each must be a verified domain of the organisation, or a name below one claimed with **Also every name below it**, which also allows a `*.` name ([Domains & certificates](domains.md)). A `*.` name needs **Uploaded**: ACME issues no certificate for it |
 | **Path prefix** | Serve only paths below it; empty for all |
 | **TLS certificate** | **From ACME**, the default, or **Uploaded** |
-| **Uploaded certificate ID** | Required with **Uploaded**: the ID of an uploaded certificate ([Domains & certificates](domains.md#certificates)). The web UI does not show certificate IDs; `rpmgr list certificate` lists them |
+| **Uploaded certificate** | Shown and required with **Uploaded**: one of the organisation's uploaded certificates that cover every hostname, by its names, ID and expiry ([Domains & certificates](domains.md#certificates)). With none, it says `No uploaded certificate covers these hostnames`. A certificate chosen before stays chosen, marked `(does not cover every hostname)` once it does not |
 | **Port 80** | **Redirect to HTTPS**, the default, **Serve the route**, or **Closed** |
 | **HSTS max-age (seconds)** | The `Strict-Transport-Security` lifetime the route sends; 0 sends none |
 | **Host header to the target** | The `Host` header the target gets; empty or `preserve` passes the client's on |
@@ -81,6 +81,11 @@ An **HTTP** route adds ([HTTP routes](../routes/http.md)):
 | **Largest request body (bytes, 0 for no limit)** | The largest request body the gateway lets through |
 | **Maintenance** | **Off: serve the route** or **On: show the maintenance page** ([D88](../../14-open-decisions.md#engineering)) |
 | **Maintenance message (plain text, at most 500 characters)** | The text the maintenance page shows |
+
+Before it sends a route, the form checks each line of **Labels**, **Request headers to set** and
+**Response headers to set**. It names the first line without `=` or `:`, with a label key or header
+name the API refuses, or with a key or name an earlier line has, such as `Line 2: write a label as
+key=value.`; a header name is the same whatever its case.
 
 A **TCP** route adds **Public port** and **Idle timeout (seconds)**; a **UDP** route **Public
 port** and **Flow idle timeout (seconds)**; a **TCP and UDP** route **Public port**, **TCP idle
@@ -176,7 +181,7 @@ it** removes it. **Add a target** opens the target form in the card, one form at
 | **Address** | **Host and port**, then **Host** and **Port**; or **Unix socket**, then **Socket path** |
 | **Protocol to the target** | HTTP routes only: **HTTP**, **HTTPS, verified**, **HTTPS, pinned key**, **HTTPS, unverified** or **HTTP/2 without TLS (h2c)**. Other route types pass the bytes, or the datagrams, as they come |
 | **TLS server name** | HTTPS: the name the target's certificate is checked against and sent to it; empty for the host's name. Required on a Unix socket |
-| **CA bundle ID (empty: the system's roots)** | HTTPS, verified: the CA bundle the certificate is verified with ([CA bundles](domains.md#ca-bundles)). The web UI does not show CA bundle IDs; `rpmgr list ca-bundle` lists them |
+| **CA bundle** | HTTPS, verified: **None: the system's roots**, or one of the organisation's CA bundles, by name and ID, that the certificate is verified with ([CA bundles](domains.md#ca-bundles)) |
 | **Public key pin, SHA-256 in hex (optional)** | HTTPS, verified: also require this key |
 | **Pinned public key, SHA-256 in hex** | HTTPS, pinned key: the one key the target may present |
 | **PROXY protocol** | TCP, TCP and UDP, and TLS passthrough routes: **None**, **Version 1** or **Version 2**. On a TCP and UDP route it goes on the TCP connections only, which the form notes ([D86](../../14-open-decisions.md#engineering)) |

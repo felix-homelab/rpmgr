@@ -39,9 +39,10 @@ A connector takes its host's name when it enrolls; rename it on its page.
 
 The **Enrollment tokens** card below the list shows each token that can still enroll a connector:
 when it was created, when it expires, how often it was used (`used 0 of 5`, or `used 3 times` for a
-token without a limit), whether it enrolls ephemeral connectors, its labels, and when and from
-which address it was last used. **Revoke…** asks `Revoke the token created …?`; **Revoke it**
-revokes it, so that it enrolls nothing more.
+token without a limit), an `ephemeral` badge if it enrolls ephemeral connectors, which explains the
+kind when the pointer rests on it, its labels, and when and from which address it was last used.
+**Revoke…** asks `Revoke the token created …?`; **Revoke it** revokes it, so that it enrolls
+nothing more.
 
 Tokens that are used up, expired or revoked are not listed, nor tokens that re-enroll one
 particular connector or enroll a gateway. `rpmgr list --all enrollment-token` lists every token.

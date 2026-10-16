@@ -9,24 +9,41 @@ import { Port80Mode, RouteSchema, TLSMode, type Route } from "@/gen/rpmgr/v1/rou
 export interface RouteField {
   key: string;
   path: string;
-  kind: "text" | "longtext" | "lines" | "pairs" | "number" | "optionalNumber" | "select" | "tristate";
+  kind: "text" | "longtext" | "lines" | "pairs" | "number" | "optionalNumber" | "select" | "tristate" | "certificate";
   options?: [string, string][]; // value and i18n key, for select
+  format?: PairFormat; // how a line reads, for pairs
   required?: (values: RouteValues) => boolean; // whether the form needs a value; see needsValue
+  shown?: (values: RouteValues) => boolean; // whether the form shows it; always if not set
   get: (r: Route) => string;
   set: (r: Route, v: string) => void;
 }
+
+// PairFormat is how a line of a field of pairs reads: a label as key=value, a header as Name: value.
+// name is what a label key may be (route.proto) or a header name (a token of RFC 9110, which the
+// server checks too); a header's name is the same whatever its case.
+export interface PairFormat {
+  kind: "labels" | "headers";
+  sep: string;
+  shown: string;
+  name: RegExp;
+  folds: boolean;
+}
+
+const labelFormat: PairFormat = { kind: "labels", sep: "=", shown: "=", name: /^[a-z0-9]([a-z0-9._-]{0,61}[a-z0-9])?$/, folds: false };
+const headerFormat: PairFormat = { kind: "headers", sep: ":", shown: ": ", name: /^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/, folds: true };
 
 type Spec = Route["spec"];
 type SpecOf<C extends NonNullable<Spec["case"]>> = Extract<Spec, { case: C }>["value"];
 
 const lines = (v: string) => v.split("\n").map((s) => s.trim()).filter(Boolean);
-const pairs = (v: string, sep: string) =>
-  Object.fromEntries(lines(v).map((l) => {
-    const i = l.indexOf(sep);
-    return i < 0 ? [l, ""] : [l.slice(0, i).trim(), l.slice(i + sep.length).trim()];
-  }));
-const showPairs = (m: Record<string, string>, sep: string) =>
-  Object.keys(m).sort().map((k) => `${k}${sep}${m[k]}`).join("\n");
+// split is a line of pairs as name and value; undefined without the separator.
+function split(line: string, f: PairFormat): [string, string] | undefined {
+  const i = line.indexOf(f.sep);
+  return i < 0 ? undefined : [line.slice(0, i).trim(), line.slice(i + f.sep.length).trim()];
+}
+const pairs = (v: string, f: PairFormat) => Object.fromEntries(lines(v).map((l) => split(l, f) ?? [l, ""]));
+const showPairs = (m: Record<string, string>, f: PairFormat) =>
+  Object.keys(m).sort().map((k) => `${k}${f.shown}${m[k]}`).join("\n");
 
 // spec returns a field of a spec case, which edits the route's spec only when it has that case.
 function spec<C extends NonNullable<Spec["case"]>>(c: C, field: Omit<RouteField, "get" | "set"> & {
@@ -53,29 +70,31 @@ const transports: [string, string][] = [
 const common: RouteField[] = [
   { key: "name", path: "name", kind: "text", required: () => true, get: (r) => r.name, set: (r, v) => (r.name = v.trim()) },
   { key: "description", path: "description", kind: "longtext", get: (r) => r.description, set: (r, v) => (r.description = v) },
-  { key: "labels", path: "labels", kind: "pairs", get: (r) => showPairs(r.labels, "="), set: (r, v) => (r.labels = pairs(v, "=")) },
+  { key: "labels", path: "labels", kind: "pairs", format: labelFormat, get: (r) => showPairs(r.labels, labelFormat), set: (r, v) => (r.labels = pairs(v, labelFormat)) },
   { key: "transport", path: "transport", kind: "select", options: transports, get: (r) => String(r.transport), set: (r, v) => (r.transport = Number(v)) },
 ];
+
+const uploaded = (v: RouteValues) => v.tlsMode === String(TLSMode.TLS_MODE_CERTIFICATE);
 
 const http: RouteField[] = [
   spec("http", { key: "hostnames", path: "http.hostnames", kind: "lines", required: () => true, get: (s) => s.hostnames.join("\n"), set: (s, v) => (s.hostnames = lines(v)) }),
   spec("http", { key: "pathPrefix", path: "http.path_prefix", kind: "text", get: (s) => s.pathPrefix, set: (s, v) => (s.pathPrefix = v.trim()) }),
   spec("http", { key: "tlsMode", path: "http.tls_mode", kind: "select", options: [[String(TLSMode.TLS_MODE_ACME), "acme"], [String(TLSMode.TLS_MODE_CERTIFICATE), "certificate"]],
     get: (s) => String(s.tlsMode), set: (s, v) => (s.tlsMode = Number(v)) }),
-  // The ID goes with an uploaded certificate only; the server refuses one with ACME. tlsMode is set
-  // first, so the ID follows the mode chosen.
-  spec("http", { key: "certificateId", path: "http.certificate_id", kind: "text",
-    required: (v) => v.tlsMode === String(TLSMode.TLS_MODE_CERTIFICATE), get: (s) => s.certificateId,
-    set: (s, v) => (s.certificateId = s.tlsMode === TLSMode.TLS_MODE_CERTIFICATE ? v.trim() : "") }),
+  // The ID goes with an uploaded certificate only, which is chosen from those that cover the
+  // hostnames; the server refuses one with ACME. tlsMode is set first, so the ID follows the mode
+  // chosen, and the form shows the choice only with an uploaded certificate.
+  spec("http", { key: "certificateId", path: "http.certificate_id", kind: "certificate", required: uploaded, shown: uploaded,
+    get: (s) => s.certificateId, set: (s, v) => (s.certificateId = s.tlsMode === TLSMode.TLS_MODE_CERTIFICATE ? v.trim() : "") }),
   spec("http", { key: "port80", path: "http.port80", kind: "select",
     options: [[String(Port80Mode.REDIRECT), "redirect"], [String(Port80Mode.SERVE), "serve"], [String(Port80Mode.OFF), "off"]],
     get: (s) => String(s.port80), set: (s, v) => (s.port80 = Number(v)) }),
   spec("http", { key: "hsts", path: "http.hsts_max_age_seconds", kind: "number", get: (s) => String(s.hstsMaxAgeSeconds), set: (s, v) => (s.hstsMaxAgeSeconds = num(v)) }),
   spec("http", { key: "hostHeader", path: "http.host_header", kind: "text", get: (s) => s.hostHeader, set: (s, v) => (s.hostHeader = v.trim()) }),
-  spec("http", { key: "requestHeaders", path: "http.request_headers_set", kind: "pairs", get: (s) => showPairs(s.requestHeadersSet, ": "),
-    set: (s, v) => (s.requestHeadersSet = pairs(v, ":")) }),
-  spec("http", { key: "responseHeaders", path: "http.response_headers_set", kind: "pairs", get: (s) => showPairs(s.responseHeadersSet, ": "),
-    set: (s, v) => (s.responseHeadersSet = pairs(v, ":")) }),
+  spec("http", { key: "requestHeaders", path: "http.request_headers_set", kind: "pairs", format: headerFormat,
+    get: (s) => showPairs(s.requestHeadersSet, headerFormat), set: (s, v) => (s.requestHeadersSet = pairs(v, headerFormat)) }),
+  spec("http", { key: "responseHeaders", path: "http.response_headers_set", kind: "pairs", format: headerFormat,
+    get: (s) => showPairs(s.responseHeadersSet, headerFormat), set: (s, v) => (s.responseHeadersSet = pairs(v, headerFormat)) }),
   spec("http", { key: "websocket", path: "http.websocket", kind: "tristate", get: (s) => (s.websocket === undefined ? "" : String(s.websocket)),
     set: (s, v) => (s.websocket = v === "" ? undefined : v === "true") }),
   spec("http", { key: "maxBody", path: "http.max_body_bytes", kind: "number", get: (s) => String(s.maxBodyBytes),
@@ -134,10 +153,58 @@ export function routeWith(base: Route, values: RouteValues): Route {
   return r;
 }
 
-// numberProblem names the field whose value is not a whole number where one is needed.
-export function numberProblems(r: Route, values: RouteValues): string[] {
-  return routeFields(r)
-    .filter((f) => (f.kind === "number" && !/^\d+$/.test((values[f.key] ?? "").trim())) ||
-      (f.kind === "optionalNumber" && !/^\d*$/.test((values[f.key] ?? "").trim())))
-    .map((f) => f.key);
+// A Problem is what is wrong with a field's value, as the key of its text under routeForm and the
+// text's values.
+export interface Problem {
+  text: string;
+  values?: Record<string, string | number>;
+}
+
+// lineProblem is the first line of a field of pairs that is not in its format: one without the
+// separator or with a name that is not one, or a name an earlier line has; lines count from 1, as
+// the user sees them, blank ones too.
+export function lineProblem(v: string, f: PairFormat): Problem | undefined {
+  const seen = new Map<string, number>();
+  const all = v.split("\n");
+  for (let i = 0; i < all.length; i++) {
+    const text = all[i]!.trim();
+    if (text === "") {
+      continue;
+    }
+    const line = i + 1, pair = split(text, f);
+    if (pair === undefined) {
+      return { text: `lines.${f.kind}.separator`, values: { line } };
+    }
+    const [name] = pair;
+    if (!f.name.test(name)) {
+      return { text: `lines.${f.kind}.name`, values: { line, name } };
+    }
+    const same = f.folds ? name.toLowerCase() : name, first = seen.get(same);
+    if (first !== undefined) {
+      return { text: "lines.twice", values: { line, name, first } };
+    }
+    seen.set(same, line);
+  }
+  return undefined;
+}
+
+// fieldProblems are the problems of the fields the form shows that the request's rules do not
+// state clearly: a whole number where one is needed, no certificate where the route needs an
+// uploaded one, and a line of pairs not in its format.
+export function fieldProblems(r: Route, values: RouteValues): Record<string, Problem> {
+  const out: Record<string, Problem> = {};
+  for (const f of routeFields(r)) {
+    const v = (values[f.key] ?? "").trim();
+    if ((f.kind === "number" && !/^\d+$/.test(v)) || (f.kind === "optionalNumber" && !/^\d*$/.test(v))) {
+      out[f.key] = { text: "number" };
+    }
+    if (f.kind === "certificate" && v === "" && (f.required?.(values) ?? false)) {
+      out[f.key] = { text: "certificate.needed" };
+    }
+    const bad = f.format && lineProblem(values[f.key] ?? "", f.format);
+    if (bad) {
+      out[f.key] = bad;
+    }
+  }
+  return out;
 }
