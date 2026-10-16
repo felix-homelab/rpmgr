@@ -116,7 +116,8 @@ function Entry({ entry: e, actor }: { entry: AuditEntry; actor: string }) {
             <div key={k} className="contents"><dt className="text-muted-foreground">{t(`audit.fields.${k}`)}</dt><dd className="break-all">{v}</dd></div>
           ))}
         </dl>
-        {e.diff && <pre className="mt-3 overflow-x-auto rounded-lg bg-muted p-3 font-mono text-xs">{e.diff}</pre>}
+        {/* The request is one line of JSON, often long: it wraps, so that it never widens the page. */}
+        {e.diff && <pre className="mt-3 rounded-lg bg-muted p-3 font-mono text-xs whitespace-pre-wrap wrap-anywhere">{e.diff}</pre>}
       </details>
     </li>
   );

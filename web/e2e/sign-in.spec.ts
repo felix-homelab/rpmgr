@@ -170,6 +170,18 @@ test("signs in, creates an API token with a step-up, sets up an authenticator an
   }
   await page.setViewportSize(size);
   await enroll.getByRole("button", { name: "Close" }).click();
+
+  // The audit log: the request of an opened entry, one line of JSON, wraps, so the page does not
+  // scroll sideways, in a desktop window or on a phone (#563).
+  await page.getByRole("link", { name: "Audit log" }).click();
+  const created = page.locator("details").filter({ has: page.locator("summary", { hasText: "CreateEnrollmentToken" }) }).first();
+  await created.locator("summary").click();
+  await expect(created.locator("pre")).toContainText('"org_id":');
+  for (const width of [size.width, 390]) {
+    await page.setViewportSize({ width, height: size.height });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth), `${width} px wide`).toBe(0);
+  }
+  await page.setViewportSize(size);
   await page.getByRole("button", { name: "User menu: Ada" }).click();
   await page.getByRole("link", { name: "Your account" }).click();
 
