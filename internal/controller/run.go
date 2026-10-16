@@ -19,7 +19,6 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
-	"github.com/mholt/acmez/v3"
 
 	agentv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/agent/v1"
 	rpmgrv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/v1"
@@ -231,10 +230,9 @@ func Run(ctx context.Context, o RunOptions) error {
 	if err != nil {
 		return err
 	}
-	webTLS := &tls.Config{MinVersion: tls.VersionTLS13, GetCertificate: cert.GetCertificate}
+	webTLS := WebTLS(cert.GetCertificate, own != nil)
 	port80 := RedirectHandler(public)
 	if own != nil {
-		webTLS.NextProtos = []string{"http/1.1", acmez.ACMETLS1Protocol}
 		port80 = own.HTTPHandler(port80)
 	}
 	if o.Port80 != nil {
@@ -389,8 +387,9 @@ func Run(ctx context.Context, o RunOptions) error {
 	mux.Handle("/dl/", mirror.Handler()) // the controller's own release, for /install.sh (D59)
 	mux.Handle("/install.sh", installsh.Handler(o.Version, mirror.Roots))
 	mux.Handle("/", ui) // every path the API, the trust bundle and /dl/ do not take
-	web := &http.Server{Handler: cert.HSTS(mux), ReadHeaderTimeout: 10 * time.Second, IdleTimeout: 120 * time.Second,
-		ErrorLog: slog.NewLogLogger(o.Logger.Handler(), slog.LevelDebug)}
+	// The port-80 handler, with ACME's HTTP-01 answers, stays outside misdirected: it has no TLS.
+	web := &http.Server{Handler: misdirected(cert.HSTS(mux)), ReadHeaderTimeout: 10 * time.Second, IdleTimeout: 120 * time.Second,
+		Protocols: webProtocols(), HTTP2: webHTTP2(), ErrorLog: slog.NewLogLogger(o.Logger.Handler(), slog.LevelDebug)}
 
 	ln := o.Listener
 	if ln == nil {

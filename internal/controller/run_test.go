@@ -69,12 +69,13 @@ func newWebCA(t *testing.T) *webCA {
 	return &webCA{key: key, cert: c, pool: pool}
 }
 
-// issue writes a certificate for 127.0.0.1 with common name cn and its key to the two files.
-func (ca *webCA) issue(t *testing.T, certFile, keyFile, cn string) {
+// issue writes a certificate for 127.0.0.1 and the DNS names with common name cn and its key to
+// the two files.
+func (ca *webCA) issue(t *testing.T, certFile, keyFile, cn string, names ...string) {
 	t.Helper()
 	key, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	serial, _ := rand.Int(rand.Reader, big.NewInt(1<<62))
-	tmpl := &x509.Certificate{SerialNumber: serial, Subject: pkix.Name{CommonName: cn}, IPAddresses: []net.IP{net.IPv4(127, 0, 0, 1)},
+	tmpl := &x509.Certificate{SerialNumber: serial, Subject: pkix.Name{CommonName: cn}, IPAddresses: []net.IP{net.IPv4(127, 0, 0, 1)}, DNSNames: names,
 		ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth}, NotBefore: time.Now().Add(-time.Hour), NotAfter: time.Now().Add(time.Hour)}
 	der, err := x509.CreateCertificate(rand.Reader, tmpl, ca.cert, &key.PublicKey, ca.key)
 	if err != nil {
@@ -112,6 +113,7 @@ type runSetup struct {
 	// host is the public URL's host, with no certificate files; "" is 127.0.0.1 with files.
 	host        string
 	https, http string           // the listeners; "" picks free ports
+	noHTTP      bool             // no port-80 listener, whatever http says
 	acmeRoots   *x509.CertPool   // RunOptions.ACMERoots
 	prepare     func(r *running) // after the initialisation, before Run
 	logger      *slog.Logger     // RunOptions.Logger
@@ -130,7 +132,10 @@ func startRunWith(t *testing.T, o runSetup) *running {
 	if r.https == "" {
 		r.https = freeAddr(t)
 	}
-	if r.http == "" {
+	switch {
+	case o.noHTTP:
+		r.http = ""
+	case r.http == "":
 		r.http = freeAddr(t)
 	}
 	r.url = "https://" + r.https
@@ -490,26 +495,13 @@ func TestRun_ACME(t *testing.T) {
 	}
 	t.Cleanup(dns.Close)
 	https, plain := freeAddr(t), freeAddr(t)
-	port := func(addr string) int { p, _ := strconv.Atoi(addr[strings.LastIndex(addr, ":")+1:]); return p }
-	pebble, err := acmetest.Start(acmetest.Options{HTTPPort: port(plain), TLSPort: port(https), Resolver: dns.Addr})
+	pebble, err := acmetest.Start(acmetest.Options{HTTPPort: portOf(plain), TLSPort: portOf(https), Resolver: dns.Addr})
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(pebble.Close)
-	setCA := func(r *running, dir string) {
-		t.Helper()
-		db, err := store.OpenSQLite(context.Background(), r.h.db, store.SQLiteOptions{})
-		if err != nil {
-			t.Fatal(err)
-		}
-		defer func() { _ = db.Close() }()
-		if _, err := settings.UpdateInstance(storetest.SystemCtx(t), db, &rpmgrv1.InstanceSettings{AcmeDirectoryUrl: proto.String(dir)},
-			&fieldmaskpb.FieldMask{Paths: []string{"acme_directory_url"}}, 0); err != nil {
-			t.Fatal(err)
-		}
-	}
 	r := startRunWith(t, runSetup{host: "panel.example.com", https: https, http: plain, acmeRoots: pebble.ServerRoots,
-		prepare: func(r *running) { setCA(r, "https://127.0.0.1:1/directory") }})
+		prepare: func(r *running) { setACMEDirectory(t, r, "https://127.0.0.1:1/directory") }})
 	client := func(roots *x509.CertPool) *http.Client {
 		return &http.Client{Timeout: 5 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
 			Transport: &http.Transport{TLSClientConfig: &tls.Config{RootCAs: roots, MinVersion: tls.VersionTLS13},
@@ -550,7 +542,7 @@ func TestRun_ACME(t *testing.T) {
 	}
 
 	r.stop(t)
-	setCA(r, pebble.DirectoryURL)
+	setACMEDirectory(t, r, pebble.DirectoryURL)
 	r.start(t)
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
@@ -585,6 +577,26 @@ func TestRun_ACME(t *testing.T) {
 	}
 	if n := pebble.OrdersFor("panel.example.com"); n != orders {
 		t.Fatalf("a restart ordered again: %d orders, were %d", n, orders)
+	}
+}
+
+// portOf returns the port of a host:port address.
+func portOf(addr string) int {
+	p, _ := strconv.Atoi(addr[strings.LastIndex(addr, ":")+1:])
+	return p
+}
+
+// setACMEDirectory sets the instance's ACME directory in the database of r while it is stopped.
+func setACMEDirectory(t *testing.T, r *running, dir string) {
+	t.Helper()
+	db, err := store.OpenSQLite(context.Background(), r.h.db, store.SQLiteOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+	if _, err := settings.UpdateInstance(storetest.SystemCtx(t), db, &rpmgrv1.InstanceSettings{AcmeDirectoryUrl: proto.String(dir)},
+		&fieldmaskpb.FieldMask{Paths: []string{"acme_directory_url"}}, 0); err != nil {
+		t.Fatal(err)
 	}
 }
 
