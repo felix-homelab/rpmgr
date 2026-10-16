@@ -19,7 +19,7 @@ import type { ApplyStatus } from "@/gen/rpmgr/v1/status_pb";
 import { reasonOf } from "@/lib/errors";
 import { protoResolver, serverFieldErrors, type FieldOf } from "@/lib/proto-form";
 import { Conflict, onTop } from "@/route-form/conflict";
-import { numberProblems, routeFields, routeWith, valuesOf, type RouteValues } from "@/route-form/fields";
+import { fieldProblems, routeFields, routeWith, valuesOf, type RouteValues } from "@/route-form/fields";
 import { FieldGrid, FormField } from "@/route-form/form-field";
 import { PreviewPanel } from "@/route-form/preview";
 import { routeType, useAgentNames } from "@/routes-data";
@@ -68,9 +68,9 @@ function RouteForm({ base, initial, onRestart }: { base: Route; initial?: RouteV
   };
   const checks = protoResolver(UpdateRouteRequestSchema, (v: RouteValues) => updateRequest(base, v), fieldOf);
   const resolver: Resolver<RouteValues> = (values, ctx, opts) => {
-    const bad = numberProblems(base, values);
+    const bad = Object.entries(fieldProblems(base, values));
     if (bad.length > 0) {
-      return { values: {}, errors: Object.fromEntries(bad.map((k) => [k, { type: "number", message: t("routeForm.number") }])) };
+      return { values: {}, errors: Object.fromEntries(bad.map(([k, p]) => [k, { type: "format", message: t(`routeForm.${p.text}`, p.values) }])) };
     }
     return checks(values, ctx, opts);
   };

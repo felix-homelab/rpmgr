@@ -23,7 +23,7 @@ import {
 import { SettingsService } from "@/gen/rpmgr/v1/settings_pb";
 import type { ApplyStatus } from "@/gen/rpmgr/v1/status_pb";
 import { protoResolver, serverFieldErrors, type FieldOf } from "@/lib/proto-form";
-import { numberProblems, routeFields, routeWith, valuesOf, type RouteValues } from "@/route-form/fields";
+import { fieldProblems, routeFields, routeWith, valuesOf, type RouteValues } from "@/route-form/fields";
 import { FieldGrid, FormField } from "@/route-form/form-field";
 import { PreviewPanel } from "@/route-form/preview";
 import { routeTypes, useAgentNames, useGroupNames } from "@/routes-data";
@@ -97,9 +97,9 @@ function NewRouteForm({ type }: { type: RouteType }) {
   };
   const checks = protoResolver(CreateRouteRequestSchema, request, fieldOf);
   const resolver: Resolver<NewValues> = (values, ctx, opts) => {
-    const bad = numberProblems(base, values);
+    const bad = Object.entries(fieldProblems(base, values));
     if (bad.length > 0) {
-      return { values: {}, errors: Object.fromEntries(bad.map((k) => [k, { type: "number", message: t("routeForm.number") }])) };
+      return { values: {}, errors: Object.fromEntries(bad.map(([k, p]) => [k, { type: "format", message: t(`routeForm.${p.text}`, p.values) }])) };
     }
     if (!values.group) {
       return { values: {}, errors: { group: { type: "required", message: t("routeNew.groupNeeded") } } };

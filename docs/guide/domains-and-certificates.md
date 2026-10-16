@@ -223,14 +223,15 @@ Uploaded certificate crt_… for [example.com *.example.com], valid until 2027-0
 The command warns when other users may read the key file.
 
 **Use it on a route.** In the route's **Edit** form, set **TLS certificate** to **Uploaded** and
-enter the certificate's ID in **Uploaded certificate ID**; or:
+choose the certificate in **Uploaded certificate**; or:
 
 ```sh
 rpmgr update route --tls-mode certificate --certificate crt_01JB4C7D2E9F3G5H6J8K1M2N3P wiki
 ```
 
-The certificate must cover every hostname of the route. The web UI's certificates list does not
-show IDs: the upload command prints it, and `rpmgr list certificate` lists them.
+The certificate must cover every hostname of the route; the form offers only those that do. The
+command line takes the certificate's ID: the upload command prints it, the certificates list in the
+web UI shows it with a **Copy** button, and `rpmgr list certificate` lists them.
 
 **Renew it yourself.** rpmgr never renews an uploaded certificate. Before it expires, upload the
 renewed one, move each route to it as above, then remove the old one: **Remove…** in the list, or
@@ -263,6 +264,6 @@ rpmgr update ca-bundle --pem-file home-ca-2027.pem home-ca
 rpmgr delete ca-bundle home-ca
 ```
 
-A target names its bundle in **CA bundle ID (empty: the system's roots)**, or with
-`--ca-bundle <name or ID>` on the command line. The web UI's list of bundles does not show IDs;
-`rpmgr list ca-bundle` does.
+A target chooses its bundle in **CA bundle**, by name, or **None: the system's roots**; on the
+command line it names it with `--ca-bundle <name or ID>`. The web UI's list of bundles shows each
+bundle's ID with a **Copy** button, and `rpmgr list ca-bundle` lists them.
