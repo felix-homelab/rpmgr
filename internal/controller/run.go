@@ -379,8 +379,9 @@ func Run(ctx context.Context, o RunOptions) error {
 	mux.Handle("/dl/", mirror.Handler()) // the controller's own release, for /install.sh (D59)
 	mux.Handle("/install.sh", installsh.Handler(o.Version, mirror.Roots))
 	mux.Handle("/", ui) // every path the API, the trust bundle and /dl/ do not take
-	web := &http.Server{Handler: cert.HSTS(mux), ReadHeaderTimeout: 10 * time.Second, IdleTimeout: 120 * time.Second,
-		Protocols: webProtocols(), ErrorLog: slog.NewLogLogger(o.Logger.Handler(), slog.LevelDebug)}
+	// The port-80 handler, with ACME's HTTP-01 answers, stays outside misdirected: it has no TLS.
+	web := &http.Server{Handler: misdirected(cert.HSTS(mux)), ReadHeaderTimeout: 10 * time.Second, IdleTimeout: 120 * time.Second,
+		Protocols: webProtocols(), HTTP2: webHTTP2(), ErrorLog: slog.NewLogLogger(o.Logger.Handler(), slog.LevelDebug)}
 
 	ln := o.Listener
 	if ln == nil {

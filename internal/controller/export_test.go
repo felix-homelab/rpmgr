@@ -15,6 +15,9 @@ func SetRunTimers(t testing.TB, drain, reload time.Duration) {
 	t.Cleanup(func() { drainWait, webCertReload = oldDrain, oldReload })
 }
 
+// WebMaxStreams is how many requests one HTTP/2 connection to the web server may have open.
+const WebMaxStreams = webMaxStreams
+
 // EndLeftOpen runs what seenLoop does first: it ends the sessions a stopped run left open.
 func (s *Sessions) EndLeftOpen() { s.endLeftOpen() }
 

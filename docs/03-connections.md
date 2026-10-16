@@ -115,6 +115,12 @@ single-use token. Token format, lifetimes and re-enrollment rules are in
   name, goes to its `net/http` server, where browsers, the CLI and scripts use ConnectRPC over
   HTTP/2 or HTTP/1.1 ([07](07-api.md#overview)). A connection that does not start with a
   ClientHello within the peek limits is closed without an answer.
+- A request to the `net/http` server whose `Host`, without port and final dot, names another host
+  than its connection's SNI gets **421**, and an HTTP/1.1 connection then closes, so a browser
+  that reuses an HTTP/2 connection for another name the certificate covers, such as a wildcard
+  certificate's, asks again on a connection of its own. A connection without SNI, such as one to an
+  IP address, is served whatever its `Host`; a TLS-terminating proxy in front of the controller
+  sends the public URL's name as SNI, or none ([D92](14-open-decisions.md#engineering)).
 - **Endpoints and failover.** An agent knows its controller endpoints in order: from enrollment,
   then from every snapshot; a connector adds its data sessions as the last one ([Control sessions
   through a data session](#control-sessions-through-a-data-session)). It tries them in that order; a
@@ -1149,6 +1155,7 @@ sequenceDiagram
 | `StreamOpen` → `StreamResult` | 10 s; upstream dial 5 s; a stream the connector opens brings its `StreamOpen` within the same 10 s | Bounded connection setup |
 | Forwarding to the controller (private controller, carried control sessions) | dial 5 s; no idle timeout, the control session's keepalive keeps it alive | An unreachable controller fails fast, so the agent tries its next endpoint |
 | HTTP server | header read 10 s; idle 120 s; upstream response header 60 s; no total write timeout | Long downloads and streaming must work |
+| Controller web server (UI and public API) | header read 10 s, which applies to HTTP/1.1 only; idle 120 s; HTTP/2: at most 100 requests open at once per connection. An HTTP/2 header block that stalls is bounded by the idle timeout once no other request is open on its connection, which then closes; no total read or write timeout | [R] Server streams and downloads must work; one connection cannot hold more requests than a browser needs ([D92](14-open-decisions.md#engineering)) |
 | Idle TCP route connection | 1 h (per route; 0 disables) | Reclaim half-open connections |
 | Idle UDP flow | 60 s (per route) | Typical UDP NAT behaviour |
 | Apply acknowledgement | 30 s → `apply_timeout` | Visible instead of silent |

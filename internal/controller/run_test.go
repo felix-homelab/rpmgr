@@ -69,12 +69,13 @@ func newWebCA(t *testing.T) *webCA {
 	return &webCA{key: key, cert: c, pool: pool}
 }
 
-// issue writes a certificate for 127.0.0.1 with common name cn and its key to the two files.
-func (ca *webCA) issue(t *testing.T, certFile, keyFile, cn string) {
+// issue writes a certificate for 127.0.0.1 and the DNS names with common name cn and its key to
+// the two files.
+func (ca *webCA) issue(t *testing.T, certFile, keyFile, cn string, names ...string) {
 	t.Helper()
 	key, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	serial, _ := rand.Int(rand.Reader, big.NewInt(1<<62))
-	tmpl := &x509.Certificate{SerialNumber: serial, Subject: pkix.Name{CommonName: cn}, IPAddresses: []net.IP{net.IPv4(127, 0, 0, 1)},
+	tmpl := &x509.Certificate{SerialNumber: serial, Subject: pkix.Name{CommonName: cn}, IPAddresses: []net.IP{net.IPv4(127, 0, 0, 1)}, DNSNames: names,
 		ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth}, NotBefore: time.Now().Add(-time.Hour), NotAfter: time.Now().Add(time.Hour)}
 	der, err := x509.CreateCertificate(rand.Reader, tmpl, ca.cert, &key.PublicKey, ca.key)
 	if err != nil {
