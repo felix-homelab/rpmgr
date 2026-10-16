@@ -222,7 +222,8 @@ with a short value. With 0, the gateway sends none and the upstream's own header
 
 The gateway's HTTP timeouts, such as for reading a request's headers and for the upstream's
 response headers, are fixed
-([03](../../03-connections.md#timeouts-keepalive-and-backoff)).
+([03](../../03-connections.md#timeouts-keepalive-and-backoff)); timeouts per route are planned for
+Phase 2 ([13](../../13-roadmap.md#phase-2--production)).
 
 ## What clients see
 
