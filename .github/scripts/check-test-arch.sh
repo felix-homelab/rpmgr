@@ -13,9 +13,11 @@ source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 arch=${1:?architecture required: amd64, arm64, arm or riscv64}
 root=${2:-$(repo_root)}
 cd "$root"
+# Under QEMU a package's tests take several times as long: internal/apisvc took 529 and 582 s of
+# go test's default 10 minutes per package on riscv64 before it grew, so emulated runs get 30.
 case $arch in
   amd64 | arm64) flags=(-race) cgo=1 ;;
-  arm | riscv64) flags=() cgo=0 ;;
+  arm | riscv64) flags=(-timeout 30m) cgo=0 ;;
   *)
     fail "unknown architecture '$arch'"
     finish
