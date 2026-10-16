@@ -117,7 +117,7 @@ and its gateway group never change.
 | Hostnames, 1 to 100 | **Hostnames**, one per line | `--hostname`, repeated | required |
 | Path prefix | **Path prefix** | `--path-prefix` | every path |
 | Certificate source | **TLS certificate**: **From ACME** or **Uploaded** | `--tls-mode acme\|certificate` | ACME |
-| Uploaded certificate | **Uploaded certificate ID** | `--certificate <id>` | none |
+| Uploaded certificate | **Uploaded certificate**, one that covers every hostname | `--certificate <id>` | none |
 | Port 80 | **Port 80**: **Redirect to HTTPS**, **Serve the route**, **Closed** | `--port80 redirect\|serve\|off` | redirect |
 | HSTS max-age | **HSTS max-age (seconds)** | `--hsts <duration>`, such as `8760h` | 0, no HSTS |
 | Host header to the upstream | **Host header to the target** | `--host-header` | the client's |

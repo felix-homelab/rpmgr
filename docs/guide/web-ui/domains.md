@@ -49,15 +49,15 @@ The **Certificates** card lists the organisation's certificates: HTTP routes get
 by themselves, or use one you upload.
 
 - **Each certificate** shows its names, its status (`being obtained`, `active`, `failed`), its
-  source (`from ACME` or `uploaded`), its expiry and issuer, and, for an uploaded one, the routes
-  that use it. An expiry within 21 days shows as `expires soon: …`. A certificate's last error, if
-  any, is shown under it.
+  source (`from ACME` or `uploaded`), its expiry and issuer, for an uploaded one the routes that use
+  it, and its **ID**, such as `crt_01…`, with **Copy**. An expiry within 21 days shows as
+  `expires soon: …`. A certificate's last error, if any, is shown under it.
 - **Renew now**, on an ACME certificate, starts a renewal: `Renewal started.`, or `A renewal is
   under way already.`
-- **Remove…** asks `Remove the certificate for …?`; **Remove it** removes an uploaded certificate.
-  The controller refuses to remove an uploaded certificate that routes use, and says how many
-  routes use it. It always refuses to remove a certificate from ACME, though the page offers
-  **Remove…** for it too: the controller's ACME job manages those certificates.
+- **Remove…**, on an uploaded certificate, asks `Remove the certificate for …?`; **Remove it**
+  removes it. The controller refuses to remove an uploaded certificate that routes use, and says
+  how many routes use it. A certificate from ACME has no **Remove…** and says `ACME manages it; it
+  cannot be removed.`: the controller's ACME job manages those certificates.
 
 **Upload a certificate** opens a form:
 
@@ -67,15 +67,14 @@ by themselves, or use one you upload.
   in the page until you send it.
 - **Upload** sends both; the page then forgets the key. **Cancel** closes the form.
 
-An HTTP route's **Uploaded certificate ID** takes an uploaded certificate's ID, such as `crt_01…`
-([Routes](routes.md#the-fields)). This page does not show certificate IDs;
-`rpmgr list certificate` lists them.
+An HTTP route's **Uploaded certificate** offers the uploaded certificates that cover its hostnames
+([Routes](routes.md#the-fields)). The command line names a certificate by the ID this page shows.
 
 ## CA bundles
 
 The **CA bundles** card lists the CAs that HTTPS targets verify their upstreams with: each bundle
-with the subject and expiry of each certificate in it, and how many targets use it. Without a
-bundle, HTTPS targets are verified with the system's roots.
+with the subject and expiry of each certificate in it, how many targets use it, and its **ID** with
+**Copy**. Without a bundle, HTTPS targets are verified with the system's roots.
 
 - **Add a CA bundle** opens a form with **Name** and **CA certificates (PEM)**, pasted or read from
   a file. **Add the bundle** adds it.
@@ -84,9 +83,8 @@ bundle, HTTPS targets are verified with the system's roots.
   remove a bundle that targets use, and says how many.
 - **Export YAML** shows every bundle as YAML.
 
-A target's **CA bundle ID** takes a bundle's ID ([Routes](routes.md#targets);
-[Targets](../routes/targets.md)). This page does not show it; `rpmgr list ca-bundle` lists the
-bundles with their IDs.
+A target's **CA bundle** offers the bundles by name and ID ([Routes](routes.md#targets);
+[Targets](../routes/targets.md)).
 
 ## On the command line
 

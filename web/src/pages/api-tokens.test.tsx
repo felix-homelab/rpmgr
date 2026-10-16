@@ -87,6 +87,15 @@ describe("API tokens", () => {
     expect(creates[1]!.requestId).toBe(creates[0]!.requestId); // the retry is the same request
   });
 
+  it("describes each scope by what this version has: routes.write without health checks", async () => {
+    tokens();
+    const s = await section();
+    fireEvent.click(await s.findByRole("button", { name: "New token…" }));
+    const scopes = within(await s.findByRole("group", { name: /^Scopes/ })).getAllByRole("checkbox").map((c) => c.closest("label")!.textContent);
+    expect(scopes).toContain("routes.write — routes, targets and access policies");
+    expect(scopes.filter((l) => /health/i.test(l ?? ""))).toEqual([]);
+  });
+
   it("refuses a validity outside 1 to 365 days without a request", async () => {
     const { creates } = tokens();
     const s = await section();

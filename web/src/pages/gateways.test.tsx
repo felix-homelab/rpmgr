@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { clone, create, equals } from "@bufbuild/protobuf";
+import { Code } from "@connectrpc/connect";
 import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import {
@@ -8,7 +9,7 @@ import {
 } from "@/gen/rpmgr/v1/gateway_pb";
 import { ManifestService, type ExportManifestsRequest } from "@/gen/rpmgr/v1/manifest_pb";
 import { Theme, UserService } from "@/gen/rpmgr/v1/user_pb";
-import { auth, show } from "@/testing/api";
+import { apiError, auth, show } from "@/testing/api";
 import { marked, unmatched } from "@/testing/required";
 
 afterEach(cleanup);
@@ -16,7 +17,8 @@ afterEach(cleanup);
 const eu = create(GatewayGroupSchema, { id: "ggr_eu", name: "eu", region: "Frankfurt", publicHostnames: ["eu.example.com"], trustedProxyCidrs: ["10.0.0.0/8"], etag: "2" });
 const us = create(GatewayGroupSchema, { id: "ggr_us", name: "us", region: "Virginia" });
 
-function page(path: string, groups = [us, eu]) {
+// page renders path with the groups; UpdateGatewayGroup fails with refuse, if given.
+function page(path: string, groups = [us, eu], refuse?: Error) {
   const creates: CreateGatewayGroupRequest[] = [];
   const updates: UpdateGatewayGroupRequest[] = [];
   const exports: ExportManifestsRequest[] = [];
@@ -30,7 +32,13 @@ function page(path: string, groups = [us, eu]) {
         { id: "gtw_3", gatewayGroupId: "ggr_eu", name: "gw-eu-3", slot: 3, enabled: true, status: { enrolled: false } },
       ] }),
       createGatewayGroup: (req) => (creates.push(req), { gatewayGroup: { id: "ggr_new", name: req.gatewayGroup?.name } }),
-      updateGatewayGroup: (req) => (updates.push(req), { gatewayGroup: req.gatewayGroup }),
+      updateGatewayGroup: (req) => {
+        updates.push(req);
+        if (refuse) {
+          throw refuse;
+        }
+        return { gatewayGroup: req.gatewayGroup };
+      },
     });
     router.service(ManifestService, { exportManifests: (req) => (exports.push(req), { yaml: "kind: GatewayGroup\n", count: 1 }) });
   });
@@ -107,5 +115,18 @@ describe("Gateways", () => {
     fireEvent.click(screen.getByRole("button", { name: "YAML" }));
     await screen.findByRole("dialog", { name: `${name} as YAML` });
     await waitFor(() => expect(exports.map((r) => [r.orgId, r.kinds, r.resourceIds])).toEqual([["org_1", [], ids]]));
+  });
+
+  it.each([
+    ["changed since it was read", apiError(Code.FailedPrecondition, "ETAG_MISMATCH"),
+      "The gateway group changed since this page loaded it. Reload the page to see it as it is now, then try again."],
+    ["refused for another reason", apiError(Code.FailedPrecondition, "RESTORE_REVIEW"), "That did not work: api error"],
+  ])("says so when a group's settings are not saved because the group %s", async (_, refuse, text) => {
+    const { updates } = page("/gateways/ggr_eu", [us, eu], refuse);
+    const form = within(await screen.findByRole("form", { name: "Settings" }));
+    fireEvent.change(form.getByLabelText("Region"), { target: { value: "Paris" } });
+    fireEvent.click(form.getByRole("button", { name: "Save" }));
+    expect((await form.findByRole("alert")).textContent).toBe(text);
+    expect(updates.map((u) => u.etag)).toEqual(["2"]);
   });
 });

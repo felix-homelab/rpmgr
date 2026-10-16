@@ -51,7 +51,8 @@ function TokenRow({ token: tok }: { token: EnrollmentToken }) {
         <span className="font-medium">{t("enroll.createdAt", { when: when(tok.createTime) })}</span>
         <span className={expired ? "text-destructive" : "text-muted-foreground"}>{t(expired ? "enroll.expired" : "enroll.expiresAt", { when: when(tok.expireTime) })}</span>
         <span className="text-muted-foreground">{uses}</span>
-        {tok.ephemeral && <Badge>{t("enroll.ephemeral")}</Badge>}
+        {/* The badge is short; the kind's explanation is its description, as in the enroll dialog. */}
+        {tok.ephemeral && <Badge title={t("enroll.ephemeral")}>{t("connectors.ephemeral")}</Badge>}
       </div>
       {Object.keys(tok.labels).length > 0 && <div className="text-muted-foreground">{Object.entries(tok.labels).map(([k, v]) => `${k}=${v}`).join(", ")}</div>}
       {tok.lastUseTime && <div className="text-muted-foreground">{t("tokens.lastUse", { when: when(tok.lastUseTime), ip: tok.lastUseIp })}</div>}

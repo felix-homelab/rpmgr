@@ -116,7 +116,8 @@
   },
   "copy": {
     "copied": "Copied",
-    "failed": "The browser did not copy it. Select the text and copy it by hand."
+    "failed": "The browser did not copy it. Select the text and copy it by hand.",
+    "idLabel": "ID"
   },
   "account": {
     "title": "Account",
@@ -192,7 +193,7 @@
     "revoke": "Revoke it",
     "scope": {
       "org_read": "view resources, status and metrics",
-      "routes_write": "routes, targets, health checks and access policies",
+      "routes_write": "routes, targets and access policies",
       "connectors_write": "enroll and revoke connectors",
       "infrastructure_write": "gateways, gateway groups, port pools, domains and certificates",
       "members_write": "members and invitations",
@@ -329,7 +330,7 @@
       "hostnames": "Hostnames",
       "pathPrefix": "Path prefix",
       "tlsMode": "TLS certificate",
-      "certificateId": "Uploaded certificate ID",
+      "certificateId": "Uploaded certificate",
       "port80": "Port 80",
       "hsts": "HSTS max-age (seconds)",
       "hostHeader": "Host header to the target",
@@ -347,8 +348,29 @@
     },
     "hints": {
       "lines": "One per line.",
-      "pairs": "One per line, as key=value or Name: value.",
-      "optionalNumber": "Empty for the default."
+      "labels": "One per line, as key=value.",
+      "headers": "One per line, as Name: value. An empty value removes the header.",
+      "optionalNumber": "Empty for the default.",
+      "certificate": "The org's uploaded certificates that cover every hostname. Upload one under Domains & certificates."
+    },
+    "certificate": {
+      "choose": "Choose a certificate",
+      "noneCovers": "No uploaded certificate covers these hostnames",
+      "noneUploaded": "The org has no uploaded certificate",
+      "option": "{{names}} · {{id}} · expires {{when}}",
+      "notCovering": "{{option}} (does not cover every hostname)",
+      "needed": "Choose the uploaded certificate the route uses."
+    },
+    "lines": {
+      "labels": {
+        "separator": "Line {{line}}: write a label as key=value.",
+        "name": "Line {{line}}: “{{name}}” is not a label key. A key has 1 to 63 lowercase letters, digits, dots, dashes and underscores, and starts and ends with a letter or digit."
+      },
+      "headers": {
+        "separator": "Line {{line}}: write a header as Name: value.",
+        "name": "Line {{line}}: “{{name}}” is not a header name. A name has letters, digits and the characters !#$%&'*+-.^_`|~ only."
+      },
+      "twice": "Line {{line}}: {{name}} is on line {{first}} already."
     },
     "options": {
       "transport": {
@@ -441,7 +463,10 @@
     "certSelfSigned": "Self-signed",
     "certValid": "Valid until",
     "certKey": "Key fingerprint (SHA-256)",
-    "caBundle": "CA bundle ID (empty: the system's roots)",
+    "caBundle": "CA bundle",
+    "systemRoots": "None: the system's roots",
+    "bundleOption": "{{name}} · {{id}}",
+    "noBundles": "The org has no CA bundle, so the system's roots verify the target. Add one under Domains & certificates.",
     "spki": "Public key pin, SHA-256 in hex (optional)",
     "proxy": "PROXY protocol",
     "proxyTCPOnly": "TCP connections only; UDP datagrams get no header.",
@@ -564,6 +589,7 @@
     "create": "Create the group",
     "noGroups": "The org has no gateway group yet.",
     "notFound": "This gateway group does not exist, or you cannot see it.",
+    "changed": "The gateway group changed since this page loaded it. Reload the page to see it as it is now, then try again.",
     "columns": {
       "name": "Name",
       "region": "Region",
@@ -690,7 +716,8 @@
     "renew": "Renew now",
     "renewing": "Renewal started.",
     "renewQueued": "A renewal is under way already.",
-    "ask": "Remove the certificate for {{name}}?"
+    "ask": "Remove the certificate for {{name}}?",
+    "acmeKept": "ACME manages it; it cannot be removed."
   },
   "bundles": {
     "title": "CA bundles",
