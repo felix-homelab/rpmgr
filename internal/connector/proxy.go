@@ -11,18 +11,19 @@ import (
 	"net"
 	"net/http"
 	"net/url"
-	"strings"
 	"time"
 
 	"golang.org/x/net/http/httpproxy"
 	"golang.org/x/net/proxy"
+
+	"github.com/felix-homelab/rpmgr/internal/proxyenv"
 )
 
 // ProxyDialer returns the dial function for the TCP transport (Options.Dial): through the proxy
 // that HTTPS_PROXY, or else ALL_PROXY, names, unless NO_PROXY excludes the gateway, and directly
-// otherwise (docs/03-connections.md, "Transports and fallback"). A proxy is an http:// URL (HTTP
-// CONNECT) or a socks5:// or socks5h:// URL, with optional credentials. Each variable is also
-// read in lower case, which the upper case one overrides.
+// otherwise (docs/03-connections.md, "Transports and fallback"), as package proxyenv reads them. A
+// proxy is an http:// URL (HTTP CONNECT) or a socks5:// or socks5h:// URL, with optional
+// credentials.
 func ProxyDialer(getenv func(string) string) (func(ctx context.Context, addr string) (net.Conn, error), error) {
 	d := &net.Dialer{KeepAlive: tcpKeepAlive}
 	return newProxyDialer(getenv, d.DialContext)
@@ -40,28 +41,15 @@ func (d direct) DialContext(ctx context.Context, network, addr string) (net.Conn
 }
 
 func newProxyDialer(getenv func(string) string, dial direct) (func(ctx context.Context, addr string) (net.Conn, error), error) {
-	env := func(name string) (string, string) {
-		for _, n := range []string{name, strings.ToLower(name)} {
-			if v := getenv(n); v != "" {
-				return n, v
-			}
-		}
-		return "", ""
+	p, ok, err := proxyenv.For(getenv, "https", "http", "socks5", "socks5h")
+	if err != nil {
+		return nil, fmt.Errorf("connector: %w", err)
 	}
-	name, raw := env("HTTPS_PROXY")
-	if raw == "" {
-		name, raw = env("ALL_PROXY")
-	}
-	if raw == "" {
+	if !ok {
 		return func(ctx context.Context, addr string) (net.Conn, error) { return dial(ctx, "tcp", addr) }, nil
 	}
-	u, err := url.Parse(raw)
-	if err != nil || u.Host == "" || (u.Scheme != "http" && u.Scheme != "socks5" && u.Scheme != "socks5h") {
-		// The value may hold credentials: it is never repeated.
-		return nil, fmt.Errorf("connector: %s is not an http://, socks5:// or socks5h:// URL with a host", name)
-	}
-	_, noProxy := env("NO_PROXY")
-	use := (&httpproxy.Config{HTTPSProxy: u.String(), NoProxy: noProxy}).ProxyFunc()
+	u := p.URL
+	use := (&httpproxy.Config{HTTPSProxy: u.String(), NoProxy: proxyenv.NoProxy(getenv)}).ProxyFunc()
 	return func(ctx context.Context, addr string) (net.Conn, error) {
 		p, err := use(&url.URL{Scheme: "https", Host: addr})
 		switch {

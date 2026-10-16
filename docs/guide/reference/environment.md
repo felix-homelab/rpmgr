@@ -127,8 +127,8 @@ upper-case one wins. Which variable applies depends on the connection:
 | A connector's TCP data sessions to its gateways (TLS and HTTP/2) | `HTTPS_PROXY`, else `ALL_PROXY`; `NO_PROXY` | `http://` (HTTP CONNECT), `socks5://`, `socks5h://`, with optional `user:password@` |
 | A gateway's or connector's control session to the controller, and `rpmgr enroll`, also within `rpmgr setup` without a proxy | `HTTPS_PROXY`; `NO_PROXY` | `http://` (HTTP CONNECT) |
 | The enrollment within `rpmgr setup` with `--proxy` or `--proxy-file` | that URL, not the environment | `http://`, `socks5://`, `socks5h://` |
-| The controller's requests to the ACME CA and to GitHub for the release check | `HTTPS_PROXY`; `NO_PROXY` | `http://`, `https://`, `socks5://` |
-| The controller's check of a domain's HTTP token, which is an `http://` URL | `HTTP_PROXY`; `NO_PROXY` | `http://`, `https://`, `socks5://` |
+| The controller's requests to the ACME CA and to GitHub for the release check | `HTTPS_PROXY`, else `ALL_PROXY`; `NO_PROXY` | `http://`, `https://`, `socks5://`, `socks5h://` |
+| The controller's check of a domain's HTTP token, which is an `http://` URL | `HTTP_PROXY`, else `ALL_PROXY`; `NO_PROXY` | `http://`, `https://`, `socks5://`, `socks5h://` |
 | The controller's connection to the mail relay (SMTP) | `ALL_PROXY`; `NO_PROXY` | `socks5://`, `socks5h://` |
 | The command line's requests to the controller | `HTTPS_PROXY`; `NO_PROXY` | `http://`, `https://`, `socks5://` |
 
@@ -145,8 +145,10 @@ upper-case one wins. Which variable applies depends on the connection:
   `/etc/rpmgr/connector-proxy.env` (root, 0600), which the drop-in
   `/etc/systemd/system/rpmgr-connector.service.d/proxy.conf` names
   ([Set up a host with rpmgr setup](../install/setup.md#connector)).
-- **`ALL_PROXY` does not reach the controller's HTTPS requests.** The controller's requests to the
-  ACME CA, to GitHub and to a domain's HTTP token follow `HTTPS_PROXY` and `HTTP_PROXY` only.
+- **The controller and the connector read a proxy the same way.** A value without a scheme, such as
+  `proxy.lan:3128`, is an `http://` proxy. A value that is no proxy URL stops the controller at
+  start, as it does the connector, with a message that names the variable without its value, such
+  as `controller: ALL_PROXY is not an http://, https://, socks5:// or socks5h:// URL with a host`.
 - **The install scripts** download with `curl` (or `wget`, for the global script), which read
   their own proxy variables.
 

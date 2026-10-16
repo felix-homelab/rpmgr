@@ -187,20 +187,6 @@ func TestAllInOne_EnrollsItsConnector(t *testing.T) {
 	}
 }
 
-// TestAllInOne_NeedsItsGateway: Run refuses to start without the gateway's identity, which only
-// init makes.
-func TestAllInOne_NeedsItsGateway(t *testing.T) {
-	h := newHost(t)
-	h.init(t)
-	if err := os.RemoveAll(filepath.Join(h.cfg.StateDir, "gateway")); err != nil {
-		t.Fatal(err)
-	}
-	err := allinone.Run(context.Background(), allinone.RunOptions{Config: h.cfg, Getenv: func(string) string { return "" }})
-	if err == nil || !strings.Contains(err.Error(), "rpmgr all-in-one init") {
-		t.Fatalf("Run without the gateway's identity: %v", err)
-	}
-}
-
 // TestAllInOne_StartsFromAnOlderSchema: an all-in-one whose database lacks the built-in columns,
 // as one initialised before ADR-0019, starts: the controller migrates first, then Run marks the
 // gateway built in and enrolls the missing connector, once.

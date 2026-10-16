@@ -12,6 +12,7 @@ import (
 
 	"github.com/felix-homelab/rpmgr/internal/audit"
 	"github.com/felix-homelab/rpmgr/internal/authz"
+	"github.com/felix-homelab/rpmgr/internal/proxyenv"
 	"github.com/felix-homelab/rpmgr/internal/release"
 	"github.com/felix-homelab/rpmgr/internal/settings"
 	"github.com/felix-homelab/rpmgr/internal/store"
@@ -30,8 +31,8 @@ type ReleaseCheckOptions struct {
 	// Source is where releases come from; nil is GitHub, at Base through Proxy.
 	Source release.Source
 	Base   string // "" is felix-homelab/rpmgr's release downloads
-	// Proxy chooses the proxy of the requests to GitHub; nil is http.ProxyFromEnvironment
-	// (HTTPS_PROXY, ALL_PROXY, NO_PROXY; R44).
+	// Proxy chooses the proxy of the requests to GitHub; nil is proxyenv.FromEnvironment
+	// (HTTPS_PROXY, else ALL_PROXY; NO_PROXY; R44, D93).
 	Proxy  func(*http.Request) (*url.URL, error)
 	Logger *slog.Logger
 }
@@ -42,7 +43,7 @@ func (o *ReleaseCheckOptions) source() release.Source {
 	}
 	proxy := o.Proxy
 	if proxy == nil {
-		proxy = http.ProxyFromEnvironment
+		proxy = proxyenv.FromEnvironment
 	}
 	base := o.Base
 	if base == "" {
