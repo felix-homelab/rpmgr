@@ -43,8 +43,8 @@ cannot claim it ([04](../04-security.md#route-and-hostname-ownership)).
 - **HTTP token.** Every enabled gateway of your organisation answers
   `http://<domain>/.well-known/rpmgr-challenge/<claim ID>` on port 80 with the value. The
   controller fetches that URL; pointing the name at your gateways is the proof. Port 80 of the
-  gateways must be reachable from the controller, directly or through the proxy that `HTTP_PROXY`
-  names ([Environment variables](reference/environment.md)).
+  gateways must be reachable from the controller, directly or through the proxy that `HTTP_PROXY`,
+  else `ALL_PROXY`, names ([Environment variables](reference/environment.md)).
 
 The controller checks pending claims on its own, often at first and then less often, and marks a
 claim **failed** that it could not prove for a while ([15](../15-dns.md#timers-and-limits)).
@@ -179,7 +179,7 @@ for its public URL comes from the same CA and account, and takes a change at its
   in Phase 2; until then such a route needs an uploaded certificate, and is refused with **From
   ACME** ([05](../05-features.md#tls-and-domains)).
 - **The controller cannot reach the CA.** The controller dials the CA directly, or through the proxy
-  that `HTTPS_PROXY` names, unless `NO_PROXY` exempts the CA
+  that `HTTPS_PROXY`, else `ALL_PROXY`, names, unless `NO_PROXY` exempts the CA
   ([Environment variables](reference/environment.md)).
 - **The CA's limits.** After a failure, the controller tries a hostname again only after waits
   that double with each failure ([03](../03-connections.md#timeouts-keepalive-and-backoff)). When

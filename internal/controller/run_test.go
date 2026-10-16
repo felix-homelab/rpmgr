@@ -504,19 +504,25 @@ func TestRun_ACME(t *testing.T) {
 	}
 }
 
-// TestRun_Refusals: a second controller on the same database, a missing KEK and a database without
-// an installation stop Run before it listens.
+// TestRun_Refusals: a second controller on the same database, a missing KEK, a database without
+// an installation and a proxy variable that is no proxy URL (D93) stop Run before it listens.
 func TestRun_Refusals(t *testing.T) {
 	r := startRun(t)
+	var env map[string]string
 	run := func(cfg config.Controller) error {
 		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 		defer cancel()
 		cfg.Listen.HTTPS, cfg.Listen.Admin = freeAddr(t), freeAddr(t)
 		none := ""
 		cfg.Listen.HTTP = &none
-		return controller.Run(ctx, controller.RunOptions{Config: cfg, Getenv: func(string) string { return "" },
+		return controller.Run(ctx, controller.RunOptions{Config: cfg, Getenv: func(k string) string { return env[k] },
 			Listening: func() { t.Error("Run started") }})
 	}
+	env = map[string]string{"ALL_PROXY": "ftp://ops:s3cret@proxy.lan"} //nolint:gosec // G101: a made-up test password
+	if err := run(r.cfg); err == nil || !strings.Contains(err.Error(), "ALL_PROXY is not") || strings.Contains(err.Error(), "s3cret") {
+		t.Fatalf("a bad ALL_PROXY: %v", err)
+	}
+	env = nil
 	if err := run(r.cfg); err == nil || !strings.Contains(err.Error(), "another controller") {
 		t.Fatalf("a second controller on the database: %v", err)
 	}

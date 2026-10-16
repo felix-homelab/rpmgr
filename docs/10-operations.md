@@ -270,8 +270,11 @@ In Phase 1, CI only builds these targets; end-to-end tests on Windows and macOS 
 | Connector | per `allow_listen` | TCP/UDP | Visitor listeners for private services | Local or LAN, as the policy allows |
 | All-in-one | 80, 443/TCP, 443/UDP, port pools, admin | | Gateway ports; the controller is reached through the gateway's SNI router in-process; its connector opens no port and never dials the ports rpmgr listens on: admin, 80, 443, tunnel UDP and every route port the gateway has bound ([04](04-security.md#connector-local-policy)) | Public (except admin) |
 
-**Controller outbound connections.** The controller dials out only for these, all through
-`HTTPS_PROXY`/`ALL_PROXY` when set:
+**Controller outbound connections.** The controller dials out only for these. Its HTTPS requests
+go through `HTTPS_PROXY`, else `ALL_PROXY`, its plain HTTP requests through `HTTP_PROXY`, else
+`ALL_PROXY`, and SMTP through a SOCKS5 `ALL_PROXY`, unless `NO_PROXY` exempts the host; DNS
+queries go direct. A proxy variable that is no proxy URL stops the controller at start, with a
+message that names the variable, not its value ([D93](14-open-decisions.md#engineering)):
 
 | Destination | Port | Purpose | When |
 |---|---|---|---|
@@ -289,8 +292,8 @@ Configuration has two layers (the commands and their flags are listed in
 1. A **small boot file** per role, read at start: only what is needed before the database or the
    control session is available. Strict YAML: unknown keys are rejected and the process refuses to
    start. Containers mount the boot file (and secrets as files). The only environment variables
-   read are `RPMGR_CONFIG` (config path), the proxy variables (`HTTPS_PROXY`, `ALL_PROXY`,
-   `NO_PROXY`) and, by the install script and `rpmgr enroll` only, `RPMGR_ENROLL_TOKEN`. There is no
+   read are `RPMGR_CONFIG` (config path), the proxy variables (`HTTPS_PROXY`, `HTTP_PROXY`,
+   `ALL_PROXY`, `NO_PROXY`) and, by the install script and `rpmgr enroll` only, `RPMGR_ENROLL_TOKEN`. There is no
    KEK from an environment variable ([04](04-security.md#secrets-at-rest-and-in-logs)).
 2. **Runtime settings in the database**, typed and validated, edited in the UI or API, audited, and
    distributed to agents through snapshots. No restart needed.
