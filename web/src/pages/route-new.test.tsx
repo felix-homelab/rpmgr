@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 
+import { timestampFromDate } from "@bufbuild/protobuf/wkt";
 import { Code, ConnectError } from "@connectrpc/connect";
 import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
+import { CertificateService, CertificateSource } from "@/gen/rpmgr/v1/certificate_pb";
 import { ConnectorService } from "@/gen/rpmgr/v1/connector_pb";
 import { GatewayService } from "@/gen/rpmgr/v1/gateway_pb";
 import { Port80Mode, RouteService, TLSMode, type CreateRouteRequest, type PreviewRouteRequest } from "@/gen/rpmgr/v1/route_pb";
@@ -20,9 +22,20 @@ async function chooseGroup() {
   fireEvent.change(screen.getByLabelText("Gateway group"), { target: { value: "ggr_eu" } });
 }
 
-// page renders path with the gateway groups "eu" and "us"; CreateRoute answers with create, and
-// GetOrgSettings with orgSettings, if given: without, the org's settings cannot be read.
-function page(path: string, create?: (req: CreateRouteRequest) => object, orgSettings?: () => object | Promise<object>) {
+const expiry = timestampFromDate(new Date("2027-03-01T12:00:00Z"));
+// The org's certificates: uploaded ones for a wildcard, for wiki and for another domain, and one
+// from ACME for wiki, which a route never chooses.
+const certificates = [
+  { id: "crt_wild", source: CertificateSource.UPLOADED, sans: ["*.example.com"], notAfter: expiry },
+  { id: "crt_wiki", source: CertificateSource.UPLOADED, sans: ["w.example.com", "wiki.example.com"], notAfter: expiry },
+  { id: "crt_org", source: CertificateSource.UPLOADED, sans: ["example.org"], notAfter: expiry },
+  { id: "crt_acme", source: CertificateSource.ACME, sans: ["wiki.example.com"], notAfter: expiry },
+];
+
+// page renders path with the gateway groups "eu" and "us" and the certificates certs; CreateRoute
+// answers with create, and GetOrgSettings with orgSettings, if given: without, the org's settings
+// cannot be read.
+function page(path: string, create?: (req: CreateRouteRequest) => object, orgSettings?: () => object | Promise<object>, certs: object[] = certificates) {
   const creates: CreateRouteRequest[] = [];
   const previews: PreviewRouteRequest[] = [];
   const view = show(path, auth({ getSession: () => ({ userId: "usr_ada", memberships: [{ orgId: "org_1", role: "owner" }] }) }), (router) => {
@@ -32,6 +45,7 @@ function page(path: string, create?: (req: CreateRouteRequest) => object, orgSet
       listGateways: () => ({ gateways: [{ id: "gtw_1", name: "gw-eu-1" }] }),
     });
     router.service(ConnectorService, { listConnectors: () => ({ connectors: [{ id: "con_1", name: "db-host-1" }] }) });
+    router.service(CertificateService, { listCertificates: () => ({ certificates: certs }) });
     router.service(StatusService, { async *watchApplyStatus() {} });
     if (orgSettings) {
       router.service(SettingsService, { getOrgSettings: orgSettings });
@@ -54,9 +68,12 @@ function page(path: string, create?: (req: CreateRouteRequest) => object, orgSet
 describe("RouteNew", () => {
   it("shows a hint only where a field's kind has one, and describes each field by what is there", async () => {
     page("/routes/new");
-    const labels = await screen.findByLabelText("Labels");
+    await screen.findByLabelText("Labels");
     expect(screen.queryByText(/^routeForm\./)).toBeNull(); // never a key instead of text (U11)
-    expect(document.getElementById(labels.getAttribute("aria-describedby")!)?.textContent).toBe("One per line, as key=value or Name: value.");
+    const hint = (label: string) => document.getElementById(screen.getByLabelText(label).getAttribute("aria-describedby")!)?.textContent;
+    expect(hint("Labels")).toBe("One per line, as key=value.");
+    expect([hint("Request headers to set"), hint("Response headers to set")]).toEqual(Array(2).fill("One per line, as Name: value. An empty value removes the header."));
+    expect(hint("Hostnames")).toBe("One per line.");
     const hsts = screen.getByLabelText("HSTS max-age (seconds)");
     expect(hsts.getAttribute("aria-describedby")).toBeNull(); // a number field has no hint
     await chooseGroup();
@@ -112,8 +129,10 @@ describe("RouteNew", () => {
     fireEvent.change(screen.getByLabelText("Name"), { target: { value: "wiki" } });
     fireEvent.change(screen.getByLabelText("Hostnames"), { target: { value: "wiki.example.com" } });
     fireEvent.change(screen.getByLabelText("TLS certificate"), { target: { value: String(TLSMode.TLS_MODE_CERTIFICATE) } });
-    fireEvent.change(screen.getByLabelText("Uploaded certificate ID"), { target: { value: "crt_1" } });
+    await screen.findByRole("option", { name: /crt_wiki/ });
+    fireEvent.change(screen.getByLabelText("Uploaded certificate"), { target: { value: "crt_wiki" } });
     fireEvent.change(screen.getByLabelText("TLS certificate"), { target: { value: String(TLSMode.TLS_MODE_ACME) } });
+    expect(screen.queryByLabelText("Uploaded certificate")).toBeNull(); // shown with an uploaded certificate only
     fireEvent.click(screen.getByRole("button", { name: "Create the route" }));
     await waitFor(() => expect(creates).toHaveLength(1));
     expect(creates[0]!.route?.spec).toMatchObject({ case: "http", value: { tlsMode: TLSMode.TLS_MODE_ACME, certificateId: "" } });
@@ -210,7 +229,7 @@ describe("RouteNew", () => {
     expect(marked()).toEqual([...always, ...numbers]);
     expect(unmatched()).toEqual([]);
     fireEvent.change(screen.getByLabelText("TLS certificate"), { target: { value: String(TLSMode.TLS_MODE_CERTIFICATE) } });
-    await waitFor(() => expect(marked()).toEqual([...always, "Uploaded certificate ID", ...numbers]));
+    await waitFor(() => expect(marked()).toEqual([...always, "Uploaded certificate", ...numbers]));
     expect(unmatched()).toEqual([]);
     fireEvent.change(screen.getByLabelText("TLS certificate"), { target: { value: String(TLSMode.TLS_MODE_ACME) } });
     await waitFor(() => expect(marked()).toEqual([...always, ...numbers]));
@@ -225,5 +244,93 @@ describe("RouteNew", () => {
     await screen.findByLabelText("Public port");
     expect(marked()).toEqual(["Name", "Public port"]);
     expect(unmatched()).toEqual([]);
+  });
+
+  // fill fills in a new HTTP route's group, name and hostnames.
+  async function fill(hostnames = "wiki.example.com") {
+    await chooseGroup();
+    fireEvent.change(screen.getByLabelText("Name"), { target: { value: "wiki" } });
+    fireEvent.change(screen.getByLabelText("Hostnames"), { target: { value: hostnames } });
+  }
+
+  // errorOf is the error the field labelled label shows.
+  const errorOf = (label: string) => screen.getByLabelText(label).getAttribute("aria-describedby")?.split(" ")
+    .map((id) => document.getElementById(id)).find((e) => e?.getAttribute("role") === "alert")?.textContent;
+
+  it.each([
+    ["Labels", "team=web\nweb", "Line 2: write a label as key=value."],
+    ["Labels", "team: web", "Line 1: write a label as key=value."],
+    ["Labels", "Team=web", "Line 1: “Team” is not a label key. A key has 1 to 63 lowercase letters, digits, dots, dashes and underscores, and starts and ends with a letter or digit."],
+    ["Labels", "=web", "Line 1: “” is not a label key. A key has 1 to 63 lowercase letters, digits, dots, dashes and underscores, and starts and ends with a letter or digit."],
+    ["Labels", "team=a\n\n team = b", "Line 3: team is on line 1 already."],
+    ["Request headers to set", "X-Team=web", "Line 1: write a header as Name: value."],
+    ["Response headers to set", "X Team: web", "Line 1: “X Team” is not a header name. A name has letters, digits and the characters !#$%&'*+-.^_`|~ only."],
+    ["Request headers to set", "X-Team: a\nx-team: b", "Line 2: x-team is on line 1 already."], // a header's name has no case
+  ])("checks each line of %s, and names the first that is wrong: %j", async (label, value, message) => {
+    const { creates } = page("/routes/new");
+    await fill();
+    fireEvent.change(screen.getByLabelText(label), { target: { value } });
+    fireEvent.click(screen.getByRole("button", { name: "Create the route" }));
+    await waitFor(() => expect(errorOf(label)).toBe(message));
+    expect(screen.getByLabelText(label).getAttribute("aria-invalid")).toBe("true");
+    expect(creates).toEqual([]);
+  });
+
+  it("sends labels and headers whose values hold the separator, and a header's empty value", async () => {
+    const { creates } = page("/routes/new");
+    await fill();
+    fireEvent.change(screen.getByLabelText("Labels"), { target: { value: "team=a=b\n\nenv=" } });
+    fireEvent.change(screen.getByLabelText("Request headers to set"), { target: { value: "X-Url: http://x:8080\nX-Drop:" } });
+    fireEvent.click(screen.getByRole("button", { name: "Create the route" }));
+    await waitFor(() => expect(creates).toHaveLength(1));
+    const r = creates[0]!.route!;
+    expect([r.labels, r.spec.case === "http" && r.spec.value.requestHeadersSet]).toEqual([{ team: "a=b", env: "" }, { "X-Url": "http://x:8080", "X-Drop": "" }]);
+  });
+
+  it("offers the uploaded certificates that cover every hostname, and sends the one chosen", async () => {
+    const { creates } = page("/routes/new");
+    await fill("");
+    fireEvent.change(screen.getByLabelText("TLS certificate"), { target: { value: String(TLSMode.TLS_MODE_CERTIFICATE) } });
+    const picker = await screen.findByLabelText<HTMLSelectElement>("Uploaded certificate");
+    const offered = () => [...picker.options].map((o) => o.value);
+    await waitFor(() => expect(offered()).toEqual(["", "crt_wild", "crt_wiki", "crt_org"])); // without hostnames, every uploaded one
+    expect(picker.options[2]!.textContent).toMatch(/^w\.example\.com, wiki\.example\.com · crt_wiki · expires \S/);
+    expect(document.getElementById(picker.getAttribute("aria-describedby")!)?.textContent)
+      .toBe("The org's uploaded certificates that cover every hostname. Upload one under Domains & certificates.");
+    for (const [hostnames, want] of [
+      [" Wiki.Example.COM. ", ["", "crt_wild", "crt_wiki"]], // as the server compares them
+      ["w.example.com\nwiki.example.com", ["", "crt_wild", "crt_wiki"]],
+      ["docs.example.com", ["", "crt_wild"]],
+      ["a.b.example.com", [""]], // a wildcard covers one label
+      ["example.com", [""]], // and not its parent
+      ["wiki.example.com\nexample.org", [""]], // none covers both
+      ["*.example.com", ["", "crt_wild"]], // a wildcard by the same wildcard only
+    ] as const) {
+      fireEvent.change(screen.getByLabelText("Hostnames"), { target: { value: hostnames } });
+      await waitFor(() => expect(offered()).toEqual(want));
+    }
+    expect(picker.options[0]!.textContent).toBe("Choose a certificate");
+    fireEvent.change(screen.getByLabelText("Hostnames"), { target: { value: "wiki.example.com\nexample.org" } });
+    await waitFor(() => expect(picker.options[0]!.textContent).toBe("No uploaded certificate covers these hostnames"));
+    fireEvent.change(screen.getByLabelText("Hostnames"), { target: { value: "wiki.example.com" } });
+    fireEvent.change(picker, { target: { value: "crt_wiki" } });
+    fireEvent.click(screen.getByRole("button", { name: "Create the route" }));
+    await waitFor(() => expect(creates).toHaveLength(1));
+    expect(creates[0]!.route?.spec).toMatchObject({ case: "http", value: { tlsMode: TLSMode.TLS_MODE_CERTIFICATE, certificateId: "crt_wiki" } });
+  });
+
+  it.each([
+    ["no certificate", []],
+    ["only certificates from ACME", [certificates[3]!]],
+  ])("says so when the org has %s to upload, and needs one before it creates the route", async (_, certs) => {
+    const { creates } = page("/routes/new", undefined, undefined, certs);
+    await fill();
+    fireEvent.change(screen.getByLabelText("TLS certificate"), { target: { value: String(TLSMode.TLS_MODE_CERTIFICATE) } });
+    const picker = await screen.findByLabelText<HTMLSelectElement>("Uploaded certificate");
+    await waitFor(() => expect(picker.options[0]!.textContent).toBe("The org has no uploaded certificate"));
+    expect(picker.options).toHaveLength(1);
+    fireEvent.click(screen.getByRole("button", { name: "Create the route" }));
+    await waitFor(() => expect(errorOf("Uploaded certificate")).toBe("Choose the uploaded certificate the route uses."));
+    expect(creates).toEqual([]);
   });
 });

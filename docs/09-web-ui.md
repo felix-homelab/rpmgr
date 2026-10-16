@@ -126,7 +126,7 @@ flowchart LR
 - **Required fields:** a field the form or the server refuses to leave empty has a red asterisk
   after its label ([D77](14-open-decisions.md#engineering)). The control is marked required, so
   screen readers say so; the asterisk itself has an empty alternative text and is not read. A field
-  required only in some cases has the asterisk while the case holds: an uploaded certificate's ID,
+  required only in some cases has the asterisk while the case holds: an uploaded certificate,
   a target's host and port or its socket path, an HTTPS target's server name on a socket, the mail
   relay's sender address, and the password of a basic-auth user the policy does not have yet. A
   number field that is filled in with its default, such as a port of 0 for any free port, is
@@ -289,11 +289,12 @@ flowchart LR
 - **Targets are added, edited and removed** on the page, in the targets card, one form at a time.
   - **The form:** the connector (fixed once the target exists), a host and port or a socket path,
     for HTTP routes the protocol to the target (HTTP, verified HTTPS with its server name, CA
-    bundle and key pin, HTTPS by pinned key, unverified HTTPS with its server name, or h2c; other
-    routes pass the bytes, or for UDP the datagrams, as they come, and show no such field), the
-    PROXY protocol for TCP, TCP and UDP, and TLS-passthrough routes (on a TCP and UDP route with
-    the note that it goes on TCP connections only, [D86](14-open-decisions.md#engineering)),
-    weight, priority, with the note that a higher priority on any connector is a failover
+    bundle, chosen among the org's by name or none for the system's roots, and key pin, HTTPS by
+    pinned key, unverified HTTPS with its server name, or h2c; other routes pass the bytes, or for
+    UDP the datagrams, as they come, and show no such field), the PROXY protocol for TCP, TCP and
+    UDP, and TLS-passthrough routes (on a TCP and UDP route with the note that it goes on TCP
+    connections only, [D86](14-open-decisions.md#engineering)), weight, priority, with the note
+    that a higher priority on any connector is a failover
     ([D90](14-open-decisions.md#engineering)), and whether it is enabled.
   - **Unverified HTTPS** ([ADR-0017](adr/0017-upstream-tls-verification-modes.md)): choosing it
     shows a warning that anyone on the network between the connector and the target can read and
@@ -339,6 +340,14 @@ flowchart LR
     not show keeps what the server sent, so a save loses nothing.
   - **Validation:** before sending, the form checks the API's rules. The server's violations land
     on their fields, and any it cannot place are shown with the form.
+  - **Labels and headers** take one per line, labels as `key=value` and headers as `Name: value`,
+    and each field's hint says which. The form checks each line, and names the first that has no
+    separator, a key or name the API refuses, or a key or name an earlier line has; header names
+    are compared without case.
+  - **An uploaded certificate** is chosen among the org's uploaded certificates that cover every
+    hostname the form has, by its names, ID and expiry; the form stores its ID. The choice shows
+    only while the route uses an uploaded certificate. A certificate chosen before stays offered,
+    marked if it does not cover the hostnames, so the form never changes it unasked.
   - **After a save,** the apply status follows live, as for the switch.
   - **A save that meets a newer version (U6)** opens a panel in the form. It says who changed the
     route and how long ago, and lists the fields either side changed, with the user's value next to
@@ -388,7 +397,8 @@ flowchart LR
 - **A group's page** has a link back to the groups above its title. It lists its gateways by slot,
   with their tunnel endpoints, state (not enrolled, connected or offline, and drained), version and
   last contact. It also edits the group's name, region, public hostnames and trusted proxies, as
-  the whole group as read with their mask and the etag (U1).
+  the whole group as read with their mask and the etag (U1). If the group changed since the page
+  read it, the form says so.
 - **Gateway actions** on a group's page:
   - **Add a gateway** with its name and its own tunnel endpoints. A group has at most four; the
     server says so.
@@ -424,15 +434,18 @@ flowchart LR
     ([15](15-dns.md)).
 - **Certificates**, on the same page:
   - **Each certificate:** its names, source (ACME or uploaded), status, expiry and issuer, its last
-    error, and the routes that use it. An expiry within 21 days is pointed out.
+    error, the routes that use it, and its ID with a copy button. An expiry within 21 days is
+    pointed out.
   - **Uploading** takes the chain and the private key as PEM, pasted or read from a file in the
     browser. The key leaves the page once it is sent.
   - **An ACME certificate** can be renewed now.
-  - **Removal** comes after a confirmation that names the certificate. The server refuses a
-    certificate that routes use, and says which.
+  - **Removal** of an uploaded certificate comes after a confirmation that names the certificate.
+    The server refuses a certificate that routes use, and says which. An ACME certificate offers
+    no removal, which the server always refuses, and says that ACME manages it.
 - **CA bundles,** which HTTPS targets verify their upstreams with: each with its certificates'
-  subjects and expiry and how many targets use it. A bundle is added, changed (name and PEM, as the
-  whole bundle as read with mask and etag), or removed after a confirmation.
+  subjects and expiry, how many targets use it, and its ID with a copy button. A bundle is added,
+  changed (name and PEM, as the whole bundle as read with mask and etag), or removed after a
+  confirmation.
 
 ### Access policies
 
@@ -470,7 +483,8 @@ flowchart LR
   The Instance Admin can switch to the instance's log.
 - **Each entry** shows time, action, target, actor (by name for members) and result, the result as
   a status badge. Opened, it shows the entry number, credential, authentication, address, user
-  agent, request ID, reason, and the redacted request, as text.
+  agent, request ID, reason, and the redacted request, as text that wraps, so that a long one
+  never widens the page.
 - **Filters:** action (exact) and actor ID, kept in the URL (U9). When no entry matches, the page
   says so instead of showing an empty list.
 - **"Verify the chain"** checks the whole hash chain from its anchor: the first entry, or, once
@@ -566,7 +580,8 @@ flowchart LR
 - [R] The mock-up's "Name" field is left out. A token does not name the connector it enrolls: the
   connector takes its host's name, and it is renamed on its page.
 - **The connectors page lists the enrollment tokens** that can still enroll, with creation, expiry,
-  uses, labels and last use. A token is revoked after a confirmation. Tokens that re-enroll one
+  uses, labels and last use; an ephemeral one has the badge "ephemeral", whose description says
+  what the kind means. A token is revoked after a confirmation. Tokens that re-enroll one
   connector belong to that connector and are not listed.
 
 ### Managed DNS zone (Phase 2)

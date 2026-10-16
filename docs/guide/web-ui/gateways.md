@@ -101,7 +101,8 @@ The **Settings** card changes the group:
 | **Public hostnames** | One per line: the names public traffic reaches the group's gateways by. The routes list shows a port route's address at each of them |
 | **Trusted proxies** | One CIDR per line: proxies in front of the gateways whose `X-Forwarded-For` header the gateways keep |
 
-**Save** saves them and says `Saved.`
+**Save** saves them and says `Saved.` If the group changed since the page loaded it, the card says
+`The gateway group changed since this page loaded it.`: reload the page and make the change again.
 
 ## On the command line
 
