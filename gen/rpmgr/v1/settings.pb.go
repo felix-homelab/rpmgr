@@ -268,8 +268,9 @@ type InstanceSettings struct {
 	// Further public origins of the web UI, accepted as Origin by the CSRF check, e.g.
 	// "https://panel.example.com".
 	PublicUrlAliases []string `protobuf:"bytes,7,rep,name=public_url_aliases,json=publicUrlAliases,proto3" json:"public_url_aliases,omitempty"`
-	// Controller endpoints advertised to agents in every snapshot, tried in order, e.g.
-	// "https://controller.example.net:443"; empty means the public URL only.
+	// Controller endpoints advertised to agents at enrollment and in every snapshot, tried in order,
+	// each https://<host>[:<port>], e.g. "https://controller.example.net:443"; empty means the public
+	// URL only.
 	ControllerEndpoints []string `protobuf:"bytes,8,rep,name=controller_endpoints,json=controllerEndpoints,proto3" json:"controller_endpoints,omitempty"`
 	// How long hourly traffic rollups are kept, 1 to 400 days; default 30 days.
 	HourlyRollupRetention *durationpb.Duration `protobuf:"bytes,9,opt,name=hourly_rollup_retention,json=hourlyRollupRetention,proto3" json:"hourly_rollup_retention,omitempty"`
@@ -1206,7 +1207,8 @@ var File_rpmgr_v1_settings_proto protoreflect.FileDescriptor
 
 const file_rpmgr_v1_settings_proto_rawDesc = "" +
 	"\n" +
-	"\x17rpmgr/v1/settings.proto\x12\brpmgr.v1\x1a\x1bbuf/validate/validate.proto\x1a\x1egoogle/protobuf/duration.proto\x1a google/protobuf/field_mask.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x15rpmgr/v1/common.proto\x1a\x16rpmgr/v1/options.proto\x1a\x15rpmgr/v1/status.proto\"\xec\t\n" +
+	"\x17rpmgr/v1/settings.proto\x12\brpmgr.v1\x1a\x1bbuf/validate/validate.proto\x1a\x1egoogle/protobuf/duration.proto\x1a google/protobuf/field_mask.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x15rpmgr/v1/common.proto\x1a\x16rpmgr/v1/options.proto\x1a\x15rpmgr/v1/status.proto\"\xfa\n" +
+	"\n" +
 	"\x10InstanceSettings\x12W\n" +
 	"\x11default_transport\x18\x01 \x01(\x0e2\x19.rpmgr.v1.TransportPolicyB\n" +
 	"\xbaH\a\x82\x01\x04\x10\x01 \x00H\x00R\x10defaultTransport\x88\x01\x01\x12j\n" +
@@ -1217,8 +1219,9 @@ const file_rpmgr_v1_settings_proto_rawDesc = "" +
 	"\rrelease_check\x18\x05 \x01(\bH\x02R\freleaseCheck\x88\x01\x01\x12O\n" +
 	"\x0eupdate_channel\x18\x06 \x01(\x0e2\x17.rpmgr.v1.UpdateChannelB\n" +
 	"\xbaH\a\x82\x01\x04\x10\x01 \x00H\x03R\rupdateChannel\x88\x01\x01\x12B\n" +
-	"\x12public_url_aliases\x18\a \x03(\tB\x14\xbaH\x11\x92\x01\x0e\x10\x10\x18\x01\"\br\x06\x18\xfd\x01\x88\x01\x01R\x10publicUrlAliases\x12G\n" +
-	"\x14controller_endpoints\x18\b \x03(\tB\x14\xbaH\x11\x92\x01\x0e\x10\b\x18\x01\"\br\x06\x18\xfd\x01\x88\x01\x01R\x13controllerEndpoints\x12f\n" +
+	"\x12public_url_aliases\x18\a \x03(\tB\x14\xbaH\x11\x92\x01\x0e\x10\x10\x18\x01\"\br\x06\x18\xfd\x01\x88\x01\x01R\x10publicUrlAliases\x12\xd4\x01\n" +
+	"\x14controller_endpoints\x18\b \x03(\tB\xa0\x01\xbaH\x9c\x01\x92\x01\x98\x01\x10\b\x18\x01\"\x91\x01\xba\x01\x85\x01\n" +
+	"\x13controller_endpoint\x12\x1fmust be https://<host>[:<port>]\x1aMthis.matches(r'^https://([^/?#@:\\[\\]]+|\\[[0-9A-Fa-f:.]+\\])(:[0-9]{1,5})?/?$')r\x06\x18\xfd\x01\x88\x01\x01R\x13controllerEndpoints\x12f\n" +
 	"\x17hourly_rollup_retention\x18\t \x01(\v2\x19.google.protobuf.DurationB\x13\xbaH\x10\xaa\x01\r\"\x05\b\x80\xb0\xbd\x102\x04\b\x80\xa3\x05R\x15hourlyRollupRetention\x12e\n" +
 	"\x16daily_rollup_retention\x18\n" +
 	" \x01(\v2\x19.google.protobuf.DurationB\x14\xbaH\x11\xaa\x01\x0e\"\x06\b\x80\x86\xb0\x96\x012\x04\b\x80\xa3\x05R\x14dailyRollupRetention\x12>\n" +

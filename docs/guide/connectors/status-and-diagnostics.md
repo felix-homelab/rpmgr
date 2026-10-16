@@ -45,7 +45,7 @@ Service:        running and ready
 | Trust domain | The installation it belongs to |
 | Enrolled | When it enrolled, or last re-enrolled |
 | Certificate | When its certificate expires. The agent renews it on its own, long before ([04](../../04-security.md#leaf-certificates)). `expired; the agent re-authenticates within the grace period, else re-enroll` means it was offline too long |
-| Controller | The controller endpoints it tries, in order |
+| Controller | The controller endpoints it tries, in order: those of the stored configuration, or those it got when it enrolled while it has none ([Connector networking](network.md#when-the-controller-is-out-of-reach)) |
 | Configuration | The last configuration it applied and keeps on disk, so that it can restart while the controller is unreachable: its revision and number of resources. `none received yet` before the first; `the stored copy does not verify: …` if the copy is damaged, and then the agent does not run it |
 | Deny-list | How many revoked certificates and identities it refuses |
 | Service | The answer of the running service's admin listener: `running and ready`; `running, not ready:` and the reason, such as `no control session` or `no snapshot applied`; `not running (nothing answers on 127.0.0.1:7383)`; or `unknown: the admin listener is off` |
@@ -89,7 +89,8 @@ connector hosts only; on a gateway's it says so. The runbook for UDP problems is
 ## rpmgr diag clock
 
 `rpmgr diag clock` compares this host's clock with the controller's, over a control session it
-opens for the measurement:
+opens for the measurement at the first controller endpoint that `rpmgr status` shows and that
+answers:
 
 ```sh
 sudo rpmgr diag clock
@@ -122,9 +123,9 @@ The controller revoked spiffe://rpmgr-ewl35s75/org/org_01M4ZEHHDQE4HAJFN45X0ZD08
 Stop and disable rpmgr-connector.service; /etc/rpmgr/connector.yaml can go too unless the host enrolls again.
 ```
 
-1. It asks the controller to revoke the agent's identity, trying each controller endpoint. The
-   controller decommissions the connector or gateway as an Admin's decommission does, and records
-   it in the audit log with the agent as the actor
+1. It asks the controller to revoke the agent's identity, trying each controller endpoint that
+   `rpmgr status` shows. The controller decommissions the connector or gateway as an Admin's
+   decommission does, and records it in the audit log with the agent as the actor
    ([Connector lifecycle](lifecycle.md#decommission-a-connector)).
 2. Only when a controller confirmed does it remove the identity, the stored configuration and the
    deny-list from the host. If none confirms, because the controller is unreachable or the

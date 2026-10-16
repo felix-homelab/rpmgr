@@ -225,6 +225,27 @@ func TestRefusals(t *testing.T) {
 	}
 }
 
+// TestNotRoot: installing needs root, and the script then says to run its file with sudo, never to
+// pipe it into a shell (docs/04-security.md, "Install scripts"); verifying needs no root.
+func TestNotRoot(t *testing.T) {
+	b, err := installsh.Render("1.4.2", []release.PublicKey{pubkey(t, root)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(b), `die "run as root: sudo sh install.sh ..."`) || strings.Contains(string(b), "sh -s") {
+		t.Error("the script does not tell a user without root to run its file with sudo")
+	}
+	needTools(t)
+	if os.Getuid() == 0 {
+		t.Skip("the test runs as root")
+	}
+	s := newServer(t)
+	s.files = files(t, nil)
+	if out, err := run(t, s, "", "--controller", s.URL, "--ca-pin", "sha256:x"); err == nil || !strings.Contains(out, "run as root: sudo sh install.sh ...") {
+		t.Errorf("an install without root: %v\n%s", err, out)
+	}
+}
+
 // TestHandler: a release build with root keys serves its script; a development build, or one
 // without root keys, serves a script that says why and fails; only GET and HEAD.
 func TestHandler(t *testing.T) {

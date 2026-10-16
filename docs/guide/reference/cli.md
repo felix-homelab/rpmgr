@@ -12,9 +12,10 @@ when and why to use them.
   groups others lists them and has no flags of its own.
 - The synopsis shows the command path, `<command>` where a sub-command follows,
   `[flags]` when the command has flags, and the positional arguments.
-- Flags come before the name, the ID or the kind. A command stops reading flags at its first
-  positional argument: write `rpmgr get -o yaml route web`, not
-  `rpmgr get route web -o yaml`.
+- Flags may stand before or after the name, the ID or the kind:
+  `rpmgr get -o yaml route web` and `rpmgr get route web -o yaml` do the same.
+  After `--` every argument is positional, also one that begins with `-`, such
+  as a directory named `-new`: `rpmgr release import -- -new`.
 - A flag is written `--name`, or `-o` for a one-letter flag, followed by the kind
   of value it takes. A flag without a kind is a switch: `--all` turns it on. A flag that
   may be repeated says so in its description.
@@ -118,7 +119,7 @@ rpmgr controller init [flags]
 |---|---|---|
 | `--config string` |  | boot file, written if it does not exist (default $RPMGR_CONFIG, else /etc/rpmgr/controller.yaml) |
 | `--kek-path string` |  | KEK file of a new boot file with --kek-source file (default /etc/rpmgr/kek) |
-| `--kek-source string` |  | KEK source of a new boot file: systemd-credential (default) or file |
+| `--kek-source string` |  | KEK source of a new boot file: systemd-credential or file (default systemd-credential from systemd 250, else file) |
 | `--public-url string` |  | https URL of the web UI and API; needed when the boot file does not exist |
 
 ## rpmgr gateway
@@ -174,7 +175,7 @@ rpmgr all-in-one init [flags]
 |---|---|---|
 | `--config string` |  | boot file, written if it does not exist (default $RPMGR_CONFIG, else /etc/rpmgr/all-in-one.yaml) |
 | `--kek-path string` |  | KEK file of a new boot file with --kek-source file (default /etc/rpmgr/kek) |
-| `--kek-source string` |  | KEK source of a new boot file: systemd-credential (default) or file |
+| `--kek-source string` |  | KEK source of a new boot file: systemd-credential or file (default systemd-credential from systemd 250, else file) |
 | `--public-url string` |  | https URL of the web UI, the API and the agents; needed when the boot file does not exist |
 
 ## rpmgr setup
@@ -204,7 +205,8 @@ rpmgr setup [flags]
 | `--listen-tcp string` |  | all-in-one, gateway: listen.tcp (default :443) |
 | `--listen-udp string` |  | all-in-one, gateway: listen.udp (default :443) |
 | `--no-unit` |  | install no systemd unit and start nothing |
-| `--proxy string` |  | connector: HTTPS_PROXY of its service, http://, https:// or socks5:// |
+| `--proxy string` |  | connector: the proxy of its enrollment and its service, http://, socks5:// or socks5h://, without credentials |
+| `--proxy-file string` |  | connector: file with the proxy URL instead of --proxy, for one with a user name or password |
 | `--public-url string` |  | controller, all-in-one: https URL of the web UI, the API and the agents |
 | `--role string` |  | all-in-one, controller, gateway or connector (required with --yes) |
 | `--tls string` |  | controller, all-in-one: the public URL's certificate: acme, files or self-signed (default acme for a public name, else self-signed) |

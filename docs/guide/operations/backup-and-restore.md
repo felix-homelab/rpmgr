@@ -224,7 +224,9 @@ When the old host is lost, or to move the controller:
    sudo systemctl enable --now rpmgr-controller
    ```
 
-Agents find the new host by the public URL, as before.
+Agents find the new host as before: by the public URL, or by the **Controller endpoints for
+agents** the restored instance settings list, which must then lead to the new host too
+([Settings](settings.md#web-ui-and-controller-endpoints)).
 
 ### Restore an all-in-one
 

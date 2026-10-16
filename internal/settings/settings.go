@@ -10,6 +10,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"time"
 
 	"buf.build/go/protovalidate"
@@ -76,6 +77,15 @@ func Instance(ctx context.Context, c *ent.Client) (*rpmgrv1.InstanceSettings, in
 		version = row.Version
 	}
 	return effective(InstanceDefaults(), stored).(*rpmgrv1.InstanceSettings), version, nil
+}
+
+// ControllerEndpoints returns the controller endpoints agents try, in order: those inst lists, or
+// publicURL alone while it lists none (docs/03-connections.md, "Endpoints and failover").
+func ControllerEndpoints(inst *rpmgrv1.InstanceSettings, publicURL string) []string {
+	if eps := inst.GetControllerEndpoints(); len(eps) > 0 {
+		return slices.Clone(eps)
+	}
+	return []string{publicURL}
 }
 
 // InitInstanceTx stores the first instance settings in tx, the transaction that initialises the

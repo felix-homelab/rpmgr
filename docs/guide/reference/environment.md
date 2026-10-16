@@ -28,7 +28,8 @@ as an enrollment token, are never written to a log.
 **Under sudo.** `sudo` resets the environment by default, so a variable you set in your shell does
 not reach a command you run with `sudo`. Pass it explicitly, for example
 `sudo --preserve-env=RPMGR_ENROLL_TOKEN rpmgr enroll …`, or
-`sudo env HTTPS_PROXY=http://proxy.lan:3128 rpmgr setup …`.
+`sudo env HTTPS_PROXY=http://proxy.lan:3128 rpmgr enroll …`, which works for `rpmgr setup` without
+a proxy flag too.
 
 **For a service.** A service started by systemd sees only the variables of its unit. Set one with
 a drop-in, for example `sudo systemctl edit rpmgr-connector`:
@@ -41,14 +42,15 @@ Environment="HTTPS_PROXY=http://proxy.lan:3128"
 Then `sudo systemctl restart rpmgr-connector`. Never put a secret in `Environment=`: the units take
 none, and every user of the host can read a drop-in and `systemctl show`.
 
-**A proxy with a password.** A proxy URL with `user:password@` is a secret. `rpmgr setup --proxy`
-writes its URL into a drop-in that every user can read, so give setup no such URL. Put the variable
-into a file that only root can read, such as `/etc/rpmgr/proxy.env` with mode 0600, holding the
-line `HTTPS_PROXY=http://user:password@proxy.lan:3128`, and name it in the drop-in instead:
+**A proxy with a password.** A proxy URL with `user:password@` is a secret, and a command line shows
+it to every user of the host. `rpmgr setup` takes it from `--proxy-file` or its form, never from
+`--proxy`, keeps it in `/etc/rpmgr/connector-proxy.env`, mode 0600, which only root reads, and names
+that file in the drop-in. By hand, do the same: put the line
+`HTTPS_PROXY=http://user:password@proxy.lan:3128` into such a file and name it in the drop-in:
 
 ```ini
 [Service]
-EnvironmentFile=/etc/rpmgr/proxy.env
+EnvironmentFile=/etc/rpmgr/connector-proxy.env
 ```
 
 ## RPMGR_CONFIG
@@ -123,9 +125,10 @@ upper-case one wins. Which variable applies depends on the connection:
 | Connection | Variables | Proxy kinds |
 |---|---|---|
 | A connector's TCP data sessions to its gateways (TLS and HTTP/2) | `HTTPS_PROXY`, else `ALL_PROXY`; `NO_PROXY` | `http://` (HTTP CONNECT), `socks5://`, `socks5h://`, with optional `user:password@` |
-| A gateway's or connector's control session to the controller, and `rpmgr enroll` (also within `rpmgr setup`) | `HTTPS_PROXY`; `NO_PROXY` | `http://` (HTTP CONNECT) |
-| The controller's requests to the ACME CA and to GitHub for the release check | `HTTPS_PROXY`; `NO_PROXY` | `http://`, `https://`, `socks5://` |
-| The controller's check of a domain's HTTP token, which is an `http://` URL | `HTTP_PROXY`; `NO_PROXY` | `http://`, `https://`, `socks5://` |
+| A gateway's or connector's control session to the controller, and `rpmgr enroll`, also within `rpmgr setup` without a proxy | `HTTPS_PROXY`; `NO_PROXY` | `http://` (HTTP CONNECT) |
+| The enrollment within `rpmgr setup` with `--proxy` or `--proxy-file` | that URL, not the environment | `http://`, `socks5://`, `socks5h://` |
+| The controller's requests to the ACME CA and to GitHub for the release check | `HTTPS_PROXY`, else `ALL_PROXY`; `NO_PROXY` | `http://`, `https://`, `socks5://`, `socks5h://` |
+| The controller's check of a domain's HTTP token, which is an `http://` URL | `HTTP_PROXY`, else `ALL_PROXY`; `NO_PROXY` | `http://`, `https://`, `socks5://`, `socks5h://` |
 | The controller's connection to the mail relay (SMTP) | `ALL_PROXY`; `NO_PROXY` | `socks5://`, `socks5h://` |
 | The command line's requests to the controller | `HTTPS_PROXY`; `NO_PROXY` | `http://`, `https://`, `socks5://` |
 
@@ -136,18 +139,16 @@ upper-case one wins. Which variable applies depends on the connection:
 - **A connector refuses a proxy URL it cannot use.** If `HTTPS_PROXY` or `ALL_PROXY` is not an
   `http://`, `socks5://` or `socks5h://` URL with a host, the connector does not start, and says
   which variable is wrong without repeating its value.
-- **`rpmgr setup --role connector --proxy <url>`** writes the proxy into the drop-in
-  `/etc/systemd/system/rpmgr-connector.service.d/proxy.conf` as `HTTPS_PROXY`. The enrollment that
-  setup runs uses setup's own environment, so on a network where only the proxy leads out, run
-  setup with the variable as well
-  ([Set up a host with rpmgr setup](../install/setup.md#connector)):
-
-  ```sh
-  sudo env HTTPS_PROXY=http://proxy.lan:3128 rpmgr setup --role connector \
-    --proxy http://proxy.lan:3128 …
-  ```
-- **`ALL_PROXY` does not reach the controller's HTTPS requests.** The controller's requests to the
-  ACME CA, to GitHub and to a domain's HTTP token follow `HTTPS_PROXY` and `HTTP_PROXY` only.
+- **`rpmgr setup --role connector --proxy <url>`**, or `--proxy-file <file>` for a URL with
+  credentials, takes an `http://`, `socks5://` or `socks5h://` URL, enrolls through it, and gives
+  it to the service as `HTTPS_PROXY` in
+  `/etc/rpmgr/connector-proxy.env` (root, 0600), which the drop-in
+  `/etc/systemd/system/rpmgr-connector.service.d/proxy.conf` names
+  ([Set up a host with rpmgr setup](../install/setup.md#connector)).
+- **The controller and the connector read a proxy the same way.** A value without a scheme, such as
+  `proxy.lan:3128`, is an `http://` proxy. A value that is no proxy URL stops the controller at
+  start, as it does the connector, with a message that names the variable without its value, such
+  as `controller: ALL_PROXY is not an http://, https://, socks5:// or socks5h:// URL with a host`.
 - **The install scripts** download with `curl` (or `wget`, for the global script), which read
   their own proxy variables.
 

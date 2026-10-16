@@ -18,6 +18,7 @@ import (
 	"github.com/mholt/acmez/v3"
 	"go.uber.org/zap"
 
+	"github.com/felix-homelab/rpmgr/internal/proxyenv"
 	"github.com/felix-homelab/rpmgr/internal/settings"
 	"github.com/felix-homelab/rpmgr/internal/store"
 )
@@ -42,7 +43,7 @@ type OwnOptions struct {
 	Host    string // the public URL's
 	// NoHTTP01 leaves HTTP-01 out, for a controller without a port-80 listener.
 	NoHTTP01 bool
-	// Proxy chooses the proxy of the ACME client's requests; nil is http.ProxyFromEnvironment.
+	// Proxy chooses the proxy of the ACME client's requests; nil is proxyenv.FromEnvironment.
 	Proxy func(*http.Request) (*url.URL, error)
 	// TrustedRoots, if set, replaces the system roots for the CA's own TLS certificate (tests).
 	TrustedRoots *x509.CertPool
@@ -82,7 +83,7 @@ func NewOwn(o OwnOptions) (*Own, error) {
 		o.Logger = slog.New(slog.DiscardHandler)
 	}
 	if o.Proxy == nil {
-		o.Proxy = http.ProxyFromEnvironment
+		o.Proxy = proxyenv.FromEnvironment
 	}
 	inst, _, err := settings.Instance(o.Sys, o.DB.Client())
 	if err != nil {
