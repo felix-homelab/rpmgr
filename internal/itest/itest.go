@@ -149,7 +149,7 @@ func (c *Controller) StartReplica(t testing.TB) (string, *controller.Sessions) {
 		Sys: c.Sys, Now: c.opts.Now, Admission: c.opts.Admission, RevisionCheck: 50 * time.Millisecond, RevLog: c.RevLog, Sealer: c.sealer,
 		Logger: c.Logs.Logger()}
 	if len(c.opts.Sources) > 0 {
-		so.Compiler = &snapshot.Compiler{Sources: c.opts.Sources, Endpoints: func() []string { return []string{url} }}
+		so.Compiler = &snapshot.Compiler{Sources: c.opts.Sources, Endpoints: controller.AgentEndpoints(url)}
 	}
 	sessions := controller.NewSessions(so)
 	cfg := pki.AgentEndpointConfig(pki.NewHolder(node), roots, pki.Expect{TrustDomain: td, Kinds: []pki.Kind{pki.KindConnector, pki.KindGateway},
@@ -161,7 +161,7 @@ func (c *Controller) StartReplica(t testing.TB) (string, *controller.Sessions) {
 	go func() { sessions.Run(runCtx); close(running) }()
 	agentv1.RegisterControlServer(agents, sessions)
 	agentv1.RegisterReauthServer(agents, controller.NewReauthService(sessions))
-	enrollment := enroll.NewService(c.DB, c.CA, []string{url}, nil)
+	enrollment := enroll.NewService(c.DB, c.CA, url, nil)
 	enrollment.Logger = c.Logs.Logger()
 	agentv1.RegisterEnrollmentServer(agents, enrollment)
 	mux := http.NewServeMux()

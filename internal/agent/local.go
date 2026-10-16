@@ -56,6 +56,28 @@ func ReadLocal(identityDir, stateDir string, now time.Time) (Local, error) {
 	return out, nil
 }
 
+// ControllerEndpoints returns the controller endpoints the agent tries, in order, as it does after
+// a start: those of the stored snapshot, or those of its enrollment while it has no stored snapshot
+// that verifies and names some (docs/03-connections.md, "Endpoints and failover").
+func (l Local) ControllerEndpoints() []string {
+	if eps := l.Snapshot.GetControllerEndpoints(); len(eps) > 0 {
+		return eps
+	}
+	return l.Endpoints
+}
+
+// loadEndpoints loads the identity in identityDir and returns it with the controller endpoints the
+// agent tries (Local.ControllerEndpoints), the stored snapshot verified at now, for a command that
+// calls the controller.
+func loadEndpoints(identityDir, stateDir string, now time.Time) (Loaded, []string, error) {
+	l, err := Load(identityDir)
+	if err != nil {
+		return Loaded{}, nil, err
+	}
+	snap, _ := lastKnownGood(l, stateDir, now) // a copy that does not verify leaves the enrollment's
+	return l, Local{Loaded: l, Snapshot: snap}.ControllerEndpoints(), nil
+}
+
 // lastKnownGood reads and verifies the stored snapshot; nil, nil when there is none.
 func lastKnownGood(l Loaded, stateDir string, now time.Time) (*agentv1.Snapshot, error) {
 	b, err := os.ReadFile(filepath.Join(stateDir, LastKnownGoodFile)) //nolint:gosec // G304: the configured state directory
@@ -87,17 +109,17 @@ func controllerConn(l Loaded, endpoint string, dial func(ctx context.Context, ad
 var ErrNotLeft = errors.New("agent: no controller confirmed the revocation; nothing was revoked or removed here")
 
 // Leave is `rpmgr leave`: the controller revokes the agent's identity (Control.Leave), tried at
-// each endpoint in turn, and only then are the identity in identityDir and the agent's stored
-// snapshot and deny-list in stateDir removed (docs/03-connections.md, "Leaving"). It returns the
-// identity that left.
+// each endpoint the agent tries in turn, and only then are the identity in identityDir and the
+// agent's stored snapshot and deny-list in stateDir removed (docs/03-connections.md, "Leaving").
+// It returns the identity that left.
 func Leave(ctx context.Context, identityDir, stateDir string, dial func(ctx context.Context, addr string) (net.Conn, error)) (Loaded, error) {
-	l, err := Load(identityDir)
+	l, endpoints, err := loadEndpoints(identityDir, stateDir, time.Now())
 	if err != nil {
 		return Loaded{}, err
 	}
 	var errs []error
 	left := false
-	for _, ep := range l.Endpoints {
+	for _, ep := range endpoints {
 		cc, err := controllerConn(l, ep, dial)
 		if err == nil {
 			cctx, cancel := context.WithTimeout(ctx, localTimeout)
@@ -137,14 +159,14 @@ type Clock struct {
 // modes").
 const MaxClockSkew = 30 * time.Second
 
-// MeasureClock is `rpmgr diag clock`: it opens a control session at the first endpoint that
-// answers and compares the server_time of its Welcome with this host's clock, then ends it. The
-// controller keeps one session per agent, so a running agent's session is superseded and
+// MeasureClock is `rpmgr diag clock`: it opens a control session at the first endpoint the agent
+// tries that answers and compares the server_time of its Welcome with this host's clock, then ends
+// it. The controller keeps one session per agent, so a running agent's session is superseded and
 // reconnects. A TLS refusal of the controller's certificate as expired or not yet valid is
 // returned as it is: then this host's clock is far off.
-func MeasureClock(ctx context.Context, identityDir, version string, now func() time.Time,
+func MeasureClock(ctx context.Context, identityDir, stateDir, version string, now func() time.Time,
 	dial func(ctx context.Context, addr string) (net.Conn, error)) (Clock, error) {
-	l, err := Load(identityDir)
+	l, endpoints, err := loadEndpoints(identityDir, stateDir, now())
 	if err != nil {
 		return Clock{}, err
 	}
@@ -153,7 +175,7 @@ func MeasureClock(ctx context.Context, identityDir, version string, now func() t
 		return Clock{}, err
 	}
 	var errs []error
-	for _, ep := range l.Endpoints {
+	for _, ep := range endpoints {
 		c, err := measure(ctx, l, ep, version, hex.EncodeToString(boot), now, dial)
 		if err == nil {
 			return c, nil
