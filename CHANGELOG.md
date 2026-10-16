@@ -163,7 +163,9 @@ history and the [ADRs](docs/adr/).
 - API: an org's resources export as YAML manifests. (#341, #342)
 - CLI: `rpmgr login` signs in with a personal API token. Verb-first commands (`get`, `list`,
   `create`, `update`, `delete`, `enable`, `disable`, `preview` and more) cover every resource of the
-  API, with table, YAML or JSON output. (#342, #344, #345, #346, #347, #348, #349)
+  API, with table, YAML or JSON output. Flags may stand before or after a command's arguments, as
+  in `rpmgr get route web -o yaml`; `--` ends them. (#342, #344, #345, #346, #347, #348, #349,
+  #564)
 - Gateway: a drained or disabled gateway lets its open connections finish within the drain period;
   `rpmgr drain gateway` starts a drain. (#347, #349)
 - UI: the controller serves an embedded web UI under a strict Content Security Policy, with

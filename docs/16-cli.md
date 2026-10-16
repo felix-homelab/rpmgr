@@ -12,8 +12,10 @@
 - One binary, `rpmgr`, for every role and every administration task
   ([ADR-0002](adr/0002-one-binary-three-roles.md)). Commands form a tree:
   `rpmgr <command> [<sub-command>] [flags] [arguments]`.
-- Flags come before positional arguments. `-h` or `--help` prints the help of any command;
-  `rpmgr help <command> …` does the same.
+- Flags may stand before, between or after the positional arguments. `--` ends the flags: every
+  argument after it is positional, also one that begins with `-`, such as a directory in
+  `rpmgr release import -- -new`. `-h` or `--help` prints the help of any command, also after its
+  arguments; `rpmgr help <command> …` does the same.
 - A command names a resource by its ID or by its name, in an argument as in a flag such as
   `--group`: `get`, `delete`, `update`, `enable`, `disable`, `drain` and `decommission` take
   either. A value that starts with the kind's ID prefix, such as `rt_` for a route, is an ID. A

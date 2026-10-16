@@ -3,10 +3,53 @@
 package main
 
 import (
+	"context"
+	"errors"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+
+	"github.com/felix-homelab/rpmgr/internal/telemetry"
 )
+
+// TestServiceState: rpmgr status says what the admin listener's /readyz answers, the reason it is
+// not ready once, without the "not ready:" the answer starts with.
+func TestServiceState(t *testing.T) {
+	admin := func(t *testing.T, h http.Handler) string {
+		t.Helper()
+		srv := httptest.NewServer(h)
+		t.Cleanup(srv.Close)
+		return strings.TrimPrefix(srv.URL, "http://")
+	}
+	answer := func(code int, body string) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(code)
+			_, _ = w.Write([]byte(body))
+		})
+	}
+	ready := func(err error) http.Handler {
+		return telemetry.AdminHandler(telemetry.NewRegistry(), func(context.Context) error { return err })
+	}
+	closed := httptest.NewServer(http.NotFoundHandler())
+	closedAddr := strings.TrimPrefix(closed.URL, "http://")
+	closed.Close()
+	for name, tc := range map[string]struct{ admin, want string }{
+		"ready":               {admin(t, ready(nil)), "running and ready"},
+		"not ready":           {admin(t, ready(errors.New("no control session"))), "running, not ready: no control session"},
+		"a reason without it": {admin(t, answer(http.StatusServiceUnavailable, "draining\n")), "running, not ready: draining"},
+		"no reason":           {admin(t, answer(http.StatusServiceUnavailable, "not ready: \n")), "running, not ready"},
+		"an empty answer":     {admin(t, answer(http.StatusServiceUnavailable, "")), "running, not ready"},
+		"no listener":         {"", "unknown: the admin listener is off"},
+		"nothing answers":     {closedAddr, "not running (nothing answers on " + closedAddr + ")"},
+	} {
+		if got := serviceState(context.Background(), tc.admin); got != tc.want {
+			t.Errorf("%s: %q, want %q", name, got, tc.want)
+		}
+	}
+}
 
 // TestLoadAgentBoot: a boot file valid for one role only has that role; one valid for both, such
 // as the one /install.sh writes for a gateway, has the role its identity records, and the
