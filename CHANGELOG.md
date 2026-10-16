@@ -154,12 +154,12 @@ Changes to the design documents are not recorded here: see the git history and t
   #313, #314, #316, #321)
 - API: orgs with members and roles. Invitations and password resets are one-time links, also sent
   by e-mail when an SMTP relay is configured. (#318, #319, #349)
-- All roles: administrators recover other users' accounts after a step-up, in the web UI and
-  through the API: a password-reset link, by an Owner or Admin for their members and by the
-  Instance Admin for anyone, and the removal of a lost second factor, by an Owner or the Instance
-  Admin, which ends the user's sessions. An Owner or Admin recovers only users all of whose
+- All roles: administrators recover other users' accounts after a step-up, in the web UI, with
+  `rpmgr` and through the API: a password-reset link, by an Owner or Admin for their members and by
+  the Instance Admin for anyone, and the removal of a lost second factor, by an Owner or the
+  Instance Admin, which ends the user's sessions. An Owner or Admin recovers only users all of whose
   organisations they hold, and no Instance Admin. The Instance Admin grants and revokes the Instance
-  Admin role on the new Users page; the last one keeps it. (#583)
+  Admin role on the new Users page or with `rpmgr update user`; the last one keeps it. (#583, #585)
 - API: personal API tokens for the CLI and scripts, each bound to one org and limited to
   permissions its owner holds; a token can step up. (#320, #346)
 - API: services for gateway groups, gateways, port pools and quotas, enrollment tokens and install
@@ -174,6 +174,8 @@ Changes to the design documents are not recorded here: see the git history and t
   A route can be previewed before it is saved, routes report their observed status, and
   configuration and status changes stream to clients. (#335, #336, #337)
 - API: an org's resources export as YAML manifests. (#341, #342)
+- API: a request message holds at most 4 MiB, also once decompressed; a larger one is refused
+  before it is handled. (#582)
 - CLI: `rpmgr login` signs in with a personal API token. Verb-first commands (`get`, `list`,
   `create`, `update`, `delete`, `enable`, `disable`, `preview` and more) cover every resource of the
   API, with table, YAML or JSON output. Flags may stand before or after a command's arguments, as

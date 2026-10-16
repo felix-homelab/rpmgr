@@ -76,7 +76,7 @@ organisation is read-only until its members and roles are confirmed
 
 ## On the command line
 
-`rpmgr list member`, `rpmgr update member --role <role> <user>`, `rpmgr remove member <user>` and
-`rpmgr create invitation --email <address> --role <role>` do the same; renaming the organisation
-and recovering a member's account have no command yet
+`rpmgr list member`, `rpmgr update member --role <role> <user>`, `rpmgr remove member <user>`,
+`rpmgr create invitation --email <address> --role <role>`, `rpmgr create reset-link <user>` and
+`rpmgr remove second-factor <user>` do the same; renaming the organisation has no command
 ([Members and roles](../accounts/members-and-roles.md)).

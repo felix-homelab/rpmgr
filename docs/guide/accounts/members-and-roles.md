@@ -36,8 +36,9 @@ manages the CA, the instance's settings, the PKI and updates pages, the instance
 trusted domains. The first user of an installation is the Owner of the first organisation and the
 Instance Admin ([The first user](sign-in-and-mfa.md#the-first-user)). An Instance Admin makes
 another user Instance Admin, or revokes the role, on **Settings**, tab **Users**
-([Settings](../web-ui/settings.md#users)), after a step-up. The installation keeps at least one
-active Instance Admin: the last one cannot give the role up.
+([Settings](../web-ui/settings.md#users)), or with `rpmgr update user --instance-admin <user>` and
+`--instance-admin=false`, each after a step-up. The installation keeps at least one active Instance
+Admin: the last one cannot give the role up.
 
 Administrative commands on the controller host, such as `rpmgr backup`, `rpmgr ca` and
 `rpmgr user reset-password`, need no role at all: they are allowed to whoever may run them as root
@@ -136,9 +137,12 @@ administrator recovers the account. Each recovery takes a
 - **In the web UI:** on the **Organisation** page, the buttons on the member's row
   ([Organisation](../web-ui/organisation.md#members)). The Instance Admin has them for every user on
   **Settings**, tab **Users** ([Settings](../web-ui/settings.md#users)).
+- **On the command line:** `rpmgr create reset-link <user>` prints the link;
+  `rpmgr remove second-factor <user>` removes the second factor. The user is a user ID, or the
+  e-mail address of a member, or, for the Instance Admin, of any user. The API token needs the scope
+  `members.write`, or `instance.admin`, and steps up on its own.
 - **Through the API:** `UserService.CreatePasswordResetLink` and `UserService.RemoveUserTOTP`
-  ([API](../reference/api.md)). An API token needs the scope `members.write`, or `instance.admin`,
-  and steps up on its own.
+  ([API](../reference/api.md)), with the same scopes.
 - **Not your member alone:** an Owner or Admin cannot recover an Instance Admin, nor a user who is
   also a member of another organisation; the page then says so, and the Instance Admin does it. An
   organisation that requires a second factor lets only administrators signed in with one recover
