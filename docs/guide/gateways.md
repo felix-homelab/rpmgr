@@ -241,6 +241,9 @@ refuses both, and the web UI offers neither.
 A controller without a public address can be published by a gateway: the gateway's boot file names
 the controller's address under `controller.passthrough`, and the gateway forwards the controller's
 TLS connections to it unread ([Boot files](reference/boot-files.md#gateway);
-[03](../03-connections.md#reaching-a-private-controller)). List the gateway's address among the
-**Controller endpoints for agents** in the instance settings, so that agents try it
-([Settings](operations/settings.md#instance-settings)).
+[03](../03-connections.md#reaching-a-private-controller)). Agents reach the controller there when
+the public URL's name leads to the gateway
+([Topologies](install/topologies.md#a-private-controller-behind-a-gateway)), or when the
+gateway's address is among the **Controller endpoints for agents** in the instance settings,
+which replace the public URL for agents
+([Settings](operations/settings.md#web-ui-and-controller-endpoints)).

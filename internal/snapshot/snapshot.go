@@ -44,9 +44,10 @@ type Source func(ctx context.Context, tx *ent.Tx, a Agent) ([]*agentv1.Resource,
 // Compiler compiles snapshots from its sources, one per resource kind.
 type Compiler struct {
 	Sources []Source
-	// Endpoints returns the controller endpoints, in the order agents try them. Every replica must
-	// return the same list, so that replicas compile the same snapshot.
-	Endpoints func() []string
+	// Endpoints, if set, returns the controller endpoints at the revision tx reads, in the order
+	// agents try them. Like a Source it reads only through tx, so that every replica compiles the
+	// same snapshot.
+	Endpoints func(ctx context.Context, tx *ent.Tx) ([]string, error)
 }
 
 // Compile reads one consistent snapshot of the database and returns the agent's snapshot at its
@@ -67,7 +68,11 @@ func (c *Compiler) compile(ctx context.Context, tx *ent.Tx, rev store.Revision, 
 		Agent:    a.Identity.String(),
 	}
 	if c.Endpoints != nil {
-		snap.ControllerEndpoints = slices.Clone(c.Endpoints())
+		eps, err := c.Endpoints(ctx, tx)
+		if err != nil {
+			return nil, err
+		}
+		snap.ControllerEndpoints = slices.Clone(eps)
 	}
 	for _, src := range c.Sources {
 		rs, err := src(ctx, tx, a)

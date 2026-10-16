@@ -16,7 +16,11 @@ history and the [ADRs](docs/adr/).
   the controller's init or the agent's enrollment, a connector's local policy and proxy, and the
   systemd unit, started and checked for readiness. It asks in full-screen forms, or in plain
   prompts without a terminal, and shows the plan before it changes anything; with `--yes` it takes
-  every value from its flags. (#435)
+  every value from its flags. A connector's proxy is an `http://`, `socks5://` or `socks5h://` URL
+  that the enrollment takes too, kept in a file only root reads; one with credentials comes from
+  `--proxy-file` or the form, never the command line. Release candidates up to rc.8 wrote the
+  proxy into a drop-in every user reads: run setup again and change the proxy's password. (#435,
+  #557)
 - All roles: one `rpmgr` binary for Linux on amd64, arm64, armv7 and riscv64 runs every role:
   `rpmgr controller`, `gateway`, `connector` and `all-in-one`, each from a strictly checked YAML
   boot file. `rpmgr version` names the build. (#174, #196, #260, #266, #267, #384)
@@ -159,7 +163,9 @@ history and the [ADRs](docs/adr/).
 - API: an org's resources export as YAML manifests. (#341, #342)
 - CLI: `rpmgr login` signs in with a personal API token. Verb-first commands (`get`, `list`,
   `create`, `update`, `delete`, `enable`, `disable`, `preview` and more) cover every resource of the
-  API, with table, YAML or JSON output. (#342, #344, #345, #346, #347, #348, #349)
+  API, with table, YAML or JSON output. Flags may stand before or after a command's arguments, as
+  in `rpmgr get route web -o yaml`; `--` ends them. (#342, #344, #345, #346, #347, #348, #349,
+  #564)
 - Gateway: a drained or disabled gateway lets its open connections finish within the drain period;
   `rpmgr drain gateway` starts a drain. (#347, #349)
 - UI: the controller serves an embedded web UI under a strict Content Security Policy, with

@@ -82,10 +82,14 @@ their own.
 | Web UI | Name | What it does |
 |---|---|---|
 | **Further public URLs of the web UI** | `public_url_aliases` | Other URLs under which browsers reach the web UI, one per line, such as `https://rpmgr.example.net`. The API accepts calls from these origins as from the public URL |
-| **Controller endpoints for agents** | `controller_endpoints` | The URLs agents try for their control session, in order, one per line; empty means the public URL. List here a gateway that publishes a private controller, or a second address of the controller ([Gateways](../gateways.md#reaching-a-private-controller-through-a-gateway)) |
+| **Controller endpoints for agents** | `controller_endpoints` | The URLs agents try for their control session, in order, one per line, each `https://<host>[:<port>]`; empty means the public URL. The list replaces the public URL, so name it too if agents should still try it. List here a gateway that publishes a private controller, or a second address of the controller ([Gateways](../gateways.md#reaching-a-private-controller-through-a-gateway)) |
 
-Agents learn a new list with their next configuration; a list in which no endpoint works cuts them
-off from the controller, so add new endpoints before you remove old ones.
+Agents get the list when they enroll. A change reaches every connected agent with its next
+configuration, which the change itself sends, and the agent uses it from its next connection
+attempt on. A list in which no endpoint works cuts agents off from the controller, and only a
+connector has a last resort
+([Connector networking](../connectors/network.md#when-the-controller-is-out-of-reach)), so add
+new endpoints before you remove old ones.
 
 ### Traffic statistics
 
