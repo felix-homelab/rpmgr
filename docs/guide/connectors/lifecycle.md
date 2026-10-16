@@ -143,4 +143,5 @@ An all-in-one runs the connector `local` in the controller's process
 ([ADR-0019](../../adr/0019-all-in-one-runs-a-connector.md)). Its page marks it **built in**. It can
 be switched off and on, renamed and given labels and a transport like any other, but it cannot be
 decommissioned or re-enrolled: the API refuses both. `rpmgr all-in-one` enrolls it again at start
-if its identity is missing.
+if its identity is missing or its certificate cannot be renewed
+([Backup and restore](../operations/backup-and-restore.md#restore-an-all-in-one)).

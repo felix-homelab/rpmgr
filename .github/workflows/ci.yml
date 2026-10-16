@@ -194,8 +194,9 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
-      - name: Store tests on SQLite and PostgreSQL 18, and 16 in full runs; migrations linted
+      - name: Store tests on PostgreSQL 18, and 16 in full runs; migrations linted
         env:
+          STORE_SKIP_SQLITE: "1" # the go job runs the same tests on SQLite
           RPMGR_TEST_PG_URLS: >-
             ${{ inputs.full && 'postgres://rpmgr:rpmgr@127.0.0.1:5416/postgres?sslmode=disable' || '' }}
             postgres://rpmgr:rpmgr@127.0.0.1:5418/postgres?sslmode=disable
