@@ -88,14 +88,16 @@ a homelab or a small team.
   `tls_passthrough`; port pools; TCP/UDP/443 multiplexing; maintenance mode for `http` routes;
   built-in pages for unrouted names and the gateway's own errors.
 - Targets: address and unix socket; HTTP, h2c and HTTPS upstreams (verified, pinned key or, by the
-  user's choice, unverified); PROXY protocol.
+  user's choice, unverified); PROXY protocol; targets on several connectors ranked by priority and
+  weight, with fallback ([D90](14-open-decisions.md#engineering)).
 - Access policies: IP rules and basic auth. Domain verification; trusted domains (D13). Port
   quotas per org and gateway group.
 - Connector-local policy.
 - Web UI: overview, routes, connectors, gateways, domains and certificates, members, audit log,
   settings (including PKI), YAML view. English only (D32).
 - Local accounts, TOTP, roles, sessions, step-up; personal API tokens for the CLI. Invitations and
-  password resets as one-time links; e-mail only if SMTP is configured.
+  password resets as one-time links; e-mail only if SMTP is configured; administrators recover
+  another user's access ([D95](14-open-decisions.md#security-defaults)).
 - Audit log with hash chain and signed checkpoints stored locally; Prometheus metrics; traffic
   rollups.
 - Signed releases; install scripts and binaries served by the controller; backup and restore.
@@ -116,7 +118,7 @@ a homelab or a small team.
 12. the exit criteria.
 
 Each milestone holds one issue per PR-sized slice. A feature stays inert until it is complete
-([D52](14-open-decisions.md#project-and-process)). The decisions taken for Phase 1 are D48–D89 in
+([D52](14-open-decisions.md#project-and-process)). The decisions taken for Phase 1 are D48–D97 in
 [14](14-open-decisions.md).
 
 **Exit criteria:**
@@ -133,9 +135,9 @@ Each milestone holds one issue per PR-sized slice. A feature stays inert until i
 - An upgrade from one P1 release to the next tested with live traffic, as an automated end-to-end
   test ([D61](14-open-decisions.md#project-and-process)).
 
-**Status (2026-10-14):** the milestones `P1-M01` … `P1-M11` and the slices of `P1-M12` that need no
-release are merged, and so are the features decided since, D78 to D89. The exit criteria stand as
-follows:
+**Status (2026-10-16):** the milestones `P1-M01` … `P1-M11` and the slices of `P1-M12` that need no
+release are merged, and so are the features and fixes decided since, D78 to D97. The exit criteria
+stand as follows:
 
 | Criterion | State |
 |---|---|

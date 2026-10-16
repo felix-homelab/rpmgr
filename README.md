@@ -92,6 +92,8 @@ What v0.1.0 brings; the full catalogue, with what comes later, is in [05](docs/0
 - Enroll a connector with one command and a token from the web UI.
 - Up to four gateways per gateway group, with a tunnel from each connector to each of them; drain
   a gateway for maintenance.
+- A route's targets on several connectors, by priority and weight: when the best one fails, the
+  next one takes over.
 - QUIC by default, and TLS with HTTP/2 over TCP where UDP is blocked, chosen automatically.
 - Ephemeral connectors that remove themselves, and decommissioning with immediate effect.
 
@@ -102,6 +104,8 @@ What v0.1.0 brings; the full catalogue, with what comes later, is in [05](docs/0
 - The roles Owner, Admin, Operator and Viewer; invitations and password resets by one-time link,
   or by e-mail when a mail relay is configured.
 - Personal API tokens for the command line and scripts.
+- Administrators recover a member's access: a password-reset link, or the removal of a lost
+  authenticator.
 
 **Operations**
 
