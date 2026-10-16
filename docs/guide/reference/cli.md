@@ -204,7 +204,8 @@ rpmgr setup [flags]
 | `--listen-tcp string` |  | all-in-one, gateway: listen.tcp (default :443) |
 | `--listen-udp string` |  | all-in-one, gateway: listen.udp (default :443) |
 | `--no-unit` |  | install no systemd unit and start nothing |
-| `--proxy string` |  | connector: HTTPS_PROXY of its service, http://, https:// or socks5:// |
+| `--proxy string` |  | connector: the proxy of its enrollment and its service, http://, socks5:// or socks5h://, without credentials |
+| `--proxy-file string` |  | connector: file with the proxy URL instead of --proxy, for one with a user name or password |
 | `--public-url string` |  | controller, all-in-one: https URL of the web UI, the API and the agents |
 | `--role string` |  | all-in-one, controller, gateway or connector (required with --yes) |
 | `--tls string` |  | controller, all-in-one: the public URL's certificate: acme, files or self-signed (default acme for a public name, else self-signed) |

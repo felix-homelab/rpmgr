@@ -160,6 +160,58 @@ func TestSetup_Refuses(t *testing.T) {
 	}
 }
 
+// testProxy is a proxy URL with a made-up password.
+const testProxy = "http://ops:s3cret@proxy.lan:3128" //nolint:gosec // G101: a made-up test password
+
+// TestSetup_ProxyFile (#557): a proxy URL with credentials never comes from the command line:
+// --proxy refuses it without repeating it, --proxy-file reads it, warns of a file other users may
+// read, and setup writes it into the connector's environment file only.
+func TestSetup_ProxyFile(t *testing.T) {
+	f := fakeSetup(t)
+	tok, err := token.New(token.Enrollment)
+	if err != nil {
+		t.Fatal(err)
+	}
+	env := map[string]string{"RPMGR_ENROLL_TOKEN": tok}
+	args := []string{"setup", "--role", "connector", "--controller", "https://panel.example.com",
+		"--ca-pin", "sha256:" + strings.Repeat("A", 43) + "=", "--yes"}
+	file := filepath.Join(t.TempDir(), "proxy")
+	if err := os.WriteFile(file, []byte(testProxy+"\n"), 0o644); err != nil { //nolint:gosec // G306: a file other users may read, on purpose
+		t.Fatal(err)
+	}
+
+	for name, extra := range map[string][]string{
+		"credentials in --proxy": {"--proxy", testProxy},
+		"a user name in --proxy": {"--proxy", "http://s3cret@proxy.lan:3128"},
+		"both flags":             {"--proxy", "http://proxy.lan:3128", "--proxy-file", file},
+	} {
+		code, out, errOut := runWith(env, "", append(args, extra...)...)
+		if code != cli.ExitUsage || strings.Contains(out+errOut, "s3cret") || !strings.Contains(errOut, "--proxy-file") || len(f.enrolled) != 0 {
+			t.Errorf("%s: %d %q %q, enrolled %d", name, code, out, errOut, len(f.enrolled))
+		}
+	}
+	if code, out, errOut := runWith(env, "", append(args, "--proxy-file", filepath.Join(t.TempDir(), "none"))...); code != cli.ExitError ||
+		!strings.Contains(errOut, "--proxy-file") || len(f.enrolled) != 0 {
+		t.Errorf("a missing file: %d %q %q", code, out, errOut)
+	}
+
+	code, out, errOut := runWith(env, "", append(args, "--proxy-file", file)...)
+	if code != cli.ExitOK || strings.Contains(out+errOut, "s3cret") || !strings.Contains(errOut, "warning: the proxy file") ||
+		len(f.enrolled) != 1 || f.enrolled[0].Dial == nil {
+		t.Fatalf("--proxy-file: %d %q %q, enrolled %d", code, out, errOut, len(f.enrolled))
+	}
+	envFile := filepath.Join(f.root, "etc", "connector-proxy.env")
+	b, err := os.ReadFile(envFile) //nolint:gosec // G304: the test's own file
+	if err != nil || string(b) != "HTTPS_PROXY="+testProxy+"\n" {
+		t.Fatalf("%s: %q %v", envFile, b, err)
+	}
+	if fi, err := os.Stat(envFile); err != nil {
+		t.Error(err)
+	} else if fi.Mode().Perm() != 0o600 {
+		t.Errorf("%s: mode %v", envFile, fi.Mode())
+	}
+}
+
 // TestSetup_Form: without flags, the plain prompts ask role by role, ask again after a wrong
 // answer, show the plan and run it once confirmed.
 func TestSetup_Form(t *testing.T) {

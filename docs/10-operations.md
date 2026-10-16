@@ -362,6 +362,13 @@ log: { level: info, format: json }
 # HTTPS_PROXY / ALL_PROXY / NO_PROXY are honoured for the TCP transports (03-connections.md#transports-and-fallback)
 ```
 
+`rpmgr setup --role connector --proxy <url>` takes an `http://`, `socks5://` or `socks5h://` URL,
+the schemes the connector reads, enrolls through it, and gives it to the service as `HTTPS_PROXY`
+in `/etc/rpmgr/connector-proxy.env` (mode 0600, root's), which the drop-in
+`rpmgr-connector.service.d/proxy.conf` names: a proxy password never shows in the unit or in
+`systemctl show`. A URL with credentials comes from `--proxy-file <file>` or the form; `--proxy`
+refuses it, as a command line shows it to every user of the host.
+
 ```yaml
 # /etc/rpmgr/all-in-one.yaml
 version: 1

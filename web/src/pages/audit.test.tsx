@@ -55,6 +55,20 @@ describe("Audit", () => {
     expect(within(first!).getByText("192.0.2.1")).toBeTruthy();
   });
 
+  it("wraps an entry's long request, which would otherwise widen the page", async () => {
+    page("/audit");
+    const list = await entries();
+    await waitFor(() => expect(list.getAllByRole("listitem")).toHaveLength(2));
+    const first = list.getAllByRole("listitem")[0]!;
+    fireEvent.click(first.querySelector("summary")!);
+    const request = within(first).getByText('{"route":{"name":"<script>x</script>"}}');
+    // jsdom lays nothing out, so the test checks the classes: the text wraps, at any character
+    // where a word is longer than the line, and nothing scrolls sideways.
+    expect(request.tagName).toBe("PRE");
+    expect(request.className.split(" ")).toEqual(expect.arrayContaining(["whitespace-pre-wrap", "wrap-anywhere"]));
+    expect(request.className).not.toMatch(/overflow-x/);
+  });
+
   it("loads older entries, and filters by action and actor in the URL", async () => {
     const { org, history } = page("/audit");
     fireEvent.click(await screen.findByRole("button", { name: "Older entries" }));
