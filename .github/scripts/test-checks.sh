@@ -373,8 +373,10 @@ if ! command -v go >/dev/null 2>&1; then
   fi
 else
   # A tiny module with the real tools/bannedapi, so check-go.sh runs exactly as in the repository.
+  # Its Go version is the repository's: govulncheck checks the standard library of the go line, and
+  # an older one would report what the repository's own version has fixed.
   r=$(new_repo)
-  printf 'module github.com/felix-homelab/rpmgr\n\ngo 1.26.0\n' >"$r/go.mod"
+  { printf 'module github.com/felix-homelab/rpmgr\n\n'; grep -E '^(go|toolchain) ' "$dir/../../go.mod"; } >"$r/go.mod"
   mkdir -p "$r/p" "$r/tools"
   cp -r "$dir/../../tools/bannedapi" "$r/tools/"
   printf '// SPDX-License-Identifier: Apache-2.0\n\npackage p\n\n// Add adds.\nfunc Add(a, b int) int { return a + b }\n' >"$r/p/p.go"
@@ -455,7 +457,7 @@ EOF
   # golang.org/x/text version (GO-2022-1059) is found.
   expect pass "govulncheck without findings" "$dir/check-govulncheck.sh" "$r"
   r=$(new_repo)
-  printf 'module example.org/v\n\ngo 1.26.0\n\nrequire golang.org/x/text v0.3.7\n' >"$r/go.mod"
+  { printf 'module example.org/v\n\n'; grep -E '^(go|toolchain) ' "$dir/../../go.mod"; printf '\nrequire golang.org/x/text v0.3.7\n'; } >"$r/go.mod"
   mkdir -p "$r/p"
   printf 'package p\n\nimport "golang.org/x/text/language"\n\n// Parse parses.\nfunc Parse(s string) ([]language.Tag, []float32, error) { return language.ParseAcceptLanguage(s) }\n' >"$r/p/p.go"
   (cd "$r" && go mod tidy >/dev/null 2>&1)
