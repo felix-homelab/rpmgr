@@ -146,9 +146,10 @@ Changes to the design documents are not recorded here: see the git history and t
 - Controller: `http` routes can use uploaded certificates instead, whose keys are encrypted under
   the KEK; gateways fetch them by hash and choose one by server name. CA bundles verify HTTPS
   upstreams. (#287, #288, #289, #339, #340)
-- API: the controller serves a public ConnectRPC API. Each method checks a named permission of the
-  org roles Owner, Admin, Operator and Viewer, or of the Instance Admin. Lists are paged, updates
-  take field masks and etags, and creates are idempotent by `request_id`. (#310, #311, #322, #333)
+- API: the controller serves a public ConnectRPC API over HTTP/2 and HTTP/1.1, to Connect, gRPC
+  and gRPC-Web clients. Each method checks a named permission of the org roles Owner, Admin,
+  Operator and Viewer, or of the Instance Admin. Lists are paged, updates take field masks and
+  etags, and creates are idempotent by `request_id`. (#310, #311, #322, #333, #559)
 - API: local accounts with argon2id passwords, cookie sessions, TOTP and recovery codes, and step-up
   for sensitive actions. Users change their own password, and one-time links reset it. (#312,
   #313, #314, #316, #321)

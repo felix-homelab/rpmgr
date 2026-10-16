@@ -14,10 +14,14 @@ protobuf files are the reference for every method and field; this page links eac
   whose body is the request message and whose response body is the answer. Send JSON with
   `Content-Type: application/json`, or binary protobuf with `Content-Type: application/proto`.
   Methods that stream answers use the Connect streaming format
-  ([Watch for changes](#watch-for-changes)). gRPC-Web clients work as well.
-- **HTTP version.** The controller's web listener answers over HTTP/1.1, which every Connect client
-  can use. It does not offer HTTP/2 there, so plain gRPC clients, which need HTTP/2, cannot call
-  it.
+  ([Watch for changes](#watch-for-changes)). gRPC and gRPC-Web clients work as well, on the same
+  paths.
+- **HTTP version.** The controller answers over HTTP/2 or HTTP/1.1, as the client chooses in the
+  TLS handshake; a client that names neither gets HTTP/1.1. Connect and gRPC-Web clients work over
+  both. Plain gRPC clients need HTTP/2 and get it: point one at the public URL's host and port, and
+  send the token as the `authorization` metadata, `Bearer rpmgr_pat_…`. The same holds on
+  all-in-one and for a private controller published through a gateway
+  ([07](../../07-api.md#overview)).
 - **JSON.** Requests and answers use the protobuf JSON mapping: field names in lowerCamelCase
   (`gatewayGroupId`), enum values by name (`"UPSTREAM_PROTOCOL_HTTP"`), 64-bit numbers as strings
   (`"seq": "42"`), durations as seconds with an `s` (`"3600s"`) and times in RFC 3339 (UTC). Leave

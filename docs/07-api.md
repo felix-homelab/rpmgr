@@ -15,6 +15,17 @@ generation for Go and TypeScript); buf generates connect-go code for the public 
 code for the agent protocol ([ADR-0016](adr/0016-connectrpc-public-api-grpc-go-agents.md)). The web
 UI uses exactly the public API; there are no private UI endpoints.
 
+The controller's web server, which serves the UI and the public API, offers ALPN `h2` before
+`http/1.1` and `http/1.0` wherever TLS ends at the controller: on its own port 443, behind
+all-in-one's gateway and behind a gateway's `controller.passthrough`, both of which forward the
+handshake untouched ([03](03-connections.md#transport), [D92](14-open-decisions.md#engineering)).
+Connect, gRPC and gRPC-Web clients call the API over HTTP/2, and Connect and gRPC-Web clients over
+HTTP/1.1 as well; a client that offers no ALPN gets HTTP/1.1. When the controller gets its own
+certificate by ACME, the listener offers `acme-tls/1` as well, last, for the CA's TLS-ALPN-01
+check ([04](04-security.md#controller-certificates)). The security headers, the CSP and the
+cross-origin and content-type checks are the same over every version
+([04](04-security.md#human-authentication-and-sessions)).
+
 The Connect protocol is plain HTTP: every unary method is `POST /<package>.<Service>/<Method>` with
 a JSON body, so `curl` works without special tooling:
 
