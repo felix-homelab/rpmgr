@@ -244,7 +244,7 @@ later.
   none has a `failed` row with the CA's error, and one whose renewal fails keeps serving its
   certificate with the error recorded. A wildcard hostname in `acme` mode is refused with that
   reason, as its certificate needs DNS-01 (Phase 2, R42). The ACME client honours `HTTPS_PROXY`,
-  `ALL_PROXY` and `NO_PROXY` (R44).
+  else `ALL_PROXY`, and `NO_PROXY` (R44, [D93](14-open-decisions.md#engineering)).
 - **Failed ACME attempts** [R]: a hostname whose attempt failed, such as one whose DNS does not
   point at its gateways yet, must not use up the account's limits at the CA. Let's Encrypt allows
   5 failed authorizations per name and account an hour, and pauses a name after 1 152 failures in

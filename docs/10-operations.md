@@ -96,11 +96,20 @@ entry. It never overwrites a boot file or a KEK: an existing one is read and use
 again after a failure, and it refuses a database that is already initialised or in use by a running
 controller. When the agents' part of `all-in-one init` fails, the gateway's or the connector's, it
 removes the database and what it created beside it, so the same `init` can run again once the
-cause is fixed. `rpmgr all-in-one` enrolls its connector at start when its identity is missing,
-as on an all-in-one initialised before
-[ADR-0019](adr/0019-all-in-one-runs-a-connector.md). So a connector identity that cannot be used
-any more, revoked or unreadable, is replaced by deleting `<state_dir>/connector/identity` and
-restarting the service; the connector keeps its ID and routes. A new systemd credential is encrypted with `systemd-creds encrypt` into
+cause is fixed. `rpmgr all-in-one` enrolls its built-in gateway and connector again at start,
+through the in-process controller and before the gateway runs, when an identity is missing, as on
+a new host after a restore, or for the connector on an all-in-one initialised before
+[ADR-0019](adr/0019-all-in-one-runs-a-connector.md); when its certificate names another agent
+than the database's built-in one; and when the controller cannot renew its certificate: one the
+database does not know, as after the restore of a backup older than the certificate, a revoked or
+superseded one, or one expired longer than the grace period
+([D97](14-open-decisions.md#engineering)). Each keeps its ID and routes; the enrollment revokes
+the certificates the database records for the identity it replaces, and the audit log has each
+token with its reason. A certificate the database does not record stays valid until it expires.
+An identity whose agent is revoked as a whole stops the start, as does one that cannot be read,
+which is replaced by deleting `<state_dir>/gateway/identity` or `<state_dir>/connector/identity`
+and restarting the service. Without a database, `rpmgr all-in-one` refuses to start, as on a host
+never initialised. A new systemd credential is encrypted with `systemd-creds encrypt` into
 `/etc/rpmgr/credstore/<name>`; an existing one is readable only where systemd loads it, so `init`
 then has to run under `systemd-run --pipe --wait --property=LoadCredentialEncrypted=…`.
 
@@ -270,8 +279,11 @@ In Phase 1, CI only builds these targets; end-to-end tests on Windows and macOS 
 | Connector | per `allow_listen` | TCP/UDP | Visitor listeners for private services | Local or LAN, as the policy allows |
 | All-in-one | 80, 443/TCP, 443/UDP, port pools, admin | | Gateway ports; the controller is reached through the gateway's SNI router in-process; its connector opens no port and never dials the ports rpmgr listens on: admin, 80, 443, tunnel UDP and every route port the gateway has bound ([04](04-security.md#connector-local-policy)) | Public (except admin) |
 
-**Controller outbound connections.** The controller dials out only for these, all through
-`HTTPS_PROXY`/`ALL_PROXY` when set:
+**Controller outbound connections.** The controller dials out only for these. Its HTTPS requests
+go through `HTTPS_PROXY`, else `ALL_PROXY`, its plain HTTP requests through `HTTP_PROXY`, else
+`ALL_PROXY`, and SMTP through a SOCKS5 `ALL_PROXY`, unless `NO_PROXY` exempts the host; DNS
+queries go direct. A proxy variable that is no proxy URL stops the controller at start, with a
+message that names the variable, not its value ([D93](14-open-decisions.md#engineering)):
 
 | Destination | Port | Purpose | When |
 |---|---|---|---|
@@ -289,8 +301,8 @@ Configuration has two layers (the commands and their flags are listed in
 1. A **small boot file** per role, read at start: only what is needed before the database or the
    control session is available. Strict YAML: unknown keys are rejected and the process refuses to
    start. Containers mount the boot file (and secrets as files). The only environment variables
-   read are `RPMGR_CONFIG` (config path), the proxy variables (`HTTPS_PROXY`, `ALL_PROXY`,
-   `NO_PROXY`) and, by the install script and `rpmgr enroll` only, `RPMGR_ENROLL_TOKEN`. There is no
+   read are `RPMGR_CONFIG` (config path), the proxy variables (`HTTPS_PROXY`, `HTTP_PROXY`,
+   `ALL_PROXY`, `NO_PROXY`) and, by the install script and `rpmgr enroll` only, `RPMGR_ENROLL_TOKEN`. There is no
    KEK from an environment variable ([04](04-security.md#secrets-at-rest-and-in-logs)).
 2. **Runtime settings in the database**, typed and validated, edited in the UI or API, audited, and
    distributed to agents through snapshots. No restart needed.
