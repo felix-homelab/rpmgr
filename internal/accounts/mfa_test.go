@@ -147,7 +147,7 @@ func TestMFA_ChangeAndRemove(t *testing.T) {
 	if _, err := m.VerifySecondFactor(ada, fresh[0]); err != nil {
 		t.Fatalf("a new recovery code: %v", err)
 	}
-	if err := m.RemoveTOTP(ada, ada); err != nil {
+	if err := m.RemoveTOTP(ada, ada, nil); err != nil {
 		t.Fatal(err)
 	}
 	if ok, _ := m.HasMFA(ada); ok {
@@ -156,7 +156,7 @@ func TestMFA_ChangeAndRemove(t *testing.T) {
 	if _, err := m.VerifySecondFactor(ada, fresh[1]); !errors.Is(err, accounts.ErrSecondFactor) {
 		t.Fatal("a recovery code after removal")
 	}
-	if err := m.RemoveTOTP(ada, ada); !errors.Is(err, accounts.ErrNoMFA) {
+	if err := m.RemoveTOTP(ada, ada, nil); !errors.Is(err, accounts.ErrNoMFA) {
 		t.Fatalf("removed twice: %v", err)
 	}
 	ended := false

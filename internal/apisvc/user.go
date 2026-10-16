@@ -35,6 +35,9 @@ type User struct {
 	// RequireMFA returns an org's policy that its members act in it only after signing in with a
 	// second factor; nil requires it nowhere.
 	RequireMFA func(ctx context.Context, orgID string) (bool, error)
+	// RestoreReview reports whether an org, or with "" the instance, is in restore review, which
+	// recovers no account through the API; nil is never.
+	RestoreReview func(ctx context.Context, orgID string) (bool, error)
 }
 
 // EnrollTOTP implements UserService.
@@ -80,12 +83,12 @@ func (u *User) RemoveTOTP(ctx context.Context, _ *connect.Request[rpmgrv1.Remove
 	if err != nil {
 		return nil, err
 	}
-	if err := u.MFA.For(ctx).RemoveTOTP(c.UserID, c.UserID); errors.Is(err, accounts.ErrNoMFA) {
+	err = u.MFA.For(ctx).RemoveTOTP(c.UserID, c.UserID, func(tx *ent.Tx) (int, error) {
+		return u.Sessions.RevokeAllIn(tx, c.UserID, c.CredentialID, c.UserID, "authenticator removed")
+	})
+	if errors.Is(err, accounts.ErrNoMFA) {
 		return nil, connect.NewError(connect.CodeFailedPrecondition, err)
 	} else if err != nil {
-		return nil, err
-	}
-	if _, err := u.Sessions.RevokeAll(c.UserID, c.CredentialID, c.UserID, "authenticator removed"); err != nil {
 		return nil, err
 	}
 	return connect.NewResponse(&rpmgrv1.RemoveTOTPResponse{}), nil
@@ -208,16 +211,20 @@ func (u *User) ListUsers(_ context.Context, req *connect.Request[rpmgrv1.ListUse
 	return connect.NewResponse(out), nil
 }
 
-// CreatePasswordResetLink implements UserService, for a user the caller may recover (recoverable)
-// as Owner or Admin.
+// CreatePasswordResetLink implements UserService, for another user the caller may recover
+// (recoverable) as Owner or Admin.
 func (u *User) CreatePasswordResetLink(ctx context.Context, req *connect.Request[rpmgrv1.CreatePasswordResetLinkRequest]) (
 	*connect.Response[rpmgrv1.CreatePasswordResetLinkResponse], error) {
 	c := api.CallerFrom(ctx)
 	target := req.Msg.GetUserId()
-	if err := u.mayRecover(ctx, c, target, false); err != nil {
+	if target == c.UserID {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("apisvc: change your own password under Account"))
+	}
+	orgs, err := u.mayRecover(ctx, c, target, false)
+	if err != nil {
 		return nil, err
 	}
-	tok, err := u.MFA.For(ctx).ResetLink(target, c.UserID)
+	tok, err := u.MFA.For(ctx).ResetLink(target, c.UserID, orgs...)
 	if err != nil {
 		return nil, err
 	}
@@ -225,9 +232,9 @@ func (u *User) CreatePasswordResetLink(ctx context.Context, req *connect.Request
 		ExpireTime: timestamppb.New(time.Now().Add(accounts.ResetLinkTTL))}), nil
 }
 
-// RemoveUserTOTP implements UserService, for a user the caller may recover (recoverable) as Owner:
-// it removes their authenticator and recovery codes and ends their sessions, as their own removal
-// would; their API tokens stay.
+// RemoveUserTOTP implements UserService, for another user the caller may recover (recoverable) as
+// Owner, and only for a caller signed in with a second factor: it removes the user's authenticator
+// and recovery codes and ends their sessions, as their own removal would; their API tokens stay.
 func (u *User) RemoveUserTOTP(ctx context.Context, req *connect.Request[rpmgrv1.RemoveUserTOTPRequest]) (
 	*connect.Response[rpmgrv1.RemoveUserTOTPResponse], error) {
 	c := api.CallerFrom(ctx)
@@ -235,15 +242,20 @@ func (u *User) RemoveUserTOTP(ctx context.Context, req *connect.Request[rpmgrv1.
 	if target == c.UserID {
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("apisvc: remove your own authenticator under Account"))
 	}
-	if err := u.mayRecover(ctx, c, target, true); err != nil {
+	orgs, err := u.mayRecover(ctx, c, target, true)
+	if err != nil {
 		return nil, err
 	}
-	if err := u.MFA.For(ctx).RemoveTOTP(target, c.UserID); errors.Is(err, accounts.ErrNoMFA) {
+	if !c.MFA {
+		return nil, withReason(connect.NewError(connect.CodePermissionDenied,
+			errors.New("apisvc: removing another user's second factor needs a session signed in with your own")), api.ReasonMFARequired)
+	}
+	err = u.MFA.For(ctx).RemoveTOTP(target, c.UserID, func(tx *ent.Tx) (int, error) {
+		return u.Sessions.RevokeAllIn(tx, target, "", c.UserID, "authenticator removed by an admin")
+	}, orgs...)
+	if errors.Is(err, accounts.ErrNoMFA) {
 		return nil, connect.NewError(connect.CodeFailedPrecondition, err)
 	} else if err != nil {
-		return nil, err
-	}
-	if _, err := u.Sessions.RevokeAll(target, "", c.UserID, "authenticator removed by an admin"); err != nil {
 		return nil, err
 	}
 	return connect.NewResponse(&rpmgrv1.RemoveUserTOTPResponse{}), nil
@@ -265,51 +277,62 @@ func (u *User) SetInstanceAdmin(ctx context.Context, req *connect.Request[rpmgrv
 }
 
 // mayRecover checks that the caller may recover the account of the user target (recoverable), as
-// Owner only if ownerOnly, and keeps the MFA policies of the orgs they act through: a user they
-// may not recover is not found.
-func (u *User) mayRecover(ctx context.Context, c *api.Caller, target string, ownerOnly bool) error {
+// Owner only if ownerOnly, and returns the user's orgs. A user they may not recover is not found.
+// It keeps the restore review, which recovers no account through the API while the instance or,
+// for an Owner or Admin, one of the user's orgs is in it, and the MFA policies of the orgs an Owner
+// or Admin acts through.
+func (u *User) mayRecover(ctx context.Context, c *api.Caller, target string, ownerOnly bool) ([]string, error) {
 	usr, theirs, err := u.MFA.User(target)
 	if ent.IsNotFound(err) || err == nil && !recoverable(c, usr, theirs, ownerOnly) {
-		return connect.NewError(connect.CodeNotFound, accounts.ErrNoUser)
+		return nil, connect.NewError(connect.CodeNotFound, accounts.ErrNoUser)
 	}
-	if err != nil || instanceAdmin(c) || c.MFA || u.RequireMFA == nil {
-		return err
+	if err != nil {
+		return nil, err
 	}
+	orgs := make([]string, 0, len(theirs))
 	for _, m := range theirs {
-		need, err := u.RequireMFA(ctx, m.OrgID)
+		orgs = append(orgs, m.OrgID)
+	}
+	check := []string{""} // the instance
+	if !instanceAdmin(c) {
+		check = append(check, orgs...)
+	}
+	for _, org := range check {
+		if u.RestoreReview == nil {
+			break
+		}
+		review, err := u.RestoreReview(ctx, org)
 		if err != nil {
-			return err
+			return nil, err
+		}
+		if review {
+			return nil, withReason(connect.NewError(connect.CodeFailedPrecondition,
+				errors.New("apisvc: no account is recovered through the API until the restore review is confirmed; use rpmgr user reset-password on the controller host")),
+				api.ReasonRestoreReview)
+		}
+	}
+	if instanceAdmin(c) || c.MFA || u.RequireMFA == nil {
+		return orgs, nil
+	}
+	for _, org := range orgs {
+		need, err := u.RequireMFA(ctx, org)
+		if err != nil {
+			return nil, err
 		}
 		if need {
-			return withReason(connect.NewError(connect.CodePermissionDenied, errors.New("apisvc: the org requires signing in with a second factor")),
+			return nil, withReason(connect.NewError(connect.CodePermissionDenied, errors.New("apisvc: the org requires signing in with a second factor")),
 				api.ReasonMFARequired)
 		}
 	}
-	return nil
+	return orgs, nil
 }
 
 // recoverable reports whether the caller may recover the account of target, whose memberships are
-// theirs (docs/04-security.md, "Account recovery"): the Instance Admin, anyone's; another caller
-// only that of a user who is no Instance Admin and all of whose orgs are the caller's, as Owner,
-// or, unless ownerOnly, as Admin where the user is no Owner. So an org's Owner or Admin never
-// reaches another org, or the instance, through an account they share. A token needs the scope
-// members.write, or instance.admin, and holds only its own org.
+// theirs (docs/04-security.md, "Account recovery"): the Instance Admin, anyone's; another caller as
+// accounts.Recoverable says. A token needs the scope members.write, or instance.admin, and holds
+// only its own org.
 func recoverable(c *api.Caller, target *ent.User, theirs []*ent.Membership, ownerOnly bool) bool {
-	if instanceAdmin(c) {
-		return true
-	}
-	if target.InstanceAdmin || len(theirs) == 0 || !scoped(c, authz.PermMembersWrite) {
-		return false
-	}
-	for _, m := range theirs {
-		switch mine := c.Memberships[m.OrgID]; {
-		case mine == authz.RoleOwner:
-		case !ownerOnly && mine == authz.RoleAdmin && string(m.Role) != authz.RoleOwner:
-		default:
-			return false
-		}
-	}
-	return true
+	return instanceAdmin(c) || scoped(c, authz.PermMembersWrite) && accounts.Recoverable(c.Memberships, target, theirs, ownerOnly)
 }
 
 // instanceAdmin reports whether the caller acts as the Instance Admin: a session of one, or a token

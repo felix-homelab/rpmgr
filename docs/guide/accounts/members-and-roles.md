@@ -145,6 +145,15 @@ administrator recovers the account. Each recovery takes a
   also a member of another organisation; the page then says so, and the Instance Admin does it. An
   organisation that requires a second factor lets only administrators signed in with one recover
   its members.
+- **Your own second factor first:** removing another user's second factor needs you signed in with
+  your own authenticator.
+- **A link can stop working:** a link an Owner or Admin made no longer sets the password once its
+  maker lost the role, or the user became Instance Admin or joined another organisation.
+- **After a restore:** while the restore review lasts, accounts are recovered only with
+  `rpmgr user reset-password` on the controller host
+  ([Backup and restore](../operations/backup-and-restore.md)).
+- **Audit:** each recovery is in the organisation's audit log, as `member.reset_link` or
+  `member.mfa_remove`, and in the instance's.
 - **Your own account:** you remove your own authenticator under **Your account**, and reset your
   own password with **Forgot your password?** ([Sign-in and MFA](sign-in-and-mfa.md)).
 

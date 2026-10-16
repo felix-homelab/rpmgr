@@ -38,7 +38,7 @@ design prevents and the control that prevents it.
 | **Compromised controller (process, or database plus KEK)** | Everything in the control plane: re-route public hostnames, issue certificates (and so MITM traffic that is not end-to-end), deny service, push any configuration. With connected DNS providers (Phase 2): rewrite **any** record in the connected zones, including MX, SPF/DKIM and third-party verification records, and use the provider tokens from elsewhere unless they are IP-restricted | Make a connector exceed its **local policy** (dial outside `allow_targets`, enable shell, functions, virtual-network routes, P2P, listeners). Install an unsigned or older binary (OTA verified against keys compiled into the binary, with a persisted anti-rollback floor). Read agent or WireGuard private keys (never stored centrally). |
 | **Database dump without the KEK** | Read topology, configuration, emails, audit log | Use any credential: passwords are argon2id; session, API and enrollment tokens are SHA-256 hashes of 256-bit random values; CA, ACME, TOTP, OIDC and other secrets are AES-256-GCM-encrypted under a KEK held outside the database. |
 | **Holder of a stolen DNS-provider token** (Phase 2) | Change any record the token covers, from anywhere the token is accepted | Use it from another network, if the token is restricted to the controller's egress addresses; use it after its expiry; use it beyond the zones it is scoped to ([15](15-dns.md#connecting-importing-and-disconnecting)). rpmgr never shows the token after it is saved (write-only) |
-| **Malicious insider with Admin role** | Any configuration action within the org | Use the shell on hosts that did not opt in. Read secrets back (write-only fields). Act unnoticed (hash-chained audit log with external checkpoints). Grant Owner (Owner-only). Skip step-up re-authentication for dangerous actions. |
+| **Malicious insider with Admin role** | Any configuration action within the org | Use the shell on hosts that did not opt in. Read secrets back (write-only fields). Act unnoticed (hash-chained audit log with external checkpoints; account recoveries are in the org's log too). Grant Owner (Owner-only). Recover an Owner's or Instance Admin's account, or that of a member of another org ([Account recovery](#account-recovery)). Skip step-up re-authentication for dangerous actions. |
 | **Supply-chain attacker** | Compromise a dependency or a CI run | Ship an update agents will install (release-signing keys offline, separate from CI). Redirect downloads usefully (the signature is trusted, not the URL). Go unnoticed (go.sum, govulncheck, SBOM, SLSA provenance, reproducible-build check, actions pinned by SHA). |
 
 What the design does **not** protect against, stated plainly:
@@ -502,12 +502,25 @@ Who may, each after a step-up and in the audit log:
 | Reset link | any user | a user all of whose orgs they hold as Owner, or as Admin where the user is no Owner | the same |
 | Second factor | any user | a user all of whose orgs they own | |
 
-An Owner or Admin never recovers an Instance Admin, nor a user who is also a member of an org they
-do not hold, so that no org's administrator reaches another org, or the instance, through an
-account they share. A user they may not recover is not found. An Owner or Admin signed in without a
-second factor recovers no member of an org that requires one. A personal API token recovers with
-the scope `members.write`, within its own org, or `instance.admin`, and a step-up of its own
-([D63](14-open-decisions.md#engineering)).
+An Owner or Admin never recovers an Instance Admin, a user in no org, nor a user who is also a
+member of an org they do not hold, so that no org's administrator reaches another org, or the
+instance, through an account they share. A user they may not recover is not found; nobody recovers
+their own account this way. Further rules:
+
+- **A link is checked again when it is used.** A link an Owner or Admin made sets the password only
+  while they may still recover the user, so that it does not outlive the user becoming Instance
+  Admin or joining another org, or the maker losing the role.
+- **Removing a second factor** needs the administrator signed in, or their token made, with their
+  own second factor.
+- **An org's MFA policy** binds its Owners and Admins: signed in without a second factor, they
+  recover none of its members.
+- **Restore review** ([10](10-operations.md#backup-and-restore)): no account is recovered through
+  the API while the instance is in review, nor by an Owner or Admin while an org of the user is;
+  `rpmgr user reset-password` on the controller host still makes links.
+- **Audit:** each recovery is in the instance's audit log and in that of each org of the user
+  (`member.reset_link`, `member.mfa_remove`), so that its Owners and Admins see it.
+- **Tokens:** a personal API token recovers with the scope `members.write`, within its own org, or
+  `instance.admin`, and a step-up of its own ([D63](14-open-decisions.md#engineering)).
 
 ## Authorization
 

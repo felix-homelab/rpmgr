@@ -285,6 +285,12 @@ func TestRestore_InstanceAdminRevoked(t *testing.T) {
 	if c.User.GetX(r.sys, ps.carol).InstanceAdmin {
 		t.Error("Carol, made Instance Admin after the backup, is one")
 	}
+	if len(res.Kept) != 1 || !strings.Contains(res.Kept[0], ps.owner) {
+		t.Errorf("the kept revocation is not reported: %q", res.Kept)
+	}
+	if n := c.AuditEntry.Query().Where(auditentry.Action("instance.restore"), auditentry.ReasonContains("kept: the Instance Admin role of "+ps.owner)).CountX(r.sys); n != 1 {
+		t.Errorf("%d restore audit entries name the kept revocation", n)
+	}
 }
 
 // checkRestored checks that every revocation of TestRestore_RevocationsReapplied is in effect on r.

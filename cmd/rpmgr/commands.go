@@ -330,6 +330,9 @@ func restoreCommand() *cli.Command {
 				"The replaced files are kept with the suffix %s. Start one controller, check /readyz, then the others;\n"+
 				"re-enroll agents enrolled after the backup.\n",
 				r.TrustDomain, r.Backup.UTC().Format(time.RFC3339), r.NewEpoch, r.OldEpoch, r.Reapplied, r.Unknown, r.Previous)
+			if err == nil && len(r.Kept) > 0 {
+				_, err = fmt.Fprintf(env.Stdout, "\nNot applied again, check these on the Users page:\n  - %s\n", strings.Join(r.Kept, "\n  - "))
+			}
 			if err != nil || len(r.Review) == 0 {
 				return err
 			}

@@ -273,7 +273,7 @@ func Run(ctx context.Context, o RunOptions) error {
 		func(opts ...connect.HandlerOption) (string, http.Handler) {
 			return rpmgrv1connect.NewUserServiceHandler(&apisvc.User{MFA: mfa, Sessions: webSessions,
 				Issuer: "rpmgr " + public.Hostname(), API: apiServer, PublicURL: cfg.PublicURL, Backoff: auth.Backoff,
-				RequireMFA: api.StoreRequireMFA(db, sys)}, opts...)
+				RequireMFA: api.StoreRequireMFA(db, sys), RestoreReview: api.StoreRestoreReview(db, sys)}, opts...)
 		}); err != nil {
 		return err
 	}

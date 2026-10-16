@@ -127,9 +127,10 @@ func (m *MFA) ConfirmTOTP(userID, code string) ([]string, error) {
 	return codes, err
 }
 
-// RemoveTOTP removes a user's authenticator and recovery codes; actor is the user, or the admin
-// who recovers their account.
-func (m *MFA) RemoveTOTP(userID, actor string) error {
+// RemoveTOTP removes a user's authenticator and recovery codes and, in the same transaction, ends
+// the sessions endSessions ends; actor is the user, or the admin who recovers their account, for
+// whom orgs, the user's, get an entry in their audit logs too.
+func (m *MFA) RemoveTOTP(userID, actor string, endSessions func(tx *ent.Tx) (int, error), orgs ...string) error {
 	return store.WriteTx(m.sys, m.db, func(tx *ent.Tx) error {
 		n, err := tx.TOTPCredential.Delete().Where(totpcredential.UserID(userID)).Exec(m.sys)
 		if err != nil || n == 0 {
@@ -138,9 +139,18 @@ func (m *MFA) RemoveTOTP(userID, actor string) error {
 		if _, err := tx.RecoveryCode.Delete().Where(recoverycode.UserID(userID)).Exec(m.sys); err != nil {
 			return err
 		}
-		reason := "authenticator removed"
+		ended := 0
+		if endSessions != nil {
+			if ended, err = endSessions(tx); err != nil {
+				return err
+			}
+		}
+		reason := fmt.Sprintf("authenticator removed; %d sessions ended", ended)
 		if actor != userID {
-			reason = "authenticator removed by an admin"
+			reason = fmt.Sprintf("authenticator removed by an admin; %d sessions ended", ended)
+			if err := recoveryAudit(m.sys, tx, orgs, actor, "member.mfa_remove", userID, reason); err != nil {
+				return err
+			}
 		}
 		return m.superseded(tx, userID, actor, "user.mfa_remove", revlog.MFA, reason)
 	})
