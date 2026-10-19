@@ -94,6 +94,7 @@ func TestAllInOne_ReplacesRevokedAgents(t *testing.T) {
 		{"gateway.create", gw.ID, "replaces gateway " + r.GatewayID + ", whose identity is revoked"},
 		{"connector.decommission", r.ConnectorID, "its identity is revoked; replaced by connector " + con.ID},
 		{"connector.create", con.ID, "replaces connector " + r.ConnectorID + ", whose identity is revoked"},
+		{"route.update", route, "moved to connector " + con.ID + ", which replaces it"},
 		{"enrollment_token.create", "", "is revoked; it is replaced by gateway " + gw.ID},
 		{"enrollment_token.create", "", "is revoked; it is replaced by connector " + con.ID},
 	} {

@@ -109,7 +109,9 @@ configuration change, audited, the old gateway or connector is decommissioned, i
 revoked, and a new built-in one takes its place, the gateway with the old one's group, name, tunnel
 endpoints and switch, the connector with its name, labels, transport, switch and route targets, so
 no route changes; then the new one is enrolled as above. Only the database's built-in agents are
-replaced, never another gateway or connector. An identity that cannot be read stops the start; it
+replaced, never another gateway or connector: on a database from before ADR-0019, which marks no
+gateway built in, the gateway's identity names the built-in gateway only if its certificate
+chains to the database's root and names its trust domain. An identity that cannot be read stops the start; it
 is replaced by deleting `<state_dir>/gateway/identity` or `<state_dir>/connector/identity` and
 restarting the service. Without a database, `rpmgr all-in-one` refuses to start, as on a host
 never initialised. A new systemd credential is encrypted with `systemd-creds encrypt` into
