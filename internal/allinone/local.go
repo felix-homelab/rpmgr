@@ -23,6 +23,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/audit"
 	"github.com/felix-homelab/rpmgr/internal/authz"
 	"github.com/felix-homelab/rpmgr/internal/config"
+	"github.com/felix-homelab/rpmgr/internal/ids"
 	"github.com/felix-homelab/rpmgr/internal/pki"
 	"github.com/felix-homelab/rpmgr/internal/settings"
 	"github.com/felix-homelab/rpmgr/internal/store"
@@ -31,6 +32,8 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/connector"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/enrollmenttoken"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/gateway"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/revokedidentity"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/routetarget"
 	"github.com/felix-homelab/rpmgr/internal/token"
 )
 
@@ -132,7 +135,7 @@ func readLocal(cfg config.AllInOne) (local, error) {
 // it has no identity, or one that names another agent, as a copy from another installation, or the
 // controller cannot renew its certificate, as after a restore of a backup older than the
 // certificate, or the certificate expired longer ago than Reauth's grace period. An identity that
-// names want but is revoked stops the start: enrolling again as the same agent cannot lift that.
+// names want but is revoked is an error: prepare has replaced such an agent by then (replaceRevoked).
 func (a *builtIn) unusable(ctx context.Context, c *ent.Client, td string, want pki.Identity, now time.Time, grace time.Duration) (string, error) {
 	if a.leaf == nil {
 		return "its identity is missing", nil
@@ -176,9 +179,10 @@ func (a *builtIn) enroll(ctx context.Context, publicURL string, root *x509.Certi
 // marks built in. It reads the group's public hostnames and makes the token of each agent that
 // must enroll again (unusable, at now): the gateway's bound to it, and the connector's bound to the
 // org's built-in connector if there is one, so that each keeps its ID, routes and name, or else one
-// that creates the connector. The enrollment revokes, by serial, the certificates the database
-// records for the identity it replaces; one it does not record, as one issued after a restored
-// backup, stays valid until it expires, as any agent's does.
+// that creates the connector. An agent whose identity is revoked as a whole is replaced first
+// (replaceRevoked). The enrollment revokes, by serial, the certificates the database records for
+// the identity it replaces; one it does not record, as one issued after a restored backup, stays
+// valid until it expires, as any agent's does.
 func (l *local) prepare(ctx context.Context, cfg config.AllInOne, now time.Time) error {
 	db, err := store.OpenSQLite(ctx, cfg.Database.DSN, store.SQLiteOptions{})
 	if err != nil {
@@ -190,9 +194,12 @@ func (l *local) prepare(ctx context.Context, cfg config.AllInOne, now time.Time)
 	if err != nil {
 		return err
 	}
+	if err := l.replaceRevoked(sys, db, actor, now); err != nil {
+		return err
+	}
 	// Neither the built-in flag nor a token is configuration that agents get: no revision.
 	return store.WriteTx(sys, db, func(tx *ent.Tx) error {
-		row, err := builtInGateway(sys, tx, l.gateway.id)
+		row, err := builtInGateway(sys, tx.Client(), l.gateway.id)
 		if err != nil {
 			return err
 		}
@@ -237,6 +244,9 @@ func (l *local) prepare(ctx context.Context, cfg config.AllInOne, now time.Time)
 			{&l.gateway, pki.Identity{TrustDomain: td, Org: row.OrgID, Kind: pki.KindGateway, ID: row.ID}},
 			{&l.connector, pki.Identity{TrustDomain: td, Org: row.OrgID, Kind: pki.KindConnector, ID: conID}},
 		} {
+			if c.a.why != "" { // replaced: it enrolls as the new agent
+				continue
+			}
 			if c.a.why, err = c.a.unusable(sys, tx.Client(), td, c.want, now, grace); err != nil {
 				return err
 			}
@@ -256,16 +266,16 @@ func (l *local) prepare(ctx context.Context, cfg config.AllInOne, now time.Time)
 // builtInGateway returns the gateway marked built in while it is in service, or, where none is
 // marked, as on an installation initialised before ADR-0019, the gateway with ID id, the one the
 // gateway's identity names, while it is in service.
-func builtInGateway(ctx context.Context, tx *ent.Tx, id string) (*ent.Gateway, error) {
-	row, err := tx.Gateway.Query().Where(gateway.BuiltIn(true), gateway.DecommissionedAtIsNil()).Only(ctx)
+func builtInGateway(ctx context.Context, c *ent.Client, id string) (*ent.Gateway, error) {
+	row, err := c.Gateway.Query().Where(gateway.BuiltIn(true), gateway.DecommissionedAtIsNil()).Only(ctx)
 	if err == nil || !ent.IsNotFound(err) {
 		return row, err
 	}
-	if marked, err := tx.Gateway.Query().Where(gateway.BuiltIn(true)).Exist(ctx); err != nil || marked {
+	if marked, err := c.Gateway.Query().Where(gateway.BuiltIn(true)).Exist(ctx); err != nil || marked {
 		return nil, errors.Join(err, errIf(marked, errNoGateway))
 	}
 	if id != "" {
-		row, err := tx.Gateway.Get(ctx, id)
+		row, err := c.Gateway.Get(ctx, id)
 		switch {
 		case err == nil && row.DecommissionedAt == nil:
 			return row, nil
@@ -282,6 +292,156 @@ var errNoGateway = errors.New("allinone: the database has no built-in gateway in
 func errIf(cond bool, err error) error {
 	if cond {
 		return err
+	}
+	return nil
+}
+
+// awaitingKey stands for the key of a connector replaceRevoked creates, until its enrollment, bound
+// to it, records the key the connector holds.
+const awaitingKey = "awaiting-enrollment"
+
+// replaceRevoked replaces each built-in agent whose identity is revoked as a whole by a new one: a
+// revocation stays, so enrolling again under the same ID cannot lift it. A restore leaves such an
+// agent when its revocation log revokes one the backup still has in service. In one configuration
+// transaction, so that agents learn of it, the old agent is decommissioned, its identity staying
+// revoked, and the new one takes its place: a gateway the old one's group, name, tunnel endpoints
+// and switch, with the lowest free slot; a connector the old one's name, labels, transport, switch
+// and route targets, so that no route changes. Both are audited, and why of a replaced agent says
+// so; prepare then makes its token, bound to the new agent. A revoked identity is never lifted, and
+// no identity other than the database's built-in agents' is ever looked at.
+func (l *local) replaceRevoked(ctx context.Context, db *store.DB, actor string, now time.Time) error {
+	gw, con, err := revokedBuiltIns(ctx, db.Client(), l.gateway.id)
+	if err != nil || (gw == nil && con == nil) {
+		return err
+	}
+	org := ""
+	if gw != nil {
+		org = gw.OrgID
+	} else {
+		org = con.OrgID
+	}
+	_, err = store.ConfigTx(store.RevisionOrg(ctx, org), db, func(tx *ent.Tx) ([]string, error) {
+		gw, con, err := revokedBuiltIns(ctx, tx.Client(), l.gateway.id)
+		if err != nil {
+			return nil, err
+		}
+		var changed []string
+		if gw != nil {
+			row, err := replaceGateway(ctx, tx, gw, actor, now)
+			if err != nil {
+				return nil, err
+			}
+			l.gateway.why = "the identity of gateway " + gw.ID + " is revoked; it is replaced by gateway " + row.ID
+			changed = append(changed, gw.ID, row.ID)
+		}
+		if con != nil {
+			id, routes, err := replaceConnector(ctx, tx, con, actor, now)
+			if err != nil {
+				return nil, err
+			}
+			l.connector.why = "the identity of connector " + con.ID + " is revoked; it is replaced by connector " + id
+			changed = append(append(changed, con.ID, id), routes...)
+		}
+		return changed, nil
+	})
+	return err
+}
+
+// revokedBuiltIns returns the built-in gateway and connector in service whose identities are
+// revoked as a whole, each nil if not. id is the gateway the gateway's identity names
+// (builtInGateway).
+func revokedBuiltIns(ctx context.Context, c *ent.Client, id string) (*ent.Gateway, *ent.Connector, error) {
+	gw, err := builtInGateway(ctx, c, id)
+	if err != nil {
+		return nil, nil, err
+	}
+	con, err := c.Connector.Query().Where(connector.OrgID(gw.OrgID), connector.BuiltIn(true), connector.DecommissionedAtIsNil()).First(ctx)
+	if ent.IsNotFound(err) {
+		con, err = nil, nil
+	}
+	if err != nil {
+		return nil, nil, err
+	}
+	if revoked, err := identityRevoked(ctx, c, gw.SpiffeID); err != nil || !revoked {
+		gw = nil
+		if err != nil {
+			return nil, nil, err
+		}
+	}
+	if con != nil {
+		if revoked, err := identityRevoked(ctx, c, con.SpiffeID); err != nil || !revoked {
+			con = nil
+			if err != nil {
+				return nil, nil, err
+			}
+		}
+	}
+	return gw, con, nil
+}
+
+// identityRevoked reports whether the identity with SPIFFE ID spiffe is revoked as a whole; ""
+// names none.
+func identityRevoked(ctx context.Context, c *ent.Client, spiffe string) (bool, error) {
+	if spiffe == "" {
+		return false, nil
+	}
+	return c.RevokedIdentity.Query().Where(revokedidentity.ID(spiffe)).Exist(ctx)
+}
+
+// replaceGateway decommissions old, whose identity is revoked, and creates the built-in gateway that
+// takes its place, which it returns.
+func replaceGateway(ctx context.Context, tx *ent.Tx, old *ent.Gateway, actor string, now time.Time) (*ent.Gateway, error) {
+	if err := tx.Gateway.UpdateOne(old).SetDecommissionedAt(now).SetEnabled(false).Exec(ctx); err != nil {
+		return nil, err
+	}
+	row, err := tx.Gateway.Create().SetOrgID(old.OrgID).SetGatewayGroupID(old.GatewayGroupID).SetName(old.Name).
+		SetTunnelEndpoints(old.TunnelEndpoints).SetEnabled(old.Enabled).SetDesiredVersion(old.DesiredVersion).SetBuiltIn(true).Save(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return row, replaced(ctx, tx, old.OrgID, "gateway", old.ID, row.ID, actor)
+}
+
+// replaceConnector decommissions old, whose identity is revoked, creates the built-in connector
+// that takes its place and moves old's route targets to it. It returns the new connector's ID and
+// the routes whose targets moved.
+func replaceConnector(ctx context.Context, tx *ent.Tx, old *ent.Connector, actor string, now time.Time) (string, []string, error) {
+	inst, err := tx.Instance.Get(ctx, 1)
+	if err != nil {
+		return "", nil, err
+	}
+	if err := tx.Connector.UpdateOne(old).SetDecommissionedAt(now).SetEnabled(false).Exec(ctx); err != nil {
+		return "", nil, err
+	}
+	id := pki.Identity{TrustDomain: inst.TrustDomain, Org: old.OrgID, Kind: pki.KindConnector, ID: ids.New("con")}
+	c := tx.Connector.Create().SetID(id.ID).SetOrgID(old.OrgID).SetName(old.Name).SetLabels(old.Labels).SetSpiffeID(id.String()).
+		SetPubkeySha256(awaitingKey).SetEnabled(old.Enabled).SetDesiredVersion(old.DesiredVersion).SetBuiltIn(true)
+	if old.Transport != nil {
+		c.SetTransport(*old.Transport)
+	}
+	if err := c.Exec(ctx); err != nil {
+		return "", nil, err
+	}
+	moved, err := tx.RouteTarget.Query().Where(routetarget.ConnectorID(old.ID)).Select(routetarget.FieldRouteID).Strings(ctx)
+	if err != nil {
+		return "", nil, err
+	}
+	if _, err := tx.RouteTarget.Update().Where(routetarget.ConnectorID(old.ID)).SetConnectorID(id.ID).Save(ctx); err != nil {
+		return "", nil, err
+	}
+	return id.ID, slices.Compact(slices.Sorted(slices.Values(moved))), replaced(ctx, tx, old.OrgID, "connector", old.ID, id.ID, actor)
+}
+
+// replaced audits that the built-in agent of kind old was decommissioned and replaced by new.
+func replaced(ctx context.Context, tx *ent.Tx, org, kind, old, new, actor string) error {
+	for _, e := range []audit.Entry{
+		{Action: kind + ".decommission", TargetID: old, Reason: "all-in-one's own " + kind + ": its identity is revoked; replaced by " + kind + " " + new},
+		{Action: kind + ".create", TargetID: new, Reason: "all-in-one's own " + kind + ": replaces " + kind + " " + old + ", whose identity is revoked"},
+	} {
+		e.OrgID, e.ActorType, e.ActorID, e.TargetType, e.Result = org, audit.ActorSystem, actor, kind, audit.Success
+		if _, err := audit.Append(ctx, tx, e); err != nil {
+			return err
+		}
 	}
 	return nil
 }

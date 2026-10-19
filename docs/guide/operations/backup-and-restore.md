@@ -250,8 +250,13 @@ on a move, stop the old host for good.
 
 An identity that names another agent, such as a copy from another installation, is replaced in the
 same way. An identity that cannot be read at all stops the start with its path: delete that
-directory and start the service again. So does one that is revoked as a whole, which enrolling again
-as the same agent cannot lift.
+directory and start the service again.
+
+A revocation stays, so a built-in gateway or connector whose identity is revoked as a whole, as when
+the restore applies a revocation logged after the backup, cannot enroll again as itself. The
+all-in-one then replaces it with a new built-in gateway or connector, with a new ID: the gateway
+keeps its group, name and tunnel endpoints, the connector its name and the targets of its routes.
+The audit log shows the old one decommissioned and the new one created, with the reason.
 
 ### What the restore changes
 

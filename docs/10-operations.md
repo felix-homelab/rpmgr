@@ -103,9 +103,15 @@ superseded one, or one expired longer than the grace period
 ([D97](14-open-decisions.md#engineering)). Each keeps its ID and routes; the enrollment revokes
 the certificates the database records for the identity it replaces, and the audit log has each
 token with its reason. A certificate the database does not record stays valid until it expires.
-An identity whose agent is revoked as a whole stops the start, as does one that cannot be read,
-which is replaced by deleting `<state_dir>/gateway/identity` or `<state_dir>/connector/identity`
-and restarting the service. Without a database, `rpmgr all-in-one` refuses to start, as on a host
+An agent whose identity is revoked as a whole, as a restore that replays the revocation log can
+leave it, is replaced, since enrolling again under the same ID cannot lift a revocation: in one
+configuration change, audited, the old gateway or connector is decommissioned, its identity staying
+revoked, and a new built-in one takes its place, the gateway with the old one's group, name, tunnel
+endpoints and switch, the connector with its name, labels, transport, switch and route targets, so
+no route changes; then the new one is enrolled as above. Only the database's built-in agents are
+replaced, never another gateway or connector. An identity that cannot be read stops the start; it
+is replaced by deleting `<state_dir>/gateway/identity` or `<state_dir>/connector/identity` and
+restarting the service. Without a database, `rpmgr all-in-one` refuses to start, as on a host
 never initialised. A new systemd credential is encrypted with `systemd-creds encrypt` into
 `/etc/rpmgr/credstore/<name>`; an existing one is readable only where systemd loads it, so `init`
 then has to run under `systemd-run --pipe --wait --property=LoadCredentialEncrypted=…`.
