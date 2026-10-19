@@ -37,7 +37,12 @@ type env struct {
 
 func newEnv(t *testing.T) *env {
 	t.Helper()
-	db := storetest.Migrated(t, store.SQLite)
+	return newEnvOn(t, storetest.Migrated(t, store.SQLite))
+}
+
+// newEnvOn is newEnv on a migrated database of either dialect.
+func newEnvOn(t *testing.T, db *store.DB) *env {
+	t.Helper()
 	storetest.Init(t, db)
 	e := &env{db: db, sys: storetest.SystemCtx(t), clock: time.Now()}
 	e.acc = accounts.New(db, e.sys, func() time.Time { return e.clock })

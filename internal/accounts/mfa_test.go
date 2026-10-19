@@ -22,7 +22,12 @@ import (
 
 func newMFA(t *testing.T) (*env, *accounts.MFA, string, string) {
 	t.Helper()
-	e := newEnv(t)
+	return newMFAOn(t, newEnv(t))
+}
+
+// newMFAOn is newMFA on e.
+func newMFAOn(t *testing.T, e *env) (*env, *accounts.MFA, string, string) {
+	t.Helper()
 	key := make([]byte, 32)
 	_, _ = rand.Read(key)
 	kek, _ := secret.NewKEK(key)

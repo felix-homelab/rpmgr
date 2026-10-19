@@ -161,9 +161,17 @@ func (a *Accounts) CompleteReset(ctx context.Context, tok, newPassword, email, d
 			if ok, err := stillRecoverable(a.sys, tx, link.CreatedBy, *link.UserID); err != nil || !ok {
 				return errors.Join(err, errIf(!ok, ErrLink))
 			}
-			active, err := tx.User.Query().Where(user.ID(*link.UserID), user.StatusEQ(user.StatusActive)).Exist(a.sys)
-			if err != nil || !active {
-				return errors.Join(err, errIf(!active, ErrLink))
+			// The user's row is locked before any link row, as ChangePassword does, so that two links
+			// of one user completed at once wait on the user instead of deadlocking on each other's
+			// link: the second then finds its link used by the first one's endLinks. A disabled user
+			// gets no password.
+			n, err := tx.User.Update().Where(user.ID(*link.UserID), user.StatusEQ(user.StatusActive)).
+				SetPasswordHash(hash).Save(a.sys)
+			if err != nil || n != 1 {
+				return errors.Join(err, errIf(n != 1, ErrLink))
+			}
+			if u, err = tx.User.Get(a.sys, *link.UserID); err != nil {
+				return err
 			}
 		}
 		n, err := tx.PasswordReset.Update().Where(passwordreset.ID(link.ID), passwordreset.UsedAtIsNil(),
@@ -172,9 +180,6 @@ func (a *Accounts) CompleteReset(ctx context.Context, tok, newPassword, email, d
 			return errors.Join(err, errIf(n != 1, ErrLink))
 		}
 		if !first {
-			if u, err = tx.User.UpdateOneID(*link.UserID).SetPasswordHash(hash).Save(a.sys); err != nil {
-				return err
-			}
 			ended, err := endLinks(a.sys, tx, u.ID, now)
 			if err != nil {
 				return err
