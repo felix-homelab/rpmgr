@@ -29,7 +29,7 @@ type signers struct {
 	root, inter, config, audit pki.KeyPair
 }
 
-func newSigners(t *testing.T, td string) signers {
+func newSigners(t testing.TB, td string) signers {
 	t.Helper()
 	var s signers
 	var err error

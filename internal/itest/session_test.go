@@ -180,6 +180,25 @@ func TestControlSession_Goodbyes(t *testing.T) {
 	}
 }
 
+// TestControlSession_AgentsOfTheLastMinorAcrossTheMajor: a 1.0.0 controller welcomes an agent of
+// the last 0.y release and tells an older one to upgrade (docs/10, "Upgrades and version skew").
+func TestControlSession_AgentsOfTheLastMinorAcrossTheMajor(t *testing.T) {
+	ctl := itest.StartController(t, itest.Options{Version: "1.0.0"})
+	last := ctl.EnrollConnector(t, filepath.Join(t.TempDir(), "identity"))
+	c, _, _ := run(t, agent.ClientOptions{Identity: last, Endpoints: []string{ctl.URL}, Version: "0.7.0"})
+	waitFor(t, "the 0.7.0 agent's session", func() bool { return welcomes(c) >= 1 })
+
+	older := ctl.EnrollConnector(t, filepath.Join(t.TempDir(), "identity"))
+	o, _, _ := run(t, agent.ClientOptions{Identity: older, Endpoints: []string{ctl.URL}, Version: "0.6.2"})
+	waitFor(t, "upgrade_required for the 0.6.2 agent", func() bool {
+		_, g, _ := o.Stats()
+		return g[agentv1.GoodbyeReason_GOODBYE_REASON_UPGRADE_REQUIRED] >= 1
+	})
+	if welcomes(o) != 0 {
+		t.Error("a 0.6.2 agent was welcomed by a 1.0.0 controller")
+	}
+}
+
 // TestControlSession_TurnedAwayHonoursRetryAfter: an agent turned away at admission reads the
 // Goodbye, even when the controller ended the stream before the agent sent Hello, and waits at
 // least its retry_after of 1–10 s.
