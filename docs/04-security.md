@@ -729,7 +729,8 @@ Rules:
   addresses, the addresses of its interfaces, and those the public URL's host and the gateway
   group's public hostnames resolve to, for a host that reaches its public address through its
   router (hairpin NAT); they are looked up again at most every 10 s, and after a failed lookup at
-  the next dial. Such a target is `not_ready(blocked_by_local_policy: 127.0.0.1:7381 is one of
+  the next dial. The group's public hostnames are read again at each revision, so a hostname added
+  or removed counts without a restart. Such a target is `not_ready(blocked_by_local_policy: 127.0.0.1:7381 is one of
   rpmgr's own ports)`, and the UI offers no command for it. This keeps the metrics out of reach
   and routes from looping through the gateway; the host's other loopback services are reachable as
   far as the policy allows. Another path to these ports, such as a router or a container that

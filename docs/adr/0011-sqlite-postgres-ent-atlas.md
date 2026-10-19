@@ -1,6 +1,6 @@
 # ADR-0011: SQLite by default, PostgreSQL for HA, Ent with Atlas migrations
 
-Status: Accepted (spikes S5 and S8, 2026-10-06) · Date: 2026-10-06
+Status: Accepted (spikes S5 and S8, 2026-10-06; S9 for HA, 2026-10-19) · Date: 2026-10-06
 
 ## Context
 
@@ -82,6 +82,11 @@ Every additional SQL dialect multiplies migration and test work.
   foreign keys, privacy rules that deny by default, and the licensing/feature check.
 - **S8**: `modernc.org/sqlite` (current release) on every Controller target platform, plus WAL-mode
   durability and concurrency for the expected write rate.
+- **S9**: several controller replicas on PostgreSQL: push fan-out and the session registry over
+  `LISTEN/NOTIFY`, controller-to-controller mutual TLS, revocation-log shipping to the shared sink,
+  and a replica killed under load ([13](../13-roadmap.md#phase-0--spikes)). Rule: if
+  `LISTEN/NOTIFY` is insufficient, push fan-out goes over controller-to-controller mutual TLS, with
+  the sub-rules of [D112](../14-open-decisions.md#project-and-process).
 
 **Rules** ([D18](../14-open-decisions.md#engineering)), agreed before the spikes run:
 - Only Apache-2.0 parts are used: Ent and the `ariga.io/atlas` Go library. If Atlas CLI features
@@ -106,3 +111,15 @@ foreign keys) passes everywhere. The rule documents no platform as unsupported; 
 stay as in [05](../05-features.md#platform-support). Repeated natively on real arm64 hardware (a
 GitHub-hosted Neoverse-N2 runner, D46), arm64 and armv7 pass every test, including the one QEMU
 could not run.
+
+**Result of S9** (2026-10-19, [S9](../spikes/S9.md)): passed on PostgreSQL 18.6 with pgx v5.11.0,
+so `LISTEN/NOTIFY` carries the push fan-out and the rule's fallback is not taken. With three
+replicas and 1 000 agents a revision reached every agent within 35 ms of its commit at p99, and a
+single agent's push within 184 ms. A replica whose `LISTEN` connection dropped lost the
+notifications of the gap; its full resync brought every agent up to date, as D112 requires.
+Supersede and reconnect storms left exactly one session per agent. `ProbeTarget` forwarded over
+controller-to-controller mutual TLS took 2 ms at p99. Two shippers racing on a filesystem sink and
+on MinIO with conditional create left no gap and no duplicate, so the S3-compatible sink does not
+wait. After a replica was killed with SIGKILL, its agents were back within 12 s, and the product's
+chaos cell kept every data connection across five controller SIGKILLs. The design details are in
+[10](../10-operations.md#high-availability).

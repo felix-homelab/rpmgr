@@ -159,6 +159,7 @@ func TestManifestChecked(t *testing.T) {
 		"a stable pre-release":     func(m *release.Manifest) { m.Version = "1.5.0-rc.1" },
 		"an upper-case SHA-256":    func(m *release.Manifest) { m.Artifacts[0].SHA256 = strings.Repeat("AB", 32) },
 		"a short SHA-256":          func(m *release.Manifest) { m.Artifacts[0].SHA256 = "ab" },
+		"a SHA-256 not in hex":     func(m *release.Manifest) { m.Artifacts[0].SHA256 = strings.Repeat("xy", 32) },
 		"an empty artifact":        func(m *release.Manifest) { m.Artifacts[0].Size = 0 },
 		"an artifact without OS":   func(m *release.Manifest) { m.Artifacts[0].OS = "" },
 		"an artifact without arch": func(m *release.Manifest) { m.Artifacts[0].Arch = "" },
