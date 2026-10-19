@@ -3,7 +3,9 @@
 package controller_test
 
 import (
+	"cmp"
 	"fmt"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -12,6 +14,7 @@ import (
 	"google.golang.org/protobuf/types/known/durationpb"
 
 	agentv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/agent/v1"
+	"github.com/felix-homelab/rpmgr/internal/ids"
 	"github.com/felix-homelab/rpmgr/internal/pki"
 	"github.com/felix-homelab/rpmgr/internal/store"
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
@@ -143,6 +146,34 @@ func TestDataSessions(t *testing.T) {
 		sys := storetest.SystemCtx(t)
 		gwCert, gw := e.certOf(t, pki.KindGateway)
 		conCert, _ := e.agentCert(t)
+		c := db.Client()
+		group := c.GatewayGroup.Create().SetOrgID(e.org).SetName("eu").SaveX(sys)
+		other := c.GatewayGroup.Create().SetOrgID(e.org).SetName("us").SaveX(sys)
+		e.gatewayRow(t, gw, group.ID)
+		web := c.Route.Create().SetOrgID(e.org).SetName("web").SetType("tcp").SetGatewayGroupID(group.ID).SaveX(sys)
+		elsewhere := c.Route.Create().SetOrgID(e.org).SetName("elsewhere").SetType("tcp").SetGatewayGroupID(other.ID).SaveX(sys)
+		// serving makes connectors with a target on route; the test names them, idOf and nameOf map
+		// the names to their IDs and back.
+		idOf, nameOf := map[string]string{}, map[string]string{}
+		serving := func(route string, names ...string) {
+			t.Helper()
+			for chunk := range slices.Chunk(names, 500) {
+				var cons []*ent.ConnectorCreate
+				var targets []*ent.RouteTargetCreate
+				for _, n := range chunk {
+					id := ids.New("con")
+					idOf[n], nameOf[id] = id, n
+					cons = append(cons, c.Connector.Create().SetID(id).SetOrgID(e.org).SetName(strings.ReplaceAll(n, "_", "-")).
+						SetSpiffeID("spiffe://rpmgr-teststor/org/"+e.org+"/connector/"+id).SetPubkeySha256("k"))
+					targets = append(targets, c.RouteTarget.Create().SetOrgID(e.org).SetRouteID(route).SetConnectorID(id).
+						SetKind("address").SetHost("127.0.0.1").SetPort(80))
+				}
+				c.Connector.CreateBulk(cons...).ExecX(sys)
+				c.RouteTarget.CreateBulk(targets...).ExecX(sys)
+			}
+		}
+		serving(web.ID, "con_a", "con_b", "con_c")
+		serving(elsewhere.ID, "con_other")
 		gst := e.open(t, testCtx(t), gwCert, hello("0.1.0"))
 		cst := e.open(t, testCtx(t), conCert, hello("0.1.0"))
 		for _, st := range []controlStream{gst, cst} {
@@ -155,7 +186,7 @@ func TestDataSessions(t *testing.T) {
 			send(t, st, &agentv1.AgentMessage{Msg: &agentv1.AgentMessage_Status{Status: &agentv1.Status{DataSessions: ds}}})
 		}
 		ds := func(connector string, tr agentv1.Transport, rtt time.Duration) *agentv1.DataSession {
-			d := &agentv1.DataSession{ConnectorId: connector, Transport: tr}
+			d := &agentv1.DataSession{ConnectorId: cmp.Or(idOf[connector], connector), Transport: tr}
 			if rtt > 0 {
 				d.Rtt = durationpb.New(rtt)
 			}
@@ -164,7 +195,7 @@ func TestDataSessions(t *testing.T) {
 		rows := func() map[string]*ent.DataSession {
 			out := map[string]*ent.DataSession{}
 			for _, r := range db.Client().DataSession.Query().AllX(sys) {
-				out[r.GatewayID+"/"+r.ConnectorID+"/"+string(r.Transport)] = r
+				out[r.GatewayID+"/"+cmp.Or(nameOf[r.ConnectorID], r.ConnectorID)+"/"+string(r.Transport)] = r
 			}
 			return out
 		}
@@ -182,7 +213,9 @@ func TestDataSessions(t *testing.T) {
 			}
 		}
 		quic, h2 := agentv1.Transport_TRANSPORT_QUIC, agentv1.Transport_TRANSPORT_H2
-		report(gst, ds("con_a", quic, 12*time.Millisecond), ds("con_a", h2, 0), ds("con_b", h2, 0), ds("con_c", agentv1.Transport_TRANSPORT_UNSPECIFIED, 0))
+		// con_other serves only a route of another group, con_gone is no connector: both are skipped.
+		report(gst, ds("con_a", quic, 12*time.Millisecond), ds("con_a", h2, 0), ds("con_b", h2, 0), ds("con_c", agentv1.Transport_TRANSPORT_UNSPECIFIED, 0),
+			ds("con_other", h2, 0), ds("con_gone", quic, 0))
 		got := waitFor("the first report", func(m map[string]*ent.DataSession) bool { return len(m) == 3 })
 		first := got[gw.ID+"/con_a/quic"]
 		if first == nil || first.RttMs != 12 || first.OrgID != gw.Org || got[gw.ID+"/con_a/h2"].RttMs != 0 {
@@ -208,9 +241,14 @@ func TestDataSessions(t *testing.T) {
 			}
 		}
 
-		var flood []*agentv1.DataSession
+		var names []string
 		for i := range 5000 {
-			flood = append(flood, ds(fmt.Sprintf("con_%05d", i), h2, 0))
+			names = append(names, fmt.Sprintf("con_%05d", i))
+		}
+		serving(web.ID, names...)
+		var flood []*agentv1.DataSession
+		for _, n := range names {
+			flood = append(flood, ds(n, h2, 0))
 		}
 		report(gst, flood...)
 		waitFor("a flood", func(m map[string]*ent.DataSession) bool { return len(m) == 4096 })

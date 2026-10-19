@@ -13,6 +13,8 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/datasession"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/resourcestatus"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/route"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/routetarget"
 )
 
 // maxNotReady is how many not-ready resources of one agent the controller keeps
@@ -81,7 +83,9 @@ func (s *Sessions) readiness(id pki.Identity, list []*agentv1.ResourceStatus, al
 const maxDataSessions = 4096
 
 // dataSessions replaces what a gateway reported of its connectors' data sessions; a session it
-// still reports keeps when it was first heard of.
+// still reports keeps when it was first heard of. Only connectors with a target on a route of the
+// gateway's group count, as only they open data sessions to it (docs/03-connections.md,
+// "Configuration reconciliation").
 func (s *Sessions) dataSessions(id pki.Identity, list []*agentv1.DataSession) {
 	type key struct{ connector, transport string }
 	next := map[key]*agentv1.DataSession{}
@@ -99,6 +103,9 @@ func (s *Sessions) dataSessions(id pki.Identity, list []*agentv1.DataSession) {
 	}
 	now := s.now()
 	err := store.WriteTx(s.sys, s.db, func(tx *ent.Tx) error {
+		if err := keepServing(tx, s, id, next); err != nil {
+			return err
+		}
 		cur, err := tx.DataSession.Query().Where(datasession.GatewayID(id.ID)).All(s.sys)
 		if err != nil {
 			return err
@@ -135,4 +142,39 @@ func (s *Sessions) dataSessions(id pki.Identity, list []*agentv1.DataSession) {
 	if err != nil {
 		s.log.Error("cannot record a gateway's data sessions", "gateway", id.ID, "error", err)
 	}
+}
+
+// keepServing removes from next the data sessions of connectors that serve no route of the
+// reporting gateway's group, and all of them when the gateway is not an active one of its org.
+func keepServing[K comparable](tx *ent.Tx, s *Sessions, id pki.Identity, next map[K]*agentv1.DataSession) error {
+	group, err := gatewayGroup(s.sys, tx, id)
+	if err != nil {
+		return err
+	}
+	connectors := map[string]bool{}
+	for _, d := range next {
+		connectors[clip(d.GetConnectorId())] = false
+	}
+	if group != "" && len(connectors) > 0 {
+		serving, err := tx.RouteTarget.Query().
+			Where(routetarget.ConnectorIDIn(slices.Collect(maps.Keys(connectors))...), routetarget.HasRouteWith(route.GatewayGroupID(group))).
+			Select(routetarget.FieldConnectorID).Strings(s.sys)
+		if err != nil {
+			return err
+		}
+		for _, c := range serving {
+			connectors[c] = true
+		}
+	}
+	skipped := 0
+	for k, d := range next {
+		if !connectors[clip(d.GetConnectorId())] {
+			delete(next, k)
+			skipped++
+		}
+	}
+	if skipped > 0 {
+		s.log.Debug("gateway data sessions skipped: connectors that serve no route of its group", "gateway", id.ID, "skipped", skipped)
+	}
+	return nil
 }

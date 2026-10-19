@@ -387,7 +387,11 @@ Rules:
     the start of each control session; the controller keeps the last report, at most 4 096 per
     gateway. The same `Status` carries the gateway's route counters, cumulative since it started:
     bytes both ways, connections, those that reached no target, and the open ones. The controller
-    rolls them up for the traffic charts ([06](06-data-model.md#desired-vs-observed-state)).
+    rolls them up for the traffic charts ([06](06-data-model.md#desired-vs-observed-state)). It
+    takes both only for what the gateway serves: counters of routes of the gateway's own group,
+    and data sessions of connectors with a target on such a route. A report of a gateway that is
+    not an active gateway of its org counts for nothing, and whatever else a report names is
+    skipped, so a gateway cannot write another group's or another org's traffic or sessions.
 
 ### Revisions and ordering
 
