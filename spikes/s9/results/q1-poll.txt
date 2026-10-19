@@ -1,0 +1,12 @@
+12:02:01.937 Q1 mode=poll: 3 replicas ([-poll 1s -resync=false]), 1000 agents
+12:02:02.791 all 1000 agents connected in 854ms
+12:02:05.806 D: terminated r2's LISTEN connection (1 backend, err <nil>)
+12:02:08.828 D: terminated r3's LISTEN connection (1 backend, err <nil>)
+12:02:13.362 D: committed 200 revisions and 2000 targeted pushes
+12:02:13.377 D: revision NOTIFYs that never reached an agent (lost while a LISTEN connection was down): 1665
+12:02:13.381 D: after the load, 0 agents behind on the revision, 0 behind on their own snapshot (waited 3ms)
+12:02:13.383   r1: sessions=334 last_seq=200 notifications=870 listener_drops=0 resyncs=0 resync_pushes=0 poll_pushes=0 superseded=0 superseded_local=0 overloaded=0 dropped_signals=0
+12:02:13.386   r2: sessions=333 last_seq=200 notifications=881 listener_drops=1 resyncs=0 resync_pushes=0 poll_pushes=3 superseded=0 superseded_local=0 overloaded=0 dropped_signals=0
+12:02:13.421   r3: sessions=333 last_seq=200 notifications=833 listener_drops=1 resyncs=0 resync_pushes=0 poll_pushes=8 superseded=0 superseded_local=0 overloaded=0 dropped_signals=0
+12:02:13.421 PASS D no push lost when the LISTEN connection drops
+12:02:13.421 Q1 mode=poll overall: PASS

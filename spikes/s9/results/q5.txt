@@ -1,0 +1,11 @@
+12:06:46.616 Q5: 3 replicas (admission 50/s, revision check 1 s), 1000 agents spread over them, revisions at 10/s
+12:06:56.621 killed r1 with SIGKILL; it held 333 agents
+12:07:08.696 every agent has a session again after 12.08s (err <nil>)
+12:07:28.624 failover of r1's agents, from losing the session to the next Welcome: n=333 min=62.00 p50=2476.00 p90=9206.00 p99=11514.00 p99.9=12042.00 max=12042.00 ms
+12:07:28.626   r2: sessions=516 last_seq=400 notifications=400 listener_drops=0 resyncs=1 resync_pushes=0 poll_pushes=0 superseded=0 superseded_local=0 overloaded=427 dropped_signals=0
+12:07:28.627   r3: sessions=484 last_seq=400 notifications=400 listener_drops=0 resyncs=1 resync_pushes=0 poll_pushes=0 superseded=0 superseded_local=0 overloaded=276 dropped_signals=0
+12:07:28.631 PASS all 333 agents of r1 failed over (333 failovers)
+12:07:28.632 PASS slowest failover 12042 ms within the control reconnect backoff cap of 30 s
+12:07:28.632 PASS agents of the other replicas kept their sessions: 0 reconnects
+12:07:28.632 PASS every agent holds the newest revision afterwards: 0 behind
+12:07:28.632 Q5 overall: PASS

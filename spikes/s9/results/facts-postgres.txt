@@ -1,0 +1,11 @@
+11:59:57.909 server: PostgreSQL 18.6 (Debian 18.6-1.pgdg13+2) on x86_64-pc-linux-gnu, compiled by gcc (Debian 14.2.0-19) 14.2.0, 64-bit; max_notify_queue_pages=1048576
+11:59:58.217 PASS payload: 7999 bytes accepted (<nil>), 8000 bytes refused (ERROR: payload string too long (SQLSTATE 22023)); delivered 1
+11:59:58.519 PASS duplicates in one transaction collapse: sent dup,dup,a,b; received [dup a b]
+11:59:58.821 PASS a rolled-back NOTIFY is not delivered: received []
+11:59:59.129 PASS a session that LISTENs after the commit receives nothing of it: []
+11:59:59.536 PASS after a reconnect only later notifications arrive: received [after-reconnect] (the one sent while disconnected is lost)
+12:00:00.140 PASS a listener in a transaction gets the notification only after it ends: in=[] after=[during-listener-tx]
+12:00:04.314 PASS 1000 notifications from 4 writers arrive complete and in commit order: 1000 received
+12:00:14.338 8 writers on distinct rows: 2026 commits/s without NOTIFY, 692 with (ratio 0.34)
+12:00:14.431 one writer: 1.85 ms per committed UPDATE (the WAL flush bounds NOTIFY throughput at about 539/s)
+12:00:14.633 PASS pg_terminate_backend ends WaitForNotification with an error after 202ms: FATAL: terminating connection due to administrator command (SQLSTATE 57P01)

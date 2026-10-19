@@ -1,0 +1,3 @@
+12:00:14.654 PASS If-None-Match: * creates (<nil>), a second is refused with 412, the object keeps its body ("first")
+12:00:31.070 PASS 500 rounds of two racing If-None-Match: * PUTs: exactly one wins every round (500 wins, 0 409 conflicts, 0 other errors, 0 bad rounds)
+12:00:51.351 negative control: 500 rounds of two racing plain PUTs: 1000 succeed (both, overwriting)

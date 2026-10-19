@@ -1,0 +1,2 @@
+# Test certificates and keys that q3 writes here are never committed.
+logs/pki/

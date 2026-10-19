@@ -1,0 +1,19 @@
+12:05:50.147     shipper: r1: taken=194 conflicts=0 errors=0
+12:05:50.147     shipper: r2: taken=167 conflicts=0 errors=0
+12:05:51.165 PASS If-None-Match: * round 1 (9.236s): 1000 sink objects, chain verified (<nil>), missing 0, duplicate 0
+12:05:59.022     shipper: r1: taken=136 conflicts=0 errors=0
+12:05:59.022     shipper: r2: taken=182 conflicts=0 errors=0
+12:06:00.149 PASS If-None-Match: * round 2 (8.984s): 1000 sink objects, chain verified (<nil>), missing 0, duplicate 0
+12:06:08.212     shipper: r1: taken=196 conflicts=0 errors=0
+12:06:08.212     shipper: r2: taken=144 conflicts=0 errors=0
+12:06:09.245 PASS If-None-Match: * round 3 (9.096s): 1000 sink objects, chain verified (<nil>), missing 0, duplicate 0
+12:06:17.715     shipper: r1: taken=190 conflicts=0 errors=0
+12:06:17.715     shipper: r2: taken=128 conflicts=0 errors=0
+12:06:18.845 PASS If-None-Match: * round 4 (9.6s): 1000 sink objects, chain verified (<nil>), missing 0, duplicate 0
+12:06:27.678     shipper: r1: taken=190 conflicts=0 errors=0
+12:06:27.678     shipper: r2: taken=200 conflicts=0 errors=0
+12:06:28.776 PASS If-None-Match: * round 5 (9.931s): 1000 sink objects, chain verified (<nil>), missing 0, duplicate 0
+12:06:36.366     shipper: r1: taken=0 conflicts=0 errors=0
+12:06:36.366     shipper: r2: taken=0 conflicts=0 errors=599
+12:06:36.384 PASS negative control, plain PUT: the race is detected: verify error sink entry 2 does not verify, missing 1000, duplicate 0 — expected
+12:06:36.384 Q4 S3 overall: PASS

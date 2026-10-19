@@ -1,0 +1,17 @@
+# test/e2e TestChaos at rpmgr 99d24fc (main), E2E_FULL=1 E2E_CHAOS_SEED=2975 E2E_CHAOS_DURATION=4m, run 2026-10-19 13:46-13:57 local time.
+# The seed's schedule (cells_chaos_test.go, rand.NewPCG(2975, 2975)): controller KILL x4, latency spike, controller KILL, ...
+# Each 'controller database restart' event signals the controller with the pick of KILL or TERM; for this seed every pick is KILL.
+=== RUN   TestChaos
+    cells_chaos_test.go:89: chaos seed 2975 (E2E_CHAOS_SEED repeats it), 4m0s
+    cells_chaos_test.go:114: 13:51:47: controller database restart
+    cells_chaos_test.go:114: 13:52:24: controller database restart
+    cells_chaos_test.go:114: 13:53:01: controller database restart
+    cells_chaos_test.go:114: 13:53:47: controller database restart
+    cells_chaos_test.go:114: 13:54:28: latency spike
+    cells_chaos_test.go:114: 13:55:15: controller database restart
+    cells_chaos_test.go:142: load: round trips 847519, errors 0
+        ok
+--- PASS: TestChaos (286.47s)
+PASS
+ok  	github.com/felix-homelab/rpmgr/test/e2e	322.987s
+exit=0

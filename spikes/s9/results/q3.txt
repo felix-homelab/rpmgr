@@ -1,0 +1,15 @@
+12:03:12.427 Q3: 3 replicas with c2c mutual TLS (HTTP/2, TLS 1.3, controller SPIFFE IDs), 300 agents
+12:03:12.988 direct, connector answers at once: n=1000 min=0.13 p50=0.22 p90=0.38 p99=0.57 p99.9=0.71 max=0.87 ms, errors map[]
+12:03:14.773 forwarded, connector answers at once: n=1000 min=0.82 p50=1.32 p90=1.72 p99=2.04 p99.9=5.18 max=28.93 ms, errors map[]
+12:03:55.251 forwarded, connector takes 200 ms: n=200 min=201.21 p50=201.87 p90=202.48 p99=203.24 p99.9=204.16 max=204.16 ms, errors map[]
+12:03:55.251 PASS every probe answered
+12:03:55.251 PASS forwarded p99 2.04 ms (0 ms connector) and 203.24 ms (200 ms) below the 15 s probe timeout
+12:03:55.251 forwarding adds 1.47 ms at p99
+12:03:55.498 forwarded over a new connection each time (TLS 1.3 handshake included): n=100 min=1.54 p50=2.07 p90=2.66 p99=4.04 p99.9=24.96 max=24.96 ms
+12:03:55.500 PASS a connector's certificate at the internal listener: refused: Post "https://127.0.0.1:40941/c2c/probe?agent=a0001&delay=0s": remote error: tls: bad certificate
+12:03:55.501 PASS no client certificate at the internal listener: refused: Post "https://127.0.0.1:40941/c2c/probe?agent=a0001&delay=0s": remote error: tls: certificate required
+12:03:55.503 PASS r3 answering where r2 is expected: refused: Post "https://127.0.0.1:45015/c2c/probe?agent=a0001&delay=0s": tls: failed to verify certificate: x509: certificate is valid for r3.controller.s9.test, not r2.controller.s9.test
+12:03:55.548 probe of an agent whose replica (r3) was killed a moment ago: <nil> {Via:r3 Ms:1.187 Error:Post "https://127.0.0.1:45015/c2c/probe?agent=a0002&delay=0s": dial tcp 127.0.0.1:45015: connect: connection refused} after 6ms
+12:03:55.548 PASS a dead replica fails the probe within the 5 s dial timeout (6ms)
+12:04:00.549 dial to an unreachable replica address (192.0.2.1): Get "https://192.0.2.1:9/": dial tcp 192.0.2.1:9: i/o timeout after 5.001s
+12:04:00.549 Q3 overall: PASS

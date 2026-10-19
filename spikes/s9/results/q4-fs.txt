@@ -1,0 +1,31 @@
+12:04:06.946     shipper: r1: errors=0
+12:04:06.946     shipper: r2: errors=0
+12:04:06.963 PASS /dev/shm (tmpfs) round 1 (6.386s): 1000 sink entries 1..1000, chain verified, missing 0, duplicate 0
+12:04:13.981     shipper: r1: errors=0
+12:04:13.981     shipper: r2: errors=0
+12:04:13.998 PASS /dev/shm (tmpfs) round 2 (7.032s): 1000 sink entries 1..1000, chain verified, missing 0, duplicate 0
+12:04:20.858     shipper: r1: errors=0
+12:04:20.858     shipper: r2: errors=0
+12:04:20.877 PASS /dev/shm (tmpfs) round 3 (6.875s): 1000 sink entries 1..1000, chain verified, missing 0, duplicate 0
+12:04:27.665     shipper: r1: errors=0
+12:04:27.665     shipper: r2: errors=0
+12:04:27.683 PASS /dev/shm (tmpfs) round 4 (6.803s): 1000 sink entries 1..1000, chain verified, missing 0, duplicate 0
+12:04:34.295     shipper: r1: errors=0
+12:04:34.295     shipper: r2: errors=0
+12:04:34.312 PASS /dev/shm (tmpfs) round 5 (6.625s): 1000 sink entries 1..1000, chain verified, missing 0, duplicate 0
+12:04:47.873     shipper: r1: errors=0
+12:04:47.873     shipper: r2: errors=0
+12:04:47.889 PASS results/logs (ext2/ext3) round 1 (13.573s): 1000 sink entries 1..1000, chain verified, missing 0, duplicate 0
+12:05:01.474     shipper: r1: errors=0
+12:05:01.474     shipper: r2: errors=0
+12:05:01.492 PASS results/logs (ext2/ext3) round 2 (13.592s): 1000 sink entries 1..1000, chain verified, missing 0, duplicate 0
+12:05:15.698     shipper: r1: errors=0
+12:05:15.698     shipper: r2: errors=0
+12:05:15.717 PASS results/logs (ext2/ext3) round 3 (14.213s): 1000 sink entries 1..1000, chain verified, missing 0, duplicate 0
+12:05:28.918     shipper: r1: errors=0
+12:05:28.918     shipper: r2: errors=0
+12:05:28.933 PASS results/logs (ext2/ext3) round 4 (13.205s): 1000 sink entries 1..1000, chain verified, missing 0, duplicate 0
+12:05:41.883     shipper: r1: errors=0
+12:05:41.883     shipper: r2: errors=0
+12:05:41.899 PASS results/logs (ext2/ext3) round 5 (12.956s): 1000 sink entries 1..1000, chain verified, missing 0, duplicate 0
+12:05:41.910 Q4 filesystem overall: PASS

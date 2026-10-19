@@ -1,0 +1,12 @@
+12:02:13.561 Q2: 3 replicas (poll 0), 1000 agents, 10 storm rounds each, all agents at once
+12:02:43.668 storm done in 30.107s: map[new session elsewhere, old one kept open:3959 new session on a replica chosen again:2091 reconnect: old one closed first:1943 two sessions at once:2007]
+12:02:45.673   r1: sessions=303 superseded(by other replica)=2111 superseded(local)=975 resyncs=1
+12:02:45.674   r2: sessions=308 superseded(by other replica)=2128 superseded(local)=1044 resyncs=1
+12:02:45.675   r3: sessions=389 superseded(by other replica)=2071 superseded(local)=930 resyncs=1
+12:02:45.678 superseded sessions ended, time from the newer session's Welcome to the older one's Goodbye: n=9258 min=-4341.07 p50=-0.08 p90=0.09 p99=2.39 p99.9=27.85 max=4350.48 ms
+12:02:45.678 PASS exactly one session per agent across the replicas: 0 agents with another count
+12:02:45.678 PASS the held session is the registry's (epoch and node): 0 mismatches
+12:02:45.678 PASS each agent has exactly one open connection left: 0 agents differ
+12:02:45.678 PASS no session was superseded without a newer one: 0
+12:02:45.678 dial failures: 0
+12:02:45.678 Q2 overall: PASS

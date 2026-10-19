@@ -1,0 +1,6 @@
+date: 2026-10-19T11:59:56Z
+host: Linux 6.18.33.2-microsoft-standard-WSL2 x86_64, 20 CPUs, 13th Gen Intel(R) Core(TM) i7-1370P
+go: go version go1.27.2 linux/amd64
+postgres: PostgreSQL 18.6 (Debian 18.6-1.pgdg13+2) on x86_64-pc-linux-gnu, compiled by gcc (Debian 14.2.0-19) 14.2.0, 64-bit
+minio: minio version DEVELOPMENT.GOGET (commit-id=DEVELOPMENT.GOGET)
+note: the workstation also ran other agents' builds and tests during some runs; latencies are indications

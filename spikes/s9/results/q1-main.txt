@@ -1,0 +1,21 @@
+12:00:51.360 Q1 mode=main: 3 replicas ([-poll 0 -resync=true]), 1000 agents
+12:00:52.133 all 1000 agents connected in 773ms
+12:01:09.209 A broadcast: 300 revisions at 20/s to 1000 agents: latency from before COMMIT n=300000 min=1.85 p50=9.17 p90=21.76 p99=35.06 p99.9=39.41 max=68.88 ms
+12:01:09.243 A broadcast: latency from COMMIT's return n=287150 min=-5.35 p50=3.44 p90=12.30 p99=20.35 p99.9=31.95 max=49.86 ms
+12:01:09.357 PASS A p99 35.06 ms <= 1000 ms
+12:01:09.358 PASS A deliveries missing: 0 of 300000
+12:01:31.071 B targeted: 5000 pushes to random agents, 8 writers, 254/s achieved: latency n=5000 min=3.75 p50=23.71 p90=40.72 p99=183.94 p99.9=289.62 max=481.31 ms
+12:01:31.072 PASS B p99 183.94 ms <= 1000 ms, 5000 of 5000 delivered
+12:01:34.083 C burst: one transaction with 1000 targeted signals: latency from COMMIT n=1000 min=4.30 p50=12.55 p90=17.94 p99=18.30 p99.9=18.53 max=18.56 ms
+12:01:34.083 PASS C p99 18.30 ms <= 1000 ms, 1000 of 1000 delivered
+12:01:34.089 PASS A–C converged: 0 agents behind on the revision, 0 on their own snapshot
+12:01:37.095 D: terminated r2's LISTEN connection (1 backend, err <nil>)
+12:01:40.102 D: terminated r3's LISTEN connection (1 backend, err <nil>)
+12:01:44.504 D: committed 200 revisions and 2000 targeted pushes
+12:01:44.519 D: revision NOTIFYs that never reached an agent (lost while a LISTEN connection was down): 1665
+12:01:44.522 D: after the load, 0 agents behind on the revision, 0 behind on their own snapshot (waited 3ms)
+12:01:44.553   r1: sessions=334 last_seq=500 notifications=3231 listener_drops=0 resyncs=1 resync_pushes=0 poll_pushes=0 superseded=0 superseded_local=0 overloaded=0 dropped_signals=0
+12:01:44.556   r2: sessions=333 last_seq=500 notifications=3110 listener_drops=1 resyncs=2 resync_pushes=338 poll_pushes=0 superseded=0 superseded_local=0 overloaded=0 dropped_signals=0
+12:01:44.558   r3: sessions=333 last_seq=500 notifications=3138 listener_drops=1 resyncs=2 resync_pushes=344 poll_pushes=0 superseded=0 superseded_local=0 overloaded=0 dropped_signals=0
+12:01:44.558 PASS D no push lost when the LISTEN connection drops
+12:01:44.558 Q1 mode=main overall: PASS

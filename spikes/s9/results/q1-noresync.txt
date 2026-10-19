@@ -1,0 +1,12 @@
+12:01:44.665 Q1 mode=noresync: 3 replicas ([-poll 0 -resync=false]), 1000 agents
+12:01:45.636 all 1000 agents connected in 972ms
+12:01:48.639 D: terminated r2's LISTEN connection (1 backend, err <nil>)
+12:01:51.678 D: terminated r3's LISTEN connection (1 backend, err <nil>)
+12:01:56.678 D: committed 200 revisions and 2000 targeted pushes
+12:01:56.704 D: revision NOTIFYs that never reached an agent (lost while a LISTEN connection was down): 1998
+12:02:01.803 D: after the load, 0 agents behind on the revision, 4 behind on their own snapshot (waited 5.098s)
+12:02:01.806   r1: sessions=334 last_seq=200 notifications=893 listener_drops=0 resyncs=0 resync_pushes=0 poll_pushes=0 superseded=0 superseded_local=0 overloaded=0 dropped_signals=0
+12:02:01.809   r2: sessions=333 last_seq=200 notifications=839 listener_drops=1 resyncs=0 resync_pushes=0 poll_pushes=0 superseded=0 superseded_local=0 overloaded=0 dropped_signals=0
+12:02:01.841   r3: sessions=333 last_seq=200 notifications=848 listener_drops=1 resyncs=0 resync_pushes=0 poll_pushes=0 superseded=0 superseded_local=0 overloaded=0 dropped_signals=0
+12:02:01.841 PASS negative control: without resync and revision check, targeted signals are lost (4 agents behind) — expected
+12:02:01.841 Q1 mode=noresync overall: PASS
