@@ -78,21 +78,26 @@ a homelab or a small team.
 
 - **Linux only** (D29): every role on amd64 and arm64; connectors on armv7 and riscv64 best effort
   ([05](05-features.md#platform-support)).
-- `rpmgr controller`, `gateway`, `connector`, `all-in-one`; SQLite.
+- `rpmgr controller`, `gateway`, `connector`, `all-in-one` (controller, gateway and connector in
+  one process, [ADR-0019](adr/0019-all-in-one-runs-a-connector.md)); SQLite.
 - Enrollment with CA pin; internal CA; 7-day certificates with renewal; deny-list.
 - Control session with reconciliation, revisions, apply status, last-known-good.
 - Data sessions: QUIC and TLS + reverse HTTP/2, happy eyeballs; multiple gateways per group
   (the WSS transport for TLS-intercepting proxies follows in Phase 2).
 - Routes: `http` (ACME HTTP-01/TLS-ALPN-01 and uploaded certificates), `tcp`, `udp`, `tcp_udp`,
-  `tls_passthrough`; port pools; TCP/UDP/443 multiplexing.
-- Targets: address and unix socket; HTTP/HTTPS (verified)/h2c upstreams; PROXY protocol.
+  `tls_passthrough`; port pools; TCP/UDP/443 multiplexing; maintenance mode for `http` routes;
+  built-in pages for unrouted names and the gateway's own errors.
+- Targets: address and unix socket; HTTP, h2c and HTTPS upstreams (verified, pinned key or, by the
+  user's choice, unverified); PROXY protocol; targets on several connectors ranked by priority and
+  weight, with fallback ([D90](14-open-decisions.md#engineering)).
 - Access policies: IP rules and basic auth. Domain verification; trusted domains (D13). Port
   quotas per org and gateway group.
 - Connector-local policy.
 - Web UI: overview, routes, connectors, gateways, domains and certificates, members, audit log,
   settings (including PKI), YAML view. English only (D32).
 - Local accounts, TOTP, roles, sessions, step-up; personal API tokens for the CLI. Invitations and
-  password resets as one-time links; e-mail only if SMTP is configured.
+  password resets as one-time links; e-mail only if SMTP is configured; administrators recover
+  another user's access ([D95](14-open-decisions.md#security-defaults)).
 - Audit log with hash chain and signed checkpoints stored locally; Prometheus metrics; traffic
   rollups.
 - Signed releases; install scripts and binaries served by the controller; backup and restore.
@@ -113,7 +118,7 @@ a homelab or a small team.
 12. the exit criteria.
 
 Each milestone holds one issue per PR-sized slice. A feature stays inert until it is complete
-([D52](14-open-decisions.md#project-and-process)). The decisions taken for Phase 1 are D48–D61 in
+([D52](14-open-decisions.md#project-and-process)). The decisions taken for Phase 1 are D48–D97 in
 [14](14-open-decisions.md).
 
 **Exit criteria:**
@@ -130,21 +135,22 @@ Each milestone holds one issue per PR-sized slice. A feature stays inert until i
 - An upgrade from one P1 release to the next tested with live traffic, as an automated end-to-end
   test ([D61](14-open-decisions.md#project-and-process)).
 
-**Status (2026-10-12):** the milestones `P1-M01` … `P1-M11` and the slices of `P1-M12` that need no
-release are merged. The exit criteria stand as follows:
+**Status (2026-10-16):** the milestones `P1-M01` … `P1-M11` and the slices of `P1-M12` that need no
+release are merged, and so are the features and fixes decided since, D78 to D97. The exit criteria
+stand as follows:
 
 | Criterion | State |
 |---|---|
-| End-to-end matrix | The per-PR cells pass on every PR; the full cross-product and the chaos test run nightly (12.1). The first nightly run found two faults of its cells and a race in the controller, fixed in #397; the nightly run of 2026-10-12 passed both |
+| End-to-end matrix | The per-PR cells pass on every PR; the full cross-product and the chaos test run nightly (12.1). The first nightly run found two faults of its cells and a race in the controller, fixed in #397; the nightly runs of 2026-10-12 and 13 passed both, and that of 14 failed only on the flaky test `TestReporter`, fixed in #545 |
 | [T] targets | Measured on GitHub-hosted runners on 2026-10-11 and 12 ([ADR-0004](adr/0004-quic-default-transport-policy.md#phase-1-measurements)): setup latency, snapshot apply and resets met; the single-stream and the 32-stream targets missed, with decisions D69 and D70 |
 | Security regression tests | Every test of 12 in P1 scope is implemented and marked `done` in `.github/scripts/security-tests.txt`, which CI checks |
 | Lint bans | Active in CI: golangci's rules and `tools/bannedapi` |
-| Threat model reviewed | [P1-threat-model](reviews/P1-threat-model.md); its medium gaps G1 and G2 are fixed, G3 to G6 resolved by the product owner's decisions (D66 to D68) and a fix; G7, the review of the API's authenticator, waits for a rename of its file |
-| Upgrade with live traffic | `TestUpgrade` exists (12.7); its run needs two signed releases, v0.1.0 and the next |
+| Threat model reviewed | [P1-threat-model](reviews/P1-threat-model.md); its medium gaps G1 and G2 are fixed, G3 to G6 resolved by the product owner's decisions (D66 to D68) and a fix; G7, the review of the API's authenticator, done in #428 |
+| Upgrade with live traffic | `TestUpgrade` exists (12.7) and passed from `v0.1.0-rc.3` and from `v0.1.0-rc.6` to `main` (2026-10-12 and 14); the criterion's run needs two signed releases, v0.1.0 and the next |
 
-Before v0.1.0 (#170, [RELEASING](../RELEASING.md#release-process)), the maintainer makes the
-interim signing keys offline ([D48](14-open-decisions.md#security-defaults)). VB-19 runs after
-v0.1.0, all of it before the first release with DNS-01
+Before v0.1.0 (#170, [RELEASING](../RELEASING.md#release-process)), the maintainer made the
+interim signing keys offline ([D48](14-open-decisions.md#security-defaults)), whose roots every
+build carries since #429. VB-19 runs after v0.1.0, all of it before the first release with DNS-01
 ([D98](14-open-decisions.md#project-and-process)).
 
 ## Phase 2 — production

@@ -1,6 +1,6 @@
 # 08 — Software stack
 
-> Status: Phase 1, being implemented. Tags: [F] fact · [R] recommendation · [T] target · [V] verify
+> Status: Phase 1 is implemented. Tags: [F] fact · [R] recommendation · [T] target · [V] verify
 > at implementation ([README](README.md#how-to-read-these-documents)).
 >
 > Versions are **not pinned in this document**; they are pinned in `go.mod`, `package.json` and the

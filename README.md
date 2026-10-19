@@ -8,9 +8,9 @@ you own, and that server passes the traffic through. You need no port forwarding
 public IP address at home and no inbound firewall rule.
 
 > [!NOTE]
-> rpmgr has no stable release yet. The current builds are release candidates of v0.1.0
-> ([Releases](https://github.com/felix-homelab/rpmgr/releases)). Try it out, expect rough edges,
-> and [report what you find](https://github.com/felix-homelab/rpmgr/issues).
+> v0.1.0 is rpmgr's first release ([Releases](https://github.com/felix-homelab/rpmgr/releases)),
+> the minimum viable product of its first phase. Try it out, expect rough edges, and
+> [report what you find](https://github.com/felix-homelab/rpmgr/issues).
 
 ## Why rpmgr
 
@@ -64,12 +64,16 @@ What v0.1.0 brings; the full catalogue, with what comes later, is in [05](docs/0
 **Publishing services**
 
 - `http` routes by hostname and path prefix, to HTTP, h2c or HTTPS services; HTTPS services are
-  verified, against your own CA if you have one.
-- `tcp` and `udp` routes on public ports from a port pool, and `tls_passthrough` routes chosen by
-  the TLS server name.
+  verified, against your own CA if you have one, or, for a self-signed certificate, by the key it
+  shows now, or by your explicit choice not at all.
+- `tcp` and `udp` routes on public ports from a port pool, `tcp_udp` routes that serve one port
+  number with both, such as DNS, and `tls_passthrough` routes chosen by the TLS server name.
 - Redirects from HTTP to HTTPS, HSTS, request and response headers, `Forwarded` and
   `X-Forwarded-*` headers, and the PROXY protocol towards the service.
-- Switch a route off and on with one click; the other routes carry on undisturbed.
+- Switch a route off and on with one click, or put an `http` route in maintenance, so that visitors
+  see a "Down for maintenance" page with your message; the other routes carry on undisturbed.
+- Visitors get a page, not a bare error, for a name no route serves and for a service that is
+  down.
 
 **Certificates and domains**
 
@@ -88,6 +92,8 @@ What v0.1.0 brings; the full catalogue, with what comes later, is in [05](docs/0
 - Enroll a connector with one command and a token from the web UI.
 - Up to four gateways per gateway group, with a tunnel from each connector to each of them; drain
   a gateway for maintenance.
+- A route's targets on several connectors, by priority and weight: when the best one fails, the
+  next one takes over.
 - QUIC by default, and TLS with HTTP/2 over TCP where UDP is blocked, chosen automatically.
 - Ephemeral connectors that remove themselves, and decommissioning with immediate effect.
 
@@ -98,6 +104,8 @@ What v0.1.0 brings; the full catalogue, with what comes later, is in [05](docs/0
 - The roles Owner, Admin, Operator and Viewer; invitations and password resets by one-time link,
   or by e-mail when a mail relay is configured.
 - Personal API tokens for the command line and scripts.
+- Administrators recover a member's access: a password-reset link, or the removal of a lost
+  authenticator.
 
 **Operations**
 
@@ -142,12 +150,6 @@ create them first.
 curl -fsSLO https://github.com/felix-homelab/rpmgr/releases/latest/download/install.sh
 sudo sh install.sh
 ```
-
-> [!IMPORTANT]
-> Until v0.1.0 is released, `releases/latest` finds no release. Take `install.sh` from the newest
-> release candidate on the [Releases page](https://github.com/felix-homelab/rpmgr/releases)
-> instead, such as
-> `https://github.com/felix-homelab/rpmgr/releases/download/v0.1.0-rc.4/install.sh`.
 
 The script downloads the release, checks its signatures before it installs anything, and installs
 the `rpmgr` binary, the system user `rpmgr` and its directories. Then it offers to run
@@ -264,7 +266,9 @@ command and flag is in [16](docs/16-cli.md).
 - **Mutual TLS 1.3 between all parts.** Connectors only dial out, and on every connection between
   the controller, gateways and connectors both ends prove who they are.
 - **The host has the last word.** A connector's local policy, a root-owned file on its host, limits
-  the services it reaches, even if the controller is compromised.
+  the services it reaches, even if the controller is compromised. The all-in-one's own connector
+  shares the controller's process, so there its policy limits what routes reach, not a compromised
+  controller ([ADR-0019](docs/adr/0019-all-in-one-runs-a-connector.md)).
 - **Signed configuration.** Agents accept only configuration the controller has signed, and keep
   their last good copy.
 - **Secrets encrypted at rest.** Keys and passwords in the database are encrypted with a key kept
