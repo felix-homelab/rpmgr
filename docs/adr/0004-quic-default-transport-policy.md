@@ -195,3 +195,84 @@ per-stream loss recovery cannot make up for it (#422).
   ([03](../03-connections.md#failure-modes)), then reconnects. TCP + h2 routes answered again after
   1.0 and 1.5 s. A SIGKILL of the controller cost no held connection.
 - **20 idle connectors** added 7 to 10 MiB to the gateway, at 0.006 to 0.007 CPU s/s.
+
+### Phase 2 study of QUIC's single stream (#421)
+
+**Question:** why one QUIC stream stays at 140 to 290 Mbit/s from 20 ms RTT on, where TCP + h2
+reaches 1 Gbit/s on the same path (D69), and whether a change inside rpmgr helps.
+
+**Method** (2026-10-19): the benchmark suite's `throughput` workload on GitHub-hosted x86-64 and
+arm64 runners, as in Phase 1, at RTT 1, 20 and 80 ms without loss, three repetitions, medians. Each
+variant was one `bench` workflow run on a branch that is never merged, the
+`tmp/quic-single-stream-study` branch and a copy of it. A switch read from the environment chose the
+variant; the runs were these:
+
+- 39247303350, as on `main`;
+- 39247313172, a relay buffer of 256 KiB instead of 32 KiB;
+- 39247323174, a relay that reads the next buffer while it writes the last one;
+- 39247332539, QUIC receive windows that start at their maxima;
+- 39250834685, a changed quic-go congestion controller, described below.
+
+Three more runs, 39254669867, 39256029869 and 39257380013, wrote qlogs at 20 and 80 ms, the last one
+without GSO. They summarised the qlogs and the containers' UDP counters into their artifacts. Their
+single repetition makes their throughput an indication only.
+
+**Single stream, 0 % loss** (Mbit/s, the median of three runs, the lower of the two directions):
+
+| Runner | RTT | As on `main` | Relay 256 KiB | Read-ahead | Windows at maximum | Changed Cubic sender |
+|---|---|---|---|---|---|---|
+| gh-amd64 | 1 ms | 856 | 918 | 883 | 948 | 977 |
+| gh-amd64 | 20 ms | 290 | 315 | 293 | 237 | 237 |
+| gh-amd64 | 80 ms | 224 | 176 | 181 | 138 | 158 |
+| gh-arm64 | 1 ms | 1 057 | 1 081 | 1 116 | 1 030 | 1 145 |
+| gh-arm64 | 20 ms | 297 | 205 | 274 | 252 | 281 |
+| gh-arm64 | 80 ms | 157 | 144 | 174 | 151 | 132 |
+
+TCP + h2 reached 973 to 1 172 Mbit/s at 20 ms and 308 to 331 Mbit/s at 80 ms in the same runs. 32
+QUIC streams together reached no more than one: 170 to 300 Mbit/s at 20 ms. The limit is the
+connection's congestion window, not a stream.
+
+**Findings:**
+
+- **rpmgr's relay is not the limit.** A larger buffer and a read-ahead change the results by −31 to
+  +11 % at 20 and 80 ms, in no consistent direction; on the runners that is noise. At 1 ms both gain
+  up to 7 %, within the runners' variance.
+- **Flow control is not the limit.** Starting with the maximum windows gained nothing.
+- **The sender counts as application-limited because acknowledgements arrive in clumps.** In the
+  qlogs the sender fills its congestion window and waits. Then several ACKs are processed one after
+  another before it sends again, so from the second ACK on fewer bytes are in flight than the window
+  less three packets. quic-go v0.63.0 then calls the sender application-limited and restarts Cubic's
+  growth epoch [F quic-go v0.63.0 `internal/congestion/cubic_sender.go:236-239,267-275`]. This
+  happened up to about 270 times a second. At 80 ms a window of 2.4 MB grew by 15 to 20 KB a second.
+  A changed sender counted as window-limited for one smoothed RTT after it last filled the window.
+  The marks disappeared, but throughput did not rise, because of the next finding.
+- **Most of the losses on x86-64 were spurious.** Of the packets quic-go declared lost, 86 to 100 %
+  were acknowledged later, in each of the four connections; on arm64 4 to 100 %. Almost every loss
+  was declared by the packet threshold of three [F quic-go v0.63.0
+  `internal/ackhandler/sent_packet_handler.go:23`], so most packets were reordered on the runner's
+  veth and netem path, not lost. No UDP receive-buffer error was counted. quic-go notices a spurious
+  loss but only records it in the qlog [F quic-go v0.63.0 `sent_packet_handler.go:485-522`]: the
+  threshold stays, and the window stays reduced by 30 % per loss event [F quic-go v0.63.0
+  `internal/congestion/cubic.go:31`]. Linux TCP detects reordering with RACK (RFC 8985) and undoes a
+  spurious recovery [V], which would explain why TCP + h2 is unaffected on the same path.
+- **Slow start overshoots.** At 80 ms the first window reached up to 12.2 MB in flight, close to
+  quic-go's limit of 10 000 packets [F quic-go v0.63.0 `internal/protocol/params.go:9`], and lost up
+  to 909 packets on arm64, most of them real. Cubic then needs several seconds to grow back, longer
+  than a cell.
+- **Without GSO** fewer losses were spurious: 109 instead of 668 on x86-64 and 62 instead of 206 on
+  arm64. One repetition on arm64 reached 385 to 518 Mbit/s at 80 ms, on x86-64 no change. That is
+  too little to judge.
+- **The ceiling of about 1 Gbit/s at 1 ms is CPU.** QUIC costs 2 to 3 times the CPU per Gbit/s of
+  TCP + h2 (Phase 1 baseline above). quic-go v0.63.0 reads up to 8 datagrams per system call,
+  without UDP GRO [F quic-go v0.63.0 `sys_conn_helper_linux.go:24`]; the runner's four CPUs carry
+  the client, the gateway, the connectors and the services.
+
+**Outcome:**
+
+- No change to rpmgr. None of the variants within rpmgr's design helped consistently. The limits sit
+  in quic-go's congestion control and loss recovery, which quic-go exposes no setting for.
+- The target of 03 stays for VB-20 ([D69](../14-open-decisions.md#engineering)). The runner's
+  reordering may not occur on the reference testbed's network interfaces. [R] VB-20 (slice 16.12)
+  also counts the spurious losses and runs QUIC with GSO and without (`-gso off`).
+- Whether to report the two quic-go behaviours upstream, the application-limited mark on clumped
+  ACKs and the missing reaction to spurious losses, is left to the maintainer.
