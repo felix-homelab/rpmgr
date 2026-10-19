@@ -42,7 +42,7 @@ func (c TracingConfig) Check() error {
 			errs = append(errs, fmt.Errorf("tracing.otlp_endpoint %q: want an http or https URL", c.OTLPEndpoint))
 		}
 	}
-	if r := c.SampleRatio; r != nil && (*r < 0 || *r > 1) {
+	if r := c.SampleRatio; r != nil && !(*r >= 0 && *r <= 1) { // NaN too: YAML reads .nan
 		errs = append(errs, fmt.Errorf("tracing.sample_ratio %v: want 0 to 1", *r))
 	}
 	return errors.Join(errs...)

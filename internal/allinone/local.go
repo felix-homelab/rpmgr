@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"log/slog"
 	"net"
 	"net/netip"
 	"net/url"
@@ -343,12 +344,88 @@ func newOwnPorts(cfg config.AllInOne) (*ownPorts, error) {
 }
 
 // setNames sets the public names whose addresses are the host's too; the next check looks them up.
-func (o *ownPorts) setNames(names []string) {
+// It reports whether they changed; the same names keep the addresses already looked up.
+func (o *ownPorts) setNames(names []string) bool {
 	names = slices.Compact(slices.Sorted(slices.Values(names)))
+	if old := o.names.Load(); old != nil && slices.Equal(*old, names) {
+		return false
+	}
 	o.names.Store(&names)
 	o.mu.Lock()
 	o.next = time.Time{}
 	o.mu.Unlock()
+	return true
+}
+
+// namesFollowed, if set, is called with the names each time followNames changes them; for tests.
+var namesFollowed func([]string)
+
+// followNames keeps own's names, the public URL's host public and the built-in gateway group's
+// public hostnames, in step with the database while ctx lasts: at every revision, which it looks
+// for every interval as the controller does, it reads the group's hostnames again, so a hostname
+// added or removed counts without a restart. A failed read keeps the names it has, is logged once,
+// and is tried again at the next check.
+func (l *local) followNames(ctx context.Context, cfg config.AllInOne, own *ownPorts, public string, every time.Duration, log *slog.Logger) {
+	db, err := store.OpenSQLite(ctx, cfg.Database.DSN, store.SQLiteOptions{})
+	if err != nil {
+		log.Warn("the gateway group's public hostnames are not followed", "error", err)
+		return
+	}
+	defer func() { _ = db.Close() }()
+	sys, err := authz.System(ctx, "all-in-one", "rpmgr all-in-one: its own agents", audit.SystemScopes(db))
+	if err != nil {
+		log.Warn("the gateway group's public hostnames are not followed", "error", err)
+		return
+	}
+	var (
+		seen   store.Revision
+		failed bool
+		tick   = time.NewTicker(every)
+	)
+	defer tick.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-tick.C:
+		}
+		var (
+			rev   store.Revision
+			names []string
+		)
+		err := store.ReadTx(sys, db, func(tx *ent.Tx, r store.Revision) error {
+			if rev = r; r == seen {
+				return nil
+			}
+			gw, err := tx.Gateway.Get(sys, l.gatewayID)
+			if err != nil {
+				return err
+			}
+			group, err := tx.GatewayGroup.Get(sys, gw.GatewayGroupID)
+			if err == nil {
+				names = group.PublicHostnames
+			}
+			return err
+		})
+		switch {
+		case err != nil && ctx.Err() == nil:
+			if !failed {
+				log.Warn("cannot read the gateway group's public hostnames; keeping the ones known", "error", err)
+			}
+			failed = true
+			continue
+		case err != nil:
+			return
+		}
+		failed = false
+		if rev == seen {
+			continue
+		}
+		seen = rev
+		if own.setNames(append(slices.Clone(names), public)) && namesFollowed != nil {
+			namesFollowed(*own.names.Load())
+		}
+	}
 }
 
 // own reports whether ap is one of the process's own listeners on this host.

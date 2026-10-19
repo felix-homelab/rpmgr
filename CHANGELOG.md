@@ -10,6 +10,12 @@ Changes to the design documents are not recorded here: see the git history and t
 
 ## [Unreleased]
 
+### Fixed
+
+- All-in-one: the built-in connector follows the gateway group's public hostnames while it runs.
+  It read them only at start, so after a hostname was added, its addresses were not refused as the
+  host's own until the service restarted, and a removed one stayed refused. (#808)
+
 ### Security
 
 - Controller: a password reset or a password change now ends the user's other unused reset links,
