@@ -8,6 +8,7 @@ package accounts
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"strings"
 	"time"
@@ -122,8 +123,9 @@ func (a *Accounts) link(by, userID string, ttl time.Duration, orgs []string) (st
 
 // CompleteReset uses a link: it sets the password of the link's user or, for a first-user link,
 // creates the first user with email and displayName, who becomes Owner of the first org (created
-// if there is none) and Instance Admin. A link works once, until it expires, and a link an
-// administrator made only while they may still recover the user (stillRecoverable).
+// if there is none) and Instance Admin. A link works once, until it expires, for a user who is not
+// disabled, and a link an administrator made only while they may still recover the user
+// (stillRecoverable). Setting the password ends the user's other links (endLinks).
 func (a *Accounts) CompleteReset(ctx context.Context, tok, newPassword, email, displayName string) (*ent.User, error) {
 	if k, err := token.Parse(tok); err != nil || k != token.PasswordReset {
 		return nil, ErrLink
@@ -159,6 +161,10 @@ func (a *Accounts) CompleteReset(ctx context.Context, tok, newPassword, email, d
 			if ok, err := stillRecoverable(a.sys, tx, link.CreatedBy, *link.UserID); err != nil || !ok {
 				return errors.Join(err, errIf(!ok, ErrLink))
 			}
+			active, err := tx.User.Query().Where(user.ID(*link.UserID), user.StatusEQ(user.StatusActive)).Exist(a.sys)
+			if err != nil || !active {
+				return errors.Join(err, errIf(!active, ErrLink))
+			}
 		}
 		n, err := tx.PasswordReset.Update().Where(passwordreset.ID(link.ID), passwordreset.UsedAtIsNil(),
 			passwordreset.ExpiresAtGT(now)).SetUsedAt(now).Save(a.sys)
@@ -169,9 +175,14 @@ func (a *Accounts) CompleteReset(ctx context.Context, tok, newPassword, email, d
 			if u, err = tx.User.UpdateOneID(*link.UserID).SetPasswordHash(hash).Save(a.sys); err != nil {
 				return err
 			}
+			ended, err := endLinks(a.sys, tx, u.ID, now)
+			if err != nil {
+				return err
+			}
 			logSuperseded(a.ResetLog, a.ResetLogger, u.ID, revlog.Password, u.ID)
 			_, err = audit.Append(a.sys, tx, audit.Entry{ActorType: audit.ActorUser, ActorID: u.ID, AuthMethod: "reset-link",
-				Action: "user.password_reset", TargetType: "user", TargetID: u.ID, Result: audit.Success, Reason: "link " + link.ID})
+				Action: "user.password_reset", TargetType: "user", TargetID: u.ID, Result: audit.Success,
+				Reason: "link " + link.ID + endedReason(ended)})
 			return err
 		}
 		u, err = a.createFirst(tx, email, displayName, hash, link.ID)
@@ -181,6 +192,22 @@ func (a *Accounts) CompleteReset(ctx context.Context, tok, newPassword, email, d
 		return nil, err
 	}
 	return u, nil
+}
+
+// endLinks marks every unused password-reset link of a user as used, in the transaction that sets
+// the user's password, so that no link made before the change sets it again
+// (docs/04-security.md, "Human authentication and sessions"). It returns how many it ended.
+func endLinks(ctx context.Context, tx *ent.Tx, userID string, now time.Time) (int, error) {
+	return tx.PasswordReset.Update().Where(passwordreset.UserID(userID), passwordreset.UsedAtIsNil()).
+		SetUsedAt(now).Save(ctx)
+}
+
+// endedReason is the part of an audit reason that says how many other links a change ended.
+func endedReason(n int) string {
+	if n == 0 {
+		return ""
+	}
+	return fmt.Sprintf("; %d other reset links ended", n)
 }
 
 // RestoreReview returns since when the instance is in restore review, nil when it is not

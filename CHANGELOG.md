@@ -10,6 +10,12 @@ Changes to the design documents are not recorded here: see the git history and t
 
 ## [Unreleased]
 
+### Security
+
+- Controller: a password reset or a password change now ends the user's other unused reset links,
+  so a link issued before the change can no longer set the password; a reset link of a disabled
+  user sets no password. Severity low to medium; affects 0.1.0. (#812)
+
 ## [0.1.0] - 2026-10-19
 
 ### Added
