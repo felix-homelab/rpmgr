@@ -155,6 +155,11 @@ The transport decides how the route's streams travel between gateways and connec
   A request goes to the route with the longest prefix that matches at a segment boundary: `/api`
   matches `/api` and `/api/users`, not `/apix`. A prefix starts with `/`; empty serves every path.
 - The path goes to the upstream unchanged: the prefix is not removed.
+- A path with an empty, `.` or `..` segment, such as `//admin` or `/x/../admin`, is refused with
+  400 before a route is chosen, so it cannot reach a path that a narrower route protects through a
+  broader one ([03](../../03-connections.md#http-routes)). A backend that ignores the case of paths
+  or reads `;` parameters can still treat two routes' paths as one: protect it with one route for
+  the whole hostname rather than with path prefixes.
 - A hostname that a [TLS passthrough](tls-passthrough.md) route of the group uses cannot be an
   HTTP route's, and the reverse; the refusal names the other route. A hostname with a prefix that
   another HTTP route of the group holds already is refused as taken.
@@ -229,6 +234,8 @@ Phase 2 ([13](../../13-roadmap.md#phase-2--production)).
 
 | Situation | Status | Body |
 |---|---|---|
+| The path has an empty, `.` or `..` segment | 400 | text |
+| A `CONNECT` request | 501 | text |
 | No route serves the hostname or path, or the route is disabled | 404 | "Site not available" page |
 | The request names another host than the TLS connection, which no route serves | 421 | text |
 | An access policy refuses the client, or upgrades are off | 403 | text |

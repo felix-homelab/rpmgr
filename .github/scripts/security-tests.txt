@@ -73,3 +73,4 @@ TestTLS_VerifyConnectionOnResumption	done	2.10	#54
 TestSPIFFE_TrustDomainExact	done	2.10	#54
 TestReauth_NoSessionTickets	done	2.10	#54
 TestCSR_BoundToConnection	done	2.10	#54	Enroll clause: TestEnroll_Binding (3.7); Renew and Reauth clauses: TestRenew_Binding (3.12)
+TestGateway_UncleanPathRefused	done	-	#813	bug fix outside the slice plan

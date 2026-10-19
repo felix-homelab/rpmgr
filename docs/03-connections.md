@@ -745,6 +745,17 @@ sequenceDiagram
   an HTTP/2 one under a wildcard certificate, asks again on a connection of its own. TLS is
   terminated with the route certificate for the server name
   ([04](04-security.md#controller-certificates)).
+- **Clean paths only.** Before it chooses a route, on 443 and on port 80, the gateway refuses with
+  **400** a request whose path, once percent-decoded, does not start with `/` or has an empty, `.`
+  or `..` segment, such as `//admin`, `/./admin`, `/x/../admin` or `/%2e%2e/admin`; a trailing `/`
+  is allowed. The path goes upstream unchanged, so a backend that merges slashes or resolves dot
+  segments would otherwise serve, under a broader route and its access policies, a path that a
+  narrower route protects. Encoded letters and slashes are routed by their decoded form (`/%61dmin`
+  and `/admin%2fx` are `/admin…`). `CONNECT` is **501**, as a route serves paths, not tunnels;
+  `OPTIONS *` is answered by the gateway itself. Not covered: a backend that compares paths without
+  regard to case, or reads `;` parameters or `\` as part of a path, can still see two routes'
+  paths as one; such a backend is protected by one route for the whole host, not by path
+  prefixes.
 - **HTTPS upstreams.** For an `https` target the gateway speaks TLS over the stream, end to end
   with the upstream, verified with the settings of the target the connector reached, which
   `StreamResult` names: the target's server name (its host by default), its CA bundle or else the

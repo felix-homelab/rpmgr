@@ -485,6 +485,9 @@ func (h *HTTPRoutes) domainToken(w http.ResponseWriter, r *http.Request, host, i
 func (h *HTTPRoutes) serve80(w http.ResponseWriter, r *http.Request) {
 	h.active.Add(1)
 	defer h.active.Add(-1)
+	if refuseUnclean(w, r) {
+		return
+	}
 	host := hostOnly(r.Host)
 	if id, ok := strings.CutPrefix(r.URL.Path, tokenPath); ok {
 		h.domainToken(w, r, host, id)
@@ -994,6 +997,9 @@ func (h *HTTPRoutes) proxyError(w http.ResponseWriter, r *http.Request, err erro
 func (h *HTTPRoutes) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	h.active.Add(1)
 	defer h.active.Add(-1)
+	if refuseUnclean(w, r) {
+		return
+	}
 	rt := h.routeFor(r.Host, r.URL.Path)
 	if rt == nil {
 		// A name this gateway does not route, on a connection of another name: a client that
@@ -1012,6 +1018,38 @@ func (h *HTTPRoutes) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Strict-Transport-Security", "max-age="+strconv.Itoa(age))
 	}
 	h.proxy(w, r, rt)
+}
+
+// refuseUnclean answers a request no route may get and reports whether it did: CONNECT, which
+// asks for a tunnel rather than a path (501), and a path that is not clean (400). Routes are chosen
+// by the path's prefix and the path goes upstream as it came, so a path with an empty, "." or ".."
+// segment, such as //admin, /./admin or /x/../admin, would be routed by a broader route than the
+// one a backend that merges slashes or resolves dot segments serves it as (docs/03-connections.md,
+// "HTTP routes").
+func refuseUnclean(w http.ResponseWriter, r *http.Request) bool {
+	switch {
+	case r.Method == http.MethodConnect:
+		http.Error(w, http.StatusText(http.StatusNotImplemented), http.StatusNotImplemented)
+	case !cleanPath(r.URL.Path):
+		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+	default:
+		return false
+	}
+	return true
+}
+
+// cleanPath reports whether p, a request's decoded path, starts with "/" and has no empty, "." or
+// ".." segment; a trailing "/" is allowed.
+func cleanPath(p string) bool {
+	if !strings.HasPrefix(p, "/") || strings.Contains(p, "//") {
+		return false
+	}
+	for seg := range strings.SplitSeq(p[1:], "/") {
+		if seg == "." || seg == ".." {
+			return false
+		}
+	}
+	return true
 }
 
 // proxy sends a request over the route, within its access rules and its WebSocket and body

@@ -10,6 +10,14 @@ Changes to the design documents are not recorded here: see the git history and t
 
 ## [Unreleased]
 
+### Security
+
+- Gateway: a request path with an empty, `.` or `..` segment, such as `//admin` or
+  `/%2e%2e/admin`, is refused with 400 before a route is chosen, also on port 80. Before, it was
+  routed by a broader route of the host, and a backend that resolves such paths served the path of
+  a narrower route without that route's access policy. `CONNECT` requests are refused with 501.
+  Medium severity; affects v0.1.0. (#813)
+
 ## [0.1.0] - 2026-10-19
 
 ### Added
