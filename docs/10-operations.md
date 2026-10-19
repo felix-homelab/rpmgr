@@ -440,8 +440,20 @@ affect agents take effect through reconciliation and show apply status like any 
 - **A controller at minor N supports agents at N and N−1** of the same major. Agents newer than the
   controller are not supported: they connect, the UI shows a warning, and features the controller
   does not know are not used.
+- **Across a major release** the window is the same: a controller at the first minor of a major
+  supports the agents of the last minor release of the major before. A 1.0 controller supports the
+  agents of the last 0.y release, v0.7.0 as planned
+  ([D100](14-open-decisions.md#project-and-process),
+  [D115](14-open-decisions.md#engineering)), so a fleet of 0.y agents keeps running while it is
+  upgraded in the order below. The binary records the last minor release of each earlier major,
+  and the release of a new major checks that record ([RELEASING](../RELEASING.md#release-process)).
+  v1.0.0 keeps the protocol major `rpmgr-tunnel/1`.
 - The controller refuses agents older than `min_agent_version` with `Goodbye{upgrade_required}`
   ([03](03-connections.md#versioning-and-capabilities)), so skew beyond N−1 is visible, not silent.
+- **Upgrades go from one minor release to the next.** Skipping a minor release, for example from
+  1.2 to 1.4, is unsupported: the agent window above and the database migrations assume that each
+  minor release ran. Patch releases may be skipped. A controller that finds a database it does not
+  know refuses to start ([06](06-data-model.md#migrations)).
 - A protocol change that would break N−1 ships behind a capability flag first; the old behaviour is
   removed one minor release later.
 - Before the first release, one change of meaning shipped without a capability: access policies'

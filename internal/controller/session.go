@@ -8,6 +8,7 @@ import (
 	"crypto/rand"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"math/big"
 	"strconv"
@@ -463,20 +464,38 @@ func retryAfter() time.Duration {
 	return retryAfterMin + time.Duration(n.Int64())
 }
 
+// lastMinor records the last minor release of each earlier major, whose agents the first minor
+// release of the next major still accepts (docs/10-operations.md, "Upgrades and version skew"; D115).
+// The release of a new major checks its entry (RELEASING.md, "Release process").
+var lastMinor = map[int]int{0: 7}
+
 // MinAgentVersion is the oldest agent version a controller of version v accepts: the previous
-// minor release of the same major (docs/10-operations.md, "Upgrades and version skew"). A
-// development build, whose version is no semantic version, accepts every agent.
+// minor release of the same major, and for the first minor release of a major the last minor
+// release of the major before (docs/10-operations.md, "Upgrades and version skew"). A major whose
+// last minor release is not recorded yet is accepted whole. A development build, whose version is
+// no semantic version, accepts every agent.
 func MinAgentVersion(v string) string {
 	sv := semver.Canonical("v" + strings.TrimPrefix(v, "v"))
 	if sv == "" {
 		return ""
 	}
 	parts := strings.SplitN(strings.TrimPrefix(sv, "v"), ".", 3)
+	major, err := strconv.Atoi(parts[0])
+	if err != nil {
+		return ""
+	}
 	minor, err := strconv.Atoi(parts[1])
 	if err != nil {
 		return ""
 	}
-	return parts[0] + "." + strconv.Itoa(max(minor-1, 0)) + ".0"
+	switch {
+	case minor > 0:
+		return fmt.Sprintf("%d.%d.0", major, minor-1)
+	case major == 0:
+		return "0.0.0"
+	default:
+		return fmt.Sprintf("%d.%d.0", major-1, lastMinor[major-1])
+	}
 }
 
 // olderThan reports whether agent version v is older than min; an unparsable version is.

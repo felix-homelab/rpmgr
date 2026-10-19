@@ -45,8 +45,18 @@ images, the packages and the release manifest. It follows
   (`rpmgr.v2`) may be **added** in a MINOR release and served next to `rpmgr.v1`; **removing**
   `rpmgr.v1` is a MAJOR release, at least two minor releases after `rpmgr.v2` appeared
   ([07](docs/07-api.md#versioning-and-compatibility)).
-- Compatibility between controller and agents (N and N−1 of the same major) is defined in
+- Compatibility between controller and agents (N and N−1 of the same major; across a major, the
+  last minor release of the major before) is defined in
   [10](docs/10-operations.md#upgrades-and-version-skew).
+- **Upgrade path:** from one minor release to the next; skipping a minor release is unsupported,
+  skipping a patch release is fine ([10](docs/10-operations.md#upgrades-and-version-skew)).
+- **From 1.0.0** the stable interfaces are the API packages and the agent protocol, the command
+  line's JSON and YAML output and exit codes, manifests (`apiVersion: rpmgr.v1`), boot-file keys,
+  settings, and the names of metrics, log keys, audit entries and webhook events. Outside the API
+  a deprecation is announced at least one minor release before the item goes, which is a MAJOR
+  bump unless rpmgr migrates it automatically
+  ([07](docs/07-api.md#versioning-and-compatibility),
+  [D115](docs/14-open-decisions.md#engineering)).
 
 ## Tags
 
@@ -159,6 +169,9 @@ For a minor or major release. A patch release is the same, starting from the bra
    - `Unreleased` is complete: compare it with `git log --oneline --no-merges vPREVIOUS..main`
      (every `feat` and `fix` commit maps to an entry or was labelled `no-changelog` deliberately).
    - Breaking changes and long-running database migrations have upgrade notes.
+   - For a major release `vX.0.0`: the binary records the last minor release of major X−1, whose
+     agents it accepts ([10](docs/10-operations.md#upgrades-and-version-skew)); `TestUpgrade`
+     runs from that release.
 3. **Pre-release (recommended for minor and major releases).** Tag `vX.Y.0-rc.1` on `main`,
    publish it to the pre-release channel, and test:
    - a fresh install;
