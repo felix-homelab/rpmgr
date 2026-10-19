@@ -133,6 +133,12 @@ test, in the order of [10](10-operations.md#upgrades-and-version-skew), under li
   its configuration as the other cells do. They report versions of consecutive minors: the tag's
   version, or 0.1.0, and the next minor. `E2E_UPGRADE_FROM_VERSION` and `E2E_UPGRADE_TO_VERSION`
   override them.
+- **Across a major release:** with `E2E_UPGRADE_FROM_VERSION=0.7.0` and
+  `E2E_UPGRADE_TO_VERSION=1.0.0` the same test checks that a 1.0 controller serves the agents of
+  the last 0.y release until they are upgraded
+  ([10](10-operations.md#upgrades-and-version-skew)); the v1.0.0 release candidate runs it from
+  the last 0.y release. `TestControlSession_AgentsOfTheLastMinorAcrossTheMajor` checks the window
+  in process.
 - **Before the upgrade:** the earlier release runs:
   - tcp routes on each transport value, served by both connectors through both gateways;
   - a udp route;

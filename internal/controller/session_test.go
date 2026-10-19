@@ -337,9 +337,38 @@ func TestSession_DatabaseDown(t *testing.T) {
 }
 
 func TestMinAgentVersion(t *testing.T) {
-	for v, want := range map[string]string{"0.3.1": "0.2.0", "v1.0.0": "1.0.0", "2.7.3-rc.1": "2.6.0", "dev": "", "": ""} {
+	for v, want := range map[string]string{
+		"0.0.3":      "0.0.0",
+		"0.1.0":      "0.0.0",
+		"0.3.1":      "0.2.0",
+		"0.7.0":      "0.6.0",
+		"1.0.0":      "0.7.0", // across the major: the last 0.y release (D115)
+		"v1.0.0":     "0.7.0",
+		"1.0.0-rc.2": "0.7.0",
+		"1.0.4":      "0.7.0",
+		"1.1.0":      "1.0.0",
+		"2.0.0":      "1.0.0", // a major whose last minor is not recorded is accepted whole
+		"2.7.3-rc.1": "2.6.0",
+		"dev":        "",
+		"":           "",
+		"1.x.0":      "",
+	} {
 		if got := controller.MinAgentVersion(v); got != want {
 			t.Errorf("MinAgentVersion(%q) = %q, want %q", v, got, want)
+		}
+	}
+}
+
+// TestMinAgentVersion_AcrossTheMajor: a 1.0 controller accepts the agents of the last 0.y release
+// and refuses older ones and those of its own major's future minor releases alike, as Hello does.
+func TestMinAgentVersion_AcrossTheMajor(t *testing.T) {
+	min := controller.MinAgentVersion("1.0.0")
+	for agent, accepted := range map[string]bool{
+		"0.6.9": false, "0.7.0-rc.1": false, "0.7.0": true, "0.7.3": true, "0.8.0": true, "1.0.0": true,
+		"1.2.0": true, "garbage": false,
+	} {
+		if got := !controller.OlderThan(agent, min); got != accepted {
+			t.Errorf("agent %s at a 1.0.0 controller: accepted %v, want %v", agent, got, accepted)
 		}
 	}
 }
