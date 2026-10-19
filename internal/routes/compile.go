@@ -441,7 +441,9 @@ func addWeight(sum uint32, weight int) uint32 {
 
 // connectorTargets loads the connector a for ConnectorRoutes and ConnectorGateways, its enabled
 // targets on enabled routes, with the routes, and the instance settings. con is nil for any other
-// agent and for a disabled or decommissioned connector, which serve nothing.
+// agent and for a disabled or decommissioned connector, which serve nothing. Targets of routes the
+// connector lacks a capability for are left out, so that both sources leave those routes out
+// alike: a ConnectorGateway never names a route the snapshot does not hold.
 func connectorTargets(ctx context.Context, tx *ent.Tx, a snapshot.Agent) (con *ent.Connector, targets []*ent.RouteTarget,
 	inst *rpmgrv1.InstanceSettings, err error) {
 	if a.Identity.Kind != pki.KindConnector {
@@ -457,6 +459,9 @@ func connectorTargets(ctx context.Context, tx *ent.Tx, a snapshot.Agent) (con *e
 	targets, err = tx.RouteTarget.Query().Where(routetarget.ConnectorID(con.ID), routetarget.Enabled(true),
 		routetarget.HasRouteWith(route.Enabled(true), route.TypeIn(route.TypeTCP, route.TypeUDP, route.TypeTCPUDP, route.TypeHTTP, route.TypeTLSPassthrough))).WithRoute().All(ctx)
 	if err != nil {
+		return nil, nil, nil, err
+	}
+	if targets, err = servable(ctx, tx, a, targets); err != nil {
 		return nil, nil, nil, err
 	}
 	inst, _, err = settings.Instance(ctx, tx.Client())

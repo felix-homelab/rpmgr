@@ -260,6 +260,10 @@ func TestRouteStatus_CapabilityMissing(t *testing.T) {
 			Uses: func(_ context.Context, _ *ent.Client, id string) (bool, error) { return id == gated, nil }}))
 	}
 
+	// Every agent applied the newest revision and reports no resource of the gated route as not
+	// ready: what an agent without the capability reports, as its snapshot of that revision holds
+	// neither the route nor a reference to it, so it applies without a rejection and knows of no
+	// route to report (internal/routes, TestCompile_GatedSnapshotsValidate).
 	applied := c.ConfigRevision.Query().Order(ent.Desc(configrevision.FieldID)).FirstX(e.sys).ID
 	caps := map[string][]string{gws[0]: {"tunnel.quic", "test.gw"}, gws[1]: {"tunnel.quic"}, c1: {"test.conn"}, c2: nil}
 	for _, id := range []string{gws[0], gws[1], c1, c2} {

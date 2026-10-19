@@ -1224,34 +1224,41 @@ enforces or carries out is therefore registered with the capability that announc
 field of the feature exists, and the compiler fails closed:
 
 - The compiler leaves a route that uses a gated feature out of the snapshot of every agent of the
-  feature's kind (gateway or connector) whose `Hello` lacks the capability. The agent's other
+  feature's kind (gateway or connector) whose `Hello` lacks the capability, with every reference to
+  it: a connector's gateway entries then name only the routes its snapshot holds. The agent's other
   routes are unaffected; it never receives the route in a form it would serve without the feature.
 - The route status lists such an agent with the reason `CAPABILITY_MISSING`, naming the
   capabilities it lacks ([06](06-data-model.md#desired-vs-observed-state)). A gateway without the
-  capability does not serve the route; a connector without it does not get the route, and the
-  gateways' streams to it are answered `ROUTE_UNKNOWN` until it is upgraded.
+  capability does not serve the route. A connector without it does not get the route, yet the
+  gateways keep listing that connector among the route's entries, as they cannot know its
+  capabilities: a stream they choose for it fails with `ROUTE_UNKNOWN` instead of moving to a
+  connector that has the capability. That costs availability until the connector is upgraded.
+  Whether gateways should pass over such connectors is decided by the first slice that registers a
+  connector-side gate.
 - Capabilities are read from each control session's `Hello`. An agent that reconnects after its
   upgrade announces the capability and gets the route with its next snapshot.
 
-The gated features of Phase 2 and their capabilities, each registered by the slice that adds the
-feature:
+The gated route features of Phase 2, each registered by the slice that adds the feature:
 
-| Capability | Kind | Feature |
+| Capability | Kind | Route feature |
 |---|---|---|
 | `http.header-match` | Gateway | Header matching of `http` routes |
 | `http.require-header` | Gateway | Require-header rules of access policies |
 | `route.limits` | Gateway | Per-route connection, rate and bandwidth limits |
-| `pages.custom` | Gateway | Custom error pages of a gateway group |
 | `tcp.http-connect` | Gateway | `tcp` routes in `http_connect` mode |
-| `tunnel.wss` | Gateway, connector | Data sessions over WSS |
 | `http.oidc` | Gateway | OIDC forward-auth on `http` routes |
 | `http.cf-connecting-ip` | Gateway | The client address from `CF-Connecting-IP` on proxied routes |
+
+The other capabilities of Phase 2 are not route features. Each is checked where its feature is
+used, not by the route compiler:
+
+| Capability | Kind | Feature |
+|---|---|---|
+| `pages.custom` | Gateway | Custom error pages of a gateway group |
+| `tunnel.wss` | Gateway, connector | Data sessions over WSS |
 | `logs.stream` | Gateway, connector | Live logs (`Open` and `Attach`) |
 | `ota` | Gateway, connector | Over-the-air updates offered in the snapshot |
 | `relay.v1` | Gateway, connector | Relayed private services |
-
-Capabilities that are not route features, such as `tunnel.wss`, `logs.stream` and `ota`, are
-checked where their feature is used rather than by the route compiler.
 
 - Protobuf rules: fields are only added; unknown fields are ignored; an unknown `StreamOpen.kind`
   is answered with `PROTOCOL`.

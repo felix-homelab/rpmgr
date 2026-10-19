@@ -5,15 +5,20 @@ package routes_test
 import (
 	"context"
 	"errors"
+	"maps"
 	"slices"
+	"strings"
 	"testing"
 
 	agentv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/agent/v1"
+	"github.com/felix-homelab/rpmgr/internal/connector"
+	"github.com/felix-homelab/rpmgr/internal/gateway"
 	"github.com/felix-homelab/rpmgr/internal/pki"
 	"github.com/felix-homelab/rpmgr/internal/routes"
 	"github.com/felix-homelab/rpmgr/internal/snapshot"
 	"github.com/felix-homelab/rpmgr/internal/store"
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/route"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routetarget"
 	"github.com/felix-homelab/rpmgr/internal/store/storetest"
 )
@@ -25,8 +30,8 @@ func gate(t *testing.T, kind pki.Kind, capability string, ids ...string) {
 		Uses: func(_ context.Context, _ *ent.Client, id string) (bool, error) { return slices.Contains(ids, id), nil }}))
 }
 
-// compileAs compiles the snapshot of an agent of the fleet's org that announces caps.
-func (f *fleet) compileAs(t *testing.T, kind pki.Kind, id string, caps ...string) []*agentv1.Resource {
+// compileSnap compiles the snapshot of an agent of the fleet's org that announces caps.
+func (f *fleet) compileSnap(t *testing.T, kind pki.Kind, id string, caps ...string) *agentv1.Snapshot {
 	t.Helper()
 	c := &snapshot.Compiler{Sources: routes.Sources()}
 	snap, err := c.Compile(f.sys, f.db, snapshot.Agent{Identity: pki.Identity{TrustDomain: "rpmgr-teststor", Org: f.orgA, Kind: kind, ID: id},
@@ -34,7 +39,13 @@ func (f *fleet) compileAs(t *testing.T, kind pki.Kind, id string, caps ...string
 	if err != nil {
 		t.Fatal(err)
 	}
-	return snap.GetResources()
+	return snap
+}
+
+// compileAs is compileSnap's resources.
+func (f *fleet) compileAs(t *testing.T, kind pki.Kind, id string, caps ...string) []*agentv1.Resource {
+	t.Helper()
+	return f.compileSnap(t, kind, id, caps...).GetResources()
 }
 
 func ids(rs []*agentv1.Resource) []string {
@@ -45,46 +56,143 @@ func ids(rs []*agentv1.Resource) []string {
 	return out
 }
 
+// everyType adds to the fleet's group an enabled route of each type besides its tcp route r1, each
+// with a target on c1, and returns them by type, r1 included.
+func (f *fleet) everyType(t *testing.T) map[string]string {
+	t.Helper()
+	c := f.db.Client()
+	if err := f.pool(t, f.orgA, f.groupA, routes.UDP, 20000, 20099); err != nil {
+		t.Fatal(err)
+	}
+	f.verifiedExample(t)
+	target := func(id, host string, port int) {
+		c.RouteTarget.Create().SetOrgID(f.orgA).SetRouteID(id).SetConnectorID(f.c1).SetKind("address").SetHost(host).SetPort(port).
+			ExecX(f.sys)
+	}
+	out := map[string]string{"tcp": f.r1}
+	mk := func(typ string, ports func(tx *ent.Tx, id string) error) string {
+		id := c.Route.Create().SetOrgID(f.orgA).SetName(strings.ReplaceAll(typ, "_", "-")).SetType(route.Type(typ)).SetGatewayGroupID(f.groupA).SaveX(f.sys).ID
+		if err := f.tx(t, func(tx *ent.Tx) error { return ports(tx, id) }); err != nil {
+			t.Fatal(err)
+		}
+		out[typ] = id
+		return id
+	}
+	target(mk("udp", func(tx *ent.Tx, id string) error {
+		a, err := routes.Allocate(f.sys, tx, f.orgA, f.groupA, routes.UDP, 20010)
+		if err != nil {
+			return err
+		}
+		return tx.RouteUDP.Create().SetOrgID(f.orgA).SetRouteID(id).SetPortAllocationID(a.ID).Exec(f.sys)
+	}), "10.0.0.53", 53)
+	target(mk("tcp_udp", func(tx *ent.Tx, id string) error {
+		tcp, udp, err := routes.AllocateBoth(f.sys, tx, f.orgA, f.groupA, 20020, "", "")
+		if err != nil {
+			return err
+		}
+		if err := tx.RouteTCP.Create().SetOrgID(f.orgA).SetRouteID(id).SetPortAllocationID(tcp.ID).Exec(f.sys); err != nil {
+			return err
+		}
+		return tx.RouteUDP.Create().SetOrgID(f.orgA).SetRouteID(id).SetPortAllocationID(udp.ID).Exec(f.sys)
+	}), "10.0.0.54", 53)
+	target(mk("tls_passthrough", func(tx *ent.Tx, id string) error {
+		_, err := routes.AddHostname(f.sys, tx, id, "tls.example.com", "")
+		return err
+	}), "10.0.0.7", 443)
+	web := f.httpRoute(t, "web", true, true, nil, "www.example.com")
+	c.RouteTarget.Create().SetOrgID(f.orgA).SetRouteID(web).SetConnectorID(f.c1).SetKind("address").SetHost("10.0.0.80").
+		SetPort(8080).SetUpstreamProtocol(routetarget.UpstreamProtocolTCP).ExecX(f.sys)
+	out["http"] = web
+	return out
+}
+
 // TestCompile_GatedRouteNeverReachesOldGateway (docs/12, D113): a route that uses a gated feature
-// is left out of the snapshot of every gateway that does not announce the feature's capability,
-// whatever the route's type, and only that route; a gateway that announces it, or announces it
-// after reconnecting, gets the route as before. A gate of the other kind leaves gateways alone.
+// is left out of the snapshot of every gateway that does not announce the feature's capability, for
+// each route type, and only that route; a gateway that announces it, or announces it after
+// reconnecting, gets the route as before. A gate of the gateway kind leaves connectors alone.
 func TestCompile_GatedRouteNeverReachesOldGateway(t *testing.T) {
 	storetest.ForEachDialect(t, func(t *testing.T, db *store.DB) {
 		f := newFleet(t, db)
 		c := db.Client()
 		gw2 := c.Gateway.Create().SetOrgID(f.orgA).SetGatewayGroupID(f.groupA).SetName("gw2").SetSlot(2).
 			SetTunnelEndpoints([]string{"gw2.example:443"}).SaveX(f.sys).ID
-		f.verifiedExample(t)
-		web := f.httpRoute(t, "web", true, true, nil, "www.example.com")
-		c.RouteTarget.Create().SetOrgID(f.orgA).SetRouteID(web).SetConnectorID(f.c1).SetKind("address").SetHost("10.0.0.80").
-			SetPort(8080).SetUpstreamProtocol(routetarget.UpstreamProtocolTCP).ExecX(f.sys)
+		byType := f.everyType(t)
 		plain := f.httpRoute(t, "plain", true, true, nil, "plain.example.com")
 		c.RouteTarget.Create().SetOrgID(f.orgA).SetRouteID(plain).SetConnectorID(f.c1).SetKind("address").SetHost("10.0.0.81").
 			SetPort(8080).SetUpstreamProtocol(routetarget.UpstreamProtocolTCP).ExecX(f.sys)
+		gatedIDs := slices.Collect(maps.Values(byType))
 		before := ids(f.compileAs(t, pki.KindGateway, f.gateway))
-		if !slices.Contains(before, f.r1) || !slices.Contains(before, web) || !slices.Contains(before, plain) {
-			t.Fatalf("without a gate the gateway gets %v", before)
+		for _, id := range append(slices.Clone(gatedIDs), plain) {
+			if !slices.Contains(before, id) {
+				t.Fatalf("without a gate the gateway lacks %s: %v", id, before)
+			}
 		}
 
-		gate(t, pki.KindGateway, "test.gated", f.r1, web)
+		gate(t, pki.KindGateway, "test.gated", gatedIDs...)
 		old := ids(f.compileAs(t, pki.KindGateway, f.gateway, "tunnel.quic", "tunnel.h2"))
-		if slices.Contains(old, f.r1) || slices.Contains(old, web) {
-			t.Fatalf("an old gateway got a gated route: %v", old)
+		for typ, id := range byType {
+			if slices.Contains(old, id) {
+				t.Fatalf("an old gateway got the gated %s route: %v", typ, old)
+			}
 		}
-		if want := slices.DeleteFunc(slices.Clone(before), func(id string) bool { return id == f.r1 || id == web }); !slices.Equal(old, want) {
+		if want := slices.DeleteFunc(slices.Clone(before), func(id string) bool { return slices.Contains(gatedIDs, id) }); !slices.Equal(old, want) {
 			t.Fatalf("an old gateway gets %v, want everything else %v", old, want)
 		}
 		// The other gateway of the group announces it; so does the first after reconnecting.
-		if got := ids(f.compileAs(t, pki.KindGateway, gw2, "test.gated")); !slices.Contains(got, f.r1) || !slices.Contains(got, web) {
-			t.Fatalf("a new gateway: %v", got)
+		if got := ids(f.compileAs(t, pki.KindGateway, gw2, "test.gated")); !slices.Equal(got, slices.DeleteFunc(slices.Clone(before), func(id string) bool {
+			return id == f.gateway // nothing of before is the gateway's own; both get the same routes
+		})) {
+			t.Fatalf("a new gateway: %v, want %v", got, before)
 		}
 		if got := ids(f.compileAs(t, pki.KindGateway, f.gateway, "tunnel.quic", "test.gated")); !slices.Equal(got, before) {
 			t.Fatalf("after reconnecting with the capability: %v, want %v", got, before)
 		}
-		// The gate is the gateway's: connectors keep the route.
-		if rs := routesOf(f.compileAs(t, pki.KindConnector, f.c1)); !slices.Contains(ids(rs), f.r1) || !slices.Contains(ids(rs), web) {
-			t.Fatalf("a connector lost a gateway-gated route: %v", ids(rs))
+		// The gate is the gateway's: connectors keep the routes.
+		rs := ids(routesOf(f.compileAs(t, pki.KindConnector, f.c1)))
+		for _, id := range append(gatedIDs, plain) {
+			if !slices.Contains(rs, id) {
+				t.Fatalf("a connector lost the gateway-gated route %s: %v", id, rs)
+			}
+		}
+	})
+}
+
+// TestCompile_GatedSnapshotsValidate: every snapshot the gates shape, for a gateway or a connector
+// with or without the capabilities, of every route type, passes the agent's own validation, which
+// an agent runs before applying it: withholding a route never leaves a reference to it behind. A
+// connector without the capability names the route in none of its gateway entries.
+func TestCompile_GatedSnapshotsValidate(t *testing.T) {
+	storetest.ForEachDialect(t, func(t *testing.T, db *store.DB) {
+		f := newFleet(t, db)
+		byType := f.everyType(t)
+		gatedIDs := slices.Collect(maps.Values(byType))
+		gate(t, pki.KindGateway, "test.gw", gatedIDs...)
+		gate(t, pki.KindConnector, "test.conn", gatedIDs...)
+		gwApplier, _ := gateway.NewApplier()
+		conApplier := connector.NewApplier(nil, nil)
+		for _, caps := range [][]string{nil, {"test.gw"}, {"test.conn"}, {"test.gw", "test.conn"}} {
+			if errs := gwApplier.Validate(f.compileSnap(t, pki.KindGateway, f.gateway, caps...)); len(errs) > 0 {
+				t.Errorf("gateway with %v: %v", caps, errs)
+			}
+			snap := f.compileSnap(t, pki.KindConnector, f.c1, caps...)
+			if errs := conApplier.Validate(snap); len(errs) > 0 {
+				t.Errorf("connector with %v: %v", caps, errs)
+			}
+			withCap := slices.Contains(caps, "test.conn")
+			for _, r := range snap.GetResources() {
+				g := r.GetConnectorGateway()
+				if g == nil {
+					continue
+				}
+				for _, id := range gatedIDs {
+					if slices.Contains(g.GetRoutes(), id) != withCap {
+						t.Errorf("connector with %v: gateway entry %s routes %v, gated %s", caps, r.GetId(), g.GetRoutes(), id)
+					}
+				}
+			}
+			if !withCap && slices.ContainsFunc(snap.GetResources(), func(r *agentv1.Resource) bool { return slices.Contains(gatedIDs, r.GetId()) }) {
+				t.Errorf("connector without the capability got a gated route: %v", ids(snap.GetResources()))
+			}
 		}
 	})
 }

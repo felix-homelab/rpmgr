@@ -67,11 +67,16 @@ func Register(g Gate) (remove func()) {
 }
 
 // Required returns what agents need to get route routeID: one requirement per registered gate the
-// route uses, sorted and without repeats.
+// route uses, sorted and without repeats. Each gate's Uses runs once per call, so a compilation
+// reads every gate once per route resource; with no gate registered it reads nothing. Should
+// gates become many or costly, the sources can share one result per compilation.
 func Required(ctx context.Context, c *ent.Client, routeID string) ([]Requirement, error) {
 	gates.RLock()
 	list := slices.Clone(gates.list)
 	gates.RUnlock()
+	if len(list) == 0 {
+		return nil, nil
+	}
 	var out []Requirement
 	for _, g := range list {
 		uses, err := g.Uses(ctx, c, routeID)
@@ -110,8 +115,31 @@ func isRoute(r *agentv1.Resource) bool {
 	return false
 }
 
-// gated wraps a snapshot source so that it leaves out every route the agent lacks a capability
-// for. A route resource's ID is the route's.
+// servable keeps the targets, loaded with their routes, whose routes the agent a has every
+// capability for. Each route's gates are read once.
+func servable(ctx context.Context, tx *ent.Tx, a snapshot.Agent, targets []*ent.RouteTarget) ([]*ent.RouteTarget, error) {
+	ok := map[string]bool{}
+	out := targets[:0]
+	for _, t := range targets {
+		serve, seen := ok[t.RouteID]
+		if !seen {
+			reqs, err := Required(ctx, tx.Client(), t.RouteID)
+			if err != nil {
+				return nil, err
+			}
+			serve = len(Missing(reqs, a.Identity.Kind, a.Has)) == 0
+			ok[t.RouteID] = serve
+		}
+		if serve {
+			out = append(out, t)
+		}
+	}
+	return out, nil
+}
+
+// gated wraps a snapshot source so that it leaves out every route resource the agent lacks a
+// capability for; a route resource's ID is the route's. The connector's sources already leave
+// those routes out through servable, which also keeps them out of its ConnectorGateway resources.
 func gated(src snapshot.Source) snapshot.Source {
 	return func(ctx context.Context, tx *ent.Tx, a snapshot.Agent) ([]*agentv1.Resource, error) {
 		rs, err := src(ctx, tx, a)
