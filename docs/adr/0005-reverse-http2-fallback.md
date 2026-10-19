@@ -178,3 +178,9 @@ carried a single stream at 1.1 to 1.7 Gbit/s at 1 ms and at 80 to 145 % of a wel
 TCP baseline from 20 ms on, at 0.45 to 2.0 CPU s per Gbit, against 1.2 to 5.8 for QUIC. Its routes
 answered again 1.0 to 1.5 s after a SIGKILL of the gateway. The results, the misses and their
 decisions are in [ADR-0004](0004-quic-default-transport-policy.md#phase-1-measurements).
+
+**Phase 2 study of several sessions per gateway** (#422, 2026-10-19): four TCP connections per
+gateway instead of two carried 1.4 to 2.1 times as much with 32 streams at 1 % loss. The study
+also found that the gateway's window budget admits at most nine reverse-HTTP/2 sessions with the
+defaults. Details in
+[ADR-0004](0004-quic-default-transport-policy.md#phase-2-study-several-data-sessions-per-gateway).
