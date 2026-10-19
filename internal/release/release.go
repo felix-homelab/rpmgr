@@ -15,7 +15,6 @@ import (
 	"fmt"
 	"io"
 	"regexp"
-	"strings"
 	"time"
 
 	"golang.org/x/mod/semver"
@@ -110,7 +109,7 @@ func (m *Manifest) Check() error {
 	}
 	for _, a := range m.Artifacts {
 		if !partRe.MatchString(a.OS) || !partRe.MatchString(a.Arch) || !partRe.MatchString(a.Variant) || a.Size <= 0 ||
-			len(a.SHA256) != 64 || strings.ToLower(a.SHA256) != a.SHA256 {
+			!sumRe.MatchString(a.SHA256) {
 			return fmt.Errorf("release: manifest lists a bad artifact %+v", a)
 		}
 	}
@@ -119,6 +118,9 @@ func (m *Manifest) Check() error {
 
 // partRe is what an artifact's OS, architecture and variant may be, as they form its file name.
 var partRe = regexp.MustCompile(`^[a-z0-9]+$`)
+
+// sumRe is an artifact's SHA-256: 64 lower-case hexadecimal digits.
+var sumRe = regexp.MustCompile(`^[0-9a-f]{64}$`)
 
 // valid reports whether v is a full semantic version without a "v" and without build metadata.
 func valid(v string) bool {

@@ -1181,7 +1181,7 @@ sequenceDiagram
 | Traffic rollup retention | checked every 1 h (singleton job); the retention itself is an instance setting ([10](10-operations.md#runtime-settings-ui--settings)) | Buckets past it go within the hour ([06](06-data-model.md#desired-vs-observed-state)) |
 | Audit retention | checked every 1 h (singleton job); the retention itself is an instance setting ([10](10-operations.md#runtime-settings-ui--settings)) | Entries past it go within the hour, up to a checkpoint ([04](04-security.md#audit-log)) |
 | Connector-local policy file | checked every 2 s; `SIGHUP` (`systemctl reload`) reloads it at once | An edit takes effect without a new revision ([04](04-security.md#connector-local-policy)) |
-| Revision and deny-list check | every 1 s | A revision or a revocation written by another process reaches the agents without a notification channel |
+| Revision and deny-list check | every 1 s | A revision or a revocation written by another process reaches the agents without a notification channel; with several replicas, the safety net behind `LISTEN/NOTIFY` ([10](10-operations.md#high-availability)) |
 | Route drain | 30 s | Finish in-flight requests |
 | Route port in use | a `tcp` or `udp` route port the gateway cannot bind (`not_ready(port_in_use)`) is tried again every 5 s | [R] A port another process frees is taken within seconds, without a new revision |
 | Gateway drain | 60 s | Time for connectors to re-home |
