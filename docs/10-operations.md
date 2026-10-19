@@ -14,7 +14,6 @@
 |---|---|---|
 | **Global install script** | The first host on Linux: a controller or all-in-one, or any role without a controller to install from | `deploy/install.sh` in the repository, attached to every release as `install.sh` and pinned to it ([D74](14-open-decisions.md#project-and-process)): `curl -fsSLO https://github.com/felix-homelab/rpmgr/releases/latest/download/install.sh && sudo sh install.sh`. It downloads the release from GitHub, verifies it as the controller-hosted script does, and installs the binary, the user `rpmgr`, `/etc/rpmgr` and `/var/lib/rpmgr`; then it offers `rpmgr setup` ([D75](14-open-decisions.md#project-and-process), [04](04-security.md#install-scripts)) |
 | **Controller-hosted install script** | Gateways and connectors on Linux (`/install.sh`) | Served by the controller from embedded templates; downloads from the controller's `/dl/` mirror and verifies root key → signing-key statement → manifest signature → artifact SHA-256 with OpenSSL ≥ 3.0, and refuses to install without it (VB-15, resolved in [13](13-roadmap.md#verification-backlog)) ([04](04-security.md#install-scripts)). The UI generates the full command with `--controller` and `--ca-pin` ([04](04-security.md#join-command)). There is no `/install.ps1`: Windows and macOS connectors are installed from packages (Phase 2) |
-| **Distribution packages** (`.deb`, `.rpm`; Phase 2) | High-assurance installs | [R] Package name `rpmgr` (never `rpm`, [ADR-0001](adr/0001-name-rpmgr.md)); availability checked as VB-14. Built with nfpm and served from a signed apt/yum repository on GitHub Pages, signed with a key on the release signing token. The package installs the binary and the hardened units; enrollment is a separate step. Package installs are **updated by the package manager from the signed repository, not by OTA**: the updater refuses to replace a package-owned binary, because the next package run would silently revert it ([04](04-security.md#over-the-air-updates)). `.apk` packages are not planned |
 | **Homebrew tap** (Phase 2) | Connectors on macOS | Updated with `brew upgrade`; no OTA on macOS before Phase 3 ([Windows and macOS connectors](#windows-and-macos-connectors-phase-2)) |
 | **winget / MSI** (Phase 2) | Connectors on Windows | Updated through winget or a new MSI; no OTA on Windows before Phase 3 ([Windows and macOS connectors](#windows-and-macos-connectors-phase-2)) |
 | **OCI image** `ghcr.io/felix-homelab/rpmgr` | Containers, Kubernetes | The release binary on distroless static (Debian 13), for every released Linux architecture, run as the nonroot user (UID 65532) without a shell. `rpmgr` is the entrypoint, so the role is the command: `docker run … ghcr.io/felix-homelab/rpmgr gateway`. Signed keylessly with cosign, with SLSA provenance. Tags: `X.Y.Z`, and for a stable release also `X.Y`, `X` and `latest` ([RELEASING](../RELEASING.md#release-process)). The boot file is mounted at `/etc/rpmgr/<role>.yaml`, and the state is a volume at `/var/lib/rpmgr`, which the image gives to the nonroot user. A gateway publishes 80/tcp, 443/tcp and 443/udp: Docker lets the nonroot user bind ports below 1024 in the container's own network namespace, as `test/images` checks. [R] With host networking, the host's `net.ipv4.ip_unprivileged_port_start` must be 80 or lower; on Kubernetes, the pod sets that sysctl in its security context. |
@@ -123,7 +122,7 @@ with `rpmgr user reset-password` while no user exists. There is no default passw
 
 | Path | Owner / mode | Contents |
 |---|---|---|
-| `/usr/bin/rpmgr` (packages) or `/usr/local/bin/rpmgr` (script installs) | root, 0755 | The binary; `.prev` kept next to it during OTA. **Never writable by the service user**: for script installs and standalone binaries only the root-owned updater replaces it, at the path recorded in `install.json`; package installs are updated by the package manager ([04](04-security.md#over-the-air-updates)) |
+| `/usr/local/bin/rpmgr` (script installs) | root, 0755 | The binary; `.prev` kept next to it during OTA. **Never writable by the service user**: for script installs and standalone binaries only the root-owned updater replaces it, at the path recorded in `install.json` ([04](04-security.md#over-the-air-updates)) |
 | `/etc/rpmgr/` | root, 0755 | Boot files and the connector-local policy; the service user reads them |
 | `/etc/rpmgr/<role>.yaml` | root, 0644 | Boot configuration ([Configuration](#configuration)) |
 | `/etc/rpmgr/tls/` | root, 0755 | The certificate `rpmgr setup --tls self-signed` makes for the UI: `<host>.crt` (root, 0644) and `<host>.key` (rpmgr, 0600) |
@@ -202,25 +201,22 @@ RestartSec=2s
   and oneshot `rpmgr-update.service` ([04](04-security.md#over-the-air-updates)). It:
   1. reads `auto_update` from `/etc/rpmgr/policy.yaml` **itself** and stops if updates are not
      allowed (it does not trust the agent's decision);
-  2. refuses to act on a **package-owned** binary (`install.json` records the install method):
-     package installs are updated by the package manager from the signed repository, never by OTA,
-     because the next package run would silently revert an OTA swap;
-  3. opens the staging directory through a directory fd with
+  2. opens the staging directory through a directory fd with
      `openat2(RESOLVE_NO_SYMLINKS | RESOLVE_BENEATH)`, requires regular files (`fstat` → `S_ISREG`;
      no symlinked directory, FIFO or device), and checks that each file's size is ≤ the manifest's
      size and ≤ a hard cap of 256 MiB, before and while copying;
-  4. **copies** the files into the root-only `/var/lib/rpmgr-update/staging/` and verifies **the
+  3. **copies** the files into the root-only `/var/lib/rpmgr-update/staging/` and verifies **the
      copy**: signature, manifest `seq`, version floor, OS/arch, size and SHA-256. The service user can
      no longer swap a file or plant a symlink between check and install;
-  5. refuses anything below the persisted floor. Floor and `seq` are initialised at install time from
-     the running version and its release `seq`; after that the running version plays no role. A
-     manifest with a higher `seq` may lower the floor, which makes **signed downgrades** possible,
+  4. refuses anything below the persisted floor. Floor and `seq` are initialised at install time
+     from the running version and its release `seq`; after that the running version plays no role.
+     A manifest with a higher `seq` may lower the floor, which makes **signed downgrades** possible,
      while replaying an old manifest (lower `seq`) is refused — also on a fresh host;
-  6. copies the verified file into the target directory as `.rpmgr.new` (same filesystem, so no
+  5. copies the verified file into the target directory as `.rpmgr.new` (same filesystem, so no
      cross-filesystem `rename`), fsyncs it, re-hashes it, and `rename`s it over the binary at the path
      recorded in `/var/lib/rpmgr-update/install.json` (`/usr/local/bin/rpmgr` for script installs),
      keeping `.prev`, then restarts the role service;
-  7. polls the agent's admin `/readyz` (ready only with an established control session and an
+  6. polls the agent's admin `/readyz` (ready only with an established control session and an
      applied snapshot, see [Health](#health)) for up to 5 min, otherwise rolls back to `.prev`. The
      automatic rollback is exempt from the floor, because floor and `seq` are only raised after a
      successful health check. A connector's local policy is not rolled back with the binary: a
@@ -466,8 +462,7 @@ affect agents take effect through reconciliation and show apply status like any 
    other gateways of the group, then it restarts ([03](03-connections.md#multiple-gateways)).
 3. **Connectors.** Through the staged OTA rollout: canary → percentage → all, with automatic
    rollback on failure ([04](04-security.md#over-the-air-updates)). Hosts with
-   `auto_update: notify` or `off` are listed in the UI and updated by their operators. Package
-   installs are updated by the package manager from the signed repository, not by OTA. Windows and
+   `auto_update: notify` or `off` are listed in the UI and updated by their operators. Windows and
    macOS connectors (Phase 2) are updated through winget or Homebrew; they get no OTA before
    Phase 3.
 
@@ -756,7 +751,7 @@ followed gateway → connector → service. [R] Head sampling at 1 % by default,
       synchronisation (NTP/chrony) on every host.
 - [ ] Backups scheduled (with the revocation log) and a restore tested.
 - [ ] Enrollment tokens: no long-lived multi-use tokens except for ephemeral connectors.
-- [ ] Release signatures verified for manual installs; packages from the signed repository.
+- [ ] Release signatures verified for manual installs.
 
 ## Runbooks
 

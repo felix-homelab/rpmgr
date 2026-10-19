@@ -934,10 +934,7 @@ Phase 3 item ([13](13-roadmap.md#phase-3--advanced)).
 5. It copies the verified file into the target directory as `.rpmgr.new` (same filesystem, so no
    cross-filesystem rename), fsyncs and re-hashes it, keeps the previous binary as `.prev`, renames
    `.rpmgr.new` over the binary at the path recorded in `/var/lib/rpmgr-update/install.json`
-   (`/usr/local/bin/rpmgr` for script installs), and restarts the role service. **Package installs
-   (deb/rpm) are not updated by OTA**: they are updated by the package manager from the signed
-   repository, because the next package run would silently revert a binary replaced behind its back;
-   the updater refuses to replace a package-owned binary.
+   (`/usr/local/bin/rpmgr` for script installs), and restarts the role service.
 6. The updater polls the agent's admin `/readyz`, which reports ready only when the control session
    is established and a snapshot is applied. If it is not ready within 5 minutes, the updater
    **rolls back** to `.prev` and the agent reports the failure.
@@ -1001,8 +998,8 @@ Phase 3 item ([13](13-roadmap.md#phase-3--advanced)).
   connectors with a Homebrew tap (Phase 2, [10](10-operations.md#install)).
 - No third-party download proxy, and no download URL chosen at runtime by the controller.
 - Caveat: a compromised controller can serve a malicious install script. High-assurance installs
-  should use distribution packages or verify the release (GitHub release + `gh attestation verify`)
-  before running it. After installation, updates are protected by the compiled-in keys.
+  should verify the release (GitHub release + `gh attestation verify`) before running it. After
+  installation, updates are protected by the compiled-in keys.
 
 ## Audit log
 

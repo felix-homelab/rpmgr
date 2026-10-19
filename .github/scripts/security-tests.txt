@@ -23,7 +23,6 @@ TestOTA_SignedDowngradeAccepted	p2	-	-	OTA
 TestOTA_StagedFileSwapTOCTOU	p2	-	-	OTA
 TestOTA_HostileStagingRefused	p2	-	-	OTA
 TestOTA_CrossFilesystemInstall	p2	-	-	OTA
-TestOTA_PackageOwnedBinaryRefused	p2	-	-	OTA
 TestOTA_UpdaterHonoursPolicy	p2	-	-	OTA
 TestRestore_RevocationsReapplied	done	11.6	#160
 TestRestore_IncompleteLogFailsClosed	done	11.6	#160
