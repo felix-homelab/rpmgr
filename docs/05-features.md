@@ -100,7 +100,7 @@
 | Data-session transport as a setting: instance default `auto` (QUIC first, TCP + h2 as fallback), `quic` or `h2`, overridable per connector and per route ([03](03-connections.md#transport-selection)) | P1 |
 | WSS transport for networks with TLS-intercepting proxies ([03](03-connections.md#transports-and-fallback)) | P2 |
 | Local-policy status per connector, with the reason for any blocked target | P1 |
-| Staged, signed over-the-air updates with automatic rollback, with `stable` and `prerelease` channels (Linux script installs only; deb/rpm packages update from the signed repository; Windows and macOS connectors: no OTA before P3) | P2 |
+| Staged, signed over-the-air updates with automatic rollback, with `stable` and `prerelease` channels (Linux script installs only; Windows and macOS connectors: no OTA before P3) | P2 |
 | Connector-only build (`rpmgr-connector` artifact, installed as `rpmgr`) | P2 |
 
 ### Configuration management
@@ -151,10 +151,9 @@
 |---|---|
 | Single binary `rpmgr`; all-in-one mode | P1 |
 | systemd units (hardened), OCI images | P1 |
-| Windows service and macOS launchd connector (winget/MSI, Homebrew) | P2 |
+| Windows service and macOS launchd connector, installed from the release download | P2 |
 | Install script (`/install.sh`, Linux) served by the controller from its own signed binary mirror | P1 |
 | `rpmgr setup`: sets a host up for its role, from the boot file to the running unit ([16](16-cli.md)) | P1 |
-| Distribution packages (`.deb`, `.rpm`) from a signed repository | P2 |
 | Backup and restore (`rpmgr backup`/`restore`) | P1 |
 | Revocation log with a filesystem sink | P1 |
 | Revocation-log sink on S3-compatible object storage ([D58](14-open-decisions.md#project-and-process)) | P2 |
