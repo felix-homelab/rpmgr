@@ -49,7 +49,9 @@ func TestAllInOne_ReplacesRevokedAgents(t *testing.T) {
 	revokeIdentity(t, db, sys, remoteID)
 	revokeIdentity(t, db, sys, pki.Identity{TrustDomain: td, Org: group.OrgID, Kind: pki.KindGateway, ID: r.GatewayID})
 	revokeIdentity(t, db, sys, pki.Identity{TrustDomain: td, Org: group.OrgID, Kind: pki.KindConnector, ID: r.ConnectorID})
-	tokens := func() int { return db.Client().EnrollmentToken.Query().Where(enrollmenttoken.BuiltIn(true)).CountX(sys) }
+	tokens := func() int {
+		return db.Client().EnrollmentToken.Query().Where(enrollmenttoken.BuiltIn(true)).CountX(sys)
+	}
 	before := tokens()
 
 	stop := h.run(t)
