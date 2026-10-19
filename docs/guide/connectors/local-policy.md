@@ -195,7 +195,8 @@ on such a host.
   rpmgr listens on, on an address of its own host, whatever the policy allows: the admin listener,
   80, 443 over TCP and UDP, the tunnel UDP port, and every route port the gateway has bound. The
   host's addresses are loopback, the unspecified addresses, its interfaces' addresses, and those the
-  public URL's host and the gateway group's public hostnames resolve to. Such a target shows "is
+  public URL's host and the gateway group's public hostnames resolve to; a hostname added to or
+  removed from the group counts at once, without a restart. Such a target shows "is
   one of rpmgr's own ports, which the all-in-one's connector never dials, whatever its policy
   allows. Point the target at the service itself." and no command. This keeps the metrics out of
   reach and routes from looping through the gateway.

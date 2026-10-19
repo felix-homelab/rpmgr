@@ -234,6 +234,8 @@ message Signed { bytes payload = 1; bytes signature = 2; string key_id = 3; }
   decommissions the connector or gateway as an admin's decommission does, pushes the deny-list and
   audits it with the agent as the actor. Only after that answer does `rpmgr leave` remove the
   identity, the stored snapshot and the deny-list from the host; without it, nothing is removed.
+  An all-in-one's built-in gateway and connector, which the API does not decommission either, are
+  refused with `FAILED_PRECONDITION`.
 - **ACME challenges** (HTTP-01 and TLS-ALPN-01 for route certificates, D41): the controller sends
   `AcmeChallenge{op_id, add, type, identifier, token, key_authorization}` to **every gateway that
   serves the name** and lets the CA validate only after each of them acknowledged with
@@ -1177,7 +1179,7 @@ sequenceDiagram
 | Traffic rollup retention | checked every 1 h (singleton job); the retention itself is an instance setting ([10](10-operations.md#runtime-settings-ui--settings)) | Buckets past it go within the hour ([06](06-data-model.md#desired-vs-observed-state)) |
 | Audit retention | checked every 1 h (singleton job); the retention itself is an instance setting ([10](10-operations.md#runtime-settings-ui--settings)) | Entries past it go within the hour, up to a checkpoint ([04](04-security.md#audit-log)) |
 | Connector-local policy file | checked every 2 s; `SIGHUP` (`systemctl reload`) reloads it at once | An edit takes effect without a new revision ([04](04-security.md#connector-local-policy)) |
-| Revision and deny-list check | every 1 s | A revision or a revocation written by another process reaches the agents without a notification channel |
+| Revision and deny-list check | every 1 s | A revision or a revocation written by another process reaches the agents without a notification channel; with several replicas, the safety net behind `LISTEN/NOTIFY` ([10](10-operations.md#high-availability)) |
 | Route drain | 30 s | Finish in-flight requests |
 | Route port in use | a `tcp` or `udp` route port the gateway cannot bind (`not_ready(port_in_use)`) is tried again every 5 s | [R] A port another process frees is taken within seconds, without a new revision |
 | Gateway drain | 60 s | Time for connectors to re-home |

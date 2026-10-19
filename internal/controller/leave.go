@@ -4,6 +4,7 @@ package controller
 
 import (
 	"context"
+	"errors"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -23,7 +24,8 @@ import (
 // "Leaving"): its connector or gateway is decommissioned as an admin's decommission does, with the
 // agent as the actor, and the deny-list applies at once, which ends its sessions. Only a valid
 // certificate reaches it, so a revoked agent cannot call it; an agent whose row is decommissioned
-// already changes nothing.
+// already changes nothing. An all-in-one's built-in gateway and connector, which the API does not
+// decommission either, are refused with FailedPrecondition and keep their identities.
 func (s *Sessions) Leave(ctx context.Context, _ *agentv1.LeaveRequest) (*agentv1.LeaveResponse, error) {
 	agent, ok := AgentFrom(ctx)
 	if !ok {
@@ -41,6 +43,15 @@ func (s *Sessions) Leave(ctx context.Context, _ *agentv1.LeaveRequest) (*agentv1
 			n    int
 			left = []string{id.ID}
 		)
+		builtIn := false
+		if id.Kind == pki.KindConnector {
+			builtIn, err = tx.Connector.Query().Where(connector.ID(id.ID), connector.BuiltIn(true)).Exist(s.sys)
+		} else {
+			builtIn, err = tx.Gateway.Query().Where(gateway.ID(id.ID), gateway.BuiltIn(true)).Exist(s.sys)
+		}
+		if err != nil || builtIn {
+			return nil, errors.Join(err, errIfBuiltIn(builtIn))
+		}
 		if id.Kind == pki.KindConnector {
 			n, err = tx.Connector.Update().Where(connector.ID(id.ID), connector.DecommissionedAtIsNil()).
 				SetDecommissionedAt(now).SetEnabled(false).Save(s.sys)
@@ -68,6 +79,9 @@ func (s *Sessions) Leave(ctx context.Context, _ *agentv1.LeaveRequest) (*agentv1
 			TargetType: string(id.Kind), TargetID: id.ID, Result: audit.Success, Reason: "left with rpmgr leave"})
 		return left, err
 	})
+	if errors.Is(err, errBuiltInLeaves) {
+		return nil, status.Error(codes.FailedPrecondition, errBuiltInLeaves.Error())
+	}
 	if err != nil {
 		s.log.Error("an agent could not leave", "agent", id.String(), "error", err)
 		return nil, status.Error(codes.Unavailable, "the controller cannot revoke the identity now")
@@ -76,4 +90,14 @@ func (s *Sessions) Leave(ctx context.Context, _ *agentv1.LeaveRequest) (*agentv1
 		s.applyDeny()
 	}
 	return &agentv1.LeaveResponse{}, nil
+}
+
+// errBuiltInLeaves refuses `rpmgr leave` for an all-in-one's built-in gateway or connector.
+var errBuiltInLeaves = errors.New("all-in-one's own gateway and connector run in the controller's process and cannot leave; switch one off instead")
+
+func errIfBuiltIn(builtIn bool) error {
+	if builtIn {
+		return errBuiltInLeaves
+	}
+	return nil
 }
