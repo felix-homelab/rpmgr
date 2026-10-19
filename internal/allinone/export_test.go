@@ -31,6 +31,14 @@ func Prepare(ctx context.Context, cfg config.AllInOne) error {
 	return l.prepare(ctx, cfg, time.Now())
 }
 
+// SetNamesFollowed makes Run call f with the names its connector counts as the host's own each time
+// it follows a change of the gateway group's public hostnames, until the test ends.
+func SetNamesFollowed(t testing.TB, f func([]string)) {
+	old := namesFollowed
+	namesFollowed = f
+	t.Cleanup(func() { namesFollowed = old })
+}
+
 // Unusable is why the built-in agent whose identity is in dir, which should name want, enrolls
 // again at now, or "".
 func Unusable(ctx context.Context, c *ent.Client, dir string, want pki.Identity, now time.Time, grace time.Duration) (string, error) {
