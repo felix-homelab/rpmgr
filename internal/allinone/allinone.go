@@ -352,6 +352,13 @@ func Run(ctx context.Context, o RunOptions) error {
 		return errors.Join(err, ctl.end())
 	}
 	own.setNames(append(l.names, public.Hostname()))
+	follow, stopFollow := context.WithCancel(ctx)
+	followed := make(chan struct{})
+	go func() {
+		defer close(followed)
+		l.followNames(follow, cfg, own, public.Hostname(), controller.RevisionCheck, o.Logger)
+	}()
+	defer func() { stopFollow(); <-followed }()
 	for _, a := range []*builtIn{&l.gateway, &l.connector} {
 		if a.token == "" {
 			continue
