@@ -593,12 +593,35 @@ service that still runs the previous binary, with the command that restarts it.
 - **Any replica serves any request.** Revisions come from the database, compilation is
   deterministic, and each agent has one control session tracked by `session_epoch`
   ([03](03-connections.md#revisions-and-ordering)).
-- **Session registry.** A row per control session records which replica holds it. Pushes for an
-  agent are signalled to that replica via PostgreSQL `LISTEN/NOTIFY`; no replica polls.
-  `LISTEN/NOTIFY` carries only small signals (payload limit 8000 bytes), never operation data.
+- **Session registry.** A row per control session records which replica holds it. Registration
+  takes the agent's next `session_epoch` under the row's lock and, in the same transaction, signals
+  the replica that held the agent before, which ends that session; a replica that gets the signal
+  before it has added the session ends it as it adds it. Pushes for an agent are signalled to the
+  replica that holds it via PostgreSQL `LISTEN/NOTIFY`, a revision to every replica at once; a
+  signal for one agent reads its registry row `FOR SHARE`, so it reaches the replica that is
+  registering the agent at that moment. `LISTEN/NOTIFY` carries only small signals, never
+  operation data: a payload must be shorter than 8000 bytes
+  [F PostgreSQL 18.6 `src/backend/commands/async.c:163,619-622`]
+  ([S9](spikes/S9.md)).
+- **Lost notifications.** PostgreSQL delivers a notification only to sessions that were listening
+  when it committed [F PostgreSQL 18.6 `async.c:1066-1121`]. Each replica therefore listens on a
+  dedicated connection that never runs a transaction, and after every (re)connect it first
+  `LISTEN`s, then resyncs every session it holds: the revision, each agent's snapshot and the
+  registry's epochs. The revision check of 03 stays as the safety net
+  ([03](03-connections.md#timeouts-keepalive-and-backoff)); it also ends a session whose registry
+  epoch has moved on ([D112](14-open-decisions.md#project-and-process)).
+- **Notifying transactions commit one at a time** across the database: PostgreSQL holds a lock from
+  queueing the notifications to the end of the commit [F PostgreSQL 18.6 `async.c:907-922`]. A
+  transaction sends its signals as its last statements and stays short, and one configuration
+  change sends one revision signal, not one per agent.
+- **Connection poolers.** PgBouncer in transaction mode is unsupported: `LISTEN` never works
+  there [F PgBouncer 1.26 docs, features, retrieved 2026-10-19]. Session pooling or direct
+  connections work ([D112](14-open-decisions.md#project-and-process)).
 - **Imperative operations** (live logs, diagnostics, later the shell): the replica holding the
   agent's control session serves the operation; the replica serving the user's stream proxies to it
-  over an internal controller-to-controller mutual-TLS connection (controller SPIFFE IDs) [V S9].
+  over an internal controller-to-controller mutual-TLS connection: HTTP/2 over TLS 1.3, where each
+  side accepts only a controller SPIFFE ID, and the caller only the node the registry names. In S9
+  this added about 1.5 ms to a forwarded `ProbeTarget` at p99 ([S9](spikes/S9.md)).
   Controller node certificates therefore carry **clientAuth as well as serverAuth**, and a
   `controller_nodes` table records each replica's `node_id`, `internal_address` and `last_seen`
   ([04](04-security.md#leaf-certificates)).
@@ -606,7 +629,10 @@ service that still runs the previous binary, with the command that restarts it.
   it immediately, then ships it asynchronously to the shared sink, where sequence numbers are
   allocated by conditional create of the object `<seq>` (no gaps) and entries form a hash chain
   ([Backup and restore](#backup-and-restore)). With more than one replica the sink is required. A
-  sink outage never blocks a revocation; it raises an alert until the backlog is shipped.
+  sink outage never blocks a revocation; it raises an alert until the backlog is shipped. A
+  filesystem sink allocates a number by a hard link, which fails when the name exists; an
+  S3-compatible sink by a PUT with `If-None-Match: *`, which fails with 412. Both kept two racing
+  shippers free of gaps and duplicates in S9, the S3 sink on MinIO ([S9](spikes/S9.md)).
 - **Singleton jobs** (ACME orders, CA rotation, ephemeral purge, metric rollups, audit
   checkpoints, the DNS job) run under a database **lease with a fencing token**: a replica that lost
   its lease cannot commit work started under it. Each time a replica takes a job's lease it is
