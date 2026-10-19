@@ -10,6 +10,15 @@ Changes to the design documents are not recorded here: see the git history and t
 
 ## [Unreleased]
 
+### Security
+
+- Controller: an HTTP domain proof connects only to public addresses, so a claim whose name
+  resolves to a loopback, private, link-local or other internal address fails with "the name
+  resolves to an address that is not public"; through a proxy nothing changes. A claim's last
+  error names only the kind of failure, no longer the addresses, the resolver or the server's own
+  text. A domain that resolves only on the local network is proved with a TXT record or marked
+  trusted by the Instance Admin. (#816)
+
 ## [0.1.0] - 2026-10-19
 
 ### Added
