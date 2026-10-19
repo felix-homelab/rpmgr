@@ -33,6 +33,11 @@
 - With `-o yaml` or `-o json`, standard output carries the resources alone, so that a script can
   parse it; what a write command says about the change, such as "Created route …" or the steps that
   prove a domain, goes to standard error. With the default `-o table` both go to standard output.
+- From v1.0.0, the JSON and YAML output and the exit codes below are stable within a major
+  release: fields are added, never renamed or removed. The table output is for people and may
+  change in any release, so scripts use `-o json` or `-o yaml`
+  ([07](07-api.md#versioning-and-compatibility),
+  [D115](14-open-decisions.md#engineering)).
 - `rpmgr setup` asks in full-screen forms on a terminal at least 40 columns wide, and otherwise
   in plain prompts on standard input and output, which a pipe or a screen reader can answer; the
   token goes into a hidden field in the forms and comes from the terminal prompt of `rpmgr enroll`

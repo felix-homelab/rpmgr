@@ -68,11 +68,12 @@ func TestOwnPorts(t *testing.T) {
 
 	// The group's public hostnames join the public URL's host; the next check looks them up.
 	resolved["edge.example.com"] = []netip.Addr{netip.MustParseAddr("2001:db8::5")}
-	o.setNames([]string{"edge.example.com", "panel.example.com", "edge.example.com", "198.51.100.7"})
+	if !o.setNames([]string{"edge.example.com", "panel.example.com", "edge.example.com", "198.51.100.7"}) {
+		t.Error("new names reported unchanged")
+	}
 	if !is("[2001:db8::5]:443") || !is("198.51.100.7:443") || !is("203.0.113.5:443") || nameLookups != 3 {
 		t.Fatalf("the group's names: %d name lookups", nameLookups)
 	}
-
 	ifaces = []net.Addr{&net.IPNet{IP: net.ParseIP("2001:db8::7"), Mask: net.CIDRMask(64, 128)}}
 	now = now.Add(addrsTTL)
 	if !is("[2001:db8::7]:443") || is("192.0.2.10:443") || ifaceLookups != 3 {
@@ -95,6 +96,25 @@ func TestOwnPorts(t *testing.T) {
 	now = now.Add(nameRetry)
 	if !is("203.0.113.5:443") || nameLookups != before+4 {
 		t.Fatalf("no new name lookup a second after it failed: %d", nameLookups-before)
+	}
+
+	// The same names again, in another order (#601: followNames sets them at every revision), keep
+	// the addresses looked up: no new lookup before the TTL. A name removed is no longer the host's;
+	// one added again is looked up at the next check.
+	nameFail = nil
+	now = now.Add(addrsTTL)
+	is("203.0.113.5:443")
+	before = nameLookups
+	if o.setNames([]string{"198.51.100.7", "panel.example.com", "edge.example.com"}) || !is("[2001:db8::5]:443") || nameLookups != before {
+		t.Fatalf("the same names looked up again: %d name lookups", nameLookups-before)
+	}
+	o.setNames([]string{"panel.example.com", "198.51.100.7"})
+	if is("[2001:db8::5]:443") || !is("203.0.113.5:443") || nameLookups != before+1 {
+		t.Fatalf("a removed name: still the host's, or %d name lookups", nameLookups-before)
+	}
+	o.setNames([]string{"edge.example.com", "panel.example.com", "198.51.100.7"})
+	if !is("[2001:db8::5]:443") || nameLookups != before+3 {
+		t.Fatalf("a name added again: %d name lookups", nameLookups-before)
 	}
 
 	bad := cfg

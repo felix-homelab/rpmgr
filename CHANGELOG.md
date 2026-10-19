@@ -18,6 +18,12 @@ Changes to the design documents are not recorded here: see the git history and t
   with the reason, and the controller refuses a leave of the built-in agents in any case, as the
   API refuses to decommission them. (#810)
 
+### Fixed
+
+- All-in-one: the built-in connector follows the gateway group's public hostnames while it runs.
+  It read them only at start, so after a hostname was added, its addresses were not refused as the
+  host's own until the service restarted, and a removed one stayed refused. (#808)
+
 ## [0.1.0] - 2026-10-19
 
 ### Added

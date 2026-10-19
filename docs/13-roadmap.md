@@ -1,7 +1,7 @@
 # 13 — Roadmap
 
-> Status: Phase 0 is complete and Phase 1 implemented; Phases 2 and 3 are design. Tags: [F] fact ·
-> [R] recommendation · [T] target · [V] verify at implementation
+> Status: Phase 0 is complete and Phase 1 released as v0.1.0; Phase 2 is being built; Phase 3 is
+> design. Tags: [F] fact · [R] recommendation · [T] target · [V] verify at implementation
 > ([README](README.md#how-to-read-these-documents)).
 
 ## Approach
@@ -30,7 +30,8 @@ public API (`rpmgr.v1`) and the agent protocol (`rpmgr-tunnel/1`) follow the com
 
 **Status: complete (2026-10-07).** S1–S8 have written results in [spikes](spikes/), their code is
 archived as `spike/s1` … `spike/s8` (and `spike/s8-arm64`), no ADR is *Proposed*, and the decisions
-taken along the way are D35–D47 in [14](14-open-decisions.md). S9 runs at the start of Phase 2.
+taken along the way are D35–D47 in [14](14-open-decisions.md). S9 ran at the start of Phase 2
+([S9](spikes/S9.md), 2026-10-19).
 
 Small, throw-away prototypes that answer the questions the design depends on. The maintainer runs
 every spike. Each spike produces a short written result (`docs/spikes/Sx.md`, from
@@ -64,7 +65,7 @@ How spikes run, also agreed before they start:
 | **S6** | Can certmagic run on the controller with database storage while gateways answer the challenges? | Pebble (local ACME test server), then Let's Encrypt staging: HTTP-01 and TLS-ALPN-01 answered by a gateway; DNS-01 through rpmgr's libdns adapter over the Cloudflare client (fake Cloudflare API with Pebble, then a real test zone with staging), with a second certmagic configuration for HTTP-01/TLS-ALPN-01 on the same storage, chosen per name; locking with two controllers | Certificates issued and renewed for both kinds of names, including a wildcard; no duplicate orders under concurrency | [04](04-security.md#controller-certificates), [08](08-software-stack.md#networking), [15](15-dns.md#acme-dns-01), [ADR-0015](adr/0015-dns-provider-integration.md), D17 | certmagic on the controller. If gateway-answered challenges cannot work with certmagic: acmez (certmagic's ACME library) with rpmgr's own solvers and storage |
 | **S7** | Does the PKI behave as designed? | Issue and renew 7-day leaf certificates with new keys; URI and DNS name constraints enforced by Go's verifier; per-identity DNS SANs with `ServerName` set per peer; `VerifyConnection` runs on resumed TLS sessions and rejects a revoked identity; `Reauth` endpoint accepting certificates expired within the grace period and nothing older, and refusing superseded serials; CSR bound to the TLS session via exported keying material | All checks pass; revocation effective on resumed sessions | [ADR-0008](adr/0008-internal-ca-mtls-spiffe.md) | Name constraints not enforced: rely on the `VerifyConnection` checks only. `VerifyConnection` not run on resumed sessions: TLS resumption disabled for internal sessions. CSR binding works: mandatory for `Enroll`, `Renew` and `Reauth`; otherwise not used |
 | **S8** | Does pure-Go SQLite cover the controller's platforms? | Current `modernc.org/sqlite` on linux/amd64, arm64, armv7, riscv64 (QEMU user-mode emulation where no hardware is at hand, D38; arm64 and armv7 also natively on GitHub's arm64 runners, D46): test suite, WAL, `VACUUM INTO` | Tests pass on the supported platforms; unsupported ones documented | [ADR-0011](adr/0011-sqlite-postgres-ent-atlas.md) | The controller ships only on platforms that pass; the others are documented as unsupported |
-| **S9** | How do controller replicas share session ownership? (Run at the **start of Phase 2**.) | PostgreSQL `LISTEN/NOTIFY` (or polling-free alternative) for the session registry and push fan-out; controller-to-controller mutual TLS for imperative operations; revocation-log shipping to the shared sink with conditional-create sequencing; kill a replica under load | An agent's push reaches it within 1 s of commit; failover within the reconnect backoff | [10](10-operations.md#high-availability) | If `LISTEN/NOTIFY` is insufficient: push fan-out over controller-to-controller mutual TLS |
+| **S9** | How do controller replicas share session ownership? (Run at the **start of Phase 2**.) | PostgreSQL `LISTEN/NOTIFY` (or polling-free alternative) for the session registry and push fan-out; controller-to-controller mutual TLS for imperative operations; revocation-log shipping to the shared sink with conditional-create sequencing; kill a replica under load | An agent's push reaches it within 1 s of commit; failover within the reconnect backoff | [10](10-operations.md#high-availability), [ADR-0011](adr/0011-sqlite-postgres-ent-atlas.md); result: passed, `LISTEN/NOTIFY` ([S9](spikes/S9.md)) | If `LISTEN/NOTIFY` is insufficient: push fan-out over controller-to-controller mutual TLS. Sub-rules ([D112](14-open-decisions.md#project-and-process)): notifications lost while a replica reconnects cause a full resync, and the revision check of [03](03-connections.md#timeouts-keepalive-and-backoff) stays as the safety net; PgBouncer in transaction mode is unsupported; if MinIO fails conditional create, the S3-compatible sink waits and the filesystem sink stays the requirement for several replicas |
 
 **Exit criteria:** S1–S8 have written results (S1 decided by D45, S6 by D46); every affected ADR
 is *Accepted* or changed; the documents in this folder are updated to match.
@@ -146,7 +147,7 @@ stand as follows:
 | Security regression tests | Every test of 12 in P1 scope is implemented and marked `done` in `.github/scripts/security-tests.txt`, which CI checks |
 | Lint bans | Active in CI: golangci's rules and `tools/bannedapi` |
 | Threat model reviewed | [P1-threat-model](reviews/P1-threat-model.md); its medium gaps G1 and G2 are fixed, G3 to G6 resolved by the product owner's decisions (D66 to D68) and a fix; G7, the review of the API's authenticator, done in #428 |
-| Upgrade with live traffic | `TestUpgrade` exists (12.7) and passed from `v0.1.0-rc.3` and from `v0.1.0-rc.6` to `main` (2026-10-12 and 14); the criterion's run needs two signed releases, v0.1.0 and the next |
+| Upgrade with live traffic | `TestUpgrade` exists (12.7) and passed from `v0.1.0-rc.3` and from `v0.1.0-rc.6` to `main` (2026-10-12 and 14); the criterion's run needs two signed releases: v0.1.0, released on 2026-10-19, and v0.2.0, whose release candidate runs it ([D100](14-open-decisions.md#project-and-process)) |
 
 Before v0.1.0 (#170, [RELEASING](../RELEASING.md#release-process)), the maintainer made the
 interim signing keys offline ([D48](14-open-decisions.md#security-defaults)), whose roots every
@@ -180,6 +181,60 @@ Everything a team needs to run rpmgr in production.
   gateway groups and grants (D14); delegated base-domain labels and Instance-Admin approval of
   nested claims (D23).
 
+**How it is built.** Sixteen GitHub milestones, `P2-M01` … `P2-M16`, in the order of
+[D101](14-open-decisions.md#project-and-process):
+
+1. start: the plan's decisions, the compatibility guarantees of v1.0.0, S9, the agent-version
+   window, the capability gate ([D113](14-open-decisions.md#engineering)), the transport studies,
+   fuzz targets and follow-ups of Phase 1;
+2. over-the-air updates, rollouts, the connector-only build and the hardware-token roots;
+3. route rules on the gateway: header matching, timeouts, require-header, limits, custom error
+   pages;
+4. target health, CONNECT routes and the WSS transport;
+5. live logs, events, alerts, webhooks, audit export and audit sinks;
+6. DNS automation with Cloudflare;
+7. ACME DNS-01, nested claims, proxied routes and VB-19;
+8. PostgreSQL, `rpmgr migrate-db` and key custody: the KEK from Transit, the offline root, root
+   rotation;
+9. several controller replicas;
+10. single sign-on, passkeys, service accounts and OIDC on routes;
+11. several orgs, shared gateway groups, org deletion and delegated labels;
+12. private services with end-to-end TLS;
+13. declarative manifests, and editing and importing YAML;
+14. importers;
+15. Windows and macOS connectors;
+16. the exit criteria.
+
+Each finished group of milestones is a minor release ([D100](14-open-decisions.md#project-and-process)),
+with a release milestone that holds its release issue:
+
+| Release | Milestones | Note |
+|---|---|---|
+| v0.2.0 | P2-M01, P2-M02 | Installed by hand; its release candidate runs `TestUpgrade` from v0.1.0 |
+| v0.3.0 | P2-M03 to P2-M05 | The first release delivered over the air |
+| v0.4.0 | P2-M06, P2-M07 | The first release with DNS-01; all of VB-19 runs before it ([D98](14-open-decisions.md#project-and-process)) |
+| v0.5.0 | P2-M08, P2-M09 | |
+| v0.6.0 | P2-M10, P2-M11 | |
+| v0.7.0 | P2-M12 to P2-M15 | The last 0.y release, whose agents a 1.0 controller accepts ([D115](14-open-decisions.md#engineering)) |
+| v1.0.0 | P2-M16 | After the self-review |
+
+The rules of Phase 1 hold:
+
+- One issue per PR-sized slice, titled `<milestone>.<n> <PR title>`; a slice split into stacked
+  PRs keeps its issue, and its PRs carry `Refs`, the last one `Closes`.
+- Each area milestone opens with a design slice. It writes the area's design into these documents
+  first, records the area's decisions in [14](14-open-decisions.md) (an accepted item of the plan
+  that changes a recorded rule gets the next D number), and registers the area's security
+  regression tests as `p2` ([12](12-testing-and-quality.md#security-testing)).
+- A feature stays inert until it is complete
+  ([D52](14-open-decisions.md#project-and-process)); the slice that makes it reachable writes its
+  CHANGELOG entry and its pages of the user guide
+  ([D91](14-open-decisions.md#project-and-process)).
+- D64's lighter checks hold until slice 16.13 switches on those of v1.0.0
+  ([D116](14-open-decisions.md#project-and-process)).
+
+The decisions taken for Phase 2 start at D100 in [14](14-open-decisions.md).
+
 **Exit criteria:**
 
 - Every feature marked P2 in [05](05-features.md#feature-catalogue) implemented and tested.
@@ -193,6 +248,25 @@ Everything a team needs to run rpmgr in production.
   security-sensitive package, a fuzzing campaign. An external security review is sought (paid or
   sponsored) but is not a gate (D28); its findings, if any, are addressed, and the v1.0.0 release
   notes state whether it happened → **v1.0.0**.
+
+How each criterion is shown:
+
+| Criterion | Shown by | Milestones |
+|---|---|---|
+| Every P2 feature implemented and tested | Each P2 row of 05 is a set of slices; every `p2` test of `.github/scripts/security-tests.txt` is `done`, which CI checks; the full end-to-end matrix runs nightly | P2-M02 to P2-M16 |
+| Importers against real sources | Fixtures in CI; the maintainer's real configurations and databases, on SQLite, MySQL and PostgreSQL, run locally and the results recorded | P2-M14, P2-M16 |
+| HA failover drops no tunnelled connection | S9; a test in the nightly end-to-end run that kills a replica | P2-M01, P2-M09 |
+| Cross-tenant leak suite | Each new API service brings its fixtures; a sweep over every kind of principal before v1.0.0 | every milestone, P2-M16 |
+| DNS automation | The fake Cloudflare API in CI; the run sheets of [D110](14-open-decisions.md#project-and-process) for VB-09 to VB-12, and again on the 1.0 release candidate | P2-M06, P2-M07, P2-M16 |
+| Self-review | The threat model checked against the code; review records that together cover every security-sensitive package; the fuzzing campaign of [D117](14-open-decisions.md#project-and-process); an external review sought early ([D109](14-open-decisions.md#project-and-process)) | P2-M16 |
+
+Besides the criteria: VB-13, signing with the hardware tokens, before v0.2.0
+([D48](14-open-decisions.md#security-defaults)); VB-19 before v0.4.0
+([D98](14-open-decisions.md#project-and-process)); VB-20 before v1.0.0
+([D118](14-open-decisions.md#project-and-process)); and Phase 1's upgrade criterion with v0.2.0
+([D100](14-open-decisions.md#project-and-process)). Some of these need the maintainer's own
+resources: hardware tokens, a Cloudflare account and zone, a public host, real importer sources and
+the reference testbed.
 
 ## Phase 3 — advanced
 
@@ -226,12 +300,12 @@ implemented, and the result recorded in the PR.
 |---|---|---|
 | VB-01 | Choose a maintained WebAuthn library and check its attestation and passkey support | [04](04-security.md#human-authentication-and-sessions) |
 | VB-02 | ~~Minimum Go version that provides `http.CrossOriginProtection`~~ **Resolved:** present in Go 1.25 [F Go 1.25.14 `net/http/csrf.go:36`] | [04](04-security.md#human-authentication-and-sessions) |
-| VB-03 | ~~systemd `LoadCredentialEncrypted=` and TPM sealing availability on the [supported distributions](10-operations.md#supported-platforms)~~ **Partly resolved** (2026-10-07, distribution package metadata): systemd 252 on Debian 12 (also the base of Raspberry Pi OS, not queried itself), 255 on Ubuntu 24.04, 252 on Rocky and Alma Linux 9, so `LoadCredentialEncrypted=` is available; Ubuntu 22.04 has 249, where `rpmgr controller init` uses `file`. Installer side checked (2026-10-09): the role units verify with `systemd-analyze verify` on systemd 257 (Debian 13, with `LoadCredentialEncrypted=`) and 249 (Ubuntu 22.04, KEK file), and `init` chooses the source by version (`check-units.sh`, `TestInit_KEKSourceBySystemdVersion`). Open: TPM sealing, which needs a TPM | [04](04-security.md#secrets-at-rest-and-in-logs), [10](10-operations.md#install) |
+| VB-03 | ~~systemd `LoadCredentialEncrypted=` and TPM sealing availability on the [supported distributions](10-operations.md#supported-platforms)~~ **Partly resolved** (2026-10-07, distribution package metadata): systemd 252 on Debian 12 (also the base of Raspberry Pi OS, not queried itself), 255 on Ubuntu 24.04, 252 on Rocky and Alma Linux 9, so `LoadCredentialEncrypted=` is available; Ubuntu 22.04 has 249, where `rpmgr controller init` uses `file`. Installer side checked (2026-10-09): the role units verify with `systemd-analyze verify` on systemd 257 (Debian 13, with `LoadCredentialEncrypted=`) and 249 (Ubuntu 22.04, KEK file), and `init` chooses the source by version (`check-units.sh`, `TestInit_KEKSourceBySystemdVersion`). Open: TPM sealing, which needs a TPM; it is checked after v1.0.0 | [04](04-security.md#secrets-at-rest-and-in-logs), [10](10-operations.md#install) |
 | VB-04 | ~~Go protobuf support for the `debug_redact` field option in text and JSON output~~ **Resolved** (2026-10-08): none in protobuf-go v1.36.12, which reads the option only in its descriptor code; rpmgr redacts `(rpmgr.v1.sensitive)` fields itself | [04](04-security.md#secrets-at-rest-and-in-logs) |
 | VB-05 | ~~Tooling for cosign signatures, SLSA provenance and SBOM generation in the release pipeline~~ **Partly resolved** (2026-10-09, workflow `release`): syft 1.54.1 writes the SPDX JSON SBOM from the source tree, with the Go modules of `go.mod` and the npm packages of the web UI's lockfile that are not development dependencies, checked locally; `actions/attest-build-provenance` 4.2.2 records SLSA provenance and cosign (`sigstore/cosign-installer` 4.1.2) signs keylessly with the workflow's identity. Both need GitHub's OIDC token and are checked on the first release tag | [04](04-security.md#release-signing), [ADR-0013](adr/0013-signed-ota.md) |
 | VB-06 | ~~connect-query maturity with TanStack Query; fallback: thin hand-written hooks over generated clients~~ **Resolved** (2026-10-09): connect-query 2.3.1 calls the method descriptors that protoc-gen-es 2.16 generates, through TanStack Query 5.104, with typed requests and responses; the UI skeleton's overview uses it and is tested with Connect's router transport. The fallback is not needed | [08](08-software-stack.md#frontend), [ADR-0014](adr/0014-vite-react-spa.md) |
 | VB-07 | ~~CodeMirror 6 under the strict CSP (style nonces)~~ **Resolved** (2026-10-09): CodeMirror 6 (`@codemirror/view` 6.43.14) writes its styles into style elements and gives them the nonce set with `EditorView.cspNonce`. The UI reads the page's nonce from its `csp-nonce` meta element. Under the controller's CSP in Chromium (Playwright 1.63), the YAML view's styles apply with no CSP violation; without the nonce, the same browser test fails because they are blocked | [09](09-web-ui.md), [ADR-0014](adr/0014-vite-react-spa.md) |
-| VB-08 | Listening-socket hand-off across gateway restarts (TCP straightforward; UDP/QUIC harder) | [05](05-features.md#operations) |
+| VB-08 | Listening-socket hand-off across gateway restarts (TCP straightforward; UDP/QUIC harder); Phase 3 | [05](05-features.md#operations) |
 | VB-09 | Cloudflare rate-limit scope: whether account-owned tokens have their own budget, and how a 429 caused by rpmgr affects the same user's dashboard and other tokens | [15](15-dns.md#batches-failures-and-the-rate-budget) |
 | VB-10 | Cloudflare record comments and batches: the marker round-trips unchanged; a batch patch can change the comment alone; which operation a failed batch reports; listing by comment | [15](15-dns.md#ownership-ledger) |
 | VB-11 | Cloudflare proxy: a proxied CNAME to a name in another Cloudflare account (error 1014 or not); proxied wildcards on all plans; request-size and timeout limits that affect routes; whether ACME HTTP-01 reaches the origin through the proxy | [15](15-dns.md#proxied-http-routes) |

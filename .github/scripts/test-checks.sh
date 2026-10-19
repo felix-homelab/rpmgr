@@ -243,7 +243,14 @@ size_commit p/testdata/x.go 900 >/dev/null
 expect pass "documents, test data and migrations do not count" in_repo "$r" "$z" "$base" \
   "$(size_commit migrations/1.sql 900)" ""
 expect pass "the benchmark suite does not count" in_repo "$r" "$z" "$base" "$(size_commit bench/cmd/bench/run.go 900)" ""
+size_commit internal/acme/acmetest/fake.go 900 >/dev/null
+size_commit internal/itest/cluster.go 900 >/dev/null
+size_commit internal/testutil/x.go 900 >/dev/null
+expect pass "test fakes and helpers do not count" in_repo "$r" "$z" "$base" \
+  "$(size_commit internal/testseed/seed.go 900)" ""
 expect fail "a package named like it does" in_repo "$r" "$z" "$base" "$(size_commit internal/bench/x.go 900)" ""
+expect fail "a package whose name only starts with test does" in_repo "$r" "$z" "$base" \
+  "$(size_commit internal/tester/x.go 900)" ""
 expect fail "unknown commit" in_repo "$r" "$z" "$base" 0000000000000000000000000000000000000000 ""
 
 # --- DCO -----------------------------------------------------------------------------------
