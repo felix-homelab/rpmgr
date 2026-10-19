@@ -118,6 +118,38 @@ func TestLeave(t *testing.T) {
 	}
 }
 
+// TestLeave_BuiltInRefused (#600): the controller refuses `rpmgr leave` from an all-in-one's
+// built-in gateway or connector, as the API refuses to decommission them: the identity stays valid
+// and on the host, and the agent stays in service.
+func TestLeave_BuiltInRefused(t *testing.T) {
+	ctx := context.Background()
+	c := itest.StartController(t, itest.Options{})
+	con, state := enrolledWithState(t, c)
+	c.DB.Client().Connector.UpdateOneID(con.AgentID).SetBuiltIn(true).ExecX(c.Sys)
+	gw := c.EnrollGateway(t, filepath.Join(t.TempDir(), "gw"), c.GatewayGroup(t, "default"), []string{"127.0.0.1:1"})
+	c.DB.Client().Gateway.UpdateOneID(gw.AgentID).SetBuiltIn(true).ExecX(c.Sys)
+	for _, a := range []struct {
+		l     agent.Loaded
+		state string
+	}{{con, state}, {gw, t.TempDir()}} {
+		if _, err := agent.Leave(ctx, a.l.Dir, a.state, nil); !errors.Is(err, agent.ErrNotLeft) || !strings.Contains(err.Error(), "cannot leave") {
+			t.Errorf("%s left: %v", a.l.AgentID, err)
+		}
+		if _, err := agent.Load(a.l.Dir); err != nil {
+			t.Errorf("the refused leave removed the identity of %s: %v", a.l.AgentID, err)
+		}
+		if c.DB.Client().RevokedIdentity.Query().Where(revokedidentity.ID(identityOf(t, a.l).String())).ExistX(c.Sys) {
+			t.Errorf("the identity of %s is revoked", a.l.AgentID)
+		}
+	}
+	if row := c.DB.Client().Connector.GetX(c.Sys, con.AgentID); row.DecommissionedAt != nil || !row.Enabled {
+		t.Errorf("the built-in connector after the refused leave: %+v", row)
+	}
+	if row := c.DB.Client().Gateway.GetX(c.Sys, gw.AgentID); row.DecommissionedAt != nil {
+		t.Errorf("the built-in gateway after the refused leave: %+v", row)
+	}
+}
+
 // TestDiagClock: `rpmgr diag clock` reports a controller clock 45 s ahead as about 45 s; without a
 // controller it fails.
 func TestDiagClock(t *testing.T) {
