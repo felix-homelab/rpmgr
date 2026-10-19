@@ -6,7 +6,8 @@
 # must say why it cannot be split), more than 800 fails unless the PR is labelled `mechanical`.
 #
 # Production code is source code (.go, .proto, .ts, .tsx, .js, .jsx, .css, .sh, .sql) outside
-# tests, test data, generated files, migrations, CI configuration and documents. Lockfiles and
+# tests, test fakes and helpers, test data, generated files, migrations, CI configuration and
+# documents. Lockfiles and
 # fixtures are not source code by these rules.
 #
 # Usage: check-size.sh <base-sha> <head-sha> "<space-separated labels>"
@@ -31,6 +32,9 @@ while IFS=$'\t' read -r added deleted path; do
   [[ $path =~ (_test\.go|\.(test|spec)\.(ts|tsx|js|jsx))$ ]] && continue
   # bench/ is the benchmark suite: test code, which has no limit (CONTRIBUTING.md).
   [[ $path =~ (^|/)(testdata|migrations|node_modules|vendor|e2e)/ || $path =~ ^(gen|\.github|bench)/ ]] && continue
+  # Test fakes and helpers are test code too (D114): Go packages whose name ends in "test", such as
+  # internal/acme/acmetest or internal/itest, and internal/testutil and internal/testseed.
+  [[ $path =~ ^internal/([^/]+/)*([a-z0-9]*test|testutil|testseed)/ ]] && continue
   # The header is read in full before grep looks at it: with pipefail, "git show | head | grep -q"
   # fails whenever head closes the pipe while git show is still writing a large file (SIGPIPE).
   header=$(git show "$head:$path" 2>/dev/null | head -n 10 || true)
