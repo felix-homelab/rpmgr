@@ -211,5 +211,6 @@ The finding text is kept as found at `09b260a`, so the record shows what the rev
 ## Open items
 
 - **Maintainer actions before v0.1.0** (#170):
-  - the offline release root and signing keys, compiled into `internal/release/roots.go`;
-  - VB-19 against Let's Encrypt staging.
+  - ~~the offline release root and signing keys, compiled into `internal/release/roots.go`~~
+    **Done** (2026-10-12, `eda22a1`): the interim release root keys;
+  - ~~VB-19 against Let's Encrypt staging~~ **Moved by D98** to the first release with DNS-01.
