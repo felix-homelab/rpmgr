@@ -57,6 +57,10 @@ flowchart LR
   | `phase:` | `p0`, `p1`, `p2`, `p3` ([13](docs/13-roadmap.md)) |
   | Flags | `breaking`, `no-changelog`, `needs-adr`, `security-sensitive`, `mechanical` |
 
+- Planned work is one issue per PR-sized slice, in a milestone per phase step (`P2-M01` …),
+  titled `<milestone>.<n> <PR title>`. A slice split into stacked PRs keeps its issue: its PRs
+  carry `Refs #<issue>`, the last one `Closes #<issue>`
+  ([13](docs/13-roadmap.md#phase-2--production)).
 - Security vulnerabilities are **never** reported in public issues; see [SECURITY.md](SECURITY.md).
 
 ## Branches
@@ -100,7 +104,8 @@ branch fails CI, because `tmp/` branches are never merged.
   PR that supersedes the old one, which they close; a further commit on a pushed branch is allowed
   only when it is a logical change of its own
   ([D54](docs/14-open-decisions.md#project-and-process)).
-- **Until v1.0.0** this is lighter ([D64](docs/14-open-decisions.md#project-and-process)).
+- **Until v1.0.0** this is lighter ([D64](docs/14-open-decisions.md#project-and-process)); slice
+  16.13 of Phase 2 ends it ([D116](docs/14-open-decisions.md#project-and-process)).
   - Before the first push, assistants run fast checks of what they changed: formatting, `go.mod`,
     vet and golangci-lint, the tests of the changed packages, the web checks when the web app
     changed, the link and Mermaid checks when documents changed, the secrets check and the PR
@@ -169,13 +174,16 @@ reviewed better, reverted more safely and released more predictably.
 
 | Kind of change | Limit |
 |---|---|
-| Code (production code, excluding tests, the benchmark suite in `bench/`, generated files, lockfiles and fixtures) | **Should** stay below 400 changed lines. 400–800 lines **must** explain in the description why it cannot be split. Above 800 lines **must** be split, unless the change is mechanical (rename, move, generated) |
+| Code (production code, excluding tests, test fakes and helpers, the benchmark suite in `bench/`, generated files, lockfiles and fixtures) | **Should** stay below 400 changed lines. 400–800 lines **must** explain in the description why it cannot be split. Above 800 lines **must** be split, unless the change is mechanical (rename, move, generated) |
 | Tests | No limit; tests for a change belong in the same PR |
 | Design documents | One feature or one decision per PR. Above about 1 000 changed lines, split into the decision (ADR and main document) and follow-up edits |
 | Dependency updates | One dependency, or one bot-grouped set, per PR |
 
 CI counts the production lines of every PR: 400–800 lines give a warning, more than 800 fail unless
-the PR is labelled `mechanical` ([D53](docs/14-open-decisions.md#project-and-process)).
+the PR is labelled `mechanical` ([D53](docs/14-open-decisions.md#project-and-process)). Test fakes
+and helpers are Go packages whose name ends in `test`, such as `internal/acme/acmetest` or
+`internal/itest`, and `internal/testutil` and `internal/testseed`
+([D114](docs/14-open-decisions.md#project-and-process)).
 
 Until v1.0.0, one PR may carry up to three slices of the same milestone, each its own commit, as
 long as they stay within 800 lines together; the description lists the slices, which replaces the
@@ -343,12 +351,12 @@ limits, a "single source of truth" statement (see
 
 ## Spikes
 
-A spike answers one Phase 0 question with a throw-away prototype and applies the rule agreed
-before it runs ([13](docs/13-roadmap.md#phase-0--spikes),
+A spike answers one question of the design with a throw-away prototype (S1–S8 in Phase 0, S9 at
+the start of Phase 2) and applies the rule agreed before it runs ([13](docs/13-roadmap.md#phase-0--spikes),
 [D36](docs/14-open-decisions.md#project-and-process)):
 
 1. **Issue** from the *Spike* issue template, titled `Spike Sx: <question>`, labelled `type:docs`,
-   `phase:p0`, `needs-adr` and the area.
+   the `phase:` it belongs to, `needs-adr` and the area.
 2. **Code** on `tmp/sx-<desc>`, in `spikes/sx/` as its own Go module, with SPDX headers and a
    `README.md` that says how to repeat every run. Raw results are committed next to the code in
    `spikes/sx/results/`. The branch is never merged, and CI does not run on it.
@@ -423,6 +431,9 @@ not in a public PR ([SECURITY.md](SECURITY.md)).
   assistant.
 - Facts produced by an assistant are tagged `[F]` only after the citation was checked; otherwise
   they are `[V]`.
+- An assistant whose PR adds a CI job that should be a required check prepares the `gh api`
+  command that adds it to the `main` ruleset; the maintainer runs it
+  ([Repository settings](#repository-settings)).
 - [CLAUDE.md](CLAUDE.md) at the repository root summarises these rules for AI coding assistants.
   It changes in the same PR as the rules it summarises. Personal assistant settings stay out of the
   repository (`CLAUDE.local.md` and `.claude/settings.local.json` are ignored).

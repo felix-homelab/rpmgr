@@ -11,9 +11,11 @@ authority and win on any conflict. Personal settings belong in the ignored `CLAU
   managed from one control plane. One Go binary, `rpmgr`, runs every role: controller, gateway,
   connector, all-in-one ([02](docs/02-architecture.md)).
 - **Status:** **Phase 0** (spikes, [13](docs/13-roadmap.md#phase-0--spikes)) is complete;
-  **Phase 1** (MVP, [13](docs/13-roadmap.md#phase-1--mvp)) is implemented along the GitHub
-  milestones `P1-M01` … `P1-M12`, one issue per slice; its exit criteria and the first release,
-  v0.1.0, are in progress. Decisions for it: D48–D71.
+  **Phase 1** (MVP, [13](docs/13-roadmap.md#phase-1--mvp)) is released as v0.1.0. **Phase 2**
+  (production, [13](docs/13-roadmap.md#phase-2--production)) is built along the GitHub milestones
+  `P2-M01` … `P2-M16`, one issue per slice titled `<M>.<n> <PR title>`, released as v0.2.0 …
+  v0.7.0 and v1.0.0 (D100). Each area milestone opens with a design slice. Decisions for it: D100
+  onward.
 - A personal open-source project with one maintainer, the product owner, who decides; Apache-2.0.
 - Read first: [README](README.md) (for users) → [docs/README](docs/README.md) (documents, tags,
   citations) → [00](docs/00-vision-and-scope.md) → [02](docs/02-architecture.md) →
@@ -60,10 +62,12 @@ The repository is `github.com/felix-homelab/rpmgr`; use `gh` for issues and PRs.
   merging `main` into it; the maintainer deletes branches. Rebase only branches not yet pushed.
   Run every check locally before the first push; if a pushed PR's commits must change, push the
   corrected history to a new branch (`…-v2`), open a new PR and close the old one (D54).
-- **Until v1.0.0** (D64): before the first push run fast checks of what changed; fix what CI then
-  finds with a further commit on the pushed branch, not a new branch; one PR may carry up to three
-  slices of one milestone as separate commits, within 800 production lines. A PR runs only the CI
-  stages its changes need; the nightly run runs everything.
+- **Until v1.0.0** (D64; slice 16.13 ends it, D116): before the first push run fast checks of what
+  changed; fix what CI then finds with a further commit on the pushed branch, not a new branch; one
+  PR may carry up to three slices of one milestone as separate commits, within 800 production
+  lines. A PR runs only the CI stages its changes need; the nightly run runs everything.
+- A PR that adds a CI job which should be a required check prepares the `gh api` command that adds
+  it to the `main` ruleset; the maintainer runs it (advisory stages stay advisory until D116).
 - **Branches** (CONTRIBUTING, "Branches"): `feature/<issue>-<desc>` and `bugfix/<issue>-<desc>`
   need a GitHub issue; `improvement/<desc>` (tooling, docs, no behaviour change), `merge/<desc>`,
   `tmp/<desc>` (spikes, never merged), `release/<major>.<minor>`. Lowercase, digits, `-`, `.`;
