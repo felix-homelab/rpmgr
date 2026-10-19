@@ -10,7 +10,7 @@ Changes to the design documents are not recorded here: see the git history and t
 
 ## [Unreleased]
 
-## [0.1.0] - 2026-10-14
+## [0.1.0] - 2026-10-19
 
 ### Added
 
