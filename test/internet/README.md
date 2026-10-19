@@ -8,7 +8,7 @@ functions, measures performance and runs a soak test with disturbances. It compl
   networks without internet access;
 - the [benchmark suite](../../bench/README.md), which runs on one host and imitates delay and loss
   with `tc netem`;
-- the [VB-19 run sheet](../vb19/README.md), whose VM can be VM A here; run VB-19 first.
+- the [VB-19 run sheet](../vb19/README.md), whose VM can be VM A here, when VB-19 runs first.
 
 The run is not the reference testbed of [12](../../docs/12-testing-and-quality.md#benchmarks)
 (D30, VB-20): it has two VMs, one pair of places and shared vCPUs, so its numbers are indications,
