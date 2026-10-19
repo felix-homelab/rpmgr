@@ -1194,6 +1194,9 @@ sequenceDiagram
 | ACME challenge push | `OpResult` from every gateway of the name within 10 s | [R] A gateway that cannot answer fails the order before the CA validates, instead of a failed validation counted against the account |
 | Imperative operation | `Open` → `Attach` within 10 s; ticket single-use, valid 30 s; shell idle 30 min | No unbounded waits |
 | P2P | punch window 5 s; retry backoff 30 s → 15 min; also on network change | Don't hammer NATs |
+| OTA download (Phase 2) | an artifact of at most 256 MiB, downloaded only with its size plus 64 MiB free on the staging filesystem; the whole download 10 min, a read that stalls 60 s; a failed download is retried after 1 min, doubling up to 1 h | [R] A slow mirror or a full disk never leaves a half-written staging area, whose manifest is written last ([04](04-security.md#over-the-air-updates)) |
+| OTA updater (Phase 2) | a staged file of at most the manifest's size and 256 MiB, checked before and while copying; each role's `/readyz` polled every 2 s for up to 5 min after the restart; a role service that fails, or restarts 3 times, within that window rolls back at once | A compromised agent cannot fill the disk or hang the updater; a broken release is undone within minutes ([04](04-security.md#over-the-air-updates)) |
+| Rollout (Phase 2) | checked every 30 s (singleton job); an agent offered the target that reports neither the new version nor a failure within 30 min counts as stalled and pauses the rollout; a gateway is offered its update only after its drain ends | [R] A stage moves on as soon as its agents report; a silent agent stops the rollout instead of hiding ([04](04-security.md#over-the-air-updates)) |
 | Webhook delivery (Phase 2) | 5 s timeout per attempt; retries with backoff | A slow receiver must not hold controller resources ([07](07-api.md#webhooks-phase-2)) |
 | `request_id` deduplication of `Create` calls | 24 h; IDs past it are deleted every hour | Retries of a lost response stay idempotent ([07](07-api.md#resource-design)) |
 | Public API request | at most 4 MiB per message, also once decompressed; a larger one is refused with `resource_exhausted` before it is handled | [R] No request holds more of the controller's memory than the largest legitimate one, an uploaded certificate bundle, needs |
@@ -1259,7 +1262,7 @@ used, not by the route compiler:
 | `pages.custom` | Gateway | Custom error pages of a gateway group |
 | `tunnel.wss` | Gateway, connector | Data sessions over WSS |
 | `logs.stream` | Gateway, connector | Live logs (`Open` and `Attach`) |
-| `ota` | Gateway, connector | Over-the-air updates offered in the snapshot |
+| `ota` | Gateway, connector | Over-the-air updates: the agent takes a release offer in its snapshot, stages it for the root updater and reports the update state and the updater's outcome in `Status`; an agent without it is never offered a release ([04](04-security.md#over-the-air-updates)) |
 | `relay.v1` | Gateway, connector | Relayed private services |
 
 - Protobuf rules: fields are only added; unknown fields are ignored; an unknown `StreamOpen.kind`

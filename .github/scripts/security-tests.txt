@@ -1,9 +1,10 @@
 # Registry of the named security regression tests in docs/12-testing-and-quality.md
 # ("Security testing"), checked by check-security-tests.sh (D61). One line per test:
 #   <test> <status> <slice> <issue> <note …>
-# status: pending (its Phase 1 slice is not merged yet), done (exists in a _test.go file),
-# p2 or p3 (a later phase). The PR that implements a test changes pending to done. The note
-# names clauses that other slices or later phases add.
+# status: pending (its slice is not merged yet; an area's design slice registers its tests),
+# done (exists in a _test.go file), p2 or p3 (a later phase, or an area not designed yet). The
+# PR that implements a test changes pending to done. The note names clauses that other slices or
+# later phases add.
 
 TestNoReplayableHandshake	done	2.10	#54
 TestRejectsUnpinnedCA	done	3.8	#63	enrollment (3.8), control-session (3.9, internal/itest) and data-session (4.10, internal/connector) clauses done
@@ -17,13 +18,13 @@ TestEnroll_BundleWithExtraRootRejected	done	3.8	#63
 TestH2_ConnectorInitiatedStreams	done	4.4	#74	DIAG clause (4.4) and CONTROL_PASSTHROUGH clause (5.13) done; RELAY_OUT clause in P2 (private services)
 TestTLS_WrongGatewayIDRejected	done	4.10	#80
 TestDenyList_AppliedDespiteRejectedSnapshot	done	3.13	#68	internal/itest
-TestOTA_ReplayedOldManifestRejected	p2	-	-	OTA
-TestOTA_FreshHostReplayRejected	p2	-	-	OTA
-TestOTA_SignedDowngradeAccepted	p2	-	-	OTA
-TestOTA_StagedFileSwapTOCTOU	p2	-	-	OTA
-TestOTA_HostileStagingRefused	p2	-	-	OTA
-TestOTA_CrossFilesystemInstall	p2	-	-	OTA
-TestOTA_UpdaterHonoursPolicy	p2	-	-	OTA
+TestOTA_ReplayedOldManifestRejected	pending	2.2	#603	seq clause in 2.2; permissions clause in 2.11 (#612, test/ota)
+TestOTA_FreshHostReplayRejected	pending	2.4	#605	OTA
+TestOTA_SignedDowngradeAccepted	pending	2.3	#604	OTA
+TestOTA_StagedFileSwapTOCTOU	pending	2.2	#603	as root in 2.2; as the service user in 2.11 (#612)
+TestOTA_HostileStagingRefused	pending	2.2	#603	OTA
+TestOTA_CrossFilesystemInstall	pending	2.11	#612	test/ota
+TestOTA_UpdaterHonoursPolicy	pending	2.3	#604	OTA
 TestRestore_RevocationsReapplied	done	11.6	#160
 TestRestore_IncompleteLogFailsClosed	done	11.6	#160
 TestRestore_OrgOwnerCannotEndInstanceReview	done	11.6	#160
@@ -64,8 +65,8 @@ TestTransport_ChangeKeepsOpenConnections	done	4.14	#84
 TestACME_ValidationWaitsForEveryGateway	done	6.2	#103
 TestACME_DNS01OnlyManagedZones	p2	-	-	ACME DNS-01
 TestPolicy_MetadataAlwaysDenied	done	4.6	#76
-TestOTA_ChannelAndVariantEnforced	p2	-	-	OTA
-TestPolicy_AutoUpdateAndChannelDefaults	done	4.6	#76	installer clause in 11.4 (test/installsh: the policy file with explicit auto_update and update_channel); root-updater clause in P2 (OTA)
+TestOTA_ChannelAndVariantEnforced	pending	2.2	#603	OTA
+TestPolicy_AutoUpdateAndChannelDefaults	done	4.6	#76	installer clause in 11.4 (test/installsh: the policy file with explicit auto_update and update_channel); root-updater clause in 2.3 (#604)
 TestRevocationLog_SingleNodeWithoutSink	done	11.5	#159	second-replica clause through the single-controller lock of 2.4; the API reports the missing sink, which the settings page shows as the warning (web/src/pages/settings.test.tsx)
 TestGatewayGroup_MaxFourGateways	done	3.4	#59
 TestDomain_TrustedOnlyByInstanceAdmin	done	8.4	#118

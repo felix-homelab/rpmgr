@@ -56,7 +56,8 @@
 ## Commands
 
 A command marked *not yet* exists in the command tree and prints "not available in this build"
-with exit code 2 until its implementation lands.
+with exit code 2 until its implementation lands; one marked *Phase 2* is designed and not in the
+command tree yet.
 
 | Command | What it does | Runs on | State |
 |---|---|---|---|
@@ -121,6 +122,11 @@ with exit code 2 until its implementation lands.
 | `rpmgr user reset-password [--config <file>] [--email <address>]` | Create a one-time link that sets the password of the user with that address (valid 24 h); before the first user exists, without `--email`, a first-user link (7 days). Reads the controller's or all-in-one's boot file and needs no KEK; audited as `local-cli` ([04](04-security.md#human-authentication-and-sessions)) | controller host | available |
 | `rpmgr systemd-unit [--bin <path>] [--config <file>] <role>` | Print the hardened systemd unit of `controller`, `gateway`, `connector` or `all-in-one` for `/etc/systemd/system/rpmgr-<role>.service`; `--bin` defaults to `/usr/local/bin/rpmgr`. A controller's or all-in-one's unit loads the KEK credential its boot file names, and makes the revocation-log sink it names writable ([10](10-operations.md#hardened-systemd-units)) | any Linux host | available |
 | `rpmgr release import [--config <file>] <dir>` | Import the signed release of this binary's version from a directory, for air-gapped installations: the files of a GitHub release (`signing-key.json`, `manifest.json`, their `.minisig` files, the Linux artifacts), verified like the daily release check before the controller serves them under `/dl/`. Audited as `local-cli` ([D59](14-open-decisions.md#security-defaults), [04](04-security.md#over-the-air-updates)) | controller host | available |
+| `rpmgr list releases`, `rpmgr upload release <dir>` | List the releases the controller knows, with channel, source and whether its mirror holds them; or upload a release's signed manifest, signing-key statement and their signatures from a directory, after a step-up ([04](04-security.md#over-the-air-updates)). `-o` | any | Phase 2 |
+| `rpmgr create rollout --release <version> --canary <agent>…`, `get rollout`, `list rollout`, `list rollout-target <rollout>`, `advance rollout (--percent <n> \| --all) <rollout>`, `pause rollout`, `resume rollout`, `cancel rollout` | Run a staged rollout of a release no newer than the controller to the connectors and gateways: the canary agents by name or ID, then the percentages and "all" one stage at a time; each change but a pause after a step-up, as an Instance Admin ([D121](14-open-decisions.md#engineering)). `--wait`, `-o` | any | Phase 2 |
+| `rpmgr updater apply --staged <dir> --state <dir>` | The root-owned updater that `rpmgr-update.service` runs (named `updater`, so that it never reads as `rpmgr update <kind>`, [D51](14-open-decisions.md#engineering)): copy, verify and install a staged release, restart the roles `install.json` lists, roll back when one is not ready, and write `/run/rpmgr-update/status.json` ([04](04-security.md#over-the-air-updates)). Exit code 1 when it refused or rolled back | Linux host, as root | Phase 2 |
+| `rpmgr systemd-unit update` | Print the updater pair `rpmgr-update.path` and `rpmgr-update.service`, with the binary path of `install.json` in `ExecStart` ([10](10-operations.md#hardened-systemd-units)) | any Linux host | Phase 2 |
+| `rpmgr setup --remove [--purge]` | On Windows and macOS: stop and remove the connector's service and the program's files; the identity and the policy file stay unless `--purge` ([10](10-operations.md#windows-and-macos-connectors-phase-2), [D122](14-open-decisions.md#project-and-process)) | Windows or macOS host, as administrator | Phase 2 |
 | `rpmgr version [--verbose]` | Print the version, commit, Go version and platform of this binary; with `--verbose` also the release root keys compiled into it, by minisign key ID and SHA-256 fingerprint, or that it has none ([04](04-security.md#release-signing)) | any | available |
 
 The role commands read their boot file from `--config`, else from `$RPMGR_CONFIG`, else from
