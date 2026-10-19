@@ -1,14 +1,14 @@
 # VB-19 run sheet: ACME against Let's Encrypt staging, and a first install of the rc
 
-This sheet is the HTTP-01 and TLS-ALPN-01 part of VB-19, which
-[D50](../../docs/14-open-decisions.md#project-and-process) requires before v0.1.0
-([13](../../docs/13-roadmap.md#verification-backlog)). The same session is the "fresh install" of
-the release candidate in the release checklist
-([RELEASING](../../RELEASING.md#release-process)). The DNS-01 and Cloudflare part of VB-19 stays
-with the run sheet of S6 on the tag `spike/s6`, before the first release with DNS-01 (Phase 2).
+This sheet is the HTTP-01 and TLS-ALPN-01 part of VB-19
+([13](../../docs/13-roadmap.md#verification-backlog)). v0.1.0 was released without it
+([D98](../../docs/14-open-decisions.md#project-and-process)): it runs in one session with the
+DNS-01 and Cloudflare part, the run sheet of S6 on the tag `spike/s6`, before the first release
+with DNS-01 (Phase 2). On a release candidate, the same session is its "fresh install" of the
+release checklist ([RELEASING](../../RELEASING.md#release-process)).
 
-The real product runs on a throw-away VM: an all-in-one installed from the `v0.1.0-rc.1`
-pre-release. It obtains the certificate of its public URL and of one route from Let's Encrypt
+The real product runs on a throw-away VM: an all-in-one installed from the release under test.
+It obtains the certificate of its public URL and of one route from Let's Encrypt
 **staging**, then renews the route's certificate twice:
 - **with TCP 443 closed,** which only HTTP-01 can pass;
 - **with TCP 80 closed,** which only TLS-ALPN-01 can pass.
@@ -43,7 +43,7 @@ during this run.
 Below, `<ip>` is the VM's public address, `v` the version and `a` the architecture:
 
 ```sh
-v=0.1.0-rc.1
+v=0.1.0        # or the release candidate under test
 a=amd64        # or arm64
 name=vb19.example.org
 ```
@@ -240,21 +240,21 @@ Collect, in a text file:
   after, and the time the renewal took;
 - anything that failed, with its log lines.
 
-Open a pull request `docs: record the VB-19 staging run` (labels `type:docs`, `area:acme`,
-`phase:p1`, `no-changelog`) that:
+Open a pull request `docs: record the VB-19 staging run` (labels `type:docs`, `area:acme`, the
+current phase's, `no-changelog`) that:
 - **Raw outputs:** adds the text file as `test/vb19/results/<date>.txt`;
 - **S6:** adds the outcome of the HTTP-01 and TLS-ALPN-01 part to [S6](../../docs/spikes/S6.md),
   and narrows its "Not verified" item to the DNS-01 part;
-- **13:** marks VB-19's D50 part done, with the date, in
+- **13:** marks VB-19's HTTP-01/TLS-ALPN-01 part done, with the date, in
   [13](../../docs/13-roadmap.md#verification-backlog);
 - **04 and 08:** turns the `[V VB-19]` of the staging run in
   [04](../../docs/04-security.md#controller-certificates) and
   [08](../../docs/08-software-stack.md#networking) into a fact citing this run, for HTTP-01 and
   TLS-ALPN-01 only;
-- **#170:** ticks the VB-19 and "fresh install" items.
+- **The release issue:** ticks its "fresh install" item, when the run tested a release candidate.
 
-A failed phase is a defect of the release candidate: it gets an issue, a fix on `main` and
-`rc.2` ([RELEASING](../../RELEASING.md#release-process)).
+A failed phase is a defect: it gets an issue and a fix on `main`, and a release candidate under
+test the next `rc` ([RELEASING](../../RELEASING.md#release-process)).
 
 ## Clean up
 
