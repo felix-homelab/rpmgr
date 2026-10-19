@@ -36,7 +36,8 @@ func Sources() []snapshot.Source { return PreviewSources("") }
 
 // PreviewSources are Sources for the preview of the route previewed, which they compile for its
 // gateways even while no connector serves it: a new route has no target yet, and the gateway's
-// checks of its port must still see it.
+// checks of its port must still see it. Every source leaves out the routes the agent lacks a
+// capability for (gates.go).
 func PreviewSources(previewed string) []snapshot.Source {
 	tcp := func(ctx context.Context, tx *ent.Tx, a snapshot.Agent) ([]*agentv1.Resource, error) {
 		return gatewayTCP(ctx, tx, a, previewed)
@@ -47,8 +48,12 @@ func PreviewSources(previewed string) []snapshot.Source {
 	both := func(ctx context.Context, tx *ent.Tx, a snapshot.Agent) ([]*agentv1.Resource, error) {
 		return gatewayTCPUDP(ctx, tx, a, previewed)
 	}
-	return []snapshot.Source{tcp, udp, both, GatewayPassthrough, GatewayHTTP, certs.Gateway, domains.GatewayChallenges,
+	srcs := []snapshot.Source{tcp, udp, both, GatewayPassthrough, GatewayHTTP, certs.Gateway, domains.GatewayChallenges,
 		GatewayDrain, ConnectorRoutes, ConnectorGateways}
+	for i, src := range srcs {
+		srcs[i] = gated(src)
+	}
+	return srcs
 }
 
 // GatewayDrain marks the snapshot of a disabled gateway, which drains (R22). A decommissioned

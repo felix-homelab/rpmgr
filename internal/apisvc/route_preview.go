@@ -96,7 +96,8 @@ func previewGateways(ctx context.Context, tx *ent.Tx, row *ent.Route) ([]string,
 	)
 	for _, gw := range gws {
 		snap := &agentv1.Snapshot{}
-		a := snapshot.Agent{Identity: pki.Identity{Org: gw.OrgID, Kind: pki.KindGateway, ID: gw.ID}}
+		// As a gateway of this release, which the preview's validation is too.
+		a := snapshot.Agent{Identity: pki.Identity{Org: gw.OrgID, Kind: pki.KindGateway, ID: gw.ID}, Capabilities: gateway.Capabilities}
 		for _, src := range routes.PreviewSources(row.ID) {
 			rs, err := src(ctx, tx, a)
 			if err != nil {

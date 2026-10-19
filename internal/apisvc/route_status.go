@@ -4,9 +4,13 @@ package apisvc
 
 import (
 	"context"
+	"slices"
+	"strings"
 	"time"
 
 	rpmgrv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/v1"
+	"github.com/felix-homelab/rpmgr/internal/pki"
+	"github.com/felix-homelab/rpmgr/internal/routes"
 	"github.com/felix-homelab/rpmgr/internal/snapshot"
 	"github.com/felix-homelab/rpmgr/internal/store"
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
@@ -45,6 +49,9 @@ type routeStatuses struct {
 	notReady map[[2]string]*ent.ResourceStatus // by agent and resource
 	links    map[[2]string]bool                // gateway and connector with a data session
 	targets  map[string][]*ent.RouteTarget     // by route
+	// missing are the capabilities an online agent lacks for a route, by agent and route
+	// (routes.Gate): the route is left out of its snapshot.
+	missing map[[2]string][]string
 	// maintenance are the http routes in maintenance.
 	maintenance map[string]bool
 	// changed is the newest revision that changed each resource, among the revisions after the
@@ -59,7 +66,7 @@ type routeStatuses struct {
 func newRouteStatuses(ctx, sys context.Context, c *ent.Client, org string, routes []*ent.Route, now time.Time) (*routeStatuses, error) {
 	v := &routeStatuses{now: now, enabled: map[string]bool{}, online: map[string]bool{}, states: map[string]*ent.AgentState{},
 		notReady: map[[2]string]*ent.ResourceStatus{}, links: map[[2]string]bool{}, targets: map[string][]*ent.RouteTarget{},
-		changed: map[string]int64{}, maintenance: map[string]bool{}}
+		changed: map[string]int64{}, maintenance: map[string]bool{}, missing: map[[2]string][]string{}}
 	inst, err := c.Instance.Get(sys, 1)
 	if err != nil {
 		return nil, err
@@ -83,8 +90,10 @@ func newRouteStatuses(ctx, sys context.Context, c *ent.Client, org string, route
 	if err != nil {
 		return nil, err
 	}
+	caps := map[string][]string{}
 	for _, s := range sessions {
 		v.online[s.ID] = schema.AgentSessionLive(s.DisconnectedAt, s.LastSeenAt, now)
+		caps[s.ID] = s.Capabilities
 	}
 	states, err := c.AgentState.Query().Where(agentstate.IDIn(ids...)).All(ctx)
 	if err != nil {
@@ -138,7 +147,41 @@ func newRouteStatuses(ctx, sys context.Context, c *ent.Client, org string, route
 	for _, h := range inMaintenance {
 		v.maintenance[h.RouteID] = true
 	}
+	if err := v.readMissing(ctx, c, routes, caps); err != nil {
+		return nil, err
+	}
 	return v, v.readChanges(sys, c, org, max(floor, 0))
+}
+
+// readMissing notes the capabilities each online agent of a route lacks for it, from the
+// capabilities of its control session.
+func (v *routeStatuses) readMissing(ctx context.Context, c *ent.Client, routeRows []*ent.Route, caps map[string][]string) error {
+	for _, r := range routeRows {
+		reqs, err := routes.Required(ctx, c, r.ID)
+		if err != nil {
+			return err
+		}
+		if len(reqs) == 0 {
+			continue
+		}
+		note := func(id string, kind pki.Kind) {
+			if !v.online[id] {
+				return
+			}
+			if m := routes.Missing(reqs, kind, func(cp string) bool { return slices.Contains(caps[id], cp) }); len(m) > 0 {
+				v.missing[[2]string{id, r.ID}] = m
+			}
+		}
+		for _, g := range v.gateways {
+			if g.GatewayGroupID == r.GatewayGroupID {
+				note(g.ID, pki.KindGateway)
+			}
+		}
+		for _, t := range v.targets[r.ID] {
+			note(t.ConnectorID, pki.KindConnector)
+		}
+	}
+	return nil
 }
 
 // readChanges notes the newest revision of org after floor that changed each resource.
@@ -209,6 +252,8 @@ func (v *routeStatuses) of(r *ent.Route) *rpmgrv1.RouteStatus {
 			out.NotServing = append(out.NotServing, &rpmgrv1.RouteNotServing{Id: t.ID, Reason: notServingDisabled})
 		case !v.online[t.ConnectorID]:
 			out.NotServing = append(out.NotServing, &rpmgrv1.RouteNotServing{Id: t.ID, Reason: notServingOffline})
+		case v.missing[[2]string{t.ConnectorID, r.ID}] != nil:
+			out.NotServing = append(out.NotServing, capabilityMissing(t.ID, v.missing[[2]string{t.ConnectorID, r.ID}]))
 		case nr != nil:
 			out.NotServing = append(out.NotServing, &rpmgrv1.RouteNotServing{Id: t.ID, Reason: notReadyReason(nr.Reason), Detail: nr.Detail})
 		default:
@@ -232,6 +277,9 @@ func (v *routeStatuses) of(r *ent.Route) *rpmgrv1.RouteStatus {
 		switch nr := v.notReady[[2]string{g.ID, r.ID}]; {
 		case !v.online[g.ID]:
 			out.NotServing = append(out.NotServing, &rpmgrv1.RouteNotServing{Id: g.ID, Reason: notServingOffline})
+		case v.missing[[2]string{g.ID, r.ID}] != nil:
+			// Its snapshot leaves the route out, so it neither serves it nor reports it.
+			out.NotServing = append(out.NotServing, capabilityMissing(g.ID, v.missing[[2]string{g.ID, r.ID}]))
 		case nr != nil:
 			out.NotServing = append(out.NotServing, &rpmgrv1.RouteNotServing{Id: g.ID, Reason: notReadyReason(nr.Reason), Detail: nr.Detail})
 		case !v.linked(g.ID, ready):
@@ -262,6 +310,11 @@ func (v *routeStatuses) of(r *ent.Route) *rpmgrv1.RouteStatus {
 		out.State = rpmgrv1.RouteState_ROUTE_STATE_READY
 	}
 	return out
+}
+
+// capabilityMissing is the reason of an agent that lacks capabilities a route needs.
+func capabilityMissing(id string, caps []string) *rpmgrv1.RouteNotServing {
+	return &rpmgrv1.RouteNotServing{Id: id, Reason: routes.CapabilityMissing, Detail: strings.Join(caps, ", ")}
 }
 
 // linked reports whether gateway has a data session with one of connectors.
