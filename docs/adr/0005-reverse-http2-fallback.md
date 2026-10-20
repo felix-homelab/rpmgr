@@ -181,6 +181,7 @@ decisions are in [ADR-0004](0004-quic-default-transport-policy.md#phase-1-measur
 
 **Phase 2 study of several sessions per gateway** (#422, 2026-10-19): four TCP connections per
 gateway instead of two carried 1.4 to 2.1 times as much with 32 streams at 1 % loss. The study
-also found that the gateway's window budget admits at most nine reverse-HTTP/2 sessions with the
-defaults. Details in
+also found that the gateway's window budget admitted at most nine reverse-HTTP/2 sessions with the
+defaults; D124 changed the admission so that about eighty fit, and keeps two connections per
+gateway ([03](../03-connections.md#transports-and-fallback)). Details in
 [ADR-0004](0004-quic-default-transport-policy.md#phase-2-study-several-data-sessions-per-gateway).

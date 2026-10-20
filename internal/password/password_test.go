@@ -99,8 +99,8 @@ func TestConcurrency(t *testing.T) {
 	var running, peak atomic.Int64
 	release := make(chan struct{})
 	password.SetIDKey(t, func(pw, salt []byte, time, memory uint32, threads uint8, n uint32) []byte {
-		if r := running.Add(1); r > peak.Load() {
-			peak.Store(r)
+		r := running.Add(1)
+		for p := peak.Load(); r > p && !peak.CompareAndSwap(p, r); p = peak.Load() {
 		}
 		<-release
 		running.Add(-1)
@@ -110,7 +110,13 @@ func TestConcurrency(t *testing.T) {
 	for range 8 {
 		wg.Go(func() { _, _, _ = password.Verify(context.Background(), "a long enough password", "", cheap) })
 	}
-	time.Sleep(200 * time.Millisecond)
+	// Wait until every slot is taken, however slow the runner, rather than for a fixed time.
+	for deadline := time.Now().Add(30 * time.Second); running.Load() < password.Concurrency; {
+		if time.Now().After(deadline) {
+			t.Fatalf("only %d hashes started", running.Load())
+		}
+		time.Sleep(time.Millisecond)
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
 	defer cancel()
 	_, _, err := password.Verify(ctx, "a long enough password", "", cheap)
