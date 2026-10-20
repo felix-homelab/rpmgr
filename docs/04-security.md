@@ -626,7 +626,18 @@ provider and never stored.
   `pending_approval` and stays unusable until an Instance Admin approves it (Phase 2, with step-up).
   No hostname is ever handed out first-come-first-served.
 - **TXT proofs are read at the zone's authoritative nameservers**, never through the controller's
-  resolver, so split-horizon DNS and negative caching cannot fake or delay a result.
+  resolver, so split-horizon DNS and negative caching cannot fake or delay a result. The host's
+  own resolver, which finds the zone's nameservers and their addresses, is the operator's and is
+  trusted wherever it is. The nameservers themselves are named by the claimed zone, so the queries
+  to them, over UDP and TCP, connect only to public addresses, checked at the connect as for HTTP
+  proofs below (`internal/egress`): a zone whose NS records point at a loopback, private,
+  link-local or metadata address gets no query there. The claim's last error names only the kind
+  of failure (no zone, a nameserver's name that does not resolve, an address that is not public,
+  no answer in time, an answer without authority with its response code), never an address or a
+  nameserver's or resolver's name. [R] As for HTTP proofs, the kinds still tell the claimant
+  whether a nameserver's name resolves in the controller's DNS ("does not resolve" against "not
+  public"); that much is accepted. A zone whose nameservers are reachable only on the local
+  network is marked trusted by the Instance Admin (D13).
 - **HTTP proofs reach only public addresses.** The controller fetches
   `http://<domain>/.well-known/rpmgr-challenge/<claim ID>` without following redirects, and
   without a proxy it connects only to a public unicast address: the address it actually dials is
@@ -978,12 +989,16 @@ timeouts and size limits named below are in [03](03-connections.md#timeouts-keep
    compromised process could persist a build that ignores the local policy.
 4. A **root-owned updater** (`rpmgr-update.path` triggering the oneshot `rpmgr-update.service`)
    reads `auto_update` and `update_channel` from the local policy **itself** (it does not trust the
-   agent's decision); a policy file that does not parse, or that its group or other users may
-   write, counts as `auto_update: off` ([D120](14-open-decisions.md#security-defaults)). It opens
+   agent's decision); a policy file that does not parse, that its group or other users may write,
+   that root does not own, or that is a symbolic link counts as `auto_update: off`
+   ([D120](14-open-decisions.md#security-defaults)). It reads `install.json` and `state.json` by
+   the same rule, and stops if either fails it. It opens
    the staging directory through a directory file descriptor with
    `openat2(RESOLVE_NO_SYMLINKS | RESOLVE_BENEATH)`, accepts only regular files (`fstat` →
    `S_ISREG`) no larger than the manifest's size and the updater's hard cap (checked before and
-   while copying), **copies** them into the root-only `/var/lib/rpmgr-update/staging/`, and
+   while copying), **copies** them into the root-only `/var/lib/rpmgr-update/staging/` (a plain
+   directory of mode 0700 owned by root, else nothing is copied; copies of earlier runs are removed
+   first, and each copy is a new file renamed to its final name only once verified), and
    verifies **the copy**: manifest signature, `seq`, version floor, `channel` (against the policy's
    `update_channel`), OS/arch, `variant` (against `install.json`), size and SHA-256. Verifying a
    copy the service user cannot touch removes the time-of-check/time-of-use gap; refusing symlinks,

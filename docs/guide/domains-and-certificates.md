@@ -39,7 +39,11 @@ cannot claim it ([04](../04-security.md#route-and-hostname-ownership)).
 | HTTP token | **An HTTP token, served by your gateways** | `--method http` | Point the name at a gateway of your organisation, which then serves the token |
 
 - **TXT record.** The controller reads the record at the domain's authoritative nameservers, not
-  through a resolver, so caches and split-horizon DNS cannot fake or delay the answer.
+  through a resolver, so caches and split-horizon DNS cannot fake or delay the answer. It asks
+  them only at public addresses: a zone whose nameservers have a loopback, private or other
+  internal address fails with "a nameserver's address is not public"
+  ([04](../04-security.md#route-and-hostname-ownership)); have the Instance Admin mark such a claim
+  trusted.
 - **HTTP token.** Every enabled gateway of your organisation answers
   `http://<domain>/.well-known/rpmgr-challenge/<claim ID>` on port 80 with the value. The
   controller fetches that URL; pointing the name at your gateways is the proof. Port 80 of the
@@ -48,8 +52,8 @@ cannot claim it ([04](../04-security.md#route-and-hostname-ownership)).
   controller connects only to public addresses: a name that resolves to a loopback, private or
   other internal address fails with "the name resolves to an address that is not public"
   ([04](../04-security.md#route-and-hostname-ownership)). For a domain that resolves only on your
-  own network, as in a homelab, use a TXT record, or have the Instance Admin mark the claim trusted
-  (`rpmgr trust domain <claim ID>`).
+  own network, as in a homelab, use a TXT record in the domain's public zone, or have the Instance
+  Admin mark the claim trusted (`rpmgr trust domain <claim ID>`).
 
 The controller checks pending claims on its own, often at first and then less often, and marks a
 claim **failed** that it could not prove for a while ([15](../15-dns.md#timers-and-limits)).

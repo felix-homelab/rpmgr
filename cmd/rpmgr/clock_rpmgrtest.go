@@ -9,6 +9,8 @@ import (
 	"strings"
 	"sync/atomic"
 	"time"
+
+	"github.com/felix-homelab/rpmgr/internal/agentcmd"
 )
 
 // ClockFileEnv names the file whose duration, such as "90s" or "-2m", the roles of the rpmgrtest
@@ -20,7 +22,7 @@ const clockPoll = 200 * time.Millisecond
 
 func init() {
 	if path := os.Getenv(ClockFileEnv); path != "" {
-		clock = offsetClock(path, clockPoll)
+		agentcmd.Clock = offsetClock(path, clockPoll)
 	}
 }
 

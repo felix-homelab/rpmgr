@@ -102,10 +102,14 @@ func notFound(name string) error {
 	return &net.DNSError{Err: "no such host", Name: name, IsNotFound: true}
 }
 
+// testNameservers are the loopback addresses the tests' nameservers listen on, which the egress
+// guard lets the verifier reach; every other address is still guarded.
+var testNameservers = []string{"127.0.0.1", "127.0.0.2", "127.0.0.3", "127.0.0.4", "127.0.0.5", "127.0.0.6", "127.0.0.7", "127.0.0.8"}
+
 // verifier asks the zone's nameservers by name, each at its address, on port.
 func verifier(port string, zone map[string][]string, addrs map[string]string) (*domains.TXTVerifier, *[]string) {
 	var asked []string
-	return &domains.TXTVerifier{Port: port,
+	v := &domains.TXTVerifier{Port: port,
 		LookupNS: func(_ context.Context, name string) ([]*net.NS, error) {
 			asked = append(asked, name)
 			hosts, ok := zone[name]
@@ -123,7 +127,9 @@ func verifier(port string, zone map[string][]string, addrs map[string]string) (*
 				return []string{a}, nil
 			}
 			return nil, notFound(host)
-		}}, &asked
+		}}
+	domains.AllowNameservers(v, testNameservers...)
+	return v, &asked
 }
 
 // TestTXTVerifier: the proof is read only from an authoritative nameserver of the zone, found at
@@ -190,11 +196,117 @@ func TestTXTVerifier(t *testing.T) {
 	failing := &domains.TXTVerifier{Port: port, LookupNS: func(context.Context, string) ([]*net.NS, error) {
 		return nil, &net.DNSError{Err: "server misbehaving", Name: "example.com", IsTemporary: true}
 	}}
+	domains.AllowNameservers(failing, testNameservers...)
 	if err := failing.Verify(ctx, domains.Challenge{FQDN: "example.com", Value: value}); !errors.Is(err, domains.ErrNoNameserver) {
 		t.Fatalf("a failed NS lookup: %v", err)
 	}
 	v, _ = verifier(port, map[string][]string{}, addrs)
 	if err := v.Verify(ctx, domains.Challenge{FQDN: "example.com", Value: value}); !errors.Is(err, domains.ErrNoNameserver) {
 		t.Fatalf("no zone: %v", err)
+	}
+}
+
+// TestTXTVerifier_EgressGuard: a nameserver that the claimed zone names is asked only at a public
+// address. One whose name resolves to a loopback, private, link-local or metadata address, or to
+// an IPv4-mapped or NAT64 form of one, is refused before any query reaches it, over UDP and TCP;
+// the stored error says so and names no address, neither the nameserver's nor the resolver's
+// (issue #823).
+func TestTXTVerifier_EgressGuard(t *testing.T) {
+	ctx := context.Background()
+	inside := &nameserver{txt: []string{value}, authoritative: true, truncate: true} // would prove it
+	port := serveAll(t, map[string]*nameserver{"127.0.0.9": inside})
+	for name, addr := range map[string]string{
+		"loopback":        "127.0.0.9",
+		"loopback IPv6":   "::1",
+		"private":         "10.0.0.53",
+		"private IPv6":    "fd00::53",
+		"link-local":      "169.254.169.254",
+		"IPv4-mapped":     "::ffff:127.0.0.9",
+		"NAT64 loopback":  "64:ff9b::7f00:9",
+		"shared space":    "100.100.100.200",
+		"unspecified":     "0.0.0.0",
+		"6to4 of private": "2002:a00:35::1",
+	} {
+		v, _ := verifier(port, map[string][]string{"example.com": {"ns.example.net"}}, map[string]string{"ns.example.net": addr})
+		err := v.Verify(ctx, domains.Challenge{FQDN: "example.com", Value: value})
+		if !errors.Is(err, domains.ErrNoNameserver) || !strings.Contains(err.Error(), "not public") {
+			t.Errorf("%s (%s): %v, want a refusal", name, addr, err)
+		}
+		if err != nil && (strings.Contains(err.Error(), addr) || strings.Contains(err.Error(), "ns.example.net")) {
+			t.Errorf("%s: the error names the nameserver: %v", name, err)
+		}
+	}
+	if n := inside.queries.Load(); n != 0 {
+		t.Fatalf("a nameserver at a refused address got %d queries", n)
+	}
+
+	// The retry over TCP after a truncated answer is guarded too: a nameserver let through over UDP
+	// only answers truncated, and the TCP connection to it is refused.
+	big := &nameserver{txt: []string{value}, authoritative: true, truncate: true}
+	bigPort := serveAll(t, map[string]*nameserver{"127.0.0.10": big})
+	v, _ := verifier(bigPort, map[string][]string{"example.com": {"ns.example.net"}}, map[string]string{"ns.example.net": "127.0.0.10"})
+	domains.AllowNameserversOverUDP(v, "127.0.0.10")
+	err := v.Verify(ctx, domains.Challenge{FQDN: "example.com", Value: value})
+	if !errors.Is(err, domains.ErrNoNameserver) || !strings.Contains(err.Error(), "not public") {
+		t.Errorf("the TCP retry to a refused address: %v, want a refusal", err)
+	}
+	if big.queries.Load() == 0 || big.tcpQueries.Load() != 0 {
+		t.Errorf("queries %d, over TCP %d: want the UDP query only", big.queries.Load(), big.tcpQueries.Load())
+	}
+
+	// A public nameserver among refused ones still proves the claim (its loopback stand-in is let
+	// through by the test hook only).
+	good := &nameserver{txt: []string{value}, authoritative: true}
+	goodPort := serveAll(t, map[string]*nameserver{"127.0.0.1": good})
+	v, _ = verifier(goodPort, map[string][]string{"example.com": {"ns-a.example.net", "ns-b.example.net"}},
+		map[string]string{"ns-a.example.net": "10.1.2.3", "ns-b.example.net": "127.0.0.1"})
+	if err := v.Verify(ctx, domains.Challenge{FQDN: "example.com", Value: value}); err != nil {
+		t.Fatalf("a public nameserver after a refused one: %v", err)
+	}
+}
+
+// TestTXTVerifier_ErrorsNameNoAddress: whatever fails, the error that a claim stores names the kind
+// of failure only, not the resolver's address, the controller's or a nameserver's (issue #823).
+func TestTXTVerifier_ErrorsNameNoAddress(t *testing.T) {
+	ctx := context.Background()
+	resolverErr := func(timeout bool) error {
+		return &net.DNSError{Err: "read udp 10.9.8.7:41234->10.255.255.254:53: i/o timeout", Name: "example.com",
+			Server: "10.255.255.254:53", IsTimeout: timeout, IsTemporary: true}
+	}
+	port := serveAll(t, map[string]*nameserver{"127.0.0.1": {txt: []string{value}}}) // no authority
+	cases := map[string]struct {
+		v    *domains.TXTVerifier
+		want string
+	}{
+		"NS lookup times out": {&domains.TXTVerifier{LookupNS: func(context.Context, string) ([]*net.NS, error) {
+			return nil, resolverErr(true)
+		}}, "timed out"},
+		"NS lookup fails": {&domains.TXTVerifier{LookupNS: func(context.Context, string) ([]*net.NS, error) {
+			return nil, resolverErr(false)
+		}}, "could not be looked up"},
+		"no zone": {&domains.TXTVerifier{LookupNS: func(_ context.Context, name string) ([]*net.NS, error) {
+			return nil, notFound(name)
+		}}, "no zone"},
+		"nameserver name fails": {&domains.TXTVerifier{
+			LookupNS: func(context.Context, string) ([]*net.NS, error) { return []*net.NS{{Host: "ns.example.net."}}, nil },
+			LookupHost: func(context.Context, string) ([]string, error) {
+				return nil, resolverErr(false)
+			}}, "could not be resolved"},
+		"nameserver without authority": {func() *domains.TXTVerifier {
+			v, _ := verifier(port, map[string][]string{"example.com": {"ns.example.net"}}, map[string]string{"ns.example.net": "127.0.0.1"})
+			return v
+		}(), "without authority"},
+	}
+	for name, c := range cases {
+		err := c.v.Verify(ctx, domains.Challenge{FQDN: "example.com", Value: value})
+		if !errors.Is(err, domains.ErrNoNameserver) || !strings.Contains(err.Error(), c.want) {
+			t.Errorf("%s: %v, want %q", name, err, c.want)
+			continue
+		}
+		for _, leak := range []string{"10.255.255.254", "10.9.8.7", "127.0.0.1", "ns.example.net", ":53"} {
+			if strings.Contains(err.Error(), leak) {
+				t.Errorf("%s: the error names %s: %v", name, leak, err)
+			}
+		}
 	}
 }

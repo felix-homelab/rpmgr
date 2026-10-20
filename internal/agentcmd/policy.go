@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
-package main
+package agentcmd
 
 import (
 	"context"
@@ -35,8 +35,8 @@ func policyUnit(stat func(string) (os.FileInfo, error)) string {
 	return "rpmgr-connector.service"
 }
 
-// policyCommand is `rpmgr policy` (docs/16-cli.md): it shows or edits the connector-local policy.
-func policyCommand() *cli.Command {
+// Policy is `rpmgr policy` (docs/16-cli.md): it shows or edits the connector-local policy.
+func Policy() *cli.Command {
 	path := policy.DefaultPath
 	pathFlag := func(fs *flag.FlagSet) { fs.StringVar(&path, "file", policy.DefaultPath, "the policy file") }
 	edit := func(name, summary string, do func(path, target string) (bool, error)) *cli.Command {

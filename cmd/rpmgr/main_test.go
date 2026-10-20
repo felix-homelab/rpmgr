@@ -15,6 +15,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/felix-homelab/rpmgr/internal/agentcmd"
 	"github.com/felix-homelab/rpmgr/internal/cli"
 	"github.com/felix-homelab/rpmgr/internal/config"
 	"github.com/felix-homelab/rpmgr/internal/controller"
@@ -302,8 +303,8 @@ func TestAgentCommands_AllInOne(t *testing.T) {
 	if code != cli.ExitOK || !strings.Contains(out.String(), "connector, built into the all-in-one") {
 		t.Errorf("$RPMGR_CONFIG: exit %d, %q", code, out.String())
 	}
-	t.Cleanup(func() { bootDir = "/etc/rpmgr" })
-	bootDir = dir
+	t.Cleanup(func() { agentcmd.BootDir = "/etc/rpmgr" })
+	agentcmd.BootDir = dir
 	if code, stdout, stderr := runRpmgr("status"); code != cli.ExitOK || !strings.Contains(stdout, "gateway, built into the all-in-one (boot file "+cfg+")") {
 		t.Errorf("the default on an all-in-one host: exit %d, %q %q", code, stdout, stderr)
 	}

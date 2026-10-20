@@ -18,11 +18,11 @@ TestEnroll_BundleWithExtraRootRejected	done	3.8	#63
 TestH2_ConnectorInitiatedStreams	done	4.4	#74	DIAG clause (4.4) and CONTROL_PASSTHROUGH clause (5.13) done; RELAY_OUT clause in P2 (private services)
 TestTLS_WrongGatewayIDRejected	done	4.10	#80
 TestDenyList_AppliedDespiteRejectedSnapshot	done	3.13	#68	internal/itest
-TestOTA_ReplayedOldManifestRejected	pending	2.2	#603	seq clause in 2.2; permissions clause in 2.11 (#612, test/ota)
+TestOTA_ReplayedOldManifestRejected	done	2.2	#603	seq clause in 2.2; permissions clause in 2.11 (#612, test/ota)
 TestOTA_FreshHostReplayRejected	pending	2.4	#605	OTA
 TestOTA_SignedDowngradeAccepted	pending	2.3	#604	OTA
-TestOTA_StagedFileSwapTOCTOU	pending	2.2	#603	as root in 2.2; as the service user in 2.11 (#612)
-TestOTA_HostileStagingRefused	pending	2.2	#603	OTA
+TestOTA_StagedFileSwapTOCTOU	done	2.2	#603	as root in 2.2; as the service user in 2.11 (#612)
+TestOTA_HostileStagingRefused	done	2.2	#603	OTA
 TestOTA_CrossFilesystemInstall	pending	2.11	#612	test/ota
 TestOTA_UpdaterHonoursPolicy	pending	2.3	#604	OTA
 TestRestore_RevocationsReapplied	done	11.6	#160
@@ -65,12 +65,13 @@ TestTransport_ChangeKeepsOpenConnections	done	4.14	#84
 TestACME_ValidationWaitsForEveryGateway	done	6.2	#103
 TestACME_DNS01OnlyManagedZones	p2	-	-	ACME DNS-01
 TestPolicy_MetadataAlwaysDenied	done	4.6	#76
-TestOTA_ChannelAndVariantEnforced	pending	2.2	#603	OTA
+TestOTA_ChannelAndVariantEnforced	done	2.2	#603	OTA
 TestPolicy_AutoUpdateAndChannelDefaults	done	4.6	#76	installer clause in 11.4 (test/installsh: the policy file with explicit auto_update and update_channel); root-updater clause in 2.3 (#604)
 TestRevocationLog_SingleNodeWithoutSink	done	11.5	#159	second-replica clause through the single-controller lock of 2.4; the API reports the missing sink, which the settings page shows as the warning (web/src/pages/settings.test.tsx)
 TestGatewayGroup_MaxFourGateways	done	3.4	#59
 TestDomain_TrustedOnlyByInstanceAdmin	done	8.4	#118
 TestDomainProof_EgressGuard	done	-	#815	fix of issue #815
+TestTXTVerifier_EgressGuard	done	-	#823	fix of issue #823
 TestTLS_VerifyConnectionOnResumption	done	2.10	#54
 TestSPIFFE_TrustDomainExact	done	2.10	#54
 TestReauth_NoSessionTickets	done	2.10	#54

@@ -9,10 +9,12 @@ import (
 	"net"
 	"slices"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/miekg/dns"
 
+	"github.com/felix-homelab/rpmgr/internal/egress"
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/domain"
 )
@@ -23,11 +25,15 @@ const (
 	MaxNameservers = 8               // of a zone, asked in turn
 )
 
-// Why a TXT proof was not found.
+// Why a TXT proof was not found. Their messages name the kind of failure only, never an address, a
+// resolver's or a nameserver's, as members of the org read them (issue #823).
 var (
 	ErrNoNameserver = errors.New("domains: no authoritative nameserver of the zone answered")
 	ErrNoProof      = errors.New("domains: the TXT record does not hold the challenge value")
 )
+
+// errNoZone is a name with no NS records up to its top-level domain.
+var errNoZone = errors.New("no NS records up to the top-level domain")
 
 // ChallengeName is the name of a claim's TXT record.
 func ChallengeName(fqdn string) string { return "_rpmgr-challenge." + fqdn }
@@ -35,13 +41,17 @@ func ChallengeName(fqdn string) string { return "_rpmgr-challenge." + fqdn }
 // TXTVerifier reads a claim's TXT record at the zone's authoritative nameservers, never through a
 // resolver, so that split-horizon DNS and negative caching cannot fake or delay a result
 // (docs/04-security.md, "Route and hostname ownership"). Only the nameservers of the zone are
-// found through the resolver.
+// found through the resolver, the host's own, which is trusted wherever it is. The nameservers'
+// addresses come from the claimed zone, so the queries connect only to public addresses
+// (internal/egress), checked for the address dialled, over UDP and TCP alike.
 type TXTVerifier struct {
 	// LookupNS and LookupHost resolve the zone's nameservers; nil uses the system resolver.
 	LookupNS   func(ctx context.Context, name string) ([]*net.NS, error)
 	LookupHost func(ctx context.Context, host string) ([]string, error)
 	// Port is the nameservers' port; empty is 53.
 	Port string
+	// control replaces egress.Control for the nameservers' addresses; only tests set it.
+	control func(network, address string, c syscall.RawConn) error
 }
 
 // Verify reports nil if an authoritative nameserver of the zone holding the claimed name answers
@@ -51,27 +61,27 @@ func (v *TXTVerifier) Verify(ctx context.Context, c Challenge) error {
 	fqdn, value := c.FQDN, c.Value
 	servers, err := v.nameservers(ctx, fqdn)
 	if err != nil {
-		return fmt.Errorf("%w: %w", ErrNoNameserver, err)
+		return fmt.Errorf("%w: %s", ErrNoNameserver, zoneFailure(err))
 	}
 	q := new(dns.Msg)
 	q.SetQuestion(dns.Fqdn(ChallengeName(fqdn)), dns.TypeTXT)
 	q.RecursionDesired = false
 	answered := false
-	var last error
+	last := "no nameserver has an address"
 	for _, host := range servers {
 		addrs, err := v.lookupHost(ctx, host)
 		if err != nil {
-			last = err
+			last = "a nameserver's name " + resolveFailure(err)
 			continue
 		}
 		for _, a := range addrs {
-			r, err := exchange(ctx, q, net.JoinHostPort(a, v.port()))
+			r, err := v.exchange(ctx, q, net.JoinHostPort(a, v.port()))
 			if err != nil {
-				last = err
+				last = queryFailure(err)
 				continue
 			}
 			if !r.Authoritative || (r.Rcode != dns.RcodeSuccess && r.Rcode != dns.RcodeNameError) {
-				last = fmt.Errorf("%s answered without authority (rcode %s)", host, dns.RcodeToString[r.Rcode])
+				last = fmt.Sprintf("a nameserver answered without authority (rcode %s)", dns.RcodeToString[r.Rcode])
 				continue
 			}
 			answered = true
@@ -84,9 +94,51 @@ func (v *TXTVerifier) Verify(ctx context.Context, c Challenge) error {
 		}
 	}
 	if !answered {
-		return fmt.Errorf("%w: %w", ErrNoNameserver, last)
+		return fmt.Errorf("%w: %s", ErrNoNameserver, last)
 	}
 	return ErrNoProof
+}
+
+// zoneFailure is why the zone's nameservers were not found, without the resolver's address.
+func zoneFailure(err error) string {
+	var dnsErr *net.DNSError
+	switch {
+	case errors.Is(err, errNoZone) || errors.As(err, &dnsErr) && dnsErr.IsNotFound:
+		return "the name is in no zone with NS records"
+	case errors.As(err, &dnsErr) && dnsErr.IsTimeout || errors.Is(err, context.DeadlineExceeded):
+		return "looking up the zone's nameservers timed out"
+	default:
+		return "the zone's nameservers could not be looked up"
+	}
+}
+
+// resolveFailure is why a nameserver's name did not resolve, without the resolver's address.
+func resolveFailure(err error) string {
+	var dnsErr *net.DNSError
+	switch {
+	case errors.As(err, &dnsErr) && dnsErr.IsNotFound:
+		return "does not resolve"
+	case errors.As(err, &dnsErr) && dnsErr.IsTimeout || errors.Is(err, context.DeadlineExceeded):
+		return "timed out resolving"
+	default:
+		return "could not be resolved"
+	}
+}
+
+// queryFailure is why a query to a nameserver failed, without its address or the controller's.
+func queryFailure(err error) string {
+	switch {
+	case errors.Is(err, egress.ErrRefused):
+		return "a nameserver's address is not public"
+	case errors.Is(err, context.DeadlineExceeded) || isTimeout(err):
+		return "a nameserver did not answer in time"
+	case errors.Is(err, syscall.ECONNREFUSED):
+		return "a nameserver refused the query"
+	case errors.Is(err, syscall.EHOSTUNREACH) || errors.Is(err, syscall.ENETUNREACH):
+		return "a nameserver is not reachable"
+	default:
+		return "a query to a nameserver failed"
+	}
 }
 
 // nameservers returns the nameservers of the zone that holds fqdn: those of the closest enclosing
@@ -119,7 +171,7 @@ func (v *TXTVerifier) nameservers(ctx context.Context, fqdn string) ([]string, e
 		return hosts[:min(len(hosts), MaxNameservers)], nil
 	}
 	if last == nil {
-		last = errors.New("no NS records up to the top-level domain")
+		last = errNoZone
 	}
 	return nil, last
 }
@@ -138,13 +190,18 @@ func (v *TXTVerifier) port() string {
 	return v.Port
 }
 
-// exchange asks addr over UDP, and over TCP when the answer was truncated.
-func exchange(ctx context.Context, q *dns.Msg, addr string) (*dns.Msg, error) {
+// exchange asks addr over UDP, and over TCP when the answer was truncated, through a dialer that
+// refuses addresses that are not public.
+func (v *TXTVerifier) exchange(ctx context.Context, q *dns.Msg, addr string) (*dns.Msg, error) {
 	ctx, cancel := context.WithTimeout(ctx, QueryTimeout)
 	defer cancel()
-	r, _, err := (&dns.Client{Net: "udp", Timeout: QueryTimeout}).ExchangeContext(ctx, q, addr)
+	d := egress.Dialer(QueryTimeout, nil)
+	if v.control != nil {
+		d.Control = v.control
+	}
+	r, _, err := (&dns.Client{Net: "udp", Timeout: QueryTimeout, Dialer: d}).ExchangeContext(ctx, q, addr)
 	if err == nil && r.Truncated {
-		r, _, err = (&dns.Client{Net: "tcp", Timeout: QueryTimeout}).ExchangeContext(ctx, q, addr)
+		r, _, err = (&dns.Client{Net: "tcp", Timeout: QueryTimeout, Dialer: d}).ExchangeContext(ctx, q, addr)
 	}
 	return r, err
 }

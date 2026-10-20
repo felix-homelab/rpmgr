@@ -18,6 +18,12 @@ Changes to the design documents are not recorded here: see the git history and t
   with the reason, and the controller refuses a leave of the built-in agents in any case, as the
   API refuses to decommission them. (#810)
 
+### Changed
+
+- Tunnels: QUIC data sessions use quic-go v0.64.1, whose loss recovery no longer shrinks the
+  congestion window for packets that were only reordered. On the benchmark runners a single QUIC
+  stream without loss carried two to four times as much at 20 and 80 ms RTT as with v0.1.0. (#828)
+
 ### Fixed
 
 - Gateway: a gateway admits about eighty data sessions over TCP + HTTP/2 instead of nine. Each
@@ -56,6 +62,11 @@ Changes to the design documents are not recorded here: see the git history and t
   an HTTP claim names only the kind of failure, no longer the addresses, the resolver or the
   server's own text. A domain that resolves only on the local network is proved with a TXT record
   or marked trusted by the Instance Admin. (#822)
+- Controller: a TXT domain proof asks the claimed zone's nameservers only at public addresses, so
+  a zone whose NS records point at a loopback, private, link-local or metadata address gets no
+  query there, and the claim's last error names only the kind of failure, no longer the addresses
+  of the nameservers, the resolver or the controller. A zone whose nameservers are reachable only
+  on the local network is marked trusted by the Instance Admin. Low severity; affects 0.1.0. (#823)
 
 ## [0.1.0] - 2026-10-19
 
