@@ -34,6 +34,10 @@ Changes to the design documents are not recorded here: see the git history and t
 - Controller: a password reset or a password change now ends the user's other unused reset links,
   so a link issued before the change can no longer set the password; a reset link of a disabled
   user sets no password. Severity low to medium; affects 0.1.0. (#812)
+- Controller: a gateway's reports count only for what it serves: traffic counters of routes in its
+  own gateway group, and data sessions of connectors with a target on such a route. A gateway
+  could write traffic statistics for routes of other groups, and show data sessions for any
+  connector of its org. (#821)
 
 ## [0.1.0] - 2026-10-19
 
