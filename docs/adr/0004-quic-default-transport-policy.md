@@ -276,3 +276,72 @@ connection's congestion window, not a stream.
   also counts the spurious losses and runs QUIC with GSO and without (`-gso off`).
 - Whether to report the two quic-go behaviours upstream, the application-limited mark on clumped
   ACKs and the missing reaction to spurious losses, is left to the maintainer.
+
+### Phase 2 study: several data sessions per gateway
+
+**Question** (#422, [D70](../14-open-decisions.md#engineering)): every stream to a gateway shares
+one congestion-controlled connection, one QUIC connection or the two TCP connections of h2, so loss
+throttles all of them together. Do several data sessions per gateway help on lossy links, and at
+what cost?
+
+**Method** (2026-10-19): a prototype on the branch `tmp/multi-session-study` (never merged) lets a
+connector keep N sessions per gateway and link, set by an environment variable, and `bench run`
+pass it with `-sessions-quic N` or `-sessions-h2 N`. Nothing else changed: the gateway already
+admits up to 16 data sessions per connector and spreads a route's streams over them by power of
+two choices ([03](../03-connections.md#data-session)). The `bench` workflow ran the standard
+profile's throughput and idle workloads at RTT 20 and 80 ms and loss 0 and 1 % on GitHub-hosted
+x86-64 and arm64 runners (D49): runs 39247738394 (the product's counts, QUIC 1 and h2 2),
+39248365034 (QUIC 4), 39248386939 (h2 4), 39248374783 (QUIC 8; its x86-64 job lost its runner,
+so only arm64) and 39247748163 (QUIC 4 and h2 4). The numbers are medians of three runs, as
+Mbit/s, with the range over both directions and both runners.
+
+**32 streams at 1 % loss:**
+
+| Sessions per link | QUIC 20 ms | h2 20 ms | QUIC 80 ms | h2 80 ms |
+|---|---|---|---|---|
+| Product: QUIC 1, h2 2 | 17 to 18 | 16 to 17 | 4.0 to 4.2 | 4.3 to 4.6 |
+| QUIC 4 | 64 to 68 | — | 14 to 15 | — |
+| QUIC 8 (arm64 only) | 132 to 133 | — | 28 to 31 | — |
+| h2 4 | — | 28 to 33 | — | 6.6 to 8.4 |
+| Direct, 32 TCP connections | 516 to 611 | | 58 to 110 | |
+
+**32 streams without loss:** QUIC 201 to 335 with one session, 625 to 688 with four and 1 155 to
+1 190 with eight at 20 ms (149 to 209, 416 to 548 and 807 to 912 at 80 ms); h2 2 095 to 2 689 with
+two sessions and 2 197 to 4 889 with four at 20 ms (690 to 702 and 1 355 to 1 385 at 80 ms).
+
+**Results:**
+
+- **Goodput grows almost linearly with the sessions** on lossy links, as N congestion controllers
+  each recover from their own losses: four QUIC sessions carried 3.4 to 4.0 times as much as one,
+  eight 6.5 to 7.7 times; four h2 connections 1.4 to 2.1 times as much as two. Each transport's gain
+  depends only on its own count: four QUIC sessions left h2 unchanged, and the other way round.
+- **With four QUIC sessions the target of 03 is met on the runners:** 32 streams at 1 % loss on
+  QUIC reached 3.7 to 4.2 times the product's h2 at 20 ms and 3.1 to 3.6 times at 80 ms, and 1.7
+  to 2.3 times h2 with four connections.
+  The gap to 32 direct TCP connections stays: eight QUIC sessions reach a quarter of them.
+- **A single stream** uses one session and gains nothing. On x86-64, a single QUIC stream at 80 ms
+  carried 116 to 129 Mbit/s with four sessions against 193 to 213 with one; arm64 showed no such
+  drop. A likely cause, not verified, is that the stream may land on a session whose congestion
+  window was never opened by the cell's earlier runs.
+- **CPU per Gbit/s** stayed the same or fell (QUIC at 20 ms and 1 % loss on arm64: 8.2 CPU s per
+  Gbit with one session, 5.2 to 5.4 with eight).
+- **Idle cost:** 10 idle connectors with four QUIC sessions each, instead of one, changed the
+  gateway's memory by less than the measurement's noise of about ±10 MiB, and its CPU by less than
+  0.001 CPU s/s. Each session adds its own handshake at every connect, also after a gateway
+  restart, its keepalives and session pings
+  ([03](../03-connections.md#timeouts-keepalive-and-backoff)), a NAT mapping, and a share of the
+  16 sessions a gateway admits per connector.
+- **Fairness:** N sessions take N shares of a congested bottleneck that other traffic shares, as N
+  TCP connections do.
+- **The h2 window budget (a Phase 1 defect found by the study):** a gateway admits a reverse-HTTP/2
+  session only with a connection window of at least 4 MiB, and each one takes up to half of the free
+  process-wide budget of 1 GiB, which QUIC sessions share. With the defaults a gateway therefore
+  holds at most nine h2 sessions, that is four connectors on h2, and refuses the others; the idle
+  workload logged 139 to 381 refused sessions per run. Several h2 sessions per gateway make it
+  worse, so they wait for that fix.
+
+**No protocol change is needed:** the gateway accepts several sessions of a connector and spreads
+streams over them already, so a connector of a later release can open more sessions to a gateway
+of v0.1.0 within its cap of 16 per connector. Whether connectors keep several sessions, how many,
+and whether it is a setting is for the product owner to decide; until then the target of 03 stays
+as D70 recorded it, for VB-20.
