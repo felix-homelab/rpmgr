@@ -634,7 +634,9 @@ provider and never stored.
   link-local or metadata address gets no query there. The claim's last error names only the kind
   of failure (no zone, a nameserver's name that does not resolve, an address that is not public,
   no answer in time, an answer without authority with its response code), never an address or a
-  nameserver's or resolver's name. A zone whose nameservers are reachable only on the local
+  nameserver's or resolver's name. [R] As for HTTP proofs, the kinds still tell the claimant
+  whether a nameserver's name resolves in the controller's DNS ("does not resolve" against "not
+  public"); that much is accepted. A zone whose nameservers are reachable only on the local
   network is marked trusted by the Instance Admin (D13).
 - **HTTP proofs reach only public addresses.** The controller fetches
   `http://<domain>/.well-known/rpmgr-challenge/<claim ID>` without following redirects, and

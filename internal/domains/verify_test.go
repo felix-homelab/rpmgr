@@ -240,11 +240,25 @@ func TestTXTVerifier_EgressGuard(t *testing.T) {
 		t.Fatalf("a nameserver at a refused address got %d queries", n)
 	}
 
+	// The retry over TCP after a truncated answer is guarded too: a nameserver let through over UDP
+	// only answers truncated, and the TCP connection to it is refused.
+	big := &nameserver{txt: []string{value}, authoritative: true, truncate: true}
+	bigPort := serveAll(t, map[string]*nameserver{"127.0.0.10": big})
+	v, _ := verifier(bigPort, map[string][]string{"example.com": {"ns.example.net"}}, map[string]string{"ns.example.net": "127.0.0.10"})
+	domains.AllowNameserversOverUDP(v, "127.0.0.10")
+	err := v.Verify(ctx, domains.Challenge{FQDN: "example.com", Value: value})
+	if !errors.Is(err, domains.ErrNoNameserver) || !strings.Contains(err.Error(), "not public") {
+		t.Errorf("the TCP retry to a refused address: %v, want a refusal", err)
+	}
+	if big.queries.Load() == 0 || big.tcpQueries.Load() != 0 {
+		t.Errorf("queries %d, over TCP %d: want the UDP query only", big.queries.Load(), big.tcpQueries.Load())
+	}
+
 	// A public nameserver among refused ones still proves the claim (its loopback stand-in is let
 	// through by the test hook only).
 	good := &nameserver{txt: []string{value}, authoritative: true}
 	goodPort := serveAll(t, map[string]*nameserver{"127.0.0.1": good})
-	v, _ := verifier(goodPort, map[string][]string{"example.com": {"ns-a.example.net", "ns-b.example.net"}},
+	v, _ = verifier(goodPort, map[string][]string{"example.com": {"ns-a.example.net", "ns-b.example.net"}},
 		map[string]string{"ns-a.example.net": "10.1.2.3", "ns-b.example.net": "127.0.0.1"})
 	if err := v.Verify(ctx, domains.Challenge{FQDN: "example.com", Value: value}); err != nil {
 		t.Fatalf("a public nameserver after a refused one: %v", err)
