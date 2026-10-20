@@ -22,7 +22,7 @@ import (
 
 	agentv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/agent/v1"
 	"github.com/felix-homelab/rpmgr/internal/pki"
-	"github.com/felix-homelab/rpmgr/internal/snapshot"
+	"github.com/felix-homelab/rpmgr/internal/snapsig"
 )
 
 // The commands of an agent host (docs/16-cli.md): `rpmgr status`, `leave` and `diag`.
@@ -91,7 +91,7 @@ func lastKnownGood(l Loaded, stateDir string, now time.Time) (*agentv1.Snapshot,
 	if err := proto.Unmarshal(b, signed); err != nil {
 		return nil, fmt.Errorf("%w: %w", ErrBadLastKnownGood, err)
 	}
-	return snapshot.VerifySnapshot(signed, l.Signing, l.Root, l.SPIFFE(), now)
+	return snapsig.VerifySnapshot(signed, l.Signing, l.Root, l.SPIFFE(), now)
 }
 
 // controllerConn connects to a controller endpoint as the agent, at SNI controller.<td>.

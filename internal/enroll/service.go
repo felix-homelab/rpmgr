@@ -25,6 +25,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/authz"
 	"github.com/felix-homelab/rpmgr/internal/ids"
 	"github.com/felix-homelab/rpmgr/internal/pki"
+	"github.com/felix-homelab/rpmgr/internal/pki/castore"
 	"github.com/felix-homelab/rpmgr/internal/ratelimit"
 	"github.com/felix-homelab/rpmgr/internal/revlog"
 	"github.com/felix-homelab/rpmgr/internal/settings"
@@ -44,7 +45,7 @@ type Service struct {
 	agentv1.UnimplementedEnrollmentServer
 
 	DB *store.DB
-	CA *pki.CA
+	CA *castore.CA
 	// PublicURL is the controller's public URL: the endpoint agents get while the instance settings
 	// list no controller endpoints.
 	PublicURL string
@@ -60,7 +61,7 @@ type Service struct {
 }
 
 // NewService returns the Enrollment service of the controller at publicURL.
-func NewService(db *store.DB, ca *pki.CA, publicURL string, now func() time.Time) *Service {
+func NewService(db *store.DB, ca *castore.CA, publicURL string, now func() time.Time) *Service {
 	if now == nil {
 		now = time.Now
 	}
@@ -217,7 +218,7 @@ func (s *Service) issue(csr *x509.CertificateRequest, req *agentv1.EnrollRequest
 			return cert, nil
 		}
 		const reason = "replaced by a re-enrollment"
-		old, err := pki.RevokeReplaced(ctx, tx, id, serial, reason, s.Now())
+		old, err := castore.RevokeReplaced(ctx, tx, id, serial, reason, s.Now())
 		if err != nil {
 			return nil, err
 		}

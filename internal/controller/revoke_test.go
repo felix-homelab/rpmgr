@@ -17,8 +17,9 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/audit"
 	"github.com/felix-homelab/rpmgr/internal/controller"
 	"github.com/felix-homelab/rpmgr/internal/pki"
+	"github.com/felix-homelab/rpmgr/internal/pki/castore"
 	"github.com/felix-homelab/rpmgr/internal/revlog"
-	"github.com/felix-homelab/rpmgr/internal/snapshot"
+	"github.com/felix-homelab/rpmgr/internal/snapsig"
 	"github.com/felix-homelab/rpmgr/internal/store"
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/auditentry"
@@ -63,7 +64,7 @@ func (e *sessionEnv) verifyDenyList(t *testing.T, m *agentv1.ControllerMessage) 
 	if signed == nil {
 		t.Fatalf("got %v, want a deny-list", m)
 	}
-	payload, err := snapshot.Verify(signed, []*x509.Certificate{e.ca.ConfigSigner().Cert, e.ca.Intermediate()}, e.ca.Root(), time.Now())
+	payload, err := snapsig.Verify(signed, []*x509.Certificate{e.ca.ConfigSigner().Cert, e.ca.Intermediate()}, e.ca.Root(), time.Now())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -177,7 +178,7 @@ func TestDenyList_HelloDigest(t *testing.T) {
 	entries := e.verifyDenyList(t, recv(t, stale))
 
 	current := hello("0.1.0")
-	current.DenyListDigest = pki.DenyDigest(entries, snapshot.KeyID(e.ca.ConfigSigner().Cert))
+	current.DenyListDigest = pki.DenyDigest(entries, snapsig.KeyID(e.ca.ConfigSigner().Cert))
 	inSync := e.open(t, testCtx(t), cert, current)
 	welcomed(t, inSync)
 	expectQuiet(t, inSync, 200*time.Millisecond)
@@ -192,7 +193,7 @@ func TestDenyList_RevokedElsewhere(t *testing.T) {
 	st := e.open(t, testCtx(t), cert, hello("0.1.0"))
 	welcomed(t, st)
 	if err := store.WriteTx(e.sys, db, func(tx *ent.Tx) error {
-		_, _, err := pki.RevokeCertificate(e.sys, tx, pki.SerialHex(cert.Leaf.SerialNumber), "elsewhere", time.Now())
+		_, _, err := castore.RevokeCertificate(e.sys, tx, pki.SerialHex(cert.Leaf.SerialNumber), "elsewhere", time.Now())
 		return err
 	}); err != nil {
 		t.Fatal(err)

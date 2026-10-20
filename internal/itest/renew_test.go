@@ -14,6 +14,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/agent"
 	"github.com/felix-homelab/rpmgr/internal/itest"
 	"github.com/felix-homelab/rpmgr/internal/pki"
+	"github.com/felix-homelab/rpmgr/internal/pki/castore"
 	"github.com/felix-homelab/rpmgr/internal/telemetry/telemetrytest"
 )
 
@@ -59,7 +60,7 @@ func TestRenewal_EndToEnd(t *testing.T) {
 		t.Fatal("the renewed certificate is for another identity or the same key")
 	}
 	waitFor(t, "the old certificate superseded", func() bool {
-		return errors.Is(pki.CheckRenewable(c.Sys, c.DB.Client(), old), pki.ErrSuperseded)
+		return errors.Is(castore.CheckRenewable(c.Sys, c.DB.Client(), old), castore.ErrSuperseded)
 	})
 	waitFor(t, "a session with the new certificate", func() bool { return slices.Contains(c.Sessions.Connected(), id.AgentID) })
 }

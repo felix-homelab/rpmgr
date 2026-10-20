@@ -18,7 +18,7 @@ import (
 	agentv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/agent/v1"
 	"github.com/felix-homelab/rpmgr/internal/agent"
 	"github.com/felix-homelab/rpmgr/internal/pki"
-	"github.com/felix-homelab/rpmgr/internal/snapshot"
+	"github.com/felix-homelab/rpmgr/internal/snapsig"
 )
 
 // denyEnv is a deny-list on a test CA with a clock the test moves.
@@ -46,7 +46,7 @@ func identity(s string, notAfter time.Time) *agentv1.DenyEntry {
 
 func (e *denyEnv) signedList(t *testing.T, kp pki.KeyPair, epoch string, seq uint64, es ...*agentv1.DenyEntry) *agentv1.Signed {
 	t.Helper()
-	s, err := snapshot.Sign(kp, &agentv1.DenyList{Version: &agentv1.Revision{DbEpoch: epoch, Seq: seq}, Full: true, Entries: es})
+	s, err := snapsig.Sign(kp, &agentv1.DenyList{Version: &agentv1.Revision{DbEpoch: epoch, Seq: seq}, Full: true, Entries: es})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -87,7 +87,7 @@ func TestDenyList_PersistedAcrossGatewayRestart(t *testing.T) {
 		t.Error("a certificate that is not on the list is denied")
 	}
 	want := pki.DenyDigest([]*agentv1.DenyEntry{serial("a1", soon), identity(idA, later), serial("b1", later)},
-		snapshot.KeyID(e.config.Cert))
+		snapsig.KeyID(e.config.Cert))
 	if !bytes.Equal(d.Digest(), want) {
 		t.Error("the digest is not that of the union")
 	}

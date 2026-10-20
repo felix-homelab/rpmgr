@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
-package snapshot_test
+package snapsig_test
 
 import (
 	"bytes"
@@ -13,7 +13,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	agentv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/agent/v1"
-	"github.com/felix-homelab/rpmgr/internal/snapshot"
+	"github.com/felix-homelab/rpmgr/internal/snapsig"
 )
 
 // FuzzVerifySnapshot: a signed snapshot as it arrives on the wire verifies only with the payload
@@ -22,11 +22,11 @@ import (
 // the audit-checkpoint key never verifies (docs/04-security.md, "CA hierarchy").
 func FuzzVerifySnapshot(f *testing.F) {
 	s := newSigners(f, "rpmgr-7f3k2q6m")
-	good, err := snapshot.Sign(s.config, testSnapshot())
+	good, err := snapsig.Sign(s.config, testSnapshot())
 	if err != nil {
 		f.Fatal(err)
 	}
-	audit, err := snapshot.Sign(s.audit, testSnapshot())
+	audit, err := snapsig.Sign(s.audit, testSnapshot())
 	if err != nil {
 		f.Fatal(err)
 	}
@@ -42,7 +42,7 @@ func FuzzVerifySnapshot(f *testing.F) {
 		if proto.Unmarshal(wire, &m) != nil {
 			return
 		}
-		snap, err := snapshot.VerifySnapshot(&m, s.certs(), s.root.Cert, agent, t0)
+		snap, err := snapsig.VerifySnapshot(&m, s.certs(), s.root.Cert, agent, t0)
 		if err != nil {
 			return
 		}
@@ -57,7 +57,7 @@ func FuzzVerifySnapshot(f *testing.F) {
 // audit-checkpoint key is always refused.
 func FuzzSnapshotPayload(f *testing.F) {
 	s := newSigners(f, "rpmgr-7f3k2q6m")
-	good, err := snapshot.Sign(s.config, testSnapshot())
+	good, err := snapsig.Sign(s.config, testSnapshot())
 	if err != nil {
 		f.Fatal(err)
 	}
@@ -73,12 +73,12 @@ func FuzzSnapshotPayload(f *testing.F) {
 		return sig
 	}
 	f.Fuzz(func(t *testing.T, payload []byte) {
-		m := &agentv1.Signed{Payload: payload, Signature: sign(t, s.config.Key, payload), KeyId: snapshot.KeyID(s.config.Cert)}
-		if snap, err := snapshot.VerifySnapshot(m, s.certs(), s.root.Cert, agent, t0); err == nil && snap.GetAgent() != agent {
+		m := &agentv1.Signed{Payload: payload, Signature: sign(t, s.config.Key, payload), KeyId: snapsig.KeyID(s.config.Cert)}
+		if snap, err := snapsig.VerifySnapshot(m, s.certs(), s.root.Cert, agent, t0); err == nil && snap.GetAgent() != agent {
 			t.Fatalf("accepted a snapshot for %q", snap.GetAgent())
 		}
-		bad := &agentv1.Signed{Payload: payload, Signature: sign(t, s.audit.Key, payload), KeyId: snapshot.KeyID(s.audit.Cert)}
-		if _, err := snapshot.VerifySnapshot(bad, []*x509.Certificate{s.audit.Cert, s.config.Cert, s.inter.Cert}, s.root.Cert, agent, t0); err == nil {
+		bad := &agentv1.Signed{Payload: payload, Signature: sign(t, s.audit.Key, payload), KeyId: snapsig.KeyID(s.audit.Cert)}
+		if _, err := snapsig.VerifySnapshot(bad, []*x509.Certificate{s.audit.Cert, s.config.Cert, s.inter.Cert}, s.root.Cert, agent, t0); err == nil {
 			t.Fatal("a payload signed with the audit-checkpoint key verified")
 		}
 	})

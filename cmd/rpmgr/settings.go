@@ -31,7 +31,7 @@ import (
 func settingsCommands() map[string][]*cli.Command {
 	var (
 		instance, force bool
-		sets            listFlag
+		sets            cli.List
 		wait            time.Duration
 		output          string
 	)

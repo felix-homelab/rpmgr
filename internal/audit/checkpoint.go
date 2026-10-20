@@ -157,7 +157,7 @@ func checkpoints(ctx context.Context, tx *ent.Tx, orgID, tail string) ([]Checkpo
 }
 
 // Trust verifies checkpoint signatures: the root, and every intermediate and audit-checkpoint
-// certificate the CA has had (pki.SignerCertificates).
+// certificate the CA has had (castore.SignerCertificates).
 type Trust struct {
 	Root          *x509.Certificate
 	Intermediates []*x509.Certificate

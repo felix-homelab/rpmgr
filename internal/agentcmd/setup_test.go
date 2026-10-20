@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 
-package main
+package agentcmd
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"errors"
 	"os"
@@ -15,6 +16,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/cli"
 	"github.com/felix-homelab/rpmgr/internal/policy"
 	"github.com/felix-homelab/rpmgr/internal/setup"
+	"github.com/felix-homelab/rpmgr/internal/setup/serversetup"
 	"github.com/felix-homelab/rpmgr/internal/token"
 )
 
@@ -39,7 +41,8 @@ func fakeSetup(t *testing.T) *setupFakes {
 	t.Cleanup(func() { setupHost, setupStdin, setupTerminal = old, oldStdin, oldTerminal })
 	setupStdin, setupTerminal = strings.NewReader(""), func() bool { return false }
 	setupHost = setup.Host{
-		Paths: setup.Paths{Etc: filepath.Join(f.root, "etc"), Lib: filepath.Join(f.root, "lib"), Units: filepath.Join(f.root, "units"), Bin: bin},
+		Paths:  setup.Paths{Etc: filepath.Join(f.root, "etc"), Lib: filepath.Join(f.root, "lib"), Units: filepath.Join(f.root, "units"), Bin: bin},
+		Server: serversetup.Server{},
 		Run: func(_ context.Context, name string, args ...string) error {
 			f.commands = append(f.commands, name+" "+strings.Join(args, " "))
 			return nil
@@ -328,4 +331,13 @@ func TestLineReader(t *testing.T) {
 	if err := keep("", setup.CheckPublicURL)(""); err == nil {
 		t.Error("an empty answer without a value accepted")
 	}
+}
+
+// runWith runs `rpmgr setup` of the full build in a command tree of this package's commands, with
+// env as the environment.
+func runWith(env map[string]string, _ string, args ...string) (int, string, string) {
+	var out, errOut bytes.Buffer
+	tree := &cli.Command{Name: "rpmgr", Sub: []*cli.Command{Setup(serversetup.Server{}), Enroll(), Policy()}}
+	code := cli.Main(context.Background(), tree, args, &cli.Env{Stdout: &out, Stderr: &errOut, Getenv: func(k string) string { return env[k] }})
+	return code, out.String(), errOut.String()
 }

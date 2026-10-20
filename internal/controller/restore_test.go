@@ -21,6 +21,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/authz"
 	"github.com/felix-homelab/rpmgr/internal/controller"
 	"github.com/felix-homelab/rpmgr/internal/pki"
+	"github.com/felix-homelab/rpmgr/internal/pki/castore"
 	"github.com/felix-homelab/rpmgr/internal/revlog"
 	"github.com/felix-homelab/rpmgr/internal/settings"
 	"github.com/felix-homelab/rpmgr/internal/store"
@@ -298,7 +299,7 @@ func checkRestored(t *testing.T, r *restoreEnv, ps *people, leaked, late tls.Cer
 	t.Helper()
 	c := r.db.Client()
 	for name, cert := range map[string]tls.Certificate{"the revoked certificate": leaked, "the certificate issued after the backup": late} {
-		if err := pki.CheckRenewable(r.sys, c, cert.Leaf); !errors.Is(err, pki.ErrCertRevoked) {
+		if err := castore.CheckRenewable(r.sys, c, cert.Leaf); !errors.Is(err, castore.ErrCertRevoked) {
 			t.Errorf("%s: %v", name, err)
 		}
 		cc, _ := r.dial(t, cert, "controller."+r.ca.TrustDomain(), false)
@@ -311,7 +312,7 @@ func checkRestored(t *testing.T, r *restoreEnv, ps *people, leaked, late tls.Cer
 		}
 	}
 	serial, lateSerial := pki.SerialHex(leaked.Leaf.SerialNumber), pki.SerialHex(late.Leaf.SerialNumber)
-	deny, err := pki.DenyList(r.sys, c, time.Now())
+	deny, err := castore.DenyList(r.sys, c, time.Now())
 	if err != nil {
 		t.Fatal(err)
 	}

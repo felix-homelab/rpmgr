@@ -146,7 +146,7 @@ func (s *apiSession) get(ctx context.Context, k apicli.Kind, id string) (protore
 
 func getCommand() *cli.Command {
 	var output, role string
-	var allow, deny listFlag
+	var allow, deny cli.List
 	var instance bool
 	return &cli.Command{
 		Name: "get", Summary: "show a resource of the public API, the settings, or the install command of an agent",

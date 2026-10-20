@@ -20,7 +20,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	agentv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/agent/v1"
-	"github.com/felix-homelab/rpmgr/internal/snapshot"
+	"github.com/felix-homelab/rpmgr/internal/snapsig"
 )
 
 // LastKnownGoodFile is the last applied snapshot in the state directory, as it was signed
@@ -220,7 +220,7 @@ func (r *Runtime) Run(ctx context.Context) {
 
 // receive verifies, checks the revision, validates and applies one snapshot, and answers.
 func (r *Runtime) receive(ctx context.Context, signed *agentv1.Signed) {
-	hash := snapshot.Hash(signed)
+	hash := snapsig.Hash(signed)
 	snap, err := r.verify(signed)
 	if err != nil {
 		r.o.Logger.Error("rejecting a snapshot that does not verify", "error", err)
@@ -274,7 +274,7 @@ func (r *Runtime) verify(signed *agentv1.Signed) (*agentv1.Snapshot, error) {
 	r.mu.Lock()
 	signers := r.signers
 	r.mu.Unlock()
-	return snapshot.VerifySnapshot(signed, signers, r.o.Identity.Root, r.o.Identity.SPIFFE(), r.o.Now())
+	return snapsig.VerifySnapshot(signed, signers, r.o.Identity.Root, r.o.Identity.SPIFFE(), r.o.Now())
 }
 
 // validate checks what every role relies on, each resource's ID and hash, and then lets the role
@@ -283,7 +283,7 @@ func (r *Runtime) validate(snap *agentv1.Snapshot) []*agentv1.SnapshotError {
 	var errs []*agentv1.SnapshotError
 	seen := map[string]bool{}
 	for _, res := range snap.GetResources() {
-		h, err := snapshot.ResourceHash(res)
+		h, err := snapsig.ResourceHash(res)
 		switch {
 		case res.GetId() == "":
 			errs = append(errs, &agentv1.SnapshotError{Message: "a resource without an ID"})
@@ -302,7 +302,7 @@ func (r *Runtime) validate(snap *agentv1.Snapshot) []*agentv1.SnapshotError {
 
 // apply hands the changes to the role and makes snap the running snapshot.
 func (r *Runtime) apply(ctx context.Context, signed *agentv1.Signed, snap *agentv1.Snapshot) []*agentv1.ResourceStatus {
-	next := &running{rev: snap.GetRevision(), hash: snapshot.Hash(signed), key: signed.GetKeyId(), resources: map[string][]byte{}}
+	next := &running{rev: snap.GetRevision(), hash: snapsig.Hash(signed), key: signed.GetKeyId(), resources: map[string][]byte{}}
 	for _, res := range snap.GetResources() {
 		next.resources[res.GetId()] = res.GetHash()
 	}

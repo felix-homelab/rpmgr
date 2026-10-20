@@ -12,8 +12,9 @@ import (
 	agentv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/agent/v1"
 	"github.com/felix-homelab/rpmgr/internal/audit"
 	"github.com/felix-homelab/rpmgr/internal/pki"
+	"github.com/felix-homelab/rpmgr/internal/pki/castore"
 	"github.com/felix-homelab/rpmgr/internal/revlog"
-	"github.com/felix-homelab/rpmgr/internal/snapshot"
+	"github.com/felix-homelab/rpmgr/internal/snapsig"
 	"github.com/felix-homelab/rpmgr/internal/store"
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
 )
@@ -40,8 +41,8 @@ func (s *Sessions) Denied(cert *x509.Certificate) bool {
 	if d := s.deny.Load(); d != nil {
 		return d.denies(cert)
 	}
-	switch err := pki.CheckRenewable(s.sys, s.db.Client(), cert); {
-	case err == nil, errors.Is(err, pki.ErrNotIssued), errors.Is(err, pki.ErrSuperseded):
+	switch err := castore.CheckRenewable(s.sys, s.db.Client(), cert); {
+	case err == nil, errors.Is(err, pki.ErrNotIssued), errors.Is(err, castore.ErrSuperseded):
 		return false
 	default: // revoked, or the database did not answer
 		return true
@@ -53,12 +54,12 @@ func (s *Sessions) Denied(cert *x509.Certificate) bool {
 func (s *Sessions) refreshDeny() (changed bool, err error) {
 	s.denyMu.Lock()
 	defer s.denyMu.Unlock()
-	entries, err := pki.DenyList(s.sys, s.db.Client(), s.now())
+	entries, err := castore.DenyList(s.sys, s.db.Client(), s.now())
 	if err != nil {
 		return false, err
 	}
 	signer := s.ca.ConfigSigner()
-	digest := pki.DenyDigest(entries, snapshot.KeyID(signer.Cert))
+	digest := pki.DenyDigest(entries, snapsig.KeyID(signer.Cert))
 	old := s.deny.Load()
 	if old != nil && bytes.Equal(old.digest, digest) {
 		return false, nil
@@ -70,7 +71,7 @@ func (s *Sessions) refreshDeny() (changed bool, err error) {
 	}); err != nil {
 		return false, err
 	}
-	signed, err := snapshot.Sign(signer, &agentv1.DenyList{Full: true, Entries: entries,
+	signed, err := snapsig.Sign(signer, &agentv1.DenyList{Full: true, Entries: entries,
 		Version: &agentv1.Revision{DbEpoch: epoch, Seq: uint64(s.now().UnixMilli())}}) //nolint:gosec // G115: a time after 1970
 	if err != nil {
 		return false, err
@@ -180,7 +181,7 @@ type Actor struct {
 func (r Revoker) RevokeCertificate(ctx context.Context, serial, reason string, actor Actor) error {
 	s := r.Sessions
 	err := store.WriteTx(ctx, s.db, func(tx *ent.Tx) error {
-		row, changed, err := pki.RevokeCertificate(ctx, tx, serial, reason, s.now())
+		row, changed, err := castore.RevokeCertificate(ctx, tx, serial, reason, s.now())
 		if err != nil || !changed {
 			return err
 		}
@@ -201,7 +202,7 @@ func (r Revoker) RevokeCertificate(ctx context.Context, serial, reason string, a
 func (r Revoker) RevokeIdentity(ctx context.Context, id pki.Identity, reason string, actor Actor) error {
 	s := r.Sessions
 	err := store.WriteTx(ctx, s.db, func(tx *ent.Tx) error {
-		row, changed, err := pki.RevokeIdentity(ctx, tx, id, reason, s.now())
+		row, changed, err := castore.RevokeIdentity(ctx, tx, id, reason, s.now())
 		if err != nil || !changed {
 			return err
 		}
