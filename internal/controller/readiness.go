@@ -158,7 +158,7 @@ func keepServing[K comparable](tx *ent.Tx, s *Sessions, id pki.Identity, next ma
 	if group != "" && len(connectors) > 0 {
 		serving, err := tx.RouteTarget.Query().
 			Where(routetarget.ConnectorIDIn(slices.Collect(maps.Keys(connectors))...), routetarget.HasRouteWith(route.GatewayGroupID(group))).
-			Select(routetarget.FieldConnectorID).Strings(s.sys)
+			Unique(true).Select(routetarget.FieldConnectorID).Strings(s.sys)
 		if err != nil {
 			return err
 		}

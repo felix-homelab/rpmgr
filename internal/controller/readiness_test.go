@@ -4,6 +4,7 @@ package controller_test
 
 import (
 	"cmp"
+	"crypto/tls"
 	"fmt"
 	"slices"
 	"strings"
@@ -254,5 +255,47 @@ func TestDataSessions(t *testing.T) {
 		waitFor("a flood", func(m map[string]*ent.DataSession) bool { return len(m) == 4096 })
 		report(gst)
 		waitFor("an empty report", func(m map[string]*ent.DataSession) bool { return len(m) == 0 })
+	})
+}
+
+// TestDataSessions_UnknownOrDecommissionedGateway: the data sessions of a gateway the controller does
+// not know, or of a decommissioned one, are neither kept nor written, even for a connector that
+// serves a route of the gateway's former group.
+func TestDataSessions_UnknownOrDecommissionedGateway(t *testing.T) {
+	storetest.ForEachDialect(t, func(t *testing.T, db *store.DB) {
+		e := pushEnv(t, db)
+		sys := storetest.SystemCtx(t)
+		c := db.Client()
+		group := c.GatewayGroup.Create().SetOrgID(e.org).SetName("eu").SaveX(sys)
+		web := c.Route.Create().SetOrgID(e.org).SetName("web").SetType("tcp").SetGatewayGroupID(group.ID).SaveX(sys)
+		con := c.Connector.Create().SetOrgID(e.org).SetName("nas").SetSpiffeID("spiffe://rpmgr-teststor/org/" + e.org + "/connector/nas").
+			SetPubkeySha256("k").SaveX(sys)
+		c.RouteTarget.Create().SetOrgID(e.org).SetRouteID(web.ID).SetConnectorID(con.ID).SetKind("address").SetHost("127.0.0.1").
+			SetPort(80).ExecX(sys)
+
+		unknownCert, _ := e.certOf(t, pki.KindGateway)
+		goneCert, gone := e.certOf(t, pki.KindGateway)
+		e.gatewayRow(t, gone, group.ID, func(g *ent.GatewayCreate) { g.SetDecommissionedAt(time.Now()) })
+		for name, cert := range map[string]tls.Certificate{"unknown": unknownCert, "decommissioned": goneCert} {
+			st := e.open(t, testCtx(t), cert, hello("0.1.0"))
+			if recv(t, st).GetWelcome() == nil {
+				t.Fatalf("%s: no Welcome", name)
+			}
+			sessions := []*agentv1.DataSession{{ConnectorId: con.ID, Transport: agentv1.Transport_TRANSPORT_QUIC}}
+			send(t, st, &agentv1.AgentMessage{Msg: &agentv1.AgentMessage_Status{Status: &agentv1.Status{DataSessions: sessions}}})
+			// Messages are handled in order: once the marker of the next report is recorded, the first
+			// report's data sessions are too. The next one repeats them, as a gateway's every Status
+			// replaces them.
+			marker := statusMsg(false, notReady("marker", agentv1.NotReadyReason_NOT_READY_REASON_ENVIRONMENT, ""))
+			marker.GetStatus().DataSessions = sessions
+			send(t, st, marker)
+			waitUntil(t, func() bool {
+				return c.ResourceStatus.Query().Where(resourcestatus.ResourceID("marker")).CountX(sys) > 0
+			})
+			c.ResourceStatus.Delete().ExecX(sys)
+			if rows := c.DataSession.Query().AllX(sys); len(rows) != 0 {
+				t.Fatalf("%s gateway: data sessions written: %v", name, rows)
+			}
+		}
 	})
 }
