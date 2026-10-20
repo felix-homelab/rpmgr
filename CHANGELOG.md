@@ -20,6 +20,11 @@ Changes to the design documents are not recorded here: see the git history and t
 
 ### Fixed
 
+- All-in-one: a built-in gateway or connector whose identity is revoked as a whole, as a restore
+  that applies a later revocation leaves it, no longer stops the start. The all-in-one replaces it
+  with a new built-in gateway or connector, which keeps the old one's name and, for a gateway, its
+  group and tunnel endpoints, for a connector, its route targets; the revocation stays, and the
+  audit log records the replacement. (#805)
 - All-in-one: the built-in connector follows the gateway group's public hostnames while it runs.
   It read them only at start, so after a hostname was added, its addresses were not refused as the
   host's own until the service restarted, and a removed one stayed refused. (#808)
