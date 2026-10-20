@@ -74,17 +74,50 @@ func TestUDP(t *testing.T) {
 	go func() { _ = load.ServeUDPEcho(pc) }()
 	for _, size := range []int{1200, 1400, 3000} {
 		r, err := load.UDP(context.Background(), pc.LocalAddr().String(), size, 200, 500*time.Millisecond)
-		if err != nil || r.Sent != 100 || r.Received != 100 || r.Loss() != 0 || r.PPS() <= 0 {
+		if err != nil || r.Sent != 100 || r.Received != 100 || r.Loss() != 0 || r.PPS() <= 0 ||
+			len(r.Latencies) != 100 || r.Percentile(99) <= 0 {
 			t.Errorf("%d bytes: %+v %v", size, r, err)
 		}
 	}
-	for _, bad := range [][2]int{{7, 10}, {65001, 10}, {1200, 0}} {
+	for _, bad := range [][2]int{{15, 10}, {65001, 10}, {1200, 0}} {
 		if _, err := load.UDP(context.Background(), pc.LocalAddr().String(), bad[0], bad[1], time.Millisecond); err == nil {
 			t.Errorf("size %d, rate %d accepted", bad[0], bad[1])
 		}
 	}
 	if (load.UDPResult{}).Loss() != 0 || (load.UDPResult{Sent: 4, Received: 1}).Loss() != 75 {
 		t.Error("loss")
+	}
+}
+
+func TestFairness(t *testing.T) {
+	targets := []string{listen(t, load.ServeSink), listen(t, load.ServeSink)}
+	echo := listen(t, load.ServeEcho)
+	res, err := load.Fairness(context.Background(), targets, 2, 1, echo, 50, 200*time.Millisecond)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Failures != 0 || len(res.Mbps) != len(targets) || len(res.Setup.Latencies) == 0 {
+		t.Fatalf("%d failures, %d targets, %d setup samples", res.Failures, len(res.Mbps), len(res.Setup.Latencies))
+	}
+	for target, mbps := range res.Mbps {
+		if mbps <= 0 {
+			t.Errorf("%s: %.2f Mbit/s", target, mbps)
+		}
+	}
+}
+
+func TestJain(t *testing.T) {
+	for _, tc := range []struct {
+		values []float64
+		want   float64
+	}{
+		{[]float64{1, 1, 1}, 1},
+		{[]float64{1, 0}, 0.5},
+		{nil, 0},
+	} {
+		if got := load.Jain(tc.values); got != tc.want {
+			t.Errorf("Jain(%v) = %v, want %v", tc.values, got, tc.want)
+		}
 	}
 }
 

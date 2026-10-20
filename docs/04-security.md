@@ -989,12 +989,16 @@ timeouts and size limits named below are in [03](03-connections.md#timeouts-keep
    compromised process could persist a build that ignores the local policy.
 4. A **root-owned updater** (`rpmgr-update.path` triggering the oneshot `rpmgr-update.service`)
    reads `auto_update` and `update_channel` from the local policy **itself** (it does not trust the
-   agent's decision); a policy file that does not parse, or that its group or other users may
-   write, counts as `auto_update: off` ([D120](14-open-decisions.md#security-defaults)). It opens
+   agent's decision); a policy file that does not parse, that its group or other users may write,
+   that root does not own, or that is a symbolic link counts as `auto_update: off`
+   ([D120](14-open-decisions.md#security-defaults)). It reads `install.json` and `state.json` by
+   the same rule, and stops if either fails it. It opens
    the staging directory through a directory file descriptor with
    `openat2(RESOLVE_NO_SYMLINKS | RESOLVE_BENEATH)`, accepts only regular files (`fstat` →
    `S_ISREG`) no larger than the manifest's size and the updater's hard cap (checked before and
-   while copying), **copies** them into the root-only `/var/lib/rpmgr-update/staging/`, and
+   while copying), **copies** them into the root-only `/var/lib/rpmgr-update/staging/` (a plain
+   directory of mode 0700 owned by root, else nothing is copied; copies of earlier runs are removed
+   first, and each copy is a new file renamed to its final name only once verified), and
    verifies **the copy**: manifest signature, `seq`, version floor, `channel` (against the policy's
    `update_channel`), OS/arch, `variant` (against `install.json`), size and SHA-256. Verifying a
    copy the service user cannot touch removes the time-of-check/time-of-use gap; refusing symlinks,

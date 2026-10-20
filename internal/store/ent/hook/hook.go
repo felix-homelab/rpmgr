@@ -441,6 +441,18 @@ func (f RecoveryCodeFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.RecoveryCodeMutation", m)
 }
 
+// The ReleaseFunc type is an adapter to allow the use of ordinary
+// function as Release mutator.
+type ReleaseFunc func(context.Context, *ent.ReleaseMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f ReleaseFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.ReleaseMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.ReleaseMutation", m)
+}
+
 // The ResourceStatusFunc type is an adapter to allow the use of ordinary
 // function as ResourceStatus mutator.
 type ResourceStatusFunc func(context.Context, *ent.ResourceStatusMutation) (ent.Value, error)
@@ -475,6 +487,30 @@ func (f RevokedSerialFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Valu
 		return f(ctx, mv)
 	}
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.RevokedSerialMutation", m)
+}
+
+// The RolloutFunc type is an adapter to allow the use of ordinary
+// function as Rollout mutator.
+type RolloutFunc func(context.Context, *ent.RolloutMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f RolloutFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.RolloutMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.RolloutMutation", m)
+}
+
+// The RolloutTargetFunc type is an adapter to allow the use of ordinary
+// function as RolloutTarget mutator.
+type RolloutTargetFunc func(context.Context, *ent.RolloutTargetMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f RolloutTargetFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.RolloutTargetMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.RolloutTargetMutation", m)
 }
 
 // The RouteFunc type is an adapter to allow the use of ordinary

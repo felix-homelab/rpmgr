@@ -48,9 +48,12 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/portquota"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/predicate"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/recoverycode"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/release"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/resourcestatus"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/revokedidentity"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/revokedserial"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/rollout"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/rollouttarget"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/route"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routehostname"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routehttp"
@@ -112,9 +115,12 @@ const (
 	TypePortPool           = "PortPool"
 	TypePortQuota          = "PortQuota"
 	TypeRecoveryCode       = "RecoveryCode"
+	TypeRelease            = "Release"
 	TypeResourceStatus     = "ResourceStatus"
 	TypeRevokedIdentity    = "RevokedIdentity"
 	TypeRevokedSerial      = "RevokedSerial"
+	TypeRollout            = "Rollout"
+	TypeRolloutTarget      = "RolloutTarget"
 	TypeRoute              = "Route"
 	TypeRouteHTTP          = "RouteHTTP"
 	TypeRouteHostname      = "RouteHostname"
@@ -27711,6 +27717,882 @@ func (m *RecoveryCodeMutation) ResetEdge(name string) error {
 	return fmt.Errorf("unknown RecoveryCode edge %s", name)
 }
 
+// ReleaseMutation represents an operation that mutates the Release nodes in the graph.
+type ReleaseMutation struct {
+	config
+	op                    Op
+	typ                   string
+	id                    *string
+	version               *string
+	channel               *release.Channel
+	manifest_seq          *int64
+	addmanifest_seq       *int64
+	manifest              *[]byte
+	signature             *[]byte
+	signing_key_statement *[]byte
+	statement_signature   *[]byte
+	source                *release.Source
+	mirrored_at           *time.Time
+	created_at            *time.Time
+	clearedFields         map[string]struct{}
+	done                  bool
+	oldValue              func(context.Context) (*Release, error)
+	predicates            []predicate.Release
+}
+
+var _ ent.Mutation = (*ReleaseMutation)(nil)
+
+// releaseOption allows management of the mutation configuration using functional options.
+type releaseOption func(*ReleaseMutation)
+
+// newReleaseMutation creates new mutation for the Release entity.
+func newReleaseMutation(c config, op Op, opts ...releaseOption) *ReleaseMutation {
+	m := &ReleaseMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeRelease,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withReleaseID sets the ID field of the mutation.
+func withReleaseID(id string) releaseOption {
+	return func(m *ReleaseMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *Release
+		)
+		m.oldValue = func(ctx context.Context) (*Release, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().Release.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withRelease sets the old Release of the mutation.
+func withRelease(node *Release) releaseOption {
+	return func(m *ReleaseMutation) {
+		m.oldValue = func(context.Context) (*Release, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m ReleaseMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m ReleaseMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// SetID sets the value of the id field. Note that this
+// operation is only accepted on creation of Release entities.
+func (m *ReleaseMutation) SetID(id string) {
+	m.id = &id
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *ReleaseMutation) ID() (id string, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *ReleaseMutation) IDs(ctx context.Context) ([]string, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []string{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().Release.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetVersion sets the "version" field.
+func (m *ReleaseMutation) SetVersion(s string) {
+	m.version = &s
+}
+
+// Version returns the value of the "version" field in the mutation.
+func (m *ReleaseMutation) Version() (r string, exists bool) {
+	v := m.version
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldVersion returns the old "version" field's value of the Release entity.
+// If the Release object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ReleaseMutation) OldVersion(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldVersion is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldVersion requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldVersion: %w", err)
+	}
+	return oldValue.Version, nil
+}
+
+// ResetVersion resets all changes to the "version" field.
+func (m *ReleaseMutation) ResetVersion() {
+	m.version = nil
+}
+
+// SetChannel sets the "channel" field.
+func (m *ReleaseMutation) SetChannel(r release.Channel) {
+	m.channel = &r
+}
+
+// Channel returns the value of the "channel" field in the mutation.
+func (m *ReleaseMutation) Channel() (r release.Channel, exists bool) {
+	v := m.channel
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldChannel returns the old "channel" field's value of the Release entity.
+// If the Release object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ReleaseMutation) OldChannel(ctx context.Context) (v release.Channel, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldChannel is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldChannel requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldChannel: %w", err)
+	}
+	return oldValue.Channel, nil
+}
+
+// ResetChannel resets all changes to the "channel" field.
+func (m *ReleaseMutation) ResetChannel() {
+	m.channel = nil
+}
+
+// SetManifestSeq sets the "manifest_seq" field.
+func (m *ReleaseMutation) SetManifestSeq(i int64) {
+	m.manifest_seq = &i
+	m.addmanifest_seq = nil
+}
+
+// ManifestSeq returns the value of the "manifest_seq" field in the mutation.
+func (m *ReleaseMutation) ManifestSeq() (r int64, exists bool) {
+	v := m.manifest_seq
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldManifestSeq returns the old "manifest_seq" field's value of the Release entity.
+// If the Release object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ReleaseMutation) OldManifestSeq(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldManifestSeq is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldManifestSeq requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldManifestSeq: %w", err)
+	}
+	return oldValue.ManifestSeq, nil
+}
+
+// AddManifestSeq adds i to the "manifest_seq" field.
+func (m *ReleaseMutation) AddManifestSeq(i int64) {
+	if m.addmanifest_seq != nil {
+		*m.addmanifest_seq += i
+	} else {
+		m.addmanifest_seq = &i
+	}
+}
+
+// AddedManifestSeq returns the value that was added to the "manifest_seq" field in this mutation.
+func (m *ReleaseMutation) AddedManifestSeq() (r int64, exists bool) {
+	v := m.addmanifest_seq
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetManifestSeq resets all changes to the "manifest_seq" field.
+func (m *ReleaseMutation) ResetManifestSeq() {
+	m.manifest_seq = nil
+	m.addmanifest_seq = nil
+}
+
+// SetManifest sets the "manifest" field.
+func (m *ReleaseMutation) SetManifest(b []byte) {
+	m.manifest = &b
+}
+
+// Manifest returns the value of the "manifest" field in the mutation.
+func (m *ReleaseMutation) Manifest() (r []byte, exists bool) {
+	v := m.manifest
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldManifest returns the old "manifest" field's value of the Release entity.
+// If the Release object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ReleaseMutation) OldManifest(ctx context.Context) (v []byte, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldManifest is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldManifest requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldManifest: %w", err)
+	}
+	return oldValue.Manifest, nil
+}
+
+// ResetManifest resets all changes to the "manifest" field.
+func (m *ReleaseMutation) ResetManifest() {
+	m.manifest = nil
+}
+
+// SetSignature sets the "signature" field.
+func (m *ReleaseMutation) SetSignature(b []byte) {
+	m.signature = &b
+}
+
+// Signature returns the value of the "signature" field in the mutation.
+func (m *ReleaseMutation) Signature() (r []byte, exists bool) {
+	v := m.signature
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSignature returns the old "signature" field's value of the Release entity.
+// If the Release object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ReleaseMutation) OldSignature(ctx context.Context) (v []byte, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSignature is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSignature requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSignature: %w", err)
+	}
+	return oldValue.Signature, nil
+}
+
+// ResetSignature resets all changes to the "signature" field.
+func (m *ReleaseMutation) ResetSignature() {
+	m.signature = nil
+}
+
+// SetSigningKeyStatement sets the "signing_key_statement" field.
+func (m *ReleaseMutation) SetSigningKeyStatement(b []byte) {
+	m.signing_key_statement = &b
+}
+
+// SigningKeyStatement returns the value of the "signing_key_statement" field in the mutation.
+func (m *ReleaseMutation) SigningKeyStatement() (r []byte, exists bool) {
+	v := m.signing_key_statement
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSigningKeyStatement returns the old "signing_key_statement" field's value of the Release entity.
+// If the Release object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ReleaseMutation) OldSigningKeyStatement(ctx context.Context) (v []byte, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSigningKeyStatement is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSigningKeyStatement requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSigningKeyStatement: %w", err)
+	}
+	return oldValue.SigningKeyStatement, nil
+}
+
+// ResetSigningKeyStatement resets all changes to the "signing_key_statement" field.
+func (m *ReleaseMutation) ResetSigningKeyStatement() {
+	m.signing_key_statement = nil
+}
+
+// SetStatementSignature sets the "statement_signature" field.
+func (m *ReleaseMutation) SetStatementSignature(b []byte) {
+	m.statement_signature = &b
+}
+
+// StatementSignature returns the value of the "statement_signature" field in the mutation.
+func (m *ReleaseMutation) StatementSignature() (r []byte, exists bool) {
+	v := m.statement_signature
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldStatementSignature returns the old "statement_signature" field's value of the Release entity.
+// If the Release object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ReleaseMutation) OldStatementSignature(ctx context.Context) (v []byte, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldStatementSignature is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldStatementSignature requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldStatementSignature: %w", err)
+	}
+	return oldValue.StatementSignature, nil
+}
+
+// ResetStatementSignature resets all changes to the "statement_signature" field.
+func (m *ReleaseMutation) ResetStatementSignature() {
+	m.statement_signature = nil
+}
+
+// SetSource sets the "source" field.
+func (m *ReleaseMutation) SetSource(r release.Source) {
+	m.source = &r
+}
+
+// Source returns the value of the "source" field in the mutation.
+func (m *ReleaseMutation) Source() (r release.Source, exists bool) {
+	v := m.source
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSource returns the old "source" field's value of the Release entity.
+// If the Release object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ReleaseMutation) OldSource(ctx context.Context) (v release.Source, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSource is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSource requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSource: %w", err)
+	}
+	return oldValue.Source, nil
+}
+
+// ResetSource resets all changes to the "source" field.
+func (m *ReleaseMutation) ResetSource() {
+	m.source = nil
+}
+
+// SetMirroredAt sets the "mirrored_at" field.
+func (m *ReleaseMutation) SetMirroredAt(t time.Time) {
+	m.mirrored_at = &t
+}
+
+// MirroredAt returns the value of the "mirrored_at" field in the mutation.
+func (m *ReleaseMutation) MirroredAt() (r time.Time, exists bool) {
+	v := m.mirrored_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldMirroredAt returns the old "mirrored_at" field's value of the Release entity.
+// If the Release object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ReleaseMutation) OldMirroredAt(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldMirroredAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldMirroredAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldMirroredAt: %w", err)
+	}
+	return oldValue.MirroredAt, nil
+}
+
+// ClearMirroredAt clears the value of the "mirrored_at" field.
+func (m *ReleaseMutation) ClearMirroredAt() {
+	m.mirrored_at = nil
+	m.clearedFields[release.FieldMirroredAt] = struct{}{}
+}
+
+// MirroredAtCleared returns if the "mirrored_at" field was cleared in this mutation.
+func (m *ReleaseMutation) MirroredAtCleared() bool {
+	_, ok := m.clearedFields[release.FieldMirroredAt]
+	return ok
+}
+
+// ResetMirroredAt resets all changes to the "mirrored_at" field.
+func (m *ReleaseMutation) ResetMirroredAt() {
+	m.mirrored_at = nil
+	delete(m.clearedFields, release.FieldMirroredAt)
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *ReleaseMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *ReleaseMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the Release entity.
+// If the Release object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ReleaseMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *ReleaseMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// Where appends a list predicates to the ReleaseMutation builder.
+func (m *ReleaseMutation) Where(ps ...predicate.Release) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the ReleaseMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *ReleaseMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.Release, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *ReleaseMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *ReleaseMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (Release).
+func (m *ReleaseMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *ReleaseMutation) Fields() []string {
+	fields := make([]string, 0, 10)
+	if m.version != nil {
+		fields = append(fields, release.FieldVersion)
+	}
+	if m.channel != nil {
+		fields = append(fields, release.FieldChannel)
+	}
+	if m.manifest_seq != nil {
+		fields = append(fields, release.FieldManifestSeq)
+	}
+	if m.manifest != nil {
+		fields = append(fields, release.FieldManifest)
+	}
+	if m.signature != nil {
+		fields = append(fields, release.FieldSignature)
+	}
+	if m.signing_key_statement != nil {
+		fields = append(fields, release.FieldSigningKeyStatement)
+	}
+	if m.statement_signature != nil {
+		fields = append(fields, release.FieldStatementSignature)
+	}
+	if m.source != nil {
+		fields = append(fields, release.FieldSource)
+	}
+	if m.mirrored_at != nil {
+		fields = append(fields, release.FieldMirroredAt)
+	}
+	if m.created_at != nil {
+		fields = append(fields, release.FieldCreatedAt)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *ReleaseMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case release.FieldVersion:
+		return m.Version()
+	case release.FieldChannel:
+		return m.Channel()
+	case release.FieldManifestSeq:
+		return m.ManifestSeq()
+	case release.FieldManifest:
+		return m.Manifest()
+	case release.FieldSignature:
+		return m.Signature()
+	case release.FieldSigningKeyStatement:
+		return m.SigningKeyStatement()
+	case release.FieldStatementSignature:
+		return m.StatementSignature()
+	case release.FieldSource:
+		return m.Source()
+	case release.FieldMirroredAt:
+		return m.MirroredAt()
+	case release.FieldCreatedAt:
+		return m.CreatedAt()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *ReleaseMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case release.FieldVersion:
+		return m.OldVersion(ctx)
+	case release.FieldChannel:
+		return m.OldChannel(ctx)
+	case release.FieldManifestSeq:
+		return m.OldManifestSeq(ctx)
+	case release.FieldManifest:
+		return m.OldManifest(ctx)
+	case release.FieldSignature:
+		return m.OldSignature(ctx)
+	case release.FieldSigningKeyStatement:
+		return m.OldSigningKeyStatement(ctx)
+	case release.FieldStatementSignature:
+		return m.OldStatementSignature(ctx)
+	case release.FieldSource:
+		return m.OldSource(ctx)
+	case release.FieldMirroredAt:
+		return m.OldMirroredAt(ctx)
+	case release.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	}
+	return nil, fmt.Errorf("unknown Release field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *ReleaseMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case release.FieldVersion:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetVersion(v)
+		return nil
+	case release.FieldChannel:
+		v, ok := value.(release.Channel)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetChannel(v)
+		return nil
+	case release.FieldManifestSeq:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetManifestSeq(v)
+		return nil
+	case release.FieldManifest:
+		v, ok := value.([]byte)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetManifest(v)
+		return nil
+	case release.FieldSignature:
+		v, ok := value.([]byte)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSignature(v)
+		return nil
+	case release.FieldSigningKeyStatement:
+		v, ok := value.([]byte)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSigningKeyStatement(v)
+		return nil
+	case release.FieldStatementSignature:
+		v, ok := value.([]byte)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetStatementSignature(v)
+		return nil
+	case release.FieldSource:
+		v, ok := value.(release.Source)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSource(v)
+		return nil
+	case release.FieldMirroredAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetMirroredAt(v)
+		return nil
+	case release.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	}
+	return fmt.Errorf("unknown Release field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *ReleaseMutation) AddedFields() []string {
+	var fields []string
+	if m.addmanifest_seq != nil {
+		fields = append(fields, release.FieldManifestSeq)
+	}
+	return fields
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *ReleaseMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case release.FieldManifestSeq:
+		return m.AddedManifestSeq()
+	}
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *ReleaseMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	case release.FieldManifestSeq:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddManifestSeq(v)
+		return nil
+	}
+	return fmt.Errorf("unknown Release numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *ReleaseMutation) ClearedFields() []string {
+	var fields []string
+	if m.FieldCleared(release.FieldMirroredAt) {
+		fields = append(fields, release.FieldMirroredAt)
+	}
+	return fields
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *ReleaseMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *ReleaseMutation) ClearField(name string) error {
+	switch name {
+	case release.FieldMirroredAt:
+		m.ClearMirroredAt()
+		return nil
+	}
+	return fmt.Errorf("unknown Release nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *ReleaseMutation) ResetField(name string) error {
+	switch name {
+	case release.FieldVersion:
+		m.ResetVersion()
+		return nil
+	case release.FieldChannel:
+		m.ResetChannel()
+		return nil
+	case release.FieldManifestSeq:
+		m.ResetManifestSeq()
+		return nil
+	case release.FieldManifest:
+		m.ResetManifest()
+		return nil
+	case release.FieldSignature:
+		m.ResetSignature()
+		return nil
+	case release.FieldSigningKeyStatement:
+		m.ResetSigningKeyStatement()
+		return nil
+	case release.FieldStatementSignature:
+		m.ResetStatementSignature()
+		return nil
+	case release.FieldSource:
+		m.ResetSource()
+		return nil
+	case release.FieldMirroredAt:
+		m.ResetMirroredAt()
+		return nil
+	case release.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown Release field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *ReleaseMutation) AddedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *ReleaseMutation) AddedIDs(name string) []ent.Value {
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *ReleaseMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *ReleaseMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *ReleaseMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *ReleaseMutation) EdgeCleared(name string) bool {
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *ReleaseMutation) ClearEdge(name string) error {
+	return fmt.Errorf("unknown Release unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *ReleaseMutation) ResetEdge(name string) error {
+	return fmt.Errorf("unknown Release edge %s", name)
+}
+
 // ResourceStatusMutation represents an operation that mutates the ResourceStatus nodes in the graph.
 type ResourceStatusMutation struct {
 	config
@@ -29451,6 +30333,1855 @@ func (m *RevokedSerialMutation) ClearEdge(name string) error {
 // It returns an error if the edge is not defined in the schema.
 func (m *RevokedSerialMutation) ResetEdge(name string) error {
 	return fmt.Errorf("unknown RevokedSerial edge %s", name)
+}
+
+// RolloutMutation represents an operation that mutates the Rollout nodes in the graph.
+type RolloutMutation struct {
+	config
+	op             Op
+	typ            string
+	id             *string
+	version        *int64
+	addversion     *int64
+	stage          *rollout.Stage
+	percentage     *int
+	addpercentage  *int
+	state          *rollout.State
+	active         *bool
+	pause_reason   *string
+	created_by     *string
+	created_at     *time.Time
+	updated_by     *string
+	updated_at     *time.Time
+	clearedFields  map[string]struct{}
+	release        *string
+	clearedrelease bool
+	done           bool
+	oldValue       func(context.Context) (*Rollout, error)
+	predicates     []predicate.Rollout
+}
+
+var _ ent.Mutation = (*RolloutMutation)(nil)
+
+// rolloutOption allows management of the mutation configuration using functional options.
+type rolloutOption func(*RolloutMutation)
+
+// newRolloutMutation creates new mutation for the Rollout entity.
+func newRolloutMutation(c config, op Op, opts ...rolloutOption) *RolloutMutation {
+	m := &RolloutMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeRollout,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withRolloutID sets the ID field of the mutation.
+func withRolloutID(id string) rolloutOption {
+	return func(m *RolloutMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *Rollout
+		)
+		m.oldValue = func(ctx context.Context) (*Rollout, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().Rollout.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withRollout sets the old Rollout of the mutation.
+func withRollout(node *Rollout) rolloutOption {
+	return func(m *RolloutMutation) {
+		m.oldValue = func(context.Context) (*Rollout, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m RolloutMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m RolloutMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// SetID sets the value of the id field. Note that this
+// operation is only accepted on creation of Rollout entities.
+func (m *RolloutMutation) SetID(id string) {
+	m.id = &id
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *RolloutMutation) ID() (id string, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *RolloutMutation) IDs(ctx context.Context) ([]string, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []string{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().Rollout.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetVersion sets the "version" field.
+func (m *RolloutMutation) SetVersion(i int64) {
+	m.version = &i
+	m.addversion = nil
+}
+
+// Version returns the value of the "version" field in the mutation.
+func (m *RolloutMutation) Version() (r int64, exists bool) {
+	v := m.version
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldVersion returns the old "version" field's value of the Rollout entity.
+// If the Rollout object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RolloutMutation) OldVersion(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldVersion is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldVersion requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldVersion: %w", err)
+	}
+	return oldValue.Version, nil
+}
+
+// AddVersion adds i to the "version" field.
+func (m *RolloutMutation) AddVersion(i int64) {
+	if m.addversion != nil {
+		*m.addversion += i
+	} else {
+		m.addversion = &i
+	}
+}
+
+// AddedVersion returns the value that was added to the "version" field in this mutation.
+func (m *RolloutMutation) AddedVersion() (r int64, exists bool) {
+	v := m.addversion
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetVersion resets all changes to the "version" field.
+func (m *RolloutMutation) ResetVersion() {
+	m.version = nil
+	m.addversion = nil
+}
+
+// SetReleaseID sets the "release_id" field.
+func (m *RolloutMutation) SetReleaseID(s string) {
+	m.release = &s
+}
+
+// ReleaseID returns the value of the "release_id" field in the mutation.
+func (m *RolloutMutation) ReleaseID() (r string, exists bool) {
+	v := m.release
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldReleaseID returns the old "release_id" field's value of the Rollout entity.
+// If the Rollout object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RolloutMutation) OldReleaseID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldReleaseID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldReleaseID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldReleaseID: %w", err)
+	}
+	return oldValue.ReleaseID, nil
+}
+
+// ResetReleaseID resets all changes to the "release_id" field.
+func (m *RolloutMutation) ResetReleaseID() {
+	m.release = nil
+}
+
+// SetStage sets the "stage" field.
+func (m *RolloutMutation) SetStage(r rollout.Stage) {
+	m.stage = &r
+}
+
+// Stage returns the value of the "stage" field in the mutation.
+func (m *RolloutMutation) Stage() (r rollout.Stage, exists bool) {
+	v := m.stage
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldStage returns the old "stage" field's value of the Rollout entity.
+// If the Rollout object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RolloutMutation) OldStage(ctx context.Context) (v rollout.Stage, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldStage is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldStage requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldStage: %w", err)
+	}
+	return oldValue.Stage, nil
+}
+
+// ResetStage resets all changes to the "stage" field.
+func (m *RolloutMutation) ResetStage() {
+	m.stage = nil
+}
+
+// SetPercentage sets the "percentage" field.
+func (m *RolloutMutation) SetPercentage(i int) {
+	m.percentage = &i
+	m.addpercentage = nil
+}
+
+// Percentage returns the value of the "percentage" field in the mutation.
+func (m *RolloutMutation) Percentage() (r int, exists bool) {
+	v := m.percentage
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldPercentage returns the old "percentage" field's value of the Rollout entity.
+// If the Rollout object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RolloutMutation) OldPercentage(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPercentage is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPercentage requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPercentage: %w", err)
+	}
+	return oldValue.Percentage, nil
+}
+
+// AddPercentage adds i to the "percentage" field.
+func (m *RolloutMutation) AddPercentage(i int) {
+	if m.addpercentage != nil {
+		*m.addpercentage += i
+	} else {
+		m.addpercentage = &i
+	}
+}
+
+// AddedPercentage returns the value that was added to the "percentage" field in this mutation.
+func (m *RolloutMutation) AddedPercentage() (r int, exists bool) {
+	v := m.addpercentage
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetPercentage resets all changes to the "percentage" field.
+func (m *RolloutMutation) ResetPercentage() {
+	m.percentage = nil
+	m.addpercentage = nil
+}
+
+// SetState sets the "state" field.
+func (m *RolloutMutation) SetState(r rollout.State) {
+	m.state = &r
+}
+
+// State returns the value of the "state" field in the mutation.
+func (m *RolloutMutation) State() (r rollout.State, exists bool) {
+	v := m.state
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldState returns the old "state" field's value of the Rollout entity.
+// If the Rollout object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RolloutMutation) OldState(ctx context.Context) (v rollout.State, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldState is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldState requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldState: %w", err)
+	}
+	return oldValue.State, nil
+}
+
+// ResetState resets all changes to the "state" field.
+func (m *RolloutMutation) ResetState() {
+	m.state = nil
+}
+
+// SetActive sets the "active" field.
+func (m *RolloutMutation) SetActive(b bool) {
+	m.active = &b
+}
+
+// Active returns the value of the "active" field in the mutation.
+func (m *RolloutMutation) Active() (r bool, exists bool) {
+	v := m.active
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldActive returns the old "active" field's value of the Rollout entity.
+// If the Rollout object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RolloutMutation) OldActive(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldActive is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldActive requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldActive: %w", err)
+	}
+	return oldValue.Active, nil
+}
+
+// ResetActive resets all changes to the "active" field.
+func (m *RolloutMutation) ResetActive() {
+	m.active = nil
+}
+
+// SetPauseReason sets the "pause_reason" field.
+func (m *RolloutMutation) SetPauseReason(s string) {
+	m.pause_reason = &s
+}
+
+// PauseReason returns the value of the "pause_reason" field in the mutation.
+func (m *RolloutMutation) PauseReason() (r string, exists bool) {
+	v := m.pause_reason
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldPauseReason returns the old "pause_reason" field's value of the Rollout entity.
+// If the Rollout object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RolloutMutation) OldPauseReason(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPauseReason is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPauseReason requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPauseReason: %w", err)
+	}
+	return oldValue.PauseReason, nil
+}
+
+// ResetPauseReason resets all changes to the "pause_reason" field.
+func (m *RolloutMutation) ResetPauseReason() {
+	m.pause_reason = nil
+}
+
+// SetCreatedBy sets the "created_by" field.
+func (m *RolloutMutation) SetCreatedBy(s string) {
+	m.created_by = &s
+}
+
+// CreatedBy returns the value of the "created_by" field in the mutation.
+func (m *RolloutMutation) CreatedBy() (r string, exists bool) {
+	v := m.created_by
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedBy returns the old "created_by" field's value of the Rollout entity.
+// If the Rollout object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RolloutMutation) OldCreatedBy(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedBy is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedBy requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedBy: %w", err)
+	}
+	return oldValue.CreatedBy, nil
+}
+
+// ResetCreatedBy resets all changes to the "created_by" field.
+func (m *RolloutMutation) ResetCreatedBy() {
+	m.created_by = nil
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *RolloutMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *RolloutMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the Rollout entity.
+// If the Rollout object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RolloutMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *RolloutMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// SetUpdatedBy sets the "updated_by" field.
+func (m *RolloutMutation) SetUpdatedBy(s string) {
+	m.updated_by = &s
+}
+
+// UpdatedBy returns the value of the "updated_by" field in the mutation.
+func (m *RolloutMutation) UpdatedBy() (r string, exists bool) {
+	v := m.updated_by
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUpdatedBy returns the old "updated_by" field's value of the Rollout entity.
+// If the Rollout object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RolloutMutation) OldUpdatedBy(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUpdatedBy is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUpdatedBy requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUpdatedBy: %w", err)
+	}
+	return oldValue.UpdatedBy, nil
+}
+
+// ResetUpdatedBy resets all changes to the "updated_by" field.
+func (m *RolloutMutation) ResetUpdatedBy() {
+	m.updated_by = nil
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (m *RolloutMutation) SetUpdatedAt(t time.Time) {
+	m.updated_at = &t
+}
+
+// UpdatedAt returns the value of the "updated_at" field in the mutation.
+func (m *RolloutMutation) UpdatedAt() (r time.Time, exists bool) {
+	v := m.updated_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUpdatedAt returns the old "updated_at" field's value of the Rollout entity.
+// If the Rollout object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RolloutMutation) OldUpdatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUpdatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUpdatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUpdatedAt: %w", err)
+	}
+	return oldValue.UpdatedAt, nil
+}
+
+// ResetUpdatedAt resets all changes to the "updated_at" field.
+func (m *RolloutMutation) ResetUpdatedAt() {
+	m.updated_at = nil
+}
+
+// ClearRelease clears the "release" edge to the Release entity.
+func (m *RolloutMutation) ClearRelease() {
+	m.clearedrelease = true
+	m.clearedFields[rollout.FieldReleaseID] = struct{}{}
+}
+
+// ReleaseCleared reports if the "release" edge to the Release entity was cleared.
+func (m *RolloutMutation) ReleaseCleared() bool {
+	return m.clearedrelease
+}
+
+// ReleaseIDs returns the "release" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// ReleaseID instead. It exists only for internal usage by the builders.
+func (m *RolloutMutation) ReleaseIDs() (ids []string) {
+	if id := m.release; id != nil {
+		ids = append(ids, *id)
+	}
+	return
+}
+
+// ResetRelease resets all changes to the "release" edge.
+func (m *RolloutMutation) ResetRelease() {
+	m.release = nil
+	m.clearedrelease = false
+}
+
+// Where appends a list predicates to the RolloutMutation builder.
+func (m *RolloutMutation) Where(ps ...predicate.Rollout) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the RolloutMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *RolloutMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.Rollout, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *RolloutMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *RolloutMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (Rollout).
+func (m *RolloutMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *RolloutMutation) Fields() []string {
+	fields := make([]string, 0, 11)
+	if m.version != nil {
+		fields = append(fields, rollout.FieldVersion)
+	}
+	if m.release != nil {
+		fields = append(fields, rollout.FieldReleaseID)
+	}
+	if m.stage != nil {
+		fields = append(fields, rollout.FieldStage)
+	}
+	if m.percentage != nil {
+		fields = append(fields, rollout.FieldPercentage)
+	}
+	if m.state != nil {
+		fields = append(fields, rollout.FieldState)
+	}
+	if m.active != nil {
+		fields = append(fields, rollout.FieldActive)
+	}
+	if m.pause_reason != nil {
+		fields = append(fields, rollout.FieldPauseReason)
+	}
+	if m.created_by != nil {
+		fields = append(fields, rollout.FieldCreatedBy)
+	}
+	if m.created_at != nil {
+		fields = append(fields, rollout.FieldCreatedAt)
+	}
+	if m.updated_by != nil {
+		fields = append(fields, rollout.FieldUpdatedBy)
+	}
+	if m.updated_at != nil {
+		fields = append(fields, rollout.FieldUpdatedAt)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *RolloutMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case rollout.FieldVersion:
+		return m.Version()
+	case rollout.FieldReleaseID:
+		return m.ReleaseID()
+	case rollout.FieldStage:
+		return m.Stage()
+	case rollout.FieldPercentage:
+		return m.Percentage()
+	case rollout.FieldState:
+		return m.State()
+	case rollout.FieldActive:
+		return m.Active()
+	case rollout.FieldPauseReason:
+		return m.PauseReason()
+	case rollout.FieldCreatedBy:
+		return m.CreatedBy()
+	case rollout.FieldCreatedAt:
+		return m.CreatedAt()
+	case rollout.FieldUpdatedBy:
+		return m.UpdatedBy()
+	case rollout.FieldUpdatedAt:
+		return m.UpdatedAt()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *RolloutMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case rollout.FieldVersion:
+		return m.OldVersion(ctx)
+	case rollout.FieldReleaseID:
+		return m.OldReleaseID(ctx)
+	case rollout.FieldStage:
+		return m.OldStage(ctx)
+	case rollout.FieldPercentage:
+		return m.OldPercentage(ctx)
+	case rollout.FieldState:
+		return m.OldState(ctx)
+	case rollout.FieldActive:
+		return m.OldActive(ctx)
+	case rollout.FieldPauseReason:
+		return m.OldPauseReason(ctx)
+	case rollout.FieldCreatedBy:
+		return m.OldCreatedBy(ctx)
+	case rollout.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	case rollout.FieldUpdatedBy:
+		return m.OldUpdatedBy(ctx)
+	case rollout.FieldUpdatedAt:
+		return m.OldUpdatedAt(ctx)
+	}
+	return nil, fmt.Errorf("unknown Rollout field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *RolloutMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case rollout.FieldVersion:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetVersion(v)
+		return nil
+	case rollout.FieldReleaseID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetReleaseID(v)
+		return nil
+	case rollout.FieldStage:
+		v, ok := value.(rollout.Stage)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetStage(v)
+		return nil
+	case rollout.FieldPercentage:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetPercentage(v)
+		return nil
+	case rollout.FieldState:
+		v, ok := value.(rollout.State)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetState(v)
+		return nil
+	case rollout.FieldActive:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetActive(v)
+		return nil
+	case rollout.FieldPauseReason:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetPauseReason(v)
+		return nil
+	case rollout.FieldCreatedBy:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedBy(v)
+		return nil
+	case rollout.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	case rollout.FieldUpdatedBy:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUpdatedBy(v)
+		return nil
+	case rollout.FieldUpdatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUpdatedAt(v)
+		return nil
+	}
+	return fmt.Errorf("unknown Rollout field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *RolloutMutation) AddedFields() []string {
+	var fields []string
+	if m.addversion != nil {
+		fields = append(fields, rollout.FieldVersion)
+	}
+	if m.addpercentage != nil {
+		fields = append(fields, rollout.FieldPercentage)
+	}
+	return fields
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *RolloutMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case rollout.FieldVersion:
+		return m.AddedVersion()
+	case rollout.FieldPercentage:
+		return m.AddedPercentage()
+	}
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *RolloutMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	case rollout.FieldVersion:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddVersion(v)
+		return nil
+	case rollout.FieldPercentage:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddPercentage(v)
+		return nil
+	}
+	return fmt.Errorf("unknown Rollout numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *RolloutMutation) ClearedFields() []string {
+	return nil
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *RolloutMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *RolloutMutation) ClearField(name string) error {
+	return fmt.Errorf("unknown Rollout nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *RolloutMutation) ResetField(name string) error {
+	switch name {
+	case rollout.FieldVersion:
+		m.ResetVersion()
+		return nil
+	case rollout.FieldReleaseID:
+		m.ResetReleaseID()
+		return nil
+	case rollout.FieldStage:
+		m.ResetStage()
+		return nil
+	case rollout.FieldPercentage:
+		m.ResetPercentage()
+		return nil
+	case rollout.FieldState:
+		m.ResetState()
+		return nil
+	case rollout.FieldActive:
+		m.ResetActive()
+		return nil
+	case rollout.FieldPauseReason:
+		m.ResetPauseReason()
+		return nil
+	case rollout.FieldCreatedBy:
+		m.ResetCreatedBy()
+		return nil
+	case rollout.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	case rollout.FieldUpdatedBy:
+		m.ResetUpdatedBy()
+		return nil
+	case rollout.FieldUpdatedAt:
+		m.ResetUpdatedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown Rollout field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *RolloutMutation) AddedEdges() []string {
+	edges := make([]string, 0, 1)
+	if m.release != nil {
+		edges = append(edges, rollout.EdgeRelease)
+	}
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *RolloutMutation) AddedIDs(name string) []ent.Value {
+	switch name {
+	case rollout.EdgeRelease:
+		if id := m.release; id != nil {
+			return []ent.Value{*id}
+		}
+	}
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *RolloutMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 1)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *RolloutMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *RolloutMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 1)
+	if m.clearedrelease {
+		edges = append(edges, rollout.EdgeRelease)
+	}
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *RolloutMutation) EdgeCleared(name string) bool {
+	switch name {
+	case rollout.EdgeRelease:
+		return m.clearedrelease
+	}
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *RolloutMutation) ClearEdge(name string) error {
+	switch name {
+	case rollout.EdgeRelease:
+		m.ClearRelease()
+		return nil
+	}
+	return fmt.Errorf("unknown Rollout unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *RolloutMutation) ResetEdge(name string) error {
+	switch name {
+	case rollout.EdgeRelease:
+		m.ResetRelease()
+		return nil
+	}
+	return fmt.Errorf("unknown Rollout edge %s", name)
+}
+
+// RolloutTargetMutation represents an operation that mutates the RolloutTarget nodes in the graph.
+type RolloutTargetMutation struct {
+	config
+	op             Op
+	typ            string
+	id             *string
+	agent_id       *string
+	agent_kind     *rollouttarget.AgentKind
+	canary         *bool
+	bucket         *int
+	addbucket      *int
+	state          *rollouttarget.State
+	reason         *string
+	version_before *string
+	updated_at     *time.Time
+	clearedFields  map[string]struct{}
+	rollout        *string
+	clearedrollout bool
+	done           bool
+	oldValue       func(context.Context) (*RolloutTarget, error)
+	predicates     []predicate.RolloutTarget
+}
+
+var _ ent.Mutation = (*RolloutTargetMutation)(nil)
+
+// rollouttargetOption allows management of the mutation configuration using functional options.
+type rollouttargetOption func(*RolloutTargetMutation)
+
+// newRolloutTargetMutation creates new mutation for the RolloutTarget entity.
+func newRolloutTargetMutation(c config, op Op, opts ...rollouttargetOption) *RolloutTargetMutation {
+	m := &RolloutTargetMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeRolloutTarget,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withRolloutTargetID sets the ID field of the mutation.
+func withRolloutTargetID(id string) rollouttargetOption {
+	return func(m *RolloutTargetMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *RolloutTarget
+		)
+		m.oldValue = func(ctx context.Context) (*RolloutTarget, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().RolloutTarget.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withRolloutTarget sets the old RolloutTarget of the mutation.
+func withRolloutTarget(node *RolloutTarget) rollouttargetOption {
+	return func(m *RolloutTargetMutation) {
+		m.oldValue = func(context.Context) (*RolloutTarget, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m RolloutTargetMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m RolloutTargetMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// SetID sets the value of the id field. Note that this
+// operation is only accepted on creation of RolloutTarget entities.
+func (m *RolloutTargetMutation) SetID(id string) {
+	m.id = &id
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *RolloutTargetMutation) ID() (id string, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *RolloutTargetMutation) IDs(ctx context.Context) ([]string, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []string{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().RolloutTarget.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetRolloutID sets the "rollout_id" field.
+func (m *RolloutTargetMutation) SetRolloutID(s string) {
+	m.rollout = &s
+}
+
+// RolloutID returns the value of the "rollout_id" field in the mutation.
+func (m *RolloutTargetMutation) RolloutID() (r string, exists bool) {
+	v := m.rollout
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRolloutID returns the old "rollout_id" field's value of the RolloutTarget entity.
+// If the RolloutTarget object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RolloutTargetMutation) OldRolloutID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRolloutID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRolloutID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRolloutID: %w", err)
+	}
+	return oldValue.RolloutID, nil
+}
+
+// ResetRolloutID resets all changes to the "rollout_id" field.
+func (m *RolloutTargetMutation) ResetRolloutID() {
+	m.rollout = nil
+}
+
+// SetAgentID sets the "agent_id" field.
+func (m *RolloutTargetMutation) SetAgentID(s string) {
+	m.agent_id = &s
+}
+
+// AgentID returns the value of the "agent_id" field in the mutation.
+func (m *RolloutTargetMutation) AgentID() (r string, exists bool) {
+	v := m.agent_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAgentID returns the old "agent_id" field's value of the RolloutTarget entity.
+// If the RolloutTarget object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RolloutTargetMutation) OldAgentID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAgentID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAgentID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAgentID: %w", err)
+	}
+	return oldValue.AgentID, nil
+}
+
+// ResetAgentID resets all changes to the "agent_id" field.
+func (m *RolloutTargetMutation) ResetAgentID() {
+	m.agent_id = nil
+}
+
+// SetAgentKind sets the "agent_kind" field.
+func (m *RolloutTargetMutation) SetAgentKind(rk rollouttarget.AgentKind) {
+	m.agent_kind = &rk
+}
+
+// AgentKind returns the value of the "agent_kind" field in the mutation.
+func (m *RolloutTargetMutation) AgentKind() (r rollouttarget.AgentKind, exists bool) {
+	v := m.agent_kind
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAgentKind returns the old "agent_kind" field's value of the RolloutTarget entity.
+// If the RolloutTarget object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RolloutTargetMutation) OldAgentKind(ctx context.Context) (v rollouttarget.AgentKind, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAgentKind is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAgentKind requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAgentKind: %w", err)
+	}
+	return oldValue.AgentKind, nil
+}
+
+// ResetAgentKind resets all changes to the "agent_kind" field.
+func (m *RolloutTargetMutation) ResetAgentKind() {
+	m.agent_kind = nil
+}
+
+// SetCanary sets the "canary" field.
+func (m *RolloutTargetMutation) SetCanary(b bool) {
+	m.canary = &b
+}
+
+// Canary returns the value of the "canary" field in the mutation.
+func (m *RolloutTargetMutation) Canary() (r bool, exists bool) {
+	v := m.canary
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCanary returns the old "canary" field's value of the RolloutTarget entity.
+// If the RolloutTarget object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RolloutTargetMutation) OldCanary(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCanary is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCanary requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCanary: %w", err)
+	}
+	return oldValue.Canary, nil
+}
+
+// ResetCanary resets all changes to the "canary" field.
+func (m *RolloutTargetMutation) ResetCanary() {
+	m.canary = nil
+}
+
+// SetBucket sets the "bucket" field.
+func (m *RolloutTargetMutation) SetBucket(i int) {
+	m.bucket = &i
+	m.addbucket = nil
+}
+
+// Bucket returns the value of the "bucket" field in the mutation.
+func (m *RolloutTargetMutation) Bucket() (r int, exists bool) {
+	v := m.bucket
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldBucket returns the old "bucket" field's value of the RolloutTarget entity.
+// If the RolloutTarget object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RolloutTargetMutation) OldBucket(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldBucket is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldBucket requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldBucket: %w", err)
+	}
+	return oldValue.Bucket, nil
+}
+
+// AddBucket adds i to the "bucket" field.
+func (m *RolloutTargetMutation) AddBucket(i int) {
+	if m.addbucket != nil {
+		*m.addbucket += i
+	} else {
+		m.addbucket = &i
+	}
+}
+
+// AddedBucket returns the value that was added to the "bucket" field in this mutation.
+func (m *RolloutTargetMutation) AddedBucket() (r int, exists bool) {
+	v := m.addbucket
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetBucket resets all changes to the "bucket" field.
+func (m *RolloutTargetMutation) ResetBucket() {
+	m.bucket = nil
+	m.addbucket = nil
+}
+
+// SetState sets the "state" field.
+func (m *RolloutTargetMutation) SetState(r rollouttarget.State) {
+	m.state = &r
+}
+
+// State returns the value of the "state" field in the mutation.
+func (m *RolloutTargetMutation) State() (r rollouttarget.State, exists bool) {
+	v := m.state
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldState returns the old "state" field's value of the RolloutTarget entity.
+// If the RolloutTarget object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RolloutTargetMutation) OldState(ctx context.Context) (v rollouttarget.State, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldState is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldState requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldState: %w", err)
+	}
+	return oldValue.State, nil
+}
+
+// ResetState resets all changes to the "state" field.
+func (m *RolloutTargetMutation) ResetState() {
+	m.state = nil
+}
+
+// SetReason sets the "reason" field.
+func (m *RolloutTargetMutation) SetReason(s string) {
+	m.reason = &s
+}
+
+// Reason returns the value of the "reason" field in the mutation.
+func (m *RolloutTargetMutation) Reason() (r string, exists bool) {
+	v := m.reason
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldReason returns the old "reason" field's value of the RolloutTarget entity.
+// If the RolloutTarget object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RolloutTargetMutation) OldReason(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldReason is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldReason requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldReason: %w", err)
+	}
+	return oldValue.Reason, nil
+}
+
+// ResetReason resets all changes to the "reason" field.
+func (m *RolloutTargetMutation) ResetReason() {
+	m.reason = nil
+}
+
+// SetVersionBefore sets the "version_before" field.
+func (m *RolloutTargetMutation) SetVersionBefore(s string) {
+	m.version_before = &s
+}
+
+// VersionBefore returns the value of the "version_before" field in the mutation.
+func (m *RolloutTargetMutation) VersionBefore() (r string, exists bool) {
+	v := m.version_before
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldVersionBefore returns the old "version_before" field's value of the RolloutTarget entity.
+// If the RolloutTarget object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RolloutTargetMutation) OldVersionBefore(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldVersionBefore is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldVersionBefore requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldVersionBefore: %w", err)
+	}
+	return oldValue.VersionBefore, nil
+}
+
+// ResetVersionBefore resets all changes to the "version_before" field.
+func (m *RolloutTargetMutation) ResetVersionBefore() {
+	m.version_before = nil
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (m *RolloutTargetMutation) SetUpdatedAt(t time.Time) {
+	m.updated_at = &t
+}
+
+// UpdatedAt returns the value of the "updated_at" field in the mutation.
+func (m *RolloutTargetMutation) UpdatedAt() (r time.Time, exists bool) {
+	v := m.updated_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUpdatedAt returns the old "updated_at" field's value of the RolloutTarget entity.
+// If the RolloutTarget object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RolloutTargetMutation) OldUpdatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUpdatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUpdatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUpdatedAt: %w", err)
+	}
+	return oldValue.UpdatedAt, nil
+}
+
+// ResetUpdatedAt resets all changes to the "updated_at" field.
+func (m *RolloutTargetMutation) ResetUpdatedAt() {
+	m.updated_at = nil
+}
+
+// ClearRollout clears the "rollout" edge to the Rollout entity.
+func (m *RolloutTargetMutation) ClearRollout() {
+	m.clearedrollout = true
+	m.clearedFields[rollouttarget.FieldRolloutID] = struct{}{}
+}
+
+// RolloutCleared reports if the "rollout" edge to the Rollout entity was cleared.
+func (m *RolloutTargetMutation) RolloutCleared() bool {
+	return m.clearedrollout
+}
+
+// RolloutIDs returns the "rollout" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// RolloutID instead. It exists only for internal usage by the builders.
+func (m *RolloutTargetMutation) RolloutIDs() (ids []string) {
+	if id := m.rollout; id != nil {
+		ids = append(ids, *id)
+	}
+	return
+}
+
+// ResetRollout resets all changes to the "rollout" edge.
+func (m *RolloutTargetMutation) ResetRollout() {
+	m.rollout = nil
+	m.clearedrollout = false
+}
+
+// Where appends a list predicates to the RolloutTargetMutation builder.
+func (m *RolloutTargetMutation) Where(ps ...predicate.RolloutTarget) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the RolloutTargetMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *RolloutTargetMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.RolloutTarget, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *RolloutTargetMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *RolloutTargetMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (RolloutTarget).
+func (m *RolloutTargetMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *RolloutTargetMutation) Fields() []string {
+	fields := make([]string, 0, 9)
+	if m.rollout != nil {
+		fields = append(fields, rollouttarget.FieldRolloutID)
+	}
+	if m.agent_id != nil {
+		fields = append(fields, rollouttarget.FieldAgentID)
+	}
+	if m.agent_kind != nil {
+		fields = append(fields, rollouttarget.FieldAgentKind)
+	}
+	if m.canary != nil {
+		fields = append(fields, rollouttarget.FieldCanary)
+	}
+	if m.bucket != nil {
+		fields = append(fields, rollouttarget.FieldBucket)
+	}
+	if m.state != nil {
+		fields = append(fields, rollouttarget.FieldState)
+	}
+	if m.reason != nil {
+		fields = append(fields, rollouttarget.FieldReason)
+	}
+	if m.version_before != nil {
+		fields = append(fields, rollouttarget.FieldVersionBefore)
+	}
+	if m.updated_at != nil {
+		fields = append(fields, rollouttarget.FieldUpdatedAt)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *RolloutTargetMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case rollouttarget.FieldRolloutID:
+		return m.RolloutID()
+	case rollouttarget.FieldAgentID:
+		return m.AgentID()
+	case rollouttarget.FieldAgentKind:
+		return m.AgentKind()
+	case rollouttarget.FieldCanary:
+		return m.Canary()
+	case rollouttarget.FieldBucket:
+		return m.Bucket()
+	case rollouttarget.FieldState:
+		return m.State()
+	case rollouttarget.FieldReason:
+		return m.Reason()
+	case rollouttarget.FieldVersionBefore:
+		return m.VersionBefore()
+	case rollouttarget.FieldUpdatedAt:
+		return m.UpdatedAt()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *RolloutTargetMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case rollouttarget.FieldRolloutID:
+		return m.OldRolloutID(ctx)
+	case rollouttarget.FieldAgentID:
+		return m.OldAgentID(ctx)
+	case rollouttarget.FieldAgentKind:
+		return m.OldAgentKind(ctx)
+	case rollouttarget.FieldCanary:
+		return m.OldCanary(ctx)
+	case rollouttarget.FieldBucket:
+		return m.OldBucket(ctx)
+	case rollouttarget.FieldState:
+		return m.OldState(ctx)
+	case rollouttarget.FieldReason:
+		return m.OldReason(ctx)
+	case rollouttarget.FieldVersionBefore:
+		return m.OldVersionBefore(ctx)
+	case rollouttarget.FieldUpdatedAt:
+		return m.OldUpdatedAt(ctx)
+	}
+	return nil, fmt.Errorf("unknown RolloutTarget field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *RolloutTargetMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case rollouttarget.FieldRolloutID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRolloutID(v)
+		return nil
+	case rollouttarget.FieldAgentID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAgentID(v)
+		return nil
+	case rollouttarget.FieldAgentKind:
+		v, ok := value.(rollouttarget.AgentKind)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAgentKind(v)
+		return nil
+	case rollouttarget.FieldCanary:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCanary(v)
+		return nil
+	case rollouttarget.FieldBucket:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetBucket(v)
+		return nil
+	case rollouttarget.FieldState:
+		v, ok := value.(rollouttarget.State)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetState(v)
+		return nil
+	case rollouttarget.FieldReason:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetReason(v)
+		return nil
+	case rollouttarget.FieldVersionBefore:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetVersionBefore(v)
+		return nil
+	case rollouttarget.FieldUpdatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUpdatedAt(v)
+		return nil
+	}
+	return fmt.Errorf("unknown RolloutTarget field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *RolloutTargetMutation) AddedFields() []string {
+	var fields []string
+	if m.addbucket != nil {
+		fields = append(fields, rollouttarget.FieldBucket)
+	}
+	return fields
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *RolloutTargetMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case rollouttarget.FieldBucket:
+		return m.AddedBucket()
+	}
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *RolloutTargetMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	case rollouttarget.FieldBucket:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddBucket(v)
+		return nil
+	}
+	return fmt.Errorf("unknown RolloutTarget numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *RolloutTargetMutation) ClearedFields() []string {
+	return nil
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *RolloutTargetMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *RolloutTargetMutation) ClearField(name string) error {
+	return fmt.Errorf("unknown RolloutTarget nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *RolloutTargetMutation) ResetField(name string) error {
+	switch name {
+	case rollouttarget.FieldRolloutID:
+		m.ResetRolloutID()
+		return nil
+	case rollouttarget.FieldAgentID:
+		m.ResetAgentID()
+		return nil
+	case rollouttarget.FieldAgentKind:
+		m.ResetAgentKind()
+		return nil
+	case rollouttarget.FieldCanary:
+		m.ResetCanary()
+		return nil
+	case rollouttarget.FieldBucket:
+		m.ResetBucket()
+		return nil
+	case rollouttarget.FieldState:
+		m.ResetState()
+		return nil
+	case rollouttarget.FieldReason:
+		m.ResetReason()
+		return nil
+	case rollouttarget.FieldVersionBefore:
+		m.ResetVersionBefore()
+		return nil
+	case rollouttarget.FieldUpdatedAt:
+		m.ResetUpdatedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown RolloutTarget field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *RolloutTargetMutation) AddedEdges() []string {
+	edges := make([]string, 0, 1)
+	if m.rollout != nil {
+		edges = append(edges, rollouttarget.EdgeRollout)
+	}
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *RolloutTargetMutation) AddedIDs(name string) []ent.Value {
+	switch name {
+	case rollouttarget.EdgeRollout:
+		if id := m.rollout; id != nil {
+			return []ent.Value{*id}
+		}
+	}
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *RolloutTargetMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 1)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *RolloutTargetMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *RolloutTargetMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 1)
+	if m.clearedrollout {
+		edges = append(edges, rollouttarget.EdgeRollout)
+	}
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *RolloutTargetMutation) EdgeCleared(name string) bool {
+	switch name {
+	case rollouttarget.EdgeRollout:
+		return m.clearedrollout
+	}
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *RolloutTargetMutation) ClearEdge(name string) error {
+	switch name {
+	case rollouttarget.EdgeRollout:
+		m.ClearRollout()
+		return nil
+	}
+	return fmt.Errorf("unknown RolloutTarget unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *RolloutTargetMutation) ResetEdge(name string) error {
+	switch name {
+	case rollouttarget.EdgeRollout:
+		m.ResetRollout()
+		return nil
+	}
+	return fmt.Errorf("unknown RolloutTarget edge %s", name)
 }
 
 // RouteMutation represents an operation that mutates the Route nodes in the graph.

@@ -58,6 +58,13 @@ var routesOf = map[string]transportRoutes{
 	"h2":   {9101, 9102, 9103, 9105, 9202, 9212, "bench-h2.bench.test"},
 }
 
+// fairPorts are the routes of one transport for the fairness workload: the first carries the
+// heavy load, the rest light traffic, all through one connector and gateway.
+var fairPorts = map[string][]int{
+	"quic": {9301, 9302, 9303, 9304},
+	"h2":   {9401, 9402, 9403, 9404},
+}
+
 // routesPerTransport is how many routes routes() seeds for each transport.
 const routesPerTransport = 7
 
@@ -73,7 +80,7 @@ type runOpts struct {
 	keep                 bool
 }
 
-var allWorkloads = []string{"throughput", "setup", "http", "udp", "vb18", "changes", "kill", "idle"}
+var allWorkloads = []string{"throughput", "setup", "http", "udp", "fairness", "vb18", "changes", "kill", "idle"}
 
 func parseRunFlags(args []string) (runOpts, error) {
 	fs := flag.NewFlagSet("run", flag.ContinueOnError)
@@ -372,7 +379,11 @@ func (b *bench) setUp(ctx context.Context) error {
 		if err := b.start(ctx, con, "connector", "connector"); err != nil {
 			return err
 		}
-		if _, err := b.compose(ctx, "exec", "-d", "-T", con, "sh", "-c", "exec bench service -name "+con+" >> "+bootDir+"/service.log 2>&1"); err != nil {
+		service := "exec bench service -name " + con
+		if con == "con1" {
+			service += " -https :7443 -https-cert " + bootDir + "/route-quic.crt -https-key " + bootDir + "/route-quic.key"
+		}
+		if _, err := b.compose(ctx, "exec", "-d", "-T", con, "sh", "-c", service+" >> "+bootDir+"/service.log 2>&1"); err != nil {
 			return err
 		}
 	}
@@ -451,6 +462,12 @@ func (b *bench) routes(ctx context.Context) error {
 			"--connector", "con1", "--transport", t); err != nil {
 			return err
 		}
+		for i, port := range fairPorts[t] {
+			if err := b.seedRoute(ctx, "route", "--name", fmt.Sprintf("fair-%s-%d", t, i), "--port", strconv.Itoa(port),
+				"--target", "127.0.0.1:7001", "--connector", "con1", "--transport", t); err != nil {
+				return err
+			}
+		}
 		if err := b.seedRoute(ctx, "http-route", "--name", "http-"+t, "--hostname", r.host, "--connector", "con1", "--target", "127.0.0.1:7080",
 			"--upstream", "http", "--transport", t, "--cert-file", bootDir+"/route-"+t+".crt", "--key-file", bootDir+"/route-"+t+".key"); err != nil {
 			return err
@@ -512,7 +529,11 @@ func (b *bench) certificates() error {
 		if err != nil {
 			return err
 		}
-		if err := errors.Join(b.writeFile("ctl", file+".crt", crt), b.writeFile("ctl", file+".key", k)); err != nil {
+		if err := errors.Join(
+			b.writeFile("ctl", file+".crt", crt), b.writeFile("ctl", file+".key", k),
+			// The direct HTTP reference beside the connector serves the same certificate.
+			b.writeFile("con1", file+".crt", crt), b.writeFile("con1", file+".key", k),
+		); err != nil {
 			return err
 		}
 	}
@@ -609,12 +630,16 @@ func (b *bench) matrix(ctx context.Context) error {
 					}
 				}
 			}
-			for _, t := range []string{"quic", "h2"} {
-				if w["http"] {
-					if err := b.http(ctx, t); err != nil {
-						return err
+			if w["http"] {
+				for rep := 1; rep <= b.o.reps; rep++ {
+					for _, t := range []string{"direct", "quic", "h2"} {
+						if err := b.http(ctx, t, rep); err != nil {
+							return err
+						}
 					}
 				}
+			}
+			for _, t := range []string{"quic", "h2"} {
 				// 1 200 and 1 400 bytes as docs/12 asks; 3 000 bytes always take the oversize path,
 				// so that its counter is shown to work.
 				for _, size := range []int{1200, 1400, 3000} {
@@ -622,6 +647,13 @@ func (b *bench) matrix(ctx context.Context) error {
 						break
 					}
 					if err := b.udp(ctx, t, size); err != nil {
+						return err
+					}
+				}
+			}
+			if w["fairness"] {
+				for _, t := range []string{"quic", "h2"} {
+					if err := b.fairness(ctx, t); err != nil {
 						return err
 					}
 				}
@@ -785,8 +817,15 @@ func (b *bench) setup(ctx context.Context, sys string, rep int) error {
 	return b.write(r)
 }
 
-func (b *bench) http(ctx context.Context, t string) error {
-	r, err := b.load(ctx, "client", t, 1, "-workload", "http", "-target", gwPub+":8443", "-url", "https://"+routesOf[t].host+"/",
+func (b *bench) http(ctx context.Context, t string, rep int) error {
+	node, target, host := "client", gwPub+":8443", routesOf[t].host
+	if t == "direct" {
+		// The direct reference runs from the gateway node, which sits on the shaped link; the
+		// client is on the public network only. It uses the QUIC route's name and certificate,
+		// so the URL shape matches the gateway's terminated route.
+		node, target, host = "gw", con1Link+":7443", routesOf["quic"].host
+	}
+	r, err := b.load(ctx, node, t, rep, "-workload", "http", "-target", target, "-url", "https://"+host+"/",
 		"-ca", bootDir+"/ca.pem", "-workers", "32", "-duration", b.o.dur.String())
 	if err != nil {
 		return err
@@ -810,6 +849,20 @@ func (b *bench) udp(ctx context.Context, t string, size int) error {
 	}
 	if r.Sent > 0 {
 		r.OversizeShare = (after["rpmgr_udp_oversize_total"] - before["rpmgr_udp_oversize_total"]) / float64(r.Sent)
+	}
+	return b.write(r)
+}
+
+func (b *bench) fairness(ctx context.Context, t string) error {
+	targets := make([]string, len(fairPorts[t]))
+	for i, p := range fairPorts[t] {
+		targets[i] = gwPub + ":" + strconv.Itoa(p)
+	}
+	r, err := b.load(ctx, "client", t, 1, "-workload", "fairness", "-targets", strings.Join(targets, ","),
+		"-setup-target", gwPub+":"+strconv.Itoa(routesOf[t].echo), "-heavy-streams", "16", "-light-streams", "1",
+		"-rate", strconv.Itoa(b.o.rate), "-duration", b.o.dur.String())
+	if err != nil {
+		return err
 	}
 	return b.write(r)
 }

@@ -25,6 +25,16 @@ import (
 type UDPResult struct {
 	Sent, Received int
 	Elapsed        time.Duration
+	Latencies      []time.Duration // sorted echo RTTs
+}
+
+// Percentile returns the p-th echo RTT percentile (0–100) in milliseconds.
+func (r UDPResult) Percentile(p float64) float64 {
+	if len(r.Latencies) == 0 {
+		return 0
+	}
+	i := int(float64(len(r.Latencies)-1) * p / 100)
+	return float64(r.Latencies[i].Microseconds()) / 1000
 }
 
 // Loss returns the share of datagrams that did not come back, in %.
@@ -44,11 +54,11 @@ func (r UDPResult) PPS() float64 {
 }
 
 // UDP sends datagrams of size bytes to an echo at rate per second for dur and counts the echoes
-// that arrive until a second after the last one was sent. Each carries its sequence number, so a
-// datagram counts once however often it arrives.
+// that arrive until a second after the last one was sent. Each carries its sequence number and its
+// send time, so a datagram counts once however often it arrives and its echo gives an RTT sample.
 func UDP(ctx context.Context, target string, size, rate int, dur time.Duration) (UDPResult, error) {
-	if size < 8 || size > 65000 || rate < 1 {
-		return UDPResult{}, fmt.Errorf("load: UDP needs a size of 8 to 65000 bytes and a rate ≥ 1, got %d and %d", size, rate)
+	if size < 16 || size > 65000 || rate < 1 {
+		return UDPResult{}, fmt.Errorf("load: UDP needs a size of 16 to 65000 bytes and a rate ≥ 1, got %d and %d", size, rate)
 	}
 	var d net.Dialer
 	c, err := d.DialContext(ctx, "udp", target)
@@ -58,6 +68,8 @@ func UDP(ctx context.Context, target string, size, rate int, dur time.Duration) 
 	defer func() { _ = c.Close() }()
 	n := int(dur.Seconds() * float64(rate))
 	seen := make([]atomic.Bool, n)
+	lat := make([]time.Duration, n)
+	start := time.Now()
 	var received atomic.Int64
 	done := make(chan struct{})
 	go func() {
@@ -70,6 +82,10 @@ func UDP(ctx context.Context, target string, size, rate int, dur time.Duration) 
 			}
 			if k == size {
 				if i := binary.BigEndian.Uint64(buf); i < uint64(len(seen)) && !seen[i].Swap(true) {
+					sent := time.Duration(binary.BigEndian.Uint64(buf[8:16])) //nolint:gosec // G115: a short monotonic offset
+					if rtt := time.Since(start) - sent; rtt >= 0 {
+						lat[i] = rtt
+					}
 					received.Add(1)
 				}
 			}
@@ -78,18 +94,25 @@ func UDP(ctx context.Context, target string, size, rate int, dur time.Duration) 
 	msg := slices.Clone(block[:min(size, len(block))])
 	msg = append(msg, make([]byte, size-len(msg))...)
 	interval := time.Second / time.Duration(rate)
-	start := time.Now()
 	for i := range n {
 		if wait := time.Until(start.Add(time.Duration(i) * interval)); wait > 0 {
 			time.Sleep(wait)
 		}
 		binary.BigEndian.PutUint64(msg, uint64(i))
+		binary.BigEndian.PutUint64(msg[8:16], uint64(time.Since(start))) //nolint:gosec // G115: a short monotonic offset
 		_, _ = c.Write(msg)
 	}
 	elapsed := time.Since(start)
 	_ = c.SetReadDeadline(time.Now().Add(time.Second))
 	<-done
-	return UDPResult{Sent: n, Received: int(received.Load()), Elapsed: elapsed}, nil
+	res := UDPResult{Sent: n, Received: int(received.Load()), Elapsed: elapsed}
+	for i := range n {
+		if seen[i].Load() {
+			res.Latencies = append(res.Latencies, lat[i])
+		}
+	}
+	slices.Sort(res.Latencies)
+	return res, nil
 }
 
 // HTTPResult is the outcome of an HTTP run.

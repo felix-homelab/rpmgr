@@ -975,6 +975,30 @@ func (f RecoveryCodeMutationRuleFunc) EvalMutation(ctx context.Context, m ent.Mu
 	return Denyf("ent/privacy: unexpected mutation type %T, expect *ent.RecoveryCodeMutation", m)
 }
 
+// The ReleaseQueryRuleFunc type is an adapter to allow the use of ordinary
+// functions as a query rule.
+type ReleaseQueryRuleFunc func(context.Context, *ent.ReleaseQuery) error
+
+// EvalQuery return f(ctx, q).
+func (f ReleaseQueryRuleFunc) EvalQuery(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.ReleaseQuery); ok {
+		return f(ctx, q)
+	}
+	return Denyf("ent/privacy: unexpected query type %T, expect *ent.ReleaseQuery", q)
+}
+
+// The ReleaseMutationRuleFunc type is an adapter to allow the use of ordinary
+// functions as a mutation rule.
+type ReleaseMutationRuleFunc func(context.Context, *ent.ReleaseMutation) error
+
+// EvalMutation calls f(ctx, m).
+func (f ReleaseMutationRuleFunc) EvalMutation(ctx context.Context, m ent.Mutation) error {
+	if m, ok := m.(*ent.ReleaseMutation); ok {
+		return f(ctx, m)
+	}
+	return Denyf("ent/privacy: unexpected mutation type %T, expect *ent.ReleaseMutation", m)
+}
+
 // The ResourceStatusQueryRuleFunc type is an adapter to allow the use of ordinary
 // functions as a query rule.
 type ResourceStatusQueryRuleFunc func(context.Context, *ent.ResourceStatusQuery) error
@@ -1045,6 +1069,54 @@ func (f RevokedSerialMutationRuleFunc) EvalMutation(ctx context.Context, m ent.M
 		return f(ctx, m)
 	}
 	return Denyf("ent/privacy: unexpected mutation type %T, expect *ent.RevokedSerialMutation", m)
+}
+
+// The RolloutQueryRuleFunc type is an adapter to allow the use of ordinary
+// functions as a query rule.
+type RolloutQueryRuleFunc func(context.Context, *ent.RolloutQuery) error
+
+// EvalQuery return f(ctx, q).
+func (f RolloutQueryRuleFunc) EvalQuery(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.RolloutQuery); ok {
+		return f(ctx, q)
+	}
+	return Denyf("ent/privacy: unexpected query type %T, expect *ent.RolloutQuery", q)
+}
+
+// The RolloutMutationRuleFunc type is an adapter to allow the use of ordinary
+// functions as a mutation rule.
+type RolloutMutationRuleFunc func(context.Context, *ent.RolloutMutation) error
+
+// EvalMutation calls f(ctx, m).
+func (f RolloutMutationRuleFunc) EvalMutation(ctx context.Context, m ent.Mutation) error {
+	if m, ok := m.(*ent.RolloutMutation); ok {
+		return f(ctx, m)
+	}
+	return Denyf("ent/privacy: unexpected mutation type %T, expect *ent.RolloutMutation", m)
+}
+
+// The RolloutTargetQueryRuleFunc type is an adapter to allow the use of ordinary
+// functions as a query rule.
+type RolloutTargetQueryRuleFunc func(context.Context, *ent.RolloutTargetQuery) error
+
+// EvalQuery return f(ctx, q).
+func (f RolloutTargetQueryRuleFunc) EvalQuery(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.RolloutTargetQuery); ok {
+		return f(ctx, q)
+	}
+	return Denyf("ent/privacy: unexpected query type %T, expect *ent.RolloutTargetQuery", q)
+}
+
+// The RolloutTargetMutationRuleFunc type is an adapter to allow the use of ordinary
+// functions as a mutation rule.
+type RolloutTargetMutationRuleFunc func(context.Context, *ent.RolloutTargetMutation) error
+
+// EvalMutation calls f(ctx, m).
+func (f RolloutTargetMutationRuleFunc) EvalMutation(ctx context.Context, m ent.Mutation) error {
+	if m, ok := m.(*ent.RolloutTargetMutation); ok {
+		return f(ctx, m)
+	}
+	return Denyf("ent/privacy: unexpected mutation type %T, expect *ent.RolloutTargetMutation", m)
 }
 
 // The RouteQueryRuleFunc type is an adapter to allow the use of ordinary
@@ -1490,11 +1562,17 @@ func queryFilter(q ent.Query) (Filter, error) {
 		return q.Filter(), nil
 	case *ent.RecoveryCodeQuery:
 		return q.Filter(), nil
+	case *ent.ReleaseQuery:
+		return q.Filter(), nil
 	case *ent.ResourceStatusQuery:
 		return q.Filter(), nil
 	case *ent.RevokedIdentityQuery:
 		return q.Filter(), nil
 	case *ent.RevokedSerialQuery:
+		return q.Filter(), nil
+	case *ent.RolloutQuery:
+		return q.Filter(), nil
+	case *ent.RolloutTargetQuery:
 		return q.Filter(), nil
 	case *ent.RouteQuery:
 		return q.Filter(), nil
@@ -1603,11 +1681,17 @@ func mutationFilter(m ent.Mutation) (Filter, error) {
 		return m.Filter(), nil
 	case *ent.RecoveryCodeMutation:
 		return m.Filter(), nil
+	case *ent.ReleaseMutation:
+		return m.Filter(), nil
 	case *ent.ResourceStatusMutation:
 		return m.Filter(), nil
 	case *ent.RevokedIdentityMutation:
 		return m.Filter(), nil
 	case *ent.RevokedSerialMutation:
+		return m.Filter(), nil
+	case *ent.RolloutMutation:
+		return m.Filter(), nil
+	case *ent.RolloutTargetMutation:
 		return m.Filter(), nil
 	case *ent.RouteMutation:
 		return m.Filter(), nil
