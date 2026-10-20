@@ -124,8 +124,10 @@ The commands on the VM reach the controller over loopback, also while a port is 
 echo "127.0.0.1 $name app.$name" >>/etc/hosts
 ```
 
-With this line, the controller's own fetch of the domain proof in step 5 goes over loopback too.
-The CA's validations, which this run is about, still come from the internet.
+With this line, the controller's own fetch of the domain proof in step 5 goes to loopback, which
+an HTTP proof never connects to ([04](../../docs/04-security.md#route-and-hostname-ownership)), so
+step 5 marks the claim trusted. The CA's validations, which this run is about, still come from the
+internet.
 
 ## 3. The first user and an API token
 
@@ -182,14 +184,16 @@ rpmgr list route                       # works again
 
 ```sh
 rpmgr create domain --fqdn $name --wildcard --method http
-rpmgr verify domain <domain ID>        # repeat until it says VERIFIED
+rpmgr verify domain <domain ID>        # says the name resolves to an address that is not public
+rpmgr trust domain <domain ID>         # after a step-up, as an Instance Admin
 rpmgr create route --name vb19 --group default --http --hostname app.$name --tls-mode acme
 rpmgr list certificate                 # the certificate of app.<name> and its ID
 ```
 
 The route needs no target for its certificate. A wildcard claim covers `app.<name>`; a claim of
-`<name>` alone does not. If the proof cannot pass, an Instance Admin marks the claim verified with
-`rpmgr trust domain <domain ID>`, after a step-up. In that case, record that the proof was skipped.
+`<name>` alone does not. The `/etc/hosts` line of step 2 sends the controller's proof to loopback,
+which it refuses, so the Instance Admin marks the claim verified with `rpmgr trust domain`; record
+that the proof was skipped.
 
 **Check (phase a, the route):** on the workstation, the `openssl` command of step 4 with
 `-servername app.<name>` shows a "(STAGING)" issuer. Record the serial.

@@ -389,7 +389,11 @@ Rules:
     the start of each control session; the controller keeps the last report, at most 4 096 per
     gateway. The same `Status` carries the gateway's route counters, cumulative since it started:
     bytes both ways, connections, those that reached no target, and the open ones. The controller
-    rolls them up for the traffic charts ([06](06-data-model.md#desired-vs-observed-state)).
+    rolls them up for the traffic charts ([06](06-data-model.md#desired-vs-observed-state)). It
+    takes both only for what the gateway serves: counters of routes of the gateway's own group,
+    and data sessions of connectors with a target on such a route. A report of a gateway that is
+    not an active gateway of its org counts for nothing, and whatever else a report names is
+    skipped, so a gateway cannot write another group's or another org's traffic or sessions.
 
 ### Revisions and ordering
 
@@ -748,6 +752,30 @@ sequenceDiagram
   an HTTP/2 one under a wildcard certificate, asks again on a connection of its own. TLS is
   terminated with the route certificate for the server name
   ([04](04-security.md#controller-certificates)).
+- **Clean paths only.** The path goes upstream unchanged, so a backend that reads it differently
+  from the gateway could serve, under a broader route and its access policies, a path that a
+  narrower route protects. Before it chooses a route, on 443 and on port 80, the gateway therefore
+  refuses with **400** a request whose path, once percent-decoded:
+  - does not start with `/`, such as an absolute-form request with an empty path
+    (`GET http://host HTTP/1.1`);
+  - has an empty, `.` or `..` segment, such as `//admin`, `/./admin`, `/x/../admin` or
+    `/%2e%2e/admin` (a trailing `/` is allowed);
+  - has a `.` or `..` segment with `;` parameters, such as `/..;/admin`, or an empty one once
+    `;` parameters are dropped, such as `/;/admin` or `/x/;/admin` (a last segment of parameters
+    alone, `/admin/;x`, reads as a trailing `/`);
+  - contains `\`, which some backends treat as a separator, or a control character, `%00`
+    included.
+
+  Encoded letters and slashes are routed by their decoded form (`/%61dmin` and `/admin%2fx` are
+  `/admin…`). A path with `;` parameters goes to the longest prefix that it, or its form without
+  the parameters, matches: `/admin;jsessionid=1` and `/admin;x/y` belong to an `/admin` route.
+  With a restricted `/admin` and an open `/admin/public`, `/admin/public;x` goes to the open route,
+  which a backend reading `;` parameters sees as `/admin/public`, that route's own path.
+  `CONNECT` is **501**, as a route serves paths, not tunnels; `OPTIONS *` is answered by the
+  gateway itself. Not covered: a backend that compares paths without regard to case, drops
+  trailing dots from segments, or decodes a path twice (`%252e`) can still read two routes' paths
+  as one. Protect such a backend with one route for the whole hostname, or at the backend, rather
+  than with path prefixes.
 - **HTTPS upstreams.** For an `https` target the gateway speaks TLS over the stream, end to end
   with the upstream, verified with the settings of the target the connector reached, which
   `StreamResult` names: the target's server name (its host by default), its CA bundle or else the

@@ -34,6 +34,24 @@ Changes to the design documents are not recorded here: see the git history and t
 - Controller: a password reset or a password change now ends the user's other unused reset links,
   so a link issued before the change can no longer set the password; a reset link of a disabled
   user sets no password. Severity low to medium; affects 0.1.0. (#812)
+- Controller: a gateway's reports count only for what it serves: traffic counters of routes in its
+  own gateway group, and data sessions of connectors with a target on such a route. A gateway
+  could write traffic statistics for routes of other groups, and show data sessions for any
+  connector of its org. (#821)
+- Gateway: a request path with an empty, `.` or `..` segment, such as `//admin` or
+  `/%2e%2e/admin`, also with `;` parameters (`/..;/admin`, `/;/admin`), or with a `\` or a
+  control character, is refused with 400 before a route is chosen, also on port 80; so is an
+  absolute-form request with an empty path (`GET http://host HTTP/1.1`). Before, such a path was
+  routed by a broader route of the host, and a backend that resolves it served the path of a
+  narrower route without that route's access policy. A path with `;` parameters, such as
+  `/admin;jsessionid=1`, now belongs to the route its form without them matches. `CONNECT`
+  requests are refused with 501. Medium severity; affects v0.1.0. (#813)
+- Controller: an HTTP domain proof connects only to public addresses, so an HTTP claim whose name
+  resolves to a loopback, private, link-local or other internal address fails with "the name
+  resolves to an address that is not public"; through a proxy nothing changes. The last error of
+  an HTTP claim names only the kind of failure, no longer the addresses, the resolver or the
+  server's own text. A domain that resolves only on the local network is proved with a TXT record
+  or marked trusted by the Instance Admin. (#822)
 
 ## [0.1.0] - 2026-10-19
 

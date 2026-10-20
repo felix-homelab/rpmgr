@@ -70,8 +70,10 @@ TestPolicy_AutoUpdateAndChannelDefaults	done	4.6	#76	installer clause in 11.4 (t
 TestRevocationLog_SingleNodeWithoutSink	done	11.5	#159	second-replica clause through the single-controller lock of 2.4; the API reports the missing sink, which the settings page shows as the warning (web/src/pages/settings.test.tsx)
 TestGatewayGroup_MaxFourGateways	done	3.4	#59
 TestDomain_TrustedOnlyByInstanceAdmin	done	8.4	#118
+TestDomainProof_EgressGuard	done	-	#815	fix of issue #815
 TestTLS_VerifyConnectionOnResumption	done	2.10	#54
 TestSPIFFE_TrustDomainExact	done	2.10	#54
 TestReauth_NoSessionTickets	done	2.10	#54
 TestCSR_BoundToConnection	done	2.10	#54	Enroll clause: TestEnroll_Binding (3.7); Renew and Reauth clauses: TestRenew_Binding (3.12)
 TestCompile_GatedRouteNeverReachesOldGateway	done	1.4	#597	Phase 2 (P2-M01); internal/routes, status clause in internal/apisvc
+TestGateway_UncleanPathRefused	done	-	#813	bug fix outside the slice plan
