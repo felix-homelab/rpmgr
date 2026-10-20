@@ -31,10 +31,16 @@ func cmdService(args []string) error {
 	who := fs.String("who", ":7004", "who address")
 	udp := fs.String("udp", ":7008", "UDP echo address")
 	httpAddr := fs.String("http", ":7080", "HTTP upstream address")
+	httpsAddr := fs.String("https", "", "direct HTTPS reference address (empty disables it)")
+	httpsCert := fs.String("https-cert", "", "certificate for the direct HTTPS reference")
+	httpsKey := fs.String("https-key", "", "key for the direct HTTPS reference")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
-	errc := make(chan error, 6)
+	if *httpsAddr != "" && (*httpsCert == "" || *httpsKey == "") {
+		return fmt.Errorf("%w: -https needs -https-cert and -https-key", errUsage)
+	}
+	errc := make(chan error, 7)
 	for addr, serve := range map[string]func(net.Listener) error{*sink: load.ServeSink, *source: load.ServeSource, *echo: load.ServeEcho,
 		*httpAddr: load.ServeHTTP, *who: func(ln net.Listener) error { return load.ServeWho(ln, *name) }} {
 		ln, err := net.Listen("tcp", addr)
@@ -42,6 +48,13 @@ func cmdService(args []string) error {
 			return err
 		}
 		go func() { errc <- serve(ln) }()
+	}
+	if *httpsAddr != "" {
+		ln, err := net.Listen("tcp", *httpsAddr)
+		if err != nil {
+			return err
+		}
+		go func() { errc <- load.ServeHTTPS(ln, *httpsCert, *httpsKey) }()
 	}
 	pc, err := net.ListenPacket("udp", *udp)
 	if err != nil {

@@ -142,6 +142,75 @@ func Throughput(ctx context.Context, target, direction string, streams int, dur 
 	return ThroughputResult{Bytes: total.Load(), Elapsed: time.Since(start), Failures: int(failures.Load())}, nil
 }
 
+// FairnessResult is the outcome of a many-route run: goodput per target, failures, and the setup
+// latency measured on a shared route while the transfers run.
+type FairnessResult struct {
+	Mbps     map[string]float64
+	Failures int
+	Setup    SetupResult
+}
+
+// Fairness sends one heavy target's streams and light streams to each other target at the same
+// time, measures each target's acknowledged goodput, and optionally measures setup latency on
+// setupTarget concurrently. Targets must be distinct.
+func Fairness(ctx context.Context, targets []string, heavy, light int, setupTarget string, rate int, dur time.Duration) (FairnessResult, error) {
+	if len(targets) == 0 || heavy < 1 || light < 1 {
+		return FairnessResult{}, fmt.Errorf("load: fairness needs targets, heavy and light streams ≥ 1")
+	}
+	start := time.Now()
+	var mu sync.Mutex
+	bytes := map[string]int64{}
+	failures := 0
+	var wg sync.WaitGroup
+	for i, target := range targets {
+		n := light
+		if i == 0 {
+			n = heavy
+		}
+		for range n {
+			wg.Go(func() {
+				b, err := upload(ctx, target, dur)
+				mu.Lock()
+				defer mu.Unlock()
+				if err != nil {
+					failures++
+					return
+				}
+				bytes[target] += b
+			})
+		}
+	}
+	var setup SetupResult
+	var setupErr error
+	if setupTarget != "" {
+		wg.Go(func() { setup, setupErr = Setup(ctx, setupTarget, rate, dur) })
+	}
+	wg.Wait()
+	if setupErr != nil {
+		return FairnessResult{}, setupErr
+	}
+	res := FairnessResult{Mbps: map[string]float64{}, Failures: failures, Setup: setup}
+	elapsed := time.Since(start).Seconds()
+	for _, target := range targets {
+		res.Mbps[target] = float64(bytes[target]) * 8 / elapsed / 1e6
+	}
+	return res, nil
+}
+
+// Jain returns Jain's fairness index of the values: 1 is perfectly fair, 1/n is one flow taking
+// everything.
+func Jain(values []float64) float64 {
+	var sum, squares float64
+	for _, v := range values {
+		sum += v
+		squares += v * v
+	}
+	if sum == 0 {
+		return 0
+	}
+	return sum * sum / (float64(len(values)) * squares)
+}
+
 func dial(ctx context.Context, target string) (*net.TCPConn, error) {
 	var d net.Dialer
 	c, err := d.DialContext(ctx, "tcp", target)
