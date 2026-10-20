@@ -41,8 +41,13 @@ const transportMemory = "memory"
 
 // h2Sessions is how many TCP connections the connector keeps per gateway on the h2 transport, so
 // that packet loss blocks at most half the streams (docs/03-connections.md, "Transports and
-// fallback").
+// fallback"; D124).
 const h2Sessions = 2
+
+// quicSessions is how many QUIC sessions the connector keeps per gateway, each with its own
+// congestion window, so that loss slows a quarter of the streams (docs/03-connections.md,
+// "Transports and fallback"; D123).
+const quicSessions = 4
 
 // Variables for tests.
 var (
@@ -100,7 +105,7 @@ type InProcess struct {
 
 // Sessions keeps the connector's data sessions (docs/03-connections.md, "Data session",
 // "Transport selection"). Per gateway it runs a link for each transport policy its routes need:
-// a pinned link holds one QUIC session or two TCP connections and never falls back; the auto link
+// a pinned link holds four QUIC sessions or two TCP connections and never falls back; the auto link
 // races QUIC against TCP and keeps the winner's sessions; an in-process gateway gets one link in
 // memory for all its routes. Each session announces exactly the ready routes of its link's policy,
 // so the gateway opens a route's streams only on sessions of the route's transport.
@@ -511,16 +516,28 @@ type modeHooks struct {
 	ended func(err error, dialled bool) bool
 	// moved is asked before every redial; true, for a new local source address, ends the mode.
 	moved func() bool
+	// live counts the mode's established sessions, so that a failed dial of one slot ends the
+	// mode only while no other slot has a session.
+	live atomic.Int32
 }
 
-// runMode keeps the sessions of transport tr on link l until ctx ends: one for QUIC and in memory,
-// two for h2, each redialled with a backoff of up to 15 s; first, if set, is the first session of
-// the first slot.
-func (m *Sessions) runMode(ctx context.Context, l *link, tr string, first tunnel.Session, hooks *modeHooks) {
-	n := 1
-	if tr == TransportH2 {
-		n = h2Sessions
+// sessionsOf is how many sessions a link keeps on transport tr: four for QUIC, two for h2 and one
+// in memory.
+func sessionsOf(tr string) int {
+	switch tr {
+	case TransportQUIC:
+		return quicSessions
+	case TransportH2:
+		return h2Sessions
 	}
+	return 1
+}
+
+// runMode keeps the sessions of transport tr on link l until ctx ends, sessionsOf(tr) of them,
+// each in a slot of its own that redials with a backoff of up to 15 s; first, if set, is the first
+// session of the first slot.
+func (m *Sessions) runMode(ctx context.Context, l *link, tr string, first tunnel.Session, hooks *modeHooks) {
+	n := sessionsOf(tr)
 	var wg sync.WaitGroup
 	for i := range n {
 		f := first
@@ -549,7 +566,13 @@ func (m *Sessions) slot(ctx context.Context, l *link, tr string, first tunnel.Se
 				return
 			}
 		} else {
+			if hooks != nil {
+				hooks.live.Add(1)
+			}
 			err = m.run(ctx, l, ts, ts.Transport())
+			if hooks != nil {
+				hooks.live.Add(-1)
+			}
 			b.Healthy(time.Since(start))
 			if ctx.Err() != nil || (hooks != nil && hooks.ended(err, false)) {
 				return
@@ -643,8 +666,13 @@ func (m *Sessions) runAuto(ctx context.Context, l *link) {
 			switchMode()
 			return true
 		}
+		var hooks *modeHooks
 		ended := func(err error, dialled bool) bool {
 			switch {
+			case dialled && hooks.live.Load() > 0:
+				// Another slot of the mode has a session: this one retries with its backoff, as a
+				// gateway that refuses a session beyond its cap leaves the others in service.
+				return moved()
 			case dialled:
 				m.choose.forget(gw, local)
 			case tr == TransportQUIC && isBlackhole(err):
@@ -657,7 +685,8 @@ func (m *Sessions) runAuto(ctx context.Context, l *link) {
 			return true
 		}
 		var wg sync.WaitGroup
-		wg.Go(func() { m.runMode(mctx, l, tr, first, &modeHooks{ended: ended, moved: moved}) })
+		hooks = &modeHooks{ended: ended, moved: moved}
+		wg.Go(func() { m.runMode(mctx, l, tr, first, hooks) })
 		if tr == TransportH2 {
 			wg.Go(func() {
 				if s := m.reprobe(mctx, l); s != nil {

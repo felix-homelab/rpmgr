@@ -78,3 +78,6 @@ func (t *Targets) Blocked(route, target, detail string, gen uint64) {
 
 // Dialled records an allowed dial of the route's target as a dial at generation gen would.
 func (t *Targets) Dialled(route, target string, gen uint64) { t.dialled(route, target, gen) }
+
+// QUICSessions is how many QUIC sessions a link keeps per gateway (D123).
+const QUICSessions = quicSessions

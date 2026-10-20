@@ -468,7 +468,7 @@ func TestTargets_ThroughSessions(t *testing.T) {
 	m = newConnectorWith(t, w, tg.Handle)
 	tg.Set([]connector.Route{{ID: "rt_1", Targets: []connector.Target{target("127.0.0.1", svc.port())}}})
 	m.Set([]connector.Gateway{{ID: id.ID, Endpoints: []string{g.addr}, Routes: map[string]string{"rt_1": connector.TransportQUIC}}})
-	eventually(t, "no session", func() bool { return g.sessions.Load().Count()["quic"] == 1 })
+	eventually(t, "no session", func() bool { return g.sessions.Load().Count()["quic"] == connector.QUICSessions })
 	if _, _, err := g.sessions.Load().OpenStream(context.Background(), tcpOpen("rt_1")); !errors.Is(err, gateway.ErrNoSession) {
 		t.Fatalf("a blocked route was opened: %v", err)
 	}
