@@ -220,11 +220,14 @@ func TestOTA_StagedFileSwapTOCTOU(t *testing.T) {
 	t.Run("symbolic link planted after the open", func(t *testing.T) {
 		h := newHost(t, hostOpts{})
 		h.stage(rel{version: "1.2.0", seq: 6})
+		// A file of the same size that a reader following the path would copy instead.
+		evil := filepath.Join(t.TempDir(), "evil")
+		mustWrite(t, evil, "rpmgr 1.2.0 EVIL", 0o644)
 		update.OnOpen(t, func(name string) {
 			if strings.HasPrefix(name, "rpmgr-") {
 				p := h.artifact("1.2.0", "full")
 				_ = os.Remove(p)
-				if err := os.Symlink("/etc/shadow", p); err != nil {
+				if err := os.Symlink(evil, p); err != nil {
 					t.Error(err)
 				}
 			}
@@ -243,6 +246,16 @@ func TestOTA_StagedFileSwapTOCTOU(t *testing.T) {
 			}
 		})
 		h.refused(update.ErrRefused)
+	})
+	t.Run("artifact changed after it was copied", func(t *testing.T) {
+		h := newHost(t, hostOpts{})
+		h.stage(rel{version: "1.2.0", seq: 6})
+		// The hash is taken from the copy: a staged file changed now cannot fail it, nor pass.
+		update.AfterCopy(t, func() { mustWrite(t, h.artifact("1.2.0", "full"), "rpmgr 1.2.0 EVIL", 0o640) })
+		s := h.staged()
+		if got, _ := os.ReadFile(s.Path); !bytes.Equal(got, binary("1.2.0", "full")) {
+			t.Fatalf("the verified copy holds %q", got)
+		}
 	})
 	t.Run("manifest swapped after it was read", func(t *testing.T) {
 		h := newHost(t, hostOpts{})
@@ -322,6 +335,27 @@ func TestOTA_HostileStagingRefused(t *testing.T) {
 		h := newHost(t, hostOpts{})
 		h.stage(rel{version: "1.2.0", seq: 6})
 		mustWrite(t, h.artifact("1.2.0", "full"), string(binary("1.2.0", "full"))+strings.Repeat("x", 1<<20), 0o640)
+		read := false
+		update.OnOpen(t, func(name string) { read = read || strings.HasPrefix(name, "rpmgr-") })
+		h.refused(update.ErrHostile)
+		if read {
+			t.Error("a static file above the manifest's size was opened for reading; its size alone must refuse it")
+		}
+	})
+	t.Run("signed file growing while read", func(t *testing.T) {
+		h := newHost(t, hostOpts{})
+		h.stage(rel{version: "1.2.0", seq: 6})
+		update.OnOpen(t, func(name string) {
+			if name == "manifest.json" {
+				f, err := os.OpenFile(filepath.Join(h.u.Staged, name), os.O_APPEND|os.O_WRONLY, 0)
+				if err != nil {
+					t.Error(err)
+					return
+				}
+				_, _ = f.WriteString(strings.Repeat(" ", 2<<20))
+				_ = f.Close()
+			}
+		})
 		h.refused(update.ErrHostile)
 	})
 	t.Run("growing while copied", func(t *testing.T) {
@@ -470,6 +504,68 @@ func TestStage_Install(t *testing.T) {
 				t.Fatalf("Stage: %v", err)
 			case tc.fails && err == nil, tc.want != nil && !errors.Is(err, tc.want):
 				t.Fatalf("Stage: %v; want an error wrapping %v", err, tc.want)
+			}
+		})
+	}
+}
+
+func TestStage_RootOnlyStagingDirectory(t *testing.T) {
+	t.Run("copies of earlier runs removed", func(t *testing.T) {
+		h := newHost(t, hostOpts{})
+		dir := filepath.Join(h.u.State, "staging")
+		mustMkdir(t, dir, 0o700)
+		mustWrite(t, filepath.Join(dir, ".copy-left"), "old", 0o600)
+		mustWrite(t, filepath.Join(dir, "rpmgr-1.1.0-linux-amd64"), "old", 0o600)
+		h.stage(rel{version: "1.2.0", seq: 6})
+		s := h.staged()
+		entries, _ := os.ReadDir(dir)
+		if len(entries) != 1 || entries[0].Name() != filepath.Base(s.Path) {
+			t.Errorf("staging holds %v; want only the new copy", entries)
+		}
+	})
+	t.Run("open to others", func(t *testing.T) {
+		h := newHost(t, hostOpts{})
+		mustMkdir(t, filepath.Join(h.u.State, "staging"), 0o755)
+		if err := os.Chmod(filepath.Join(h.u.State, "staging"), 0o755); err != nil { //nolint:gosec // G302: the mode under test
+			t.Fatal(err)
+		}
+		h.stage(rel{version: "1.2.0", seq: 6})
+		if _, err := h.u.Stage(); !errors.Is(err, update.ErrHostile) {
+			t.Fatalf("Stage with a staging directory of mode 0755: %v", err)
+		}
+	})
+	t.Run("symbolic link", func(t *testing.T) {
+		h := newHost(t, hostOpts{})
+		if err := os.Symlink(t.TempDir(), filepath.Join(h.u.State, "staging")); err != nil {
+			t.Fatal(err)
+		}
+		h.stage(rel{version: "1.2.0", seq: 6})
+		if _, err := h.u.Stage(); !errors.Is(err, update.ErrHostile) {
+			t.Fatalf("Stage with a symbolic-linked staging directory: %v", err)
+		}
+	})
+}
+
+// TestStage_OwnFilesNoSymlinks: install.json, state.json and the policy file are never read
+// through a symbolic link, which another user could point at a file of their own.
+func TestStage_OwnFilesNoSymlinks(t *testing.T) {
+	for _, name := range []string{"install.json", "state.json", "policy"} {
+		t.Run(name, func(t *testing.T) {
+			h := newHost(t, hostOpts{policy: "version: 1\nauto_update: auto\nupdate_channel: stable\n"})
+			p := filepath.Join(h.u.State, name)
+			if name == "policy" {
+				p = h.u.Policy
+			}
+			b, _ := os.ReadFile(p)
+			real := filepath.Join(t.TempDir(), "real")
+			mustWrite(t, real, string(b), 0o600)
+			_ = os.Remove(p)
+			if err := os.Symlink(real, p); err != nil {
+				t.Fatal(err)
+			}
+			h.stage(rel{version: "1.2.0", seq: 6})
+			if _, err := h.u.Stage(); err == nil {
+				t.Fatalf("Stage read %s through a symbolic link", name)
 			}
 		})
 	}

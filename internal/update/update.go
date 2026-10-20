@@ -11,7 +11,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -154,20 +154,55 @@ func (u *Updater) Stage() (*Staged, error) {
 	if a.Size > MaxArtifact {
 		return nil, fmt.Errorf("%w: the manifest's artifact has %d bytes, above the cap of %d", ErrHostile, a.Size, MaxArtifact)
 	}
-	dir := filepath.Join(u.State, stagingDir)
-	if err := os.MkdirAll(dir, 0o700); err != nil {
-		return nil, fmt.Errorf("update: %w", err)
-	}
-	dst := filepath.Join(dir, release.ArtifactName(m.Version, a))
-	if err := src.copy(release.ArtifactName(m.Version, a), dst, a.Size); err != nil {
-		return nil, err
-	}
-	if err := checkCopy(dst, a); err != nil {
-		_ = os.Remove(dst)
+	dst, err := u.copyArtifact(src, release.ArtifactName(m.Version, a), a)
+	if err != nil {
 		return nil, err
 	}
 	next, _ := release.State{Seq: st.Seq, Floor: st.Floor}.Accept(m, channel)
 	return &Staged{Manifest: m, Artifact: a, Path: dst, Next: State{Seq: next.Seq, Floor: next.Floor}}, nil
+}
+
+// afterCopy, if set, runs after the artifact is copied and before the copy is verified; tests use
+// it to change the staged file once it was copied.
+var afterCopy func()
+
+// copyArtifact copies the staged artifact into a new file of the root-only staging directory,
+// verifies that copy and gives it its final name. Copies of earlier runs are removed first, and a
+// copy that fails is removed, so the directory never grows.
+func (u *Updater) copyArtifact(src *staged, name string, a release.Artifact) (string, error) {
+	dir := filepath.Join(u.State, stagingDir)
+	if err := prepareStaging(dir); err != nil {
+		return "", err
+	}
+	tmp, err := os.CreateTemp(dir, ".copy-*") // O_CREAT|O_EXCL, 0600: never an existing file or link
+	if err != nil {
+		return "", fmt.Errorf("update: %w", err)
+	}
+	done := false
+	defer func() {
+		if !done {
+			_ = os.Remove(tmp.Name())
+		}
+	}()
+	err = src.copy(name, tmp, a.Size)
+	if cerr := tmp.Close(); err == nil && cerr != nil {
+		err = fmt.Errorf("update: %w", cerr)
+	}
+	if err != nil {
+		return "", err
+	}
+	if afterCopy != nil {
+		afterCopy()
+	}
+	if err := checkCopy(tmp.Name(), a); err != nil {
+		return "", err
+	}
+	dst := filepath.Join(dir, name)
+	if err := os.Rename(tmp.Name(), dst); err != nil {
+		return "", fmt.Errorf("update: %w", err)
+	}
+	done = true
+	return dst, nil
 }
 
 // verify checks the signed files and decides whether the manifest may be installed here.
@@ -219,7 +254,7 @@ func (u *Updater) install() (Install, error) {
 // takes the defaults; one that does not parse, or that others may write, counts as auto_update
 // off (D120), as does auto_update notify or off.
 func (u *Updater) channel() (string, error) {
-	p, err := policy.Load(u.Policy)
+	p, err := u.policy()
 	switch {
 	case err != nil:
 		return "", fmt.Errorf("%w: the local policy cannot be trusted, so updates are off: %w", ErrRefused, err)
@@ -301,30 +336,18 @@ func WriteState(dir string, st State) error {
 	return nil
 }
 
-// readOwn reads one of the updater's own files, which only its owner may write.
-func readOwn(path string) ([]byte, error) {
-	f, err := os.Open(path) //nolint:gosec // G304: the updater's own state directory
+// policy reads the local policy as the updater trusts it: a missing file is the defaults; the
+// file is read through readOwn, so a symbolic link, a file another user owns or one its group or
+// other users may write counts as untrusted, then parsed as the connector parses it.
+func (u *Updater) policy() (*policy.Policy, error) {
+	b, err := readOwn(u.Policy)
+	if errors.Is(err, fs.ErrNotExist) {
+		return policy.Defaults(), nil
+	}
 	if err != nil {
-		return nil, fmt.Errorf("update: %w", err)
+		return nil, err
 	}
-	defer func() { _ = f.Close() }()
-	fi, err := f.Stat()
-	switch {
-	case err != nil:
-		return nil, fmt.Errorf("update: %w", err)
-	case !fi.Mode().IsRegular() || fi.Size() > maxMeta:
-		return nil, fmt.Errorf("update: %s is no regular file of at most %d bytes", path, maxMeta)
-	case fi.Mode().Perm()&0o022 != 0:
-		return nil, fmt.Errorf("update: %s has mode %04o; only its owner may write it", path, fi.Mode().Perm())
-	}
-	b, err := io.ReadAll(io.LimitReader(f, maxMeta+1))
-	switch {
-	case err != nil:
-		return nil, fmt.Errorf("update: %w", err)
-	case len(b) > maxMeta:
-		return nil, fmt.Errorf("update: %s grew past %d bytes", path, maxMeta)
-	}
-	return b, nil
+	return policy.Parse(b)
 }
 
 // checkCopy verifies the root-only copy against the manifest's artifact.

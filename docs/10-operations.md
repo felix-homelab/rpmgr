@@ -208,8 +208,10 @@ RestartSec=2s
   and oneshot `rpmgr-update.service` ([04](04-security.md#over-the-air-updates)). It:
   1. reads `auto_update` and `update_channel` from `/etc/rpmgr/policy.yaml` **itself** and stops
      if updates are not allowed (it does not trust the agent's decision); a file that does not
-     parse, or that its group or other users may write, counts as `off`
-     ([D120](14-open-decisions.md#security-defaults));
+     parse, that its group or other users may write, that root does not own, or that is a
+     symbolic link counts as `off` ([D120](14-open-decisions.md#security-defaults)), and
+     `install.json` and `state.json` must pass the same test. The connector itself still reads
+     the policy as [04](04-security.md#connector-local-policy) says;
   2. opens the staging directory through a directory fd with
      `openat2(RESOLVE_NO_SYMLINKS | RESOLVE_BENEATH)`, requires regular files (`fstat` → `S_ISREG`;
      no symlinked directory, FIFO or device), and checks that each file's size is ≤ the manifest's

@@ -6,7 +6,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
+	"path/filepath"
 
 	"golang.org/x/sys/unix"
 )
@@ -86,34 +88,83 @@ func (s *staged) read(name string, limit int64) ([]byte, error) {
 	return b, nil
 }
 
-// copy copies a staged file of at most limit bytes to dst, in the updater's root-only directory.
-// A file that grows past the limit while it is copied is refused and the copy removed.
-func (s *staged) copy(name, dst string, limit int64) error {
+// copy copies a staged file of at most limit bytes into out, a new file of the updater's root-only
+// staging directory, and syncs it. A file that grows past the limit while it is copied is refused.
+func (s *staged) copy(name string, out *os.File, limit int64) error {
 	f, err := s.open(name, limit)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = f.Close() }()
-	out, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600) //nolint:gosec // G304: the updater's own staging directory
-	if err != nil {
-		return fmt.Errorf("update: %w", err)
-	}
 	n, err := io.Copy(out, io.LimitReader(f, limit+1))
-	if err == nil && n > limit {
-		err = fmt.Errorf("%w: %s grew past %d bytes while it was copied", ErrHostile, name, limit)
+	switch {
+	case err != nil:
+		return fmt.Errorf("update: copying %s: %w", name, err)
+	case n > limit:
+		return fmt.Errorf("%w: %s grew past %d bytes while it was copied", ErrHostile, name, limit)
 	}
-	if err == nil {
-		err = out.Sync()
-	}
-	if cerr := out.Close(); err == nil {
-		err = cerr
-	}
-	if err != nil {
-		_ = os.Remove(dst)
-		if errors.Is(err, ErrHostile) {
-			return err
-		}
+	if err := out.Sync(); err != nil {
 		return fmt.Errorf("update: copying %s: %w", name, err)
 	}
 	return nil
+}
+
+// prepareStaging makes sure the root-only staging directory exists as a plain directory of mode
+// 0700 owned by the updater's user, root, and removes the copies earlier runs left.
+func prepareStaging(dir string) error {
+	err := os.Mkdir(dir, 0o700)
+	if err != nil && !errors.Is(err, fs.ErrExist) {
+		return fmt.Errorf("update: %w", err)
+	}
+	var st unix.Stat_t
+	if err := unix.Lstat(dir, &st); err != nil {
+		return fmt.Errorf("update: %w", err)
+	}
+	if st.Mode&unix.S_IFMT != unix.S_IFDIR || st.Mode&0o777 != 0o700 || int(st.Uid) != os.Geteuid() {
+		return fmt.Errorf("%w: %s must be a directory of mode 0700 that only the updater owns", ErrHostile, dir)
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return fmt.Errorf("update: %w", err)
+	}
+	for _, e := range entries {
+		if err := os.Remove(filepath.Join(dir, e.Name())); err != nil {
+			return fmt.Errorf("update: removing an earlier copy: %w", err)
+		}
+	}
+	return nil
+}
+
+// readOwn reads one of the updater's own files, or the local policy: a regular file of at most
+// maxMeta bytes, opened without following a symbolic link, owned by the updater's user, root, and
+// writable by no one else. A missing file wraps fs.ErrNotExist.
+func readOwn(path string) ([]byte, error) {
+	f, err := os.OpenFile(path, os.O_RDONLY|unix.O_NOFOLLOW|unix.O_NONBLOCK, 0) //nolint:gosec // G304: the updater's own files
+	if err != nil {
+		if errors.Is(err, unix.ELOOP) {
+			return nil, fmt.Errorf("update: %s is a symbolic link", path)
+		}
+		return nil, fmt.Errorf("update: %w", err)
+	}
+	defer func() { _ = f.Close() }()
+	var st unix.Stat_t
+	if err := unix.Fstat(int(f.Fd()), &st); err != nil {
+		return nil, fmt.Errorf("update: %w", err)
+	}
+	switch {
+	case st.Mode&unix.S_IFMT != unix.S_IFREG || st.Size > maxMeta:
+		return nil, fmt.Errorf("update: %s is no regular file of at most %d bytes", path, maxMeta)
+	case int(st.Uid) != os.Geteuid():
+		return nil, fmt.Errorf("update: %s is owned by user %d, not by the updater's", path, st.Uid)
+	case st.Mode&0o022 != 0:
+		return nil, fmt.Errorf("update: %s has mode %04o; only its owner may write it", path, st.Mode&0o7777)
+	}
+	b, err := io.ReadAll(io.LimitReader(f, maxMeta+1))
+	switch {
+	case err != nil:
+		return nil, fmt.Errorf("update: %w", err)
+	case len(b) > maxMeta:
+		return nil, fmt.Errorf("update: %s grew past %d bytes", path, maxMeta)
+	}
+	return b, nil
 }
