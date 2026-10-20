@@ -256,6 +256,75 @@ func TestAgentCommands(t *testing.T) {
 	}
 }
 
+// TestAgentCommands_AllInOne (#600): on an all-in-one host, status reports the built-in gateway and
+// connector, each marked built in, and the service; diag runs as the built-in connector; leave is
+// refused with the reason and removes nothing. With the all-in-one stopped, status says it is not
+// running; a built-in agent without an identity is named with the way it gets one. Without
+// --config, a host with only the all-in-one's boot file is an all-in-one host.
+func TestAgentCommands_AllInOne(t *testing.T) {
+	c := itest.StartController(t, itest.Options{})
+	dir := t.TempDir()
+	gw := c.EnrollGateway(t, filepath.Join(dir, "gateway", "identity"), c.GatewayGroup(t, "default"), []string{"127.0.0.1:1"})
+	con := c.EnrollConnector(t, filepath.Join(dir, "connector", "identity"))
+	cfg := filepath.Join(dir, "all-in-one.yaml")
+	boot := fmt.Sprintf("version: 1\npublic_url: %s\nstate_dir: %s\nlisten: {admin: 127.0.0.1:1}\n", c.URL, dir)
+	if err := os.WriteFile(cfg, []byte(boot), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		args []string
+		code int
+		want []string
+	}{
+		{[]string{"status"}, cli.ExitOK, []string{"gateway, built into the all-in-one (boot file " + cfg + ")", gw.AgentID,
+			"connector, built into the all-in-one (boot file " + cfg + ")", con.AgentID, "rpmgr-all-in-one.service, not running"}},
+		{[]string{"diag", "clock"}, cli.ExitOK, []string{"ahead of this host's"}},
+		{[]string{"diag", "transport"}, cli.ExitError, []string{"no configuration from the controller yet"}},
+		{[]string{"leave"}, cli.ExitError, []string{"built in and cannot leave", "rpmgr-all-in-one.service"}},
+	} {
+		code, stdout, stderr := runRpmgr(append(tc.args, "--config", cfg)...)
+		for _, want := range tc.want {
+			if code != tc.code || !strings.Contains(stdout+stderr, want) {
+				t.Errorf("rpmgr %s: exit %d, no %q in %q %q", strings.Join(tc.args, " "), code, want, stdout, stderr)
+			}
+		}
+	}
+	for _, d := range []string{gw.Dir, con.Dir} {
+		if _, err := os.Stat(filepath.Join(d, "agent.json")); err != nil {
+			t.Errorf("the refused leave removed %s: %v", d, err)
+		}
+	}
+
+	// $RPMGR_CONFIG, and the default on a host with only the all-in-one's boot file.
+	var out bytes.Buffer
+	code := cli.Main(context.Background(), commands(), []string{"status"}, &cli.Env{Stdout: &out, Stderr: &out,
+		Getenv: func(k string) string { return map[string]string{"RPMGR_CONFIG": cfg}[k] }})
+	if code != cli.ExitOK || !strings.Contains(out.String(), "connector, built into the all-in-one") {
+		t.Errorf("$RPMGR_CONFIG: exit %d, %q", code, out.String())
+	}
+	t.Cleanup(func() { bootDir = "/etc/rpmgr" })
+	bootDir = dir
+	if code, stdout, stderr := runRpmgr("status"); code != cli.ExitOK || !strings.Contains(stdout, "gateway, built into the all-in-one (boot file "+cfg+")") {
+		t.Errorf("the default on an all-in-one host: exit %d, %q %q", code, stdout, stderr)
+	}
+	// A connector's boot file beside it makes the host a connector's.
+	if err := os.WriteFile(filepath.Join(dir, "connector.yaml"), []byte("version: 1\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if code, stdout, _ := runRpmgr("status"); code != cli.ExitError || strings.Contains(stdout, "built into") {
+		t.Errorf("a connector's boot file beside the all-in-one's: exit %d, %q", code, stdout)
+	}
+
+	// A built-in agent without an identity: the other is still reported.
+	if err := os.RemoveAll(con.Dir); err != nil {
+		t.Fatal(err)
+	}
+	code, stdout, stderr := runRpmgr("status", "--config", cfg)
+	if code != cli.ExitError || !strings.Contains(stdout, gw.AgentID) || !strings.Contains(stderr, "rpmgr all-in-one enrolls it at its next start") {
+		t.Errorf("a missing connector identity: exit %d, %q %q", code, stdout, stderr)
+	}
+}
+
 // TestLocalAdmin runs the local administration commands against an initialised controller; they
 // are tested in internal/controller.
 func TestLocalAdmin(t *testing.T) {
