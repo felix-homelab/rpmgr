@@ -184,7 +184,9 @@ flowchart LR
     targets.
 - **Preview** (`PreviewRoute`), in the create and edit forms, checks the route as the save would,
   without saving. It shows where the route would be reached, the gateways and connectors that would
-  carry it, and anything a gateway would refuse.
+  carry it, and anything a gateway would refuse. A gateway or connector whose release lacks a
+  capability the route needs is not among them
+  ([03](03-connections.md#versioning-and-capabilities)).
 - [R] The "Applied" column of the mock-up is left out in Phase 1. It needs the revision that last
   changed each route, which the API does not report. Rejections show under Status instead, and the
   apply status of a change shows after each save.

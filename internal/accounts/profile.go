@@ -49,7 +49,8 @@ func (a *Accounts) Users(after string, limit int) ([]*ent.User, error) {
 }
 
 // ChangePassword sets a user's new password once the current one checks out; a wrong one is
-// ErrCredentials. The change is a credential supersession in the revocation log.
+// ErrCredentials. The change is a credential supersession in the revocation log, and ends the
+// user's unused reset links (endLinks).
 func (m *MFA) ChangePassword(ctx context.Context, userID, current, next string) error {
 	u, err := m.db.ReadClient().User.Get(m.sys, userID)
 	if err != nil {
@@ -70,6 +71,10 @@ func (m *MFA) ChangePassword(ctx context.Context, userID, current, next string) 
 		if err := tx.User.UpdateOneID(userID).SetPasswordHash(hash).Exec(m.sys); err != nil {
 			return err
 		}
-		return m.superseded(tx, userID, userID, "user.password_change", revlog.Password, "password changed")
+		ended, err := endLinks(m.sys, tx, userID, m.now())
+		if err != nil {
+			return err
+		}
+		return m.superseded(tx, userID, userID, "user.password_change", revlog.Password, "password changed"+endedReason(ended))
 	})
 }

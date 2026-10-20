@@ -10,14 +10,42 @@ Changes to the design documents are not recorded here: see the git history and t
 
 ## [Unreleased]
 
+### Added
+
+- CLI: `rpmgr status`, `rpmgr diag transport` and `rpmgr diag clock` work on an all-in-one host.
+  `status` reports its built-in gateway and connector, each marked built in, and the readiness of
+  `rpmgr-all-in-one.service`; `diag` runs as the built-in connector. `rpmgr leave` is refused there
+  with the reason, and the controller refuses a leave of the built-in agents in any case, as the
+  API refuses to decommission them. (#810)
+
 ### Fixed
 
+- All-in-one: a built-in gateway or connector whose identity is revoked as a whole, as a restore
+  that applies a later revocation leaves it, no longer stops the start. The all-in-one replaces it
+  with a new built-in gateway or connector, which keeps the old one's name and, for a gateway, its
+  group and tunnel endpoints, for a connector, its route targets; the revocation stays, and the
+  audit log records the replacement. (#805)
 - All-in-one: the built-in connector follows the gateway group's public hostnames while it runs.
   It read them only at start, so after a hostname was added, its addresses were not refused as the
   host's own until the service restarted, and a removed one stayed refused. (#808)
 
 ### Security
 
+- Controller: a password reset or a password change now ends the user's other unused reset links,
+  so a link issued before the change can no longer set the password; a reset link of a disabled
+  user sets no password. Severity low to medium; affects 0.1.0. (#812)
+- Controller: a gateway's reports count only for what it serves: traffic counters of routes in its
+  own gateway group, and data sessions of connectors with a target on such a route. A gateway
+  could write traffic statistics for routes of other groups, and show data sessions for any
+  connector of its org. (#821)
+- Gateway: a request path with an empty, `.` or `..` segment, such as `//admin` or
+  `/%2e%2e/admin`, also with `;` parameters (`/..;/admin`, `/;/admin`), or with a `\` or a
+  control character, is refused with 400 before a route is chosen, also on port 80; so is an
+  absolute-form request with an empty path (`GET http://host HTTP/1.1`). Before, such a path was
+  routed by a broader route of the host, and a backend that resolves it served the path of a
+  narrower route without that route's access policy. A path with `;` parameters, such as
+  `/admin;jsessionid=1`, now belongs to the route its form without them matches. `CONNECT`
+  requests are refused with 501. Medium severity; affects v0.1.0. (#813)
 - Controller: an HTTP domain proof connects only to public addresses, so an HTTP claim whose name
   resolves to a loopback, private, link-local or other internal address fails with "the name
   resolves to an address that is not public"; through a proxy nothing changes. The last error of

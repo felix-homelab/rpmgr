@@ -60,7 +60,7 @@ rpmgr <command>
 | [`rpmgr login`](#rpmgr-login) | Store a personal API token for the commands of the public API |
 | [`rpmgr logout`](#rpmgr-logout) | Remove the stored API token from this machine |
 | [`rpmgr leave`](#rpmgr-leave) | Revoke this agent's identity and remove it from the host |
-| [`rpmgr status`](#rpmgr-status) | Show the state of the agent on this host |
+| [`rpmgr status`](#rpmgr-status) | Show the state of the agents on this host |
 | [`rpmgr diag`](#rpmgr-diag) | Diagnose this host |
 | [`rpmgr policy`](#rpmgr-policy) | Show or change the connector-local policy of this host |
 | [`rpmgr backup`](#rpmgr-backup) | Write a consistent backup of the controller |
@@ -263,11 +263,11 @@ rpmgr leave [flags]
 
 | Flag | Default | Description |
 |---|---|---|
-| `--config string` |  | the connector's or gateway's boot file (default $RPMGR_CONFIG, else /etc/rpmgr/connector.yaml, else /etc/rpmgr/gateway.yaml) |
+| `--config string` |  | the connector's, gateway's or all-in-one's boot file (default $RPMGR_CONFIG, else /etc/rpmgr/connector.yaml, else /etc/rpmgr/gateway.yaml, else /etc/rpmgr/all-in-one.yaml) |
 
 ## rpmgr status
 
-Show the state of the agent on this host.
+Show the state of the agents on this host.
 
 ```text
 rpmgr status [flags]
@@ -275,7 +275,7 @@ rpmgr status [flags]
 
 | Flag | Default | Description |
 |---|---|---|
-| `--config string` |  | the connector's or gateway's boot file (default $RPMGR_CONFIG, else /etc/rpmgr/connector.yaml, else /etc/rpmgr/gateway.yaml) |
+| `--config string` |  | the connector's, gateway's or all-in-one's boot file (default $RPMGR_CONFIG, else /etc/rpmgr/connector.yaml, else /etc/rpmgr/gateway.yaml, else /etc/rpmgr/all-in-one.yaml) |
 
 ## rpmgr diag
 
@@ -300,7 +300,7 @@ rpmgr diag transport [flags]
 
 | Flag | Default | Description |
 |---|---|---|
-| `--config string` |  | the connector's or gateway's boot file (default $RPMGR_CONFIG, else /etc/rpmgr/connector.yaml, else /etc/rpmgr/gateway.yaml) |
+| `--config string` |  | the connector's, gateway's or all-in-one's boot file (default $RPMGR_CONFIG, else /etc/rpmgr/connector.yaml, else /etc/rpmgr/gateway.yaml, else /etc/rpmgr/all-in-one.yaml) |
 | `--gateway string` |  | the gateway's ID (default every gateway of the connector's configuration) |
 
 ## rpmgr diag clock
@@ -313,7 +313,7 @@ rpmgr diag clock [flags]
 
 | Flag | Default | Description |
 |---|---|---|
-| `--config string` |  | the connector's or gateway's boot file (default $RPMGR_CONFIG, else /etc/rpmgr/connector.yaml, else /etc/rpmgr/gateway.yaml) |
+| `--config string` |  | the connector's, gateway's or all-in-one's boot file (default $RPMGR_CONFIG, else /etc/rpmgr/connector.yaml, else /etc/rpmgr/gateway.yaml, else /etc/rpmgr/all-in-one.yaml) |
 
 ## rpmgr policy
 

@@ -251,12 +251,17 @@ The terms of the table:
   route or one of its targets. Only the org's revisions after the oldest one an agent involved has
   applied are read, at most 1 000. If more are there, a change not read counts as the oldest one
   read, so an agent that far behind shows the route `pending` or `error`.
-- **Ready target:** its connector is enabled, online and reports the route ready (no
-  `resource_status` row). A target that is not ready shows its reason: `OFFLINE`, `DISABLED`, or
-  the connector's own, such as `BLOCKED_BY_LOCAL_POLICY`.
-- **Serving gateway:** online, reporting the route ready, and with a data session to the connector
-  of a ready target. A gateway that does not serve shows `OFFLINE`, its own reason, or
-  `NO_DATA_SESSION`.
+- **Ready target:** its connector is enabled, online, has every capability the route needs, and
+  reports the route ready (no `resource_status` row). A target that is not ready shows its reason:
+  `OFFLINE`, `DISABLED`, `CAPABILITY_MISSING`, or the connector's own, such as
+  `BLOCKED_BY_LOCAL_POLICY`.
+- **Serving gateway:** online, with every capability the route needs, reporting the route ready,
+  and with a data session to the connector of a ready target. A gateway that does not serve shows
+  `OFFLINE`, `CAPABILITY_MISSING`, its own reason, or `NO_DATA_SESSION`.
+- **Capabilities the route needs:** those of the gated features it uses, read from the agent's
+  current control session; an agent that lacks one does not get the route in its snapshot, and
+  `CAPABILITY_MISSING` names what it lacks
+  ([03](03-connections.md#versioning-and-capabilities)).
 
 `GetRoute` and `ListRoutes` return the status with the route ([07](07-api.md#example-a-route)).
 

@@ -234,6 +234,8 @@ message Signed { bytes payload = 1; bytes signature = 2; string key_id = 3; }
   decommissions the connector or gateway as an admin's decommission does, pushes the deny-list and
   audits it with the agent as the actor. Only after that answer does `rpmgr leave` remove the
   identity, the stored snapshot and the deny-list from the host; without it, nothing is removed.
+  An all-in-one's built-in gateway and connector, which the API does not decommission either, are
+  refused with `FAILED_PRECONDITION`.
 - **ACME challenges** (HTTP-01 and TLS-ALPN-01 for route certificates, D41): the controller sends
   `AcmeChallenge{op_id, add, type, identifier, token, key_authorization}` to **every gateway that
   serves the name** and lets the CA validate only after each of them acknowledged with
@@ -387,7 +389,11 @@ Rules:
     the start of each control session; the controller keeps the last report, at most 4 096 per
     gateway. The same `Status` carries the gateway's route counters, cumulative since it started:
     bytes both ways, connections, those that reached no target, and the open ones. The controller
-    rolls them up for the traffic charts ([06](06-data-model.md#desired-vs-observed-state)).
+    rolls them up for the traffic charts ([06](06-data-model.md#desired-vs-observed-state)). It
+    takes both only for what the gateway serves: counters of routes of the gateway's own group,
+    and data sessions of connectors with a target on such a route. A report of a gateway that is
+    not an active gateway of its org counts for nothing, and whatever else a report names is
+    skipped, so a gateway cannot write another group's or another org's traffic or sessions.
 
 ### Revisions and ordering
 
@@ -407,7 +413,8 @@ Rules:
   same transaction and labels the snapshot with it. Resources are ordered by ID and the snapshot is
   encoded deterministically, so two controller replicas produce the **same snapshot and hash** for
   the same agent and revision. Each resource kind has its own compiler, which sees the agent's
-  capabilities and leaves out what the agent cannot run.
+  capabilities and leaves out what the agent cannot run: a route that uses a gated feature the
+  agent lacks is left out whole ([Versioning and capabilities](#versioning-and-capabilities)).
 - Agents apply a snapshot only if its revision is greater than the last applied one. If several
   arrive while one is being applied, only the newest is applied next ("latest wins"). A snapshot
   that is not newer is ignored, except the one the agent runs, which it acknowledges again, and the
@@ -745,6 +752,30 @@ sequenceDiagram
   an HTTP/2 one under a wildcard certificate, asks again on a connection of its own. TLS is
   terminated with the route certificate for the server name
   ([04](04-security.md#controller-certificates)).
+- **Clean paths only.** The path goes upstream unchanged, so a backend that reads it differently
+  from the gateway could serve, under a broader route and its access policies, a path that a
+  narrower route protects. Before it chooses a route, on 443 and on port 80, the gateway therefore
+  refuses with **400** a request whose path, once percent-decoded:
+  - does not start with `/`, such as an absolute-form request with an empty path
+    (`GET http://host HTTP/1.1`);
+  - has an empty, `.` or `..` segment, such as `//admin`, `/./admin`, `/x/../admin` or
+    `/%2e%2e/admin` (a trailing `/` is allowed);
+  - has a `.` or `..` segment with `;` parameters, such as `/..;/admin`, or an empty one once
+    `;` parameters are dropped, such as `/;/admin` or `/x/;/admin` (a last segment of parameters
+    alone, `/admin/;x`, reads as a trailing `/`);
+  - contains `\`, which some backends treat as a separator, or a control character, `%00`
+    included.
+
+  Encoded letters and slashes are routed by their decoded form (`/%61dmin` and `/admin%2fx` are
+  `/admin…`). A path with `;` parameters goes to the longest prefix that it, or its form without
+  the parameters, matches: `/admin;jsessionid=1` and `/admin;x/y` belong to an `/admin` route.
+  With a restricted `/admin` and an open `/admin/public`, `/admin/public;x` goes to the open route,
+  which a backend reading `;` parameters sees as `/admin/public`, that route's own path.
+  `CONNECT` is **501**, as a route serves paths, not tunnels; `OPTIONS *` is answered by the
+  gateway itself. Not covered: a backend that compares paths without regard to case, drops
+  trailing dots from segments, or decodes a path twice (`%252e`) can still read two routes' paths
+  as one. Protect such a backend with one route for the whole hostname, or at the backend, rather
+  than with path prefixes.
 - **HTTPS upstreams.** For an `https` target the gateway speaks TLS over the stream, end to end
   with the upstream, verified with the settings of the target the connector reached, which
   `StreamResult` names: the target's server name (its host by default), its CA bundle or else the
@@ -1215,6 +1246,49 @@ sequenceDiagram
 | `control-passthrough` | P1 | The control session inside a data session ([ADR-0006](adr/0006-separate-control-session.md)) |
 | `probe.target` | P1 | Reads the certificate a target presents (`ProbeTarget`, [Service sketch](#service-sketch)) |
 | `p2p.v1` | P3 | Direct connector-to-connector sessions ([Private services](#private-services)) |
+
+**Gated route features** ([D113](14-open-decisions.md#engineering)). An agent ignores snapshot
+fields it does not know, so an older gateway would serve a route with an access rule, a limit or
+a header match without enforcing it: it would fail open. Every route feature that an agent
+enforces or carries out is therefore registered with the capability that announces it, before any
+field of the feature exists, and the compiler fails closed:
+
+- The compiler leaves a route that uses a gated feature out of the snapshot of every agent of the
+  feature's kind (gateway or connector) whose `Hello` lacks the capability, with every reference to
+  it: a connector's gateway entries then name only the routes its snapshot holds. The agent's other
+  routes are unaffected; it never receives the route in a form it would serve without the feature.
+- The route status lists such an agent with the reason `CAPABILITY_MISSING`, naming the
+  capabilities it lacks ([06](06-data-model.md#desired-vs-observed-state)). A gateway without the
+  capability does not serve the route. A connector without it does not get the route, yet the
+  gateways keep listing that connector among the route's entries, as they cannot know its
+  capabilities: a stream they choose for it fails with `ROUTE_UNKNOWN` instead of moving to a
+  connector that has the capability. That costs availability until the connector is upgraded.
+  Whether gateways should pass over such connectors is decided by the first slice that registers a
+  connector-side gate.
+- Capabilities are read from each control session's `Hello`. An agent that reconnects after its
+  upgrade announces the capability and gets the route with its next snapshot.
+
+The gated route features of Phase 2, each registered by the slice that adds the feature:
+
+| Capability | Kind | Route feature |
+|---|---|---|
+| `http.header-match` | Gateway | Header matching of `http` routes |
+| `http.require-header` | Gateway | Require-header rules of access policies |
+| `route.limits` | Gateway | Per-route connection, rate and bandwidth limits |
+| `tcp.http-connect` | Gateway | `tcp` routes in `http_connect` mode |
+| `http.oidc` | Gateway | OIDC forward-auth on `http` routes |
+| `http.cf-connecting-ip` | Gateway | The client address from `CF-Connecting-IP` on proxied routes |
+
+The other capabilities of Phase 2 are not route features. Each is checked where its feature is
+used, not by the route compiler:
+
+| Capability | Kind | Feature |
+|---|---|---|
+| `pages.custom` | Gateway | Custom error pages of a gateway group |
+| `tunnel.wss` | Gateway, connector | Data sessions over WSS |
+| `logs.stream` | Gateway, connector | Live logs (`Open` and `Attach`) |
+| `ota` | Gateway, connector | Over-the-air updates offered in the snapshot |
+| `relay.v1` | Gateway, connector | Relayed private services |
 
 - Protobuf rules: fields are only added; unknown fields are ignored; an unknown `StreamOpen.kind`
   is answered with `PROTOCOL`.

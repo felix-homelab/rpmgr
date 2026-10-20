@@ -14,8 +14,9 @@ and the API show about an agent.
   `$RPMGR_CONFIG`, else `/etc/rpmgr/connector.yaml`, else `/etc/rpmgr/gateway.yaml`. A boot file
   that would do for both roles counts as the role its identity records
   ([Boot files](../reference/boot-files.md)).
-- On an all-in-one host they do not apply: its gateway and connector are part of the controller's
-  process. Use the web UI and the admin listener there ([Monitoring](../operations/monitoring.md)).
+- On an all-in-one host, which has neither but `/etc/rpmgr/all-in-one.yaml`, they read that file,
+  and report its built-in gateway and connector, which run in the all-in-one's process
+  ([On an all-in-one](#on-an-all-in-one)).
 
 ## rpmgr status
 
@@ -52,6 +53,43 @@ Service:        running and ready
 
 Without an identity, it says `no identity in /var/lib/rpmgr/identity (run rpmgr enroll)`
 ([Enrolling connectors](enroll.md)).
+
+## On an all-in-one
+
+An all-in-one runs its gateway and its connector `local` in its own process
+([Topologies](../install/topologies.md)). On its host, `rpmgr status` shows both, the gateway
+first, each marked as built in, and the service is `rpmgr-all-in-one.service`:
+
+```sh
+sudo rpmgr status
+```
+
+```text
+Role:           gateway, built into the all-in-one (boot file /etc/rpmgr/all-in-one.yaml)
+Agent:          gw_01M4ZEJPH7EHCT1XTFPV3MFHPH  spiffe://rpmgr-ewl35s75/org/org_01M4ZEHHDQE4HAJFN45X0ZD08D/gateway/gw_01M4ZEJPH7EHCT1XTFPV3MFHPH
+…
+Service:        rpmgr-all-in-one.service, running and ready
+
+Role:           connector, built into the all-in-one (boot file /etc/rpmgr/all-in-one.yaml)
+Agent:          con_01M4ZEK2EXFBJRKFW4JB7DQVZ6  spiffe://rpmgr-ewl35s75/org/org_01M4ZEHHDQE4HAJFN45X0ZD08D/connector/con_01M4ZEK2EXFBJRKFW4JB7DQVZ6
+…
+Service:        rpmgr-all-in-one.service, running and ready
+```
+
+- **Service** is the readiness of the whole all-in-one, which one admin listener reports for the
+  controller, the gateway and the connector together. While the all-in-one is stopped, it reads
+  `rpmgr-all-in-one.service, not running (nothing answers on 127.0.0.1:7381)`; the rest comes from
+  the files and is shown all the same.
+- A built-in agent without an identity, as on a new host after a restore, is reported as `the
+  all-in-one's connector has no identity in …; rpmgr all-in-one enrolls it at its next start`, and
+  the command fails after showing the other ([Backup and restore](../operations/backup-and-restore.md#restore-an-all-in-one)).
+- `rpmgr diag transport` and `rpmgr diag clock` run as the built-in connector. It reaches the
+  built-in gateway in memory, which `diag transport` does not test: its sessions test the network
+  path to the tunnel endpoints of the connector's gateways.
+- `rpmgr leave` is refused: `this host runs rpmgr all-in-one, whose gateway and connector are built
+  in and cannot leave: switch one off on its page in the web UI, or stop and disable
+  rpmgr-all-in-one.service`. Nothing is revoked or removed. The controller refuses the built-in
+  agents' leave in any case, as the API refuses to decommission them.
 
 ## rpmgr diag transport
 
@@ -138,7 +176,8 @@ Stop and disable rpmgr-connector.service; /etc/rpmgr/connector.yaml can go too u
    ```
 
 For a connector, the routes it alone served are deleted with it, as in a decommission. To use the
-host again, enroll it anew with a new token; it becomes a new connector.
+host again, enroll it anew with a new token; it becomes a new connector. An all-in-one's built-in
+gateway and connector cannot leave ([On an all-in-one](#on-an-all-in-one)).
 
 ## In the web UI
 
