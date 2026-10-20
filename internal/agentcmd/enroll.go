@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
-package main
+package agentcmd
 
 import (
 	"context"
@@ -18,9 +18,9 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/version"
 )
 
-// enrollCommand is `rpmgr enroll` (docs/16-cli.md). It has no flag for the token itself: the token
+// Enroll is `rpmgr enroll` (docs/16-cli.md). It has no flag for the token itself: the token
 // comes from --token-file, $RPMGR_ENROLL_TOKEN or the terminal, never from the command line.
-func enrollCommand() *cli.Command {
+func Enroll() *cli.Command {
 	var o agent.EnrollOptions
 	var tokenFile, bundleFile string
 	return &cli.Command{
@@ -45,7 +45,7 @@ func enrollCommand() *cli.Command {
 				}
 				o.Bundle = b
 			}
-			tok, err := agent.ReadToken(tokenFile, env.Getenv, promptToken,
+			tok, err := agent.ReadToken(tokenFile, env.Getenv, PromptToken,
 				func(w string) { _, _ = fmt.Fprintln(env.Stderr, "warning:", w) })
 			if err != nil {
 				return err
@@ -65,9 +65,9 @@ func enrollCommand() *cli.Command {
 	}
 }
 
-// promptToken asks for the token on the terminal with echo off. With `curl … | sh`, standard input
+// PromptToken asks for the token on the terminal with echo off. With `curl … | sh`, standard input
 // is the script, so it reads /dev/tty, not standard input.
-func promptToken() (string, error) {
+func PromptToken() (string, error) {
 	tty, err := os.OpenFile("/dev/tty", os.O_RDWR, 0)
 	if err != nil {
 		return "", errors.New("no enrollment token: use --token-file or RPMGR_ENROLL_TOKEN, or run on a terminal")

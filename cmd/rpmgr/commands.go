@@ -9,10 +9,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/felix-homelab/rpmgr/internal/agentcmd"
 	"github.com/felix-homelab/rpmgr/internal/allinone"
 	"github.com/felix-homelab/rpmgr/internal/cli"
 	"github.com/felix-homelab/rpmgr/internal/config"
-	"github.com/felix-homelab/rpmgr/internal/connector"
 	"github.com/felix-homelab/rpmgr/internal/controller"
 	"github.com/felix-homelab/rpmgr/internal/gateway"
 	"github.com/felix-homelab/rpmgr/internal/release"
@@ -29,19 +29,19 @@ func commands() *cli.Command {
 		Name:    "rpmgr",
 		Summary: "publish services on private networks through public gateways",
 		Sub: append([]*cli.Command{
-			role("controller", "run the controller: web UI, API, CA and configuration", runController,
+			agentcmd.Role("controller", "run the controller: web UI, API, CA and configuration", runController,
 				controllerInit()),
-			role("gateway", "run a gateway: public listeners and data sessions from connectors", runGateway),
-			role("connector", "run a connector: data sessions to gateways and the local targets", runConnector),
-			role("all-in-one", "run a controller, a gateway and a connector in one process", runAllInOne, allInOneInit()),
+			agentcmd.Role("gateway", "run a gateway: public listeners and data sessions from connectors", runGateway),
+			agentcmd.Connector(),
+			agentcmd.Role("all-in-one", "run a controller, a gateway and a connector in one process", runAllInOne, allInOneInit()),
 			setupCommand(),
-			enrollCommand(),
+			agentcmd.Enroll(),
 			loginCommand(promptAPIToken),
 			logoutCommand(),
-			leaveCommand(),
-			statusCommand(),
-			diagCommand(),
-			policyCommand(),
+			agentcmd.Leave(),
+			agentcmd.Status(),
+			agentcmd.Diag(),
+			agentcmd.Policy(),
 			backupCommand(),
 			restoreCommand(),
 			migrateCommand(),
@@ -51,37 +51,13 @@ func commands() *cli.Command {
 			group("release", "administer release artifacts on the controller host",
 				releaseImport()),
 			systemdUnit(),
-			versionCommand(),
+			agentcmd.Version(),
 		}, append(apiCommands(), testCommands...)...),
 	}
 }
 
 // testCommands are the commands of the rpmgrtest build only (D60).
 var testCommands []*cli.Command
-
-// clock is the roles' clock: nil, which is time.Now, except in the rpmgrtest build, whose
-// chaos tests shift it (D60).
-var clock func() time.Time
-
-// role is a command that runs one role from its boot file; run nil is not available yet.
-func role(name, summary string, run func(ctx context.Context, env *cli.Env, configPath string) error, sub ...*cli.Command) *cli.Command {
-	var path string
-	c := &cli.Command{
-		Name:    name,
-		Summary: summary,
-		Flags: func(fs *flag.FlagSet) {
-			fs.StringVar(&path, "config", "", "boot file (default $RPMGR_CONFIG, else /etc/rpmgr/"+name+".yaml)")
-		},
-		Run: cli.NotAvailable,
-		Sub: sub,
-	}
-	if run != nil {
-		c.Run = func(ctx context.Context, env *cli.Env, _ []string) error {
-			return run(ctx, env, config.Path(path, name, env.Getenv))
-		}
-	}
-	return c
-}
 
 // runGateway is `rpmgr gateway`: it runs until SIGINT or SIGTERM, then drains for 60 s.
 func runGateway(ctx context.Context, env *cli.Env, path string) error {
@@ -93,31 +69,12 @@ func runGateway(ctx context.Context, env *cli.Env, path string) error {
 	if err != nil {
 		return err
 	}
-	stop, err := startTracing(ctx, cfg.Tracing, "gateway")
+	stop, err := agentcmd.StartTracing(ctx, cfg.Tracing, "gateway")
 	if err != nil {
 		return err
 	}
 	defer stop()
-	return gateway.Run(ctx, gateway.RunOptions{Config: cfg, Version: version.Get().Version, Logger: logger, Now: clock})
-}
-
-// runConnector is `rpmgr connector`: it runs until SIGINT or SIGTERM.
-func runConnector(ctx context.Context, env *cli.Env, path string) error {
-	var cfg config.Connector
-	if err := config.Load(path, &cfg); err != nil {
-		return err
-	}
-	logger, err := telemetry.NewLogger(env.Stderr, cfg.Log)
-	if err != nil {
-		return err
-	}
-	stop, err := startTracing(ctx, cfg.Tracing, "connector")
-	if err != nil {
-		return err
-	}
-	defer stop()
-	return connector.Run(ctx, connector.RunOptions{Config: cfg, Version: version.Get().Version, Getenv: env.Getenv, Logger: logger,
-		Now: clock})
+	return gateway.Run(ctx, gateway.RunOptions{Config: cfg, Version: version.Get().Version, Logger: logger, Now: agentcmd.Clock})
 }
 
 // runController is `rpmgr controller`: it runs until SIGINT or SIGTERM, then drains.
@@ -130,13 +87,13 @@ func runController(ctx context.Context, env *cli.Env, path string) error {
 	if err != nil {
 		return err
 	}
-	stop, err := startTracing(ctx, cfg.Tracing, "controller")
+	stop, err := agentcmd.StartTracing(ctx, cfg.Tracing, "controller")
 	if err != nil {
 		return err
 	}
 	defer stop()
 	return controller.Run(ctx, controller.RunOptions{Config: cfg, Version: version.Get().Version, Sources: routes.Sources(),
-		Getenv: env.Getenv, Logger: logger, Now: clock})
+		Getenv: env.Getenv, Logger: logger, Now: agentcmd.Clock})
 }
 
 // runAllInOne is `rpmgr all-in-one`: it runs until SIGINT or SIGTERM; the gateway drains first.
@@ -149,26 +106,12 @@ func runAllInOne(ctx context.Context, env *cli.Env, path string) error {
 	if err != nil {
 		return err
 	}
-	stop, err := startTracing(ctx, cfg.Tracing, "all-in-one")
+	stop, err := agentcmd.StartTracing(ctx, cfg.Tracing, "all-in-one")
 	if err != nil {
 		return err
 	}
 	defer stop()
 	return allinone.Run(ctx, allinone.RunOptions{Config: cfg, Version: version.Get().Version, Getenv: env.Getenv, Logger: logger})
-}
-
-// startTracing starts the process's tracing from a boot file's section (docs/10-operations.md,
-// "Traces"); stop exports what is left, within 5 s.
-func startTracing(ctx context.Context, cfg config.Tracing, role string) (stop func(), err error) {
-	shutdown, err := telemetry.StartTracing(ctx, cfg, role, version.Get().Version)
-	if err != nil {
-		return nil, err
-	}
-	return func() {
-		sctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
-		defer cancel()
-		_ = shutdown(sctx)
-	}, nil
 }
 
 // kekSourceHelp describes --kek-source of init; the default is controller.KEKSourceFor's.
@@ -433,40 +376,4 @@ func userResetPassword() *cli.Command {
 
 func group(name, summary string, sub ...*cli.Command) *cli.Command {
 	return &cli.Command{Name: name, Summary: summary, Sub: sub}
-}
-
-// versionCommand is `rpmgr version`; with --verbose it also prints the release root keys
-// compiled into the binary, which the release job checks (D60).
-func versionCommand() *cli.Command {
-	var verbose bool
-	return &cli.Command{
-		Name:    "version",
-		Summary: "print the version of this binary",
-		Flags: func(fs *flag.FlagSet) {
-			fs.BoolVar(&verbose, "verbose", false, "also print the release root keys compiled into this binary")
-		},
-		Run: func(_ context.Context, env *cli.Env, _ []string) error {
-			if _, err := fmt.Fprintln(env.Stdout, version.Get()); err != nil || !verbose {
-				return err
-			}
-			roots := release.Roots()
-			kind := "release root keys"
-			if release.TestBuild {
-				kind = "test release root keys (rpmgrtest build)"
-			}
-			if len(roots) == 0 {
-				_, err := fmt.Fprintf(env.Stdout, "%s: none; this build verifies no release\n", kind)
-				return err
-			}
-			if _, err := fmt.Fprintf(env.Stdout, "%s:\n", kind); err != nil {
-				return err
-			}
-			for _, k := range roots {
-				if _, err := fmt.Fprintf(env.Stdout, "  %s  sha256:%s\n", k.IDString(), k.Fingerprint()); err != nil {
-					return err
-				}
-			}
-			return nil
-		},
-	}
 }

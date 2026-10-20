@@ -15,6 +15,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	"golang.org/x/term"
 
+	"github.com/felix-homelab/rpmgr/internal/agentcmd"
 	"github.com/felix-homelab/rpmgr/internal/config"
 	"github.com/felix-homelab/rpmgr/internal/controller"
 	"github.com/felix-homelab/rpmgr/internal/setup"
@@ -228,7 +229,7 @@ func (f *setupForm) listeners(v *setup.Values) error {
 // token asks for the gateway or enrollment token without echo.
 func (f *setupForm) token() (string, error) {
 	if f.plain {
-		return promptToken()
+		return agentcmd.PromptToken()
 	}
 	var tok string
 	err := f.ask(huh.NewInput().Title("Token: the gateway or enrollment token").EchoMode(huh.EchoModePassword).

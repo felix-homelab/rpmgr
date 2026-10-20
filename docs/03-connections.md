@@ -898,7 +898,7 @@ upper-case letters and `_`, which Go accepts in DNS SANs and matches case-insens
 picks the certificate per SNI, and for the controller also the client-certificate requirement.
 
 **UDP/443** — one quic-go `Transport` per socket supports exactly one listener
-[F quic-go v0.63.0 `transport.go:173-175,209`]. rpmgr uses one listener with
+[F quic-go v0.64.1 `transport.go:173-175,209`]. rpmgr uses one listener with
 `NextProtos = {"h3", "rpmgr-tunnel/1"}` and dispatches each connection on its negotiated ALPN: `h3`
 (public HTTP/3, Phase 3) to an `http3.Server` via `ServeQUICConn`, `rpmgr-tunnel/1` to the
 data-session manager. The TLS settings differ per ALPN: the listener's `GetConfigForClient` sees SNI
@@ -906,14 +906,14 @@ and the offered ALPNs [F Go 1.27.1 `crypto/tls/common.go:444-478`] and returns m
 gateway certificate for this gateway's tunnel name and `rpmgr-tunnel/1`, the route's certificate
 without a client-certificate request for `h3`, and an error otherwise. Do **not** call
 `http3.ConfigureTLSConfig`: it replaces `NextProtos` with `["h3"]`, also in configurations returned
-by `GetConfigForClient` [F quic-go v0.63.0 `http3/server.go:48-71`].
+by `GetConfigForClient` [F quic-go v0.64.1 `http3/server.go:48-71`].
 
 Caveat: a quic-go listener has a single `quic.Config` (windows, stream limits, idle timeout,
 datagrams); its `GetConfigForClient` sees only the remote address
-[F quic-go v0.63.0 `interface.go:103-105,189-197`]. Public HTTP/3 clients and tunnel sessions
+[F quic-go v0.64.1 `interface.go:107-109,196-204`]. Public HTTP/3 clients and tunnel sessions
 therefore share transport parameters. Memory is protected by separate window budgets per ALPN in
 `AllowConnectionWindowIncrease`, so public `h3` cannot consume the tunnels' share. The callback must
-not call methods of the connection [F quic-go v0.63.0 `interface.go:145-151`]; the accept loop
+not call methods of the connection [F quic-go v0.64.1 `interface.go:149-155`]; the accept loop
 records each connection's ALPN, and the callback looks it up. S3 showed one listener serving both
 ALPNs under concurrent load, with refused `h3` window increases leaving the tunnels unaffected
 ([S3](spikes/S3.md)), so tunnels share 443 by default. A gateway moves tunnels to a separate UDP
@@ -1018,9 +1018,9 @@ window defaults to 4 MiB per stream and 1 GiB per connection
 | Side | Parameter (`http.HTTP2Config`) | rpmgr value |
 |---|---|---|
 | Connector (HTTP/2 server) | `MaxConcurrentStreams` | 10 000 |
-| Both | `MaxReceiveBufferPerStream` / `MaxReceiveBufferPerConnection` | 16 MiB / 256 MiB |
+| Both | `MaxReceiveBufferPerStream` / `MaxReceiveBufferPerConnection` | At most 4 MiB / 64 MiB, as the memory bound below admits them (asked for: 16 MiB / 256 MiB) |
 | Both | `MaxReadFrameSize` (advertised as `SETTINGS_MAX_FRAME_SIZE`) | 16 KiB |
-| Both | Memory bound | net/http's HTTP/2 has no window-budget hook like quic-go's, so h2 sessions are **admitted** against the same process-wide budget (the sum of their maximum connection windows): a new session gets at most half the free budget, so when it is tight new sessions get smaller windows (the stream window at most a sixteenth of the connection window), and a session that would get less than 4 MiB is refused. With the default budget, three sessions get 256 MiB, the next ones 128, 64 … 4 MiB |
+| Both | Memory bound | net/http's HTTP/2 has no window-budget hook like quic-go's, so h2 sessions are **admitted** against the same process-wide budget (the sum of their maximum connection windows): a new session's connection window is at most **64 MiB**, and a sixteenth of the free budget once that is less, but never less than **1 MiB**; a session for which not even 1 MiB is free is refused. The stream window is at most a sixteenth of the connection window. With the default budget the first session gets 64 MiB (a 4 MiB stream window, enough for the single-stream rates measured on h2 at 20 and 80 ms, [ADR-0004](adr/0004-quic-default-transport-policy.md#phase-1-measurements)), the tenth still more than 32 MiB, and about **80** sessions fit, the last ones with 1 MiB. Halving the free budget instead, as Phase 1 did, admitted only nine, four connectors on h2 ([D124](14-open-decisions.md#engineering)). Later sessions get smaller windows, so their streams carry less on long paths; none is refused while 1 MiB is free |
 | Gateway | At the stream limit | Reserves a slot with the non-blocking `ClientConn.Reserve` **before** opening (`RoundTrip` alone would wait [F Go 1.27.1 `net/http/clientconn.go:254,301`]); uses another session, or answers 503 (HTTP) / resets (TCP). Never blocks waiting for a slot |
 | Gateway | Reset of a stream | Also closes the response body: only that returns the stream's unread bytes to the connection window [F Go 1.27.1 `net/http/internal/http2/transport.go:2402-2421`] |
 
@@ -1059,7 +1059,7 @@ limits head-of-line blocking from packet loss to half the streams.
 | `KeepAlivePeriod` | off | 10 s | Keeps NAT mappings alive; RFC 4787 asks for ≥ 2 min UDP mappings, but shorter ones exist |
 | Stream receive window | 512 KiB → 6 MiB [F quic-go:internal/protocol/params.go:25,31] | 512 KiB → **16 MiB** | Single-stream throughput on high-RTT paths |
 | Connection receive window | 768 KiB → 15 MiB [F quic-go:internal/protocol/params.go:28,34] | → **256 MiB** (≥ 16 × the stream maximum) | Unread data keeps holding connection credit until the application reads it, so a few stalled streams must not be able to exhaust the connection window |
-| Window budget | none | process-wide budget, default 1 GiB, via `AllowConnectionWindowIncrease` [F quic-go v0.63.0 `interface.go:151`], split per ALPN (`rpmgr-tunnel/1`, `h3`; [S3](spikes/S3.md)); h2 sessions are admitted against the same budget | Bounds memory under many sessions |
+| Window budget | none | process-wide budget, default 1 GiB, via `AllowConnectionWindowIncrease` [F quic-go v0.64.1 `interface.go:155`], split per ALPN (`rpmgr-tunnel/1`, `h3`; [S3](spikes/S3.md)); h2 sessions are admitted against the same budget | Bounds memory under many sessions |
 | `MaxIncomingStreams` on the connector | 100 [F quic-go:internal/protocol/params.go:40] | **10 000** | Limits concurrent user connections per session; 100 is far too low |
 | `MaxIncomingStreams` on the gateway | 100 | 1 000 | Connectors open few streams (session control, relay) |
 | `EnableDatagrams` | off | on | UDP routes |
