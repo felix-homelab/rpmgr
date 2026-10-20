@@ -261,6 +261,13 @@ func (u *Updater) install() (Install, error) {
 	case slices.Contains(roles, "controller") || slices.Contains(roles, "all-in-one"):
 		return Install{}, fmt.Errorf("%w: this host runs a controller or an all-in-one, which is upgraded by hand", ErrRefused)
 	}
+	for _, r := range roles {
+		if !updatable(r) {
+			return Install{}, fmt.Errorf("%w: %s names the role %q; the updater replaces gateways and connectors only", ErrRefused, installFile, r)
+		}
+	}
+	slices.Sort(roles)
+	in.Roles, in.Role = slices.Compact(roles), ""
 	return in, nil
 }
 

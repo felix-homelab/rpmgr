@@ -53,6 +53,13 @@ func updaterApply() *cli.Command {
 	}
 }
 
+// readyClient asks the admin listeners on this host: never through a proxy, and a redirect is an
+// answer, not followed.
+var readyClient = &http.Client{
+	Transport:     &http.Transport{Proxy: nil},
+	CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+}
+
 // ready asks a role's admin listener, from its boot file, whether it is ready.
 func ready(ctx context.Context, bootDir, role string) error {
 	path := filepath.Join(bootDir, role+".yaml")
@@ -82,7 +89,7 @@ func ready(ctx context.Context, bootDir, role string) error {
 	if err != nil {
 		return err
 	}
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := readyClient.Do(req)
 	if err != nil {
 		return fmt.Errorf("nothing answers on %s", admin)
 	}

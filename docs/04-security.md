@@ -1012,11 +1012,15 @@ timeouts and size limits named below are in [03](03-connections.md#timeouts-keep
    (`/usr/local/bin/rpmgr` for script installs), and restarts each role service `install.json`
    lists.
 6. The updater polls each role's admin `/readyz`, which reports ready only when the control session
-   is established and a snapshot is applied. If a role is not ready within the readiness window,
-   or its service fails or restarts in a loop before then, the updater **rolls back** to `.prev`,
-   restarts the roles again, and records the version as failed.
+   is established and a snapshot is applied, and counts a role as ready only while systemd has it
+   active. If a role is not ready within the readiness window, or its service fails or restarts in
+   a loop before then, the updater **rolls back** to `.prev`, restarts the roles again, and records
+   the version as failed. Before the rename it records the install as pending in its own
+   directory, so that a run that a crash or a reboot interrupts is finished by the next one: the
+   updater also runs once at boot, checks the roles and rolls back if one is not ready.
 7. The updater writes the outcome to `/run/rpmgr-update/status.json` (root-owned, readable by the
-   service user): `updated`, `rolled_back` or `refused`, with the version, the previous one and a
+   service user): `updated`, `rolled_back`, `rollback_failed` (the previous binary could not be put
+   back, which needs an operator) or `refused`, with the version, the previous one and a
    reason. The agent reads it at start and reports it, and the rollout records it. The persisted
    floor and `seq` are raised only after success. They are stored by the updater in
    `/var/lib/rpmgr-update/state.json`, owned by root and not writable by the service user, so a

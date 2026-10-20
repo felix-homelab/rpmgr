@@ -4,12 +4,17 @@ package update
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
+	"strings"
 	"time"
 
 	"github.com/felix-homelab/rpmgr/internal/release"
@@ -28,16 +33,25 @@ const (
 // (docs/04-security.md, "Over-the-air updates", step 7).
 const StatusFile = "/run/rpmgr-update/status.json"
 
+// pendingFile, in the updater's state directory, records an install from just before the binary
+// is replaced until the outcome is known, so that a run that was interrupted is finished by the
+// next one, also after a reboot.
+const pendingFile = "pending.json"
+
 // Outcomes in the status file.
 const (
-	Updated    = "updated"
-	RolledBack = "rolled_back"
-	Refused    = "refused"
+	Updated        = "updated"
+	RolledBack     = "rolled_back"
+	RollbackFailed = "rollback_failed"
+	Refused        = "refused"
 )
 
 // ErrRolledBack means the new release was installed but a role did not become ready, so the
-// previous binary was put back.
-var ErrRolledBack = errors.New("update: rolled back")
+// previous binary was put back. ErrRollbackFailed means putting it back failed too.
+var (
+	ErrRolledBack     = errors.New("update: rolled back")
+	ErrRollbackFailed = errors.New("update: the rollback failed")
+)
 
 // Status is the updater's last outcome (/run/rpmgr-update/status.json).
 type Status struct {
@@ -48,12 +62,20 @@ type Status struct {
 	At       time.Time `json:"at"`
 }
 
+// Unit is what systemd says about a role's unit.
+type Unit struct {
+	// Active is its ActiveState: active, activating, deactivating, inactive or failed.
+	Active string
+	// Restarts is its NRestarts, how often systemd restarted it by Restart=.
+	Restarts int
+}
+
 // Services restarts the role services and reports their state; Systemd is the real one.
 type Services interface {
 	// Restart restarts a unit, such as rpmgr-connector.service.
 	Restart(ctx context.Context, unit string) error
-	// State reports whether a unit has failed and how often systemd has restarted it.
-	State(ctx context.Context, unit string) (failed bool, restarts int, err error)
+	// State reports a unit's state.
+	State(ctx context.Context, unit string) (Unit, error)
 }
 
 // Applier installs a staged release: it stages and verifies it (Updater.Stage), swaps the binary,
@@ -76,52 +98,128 @@ type Applier struct {
 	Clock func() time.Time
 }
 
-// beforeSwap, if set, runs after the new binary is written beside the installed one and before it
-// is synced and checked; tests use it to make that step fail.
-var beforeSwap func(path string)
+// pending is an install in progress (pendingFile).
+type pending struct {
+	Version  string   `json:"version"`
+	Seq      uint64   `json:"seq"`
+	SHA256   string   `json:"sha256"` // of the new binary, to tell whether it was put in place
+	Previous string   `json:"previous,omitempty"`
+	Path     string   `json:"path"`
+	Prev     string   `json:"prev"`
+	Roles    []string `json:"roles"`
+	Next     State    `json:"next"` // the state to persist after success
+}
 
-// Apply installs the staged release and reports the outcome in the status file. It returns nil
-// when the release is installed and every role is ready, an error wrapping ErrRefused or
-// ErrHostile when the release may not be installed (nothing changed), and one wrapping
-// ErrRolledBack when a role did not become ready and the previous binary was put back.
+// Test hooks: beforeSwap runs after the new binary is written beside the installed one and before
+// it is synced and checked; afterRename runs right after it was renamed over the installed one,
+// before the roles restart, and ends the run when it returns false, as a crash would; syncDirHook
+// can make syncing a directory fail.
+var (
+	beforeSwap  func(path string)
+	afterRename func() bool
+	syncDirHook func(dir string) error
+)
+
+// errInterrupted ends a run in tests, as a crash after the rename would.
+var errInterrupted = errors.New("update: interrupted (test)")
+
+// Apply first finishes an install that an earlier run left unfinished. Otherwise it installs the
+// staged release and reports the outcome in the status file. It returns nil when the release is
+// installed and every role is ready, or when the staged release is the installed binary already;
+// an error wrapping ErrRefused or ErrHostile when the release may not be installed (nothing
+// changed); one wrapping ErrRolledBack when a role did not become ready and the previous binary was
+// put back; and one wrapping ErrRollbackFailed when that failed too.
 func (a *Applier) Apply(ctx context.Context) error {
+	p, err := a.readPending()
+	switch {
+	case err == nil:
+		return a.resume(ctx, p)
+	case !errors.Is(err, fs.ErrNotExist):
+		return a.report(Status{State: Refused, Previous: a.Previous, Reason: err.Error()}, err)
+	}
 	s, in, err := a.stage()
 	if err != nil {
 		return a.report(Status{State: Refused, Previous: a.Previous, Reason: err.Error()}, err)
 	}
 	defer func() { _ = os.Remove(s.Path) }()
-	version := s.Manifest.Version
-	prev, err := a.swap(s, in.Path)
-	if err != nil {
-		return a.report(Status{State: Refused, Version: version, Previous: a.Previous, Reason: err.Error()}, err)
+	if same, err := sameFile(in.Path, s.Artifact.SHA256); err == nil && same {
+		return nil // installed already, as at a boot after a successful update: nothing to report
 	}
-	if err := a.restartAndWait(ctx, in.roles()); err != nil {
-		rerr := a.rollback(ctx, in, prev)
+	p = &pending{Version: s.Manifest.Version, Seq: s.Manifest.Seq, SHA256: s.Artifact.SHA256, Previous: a.Previous,
+		Path: in.Path, Prev: in.Path + ".prev", Roles: in.roles(), Next: s.Next}
+	warning, err := a.swap(s, p)
+	if err != nil {
+		return a.report(Status{State: Refused, Version: p.Version, Previous: a.Previous, Reason: err.Error()}, err)
+	}
+	if afterRename != nil && !afterRename() {
+		return errInterrupted
+	}
+	return a.finish(ctx, p, warning)
+}
+
+// resume finishes an install that an earlier run left: if the new binary is in place, it restarts
+// the roles and waits for them as finish does; if the run ended before the rename, nothing
+// changed.
+func (a *Applier) resume(ctx context.Context, p *pending) error {
+	same, err := sameFile(p.Path, p.SHA256)
+	if err != nil || !same {
+		reason := "an earlier run ended before the binary was replaced; nothing changed"
+		if cerr := a.clearPending(); cerr != nil {
+			reason += "; " + cerr.Error()
+		}
+		return a.report(Status{State: Refused, Version: p.Version, Previous: p.Previous, Reason: reason},
+			fmt.Errorf("%w: %s", ErrRefused, reason))
+	}
+	return a.finish(ctx, p, "resumed an install that an earlier run did not finish")
+}
+
+// finish restarts the roles and waits until they are ready. Then it raises the floor and seq; if
+// a role is not ready, it puts the previous binary back and records the version as failed. Either
+// way the pending install is cleared and the outcome reported.
+func (a *Applier) finish(ctx context.Context, p *pending, note string) error {
+	status := func(state, reason string) Status {
+		parts := slices.DeleteFunc([]string{note, reason}, func(s string) bool { return s == "" })
+		return Status{State: state, Version: p.Version, Previous: p.Previous, Reason: strings.Join(parts, "; ")}
+	}
+	if err := a.restartAndWait(ctx, p.Roles); err != nil {
 		reason := err.Error()
-		if rerr != nil {
-			reason += "; the rollback failed too: " + rerr.Error()
+		state, werr := RolledBack, ErrRolledBack
+		if rerr := a.rollback(ctx, p); rerr != nil {
+			state, werr = RollbackFailed, ErrRollbackFailed
+			reason += "; " + rerr.Error()
 		}
-		st, serr := ReadState(a.State)
-		if serr == nil {
-			st.Failed = &Failed{Version: version, Seq: s.Manifest.Seq}
-			serr = WriteState(a.State, st)
-		}
-		if serr != nil {
+		if serr := a.recordFailed(p); serr != nil {
 			reason += "; recording the failed version: " + serr.Error()
 		}
-		return a.report(Status{State: RolledBack, Version: version, Previous: a.Previous, Reason: reason},
-			fmt.Errorf("%w: %s", ErrRolledBack, reason))
+		if cerr := a.clearPending(); cerr != nil {
+			reason += "; " + cerr.Error()
+		}
+		return a.report(status(state, reason), fmt.Errorf("%w: %s", werr, reason))
 	}
 	st, err := ReadState(a.State)
 	if err == nil {
-		st.Seq, st.Floor = s.Next.Seq, s.Next.Floor
+		st.Seq, st.Floor = p.Next.Seq, p.Next.Floor
 		err = WriteState(a.State, st)
 	}
-	if err != nil {
-		err = fmt.Errorf("update: %s is installed and ready, but the floor was not raised: %w", version, err)
-		return a.report(Status{State: Updated, Version: version, Previous: a.Previous, Reason: err.Error()}, err)
+	if err == nil {
+		err = a.clearPending()
 	}
-	return a.report(Status{State: Updated, Version: version, Previous: a.Previous}, nil)
+	if err != nil {
+		err = fmt.Errorf("update: %s is installed and ready, but the state was not updated: %w", p.Version, err)
+		return a.report(status(Updated, err.Error()), err)
+	}
+	return a.report(status(Updated, ""), nil)
+}
+
+// recordFailed records the version as rolled back, so that only a manifest with a higher seq
+// offers it again (D120).
+func (a *Applier) recordFailed(p *pending) error {
+	st, err := ReadState(a.State)
+	if err != nil {
+		return err
+	}
+	st.Failed = &Failed{Version: p.Version, Seq: p.Seq}
+	return WriteState(a.State, st)
 }
 
 // stage stages the release and reads the installation record once more for the swap.
@@ -138,34 +236,43 @@ func (a *Applier) stage() (*Staged, Install, error) {
 	return s, in, nil
 }
 
-// swap installs the verified copy at path: it writes .rpmgr.new beside the binary (the same
+// swap installs the verified copy at p.Path: it writes .rpmgr.new beside the binary (the same
 // filesystem, so the rename is atomic), syncs and re-hashes it, keeps the installed binary as
-// <path>.prev and renames the new one over it. It returns the path of .prev. Before the rename
-// nothing the roles run has changed, so any failure leaves the installed binary as it was.
-func (a *Applier) swap(s *Staged, path string) (string, error) {
-	if !filepath.IsAbs(path) {
-		return "", fmt.Errorf("%w: install.json names the binary %q, which is not an absolute path", ErrRefused, path)
+// p.Prev, records the install as pending and renames the new binary over the installed one.
+// Before the rename nothing the roles run has changed, so a failure there is a refusal and leaves
+// the installed binary as it was. After the rename the install goes on: a directory that cannot be
+// synced is only a warning.
+func (a *Applier) swap(s *Staged, p *pending) (warning string, err error) {
+	if !filepath.IsAbs(p.Path) || filepath.Clean(p.Path) != p.Path {
+		return "", fmt.Errorf("%w: install.json names the binary %q, which is no clean absolute path", ErrRefused, p.Path)
 	}
-	dir := filepath.Dir(path)
+	if fi, err := os.Lstat(p.Path); err != nil || !fi.Mode().IsRegular() {
+		return "", fmt.Errorf("%w: the installed binary %s is no regular file (a symbolic link is refused)", ErrRefused, p.Path)
+	}
+	dir := filepath.Dir(p.Path)
 	next := filepath.Join(dir, ".rpmgr.new")
-	prev := path + ".prev"
-	_ = os.Remove(next) // one an interrupted run left; O_EXCL below refuses anything else
+	_ = os.Remove(next) // one an interrupted run left, or a link; O_EXCL below refuses anything else
 	if err := writeNew(s.Path, next, s.Artifact); err != nil {
 		_ = os.Remove(next)
 		return "", err
 	}
-	if err := keep(path, prev); err != nil {
+	if err := keep(p.Path, p.Prev); err != nil {
 		_ = os.Remove(next)
 		return "", err
 	}
-	if err := os.Rename(next, path); err != nil {
+	if err := a.writePending(p); err != nil {
 		_ = os.Remove(next)
-		return "", fmt.Errorf("update: installing %s: %w", path, err)
+		return "", err
+	}
+	if err := os.Rename(next, p.Path); err != nil {
+		_ = os.Remove(next)
+		_ = a.clearPending()
+		return "", fmt.Errorf("update: installing %s: %w", p.Path, err)
 	}
 	if err := syncDir(dir); err != nil {
-		return prev, fmt.Errorf("update: %w", err)
+		return "the new binary is in place, but its directory could not be synced: " + err.Error(), nil
 	}
-	return prev, nil
+	return "", nil
 }
 
 // writeNew copies the verified copy to next, a new executable file, syncs it and checks it once
@@ -200,38 +307,42 @@ func writeNew(src, next string, art release.Artifact) error {
 }
 
 // keep makes prev a copy of the installed binary: a hard link, renamed into place, so the binary
-// is never without a copy and prev is replaced atomically.
+// is never without a copy and prev is replaced atomically. When prev is the installed binary
+// already, as after a rollback, the rename does nothing and the link is removed.
 func keep(path, prev string) error {
 	tmp := prev + ".tmp"
 	_ = os.Remove(tmp)
 	if err := os.Link(path, tmp); err != nil {
 		return fmt.Errorf("update: keeping %s as %s: %w", path, prev, err)
 	}
-	if err := os.Rename(tmp, prev); err != nil {
-		_ = os.Remove(tmp)
+	err := os.Rename(tmp, prev)
+	_ = os.Remove(tmp) // left when tmp and prev were the same file
+	if err != nil {
 		return fmt.Errorf("update: keeping %s as %s: %w", path, prev, err)
 	}
 	return nil
 }
 
-// rollback puts .prev back over the binary and restarts the roles. The previous binary is
-// exempt from the floor: floor and seq were not raised.
-func (a *Applier) rollback(ctx context.Context, in Install, prev string) error {
-	dir := filepath.Dir(in.Path)
+// rollback puts p.Prev back over the binary and restarts the roles. The previous binary is exempt
+// from the floor: floor and seq were not raised.
+func (a *Applier) rollback(ctx context.Context, p *pending) error {
+	if fi, err := os.Lstat(p.Prev); err != nil || !fi.Mode().IsRegular() {
+		return fmt.Errorf("update: rolling back: %s is no regular file", p.Prev)
+	}
+	dir := filepath.Dir(p.Path)
 	tmp := filepath.Join(dir, ".rpmgr.rollback")
 	_ = os.Remove(tmp)
-	if err := os.Link(prev, tmp); err != nil {
+	if err := os.Link(p.Prev, tmp); err != nil {
 		return fmt.Errorf("update: rolling back: %w", err)
 	}
-	if err := os.Rename(tmp, in.Path); err != nil {
-		_ = os.Remove(tmp)
+	err := os.Rename(tmp, p.Path)
+	_ = os.Remove(tmp)
+	if err != nil {
 		return fmt.Errorf("update: rolling back: %w", err)
 	}
-	if err := syncDir(dir); err != nil {
-		return fmt.Errorf("update: rolling back: %w", err)
-	}
+	_ = syncDir(dir) // the binary is back; a sync error changes nothing about it
 	var errs []error
-	for _, role := range in.roles() {
+	for _, role := range p.Roles {
 		if err := a.Services.Restart(ctx, unitOf(role)); err != nil {
 			errs = append(errs, err)
 		}
@@ -239,19 +350,19 @@ func (a *Applier) rollback(ctx context.Context, in Install, prev string) error {
 	return errors.Join(errs...)
 }
 
-// restartAndWait restarts each role and waits until all are ready, within the readiness window.
-// A role whose service fails, or restarts too often, ends the wait at once.
+// restartAndWait restarts each role and waits until all are active and ready, within the
+// readiness window. A role whose service fails, or restarts too often, ends the wait at once.
 func (a *Applier) restartAndWait(ctx context.Context, roles []string) error {
 	base := make(map[string]int, len(roles))
 	for _, role := range roles {
 		if err := a.Services.Restart(ctx, unitOf(role)); err != nil {
 			return fmt.Errorf("restarting %s: %w", unitOf(role), err)
 		}
-		_, n, err := a.Services.State(ctx, unitOf(role))
+		u, err := a.Services.State(ctx, unitOf(role))
 		if err != nil {
 			return fmt.Errorf("%s: %w", unitOf(role), err)
 		}
-		base[role] = n
+		base[role] = u.Restarts
 	}
 	interval, window, limit := a.Interval, a.Window, a.MaxRestarts
 	if interval <= 0 {
@@ -267,26 +378,49 @@ func (a *Applier) restartAndWait(ctx context.Context, roles []string) error {
 	defer cancel()
 	t := time.NewTicker(interval)
 	defer t.Stop()
-	pending := append([]string(nil), roles...)
+	// check judges a role: fatal ends the wait, otherwise ready says whether it is ready and why
+	// not.
+	check := func(role string) (ready bool, why, fatal error) {
+		u, err := a.Services.State(ctx, unitOf(role))
+		switch {
+		case err != nil && ctx.Err() == nil:
+			return false, nil, fmt.Errorf("%s: %w", unitOf(role), err)
+		case err != nil:
+			return false, err, nil
+		case u.Active == "failed":
+			return false, nil, fmt.Errorf("%s failed after the restart", unitOf(role))
+		case u.Restarts-base[role] >= limit:
+			return false, nil, fmt.Errorf("%s restarted %d times after the update", unitOf(role), u.Restarts-base[role])
+		case u.Active != "active":
+			return false, fmt.Errorf("%s is %s", unitOf(role), u.Active), nil
+		}
+		if err := a.Ready(ctx, role); err != nil {
+			return false, fmt.Errorf("%s: %w", role, err), nil
+		}
+		return true, nil, nil
+	}
+	waiting := slices.Clone(roles)
 	var last error
 	for {
 		var still []string
-		for _, role := range pending {
-			failed, n, err := a.Services.State(ctx, unitOf(role))
-			switch {
-			case err != nil && ctx.Err() == nil:
-				return fmt.Errorf("%s: %w", unitOf(role), err)
-			case failed:
-				return fmt.Errorf("%s failed after the restart", unitOf(role))
-			case n-base[role] >= limit:
-				return fmt.Errorf("%s restarted %d times after the update", unitOf(role), n-base[role])
+		for _, role := range waiting {
+			ok, why, fatal := check(role)
+			if fatal != nil {
+				return fatal
 			}
-			if err := a.Ready(ctx, role); err != nil {
-				last = fmt.Errorf("%s: %w", role, err)
+			if !ok {
+				last = why
 				still = append(still, role)
 			}
 		}
-		if pending = still; len(pending) == 0 {
+		if waiting = still; len(waiting) == 0 {
+			// Every role was ready once: one that has failed, restarted or stopped since still
+			// counts against the release.
+			for _, role := range roles {
+				if ok, why, fatal := check(role); fatal != nil || !ok {
+					return errors.Join(fatal, why)
+				}
+			}
 			return nil
 		}
 		select {
@@ -295,6 +429,42 @@ func (a *Applier) restartAndWait(ctx context.Context, roles []string) error {
 		case <-t.C:
 		}
 	}
+}
+
+// readPending reads the pending install; fs.ErrNotExist means none.
+func (a *Applier) readPending() (*pending, error) {
+	b, err := readOwn(filepath.Join(a.State, pendingFile))
+	if err != nil {
+		return nil, err
+	}
+	var p pending
+	if err := strictJSON(b, &p); err != nil {
+		return nil, fmt.Errorf("update: %s: %w", pendingFile, err)
+	}
+	if !filepath.IsAbs(p.Path) || p.Prev != p.Path+".prev" || len(p.Roles) == 0 || !full(p.Version) || len(p.SHA256) != 64 {
+		return nil, fmt.Errorf("update: %s is malformed", pendingFile)
+	}
+	for _, r := range p.Roles {
+		if !updatable(r) {
+			return nil, fmt.Errorf("update: %s names the role %q", pendingFile, r)
+		}
+	}
+	return &p, nil
+}
+
+func (a *Applier) writePending(p *pending) error {
+	b, err := json.Marshal(p)
+	if err != nil {
+		return err
+	}
+	return writeAtomic(a.State, pendingFile, b, 0o600)
+}
+
+func (a *Applier) clearPending() error {
+	if err := os.Remove(filepath.Join(a.State, pendingFile)); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return fmt.Errorf("update: clearing %s: %w", pendingFile, err)
+	}
+	return syncDir(a.State)
 }
 
 // report writes the status file and returns err; a status file that cannot be written is added
@@ -309,39 +479,45 @@ func (a *Applier) report(st Status, err error) error {
 	if path == "" {
 		path = StatusFile
 	}
-	if werr := writeStatus(path, st); werr != nil {
+	b, merr := json.Marshal(st)
+	if merr != nil {
+		return errors.Join(err, merr)
+	}
+	if merr := os.MkdirAll(filepath.Dir(path), 0o755); merr != nil { //nolint:gosec // G301: the agent reads the status
+		return errors.Join(err, fmt.Errorf("update: status: %w", merr))
+	}
+	if werr := writeAtomic(filepath.Dir(path), filepath.Base(path), b, 0o644); werr != nil {
 		return errors.Join(err, werr)
 	}
 	return err
 }
 
-// writeStatus replaces the status file atomically, readable by the service user (0644).
-func writeStatus(path string, st Status) error {
-	b, err := json.Marshal(st)
+// writeAtomic replaces dir/name: a new file, synced, renamed over the old one, and the directory
+// synced, so a crash leaves the old file or the new one.
+func writeAtomic(dir, name string, b []byte, mode os.FileMode) error {
+	tmp, err := os.CreateTemp(dir, "."+name+"-*")
 	if err != nil {
-		return err
-	}
-	dir := filepath.Dir(path)
-	if err := os.MkdirAll(dir, 0o755); err != nil { //nolint:gosec // G301: the agent reads the status
-		return fmt.Errorf("update: status: %w", err)
-	}
-	tmp, err := os.CreateTemp(dir, ".status-*.json")
-	if err != nil {
-		return fmt.Errorf("update: status: %w", err)
+		return fmt.Errorf("update: %w", err)
 	}
 	defer os.Remove(tmp.Name()) //nolint:errcheck // gone after the rename
 	_, err = tmp.Write(append(b, '\n'))
 	if err == nil {
-		err = tmp.Chmod(0o644)
+		err = tmp.Chmod(mode)
+	}
+	if err == nil {
+		err = tmp.Sync()
 	}
 	if cerr := tmp.Close(); err == nil {
 		err = cerr
 	}
 	if err == nil {
-		err = os.Rename(tmp.Name(), path)
+		err = os.Rename(tmp.Name(), filepath.Join(dir, name))
+	}
+	if err == nil {
+		err = syncDir(dir)
 	}
 	if err != nil {
-		return fmt.Errorf("update: status: %w", err)
+		return fmt.Errorf("update: writing %s: %w", name, err)
 	}
 	return nil
 }
@@ -359,15 +535,38 @@ func ReadStatus(path string) (Status, error) {
 	return st, nil
 }
 
+// sameFile reports whether the file at path has the SHA-256 sum.
+func sameFile(path, sum string) (bool, error) {
+	f, err := os.Open(path) //nolint:gosec // G304: the installed binary
+	if err != nil {
+		return false, err
+	}
+	defer func() { _ = f.Close() }()
+	h := sha256.New()
+	if _, err := io.Copy(h, io.LimitReader(f, MaxArtifact+1)); err != nil {
+		return false, err
+	}
+	return hex.EncodeToString(h.Sum(nil)) == sum, nil
+}
+
 // syncDir syncs a directory, so a rename in it survives a crash.
 func syncDir(dir string) error {
-	d, err := os.Open(dir) //nolint:gosec // G304: the binary's directory
+	if syncDirHook != nil {
+		if err := syncDirHook(dir); err != nil {
+			return err
+		}
+	}
+	d, err := os.Open(dir) //nolint:gosec // G304: the binary's directory or the updater's own
 	if err != nil {
 		return err
 	}
 	defer func() { _ = d.Close() }()
 	return d.Sync()
 }
+
+// updatable reports whether the updater replaces a role's binary: gateways and connectors only
+// (D102).
+func updatable(role string) bool { return role == "gateway" || role == "connector" }
 
 // unitOf is the systemd unit of a role.
 func unitOf(role string) string { return "rpmgr-" + role + ".service" }
