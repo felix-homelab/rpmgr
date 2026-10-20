@@ -70,14 +70,15 @@ Answer `Y`, or press Enter, to set the host up now in `rpmgr setup`'s forms
 ### Options
 
 ```text
-sh install.sh [--version <version>] [--prerelease] [--no-setup] [--upgrade] [--restart]
-              [--dir <directory>] [--verify-only]
+sh install.sh [--version <version>] [--prerelease] [--variant full|connector] [--no-setup]
+              [--upgrade] [--restart] [--dir <directory>] [--verify-only]
 ```
 
 | Option | What it does |
 |---|---|
 | `--version <version>` | Install this version, such as `0.1.0` or `0.1.0-rc.7`; a leading `v` is dropped. Default: the version the copy is pinned to, else the latest release |
 | `--prerelease` | Without `--version`, and only in a copy that is not pinned, take the latest release including pre-releases |
+| `--variant full\|connector` | `full` installs the build that runs every role; `connector` the connector-only build, which is smaller and runs a connector only, so its setup offers no other role ([Concepts](../concepts.md)). Default: the build the host runs, else `full`. A host keeps its build: another `--variant` is refused, and `--upgrade` stops when it cannot tell which build the host runs, so that you name it |
 | `--no-setup` | Do not offer to run `rpmgr setup`; print the next step instead |
 | `--upgrade` | Upgrade a host that has rpmgr: refuse a host without `/usr/local/bin/rpmgr` before downloading anything, offer no setup, and after the version print only what is left to do ([Upgrades](upgrades.md)) |
 | `--restart` | Restart every rpmgr service that runs, in the order controller, all-in-one, gateway, connector, and check that each stays up. Works with or without `--upgrade` |
@@ -169,6 +170,7 @@ as the local policy reads it, so a pasted command runs nothing but the installer
 | `--controller <url>` | Required. The controller's `https://` URL, where the script downloads from and the agent enrolls |
 | `--ca-pin <pin>` | Required, except with `--verify-only`. The pin of the controller's root CA, `sha256:<base64>`, which the enrollment checks the controller against ([Concepts](../concepts.md#trust)) |
 | `--role gateway\|connector` | The role to install. Default: `connector` |
+| `--variant full\|connector` | `connector` installs the connector-only build, a connector only. Default: the build the host runs, else `full`; another build than the host runs is refused |
 | `--allow-target <target>` | A target the connector's local policy allows. Repeat it for more. A connector only |
 | `--deny-target <target>` | A target the connector's local policy denies, whatever allows it. Repeat it for more. A connector only |
 | `--token-file <file>` | Read the enrollment or gateway token from this file instead of asking |

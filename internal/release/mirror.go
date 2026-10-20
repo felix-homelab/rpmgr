@@ -32,18 +32,23 @@ var ErrDevelopment = errors.New("release: a development build mirrors no release
 func Releasable(version string) bool { return valid(version) }
 
 // ArtifactName is an artifact's file name: rpmgr-<version>-<os>-<arch>, followed by -<variant>
-// for variants other than full.
+// for variants other than full, and by .exe on Windows (docs/04-security.md, "Release signing";
+// D119).
 func ArtifactName(version string, a Artifact) string {
 	name := "rpmgr-" + version + "-" + a.OS + "-" + a.Arch
 	if a.Variant != "full" {
 		name += "-" + a.Variant
 	}
+	if a.OS == "windows" {
+		name += ".exe"
+	}
 	return name
 }
 
-// mirrored reports whether the mirror keeps an artifact: Phase 1 mirrors the full Linux builds
-// (D59).
-func mirrored(a Artifact) bool { return a.OS == "linux" && a.Variant == "full" }
+// mirrored reports whether the mirror keeps an artifact: the Linux builds of both variants, which
+// /install.sh installs (D59, D119). Windows and macOS connectors are installed by hand from the
+// release download.
+func mirrored(a Artifact) bool { return a.OS == "linux" }
 
 // A Source gives the files of a release by name.
 type Source interface {

@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"os/user"
+	"slices"
 	"strconv"
 	"time"
 
@@ -52,6 +53,9 @@ type Host struct {
 	// Server initialises a controller or an all-in-one; nil in the connector-only build, whose
 	// setup refuses those roles.
 	Server Server
+	// Roles are the roles this build sets up, all of them when nil; the connector-only build sets
+	// up a connector only.
+	Roles []Role
 	// Enroll enrolls a gateway or connector (agent.Enroll).
 	Enroll func(ctx context.Context, o agent.EnrollOptions) (agent.Identity, error)
 	// Ready waits until the admin listener at addr reports ready.
@@ -169,4 +173,12 @@ func ready(ctx context.Context, addr string) error {
 		case <-time.After(time.Second):
 		}
 	}
+}
+
+// Offers reports whether this build sets up role r: a controller or an all-in-one needs a Server.
+func (h Host) Offers(r Role) bool {
+	if r.Initialises() && h.Server == nil {
+		return false
+	}
+	return h.Roles == nil || slices.Contains(h.Roles, r)
 }

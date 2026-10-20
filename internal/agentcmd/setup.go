@@ -17,12 +17,24 @@ import (
 // setupHost is the host `rpmgr setup` changes; tests replace it. Setup gives it its Server.
 var setupHost = setup.Host{}
 
-// Setup is `rpmgr setup`, with server the steps of a controller and an all-in-one: the full
-// build's (package serversetup), or nil in the connector-only build, whose setup takes the gateway
-// and connector roles only (docs/02-architecture.md, "Roles").
-func Setup(server setup.Server) *cli.Command {
-	setupHost.Server = server
+// Setup is `rpmgr setup`, with server the steps of a controller and an all-in-one, the full
+// build's (package serversetup), and roles the roles the build sets up, all of them when none are
+// given. The connector-only build passes no server and the connector role
+// (docs/02-architecture.md, "Roles").
+func Setup(server setup.Server, roles ...setup.Role) *cli.Command {
+	setupHost.Server, setupHost.Roles = server, roles
 	return setupCommand()
+}
+
+// offeredRoles names the roles setupHost sets up, for messages.
+func offeredRoles() string {
+	var names []string
+	for _, r := range setup.Roles {
+		if setupHost.Offers(r.Role) {
+			names = append(names, string(r.Role))
+		}
+	}
+	return strings.Join(names, ", ")
 }
 
 // setupCommand is `rpmgr setup` (docs/16-cli.md): it asks for the values in forms pre-filled with
@@ -70,9 +82,12 @@ func setupCommand() *cli.Command {
 				return cli.Usagef("unexpected argument %q", args[0])
 			}
 			if role == "" && yes {
-				return cli.Usagef("setup --yes needs --role: all-in-one, controller, gateway or connector")
+				return cli.Usagef("setup --yes needs --role: %s", offeredRoles())
 			}
 			v.Role, v.AllowTargets, v.DenyTargets = setup.Role(role), targets, denied
+			if role != "" && setup.CheckRole(role) == nil && !setupHost.Offers(v.Role) {
+				return fmt.Errorf("the role %s: %w; this build sets up: %s", role, cli.ErrNotAvailable, offeredRoles())
+			}
 			switch {
 			case proxyFile != "" && v.Proxy != "":
 				return cli.Usagef("--proxy and --proxy-file exclude each other")

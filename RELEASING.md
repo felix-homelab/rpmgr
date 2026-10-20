@@ -195,6 +195,11 @@ For a minor or major release. A patch release is the same, starting from the bra
    - the tag must match the release pattern, and `CHANGELOG.md` must have its dated section, whose
      text becomes the release notes. A pre-release takes them from `## [Unreleased]`, which must
      not be empty;
+   - the artifacts: `rpmgr-<version>-linux-<arch>` of the full build for every Linux
+     architecture, and the connector-only build `rpmgr-<version>-<os>-<arch>-connector` of
+     `cmd/rpmgr-connector` for every Linux architecture, windows/amd64 (`.exe`) and darwin/amd64
+     and arm64 ([D119](docs/14-open-decisions.md#engineering),
+     [D122](docs/14-open-decisions.md#project-and-process));
    - two builds of the tag, on an x86-64 and an arm64 runner, must give artifacts equal byte for
      byte; the same two builds also run every night;
    - the artifacts must be release builds: no build tags, so never `rpmgrtest`, and the release

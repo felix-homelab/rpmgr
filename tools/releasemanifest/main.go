@@ -8,8 +8,8 @@
 //	releasemanifest check -dir <dir> [-previous <manifest>] <manifest>
 //
 // The artifacts are the files of dir named rpmgr-<version>-<os>-<arch>[-<variant>], without an
-// extension; other files are ignored. draft writes the unsigned manifest of those artifacts to
-// standard output, as compact JSON: by default with seq one above the previous manifest's and its
+// extension but .exe on Windows; other files are ignored. draft writes the unsigned manifest of
+// those artifacts to standard output, as compact JSON: by default with seq one above the previous manifest's and its
 // floor, or seq 1 and the version itself as the floor for the first release, and the channel that
 // the version implies. check reports whether a manifest is well-formed and exactly as draft writes
 // it, lists exactly the artifacts of dir with their sizes and SHA-256, and has a higher seq than
@@ -193,6 +193,8 @@ func artifacts(dir, version string) ([]release.Artifact, error) {
 	var out []release.Artifact
 	for _, de := range des {
 		rest, ok := strings.CutPrefix(de.Name(), prefix)
+		exe := strings.HasSuffix(rest, ".exe")
+		rest = strings.TrimSuffix(rest, ".exe")
 		if !ok || strings.Contains(rest, ".") || !de.Type().IsRegular() {
 			continue
 		}
@@ -204,8 +206,8 @@ func artifacts(dir, version string) ([]release.Artifact, error) {
 		case 3:
 			a.OS, a.Arch, a.Variant = parts[0], parts[1], parts[2]
 		}
-		if a.OS == "" || len(parts) == 3 && a.Variant == "full" {
-			return nil, fmt.Errorf("%s is not named rpmgr-<version>-<os>-<arch>[-<variant>]", de.Name())
+		if a.OS == "" || len(parts) == 3 && a.Variant == "full" || release.ArtifactName(version, a) != de.Name() || exe != (a.OS == "windows") {
+			return nil, fmt.Errorf("%s is not named rpmgr-<version>-<os>-<arch>[-<variant>], with .exe on Windows only", de.Name())
 		}
 		if a.SHA256, a.Size, err = digest(filepath.Join(dir, de.Name())); err != nil {
 			return nil, err
