@@ -132,7 +132,7 @@ func TestAllInOne_RecoversItsGateway(t *testing.T) {
 // TestAllInOne_UnusableIdentity (#555): an agent's identity is unusable when it is missing, names
 // another agent, its certificate is revoked or superseded, or it expired longer ago than the grace
 // period; it stays in use within the grace period. A revoked identity of the agent itself is an
-// error, which stops the start: enrolling again as the same agent cannot lift it.
+// error: enrolling again as the same agent cannot lift it, so Run replaces such an agent first.
 func TestAllInOne_UnusableIdentity(t *testing.T) {
 	h := newHost(t)
 	r := h.init(t)
@@ -199,27 +199,16 @@ func (h *host) runErr(t *testing.T) error {
 }
 
 // TestAllInOne_RecoveryRefuses (#555): the start stops, enrolling nothing, when the built-in
-// gateway's identity is revoked, when the built-in gateway was decommissioned, and when the
-// database is missing, which Run never creates.
+// gateway was decommissioned, and when the database is missing, which Run never creates.
 func TestAllInOne_RecoveryRefuses(t *testing.T) {
 	h := newHost(t)
 	r := h.init(t)
-	db, sys, group := h.db(t)
-	id, err := agent.Load(h.cfg.Gateway().IdentityDir)
-	if err != nil {
-		t.Fatal(err)
-	}
+	db, sys, _ := h.db(t)
 	tokens := func() int { return db.Client().EnrollmentToken.Query().CountX(sys) }
 	before := tokens()
-	revokeIdentity(t, db, sys, pki.Identity{TrustDomain: id.TrustDomain, Org: group.OrgID, Kind: pki.KindGateway, ID: r.GatewayID})
-	if err := h.runErr(t); err == nil || !strings.Contains(err.Error(), "identity "+r.GatewayID+" is revoked") || tokens() != before {
-		t.Errorf("a revoked identity: %v, %d tokens after %d", err, tokens(), before)
-	}
-	db.Client().RevokedIdentity.Delete().ExecX(sys)
-
 	db.Client().Gateway.UpdateOneID(r.GatewayID).SetDecommissionedAt(time.Now()).ExecX(sys)
-	if err := h.runErr(t); err == nil || !strings.Contains(err.Error(), "no built-in gateway in service") {
-		t.Errorf("a decommissioned built-in gateway: %v", err)
+	if err := h.runErr(t); err == nil || !strings.Contains(err.Error(), "no built-in gateway in service") || tokens() != before {
+		t.Errorf("a decommissioned built-in gateway: %v, %d tokens after %d", err, tokens(), before)
 	}
 	db.Client().Gateway.UpdateOneID(r.GatewayID).ClearDecommissionedAt().ExecX(sys)
 

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/felix-homelab/rpmgr/internal/agent"
+	"github.com/felix-homelab/rpmgr/internal/config"
 	"github.com/felix-homelab/rpmgr/internal/pki"
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
 )
@@ -17,6 +18,17 @@ func SetStarted(t testing.TB, f func()) {
 	old := started
 	started = f
 	t.Cleanup(func() { started = old })
+}
+
+// Prepare runs what Run does with the agents' identities once the controller has migrated the
+// database: replacing agents whose identities are revoked, and making the tokens of those that
+// enroll again; it enrolls nothing.
+func Prepare(ctx context.Context, cfg config.AllInOne) error {
+	l, err := readLocal(cfg)
+	if err != nil {
+		return err
+	}
+	return l.prepare(ctx, cfg, time.Now())
 }
 
 // SetNamesFollowed makes Run call f with the names its connector counts as the host's own each time

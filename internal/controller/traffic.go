@@ -15,6 +15,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/settings"
 	"github.com/felix-homelab/rpmgr/internal/store"
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/gateway"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/route"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routetrafficdaily"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routetraffichourly"
@@ -33,7 +34,8 @@ func (t traffic) zero() bool { return t == traffic{} }
 // (docs/06-data-model.md, "Desired vs observed state"): each counter's increase over the last
 // report goes into the bucket of now. Counters start anew with the gateway's process, which a new
 // boot ID shows, and with a route the gateway forgot, which a lower counter shows: then all of
-// them count. A route that is gone is skipped.
+// them count. A route that is gone, or not of the gateway's group, is skipped: a gateway reports
+// only for the routes it serves (docs/03-connections.md, "Configuration reconciliation").
 func (s *Sessions) counters(id pki.Identity, list []*agentv1.RouteCounters) {
 	if len(list) == 0 {
 		return
@@ -48,13 +50,20 @@ func (s *Sessions) counters(id pki.Identity, list []*agentv1.RouteCounters) {
 		} else if !ent.IsNotFound(err) {
 			return err
 		}
+		group, err := gatewayGroup(s.sys, tx, id)
+		if err != nil || group == "" {
+			return err
+		}
 		ids := make([]string, 0, len(list))
 		for _, c := range list {
 			ids = append(ids, c.GetRouteId())
 		}
-		routes, err := tx.Route.Query().Where(route.IDIn(ids...)).All(s.sys)
+		routes, err := tx.Route.Query().Where(route.IDIn(ids...), route.GatewayGroupID(group)).All(s.sys)
 		if err != nil {
 			return err
+		}
+		if n := len(ids) - len(routes); n > 0 {
+			s.log.Debug("gateway counters skipped: unknown routes or routes of another group", "gateway", id.ID, "skipped", n)
 		}
 		orgOf := map[string]string{}
 		for _, r := range routes {
@@ -93,6 +102,19 @@ func (s *Sessions) counters(id pki.Identity, list []*agentv1.RouteCounters) {
 	if err != nil {
 		s.log.Error("cannot roll up a gateway's route counters", "gateway", id.ID, "error", err)
 	}
+}
+
+// gatewayGroup is the gateway group of the reporting gateway, or "" when the controller does not
+// know it as an active gateway of its org, whose reports then count for nothing.
+func gatewayGroup(ctx context.Context, tx *ent.Tx, id pki.Identity) (string, error) {
+	gw, err := tx.Gateway.Query().Where(gateway.ID(id.ID), gateway.OrgID(id.Org), gateway.DecommissionedAtIsNil()).Only(ctx)
+	switch {
+	case ent.IsNotFound(err):
+		return "", nil
+	case err != nil:
+		return "", err
+	}
+	return gw.GatewayGroupID, nil
 }
 
 // counter is a reported counter as the store keeps it.
