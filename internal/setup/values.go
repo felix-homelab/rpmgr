@@ -14,11 +14,9 @@ import (
 	"os"
 	"strings"
 
-	"github.com/felix-homelab/rpmgr/internal/acme"
 	"github.com/felix-homelab/rpmgr/internal/config"
 	"github.com/felix-homelab/rpmgr/internal/pki"
 	"github.com/felix-homelab/rpmgr/internal/policy"
-	"github.com/felix-homelab/rpmgr/internal/settings"
 	"github.com/felix-homelab/rpmgr/internal/token"
 )
 
@@ -202,7 +200,7 @@ func Directory(s string) (string, error) {
 	case "":
 		return "", nil
 	case "production":
-		return settings.LetsEncrypt, nil
+		return config.LetsEncrypt, nil
 	case "staging":
 		return StagingDirectory, nil
 	}
@@ -212,17 +210,18 @@ func Directory(s string) (string, error) {
 	return s, nil
 }
 
-// PublicHost returns the host of a public URL and whether a public CA can certify it.
-func PublicHost(publicURL string) (string, bool) {
+// PublicHost returns the host of a public URL and whether a public CA can certify it; without a
+// Server, as in the connector-only build, none can.
+func (h Host) PublicHost(publicURL string) (string, bool) {
 	u, err := url.Parse(publicURL)
 	if err != nil {
 		return "", false
 	}
-	return u.Hostname(), acme.Eligible(u.Hostname())
+	return u.Hostname(), h.Server != nil && h.Server.PublicCA(u.Hostname())
 }
 
 // check returns every problem of the values for their role, joined.
-func (v *Values) check() error {
+func (v *Values) check(h Host) error {
 	var errs []error
 	add := func(what string, err error) {
 		if err != nil {
@@ -245,7 +244,7 @@ func (v *Values) check() error {
 		errs = append(errs, errors.New("listen.tcp and listen.udp are an all-in-one's or a gateway's; a controller has listen.https"))
 	}
 	if v.Role.Initialises() {
-		v.checkController(add)
+		v.checkController(h, add)
 		return errors.Join(errs...)
 	}
 	if v.Role == "" {
@@ -274,7 +273,7 @@ func (v *Values) check() error {
 
 // checkController checks the values of a controller or all-in-one; an all-in-one's connector takes
 // allowed and denied targets too.
-func (v *Values) checkController(add func(string, error)) {
+func (v *Values) checkController(h Host, add func(string, error)) {
 	add("public URL", CheckPublicURL(v.PublicURL))
 	if v.ControllerURL != "" || v.Pin != "" || v.Token != "" || v.Proxy != "" {
 		add("values", errors.New("a controller URL, CA pin, token and a proxy are a gateway's or a connector's"))
@@ -295,7 +294,7 @@ func (v *Values) checkController(add func(string, error)) {
 	_, err := Directory(v.ACMEDirectory)
 	add("ACME directory", err)
 	add("ACME e-mail", CheckEmail(v.ACMEEmail))
-	switch host, public := PublicHost(v.PublicURL); v.TLS {
+	switch host, public := h.PublicHost(v.PublicURL); v.TLS {
 	case TLSACME:
 		if !public && v.PublicURL != "" {
 			add("TLS", fmt.Errorf("%s cannot have a certificate from a public CA; choose files or self-signed", host))

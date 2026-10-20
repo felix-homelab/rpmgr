@@ -19,6 +19,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/audit"
 	"github.com/felix-homelab/rpmgr/internal/authz"
 	"github.com/felix-homelab/rpmgr/internal/pki"
+	"github.com/felix-homelab/rpmgr/internal/pki/castore"
 	"github.com/felix-homelab/rpmgr/internal/revlog"
 	"github.com/felix-homelab/rpmgr/internal/store"
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
@@ -386,7 +387,7 @@ func invalidate(ctx context.Context, tx *ent.Tx, now time.Time) error {
 func reapply(ctx context.Context, tx *ent.Tx, td string, e revlog.Entry) (bool, error) {
 	switch e.Kind {
 	case revlog.CertificateRevoked:
-		_, _, err := pki.RevokeCertificate(ctx, tx, e.Subject, e.Detail, e.Time)
+		_, _, err := castore.RevokeCertificate(ctx, tx, e.Subject, e.Detail, e.Time)
 		if !errors.Is(err, pki.ErrNotIssued) {
 			return true, err
 		}
@@ -455,7 +456,7 @@ func reapplyIdentity(ctx context.Context, tx *ent.Tx, td string, e revlog.Entry)
 	if !known {
 		id.Org = ""
 	}
-	if _, _, err := pki.RevokeIdentity(ctx, tx, id, e.Detail, e.Time); err != nil {
+	if _, _, err := castore.RevokeIdentity(ctx, tx, id, e.Detail, e.Time); err != nil {
 		return false, err
 	}
 	if e.NotAfter != nil {

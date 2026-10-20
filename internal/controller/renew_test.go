@@ -25,6 +25,7 @@ import (
 	rpmgrv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/v1"
 	"github.com/felix-homelab/rpmgr/internal/ids"
 	"github.com/felix-homelab/rpmgr/internal/pki"
+	"github.com/felix-homelab/rpmgr/internal/pki/castore"
 	"github.com/felix-homelab/rpmgr/internal/revlog"
 	"github.com/felix-homelab/rpmgr/internal/settings"
 	"github.com/felix-homelab/rpmgr/internal/store"
@@ -96,7 +97,7 @@ func (e *sessionEnv) dial(t *testing.T, cert tls.Certificate, name string, wait 
 // every certificate the CA issues.
 func (e *sessionEnv) certAt(t *testing.T, id pki.Identity, at time.Time) tls.Certificate {
 	t.Helper()
-	ca, err := pki.LoadCA(e.sys, e.db, e.sealer, func() time.Time { return at })
+	ca, err := castore.LoadCA(e.sys, e.db, e.sealer, func() time.Time { return at })
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -141,7 +142,7 @@ func (e *sessionEnv) renewed(t *testing.T, chain [][]byte, id pki.Identity, key 
 
 func (e *sessionEnv) renewable(t *testing.T, cert tls.Certificate) error {
 	t.Helper()
-	return pki.CheckRenewable(e.sys, e.db.Client(), cert.Leaf)
+	return castore.CheckRenewable(e.sys, e.db.Client(), cert.Leaf)
 }
 
 // TestRenew: an agent renews over the control endpoint with a bound CSR and a new key; once the new
@@ -164,7 +165,7 @@ func TestRenew(t *testing.T) {
 		if recv(t, st).GetWelcome() == nil {
 			t.Fatal("no session with the renewed certificate")
 		}
-		if err := e.renewable(t, old); !errors.Is(err, pki.ErrSuperseded) {
+		if err := e.renewable(t, old); !errors.Is(err, castore.ErrSuperseded) {
 			t.Fatalf("the old certificate after the new one was used: %v", err)
 		}
 		cc2, c2 := e.dial(t, old, "controller."+e.ca.TrustDomain(), true)
@@ -265,7 +266,7 @@ func TestReauth_ExpiredWithinGrace(t *testing.T) {
 		gone := e.newIdentity()
 		ofRevokedIdentity := e.certAt(t, gone, time.Now().Add(-8*24*time.Hour))
 		if err := store.WriteTx(e.sys, e.db, func(tx *ent.Tx) error {
-			_, _, err := pki.RevokeIdentity(e.sys, tx, gone, "decommissioned", time.Now())
+			_, _, err := castore.RevokeIdentity(e.sys, tx, gone, "decommissioned", time.Now())
 			return err
 		}); err != nil {
 			t.Fatal(err)
@@ -339,7 +340,7 @@ func TestReauth_SupersededSerialRefused(t *testing.T) {
 		if recv(t, st).GetWelcome() == nil {
 			t.Fatal("no session")
 		}
-		if err := e.renewable(t, old); !errors.Is(err, pki.ErrSuperseded) {
+		if err := e.renewable(t, old); !errors.Is(err, castore.ErrSuperseded) {
 			t.Fatalf("the older certificate: %v", err)
 		}
 		e.reauthRefused(t, "Reauth with a superseded certificate", old)
@@ -365,7 +366,7 @@ func TestReauth_SupersededSerialRefused(t *testing.T) {
 		}
 	}
 	r, _ := x.restore(t, archive)
-	if err := r.renewable(t, old); !errors.Is(err, pki.ErrSuperseded) {
+	if err := r.renewable(t, old); !errors.Is(err, castore.ErrSuperseded) {
 		t.Fatalf("after a restore, the older certificate: %v", err)
 	}
 	r.reauthRefused(t, "after a restore, Reauth with a superseded certificate", old)

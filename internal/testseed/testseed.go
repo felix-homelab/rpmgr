@@ -20,6 +20,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/audit"
 	"github.com/felix-homelab/rpmgr/internal/authz"
 	"github.com/felix-homelab/rpmgr/internal/pki"
+	"github.com/felix-homelab/rpmgr/internal/pki/castore"
 	"github.com/felix-homelab/rpmgr/internal/revlog"
 	"github.com/felix-homelab/rpmgr/internal/routes"
 	"github.com/felix-homelab/rpmgr/internal/secret"
@@ -250,7 +251,7 @@ func (s *Seeder) Revoke(kind pki.Kind, name string) error {
 		return err
 	}
 	return store.WriteTx(s.sys, s.db, func(tx *ent.Tx) error {
-		row, changed, err := pki.RevokeIdentity(s.sys, tx, id, "end-to-end test", time.Now())
+		row, changed, err := castore.RevokeIdentity(s.sys, tx, id, "end-to-end test", time.Now())
 		if err != nil || !changed {
 			return err
 		}

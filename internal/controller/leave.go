@@ -12,6 +12,7 @@ import (
 	agentv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/agent/v1"
 	"github.com/felix-homelab/rpmgr/internal/audit"
 	"github.com/felix-homelab/rpmgr/internal/pki"
+	"github.com/felix-homelab/rpmgr/internal/pki/castore"
 	"github.com/felix-homelab/rpmgr/internal/revlog"
 	"github.com/felix-homelab/rpmgr/internal/routes"
 	"github.com/felix-homelab/rpmgr/internal/store"
@@ -68,7 +69,7 @@ func (s *Sessions) Leave(ctx context.Context, _ *agentv1.LeaveRequest) (*agentv1
 		if err != nil {
 			return nil, err
 		}
-		row, changed, err := pki.RevokeIdentity(s.sys, tx, id, "left", now)
+		row, changed, err := castore.RevokeIdentity(s.sys, tx, id, "left", now)
 		if err != nil || !changed {
 			return left, err
 		}

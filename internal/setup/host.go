@@ -15,7 +15,7 @@ import (
 	"time"
 
 	"github.com/felix-homelab/rpmgr/internal/agent"
-	"github.com/felix-homelab/rpmgr/internal/controller"
+	"github.com/felix-homelab/rpmgr/internal/units"
 )
 
 // ServiceUser is the system user the roles run as (docs/10-operations.md, "Filesystem layout").
@@ -49,6 +49,9 @@ type Host struct {
 	SystemdVersion func() int
 	// Encrypt is `systemd-creds encrypt`, for a KEK in a systemd credential.
 	Encrypt func(ctx context.Context, name, path string, b []byte) error
+	// Server initialises a controller or an all-in-one; nil in the connector-only build, whose
+	// setup refuses those roles.
+	Server Server
 	// Enroll enrolls a gateway or connector (agent.Enroll).
 	Enroll func(ctx context.Context, o agent.EnrollOptions) (agent.Identity, error)
 	// Ready waits until the admin listener at addr reports ready.
@@ -82,7 +85,7 @@ func (h *Host) defaults() {
 		h.IsRoot = func() bool { return os.Geteuid() == 0 }
 	}
 	if h.SystemdVersion == nil {
-		h.SystemdVersion = controller.SystemdVersion
+		h.SystemdVersion = units.SystemdVersion
 	}
 	if h.Enroll == nil {
 		h.Enroll = agent.Enroll

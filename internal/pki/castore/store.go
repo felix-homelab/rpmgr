@@ -1,24 +1,22 @@
 // SPDX-License-Identifier: Apache-2.0
 
-package pki
+package castore
 
 import (
 	"bytes"
 	"context"
 	"crypto/ecdsa"
 	"crypto/rand"
-	"crypto/sha256"
 	"crypto/tls"
 	"crypto/x509"
-	"encoding/hex"
 	"errors"
 	"fmt"
-	"math/big"
 	"strings"
 	"sync/atomic"
 	"time"
 
 	"github.com/felix-homelab/rpmgr/internal/ids"
+	"github.com/felix-homelab/rpmgr/internal/pki"
 	"github.com/felix-homelab/rpmgr/internal/secret"
 	"github.com/felix-homelab/rpmgr/internal/store"
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
@@ -42,8 +40,8 @@ type CA struct {
 
 // caState is what the CA holds from one load of ca_keys.
 type caState struct {
-	issuer                    *Issuer
-	configSigner, auditSigner KeyPair
+	issuer                    *pki.Issuer
+	configSigner, auditSigner pki.KeyPair
 	// signers are the config-signing certificates agents may need: the active one, the next one
 	// and those retired that have not expired.
 	signers []*x509.Certificate
@@ -64,23 +62,23 @@ func InitCA(ctx context.Context, tx *ent.Tx, s *secret.Sealer, td string, now ti
 	if n, err := tx.CAKey.Query().Count(ctx); err != nil || n > 0 {
 		return errors.Join(ErrCAExists, err)
 	}
-	root, err := NewRoot(td, now)
+	root, err := pki.NewRoot(td, now)
 	if err != nil {
 		return err
 	}
-	inter, err := NewIntermediate(root, now)
+	inter, err := pki.NewIntermediate(root, now)
 	if err != nil {
 		return err
 	}
-	is, err := NewIssuer(root.Cert, inter, func() time.Time { return now })
+	is, err := pki.NewIssuer(root.Cert, inter, func() time.Time { return now })
 	if err != nil {
 		return err
 	}
-	keys := map[cakey.Kind]KeyPair{cakey.KindRoot: root, cakey.KindIntermediate: inter}
-	for kind, purpose := range map[cakey.Kind]Purpose{
-		cakey.KindConfigSigning: PurposeConfigSigning, cakey.KindAuditCheckpoint: PurposeAuditCheckpoint,
+	keys := map[cakey.Kind]pki.KeyPair{cakey.KindRoot: root, cakey.KindIntermediate: inter}
+	for kind, purpose := range map[cakey.Kind]pki.Purpose{
+		cakey.KindConfigSigning: pki.PurposeConfigSigning, cakey.KindAuditCheckpoint: pki.PurposeAuditCheckpoint,
 	} {
-		k, err := NewKey()
+		k, err := pki.NewKey()
 		if err != nil {
 			return err
 		}
@@ -88,7 +86,7 @@ func InitCA(ctx context.Context, tx *ent.Tx, s *secret.Sealer, td string, now ti
 		if err != nil {
 			return err
 		}
-		keys[kind] = KeyPair{Cert: cert, Key: k}
+		keys[kind] = pki.KeyPair{Cert: cert, Key: k}
 	}
 	for kind, kp := range keys {
 		if err := saveKey(ctx, tx, s, kind, kp, cakey.StatusActive); err != nil {
@@ -98,7 +96,7 @@ func InitCA(ctx context.Context, tx *ent.Tx, s *secret.Sealer, td string, now ti
 	return nil
 }
 
-func saveKey(ctx context.Context, tx *ent.Tx, s *secret.Sealer, kind cakey.Kind, kp KeyPair, status cakey.Status) error {
+func saveKey(ctx context.Context, tx *ent.Tx, s *secret.Sealer, kind cakey.Kind, kp pki.KeyPair, status cakey.Status) error {
 	id := ids.New("cak")
 	der, err := x509.MarshalPKCS8PrivateKey(kp.Key)
 	if err != nil {
@@ -191,20 +189,20 @@ func loadState(rows []*ent.CAKey, s *secret.Sealer, now func() time.Time) (*caSt
 		return nil, fmt.Errorf("pki: root certificate: %w", err)
 	}
 	st := &caState{}
-	var inter KeyPair
-	for kind, dst := range map[cakey.Kind]*KeyPair{
+	var inter pki.KeyPair
+	for kind, dst := range map[cakey.Kind]*pki.KeyPair{
 		cakey.KindIntermediate: &inter, cakey.KindConfigSigning: &st.configSigner, cakey.KindAuditCheckpoint: &st.auditSigner,
 	} {
 		if *dst, err = openKey(s, active[kind]); err != nil {
 			return nil, err
 		}
 	}
-	if st.issuer, err = NewIssuer(root, inter, now, older...); err != nil {
+	if st.issuer, err = pki.NewIssuer(root, inter, now, older...); err != nil {
 		return nil, err
 	}
 	st.intermediates = append([]*x509.Certificate{inter.Cert}, older...)
-	for p, kp := range map[Purpose]KeyPair{PurposeConfigSigning: st.configSigner, PurposeAuditCheckpoint: st.auditSigner} {
-		if err := VerifySigner(kp.Cert, st.intermediates, root, p, now()); err != nil {
+	for p, kp := range map[pki.Purpose]pki.KeyPair{pki.PurposeConfigSigning: st.configSigner, pki.PurposeAuditCheckpoint: st.auditSigner} {
+		if err := pki.VerifySigner(kp.Cert, st.intermediates, root, p, now()); err != nil {
 			return nil, err
 		}
 	}
@@ -213,27 +211,27 @@ func loadState(rows []*ent.CAKey, s *secret.Sealer, now func() time.Time) (*caSt
 }
 
 // openKey opens a sealed key and checks it against its certificate.
-func openKey(s *secret.Sealer, r *ent.CAKey) (KeyPair, error) {
+func openKey(s *secret.Sealer, r *ent.CAKey) (pki.KeyPair, error) {
 	cert, err := x509.ParseCertificate(r.Certificate)
 	if err != nil {
-		return KeyPair{}, fmt.Errorf("pki: certificate of the %s key: %w", r.Kind, err)
+		return pki.KeyPair{}, fmt.Errorf("pki: certificate of the %s key: %w", r.Kind, err)
 	}
 	if r.KeyEnc == nil {
-		return KeyPair{}, fmt.Errorf("pki: the %s key is offline", r.Kind)
+		return pki.KeyPair{}, fmt.Errorf("pki: the %s key is offline", r.Kind)
 	}
 	v, err := s.Open(keyContext(r.ID), *r.KeyEnc)
 	if err != nil {
-		return KeyPair{}, fmt.Errorf("pki: open the %s key: %w", r.Kind, err)
+		return pki.KeyPair{}, fmt.Errorf("pki: open the %s key: %w", r.Kind, err)
 	}
 	key, err := x509.ParsePKCS8PrivateKey([]byte(v.Reveal()))
 	if err != nil {
-		return KeyPair{}, fmt.Errorf("pki: the %s key: %w", r.Kind, err)
+		return pki.KeyPair{}, fmt.Errorf("pki: the %s key: %w", r.Kind, err)
 	}
 	ec, ok := key.(*ecdsa.PrivateKey)
 	if !ok || !ec.PublicKey.Equal(cert.PublicKey) {
-		return KeyPair{}, fmt.Errorf("pki: the %s key does not match its certificate", r.Kind)
+		return pki.KeyPair{}, fmt.Errorf("pki: the %s key does not match its certificate", r.Kind)
 	}
-	return KeyPair{Cert: cert, Key: ec}, nil
+	return pki.KeyPair{Cert: cert, Key: ec}, nil
 }
 
 // TrustDomain returns the CA's trust domain.
@@ -273,25 +271,25 @@ func (ca *CA) SigningChain() [][]byte {
 }
 
 // IdentityOf verifies that cert is a TLS leaf of this CA at time at and returns its identity.
-func (ca *CA) IdentityOf(cert *x509.Certificate, at time.Time) (Identity, error) {
+func (ca *CA) IdentityOf(cert *x509.Certificate, at time.Time) (pki.Identity, error) {
 	return ca.state().issuer.IdentityOf(cert, at)
 }
 
 // ConfigSigner returns the config-signing key and its certificate.
-func (ca *CA) ConfigSigner() KeyPair { return ca.state().configSigner }
+func (ca *CA) ConfigSigner() pki.KeyPair { return ca.state().configSigner }
 
 // AuditSigner returns the audit-checkpoint key and its certificate.
-func (ca *CA) AuditSigner() KeyPair { return ca.state().auditSigner }
+func (ca *CA) AuditSigner() pki.KeyPair { return ca.state().auditSigner }
 
 // Issue issues a leaf for id from csr (see Issuer.IssueLeaf) and records it in tx, the
 // transaction that hands it out.
-func (ca *CA) Issue(ctx context.Context, tx *ent.Tx, csr *x509.CertificateRequest, id Identity, lifetime time.Duration) (*x509.Certificate, error) {
+func (ca *CA) Issue(ctx context.Context, tx *ent.Tx, csr *x509.CertificateRequest, id pki.Identity, lifetime time.Duration) (*x509.Certificate, error) {
 	return ca.IssueEnrolled(ctx, tx, csr, id, lifetime, "")
 }
 
 // IssueEnrolled is Issue for an enrollment that consumed the token tokenID, which the record
 // keeps so that a retry with the same token and key gets the same certificate.
-func (ca *CA) IssueEnrolled(ctx context.Context, tx *ent.Tx, csr *x509.CertificateRequest, id Identity, lifetime time.Duration, tokenID string) (*x509.Certificate, error) {
+func (ca *CA) IssueEnrolled(ctx context.Context, tx *ent.Tx, csr *x509.CertificateRequest, id pki.Identity, lifetime time.Duration, tokenID string) (*x509.Certificate, error) {
 	cert, err := ca.state().issuer.IssueLeaf(csr, id, lifetime)
 	if err != nil {
 		return nil, err
@@ -307,7 +305,7 @@ func (ca *CA) Renew(ctx context.Context, tx *ent.Tx, presented *x509.Certificate
 	if err != nil {
 		return nil, err
 	}
-	id, err := is.IdentityOf(cert, cert.NotBefore.Add(Backdate))
+	id, err := is.IdentityOf(cert, cert.NotBefore.Add(pki.Backdate))
 	if err != nil {
 		return nil, err
 	}
@@ -318,7 +316,7 @@ func (ca *CA) Renew(ctx context.Context, tx *ent.Tx, presented *x509.Certificate
 // memory: every start and every renewal gets a new key and a new certificate, recorded without an
 // org. It needs the system scope.
 func (ca *CA) NodeCertificate(ctx context.Context, db *store.DB, nodeID string) (tls.Certificate, error) {
-	key, err := NewKey()
+	key, err := pki.NewKey()
 	if err != nil {
 		return tls.Certificate{}, err
 	}
@@ -330,10 +328,10 @@ func (ca *CA) NodeCertificate(ctx context.Context, db *store.DB, nodeID string) 
 	if err != nil {
 		return tls.Certificate{}, err
 	}
-	id := Identity{TrustDomain: ca.TrustDomain(), Kind: KindController, ID: nodeID}
+	id := pki.Identity{TrustDomain: ca.TrustDomain(), Kind: pki.KindController, ID: nodeID}
 	var cert *x509.Certificate
 	err = store.WriteTx(ctx, db, func(tx *ent.Tx) error {
-		cert, err = ca.Issue(ctx, tx, csr, id, ControllerLifetime)
+		cert, err = ca.Issue(ctx, tx, csr, id, pki.ControllerLifetime)
 		return err
 	})
 	if err != nil {
@@ -342,16 +340,13 @@ func (ca *CA) NodeCertificate(ctx context.Context, db *store.DB, nodeID string) 
 	return tls.Certificate{Certificate: ca.Chain(cert), PrivateKey: key, Leaf: cert}, nil
 }
 
-// SerialHex is a serial number's key in issued_certificates and on the deny-list.
-func SerialHex(n *big.Int) string { return n.Text(16) }
-
-func record(ctx context.Context, tx *ent.Tx, cert *x509.Certificate, id Identity, tokenID string) error {
+func record(ctx context.Context, tx *ent.Tx, cert *x509.Certificate, id pki.Identity, tokenID string) error {
 	if err := identityRevoked(ctx, tx.Client(), id.String()); err != nil {
 		return err
 	}
-	c := tx.IssuedCertificate.Create().SetID(SerialHex(cert.SerialNumber)).
+	c := tx.IssuedCertificate.Create().SetID(pki.SerialHex(cert.SerialNumber)).
 		SetSubjectType(issuedcertificate.SubjectType(id.Kind)).SetSubjectID(id.ID).SetSpiffeID(id.String()).
-		SetPubkeySha256(PublicKeyHash(cert.RawSubjectPublicKeyInfo)).SetNotBefore(cert.NotBefore).
+		SetPubkeySha256(pki.PublicKeyHash(cert.RawSubjectPublicKeyInfo)).SetNotBefore(cert.NotBefore).
 		SetNotAfter(cert.NotAfter).SetCertificate(cert.Raw)
 	if id.Org != "" { // controller nodes have none
 		c.SetOrgID(id.Org)
@@ -360,13 +355,6 @@ func record(ctx context.Context, tx *ent.Tx, cert *x509.Certificate, id Identity
 		c.SetEnrollmentTokenID(tokenID)
 	}
 	return c.Exec(ctx)
-}
-
-// PublicKeyHash is the lower-case hexadecimal SHA-256 of a SubjectPublicKeyInfo, as
-// issued_certificates and the fleet tables store it.
-func PublicKeyHash(spki []byte) string {
-	sum := sha256.Sum256(spki)
-	return hex.EncodeToString(sum[:])
 }
 
 // Why a certificate may not be renewed.
@@ -379,7 +367,7 @@ var (
 // neither revoked nor superseded (docs/04-security.md, "Leaf certificates"). A serial that
 // issued_certificates does not hold but a restore recorded as revoked is ErrCertRevoked.
 func CheckRenewable(ctx context.Context, c *ent.Client, cert *x509.Certificate) error {
-	serial := SerialHex(cert.SerialNumber)
+	serial := pki.SerialHex(cert.SerialNumber)
 	row, err := c.IssuedCertificate.Get(ctx, serial)
 	switch {
 	case ent.IsNotFound(err):
@@ -390,11 +378,11 @@ func CheckRenewable(ctx context.Context, c *ent.Client, cert *x509.Certificate) 
 		if revoked {
 			return ErrCertRevoked
 		}
-		return ErrNotIssued
+		return pki.ErrNotIssued
 	case err != nil:
 		return err
 	case !bytes.Equal(row.Certificate, cert.Raw):
-		return ErrNotIssued
+		return pki.ErrNotIssued
 	case row.RevokedAt != nil:
 		return ErrCertRevoked
 	case row.SupersededAt != nil:
@@ -422,7 +410,7 @@ func identityRevoked(ctx context.Context, c *ent.Client, spiffe string) error {
 // restore from a backup older than the certificate, has nothing to mark. It returns the
 // certificates it superseded, for the revocation log.
 func MarkSeen(ctx context.Context, tx *ent.Tx, cert *x509.Certificate, now time.Time) ([]*ent.IssuedCertificate, error) {
-	serial := SerialHex(cert.SerialNumber)
+	serial := pki.SerialHex(cert.SerialNumber)
 	row, err := tx.IssuedCertificate.Get(ctx, serial)
 	if ent.IsNotFound(err) {
 		return nil, nil

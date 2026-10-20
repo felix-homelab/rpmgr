@@ -19,12 +19,10 @@ import (
 
 	agentv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/agent/v1"
 	"github.com/felix-homelab/rpmgr/internal/agent"
-	"github.com/felix-homelab/rpmgr/internal/allinone"
+	"github.com/felix-homelab/rpmgr/internal/cli"
 	"github.com/felix-homelab/rpmgr/internal/config"
 	"github.com/felix-homelab/rpmgr/internal/connector"
-	"github.com/felix-homelab/rpmgr/internal/controller"
 	"github.com/felix-homelab/rpmgr/internal/policy"
-	"github.com/felix-homelab/rpmgr/internal/settings"
 	"github.com/felix-homelab/rpmgr/internal/units"
 	"github.com/felix-homelab/rpmgr/internal/version"
 )
@@ -87,8 +85,11 @@ func Preflight(h Host) (Facts, error) {
 // New checks the values against the host and returns the plan, or every problem it found.
 func New(v Values, h Host) (*Plan, error) {
 	h.defaults()
-	if err := v.check(); err != nil {
+	if err := v.check(h); err != nil {
 		return nil, err
+	}
+	if v.Role.Initialises() && h.Server == nil {
+		return nil, fmt.Errorf("the role %s: %w", v.Role, cli.ErrNotAvailable)
 	}
 	if !h.IsRoot() {
 		return nil, errRoot
@@ -173,7 +174,7 @@ func (p *Plan) bootFile() error {
 		}
 		source := v.KEKSource
 		if source == "" {
-			source = controller.KEKSourceFor(p.h.SystemdVersion())
+			source = config.KEKSourceFor(p.h.SystemdVersion())
 		}
 		if source == config.KEKFile {
 			path := v.KEKPath
@@ -254,7 +255,7 @@ func (p *Plan) tlsFiles() (string, string) {
 	case TLSFiles:
 		return p.v.CertFile, p.v.KeyFile
 	case TLSSelfSigned:
-		if host, public := PublicHost(p.v.PublicURL); public {
+		if host, public := p.h.PublicHost(p.v.PublicURL); public {
 			dir := filepath.Join(p.h.Paths.Etc, "tls")
 			return filepath.Join(dir, host+".crt"), filepath.Join(dir, host+".key")
 		}
@@ -349,7 +350,7 @@ func (p *Plan) initSteps() {
 	v, h := p.v, p.h
 	// A certificate an earlier run made is kept.
 	if cert, key := p.tlsFiles(); cert != "" && v.TLS == TLSSelfSigned && (!exists(cert) || !exists(key)) {
-		host, _ := PublicHost(v.PublicURL)
+		host, _ := h.PublicHost(v.PublicURL)
 		p.add("make a self-signed certificate for "+host+" in "+filepath.Dir(cert), func(_ context.Context, r *Result) error {
 			r.created(cert)
 			r.created(key)
@@ -362,23 +363,14 @@ func (p *Plan) initSteps() {
 		what = "initialise the all-in-one: KEK, database, trust domain and CA, and enroll its gateway and connector"
 	}
 	p.add(what, func(ctx context.Context, r *Result) error {
-		o := controller.InitOptions{ConfigPath: p.boot, CredentialsDir: filepath.Join(h.Paths.Etc, "credstore"), Getenv: h.Getenv,
-			Encrypt: h.Encrypt, SystemdVersion: h.SystemdVersion, ServiceUser: ServiceUser, Now: h.Now}
-		var ir controller.InitResult
-		if v.Role == AllInOne {
-			a, err := allinone.Init(ctx, o)
-			if err != nil {
-				return p.initFailed(r, err)
-			}
-			ir, r.GatewayID, r.ConnectorID = a.InitResult, a.GatewayID, a.ConnectorID
-		} else {
-			c, err := controller.Init(ctx, o)
-			if err != nil {
-				return p.initFailed(r, err)
-			}
-			ir = c
+		ir, err := h.Server.Init(ctx, ServerInit{AllInOne: v.Role == AllInOne, ConfigPath: p.boot,
+			CredentialsDir: filepath.Join(h.Paths.Etc, "credstore"), Getenv: h.Getenv, Encrypt: h.Encrypt,
+			SystemdVersion: h.SystemdVersion, ServiceUser: ServiceUser, Now: h.Now})
+		if err != nil {
+			return p.initFailed(r, err)
 		}
 		r.TrustDomain, r.Pin, r.FirstUserLink, r.KEK = ir.TrustDomain, ir.RootPin, ir.FirstUserLink, ir.KEK
+		r.GatewayID, r.ConnectorID = ir.GatewayID, ir.ConnectorID
 		return nil
 	})
 	if v.Role == AllInOne {
@@ -388,7 +380,7 @@ func (p *Plan) initSteps() {
 	dir, _ := Directory(v.ACMEDirectory)
 	if dir != "" || v.ACMEEmail != "" {
 		p.add("set the instance's ACME directory and e-mail address", func(ctx context.Context, _ *Result) error {
-			return controller.SetACME(ctx, p.boot, dir, v.ACMEEmail)
+			return p.h.Server.SetACME(ctx, p.boot, dir, v.ACMEEmail)
 		})
 	}
 }
@@ -687,7 +679,7 @@ func (p *Plan) tlsSummary() string {
 func (p *Plan) acmeSummary() string {
 	dir, _ := Directory(p.v.ACMEDirectory)
 	if dir == "" {
-		dir = settings.LetsEncrypt + " (the default)"
+		dir = config.LetsEncrypt + " (the default)"
 	}
 	if p.v.ACMEEmail != "" {
 		dir += ", account " + p.v.ACMEEmail

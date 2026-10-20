@@ -10,7 +10,7 @@ import (
 
 	"github.com/felix-homelab/rpmgr/internal/audit"
 	"github.com/felix-homelab/rpmgr/internal/lease"
-	"github.com/felix-homelab/rpmgr/internal/pki"
+	"github.com/felix-homelab/rpmgr/internal/pki/castore"
 	"github.com/felix-homelab/rpmgr/internal/settings"
 	"github.com/felix-homelab/rpmgr/internal/store"
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
@@ -23,7 +23,7 @@ const CheckpointCheckEvery = time.Minute
 // CheckpointOptions are the inputs of CheckpointJob and FinalCheckpoints.
 type CheckpointOptions struct {
 	DB     *store.DB
-	CA     *pki.CA
+	CA     *castore.CA
 	Log    *audit.CheckpointLog
 	Leases *lease.Leases
 	Now    func() time.Time

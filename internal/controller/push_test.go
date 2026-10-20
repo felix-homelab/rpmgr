@@ -23,6 +23,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/pki"
 	"github.com/felix-homelab/rpmgr/internal/settings"
 	"github.com/felix-homelab/rpmgr/internal/snapshot"
+	"github.com/felix-homelab/rpmgr/internal/snapsig"
 	"github.com/felix-homelab/rpmgr/internal/store"
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/compiledsnapshot"
@@ -66,7 +67,7 @@ func (e *sessionEnv) recvSnapshot(t *testing.T, st controlStream, id pki.Identit
 		t.Fatalf("got %v, want a snapshot", m)
 	}
 	certs := []*x509.Certificate{e.ca.ConfigSigner().Cert, e.ca.Intermediate()}
-	snap, err := snapshot.VerifySnapshot(signed, certs, e.ca.Root(), id.String(), time.Now())
+	snap, err := snapsig.VerifySnapshot(signed, certs, e.ca.Root(), id.String(), time.Now())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -98,7 +99,7 @@ func send(t *testing.T, st controlStream, m *agentv1.AgentMessage) {
 }
 
 func applied(signed *agentv1.Signed, rev *agentv1.Revision) *agentv1.AgentMessage {
-	return &agentv1.AgentMessage{Msg: &agentv1.AgentMessage_Applied{Applied: &agentv1.Applied{Revision: rev, Hash: snapshot.Hash(signed)}}}
+	return &agentv1.AgentMessage{Msg: &agentv1.AgentMessage_Applied{Applied: &agentv1.Applied{Revision: rev, Hash: snapsig.Hash(signed)}}}
 }
 
 // waitState polls the agent's state until ok accepts it.
@@ -137,7 +138,7 @@ func TestPush_SessionRevisionAndAck(t *testing.T) {
 			t.Fatalf("snapshot %v", snap1)
 		}
 		state := e.waitState(t, id.ID, func(s *ent.AgentState) bool { return s.PushedAt != nil })
-		if !bytes.Equal(state.PushedHash, snapshot.Hash(first)) || state.BootID != "boot-1" ||
+		if !bytes.Equal(state.PushedHash, snapsig.Hash(first)) || state.BootID != "boot-1" ||
 			controller.ApplyStatus(state, time.Now()) != controller.ApplyPending {
 			t.Fatalf("state after the push: %+v", state)
 		}
@@ -169,11 +170,11 @@ func TestPush_SessionRevisionAndAck(t *testing.T) {
 			t.Fatal("an unrelated change changed a resource hash")
 		}
 		send(t, st, applied(second, snap2.GetRevision()))
-		e.waitState(t, id.ID, func(s *ent.AgentState) bool { return bytes.Equal(s.AppliedHash, snapshot.Hash(second)) })
+		e.waitState(t, id.ID, func(s *ent.AgentState) bool { return bytes.Equal(s.AppliedHash, snapsig.Hash(second)) })
 
 		// The agent reconnects with what it runs: no snapshot, and the state says applied.
 		h = hello("0.1.0")
-		h.LastApplied, h.LastAppliedHash = snap2.GetRevision(), snapshot.Hash(second)
+		h.LastApplied, h.LastAppliedHash = snap2.GetRevision(), snapsig.Hash(second)
 		again := e.open(t, testCtx(t), cert, h)
 		if recv(t, again).GetWelcome() == nil {
 			t.Fatal("no Welcome")
@@ -271,7 +272,7 @@ func TestPush_Rejected(t *testing.T) {
 		errs = append(errs, &agentv1.SnapshotError{ResourceId: "rt_1", Message: strings.Repeat("é", 400)})
 	}
 	send(t, st, &agentv1.AgentMessage{Msg: &agentv1.AgentMessage_Rejected{Rejected: &agentv1.Rejected{
-		Revision: snap.GetRevision(), Hash: snapshot.Hash(signed), Errors: errs}}})
+		Revision: snap.GetRevision(), Hash: snapsig.Hash(signed), Errors: errs}}})
 	state := e.waitState(t, id.ID, func(s *ent.AgentState) bool { return len(s.RejectedHash) > 0 })
 	if controller.ApplyStatus(state, time.Now()) != controller.ApplyRejected || state.RejectedSeq != seqOf(snap.GetRevision()) {
 		t.Fatalf("state: %+v", state)

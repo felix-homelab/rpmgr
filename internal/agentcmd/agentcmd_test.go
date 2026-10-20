@@ -28,16 +28,13 @@ func runRpmgr(args ...string) (int, string, string) {
 // which the connector-only build must not link (docs/02-architecture.md, "Roles"; D119).
 var serverPackage = regexp.MustCompile(`^github\.com/felix-homelab/rpmgr/internal/(` +
 	`accounts|acme|allinone|api|apisvc|audit|authz|controller|domains|enroll|gateway|importer|itest|lease|mail|` +
-	`manifest|revlog|routes|settings|setup|store|testseed|websession|webui)(/|$)`)
+	`manifest|pki/castore|revlog|routes|settings|setup/serversetup|snapshot|store|testseed|websession|webui)(/|$)`)
 
 // linkedNow are the server packages this package still links, each with why; the slice that
 // removes the reason removes its entry. The test fails when an entry is no longer linked, so the
-// list only shrinks.
-var linkedNow = map[string]string{
-	"authz": "imported by internal/store",
-	"store": "internal/pki keeps the CA in the database and internal/snapshot the compiled snapshots; " +
-		"the connector-only build (slice 2.13) splits them from what agents use",
-}
+// list only shrinks. It is empty since the agent-side parts of internal/pki and of the snapshots
+// left the database (internal/pki/castore, internal/snapsig).
+var linkedNow = map[string]string{}
 
 // TestNoServerPackages: the commands of a connector or gateway host link nothing of the
 // controller, the gateway or the importer, so that the connector-only build can register them.

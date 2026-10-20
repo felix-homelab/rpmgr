@@ -133,11 +133,29 @@ func (r RevocationLog) check() error {
 	return checkAbs("revocation_log.sink", r.Sink)
 }
 
+// LetsEncrypt is Let's Encrypt's production ACME directory, the default CA of route certificates
+// [F certmagic v0.25.6 acmeissuer.go:664].
+const LetsEncrypt = "https://acme-v02.api.letsencrypt.org/directory"
+
 // The KEK sources of Phase 1 (docs/04-security.md, "Secrets at rest and in logs").
 const (
 	KEKSystemdCredential = "systemd-credential" //nolint:gosec // G101: the name of a source, not a credential
 	KEKFile              = "file"
 )
+
+// credentialSystemd is the first systemd version with encrypted credentials
+// (LoadCredentialEncrypted=); below it, init writes the KEK to a file (docs/10-operations.md,
+// "Supported platforms").
+const credentialSystemd = 250
+
+// KEKSourceFor is the KEK source a new boot file takes on a host with that systemd version: the
+// systemd credential where systemd has encrypted credentials, else a file.
+func KEKSourceFor(systemd int) string {
+	if systemd < credentialSystemd {
+		return KEKFile
+	}
+	return KEKSystemdCredential
+}
 
 func (c *Controller) defaults() {
 	setDefault(&c.Listen.HTTPS, ":443")

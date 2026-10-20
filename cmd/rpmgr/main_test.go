@@ -18,7 +18,6 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/agentcmd"
 	"github.com/felix-homelab/rpmgr/internal/cli"
 	"github.com/felix-homelab/rpmgr/internal/config"
-	"github.com/felix-homelab/rpmgr/internal/controller"
 	"github.com/felix-homelab/rpmgr/internal/itest"
 	"github.com/felix-homelab/rpmgr/internal/release"
 )
@@ -160,7 +159,7 @@ func TestFlagsAfterArguments(t *testing.T) {
 // the systemd credential from the first systemd version with encrypted credentials, else a file.
 func TestInitHelp(t *testing.T) {
 	first := 0
-	for controller.KEKSourceFor(first) != config.KEKSystemdCredential {
+	for config.KEKSourceFor(first) != config.KEKSystemdCredential {
 		first++
 	}
 	want := fmt.Sprintf("(default systemd-credential from systemd %d, else file)", first)

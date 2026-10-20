@@ -18,6 +18,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/config"
 	"github.com/felix-homelab/rpmgr/internal/controller"
 	"github.com/felix-homelab/rpmgr/internal/pki"
+	"github.com/felix-homelab/rpmgr/internal/pki/castore"
 	"github.com/felix-homelab/rpmgr/internal/secret"
 	"github.com/felix-homelab/rpmgr/internal/settings"
 	"github.com/felix-homelab/rpmgr/internal/store"
@@ -77,7 +78,7 @@ func (h host) check(t *testing.T, kek secret.KEK, r controller.InitResult) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ca, err := pki.LoadCA(sys, db, s, time.Now)
+	ca, err := castore.LoadCA(sys, db, s, time.Now)
 	if err != nil {
 		t.Fatalf("the CA does not open with the KEK: %v", err)
 	}

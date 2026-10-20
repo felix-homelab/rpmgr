@@ -22,7 +22,7 @@ import (
 	agentv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/agent/v1"
 	"github.com/felix-homelab/rpmgr/internal/agentproto"
 	"github.com/felix-homelab/rpmgr/internal/pki"
-	"github.com/felix-homelab/rpmgr/internal/snapshot"
+	"github.com/felix-homelab/rpmgr/internal/snapsig"
 )
 
 // DenyListFile holds, in the state directory, the signed deny-lists that make up the agent's
@@ -65,7 +65,7 @@ func NewDenyList(o DenyListOptions) *DenyList {
 
 // verify checks a signed deny-list as a snapshot is checked and returns its entries.
 func (d *DenyList) verify(signed *agentv1.Signed) ([]*agentv1.DenyEntry, error) {
-	payload, err := snapshot.Verify(signed, d.o.Signers(), d.o.Root, d.o.Now())
+	payload, err := snapsig.Verify(signed, d.o.Signers(), d.o.Root, d.o.Now())
 	if err != nil {
 		return nil, err
 	}

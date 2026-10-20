@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
-package snapshot_test
+package snapsig_test
 
 import (
 	"bytes"
@@ -17,7 +17,7 @@ import (
 
 	agentv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/agent/v1"
 	"github.com/felix-homelab/rpmgr/internal/pki"
-	"github.com/felix-homelab/rpmgr/internal/snapshot"
+	"github.com/felix-homelab/rpmgr/internal/snapsig"
 )
 
 var t0 = time.Date(2026, 10, 7, 12, 0, 0, 0, time.UTC)
@@ -74,17 +74,17 @@ func testSnapshot() *agentv1.Snapshot {
 
 func TestSignVerify(t *testing.T) {
 	s := newSigners(t, "rpmgr-7f3k2q6m")
-	signed, err := snapshot.Sign(s.config, testSnapshot())
+	signed, err := snapsig.Sign(s.config, testSnapshot())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if signed.GetKeyId() != snapshot.KeyID(s.config.Cert) || len(signed.GetKeyId()) != 64 {
+	if signed.GetKeyId() != snapsig.KeyID(s.config.Cert) || len(signed.GetKeyId()) != 64 {
 		t.Fatalf("key_id %q", signed.GetKeyId())
 	}
-	if h := sha256.Sum256(signed.GetPayload()); !bytes.Equal(snapshot.Hash(signed), h[:]) {
+	if h := sha256.Sum256(signed.GetPayload()); !bytes.Equal(snapsig.Hash(signed), h[:]) {
 		t.Fatal("the hash is not the SHA-256 of the payload")
 	}
-	got, err := snapshot.VerifySnapshot(signed, s.certs(), s.root.Cert, agent, t0.Add(time.Hour))
+	got, err := snapsig.VerifySnapshot(signed, s.certs(), s.root.Cert, agent, t0.Add(time.Hour))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -92,22 +92,22 @@ func TestSignVerify(t *testing.T) {
 		t.Fatalf("got %v", got)
 	}
 	// The certificates may come in any order, as signing.pem holds them.
-	if _, err := snapshot.VerifySnapshot(signed, []*x509.Certificate{s.inter.Cert, s.config.Cert}, s.root.Cert, agent, t0); err != nil {
+	if _, err := snapsig.VerifySnapshot(signed, []*x509.Certificate{s.inter.Cert, s.config.Cert}, s.root.Cert, agent, t0); err != nil {
 		t.Fatal(err)
 	}
 }
 
 func TestSign_Deterministic(t *testing.T) {
 	s := newSigners(t, "rpmgr-7f3k2q6m")
-	a, err := snapshot.Sign(s.config, testSnapshot())
+	a, err := snapsig.Sign(s.config, testSnapshot())
 	if err != nil {
 		t.Fatal(err)
 	}
-	b, err := snapshot.Sign(s.config, testSnapshot())
+	b, err := snapsig.Sign(s.config, testSnapshot())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !bytes.Equal(a.GetPayload(), b.GetPayload()) || !bytes.Equal(snapshot.Hash(a), snapshot.Hash(b)) {
+	if !bytes.Equal(a.GetPayload(), b.GetPayload()) || !bytes.Equal(snapsig.Hash(a), snapsig.Hash(b)) {
 		t.Fatal("the same snapshot gave different payloads")
 	}
 }
@@ -118,7 +118,7 @@ func TestVerify_Refused(t *testing.T) {
 	foreign := newSigners(t, "rpmgr-abcdefgh")
 	sign := func(kp pki.KeyPair, m proto.Message) *agentv1.Signed {
 		t.Helper()
-		signed, err := snapshot.Sign(kp, m)
+		signed, err := snapsig.Sign(kp, m)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -138,7 +138,7 @@ func TestVerify_Refused(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	notSnapshot := &agentv1.Signed{Payload: garbage, Signature: sig, KeyId: snapshot.KeyID(s.config.Cert)}
+	notSnapshot := &agentv1.Signed{Payload: garbage, Signature: sig, KeyId: snapsig.KeyID(s.config.Cert)}
 	tests := []struct {
 		name   string
 		signed *agentv1.Signed
@@ -179,12 +179,12 @@ func TestVerify_Refused(t *testing.T) {
 			if !tt.at.IsZero() {
 				at = tt.at
 			}
-			snap, err := snapshot.VerifySnapshot(tt.signed, certs, root, ag, at)
+			snap, err := snapsig.VerifySnapshot(tt.signed, certs, root, ag, at)
 			if err == nil {
 				t.Fatalf("accepted: %v", snap)
 			}
 			t.Log(err)
-			if tt.sigErr != errors.Is(err, snapshot.ErrSignature) {
+			if tt.sigErr != errors.Is(err, snapsig.ErrSignature) {
 				t.Fatalf("error %v; want ErrSignature: %v", err, tt.sigErr)
 			}
 		})
@@ -197,19 +197,19 @@ func TestSign_TooLarge(t *testing.T) {
 	for i := range 5 {
 		snap.Resources = append(snap.Resources, &agentv1.Resource{Id: strings.Repeat("x", 1<<20) + string(rune('a'+i))})
 	}
-	if _, err := snapshot.Sign(s.config, snap); err == nil || !strings.Contains(err.Error(), "exceeds") {
+	if _, err := snapsig.Sign(s.config, snap); err == nil || !strings.Contains(err.Error(), "exceeds") {
 		t.Fatalf("a snapshot above 4 MiB was signed: %v", err)
 	}
 }
 
 func TestResourceHash(t *testing.T) {
 	r := &agentv1.Resource{Id: "rt_1", Kind: &agentv1.Resource_Reference{Reference: &agentv1.ResourceReference{Size: 1}}}
-	h1, err := snapshot.ResourceHash(r)
+	h1, err := snapsig.ResourceHash(r)
 	if err != nil {
 		t.Fatal(err)
 	}
 	r.Hash = []byte("stale")
-	h2, err := snapshot.ResourceHash(r)
+	h2, err := snapsig.ResourceHash(r)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -220,12 +220,12 @@ func TestResourceHash(t *testing.T) {
 		t.Fatal("ResourceHash changed its argument")
 	}
 	r.GetReference().Size = 2
-	h3, _ := snapshot.ResourceHash(r)
+	h3, _ := snapsig.ResourceHash(r)
 	if bytes.Equal(h1, h3) {
 		t.Fatal("a content change kept the hash")
 	}
 	r.GetReference().Size, r.Id = 1, "rt_2"
-	h4, _ := snapshot.ResourceHash(r)
+	h4, _ := snapsig.ResourceHash(r)
 	if bytes.Equal(h1, h4) {
 		t.Fatal("another ID kept the hash")
 	}
