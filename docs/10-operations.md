@@ -228,11 +228,16 @@ RestartSec=2s
   5. copies the verified file into the target directory as `.rpmgr.new` (same filesystem, so no
      cross-filesystem `rename`), fsyncs it, re-hashes it, and `rename`s it over the binary at the path
      recorded in `/var/lib/rpmgr-update/install.json` (`/usr/local/bin/rpmgr` for script installs),
-     keeping `.prev`, then restarts each role service that `install.json` lists;
-  6. polls each role's admin `/readyz` (ready only with an established control session and an
-     applied snapshot, see [Health](#health)) within the readiness window of
-     [03](03-connections.md#timeouts-keepalive-and-backoff), and rolls back to `.prev` when a role
-     is not ready by then, or its service fails or restarts in a loop before. The
+     keeping the installed binary as `<path>.prev` (a hard link, put in place by a rename), then
+     restarts each role service that `install.json` lists. A failure before the rename leaves the
+     installed binary untouched;
+  6. polls each role's admin `/readyz`, at the address of the role's boot file (ready only with an
+     established control session and an applied snapshot, see [Health](#health)), within the
+     readiness window of [03](03-connections.md#timeouts-keepalive-and-backoff), and rolls back to
+     `.prev` when a role is not ready by then, or its service fails (`ActiveState=failed`) or
+     systemd restarts it too often (`NRestarts`) before; the rollback restarts the roles again
+     and records the version in `state.json` as failed, so that only a manifest with a higher
+     `seq` offers it again. The
      automatic rollback is exempt from the floor, because floor and `seq` are only raised after a
      successful health check. A connector's local policy is not rolled back with the binary: a
      `deny_targets` list, a target string, an entry without ports or a subnet with host bits set
@@ -246,16 +251,26 @@ RestartSec=2s
   The role service's `NoNewPrivileges=yes` and `ProtectSystem=strict` stay intact; the service user
   can never write the binary or the updater state.
 
+  Excerpt of `rpmgr systemd-unit update`:
+
   ```ini
-  # rpmgr-update.path
+  # /etc/systemd/system/rpmgr-update.path
   [Path]
   PathChanged=/var/lib/rpmgr/update/manifest.json
+  Unit=rpmgr-update.service
 
-  # rpmgr-update.service (runs as root; ExecStart names the binary path from install.json)
+  # /etc/systemd/system/rpmgr-update.service (runs as root; ExecStart names install.json's path)
   [Service]
   Type=oneshot
   ExecStart=/usr/local/bin/rpmgr updater apply --staged /var/lib/rpmgr/update --state /var/lib/rpmgr-update
+  RuntimeDirectory=rpmgr-update
+  RuntimeDirectoryPreserve=yes
+  ProtectSystem=strict
+  ReadWritePaths=/usr/local/bin /var/lib/rpmgr-update
   ```
+
+  `RuntimeDirectoryPreserve=yes` keeps `/run/rpmgr-update/status.json` after the oneshot run
+  ends, so the agent reads it when its service starts again.
 
 - **Who installs the updater** ([04](04-security.md#over-the-air-updates)): `rpmgr setup`, the
   controller-hosted `/install.sh` and the global install script write the updater units,

@@ -18,7 +18,8 @@ debian='mirror.gcr.io/library/debian@sha256:913f6706df59a68922d1dd08f78c2476560a
 ubuntu='mirror.gcr.io/library/ubuntu@sha256:5ec03bb3441e8b0bf3b4f9cd4629a1ae763010dc3035bb8da3ae6cf026486401'
 work=$(mktemp -d)
 cleanup() {
-  rm -f "$work"/bin/rpmgr "$work"/rpmgr-host "$work"/*.yaml "$work"/credential/*.service "$work"/file/*.service
+  rm -f "$work"/bin/rpmgr "$work"/rpmgr-host "$work"/*.yaml "$work"/credential/*.service "$work"/file/*.service \
+    "$work"/credential/*.path "$work"/file/*.path
   rmdir "$work"/bin "$work"/credential "$work"/file "$work"
 }
 trap cleanup EXIT
@@ -30,6 +31,8 @@ chmod 0755 "$work/bin/rpmgr"
 if [[ -n $given ]]; then
   cp "$given"/*.service "$work/credential/"
   cp "$given"/*.service "$work/file/"
+  cp "$given"/*.path "$work/credential/" 2>/dev/null || true
+  cp "$given"/*.path "$work/file/" 2>/dev/null || true
 else
   (cd "$root" && CGO_ENABLED=0 go build -o "$work/rpmgr-host" ./cmd/rpmgr)
   sink='revocation_log: {sink: /srv/rpmgr-revocations/}'
@@ -49,13 +52,20 @@ else
     grep -qx 'ReadWritePaths=-/srv/rpmgr-revocations' "$work/$kind/rpmgr-controller.service" ||
       fail "the controller's unit ($kind) does not make the revocation-log sink writable"
   done
+  # The updater pair: each unit after a comment line naming its file.
+  "$work/rpmgr-host" systemd-unit --bin /usr/local/bin/rpmgr update |
+    awk -v dir="$work/credential" '/^# \/etc\/systemd\/system\// { f = dir "/" substr($2, 21) } { print > f }'
+  for unit in rpmgr-update.path rpmgr-update.service; do
+    [[ -s $work/credential/$unit ]] || fail "systemd-unit update printed no $unit"
+    cp "$work/credential/$unit" "$work/file/"
+  done
 fi
 
 verify() {
   local image=$1 units=$2 out
   if ! out=$(docker run --rm -v "$work/bin/rpmgr:/usr/local/bin/rpmgr:ro" -v "$units:/units:ro" "$image" sh -c \
     'apt-get update -qq >/dev/null && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends systemd procps >/dev/null &&
-     systemctl --version | head -n 1 && systemd-analyze verify /units/*.service' 2>&1); then
+     systemctl --version | head -n 1 && systemd-analyze verify /units/*.service $(ls /units/*.path 2>/dev/null)' 2>&1); then
     echo "$out"
     fail "systemd-analyze verify failed on $image"
     return

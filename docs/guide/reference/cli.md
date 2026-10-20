@@ -63,6 +63,7 @@ rpmgr <command>
 | [`rpmgr status`](#rpmgr-status) | Show the state of the agents on this host |
 | [`rpmgr diag`](#rpmgr-diag) | Diagnose this host |
 | [`rpmgr policy`](#rpmgr-policy) | Show or change the connector-local policy of this host |
+| [`rpmgr updater`](#rpmgr-updater) | The root-owned updater of a Linux host |
 | [`rpmgr backup`](#rpmgr-backup) | Write a consistent backup of the controller |
 | [`rpmgr restore`](#rpmgr-restore) | Restore the controller from a backup |
 | [`rpmgr migrate`](#rpmgr-migrate) | Apply database migrations |
@@ -395,6 +396,33 @@ rpmgr policy remove-deny-target [flags] <ip or subnet>[:<port or range>] | [<ipv
 | `--file string` | `/etc/rpmgr/policy.yaml` | the policy file |
 | `--no-reload` |  | do not ask the running connector to reload the policy |
 
+## rpmgr updater
+
+The root-owned updater of a Linux host.
+
+```text
+rpmgr updater <command>
+```
+
+| Command | What it does |
+|---|---|
+| [`rpmgr updater apply`](#rpmgr-updater-apply) | Install the release the agent staged, as root, and roll back if a role is not ready |
+
+## rpmgr updater apply
+
+Install the release the agent staged, as root, and roll back if a role is not ready.
+
+```text
+rpmgr updater apply [flags]
+```
+
+| Flag | Default | Description |
+|---|---|---|
+| `--policy string` | `/etc/rpmgr/policy.yaml` | the local policy file |
+| `--staged string` | `/var/lib/rpmgr/update` | the directory the agent stages a release in |
+| `--state string` | `/var/lib/rpmgr-update` | the updater's own directory: install.json, state.json, staging/ |
+| `--status string` | `/run/rpmgr-update/status.json` | where the outcome is written for the agent |
+
 ## rpmgr backup
 
 Write a consistent backup of the controller.
@@ -581,12 +609,12 @@ rpmgr release import [flags] <dir>
 Print the hardened systemd unit of a role.
 
 ```text
-rpmgr systemd-unit [flags] controller | gateway | connector | all-in-one
+rpmgr systemd-unit [flags] controller | gateway | connector | all-in-one | update
 ```
 
 | Flag | Default | Description |
 |---|---|---|
-| `--bin string` | `/usr/local/bin/rpmgr` | the installed binary |
+| `--bin string` |  | the installed binary (default /usr/local/bin/rpmgr; for update, the path install.json records) |
 | `--config string` |  | the controller's or all-in-one's boot file, for its KEK credential and revocation-log sink (default $RPMGR_CONFIG, else /etc/rpmgr/\<role>.yaml) |
 
 ## rpmgr version

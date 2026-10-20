@@ -42,6 +42,7 @@ func commands() *cli.Command {
 			agentcmd.Status(),
 			agentcmd.Diag(),
 			agentcmd.Policy(),
+			agentcmd.Updater(),
 			backupCommand(),
 			restoreCommand(),
 			migrateCommand(),

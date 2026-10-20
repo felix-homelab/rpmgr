@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 
 // Package agentcmd holds the commands of a connector or gateway host (docs/16-cli.md): the
-// connector role, enroll, leave, status, diag, policy and version, and the helpers the role
-// commands share. It is registered by cmd/rpmgr and links nothing of the controller, the gateway
-// or the importer, so that the connector-only build can register it too (docs/02-architecture.md,
-// "Roles"; D119).
+// connector role, enroll, leave, status, diag, policy, updater and version, and the helpers the
+// role commands share. It is registered by cmd/rpmgr and links nothing of the controller, the
+// gateway or the importer, so that the connector-only build can register it too
+// (docs/02-architecture.md, "Roles"; D119).
 package agentcmd
 
 import (
@@ -22,6 +22,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/release"
 	"github.com/felix-homelab/rpmgr/internal/telemetry"
 	"github.com/felix-homelab/rpmgr/internal/units"
+	"github.com/felix-homelab/rpmgr/internal/update"
 	"github.com/felix-homelab/rpmgr/internal/version"
 )
 
@@ -139,12 +140,12 @@ func fileExists(path string) bool {
 	return err == nil
 }
 
-// SystemdUnit is `rpmgr systemd-unit`: the hardened unit of one of roles, all four when none are
-// given, for a script or manual install (docs/10-operations.md, "Hardened systemd units"). The
-// connector-only build prints the connector's only.
+// SystemdUnit is `rpmgr systemd-unit`: the hardened unit of one of roles, all four plus the
+// updater when none are given, for a script or manual install (docs/10-operations.md, "Hardened
+// systemd units"). The connector-only build prints the connector's only.
 func SystemdUnit(roles ...string) *cli.Command {
 	if len(roles) == 0 {
-		roles = []string{"controller", "gateway", "connector", "all-in-one"}
+		roles = []string{"controller", "gateway", "connector", "all-in-one", "update"}
 	}
 	var configPath, bin string
 	return &cli.Command{
@@ -152,17 +153,32 @@ func SystemdUnit(roles ...string) *cli.Command {
 		Summary: "print the hardened systemd unit of a role",
 		Args:    strings.Join(roles, " | "),
 		Flags: func(fs *flag.FlagSet) {
-			fs.StringVar(&bin, "bin", "/usr/local/bin/rpmgr", "the installed binary")
+			fs.StringVar(&bin, "bin", "", "the installed binary (default /usr/local/bin/rpmgr; for update, the path install.json records)")
 			fs.StringVar(&configPath, "config", "", "the controller's or all-in-one's boot file, for its KEK credential and revocation-log sink (default $RPMGR_CONFIG, else /etc/rpmgr/<role>.yaml)")
 		},
 		Run: func(_ context.Context, env *cli.Env, args []string) error {
 			if len(args) != 1 {
 				return cli.Usagef("systemd-unit needs a role")
 			}
-			var o units.Options
 			if !slices.Contains(roles, args[0]) {
 				return cli.Usagef("no role %q: %s", args[0], strings.Join(roles, ", "))
 			}
+			if args[0] == "update" {
+				if bin == "" {
+					in, err := update.ReadInstall(update.StateDir)
+					if err != nil {
+						return fmt.Errorf("%w; name the binary with --bin", err)
+					}
+					bin = in.Path
+				}
+				b, err := units.RenderUpdater(bin)
+				if err != nil {
+					return err
+				}
+				_, err = env.Stdout.Write(b)
+				return err
+			}
+			var o units.Options
 			switch role := args[0]; role {
 			case "controller", "all-in-one":
 				var c config.Controller
@@ -179,6 +195,9 @@ func SystemdUnit(roles ...string) *cli.Command {
 					c = a.Controller()
 				}
 				o = units.ForController(c) // the KEK credential and the revocation-log sink
+			}
+			if bin == "" {
+				bin = "/usr/local/bin/rpmgr"
 			}
 			o.Bin = bin
 			b, err := units.Render(args[0], o)
